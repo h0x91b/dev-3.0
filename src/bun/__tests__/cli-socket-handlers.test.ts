@@ -211,6 +211,11 @@ vi.mock("../scheduled-message-author", () => ({
 
 vi.mock("../agent-message-target", () => ({
 	withAgentPanes: vi.fn(async (_task: unknown, listing: unknown) => listing),
+	// The agent a handle names, as the app reads it from that pane now.
+	resolveAgentHandle: vi.fn(async (_task: unknown, handle: { paneId: string }) => ({
+		ok: true,
+		author: { paneId: handle.paneId, sessionId: null, paneToken: "gen-1", agentProcess: "303@Mon Oct 26 09:00:00 2026" },
+	})),
 }));
 
 vi.mock("../vents", () => ({
@@ -265,7 +270,7 @@ import { saveSharedArtifact } from "../shared-artifacts";
 import { closePaneRun, paneRunListing, readPaneRun, startPaneRun } from "../task-pane-runs";
 import { cancelScheduledMessageByRef, scheduleMessage, sendMessageImmediately } from "../scheduled-message-scheduler";
 import { captureScheduledMessageAuthor, resolveScheduledMessageAuthorPane } from "../scheduled-message-author";
-import { withAgentPanes } from "../agent-message-target";
+import { resolveAgentHandle, withAgentPanes } from "../agent-message-target";
 import { encodeAgentHandle } from "../../shared/agent-handle";
 
 // `task.open` imports the window layer lazily; mocking it keeps electrobun out.
@@ -5518,6 +5523,15 @@ describe("message.send — the sender's role travels to the envelope", () => {
 		expect(resp.ok).toBe(true);
 		expect(vi.mocked(sendMessageImmediately).mock.calls[0]?.[4]).toMatchObject({ author: addressed });
 		expect(resp.data).toMatchObject({ status: "held", paneId: "%3", agentRole: "review" });
+	});
+
+	it("refuses a handle whose agent was replaced or exited, sending nothing", async () => {
+		vi.mocked(resolveAgentHandle).mockResolvedValueOnce({ ok: false, detail: "the addressed agent in pane %3 has been replaced by another agent process" });
+		const addressed = { paneId: "%3", sessionId: null, paneToken: "gen-1", agentProcess: "303@Mon Oct 26 09:00:00 2026" };
+		const resp = await sendFrom(makeTask({ id: SENDER, seq: 1 }), { agentHandle: encodeAgentHandle(addressed) });
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toBe("--agent: the addressed agent in pane %3 has been replaced by another agent process. Nothing was sent.");
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
 	});
 
 	it("refuses a malformed --agent handle before anything is sent", async () => {

@@ -7,22 +7,26 @@ import {
 } from "../scheduled-message-author";
 import { requireExternalSender } from "../external-senders";
 import { toScheduledMessageListing } from "../../shared/scheduled-message-listing";
-import { decodeAgentHandle } from "../../shared/agent-handle";
-import type { AgentMessageSource, ScheduledMessageAuthor } from "../../shared/types";
+import { parseAgentHandle } from "../../shared/agent-handle";
+import type { AgentMessageSource, ScheduledMessageAuthor, Task } from "../../shared/types";
+import { resolveAgentHandle } from "../agent-message-target";
 import { type Handler, withSenderVariant } from "./shared";
 import { messageVariantIndex, resolveAgentMessageSource, resolveTaskFromParams, withSenderAgent } from "./task-resolution";
 
 /**
  * The agent `--agent <handle>` names, or null when the message is task-addressed.
- * Refused outright, with nothing sent, when the handle is malformed or this
- * platform cannot verify an agent: an explicit address never degrades to the task.
+ * Refused outright, with nothing sent, when the handle is malformed, no longer
+ * names the agent in its pane, or this platform cannot verify an agent: an
+ * explicit address never degrades to the task.
  */
-function addressedAgent(params: Record<string, unknown>): ScheduledMessageAuthor | null {
+async function addressedAgent(params: Record<string, unknown>, task: Task): Promise<ScheduledMessageAuthor | null> {
 	if (params.agentHandle === undefined || params.agentHandle === null) return null;
 	if (process.platform === "win32") throw new Error(`--agent: ${AGENT_IDENTITY_UNSUPPORTED_DETAIL}. Nothing was sent.`);
-	const author = typeof params.agentHandle === "string" ? decodeAgentHandle(params.agentHandle) : null;
-	if (!author) throw new Error("--agent: not an agent handle. Copy one from `dev3 pane list --task <id>`. Nothing was sent.");
-	return author;
+	const handle = typeof params.agentHandle === "string" ? parseAgentHandle(params.agentHandle) : null;
+	if (!handle) throw new Error("--agent: not an agent handle. Copy one from `dev3 pane list --task <id>`. Nothing was sent.");
+	const resolved = await resolveAgentHandle(task, handle);
+	if (!resolved.ok) throw new Error(`--agent: ${resolved.detail}. Nothing was sent.`);
+	return resolved.author;
 }
 
 /** The sender, stamped with its agent, plus why replies cannot reach that agent when they cannot. */
@@ -52,7 +56,7 @@ export const messageHandlers: Record<string, Handler> = {
 		const externalSender = params.asSender === undefined ? null : requireExternalSender(params.asSender);
 		if (externalSender && params.sourceTaskId) throw new Error("--as-sender cannot be used from inside a task worktree.");
 		if (externalSender && params.agentHandle != null) throw new Error("--as-sender cannot be combined with --agent: a sender's message goes to the task's main agent.");
-		const author = addressedAgent(params);
+		const author = await addressedAgent(params, task);
 		const source = externalSender ? null : await stampedSource(params, task.id);
 		const delivery = await sendMessageImmediately(task, text, null, source, { subject, author, externalSender });
 		return {
@@ -77,7 +81,7 @@ export const messageHandlers: Record<string, Handler> = {
 		// Same gate as the immediate send: a delay changes nothing about the subject.
 		const subject = requireMessageSubject(params.subject, text);
 		if (params.asSender !== undefined) throw new Error("--as-sender cannot be combined with --in or --at.");
-		const addressed = addressedAgent(params);
+		const addressed = await addressedAgent(params, task);
 		if (addressed) {
 			// Refused now, while the sender is listening, not hours later at fire time.
 			const live = await resolveScheduledMessageAuthorPane(task, addressed);

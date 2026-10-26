@@ -10,10 +10,10 @@
 
 import type { ScheduledMessageAuthor, Task } from "../shared/types";
 import type { PaneRunListing } from "../shared/pane-runs";
-import { encodeAgentHandle } from "../shared/agent-handle";
+import { type AgentHandle, agentHandleNames, encodeAgentHandle } from "../shared/agent-handle";
 import { NATIVE_AGENT_PANE_ID } from "./agent-prompt-native";
 import { nativeTaskPanesState } from "./native-task-panes";
-import { readPaneAgentIdentity, resolveScheduledMessageAuthorPane } from "./scheduled-message-author";
+import { liveAgentPaneIds, readPaneAgentIdentity, resolveScheduledMessageAuthorPane } from "./scheduled-message-author";
 import { findAuxPanes } from "./task-aux-panes";
 import { taskTerminalBackendIdentity } from "./task-terminal-backend";
 import { DEFAULT_TMUX_SOCKET, PANE_ID_FORMAT, taskSessionName, tmux } from "./tmux";
@@ -121,4 +121,37 @@ export async function addressedAgentRefusal(task: Task, author: ScheduledMessage
 	const resolved = await resolveScheduledMessageAuthorPane(task, author);
 	if (!resolved.ok) return resolved.detail;
 	return resolved.paneId === paneId ? null : `the addressed agent moved to pane ${resolved.paneId}; not typed into pane ${paneId}`;
+}
+
+/**
+ * The agent a `--agent` handle names, as it runs in `task` right now. The handle
+ * carries only a pane and a generation digest, so the agent in that pane must be
+ * the very process it was written for: a replacement or a bare shell is refused.
+ */
+export async function resolveAgentHandle(
+	task: Task,
+	handle: AgentHandle,
+): Promise<{ ok: true; author: ScheduledMessageAuthor } | { ok: false; detail: string }> {
+	const identity = await readPaneAgentIdentity(task, handle.paneId);
+	if (!identity.ok) return { ok: false, detail: `the addressed agent in pane ${handle.paneId} is not running (${identity.detail})` };
+	if (!agentHandleNames(handle, identity.author)) {
+		return { ok: false, detail: `the addressed agent in pane ${handle.paneId} has been replaced by another agent process` };
+	}
+	return { ok: true, author: identity.author };
+}
+
+/**
+ * Does a plain task-addressed message reach `agent`? Only while it is the task's
+ * main agent, still that process, and no other agent (extra or AI Review) runs
+ * there: then its reply command needs no `--agent`. Anything unproven says no.
+ */
+export async function isSoleMainAgent(task: Task, agent: ScheduledMessageAuthor): Promise<boolean> {
+	const live = await liveAgentPaneIds(task);
+	const reviews = await findAuxPanes(task, "columnAgent", socketOf(task), { strict: true }).catch(() => null);
+	if (!live || !reviews) return false;
+	const agents = new Set([...live, ...reviews.map((pane) => pane.paneId)]);
+	const mainPaneId = taskTerminalBackendIdentity(task) === "native" ? NATIVE_AGENT_PANE_ID : mainTmuxPane(task, await livePaneIds(task));
+	if (agents.size !== 1 || !mainPaneId || !agents.has(mainPaneId)) return false;
+	const resolved = await resolveScheduledMessageAuthorPane(task, agent);
+	return resolved.ok && resolved.paneId === mainPaneId;
 }

@@ -9,7 +9,7 @@ import { singleTextInput } from "../text-input";
 import { parseDelay, formatCountdown } from "../../shared/duration";
 import { describeScheduledTime, parseScheduleAt } from "../../shared/schedule-at";
 import { handleScheduledQueue, isScheduledQueueCommand } from "./message-schedule";
-import { decodeAgentHandle } from "../../shared/agent-handle";
+import { parseAgentHandle } from "../../shared/agent-handle";
 import { senderAgentParams } from "../sender-agent";
 import { MAX_SCHEDULED_MESSAGE_LENGTH } from "../../shared/types";
 import type { AgentPromptDeliveryStatus } from "../../shared/agent-prompt-delivery";
@@ -41,7 +41,7 @@ function parseAgentFlag(raw: unknown): string | undefined {
 	if (raw === undefined) return undefined;
 	const value = String(raw).trim();
 	if (value === "" || value === "true") exitUsage("--agent needs a handle. Copy one from `dev3 pane list --task <id>`.");
-	if (!decodeAgentHandle(value)) exitUsage(`"${value}" is not an agent handle. Copy one from \`dev3 pane list --task <id>\`.`);
+	if (!parseAgentHandle(value)) exitUsage(`"${value}" is not an agent handle. Copy one from \`dev3 pane list --task <id>\`.`);
 	if (process.platform === "win32") {
 		exitError("--agent is not available on Windows yet: agent identity cannot be verified there. Nothing was sent.");
 	}

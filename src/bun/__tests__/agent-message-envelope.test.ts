@@ -22,6 +22,14 @@ const AGENT = { paneId: "%5", sessionId: "conv-s", paneToken: "gen-1", agentProc
 const HANDLE = encodeAgentHandle(AGENT);
 
 describe("wrapAgentMessage", () => {
+	it("drops --agent from the reply when the caller proved the sender is alone in its task", () => {
+		const source = { taskId: "t-1", seq: 1310, projectId: PROJECT_A, agent: AGENT };
+		const alone = wrapAgentMessage("hi", source, PROJECT_A, "s", true);
+		expect(alone).toContain(`<reply-with>dev3 message --task seq:1310 --subject "what your reply is about" "your reply"</reply-with>`);
+		expect(utf8Length(alone)).toBeLessThan(utf8Length(wrapAgentMessage("hi", source, PROJECT_A, "s")));
+		expect(wrapAgentMessage("hi", { taskId: "t-1", seq: 1310 }, PROJECT_A, "s", true)).toContain("<reply-unavailable>");
+	});
+
 	it("wraps the text with the sender seq and a reply command", () => {
 		const out = wrapAgentMessage(
 			"do the thing",

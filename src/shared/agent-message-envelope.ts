@@ -34,9 +34,11 @@ export const REPLY_UNAVAILABLE_UNRECORDED = "the sending agent's identity was no
  * agent immediately sees the text came from another task's agent (not from the
  * human) and knows the exact command to answer with.
  *
- * The reply command addresses the sending AGENT (`--agent`), never just its task:
- * a task-level reply may reach a sibling of the asker. With no proven sender there
- * is no reply command at all, only `<reply-unavailable>` saying why (#1809).
+ * The reply command addresses the sending AGENT (`--agent`): a task-level reply
+ * may reach a sibling of the asker. `senderAlone` drops it when the caller proved
+ * the sender is its task's only agent and the main one, which a task-level reply
+ * reaches anyway. With no proven sender there is no reply command at all, only
+ * `<reply-unavailable>` saying why (#1809).
  *
  * `receiverProjectId` is the project of the task being written TO — it decides
  * whether the reply command needs `--project` (see {@link agentReplyCommand}).
@@ -50,6 +52,7 @@ export function wrapAgentMessage(
 	source: AgentMessageSource,
 	receiverProjectId: string,
 	subject?: string,
+	senderAlone = false,
 ): string {
 	// A record queued before `seqShared` existed only knows it was a variant, so it
 	// keeps the old pessimistic address rather than risking an ambiguous seq.
@@ -79,7 +82,7 @@ export function wrapAgentMessage(
 				},
 				fromProjectId: receiverProjectId,
 				quoted: "your reply",
-				agentHandle: encodeAgentHandle(source.agent),
+				agentHandle: senderAlone ? undefined : encodeAgentHandle(source.agent),
 			})}</reply-with>`
 			: `<reply-unavailable>${escapeXmlText(source.agentUnavailable || REPLY_UNAVAILABLE_UNRECORDED)}</reply-unavailable>`,
 		"<message>",

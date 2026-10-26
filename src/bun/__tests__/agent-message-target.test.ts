@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../agent-prompt-native", () => ({ NATIVE_AGENT_PANE_ID: "pane-1" }));
 vi.mock("../native-task-panes", () => ({ nativeTaskPanesState: vi.fn() }));
 vi.mock("../scheduled-message-author", () => ({
+	liveAgentPaneIds: vi.fn(),
 	readPaneAgentIdentity: vi.fn(),
 	resolveScheduledMessageAuthorPane: vi.fn(),
 }));
@@ -18,16 +19,18 @@ vi.mock("../tmux", () => ({
 }));
 
 import { nativeTaskPanesState } from "../native-task-panes";
-import { readPaneAgentIdentity, resolveScheduledMessageAuthorPane } from "../scheduled-message-author";
+import { liveAgentPaneIds, readPaneAgentIdentity, resolveScheduledMessageAuthorPane } from "../scheduled-message-author";
 import { findAuxPanes } from "../task-aux-panes";
 import { tmux } from "../tmux";
 import {
 	addressedAgentRefusal,
 	agentPaneRoles,
+	isSoleMainAgent,
+	resolveAgentHandle,
 	resolveMainAgentTarget,
 	withAgentPanes,
 } from "../agent-message-target";
-import { decodeAgentHandle } from "../../shared/agent-handle";
+import { encodeAgentHandle, parseAgentHandle } from "../../shared/agent-handle";
 import type { PaneRunListing, PaneRunPaneLine } from "../../shared/pane-runs";
 import type { PaneSessionEntry, ScheduledMessageAuthor, Task } from "../../shared/types";
 
@@ -125,12 +128,10 @@ describe("withAgentPanes — what `dev3 pane list` adds", () => {
 	const listing = (panes: PaneRunPaneLine[]): PaneRunListing =>
 		({ backend: "tmux", screenReadable: true, screenReadableDetail: "", selfPaneId: null, panes, runs: [] });
 
-	it("gives each live agent pane its role and a handle that decodes to that agent", async () => {
+	it("gives each live agent pane its role and that agent's handle", async () => {
 		const out = await withAgentPanes(task(), listing([line("%1", 1), line("%3", 3), line("%4", 4)]));
-		expect(out.panes[0]).toMatchObject({ agentRole: "main" });
-		expect(decodeAgentHandle(out.panes[0]!.agentHandle!)).toEqual(author("%1"));
-		expect(out.panes[1]).toMatchObject({ agentRole: "review" });
-		expect(decodeAgentHandle(out.panes[1]!.agentHandle!)).toEqual(author("%3"));
+		expect(out.panes[0]).toMatchObject({ agentRole: "main", agentHandle: encodeAgentHandle(author("%1")) });
+		expect(out.panes[1]).toMatchObject({ agentRole: "review", agentHandle: encodeAgentHandle(author("%3")) });
 		expect(out.panes[2]).toEqual(line("%4", 4));
 	});
 
@@ -155,5 +156,84 @@ describe("addressedAgentRefusal — asked again at release", () => {
 		await expect(addressedAgentRefusal(task(), author("%3"), "%3")).resolves.toBe("the addressed agent (pane %3) is no longer running");
 		vi.mocked(resolveScheduledMessageAuthorPane).mockResolvedValueOnce({ ok: true, paneId: "%9" });
 		await expect(addressedAgentRefusal(task(), author("%3"), "%3")).resolves.toContain("moved to pane %9");
+	});
+});
+
+describe("resolveAgentHandle — a short handle back to the full agent binding", () => {
+	const handle = (who: ScheduledMessageAuthor) => parseAgentHandle(encodeAgentHandle(who))!;
+
+	it("is the agent running in that pane now, when it is the process the handle was written for", async () => {
+		await expect(resolveAgentHandle(task(), handle(author("%3")))).resolves.toEqual({ ok: true, author: author("%3") });
+	});
+
+	it("refuses a replacement in the same pane: another agent process, or a new tmux server", async () => {
+		vi.mocked(readPaneAgentIdentity).mockResolvedValue({ ok: true, author: author("%3", 202) });
+		await expect(resolveAgentHandle(task(), handle(author("%3")))).resolves.toMatchObject({ ok: false, detail: expect.stringContaining("has been replaced") });
+		vi.mocked(readPaneAgentIdentity).mockResolvedValue({ ok: true, author: { ...author("%3"), paneToken: "gen-2" } });
+		await expect(resolveAgentHandle(task(), handle(author("%3")))).resolves.toMatchObject({ ok: false });
+	});
+
+	it("refuses when the pane runs no agent any more: the shell an exited agent left", async () => {
+		vi.mocked(readPaneAgentIdentity).mockResolvedValue({ ok: false, reason: "no-agent", detail: "the agent in pane %3 has exited" });
+		await expect(resolveAgentHandle(task(), handle(author("%3")))).resolves.toEqual({
+			ok: false,
+			detail: "the addressed agent in pane %3 is not running (the agent in pane %3 has exited)",
+		});
+	});
+
+	it("keeps a changed conversation id: the process is the identity", async () => {
+		vi.mocked(readPaneAgentIdentity).mockResolvedValue({ ok: true, author: { ...author("%3"), sessionId: "conv-new" } });
+		await expect(resolveAgentHandle(task(), handle(author("%3")))).resolves.toMatchObject({ ok: true, author: { sessionId: "conv-new" } });
+	});
+});
+
+describe("isSoleMainAgent — may a reply to this agent drop --agent?", () => {
+	beforeEach(() => {
+		live = ["%1", "%4"];
+		vi.mocked(liveAgentPaneIds).mockResolvedValue(["%1"]);
+		vi.mocked(resolveScheduledMessageAuthorPane).mockResolvedValue({ ok: true, paneId: "%1" });
+	});
+
+	it("yes for the main agent alone, a shell split beside it not counting", async () => {
+		await expect(isSoleMainAgent(task([entry("%1")]), author("%1"))).resolves.toBe(true);
+	});
+
+	it("no while an extra agent or the AI Review agent also runs", async () => {
+		vi.mocked(liveAgentPaneIds).mockResolvedValue(["%1", "%2"]);
+		await expect(isSoleMainAgent(task(), author("%1"))).resolves.toBe(false);
+		vi.mocked(liveAgentPaneIds).mockResolvedValue(["%1"]);
+		live = ["%1", "%3"];
+		await expect(isSoleMainAgent(task([entry("%1")]), author("%1"))).resolves.toBe(false);
+	});
+
+	it("no for a lone extra or reviewer: a task-addressed reply would go to the main agent instead", async () => {
+		vi.mocked(liveAgentPaneIds).mockResolvedValue(["%2"]);
+		vi.mocked(resolveScheduledMessageAuthorPane).mockResolvedValue({ ok: true, paneId: "%2" });
+		await expect(isSoleMainAgent(task(), author("%2"))).resolves.toBe(false);
+		vi.mocked(liveAgentPaneIds).mockResolvedValue([]);
+		live = ["%1", "%3"];
+		await expect(isSoleMainAgent(task([entry("%1")]), author("%3"))).resolves.toBe(false);
+	});
+
+	it("no when the main pane now runs another agent than the sender", async () => {
+		vi.mocked(resolveScheduledMessageAuthorPane).mockResolvedValue({ ok: false, detail: "gone" });
+		await expect(isSoleMainAgent(task([entry("%1")]), author("%1"))).resolves.toBe(false);
+	});
+
+	it("no when the agents cannot be counted", async () => {
+		vi.mocked(liveAgentPaneIds).mockResolvedValue(null);
+		await expect(isSoleMainAgent(task([entry("%1")]), author("%1"))).resolves.toBe(false);
+		vi.mocked(liveAgentPaneIds).mockResolvedValue(["%1"]);
+		vi.mocked(findAuxPanes).mockRejectedValue(new Error("tmux down"));
+		await expect(isSoleMainAgent(task([entry("%1")]), author("%1"))).resolves.toBe(false);
+	});
+
+	it("on native: yes for pane-1 alone, no beside a second agent pane", async () => {
+		const native = task(null, { terminalBackend: "native" } as Partial<Task>);
+		vi.mocked(liveAgentPaneIds).mockResolvedValue(["pane-1"]);
+		vi.mocked(resolveScheduledMessageAuthorPane).mockResolvedValue({ ok: true, paneId: "pane-1" });
+		await expect(isSoleMainAgent(native, author("pane-1"))).resolves.toBe(true);
+		vi.mocked(liveAgentPaneIds).mockResolvedValue(["pane-1", "pane-2"]);
+		await expect(isSoleMainAgent(native, author("pane-1"))).resolves.toBe(false);
 	});
 });

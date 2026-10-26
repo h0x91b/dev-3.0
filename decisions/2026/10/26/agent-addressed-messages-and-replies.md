@@ -1,3 +1,5 @@
+> Superseded on 2026-10-26 in part by `decisions/2026/10/26/compact-agent-handles-and-sole-agent-replies.md`: the handle is now `<pane>.<generation digest>`, resolved by the app, and a reply drops `--agent` when the sender is its task's only agent.
+
 # Address messages to one agent process, and route replies back to it
 
 ## 1. Context
