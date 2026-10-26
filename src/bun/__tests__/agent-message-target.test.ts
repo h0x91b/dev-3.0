@@ -187,6 +187,62 @@ describe("resolveAgentHandle — a short handle back to the full agent binding",
 	});
 });
 
+describe("resolveAgentHandle — #2062's relocation, kept behind the short handle", () => {
+	const sessioned = (paneId: string, sessionId: string, pid = 101): ScheduledMessageAuthor => ({ ...author(paneId, pid), sessionId });
+	const handle = (who: ScheduledMessageAuthor) => parseAgentHandle(encodeAgentHandle(who))!;
+	const registry = (...panes: Array<[string, string | null]>) =>
+		task(panes.map(([paneId, sessionId]) => ({ ...entry(paneId), sessionId })));
+	const identities = (byPane: Record<string, ScheduledMessageAuthor | "exited">) =>
+		vi.mocked(readPaneAgentIdentity).mockImplementation(async (_t, paneId) => {
+			const who = byPane[paneId];
+			return who && who !== "exited" ? { ok: true, author: who } : { ok: false, reason: "no-agent", detail: `the agent in pane ${paneId} has exited` };
+		});
+
+	it("follows the conversation resumed in another pane", async () => {
+		identities({ "%3": "exited", "%7": sessioned("%7", "conv-a", 707) });
+		await expect(resolveAgentHandle(registry(["%1", null], ["%7", "conv-a"]), handle(sessioned("%3", "conv-a")))).resolves.toEqual({
+			ok: true,
+			author: sessioned("%7", "conv-a", 707),
+		});
+	});
+
+	it("follows it into the same pane id on a NEW tmux server", async () => {
+		identities({ "%3": { ...sessioned("%3", "conv-a", 909), paneToken: "gen-2" } });
+		await expect(resolveAgentHandle(registry(["%3", "conv-a"]), handle(sessioned("%3", "conv-a")))).resolves.toMatchObject({
+			ok: true,
+			author: { paneId: "%3", paneToken: "gen-2" },
+		});
+	});
+
+	it("refuses another agent in the same pane on the same server, even with the old conversation on record", async () => {
+		identities({ "%3": sessioned("%3", "conv-a", 909) });
+		await expect(resolveAgentHandle(registry(["%3", "conv-a"]), handle(sessioned("%3", "conv-a")))).resolves.toMatchObject({
+			ok: false,
+			detail: expect.stringContaining("has been replaced"),
+		});
+	});
+
+	it("refuses when the conversation matches several panes, or none that runs an agent", async () => {
+		identities({ "%3": "exited", "%7": sessioned("%7", "conv-a"), "%8": sessioned("%8", "conv-a") });
+		await expect(resolveAgentHandle(registry(["%7", "conv-a"], ["%8", "conv-a"]), handle(sessioned("%3", "conv-a")))).resolves.toMatchObject({
+			ok: false,
+			detail: expect.stringContaining("matches several panes; not guessing"),
+		});
+		identities({ "%3": "exited", "%7": "exited" });
+		await expect(resolveAgentHandle(registry(["%7", "conv-a"]), handle(sessioned("%3", "conv-a")))).resolves.toMatchObject({ ok: false });
+		identities({ "%3": "exited", "%7": sessioned("%7", "conv-b") });
+		await expect(resolveAgentHandle(registry(["%7", "conv-b"]), handle(sessioned("%3", "conv-a")))).resolves.toMatchObject({ ok: false });
+	});
+
+	it("never relocates without a conversation id, or on native", async () => {
+		identities({ "%3": "exited", "%7": author("%7") });
+		await expect(resolveAgentHandle(registry(["%7", null]), handle(author("%3")))).resolves.toMatchObject({ ok: false });
+		identities({ "pane-1": "exited", "pane-2": sessioned("pane-2", "conv-a") });
+		const native = { ...registry(["pane-2", "conv-a"]), terminalBackend: "native" } as unknown as Task;
+		await expect(resolveAgentHandle(native, handle(sessioned("pane-1", "conv-a")))).resolves.toMatchObject({ ok: false });
+	});
+});
+
 describe("isSoleMainAgent — may a reply to this agent drop --agent?", () => {
 	beforeEach(() => {
 		live = ["%1", "%4"];

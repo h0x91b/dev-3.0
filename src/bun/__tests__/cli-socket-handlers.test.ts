@@ -5534,6 +5534,14 @@ describe("message.send — the sender's role travels to the envelope", () => {
 		expect(sendMessageImmediately).not.toHaveBeenCalled();
 	});
 
+	it("refuses an old a1. handle with what to do instead, sending nothing", async () => {
+		const resp = await sendFrom(makeTask({ id: SENDER, seq: 1 }), { agentHandle: "a1.WyIlMyIsbnVsbCwiZ2VuLTEiLCIzMDNAeCJd" });
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("written by an older dev3");
+		expect(resp.error).toContain("dev3 pane list --task <id>");
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
+	});
+
 	it("refuses a malformed --agent handle before anything is sent", async () => {
 		const resp = await sendFrom(makeTask({ id: SENDER, seq: 1 }), { agentHandle: "%3" });
 		expect(resp.ok).toBe(false);
