@@ -3722,6 +3722,17 @@ describe("handlers.editTask", () => {
 		}));
 	});
 
+	it("persists a role-aware automatic title without treating it as a user rename", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", draft: true, customTitle: null });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue(task);
+		await handlers.editTask({ taskId: "task-1", projectId: "proj-1", description: "You are the BOARD CLEANUP adviser.", title: "Board cleanup", customTitle: null, taskType: "board-cleanup" });
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", expect.objectContaining({ title: "Board cleanup", taskType: "board-cleanup" }));
+		expect(vi.mocked(data.updateTask).mock.calls[0][2]).not.toMatchObject({ titleEditedByUser: true });
+	});
+
 	it("saves a draft role with its brief and clears it when requested", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "todo", draft: true });

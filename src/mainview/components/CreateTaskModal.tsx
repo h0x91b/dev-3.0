@@ -408,6 +408,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				taskId: draftTask.id,
 				projectId: draftTask.projectId,
 				description: trimmed,
+				...(!customTitle && activePresetPrompt && generatedTitle ? { title: generatedTitle } : {}),
 				customTitle,
 				priority,
 				labelIds: selectedLabelIds,

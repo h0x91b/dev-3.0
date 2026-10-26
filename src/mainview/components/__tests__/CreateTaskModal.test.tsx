@@ -1864,6 +1864,15 @@ describe("CreateTaskModal — task type presets", () => {
 		await waitFor(() => expect(mockedApi.request.createTask).toHaveBeenCalledWith(expect.objectContaining({ title: "Board cleanup", taskType: "board-cleanup" })));
 	});
 
+	it.each([false, true])("preserves a generated cleanup title when saving a draft (already cleanup: %s)", async (alreadyCleanup) => {
+		mockedApi.request.editTask.mockResolvedValue(mockTask);
+		renderModal({ draftTask: { ...mockTask, title: "Board cleanup", customTitle: null, description: alreadyCleanup ? BOARD_CLEANUP_PROMPT : "", draft: true, ...(alreadyCleanup ? { taskType: "board-cleanup" as const } : {}) } });
+		if (!alreadyCleanup) await userEvent.click(await screen.findByTestId("task-type-board-cleanup"));
+		await waitFor(() => expect(description().value).toBe(BOARD_CLEANUP_PROMPT));
+		await userEvent.click(screen.getByRole("button", { name: "Save" }));
+		await waitFor(() => expect(mockedApi.request.editTask).toHaveBeenCalledWith(expect.objectContaining({ title: "Board cleanup", customTitle: null })));
+	});
+
 	it("keeps central scope text when switching away from cleanup", async () => {
 		renderModal({ project: { ...mockProject, kind: "virtual" } });
 		await userEvent.type(description(), "Audit all projects.");

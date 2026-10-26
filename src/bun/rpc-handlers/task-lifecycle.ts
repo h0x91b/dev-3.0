@@ -860,6 +860,7 @@ async function editTask(params: {
 	taskId: string;
 	projectId: string;
 	description?: string;
+	title?: string;
 	customTitle?: string | null;
 	priority?: TaskPriority;
 	labelIds?: string[];
@@ -893,6 +894,8 @@ async function editTask(params: {
 			...(params.customTitle !== undefined ? { title: { value: params.customTitle } } : {}),
 			...(params.description !== undefined ? { description: params.description } : {}),
 		}, USER_ACTOR, { fallbackTitle: () => draftPlaceholderTitle() });
+		const customTitle = params.customTitle === undefined ? current.customTitle : params.customTitle;
+		if (!customTitle && params.title?.trim()) updates.title = params.title.trim();
 		if (params.priority !== undefined) updates.priority = params.priority;
 		if (params.labelIds !== undefined) updates.labelIds = params.labelIds;
 		if (params.existingBranch !== undefined) {
