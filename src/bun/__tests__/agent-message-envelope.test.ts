@@ -42,6 +42,12 @@ describe("wrapAgentMessage", () => {
 		);
 	});
 
+	it("never offers a task-to-task message the external-sender reply", () => {
+		const out = wrapAgentMessage("x", { taskId: "t-1", seq: 1310, title: "T", projectId: PROJECT_A, agent: AGENT }, PROJECT_A);
+		expect(out).not.toContain("--to-sender");
+		expect(out).not.toContain("<from-sender");
+	});
+
 	it("carries the sender's subject, before the body", () => {
 		const out = wrapAgentMessage(
 			"all four contexts are green",

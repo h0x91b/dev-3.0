@@ -519,6 +519,11 @@ describe("message — external senders", () => {
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
+	it("refuses --as-sender with --agent", async () => {
+		await expect(handleMessage(args(["x"], { task: "seq:4", "as-sender": "cli", agent: "anything" }), SOCKET, null)).rejects.toThrow("EXIT_3");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
 	it("refuses --as-sender with --in or --at", async () => {
 		await expect(handleMessage(args(["x"], { task: "seq:4", "as-sender": "cli", in: "5m" }), SOCKET, null)).rejects.toThrow("EXIT_3");
 		await expect(handleMessage(args(["x"], { task: "seq:4", "as-sender": "cli", at: "14:00" }), SOCKET, null)).rejects.toThrow("EXIT_3");
