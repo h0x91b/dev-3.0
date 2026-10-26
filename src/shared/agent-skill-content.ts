@@ -104,17 +104,15 @@ Labels, same session-start pass: \`dev3 label list\` first and reuse existing on
 
 ## Editing a description never reaches a running agent
 
-\`--type\` is the ONLY flag that tells a live agent anything. The description is delivered as the agent's first prompt at launch and nothing re-delivers it, so \`dev3 task update --description\` on a running task changes the board only. Correcting a live brief takes both: the \`--description\` edit for the record, and \`dev3 message --task <id> --subject "brief updated"\`. Not yet started → the edit alone.
+\`--type\` is the ONLY flag that tells a live agent anything. The description is the launch prompt and is never re-delivered, so \`dev3 task update --description\` on a running task changes the board only. Correcting a live brief takes both: the \`--description\` edit for the record, and \`dev3 message --task <id> --subject "brief updated"\`. Not yet started → the edit alone.
 `;
 
 const SKILL_CUSTOM_COLUMNS = `
 ### Custom columns
 
-If the project defines custom columns (visible in \`dev3 current\` output), you can move tasks there:
+\`dev3 current\` lists the project's custom columns (8-char ID, when to use each); move a task there with:
 
   dev3 task move --status <custom-column-id>
-
-Each custom column has an 8-char ID prefix and a description of when to use it.
 `;
 
 const SKILL_COMPLETION_REQUEST = `
@@ -146,7 +144,7 @@ Write one when you **dug up something non-obvious** (root cause, how subsystems 
 
 \`dev3 note list\` truncates to one line, \`dev3 note show <id>\` (8-char prefix) prints the full body, and \`dev3 task show --notes --history\` explains a *neighbouring* task without its worktree.
 
-**A task keeps its 50 most recent notes** — the 51st evicts the oldest, permanently. A note is therefore not an append-only log: don't narrate progress, and consolidate a long series into one.
+**A task keeps its 50 most recent notes** — the 51st evicts the oldest, permanently. So don't narrate progress; consolidate a long series into one.
 
 ## Saving context tokens
 
@@ -225,7 +223,7 @@ Pull the user back deliberately — enough that they never miss something needin
 - \`dev3 attention "reason"\` — red badge on the card until the user opens the task (reasons accumulate, up to 5). Default for anything that needs them. \`--clear\` lowers it the moment the cause is resolved and they never came; a badge outliving its cause trains them to ignore badges.
 - \`dev3 notify "message" [--level info|success|error] [--duration <seconds>]\` — clickable in-app toast (ephemeral, 2s–30s). \`--desktop\` instead sends a native OS notification that shows even when the app is backgrounded; never combine the two flags.
 - \`dev3 show-image <path> [--caption "..."] [<path> ...]\` — **show actual images** (screenshots, \`agent-browser\` captures, charts; \`show-video\` plays MP4/WebM ≤300 MB there); files are copied into the worktree and **each \`--caption\` annotates the file it follows** (\`before.png --caption "current bug" after.png --caption "after my fix"\`). If relevant pixels exist, show them rather than describing them or leaving a path to open.
-- \`dev3 show-artifact <report-dir | file.html> [--assets <file...>] [--title "..."]\` — **show an HTML artifact** (see the artifacts section above).
+- \`dev3 show-artifact <report-dir | file.html> [--assets <file...>] [--title "..."]\` — **show an HTML artifact**.
 - \`dev3 ui state\` — focused task/project, app foreground, user idle time (\`userActivity\`). Check BEFORE pinging.
 
 MUST ping, one per logical event and never per step: **blocked** → \`attention "the question"\`; **finished** something important → \`notify --level success\`; something **broke** → \`notify --level error\`; an **image worth seeing** or an interactive report → proactive \`show-image\` / \`show-artifact\`. SHOULD, only on long runs when the user likely stepped away: a major milestone, or a go/no-go before a risky action. Never ping per-step progress, routine tool calls, or anything already on screen.
@@ -244,7 +242,7 @@ For ANY question about project configuration — setup/dev/cleanup scripts, clon
 const SKILL_PANES = `
 ## Panes — for what the user wants to watch
 
-\`dev3 pane run\` puts one command in a pane beside yours, on every backend and OS, where the user sees it live. **Your own shell is the default.** Open a pane in two cases: the user asked to watch something run ("run the build on the right"), or the process must outlive your turn — a watcher, a log tail, a long-lived process someone keeps an eye on. Everything else stays inline — builds, test suites, checks — however long they take. A pane is a window into the user's terminal, not a way to free up your own tool call.
+\`dev3 pane run\` puts one command in a pane beside yours, on every backend and OS, where the user sees it live. **Your own shell is the default.** Open a pane in two cases: the user asked to watch something run ("run the build on the right"), or the process must outlive your turn — a watcher, a log tail, a long-lived process someone keeps an eye on. Everything else stays inline — builds, test suites, checks — however long they take.
 
 \`\`\`bash
 dev3 pane list                                 # which backend you are on — never assume, tmux is absent on Windows
@@ -257,7 +255,7 @@ The outcome line distinguishes **still running** from **finished, exit code N** 
 
 **Closing panes is your job, not the user's.** \`dev3 pane close <run-id>\` the moment you have read what you came for — per run, and again before ending a turn. Auto-close (exit 0 after ${PANE_RUN_AUTO_CLOSE_SECONDS}s, a failure after ${Math.round(PANE_RUN_FAILED_AUTO_CLOSE_SECONDS / 60)} min) is only a backstop. Closing destroys nothing — the output stays in the run's log.
 
-Reading the SCREEN of a pane you did not start ("look at the error on the right") is a different thing and **tmux-only today**: \`dev3 peek --pane <N>\` returns a tail on tmux, only the pane summary on native. On tmux you may also drive tmux directly for layout work the user asks for (rename / swap / move windows, resize) — load \`/dev3-tmux\`. On native those commands do not exist.
+Reading the SCREEN of a pane you did not start ("look at the error on the right") is **tmux-only today**: \`dev3 peek --pane <N>\` returns a tail on tmux, only the pane summary on native. On tmux you may also drive tmux directly for layout work the user asks for (rename / swap / move windows, resize) — load \`/dev3-tmux\`. On native those commands do not exist.
 `;
 
 const SKILL_SCRATCH_TASK = `
@@ -271,7 +269,7 @@ If a peer **agent** started you instead, your first message says so, names the t
 const SKILL_PEEK = `
 ## Checking on a peer task without interrupting it
 
-\`dev3 peek --task seq:<N> [--pane 2] [--lines 400] [--json]\` is a read-only glance at another task's terminal: a header, one line per pane (command, alive/dead, time since output) and the focused pane's tail. It never focuses, sends input, or takes ownership — the peeked agent cannot tell. With no \`--task\` it shows your own panes.
+\`dev3 peek --task seq:<N> [--pane 2] [--lines 400] [--json]\` is a read-only glance at another task's terminal: a header, one line per pane (command, alive/dead, time since output) and the focused pane's tail. It never focuses, sends input, or takes ownership. With no \`--task\` it shows your own panes.
 
 Reach for it INSTEAD of messaging a quiet worker "are you alive?" — a message costs that agent a turn, a peek none.
 
@@ -299,7 +297,7 @@ Use it only for work that belongs in its own session — never to escape your sc
 - It lands in the main agent, never a shell or the focused pane. One agent only: \`--agent <handle>\` from \`dev3 pane list --task seq:<N>\`, refused once it exits or is replaced. \`<reply-unavailable>\` means the sender is unproven: no reply command.
 - A peer on ANOTHER project needs \`--project <id>\`, else a bare \`--task seq:<N>\` is looked up on your own board and reported as "task not found". An incoming message's reply command already includes it when needed.
 - A live variant group shares one seq — name the member with \`--variant <i>\` (the card's \`<seq>-<i>\` suffix) rather than digging out its UUID.
-- **A long message arrives as a file path, not as text.** Anything over ~1 KB typed is written next to the receiving task and the envelope carries only \`Read it in full and act on it: <path>\` — read that file before doing anything with it. A \`</dev3-ai-message>\` with no \`<dev3-ai-message>\` line above it lost its head: do not act on the tail; say it arrived truncated and ask for a resend.
+- **A long message arrives as a file path, not as text.** Anything over ~1 KB typed is written next to the receiving task and the envelope carries only \`Read it in full and act on it: <path>\` — read that file first. A \`</dev3-ai-message>\` with no \`<dev3-ai-message>\` line above it lost its head: do not act on the tail; say it arrived truncated and ask for a resend.
 - Delivery waits for ~${AGENT_MESSAGE_HOLD_IDLE_SECONDS}s of quiet on that pane (~${AGENT_MESSAGE_HOLD_HUMAN_IDLE_SECONDS}s while the user types, at once on Enter). Messages arriving together become ONE turn and never corrupt a typed line — send three thoughts as three messages; expect a reply about ${AGENT_MESSAGE_HOLD_IDLE_SECONDS} seconds after the peer writes.
 `;
 
@@ -355,7 +353,7 @@ A private, anonymous channel to the dev3 maintainer:
 
   dev3 vents "short name" "markdown body"
 
-Two kinds, both about dev3 itself. **Something got in your way** — a missing or confusing CLI command, an unclear skill instruction, broken tmux integration, docs contradicting reality: what you tried, what dev3 did instead, what would have unblocked you. **Something is missing** — a capability that would have saved you work: what was tedious, and what a fix would save.
+Two kinds. **Something got in your way** — a missing or confusing CLI command, an unclear skill instruction, broken tmux integration, docs contradicting reality: what you tried, what dev3 did instead, what would have unblocked you. **Something is missing** — a capability that would have saved you work: what was tedious, and what a fix would save.
 
 Underused: a command that took two tries, a flag you wished existed, a doc you had to re-read. But don't manufacture feedback when the session ran smoothly, and don't vent about the user's app, your own errors, or anything you can fix yourself. Litmus test: "would the maintainer have to change dev3 for this?" If no — don't vent.
 
