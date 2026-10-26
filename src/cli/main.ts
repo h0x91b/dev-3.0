@@ -47,6 +47,7 @@ import { handleExtensionHook } from "./commands/extension-hook";
 import { handleClaudePrompt } from "./commands/claude-prompt";
 import { handleClaudeTurnEnded } from "./commands/claude-turn-ended";
 import { handleClaudeSessionStart, handleNoteRecent } from "./commands/recent-notes";
+import { handleAgentExitedHook } from "./commands/agent-exited";
 import { handleClaudeStopFailure } from "./commands/claude-stop-failure";
 import { handleDoctor } from "./commands/doctor";
 import { handleUpdate } from "./commands/update";
@@ -324,6 +325,10 @@ async function main(): Promise<void> {
 			socketPath || context?.socketPath || null,
 			context,
 		);
+	}
+	if (command === "hook" && subcommand === "agent-exited") {
+		// Internal: the launch wrapper's report that its agent process ended.
+		return await handleAgentExitedHook(args, socketPath || context?.socketPath || null, context);
 	}
 	if (command === "hook" && subcommand === "claude-prompt") {
 		// Record the prompt and start its lifecycle observation atomically.

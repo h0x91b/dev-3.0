@@ -719,6 +719,22 @@ function readSettingsFile(path: string): Record<string, unknown> {
 	}
 }
 
+/**
+ * Whether the worktree's Claude settings carry dev3's `SessionStart` hook — the
+ * only source of the "session started" receipt a launch handoff waits for.
+ */
+export function claudeSessionStartHookInstalled(worktreePath: string): boolean {
+	const groups = asRecord(readSettingsFile(join(worktreePath, ".claude", "settings.local.json")).hooks).SessionStart;
+	if (!Array.isArray(groups)) return false;
+	return groups.some((group) => {
+		const hooks = asRecord(group).hooks;
+		return Array.isArray(hooks) && hooks.some((hook) => {
+			const command = asRecord(hook).command;
+			return typeof command === "string" && command.includes(CLAUDE_SESSION_START_HOOK_SUBCOMMAND);
+		});
+	});
+}
+
 /** What `writeClaudeHooks` did. `skippedSymlink` names the link that blocked the write. */
 export interface ClaudeHooksWriteResult {
 	written: boolean;

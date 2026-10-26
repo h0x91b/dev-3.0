@@ -23,8 +23,10 @@ import { noteDev3TypedPrompt } from "../../agent-typed-prompt-claims";
 import { clearSetupExitCode, dev3TaskTempPath, setupExitCodePath } from "../../temp-paths";
 import { stopSetupFailureWatch, watchSetupFailure } from "../../setup-failure-watch";
 import { taskTerminalBackendIdentity } from "../../task-terminal-backend";
+import { noteAgentLaunched } from "../../agent-session-receipts";
+import { claudeSessionStartHookInstalled } from "../../../shared/agent-hooks";
 import { openAuxPane } from "../../task-aux-panes";
-import { getPushMessage, AGENT_ENV_DEFAULTS, buildAgentEnv, buildAgentRetryWrapper, buildCmdScript, buildModelVersionGateWrapper, buildSetupStartupWrapper, buildScriptRunnerCommand, buildTaskLifecycleEnv, withResolvedCodexBinary, generatedScriptLaunch, generatedScriptName, log, writeLaunchScript } from "../shared-pure";
+import { getPushMessage, AGENT_ENV_DEFAULTS, buildAgentEnv, buildAgentRetryWrapper, buildCmdScript, buildModelVersionGateWrapper, buildSetupStartupWrapper, buildScriptRunnerCommand, buildTaskLifecycleEnv, withResolvedCodexBinary, agentExitReportArgv, generatedScriptLaunch, generatedScriptName, log, writeLaunchScript } from "../shared-pure";
 import { launchDialect } from "../../../shared/platform-launch";
 import { devViewerPaneIds, setTmuxSessionPortEnv } from "./dev-servers";
 import { fileBrowserPaneIds, findTaskAcrossProjects } from "./task-state";
@@ -334,6 +336,7 @@ export async function launchTaskPty(
 	// The account the session really runs on: the default applied, or Auto's pick.
 	let launchAccountId = accountId;
 	let accountPick: agents.ResolvedAgentCommand["accountPick"];
+	let freshLaunchSessionId: string | null = null;
 
 	try {
 		// Recovery carries the pane's account alongside its session id. Older pane
@@ -354,6 +357,7 @@ export async function launchTaskPty(
 			// Claude rejects --session-id if the UUID was already used;
 			// stored session IDs are only for --resume.
 			freshSessionId = crypto.randomUUID();
+			freshLaunchSessionId = freshSessionId;
 			cmdOptions.sessionId = freshSessionId;
 		}
 
@@ -496,6 +500,22 @@ export async function launchTaskPty(
 		family: resolvedAgentFamily,
 	});
 
+	// A fresh Claude session reports SessionStart once it is past its startup
+	// dialogs; remember the spawn so the handoff and the wrapper's exit report can
+	// tell "still at the trust prompt" from "running" (#2034).
+	// Never on a reconnect: the agent already running there kept its old session.
+	const trackedSessionId = opts?.shellNotice || skipSessionPersist ? null
+		: resumeFresh ? opts?.freshSessionId ?? null
+		: resume ? null
+		: freshLaunchSessionId;
+	let exitReport: string[] | undefined;
+	if (trackedSessionId && agents.supportsPreAssignedSessionId(resolvedBaseCmd, resolvedAgentFamily)
+		&& getAgentAdapter(resolvedBaseCmd, resolvedAgentFamily).hooksSpec()?.kind === "claude"
+		&& claudeSessionStartHookInstalled(worktreePath)) {
+		noteAgentLaunched(task.id, trackedSessionId);
+		exitReport = agentExitReportArgv(task.id, trackedSessionId);
+	}
+
 	if (resolvedBaseCmd && resolvedBaseCmd !== "bash") {
 		const settings = await loadSettings();
 		const allAgents = await agents.getAllAgents();
@@ -514,7 +534,9 @@ export async function launchTaskPty(
 			log.warn("Agent binary not found, creating retry wrapper", { binaryName, installCmd });
 
 			const originalCmdPath = dev3TaskTempPath(task.id, `original-cmd${dialect.scriptExtension}`);
-			await writeLaunchScript(originalCmdPath, buildCmdScript(tmuxCmd, env, { keepShell: true, shellPath: userShell }));
+			await writeLaunchScript(originalCmdPath, buildCmdScript(tmuxCmd, env, { keepShell: true, shellPath: userShell, exitReport }));
+			// The retry wrapper hands over to that script; nothing outside it may report again.
+			exitReport = undefined;
 
 			const retryScript = buildAgentRetryWrapper({ binaryName, installCmd, originalCmdPath, shellPath: userShell });
 
@@ -548,7 +570,8 @@ export async function launchTaskPty(
 		const startupPath = `${prefix}-startup${ext}`;
 
 		await writeLaunchScript(setupPath, project.setupScript + "\n");
-		await writeLaunchScript(cmdPath, buildCmdScript(tmuxCmd, env, { keepShell: true, shellPath: userShell }));
+		await writeLaunchScript(cmdPath, buildCmdScript(tmuxCmd, env, { keepShell: true, shellPath: userShell, exitReport }));
+		exitReport = undefined;
 
 		const startupScript = buildSetupStartupWrapper({
 			setupPath,
@@ -577,7 +600,7 @@ export async function launchTaskPty(
 	}
 
 	const runScriptPath = dev3TaskTempPath(task.id, `run${dialect.scriptExtension}`);
-	await writeLaunchScript(runScriptPath, buildCmdScript(tmuxCmd, env, { keepShell: !isSetupWrapper, shellPath: userShell }));
+	await writeLaunchScript(runScriptPath, buildCmdScript(tmuxCmd, env, { keepShell: !isSetupWrapper, shellPath: userShell, exitReport }));
 	const wrapperCmd = buildScriptRunnerCommand(runScriptPath, { shellPath: userShell });
 
 	log.info("Creating PTY session", {

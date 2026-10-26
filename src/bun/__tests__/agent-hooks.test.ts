@@ -20,6 +20,7 @@ import {
 	ensureDevPermission,
 	getAgentHookTargetStatus,
 	TOLERATE_APP_OFFLINE_FLAG,
+	claudeSessionStartHookInstalled,
 } from "../../shared/agent-hooks";
 import { hookCliDialect } from "../../shared/dev3-cli-path";
 import { buildDev3CodexHooksBlock } from "../codex-config";
@@ -1464,4 +1465,28 @@ describe("getAgentHookTargetStatus on a To Do task", () => {
 			expect(getAgentHookTargetStatus(event, "todo", false)).toBeNull();
 		},
 	);
+});
+
+describe("claudeSessionStartHookInstalled", () => {
+	let tmp = "";
+	beforeEach(() => {
+		tmp = mkdtempSync(join(tmpdir(), "dev3-session-start-hook-"));
+	});
+	afterEach(() => {
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	it("sees the hook writeClaudeHooks installs", () => {
+		expect(claudeSessionStartHookInstalled(tmp)).toBe(false);
+		writeClaudeHooks(tmp);
+		expect(claudeSessionStartHookInstalled(tmp)).toBe(true);
+	});
+
+	it("answers false for settings whose SessionStart is someone else's", () => {
+		mkdirSync(join(tmp, ".claude"));
+		writeFileSync(join(tmp, ".claude", "settings.local.json"), JSON.stringify({
+			hooks: { SessionStart: [{ hooks: [{ type: "command", command: "echo hi" }] }] },
+		}));
+		expect(claudeSessionStartHookInstalled(tmp)).toBe(false);
+	});
 });

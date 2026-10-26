@@ -101,12 +101,36 @@ describe("Claude SessionStart adapter", () => {
 			"task-other": [note(3, "OTHER TASK")],
 		});
 		await handleClaudeSessionStart(sessionStart("startup"), SOCKET, CONTEXT);
-		expect(mockSend).toHaveBeenCalledTimes(1);
-		expect(mockSend.mock.calls[0]![2]).toEqual({ taskId: "task-own", projectId: "project-1" });
+		const noteReads = mockSend.mock.calls.filter((call) => call[1] === "note.list");
+		expect(noteReads).toHaveLength(1);
+		expect(noteReads[0]![2]).toEqual({ taskId: "task-own", projectId: "project-1" });
 		const block = additionalContext(stdout);
 		expect(block).toContain("> mine");
 		expect(block).not.toContain("SIBLING");
 		expect(block).not.toContain("OTHER TASK");
+	});
+
+	it("reports the started session with its pane, so a launch handoff knows the agent is past its dialogs (#2034)", async () => {
+		serveNotes({});
+		vi.stubEnv("TMUX_PANE", "%42");
+		try {
+			await handleClaudeSessionStart(sessionStart("startup"), SOCKET, CONTEXT);
+		} finally {
+			vi.unstubAllEnvs();
+		}
+		const receipts = mockSend.mock.calls.filter((call) => call[1] === "agent.sessionStarted");
+		expect(receipts.map((call) => call[2])).toEqual([
+			{ taskId: "task-own", projectId: "project-1", sessionId: "s-1", source: "startup", paneId: "%42" },
+		]);
+	});
+
+	it("still injects notes when the session receipt fails", async () => {
+		mockSend.mockImplementation(async (_socket, method) => {
+			if (method === "agent.sessionStarted") throw new Error("older app: unknown method");
+			return { id: "1", ok: true, data: OWN_NOTES };
+		});
+		await handleClaudeSessionStart(sessionStart("startup"), SOCKET, CONTEXT);
+		expect(additionalContext(stdout)).toContain("The 5 newest of 7 notes");
 	});
 
 	it("injects nothing when the task has no notes", async () => {

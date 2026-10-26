@@ -4,6 +4,7 @@ import type { ParsedArgs } from "../args";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 import { sendRequest } from "../socket-client";
+import { claudeHookPaneId } from "./claude-prompt";
 
 export type RecentNotesResult =
 	| { kind: "block"; block: string }
@@ -65,11 +66,16 @@ export async function handleNoteRecent(
 /** Claude Code `SessionStart` sources that begin a conversation without this task's notes in it. */
 const CLAUDE_CONTEXT_SOURCES = new Set(["startup", "clear", "compact"]);
 
-function sessionStartSource(rawInput: string): string | undefined {
+interface SessionStartEvent {
+	source: string;
+	sessionId: string | null;
+}
+
+function parseSessionStart(rawInput: string): SessionStartEvent | undefined {
 	try {
 		const parsed = JSON.parse(rawInput) as Record<string, unknown>;
-		if (parsed.hook_event_name !== "SessionStart") return undefined;
-		return typeof parsed.source === "string" ? parsed.source : undefined;
+		if (parsed.hook_event_name !== "SessionStart" || typeof parsed.source !== "string") return undefined;
+		return { source: parsed.source, sessionId: typeof parsed.session_id === "string" ? parsed.session_id : null };
 	} catch {
 		return undefined;
 	}
@@ -89,9 +95,37 @@ export async function handleClaudeSessionStart(
 	socketPath: string | null,
 	context: CliContext | null,
 ): Promise<void> {
-	const source = sessionStartSource(rawInput);
-	if (!source || !CLAUDE_CONTEXT_SOURCES.has(source)) return;
-	const result = await loadRecentNotesBlock(socketPath, context?.taskId, context?.projectId);
+	const event = parseSessionStart(rawInput);
+	if (!event || !CLAUDE_CONTEXT_SOURCES.has(event.source)) return;
+	const [result] = await Promise.all([
+		loadRecentNotesBlock(socketPath, context?.taskId, context?.projectId),
+		reportSessionStarted(event, socketPath, context),
+	]);
 	if (result.kind === "block") process.stdout.write(sessionStartContextOutput(result.block));
 	else if (result.kind === "unavailable") process.stderr.write(`dev3 SessionStart hook: ${result.reason}\n`);
+}
+
+/**
+ * Tell the app this pane's Claude session is up. Claude does not fire
+ * `SessionStart` while its trust or onboarding dialog is on screen, so this is
+ * the evidence the launch handoff waits for before typing (#2034).
+ */
+async function reportSessionStarted(
+	event: SessionStartEvent,
+	socketPath: string | null,
+	context: CliContext | null,
+): Promise<void> {
+	if (!socketPath || !context?.taskId || !event.sessionId) return;
+	const paneId = claudeHookPaneId(process.env) ?? null;
+	try {
+		await sendRequest(socketPath, "agent.sessionStarted", {
+			taskId: context.taskId,
+			...(context.projectId ? { projectId: context.projectId } : {}),
+			sessionId: event.sessionId,
+			source: event.source,
+			paneId,
+		}, { timeoutMs: 2_000, connectAttempts: 2, retryDelayMs: 50 });
+	} catch {
+		// Best-effort: the only consumer is a handoff that then says it could not deliver.
+	}
 }

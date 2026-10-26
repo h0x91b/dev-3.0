@@ -6,6 +6,7 @@ import type { PromptSubmitHarness } from "../../shared/agent-terminal-prompt";
 import { loadSettings } from "../settings";
 import { CodexQuestionState } from "../codex-question-state";
 import { capturePaneSession } from "./pane-sessions";
+import { noteAgentExited, noteAgentSessionActive, noteAgentSessionStarted } from "../agent-session-receipts";
 import { log, type Handler, withSenderVariant } from "./shared";
 import { requirePaneTask, resolveRequesterTask, resolveTaskFromParams, senderRequester } from "./task-resolution";
 import { claudeSessionWatches, type ClaudeIdleEvent } from "../claude-session-watch";
@@ -54,8 +55,39 @@ export const agentHandlers: Record<string, Handler> = {
 		const { task } = await resolveTaskFromParams(params);
 		if (typeof params.paneId === "string" && typeof params.sessionId === "string") {
 			claudeSessionWatches.endTurn(task.id, params.paneId, params.sessionId);
+			noteAgentSessionActive(task.id, params.sessionId, params.paneId);
 		}
 		return { ok: true };
+	}),
+	// Claude's SessionStart from a launched pane: the evidence the launch handoff
+	// waits for. Moves no status — an opened session is not work.
+	"agent.sessionStarted": async (params) => {
+		const { task } = await resolveTaskFromParams(params);
+		const sessionId = typeof params.sessionId === "string" ? params.sessionId.trim() : "";
+		if (!sessionId) throw new Error("sessionId is required");
+		const paneId = typeof params.paneId === "string" && params.paneId.trim() ? params.paneId.trim() : null;
+		noteAgentSessionStarted(task.id, sessionId, paneId);
+		return { ok: true };
+	},
+	// The launch wrapper saw its agent exit. Only an agent this app launched that
+	// never reached SessionStart (declined trust, a crash at boot) moves the card:
+	// no hook fires for it, so it would otherwise read "Agent is Working" forever.
+	"agent.exited": (params) => codexQuestions.run(String(params.taskId), async () => {
+		const { project, task } = await resolveTaskFromParams(params);
+		const sessionId = typeof params.sessionId === "string" ? params.sessionId.trim() : "";
+		if (!sessionId) throw new Error("sessionId is required");
+		const exitCode = typeof params.exitCode === "number" ? params.exitCode : null;
+		if (!noteAgentExited(task.id, sessionId, exitCode)) return { moved: false };
+		log.info("Agent exited before its session started", { taskId: task.id.slice(0, 8), exitCode });
+		if (task.status !== "in-progress" || task.hibernated) return { moved: false };
+		await moveTask({ projectId: project.id, taskId: task.id, newStatus: "user-questions", ifStatus: "in-progress" });
+		const code = exitCode === null ? "" : ` (exit code ${exitCode})`;
+		pushCliAttention({
+			taskId: task.id,
+			projectId: task.projectId,
+			reason: `The agent exited before it started${code}. Its terminal shows why.`,
+		});
+		return { moved: true };
 	}),
 	"agent.list": async () => (await import("../cli-agent-spawn")).listCliAgents(),
 	"agent.spawn": async (params) => {
@@ -207,6 +239,9 @@ export const agentHandlers: Record<string, Handler> = {
 
 		// Claude starts a new conversation on `/clear` and switches on `/resume`;
 		// the pane's resume pointer follows whichever one this prompt went to.
+		if (harness === "claude" && sessionId) {
+			noteAgentSessionActive(task.id, sessionId, typeof params.paneId === "string" && params.paneId ? params.paneId : null);
+		}
 		if (harness === "claude" && sessionId && typeof params.paneId === "string" && params.paneId) {
 			await capturePaneSession(project, task.id, params.paneId, sessionId, harness);
 			if (task.worktreePath && typeof params.sessionStateDirectory === "string") {

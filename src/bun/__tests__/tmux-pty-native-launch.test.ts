@@ -6,7 +6,7 @@
  * unmarked task takes the byte-for-byte legacy tmux path, and a task marked
  * `native` touches tmux nowhere and never silently degrades to it.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Project, Task } from "../../shared/types";
 
 // ---- Mocks ----
@@ -192,6 +192,7 @@ vi.mock("../spawn", () => ({
 }));
 
 vi.mock("../agent-hooks", () => ({ setupAgentHooks: vi.fn() }));
+vi.mock("../../shared/agent-hooks", () => ({ claudeSessionStartHookInstalled: vi.fn(() => true) }));
 vi.mock("../artifact-template", () => ({ ensureArtifactTemplateEnv: vi.fn(() => ({ DEV3_ARTIFACT_DIR: "/tmp/art" })) }));
 
 vi.mock("../rpc-handlers/shared-pure", () => ({
@@ -202,6 +203,7 @@ vi.mock("../rpc-handlers/shared-pure", () => ({
 	buildAgentEnv: vi.fn(() => ({ DEV3_AGENT: "claude" })),
 	buildAgentRetryWrapper: vi.fn(() => "#!/bin/bash\n# retry\n"),
 	buildCmdScript: vi.fn(() => "#!/bin/bash\n"),
+	agentExitReportArgv: vi.fn((taskId: string, sessionId: string) => ["dev3", "hook", "agent-exited", "--task", taskId, "--session", sessionId]),
 	buildModelVersionGateWrapper: vi.fn(() => "#!/bin/bash\n# version-notice\n"),
 	buildSetupStartupWrapper: vi.fn(() => "#!/bin/bash\n# startup\n"),
 	buildSetupRerunScript: vi.fn(() => "#!/bin/bash\n# rerun\n"),
@@ -237,6 +239,10 @@ import * as sharedPure from "../rpc-handlers/shared-pure";
 import * as settingsConfig from "../rpc-handlers/settings-config";
 import * as auxPanes from "../task-aux-panes";
 import { tmux } from "../tmux";
+
+import { getAgentAdapter } from "../../shared/agent-adapters/registry";
+import { claudeSessionStartHookInstalled } from "../../shared/agent-hooks";
+import { agentSessionRecord, resetAgentSessionRecordsForTests } from "../agent-session-receipts";
 
 const { launchTaskPty, tmuxPtyHandlers } = await import("../rpc-handlers/tmux-pty");
 
@@ -669,5 +675,82 @@ describe("setup-script wrapper — one flavour per backend", () => {
 		expect(vi.mocked(sharedPure.buildSetupStartupWrapper)).toHaveBeenCalledWith(
 			expect.objectContaining({ nativeBackend: false, launchMode: "blocking" }),
 		);
+	});
+});
+
+// #2034: a fresh Claude spawn is registered so the launch handoff and the
+// wrapper's exit report can tell "still at the trust prompt" from "running".
+// Every path that does NOT spawn that session must stay unregistered.
+describe("launch registration of a fresh Claude session", () => {
+	beforeEach(() => {
+		resetAgentSessionRecordsForTests();
+		vi.mocked(agents.resolveCommandForProject).mockResolvedValue({
+			command: "claude", extraEnv: {}, agent: { baseCommand: "claude" }, config: undefined, agentFamily: "claude",
+		} as never);
+		vi.mocked(agents.supportsPreAssignedSessionId).mockReturnValue(true);
+		vi.mocked(getAgentAdapter).mockReturnValue({ trustKinds: [], hooksSpec: () => ({ kind: "claude" }) } as never);
+		vi.mocked(claudeSessionStartHookInstalled).mockReturnValue(true);
+	});
+
+	afterEach(() => {
+		vi.mocked(agents.resolveCommandForProject).mockResolvedValue({ command: "claude", extraEnv: {} } as never);
+		vi.mocked(agents.supportsPreAssignedSessionId).mockReturnValue(false);
+		vi.mocked(getAgentAdapter).mockReturnValue({ trustKinds: [] } as never);
+	});
+
+	function persistedSessionId(): string {
+		const persisted = vi.mocked(data.updateTask).mock.calls
+			.map(([, , updates]) => (updates as Partial<Task>).sessionState?.panes?.[0]?.sessionId)
+			.find(Boolean);
+		return persisted as string;
+	}
+
+	function exitReports(): unknown[] {
+		return vi.mocked(sharedPure.buildCmdScript).mock.calls.map(([, , options]) => options?.exitReport).filter(Boolean);
+	}
+
+	it("registers the id it passes to claude and bakes the exit report into the run wrapper", async () => {
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+
+		const sessionId = persistedSessionId();
+		expect(sessionId).toMatch(/^[0-9a-f-]{36}$/);
+		expect(agentSessionRecord(TASK_ID, sessionId)?.launchedAt).not.toBeNull();
+		expect(exitReports()).toEqual([["dev3", "hook", "agent-exited", "--task", TASK_ID, "--session", sessionId]]);
+	});
+
+	it("puts the report on the agent's own script when a setup script runs first", async () => {
+		await launchTaskPty(makeProject({ setupScript: "bun install\n" }), makeTask(), WORKTREE, null, null, true);
+
+		const calls = vi.mocked(sharedPure.buildCmdScript).mock.calls;
+		const withReport = calls.filter(([, , options]) => options?.exitReport);
+		expect(withReport).toHaveLength(1);
+		expect(withReport[0]![0]).toBe("claude");
+	});
+
+	it.each([
+		["reattaching to a surviving tmux session", { skipSessionPersist: true }, false],
+		["resuming a conversation", { sessionId: "old-session" }, true],
+	])("registers nothing when %s — the agent there keeps its own session", async (_label, opts, resume) => {
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE, null, null, false, resume, opts);
+
+		expect(exitReports()).toEqual([]);
+		expect(agentSessionRecord(TASK_ID, "old-session")).toBeNull();
+	});
+
+	it("registers nothing when the worktree's settings lack dev3's SessionStart hook — no receipt could ever come", async () => {
+		vi.mocked(claudeSessionStartHookInstalled).mockReturnValue(false);
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+		expect(exitReports()).toEqual([]);
+	});
+
+	it("registers nothing for a harness without Claude's hooks", async () => {
+		vi.mocked(getAgentAdapter).mockReturnValue({ trustKinds: [], hooksSpec: () => ({ kind: "codex" }) } as never);
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+		expect(exitReports()).toEqual([]);
+	});
+
+	it("registers the new id of a Start Fresh resume", async () => {
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE, null, null, false, true, { freshSessionId: "fresh-1" });
+		expect(agentSessionRecord(TASK_ID, "fresh-1")?.launchedAt).not.toBeNull();
 	});
 });
