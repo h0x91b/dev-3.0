@@ -22,8 +22,15 @@ const log = createLogger("claude-json-update");
 
 /** proper-lockfile's default `stale`: a lock dir untouched this long belongs to a dead holder. */
 export const CLAUDE_JSON_LOCK_STALE_MS = 10_000;
-/** Claude holds the lock for milliseconds; ~3 s of waiting means something else is wrong. */
-const LOCK_RETRY_DELAYS_MS = [50, 100, 200, 400, 800, 1600];
+/**
+ * A live lock is never written around: that write is exactly what a Claude save
+ * in progress overwrites. Polled often, because several booting Claudes queue on
+ * this lock and a slow poller loses every mkdir race (measured: 7 of 400 writes
+ * fell back after a 3 s budget). Past the stale window a holder that is still
+ * alive would have refreshed it, so the budget ends just after it.
+ */
+const LOCK_WAIT_MS = CLAUDE_JSON_LOCK_STALE_MS + 2_000;
+const LOCK_POLL_MS = 25;
 /** How many times a writer that ignores the lock may push us into a re-read. */
 const MAX_WRITE_ATTEMPTS = 3;
 
@@ -32,7 +39,7 @@ export type ClaudeJsonUpdateResult = "written" | "unchanged" | "unparsable" | "u
 export interface ClaudeJsonUpdateOptions {
 	sleep?: (ms: number) => Promise<void>;
 	now?: () => number;
-	lockRetryDelaysMs?: readonly number[];
+	lockWaitMs?: number;
 }
 
 /** Changes `data` in place; returns false when there was nothing to change. */
@@ -58,7 +65,7 @@ export async function updateClaudeJson(
 		return "unreadable";
 	}
 	const release = await acquireClaudeJsonLock(file, opts);
-	if (!release) log.warn("Claude Code's .claude.json lock stayed busy; writing without it", { file });
+	if (!release) log.warn("Claude Code's .claude.json lock stayed busy past its stale window; writing without it", { file });
 	try {
 		for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt++) {
 			const read = await readClaudeJson(file);
@@ -139,9 +146,9 @@ export async function acquireClaudeJsonLock(
 	const lockPath = claudeJsonLockPath(file);
 	const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 	const now = opts.now ?? Date.now;
-	const delays = opts.lockRetryDelaysMs ?? LOCK_RETRY_DELAYS_MS;
+	const deadline = now() + (opts.lockWaitMs ?? LOCK_WAIT_MS);
 	let stolen = false;
-	for (let attempt = 0; ; attempt++) {
+	for (;;) {
 		try {
 			await mkdir(lockPath);
 			return async () => {
@@ -159,8 +166,8 @@ export async function acquireClaudeJsonLock(
 			await rmdir(lockPath).catch(() => {});
 			continue;
 		}
-		if (attempt >= delays.length) return null;
-		await sleep(delays[attempt]!);
+		if (now() >= deadline) return null;
+		await sleep(LOCK_POLL_MS + Math.floor(Math.random() * LOCK_POLL_MS));
 	}
 }
 

@@ -144,15 +144,14 @@ describe("acquireClaudeJsonLock", () => {
 		mkdirSync(claudeJsonLockPath(file));
 		const sleeps: number[] = [];
 		const release = await acquireClaudeJsonLock(file, {
-			lockRetryDelaysMs: [10, 10, 10],
 			sleep: async (ms) => {
 				sleeps.push(ms);
-				if (sleeps.length === 2) rmSync(claudeJsonLockPath(file), { recursive: true });
+				if (sleeps.length === 40) rmSync(claudeJsonLockPath(file), { recursive: true });
 			},
 		});
 
 		expect(release).not.toBeNull();
-		expect(sleeps).toHaveLength(2);
+		expect(sleeps).toHaveLength(40);
 		await release!();
 		expect(existsSync(claudeJsonLockPath(file))).toBe(false);
 	});
@@ -167,9 +166,10 @@ describe("acquireClaudeJsonLock", () => {
 		await release!();
 	});
 
-	it("gives up on a fresh lock that never frees, leaving it in place", async () => {
+	it("waits out the whole stale window for a live lock, then gives up leaving it in place", async () => {
 		mkdirSync(claudeJsonLockPath(file));
-		const release = await acquireClaudeJsonLock(file, { lockRetryDelaysMs: [1, 1], sleep: async () => {} });
+		let clock = 0;
+		const release = await acquireClaudeJsonLock(file, { now: () => clock, sleep: async (ms) => { clock += ms; } });
 
 		expect(release).toBeNull();
 		expect(existsSync(claudeJsonLockPath(file))).toBe(true);
@@ -178,7 +178,7 @@ describe("acquireClaudeJsonLock", () => {
 	it("still writes, verified, when the lock never frees", async () => {
 		writeFileSync(file, JSON.stringify({ projects: {} }));
 		mkdirSync(claudeJsonLockPath(file));
-		const result = await updateClaudeJson(file, addKey("/wt/new"), { lockRetryDelaysMs: [1], sleep: async () => {} });
+		const result = await updateClaudeJson(file, addKey("/wt/new"), { lockWaitMs: 0 });
 
 		expect(result).toBe("written");
 		expect(projectKeys(file)).toEqual(["/wt/new"]);
