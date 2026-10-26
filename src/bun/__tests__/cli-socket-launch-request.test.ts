@@ -287,6 +287,27 @@ describe("task.move — agent-initiated launch approval", () => {
 		}));
 	});
 
+	it("lists the pending launch in approvals.list with the dialog's context and who asked", async () => {
+		setupBoard(makeTask());
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([makeTask({ status: "in-progress" })]);
+
+		const respPromise = handleRequest(moveRequest({ taskId: TARGET_ID, newStatus: "in-progress", projectId: "proj-1", sourceTaskId: REQUESTER_ID }));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+
+		const listed = await handleRequest({ id: "req-2", method: "approvals.list", params: {} });
+		expect((listed.data as { requests: unknown[] }).requests).toEqual([expect.objectContaining({
+			kind: "launch", taskId: TARGET_ID, taskTitle: "Target task", seqLabel: "7", projectName: "Test Project",
+			requesterTaskId: REQUESTER_ID, requesterSeq: 3, requesterTitle: "Asking task", requesterSenderId: null,
+		})]);
+
+		resolveAgentRequest((pushFn.mock.calls[0]![1] as { requestId: string }).requestId, { approved: false });
+		await respPromise;
+		const after = await handleRequest({ id: "req-3", method: "approvals.list", params: {} });
+		expect(after.data).toEqual({ requests: [] });
+	});
+
 	it("hands the child a reply command that reaches the asking AGENT, not just its task", async () => {
 		const target = makeTask();
 		setupBoard(target);

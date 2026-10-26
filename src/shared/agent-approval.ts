@@ -47,19 +47,20 @@ export interface PendingApprovalSummary {
 	kind: "complete" | "cancel" | "reset" | "launch";
 	taskId: string;
 	projectId: string;
-	/** Null when the dialog payload has not reached the request yet. */
+	/** Null only for a request created without dialog context. */
 	taskTitle: string | null;
 	seqLabel: string | null;
 	projectName: string | null;
-	/** `launch` only: the task that asked, when a task asked. */
+	/** `launch` only: the task that asked, when a task asked. Seq is per project, so prefer the id. */
+	requesterTaskId: string | null;
 	requesterSeq: number | null;
 	requesterTitle: string | null;
 	/** `launch` only: the registered external sender that asked, if one did. */
 	requesterSenderId: string | null;
-	/** Epoch ms. */
-	createdAt: number;
-	/** Epoch ms the request approves itself, or null when it never will. */
-	autoApproveAt: number | null;
+	/** ISO 8601, like every other time in the CLI's --json output. */
+	createdAt: string;
+	/** ISO time the request approves itself, or null when it never will. */
+	autoApproveAt: string | null;
 	/** A user touched the dialog, so only an explicit answer settles it. */
 	heldByUser: boolean;
 }

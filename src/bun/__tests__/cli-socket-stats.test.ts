@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { AgentLaunchRequest, TaskDialogSubject } from "../../shared/types";
+import type { TaskDialogSubject } from "../../shared/types";
 
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -21,18 +21,9 @@ import {
 	createAgentRequest,
 	holdAgentRequestAutoApprove,
 	resolveAgentRequest,
-	setAgentLaunchDialog,
 } from "../agent-requests";
 
 const SUBJECT: TaskDialogSubject = { seqLabel: "42", projectName: "Proj", priority: "P3", labels: [], overview: null };
-
-function launchDialog(requestId: string, overrides: Partial<AgentLaunchRequest> = {}): AgentLaunchRequest {
-	return {
-		requestId, taskId: "task-b", projectId: "proj-1", taskTitle: "Launch me", targetStatus: "in-progress",
-		scratch: false, requesterSeq: 7, requesterTitle: "Coordinator", subject: { ...SUBJECT, seqLabel: "43" },
-		...overrides,
-	} as AgentLaunchRequest;
-}
 
 beforeEach(() => {
 	_resetAgentRequestsForTests();
@@ -51,6 +42,8 @@ describe("stats.* socket methods", () => {
 });
 
 describe("approvals.list", () => {
+	const asker = { taskId: "task-r", seq: 7, title: "Coordinator", senderId: null };
+
 	it("is empty with nothing pending", async () => {
 		expect(await statsHandlers["approvals.list"]({})).toEqual({ requests: [] });
 	});
@@ -61,8 +54,10 @@ describe("approvals.list", () => {
 			vi.setSystemTime(1_000);
 			createAgentRequest("complete", "task-a", "proj-1", { dialog: { taskTitle: "Finish me", subject: SUBJECT } });
 			vi.setSystemTime(2_000);
-			const launch = createAgentRequest("launch", "task-b", "proj-1", { autoApproveAfterMs: 60_000 });
-			setAgentLaunchDialog(launchDialog(launch.requestId));
+			const launch = createAgentRequest("launch", "task-b", "proj-1", {
+				autoApproveAfterMs: 60_000,
+				dialog: { taskTitle: "Launch me", subject: { ...SUBJECT, seqLabel: "43" }, requester: asker },
+			});
 			vi.setSystemTime(3_000);
 			const gone = createAgentRequest("cancel", "task-c", "proj-2", { dialog: { taskTitle: "Gone", subject: SUBJECT } });
 			resolveAgentRequest(gone.requestId, { approved: false });
@@ -71,12 +66,12 @@ describe("approvals.list", () => {
 			expect(requests).toEqual([
 				expect.objectContaining({
 					kind: "complete", taskId: "task-a", taskTitle: "Finish me", seqLabel: "42", projectName: "Proj",
-					requesterSeq: null, createdAt: 1_000, autoApproveAt: null, heldByUser: false,
+					requesterSeq: null, createdAt: new Date(1_000).toISOString(), autoApproveAt: null, heldByUser: false,
 				}),
 				expect.objectContaining({
 					kind: "launch", requestId: launch.requestId, taskTitle: "Launch me", seqLabel: "43",
-					requesterSeq: 7, requesterTitle: "Coordinator", requesterSenderId: null,
-					createdAt: 2_000, autoApproveAt: 62_000, heldByUser: false,
+					requesterTaskId: "task-r", requesterSeq: 7, requesterTitle: "Coordinator", requesterSenderId: null,
+					createdAt: new Date(2_000).toISOString(), autoApproveAt: new Date(62_000).toISOString(), heldByUser: false,
 				}),
 			]);
 		} finally {
@@ -85,17 +80,19 @@ describe("approvals.list", () => {
 	});
 
 	it("names an external sender instead of a requester task, and reports a held dialog", async () => {
-		const launch = createAgentRequest("launch", "task-b", "proj-1", { autoApproveAfterMs: 60_000 });
-		setAgentLaunchDialog(launchDialog(launch.requestId, { requesterSender: { senderId: "openclaw", label: "OpenClaw" } }));
+		const launch = createAgentRequest("launch", "task-b", "proj-1", {
+			autoApproveAfterMs: 60_000,
+			dialog: { taskTitle: "Launch me", subject: SUBJECT, requester: { taskId: null, seq: null, title: "OpenClaw", senderId: "openclaw" } },
+		});
 		holdAgentRequestAutoApprove(launch.requestId);
 
 		const { requests } = await statsHandlers["approvals.list"]({}) as { requests: Array<Record<string, unknown>> };
-		expect(requests[0]).toMatchObject({ requesterSenderId: "openclaw", requesterSeq: null, requesterTitle: null, heldByUser: true });
+		expect(requests[0]).toMatchObject({ requesterSenderId: "openclaw", requesterTaskId: null, requesterSeq: null, heldByUser: true, autoApproveAt: null });
 	});
 
-	it("reports a launch whose dialog payload has not arrived yet with null context, not a crash", async () => {
+	it("reports a request created without dialog context as nulls, not a crash", async () => {
 		createAgentRequest("launch", "task-b", "proj-1");
 		const { requests } = await statsHandlers["approvals.list"]({}) as { requests: Array<Record<string, unknown>> };
-		expect(requests[0]).toMatchObject({ kind: "launch", taskTitle: null, seqLabel: null, projectName: null });
+		expect(requests[0]).toMatchObject({ kind: "launch", taskTitle: null, seqLabel: null, projectName: null, requesterTaskId: null });
 	});
 });

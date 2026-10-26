@@ -8,6 +8,10 @@ import type { PendingApprovalSummary } from "../../shared/agent-approval";
 import { CLI_EXIT_CODE_COMMAND_FAILED, CLI_EXIT_CODE_USAGE_ERROR } from "../../shared/cli-exit-codes";
 
 vi.mock("../socket-client", () => ({ sendRequest: vi.fn() }));
+vi.mock("../context", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../context")>()),
+	readProjectDirect: vi.fn((id: string) => (KNOWN_PROJECTS.includes(id) ? { id, name: "p", path: "/p" } : null)),
+}));
 
 import { sendRequest } from "../socket-client";
 const mockSend = vi.mocked(sendRequest);
@@ -16,6 +20,7 @@ const SOCKET = "/tmp/test.sock";
 const CTX: CliContext = { projectId: "proj-001", taskId: "aaaaaaaa-1111-2222-3333-444444444444", socketPath: SOCKET };
 const PROJECT_A = "aaaaaaaa-0000-0000-0000-000000000001";
 const PROJECT_B = "bbbbbbbb-0000-0000-0000-000000000002";
+const KNOWN_PROJECTS = [PROJECT_A, PROJECT_B];
 
 // Typed against the app's own types: renaming a field there breaks lint here,
 // which is the warning that the --json contract is about to change.
@@ -41,7 +46,8 @@ function usageDay(overrides: Partial<AgentUsageDay> = {}): AgentUsageDay {
 function approval(overrides: Partial<PendingApprovalSummary> = {}): PendingApprovalSummary {
 	return {
 		requestId: "r1", kind: "complete", taskId: "task-1", projectId: PROJECT_A, taskTitle: "Finish", seqLabel: "42",
-		projectName: "dev-3.0", requesterSeq: null, requesterTitle: null, requesterSenderId: null, createdAt: 1_000,
+		projectName: "dev-3.0", requesterTaskId: null, requesterSeq: null, requesterTitle: null, requesterSenderId: null,
+		createdAt: "2026-10-27T08:00:00.000Z",
 		autoApproveAt: null, heldByUser: false,
 		...overrides,
 	};
@@ -94,6 +100,22 @@ describe("dev3 stats productivity", () => {
 		expect(json().since).toMatch(/^\d{4}-\d{2}-\d{2}T/);
 	});
 
+	it("fails on a --project that matches no project instead of printing an empty result", async () => {
+		await expect(handleStats("productivity", args({ json: "true", project: "zzzzzzzz" }), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_COMMAND_FAILED}`);
+		expect(stderr).toContain("Project not found: zzzzzzzz");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("reads a bare --since date as local midnight", async () => {
+		mockSend.mockResolvedValue(ok({ events: [], generatedAt: "G" }));
+		await handleStats("productivity", args({ json: "true", since: "2026-10-01" }), SOCKET, CTX);
+		expect(json().since).toBe(new Date(2026, 9, 1).toISOString());
+	});
+
+	it("rejects a stray positional", async () => {
+		await expect(handleStats("productivity", { positional: ["foo"], flags: {} }, SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
+	});
+
 	it("refuses an unparseable --since before asking the app", async () => {
 		await expect(handleStats("productivity", args({ since: "last week" }), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
 		expect(mockSend).not.toHaveBeenCalled();
@@ -129,9 +151,18 @@ describe("activity filters", () => {
 
 describe("dev3 stats usage", () => {
 	it("prints days with the unpriced flag", async () => {
-		mockSend.mockResolvedValue(ok({ days: [usageDay()], generatedAt: "G", hasUnpricedModels: true }));
+		mockSend.mockResolvedValue(ok({ days: [usageDay({ fullyPriced: false })], generatedAt: "G", hasUnpricedModels: true }));
 		await handleStats("usage", args({ json: "true" }), SOCKET, CTX);
 		expect(json()).toMatchObject({ schemaVersion: 1, hasUnpricedModels: true, since: null, days: [{ source: "claude", costUsd: 3.5 }] });
+	});
+
+	it("recomputes hasUnpricedModels for the days --since kept", async () => {
+		mockSend.mockResolvedValue(ok({
+			days: [usageDay({ fullyPriced: false }), usageDay({ date: "2099-01-01", startMs: Date.parse("2099-01-01T00:00:00Z") })],
+			generatedAt: "G", hasUnpricedModels: true,
+		}));
+		await handleStats("usage", args({ json: "true", since: "2098-12-31" }), SOCKET, CTX);
+		expect(json()).toMatchObject({ hasUnpricedModels: false, days: [{ date: "2099-01-01" }] });
 	});
 
 	it("has no --project, and says why", async () => {
@@ -160,7 +191,7 @@ describe("dev3 stats limits", () => {
 	it("keeps capturedAt in JSON and defaults sessions to an empty list", async () => {
 		mockSend.mockResolvedValue(ok(report));
 		await handleStats("limits", args({ json: "true" }), SOCKET, CTX);
-		expect(json()).toMatchObject({ schemaVersion: 1, generatedAt: 5, sessions: [], snapshots: [{ capturedAt: 4 }] });
+		expect(json()).toMatchObject({ schemaVersion: 1, generatedAt: new Date(5).toISOString(), sessions: [], snapshots: [{ capturedAt: 4 }] });
 	});
 
 	it("renders one row per window", async () => {

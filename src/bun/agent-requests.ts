@@ -27,6 +27,16 @@ export interface AgentRequestDecision {
 export interface AgentRequestDialog {
 	taskTitle: string;
 	subject: TaskDialogSubject;
+	/** `launch` only: who asked, for `dev3 approvals list`. */
+	requester?: AgentRequestRequester;
+}
+
+/** A task asked (`taskId` set) or a registered external sender did (`senderId` set). */
+export interface AgentRequestRequester {
+	taskId: string | null;
+	seq: number | null;
+	title: string | null;
+	senderId: string | null;
 }
 
 interface PendingAgentRequest {
@@ -252,24 +262,24 @@ export function listPendingAgentRequests(
 /** Every pending request of every kind, oldest first, for `dev3 approvals list`. */
 export function listPendingApprovalSummaries(): PendingApprovalSummary[] {
 	return [...pendingByRequestId.values()].map((entry) => {
-		const launch = entry.launchDialog;
-		const subject = entry.dialog?.subject ?? launch?.subject;
+		const { dialog } = entry;
 		return {
 			requestId: entry.requestId,
 			kind: entry.kind,
 			taskId: entry.taskId,
 			projectId: entry.projectId,
-			taskTitle: entry.dialog?.taskTitle ?? launch?.taskTitle ?? null,
-			seqLabel: subject?.seqLabel ?? null,
-			projectName: subject?.projectName ?? null,
-			requesterSeq: launch && !launch.requesterSender ? launch.requesterSeq : null,
-			requesterTitle: launch && !launch.requesterSender ? launch.requesterTitle : null,
-			requesterSenderId: launch?.requesterSender?.senderId ?? null,
-			createdAt: entry.createdAt,
-			autoApproveAt: entry.autoApproveAt,
+			taskTitle: dialog?.taskTitle ?? null,
+			seqLabel: dialog?.subject.seqLabel ?? null,
+			projectName: dialog?.subject.projectName ?? null,
+			requesterTaskId: dialog?.requester?.taskId ?? null,
+			requesterSeq: dialog?.requester?.seq ?? null,
+			requesterTitle: dialog?.requester?.title ?? null,
+			requesterSenderId: dialog?.requester?.senderId ?? null,
+			createdAt: new Date(entry.createdAt).toISOString(),
+			autoApproveAt: entry.autoApproveAt === null ? null : new Date(entry.autoApproveAt).toISOString(),
 			heldByUser: entry.heldByUser === true,
 		};
-	}).sort((a, b) => a.createdAt - b.createdAt);
+	}).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 export function setAgentLaunchDialog(request: AgentLaunchRequest): void {

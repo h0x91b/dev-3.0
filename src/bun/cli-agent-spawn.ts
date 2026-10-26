@@ -3,6 +3,7 @@ import { findAgentConfig } from "../shared/agent-live-models";
 import { ACTIVE_STATUSES, agentLaunchAutoApproveMs, buildTaskDialogSubject, DEFAULT_PRIORITY, getTaskTitle } from "../shared/types";
 import type { SpawnAgentResult } from "../shared/conversation-handoff-model";
 import { createAgentRequest, getAgentRequestState, setAgentRequestLaunchChoice, setAgentLaunchDialog } from "./agent-requests";
+import { launchRequesterSummary } from "./cli-session-approval";
 import { listAgentAccounts } from "./agent-accounts";
 import { isAutoAccountId, isRoutableAccountKind } from "../shared/agent-accounts";
 import { applyBinaryPathOverride, getAllAgents } from "./agents";
@@ -87,12 +88,15 @@ async function performSpawn(opts: SpawnOptions): Promise<SpawnOutcome> {
 		const autoApproveAfterMs = agentLaunchAutoApproveMs(await loadSettings());
 		// Only pendingSpawns may join a retry; a task-start approval authorizes a different action.
 		if (getAgentRequestState("launch", task.id).state === "pending") throw new Error("Another launch approval is pending for this task — answer it before adding an agent.");
-		const { requestId, decision, autoApproveAt } = createAgentRequest("launch", task.id, project.id, { autoApproveAfterMs });
+		const subject = buildTaskDialogSubject(task, project);
+		const { requestId, decision, autoApproveAt } = createAgentRequest("launch", task.id, project.id, {
+			autoApproveAfterMs, dialog: { taskTitle: getTaskTitle(task), subject, requester: launchRequesterSummary(requester) },
+		});
 		setAgentRequestLaunchChoice(requestId, { variants: [choice] });
 		const request: AgentLaunchRequest = {
 			requestId, taskId: task.id, projectId: project.id, taskTitle: getTaskTitle(task), targetStatus: task.status,
 			scratch: false, requesterSeq: requester.seq, requesterTitle: getTaskTitle(requester),
-			subject: buildTaskDialogSubject(task, project), defaultPriority: task.priority ?? DEFAULT_PRIORITY,
+			subject, defaultPriority: task.priority ?? DEFAULT_PRIORITY,
 			canAddVariants: false, autoApproveAt, spawn: { choice, prompt, handoff },
 		};
 		setAgentLaunchDialog(request);

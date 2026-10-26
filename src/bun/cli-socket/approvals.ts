@@ -220,11 +220,15 @@ export async function requestAgentLaunchApproval(opts: {
 	const defaultPriority = await resolveLaunchPriority(task, requester);
 	const autoApproveAfterMs = agentLaunchAutoApproveMs(await loadSettings());
 	const joining = getAgentRequestState("launch", task.id).state === "pending";
+	const subject = buildTaskDialogSubject(task, project);
+	const asker = isExternalSenderRequester(requester)
+		? { taskId: null, seq: null, title: requester.label, senderId: requester.senderId }
+		: { taskId: requester.taskId, seq: requester.seq, title: requester.title ?? null, senderId: null };
 	const { requestId, decision, autoApproveAt } = createAgentRequest(
 		"launch",
 		task.id,
 		project.id,
-		{ autoApproveAfterMs },
+		{ autoApproveAfterMs, dialog: { taskTitle: getTaskTitle(task), subject, requester: asker } },
 	);
 	// Seeds what an unwatched auto-approval launches. A joined retry must not
 	// overwrite a pick the user may already have made in the open dialog.
@@ -244,7 +248,7 @@ export async function requestAgentLaunchApproval(opts: {
 			: { requesterSeq: requester.seq, requesterTitle: requester.title }),
 		// Same read-only context card as the completion dialog, so the user
 		// recognizes which task an agent wants to set running.
-		subject: buildTaskDialogSubject(task, project),
+		subject,
 		defaultPriority,
 		canAddVariants: canSpawnAsVariants(task),
 		autoApproveAt,

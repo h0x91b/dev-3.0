@@ -5,7 +5,7 @@ import { parseEventCursor } from "../../shared/board-events";
 import { sendRequest } from "../socket-client";
 import { exitError, exitUsage, printTable } from "../output";
 import type { ParsedArgs } from "../args";
-import { expandShortProjectId, type CliContext } from "../context";
+import { expandShortProjectId, readProjectDirect, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 
 /**
@@ -21,21 +21,39 @@ function printJson(payload: Record<string, unknown>): void {
 	process.stdout.write(`${JSON.stringify({ schemaVersion: STATS_JSON_SCHEMA_VERSION, ...payload }, null, 2)}\n`);
 }
 
-/** `--since 7d` / a date / a cursor-style instant, resolved to ISO; null when not given. */
+/** Flags only: a stray word is a typo, and ignoring it would answer a different question. */
+function rejectPositionals(args: ParsedArgs, usage: string): void {
+	if (args.positional.length > 0) exitUsage(`Unexpected argument: ${args.positional[0]}\nUsage: ${usage}`);
+}
+
+/**
+ * `--since 7d` / a date / a cursor-style instant, resolved to ISO; null when not
+ * given. A bare date is LOCAL midnight, the same clock the usage days are cut on.
+ */
 function readSince(args: ParsedArgs): string | null {
 	const raw = args.flags.since;
 	if (raw === undefined) return null;
 	if (raw === "true") exitUsage("--since needs a value, e.g. --since 7d");
-	const since = parseEventCursor(raw);
+	const since = /^\d{4}-\d{2}-\d{2}$/.test(raw.trim())
+		? localMidnight(raw.trim())
+		: parseEventCursor(raw);
 	if (!since) exitUsage(`Unparseable --since value: ${raw}. Use a duration (30m, 12h, 7d, 2w) or a date (2026-10-01).`);
 	return since;
 }
 
+function localMidnight(date: string): string | null {
+	const ms = new Date(`${date}T00:00:00`).getTime();
+	return Number.isNaN(ms) ? null : new Date(ms).toISOString();
+}
+
+/** Filtering happens here, so an id that matches no project must fail — not print an empty result. */
 function readProject(args: ParsedArgs, context: CliContext | null): string | null {
 	const raw = args.flags.project;
 	if (raw === undefined) return null;
 	if (raw === "true") exitUsage("--project needs a project id");
-	return expandShortProjectId(raw, context);
+	const id = expandShortProjectId(raw, context);
+	if (readProjectDirect(id)?.id !== id) exitError(`Project not found: ${raw}`, "Run `dev3 projects list` for the ids.");
+	return id;
 }
 
 async function request<T>(socketPath: string, method: string, what: string): Promise<T> {
@@ -93,6 +111,7 @@ function moreLine(shown: number, total: number): void {
 
 async function productivity(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
 	rejectUnknownFlags(args, ["project", "since", "json"]);
+	rejectPositionals(args, "dev3 stats productivity [--project <id>] [--since <duration|date>] [--json]");
 	const since = readSince(args);
 	const projectId = readProject(args, context);
 	const stats = await request<ProductivityStats>(socketPath, "stats.productivity", "stats productivity");
@@ -128,6 +147,7 @@ async function productivity(args: ParsedArgs, socketPath: string, context: CliCo
 
 async function usage(args: ParsedArgs, socketPath: string): Promise<void> {
 	rejectUnknownFlags(args, ["project", "since", "json"]);
+	rejectPositionals(args, "dev3 stats usage [--since <duration|date>] [--json]");
 	if (args.flags.project !== undefined) {
 		exitUsage("dev3 stats usage has no --project: agent usage is recorded per agent and day, not per project or task.");
 	}
@@ -136,7 +156,7 @@ async function usage(args: ParsedArgs, socketPath: string): Promise<void> {
 	const days = since ? report.days.filter((d) => usageDayOverlapsSince(d, since)) : report.days;
 
 	if (args.flags.json === "true") {
-		printJson({ generatedAt: report.generatedAt, since, hasUnpricedModels: report.hasUnpricedModels, days });
+		printJson({ generatedAt: report.generatedAt, since, hasUnpricedModels: days.some((d) => !d.fullyPriced), days });
 		return;
 	}
 	if (days.length === 0) {
@@ -159,10 +179,11 @@ async function usage(args: ParsedArgs, socketPath: string): Promise<void> {
 
 async function limits(args: ParsedArgs, socketPath: string): Promise<void> {
 	rejectUnknownFlags(args, ["json"]);
+	rejectPositionals(args, "dev3 stats limits [--json]");
 	const report = await request<AgentRateLimitsReport>(socketPath, "stats.limits", "stats limits");
 
 	if (args.flags.json === "true") {
-		printJson({ generatedAt: report.generatedAt, snapshots: report.snapshots, sessions: report.sessions ?? [] });
+		printJson({ generatedAt: new Date(report.generatedAt).toISOString(), snapshots: report.snapshots, sessions: report.sessions ?? [] });
 		return;
 	}
 	if (report.snapshots.length === 0) {
@@ -181,6 +202,7 @@ async function limits(args: ParsedArgs, socketPath: string): Promise<void> {
 
 async function memory(args: ParsedArgs, socketPath: string): Promise<void> {
 	rejectUnknownFlags(args, ["json"]);
+	rejectPositionals(args, "dev3 stats memory [--json]");
 	const snapshot = await request<SystemMemorySnapshot | null>(socketPath, "stats.memory", "stats memory");
 
 	if (args.flags.json === "true") {
@@ -205,6 +227,7 @@ async function memory(args: ParsedArgs, socketPath: string): Promise<void> {
 
 async function approvalsList(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
 	rejectUnknownFlags(args, ["project", "json"]);
+	rejectPositionals(args, "dev3 approvals list [--project <id>] [--json]");
 	const projectId = readProject(args, context);
 	const { requests } = await request<{ requests: PendingApprovalSummary[] }>(socketPath, "approvals.list", "approvals list");
 	const pending = projectId ? requests.filter((r) => r.projectId === projectId) : requests;

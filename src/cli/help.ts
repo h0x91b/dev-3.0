@@ -386,8 +386,8 @@ const COMMANDS: CommandHelp[] = [
 				usage: "dev3 stats productivity [--project <id>] [--since <duration|date>] [--json]",
 				summary: "One record per task: status, lines changed, moves, focus time.",
 				details: [
-					"Every project by default; --project narrows to one.",
-					"--since 7d keeps tasks created, moved or changed status since then (also 12h, 2w, 2026-10-01).",
+					"Every project by default; --project narrows to one, and an id that matches no project fails rather than printing nothing.",
+					"--since 7d keeps tasks created, moved or changed status since then (also 12h, 2w, or a date: 2026-10-01 is local midnight).",
 					"Active tasks report a live worktree diff, so a large board takes a few seconds.",
 					"--json prints { schemaVersion: 1, ... }; new fields may appear, a removed or renamed one bumps schemaVersion.",
 				],
@@ -405,7 +405,8 @@ const COMMANDS: CommandHelp[] = [
 				name: "limits",
 				usage: "dev3 stats limits [--json]",
 				summary: "Rate-limit windows per agent account: used %, reset time, when the reading was captured.",
-				details: ["--json prints { schemaVersion: 1, ... }; new fields may appear, a removed or renamed one bumps schemaVersion.",],
+				details: [
+					"In --json, generatedAt is ISO; capturedAt and resetsAt inside each snapshot are epoch ms, as recorded.","--json prints { schemaVersion: 1, ... }; new fields may appear, a removed or renamed one bumps schemaVersion.",],
 			},
 			{
 				name: "memory",
@@ -428,7 +429,7 @@ const COMMANDS: CommandHelp[] = [
 				summary: "List pending approval dialogs, oldest first. Read only — it never answers one.",
 				details: [
 					"Requests live in the running app's memory: an app restart drops them, and the requester re-asks.",
-					"--json prints { schemaVersion: 1, projectId, requests: [...] }.",
+					"--json prints { schemaVersion: 1, projectId, requests: [...] }; times are ISO, and a launch names its requester by task id and seq, or by sender id.",
 				],
 			},
 		],

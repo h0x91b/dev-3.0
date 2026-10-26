@@ -1,7 +1,7 @@
 import type { AgentLaunchRequest, Project, Task } from "../shared/types";
 import { agentLaunchAutoApproveMs, buildTaskDialogSubject, DEFAULT_PRIORITY, getTaskTitle } from "../shared/types";
 import { type ExternalSenderRequester, isExternalSenderRequester } from "../shared/external-senders";
-import { createAgentRequest, getAgentRequestState, setAgentLaunchDialog } from "./agent-requests";
+import { type AgentRequestRequester, createAgentRequest, getAgentRequestState, setAgentLaunchDialog } from "./agent-requests";
 import { getTask } from "./data";
 import { loadSettings } from "./settings";
 import { getPushMessage } from "./rpc-handlers/shared-pure";
@@ -15,6 +15,12 @@ export function launchRequesterFields(requester: LaunchRequester): Pick<AgentLau
 		return { requesterSeq: 0, requesterTitle: requester.label, requesterSender: requester };
 	}
 	return { requesterSeq: requester.seq, requesterTitle: getTaskTitle(requester) };
+}
+
+/** Who asked, as `dev3 approvals list` reports it. */
+export function launchRequesterSummary(requester: LaunchRequester): AgentRequestRequester {
+	if (isExternalSenderRequester(requester)) return { taskId: null, seq: null, title: requester.label, senderId: requester.senderId };
+	return { taskId: requester.id, seq: requester.seq, title: getTaskTitle(requester), senderId: null };
 }
 
 /** A stable key for joining retries of one request. */
@@ -58,11 +64,14 @@ export async function askSessionApproval(opts: {
 	// Checked in the same tick as the create: across an await a second request would
 	// pass too, then JOIN the first one's decision — one approval acting twice.
 	if (getAgentRequestState("launch", task.id).state === "pending") throw new Error(opts.alreadyPending);
-	const { requestId, decision, autoApproveAt } = createAgentRequest("launch", task.id, project.id, { autoApproveAfterMs });
+	const subject = buildTaskDialogSubject(task, project);
+	const { requestId, decision, autoApproveAt } = createAgentRequest("launch", task.id, project.id, {
+		autoApproveAfterMs, dialog: { taskTitle: getTaskTitle(task), subject, requester: launchRequesterSummary(requester) },
+	});
 	const request: AgentLaunchRequest = {
 		requestId, taskId: task.id, projectId: project.id, taskTitle: getTaskTitle(task), targetStatus: task.status,
 		scratch: false, ...launchRequesterFields(requester),
-		subject: buildTaskDialogSubject(task, project), defaultPriority: task.priority ?? DEFAULT_PRIORITY,
+		subject, defaultPriority: task.priority ?? DEFAULT_PRIORITY,
 		canAddVariants: false, autoApproveAt, ...opts.subject,
 	};
 	setAgentLaunchDialog(request);
