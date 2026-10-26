@@ -2,6 +2,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveModelRate, type ModelRate } from "../shared/agent-pricing";
 import { atomicWriteFile } from "./atomic-write";
+import { telemetryOptOutSync } from "./analytics-identity";
 import { DEV3_HOME } from "./paths";
 
 const FEED_URL = "https://models.dev/api.json";
@@ -16,6 +17,7 @@ interface PricingCache { version: 1; catalogRevision?: number; fetchedAt: number
 
 let cache: PricingCache | null = null;
 let loaded = false;
+let loading: Promise<void> | null = null;
 let pending: Promise<void> | null = null;
 let nextAttemptAt = 0;
 let failures = 0;
@@ -122,9 +124,9 @@ async function readFeed(response: Response): Promise<unknown> {
 }
 
 async function refresh(): Promise<void> {
-	if (!loaded) await loadCache();
 	const now = Date.now();
 	if (now < nextAttemptAt || cache && cache.catalogRevision === CATALOG_REVISION && now - cache.fetchedAt < DAY_MS) return;
+	if (telemetryOptOutSync()) return;
 	try {
 		// A fixed full-feed GET discloses no model choices, account state, or local content.
 		const response = await fetch(FEED_URL, {
@@ -132,7 +134,10 @@ async function refresh(): Promise<void> {
 			signal: AbortSignal.timeout(5_000),
 		});
 		const rates = feedRates(await readFeed(response));
-		const updated: PricingCache = { version: 1, catalogRevision: CATALOG_REVISION, fetchedAt: now, rates: { ...cache?.rates, ...rates } };
+		const updated: PricingCache = {
+			version: 1, catalogRevision: CATALOG_REVISION, fetchedAt: now,
+			rates: Object.assign(Object.create(null), cache?.rates, rates),
+		};
 		await mkdir(DEV3_HOME, { recursive: true });
 		await atomicWriteFile(CACHE_FILE, JSON.stringify(updated));
 		cache = updated;
@@ -144,11 +149,14 @@ async function refresh(): Promise<void> {
 	}
 }
 
-/** Resolve against one consistent daily pricing snapshot, retaining offline estimates. */
+/** Return saved prices immediately; refresh future reports without blocking on the network. */
 export async function getPricingResolver(): Promise<(modelId: string) => ModelRate | null> {
-	if (!pending) pending = refresh().finally(() => { pending = null; });
-	await pending;
+	if (!loaded) {
+		loading ??= loadCache().finally(() => { loading = null; });
+		await loading;
+	}
 	const rates = cache?.rates ?? {};
+	if (!pending) pending = refresh().finally(() => { pending = null; });
 	return (modelId) => {
 		const id = modelId.trim().toLowerCase().replace(/\[\d+[km]\]$/, "");
 		const routedId = id.startsWith("openrouter/") ? id.slice("openrouter/".length) : id;

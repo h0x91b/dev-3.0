@@ -4,7 +4,7 @@ import { writeClaudeHooks, writeCodexHooks } from "../../shared/agent-hooks";
 import { writeOmpStatusExtension } from "../../shared/omp-status-extension";
 import { writePiStatusExtension } from "../../shared/pi-status-extension";
 import { resolveDev3Home } from "../../shared/dev3-home";
-import { writeCursorUsageHooks } from "../../bun/cursor-usage-hooks";
+import { removeCursorUsageHooks, writeCursorUsageHooks } from "../../bun/cursor-usage-hooks";
 
 const WORKTREES_DIR = `${resolveDev3Home()}/worktrees`;
 
@@ -29,7 +29,14 @@ function detectWorktreePath(cwd: string): string | null {
 	return null;
 }
 
-export async function handleInstallHooks(): Promise<void> {
+export async function handleRemoveCursorUsageHooks(home?: string): Promise<void> {
+	const result = await removeCursorUsageHooks(home);
+	const action = result.status === "removed" ? "Removed" : result.status === "skipped" ? "Skipped" : "No installed";
+	process.stdout.write(`${action} Cursor usage hooks → ${result.path}${result.reason ? ` (${result.reason})` : ""}\n`);
+}
+
+export async function handleInstallHooks(options: { removeCursor?: boolean } = {}): Promise<void> {
+	if (options.removeCursor) return handleRemoveCursorUsageHooks();
 	const worktreePath = detectWorktreePath(process.cwd());
 	if (!worktreePath) {
 		exitError("Cannot detect worktree path", "Run this command from inside a dev-3.0 worktree.");

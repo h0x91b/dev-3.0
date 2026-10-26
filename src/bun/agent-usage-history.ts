@@ -64,20 +64,37 @@ function readHistory(): LegacyStates {
 	return states;
 }
 
-function mergeState(retained: UsageState, current: UsageState): UsageState {
-	for (const key of current.superseded) retained.superseded.add(key);
-	for (const key of retained.superseded) retained.records.delete(key);
-	for (const [key, value] of current.records) mergeUsageRecord(retained, key, value);
-	return retained;
+function sameRecord(previous: UsageRecord | undefined, next: UsageRecord | undefined): boolean {
+	if (!previous || !next) return previous === next;
+	return previous.model === next.model && previous.timestamp === next.timestamp &&
+		previous.pricingModel === next.pricingModel && previous.cumulativeScope === next.cumulativeScope &&
+		COUNT_KEYS.every((key) => previous.counts[key] === next.counts[key]);
+}
+
+function mergeState(retained: UsageState, current: UsageState): boolean {
+	let changed = false;
+	for (const key of current.superseded) {
+		if (!retained.superseded.has(key)) changed = true;
+		retained.superseded.add(key);
+	}
+	for (const key of retained.superseded) if (retained.records.delete(key)) changed = true;
+	for (const [key, value] of current.records) {
+		const previous = retained.records.get(key);
+		mergeUsageRecord(retained, key, value);
+		if (!sameRecord(previous, retained.records.get(key))) changed = true;
+	}
+	return changed;
 }
 
 async function retainLegacyHistory(current: States): Promise<States> {
 	try {
 		return await withFileLock(HISTORY_FILE, async () => {
 			const retained = readHistory();
+			let changed = false;
 			for (const source of ["claude", "codex"] as const) {
-				if (current[source]) mergeState(retained[source], current[source]);
+				if (current[source]) changed = mergeState(retained[source], current[source]) || changed;
 			}
+			if (!changed) return retained;
 			mkdirSync(DEV3_HOME, { recursive: true });
 			await atomicWriteFile(HISTORY_FILE, JSON.stringify({
 				version: 1, claude: [...retained.claude.records], codex: [...retained.codex.records],
@@ -104,7 +121,7 @@ async function retainAdditionalHistory(source: "gemini" | "cursor" | "copilot", 
 			} catch (error) {
 				if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 			}
-			mergeState(retained, current);
+			if (!mergeState(retained, current)) return retained;
 			mkdirSync(DEV3_HOME, { recursive: true });
 			await atomicWriteFile(file, JSON.stringify({ version: 1, records: [...retained.records], superseded: [...retained.superseded] }));
 			return retained;

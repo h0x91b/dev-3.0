@@ -18,6 +18,8 @@ All and MTD costs were rebuilt from surviving transcript files and a bundled pri
 
 History contains only locally stored identities, model names, timestamps and token counts; it cannot reconstruct logs deleted before the first scan. The fixed anonymous pricing GET sends no local models, account data, paths or prompts, and the provider receives no request-specific identifiers. Historical API-equivalent estimates use current rates and can change when pricing changes; model-specific long-context and service-tier premiums remain outside this estimate.
 
+The host's telemetry opt-out verdict gates every pricing request, including environment and in-app opt-outs. Reports return saved/bundled prices without waiting on the network; a background refresh updates subsequent reports. Unchanged history merges skip writes, while full reads and unbounded identity storage remain a documented scaling follow-up.
+
 ## Alternatives considered
 
 Daily high-water totals lose new work whenever missing logs offset it, so history must merge by record identity. Freezing only dollar totals prevents correcting formerly unpriced models; raw counts permit repricing retained history. Scraping pricing HTML is less reliable than a structured catalog, while requiring every price change to ship in an app release repeats the original gap.

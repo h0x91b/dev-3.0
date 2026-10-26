@@ -94,7 +94,7 @@ export async function setupAgentHooks(
 
 	if (spec.kind === "cursor") {
 		try {
-			const result = await writeCursorUsageHooks();
+			const result = await writeCursorUsageHooks(undefined, undefined, { create: true });
 			if (result.status === "skipped") log.warn("Cursor usage hooks not installed", { ...result });
 		} catch {
 			log.warn("Could not write Cursor usage hooks");

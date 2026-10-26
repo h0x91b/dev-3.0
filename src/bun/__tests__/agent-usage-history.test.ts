@@ -1,9 +1,12 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const historyHome = vi.hoisted(() => {
-	const path = `${process.env.HOME}/usage-history-${process.pid}-${Math.random().toString(36).slice(2)}`;
+const historyHome = await vi.hoisted(async () => {
+	const { mkdtempSync } = await import("node:fs");
+	const { tmpdir } = await import("node:os");
+	const { join } = await import("node:path");
+	const path = mkdtempSync(join(tmpdir(), "usage-history-"));
 	vi.stubEnv("DEV3_HOME", path);
 	return path;
 });
@@ -33,6 +36,48 @@ describe("retainUsageHistory", () => {
 		});
 		return { [source]: state } as Record<S, typeof state>;
 	}
+
+	function sourceFile(source: AgentUsageSource): string {
+		return source === "claude" || source === "codex" ? file : join(historyHome, `agent-usage-history-${source}-v1.json`);
+	}
+
+	function markPastWrite(path: string): number {
+		const past = new Date("2020-01-01T00:00:00Z");
+		utimesSync(path, past, past);
+		return statSync(path).mtimeMs;
+	}
+
+	it.each(["claude", "codex", "gemini", "cursor", "copilot"] as const)("leaves %s history bytes and mtime unchanged on repeated or missing-log refreshes", async (source) => {
+		await retainUsageHistory(additional(source, "one"));
+		const path = sourceFile(source);
+		const bytes = readFileSync(path, "utf8");
+		const modifiedAt = markPastWrite(path);
+		await retainUsageHistory(additional(source, "one"));
+		await retainUsageHistory(additional(source));
+		expect(readFileSync(path, "utf8")).toBe(bytes);
+		expect(statSync(path).mtimeMs).toBe(modifiedAt);
+	});
+
+	it.each(["claude", "codex", "gemini", "cursor", "copilot"] as const)("writes changed %s snapshots and durable tombstones", async (source) => {
+		await retainUsageHistory(additional(source, "one"));
+		const path = sourceFile(source);
+		const initialMtime = markPastWrite(path);
+		const changed = additional(source, "one");
+		const identity = `${source}:one`;
+		changed[source].records.get(identity)!.counts.outputTokens = 30;
+		await retainUsageHistory(changed);
+		expect(statSync(path).mtimeMs).not.toBe(initialMtime);
+		const updated = await retainUsageHistory(additional(source));
+		expect(updated[source].records.get(identity)!.counts.outputTokens).toBe(30);
+		const updatedMtime = markPastWrite(path);
+		const correction = additional(source);
+		correction[source].superseded.add(identity);
+		await retainUsageHistory(correction);
+		expect(statSync(path).mtimeMs).not.toBe(updatedMtime);
+		const replay = await retainUsageHistory(additional(source, "one"));
+		expect(replay[source].superseded.has(identity)).toBe(true);
+		expect(replay[source].records.has(identity)).toBe(false);
+	});
 
 	it.each(["gemini", "cursor", "copilot"] as const)("retains %s usage when its source files disappear", async (source) => {
 		await retainUsageHistory(additional(source, "one"));

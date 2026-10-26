@@ -10,8 +10,11 @@ vi.mock("../../rate-limit-monitor", () => ({
 	getAgentRateLimitsReport: vi.fn(),
 }));
 
-const testHome = vi.hoisted(() => {
-	const home = `${process.env.HOME}/agent-usage-${process.pid}-${Math.random().toString(36).slice(2)}`;
+const testHome = await vi.hoisted(async () => {
+	const { mkdtempSync } = await import("node:fs");
+	const { tmpdir } = await import("node:os");
+	const { join } = await import("node:path");
+	const home = mkdtempSync(join(tmpdir(), "agent-usage-"));
 	vi.stubEnv("DEV3_HOME", `${home}/.dev3.0`);
 	return home;
 });

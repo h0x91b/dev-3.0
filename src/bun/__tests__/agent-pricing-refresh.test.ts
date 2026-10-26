@@ -22,14 +22,22 @@ function reply(value: unknown): Response {
 	return new Response(JSON.stringify(value));
 }
 
-async function resolver() {
+async function immediateResolver() {
 	return (await import("../agent-pricing-refresh")).getPricingResolver();
+}
+
+async function resolver(input = 3, model = "gpt-6.1-sol") {
+	await immediateResolver();
+	await vi.waitFor(async () => expect((await immediateResolver())(model)?.input).toBe(input));
+	return immediateResolver();
 }
 
 beforeEach(() => {
 	vi.resetModules();
 	dir = mkdtempSync(join(tmpdir(), "dev3-pricing-"));
 	vi.stubEnv("DEV3_HOME", dir);
+	vi.stubEnv("DEV3_TELEMETRY", "on");
+	vi.stubEnv("DO_NOT_TRACK", "0");
 	now = Date.parse("2026-10-25T12:00:00Z");
 	vi.spyOn(Date, "now").mockImplementation(() => now);
 	fetchMock = vi.fn().mockResolvedValue(reply(feed()));
@@ -44,6 +52,35 @@ afterEach(() => {
 });
 
 describe("daily agent pricing refresh", () => {
+	it.each(["DEV3_TELEMETRY", "DO_NOT_TRACK"])("does not fetch when %s opts out", async (name) => {
+		vi.stubEnv(name, name === "DO_NOT_TRACK" ? "1" : "off");
+		expect((await immediateResolver())("gpt-6.1-sol")?.input).toBe(2);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("reads the saved opt-out on every refresh attempt and keeps cached rates available", async () => {
+		writeFileSync(join(dir, "settings.json"), JSON.stringify({ telemetryDisabled: true }));
+		expect((await immediateResolver())("gpt-6.1-sol")?.input).toBe(2);
+		expect(fetchMock).not.toHaveBeenCalled();
+		writeFileSync(join(dir, "settings.json"), JSON.stringify({ telemetryDisabled: false }));
+		expect((await resolver())("gpt-6.1-sol")?.input).toBe(3);
+		writeFileSync(join(dir, "settings.json"), JSON.stringify({ telemetryDisabled: true }));
+		now += DAY_MS;
+		expect((await immediateResolver())("gpt-6.1-sol")?.input).toBe(3);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("returns bundled rates without waiting for an unfinished network request", async () => {
+		let finish!: (response: Response) => void;
+		fetchMock.mockImplementation(() => new Promise<Response>((resolve) => { finish = resolve; }));
+		const immediate = await immediateResolver();
+		expect(immediate("gpt-6.1-sol")?.input).toBe(2);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		finish(reply(feed()));
+		await vi.waitFor(async () => expect((await resolver())("gpt-6.1-sol")?.input).toBe(3));
+		expect(immediate("gpt-6.1-sol")?.input).toBe(2);
+	});
+
 	it("refreshes a recent older pricing catalog once when Google support is added", async () => {
 		writeFileSync(join(dir, "agent-pricing-v1.json"), JSON.stringify({ version: 1, fetchedAt: now, rates: {
 			"openai:gpt-6.1-sol": { input: 2, output: 10, cacheRead: 0.1, cacheWrite5m: 2.5, cacheWrite1h: 4 },
@@ -106,7 +143,7 @@ describe("daily agent pricing refresh", () => {
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 		now += DAY_MS;
 		fetchMock.mockResolvedValue(reply(feed(6, 24)));
-		const latest = await resolver();
+		const latest = await resolver(6);
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 		expect(latest("gpt-6.1-sol")).toMatchObject({ input: 6, output: 24 });
 		expect(first("gpt-6.1-sol")).toMatchObject({ input: 3, output: 12 });
@@ -131,7 +168,7 @@ describe("daily agent pricing refresh", () => {
 			"gpt-6.1-sol": { cost: { input: -9, output: 0 } },
 			"new-priced-model": { cost: { input: 1, output: 2 } },
 		} } }));
-		const latest = await resolver();
+		const latest = await resolver(1, "new-priced-model");
 		expect(latest("gpt-6.1-sol")?.input).toBe(3);
 		expect(latest("claude-new")?.input).toBe(4);
 		expect(latest("new-priced-model")).toMatchObject({ input: 1, output: 2 });
@@ -154,17 +191,18 @@ describe("daily agent pricing refresh", () => {
 		expect(fetchMock).toHaveBeenCalledTimes(3);
 		now += 5 * 60_000;
 		fetchMock.mockResolvedValue(reply(feed(6)));
-		expect((await resolver())("gpt-6.1-sol")?.input).toBe(6);
+		expect((await resolver(6))("gpt-6.1-sol")?.input).toBe(6);
 	});
 
 	it("shares a single in-flight refresh between simultaneous dashboard requests", async () => {
 		let finish!: (response: Response) => void;
 		fetchMock.mockImplementation(() => new Promise<Response>((resolve) => { finish = resolve; }));
-		const requests = [resolver(), resolver(), resolver()];
+		const requests = [immediateResolver(), immediateResolver(), immediateResolver()];
 		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 		finish(reply(feed()));
 		const results = await Promise.all(requests);
-		expect(results.every((rate) => rate("gpt-6.1-sol")?.input === 3)).toBe(true);
+		expect(results.every((rate) => rate("gpt-6.1-sol")?.input === 2)).toBe(true);
+		expect((await resolver())("gpt-6.1-sol")?.input).toBe(3);
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
@@ -196,14 +234,14 @@ describe("daily agent pricing refresh", () => {
 	it.each([{}, null, { openai: { models: { bad: { cost: { input: "1", output: 2 } } } } }])(
 		"uses bundled offline rates when the feed has no usable prices: %j", async (invalid) => {
 			fetchMock.mockResolvedValue(reply(invalid));
-			const rate = await resolver();
+			const rate = await resolver(2);
 			expect(rate("gpt-6.1-sol")).toMatchObject({ input: 2, output: 10, cacheRead: 0.1 });
 			expect(rate("unknown-model")).toBeNull();
 		});
 
 	it("rejects oversized feeds and retains bundled prices", async () => {
 		fetchMock.mockResolvedValue(new Response(" ".repeat(16 * 1024 * 1024 + 1)));
-		expect((await resolver())("gpt-6.1-sol")?.input).toBe(2);
+		expect((await resolver(2))("gpt-6.1-sol")?.input).toBe(2);
 	});
 
 	it("ignores invalid saved prices and recovers using the current public feed", async () => {
