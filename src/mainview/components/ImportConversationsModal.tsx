@@ -90,6 +90,11 @@ function ImportConversationsModal({ project, autoOffer, onClose }: ImportConvers
 
 	const count = partial ? selected.size : conversations.length;
 	const empty = !scanning && !scanError && conversations.length === 0;
+	// The offer follows Add Project, so a bare "Cancel" there read as backing out of
+	// adding the project. Dismissing only ever declines the import.
+	const dismissLabel = empty || scanError
+		? t("importConversations.close")
+		: autoOffer ? t("importConversations.skip") : t("importConversations.cancel");
 
 	// An unasked-for offer stays invisible until it has something to offer, so a
 	// fast scan never flashes a dialog the user then watches disappear.
@@ -112,10 +117,15 @@ function ImportConversationsModal({ project, autoOffer, onClose }: ImportConvers
 				<div className="px-6 pt-6 pb-4 space-y-1">
 					<div className="flex items-center gap-1.5">
 						<h2 id="import-conversations-title" className="text-fg text-lg font-semibold">
-							{t("importConversations.title")}
+							{autoOffer ? t("importConversations.offerTitle") : t("importConversations.title")}
 						</h2>
 						<HelpSpot topicId="modal.import-conversations" className="w-5 h-5 text-base" />
 					</div>
+					{autoOffer && (
+						<p className="text-fg-2 text-sm" data-testid="import-conversations-offer-note">
+							{t("importConversations.offerNote", { name: project.name })}
+						</p>
+					)}
 					<p className="text-fg-3 text-sm">
 						{scanning
 							? t("importConversations.scanning")
@@ -239,9 +249,10 @@ function ImportConversationsModal({ project, autoOffer, onClose }: ImportConvers
 						type="button"
 						onClick={onClose}
 						disabled={importing}
+						data-testid="import-conversations-dismiss"
 						className="px-4 py-1.5 text-fg-3 text-sm hover:text-fg transition-colors rounded-lg disabled:opacity-50"
 					>
-						{empty || scanError ? t("importConversations.close") : t("importConversations.cancel")}
+						{dismissLabel}
 					</button>
 					{!empty && !scanError && (
 						<button

@@ -217,4 +217,50 @@ describe("ImportConversationsModal", () => {
 		expect(props.onClose).not.toHaveBeenCalled();
 		expect(screen.getByTestId("import-conversations-submit")).toBeEnabled();
 	});
+
+	describe("declining the offer after Add Project", () => {
+		it("says the project is already added and offers Skip import, not Cancel", async () => {
+			renderModal({ autoOffer: true });
+			expect(await screen.findByText("Import earlier conversations?")).toBeInTheDocument();
+			expect(screen.getByTestId("import-conversations-offer-note")).toHaveTextContent(
+				"dev-3.0 is added. Importing is optional",
+			);
+			expect(screen.getByTestId("import-conversations-dismiss")).toHaveTextContent("Skip import");
+			expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+		});
+
+		it("Skip import closes without importing anything", async () => {
+			const user = userEvent.setup();
+			const props = renderModal({ autoOffer: true });
+			await user.click(await screen.findByRole("button", { name: "Skip import" }));
+			expect(props.onClose).toHaveBeenCalledTimes(1);
+			expect(mocks.importConversations).not.toHaveBeenCalled();
+		});
+
+		it("Escape and a backdrop click decline the same way", async () => {
+			const user = userEvent.setup();
+			const props = renderModal({ autoOffer: true });
+			const dialog = await screen.findByRole("dialog");
+			await user.keyboard("{Escape}");
+			await user.pointer({ keys: "[MouseLeft]", target: dialog.parentElement! });
+			expect(props.onClose).toHaveBeenCalledTimes(2);
+			expect(mocks.importConversations).not.toHaveBeenCalled();
+		});
+
+		it("never imports from the keyboard without the Import button", async () => {
+			const user = userEvent.setup();
+			renderModal({ autoOffer: true });
+			expect(await screen.findByTestId("import-conversations-all")).toHaveFocus();
+			await user.keyboard("{Enter}");
+			await user.keyboard(" ");
+			expect(mocks.importConversations).not.toHaveBeenCalled();
+		});
+
+		it("keeps the plain title and Cancel when the user opened the dialog themselves", async () => {
+			renderModal();
+			expect(await screen.findByText("Import agent conversations")).toBeInTheDocument();
+			expect(screen.queryByTestId("import-conversations-offer-note")).not.toBeInTheDocument();
+			expect(screen.getByTestId("import-conversations-dismiss")).toHaveTextContent("Cancel");
+		});
+	});
 });
