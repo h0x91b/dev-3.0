@@ -2,8 +2,10 @@ import { readAutoHibernateOutputAt } from "./auto-hibernate-activity";
 import { AutoHibernateScheduler } from "./auto-hibernate-scheduler";
 import * as data from "./data";
 import { loadSettings } from "./settings";
-import { dispatchLifecycleEvent } from "./lifecycle/service";
+import { dispatchGuardedLifecycleEvent } from "./lifecycle/service";
+import { confirmAutoHibernate } from "./auto-hibernate-guard";
 import { createLogger } from "./logger";
+import { getPushMessage } from "./rpc-handlers/shared";
 
 const log = createLogger("auto-hibernate");
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -21,8 +23,12 @@ export function startAutoHibernate(): void {
 		},
 		outputAt: readAutoHibernateOutputAt,
 		hibernate: async (project, task, inactivity) => {
-			const updated = await dispatchLifecycleEvent(project.id, task.id, { type: "hibernateRequested", inactivity });
-			if (updated.hibernated) log.info("Hibernated inactive task", { taskId: task.id });
+			const updated = await dispatchGuardedLifecycleEvent(project.id, task.id,
+				{ type: "hibernateRequested", inactivity }, current => confirmAutoHibernate(current, inactivity));
+			if (updated.hibernated) {
+				log.info("Hibernated inactive task", { taskId: task.id });
+				getPushMessage()?.("taskAutoHibernated", { projectId: project.id, taskId: task.id });
+			}
 		},
 		onError: error => log.warn("Inactivity check failed", { error: String(error) }),
 		now: Date.now,

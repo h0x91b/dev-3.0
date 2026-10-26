@@ -631,10 +631,8 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 					// touch the worktree until the task's terminal tree is confirmed gone.
 					effect({ type: "destroyTaskPty" }, "abort"),
 					effect({ type: "killDevServer" }),
-					// Hibernation exists to reclaim memory: a detached agent daemon
-					// (watcher, headless browser, MCP server) squatting the worktree
-					// defeats the entire point. The worktree itself survives.
-					effect({ type: "reapWorktreeProcesses" }),
+					// Only manual confirmation authorizes killing unrelated cwd holders.
+					...(event.inactivity ? [] : [effect({ type: "reapWorktreeProcesses" })]),
 					effect({ type: "releasePorts" }),
 					effect({ type: "persistRuntime", runtime, taskPatch: { hibernated: true } }, "abort"),
 					effect({ type: "push", message: "taskUpdated", view: "current" }),

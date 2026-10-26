@@ -1219,6 +1219,15 @@ describe("hibernation", () => {
 		expect(destroy?.onError).toBe("abort");
 	});
 
+	it("never reaps unrelated worktree processes on an inactivity timer", () => {
+		const result = transition(active(), {
+			type: "hibernateRequested", inactivity: { lastActivityAt: 1, timeoutMinutes: 60 },
+		});
+		expect(result.next.facts.hibernated).toBe(true);
+		expect(result.effects.map(effect => effect.type)).toContain("destroyTaskPty");
+		expect(result.effects.map(effect => effect.type)).not.toContain("reapWorktreeProcesses");
+	});
+
 	it("refuses a To Do task, which has nothing running to free", () => {
 		const result = transition(state("todo"), { type: "hibernateRequested" });
 

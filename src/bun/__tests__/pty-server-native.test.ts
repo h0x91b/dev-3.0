@@ -55,6 +55,7 @@ import {
 	destroyNativeTaskSession,
 	destroySessionAwaited,
 	getSessionBackend,
+	getNativeTaskOutputTime,
 	hasDeadSession,
 	hasSession,
 	isNativeSessionSettling,
@@ -100,6 +101,30 @@ function deferredBoot(taskId = TASK_ID) {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+});
+
+describe("native output clock for automatic hibernation", () => {
+	const CLOCK_TASK_ID = "aabbccdd-1111-2222-3333-555555555555";
+	it("requires a bound observer for every pane and updates on actual output", async () => {
+		const clock = vi.spyOn(Date, "now").mockReturnValue(1_000);
+		vi.mocked(startNativeTaskPanes).mockResolvedValue(fakePanesState(CLOCK_TASK_ID) as never);
+		vi.mocked(bindNativeTaskPane).mockResolvedValue(fakeTerminal(CLOCK_TASK_ID) as never);
+		try {
+			expect(getNativeTaskOutputTime(CLOCK_TASK_ID, ["pane-1"])).toBeNull();
+			await createNativeTaskSession(CLOCK_TASK_ID, "project", "/worktree", LAUNCH);
+			expect(getNativeTaskOutputTime(CLOCK_TASK_ID, [])).toBeNull();
+			expect(getNativeTaskOutputTime(CLOCK_TASK_ID, ["pane-1", "unobserved"])).toBeNull();
+			expect(getNativeTaskOutputTime(CLOCK_TASK_ID, ["pane-1"])).toBe(1_000);
+			clock.mockReturnValue(2_000);
+			const calls = vi.mocked(bindNativeTaskPane).mock.calls;
+			const callbacks = calls[calls.length - 1][1];
+			callbacks.onOutput(new TextEncoder().encode("actual terminal output"));
+			expect(getNativeTaskOutputTime(CLOCK_TASK_ID, ["pane-1"])).toBe(2_000);
+		} finally {
+			await destroyNativeTaskSession(CLOCK_TASK_ID);
+			clock.mockRestore();
+		}
+	});
 });
 
 describe("createNativeTaskSession — the boot window", () => {
