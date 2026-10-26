@@ -943,8 +943,16 @@ describe("uploadFileBase64", () => {
 
 describe("pasteClipboardImage", () => {
 	const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+	const realPlatform = process.platform;
+
+	// The direct Electrobun call is the macOS/Windows path; Linux goes through the worker
+	// (clipboard-image-reader.test.ts). Pinned so a Linux CI runner tests the same thing.
+	afterEach(() => {
+		Object.defineProperty(process, "platform", { value: realPlatform, writable: true });
+	});
 
 	beforeEach(() => {
+		Object.defineProperty(process, "platform", { value: "darwin", writable: true });
 		vi.clearAllMocks();
 		vi.mocked(data.getProject).mockResolvedValue(makeProject({ path: "/tmp/project-root" }));
 		(globalThis as any).Bun.write = vi.fn().mockResolvedValue(undefined);
@@ -975,6 +983,17 @@ describe("pasteClipboardImage", () => {
 
 		vi.mocked(Utils.clipboardReadImage).mockReturnValue(new Uint8Array([1, 2, 3, 4]));
 		await expect(handlers.pasteClipboardImage({ projectId: "proj-1" })).rejects.toThrow(/format/);
+		expect((globalThis as any).Bun.write).not.toHaveBeenCalled();
+	});
+
+	it("on Linux without the clipboard worker, fails instead of calling the blocking FFI", async () => {
+		Object.defineProperty(process, "platform", { value: "linux", writable: true });
+		vi.mocked(Utils.clipboardAvailableFormats).mockReturnValue(["image"]);
+		await expect(handlers.pasteClipboardImage({ projectId: "proj-1" })).rejects.toThrow(/missing from this build/);
+		expect(
+			Utils.clipboardAvailableFormats,
+			"cause: a Linux paste read the clipboard on the host thread, which a stalled owner froze for ~125 s. fix: route Linux through the worker and fail closed without it",
+		).not.toHaveBeenCalled();
 		expect((globalThis as any).Bun.write).not.toHaveBeenCalled();
 	});
 });
