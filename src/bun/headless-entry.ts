@@ -1,5 +1,6 @@
 import { stopAgentMessageLogWatches } from "./agent-message-log-watch";
 import { startBoardCopy, stopBoardCopy } from "./board-copy";
+import { startAutoHibernate, stopAutoHibernate } from "./auto-hibernate";
 import { claudeSessionWatches } from "./claude-session-watch";
 /**
  * Headless entry point for `dev3 remote`.
@@ -498,6 +499,7 @@ startQrAutoRefresh(() => getAccessUrl());
 
 // ── Background pollers ──
 await rehydrateTaskLifecycles();
+startAutoHibernate();
 
 startMergeDetectionPoller();
 startBoardCopy();
@@ -599,6 +601,7 @@ function shutdown(signal: string): void {
 	claudeSessionWatches.close();
 	stopQrAutoRefresh();
 	stopPortScanPoller();
+	stopAutoHibernate();
 	stopResourceMonitor();
 	stopRateLimitMonitor();
 	stopSelfUpdateWatch();

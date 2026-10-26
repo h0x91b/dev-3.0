@@ -11,6 +11,7 @@ import { noteAgentExited, noteAgentSessionActive, noteAgentSessionStarted } from
 import { log, type Handler, withSenderVariant } from "./shared";
 import { requirePaneTask, resolveRequesterTask, resolveTaskFromParams, senderRequester } from "./task-resolution";
 import { claudeSessionWatches, type ClaudeIdleEvent } from "../claude-session-watch";
+import { recordTaskActivity } from "../task-activity";
 
 const codexQuestions = new CodexQuestionState();
 
@@ -123,6 +124,7 @@ export const agentHandlers: Record<string, Handler> = {
 		if (!AGENT_STATUS_HOOK_EVENTS.includes(event)) {
 			throw new Error(`Unsupported status hook event: ${String(params.event)}`);
 		}
+		recordTaskActivity(task.id);
 		// The CLI that reports is the managed copy under ~/.dev3.0/bin, which a
 		// worktree build does not replace; one from before Copilot names no harness.
 		const harness: PromptSubmitHarness = params.harness === "omp" || params.harness === "pi" || params.harness === "copilot"
@@ -233,6 +235,7 @@ export const agentHandlers: Record<string, Handler> = {
 	 */
 	"task.promptSubmitted": (params) => codexQuestions.run(String(params.taskId), async () => {
 		const { project, task } = await resolveTaskFromParams(params);
+		recordTaskActivity(task.id);
 		const harness: PromptSubmitHarness = params.harness === "codex" || params.harness === "copilot"
 			? params.harness
 			: "claude";

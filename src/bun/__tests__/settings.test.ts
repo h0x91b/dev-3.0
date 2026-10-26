@@ -37,6 +37,15 @@ describe("saveSettings", () => {
 		rmSync(TEST_HOME, { recursive: true, force: true });
 	});
 
+	it("normalizes automatic hibernation safely in both settings readers", async () => {
+		for (const value of [undefined, -1, 0, 0.5, "60", null, 43_201, 60]) {
+			writeFileSync(settingsPath, JSON.stringify(makeSettings({ autoHibernateMinutes: value as number })));
+			for (const loaded of [await loadSettings(), loadSettingsSync()]) {
+				expect(loaded.autoHibernateMinutes).toBe(value === 60 ? 60 : 0);
+			}
+		}
+	});
+
 	it("starts only a fresh installation in Simplified Mode, in both loaders", async () => {
 		for (const settings of [await loadSettings(), loadSettingsSync()]) {
 			expect(settings.simplifiedMode).toBe(true);
@@ -356,6 +365,7 @@ describe("saveSettings", () => {
 			remotePort: 41234,
 			agentLaunchAutoApproveMinutes: 2,
 			resourceLevels: { cpuBusyWarnPercent: 70, diskCriticalGb: 10 },
+			autoHibernateMinutes: 60,
 			defaultAgentId: "builtin-codex",
 			defaultConfigId: "codex-default",
 			taskSortOrder: "newest-first",

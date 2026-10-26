@@ -312,6 +312,8 @@ export interface GlobalSettings {
 	agentLaunchAutoApproveMinutes?: number;
 	/** Where the CPU and disk readouts turn yellow / red. Sparse: absent keys use the defaults. */
 	resourceLevels?: Partial<ResourceLevels>;
+	/** Inactive task timeout in whole minutes; absent or 0 disables automatic hibernation. */
+	autoHibernateMinutes?: number;
 	/**
 	 * When false, the Create-PR handoff stops asking the agent to append the
 	 * deep link back to the originating task. Default on; the opt-out exists
