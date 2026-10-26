@@ -123,19 +123,22 @@ async function isDevServerRunning(task: Task, socket: string, serverName: string
  * declaration was deleted while it ran is still torn down.
  */
 async function liveDevServerNames(task: Task, socket: string): Promise<string[]> {
-	// A native pane carries its script path in its launch command, which is the
-	// only place its server name survives.
-	if (taskTerminalBackendIdentity(task) === "native") return nativeDevServerPaneNames(task);
 	try {
-		const rows = await tmux.listSessions(SESSION_OVERVIEW_FORMAT, { socket });
-		return rows
-			.filter((row) => isDevServerSessionOfTask(row.name, task.id))
-			.map((row) => parseDev3SessionName(row.name)?.serverName)
-			.filter((name): name is string => !!name);
+		return await readLiveDevServerNames(task, socket);
 	} catch (err) {
 		if (err instanceof TmuxError) return [];
 		throw err;
 	}
+}
+
+/** Strict discovery for callers that must treat unreadable state as unknown. */
+export async function readLiveDevServerNames(task: Task, socket: string): Promise<string[]> {
+	if (taskTerminalBackendIdentity(task) === "native") return nativeDevServerPaneNames(task);
+	const rows = await tmux.listSessions(SESSION_OVERVIEW_FORMAT, { socket });
+	return rows
+		.filter((row) => isDevServerSessionOfTask(row.name, task.id))
+		.map((row) => parseDev3SessionName(row.name)?.serverName)
+		.filter((name): name is string => !!name);
 }
 
 /** Native only: the server name behind every live dev-server pane of the task. */

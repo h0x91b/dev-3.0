@@ -1,4 +1,5 @@
 import { interfaceOnboarding } from "../interface-onboarding";
+import { reportTaskViewer } from "../task-activity";
 import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
@@ -1110,6 +1111,9 @@ export const appHandlers = {
 	setWindowTitleContext,
 	setTerminalFocus: setTerminalFocusHandler,
 	setActiveContext: setActiveContextHandler,
+	reportTaskActivity: async (params: { clientId: string; taskId: string | null; focused: boolean }): Promise<void> => {
+		reportTaskViewer(params.clientId, params.taskId, params.focused);
+	},
 	setStreamerPrivacy: setStreamerPrivacyHandler,
 	ping,
 	updateMenuContext,

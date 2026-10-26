@@ -1,4 +1,5 @@
 import { stopAgentMessageLogWatches } from "./agent-message-log-watch";
+import { startAutoHibernate, stopAutoHibernate } from "./auto-hibernate";
 import { claudeSessionWatches } from "./claude-session-watch";
 /**
  * Headless entry point for `dev3 remote`.
@@ -495,6 +496,7 @@ startQrAutoRefresh(() => getAccessUrl());
 
 // ── Background pollers ──
 await rehydrateTaskLifecycles();
+startAutoHibernate();
 
 startMergeDetectionPoller();
 startPRDetectionPoller();
@@ -590,6 +592,7 @@ function shutdown(signal: string): void {
 	claudeSessionWatches.close();
 	stopQrAutoRefresh();
 	stopPortScanPoller();
+	stopAutoHibernate();
 	stopResourceMonitor();
 	stopRateLimitMonitor();
 	stopSelfUpdateWatch();

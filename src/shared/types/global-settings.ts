@@ -297,6 +297,8 @@ export interface GlobalSettings {
 	 * applied to the completion dialog: that one destroys a worktree.
 	 */
 	agentLaunchAutoApproveMinutes?: number;
+	/** Inactive task timeout in whole minutes; absent or 0 disables automatic hibernation. */
+	autoHibernateMinutes?: number;
 	/**
 	 * When false, the Create-PR handoff stops asking the agent to append the
 	 * deep link back to the originating task. Default on; the opt-out exists

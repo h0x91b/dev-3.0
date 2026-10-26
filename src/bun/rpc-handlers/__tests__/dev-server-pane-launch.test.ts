@@ -98,7 +98,13 @@ vi.mock("../../port-scanner", () => ({
 	terminatePidsVerified: vi.fn(async () => []),
 }));
 
+vi.mock("../../native-task-panes", () => ({ nativeTaskPaneCommands: vi.fn(async () => []) }));
+
 import { runDevServer } from "../tmux-pty";
+import { readLiveDevServerNames } from "../tmux-pty/dev-servers";
+import { tmux, devServerSessionName } from "../../tmux";
+import { nativeTaskPaneCommands } from "../../native-task-panes";
+import { dev3TaskTempPath } from "../../temp-paths";
 
 const PROJECT = { id: "proj-1", name: "p", path: "/repo", defaultBaseBranch: "main" } as any;
 /** Windows stamps every new task `native` (`newTaskTerminalBackend`). */
@@ -228,5 +234,31 @@ describe(`dev-server pane launch on ${process.platform}`, () => {
 		await runDevServer({ taskId: NATIVE_TASK.id, projectId: PROJECT.id });
 		const nativeLaunch = mocks.openAuxPane.mock.calls[0][0].nativeLaunch;
 		expect(nativeLaunch.argv.join(" ")).toContain(auxPaneMarker(NATIVE_TASK.id, "devServer"));
+	});
+});
+
+
+describe("strict live dev-server discovery", () => {
+	it("finds a tmux server without reading its removed declaration", async () => {
+		vi.mocked(tmux.listSessions).mockResolvedValueOnce([
+			{ name: devServerSessionName(TMUX_TASK.id, "removed-api") },
+			{ name: devServerSessionName("another-task", "other") },
+		] as never);
+		expect(await readLiveDevServerNames(TMUX_TASK, "own-socket")).toEqual(["removed-api"]);
+		expect(tmux.listSessions).toHaveBeenCalledWith(expect.anything(), { socket: "own-socket" });
+		expect(mocks.resolveOperationalProjectConfig).not.toHaveBeenCalled();
+	});
+
+	it("finds native servers from live pane commands even without configuration", async () => {
+		vi.mocked(nativeTaskPaneCommands).mockResolvedValueOnce([
+			{ alive: true, command: ["/bin/bash", `${dev3TaskTempPath(NATIVE_TASK.id, "dev")}-removed-api.sh`] },
+			{ alive: false, command: ["/bin/bash", `${dev3TaskTempPath(NATIVE_TASK.id, "dev")}-dead.sh`] },
+		] as never);
+		expect(await readLiveDevServerNames(NATIVE_TASK, "own-socket")).toEqual(["removed-api"]);
+	});
+
+	it("does not turn an unreadable tmux server into proof that no dev server is running", async () => {
+		vi.mocked(tmux.listSessions).mockRejectedValueOnce(new Error("unreadable socket"));
+		await expect(readLiveDevServerNames(TMUX_TASK, "own-socket")).rejects.toThrow("unreadable socket");
 	});
 });
