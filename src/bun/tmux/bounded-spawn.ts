@@ -8,7 +8,8 @@
  * with it (it froze startup on "Checking system…" — see
  * decisions/2026/08/16/bound-every-tmux-spawn.md).
  *
- * Consumers: TmuxClient, ./binary, and ../probe-spawn (the pollers' ps/vm_stat probes).
+ * Consumers: TmuxClient, ./binary, ../probe-spawn (the pollers' ps/vm_stat probes)
+ * and ../lsof-scan.
  */
 import type { spawn } from "../spawn";
 
@@ -35,6 +36,12 @@ export type BoundedOutcome =
 export interface SpawnBounds {
 	timeoutMs?: number;
 	signal?: AbortSignal;
+	/**
+	 * The child leads its own process group (spawned `detached`), so a stop signals
+	 * the whole group: a forking tool such as `lsof` leaves its helper child running
+	 * when only the parent is killed.
+	 */
+	processGroup?: boolean;
 }
 
 /** Whether `work` settled within `ms`. Never rejects; used only to bound a wait. */
@@ -96,21 +103,26 @@ export async function runBounded(proc: SpawnedProcess, bounds?: SpawnBounds): Pr
 		resolveStopped = resolve;
 	});
 	let stopping = false;
+	const groupId = bounds?.processGroup && proc.pid > 0 ? proc.pid : null;
+	const signalChild = (signal: NodeJS.Signals): void => {
+		try {
+			if (groupId !== null) process.kill(-groupId, signal);
+			else proc.kill(signal);
+		} catch {
+			// already gone
+		}
+	};
 	const stop = async (): Promise<void> => {
 		if (stopping) return;
 		stopping = true;
-		// TERM, a bounded wait, then KILL, then a bounded reap.
-		try {
-			proc.kill("SIGTERM");
-		} catch {
-			// already gone
+		// TERM, a bounded wait, then KILL, then a bounded reap. A group member that
+		// outlived the TERMed leader is swept with KILL either way.
+		signalChild("SIGTERM");
+		if (await settled(proc.exited, TERM_GRACE_MS)) {
+			if (groupId !== null) signalChild("SIGKILL");
+			return resolveStopped(true);
 		}
-		if (await settled(proc.exited, TERM_GRACE_MS)) return resolveStopped(true);
-		try {
-			proc.kill("SIGKILL");
-		} catch {
-			// already gone
-		}
+		signalChild("SIGKILL");
 		resolveStopped(await settled(proc.exited, KILL_GRACE_MS));
 	};
 

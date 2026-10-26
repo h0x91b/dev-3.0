@@ -4,7 +4,7 @@ import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { buildProcessTree, collectDescendants, collectProcessInfo, type ProcessInfoResult } from "./port-scanner";
 import { terminatePidsVerified } from "./process-reaper";
-import { spawn } from "./spawn";
+import { CWD_SCAN_TIMEOUT_MS, runLsof } from "./lsof-scan";
 
 const log = createLogger("worktree-reaper");
 
@@ -22,13 +22,10 @@ const REAP_KILL_WAIT_MS = 2000;
  * the packaged `.app` hardened runtime (see decision 095).
  */
 export async function listPidCwds(): Promise<Map<number, string>> {
-	try {
-		const proc = spawn(["lsof", "-a", "-d", "cwd", "-F", "pn"], { stdout: "pipe", stderr: "pipe" });
-		const [output] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
-		return parsePidCwds(output);
-	} catch {
-		return new Map();
-	}
+	// lsof exits non-zero over processes it may not inspect, so the exit code is
+	// ignored. A scan that timed out yields nothing to reap — never a guess.
+	const result = await runLsof(["-a", "-d", "cwd", "-F", "pn"], CWD_SCAN_TIMEOUT_MS);
+	return result ? parsePidCwds(result.stdout) : new Map();
 }
 
 /** Parse `lsof -a -d cwd -F pn` output. Exported for tests. */
