@@ -20,7 +20,8 @@ const mocks = vi.hoisted(() => ({
 	createWorktree: vi.fn(),
 	resolveProjectConfig: vi.fn(),
 	deleteTask: vi.fn(),
-	assertWorkspaceReclaimable: vi.fn(),
+	assertTaskWorkDisposable: vi.fn(),
+	hasSession: vi.fn(),
 	push: vi.fn(),
 }));
 
@@ -32,14 +33,19 @@ vi.mock("../../data", () => ({
 	updateProjectWith: mocks.updateProjectWith,
 }));
 vi.mock("../../git", () => {
-	class WorkspaceReclaimRefusedError extends Error {}
+	class WorkspaceReclaimRefusedError extends Error {
+		constructor(readonly kind: string, readonly detail: { path?: string; branch?: string }) {
+			super(`refused: ${kind}`);
+		}
+	}
 	return {
 		refExists: mocks.refExists,
 		createWorktree: mocks.createWorktree,
-		assertWorkspaceReclaimable: mocks.assertWorkspaceReclaimable,
+		assertTaskWorkDisposable: mocks.assertTaskWorkDisposable,
 		WorkspaceReclaimRefusedError,
 	};
 });
+vi.mock("../../pty-server", () => ({ hasSession: mocks.hasSession }));
 vi.mock("../../repo-config", () => ({ resolveProjectConfig: mocks.resolveProjectConfig }));
 vi.mock("../../conversation-import", () => ({ scanImportableConversations: mocks.scanImportableConversations }));
 vi.mock("../task-lifecycle", () => ({ deleteTask: mocks.deleteTask }));
@@ -147,7 +153,8 @@ beforeEach(() => {
 		createdTask(description, status, extras));
 	mocks.updateTask.mockImplementation(async (_p: Project, id: string, updates: Partial<Task>) => ({ id, ...updates } as Task));
 	mocks.deleteTask.mockResolvedValue(undefined);
-	mocks.assertWorkspaceReclaimable.mockResolvedValue(undefined);
+	mocks.assertTaskWorkDisposable.mockResolvedValue(undefined);
+	mocks.hasSession.mockReturnValue(false);
 });
 
 describe("scanImportableConversations", () => {
@@ -355,30 +362,66 @@ describe("removeImportedTasks", () => {
 		expect(mocks.deleteTask).toHaveBeenCalledTimes(1);
 	});
 
-	it("keeps an imported task an agent has worked on", async () => {
+	it("keeps an imported task an agent was picked for", async () => {
 		mocks.loadTasks.mockResolvedValue([imported("a", { agentId: "builtin-claude", status: "in-progress" })]);
 		const result = await remove(["a"]);
 		expect(result.removedTaskIds).toEqual([]);
-		expect(result.kept).toEqual([{ title: "Imported a", reason: "an agent has worked on it" }]);
+		expect(result.kept).toEqual([{ title: "Imported a", reason: "it has been started" }]);
 		expect(mocks.deleteTask).not.toHaveBeenCalled();
 	});
 
-	it("keeps an imported task whose worktree holds work, and checks only real worktrees", async () => {
+	// Opening an imported task launches the default agent through getPtyUrl →
+	// launchTaskPty, which records the pane but never sets `agentId`.
+	it("keeps an imported task opened with the default agent, which leaves agentId null", async () => {
+		mocks.loadTasks.mockResolvedValue([imported("a", {
+			worktreePath: "/wt/a",
+			sessionState: { panes: [{ agentCmd: "claude", sessionId: "s1", agentId: "builtin-claude", configId: null }] },
+		})]);
+		const result = await remove(["a"]);
+		expect(result.kept).toEqual([{ title: "Imported a", reason: "it has been started" }]);
+		expect(mocks.deleteTask).not.toHaveBeenCalled();
+	});
+
+	it("keeps an imported task with a live terminal session", async () => {
+		mocks.hasSession.mockImplementation((taskId: string) => taskId === "a");
+		mocks.loadTasks.mockResolvedValue([imported("a"), imported("b")]);
+		const result = await remove(["a", "b"]);
+		expect(result.removedTaskIds).toEqual(["b"]);
+		expect(result.kept).toEqual([{ title: "Imported a", reason: "it has been started" }]);
+	});
+
+	it("checks each task as it is right before its delete, not as it was when the loop began", async () => {
+		const started = imported("b", { sessionState: { panes: [{ agentCmd: "claude", sessionId: "s1", agentId: null, configId: null }] } });
+		let launched = false;
+		mocks.loadTasks.mockImplementation(async () => [imported("a"), launched ? started : imported("b")]);
+		// The user opens b while a is being deleted.
+		mocks.deleteTask.mockImplementationOnce(async () => { launched = true; });
+
+		const result = await remove(["a", "b"]);
+
+		expect(result.removedTaskIds).toEqual(["a"]);
+		expect(result.kept).toEqual([{ title: "Imported b", reason: "it has been started" }]);
+		expect(mocks.deleteTask).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps an imported task whose worktree or branch holds work, and says which", async () => {
 		const { WorkspaceReclaimRefusedError } = await import("../../git");
-		mocks.assertWorkspaceReclaimable.mockImplementation(async (path: string) => {
-			if (path === "/wt/dirty") throw new (WorkspaceReclaimRefusedError as unknown as new (m: string) => Error)("folder /wt/dirty has uncommitted or untracked files");
+		const Refused = WorkspaceReclaimRefusedError as unknown as new (kind: string, detail: object) => Error;
+		mocks.assertTaskWorkDisposable.mockImplementation(async (_project: Project, task: Task) => {
+			if (task.id === "dirty") throw new Refused("dirty-dir", { path: "/wt/dirty" });
+			if (task.id === "ahead") throw new Refused("unique-commits", { branch: "dev3/task-ahead" });
+			if (task.id === "odd") throw new Refused("inspect-failed", { path: "/wt/odd" });
 		});
-		mocks.loadTasks.mockResolvedValue([
-			imported("dirty", { worktreePath: "/wt/dirty" }),
-			imported("clean", { worktreePath: "/wt/clean" }),
-			imported("none"),
+		mocks.loadTasks.mockResolvedValue([imported("dirty"), imported("ahead"), imported("odd"), imported("clean")]);
+
+		const result = await remove(["dirty", "ahead", "odd", "clean"]);
+
+		expect(result.removedTaskIds).toEqual(["clean"]);
+		expect(result.kept).toEqual([
+			{ title: "Imported dirty", reason: "its worktree has uncommitted or untracked files" },
+			{ title: "Imported ahead", reason: "branch dev3/task-ahead has commits found nowhere else" },
+			{ title: "Imported odd", reason: "its worktree or branch could not be checked, so it is treated as holding work" },
 		]);
-
-		const result = await remove(["dirty", "clean", "none"]);
-
-		expect(result.removedTaskIds).toEqual(["clean", "none"]);
-		expect(result.kept).toEqual([{ title: "Imported dirty", reason: "folder /wt/dirty has uncommitted or untracked files" }]);
-		expect(mocks.assertWorkspaceReclaimable.mock.calls.map(([path]) => path)).toEqual(["/wt/dirty", "/wt/clean"]);
 	});
 
 	it("tells every open surface about each removed task", async () => {
@@ -400,13 +443,29 @@ describe("removeImportedTasks", () => {
 
 	it("counts a task deleted elsewhere mid-loop as removed, not as a failure", async () => {
 		mocks.loadTasks
-			.mockResolvedValueOnce([imported("a")])
+			.mockResolvedValueOnce([imported("a"), imported("b")])
+			// a is gone before its check; b goes while its delete runs.
+			.mockResolvedValueOnce([imported("b")])
+			.mockResolvedValueOnce([imported("b")])
 			.mockResolvedValueOnce([]);
-		mocks.deleteTask.mockRejectedValueOnce(new Error("Task not found: a"));
+		mocks.deleteTask.mockRejectedValueOnce(new Error("Task not found: b"));
 
-		const result = await remove(["a"]);
+		const result = await remove(["a", "b"]);
 
-		expect(result).toEqual({ removedTaskIds: ["a"], kept: [], problems: [] });
+		expect(result).toEqual({ removedTaskIds: ["a", "b"], kept: [], problems: [] });
+		expect(mocks.deleteTask).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps what it already removed when a later re-read fails", async () => {
+		mocks.loadTasks
+			.mockResolvedValueOnce([imported("a"), imported("b")])
+			.mockResolvedValueOnce([imported("a"), imported("b")])
+			.mockRejectedValueOnce(new Error("tasks.json is busy"));
+
+		const result = await remove(["a", "b"]);
+
+		expect(result.removedTaskIds).toEqual(["a"]);
+		expect(result.problems).toEqual([{ title: "Imported b", error: "Error: tasks.json is busy" }]);
 	});
 
 	it("refuses a second removal for the same project while one is running", async () => {

@@ -825,7 +825,7 @@ describe("ProjectSettings", () => {
 			const error = vi.spyOn(toast, "error");
 			vi.mocked(api.request.removeImportedTasks).mockResolvedValueOnce({
 				removedTaskIds: ["a"],
-				kept: [{ title: "Same title", reason: "an agent has worked on it" }],
+				kept: [{ title: "Same title", reason: "its worktree has uncommitted or untracked files" }],
 				problems: [{ title: "Same title", error: "locked" }],
 			});
 			const user = userEvent.setup();
@@ -840,6 +840,27 @@ describe("ProjectSettings", () => {
 			expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "removeTask", taskId: "own" }));
 			expect(info).toHaveBeenCalledWith(expect.stringContaining("Kept 1 imported task"), expect.anything());
 			expect(error).toHaveBeenCalledWith(expect.stringContaining("Could not remove 1 imported task"), expect.anything());
+		});
+
+		it("neither counts nor sends imported tasks that were already started", async () => {
+			vi.mocked(api.request.removeImportedTasks).mockClear();
+			const user = userEvent.setup();
+			// Opened with the default agent: a recorded pane, but agentId stays null.
+			const opened: Task = {
+				...importedTask("opened"),
+				sessionState: { panes: [{ agentCmd: "claude", sessionId: "s1", agentId: null, configId: null }] },
+			};
+			const picked: Task = { ...importedTask("picked"), agentId: "builtin-claude" };
+			await renderWithDispatch([importedTask("a"), opened, picked]);
+
+			await user.click(screen.getByRole("button", { name: "Remove 1 imported task…" }));
+
+			expect(api.request.removeImportedTasks).toHaveBeenCalledWith({ projectId: "proj-1", taskIds: ["a"] });
+		});
+
+		it("is not offered when every imported task was already started", async () => {
+			await renderWithDispatch([{ ...importedTask("a"), agentId: "builtin-claude" }, ownTask]);
+			expect(screen.queryByRole("button", { name: /imported task/ })).not.toBeInTheDocument();
 		});
 
 		it("reports a failed request and lets the user try again", async () => {

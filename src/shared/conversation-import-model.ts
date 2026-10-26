@@ -57,3 +57,13 @@ export interface RemoveImportedTasksResult {
 	/** Tasks that could not be removed, one line each, for the caller to surface. */
 	problems: { title: string; error: string }[];
 }
+
+/**
+ * An imported task that someone has started: an agent was picked for it, or a
+ * terminal was launched in it. The import does neither, and opening the task
+ * launches the default agent without saving `agentId`, so the recorded panes
+ * are the signal that survives. Removing imported tasks keeps these.
+ */
+export function importedTaskStarted(task: Pick<Task, "agentId" | "sessionState">): boolean {
+	return !!task.agentId || !!task.sessionState?.panes?.length;
+}

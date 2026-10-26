@@ -5,6 +5,7 @@ import { confirmCustomColumnDelete } from "../utils/confirmCustomColumnDelete";
 import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, GitHubCliStatus, Label, Project, Task } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle, repoConfigEnabled } from "../../shared/types";
 import { COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, DEFAULT_REVIEW_PROMPT, resolveArtifactTemplate, resolvePresetPrompt, type ArtifactTemplateMode, type ProjectSettingsUpdate, type ResolvedArtifactTemplate } from "../../shared/types";
+import { importedTaskStarted } from "../../shared/conversation-import-model";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -120,7 +121,12 @@ function ProjectSettings({
 	// config); never let a deep-linked initialTab strand them on a hidden git tab.
 	const [importingConversations, setImportingConversations] = useState(false);
 	const [removingImported, setRemovingImported] = useState(false);
-	const importedTaskCount = useMemo(() => tasks.filter((task) => !!task.importedSessionId).length, [tasks]);
+	// Started imports are always kept, so they are neither counted nor sent.
+	const removableImportedTasks = useMemo(
+		() => tasks.filter((task) => !!task.importedSessionId && !importedTaskStarted(task)),
+		[tasks],
+	);
+	const importedTaskCount = removableImportedTasks.length;
 	const [activeTab, setActiveTab] = useState<ConfigTab>(
 		project?.kind === "virtual"
 			? (initialTab === "automations" ? "automations" : "global")
@@ -519,7 +525,7 @@ function ProjectSettings({
 		setRemovingImported(true);
 		try {
 			// Exactly the tasks the dialog counted — not whatever is imported by the time it runs.
-			const taskIds = tasks.filter((task) => !!task.importedSessionId).map((task) => task.id);
+			const taskIds = removableImportedTasks.map((task) => task.id);
 			const result = await api.request.removeImportedTasks({ projectId, taskIds });
 			// The backend also pushes `taskRemoved` per task; this keeps this window
 			// in step even before those arrive.
@@ -977,25 +983,27 @@ function ProjectSettings({
 									title={t("projectSettings.importConversations")}
 									description={t("projectSettings.importConversationsDesc")}
 								>
-								<button
-									type="button"
-									onClick={() => setImportingConversations(true)}
-									className="px-4 py-2 bg-raised border border-edge rounded-xl text-fg-2 text-sm hover:border-edge-active hover:text-fg transition-colors"
-								>
-									{t("projectSettings.importConversationsBtn")}
-								</button>
-								{importedTaskCount > 0 && (
+								<div className="flex flex-wrap gap-2">
 									<button
 										type="button"
-										onClick={() => void handleRemoveImportedTasks()}
-										disabled={removingImported}
-										className="ml-2 px-4 py-2 bg-raised border border-edge rounded-xl text-danger text-sm hover:border-danger/50 transition-colors disabled:opacity-50"
+										onClick={() => setImportingConversations(true)}
+										className="px-4 py-2 bg-raised border border-edge rounded-xl text-fg-2 text-sm hover:border-edge-active hover:text-fg transition-colors"
 									>
-										{removingImported
-											? t("projectSettings.removingImported")
-											: t.plural("projectSettings.removeImportedBtn", importedTaskCount, { count: importedTaskCount })}
+										{t("projectSettings.importConversationsBtn")}
 									</button>
-								)}
+									{importedTaskCount > 0 && (
+										<button
+											type="button"
+											onClick={() => void handleRemoveImportedTasks()}
+											disabled={removingImported}
+											className="px-4 py-2 bg-raised border border-edge rounded-xl text-danger text-sm hover:border-danger/50 transition-colors disabled:opacity-50"
+										>
+											{removingImported
+												? t("projectSettings.removingImported")
+												: t.plural("projectSettings.removeImportedBtn", importedTaskCount, { count: importedTaskCount })}
+										</button>
+									)}
+								</div>
 								</SettingsSection>
 							)}
 

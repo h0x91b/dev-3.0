@@ -2,12 +2,14 @@ import type { Label, Project, Task } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
+import * as pty from "../pty-server";
 import * as repoConfig from "../repo-config";
 import { parseTranscriptFile } from "../conversation-parse";
 import { scanImportableConversations, type ImportableConversation } from "../conversation-import";
 import {
 	CONVERSATION_SOURCE_LABELS,
 	IMPORTED_LABEL_NAME,
+	importedTaskStarted,
 	type ImportConversationsResult,
 	type ImportableConversationView,
 	type RemoveImportedTasksResult,
@@ -192,20 +194,39 @@ async function markConversationImportOfferedHandler(
 	return { project };
 }
 
+/** The Kept toast's reason, in the words of a removal rather than a relaunch. */
+function keptReason(err: unknown): string {
+	if (!(err instanceof git.WorkspaceReclaimRefusedError)) return `it could not be checked: ${String(err)}`;
+	switch (err.kind) {
+		case "dirty-dir":
+			return "its worktree has uncommitted or untracked files";
+		case "unique-commits":
+			return err.detail.branch
+				? `branch ${err.detail.branch} has commits found nowhere else`
+				: "its worktree has commits found nowhere else";
+		default:
+			return "its worktree or branch could not be checked, so it is treated as holding work";
+	}
+}
+
 /**
  * Why an imported task is kept rather than removed: it is no longer just an
- * import. Null when it is safe to delete.
+ * import. Null when it is safe to delete. Read fresh, right before the delete,
+ * so a task opened while earlier ones were being removed is seen as started.
  */
-async function workKeptIn(task: Task): Promise<string | null> {
-	// The import never launches an agent, so an agent id means someone did.
-	if (task.agentId) return "an agent has worked on it";
-	if (!task.worktreePath) return null;
+async function workKeptIn(project: Project, task: Task): Promise<string | null> {
+	if (importedTaskStarted(task) || pty.hasSession(task.id)) return "it has been started";
 	try {
-		await git.assertWorkspaceReclaimable(task.worktreePath);
+		await git.assertTaskWorkDisposable(project, task);
 		return null;
 	} catch (err) {
-		return err instanceof git.WorkspaceReclaimRefusedError ? err.message : String(err);
+		return keptReason(err);
 	}
+}
+
+/** The task as it is on disk now, or null when it is gone. */
+async function currentTask(project: Project, taskId: string): Promise<Task | null> {
+	return (await data.loadTasks(project)).find((task) => task.id === taskId) ?? null;
 }
 
 /** Projects with a removal in flight — a second click must not race the first loop. */
@@ -214,9 +235,10 @@ const removalsInFlight = new Set<string>();
 /**
  * Undo an import: delete the imported tasks the user confirmed, through the
  * same lifecycle path as a single delete, so each one's terminal, worktree and
- * branch go with it. Only tasks that are still nothing but an import go: one an
- * agent has run in, or whose worktree holds uncommitted work or commits found
- * nowhere else, is kept and reported. Tasks without `importedSessionId` are
+ * branch go with it. Only tasks that are still nothing but an import go: one
+ * that has been started, or whose worktree or branch holds uncommitted work or
+ * commits found nowhere else, is kept and reported. Each task is read again
+ * right before its check, not from a snapshot taken when the loop began. Tasks without `importedSessionId` are
  * never touched, whatever ids are passed. The conversations stay in the agents'
  * own history, so a later import can offer them again.
  */
@@ -232,16 +254,29 @@ async function removeImportedTasksHandler(
 		const project = await data.getProject(params.projectId);
 		// Exactly what the user confirmed, and only what is still an import.
 		const wanted = new Set(params.taskIds);
-		const imported = (await data.loadTasks(project)).filter((task) => wanted.has(task.id) && !!task.importedSessionId);
+		const candidates = (await data.loadTasks(project)).filter((task) => wanted.has(task.id) && !!task.importedSessionId);
 
 		const removedTaskIds: string[] = [];
 		const kept: { title: string; reason: string }[] = [];
 		const problems: { title: string; error: string }[] = [];
 		const push = getPushMessage();
 		// One at a time: each delete takes git locks on the same repository.
-		for (const task of imported) {
-			const title = getTaskTitle(task);
-			const reason = await workKeptIn(task);
+		for (const candidate of candidates) {
+			const title = getTaskTitle(candidate);
+			let task: Task | null;
+			try {
+				task = await currentTask(project, candidate.id);
+			} catch (err) {
+				problems.push({ title, error: String(err) });
+				continue;
+			}
+			if (!task) {
+				// Deleted elsewhere while this loop ran — gone is what was asked for.
+				removedTaskIds.push(candidate.id);
+				push?.("taskRemoved", { projectId: project.id, taskId: candidate.id });
+				continue;
+			}
+			const reason = await workKeptIn(project, task);
 			if (reason) {
 				kept.push({ title, reason });
 				continue;
@@ -250,7 +285,8 @@ async function removeImportedTasksHandler(
 				await deleteTask({ taskId: task.id, projectId: project.id });
 			} catch (err) {
 				// Deleted elsewhere while this loop ran — gone is what was asked for.
-				const stillThere = (await data.loadTasks(project)).some((t) => t.id === task.id);
+				// Unknown (the reload failed too) counts as still there.
+				const stillThere = (await currentTask(project, task.id).catch(() => task)) !== null;
 				if (stillThere) {
 					log.error("Removing an imported task failed", { taskId: task.id.slice(0, 8), error: String(err) });
 					problems.push({ title, error: String(err) });

@@ -1063,6 +1063,31 @@ export async function assertWorkspaceReclaimable(wtPath: string): Promise<void> 
 }
 
 /**
+ * Read-only check before a task is deleted outright (removing imported tasks):
+ * its worktree, as above, and every branch the delete could take. A branch's own
+ * commits count as found nowhere else even though the branch itself holds them,
+ * which `assertWorkspaceReclaimable` cannot see while HEAD is on that branch.
+ * Anything it cannot establish is refused.
+ */
+export async function assertTaskWorkDisposable(project: Project, task: Task): Promise<void> {
+	if (task.worktreePath) await assertWorkspaceReclaimable(task.worktreePath);
+	const branches = new Set<string>(task.branchName ? [task.branchName] : []);
+	if (task.worktreePath && existsSync(task.worktreePath)) {
+		const live = await run(["git", "-C", task.worktreePath, "branch", "--show-current"], task.worktreePath);
+		if (!live.ok) throw new WorkspaceReclaimRefusedError("inspect-failed", { path: task.worktreePath });
+		if (live.stdout.trim()) branches.add(live.stdout.trim());
+	}
+	for (const name of branches) {
+		const info = await ownedBranchInfo(project.path, name);
+		if (!info) continue;
+		if (info.commitsOnlyHere === null) throw new WorkspaceReclaimRefusedError("inspect-failed", { branch: name, sha: info.sha });
+		if (info.commitsOnlyHere > 0) {
+			throw new WorkspaceReclaimRefusedError("unique-commits", { branch: name, sha: info.sha, commits: info.commitsOnlyHere });
+		}
+	}
+}
+
+/**
  * Free the task's own worktree directory before `git worktree add`. The path is
  * derived from task.id, so dev3 owns it: a leftover means a prior failed cleanup
  * or a re-run after the task was moved back to To Do. Stderr-driven retries do
