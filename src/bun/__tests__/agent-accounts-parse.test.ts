@@ -117,6 +117,7 @@ describe("parseCodexIdentity", () => {
 					"https://api.openai.com/auth": {
 						chatgpt_plan_type: "plus",
 						chatgpt_account_id: "acc-1",
+						chatgpt_user_id: "user-1",
 						organizations: [{ id: "org-1", title: "Acme Org" }],
 					},
 				}),
@@ -130,6 +131,7 @@ describe("parseCodexIdentity", () => {
 			plan: "plus",
 			planLabel: "Plus",
 			accountId: "acc-1",
+			userId: "user-1",
 		});
 	});
 

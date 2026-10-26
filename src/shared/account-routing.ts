@@ -16,10 +16,12 @@
  * The hard filters ignore reservations — they rank a burst, never block it.
  */
 import type { AgentAccountIdentity, AgentAccountsState, RoutableAccountKind } from "./agent-accounts";
+import { codexLoginKey, managedCodexTwin } from "./agent-accounts";
 import {
 	BUDGET_WINDOW_IDS,
 	findRateLimitSnapshot,
 	isUnlimitedRateLimitSnapshot,
+	newerRateLimitSnapshot,
 	type AgentRateLimitSnapshot,
 	type AgentRateLimitsReport,
 	type RateLimitWindow,
@@ -346,8 +348,9 @@ export function isMeteredPlan(plan: string | null | undefined): boolean {
 }
 
 function dedupeKeyFor(kind: RoutableAccountKind, identity: AgentAccountIdentity | null): string | null {
+	if (kind === "codex") return codexLoginKey(identity);
 	if (!identity?.accountId) return null;
-	return kind === "claude" ? `${identity.accountId}|${identity.organization ?? ""}` : identity.accountId;
+	return `${identity.accountId}|${identity.organization ?? ""}`;
 }
 
 /**
@@ -365,8 +368,11 @@ export function buildRoutableAccounts(
 	const excluded = new Set(exclusions);
 	const snapshotFor = (id: string | null) => (report ? findRateLimitSnapshot(report, kind, id) : null);
 	const kindState = state[kind];
+	const twin = kind === "codex" ? managedCodexTwin(state) : null;
 	const out: RoutableAccount[] = kindState.accounts.map((account) => {
-		const snapshot = snapshotFor(account.id);
+		const own = snapshotFor(account.id);
+		// The default login of the same identity reads the same quota, often more recently.
+		const snapshot = account.id === twin?.id ? newerRateLimitSnapshot(own, snapshotFor(null)) : own;
 		return {
 			id: account.id,
 			label: account.label,

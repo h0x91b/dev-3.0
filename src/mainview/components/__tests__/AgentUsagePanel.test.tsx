@@ -500,3 +500,102 @@ describe("AgentUsagePanel", () => {
 		expect(screen.getByText(/Beta task/)).toBeTruthy();
 	});
 });
+
+describe("AgentUsagePanel — ~/.codex beside a managed Codex account (#1964)", () => {
+	const dana = { email: "dana@example.test", organization: "Synthetic Co", plan: "team", planLabel: "Team", accountId: "ws-1", userId: "user-dana" };
+
+	function codexState(current: AgentAccountsState["codex"]["currentIdentity"]): AgentAccountsState {
+		return {
+			claude: { accounts: [], activeId: null, systemConfigDir: "/home/me/.claude", systemIdentity: null },
+			codex: {
+				accounts: [{ id: "managed", kind: "codex", label: "Dana", identity: dana, auth: "oauth", api: null, createdAt: 0 }],
+				activeId: "managed",
+				currentIdentity: current,
+			},
+			omp: { accounts: [], activeId: null },
+			pi: { accounts: [], activeId: null },
+		};
+	}
+
+	function defaultLoginReport(): AgentRateLimitsReport {
+		const now = Date.now();
+		return {
+			generatedAt: now,
+			snapshots: [
+				{
+					source: "codex",
+					accountId: null,
+					capturedAt: now,
+					windows: [{ id: "primary", usedPercent: 37, resetsAt: now + 3_600_000, windowMinutes: 300 }],
+					creditsBalance: null,
+					monthlyCredits: null,
+					planType: "team",
+				},
+			],
+		};
+	}
+
+	function renderCodex(state: AgentAccountsState) {
+		return render(
+			<I18nProvider>
+				<AgentUsagePanel report={defaultLoginReport()} accounts={state} interactive onOpenSettings={() => {}} />
+			</I18nProvider>,
+		);
+	}
+
+	it("folds the same person's default-login reading into the managed row", () => {
+		renderCodex(codexState({ ...dana, organization: null }));
+		const radios = screen.getAllByRole("radio");
+		expect(radios).toHaveLength(1);
+		expect(radios[0].textContent).toContain("Default");
+		expect(radios[0].textContent).toContain("37% used");
+		expect(screen.queryByText("Unmanaged login")).toBeNull();
+	});
+
+	it("keeps another person in the same workspace as its own unmanaged row", () => {
+		renderCodex(codexState({ ...dana, email: "lee@example.test", userId: "user-lee" }));
+		const radios = screen.getAllByRole("radio");
+		const unmanaged = radios.find((r) => r.textContent?.includes("Unmanaged login"));
+		expect(unmanaged?.textContent).toContain("37% used");
+		expect(radios.find((r) => r.textContent?.includes("Default"))?.textContent).not.toContain("37% used");
+		// Two genuine logins are something Auto can balance.
+		expect(radios.some((r) => r.textContent?.includes("Auto (balanced)"))).toBe(true);
+	});
+
+	it("still shows two rows when ~/.codex itself is the default (residual, not the #1964 setup)", () => {
+		// With no managed default, the unmanaged row says what launches use and is
+		// kept; the twin managed row stays as the switchable choice. Same quota on both.
+		const state = codexState({ ...dana });
+		state.codex.activeId = null;
+		renderCodex(state);
+		const radios = screen.getAllByRole("radio");
+		expect(radios).toHaveLength(2);
+		const unmanaged = radios.find((r) => r.textContent?.includes("Unmanaged login"));
+		const managed = radios.find((r) => r !== unmanaged);
+		expect(unmanaged?.textContent).toContain("Default");
+		expect(unmanaged?.textContent).toContain("37% used");
+		expect(managed?.textContent).toContain("37% used");
+		expect(radios.some((r) => r.textContent?.includes("Auto (balanced)"))).toBe(false);
+	});
+
+	it("attributes a ~/.codex reading by who is signed in now, not who produced it (known limit)", () => {
+		// The rollout carries no identity: a reading taken before a re-login into the
+		// managed person's account is still folded into that account's row.
+		const before = defaultLoginReport();
+		before.snapshots[0].capturedAt = Date.now() - 6 * 3_600_000;
+		render(
+			<I18nProvider>
+				<AgentUsagePanel report={before} accounts={codexState({ ...dana })} interactive onOpenSettings={() => {}} />
+			</I18nProvider>,
+		);
+		const radios = screen.getAllByRole("radio");
+		expect(radios).toHaveLength(1);
+		expect(radios[0].textContent).toContain("37% used");
+	});
+
+	it("never merges a default login whose person is unknown", () => {
+		renderCodex(codexState({ ...dana, email: null, userId: undefined }));
+		const unmanaged = screen.getAllByRole("radio").find((r) => r.textContent?.includes("Unmanaged login"));
+		expect(unmanaged?.textContent).toContain("37% used");
+	});
+});

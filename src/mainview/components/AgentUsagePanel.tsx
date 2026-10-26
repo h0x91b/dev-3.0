@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentAccountIdentity, AgentAccountKind, AgentAccountsState, AgentDirAccountKind, PinnedClaudeLogin } from "../../shared/agent-accounts";
-import { AUTO_ACCOUNT_ID, shortClaudeConfigDir } from "../../shared/agent-accounts";
+import { AUTO_ACCOUNT_ID, managedCodexTwin, shortClaudeConfigDir } from "../../shared/agent-accounts";
 import type { AgentRateLimitSnapshot, AgentRateLimitsReport } from "../../shared/rate-limits";
-import { findRateLimitSnapshot, hasReportedLimits, isUnlimitedRateLimitSnapshot } from "../../shared/rate-limits";
+import { findRateLimitSnapshot, hasReportedLimits, isUnlimitedRateLimitSnapshot, newerRateLimitSnapshot } from "../../shared/rate-limits";
 import { api } from "../rpc";
 import { toast } from "../toast";
 import { useT, type TFunction } from "../i18n";
@@ -89,9 +89,13 @@ function rowsForKind(
 		isApi: false,
 	});
 
+	// ~/.codex signed into a managed account's identity is that account, not a
+	// second login: its readings land on the managed row and never get one of their own.
+	const codexTwin = kind === "codex" ? managedCodexTwin(accounts) : null;
+
 	// Auto is worth a row once two subscription logins could be balanced.
 	const systemIdentity = kind === "claude" ? accounts?.claude.systemIdentity : accounts?.codex.currentIdentity;
-	const subscriptionLogins = (kindState?.accounts.filter((a) => a.auth !== "api").length ?? 0) + (systemIdentity ? 1 : 0);
+	const subscriptionLogins = (kindState?.accounts.filter((a) => a.auth !== "api").length ?? 0) + (systemIdentity && !codexTwin ? 1 : 0);
 	if (autoDefault || subscriptionLogins >= 2) {
 		rows.push({
 			key: `${kind}:auto`,
@@ -148,6 +152,7 @@ function rowsForKind(
 	}
 
 	for (const account of kindState?.accounts ?? []) {
+		const own = findRateLimitSnapshot(report, kind, account.id);
 		rows.push({
 			key: `${kind}:${account.id}`,
 			kind,
@@ -155,7 +160,7 @@ function rowsForKind(
 			configDir: null,
 			account: resolveAccount(kind, accounts, account.id) ?? named(account.label),
 			chip: null,
-			snap: findRateLimitSnapshot(report, kind, account.id),
+			snap: account.id === codexTwin?.id ? newerRateLimitSnapshot(own, findRateLimitSnapshot(report, kind, null)) : own,
 			isDefault: account.id === activeId,
 			selectable: true,
 		});
@@ -182,7 +187,7 @@ function rowsForKind(
 	}
 
 	const known = new Set(rows.map((row) => rowIdentity(row.accountId, row.configDir)));
-	if (kind === "claude") known.add(rowIdentity(null, null)); // shown above, or deliberately left out
+	if (kind === "claude" || codexTwin) known.add(rowIdentity(null, null)); // shown above, or deliberately left out
 	for (const snap of report.snapshots) {
 		if (snap.source !== kind) continue;
 		const id = snap.accountId ?? null;

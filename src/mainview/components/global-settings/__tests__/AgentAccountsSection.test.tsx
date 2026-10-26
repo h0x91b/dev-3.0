@@ -676,4 +676,30 @@ describe("AgentAccountsSection", () => {
 		renderSection();
 		expect(await screen.findByText(/override these pins/)).toBeTruthy();
 	});
+
+	describe("Auto row beside a Codex account that ~/.codex is also signed into (#1964)", () => {
+		const dana = { email: "dana@example.test", organization: null, plan: "team", planLabel: "Team", accountId: "ws-1", userId: "user-dana" };
+		const withCurrent = (currentIdentity: typeof dana) =>
+			makeState({
+				claude: { accounts: [], activeId: null, systemConfigDir: "/home/me/.claude", systemIdentity: null },
+				codex: {
+					accounts: [{ id: "cx-1", kind: "codex", label: "Dana", identity: dana, auth: "oauth", api: null, createdAt: 1 }],
+					activeId: "cx-1",
+					currentIdentity,
+				},
+			});
+
+		it("offers no Auto row when the default login is the managed account itself", async () => {
+			mockedApi.request.listAgentAccounts.mockResolvedValue(withCurrent(dana));
+			renderSection();
+			expect(await screen.findByText("Dana")).toBeTruthy();
+			expect(screen.queryByText("Auto (balanced)")).toBeNull();
+		});
+
+		it("offers Auto when the default login is another seat of the workspace", async () => {
+			mockedApi.request.listAgentAccounts.mockResolvedValue(withCurrent({ ...dana, email: "lee@example.test", userId: "user-lee" }));
+			renderSection();
+			expect(await screen.findByText("Auto (balanced)")).toBeTruthy();
+		});
+	});
 });

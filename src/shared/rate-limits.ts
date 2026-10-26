@@ -121,6 +121,16 @@ export function findRateLimitSnapshot(
 	);
 }
 
+/** The fresher of two readings of one quota (e.g. a managed account and the
+ *  default login signed into the same identity). */
+export function newerRateLimitSnapshot(
+	a: AgentRateLimitSnapshot | null,
+	b: AgentRateLimitSnapshot | null,
+): AgentRateLimitSnapshot | null {
+	if (!a || !b) return a ?? b;
+	return b.capturedAt > a.capturedAt ? b : a;
+}
+
 /** Whether a reading carries any limit at all. A Claude session on a plan that
  *  gets no `rate_limits` still yields a reading — proof the account is live —
  *  but it must never be drawn as a quota. */

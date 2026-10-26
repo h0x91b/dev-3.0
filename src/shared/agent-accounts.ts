@@ -130,6 +130,8 @@ export interface AgentAccountIdentity {
 	/** Stable provider-side account id. For Codex, `account_id` is the selected
 	 *  ChatGPT workspace id, while `chatgpt_user_id` identifies the person. */
 	accountId: string | null;
+	/** Codex only: the person's `chatgpt_user_id`, when the id_token carries it. */
+	userId?: string | null;
 }
 
 export interface AgentAccount {
@@ -316,6 +318,7 @@ export function parseCodexIdentity(authJson: unknown): AgentAccountIdentity | nu
 	const payload = idToken ? decodeJwtPayload(idToken) : null;
 	const authClaim = asRecord(payload?.[OPENAI_AUTH_CLAIM]);
 	const plan = asString(authClaim?.chatgpt_plan_type);
+	const userId = asString(authClaim?.chatgpt_user_id);
 	if (!accountId && !payload) return null;
 	return {
 		email: asString(payload?.email),
@@ -326,7 +329,29 @@ export function parseCodexIdentity(authJson: unknown): AgentAccountIdentity | nu
 		plan,
 		planLabel: codexPlanLabel(plan),
 		accountId: accountId ?? asString(authClaim?.chatgpt_account_id),
+		...(userId ? { userId } : {}),
 	};
+}
+
+/**
+ * One Codex login = one person in one ChatGPT workspace. The workspace id alone
+ * is shared by every seat of a team plan, so the person must match too: by
+ * `chatgpt_user_id` when known, else by email. Null when either is unknown —
+ * an incomplete identity never merges with anything.
+ */
+export function codexLoginKey(identity: AgentAccountIdentity | null | undefined): string | null {
+	if (!identity?.accountId) return null;
+	if (identity.userId) return `${identity.accountId}|user:${identity.userId}`;
+	if (identity.email) return `${identity.accountId}|email:${identity.email.toLowerCase()}`;
+	return null;
+}
+
+/** The managed Codex account `~/.codex` is signed into as well, if any: its
+ *  readings and the managed account's are one quota, not two logins. */
+export function managedCodexTwin(state: AgentAccountsState | null): AgentAccount | null {
+	const key = codexLoginKey(state?.codex.currentIdentity);
+	if (!key) return null;
+	return state?.codex.accounts.find((a) => a.auth !== "api" && codexLoginKey(a.identity) === key) ?? null;
 }
 
 /** Parse `omp usage accounts --json` output. Throws on a payload that is not

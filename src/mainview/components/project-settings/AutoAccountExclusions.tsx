@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { exclusionKey } from "../../../shared/account-routing";
 import type { AgentAccountsState, RoutableAccountKind } from "../../../shared/agent-accounts";
+import { managedCodexTwin } from "../../../shared/agent-accounts";
 import type { Project } from "../../../shared/types";
 import { useT } from "../../i18n";
 import { api } from "../../rpc";
@@ -23,7 +24,9 @@ function subscriptionLogins(state: AgentAccountsState, kind: RoutableAccountKind
 		.filter((a) => a.auth !== "api")
 		.map((a) => ({ key: exclusionKey(kind, a.id), label: a.label, sub: a.identity?.email ?? null }));
 	const identity = kind === "claude" ? state.claude.systemIdentity : state.codex.currentIdentity;
-	return identity ? [...managed, { key: exclusionKey(kind, null), label: systemLabel, sub: identity.email }] : managed;
+	// Auto never picks a default login that is a managed account's identity, so it gets no switch.
+	if (!identity || (kind === "codex" && managedCodexTwin(state))) return managed;
+	return [...managed, { key: exclusionKey(kind, null), label: systemLabel, sub: identity.email }];
 }
 
 /**

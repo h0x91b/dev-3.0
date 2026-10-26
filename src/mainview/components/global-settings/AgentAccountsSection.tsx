@@ -10,7 +10,7 @@ import type {
 	ClaudeSlotModels,
 } from "../../../shared/agent-accounts";
 import type { AccountLoginState } from "../../../shared/agent-accounts";
-import { AUTO_ACCOUNT_ID, CLAUDE_MODEL_SLOTS, isAgentDirAccountKind, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../../shared/agent-accounts";
+import { AUTO_ACCOUNT_ID, CLAUDE_MODEL_SLOTS, isAgentDirAccountKind, managedCodexTwin, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../../shared/agent-accounts";
 import { api, isElectrobun } from "../../rpc";
 import AccountLoginModal, { loginPhaseTitle } from "./AccountLoginModal";
 import { confirm } from "../../confirm";
@@ -900,7 +900,9 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 	const autoRow = (kind: "claude" | "codex") => {
 		const kindState = state[kind];
 		const systemIdentity = kind === "claude" ? state.claude.systemIdentity : state.codex.currentIdentity;
-		const logins = kindState.accounts.filter((a) => a.auth !== "api").length + (systemIdentity ? 1 : 0);
+		// ~/.codex signed into a managed account's identity is not a second login.
+		const separateSystemLogin = !!systemIdentity && !(kind === "codex" && managedCodexTwin(state));
+		const logins = kindState.accounts.filter((a) => a.auth !== "api").length + (separateSystemLogin ? 1 : 0);
 		if (!kindState.autoDefault && logins < 2) return null;
 		return (
 			<AccountRow

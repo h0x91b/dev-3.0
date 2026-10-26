@@ -8,8 +8,9 @@ import {
 	type AccountReservation,
 	type RoutableAccount,
 } from "../../shared/account-routing";
-import type { AgentAccount, AgentAccountsState } from "../../shared/agent-accounts";
-import type { AgentRateLimitSnapshot } from "../../shared/rate-limits";
+import type { AgentAccount, AgentAccountIdentity, AgentAccountsState } from "../../shared/agent-accounts";
+import { codexLoginKey, managedCodexTwin } from "../../shared/agent-accounts";
+import type { AgentRateLimitSnapshot, AgentRateLimitsReport } from "../../shared/rate-limits";
 
 const NOW = 1_783_200_000_000;
 const H = 3_600_000;
@@ -224,7 +225,7 @@ describe("buildRoutableAccounts", () => {
 	});
 	const state = (accounts: AgentAccount[]): AgentAccountsState => ({
 		claude: { accounts: [], activeId: null, systemConfigDir: "/h/.claude", systemIdentity: null },
-		codex: { accounts, activeId: null, currentIdentity: { email: "me@x", organization: null, plan: "plus", planLabel: "Plus", accountId: "ws-a" } },
+		codex: { accounts, activeId: null, currentIdentity: { email: "a@x", organization: null, plan: "plus", planLabel: "Plus", accountId: "ws-a" } },
 		omp: { accounts: [], activeId: null },
 			pi: { accounts: [], activeId: null },
 	});
@@ -243,5 +244,81 @@ describe("buildRoutableAccounts", () => {
 
 	it("counts a system login sharing a managed identity once", () => {
 		expect(autoCandidateCount(buildRoutableAccounts("codex", state([account("a"), account("d")]), null))).toBe(2);
+	});
+});
+
+describe("Codex login identity (#1964)", () => {
+	const identity = (extra: Partial<AgentAccountIdentity> = {}): AgentAccountIdentity => ({
+		email: "dana@example.test",
+		organization: null,
+		plan: "team",
+		planLabel: "Team",
+		accountId: "ws-1",
+		userId: "user-dana",
+		...extra,
+	});
+	const codexAccount = (id: string, ident: AgentAccountIdentity): AgentAccount => ({
+		id,
+		kind: "codex",
+		label: id,
+		identity: ident,
+		auth: "oauth",
+		api: null,
+		createdAt: 0,
+	});
+	const codexState = (accounts: AgentAccount[], current: AgentAccountIdentity | null): AgentAccountsState => ({
+		claude: { accounts: [], activeId: null, systemConfigDir: "/h/.claude", systemIdentity: null },
+		codex: { accounts, activeId: accounts[0]?.id ?? null, currentIdentity: current },
+		omp: { accounts: [], activeId: null },
+		pi: { accounts: [], activeId: null },
+	});
+
+	it("keys a login by workspace and person, preferring chatgpt_user_id over email", () => {
+		expect(codexLoginKey(identity())).toBe("ws-1|user:user-dana");
+		expect(codexLoginKey(identity({ userId: undefined, email: "Dana@Example.test" }))).toBe("ws-1|email:dana@example.test");
+		expect(codexLoginKey(identity({ userId: undefined, email: null }))).toBeNull();
+		expect(codexLoginKey(identity({ accountId: null }))).toBeNull();
+	});
+
+	it("finds the managed twin of ~/.codex only for the same person in the same workspace", () => {
+		const managed = codexAccount("m", identity());
+		expect(managedCodexTwin(codexState([managed], identity({ email: "other-case@example.test" })))?.id).toBe("m");
+		expect(managedCodexTwin(codexState([managed], identity({ userId: "user-lee", email: "lee@example.test" })))).toBeNull();
+		expect(managedCodexTwin(codexState([managed], identity({ accountId: "ws-2" })))).toBeNull();
+		expect(managedCodexTwin(codexState([managed], identity({ userId: undefined, email: null })))).toBeNull();
+		expect(managedCodexTwin(codexState([managed], null))).toBeNull();
+	});
+
+	it("never pairs logins across workspaces or people that share an email", () => {
+		const managed = codexAccount("m", identity());
+		// Same email, other workspace: a different account, even for one person.
+		expect(managedCodexTwin(codexState([managed], identity({ accountId: "ws-2" })))).toBeNull();
+		// Same email and workspace, other chatgpt_user_id: the person id wins over the email.
+		expect(managedCodexTwin(codexState([managed], identity({ userId: "user-other" })))).toBeNull();
+		// Person id on one side only: keys cannot be compared, so no merge (conservative).
+		expect(managedCodexTwin(codexState([managed], identity({ userId: undefined })))).toBeNull();
+		// Email-only on both sides still pairs, case-insensitively.
+		const emailOnly = codexAccount("e", identity({ userId: undefined }));
+		expect(managedCodexTwin(codexState([emailOnly], identity({ userId: undefined, email: "DANA@example.test" })))?.id).toBe("e");
+	});
+
+	it("picks the matching managed account when several are registered", () => {
+		const other = codexAccount("o", identity({ accountId: "ws-2" }));
+		const mine = codexAccount("m", identity());
+		expect(managedCodexTwin(codexState([other, mine], identity()))?.id).toBe("m");
+	});
+
+	it("routes on the fresher reading of a twin and counts it as one login", () => {
+		const own: AgentRateLimitSnapshot = { ...snap({ s: 10 }), source: "codex", accountId: "m", capturedAt: NOW - 3_600_000 };
+		const viaDefault: AgentRateLimitSnapshot = { ...snap({ s: 60 }), source: "codex", accountId: null, capturedAt: NOW };
+		const report: AgentRateLimitsReport = { generatedAt: NOW, snapshots: [own, viaDefault] };
+		const list = buildRoutableAccounts("codex", codexState([codexAccount("m", identity())], identity()), report);
+		expect(list[0].snapshot).toBe(viaDefault);
+		expect(autoCandidateCount(list)).toBe(1);
+	});
+
+	it("counts another seat of the same workspace as a separate login", () => {
+		const list = buildRoutableAccounts("codex", codexState([codexAccount("m", identity())], identity({ userId: "user-lee", email: "lee@example.test" })), null);
+		expect(autoCandidateCount(list)).toBe(2);
 	});
 });
