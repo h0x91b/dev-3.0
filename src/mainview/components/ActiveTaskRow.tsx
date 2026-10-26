@@ -9,6 +9,7 @@ import { useStatusMenu } from "../hooks/useStatusMenu";
 import { useContextMenu } from "../hooks/useContextMenu";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
+import { reviewedPrLink } from "../utils/taskPrBadge";
 import { useReducedMotion } from "../utils/useReducedMotion";
 import { ageParts, compactAge, type AgeUnit } from "../utils/statusAge";
 import type { AppAction, Route } from "../state";
@@ -22,6 +23,7 @@ import StatusMenuPortal from "./StatusMenuPortal";
 import TaskCardRail from "./TaskCardRail";
 import TaskContextMenu from "./TaskContextMenu";
 import TaskPrBadges from "./TaskPrBadges";
+import ReviewedPrLink from "./ReviewedPrLink";
 import TaskShutdownOverlay from "./TaskShutdownOverlay";
 import Tooltip from "./Tooltip";
 import { EyeIcon } from "./TaskIcons";
@@ -105,6 +107,7 @@ export default function ActiveTaskRow({
 	closePreview,
 }: ActiveTaskRowProps) {
 	const t = useT();
+	const reviewedPr = reviewedPrLink(task, prInfo);
 	const [locale] = useLocale();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const statusMenu = useStatusMenu(narrow);
@@ -363,6 +366,7 @@ export default function ActiveTaskRow({
 					{prInfo && (
 						<TaskPrBadges prInfo={prInfo} projectId={task.projectId} taskId={task.id} earlierPullRequests={earlierPullRequests(task)} compact />
 					)}
+					{reviewedPr && <ReviewedPrLink pr={reviewedPr} testId={`sidebar-task-reviewed-pr-${task.id}`} />}
 					{assignedLabels.length > 0 && (
 						<div className="flex flex-wrap gap-0.5 min-w-0">
 							{assignedLabels.map((label) => (

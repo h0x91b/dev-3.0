@@ -153,6 +153,8 @@ vi.mock("../github", () => ({
 	// parsing lives in github.test.ts; here it is the switch that decides whether a
 	// task has an open PR. Default: none, so Merge takes the local squash route.
 	findOpenPullRequest: vi.fn().mockResolvedValue({ pr: null, isGitHub: true }),
+	// The reviewed PR for a review ref; its owner filtering lives in github.test.ts.
+	findPullRequestForHead: vi.fn().mockResolvedValue(null),
 	resolveMergeMethod: vi.fn().mockResolvedValue("squash"),
 	isPullRequestMerged: vi.fn(),
 	getPullRequestSnapshot: vi.fn().mockResolvedValue(null),
@@ -15259,18 +15261,15 @@ describe("createTask review title", () => {
 		vi.mocked(git.isForeignBranchRef).mockResolvedValue(false);
 		vi.mocked(git.localBranchNameForRef).mockImplementation(async (_p, ref) => ref.replace(/^origin\//, ""));
 		vi.mocked(git.refAuthorAndSubject).mockResolvedValue({ author: null, subject: null });
-		vi.mocked(github.findOpenPullRequest).mockReset();
-		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: null, isGitHub: true });
+		vi.mocked(github.findPullRequestForHead).mockReset();
+		vi.mocked(github.findPullRequestForHead).mockResolvedValue(null);
 		const project = makeProject();
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.addTask).mockResolvedValue(makeTask({ status: "todo", worktreePath: null }));
 	});
 
 	it("names the task after the pull request, its author and what it changes", async () => {
-		vi.mocked(github.findOpenPullRequest).mockResolvedValue({
-			pr: { number: 493, url: "u", title: "fix: pin tmux to a vendored keg (#493)", author: "Arseny Pavlenko" },
-			isGitHub: true,
-		});
+		vi.mocked(github.findPullRequestForHead).mockResolvedValue({ number: 493, url: "u", title: "fix: pin tmux to a vendored keg (#493)", author: "Arseny Pavlenko" });
 
 		await handlers.createTask({
 			projectId: "proj-1",
@@ -15283,9 +15282,9 @@ describe("createTask review title", () => {
 	});
 
 	it("gives two review tasks on different branches two different titles", async () => {
-		vi.mocked(github.findOpenPullRequest)
-			.mockResolvedValueOnce({ pr: { number: 1, url: "u", title: "Add remote mode", author: "Ann" }, isGitHub: true })
-			.mockResolvedValueOnce({ pr: { number: 2, url: "u", title: "Drop the shim", author: "Bo" }, isGitHub: true });
+		vi.mocked(github.findPullRequestForHead)
+			.mockResolvedValueOnce({ number: 1, url: "u", title: "Add remote mode", author: "Ann" })
+			.mockResolvedValueOnce({ number: 2, url: "u", title: "Drop the shim", author: "Bo" });
 		const description = "Review the code changes on this branch.";
 
 		await handlers.createTask({ projectId: "proj-1", description, existingBranch: "origin/a", taskType: "pr-review" });
@@ -15319,9 +15318,7 @@ describe("createTask review title", () => {
 	});
 
 	it("keeps the review title even when the caller derived one from the description", async () => {
-		vi.mocked(github.findOpenPullRequest).mockResolvedValue({
-			pr: { number: 7, url: "u", title: "Speed up boot", author: "Ann" }, isGitHub: true,
-		});
+		vi.mocked(github.findPullRequestForHead).mockResolvedValue({ number: 7, url: "u", title: "Speed up boot", author: "Ann" });
 
 		await handlers.createTask({
 			projectId: "proj-1", description: "Review", title: "look at the migration path",
@@ -15341,7 +15338,7 @@ describe("createTask review title", () => {
 	});
 
 	it("keeps the derived title when gh and git both fail, instead of a broken one", async () => {
-		vi.mocked(github.findOpenPullRequest).mockRejectedValue(new Error("gh exploded"));
+		vi.mocked(github.findPullRequestForHead).mockRejectedValue(new Error("gh exploded"));
 
 		await handlers.createTask({
 			projectId: "proj-1", description: "Review", title: "derived", existingBranch: "origin/feat/x",
@@ -15355,9 +15352,7 @@ describe("createTask review title", () => {
 	// the draft into `title` only. Claiming a user edit here would make the CLI
 	// guard refuse the agent's rename, and the prompt's title step would be dead.
 	it("writes the draft as a plain title and never claims a user edit", async () => {
-		vi.mocked(github.findOpenPullRequest).mockResolvedValue({
-			pr: { number: 7, url: "u", title: "Speed up boot", author: "Ann" }, isGitHub: true,
-		});
+		vi.mocked(github.findPullRequestForHead).mockResolvedValue({ number: 7, url: "u", title: "Speed up boot", author: "Ann" });
 
 		await handlers.createTask({
 			projectId: "proj-1", description: "Review", existingBranch: "origin/feat/x", taskType: "pr-review",
@@ -15372,7 +15367,92 @@ describe("createTask review title", () => {
 	it("never asks GitHub for a review task with no branch to review", async () => {
 		await handlers.createTask({ projectId: "proj-1", description: "Review", taskType: "pr-review" });
 
-		expect(github.findOpenPullRequest).not.toHaveBeenCalled();
+		expect(github.findPullRequestForHead).not.toHaveBeenCalled();
+	});
+
+	// The reviewed PR is the canonical identity every surface links; the title
+	// reads "#N" from the same lookup, so the two can never disagree.
+	it("stores the reviewed PR from the same lookup that names the task", async () => {
+		vi.mocked(github.findPullRequestForHead).mockResolvedValue({
+			number: 2067, url: "https://github.com/h0x91b/dev-3.0/pull/2067", title: "Start the tmux server", author: "Ann",
+		});
+
+		await handlers.createTask({ projectId: "proj-1", description: "Review", existingBranch: "origin/fix/x", taskType: "pr-review" });
+
+		const extras = vi.mocked(data.addTask).mock.calls[0]?.[3];
+		expect(extras?.reviewedPr).toEqual({ number: 2067, url: "https://github.com/h0x91b/dev-3.0/pull/2067" });
+		expect(extras?.title).toBe("Review of #2067 from Ann about Start the tmux server");
+	});
+
+	it("asks for the fork's own PR when the ref came from a fork remote", async () => {
+		vi.mocked(git.forkRemoteOf).mockResolvedValueOnce("mcaldas");
+		vi.mocked(git.localBranchNameForRef).mockResolvedValueOnce("fix/x");
+
+		await handlers.createTask({ projectId: "proj-1", description: "Review", existingBranch: "mcaldas/fix/x", taskType: "pr-review" });
+
+		expect(github.findPullRequestForHead).toHaveBeenCalledWith(expect.anything(), expect.any(String), "fix/x", expect.objectContaining({ forkOwner: "mcaldas" }));
+	});
+
+	it("stores no reviewed PR without a PR, or without a link to open", async () => {
+		await handlers.createTask({ projectId: "proj-1", description: "Review", existingBranch: "origin/fix/x", taskType: "pr-review" });
+		expect(vi.mocked(data.addTask).mock.calls[0]?.[3]?.reviewedPr).toBeUndefined();
+
+		vi.mocked(data.addTask).mockClear();
+		vi.mocked(github.findPullRequestForHead).mockResolvedValue({ number: 5, url: "", title: null, author: null });
+		await handlers.createTask({ projectId: "proj-1", description: "Review", existingBranch: "origin/fix/x", taskType: "pr-review" });
+		expect(vi.mocked(data.addTask).mock.calls[0]?.[3]?.reviewedPr).toBeUndefined();
+	});
+});
+
+describe("resolveReviewedPr", () => {
+	const reviewed = { number: 2067, url: "https://github.com/h0x91b/dev-3.0/pull/2067" };
+	const legacyReview = () => makeTask({ taskType: "pr-review", foreignCode: true, existingBranch: "mcaldas/fix/x" });
+
+	beforeEach(() => {
+		vi.mocked(data.getProject).mockReset();
+		vi.mocked(data.getTask).mockReset();
+		vi.mocked(data.updateTask).mockReset();
+		vi.mocked(github.findPullRequestForHead).mockReset();
+		vi.mocked(github.findPullRequestForHead).mockResolvedValue(null);
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+	});
+
+	it("looks the PR up once for a legacy review task, stores it and pushes the task", async () => {
+		const task = legacyReview();
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, reviewedPr: reviewed });
+		vi.mocked(github.findPullRequestForHead).mockResolvedValue({ ...reviewed, title: "t", author: "a" });
+		const push = vi.fn();
+		setPushMessage(push);
+
+		const [first, second] = await Promise.all([
+			handlers.resolveReviewedPr({ projectId: "proj-1", taskId: task.id }),
+			handlers.resolveReviewedPr({ projectId: "proj-1", taskId: task.id }),
+		]);
+
+		expect(first).toEqual(reviewed);
+		expect(second).toEqual(reviewed);
+		expect(github.findPullRequestForHead).toHaveBeenCalledTimes(1);
+		expect(data.updateTask).toHaveBeenCalledWith(expect.anything(), task.id, { reviewedPr: reviewed });
+		expect(push).toHaveBeenCalledWith("taskUpdated", expect.objectContaining({ task: expect.objectContaining({ reviewedPr: reviewed }) }));
+	});
+
+	it("returns the stored PR without asking GitHub", async () => {
+		vi.mocked(data.getTask).mockResolvedValue({ ...legacyReview(), reviewedPr: reviewed });
+
+		await expect(handlers.resolveReviewedPr({ projectId: "proj-1", taskId: "t" })).resolves.toEqual(reviewed);
+		expect(github.findPullRequestForHead).not.toHaveBeenCalled();
+	});
+
+	it("writes nothing when no PR is found, and never asks for an ordinary task", async () => {
+		vi.mocked(data.getTask).mockResolvedValue(legacyReview());
+		await expect(handlers.resolveReviewedPr({ projectId: "proj-1", taskId: "t" })).resolves.toBeNull();
+		expect(data.updateTask).not.toHaveBeenCalled();
+
+		vi.mocked(github.findPullRequestForHead).mockClear();
+		vi.mocked(data.getTask).mockResolvedValue(makeTask({ existingBranch: "origin/feat/x" }));
+		await expect(handlers.resolveReviewedPr({ projectId: "proj-1", taskId: "t" })).resolves.toBeNull();
+		expect(github.findPullRequestForHead).not.toHaveBeenCalled();
 	});
 });
 

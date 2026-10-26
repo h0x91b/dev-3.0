@@ -1,4 +1,4 @@
-import { isPullRequestFinished, type Task, type TaskPRBadgeInfo } from "../../shared/types";
+import { isPullRequestFinished, type ReviewedPullRequest, type Task, type TaskPRBadgeInfo } from "../../shared/types";
 
 export type PRIdentity = Pick<TaskPRBadgeInfo, "number" | "url">;
 
@@ -131,4 +131,14 @@ export function samePRMap(a: Map<string, TaskPRBadgeInfo>, b: Map<string, TaskPR
 		}
 	}
 	return true;
+}
+
+/**
+ * The reviewed PR a surface should link, or null when the task reviews none we
+ * know of, or its own PR badge already opens that very PR — one PR, one chip.
+ */
+export function reviewedPrLink(task: Pick<Task, "reviewedPr">, ownPr: PRIdentity | null | undefined): ReviewedPullRequest | null {
+	const reviewed = task.reviewedPr;
+	if (!reviewed?.url) return null;
+	return ownPr?.number === reviewed.number ? null : reviewed;
 }

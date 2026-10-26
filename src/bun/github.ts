@@ -452,26 +452,76 @@ export async function findOpenPullRequest(
 		try {
 			const prs = JSON.parse(result.stdout);
 			if (Array.isArray(prs) && prs.length > 0 && typeof prs[0].number === "number") {
-				const author = prs[0].author as { name?: unknown; login?: unknown } | null | undefined;
-				// A GitHub display name is optional, the login never is, and the login is
-				// what a human recognises anyway when the name is missing.
-				const authorName = [author?.name, author?.login]
-					.find((candidate) => typeof candidate === "string" && candidate.trim()) as string | undefined;
-				return {
-					pr: {
-						number: prs[0].number,
-						url: typeof prs[0].url === "string" ? prs[0].url : "",
-						title: typeof prs[0].title === "string" && prs[0].title.trim() ? prs[0].title : null,
-						author: authorName?.trim() ?? null,
-					},
-					isGitHub,
-				};
+				return { pr: describeListedPr(prs[0]), isGitHub };
 			}
 		} catch (err) {
 			log.warn("Failed to parse gh pr list output", { error: String(err) });
 		}
 	}
 	return { pr: null, isGitHub };
+}
+
+interface ListedPr {
+	number: number;
+	url?: unknown;
+	title?: unknown;
+	author?: { name?: unknown; login?: unknown } | null;
+	state?: unknown;
+	isCrossRepository?: unknown;
+	headRepositoryOwner?: { login?: unknown } | null;
+}
+
+function describeListedPr(pr: ListedPr): NonNullable<OpenPullRequestProbe["pr"]> {
+	// A GitHub display name is optional, the login never is, and the login is
+	// what a human recognises anyway when the name is missing.
+	const authorName = [pr.author?.name, pr.author?.login]
+		.find((candidate) => typeof candidate === "string" && candidate.trim()) as string | undefined;
+	return {
+		number: pr.number,
+		url: typeof pr.url === "string" ? pr.url : "",
+		title: typeof pr.title === "string" && pr.title.trim() ? pr.title : null,
+		author: authorName?.trim() ?? null,
+	};
+}
+
+/**
+ * The pull request whose head is `headBranch` in the repository that owns it —
+ * what a review task is about. `forkOwner` names the fork remote the ref came
+ * from (null = origin): `gh pr list --head` matches the branch NAME only, so two
+ * forks pushing `fix/x` would otherwise be indistinguishable. Any state counts
+ * (a reviewed PR may merge before the review ends); an open one wins over an
+ * older closed one. Null when nothing matches or gh cannot answer.
+ */
+export async function findPullRequestForHead(
+	project: ProjectGitHubSelection,
+	cwd: string,
+	headBranch: string,
+	options: { forkOwner: string | null; timeoutMs?: number },
+): Promise<NonNullable<OpenPullRequestProbe["pr"]> | null> {
+	if (!headBranch) return null;
+	const result = await runGitHub(
+		project,
+		cwd,
+		["pr", "list", "--head", headBranch, "--state", "all", "--json", "number,url,title,author,state,isCrossRepository,headRepositoryOwner", "--limit", "20"],
+		{ timeoutMs: options.timeoutMs },
+	);
+	if (!result.ok || !result.stdout) return null;
+	let prs: unknown;
+	try {
+		prs = JSON.parse(result.stdout);
+	} catch (err) {
+		log.warn("Failed to parse gh pr list output", { error: String(err) });
+		return null;
+	}
+	if (!Array.isArray(prs)) return null;
+	const owner = options.forkOwner?.toLowerCase() ?? null;
+	const sameHead = (prs as ListedPr[]).filter((pr) => {
+		if (typeof pr?.number !== "number") return false;
+		const login = typeof pr.headRepositoryOwner?.login === "string" ? pr.headRepositoryOwner.login.toLowerCase() : null;
+		return owner ? pr.isCrossRepository === true && login === owner : pr.isCrossRepository !== true;
+	});
+	const pick = sameHead.find((pr) => pr.state === "OPEN") ?? sameHead[0];
+	return pick ? describeListedPr(pick) : null;
 }
 
 export type PullRequestMergeMethod = "squash" | "merge" | "rebase";

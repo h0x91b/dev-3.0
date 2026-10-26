@@ -849,6 +849,7 @@ export async function addTask(
 		foreignCode?: boolean;
 		/** Behaviour-carrying task kind picked at creation — see Task.taskType. */
 		taskType?: TaskType | null;
+		reviewedPr?: Task["reviewedPr"];
 		customTitle?: string | null;
 		titleEditedByUser?: boolean;
 		labelIds?: string[];
@@ -920,6 +921,7 @@ export async function addTask(
 			...(extras?.draft ? { draft: true } : {}),
 			...(extras?.foreignCode ? { foreignCode: true } : {}),
 			...(extras?.taskType ? { taskType: extras.taskType } : {}),
+			...(extras?.reviewedPr ? { reviewedPr: extras.reviewedPr } : {}),
 			...(extras?.importedSessionId ? { importedSessionId: extras.importedSessionId } : {}),
 			...(extras?.customTitle ? { customTitle: extras.customTitle } : {}),
 			...(extras?.titleEditedByUser ? { titleEditedByUser: true } : {}),

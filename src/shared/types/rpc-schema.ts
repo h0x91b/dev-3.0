@@ -38,7 +38,7 @@ import type { TaskSessionState } from "./task-lifecycle";
 import type { Automation, AutomationDraft } from "./automations";
 import type { NoteSource } from "./task-notes";
 import type { BranchStatus, MergeRoute, TaskDiffMode, TaskDiffResponse, UnsavedWork } from "./git-status";
-import type { PRCheckInfo, PRCIStatus, PRInfo, PRMergeState, PRReviewDecision, PRReviewState, RefreshTaskPrStatusResult, TaskPRCommentsPayload } from "./pull-requests";
+import type { PRCheckInfo, PRCIStatus, PRInfo, PRMergeState, PRReviewDecision, PRReviewState, RefreshTaskPrStatusResult, ReviewedPullRequest, TaskPRCommentsPayload } from "./pull-requests";
 import type { ExposedPort, PortInfo, ResourceUsage, SystemMemorySnapshot, WorktreeOrphanGroup } from "./system-resources";
 import type { PtyThroughputStats, TmuxLayout, TmuxSessionInfo, TmuxWindowEntry } from "./tmux";
 import type { DevServerStatus, DevServerSummary } from "./dev-server";
@@ -537,6 +537,11 @@ export type AppRPCSchema = {
 				 */
 				params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType };
 				response: Task;
+			};
+			/** Stored PR a review task reviews; looks it up once for tasks created before it was stored. */
+			resolveReviewedPr: {
+				params: { projectId: string; taskId: string };
+				response: ReviewedPullRequest | null;
 			};
 			hibernateTask: {
 				// GUI-only, one gesture, no confirmation: kills the agent, the tmux

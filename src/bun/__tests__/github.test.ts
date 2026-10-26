@@ -715,6 +715,53 @@ describe("github", () => {
 			});
 		});
 
+		describe("findPullRequestForHead", () => {
+			const fork = (number: number, owner: string, state = "OPEN") => ({
+				number, url: `https://github.com/h0x91b/dev-3.0/pull/${number}`, state,
+				isCrossRepository: true, headRepositoryOwner: { login: owner },
+			});
+			const own = (number: number, state = "OPEN") => ({
+				number, url: `https://github.com/h0x91b/dev-3.0/pull/${number}`, state,
+				isCrossRepository: false, headRepositoryOwner: { login: "h0x91b" },
+			});
+
+			// `--head` matches the branch NAME, so a namesake on another fork must
+			// never stand in for the PR the review ref actually came from.
+			it("picks the PR from the fork the ref came from", async () => {
+				mockGhRepoView(JSON.stringify([fork(2070, "someone-else"), fork(2067, "MCaldas"), own(1990)]));
+				const { findPullRequestForHead } = await import("../github");
+				await expect(findPullRequestForHead(PROJECT, "/tmp/wt", "fix/x", { forkOwner: "mcaldas" }))
+					.resolves.toMatchObject({ number: 2067, url: "https://github.com/h0x91b/dev-3.0/pull/2067" });
+				const args = spawnMock.mock.calls.map(([cmd]) => (cmd as string[]).join(" ")).find((c) => c.includes("pr list"));
+				expect(args).toContain("--state all");
+			});
+
+			it("picks a same-repo PR for an origin ref, open before an older closed one", async () => {
+				mockGhRepoView(JSON.stringify([fork(2071, "mcaldas"), own(1500, "CLOSED"), own(2068)]));
+				const { findPullRequestForHead } = await import("../github");
+				await expect(findPullRequestForHead(PROJECT, "/tmp/wt", "fix/x", { forkOwner: null }))
+					.resolves.toMatchObject({ number: 2068 });
+			});
+
+			it("keeps a merged PR when nothing open shares its head", async () => {
+				mockGhRepoView(JSON.stringify([fork(2067, "mcaldas", "MERGED")]));
+				const { findPullRequestForHead } = await import("../github");
+				await expect(findPullRequestForHead(PROJECT, "/tmp/wt", "fix/x", { forkOwner: "mcaldas" }))
+					.resolves.toMatchObject({ number: 2067 });
+			});
+
+			it("answers null for no match, a gh failure, unparsable output and no branch", async () => {
+				const { findPullRequestForHead } = await import("../github");
+				for (const [stdout, stderr, code] of [[JSON.stringify([fork(1, "other")]), "", 0], ["", "gh: not found", 1], ["not json", "", 0]] as const) {
+					mockGhRepoView(stdout, stderr, code);
+					await expect(findPullRequestForHead(PROJECT, "/tmp/wt", "fix/x", { forkOwner: "mcaldas" })).resolves.toBeNull();
+				}
+				spawnMock.mockClear();
+				await expect(findPullRequestForHead(PROJECT, "/tmp/wt", "", { forkOwner: null })).resolves.toBeNull();
+				expect(spawnMock).not.toHaveBeenCalled();
+			});
+		});
+
 		describe("merge method", () => {
 			// `gh pr merge` with no method flag PROMPTS when several are allowed, which in
 			// a headless call is a hang — so a method is always chosen here.

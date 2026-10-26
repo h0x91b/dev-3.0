@@ -26,6 +26,7 @@ export const tooltips = {
 
 	// Task card
 	"ttip.task.openPR": "Состояние pull request с одного взгляда — открыт, замержен или закрыт. Клик открывает его на GitHub.",
+	"ttip.task.reviewedPr": "Pull request, который ревьюит эта задача. Клик открывает его на GitHub.",
 	"ttip.task.ci": "Живой статус CI по pull request этой таски. Клик открывает проверки на GitHub.",
 	"ttip.task.review": "Состояние ревью pull request — одобрен, запрошены изменения или ещё ждёт ревьюера.",
 	"ttip.task.showDescription": "Прочитать полное описание таски, не открывая её.",

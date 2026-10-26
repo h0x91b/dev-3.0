@@ -39,6 +39,7 @@ vi.mock("../../rpc", () => ({
 			setTaskPriority: vi.fn(() => Promise.resolve([])),
 			setTaskHidden: vi.fn(() => Promise.resolve([])),
 			getProjectPRs: vi.fn(() => Promise.resolve([])),
+			resolveReviewedPr: vi.fn(() => Promise.resolve(null)),
 			refreshTaskPrStatus: vi.fn(() => Promise.resolve(undefined)),
 			// Feature-discovery tip rotation (useTipRotation).
 			getGlobalSettings: vi.fn(() => Promise.resolve({ tipsDisabled: true })),
@@ -1920,6 +1921,49 @@ describe("pull-request badges", () => {
 		await user.click(badge);
 		expect(open).toHaveBeenCalledWith("https://github.com/h0x91b/dev-3.0/pull/1591", "_blank");
 		open.mockRestore();
+	});
+
+	const reviewTask = (overrides?: Partial<Task>) => makeTask({
+		taskType: "pr-review",
+		foreignCode: true,
+		existingBranch: "mcaldas/fix/x",
+		reviewedPr: { number: 2067, url: "https://github.com/h0x91b/dev-3.0/pull/2067" },
+		...overrides,
+	});
+
+	it("links a review task's reviewed PR without opening the row", async () => {
+		const user = userEvent.setup();
+		const open = vi.spyOn(window, "open").mockReturnValue(null);
+		const navigate = vi.fn();
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar project={project} tasks={[reviewTask()]} dispatch={vi.fn()}
+					navigate={navigate} agents={[claudeAgent]} bellCounts={new Map()} taskPorts={new Map()} />
+			</I18nProvider>,
+		);
+
+		const link = screen.getByTestId("sidebar-task-reviewed-pr-t1");
+		expect(link).toHaveTextContent("#2067");
+		expect(link).toHaveAccessibleName("Open reviewed PR #2067");
+		await user.click(link);
+		expect(open).toHaveBeenCalledWith("https://github.com/h0x91b/dev-3.0/pull/2067", "_blank");
+		expect(navigate).not.toHaveBeenCalled();
+		open.mockRestore();
+	});
+
+	it("shows one chip when the task's own PR badge already opens the reviewed PR", () => {
+		renderWith([reviewTask({ prNumber: 2067, prUrl: "https://github.com/h0x91b/dev-3.0/pull/2067" })]);
+
+		expect(screen.getByLabelText("Open PR #2067")).toBeInTheDocument();
+		expect(screen.queryByTestId("sidebar-task-reviewed-pr-t1")).not.toBeInTheDocument();
+	});
+
+	it("asks once for a legacy review task's PR and renders nothing until it is known", async () => {
+		const { api } = await import("../../rpc");
+		renderWith([reviewTask({ id: "legacy-1", reviewedPr: undefined })]);
+
+		expect(screen.queryByTestId("sidebar-task-reviewed-pr-legacy-1")).not.toBeInTheDocument();
+		await waitFor(() => expect(api.request.resolveReviewedPr).toHaveBeenCalledWith({ projectId: "p1", taskId: "legacy-1" }));
 	});
 
 	it("renders merge state, review verdict and unresolved comments from the persisted cache", () => {

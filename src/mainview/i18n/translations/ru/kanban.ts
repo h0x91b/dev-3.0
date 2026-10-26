@@ -181,6 +181,8 @@ const kanban = {
 	"task.openPR": "Открыть PR #{number}",
 	"task.prBadge": "PR #{number}",
 	"task.prNumber": "#{number}",
+	"task.reviewedPr.open": "Открыть ревьюемый PR #{number}",
+	"task.reviewedPr.label": "Ревью #{number}",
 	"task.mergeBadge.mergeable": "Готов к мерджу",
 	"task.mergeBadge.notMergeable": "Мердж невозможен",
 	"task.mergeBadge.conflict": "Конфликты",

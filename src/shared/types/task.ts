@@ -14,7 +14,7 @@ import type { ScriptPlacement } from "./package-scripts";
 import type { MergeCompletionPromptState, PreparingStage, TaskSessionState } from "./task-lifecycle";
 import type { TaskHistoryEntry } from "./task-display";
 import type { TaskMovement, TaskNote } from "./task-notes";
-import type { TaskPRStatusCache, TaskPullRequestRecord } from "./pull-requests";
+import type { ReviewedPullRequest, TaskPRStatusCache, TaskPullRequestRecord } from "./pull-requests";
 
 // ---- Task relations ----
 
@@ -118,6 +118,12 @@ export interface Task {
 	 * top-level field because older app versions rewrite the PR fields above.
 	 */
 	pullRequests?: TaskPullRequestRecord[] | null;
+	/**
+	 * The pull request a review (foreign-code) task reviews, resolved from
+	 * `existingBranch` at creation or lazily for tasks created before this field.
+	 * Absent on every other task and on older records.
+	 */
+	reviewedPr?: ReviewedPullRequest | null;
 	groupId: string | null;
 	variantIndex: number | null;
 	/** Future-facing links to other tasks; the data layer fills [] for legacy records on load. */

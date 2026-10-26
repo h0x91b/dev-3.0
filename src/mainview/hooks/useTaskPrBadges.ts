@@ -3,6 +3,7 @@ import type { PRInfo, Task, TaskPRBadgeInfo } from "../../shared/types";
 import { api } from "../rpc";
 import { startVisibilityAwarePoll } from "../utils/poll";
 import { hydrateTaskPRMap, samePRMap, type PRIdentity } from "../utils/taskPrBadge";
+import { useReviewedPrBackfill } from "./useReviewedPrBackfill";
 
 interface UseTaskPrBadgesOptions {
 	tasks: Task[];
@@ -35,6 +36,8 @@ export function useTaskPrBadges({ tasks, discoverProjectIds, knowsProject }: Use
 		[],
 	);
 	const [map, setMap] = useState<Map<string, TaskPRBadgeInfo>>(() => hydrateTaskPRMap(tasks, undefined, identityOf));
+	// Review tasks link the PR they review; legacy ones get it looked up once.
+	useReviewedPrBackfill(tasks);
 
 	const rehydrate = useCallback(() => {
 		setMap((prev) => {

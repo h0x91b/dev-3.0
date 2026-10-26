@@ -4,7 +4,7 @@ import { useT } from "../../i18n";
 import type { TaskBranchStatusController } from "./useTaskBranchStatus";
 import { AutoMergeIcon, CommitIcon, CreatePRIcon, MergeIcon, PushIcon, RebaseIcon, ShowDiffIcon } from "./GitIcons";
 import type { TaskInlineDiffRequest } from "../task-inline-diff";
-import { isLivePullRequest } from "../../utils/taskPrBadge";
+import { isLivePullRequest, reviewedPrLink } from "../../utils/taskPrBadge";
 
 interface TaskGitActionsSheetProps {
 	task: Task;
@@ -168,6 +168,17 @@ export default function TaskGitActionsSheet({
 			reason: !branchStatus?.prUrl ? t("infoPanel.statusLoading") : undefined,
 			external: true,
 			run: withDismiss(() => handleOpenPR()),
+		});
+	}
+	const reviewedPr = reviewedPrLink(task, prNumber != null ? { number: prNumber, url: branchStatus?.prUrl ?? "" } : null);
+	if (reviewedPr) {
+		rows.push({
+			key: "open-reviewed-pr",
+			icon: <CreatePRIcon className="h-5 w-5 shrink-0 text-fg-2" />,
+			label: t("task.reviewedPr.open", { number: String(reviewedPr.number) }),
+			disabled: false,
+			external: true,
+			run: withDismiss(() => window.open(reviewedPr.url, "_blank")),
 		});
 	}
 	if (!hasPR && ownBranch) {

@@ -14,7 +14,9 @@ import type { TaskInlineDiffRequest } from "../task-inline-diff";
 import { AutoMergeIcon, BranchIcon, CommitIcon, CreatePRIcon, MergeIcon, PushIcon, RebaseIcon } from "./GitIcons";
 import { RescanIcon } from "../HeaderIcons";
 import TaskPrStatusPopover from "../TaskPrStatusPopover";
-import { inspectorPRBadge, isLivePullRequest } from "../../utils/taskPrBadge";
+import { inspectorPRBadge, isLivePullRequest, reviewedPrLink } from "../../utils/taskPrBadge";
+import ReviewedPrLink from "../ReviewedPrLink";
+import { useReviewedPrBackfill } from "../../hooks/useReviewedPrBackfill";
 import { prBadgeDisplayState, prStateTone } from "../../utils/prStateTone";
 
 export interface TaskBranchStatusMeta {
@@ -319,6 +321,8 @@ export default function TaskGitActions({
 		: undefined;
 
 	const prState = prInfo ? prBadgeDisplayState(prInfo, branchStatus, task.prStatusCache) : null;
+	const reviewedPr = reviewedPrLink(task, prInfo);
+	useReviewedPrBackfill(useMemo(() => [task], [task]));
 	const prTone = prState ? prStateTone(prState) : null;
 	const prBadge = prInfo && prTone && prState ? (
 		<TaskPrStatusPopover prInfo={prInfo} projectId={project.id} taskId={task.id} onShowUnresolved={openUnresolvedInDiff} earlierPullRequests={earlierPullRequests(task)} displayState={prState}>
@@ -849,6 +853,7 @@ export default function TaskGitActions({
 			)}
 
 			{prBadge}
+			{reviewedPr && <ReviewedPrLink pr={reviewedPr} labelled testId="git-bar-reviewed-pr" />}
 
 			{gitActionButtons && (
 				<>

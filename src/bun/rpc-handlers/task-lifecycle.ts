@@ -1,4 +1,4 @@
-import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
+import type { ReviewedPullRequest, AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
 import { isTaskSoundEnabled } from "../../shared/task-sound-statuses";
 import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, reviewTaskTitle } from "../../shared/types";
@@ -41,20 +41,36 @@ function scratchPlaceholder(now: Date = new Date()): string {
  * "Save" remains unavailable until the user actually writes the prompt.
  */
 /**
- * A DRAFT name for a PR-review task, at creation, from what dev3 already knows
- * about the branch. The reviewing agent owns the final title — the preset prompt
- * tells it to replace this one once it has read the diff, which dev3 never does.
- * This exists because the card must not be anonymous in the meantime, and because
- * the prompt is overridable per project and app-wide: a naming rule that lived
- * only there would silently skip every user who customised it.
- * Best-effort; "" means "keep the description-derived title".
+ * The pull request a review ref belongs to, from the repository the ref came
+ * from — a fork remote's `owner/x` asks for that owner's PR, never a namesake
+ * branch on another fork. Null when there is none or gh cannot answer.
  */
-async function reviewTitleForBranch(project: Project, existingBranch: string): Promise<string> {
+async function pullRequestForReviewRef(project: Project, existingBranch: string) {
+	const branch = await git.localBranchNameForRef(project.path, existingBranch);
+	const forkOwner = await git.forkRemoteOf(project.path, existingBranch);
+	const pr = await github.findPullRequestForHead(project, project.path, branch, { forkOwner, timeoutMs: 15_000 });
+	return { branch, pr };
+}
+
+function reviewedPrOf(pr: { number: number; url: string } | null): ReviewedPullRequest | null {
+	return pr?.url ? { number: pr.number, url: pr.url } : null;
+}
+
+/**
+ * A DRAFT name for a PR-review task, at creation, from what dev3 already knows
+ * about the branch, plus the PR it reviews. The reviewing agent owns the final
+ * title — the preset prompt tells it to replace this one once it has read the
+ * diff, which dev3 never does. This exists because the card must not be
+ * anonymous in the meantime, and because the prompt is overridable per project
+ * and app-wide: a naming rule that lived only there would silently skip every
+ * user who customised it.
+ * Best-effort; title "" means "keep the description-derived title".
+ */
+async function reviewIdentityForBranch(project: Project, existingBranch: string): Promise<{ title: string; reviewedPr: ReviewedPullRequest | null }> {
 	try {
-		const branch = await git.localBranchNameForRef(project.path, existingBranch);
-		const probe = await github.findOpenPullRequest(project, project.path, branch, { timeoutMs: 15_000 });
-		let author = probe.pr?.author ?? null;
-		let topic = probe.pr?.title ?? null;
+		const { branch, pr } = await pullRequestForReviewRef(project, existingBranch);
+		let author = pr?.author ?? null;
+		let topic = pr?.title ?? null;
 		// No pull request, or one gh could not fully describe: the branch tip still
 		// knows who wrote it and what they called it.
 		if (!author || !topic) {
@@ -62,11 +78,45 @@ async function reviewTitleForBranch(project: Project, existingBranch: string): P
 			author ??= tip.author;
 			topic ??= tip.subject;
 		}
-		return reviewTaskTitle({ prNumber: probe.pr?.number ?? null, branch, author, topic });
+		return { title: reviewTaskTitle({ prNumber: pr?.number ?? null, branch, author, topic }), reviewedPr: reviewedPrOf(pr) };
 	} catch (err) {
-		log.warn("reviewTitleForBranch failed, keeping the derived title", { error: String(err) });
-		return "";
+		log.warn("reviewIdentityForBranch failed, keeping the derived title", { error: String(err) });
+		return { title: "", reviewedPr: null };
 	}
+}
+
+const reviewedPrLookups = new Map<string, Promise<ReviewedPullRequest | null>>();
+
+/**
+ * The PR a review task reviews, for tasks created before `reviewedPr` was
+ * stored: looked up once from `existingBranch` and persisted, so every surface
+ * reads the same stored identity afterwards. Not found is NOT persisted — the
+ * renderer asks at most once per session, and a later session may find it.
+ */
+export async function resolveReviewedPr(params: { projectId: string; taskId: string }): Promise<ReviewedPullRequest | null> {
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+	if (task.reviewedPr) return task.reviewedPr;
+	if (project.kind === "virtual" || !task.existingBranch || (task.taskType !== "pr-review" && !task.foreignCode)) return null;
+	const pending = reviewedPrLookups.get(task.id);
+	if (pending) return pending;
+	const lookup = (async () => {
+		try {
+			const reviewedPr = reviewedPrOf((await pullRequestForReviewRef(project, task.existingBranch!)).pr);
+			if (!reviewedPr) return null;
+			const updated = await data.updateTask(project, task.id, { reviewedPr });
+			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+			log.info("resolveReviewedPr: stored", { taskId: task.id.slice(0, 8), pr: reviewedPr.number });
+			return reviewedPr;
+		} catch (err) {
+			log.warn("resolveReviewedPr failed", { taskId: task.id.slice(0, 8), error: String(err) });
+			return null;
+		} finally {
+			reviewedPrLookups.delete(task.id);
+		}
+	})();
+	reviewedPrLookups.set(task.id, lookup);
+	return lookup;
 }
 
 function draftPlaceholderTitle(now: Date = new Date()): string {
@@ -183,9 +233,10 @@ export async function createTask(params: { projectId: string; description: strin
 	// description leads with the review preamble, so every review card otherwise
 	// reads the same. A title the USER typed still wins — the modal sends that as
 	// `customTitle` after creation, which getTaskTitle prefers over this one.
-	const reviewTitle = params.taskType === "pr-review" && params.existingBranch && project.kind !== "virtual" && !isScratch
-		? await reviewTitleForBranch(project, params.existingBranch)
-		: "";
+	const reviewIdentity = params.taskType === "pr-review" && params.existingBranch && project.kind !== "virtual" && !isScratch
+		? await reviewIdentityForBranch(project, params.existingBranch)
+		: null;
+	const reviewTitle = reviewIdentity?.title ?? "";
 	const extras: Parameters<typeof data.addTask>[3] = {
 		...(params.existingBranch ? { existingBranch: params.existingBranch } : {}),
 		...(foreignCode ? { foreignCode: true } : {}),
@@ -201,6 +252,7 @@ export async function createTask(params: { projectId: string; description: strin
 		...(params.opsWorkDir ? { opsWorkDir: params.opsWorkDir } : {}),
 		...(params.priority ? { priority: params.priority } : {}),
 		...(params.taskType ? { taskType: params.taskType } : {}),
+		...(reviewIdentity?.reviewedPr ? { reviewedPr: reviewIdentity.reviewedPr } : {}),
 	};
 	const initialStatus = isActive(status) ? "todo" : status;
 	const createdTask = await data.addTask(project, description, initialStatus, Object.keys(extras).length ? extras : undefined);
@@ -587,6 +639,7 @@ async function spawnVariants(params: {
 				// Whose code the group is about is a property of the branch, so every
 				// sibling inherits it — never re-derived per variant.
 				foreignCode: sourceTask.foreignCode,
+				reviewedPr: sourceTask.reviewedPr,
 				watched: sourceTask.watched,
 				// Scratch tasks keep the `Scratch — HH:mm` placeholder as title
 				// on every variant, but the flag tells the launch path (see
@@ -720,6 +773,7 @@ async function addAttempts(params: {
 				// Whose code the group is about is a property of the branch, so every
 				// sibling inherits it — never re-derived per variant.
 				foreignCode: sourceTask.foreignCode,
+				reviewedPr: sourceTask.reviewedPr,
 				watched: sourceTask.watched,
 				// Carry the scratch flag onto every added attempt — otherwise the
 				// launch path keeps the `Scratch — HH:mm` placeholder as the prompt
@@ -1273,6 +1327,7 @@ export const taskLifecycleHandlers = {
 	clearUserOverview,
 	toggleTaskWatch,
 	setTaskForeignCode,
+	resolveReviewedPr,
 	setTaskManualCompletion,
 	setTaskKeepAlive,
 	scheduleTaskLaunch,

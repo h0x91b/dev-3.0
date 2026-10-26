@@ -26,6 +26,7 @@ export const tooltips = {
 
 	// Task card
 	"ttip.task.openPR": "El estado del pull request de un vistazo — abierto, fusionado o cerrado. Clic para verlo en GitHub.",
+	"ttip.task.reviewedPr": "El pull request que revisa esta tarea. Clic para abrirlo en GitHub.",
 	"ttip.task.ci": "Estado en vivo del CI del pull request de esta tarea. Clic para abrir las comprobaciones en GitHub.",
 	"ttip.task.review": "Estado de revisión del pull request — aprobado, cambios solicitados o aún esperando revisor.",
 	"ttip.task.showDescription": "Lee la descripción completa de la tarea sin abrirla.",

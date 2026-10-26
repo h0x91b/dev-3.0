@@ -24,6 +24,7 @@ import ForeignCodeMark from "./ForeignCodeMark";
 import OpenInMenu from "./OpenInMenu";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
+import { reviewedPrLink } from "../utils/taskPrBadge";
 import TaskDetailModal from "./TaskDetailModal";
 import PipelineDropdown, { PipelineMenuAction } from "./PipelineDropdown";
 import { OpenInIcon, PlayIcon, SendLaterIcon, WatchIcon, WatchingIcon } from "./TaskIcons";
@@ -43,6 +44,7 @@ import { PREPARING_STAGE_LABELS } from "./TaskPreparingView";
 import Tooltip from "./Tooltip";
 import TaskShutdownOverlay from "./TaskShutdownOverlay";
 import TaskPrBadges from "./TaskPrBadges";
+import ReviewedPrLink from "./ReviewedPrLink";
 
 /** Deferred-time glyph for the scheduled-launch countdown badge. */
 function ClockIcon({ className }: { className?: string }) {
@@ -499,6 +501,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	// Keyed here rather than on each badge: they are built as standalone nodes above
 	// and only become a list at this point.
 	const gitSignals = prBadges ? [<Fragment key="pr">{prBadges}</Fragment>] : [];
+	const reviewedPr = reviewedPrLink(task, prInfo);
+	if (reviewedPr) gitSignals.push(<ReviewedPrLink key="reviewed-pr" pr={reviewedPr} testId={`task-card-reviewed-pr-${task.id}`} />);
 	const runSignals: React.ReactNode[] = [];
 	if (isActive && ports && ports.length > 0) {
 		runSignals.push(

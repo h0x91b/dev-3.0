@@ -67,6 +67,16 @@ export interface RefreshTaskPrStatusResult {
 	outcome: "updated" | "unavailable" | "not-found" | "skipped";
 }
 
+/**
+ * The pull request a review task is ABOUT — someone else's, never the task's own
+ * (that is `prNumber`). Kept apart so the own-PR machinery (polling, merge
+ * detection, completion prompts) never acts on a PR the user only reads.
+ */
+export interface ReviewedPullRequest {
+	number: number;
+	url: string;
+}
+
 /** One entry of {@link Task.pullRequests}. */
 export interface TaskPullRequestRecord {
 	number: number;

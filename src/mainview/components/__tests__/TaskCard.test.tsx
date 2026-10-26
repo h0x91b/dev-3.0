@@ -1742,6 +1742,52 @@ describe("TaskCard", () => {
 		});
 	});
 
+	describe("reviewed PR link", () => {
+		const reviewed = { number: 2067, url: "https://github.com/h0x91b/dev-3.0/pull/2067" };
+		const reviewTask = (overrides?: Partial<Task>) => makeTask({
+			status: "review-by-user", worktreePath: "/tmp/wt", branchName: "dev3/task-t1",
+			taskType: "pr-review", foreignCode: true, existingBranch: "mcaldas/fix/x", reviewedPr: reviewed, ...overrides,
+		});
+
+		it("sits in the git signals and opens the reviewed PR without opening, selecting or dragging the card", async () => {
+			const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+			const navigate = vi.fn();
+			const dispatch = vi.fn();
+			const onDragStart = vi.fn();
+			const user = userEvent.setup();
+			renderCard(reviewTask(), { navigate, dispatch, onDragStart });
+
+			const link = screen.getByTestId("task-card-reviewed-pr-t1");
+			expect(screen.getByTestId("task-card-signals")).toContainElement(link);
+			expect(link).toHaveAttribute("href", reviewed.url);
+			expect(link).toHaveAttribute("draggable", "false");
+			await user.click(link);
+			expect(openSpy).toHaveBeenCalledWith(reviewed.url, "_blank");
+			fireEvent.keyDown(link, { key: "Enter" });
+			fireEvent.dragStart(link);
+			expect(navigate).not.toHaveBeenCalled();
+			expect(onDragStart).not.toHaveBeenCalled();
+			openSpy.mockRestore();
+		});
+
+		it("does not repeat a PR the task's own badge already shows", () => {
+			renderCard(reviewTask(), { prInfo: { number: 2067, url: reviewed.url } });
+			expect(screen.getAllByText("#2067")).toHaveLength(1);
+			expect(screen.queryByTestId("task-card-reviewed-pr-t1")).not.toBeInTheDocument();
+		});
+
+		it("shows both when the task's own PR is a different one", () => {
+			renderCard(reviewTask(), { prInfo: { number: 2100, url: "https://github.com/h0x91b/dev-3.0/pull/2100" } });
+			expect(screen.getByText("#2100")).toBeInTheDocument();
+			expect(screen.getByTestId("task-card-reviewed-pr-t1")).toHaveTextContent("#2067");
+		});
+
+		it("renders nothing for an unknown association or an ordinary task", () => {
+			renderCard(reviewTask({ reviewedPr: null }));
+			expect(screen.queryByTestId("task-card-reviewed-pr-t1")).not.toBeInTheDocument();
+		});
+	});
+
 	describe("watch toggle", () => {
 		it("renders bell outline icon with Watch text for unwatched task", () => {
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test" }));
