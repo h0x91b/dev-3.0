@@ -173,7 +173,7 @@ export interface TerminalFocusImagePayload {
 	images: SharedImage[];
 	newCount: number;
 	/** What the new arrivals are — picks the toast and badge wording. Absent = images. */
-	newKind?: "image" | "video";
+	newKind?: "image" | "video" | "audio" | "media";
 	taskSeq?: number;
 	taskTitle?: string;
 	projectName?: string;

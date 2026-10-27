@@ -23,7 +23,7 @@ import type { NativeStreamRole } from "../shared/native-terminal-stream";
 import { NativeBridgeJournal, NativeClientLease } from "./native-terminal-bridge";
 import { randomUUID } from "node:crypto";
 import { createLogger } from "./logger";
-import { SHARED_VIDEO_ROUTE, serveSharedVideo } from "./shared-video-stream";
+import { SHARED_MEDIA_ROUTE, serveSharedMedia } from "./shared-media-stream";
 import { FILE_LINK_ROUTE, serveFileLink } from "./file-links";
 import { spawn } from "./spawn";
 import { getUserShell } from "./shell-env";
@@ -2297,12 +2297,12 @@ const ptyServer = Bun.serve({
 				return new Response("ok");
 			}
 
-			if (url.pathname.startsWith(SHARED_VIDEO_ROUTE)) {
+			if (url.pathname.startsWith(SHARED_MEDIA_ROUTE)) {
 				// Loopback only: the server listens on every interface, the token is not the only guard.
 				if (!isLoopbackAddress(server.requestIP(req)?.address)) return new Response("Forbidden", { status: 403 });
 				// The desktop page is a different origin (views://); CORS lets its download fetch read the bytes.
-				return serveSharedVideo(req, url.pathname, { "Access-Control-Allow-Origin": "*" }).catch((err) => {
-					log.error("Shared video stream failed", { error: String(err) });
+				return serveSharedMedia(req, url.pathname, { "Access-Control-Allow-Origin": "*" }).catch((err) => {
+					log.error("Shared media stream failed", { error: String(err) });
 					return new Response("Internal error", { status: 500 });
 				});
 			}

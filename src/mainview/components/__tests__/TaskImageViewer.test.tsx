@@ -9,7 +9,7 @@ vi.mock("../../rpc", () => ({
 	api: {
 		request: {
 			readImageBase64: vi.fn(),
-			getSharedVideoUrl: vi.fn(),
+			getSharedMediaUrl: vi.fn(),
 			openImageFile: vi.fn().mockResolvedValue(undefined),
 		},
 	},
@@ -420,11 +420,11 @@ describe("TaskImageViewer with a shared video", () => {
 	let createObjectURL: ReturnType<typeof vi.spyOn>;
 	let revokeObjectURL: ReturnType<typeof vi.spyOn>;
 
-	const STREAM_URL = "http://127.0.0.1:4242/shared-video/tok";
+	const STREAM_URL = "http://127.0.0.1:4242/shared-media/tok";
 
 	beforeEach(() => {
-		(mockedApi.request.getSharedVideoUrl as ReturnType<typeof vi.fn>).mockReset();
-		(mockedApi.request.getSharedVideoUrl as ReturnType<typeof vi.fn>).mockResolvedValue({ url: STREAM_URL, path: "/shared-video/tok" });
+		(mockedApi.request.getSharedMediaUrl as ReturnType<typeof vi.fn>).mockReset();
+		(mockedApi.request.getSharedMediaUrl as ReturnType<typeof vi.fn>).mockResolvedValue({ url: STREAM_URL, path: "/shared-media/tok" });
 		(mockedApi.request.readImageBase64 as ReturnType<typeof vi.fn>).mockClear();
 		(mockedApi.request.readImageBase64 as ReturnType<typeof vi.fn>).mockImplementation(async ({ path }: { path: string }) => ({
 			dataUrl: path.endsWith(".mp4") ? "data:video/mp4;base64,AAAA" : "data:image/png;base64,AAAA",
@@ -450,7 +450,7 @@ describe("TaskImageViewer with a shared video", () => {
 		const video = (await screen.findByTestId("viewer-main-video")) as HTMLVideoElement;
 		// Streamed by URL: no base64 read and no blob copy of the clip.
 		expect(video).toHaveAttribute("src", STREAM_URL);
-		expect(mockedApi.request.getSharedVideoUrl).toHaveBeenCalledWith({ path: "/wt/shared-images/v.mp4" });
+		expect(mockedApi.request.getSharedMediaUrl).toHaveBeenCalledWith({ path: "/wt/shared-images/v.mp4" });
 		expect(mockedApi.request.readImageBase64).not.toHaveBeenCalledWith({ path: "/wt/shared-images/v.mp4" });
 		expect(createObjectURL).not.toHaveBeenCalled();
 		expect(video.controls).toBe(true);
@@ -469,12 +469,12 @@ describe("TaskImageViewer with a shared video", () => {
 			expect(mockedApi.request.readImageBase64).toHaveBeenCalledWith({ path: "/wt/shared-images/a.png" });
 			expect(mockedApi.request.readImageBase64).toHaveBeenCalledWith({ path: "/wt/shared-images/c.png" });
 		});
-		expect(mockedApi.request.getSharedVideoUrl).not.toHaveBeenCalled();
+		expect(mockedApi.request.getSharedMediaUrl).not.toHaveBeenCalled();
 		expect(screen.getByTestId("viewer-thumb-video")).toBeInTheDocument();
 
 		await userEvent.click(screen.getByRole("button", { name: "demo.mp4" }));
 		await screen.findByTestId("viewer-main-video");
-		expect(mockedApi.request.getSharedVideoUrl).toHaveBeenCalledWith({ path: "/wt/shared-images/v.mp4" });
+		expect(mockedApi.request.getSharedMediaUrl).toHaveBeenCalledWith({ path: "/wt/shared-images/v.mp4" });
 		expect(mockedApi.request.readImageBase64).not.toHaveBeenCalledWith({ path: "/wt/shared-images/v.mp4" });
 	});
 
@@ -502,7 +502,7 @@ describe("TaskImageViewer with a shared video", () => {
 	});
 
 	it("shows the load error when the host refuses to stream the clip", async () => {
-		(mockedApi.request.getSharedVideoUrl as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+		(mockedApi.request.getSharedMediaUrl as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 		renderMixed(1);
 		expect(await screen.findByTestId("viewer-media-error")).toBeInTheDocument();
 		expect(screen.queryByTestId("viewer-main-video")).toBeNull();
@@ -531,5 +531,73 @@ describe("TaskImageViewer with a shared video", () => {
 		await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith("blob:clip"));
 		fetchSpy.mockRestore();
 		click.mockRestore();
+	});
+});
+
+describe("TaskImageViewer with a shared audio track", () => {
+	const STREAM_URL = "http://127.0.0.1:4242/shared-media/track";
+	function track(id: string, name: string, caption?: string): SharedImage {
+		return { ...img(id, name), storedPath: `/wt/shared-images/${id}.mp3`, mime: "audio/mpeg", ...(caption ? { caption } : {}) };
+	}
+	const LIST = [img("a", "one.png"), track("t", "voice.mp3", "listen at 0:02")];
+
+	beforeEach(() => {
+		(mockedApi.request.getSharedMediaUrl as ReturnType<typeof vi.fn>).mockReset();
+		(mockedApi.request.getSharedMediaUrl as ReturnType<typeof vi.fn>).mockResolvedValue({ url: STREAM_URL, path: "/shared-media/track" });
+		(mockedApi.request.readImageBase64 as ReturnType<typeof vi.fn>).mockClear();
+		(mockedApi.request.readImageBase64 as ReturnType<typeof vi.fn>).mockResolvedValue({ dataUrl: "data:image/png;base64,AAAA" });
+	});
+
+	function renderList(initialIndex: number) {
+		return render(
+			<I18nProvider>
+				<TaskImageViewer images={LIST} initialIndex={initialIndex} onClose={vi.fn()} taskId="t1" projectId="p1" />
+			</I18nProvider>,
+		);
+	}
+
+	it("plays the track in an audio player with controls, no autoplay, and its caption", async () => {
+		renderList(1);
+		const audio = (await screen.findByTestId("viewer-main-audio")) as HTMLAudioElement;
+		expect(audio.tagName).toBe("AUDIO");
+		expect(audio).toHaveAttribute("src", STREAM_URL);
+		expect(audio.controls).toBe(true);
+		expect(audio.autoplay).toBe(false);
+		expect(audio).toHaveAttribute("preload", "metadata");
+		expect(audio).toHaveAttribute("aria-label", "voice.mp3");
+		expect(mockedApi.request.getSharedMediaUrl).toHaveBeenCalledWith({ path: "/wt/shared-images/t.mp3" });
+		expect(mockedApi.request.readImageBase64).not.toHaveBeenCalledWith({ path: "/wt/shared-images/t.mp3" });
+		expect(screen.queryByTestId("viewer-main-video")).toBeNull();
+		expect(screen.queryByTestId("image-viewer-comment")).toBeNull();
+		expect(screen.getByTestId("viewer-caption")).toHaveTextContent("listen at 0:02");
+		expect(screen.getByRole("dialog", { name: "Shared media" })).toBeInTheDocument();
+		expect(screen.getByTestId("image-viewer-download")).toHaveAccessibleName("Download audio");
+	});
+
+	it("marks the track's thumbnail as audio and streams it only once on stage", async () => {
+		renderList(0);
+		await waitFor(() => expect(mockedApi.request.readImageBase64).toHaveBeenCalledWith({ path: "/wt/shared-images/a.png" }));
+		expect(screen.getByTestId("viewer-thumb-audio")).toHaveAttribute("title", "Audio");
+		expect(mockedApi.request.getSharedMediaUrl).not.toHaveBeenCalled();
+	});
+
+	it("toggles play and pause with Space", async () => {
+		renderList(1);
+		const audio = (await screen.findByTestId("viewer-main-audio")) as HTMLAudioElement;
+		const play = vi.spyOn(audio, "play").mockResolvedValue(undefined);
+		fireEvent.keyDown(window, { key: " " });
+		expect(play).toHaveBeenCalledTimes(1);
+	});
+
+	it("explains an undecodable track in audio terms", async () => {
+		renderList(1);
+		fireEvent.error(await screen.findByTestId("viewer-main-audio"));
+		expect(await screen.findByTestId("viewer-media-error")).toHaveTextContent("This audio can't play here");
+	});
+
+	it("says the audio is unavailable when the host refuses to stream it", async () => {
+		(mockedApi.request.getSharedMediaUrl as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+		renderList(1);
+		expect(await screen.findByTestId("viewer-media-error")).toHaveTextContent("Audio unavailable");
 	});
 });

@@ -1,21 +1,20 @@
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { open } from "node:fs/promises";
-import { SHARED_VIDEO_EXTS } from "../shared/types";
+import { SHARED_MEDIA_EXTS } from "../shared/types";
 import { isFullyQualifiedPath } from "../shared/absolute-path";
 import { DEV3_HOME } from "./paths";
-import { imageExt } from "./shared-images";
+import { imageExt, sharedMediaMime } from "./shared-images";
 
 /**
- * HTTP streaming for `dev3 show-video` clips. A clip can be hundreds of MB, so
+ * HTTP streaming for `dev3 show-media` clips. A clip can be hundreds of MB, so
  * the viewer never reads it over RPC: it gets a capability URL and the `<video>`
- * element pulls byte ranges on demand. Desktop serves it from the loopback-only
+ * or `<audio>` element pulls byte ranges on demand. Desktop serves it from the loopback-only
  * PTY server, remote mode from the session-authenticated remote server.
  */
 
-export const SHARED_VIDEO_ROUTE = "/shared-video/";
+export const SHARED_MEDIA_ROUTE = "/shared-media/";
 
-const MIME: Record<string, string> = { mp4: "video/mp4", webm: "video/webm" };
 const READ_CHUNK = 1024 * 1024;
 /** Most bytes one 206 carries; the player asks again for the rest, as it does when seeking. */
 export const MAX_RANGE_RESPONSE_BYTES = 8 * 1024 * 1024;
@@ -24,19 +23,19 @@ const MAX_TOKENS = 256;
 const pathByToken = new Map<string, string>();
 const tokenByPath = new Map<string, string>();
 
-/** Only a clip `dev3 show-video` stored — never an arbitrary file the renderer names. */
-export function isStoredSharedVideoPath(path: string): boolean {
+/** Only a clip `dev3 show-media` stored — never an arbitrary file the renderer names. */
+export function isStoredSharedMediaPath(path: string): boolean {
 	if (!isFullyQualifiedPath(path, process.platform)) return false;
 	const normalized = path.replaceAll("\\", "/");
 	const root = `${DEV3_HOME.replaceAll("\\", "/")}/worktrees/`;
 	if (!normalized.startsWith(root)) return false;
 	const parts = normalized.slice(root.length).split("/");
-	return parts.length === 3 && parts[1] === "shared-images" && SHARED_VIDEO_EXTS.includes(imageExt(normalized));
+	return parts.length === 3 && parts[1] === "shared-images" && SHARED_MEDIA_EXTS.includes(imageExt(normalized));
 }
 
-/** The URL path (`/shared-video/<token>`) that streams `storedPath`, or null when it is not a stored clip. */
-export function sharedVideoUrlPath(storedPath: string): string | null {
-	if (!isStoredSharedVideoPath(storedPath) || !existsSync(storedPath)) return null;
+/** The URL path (`/shared-media/<token>`) that streams `storedPath`, or null when it is not a stored clip. */
+export function sharedMediaUrlPath(storedPath: string): string | null {
+	if (!isStoredSharedMediaPath(storedPath) || !existsSync(storedPath)) return null;
 	let token = tokenByPath.get(storedPath);
 	if (!token) {
 		token = randomBytes(24).toString("base64url");
@@ -48,7 +47,7 @@ export function sharedVideoUrlPath(storedPath: string): string | null {
 			tokenByPath.delete(oldPath);
 		}
 	}
-	return `${SHARED_VIDEO_ROUTE}${token}`;
+	return `${SHARED_MEDIA_ROUTE}${token}`;
 }
 
 type ByteRange = { start: number; end: number };
@@ -147,14 +146,14 @@ async function readRange(handle: FileHandle, start: number, end: number): Promis
 	return bytesRead === buf.length ? buf : buf.subarray(0, bytesRead);
 }
 
-/** Serves `/shared-video/<token>` with Range support; `extraHeaders` lets the desktop route add CORS. */
-export async function serveSharedVideo(req: Request, pathname: string, extraHeaders: Record<string, string> = {}): Promise<Response> {
-	const token = pathname.slice(SHARED_VIDEO_ROUTE.length);
+/** Serves `/shared-media/<token>` with Range support; `extraHeaders` lets the desktop route add CORS. */
+export async function serveSharedMedia(req: Request, pathname: string, extraHeaders: Record<string, string> = {}): Promise<Response> {
+	const token = pathname.slice(SHARED_MEDIA_ROUTE.length);
 	const path = pathByToken.get(token);
 	if (!path || !existsSync(path)) return new Response("Not Found", { status: 404, headers: extraHeaders });
 	if (req.method !== "GET" && req.method !== "HEAD") return new Response("Method Not Allowed", { status: 405, headers: extraHeaders });
 
-	return serveFileBytes(req, path, { ...extraHeaders, "Content-Type": MIME[imageExt(path)] ?? "application/octet-stream" }, { signal: req.signal });
+	return serveFileBytes(req, path, { ...extraHeaders, "Content-Type": sharedMediaMime(imageExt(path)) }, { signal: req.signal });
 }
 
 export interface ServeFileBytesOptions {
@@ -215,7 +214,7 @@ export async function serveFileBytes(req: Request, source: string | FileHandle, 
 }
 
 /** Test hook: forget every minted token. */
-export function resetSharedVideoTokens(): void {
+export function resetSharedMediaTokens(): void {
 	pathByToken.clear();
 	tokenByPath.clear();
 }

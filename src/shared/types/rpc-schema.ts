@@ -1302,8 +1302,8 @@ export type AppRPCSchema = {
 				params: { path: string };
 				response: { dataUrl: string } | null;
 			};
-			/** A streamable URL for a stored `dev3 show-video` clip: `url` for the desktop webview, `path` for the remote browser's own origin. */
-			getSharedVideoUrl: {
+			/** A streamable URL for a stored `dev3 show-media` clip (video or audio): `url` for the desktop webview, `path` for the remote browser's own origin. */
+			getSharedMediaUrl: {
 				params: { path: string };
 				response: { url: string; path: string } | null;
 			};
@@ -2041,8 +2041,8 @@ export type AppRPCSchema = {
 				projectId: string;
 				images: SharedImage[];
 				newCount: number;
-				/** Kind of the new arrivals (`dev3 show-video` sends "video"). Absent = images. */
-				newKind?: "image" | "video";
+				/** Kind of the new arrivals (`dev3 show-media`: "video", "audio", or "media" for a mix). Absent = images. */
+				newKind?: "image" | "video" | "audio" | "media";
 				taskSeq?: number;
 				taskTitle?: string;
 				projectName?: string;

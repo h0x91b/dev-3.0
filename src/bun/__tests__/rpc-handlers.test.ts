@@ -7948,6 +7948,7 @@ describe("handlers.markTaskSharedItemsRead", () => {
 		const task = makeTask({
 			sharedImages: [{ id: "shot", isUnread: true }] as Task["sharedImages"],
 			sharedVideos: [{ id: "clip", isUnread: true }, { id: "later", isUnread: true }] as Task["sharedVideos"],
+			sharedAudio: [{ id: "track", isUnread: true }, { id: "unopened", isUnread: true }] as Task["sharedAudio"],
 		});
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
@@ -7955,13 +7956,14 @@ describe("handlers.markTaskSharedItemsRead", () => {
 			return { task: { ...task, ...updates }, result };
 		});
 
-		const result = await handlers.markTaskSharedItemsRead({ taskId: "task-1", projectId: "proj-1", kind: "images", itemIds: ["shot", "clip"] });
+		const result = await handlers.markTaskSharedItemsRead({ taskId: "task-1", projectId: "proj-1", kind: "images", itemIds: ["shot", "clip", "track"] });
 
 		expect(result.sharedImages?.map((item) => [item.id, item.isUnread])).toEqual([["shot", false]]);
 		expect(result.sharedVideos?.map((item) => [item.id, item.isUnread])).toEqual([["clip", false], ["later", true]]);
+		expect(result.sharedAudio?.map((item) => [item.id, item.isUnread])).toEqual([["track", false], ["unopened", true]]);
 	});
 
-	it("does not invent a sharedVideos field on a task that never had clips", async () => {
+	it("does not invent a sharedVideos or sharedAudio field on a task that never had clips", async () => {
 		const project = makeProject();
 		const task = makeTask({ sharedImages: [{ id: "shot", isUnread: true }] as Task["sharedImages"] });
 		vi.mocked(data.getProject).mockResolvedValue(project);
@@ -7973,6 +7975,7 @@ describe("handlers.markTaskSharedItemsRead", () => {
 		});
 		await handlers.markTaskSharedItemsRead({ taskId: "task-1", projectId: "proj-1", kind: "images", itemIds: ["shot"] });
 		expect("sharedVideos" in written).toBe(false);
+		expect("sharedAudio" in written).toBe(false);
 	});
 
 	it("marks only the requested artifacts as read", async () => {

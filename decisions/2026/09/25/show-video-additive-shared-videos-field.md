@@ -1,5 +1,7 @@
 # `dev3 show-video` keeps clips in an additive `sharedVideos` field and plays them in the image viewer
 
+> Superseded on 2026-10-27 by `decisions/2026/10/27/show-media-replaces-show-video.md`: the command is now `dev3 show-media` (`ui.show-media`, `saveSharedClips`), it also takes audio, and audio lives in its own `sharedAudio` field. The `sharedVideos` reasoning below still holds.
+
 ## 1. Context
 Agents wanted to hand the user a QA recording or demo clip the way `dev3 show-image` hands a screenshot, and the ask was explicit: the SAME viewer, switching its stage to a player, not a new panel. The same UI does not require the same list on disk.
 

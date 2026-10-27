@@ -81,6 +81,19 @@ describe("SharedOutputsList", () => {
 		expect((spy.mock.calls[0][0] as CustomEvent).detail).toMatchObject({ index: 1 });
 	});
 
+	it("shows an audio track as its own tile under the Media heading, in shared order", async () => {
+		const track = { ...image("track"), storedPath: "/wt/shared-images/track.mp3", name: "voice.mp3", mime: "audio/mpeg", createdAt: 1_780_000_000_001 };
+		const spy = vi.fn();
+		window.addEventListener("dev3:openImageViewer", spy);
+		renderList({ sharedImages: [image("shot")], sharedAudio: [track] });
+		expect(screen.getByRole("heading", { name: /Media/ })).toBeInTheDocument();
+		expect(screen.getByTestId("shared-audio-card")).toHaveAttribute("title", "Audio");
+		expect(screen.queryByTestId("shared-video-card")).toBeNull();
+		await userEvent.click(screen.getByRole("button", { name: "Open audio voice.mp3" }));
+		window.removeEventListener("dev3:openImageViewer", spy);
+		expect((spy.mock.calls[0][0] as CustomEvent).detail).toMatchObject({ index: 1 });
+	});
+
 	it("opens the artifact popup at the clicked row", async () => {
 		const spy = vi.fn();
 		window.addEventListener("dev3:openArtifactViewer", spy);

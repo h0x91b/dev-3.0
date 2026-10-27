@@ -1,4 +1,4 @@
-import { isSharedVideo, taskSharedMedia, type Task } from "../../../shared/types";
+import { isSharedClip, taskSharedMedia, type Task } from "../../../shared/types";
 import { useT } from "../../i18n";
 import Tooltip from "../Tooltip";
 import { ImagesIcon } from "../TaskIcons";
@@ -27,8 +27,8 @@ export default function TaskSharedImages({ task, projectId, compact = false, tou
 	if (count === 0) return null;
 
 	const isUnread = media.some((item) => item.isUnread);
-	const hasVideos = media.some(isSharedVideo);
-	const baseLabel = t.plural(hasVideos ? "infoPanel.mediaBadge" : "infoPanel.imagesBadge", count);
+	const hasClips = media.some(isSharedClip);
+	const baseLabel = t.plural(hasClips ? "infoPanel.mediaBadge" : "infoPanel.imagesBadge", count);
 	const label = isUnread ? `${baseLabel}. ${t("infoPanel.sharedItemsUnread")}` : baseLabel;
 	return (
 		<Tooltip content={label} detail={t("ttip.sharedImages")}>
@@ -45,7 +45,7 @@ export default function TaskSharedImages({ task, projectId, compact = false, tou
 				data-testid="shared-images-badge"
 			>
 				<ImagesIcon className={`w-[1.125rem] h-[1.125rem]${isUnread ? " task-shared-unread-icon" : ""}`} />
-				{!compact && <span className="text-micro font-semibold">{t(hasVideos ? "infoPanel.mediaLabel" : "infoPanel.imagesLabel")}</span>}
+				{!compact && <span className="text-micro font-semibold">{t(hasClips ? "infoPanel.mediaLabel" : "infoPanel.imagesLabel")}</span>}
 				<span className={`text-micro font-semibold tabular-nums ${isUnread ? "text-success" : "text-accent"}`}>{count}</span>
 			</button>
 		</Tooltip>

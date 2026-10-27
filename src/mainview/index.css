@@ -952,6 +952,15 @@ html[data-image-viewer="open"] [data-terminal="true"] {
 	visibility: hidden;
 }
 
+/* Native <audio> controls follow color-scheme, which the app never sets, so they
+   would paint a white pill on the dark theme. Scoped to the player, not the page. */
+.media-controls {
+	color-scheme: dark;
+}
+[data-theme="light"] .media-controls {
+	color-scheme: light;
+}
+
 /* The HTML artifact lightbox is the same modal card over the same scrim, so it
    needs the identical workaround — whether or not it is expanded fullscreen. */
 html[data-artifact-viewer="open"] [data-terminal="true"] {

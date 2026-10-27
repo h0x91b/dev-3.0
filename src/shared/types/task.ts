@@ -366,11 +366,17 @@ export interface Task {
 	 */
 	sharedImages?: SharedImage[];
 	/**
-	 * Clips the agent surfaced via `dev3 show-video`, oldest→newest. A field of
-	 * their own so older app versions, which read every `sharedImages` entry's
-	 * bytes, never see them; read both lists through {@link taskSharedMedia}.
+	 * Video clips the agent surfaced via `dev3 show-media`, oldest→newest. A field
+	 * of their own so older app versions, which read every `sharedImages` entry's
+	 * bytes, never see them; read every list through {@link taskSharedMedia}.
 	 */
 	sharedVideos?: SharedImage[];
+	/**
+	 * Audio tracks the agent surfaced via `dev3 show-media`, oldest→newest. Not in
+	 * `sharedVideos`: versions that know that field treat any non-`video/*` entry
+	 * as an image and would read a whole track over RPC.
+	 */
+	sharedAudio?: SharedImage[];
 	/**
 	 * HTML artifacts an agent surfaced via `dev3 show-artifact`, oldest→newest.
 	 * Each artifact is stored in its own additive `shared-artifacts/<id>/`

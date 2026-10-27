@@ -7,7 +7,7 @@
 // hand-written help inside their handlers and are NOT listed here (see
 // `OWNS_HELP` below).
 
-import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES, MAX_SCHEDULED_MESSAGE_LENGTH, MAX_SHARED_VIDEO_BYTES, formatMediaCap } from "../shared/types";
+import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES, MAX_SCHEDULED_MESSAGE_LENGTH, MAX_SHARED_MEDIA_BYTES, formatMediaCap } from "../shared/types";
 import { MAX_MESSAGE_SUBJECT_LENGTH, MESSAGE_SUBJECT_WORD_GUIDANCE } from "../shared/agent-message-subject";
 import { CLI_EXIT_CODE_HIBERNATE_DECLINED, CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_PANE_NO_ROOM, CLI_EXIT_CODE_RESUME_ALREADY_RUNNING, CLI_EXIT_CODE_RESUME_UNAVAILABLE, CLI_EXIT_CODE_TASK_NOT_HIBERNATED } from "../shared/cli-exit-codes";
 
@@ -964,18 +964,19 @@ const COMMANDS: CommandHelp[] = [
 		],
 	},
 	{
-		name: "show-video",
-		summary: "Play MP4/WebM clips in the task's image viewer.",
+		name: "show-media",
+		summary: "Play video and audio clips in the task's image viewer.",
 		subcommands: [],
-		usage: 'dev3 show-video <file.mp4|file.webm> [--caption "..."] [<path> ...] [--task <id>]',
+		usage: 'dev3 show-media <file.mp4|.webm|.mp3|.m4a|.wav|.ogg> [--caption "..."] [<path> ...] [--task <id>]',
 		details: [
 			"Same history, badge and viewer as show-image: the viewer switches to a player for a clip.",
-			"Each --caption annotates the clip it immediately follows. Up to 20 files per call.",
-			`MP4 or WebM, up to ${formatMediaCap(MAX_SHARED_VIDEO_BYTES)} (${MAX_SHARED_VIDEO_BYTES.toLocaleString("en-US")} bytes) per file — trim or re-encode larger clips.`,
-			"The viewer streams the clip and can seek before it fully loads. H.264/AAC MP4 is the safest codec choice;",
-			"whether a codec plays depends on the engine (only Chromium playback of H.264, VP8 and VP9 was measured).",
+			"Each --caption annotates the clip it immediately follows. Up to 20 files per call; video and audio may mix.",
+			"Video: MP4 or WebM. Audio: MP3, M4A, WAV or OGG. Anything else (FLAC, Opus in WebM, MOV, MKV) — convert it first.",
+			`Up to ${formatMediaCap(MAX_SHARED_MEDIA_BYTES)} (${MAX_SHARED_MEDIA_BYTES.toLocaleString("en-US")} bytes) per file — trim or re-encode larger clips.`,
+			"The extension picks the container; the codec inside is the engine's call. H.264/AAC MP4 and MP3 are the safest.",
 			"A codec the engine cannot decode (HEVC in Chromium, for one) shows a notice pointing at Open in default app.",
-			"Files are copied into the task's shared store, so the original may be deleted afterwards. Never autoplays.",
+			"The viewer streams the clip and can seek before it fully loads. Never autoplays.",
+			"Files are copied into the task's shared store, so the original may be deleted afterwards.",
 		],
 	},
 	{

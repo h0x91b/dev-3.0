@@ -682,8 +682,8 @@ function initBrowserApi(): ApiShape {
 		},
 
 		// The host answers with a loopback URL; a remote tab streams the same clip from its own origin.
-		async getSharedVideoUrl(params: { path: string }) {
-			const result = await rpcRequest("getSharedVideoUrl", params);
+		async getSharedMediaUrl(params: { path: string }) {
+			const result = await rpcRequest("getSharedMediaUrl", params);
 			return result ? { url: result.path, path: result.path } : null;
 		},
 

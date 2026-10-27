@@ -325,6 +325,7 @@ const infoPanel = {
 	"infoPanel.sharedItemsUnread": "Hay elementos nuevos sin ver",
 	"infoPanel.openSharedImage": "Abrir la imagen {name}",
 	"infoPanel.openSharedVideo": "Abrir el vídeo {name}",
+	"infoPanel.openSharedAudio": "Abrir el audio {name}",
 	"infoPanel.openSharedArtifact": "Abrir el artefacto {name}",
 
 	"infoPanel.restoreHidden": "Mostrar controles ocultos",

@@ -1,4 +1,4 @@
-import { isSharedVideo, taskSharedMedia, type SharedArtifact, type SharedImage, type Task } from "../../shared/types";
+import { isSharedAudio, isSharedClip, taskSharedMedia, type SharedArtifact, type SharedImage, type Task } from "../../shared/types";
 import { latestArtifactVersion } from "../../shared/artifact-versions";
 import { useT, type TFunction } from "../i18n";
 import { formatBytes } from "../utils/formatBytes";
@@ -34,7 +34,7 @@ function artifactMeta(artifact: SharedArtifact, t: TFunction): string {
 const SECTION_HEADING = "flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-fg-2";
 const CARD = "rounded-xl border border-edge bg-elevated text-left transition-colors hover:bg-elevated-hover hover:border-accent/50 group";
 
-const VIDEO_TILE = "flex h-full w-full items-center justify-center bg-black/80 text-lg text-white";
+const CLIP_TILE = "flex h-full w-full items-center justify-center bg-black/80 text-lg text-white";
 
 function SharedImageThumb({ path, t }: { path: string; t: TFunction }) {
 	const { dataUrl, error } = useImageDataUrl(path);
@@ -49,16 +49,18 @@ function SharedImageCard({ image, onOpen, t }: { image: SharedImage; onOpen: () 
 	return (
 		<button
 			type="button"
-			className={`${CARD} w-[10rem] p-2`}
+			className={`${CARD} flex w-[10rem] flex-col p-2`}
 			data-testid="shared-image-link"
-			aria-label={t(isSharedVideo(image) ? "infoPanel.openSharedVideo" : "infoPanel.openSharedImage", { name: image.name })}
+			aria-label={t(isSharedAudio(image) ? "infoPanel.openSharedAudio" : isSharedClip(image) ? "infoPanel.openSharedVideo" : "infoPanel.openSharedImage", { name: image.name })}
 			title={image.caption ? `${image.name} — ${image.caption}` : image.name}
 			onClick={onOpen}
 		>
 			<span className="block h-[5.5rem] w-full overflow-hidden rounded bg-base">
-				{isSharedVideo(image)
+				{isSharedAudio(image)
 					// A clip's bytes load in the viewer, never for a card.
-					? <span data-testid="shared-video-card" title={t("imageViewer.video")} className={VIDEO_TILE} style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uf04b"}</span>
+					? <span data-testid="shared-audio-card" title={t("imageViewer.audio")} className={CLIP_TILE} style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uf001"}</span>
+					: isSharedClip(image)
+					? <span data-testid="shared-video-card" title={t("imageViewer.video")} className={CLIP_TILE} style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uf04b"}</span>
 					: <SharedImageThumb path={image.storedPath} t={t} />}
 			</span>
 			<span className="mt-1.5 block truncate font-mono text-micro text-fg-2 group-hover:text-fg">{image.name}</span>
@@ -127,7 +129,7 @@ export default function SharedOutputsList({ task, projectId }: SharedOutputsList
 				<section aria-labelledby="shared-images-heading">
 					<h3 id="shared-images-heading" className={SECTION_HEADING}>
 						<ImagesIcon className="h-3.5 w-3.5 text-accent" />
-						{t(images.some(isSharedVideo) ? "infoPanel.mediaLabel" : "infoPanel.imagesLabel")}
+						{t(images.some(isSharedClip) ? "infoPanel.mediaLabel" : "infoPanel.imagesLabel")}
 						<span className="tabular-nums text-accent">{images.length}</span>
 					</h3>
 					<div className="mt-2 flex flex-wrap items-stretch gap-2">

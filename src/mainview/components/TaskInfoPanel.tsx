@@ -8,7 +8,7 @@ import LabelChip from "./LabelChip";
 import PriorityBadge from "./PriorityBadge";
 import OpenInMenu from "./OpenInMenu";
 import { formatDate } from "./NoteItem";
-import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle, isCoordinatorTask, isSharedVideo, resolveTaskCompareBaseBranch, taskCompletesManually, taskSharedMedia } from "../../shared/types";
+import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle, isCoordinatorTask, isSharedClip, resolveTaskCompareBaseBranch, taskCompletesManually, taskSharedMedia } from "../../shared/types";
 import { earlierPullRequests } from "../../shared/task-pull-requests";
 import InlineRename from "./InlineRename";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
@@ -1552,7 +1552,7 @@ function TaskInfoPanel({
 									className={SHEET_ROW_CLASS}
 								>
 									<ImagesIcon className="h-5 w-5 shrink-0 text-fg-3" />
-									<span className="flex-1 text-sm font-medium">{t(sharedMedia.some(isSharedVideo) ? "infoPanel.mediaLabel" : "infoPanel.imagesLabel")}</span>
+									<span className="flex-1 text-sm font-medium">{t(sharedMedia.some(isSharedClip) ? "infoPanel.mediaLabel" : "infoPanel.imagesLabel")}</span>
 									<span className="text-xs font-semibold text-accent tabular-nums">{sharedMedia.length}</span>
 								</button>
 							)}

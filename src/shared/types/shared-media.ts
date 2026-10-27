@@ -10,11 +10,12 @@ export const SHARED_IMAGE_EXTS: readonly string[] = ["png", "jpg", "jpeg", "gif"
 export const MAX_SHARED_IMAGE_BYTES = 25 * 1024 * 1024;
 
 /**
- * Per-video cap for `dev3 show-video` (bytes; a file of exactly this size passes).
- * Clips never travel as base64: the viewer streams them over HTTP with Range
- * requests (`src/bun/shared-video-stream.ts`), so the cap only bounds disk use.
+ * Per-file cap for `dev3 show-media` clips, video or audio (bytes; a file of
+ * exactly this size passes). Clips never travel as base64: the viewer streams
+ * them over HTTP with Range requests (`src/bun/shared-media-stream.ts`), so the
+ * cap only bounds disk use.
  */
-export const MAX_SHARED_VIDEO_BYTES = 300 * 1024 * 1024;
+export const MAX_SHARED_MEDIA_BYTES = 300 * 1024 * 1024;
 
 /** A byte cap as the whole-MiB figure the CLI and the app print ("300 MB"). */
 export function formatMediaCap(bytes: number): string {
@@ -26,16 +27,26 @@ export function mediaTooLargeDetail(size: number, cap: number): string {
 	return `${size.toLocaleString("en-US")} bytes; max ${formatMediaCap(cap)} = ${cap.toLocaleString("en-US")} bytes`;
 }
 
-/** True for a {@link SharedImage} record that `dev3 show-video` stored. */
+/** True for a {@link SharedImage} record that holds a `dev3 show-media` video. */
 export function isSharedVideo(item: { mime: string }): boolean {
 	return item.mime.startsWith("video/");
 }
 
+/** True for a {@link SharedImage} record that holds a `dev3 show-media` audio track. */
+export function isSharedAudio(item: { mime: string }): boolean {
+	return item.mime.startsWith("audio/");
+}
+
+/** A `dev3 show-media` clip, video or audio: streamed and played, never read as an image. */
+export function isSharedClip(item: { mime: string }): boolean {
+	return isSharedVideo(item) || isSharedAudio(item);
+}
+
 /** A task's shared images and clips as one oldest→newest history — what the viewer steps through. */
-export function taskSharedMedia(task: Pick<Task, "sharedImages" | "sharedVideos">): SharedImage[] {
-	const videos = task.sharedVideos ?? [];
-	if (videos.length === 0) return task.sharedImages ?? [];
-	return [...(task.sharedImages ?? []), ...videos].sort((a, b) => a.createdAt - b.createdAt);
+export function taskSharedMedia(task: Pick<Task, "sharedImages" | "sharedVideos" | "sharedAudio">): SharedImage[] {
+	const clips = [...(task.sharedVideos ?? []), ...(task.sharedAudio ?? [])];
+	if (clips.length === 0) return task.sharedImages ?? [];
+	return [...(task.sharedImages ?? []), ...clips].sort((a, b) => a.createdAt - b.createdAt);
 }
 
 /** Max images accepted in a single `dev3 show-image` invocation. */
@@ -45,15 +56,17 @@ export const MAX_SHARED_IMAGES_PER_CALL = 20;
 export const MAX_SHARED_ARTIFACT_HTML_BYTES = 50 * 1024 * 1024;
 
 /**
- * Video extensions a bundled artifact clip may use (lowercase, no dot). MP4 and
- * WebM only: they are the two containers every engine dev3 renders in — WKWebView,
- * Chromium and mobile Safari — decodes without a plugin or a transcode step.
+ * Video extensions `dev3 show-media` and a bundled artifact clip accept (lowercase,
+ * no dot). MP4 and WebM only: they are the two containers every engine dev3 renders
+ * in — WKWebView, Chromium and mobile Safari — decodes without a plugin or a
+ * transcode step. A container is not a codec: the player still reports a track it
+ * cannot decode.
  */
 export const SHARED_VIDEO_EXTS: readonly string[] = ["mp4", "webm"];
 
 /**
- * Audio extensions a bundled artifact track may use (lowercase, no dot). All four
- * were measured decoding in WKWebView (macOS 26) and Chromium; WebView2, WebKitGTK
+ * Audio extensions `dev3 show-media` and a bundled artifact track accept (lowercase,
+ * no dot). All four were measured decoding in WKWebView (macOS 26) and Chromium; WebView2, WebKitGTK
  * and older WebKit are unverified, so the reference asks for an MP3 fallback next
  * to OGG. FLAC, Opus and AAC-in-ADTS stay out: transport would carry them, but
  * playback would depend on the engine.
@@ -96,9 +109,10 @@ export const MAX_SHARED_ARTIFACT_MEDIA_TOTAL_BYTES = 48 * 1024 * 1024;
  * removed. Rendered in the {@link https://…|TaskImageViewer} lightbox with a
  * clickable history (newest activated first). Image bytes reach the webview via
  * the `readImageBase64` RPC (works in desktop and browser transports).
- * `dev3 show-video` clips use this same record in `Task.sharedVideos` and play
- * in the same viewer, streamed via `getSharedVideoUrl`; a `video/*`
- * {@link SharedImage.mime} marks them ({@link isSharedVideo}).
+ * `dev3 show-media` clips use this same record — videos in `Task.sharedVideos`,
+ * audio in `Task.sharedAudio` — and play in the same viewer, streamed via
+ * `getSharedMediaUrl`; a `video/*` or `audio/*` {@link SharedImage.mime} marks
+ * them ({@link isSharedClip}).
  */
 export interface SharedImage {
 	id: string;

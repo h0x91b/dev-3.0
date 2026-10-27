@@ -31,7 +31,7 @@ import { getCurrentUiTheme } from "./theme-state";
 import { telemetryBootstrapScript } from "./analytics-identity";
 import { buildSignInLink } from "../shared/remote-sign-in-link";
 import { isLoopbackListen, resolveListenHost } from "./remote-listen-host";
-import { SHARED_VIDEO_ROUTE, serveSharedVideo } from "./shared-video-stream";
+import { SHARED_MEDIA_ROUTE, serveSharedMedia } from "./shared-media-stream";
 import { FILE_LINK_ROUTE, serveFileLink } from "./file-links";
 
 const log = createLogger("remote-access");
@@ -782,9 +782,9 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 			}
 
 			// ── API endpoints (session cookie required) ──
-			if (url.pathname.startsWith(SHARED_VIDEO_ROUTE)) {
+			if (url.pathname.startsWith(SHARED_MEDIA_ROUTE)) {
 				if (!(await isSessionAuthenticated(req))) return new Response("Unauthorized", { status: 401 });
-				return serveSharedVideo(req, url.pathname);
+				return serveSharedMedia(req, url.pathname);
 			}
 
 			if (url.pathname === "/health") {

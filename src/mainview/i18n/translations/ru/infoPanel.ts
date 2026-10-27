@@ -363,6 +363,7 @@ const infoPanel = {
 	"infoPanel.sharedItemsUnread": "Есть новые непросмотренные элементы",
 	"infoPanel.openSharedImage": "Открыть картинку {name}",
 	"infoPanel.openSharedVideo": "Открыть видео {name}",
+	"infoPanel.openSharedAudio": "Открыть аудио {name}",
 	"infoPanel.openSharedArtifact": "Открыть артефакт {name}",
 
 	"infoPanel.restoreHidden": "Показать скрытые элементы",

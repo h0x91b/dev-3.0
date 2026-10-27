@@ -35,7 +35,7 @@ import { mintFileLink } from "../file-links";
 import { isFullyQualifiedPath } from "../../shared/absolute-path";
 import { cloneDirNameProblem } from "../../shared/project-registration";
 import { clipboardImageToPng } from "../clipboard-image";
-import { sharedVideoUrlPath } from "../shared-video-stream";
+import { sharedMediaUrlPath } from "../shared-media-stream";
 import { mintPreviewMediaLink } from "./terminal-paths";
 
 async function updateMenuContext(params: MenuContext): Promise<void> {
@@ -866,10 +866,10 @@ async function readImageBase64(params: { path: string }): Promise<{ dataUrl: str
 	}
 }
 
-async function getSharedVideoUrl(params: { path: string }): Promise<{ url: string; path: string } | null> {
-	const path = sharedVideoUrlPath(params.path);
+async function getSharedMediaUrl(params: { path: string }): Promise<{ url: string; path: string } | null> {
+	const path = sharedMediaUrlPath(params.path);
 	if (!path) {
-		log.warn("← getSharedVideoUrl: not a stored clip, rejected");
+		log.warn("← getSharedMediaUrl: not a stored clip, rejected");
 		return null;
 	}
 	return { url: `http://127.0.0.1:${pty.getPtyPort()}${path}`, path };
@@ -1131,7 +1131,7 @@ export const appHandlers = {
 	uploadFileBase64,
 	uploadImageBase64,
 	readImageBase64,
-	getSharedVideoUrl,
+	getSharedMediaUrl,
 	getFileMediaUrl,
 	readArtifactContent,
 	readArtifactDownload,

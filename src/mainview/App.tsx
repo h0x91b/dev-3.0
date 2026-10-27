@@ -111,6 +111,7 @@ import { reconnectRpc } from "./rpc";
 import { DIAGNOSTICS_OPEN_EVENT, RPC_STATUS_EVENT } from "./diagnostics";
 import { getAdjacentAliveVariant } from "./utils/variantGroups";
 import { isTaskTerminalRoute } from "./utils/terminalFullscreen";
+import { sharedArrivalNoun, type SharedArrivalKind } from "./utils/sharedArrivalNoun";
 import PushEnrollmentInvite from "./components/PushEnrollmentInvite";
 import ArtifactFreezeNotice from "./components/ArtifactFreezeNotice";
 
@@ -1991,7 +1992,7 @@ function App() {
 				projectId: string;
 				images: SharedImage[];
 				newCount: number;
-				newKind?: "image" | "video";
+				newKind?: SharedArrivalKind;
 				taskSeq?: number;
 				taskTitle?: string;
 				projectName?: string;
@@ -1999,7 +2000,7 @@ function App() {
 			if (!taskId || !images?.length) return;
 
 			// Attention badge (the reducer self-suppresses it when already viewing the task).
-			const noun = newKind === "video" ? "showVideo" : "showImage";
+			const noun = sharedArrivalNoun(newKind);
 			dispatch({ type: "addBell", taskId, reason: t.plural(`${noun}.attention`, newCount ?? 1) });
 
 			const viewingThisTask =
