@@ -8,8 +8,9 @@
  *
  * Bytes: version, then each field as a tag plus its compact form — a `%N` /
  * `pane-N` pane id as N, a lowercase UUID as its 16 bytes, `pid@<ps lstart>` as
- * pid and calendar seconds — or, for any value that form would not rebuild
- * exactly, the original UTF-8 string. base64url of that.
+ * pid and calendar seconds, `pid@linux:<boot id>:<tick>` as pid, boot UUID and
+ * tick — or, for any value that form would not rebuild exactly, the original
+ * UTF-8 string. base64url of that.
  */
 
 import type { ScheduledMessageAuthor } from "./types";
@@ -28,6 +29,7 @@ const NONE = 3;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const LINUX_SIGNATURE_RE = /^([1-9]\d{0,9})@linux:([0-9a-f-]{36}):(0|[1-9]\d{0,14})$/;
 const LSTART_RE = /^([1-9]\d{0,9})@([A-Z][a-z]{2}) ([A-Z][a-z]{2}) ([1-9]\d?) (\d{2}):(\d{2}):(\d{2}) (\d{4})$/;
 
 class Writer {
@@ -93,12 +95,21 @@ function readPane(input: Reader): string {
 	throw new Error("bad pane tag");
 }
 
+function writeUuid(out: Writer, uuid: string): void {
+	const hex = uuid.replace(/-/g, "");
+	for (let i = 0; i < 32; i += 2) out.bytes.push(Number.parseInt(hex.slice(i, i + 2), 16));
+}
+
+function readUuid(input: Reader): string {
+	const hex = [...input.take(16)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 function writeId(out: Writer, id: string | null): void {
 	if (id === null) return void out.bytes.push(NONE);
 	if (!UUID_RE.test(id)) return out.raw(id);
 	out.bytes.push(COMPACT);
-	const hex = id.replace(/-/g, "");
-	for (let i = 0; i < 32; i += 2) out.bytes.push(Number.parseInt(hex.slice(i, i + 2), 16));
+	writeUuid(out, id);
 }
 
 function readId(input: Reader): string | null {
@@ -106,8 +117,7 @@ function readId(input: Reader): string | null {
 	if (tag === NONE) return null;
 	if (tag === RAW) return input.utf8();
 	if (tag !== COMPACT) throw new Error("bad id tag");
-	const hex = [...input.take(16)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+	return readUuid(input);
 }
 
 /**
@@ -127,6 +137,13 @@ function formatLstart(seconds: number): string {
 }
 
 function writeProcess(out: Writer, signature: string): void {
+	const linux = LINUX_SIGNATURE_RE.exec(signature);
+	if (linux && UUID_RE.test(linux[2]!)) {
+		out.bytes.push(NATIVE);
+		out.varint(Number(linux[1]));
+		writeUuid(out, linux[2]!);
+		return out.varint(Number(linux[3]));
+	}
 	const match = LSTART_RE.exec(signature);
 	const seconds = match ? lstartSeconds(match[2]!, match[3]!, match[4]!, match[5]!, match[6]!, match[7]!, match[8]!) : null;
 	if (!match || seconds === null) return out.raw(signature);
@@ -138,6 +155,11 @@ function writeProcess(out: Writer, signature: string): void {
 function readProcess(input: Reader): string {
 	const tag = input.byte();
 	if (tag === RAW) return input.utf8();
+	if (tag === NATIVE) {
+		const pid = input.varint();
+		const boot = readUuid(input);
+		return `${pid}@linux:${boot}:${input.varint()}`;
+	}
 	if (tag !== COMPACT) throw new Error("bad process tag");
 	const pid = input.varint();
 	return `${pid}@${formatLstart(input.varint())}`;

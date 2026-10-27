@@ -60,6 +60,20 @@ describe("agent handles — lossless", () => {
 		}
 	});
 
+	it("packs the Linux `/proc` signature compactly, and keeps any other spelling of it raw", () => {
+		const linux = { ...AGENT, agentProcess: "48213@linux:5b1e7c2a-9d3f-4e61-8a0b-2c4d6e8f0a1b:4652300" };
+		expect(roundTrip(linux)).toEqual(linux);
+		expect(bytesOf(encodeAgentHandle(linux)).length).toBeLessThan(bytesOf(encodeAgentHandle(AGENT)).length + 16);
+		for (const agentProcess of [
+			"48213@linux:5B1E7C2A-9D3F-4E61-8A0B-2C4D6E8F0A1B:4652300",
+			"48213@linux:5b1e7c2a-9d3f-4e61-8a0b-2c4d6e8f0a1b:04652300",
+			"48213@linux:not-a-boot-id:4652300",
+			"48213@linux:5b1e7c2a-9d3f-4e61-8a0b-2c4d6e8f0a1b:9999999999999999999",
+		]) {
+			expect(roundTrip({ ...AGENT, agentProcess })).toEqual({ ...AGENT, agentProcess });
+		}
+	});
+
 	it("does not depend on the machine's timezone, DST included", () => {
 		const atDstEdge = { ...AGENT, agentProcess: "48213@Sun Mar 29 02:30:00 2026" }; // a wall time that does not exist in Europe
 		const encoded = [encodeAgentHandle(AGENT), encodeAgentHandle(atDstEdge)];
