@@ -1,7 +1,7 @@
 import { existsSync, linkSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import type { GlobalSettings, ShortcutOverride } from "../shared/types";
-import { DEFAULT_AGENTS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
+import { DEFAULT_AGENTS, DEFAULT_RESOURCE_LEVELS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
 import { recordFavoriteUsage, sanitizeFavorites } from "../shared/favorites";
 import { coerceUpdateChannel, DEFAULT_UPDATE_CHANNEL } from "../shared/update-channel";
 import { canaryPublishesFor, hostOsName } from "../shared/canary-publish";
@@ -119,6 +119,17 @@ function normalizeAutoAccountDefault(raw: unknown): GlobalSettings["autoAccountD
 	return Object.keys(out).length ? out : undefined;
 }
 
+/** Keep only positive finite numbers under known keys; nothing left ⇒ undefined (all defaults). */
+function sanitizeResourceLevels(raw: unknown): GlobalSettings["resourceLevels"] {
+	if (!raw || typeof raw !== "object") return undefined;
+	const out: Record<string, number> = {};
+	for (const key of Object.keys(DEFAULT_RESOURCE_LEVELS)) {
+		const value = (raw as Record<string, unknown>)[key];
+		if (typeof value === "number" && Number.isFinite(value) && value > 0) out[key] = value;
+	}
+	return Object.keys(out).length > 0 ? out : undefined;
+}
+
 /**
  * Shape the raw file into `GlobalSettings`.
  *
@@ -215,6 +226,7 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 			d.agentLaunchAutoApproveMinutes >= 0
 				? d.agentLaunchAutoApproveMinutes
 				: undefined,
+		resourceLevels: sanitizeResourceLevels(d.resourceLevels),
 		// Default-on toggle — only an explicit false is a stored opt-out.
 		prOriginTaskLink: d.prOriginTaskLink === false ? false : undefined,
 		agentsLayoutRevision: typeof d.agentsLayoutRevision === "number" ? d.agentsLayoutRevision : undefined,

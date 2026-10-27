@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import type { GlobalSettings, RemoteTunnelSettings } from "../../../shared/types";
+import { RESOURCE_LEVEL_CHOICES, resolveResourceLevels } from "../../../shared/types";
+import type { GlobalSettings, RemoteTunnelSettings, ResourceLevels } from "../../../shared/types";
 import type { UpdateChannel } from "../../../shared/update-channel";
 import type { TFunction } from "../../i18n";
 import SettingsEntry from "./SettingsEntry";
@@ -20,6 +21,7 @@ export default function SystemSettingsSection({
 	onRemoteSilentUpdateToggle,
 	onStaticAccessCodeChange,
 	onPreventSleepToggle,
+	onResourceLevelsChange,
 	onConfirmBeforeQuitToggle,
 }: {
 	t: TFunction;
@@ -34,6 +36,7 @@ export default function SystemSettingsSection({
 	/** Empty string clears the code. */
 	onStaticAccessCodeChange: (code: string) => void;
 	onPreventSleepToggle: (enabled: boolean) => void;
+	onResourceLevelsChange: (levels: Partial<ResourceLevels>) => void;
 	onConfirmBeforeQuitToggle: (enabled: boolean) => void;
 }) {
 	const [remoteAccessStatus, setRemoteAccessStatus] = useRemoteAccessStatus();
@@ -172,6 +175,10 @@ export default function SystemSettingsSection({
 						</p>
 					) : null}
 				</div>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="resource-levels">
+				<ResourceLevelsSetting t={t} globalSettings={globalSettings} onChange={onResourceLevelsChange} />
 			</SettingsEntry>
 
 			<SettingsEntry anchor="confirm-before-quit">
@@ -383,5 +390,55 @@ function RemotePortField({
 			onBlur={persist}
 			className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono outline-none focus:border-accent/40 transition-colors"
 		/>
+	);
+}
+
+const RESOURCE_LEVEL_FIELDS = [
+	{ key: "cpuWarnPercent", labelKey: "settings.cpuWarnAt", unit: "%" },
+	{ key: "cpuCriticalPercent", labelKey: "settings.cpuCriticalAt", unit: "%" },
+	{ key: "diskWarnGb", labelKey: "settings.diskWarnBelow", unit: " GB" },
+	{ key: "diskCriticalGb", labelKey: "settings.diskCriticalBelow", unit: " GB" },
+] as const;
+
+function ResourceLevelsSetting({
+	t,
+	globalSettings,
+	onChange,
+}: {
+	t: TFunction;
+	globalSettings: GlobalSettings;
+	onChange: (levels: Partial<ResourceLevels>) => void;
+}) {
+	const levels = resolveResourceLevels(globalSettings);
+	return (
+		<div>
+			<p className="block text-fg text-sm font-semibold mb-2">{t("settings.resourceLevels")}</p>
+			<p className="text-fg-3 text-sm mb-3">{t("settings.resourceLevelsDesc")}</p>
+			<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+				{RESOURCE_LEVEL_FIELDS.map(({ key, labelKey, unit }) => {
+					// A stored value outside the offered list still shows as itself.
+					const choices = [...new Set([...RESOURCE_LEVEL_CHOICES[key], levels[key]])].sort((a, b) => a - b);
+					return (
+						<label key={key} className="flex flex-col gap-1.5">
+							<span className="text-fg-2 text-xs">{t(labelKey)}</span>
+							<select
+								value={String(levels[key])}
+								data-testid={`resource-level-${key}`}
+								onChange={(e) => onChange({ ...globalSettings.resourceLevels, [key]: Number(e.target.value) })}
+								className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none appearance-none"
+							>
+								{choices.map((value) => (
+									<option key={value} value={String(value)}>
+										{value}
+										{unit}
+									</option>
+								))}
+							</select>
+						</label>
+					);
+				})}
+			</div>
+			<p className="text-fg-muted text-xs mt-2">{t("settings.cpuLoadHint")}</p>
+		</div>
 	);
 }

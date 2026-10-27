@@ -1,3 +1,4 @@
+import type { GlobalSettings } from "./global-settings";
 // ---- Listening ports ----
 
 export interface PortInfo {
@@ -128,4 +129,77 @@ export interface SystemMemorySnapshot {
 	topTasks: MemoryTaskConsumer[];
 	/** Median task RSS, or null with no active tasks — never a guessed stand-in. */
 	medianTaskRss: number | null;
+}
+
+/** One application's CPU share, grouped like `MemoryConsumerGroup`. */
+export interface CpuConsumerGroup {
+	name: string;
+	/** `ps` %cpu summed over the group: 100 = one full core. */
+	cpu: number;
+	processCount: number;
+	path: string;
+	cmdline: string;
+}
+
+export interface CpuTaskConsumer extends Omit<MemoryTaskConsumer, "rss"> {
+	/** `ps` %cpu summed over the task's process tree: 100 = one full core. */
+	cpu: number;
+}
+
+export interface SystemLoadSnapshot {
+	/** Share of all cores busy since the previous sample, 0..1. */
+	cpuBusy: number;
+	/**
+	 * 1-minute load average as a % of the core count — what the CPU readout shows
+	 * and what `cpuPressure` is judged on. Busy % stands in where there is no load
+	 * average (Windows).
+	 */
+	cpuLoadPercent: number;
+	cpuPressure: MemoryPressure;
+	cores: number;
+	/** 1/5/15-minute load average; all zeros on Windows, which has none. */
+	loadAvg: [number, number, number];
+	topCpuConsumers: CpuConsumerGroup[];
+	/** The dev3 application process tree itself, `ps` %cpu. */
+	appCpu: number;
+	topCpuTasks: CpuTaskConsumer[];
+	/** Volume holding the dev3 data dir (and default worktrees); null if unreadable. */
+	disk: { free: number; total: number; pressure: MemoryPressure } | null;
+}
+
+/** On-disk size of one task's worktree, from an on-demand scan. */
+export interface WorktreeDiskUsage {
+	shortId: string;
+	taskId: string;
+	title: string;
+	projectId: string;
+	bytes: number;
+}
+
+export interface ResourceLevels {
+	/** 1-minute load average as a % of the core count: 100 = every core busy. */
+	cpuWarnPercent: number;
+	cpuCriticalPercent: number;
+	/** Free space on the dev3 data volume, in decimal GB (what Finder shows). */
+	diskWarnGb: number;
+	diskCriticalGb: number;
+}
+
+export const DEFAULT_RESOURCE_LEVELS: ResourceLevels = {
+	cpuWarnPercent: 100,
+	cpuCriticalPercent: 150,
+	diskWarnGb: 20,
+	diskCriticalGb: 5,
+};
+
+/** Choices offered in Settings for each level. */
+export const RESOURCE_LEVEL_CHOICES: { [K in keyof ResourceLevels]: readonly number[] } = {
+	cpuWarnPercent: [50, 75, 100, 125, 150, 200],
+	cpuCriticalPercent: [100, 125, 150, 200, 300],
+	diskWarnGb: [10, 20, 50, 100, 200],
+	diskCriticalGb: [2, 5, 10, 20, 50],
+};
+
+export function resolveResourceLevels(settings: Pick<GlobalSettings, "resourceLevels">): ResourceLevels {
+	return { ...DEFAULT_RESOURCE_LEVELS, ...settings.resourceLevels };
 }

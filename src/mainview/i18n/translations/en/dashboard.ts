@@ -292,6 +292,32 @@ const dashboard = {
 	"fileBrowser.linuxBrewHint": "Install Homebrew for Linux first (https://brew.sh), then run:",
 	"fileBrowser.clickAgainHint": "After installation, click Files again and it will work.",
 
+	// CPU and disk rows in the header kebab (beside "Memory left").
+	"systemLoad.cpu": "CPU load",
+	"systemLoad.load": "load",
+	"systemLoad.busyPercent": "{busy} busy",
+	"systemLoad.cpuLevel.normal": "normal",
+	"systemLoad.cpuLevel.warn": "high",
+	"systemLoad.cpuLevel.critical": "overloaded",
+	"systemLoad.diskLevel.normal": "plenty of room",
+	"systemLoad.diskLevel.warn": "running low",
+	"systemLoad.diskLevel.critical": "critically low",
+	"systemLoad.cpuAria": "{busy} of CPU in use",
+	"systemLoad.busy": "busy",
+	"systemLoad.cores": "{cores} cores",
+	"systemLoad.loadAvg": "load {load}",
+	"systemLoad.outsideDev3": "Busiest outside dev-3.0",
+	"systemLoad.nothingBusy": "Nothing outside dev-3.0 is busy.",
+	"systemLoad.coreNote": "Per-process figures: 100% is one full core.",
+	"systemLoad.disk": "Disk left",
+	"systemLoad.diskAria": "{free} of disk still free",
+	"systemLoad.diskVolume": "The volume holding dev-3.0's data.",
+	"systemLoad.worktrees": "Task worktrees",
+	"systemLoad.worktreesScanning": "Measuring every worktree — this can take a minute…",
+	"systemLoad.worktreesNone": "No task worktrees on disk.",
+	"systemLoad.worktreesTotal_one": "{count} worktree",
+	"systemLoad.worktreesTotal_other": "{count} worktrees",
+
 	// ---- Memory headroom (global-header ambient readout) ----
 	// The wording is load-bearing: the number is FREE memory. A bare quantity
 	// labelled only "memory" reproduces the ambiguity the widget exists to dissolve.

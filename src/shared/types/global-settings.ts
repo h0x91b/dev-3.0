@@ -1,3 +1,4 @@
+import type { ResourceLevels } from "./system-resources";
 import type { TerminalBackendIdentity } from "../terminal-backend-identity";
 import type { UpdateChannel } from "../update-channel";
 import type { ShellFlavor } from "../posix-shell";
@@ -297,6 +298,8 @@ export interface GlobalSettings {
 	 * applied to the completion dialog: that one destroys a worktree.
 	 */
 	agentLaunchAutoApproveMinutes?: number;
+	/** Where the CPU and disk readouts turn yellow / red. Sparse: absent keys use the defaults. */
+	resourceLevels?: Partial<ResourceLevels>;
 	/**
 	 * When false, the Create-PR handoff stops asking the agent to append the
 	 * deep link back to the originating task. Default on; the opt-out exists

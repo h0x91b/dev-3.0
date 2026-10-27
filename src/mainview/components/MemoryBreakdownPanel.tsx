@@ -198,7 +198,7 @@ function LeftoverProcessesSection({ onCloseOverlay }: { onCloseOverlay: () => vo
 	);
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+export function SectionLabel({ children }: { children: React.ReactNode }) {
 	return (
 		<div className="text-nano font-semibold uppercase tracking-wider text-fg-muted">{children}</div>
 	);

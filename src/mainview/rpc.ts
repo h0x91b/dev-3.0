@@ -115,6 +115,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	remoteAccessStatusChanged: (payload) => window.dispatchEvent(new CustomEvent("rpc:remoteAccessStatusChanged", { detail: payload })),
 	resourceUsageUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:resourceUsageUpdated", { detail: payload })),
 	systemMemoryUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:systemMemoryUpdated", { detail: payload })),
+	systemLoadUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:systemLoadUpdated", { detail: payload })),
 	agentRateLimitsUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:agentRateLimitsUpdated", { detail: payload })),
 	updateDownloadProgress: (payload) => window.dispatchEvent(new CustomEvent("rpc:updateDownloadProgress", { detail: payload })),
 	cloneProgress: (payload) => window.dispatchEvent(new CustomEvent("rpc:cloneProgress", { detail: payload })),

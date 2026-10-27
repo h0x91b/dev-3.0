@@ -251,6 +251,8 @@ const help = {
 	"help.traffic.log.body": "Pick a presentation on the left: Experiment 2 draws task cards wired to whoever they messaged, Experiment 1 flies you around a 3D orbit. Select a task or message to inspect its delivery status; double-click a task to open it. The timeline filters messages; task columns remain current.",
 	"help.header.memory.title": "The memory pill shows what is LEFT",
 	"help.header.memory.body": "The number is free memory, not used — hover it to see who actually took the rest. dev-3.0 itself holds a few hundred megabytes; the gigabytes belong to the agents you launched, and to whatever else is running.",
+	"help.header.systemLoad.title": "The CPU and disk pills mean it is getting tight",
+	"help.header.systemLoad.body": "They appear only while CPU load or free disk space crosses your levels (Settings → System), then disappear. Hover one to see who is using it.",
 	"help.header.connectionQuality.title": "How slow this connection is",
 	"help.header.connectionQuality.body":
 		"Only when you view dev3 from another device: the round trip of a real request over the same connection the app uses. It appears here once the link stops being quick, and otherwise waits in this menu. Hover it to see how much of the wait was spent on your computer versus on the network.",

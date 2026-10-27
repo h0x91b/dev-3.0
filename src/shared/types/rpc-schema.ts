@@ -39,7 +39,7 @@ import type { Automation, AutomationDraft } from "./automations";
 import type { NoteSource } from "./task-notes";
 import type { BranchStatus, MergeRoute, TaskDiffMode, TaskDiffResponse, UnsavedWork } from "./git-status";
 import type { PRCheckInfo, PRCIStatus, PRInfo, PRMergeState, PRReviewDecision, PRReviewState, RefreshTaskPrStatusResult, ReviewedPullRequest, TaskPRCommentsPayload } from "./pull-requests";
-import type { ExposedPort, PortInfo, ResourceUsage, SystemMemorySnapshot, WorktreeOrphanGroup } from "./system-resources";
+import type { ExposedPort, PortInfo, ResourceUsage, SystemLoadSnapshot, SystemMemorySnapshot, WorktreeDiskUsage, WorktreeOrphanGroup } from "./system-resources";
 import type { PtyThroughputStats, TmuxLayout, TmuxSessionInfo, TmuxWindowEntry } from "./tmux";
 import type { DevServerStatus, DevServerSummary } from "./dev-server";
 import type { RemoteAccessStatus, RemoteNetInterface } from "./remote";
@@ -405,6 +405,16 @@ export type AppRPCSchema = {
 			scanWorktreeOrphans: {
 				params: void;
 				response: WorktreeOrphanGroup[];
+			};
+			/** Latest CPU/disk snapshot, or null before the first poll; live updates ride `systemLoadUpdated`. */
+			getSystemLoad: {
+				params: void;
+				response: SystemLoadSnapshot | null;
+			};
+			/** Per-task worktree sizes, largest first. On demand only — it walks every worktree. */
+			scanWorktreeDiskUsage: {
+				params: void;
+				response: WorktreeDiskUsage[];
 			};
 			/** Kill exactly the PIDs the user confirmed. Returns how many actually died. */
 			killWorktreeOrphans: {
@@ -1916,6 +1926,7 @@ export type AppRPCSchema = {
 			 * of either top list changes.
 			 */
 			systemMemoryUpdated: SystemMemorySnapshot;
+			systemLoadUpdated: SystemLoadSnapshot;
 			/**
 			 * Fresh agent rate-limit data (Claude dump / Codex rollouts + monthly credits).
 			 * Pushed by the rate-limit monitor whenever the parsed windows change.

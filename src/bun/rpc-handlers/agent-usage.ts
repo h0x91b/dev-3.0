@@ -1,10 +1,11 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { AgentUsageReport, AgentUsageSource, SystemMemorySnapshot, WorktreeOrphanGroup } from "../../shared/types";
+import type { AgentUsageReport, AgentUsageSource, SystemLoadSnapshot, SystemMemorySnapshot, WorktreeOrphanGroup } from "../../shared/types";
 import type { AgentRateLimitsReport } from "../../shared/rate-limits";
 import { getAgentRateLimitsReport } from "../rate-limit-monitor";
-import { getBusyTaskShortIds, getSystemMemorySnapshot, resolveTaskConsumers } from "../resource-monitor";
+import { getBusyTaskShortIds, getSystemLoadSnapshot, getSystemMemorySnapshot, resolveTaskConsumers } from "../resource-monitor";
+import { scanWorktreeDiskUsage } from "../worktree-disk-usage";
 import { killPids, scanWorktreeOrphans as scanOrphans } from "../worktree-reaper";
 import { nativeModelIdForWireName } from "../../shared/model-catalog";
 import { loadModelCatalog } from "../model-catalog-store";
@@ -150,6 +151,10 @@ async function getSystemMemory(): Promise<SystemMemorySnapshot | null> {
 	return getSystemMemorySnapshot();
 }
 
+async function getSystemLoad(): Promise<SystemLoadSnapshot | null> {
+	return getSystemLoadSnapshot();
+}
+
 /**
  * Leftover processes inside worktrees whose task is finished. Titles are resolved
  * here rather than in the reaper so the scanner stays free of data-layer imports.
@@ -183,6 +188,8 @@ export const agentUsageHandlers = {
 	getAgentUsage,
 	getAgentRateLimits,
 	getSystemMemory,
+	getSystemLoad,
+	scanWorktreeDiskUsage,
 	scanWorktreeOrphans,
 	killWorktreeOrphans,
 };

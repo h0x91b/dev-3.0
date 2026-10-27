@@ -31,6 +31,7 @@ vi.mock("../../rpc", () => ({
 			moveTask: vi.fn(),
 			deleteTask: vi.fn(),
 			getSystemMemory: vi.fn().mockResolvedValue(null),
+			getSystemLoad: vi.fn().mockResolvedValue(null),
 			getTasks: vi.fn().mockResolvedValue([]),
 			saveLastRoute: vi.fn(),
 			getProjectCurrentBranch: vi.fn().mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false, behindOrigin: 0 }),

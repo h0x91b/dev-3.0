@@ -32,6 +32,7 @@ import CanaryBadge from "./CanaryBadge";
 import PreventSleepToggle from "./PreventSleepToggle";
 import RateLimitIndicator from "./RateLimitIndicator";
 import MemoryHeadroomIndicator from "./MemoryHeadroomIndicator";
+import SystemLoadRows from "./SystemLoadRows";
 import AgentTrafficIndicator from "./agent-traffic/AgentTrafficIndicator";
 import { OPEN_AGENT_TRAFFIC_LOG_EVENT } from "../agent-traffic-events";
 import ConnectionQualityIndicator from "./ConnectionQualityIndicator";
@@ -1201,6 +1202,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 								    itself (icon state, session count, memory number) is the answer. */}
 								<PreventSleepToggle variant="row" />
 								<MemoryHeadroomIndicator navigate={navigate} variant="menu" />
+								<SystemLoadRows navigate={navigate} />
 								<AgentTrafficIndicator
 									projectId={currentProjectId}
 									onOpenLog={() => {
@@ -1341,6 +1343,8 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 				    menu instead (the component decides — see its `variant`). Folds into
 				    the kebab sheet on narrow, where the breakdown is a BottomSheet. */}
 				{!isNarrow && <MemoryHeadroomIndicator navigate={navigate} />}
+				{/* CPU and disk earn a pill only at warn/critical (Settings → System levels). */}
+				{!isNarrow && <SystemLoadRows navigate={navigate} variant="bar" />}
 
 				{/* Ambient agent rate-limit indicator — hidden until any limit data exists
 				    (folded into the kebab bottom sheet on narrow). */}
@@ -1533,6 +1537,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 						)}
 						<TmuxSessionManager navigate={navigate} />
 					</div>
+					<SystemLoadRows navigate={navigate} />
 					{/* Agent traffic is the phone's only way in, so it is a row here — and it
 					    takes the same shape as the rows below it, not the chip row above. */}
 					<AgentTrafficIndicator

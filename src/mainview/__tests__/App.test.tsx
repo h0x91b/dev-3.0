@@ -16,6 +16,7 @@ vi.mock("../rpc", () => ({
 		request: {
 			getSystemMemory: vi.fn().mockResolvedValue(null),
 			getAllProjectTasks: vi.fn().mockResolvedValue([]),
+			getSystemLoad: vi.fn().mockResolvedValue(null),
 			checkSystemRequirements: vi.fn().mockResolvedValue([]),
 			getRosettaWarning: vi.fn().mockResolvedValue(null),
 			getTmuxServerNotice: vi.fn().mockResolvedValue({ predatesLaunchd: false }),

@@ -41,6 +41,20 @@ vi.mock("../data", () => ({
 	loadTasks: vi.fn(async () => []),
 }));
 
+// Frozen core times by default: no elapsed time means no busy reading, so the
+// CPU/disk snapshot stays silent unless a test advances `cpuClock`.
+const cpuClock = vi.hoisted(() => ({ user: 0, idle: 0 }));
+vi.mock("node:os", async (importActual) => {
+	const actual = await importActual<typeof import("node:os")>();
+	return {
+		...actual,
+		cpus: () => [{ model: "x", speed: 0, times: { user: cpuClock.user, nice: 0, sys: 0, idle: cpuClock.idle, irq: 0 } }],
+		loadavg: () => [0, 0, 0],
+	};
+});
+
+vi.mock("../settings", () => ({ loadSettings: vi.fn(async () => ({ resourceLevels: { cpuWarnPercent: 50 } })) }));
+
 // Partial mock: stub only getAllSessionPanePids; let collectProcessInfo and
 // collectDescendants run through their real implementations (which go through
 // the already-mocked spawn above).
@@ -52,7 +66,7 @@ vi.mock("../port-scanner", async (importActual) => {
 	};
 });
 
-import { startResourceMonitor, stopResourceMonitor, getResourceUsage, aggregateResources, getSystemMemorySnapshot, boostResourceMonitor, clearResourceMonitorBoost, isResourceMonitorBoosted } from "../resource-monitor";
+import { startResourceMonitor, stopResourceMonitor, getResourceUsage, aggregateResources, getSystemLoadSnapshot, getSystemMemorySnapshot, boostResourceMonitor, clearResourceMonitorBoost, isResourceMonitorBoosted } from "../resource-monitor";
 import { spawn } from "../spawn";
 import { getAllSessionPanePids, clearProcessInfoCache } from "../port-scanner";
 import { probeMemoryFacts } from "../system-memory-probe";
@@ -725,5 +739,51 @@ describe("resource-monitor stalled poll", () => {
 		expect(startSleepInhibitWatch).toHaveBeenCalledTimes(1);
 		stopResourceMonitor();
 		expect(stopSleepInhibitWatch).toHaveBeenCalled();
+	});
+});
+
+describe("system load snapshot", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+		mockSpawn.mockReset();
+		mockGetAllSessionPanePids.mockReset();
+		mockProbe.mockReset();
+		mockProbe.mockResolvedValue(null);
+		mockLoadProjects.mockResolvedValue([]);
+		mockLoadTasks.mockResolvedValue([]);
+		clearProcessInfoCache();
+		cpuClock.user = 0;
+		cpuClock.idle = 0;
+	});
+
+	afterEach(() => {
+		stopResourceMonitor();
+		vi.useRealTimers();
+	});
+
+	it("pushes busy share, top outsiders and the busiest task from the same ps sample", async () => {
+		mockGetAllSessionPanePids.mockResolvedValueOnce(paneMap({ "dev3-abc12345": [100] }));
+		mockSpawn.mockReturnValueOnce(makeProc(
+			"  100     1   1000   80.0 /usr/bin/node agent.js\n  300     1   1000   40.0 /usr/local/bin/dockerd\n",
+		));
+
+		const push = vi.fn();
+		startResourceMonitor(push);
+		cpuClock.user = 300;
+		cpuClock.idle = 100;
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		const loads = push.mock.calls.filter(([name]) => name === "systemLoadUpdated").map(([, payload]) => payload);
+		expect(loads).toHaveLength(1);
+		expect(loads[0]).toMatchObject({
+			cpuBusy: 0.75,
+			// No load average (zeros) → busy % stands in, judged against the stored 50% level.
+			cpuLoadPercent: 75,
+			cpuPressure: "warn",
+			cores: 1,
+			topCpuConsumers: [{ name: "Docker", cpu: 40 }],
+			topCpuTasks: [{ shortId: "abc12345", cpu: 80 }],
+		});
+		expect(getSystemLoadSnapshot()).toEqual(loads[0]);
 	});
 });

@@ -11,6 +11,7 @@ const t = Object.assign((key: string) => key, {
 
 function renderSection(settings: Partial<GlobalSettings> = {}) {
 	const onRemoteTunnelChange = vi.fn();
+	const onResourceLevelsChange = vi.fn();
 	const onStaticAccessCodeChange = vi.fn();
 	const onRemotePortChange = vi.fn();
 	const tree = (next: Partial<GlobalSettings>) => (
@@ -26,6 +27,7 @@ function renderSection(settings: Partial<GlobalSettings> = {}) {
 				onRemoteSilentUpdateToggle={vi.fn()}
 				onStaticAccessCodeChange={onStaticAccessCodeChange}
 				onPreventSleepToggle={vi.fn()}
+				onResourceLevelsChange={onResourceLevelsChange}
 				onConfirmBeforeQuitToggle={vi.fn()}
 			/>
 		</I18nProvider>
@@ -33,8 +35,18 @@ function renderSection(settings: Partial<GlobalSettings> = {}) {
 	const { rerender } = render(tree(settings));
 	/** Settings arrive asynchronously; this is the second render carrying them. */
 	const settingsArrive = (next: Partial<GlobalSettings>) => rerender(tree(next));
-	return { onRemoteTunnelChange, onRemotePortChange, onStaticAccessCodeChange, settingsArrive };
+	return { onRemoteTunnelChange, onRemotePortChange, onStaticAccessCodeChange, onResourceLevelsChange, settingsArrive };
 }
+
+describe("SystemSettingsSection — resource levels", () => {
+	it("shows the defaults and stores only the sparse override on change", async () => {
+		const { onResourceLevelsChange } = renderSection({ resourceLevels: { diskWarnGb: 50 } });
+		expect((screen.getByTestId("resource-level-cpuWarnPercent") as HTMLSelectElement).value).toBe("100");
+		expect((screen.getByTestId("resource-level-diskWarnGb") as HTMLSelectElement).value).toBe("50");
+		await userEvent.selectOptions(screen.getByTestId("resource-level-diskCriticalGb"), "10");
+		expect(onResourceLevelsChange).toHaveBeenCalledWith({ diskWarnGb: 50, diskCriticalGb: 10 });
+	});
+});
 
 describe("SystemSettingsSection — tunnel provider", () => {
 	it("defaults to the built-in provider and hides the custom fields", () => {

@@ -14,6 +14,7 @@ vi.mock("../../rpc", () => ({
 	api: {
 		request: {
 			getSystemMemory: vi.fn().mockResolvedValue(null),
+			getSystemLoad: vi.fn().mockResolvedValue(null),
 			getTasks: vi.fn(),
 			applyUpdate: vi.fn(),
 			// The update plaque asks what a restart would interrupt (and whether it keeps

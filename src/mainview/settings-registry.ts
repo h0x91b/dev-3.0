@@ -500,6 +500,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "resource-levels",
+		category: "system",
+		titleKey: "settings.resourceLevels",
+		descriptionKey: "settings.resourceLevelsDesc",
+		anchor: "resource-levels",
+		globalField: "resourceLevels",
+		storage: "global",
+	},
+	{
 		id: "confirm-before-quit",
 		category: "system",
 		titleKey: "settings.confirmBeforeQuit",
@@ -693,6 +702,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"suggestCompletingTasksAfterMerge",
 	"prOriginTaskLink",
 	"agentLaunchAutoApproveMinutes",
+	"resourceLevels",
 	"agentsLayoutRevision",
 	"pxpipeProxyEnabled",
 	"remoteTunnel",

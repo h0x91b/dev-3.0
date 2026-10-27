@@ -171,6 +171,7 @@ export const HELP_TOPICS: HelpTopic[] = [
 	},
 	{ id: "header.rateLimits", titleKey: "help.header.rateLimits.title", bodyKey: "help.header.rateLimits.body" },
 	{ id: "header.memory", titleKey: "help.header.memory.title", bodyKey: "help.header.memory.body" },
+	{ id: "header.systemLoad", titleKey: "help.header.systemLoad.title", bodyKey: "help.header.systemLoad.body" },
 	// Remote-only and conditional, like the memory pill: registered so help mode can
 	// explain it, deliberately not in REQUIRED_HELP_SURFACES, which covers surfaces
 	// that are always there.

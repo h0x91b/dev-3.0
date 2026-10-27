@@ -19,6 +19,7 @@ import type {
 	ArtifactTemplateMode,
 	NativeTerminalAvailability,
 	RemoteTunnelSettings,
+	ResourceLevels,
 	ShellAvailability,
 	ShortcutOverrides,
 	TerminalPathOpenMode,
@@ -693,6 +694,13 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
+	const handleResourceLevelsChange = useCallback(
+		(resourceLevels: Partial<ResourceLevels>) => {
+			persistSettingChange({ resourceLevels });
+		},
+		[persistSettingChange],
+	);
+
 	const handleConfirmBeforeQuitToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange({ skipQuitDialog: enabled ? undefined : true });
@@ -1090,6 +1098,7 @@ function GlobalSettings({
 							onRemoteSilentUpdateToggle={handleRemoteSilentUpdateToggle}
 							onStaticAccessCodeChange={handleStaticAccessCodeChange}
 							onPreventSleepToggle={handlePreventSleepToggle}
+							onResourceLevelsChange={handleResourceLevelsChange}
 							onConfirmBeforeQuitToggle={handleConfirmBeforeQuitToggle}
 						/>
 						<TelemetrySettingsSection
