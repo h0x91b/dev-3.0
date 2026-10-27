@@ -1,6 +1,7 @@
 import type { AgentUsageDay, AgentUsageReport, ProductivityStatEvent, ProductivityStats, SystemMemorySnapshot } from "../../shared/types";
 import type { AgentRateLimitsReport } from "../../shared/rate-limits";
 import type { PendingApprovalSummary } from "../../shared/agent-approval";
+import type { ModelRate } from "../../shared/agent-pricing";
 import { parseEventCursor } from "../../shared/board-events";
 import { sendRequest } from "../socket-client";
 import { exitError, exitUsage, printTable } from "../output";
@@ -234,6 +235,54 @@ async function memory(args: ParsedArgs, socketPath: string): Promise<void> {
 	}
 }
 
+interface PricesWire {
+	fetchedAt: number | null;
+	models: Array<{ model: string; rate: ModelRate | null }>;
+}
+
+function usd(n: number): string {
+	return `$${Number(n.toFixed(4))}`;
+}
+
+async function prices(args: ParsedArgs, socketPath: string): Promise<void> {
+	rejectUnknownFlags(args, ["model", "json"]);
+	rejectPositionals(args, "dev3 stats prices [--model <id> ...] [--json]");
+	const asked = args.repeated?.model ?? (args.flags.model === undefined ? [] : [args.flags.model]);
+	if (asked.some((m) => m === "true" || !m.trim())) exitUsage("--model needs a model id, e.g. --model claude-opus-5-5");
+	const resp = await sendRequest(socketPath, "stats.prices", asked.length ? { models: asked.map((m) => m.trim()) } : {});
+	if (!resp.ok) {
+		if ((resp.error ?? "").startsWith("Unknown method:")) {
+			exitError(resp.error!, "The running dev3 app is older than this CLI and has no `stats prices`. Update or restart the app, then retry.");
+		}
+		exitError(resp.error || "Failed to read prices");
+	}
+	const wire = resp.data as PricesWire;
+	const fetchedAt = wire.fetchedAt === null ? null : new Date(wire.fetchedAt).toISOString();
+	const source = fetchedAt ? "refreshed" : "built-in";
+	const models = wire.models.map(({ model, rate }) => rate
+		? { model, priced: true as const, input: rate.input, output: rate.output, cacheWrite5m: rate.cacheWrite5m, cacheWrite1h: rate.cacheWrite1h, cacheRead: rate.cacheRead }
+		: { model, priced: false as const });
+
+	if (args.flags.json === "true") {
+		printJson({ currency: "USD", unit: "per 1M tokens", source, fetchedAt, models });
+		return;
+	}
+	if (models.length === 0) {
+		process.stdout.write("No models seen in local agent usage yet — ask about one with --model <id>.\n");
+		return;
+	}
+	printTable(
+		["MODEL", "INPUT", "OUTPUT", "CACHE WRITE 5M", "CACHE WRITE 1H", "CACHE READ"],
+		models.map((m) => m.priced
+			? [m.model, usd(m.input), usd(m.output), usd(m.cacheWrite5m), usd(m.cacheWrite1h), usd(m.cacheRead)]
+			: [m.model, "not priced", "-", "-", "-", "-"]),
+	);
+	process.stdout.write(
+		`\nUSD per 1M tokens, ${source === "refreshed" ? `refreshed prices fetched ${fetchedAt}` : "built-in prices"}` +
+		" (a model missing from the refresh falls back to the built-in table).\n",
+	);
+}
+
 async function approvalsList(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
 	rejectUnknownFlags(args, ["project", "json"]);
 	rejectPositionals(args, "dev3 approvals list [--project <id>] [--json]");
@@ -263,7 +312,7 @@ async function approvalsList(args: ParsedArgs, socketPath: string, context: CliC
 	);
 }
 
-const STATS_SUBCOMMANDS = ["productivity", "usage", "limits", "memory"] as const;
+const STATS_SUBCOMMANDS = ["productivity", "usage", "limits", "memory", "prices"] as const;
 
 export async function handleStats(
 	subcommand: string | undefined,
@@ -280,6 +329,8 @@ export async function handleStats(
 			return limits(args, socketPath);
 		case "memory":
 			return memory(args, socketPath);
+		case "prices":
+			return prices(args, socketPath);
 		default:
 			exitUsage(`Usage: dev3 stats <${STATS_SUBCOMMANDS.join("|")}> [--json]`);
 	}

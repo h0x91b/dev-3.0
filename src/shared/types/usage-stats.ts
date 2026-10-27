@@ -92,4 +92,6 @@ export interface AgentUsageReport {
 	generatedAt: string;
 	/** True if some parsed usage referenced a model with no known price (costUsd is a lower bound). */
 	hasUnpricedModels: boolean;
+	/** Every raw model id seen in the retained usage, distinct and sorted. */
+	models: string[];
 }

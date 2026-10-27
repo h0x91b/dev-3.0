@@ -8,10 +8,19 @@ vi.mock("../rpc-handlers/shared-pure", () => ({ getPushMessage: () => vi.fn() })
 vi.mock("../rpc-handlers", () => ({
 	handlers: {
 		getProductivityStats: vi.fn(async () => ({ events: [], generatedAt: "2026-10-27T00:00:00.000Z" })),
-		getAgentUsage: vi.fn(async () => ({ days: [], generatedAt: "2026-10-27T00:00:00.000Z", hasUnpricedModels: false })),
+		getAgentUsage: vi.fn(async () => ({ days: [], generatedAt: "2026-10-27T00:00:00.000Z", hasUnpricedModels: false, models: [] })),
 		getAgentRateLimits: vi.fn(async () => ({ snapshots: [], generatedAt: 1 })),
 		getSystemMemory: vi.fn(async () => null),
 	},
+}));
+
+const OPUS = { input: 4, output: 20, cacheWrite5m: 5, cacheWrite1h: 8, cacheRead: 0.2 };
+vi.mock("../agent-pricing-refresh", () => ({
+	describePricing: vi.fn(async () => ({ fetchedAt: 123, resolve: (id: string) => (id === "claude-opus-5-5" ? OPUS : null) })),
+}));
+vi.mock("../model-catalog-store", () => ({ loadModelCatalog: vi.fn(() => ({})) }));
+vi.mock("../../shared/model-catalog", () => ({
+	nativeModelIdForWireName: vi.fn((_catalog: unknown, wire: string) => (wire === "dev3-opus-route" ? "claude-opus-5-5" : undefined)),
 }));
 
 import { statsHandlers } from "../cli-socket/stats-commands";
@@ -38,6 +47,27 @@ describe("stats.* socket methods", () => {
 		expect(await statsHandlers["stats.memory"]({})).toBeNull();
 		expect(rpc.getProductivityStats).toHaveBeenCalledTimes(1);
 		expect(rpc.getSystemMemory).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("stats.prices", () => {
+	it("prices the requested ids, a catalog wire name as its native model, unknown as null", async () => {
+		expect(await statsHandlers["stats.prices"]({ models: ["dev3-opus-route", "claude-opus-5-5", "mystery"] })).toEqual({
+			fetchedAt: 123,
+			models: [
+				{ model: "dev3-opus-route", rate: OPUS },
+				{ model: "claude-opus-5-5", rate: OPUS },
+				{ model: "mystery", rate: null },
+			],
+		});
+		expect(rpc.getAgentUsage).not.toHaveBeenCalled();
+	});
+
+	it("with no ids, prices every model local usage has seen", async () => {
+		vi.mocked(rpc.getAgentUsage).mockResolvedValueOnce({ days: [], generatedAt: "G", hasUnpricedModels: true, models: ["claude-opus-5-5", "mystery"] });
+		expect(await statsHandlers["stats.prices"]({})).toEqual({
+			fetchedAt: 123, models: [{ model: "claude-opus-5-5", rate: OPUS }, { model: "mystery", rate: null }],
+		});
 	});
 });
 

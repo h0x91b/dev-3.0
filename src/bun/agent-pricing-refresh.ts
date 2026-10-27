@@ -149,14 +149,7 @@ async function refresh(): Promise<void> {
 	}
 }
 
-/** Return saved prices immediately; refresh future reports without blocking on the network. */
-export async function getPricingResolver(): Promise<(modelId: string) => ModelRate | null> {
-	if (!loaded) {
-		loading ??= loadCache().finally(() => { loading = null; });
-		await loading;
-	}
-	const rates = cache?.rates ?? {};
-	if (!pending) pending = refresh().finally(() => { pending = null; });
+function resolveFrom(rates: Rates): (modelId: string) => ModelRate | null {
 	return (modelId) => {
 		const id = modelId.trim().toLowerCase().replace(/\[\d+[km]\]$/, "");
 		const routedId = id.startsWith("openrouter/") ? id.slice("openrouter/".length) : id;
@@ -168,4 +161,27 @@ export async function getPricingResolver(): Promise<(modelId: string) => ModelRa
 				?? rates[`openai:${nativeId}`] ?? rates[`anthropic:${nativeId}`] ?? rates[`google:${nativeId}`];
 		return rate ?? bundledRate(routedId);
 	};
+}
+
+async function ensureCacheLoaded(): Promise<void> {
+	if (loaded) return;
+	loading ??= loadCache().finally(() => { loading = null; });
+	await loading;
+}
+
+/** Return saved prices immediately; refresh future reports without blocking on the network. */
+export async function getPricingResolver(): Promise<(modelId: string) => ModelRate | null> {
+	await ensureCacheLoaded();
+	const rates = cache?.rates ?? {};
+	if (!pending) pending = refresh().finally(() => { pending = null; });
+	return resolveFrom(rates);
+}
+
+/**
+ * The resolver the usage report would use right now, for `dev3 stats prices`, and
+ * when the saved table was fetched (null: built-in rates only). Never fetches.
+ */
+export async function describePricing(): Promise<{ fetchedAt: number | null; resolve: (modelId: string) => ModelRate | null }> {
+	await ensureCacheLoaded();
+	return { fetchedAt: cache?.fetchedAt ?? null, resolve: resolveFrom(cache?.rates ?? {}) };
 }

@@ -250,3 +250,27 @@ describe("daily agent pricing refresh", () => {
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe("describePricing (dev3 stats prices)", () => {
+	async function pricing() {
+		return (await import("../agent-pricing-refresh")).describePricing();
+	}
+
+	it("falls back to the built-in table with nothing saved, and never fetches", async () => {
+		const { fetchedAt, resolve } = await pricing();
+		expect(fetchedAt).toBeNull();
+		expect(resolve("claude-opus-5-5[1m]")).toEqual({ input: 4, output: 20, cacheWrite5m: 5, cacheWrite1h: 8, cacheRead: 0.2 });
+		expect(resolve("not-a-model")).toBeNull();
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("resolves every id exactly as the usage report's resolver does", async () => {
+		const usage = await resolver();
+		const { fetchedAt, resolve } = await pricing();
+		expect(fetchedAt).toBe(now);
+		for (const id of ["gpt-6.1-sol", "openrouter/openai/gpt-6.1-sol", "claude-new", "claude-haiku-4-5-20251001", "gemini-test", "nope"]) {
+			expect(resolve(id)).toEqual(usage(id));
+		}
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+});

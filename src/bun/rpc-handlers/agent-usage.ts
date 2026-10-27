@@ -133,7 +133,8 @@ export async function getAgentUsage(): Promise<AgentUsageReport> {
 		days: days.length,
 		hasUnpriced,
 	});
-	return { days, generatedAt: new Date().toISOString(), hasUnpricedModels: hasUnpriced };
+	const models = [...new Set(Object.values(retained).flatMap((state) => [...state.records.values()].map((r) => r.model)))].sort();
+	return { days, generatedAt: new Date().toISOString(), hasUnpricedModels: hasUnpriced, models };
 }
 
 /** Current agent rate limits (local dumps/rollouts plus cached Codex monthly credits). */

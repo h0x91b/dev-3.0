@@ -12,5 +12,20 @@ export const statsHandlers: Record<string, Handler> = {
 	"stats.usage": async () => rpc.getAgentUsage(),
 	"stats.limits": async () => rpc.getAgentRateLimits(),
 	"stats.memory": async () => rpc.getSystemMemory(),
+	// Loaded on demand: pricing pulls the telemetry opt-out and the model catalog store.
+	"stats.prices": async (params) => {
+		const { describePricing } = await import("../agent-pricing-refresh");
+		const { loadModelCatalog } = await import("../model-catalog-store");
+		const { nativeModelIdForWireName } = await import("../../shared/model-catalog");
+		const asked = Array.isArray(params.models) ? params.models.filter((m): m is string => typeof m === "string") : null;
+		const models = asked ?? (await rpc.getAgentUsage()).models;
+		const { fetchedAt, resolve } = await describePricing();
+		const catalog = loadModelCatalog();
+		// Priced exactly as the usage report prices a record: a catalog wire name as its native model.
+		return {
+			fetchedAt,
+			models: models.map((model) => ({ model, rate: resolve(nativeModelIdForWireName(catalog, model) ?? model) })),
+		};
+	},
 	"approvals.list": async () => ({ requests: listPendingApprovalSummaries() }),
 };

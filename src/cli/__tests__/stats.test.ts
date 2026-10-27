@@ -259,6 +259,50 @@ describe("dev3 stats memory", () => {
 	});
 });
 
+describe("dev3 stats prices", () => {
+	const OPUS = { input: 4, output: 20, cacheWrite5m: 5, cacheWrite1h: 8, cacheRead: 0.2 };
+	const pricesArgs = (models: string[], json = true): ParsedArgs => ({
+		positional: [], flags: { ...(json ? { json: "true" } : {}), ...(models.length ? { model: models[models.length - 1] } : {}) },
+		repeated: models.length ? { model: models } : {},
+	});
+
+	it("prints exactly the agreed contract, priced and unpriced, and exits 0", async () => {
+		mockSend.mockResolvedValue(ok({ fetchedAt: 0, models: [{ model: "claude-opus-5-5[1m]", rate: OPUS }, { model: "mystery", rate: null }] }));
+		await handleStats("prices", pricesArgs(["claude-opus-5-5[1m]", "mystery"]), SOCKET, CTX);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "stats.prices", { models: ["claude-opus-5-5[1m]", "mystery"] });
+		expect(json()).toEqual({
+			schemaVersion: 1, currency: "USD", unit: "per 1M tokens", source: "refreshed", fetchedAt: "1970-01-01T00:00:00.000Z",
+			models: [{ model: "claude-opus-5-5[1m]", priced: true, ...OPUS }, { model: "mystery", priced: false }],
+		});
+	});
+
+	it("says built-in with no refreshed table, and asks the app for every seen model when no --model is given", async () => {
+		mockSend.mockResolvedValue(ok({ fetchedAt: null, models: [] }));
+		await handleStats("prices", pricesArgs([]), SOCKET, CTX);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "stats.prices", {});
+		expect(json()).toMatchObject({ source: "built-in", fetchedAt: null, models: [] });
+	});
+
+	it("renders a table with unpriced rows marked", async () => {
+		mockSend.mockResolvedValue(ok({ fetchedAt: null, models: [{ model: "claude-opus-5-5", rate: OPUS }, { model: "mystery", rate: null }] }));
+		await handleStats("prices", pricesArgs(["claude-opus-5-5", "mystery"], false), SOCKET, CTX);
+		expect(stdout).toMatch(/claude-opus-5-5\s+\$4\s+\$20\s+\$5\s+\$8\s+\$0\.2/);
+		expect(stdout).toMatch(/mystery\s+not priced/);
+		expect(stdout).toContain("built-in prices");
+	});
+
+	it("is a usage error for an empty --model, before asking the app", async () => {
+		await expect(handleStats("prices", pricesArgs(["claude-opus-5-5", "true"]), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("gives the update hint on an app that predates it", async () => {
+		mockSend.mockResolvedValue(fail("Unknown method: stats.prices"));
+		await expect(handleStats("prices", pricesArgs(["x"]), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_COMMAND_FAILED}`);
+		expect(stderr).toContain("older than this CLI");
+	});
+});
+
 describe("dev3 approvals list", () => {
 	it("prints pending requests, filtered by --project", async () => {
 		mockSend.mockResolvedValue(ok({ requests: [approval(), approval({ requestId: "r2", projectId: PROJECT_B })] }));

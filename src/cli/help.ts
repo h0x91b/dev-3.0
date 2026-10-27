@@ -417,6 +417,18 @@ const COMMANDS: CommandHelp[] = [
 					"--json prints { schemaVersion: 1, ... }; new fields may appear, a removed or renamed one bumps schemaVersion.",
 				],
 			},
+			{
+				name: "prices",
+				usage: "dev3 stats prices [--model <id> ...] [--json]",
+				summary: "The model prices usage cost is computed with, USD per 1M tokens.",
+				details: [
+					"--model <id>  Repeatable. Each id is resolved exactly as the usage report prices it (catalog wire names, family and prefix rules, [1m] and dated ids); an unknown one is priced: false. Exit 0 either way.",
+					"No --model: every model id seen in local agent usage.",
+					"--json: { schemaVersion: 1, currency, unit, source: built-in|refreshed, fetchedAt, models: [{ model, priced, input, output, cacheWrite5m, cacheWrite1h, cacheRead }] }.",
+					"Reads the saved price table only — it never fetches prices itself.",
+					"--json prints { schemaVersion: 1, ... }; new fields may appear, a removed or renamed one bumps schemaVersion.",
+				],
+			},
 		],
 	},
 	{
