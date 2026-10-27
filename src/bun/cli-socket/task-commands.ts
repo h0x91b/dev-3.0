@@ -64,6 +64,8 @@ async function changeTaskLabels(params: Record<string, unknown>, mode: "replace"
 	return updated;
 }
 
+const SENDER_MOVE_REFUSED = "A sender can only start a task that is not running.";
+
 export const taskHandlers: Record<string, Handler> = {
 
 	"projects.list": async () => {
@@ -488,6 +490,7 @@ export const taskHandlers: Record<string, Handler> = {
 		const customColumns = project.customColumns ?? [];
 		const customColumn = findByIdPrefix(customColumns, newStatus, "custom column");
 		if (customColumn) {
+			if (senderRequester(params)) throw new Error(SENDER_MOVE_REFUSED);
 			if (launchSuggestionRequested(params)) throw new Error("--agent/--config only apply when the move asks to start another task's agent — a custom column is a plain move.");
 			return moveTask({
 				taskId: task.id,
@@ -517,6 +520,12 @@ export const taskHandlers: Record<string, Handler> = {
 		const sender = senderRequester(params);
 		const requester = sender ?? await resolveAgentMessageSource(params, task.id);
 		const isActivation = !ACTIVE_STATUSES.includes(task.status) && ACTIVE_STATUSES.includes(builtinStatus);
+		// A sender's only power is a start through the dialog: a plain move of a
+		// running task could still launch a column agent (`review-by-*`) silently.
+		if (sender && !isActivation) {
+			if (task.status === builtinStatus) return task;
+			throw new Error(SENDER_MOVE_REFUSED);
+		}
 		const sourceTaskId = typeof params.sourceTaskId === "string" ? params.sourceTaskId.trim() : "";
 		// A task's own agent never starts its To Do card again: after a reset the
 		// agent is dying, and its hooks (every tool call) must stay a quiet no-op.

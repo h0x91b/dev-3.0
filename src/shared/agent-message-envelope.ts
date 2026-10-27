@@ -113,11 +113,19 @@ export function wrapExternalSenderMessage(text: string, sender: ExternalSenderSt
 	lines.push(
 		`<reply-with>${externalSenderReplyCommand(sender.id, sender.messageId)}</reply-with>`,
 		"<message>",
-		text,
+		neutralizeEnvelopeTags(text),
 		"</message>",
 		"</dev3-ai-message>",
 	);
 	return lines.join("\n");
+}
+
+/**
+ * A sender may relay third-party text; a `</message>` inside it would close the
+ * envelope and let the rest forge a `<from-task>` block. Escaping the `<` keeps it readable.
+ */
+function neutralizeEnvelopeTags(text: string): string {
+	return text.replace(/<(?=\s*\/\s*message\b|\s*\/?\s*dev3-ai-message\b)/gi, "&lt;");
 }
 
 /** The command a task's agent runs to answer an external sender. */

@@ -1034,6 +1034,23 @@ describe("task.moveAsSender — a start an external sender asks for", () => {
 		expect(pushFn).not.toHaveBeenCalled();
 	});
 
+	it("refuses moving a task that is already running, so no column agent starts without a dialog", async () => {
+		setupBoard(makeTask({ status: "in-progress" }));
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		const resp = await handleRequest(senderMoveRequest({ taskId: TARGET_ID, newStatus: "review-by-ai", projectId: "proj-1", asSender: "openclaw:home:main" }));
+		expect(resp).toMatchObject({ ok: false, error: "A sender can only start a task that is not running." });
+		expect(moveTask).not.toHaveBeenCalled();
+		expect(pushFn).not.toHaveBeenCalled();
+	});
+
+	it("treats a repeated start of a running task as a no-op", async () => {
+		setupBoard(makeTask({ status: "in-progress" }));
+		const resp = await handleRequest(senderMoveRequest({ taskId: TARGET_ID, newStatus: "in-progress", projectId: "proj-1", asSender: "openclaw:home:main" }));
+		expect(resp).toMatchObject({ ok: true, data: { id: TARGET_ID, status: "in-progress" } });
+		expect(moveTask).not.toHaveBeenCalled();
+	});
+
 	it("refuses an unknown sender before any dialog", async () => {
 		setupBoard(makeTask());
 		const pushFn = vi.fn();
