@@ -176,7 +176,7 @@ function ResourceRow({
 					}`}
 					{...flyout.triggerProps}
 				>
-					<span className="flex w-[1.125rem] flex-col justify-center">{level}</span>
+					<span className="flex w-[1.125rem] justify-center [&>svg]:size-[1.125rem]">{icon}</span>
 					<span className="text-sm flex-1 text-left">{label}</span>
 					<span className={`text-micro font-medium tabular-nums ${PRESSURE_TEXT_CLASS[pressure]}`}>{value}</span>
 				</button>

@@ -128,7 +128,7 @@ export default function MemoryHeadroomIndicator({ navigate, variant = "bar" }: M
 					className="header-anim w-full px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-overlay-hover hover:text-fg transition-colors"
 					{...flyout.triggerProps}
 				>
-					<span className="flex w-[1.125rem] flex-col justify-center gap-[0.1875rem]">{level}</span>
+					<MemoryIcon className="size-[1.125rem] shrink-0" />
 					<span className="text-sm flex-1 text-left">{t("memory.label")}</span>
 					<span className={`text-micro font-medium tabular-nums ${pressureClass}`}>
 						{formatBytesCompact(snapshot.headroom)}

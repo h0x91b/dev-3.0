@@ -157,18 +157,18 @@ describe("MemoryHeadroomIndicator — where it lives", () => {
 		expect(number.className).not.toContain("text-success");
 	});
 
-	it("colours the level bar from the OS verdict, never from the percentage", async () => {
+	it("colours the readout from the OS verdict, never from the percentage", async () => {
 		mockedGet.mockResolvedValue(snapshot({ pressure: "normal" }));
 		renderMenuRow();
 		await waitFor(() => expect(pill()).toBeInTheDocument());
-		const bar = () => pill().querySelector(".hdr-mem-bar") as HTMLElement;
+		const value = () => pill().querySelector(".tabular-nums") as HTMLElement;
 		// 81% used, yet the OS says normal — on a big machine that is genuinely fine,
-		// so the bar must stay accent rather than turning red on our own threshold.
-		expect(bar().className).toContain("bg-accent");
+		// so the readout must stay neutral rather than turning red on our own threshold.
+		expect(value().className).toContain("text-fg-3");
 
 		await pushSnapshot(snapshot({ pressure: "critical" }));
-		expect(bar().className).toContain("bg-danger");
-		expect(bar().className).not.toContain("bg-accent");
+		expect(value().className).toContain("text-danger");
+		expect(value().className).not.toContain("text-fg-3");
 	});
 
 	it("opens the breakdown from the menu row on click", async () => {
