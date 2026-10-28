@@ -9,6 +9,7 @@ import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import BottomSheet from "./BottomSheet";
 import HeaderFlyoutPanel from "./HeaderFlyoutPanel";
+import { CpuIcon, DiskIcon } from "./HeaderIcons";
 import { PRESSURE_BAR_CLASS, PRESSURE_TEXT_CLASS, SectionLabel } from "./MemoryBreakdownPanel";
 
 /**
@@ -82,6 +83,7 @@ export default function SystemLoadRows({
 				<ResourceRow
 					variant={variant}
 					label={t("systemLoad.cpu")}
+					icon={<CpuIcon className="size-3 shrink-0" />}
 					value={percent(snapshot.cpuLoadPercent)}
 					ratio={snapshot.cpuLoadPercent / 100}
 					pressure={snapshot.cpuPressure}
@@ -95,6 +97,7 @@ export default function SystemLoadRows({
 				<ResourceRow
 					variant={variant}
 					label={t("systemLoad.disk")}
+					icon={<DiskIcon className="size-3 shrink-0" />}
 					value={formatDiskBytes(disk.free)}
 					ratio={1 - disk.free / disk.total}
 					pressure={disk.pressure}
@@ -111,6 +114,7 @@ export default function SystemLoadRows({
 function ResourceRow({
 	variant,
 	label,
+	icon,
 	value,
 	ratio,
 	pressure,
@@ -120,6 +124,7 @@ function ResourceRow({
 }: {
 	variant: Variant;
 	label: string;
+	icon: ReactNode;
 	value: string;
 	ratio: number;
 	pressure: MemoryPressure;
@@ -143,7 +148,7 @@ function ResourceRow({
 	return (
 		<>
 			{variant === "bar" ? (
-				// Same pill shape as the memory readout: number over a level bar, no glyph.
+				// Same pill as the memory readout: icon + number over a level bar.
 				<button
 					ref={flyout.anchorRef}
 					type="button"
@@ -153,7 +158,10 @@ function ResourceRow({
 					className={`header-anim flex shrink-0 flex-col justify-center gap-[0.1875rem] rounded-lg px-1.5 py-1 transition-colors hover:bg-elevated ${PRESSURE_TEXT_CLASS[pressure]}`}
 					{...flyout.triggerProps}
 				>
-					<span className="text-micro font-medium leading-none tabular-nums">{value}</span>
+					<span className="flex items-center gap-1 text-micro font-medium leading-none tabular-nums">
+						{icon}
+						{value}
+					</span>
 					{level}
 				</button>
 			) : (
@@ -206,15 +214,17 @@ function TaskRow({ title, value, onClick }: { title: string; value: string; onCl
 
 function LevelHeader({
 	pressure,
+	headingKey,
 	levelKey,
 }: {
 	pressure: MemoryPressure;
+	headingKey: "systemLoad.cpuHeading" | "systemLoad.diskHeading";
 	levelKey: "systemLoad.cpuLevel" | "systemLoad.diskLevel";
 }) {
 	const t = useT();
 	return (
 		<div className="flex items-baseline justify-between gap-2">
-			<SectionLabel>{t("memory.system")}</SectionLabel>
+			<SectionLabel>{t(headingKey)}</SectionLabel>
 			<span className={`text-dense font-medium ${PRESSURE_TEXT_CLASS[pressure]}`}>
 				{t(`${levelKey}.${pressure}` as "systemLoad.cpuLevel.normal")}
 			</span>
@@ -248,7 +258,7 @@ function CpuPanel({ snapshot, ...props }: PanelProps & { snapshot: SystemLoadSna
 	return (
 		<div className="flex flex-col text-xs">
 			<div className="flex flex-col gap-1 px-3 py-2.5">
-				<LevelHeader pressure={snapshot.cpuPressure} levelKey="systemLoad.cpuLevel" />
+				<LevelHeader pressure={snapshot.cpuPressure} headingKey="systemLoad.cpuHeading" levelKey="systemLoad.cpuLevel" />
 				<div className="text-fg">
 					<span className="font-semibold tabular-nums">{percent(snapshot.cpuLoadPercent)}</span>{" "}
 					<span className="text-fg-3">{t("systemLoad.load")}</span>
@@ -336,13 +346,13 @@ function DiskPanel({ disk, ...props }: PanelProps & { disk: NonNullable<SystemLo
 	return (
 		<div className="flex flex-col text-xs">
 			<div className="flex flex-col gap-1 px-3 py-2.5">
-				<LevelHeader pressure={disk.pressure} levelKey="systemLoad.diskLevel" />
+				<LevelHeader pressure={disk.pressure} headingKey="systemLoad.diskHeading" levelKey="systemLoad.diskLevel" />
 				<div className="text-fg">
 					<span className="font-semibold tabular-nums">{formatDiskBytes(disk.free)}</span>{" "}
 					<span className="text-fg-3">{t("memory.free")}</span>
 				</div>
 				<div className="text-micro text-fg-3 tabular-nums">
-					{t("memory.usedOfTotal", { used: formatDiskBytes(disk.total - disk.free), total: formatDiskBytes(disk.total) })}
+					{t("systemLoad.diskUsedPercent", { percent: percent(Math.floor(((disk.total - disk.free) / disk.total) * 100)), total: formatDiskBytes(disk.total) })}
 				</div>
 				<div className="text-micro text-fg-muted">{t("systemLoad.diskVolume")}</div>
 			</div>

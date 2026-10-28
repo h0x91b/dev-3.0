@@ -99,6 +99,17 @@ describe("SystemLoadRows", () => {
 		expect(mockedScan).toHaveBeenCalledTimes(1);
 	});
 
+	it("the disk breakdown names itself Disk and shows how full it is, never memory's heading", async () => {
+		mockedScan.mockResolvedValue([]);
+		const user = userEvent.setup();
+		renderRows();
+		await user.click(await screen.findByTestId("disk-space-row"));
+		const panel = (await screen.findByTestId("disk-worktrees")).parentElement!;
+		expect(panel).toHaveTextContent("Disk");
+		expect(panel).not.toHaveTextContent("System");
+		expect(panel).toHaveTextContent("76% of 500 GB in use");
+	});
+
 	it("header pills appear only for a resource at warn or critical, coloured by its level", async () => {
 		mockedGet.mockResolvedValue(
 			snapshot({ cpuLoadPercent: 160, cpuPressure: "critical", disk: { free: 120e9, total: 500e9, pressure: "normal" } }),

@@ -1637,6 +1637,15 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 .header-anim:is(:hover, :focus-visible) .hdr-sess2 { transform-box: fill-box; transform-origin: center; animation: hdr-sess-pulse 1.8s ease-in-out .3s infinite; }
 .header-anim:is(:hover, :focus-visible) .hdr-sess3 { transform-box: fill-box; transform-origin: center; animation: hdr-sess-pulse 1.8s ease-in-out .6s infinite; }
 
+/* -- Resource pills: memory teeth, the CPU core and the disk band blink in turn -- */
+@keyframes hdr-res-blink {
+	0%, 100% { opacity: 1; }
+	40% { opacity: .25; }
+}
+.header-anim:is(:hover, :focus-visible) .hdr-res1 { animation: hdr-res-blink 1.6s ease-in-out infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-res2 { animation: hdr-res-blink 1.6s ease-in-out .27s infinite; }
+.header-anim:is(:hover, :focus-visible) .hdr-res3 { animation: hdr-res-blink 1.6s ease-in-out .54s infinite; }
+
 /* -- GitHub: the octocat takes a polite bow -- */
 @keyframes hdr-gh {
 	0%, 15% { transform: rotate(0deg); }
