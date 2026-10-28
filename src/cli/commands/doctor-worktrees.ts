@@ -310,10 +310,10 @@ function recommend(entry: Omit<WorktreeEntry, "recommendation">): string {
 			return `keep — task ${entry.seq ? `seq:${entry.seq}` : entry.shortId} is ${entry.taskStatus ?? "open"}`;
 		case "orphaned":
 			if (entry.needsForce) return `orphan; branch ${entry.branch} NOT merged — needs --force-unmerged`;
-			return "orphan, no task record — reclaim with --prune-orphans";
+			return "orphan, no task record — --prune-orphans, or --prune-older-than once old enough";
 		case "abandoned-teardown":
 			if (entry.needsForce) return `teardown never finished; branch ${entry.branch} NOT merged — needs --force-unmerged`;
-			return "teardown never finished — finish it with --prune-orphans";
+			return "teardown never finished — --prune-orphans, or --prune-older-than once old enough";
 		case "metadata-only":
 			if (entry.reclaimableBytes > 0) return `diffs/logs of a task last touched ${entry.ageDays}d ago — --prune-older-than 30d`;
 			if (entry.taskStatus && !TERMINAL_STATUSES.has(entry.taskStatus)) return `keep — task ${entry.taskStatus}, no worktree`;
@@ -566,7 +566,7 @@ export function renderWorktreeReport(report: WorktreeReport): string {
 				`  ${formatBytes(report.unmergedBytes)} of that sits on UNMERGED dev3/task-* branches (marked "!") and is skipped unless you add --force-unmerged.`,
 			);
 		}
-		lines.push("  Old diffs/logs of finished tasks: dev3 doctor --worktrees --prune-older-than 30d");
+		lines.push("  Everything of finished tasks older than N days (diffs/logs, orphans, teardowns): dev3 doctor --worktrees --prune-older-than 30d");
 	}
 	return lines.join("\n") + "\n";
 }
@@ -588,7 +588,7 @@ export interface PruneOutcome {
 export interface PruneOptions {
 	/** Reclaim orphaned directories and finish abandoned teardowns. */
 	orphans: boolean;
-	/** Delete metadata-only directories at least this old, in days. */
+	/** Delete orphans, unfinished teardowns and finished tasks' diffs/logs at least this old, in days. */
 	olderThanDays: number | null;
 	/** Also delete entries whose dev3/task-* branch is NOT merged into the base. */
 	forceUnmerged: boolean;
@@ -621,6 +621,24 @@ function deleteBranchIfSafe(deps: WorktreeScanDeps, entry: WorktreeEntry, option
 }
 
 /**
+ * What `--prune-older-than <days>` selects: anything no open task owns, last touched
+ * at least `days` ago — old diffs/logs, orphans and unfinished teardowns alike.
+ * Deliberately not `reclaimableBytes`: that is the report's 30-day suggestion, and
+ * gating on it made `--prune-older-than 14d` silently mean "older than 30 days".
+ */
+/**
+ * An unmerged dev3/task-* branch's directory waits at least this long under
+ * `--prune-older-than` (its branch ref is kept, so committed work survives);
+ * `--force-unmerged` lowers the wait to the duration given.
+ */
+export const UNMERGED_PRUNE_FLOOR_DAYS = 60;
+
+export function olderThanSelects(entry: WorktreeEntry, days: number): boolean {
+	if (entry.category === "live-open" || entry.ageDays === null || entry.ageDays < days) return false;
+	return entry.taskStatus === null || TERMINAL_STATUSES.has(entry.taskStatus);
+}
+
+/**
  * Delete what the flags selected. Orphans lose the whole task directory (their
  * diffs/logs describe a task record that no longer exists); an abandoned teardown
  * loses only `worktree/`, because its task still exists and the UI still shows its
@@ -631,14 +649,11 @@ export function prune(report: WorktreeReport, options: PruneOptions, deps: Workt
 	const touchedRepos = new Set<string>();
 
 	for (const entry of report.entries) {
-		const selected =
-			(options.orphans && (entry.category === "orphaned" || entry.category === "abandoned-teardown")) ||
-			(options.olderThanDays !== null &&
-				entry.category === "metadata-only" &&
-				entry.reclaimableBytes > 0 &&
-				entry.ageDays !== null &&
-				entry.ageDays >= options.olderThanDays);
-		if (!selected) continue;
+		const byOrphans = options.orphans && (entry.category === "orphaned" || entry.category === "abandoned-teardown");
+		const byAge = options.olderThanDays !== null && olderThanSelects(entry, options.olderThanDays);
+		if (!byOrphans && !byAge) continue;
+		const unmergedOldEnough =
+			byAge && entry.ageDays! >= Math.max(options.olderThanDays!, UNMERGED_PRUNE_FLOOR_DAYS);
 
 		const common = {
 			dir: entry.dir,
@@ -647,13 +662,13 @@ export function prune(report: WorktreeReport, options: PruneOptions, deps: Workt
 			category: entry.category,
 		};
 
-		if (entry.needsForce && !options.forceUnmerged) {
+		if (entry.needsForce && !options.forceUnmerged && !unmergedOldEnough) {
 			outcomes.push({
 				...common,
 				action: "skipped",
 				freedBytes: 0,
 				branchDeleted: null,
-				reason: `branch ${entry.branch} is not merged into the base branch — re-run with --force-unmerged to delete it anyway`,
+				reason: `branch ${entry.branch} is not merged into the base branch — kept until ${UNMERGED_PRUNE_FLOOR_DAYS}d old, or re-run with --force-unmerged`,
 			});
 			continue;
 		}

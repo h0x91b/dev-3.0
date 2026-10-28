@@ -180,6 +180,12 @@ export interface GlobalSettings {
 	 */
 	telemetryDisabled?: boolean;
 	/**
+	 * Daily removal of finished tasks' diffs/logs older than 14 days
+	 * (`src/bun/worktree-cleanup-scheduler.ts`). Default on; only an explicit
+	 * false opts out.
+	 */
+	autoCleanupTaskHistory?: boolean;
+	/**
 	 * Set the first time the user opens help mode. Until then the header's `?`
 	 * rests highlighted on the main screens — help mode is the product's only
 	 * teaching channel, so a user who never finds the button never learns

@@ -708,6 +708,13 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
+	const handleAutoCleanupTaskHistoryToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange({ autoCleanupTaskHistory: enabled ? undefined : false });
+		},
+		[persistSettingChange],
+	);
+
 	const handleFocusModeToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange({ focusMode: enabled });
@@ -1100,6 +1107,7 @@ function GlobalSettings({
 							onPreventSleepToggle={handlePreventSleepToggle}
 							onResourceLevelsChange={handleResourceLevelsChange}
 							onConfirmBeforeQuitToggle={handleConfirmBeforeQuitToggle}
+							onAutoCleanupTaskHistoryToggle={handleAutoCleanupTaskHistoryToggle}
 						/>
 						<TelemetrySettingsSection
 							t={t}

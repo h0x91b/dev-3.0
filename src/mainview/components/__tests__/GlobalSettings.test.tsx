@@ -987,6 +987,27 @@ describe("GlobalSettings", () => {
 	});
 
 	describe("system settings", () => {
+		it("defaults the daily task-file cleanup to on and stores only an explicit opt-out", async () => {
+			setupMocks(mockAgents, { ...mockGlobalSettings });
+			const user = userEvent.setup();
+			renderGlobalSettings("system");
+			await waitForLoad();
+
+			const toggle = await screen.findByRole("switch", { name: "Clean up old task files" });
+			expect(toggle).toHaveAttribute("aria-checked", "true");
+
+			await user.click(toggle);
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenLastCalledWith(
+				expect.objectContaining({ autoCleanupTaskHistory: false }),
+			);
+			expect(toggle).toHaveAttribute("aria-checked", "false");
+
+			await user.click(toggle);
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenLastCalledWith(
+				expect.objectContaining({ autoCleanupTaskHistory: undefined }),
+			);
+		});
+
 		it("round-trips the confirm-before-quit toggle through skipQuitDialog", async () => {
 			setupMocks(mockAgents, { ...mockGlobalSettings, skipQuitDialog: true });
 			const user = userEvent.setup();

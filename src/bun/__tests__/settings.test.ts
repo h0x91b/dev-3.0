@@ -383,6 +383,7 @@ describe("saveSettings", () => {
 			simplifiedModeSource: "existing",
 			experimentalAgentTraffic: true,
 			freezeDiagnosticsEnabled: true,
+			autoCleanupTaskHistory: false,
 			agentTrafficExperiment: "1",
 			lowBatteryEnabled: true,
 			lowBatteryDisabled: true,

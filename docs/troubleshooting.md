@@ -53,11 +53,16 @@ you ask:
 
 ```sh
 dev3 doctor --worktrees --prune-orphans          # orphans + unfinished teardowns
-dev3 doctor --worktrees --prune-older-than 30d   # old diffs/logs of finished tasks
+dev3 doctor --worktrees --prune-older-than 30d   # all of the above + old diffs/logs, once older than 30d
 ```
 
 A directory whose `dev3/task-*` branch is **not merged** into the base branch is reported and
-skipped — that is unpushed work. Add `--force-unmerged` only when you are sure you want it gone.
+skipped by `--prune-orphans` — that is unpushed work. `--prune-older-than` removes such a directory
+only once it is 60 days old, and keeps the branch ref so committed work stays recoverable. Add
+`--force-unmerged` only when you are sure you want it gone sooner — it deletes the branch too.
+
+dev3 runs `--prune-older-than 14d` by itself once a day (never in the first hour after launch,
+never with `--force-unmerged`). Turn it off in Settings → System → "Clean up old task files".
 This is the one dev3 command that deletes anything under `~/.dev3.0/`, and only because you typed
 the flag.
 

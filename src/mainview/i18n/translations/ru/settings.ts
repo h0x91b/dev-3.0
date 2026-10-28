@@ -368,6 +368,8 @@ const settings = {
 	"settings.preventSleepNotAvailable": "Инструмент для блокировки сна не найден (caffeinate на macOS, systemd-inhibit на Linux).",
 	"settings.confirmBeforeQuit": "Подтверждать выход",
 	"settings.confirmBeforeQuitDesc": "Показывать диалог подтверждения перед закрытием dev-3.0.",
+	"settings.autoCleanupTaskHistory": "Чистить старые файлы задач",
+	"settings.autoCleanupTaskHistoryDesc": "Раз в сутки удалять diffs, логи и оставшиеся worktree задач, завершённых больше 14 дней назад, — на неслитой ветке через 60 дней, сама ветка остаётся. Открытые задачи не трогаются.",
 	"settings.rateLimitTracking": "Отслеживание лимитов агентов",
 	"settings.rateLimitTrackingDesc": "Показывает в шапке живое использование лимитов Claude/Codex. Данные Claude собираются через statusLine сессии, маршрутизируемый через dev3 — ваш собственный statusLine продолжает работать, dev3 лишь дописывает свой сегмент.",
 	"settings.reviewModePrompt": "Промпт для ревью",

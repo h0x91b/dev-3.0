@@ -41,6 +41,7 @@ import { startSelfUpdateWatch, stopSelfUpdateWatch } from "./self-update-watch";
 import { VIEWS_DIR_AUTO_ENV } from "./self-update";
 import { configureHandoffWorker } from "./conversation-handoff-runner";
 import { configureClonefileWorker } from "./cow-clone";
+import { configureWorktreeCleanupWorker } from "./worktree-cleanup-scheduler";
 
 const log = createLogger("headless");
 
@@ -180,6 +181,7 @@ if (!process.env.DEV3_VIEWS_DIR) {
 if (process.env.DEV3_VIEWS_DIR) {
 	configureHandoffWorker(resolve(process.env.DEV3_VIEWS_DIR, "workers", "conversation-handoff-worker.js"));
 	configureClonefileWorker(resolve(process.env.DEV3_VIEWS_DIR, "workers", "clonefile-worker.js"));
+	configureWorktreeCleanupWorker(resolve(process.env.DEV3_VIEWS_DIR, "workers", "worktree-cleanup-worker.js"));
 }
 
 // ── Ensure ~/.dev3.0/bin/dev3 resolves to this binary ──

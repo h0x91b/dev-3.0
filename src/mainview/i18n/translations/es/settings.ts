@@ -360,6 +360,8 @@ const settings = {
 	"settings.preventSleepNotAvailable": "No se encontró herramienta para inhibir suspensión (caffeinate en macOS, systemd-inhibit en Linux).",
 	"settings.confirmBeforeQuit": "Confirmar antes de salir",
 	"settings.confirmBeforeQuitDesc": "Mostrar el diálogo de confirmación antes de cerrar dev-3.0.",
+	"settings.autoCleanupTaskHistory": "Limpiar archivos antiguos de tareas",
+	"settings.autoCleanupTaskHistoryDesc": "Una vez al día, borra diffs, logs y worktrees sobrantes de tareas terminadas hace más de 14 días; en una rama sin fusionar, a los 60 días, y la rama se conserva. Nunca toca tareas abiertas.",
 	"settings.rateLimitTracking": "Seguimiento de límites de agentes",
 	"settings.rateLimitTrackingDesc": "Muestra en la cabecera el uso en vivo de los límites de Claude/Codex. Los datos de Claude se capturan enrutando el statusLine de la sesión a través de dev3 — tu propio statusLine sigue funcionando, dev3 solo añade su segmento.",
 	"settings.reviewModePrompt": "Prompt de revisión",

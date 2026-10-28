@@ -518,6 +518,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "auto-cleanup-task-history",
+		category: "system",
+		titleKey: "settings.autoCleanupTaskHistory",
+		descriptionKey: "settings.autoCleanupTaskHistoryDesc",
+		anchor: "auto-cleanup-task-history",
+		globalField: "autoCleanupTaskHistory",
+		storage: "global",
+	},
+	{
 		id: "browser-notifications",
 		category: "notifications",
 		titleKey: "settings.browserNotifications",
@@ -688,6 +697,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"remoteSilentUpdate",
 	"preventSleepWhileRunning",
 	"skipQuitDialog",
+	"autoCleanupTaskHistory",
 	"importShellEnv",
 	"terminalShell",
 	"dimInactivePanes",

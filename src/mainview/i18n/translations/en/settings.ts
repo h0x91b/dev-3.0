@@ -360,6 +360,8 @@ const settings = {
 	"settings.preventSleepNotAvailable": "No sleep inhibitor found (caffeinate on macOS, systemd-inhibit on Linux).",
 	"settings.confirmBeforeQuit": "Confirm before quitting",
 	"settings.confirmBeforeQuitDesc": "Show the quit confirmation dialog before closing dev-3.0.",
+	"settings.autoCleanupTaskHistory": "Clean up old task files",
+	"settings.autoCleanupTaskHistoryDesc": "Once a day, delete diffs, logs and leftover worktrees of tasks finished more than 14 days ago — 60 days on an unmerged branch, which itself is kept. Open tasks are never touched.",
 	"settings.rateLimitTracking": "Agent rate-limit tracking",
 	"settings.rateLimitTrackingDesc": "Show live Claude/Codex rate-limit usage in the header. Claude data is captured by routing the session statusLine through dev3 — your own statusLine keeps working, dev3 only appends its usage segment.",
 	"settings.reviewModePrompt": "Review prompt",

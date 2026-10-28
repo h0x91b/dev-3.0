@@ -61,6 +61,7 @@ import { openLogsDirectory } from "./menu-actions";
 import { startLoopMonitor } from "./loop-monitor";
 import { configureHandoffWorker } from "./conversation-handoff-runner";
 import { configureClonefileWorker } from "./cow-clone";
+import { configureWorktreeCleanupWorker } from "./worktree-cleanup-scheduler";
 import { configureClipboardImageWorker } from "./clipboard-image-reader";
 import { shouldActivateLaunchWindow } from "./fresh-start";
 import { createAppWindow, focusFocusedWindow, getFocusedWindow, getWindowCount, handleDisplayConfigurationChange, loadWindowSession, sendToFocusedWindow, setOpenNewWindow, flushWindowState } from "./window-manager";
@@ -430,6 +431,7 @@ log.info("Loading URL", { url });
 configureHandoffWorker(resolve(PATHS.VIEWS_FOLDER, "..", "workers", "conversation-handoff-worker.js"));
 configureClonefileWorker(resolve(PATHS.VIEWS_FOLDER, "..", "workers", "clonefile-worker.js"));
 configureClipboardImageWorker(resolve(PATHS.VIEWS_FOLDER, "..", "workers", "clipboard-image-worker.js"));
+configureWorktreeCleanupWorker(resolve(PATHS.VIEWS_FOLDER, "..", "workers", "worktree-cleanup-worker.js"));
 configureFreezeDiagnostics({
 	workerPath: resolve(PATHS.VIEWS_FOLDER, "..", "freeze-diagnostics", "worker.ts"),
 	version: APP_VERSION, build: lastBuildTime,
@@ -765,6 +767,11 @@ startScheduledMessageScheduler();
 // their agent conversation dies (exit / rate limit / network). Runs headless too.
 const { startTaskKeepAliveScheduler } = await import("./task-keep-alive-scheduler");
 startTaskKeepAliveScheduler();
+
+// Daily `doctor --worktrees --prune-older-than 14d` — first check an hour after
+// launch, never at startup; the last run is persisted so restarts do not repeat it.
+const { startWorktreeCleanupScheduler } = await import("./worktree-cleanup-scheduler");
+startWorktreeCleanupScheduler();
 
 // Start the focus tracker — accumulates real UI attention time per task (the
 // "your time" metric on the Productivity dashboard) from the foreground +

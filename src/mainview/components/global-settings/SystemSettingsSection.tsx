@@ -23,6 +23,7 @@ export default function SystemSettingsSection({
 	onPreventSleepToggle,
 	onResourceLevelsChange,
 	onConfirmBeforeQuitToggle,
+	onAutoCleanupTaskHistoryToggle,
 }: {
 	t: TFunction;
 	globalSettings: GlobalSettings;
@@ -38,6 +39,7 @@ export default function SystemSettingsSection({
 	onPreventSleepToggle: (enabled: boolean) => void;
 	onResourceLevelsChange: (levels: Partial<ResourceLevels>) => void;
 	onConfirmBeforeQuitToggle: (enabled: boolean) => void;
+	onAutoCleanupTaskHistoryToggle: (enabled: boolean) => void;
 }) {
 	const [remoteAccessStatus, setRemoteAccessStatus] = useRemoteAccessStatus();
 	const retryRemoteAccess = useCallback(
@@ -198,6 +200,26 @@ export default function SystemSettingsSection({
 							onConfirmBeforeQuitToggle(
 								globalSettings.skipQuitDialog === true,
 							)
+						}
+					/>
+				</div>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="auto-cleanup-task-history">
+				<div>
+					<p className="block text-fg text-sm font-semibold mb-2">
+						{t("settings.autoCleanupTaskHistory")}
+					</p>
+					<p className="text-fg-3 text-sm mb-3">
+						{t("settings.autoCleanupTaskHistoryDesc")}
+					</p>
+					<SettingsToggle
+						checked={globalSettings.autoCleanupTaskHistory !== false}
+						ariaLabel={t("settings.autoCleanupTaskHistory")}
+						onLabel={t("settings.on")}
+						offLabel={t("settings.off")}
+						onToggle={() =>
+							onAutoCleanupTaskHistoryToggle(globalSettings.autoCleanupTaskHistory === false)
 						}
 					/>
 				</div>

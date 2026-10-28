@@ -259,6 +259,8 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		// false is the user opting out and must not collapse into "never chose".
 		experimentalAgentTraffic:
 			typeof d.experimentalAgentTraffic === "boolean" ? d.experimentalAgentTraffic : undefined,
+		// Default-on: only an explicit false is the user opting out of the daily cleanup.
+		autoCleanupTaskHistory: d.autoCleanupTaskHistory === false ? false : undefined,
 		// Default-off local diagnostics — only an explicit true is a stored opt-in.
 		freezeDiagnosticsEnabled: d.freezeDiagnosticsEnabled === true ? true : undefined,
 		// Only a recorded pick survives; anything else falls back to the default view.
