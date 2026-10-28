@@ -1633,6 +1633,94 @@ describe("TaskInfoPanel", () => {
 			);
 		});
 
+		async function openList(user: ReturnType<typeof userEvent.setup>) {
+			mockedApi.request.checkDevServer.mockResolvedValue({ running: false });
+			mockedApi.request.getDevServerStatus.mockResolvedValue(multiStatus);
+			mockedApi.request.runDevServer.mockResolvedValue(multiStatus);
+			await act(async () => {
+				renderPanel(makeTask(), { project: multiProject });
+			});
+			const trigger = screen.getAllByText("Dev Server")[0].closest("button")!;
+			await user.click(trigger);
+			const list = await screen.findByTestId("dev-server-list");
+			await waitFor(() => expect(screen.getByTestId("dev-server-row-api").textContent).toContain("Stop"));
+			return { trigger, list };
+		}
+
+		// The user had to hit the small "Start" word exactly; the row text was
+		// selectable instead. A stopped row is now one button, name included.
+		it("a stopped server's whole row is its Start button, and the panel text is not selectable", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const { list } = await openList(user);
+
+			const devRow = screen.getByTestId("dev-server-row-dev");
+			expect(devRow.tagName).toBe("BUTTON");
+			expect(list.className).toContain("select-none");
+			await user.click(within(devRow).getByText("dev"));
+
+			expect(mockedApi.request.runDevServer).toHaveBeenCalledWith(expect.objectContaining({ server: "dev" }));
+		});
+
+		it("a running server's row is not a button, so a stray click never stops it", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			await openList(user);
+
+			const apiRow = screen.getByTestId("dev-server-row-api");
+			expect(apiRow.tagName).not.toBe("BUTTON");
+			await user.click(within(apiRow).getByText("api"));
+
+			expect(mockedApi.request.stopDevServer).not.toHaveBeenCalled();
+			expect(mockedApi.request.restartDevServer).not.toHaveBeenCalled();
+		});
+
+		// A document mousedown listener never saw clicks on the terminal, which
+		// captures its own mousedown — so nothing outside the panel closed it.
+		it("a click outside the panel lands on a backdrop that closes it and refocuses the trigger", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const { trigger } = await openList(user);
+
+			await user.click(screen.getByTestId("dev-server-backdrop"));
+
+			expect(screen.queryByTestId("dev-server-list")).toBeNull();
+			expect(document.activeElement).toBe(trigger);
+		});
+
+		it("pressing the toolbar button again closes the panel instead of reopening it", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const { trigger } = await openList(user);
+			expect(trigger.getAttribute("aria-expanded")).toBe("true");
+
+			await user.click(trigger);
+
+			expect(screen.queryByTestId("dev-server-list")).toBeNull();
+			expect(trigger.getAttribute("aria-expanded")).toBe("false");
+		});
+
+		it("Escape closes the panel and returns focus to the toolbar button", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const { trigger } = await openList(user);
+
+			await user.keyboard("{Escape}");
+
+			expect(screen.queryByTestId("dev-server-list")).toBeNull();
+			expect(document.activeElement).toBe(trigger);
+		});
+
+		it("is keyboard-driven: focus lands on the first row, arrows move, Enter starts", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			await openList(user);
+			const devRow = screen.getByTestId("dev-server-row-dev");
+			await waitFor(() => expect(document.activeElement).toBe(devRow));
+
+			await user.keyboard("{ArrowDown}");
+			expect(document.activeElement?.textContent).toBe(":55930");
+			await user.keyboard("{ArrowUp}");
+			expect(document.activeElement).toBe(devRow);
+			await user.keyboard("{Enter}");
+
+			expect(mockedApi.request.runDevServer).toHaveBeenCalledWith(expect.objectContaining({ server: "dev" }));
+		});
+
 		it("Stop all takes down every server in one action", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.checkDevServer.mockResolvedValue({ running: false });
