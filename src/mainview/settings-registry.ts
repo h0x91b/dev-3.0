@@ -447,6 +447,14 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "claude-mods",
+		category: "agents",
+		titleKey: "settings.claudeMods",
+		descriptionKey: "settings.claudeModsDesc",
+		anchor: "claude-mods",
+		storage: "surface",
+	},
+	{
 		id: "agent-accounts",
 		category: "accounts",
 		titleKey: "settings.agentAccounts",
