@@ -55,6 +55,13 @@ vi.mock("../../rpc", () => ({
 			// Model catalog surfaces: an empty catalog keeps them quiet, which is
 			// what every assertion in this suite assumes.
 			modelCatalogGet: vi.fn().mockResolvedValue({ providers: [], models: [] }),
+			claudeModStatus: vi.fn().mockResolvedValue({
+				modId: "prismantis",
+				claudeAvailable: true,
+				installed: false,
+				enabled: false,
+				version: null,
+			}),
 			modelSidecarStatus: vi.fn().mockResolvedValue({
 				running: false,
 				starting: false,

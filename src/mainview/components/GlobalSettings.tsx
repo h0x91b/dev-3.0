@@ -47,6 +47,7 @@ import AgentSettingsSection from "./global-settings/AgentSettingsSection";
 import AppearanceSettingsSection from "./global-settings/AppearanceSettingsSection";
 import BehaviorSettingsSection from "./global-settings/BehaviorSettingsSection";
 import DeveloperToolsSection from "./global-settings/DeveloperToolsSection";
+import ClaudeModsSection from "./global-settings/ClaudeModsSection";
 import KeyboardSettingsSection from "./global-settings/KeyboardSettingsSection";
 import ModelCatalogSection from "./global-settings/ModelCatalogSection";
 import NotificationSettingsSection from "./global-settings/NotificationSettingsSection";
@@ -1074,6 +1075,7 @@ function GlobalSettings({
 							globalSettings={globalSettings}
 							onToggle={handleRateLimitTrackingToggle}
 						/>
+						<ClaudeModsSection t={t} />
 					</>
 				);
 			case "accounts":

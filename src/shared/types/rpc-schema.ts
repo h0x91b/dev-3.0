@@ -29,6 +29,7 @@ import type { AgentModelAvailability, CodingAgent } from "./coding-agents";
 import type { AgentLiveModels } from "../agent-live-models";
 import type { ExternalApp, FilePreviewResult, GlobalSettings, NativeTerminalAvailability, ResolvedTerminalPath, TaskTerminalBackendInfo, TipState } from "./global-settings";
 import type { ModelCatalogView, ModelSidecarStatus, PxpipeProxyStatus } from "./model-routing";
+import type { ClaudeModStatus } from "./claude-mods";
 import type { AutoConfigureResult, BoardCopyFailureReason, BoardCopyOffer, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GitInitOffer, Project, ProjectSettingsUpdate, PrResolveFailureReason, ShellAvailability, ShellPromptPreview } from "./project";
 import type { CustomColumn, Label } from "./labels-columns";
 import type { Space, SpacesFile } from "./spaces";
@@ -301,6 +302,17 @@ export type AppRPCSchema = {
 			pxpipeProxyStop: {
 				params: void;
 				response: PxpipeProxyStatus;
+			};
+			/** Whether a Claude Code mod (`CLAUDE_MODS`) is installed and enabled. */
+			claudeModStatus: {
+				params: { modId: string };
+				response: ClaudeModStatus;
+			};
+			/** On installs the latest version (refreshing its marketplace first);
+			 *  off uninstalls it. Throws with the `claude plugin` error on failure. */
+			claudeModSetEnabled: {
+				params: { modId: string; enabled: boolean };
+				response: ClaudeModStatus;
 			};
 			/** The model catalog as the renderer may see it (no credential values). */
 			modelCatalogGet: {
