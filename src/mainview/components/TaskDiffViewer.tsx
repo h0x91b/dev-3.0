@@ -928,7 +928,7 @@ function MarkdownPreviewReview({
 						}}
 						onClick={() => setComposerAnchor(selection)}
 						style={{ top: `${selection.top + 6}px`, left: `${selection.left}px` }}
-						className="absolute z-10 inline-flex h-8 items-center gap-1.5 rounded-md border border-edge bg-overlay px-2.5 text-xs font-semibold text-fg shadow-lg transition-colors hover:border-edge-active hover:bg-elevated-hover"
+						className="absolute z-10 inline-flex h-8 items-center gap-1.5 rounded-md border border-edge bg-overlay px-2.5 text-xs font-semibold text-fg shadow-lg transition-colors hover:border-edge-active hover:bg-overlay-hover"
 					>
 						<span
 							aria-hidden="true"
@@ -3477,7 +3477,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 									aria-checked={selected}
 									onClick={() => selectRecentCount(preset)}
 									className={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-micro font-medium transition-colors ${
-										selected ? "text-accent" : "text-fg-2 hover:bg-raised-hover"
+										selected ? "text-accent" : "text-fg-2 hover:bg-elevated-hover"
 									}`}
 									data-testid={`diff-recent-preset-${preset}`}
 								>

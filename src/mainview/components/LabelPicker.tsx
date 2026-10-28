@@ -185,7 +185,7 @@ function LabelPicker({ project, dispatch, onClose, anchorEl, selectedIds, onTogg
 							type="button"
 							onClick={() => toggleLabel(label)}
 							disabled={saving}
-							className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-elevated-hover transition-colors"
+							className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-overlay-hover transition-colors"
 						>
 							{/* Color dot */}
 							<span
@@ -216,7 +216,7 @@ function LabelPicker({ project, dispatch, onClose, anchorEl, selectedIds, onTogg
 						type="button"
 						onClick={createAndAssign}
 						disabled={saving}
-						className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-elevated-hover transition-colors border-t border-edge/40"
+						className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-overlay-hover transition-colors border-t border-edge/40"
 					>
 						<svg
 							className="w-3.5 h-3.5 flex-shrink-0 text-accent"

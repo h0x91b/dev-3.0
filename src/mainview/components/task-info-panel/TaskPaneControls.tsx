@@ -250,7 +250,7 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 	const canZoom = !actionBusy;
 	const canSwap = paneState !== null && taskPaneSupports(paneState, "swap") && !actionBusy;
 	const canClose = !actionBusy;
-	const closeWarnClass = "text-warning-strong hover:text-warning-strong hover:bg-warning/15 border-warning/30";
+	const closeWarnClass = "text-warning-strong hover:bg-warning/15 border-warning/30";
 	const layoutDisabled = actionBusy;
 
 	// Neutral like the rest of the session bar (see the #1418 pass): only Close pane
@@ -413,7 +413,7 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 							setLayoutVisible(false);
 							cycleLayout(event);
 						}}
-						className="tmux-anim w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left transition-colors hover:bg-elevated border border-transparent"
+						className="tmux-anim w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left transition-colors hover:bg-overlay-hover border border-transparent"
 					>
 						<span className="flex-shrink-0 text-fg-2">{cycleIcon}</span>
 						<span className="text-xs flex-1 text-fg-2">{t("tmux.nextLayoutDesc")}</span>
@@ -429,7 +429,7 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 								aria-checked={active}
 								onClick={applyLayout(action)}
 								className={`tmux-anim w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left transition-colors ${
-									active ? "bg-accent/10 border border-accent/20" : "hover:bg-elevated border border-transparent"
+									active ? "bg-accent/10 border border-accent/20" : "hover:bg-overlay-hover border border-transparent"
 								}`}
 							>
 								<span className={`flex-shrink-0 ${active ? "text-accent" : "text-fg-2"}`}>
@@ -458,7 +458,7 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 										setLayoutVisible(false);
 										void handleAction(action)(event);
 									}}
-									className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left transition-colors hover:bg-elevated border border-transparent"
+									className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left transition-colors hover:bg-overlay-hover border border-transparent"
 								>
 									<span className="text-xs flex-1 text-fg-2">{t(descKey)}</span>
 									<kbd className="font-mono text-dense text-fg-muted flex-shrink-0">

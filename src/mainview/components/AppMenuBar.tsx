@@ -131,7 +131,7 @@ function Dropdown({ nodes, onRun, side = "down" }: DropdownProps) {
 								role="menuitem"
 								aria-haspopup="menu"
 								aria-expanded={open}
-								className="flex items-center justify-between gap-6 px-3 py-1.5 text-sm-plus text-fg-2 hover:bg-raised-hover hover:text-fg cursor-default"
+								className="flex items-center justify-between gap-6 px-3 py-1.5 text-sm-plus text-fg-2 hover:bg-overlay-hover hover:text-fg cursor-default"
 							>
 								<span>{node.label}</span>
 								<span className="text-fg-muted">{"›"}</span>
@@ -151,7 +151,7 @@ function Dropdown({ nodes, onRun, side = "down" }: DropdownProps) {
 						disabled={disabled}
 						onClick={() => !disabled && onRun(node.action)}
 						className={`w-full flex items-center justify-between gap-6 px-3 py-1.5 text-left text-sm-plus ${
-							disabled ? "text-fg-muted/40 cursor-default" : "text-fg-2 hover:bg-raised-hover hover:text-fg"
+							disabled ? "text-fg-muted/40 cursor-default" : "text-fg-2 hover:bg-overlay-hover hover:text-fg"
 						}`}
 					>
 						<span className="truncate">{node.label}</span>

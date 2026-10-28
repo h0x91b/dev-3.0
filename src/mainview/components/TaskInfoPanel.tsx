@@ -863,7 +863,7 @@ function TaskInfoPanel({
 				data-testid="task-completion-owner"
 				className={`task-anim flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
 					completionIsManual
-						? "warning-paper text-warning-strong hover:text-warning-strong hover:bg-warning/15 border border-warning/30"
+						? "warning-paper text-warning-strong hover:bg-warning/15 border border-warning/30"
 						: "text-fg-3 hover:text-fg hover:bg-elevated border border-edge"
 				} ${completionIsForced ? "cursor-not-allowed" : ""}`}
 			>
@@ -1089,7 +1089,7 @@ function TaskInfoPanel({
 					data-testid="task-hibernate-button"
 					onClick={handleHibernate}
 					disabled={hibernating}
-					className="task-anim warning-paper flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-warning-strong hover:text-warning-strong hover:bg-warning/15 border border-warning/30 disabled:opacity-50"
+					className="task-anim warning-paper flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-warning-strong hover:bg-warning/15 border border-warning/30 disabled:opacity-50"
 					aria-label={t("task.hibernate")}
 				>
 					{hibernating ? (

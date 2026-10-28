@@ -50,7 +50,7 @@ export default function ImageSaveMenu({ at, onDownload, onCopyPath, onClose, med
 		};
 	}, [onClose]);
 
-	const item = "w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors";
+	const item = "w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-overlay-hover hover:text-fg flex items-center gap-2.5 transition-colors";
 	const glyph = "w-4 text-center text-sm leading-none flex-shrink-0";
 
 	return (

@@ -764,7 +764,7 @@ function ArchivedView({
 							<button
 								onClick={() => setStatusMenuOpen(!statusMenuOpen)}
 								disabled={movingStatus}
-								className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-fg/5 hover:bg-elevated transition-colors"
+								className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-fg/5 hover:bg-fg/10 transition-colors"
 							>
 								<div
 									className="w-2 h-2 rounded-full flex-shrink-0"
@@ -787,7 +787,7 @@ function ArchivedView({
 										<button
 											key={s}
 											onClick={() => onStatusMove(s)}
-											className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
+											className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-overlay-hover hover:text-fg flex items-center gap-2.5 transition-colors"
 										>
 											<div
 												className="w-2.5 h-2.5 rounded-full flex-shrink-0"
@@ -805,7 +805,7 @@ function ArchivedView({
 													<button
 														key={col.id}
 														onClick={() => onMoveToCustomColumn(col.id)}
-														className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
+														className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-overlay-hover hover:text-fg flex items-center gap-2.5 transition-colors"
 													>
 														<div
 															className="w-2.5 h-2.5 rounded-full flex-shrink-0"

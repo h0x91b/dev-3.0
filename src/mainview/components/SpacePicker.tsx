@@ -54,7 +54,7 @@ function Row({
 		<button
 			type="button"
 			onClick={onClick}
-			className="w-full text-left px-2 py-1.5 rounded-lg flex items-center gap-2.5 hover:bg-elevated-hover transition-colors"
+			className="w-full text-left px-2 py-1.5 rounded-lg flex items-center gap-2.5 hover:bg-overlay-hover transition-colors"
 			data-testid={testId}
 			aria-pressed={checked}
 		>
@@ -204,7 +204,7 @@ function SpacePicker({
 					<button
 						type="button"
 						onClick={createFromQuery}
-						className="w-full text-left px-2 py-1.5 mt-1 rounded-lg flex items-center gap-2.5 hover:bg-elevated-hover transition-colors border-t border-edge/40"
+						className="w-full text-left px-2 py-1.5 mt-1 rounded-lg flex items-center gap-2.5 hover:bg-overlay-hover transition-colors border-t border-edge/40"
 						data-testid="space-picker-create"
 					>
 						<svg

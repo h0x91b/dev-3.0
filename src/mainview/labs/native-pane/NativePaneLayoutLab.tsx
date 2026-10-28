@@ -340,7 +340,7 @@ export default function NativePaneLayoutLab({ navigate, registry: injectedRegist
 						type="button"
 						disabled={paneIds.length === 1}
 						onClick={() => setTree((current) => closePane(current, current.activePaneId))}
-						className={`${CONTROL_CLASS} text-danger hover:text-danger hover:bg-danger/10`}
+						className={`${CONTROL_CLASS} text-danger hover:bg-danger/10`}
 					>
 						{t("nativePaneLab.close")}
 					</button>

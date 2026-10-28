@@ -228,7 +228,7 @@ export default function KeyboardShortcutsModal({ open, tab, onTabChange, onClose
 					</div>
 					<button
 						type="button"
-						className="text-fg-muted hover:text-fg rounded-md p-1 hover:bg-elevated transition-colors"
+						className="text-fg-muted hover:text-fg rounded-md p-1 hover:bg-overlay-hover transition-colors"
 						onClick={onClose}
 						aria-label={t("keymap.footerEscape")}
 					>

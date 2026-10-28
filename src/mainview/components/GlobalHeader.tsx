@@ -690,8 +690,8 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 					navigate({ screen: "project", projectId: p.id });
 				}}
 				className={`w-full text-left px-3 py-2 flex items-center gap-2 transition-colors ${
-					isCurrent ? "bg-accent/10 text-accent" : "text-fg-2 hover:bg-elevated hover:text-fg"
-				} ${highlighted ? "ring-1 ring-inset ring-accent/60 bg-elevated" : ""}`}
+					isCurrent ? "bg-accent/10 text-accent" : "text-fg-2 hover:bg-overlay-hover hover:text-fg"
+				} ${highlighted ? "ring-1 ring-inset ring-accent/60 bg-overlay-hover" : ""}`}
 			>
 				{isBuiltin && (
 					<span className="text-accent flex-shrink-0 text-sm-plus" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0E7}"}</span>
@@ -906,7 +906,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 													onClick={() => zoomOutTo(sp.id)}
 													aria-current={here ? "true" : undefined}
 													className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors ${
-														here ? "bg-accent/10 text-accent" : "text-fg-2 hover:bg-elevated hover:text-fg"
+														here ? "bg-accent/10 text-accent" : "text-fg-2 hover:bg-overlay-hover hover:text-fg"
 													}`}
 												>
 													<SpaceIcon className={`w-3.5 h-3.5 flex-shrink-0 ${here ? "text-accent" : "text-fg-muted"}`} />
@@ -1021,7 +1021,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 																	role="menuitem"
 																	onClick={() => openSpaceBoardFromSwitcher(group.space as Space)}
 																	title={t("spaces.openBoard")}
-																	className="group/space w-full px-3 pb-1 pt-0.5 flex items-center gap-2 text-left rounded-md hover:bg-raised-hover"
+																	className="group/space w-full px-3 pb-1 pt-0.5 flex items-center gap-2 text-left rounded-md hover:bg-overlay-hover"
 																	data-testid={`switcher-space-${group.space.id}`}
 																>
 																	<SpaceIcon className="w-3.5 h-3.5 flex-shrink-0 text-accent/90" />
@@ -1220,7 +1220,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 										setShowOverflowMenu(false);
 										window.dispatchEvent(new CustomEvent("menu:open-quick-shell"));
 									}}
-									className="header-anim w-full text-left px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
+									className="header-anim w-full text-left px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-overlay-hover hover:text-fg transition-colors"
 									aria-label={t("quickShell.tooltipWithShortcut")}
 								>
 									<QuickShellIcon className="w-[1.125rem] h-[1.125rem] flex-shrink-0" />
@@ -1234,7 +1234,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 											setShowOverflowMenu(false);
 											navigate({ screen: "stats" });
 										}}
-										className="header-anim w-full text-left px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
+										className="header-anim w-full text-left px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-overlay-hover hover:text-fg transition-colors"
 									>
 										<StatsIcon className="w-[1.125rem] h-[1.125rem] flex-shrink-0" />
 										<span className="text-sm">{t("header.statsLabel")}</span>
@@ -1247,7 +1247,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 											setShowOverflowMenu(false);
 											openSessions();
 										}}
-										className="header-anim w-full text-left px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
+										className="header-anim w-full text-left px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-overlay-hover hover:text-fg transition-colors"
 									>
 										<SessionsIcon className="w-[1.125rem] h-[1.125rem] flex-shrink-0" />
 										<span className="text-sm">{t("sessions.title")}</span>
@@ -1259,7 +1259,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 										setShowOverflowMenu(false);
 										window.open("https://h0x91b.github.io/dev-3.0/", "_blank");
 									}}
-									className="header-anim w-full text-left px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
+									className="header-anim w-full text-left px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-overlay-hover hover:text-fg transition-colors"
 								>
 									<GitHubIcon className="w-[1.125rem] h-[1.125rem] flex-shrink-0" />
 									<span className="text-sm">{t("header.githubLabel")}</span>
@@ -1270,7 +1270,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 										setShowOverflowMenu(false);
 										window.open("https://github.com/h0x91b/dev-3.0/issues", "_blank");
 									}}
-									className="header-anim w-full text-left px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
+									className="header-anim w-full text-left px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-overlay-hover hover:text-fg transition-colors"
 								>
 									<ReportBugIcon className="w-[1.125rem] h-[1.125rem] flex-shrink-0" />
 									<span className="text-sm">{t("header.reportLabel")}</span>
@@ -1282,7 +1282,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 											setShowOverflowMenu(false);
 											navigate({ screen: "changelog" });
 										}}
-										className="header-anim w-full text-left px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
+										className="header-anim w-full text-left px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-overlay-hover hover:text-fg transition-colors"
 									>
 										<ChangelogIcon className="w-[1.125rem] h-[1.125rem] flex-shrink-0" />
 										<span className="text-sm">{t("header.changelogLabel")}</span>
@@ -1304,7 +1304,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 													key={id}
 													role="menuitem"
 													onClick={() => restoreControl(id)}
-													className="header-anim w-full text-left px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
+													className="header-anim w-full text-left px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-overlay-hover hover:text-fg transition-colors"
 												>
 													<row.Icon className="w-[1.125rem] h-[1.125rem] flex-shrink-0" />
 													<span className="text-sm flex-1">{row.label}</span>
@@ -1449,7 +1449,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 								onClick={() => window.dispatchEvent(new CustomEvent(HELP_ATTRACTOR_DISMISS_EVENT))}
 								aria-label={t("header.helpCallout.dismiss")}
 								data-testid="help-attractor-dismiss"
-								className="absolute top-1.5 right-1.5 text-fg-muted hover:text-fg transition-colors px-1.5 py-0.5 rounded-md hover:bg-raised-hover text-sm leading-none"
+								className="absolute top-1.5 right-1.5 text-fg-muted hover:text-fg transition-colors px-1.5 py-0.5 rounded-md hover:bg-elevated-hover text-sm leading-none"
 							>
 								×
 							</button>
@@ -1557,7 +1557,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 								setShowActionSheet(false);
 								row.run();
 							}}
-							className="w-full text-left px-2 py-3 rounded-lg text-fg-2 hover:bg-elevated hover:text-fg transition-colors text-sm"
+							className="w-full text-left px-2 py-3 rounded-lg text-fg-2 hover:bg-overlay-hover hover:text-fg transition-colors text-sm"
 						>
 							{row.label}
 						</button>
@@ -1610,7 +1610,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 							</button>
 							<button
 								onClick={dismissToast}
-								className="px-3 py-1.5 text-xs font-medium rounded-lg text-fg-3 hover:text-fg hover:bg-elevated transition-colors"
+								className="px-3 py-1.5 text-xs font-medium rounded-lg text-fg-3 hover:text-fg hover:bg-overlay-hover transition-colors"
 							>
 								{t("update.postponeBtn")}
 							</button>

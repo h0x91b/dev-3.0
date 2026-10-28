@@ -370,7 +370,7 @@ All UI colors are **CSS custom properties** (design tokens) in `src/mainview/ind
 | Token class | Purpose |
 |---|---|
 | `bg-base`, `bg-raised`, `bg-elevated`, `bg-overlay` | Surface levels (page → panel → card → popup) |
-| `bg-raised-hover`, `bg-elevated-hover` | Hover states for corresponding surfaces |
+| `bg-raised-hover`, `bg-elevated-hover`, `bg-overlay-hover` | Hover states for corresponding surfaces (rows inside popups/menus use `overlay-hover`) |
 | `text-fg`, `text-fg-2`, `text-fg-3`, `text-fg-muted` | Text hierarchy (primary → muted) |
 | `border-edge`, `border-edge-active` | Borders (default / hover) |
 | `bg-accent`, `bg-accent-hover`, `text-accent`, `hover:text-accent-emphasis` | Accent color (blue) — `-hover` for fills, `-emphasis` for text/icon hover |

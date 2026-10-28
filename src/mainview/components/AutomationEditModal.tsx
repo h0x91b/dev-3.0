@@ -208,7 +208,7 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 	const labelClass = "text-xs text-fg-3 block mb-1";
 	const modeButtonClass = (m: ScheduleMode) =>
 		`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-			mode === m ? "bg-accent/15 text-accent" : "text-fg-3 hover:text-fg-2 hover:bg-raised-hover"
+			mode === m ? "bg-accent/15 text-accent" : "text-fg-3 hover:text-fg-2 hover:bg-elevated-hover"
 		}`;
 
 	// Portal to <body>: this modal is rendered inside ProjectSettings' `backdrop-blur`
@@ -298,7 +298,7 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 											type="button"
 											onClick={() => setByDay([...days])}
 											className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-												sameDaySet(byDay, days) ? "bg-accent/15 text-accent" : "text-fg-3 hover:text-fg-2 hover:bg-raised-hover"
+												sameDaySet(byDay, days) ? "bg-accent/15 text-accent" : "text-fg-3 hover:text-fg-2 hover:bg-overlay-hover"
 											}`}
 										>
 											{t(key)}

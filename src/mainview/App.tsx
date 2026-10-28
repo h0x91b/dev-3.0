@@ -3296,7 +3296,7 @@ function App() {
 						<div className="flex justify-end gap-2 pt-1">
 							<button
 								onClick={() => setPendingNavigation(null)}
-								className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+								className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-overlay-hover transition-colors"
 							>
 								{t("unsavedChanges.cancel")}
 							</button>
@@ -3356,7 +3356,7 @@ function App() {
 							)}
 							<button
 								onClick={() => setShowQuitDialog(false)}
-								className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+								className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-overlay-hover transition-colors"
 							>
 								{t("quit.cancel")}
 							</button>
@@ -3420,7 +3420,7 @@ function App() {
 							<button
 								type="button"
 								onClick={closeRemoteQR}
-								className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+								className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-overlay-hover transition-colors"
 							>
 								{t("remote.close")}
 							</button>

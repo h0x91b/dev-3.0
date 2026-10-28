@@ -294,7 +294,7 @@ function WindowMenu({
 				style={{ top: state.y, left: state.x }}
 			>
 				{!w.active && (
-					<button type="button" role="menuitem" onClick={() => run(() => onSelect(w))} className={`${item} text-fg-2 hover:bg-elevated hover:text-fg focus:bg-elevated focus:text-fg`}>
+					<button type="button" role="menuitem" onClick={() => run(() => onSelect(w))} className={`${item} text-fg-2 hover:bg-overlay-hover hover:text-fg focus:bg-overlay-hover focus:text-fg`}>
 						{t("windowNav.switchTo")}
 					</button>
 				)}

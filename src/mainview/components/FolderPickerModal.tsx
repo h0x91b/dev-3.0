@@ -436,7 +436,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 						data-testid="folder-picker-hidden-toggle"
 						title={t("folderPicker.showHidden")}
 						className={`ml-auto inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-colors ${
-							showHidden ? "text-fg bg-elevated" : "text-fg-3 hover:text-fg hover:bg-elevated"
+							showHidden ? "text-fg bg-overlay-hover" : "text-fg-3 hover:text-fg hover:bg-overlay-hover"
 						}`}
 					>
 						<Glyph glyph={showHidden ? NF.eye : NF.eyeSlash} size="0.85rem" />
@@ -539,7 +539,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 										type="button"
 										onClick={() => void navigateTo(crumb.path)}
 										title={crumb.path}
-										className={`px-1.5 py-0.5 rounded inline-flex items-center gap-1 hover:bg-elevated transition-colors ${
+										className={`px-1.5 py-0.5 rounded inline-flex items-center gap-1 hover:bg-overlay-hover transition-colors ${
 											idx === breadcrumbs.length - 1 ? "text-fg font-medium" : "text-fg-3 hover:text-fg"
 										}`}
 									>
@@ -595,7 +595,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 									<button
 										type="button"
 										onClick={() => { setNewFolderInput(""); setNewFolderError(null); }}
-										className="self-start inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-fg-2 text-xs hover:bg-elevated hover:text-fg transition-colors"
+										className="self-start inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-fg-2 text-xs hover:bg-overlay-hover hover:text-fg transition-colors"
 										title={t("folderPicker.newFolderTitle", { path: createTarget })}
 									>
 										<Glyph glyph={NF.plus} size="0.7rem" className="text-fg-3" />
@@ -648,7 +648,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 											type="button"
 											onClick={() => { setNewFolderInput(null); setNewFolderError(null); }}
 											disabled={creatingFolder}
-											className="px-2 py-1 text-xs text-fg-3 hover:text-fg rounded-md hover:bg-elevated transition-colors disabled:opacity-40"
+											className="px-2 py-1 text-xs text-fg-3 hover:text-fg rounded-md hover:bg-overlay-hover transition-colors disabled:opacity-40"
 										>
 											{t("folderPicker.cancel")}
 										</button>
@@ -711,7 +711,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 					<button
 						type="button"
 						onClick={() => onClose(null)}
-						className="px-4 py-1.5 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors flex-shrink-0"
+						className="px-4 py-1.5 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-overlay-hover transition-colors flex-shrink-0"
 					>
 						{t("folderPicker.cancel")}
 					</button>
@@ -760,7 +760,7 @@ function SidebarItem({ glyph, label, subLabel, path, active, onClick }: SidebarI
 			className={`w-full flex items-center gap-2 pl-3 pr-2 py-1.5 text-left text-sm-plus transition-colors border-l-2 ${
 				active
 					? "bg-accent/15 text-fg border-accent font-medium"
-					: "text-fg-2 hover:bg-elevated hover:text-fg border-transparent"
+					: "text-fg-2 hover:bg-overlay-hover hover:text-fg border-transparent"
 			}`}
 		>
 			<Glyph glyph={glyph} size="0.9rem" className={active ? "text-accent" : "text-fg-3"} />
@@ -913,7 +913,7 @@ function FolderTree({ rootPath, listingsRef, listDir, filterText, multi, fileMod
 				className={`w-full flex items-center gap-2 text-left pr-2 py-1 text-sm-plus transition-colors border-l-2 ${
 					rootSelected
 						? "bg-accent/10 border-accent text-fg font-medium"
-						: "text-fg-2 border-transparent hover:bg-elevated hover:text-fg"
+						: "text-fg-2 border-transparent hover:bg-overlay-hover hover:text-fg"
 				}`}
 			>
 				<ChevronPlaceholder />
@@ -964,7 +964,7 @@ function FolderTree({ rootPath, listingsRef, listDir, filterText, multi, fileMod
 						className={`w-full flex items-center gap-2 text-left pr-2 py-1 text-sm-plus transition-colors border-l-2 ${
 							selected
 								? "bg-accent/10 border-accent text-fg font-medium"
-								: "text-fg-2 border-transparent hover:bg-elevated hover:text-fg"
+								: "text-fg-2 border-transparent hover:bg-overlay-hover hover:text-fg"
 						}`}
 					>
 						{data.isDir ? <ChevronGlyph expanded={expanded} /> : <ChevronPlaceholder />}

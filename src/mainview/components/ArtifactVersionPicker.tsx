@@ -119,7 +119,7 @@ export default function ArtifactVersionPicker({ artifact, selected, onSelect }: 
 							role="option"
 							aria-selected={entry.version === selected}
 							data-testid="artifact-version-option"
-							className={`flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-elevated-hover ${entry.version === selected ? "text-accent" : "text-fg-2"}`}
+							className={`flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-overlay-hover ${entry.version === selected ? "text-accent" : "text-fg-2"}`}
 							onClick={() => { onSelect(entry.version); setOpen(false); }}
 						>
 							<span className="font-mono text-xs tabular-nums">v{entry.version}</span>

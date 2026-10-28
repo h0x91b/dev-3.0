@@ -114,7 +114,7 @@ export default function ColorSwatchPicker({ value, onChange, disabled = false, l
 										onChange(color);
 										close();
 									}}
-									className="grid place-items-center w-8 h-8 rounded-xl outline-none transition-colors hover:bg-elevated focus-visible:bg-elevated"
+									className="grid place-items-center w-8 h-8 rounded-xl outline-none transition-colors hover:bg-overlay-hover focus-visible:bg-overlay-hover"
 								>
 									<span
 										className={`w-4 h-4 rounded-full transition-transform ${selected ? "scale-125 ring-2 ring-fg/50" : ""}`}

@@ -133,7 +133,7 @@ function SiblingPopover({ variants, currentTaskId, agents, navigate, onClose, an
 								isCurrent
 									? "bg-accent/10"
 									: isClickable
-										? "cursor-pointer hover:bg-elevated-hover"
+										? "cursor-pointer hover:bg-overlay-hover"
 										: "cursor-default opacity-55"
 							}`}
 							title={rowLabel}

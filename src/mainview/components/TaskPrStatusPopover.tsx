@@ -456,7 +456,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 											href={check.detailsUrl}
 											target="_blank"
 											rel="noreferrer"
-											className={`block rounded ${rowPadding} hover:bg-elevated-hover focus:ring-1 focus:ring-accent`}
+											className={`block rounded ${rowPadding} hover:bg-overlay-hover focus:ring-1 focus:ring-accent`}
 											aria-label={t("task.prCheckDetails", { name })}
 										>
 											{row}
@@ -481,7 +481,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 										href={pr.url}
 										target="_blank"
 										rel="noreferrer"
-										className={`flex min-w-0 items-center gap-2 rounded hover:bg-elevated-hover focus:ring-1 focus:ring-accent ${sheet ? "px-1 py-2" : "px-1 py-1"}`}
+										className={`flex min-w-0 items-center gap-2 rounded hover:bg-overlay-hover focus:ring-1 focus:ring-accent ${sheet ? "px-1 py-2" : "px-1 py-1"}`}
 										aria-label={t("task.openPR", { number: String(pr.number) })}
 									>
 										<span className="flex-shrink-0 font-mono font-medium text-fg-2">{t("task.prNumber", { number: String(pr.number) })}</span>
@@ -506,7 +506,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 				onClick={() => void refresh()}
 				disabled={refreshing}
 				aria-label={t(refreshing ? "task.prRefreshing" : "task.prRefresh")}
-				className={`mt-3 inline-flex items-center gap-1.5 rounded text-fg-2 transition-colors hover:bg-elevated-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-50 ${sheet ? "px-2 py-2" : "px-2 py-1"}`}
+				className={`mt-3 inline-flex items-center gap-1.5 rounded text-fg-2 transition-colors hover:bg-overlay-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-50 ${sheet ? "px-2 py-2" : "px-2 py-1"}`}
 			>
 				<span className={refreshing ? "animate-spin" : ""} style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
 				<span>{t(refreshing ? "task.prRefreshing" : "task.prRefresh")}</span>

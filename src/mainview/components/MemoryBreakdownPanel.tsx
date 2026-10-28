@@ -138,7 +138,7 @@ function LeftoverProcessesSection({ onCloseOverlay }: { onCloseOverlay: () => vo
 						aria-label={t("memory.leftoversRescan")}
 						title={t("memory.leftoversRescan")}
 						data-testid="memory-leftovers-rescan"
-						className={`header-anim rounded-md p-1 text-fg-3 transition-colors hover:bg-elevated-hover hover:text-fg disabled:opacity-50 ${
+						className={`header-anim rounded-md p-1 text-fg-3 transition-colors hover:bg-overlay-hover hover:text-fg disabled:opacity-50 ${
 							scanning ? "hdr-rescan-busy" : ""
 						}`}
 					>
@@ -319,7 +319,7 @@ export default function MemoryBreakdownPanel({ snapshot, onSelectTask, onCloseOv
 									type="button"
 									onClick={() => task.taskId && onSelectTask(task.taskId, task.projectId)}
 									disabled={!task.taskId || !task.projectId}
-									className="flex w-full items-baseline justify-between gap-2 rounded-md px-1.5 py-1 -mx-1.5 text-left hover:bg-elevated-hover disabled:cursor-default disabled:hover:bg-transparent transition-colors"
+									className="flex w-full items-baseline justify-between gap-2 rounded-md px-1.5 py-1 -mx-1.5 text-left hover:bg-overlay-hover disabled:cursor-default disabled:hover:bg-transparent transition-colors"
 								>
 									<span className="min-w-0 truncate text-fg-2 streamer-private">
 										{task.title || task.shortId}

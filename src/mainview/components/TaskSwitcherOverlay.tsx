@@ -117,7 +117,7 @@ function TaskSwitcherOverlay({
 								onMouseEnter={() => onHover(i)}
 								onClick={() => onCommit(i)}
 								className={`flex items-start gap-3 w-full text-left px-2.5 py-2.5 rounded-lg transition-colors ${
-									selected ? "bg-accent/15" : "hover:bg-elevated-hover"
+									selected ? "bg-accent/15" : "hover:bg-overlay-hover"
 								}`}
 							>
 								<span className={privacy.isLocked(project) ? "streamer-private-media" : ""}>

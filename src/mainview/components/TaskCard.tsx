@@ -705,7 +705,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							toast.error(t("task.devStopFailed", { error: String(err) }));
 						}
 					}}
-					className="flex h-full items-center border-l border-current/20 px-1 text-danger transition-colors hover:bg-danger/15 disabled:opacity-40"
+					className="flex h-full items-center border-l border-danger/20 px-1 text-danger transition-colors hover:bg-danger/15 disabled:opacity-40"
 					aria-label={devDeclared > 1 ? t("task.devStopAll") : t("task.devStop")}
 					disabled={isDisabled || !devServer.running}
 				>
@@ -1293,7 +1293,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						<button
 							key={p.port}
 							onClick={() => window.open(`http://localhost:${p.port}`, "_blank")}
-							className="w-full text-left px-3 py-1.5 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
+							className="w-full text-left px-3 py-1.5 text-sm text-fg-2 hover:bg-overlay-hover hover:text-fg flex items-center gap-2.5 transition-colors"
 						>
 							<span className="font-mono font-bold text-accent">:{p.port}</span>
 							<span className="text-fg-muted text-xs">{p.processName}</span>

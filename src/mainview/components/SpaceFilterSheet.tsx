@@ -49,7 +49,7 @@ function SpaceFilterSheet({
 				}}
 				aria-pressed={active}
 				className={`w-full flex items-center gap-3 px-3 rounded-xl text-left transition-colors ${
-					active ? "bg-accent/15 text-fg" : "text-fg-2 hover:bg-elevated-hover"
+					active ? "bg-accent/15 text-fg" : "text-fg-2 hover:bg-overlay-hover"
 				}`}
 				data-testid={`space-filter-${id ?? "all"}`}
 			>

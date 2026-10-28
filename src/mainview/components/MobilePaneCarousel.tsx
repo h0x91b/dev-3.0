@@ -388,7 +388,7 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 											void navigate({ index: i, zoom: true });
 										}}
 										className={`w-full flex items-center gap-2 px-2.5 min-h-[2.75rem] rounded-lg text-left text-sm transition-colors ${
-											i === active ? "bg-accent/10 text-accent" : "text-fg-2 hover:bg-elevated"
+											i === active ? "bg-accent/10 text-accent" : "text-fg-2 hover:bg-overlay-hover"
 										}`}
 									>
 										<span className="text-fg-muted tabular-nums w-4 flex-shrink-0">{i + 1}</span>
@@ -466,7 +466,7 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 							key={action}
 							type="button"
 							onClick={() => void runManageAction(action)}
-							className="tmux-anim w-full flex items-center gap-3 min-h-[44px] px-3 rounded-xl text-left text-sm text-fg-2 hover:bg-elevated transition-colors"
+							className="tmux-anim w-full flex items-center gap-3 min-h-[44px] px-3 rounded-xl text-left text-sm text-fg-2 hover:bg-overlay-hover transition-colors"
 						>
 							<span className="text-fg-3">{icon}</span>
 							<span className="flex-1">{t(labelKey)}</span>

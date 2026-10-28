@@ -163,7 +163,7 @@ function ResourceRow({
 					role="menuitem"
 					aria-label={ariaLabel}
 					data-testid={testId}
-					className={`header-anim w-full px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors ${
+					className={`header-anim w-full px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-overlay-hover hover:text-fg transition-colors ${
 						isNarrow ? "min-h-11" : ""
 					}`}
 					{...flyout.triggerProps}
@@ -195,7 +195,7 @@ function TaskRow({ title, value, onClick }: { title: string; value: string; onCl
 				type="button"
 				onClick={onClick}
 				disabled={!onClick}
-				className="flex w-full items-baseline justify-between gap-2 rounded-md px-1.5 py-1 -mx-1.5 text-left hover:bg-elevated-hover disabled:cursor-default disabled:hover:bg-transparent transition-colors"
+				className="flex w-full items-baseline justify-between gap-2 rounded-md px-1.5 py-1 -mx-1.5 text-left hover:bg-overlay-hover disabled:cursor-default disabled:hover:bg-transparent transition-colors"
 			>
 				<span className="min-w-0 truncate text-fg-2 streamer-private">{title}</span>
 				<span className="shrink-0 tabular-nums text-fg-2">{value}</span>

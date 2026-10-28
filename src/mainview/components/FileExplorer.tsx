@@ -561,7 +561,7 @@ function ExplorerMenu({ top, left, alignEnd = false, title, sections, onClose }:
 									onClose();
 									item.run();
 								}}
-								className="group flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs text-fg-2 transition-colors hover:bg-elevated-hover hover:text-fg focus-visible:bg-elevated-hover focus-visible:text-fg focus-visible:outline-none"
+								className="group flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs text-fg-2 transition-colors hover:bg-overlay-hover hover:text-fg focus-visible:bg-overlay-hover focus-visible:text-fg focus-visible:outline-none"
 							>
 								<span className="flex w-4 flex-shrink-0 justify-center text-fg-3 transition-colors group-hover:text-accent group-focus-visible:text-accent" aria-hidden="true">
 									{item.icon}

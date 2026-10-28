@@ -86,7 +86,7 @@ export function LabelRow({
 					}}
 					onDragEnd={onDragEnd}
 					disabled={!canDrag}
-					className="text-fg-muted hover:text-fg transition-colors p-1 rounded-lg hover:bg-raised-hover outline-none focus-visible:ring-2 focus-visible:ring-accent/60 cursor-grab active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
+					className="text-fg-muted hover:text-fg transition-colors p-1 rounded-lg hover:bg-elevated-hover outline-none focus-visible:ring-2 focus-visible:ring-accent/60 cursor-grab active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
 					title={t("labels.dragToReorder")}
 					aria-label={t("labels.dragToReorder")}
 				>
@@ -97,7 +97,7 @@ export function LabelRow({
 						type="button"
 						onClick={onMoveUp}
 						disabled={!reorderEnabled || saving || isFirst}
-						className="text-fg-muted hover:text-fg transition-[color,background-color,opacity] duration-150 ease-out p-1 rounded-lg hover:bg-raised-hover outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:opacity-30 disabled:hover:text-fg-muted disabled:hover:bg-transparent"
+						className="text-fg-muted hover:text-fg transition-[color,background-color,opacity] duration-150 ease-out p-1 rounded-lg hover:bg-elevated-hover outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:opacity-30 disabled:hover:text-fg-muted disabled:hover:bg-transparent"
 						title={t("labels.moveUp")}
 						aria-label={t("labels.moveUp")}
 					>
@@ -107,7 +107,7 @@ export function LabelRow({
 						type="button"
 						onClick={onMoveDown}
 						disabled={!reorderEnabled || saving || isLast}
-						className="text-fg-muted hover:text-fg transition-[color,background-color,opacity] duration-150 ease-out p-1 rounded-lg hover:bg-raised-hover outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:opacity-30 disabled:hover:text-fg-muted disabled:hover:bg-transparent"
+						className="text-fg-muted hover:text-fg transition-[color,background-color,opacity] duration-150 ease-out p-1 rounded-lg hover:bg-elevated-hover outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:opacity-30 disabled:hover:text-fg-muted disabled:hover:bg-transparent"
 						title={t("labels.moveDown")}
 						aria-label={t("labels.moveDown")}
 					>

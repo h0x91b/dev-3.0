@@ -1357,7 +1357,7 @@ function ProjectSettings({
 							<button
 								type="button"
 								onClick={handleDiscardCurrentTab}
-								className="px-4 py-2 text-sm font-medium rounded-xl text-fg-2 outline-none hover:text-fg hover:bg-elevated focus-visible:ring-2 focus-visible:ring-accent/50 transition-[color,background-color,transform] duration-150 ease-out active:scale-[0.96]"
+								className="px-4 py-2 text-sm font-medium rounded-xl text-fg-2 outline-none hover:text-fg hover:bg-overlay-hover focus-visible:ring-2 focus-visible:ring-accent/50 transition-[color,background-color,transform] duration-150 ease-out active:scale-[0.96]"
 							>
 								{t("unsavedChanges.discard")}
 							</button>

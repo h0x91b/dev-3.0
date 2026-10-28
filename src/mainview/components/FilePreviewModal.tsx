@@ -113,7 +113,7 @@ function useFitHeightFloor(ref: RefObject<HTMLElement | null>, active: boolean, 
 const ICON_FONT = "'JetBrainsMono Nerd Font Mono'";
 
 const GHOST_BUTTON =
-	"px-3 py-1.5 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated " +
+	"px-3 py-1.5 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-overlay-hover " +
 	"transition-[background-color,color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]";
 
 /**

@@ -679,7 +679,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 									disabled={attachUploading}
 									aria-label={t("images.attachFiles")}
 									title={t("images.attachFiles")}
-									className="flex items-center justify-center w-7 h-7 rounded-lg text-fg-3 hover:text-fg hover:bg-elevated transition-colors disabled:opacity-40"
+									className="flex items-center justify-center w-7 h-7 rounded-lg text-fg-3 hover:text-fg hover:bg-overlay-hover transition-colors disabled:opacity-40"
 									data-testid="create-task-attach"
 								>
 									{attachUploading ? (

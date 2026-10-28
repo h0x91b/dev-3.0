@@ -190,7 +190,7 @@ function ImportConversationsModal({ project, autoOffer, onClose }: ImportConvers
 									{conversations.map((c) => (
 										<label
 											key={c.sessionId}
-											className="flex items-start gap-2.5 px-3 py-2.5 hover:bg-elevated-hover transition-colors cursor-pointer"
+											className="flex items-start gap-2.5 px-3 py-2.5 hover:bg-overlay-hover transition-colors cursor-pointer"
 										>
 											<input
 												type="checkbox"

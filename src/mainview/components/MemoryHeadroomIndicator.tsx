@@ -125,7 +125,7 @@ export default function MemoryHeadroomIndicator({ navigate, variant = "bar" }: M
 					role="menuitem"
 					aria-label={accessibleName}
 					data-testid="memory-headroom-indicator"
-					className="header-anim w-full px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
+					className="header-anim w-full px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-overlay-hover hover:text-fg transition-colors"
 					{...flyout.triggerProps}
 				>
 					<span className="flex w-[1.125rem] flex-col justify-center gap-[0.1875rem]">{level}</span>

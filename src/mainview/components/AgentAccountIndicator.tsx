@@ -417,7 +417,7 @@ function SwitcherPopover({
 					return (
 						<div
 							key={row.key}
-							className={`flex items-start ${inert ? "" : "hover:bg-elevated-hover"} transition-colors`}
+							className={`flex items-start ${inert ? "" : "hover:bg-overlay-hover"} transition-colors`}
 						>
 							<button
 								type="button"

@@ -146,7 +146,7 @@ function SchedulePicker({ disabled = false, onTargetChange, onSubmit, initialDel
 							key={m}
 							onClick={() => setMode(m)}
 							className={`text-sm px-2.5 py-1 rounded-md whitespace-nowrap transition-colors ${
-								mode === m ? "bg-elevated text-fg font-medium" : "text-fg-3 hover:text-fg"
+								mode === m ? "bg-overlay-hover text-fg font-medium" : "text-fg-3 hover:text-fg"
 							}`}
 						>
 							{m === "in" ? t("launch.modeIn") : t("launch.modeAt")}

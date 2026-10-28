@@ -92,7 +92,7 @@ function PreventSleepToggle({ variant = "pill" }: { variant?: "pill" | "row" }) 
 				aria-pressed={active}
 				aria-label={t("caffeine.label")}
 				title={title}
-				className={`header-anim w-full text-left px-3 py-2 flex items-center gap-2.5 transition-colors hover:bg-elevated ${
+				className={`header-anim w-full text-left px-3 py-2 flex items-center gap-2.5 transition-colors hover:bg-overlay-hover ${
 					active ? "text-awake" : "text-fg-2 hover:text-fg"
 				} ${locked ? "cursor-default" : ""}`}
 			>

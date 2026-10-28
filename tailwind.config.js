@@ -27,6 +27,9 @@ export default {
 				"xl-sm":   ["1.375rem",  { lineHeight: "1.3" }], // 22px – between xl and 2xl
 				// text-2xl 1.5rem   24px  (Tailwind default)
 			},
+			// Off-scale modifiers compile to nothing in v3 — extend here, never snap
+			// silently. Guarded by tailwind-opacity-scale.test.ts.
+			opacity: { 8: "0.08", 12: "0.12" },
 			fontFamily: {
 				// The user's chosen monospace font, so `font-mono` text — branch names,
 				// paths, seq numbers, script editors — matches the terminal. The variable
@@ -44,6 +47,7 @@ export default {
 			// actually used. Never move `base` back into `colors`.
 			backgroundColor: { base: "rgb(var(--surface-base) / <alpha-value>)" },
 			ringColor: { base: "rgb(var(--surface-base) / <alpha-value>)" },
+			ringOffsetColor: { base: "rgb(var(--surface-base) / <alpha-value>)" },
 			colors: {
 				// Streamdown's semantic utility names mapped onto dev3 tokens.
 				background: "rgb(var(--surface-base) / <alpha-value>)",
@@ -67,6 +71,7 @@ export default {
 				elevated: "rgb(var(--surface-elevated) / <alpha-value>)",
 				"elevated-hover": "rgb(var(--surface-elevated-hover) / <alpha-value>)",
 				overlay: "rgb(var(--surface-overlay) / <alpha-value>)",
+				"overlay-hover": "rgb(var(--surface-overlay-hover) / <alpha-value>)",
 				fg: "rgb(var(--text-primary) / <alpha-value>)",
 				"fg-2": "rgb(var(--text-secondary) / <alpha-value>)",
 				"fg-3": "rgb(var(--text-tertiary) / <alpha-value>)",

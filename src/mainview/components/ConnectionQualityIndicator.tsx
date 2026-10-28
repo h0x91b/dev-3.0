@@ -225,7 +225,7 @@ export default function ConnectionQualityIndicator({ variant = "bar" }: Connecti
 					role="menuitem"
 					aria-label={ariaLabel}
 					data-testid="connection-quality-indicator"
-					className="header-anim w-full px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
+					className="header-anim w-full px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-overlay-hover hover:text-fg transition-colors"
 					{...flyout.triggerProps}
 				>
 					<span className="flex w-[1.125rem] items-center justify-center">{spark}</span>

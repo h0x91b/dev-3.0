@@ -215,7 +215,7 @@ function GoToPalette({
 					role="tab"
 					aria-selected={m === mode}
 					onClick={() => onModeChange(m)}
-					className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${m === mode ? "bg-accent/15 text-accent" : "text-fg-3 hover:bg-elevated-hover"}`}
+					className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${m === mode ? "bg-accent/15 text-accent" : "text-fg-3 hover:bg-overlay-hover"}`}
 					data-testid={`go-to-mode-${m}`}
 				>
 					{t(MODE_LABEL_KEY[m])}

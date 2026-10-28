@@ -309,7 +309,7 @@ export default function TaskContextMenu({
 					}}
 					className={`flex w-full items-center gap-2 px-3 text-left transition-colors disabled:opacity-40 disabled:pointer-events-none ${
 						narrow ? "py-3 text-sm-plus" : "py-1.5 text-sm"
-					} ${row.danger ? "text-danger hover:bg-danger/10" : "text-fg-2 hover:bg-elevated-hover hover:text-fg"}`}
+					} ${row.danger ? "text-danger hover:bg-danger/10" : "text-fg-2 hover:bg-overlay-hover hover:text-fg"}`}
 				>
 					<span aria-hidden className="w-3 flex-shrink-0 text-center text-xs leading-none text-accent">
 						{row.checked ? "✓" : ""}

@@ -373,7 +373,7 @@ function LaunchVariantsModal({
 								className={`task-anim flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors flex-shrink-0 ${
 									watched
 										? "text-accent bg-accent/10 border border-accent/25"
-										: "text-fg-3 hover:text-fg hover:bg-elevated border border-edge"
+										: "text-fg-3 hover:text-fg hover:bg-overlay-hover border border-edge"
 								}`}
 								aria-label={watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
 							>

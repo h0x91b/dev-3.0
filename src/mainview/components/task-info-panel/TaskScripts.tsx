@@ -429,7 +429,7 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 								data-testid="scripts-rerun-setup"
 								onClick={runSetupScript}
 								disabled={busy}
-								className="flex-shrink-0 w-full text-left px-3 py-2 border-b border-edge hover:bg-elevated-hover disabled:opacity-50"
+								className="flex-shrink-0 w-full text-left px-3 py-2 border-b border-edge hover:bg-overlay-hover disabled:opacity-50"
 							>
 								<div className="text-sm text-fg-2">{t("scripts.rerunSetup")}</div>
 								<div className="text-micro text-fg-3">{t("scripts.rerunSetupDesc")}</div>
@@ -449,7 +449,7 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 									onClick={() => setPickerFor({ name: s.name, source: s.source })}
 									onMouseEnter={() => setActiveIdx(idx)}
 									disabled={busy}
-									className={`w-full text-left px-3 py-1.5 flex items-center gap-2 transition-colors disabled:opacity-50 ${idx === activeIdx ? "bg-elevated" : "hover:bg-elevated"}`}
+									className={`w-full text-left px-3 py-1.5 flex items-center gap-2 transition-colors disabled:opacity-50 ${idx === activeIdx ? "bg-accent/15" : "hover:bg-overlay-hover"}`}
 								>
 									<span className="flex flex-col min-w-0 flex-1">
 										<span className="text-sm text-fg font-medium truncate">{s.name}</span>
@@ -543,7 +543,7 @@ function RunnerChip({ runner, pkg, onSelect }: { runner: ScriptRunner; pkg: Work
 						<button
 							key={r}
 							onClick={() => { onSelect(r); setOpen(false); }}
-							className={`block w-full text-left px-3 py-1 text-xs ${r === runner ? "text-accent" : "text-fg-2"} hover:bg-elevated-hover`}
+							className={`block w-full text-left px-3 py-1 text-xs ${r === runner ? "text-accent" : "text-fg-2"} hover:bg-overlay-hover`}
 						>
 							{r}
 						</button>

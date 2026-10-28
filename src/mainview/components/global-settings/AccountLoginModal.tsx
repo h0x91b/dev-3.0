@@ -276,7 +276,7 @@ export default function AccountLoginModal({ login, busy, onHide, onCancel, onRet
 							onClick={onCancel}
 							disabled={busy}
 							data-testid="account-login-cancel"
-							className={`px-3.5 py-2 rounded-xl text-sm text-fg-2 hover:text-fg hover:bg-elevated disabled:opacity-50 ${PRESS}`}
+							className={`px-3.5 py-2 rounded-xl text-sm text-fg-2 hover:text-fg hover:bg-overlay-hover disabled:opacity-50 ${PRESS}`}
 						>
 							{t(active ? "settings.accountLoginCancel" : "settings.accountLoginClose")}
 						</button>

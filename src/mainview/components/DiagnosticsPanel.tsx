@@ -126,7 +126,7 @@ export default function DiagnosticsPanel({ onClose }: { onClose: () => void }) {
 						type="button"
 						onClick={handleCopy}
 						disabled={ordered.length === 0}
-						className="px-3 py-2 text-sm rounded-lg text-fg-2 border border-edge hover:text-fg hover:bg-elevated transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+						className="px-3 py-2 text-sm rounded-lg text-fg-2 border border-edge hover:text-fg hover:bg-overlay-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 					>
 						{copied ? t("diagnostics.copied") : t("diagnostics.copyAll")}
 					</button>

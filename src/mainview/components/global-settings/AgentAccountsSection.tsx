@@ -228,7 +228,7 @@ function AccountRow({
 							event.stopPropagation();
 							onEditApi();
 						}}
-						className="p-1 rounded text-fg-muted hover:text-fg hover:bg-raised-hover transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] shrink-0"
+						className="p-1 rounded text-fg-muted hover:text-fg hover:bg-elevated-hover transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] shrink-0"
 						title={t("settings.accountsEditApi")}
 						aria-label={t("settings.accountsEditApiFor", { label })}
 					>
@@ -244,7 +244,7 @@ function AccountRow({
 							setDraft(label);
 							setEditing(true);
 						}}
-						className="p-1 rounded text-fg-muted hover:text-fg hover:bg-raised-hover transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] shrink-0"
+						className="p-1 rounded text-fg-muted hover:text-fg hover:bg-elevated-hover transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] shrink-0"
 						title={t("settings.accountsRename")}
 						aria-label={t("settings.accountsRenameFor", { label })}
 					>

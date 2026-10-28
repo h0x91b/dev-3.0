@@ -52,7 +52,7 @@ export function useYaziLauncher(task: Task | undefined, project: Project | undef
 							setCopied(true);
 							setTimeout(() => setCopied(false), 2000);
 						}}
-						className="p-2 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg shrink-0"
+						className="p-2 rounded hover:bg-overlay-hover transition-colors text-fg-3 hover:text-fg shrink-0"
 						aria-label={t("openIn.copyPath")}
 					>
 						{copied ? (

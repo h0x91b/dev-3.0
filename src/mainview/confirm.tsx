@@ -433,7 +433,7 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 							type="button"
 							autoFocus={pending.agentInitiated}
 							onClick={() => close(false)}
-							className="px-4 py-2 text-sm whitespace-nowrap rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+							className="px-4 py-2 text-sm whitespace-nowrap rounded-lg text-fg-2 hover:text-fg hover:bg-overlay-hover transition-colors"
 						>
 							{cancelLabel}
 							{pending.keyboardChoice && <KeyHint keys="Esc" />}
@@ -442,7 +442,7 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 							<button
 								type="button"
 								onClick={() => close(pending.alternativeAction!.value)}
-								className="px-4 py-2 text-sm whitespace-nowrap rounded-lg border border-edge text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+								className="px-4 py-2 text-sm whitespace-nowrap rounded-lg border border-edge text-fg-2 hover:text-fg hover:bg-overlay-hover transition-colors"
 							>
 								{pending.alternativeAction.label}
 							</button>
@@ -473,7 +473,7 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 /** The key that answers a `keyboardChoice` dialog, inside its button. */
 function KeyHint({ keys }: { keys: string }) {
 	return (
-		<kbd className="ml-2 px-1.5 py-0.5 rounded border border-current/30 text-xs font-sans opacity-80" aria-hidden>
+		<kbd className="ml-2 px-1.5 py-0.5 rounded border border-[color-mix(in_srgb,currentColor_30%,transparent)] text-xs font-sans opacity-80" aria-hidden>
 			{keys}
 		</kbd>
 	);
@@ -503,7 +503,7 @@ function OutcomeAction({
 			className={`group flex w-full items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors ${
 				primary
 					? "border-accent/60 bg-accent/10 hover:border-accent hover:bg-accent/15"
-					: "border-edge bg-elevated/55 hover:border-edge-active hover:bg-elevated"
+					: "border-edge bg-elevated/55 hover:border-edge-active hover:bg-elevated-hover"
 			}`}
 		>
 			<span

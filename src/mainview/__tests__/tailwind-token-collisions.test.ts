@@ -37,6 +37,7 @@ describe("tailwind token namespace", () => {
 		expect(Object.keys(extend.colors)).not.toContain("base");
 		expect(extend.backgroundColor).toHaveProperty("base");
 		expect(extend.ringColor).toHaveProperty("base");
+		expect(extend.ringOffsetColor).toHaveProperty("base");
 		// Text on a solid fill uses the explicitly named token instead.
 		expect(extend.colors).toHaveProperty("base-ink");
 	});
