@@ -130,6 +130,11 @@ export interface TaskUsageReport {
 		/** Sessions dev3 archived at completion whose transcript is gone (agent retention):
 		 *  NOT counted, so above zero the totals are a lower bound. */
 		uncoveredArchivedSessions: number;
+		/** Archived sessions of agents this report does not read (Cursor, …): never counted. */
+		unsupportedArchivedSessions: number;
+		/** An Operations task on a user-chosen folder: only records inside the task's lifetime
+		 *  count, which can still include other work run there at the same time. */
+		sharedWorkingDir: boolean;
 		sources: AgentUsageSource[];
 		/** ISO time of the first and last usage record seen, null when none. */
 		firstAt: string | null;

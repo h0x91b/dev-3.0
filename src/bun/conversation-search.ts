@@ -149,6 +149,18 @@ const claudeLocator: TranscriptLocator = {
 
 // ---- codex: date-bucketed rollouts; cwd lives in the SessionMeta header line ----
 
+/** The cwd a Codex rollout ran in, from its SessionMeta header; null when unreadable. */
+export function codexRolloutCwd(file: string): string | null {
+	const header = readFirstLine(file);
+	if (!header) return null;
+	try {
+		const cwd = ((JSON.parse(header) as Record<string, unknown>).payload as Record<string, unknown> | undefined)?.cwd;
+		return typeof cwd === "string" ? cwd : null;
+	} catch {
+		return null;
+	}
+}
+
 const codexLocator: TranscriptLocator = {
 	kind: "codex",
 	buildIndex(home) {
@@ -165,16 +177,8 @@ const codexLocator: TranscriptLocator = {
 			for (const rel of entries) {
 				if (!rel.endsWith(".jsonl")) continue;
 				const file = `${root}/${rel}`;
-				const header = readFirstLine(file);
-				if (!header) continue;
-				let cwd: unknown;
-				try {
-					const payload = (JSON.parse(header) as Record<string, unknown>).payload as Record<string, unknown> | undefined;
-					cwd = payload?.cwd;
-				} catch {
-					continue;
-				}
-				if (typeof cwd !== "string") continue;
+				const cwd = codexRolloutCwd(file);
+				if (cwd === null) continue;
 				const list = index.get(cwd);
 				if (list) list.push(file);
 				else index.set(cwd, [file]);

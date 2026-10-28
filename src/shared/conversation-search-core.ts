@@ -31,15 +31,26 @@ export const RECENCY_HALFLIFE_DAYS = 30;
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+/** Claude Code cuts a store name here and appends a hash of the full path. */
+const CLAUDE_STORE_NAME_MAX = 200;
+
 /**
- * Claude Code stores transcripts under `~/.claude/projects/<encoded-cwd>/`,
- * where the cwd is encoded by replacing every `/` and `.` with `-`.
- *
- * This is reverse-engineered from on-disk layout (see decision record). It is
- * the ONLY place this algorithm lives; keep it in lockstep with reality.
+ * Claude Code stores transcripts under `~/.claude/projects/<encoded-cwd>/`: every
+ * non-alphanumeric character becomes `-`, and a name over 200 characters is cut
+ * and suffixed with a hash of the path. Reverse-engineered from on-disk layout
+ * (`decisions/2026/10/28/claude-store-name-encoding.md`); the ONLY place it lives.
  */
 export function claudeEncodePath(absolutePath: string): string {
-	return absolutePath.replace(/[/.]/g, "-");
+	const encoded = absolutePath.replace(/[^a-zA-Z0-9]/g, "-");
+	if (encoded.length <= CLAUDE_STORE_NAME_MAX) return encoded;
+	return `${encoded.slice(0, CLAUDE_STORE_NAME_MAX)}-${claudePathHash(absolutePath)}`;
+}
+
+/** Java-style 32-bit string hash, base 36 — what Claude Code appends to a cut name. */
+function claudePathHash(path: string): string {
+	let hash = 0;
+	for (let i = 0; i < path.length; i++) hash = ((hash << 5) - hash + path.charCodeAt(i)) | 0;
+	return Math.abs(hash).toString(36);
 }
 
 /**

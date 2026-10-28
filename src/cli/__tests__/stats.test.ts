@@ -67,7 +67,8 @@ function taskUsageReport(overrides: Partial<TaskUsageReport> = {}): TaskUsageRep
 		workingDir: "/w/88145048/worktree", worktreeExists: false,
 		totals: usageTotals(), models: [{ model: "claude-opus-5-5", ...usageTotals() }],
 		coverage: {
-			transcriptFiles: 3, subagentTranscriptFiles: 1, uncoveredArchivedSessions: 0, sources: ["claude"],
+			transcriptFiles: 3, subagentTranscriptFiles: 1, uncoveredArchivedSessions: 0, unsupportedArchivedSessions: 0,
+			sharedWorkingDir: false, sources: ["claude"],
 			firstAt: "2026-09-30T14:45:54.381Z", lastAt: "2026-09-30T15:57:21.940Z",
 		},
 		...overrides,
@@ -253,7 +254,7 @@ describe("dev3 stats usage --task", () => {
 	it("renders per-model rows, a total and the coverage, flagging a lower bound", async () => {
 		mockSend.mockResolvedValue(ok(taskUsageReport({
 			totals: usageTotals({ fullyPriced: false }),
-			coverage: { ...taskUsageReport().coverage, uncoveredArchivedSessions: 2 },
+			coverage: { ...taskUsageReport().coverage, uncoveredArchivedSessions: 2, unsupportedArchivedSessions: 1, sharedWorkingDir: true },
 		})));
 		await handleStats("usage", args({ task: "seq:11" }), SOCKET, CTX);
 		expect(stdout).toContain("Task #11 Fix heartbeats (completed)");
@@ -263,6 +264,8 @@ describe("dev3 stats usage --task", () => {
 		expect(stdout).toContain("4.30+");
 		expect(stdout).toContain("Read 3 transcript files (1 subagent); agents: claude.");
 		expect(stdout).toContain("2 archived session(s) no longer have a transcript");
+		expect(stdout).toContain("1 archived session(s) of other agents");
+		expect(stdout).toContain("Shared folder: only usage inside the task's lifetime");
 	});
 
 	it("gives the update hint on an app that predates it", async () => {

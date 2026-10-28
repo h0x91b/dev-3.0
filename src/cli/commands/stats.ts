@@ -227,6 +227,12 @@ async function taskUsage(args: ParsedArgs, socketPath: string, context: CliConte
 		`(${coverage.subagentTranscriptFiles} subagent)` +
 		`${coverage.sources.length ? `; agents: ${coverage.sources.join(", ")}` : ""}.\n`,
 	);
+	if (coverage.sharedWorkingDir) {
+		process.stdout.write("Shared folder: only usage inside the task's lifetime is counted, which can include other work run there meanwhile.\n");
+	}
+	if (coverage.unsupportedArchivedSessions > 0) {
+		process.stdout.write(`${coverage.unsupportedArchivedSessions} archived session(s) of other agents (Cursor, …) are not covered by this report.\n`);
+	}
 	if (coverage.uncoveredArchivedSessions > 0) {
 		process.stdout.write(`${coverage.uncoveredArchivedSessions} archived session(s) no longer have a transcript and are not counted: totals are a lower bound.\n`);
 	}

@@ -1,7 +1,7 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
-import type { AgentUsageReport, AgentUsageSource, Project, SystemLoadSnapshot, Task, TaskUsageReport, SystemMemorySnapshot, WorktreeOrphanGroup } from "../../shared/types";
+import { basename, join } from "node:path";
+import { TERMINAL_STATUSES, type AgentUsageReport, type AgentUsageSource, type Project, type SystemLoadSnapshot, type SystemMemorySnapshot, type Task, type TaskUsageReport, type WorktreeOrphanGroup } from "../../shared/types";
 import type { AgentRateLimitsReport } from "../../shared/rate-limits";
 import { getAgentRateLimitsReport } from "../rate-limit-monitor";
 import { getBusyTaskShortIds, getSystemLoadSnapshot, getSystemMemorySnapshot, resolveTaskConsumers } from "../resource-monitor";
@@ -20,7 +20,8 @@ import { collectCopilotUsage } from "../usage-collectors/copilot";
 import { collectOpenCodeUsage, openCodeDatabases } from "../usage-collectors/opencode";
 import { collectPiUsage, piSessionRoots } from "../usage-collectors/pi";
 import { queryReadonlySqlite } from "../sqlite-readonly";
-import { claudeTranscriptDirs, transcriptFilesForWorktree } from "../conversation-search";
+import { codexRolloutCwd } from "../conversation-search";
+import { claudeEncodePath } from "../../shared/conversation-search-core";
 import { conversationDumpDir } from "../conversation-parse";
 import { taskWorkingDir } from "../task-conversation";
 import { taskDir } from "../git";
@@ -151,22 +152,80 @@ export async function getAgentUsage(): Promise<AgentUsageReport> {
 }
 
 const SESSION_UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+const ARCHIVE_SOURCES = new Set(["claude", "codex"]);
+
+function sessionOf(path: string): string | undefined {
+	return basename(path).match(SESSION_UUID)?.[0];
+}
+
+/** Separator-agnostic, so a Windows path is recognised too. */
+export function isSubagentTranscript(path: string): boolean {
+	return path.split(/[\\/]/).includes("subagents");
+}
+
+/** One entry per real directory: an account dir may be a symlink onto the home store. */
+function uniqueRealDirs(dirs: string[]): string[] {
+	const seen = new Map<string, string>();
+	for (const dir of dirs) {
+		let real: string;
+		try { real = realpathSync(dir); } catch { continue; }
+		if (!seen.has(real)) seen.set(real, dir);
+	}
+	return [...seen.values()];
+}
+
+/** The task's Claude stores, from the same roots `getAgentUsage` reads. */
+function taskClaudeFiles(workingDir: string): string[] {
+	const roots = [claudeProjectsDir(), ...listClaudeAccountDirs().map((home) => join(home, "projects"))];
+	const files: string[] = [];
+	for (const dir of uniqueRealDirs(roots.map((root) => join(root, claudeEncodePath(workingDir))))) collectTranscriptFiles(dir, files);
+	return files;
+}
+
+/** Codex rollouts that ran in `workingDir`, from the same stores `getAgentUsage` reads. Reads only each header. */
+function taskCodexFiles(workingDir: string): string[] {
+	const rollouts: string[] = [];
+	for (const home of new Set([codexHome(), ...listCodexAccountDirs()])) {
+		for (const store of ["sessions", "archived_sessions"]) collectTranscriptFiles(join(home, store), rollouts, true);
+	}
+	return rollouts.filter((file) => codexRolloutCwd(file) === workingDir);
+}
 
 /**
  * Sessions dev3 archived at completion whose native transcript is gone (agent
  * retention). Their usage is not counted: the archive's totals sum every streaming
  * snapshot of a response, overstating tokens about twofold, so they are only reported.
+ * Archived sessions of agents this report never reads are counted apart.
  */
-function countUncoveredSessions(project: Project, task: Task, liveFiles: string[]): number {
+function countArchivedSessions(project: Project, task: Task, liveFiles: string[]): { uncovered: number; unsupported: number } {
 	let names: string[];
 	try {
 		names = readdirSync(conversationDumpDir(taskDir(project, task))).filter((name) => name.endsWith(".json"));
 	} catch {
-		return 0;
+		return { uncovered: 0, unsupported: 0 };
 	}
-	const sessionOf = (path: string) => path.slice(path.lastIndexOf("/") + 1).match(SESSION_UUID)?.[0];
 	const liveIds = new Set(liveFiles.map(sessionOf));
-	return names.filter((name) => { const id = sessionOf(name); return id ? !liveIds.has(id) : liveFiles.length === 0; }).length;
+	let uncovered = 0;
+	let unsupported = 0;
+	for (const name of names) {
+		if (!ARCHIVE_SOURCES.has(name.slice(0, name.indexOf("-")))) { unsupported++; continue; }
+		const id = sessionOf(name);
+		if (id ? !liveIds.has(id) : liveFiles.length === 0) uncovered++;
+	}
+	return { uncovered, unsupported };
+}
+
+/**
+ * An Operations task on a user-chosen folder shares it with whatever else ran
+ * there, so only records inside the task's own lifetime count.
+ */
+function keepTaskLifetime(state: UsageState, task: Task): void {
+	const start = Date.parse(task.createdAt);
+	const endedAt = TERMINAL_STATUSES.includes(task.status) ? Date.parse(task.statusEnteredAt ?? task.movedAt ?? "") : NaN;
+	const end = Number.isFinite(endedAt) ? endedAt : Infinity;
+	for (const [key, record] of state.records) {
+		if (record.timestamp < start || record.timestamp > end) state.records.delete(key);
+	}
 }
 
 /**
@@ -178,11 +237,12 @@ function countUncoveredSessions(project: Project, task: Task, liveFiles: string[
 export async function getTaskAgentUsage(project: Project, task: Task): Promise<TaskUsageReport> {
 	const workingDir = taskWorkingDir(project, task);
 	const state = newUsageState();
-	const claudeFiles: string[] = [];
-	for (const dir of new Set(claudeTranscriptDirs(workingDir, homedir()))) collectTranscriptFiles(dir, claudeFiles);
+	const claudeFiles = taskClaudeFiles(workingDir);
 	foldJsonlFiles(claudeFiles, state, foldClaudeEntry);
-	const codexFiles = transcriptFilesForWorktree(workingDir).filter((f) => f.kind === "codex").map((f) => f.path);
+	const codexFiles = taskCodexFiles(workingDir);
 	foldJsonlFiles(codexFiles, state, foldCodexEntry, beginCodexRollout);
+	const sharedWorkingDir = project.kind === "virtual" && !!task.opsWorkDir?.trim();
+	if (sharedWorkingDir) keepTaskLifetime(state, task);
 
 	const catalog = loadModelCatalog();
 	const pricingId = (model: string) => nativeModelIdForWireName(catalog, model) ?? model;
@@ -190,14 +250,17 @@ export async function getTaskAgentUsage(project: Project, task: Task): Promise<T
 	const sources: AgentUsageSource[] = [];
 	if (claudeFiles.length) sources.push("claude");
 	if (codexFiles.length) sources.push("codex");
+	const archived = countArchivedSessions(project, task, [...claudeFiles, ...codexFiles]);
 	return {
 		taskId: task.id, projectId: project.id, seq: task.seq, title: task.title, status: task.status,
 		workingDir, worktreeExists: existsSync(workingDir),
 		totals, models,
 		coverage: {
 			transcriptFiles: claudeFiles.length + codexFiles.length,
-			subagentTranscriptFiles: claudeFiles.filter((f) => f.includes("/subagents/")).length,
-			uncoveredArchivedSessions: countUncoveredSessions(project, task, [...claudeFiles, ...codexFiles]),
+			subagentTranscriptFiles: claudeFiles.filter(isSubagentTranscript).length,
+			uncoveredArchivedSessions: archived.uncovered,
+			unsupportedArchivedSessions: archived.unsupported,
+			sharedWorkingDir,
 			sources,
 			firstAt: firstMs === null ? null : new Date(firstMs).toISOString(),
 			lastAt: lastMs === null ? null : new Date(lastMs).toISOString(),
