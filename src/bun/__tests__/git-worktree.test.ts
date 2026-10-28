@@ -36,6 +36,7 @@ import {
 	applySparseCheckout,
 	recoverStaleInitializingWorktrees,
 	taskDir,
+	run,
 } from "../git";
 import { createTestRepo, cleanup, makeTaskCommits, g, spawnedCommands, type TestRepo } from "./git-test-helpers";
 
@@ -636,8 +637,24 @@ describe("createWorktree", () => {
 			.slice(before)
 			.filter((cmd) => cmd.join(" ").includes(`branch -D ${branch}`));
 
-		beforeEach(() => _setWorktreeAddRetryPolicy({ baseDelayMs: 40, maxDelayMs: 80 }));
-		afterEach(() => _setWorktreeAddRetryPolicy());
+		// git >= 2.56 itself waits up to core.configLockTimeout (1s) on a held config.lock,
+		// so every attempt cost seconds and the cap test outran the test timeout on those
+		// runners. Pinned to 0, these tests exercise dev3's retry loop on every git version.
+		beforeEach(() => {
+			_setWorktreeAddRetryPolicy({ baseDelayMs: 40, maxDelayMs: 80 });
+			vi.stubEnv("GIT_CONFIG_COUNT", "1");
+			vi.stubEnv("GIT_CONFIG_KEY_0", "core.configLockTimeout");
+			vi.stubEnv("GIT_CONFIG_VALUE_0", "0");
+		});
+		afterEach(() => {
+			_setWorktreeAddRetryPolicy();
+			vi.unstubAllEnvs();
+		});
+
+		it("reaches git with its own config-lock wait disabled", async () => {
+			const result = await run(["git", "config", "--get", "core.configLockTimeout"], repo.local);
+			expect(result.stdout.trim()).toBe("0");
+		});
 
 		it("retries through .git/config lock contention held by another git process", async () => {
 			const project = makeProject(repo.local);
@@ -671,8 +688,7 @@ describe("createWorktree", () => {
 		});
 
 		it("gives up after the attempt cap when the config lock is never released", async () => {
-			// Every attempt is ~4 real git processes: with the default cap a loaded runner hits
-			// the time budget first (6 of 8 seen on CI). Backoff is not what this test proves.
+			// The cap, not backoff or the budget, is what this test proves.
 			_setWorktreeAddRetryPolicy({ attempts: 3, baseDelayMs: 0, maxDelayMs: 0, budgetMs: 60_000 });
 			const project = makeProject(repo.local);
 			const task = makeTask({ id: "bcbcbcbc-cdcd-efef-0101-232323232323" });
@@ -691,7 +707,7 @@ describe("createWorktree", () => {
 				rmSync(lockPath, { force: true });
 				g("git branch -D dev3/task-bcbcbcbc", repo.local);
 			}
-		}, 20_000);
+		});
 
 		it("stops at the time budget before the attempt cap", async () => {
 			_setWorktreeAddRetryPolicy({ baseDelayMs: 200, maxDelayMs: 200, budgetMs: 350 });
