@@ -22,6 +22,7 @@ import { buildFilterGroups, taskQueryContext, taskStatusValues, isAttentionTask,
 import { useTaskPrBadges } from "../hooks/useTaskPrBadges";
 import { useTipRotation } from "../hooks/useTipRotation";
 import { useColumnCollapse } from "../hooks/useColumnCollapse";
+import { useRememberedFilter } from "../hooks/useRememberedFilter";
 import { moveTaskToStatus, resetTaskToTodoWithConsent } from "../utils/moveTaskToStatus";
 import { confirmCustomColumnDelete } from "../utils/confirmCustomColumnDelete";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
@@ -115,7 +116,8 @@ function KanbanBoard({
 	// Whose repository the dragged card belongs to — a merged lane that project has
 	// no column in must refuse it, visibly, before the drop.
 	const [dragFromProjectId, setDragFromProjectId] = useState<string | null>(null);
-	const [searchQuery, setSearchQuery] = useState("");
+	// Keyed like the collapse memory below: a space board keeps its own filter.
+	const [searchQuery, setSearchQuery] = useRememberedFilter(space ? `board:space-${space.id}` : `board:${project.id}`);
 	const [movingTaskIds, setMovingTaskIds] = useState<Set<string>>(new Set());
 	const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
 	// Ref so drag handlers can check synchronously without waiting for state update

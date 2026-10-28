@@ -16,6 +16,7 @@ import { isFacetTokenActive, matchesTaskQuery, toggleFacetToken } from "../utils
 import { buildFilterGroups, taskQueryContext, isAttentionTask, isTaskNotRunning, type FacetResolver, type FilterFunnelOption } from "../utils/taskFacets";
 import { buildFacetResolver } from "../utils/facetResolver";
 import FilterFunnel from "./FilterFunnel";
+import { useRememberedFilter } from "../hooks/useRememberedFilter";
 import TipCard from "./TipCard";
 import { useTipRotation } from "../hooks/useTipRotation";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
@@ -186,7 +187,8 @@ function ActiveTasksSidebar({
 	const preview = useTerminalPreview();
 	// Feature-discovery tips in the task view (terminal context leads the rotation).
 	const { tip: currentTip, tipState, applyTipState } = useTipRotation("terminal");
-	const [searchQuery, setSearchQuery] = useState("");
+	// One filter for the whole sidebar, like its scope: it follows the user across tasks and projects.
+	const [searchQuery, setSearchQuery] = useRememberedFilter("active-tasks");
 	// Re-render once per second so the status-age badges stay live.
 	const [now, setNow] = useState(() => Date.now());
 	useEffect(() => {

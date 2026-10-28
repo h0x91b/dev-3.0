@@ -1269,7 +1269,7 @@ function makeTask(overrides?: Partial<Task>): Task {
 		expect(screen.getByText("Waiting task")).toBeInTheDocument();
 	});
 
-	it("resets the filter on unmount (ephemeral, component state)", async () => {
+	it("keeps the filter across a remount (navigating away and back)", async () => {
 		const user = userEvent.setup();
 		const tasks = [
 			makeTask({ id: "a", title: "Alpha task", description: "Alpha", status: "in-progress", groupId: null as unknown as string, variantIndex: null }),
@@ -1294,15 +1294,25 @@ function makeTask(overrides?: Partial<Task>): Task {
 		expect(screen.queryByText("Alpha task")).not.toBeInTheDocument();
 
 		unmount();
+		const { unmount: unmount2 } = render(
+			<I18nProvider>
+				<ActiveTasksSidebar {...props} />
+			</I18nProvider>,
+		);
+		// Coming back restores the filter; the clear control still resets it for good.
+		expect(screen.getByPlaceholderText("Search tasks...")).toHaveValue("agent:Codex");
+		expect(screen.queryByText("Alpha task")).not.toBeInTheDocument();
+		expect(screen.getByText("Beta task")).toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: "×" }));
+		unmount2();
 		render(
 			<I18nProvider>
 				<ActiveTasksSidebar {...props} />
 			</I18nProvider>,
 		);
-		// Fresh mount → the search string is empty again, all tasks visible.
 		expect(screen.getByPlaceholderText("Search tasks...")).toHaveValue("");
 		expect(screen.getByText("Alpha task")).toBeInTheDocument();
-		expect(screen.getByText("Beta task")).toBeInTheDocument();
 	});
 
 	// A task that predates status-time tracking has no statusEnteredAt and no

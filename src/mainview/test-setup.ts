@@ -1,11 +1,13 @@
 import "@testing-library/jest-dom/vitest";
 import { _resetPendingToastsForTests, _setToastArmDelayForTests } from "./toast";
 import { storageIsWritable } from "./utils/storage";
+import { resetRememberedFiltersForTests } from "./hooks/useRememberedFilter";
 
 // Toasts raised without a mounted host are queued for the next host (see toast.tsx),
-// so drop the queue between tests instead of leaking them into the next render.
+// so drop the queue between tests (and the in-memory board filters) instead of leaking them into the next render.
 afterEach(() => {
 	_resetPendingToastsForTests();
+	resetRememberedFiltersForTests();
 });
 
 // Tests click a toast the instant it mounts; the arming guard is covered in toast.test.tsx.

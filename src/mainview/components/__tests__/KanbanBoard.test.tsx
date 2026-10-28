@@ -1035,3 +1035,57 @@ describe("detail modal requested by id", () => {
 		expect(screen.queryByRole("dialog")).toBeNull();
 	});
 });
+
+describe("KanbanBoard filter memory", () => {
+	const projectB: Project = { ...project, id: "proj-b", name: "Other" };
+	const searchInput = () => screen.getByPlaceholderText("Search tasks...") as HTMLInputElement;
+
+	function boardFor(p: Project) {
+		return (
+			<I18nProvider>
+				<KanbanBoard
+					project={p}
+					tasks={[]}
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+					taskDevServers={new Map()}
+				/>
+			</I18nProvider>
+		);
+	}
+
+	it("restores the board's filter after navigating away and back", async () => {
+		const { unmount } = await renderBoardWith();
+		fireEvent.change(searchInput(), { target: { value: "priority:P1 auth" } });
+		unmount();
+
+		await renderBoardWith();
+		expect(searchInput().value).toBe("priority:P1 auth");
+	});
+
+	it("keeps a separate filter per board when switching projects", async () => {
+		const { rerender } = await renderBoardWith();
+		fireEvent.change(searchInput(), { target: { value: "label:Bug" } });
+
+		await act(async () => rerender(boardFor(projectB)));
+		expect(searchInput().value).toBe("");
+		fireEvent.change(searchInput(), { target: { value: "is:attention" } });
+
+		await act(async () => rerender(boardFor(project)));
+		expect(searchInput().value).toBe("label:Bug");
+		await act(async () => rerender(boardFor(projectB)));
+		expect(searchInput().value).toBe("is:attention");
+	});
+
+	it("forgets the filter once the clear control empties it", async () => {
+		const { unmount } = await renderBoardWith();
+		fireEvent.change(searchInput(), { target: { value: "label:Bug" } });
+		fireEvent.click(screen.getByRole("button", { name: "×" }));
+		unmount();
+
+		await renderBoardWith();
+		expect(searchInput().value).toBe("");
+	});
+});
