@@ -862,7 +862,8 @@ async function fetchBranches(params: { projectId: string; forkRef?: string }): P
 			}
 		}
 	} else {
-		await git.fetchOrigin(project.path);
+		// The refresh button: a fetch that failed minutes ago must not skip this one.
+		await git.fetchOrigin(project.path, undefined, undefined, { force: true });
 	}
 	return git.listBranches(project.path);
 }

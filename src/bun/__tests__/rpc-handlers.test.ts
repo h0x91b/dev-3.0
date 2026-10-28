@@ -2660,7 +2660,7 @@ describe("handlers.listBranches", () => {
 describe("handlers.fetchBranches", () => {
 	beforeEach(() => vi.clearAllMocks());
 
-	it("fetches origin then returns branches", async () => {
+	it("force-fetches origin (past any failure backoff) then returns branches", async () => {
 		const project = makeProject();
 		const branches = [
 			{ name: "main", isRemote: false },
@@ -2671,7 +2671,7 @@ describe("handlers.fetchBranches", () => {
 		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
 
 		const result = await handlers.fetchBranches({ projectId: "proj-1" });
-		expect(git.fetchOrigin).toHaveBeenCalledWith(project.path);
+		expect(git.fetchOrigin).toHaveBeenCalledWith(project.path, undefined, undefined, { force: true });
 		expect(git.listBranches).toHaveBeenCalledWith(project.path);
 		expect(result).toEqual(branches);
 	});

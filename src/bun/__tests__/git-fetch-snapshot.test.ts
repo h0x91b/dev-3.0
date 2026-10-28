@@ -43,11 +43,27 @@ function queueResponse(exitCode: number, stdout: string, stderr = "") {
 	spawnResponses.push({ exitCode, stdout, stderr });
 }
 
+let remoteUrl = "git@github.com:o/r.git";
+let repoSshCommand = "";
+
+/** The two reads behind the fetch ssh command; answered here so the queue holds fetches only. */
+function sshEnvLookupResponse(cmd: string[]): SpawnResponse | null {
+	const args = cmd.filter((arg) => arg !== "-c" && arg !== "core.quotepath=false");
+	if (args[1] === "ls-remote" && args[2] === "--get-url") return { exitCode: 0, stdout: `${remoteUrl}\n`, stderr: "" };
+	if (args[1] === "config" && args[3] === "core.sshCommand") {
+		return repoSshCommand ? { exitCode: 0, stdout: `${repoSshCommand}\n`, stderr: "" } : { exitCode: 1, stdout: "", stderr: "" };
+	}
+	return null;
+}
+
 vi.mock("../spawn", () => ({
 	spawn: (cmd: string[], opts?: { env?: Record<string, string> }) => {
-		lastSpawnOptions = opts;
-		spawnCommands.push(cmd);
-		const response = spawnResponses.shift() ?? { exitCode: 1, stdout: "", stderr: "no response queued" };
+		const lookup = sshEnvLookupResponse(cmd);
+		if (!lookup) {
+			lastSpawnOptions = opts;
+			spawnCommands.push(cmd);
+		}
+		const response = lookup ?? spawnResponses.shift() ?? { exitCode: 1, stdout: "", stderr: "no response queued" };
 		const encoder = new TextEncoder();
 		let resolveExit!: (code: number) => void;
 		const exited = response.hang
@@ -59,9 +75,11 @@ vi.mock("../spawn", () => ({
 					gates.push(() => resolve(response.exitCode));
 				})
 				: Promise.resolve(response.exitCode);
-		activeSpawns += 1;
-		maxActiveSpawns = Math.max(maxActiveSpawns, activeSpawns);
-		void exited.then(() => { activeSpawns -= 1; });
+		if (!lookup) {
+			activeSpawns += 1;
+			maxActiveSpawns = Math.max(maxActiveSpawns, activeSpawns);
+			void exited.then(() => { activeSpawns -= 1; });
+		}
 		return {
 			exited,
 			kill: () => {
@@ -90,12 +108,15 @@ import {
 	fetchOriginBranches,
 	fetchSshCommand,
 	lastOriginFetchError,
+	sshEndpointOf,
 	_resetFetchState,
 	saveDiffSnapshot,
 	taskDir,
 } from "../git";
 
 beforeEach(() => {
+	remoteUrl = "git@github.com:o/r.git";
+	repoSshCommand = "";
 	lastSpawnOptions = undefined;
 	spawnResponses = [];
 	spawnCommands = [];
@@ -313,34 +334,60 @@ function fetchArgs(): string[][] {
 }
 
 describe("fetch SSH connection reuse", () => {
+	const base = "ssh -o BatchMode=yes -o ConnectTimeout=10";
+	const work = "git@github.com-work:";
+	const socketOf = (cmd: string) => /ControlPath="([^"]+)"/.exec(cmd)?.[1];
+
 	it("adds ControlMaster options on unix", () => {
 		for (const platform of ["darwin", "linux"] as const) {
-			const cmd = fetchSshCommand(platform, "/home/u/.dev3.0/ssh");
-			expect(cmd).toContain("ssh -o BatchMode=yes -o ConnectTimeout=10");
-			expect(cmd).toContain("-o ControlMaster=auto");
-			expect(cmd).toContain(`-o 'ControlPath="/home/u/.dev3.0/ssh/%C"'`);
+			const cmd = fetchSshCommand(platform, "/home/u/.dev3.0/ssh-mux", work);
+			expect(cmd).toContain(`${base} -o ControlMaster=auto`);
+			expect(socketOf(cmd)).toMatch(/^\/home\/u\/\.dev3\.0\/ssh-mux\/[0-9a-f]{16}$/);
 			expect(cmd).toContain("-o ControlPersist=300");
 		}
 	});
 
-	it("leaves the command unchanged on Windows or without a control dir", () => {
-		const base = "ssh -o BatchMode=yes -o ConnectTimeout=10";
-		expect(fetchSshCommand("win32", "C:/dev3/ssh")).toBe(base);
-		expect(fetchSshCommand("linux", null)).toBe(base);
+	// Two ~/.ssh/config aliases resolving to one HostName share ssh's %C, and so one
+	// master: every repo then authenticated as whichever GitHub account connected first.
+	it("gives each ssh alias of one host its own socket, never ssh's %C", () => {
+		const dir = "/home/u/.dev3.0/ssh-mux";
+		const workCmd = fetchSshCommand("darwin", dir, sshEndpointOf("git@github.com-work:base44-dev/apper.git"));
+		const personalCmd = fetchSshCommand("darwin", dir, sshEndpointOf("git@github.com-personal:h0x91b/dev-3.0.git"));
+		expect(workCmd).not.toContain("%C");
+		expect(socketOf(workCmd)).not.toBe(socketOf(personalCmd));
+		const sameWorkRepo = fetchSshCommand("darwin", dir, sshEndpointOf("git@github.com-work:base44-dev/other.git"));
+		expect(socketOf(sameWorkRepo)).toBe(socketOf(workCmd));
+	});
+
+	it("reads the ssh endpoint a remote URL names", () => {
+		expect(sshEndpointOf("git@github.com-work:base44-dev/apper.git")).toBe("git@github.com-work:");
+		expect(sshEndpointOf("github.com:o/r")).toBe("@github.com:");
+		expect(sshEndpointOf("ssh://git@github.com-work/o/r.git")).toBe("git@github.com-work:");
+		expect(sshEndpointOf("ssh://me@host:2222/o/r.git")).toBe("me@host:2222");
+		expect(sshEndpointOf("git+ssh://[::1]:22/o/r")).toBe("@[::1]:22");
+		expect(sshEndpointOf("https://github.com/o/r.git")).toBeNull();
+		expect(sshEndpointOf("file:///srv/r.git")).toBeNull();
+		expect(sshEndpointOf("/srv/r.git")).toBeNull();
+		expect(sshEndpointOf("./sub:dir/r.git")).toBeNull();
+	});
+
+	it("leaves the command unchanged on Windows, without a control dir, or without an ssh endpoint", () => {
+		expect(fetchSshCommand("win32", "C:/dev3/ssh-mux", work)).toBe(base);
+		expect(fetchSshCommand("linux", null, work)).toBe(base);
+		expect(fetchSshCommand("linux", "/home/u/.dev3.0/ssh-mux", null)).toBe(base);
 	});
 
 	it("drops connection reuse when the socket path would not fit sun_path", () => {
-		const base = "ssh -o BatchMode=yes -o ConnectTimeout=10";
-		const qaHome = "/var/folders/04/ym_1nnl161n0p59pjl247ynr0000gn/T/dev3-qa/0123456789ab/seeded/home/.dev3.0/ssh";
-		expect(fetchSshCommand("darwin", qaHome)).toBe(base);
-		expect(fetchSshCommand("darwin", `/${"a".repeat(44)}`)).toContain("ControlMaster=auto");
-		expect(fetchSshCommand("darwin", `/${"a".repeat(45)}`)).toBe(base);
-		expect(fetchSshCommand("linux", `/${"é".repeat(23)}`)).toBe(base);
+		const qaHome = "/var/folders/04/ym_1nnl161n0p59pjl247ynr0000gn/T/dev3-qa/0123456789ab/seeded/home/.dev3.0/ssh-mux";
+		expect(fetchSshCommand("darwin", qaHome, work)).toBe(base);
+		expect(fetchSshCommand("darwin", `/${"a".repeat(68)}`, work)).toContain("ControlMaster=auto");
+		expect(fetchSshCommand("darwin", `/${"a".repeat(69)}`, work)).toBe(base);
+		expect(fetchSshCommand("linux", `/${"é".repeat(35)}`, work)).toBe(base);
 	});
 
 	it("quotes a control dir with spaces and single quotes for sh", () => {
-		expect(fetchSshCommand("linux", "/Users/a b/it's/ssh")).toContain(
-			`-o 'ControlPath="/Users/a b/it'\\''s/ssh/%C"'`,
+		expect(fetchSshCommand("linux", "/Users/a b/it's/ssh-mux", work)).toMatch(
+			/-o 'ControlPath="\/Users\/a b\/it'\\''s\/ssh-mux\/[0-9a-f]{16}"'/,
 		);
 	});
 
@@ -351,7 +398,7 @@ describe("fetch SSH connection reuse", () => {
 			queueResponse(0, "");
 			await fetchOrigin("/repo", "a");
 			expect(lastSpawnOptions?.env?.GIT_SSH_COMMAND).toContain("ControlMaster=auto");
-			expect(lastSpawnOptions?.env?.GIT_SSH_COMMAND).toContain("/tmp/dev3-test/ssh/%C");
+			expect(socketOf(lastSpawnOptions?.env?.GIT_SSH_COMMAND ?? "")).toMatch(/^\/tmp\/dev3-test\/ssh-mux\/[0-9a-f]{16}$/);
 
 			platform.mockReturnValue("win32");
 			queueResponse(0, "");
@@ -360,6 +407,32 @@ describe("fetch SSH connection reuse", () => {
 		} finally {
 			platform.mockRestore();
 		}
+	});
+
+	it("keys the socket by the remote being fetched", async () => {
+		const platform = vi.spyOn(process, "platform", "get");
+		try {
+			platform.mockReturnValue("darwin");
+			remoteUrl = "git@github.com-work:base44-dev/apper.git";
+			queueResponse(0, "");
+			await fetchOrigin("/work", "main");
+			const workSocket = socketOf(lastSpawnOptions?.env?.GIT_SSH_COMMAND ?? "");
+			remoteUrl = "git@github.com-personal:h0x91b/dev-3.0.git";
+			queueResponse(0, "");
+			await fetchOrigin("/personal", "main");
+			expect(workSocket).toBeDefined();
+			expect(socketOf(lastSpawnOptions?.env?.GIT_SSH_COMMAND ?? "")).not.toBe(workSocket);
+		} finally {
+			platform.mockRestore();
+		}
+	});
+
+	it("leaves a repo's own core.sshCommand in charge", async () => {
+		repoSshCommand = "ssh -i ~/.ssh/work";
+		queueResponse(0, "");
+		await fetchOrigin("/repo", "main");
+		expect(lastSpawnOptions?.env?.GIT_SSH_COMMAND).toBeUndefined();
+		expect(lastSpawnOptions?.env?.GIT_TERMINAL_PROMPT).toBe("0");
 	});
 });
 
