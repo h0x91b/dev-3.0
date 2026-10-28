@@ -808,6 +808,16 @@ export class TmuxClient {
 		return this.runCommand(opts?.socket, ["set-option", "-u", "-t", target, option], opts);
 	}
 
+	/** `set-option -w -t <windowId> <option> <value>` — a window-scoped (user) option. */
+	setWindowOption(windowId: string, option: string, value: string, opts?: CommandOpts): Promise<void> {
+		return this.runCommand(opts?.socket, ["set-option", "-w", "-t", windowId, option, value], opts);
+	}
+
+	/** `set-option -w -u -t <windowId> <option>` — drop the window's own value. */
+	unsetWindowOption(windowId: string, option: string, opts?: CommandOpts): Promise<void> {
+		return this.runCommand(opts?.socket, ["set-option", "-w", "-u", "-t", windowId, option], opts);
+	}
+
 	/** `set-option -g <option> <value>` — a server-global (session) option. */
 	setGlobalOption(option: string, value: string, opts?: CommandOpts): Promise<void> {
 		return this.runCommand(opts?.socket, ["set-option", "-g", option, value], opts);

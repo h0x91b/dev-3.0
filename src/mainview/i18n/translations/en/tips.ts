@@ -235,6 +235,8 @@ const tips = {
 	"tip.continueInAnotherAgent.body": "In + Agent, tick “Continue this task’s conversation” — the new agent gets a retelling of the session so far and picks the work up.",
 	"tip.remoteSelfUpdate.title": "Remote boxes self-update",
 	"tip.remoteSelfUpdate.body": "A `dev3 remote` server installs updates itself once the box goes quiet, keeping its public link — or run `dev3 update` yourself.",
+	"tip.renameTerminalWindow.title": "Name your terminal tabs",
+	"tip.renameTerminalWindow.body": "Double-click a tab above the terminal (or press F2 on it) to rename it — the name sticks until you clear it.",
 } as const;
 
 export default tips;

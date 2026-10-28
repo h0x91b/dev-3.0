@@ -39,6 +39,8 @@ export interface TmuxWindowEntry {
 	index: number;
 	/** Display name; empty means "no meaningful name" — the UI shows "Window N". */
 	label: string;
+	/** The name the user gave this window from the tab bar; outranks `label` and the task title. */
+	customName?: string;
 	active: boolean;
 	home: boolean;
 	panes: number;

@@ -235,6 +235,8 @@ const tips = {
 	"tip.continueInAnotherAgent.body": "En + Agente marca «Continuar la conversación de esta tarea»: el nuevo agente recibe un resumen narrado de la sesión y retoma el trabajo.",
 	"tip.remoteSelfUpdate.title": "Las máquinas remotas se autoactualizan",
 	"tip.remoteSelfUpdate.body": "Un servidor `dev3 remote` instala actualizaciones solo cuando la máquina está tranquila y conserva su enlace público — o ejecuta `dev3 update` tú mismo.",
+	"tip.renameTerminalWindow.title": "Pon nombre a tus pestañas",
+	"tip.renameTerminalWindow.body": "Haz doble clic en una pestaña sobre la terminal (o pulsa F2) para renombrarla; el nombre se queda hasta que lo borres.",
 };
 
 export default tips;

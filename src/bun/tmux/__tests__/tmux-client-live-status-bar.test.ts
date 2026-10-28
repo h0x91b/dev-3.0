@@ -16,7 +16,7 @@ vi.mock("../../logger", () => ({
 
 import { buildThemeConfig } from "../config";
 import { WINDOW_LABEL } from "../themes";
-import { TMUX_AGENT_PANE_OPTION, TMUX_TASK_TITLE_OPTION } from "../constants";
+import { TMUX_AGENT_PANE_OPTION, TMUX_TASK_TITLE_OPTION, TMUX_WINDOW_NAME_OPTION } from "../constants";
 
 function tmuxVersion(): string | null {
 	try {
@@ -198,6 +198,24 @@ describe.skipIf(!tmuxVersion())("dev3 status bar on a live tmux server", () => {
 		tmux("new-window", "-d", "-t", "=agent:", "sh");
 		const plain = tmux("display-message", "-p", "-t", "=agent:2", WINDOW_LABEL);
 		expect(plain).toBe(tmux("display-message", "-p", "-t", "=agent:2", "#{window_name}"));
+	});
+
+	it("labels a window the user renamed with that name, over the task title, until it is cleared", () => {
+		tmux("new-session", "-d", "-s", "named", "sh");
+		tmux("set-option", "-p", "-t", "=named:", TMUX_AGENT_PANE_OPTION, "1");
+		tmux("set-option", "-t", "=named:", TMUX_TASK_TITLE_OPTION, "Task title");
+		const windowId = tmux("display-message", "-p", "-t", "=named:", "#{window_id}");
+
+		tmux("set-option", "-w", "-t", windowId, TMUX_WINDOW_NAME_OPTION, "Builder");
+		tmux("select-pane", "-t", "=named:", "-T", "✳ Claude Code");
+		expect(tmux("display-message", "-p", "-t", "=named:", WINDOW_LABEL)).toBe("Builder");
+
+		// A `#` is doubled so the bar prints it instead of parsing a style out of it.
+		tmux("set-option", "-w", "-t", windowId, TMUX_WINDOW_NAME_OPTION, "#[fg=red]PR #12");
+		expect(tmux("display-message", "-p", "-t", "=named:", WINDOW_LABEL)).toBe("##[fg=red]PR ##12");
+
+		tmux("set-option", "-w", "-u", "-t", windowId, TMUX_WINDOW_NAME_OPTION);
+		expect(tmux("display-message", "-p", "-t", "=named:", WINDOW_LABEL)).toBe("Task title");
 	});
 });
 

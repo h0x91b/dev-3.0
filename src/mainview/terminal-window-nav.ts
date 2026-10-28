@@ -27,6 +27,15 @@ export async function openTmuxWindow(taskId: string): Promise<void> {
 	notifyTmuxWindowsChanged(taskId);
 }
 
+/** Give a window a sticky name; "" hands it back to automatic naming. Refreshes its navigators. */
+export async function renameTmuxWindow(taskId: string, windowId: string, name: string): Promise<void> {
+	try {
+		await api.request.tmuxRenameWindow({ taskId, windowId, name });
+	} finally {
+		notifyTmuxWindowsChanged(taskId);
+	}
+}
+
 /**
  * Close one tmux window — `windowId`, or the active one when omitted. The agent's
  * window only goes after the user agreed, to that same window; the backend never

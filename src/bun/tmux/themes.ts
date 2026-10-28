@@ -4,7 +4,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dev3TempPath } from "../temp-paths";
-import { TMUX_AGENT_PANE_OPTION, TMUX_TASK_TITLE_OPTION } from "./constants";
+import { TMUX_AGENT_PANE_OPTION, TMUX_TASK_TITLE_OPTION, TMUX_WINDOW_NAME_OPTION } from "./constants";
 
 // ── Color palettes ──────────────────────────────────────────────────
 
@@ -122,13 +122,16 @@ set -ogqF @catppuccin_status_module_text_bg "#{@thm_surface_0}"
 const PANE_TITLE_LABEL = "#{?#{||:#{==:#{pane_title},#{host}},#{==:#{pane_title},#{host_short}}},#W,#T}";
 const HAS_AGENT_PANE = `#{P:#{?${TMUX_AGENT_PANE_OPTION},1,}}`;
 const TASK_TITLE = `#{${TMUX_TASK_TITLE_OPTION}}`;
+// `q/h` doubles every `#`, so a name like `#[fg=red]` prints as text instead of styling the bar.
+const CUSTOM_NAME = `#{q/h:${TMUX_WINDOW_NAME_OPTION}}`;
+const AUTOMATIC_LABEL = `#{?#{&&:${HAS_AGENT_PANE},${TASK_TITLE}},${TASK_TITLE},${PANE_TITLE_LABEL}}`;
 
 /**
- * Tab label, capped at 32 cells: the dev3 task title on a window holding an agent
- * pane, else the pane title — or the running command when that title is only the
- * hostname (a plain shell's default).
+ * Tab label, capped at 32 cells: the name the user gave the window, else the dev3
+ * task title on a window holding an agent pane, else the pane title — or the
+ * running command when that title is only the hostname (a plain shell's default).
  */
-export const WINDOW_LABEL = `#{=/32/…:#{?#{&&:${HAS_AGENT_PANE},${TASK_TITLE}},${TASK_TITLE},${PANE_TITLE_LABEL}}}`;
+export const WINDOW_LABEL = `#{=/32/…:#{?#{${TMUX_WINDOW_NAME_OPTION}},${CUSTOM_NAME},${AUTOMATIC_LABEL}}}`;
 
 /** Left and right slanted caps of a tab filled with palette option `tab`. */
 function tabCaps(tab: string): [string, string] {

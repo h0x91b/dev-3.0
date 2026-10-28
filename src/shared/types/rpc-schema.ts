@@ -1244,6 +1244,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; windowId?: string; force?: boolean };
 				response: TmuxCloseWindowResult;
 			};
+			tmuxRenameWindow: {
+				params: { taskId: string; windowId: string; name: string };
+				response: { renamed: boolean };
+			};
 			tmuxLayout: {
 				params: { taskId: string };
 				response: TmuxLayout;

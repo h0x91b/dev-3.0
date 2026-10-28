@@ -235,6 +235,8 @@ const tips = {
 	"tip.continueInAnotherAgent.body": "В «+ Агент» отметь «Продолжить разговор этой задачи» — новый агент получит пересказ сессии и подхватит работу.",
 	"tip.remoteSelfUpdate.title": "Удалённая машина обновляется сама",
 	"tip.remoteSelfUpdate.body": "Сервер `dev3 remote` ставит обновления сам, когда машина затихла, и сохраняет публичную ссылку — или запустите `dev3 update` вручную.",
+	"tip.renameTerminalWindow.title": "Свои имена для вкладок",
+	"tip.renameTerminalWindow.body": "Дважды кликните вкладку над терминалом (или F2 на ней), чтобы переименовать — имя держится, пока его не очистите.",
 };
 
 export default tips;

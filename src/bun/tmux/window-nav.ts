@@ -40,6 +40,7 @@ export function buildWindowEntries(
 		windowId: row.windowId,
 		index: row.index,
 		label: windowLabel(row),
+		...(row.customName.trim() ? { customName: row.customName.trim() } : {}),
 		active: row.active,
 		home: row.windowId === home,
 		panes: row.panes,

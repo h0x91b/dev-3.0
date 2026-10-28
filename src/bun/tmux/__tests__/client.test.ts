@@ -197,9 +197,9 @@ describe("list/parse methods", () => {
 
 	it("listWindows and listSessions pass the format string", async () => {
 		// The pane title is the free-text tail: a TAB inside it must not shift the columns.
-		const { client, spawnFn } = makeClient({ stdout: "@1\t0\t1\t2\t1700\t0\tbox\tmain\tFix\tauth\n" });
+		const { client, spawnFn } = makeClient({ stdout: "@1\t0\t1\t2\t1700\t0\tbox\tmain\tBuilder\tFix\tauth\n" });
 		const windows = await client.listWindows(WINDOW_SWITCHER_FORMAT, { target: "dev3-abc" });
-		expect(windows).toEqual([{ windowId: "@1", index: 0, active: true, panes: 2, activity: 1700, bell: false, hostShort: "box", name: "main", title: "Fix\tauth" }]);
+		expect(windows).toEqual([{ windowId: "@1", index: 0, active: true, panes: 2, activity: 1700, bell: false, hostShort: "box", name: "main", customName: "Builder", title: "Fix\tauth" }]);
 		expect(argvOf(spawnFn)).toContain(WINDOW_SWITCHER_FORMAT.formatString);
 
 		const { client: sessions, spawnFn: sessionsSpawn } = makeClient({ stdout: "dev3-a\t1\t123\t/tmp\n" });
@@ -428,6 +428,8 @@ describe("command methods build the documented argv", () => {
 		["setOption", (c) => c.setOption("dev3-a", "pane-border-status", "top"), ["set-option", "-t", "dev3-a", "pane-border-status", "top"]],
 		["unsetOption", (c) => c.unsetOption("=dev3-a:", "status"), ["set-option", "-u", "-t", "=dev3-a:", "status"]],
 		["setPaneOption", (c) => c.setPaneOption("%1", "@dev3_agent", "1"), ["set-option", "-p", "-t", "%1", "@dev3_agent", "1"]],
+		["setWindowOption", (c) => c.setWindowOption("@3", "@dev3_window_name", "logs"), ["set-option", "-w", "-t", "@3", "@dev3_window_name", "logs"]],
+		["unsetWindowOption", (c) => c.unsetWindowOption("@3", "@dev3_window_name"), ["set-option", "-w", "-u", "-t", "@3", "@dev3_window_name"]],
 		["setGlobalOption", (c) => c.setGlobalOption("@dev3_pane_dimming", "off"), ["set-option", "-g", "@dev3_pane_dimming", "off"]],
 		["setWindowHook", (c) => c.setWindowHook("dev3-a", "pane-exited", "run-shell x"), ["set-hook", "-wt", "dev3-a", "pane-exited", "run-shell x"]],
 		["setEnvironment", (c) => c.setEnvironment("dev3-a", "K", "v"), ["set-environment", "-t", "dev3-a", "K", "v"]],

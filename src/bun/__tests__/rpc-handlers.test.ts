@@ -15775,10 +15775,10 @@ describe("handlers.tmuxWindowNavigate", () => {
 	const SEP = "\t";
 	const HOST = "mybox";
 
-	// One list-windows row: window_id, index, active, panes, activity, bell, host_short, window_name, pane_title.
-	function row(id: string, active: string, name: string, title = HOST, extra: { panes?: number; activity?: number; bell?: string } = {}): string {
+	// One list-windows row: window_id, index, active, panes, activity, bell, host_short, window_name, @dev3_window_name, pane_title.
+	function row(id: string, active: string, name: string, title = HOST, extra: { panes?: number; activity?: number; bell?: string; customName?: string } = {}): string {
 		const index = id.slice(1);
-		return [id, index, active, String(extra.panes ?? 1), String(extra.activity ?? 100), extra.bell ?? "0", HOST, name, title].join(SEP);
+		return [id, index, active, String(extra.panes ?? 1), String(extra.activity ?? 100), extra.bell ?? "0", HOST, name, extra.customName ?? "", title].join(SEP);
 	}
 	const lay = (...rows: string[]) => rows.join("\n");
 
@@ -15815,6 +15815,13 @@ describe("handlers.tmuxWindowNavigate", () => {
 		mockLayouts([lay(row("@1", "1", "2.1.3", "✳ Fix auth race"), row("@2", "0", "zsh"), row("@3", "0", "build", "Dev Server"))]);
 		const res = await handlers.tmuxWindowNavigate({ taskId: TASK_ID });
 		expect(res.windows.map((w) => w.label)).toEqual(["Fix auth race", "zsh", "Dev Server"]);
+	});
+
+	it("carries a user-given window name beside the automatic label, and omits it when unset", async () => {
+		mockLayouts([lay(row("@1", "1", "claude", "✳ Fix auth", { customName: "Builder" }), row("@2", "0", "zsh"))]);
+		const res = await handlers.tmuxWindowNavigate({ taskId: TASK_ID });
+		expect(res.windows[0]).toMatchObject({ label: "Fix auth", customName: "Builder" });
+		expect(res.windows[1]).not.toHaveProperty("customName");
 	});
 
 	it("marks the window holding the last-focused agent pane as home", async () => {
