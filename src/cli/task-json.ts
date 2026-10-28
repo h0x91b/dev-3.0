@@ -1,5 +1,5 @@
-import type { PRCIStatus, PRMergeState, PRReviewDecision, Task, TaskHistoryEntry, TaskNote } from "../shared/types";
-import { DEFAULT_PRIORITY, STATUS_LABELS, getTaskOverview, getTaskTitle, taskCompletesManually } from "../shared/types";
+import type { PRCIStatus, PRMergeState, PRReviewDecision, Task, TaskHistoryEntry, TaskNote, TaskOriginParent } from "../shared/types";
+import { DEFAULT_PRIORITY, STATUS_LABELS, getTaskOverview, getTaskTitle, taskCompletesManually, taskOrigin } from "../shared/types";
 import { allPullRequests } from "../shared/task-pull-requests";
 
 /**
@@ -61,8 +61,39 @@ export interface TaskShowJson {
 	updatedAt: string;
 	movedAt: string | null;
 	noteCount: number;
+	/**
+	 * Who created the task. For `task`, `parent` is resolved at read time and is
+	 * null when the parent was deleted.
+	 */
+	origin:
+		| { kind: "user" }
+		| { kind: "task"; taskId: string; projectId: string; parent: TaskOriginParent | null }
+		| { kind: "automation"; automationId: string | null }
+		| { kind: "import" };
 	notes?: Array<Pick<TaskNote, "id" | "source" | "content" | "createdAt" | "updatedAt">>;
 	history?: Array<Pick<TaskHistoryEntry, "at" | "changed" | "title" | "overview">>;
+}
+
+/** The task as `task.show` returns it: the stored task plus its resolved parent. */
+export type ShownTask = Task & { originParent?: TaskOriginParent | null };
+
+function originJson(task: ShownTask): TaskShowJson["origin"] {
+	const origin = taskOrigin(task);
+	if (origin.kind === "task") return { ...origin, parent: task.originParent ?? null };
+	if (origin.kind === "automation") return { kind: "automation", automationId: task.automationId ?? null };
+	return origin;
+}
+
+/** The "Created by" line for a non-user origin, or null for a task the user created. */
+export function describeTaskOrigin(task: ShownTask): string | null {
+	const origin = taskOrigin(task);
+	if (origin.kind === "user") return null;
+	if (origin.kind === "automation") return task.automationId ? `automation ${task.automationId.slice(0, 8)}` : "an automation";
+	if (origin.kind === "import") return "a conversation import";
+	const parent = task.originParent;
+	if (!parent) return `a task (deleted) — ${origin.taskId.slice(0, 8)}`;
+	const seq = parent.variantIndex !== null ? `${parent.seq}-${parent.variantIndex}` : String(parent.seq);
+	return `#${seq} · ${parent.projectName} — ${parent.title} (seq:${parent.seq}, ${parent.id.slice(0, 8)})`;
 }
 
 function prStatusJson(task: Task): TaskShowJson["prStatus"] {
@@ -80,7 +111,7 @@ function prStatusJson(task: Task): TaskShowJson["prStatus"] {
 	};
 }
 
-export function buildTaskShowJson(task: Task, opts: { notes?: boolean; history?: boolean } = {}): TaskShowJson {
+export function buildTaskShowJson(task: ShownTask, opts: { notes?: boolean; history?: boolean } = {}): TaskShowJson {
 	const json: TaskShowJson = {
 		schemaVersion: TASK_SHOW_JSON_SCHEMA_VERSION,
 		id: task.id,
@@ -115,6 +146,7 @@ export function buildTaskShowJson(task: Task, opts: { notes?: boolean; history?:
 		updatedAt: task.updatedAt,
 		movedAt: task.movedAt ?? null,
 		noteCount: task.notes?.length ?? 0,
+		origin: originJson(task),
 	};
 	if (opts.notes) {
 		json.notes = (task.notes ?? []).map(({ id, source, content, createdAt, updatedAt }) => ({

@@ -111,6 +111,27 @@ describe("task show", () => {
 		expect(stdoutOutput).toContain("Agent is Working");
 	});
 
+	it("prints no Created by line for a task the user created", async () => {
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).not.toContain("Created by");
+	});
+
+	it("prints the parent a task was created by, and a deleted parent as such", async () => {
+		const child = { ...FAKE_TASK, origin: { kind: "task", taskId: "pppppppp-0000", projectId: "proj-002" } };
+		mockSend.mockResolvedValue(okResp({
+			...child,
+			originParent: { id: "pppppppp-0000", projectId: "proj-002", projectName: "homebrew", seq: 1801, variantIndex: 2, title: "Coordinate" },
+		}));
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).toMatch(/Created by:\s*#1801-2 · homebrew — Coordinate/);
+
+		stdoutOutput = "";
+		mockSend.mockResolvedValue(okResp({ ...child, originParent: null }));
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).toMatch(/Created by:\s*a task \(deleted\)/);
+	});
+
 	it("prints the priority field (defaulting to P3 when absent)", async () => {
 		mockSend.mockResolvedValue(okResp(FAKE_TASK));
 		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
@@ -345,6 +366,18 @@ describe("task create", () => {
 
 		const params = mockSend.mock.calls[0]![2]!;
 		expect(params.projectId).toBe(CTX.projectId);
+	});
+
+	it("names the task it runs inside as the creator, even for another project", async () => {
+		mockSend.mockResolvedValue(okResp(createdTask));
+
+		await handleTask("create", args([], { project: "proj-other", title: "New task" }), SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", {
+			projectId: "proj-other",
+			title: "New task",
+			sourceTaskId: CTX.taskId,
+		});
 	});
 
 	it("sends --type and names the role it created", async () => {

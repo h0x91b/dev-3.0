@@ -59,12 +59,63 @@ function parsePriorityFilter(raw: string): Set<TaskPriority> {
 	return wanted;
 }
 
+interface ChildRow {
+	id: string;
+	seq: number;
+	variantIndex: number | null;
+	projectId: string;
+	projectName: string;
+	status: TaskStatus;
+	title: string;
+}
+
+/**
+ * `tasks list --children-of <ref>`: the direct children of one task (its whole
+ * variant group), from every project. The parent resolves in --project, else
+ * the current project.
+ */
+async function listChildren(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	const ref = args.flags["children-of"]?.trim();
+	if (!ref || ref === "true") exitUsage("--children-of needs a task: --children-of seq:<N> (or a task id).");
+	const params: Record<string, unknown> = { taskId: ref };
+	const projectId = resolveProjectId(args.flags.project, context);
+	if (projectId) params.projectId = projectId;
+
+	const resp = await sendRequest(socketPath, "task.children", params);
+	if (!resp.ok) exitError(resp.error || "Failed to list children");
+	const { parent, children } = resp.data as { parent: { seq: number; projectName: string; title: string }; children: ChildRow[] };
+	const rows = [...children].sort((a, b) => a.projectName.localeCompare(b.projectName) || a.seq - b.seq);
+
+	if (args.flags.json !== undefined) {
+		process.stdout.write(`${JSON.stringify({ schemaVersion: 1, parent, children: rows }, null, 2)}\n`);
+		return;
+	}
+	process.stdout.write(`Children of #${parent.seq} · ${parent.projectName} — ${parent.title}\n\n`);
+	if (rows.length === 0) {
+		process.stdout.write("No children.\n");
+		return;
+	}
+	printTable(
+		["PROJECT", "SEQ", "ID", "STATUS", "TITLE"],
+		rows.map((c) => [
+			c.projectName,
+			c.variantIndex !== null ? `${c.seq}-${c.variantIndex}` : String(c.seq),
+			c.id.slice(0, 8),
+			STATUS_LABELS[c.status] || c.status,
+			c.title.length > 60 ? c.title.slice(0, 57) + "..." : c.title,
+		]),
+	);
+}
+
 export async function handleTasks(
 	subcommand: string | undefined,
 	args: ParsedArgs,
 	socketPath: string,
 	context: CliContext | null,
 ): Promise<void> {
+	if ((subcommand === "list" || !subcommand) && args.flags["children-of"] !== undefined) {
+		return listChildren(args, socketPath, context);
+	}
 	if (subcommand === "list" || !subcommand) {
 		if (args.flags.open !== undefined && (args.flags.status === "completed" || args.flags.status === "cancelled")) {
 			exitUsage("--open cannot be combined with a completed or cancelled --status.");

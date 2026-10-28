@@ -19,7 +19,7 @@ import { launchApprovalTimeoutMs } from "../launch-approval";
 import { handleTasks } from "./tasks";
 import { reportResumeOutcome } from "./agent";
 import type { CliHibernateOutcome, CliWakeOutcome } from "../../shared/task-hibernate";
-import { buildTaskShowJson } from "../task-json";
+import { buildTaskShowJson, describeTaskOrigin, type ShownTask } from "../task-json";
 
 // Statuses that destroy the worktree + terminal are never a direct CLI move.
 // Both become a blocking approval request the user answers in the app, so an
@@ -142,7 +142,7 @@ interface ShowTaskOptions {
 	notes?: boolean;
 }
 
-function printTask(task: Task, opts: ShowTaskOptions = {}): void {
+function printTask(task: ShownTask, opts: ShowTaskOptions = {}): void {
 	const titleMarker = task.titleEditedByUser ? " (user-edited — do NOT rename)" : "";
 	const fields: Array<[string, string]> = [
 		["ID:", task.id],
@@ -172,6 +172,8 @@ function printTask(task: Task, opts: ShowTaskOptions = {}): void {
 	}
 
 	fields.push(["Created:", formatDate(task.createdAt)]);
+	const createdBy = describeTaskOrigin(task);
+	if (createdBy) fields.push(["Created by:", createdBy]);
 	fields.push(["Updated:", formatDate(task.updatedAt)]);
 	if (task.movedAt) fields.push(["Moved:", formatDate(task.movedAt)]);
 	if (task.notes && task.notes.length > 0) fields.push(["Notes:", String(task.notes.length)]);
@@ -231,10 +233,10 @@ async function showTask(args: ParsedArgs, socketPath: string, context: CliContex
 
 	const opts = { history: args.flags.history === "true", notes: args.flags.notes === "true" };
 	if (args.flags.json !== undefined) {
-		process.stdout.write(`${JSON.stringify(buildTaskShowJson(resp.data as Task, opts), null, 2)}\n`);
+		process.stdout.write(`${JSON.stringify(buildTaskShowJson(resp.data as ShownTask, opts), null, 2)}\n`);
 		return;
 	}
-	printTask(resp.data as Task, opts);
+	printTask(resp.data as ShownTask, opts);
 }
 
 async function createTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
@@ -301,6 +303,8 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 	const description = args.flags.description === "-" ? stdinDescription : args.flags.description || positionalContent;
 
 	const params: Record<string, unknown> = { projectId, title };
+	// Inside a task's context that task is the parent, whoever typed the command.
+	if (context?.taskId) params.sourceTaskId = context.taskId;
 	if (description) params.description = description;
 	if (taskType) params.taskType = taskType;
 	if (prFlag) params.pr = prFlag;

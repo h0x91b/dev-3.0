@@ -1,5 +1,5 @@
-import type { AgentMessageSource, CustomColumn, PresetPromptSource, Project, Task, TaskStatus, TaskType } from "../../shared/types";
-import { ACTIVE_STATUSES, ALL_STATUSES, TASK_TYPES, agentLaunchAutoApproveMs, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, presetPromptSourceForTaskType, withPresetPrompt, withoutPresetPrompt } from "../../shared/types";
+import type { AgentMessageSource, CustomColumn, PresetPromptSource, Project, Task, TaskOrigin, TaskStatus, TaskType } from "../../shared/types";
+import { ACTIVE_STATUSES, ALL_STATUSES, TASK_TYPES, getTaskTitle, agentLaunchAutoApproveMs, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, presetPromptSourceForTaskType, withPresetPrompt, withoutPresetPrompt } from "../../shared/types";
 import type { DeepLinkNav } from "../../shared/deep-link";
 import { markPendingDeepLinkNav } from "../deep-link-nav";
 import * as data from "../data";
@@ -14,10 +14,11 @@ import type { AgentPromptDeliveryStatus } from "../../shared/agent-prompt-delive
 import { loadSettings } from "../settings";
 import { syncTaskBranchName } from "../task-branch-sync";
 import { taskPeek } from "../task-peek";
+import { loadTaskChildren } from "../task-lineage";
 import { readTaskTerminalBackendState, switchTaskTerminalBackend } from "../task-terminal-backend-switch";
 import { approvalStatusOf, launchSuggestionRequested, launcherHandoffNote, requestAgentLaunchApproval, requestDestructiveApproval, resolveLaunchSuggestion } from "./approvals";
 import { log, type Handler, withSenderVariant } from "./shared";
-import { findByIdPrefix, findTaskByRef, resolveAgentMessageSource, resolveRequesterTask, resolveTaskAcrossProjects, resolveTaskFromParams, scopedTaskNotFoundError, senderRequester, taskNotFoundError, withArchivedHistory, withSenderAgent } from "./task-resolution";
+import { findByIdPrefix, findTaskByRef, parseSeqRef, resolveAgentMessageSource, resolveRequesterTask, resolveTaskAcrossProjects, resolveTaskFromParams, scopedTaskNotFoundError, senderRequester, taskNotFoundError, withArchivedHistory, withOriginParent, withSenderAgent } from "./task-resolution";
 
 // Lazy like `conversationImport` (shared.ts): it reaches the app and spaces handler domains.
 async function projectRegistration() {
@@ -62,6 +63,24 @@ async function changeTaskLabels(params: Record<string, unknown>, mode: "replace"
 
 	const { task: updated } = await labelOps.changeTaskLabels(boardPorts, project, task.id, { mode, labelIds });
 	return updated;
+}
+
+/**
+ * The parent a `dev3 task create` records: the task whose context the CLI ran in
+ * (`sourceTaskId`), whoever typed it. Unresolvable → the user, never a failed create.
+ */
+async function creatorOrigin(params: Record<string, unknown>): Promise<TaskOrigin | undefined> {
+	const sourceId = typeof params.sourceTaskId === "string" ? params.sourceTaskId.trim() : "";
+	if (!sourceId) return undefined;
+	try {
+		const found = await resolveTaskAcrossProjects(sourceId);
+		if (found) return { kind: "task", taskId: found.task.id, projectId: found.project.id };
+	} catch (err) {
+		log.warn("Creator task lookup failed; recording the user as origin", { sourceId, error: String(err) });
+		return undefined;
+	}
+	log.warn("Creator task not found; recording the user as origin", { sourceId });
+	return undefined;
 }
 
 const SENDER_MOVE_REFUSED = "A sender can only start a task that is not running.";
@@ -126,6 +145,44 @@ export const taskHandlers: Record<string, Handler> = {
 	},
 
 	/**
+	 * `dev3 task list --children-of`: the direct children of a task's variant
+	 * group, from every project. The parent resolves in `projectId` when given.
+	 */
+	"task.children": async (params) => {
+		const ref = params.taskId as string;
+		if (!ref) throw new Error("taskId is required");
+		let found: { project: Project; task: Task } | null;
+		if (params.projectId) {
+			const project = await data.getProject(params.projectId as string);
+			const tasks = await data.loadTasks(project);
+			const seq = parseSeqRef(ref);
+			const task = seq === null ? findTaskByRef(tasks, ref) : tasks.find((t) => t.seq === seq) ?? null;
+			if (!task) throw await scopedTaskNotFoundError(ref, project);
+			found = { project, task };
+		} else {
+			found = await resolveTaskAcrossProjects(ref);
+			if (!found) throw taskNotFoundError(ref);
+		}
+		const { project, task } = found;
+		const group = (await data.loadTasks(project)).filter((t) => t.id === task.id || (t.seq === task.seq && task.groupId !== null && t.groupId === task.groupId));
+		const children = await loadTaskChildren(new Set(group.map((t) => t.id)));
+		const inVariantGroup = async (p: Project, t: Task) =>
+			t.groupId !== null && (await data.loadTasks(p)).some((o) => o.id !== t.id && o.groupId === t.groupId);
+		return {
+			parent: { id: task.id, seq: task.seq, projectId: project.id, projectName: project.name, title: getTaskTitle(task) },
+			children: await Promise.all(children.map(async ({ project: childProject, task: child }) => ({
+				id: child.id,
+				seq: child.seq,
+				variantIndex: await inVariantGroup(childProject, child) ? child.variantIndex : null,
+				projectId: childProject.id,
+				projectName: childProject.name,
+				status: child.status,
+				title: getTaskTitle(child),
+			}))),
+		};
+	},
+
+	/**
 	 * `dev3 task show --history` is the only reader of a task's title/overview
 	 * history, and the history lives in the task's sidecar rather than in
 	 * tasks.json. Hydrating it here keeps the CLI's task shape complete without
@@ -140,12 +197,12 @@ export const taskHandlers: Record<string, Handler> = {
 			const tasks = await data.loadTasks(project);
 			const task = findTaskByRef(tasks, taskId);
 			if (!task) throw await scopedTaskNotFoundError(taskId, project);
-			return await withArchivedHistory(project, await syncTaskBranchName(project, task));
+			return await withOriginParent(await withArchivedHistory(project, await syncTaskBranchName(project, task)));
 		}
 
 		const found = await resolveTaskAcrossProjects(taskId);
 		if (!found) throw taskNotFoundError(taskId);
-		return await withArchivedHistory(found.project, await syncTaskBranchName(found.project, found.task));
+		return await withOriginParent(await withArchivedHistory(found.project, await syncTaskBranchName(found.project, found.task)));
 	},
 
 	/**
@@ -211,9 +268,11 @@ export const taskHandlers: Record<string, Handler> = {
 		// The GUI's own creation handler — never a parallel path. It owns
 		// foreignCode, and the CLI reached feature parity by calling it rather than
 		// by copying it.
+		const origin = await creatorOrigin(params);
 		const task = await createTask({
 			projectId: project.id,
 			description: body,
+			...(origin ? { origin } : {}),
 			...(existingBranch ? { existingBranch } : {}),
 			...(priority ? { priority } : {}),
 			...(taskType ? { taskType } : {}),
@@ -246,7 +305,7 @@ export const taskHandlers: Record<string, Handler> = {
 		const project = await data.getProject(projectId);
 		// Before the placeholder exists, so a bad id leaves nothing behind.
 		const suggested = await resolveLaunchSuggestion(params);
-		const task = await createScratchTask(project.id);
+		const task = await createScratchTask(project.id, await creatorOrigin(params));
 		const requester = await resolveAgentMessageSource(params, task.id);
 		if (!requester) {
 			await deleteTask({ taskId: task.id, projectId: project.id });

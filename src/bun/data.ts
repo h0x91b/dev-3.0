@@ -1,5 +1,5 @@
 import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
-import type { Project, Task, TaskHistoryChange, TaskHistoryEntry, TaskMovement, TaskPriority, TaskStatus, TaskType, TipState } from "../shared/types";
+import type { Project, Task, TaskHistoryChange, TaskHistoryEntry, TaskMovement, TaskOrigin, TaskPriority, TaskStatus, TaskType, TipState } from "../shared/types";
 import { appendTaskMovement, DEFAULT_PRIORITY, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, getTaskOverview, getTaskTitle, isStatusGuardBlocked, remapColumnAgents, titleFromDescription } from "../shared/types";
 import {
 	decodeTerminalBackend,
@@ -864,6 +864,8 @@ export async function addTask(
 		baseBranch?: string;
 		/** See Task.importedSessionId. */
 		importedSessionId?: string;
+		/** Who created the task; a user origin is stored as the absent field. See Task.origin. */
+		origin?: TaskOrigin;
 	},
 ): Promise<Task> {
 	const file = tasksFile(project);
@@ -930,6 +932,7 @@ export async function addTask(
 			...(extras?.overview ? { overview: extras.overview } : {}),
 			...(extras?.userOverview ? { userOverview: extras.userOverview } : {}),
 			...(extras?.automationId ? { automationId: extras.automationId } : {}),
+			...(extras?.origin && extras.origin.kind !== "user" ? { origin: extras.origin } : {}),
 			...(hidden ? { hidden: true } : {}),
 			...(newBackend ? { [TERMINAL_BACKEND_FIELD]: newBackend } : {}),
 		};
@@ -1256,6 +1259,11 @@ function applyTaskUpdate(
 	},
 ): { task: Task; changed: boolean } {
 	const currentTask = tasks[idx];
+	// Origin is a creation-time fact: no update path may set, change or clear it.
+	if ("origin" in updates) {
+		const { origin: _origin, ...rest } = updates;
+		updates = rest;
+	}
 	// Authoritative guard check (runs inside the file lock).
 	if (isStatusGuardBlocked(currentTask.status, options)) {
 		return { task: currentTask, changed: false };

@@ -719,3 +719,40 @@ describe("tasks list priority", () => {
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 });
+
+describe("tasks list --children-of", () => {
+	const RESULT = {
+		parent: { id: "pppp", seq: 1801, projectId: "proj-001", projectName: "dev-3.0", title: "Coordinate" },
+		children: [
+			{ id: "cccccccc-2", seq: 9, variantIndex: null, projectId: "proj-002", projectName: "homebrew", status: "todo", title: "Bump cask" },
+			{ id: "cccccccc-1", seq: 1802, variantIndex: 2, projectId: "proj-001", projectName: "dev-3.0", status: "in-progress", title: "Fix CLI" },
+		],
+	};
+
+	it("asks for the children of the parent in the current project and lists every project", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: RESULT } as CliResponse);
+		await handleTasks("list", { positional: [], flags: { "children-of": "seq:1801" } }, SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.children", { taskId: "seq:1801", projectId: "proj-001" });
+		expect(stdoutOutput).toContain("Children of #1801 · dev-3.0");
+		expect(stdoutOutput).toContain("homebrew");
+		expect(stdoutOutput).toContain("1802-2");
+		expect(stdoutOutput).toContain("Agent is Working");
+		expect(stdoutOutput.indexOf("dev-3.0  ")).toBeLessThan(stdoutOutput.indexOf("homebrew"));
+	});
+
+	it("resolves the parent in --project and prints JSON", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: RESULT } as CliResponse);
+		await handleTasks("list", { positional: [], flags: { "children-of": "seq:1801", project: "proj-009", json: "true" } }, SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.children", { taskId: "seq:1801", projectId: "proj-009" });
+		const parsed = JSON.parse(stdoutOutput);
+		expect(parsed.children.map((c: { seq: number }) => c.seq)).toEqual([1802, 9]);
+	});
+
+	it("says so when the parent has no children", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: { ...RESULT, children: [] } } as CliResponse);
+		await handleTasks("list", { positional: [], flags: { "children-of": "seq:1801" } }, SOCKET, CTX);
+		expect(stdoutOutput).toContain("No children.");
+	});
+});

@@ -1,4 +1,4 @@
-import type { ReviewedPullRequest, AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
+import type { ReviewedPullRequest, AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskOrigin, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
 import { isTaskSoundEnabled } from "../../shared/task-sound-statuses";
 import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, normalizeTaskType, reviewTaskTitle } from "../../shared/types";
@@ -193,7 +193,7 @@ async function getAllProjectTasks(): Promise<{ projectId: string; tasks: Task[];
  * too — a second creation path is how `foreignCode` came to be set in the GUI
  * and nowhere else.
  */
-export async function createTask(params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType }): Promise<Task> {
+export async function createTask(params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType; origin?: TaskOrigin }): Promise<Task> {
 	log.info("→ createTask", {
 		projectId: params.projectId,
 		requestedStatus: params.status ?? "todo",
@@ -204,6 +204,7 @@ export async function createTask(params: { projectId: string; description: strin
 		hasOpsWorkDir: Boolean(params.opsWorkDir),
 		priority: params.priority,
 		taskType: params.taskType,
+		origin: params.origin?.kind ?? "user",
 	});
 	const project = await data.getProject(params.projectId);
 	const isScratch = params.scratch === true;
@@ -253,6 +254,7 @@ export async function createTask(params: { projectId: string; description: strin
 		...(params.priority ? { priority: params.priority } : {}),
 		...(params.taskType ? { taskType: params.taskType } : {}),
 		...(reviewIdentity?.reviewedPr ? { reviewedPr: reviewIdentity.reviewedPr } : {}),
+		...(params.origin ? { origin: params.origin } : {}),
 	};
 	const initialStatus = isActive(status) ? "todo" : status;
 	const createdTask = await data.addTask(project, description, initialStatus, Object.keys(extras).length ? extras : undefined);
@@ -290,9 +292,9 @@ export async function createTask(params: { projectId: string; description: strin
  * to the agent. A scratch task has no prompt by definition — whoever asked for it
  * drives it with messages afterwards.
  */
-export async function createScratchTask(projectId: string): Promise<Task> {
+export async function createScratchTask(projectId: string, origin?: TaskOrigin): Promise<Task> {
 	const project = await data.getProject(projectId);
-	const task = await data.addTask(project, scratchPlaceholder(), "todo", { scratch: true });
+	const task = await data.addTask(project, scratchPlaceholder(), "todo", { scratch: true, ...(origin ? { origin } : {}) });
 	getPushMessage()?.("taskUpdated", { projectId: project.id, task });
 	log.info("← createScratchTask", { taskId: task.id.slice(0, 8) });
 	return task;
@@ -661,6 +663,8 @@ async function spawnVariants(params: {
 				// New variants start at the source's priority — without the copy a
 				// P0 launch would spawn P3 siblings. Each changes independently after.
 				priority: sourceTask.priority,
+				// A variant group is one node in the lineage: siblings share the parent.
+				origin: sourceTask.origin,
 				// Virtual ("Operations") tasks: carry the chosen working folder onto
 				// each variant so the worktree-less launch path targets it instead
 				// of falling back to a managed dir.
@@ -788,6 +792,8 @@ async function addAttempts(params: {
 				// Attempts start at the source task's priority, otherwise re-running a
 				// P0 task spawns a P3 sibling. Each changes independently after.
 				priority: sourceTask.priority,
+				// Same parent as the original — an attempt is never a child of it.
+				origin: sourceTask.origin,
 				// NOTE: notes/overview are intentionally NOT copied here — addAttempts
 				// keeps the source task (returns it alongside the new attempts), so its
 				// notes are not lost; copying them would duplicate them across siblings.
@@ -1163,6 +1169,7 @@ export async function createAutomationTask(
 		agentId: automation.agentId,
 		configId: automation.configId,
 		automationId: automation.id,
+		origin: { kind: "automation" },
 		customTitle: `${automation.name} · ${now.toISOString().slice(0, 10)}`,
 	});
 	const task = { ...createdTask, status: "todo" as const };
@@ -1318,7 +1325,8 @@ export const taskLifecycleHandlers = {
 	getTasks,
 	getAllProjectTasks,
 	openQuickShell,
-	createTask,
+	// A GUI create is the user's by definition; only the CLI socket records a parent.
+	createTask: ({ origin: _origin, ...params }: Parameters<typeof createTask>[0]) => createTask(params),
 	moveTask,
 	debugEmitTaskSound,
 	cancelTaskPreparation,

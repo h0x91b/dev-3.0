@@ -159,6 +159,8 @@ const COMMANDS: CommandHelp[] = [
 					"                      pr-review = reviews someone else's code; use --pr to check it out.",
 					'Review a pull request:  dev3 task create --pr 1497 --title "Review of #1497"',
 					"Unresolvable --pr/--branch creates nothing and exits 18.",
+					"Run inside a task (worktree or DEV3_TASK_ID), the new task records that task as its",
+					"parent for good — `task show` prints it as Created by. Outside one, it is yours.",
 					"--scratch --run       Ask the user to start a throwaway peer agent — no title,",
 					"                      no prompt. Blocks up to 10 min on their approval in the",
 					"                      app; exit 10 if declined. Drive it with `dev3 message`.",
@@ -270,7 +272,7 @@ const COMMANDS: CommandHelp[] = [
 		subcommands: [
 			{
 				name: "list",
-				usage: "dev3 tasks list [--open] [--json] [--status <s>] [--label <id>] [--priority <P0..P4>] [--sort priority|seq] [--limit <n>] [--offset <n>]",
+				usage: "dev3 tasks list [--open] [--json] [--status <s>] [--label <id>] [--priority <P0..P4>] [--sort priority|seq] [--limit <n>] [--offset <n>] [--children-of <seq:N|id>]",
 				summary: "List tasks: live work, then To Do, then completed, then cancelled (default 50 per page).",
 				details: [
 					"Highest priority first inside each group, exactly as the board ranks a column; newest (highest seq) breaks ties.",
@@ -283,6 +285,8 @@ const COMMANDS: CommandHelp[] = [
 					"--sort priority|seq  Order inside each group (default priority).",
 					"--limit <n>        Page size (default 50).",
 					"--offset <n>       Skip n tasks, for paging.",
+					"--children-of <ref>  The tasks created from inside that task (its whole variant group), from every project.",
+					"                  The parent resolves in --project, else the current one. Direct children only.",
 				],
 			},
 		],

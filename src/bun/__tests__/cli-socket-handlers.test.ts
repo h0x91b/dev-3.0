@@ -1883,6 +1883,91 @@ describe("task.create", () => {
 		expect(resp.ok).toBe(true);
 	});
 
+	describe("origin", () => {
+		const parentProject = makeProject({ id: "proj-2", name: "Coordinators" });
+		const parent = makeTask({ id: "parent-0000-1111-2222-333333333333", projectId: "proj-2", seq: 1801 });
+
+		function wireBoards() {
+			const project = makeProject();
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.loadProjects).mockResolvedValue([project, parentProject]);
+			vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+			vi.mocked(data.loadTasks).mockImplementation(async (p) => (p.id === "proj-2" ? [parent] : []));
+			vi.mocked(createTask).mockResolvedValue(makeTask({ status: "todo" }));
+			vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+		}
+
+		it("records the creating task, resolved in another project, as the parent", async () => {
+			wireBoards();
+			const resp = await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Child", sourceTaskId: "parent-0" }));
+			expect(resp.ok).toBe(true);
+			expect(createTask).toHaveBeenCalledWith({
+				projectId: "proj-1",
+				description: "Child",
+				origin: { kind: "task", taskId: parent.id, projectId: "proj-2" },
+			});
+		});
+
+		it("records the exact variant that created the task", async () => {
+			wireBoards();
+			const variant2 = makeTask({ id: "variant2-1111-2222-3333-444444444444", projectId: "proj-2", seq: 1801, groupId: "g", variantIndex: 2 });
+			vi.mocked(data.loadTasks).mockImplementation(async (p) => (p.id === "proj-2" ? [{ ...parent, groupId: "g", variantIndex: 1 }, variant2] : []));
+			await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Child", sourceTaskId: "variant2" }));
+			expect(vi.mocked(createTask).mock.calls[0]![0].origin).toEqual({ kind: "task", taskId: variant2.id, projectId: "proj-2" });
+		});
+
+		it("falls back to the user when the creator cannot be resolved, and still creates", async () => {
+			wireBoards();
+			const resp = await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Child", sourceTaskId: "gone-123" }));
+			expect(resp.ok).toBe(true);
+			expect(createTask).toHaveBeenCalledWith({ projectId: "proj-1", description: "Child" });
+		});
+
+		it("records the user outside any task context", async () => {
+			wireBoards();
+			await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Mine" }));
+			expect(vi.mocked(createTask).mock.calls[0]![0]).not.toHaveProperty("origin");
+		});
+
+		it("task.show resolves the parent, and reports a deleted one as null", async () => {
+			wireBoards();
+			const child = makeTask({ id: "child-11-1111-2222-3333-444444444444", origin: { kind: "task", taskId: parent.id, projectId: "proj-2" } });
+			vi.mocked(data.loadTasks).mockImplementation(async (p) => (p.id === "proj-2" ? [parent] : [child]));
+			const shown = await handleRequest(makeRequest("task.show", { taskId: "child-11", projectId: "proj-1" }));
+			expect(shown.data).toMatchObject({ originParent: { id: parent.id, projectName: "Coordinators", seq: 1801, variantIndex: null } });
+
+			vi.mocked(data.loadTasks).mockImplementation(async (p) => (p.id === "proj-2" ? [] : [child]));
+			const orphan = await handleRequest(makeRequest("task.show", { taskId: "child-11", projectId: "proj-1" }));
+			expect(orphan.data).toMatchObject({ originParent: null });
+		});
+
+		it("task.show adds nothing for a task the user created", async () => {
+			wireBoards();
+			vi.mocked(data.loadTasks).mockResolvedValue([makeTask()]);
+			const shown = await handleRequest(makeRequest("task.show", { taskId: "task-abc", projectId: "proj-1" }));
+			expect(shown.data).not.toHaveProperty("originParent");
+		});
+
+		it("task.children lists direct children of the whole variant group across projects", async () => {
+			const project = makeProject();
+			const v1 = { ...parent, projectId: "proj-1", groupId: "g", variantIndex: 1 };
+			const v2 = makeTask({ id: "variant2-1111-2222-3333-444444444444", seq: 1801, groupId: "g", variantIndex: 2 });
+			const childA = makeTask({ id: "childA", seq: 5, status: "todo", origin: { kind: "task", taskId: v1.id, projectId: "proj-1" } });
+			const childB = makeTask({ id: "childB", projectId: "proj-2", seq: 9, origin: { kind: "task", taskId: v2.id, projectId: "proj-1" } });
+			const grandchild = makeTask({ id: "grand", projectId: "proj-2", seq: 10, origin: { kind: "task", taskId: "childB", projectId: "proj-2" } });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.loadProjects).mockResolvedValue([project, parentProject]);
+			vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+			vi.mocked(data.loadTasks).mockImplementation(async (p) => (p.id === "proj-1" ? [v1, v2, childA] : [childB, grandchild]));
+
+			const resp = await handleRequest(makeRequest("task.children", { taskId: "seq:1801", projectId: "proj-1" }));
+			expect(resp.ok).toBe(true);
+			const result = resp.data as { parent: { seq: number }; children: Array<{ id: string; projectName: string }> };
+			expect(result.parent.seq).toBe(1801);
+			expect(result.children.map((c) => [c.id, c.projectName]).sort()).toEqual([["childA", "Test Project"], ["childB", "Coordinators"]]);
+		});
+	});
+
 	// The whole point of the flag: a task created with a type must carry the role
 	// brief in the description the agent reads, not just the badge on the card.
 	describe("--type", () => {

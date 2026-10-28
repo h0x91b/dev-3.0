@@ -79,7 +79,7 @@ describe("task show --json", () => {
 	it("is a fixed projection: the key set is the contract, internals never leak", () => {
 		expect(Object.keys(buildTaskShowJson(TASK)).sort()).toEqual([
 			"baseBranch", "branch", "createdAt", "customColumnId", "description", "draft", "groupId", "hibernated", "id",
-			"keepAlive", "labelIds", "manualCompletion", "movedAt", "noteCount", "overview", "prNumber", "prStatus", "prUrl", "priority",
+			"keepAlive", "labelIds", "manualCompletion", "movedAt", "noteCount", "origin", "overview", "prNumber", "prStatus", "prUrl", "priority",
 			"projectId", "pullRequests", "schemaVersion", "seq", "status", "statusLabel", "taskType", "title", "titleEditedByUser",
 			"updatedAt", "variantIndex", "worktree",
 		]);
@@ -176,5 +176,18 @@ describe("task show (human)", () => {
 	it("prints no PR line for a task without one", async () => {
 		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
 		expect(stdout).not.toContain("Pull requests:");
+	});
+
+	it("reports the user as origin for a task without one", () => {
+		expect(buildTaskShowJson(TASK).origin).toEqual({ kind: "user" });
+	});
+
+	it("includes a task origin with its resolved parent, or null once the parent is gone", () => {
+		const parent = { id: "pppppppp-1", projectId: "proj-002", projectName: "homebrew", seq: 7, variantIndex: null, title: "Coordinate" };
+		const child = { ...TASK, origin: { kind: "task", taskId: parent.id, projectId: parent.projectId } } as Task;
+		expect(buildTaskShowJson({ ...child, originParent: parent }).origin).toEqual({
+			kind: "task", taskId: parent.id, projectId: parent.projectId, parent,
+		});
+		expect(buildTaskShowJson({ ...child, originParent: null }).origin).toMatchObject({ kind: "task", parent: null });
 	});
 });

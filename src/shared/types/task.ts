@@ -1,3 +1,4 @@
+import type { TaskOrigin } from "./task-origin";
 import type { TerminalBackendIdentity } from "../terminal-backend-identity";
 import type { AccountPickReason } from "../account-routing";
 import type { ReviewComment } from "../review";
@@ -391,6 +392,11 @@ export interface Task {
 	 * links the task back to its automation's run history.
 	 */
 	automationId?: string | null;
+	/**
+	 * Who created the task — see {@link TaskOrigin}. Set once at creation and
+	 * never by an update; absent means the user. Read through `taskOrigin()`.
+	 */
+	origin?: TaskOrigin;
 	/**
 	 * Deferred launch ("Start in…"). Set from the Launch modal when the user
 	 * schedules the spawn instead of firing it immediately. Only meaningful on

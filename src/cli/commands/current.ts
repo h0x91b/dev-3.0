@@ -6,6 +6,7 @@ import { sendRequest } from "../socket-client";
 import { spaceFields } from "../spaces";
 import { printDetail, exitError } from "../output";
 import { BUILD_TIME, BUILD_COMMIT, BUILD_VERSION } from "../../shared/build-info.generated";
+import { describeTaskOrigin, type ShownTask } from "../task-json";
 
 /**
  * Print the project's custom columns and their move IDs. Shared by the online
@@ -64,7 +65,7 @@ export async function handleCurrent(socketPath: string | null, opts: { brief?: b
 			});
 
 			if (resp.ok) {
-				const task = resp.data as Task;
+				const task = resp.data as ShownTask;
 				const project = readProjectDirect(context.projectId);
 				const displayTitle = getTaskTitle(task);
 				const titleMarker = task.titleEditedByUser ? " (user-edited — do NOT rename)" : "";
@@ -84,6 +85,8 @@ export async function handleCurrent(socketPath: string | null, opts: { brief?: b
 				if (task.customColumnId) fields.push(["Custom Column:", task.customColumnId.slice(0, 8)]);
 				if (task.branchName) fields.push(["Branch:", task.branchName]);
 				if (task.worktreePath) fields.push(["Worktree:", task.worktreePath]);
+				const createdBy = describeTaskOrigin(task);
+				if (createdBy) fields.push(["Created by:", createdBy]);
 				fields.push(...spaceFields(context.projectId));
 
 				printDetail(fields);

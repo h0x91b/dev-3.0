@@ -2531,6 +2531,14 @@ describe("handlers.createTask", () => {
 		expect(data.addTask).toHaveBeenCalledWith(project, "task", "todo", undefined);
 	});
 
+	it("records a GUI create as the user even when the request names an origin", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+		vi.mocked(data.addTask).mockResolvedValue(makeTask({ status: "todo" }));
+
+		await handlers.createTask({ projectId: "proj-1", description: "task", origin: { kind: "task", taskId: "x", projectId: "p" } } as never);
+		expect(vi.mocked(data.addTask).mock.calls[0][3]).toBeUndefined();
+	});
+
 	it("creates a terminal task directly without replaying completion effects", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "completed", worktreePath: null, branchName: null });
@@ -4314,6 +4322,27 @@ describe("handlers.spawnVariants", () => {
 		expect(data.deleteTask).not.toHaveBeenCalled();
 	});
 
+	it("gives every new variant the source task's parent, so the group is one lineage node", async () => {
+		const project = makeProject();
+		const origin = { kind: "task", taskId: "parent-1", projectId: "proj-9" } as const;
+		const sourceTask = makeTask({ status: "todo", seq: 5, worktreePath: null, branchName: null, origin });
+		const secondVariant = makeTask({ id: "variant-2", status: "in-progress", preparing: true });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+		mockTransformSource(sourceTask);
+		vi.mocked(data.addTask).mockResolvedValue(secondVariant);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/vwt", branchName: "dev3/v" });
+		mockTaskWrites(sourceTask, secondVariant);
+
+		await handlers.spawnVariants({
+			taskId: "task-1",
+			projectId: "proj-1",
+			targetStatus: "in-progress",
+			variants: [{ agentId: "agent-1", configId: null }, { agentId: "agent-2", configId: null }],
+		});
+		expect(vi.mocked(data.addTask).mock.calls[0][3]).toEqual(expect.objectContaining({ origin }));
+	});
+
 	// The in-place transform re-checks the status under the file lock: a
 	// concurrent launch that already transformed the source must make the
 	// second call fail instead of silently double-launching.
@@ -5045,14 +5074,16 @@ describe("handlers.spawnVariants", () => {
 describe("handlers.addAttempts", () => {
 	beforeEach(() => vi.clearAllMocks());
 
-	it("inherits existingBranch from the source task into added attempts", async () => {
+	it("inherits existingBranch and the parent from the source task into added attempts", async () => {
 		const project = makeProject();
+		const origin = { kind: "task", taskId: "parent-1", projectId: "proj-9" } as const;
 		const sourceTask = makeTask({
 			status: "in-progress",
 			seq: 5,
 			groupId: "group-1",
 			variantIndex: 1,
 			existingBranch: "feature/login",
+			origin,
 		});
 		const attemptTask = makeTask({
 			id: "attempt-2",
@@ -5089,6 +5120,7 @@ describe("handlers.addAttempts", () => {
 			"todo",
 			expect.objectContaining({
 				existingBranch: "feature/login",
+				origin,
 			}),
 		);
 
@@ -10007,6 +10039,24 @@ describe("handlers.destroyProjectTerminal", () => {
 // ================================================================
 // handlers.openQuickShell (replaces the removed home terminal)
 // ================================================================
+
+describe("createAutomationTask", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("records the automation as the task's origin", async () => {
+		const { createAutomationTask } = await import("../rpc-handlers/task-lifecycle");
+		const project = makeProject();
+		const created = makeTask({ status: "todo", worktreePath: null });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.addTask).mockResolvedValue(created);
+		mockTaskWrites(created);
+
+		await createAutomationTask(project, { id: "auto-1", name: "Nightly", prompt: "Run it", agentId: null, configId: null });
+		expect(vi.mocked(data.addTask).mock.calls[0][3]).toEqual(
+			expect.objectContaining({ automationId: "auto-1", origin: { kind: "automation" } }),
+		);
+	});
+});
 
 describe("handlers.openQuickShell", () => {
 	beforeEach(() => {
