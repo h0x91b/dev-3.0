@@ -9,16 +9,18 @@
  * cached on the file's mtime and size.
  */
 import { readFile, stat } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
-import { resolveDev3CliPath } from "../shared/dev3-cli-path";
+import { POSIX_DEV3_CLI, resolveDev3CliPath } from "../shared/dev3-cli-path";
+import { resolveUserHome } from "../shared/user-home";
 import { createLogger } from "./logger";
 
 const log = createLogger("hook-cli-capability");
 
-/** The CLI file the generated hooks invoke, unquoted. */
+/**
+ * The CLI file the generated hooks invoke. On POSIX that is the frozen
+ * `~/.dev3.0/bin/dev3` string, tilde and all, so `$DEV3_HOME` never moves it.
+ */
 export function hookCliFilePath(): string {
-	return process.platform === "win32" ? resolveDev3CliPath() : join(homedir(), ".dev3.0", "bin", "dev3");
+	return process.platform === "win32" ? resolveDev3CliPath() : POSIX_DEV3_CLI.replace(/^~/, resolveUserHome());
 }
 
 const cache = new Map<string, { mtimeMs: number; size: number; methods: Map<string, boolean> }>();
