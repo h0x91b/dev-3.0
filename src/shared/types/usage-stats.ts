@@ -95,3 +95,44 @@ export interface AgentUsageReport {
 	/** Every raw model id seen in the retained usage, distinct and sorted. */
 	models: string[];
 }
+
+/** Token and cost totals for one task, or one model within it. */
+export interface TaskUsageTotals {
+	/** Assistant responses carrying usage, after deduplicating streaming snapshots. */
+	messages: number;
+	inputTokens: number;
+	outputTokens: number;
+	cacheWrite5mTokens: number;
+	cacheWrite1hTokens: number;
+	cacheReadTokens: number;
+	/** API-equivalent cost in USD, priced exactly as `AgentUsageReport` prices a record. */
+	costUsd: number;
+	/** False when a model had no known price, so `costUsd` is a lower bound. */
+	fullyPriced: boolean;
+}
+
+/** One task's agent usage, from the Claude/Codex transcripts of its working directory. */
+export interface TaskUsageReport {
+	taskId: string;
+	projectId: string;
+	seq: number;
+	title: string;
+	status: string;
+	/** Where the task ran; transcripts are keyed by it, so they outlive the worktree. */
+	workingDir: string;
+	worktreeExists: boolean;
+	totals: TaskUsageTotals;
+	models: Array<TaskUsageTotals & { model: string }>;
+	coverage: {
+		/** Native transcript files read, subagent transcripts included. */
+		transcriptFiles: number;
+		subagentTranscriptFiles: number;
+		/** Sessions dev3 archived at completion whose transcript is gone (agent retention):
+		 *  NOT counted, so above zero the totals are a lower bound. */
+		uncoveredArchivedSessions: number;
+		sources: AgentUsageSource[];
+		/** ISO time of the first and last usage record seen, null when none. */
+		firstAt: string | null;
+		lastAt: string | null;
+	};
+}

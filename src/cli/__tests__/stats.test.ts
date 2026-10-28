@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { handleApprovals, handleStats, productivityEventActiveSince, usageDayOverlapsSince } from "../commands/stats";
 import type { CliContext } from "../context";
 import type { ParsedArgs } from "../args";
-import type { AgentUsageDay, CliResponse, ProductivityStatEvent, SystemMemorySnapshot } from "../../shared/types";
+import type { AgentUsageDay, CliResponse, ProductivityStatEvent, SystemMemorySnapshot, TaskUsageReport, TaskUsageTotals } from "../../shared/types";
 import type { AgentRateLimitsReport } from "../../shared/rate-limits";
 import type { PendingApprovalSummary } from "../../shared/agent-approval";
 import { CLI_EXIT_CODE_COMMAND_FAILED, CLI_EXIT_CODE_USAGE_ERROR } from "../../shared/cli-exit-codes";
@@ -49,6 +49,27 @@ function approval(overrides: Partial<PendingApprovalSummary> = {}): PendingAppro
 		projectName: "dev-3.0", requesterTaskId: null, requesterSeq: null, requesterTitle: null, requesterSenderId: null,
 		createdAt: "2026-10-27T08:00:00.000Z",
 		autoApproveAt: null, heldByUser: false,
+		...overrides,
+	};
+}
+
+function usageTotals(overrides: Partial<TaskUsageTotals> = {}): TaskUsageTotals {
+	return {
+		messages: 12, inputTokens: 300, outputTokens: 40_000, cacheWrite5mTokens: 0, cacheWrite1hTokens: 150_000,
+		cacheReadTokens: 2_000_000, costUsd: 4.3, fullyPriced: true,
+		...overrides,
+	};
+}
+
+function taskUsageReport(overrides: Partial<TaskUsageReport> = {}): TaskUsageReport {
+	return {
+		taskId: "t1", projectId: PROJECT_A, seq: 11, title: "Fix heartbeats", status: "completed",
+		workingDir: "/w/88145048/worktree", worktreeExists: false,
+		totals: usageTotals(), models: [{ model: "claude-opus-5-5", ...usageTotals() }],
+		coverage: {
+			transcriptFiles: 3, subagentTranscriptFiles: 1, uncoveredArchivedSessions: 0, sources: ["claude"],
+			firstAt: "2026-09-30T14:45:54.381Z", lastAt: "2026-09-30T15:57:21.940Z",
+		},
 		...overrides,
 	};
 }
@@ -189,7 +210,7 @@ describe("dev3 stats usage", () => {
 		expect(json()).toMatchObject({ hasUnpricedModels: false, days: [{ date: "2099-01-01" }] });
 	});
 
-	it("has no --project, and says why", async () => {
+	it("takes --project only with --task, and says why", async () => {
 		await expect(handleStats("usage", args({ project: PROJECT_A }), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
 		expect(stderr).toContain("per agent and day");
 		expect(mockSend).not.toHaveBeenCalled();
@@ -200,6 +221,54 @@ describe("dev3 stats usage", () => {
 		await handleStats("usage", args(), SOCKET, CTX);
 		expect(stdout).toContain("2.5M");
 		expect(stdout).toContain("Total API-equivalent cost: $3.50.");
+	});
+});
+
+describe("dev3 stats usage --task", () => {
+	it("asks the app for one task, scoped to the shell's project, and prints the versioned report", async () => {
+		mockSend.mockResolvedValue(ok(taskUsageReport()));
+		await handleStats("usage", args({ task: "seq:11", json: "true" }), SOCKET, CTX);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "stats.taskUsage", { taskId: "seq:11", projectId: "proj-001" });
+		expect(json()).toMatchObject({
+			schemaVersion: 1, seq: 11, worktreeExists: false,
+			totals: { cacheWrite1hTokens: 150_000, costUsd: 4.3 }, coverage: { subagentTranscriptFiles: 1 },
+		});
+	});
+
+	it("lets --project pick another board", async () => {
+		mockSend.mockResolvedValue(ok(taskUsageReport()));
+		await handleStats("usage", args({ task: "seq:11", project: PROJECT_B, json: "true" }), SOCKET, CTX);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "stats.taskUsage", { taskId: "seq:11", projectId: PROJECT_B });
+	});
+
+	it("refuses --since, because a task's cost is reported whole", async () => {
+		await expect(handleStats("usage", args({ task: "seq:11", since: "7d" }), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("needs a value for --task", async () => {
+		await expect(handleStats("usage", args({ task: "true" }), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
+	});
+
+	it("renders per-model rows, a total and the coverage, flagging a lower bound", async () => {
+		mockSend.mockResolvedValue(ok(taskUsageReport({
+			totals: usageTotals({ fullyPriced: false }),
+			coverage: { ...taskUsageReport().coverage, uncoveredArchivedSessions: 2 },
+		})));
+		await handleStats("usage", args({ task: "seq:11" }), SOCKET, CTX);
+		expect(stdout).toContain("Task #11 Fix heartbeats (completed)");
+		expect(stdout).toContain("(removed)");
+		expect(stdout).toContain("TOTAL");
+		expect(stdout).toContain("0 / 150.0k");
+		expect(stdout).toContain("4.30+");
+		expect(stdout).toContain("Read 3 transcript files (1 subagent); agents: claude.");
+		expect(stdout).toContain("2 archived session(s) no longer have a transcript");
+	});
+
+	it("gives the update hint on an app that predates it", async () => {
+		mockSend.mockResolvedValue(fail("Unknown method: stats.taskUsage"));
+		await expect(handleStats("usage", args({ task: "seq:11" }), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_COMMAND_FAILED}`);
+		expect(stderr).toContain("older than this CLI");
 	});
 });
 

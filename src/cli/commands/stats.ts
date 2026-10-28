@@ -1,4 +1,4 @@
-import type { AgentUsageDay, AgentUsageReport, ProductivityStatEvent, ProductivityStats, SystemMemorySnapshot } from "../../shared/types";
+import type { AgentUsageDay, AgentUsageReport, ProductivityStatEvent, ProductivityStats, SystemMemorySnapshot, TaskUsageReport } from "../../shared/types";
 import type { AgentRateLimitsReport } from "../../shared/rate-limits";
 import type { PendingApprovalSummary } from "../../shared/agent-approval";
 import type { ModelRate } from "../../shared/agent-pricing";
@@ -7,7 +7,7 @@ import { sendRequest } from "../socket-client";
 import { exitError, exitUsage, printTable } from "../output";
 import type { ParsedArgs } from "../args";
 import { ID_PREFIX_MIN_LENGTH } from "../../shared/types";
-import { expandShortProjectId, readProjectDirect, type CliContext } from "../context";
+import { expandShortId, expandShortProjectId, readProjectDirect, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 
 /**
@@ -64,8 +64,8 @@ function readProject(args: ParsedArgs, context: CliContext | null): string | nul
 	return id;
 }
 
-async function request<T>(socketPath: string, method: string, what: string): Promise<T> {
-	const resp = await sendRequest(socketPath, method, {});
+async function request<T>(socketPath: string, method: string, what: string, params: Record<string, unknown> = {}): Promise<T> {
+	const resp = await sendRequest(socketPath, method, params);
 	if (!resp.ok) {
 		if ((resp.error ?? "").startsWith("Unknown method:")) {
 			exitError(resp.error!, `The running dev3 app is older than this CLI and has no \`${what}\`. Update or restart the app, then retry.`);
@@ -155,11 +155,14 @@ async function productivity(args: ParsedArgs, socketPath: string, context: CliCo
 	);
 }
 
-async function usage(args: ParsedArgs, socketPath: string): Promise<void> {
-	rejectUnknownFlags(args, ["project", "since", "json"]);
-	rejectPositionals(args, "dev3 stats usage [--since <duration|date>] [--json]");
+const USAGE_SYNOPSIS = "dev3 stats usage [--since <duration|date>] [--json]\n       dev3 stats usage --task <id|seq:N> [--project <id>] [--json]";
+
+async function usage(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	rejectUnknownFlags(args, ["task", "project", "since", "json"]);
+	rejectPositionals(args, USAGE_SYNOPSIS);
+	if (args.flags.task !== undefined) return taskUsage(args, socketPath, context);
 	if (args.flags.project !== undefined) {
-		exitUsage("dev3 stats usage has no --project: agent usage is recorded per agent and day, not per project or task.");
+		exitUsage("dev3 stats usage --project needs --task: daily usage is recorded per agent and day, not per project.");
 	}
 	const since = readSince(args);
 	const report = await request<AgentUsageReport>(socketPath, "stats.usage", "stats usage");
@@ -185,6 +188,49 @@ async function usage(args: ParsedArgs, socketPath: string): Promise<void> {
 	moreLine(shown.length, newestFirst.length);
 	const cost = days.reduce((sum, d) => sum + d.costUsd, 0);
 	process.stdout.write(`\nTotal API-equivalent cost: $${cost.toFixed(2)}${days.some((d) => !d.fullyPriced) ? " (lower bound: some models have no known price, marked +)" : ""}.\n`);
+}
+
+function cacheWrite(t: TaskUsageReport["totals"]): string {
+	return `${tokens(t.cacheWrite5mTokens)} / ${tokens(t.cacheWrite1hTokens)}`;
+}
+
+/** One task, not a day: `--since` would cut a task's cost in two, so it is refused. */
+async function taskUsage(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	const raw = args.flags.task;
+	if (raw === "true" || !raw.trim()) exitUsage("--task needs a task id or seq:N");
+	if (args.flags.since !== undefined) exitUsage("--since cannot be combined with --task: a task's usage is reported whole.");
+	const params: Record<string, unknown> = { taskId: expandShortId(raw.trim(), context) };
+	const projectId = resolveProjectId(args.flags.project, context);
+	if (projectId) params.projectId = projectId;
+	const report = await request<TaskUsageReport>(socketPath, "stats.taskUsage", "stats usage --task", params);
+
+	if (args.flags.json === "true") {
+		printJson({ ...report });
+		return;
+	}
+	const { totals, coverage } = report;
+	process.stdout.write(`Task #${report.seq} ${truncate(report.title, 60)} (${report.status})\n`);
+	process.stdout.write(`Working dir: ${report.workingDir}${report.worktreeExists ? "" : " (removed)"}\n\n`);
+	if (report.models.length === 0) {
+		process.stdout.write(`No agent usage found in this task's Claude or Codex transcripts${report.coverage.uncoveredArchivedSessions ? ` (${report.coverage.uncoveredArchivedSessions} archived session(s) have no transcript left)` : ""}.\n`);
+		return;
+	}
+	printTable(
+		["MODEL", "MESSAGES", "INPUT", "OUTPUT", "CACHE WRITE 5M/1H", "CACHE READ", "COST (API $)"],
+		[...report.models, { model: "TOTAL", ...totals }].map((m) => [
+			m.model, String(m.messages), tokens(m.inputTokens), tokens(m.outputTokens), cacheWrite(m),
+			tokens(m.cacheReadTokens), `${m.costUsd.toFixed(2)}${m.fullyPriced ? "" : "+"}`,
+		]),
+	);
+	process.stdout.write(
+		`\nRead ${coverage.transcriptFiles} transcript file${coverage.transcriptFiles === 1 ? "" : "s"} ` +
+		`(${coverage.subagentTranscriptFiles} subagent)` +
+		`${coverage.sources.length ? `; agents: ${coverage.sources.join(", ")}` : ""}.\n`,
+	);
+	if (coverage.uncoveredArchivedSessions > 0) {
+		process.stdout.write(`${coverage.uncoveredArchivedSessions} archived session(s) no longer have a transcript and are not counted: totals are a lower bound.\n`);
+	}
+	if (!totals.fullyPriced) process.stdout.write("Cost is a lower bound: some models have no known price (marked +).\n");
 }
 
 async function limits(args: ParsedArgs, socketPath: string): Promise<void> {
@@ -324,7 +370,7 @@ export async function handleStats(
 		case "productivity":
 			return productivity(args, socketPath, context);
 		case "usage":
-			return usage(args, socketPath);
+			return usage(args, socketPath, context);
 		case "limits":
 			return limits(args, socketPath);
 		case "memory":

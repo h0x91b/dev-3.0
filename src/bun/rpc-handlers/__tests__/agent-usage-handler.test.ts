@@ -24,7 +24,10 @@ vi.mock("node:os", async (importOriginal) => ({
 	homedir: () => testHome,
 }));
 
-import { getAgentUsage } from "../agent-usage";
+import { getAgentUsage, getTaskAgentUsage } from "../agent-usage";
+import { claudeEncodePath } from "../../../shared/conversation-search-core";
+import { taskDir } from "../../git";
+import type { Project, Task } from "../../../shared/types";
 import { defaultAccountPaths } from "../../agent-accounts";
 import { recordCursorHookUsage } from "../../usage-collectors/cursor";
 
@@ -286,5 +289,57 @@ describe("getAgentUsage", () => {
 		const report = await getAgentUsage();
 		expect(report.days).toEqual([]);
 		expect(report.hasUnpricedModels).toBe(false);
+	});
+});
+
+describe("getTaskAgentUsage", () => {
+	const project = { id: "p1", path: "/repo/app", kind: "git" } as Project;
+	const task = { id: "abcdef12-0000-0000-0000-000000000000", seq: 7, title: "Fix it", status: "completed" } as Task;
+	const SESSION = "11111111-2222-3333-4444-555555555555";
+	const claudeLine = (id: string, usage: Record<string, unknown>, model = "claude-opus-4-8") => ({
+		type: "assistant", requestId: id, timestamp: "2026-10-20T12:00:00Z", message: { id, model, usage },
+	});
+
+	it("sums the task's main and subagent transcripts plus its Codex rollouts, splitting cache writes by TTL", async () => {
+		const workingDir = `${taskDir(project, task)}/worktree`;
+		const store = join(tempRoot, ".claude", "projects", claudeEncodePath(workingDir));
+		writeJsonl(join(store, `${SESSION}.jsonl`), [
+			claudeLine("m1", { input_tokens: 1_000_000, output_tokens: 10 }),
+			claudeLine("m1", { input_tokens: 1_000_000, output_tokens: 1_000_000 }),
+			claudeLine("m2", { cache_creation_input_tokens: 300, cache_creation: { ephemeral_5m_input_tokens: 100, ephemeral_1h_input_tokens: 200 }, cache_read_input_tokens: 50 }),
+		]);
+		writeJsonl(join(store, SESSION, "subagents", "agent-a.jsonl"), [claudeLine("s1", { output_tokens: 1_000_000 })]);
+		writeJsonl(join(tempRoot, ".claude", "projects", claudeEncodePath("/elsewhere"), "other.jsonl"), [claudeLine("x", { input_tokens: 9 })]);
+		writeJsonl(join(tempRoot, ".codex", "sessions", "2026", "rollout-a.jsonl"), [
+			{ type: "session_meta", payload: { id: "c", cwd: workingDir } },
+			{ type: "turn_context", payload: { model: "mystery-codex" } },
+			{ type: "token_usage_record", timestamp: "2026-10-21T12:00:00Z", payload: { response_id: "c1", usage: { input_tokens: 40, output_tokens: 2 } } },
+		]);
+
+		const report = await getTaskAgentUsage(project, task);
+
+		expect(report).toMatchObject({ taskId: task.id, seq: 7, workingDir, worktreeExists: false });
+		expect(report.totals).toMatchObject({
+			messages: 4, inputTokens: 1_000_040, outputTokens: 2_000_002,
+			cacheWrite5mTokens: 100, cacheWrite1hTokens: 200, cacheReadTokens: 50, fullyPriced: false,
+		});
+		expect(report.models.map((m) => m.model)).toEqual(["claude-opus-4-8", "mystery-codex"]);
+		expect(report.models[1]).toMatchObject({ messages: 1, costUsd: 0, fullyPriced: false });
+		expect(report.coverage).toMatchObject({
+			transcriptFiles: 3, subagentTranscriptFiles: 1, uncoveredArchivedSessions: 0, sources: ["claude", "codex"],
+			firstAt: "2026-10-20T12:00:00.000Z", lastAt: "2026-10-21T12:00:00.000Z",
+		});
+	});
+
+	it("reports archived sessions whose transcript is gone instead of pricing their inflated totals", async () => {
+		const dumps = join(taskDir(project, task), "conversations");
+		mkdirSync(dumps, { recursive: true });
+		writeFileSync(join(dumps, `claude-${SESSION}.json`), JSON.stringify({ stats: { usage: { input: 1, output: 99, cacheRead: 0, cacheWrite: 0 } } }));
+
+		const report = await getTaskAgentUsage(project, task);
+
+		expect(report.models).toEqual([]);
+		expect(report.totals).toMatchObject({ messages: 0, costUsd: 0, fullyPriced: true });
+		expect(report.coverage).toMatchObject({ transcriptFiles: 0, uncoveredArchivedSessions: 1, sources: [] });
 	});
 });

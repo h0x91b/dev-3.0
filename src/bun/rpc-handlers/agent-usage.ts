@@ -1,7 +1,7 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { AgentUsageReport, AgentUsageSource, SystemLoadSnapshot, SystemMemorySnapshot, WorktreeOrphanGroup } from "../../shared/types";
+import type { AgentUsageReport, AgentUsageSource, Project, SystemLoadSnapshot, Task, TaskUsageReport, SystemMemorySnapshot, WorktreeOrphanGroup } from "../../shared/types";
 import type { AgentRateLimitsReport } from "../../shared/rate-limits";
 import { getAgentRateLimitsReport } from "../rate-limit-monitor";
 import { getBusyTaskShortIds, getSystemLoadSnapshot, getSystemMemorySnapshot, resolveTaskConsumers } from "../resource-monitor";
@@ -20,7 +20,11 @@ import { collectCopilotUsage } from "../usage-collectors/copilot";
 import { collectOpenCodeUsage, openCodeDatabases } from "../usage-collectors/opencode";
 import { collectPiUsage, piSessionRoots } from "../usage-collectors/pi";
 import { queryReadonlySqlite } from "../sqlite-readonly";
-import { beginCodexRollout, finalizeUsage, foldClaudeEntry, foldCodexEntry, newUsageState, type UsageState } from "./agent-usage-parse";
+import { claudeTranscriptDirs, transcriptFilesForWorktree } from "../conversation-search";
+import { conversationDumpDir } from "../conversation-parse";
+import { taskWorkingDir } from "../task-conversation";
+import { taskDir } from "../git";
+import { beginCodexRollout, finalizeUsage, foldClaudeEntry, foldCodexEntry, newUsageState, summarizeUsageByModel, type UsageState } from "./agent-usage-parse";
 import { log } from "./shared";
 
 /**
@@ -144,6 +148,61 @@ export async function getAgentUsage(): Promise<AgentUsageReport> {
 	});
 	const models = [...new Set(Object.values(retained).flatMap((state) => [...state.records.values()].map((r) => r.model)))].sort();
 	return { days, generatedAt: new Date().toISOString(), hasUnpricedModels: hasUnpriced, models };
+}
+
+const SESSION_UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+/**
+ * Sessions dev3 archived at completion whose native transcript is gone (agent
+ * retention). Their usage is not counted: the archive's totals sum every streaming
+ * snapshot of a response, overstating tokens about twofold, so they are only reported.
+ */
+function countUncoveredSessions(project: Project, task: Task, liveFiles: string[]): number {
+	let names: string[];
+	try {
+		names = readdirSync(conversationDumpDir(taskDir(project, task))).filter((name) => name.endsWith(".json"));
+	} catch {
+		return 0;
+	}
+	const sessionOf = (path: string) => path.slice(path.lastIndexOf("/") + 1).match(SESSION_UUID)?.[0];
+	const liveIds = new Set(liveFiles.map(sessionOf));
+	return names.filter((name) => { const id = sessionOf(name); return id ? !liveIds.has(id) : liveFiles.length === 0; }).length;
+}
+
+/**
+ * One task's usage: the Claude transcripts of its working directory (subagents
+ * included) and the Codex rollouts that ran there, folded and priced exactly as
+ * `getAgentUsage` folds and prices them. Transcripts are keyed by the path, so a
+ * finished task whose worktree is gone still resolves.
+ */
+export async function getTaskAgentUsage(project: Project, task: Task): Promise<TaskUsageReport> {
+	const workingDir = taskWorkingDir(project, task);
+	const state = newUsageState();
+	const claudeFiles: string[] = [];
+	for (const dir of new Set(claudeTranscriptDirs(workingDir, homedir()))) collectTranscriptFiles(dir, claudeFiles);
+	foldJsonlFiles(claudeFiles, state, foldClaudeEntry);
+	const codexFiles = transcriptFilesForWorktree(workingDir).filter((f) => f.kind === "codex").map((f) => f.path);
+	foldJsonlFiles(codexFiles, state, foldCodexEntry, beginCodexRollout);
+
+	const catalog = loadModelCatalog();
+	const pricingId = (model: string) => nativeModelIdForWireName(catalog, model) ?? model;
+	const { totals, models, firstMs, lastMs } = summarizeUsageByModel(state, pricingId, await getPricingResolver());
+	const sources: AgentUsageSource[] = [];
+	if (claudeFiles.length) sources.push("claude");
+	if (codexFiles.length) sources.push("codex");
+	return {
+		taskId: task.id, projectId: project.id, seq: task.seq, title: task.title, status: task.status,
+		workingDir, worktreeExists: existsSync(workingDir),
+		totals, models,
+		coverage: {
+			transcriptFiles: claudeFiles.length + codexFiles.length,
+			subagentTranscriptFiles: claudeFiles.filter((f) => f.includes("/subagents/")).length,
+			uncoveredArchivedSessions: countUncoveredSessions(project, task, [...claudeFiles, ...codexFiles]),
+			sources,
+			firstAt: firstMs === null ? null : new Date(firstMs).toISOString(),
+			lastAt: lastMs === null ? null : new Date(lastMs).toISOString(),
+		},
+	};
 }
 
 /** Current agent rate limits (local dumps/rollouts plus cached Codex monthly credits). */
