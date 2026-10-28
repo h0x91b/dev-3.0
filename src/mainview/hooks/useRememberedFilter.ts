@@ -4,6 +4,17 @@ import { useCallback, useState } from "react";
 // so a fresh launch cannot open on a board that silently hides tasks.
 const rememberedFilters = new Map<string, string>();
 
+/** Board filter key; a space board keeps its own filter apart from its anchor project. */
+export function boardFilterKey(projectId: string, spaceId?: string | null): string {
+	return spaceId ? `board:space-${spaceId}` : `board:${projectId}`;
+}
+
+/** Preset the filter a surface will open with — e.g. another board, before navigating there. */
+export function rememberFilter(key: string, query: string): void {
+	if (query) rememberedFilters.set(key, query);
+	else rememberedFilters.delete(key);
+}
+
 export function resetRememberedFiltersForTests() {
 	rememberedFilters.clear();
 }

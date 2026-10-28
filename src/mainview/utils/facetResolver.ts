@@ -3,6 +3,7 @@ import { DEFAULT_PRIORITY, spacesOfProject } from "../../shared/types";
 import type { TFunction } from "../i18n";
 import { type FacetResolver, isAttentionTask, taskStatusValues } from "./taskFacets";
 import { getStatusLabel } from "./statusLabel";
+import { childrenTokenRefs, type TaskLineage } from "./taskLineage";
 
 /**
  * Shared builder for the token-DSL search `FacetResolver`. Labels, statuses and
@@ -22,9 +23,12 @@ export interface FacetResolverConfig {
 	/** Live PR number per task, when the surface tracks one. The matcher falls
 	 *  back to the task's sticky `prNumber`, so omitting it still finds by PR. */
 	prNumberFor?: (task: Task) => number | null;
+	/** Lineage for `children:`; a bare seq means `currentProjectId` (none ⇒ only `project/seq`). */
+	lineage?: TaskLineage;
+	currentProjectId?: string | null;
 }
 
-export function buildFacetResolver({ agents, projectById, taskPorts, spaces, t, prNumberFor }: FacetResolverConfig): FacetResolver {
+export function buildFacetResolver({ agents, projectById, taskPorts, spaces, t, prNumberFor, lineage, currentProjectId = null }: FacetResolverConfig): FacetResolver {
 	return {
 		agents,
 		labelsFor: (task) => {
@@ -41,5 +45,6 @@ export function buildFacetResolver({ agents, projectById, taskPorts, spaces, t, 
 		isAttentionFor: (task) => isAttentionTask(task),
 		spaceNamesFor: (task) => spacesOfProject(spaces, task.projectId).map((s) => s.name),
 		prNumberFor: prNumberFor ?? (() => null),
+		...(lineage ? { childrenRefsFor: (task: Task) => childrenTokenRefs(task, lineage, [...projectById.values()], currentProjectId) } : {}),
 	};
 }

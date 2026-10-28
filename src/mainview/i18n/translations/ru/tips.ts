@@ -210,7 +210,7 @@ const tips = {
 	"tip.llmProvider.title": "Агенты через Amazon Bedrock",
 	"tip.llmProvider.body": "Настройка «LLM Provider» направляет Claude или Codex в Amazon Bedrock — dev3 подставит модель; учётные данные и регион остаются в вашей конфигурации.",
 	"tip.filterTokens.title": "Фильтруйте задачи токенами",
-	"tip.filterTokens.body": "В поле поиска наберите priority:P0 label:Bug agent:Codex status:review is:attention has:port — или соберите фильтр кликом по воронке.",
+	"tip.filterTokens.body": "В поле поиска наберите priority:P0 label:Bug agent:Codex status:review children:1801 is:attention — или соберите фильтр кликом по воронке.",
 	"tip.cycleTaskVariants.title": "Цикл вариантов задачи",
 	"tip.cycleTaskVariants.body": "Нажмите Shift+Cmd+[ или ] (Ctrl в Linux), чтобы переключаться между живыми вариантами прямо из терминала.",
 	"tip.mobileTaskGit.title": "Git с телефона",

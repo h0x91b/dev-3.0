@@ -1,6 +1,7 @@
 import type { Task } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import { earlierPullRequests } from "../../shared/task-pull-requests";
+import { normalizeChildrenValue } from "./taskLineage";
 
 /**
  * Token-DSL task search & filter engine.
@@ -22,7 +23,7 @@ import { earlierPullRequests } from "../../shared/task-pull-requests";
  */
 
 /** Ordered set of recognized facet keys. Extend here to add a facet. */
-export const FACET_KEYS = ["priority", "label", "agent", "status", "type", "space", "is", "has"] as const;
+export const FACET_KEYS = ["priority", "label", "agent", "status", "type", "space", "children", "is", "has"] as const;
 export type FacetKey = (typeof FACET_KEYS)[number];
 
 /**
@@ -62,6 +63,9 @@ export interface TaskQueryContext {
 	 *  matcher falls back to the task's own sticky `prNumber`, so a surface with
 	 *  no live PR data still finds tasks by PR number. */
 	prNumber?: number | null;
+	/** Every `children:` value that selects this task — its own variant group and
+	 *  its parent's (see `childrenTokenRefs`). Absent where lineage is not loaded. */
+	childrenRefs?: readonly string[];
 }
 
 interface FacetDef {
@@ -104,6 +108,12 @@ const FACET_DEFS: Record<FacetKey, FacetDef> = {
 		kind: "free",
 		match: (ctx, v) => (ctx.spaceNames ?? []).some((n) => n.toLowerCase().includes(v)),
 	},
+	children: {
+		key: "children",
+		kind: "free",
+		// Exact, not substring: `children:18` must never select #1801's batch.
+		match: (ctx, v) => (ctx.childrenRefs ?? []).includes(normalizeChildrenValue(v)),
+	},
 	is: {
 		key: "is",
 		kind: "flag",
@@ -140,7 +150,7 @@ export interface ParsedQuery {
  * The quoted body accepts backslash escapes (`\"`, `\\`) so a value may contain
  * the delimiter itself — `label:"He said \"hi\""`.
  */
-const TOKEN_RE = /(\w+):"((?:\\.|[^"\\])*)"|(\w+):(\S+)|(\S+)/g;
+const TOKEN_RE = /(\w+):"((?:\\.|[^"\\])*)"(\/\S*)?|(\w+):(\S+)|(\S+)/g;
 
 /** Escape a value for embedding between double quotes in the DSL. */
 function escapeDslValue(value: string): string {
@@ -153,7 +163,7 @@ function unescapeDslValue(inner: string): string {
 }
 
 function emptyFacets(): Record<FacetKey, string[]> {
-	return { priority: [], label: [], agent: [], status: [], type: [], space: [], is: [], has: [] };
+	return { priority: [], label: [], agent: [], status: [], type: [], space: [], children: [], is: [], has: [] };
 }
 
 /**
@@ -188,18 +198,19 @@ export function parseTaskQuery(query: string): ParsedQuery {
 	let m: RegExpExecArray | null;
 	while ((m = TOKEN_RE.exec(query)) !== null) {
 		if (m[1] !== undefined) {
-			// key:"quoted value" — m[2] is the escaped body.
-			const classified = classifyToken(m[1], unescapeDslValue(m[2]));
+			// key:"quoted value" — m[2] is the escaped body, m[3] an optional
+			// `/suffix` glued to the quote (`children:"QA Fixture"/5`).
+			const classified = classifyToken(m[1], unescapeDslValue(m[2]) + (m[3] ?? ""));
 			if (classified) facets[classified.facet].push(classified.value);
 			else freeTextParts.push(m[0]);
-		} else if (m[3] !== undefined) {
+		} else if (m[4] !== undefined) {
 			// key:bareword
-			const classified = classifyToken(m[3], m[4]);
+			const classified = classifyToken(m[4], m[5]);
 			if (classified) facets[classified.facet].push(classified.value);
 			else freeTextParts.push(m[0]);
 		} else {
 			// bare word
-			freeTextParts.push(m[5]);
+			freeTextParts.push(m[6]);
 		}
 	}
 

@@ -3,6 +3,7 @@ import type { TerminalBackendIdentity } from "../../shared/terminal-backend-iden
 import { isTaskSoundEnabled } from "../../shared/task-sound-statuses";
 import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, normalizeTaskType, reviewTaskTitle } from "../../shared/types";
 import * as data from "../data";
+import { loadTaskLineage } from "../task-lineage";
 import * as git from "../git";
 import * as github from "../github";
 import { pendingAgentLaunchDialogs, holdAgentRequestAutoApprove as holdAutoApprove, listPendingAgentRequests, markAgentRequestShown as markShown, resolveAgentRequest, setAgentRequestLaunchChoice } from "../agent-requests";
@@ -1324,6 +1325,7 @@ async function setNewTaskTerminalBackend(params: {
 export const taskLifecycleHandlers = {
 	getTasks,
 	getAllProjectTasks,
+	getTaskLineage: () => loadTaskLineage(),
 	openQuickShell,
 	// A GUI create is the user's by definition; only the CLI socket records a parent.
 	createTask: ({ origin: _origin, ...params }: Parameters<typeof createTask>[0]) => createTask(params),

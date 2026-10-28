@@ -17,12 +17,16 @@ import TaskDetailModal from "./TaskDetailModal";
 import { sortTasksForColumn } from "./sortTasks";
 import { partitionTasksByStatus } from "./partitionTasks";
 import LabelFilterBar from "./LabelFilterBar";
+import LineageFilterNotice from "./LineageFilterNotice";
+import { useTaskLineage } from "../hooks/useTaskLineage";
+import { childrenFilterToken, childrenTokenRefs, lineageChildren, lineageParent, parentSeqLabel, withChildrenToken, type CardLineage } from "../utils/taskLineage";
+import { useStreamerMode } from "../streamer-mode";
 import { matchesTaskQuery } from "../utils/taskSearch";
 import { buildFilterGroups, taskQueryContext, taskStatusValues, isAttentionTask, type FacetResolver, type FilterFunnelOption } from "../utils/taskFacets";
 import { useTaskPrBadges } from "../hooks/useTaskPrBadges";
 import { useTipRotation } from "../hooks/useTipRotation";
 import { useColumnCollapse } from "../hooks/useColumnCollapse";
-import { useRememberedFilter } from "../hooks/useRememberedFilter";
+import { boardFilterKey, rememberFilter, useRememberedFilter } from "../hooks/useRememberedFilter";
 import { moveTaskToStatus, resetTaskToTodoWithConsent } from "../utils/moveTaskToStatus";
 import { confirmCustomColumnDelete } from "../utils/confirmCustomColumnDelete";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
@@ -64,6 +68,8 @@ interface KanbanBoardProps {
 	 */
 	detailTaskId?: string;
 	onCloseTaskDetail?: () => void;
+	/** Every project, so `children:` and lineage markers can name parents and children elsewhere. */
+	allProjects?: Project[];
 }
 
 function KanbanBoard({
@@ -83,6 +89,7 @@ function KanbanBoard({
 	onOpenUnresolvedComments,
 	detailTaskId,
 	onCloseTaskDetail,
+	allProjects,
 }: KanbanBoardProps) {
 	const t = useT();
 	// A space is the subject; without one everything below collapses to the single
@@ -117,7 +124,7 @@ function KanbanBoard({
 	// no column in must refuse it, visibly, before the drop.
 	const [dragFromProjectId, setDragFromProjectId] = useState<string | null>(null);
 	// Keyed like the collapse memory below: a space board keeps its own filter.
-	const [searchQuery, setSearchQuery] = useRememberedFilter(space ? `board:space-${space.id}` : `board:${project.id}`);
+	const [searchQuery, setSearchQuery] = useRememberedFilter(boardFilterKey(project.id, space?.id));
 	const [movingTaskIds, setMovingTaskIds] = useState<Set<string>>(new Set());
 	const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
 	// Ref so drag handlers can check synchronously without waiting for state update
@@ -283,6 +290,34 @@ function KanbanBoard({
 		}
 	}
 
+	// Lineage (Task.origin): a bare `children:<seq>` means this project, which a
+	// space board does not have.
+	const lineage = useTaskLineage();
+	const isStreamerOn = useStreamerMode();
+	const knownProjects = allProjects ?? boardProjects;
+	const lineageProjectId = isSpaceBoard ? null : project.id;
+	const boardProjectIds = useMemo(() => new Set(boardProjects.map((p) => p.id)), [boardProjects]);
+	const applyChildrenFilter = useCallback((parent: { projectId: string; seq: number }) => {
+		setSearchQuery(withChildrenToken(searchQuery, childrenFilterToken(parent, knownProjects, lineageProjectId)));
+	}, [searchQuery, setSearchQuery, knownProjects, lineageProjectId]);
+	const lineageFor = useCallback((task: Task): CardLineage | undefined => {
+		const parent = lineageParent(task, lineage);
+		const childCount = lineageChildren(task, lineage).length;
+		if (parent === null && childCount === 0) return undefined;
+		const parentNode = parent && parent !== "deleted" ? parent : null;
+		const parentProject = parentNode ? knownProjects.find((p) => p.id === parentNode.projectId) : undefined;
+		const shareable = parentNode && !(isStreamerOn && parentProject?.sensitive);
+		return {
+			parentLabel: parent === "deleted" ? "deleted" : parentNode ? parentSeqLabel(parentNode) : null,
+			parentTitle: shareable && parentNode
+				? (parentNode.projectId === task.projectId ? parentNode.title : `${parentProject?.name ?? ""} · ${parentNode.title}`)
+				: null,
+			childCount,
+			onFilterByParent: parentNode ? () => applyChildrenFilter(parentNode) : null,
+			onFilterByChildren: childCount > 0 ? () => applyChildrenFilter(task) : null,
+		};
+	}, [lineage, knownProjects, applyChildrenFilter, isStreamerOn]);
+
 	// Build sibling map: groupId → all tasks with that groupId (from full tasks list, not filtered)
 	const siblingMap = useMemo(() => {
 		const map = new Map<string, Task[]>();
@@ -351,7 +386,8 @@ function KanbanBoard({
 		hasPortFor: (task) => (taskPorts.get(task.id)?.length ?? 0) > 0,
 		isAttentionFor: isAttentionTask,
 		prNumberFor: (task) => taskPrMap.get(task.id)?.number ?? null,
-	}), [agents, projectById, customStatusLabels, taskPorts, taskPrMap, t]);
+		childrenRefsFor: (task) => childrenTokenRefs(task, lineage, knownProjects, lineageProjectId),
+	}), [agents, projectById, customStatusLabels, taskPorts, taskPrMap, t, lineage, knownProjects, lineageProjectId]);
 
 	// Priority leads the funnel; the board offers all five levels (P0…P4).
 	const priorityCandidates = useMemo<FilterFunnelOption[]>(
@@ -635,6 +671,7 @@ function KanbanBoard({
 		activeTaskId,
 		movingTaskIds,
 		siblingMap,
+		lineageFor,
 		onSetMoving: handleSetMoving,
 		taskPrMap,
 		onOpenUnresolvedComments,
@@ -734,6 +771,18 @@ function KanbanBoard({
 				filterGroups={filterGroups}
 				disableGlobalFindShortcut={disableGlobalFindShortcut}
 			/>
+			<LineageFilterNotice
+				searchQuery={searchQuery}
+				lineage={lineage}
+				allProjects={knownProjects}
+				boardProjectIds={boardProjectIds}
+				currentProjectId={lineageProjectId}
+				onPickProject={applyChildrenFilter}
+				onOpenProject={(projectId, parent) => {
+					rememberFilter(boardFilterKey(projectId), childrenFilterToken(parent, knownProjects, projectId));
+					navigate({ screen: "project", projectId });
+				}}
+			/>
 			{isCarousel ? (
 				<MobileBoardCarousel columns={carouselColumns} initialColumnId={initialColumnId} />
 			) : (
@@ -772,6 +821,7 @@ function KanbanBoard({
 					project={projectOfTask(detailTask)}
 					dispatch={dispatch}
 					onClose={() => onCloseTaskDetail?.()}
+					navigate={navigate}
 					onOpenTask={() => {
 						const taskProject = projectOfTask(detailTask);
 						onCloseTaskDetail?.();

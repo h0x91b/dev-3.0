@@ -37,13 +37,13 @@ const help = {
 	// ── Board chrome ──
 	"help.board.filterBar.title": "Поиск и фильтры",
 	"help.board.filterBar.body":
-		"Одно поле ищет и фильтрует доску. Набирайте свободный текст для нечёткого поиска по названию/описанию или фильтруйте токенами — priority:P0 label:\"Bug Fix\" agent:Codex status:review type:coordinator space:\"Client X\" is:attention is:home is:hidden is:hibernated is:keepalive has:port. Чипы приоритета P0–P4, чипы лейблов и воронка правят те же токены, поэтому набранное и нажатое никогда не расходятся. Крестик × сбрасывает всё. Лейблы — в Настройках проекта → Лейблы.",
+		"Одно поле ищет и фильтрует доску. Набирайте свободный текст для нечёткого поиска по названию/описанию или фильтруйте токенами — priority:P0 label:\"Bug Fix\" agent:Codex status:review type:coordinator space:\"Client X\" children:1801 is:attention is:home is:hidden is:hibernated is:keepalive has:port. Чипы приоритета P0–P4, чипы лейблов и воронка правят те же токены, поэтому набранное и нажатое никогда не расходятся. Крестик × сбрасывает всё. Лейблы — в Настройках проекта → Лейблы.",
 	"help.board.priorityFilter.title": "Фильтр по приоритету",
 	"help.board.priorityFilter.body":
 		"У каждой задачи есть приоритет P0 (высший) … P4 (низший, по умолчанию P3). Колонки всегда сортируются по нему, поэтому самое важное всегда наверху. Кликните чип, чтобы показать только этот приоритет; перетащите карточку в другую полосу, чтобы сменить приоритет.",
 	"help.filters.dsl.title": "Поиск и фильтры",
 	"help.filters.dsl.body":
-		"Набирайте текст для нечёткого поиска по названиям и описаниям или фильтруйте токенами: priority:P0 label:\"Bug Fix\" agent:Codex status:review type:coordinator space:\"Client X\" is:attention is:home is:hidden is:hibernated is:keepalive has:port. Значения с пробелами берите в кавычки. Комбинируйте фасеты (И); повторяйте один фасет, чтобы расширить (ИЛИ). Чипы P0–P4, чипы лейблов и воронка правят те же токены. Лейблы — в Настройках проекта → Лейблы.",
+		"Набирайте текст для нечёткого поиска по названиям и описаниям или фильтруйте токенами: priority:P0 label:\"Bug Fix\" agent:Codex status:review type:coordinator space:\"Client X\" children:1801 is:attention is:home is:hidden is:hibernated is:keepalive has:port. Значения с пробелами берите в кавычки. children:1801 (или children:проект/1801) показывает задачу вместе с созданными ею задачами. Комбинируйте фасеты (И); повторяйте один фасет, чтобы расширить (ИЛИ). Чипы P0–P4, чипы лейблов и воронка правят те же токены. Лейблы — в Настройках проекта → Лейблы.",
 	"help.board.taskCard.title": "Карточка задачи",
 	"help.board.taskCard.body":
 		"Цветные точки — параллельные варианты агентов (каждый в своём worktree), колокольчик — агент зовёт вас, бейдж #123 — PR задачи со статусом CI и ревью. Правый клик — все действия над задачей.",

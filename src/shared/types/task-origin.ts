@@ -42,6 +42,7 @@ export function parentTaskIdOf(task: Pick<Task, "origin">): string | null {
 export interface TaskLineageNode {
 	id: string;
 	projectId: string;
+	projectName: string;
 	seq: number;
 	variantIndex: number | null;
 	status: Task["status"];

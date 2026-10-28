@@ -59,6 +59,8 @@ export interface FacetResolver {
 	 *  (a single project's board) return [] so the SPACES group is dropped. */
 	spaceNamesFor?: (task: Task) => string[];
 	prNumberFor?: (task: Task) => number | null;
+	/** `children:` values that select the task (see `childrenTokenRefs`). */
+	childrenRefsFor?: (task: Task) => readonly string[];
 }
 
 /**
@@ -95,6 +97,7 @@ export function taskQueryContext(task: Task, resolver: FacetResolver): TaskQuery
 		isKeptAlive: task.keepAlive?.enabled === true,
 		spaceNames: resolver.spaceNamesFor ? resolver.spaceNamesFor(task) : null,
 		prNumber: resolver.prNumberFor?.(task) ?? null,
+		childrenRefs: resolver.childrenRefsFor?.(task) ?? [],
 	};
 }
 

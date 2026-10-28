@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, type Dispatch } from "react";
+import type { CardLineage } from "../utils/taskLineage";
 import type { CodingAgent, DevServerSummary, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus, TipState } from "../../shared/types";
 import { hexToRgb, getAllowedTransitions } from "../../shared/types";
 import type { AppAction, Route } from "../state";
@@ -64,6 +65,7 @@ interface KanbanColumnProps {
 	movingTaskIds: Set<string>;
 	onSetMoving: (taskId: string, isMoving: boolean) => void;
 	siblingMap: Map<string, Task[]>;
+	lineageFor?: (task: Task) => CardLineage | undefined;
 	// Custom column support
 	isCustomColumn?: boolean;
 	customColumnId?: string;
@@ -130,6 +132,7 @@ function KanbanColumn({
 	movingTaskIds,
 	onSetMoving,
 	siblingMap,
+	lineageFor,
 	taskPrMap,
 	onOpenUnresolvedComments,
 	onEditDraft,
@@ -644,6 +647,7 @@ function KanbanColumn({
 							isMoving={movingTaskIds.has(task.id)}
 							onSetMoving={onSetMoving}
 							siblingMap={siblingMap}
+							lineage={lineageFor?.(task)}
 							prInfo={taskPrMap?.get(task.id)}
 							onOpenUnresolvedComments={onOpenUnresolvedComments}
 							onEditDraft={onEditDraft}

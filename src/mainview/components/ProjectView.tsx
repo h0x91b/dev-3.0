@@ -108,6 +108,7 @@ function ProjectView({
 	// so for one commit the status still says "ready" about the PREVIOUS board's tasks.
 	const [readyBoardKey, setReadyBoardKey] = useState<string | null>(null);
 	const [tasksReloadNonce, setTasksReloadNonce] = useState(0);
+
 	const rpcState = useRpcStatus();
 	const transportWasDownRef = useRef(false);
 
@@ -385,6 +386,7 @@ function ProjectView({
 				onOpenUnresolvedComments={openUnresolvedFromBoard}
 				detailTaskId={taskDetailId}
 				onCloseTaskDetail={closeTaskDetail}
+				allProjects={projects}
 			/>
 		</div>
 	);

@@ -7,12 +7,15 @@ async function allBoards(): Promise<Array<{ project: Project; tasks: Task[] }>> 
 	return Promise.all(projects.map(async (project) => ({ project, tasks: await data.loadTasks(project) })));
 }
 
-function lineageNode(task: Task): TaskLineageNode {
+/** `variantIndex` only for a real group: a lone launched task still carries index 1. */
+function lineageNode(task: Task, project: Project, groupSizes: ReadonlyMap<string, number>): TaskLineageNode {
+	const inGroup = task.groupId !== null && (groupSizes.get(task.groupId) ?? 0) > 1;
 	return {
 		id: task.id,
 		projectId: task.projectId,
+		projectName: project.name,
 		seq: task.seq,
-		variantIndex: task.variantIndex,
+		variantIndex: inGroup ? task.variantIndex : null,
 		status: task.status,
 		title: getTaskTitle(task),
 	};
@@ -26,7 +29,15 @@ function lineageNode(task: Task): TaskLineageNode {
 export async function loadTaskLineage(): Promise<TaskLineageIndex> {
 	const boards = await allBoards();
 	const byId = new Map<string, Task>();
-	for (const { tasks } of boards) for (const task of tasks) byId.set(task.id, task);
+	const projectOf = new Map<string, Project>();
+	const groupSizes = new Map<string, number>();
+	for (const { project, tasks } of boards) {
+		for (const task of tasks) {
+			byId.set(task.id, task);
+			projectOf.set(task.id, project);
+			if (task.groupId) groupSizes.set(task.groupId, (groupSizes.get(task.groupId) ?? 0) + 1);
+		}
+	}
 
 	const nodes = new Map<string, TaskLineageNode>();
 	const edges: TaskLineageIndex["edges"] = [];
@@ -34,9 +45,9 @@ export async function loadTaskLineage(): Promise<TaskLineageIndex> {
 		const parentId = parentTaskIdOf(task);
 		if (!parentId) continue;
 		edges.push({ childId: task.id, parentId });
-		nodes.set(task.id, lineageNode(task));
+		nodes.set(task.id, lineageNode(task, projectOf.get(task.id)!, groupSizes));
 		const parent = byId.get(parentId);
-		if (parent) nodes.set(parent.id, lineageNode(parent));
+		if (parent) nodes.set(parent.id, lineageNode(parent, projectOf.get(parent.id)!, groupSizes));
 	}
 	return { nodes: [...nodes.values()], edges };
 }

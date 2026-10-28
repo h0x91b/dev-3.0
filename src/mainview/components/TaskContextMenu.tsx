@@ -37,6 +37,8 @@ interface TaskContextMenuProps {
 	onOpenTask: () => void;
 	/** Surfaces that already own a detail modal pass theirs; otherwise one is rendered here. */
 	onOpenDetails?: () => void;
+	/** Filters the board to the task's lineage batch; the row is shown only when given. */
+	onShowFamily?: () => void;
 	testId?: string;
 }
 
@@ -58,6 +60,7 @@ interface MenuRow {
  * existing picker, modal or RPC the object already had elsewhere.
  */
 export default function TaskContextMenu({
+	onShowFamily,
 	task,
 	project,
 	dispatch,
@@ -238,6 +241,7 @@ export default function TaskContextMenu({
 		[
 			{ id: "open", label: t("taskMenu.open"), onSelect: () => { onClose(); onOpenTask(); } },
 			{ id: "details", label: t("taskMenu.details"), onSelect: () => openDetails(false) },
+			...(onShowFamily ? [{ id: "family", label: t("task.lineage.showFamily"), onSelect: () => { onClose(); onShowFamily(); } }] : []),
 		],
 		[
 			{ id: "labels", label: t("taskMenu.labels"), onSelect: () => openSub("labels"), submenu: true },

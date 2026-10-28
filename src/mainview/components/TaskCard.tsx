@@ -19,6 +19,8 @@ import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
 import PriorityBadge from "./PriorityBadge";
 import VariantDots from "./VariantDots";
+import LineageCluster from "./LineageCluster";
+import type { CardLineage } from "../utils/taskLineage";
 import NativeBackendMark from "./NativeBackendMark";
 import ForeignCodeMark from "./ForeignCodeMark";
 import OpenInMenu from "./OpenInMenu";
@@ -86,9 +88,11 @@ interface TaskCardProps {
 	 * where more than one project shares a board (the unified space board).
 	 */
 	showProjectMark?: boolean;
+	/** Where the task came from and what it created — see LineageCluster. */
+	lineage?: CardLineage;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, resourceUsage, bellCount = 0, bellReasons, ports, devServer, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo, onOpenUnresolvedComments, onEditDraft, showProjectMark = false }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, resourceUsage, bellCount = 0, bellReasons, ports, devServer, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo, onOpenUnresolvedComments, onEditDraft, showProjectMark = false, lineage }: TaskCardProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
@@ -1034,6 +1038,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						>
 							{displayTitle}
 						</div>
+						{lineage && <LineageCluster lineage={lineage} />}
 						{isTodo && task.preparationError && (
 							<div
 								role="alert"
@@ -1241,6 +1246,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					onClose={() => setDetailOpen(false)}
 					onOpenTask={openTaskFromDialog}
 					onLaunchVariants={onLaunchVariants}
+					navigate={navigate}
 				/>,
 				document.body
 			)}
@@ -1311,6 +1317,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				onClose={contextMenu.close}
 				onOpenTask={openTaskFromDialog}
 				onOpenDetails={() => setDetailOpen(true)}
+				onShowFamily={lineage ? (lineage.onFilterByParent ?? lineage.onFilterByChildren ?? undefined) : undefined}
 				testId={`card-task-menu-${task.id}`}
 			/>
 

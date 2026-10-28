@@ -75,6 +75,7 @@ import BottomSheet from "./BottomSheet";
 import HelpSpot from "./HelpSpot";
 import Tooltip from "./Tooltip";
 import ForeignCodeMark from "./ForeignCodeMark";
+import TaskOriginRow from "./TaskOriginRow";
 import VariantSwitcher from "./VariantSwitcher";
 import { isMac } from "../utils/platform";
 import { terminalFullscreenShortcutLabel } from "../utils/terminalFullscreen";
@@ -1274,6 +1275,8 @@ function TaskInfoPanel({
 
 							<span className="text-fg-3">{t("infoPanel.created")}</span>
 							<span className="text-fg-3">{formatDate(task.createdAt)}</span>
+
+							<TaskOriginRow task={task} navigate={navigate} testId="info-panel-origin" />
 
 							<span className="text-fg-3">{t("infoPanel.updated")}</span>
 							<span className="text-fg-3">{formatDate(task.updatedAt)}</span>

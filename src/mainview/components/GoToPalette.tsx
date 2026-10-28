@@ -7,6 +7,7 @@ import { api } from "../rpc";
 import { useProjectPrivacy } from "../sensitive-projects";
 import { useSpaces } from "../useSpaces";
 import { buildFacetResolver } from "../utils/facetResolver";
+import { useTaskLineage } from "../hooks/useTaskLineage";
 import { fuzzyScore } from "../utils/fuzzyMatch";
 import { projectSearchHaystack } from "../utils/projectSearchHaystack";
 import { getRecentTaskIds } from "../utils/recentTasks";
@@ -110,9 +111,10 @@ function GoToPalette({
 		};
 	}, [needsTasks, tasks]);
 
+	const lineage = useTaskLineage();
 	const resolver = useMemo(
-		() => buildFacetResolver({ agents, projectById, taskPorts, spaces, t }),
-		[agents, projectById, taskPorts, spaces, t],
+		() => buildFacetResolver({ agents, projectById, taskPorts, spaces, t, lineage }),
+		[agents, projectById, taskPorts, spaces, t, lineage],
 	);
 	const ctxByTask = useMemo(() => {
 		const map = new Map<string, TaskQueryContext>();

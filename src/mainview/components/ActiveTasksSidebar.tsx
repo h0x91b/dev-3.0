@@ -15,6 +15,7 @@ import { getStatusLabel } from "../utils/statusLabel";
 import { isFacetTokenActive, matchesTaskQuery, toggleFacetToken } from "../utils/taskSearch";
 import { buildFilterGroups, taskQueryContext, isAttentionTask, isTaskNotRunning, type FacetResolver, type FilterFunnelOption } from "../utils/taskFacets";
 import { buildFacetResolver } from "../utils/facetResolver";
+import { useTaskLineage } from "../hooks/useTaskLineage";
 import FilterFunnel from "./FilterFunnel";
 import { useRememberedFilter } from "../hooks/useRememberedFilter";
 import TipCard from "./TipCard";
@@ -351,9 +352,10 @@ function ActiveTasksSidebar({
 	// Token-DSL facet resolver, shared with the "Go to" palette (the Kanban board
 	// keeps its own board-scoped one). Labels/statuses/spaces resolve per the
 	// task's OWN project, so this cross-project pool filters correctly.
+	const lineage = useTaskLineage();
 	const resolver: FacetResolver = useMemo(
-		() => buildFacetResolver({ agents, projectById, taskPorts, spaces, t, prNumberFor: (task) => taskPrMap.get(task.id)?.number ?? null }),
-		[agents, projectById, taskPorts, spaces, t, taskPrMap],
+		() => buildFacetResolver({ agents, projectById, taskPorts, spaces, t, prNumberFor: (task) => taskPrMap.get(task.id)?.number ?? null, lineage, currentProjectId: project?.id ?? null }),
+		[agents, projectById, taskPorts, spaces, t, taskPrMap, lineage, project],
 	);
 
 	const priorityCandidates = useMemo<FilterFunnelOption[]>(

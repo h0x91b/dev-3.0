@@ -23,6 +23,7 @@ import type { TaskResetConsent, TaskResetResult, TaskStatus, WorktreeAccessState
 import type { TaskPriority } from "./task-priority";
 import type { TaskType } from "./task-type";
 import type { Task } from "./task";
+import type { TaskLineageIndex } from "./task-origin";
 import type { ColumnAgentConfig, ColumnAgentFailureReason, ColumnAgentIdentity } from "./column-agents";
 import type { AgentModelAvailability, CodingAgent } from "./coding-agents";
 import type { AgentLiveModels } from "../agent-live-models";
@@ -376,6 +377,11 @@ export type AppRPCSchema = {
 				 *  the board that this list therefore never shows, so a caller can say
 				 *  what it is hiding instead of implying the project holds nothing else. */
 				response: { projectId: string; tasks: Task[]; todoCount: number }[];
+			};
+			/** Every parent→child edge on every board, for the lineage markers and `children:`. */
+			getTaskLineage: {
+				params: void;
+				response: TaskLineageIndex;
 			};
 			getProductivityStats: {
 				params: void;
