@@ -2,7 +2,7 @@ import type { Project, Task, TaskDiffFile, TaskDiffFileStatus, TaskDiffMode, Tas
 export { extractRepoName } from "../shared/types";
 import { createHash } from "node:crypto";
 import { rm } from "node:fs/promises";
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, statSync, unlinkSync } from "node:fs";
 import {
 	basename as basenamePath,
 	dirname as dirnamePath,
@@ -14,6 +14,7 @@ import { CloneProgressParser } from "./clone-progress";
 import { reportCurrentPreparationStage } from "./preparation-runtime";
 import { spawn } from "./spawn";
 import { DEV3_HOME } from "./paths";
+import { listDiffSnapshots, readDiffSnapshot, writeDiffSnapshot } from "./diff-snapshots";
 import { projectStorageKey } from "../shared/project-storage-key";
 import * as github from "./github";
 
@@ -3213,12 +3214,10 @@ export async function saveDiffSnapshot(
 	}
 
 	// Check if identical to the latest snapshot
-	const existing = readdirSync(dir).filter((f) => f.endsWith(".patch")).sort();
+	const existing = listDiffSnapshots(dir);
 	if (existing.length > 0) {
-		const lastFile = `${dir}/${existing[existing.length - 1]}`;
 		try {
-			const lastContent = readFileSync(lastFile, "utf-8");
-			if (lastContent === diff) {
+			if (readDiffSnapshot(`${dir}/${existing[existing.length - 1]}`) === diff) {
 				log.debug("saveDiffSnapshot: unchanged, skipping");
 				return;
 			}
@@ -3228,12 +3227,11 @@ export async function saveDiffSnapshot(
 	// Save with timestamp
 	const now = new Date();
 	const ts = now.toISOString().replace(/[:.]/g, "-").slice(0, 19);
-	const filename = `${ts}.patch`;
-	writeFileSync(`${dir}/${filename}`, diff);
+	const filename = writeDiffSnapshot(dir, ts, diff);
 	log.info("saveDiffSnapshot: saved", { file: filename, size: diff.length });
 
 	// Prune old snapshots beyond the limit
-	const allFiles = readdirSync(dir).filter((f) => f.endsWith(".patch")).sort();
+	const allFiles = listDiffSnapshots(dir);
 	if (allFiles.length > MAX_DIFF_SNAPSHOTS) {
 		const toRemove = allFiles.slice(0, allFiles.length - MAX_DIFF_SNAPSHOTS);
 		for (const f of toRemove) {

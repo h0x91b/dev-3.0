@@ -1,4 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
 	collectWorktreeReport,
 	formatBytes,
@@ -473,6 +476,47 @@ describe("dev3 doctor --worktrees", () => {
 		).rejects.toThrow("exit");
 		expect(exitSpy).toHaveBeenCalledWith(CLI_EXIT_CODE_USAGE_ERROR);
 		expect(errSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("")).toContain("30d");
+	});
+
+	describe("diff snapshots", () => {
+		let home: string;
+		let diffsDir: string;
+
+		beforeEach(() => {
+			home = mkdtempSync(join(tmpdir(), "dev3-doctor-diffs-"));
+			diffsDir = join(home, "worktrees", SLUG, "aaaaaaaa", "diffs");
+			mkdirSync(diffsDir, { recursive: true });
+			writeFileSync(join(diffsDir, "2026-03-10T19-23-18.patch"), "diff --git a/x b/x\n".repeat(500));
+			utimesSync(join(diffsDir, "2026-03-10T19-23-18.patch"), new Date(NOW - 86_400_000), new Date(NOW - 86_400_000));
+		});
+
+		afterEach(() => {
+			rmSync(home, { recursive: true, force: true });
+		});
+
+		it("only counts plain snapshots without --gzip-diffs", async () => {
+			await expect(
+				handleDoctor({ flags: { worktrees: "true" }, positional: [] }, unusedDoctorDeps, fixtureDeps({ dev3Home: home })),
+			).rejects.toThrow("exit");
+			expect(stdout()).toContain("Uncompressed diff snapshots: 1 file in 1 task dirs");
+			expect(stdout()).toContain("--gzip-diffs");
+			expect(readdirSync(diffsDir)).toEqual(["2026-03-10T19-23-18.patch"]);
+		});
+
+		it("gzips them with --gzip-diffs", async () => {
+			await expect(
+				handleDoctor(
+					{ flags: { worktrees: "true", "gzip-diffs": "true", json: "true" }, positional: [] },
+					unusedDoctorDeps,
+					fixtureDeps({ dev3Home: home }),
+				),
+			).rejects.toThrow("exit");
+			const parsed = JSON.parse(stdout()) as { diffs: { gzipped: { compressed: number; bytesBefore: number; bytesAfter: number } } };
+			expect(parsed.diffs.gzipped.compressed).toBe(1);
+			expect(parsed.diffs.gzipped.bytesAfter).toBeLessThan(parsed.diffs.gzipped.bytesBefore);
+			expect(readdirSync(diffsDir)).toEqual(["2026-03-10T19-23-18.patch.gz"]);
+			expect(exitSpy).toHaveBeenCalledWith(CLI_EXIT_CODE_SUCCESS);
+		});
 	});
 
 	it("rejects --prune-older-than with no value at all", async () => {

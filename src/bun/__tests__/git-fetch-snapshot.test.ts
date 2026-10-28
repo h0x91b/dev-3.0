@@ -3,9 +3,10 @@
  * using mocked spawn() responses. No real git repos needed.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import { gzipSync } from "zlib";
 import type { Project, Task } from "../../shared/types";
 
 vi.mock("../logger", () => ({
@@ -113,6 +114,7 @@ import {
 	saveDiffSnapshot,
 	taskDir,
 } from "../git";
+import { listDiffSnapshots, readDiffSnapshot } from "../diff-snapshots";
 
 beforeEach(() => {
 	remoteUrl = "git@github.com:o/r.git";
@@ -591,7 +593,7 @@ describe("saveDiffSnapshot", () => {
 		rmSync(tmpDir, { recursive: true, force: true });
 	});
 
-	it("saves a .patch file when there are changes", async () => {
+	it("saves a gzip-compressed .patch.gz file when there are changes", async () => {
 		queueResponse(0, " 1 file changed, 1 insertion(+)"); // shortstat
 		queueResponse(0, "diff --git a/feature.ts b/feature.ts\n+export const add = 1;\n");
 		await saveDiffSnapshot(project, task, "origin/main");
@@ -599,11 +601,12 @@ describe("saveDiffSnapshot", () => {
 		const diffsDir = join(taskDir(project, task), "diffs");
 		expect(existsSync(diffsDir)).toBe(true);
 
-		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
+		const files = listDiffSnapshots(diffsDir);
 		expect(files).toHaveLength(1);
 
-		const content = readFileSync(join(diffsDir, files[0]), "utf-8");
-		expect(content).toContain("feature.ts");
+		expect(files[0]).toMatch(/\.patch\.gz$/);
+		expect(readFileSync(join(diffsDir, files[0])).subarray(0, 2)).toEqual(Buffer.from([0x1f, 0x8b]));
+		expect(readDiffSnapshot(join(diffsDir, files[0]))).toContain("feature.ts");
 	});
 
 	it("skips saving when there is no diff", async () => {
@@ -611,7 +614,7 @@ describe("saveDiffSnapshot", () => {
 		await saveDiffSnapshot(project, task, "origin/main");
 
 		const diffsDir = join(taskDir(project, task), "diffs");
-		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
+		const files = listDiffSnapshots(diffsDir);
 		expect(files).toHaveLength(0);
 	});
 
@@ -626,7 +629,7 @@ describe("saveDiffSnapshot", () => {
 		await saveDiffSnapshot(project, task, "origin/main");
 
 		const diffsDir = join(taskDir(project, task), "diffs");
-		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
+		const files = listDiffSnapshots(diffsDir);
 		expect(files).toHaveLength(1);
 	});
 
@@ -644,7 +647,7 @@ describe("saveDiffSnapshot", () => {
 		vi.useRealTimers();
 
 		const diffsDir = join(taskDir(project, task), "diffs");
-		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
+		const files = listDiffSnapshots(diffsDir);
 		expect(files).toHaveLength(2);
 	});
 
@@ -661,8 +664,39 @@ describe("saveDiffSnapshot", () => {
 		queueResponse(0, "new diff content\n");
 		await saveDiffSnapshot(project, task, "origin/main");
 
-		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
+		const files = listDiffSnapshots(diffsDir);
 		expect(files.length).toBeLessThanOrEqual(50);
+	});
+
+	it("skips saving when the newest snapshot is an older version's plain .patch with the same diff", async () => {
+		const diffsDir = join(taskDir(project, task), "diffs");
+		mkdirSync(diffsDir, { recursive: true });
+		writeFileSync(join(diffsDir, "2025-01-01T00-00-00.patch"), "same diff");
+
+		queueResponse(0, " 1 file changed, 1 insertion(+)");
+		queueResponse(0, "same diff\n");
+		await saveDiffSnapshot(project, task, "origin/main");
+
+		expect(listDiffSnapshots(diffsDir)).toEqual(["2025-01-01T00-00-00.patch"]);
+	});
+
+	it("prunes plain and gzip snapshots together, oldest first", async () => {
+		const diffsDir = join(taskDir(project, task), "diffs");
+		mkdirSync(diffsDir, { recursive: true });
+		for (let i = 0; i < 30; i++) {
+			writeFileSync(join(diffsDir, `2025-01-01T00-00-${String(i * 2).padStart(2, "0")}.patch`), `plain-${i}`);
+			writeFileSync(join(diffsDir, `2025-01-01T00-01-${String(i * 2).padStart(2, "0")}.patch.gz`), gzipSync(`gz-${i}`));
+		}
+
+		queueResponse(0, " 1 file changed, 1 insertion(+)");
+		queueResponse(0, "new diff content\n");
+		await saveDiffSnapshot(project, task, "origin/main");
+
+		const files = listDiffSnapshots(diffsDir);
+		expect(files).toHaveLength(50);
+		expect(files[0]).toBe("2025-01-01T00-00-22.patch");
+		expect(files[files.length - 1]).toMatch(/\.patch\.gz$/);
+		expect(readDiffSnapshot(join(diffsDir, files[files.length - 1]))).toBe("new diff content");
 	});
 
 	it("skips saving when shortstat estimates diff exceeds 1 MB", async () => {
@@ -672,7 +706,7 @@ describe("saveDiffSnapshot", () => {
 		await saveDiffSnapshot(project, task, "origin/main");
 
 		const diffsDir = join(taskDir(project, task), "diffs");
-		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
+		const files = listDiffSnapshots(diffsDir);
 		expect(files).toHaveLength(0);
 	});
 
@@ -683,7 +717,7 @@ describe("saveDiffSnapshot", () => {
 		await saveDiffSnapshot(project, task, "origin/main");
 
 		const diffsDir = join(taskDir(project, task), "diffs");
-		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
+		const files = listDiffSnapshots(diffsDir);
 		expect(files).toHaveLength(0);
 	});
 });
