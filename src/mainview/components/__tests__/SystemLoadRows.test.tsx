@@ -110,6 +110,23 @@ describe("SystemLoadRows", () => {
 		expect(panel).toHaveTextContent("76% of 500 GB in use");
 	});
 
+	it("each menu row leads with its own icon", async () => {
+		renderRows();
+		for (const id of ["cpu-load-row", "disk-space-row"]) {
+			expect((await screen.findByTestId(id)).querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(1);
+		}
+	});
+
+	it("header pills carry the icon beside the number", async () => {
+		mockedGet.mockResolvedValue(
+			snapshot({ cpuPressure: "warn", disk: { free: 12e9, total: 500e9, pressure: "warn" } }),
+		);
+		renderRows(vi.fn(), "bar");
+		for (const id of ["cpu-load-pill", "disk-space-pill"]) {
+			expect((await screen.findByTestId(id)).querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(1);
+		}
+	});
+
 	it("header pills appear only for a resource at warn or critical, coloured by its level", async () => {
 		mockedGet.mockResolvedValue(
 			snapshot({ cpuLoadPercent: 160, cpuPressure: "critical", disk: { free: 120e9, total: 500e9, pressure: "normal" } }),

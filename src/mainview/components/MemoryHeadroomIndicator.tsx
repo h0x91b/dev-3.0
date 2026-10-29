@@ -130,7 +130,7 @@ export default function MemoryHeadroomIndicator({ navigate, variant = "bar" }: M
 				>
 					<MemoryIcon className="size-[1.125rem] shrink-0" />
 					<span className="text-sm flex-1 text-left">{t("memory.label")}</span>
-					<span className={`text-micro font-medium tabular-nums ${pressureClass}`}>
+					<span data-testid="memory-headroom-value" className={`text-micro font-medium tabular-nums ${pressureClass}`}>
 						{formatBytesCompact(snapshot.headroom)}
 					</span>
 				</button>
