@@ -1,7 +1,7 @@
 import type { ReviewedPullRequest, AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskOrigin, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
 import { isTaskSoundEnabled } from "../../shared/task-sound-statuses";
-import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, normalizeTaskType, reviewTaskTitle } from "../../shared/types";
+import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, hasGitWorkflow, normalizeTaskType, reviewTaskTitle } from "../../shared/types";
 import * as data from "../data";
 import { loadTaskLineage } from "../task-lineage";
 import * as git from "../git";
@@ -228,14 +228,14 @@ export async function createTask(params: { projectId: string; description: strin
 	// not run that branch's own config (see Task.foreignCode). Asked now rather than at
 	// each launch because a merged pull request's branch disappears upstream, and a
 	// later check would silently promote the task back to "my own work".
-	const foreignCode = project.kind === "virtual"
+	const foreignCode = !hasGitWorkflow(project)
 		? false
 		: await git.isForeignBranchRef(project.path, params.existingBranch);
 	// A review task's draft identity beats a title derived from the description: the
 	// description leads with the review preamble, so every review card otherwise
 	// reads the same. A title the USER typed still wins — the modal sends that as
 	// `customTitle` after creation, which getTaskTitle prefers over this one.
-	const reviewIdentity = params.taskType === "pr-review" && params.existingBranch && project.kind !== "virtual" && !isScratch
+	const reviewIdentity = params.taskType === "pr-review" && params.existingBranch && hasGitWorkflow(project) && !isScratch
 		? await reviewIdentityForBranch(project, params.existingBranch)
 		: null;
 	const reviewTitle = reviewIdentity?.title ?? "";

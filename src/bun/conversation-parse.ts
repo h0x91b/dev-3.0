@@ -49,16 +49,33 @@ export function parseTranscriptFile(
 	return parseConversation(resolved, body, path, options);
 }
 
+const SESSION_UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+/**
+ * Does this transcript belong to one of `sessionIds`? Every store puts the id in
+ * the file name. Null keeps everything: the folder is the task's own.
+ */
+export function transcriptInSessions(path: string, sessionIds: readonly string[] | null | undefined): boolean {
+	if (!sessionIds) return true;
+	const id = path.slice(path.lastIndexOf("/") + 1).match(SESSION_UUID)?.[0]?.toLowerCase();
+	return !!id && sessionIds.some((known) => known.toLowerCase() === id);
+}
+
+/** Limits a scan of a folder other tasks share to this task's own sessions (`task-sessions.ts`). */
+interface SessionScope {
+	sessionIds?: readonly string[] | null;
+}
+
 /** Every parseable conversation belonging to one worktree, newest file first. */
 export function parseWorktreeConversations(
 	worktreePath: string,
-	options: ParseConversationOptions & { home?: string } = {},
+	options: ParseConversationOptions & { home?: string } & SessionScope = {},
 ): ParsedTranscript[] {
 	const home = options.home ?? homedir();
 	const parsed: ParsedTranscript[] = [];
 
 	for (const file of transcriptFilesForWorktree(worktreePath, home)) {
-		if (!PARSEABLE_KINDS.has(file.kind)) continue;
+		if (!PARSEABLE_KINDS.has(file.kind) || !transcriptInSessions(file.path, options.sessionIds)) continue;
 		const conversation = parseTranscriptFile(file.path, file.kind as ConversationSource, options);
 		if (!conversation) continue;
 		let mtimeMs = 0;
@@ -91,12 +108,12 @@ export interface NewestTranscript extends ParsedTranscript {
  */
 export function newestWorktreeConversation(
 	worktreePath: string,
-	options: ParseConversationOptions & { home?: string; unchanged?: (fingerprint: TranscriptFingerprint) => boolean } = {},
+	options: ParseConversationOptions & SessionScope & { home?: string; unchanged?: (fingerprint: TranscriptFingerprint) => boolean } = {},
 ): NewestTranscript | "unchanged" | null {
 	const home = options.home ?? homedir();
 	const candidates: { kind: ConversationSource; fingerprint: TranscriptFingerprint }[] = [];
 	for (const file of transcriptFilesForWorktree(worktreePath, home)) {
-		if (!PARSEABLE_KINDS.has(file.kind)) continue;
+		if (!PARSEABLE_KINDS.has(file.kind) || !transcriptInSessions(file.path, options.sessionIds)) continue;
 		try {
 			const stat = statSync(file.path);
 			candidates.push({ kind: file.kind as ConversationSource, fingerprint: { path: file.path, size: stat.size, mtimeMs: stat.mtimeMs } });

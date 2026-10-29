@@ -48,6 +48,7 @@ import { handleCursorUsage } from "./commands/cursor-usage";
 import { handleExtensionHook } from "./commands/extension-hook";
 import { handleClaudePrompt } from "./commands/claude-prompt";
 import { handleClaudeTurnEnded } from "./commands/claude-turn-ended";
+import { handleClaudeClaim } from "./commands/claude-claim";
 import { handleClaudeSessionStart, handleNoteRecent } from "./commands/recent-notes";
 import { handleAgentExitedHook } from "./commands/agent-exited";
 import { handleClaudeStopFailure } from "./commands/claude-stop-failure";
@@ -345,6 +346,15 @@ async function main(): Promise<void> {
 	}
 	if (command === "hook" && subcommand === "claude-turn-ended") {
 		return await handleClaudeTurnEnded(await Bun.stdin.text(), socketPath || context?.socketPath || null, context);
+	}
+	if (command === "hook" && subcommand === "claude-claim") {
+		// Internal: Claude Code's PreToolUse on its edit tools in a shared folder.
+		// Denies the edit only when another live task holds the file.
+		return await handleClaudeClaim(
+			await Bun.stdin.text(),
+			socketPath || context?.socketPath || null,
+			context,
+		);
 	}
 	if (command === "hook" && subcommand === "claude-stop-failure") {
 		// Internal: Claude Code fires StopFailure instead of Stop when an API error

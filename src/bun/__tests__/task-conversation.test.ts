@@ -26,6 +26,9 @@ vi.mock("../git", () => ({
 	virtualWorkDir: (_project: unknown, task: { id: string }) => `${container}/${task.id}/work`,
 }));
 
+// These fixtures are worktrees; the shared-folder scope has its own tests.
+vi.mock("../task-sessions", () => ({ taskSessionIds: () => null }));
+
 vi.mock("../conversation-search", () => ({
 	transcriptFilesForWorktree: () => transcripts.value,
 }));

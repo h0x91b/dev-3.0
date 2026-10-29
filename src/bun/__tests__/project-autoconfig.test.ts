@@ -101,6 +101,29 @@ describe("project-autoconfig", () => {
 			expect(gitStatus()).toBe("");
 		});
 
+		it("configures a plain folder added with the git workflow off, without a git exclude", async () => {
+			write("package.json", JSON.stringify({ scripts: { dev: "vite" } }));
+			write("bun.lock");
+
+			const result = await autoConfigureProject(project({ gitWorkflow: false }));
+
+			expect(result).toEqual({ written: ["devScript"] });
+			expect(localConfig()).toEqual({ devScript: "bun run dev" });
+			expect(existsSync(join(tmp, ".git"))).toBe(false);
+		});
+
+		// Its tasks run in the project folder and skip the setup script, so writing one would be noise.
+		it("writes no setup script for a repository added with the git workflow off", async () => {
+			gitInit();
+			write("package.json", JSON.stringify({ scripts: { dev: "vite" } }));
+			write("bun.lock");
+
+			const result = await autoConfigureProject(project({ gitWorkflow: false }));
+
+			expect(result).toEqual({ written: ["devScript"] });
+			expect(localConfig()).toEqual({ devScript: "bun run dev" });
+		});
+
 		it("adds the exclude entry only once", async () => {
 			gitInit();
 			write("package.json", JSON.stringify({ scripts: { dev: "vite" } }));

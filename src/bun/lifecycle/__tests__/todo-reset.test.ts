@@ -23,7 +23,7 @@ function state(status: TaskStatus, overrides: Partial<LifecycleState["facts"]> =
 			hasWorktree: !clean,
 			worktreePath: clean ? null : PATH,
 			lifecycleStartedAt: clean ? null : STARTED,
-			projectKind: "git",
+			usesWorktrees: true,
 			hasPrIdentity: false,
 			peerReviewEnabled: true,
 			...overrides,
@@ -130,7 +130,7 @@ describe("resetRequested (T8–T10)", () => {
 	});
 
 	it("keeps a virtual (Operations) folder: no worktree removal", () => {
-		const result = transition(state("in-progress", { projectKind: "virtual" }), reset());
+		const result = transition(state("in-progress", { usesWorktrees: false }), reset());
 		expect(types(result.effects)).not.toContain("resetWorktree");
 		expect(types(result.effects)).toContain("persistResetTask");
 	});

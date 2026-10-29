@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
-import type { Project, Task } from "../../shared/types";
+import { hasGitWorkflow, type Project, type Task } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
+import { folderWorkDir } from "../task-folder";
 import * as pty from "../pty-server";
 import { DEFAULT_TMUX_SOCKET } from "../tmux";
 import { log } from "../rpc-handlers/shared";
@@ -22,10 +23,7 @@ function expectedWorktreePath(project: Project, task: Task): string | null {
 		&& task.runtimeState?.runtime !== "preparing"
 		&& task.runtimeState?.runtime !== "tearing-down"
 	) return null;
-	if (project.kind === "virtual") {
-		return task.opsWorkDir?.trim() || git.virtualWorkDir(project, task);
-	}
-	return `${git.taskDir(project, task)}/worktree`;
+	return folderWorkDir(project, task) ?? `${git.taskDir(project, task)}/worktree`;
 }
 
 /**
@@ -57,7 +55,7 @@ async function rehydrateTask(project: Project, task: Task): Promise<void> {
 	const worktreeExists = worktreePath ? existsSync(worktreePath) : false;
 	const terminalAlive = await terminalStillAlive(task);
 	let branchName = task.branchName ?? null;
-	if (project.kind !== "virtual" && worktreeExists && worktreePath && !branchName) {
+	if (hasGitWorkflow(project) && worktreeExists && worktreePath && !branchName) {
 		try {
 			branchName = await git.getCurrentBranch(worktreePath);
 		} catch (error) {
@@ -96,7 +94,7 @@ export async function rehydrateTaskLifecycles(): Promise<void> {
 	const work: Promise<void>[] = [];
 	for (const project of projects) {
 		const tasks = await data.loadTasks(project);
-		if (project.kind !== "virtual") {
+		if (hasGitWorkflow(project)) {
 			try {
 				await git.recoverStaleInitializingWorktrees(
 					project,
