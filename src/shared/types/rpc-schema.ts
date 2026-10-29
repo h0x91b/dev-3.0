@@ -1347,8 +1347,9 @@ export type AppRPCSchema = {
 				params: { artifact: SharedArtifact };
 				response: { fileName: string; mime: "application/zip" | "text/html"; base64: string };
 			};
+			/** Desktop: open one artifact version in the OS browser, inside the loopback shell with the element picker. */
 			openArtifactInBrowser: {
-				params: { artifact: SharedArtifact };
+				params: { taskId: string; projectId?: string; artifactId: string; version: number };
 				response: void;
 			};
 			/** Live Artifact page operation from the viewer's frame, run as the user (`dev3.live.*`). Failures come back as a value so the frame can branch on `reason`. */

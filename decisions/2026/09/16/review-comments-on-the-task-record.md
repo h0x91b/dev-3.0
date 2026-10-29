@@ -30,7 +30,7 @@ for one model across viewers, in one PR.
   commands, so the agent learns them from the review itself — the skill body was 11 characters
   under the Windows command-line cap and could not take a paragraph.
 - **Artifact comment mode** is a script injected into the artifact document
-  (`src/mainview/utils/artifactCommentScript.ts`, authored as a function like the bridge): it
+  (`src/shared/artifact-comment-script.ts`, authored as a function like the bridge): it
   crosshairs the frame, reports a clicked element, and draws the pins itself because only the
   frame knows its own scroll and layout. Pins the selector no longer matches are re-found by
   heading + text and otherwise reported back as unmatched — shown as outdated, never dropped.

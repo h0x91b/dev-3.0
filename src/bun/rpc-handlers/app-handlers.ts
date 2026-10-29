@@ -32,8 +32,9 @@ import { getPushMessage, getUploadedImageExtension, hideAppNative, log, logRende
 import { forgetRendererClient, recordRendererHeartbeat } from "../renderer-watchdog";
 import { consumeArtifactFreezeNotice } from "../artifact-freeze-recovery";
 import { applyMenuContext, type MenuContext } from "../../shared/application-menu";
-import { loadSharedArtifactContent, loadSharedArtifactDownload, sharedArtifactDownloadKind, sharedArtifactHtmlPath, sharedArtifactLinkScope } from "../shared-artifacts";
+import { loadSharedArtifactContent, loadSharedArtifactDownload, sharedArtifactDownloadKind, sharedArtifactLinkScope } from "../shared-artifacts";
 import { mintFileLink } from "../file-links";
+import { findLiveTask, staticArtifactUrlFor } from "../live-artifact-url";
 import { isFullyQualifiedPath } from "../../shared/absolute-path";
 import { cloneDirNameProblem } from "../../shared/project-registration";
 import { clipboardImageToPng } from "../clipboard-image";
@@ -886,10 +887,11 @@ async function readArtifactDownload(params: { artifact: SharedArtifact }) {
 	return loadSharedArtifactDownload(params.artifact);
 }
 
-async function openArtifactInBrowser(params: { artifact: SharedArtifact }): Promise<void> {
-	const path = sharedArtifactHtmlPath(params.artifact);
-	log.info("→ openArtifactInBrowser", { path });
-	Utils.openPath(path);
+/** Desktop: the artifact opens on the loopback server inside the dev3 shell, so its picker works in the tab. */
+async function openArtifactInBrowser(params: { taskId: string; projectId?: string; artifactId: string; version: number }): Promise<void> {
+	const { project, task } = await findLiveTask(params.taskId, params.projectId);
+	log.info("→ openArtifactInBrowser", { taskId: params.taskId.slice(0, 8), artifactId: params.artifactId.slice(0, 8), version: params.version });
+	Utils.openExternal(staticArtifactUrlFor(project, task, params.artifactId, params.version));
 }
 
 /** Remote-mode counterpart of {@link openArtifactInBrowser}: a sandboxed tab link over the stored artifact. */
