@@ -35,7 +35,7 @@ describe("worktreeAccessState", () => {
 		mkdirSync(wt, { recursive: true });
 		chmodSync(locked, 0o000);
 		expect(worktreeAccessState(wt)).toBe("unreadable");
-		expect(() => assertTaskWorkspacePresent({ kind: undefined }, wt)).toThrow(/permission denied/);
+		expect(() => assertTaskWorkspacePresent({ kind: undefined }, wt, {})).toThrow(/permission denied/);
 	});
 });
 
@@ -43,13 +43,21 @@ describe("assertTaskWorkspacePresent", () => {
 	it("returns the path when usable, requiring .git only for git projects", () => {
 		const wt = join(root, "wt");
 		mkdirSync(wt);
-		expect(assertTaskWorkspacePresent({ kind: "virtual" }, wt)).toBe(wt);
-		expect(() => assertTaskWorkspacePresent({ kind: undefined }, wt)).toThrow(TaskWorkspaceUnavailableError);
+		expect(assertTaskWorkspacePresent({ kind: "virtual" }, wt, {})).toBe(wt);
+		expect(() => assertTaskWorkspacePresent({ kind: undefined }, wt, {})).toThrow(TaskWorkspaceUnavailableError);
+	});
+
+	it("requires .git for an own-worktree task of a gitless project, not for a shared-folder one", () => {
+		const wt = join(root, "wt");
+		mkdirSync(wt);
+		const gitless = { kind: undefined, gitWorkflow: false } as const;
+		expect(assertTaskWorkspacePresent(gitless, wt, {})).toBe(wt);
+		expect(() => assertTaskWorkspacePresent(gitless, wt, { ownWorktree: true })).toThrow(TaskWorkspaceUnavailableError);
 	});
 
 	it("refuses no recorded path and a missing one, naming what to do", () => {
-		expect(() => assertTaskWorkspacePresent({ kind: undefined }, null)).toThrow(TaskWorkspaceUnavailableError);
-		expect(() => assertTaskWorkspacePresent({ kind: undefined }, join(root, "gone"))).toThrow(/missing.*To Do to reset it, or cancel it/);
+		expect(() => assertTaskWorkspacePresent({ kind: undefined }, null, {})).toThrow(TaskWorkspaceUnavailableError);
+		expect(() => assertTaskWorkspacePresent({ kind: undefined }, join(root, "gone"), {})).toThrow(/missing.*To Do to reset it, or cancel it/);
 	});
 });
 

@@ -63,7 +63,7 @@ async function runScriptHandler(params: {
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 	if (!task.worktreePath) throw new Error("Task has no worktree");
-	assertTaskWorkspacePresent(project, task.worktreePath);
+	assertTaskWorkspacePresent(project, task.worktreePath, task);
 
 	let runner: ScriptRunner = "npm";
 	if (source === "make") {

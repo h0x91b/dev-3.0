@@ -135,6 +135,7 @@ export default function TaskGitActions({
 		handlePush,
 		handleRebase,
 		handleRefreshStatus,
+		localMergeBlocked,
 		mergeRoute,
 		merging,
 		pushing,
@@ -397,7 +398,7 @@ export default function TaskGitActions({
 	// GitHub's problem to judge, not a reason to demand a local rebase first. The
 	// local squash route still needs the rebase, because it commits the base itself.
 	const mergeIsPr = mergeRoute === "pull-request";
-	const mergeDisabled = !branchStatus || branchStatus.ahead === 0 || (!mergeIsPr && branchStatus.behind > 0) || merging;
+	const mergeDisabled = !branchStatus || branchStatus.ahead === 0 || (!mergeIsPr && branchStatus.behind > 0) || localMergeBlocked || merging;
 	const mergeLabel = mergeIsPr ? t("infoPanel.mergePr") : t("infoPanel.merge");
 	const mergeTooltip = !branchStatus
 		? t("infoPanel.statusLoading")
@@ -405,6 +406,8 @@ export default function TaskGitActions({
 			? baseUnreachableTooltip
 			: branchStatus.ahead === 0
 			? t(hasUncommittedChanges ? "infoPanel.mergeDisabledUncommitted" : "infoPanel.mergeDisabledNoCommits")
+			: localMergeBlocked
+				? t("infoPanel.mergeDisabledSharedFolder")
 			: mergeIsPr
 				? t("infoPanel.mergePrTooltip", { pr: String(branchStatus.prNumber), branch: baseBranch })
 				: branchStatus.behind > 0

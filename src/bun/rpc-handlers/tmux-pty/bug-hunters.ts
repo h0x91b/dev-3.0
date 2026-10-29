@@ -84,7 +84,7 @@ async function spawnSingleBugHunterPane(opts: {
 	accountId?: string | null;
 	split: { placement: AuxPanePlacement; size: string; tmuxTarget: string; nativeAnchor?: string };
 }): Promise<{ handle: AuxPaneHandle; baseCmd: string; agentFamily: AgentFamily | undefined }> {
-	assertTaskWorkspacePresent(opts.project, opts.worktreePath);
+	assertTaskWorkspacePresent(opts.project, opts.worktreePath, opts.task);
 	const ctx: agents.TemplateContext = {
 		taskTitle: "",
 		taskDescription: "",

@@ -840,6 +840,12 @@ export function readTaskDirect(projectId: string, taskId: string): Record<string
 		if (!existsSync(tasksFile)) return null;
 
 		const tasks = JSON.parse(readFileSync(tasksFile, "utf-8")) as Array<Record<string, unknown>>;
+		// A seq shared by variants names no single task, so it reads as unknown.
+		const seqRef = /^seq:(\d+)$/.exec(taskId);
+		if (seqRef) {
+			const matches = tasks.filter((t) => t.seq === Number(seqRef[1]));
+			return matches.length === 1 ? matches[0] : null;
+		}
 		return tasks.find((t) => t.id === taskId || (t.id as string).startsWith(taskId)) || null;
 	} catch {
 		return null;

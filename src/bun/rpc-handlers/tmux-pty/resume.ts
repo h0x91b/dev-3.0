@@ -450,7 +450,7 @@ export async function wakeTaskShell(params: { taskId: string }): Promise<string>
 	}
 	if (!task.hibernated) throw new Error(`Cannot wake: task ${params.taskId} is not hibernated`);
 	// Before the flag clears: a launch that then throws would strand the task awake with no terminal.
-	assertTaskWorkspacePresent(project, task.worktreePath);
+	assertTaskWorkspacePresent(project, task.worktreePath, task);
 	await wakeIfHibernated(project, task);
 	if (pty.hasSession(params.taskId)) {
 		await pty.destroySessionAwaited(params.taskId);

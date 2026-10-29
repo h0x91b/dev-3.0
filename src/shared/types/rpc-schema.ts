@@ -162,10 +162,12 @@ export type AppRPCSchema = {
 			addProject: {
 				/** `name` is optional: the backend derives it from the path, which is the
 				 *  only side that knows how to spell a path on its own platform. */
-				/** `autoConfigure` writes detected settings to `.dev3/config.local.json`; `autoConfigured` reports the outcome. */
-				params: { path: string; name?: string; autoConfigure?: boolean; boardCopy?: boolean };
-				/** `gitInit` is set when the folder could be made a repo in place (needs the user's confirmation). */
-				response: { ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer } | { ok: false; error: string; gitInit?: GitInitOffer };
+				/** `autoConfigure` writes detected settings to `.dev3/config.local.json`; `autoConfigured` reports the outcome.
+				 *  `gitWorkflow: false` adds the folder with the git workflow off, git repository or not. */
+				params: { path: string; name?: string; autoConfigure?: boolean; gitWorkflow?: boolean; boardCopy?: boolean };
+				/** `gitInit` is set when the folder could be made a repo in place (needs the user's confirmation).
+				 *  `notGitRepo` marks the refusal that `gitWorkflow: false` would lift. */
+				response: { ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer } | { ok: false; error: string; gitInit?: GitInitOffer; notGitRepo?: true };
 			};
 			cloneAndAddProject: {
 				params: { url: string; baseDir: string; repoName?: string; progressId?: string; autoConfigure?: boolean; boardCopy?: boolean };
@@ -563,7 +565,7 @@ export type AppRPCSchema = {
 				 * `renameTask`'s customTitle: this does NOT mark the title user-edited,
 				 * so an agent may still rename it.
 				 */
-				params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType };
+				params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType; ownWorktree?: boolean };
 				response: Task;
 			};
 			/** Stored PR a review task reviews; looks it up once for tasks created before it was stored. */
@@ -682,6 +684,7 @@ export type AppRPCSchema = {
 					existingBranch?: string | null;
 					draft?: boolean;
 					taskType?: TaskType | null;
+					ownWorktree?: boolean;
 				};
 				response: Task;
 			};

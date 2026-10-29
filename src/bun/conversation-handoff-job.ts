@@ -13,8 +13,8 @@ import { newestWorktreeConversation, type TranscriptFingerprint } from "./conver
  */
 
 export type HandoffJob =
-	| { kind: "preview"; worktreePath: string; home: string; known?: TranscriptFingerprint | null }
-	| { kind: "render"; worktreePath: string; home: string; target: RenderTarget };
+	| { kind: "preview"; worktreePath: string; home: string; known?: TranscriptFingerprint | null; sessionIds?: string[] | null }
+	| { kind: "render"; worktreePath: string; home: string; target: RenderTarget; sessionIds?: string[] | null };
 
 export type HandoffJobResult =
 	| { kind: "none" }
@@ -40,6 +40,7 @@ export function executeHandoffJob(job: HandoffJob): HandoffJobResult {
 	const known = job.kind === "preview" ? job.known : null;
 	const newest = newestWorktreeConversation(job.worktreePath, {
 		home: job.home,
+		sessionIds: job.sessionIds,
 		unchanged: known ? (fingerprint) => sameFingerprint(fingerprint, known) : undefined,
 	});
 	if (newest === "unchanged") return { kind: "unchanged" };

@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import type { Task } from "../../shared/types";
-import { STATUS_LABELS, getTaskTitle } from "../../shared/types";
+import { STATUS_LABELS, getTaskTitle, hasGitWorkflow, taskUsesWorktree } from "../../shared/types";
 import { detectContext, detectContextDiagnostics, readProjectDirect, readTaskDirect, type ProjectDirect } from "../context";
 import { sendRequest } from "../socket-client";
 import { spaceFields } from "../spaces";
@@ -83,8 +83,7 @@ export async function handleCurrent(socketPath: string | null, opts: { brief?: b
 					["Status:", statusDisplay],
 				];
 				if (task.customColumnId) fields.push(["Custom Column:", task.customColumnId.slice(0, 8)]);
-				if (task.branchName) fields.push(["Branch:", task.branchName]);
-				if (task.worktreePath) fields.push(["Worktree:", task.worktreePath]);
+				fields.push(...workspaceFields(project, task, task.worktreePath, task.branchName));
 				const createdBy = describeTaskOrigin(task);
 				if (createdBy) fields.push(["Created by:", createdBy]);
 				fields.push(...spaceFields(context.projectId));
@@ -147,9 +146,11 @@ export async function handleCurrent(socketPath: string | null, opts: { brief?: b
 		if (displayTitle) fields.push(["Title:", `${displayTitle}${titleMarker}`]);
 		if (task.status) fields.push(["Status:", STATUS_LABELS[task.status as keyof typeof STATUS_LABELS] || (task.status as string)]);
 		const worktreePath = task.worktreePath as string | undefined;
-		const offlineBranch = (worktreePath ? liveBranchName(worktreePath) : null) ?? (task.branchName as string | undefined);
-		if (offlineBranch) fields.push(["Branch:", offlineBranch]);
-		if (worktreePath) fields.push(["Worktree:", worktreePath]);
+		const gitless = sharesProjectFolder(project, task as Pick<Task, "ownWorktree">);
+		const offlineBranch = gitless
+			? null
+			: (worktreePath ? liveBranchName(worktreePath) : null) ?? (task.branchName as string | undefined);
+		fields.push(...workspaceFields(project, task as Pick<Task, "ownWorktree">, worktreePath, offlineBranch));
 		fields.push(...spaceFields(context.projectId));
 
 		fields.push(["", ""]);
@@ -194,4 +195,35 @@ export async function handleCurrent(socketPath: string | null, opts: { brief?: b
 	printCustomColumns(project);
 
 	process.stdout.write(`\nCLI build: v${BUILD_VERSION} (${BUILD_COMMIT}) ${BUILD_TIME}\n`);
+}
+
+/** A task running in the project folder of a gitless git project. Operations boards say so on their own. */
+function sharesProjectFolder(project: ProjectDirect | null, task: Pick<Task, "ownWorktree">): boolean {
+	return !!project && project.kind !== "virtual" && !taskUsesWorktree(project, task);
+}
+
+/**
+ * Where the task works. A gitless task runs in the user's own project folder, so
+ * its agent is told there is no branch to rename, no PR to open, no worktree that
+ * completion would destroy, and that other tasks' uncommitted edits share the tree.
+ */
+function workspaceFields(
+	project: ProjectDirect | null,
+	task: Pick<Task, "ownWorktree">,
+	worktreePath: string | null | undefined,
+	branchName: string | null | undefined,
+): Array<[string, string]> {
+	if (sharesProjectFolder(project, task)) {
+		const fields: Array<[string, string]> = [["Git workflow:", "off - no worktree, branch or PR; completion keeps every file"]];
+		if (worktreePath) fields.push(["Folder:", worktreePath]);
+		fields.push(["Shared folder:", "other tasks edit here too - stage by explicit path; never git stash, git add -A, git checkout --, git reset or git clean"]);
+		return fields;
+	}
+	const fields: Array<[string, string]> = [];
+	if (branchName) fields.push(["Branch:", branchName]);
+	if (worktreePath) fields.push(["Worktree:", worktreePath]);
+	if (project && project.kind !== "virtual" && !hasGitWorkflow(project)) {
+		fields.push(["Git workflow:", "off for the project - this task alone has a worktree; commit on its branch, no PR unless asked"]);
+	}
+	return fields;
 }

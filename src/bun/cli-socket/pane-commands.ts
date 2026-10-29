@@ -17,7 +17,7 @@ export const paneHandlers: Record<string, Handler> = {
 		const { task, project } = await requirePaneTask(params);
 		const cwd = task.worktreePath;
 		if (!cwd) throw new Error(`task ${task.id.slice(0, 8)} has no worktree, so it has no pane to split`);
-		assertTaskWorkspacePresent(project, cwd);
+		assertTaskWorkspacePresent(project, cwd, task);
 		return await startPaneRun({
 			task,
 			command: String(params.command ?? ""),

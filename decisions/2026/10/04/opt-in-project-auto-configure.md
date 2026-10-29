@@ -1,5 +1,7 @@
 # Opt-in project auto-configure on add
 
+Superseded in part on 2026-10-27 by `decisions/2026/10/02/per-project-git-workflow-switch.md`: a project with the git workflow off gets no `setupScript`, and a folder that is not a git repository gets no `info/exclude` entry.
+
 ## Context
 
 Adding a project never wrote a `.dev3/` config. Its settings lived in `projects.json`, and the setup and dev scripts stayed empty until someone filled them in through Project Settings, `dev3 config` or the `/dev3-project-config` agent skill. Some users want a project that works on the first task; others do not want dev3 to write any file into their repository.

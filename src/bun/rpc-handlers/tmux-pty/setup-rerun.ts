@@ -41,7 +41,7 @@ export async function rerunSetupScript(params: { taskId: string }): Promise<void
 	const { task, project } = await findTaskAcrossProjects(params.taskId);
 	if (!task || !project) throw new Error(`Cannot re-run setup: task ${params.taskId} not found`);
 	if (!task.worktreePath) throw new Error("Task has no worktree");
-	assertTaskWorkspacePresent(project, task.worktreePath);
+	assertTaskWorkspacePresent(project, task.worktreePath, task);
 
 	const resolved = await resolveOperationalProjectConfig(project, task.worktreePath, { foreignCode: task.foreignCode });
 	if (!resolved.setupScript.trim()) throw new Error("No setup script configured");

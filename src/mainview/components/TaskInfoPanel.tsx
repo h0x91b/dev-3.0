@@ -8,7 +8,7 @@ import LabelChip from "./LabelChip";
 import PriorityBadge from "./PriorityBadge";
 import OpenInMenu from "./OpenInMenu";
 import { formatDate } from "./NoteItem";
-import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle, isCoordinatorTask, isSharedClip, resolveTaskCompareBaseBranch, taskCompletesManually, taskSharedMedia } from "../../shared/types";
+import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle, isCoordinatorTask, isSharedClip, resolveTaskCompareBaseBranch, taskCompletesManually, taskSharedMedia, taskUsesWorktree } from "../../shared/types";
 import { earlierPullRequests } from "../../shared/task-pull-requests";
 import InlineRename from "./InlineRename";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
@@ -272,6 +272,8 @@ function TaskInfoPanel({
 	);
 	const allocatedPorts = useTaskAllocatedPorts(task);
 	const isTaskActive = ACTIVE_STATUSES.includes(task.status);
+	// Diff, PR, git actions and bug hunters all need a worktree; scripts and the dev server do not.
+	const taskHasGit = taskUsesWorktree(project, task);
 	// Narrow viewport renders no TaskGitActions (the desktop git bar), which is
 	// what feeds `metadataBranchState` on desktop. Own one branch-status
 	// instance here instead: it drives the summary-bar diff badge, the merge
@@ -283,7 +285,7 @@ function TaskInfoPanel({
 		dispatch,
 		navigate,
 		isTaskActive,
-		enabled: narrow && project.kind !== "virtual",
+		enabled: narrow && taskHasGit,
 	});
 	const variantMembers = task.groupId
 		? tasks.filter((candidate) => candidate.groupId === task.groupId)
@@ -685,8 +687,8 @@ function TaskInfoPanel({
 	// only ever modifies these very numbers, and as a neighbour it read as a
 	// second, unrelated action. Same segmented idiom as the status control —
 	// the border owns the group, a hairline splits the two click targets.
-	const showTestsSegment = !diffIncludeTestsHidden && project.kind !== "virtual" && !narrow && metadataBranchStatus != null && metadataBranchStatus.diffFiles > 0;
-	const diffSummaryBadge = project.kind !== "virtual" && metadataBranchStatus && metadataBranchStatus.diffFiles > 0 ? (
+	const showTestsSegment = !diffIncludeTestsHidden && taskHasGit && !narrow && metadataBranchStatus != null && metadataBranchStatus.diffFiles > 0;
+	const diffSummaryBadge = taskHasGit && metadataBranchStatus && metadataBranchStatus.diffFiles > 0 ? (
 		<div className="inline-flex items-center rounded-lg bg-elevated border border-edge hover:border-edge-active transition-colors flex-shrink-0">
 		<button
 			type="button"
@@ -739,7 +741,7 @@ function TaskInfoPanel({
 	// to shed. It steps aside once the wide badge fits, unless the diff is
 	// uncommitted-only: the wide badge counts committed files and renders nothing
 	// then, so at every width this button is the only path to it.
-	const narrowDiffButton = narrow && project.kind !== "virtual" && (hasCommittedDiff || hasUncommittedDiff) ? (
+	const narrowDiffButton = narrow && taskHasGit && (hasCommittedDiff || hasUncommittedDiff) ? (
 		<button
 			type="button"
 			data-testid="summary-bar-diff-compact"
@@ -1110,7 +1112,7 @@ function TaskInfoPanel({
 		<ScheduledMessagesChip task={task} project={project} dispatch={dispatch} placement="down" />
 	) : null;
 
-	const bugHuntersButton = project.kind !== "virtual" && isTaskActive && task.worktreePath && !bugHuntersHidden ? (
+	const bugHuntersButton = taskHasGit && isTaskActive && task.worktreePath && !bugHuntersHidden ? (
 		<HideableControl id="bug-hunters">
 			<Tooltip content={t("bugHunters.buttonTooltip")} detail={t("ttip.infoPanel.bugHunters")}>
 				<button
@@ -1504,7 +1506,7 @@ function TaskInfoPanel({
 							    active — TaskGitActionsSheet's own Show diff row requires a live
 							    worktree, and a finished task would otherwise lose the diff
 							    entirely (bible §12.6: nothing is shed without a sheet path). */}
-							{diffSummaryBadge && !(project.kind !== "virtual" && isTaskActive && task.worktreePath) && onOpenInlineDiff && (
+							{diffSummaryBadge && !(taskHasGit && isTaskActive && task.worktreePath) && onOpenInlineDiff && (
 								<button
 									type="button"
 									data-testid="task-actions-show-diff"
@@ -1531,7 +1533,7 @@ function TaskInfoPanel({
 								</div>
 							)}
 
-							{project.kind !== "virtual" && isTaskActive && task.worktreePath && !bugHuntersHidden && (
+							{taskHasGit && isTaskActive && task.worktreePath && !bugHuntersHidden && (
 								<div className={`${SHEET_ROW_CLASS} !pr-2`}>
 									<button type="button" onClick={() => setBugHuntersOpen(true)} className="flex flex-1 min-w-0 items-center gap-3">
 										<FindBugsIcon className="h-5 w-5 shrink-0 text-danger" />
@@ -1579,7 +1581,7 @@ function TaskInfoPanel({
 							)}
 						</div>
 
-						{project.kind !== "virtual" && isTaskActive && task.worktreePath && (
+						{taskHasGit && isTaskActive && task.worktreePath && (
 							<TaskGitActionsSheet
 								task={task}
 								project={project}
@@ -1667,8 +1669,8 @@ function TaskInfoPanel({
 					<div className="flex items-center gap-1.5 min-w-0">
 						{showPanelButton}
 						<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.git-bar" data-tour-anchor="task.git-bar">
-							{project.kind === "virtual" ? (
-								<span className="text-fg-muted text-micro italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
+							{!taskHasGit ? (
+								<span className="text-fg-muted text-micro italic flex-shrink-0 truncate">{project.kind === "virtual" ? t("ops.gitUnavailable") : t("task.gitWorkflowOff")}</span>
 							) : (
 								<TaskGitActions
 									task={task}
@@ -1744,8 +1746,8 @@ function TaskInfoPanel({
 						<div className="flex items-center gap-1.5 min-w-0 pb-1">
 							{showPanelButton}
 							<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.git-bar" data-tour-anchor="task.git-bar">
-								{project.kind === "virtual" ? (
-									<span className="text-fg-muted text-micro italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
+								{!taskHasGit ? (
+									<span className="text-fg-muted text-micro italic flex-shrink-0 truncate">{project.kind === "virtual" ? t("ops.gitUnavailable") : t("task.gitWorkflowOff")}</span>
 								) : (
 									<TaskGitActions
 										task={task}

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { Project, Task } from "../../../shared/types";
+import { taskUsesWorktree } from "../../../shared/types";
 import { useT } from "../../i18n";
 import type { TaskBranchStatusController } from "./useTaskBranchStatus";
 import { AutoMergeIcon, CommitIcon, CreatePRIcon, MergeIcon, PushIcon, RebaseIcon, ShowDiffIcon } from "./GitIcons";
@@ -60,6 +61,7 @@ export default function TaskGitActionsSheet({
 		branchStatus,
 		compareRef,
 		displayRef,
+		localMergeBlocked,
 		mergeRoute,
 		handleCommit,
 		handleCreatePR,
@@ -76,7 +78,7 @@ export default function TaskGitActionsSheet({
 	// Git mutations only make sense on a real, active worktree. Virtual boards have
 	// no git domain at all (Bible §3) — the caller already gates on kind, but keep
 	// the component self-contained.
-	if (project.kind === "virtual" || !isTaskActive || !task.worktreePath) {
+	if (!taskUsesWorktree(project, task) || !isTaskActive || !task.worktreePath) {
 		return null;
 	}
 
@@ -214,7 +216,7 @@ export default function TaskGitActionsSheet({
 		// Same two routes as the desktop bar: an open PR means gh merges the PR, so
 		// "behind the base" is GitHub's judgement, not a local rebase requirement.
 		const mergeIsPr = mergeRoute === "pull-request";
-		const mergeRowDisabled = !branchStatus || ahead === 0 || (!mergeIsPr && behind > 0);
+		const mergeRowDisabled = !branchStatus || ahead === 0 || (!mergeIsPr && behind > 0) || localMergeBlocked;
 		rows.push({
 			key: "merge",
 			icon: <MergeIcon className={`h-5 w-5 shrink-0 ${mergeRowDisabled ? "text-fg-muted" : "text-success"}`} />,
@@ -224,6 +226,8 @@ export default function TaskGitActionsSheet({
 				? t("infoPanel.statusLoading")
 				: ahead === 0
 					? t("infoPanel.mergeDisabledNoCommits")
+					: localMergeBlocked
+						? t("infoPanel.mergeDisabledSharedFolder")
 					: mergeIsPr
 						? t("infoPanel.mergePrTooltip", { pr: String(branchStatus.prNumber), branch: baseBranch })
 						: behind > 0

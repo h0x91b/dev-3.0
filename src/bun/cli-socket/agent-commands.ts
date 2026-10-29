@@ -10,6 +10,8 @@ import { noteAgentExited, noteAgentSessionActive, noteAgentSessionStarted } from
 import { log, type Handler, withSenderVariant } from "./shared";
 import { requirePaneTask, resolveRequesterTask, resolveTaskFromParams, senderRequester } from "./task-resolution";
 import { claudeSessionWatches, type ClaudeIdleEvent } from "../claude-session-watch";
+import { rememberTaskSession } from "../task-sessions";
+import { claimFileForTask } from "../file-leases";
 
 const codexQuestions = new CodexQuestionState();
 
@@ -186,6 +188,7 @@ export const agentHandlers: Record<string, Handler> = {
 		if (sessionId && (paneId || harness === "codex")) {
 			await capturePaneSession(project, task.id, paneId, sessionId, harness);
 		}
+		rememberTaskSession(project, task, sessionId);
 
 		// The submitted text rides on the same payload, so recording costs the
 		// pane no second dev3 process.
@@ -236,6 +239,7 @@ export const agentHandlers: Record<string, Handler> = {
 			? params.harness
 			: "claude";
 		const sessionId = typeof params.sessionId === "string" ? params.sessionId : null;
+		rememberTaskSession(project, task, sessionId);
 
 		// Claude starts a new conversation on `/clear` and switches on `/resume`;
 		// the pane's resume pointer follows whichever one this prompt went to.
@@ -267,6 +271,14 @@ export const agentHandlers: Record<string, Handler> = {
 		});
 		return { outcome };
 	}),
+
+	// Claude Code's PreToolUse hook on its edit tools, in a folder other tasks
+	// share. Answers the live task that holds the file, or no conflict.
+	"task.claimFile": async (params) => {
+		const { project, task } = await resolveTaskFromParams(params);
+		if (typeof params.path !== "string" || !params.path) return { conflict: null };
+		return { conflict: await claimFileForTask(project, task, params.path) };
+	},
 
 	// Claude Code's StopFailure hook: an API error ended the turn, so the agent is
 	// parked at its prompt with nothing to show for it. Park the task in front of

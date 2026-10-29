@@ -35,7 +35,7 @@ export async function openFileBrowser(params: { taskId: string; projectId: strin
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
 		if (!task.worktreePath) throw new Error("Task has no worktree");
-		assertTaskWorkspacePresent(project, task.worktreePath);
+		assertTaskWorkspacePresent(project, task.worktreePath, task);
 
 		const tmuxSession = taskSessionName(task.id);
 		const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
@@ -160,7 +160,7 @@ export async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 		if (foundTask && foundProject && isActive(foundTask.status) && foundTask.worktreePath) {
 			// Neither a restore, a resume offer nor a fresh launch for a worktree that
 			// is gone or unreadable: the renderer shows why instead.
-			assertTaskWorkspacePresent(foundProject, foundTask.worktreePath);
+			assertTaskWorkspacePresent(foundProject, foundTask.worktreePath, foundTask);
 			const identity = taskTerminalBackendIdentity(foundTask);
 			const sessionAlive = identity === "native"
 				? await nativeTaskPanesAlive(params.taskId)

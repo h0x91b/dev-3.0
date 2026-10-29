@@ -5,7 +5,7 @@ import type { TaskStatus } from "./task-status";
 import { DEFAULT_PRIORITY, type TaskPriority } from "./task-priority";
 import type { Task } from "./task";
 import type { GlobalSettings } from "./global-settings";
-import type { Project } from "./project";
+import { taskUsesWorktree, type Project } from "./project";
 import type { Label } from "./labels-columns";
 import { getTaskOverview, taskSeqLabel } from "./task-display";
 
@@ -60,6 +60,8 @@ export interface TaskDialogSubject {
 	labels: Label[];
 	/** Effective overview (user override → agent), or null when neither is set. */
 	overview: string | null;
+	/** Finishing the task keeps its folder: it shares a gitless project's folder, so no worktree is removed. */
+	keepsFolder?: boolean;
 }
 
 /**
@@ -215,5 +217,6 @@ export function buildTaskDialogSubject(task: Task, project: Project): TaskDialog
 		priority: task.priority ?? DEFAULT_PRIORITY,
 		labels,
 		overview: getTaskOverview(task),
+		keepsFolder: !taskUsesWorktree(project, task),
 	};
 }

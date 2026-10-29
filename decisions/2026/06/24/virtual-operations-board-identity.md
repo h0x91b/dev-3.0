@@ -1,5 +1,7 @@
 # 079 — Virtual "Operations" board: identity, storage, and worktreePath reuse
 
+Partly superseded on 2026-10-02 by `decisions/2026/10/02/per-project-git-workflow-switch.md`: the git domain is now hidden through `hasGitWorkflow(project)`, which a git project can also switch off; point 5's `kind !== "virtual"` guards remain only for board identity.
+
 ## Context
 
 The virtual "Operations" board (`Project.kind: "virtual"`) is a non-git Kanban whose

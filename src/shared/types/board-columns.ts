@@ -1,5 +1,5 @@
 import type { TaskStatus } from "./task-status";
-import type { Project } from "./project";
+import { hasGitWorkflow, type Project } from "./project";
 import type { CustomColumn } from "./labels-columns";
 
 // ---- Board columns (single source of truth for column ordering + visibility) ----
@@ -42,7 +42,7 @@ export function normalizeLaneName(name: string): string {
 /** The projects a board's columns are computed from. */
 export type BoardProject = Pick<
 	Project,
-	"id" | "customColumns" | "columnOrder" | "peerReviewEnabled" | "builtinColumnAgents" | "kind"
+	"id" | "customColumns" | "columnOrder" | "peerReviewEnabled" | "builtinColumnAgents" | "kind" | "gitWorkflow"
 >;
 
 /**
@@ -89,11 +89,11 @@ function projectBoardColumns(
 	// AI Review shows by default (on when builtinColumnAgents is unset or has a review-by-ai config).
 	const aiReviewEnabled = project.builtinColumnAgents === undefined || !!project.builtinColumnAgents?.["review-by-ai"];
 	const occupied = opts.occupiedStatuses;
-	// Virtual ("Operations") boards have no diff/PR, so AI Review and PR Review are hidden.
-	const isVirtual = project.kind === "virtual";
+	// Without the git workflow there is no diff or PR, so AI Review and PR Review are hidden.
+	const gitless = !hasGitWorkflow(project);
 	const shouldHide = (s: TaskStatus) =>
 		!occupied?.has(s) && (
-			(isVirtual && (s === "review-by-ai" || s === "review-by-colleague")) ||
+			(gitless && (s === "review-by-ai" || s === "review-by-colleague")) ||
 			(s === "review-by-colleague" && !peerReviewEnabled) ||
 			(s === "review-by-ai" && !aiReviewEnabled)
 		);

@@ -724,7 +724,14 @@ describe("buildTaskDialogSubject", () => {
 			// preserves the task's stored label ORDER (feat before bug), not project order
 			labels: [LABEL_FEAT, LABEL_BUG],
 			overview: "agent overview",
+			keepsFolder: false,
 		});
+	});
+
+	it("says the folder is kept only for a task that shares a gitless project's folder", () => {
+		const gitless = makeProject({ gitWorkflow: false });
+		expect(buildTaskDialogSubject(makeTask(), gitless).keepsFolder).toBe(true);
+		expect(buildTaskDialogSubject(makeTask({ ownWorktree: true }), gitless).keepsFolder).toBe(false);
 	});
 
 	it("adds the variant suffix to the seq label", () => {

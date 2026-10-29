@@ -3296,9 +3296,10 @@ export interface RemoveWorktreeOptions {
 	 * `legacy` (default): today's completion/cancellation rule. `task-owned`: a
 	 * branch is deleted only when dev3 provably created it for THIS task (the To Do
 	 * reset), judged separately for the live and the recorded branch.
-	 * `unique-kept` (preparation-failure cleanup): the legacy rule, but a branch
-	 * holding commits reachable from it alone is kept, and the delete is a
-	 * compare-and-swap on the tip that was judged.
+	 * `unique-kept` (preparation-failure cleanup, and any teardown in a project
+	 * with the git workflow off): the legacy rule, but a branch holding commits
+	 * reachable from it alone is kept, and the delete is a compare-and-swap on the
+	 * tip that was judged.
 	 */
 	branchPolicy?: "legacy" | "task-owned" | "unique-kept";
 	/** Runs before each owned branch is deleted; a throw keeps that branch. */
@@ -3379,6 +3380,12 @@ export async function removeWorktree(
 	log.info("Removing worktree", { path: task.worktreePath, taskId: task.id });
 
 	const targetPath = task.worktreePath;
+	// The project's own checkout is never a task worktree: removing it would take
+	// the user's folder and its branch with it.
+	if (canonicalWorktreePath(targetPath) === canonicalWorktreePath(project.path)) {
+		log.warn("Refusing to remove the project folder as a worktree", { path: targetPath, taskId: task.id });
+		return none;
+	}
 	const worktreeDirPresent = existsSync(targetPath);
 	const registration = (await listWorktreeRegistrations(project.path))
 		.find((candidate) => canonicalWorktreePath(candidate.path) === canonicalWorktreePath(targetPath));
