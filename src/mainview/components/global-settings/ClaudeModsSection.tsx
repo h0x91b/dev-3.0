@@ -46,7 +46,19 @@ function ClaudeModRow({ t, mod }: { t: TFunction; mod: ClaudeMod }) {
 		<div>
 			<div className="flex items-baseline gap-2 mb-1">
 				<span className="text-fg text-sm font-medium">{title}</span>
-				<span className="text-fg-muted text-xs">{mod.source}</span>
+				<a
+					href={mod.repoUrl}
+					target="_blank"
+					rel="noreferrer"
+					className="text-accent hover:text-accent-emphasis text-xs"
+					onClick={(e) => {
+						// Desktop forwards window.open to the OS browser; remote mode opens a tab.
+						e.preventDefault();
+						window.open(mod.repoUrl, "_blank");
+					}}
+				>
+					{t("settings.claudeModPage")} ↗
+				</a>
 			</div>
 			<p className="text-fg-3 text-sm mb-3">{t(`settings.claudeMod.${mod.id}.desc` as TranslationKey)}</p>
 			<div className="flex items-center gap-3">
@@ -66,7 +78,8 @@ function ClaudeModRow({ t, mod }: { t: TFunction; mod: ClaudeMod }) {
 					<span className="text-fg-muted text-xs">{t("settings.claudeModVersion", { version: status.version })}</span>
 				) : null}
 			</div>
-			{unavailable ? <p className="text-fg-muted text-xs mt-2">{t("settings.claudeModNoCli")}</p> : null}
+			<p className="text-fg-muted text-xs mt-2">{t("settings.claudeModHow")}</p>
+			{unavailable ? <p className="text-fg-muted text-xs mt-1">{t("settings.claudeModNoCli")}</p> : null}
 		</div>
 	);
 }
