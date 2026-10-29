@@ -4,11 +4,14 @@ import type { TaskStatus } from "../shared/types";
 import { claudeConfigDirs, codexSessionRoots } from "./agent-store-roots";
 import {
 	bm25Score,
-	claudeTranscriptDir,
+	CLAUDE_STORE_NAME_MAX,
+	claudeEncodePath,
+	claudeProjectsDir,
 	computeExclusionSet,
 	countTermFrequencies,
 	countWords,
 	DEFAULT_SEARCH_STATUSES,
+	findClaudeStoreName,
 	idf,
 	META_FIELD_BOOST,
 	rankMatches,
@@ -117,7 +120,25 @@ function textFromBlocks(content: unknown, wanted: (type: string) => boolean): st
  * set: a conversation that ran under a second account is history all the same.
  */
 export function claudeTranscriptDirs(workingDir: string, home: string): string[] {
-	return claudeConfigDirs(home).map((configDir) => claudeTranscriptDir(configDir, workingDir));
+	return claudeConfigDirs(home).map((configDir) => claudeStoreDir(claudeProjectsDir(configDir), workingDir));
+}
+
+/**
+ * The on-disk store for `workingDir` under one `projects/` dir. Lists the dir only
+ * when the exact name is missing and was cut, to try the hash-agnostic match.
+ */
+export function claudeStoreDir(projectsDir: string, workingDir: string): string {
+	const encoded = claudeEncodePath(workingDir);
+	const exact = `${projectsDir}/${encoded}`;
+	if (encoded.length <= CLAUDE_STORE_NAME_MAX || existsSync(exact)) return exact;
+	let names: string[];
+	try {
+		names = readdirSync(projectsDir);
+	} catch {
+		return exact;
+	}
+	const name = findClaudeStoreName(names, workingDir);
+	return name ? `${projectsDir}/${name}` : exact;
 }
 
 const claudeLocator: TranscriptLocator = {

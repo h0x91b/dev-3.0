@@ -55,7 +55,7 @@ function approval(overrides: Partial<PendingApprovalSummary> = {}): PendingAppro
 
 function usageTotals(overrides: Partial<TaskUsageTotals> = {}): TaskUsageTotals {
 	return {
-		messages: 12, inputTokens: 300, outputTokens: 40_000, cacheWrite5mTokens: 0, cacheWrite1hTokens: 150_000,
+		messages: 12, inputTokens: 300, outputTokens: 40_000, cacheWriteTokens: 150_000, cacheWrite5mTokens: 0, cacheWrite1hTokens: 150_000,
 		cacheReadTokens: 2_000_000, costUsd: 4.3, fullyPriced: true,
 		...overrides,
 	};

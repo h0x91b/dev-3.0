@@ -248,7 +248,7 @@ export function finalizeUsage(
 
 function emptyTotals(): TaskUsageTotals {
 	return {
-		messages: 0, inputTokens: 0, outputTokens: 0, cacheWrite5mTokens: 0,
+		messages: 0, inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheWrite5mTokens: 0,
 		cacheWrite1hTokens: 0, cacheReadTokens: 0, costUsd: 0, fullyPriced: true,
 	};
 }
@@ -266,14 +266,14 @@ export function summarizeUsageByModel(
 	for (const { model, pricingModel, timestamp, counts } of recordsForReport(state)) {
 		let row = byModel.get(model);
 		if (!row) byModel.set(model, row = { model, ...emptyTotals() });
-		const cache1h = counts.cacheCreation1hInputTokens ?? 0;
 		const { costUsd, priced } = computeTokenCostUsd(pricingModel ?? pricingId(model), counts, resolveRate);
 		for (const target of [row, totals]) {
 			target.messages += 1;
 			target.inputTokens += counts.inputTokens;
 			target.outputTokens += counts.outputTokens;
-			target.cacheWrite5mTokens += counts.cacheCreation5mInputTokens ?? counts.cacheCreationInputTokens - cache1h;
-			target.cacheWrite1hTokens += cache1h;
+			target.cacheWriteTokens += counts.cacheCreationInputTokens;
+			target.cacheWrite5mTokens += counts.cacheCreation5mInputTokens ?? 0;
+			target.cacheWrite1hTokens += counts.cacheCreation1hInputTokens ?? 0;
 			target.cacheReadTokens += counts.cacheReadInputTokens;
 			target.costUsd += costUsd;
 			if (!priced) target.fullyPriced = false;

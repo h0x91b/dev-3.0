@@ -32,7 +32,7 @@ export const RECENCY_HALFLIFE_DAYS = 30;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /** Claude Code cuts a store name here and appends a hash of the full path. */
-const CLAUDE_STORE_NAME_MAX = 200;
+export const CLAUDE_STORE_NAME_MAX = 200;
 
 /**
  * Claude Code stores transcripts under `~/.claude/projects/<encoded-cwd>/`: every
@@ -44,6 +44,20 @@ export function claudeEncodePath(absolutePath: string): string {
 	const encoded = absolutePath.replace(/[^a-zA-Z0-9]/g, "-");
 	if (encoded.length <= CLAUDE_STORE_NAME_MAX) return encoded;
 	return `${encoded.slice(0, CLAUDE_STORE_NAME_MAX)}-${claudePathHash(absolutePath)}`;
+}
+
+/**
+ * The store for `workingDir` among one `projects/` listing. A name past the cut
+ * also matches on its cut prefix alone, unique match only, so a change to Claude
+ * Code's hash does not lose the store.
+ */
+export function findClaudeStoreName(names: readonly string[], workingDir: string): string | null {
+	const encoded = claudeEncodePath(workingDir);
+	if (names.includes(encoded)) return encoded;
+	if (encoded.length <= CLAUDE_STORE_NAME_MAX) return null;
+	const prefix = `${encoded.slice(0, CLAUDE_STORE_NAME_MAX)}-`;
+	const matches = names.filter((name) => name.startsWith(prefix));
+	return matches.length === 1 ? matches[0] : null;
 }
 
 /** Java-style 32-bit string hash, base 36 — what Claude Code appends to a cut name. */

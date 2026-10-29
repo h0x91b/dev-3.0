@@ -20,8 +20,8 @@ import { collectCopilotUsage } from "../usage-collectors/copilot";
 import { collectOpenCodeUsage, openCodeDatabases } from "../usage-collectors/opencode";
 import { collectPiUsage, piSessionRoots } from "../usage-collectors/pi";
 import { queryReadonlySqlite } from "../sqlite-readonly";
-import { codexRolloutCwd } from "../conversation-search";
-import { claudeEncodePath } from "../../shared/conversation-search-core";
+import { claudeStoreDir, codexRolloutCwd } from "../conversation-search";
+import { toPosixSeparators } from "../../shared/project-storage-key";
 import { conversationDumpDir } from "../conversation-parse";
 import { taskWorkingDir } from "../task-conversation";
 import { taskDir } from "../git";
@@ -174,12 +174,39 @@ function uniqueRealDirs(dirs: string[]): string[] {
 	return [...seen.values()];
 }
 
+/** A path as the agent recorded it: agents store the physical cwd, with forward slashes. */
+function comparablePath(path: string): string {
+	let resolved = path;
+	try { resolved = realpathSync(path); } catch { /* removed worktree: the raw spelling it is */ }
+	const posix = toPosixSeparators(resolved).replace(/\/+$/, "");
+	return process.platform === "win32" ? posix.toLowerCase() : posix;
+}
+
+/** Both spellings a store may be keyed by: the stored path and its physical one. */
+function workingDirSpellings(workingDir: string): string[] {
+	let physical = workingDir;
+	try { physical = realpathSync(workingDir); } catch { /* removed worktree */ }
+	return [...new Set([workingDir, physical])];
+}
+
 /** The task's Claude stores, from the same roots `getAgentUsage` reads. */
 function taskClaudeFiles(workingDir: string): string[] {
 	const roots = [claudeProjectsDir(), ...listClaudeAccountDirs().map((home) => join(home, "projects"))];
+	const dirs = roots.flatMap((root) => workingDirSpellings(workingDir).map((dir) => claudeStoreDir(root, dir)));
 	const files: string[] = [];
-	for (const dir of uniqueRealDirs(roots.map((root) => join(root, claudeEncodePath(workingDir))))) collectTranscriptFiles(dir, files);
+	for (const dir of uniqueRealDirs(dirs)) collectTranscriptFiles(dir, files);
 	return files;
+}
+
+/** A rollout's header never changes, so its cwd is read once per app run. */
+const rolloutCwdCache = new Map<string, string | null>();
+
+function cachedRolloutCwd(file: string): string | null {
+	if (!rolloutCwdCache.has(file)) {
+		const cwd = codexRolloutCwd(file);
+		rolloutCwdCache.set(file, cwd === null ? null : comparablePath(cwd));
+	}
+	return rolloutCwdCache.get(file) ?? null;
 }
 
 /** Codex rollouts that ran in `workingDir`, from the same stores `getAgentUsage` reads. Reads only each header. */
@@ -188,7 +215,8 @@ function taskCodexFiles(workingDir: string): string[] {
 	for (const home of new Set([codexHome(), ...listCodexAccountDirs()])) {
 		for (const store of ["sessions", "archived_sessions"]) collectTranscriptFiles(join(home, store), rollouts, true);
 	}
-	return rollouts.filter((file) => codexRolloutCwd(file) === workingDir);
+	const target = comparablePath(workingDir);
+	return rollouts.filter((file) => cachedRolloutCwd(file) === target);
 }
 
 /**
@@ -215,12 +243,23 @@ function countArchivedSessions(project: Project, task: Task, liveFiles: string[]
 	return { uncovered, unsupported };
 }
 
+/** When the task first left To Do; `createdAt` when it never sat there or that move was evicted. */
+export function taskStartedAt(task: Task): number {
+	const created = Date.parse(task.createdAt);
+	const movements = task.movements ?? [];
+	if (task.movementsDropped || movements.some((m) => m.kind === "created" && m.to !== "todo")) return created;
+	const launch = movements.find((m) => m.from === "todo" && m.to !== "todo");
+	const at = launch ? Date.parse(launch.at) : NaN;
+	return Number.isFinite(at) ? at : created;
+}
+
 /**
  * An Operations task on a user-chosen folder shares it with whatever else ran
- * there, so only records inside the task's own lifetime count.
+ * there, so only records inside the task's own lifetime count — from its launch,
+ * not its creation, so days spent in To Do are not charged to it.
  */
 function keepTaskLifetime(state: UsageState, task: Task): void {
-	const start = Date.parse(task.createdAt);
+	const start = taskStartedAt(task);
 	const endedAt = TERMINAL_STATUSES.includes(task.status) ? Date.parse(task.statusEnteredAt ?? task.movedAt ?? "") : NaN;
 	const end = Number.isFinite(endedAt) ? endedAt : Infinity;
 	for (const [key, record] of state.records) {

@@ -102,6 +102,9 @@ export interface TaskUsageTotals {
 	messages: number;
 	inputTokens: number;
 	outputTokens: number;
+	/** Every cache write. Codex reports no TTL, so its writes land here and in neither split. */
+	cacheWriteTokens: number;
+	/** The part of `cacheWriteTokens` the agent marked 5-minute / 1-hour (Claude). */
 	cacheWrite5mTokens: number;
 	cacheWrite1hTokens: number;
 	cacheReadTokens: number;

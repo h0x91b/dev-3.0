@@ -190,7 +190,8 @@ async function usage(args: ParsedArgs, socketPath: string, context: CliContext |
 	process.stdout.write(`\nTotal API-equivalent cost: $${cost.toFixed(2)}${days.some((d) => !d.fullyPriced) ? " (lower bound: some models have no known price, marked +)" : ""}.\n`);
 }
 
-function cacheWrite(t: TaskUsageReport["totals"]): string {
+/** Codex writes carry no TTL, so they count in the total and in neither split. */
+function cacheWriteSplit(t: TaskUsageReport["totals"]): string {
 	return `${tokens(t.cacheWrite5mTokens)} / ${tokens(t.cacheWrite1hTokens)}`;
 }
 
@@ -216,9 +217,9 @@ async function taskUsage(args: ParsedArgs, socketPath: string, context: CliConte
 		return;
 	}
 	printTable(
-		["MODEL", "MESSAGES", "INPUT", "OUTPUT", "CACHE WRITE 5M/1H", "CACHE READ", "COST (API $)"],
+		["MODEL", "MESSAGES", "INPUT", "OUTPUT", "CACHE WRITE", "5M / 1H", "CACHE READ", "COST (API $)"],
 		[...report.models, { model: "TOTAL", ...totals }].map((m) => [
-			m.model, String(m.messages), tokens(m.inputTokens), tokens(m.outputTokens), cacheWrite(m),
+			m.model, String(m.messages), tokens(m.inputTokens), tokens(m.outputTokens), tokens(m.cacheWriteTokens), cacheWriteSplit(m),
 			tokens(m.cacheReadTokens), `${m.costUsd.toFixed(2)}${m.fullyPriced ? "" : "+"}`,
 		]),
 	);

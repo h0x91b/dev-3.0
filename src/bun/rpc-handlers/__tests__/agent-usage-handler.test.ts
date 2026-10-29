@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -24,7 +24,7 @@ vi.mock("node:os", async (importOriginal) => ({
 	homedir: () => testHome,
 }));
 
-import { getAgentUsage, getTaskAgentUsage, isSubagentTranscript } from "../agent-usage";
+import { getAgentUsage, getTaskAgentUsage, isSubagentTranscript, taskStartedAt } from "../agent-usage";
 import { taskDir } from "../../git";
 import type { Project, Task } from "../../../shared/types";
 import { defaultAccountPaths } from "../../agent-accounts";
@@ -302,7 +302,7 @@ describe("getTaskAgentUsage", () => {
 	const codexRollout = (cwd: string, id: string) => [
 		{ type: "session_meta", payload: { id: "c", cwd } },
 		{ type: "turn_context", payload: { model: "mystery-codex" } },
-		{ type: "token_usage_record", timestamp: "2026-10-21T12:00:00Z", payload: { response_id: id, usage: { input_tokens: 40, output_tokens: 2 } } },
+		{ type: "token_usage_record", timestamp: "2026-10-21T12:00:00Z", payload: { response_id: id, usage: { input_tokens: 40, output_tokens: 2, cache_write_input_tokens: 4 } } },
 	];
 	const dumpDir = () => join(taskDir(project, task), "conversations");
 	const writeDump = (name: string) => {
@@ -310,7 +310,7 @@ describe("getTaskAgentUsage", () => {
 		writeFileSync(join(dumpDir(), name), JSON.stringify({ stats: { usage: { input: 1, output: 99, cacheRead: 0, cacheWrite: 0 } } }));
 	};
 
-	it("reads the Stats page's stores (CLAUDE_CONFIG_DIR, CODEX_HOME incl. archived_sessions), subagents included, splitting cache writes by TTL", async () => {
+	it("reads the Stats page's stores (CLAUDE_CONFIG_DIR, CODEX_HOME incl. archived_sessions), subagents included, splitting only TTL-tagged cache writes", async () => {
 		const workingDir = `${taskDir(project, task)}/worktree`;
 		const store = join(tempRoot, "claude", "projects", workingDir.replace(/[^a-zA-Z0-9]/g, "-"));
 		writeJsonl(join(store, `${SESSION}.jsonl`), [
@@ -328,11 +328,11 @@ describe("getTaskAgentUsage", () => {
 
 		expect(report).toMatchObject({ taskId: task.id, seq: 7, workingDir, worktreeExists: false });
 		expect(report.totals).toMatchObject({
-			messages: 5, inputTokens: 1_000_080, outputTokens: 2_000_004,
-			cacheWrite5mTokens: 100, cacheWrite1hTokens: 200, cacheReadTokens: 50, fullyPriced: false,
+			messages: 5, inputTokens: 1_000_072, outputTokens: 2_000_004,
+			cacheWriteTokens: 308, cacheWrite5mTokens: 100, cacheWrite1hTokens: 200, cacheReadTokens: 50, fullyPriced: false,
 		});
 		expect(report.models.map((m) => m.model)).toEqual(["claude-opus-4-8", "mystery-codex"]);
-		expect(report.models[1]).toMatchObject({ messages: 2, costUsd: 0, fullyPriced: false });
+		expect(report.models[1]).toMatchObject({ messages: 2, cacheWriteTokens: 8, cacheWrite5mTokens: 0, costUsd: 0, fullyPriced: false });
 		expect(report.coverage).toMatchObject({
 			transcriptFiles: 4, subagentTranscriptFiles: 1, uncoveredArchivedSessions: 0, sharedWorkingDir: false,
 			sources: ["claude", "codex"], firstAt: "2026-10-20T12:00:00.000Z", lastAt: "2026-10-21T12:00:00.000Z",
@@ -351,11 +351,15 @@ describe("getTaskAgentUsage", () => {
 		expect(report.coverage).toMatchObject({ transcriptFiles: 0, uncoveredArchivedSessions: 2, unsupportedArchivedSessions: 1, sources: [] });
 	});
 
-	it("charges an Operations task on a user-chosen folder only for usage inside its own lifetime", async () => {
+	it("charges an Operations task on a user-chosen folder only for usage between its launch and its end", async () => {
 		const ops = { id: "ops", path: "/ops", kind: "virtual" } as Project;
 		const opsTask = {
-			...task, opsWorkDir: "/Users/me/Downloads", createdAt: "2026-10-20T00:00:00Z",
+			...task, opsWorkDir: "/Users/me/Downloads", createdAt: "2026-10-18T00:00:00Z",
 			statusEnteredAt: "2026-10-21T00:00:00Z", status: "completed",
+			movements: [
+				{ id: "m0", at: "2026-10-18T00:00:00Z", kind: "created", to: "todo" },
+				{ id: "m1", at: "2026-10-20T00:00:00Z", kind: "status", from: "todo", to: "in-progress" },
+			],
 		} as Task;
 		const store = join(tempRoot, "claude", "projects", "-Users-me-Downloads");
 		writeJsonl(join(store, "earlier.jsonl"), [claudeLine("before", { input_tokens: 5 }, "claude-opus-4-8", "2026-10-19T12:00:00Z")]);
@@ -367,6 +371,36 @@ describe("getTaskAgentUsage", () => {
 		expect(report.workingDir).toBe("/Users/me/Downloads");
 		expect(report.totals).toMatchObject({ messages: 1, inputTokens: 7 });
 		expect(report.coverage.sharedWorkingDir).toBe(true);
+	});
+
+	it("matches stores and rollouts recorded under the physical path of a symlinked folder", async () => {
+		const real = join(tempRoot, "real-folder");
+		const link = join(tempRoot, "linked-folder");
+		mkdirSync(real, { recursive: true });
+		symlinkSync(real, link);
+		const physical = realpathSync(real);
+		const ops = { id: "ops", path: "/ops", kind: "virtual" } as Project;
+		const opsTask = { ...task, opsWorkDir: link, createdAt: "2026-10-01T00:00:00Z", status: "in-progress" } as Task;
+		writeJsonl(join(tempRoot, "claude", "projects", physical.replace(/[^a-zA-Z0-9]/g, "-"), `${SESSION}.jsonl`), [claudeLine("m1", { input_tokens: 5 })]);
+		writeJsonl(join(tempRoot, "codex", "sessions", "rollout-p.jsonl"), codexRollout(physical, "c1"));
+
+		const report = await getTaskAgentUsage(ops, opsTask);
+
+		expect(report.coverage.sources).toEqual(["claude", "codex"]);
+		expect(report.totals.messages).toBe(2);
+	});
+
+	it("starts the lifetime window at the first launch, falling back to creation", () => {
+		const base = { ...task, createdAt: "2026-10-18T00:00:00Z" } as Task;
+		const launched = { ...base, movements: [
+			{ id: "a", at: "2026-10-18T00:00:00Z", kind: "created", to: "todo" },
+			{ id: "b", at: "2026-10-20T00:00:00Z", kind: "status", from: "todo", to: "in-progress" },
+		] } as Task;
+		expect(taskStartedAt(launched)).toBe(Date.parse("2026-10-20T00:00:00Z"));
+		expect(taskStartedAt({ ...launched, movementsDropped: 3 } as Task)).toBe(Date.parse(base.createdAt));
+		expect(taskStartedAt(base)).toBe(Date.parse(base.createdAt));
+		const scratch = { ...base, movements: [{ id: "a", at: base.createdAt, kind: "created", to: "user-questions" }] } as Task;
+		expect(taskStartedAt(scratch)).toBe(Date.parse(base.createdAt));
 	});
 
 	it("recognises a subagent transcript on either separator", () => {
