@@ -402,7 +402,7 @@ const COMMANDS: CommandHelp[] = [
 				summary: "Tokens and API-equivalent cost per agent per day, or for one task, read from local agent transcripts.",
 				details: [
 					"Daily usage is recorded per agent and day, not per project, so --project only scopes a --task lookup.",
-					"--task <id|seq:N>: one task's tokens by type (cacheWriteTokens, of which the 5m/1h split Claude reports; Codex writes have no TTL), messages and cost per model, from the Claude transcripts of its working directory (subagents included) and the Codex rollouts that ran there. Works after the worktree is gone, while the agent keeps the transcripts; coverage.uncoveredArchivedSessions counts sessions whose transcript was cleaned up and are not in the totals. An Operations task on a user-chosen folder counts only usage inside its lifetime (coverage.sharedWorkingDir). No --since.",
+					"--task <id|seq:N>: one task's tokens by type (cacheWriteTokens, of which the 5m/1h split Claude reports; Codex writes have no TTL), messages and cost per model, from the Claude transcripts of its working directory (subagents included) and the Codex rollouts that ran there. Works after the worktree is gone, while the agent keeps the transcripts; coverage.uncoveredArchivedSessions counts sessions whose transcript was cleaned up and are not in the totals. A conversation a pane resumed from another folder counts only from the task's launch (coverage.resumedTranscriptFiles). An Operations task on a user-chosen folder counts only usage inside its lifetime (coverage.sharedWorkingDir). No --since.",
 					"--json prints { schemaVersion: 1, ... }; new fields may appear, a removed or renamed one bumps schemaVersion.",
 				],
 			},

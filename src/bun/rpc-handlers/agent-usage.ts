@@ -189,10 +189,13 @@ function workingDirSpellings(workingDir: string): string[] {
 	return [...new Set([workingDir, physical])];
 }
 
+function claudeProjectRoots(): string[] {
+	return [claudeProjectsDir(), ...listClaudeAccountDirs().map((home) => join(home, "projects"))];
+}
+
 /** The task's Claude stores, from the same roots `getAgentUsage` reads. */
 function taskClaudeFiles(workingDir: string): string[] {
-	const roots = [claudeProjectsDir(), ...listClaudeAccountDirs().map((home) => join(home, "projects"))];
-	const dirs = roots.flatMap((root) => workingDirSpellings(workingDir).map((dir) => claudeStoreDir(root, dir)));
+	const dirs = claudeProjectRoots().flatMap((root) => workingDirSpellings(workingDir).map((dir) => claudeStoreDir(root, dir)));
 	const files: string[] = [];
 	for (const dir of uniqueRealDirs(dirs)) collectTranscriptFiles(dir, files);
 	return files;
@@ -209,14 +212,53 @@ function cachedRolloutCwd(file: string): string | null {
 	return rolloutCwdCache.get(file) ?? null;
 }
 
-/** Codex rollouts that ran in `workingDir`, from the same stores `getAgentUsage` reads. Reads only each header. */
-function taskCodexFiles(workingDir: string): string[] {
+/** Every Codex rollout, from the same stores `getAgentUsage` reads. */
+function allCodexRollouts(): string[] {
 	const rollouts: string[] = [];
 	for (const home of new Set([codexHome(), ...listCodexAccountDirs()])) {
 		for (const store of ["sessions", "archived_sessions"]) collectTranscriptFiles(join(home, store), rollouts, true);
 	}
+	return rollouts;
+}
+
+/** Codex rollouts that ran in `workingDir`. Reads only each header. */
+function taskCodexFiles(rollouts: string[], workingDir: string): string[] {
 	const target = comparablePath(workingDir);
 	return rollouts.filter((file) => cachedRolloutCwd(file) === target);
+}
+
+const PLAIN_SESSION_ID = new RegExp(`^${SESSION_UUID.source}$`, "i");
+
+/** Session ids the task's panes recorded, including ones resumed from another folder. */
+function paneSessionIds(task: Task): Set<string> {
+	const ids = (task.sessionState?.panes ?? []).map((pane) => pane.sessionId);
+	return new Set(ids.filter((id): id is string => !!id && PLAIN_SESSION_ID.test(id)));
+}
+
+/**
+ * Transcripts of the task's panes that live outside its own stores: a conversation
+ * resumed from another folder keeps appending to the file it began in.
+ */
+function resumedClaudeFiles(ids: Set<string>, own: Set<string>): string[] {
+	const files: string[] = [];
+	if (!ids.size) return files;
+	for (const root of uniqueRealDirs(claudeProjectRoots())) {
+		let stores: string[];
+		try { stores = readdirSync(root); } catch { continue; }
+		for (const store of stores) {
+			for (const id of ids) {
+				const main = join(root, store, `${id}.jsonl`);
+				if (!existsSync(main)) continue;
+				files.push(main);
+				collectTranscriptFiles(join(root, store, id), files);
+			}
+		}
+	}
+	return files.filter((file) => !own.has(file));
+}
+
+function resumedCodexFiles(rollouts: string[], ids: Set<string>, own: Set<string>): string[] {
+	return rollouts.filter((file) => !own.has(file) && ids.has(sessionOf(file)?.toLowerCase() ?? ""));
 }
 
 /**
@@ -276,12 +318,25 @@ function keepTaskLifetime(state: UsageState, task: Task): void {
 export async function getTaskAgentUsage(project: Project, task: Task): Promise<TaskUsageReport> {
 	const workingDir = taskWorkingDir(project, task);
 	const state = newUsageState();
-	const claudeFiles = taskClaudeFiles(workingDir);
-	foldJsonlFiles(claudeFiles, state, foldClaudeEntry);
-	const codexFiles = taskCodexFiles(workingDir);
-	foldJsonlFiles(codexFiles, state, foldCodexEntry, beginCodexRollout);
+	const ownClaude = taskClaudeFiles(workingDir);
+	foldJsonlFiles(ownClaude, state, foldClaudeEntry);
+	const rollouts = allCodexRollouts();
+	const ownCodex = taskCodexFiles(rollouts, workingDir);
+	foldJsonlFiles(ownCodex, state, foldCodexEntry, beginCodexRollout);
 	const sharedWorkingDir = project.kind === "virtual" && !!task.opsWorkDir?.trim();
 	if (sharedWorkingDir) keepTaskLifetime(state, task);
+
+	// A resumed file also holds the conversation's earlier history, so only its records inside the task's lifetime count.
+	const ids = paneSessionIds(task);
+	const resumedClaude = resumedClaudeFiles(ids, new Set(ownClaude));
+	const resumedCodex = resumedCodexFiles(rollouts, ids, new Set(ownCodex));
+	const resumed = newUsageState();
+	foldJsonlFiles(resumedClaude, resumed, foldClaudeEntry);
+	foldJsonlFiles(resumedCodex, resumed, foldCodexEntry, beginCodexRollout);
+	keepTaskLifetime(resumed, task);
+	for (const [key, record] of resumed.records) if (!state.records.has(key)) state.records.set(key, record);
+	const claudeFiles = [...ownClaude, ...resumedClaude];
+	const codexFiles = [...ownCodex, ...resumedCodex];
 
 	const catalog = loadModelCatalog();
 	const pricingId = (model: string) => nativeModelIdForWireName(catalog, model) ?? model;
@@ -297,6 +352,7 @@ export async function getTaskAgentUsage(project: Project, task: Task): Promise<T
 		coverage: {
 			transcriptFiles: claudeFiles.length + codexFiles.length,
 			subagentTranscriptFiles: claudeFiles.filter(isSubagentTranscript).length,
+			resumedTranscriptFiles: resumedClaude.length + resumedCodex.length,
 			uncoveredArchivedSessions: archived.uncovered,
 			unsupportedArchivedSessions: archived.unsupported,
 			sharedWorkingDir,

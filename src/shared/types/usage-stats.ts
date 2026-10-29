@@ -130,6 +130,9 @@ export interface TaskUsageReport {
 		/** Native transcript files read, subagent transcripts included. */
 		transcriptFiles: number;
 		subagentTranscriptFiles: number;
+		/** Of those, files outside the task's folder that a pane resumed into it; only their
+		 *  records inside the task's lifetime count. */
+		resumedTranscriptFiles: number;
 		/** Sessions dev3 archived at completion whose transcript is gone (agent retention):
 		 *  NOT counted, so above zero the totals are a lower bound. */
 		uncoveredArchivedSessions: number;

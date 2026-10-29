@@ -390,6 +390,33 @@ describe("getTaskAgentUsage", () => {
 		expect(report.totals.messages).toBe(2);
 	});
 
+	it("counts conversations the task's panes resumed from another folder, from the task's launch only", async () => {
+		const CODEX_SESSION = "66666666-7777-8888-9999-000000000000";
+		const resumedTask = {
+			...task, status: "in-progress", createdAt: "2026-10-20T00:00:00Z",
+			sessionState: { panes: [
+				{ agentCmd: "claude", sessionId: SESSION, agentId: null, configId: null, sessionOriginCwd: "/elsewhere" },
+				{ agentCmd: "codex", sessionId: CODEX_SESSION, agentId: null, configId: null },
+				{ agentCmd: "claude", sessionId: "../escape", agentId: null, configId: null },
+			] },
+		} as Task;
+		const elsewhere = join(tempRoot, "claude", "projects", "-elsewhere");
+		writeJsonl(join(elsewhere, `${SESSION}.jsonl`), [
+			claudeLine("old", { input_tokens: 1000 }, "claude-opus-4-8", "2026-10-19T12:00:00Z"),
+			claudeLine("new", { input_tokens: 7 }, "claude-opus-4-8", "2026-10-21T12:00:00Z"),
+		]);
+		writeJsonl(join(elsewhere, SESSION, "subagents", "agent-a.jsonl"), [claudeLine("sub", { input_tokens: 3 }, "claude-opus-4-8", "2026-10-21T13:00:00Z")]);
+		writeJsonl(join(elsewhere, "unrelated.jsonl"), [claudeLine("other", { input_tokens: 500 }, "claude-opus-4-8", "2026-10-21T12:00:00Z")]);
+		const rollout = codexRollout("/elsewhere", "c-new");
+		rollout.push({ type: "token_usage_record", timestamp: "2026-10-19T12:00:00Z", payload: { response_id: "c-old", usage: { input_tokens: 900, output_tokens: 0 } } } as never);
+		writeJsonl(join(tempRoot, "codex", "sessions", `rollout-2026-10-21T00-00-00-${CODEX_SESSION}.jsonl`), rollout);
+
+		const report = await getTaskAgentUsage(project, resumedTask);
+
+		expect(report.totals).toMatchObject({ messages: 3, inputTokens: 7 + 3 + 36 });
+		expect(report.coverage).toMatchObject({ transcriptFiles: 3, subagentTranscriptFiles: 1, resumedTranscriptFiles: 3, sources: ["claude", "codex"] });
+	});
+
 	it("starts the lifetime window at the first launch, falling back to creation", () => {
 		const base = { ...task, createdAt: "2026-10-18T00:00:00Z" } as Task;
 		const launched = { ...base, movements: [

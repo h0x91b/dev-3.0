@@ -225,7 +225,7 @@ async function taskUsage(args: ParsedArgs, socketPath: string, context: CliConte
 	);
 	process.stdout.write(
 		`\nRead ${coverage.transcriptFiles} transcript file${coverage.transcriptFiles === 1 ? "" : "s"} ` +
-		`(${coverage.subagentTranscriptFiles} subagent)` +
+		`(${coverage.subagentTranscriptFiles} subagent${coverage.resumedTranscriptFiles ? `, ${coverage.resumedTranscriptFiles} resumed from another folder` : ""})` +
 		`${coverage.sources.length ? `; agents: ${coverage.sources.join(", ")}` : ""}.\n`,
 	);
 	if (coverage.sharedWorkingDir) {

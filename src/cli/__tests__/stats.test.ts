@@ -67,7 +67,7 @@ function taskUsageReport(overrides: Partial<TaskUsageReport> = {}): TaskUsageRep
 		workingDir: "/w/88145048/worktree", worktreeExists: false,
 		totals: usageTotals(), models: [{ model: "claude-opus-5-5", ...usageTotals() }],
 		coverage: {
-			transcriptFiles: 3, subagentTranscriptFiles: 1, uncoveredArchivedSessions: 0, unsupportedArchivedSessions: 0,
+			transcriptFiles: 3, subagentTranscriptFiles: 1, resumedTranscriptFiles: 0, uncoveredArchivedSessions: 0, unsupportedArchivedSessions: 0,
 			sharedWorkingDir: false, sources: ["claude"],
 			firstAt: "2026-09-30T14:45:54.381Z", lastAt: "2026-09-30T15:57:21.940Z",
 		},
@@ -266,6 +266,13 @@ describe("dev3 stats usage --task", () => {
 		expect(stdout).toContain("2 archived session(s) no longer have a transcript");
 		expect(stdout).toContain("1 archived session(s) of other agents");
 		expect(stdout).toContain("Shared folder: only usage inside the task's lifetime");
+	});
+
+	it("says how many transcripts a pane resumed from another folder", async () => {
+		const report = taskUsageReport();
+		mockSend.mockResolvedValue(ok({ ...report, coverage: { ...report.coverage, resumedTranscriptFiles: 2 } }));
+		await handleStats("usage", args({ task: "seq:11" }), SOCKET, CTX);
+		expect(stdout).toContain("(1 subagent, 2 resumed from another folder)");
 	});
 
 	it("gives the update hint on an app that predates it", async () => {
