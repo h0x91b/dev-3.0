@@ -21,7 +21,7 @@ function stubClaude(replies: Record<string, Reply>) {
 }
 
 function calls(): string[] {
-	return h.spawnMock.mock.calls.map(([cmd]: [string[]]) => cmd.slice(1).join(" "));
+	return h.spawnMock.mock.calls.map(([cmd]) => (cmd as string[]).slice(1).join(" "));
 }
 
 const LIST = "plugin list --json";
