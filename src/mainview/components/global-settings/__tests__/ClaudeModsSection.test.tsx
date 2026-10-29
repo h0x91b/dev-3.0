@@ -50,6 +50,18 @@ describe("ClaudeModsSection", () => {
 		expect(h.toastSuccess).toHaveBeenCalledWith("settings.claudeModInstalled|settings.claudeMod.prismantis.title");
 	});
 
+	it("links the mod's official page", async () => {
+		h.claudeModStatus.mockResolvedValue(status());
+		const open = vi.spyOn(window, "open").mockReturnValue(null);
+		render(<ClaudeModsSection t={t} />);
+
+		const link = screen.getByRole("link", { name: /settings.claudeModPage/ });
+		expect(link).toHaveAttribute("href", "https://github.com/NahumLitvin/prismantis");
+		await userEvent.click(link);
+		expect(open).toHaveBeenCalledWith("https://github.com/NahumLitvin/prismantis", "_blank");
+		open.mockRestore();
+	});
+
 	it("turns an installed mod off", async () => {
 		h.claudeModStatus.mockResolvedValue(status({ installed: true, enabled: true, version: "0.36.0" }));
 		h.claudeModSetEnabled.mockResolvedValue(status());
