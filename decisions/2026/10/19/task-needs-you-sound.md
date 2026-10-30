@@ -1,5 +1,7 @@
 # A separate, opt-in chime for tasks that need the user
 
+Superseded on 2026-10-30 by `decisions/2026/10/30/needs-you-sound-on-by-default.md`: the needs-you chime is on by default, and the setting is an opt-out instead of an opt-in.
+
 ## Context
 
 Only `completed` and `cancelled` played a sound. Issue #2005 asks for one when a

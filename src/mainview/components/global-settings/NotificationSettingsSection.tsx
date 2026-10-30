@@ -84,12 +84,12 @@ export default function NotificationSettingsSection({
 					</p>
 					<p className="text-fg-3 text-sm mb-3">{t("settings.taskNeedsYouSoundDesc")}</p>
 					<SettingsToggle
-						checked={globalSettings.playSoundOnTaskNeedsYou === true}
+						checked={globalSettings.playSoundOnTaskNeedsYou !== false}
 						ariaLabel={t("settings.taskNeedsYouSound")}
 						onLabel={t("settings.on")}
 						offLabel={t("settings.off")}
 						onToggle={() =>
-							onNeedsYouSoundToggle(globalSettings.playSoundOnTaskNeedsYou !== true)
+							onNeedsYouSoundToggle(globalSettings.playSoundOnTaskNeedsYou === false)
 						}
 					/>
 				</div>

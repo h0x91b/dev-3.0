@@ -3110,7 +3110,7 @@ describe("handlers.moveTask", () => {
 		const push = vi.fn();
 		setPushMessage(push);
 
-		vi.mocked(loadSettingsSync).mockReturnValue({ playSoundOnTaskComplete: true } as any);
+		vi.mocked(loadSettingsSync).mockReturnValue({ playSoundOnTaskComplete: true, playSoundOnTaskNeedsYou: false } as any);
 		emitTaskSound("review-by-user", "task-3");
 		expect(push).not.toHaveBeenCalled();
 

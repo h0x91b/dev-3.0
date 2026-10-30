@@ -15,16 +15,12 @@ export function isNeedsYouSoundStatus(status: TaskStatus): boolean {
 	return NEEDS_YOU_STATUSES.has(status);
 }
 
-/**
- * One toggle per sound family: the completion chime is opt-out (on unless an
- * explicit `false`), the needs-you chime is opt-in (off unless an explicit
- * `true`) because it fires at the end of every agent turn.
- */
+/** One toggle per sound family, both on unless an explicit `false`. */
 export function isTaskSoundEnabled(
 	settings: Pick<GlobalSettings, "playSoundOnTaskComplete" | "playSoundOnTaskNeedsYou">,
 	status: TaskSoundStatus,
 ): boolean {
 	return isNeedsYouSoundStatus(status)
-		? settings.playSoundOnTaskNeedsYou === true
+		? settings.playSoundOnTaskNeedsYou !== false
 		: settings.playSoundOnTaskComplete !== false;
 }

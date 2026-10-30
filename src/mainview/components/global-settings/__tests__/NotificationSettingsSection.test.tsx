@@ -61,14 +61,14 @@ describe("NotificationSettingsSection", () => {
 		expect(callbacks.onWatchByDefaultToggle).toHaveBeenCalledWith(false);
 	});
 
-	it("shows the needs-you chime off by default and turns it on", async () => {
+	it("shows the needs-you chime on by default and turns it off", async () => {
 		const callbacks = renderSection();
 		const toggle = screen.getByRole("switch", { name: "settings.taskNeedsYouSound" });
 
-		expect(toggle).toHaveAttribute("aria-checked", "false");
+		expect(toggle).toHaveAttribute("aria-checked", "true");
 		await userEvent.click(toggle);
 
-		expect(callbacks.onNeedsYouSoundToggle).toHaveBeenCalledWith(true);
+		expect(callbacks.onNeedsYouSoundToggle).toHaveBeenCalledWith(false);
 		expect(callbacks.onSoundToggle).not.toHaveBeenCalled();
 	});
 });

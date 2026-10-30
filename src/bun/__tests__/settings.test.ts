@@ -215,14 +215,14 @@ describe("saveSettings", () => {
 		expect((await loadSettings()).openArtifactsInPopup).toBe(false);
 	});
 
-	// Opt-in: an install that never chose must stay silent on every agent turn.
-	it("defaults the needs-you chime to off and stores only an explicit opt-in", async () => {
+	// Opt-out: an install that never chose hears the chime; only an explicit false is stored.
+	it("defaults the needs-you chime to on and stores only an explicit opt-out", async () => {
 		expect((await loadSettings()).playSoundOnTaskNeedsYou).toBeUndefined();
 
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ playSoundOnTaskNeedsYou: true }), null, 2), "utf-8");
-		expect((await loadSettings()).playSoundOnTaskNeedsYou).toBe(true);
-
 		writeFileSync(settingsPath, JSON.stringify(makeSettings({ playSoundOnTaskNeedsYou: false }), null, 2), "utf-8");
+		expect((await loadSettings()).playSoundOnTaskNeedsYou).toBe(false);
+
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ playSoundOnTaskNeedsYou: true }), null, 2), "utf-8");
 		expect((await loadSettings()).playSoundOnTaskNeedsYou).toBeUndefined();
 	});
 
@@ -389,7 +389,7 @@ describe("saveSettings", () => {
 			lowBatteryDisabled: true,
 			lowBatteryAnnounced: true,
 			playSoundOnTaskComplete: false,
-			playSoundOnTaskNeedsYou: true,
+			playSoundOnTaskNeedsYou: false,
 			externalApps: [{ id: "x", name: "X", macAppName: "X" }],
 			tipsDisabled: true,
 			telemetryDisabled: true,
