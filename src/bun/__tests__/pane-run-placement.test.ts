@@ -63,6 +63,7 @@ describe("isAuxiliaryOutputCommand", () => {
 		expect(isAuxiliaryOutputCommand(TMUX_TASK.id, `bash ${auxPaneMarker(TMUX_TASK.id, "devServer")}.sh`)).toBe(true);
 		expect(isAuxiliaryOutputCommand(TMUX_TASK.id, `bash ${auxPaneMarker(TMUX_TASK.id, "gitOp")}push.sh`)).toBe(true);
 		expect(isAuxiliaryOutputCommand(TMUX_TASK.id, `bash ${auxPaneMarker(TMUX_TASK.id, "columnAgent")}.sh`)).toBe(false);
+		expect(isAuxiliaryOutputCommand(TMUX_TASK.id, `bash ${auxPaneMarker(TMUX_TASK.id, "fileBrowser")}.sh`)).toBe(false);
 		expect(isAuxiliaryOutputCommand(TMUX_TASK.id, "claude --session-id x")).toBe(false);
 		expect(isAuxiliaryOutputCommand(TMUX_TASK.id, "zsh")).toBe(false);
 	});

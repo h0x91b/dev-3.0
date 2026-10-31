@@ -33,7 +33,7 @@ vi.mock("../../worktree-reaper", () => ({ reapWorktreeProcesses: vi.fn(async () 
 vi.mock("../../worktree-trust", () => ({ forgetWorktreeTrust: vi.fn(async () => undefined) }));
 vi.mock("../../settings", () => ({ loadSettings: vi.fn(async () => ({})), loadSettingsSync: vi.fn(() => ({})) }));
 vi.mock("../../shell-env", () => ({ getUserShell: vi.fn(() => "/bin/zsh") }));
-vi.mock("../../temp-paths", () => ({ dev3TaskTempPath: vi.fn(() => "/tmp/dev3/task") }));
+vi.mock("../../temp-paths", () => ({ dev3TaskTempPath: vi.fn(() => "/tmp/dev3/task"), dev3TempPath: vi.fn((name: string) => `/tmp/${name}`) }));
 vi.mock("../../tmux", () => ({
 	DEFAULT_TMUX_SOCKET: "dev3",
 	activeTmuxConfigPath: vi.fn(() => "/tmp/dev3.tmux.conf"),

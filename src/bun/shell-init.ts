@@ -9,6 +9,30 @@ import { dev3TempPath } from "./temp-paths";
 
 export const SHELL_INIT_DIR = dev3TempPath("dev3-shell");
 
+/**
+ * What points a POSIX shell at the dev3 prompt files: `$ZDOTDIR` for zsh, `$ENV`
+ * for sh. The user's own `$ENV` travels as `DEV3_USER_ENV` — unless it already is
+ * our file (dev3 runs inside its own panes), which would source itself forever.
+ */
+export function posixShellPromptEnv(): Record<string, string> {
+	const shrc = `${SHELL_INIT_DIR}/.shrc`;
+	const inherited = process.env.ENV?.trim();
+	return {
+		ZDOTDIR: SHELL_INIT_DIR,
+		ENV: shrc,
+		...(inherited && inherited !== shrc ? { DEV3_USER_ENV: inherited } : {}),
+	};
+}
+
+/**
+ * The same for a native pane's environment, plus the `DEV3_WORKTREE_ROOT` every
+ * prompt block is gated on (tmux sets it from the session cwd). Windows shells
+ * read none of it.
+ */
+export function dev3ShellPromptEnv(worktreeRoot: string): Record<string, string> {
+	return process.platform === "win32" ? {} : { ...posixShellPromptEnv(), DEV3_WORKTREE_ROOT: worktreeRoot };
+}
+
 // ── zsh init files ──────────────────────────────────────────────────
 
 // Forward to user's .zshenv (always sourced, even non-interactive)

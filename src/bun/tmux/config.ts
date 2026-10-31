@@ -12,7 +12,7 @@
 import { writeFileSync, mkdirSync } from "node:fs";
 import { DEV3_HOME } from "../paths";
 import { dev3TempPath } from "../temp-paths";
-import { SHELL_INIT_DIR, writeShellInit } from "../shell-init";
+import { SHELL_INIT_DIR, posixShellPromptEnv, writeShellInit } from "../shell-init";
 import { getUserShell } from "../shell-env";
 import { CATPPUCCIN_PLUGIN_DIR, NEW_WINDOW_STATUS_RANGE, PANE_ID_BADGE, STATUS_FORMAT, writeCatppuccinPlugin } from "./themes";
 import { TMUX_AGENT_PANE_OPTION } from "./constants";
@@ -214,13 +214,9 @@ set-environment -g ZDOTDIR ${SHELL_INIT_DIR}
  * as `sh`, where the file is valid anyway).
  */
 function shellEnvConfig(): string {
-	// dev3 runs inside its own tmux panes, so `$ENV` here is often the file we
-	// are about to point at — forwarding that would make the init file source
-	// itself forever.
-	const shrc = `${SHELL_INIT_DIR}/.shrc`;
-	const inherited = process.env.ENV?.trim();
-	const userEnv = inherited && inherited !== shrc ? tmuxConfigValue(inherited) : null;
-	const envLine = tmuxConfigValue(shrc);
+	const env = posixShellPromptEnv();
+	const userEnv = env.DEV3_USER_ENV ? tmuxConfigValue(env.DEV3_USER_ENV) : null;
+	const envLine = tmuxConfigValue(env.ENV);
 	return [
 		"# Shell prompt — POSIX sh reads $ENV for interactive shells",
 		...(userEnv ? [`set-environment -g DEV3_USER_ENV ${userEnv}`] : []),
