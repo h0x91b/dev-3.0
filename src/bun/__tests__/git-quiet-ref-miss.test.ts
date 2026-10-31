@@ -1,6 +1,7 @@
 /**
  * An absent ref is an answer for the existence probes (`getUnpushedCount` on a
- * branch never pushed), not a git failure — it must not land in the log as WARN.
+ * branch never pushed), and "not an ancestor" is an answer for the ancestry
+ * probes (the merged-check reflog loop) — neither may land in the log as WARN.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -19,7 +20,7 @@ vi.mock("../spawn", async () => {
 	return createSpawnMock();
 });
 
-import { getBehindOriginCount, getUnpushedCount, refExists } from "../git";
+import { getBehindOriginCount, getUnpushedCount, isRefMergedInto, refExists } from "../git";
 import { createTestRepo, cleanup, g, type TestRepo } from "./git-test-helpers";
 
 describe("rev-parse --verify misses", () => {
@@ -50,5 +51,31 @@ describe("rev-parse --verify misses", () => {
 		} finally {
 			rmSync(notARepo, { recursive: true, force: true });
 		}
+	});
+});
+
+describe("merge-base --is-ancestor answers", () => {
+	let repo: TestRepo;
+
+	beforeEach(() => {
+		repo = createTestRepo();
+		g("git checkout -b feature", repo.local);
+		g("git commit --allow-empty -m feature-work", repo.local);
+		g("git checkout main", repo.local);
+		warn.mockClear();
+	});
+
+	afterEach(() => {
+		cleanup(repo);
+	});
+
+	it("a commit that is not an ancestor is not logged as a failed git command", async () => {
+		expect(await isRefMergedInto(repo.local, "feature", "main")).toBe(false);
+		expect(warn).not.toHaveBeenCalledWith("Git command failed", expect.anything());
+	});
+
+	it("an unresolvable ref is still logged", async () => {
+		expect(await isRefMergedInto(repo.local, "no-such-branch", "main")).toBe(false);
+		expect(warn).toHaveBeenCalledWith("Git command failed", expect.objectContaining({ exitCode: 128 }));
 	});
 });

@@ -65,6 +65,20 @@ function gitSubcommand(cmd: string[]): string | undefined {
 }
 
 /**
+ * Exit 1 with empty stderr is a "no", not a failure, for the probes that answer
+ * that way: `rev-parse --verify --quiet` (ref absent) and `merge-base --is-ancestor`
+ * (not an ancestor). An unresolvable ref still exits 128 with stderr and is logged.
+ */
+function isExpectedNo(cmd: string[], code: number | null, stderr: string): boolean {
+	if (code !== 1 || stderr.trim()) return false;
+	switch (gitSubcommand(cmd)) {
+		case "rev-parse": return cmd.includes("--verify") && cmd.includes("--quiet");
+		case "merge-base": return cmd.includes("--is-ancestor");
+		default: return false;
+	}
+}
+
+/**
  * Every git argv dev3 spawns passes through here. `git status` additionally gets
  * `--no-optional-locks`: otherwise it holds index.lock for its whole scan just to
  * cache refreshed stat data, and a concurrent `git add`/`commit` in the same repo
@@ -138,10 +152,7 @@ export async function run(
 		: await Promise.all([stdoutPromise, stderrPromise]);
 	const failure = outcome.timedOut ? `timed out after ${opts?.timeoutMs}ms` : stderr.trim();
 	const result = { ok: outcome.code === 0, stdout: stdout.trim(), stderr: failure };
-	// `rev-parse --verify --quiet` exits 1 with no stderr when the ref is absent: an answer, not a failure.
-	const quietRefMiss = outcome.code === 1 && !stderr.trim() && gitSubcommand(finalCmd) === "rev-parse"
-		&& finalCmd.includes("--verify") && finalCmd.includes("--quiet");
-	if (!result.ok && !quietRefMiss) {
+	if (!result.ok && !isExpectedNo(finalCmd, outcome.code, stderr)) {
 		log.warn("Git command failed", {
 			command: finalCmd,
 			exitCode: outcome.code,
