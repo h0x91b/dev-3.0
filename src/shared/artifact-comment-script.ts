@@ -1,8 +1,9 @@
 /**
  * Comment mode inside an artifact document: pick an element, draw the pins.
  *
- * Injected by the viewer next to the find and save-image scripts. Everything
- * happens inside the sandboxed frame — the viewer only ever learns "the user
+ * Injected by the viewer next to the find and save-image scripts; the live
+ * page's browser shell instead calls it on its same-origin frame from outside,
+ * so the served page never carries it. Everything happens inside the frame — the viewer only ever learns "the user
  * clicked this element" (`dev3-artifact-comment-pick`) and answers with the list
  * of pins to draw (`dev3-artifact-comment-pins`). Pins are positioned here, not
  * by the parent: the frame knows its own scroll and layout, the parent cannot
@@ -52,6 +53,8 @@ export function installArtifactCommentTools(win: any, config: ArtifactCommentToo
 	var pins: ArtifactCommentPin[] = [];
 	var matched: Array<{ pin: ArtifactCommentPin; element: any }> = [];
 	var frame = 0;
+	/** The last element picked, so "wider" can step out to its parent. */
+	var lastPicked: any = null;
 	/** Text → element, valid for one render() pass only. */
 	var textIndex: any = null;
 
@@ -155,12 +158,24 @@ export function installArtifactCommentTools(win: any, config: ArtifactCommentToo
 		if (!element) return;
 		event.preventDefault();
 		event.stopPropagation();
+		sendPick(element);
+	}
+
+	function sendPick(element: any): void {
+		lastPicked = element;
 		var pick: ArtifactCommentPick = {
 			selector: cssPath(element),
 			text: cleanText(element.innerText !== undefined ? element.innerText : element.textContent),
 			heading: headingFor(element),
 		};
 		channel.send({ type: "dev3-artifact-comment-pick", pick: pick });
+	}
+
+	// While picking, a press must not also work the page: no focus, no drag, no button.
+	function swallow(event: any): void {
+		if (!modeOn || !pickable(event.target)) return;
+		event.preventDefault();
+		event.stopPropagation();
 	}
 
 	function onKey(event: any): void {
@@ -302,6 +317,9 @@ export function installArtifactCommentTools(win: any, config: ArtifactCommentToo
 		} else if (data.type === "dev3-artifact-comment-pins") {
 			pins = Array.isArray(data.pins) ? data.pins : [];
 			render();
+		} else if (data.type === "dev3-artifact-comment-widen") {
+			var wider = lastPicked ? pickable(lastPicked.parentElement) : null;
+			if (wider) sendPick(wider);
 		} else if (data.type === "dev3-artifact-comment-reveal") {
 			for (var i = 0; i < matched.length; i++) {
 				if (matched[i].pin.id === data.id && matched[i].element.scrollIntoView) {
@@ -313,6 +331,8 @@ export function installArtifactCommentTools(win: any, config: ArtifactCommentToo
 
 	doc.addEventListener("mousemove", onMove, true);
 	doc.addEventListener("click", onClick, true);
+	var swallowed = ["mousedown", "mouseup", "pointerdown", "pointerup", "dblclick", "auxclick"];
+	for (var s = 0; s < swallowed.length; s++) doc.addEventListener(swallowed[s], swallow, true);
 	w.addEventListener("keydown", onKey, true);
 	w.addEventListener("scroll", scheduleLayout, true);
 	w.addEventListener("resize", scheduleLayout);

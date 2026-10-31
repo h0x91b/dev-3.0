@@ -6,7 +6,7 @@ import { reviewCommentsForArtifact, type ReviewComment } from "../../shared/revi
 import { ReviewAside } from "../review/ReviewAside";
 import { useReviewSend } from "../review/useReviewSend";
 import { useTaskReview } from "../review/useTaskReview";
-import type { ArtifactCommentPick, ArtifactCommentPin } from "../utils/artifactCommentScript";
+import type { ArtifactCommentPick, ArtifactCommentPin } from "../../shared/artifact-comment-script";
 import { TERMINAL_STATUSES } from "../../shared/types";
 import { artifactAtVersion, latestArtifactVersion } from "../../shared/artifact-versions";
 import { api } from "../rpc";
@@ -630,9 +630,9 @@ export default function TaskArtifactViewer({ artifacts: sharedArtifacts, initial
 			setDownloading(false);
 		}
 	};
-	// Desktop hands the stored file to the OS browser, so relative assets keep
-	// resolving. In remote mode that file lives on the host machine, so the tab
-	// loads it through a sandboxed link over the artifact's stored folder instead.
+	// Desktop opens the artifact on the app's loopback server, inside the shell
+	// that carries the element picker. In remote mode that server is unreachable,
+	// so the tab loads a sandboxed link over the artifact's stored folder instead.
 	const openInBrowser = () => {
 		// The live page opens on the app's loopback server so it stays live in the
 		// tab. That server is unreachable from a remote browser, which gets the
@@ -644,7 +644,7 @@ export default function TaskArtifactViewer({ artifacts: sharedArtifacts, initial
 		}
 		const opened = isRemote()
 			? openLinkInNewTab(async () => (await api.request.createArtifactLink({ artifact: current })).viewUrl)
-			: api.request.openArtifactInBrowser({ artifact: current });
+			: api.request.openArtifactInBrowser({ taskId, projectId, artifactId: group?.id ?? current.id, version: selectedVersion });
 		opened.catch((err) => toast.error(t(err instanceof PopupBlockedError ? "imageViewer.popupBlocked" : "artifactViewer.openInBrowserFailed"), { taskId }));
 	};
 	const canMakeLive = !isLive && !taskFinished && Boolean(group);

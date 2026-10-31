@@ -2,12 +2,23 @@ import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { extname } from "node:path";
 import type { Project, Task } from "../shared/types";
+import { TERMINAL_STATUSES } from "../shared/types";
 import { LIVE_CLIENT_GESTURE_MS, LIVE_CLIENT_TIMEOUT_MS, liveArtifactClientScript } from "../shared/live-artifact-client";
 import type { LiveChange } from "../shared/live-artifact";
 import { DEV3_HOME } from "./paths";
 import { projectSlug } from "./git";
 import { liveStoreDir, onLivePageChange, onLiveStoreChange, readLiveState } from "./live-artifact-store";
 import { LiveOpError, runLiveOp, type LiveAgentSender } from "./live-artifact-ops";
+import {
+	browserPins,
+	parseBrowserArtifactRef,
+	parseBrowserCommentInput,
+	resolveBrowserArtifact,
+	type BrowserArtifactRef,
+	type BrowserArtifactTarget,
+	type BrowserCommentInput,
+} from "./browser-artifact-comments";
+import { artifactShellHtml } from "./artifact-browser-shell";
 import { createLogger } from "./logger";
 
 /**
@@ -16,6 +27,9 @@ import { createLogger } from "./logger";
  * - Bound to 127.0.0.1 only. Never a fixed port: prod, staging and dev builds run
  *   side by side, so it binds the port this install used last time (stable
  *   bookmarks) and falls back to any free one when another process holds it.
+ * - `/<token>/` is a shell (toolbar, element picker, feedback modal) around the
+ *   live page at `/<token>/_page`; `/<token>/a/<artifactId>/<version>/` does the
+ *   same for one version of a static artifact. The picker never ships in a page.
  * - Each task is reached through an unguessable token path, `/<token>/`; the
  *   `Host` header must name this server (DNS-rebinding guard) and writes must be
  *   `application/json` from this origin (cross-site forms cannot send that).
@@ -49,7 +63,11 @@ export interface LiveServerDeps {
 	/** The task behind a token, re-read on every request so status and page are current. */
 	resolveToken: (token: string) => Promise<{ project: Project; task: Task } | null>;
 	sendToAgent: LiveAgentSender;
+	/** Store a picked-element comment on the task review, and send it when asked. */
+	addComment: (project: Project, task: Task, target: BrowserArtifactTarget, input: BrowserCommentInput) => Promise<{ id: string; sent: boolean }>;
 }
+
+const PAGE_PATH = "_page";
 
 function text(status: number, body: string): Response {
 	return new Response(body, { status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
@@ -118,7 +136,6 @@ export function createLiveFetch(deps: LiveServerDeps): (request: Request) => Pro
 		const found = await deps.resolveToken(token);
 		if (!found) return text(404, "This live page no longer exists.");
 		const { project, task } = found;
-		const live = task.liveArtifact;
 		const path = rest.join("/");
 
 		if (rest.length === 0) return new Response(null, { status: 308, headers: { location: `/${token}/` } });
@@ -136,8 +153,15 @@ export function createLiveFetch(deps: LiveServerDeps): (request: Request) => Pro
 			} catch {
 				return json(400, { error: "Body is not JSON", reason: "invalid" });
 			}
+			const op = path.slice("api/".length);
 			try {
-				return json(200, { result: await runLiveOp(project, task, path.slice("api/".length), args ?? {}, deps.sendToAgent) });
+				if (op === "comments" || op === "comment") {
+					const target = resolveBrowserArtifact(task, parseBrowserArtifactRef(args?.artifact));
+					if (!target) throw new LiveOpError("That artifact is no longer on this task", "invalid");
+					if (op === "comments") return json(200, { result: browserPins(task, target) });
+					return json(200, { result: await deps.addComment(project, task, target, parseBrowserCommentInput(args ?? {})) });
+				}
+				return json(200, { result: await runLiveOp(project, task, op, args ?? {}, deps.sendToAgent) });
 			} catch (error) {
 				const failure = error instanceof LiveOpError ? error : new LiveOpError(String(error), "failed");
 				const status = failure.reason === "conflict" ? 409 : failure.reason === "read-only" ? 423 : failure.reason === "invalid" ? 400 : 500;
@@ -146,18 +170,38 @@ export function createLiveFetch(deps: LiveServerDeps): (request: Request) => Pro
 		}
 
 		if (request.method !== "GET") return text(405, "GET only");
-		if (!live) return text(404, "This task has no live page yet.");
 
-		if (path === "") {
-			const html = readFileSync(live.page.storedPath, "utf8");
-			return new Response(injectClient(html, token, live.pageRev), {
-				headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "no-referrer" },
+		// `a/<artifactId>/<version>/…` is a static artifact; anything else is the live page.
+		const isStatic = rest[0] === "a" && rest.length >= 3;
+		if (isStatic && !/^\d+$/.test(rest[2])) return text(404, "Not found");
+		const ref: BrowserArtifactRef = isStatic ? { kind: "static", id: decodeURIComponent(rest[1]), version: Number(rest[2]) } : { kind: "live" };
+		if (isStatic && rest.length === 3) return new Response(null, { status: 308, headers: { location: `/${token}/a/${rest[1]}/${rest[2]}/` } });
+		const target = resolveBrowserArtifact(task, ref);
+		if (!target) return text(404, isStatic ? "That artifact is no longer on this task." : "This task has no live page yet.");
+		const sub = isStatic ? rest.slice(3).join("/") : path;
+		const pageHeaders = { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "no-referrer" };
+
+		if (sub === "") {
+			const shell = artifactShellHtml({
+				title: target.page.title,
+				badge: isStatic ? `v${target.version}` : "LIVE",
+				pageUrl: PAGE_PATH,
+				base: `/${token}/`,
+				artifact: ref.kind === "static" ? { id: ref.id, version: ref.version } : null,
+				canComment: !TERMINAL_STATUSES.includes(task.status),
 			});
+			return new Response(shell, { headers: pageHeaders });
+		}
+
+		if (sub === PAGE_PATH) {
+			const html = readFileSync(target.page.storedPath, "utf8");
+			const live = task.liveArtifact;
+			return new Response(!isStatic && live ? injectClient(html, token, live.pageRev) : html, { headers: pageHeaders });
 		}
 
 		// Only files the page was published with; the stored record is the allowlist.
-		const name = decodeURIComponent(path);
-		const asset = live.page.assets.find((candidate) => candidate.name === name);
+		const name = decodeURIComponent(sub);
+		const asset = target.page.assets.find((candidate) => candidate.name === name);
 		if (!asset) return text(404, "Not found");
 		const ext = extname(asset.name).slice(1).toLowerCase();
 		return new Response(readFileSync(asset.storedPath), {

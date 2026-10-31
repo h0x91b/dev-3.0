@@ -216,8 +216,13 @@ const LIVE_ENTRY_PREFIX = "live:";
  * so the viewer's unsent-input draft (keyed by id + version) survives a new page
  * and is put back after the reload.
  */
+/** The live page's id in the viewer list and on its review comments. */
+export function liveEntryId(taskId: string): string {
+	return `${LIVE_ENTRY_PREFIX}${taskId}`;
+}
+
 export function liveViewerEntry(taskId: string, live: LiveArtifact): SharedArtifact {
-	return { ...live.page, id: `${LIVE_ENTRY_PREFIX}${taskId}`, groupKey: "live", version: 1, previousVersions: undefined, isUnread: false };
+	return { ...live.page, id: liveEntryId(taskId), groupKey: "live", version: 1, previousVersions: undefined, isUnread: false };
 }
 
 export function isLiveViewerEntry(artifact: Pick<SharedArtifact, "id"> | undefined): boolean {

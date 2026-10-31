@@ -324,6 +324,7 @@ approve.addEventListener("click", async () => {
 - **`emit(name, payload)`** records an event for the agent without waking it; **`send(text)`** wakes it and needs a click within the last 5 s. User writes are logged too; the agent reads them with `dev3 live events` and marks them `dev3 live ack`.
 - **Agent side:** `dev3 live set|patch|get|list|delete <collection> <id> [json|@file|-]`. Never rebuild the page to change data — write the document and every open copy redraws.
 - **A new page reloads by itself** and keeps what the user typed in its controls; render from the store, not from values baked into the HTML.
+- **In a browser tab the page sits in a dev3 frame** — live pages and, from Open in browser, every static artifact. Its **Pick** button lets the user click any element and comment on it; the comment lands on the task review with the element's selector, exactly like comment mode in the app. Nothing of it is in your page, so never build your own picker.
 - **A finished task's live page is read-only**: writes reject with `reason: "read-only"`; hide the controls when `live.list` is all you can do.
 - A rejected call's `Error.reason` is one of `unavailable`, `invalid`, `conflict`, `read-only`, `no-gesture`, `empty`, `timeout`, `failed`.
 

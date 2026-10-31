@@ -16,11 +16,13 @@ const project = { id: "p1", path: "/tmp/live-server-proj" } as Project;
 let task: Task;
 let seq = 0;
 const sendToAgent = vi.fn(async () => undefined);
+const addComment = vi.fn(async () => ({ id: "c-1", sent: true }));
 
 const fetchLive = createLiveFetch({
 	port: () => PORT,
 	resolveToken: async (token) => (token === TOKEN ? { project, task } : null),
 	sendToAgent,
+	addComment,
 });
 
 function get(path: string, headers: Record<string, string> = {}) {
@@ -39,6 +41,7 @@ afterAll(() => rmSync(TEST_HOME, { recursive: true, force: true }));
 
 beforeEach(() => {
 	sendToAgent.mockClear();
+	addComment.mockClear();
 	mkdirSync(PAGE_DIR, { recursive: true });
 	writeFileSync(`${PAGE_DIR}/index.html`, "<!doctype html><html><head><title>t</title></head><body>hi</body></html>");
 	writeFileSync(`${PAGE_DIR}/app.css`, "body{}");
@@ -79,8 +82,23 @@ describe("live server guards", () => {
 });
 
 describe("live server pages", () => {
+	it("serves a shell with the picker around the page, never inside it", async () => {
+		const shell = await (await get(`/${TOKEN}/`)).text();
+		expect(shell).toContain('id="live-pick"');
+		expect(shell).toContain('<iframe id="live-frame" src="_page"');
+		expect(shell).not.toContain("data-dev3-live-client");
+		const page = await (await get(`/${TOKEN}/_page`)).text();
+		expect(page).not.toContain("live-pick");
+		expect(page).not.toContain("installArtifactCommentTools");
+	});
+
+	it("hides Pick once the task is finished", async () => {
+		task = { ...task, status: "completed" };
+		expect(await (await get(`/${TOKEN}/`)).text()).toContain('id="live-pick" hidden');
+	});
+
 	it("serves the page with the http client wired to its token base", async () => {
-		const response = await get(`/${TOKEN}/`);
+		const response = await get(`/${TOKEN}/_page`);
 		const html = await response.text();
 		expect(response.headers.get("content-type")).toContain("text/html");
 		expect(html).toContain("data-dev3-live-client");
@@ -98,6 +116,43 @@ describe("live server pages", () => {
 		expect(await (await get(`/${TOKEN}/app.css`)).text()).toBe("body{}");
 		expect((await get(`/${TOKEN}/index.html.bak`)).status).toBe(404);
 		expect((await get(`/${TOKEN}/..%2F..%2Fetc%2Fpasswd`)).status).toBe(404);
+	});
+});
+
+describe("static artifacts in the shell", () => {
+	beforeEach(() => {
+		writeFileSync(`${PAGE_DIR}/old.html`, "<html><head></head><body>old</body></html>");
+		task = {
+			...task,
+			sharedArtifacts: [{
+				id: "art-1", kind: "html", title: "Report", name: "index.html", storedPath: `${PAGE_DIR}/index.html`, originalPath: "/x", bytes: 1, createdAt: 1, version: 2,
+				assets: [{ name: "app.css", storedPath: `${PAGE_DIR}/app.css`, originalPath: "/x/app.css", mime: "text/css", bytes: 6 }],
+				previousVersions: [{ version: 1, name: "index.html", storedPath: `${PAGE_DIR}/old.html`, originalPath: "/x", bytes: 1, createdAt: 1, assets: [] }],
+			}],
+		} as Task;
+	});
+
+	it("serves a version inside the same shell, with no live client in the page", async () => {
+		const shell = await (await get(`/${TOKEN}/a/art-1/1/`)).text();
+		expect(shell).toContain('<span class="badge">v1</span>');
+		expect(shell).toContain('"artifact":{"id":"art-1","version":1}');
+		const page = await (await get(`/${TOKEN}/a/art-1/1/_page`)).text();
+		expect(page).toContain("old");
+		expect(page).not.toContain("data-dev3-live-client");
+		expect(await (await get(`/${TOKEN}/a/art-1/2/app.css`)).text()).toBe("body{}");
+		expect((await get(`/${TOKEN}/a/art-1/1/app.css`)).status).toBe(404);
+	});
+
+	it("redirects a bare version to its directory and 404s an unknown one", async () => {
+		expect((await get(`/${TOKEN}/a/art-1/2`)).headers.get("location")).toBe(`/${TOKEN}/a/art-1/2/`);
+		expect((await get(`/${TOKEN}/a/art-1/7/`)).status).toBe(404);
+		expect((await get(`/${TOKEN}/a/art-1/x/`)).status).toBe(404);
+	});
+
+	it("anchors a comment to the static version the tab shows", async () => {
+		await post(`/${TOKEN}/api/comment`, { artifact: { id: "art-1", version: 1 }, selector: "p", body: "Fix" });
+		expect(addComment).toHaveBeenCalledWith(project, task, expect.objectContaining({ artifactId: "art-1", version: 1 }), expect.objectContaining({ body: "Fix" }));
+		expect((await post(`/${TOKEN}/api/comment`, { artifact: { id: "nope", version: 1 }, selector: "p", body: "Fix" })).status).toBe(400);
 	});
 });
 
@@ -123,6 +178,30 @@ describe("live server operations", () => {
 	it("send wraps the text in the artifact envelope for the agent", async () => {
 		await post(`/${TOKEN}/api/send`, { text: "Approved 2 cards" });
 		expect(sendToAgent).toHaveBeenCalledWith(task, expect.stringContaining("<artifact-title>Board (live)</artifact-title>"));
+	});
+
+	it("stores a picked-element comment through the review path", async () => {
+		const response = await post(`/${TOKEN}/api/comment`, { selector: "#plan > li:nth-of-type(2)", text: "Step two", heading: "Plan", body: "Split this", send: true });
+		expect(await response.json()).toEqual({ result: { id: "c-1", sent: true } });
+		expect(addComment).toHaveBeenCalledWith(project, task, expect.objectContaining({ artifactId: `live:${task.id}`, version: 1 }), { selector: "#plan > li:nth-of-type(2)", text: "Step two", heading: "Plan", body: "Split this", send: true });
+	});
+
+	it("refuses a comment with nothing to say or nothing picked", async () => {
+		expect((await post(`/${TOKEN}/api/comment`, { selector: "#a", body: "  " })).status).toBe(400);
+		expect((await post(`/${TOKEN}/api/comment`, { selector: "", body: "x" })).status).toBe(400);
+		expect(addComment).not.toHaveBeenCalled();
+	});
+
+	it("lists the live page's pins, ignoring comments on other artifacts", async () => {
+		task = {
+			...task,
+			review: [
+				{ id: "a", body: "Fix", createdAt: "t", anchor: { kind: "artifact-element", artifactId: `live:${task.id}`, version: 1, title: "Board", selector: "#x", text: "X", heading: null } },
+				{ id: "b", body: "Other", createdAt: "t", anchor: { kind: "artifact-element", artifactId: "other", version: 1, title: "O", selector: "#y", text: "Y", heading: null } },
+			],
+		} as Task;
+		const { result } = await (await post(`/${TOKEN}/api/comments`, {})).json();
+		expect(result).toEqual([{ id: "a", n: 1, selector: "#x", text: "X", heading: null, resolved: false, active: false, body: "Fix" }]);
 	});
 
 	it("opens a stream that starts with the page revision and the store", async () => {

@@ -2,6 +2,8 @@ import type { Project, Task } from "../shared/types";
 import * as data from "./data";
 import type { LiveAgentSender } from "./live-artifact-ops";
 import { ensureLiveServer, findTokenOnDisk, liveTokenFor } from "./live-artifact-server";
+import { addBrowserComment } from "./browser-artifact-comments";
+import { getPushMessage } from "./rpc-handlers/shared-pure";
 
 /** Wiring between the live server and the app's data. No Electrobun import, so the CLI socket server can use it. */
 
@@ -27,6 +29,7 @@ export async function findLiveTask(taskId: string, projectId?: string): Promise<
 export function liveArtifactUrlFor(project: Project, task: Task): string {
 	const port = ensureLiveServer({
 		sendToAgent: liveSendToAgent,
+		addComment: (project, task, target, input) => addBrowserComment(project, task, target, input, { sendToAgent: liveSendToAgent, push: getPushMessage() }),
 		resolveToken: async (token) => {
 			const entry = findTokenOnDisk(token, await allProjects());
 			if (!entry) return null;
@@ -38,4 +41,9 @@ export function liveArtifactUrlFor(project: Project, task: Task): string {
 		},
 	});
 	return `http://127.0.0.1:${port}/${liveTokenFor(project, task.id)}/`;
+}
+
+/** One version of a static artifact in the same shell, so it gets the picker too. */
+export function staticArtifactUrlFor(project: Project, task: Task, artifactId: string, version: number): string {
+	return `${liveArtifactUrlFor(project, task)}a/${encodeURIComponent(artifactId)}/${version}/`;
 }
