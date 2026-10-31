@@ -8,7 +8,7 @@ import { createLogger } from "./logger";
 import { startSleepInhibitWatch, stopSleepInhibitWatch } from "./caffeinate";
 import { probeMemoryFacts } from "./system-memory-probe";
 import { classifyPressure, groupConsumers, isSwapping, median, type RawConsumer } from "./system-memory";
-import { classifyCpu, classifyDisk, cpuBusyRatio, cpuLoadPercent, groupCpuConsumers, loadSnapshotWorthPushing, readDiskFacts, sumCpuTimes, type CpuTimes } from "./system-load";
+import { classifyCpu, classifyDisk, cpuBusyRatio, groupCpuConsumers, loadSnapshotWorthPushing, readDiskFacts, sumCpuTimes, type CpuTimes } from "./system-load";
 import { loadSettings } from "./settings";
 import { DEV3_HOME } from "./paths";
 
@@ -268,13 +268,11 @@ async function collectSystemLoad(
 	const cores = cpus().length;
 	// Read every tick so a changed level shows within one poll, no restart.
 	const levels = resolveResourceLevels(await loadSettings());
-	const loadPercent = cpuLoadPercent(one, cores, busy);
 	const disk = readDiskFacts(DEV3_HOME);
 
 	const next: SystemLoadSnapshot = {
 		cpuBusy: busy,
-		cpuLoadPercent: loadPercent,
-		cpuPressure: classifyCpu(loadPercent, levels),
+		cpuPressure: classifyCpu(busy, levels),
 		cores,
 		loadAvg: [one, five, fifteen],
 		topCpuConsumers: groupCpuConsumers(outsiders, TOP_CONSUMERS),

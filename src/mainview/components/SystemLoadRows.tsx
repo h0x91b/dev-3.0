@@ -84,10 +84,10 @@ export default function SystemLoadRows({
 					variant={variant}
 					label={t("systemLoad.cpu")}
 					icon={<CpuIcon className="size-3 shrink-0" />}
-					value={percent(snapshot.cpuLoadPercent)}
-					ratio={snapshot.cpuLoadPercent / 100}
+					value={percent(snapshot.cpuBusy * 100)}
+					ratio={snapshot.cpuBusy}
 					pressure={snapshot.cpuPressure}
-					ariaLabel={t("systemLoad.cpuAria", { busy: percent(snapshot.cpuLoadPercent) })}
+					ariaLabel={t("systemLoad.cpuAria", { busy: percent(snapshot.cpuBusy * 100) })}
 					testId={`cpu-load-${suffix}`}
 				>
 					{(close) => <CpuPanel snapshot={snapshot} navigate={navigate} close={close} />}
@@ -260,12 +260,11 @@ function CpuPanel({ snapshot, ...props }: PanelProps & { snapshot: SystemLoadSna
 			<div className="flex flex-col gap-1 px-3 py-2.5">
 				<LevelHeader pressure={snapshot.cpuPressure} headingKey="systemLoad.cpuHeading" levelKey="systemLoad.cpuLevel" />
 				<div className="text-fg">
-					<span className="font-semibold tabular-nums">{percent(snapshot.cpuLoadPercent)}</span>{" "}
-					<span className="text-fg-3">{t("systemLoad.load")}</span>
+					<span className="font-semibold tabular-nums">{percent(snapshot.cpuBusy * 100)}</span>{" "}
+					<span className="text-fg-3">{t("systemLoad.busy")}</span>
 				</div>
 				<div className="text-micro text-fg-3 tabular-nums">
 					{t("systemLoad.cores", { cores: String(snapshot.cores) })}
-					{` · ${t("systemLoad.busyPercent", { busy: percent(snapshot.cpuBusy * 100) })}`}
 					{hasLoadAvg && ` · ${t("systemLoad.loadAvg", { load: snapshot.loadAvg.map((n) => n.toFixed(2)).join(" ") })}`}
 				</div>
 			</div>

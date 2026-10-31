@@ -348,7 +348,7 @@ describe("saveSettings", () => {
 			remoteTunnel: { provider: "custom", command: "ngrok http {port} --log stdout", urlPattern: "https://\\S+" },
 			remotePort: 41234,
 			agentLaunchAutoApproveMinutes: 2,
-			resourceLevels: { cpuWarnPercent: 80, diskCriticalGb: 10 },
+			resourceLevels: { cpuBusyWarnPercent: 70, diskCriticalGb: 10 },
 			defaultAgentId: "builtin-codex",
 			defaultConfigId: "codex-default",
 			taskSortOrder: "newest-first",

@@ -149,12 +149,7 @@ export interface CpuTaskConsumer extends Omit<MemoryTaskConsumer, "rss"> {
 export interface SystemLoadSnapshot {
 	/** Share of all cores busy since the previous sample, 0..1. */
 	cpuBusy: number;
-	/**
-	 * 1-minute load average as a % of the core count — what the CPU readout shows
-	 * and what `cpuPressure` is judged on. Busy % stands in where there is no load
-	 * average (Windows).
-	 */
-	cpuLoadPercent: number;
+	/** Judged on `cpuBusy`; load average is shown alongside, never classified. */
 	cpuPressure: MemoryPressure;
 	cores: number;
 	/** 1/5/15-minute load average; all zeros on Windows, which has none. */
@@ -177,25 +172,25 @@ export interface WorktreeDiskUsage {
 }
 
 export interface ResourceLevels {
-	/** 1-minute load average as a % of the core count: 100 = every core busy. */
-	cpuWarnPercent: number;
-	cpuCriticalPercent: number;
+	/** Share of all cores busy over one poll, in %. Load average is not judged. */
+	cpuBusyWarnPercent: number;
+	cpuBusyCriticalPercent: number;
 	/** Free space on the dev3 data volume, in decimal GB (what Finder shows). */
 	diskWarnGb: number;
 	diskCriticalGb: number;
 }
 
 export const DEFAULT_RESOURCE_LEVELS: ResourceLevels = {
-	cpuWarnPercent: 100,
-	cpuCriticalPercent: 150,
+	cpuBusyWarnPercent: 80,
+	cpuBusyCriticalPercent: 95,
 	diskWarnGb: 20,
 	diskCriticalGb: 5,
 };
 
 /** Choices offered in Settings for each level. */
 export const RESOURCE_LEVEL_CHOICES: { [K in keyof ResourceLevels]: readonly number[] } = {
-	cpuWarnPercent: [50, 75, 100, 125, 150, 200],
-	cpuCriticalPercent: [100, 125, 150, 200, 300],
+	cpuBusyWarnPercent: [50, 60, 70, 80, 90],
+	cpuBusyCriticalPercent: [70, 80, 90, 95],
 	diskWarnGb: [10, 20, 50, 100, 200],
 	diskCriticalGb: [2, 5, 10, 20, 50],
 };

@@ -293,9 +293,7 @@ const dashboard = {
 	"fileBrowser.clickAgainHint": "After installation, click Files again and it will work.",
 
 	// CPU and disk rows in the header kebab (beside "Memory left").
-	"systemLoad.cpu": "CPU load",
-	"systemLoad.load": "load",
-	"systemLoad.busyPercent": "{busy} busy",
+	"systemLoad.cpu": "CPU",
 	"systemLoad.cpuLevel.normal": "normal",
 	"systemLoad.cpuLevel.warn": "high",
 	"systemLoad.cpuLevel.critical": "overloaded",
@@ -305,7 +303,7 @@ const dashboard = {
 	"systemLoad.cpuAria": "{busy} of CPU in use",
 	"systemLoad.busy": "busy",
 	"systemLoad.cores": "{cores} cores",
-	"systemLoad.loadAvg": "load {load}",
+	"systemLoad.loadAvg": "load average {load}",
 	"systemLoad.outsideDev3": "Busiest outside dev-3.0",
 	"systemLoad.nothingBusy": "Nothing outside dev-3.0 is busy.",
 	"systemLoad.coreNote": "Per-process figures: 100% is one full core.",
