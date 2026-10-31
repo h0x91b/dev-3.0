@@ -1765,14 +1765,38 @@ const fetchLastFailure = new Map<string, { at: number; failures: number; stderr:
 const FETCH_FAILURE_BACKOFF_BASE_MS = 2 * 60_000;
 const FETCH_FAILURE_BACKOFF_MAX_MS = 30 * 60_000;
 
-function fetchFailureBackoffMs(failures: number): number {
-	return Math.min(FETCH_FAILURE_BACKOFF_BASE_MS * 2 ** (failures - 1), FETCH_FAILURE_BACKOFF_MAX_MS);
+function fetchFailureBackoffMs(failures: number, maxMs = FETCH_FAILURE_BACKOFF_MAX_MS): number {
+	return Math.min(FETCH_FAILURE_BACKOFF_BASE_MS * 2 ** (failures - 1), maxMs);
 }
 
 function isInFailureBackoff(cacheKey: string, now: number): boolean {
 	const failure = fetchLastFailure.get(cacheKey);
 	if (!failure) return false;
 	return now - failure.at < fetchFailureBackoffMs(failure.failures);
+}
+
+// A deleted repo or a missing remote fails every branch the same way, so it is tracked per
+// remote: one shared backoff with a longer cap instead of a 30-minute retry per branch.
+const UNREACHABLE_REMOTE_STDERR = /repository not found|does not appear to be a git repository/i;
+const UNREACHABLE_REMOTE_BACKOFF_MAX_MS = 6 * 60 * 60_000;
+const remoteUnreachable = new Map<string, { at: number; failures: number }>();
+
+function isUnreachableRemoteError(stderr: string): boolean {
+	return UNREACHABLE_REMOTE_STDERR.test(stderr);
+}
+
+function isRemoteInBackoff(projectPath: string, remote: string, now: number): boolean {
+	const failure = remoteUnreachable.get(`${projectPath}:${remote}`);
+	return !!failure && now - failure.at < fetchFailureBackoffMs(failure.failures, UNREACHABLE_REMOTE_BACKOFF_MAX_MS);
+}
+
+/** Returns the next retry delay when the failure marks the whole remote unreachable, else null. */
+function recordRemoteFailure(projectPath: string, remote: string, stderr: string): number | null {
+	if (!isUnreachableRemoteError(stderr)) return null;
+	const key = `${projectPath}:${remote}`;
+	const failures = (remoteUnreachable.get(key)?.failures ?? 0) + 1;
+	remoteUnreachable.set(key, { at: Date.now(), failures });
+	return fetchFailureBackoffMs(failures, UNREACHABLE_REMOTE_BACKOFF_MAX_MS);
 }
 
 /**
@@ -1935,12 +1959,13 @@ async function fetchFromRemote(
 		return true;
 	}
 
-	// Skip if recent fetches for this key keep failing (exponential backoff)
-	if (!force && isInFailureBackoff(cacheKey, now)) {
+	// Skip if recent fetches for this key, or the whole remote, keep failing (exponential backoff)
+	if (!force && (isInFailureBackoff(cacheKey, now) || isRemoteInBackoff(projectPath, remote, now))) {
 		log.debug("fetchOrigin: skipping (failure backoff)", {
 			projectPath,
 			branch,
 			failures: fetchLastFailure.get(cacheKey)?.failures,
+			remoteFailures: remoteUnreachable.get(`${projectPath}:${remote}`)?.failures,
 		});
 		return false;
 	}
@@ -1959,7 +1984,7 @@ async function fetchFromRemote(
 			log.debug("fetchOrigin: skipping (cooldown after queue wait)", { projectPath, branch });
 			return true;
 		}
-		if (!force && isInFailureBackoff(cacheKey, Date.now())) {
+		if (!force && (isInFailureBackoff(cacheKey, Date.now()) || isRemoteInBackoff(projectPath, remote, Date.now()))) {
 			log.debug("fetchOrigin: skipping (failure backoff after queue wait)", { projectPath, branch });
 			return false;
 		}
@@ -1978,6 +2003,7 @@ async function fetchFromRemote(
 		if (result.ok) {
 			fetchLastSuccess.set(cacheKey, Date.now());
 			fetchLastFailure.delete(cacheKey);
+			remoteUnreachable.delete(`${projectPath}:${remote}`);
 			log.debug("fetchOrigin finished", {
 				projectPath,
 				branch,
@@ -1986,12 +2012,14 @@ async function fetchFromRemote(
 		} else {
 			const failures = (fetchLastFailure.get(cacheKey)?.failures ?? 0) + 1;
 			fetchLastFailure.set(cacheKey, { at: Date.now(), failures, stderr: result.stderr });
+			const remoteRetryMs = recordRemoteFailure(projectPath, remote, result.stderr);
 			log.warn("fetchOrigin failed", {
 				projectPath,
 				branch,
 				stderr: result.stderr,
 				failures,
-				nextRetryInMs: fetchFailureBackoffMs(failures),
+				remoteUnreachable: remoteRetryMs !== null,
+				nextRetryInMs: Math.max(fetchFailureBackoffMs(failures), remoteRetryMs ?? 0),
 				durationMs: Math.round(performance.now() - startedAt),
 			});
 		}
@@ -2031,6 +2059,10 @@ export async function fetchOriginBranches(
 			? unique
 			: unique.filter((b) => now - (fetchLastSuccess.get(keyOf(b)) ?? 0) >= FETCH_COOLDOWN_MS && !isInFailureBackoff(keyOf(b), now));
 	};
+	if (!force && isRemoteInBackoff(projectPath, "origin", Date.now())) {
+		log.debug("fetchOrigin: skipping (remote unreachable backoff)", { projectPath, branches: unique });
+		return false;
+	}
 	const due = dueBranches();
 	const backedOff = force ? 0 : unique.filter((b) => isInFailureBackoff(keyOf(b), Date.now())).length;
 	if (due.length === 0) return backedOff === 0;
@@ -2039,9 +2071,14 @@ export async function fetchOriginBranches(
 	const existing = fetchInFlight.get(groupKey);
 	if (existing) return existing;
 
+	let remoteGone = false;
 	const combined: Promise<boolean> = enqueueFetchJob(projectPath, due.join(","), priority, async () => {
 		const stillDue = dueBranches().filter((b) => due.includes(b));
 		if (stillDue.length === 0) return true;
+		if (!force && isRemoteInBackoff(projectPath, "origin", Date.now())) {
+			remoteGone = true;
+			return false;
+		}
 		const startedAt = performance.now();
 		log.debug("Fetching remote", { projectPath, remote: "origin", branches: stillDue });
 		const result = await runGitFetch(projectPath, "origin", [...stillDue, "--quiet"], timeoutMs);
@@ -2050,7 +2087,16 @@ export async function fetchOriginBranches(
 				fetchLastSuccess.set(keyOf(b), Date.now());
 				fetchLastFailure.delete(keyOf(b));
 			}
+			remoteUnreachable.delete(`${projectPath}:origin`);
 			log.debug("fetchOrigin finished", { projectPath, branches: stillDue, durationMs: Math.round(performance.now() - startedAt) });
+		} else if (recordRemoteFailure(projectPath, "origin", result.stderr) !== null) {
+			// Retrying each branch would only hit the same missing repository again.
+			remoteGone = true;
+			const at = Date.now();
+			for (const b of stillDue) {
+				fetchLastFailure.set(keyOf(b), { at, failures: (fetchLastFailure.get(keyOf(b))?.failures ?? 0) + 1, stderr: result.stderr });
+			}
+			log.warn("fetchOrigin (combined) failed: remote unreachable", { projectPath, branches: stillDue, stderr: result.stderr });
 		} else {
 			log.warn("fetchOrigin (combined) failed, retrying per branch", { projectPath, branches: stillDue, stderr: result.stderr });
 		}
@@ -2063,7 +2109,7 @@ export async function fetchOriginBranches(
 	} finally {
 		fetchInFlight.delete(groupKey);
 	}
-	if (!ok) {
+	if (!ok && !remoteGone) {
 		const results: boolean[] = [];
 		for (const b of due) results.push(await fetchOrigin(projectPath, b, timeoutMs, options));
 		ok = results.every(Boolean);
@@ -2305,6 +2351,7 @@ export function _resetFetchState(): void {
 	fetchInFlight.clear();
 	fetchLastSuccess.clear();
 	fetchLastFailure.clear();
+	remoteUnreachable.clear();
 	fetchProjectQueue.clear();
 }
 

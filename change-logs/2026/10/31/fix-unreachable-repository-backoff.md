@@ -1,0 +1,1 @@
+Repositories that were deleted or have no `origin` are no longer polled every few minutes forever: PR status checks and background fetches now back off per repository (up to 6 hours), and any successful fetch or manual refresh resumes normal polling.
