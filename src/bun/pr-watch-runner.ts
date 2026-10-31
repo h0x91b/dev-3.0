@@ -19,8 +19,11 @@ export const MERGE_OFFER_SUBMITTED_GRACE_MS = 30_000;
 const retryAfter = new Map<string, number>();
 // taskId -> when dev3 stops holding the merge-completion offer for the watching agent; `noticeText` is set once the merged message was accepted.
 const mergeOfferHolds = new Map<string, { until: number; noticeText?: string }>();
+/** A run still going after this long is presumed hung: the next poll takes over instead of skipping forever. */
+export const PR_WATCH_RUN_STALL_MS = 3 * 60_000;
+
 // Two overlapping polls of one task (timer tick, popover refresh) must not both deliver.
-const inFlight = new Set<string>();
+const inFlight = new Map<string, { startedAt: number }>();
 // Tasks already warned about disagreeing remote refs; cleared when the refs agree again.
 const ambiguousWarned = new Set<string>();
 
@@ -102,12 +105,18 @@ export async function clearPrWatches(project: Project, taskId: string): Promise<
  * about it on a later poll.
  */
 export async function runPrWatches(project: Project, taskId: string, sample: PrWatchSample, prUrl: string, checkedAt: number, mergeCoversHead: boolean): Promise<void> {
-	if (inFlight.has(taskId)) return;
-	inFlight.add(taskId);
+	const running = inFlight.get(taskId);
+	if (running) {
+		const pendingMs = Date.now() - running.startedAt;
+		if (pendingMs < PR_WATCH_RUN_STALL_MS) return;
+		log.error("PR watch run stalled; a new run takes over", { taskId: taskId.slice(0, 8), pendingMs });
+	}
+	const run = { startedAt: Date.now() };
+	inFlight.set(taskId, run);
 	try {
 		await runPrWatchesOnce(project, taskId, sample, prUrl, checkedAt, mergeCoversHead);
 	} finally {
-		inFlight.delete(taskId);
+		if (inFlight.get(taskId) === run) inFlight.delete(taskId);
 	}
 }
 
@@ -136,8 +145,13 @@ async function runPrWatchesOnce(project: Project, taskId: string, sample: PrWatc
 	if (Object.keys(quietPatches).length > 0) {
 		await persistWatches(project, taskId, (current) => applyPrWatchOutcome(current, { removeIds: [], patches: quietPatches }));
 	}
+	const canReceive = agentCanReceive(task);
+	log.info("PR watch evaluated", {
+		taskId: taskId.slice(0, 8), pr: sample.number, state: sample.state, watches: watches.length,
+		fired: outcome.fired.length, ...(outcome.fired.length > 0 ? { agentCanReceive: canReceive } : {}),
+	});
 	if (outcome.fired.length === 0) return;
-	if (!agentCanReceive(task)) return;
+	if (!canReceive) return;
 	await deliverFired(project, taskId, outcome, sample.number, prUrl, mergeCoversHead);
 }
 
@@ -216,7 +230,10 @@ async function deliverFired(project: Project, taskId: string, outcome: PrWatchOu
 			const noOffer = taskCompletesManually(fresh) || (await loadSettings()).suggestCompletingTasksAfterMerge === false;
 			const completion = noOffer ? "not-offered" : mergeCoversHead ? "offered" : "after-local-work";
 			text = wrapPrStatusMessage({ prNumber, url: prUrl, notices, remaining, completion });
-			await sendMessageImmediately(fresh, text, { kind: "pane", paneId }, null, { subject: prStatusSubject(prNumber, notices), origin: "dev3" });
+			const delivery = await sendMessageImmediately(fresh, text, { kind: "pane", paneId }, null, { subject: prStatusSubject(prNumber, notices), origin: "dev3" });
+			log.info("PR watch delivered", {
+				taskId: taskId.slice(0, 8), pr: prNumber, paneId, status: delivery.status, notices: notices.map(({ kind }) => kind).join(","),
+			});
 		} catch (err) {
 			for (const key of keys) retryAfter.set(`${taskId}|${key}`, Date.now() + PR_WATCH_RETRY_BACKOFF_MS);
 			log.warn("PR watch message not delivered; the watch stays", { taskId: taskId.slice(0, 8), error: String(err) });
