@@ -1,5 +1,6 @@
 import { assertTaskWorkspacePresent } from "../../task-workspace-guard";
 import type { AgentFamily, Project, Task } from "../../../shared/types";
+import { getPrimaryStopTarget } from "../../../shared/types";
 import * as data from "../../data";
 import * as git from "../../git";
 import * as pty from "../../pty-server";
@@ -145,7 +146,7 @@ async function spawnSingleBugHunterPane(opts: {
 	};
 	await ensureAgentTrust(opts.worktreePath, opts.project.path, resolvedBaseCmd, launchAccountId, opts.task.foreignCode, resolvedAgentFamily, env);
 	tmuxCmd = await applyAgentHooksToCommand(opts.worktreePath, resolvedBaseCmd, tmuxCmd, {
-		stopTarget: opts.project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
+		stopTarget: getPrimaryStopTarget(opts.project.autoReviewEnabled, opts.task.taskType),
 		family: resolvedAgentFamily,
 	});
 
