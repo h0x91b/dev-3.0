@@ -403,6 +403,12 @@ export interface Task {
 	 */
 	origin?: TaskOrigin;
 	/**
+	 * The global epic this task belongs to (see `Epic`), absent for none. Kept
+	 * out of `labelIds` on purpose: an older build's label editor saves only the
+	 * project's own labels and would silently drop a foreign id.
+	 */
+	epicId?: string;
+	/**
 	 * Deferred launch ("Start in…"). Set from the Launch modal when the user
 	 * schedules the spawn instead of firing it immediately. Only meaningful on
 	 * a `todo` task; the bun scheduled-launch scheduler fires the stored

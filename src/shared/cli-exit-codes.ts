@@ -42,6 +42,8 @@ export const CLI_EXIT_CODE_SENDER_INBOX_BUSY = 40;
 export const CLI_EXIT_CODE_LIVE_REV_CONFLICT = 41;
 export const CLI_EXIT_CODE_LIVE_READ_ONLY = 42;
 export const CLI_EXIT_CODE_PR_WATCH_PR_FINISHED = 43;
+export const CLI_EXIT_CODE_EPIC_REF_INVALID = 44;
+export const CLI_EXIT_CODE_EPIC_CREATE_FORBIDDEN = 45;
 export const CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED = 46;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
@@ -303,6 +305,18 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_PR_WATCH_PR_FINISHED,
 		description:
 			"`dev3 pr watch --pr <N>` named a pull request that is already merged or closed, so NOTHING was subscribed: there is no CI run or merge left to wait for. The message says which. Distinct from exit 38 (no such PR) so a coordinator following a PR it handed off can treat an already-merged one as done instead of retrying.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_EPIC_REF_INVALID",
+		code: CLI_EXIT_CODE_EPIC_REF_INVALID,
+		description:
+			"`--epic <name|id>` (on `task create`, `task update`, `tasks list`) or the epic named by `dev3 epic update|archive|unarchive` matches no epic, matches more than one, or — on `task create` — names an archived epic. NOTHING was created or changed, and no epic is ever created from a typo. Run `dev3 epic list` for the valid names and ids. Distinct from exit 1 so an agent can tell a wrong epic name from a failed command.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_EPIC_CREATE_FORBIDDEN",
+		code: CLI_EXIT_CODE_EPIC_CREATE_FORBIDDEN,
+		description:
+			"`dev3 epic create` ran inside a task that is not a coordinator. Epics are a global registry shared by every project, so only the user (outside any task) and coordinator tasks may add one; NOTHING was created. Attach an existing epic instead with `dev3 task update --epic <name|id>`.",
 	},
 	{
 		constant: "CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED",

@@ -15,6 +15,7 @@ export * from "./types/model-routing";
 export * from "./types/project";
 export * from "./types/labels-columns";
 export * from "./types/spaces";
+export * from "./types/epics";
 export * from "./types/board-columns";
 export * from "./types/agent-launch";
 export * from "./types/scheduled-messages";

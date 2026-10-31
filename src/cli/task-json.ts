@@ -1,4 +1,4 @@
-import type { PRCIStatus, PRMergeState, PRReviewDecision, Task, TaskHistoryEntry, TaskNote, TaskOriginParent } from "../shared/types";
+import type { PRCIStatus, PRMergeState, PRReviewDecision, Task, TaskEpicRef, TaskHistoryEntry, TaskNote, TaskOriginParent } from "../shared/types";
 import { DEFAULT_PRIORITY, STATUS_LABELS, getTaskOverview, getTaskTitle, taskCompletesManually, taskOrigin } from "../shared/types";
 import { allPullRequests } from "../shared/task-pull-requests";
 
@@ -70,12 +70,26 @@ export interface TaskShowJson {
 		| { kind: "task"; taskId: string; projectId: string; parent: TaskOriginParent | null }
 		| { kind: "automation"; automationId: string | null }
 		| { kind: "import" };
+	/** The task's epic, or null for none. `name` is null when the epic no longer exists. */
+	epic: { id: string; name: string | null; archived: boolean } | null;
 	notes?: Array<Pick<TaskNote, "id" | "source" | "content" | "createdAt" | "updatedAt">>;
 	history?: Array<Pick<TaskHistoryEntry, "at" | "changed" | "title" | "overview">>;
 }
 
 /** The task as `task.show` returns it: the stored task plus its resolved parent. */
-export type ShownTask = Task & { originParent?: TaskOriginParent | null };
+export type ShownTask = Task & { originParent?: TaskOriginParent | null; epic?: TaskEpicRef | null };
+
+function epicJson(task: ShownTask): TaskShowJson["epic"] {
+	if (!task.epicId) return null;
+	return { id: task.epicId, name: task.epic?.name ?? null, archived: task.epic?.archived ?? false };
+}
+
+/** The "Epic" line, or null for a task in no epic. */
+export function describeTaskEpic(task: ShownTask): string | null {
+	if (!task.epicId) return null;
+	if (!task.epic) return `${task.epicId.slice(0, 8)} (unknown epic)`;
+	return `${task.epic.name} (${task.epic.id.slice(0, 8)})${task.epic.archived ? " — archived" : ""}`;
+}
 
 function originJson(task: ShownTask): TaskShowJson["origin"] {
 	const origin = taskOrigin(task);
@@ -147,6 +161,7 @@ export function buildTaskShowJson(task: ShownTask, opts: { notes?: boolean; hist
 		movedAt: task.movedAt ?? null,
 		noteCount: task.notes?.length ?? 0,
 		origin: originJson(task),
+		epic: epicJson(task),
 	};
 	if (opts.notes) {
 		json.notes = (task.notes ?? []).map(({ id, source, content, createdAt, updatedAt }) => ({

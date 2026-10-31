@@ -6,7 +6,7 @@ import { sendRequest } from "../socket-client";
 import { spaceFields } from "../spaces";
 import { printDetail, exitError } from "../output";
 import { BUILD_TIME, BUILD_COMMIT, BUILD_VERSION } from "../../shared/build-info.generated";
-import { describeTaskOrigin, type ShownTask } from "../task-json";
+import { describeTaskEpic, describeTaskOrigin, type ShownTask } from "../task-json";
 
 /**
  * Print the project's custom columns and their move IDs. Shared by the online
@@ -87,6 +87,8 @@ export async function handleCurrent(socketPath: string | null, opts: { brief?: b
 				if (task.worktreePath) fields.push(["Worktree:", task.worktreePath]);
 				const createdBy = describeTaskOrigin(task);
 				if (createdBy) fields.push(["Created by:", createdBy]);
+				const epic = describeTaskEpic(task);
+				if (epic) fields.push(["Epic:", epic]);
 				fields.push(...spaceFields(context.projectId));
 
 				printDetail(fields);

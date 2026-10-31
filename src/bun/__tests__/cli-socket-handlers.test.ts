@@ -176,6 +176,31 @@ vi.mock("../paths", () => ({
 	DEV3_HOME: "/tmp/test-dev3",
 }));
 
+// The global epic registry, in memory: the real one lives in ~/.dev3.0/epics.json
+// and has its own suite. Same ref rules as production (shared resolveEpicRef).
+const epicStore = vi.hoisted(() => ({ epics: [] as import("../../shared/types").Epic[] }));
+vi.mock("../epics-data", async () => {
+	const { resolveEpicRef, EPIC_REF_INVALID_PREFIX } = await import("../../shared/types");
+	const refError = (ref: string) => new Error(`${EPIC_REF_INVALID_PREFIX}No epic "${ref}"`);
+	return {
+		loadEpics: vi.fn(async () => epicStore.epics),
+		loadEpicsFile: vi.fn(async () => ({ version: 1, epics: epicStore.epics })),
+		getEpicById: vi.fn(async (id: string) => epicStore.epics.find((e) => e.id === id) ?? null),
+		findEpic: vi.fn(async (ref: string) => {
+			const result = resolveEpicRef(epicStore.epics, ref);
+			if (result.kind === "found") return result.epic;
+			throw refError(ref);
+		}),
+		createEpic: vi.fn(async (name: string, color?: string) => {
+			const epic = { id: `epic-${epicStore.epics.length + 1}-0000-1111-2222`, name, color: color ?? "#3b82f6", archived: false, createdAt: 0 };
+			epicStore.epics.push(epic);
+			return epic;
+		}),
+		updateEpic: vi.fn(),
+		epicRefError: refError,
+	};
+});
+
 vi.mock("../socket-backpressure", () => ({
 	flushAndEnd: vi.fn(),
 	drainSocket: vi.fn(),
@@ -1983,6 +2008,120 @@ describe("task.create", () => {
 			const result = resp.data as { parent: { seq: number }; children: Array<{ id: string; projectName: string }> };
 			expect(result.parent.seq).toBe(1801);
 			expect(result.children.map((c) => [c.id, c.projectName]).sort()).toEqual([["childA", "Test Project"], ["childB", "Coordinators"]]);
+		});
+	});
+
+	describe("epic", () => {
+		const parentProject = makeProject({ id: "proj-2", name: "Backend" });
+		const payments = { id: "epicpay1-0000-1111-2222-333333333333", name: "Payments v2", color: "#3b82f6", archived: false, createdAt: 0 };
+		const closed = { id: "epicold1-0000-1111-2222-333333333333", name: "Old effort", color: "#ef4444", archived: true, createdAt: 0 };
+
+		function wire(parentEpicId?: string) {
+			epicStore.epics = [{ ...payments }, { ...closed }];
+			const parent = makeTask({ id: "parent-0000-1111-2222-333333333333", projectId: "proj-2", seq: 7, ...(parentEpicId ? { epicId: parentEpicId } : {}) });
+			const project = makeProject();
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.loadProjects).mockResolvedValue([project, parentProject]);
+			vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+			vi.mocked(data.loadTasks).mockImplementation(async (p) => (p.id === "proj-2" ? [parent] : []));
+			vi.mocked(createTask).mockResolvedValue(makeTask({ status: "todo" }));
+			vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+			return parent;
+		}
+		const created = () => vi.mocked(createTask).mock.calls[0]![0];
+
+		it("inherits the creating task's epic across projects", async () => {
+			wire(payments.id);
+			const resp = await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Child", sourceTaskId: "parent-0" }));
+			expect(resp.ok).toBe(true);
+			expect(created().epicId).toBe(payments.id);
+		});
+
+		it("does not inherit an archived epic, and still creates", async () => {
+			wire(closed.id);
+			const resp = await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Child", sourceTaskId: "parent-0" }));
+			expect(resp.ok).toBe(true);
+			expect(created()).not.toHaveProperty("epicId");
+		});
+
+		it("gives no epic outside a task context or when the creator is gone", async () => {
+			wire(payments.id);
+			await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Mine" }));
+			await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Orphan", sourceTaskId: "gone-123" }));
+			expect(vi.mocked(createTask).mock.calls.map((c) => c[0].epicId)).toEqual([undefined, undefined]);
+		});
+
+		it("--epic overrides inheritance by name, case-insensitively", async () => {
+			wire(undefined);
+			epicStore.epics.push({ id: "epicother-000-1111-2222-333333333333", name: "Other", color: "#14b8a6", archived: false, createdAt: 0 });
+			await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Child", sourceTaskId: "parent-0", epic: "other" }));
+			expect(created().epicId).toBe("epicother-000-1111-2222-333333333333");
+		});
+
+		it("--no-epic opts out of an inherited epic", async () => {
+			wire(payments.id);
+			await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Child", sourceTaskId: "parent-0", noEpic: true }));
+			expect(created()).not.toHaveProperty("epicId");
+		});
+
+		it("refuses an unknown or archived --epic with the coded error and creates nothing", async () => {
+			wire(undefined);
+			const unknown = await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "X", epic: "Paymnts" }));
+			expect(unknown.error).toMatch(/^epic-ref-invalid: /);
+			const archived = await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "X", epic: "Old effort" }));
+			expect(archived.error).toMatch(/^epic-ref-invalid: .*archived/);
+			const both = await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "X", epic: "Payments v2", noEpic: true }));
+			expect(both.ok).toBe(false);
+			expect(createTask).not.toHaveBeenCalled();
+		});
+
+		it("lets the user and coordinators create epics, and refuses any other task", async () => {
+			const parent = wire(undefined);
+			const asUser = await handleRequest(makeRequest("epic.create", { name: "From the shell" }));
+			expect(asUser.ok).toBe(true);
+			const asAgent = await handleRequest(makeRequest("epic.create", { name: "Agent epic", sourceTaskId: "parent-0" }));
+			expect(asAgent.error).toMatch(/^epic-create-forbidden: /);
+			vi.mocked(data.loadTasks).mockImplementation(async (p) => (p.id === "proj-2" ? [{ ...parent, taskType: "coordinator" }] : []));
+			const asCoordinator = await handleRequest(makeRequest("epic.create", { name: "Coordinated", sourceTaskId: "parent-0" }));
+			expect(asCoordinator.ok).toBe(true);
+			expect(epicStore.epics.map((e) => e.name)).toEqual(["Payments v2", "Old effort", "From the shell", "Coordinated"]);
+		});
+
+		it("task.update --epic changes only that task, --no-epic clears it, and children are untouched", async () => {
+			const parent = wire(undefined);
+			const child = makeTask({ id: "child-000-1111", projectId: "proj-2", seq: 8, origin: { kind: "task", taskId: parent.id, projectId: "proj-2" } });
+			vi.mocked(data.loadTasks).mockImplementation(async (p) => (p.id === "proj-2" ? [parent, child] : []));
+			vi.mocked(data.updateTask).mockImplementation(async (_p, id, updates) => ({ ...(id === parent.id ? parent : child), ...updates }));
+
+			const set = await handleRequest(makeRequest("task.update", { taskId: parent.id, epic: "payments V2" }));
+			expect(set.ok).toBe(true);
+			expect((set.data as { task: { epicId?: string } }).task.epicId).toBe(payments.id);
+			const cleared = await handleRequest(makeRequest("task.update", { taskId: parent.id, noEpic: true }));
+			expect((cleared.data as { task: { epicId?: string } }).task.epicId).toBeUndefined();
+			expect(vi.mocked(data.updateTask).mock.calls.map((c) => c[1])).toEqual([parent.id, parent.id]);
+
+			const bad = await handleRequest(makeRequest("task.update", { taskId: parent.id, epic: "nope" }));
+			expect(bad.error).toMatch(/^epic-ref-invalid: /);
+		});
+
+		it("epic.tasks lists an epic's tasks from every project; task.show names the epic", async () => {
+			wire(payments.id);
+			const mine = makeTask({ id: "mine-0000-1111", seq: 3, status: "completed", epicId: payments.id });
+			const other = makeTask({ id: "other-000-1111", seq: 4 });
+			vi.mocked(data.loadTasks).mockImplementation(async (p) => (p.id === "proj-2"
+				? [makeTask({ id: "parent-0000-1111-2222-333333333333", projectId: "proj-2", seq: 7, epicId: payments.id })]
+				: [mine, other]));
+			const resp = await handleRequest(makeRequest("epic.tasks", { epic: "Payments v2" }));
+			const result = resp.data as { tasks: Array<{ id: string; projectName: string; status: string }> };
+			expect(result.tasks.map((t) => [t.id, t.projectName, t.status]).sort()).toEqual([
+				["mine-0000-1111", "Test Project", "completed"],
+				["parent-0000-1111-2222-333333333333", "Backend", "in-progress"],
+			].sort());
+
+			const shown = await handleRequest(makeRequest("task.show", { taskId: "mine-000", projectId: "proj-1" }));
+			expect(shown.data).toMatchObject({ epic: { id: payments.id, name: "Payments v2", archived: false } });
+			const list = await handleRequest(makeRequest("epic.list"));
+			expect((list.data as Array<{ name: string; taskCount: number }>).find((e) => e.name === "Payments v2")?.taskCount).toBe(2);
 		});
 	});
 

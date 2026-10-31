@@ -15,10 +15,12 @@ import { loadSettings } from "../settings";
 import { syncTaskBranchName } from "../task-branch-sync";
 import { taskPeek } from "../task-peek";
 import { loadTaskChildren } from "../task-lineage";
+import { epicForNewTask, setTaskEpic } from "../task-epics";
+import { findEpic } from "../epics-data";
 import { readTaskTerminalBackendState, switchTaskTerminalBackend } from "../task-terminal-backend-switch";
 import { approvalStatusOf, launchSuggestionRequested, launcherHandoffNote, requestAgentLaunchApproval, requestDestructiveApproval, resolveLaunchSuggestion } from "./approvals";
 import { log, type Handler, withSenderVariant } from "./shared";
-import { findByIdPrefix, findTaskByRef, parseSeqRef, resolveAgentMessageSource, resolveRequesterTask, resolveTaskAcrossProjects, resolveTaskFromParams, scopedTaskNotFoundError, senderRequester, taskNotFoundError, withArchivedHistory, withOriginParent, withSenderAgent } from "./task-resolution";
+import { findByIdPrefix, findTaskByRef, parseSeqRef, resolveAgentMessageSource, resolveRequesterTask, resolveTaskAcrossProjects, resolveTaskFromParams, scopedTaskNotFoundError, senderRequester, taskNotFoundError, withArchivedHistory, withEpic, withOriginParent, withSenderAgent } from "./task-resolution";
 
 // Lazy like `conversationImport` (shared.ts): it reaches the app and spaces handler domains.
 async function projectRegistration() {
@@ -68,19 +70,24 @@ async function changeTaskLabels(params: Record<string, unknown>, mode: "replace"
 /**
  * The parent a `dev3 task create` records: the task whose context the CLI ran in
  * (`sourceTaskId`), whoever typed it. Unresolvable → the user, never a failed create.
+ * The creator task itself comes back too: its epic is what the child inherits.
  */
-async function creatorOrigin(params: Record<string, unknown>): Promise<TaskOrigin | undefined> {
+async function resolveCreator(params: Record<string, unknown>): Promise<{ origin?: TaskOrigin; creator: Task | null }> {
 	const sourceId = typeof params.sourceTaskId === "string" ? params.sourceTaskId.trim() : "";
-	if (!sourceId) return undefined;
+	if (!sourceId) return { creator: null };
 	try {
 		const found = await resolveTaskAcrossProjects(sourceId);
-		if (found) return { kind: "task", taskId: found.task.id, projectId: found.project.id };
+		if (found) return { origin: { kind: "task", taskId: found.task.id, projectId: found.project.id }, creator: found.task };
 	} catch (err) {
 		log.warn("Creator task lookup failed; recording the user as origin", { sourceId, error: String(err) });
-		return undefined;
+		return { creator: null };
 	}
 	log.warn("Creator task not found; recording the user as origin", { sourceId });
-	return undefined;
+	return { creator: null };
+}
+
+function assertEpicFlagsExclusive(params: Record<string, unknown>): void {
+	if (params.noEpic === true && typeof params.epic === "string") throw new Error("--epic and --no-epic cannot be combined.");
 }
 
 const SENDER_MOVE_REFUSED = "A sender can only start a task that is not running.";
@@ -197,12 +204,12 @@ export const taskHandlers: Record<string, Handler> = {
 			const tasks = await data.loadTasks(project);
 			const task = findTaskByRef(tasks, taskId);
 			if (!task) throw await scopedTaskNotFoundError(taskId, project);
-			return await withOriginParent(await withArchivedHistory(project, await syncTaskBranchName(project, task)));
+			return await withEpic(await withOriginParent(await withArchivedHistory(project, await syncTaskBranchName(project, task))));
 		}
 
 		const found = await resolveTaskAcrossProjects(taskId);
 		if (!found) throw taskNotFoundError(taskId);
-		return await withOriginParent(await withArchivedHistory(found.project, await syncTaskBranchName(found.project, found.task)));
+		return await withEpic(await withOriginParent(await withArchivedHistory(found.project, await syncTaskBranchName(found.project, found.task))));
 	},
 
 	/**
@@ -252,6 +259,7 @@ export const taskHandlers: Record<string, Handler> = {
 			if (!taskType) throw new Error(`Invalid task type "${params.taskType}". Use ${TASK_TYPES.join(", ")} or standard.`);
 		}
 
+		assertEpicFlagsExclusive(params);
 		const project = await data.getProject(projectId);
 		// What the task is ABOUT, resolved before it exists — creation derives
 		// foreignCode from this ref, and a ref set afterwards would leave the trust
@@ -268,11 +276,13 @@ export const taskHandlers: Record<string, Handler> = {
 		// The GUI's own creation handler — never a parallel path. It owns
 		// foreignCode, and the CLI reached feature parity by calling it rather than
 		// by copying it.
-		const origin = await creatorOrigin(params);
+		const { origin, creator } = await resolveCreator(params);
+		const epicId = await epicForNewTask({ epic: params.epic, noEpic: params.noEpic, creator });
 		const task = await createTask({
 			projectId: project.id,
 			description: body,
 			...(origin ? { origin } : {}),
+			...(epicId ? { epicId } : {}),
 			...(existingBranch ? { existingBranch } : {}),
 			...(priority ? { priority } : {}),
 			...(taskType ? { taskType } : {}),
@@ -302,10 +312,13 @@ export const taskHandlers: Record<string, Handler> = {
 			throw new Error("Launching a scratch task requires running inside a task worktree");
 		}
 
+		assertEpicFlagsExclusive(params);
 		const project = await data.getProject(projectId);
-		// Before the placeholder exists, so a bad id leaves nothing behind.
+		// Before the placeholder exists, so a bad id or epic leaves nothing behind.
 		const suggested = await resolveLaunchSuggestion(params);
-		const task = await createScratchTask(project.id, await creatorOrigin(params));
+		const { origin, creator } = await resolveCreator(params);
+		const epicId = await epicForNewTask({ epic: params.epic, noEpic: params.noEpic, creator });
+		const task = await createScratchTask(project.id, origin, epicId);
 		const requester = await resolveAgentMessageSource(params, task.id);
 		if (!requester) {
 			await deleteTask({ taskId: task.id, projectId: project.id });
@@ -408,6 +421,11 @@ export const taskHandlers: Record<string, Handler> = {
 				};
 			}
 		}
+		// Membership only: an edit never reaches the task's children.
+		assertEpicFlagsExclusive(params);
+		let epicChange: { epicId: string | null } | undefined;
+		if (params.noEpic === true) epicChange = { epicId: null };
+		else if (typeof params.epic === "string") epicChange = { epicId: (await findEpic(params.epic)).id };
 		if (params.manualCompletion !== undefined) {
 			if (typeof params.manualCompletion !== "boolean") {
 				throw new Error("manualCompletion must be a boolean");
@@ -423,8 +441,9 @@ export const taskHandlers: Record<string, Handler> = {
 			&& priority === undefined
 			&& params.manualCompletion === undefined
 			&& params.taskType === undefined
+			&& epicChange === undefined
 		) {
-			throw new Error("Nothing to update. Provide --title, --description, --priority, --manual-completion, or --type.");
+			throw new Error("Nothing to update. Provide --title, --description, --priority, --manual-completion, --type, --epic or --no-epic.");
 		}
 
 		let updated = task;
@@ -433,6 +452,10 @@ export const taskHandlers: Record<string, Handler> = {
 			const result = await updateTaskMetadata(boardPorts, project, task.id, change, AGENT_ACTOR);
 			updated = result.task;
 			titlePreserved = result.rejected.includes("title");
+		}
+		if (epicChange) {
+			updated = { ...updated, ...await setTaskEpic(project, task.id, epicChange.epicId) };
+			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 		}
 		if (priority !== undefined) {
 			const changed = await data.setTaskPriority(project, task.id, priority);
