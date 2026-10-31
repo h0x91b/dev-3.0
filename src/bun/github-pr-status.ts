@@ -40,6 +40,25 @@ const repositories = new Map<string, Entry<Repository | null> & { lastResolved?:
 const statuses = new Map<string, Entry<Probe | null>>();
 const snapshots = new Map<string, { at: number; pr: GitHubPullRequestSummary }>();
 const lists = new Map<string, Entry<PRInfo[]>>();
+// A repository GitHub says does not exist (deleted, renamed away, access revoked) is not
+// asked again on every poll: exponential backoff per repository, cleared by any success.
+const MISSING_REPOSITORY_BACKOFF_BASE_MS = 5 * 60_000;
+const MISSING_REPOSITORY_BACKOFF_MAX_MS = 6 * 60 * 60_000;
+const missingRepositories = new Map<string, { at: number; failures: number }>();
+
+function missingRepositoryBackoffMs(failures: number): number {
+	return Math.min(MISSING_REPOSITORY_BACKOFF_BASE_MS * 2 ** (failures - 1), MISSING_REPOSITORY_BACKOFF_MAX_MS);
+}
+
+function isRepositoryInBackoff(repoKey: string, now: number): boolean {
+	const missing = missingRepositories.get(repoKey);
+	return !!missing && now - missing.at < missingRepositoryBackoffMs(missing.failures);
+}
+
+function isMissingRepositoryError(error: unknown): boolean {
+	return error instanceof GitHubGraphQLError
+		&& error.errors.some((item) => item.type === "NOT_FOUND" && item.path?.length === 1 && item.path[0] === "repository");
+}
 
 const CHECK_FIELDS = `nodes {
   ... on CheckRun { name status conclusion detailsUrl }
@@ -206,6 +225,7 @@ export async function readTaskPullRequest(
 			signal.throwIfAborted();
 			if (!repo) return { pr: null, isGitHub: false, checkedAt: Date.now() };
 			const repoKey = identity(account, repo);
+			if (!options?.force && isRepositoryInBackoff(repoKey, Date.now())) return null;
 			if (!branch && prNumber != null && !options?.force) {
 				const cached = snapshots.get(`${repoKey}#${prNumber}`);
 				if (cached && Date.now() - cached.at < STATUS_TTL_MS) return { pr: cached.pr, isGitHub: true, checkedAt: cached.at };
@@ -221,11 +241,17 @@ export async function readTaskPullRequest(
 					data = await queryPR(account, PR_QUERY, variables, signal);
 				} catch (error) {
 					if (!(error instanceof GitHubGraphQLError)) throw error;
+					if (isMissingRepositoryError(error)) {
+						const failures = (missingRepositories.get(repoKey)?.failures ?? 0) + 1;
+						missingRepositories.set(repoKey, { at: Date.now(), failures });
+						throw new Error(`${error.message} (next check in ${Math.round(missingRepositoryBackoffMs(failures) / 60_000)} min)`);
+					}
 					signal.throwIfAborted();
 					data = await queryPR(account, PR_METADATA_QUERY, variables, signal);
 				}
 				const raw = data.repository.open?.nodes[0] ?? data.repository.known;
 				if (prNumber != null && !raw) throw new Error("GitHub did not return the saved pull request");
+				missingRepositories.delete(repoKey);
 				const pr = raw ? await completePR(account, repo, raw, signal) : null;
 				const checkedAt = Date.now();
 				if (pr) snapshots.set(`${repoKey}#${pr.number}`, { at: checkedAt, pr });

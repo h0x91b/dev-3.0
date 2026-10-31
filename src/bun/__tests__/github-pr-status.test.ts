@@ -273,3 +273,54 @@ describe("shared GraphQL PR reads", () => {
 		expect(await proof).toEqual({ state: "MERGED", headRefName: "feat/work" });
 	});
 });
+
+describe("missing repository backoff", () => {
+	async function missingRepository() {
+		const { GitHubGraphQLError } = await import("../github");
+		return new GitHubGraphQLError("GitHub GraphQL: Could not resolve to a Repository with the name 'owner/repo'.", [{ type: "NOT_FOUND", path: ["repository"] }]);
+	}
+
+	it("stops asking GitHub about a repository that does not exist, with a doubling backoff", async () => {
+		vi.useFakeTimers(); vi.setSystemTime(0);
+		const { readTaskPullRequest } = await import("../github-pr-status");
+		query.mockRejectedValue(await missingRepository());
+		expect(await readTaskPullRequest({}, "/repo", "feat/work", 42)).toBeNull();
+		// No metadata-only retry: the repository itself is missing.
+		expect(query).toHaveBeenCalledTimes(1);
+
+		vi.setSystemTime(5 * 60_000 - 1);
+		expect(await readTaskPullRequest({}, "/repo", "feat/work", 42)).toBeNull();
+		expect(await readTaskPullRequest({}, "/other-worktree", "other/branch", null)).toBeNull();
+		expect(query).toHaveBeenCalledTimes(1);
+
+		vi.setSystemTime(5 * 60_000);
+		expect(await readTaskPullRequest({}, "/repo", "feat/work", 42)).toBeNull();
+		expect(query).toHaveBeenCalledTimes(2);
+
+		vi.setSystemTime(5 * 60_000 + 10 * 60_000 - 1);
+		expect(await readTaskPullRequest({}, "/repo", "feat/work", 42)).toBeNull();
+		expect(query).toHaveBeenCalledTimes(2);
+	});
+
+	it("a forced refresh bypasses the backoff and a success clears it", async () => {
+		vi.useFakeTimers(); vi.setSystemTime(0);
+		const { readTaskPullRequest } = await import("../github-pr-status");
+		query.mockRejectedValue(await missingRepository());
+		await readTaskPullRequest({}, "/repo", "feat/work", 42);
+		query.mockReset().mockResolvedValue(payload());
+		expect((await readTaskPullRequest({}, "/repo", "feat/work", 42, { force: true }))?.pr?.number).toBe(42);
+
+		vi.setSystemTime(60_000);
+		expect((await readTaskPullRequest({}, "/repo", "feat/work", 42))?.pr?.number).toBe(42);
+		expect(query).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not back off on other GraphQL failures", async () => {
+		vi.useFakeTimers(); vi.setSystemTime(0);
+		const { readTaskPullRequest } = await import("../github-pr-status");
+		query.mockRejectedValue(new Error("GitHub GraphQL HTTP 502"));
+		expect(await readTaskPullRequest({}, "/repo", "feat/work", 42)).toBeNull();
+		expect(await readTaskPullRequest({}, "/repo", "feat/work", 42)).toBeNull();
+		expect(query).toHaveBeenCalledTimes(2);
+	});
+});
