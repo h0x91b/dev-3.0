@@ -160,6 +160,17 @@ async function withinDeadline<T>(fn: (signal: AbortSignal, deadline: number) => 
 	finally { clearTimeout(timer!); }
 }
 
+// A cached in-flight read must not outlive its owner's deadline: a step that ignores the
+// signal (token lookup, a stuck spawn) would otherwise keep every later joiner waiting forever.
+function settleOnAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+	if (signal.aborted) return Promise.reject(signal.reason);
+	return new Promise<T>((resolve, reject) => {
+		const onAbort = () => reject(signal.reason);
+		signal.addEventListener("abort", onAbort, { once: true });
+		promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+	});
+}
+
 async function queryPR(account: GitHubAccount, query: string, variables: Record<string, unknown>, signal: AbortSignal): Promise<PRResponse> {
 	try { return await queryGitHub<PRResponse>(account, query, variables, signal); }
 	catch (error) {
@@ -214,7 +225,7 @@ export async function readTaskPullRequest(
 			const cached = statuses.get(key);
 			// A forced refresh still joins an in-flight read; it only bypasses completed results.
 			if (cached && (cached.at === Infinity || (!options?.force && Date.now() - cached.at < STATUS_TTL_MS))) return await cached.promise;
-			const promise = (async (): Promise<Probe> => {
+			const promise = settleOnAbort((async (): Promise<Probe> => {
 				let data;
 				const variables = { owner: repo.owner, name: repo.name, branch, number: prNumber ?? 0, byBranch: !!branch, known: prNumber != null };
 				try {
@@ -230,7 +241,7 @@ export async function readTaskPullRequest(
 				const checkedAt = Date.now();
 				if (pr) snapshots.set(`${repoKey}#${pr.number}`, { at: checkedAt, pr });
 				return { pr, isGitHub: true, checkedAt };
-			})();
+			})(), signal);
 			const entry = { at: Infinity, promise };
 			statuses.set(key, entry);
 			try {
@@ -259,11 +270,11 @@ export async function listOpenPullRequests(project: Selection, cwd: string): Pro
 		const key = identity(account, repo);
 		const cached = lists.get(key);
 		if (cached && Date.now() - cached.at < STATUS_TTL_MS) return await cached.promise;
-		const promise = queryGitHub<{ repository: { pullRequests: { nodes: PRInfo[] } } }>(account,
+		const promise = settleOnAbort(queryGitHub<{ repository: { pullRequests: { nodes: PRInfo[] } } }>(account,
 			`query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) {
 			  pullRequests(states: OPEN, first: 100, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { number url headRefName } }
 			} }`, { owner: repo.owner, name: repo.name }, signal,
-		).then((data) => data.repository.pullRequests.nodes);
+		).then((data) => data.repository.pullRequests.nodes), signal);
 		const entry = { at: Date.now(), promise };
 		lists.set(key, entry);
 		try { return await promise; } catch (error) {

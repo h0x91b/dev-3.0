@@ -225,6 +225,47 @@ describe("shared GraphQL PR reads", () => {
 		expect(query.mock.calls[0][3].aborted).toBe(true);
 	});
 
+	it("evicts an in-flight status read that never settles once its deadline passes", async () => {
+		vi.useFakeTimers(); vi.setSystemTime(0);
+		const { readTaskPullRequest } = await import("../github-pr-status");
+		query.mockImplementationOnce(() => new Promise(() => {}));
+		const hung = readTaskPullRequest({}, "/repo", "feat/work", 42);
+		await vi.advanceTimersByTimeAsync(15_000);
+		expect(await hung).toBeNull();
+		await expect(readTaskPullRequest({}, "/repo", "feat/work", 42)).resolves.toMatchObject({ pr: { number: 42 } });
+		expect(query).toHaveBeenCalledTimes(2);
+	});
+
+	it("releases a forced refresh that joined a hung read at the owner's deadline", async () => {
+		vi.useFakeTimers(); vi.setSystemTime(0);
+		const { readTaskPullRequest } = await import("../github-pr-status");
+		query.mockImplementationOnce(() => new Promise(() => {}));
+		const hung = readTaskPullRequest({}, "/repo", "feat/work", null);
+		await vi.advanceTimersByTimeAsync(5_000);
+		let joined = false;
+		const forced = readTaskPullRequest({}, "/repo", "feat/work", null, { force: true }).then((result) => { joined = true; return result; });
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(await hung).toBeNull();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(joined).toBe(true);
+		expect(await forced).toBeNull();
+		await expect(readTaskPullRequest({}, "/repo", "feat/work", null, { force: true })).resolves.toMatchObject({ pr: { number: 42 } });
+		expect(query).toHaveBeenCalledTimes(2);
+	});
+
+	it("evicts an in-flight board discovery that never settles once its deadline passes", async () => {
+		vi.useFakeTimers(); vi.setSystemTime(0);
+		const { listOpenPullRequests } = await import("../github-pr-status");
+		query.mockImplementationOnce(() => new Promise(() => {}))
+			.mockResolvedValue({ repository: { pullRequests: { nodes: [{ number: 42, url: "u", headRefName: "b" }] } } });
+		const hung = listOpenPullRequests({}, "/repo");
+		const expectation = expect(hung).rejects.toThrow("timed out");
+		await vi.advanceTimersByTimeAsync(15_000);
+		await expectation;
+		await expect(listOpenPullRequests({}, "/repo")).resolves.toMatchObject([{ number: 42 }]);
+		expect(query).toHaveBeenCalledTimes(2);
+	});
+
 	it("coalesces board discovery within a minute", async () => {
 		const { listOpenPullRequests } = await import("../github-pr-status");
 		query.mockResolvedValue({ repository: { pullRequests: { nodes: [{ number: 42, url: "u", headRefName: "b" }] } } });
