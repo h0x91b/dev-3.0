@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach, beforeEach } from "vitest";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PROMPT_FILE, SHELL_INIT_DIR, writeShellInit, ZSH_PROMPT_ENGINE } from "../shell-init";
+import { dev3ShellPromptEnv, PROMPT_FILE, SHELL_INIT_DIR, writeShellInit, ZSH_PROMPT_ENGINE } from "../shell-init";
 import { parsePreviewOutput, PREVIEW_RENDER_SCRIPT } from "../shell-prompt-preview";
 import { SHELL_PROMPT_STYLES } from "../../shared/shell-prompt-styles";
 
@@ -32,6 +32,43 @@ describe("shell init word motion", () => {
 		expect(bashrc).toContain(String.raw`bind '"\e[1;3C": forward-word'`);
 		expect(bashrc).toContain(String.raw`bind '"\e[1;5D": backward-word'`);
 		expect(bashrc).toContain(String.raw`bind '"\e[1;5C": forward-word'`);
+	});
+});
+
+describe("dev3ShellPromptEnv", () => {
+	const realPlatform = Object.getOwnPropertyDescriptor(process, "platform")!;
+	const realEnv = process.env.ENV;
+	const realRoot = process.env.DEV3_WORKTREE_ROOT;
+	beforeEach(() => { delete process.env.DEV3_WORKTREE_ROOT; });
+	afterEach(() => {
+		if (realRoot === undefined) delete process.env.DEV3_WORKTREE_ROOT;
+		else process.env.DEV3_WORKTREE_ROOT = realRoot;
+		Object.defineProperty(process, "platform", realPlatform);
+		if (realEnv === undefined) delete process.env.ENV;
+		else process.env.ENV = realEnv;
+	});
+	const onPlatform = (platform: string) => Object.defineProperty(process, "platform", { value: platform, configurable: true });
+
+	it("points zsh and sh at the dev3 init files and forwards the user's $ENV", () => {
+		onPlatform("darwin");
+		process.env.ENV = "/home/me/.shrc";
+		expect(dev3ShellPromptEnv("/wt/task")).toEqual({
+			ZDOTDIR: SHELL_INIT_DIR,
+			ENV: `${SHELL_INIT_DIR}/.shrc`,
+			DEV3_USER_ENV: "/home/me/.shrc",
+			DEV3_WORKTREE_ROOT: "/wt/task",
+		});
+	});
+
+	it("does not forward an $ENV that is already our own file", () => {
+		onPlatform("linux");
+		process.env.ENV = `${SHELL_INIT_DIR}/.shrc`;
+		expect(dev3ShellPromptEnv("/wt/task")).not.toHaveProperty("DEV3_USER_ENV");
+	});
+
+	it("is empty on Windows", () => {
+		onPlatform("win32");
+		expect(dev3ShellPromptEnv("/wt/task")).toEqual({});
 	});
 });
 

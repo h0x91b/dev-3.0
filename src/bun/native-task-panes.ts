@@ -34,6 +34,7 @@ import {
 	defaultNativeShellLaunchSpec,
 } from "./native-terminal-registry/shell-launch";
 import type { SplitOrientation } from "../shared/split-tree";
+import { dev3ShellPromptEnv } from "./shell-init";
 
 const log = createLogger("native-task-panes");
 
@@ -234,7 +235,8 @@ export async function splitNativeTaskPane(
 	orientation: SplitOrientation,
 	spec: { cwd: string; env: Record<string, string>; launch?: TerminalLaunchSpec; cols?: number; rows?: number; outputLogPath?: string },
 ): Promise<{ paneId: string; state: NativeTaskPanesState }> {
-	const { cwd, env } = spec;
+	const { cwd } = spec;
+	const env = { ...dev3ShellPromptEnv(cwd), ...spec.env };
 
 	// Derive geometry from the source pane's record; fall back to 80×24 and log.
 	const backend = getBackend();

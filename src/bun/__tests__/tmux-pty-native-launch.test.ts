@@ -39,6 +39,7 @@ vi.mock("../task-aux-panes", () => ({
 	auxPaneTitle: vi.fn((purpose: string) => purpose),
 	AuxPaneUnavailableError: class extends Error {},
 	closeAuxPane: vi.fn(),
+	auxPaneAlive: vi.fn(async () => false),
 	replaceAuxPanes: vi.fn(),
 	splitTaskPane: vi.fn(),
 	auxPaneMarker: vi.fn(() => ""),
@@ -148,6 +149,11 @@ vi.mock("../temp-paths", () => ({
 	clearSetupExitCode: vi.fn(),
 }));
 
+vi.mock("../shell-init", () => ({
+	dev3ShellPromptEnv: vi.fn((root: string) => ({ ZDOTDIR: "/tmp/dev3-shell", DEV3_WORKTREE_ROOT: root })),
+}));
+vi.mock("../which", () => ({ which: vi.fn(async () => "/usr/local/bin/yazi") }));
+
 vi.mock("../repo-config", () => ({ resolveProjectEnv: vi.fn(async () => ({})) }));
 
 vi.mock("../port-pool", () => ({
@@ -240,6 +246,7 @@ import * as sharedPure from "../rpc-handlers/shared-pure";
 import * as settingsConfig from "../rpc-handlers/settings-config";
 import * as auxPanes from "../task-aux-panes";
 import { tmux } from "../tmux";
+import { which } from "../which";
 
 import { getAgentAdapter } from "../../shared/agent-adapters/registry";
 import { claudeSessionStartHookInstalled } from "../../shared/agent-hooks";
@@ -429,17 +436,17 @@ describe("native task — tmux is not involved at all", () => {
 			"proj-1",
 			WORKTREE,
 			{ executable: "/bin/zsh", argv: [RUN_SCRIPT] },
-			EXPECTED_ENV,
+			{ ...EXPECTED_ENV, ZDOTDIR: "/tmp/dev3-shell", DEV3_WORKTREE_ROOT: WORKTREE },
 		);
 	});
 
-	it("hands the native session the same env the tmux path would get", async () => {
+	it("hands the native session the same env the tmux path would get, plus the prompt env tmux sets globally", async () => {
 		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
 		await launchTaskPty(makeProject(), makeTask({ terminalBackend: "native" }), WORKTREE);
 
 		const tmuxEnv = vi.mocked(pty.createSession).mock.calls[0][4];
 		const nativeEnv = vi.mocked(pty.createNativeTaskSession).mock.calls[0][4];
-		expect(nativeEnv).toEqual(tmuxEnv);
+		expect(nativeEnv).toEqual({ ...tmuxEnv, ZDOTDIR: "/tmp/dev3-shell", DEV3_WORKTREE_ROOT: WORKTREE });
 	});
 
 	it("never creates or probes a tmux session", async () => {
@@ -634,6 +641,92 @@ describe("setup-script wrapper — one flavour per backend", () => {
 			expect.objectContaining({ purpose: "setupRerun" }),
 		);
 		expect(pty.destroySessionAwaited).not.toHaveBeenCalled();
+	});
+
+	describe("Open in Yazi on a tmux task", () => {
+		beforeEach(() => {
+			vi.mocked(data.getProject).mockResolvedValue(makeProject());
+			vi.mocked(data.getTask).mockResolvedValue(makeTask());
+		});
+
+		it("answers with the install hint when yazi is missing, and splits nothing", async () => {
+			vi.mocked(which).mockResolvedValueOnce(null);
+
+			await expect(tmuxPtyHandlers.openFileBrowser({ taskId: TASK_ID, projectId: "proj-1" }))
+				.resolves.toMatchObject({ notInstalled: true, installCommand: expect.stringContaining("yazi") });
+			expect(tmux.splitWindow).not.toHaveBeenCalled();
+		});
+
+		// The script path in the launch command is what the fileBrowser marker finds,
+		// so the pane is labelled, toggled and kept out of pane-run placement on tmux too.
+		it("opens yazi through the shared aux-pane seam, running the yazi script", async () => {
+			await tmuxPtyHandlers.openFileBrowser({ taskId: TASK_ID, projectId: "proj-1" });
+
+			expect(vi.mocked(sharedPure.writeLaunchScript)).toHaveBeenCalledWith(`/tmp/dev3/${TASK_ID}/yazi.sh`, "yazi\n");
+			expect(vi.mocked(auxPanes.openAuxPane)).toHaveBeenCalledWith(expect.objectContaining({
+				purpose: "fileBrowser",
+				placement: "below",
+				cwd: WORKTREE,
+				socket: "dev3",
+				tmuxCommand: `bash "/tmp/dev3/${TASK_ID}/yazi.sh"`,
+			}));
+			expect(tmux.splitWindow).not.toHaveBeenCalled();
+		});
+
+		it("closes the yazi pane instead when one is alive", async () => {
+			vi.mocked(auxPanes.auxPaneAlive).mockResolvedValueOnce(true);
+
+			await tmuxPtyHandlers.openFileBrowser({ taskId: TASK_ID, projectId: "proj-1" });
+
+			expect(vi.mocked(auxPanes.closeAuxPane)).toHaveBeenCalledWith(expect.anything(), "fileBrowser", "dev3");
+			expect(vi.mocked(auxPanes.openAuxPane)).not.toHaveBeenCalled();
+			expect(tmux.killPane).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("Open in Yazi", () => {
+		const nativeTask = () => makeTask({ terminalBackend: "native" });
+		beforeEach(() => {
+			vi.mocked(data.getProject).mockResolvedValue(makeProject());
+			vi.mocked(data.getTask).mockResolvedValue(nativeTask());
+		});
+
+		it("opens a below pane running a yazi script when none is alive", async () => {
+			await tmuxPtyHandlers.openFileBrowser({ taskId: TASK_ID, projectId: "proj-1" });
+
+			expect(vi.mocked(sharedPure.writeLaunchScript)).toHaveBeenCalledWith(`/tmp/dev3/${TASK_ID}/yazi.sh`, "yazi\n");
+			expect(vi.mocked(auxPanes.openAuxPane)).toHaveBeenCalledWith(expect.objectContaining({
+				purpose: "fileBrowser",
+				focusNewPane: true,
+				placement: "below",
+				cwd: WORKTREE,
+				nativeLaunch: { executable: "/bin/zsh", argv: [`/tmp/dev3/${TASK_ID}/yazi.sh`] },
+			}));
+			expect(vi.mocked(auxPanes.closeAuxPane)).not.toHaveBeenCalled();
+		});
+
+		it("closes the pane instead when one is alive", async () => {
+			vi.mocked(auxPanes.auxPaneAlive).mockResolvedValueOnce(true);
+
+			await tmuxPtyHandlers.openFileBrowser({ taskId: TASK_ID, projectId: "proj-1" });
+
+			expect(vi.mocked(auxPanes.closeAuxPane)).toHaveBeenCalledWith(expect.anything(), "fileBrowser", "dev3");
+			expect(vi.mocked(auxPanes.openAuxPane)).not.toHaveBeenCalled();
+		});
+
+		it("reports yazi as not installed without opening anything", async () => {
+			vi.mocked(which).mockResolvedValueOnce(null);
+
+			await expect(tmuxPtyHandlers.openFileBrowser({ taskId: TASK_ID, projectId: "proj-1" }))
+				.resolves.toMatchObject({ notInstalled: true });
+			expect(vi.mocked(auxPanes.openAuxPane)).not.toHaveBeenCalled();
+		});
+
+		it("never touches tmux", async () => {
+			await tmuxPtyHandlers.openFileBrowser({ taskId: TASK_ID, projectId: "proj-1" });
+
+			expect(tmuxCalls()).toEqual([]);
+		});
 	});
 
 	it("asks for the tmux flavour for an unmarked task", async () => {

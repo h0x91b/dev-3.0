@@ -2,8 +2,6 @@ import type { Project, Task } from "../../../shared/types";
 import * as data from "../../data";
 import { log } from "../shared-pure";
 
-export const fileBrowserPaneIds = new Map<string, string>();
-
 /** Find a task by ID across all projects (git AND virtual/Operations boards). */
 export async function findTaskAcrossProjects(taskId: string): Promise<{ task: Task | null; project: Project | null }> {
 	try {

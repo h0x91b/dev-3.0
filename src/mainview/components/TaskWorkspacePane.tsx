@@ -266,7 +266,7 @@ function TaskWorkspacePane({
 						taskId={taskId}
 						rootLabel={task?.branchName ?? task?.title ?? ""}
 						enabled={!immersive && !isNarrow && !!task?.worktreePath}
-						onOpenYazi={task && task.terminalBackend !== "native" ? yazi.launch : undefined}
+						onOpenYazi={task ? yazi.launch : undefined}
 					>
 						<TaskTerminal
 							key={taskId}
