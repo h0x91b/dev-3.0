@@ -484,6 +484,80 @@ describe("runPrWatches", () => {
 	});
 });
 
+describe("a PR followed with --pr", () => {
+	const FORK_HEAD = "f".repeat(40);
+	const FORK_URL = "https://github.com/acme/app/pull/2111";
+	const pinned = (until: PrWatch["until"], overrides: Partial<PrWatch> = {}) =>
+		watch(until, { id: `p-${until}`, prNumber: 2111, headSha: FORK_HEAD, pinned: true, ciSeen: { head: FORK_HEAD, total: 1, at: 0 }, ...overrides });
+	const forkSample = (overrides: Record<string, unknown> = {}) => ({ ...greenSample, number: 2111, headRefOid: FORK_HEAD, ...overrides });
+
+	it("delivers the subscriber's message for the followed PR and touches no local git", async () => {
+		const author = { paneId: "%5", sessionId: null, paneToken: "t", agentProcess: "9@x" };
+		current = task({ prWatches: [pinned("ci", { author })] });
+		vi.mocked(resolveScheduledMessageAuthorPane).mockResolvedValue({ ok: true, paneId: "%5" } as Awaited<ReturnType<typeof resolveScheduledMessageAuthorPane>>);
+
+		await runPrWatches(project, "t1", forkSample(), FORK_URL, Date.now(), false, 2111);
+
+		expect(git.getRemoteBranchTips).not.toHaveBeenCalled();
+		expect(git.commitExists).not.toHaveBeenCalled();
+		const [, text, target] = vi.mocked(sendMessageImmediately).mock.calls[0];
+		expect(text).toContain("PR #2111: CI finished on fffffff: all 1 checks GitHub listed passed.");
+		expect(target).toEqual({ kind: "pane", paneId: "%5" });
+		expect(lastStoredWatches()).toBeNull();
+	});
+
+	it("judges only its own PR's watches: the branch run ignores pinned ones and vice versa", async () => {
+		current = task({ prWatches: [watch("ci"), pinned("ci")] });
+
+		await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
+		expect(vi.mocked(sendMessageImmediately).mock.calls[0][1]).toContain("PR #7: CI finished");
+		expect(vi.mocked(sendMessageImmediately).mock.calls[0][1]).not.toContain("#2111");
+		expect(lastStoredWatches()).toEqual([pinned("ci")]);
+
+		current = { ...current, prWatches: lastStoredWatches()! };
+		await runPrWatches(project, "t1", forkSample(), FORK_URL, Date.now(), false, 2111);
+		expect(vi.mocked(sendMessageImmediately).mock.calls[1][1]).toContain("PR #2111: CI finished");
+		expect(lastStoredWatches()).toBeNull();
+	});
+
+	it("never reports a pinned watch as replaced by the branch's own open PR", async () => {
+		current = task({ prWatches: [pinned("merged")] });
+		await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
+		expect(stored).toEqual([]);
+	});
+
+	it("ignores a sample of another PR handed to a pinned run", async () => {
+		current = task({ prWatches: [pinned("ci")] });
+		await runPrWatches(project, "t1", greenSample, URL, Date.now(), false, 2111);
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
+	});
+
+	it("says a merge of the followed PR offers no completion, and holds no offer of the task", async () => {
+		current = task({ prWatches: [pinned("merged")] });
+		await runPrWatches(project, "t1", forkSample({ state: "MERGED" }), FORK_URL, Date.now(), false, 2111);
+
+		expect(vi.mocked(sendMessageImmediately).mock.calls[0][1]).toContain("PR #2111 merged. It is not this task's own PR, so dev3 offers no completion for it.");
+		expect(hasMergeOfferHold("t1")).toBe(false);
+	});
+
+	it("names only the followed PR's remaining watch kinds", async () => {
+		current = task({ prWatches: [pinned("ci"), watch("merged")] });
+		await runPrWatches(project, "t1", forkSample(), FORK_URL, Date.now(), false, 2111);
+		expect(vi.mocked(sendMessageImmediately).mock.calls[0][1]).toContain("No watch is left.");
+	});
+
+	it("does not hold the task's merge offer for pinned watches alone", () => {
+		expect(mergeOfferHeld(task({ prWatches: [pinned("merged")] }))).toBe(false);
+	});
+
+	it("clears only the watches of one PR with --off --pr", async () => {
+		current = task({ prWatches: [watch("ci"), pinned("ci"), pinned("merged")] });
+		expect(await clearPrWatches(project, "t1", 2111)).toBe(2);
+		expect(lastStoredWatches()).toEqual([watch("ci")]);
+	});
+});
+
 describe("the merge-completion offer hold", () => {
 	const merged = { ...greenSample, state: "MERGED" };
 	const withoutWatches = () => ({ ...current, prWatches: null }) as Task;

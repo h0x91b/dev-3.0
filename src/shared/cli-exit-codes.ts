@@ -41,6 +41,7 @@ export const CLI_EXIT_CODE_EXTERNAL_SENDER_UNKNOWN = 39;
 export const CLI_EXIT_CODE_SENDER_INBOX_BUSY = 40;
 export const CLI_EXIT_CODE_LIVE_REV_CONFLICT = 41;
 export const CLI_EXIT_CODE_LIVE_READ_ONLY = 42;
+export const CLI_EXIT_CODE_PR_WATCH_PR_FINISHED = 43;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -270,7 +271,7 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		constant: "CLI_EXIT_CODE_PR_WATCH_NO_PR",
 		code: CLI_EXIT_CODE_PR_WATCH_NO_PR,
 		description:
-			"`dev3 pr watch` found no pull request to watch, so NOTHING was subscribed: the task's branch has no open PR (or GitHub did not answer in time), or `--pr <N>` is not that open PR. Watching follows the open PR of the task's own branch only; a review target is not supported. Open the PR first (`dev3 pr create`), then run it again. Distinct from exit 1 so an agent that opened a PR a moment ago can retry once GitHub lists it instead of treating this as a failed command.",
+			"`dev3 pr watch` found no pull request to watch, so NOTHING was subscribed: without `--pr` the task's branch has no open PR, with `--pr <N>` the project's repository has no PR N (or, either way, GitHub did not answer in time). Open the PR first (`dev3 pr create`) or check the number, then run it again. Distinct from exit 1 so an agent that opened a PR a moment ago can retry once GitHub lists it instead of treating this as a failed command.",
 	},
 	{
 		constant: "CLI_EXIT_CODE_EXTERNAL_SENDER_UNKNOWN",
@@ -295,5 +296,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_LIVE_READ_ONLY,
 		description:
 			"A `dev3 live` write (`publish`, `adopt`, `set`, `patch`, `delete`, `clear`) targeted a task that is completed or cancelled, so NOTHING changed: a finished task's live artifact is kept read-only, with its page and data still readable through `dev3 live status|get|list|events`. Distinct from exit 1 so an agent does not retry a write that can never succeed.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_PR_WATCH_PR_FINISHED",
+		code: CLI_EXIT_CODE_PR_WATCH_PR_FINISHED,
+		description:
+			"`dev3 pr watch --pr <N>` named a pull request that is already merged or closed, so NOTHING was subscribed: there is no CI run or merge left to wait for. The message says which. Distinct from exit 38 (no such PR) so a coordinator following a PR it handed off can treat an already-merged one as done instead of retrying.",
 	},
 ] as const;

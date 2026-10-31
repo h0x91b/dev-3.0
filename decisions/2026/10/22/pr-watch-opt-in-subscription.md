@@ -2,6 +2,8 @@
 
 Partly superseded on 2026-10-27 by `decisions/2026/10/27/hold-merge-offer-for-pr-watch.md`: the merge-completion offer now waits for the watching agent, and the merged sentence follows that.
 
+Partly superseded on 2026-10-31 by `decisions/2026/10/31/pr-watch-follows-any-pr.md`: `--pr N` now follows any open PR of the repository (review targets and fork heads included) as a pinned watch; the "own branch only" and "a review task is not supported" statements below hold only for watches without `--pr`.
+
 ## Context
 
 Agents waited on a PR's CI or merge by polling `gh` or setting timers, which burns turns and tokens. dev3 already polls every task's PR, so it can tell the agent instead.

@@ -12594,6 +12594,62 @@ describe("checkOpenPRsForPromotion", () => {
 		);
 	});
 
+	it("reads a PR followed with --pr by number for a task without a PR of its own, and leaves its identity alone", async () => {
+		const pinned = { id: "w", until: "ci" as const, prNumber: 2111, headSha: "fork-head", createdAt: "2026-10-31T10:00:00.000Z", pinned: true as const };
+		const { project, task } = setup({ status: "in-progress", prNumber: null, prUrl: null, prWatches: [pinned] });
+		vi.mocked(github.readTaskPullRequest).mockResolvedValue({
+			...answer({ number: 2111, url: "https://github.com/a/b/pull/2111", headRefName: "contrib/fix", headRefOid: "fork-head-2" }), checkedAt: 99,
+		});
+		vi.mocked(runPrWatches).mockClear();
+
+		await checkOpenPRsForPromotion();
+
+		expect(github.readTaskPullRequest).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(github.readTaskPullRequest).mock.calls[0].slice(2, 4)).toEqual(["", 2111]);
+		expect(runPrWatches).toHaveBeenCalledWith(
+			project, task.id, { number: 2111, state: "OPEN", headRefOid: "fork-head-2", checks: [] }, "https://github.com/a/b/pull/2111", 99, false, 2111,
+		);
+		expect(data.updateTask).not.toHaveBeenCalledWith(project, task.id, expect.objectContaining({ prNumber: 2111 }));
+	});
+
+	it("backs off a followed PR that keeps failing to read, and reads it again once the backoff ends", async () => {
+		vi.useFakeTimers();
+		try {
+			const pinned = { id: "w", until: "ci" as const, prNumber: 2111, headSha: "x", createdAt: "2026-10-31T10:00:00.000Z", pinned: true as const };
+			setup({ status: "in-progress", prNumber: null, prUrl: null, prWatches: [pinned] });
+			vi.mocked(github.readTaskPullRequest).mockResolvedValue(null);
+			// Ticks 15 s apart like the real poller: a longer gap reads as a wake from sleep.
+			const tick = async (ms: number) => {
+				for (let left = ms; left > 0; left -= 15_000) { vi.setSystemTime(Date.now() + Math.min(15_000, left)); await checkOpenPRsForPromotion(); }
+			};
+
+			for (let i = 0; i < 3; i++) await tick(61_000);
+			expect(github.readTaskPullRequest).toHaveBeenCalledTimes(3);
+			await tick(61_000);
+			await tick(61_000);
+			expect(github.readTaskPullRequest).toHaveBeenCalledTimes(3);
+			await tick(5 * 60_000);
+			expect(github.readTaskPullRequest).toHaveBeenCalledTimes(4);
+		} finally { vi.useRealTimers(); }
+	});
+
+	it("polls the task's own PR and a followed PR side by side, each with its own watches", async () => {
+		const own = { id: "own", until: "ci" as const, prNumber: 42, headSha: "abc", createdAt: "2026-10-31T10:00:00.000Z" };
+		const pinned = { id: "pin", until: "merged" as const, prNumber: 7, headSha: "x", createdAt: "2026-10-31T10:00:00.000Z", pinned: true as const };
+		setup({ prWatches: [own, pinned] });
+		vi.mocked(github.readTaskPullRequest).mockImplementation(async (_p, _cwd, _branch, prNumber) => (
+			prNumber === 7 ? answer({ number: 7, url: "https://github.com/a/b/pull/7", headRefName: "other", state: "MERGED" }) : answer()
+		));
+		vi.mocked(runPrWatches).mockClear();
+
+		await checkOpenPRsForPromotion();
+
+		const scopes = vi.mocked(runPrWatches).mock.calls.map((call) => [call[2].number, call[6]]);
+		expect(scopes).toEqual(expect.arrayContaining([[42, undefined], [7, 7]]));
+		expect(vi.mocked(runPrWatches).mock.calls.find((call) => call[2].number === 42)).toHaveLength(6);
+		expect(scopes).toHaveLength(2);
+	});
+
 	describe("the merge-completion offer hold for a watching agent", () => {
 		const watched = { prNumber: 42, prWatches: [{ id: "w", until: "merged" as const, prNumber: 42, headSha: "head-sha", createdAt: "2026-10-22T10:00:00.000Z" }] };
 

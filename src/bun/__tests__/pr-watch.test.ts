@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PRCheckInfo } from "../../shared/types";
 import type { PrWatch } from "../../shared/pr-watch";
-import { applyPrWatchOutcome, evaluatePrWatches, upsertPrWatch, type PrWatchGit, type PrWatchSample } from "../pr-watch";
+import { applyPrWatchOutcome, evaluatePrWatches, PINNED_PR_WATCH_GIT, upsertPrWatch, type PrWatchGit, type PrWatchSample } from "../pr-watch";
 
 const OLD = "1111111111111111111111111111111111111111";
 const HEAD = "2222222222222222222222222222222222222222";
@@ -362,5 +362,34 @@ describe("watch list helpers", () => {
 		const first = upsertPrWatch(upsertPrWatch([], watch("ci")), watch("merged"));
 		const replaced = upsertPrWatch(first, watch("ci", { id: "w-new", prNumber: 9 }));
 		expect(replaced.map((w) => w.id).sort()).toEqual(["w-merged", "w-new"]);
+	});
+
+	it("keeps watches of the same kind on different PRs side by side, one per kind and PR", () => {
+		const own = watch("ci");
+		const pinnedA = watch("ci", { id: "a", prNumber: 2111, pinned: true });
+		const pinnedB = watch("ci", { id: "b", prNumber: 2112, pinned: true });
+		const all = upsertPrWatch(upsertPrWatch(upsertPrWatch([], own), pinnedA), pinnedB);
+		expect(all.map((w) => w.id)).toEqual(["w-ci", "a", "b"]);
+		const replaced = upsertPrWatch(all, watch("ci", { id: "a2", prNumber: 2111, pinned: true }));
+		expect(replaced.map((w) => w.id)).toEqual(["w-ci", "b", "a2"]);
+	});
+});
+
+describe("a pinned PR's verdict", () => {
+	it("moves to a new head GitHub reports, even one this repository has never seen, and confirms CI there", async () => {
+		const pinned = watch("ci", { prNumber: 7, pinned: true, headSha: OLD, ciSeen: undefined });
+		const first = await evaluatePrWatches([pinned], sample({ headRefOid: HEAD }), PINNED_PR_WATCH_GIT, NOW);
+		expect(first.patches[pinned.id]).toMatchObject({ headSha: HEAD, ciSeen: { head: HEAD, total: 2, at: NOW } });
+		expect(first.fired).toEqual([]);
+
+		const moved = { ...pinned, ...first.patches[pinned.id] } as PrWatch;
+		const second = await evaluatePrWatches([moved], sample({ headRefOid: HEAD }), PINNED_PR_WATCH_GIT, NOW + 60_000);
+		expect(second.fired).toEqual([{ watch: moved, notice: { kind: "ci-passed", sha: HEAD, totalChecks: 2 } }]);
+	});
+
+	it("follows a force-push back to an older head instead of treating it as a lagging sample", async () => {
+		const pinned = watch("ci", { prNumber: 7, pinned: true, headSha: HEAD, ciSeen: undefined });
+		const out = await evaluatePrWatches([pinned], sample({ headRefOid: OLD }), PINNED_PR_WATCH_GIT, NOW);
+		expect(out.patches[pinned.id]).toMatchObject({ headSha: OLD });
 	});
 });

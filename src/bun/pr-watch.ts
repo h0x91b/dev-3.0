@@ -120,7 +120,23 @@ export function applyPrWatchOutcome(watches: readonly PrWatch[], outcome: Pick<P
 		.map((watch) => (outcome.patches[watch.id] ? { ...watch, ...outcome.patches[watch.id] } : watch));
 }
 
-/** Add `next`, replacing any watch of the same kind; one per kind, so at most two stay. */
+/**
+ * A pinned PR has no local remote refs to trust: GitHub's head is the PR's head, a
+ * changed head is a new push to follow, and no commit needs to exist here.
+ */
+export const PINNED_PR_WATCH_GIT: PrWatchGit = {
+	tips: [],
+	ambiguous: false,
+	hasCommit: async () => false,
+	isAncestor: async () => false,
+};
+
+/** The PR a watch follows: the branch's PR (whatever its number) or one pinned number. */
+function watchTarget(watch: PrWatch): number | "branch" {
+	return watch.pinned ? watch.prNumber : "branch";
+}
+
+/** Add `next`, replacing any watch of the same kind on the same PR; one per kind and PR. */
 export function upsertPrWatch(watches: readonly PrWatch[], next: PrWatch): PrWatch[] {
-	return [...watches.filter((watch) => watch.until !== next.until), next];
+	return [...watches.filter((watch) => watch.until !== next.until || watchTarget(watch) !== watchTarget(next)), next];
 }

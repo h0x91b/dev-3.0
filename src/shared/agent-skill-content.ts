@@ -26,7 +26,7 @@ import { CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED } from "./cli-exit-codes";
  * replaced rather than softened.
  */
 export function skillPrLinkInstruction(platform: NodeJS.Platform = process.platform): string {
-	const command = `**Open the PR with \`dev3 pr create --title "..." --description "..."\`, never \`gh\` by hand** — it pushes the branch, targets the task's own base branch, and a logged-out \`gh\` exits 23 before pushing. \`x509: OSStatus -26276\` from any \`gh\` (exit 28 here) is the agent sandbox blocking macOS TLS, not a logout: never advise \`gh auth login\`; ask the user to approve one unsandboxed run. Auto-merge needs the user's own word: \`--auto-merge\`, or \`dev3 pr auto-merge\` later. Waiting on a PR's CI or merge? \`dev3 pr watch [--until merged]\`: dev3 messages you; never poll gh or set timers.`;
+	const command = `**Open the PR with \`dev3 pr create --title "..." --description "..."\`, never \`gh\` by hand** — it pushes the branch, targets the task's own base branch, and a logged-out \`gh\` exits 23 before pushing. \`x509: OSStatus -26276\` from any \`gh\` (exit 28 here) is the agent sandbox blocking macOS TLS, not a logout: never advise \`gh auth login\`; ask the user to approve one unsandboxed run. Auto-merge needs the user's own word: \`--auto-merge\`, or \`dev3 pr auto-merge\` later. Waiting on a PR's CI or merge? \`dev3 pr watch [--until merged] [--pr <N>]\` (\`--pr\`: any open PR, e.g. one you handed off): dev3 messages you; never poll gh or set timers.`;
 
 	if (!deepLinkSchemeRegistered(platform)) {
 		return `${command} **It adds no origin-task footer here — and nor do you:** \`dev3://\` opens the app on macOS only, so it would be a dead link in a public PR.`;
