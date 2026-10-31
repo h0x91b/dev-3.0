@@ -4,7 +4,14 @@ import { useT } from "../../i18n";
 
 // ---- Env vars editor (dotenv-style textarea backed by config.env) ----
 
-export type EnvStorageScope = "project" | "repo" | "local";
+/** `defaults` is the global Default agent environment, edited under Settings -> Agents. */
+export type EnvStorageScope = "project" | "repo" | "local" | "defaults";
+
+const NOTICE_KEYS = {
+	project: "projectSettings.envVarsProjectNotice",
+	local: "projectSettings.envVarsLocalNotice",
+	defaults: "settings.agentEnvDefaultsNotice",
+} as const;
 
 function envWithoutLineBreaks(env: Record<string, string>): Record<string, string> {
 	return Object.fromEntries(Object.entries(env).filter(([, value]) => !hasEnvLineBreak(value)));
@@ -64,11 +71,13 @@ export function EnvVarsEditor({ env, storageScope, onChange, onErrorChange }: {
 
 	return (
 		<div>
-			<p className="block text-fg text-sm font-semibold mb-2">
-				{t("projectSettings.envVars")}
-			</p>
+			{storageScope !== "defaults" && (
+				<p className="block text-fg text-sm font-semibold mb-2">
+					{t("projectSettings.envVars")}
+				</p>
+			)}
 			<p className="text-fg-3 text-sm mb-3">
-				{t("projectSettings.envVarsDesc")}
+				{t(storageScope === "defaults" ? "settings.agentEnvDefaultsDesc" : "projectSettings.envVarsDesc")}
 			</p>
 			{storageScope === "repo" ? (
 				<div role="note" className="mb-3 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2.5 text-danger-strong">
@@ -77,17 +86,15 @@ export function EnvVarsEditor({ env, storageScope, onChange, onErrorChange }: {
 				</div>
 			) : (
 				<p className="mb-3 text-xs leading-5 text-fg-3">
-					{t(storageScope === "project"
-						? "projectSettings.envVarsProjectNotice"
-						: "projectSettings.envVarsLocalNotice")}
+					{t(NOTICE_KEYS[storageScope])}
 				</p>
 			)}
 			<textarea
 				value={text}
 				onChange={(e) => handleChange(e.target.value)}
 				rows={4}
-				placeholder={t("projectSettings.envVarsPlaceholder")}
-				aria-label={t("projectSettings.envVars")}
+				placeholder={t(storageScope === "defaults" ? "settings.agentEnvDefaultsPlaceholder" : "projectSettings.envVarsPlaceholder")}
+				aria-label={t(storageScope === "defaults" ? "settings.agentEnvDefaults" : "projectSettings.envVars")}
 				autoCapitalize="off"
 				autoCorrect="off"
 				spellCheck={false}

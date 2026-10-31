@@ -239,6 +239,7 @@ import { setupExitCodePath } from "../temp-paths";
 import * as sharedPure from "../rpc-handlers/shared-pure";
 import * as settingsConfig from "../rpc-handlers/settings-config";
 import * as auxPanes from "../task-aux-panes";
+import * as repoConfig from "../repo-config";
 import { tmux } from "../tmux";
 
 import { getAgentAdapter } from "../../shared/agent-adapters/registry";
@@ -634,6 +635,26 @@ describe("setup-script wrapper — one flavour per backend", () => {
 			expect.objectContaining({ purpose: "setupRerun" }),
 		);
 		expect(pty.destroySessionAwaited).not.toHaveBeenCalled();
+	});
+
+	// The launch runs the setup script inside the agent session's env, so a re-run
+	// must see the same project env, global agent defaults included.
+	it("re-run gives the setup script the project env with the global agent defaults", async () => {
+		const task = makeTask({ terminalBackend: "tmux" });
+		const project = setupProject();
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(settingsConfig.resolveOperationalProjectConfig).mockResolvedValue({
+			setupScript: "bun install\n", setupScriptLaunchMode: "parallel", env: {}, devScript: "", portCount: 0,
+		} as never);
+		vi.mocked(repoConfig.resolveProjectEnv).mockResolvedValueOnce({ FROM_DEFAULTS: "1" });
+
+		await tmuxPtyHandlers.rerunSetupScript({ taskId: task.id });
+
+		expect(repoConfig.resolveProjectEnv).toHaveBeenCalledWith(project, task.worktreePath, { foreignCode: task.foreignCode });
+		expect(vi.mocked(auxPanes.openAuxPane)).toHaveBeenCalledWith(
+			expect.objectContaining({ env: expect.objectContaining({ FROM_DEFAULTS: "1" }) }),
+		);
 	});
 
 	it("asks for the tmux flavour for an unmarked task", async () => {

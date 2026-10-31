@@ -1,7 +1,10 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { homedir } from "node:os";
 import type { Project, Dev3RepoConfig, ConfigSourceEntry, ResolvedConfigSource } from "../shared/types";
 import { DEV3_REPO_CONFIG_KEYS, remapColumnAgents, repoConfigEnabled } from "../shared/types";
 import { sanitizeEnvMap } from "../shared/env-text";
+import { applyAgentEnvDefaults } from "../shared/agent-env-defaults";
+import { loadSettings } from "./settings";
 import { createLogger } from "./logger";
 import * as git from "./git";
 
@@ -379,14 +382,24 @@ export async function resolveOperationalProjectConfig(
 /** Per-key-merged project env for a terminal or task session, re-read at launch
  *  time so config-file edits apply on the next launch. Never throws.
  *  Pass the task's `foreignCode` so a reviewed branch cannot export env into
- *  every session it touches (see {@link resolveOperationalProjectConfig}). */
+ *  every session it touches (see {@link resolveOperationalProjectConfig}).
+ *  Keys the project leaves unset come from the global `agentEnvDefaults`. */
 export async function resolveProjectEnv(
 	project: Project,
 	worktreePath?: string | null,
 	opts?: { foreignCode?: boolean },
 ): Promise<Record<string, string>> {
 	const resolved = await resolveOperationalProjectConfig(project, worktreePath ?? undefined, opts);
-	return resolved.env ?? {};
+	return applyAgentEnvDefaults(resolved.env ?? {}, await loadAgentEnvDefaults(), project, homedir());
+}
+
+async function loadAgentEnvDefaults(): Promise<Record<string, string> | undefined> {
+	try {
+		return (await loadSettings()).agentEnvDefaults;
+	} catch (err) {
+		log.warn("Failed to read agent env defaults", { error: String(err) });
+		return undefined;
+	}
 }
 
 /**

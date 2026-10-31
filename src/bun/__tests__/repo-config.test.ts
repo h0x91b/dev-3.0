@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdirSync, rmSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 
 // Mock paths + git so repo-config resolves against tmp dirs and a stubbed git
 const MOCK_DEV3_HOME = join(tmpdir(), `dev3-home-test-${process.pid}`);
@@ -1120,6 +1120,61 @@ describe("env config cascade (per-key merge)", () => {
 		writeConfig(WT_DIR, "config.local.json", { env: { B: "wt-local" } });
 
 		expect(await resolveProjectEnv(project, WT_DIR)).toEqual({ A: "project", B: "wt-local" });
+	});
+});
+
+describe("resolveProjectEnv with global agentEnvDefaults", () => {
+	function writeDefaults(agentEnvDefaults?: Record<string, string>) {
+		writeFileSync(join(MOCK_DEV3_HOME, "settings.json"), JSON.stringify(agentEnvDefaults ? { agentEnvDefaults } : {}));
+	}
+	function writeLocalConfig(content: object) {
+		mkdirSync(join(TEST_DIR, ".dev3"), { recursive: true });
+		writeFileSync(join(TEST_DIR, ".dev3", "config.local.json"), JSON.stringify(content));
+	}
+
+	it("fills a key the project does not set", async () => {
+		writeDefaults({ SHARED: "1" });
+		expect(await resolveProjectEnv(makeProject())).toEqual({ SHARED: "1" });
+	});
+
+	it("never overrides a key the project config sets, even to an empty string", async () => {
+		writeDefaults({ CLAUDE_CONFIG_DIR: "/default", EMPTY: "default", EXTRA: "x" });
+		writeLocalConfig({ env: { CLAUDE_CONFIG_DIR: "/pinned", EMPTY: "" } });
+		expect(await resolveProjectEnv(makeProject())).toEqual({ CLAUDE_CONFIG_DIR: "/pinned", EMPTY: "", EXTRA: "x" });
+	});
+
+	it("never overrides a key from Project Settings", async () => {
+		writeDefaults({ A: "default" });
+		expect(await resolveProjectEnv(makeProject({ env: { A: "project" } }))).toEqual({ A: "project" });
+	});
+
+	it("expands {home}, and {projectPath} and {projectName} to the project, not the worktree", async () => {
+		writeDefaults({
+			CLAUDE_CONFIG_DIR: "{home}/.claude-projects/{projectName}",
+			ROOT: "{projectPath}/x",
+			TAG: "{projectName}-{projectName}",
+			OTHER: "{unknown}",
+		});
+		const project = makeProject();
+		expect(await resolveProjectEnv(project, join(TEST_DIR, "wt"))).toEqual({
+			CLAUDE_CONFIG_DIR: `${homedir()}/.claude-projects/test-project`,
+			ROOT: `${TEST_DIR}/x`,
+			TAG: "test-project-test-project",
+			OTHER: "{unknown}",
+		});
+	});
+
+	it("changes nothing when the setting is empty or absent", async () => {
+		writeLocalConfig({ env: { A: "1" } });
+		writeDefaults();
+		expect(await resolveProjectEnv(makeProject())).toEqual({ A: "1" });
+		writeFileSync(join(MOCK_DEV3_HOME, "settings.json"), JSON.stringify({ agentEnvDefaults: {} }));
+		expect(await resolveProjectEnv(makeProject())).toEqual({ A: "1" });
+	});
+
+	it("does not reach dev and cleanup scripts, which read the operational config", async () => {
+		writeDefaults({ SHARED: "1" });
+		expect((await resolveOperationalProjectConfig(makeProject())).env).toBeUndefined();
 	});
 });
 

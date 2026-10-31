@@ -412,6 +412,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "agent-env-defaults",
+		category: "agents",
+		titleKey: "settings.agentEnvDefaults",
+		descriptionKey: "settings.agentEnvDefaultsDesc",
+		anchor: "agent-env-defaults",
+		globalField: "agentEnvDefaults",
+		storage: "global",
+	},
+	{
 		id: "agent-accounts",
 		category: "accounts",
 		titleKey: "settings.agentAccounts",
@@ -699,6 +708,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"skipQuitDialog",
 	"autoCleanupTaskHistory",
 	"importShellEnv",
+	"agentEnvDefaults",
 	"terminalShell",
 	"dimInactivePanes",
 	"paneTitles",

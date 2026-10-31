@@ -42,6 +42,7 @@ import { confirm } from "../confirm";
 import type { UpdateChannel } from "../../shared/update-channel";
 import AdvancedExperienceSection from "./global-settings/AdvancedExperienceSection";
 import AgentAccountsSection from "./global-settings/AgentAccountsSection";
+import AgentEnvDefaultsSection from "./global-settings/AgentEnvDefaultsSection";
 import AgentRateLimitSettingsSection from "./global-settings/AgentRateLimitSettingsSection";
 import AgentSettingsSection from "./global-settings/AgentSettingsSection";
 import AppearanceSettingsSection from "./global-settings/AppearanceSettingsSection";
@@ -722,6 +723,13 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
+	const handleAgentEnvDefaultsChange = useCallback(
+		(env: Record<string, string> | undefined) => {
+			persistSettingChange({ agentEnvDefaults: env });
+		},
+		[persistSettingChange],
+	);
+
 	const handleRateLimitTrackingToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange({ agentRateLimitTracking: enabled });
@@ -1073,6 +1081,11 @@ function GlobalSettings({
 							t={t}
 							globalSettings={globalSettings}
 							onToggle={handleRateLimitTrackingToggle}
+						/>
+						<AgentEnvDefaultsSection
+							t={t}
+							globalSettings={globalSettings}
+							onChange={handleAgentEnvDefaultsChange}
 						/>
 					</>
 				);

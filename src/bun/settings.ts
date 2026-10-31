@@ -2,6 +2,7 @@ import { existsSync, linkSync, mkdirSync, readFileSync, renameSync, unlinkSync, 
 import { randomUUID } from "node:crypto";
 import type { GlobalSettings, ShortcutOverride } from "../shared/types";
 import { DEFAULT_AGENTS, DEFAULT_RESOURCE_LEVELS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
+import { hasEnvLineBreak, sanitizeEnvMap } from "../shared/env-text";
 import { recordFavoriteUsage, sanitizeFavorites } from "../shared/favorites";
 import { coerceUpdateChannel, DEFAULT_UPDATE_CHANNEL } from "../shared/update-channel";
 import { canaryPublishesFor, hostOsName } from "../shared/canary-publish";
@@ -137,6 +138,12 @@ function sanitizeResourceLevels(raw: unknown): GlobalSettings["resourceLevels"] 
  * the sync one silently lacked `analyticsDistinctId` — so the value existed on
  * disk, the async reader saw it, and every synchronous reader got `undefined`.
  */
+/** Malformed or multi-line entries are dropped: a launch script exports one line per key. */
+function normalizeAgentEnvDefaults(val: unknown): Record<string, string> | undefined {
+	const env = Object.fromEntries(Object.entries(sanitizeEnvMap(val)).filter(([, value]) => !hasEnvLineBreak(value)));
+	return Object.keys(env).length > 0 ? env : undefined;
+}
+
 function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const d = data as any;
@@ -196,6 +203,7 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		preventSleepWhileRunning: d.preventSleepWhileRunning ?? undefined,
 		skipQuitDialog: d.skipQuitDialog === true ? true : undefined,
 		importShellEnv: d.importShellEnv === false ? false : undefined,
+		agentEnvDefaults: normalizeAgentEnvDefaults(d.agentEnvDefaults),
 		// Undefined is the meaningful default here ("auto-detect"), so only one of
 		// the three known flavors is ever stored.
 		terminalShell:

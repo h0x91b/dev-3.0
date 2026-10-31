@@ -27,6 +27,7 @@ const SAME_IN_EVERY_LOCALE = new Set<string>([
 	// AGENTS.md forbids translating those.
 	"addProject.gitUrlPlaceholder",
 	"projectSettings.envVarsPlaceholder",
+	"settings.agentEnvDefaultsPlaceholder",
 	"catalog.modelIdPlaceholder",
 	"scripts.dropdown.header_one",
 	"scripts.dropdown.header_other",

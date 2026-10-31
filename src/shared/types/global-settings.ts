@@ -240,6 +240,12 @@ export interface GlobalSettings {
 	 */
 	importShellEnv?: boolean;
 	/**
+	 * Env vars every agent session gets when its project does not set the key
+	 * itself (`.dev3/config.json`, `.dev3/config.local.json`, Project Settings).
+	 * Values expand `{projectPath}` and `{projectName}`. Absent ⇒ no change.
+	 */
+	agentEnvDefaults?: Record<string, string>;
+	/**
 	 * Which POSIX shell dev3 runs in its terminals and generated wrapper
 	 * scripts. Undefined ⇒ auto-detect (the user's login shell, else the first
 	 * of zsh → bash → sh that is installed). Set it when the detected shell is
