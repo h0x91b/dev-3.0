@@ -921,7 +921,14 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 					effects.push(effect({ type: "raisePrAttention", reason: event.signalReason }));
 				}
 			}
-			if (state.column.status === "review-by-user" && event.openNonDraft && !state.facts.prPromoted) {
+			// A hibernated task refuses every column move, so promoting it here would be
+			// rejected on every poll. Defer: the first poll after wake promotes it.
+			if (
+				state.column.status === "review-by-user"
+				&& event.openNonDraft
+				&& !state.facts.prPromoted
+				&& state.facts.hibernated !== true
+			) {
 				effects.push(effect({
 					type: "sendEvent",
 					event: {
