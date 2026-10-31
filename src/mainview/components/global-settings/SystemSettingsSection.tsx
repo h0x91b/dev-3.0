@@ -416,8 +416,8 @@ function RemotePortField({
 }
 
 const RESOURCE_LEVEL_FIELDS = [
-	{ key: "cpuWarnPercent", labelKey: "settings.cpuWarnAt", unit: "%" },
-	{ key: "cpuCriticalPercent", labelKey: "settings.cpuCriticalAt", unit: "%" },
+	{ key: "cpuBusyWarnPercent", labelKey: "settings.cpuWarnAt", unit: "%" },
+	{ key: "cpuBusyCriticalPercent", labelKey: "settings.cpuCriticalAt", unit: "%" },
 	{ key: "diskWarnGb", labelKey: "settings.diskWarnBelow", unit: " GB" },
 	{ key: "diskCriticalGb", labelKey: "settings.diskCriticalBelow", unit: " GB" },
 ] as const;

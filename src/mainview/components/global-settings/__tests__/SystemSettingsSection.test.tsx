@@ -42,7 +42,7 @@ function renderSection(settings: Partial<GlobalSettings> = {}) {
 describe("SystemSettingsSection — resource levels", () => {
 	it("shows the defaults and stores only the sparse override on change", async () => {
 		const { onResourceLevelsChange } = renderSection({ resourceLevels: { diskWarnGb: 50 } });
-		expect((screen.getByTestId("resource-level-cpuWarnPercent") as HTMLSelectElement).value).toBe("100");
+		expect((screen.getByTestId("resource-level-cpuBusyWarnPercent") as HTMLSelectElement).value).toBe("80");
 		expect((screen.getByTestId("resource-level-diskWarnGb") as HTMLSelectElement).value).toBe("50");
 		await userEvent.selectOptions(screen.getByTestId("resource-level-diskCriticalGb"), "10");
 		expect(onResourceLevelsChange).toHaveBeenCalledWith({ diskWarnGb: 50, diskCriticalGb: 10 });
