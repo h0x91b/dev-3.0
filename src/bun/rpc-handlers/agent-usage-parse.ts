@@ -1,5 +1,5 @@
 import { computeTokenCostUsd, resolveModelRate, type ModelRate, type TokenCounts } from "../../shared/agent-pricing";
-import type { AgentUsageDay, AgentUsageSource } from "../../shared/types";
+import type { AgentUsageDay, AgentUsageSource, TaskUsageTotals } from "../../shared/types";
 
 /** Content-free response snapshots; identities let history survive source-log cleanup. */
 export interface UsageRecord {
@@ -244,6 +244,45 @@ export function finalizeUsage(
 		if (!priced) { row.fullyPriced = false; hasUnpriced = true; }
 	}
 	return { days: [...byDate.values()].sort((a, b) => a.startMs - b.startMs), hasUnpriced };
+}
+
+function emptyTotals(): TaskUsageTotals {
+	return {
+		messages: 0, inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheWrite5mTokens: 0,
+		cacheWrite1hTokens: 0, cacheReadTokens: 0, costUsd: 0, fullyPriced: true,
+	};
+}
+
+/** Per-model totals for one task's records, priced like `finalizeUsage` prices a day. */
+export function summarizeUsageByModel(
+	state: UsageState,
+	pricingId: (model: string) => string = (model) => model,
+	resolveRate: (model: string) => ModelRate | null = resolveModelRate,
+): { totals: TaskUsageTotals; models: Array<TaskUsageTotals & { model: string }>; firstMs: number | null; lastMs: number | null } {
+	const totals = emptyTotals();
+	const byModel = new Map<string, TaskUsageTotals & { model: string }>();
+	let firstMs: number | null = null;
+	let lastMs: number | null = null;
+	for (const { model, pricingModel, timestamp, counts } of recordsForReport(state)) {
+		let row = byModel.get(model);
+		if (!row) byModel.set(model, row = { model, ...emptyTotals() });
+		const { costUsd, priced } = computeTokenCostUsd(pricingModel ?? pricingId(model), counts, resolveRate);
+		for (const target of [row, totals]) {
+			target.messages += 1;
+			target.inputTokens += counts.inputTokens;
+			target.outputTokens += counts.outputTokens;
+			target.cacheWriteTokens += counts.cacheCreationInputTokens;
+			target.cacheWrite5mTokens += counts.cacheCreation5mInputTokens ?? 0;
+			target.cacheWrite1hTokens += counts.cacheCreation1hInputTokens ?? 0;
+			target.cacheReadTokens += counts.cacheReadInputTokens;
+			target.costUsd += costUsd;
+			if (!priced) target.fullyPriced = false;
+		}
+		firstMs = firstMs === null ? timestamp : Math.min(firstMs, timestamp);
+		lastMs = lastMs === null ? timestamp : Math.max(lastMs, timestamp);
+	}
+	const models = [...byModel.values()].sort((a, b) => b.costUsd - a.costUsd || a.model.localeCompare(b.model));
+	return { totals, models, firstMs, lastMs };
 }
 
 export function buildClaudeUsageDays(entries: unknown[]): { days: AgentUsageDay[]; hasUnpriced: boolean } {

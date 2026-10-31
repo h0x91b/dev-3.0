@@ -1,5 +1,7 @@
 # 071 — Searching past task conversations via transcript mapping
 
+> Superseded in part on 2026-10-28 by `decisions/2026/10/28/claude-store-name-encoding.md`: Claude turns every non-alphanumeric character into `-` (not just `/` and `.`), and cuts and hashes names longer than 200 characters.
+
 ## Context
 
 We wanted to let agents (and later the UI) search conversations from completed/cancelled tasks. The obvious corpus — the worktree — is gone: `moveTask` to a terminal status runs `git worktree remove --force` and nulls `task.worktreePath` (`task-lifecycle.ts`). The agent conversation transcripts, however, survive in each agent's own data dir.

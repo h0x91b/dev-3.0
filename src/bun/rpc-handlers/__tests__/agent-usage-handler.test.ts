@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -24,7 +24,9 @@ vi.mock("node:os", async (importOriginal) => ({
 	homedir: () => testHome,
 }));
 
-import { getAgentUsage } from "../agent-usage";
+import { getAgentUsage, getTaskAgentUsage, isSubagentTranscript, taskStartedAt } from "../agent-usage";
+import { taskDir } from "../../git";
+import type { Project, Task } from "../../../shared/types";
 import { defaultAccountPaths } from "../../agent-accounts";
 import { recordCursorHookUsage } from "../../usage-collectors/cursor";
 
@@ -286,5 +288,151 @@ describe("getAgentUsage", () => {
 		const report = await getAgentUsage();
 		expect(report.days).toEqual([]);
 		expect(report.hasUnpricedModels).toBe(false);
+	});
+});
+
+describe("getTaskAgentUsage", () => {
+	// An underscore and a space: Claude Code turns both into "-" in the store name.
+	const project = { id: "p1", path: "/repo/my_app v2", kind: "git" } as Project;
+	const task = { id: "abcdef12-0000-0000-0000-000000000000", seq: 7, title: "Fix it", status: "completed" } as Task;
+	const SESSION = "11111111-2222-3333-4444-555555555555";
+	const claudeLine = (id: string, usage: Record<string, unknown>, model = "claude-opus-4-8", timestamp = "2026-10-20T12:00:00Z") => ({
+		type: "assistant", requestId: id, timestamp, message: { id, model, usage },
+	});
+	const codexRollout = (cwd: string, id: string) => [
+		{ type: "session_meta", payload: { id: "c", cwd } },
+		{ type: "turn_context", payload: { model: "mystery-codex" } },
+		{ type: "token_usage_record", timestamp: "2026-10-21T12:00:00Z", payload: { response_id: id, usage: { input_tokens: 40, output_tokens: 2, cache_write_input_tokens: 4 } } },
+	];
+	const dumpDir = () => join(taskDir(project, task), "conversations");
+	const writeDump = (name: string) => {
+		mkdirSync(dumpDir(), { recursive: true });
+		writeFileSync(join(dumpDir(), name), JSON.stringify({ stats: { usage: { input: 1, output: 99, cacheRead: 0, cacheWrite: 0 } } }));
+	};
+
+	it("reads the Stats page's stores (CLAUDE_CONFIG_DIR, CODEX_HOME incl. archived_sessions), subagents included, splitting only TTL-tagged cache writes", async () => {
+		const workingDir = `${taskDir(project, task)}/worktree`;
+		const store = join(tempRoot, "claude", "projects", workingDir.replace(/[^a-zA-Z0-9]/g, "-"));
+		writeJsonl(join(store, `${SESSION}.jsonl`), [
+			claudeLine("m1", { input_tokens: 1_000_000, output_tokens: 10 }),
+			claudeLine("m1", { input_tokens: 1_000_000, output_tokens: 1_000_000 }),
+			claudeLine("m2", { cache_creation_input_tokens: 300, cache_creation: { ephemeral_5m_input_tokens: 100, ephemeral_1h_input_tokens: 200 }, cache_read_input_tokens: 50 }),
+		]);
+		writeJsonl(join(store, SESSION, "subagents", "agent-a.jsonl"), [claudeLine("s1", { output_tokens: 1_000_000 })]);
+		writeJsonl(join(tempRoot, "claude", "projects", "-elsewhere", "other.jsonl"), [claudeLine("x", { input_tokens: 9 })]);
+		writeJsonl(join(tempRoot, "codex", "sessions", "2026", "rollout-a.jsonl"), codexRollout(workingDir, "c1"));
+		writeJsonl(join(tempRoot, "codex", "archived_sessions", "rollout-b.jsonl"), codexRollout(workingDir, "c2"));
+		writeJsonl(join(tempRoot, "codex", "sessions", "rollout-other.jsonl"), codexRollout("/elsewhere", "c3"));
+
+		const report = await getTaskAgentUsage(project, task);
+
+		expect(report).toMatchObject({ taskId: task.id, seq: 7, workingDir, worktreeExists: false });
+		expect(report.totals).toMatchObject({
+			messages: 5, inputTokens: 1_000_072, outputTokens: 2_000_004,
+			cacheWriteTokens: 308, cacheWrite5mTokens: 100, cacheWrite1hTokens: 200, cacheReadTokens: 50, fullyPriced: false,
+		});
+		expect(report.models.map((m) => m.model)).toEqual(["claude-opus-4-8", "mystery-codex"]);
+		expect(report.models[1]).toMatchObject({ messages: 2, cacheWriteTokens: 8, cacheWrite5mTokens: 0, costUsd: 0, fullyPriced: false });
+		expect(report.coverage).toMatchObject({
+			transcriptFiles: 4, subagentTranscriptFiles: 1, uncoveredArchivedSessions: 0, sharedWorkingDir: false,
+			sources: ["claude", "codex"], firstAt: "2026-10-20T12:00:00.000Z", lastAt: "2026-10-21T12:00:00.000Z",
+		});
+	});
+
+	it("reports Claude/Codex archived sessions whose transcript is gone, and other agents' apart, pricing neither", async () => {
+		writeDump(`claude-${SESSION}.json`);
+		writeDump("codex-no-session.json");
+		writeDump("cursor-99999999-2222-3333-4444-555555555555.json");
+
+		const report = await getTaskAgentUsage(project, task);
+
+		expect(report.models).toEqual([]);
+		expect(report.totals).toMatchObject({ messages: 0, costUsd: 0, fullyPriced: true });
+		expect(report.coverage).toMatchObject({ transcriptFiles: 0, uncoveredArchivedSessions: 2, unsupportedArchivedSessions: 1, sources: [] });
+	});
+
+	it("charges an Operations task on a user-chosen folder only for usage between its launch and its end", async () => {
+		const ops = { id: "ops", path: "/ops", kind: "virtual" } as Project;
+		const opsTask = {
+			...task, opsWorkDir: "/Users/me/Downloads", createdAt: "2026-10-18T00:00:00Z",
+			statusEnteredAt: "2026-10-21T00:00:00Z", status: "completed",
+			movements: [
+				{ id: "m0", at: "2026-10-18T00:00:00Z", kind: "created", to: "todo" },
+				{ id: "m1", at: "2026-10-20T00:00:00Z", kind: "status", from: "todo", to: "in-progress" },
+			],
+		} as Task;
+		const store = join(tempRoot, "claude", "projects", "-Users-me-Downloads");
+		writeJsonl(join(store, "earlier.jsonl"), [claudeLine("before", { input_tokens: 5 }, "claude-opus-4-8", "2026-10-19T12:00:00Z")]);
+		writeJsonl(join(store, `${SESSION}.jsonl`), [claudeLine("during", { input_tokens: 7 }, "claude-opus-4-8", "2026-10-20T12:00:00Z")]);
+		writeJsonl(join(store, "later.jsonl"), [claudeLine("after", { input_tokens: 11 }, "claude-opus-4-8", "2026-10-22T12:00:00Z")]);
+
+		const report = await getTaskAgentUsage(ops, opsTask);
+
+		expect(report.workingDir).toBe("/Users/me/Downloads");
+		expect(report.totals).toMatchObject({ messages: 1, inputTokens: 7 });
+		expect(report.coverage.sharedWorkingDir).toBe(true);
+	});
+
+	it("matches stores and rollouts recorded under the physical path of a symlinked folder", async () => {
+		const real = join(tempRoot, "real-folder");
+		const link = join(tempRoot, "linked-folder");
+		mkdirSync(real, { recursive: true });
+		symlinkSync(real, link);
+		const physical = realpathSync(real);
+		const ops = { id: "ops", path: "/ops", kind: "virtual" } as Project;
+		const opsTask = { ...task, opsWorkDir: link, createdAt: "2026-10-01T00:00:00Z", status: "in-progress" } as Task;
+		writeJsonl(join(tempRoot, "claude", "projects", physical.replace(/[^a-zA-Z0-9]/g, "-"), `${SESSION}.jsonl`), [claudeLine("m1", { input_tokens: 5 })]);
+		writeJsonl(join(tempRoot, "codex", "sessions", "rollout-p.jsonl"), codexRollout(physical, "c1"));
+
+		const report = await getTaskAgentUsage(ops, opsTask);
+
+		expect(report.coverage.sources).toEqual(["claude", "codex"]);
+		expect(report.totals.messages).toBe(2);
+	});
+
+	it("counts conversations the task's panes resumed from another folder, from the task's launch only", async () => {
+		const CODEX_SESSION = "66666666-7777-8888-9999-000000000000";
+		const resumedTask = {
+			...task, status: "in-progress", createdAt: "2026-10-20T00:00:00Z",
+			sessionState: { panes: [
+				{ agentCmd: "claude", sessionId: SESSION, agentId: null, configId: null, sessionOriginCwd: "/elsewhere" },
+				{ agentCmd: "codex", sessionId: CODEX_SESSION, agentId: null, configId: null },
+				{ agentCmd: "claude", sessionId: "../escape", agentId: null, configId: null },
+			] },
+		} as Task;
+		const elsewhere = join(tempRoot, "claude", "projects", "-elsewhere");
+		writeJsonl(join(elsewhere, `${SESSION}.jsonl`), [
+			claudeLine("old", { input_tokens: 1000 }, "claude-opus-4-8", "2026-10-19T12:00:00Z"),
+			claudeLine("new", { input_tokens: 7 }, "claude-opus-4-8", "2026-10-21T12:00:00Z"),
+		]);
+		writeJsonl(join(elsewhere, SESSION, "subagents", "agent-a.jsonl"), [claudeLine("sub", { input_tokens: 3 }, "claude-opus-4-8", "2026-10-21T13:00:00Z")]);
+		writeJsonl(join(elsewhere, "unrelated.jsonl"), [claudeLine("other", { input_tokens: 500 }, "claude-opus-4-8", "2026-10-21T12:00:00Z")]);
+		const rollout = codexRollout("/elsewhere", "c-new");
+		rollout.push({ type: "token_usage_record", timestamp: "2026-10-19T12:00:00Z", payload: { response_id: "c-old", usage: { input_tokens: 900, output_tokens: 0 } } } as never);
+		writeJsonl(join(tempRoot, "codex", "sessions", `rollout-2026-10-21T00-00-00-${CODEX_SESSION}.jsonl`), rollout);
+
+		const report = await getTaskAgentUsage(project, resumedTask);
+
+		expect(report.totals).toMatchObject({ messages: 3, inputTokens: 7 + 3 + 36 });
+		expect(report.coverage).toMatchObject({ transcriptFiles: 3, subagentTranscriptFiles: 1, resumedTranscriptFiles: 3, sources: ["claude", "codex"] });
+	});
+
+	it("starts the lifetime window at the first launch, falling back to creation", () => {
+		const base = { ...task, createdAt: "2026-10-18T00:00:00Z" } as Task;
+		const launched = { ...base, movements: [
+			{ id: "a", at: "2026-10-18T00:00:00Z", kind: "created", to: "todo" },
+			{ id: "b", at: "2026-10-20T00:00:00Z", kind: "status", from: "todo", to: "in-progress" },
+		] } as Task;
+		expect(taskStartedAt(launched)).toBe(Date.parse("2026-10-20T00:00:00Z"));
+		expect(taskStartedAt({ ...launched, movementsDropped: 3 } as Task)).toBe(Date.parse(base.createdAt));
+		expect(taskStartedAt(base)).toBe(Date.parse(base.createdAt));
+		const scratch = { ...base, movements: [{ id: "a", at: base.createdAt, kind: "created", to: "user-questions" }] } as Task;
+		expect(taskStartedAt(scratch)).toBe(Date.parse(base.createdAt));
+	});
+
+	it("recognises a subagent transcript on either separator", () => {
+		expect(isSubagentTranscript("C:\\Users\\a\\.claude\\projects\\x\\s\\subagents\\agent-a.jsonl")).toBe(true);
+		expect(isSubagentTranscript("/h/.claude/projects/x/s/subagents/agent-a.jsonl")).toBe(true);
+		expect(isSubagentTranscript("/h/.claude/projects/subagents-repo/s.jsonl")).toBe(false);
 	});
 });
