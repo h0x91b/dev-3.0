@@ -493,6 +493,10 @@ const kanban = {
 	"kanban.loadFailedDesc": "No se pudieron cargar las tareas del proyecto. Inténtalo de nuevo.",
 	"kanban.loadFailedOffline": "dev-3.0 no puede alcanzar tu ordenador ahora mismo. El tablero se recargará solo cuando vuelva la conexión.",
 	"kanban.loadRetry": "Reintentar",
+	"boardView.kanban": "Kanban",
+	"boardView.switcherAria": "Vista del tablero",
+	"boardView.optionsAria": "Opciones de vista",
+	"boardView.crashed": "Esta vista del tablero no se pudo cargar, así que el tablero se muestra como Kanban. Tu elección de vista se conserva.",
 };
 
 export default kanban;

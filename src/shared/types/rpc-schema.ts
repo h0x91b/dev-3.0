@@ -32,6 +32,7 @@ import type { ModelCatalogView, ModelSidecarStatus, PxpipeProxyStatus } from "./
 import type { AutoConfigureResult, BoardCopyFailureReason, BoardCopyOffer, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GitInitOffer, Project, ProjectSettingsUpdate, PrResolveFailureReason, ShellAvailability, ShellPromptPreview } from "./project";
 import type { CustomColumn, Label } from "./labels-columns";
 import type { Space, SpacesFile } from "./spaces";
+import type { BoardRef, BoardViewState } from "../board-view-state";
 import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, AgentLaunchRequest, LaunchVariant, TaskDialogSubject } from "./agent-launch";
 import type { ScheduledMessageTarget } from "./scheduled-messages";
 import type { LiveArtifact, SharedArtifact, SharedImage } from "./shared-media";
@@ -117,6 +118,15 @@ export type AppRPCSchema = {
 			reorderSpaceProjects: {
 				params: { spaceId: string; projectIds: string[] };
 				response: Space;
+			};
+			/** Board-view selection and layouts of one project or space board (`board-views.json`). */
+			getBoardViewState: {
+				params: { board: BoardRef };
+				response: BoardViewState;
+			};
+			setBoardViewState: {
+				params: { board: BoardRef; state: BoardViewState };
+				response: BoardViewState;
 			};
 			listDirectory: {
 				params: { path?: string | null; includeFiles?: boolean; showHidden?: boolean };

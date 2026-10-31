@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import { toast } from "../toast";
-import type { BoardColumnSlot, CustomColumn, DevServerSummary, GlobalSettings, Label, PortInfo, Project, ResourceUsage, Space, Task, TaskStatus } from "../../shared/types";
-import { ALL_STATUSES, ACTIVE_STATUSES, ALL_PRIORITIES, getBoardColumns, laneAcceptsProject, laneColumnIdForProject, laneKey, normalizeLaneName, DEFAULT_PRIORITY } from "../../shared/types";
-import { PRIORITY_NAME_KEYS } from "./priorityStyles";
+import type { BoardColumnSlot, CustomColumn, DevServerSummary, GlobalSettings, PortInfo, Project, ResourceUsage, Space, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
+import { ALL_STATUSES, ACTIVE_STATUSES, getBoardColumns, laneAcceptsProject, laneColumnIdForProject, laneKey } from "../../shared/types";
 
 // Column ordering + visibility lives in the shared, unit-tested getBoardColumns
 // (single source of truth for the board's column layout).
@@ -16,17 +15,11 @@ import CreateTaskModal from "./CreateTaskModal";
 import TaskDetailModal from "./TaskDetailModal";
 import { sortTasksForColumn } from "./sortTasks";
 import { partitionTasksByStatus } from "./partitionTasks";
-import LabelFilterBar from "./LabelFilterBar";
-import LineageFilterNotice from "./LineageFilterNotice";
-import { useTaskLineage } from "../hooks/useTaskLineage";
-import { childrenFilterToken, childrenTokenRefs, lineageChildren, lineageParent, parentSeqLabel, withChildrenToken, type CardLineage } from "../utils/taskLineage";
+import type { TaskLineage } from "../utils/taskLineage";
+import { lineageChildren, lineageParent, parentSeqLabel, type CardLineage } from "../utils/taskLineage";
 import { useStreamerMode } from "../streamer-mode";
-import { matchesTaskQuery } from "../utils/taskSearch";
-import { buildFilterGroups, taskQueryContext, taskStatusValues, isAttentionTask, type FacetResolver, type FilterFunnelOption } from "../utils/taskFacets";
-import { useTaskPrBadges } from "../hooks/useTaskPrBadges";
 import { useTipRotation } from "../hooks/useTipRotation";
 import { useColumnCollapse } from "../hooks/useColumnCollapse";
-import { boardFilterKey, rememberFilter, useRememberedFilter } from "../hooks/useRememberedFilter";
 import { moveTaskToStatus, resetTaskToTodoWithConsent } from "../utils/moveTaskToStatus";
 import { confirmCustomColumnDelete } from "../utils/confirmCustomColumnDelete";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
@@ -49,7 +42,15 @@ interface KanbanBoardProps {
 	space?: Space | null;
 	/** Member projects of `space`, in display order. Ignored without a space. */
 	memberProjects?: Project[];
+	/** Every task of the board, unfiltered — occupancy, siblings and counts read it. */
 	tasks: Task[];
+	/** The board query's result, owned by the board host's shared filter row. */
+	displayTasks: readonly Task[];
+	/** PR badges, fetched once by the host for the filter and the cards alike. */
+	taskPrMap: Map<string, TaskPRBadgeInfo>;
+	lineage: TaskLineage;
+	/** Narrow the board query to a parent's lineage batch (`children:` token). */
+	onApplyChildrenFilter: (parent: { projectId: string; seq: number }) => void;
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
 	bellCounts: Map<string, number>;
@@ -58,7 +59,6 @@ interface KanbanBoardProps {
 	taskDevServers: Map<string, DevServerSummary>;
 	taskResourceUsage?: Map<string, ResourceUsage>;
 	activeTaskId?: string;
-	disableGlobalFindShortcut?: boolean;
 	onOpenUnresolvedComments?: (task: Task) => void;
 	/**
 	 * Open the task-detail modal for this task — the same surface a completed,
@@ -77,6 +77,10 @@ function KanbanBoard({
 	space,
 	memberProjects,
 	tasks,
+	displayTasks,
+	taskPrMap,
+	lineage,
+	onApplyChildrenFilter: applyChildrenFilter,
 	dispatch,
 	navigate,
 	bellCounts,
@@ -85,7 +89,6 @@ function KanbanBoard({
 	taskDevServers,
 	taskResourceUsage,
 	activeTaskId,
-	disableGlobalFindShortcut = false,
 	onOpenUnresolvedComments,
 	detailTaskId,
 	onCloseTaskDetail,
@@ -123,8 +126,6 @@ function KanbanBoard({
 	// Whose repository the dragged card belongs to — a merged lane that project has
 	// no column in must refuse it, visibly, before the drop.
 	const [dragFromProjectId, setDragFromProjectId] = useState<string | null>(null);
-	// Keyed like the collapse memory below: a space board keeps its own filter.
-	const [searchQuery, setSearchQuery] = useRememberedFilter(boardFilterKey(project.id, space?.id));
 	const [movingTaskIds, setMovingTaskIds] = useState<Set<string>>(new Set());
 	const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
 	// Ref so drag handlers can check synchronously without waiting for state update
@@ -157,18 +158,6 @@ function KanbanBoard({
 		window.addEventListener("rpc:globalSettingsUpdated", onSettingsUpdated);
 		return () => window.removeEventListener("rpc:globalSettingsUpdated", onSettingsUpdated);
 	}, []);
-
-	// PR badge data for task cards: what each task already carries (sticky
-	// prNumber/prUrl + prStatusCache), refreshed in-session by the `taskPrStatus`
-	// push, plus a per-project branch->PR lookup so a PR whose identity was never
-	// persisted still gets a badge. Virtual (Operations) boards have no git repo,
-	// so they get no lookup instead of a doomed RPC every 60s.
-	const gitProjectIds = useMemo(
-		() => boardProjects.filter((p) => p.kind !== "virtual").map((p) => p.id),
-		[boardProjects],
-	);
-	const knowsProject = useCallback((projectId: string) => projectById.has(projectId), [projectById]);
-	const taskPrMap = useTaskPrBadges({ tasks, discoverProjectIds: gitProjectIds, knowsProject });
 
 	// Global dragend listener to clear drag state
 	useEffect(() => {
@@ -290,16 +279,8 @@ function KanbanBoard({
 		}
 	}
 
-	// Lineage (Task.origin): a bare `children:<seq>` means this project, which a
-	// space board does not have.
-	const lineage = useTaskLineage();
 	const isStreamerOn = useStreamerMode();
 	const knownProjects = allProjects ?? boardProjects;
-	const lineageProjectId = isSpaceBoard ? null : project.id;
-	const boardProjectIds = useMemo(() => new Set(boardProjects.map((p) => p.id)), [boardProjects]);
-	const applyChildrenFilter = useCallback((parent: { projectId: string; seq: number }) => {
-		setSearchQuery(withChildrenToken(searchQuery, childrenFilterToken(parent, knownProjects, lineageProjectId)));
-	}, [searchQuery, setSearchQuery, knownProjects, lineageProjectId]);
 	const lineageFor = useCallback((task: Task): CardLineage | undefined => {
 		const parent = lineageParent(task, lineage);
 		const childCount = lineageChildren(task, lineage).length;
@@ -334,20 +315,6 @@ function KanbanBoard({
 		return map;
 	}, [tasks]);
 
-	// Filter chips: one per label NAME across the board's projects, same merge rule
-	// as the lanes. The `label:"…"` token already matches by name, so a merged chip
-	// and the token it toggles mean the same thing.
-	const projectLabels = useMemo<Label[]>(() => {
-		if (!isSpaceBoard) return project.labels ?? [];
-		const byName = new Map<string, Label>();
-		for (const member of boardProjects) {
-			for (const label of member.labels ?? []) {
-				const key = label.name.trim().toLowerCase();
-				if (!byName.has(key)) byName.set(key, label);
-			}
-		}
-		return [...byName.values()];
-	}, [isSpaceBoard, boardProjects, project.labels]);
 	const customColumns: CustomColumn[] = project.customColumns ?? [];
 	// `customStatusLabels` is per project: two projects that renamed the same status
 	// cannot be reconciled, and a merged label would misrepresent both. A space
@@ -371,70 +338,6 @@ function KanbanBoard({
 	// underlying status column so the task can never silently vanish from the board.
 	const isInCustomColumn = (task: Task) =>
 		!!task.customColumnId && laneIdByProjectColumn.has(`${task.projectId}::${task.customColumnId}`);
-
-	// Facet resolver + funnel pool for the token-DSL filter. Custom-column tasks
-	// match only their column name — where they render — never their underlying status.
-	const resolver: FacetResolver = useMemo(() => ({
-		agents,
-		labelsFor: (task) => (projectById.get(task.projectId)?.labels ?? []).filter((l) => task.labelIds?.includes(l.id)),
-		statusValuesFor: (task) => {
-			const ownColumns = projectById.get(task.projectId)?.customColumns ?? [];
-			const col = task.customColumnId ? ownColumns.find((c) => c.id === task.customColumnId) : undefined;
-			return taskStatusValues(task, col, customStatusLabels[task.status] || t(statusKey(task.status)));
-		},
-		priorityFor: (task) => task.priority ?? DEFAULT_PRIORITY,
-		hasPortFor: (task) => (taskPorts.get(task.id)?.length ?? 0) > 0,
-		isAttentionFor: isAttentionTask,
-		prNumberFor: (task) => taskPrMap.get(task.id)?.number ?? null,
-		prStateFor: (task) => taskPrMap.get(task.id)?.mergeState?.state ?? null,
-		childrenRefsFor: (task) => childrenTokenRefs(task, lineage, knownProjects, lineageProjectId),
-	}), [agents, projectById, customStatusLabels, taskPorts, taskPrMap, t, lineage, knownProjects, lineageProjectId]);
-
-	// Priority leads the funnel; the board offers all five levels (P0…P4).
-	const priorityCandidates = useMemo<FilterFunnelOption[]>(
-		() => ALL_PRIORITIES.map((p) => ({ facet: "priority" as const, value: p, label: `${p} — ${t(PRIORITY_NAME_KEYS[p])}` })),
-		[t],
-	);
-	// One entry per custom LANE — merged by name across the board's projects, so a
-	// space board offers "On hold" once however many projects have it.
-	const boardCustomColumns = useMemo<CustomColumn[]>(() => {
-		if (!isSpaceBoard) return customColumns;
-		const byName = new Map<string, CustomColumn>();
-		for (const member of boardProjects) {
-			for (const col of member.customColumns ?? []) {
-				const key = normalizeLaneName(col.name);
-				if (!byName.has(key)) byName.set(key, col);
-			}
-		}
-		return [...byName.values()];
-	}, [isSpaceBoard, boardProjects, customColumns]);
-	// The board offers every board status (plus custom columns) in the funnel.
-	const statusCandidates = useMemo<FilterFunnelOption[]>(() => [
-		...ALL_STATUSES.map((s) => ({ facet: "status" as const, value: s, label: customStatusLabels[s] || t(statusKey(s)) })),
-		...boardCustomColumns.map((c) => ({ facet: "status" as const, value: c.name, label: c.name, color: c.color })),
-	], [customStatusLabels, boardCustomColumns, t]);
-
-	const filterGroups = useMemo(
-		() => buildFilterGroups(tasks, resolver, {
-			priorityCandidates,
-			statusCandidates,
-			flagLabels: {
-				attention: t("filter.flag.attention"),
-				port: t("filter.flag.port"),
-				home: t("spaces.homeGroup"),
-				hidden: t("filter.flag.hidden"),
-				hibernated: t("filter.flag.hibernated"),
-				keptAlive: t("filter.flag.keepAlive"),
-			},
-			typeLabels: {
-				standard: t("createTask.taskTypeStandard"),
-				coordinator: t("createTask.taskTypeCoordinator"),
-				"pr-review": t("createTask.taskTypeReview"),
-				"board-cleanup": t("createTask.taskTypeCleanup"),
-			},
-		}),
-		[tasks, resolver, priorityCandidates, statusCandidates, t],
-	);
 
 	async function handleRenameBuiltinColumn(status: TaskStatus, name: string | null) {
 		try {
@@ -506,17 +409,10 @@ function KanbanBoard({
 		}
 	}
 
-	// Apply the token-DSL filter (facets + free text) — the search string is the
-	// single source of truth; the old separate `activeFilters` state is gone.
-	let displayTasks = tasks;
-	if (searchQuery.trim()) {
-		displayTasks = displayTasks.filter((task) => matchesTaskQuery(task, searchQuery, taskQueryContext(task, resolver)));
-	}
-
 	// Built-in column tasks (exclude tasks in an existing custom column; tasks
 	// with a dangling customColumnId fall back here into their status column,
 	// and an unrecognized status falls back to To Do — see partitionTasksByStatus).
-	const tasksByStatus = partitionTasksByStatus(displayTasks, isInCustomColumn);
+	const tasksByStatus = partitionTasksByStatus([...displayTasks], isInCustomColumn);
 
 	// Sort tasks within each built-in column for variant grouping
 	for (const status of ALL_STATUSES) {
@@ -765,25 +661,6 @@ function KanbanBoard({
 
 	return (
 		<>
-			<LabelFilterBar
-				labels={projectLabels}
-				searchQuery={searchQuery}
-				onSearchChange={setSearchQuery}
-				filterGroups={filterGroups}
-				disableGlobalFindShortcut={disableGlobalFindShortcut}
-			/>
-			<LineageFilterNotice
-				searchQuery={searchQuery}
-				lineage={lineage}
-				allProjects={knownProjects}
-				boardProjectIds={boardProjectIds}
-				currentProjectId={lineageProjectId}
-				onPickProject={applyChildrenFilter}
-				onOpenProject={(projectId, parent) => {
-					rememberFilter(boardFilterKey(projectId), childrenFilterToken(parent, knownProjects, projectId));
-					navigate({ screen: "project", projectId });
-				}}
-			/>
 			{isCarousel ? (
 				<MobileBoardCarousel columns={carouselColumns} initialColumnId={initialColumnId} />
 			) : (

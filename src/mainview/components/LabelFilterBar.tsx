@@ -1,4 +1,4 @@
-import { useRef, useEffect, useLayoutEffect, useState, type RefObject } from "react";
+import { useRef, useEffect, useLayoutEffect, useState, type ReactNode, type RefObject } from "react";
 import { ALL_PRIORITIES, type Label } from "../../shared/types";
 import { useT } from "../i18n";
 import LabelChip from "./LabelChip";
@@ -25,6 +25,10 @@ interface LabelFilterBarProps {
 	/** Grouped facet options for the shared filter funnel (built by the board). */
 	filterGroups: FilterFunnelGroup[];
 	disableGlobalFindShortcut?: boolean;
+	/** Board-host slot at the row's left end (the board-view switcher). */
+	leading?: ReactNode;
+	/** Board-host slot at the row's right end (the active view's options). */
+	trailing?: ReactNode;
 }
 
 /**
@@ -127,6 +131,8 @@ function LabelFilterBar({
 	onSearchChange,
 	filterGroups,
 	disableGlobalFindShortcut = false,
+	leading,
+	trailing,
 }: LabelFilterBarProps) {
 	const t = useT();
 	const inputRef = useRef<HTMLInputElement>(null);
@@ -168,6 +174,7 @@ function LabelFilterBar({
 	if (narrow) {
 		return (
 			<div ref={toastClearanceRef} className="flex items-center gap-2 px-3 py-2 border-b border-edge/50" data-help-id="board.filter-bar">
+				{leading}
 				<div className="relative flex-1 min-w-0">
 					<svg
 						className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-fg-3 pointer-events-none"
@@ -213,12 +220,14 @@ function LabelFilterBar({
 					onOpenChange={setFunnelOpen}
 					helpTopicId="board.filter-bar"
 				/>
+				{trailing}
 			</div>
 		);
 	}
 
 	return (
 		<div ref={toastClearanceRef} className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-6 pt-2 pb-1.5 border-b border-edge/50" data-help-id="board.filter-bar">
+			{leading}
 			{/* Search + funnel: the funnel sits snug against the search's right edge. */}
 			<div className="flex items-center gap-1 flex-shrink-0">
 				<div className="relative w-56">
@@ -309,6 +318,7 @@ function LabelFilterBar({
 					</div>
 				</div>
 			)}
+			{trailing && <div className="ml-auto flex-shrink-0">{trailing}</div>}
 		</div>
 	);
 }

@@ -494,6 +494,10 @@ const kanban = {
 	"kanban.loadFailedDesc": "Loading this project's tasks failed. Try again.",
 	"kanban.loadFailedOffline": "dev-3.0 can't reach your computer right now. The board reloads itself once the connection is back.",
 	"kanban.loadRetry": "Retry",
+	"boardView.kanban": "Kanban",
+	"boardView.switcherAria": "Board view",
+	"boardView.optionsAria": "View options",
+	"boardView.crashed": "This board view failed to load, so the board is shown as Kanban. Your view choice is kept.",
 } as const;
 
 export default kanban;
