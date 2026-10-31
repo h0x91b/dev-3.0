@@ -21,7 +21,7 @@ vi.mock("../spawn", async () => {
 import { writeFileSync } from "fs";
 import { join } from "path";
 import { createTestRepo, cleanup, g, type TestRepo } from "./git-test-helpers";
-import { getTaskDiff, hasOriginRemote, detectDefaultCompareRef, _resetFetchState, _resetCompareRefCache } from "../git";
+import { getTaskDiff, hasOriginRemote, detectDefaultCompareRef, resolveConfiguredCompareRef, _resetFetchState, _resetCompareRefCache } from "../git";
 
 /**
  * A project added from a local folder has no remote. Every `origin/...` ref is
@@ -101,5 +101,33 @@ describe("git in a repo with no remote", () => {
 		const result = await getTaskDiff(repo.local, "unpushed", { baseBranch: "main", compareRef: "origin/main" });
 
 		expect(result.fallbackReason).toBe("missing-compare-ref");
+	});
+});
+
+describe("resolveConfiguredCompareRef", () => {
+	let repo: TestRepo;
+
+	beforeEach(() => {
+		repo = createTestRepo();
+		_resetFetchState();
+		_resetCompareRefCache();
+	});
+
+	afterEach(() => {
+		cleanup(repo);
+	});
+
+	it("keeps a configured ref the repo has", async () => {
+		expect(await resolveConfiguredCompareRef(repo.local, "main", "origin/main")).toBe("origin/main");
+	});
+
+	it("falls back to the detected default when the configured ref is missing", async () => {
+		expect(await resolveConfiguredCompareRef(repo.local, "main", "origin/master")).toBe("origin/main");
+	});
+
+	it("falls back to the local base when there is no remote at all", async () => {
+		g("git remote remove origin", repo.local);
+		g("git update-ref -d refs/remotes/origin/main", repo.local);
+		expect(await resolveConfiguredCompareRef(repo.local, "main", "origin/main")).toBe("main");
 	});
 });
