@@ -504,6 +504,8 @@ const {
 	tmuxPaneCount,
 	tmuxPaneNavigate,
 } = await import("../rpc-handlers/tmux-pty");
+const { PR_POLLER_HEARTBEAT_MS, PR_TASK_POLL_TIMEOUT_MS, PR_TICK_STALL_MS, runPRDetectionTick } = await import("../lifecycle/activities");
+const { log: pollerLog } = await import("../rpc-handlers/shared-pure");
 const { AuxPaneUnavailableError } = await import("../task-aux-panes");
 const { placePaneSession } = await import("../pane-session-capture");
 const { dev3TaskTempPath } = await import("../temp-paths");
@@ -12939,6 +12941,119 @@ describe("checkOpenPRsForPromotion", () => {
 	);
 });
 
+
+describe("PR detection poller resilience", () => {
+	const never = <T,>() => new Promise<T>(() => {});
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+		vi.setSystemTime(1_000_000);
+		vi.mocked(data.loadProjects).mockReset();
+		vi.mocked(data.loadTasks).mockReset();
+		vi.mocked(data.updateTask).mockReset();
+		vi.mocked(git.getCurrentBranch).mockReset().mockResolvedValue("dev3/my-feature");
+		vi.mocked(git.getUnpushedCount).mockReset().mockResolvedValue(0);
+		vi.mocked(git.isWorktreeDirty).mockReset().mockResolvedValue(false);
+		vi.mocked(github.readTaskPullRequest).mockReset().mockImplementation(async () => ({ isGitHub: true, checkedAt: Date.now(), pr: {
+			number: 42, url: "https://github.com/test/repo/pull/42", title: "Change", state: "OPEN",
+			headRefName: "dev3/my-feature", headRefOid: "head-sha", isDraft: false, autoMergeRequest: null,
+			mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN", reviewDecision: null, author: null,
+			statusCheckRollup: [], unresolvedCount: 0,
+		} }) as NonNullable<Awaited<ReturnType<typeof github.readTaskPullRequest>>>);
+		vi.mocked(pollerLog.info).mockClear();
+		vi.mocked(pollerLog.warn).mockClear();
+		vi.mocked(pollerLog.error).mockClear();
+		_resetPRPollerState();
+		_setScheduleRandomForTest(() => 0);
+		setPushMessage(vi.fn());
+	});
+
+	afterEach(() => {
+		_resetPRPollerState();
+		vi.mocked(runPrWatches).mockImplementation(async () => undefined);
+		vi.useRealTimers();
+	});
+
+	function setupTasks(...tasks: Partial<Task>[]) {
+		const project = makeProject();
+		const made = tasks.map((overrides, i) => makeTask({ id: `task-${i}`, status: "review-by-colleague", prNumber: 42, ...overrides }));
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue(made);
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockImplementation(async (_p, id) => made.find((t) => t.id === id)!);
+		vi.mocked(data.updateTask).mockImplementation(async (_p, taskId, updates) => ({ ...made[0], ...updates, id: taskId } as Task));
+		return { project, tasks: made };
+	}
+
+	const readPaths = () => vi.mocked(github.readTaskPullRequest).mock.calls.map((call) => call[1]);
+
+	it("times out a hung task poll and still polls the tasks after it", async () => {
+		setupTasks({ worktreePath: "/wt-hung" }, { worktreePath: "/wt-ok" });
+		vi.mocked(git.getCurrentBranch).mockImplementation(async (path) => (path === "/wt-hung" ? never<string>() : "dev3/my-feature"));
+
+		const tick = checkOpenPRsForPromotion();
+		await vi.advanceTimersByTimeAsync(PR_TASK_POLL_TIMEOUT_MS);
+		await tick;
+
+		expect(readPaths()).toEqual(["/wt-ok"]);
+		expect(pollerLog.warn).toHaveBeenCalledWith("PR check timed out for task", expect.objectContaining({ stage: "current-branch" }));
+	});
+
+	it("does not stack a new poll on a task whose timed-out poll is still pending", async () => {
+		setupTasks({ worktreePath: "/wt-hung" }, { worktreePath: "/wt-ok" });
+		vi.mocked(git.getCurrentBranch).mockImplementation(async (path) => (path === "/wt-hung" ? never<string>() : "dev3/my-feature"));
+		const first = checkOpenPRsForPromotion();
+		await vi.advanceTimersByTimeAsync(PR_TASK_POLL_TIMEOUT_MS);
+		await first;
+
+		// 15 s steps: one big jump would read as host sleep and re-spread instead of polling.
+		for (let i = 0; i < 24; i++) { vi.setSystemTime(Date.now() + 15_000); await checkOpenPRsForPromotion(); }
+
+		expect(vi.mocked(git.getCurrentBranch).mock.calls.filter(([path]) => path === "/wt-hung")).toHaveLength(1);
+		expect(readPaths().length).toBeGreaterThan(1);
+		expect(readPaths().every((path) => path === "/wt-ok")).toBe(true);
+		expect(pollerLog.warn).toHaveBeenCalledWith("PR check skipped: the previous poll of this task has not finished", expect.objectContaining({ stage: "current-branch" }));
+	});
+
+	it("never runs two ticks at once, and the watchdog replaces a stalled one", async () => {
+		const { project } = setupTasks({ worktreePath: "/wt" });
+		vi.mocked(data.loadProjects).mockReturnValueOnce(never()).mockResolvedValue([project]);
+
+		void runPRDetectionTick();
+		vi.setSystemTime(Date.now() + 15_000);
+		await runPRDetectionTick();
+		expect(data.loadProjects).toHaveBeenCalledTimes(1);
+
+		vi.setSystemTime(Date.now() + PR_TICK_STALL_MS);
+		await runPRDetectionTick();
+		expect(data.loadProjects).toHaveBeenCalledTimes(2);
+		expect(pollerLog.error).toHaveBeenCalledWith("PR detection tick stalled; starting a fresh one", expect.objectContaining({ stage: "load-projects" }));
+		expect(readPaths()).toEqual(["/wt"]);
+	});
+
+	it("logs a heartbeat with its counters", async () => {
+		setupTasks({ worktreePath: "/wt" });
+		await runPRDetectionTick();
+		expect(pollerLog.info).not.toHaveBeenCalledWith("PR detection poller heartbeat", expect.anything());
+		vi.setSystemTime(Date.now() + PR_POLLER_HEARTBEAT_MS);
+		await runPRDetectionTick();
+		expect(pollerLog.info).toHaveBeenCalledWith("PR detection poller heartbeat", expect.objectContaining({ ticks: 1, tasksPolled: 1, taskTimeouts: 0 }));
+	});
+
+	it("does not wait for PR watch delivery inside the poll", async () => {
+		setupTasks({ worktreePath: "/wt", prWatches: [{ id: "w", until: "ci", prNumber: 42, headSha: "abc", createdAt: "2026-10-22T10:00:00.000Z" }] });
+		vi.mocked(runPrWatches).mockClear().mockImplementation(() => never());
+
+		const tick = checkOpenPRsForPromotion();
+		let done = false;
+		void tick.then(() => { done = true; });
+		await vi.advanceTimersByTimeAsync(0);
+
+		expect(runPrWatches).toHaveBeenCalledTimes(1);
+		expect(done).toBe(true);
+		expect(pollerLog.warn).not.toHaveBeenCalledWith("PR check timed out for task", expect.anything());
+	});
+});
 // ================================================================
 // getChangelogs
 // ================================================================

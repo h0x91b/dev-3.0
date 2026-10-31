@@ -23,6 +23,7 @@ import {
 	MERGE_OFFER_SUBMITTED_GRACE_MS,
 	MERGE_OFFER_WATCH_HOLD_MS,
 	PR_WATCH_RETRY_BACKOFF_MS,
+	PR_WATCH_RUN_STALL_MS,
 	_resetPrWatchRunnerState,
 	addPrWatch,
 	clearPrWatches,
@@ -284,6 +285,30 @@ describe("runPrWatches", () => {
 		await first;
 
 		expect(sendMessageImmediately).toHaveBeenCalledTimes(1);
+	});
+
+	it("lets a new run take over from one stalled past the limit", async () => {
+		vi.useFakeTimers();
+		try {
+			vi.setSystemTime(1_000_000);
+			vi.mocked(data.getTask).mockImplementationOnce(() => new Promise<Task>(() => {}));
+			void runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
+			await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
+			expect(sendMessageImmediately).not.toHaveBeenCalled();
+
+			vi.setSystemTime(Date.now() + PR_WATCH_RUN_STALL_MS);
+			await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
+			expect(sendMessageImmediately).toHaveBeenCalledTimes(1);
+			expect(log.error).toHaveBeenCalledWith("PR watch run stalled; a new run takes over", expect.objectContaining({ taskId: "t1" }));
+		} finally { vi.useRealTimers(); }
+	});
+
+	it("logs each evaluation and each delivery at info", async () => {
+		await runPrWatches(project, "t1", pendingSample, URL, Date.now(), true);
+		expect(log.info).toHaveBeenCalledWith("PR watch evaluated", expect.objectContaining({ taskId: "t1", pr: 7, fired: 0 }));
+		await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
+		expect(log.info).toHaveBeenCalledWith("PR watch evaluated", expect.objectContaining({ fired: 1, agentCanReceive: true }));
+		expect(log.info).toHaveBeenCalledWith("PR watch delivered", expect.objectContaining({ taskId: "t1", pr: 7, paneId: "%1", status: "held" }));
 	});
 
 	it("drops a notice whose watch was removed after the verdict was reached", async () => {
