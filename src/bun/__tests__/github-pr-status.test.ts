@@ -81,6 +81,16 @@ describe("shared GraphQL PR reads", () => {
 		expect(query).toHaveBeenCalledTimes(2);
 	});
 
+	it("keeps a branch's \"no PR\" for a minute, and only a forced read sees a PR opened since", async () => {
+		const { readTaskPullRequest } = await import("../github-pr-status");
+		query.mockResolvedValue({ repository: { open: { nodes: [] }, known: null } });
+		expect((await readTaskPullRequest({}, "/repo", "feat/work"))?.pr).toBeNull();
+		query.mockResolvedValue(payload());
+		expect((await readTaskPullRequest({}, "/repo", "feat/work"))?.pr).toBeNull();
+		expect((await readTaskPullRequest({}, "/repo", "feat/work", null, { force: true }))?.pr?.number).toBe(42);
+		expect(query).toHaveBeenCalledTimes(2);
+	});
+
 	it("prefers a new open PR over the saved merged PR", async () => {
 		const { readTaskPullRequest } = await import("../github-pr-status");
 		query.mockResolvedValue({ repository: { open: { nodes: [pr({ number: 43 })] }, known: pr({ state: "MERGED" }) } });

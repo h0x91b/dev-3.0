@@ -27,7 +27,8 @@ async function resolveWatchedPr(
 ): Promise<{ number: number; url: string }> {
 	const branch = (await git.getCurrentBranch(worktree)) ?? task.branchName ?? "";
 	const scope = "Watching follows the open pull request of this task's own branch (a review target is not supported).";
-	const { pr } = await github.findOpenPullRequest(project, worktree, branch, { timeoutMs: PR_WATCH_GH_TIMEOUT_MS });
+	// Forced: the poller's cached "no PR" for this branch outlives a `dev3 pr create` run seconds ago.
+	const { pr } = await github.findOpenPullRequest(project, worktree, branch, { timeoutMs: PR_WATCH_GH_TIMEOUT_MS, force: true });
 	if (!pr) {
 		throw noPr(`No open pull request found for ${branch || "this task"} (or GitHub did not answer in time). ${scope} Open it with \`dev3 pr create\`, or try again.`);
 	}
