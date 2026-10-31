@@ -12,6 +12,7 @@ export * from "./types/prompts";
 export * from "./types/coding-agents";
 export * from "./types/global-settings";
 export * from "./types/model-routing";
+export * from "./types/claude-mods";
 export * from "./types/project";
 export * from "./types/labels-columns";
 export * from "./types/spaces";
