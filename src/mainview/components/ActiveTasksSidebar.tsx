@@ -354,7 +354,7 @@ function ActiveTasksSidebar({
 	// task's OWN project, so this cross-project pool filters correctly.
 	const lineage = useTaskLineage();
 	const resolver: FacetResolver = useMemo(
-		() => buildFacetResolver({ agents, projectById, taskPorts, spaces, t, prNumberFor: (task) => taskPrMap.get(task.id)?.number ?? null, lineage, currentProjectId: project?.id ?? null }),
+		() => buildFacetResolver({ agents, projectById, taskPorts, spaces, t, prNumberFor: (task) => taskPrMap.get(task.id)?.number ?? null, prStateFor: (task) => taskPrMap.get(task.id)?.mergeState?.state ?? null, lineage, currentProjectId: project?.id ?? null }),
 		[agents, projectById, taskPorts, spaces, t, taskPrMap, lineage, project],
 	);
 

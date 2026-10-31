@@ -8,7 +8,7 @@ import { normalizeChildrenValue } from "./taskLineage";
  *
  * The search string is the SINGLE source of truth for both free-text search
  * and structured filtering. A query mixes recognized facet tokens
- * (`label:"Bug Fix" agent:Codex status:review type:coordinator is:attention has:port`) with
+ * (`label:"Bug Fix" agent:Codex status:review type:coordinator is:attention has:port pr:open`) with
  * ordinary free text (`login`). The same parser drives the Kanban filter bar
  * and the Active Tasks sidebar so both surfaces behave identically.
  *
@@ -23,7 +23,7 @@ import { normalizeChildrenValue } from "./taskLineage";
  */
 
 /** Ordered set of recognized facet keys. Extend here to add a facet. */
-export const FACET_KEYS = ["priority", "label", "agent", "status", "type", "space", "children", "is", "has"] as const;
+export const FACET_KEYS = ["priority", "label", "agent", "status", "type", "space", "children", "is", "has", "pr"] as const;
 export type FacetKey = (typeof FACET_KEYS)[number];
 
 /**
@@ -53,6 +53,12 @@ export interface TaskQueryContext {
 	isHibernated: boolean;
 	/** True when the task is kept alive / auto-revived (`is:keepalive`). */
 	isKeptAlive: boolean;
+	/** True when an active task's activity clock went quiet (`is:stalled`, see `isTaskStalled`). */
+	isStalled: boolean;
+	/** True when the task has a current PR, live or sticky (`has:pr`). */
+	hasPr: boolean;
+	/** Lowercased GitHub state of that PR (`open`/`merged`/`closed`), null when unknown (`pr:`). */
+	prState: string | null;
 	/** The task's effective priority level (e.g. "p2"), lowercased. */
 	priorityValue: string;
 	/** Names of every space the task's project belongs to; [] when it is in none.
@@ -117,7 +123,7 @@ const FACET_DEFS: Record<FacetKey, FacetDef> = {
 	is: {
 		key: "is",
 		kind: "flag",
-		flagValues: ["attention", "home", "hidden", "hibernated", "keepalive"],
+		flagValues: ["attention", "home", "hidden", "hibernated", "keepalive", "stalled"],
 		match: (ctx, v) => {
 			if (v === "attention") return ctx.isAttention;
 			// `home` is the computed no-space group, not a space called "Home" —
@@ -126,14 +132,25 @@ const FACET_DEFS: Record<FacetKey, FacetDef> = {
 			if (v === "hidden") return ctx.isHidden;
 			if (v === "hibernated") return ctx.isHibernated;
 			if (v === "keepalive") return ctx.isKeptAlive;
+			if (v === "stalled") return ctx.isStalled;
 			return false;
 		},
 	},
 	has: {
 		key: "has",
 		kind: "flag",
-		flagValues: ["port"],
-		match: (ctx, v) => (v === "port" ? ctx.hasPort : false),
+		flagValues: ["port", "pr"],
+		match: (ctx, v) => {
+			if (v === "port") return ctx.hasPort;
+			if (v === "pr") return ctx.hasPr;
+			return false;
+		},
+	},
+	pr: {
+		key: "pr",
+		kind: "flag",
+		flagValues: ["open", "merged", "closed"],
+		match: (ctx, v) => ctx.prState === v,
 	},
 };
 
@@ -163,7 +180,7 @@ function unescapeDslValue(inner: string): string {
 }
 
 function emptyFacets(): Record<FacetKey, string[]> {
-	return { priority: [], label: [], agent: [], status: [], type: [], space: [], children: [], is: [], has: [] };
+	return { priority: [], label: [], agent: [], status: [], type: [], space: [], children: [], is: [], has: [], pr: [] };
 }
 
 /**

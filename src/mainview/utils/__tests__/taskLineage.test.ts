@@ -56,6 +56,7 @@ function ctxFor(t: Task, currentProjectId: string | null = DEV3.id): TaskQueryCo
 	return {
 		labelNames: [], agentName: null, statusValues: ["todo"], priorityValue: "p3", taskType: "standard",
 		spaceNames: null, hasPort: false, isHidden: false, isHibernated: false, isAttention: false, isKeptAlive: false,
+		isStalled: false, hasPr: false, prState: null,
 		childrenRefs: childrenTokenRefs(t, lineage, PROJECTS, currentProjectId),
 	};
 }
