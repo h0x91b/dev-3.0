@@ -735,3 +735,7 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 
 ## 2026-10-16 — A hibernated rail trades ✓ for ✕ Cancel
 - **Rule/why:** a parked task is one the user walked away from; complete stays in Move to. Rejected ✓+✕ (weak) and the hover-only header ✕. yaml `lifecycle`.
+
+## 2026-10-31 — Epics: a global object with no destination of its own
+- **Rule:** chip above the card title (click filters `epic:`), an Epic row in the detail metadata grid, optional New Task field, management in Settings → Tasks & Board → Epics; a cross-board footnote reuses the lineage notice. Bible §3.
+- **Why:** a nav item or board header button would spend a budget for an occasional job. `decisions/2026/10/31/global-epics.md`.

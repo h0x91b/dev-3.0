@@ -260,7 +260,7 @@ ux_architecture:
         order: ["lifecycle", "identity", "content", "signals", "actions"]
         lifecycle: "The 3px top strip + left rail (TaskCardRail.tsx). Owns ONLY what changes or reports the column: pipeline ring, upright status name, bell count, quick-complete (hibernated: quick-cancel in its place). Clicking the rail opens Move-to. Nothing informational may enter it."
         identity: "One full-width header row above the rail: priority (frozen PriorityBadge), #seq, attempt, agent + config, variant dots, scratch/automation/native marks, dismiss. Full width is deliberate — the agent config string had 182px next to a rail and now has 244px. Never grows past one line; overflow goes to the tooltip."
-        content: "Epic (future), title (3-line clamp), label chips. The only zone allowed to be the card's visual focus. The show-description affordance is an icon on the label row, never its own row."
+        content: "Epic chip, title (3-line clamp), label chips. The only zone allowed to be the card's visual focus. The show-description affordance is an icon on the label row, never its own row."
         signals: "Read-only facts in the segmented bottom bar, sub-grouped git / run / time with 1px dividers between groups. This is where new badges land."
         actions: "A reserved strip at the very bottom of the bar (min-height 36px) so signals can never squeeze actions out. Max 4 visible, rest to the context menu."
       rail_label: "Short uppercase status form, max 8 upright letters (status.rail.* keys per locale; custom columns clipped to 8 chars). Upright means writing-mode: vertical-rl + text-orientation: upright — never rotated 90deg. The full column label lives in the rail's accessible name and tooltip."
