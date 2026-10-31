@@ -92,9 +92,14 @@ describe("pr.watch.add", () => {
 
 	it("caps its gh call, and says watching is for the task's own PR", async () => {
 		await add();
-		expect(vi.mocked(github.findOpenPullRequest).mock.calls[0][3]).toEqual({ timeoutMs: PR_WATCH_GH_TIMEOUT_MS });
+		expect(vi.mocked(github.findOpenPullRequest).mock.calls[0][3]).toEqual({ timeoutMs: PR_WATCH_GH_TIMEOUT_MS, force: true });
 		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: null, isGitHub: true });
 		await expect(add()).rejects.toThrow("review target is not supported");
+	});
+
+	it("forces a fresh PR lookup, so a PR opened seconds ago is not hidden by a cached \"no PR\"", async () => {
+		await add();
+		expect(vi.mocked(github.findOpenPullRequest).mock.calls[0][3]).toMatchObject({ force: true });
 	});
 
 	it("binds the watch to the calling agent only for the caller's own task", async () => {
