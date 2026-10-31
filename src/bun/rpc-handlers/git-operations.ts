@@ -174,6 +174,10 @@ function monitorGitPane(paneId: string | null, task: Task, projectId: string, op
  * a button runs against is the ref the git bar named.
  */
 function resolveCompareRef(project: Project, baseBranch: string, explicit?: string): Promise<string> {
+	// The project's own configured ref is checked; a ref the user picked for this task is not.
+	if (explicit && explicit === project.defaultCompareRef) {
+		return git.resolveConfiguredCompareRef(project.path, baseBranch, explicit);
+	}
 	if (explicit) return Promise.resolve(explicit);
 	// A task-specific base branch is local by definition — it was forked from a
 	// branch in this repo, and origin/<it> usually does not exist at all.

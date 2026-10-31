@@ -1590,6 +1590,8 @@ const COMPARE_REF_CACHE_TTL_MS = 10 * 60_000;
 /** Test-only: clear the detectDefaultCompareRef cache. */
 export function _resetCompareRefCache(): void {
 	compareRefCache.clear();
+	configuredCompareRefCache.clear();
+	warnedMissingCompareRefs.clear();
 }
 
 export async function detectDefaultCompareRef(
@@ -1604,6 +1606,45 @@ export async function detectDefaultCompareRef(
 	const promise = detectDefaultCompareRefUncached(projectPath, baseBranch);
 	compareRefCache.set(key, { at: Date.now(), promise });
 	promise.catch(() => compareRefCache.delete(key));
+	return promise;
+}
+
+// A configured compare ref is checked on the same polled path, so the verdict is
+// cached too — briefly, so a ref that a fetch brings in is picked up within a minute.
+const configuredCompareRefCache = new Map<string, { at: number; promise: Promise<string> }>();
+const CONFIGURED_COMPARE_REF_CACHE_TTL_MS = 60_000;
+const warnedMissingCompareRefs = new Set<string>();
+
+/**
+ * A compare ref the project configures (`defaultCompareRef`, or the `origin/<base>`
+ * that `defaultCompareRefMode: "remote"` implies) when the repo actually has it,
+ * otherwise the auto-detected default. Trusting a missing one made every status
+ * poll and merge check fail forever (`origin/master` in a repo that only has main).
+ */
+export async function resolveConfiguredCompareRef(
+	projectPath: string,
+	baseBranch: string,
+	configured: string,
+): Promise<string> {
+	const key = `${projectPath}\0${baseBranch}\0${configured}`;
+	const cached = configuredCompareRefCache.get(key);
+	if (cached && Date.now() - cached.at < CONFIGURED_COMPARE_REF_CACHE_TTL_MS) {
+		return cached.promise;
+	}
+	const promise = (async () => {
+		if (await refExists(projectPath, configured)) return configured;
+		const fallback = await resolveCompareRef(projectPath, baseBranch);
+		const warnKey = `${projectPath}\0${configured}`;
+		if (!warnedMissingCompareRefs.has(warnKey)) {
+			warnedMissingCompareRefs.add(warnKey);
+			log.warn("Configured compare ref does not exist, using the detected default", {
+				projectPath, configured, fallback,
+			});
+		}
+		return fallback;
+	})();
+	configuredCompareRefCache.set(key, { at: Date.now(), promise });
+	promise.catch(() => configuredCompareRefCache.delete(key));
 	return promise;
 }
 

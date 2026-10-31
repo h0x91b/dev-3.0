@@ -111,6 +111,8 @@ vi.mock("../git", () => ({
 	// every caller: explicit ref wins, otherwise git decides.
 	resolveCompareRef: vi.fn(async (path: string, baseBranch: string, explicit?: string) =>
 		explicit || git.detectDefaultCompareRef(path, baseBranch)),
+	resolveConfiguredCompareRef: vi.fn(async (path: string, baseBranch: string, configured: string) =>
+		await git.refExists(path, configured) ? configured : git.resolveCompareRef(path, baseBranch)),
 	isForeignBranchRef: vi.fn().mockResolvedValue(false),
 	localBranchNameForRef: vi.fn(async (_path: string, ref: string) => ref.replace(/^origin\//, "")),
 	refAuthorAndSubject: vi.fn().mockResolvedValue({ author: null, subject: null }),
@@ -10736,6 +10738,26 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		const prompt = pasteCalls[0].text;
 		expect(prompt).toContain("git merge-base upstream/release HEAD");
 		expect(prompt).not.toContain("origin/main");
+	});
+
+	it("falls back to the detected ref when the configured compareRef is missing", async () => {
+		const project = makeProject({ defaultCompareRef: "origin/master" });
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude", extraEnv: {} });
+		(git.refExists as any).mockImplementation(async (_path: string, ref: string) => ref !== "origin/master");
+		const server = makeSplitMock(["%10"]);
+
+		await runLaunch(
+			handlers.spawnBugHuntersInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default", count: 1 }),
+			1,
+		);
+
+		const prompt = server.sends.filter((send) => send.text !== "")[0].text;
+		expect(prompt).toContain("git merge-base origin/main HEAD");
+		expect(prompt).not.toContain("origin/master");
+		(git.refExists as any).mockResolvedValue(true);
 	});
 
 	it("uses local base branch when defaultCompareRefMode is 'local'", async () => {

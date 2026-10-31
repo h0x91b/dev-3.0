@@ -6,12 +6,14 @@ import { homedir, tmpdir } from "node:os";
 // Mock paths + git so repo-config resolves against tmp dirs and a stubbed git
 const MOCK_DEV3_HOME = join(tmpdir(), `dev3-home-test-${process.pid}`);
 vi.mock("../paths", () => ({ DEV3_HOME: join(tmpdir(), `dev3-home-test-${process.pid}`) }));
-const { detectDefaultCompareRef } = vi.hoisted(() => ({
+const { detectDefaultCompareRef, resolveConfiguredCompareRef } = vi.hoisted(() => ({
 	detectDefaultCompareRef: vi.fn().mockResolvedValue("origin/main"),
+	resolveConfiguredCompareRef: vi.fn(async (_path: string, _base: string, configured: string) => configured),
 }));
 
 vi.mock("../git", () => ({
 	detectDefaultCompareRef,
+	resolveConfiguredCompareRef,
 	projectSlug: (p: string) => p.replace(/^\//, "").replaceAll("/", "-"),
 }));
 
@@ -358,6 +360,22 @@ describe("resolveProjectConfig", () => {
 		expect(resolved.peerReviewEnabled).toBe(true);
 		expect(resolved.clonePaths).toEqual([]);
 		expect(detectDefaultCompareRef).toHaveBeenCalledWith(TEST_DIR, "main");
+	});
+
+	it("replaces a configured compare ref the repo does not have with the detected one", async () => {
+		resolveConfiguredCompareRef.mockImplementationOnce(async () => "origin/main");
+		const project = makeProject({ defaultCompareRef: "origin/master" });
+		const resolved = await resolveProjectConfig(project);
+		expect(resolveConfiguredCompareRef).toHaveBeenCalledWith(project.path, "main", "origin/master");
+		expect(resolved.defaultCompareRef).toBe("origin/main");
+	});
+
+	it("validates the origin/<base> that defaultCompareRefMode remote implies", async () => {
+		resolveConfiguredCompareRef.mockImplementationOnce(async () => "main");
+		mkdirSync(join(TEST_DIR, ".dev3"), { recursive: true });
+		writeFileSync(join(TEST_DIR, ".dev3", "config.json"), JSON.stringify({ defaultCompareRefMode: "remote" }));
+		const resolved = await resolveProjectConfig(makeProject({ defaultCompareRef: undefined }));
+		expect(resolved.defaultCompareRef).toBe("main");
 	});
 
 	it("respects project-level defaultCompareRef when no file configs set it", async () => {

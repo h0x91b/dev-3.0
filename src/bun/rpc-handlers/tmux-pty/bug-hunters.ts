@@ -39,7 +39,7 @@ export async function resolveBugHunterCompareRef(task: Task, project: Project): 
 	const taskBaseBranch = task.baseBranch || projectBaseBranch;
 	// Task forked from a non-default base → compare against that local branch.
 	if (taskBaseBranch !== projectBaseBranch) return taskBaseBranch;
-	if (project.defaultCompareRef) return project.defaultCompareRef;
+	if (project.defaultCompareRef) return git.resolveConfiguredCompareRef(project.path, taskBaseBranch, project.defaultCompareRef);
 	if (project.defaultCompareRefMode === "local") return taskBaseBranch;
 	// Nothing configured: ask git rather than assume a remote, which would send the
 	// hunters at `git merge-base origin/<base> HEAD` in a repo that has no origin.

@@ -279,31 +279,32 @@ async function applyConfigCascade(
 	resolved.env = Object.keys(envMerged).length > 0 ? envMerged : undefined;
 
 	// defaultCompareRef: explicit value wins; else derive from mode + base branch;
-	// else auto-detect from git (resilient to a missing/broken folder). Merge raw
-	// layer values low→high so the highest-priority layer wins, matching the cascade.
+	// else auto-detect from git. A configured ref the repo lacks falls back to the
+	// detected one. Merge raw layer values low→high so the highest-priority layer wins.
 	const merged: Dev3RepoConfig = {};
 	for (let i = layers.length - 1; i >= 0; i--) Object.assign(merged, layers[i].config ?? {});
-	if (merged.defaultCompareRef !== undefined) {
-		resolved.defaultCompareRef = merged.defaultCompareRef;
-	} else if (merged.defaultCompareRefMode !== undefined) {
-		resolved.defaultCompareRef = merged.defaultCompareRefMode === "local"
-			? resolved.defaultBaseBranch
-			: `origin/${resolved.defaultBaseBranch}`;
-	} else if (resolved.defaultCompareRef === undefined) {
-		// A deleted project folder (or any git/spawn failure) must not reject — one broken
-		// project would otherwise blow up the whole project list (Promise.all in getProjects).
-		if (!existsSync(compareRefBasePath)) {
-			resolved.defaultCompareRef = resolved.defaultBaseBranch;
-		} else {
-			try {
-				resolved.defaultCompareRef = await git.detectDefaultCompareRef(compareRefBasePath, resolved.defaultBaseBranch);
-			} catch (err) {
-				log.warn("Failed to detect default compare ref, falling back to base branch", {
-					path: compareRefBasePath,
-					error: String(err),
-				});
-				resolved.defaultCompareRef = resolved.defaultBaseBranch;
-			}
+	const configuredCompareRef = merged.defaultCompareRef !== undefined
+		? merged.defaultCompareRef
+		: merged.defaultCompareRefMode !== undefined
+			? merged.defaultCompareRefMode === "local" ? resolved.defaultBaseBranch : `origin/${resolved.defaultBaseBranch}`
+			: resolved.defaultCompareRef;
+	// A deleted project folder (or any git/spawn failure) must not reject — one broken
+	// project would otherwise blow up the whole project list (Promise.all in getProjects).
+	if (!existsSync(compareRefBasePath)) {
+		resolved.defaultCompareRef = configuredCompareRef ?? resolved.defaultBaseBranch;
+	} else {
+		try {
+			resolved.defaultCompareRef = configuredCompareRef === undefined
+				? await git.detectDefaultCompareRef(compareRefBasePath, resolved.defaultBaseBranch)
+				: configuredCompareRef === resolved.defaultBaseBranch
+					? configuredCompareRef
+					: await git.resolveConfiguredCompareRef(compareRefBasePath, resolved.defaultBaseBranch, configuredCompareRef);
+		} catch (err) {
+			log.warn("Failed to detect default compare ref, falling back to base branch", {
+				path: compareRefBasePath,
+				error: String(err),
+			});
+			resolved.defaultCompareRef = configuredCompareRef ?? resolved.defaultBaseBranch;
 		}
 	}
 
