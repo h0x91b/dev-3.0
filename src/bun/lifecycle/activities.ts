@@ -54,6 +54,7 @@ import {
 import { activitiesFor } from "./machine";
 import { lifecycleStateFromTask } from "./state";
 import { hasMergeOfferHold, mergeOfferHeld, runPrWatches } from "../pr-watch-runner";
+import { branchPrWatches, pinnedPrNumbers } from "../../shared/pr-watch";
 
 // Bound PR reads so a slow GitHub connection cannot stall status updates.
 export const PR_DETECTION_TIMEOUT_MS = 15_000;
@@ -438,6 +439,7 @@ export function _resetPRPollerState(): void {
 		ticks: 0, tasksPolled: 0, taskTimeouts: 0, watchdogRestarts: 0,
 	});
 	prTaskInFlight.clear();
+	pinnedPrReadFailures.clear();
 }
 
 interface PolledPRStatus {
@@ -518,7 +520,7 @@ async function pollTaskPrStatus(
 	// still needs the exact PR fetched by number.
 	if (unpushed === -1 && task.prNumber == null) return NO_PR;
 	// A forced refresh, an active pr watch or a pending merge-offer hold keeps the full read of the saved PR.
-	const savedMerged = !force && (task.prWatches?.length ?? 0) === 0 && !hasMergeOfferHold(task.id)
+	const savedMerged = !force && branchPrWatches(task.prWatches).length === 0 && !hasMergeOfferHold(task.id)
 		&& savedPrMergedFromBranch(task, branchName);
 
 	trace.stage = "github-read";
@@ -531,9 +533,55 @@ async function pollTaskPrStatus(
 	return { ...await reportTaskPrStatus(project, task, branchName, pr, suggestCompletion, result.checkedAt, false, trace), checkedAt: result.checkedAt };
 }
 
+/** Failed reads of one followed PR tolerated at the normal cadence before backing off. */
+export const PINNED_PR_READ_FAILURES_BEFORE_BACKOFF = 3;
+const PINNED_PR_BACKOFF_BASE_MS = 5 * 60_000;
+const PINNED_PR_BACKOFF_MAX_MS = 6 * 60 * 60_000;
+// `${taskId}#${prNumber}` -> consecutive failed reads and when the last one happened.
+const pinnedPrReadFailures = new Map<string, { failures: number; at: number }>();
+
+/** How long a followed PR is left alone after `failures` failed reads in a row; 0 = read it now. */
+export function pinnedPrBackoffMs(failures: number): number {
+	const over = failures - PINNED_PR_READ_FAILURES_BEFORE_BACKOFF;
+	return over < 0 ? 0 : Math.min(PINNED_PR_BACKOFF_BASE_MS * 2 ** over, PINNED_PR_BACKOFF_MAX_MS);
+}
+
+/**
+ * Read every PR the task follows by `--pr` and judge its pinned watches. These PRs are
+ * not the task's own: nothing here touches its PR identity, badge or completion offer.
+ * A PR that keeps failing to read (lost access, gone) backs off instead of costing a read a minute.
+ */
+async function pollPinnedPrWatches(project: Project, task: Task): Promise<void> {
+	const worktree = task.worktreePath;
+	if (!worktree) return;
+	await Promise.all(pinnedPrNumbers(task.prWatches).map(async (prNumber) => {
+		const key = `${task.id}#${prNumber}`;
+		const failed = pinnedPrReadFailures.get(key);
+		if (failed && Date.now() - failed.at < pinnedPrBackoffMs(failed.failures)) return;
+		const result = await github.readTaskPullRequest(project, worktree, "", prNumber, { timeoutMs: PR_DETECTION_TIMEOUT_MS });
+		const pr = result?.pr;
+		if (!pr || pr.number !== prNumber) {
+			const failures = (failed?.failures ?? 0) + 1;
+			pinnedPrReadFailures.set(key, { failures, at: Date.now() });
+			if (failures === PINNED_PR_READ_FAILURES_BEFORE_BACKOFF) {
+				log.warn("Followed PR keeps failing to read; backing off", { taskId: task.id.slice(0, 8), pr: prNumber, nextCheckMin: pinnedPrBackoffMs(failures) / 60_000 });
+			}
+			return;
+		}
+		pinnedPrReadFailures.delete(key);
+		const sample = {
+			number: prNumber,
+			state: typeof pr.state === "string" ? pr.state.toUpperCase() : null,
+			headRefOid: typeof pr.headRefOid === "string" ? pr.headRefOid : null,
+			checks: normalizeChecks(pr.statusCheckRollup),
+		};
+		startPrWatchRun(task.id, runPrWatches(project, task.id, sample, typeof pr.url === "string" ? pr.url : "", result.checkedAt, false, prNumber));
+	}));
+}
+
 /** Watch delivery types into a pane and must never hold the poll tick, so it runs detached. */
-function startPrWatchRun(project: Project, taskId: string, sample: Parameters<typeof runPrWatches>[2], prUrl: string, checkedAt: number, mergeCoversHead: boolean): void {
-	void runPrWatches(project, taskId, sample, prUrl, checkedAt, mergeCoversHead).catch((err) => {
+function startPrWatchRun(taskId: string, run: Promise<void>): void {
+	void run.catch((err) => {
 		log.warn("PR watch evaluation failed", { taskId: taskId.slice(0, 8), error: String(err) });
 	});
 }
@@ -627,9 +675,9 @@ export async function reportTaskPrStatus(
 	});
 	trace.stage = "merge-covers-head";
 	const mergeCoversHead = matchesBranch && mergeState.state === "MERGED" ? await mergedPrCoversHead(project, task, pr) : undefined;
-	if (task.prWatches?.length) {
+	if (branchPrWatches(task.prWatches).length > 0) {
 		const headRefOid = typeof pr.headRefOid === "string" ? pr.headRefOid : null;
-		startPrWatchRun(project, task.id, { number: prNumber, state: mergeState.state, headRefOid, checks }, prUrl ?? "", checkedAt, mergeCoversHead === true);
+		startPrWatchRun(task.id, runPrWatches(project, task.id, { number: prNumber, state: mergeState.state, headRefOid, checks }, prUrl ?? "", checkedAt, mergeCoversHead === true));
 	}
 	// Fresh read: the poll's snapshot may predate a watch added since.
 	trace.stage = "merge-offer";
@@ -649,6 +697,16 @@ export async function reportTaskPrStatus(
 }
 
 
+/** Does the task's own branch PR get polled (detection, badge, merge offer)? */
+function ownsPrPoll(project: Project, task: Task): boolean {
+	return activitiesFor(lifecycleStateFromTask(project, task)).includes("prWatch");
+}
+
+/** A live task that follows another PR with `dev3 pr watch --pr` is polled for it, PR of its own or not. */
+function followsPinnedPrs(task: Task): boolean {
+	return !!task.worktreePath && !TERMINAL_TASK_STATUSES.has(task.status) && pinnedPrNumbers(task.prWatches).length > 0;
+}
+
 /**
  * Poll one task under {@link PR_TASK_POLL_TIMEOUT_MS}. A timed-out poll keeps
  * running detached; until it settles the task is skipped rather than stacked.
@@ -664,7 +722,11 @@ async function pollTaskWithinDeadline(project: Project, task: Task, suggestCompl
 	const trace = { stage: "start", startedAt: Date.now() };
 	if (tick) tick.taskId = task.id;
 	prTaskInFlight.set(task.id, trace);
-	const poll = pollTaskPrStatus(project, task, suggestCompletion, false, trace);
+	const pinned = pollPinnedPrWatches(project, task).catch((err) => {
+		log.warn("Pinned PR watch read failed", { taskId: task.id.slice(0, 8), error: String(err) });
+	});
+	const own = ownsPrPoll(project, task) ? pollTaskPrStatus(project, task, suggestCompletion, false, trace) : Promise.resolve(null);
+	const poll = Promise.all([own, pinned]).then(([result]) => result);
 	const settle = () => { if (prTaskInFlight.get(task.id) === trace) prTaskInFlight.delete(task.id); };
 	poll.then(settle, settle);
 	prTick.tasksPolled++;
@@ -703,9 +765,7 @@ export async function checkOpenPRsForPromotion(tick?: PrTickInFlight): Promise<v
 		// Detection remains limited to review statuses, but a task with a persisted
 		// PR identity stays sticky through every non-terminal status so CI/review
 		// state remains visible while an agent fixes reviewer feedback.
-		const candidates = tasks.filter((task) => (
-			activitiesFor(lifecycleStateFromTask(project, task)).includes("prWatch")
-		));
+		const candidates = tasks.filter((task) => ownsPrPoll(project, task) || followsPinnedPrs(task));
 
 		if (candidates.length === 0) continue;
 

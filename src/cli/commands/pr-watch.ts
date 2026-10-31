@@ -3,11 +3,11 @@ import { exitError, exitUsage } from "../output";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 import { sendRequest } from "../socket-client";
-import { CLI_EXIT_CODE_PR_WATCH_NO_PR } from "../../shared/cli-exit-codes";
-import { PR_WATCH_NO_PR_PREFIX, PR_WATCH_UNTIL, type PrWatchUntil } from "../../shared/pr-watch";
+import { CLI_EXIT_CODE_PR_WATCH_NO_PR, CLI_EXIT_CODE_PR_WATCH_PR_FINISHED } from "../../shared/cli-exit-codes";
+import { PR_WATCH_NO_PR_PREFIX, PR_WATCH_PR_FINISHED_PREFIX, PR_WATCH_UNTIL, type PrWatchUntil } from "../../shared/pr-watch";
 import { requireValuelessFlag } from "./pr";
 
-const WATCH_USAGE = "Usage: dev3 pr watch [--until ci|merged] [--pr <N>] [--task <id>] [--project <id>] | dev3 pr watch --off | dev3 pr watch --list";
+const WATCH_USAGE = "Usage: dev3 pr watch [--until ci|merged] [--pr <N>] [--task <id>] [--project <id>] | dev3 pr watch --off [--pr <N>] | dev3 pr watch --list";
 
 /** Longer than the app's 15 s cap on each `gh` call it makes while subscribing. */
 const SUBSCRIBE_TIMEOUT_MS = 45_000;
@@ -18,7 +18,8 @@ const WATCH_SUMMARY: Record<PrWatchUntil, string> = {
 };
 
 /**
- * `dev3 pr watch` — subscribe this task's agent to its PR. The app stores the
+ * `dev3 pr watch` — subscribe this task's agent to its PR, or with `--pr` to any open PR
+ * of the repository. The app stores the
  * subscription and the command returns at once; the app's own PR poll types ONE
  * message into the agent when the event happens, so nobody has to poll `gh`.
  */
@@ -27,9 +28,8 @@ export async function handlePrWatch(args: ParsedArgs, socketPath: string, contex
 	const off = requireValuelessFlag(args, "off");
 	const list = requireValuelessFlag(args, "list");
 	if (off && list) exitUsage(`--off and --list cannot be combined.\n${WATCH_USAGE}`);
-	if ((off || list) && (args.flags.until !== undefined || args.flags.pr !== undefined)) {
-		exitUsage(`--off and --list take no --until or --pr.\n${WATCH_USAGE}`);
-	}
+	if ((off || list) && args.flags.until !== undefined) exitUsage(`--off and --list take no --until.\n${WATCH_USAGE}`);
+	if (list && args.flags.pr !== undefined) exitUsage(`--list takes no --pr; it prints every watch.\n${WATCH_USAGE}`);
 
 	const until = (args.flags.until ?? "ci") as PrWatchUntil;
 	if (!(PR_WATCH_UNTIL as readonly string[]).includes(until)) {
@@ -48,17 +48,20 @@ export async function handlePrWatch(args: ParsedArgs, socketPath: string, contex
 	if (projectId) params.projectId = projectId;
 
 	if (off || list) {
+		if (prNumber !== undefined) params.prNumber = prNumber;
 		const resp = await sendRequest(socketPath, off ? "pr.watch.off" : "pr.watch.list", params);
 		if (!resp.ok) exitError(resp.error || "Failed to reach the app");
 		if (off) {
 			const { removed } = resp.data as { removed: number };
-			process.stdout.write(removed > 0 ? `Removed ${removed} PR watch${removed === 1 ? "" : "es"}.\n` : "No PR watches on this task.\n");
+			const scope = prNumber === undefined ? "" : ` on PR #${prNumber}`;
+			process.stdout.write(removed > 0 ? `Removed ${removed} PR watch${removed === 1 ? "" : "es"}${scope}.\n` : `No PR watches${scope} on this task.\n`);
 			return;
 		}
-		const { watches } = resp.data as { watches: Array<{ until: string; prNumber: number; headSha: string; createdAt: string }> };
+		const { watches } = resp.data as { watches: Array<{ until: string; prNumber: number; headSha: string; createdAt: string; pinned?: boolean }> };
 		if (watches.length === 0) process.stdout.write("No PR watches on this task.\n");
 		for (const watch of watches) {
-			process.stdout.write(`PR #${watch.prNumber}  until ${watch.until}  head ${watch.headSha}  since ${watch.createdAt}\n`);
+			const followed = watch.pinned ? "  (followed, not this task's PR)" : "";
+			process.stdout.write(`PR #${watch.prNumber}  until ${watch.until}  head ${watch.headSha}  since ${watch.createdAt}${followed}\n`);
 		}
 		return;
 	}
@@ -79,8 +82,12 @@ export async function handlePrWatch(args: ParsedArgs, socketPath: string, contex
 		if (error.startsWith(PR_WATCH_NO_PR_PREFIX)) {
 			exitError(error.slice(PR_WATCH_NO_PR_PREFIX.length), undefined, CLI_EXIT_CODE_PR_WATCH_NO_PR);
 		}
+		if (error.startsWith(PR_WATCH_PR_FINISHED_PREFIX)) {
+			exitError(error.slice(PR_WATCH_PR_FINISHED_PREFIX.length), undefined, CLI_EXIT_CODE_PR_WATCH_PR_FINISHED);
+		}
 		exitError(error);
 	}
-	const data = resp.data as { prNumber: number };
-	process.stdout.write(`Watching PR #${data.prNumber} until ${WATCH_SUMMARY[until]} — dev3 will message this agent. No need to poll gh.\n`);
+	const data = resp.data as { prNumber: number; pinned?: boolean };
+	const whose = data.pinned ? " (not this task's own PR)" : "";
+	process.stdout.write(`Watching PR #${data.prNumber}${whose} until ${WATCH_SUMMARY[until]} — dev3 will message this agent. No need to poll gh.\n`);
 }
