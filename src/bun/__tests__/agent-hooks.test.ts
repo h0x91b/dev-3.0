@@ -454,43 +454,47 @@ describe("buildCodexHooks", () => {
 
 describe("getAgentHookTargetStatus", () => {
 	it.each([
-		["SessionStart", "review-by-user", true, "in-progress"],
-		["UserPromptSubmit", "in-progress", false, "in-progress"],
-		["PreToolUse", "user-questions", false, "in-progress"],
-		["PostToolUse", "user-questions", false, "in-progress"],
-		["PermissionRequest", "in-progress", false, "user-questions"],
-		["Stop", "in-progress", false, "review-by-user"],
-		["Stop", "in-progress", true, "review-by-ai"],
-		["Stop", "review-by-ai", true, "review-by-user"],
-	] as const)("maps %s from %s (auto-review=%s)", (event, current, autoReview, expected) => {
-		expect(getAgentHookTargetStatus(event, current, autoReview)).toBe(expected);
+		["SessionStart", "review-by-user", true, null, "in-progress"],
+		["UserPromptSubmit", "in-progress", false, null, "in-progress"],
+		["PreToolUse", "user-questions", false, null, "in-progress"],
+		["PostToolUse", "user-questions", false, null, "in-progress"],
+		["PermissionRequest", "in-progress", false, null, "user-questions"],
+		["Stop", "in-progress", false, null, "review-by-user"],
+		["Stop", "in-progress", true, null, "review-by-ai"],
+		["Stop", "review-by-ai", true, null, "review-by-user"],
+		// #2127: these roles leave no diff of their own, so automatic review skips them.
+		["Stop", "in-progress", true, "coordinator", "review-by-user"],
+		["Stop", "in-progress", true, "pr-review", "review-by-user"],
+		["Stop", "in-progress", true, "board-cleanup", "review-by-user"],
+	] as const)("maps %s from %s (auto-review=%s, type=%s)", (event, current, autoReview, taskType, expected) => {
+		expect(getAgentHookTargetStatus(event, current, getPrimaryStopTarget(autoReview, taskType))).toBe(expected);
 	});
 
 	it("preserves AI review while its agent is working", () => {
-		expect(getAgentHookTargetStatus("PreToolUse", "review-by-ai", true)).toBeNull();
+		expect(getAgentHookTargetStatus("PreToolUse", "review-by-ai", "review-by-ai")).toBeNull();
 	});
 
 	// A scratch task launches parked in user-questions with no prompt. Codex
 	// fires SessionStart at startup, which must not claim the task is working —
 	// only a real prompt may.
 	it("leaves a task parked in user-questions when the session starts", () => {
-		expect(getAgentHookTargetStatus("SessionStart", "user-questions", false)).toBeNull();
+		expect(getAgentHookTargetStatus("SessionStart", "user-questions", "review-by-user")).toBeNull();
 	});
 
 	it("resumes the remembered status when the session starts after an approval", () => {
-		expect(getAgentHookTargetStatus("SessionStart", "user-questions", false, "in-progress"))
+		expect(getAgentHookTargetStatus("SessionStart", "user-questions", "review-by-user", "in-progress"))
 			.toBe("in-progress");
 	});
 
 	it.each(["todo", "user-questions", "review-by-user"] as const)(
 		"does not overwrite %s when a turn stops",
 		(status) => {
-			expect(getAgentHookTargetStatus("Stop", status, true)).toBeNull();
+			expect(getAgentHookTargetStatus("Stop", status, "review-by-ai")).toBeNull();
 		},
 	);
 
 	it.each(["completed", "cancelled"] as const)("never reopens terminal status %s", (status) => {
-		expect(getAgentHookTargetStatus("UserPromptSubmit", status, true)).toBeNull();
+		expect(getAgentHookTargetStatus("UserPromptSubmit", status, "review-by-ai")).toBeNull();
 	});
 });
 
@@ -1526,8 +1530,8 @@ describe("getAgentHookTargetStatus on a To Do task", () => {
 	// An agent that outlived a reset must never start the fresh card again.
 	it.each(["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop", "Interrupt", "SessionEnd"] as const)(
 		"%s → no move", (event) => {
-			expect(getAgentHookTargetStatus(event, "todo", true)).toBeNull();
-			expect(getAgentHookTargetStatus(event, "todo", false)).toBeNull();
+			expect(getAgentHookTargetStatus(event, "todo", "review-by-ai")).toBeNull();
+			expect(getAgentHookTargetStatus(event, "todo", "review-by-user")).toBeNull();
 		},
 	);
 });

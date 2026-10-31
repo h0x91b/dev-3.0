@@ -1,4 +1,5 @@
 import type { TaskStatus } from "./task-status";
+import type { TaskType } from "./task-type";
 
 // ---- Column Agents ----
 
@@ -12,8 +13,13 @@ export interface ColumnAgentConfig {
 export const DEFAULT_REVIEW_AGENT_ID = "builtin-claude";
 export const DEFAULT_REVIEW_CONFIG_ID = "claude-auto-opus5-xhigh";
 
-export function getPrimaryStopTarget(autoReviewEnabled?: boolean): TaskStatus {
-	return autoReviewEnabled ? "review-by-ai" : "review-by-user";
+/** Roles whose turns leave no diff of their own to review: a coordinator writes no code, a pr-review task reviews someone else's branch (#2127). */
+const AUTO_REVIEW_EXEMPT_TYPES: ReadonlySet<TaskType> = new Set(["coordinator", "pr-review", "board-cleanup"]);
+
+/** Where the primary agent's turn ends. Every harness's Stop hook routes through this. */
+export function getPrimaryStopTarget(autoReviewEnabled: boolean | undefined, taskType?: TaskType | null): TaskStatus {
+	const exempt = taskType != null && AUTO_REVIEW_EXEMPT_TYPES.has(taskType);
+	return autoReviewEnabled && !exempt ? "review-by-ai" : "review-by-user";
 }
 
 /**

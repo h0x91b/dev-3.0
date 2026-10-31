@@ -19,6 +19,7 @@
  */
 
 import type { AgentFamily, Task } from "../shared/types";
+import { getPrimaryStopTarget } from "../shared/types";
 import { createLogger } from "./logger";
 import { getAgentAdapter } from "../shared/agent-adapters/registry";
 import { writeClaudeHooks } from "../shared/agent-hooks";
@@ -55,7 +56,7 @@ export async function refreshClaudeHooksForTask(task: Task): Promise<void> {
 
 		const project = await getProject(task.projectId);
 		const { written } = writeClaudeHooks(task.worktreePath, {
-			stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
+			stopTarget: getPrimaryStopTarget(project.autoReviewEnabled, task.taskType),
 		});
 		if (written) {
 			log.info("Claude hooks were missing before a prompt and got reinstalled", {

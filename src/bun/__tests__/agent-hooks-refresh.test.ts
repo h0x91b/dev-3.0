@@ -51,6 +51,13 @@ describe("refreshClaudeHooksForTask", () => {
 		expect(writeClaudeHooks).toHaveBeenCalledWith("/tmp/worktree", { stopTarget: "review-by-ai" });
 	});
 
+	// #2127: a task promoted to coordinator mid-session gets its Stop target fixed on the next prompt.
+	it("keeps a coordinator task out of automatic AI review", async () => {
+		vi.mocked(getProject).mockResolvedValue({ id: "project-1", autoReviewEnabled: true } as Project);
+		await refreshClaudeHooksForTask(task({ taskType: "coordinator" }));
+		expect(writeClaudeHooks).toHaveBeenCalledWith("/tmp/worktree", { stopTarget: "review-by-user" });
+	});
+
 	it("honours a configuration's baseCommandOverride", async () => {
 		vi.mocked(findConfig).mockReturnValue({ id: "c1", baseCommandOverride: "codex" } as never);
 		await refreshClaudeHooksForTask(task());

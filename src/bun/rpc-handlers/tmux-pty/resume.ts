@@ -1,4 +1,5 @@
 import type { AgentFamily, CodingAgent, PaneSessionEntry, Project, Task } from "../../../shared/types";
+import { getPrimaryStopTarget } from "../../../shared/types";
 import * as data from "../../data";
 import * as pty from "../../pty-server";
 import * as agents from "../../agents";
@@ -330,7 +331,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 					};
 					await ensureAgentTrust(task.worktreePath, project.path, resumeBaseCmd, accountId, task.foreignCode, resumeAgentFamily, paneEnv);
 					resumeCmd = await applyAgentHooksToCommand(task.worktreePath, resumeBaseCmd, resumeCmd, {
-						stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
+						stopTarget: getPrimaryStopTarget(project.autoReviewEnabled, task.taskType),
 						family: resumeAgentFamily,
 					});
 					const scriptPath = dev3TaskTempPath(params.taskId, `resume-pane-${i}.sh`);

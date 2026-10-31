@@ -1008,6 +1008,24 @@ describe("task.agentHook", () => {
 		expect((response.data as Task).status).toBe("review-by-ai");
 	});
 
+	// #2127: a coordinator, an audit and a PR review have no diff of their own to review.
+	it.each(["coordinator", "pr-review", "board-cleanup"] as const)(
+		"keeps a %s task out of automatic AI review on Stop",
+		async (taskType) => {
+			const project = makeProject({ autoReviewEnabled: true });
+			const task = makeTask({ status: "in-progress", taskType });
+			mockAtomicHookUpdate(project, task);
+
+			const response = await handleRequest(makeRequest("task.agentHook", {
+				taskId: task.id,
+				projectId: project.id,
+				event: "Stop",
+			}));
+
+			expect((response.data as Task).status).toBe("review-by-user");
+		},
+	);
+
 	it("moves a review-agent Stop to review-by-user in one atomic mutation", async () => {
 		const project = makeProject({ autoReviewEnabled: true });
 		const task = makeTask({ status: "review-by-ai" });

@@ -1,5 +1,6 @@
 import { assertTaskWorkspacePresent } from "../../task-workspace-guard";
 import type { AgentFamily, ColumnAgentConfig, PermissionMode, Project, Task } from "../../../shared/types";
+import { getPrimaryStopTarget } from "../../../shared/types";
 import * as data from "../../data";
 import * as git from "../../git";
 import * as pty from "../../pty-server";
@@ -496,7 +497,7 @@ export async function launchTaskPty(
 	// Hooks splice a flag after the command's FIRST token, so they must land on the
 	// agent's own command line — applied after the retry wrapper below, `--hook`
 	// went to the wrapper's shell (`zsh --hook …`: "no such option").
-	const stopTarget = project.autoReviewEnabled ? "review-by-ai" : "review-by-user";
+	const stopTarget = getPrimaryStopTarget(project.autoReviewEnabled, task.taskType);
 	tmuxCmd = await applyAgentHooksToCommand(worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget,
 		permissionMode: resolvedPermissionMode,
@@ -785,7 +786,7 @@ export async function launchColumnAgent(
 	};
 	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, launchAccountId, task.foreignCode, resolvedAgentFamily, env);
 	tmuxCmd = await applyAgentHooksToCommand(worktreePath, resolvedBaseCmd, tmuxCmd, {
-		stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
+		stopTarget: getPrimaryStopTarget(project.autoReviewEnabled, task.taskType),
 		permissionMode: resolvedPermissionMode,
 		family: resolvedAgentFamily,
 	});

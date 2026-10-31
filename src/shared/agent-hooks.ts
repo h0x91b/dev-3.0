@@ -347,7 +347,7 @@ export type AgentStatusHookEvent = typeof AGENT_STATUS_HOOK_EVENTS[number];
 export function getAgentHookTargetStatus(
 	event: AgentStatusHookEvent,
 	currentStatus: TaskStatus,
-	autoReviewEnabled: boolean,
+	stopTarget: TaskStatus,
 	resumeStatus?: "in-progress" | "review-by-ai",
 ): TaskStatus | null {
 	// A To Do task has no run for a hook to report on: an agent still alive there
@@ -371,9 +371,7 @@ export function getAgentHookTargetStatus(
 		case "SessionEnd":
 			return null;
 		case "Stop":
-			if (currentStatus === "in-progress") {
-				return autoReviewEnabled ? "review-by-ai" : "review-by-user";
-			}
+			if (currentStatus === "in-progress") return stopTarget;
 			if (currentStatus === "review-by-ai") return "review-by-user";
 			return null;
 	}

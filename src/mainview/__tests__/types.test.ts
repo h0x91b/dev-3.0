@@ -227,7 +227,15 @@ describe("getPrimaryStopTarget", () => {
 
 	it("returns review-by-ai when automatic review is enabled", () => {
 		expect(getPrimaryStopTarget(true)).toBe("review-by-ai");
+		expect(getPrimaryStopTarget(true, null)).toBe("review-by-ai");
 	});
+
+	// #2127: a coordinator, an audit and a review of someone else's PR have no diff to review.
+	it.each(["coordinator", "pr-review", "board-cleanup"] as const)(
+		"skips automatic review for a %s task", (taskType) => {
+			expect(getPrimaryStopTarget(true, taskType)).toBe("review-by-user");
+		},
+	);
 });
 
 // ---- Constants: STATUS_LABELS ----

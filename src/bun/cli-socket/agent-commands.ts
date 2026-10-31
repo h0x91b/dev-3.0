@@ -1,3 +1,4 @@
+import { getPrimaryStopTarget } from "../../shared/types";
 import { AGENT_STATUS_HOOK_EVENTS, getAgentHookTargetStatus, type AgentStatusHookEvent } from "../../shared/agent-hooks";
 import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopFailureError } from "../../shared/agent-stop-failure";
 import { getPushMessage, moveTask, notifyFromCliDesktop, isNotificationSuppressed, pushCliAttention, setFocusMode } from "../rpc-handlers";
@@ -143,7 +144,7 @@ export const agentHandlers: Record<string, Handler> = {
 		);
 		const currentStatus = questionState.resumeStatus && task.status === "user-questions"
 			? questionState.resumeStatus : task.status;
-		let target = getAgentHookTargetStatus(event, currentStatus, project.autoReviewEnabled === true, rememberedResumeStatus);
+		let target = getAgentHookTargetStatus(event, currentStatus, getPrimaryStopTarget(project.autoReviewEnabled, task.taskType), rememberedResumeStatus);
 		if (questionState.pending) target = "user-questions";
 		else if (questionState.resumeStatus && task.status === "user-questions" && event !== "Stop") {
 			target = event === "Interrupt" || event === "SessionEnd" ? "review-by-user" : questionState.resumeStatus;
@@ -252,7 +253,7 @@ export const agentHandlers: Record<string, Handler> = {
 			}
 		}
 		if (harness === "claude") {
-			const target = getAgentHookTargetStatus("UserPromptSubmit", task.status, project.autoReviewEnabled === true);
+			const target = getAgentHookTargetStatus("UserPromptSubmit", task.status, getPrimaryStopTarget(project.autoReviewEnabled, task.taskType));
 			if (target && (task.status !== target || task.customColumnId != null)) {
 				await moveTask({ projectId: project.id, taskId: task.id, newStatus: target, ifStatus: task.status });
 			}
