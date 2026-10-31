@@ -2,7 +2,7 @@ import { Fragment, useState, useRef, useEffect, useLayoutEffect, type Dispatch }
 import { findAgentConfig } from "../../shared/agent-live-models";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
-import type { CodingAgent, DevServerSummary, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
+import type { CodingAgent, DevServerSummary, Epic, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, getAllowedTransitions, getPreparingStageProgress, getTaskTitle, isCoordinatorTask, isTaskDisconnected, projectDisplayName } from "../../shared/types";
 import { earlierPullRequests } from "../../shared/task-pull-requests";
 import { getTaskOpenMode, type AppAction, type Route } from "../state";
@@ -20,6 +20,8 @@ import LabelPicker from "./LabelPicker";
 import PriorityBadge from "./PriorityBadge";
 import VariantDots from "./VariantDots";
 import LineageCluster from "./LineageCluster";
+import EpicChip from "./EpicChip";
+import { useEpics } from "../hooks/useEpics";
 import type { CardLineage } from "../utils/taskLineage";
 import NativeBackendMark from "./NativeBackendMark";
 import ForeignCodeMark from "./ForeignCodeMark";
@@ -90,9 +92,13 @@ interface TaskCardProps {
 	showProjectMark?: boolean;
 	/** Where the task came from and what it created — see LineageCluster. */
 	lineage?: CardLineage;
+	/** Filter the board to an epic; without it the epic chip is plain text. */
+	onFilterByEpic?: (epic: Epic) => void;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, resourceUsage, bellCount = 0, bellReasons, ports, devServer, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo, onOpenUnresolvedComments, onEditDraft, showProjectMark = false, lineage }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, resourceUsage, bellCount = 0, bellReasons, ports, devServer, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo, onOpenUnresolvedComments, onEditDraft, showProjectMark = false, lineage, onFilterByEpic }: TaskCardProps) {
+	const { byId: epicsById } = useEpics();
+	const epic = task.epicId ? epicsById.get(task.epicId) : undefined;
 	const t = useT();
 	const statusColors = useStatusColors();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
@@ -1029,6 +1035,15 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 								title={projectDisplayName(project, t("ops.boardName"))}
 							>
 								{projectDisplayName(project, t("ops.boardName"))}
+							</div>
+						)}
+						{epic && (
+							<div className="mb-1 flex min-w-0">
+								<EpicChip
+									epic={epic}
+									testId="task-card-epic"
+									onClick={onFilterByEpic ? (e) => { e.stopPropagation(); onFilterByEpic(epic); } : undefined}
+								/>
 							</div>
 						)}
 						<div

@@ -1335,8 +1335,12 @@ export const taskLifecycleHandlers = {
 	openQuickShell,
 	// A GUI create is the user's by definition; only the CLI socket records a parent.
 	// A picked epic is re-checked here: the picker may be stale, and an archived epic takes no new work.
-	createTask: async ({ origin: _origin, epicId, ...params }: Parameters<typeof createTask>[0]) =>
-		createTask({ ...params, epicId: await epicForNewTask({ epic: epicId, creator: null }) }),
+	// The push lets every window's epic counts see the new member; a plain To Do create sends none.
+	createTask: async ({ origin: _origin, epicId, ...params }: Parameters<typeof createTask>[0]) => {
+		const task = await createTask({ ...params, epicId: await epicForNewTask({ epic: epicId, creator: null }) });
+		if (task.epicId) getPushMessage()?.("taskUpdated", { projectId: task.projectId, task });
+		return task;
+	},
 	moveTask,
 	debugEmitTaskSound,
 	cancelTaskPreparation,

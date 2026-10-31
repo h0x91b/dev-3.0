@@ -7,8 +7,9 @@ import type { CliContext } from "../context";
 import type { ParsedArgs } from "../args";
 import type { Task, CliResponse } from "../../shared/types";
 import { DRAFT_TASK_ACTIVATION_ERROR, TASK_REF_UNRESOLVED_PREFIX } from "../../shared/types";
-import { CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED, CLI_EXIT_CODE_RESET_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT } from "../../shared/cli-exit-codes";
+import { CLI_EXIT_CODE_EPIC_CREATE_FORBIDDEN, CLI_EXIT_CODE_EPIC_REF_INVALID, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED, CLI_EXIT_CODE_RESET_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT } from "../../shared/cli-exit-codes";
 import { LAUNCH_PREPARATION_REPORT_BUDGET_MS } from "../../shared/launch-preparation";
+import { handleEpic } from "../commands/epic";
 
 vi.mock("../stdin", () => ({
 	readStdin: vi.fn(),
@@ -2480,5 +2481,52 @@ describe("task open", () => {
 	it("exits with a usage error when no task can be resolved", async () => {
 		await expect(handleTask("open", args([]), SOCKET, null)).rejects.toThrow(/EXIT_/);
 		expect(mockSend).not.toHaveBeenCalled();
+	});
+});
+
+describe("epic flags", () => {
+	const created = { ...FAKE_TASK, epicId: "epicpay1-0000" };
+
+	it("task create sends --epic and --no-epic and refuses both at once", async () => {
+		mockSend.mockResolvedValue(okResp(created));
+		await handleTask("create", args([], { title: "New", epic: "Payments v2" }), SOCKET, CTX);
+		expect(mockSend.mock.calls[0]![2]).toMatchObject({ title: "New", epic: "Payments v2", sourceTaskId: CTX.taskId });
+
+		mockSend.mockClear();
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+		await handleTask("create", args([], { title: "New", "no-epic": "true" }), SOCKET, CTX);
+		expect(mockSend.mock.calls[0]![2]).toMatchObject({ noEpic: true });
+
+		mockSend.mockClear();
+		await expect(handleTask("create", args([], { title: "New", epic: "X", "no-epic": "true" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("an unknown epic exits 43 and a refused epic create exits 44", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: false, error: 'epic-ref-invalid: No epic "Paymnts".' });
+		await expect(handleTask("update", args(["aaaaaaaa"], { epic: "Paymnts" }), SOCKET, null)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_EPIC_REF_INVALID}`);
+		expect(stderrOutput).toContain('No epic "Paymnts".');
+		expect(stderrOutput).not.toContain("epic-ref-invalid");
+
+		mockSend.mockResolvedValue({ id: "1", ok: false, error: "epic-create-forbidden: Only the user or a coordinator task can create an epic." });
+		await expect(handleEpic("create", args([], { name: "Mine" }), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_EPIC_CREATE_FORBIDDEN}`);
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "epic.create", { name: "Mine", sourceTaskId: CTX.taskId });
+	});
+
+	it("task update --no-epic is an update on its own", async () => {
+		mockSend.mockResolvedValue(okResp({ task: FAKE_TASK }));
+		await handleTask("update", args(["aaaaaaaa"], { "no-epic": "true" }), SOCKET, null);
+		expect(mockSend.mock.calls[0]![2]).toMatchObject({ noEpic: true });
+	});
+
+	it("task show prints the epic line only when the task has one", async () => {
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).not.toContain("Epic:");
+
+		stdoutOutput = "";
+		mockSend.mockResolvedValue(okResp({ ...created, epic: { id: "epicpay1-0000", name: "Payments v2", color: "#3b82f6", archived: true } }));
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).toMatch(/Epic:\s*Payments v2 \(epicpay1\) — archived/);
 	});
 });
