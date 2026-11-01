@@ -115,6 +115,12 @@ Steps 1, 3 and 4 of the flow above are unchanged — same port, same access code
 dev-server pane prints the scoped `DEV3_HOME` and an `rm -rf` reset line; the scoped root is stable
 per worktree, so the board survives a restart.
 
+**Switching a board view on the real board writes the user's real view choice.** The view picked in
+the board's view dropdown (and its layout) is saved to `~/.dev3.0/data/<slug>/board-views.json`
+(spaces: `space-board-views/<id>.json`), which every other dev3 instance on the machine reads. QA
+that picks a view other than Kanban therefore goes on the scoped board; on the real board, put the
+original view back before you finish.
+
 Three things worth knowing about the flag:
 
 - **A plain `dev3 dev-server restart` stays on the scoped board** — a restart with no `--env`

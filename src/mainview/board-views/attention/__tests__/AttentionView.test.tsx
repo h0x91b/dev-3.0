@@ -16,6 +16,7 @@ vi.mock("../../../rpc", () => ({
 	api: {
 		request: {
 			getAgents: vi.fn().mockResolvedValue([]),
+			getGlobalSettings: vi.fn().mockResolvedValue({ taskSortOrder: "oldest-first" }),
 			getProjectPRs: vi.fn().mockResolvedValue([]),
 			getTaskLineage: vi.fn().mockResolvedValue({ nodes: [] }),
 			getBoardViewState: vi.fn(),
@@ -23,8 +24,6 @@ vi.mock("../../../rpc", () => ({
 		},
 	},
 }));
-
-vi.mock("../../../components/KanbanBoard", () => ({ default: () => <div data-testid="kanban" /> }));
 
 const project: Project = {
 	id: "p1", name: "Test Project", path: "/tmp/test", setupScript: "", devScript: "", cleanupScript: "",
