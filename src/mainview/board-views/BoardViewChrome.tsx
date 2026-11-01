@@ -34,6 +34,7 @@ export function BoardViewSwitcher({ views, activeId, onPick, onManage }: {
 				]}
 				onChange={(value) => (value === MANAGE_VIEWS ? onManage() : onPick(value))}
 				ariaLabel={t("boardView.switcherAria")}
+				growList
 			/>
 		</div>
 	);
