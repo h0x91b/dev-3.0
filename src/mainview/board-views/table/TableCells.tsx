@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
 import type { BoardColumnSlot, Label, Project, Task } from "../../../shared/types";
-import { getTaskTitle } from "../../../shared/types";
+import { getTaskTitle, taskSeqLabel } from "../../../shared/types";
 import { parentTaskIdOf } from "../../../shared/types/task-origin";
 import { useT, type TranslationKey } from "../../i18n";
 import LabelChip from "../../components/LabelChip";
@@ -29,7 +29,14 @@ export interface TableRowContext {
 	projectById: ReadonlyMap<string, Project>;
 	agentNameById: ReadonlyMap<string, string>;
 	taskById: ReadonlyMap<string, Task>;
+	/** Seqs more than one task on the board answers to — only those get a variant suffix. */
+	sharedSeqs: ReadonlySet<number>;
 	narrow: boolean;
+}
+
+/** `#981`, or `#981-2` when other variants of 981 are on the board — the card's own rule. */
+export function rowSeqLabel(task: Task, ctx: TableRowContext): string {
+	return `#${ctx.sharedSeqs.has(task.seq) ? taskSeqLabel(task) : task.seq}`;
 }
 
 /**
@@ -179,7 +186,7 @@ export function TableCell({ column, task, ctx }: { column: TableColumnId; task: 
 	const t = useT();
 	switch (column) {
 		case "seq":
-			return <span className="text-xs tabular-nums text-fg-3">#{task.seq}</span>;
+			return <span className="text-xs tabular-nums text-fg-3">{rowSeqLabel(task, ctx)}</span>;
 		case "title":
 			return <span className="block truncate text-sm text-fg" title={getTaskTitle(task)}>{getTaskTitle(task)}</span>;
 		case "project":
@@ -206,7 +213,7 @@ export function TableCell({ column, task, ctx }: { column: TableColumnId; task: 
 			const parentId = parentTaskIdOf(task);
 			if (!parentId) return <Muted />;
 			const parent = ctx.taskById.get(parentId);
-			return parent ? <Text title={getTaskTitle(parent)}>#{parent.seq}</Text> : <Text>{t("boardTable.parentElsewhere")}</Text>;
+			return parent ? <Text title={getTaskTitle(parent)}>{rowSeqLabel(parent, ctx)}</Text> : <Text>{t("boardTable.parentElsewhere")}</Text>;
 		}
 		case "created":
 			return <Text title={new Date(task.createdAt).toLocaleString()}>{new Date(task.createdAt).toLocaleDateString()}</Text>;

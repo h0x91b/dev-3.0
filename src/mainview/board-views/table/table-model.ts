@@ -100,7 +100,8 @@ type SortKey = string | number | null;
 
 function sortKey(task: Task, column: TableColumnId, ctx: TableSortContext): SortKey {
 	switch (column) {
-		case "seq": return task.seq;
+		// Variants share a seq; they order by attempt number inside it.
+		case "seq": return task.seq + (task.variantIndex ?? 0) / 1000;
 		case "title": return (task.customTitle || task.title).toLocaleLowerCase();
 		case "project": return ctx.projectName(task.projectId).toLocaleLowerCase() || null;
 		case "status": {
@@ -136,7 +137,7 @@ export function sortTableTasks(tasks: readonly Task[], [column, direction]: Tabl
 		const yEmpty = y.key === null;
 		if (xEmpty !== yEmpty) return xEmpty ? 1 : -1;
 		const byKey = xEmpty ? 0 : sign * compareKeys(x.key, y.key);
-		return byKey || y.task.seq - x.task.seq;
+		return byKey || y.task.seq - x.task.seq || (x.task.variantIndex ?? 0) - (y.task.variantIndex ?? 0);
 	});
 	return keyed.map((entry) => entry.task);
 }

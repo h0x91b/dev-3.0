@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, type KeyboardEvent, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, type KeyboardEvent, type MouseEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Context } from "cordis";
 import type { Task } from "../../../shared/types";
@@ -6,7 +6,7 @@ import { getTaskTitle } from "../../../shared/types";
 import { useT, type TranslationKey } from "../../i18n";
 import { useBoard } from "../react";
 import type { BoardService } from "../board-service";
-import { TableCell, LabelsCell, PriorityCell, StatusCell, type TableRowContext } from "./TableCells";
+import { TableCell, LabelsCell, PriorityCell, StatusCell, rowSeqLabel, type TableRowContext } from "./TableCells";
 import {
 	normalizeTableLayout,
 	sortTableTasks,
@@ -54,14 +54,21 @@ function useRowContext(board: BoardService): TableRowContext {
 	const projects = board.projects();
 	const agents = board.agents();
 	const scopeTasks = board.scopeTasks();
-	return useMemo(() => ({
-		board,
-		columns,
-		projectById: new Map(projects.map((p) => [p.id, p])),
-		agentNameById: new Map(agents.map((a) => [a.id, a.name])),
-		taskById: new Map(scopeTasks.map((task) => [task.id, task])),
-		narrow: board.formFactor === "narrow",
-	}), [board, columns, projects, agents, scopeTasks]);
+	const narrow = board.formFactor === "narrow";
+	return useMemo(() => {
+		const seen = new Set<number>();
+		const sharedSeqs = new Set<number>();
+		for (const task of scopeTasks) (seen.has(task.seq) ? sharedSeqs : seen).add(task.seq);
+		return {
+			board,
+			columns,
+			projectById: new Map(projects.map((p) => [p.id, p])),
+			agentNameById: new Map(agents.map((a) => [a.id, a.name])),
+			taskById: new Map(scopeTasks.map((task) => [task.id, task])),
+			sharedSeqs,
+			narrow,
+		};
+	}, [board, columns, projects, agents, scopeTasks, narrow]);
 }
 
 /** `builtin:table` (spec D18): every task of the board as sortable, virtualised rows. */
@@ -87,6 +94,10 @@ export function TableView(_props: { ctx: Context }) {
 		overscan: OVERSCAN,
 		getItemKey: (index) => sorted[index].id,
 	});
+	// Rows and cards have different heights; drop the cached sizes when the form factor flips.
+	useEffect(() => {
+		virtualizer.measure();
+	}, [virtualizer, narrow]);
 
 	const openMenu = (task: Task, e: MouseEvent) => {
 		e.preventDefault();
@@ -130,7 +141,7 @@ export function TableView(_props: { ctx: Context }) {
 
 	if (narrow) {
 		return (
-			<div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 pb-6" data-testid="board-table" role="list" aria-label={t("boardView.table")}>
+			<div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 pt-2 pb-6" data-testid="board-table" role="list" aria-label={t("boardView.table")}>
 				<div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
 					{items.map((item) => {
 						const task = sorted[item.index];
@@ -149,7 +160,7 @@ export function TableView(_props: { ctx: Context }) {
 							>
 								<div className="flex h-full flex-col justify-between rounded-xl bg-raised px-3 py-2 shadow-[0_0_0_1px_rgb(var(--border-default))] active:bg-raised-hover">
 									<div className="flex min-w-0 items-baseline gap-2">
-										<span className="flex-shrink-0 text-xs tabular-nums text-fg-3">#{task.seq}</span>
+										<span className="flex-shrink-0 text-xs tabular-nums text-fg-3">{rowSeqLabel(task, rowCtx)}</span>
 										<span className="truncate text-sm text-fg">{getTaskTitle(task)}</span>
 									</div>
 									<div className="flex min-w-0 items-center gap-2">

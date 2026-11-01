@@ -136,6 +136,16 @@ describe("Table board view", () => {
 		expect(within(screen.getByTestId("board-table-row-t2")).getByText("Cancelled")).toBeInTheDocument();
 	});
 
+	it("labels variants with their attempt suffix, like the card", async () => {
+		await renderTable({ tasks: [task("v1", 7, { variantIndex: 1, groupId: "g" }), task("v2", 7, { variantIndex: 2, groupId: "g" })] });
+		expect(within(screen.getByTestId("board-table-row-v2")).getByText("#7-2")).toBeInTheDocument();
+	});
+
+	it("drops the suffix of a variant that is alone on the board", async () => {
+		await renderTable({ tasks: [task("v1", 7, { variantIndex: 1, groupId: "g" })] });
+		expect(within(screen.getByTestId("board-table-row-v1")).getByText("#7")).toBeInTheDocument();
+	});
+
 	it("adds the project column on a space board", async () => {
 		await renderTable({ kind: "space", tasks: [task("t1", 1, { projectId: "p2" })] });
 		expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toContain("Project");
@@ -247,6 +257,17 @@ describe("Table board view", () => {
 			fireEvent.click(within(options).getByLabelText("Agent"));
 			const saved = (model.setLayout as ReturnType<typeof vi.fn>).mock.lastCall![1];
 			expect(saved.columns).not.toContain("agent");
+		});
+
+		it("sorts from the column list, the only sort control a narrow board has", async () => {
+			const { model, renderOptions } = await renderTable({ formFactor: "narrow", tasks: [task("t1", 1)] });
+			renderOptions();
+			expect(screen.getByTestId("board-table-option-sort-activity")).toHaveAttribute("aria-pressed", "true");
+			fireEvent.click(screen.getByTestId("board-table-option-sort-activity"));
+			expect(model.setLayout).toHaveBeenLastCalledWith(TABLE_VIEW_ID, expect.objectContaining({ sort: ["activity", "asc"] }));
+			fireEvent.click(screen.getByTestId("board-table-option-sort-priority"));
+			expect(model.setLayout).toHaveBeenLastCalledWith(TABLE_VIEW_ID, expect.objectContaining({ sort: ["priority", "asc"] }));
+			expect(within(screen.getByTestId("board-table-options")).queryByRole("checkbox")).not.toBeInTheDocument();
 		});
 
 		it("offers the project column on a space board", async () => {

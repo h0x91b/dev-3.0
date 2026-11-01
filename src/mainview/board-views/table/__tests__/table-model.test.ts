@@ -121,6 +121,13 @@ describe("sortTableTasks", () => {
 		expect(ids(["seq", "desc"])).toEqual(["a", "c", "b"]);
 	});
 
+	it("orders variants of one seq by attempt number", () => {
+		const v2 = task({ id: "v2", seq: 7, variantIndex: 2 });
+		const v1 = task({ id: "v1", seq: 7, variantIndex: 1 });
+		expect(sortTableTasks([v2, v1], ["seq", "asc"], ctx).map((t) => t.id)).toEqual(["v1", "v2"]);
+		expect(sortTableTasks([v2, v1], ["title", "asc"], ctx).map((t) => t.id)).toEqual(["v1", "v2"]);
+	});
+
 	it("sorts titles case-insensitively", () => {
 		expect(ids(["title", "asc"])).toEqual(["b", "a", "c"]);
 	});
