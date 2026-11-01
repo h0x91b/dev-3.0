@@ -1,12 +1,12 @@
-import type { Context } from "cordis";
+import type { Context, Fiber } from "cordis";
 import { TreeOptions } from "./TreeOptions";
 import { TREE_VIEW_ID, TreeView } from "./TreeView";
 
 export { TREE_VIEW_ID };
 
 /** `builtin:tree` as an ordinary plugin: it sees the board only through `ctx.board`. */
-export function installTreeView(ctx: Context): void {
-	ctx.plugin({
+export function installTreeView(ctx: Context): Fiber {
+	return ctx.plugin({
 		name: TREE_VIEW_ID,
 		inject: ["board", "boardViews"],
 		apply(pluginCtx: Context) {

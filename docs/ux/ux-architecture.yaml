@@ -76,6 +76,15 @@ ux_architecture:
         git: "Repo-backed project; tasks get a git worktree + branch (default when kind absent)."
         virtual: "An 'Operations' board: tasks run an agent + shell in a managed temp dir (or a chosen folder), NO git worktree/branch/diff/PR; review columns hidden. Stored in a separate ~/.dev3.0/virtual-projects.json. One built-in board ships by default and hosts the Quick-shell operation (⇧⌘`)."
       evidence: ["src/shared/types.ts (Project.kind)", "src/mainview/components/ActivityOverview.tsx", "src/mainview/components/AddProjectModal.tsx", "src/bun/data.ts (addVirtualProject)", "decisions/2026/06/24/virtual-operations-board-identity.md"]
+    extension:
+      label: "Extension"
+      observed: true
+      primary_route: "screen:settings#extensions"   # Settings → Extensions; never a destination of its own
+      owner: "workspace"
+      owns: ["board_view"]
+      common_actions: ["install_from_folder", "trust", "enable", "remove", "kill_switch"]
+      rule: "Unsandboxed third-party code: one-time danger consent (Cancel focused); install/trust/enable desktop-only, remote may only switch all off."
+      evidence: ["src/shared/extensions.ts", "src/bun/extensions.ts", "src/mainview/components/global-settings/ExtensionsSettingsSection.tsx", "decisions/2026/11/01/board-view-extensions-loader-and-trust.md"]
     space:
       label: "Space"
       plural: "Spaces"

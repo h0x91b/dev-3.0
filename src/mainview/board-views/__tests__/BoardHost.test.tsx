@@ -5,6 +5,7 @@ import type { Context } from "cordis";
 import type { Project, Space, Task } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
 import { api } from "../../rpc";
+import { trackEvent } from "../../analytics";
 import { setHiddenControlsForTests } from "../../hidden-controls";
 import BoardHost from "../BoardHost";
 import { getBoardRoot, getBoardViewRegistry, resetBoardRootForTests, startBoardViews } from "../root";
@@ -31,6 +32,8 @@ vi.mock("../../rpc", () => ({
 		},
 	},
 }));
+
+vi.mock("../../analytics", () => ({ trackEvent: vi.fn() }));
 
 // Kanban is covered by its own suites (rendered through this host); here it
 // only has to prove which tasks `ctx.board` handed it.
@@ -170,6 +173,24 @@ describe("BoardHost", () => {
 		const saved = vi.mocked(api.request.setBoardViewState).mock.calls[0][0];
 		expect(saved.board).toEqual({ kind: "project", id: "p1" });
 		expect(saved.state.savedViews.find((v) => v.id === saved.state.slots.wide)?.viewType).toBe("ext:list");
+	});
+
+	it("reports a picked extension view to telemetry only as third_party (telemetry rule 1)", async () => {
+		startBoardViews([installKanbanView]);
+		registerView("acme-secret:roadmap");
+		vi.mocked(trackEvent).mockClear();
+		renderHost();
+		const switcher = await screen.findByTestId("board-view-switcher");
+		fireEvent.click(switcher.querySelector("button")!);
+		fireEvent.click(await screen.findByRole("option", { name: "acme-secret:roadmap" }));
+		await screen.findByTestId("view-acme-secret:roadmap");
+		fireEvent.click(switcher.querySelector("button")!);
+		fireEvent.click(await screen.findByRole("option", { name: "Kanban" }));
+		expect(vi.mocked(trackEvent).mock.calls).toEqual([
+			["board_view_selected", { view: "third_party" }],
+			["board_view_selected", { view: "builtin:kanban" }],
+		]);
+		expect(JSON.stringify(vi.mocked(trackEvent).mock.calls)).not.toMatch(/acme|secret|roadmap/);
 	});
 
 	it("hides the switcher in Simplify mode", async () => {

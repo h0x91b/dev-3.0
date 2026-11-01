@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useReducer, useState, type MouseEvent as ReactMouseEvent } from "react";
-import type { Context } from "cordis";
+import type { Context, Fiber } from "cordis";
 import { DEFAULT_PRIORITY, STATUS_COLORS, getTaskTitle, type Task } from "../../../shared/types";
 import { ATTENTION_VIEW_ID } from "../../../shared/board-view-state";
 import { statusKey, useT } from "../../i18n";
@@ -144,8 +144,8 @@ export function AttentionView(_props: { ctx: Context }) {
 }
 
 /** Self-contained: everything it creates belongs to its own plugin, so disposing it removes the view. */
-export function installAttentionView(ctx: Context): void {
-	ctx.plugin({
+export function installAttentionView(ctx: Context): Fiber {
+	return ctx.plugin({
 		name: ATTENTION_VIEW_ID,
 		inject: ["board", "boardViews"],
 		apply(pluginCtx: Context) {

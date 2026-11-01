@@ -44,7 +44,10 @@ const UX_DIR = fileURLToPath(new URL("../../../docs/ux", import.meta.url));
  * file is §10 rows whose why exists nowhere else.
  */
 const BUDGET_KB: Record<string, number> = {
-	"PRODUCT_UX_BIBLE.md": 133,
+	"PRODUCT_UX_BIBLE.md": 134,
+	// 133 → 134 for board-view extensions (spec D25): the §3 `Extension` object row — a new object
+	// whose trust rule (danger consent, desktop-only install, remote may only switch all off) has
+	// no other home in the file — plus Settings growing to eleven categories.
 	// 132 → 133 for the keep-alive / auto-revive rule: a new durable task property
 	// (`Task.keepAlive`, same class as draft/hibernated/sensitive) with a §3 object
 	// note and a §10 placement row whose why — a cross-cutting property is never a
@@ -134,7 +137,8 @@ const BUDGET_KB: Record<string, number> = {
 	// stopped-session warning. §5.9 is at its floor — every sentence in it is one distinct rule
 	// stated once, and the bible has EIGHT bytes of slack. The next traffic feature needs its
 	// own compaction pass before it writes a word here.
-	"ux-architecture.yaml": 121,
+	"ux-architecture.yaml": 122,
+	// 121 → 122 for board-view extensions (spec D25): the new `objects.extension` entry.
 	// 120 → 121 for `surfaces.context_menu.task_menu` plus `row_context_menu` in
 	// `surfaces.sidebar.allowed`: the row context menu the §10 budget row has named as the
 	// sidebar's overflow home since it was written finally exists, and one shared task menu

@@ -21,6 +21,12 @@ export interface RegisteredBoardView {
 	ctx: Context;
 }
 
+// `FiberState` is an ambient const enum (unreadable under isolatedModules): 0 PENDING, 1 LOADING, 2 ACTIVE.
+function isLive(ctx: Context): boolean {
+	const state = ctx.fiber?.state;
+	return state === 0 || state === 1 || state === 2;
+}
+
 /**
  * The board views currently registered. `register` is a Cordis effect: the
  * entry disappears when the registering plugin is disposed, so a plugin never
@@ -29,6 +35,7 @@ export interface RegisteredBoardView {
 export class BoardViewRegistry extends Service {
 	private readonly entries = new Map<string, RegisteredBoardView>();
 	private readonly listeners = new Set<() => void>();
+	private readonly refusalListeners = new Set<(viewId: string, ctx: Context) => void>();
 	private snapshot: readonly RegisteredBoardView[] = [];
 
 	constructor(ctx: Context) {
@@ -39,6 +46,13 @@ export class BoardViewRegistry extends Service {
 		// Reached through a plugin's context, `this.ctx` is that plugin's context
 		// (Cordis tracks the caller), so the effect is owned by the registering plugin.
 		const ctx = this.ctx;
+		// First live registration wins: an extension must never replace a built-in (or another
+		// extension's) view. A restart of the owner, or an owner already on its way out, may replace.
+		const existing = this.entries.get(def.id);
+		if (existing && existing.ctx.fiber !== ctx.fiber && isLive(existing.ctx)) {
+			for (const listener of this.refusalListeners) listener(def.id, ctx);
+			throw new Error(`Board view "${def.id}" is already registered`);
+		}
 		return ctx.effect(() => {
 			const entry = { def, ctx };
 			this.entries.set(def.id, entry);
@@ -50,6 +64,14 @@ export class BoardViewRegistry extends Service {
 			};
 		}, `boardView:${def.id}`);
 	}
+
+	/** Told when `register` refuses an id that a live plugin already owns, with the refused caller's context. */
+	readonly onRefused = (listener: (viewId: string, ctx: Context) => void): (() => void) => {
+		this.refusalListeners.add(listener);
+		return () => {
+			this.refusalListeners.delete(listener);
+		};
+	};
 
 	/** Registration order is display order: built-ins first, extensions after. */
 	readonly list = (): readonly RegisteredBoardView[] => this.snapshot;
