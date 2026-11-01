@@ -8,6 +8,7 @@ import { toast } from "../toast";
 import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
+import { createProjectLabel } from "../utils/createProjectLabel";
 import { confirmCustomColumnDelete } from "../utils/confirmCustomColumnDelete";
 import TaskContextMenu from "../components/TaskContextMenu";
 import type { BoardAllActions } from "./board-service";
@@ -112,14 +113,7 @@ export function useBoardActions({ tasks, projects, projectOf, dispatch, navigate
 				const { projects, dispatch, t } = live.current;
 				const project = projects.find((p) => p.id === projectId);
 				if (!project) throw new Error(`Project not on this board: ${projectId}`);
-				try {
-					const label = await api.request.createLabel({ projectId, name });
-					dispatch({ type: "updateProject", project: { ...project, labels: [...(project.labels ?? []), label] } });
-					return label;
-				} catch (err) {
-					toast.error(t("labels.failedCreate", { error: String(err) }));
-					throw err;
-				}
+				return createProjectLabel({ project, name, dispatch, t });
 			},
 			createTask() {
 				window.dispatchEvent(new CustomEvent("rpc:openCreateTaskModal"));
