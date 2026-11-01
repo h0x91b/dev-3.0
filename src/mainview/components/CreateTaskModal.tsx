@@ -5,6 +5,7 @@ import { DEFAULT_PRIORITY, orderProjectsForDisplay, projectDisplayName, presetPr
 import type { AppAction } from "../state";
 import { api, isElectrobun } from "../rpc";
 import { useT } from "../i18n";
+import { createProjectLabel } from "../utils/createProjectLabel";
 import { useProjectPrivacy } from "../sensitive-projects";
 import { trackEvent } from "../analytics";
 import posthog from "../posthog";
@@ -910,7 +911,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 						{labelPickerOpen && labelAnchorRef.current && (
 							<LabelPicker
 								project={project}
-								dispatch={dispatch}
+								onCreateLabel={(name) => createProjectLabel({ project, name, dispatch, t })}
 								onClose={() => setLabelPickerOpen(false)}
 								anchorEl={labelAnchorRef.current}
 								selectedIds={selectedLabelIds}

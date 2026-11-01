@@ -7,6 +7,7 @@ import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { toast } from "../toast";
 import { useT } from "../i18n";
+import { createProjectLabel } from "../utils/createProjectLabel";
 import { trackEvent, agentNameFromId } from "../analytics";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useOverlayLayer } from "../utils/useOverlayLayer";
@@ -354,8 +355,7 @@ export default function TaskContextMenu({
 			{sub === "labels" && anchorEl && (
 				<LabelPicker
 					project={project}
-					dispatch={dispatch}
-					taskId={task.id}
+					onCreateLabel={(name) => createProjectLabel({ project, name, dispatch, t, taskId: task.id })}
 					anchorEl={anchorEl}
 					selectedIds={labelIds}
 					onToggle={handleToggleLabel}
