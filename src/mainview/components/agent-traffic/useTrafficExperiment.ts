@@ -5,6 +5,7 @@ import {
 	type GlobalSettings,
 } from "../../../shared/types";
 import { api } from "../../rpc";
+import { ignoreStartupReadFailure, startupRead } from "../../startup-read";
 
 /**
  * Which traffic presentation the surface renders, and how a pick is stored.
@@ -38,7 +39,9 @@ export function useTrafficExperiment(): {
 			apply((event as CustomEvent<GlobalSettings>).detail);
 		}
 		window.addEventListener("rpc:globalSettingsUpdated", onUpdate);
-		void api.request.getGlobalSettings().then(apply).catch(() => {});
+		void startupRead("agent traffic experiment", () => api.request.getGlobalSettings(), { isCancelled: () => cancelled })
+			.then(apply)
+			.catch(ignoreStartupReadFailure);
 		return () => {
 			cancelled = true;
 			window.removeEventListener("rpc:globalSettingsUpdated", onUpdate);

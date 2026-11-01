@@ -12,6 +12,7 @@
  *   - QR code generation for easy mobile access
  */
 
+import { sendRpcPacket } from "./rpc-socket-send";
 import { existsSync, statSync, readFileSync } from "node:fs";
 import { isAbsolute, join, extname, relative, resolve } from "node:path";
 import { networkInterfaces } from "node:os";
@@ -489,13 +490,19 @@ type RpcRequestHandler = (method: string, params: any) => Promise<any>;
 const rpcClients = new Set<any>();
 let requestHandler: RpcRequestHandler | null = null;
 
+function sendRpc(ws: any, packet: string, what: string): void {
+	sendRpcPacket(ws, packet, (bytes) => {
+		log.warn("RPC packet dropped under backpressure — closing the socket", { what, bytes });
+	});
+}
+
 async function handleRpcMessage(ws: any, raw: string | ArrayBuffer): Promise<void> {
 	const text = typeof raw === "string" ? raw : new TextDecoder().decode(raw as unknown as ArrayBuffer);
 	const packet = JSON.parse(text);
 
 	if (packet.type === "request") {
 		if (!requestHandler) {
-			ws.send(JSON.stringify({ type: "response", id: packet.id, success: false, error: "RPC handler not ready" }));
+			sendRpc(ws, JSON.stringify({ type: "response", id: packet.id, success: false, error: "RPC handler not ready" }), packet.method);
 			return;
 		}
 		try {
@@ -505,12 +512,12 @@ async function handleRpcMessage(ws: any, raw: string | ArrayBuffer): Promise<voi
 			const startedAt = performance.now();
 			const result = await requestHandler(packet.method, packet.params);
 			const serverMs = Math.round((performance.now() - startedAt) * 10) / 10;
-			ws.send(JSON.stringify({ type: "response", id: packet.id, success: true, payload: result, serverMs }));
+			sendRpc(ws, JSON.stringify({ type: "response", id: packet.id, success: true, payload: result, serverMs }), packet.method);
 		} catch (err) {
-			ws.send(JSON.stringify({
+			sendRpc(ws, JSON.stringify({
 				type: "response", id: packet.id, success: false,
 				error: err instanceof Error ? err.message : String(err),
-			}));
+			}), packet.method);
 		}
 	}
 }
@@ -1001,11 +1008,7 @@ export function isRemoteAccessActive(): boolean {
 export function pushToBrowserClients(name: string, payload: any): void {
 	if (rpcClients.size === 0) return;
 	const packet = JSON.stringify({ type: "message", id: name, payload });
-	for (const ws of rpcClients) {
-		try {
-			ws.send(packet);
-		} catch { /* disconnected */ }
-	}
+	for (const ws of rpcClients) sendRpc(ws, packet, name);
 }
 
 // ── Access URL helpers ──────────────────────────────────────────────
