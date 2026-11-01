@@ -117,6 +117,7 @@ async function foldJsonlFiles(
  */
 const foldedTranscripts = new Map<string, string>();
 let foldedHistoryStamp: string | null = null;
+let foldedCatalog = "";
 
 /** Stamps every candidate it keeps in `seen`; returns only those not yet in the history. */
 function transcriptsToRead(files: string[], notBefore: number, seen: Map<string, string>): string[] {
@@ -157,7 +158,10 @@ export function getAgentUsage(params?: { since?: string } | void): Promise<Agent
 }
 
 async function scanAgentUsage(notBefore: number): Promise<AgentUsageReport> {
-	if (usageHistoryStamp() !== foldedHistoryStamp) foldedTranscripts.clear();
+	// Records get their catalog pricing identity only when read, so a catalog change rereads everything.
+	const catalog = loadModelCatalog();
+	const catalogStamp = JSON.stringify(catalog);
+	if (usageHistoryStamp() !== foldedHistoryStamp || catalogStamp !== foldedCatalog) foldedTranscripts.clear();
 	const trustedStamp = foldedHistoryStamp;
 	const seen = new Map<string, string>();
 	const claudeState = newUsageState();
@@ -195,7 +199,6 @@ async function scanAgentUsage(notBefore: number): Promise<AgentUsageReport> {
 
 	// A routed session's transcript names the catalog wire name, which the rate
 	// table has never heard of; price it as the provider's own model instead.
-	const catalog = loadModelCatalog();
 	const pricingId = (model: string) => nativeModelIdForWireName(catalog, model) ?? model;
 	for (const state of Object.values(states)) {
 		for (const usage of state.records.values()) {
@@ -218,6 +221,7 @@ async function scanAgentUsage(notBefore: number): Promise<AgentUsageReport> {
 		if (notBefore === -Infinity) foldedTranscripts.clear();
 		for (const [file, stamp] of seen) foldedTranscripts.set(file, stamp);
 		foldedHistoryStamp = usageHistoryStamp();
+		foldedCatalog = catalogStamp;
 	}
 	const resolveRate = await getPricingResolver();
 	const reports = (Object.entries(retained) as [AgentUsageSource, UsageState][])

@@ -467,6 +467,23 @@ describe("getAgentUsage incremental scan", () => {
 		expect(history.claude).toHaveLength(3);
 	});
 
+	it("keeps a routed model's pricing identity learned on a warm scan after the route is removed", async () => {
+		const catalogFile = join(tempRoot, ".dev3.0", "model-catalog.json");
+		writeJsonl(claudeFile("route.jsonl"), [{
+			type: "assistant", requestId: "routed", timestamp: "2026-10-20T12:00:00Z",
+			message: { id: "routed", model: "openrouter/my-label", usage: { input_tokens: 1_000_000 } },
+		}]);
+		setMtime(claudeFile("route.jsonl"), Date.parse("2026-10-20T12:00:00Z"));
+		expect((await getAgentUsage()).days[0]).toMatchObject({ costUsd: 0, fullyPriced: false });
+		writeFileSync(catalogFile, JSON.stringify({
+			providers: [{ id: "router", kind: "openrouter", label: "OpenRouter" }],
+			models: [{ id: "route", providerId: "router", name: "my-label", modelId: "openai/gpt-6.1-sol" }],
+		}));
+		expect((await getAgentUsage()).days[0]).toMatchObject({ costUsd: 2, fullyPriced: true });
+		rmSync(catalogFile);
+		expect((await getAgentUsage()).days[0]).toMatchObject({ costUsd: 2, fullyPriced: true });
+	});
+
 	it("reads a managed account store that links onto the home store once", async () => {
 		registerAccounts(["linked"], ["linked"]);
 		const accountsDir = defaultAccountPaths().accountsDir;
