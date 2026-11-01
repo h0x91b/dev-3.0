@@ -55,7 +55,7 @@ describe("ExtensionsSettingsSection", () => {
 		expect(switches[0]).toHaveAccessibleName("extensions.killSwitch");
 		const builtins = screen.getByTestId("builtin-board-views");
 		expect(within(builtins).getByText("extensions.alwaysOn")).toBeInTheDocument();
-		expect(within(builtins).getAllByRole("switch")).toHaveLength(1); // Table; Kanban has none
+		expect(within(builtins).getAllByRole("switch")).toHaveLength(3); // Table, Tree, Attention; Kanban has none
 		expect(screen.getByTestId("extensions-install")).toBeInTheDocument();
 	});
 

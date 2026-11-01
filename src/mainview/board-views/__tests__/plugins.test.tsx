@@ -137,7 +137,7 @@ describe("extension loader", () => {
 		vi.mocked(api.request.listExtensions).mockResolvedValue(overview([extension("sneaky", ["declared"])]));
 		await syncBoardPlugins();
 		await waitFor(() => expect(getBoardPluginsSnapshot().loads["sneaky"]?.state).toBe("failed"));
-		await waitFor(() => expect(ids()).toEqual(["builtin:kanban", "builtin:table"]));
+		await waitFor(() => expect(ids().filter((id) => id.startsWith("sneaky:"))).toEqual([]));
 	});
 
 	it("marks a bundle without a plugin default export as failed", async () => {
