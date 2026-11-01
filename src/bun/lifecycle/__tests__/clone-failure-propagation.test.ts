@@ -224,3 +224,17 @@ describe("missing harness at the launch boundary", () => {
 		expect(assertLaunchAgentsInstalled).not.toHaveBeenCalled();
 	});
 });
+
+// Boot recovery in another dev3 instance reads this stamp to tell a live peer's
+// run from a stale one (`boot-recovery-respects-live-run-owner` record).
+describe("preparation runtime ownership", () => {
+	it("stamps every persisted preparation stage with this process's pid", async () => {
+		await executeLifecycleEffect(
+			{ type: "persistPreparationStage", stage: "creating-worktree", runId: "run-1" } as unknown as LifecycleEffect,
+			context(project([]), task()),
+		);
+
+		const written = vi.mocked(data.updateTask).mock.calls[0]?.[2] as Partial<Task>;
+		expect(written.runtimeState).toMatchObject({ runtime: "preparing", runId: "run-1", ownerPid: process.pid });
+	});
+});

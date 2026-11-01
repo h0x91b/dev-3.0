@@ -42,6 +42,7 @@ export const CLI_EXIT_CODE_SENDER_INBOX_BUSY = 40;
 export const CLI_EXIT_CODE_LIVE_REV_CONFLICT = 41;
 export const CLI_EXIT_CODE_LIVE_READ_ONLY = 42;
 export const CLI_EXIT_CODE_PR_WATCH_PR_FINISHED = 43;
+export const CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED = 44;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -302,5 +303,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_PR_WATCH_PR_FINISHED,
 		description:
 			"`dev3 pr watch --pr <N>` named a pull request that is already merged or closed, so NOTHING was subscribed: there is no CI run or merge left to wait for. The message says which. Distinct from exit 38 (no such PR) so a coordinator following a PR it handed off can treat an already-merged one as done instead of retrying.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED",
+		code: CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED,
+		description:
+			"An agent-initiated launch (`dev3 task move --task <other> --status in-progress`, or `dev3 task create --scratch --run`) was approved, but the launched task's preparation failed (worktree, setup or agent start), so NO agent is running for it: the task is back in To Do and the message carries its preparation error. Read the error before retrying — a refused leftover folder needs the user, not a retry. Distinct from exit 10 (declined) so a launcher can tell \"the user said no\" from \"it broke\".",
 	},
 ] as const;

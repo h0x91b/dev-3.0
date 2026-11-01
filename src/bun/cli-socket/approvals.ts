@@ -9,6 +9,8 @@ import { deliverLaunchHandoff } from "../agent-launch-handoff";
 import { getPushMessage, launchTaskWithAgentChoice, moveTask, resetTaskToTodo } from "../rpc-handlers";
 import { loadSettings } from "../settings";
 import { loadBoardTasks, resolveTaskAcrossProjects, resolveTaskFromParams } from "./task-resolution";
+import { awaitLaunchPreparation } from "./launch-preparation";
+import type { LaunchPreparationOutcome } from "../../shared/launch-preparation";
 
 export function approvalStatusOf(kind: DestructiveApprovalKind, task: Task): AgentApprovalStatus {
 	const known = getAgentRequestState(kind, task.id);
@@ -164,7 +166,7 @@ type LaunchApprovalOutcome =
 		approved: true;
 		seq: number;
 		title: string;
-		launched: Array<{ variantIndex: number | null; replyCommand: string }>;
+		launched: Array<{ variantIndex: number | null; replyCommand: string; preparation: LaunchPreparationOutcome }>;
 	};
 
 /**
@@ -292,14 +294,18 @@ export async function requestAgentLaunchApproval(opts: {
 	// Read the board AFTER the launch: launching with variants mints the siblings
 	// that decide whether `seq:<N>` is still an unambiguous address.
 	const head = launched[0]!;
+	// Answer only once preparation settles: replying at dispatch told the
+	// requester "started" for runs that then failed (2026-11-01 incident).
+	const preparations = await Promise.all(launched.map((child) => awaitLaunchPreparation(project, child.id)));
 	const boardTasks = await loadBoardTasks(project);
 
 	return {
 		approved: true,
 		seq: head.seq,
 		title: getTaskTitle(head),
-		launched: launched.map((child) => ({
+		launched: launched.map((child, i) => ({
 			variantIndex: child.variantIndex ?? null,
+			preparation: preparations[i]!,
 			// The requester may live on another board (it launched a task in a
 			// different project), and then the bare `--task` form would resolve
 			// against its own.
