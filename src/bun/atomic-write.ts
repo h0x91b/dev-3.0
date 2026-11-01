@@ -28,11 +28,12 @@ const TRANSIENT_WRITE_ERROR_CODES = new Set(["ENOENT", "EPERM", "EACCES", "EBUSY
  * Lives in its own module so every data-layer sibling (data.ts,
  * automations-data.ts, task-blobs.ts) can use it without importing each other.
  */
-export async function atomicWriteFile(filePath: string, content: string): Promise<void> {
+export async function atomicWriteFile(filePath: string, content: string, opts: { mode?: number } = {}): Promise<void> {
 	for (let attempt = 0; ; attempt++) {
 		const tmpPath = `${filePath}.tmp-${process.pid}-${atomicWriteSeq++}`;
 		try {
-			await writeFile(tmpPath, content);
+			// `mode` applies at creation, so a secret never exists on disk with wider bits.
+			await writeFile(tmpPath, content, opts.mode === undefined ? undefined : { mode: opts.mode });
 			await rename(tmpPath, filePath);
 			return;
 		} catch (err: any) {

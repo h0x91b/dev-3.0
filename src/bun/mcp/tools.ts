@@ -1,0 +1,471 @@
+/**
+ * THE allow-list of what an outside agent can do over MCP. Each tool validates its
+ * arguments against a closed schema, resolves its project or task against the
+ * token's project allow-list BEFORE calling anything, then calls an existing CLI
+ * socket handler and answers in CLI `--json` terms. No transport code here: the
+ * table would serve a plain JSON API unchanged.
+ *
+ * Never here, by design: terminal input, `agent.spawn`, settings, complete /
+ * cancel / reset, `--to-sender`, lease `takeOver`, and any generic "call method X".
+ */
+
+import type { CliResponse, Project, SpacesFile, Task, TaskPriority } from "../../shared/types";
+import { ALL_PRIORITIES, ALL_STATUSES, EMPTY_SPACES_FILE, ID_PREFIX_MIN_LENGTH, normalizePriority } from "../../shared/types";
+import type { AgentUsageReport, ProductivityStats, SystemMemorySnapshot, TaskUsageReport } from "../../shared/types";
+import type { AgentRateLimitsReport } from "../../shared/rate-limits";
+import type { PendingApprovalSummary } from "../../shared/agent-approval";
+import { toCliProject } from "../../shared/project-registration";
+import { classifyAppError } from "../../shared/cli-errors";
+import {
+	CLI_EXIT_CODE_COMMAND_FAILED,
+	CLI_EXIT_CODE_EVENT_CURSOR_INVALID,
+	CLI_EXIT_CODE_SUCCESS,
+	CLI_EXIT_CODE_USAGE_ERROR,
+} from "../../shared/cli-exit-codes";
+import { DEFAULT_EVENT_LIMIT, MAX_EVENT_LIMIT, isEventIdPrefix, parseEventCursor, type EventSelection } from "../../shared/board-events";
+import { buildTaskShowJson, type ShownTask } from "../../shared/cli-json/task-show";
+import { buildTasksListJson } from "../../shared/cli-json/tasks-list";
+import {
+	approvalsJson,
+	limitsJson,
+	memoryJson,
+	parseSinceValue,
+	pricesJson,
+	productivityJson,
+	taskUsageJson,
+	usageJson,
+	type PricesWire,
+} from "../../shared/cli-json/stats";
+import { findTaskByRef } from "../cli-socket/task-resolution";
+import { validate, type ObjectSchema } from "./schema";
+import type { McpScope, McpTokenRecord } from "./token-store";
+
+export type CallApp = (method: string, params: Record<string, unknown>) => Promise<CliResponse>;
+
+export interface ToolContext {
+	token: McpTokenRecord;
+	senderLabel: string;
+	call: CallApp;
+	/** Aborts when the HTTP client disconnects. Only read-only parking honours it. */
+	signal?: AbortSignal;
+}
+
+export interface ToolError {
+	code: string;
+	message: string;
+	hint?: string;
+	retryAfterS?: number;
+}
+
+export interface ToolOutcome {
+	exitCode: number;
+	json?: unknown;
+	error?: ToolError;
+}
+
+export interface ToolDef {
+	name: string;
+	description: string;
+	/** null = any valid token. */
+	scope: McpScope | null;
+	inputSchema: ObjectSchema;
+	/** JSON paths in `json` holding ids, enums, timestamps, numbers — everything else is untrusted text. */
+	trustedFields: string[];
+	/** Exit codes that are not an error for this tool. */
+	successCodes: number[];
+	/** Holds the connection up to ~25 s; counted against the parked limit. */
+	parked?: boolean;
+	/** Changes state; counted against the mutating rate limit. */
+	mutating?: boolean;
+	run(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutcome>;
+}
+
+/** Thrown inside a tool to answer with a CLI-shaped failure. */
+export class ToolFailure extends Error {
+	constructor(readonly outcome: ToolOutcome) {
+		super(outcome.error?.message ?? "tool failed");
+	}
+}
+
+export function fail(exitCode: number, code: string, message: string, extra: Partial<ToolError> = {}, json?: unknown): never {
+	throw new ToolFailure({ exitCode, error: { code, message, ...extra }, ...(json === undefined ? {} : { json }) });
+}
+
+export function usage(message: string): never {
+	fail(CLI_EXIT_CODE_USAGE_ERROR, "USAGE", message);
+}
+
+export function scopeDenied(message: string): never {
+	fail(CLI_EXIT_CODE_COMMAND_FAILED, "SCOPE_DENIED", message);
+}
+
+export function ok(json: unknown): ToolOutcome {
+	return { exitCode: CLI_EXIT_CODE_SUCCESS, json };
+}
+
+/** One app call; a failure becomes the exit code the CLI would have used for it. */
+export async function appData<T>(ctx: ToolContext, method: string, params: Record<string, unknown> = {}): Promise<T> {
+	const resp = await ctx.call(method, params);
+	if (resp.ok) return resp.data as T;
+	const classified = classifyAppError(resp.error);
+	fail(classified.exitCode, classified.code, classified.message);
+}
+
+export function projectAllowed(token: McpTokenRecord, projectId: string): boolean {
+	return token.projects.includes("*") || token.projects.includes(projectId);
+}
+
+async function allowedProjects(ctx: ToolContext): Promise<Project[]> {
+	const all = await appData<Project[]>(ctx, "projects.list");
+	return all.filter((p) => projectAllowed(ctx.token, p.id));
+}
+
+/** A project id or ≥8-char prefix, which must be on the token's allow-list. */
+export async function resolveProject(ctx: ToolContext, ref: string): Promise<Project> {
+	const all = await appData<Project[]>(ctx, "projects.list");
+	const matches = all.filter((p) => p.id === ref || (ref.length >= ID_PREFIX_MIN_LENGTH && p.id.startsWith(ref)));
+	const exact = matches.find((p) => p.id === ref);
+	const project = exact ?? (matches.length === 1 ? matches[0] : null);
+	if (!project) {
+		if (matches.length > 1) fail(CLI_EXIT_CODE_COMMAND_FAILED, "COMMAND_FAILED", `Ambiguous project prefix "${ref}". Use a longer prefix.`);
+		fail(CLI_EXIT_CODE_COMMAND_FAILED, "COMMAND_FAILED", `Project not found: ${ref}`);
+	}
+	if (!projectAllowed(ctx.token, project.id)) scopeDenied(`Project ${ref} is not on this token's project list.`);
+	return project;
+}
+
+/**
+ * A task ref (id, ≥8-char prefix, or seq:N) resolved ONLY inside the projects this
+ * token may see — a task elsewhere is not found, never touched.
+ */
+export async function resolveTask(ctx: ToolContext, ref: string, projectRef?: string): Promise<{ project: Project; task: Task }> {
+	const projects = projectRef ? [await resolveProject(ctx, projectRef)] : await allowedProjects(ctx);
+	const found: Array<{ project: Project; task: Task }> = [];
+	for (const project of projects) {
+		const tasks = await appData<Task[]>(ctx, "tasks.list", { projectId: project.id });
+		let task: Task | null;
+		try {
+			task = findTaskByRef(tasks, ref);
+		} catch (err) {
+			fail(CLI_EXIT_CODE_COMMAND_FAILED, "COMMAND_FAILED", String(err instanceof Error ? err.message : err));
+		}
+		if (task) found.push({ project, task });
+	}
+	if (found.length > 1) usage(`Task ref "${ref}" matches tasks in ${found.length} projects. Pass project.`);
+	if (found.length === 0) fail(CLI_EXIT_CODE_COMMAND_FAILED, "COMMAND_FAILED", `Task not found: ${ref}`);
+	return found[0];
+}
+
+const TASK_REF = { type: "string", minLength: 1, maxLength: 64, description: "Task id, an id prefix of 8+ characters, or seq:N." } as const;
+const PROJECT_REF = { type: "string", minLength: 1, maxLength: 64, description: "Project id or an id prefix of 8+ characters." } as const;
+
+function obj(properties: ObjectSchema["properties"], required: string[] = []): ObjectSchema {
+	return { type: "object", properties, required, additionalProperties: false };
+}
+
+const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+
+// ── read ────────────────────────────────────────────────────────────────────
+
+const projectsList: ToolDef = {
+	name: "projects_list",
+	description: "List the projects this token may see, as `dev3 projects list --json`.",
+	scope: "read",
+	inputSchema: obj({}),
+	trustedFields: ["[].id", "[].kind", "[].spaces[].id"],
+	successCodes: [0],
+	async run(_args, ctx) {
+		const projects = await allowedProjects(ctx);
+		const spaces = await ctx.call("spaces.list", {});
+		// An app without spaces.list still lists projects, as the CLI does.
+		const file = spaces.ok ? spaces.data as SpacesFile : EMPTY_SPACES_FILE;
+		return ok(projects.map((p) => toCliProject(p, file)));
+	},
+};
+
+const tasksList: ToolDef = {
+	name: "tasks_list",
+	description: "List a project's tasks, as `dev3 tasks list --json` (live work first, then To Do, then the archive).",
+	scope: "read",
+	inputSchema: obj({
+		project: PROJECT_REF,
+		status: { type: "string", enum: ALL_STATUSES },
+		open: { type: "boolean", description: "Drop completed and cancelled tasks." },
+		label: { type: "string", minLength: 1, maxLength: 64, description: "Label id or prefix." },
+		priority: { type: "array", items: { type: "string", enum: ALL_PRIORITIES }, minItems: 1, maxItems: 5 },
+		sort: { type: "string", enum: ["priority", "seq"] },
+		limit: { type: "integer", minimum: 1 },
+		offset: { type: "integer", minimum: 0 },
+	}, ["project"]),
+	trustedFields: ["schemaVersion", "tasks[].id", "tasks[].seq", "tasks[].projectId", "tasks[].status", "tasks[].customColumnId", "tasks[].priority", "tasks[].taskType", "tasks[].draft", "tasks[].hibernated", "tasks[].runtimeState", "tasks[].updatedAt", "total", "offset", "limit"],
+	successCodes: [0],
+	async run(args, ctx) {
+		const status = str(args.status);
+		if (args.open === true && (status === "completed" || status === "cancelled")) usage("open cannot be combined with a completed or cancelled status.");
+		const project = await resolveProject(ctx, String(args.project));
+		const tasks = await appData<Task[]>(ctx, "tasks.list", { projectId: project.id, ...(status ? { status } : {}) });
+		const priorities = Array.isArray(args.priority) ? new Set(args.priority.map((p) => normalizePriority(String(p)) as TaskPriority)) : undefined;
+		return ok(buildTasksListJson(tasks, {
+			open: args.open === true,
+			label: str(args.label),
+			priorities,
+			sort: args.sort === "seq" ? "seq" : "priority",
+			limit: typeof args.limit === "number" ? args.limit : undefined,
+			offset: typeof args.offset === "number" ? args.offset : undefined,
+		}));
+	},
+};
+
+const taskShow: ToolDef = {
+	name: "task_show",
+	description: "One task in full, as `dev3 task show --json` without the worktree path.",
+	scope: "read",
+	inputSchema: obj({ task: TASK_REF, project: PROJECT_REF, notes: { type: "boolean" }, history: { type: "boolean" } }, ["task"]),
+	trustedFields: [
+		"schemaVersion", "id", "seq", "projectId", "titleEditedByUser", "status", "customColumnId", "priority", "taskType", "draft",
+		"manualCompletion", "labelIds[]", "groupId", "variantIndex", "prNumber", "pullRequests[].number", "pullRequests[].state",
+		"prStatus.number", "prStatus.ciStatus", "prStatus.reviewDecision", "prStatus.mergeState", "prStatus.isDraft",
+		"prStatus.autoMergeEnabled", "prStatus.unresolvedCount", "prStatus.cachedAt", "hibernated", "keepAlive.enabled",
+		"keepAlive.status", "createdAt", "updatedAt", "movedAt", "noteCount", "origin.kind", "origin.taskId", "origin.projectId",
+		"origin.automationId", "notes[].id", "notes[].source", "notes[].createdAt", "notes[].updatedAt", "history[].at",
+	],
+	successCodes: [0],
+	async run(args, ctx) {
+		const { project, task } = await resolveTask(ctx, String(args.task), str(args.project));
+		const shown = await appData<ShownTask>(ctx, "task.show", { taskId: task.id, projectId: project.id });
+		const { worktree: _worktree, ...json } = buildTaskShowJson(shown, { notes: args.notes === true, history: args.history === true });
+		return ok(json);
+	},
+};
+
+const eventsList: ToolDef = {
+	name: "events_list",
+	description: "Board events (notes, moves) since a cursor, as `dev3 events --json`. Follow `cursor` to read on without gaps.",
+	scope: "read",
+	inputSchema: obj({
+		project: { type: "string", minLength: 1, maxLength: 64, description: "Project id/prefix, or \"all\" (only for a token on every project, or the single project it has)." },
+		from: { type: "string", minLength: 1, maxLength: 64, description: "An event id, a cursor, an instant, or a duration (2h)." },
+		kind: { type: "string", enum: ["note", "move"] },
+		limit: { type: "integer", minimum: 1 },
+	}),
+	trustedFields: [
+		"events[].kind", "events[].at", "events[].id", "events[].projectId", "events[].taskId", "events[].seq", "events[].taskStatus",
+		"events[].from", "events[].to", "droppedNewer", "olderThanWindow", "matched", "cursor", "from", "movementsEvicted",
+	],
+	successCodes: [0],
+	async run(args, ctx) {
+		const rawFrom = str(args.from);
+		const cursor = rawFrom ? parseEventCursor(rawFrom) : null;
+		const cursorId = !cursor && rawFrom && isEventIdPrefix(rawFrom) ? rawFrom : null;
+		if (rawFrom && !cursor && !cursorId) {
+			fail(CLI_EXIT_CODE_EVENT_CURSOR_INVALID, "EVENT_CURSOR_INVALID", `Unparseable --from value: ${rawFrom}`);
+		}
+		const rawProject = str(args.project);
+		let projectId: string | undefined;
+		if (rawProject && rawProject !== "all") {
+			projectId = (await resolveProject(ctx, rawProject)).id;
+		} else if (!ctx.token.projects.includes("*")) {
+			// A board-wide sweep would count other projects' events; name the one project instead.
+			if (ctx.token.projects.length !== 1) usage("This token covers several projects: pass project (one per call).");
+			projectId = ctx.token.projects[0];
+		}
+		const limit = typeof args.limit === "number" ? Math.min(MAX_EVENT_LIMIT, args.limit) : DEFAULT_EVENT_LIMIT;
+		const params: Record<string, unknown> = { limit, cursor };
+		if (args.kind) params.kind = args.kind;
+		if (cursorId) params.cursorId = cursorId;
+		if (projectId) params.projectId = projectId;
+		return ok(await appData<EventSelection>(ctx, "events.list", params));
+	},
+};
+
+const approvalsList: ToolDef = {
+	name: "approvals_list",
+	description: "Pending launch, resume, completion and reset dialogs, as `dev3 approvals list --json`.",
+	scope: "read",
+	inputSchema: obj({ project: PROJECT_REF }),
+	trustedFields: [
+		"schemaVersion", "projectId", "requests[].kind", "requests[].requestId", "requests[].taskId", "requests[].projectId",
+		"requests[].seqLabel", "requests[].requesterSeq", "requests[].requesterSenderId", "requests[].createdAt",
+		"requests[].autoApproveAt", "requests[].heldByUser",
+	],
+	successCodes: [0],
+	async run(args, ctx) {
+		const projectId = args.project ? (await resolveProject(ctx, String(args.project))).id : null;
+		const { requests } = await appData<{ requests: PendingApprovalSummary[] }>(ctx, "approvals.list");
+		return ok(approvalsJson(requests.filter((r) => projectAllowed(ctx.token, r.projectId)), projectId));
+	},
+};
+
+const uiState: ToolDef = {
+	name: "ui_state",
+	description: "Is the app in the foreground, how long has the user been idle, and which task is focused (`dev3 ui state --json` without tmux).",
+	scope: "read",
+	inputSchema: obj({}),
+	trustedFields: ["appRunning", "foreground", "activeProjectId", "activeTaskId", "userIdleSeconds"],
+	successCodes: [0],
+	async run(_args, ctx) {
+		const state = await appData<Record<string, unknown>>(ctx, "ui.state", {});
+		const visible = typeof state.activeProjectId === "string" && projectAllowed(ctx.token, state.activeProjectId);
+		return ok({
+			appRunning: state.appRunning,
+			foreground: state.foreground,
+			activeProjectId: visible ? state.activeProjectId : null,
+			activeTaskId: visible ? state.activeTaskId ?? null : null,
+			userIdleSeconds: state.userIdleSeconds ?? null,
+		});
+	},
+};
+
+// ── stats (own scope: it exposes spend) ─────────────────────────────────────
+
+function readSince(args: Record<string, unknown>): string | null {
+	const raw = str(args.since);
+	if (raw === undefined) return null;
+	const since = parseSinceValue(raw);
+	if (!since) usage(`Unparseable since value: ${raw}. Use a duration (30m, 12h, 7d, 2w), a date (2026-10-01) or a UTC timestamp.`);
+	return since;
+}
+
+async function allowedTaskIds(ctx: ToolContext): Promise<Set<string>> {
+	const ids = new Set<string>();
+	for (const project of await allowedProjects(ctx)) {
+		for (const task of await appData<Task[]>(ctx, "tasks.list", { projectId: project.id })) ids.add(task.id);
+	}
+	return ids;
+}
+
+const statsGet: ToolDef = {
+	name: "stats_get",
+	description:
+		"`dev3 stats <kind> --json`. usage across every agent needs `since` (the full scan is slow); usage of one task takes `task`.",
+	scope: "stats",
+	inputSchema: obj({
+		kind: { type: "string", enum: ["productivity", "usage", "limits", "memory"] },
+		project: PROJECT_REF,
+		since: { type: "string", minLength: 1, maxLength: 64 },
+		task: TASK_REF,
+	}, ["kind"]),
+	trustedFields: ["schemaVersion", "generatedAt", "since", "projectId", "hasUnpricedModels"],
+	successCodes: [0],
+	async run(args, ctx) {
+		const kind = String(args.kind);
+		if (args.task !== undefined && kind !== "usage") usage("task only applies to kind usage.");
+		if (args.project !== undefined && kind !== "productivity" && !(kind === "usage" && args.task !== undefined)) {
+			usage("project only applies to kind productivity, or to usage together with task.");
+		}
+		if (kind === "productivity") {
+			const since = readSince(args);
+			const projectId = args.project ? (await resolveProject(ctx, String(args.project))).id : null;
+			const stats = await appData<ProductivityStats>(ctx, "stats.productivity");
+			const visible = { ...stats, events: stats.events.filter((e) => projectAllowed(ctx.token, e.projectId)) };
+			return ok(productivityJson(visible, { since, projectId }));
+		}
+		if (kind === "usage") {
+			if (args.task !== undefined) {
+				if (args.since !== undefined) usage("since cannot be combined with task: a task's usage is reported whole.");
+				const { project, task } = await resolveTask(ctx, String(args.task), str(args.project));
+				return ok(taskUsageJson(await appData<TaskUsageReport>(ctx, "stats.taskUsage", { taskId: task.id, projectId: project.id })));
+			}
+			// ponytail: the all-agent scan held the app's thread for ~80 s before h0x91b/dev-3.0#2150;
+			// requiring `since` bounds it. Drop the requirement once that fix is everywhere.
+			const since = readSince(args);
+			if (!since) usage("usage across every agent needs since (e.g. 7d), or pass task for one task.");
+			return ok(usageJson(await appData<AgentUsageReport>(ctx, "stats.usage", { since }), since));
+		}
+		if (kind === "limits") return ok(limitsJson(await appData<AgentRateLimitsReport>(ctx, "stats.limits")));
+		const snapshot = await appData<SystemMemorySnapshot | null>(ctx, "stats.memory");
+		if (!snapshot || ctx.token.projects.includes("*")) return ok(memoryJson(snapshot));
+		const ids = await allowedTaskIds(ctx);
+		return ok(memoryJson({ ...snapshot, topTasks: snapshot.topTasks.filter((t) => t.taskId !== null && ids.has(t.taskId)) }));
+	},
+};
+
+const statsPrices: ToolDef = {
+	name: "stats_prices",
+	// `models` is required: without it the app lists every model seen, which runs the
+	// same all-agent usage scan `stats_get kind:usage` needs `since` for.
+	description: "Token prices for the named models, as `dev3 stats prices --model … --json`.",
+	scope: "stats",
+	inputSchema: obj({ models: { type: "array", items: { type: "string", minLength: 1, maxLength: 128 }, minItems: 1, maxItems: 50 } }, ["models"]),
+	trustedFields: ["schemaVersion", "currency", "unit", "source", "fetchedAt", "models[].priced", "models[].input", "models[].output", "models[].cacheWrite5m", "models[].cacheWrite1h", "models[].cacheRead"],
+	successCodes: [0],
+	async run(args, ctx) {
+		const models = (args.models as string[]).map((m) => m.trim());
+		return ok(pricesJson(await appData<PricesWire>(ctx, "stats.prices", { models })));
+	},
+};
+
+// ── the table ───────────────────────────────────────────────────────────────
+
+const whoami: ToolDef = {
+	name: "whoami",
+	description: "Who this token speaks as, what it may do, and on which projects.",
+	scope: null,
+	inputSchema: obj({}),
+	trustedFields: ["schemaVersion", "tokenId", "sender.id", "scopes[]", "projects[]", "expiresAt", "server.version", "server.protocol", "tools[]", "approvals.autoApprove", "approvals.interactive", "limits"],
+	successCodes: [0],
+	async run(_args, ctx) {
+		const { token } = ctx;
+		return ok({
+			schemaVersion: 1,
+			tokenId: token.id,
+			sender: { id: token.sender, label: ctx.senderLabel },
+			scopes: token.scopes,
+			projects: token.projects,
+			expiresAt: token.expiresAt,
+			server: { version: MCP_SERVER_INFO.version, protocol: MCP_PROTOCOL_VERSION },
+			tools: MCP_TOOLS.filter((t) => toolAllowed(t, token)).map((t) => t.name),
+			approvals: { autoApprove: token.autoApprove, interactive: !token.autoApprove },
+			limits: MCP_LIMITS,
+		});
+	},
+};
+
+export const MCP_PROTOCOL_VERSION = "2025-06-18";
+export const MCP_SERVER_INFO = { name: "dev3", version: "1" };
+
+/** The listener's limits, reported by `whoami` and enforced in `server.ts`. */
+export const MCP_LIMITS = {
+	bodyBytes: 1024 * 1024,
+	globalInFlight: 16,
+	perTokenInFlight: 8,
+	perTokenParked: 4,
+	callsPerMinute: 600,
+	mutatingCallsPerMinute: 30,
+	pendingDialogsPerSender: 3,
+} as const;
+
+export const MCP_TOOLS: ToolDef[] = [
+	whoami,
+	projectsList,
+	tasksList,
+	taskShow,
+	eventsList,
+	approvalsList,
+	uiState,
+	statsGet,
+	statsPrices,
+];
+
+export function toolAllowed(tool: ToolDef, token: McpTokenRecord): boolean {
+	return tool.scope === null || token.scopes.includes(tool.scope);
+}
+
+export function findTool(name: string): ToolDef | undefined {
+	return MCP_TOOLS.find((t) => t.name === name);
+}
+
+/** Validate, check the scope, run, and turn every failure into a CLI-shaped outcome. */
+export async function runTool(tool: ToolDef, args: unknown, ctx: ToolContext): Promise<ToolOutcome> {
+	if (!toolAllowed(tool, ctx.token)) {
+		return { exitCode: CLI_EXIT_CODE_COMMAND_FAILED, error: { code: "SCOPE_DENIED", message: `${tool.name} needs the "${tool.scope}" scope, which this token does not have.` } };
+	}
+	const problem = validate(tool.inputSchema, args ?? {});
+	if (problem) return { exitCode: CLI_EXIT_CODE_USAGE_ERROR, error: { code: "USAGE", message: problem } };
+	try {
+		return await tool.run((args ?? {}) as Record<string, unknown>, ctx);
+	} catch (err) {
+		if (err instanceof ToolFailure) return err.outcome;
+		throw err;
+	}
+}
