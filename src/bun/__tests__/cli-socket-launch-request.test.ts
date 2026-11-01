@@ -116,7 +116,7 @@ import * as data from "../data";
 import { moveTask, launchTaskWithAgentChoice, createScratchTask, deleteTask, getPushMessage } from "../rpc-handlers";
 import { deliverLaunchHandoff } from "../agent-launch-handoff";
 import { captureSenderAgent } from "../scheduled-message-author";
-import { resolveAgentRequest, _resetAgentRequestsForTests } from "../agent-requests";
+import { resolveAgentRequest, voidAgentRequest, _resetAgentRequestsForTests } from "../agent-requests";
 import { loadSettings } from "../settings";
 import { validateLaunchSuggestion } from "../cli-agent-spawn";
 
@@ -715,6 +715,22 @@ describe("task.createScratchAndRun", () => {
 		// An empty scratch card must not be left littering To Do.
 		expect(deleteTask).toHaveBeenCalledWith({ taskId: scratch.id, projectId: "proj-1" });
 		expect(launchTaskWithAgentChoice).not.toHaveBeenCalled();
+	});
+
+	it("keeps the task and says so when its dialog was voided because it started another way", async () => {
+		const scratch = makeTask({ scratch: true });
+		setupBoard(scratch);
+		vi.mocked(createScratchTask).mockResolvedValue(scratch);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		const respPromise = handleRequest(scratchRequest({ projectId: "proj-1", sourceTaskId: REQUESTER_ID }));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		expect(voidAgentRequest("launch", scratch.id)).toBe(true);
+
+		const resp = await respPromise;
+		expect(resp.data).toEqual({ approved: false, stale: true });
+		expect(deleteTask).not.toHaveBeenCalled();
 	});
 });
 

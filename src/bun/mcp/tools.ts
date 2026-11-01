@@ -773,21 +773,32 @@ const taskStart: ToolDef = {
 	trustedFields: ["schemaVersion", "approved", "seq", "launched[].variantIndex", "alreadyActive", "task.id", "task.seq", "task.status", "pending", "requestId", "autoApproveAt"],
 	successCodes: [0],
 	async run(args, ctx) {
-		const { project, task } = await resolveTask(ctx, String(args.task), str(args.project));
-		const active = ACTIVE_STATUSES.includes(task.status);
-		return runApprovalFlow(ctx, {
-			kind: "launch",
-			task,
-			start: () => ctx.call("task.moveAsSender", { taskId: task.id, projectId: project.id, newStatus: "in-progress", asSender: ctx.token.sender }),
-			remember: (resp) => resp.ok && typeof (resp.data as { approved?: unknown }).approved === "boolean",
-			// A decline stays a decline; an approval the board has since undone (back in To Do) is not replayed.
-			// A decline is replayed only while the task is still not running; started since, it answers alreadyActive.
-			replayable: (resp) => resp.ok && (((resp.data as { approved?: unknown }).approved === false && !active) || ((resp.data as { approved?: unknown }).approved === true && active)),
-			outcome: startOutcome,
-			shortcut: () => (active ? ok({ schemaVersion: 1, alreadyActive: true, task: { id: task.id, seq: task.seq, status: task.status } }) : null),
-		});
+		// A voided dialog (the task was started or reset another way) is re-asked once against the board as it is now.
+		const first = await startTaskOnce(args, ctx);
+		if (first !== VOIDED_START) return first;
+		const second = await startTaskOnce(args, ctx);
+		return second !== VOIDED_START ? second : { exitCode: CLI_EXIT_CODE_COMMAND_FAILED, error: { code: "COMMAND_FAILED", message: "The approval dialog was voided because the task changed; call task_start again." } };
 	},
 };
+
+const VOIDED_START: ToolOutcome = { exitCode: CLI_EXIT_CODE_COMMAND_FAILED };
+const isVoided = (resp: CliResponse) => resp.ok && (resp.data as { stale?: unknown }).stale === true;
+
+async function startTaskOnce(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutcome> {
+	const { project, task } = await resolveTask(ctx, String(args.task), str(args.project));
+	const active = ACTIVE_STATUSES.includes(task.status);
+	return runApprovalFlow(ctx, {
+		kind: "launch",
+		task,
+		start: () => ctx.call("task.moveAsSender", { taskId: task.id, projectId: project.id, newStatus: "in-progress", asSender: ctx.token.sender }),
+		remember: (resp) => resp.ok && !isVoided(resp) && typeof (resp.data as { approved?: unknown }).approved === "boolean",
+		// A decline stays a decline; an approval the board has since undone (back in To Do) is not replayed.
+		// A decline is replayed only while the task is still not running; started since, it answers alreadyActive.
+		replayable: (resp) => resp.ok && (((resp.data as { approved?: unknown }).approved === false && !active) || ((resp.data as { approved?: unknown }).approved === true && active)),
+		outcome: (resp) => (isVoided(resp) ? VOIDED_START : startOutcome(resp)),
+		shortcut: () => (active ? ok({ schemaVersion: 1, alreadyActive: true, task: { id: task.id, seq: task.seq, status: task.status } }) : null),
+	});
+}
 
 const RESUME_OUTCOMES: Record<CliResumeOutcome["outcome"], { exitCode: number; code?: string }> = {
 	resumed: { exitCode: CLI_EXIT_CODE_SUCCESS },

@@ -162,7 +162,7 @@ export async function resolveLaunchSuggestion(params: Record<string, unknown>): 
  * `address-a-peer-by-seq-unless-the-seq-is-shared` record).
  */
 type LaunchApprovalOutcome =
-	| { approved: false }
+	| { approved: false; stale?: true }
 	| {
 		approved: true;
 		seq: number;
@@ -259,7 +259,7 @@ export async function requestAgentLaunchApproval(opts: {
 	});
 
 	const answer = await decision;
-	if (!answer.approved) return { approved: false };
+	if (!answer.approved) return answer.stale ? { approved: false, stale: true } : { approved: false };
 
 	// An auto-approval with no client watching carries no launch choice at all —
 	// one default variant, and the inherited priority must still apply, so it is

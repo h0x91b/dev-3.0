@@ -2227,6 +2227,16 @@ describe("task move — agent asking to start another task", () => {
 		expect(stderrOutput).toContain("declined the launch request");
 	});
 
+	it("does not call a voided dialog a decline — the task changed another way", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: false, stale: true }));
+
+		await expect(
+			handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX),
+		).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_LAUNCH_DECLINED}`);
+		expect(stderrOutput).toContain("voided");
+		expect(stderrOutput).not.toContain("declined the launch request");
+	});
+
 	it("hands out one address per variant when the user launched a group", async () => {
 		// The seq is shared by the whole group, so quoting it as THE address would
 		// give the requester a handle the CLI rejects as ambiguous.

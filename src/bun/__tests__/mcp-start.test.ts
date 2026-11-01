@@ -319,6 +319,28 @@ describe("coordinator review round 2", () => {
 		expect((await run("task_start", { task: "seq:7" })).json).toMatchObject({ alreadyActive: true });
 	});
 
+	it("answers alreadyActive once the user started the task another way, whose start voided the open dialog", async () => {
+		let answer!: (r: CliResponse) => void;
+		moveResult = new Promise((resolve) => (answer = resolve));
+		pending = [{ kind: "launch", taskId: TODO.id, requestId: "req-1", autoApproveAt: null, requesterSenderId: SENDER }];
+		expect((await run("task_start", { task: "seq:7" })).exitCode).toBe(25);
+		TODO = { ...TODO, status: "in-progress" };
+		answer({ id: "x", ok: true, data: { approved: false, stale: true } });
+		pending = [];
+		expect((await run("task_start", { task: "seq:7" })).json).toMatchObject({ alreadyActive: true });
+		expect(count("task.moveAsSender")).toBe(1);
+	});
+
+	it("re-checks the board when the dialog it waits on is voided mid-call", async () => {
+		moveResult = new Promise((resolve) => setTimeout(() => {
+			TODO = { ...TODO, status: "in-progress" };
+			resolve({ id: "x", ok: true, data: { approved: false, stale: true } });
+		}, 5));
+		const out = await run("task_start", { task: "seq:7" });
+		expect(out.exitCode).toBe(0);
+		expect(out.json).toMatchObject({ alreadyActive: true });
+	});
+
 	it("drops a kept answer when the task's run changed", async () => {
 		moveResult = Promise.resolve({ id: "x", ok: true, data: { approved: false } });
 		await run("task_start", { task: "seq:7" });

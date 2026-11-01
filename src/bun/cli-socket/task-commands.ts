@@ -331,7 +331,8 @@ export const taskHandlers: Record<string, Handler> = {
 		// A declined scratch task has no reason to exist — it was created only to
 		// have something for the dialog to launch. Leaving it would litter To Do
 		// with empty placeholders every time the user says no.
-		if (!outcome.approved) {
+		// A voided dialog means the task started another way — it is not a placeholder any more.
+		if (!outcome.approved && !outcome.stale) {
 			await deleteTask({ taskId: task.id, projectId: project.id });
 		}
 		return outcome;

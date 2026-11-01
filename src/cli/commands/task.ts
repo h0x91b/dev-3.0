@@ -840,6 +840,8 @@ async function createScratchAndRun(
 /** What the app returns once an agent-initiated launch went through the dialog. */
 interface LaunchApprovalOutcome {
 	approved: boolean;
+	/** The dialog was voided: the task was started, reset or finished another way first. */
+	stale?: boolean;
 	seq?: number;
 	title?: string;
 	/** One entry per task that started, in variant order; length 1 for a plain launch. */
@@ -869,6 +871,13 @@ function movesForeignTaskIntoActiveColumn(
 
 /** Print the result of an approved/declined launch, or exit with the decline code. */
 function reportLaunchOutcome(outcome: LaunchApprovalOutcome, codexStopHook: boolean, bySender = false): void {
+	if (!outcome.approved && outcome.stale) {
+		exitError(
+			"The launch request was voided: the task changed another way before anyone answered",
+			"It may already be running. Check it with `dev3 task show` before asking again.",
+			CLI_EXIT_CODE_LAUNCH_DECLINED,
+		);
+	}
 	if (!outcome.approved) {
 		exitError(
 			"User declined the launch request",
