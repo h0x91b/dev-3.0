@@ -93,8 +93,10 @@ import { liveArtifactHandlers } from "./rpc-handlers/live-artifacts";
 import { taskPanesHandlers } from "./rpc-handlers/task-panes";
 import { spacesHandlers } from "./rpc-handlers/spaces";
 import { epicsHandlers } from "./rpc-handlers/epics";
+import { secretHandlers } from "./rpc-handlers/secrets";
 
 export const handlers = {
+	...secretHandlers,
 	...appHandlers,
 	...terminalPathHandlers,
 	...fileExplorerHandlers,

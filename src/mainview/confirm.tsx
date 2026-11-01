@@ -173,8 +173,9 @@ export function whenConfirmHostMounted(timeoutMs = 10_000): Promise<boolean> {
  * would let a second `confirm()` overwrite the first, whose promise then never
  * resolves — see `decisions/2026/09/08/queue-overlapping-confirm-dialogs.md`.
  */
-export function ConfirmHost() {
+export function ConfirmHost({ onBusyChange }: { onBusyChange?: (busy: boolean) => void } = {}) {
 	const [queue, setQueue] = useState<PendingConfirm[]>([]);
+	useEffect(() => { onBusyChange?.(queue.length > 0); }, [queue.length, onBusyChange]);
 
 	useEffect(() => {
 		listener = (req) => setQueue((current) => [...current, req]);
