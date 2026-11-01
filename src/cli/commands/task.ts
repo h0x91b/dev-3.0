@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { CliResponse, Task, TaskStatus, TaskType, TaskHistoryEntry, TaskNote } from "../../shared/types";
 import { STATUS_LABELS, ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DRAFT_TASK_ACTIVATION_ERROR, TASK_REF_UNRESOLVED_PREFIX, TASK_TYPES, getTaskTitle, getTaskOverview, normalizePriority, normalizeTaskType, taskAgentSessionLooksLive, taskCompletesManually } from "../../shared/types";
-import { CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN, CLI_EXIT_CODE_APPROVAL_STILL_PENDING, CLI_EXIT_CODE_CANCELLATION_DECLINED, CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_HIBERNATE_DECLINED, CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_RESET_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT, CLI_EXIT_CODE_TASK_NOT_HIBERNATED, CLI_EXIT_CODE_TASK_REF_UNRESOLVED } from "../../shared/cli-exit-codes";
+import { CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN, CLI_EXIT_CODE_APPROVAL_STILL_PENDING, CLI_EXIT_CODE_CANCELLATION_DECLINED, CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_HIBERNATE_DECLINED, CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED, CLI_EXIT_CODE_RESET_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT, CLI_EXIT_CODE_TASK_NOT_HIBERNATED, CLI_EXIT_CODE_TASK_REF_UNRESOLVED } from "../../shared/cli-exit-codes";
 import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON, TOLERATE_APP_OFFLINE_FLAG } from "../../shared/agent-hooks";
 import { allPullRequests } from "../../shared/task-pull-requests";
 import { sendRequest } from "../socket-client";
@@ -15,7 +15,8 @@ import { rejectUnknownFlags } from "../flag-validation";
 import { exitOnSenderError, readSenderFlag } from "./sender";
 import { readStdin } from "../stdin";
 import { singleTextInput } from "../text-input";
-import { launchApprovalTimeoutMs } from "../launch-approval";
+import { launchAndPrepareTimeoutMs, launchApprovalTimeoutMs } from "../launch-approval";
+import type { LaunchPreparationOutcome } from "../../shared/launch-preparation";
 import { handleTasks } from "./tasks";
 import { reportResumeOutcome } from "./agent";
 import type { CliHibernateOutcome, CliWakeOutcome } from "../../shared/task-hibernate";
@@ -808,7 +809,7 @@ async function createScratchAndRun(
 			...senderAgentParams(context),
 			...(handoffNote ? { handoffNote } : {}),
 			...suggestion,
-		}, { timeoutMs: await launchApprovalTimeoutMs(socketPath) });
+		}, { timeoutMs: await launchAndPrepareTimeoutMs(socketPath) });
 	} catch (err) {
 		if (err instanceof Error && err.message.startsWith("Socket timeout")) {
 			exitError(
@@ -829,7 +830,7 @@ interface LaunchApprovalOutcome {
 	seq?: number;
 	title?: string;
 	/** One entry per task that started, in variant order; length 1 for a plain launch. */
-	launched?: Array<{ variantIndex: number | null; replyCommand: string }>;
+	launched?: Array<{ variantIndex: number | null; replyCommand: string; preparation?: LaunchPreparationOutcome }>;
 }
 
 function isLaunchApprovalOutcome(data: unknown): data is LaunchApprovalOutcome {
@@ -867,6 +868,7 @@ function reportLaunchOutcome(outcome: LaunchApprovalOutcome, codexStopHook: bool
 		return;
 	}
 	const launched = outcome.launched ?? [];
+	exitOnFailedPreparation(outcome, launched);
 	const fallback = `dev3 message --task seq:${outcome.seq} --subject "what this is about" "your message"`;
 	if (launched.length > 1) {
 		// The user turned one launch into a variant group. Every sibling shares
@@ -879,7 +881,8 @@ function reportLaunchOutcome(outcome: LaunchApprovalOutcome, codexStopHook: bool
 			`User approved — seq:${outcome.seq} is starting as ${launched.length} variants: ${outcome.title ?? ""}\n` +
 			`They all share seq:${outcome.seq}, so address each one by its own id:\n` +
 			`${rows}\n` +
-			"They are independent agents on the same prompt. Each knows you started it and reports back to this task.\n",
+			"They are independent agents on the same prompt. Each knows you started it and reports back to this task.\n" +
+			stillPreparingNote(outcome, launched),
 		);
 		return;
 	}
@@ -888,7 +891,32 @@ function reportLaunchOutcome(outcome: LaunchApprovalOutcome, codexStopHook: bool
 		`Talk to it with: ${launched[0]?.replyCommand ?? fallback}\n` +
 		(bySender
 			? "It does not know who started it yet — your first --as-sender message tells it how to reply.\n"
-			: "It knows you started it and will report back to this task.\n"),
+			: "It knows you started it and will report back to this task.\n") +
+		stillPreparingNote(outcome, launched),
+	);
+}
+
+function stillPreparingNote(outcome: LaunchApprovalOutcome, launched: NonNullable<LaunchApprovalOutcome["launched"]>): string {
+	if (!launched.some((entry) => entry.preparation?.state === "still-preparing")) return "";
+	return `It is still preparing (worktree/setup). If preparation fails it returns to To Do — check with \`dev3 task show --task seq:${outcome.seq}\`.\n`;
+}
+
+/**
+ * An approved launch whose preparation failed started nothing, so it must not
+ * print the "started" lines (2026-11-01 incident). Any failed variant fails the
+ * command: the requester has to look before it relies on the group.
+ */
+function exitOnFailedPreparation(outcome: LaunchApprovalOutcome, launched: NonNullable<LaunchApprovalOutcome["launched"]>): void {
+	const failed = launched.filter((entry) => entry.preparation?.state === "failed");
+	if (failed.length === 0) return;
+	const lines = failed.map((entry) => {
+		const error = entry.preparation?.state === "failed" ? entry.preparation.error : "";
+		return launched.length > 1 ? `variant #${entry.variantIndex ?? "?"}: ${error}` : error;
+	});
+	exitError(
+		`User approved, but task seq:${outcome.seq} failed to prepare — no agent is running for it`,
+		`${lines.join("\n")}\nThe task is back in To Do. Read the error before asking to start it again.`,
+		CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED,
 	);
 }
 
@@ -974,7 +1002,7 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	// into one waits on the long timeout. A silent move still answers instantly.
 	const method = asSender ? "task.moveAsSender" : "task.move";
 	const resp = asSender || movesForeignTaskIntoActiveColumn(taskId, newStatus, context)
-		? await sendRequest(socketPath, method, params, { timeoutMs: await launchApprovalTimeoutMs(socketPath) })
+		? await sendRequest(socketPath, method, params, { timeoutMs: await launchAndPrepareTimeoutMs(socketPath) })
 		: await sendRequest(socketPath, method, params);
 	if (!resp.ok) {
 		exitOnSenderError(resp.error);
