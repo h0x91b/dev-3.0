@@ -19,7 +19,7 @@ import {
 } from "../../bun/mcp/token-store";
 
 const USAGE =
-	"Usage: dev3 mcp token issue --sender <id> --projects <id,…|*> [--scope read,stats,send,write,start,content] [--expires 90d|never] [--auto-approve] [--label \"…\"]\n" +
+	"Usage: dev3 mcp token issue --sender <id> --projects <id,…|*> [--scope read,stats,send,write,start,content] [--expires 90d|never] [--auto-approve] [--label \"…\"] [--json]\n" +
 	"       dev3 mcp token list [--json] | dev3 mcp token revoke <id>\n" +
 	"       dev3 mcp enable [--port N] | dev3 mcp disable | dev3 mcp status [--json]";
 

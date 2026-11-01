@@ -1017,7 +1017,7 @@ const COMMANDS: CommandHelp[] = [
 			"             priority), start (start or resume, always through the approval dialog) and content",
 			"             (terminal tail, transcript search). Expires in 90 days unless --expires never.",
 			"             --auto-approve lets this token's launches auto-approve; without it they never do.",
-			"             Prints the token once.",
+			"             Prints the token once (--json: {token, id, sender, scopes, projects, expiresAt, autoApprove}).",
 			"token revoke Takes effect on the token's next request.",
 			"status       Store path, on/off, whether the app is listening, live tokens per sender, last 20 calls.",
 		],

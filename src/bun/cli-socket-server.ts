@@ -12,7 +12,7 @@ import { liveHandlers } from "./cli-socket/live-commands";
 import { messageHandlers } from "./cli-socket/message-commands";
 import { paneHandlers } from "./cli-socket/pane-commands";
 import { prWatchHandlers } from "./cli-socket/pr-watch-commands";
-import { log, type Handler } from "./cli-socket/shared";
+import { log, type Handler, type McpRequestOrigin } from "./cli-socket/shared";
 import { statsHandlers } from "./cli-socket/stats-commands";
 import { systemHandlers } from "./cli-socket/system-commands";
 import { taskHandlers } from "./cli-socket/task-commands";
@@ -68,14 +68,14 @@ const handlers: Record<string, Handler> = {
 	...liveHandlers,
 };
 
-export async function handleRequest(req: CliRequest, signal?: AbortSignal): Promise<CliResponse> {
+export async function handleRequest(req: CliRequest, signal?: AbortSignal, mcp?: McpRequestOrigin): Promise<CliResponse> {
 	const handler = handlers[req.method];
 	if (!handler) {
 		return { id: req.id, ok: false, error: `Unknown method: ${req.method}` };
 	}
 
 	try {
-		const result = await handler(req.params, { signal });
+		const result = await handler(req.params, { signal, ...(mcp ? { mcp } : {}) });
 		return { id: req.id, ok: true, data: result };
 	} catch (err) {
 		return { id: req.id, ok: false, error: String(err instanceof Error ? err.message : err) };

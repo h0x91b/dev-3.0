@@ -521,7 +521,7 @@ export const taskHandlers: Record<string, Handler> = {
 	"task.addLabels": (params) => changeTaskLabels(params, "add"),
 	"task.removeLabels": (params) => changeTaskLabels(params, "remove"),
 
-	...withSenderVariant("task.move", async (params) => {
+	...withSenderVariant("task.move", async (params, ctx) => {
 		const taskId = params.taskId as string;
 		const newStatus = params.newStatus as string;
 		if (!taskId) throw new Error("taskId is required");
@@ -576,7 +576,7 @@ export const taskHandlers: Record<string, Handler> = {
 		// human at a terminal (no sourceTaskId) both stay on the silent path.
 		// A registered external sender (`--as-sender`) starting a task gets the same
 		// dialog an agent does — and its auto-approve setting. No opt-out.
-		const sender = senderRequester(params);
+		const sender = senderRequester(params, ctx?.mcp);
 		const requester = sender ?? await resolveAgentMessageSource(params, task.id);
 		const isActivation = !ACTIVE_STATUSES.includes(task.status) && ACTIVE_STATUSES.includes(builtinStatus);
 		// A sender's only power is a start through the dialog: a plain move of a

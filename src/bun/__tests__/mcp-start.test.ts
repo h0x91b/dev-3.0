@@ -14,7 +14,7 @@ import { senderAutoApproveMs } from "../cli-session-approval";
 import { senderRequester } from "../cli-socket/task-resolution";
 
 const PROJECT = { id: "aaaaaaaa-0000-0000-0000-000000000001", name: "A", path: "/a" } as Project;
-const TODO = { id: "aaaaaaaa-task-0000-0000-000000000001", seq: 7, projectId: PROJECT.id, status: "todo", title: "t" } as Task;
+let TODO = { id: "aaaaaaaa-task-0000-0000-000000000001", seq: 7, projectId: PROJECT.id, status: "todo", title: "t" } as Task;
 const RUNNING = { id: "aaaaaaaa-task-0000-0000-000000000002", seq: 8, projectId: PROJECT.id, status: "in-progress", title: "r" } as Task;
 const SENDER = "openclaw:home:main";
 
@@ -28,6 +28,7 @@ function token(overrides: Partial<McpTokenRecord> = {}): McpTokenRecord {
 let calls: Array<{ method: string; params: Record<string, unknown> }>;
 let pending: Array<Record<string, unknown>>;
 let moveResult: Promise<CliResponse>;
+let resumeResult: Record<string, unknown>;
 
 function ctx(t = token()): ToolContext {
 	return {
@@ -40,7 +41,7 @@ function ctx(t = token()): ToolContext {
 				case "tasks.list": return okData([TODO, RUNNING]);
 				case "approvals.list": return okData({ requests: pending });
 				case "task.moveAsSender": return moveResult;
-				case "agent.resumeAsSender": return okData({ outcome: "already-running", taskId: RUNNING.id, seq: 8, backend: "tmux" });
+				case "agent.resumeAsSender": return okData(resumeResult);
 				case "task.create": return okData({ ...TODO, title: params.title });
 				case "task.update": return okData({ task: { ...TODO, priority: params.priority } });
 				case "task.show": return okData(TODO);
@@ -63,8 +64,10 @@ function ctx(t = token()): ToolContext {
 beforeEach(() => {
 	calls = [];
 	pending = [];
+	resumeResult = { outcome: "already-running", taskId: RUNNING.id, seq: 8, backend: "tmux" };
 	moveResult = Promise.resolve({ id: "x", ok: true, data: { approved: true, seq: 7, title: "t", launched: [] } });
 	_resetMcpStartsForTests();
+	TODO = { ...TODO, status: "todo" };
 	writeFileSync(`${home}/external-senders.json`, JSON.stringify({ senders: { [SENDER]: { label: "Main" } } }));
 });
 
@@ -100,13 +103,30 @@ describe("the tool table only reaches allowed handlers", () => {
 });
 
 describe("task_start", () => {
-	it("never asks for auto-approve unless the token opted in", async () => {
+	it("puts no approval or origin field in the socket params — the listener passes those out of band", async () => {
 		await run("task_start", { task: "seq:7" });
-		expect(calls.find((c) => c.method === "task.moveAsSender")?.params).toMatchObject({ interactiveOnly: true, viaTokenId: "3fa9c0d1", newStatus: "in-progress" });
-		_resetMcpStartsForTests();
-		calls = [];
+		const params = calls.find((c) => c.method === "task.moveAsSender")!.params;
+		expect(params).toEqual({ taskId: TODO.id, projectId: PROJECT.id, newStatus: "in-progress", asSender: SENDER });
+	});
+
+	it("starts once when two calls race", async () => {
+		moveResult = new Promise(() => {});
+		await Promise.all([run("task_start", { task: "seq:7" }), run("task_start", { task: "seq:7" })]);
+		expect(count("task.moveAsSender")).toBe(1);
+	});
+
+	it("does not replay an approval the board has since undone", async () => {
+		expect((await run("task_start", { task: "seq:7" })).exitCode).toBe(0);
+		await run("task_start", { task: "seq:7" });
+		expect(count("task.moveAsSender")).toBe(2);
+	});
+
+	it("refuses to join a dialog whose countdown would approve it, unless the token may auto-approve", async () => {
+		pending = [{ kind: "launch", taskId: TODO.id, requestId: "r", autoApproveAt: "2026-11-01T00:00:00Z", requesterSenderId: null }];
+		expect((await run("task_start", { task: "seq:7" })).exitCode).toBe(1);
+		expect(count("task.moveAsSender")).toBe(0);
 		await run("task_start", { task: "seq:7" }, ctx(token({ autoApprove: true })));
-		expect(calls.find((c) => c.method === "task.moveAsSender")?.params.interactiveOnly).toBeUndefined();
+		expect(count("task.moveAsSender")).toBe(1);
 	});
 
 	it("answers 25 while the dialog is open, and a re-call joins instead of asking again", async () => {
@@ -118,6 +138,7 @@ describe("task_start", () => {
 		expect(first.json).toEqual({ pending: true, requestId: "req-1", autoApproveAt: null });
 		expect((await run("task_start", { task: "seq:7" })).exitCode).toBe(25);
 		answer({ id: "x", ok: true, data: { approved: true, seq: 7, title: "t", launched: [{ variantIndex: null, replyCommand: "c" }] } });
+		TODO = { ...TODO, status: "in-progress" };
 		const done = await run("task_start", { task: "seq:7" });
 		expect(done).toMatchObject({ exitCode: 0, json: { schemaVersion: 1, approved: true, seq: 7 } });
 		expect((await run("task_start", { task: "seq:7" })).exitCode).toBe(0);
@@ -150,7 +171,14 @@ describe("agent_resume", () => {
 		const out = await run("agent_resume", { task: "seq:8" });
 		expect(out.exitCode).toBe(31);
 		expect(findTool("agent_resume")!.successCodes).toContain(31);
-		expect(calls.find((c) => c.method === "agent.resumeAsSender")?.params).toMatchObject({ asSender: SENDER, interactiveOnly: true });
+		expect(calls.find((c) => c.method === "agent.resumeAsSender")?.params).toEqual({ taskId: RUNNING.id, projectId: PROJECT.id, asSender: SENDER });
+	});
+
+	it("hands back a decline given between two polls instead of asking again", async () => {
+		resumeResult = { outcome: "declined", taskId: RUNNING.id, seq: 8 };
+		expect((await run("agent_resume", { task: "seq:8" })).exitCode).toBe(10);
+		expect((await run("agent_resume", { task: "seq:8" })).exitCode).toBe(10);
+		expect(count("agent.resumeAsSender")).toBe(1);
 	});
 });
 
@@ -165,14 +193,14 @@ describe("task_create", () => {
 
 describe("the approval side", () => {
 	it("carries interactiveOnly into the requester, where it zeroes auto-approve", () => {
-		const requester = senderRequester({ asSender: SENDER, interactiveOnly: true, viaTokenId: "3fa9c0d1" })!;
+		const requester = senderRequester({ asSender: SENDER }, { tokenId: "3fa9c0d1", interactiveOnly: true })!;
 		expect(requester).toEqual({ senderId: SENDER, label: "Main", interactiveOnly: true, viaTokenId: "3fa9c0d1" });
 		expect(senderAutoApproveMs(requester, 60_000)).toBe(0);
 		expect(senderAutoApproveMs(senderRequester({ asSender: SENDER })!, 60_000)).toBe(60_000);
 	});
 
-	it("drops a malformed token id rather than rendering it in the dialog", () => {
-		expect(senderRequester({ asSender: SENDER, viaTokenId: "<b>x</b>" })!.viaTokenId).toBeUndefined();
+	it("ignores origin fields a local caller puts in the socket params", () => {
+		expect(senderRequester({ asSender: SENDER, interactiveOnly: true, viaTokenId: "3fa9c0d1" })).toEqual({ senderId: SENDER, label: "Main" });
 	});
 });
 
@@ -197,5 +225,47 @@ describe("content scope", () => {
 		const { searchProjectConversationsOffThread } = await import("../conversation-search-project");
 		await expect(searchProjectConversationsOffThread({ query: "x", projectPath: "/a", currentTaskId: null, allStatuses: false, limit: 1, home, dev3Home: home }))
 			.rejects.toThrow(/no search worker/);
+	});
+});
+
+describe("stats and creation over the network", () => {
+	it("refuses all-agent usage (an unbounded main-thread scan) and since where it means nothing", async () => {
+		expect((await run("stats_get", { kind: "usage", since: "1d" })).exitCode).toBe(3);
+		expect((await run("stats_get", { kind: "limits", since: "1d" })).exitCode).toBe(3);
+		expect(count("stats.usage")).toBe(0);
+	});
+
+	it("filters limit sessions to the allow-list and drops their config dirs", async () => {
+		const c = ctx();
+		const base = c.call;
+		c.call = async (m, p) => m === "stats.limits"
+			? { id: "x", ok: true, data: { generatedAt: 0, snapshots: [], sessions: [
+				{ taskId: TODO.id, projectId: PROJECT.id, configDir: "/home/u/.claude", taskTitle: "mine" },
+				{ taskId: "elsewhere", projectId: "bbbbbbbb-other", configDir: "/x", taskTitle: "secret" },
+			] } }
+			: base(m, p);
+		const out = await run("stats_get", { kind: "limits" }, c);
+		expect((out.json as { sessions: unknown[] }).sessions).toEqual([{ taskId: TODO.id, projectId: PROJECT.id, taskTitle: "mine" }]);
+	});
+
+	it("strips other programs' command lines from memory stats", async () => {
+		const c = ctx(token({ projects: ["*"] }));
+		const base = c.call;
+		c.call = async (m, p) => m === "stats.memory"
+			? { id: "x", ok: true, data: { topConsumers: [{ name: "app", rss: 1, processCount: 1, path: "/bin/app", cmdline: "app --token=s3cret" }], topTasks: [] } }
+			: base(m, p);
+		const out = await run("stats_get", { kind: "memory" }, c);
+		expect(JSON.stringify(out.json)).not.toContain("s3cret");
+	});
+
+	it("cannot create a coordinator (its messages carry the user's authority)", async () => {
+		expect((await run("task_create", { project: PROJECT.id, title: "x", type: "coordinator" })).exitCode).toBe(3);
+	});
+
+	it("answers the same for a missing project and one outside the list", async () => {
+		const missing = await run("tasks_list", { project: "ffffffff-nope" });
+		const other = await run("tasks_list", { project: "bbbbbbbb-0000-0000-0000-000000000002" }, ctx(token({ projects: ["someone-else"] })));
+		expect(missing.error?.code).toBe("SCOPE_DENIED");
+		expect(other.error?.code).toBe("SCOPE_DENIED");
 	});
 });
