@@ -33,3 +33,11 @@ describe("CLI exit code registry", () => {
 		}
 	});
 });
+
+describe("exit 25 covers MCP launches and resumes", () => {
+	it("says so in the registry and in the doc", () => {
+		const def = CLI_EXIT_CODE_DEFINITIONS.find((d) => d.code === 25)!;
+		expect(def.description).toMatch(/task_start/);
+		expect(readFileSync(DOC_PATH, "utf-8")).toMatch(/`task_start` and `agent_resume` answer 25/);
+	});
+});
