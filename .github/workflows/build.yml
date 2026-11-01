@@ -2,7 +2,8 @@ name: Build
 
 on:
   pull_request:
-    branches: [main]
+    # Board-views umbrella: remove before feat/dev3-cordis-board-host merges to main (#2143).
+    branches: [main, feat/dev3-cordis-board-host]
 
 permissions:
   contents: read

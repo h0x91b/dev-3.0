@@ -33,8 +33,17 @@ vi.mock("../../tmux", () => ({
 
 vi.mock("../../rpc-handlers/shared", () => ({
 	log: {
+		info: vi.fn(),
 		warn: vi.fn(),
 	},
+}));
+
+vi.mock("../../instance-broadcast", () => ({
+	discoverPeerSockets: vi.fn(() => []),
+}));
+
+vi.mock("../../native-pane-owner", () => ({
+	peerEndpointForPid: vi.fn(() => null),
 }));
 
 vi.mock("../service", () => ({
@@ -45,6 +54,8 @@ import * as data from "../../data";
 import * as git from "../../git";
 import { nativeTaskPanesAlive } from "../../native-task-panes";
 import * as pty from "../../pty-server";
+import { discoverPeerSockets } from "../../instance-broadcast";
+import { peerEndpointForPid } from "../../native-pane-owner";
 import { dispatchLifecycleEvent } from "../service";
 import { rehydrateTaskLifecycles } from "../rehydrate";
 
@@ -154,5 +165,84 @@ describe("boot terminal probe", () => {
 		expect(nativeTaskPanesAlive).not.toHaveBeenCalled();
 		expect(pty.reattachNativeTaskSession).not.toHaveBeenCalled();
 		expect(bootReality().terminalAlive).toBe(true);
+	});
+});
+
+// Incident 2026-11-01: a dev build booted while the installed app was creating a
+// task's worktree, judged the run "interrupted by app restart", and deleted the
+// worktree under it. Boot recovery must leave a live peer's run alone.
+describe("boot recovery and runs owned by another instance", () => {
+	const PEER_PID = 46641;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(false);
+	});
+
+	async function bootPreparing(runtimeState: Task["runtimeState"]): Promise<void> {
+		vi.mocked(data.loadProjects).mockResolvedValue([project()]);
+		vi.mocked(data.loadTasks).mockResolvedValue([
+			task({ status: "in-progress", preparing: true, preparingStage: "creating-worktree", runtimeState }),
+		]);
+		await rehydrateTaskLifecycles();
+	}
+
+	it("does not touch a preparation stamped by a live peer", async () => {
+		vi.mocked(peerEndpointForPid).mockReturnValue(`/sockets/${PEER_PID}.sock`);
+
+		await bootPreparing({ runtime: "preparing", stage: "creating-worktree", runId: "r1", ownerPid: PEER_PID, updatedAt: 1 });
+
+		expect(peerEndpointForPid).toHaveBeenCalledWith(PEER_PID);
+		expect(dispatchLifecycleEvent).not.toHaveBeenCalled();
+	});
+
+	it("does not touch a tear-down stamped by a live peer", async () => {
+		vi.mocked(peerEndpointForPid).mockReturnValue(`/sockets/${PEER_PID}.sock`);
+
+		await bootPreparing({ runtime: "tearing-down", stage: "completed", runId: "r1", ownerPid: PEER_PID, updatedAt: 1 });
+
+		expect(dispatchLifecycleEvent).not.toHaveBeenCalled();
+	});
+
+	it("recovers a preparation whose owner is gone", async () => {
+		vi.mocked(peerEndpointForPid).mockReturnValue(null);
+
+		await bootPreparing({ runtime: "preparing", stage: "creating-worktree", runId: "r1", ownerPid: PEER_PID, updatedAt: 1 });
+
+		expect(dispatchLifecycleEvent).toHaveBeenCalledTimes(1);
+		expect(discoverPeerSockets).not.toHaveBeenCalled();
+	});
+
+	it("leaves an unstamped preparation alone while any peer is alive", async () => {
+		vi.mocked(discoverPeerSockets).mockReturnValue([`/sockets/${PEER_PID}.sock`]);
+
+		await bootPreparing({ runtime: "preparing", stage: "creating-worktree", runId: "r1", updatedAt: 1 });
+
+		expect(dispatchLifecycleEvent).not.toHaveBeenCalled();
+	});
+
+	it("recovers an unstamped preparation when no peer is alive", async () => {
+		vi.mocked(discoverPeerSockets).mockReturnValue([]);
+
+		await bootPreparing({ runtime: "preparing", stage: "creating-worktree", runId: "r1", updatedAt: 1 });
+
+		expect(dispatchLifecycleEvent).toHaveBeenCalledTimes(1);
+	});
+
+	it("still protects a skipped run's worktree from stale-entry recovery", async () => {
+		vi.mocked(peerEndpointForPid).mockReturnValue(`/sockets/${PEER_PID}.sock`);
+
+		await bootPreparing({ runtime: "preparing", stage: "creating-worktree", runId: "r1", ownerPid: PEER_PID, updatedAt: 1 });
+
+		const [, protectedPaths] = vi.mocked(git.recoverStaleInitializingWorktrees).mock.calls[0];
+		expect([...protectedPaths]).toEqual(["/managed/aaaaaaaa/worktree"]);
+	});
+
+	it("never consults peers for a running task", async () => {
+		await bootPreparing({ runtime: "running", updatedAt: 1 });
+
+		expect(discoverPeerSockets).not.toHaveBeenCalled();
+		expect(peerEndpointForPid).not.toHaveBeenCalled();
+		expect(dispatchLifecycleEvent).toHaveBeenCalledTimes(1);
 	});
 });

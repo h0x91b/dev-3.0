@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { cloneElement, useEffect, useMemo, useRef, useState, type Dispatch, type ReactElement, type ReactNode } from "react";
 import type { BranchStatus, Project, Task, TaskPRBadgeInfo } from "../../../shared/types";
-import { earlierPullRequests } from "../../../shared/task-pull-requests";
+import { earlierPullRequests, trustedPrStatusCache } from "../../../shared/task-pull-requests";
 import type { AppAction, Route } from "../../state";
 import { useT } from "../../i18n";
 import { useTaskBranchStatus } from "./useTaskBranchStatus";
@@ -260,7 +260,7 @@ export default function TaskGitActions({
 		})
 		: undefined;
 
-	const prState = prInfo ? prBadgeDisplayState(prInfo, branchStatus, task.prStatusCache) : null;
+	const prState = prInfo ? prBadgeDisplayState(prInfo, branchStatus, trustedPrStatusCache(task)) : null;
 	const reviewedPr = reviewedPrLink(task, prInfo);
 	useReviewedPrBackfill(useMemo(() => [task], [task]));
 	const prTone = prState ? prStateTone(prState) : null;

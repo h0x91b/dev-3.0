@@ -6,7 +6,7 @@ import { I18nProvider } from "../../i18n";
 import { RPC_STATUS_EVENT } from "../../diagnostics";
 import type { Route } from "../../state";
 import { RouteHost } from "../../test-utils/route-host";
-import ProjectView from "../ProjectView";
+import ProjectView, { TASKS_FETCH_TIMEOUT_MS } from "../ProjectView";
 import { api } from "../../rpc";
 import { toast } from "../../toast";
 
@@ -67,6 +67,10 @@ const project: Project = {
 };
 
 function renderView(props: Partial<React.ComponentProps<typeof ProjectView>>) {
+	return render(viewElement(props));
+}
+
+function viewElement(props: Partial<React.ComponentProps<typeof ProjectView>>) {
 	const tasks: Task[] = props.tasks ?? [];
 	// The inline diff lives on the route, so drive the view with the real reducer.
 	const route: Route = props.route ?? {
@@ -75,7 +79,7 @@ function renderView(props: Partial<React.ComponentProps<typeof ProjectView>>) {
 		activeTaskId: props.activeTaskId,
 		taskView: props.taskView,
 	};
-	return render(
+	return (
 		<I18nProvider>
 			<RouteHost
 				route={route}
@@ -94,7 +98,7 @@ function renderView(props: Partial<React.ComponentProps<typeof ProjectView>>) {
 					/>
 				}
 			/>
-		</I18nProvider>,
+		</I18nProvider>
 	);
 }
 
@@ -273,6 +277,47 @@ describe("ProjectView board load states", () => {
 		expect(screen.getByTestId("kanban")).toBeInTheDocument();
 		await new Promise((resolve) => setTimeout(resolve, 250));
 		expect(screen.queryByTestId("kanban-skeleton")).not.toBeInTheDocument();
+	});
+
+	// seq:2309 — a getTasks response lost across a reconnect used to leave the board
+	// on "loading" forever while pushes alone filled it with a handful of cards.
+	it("keeps the skeleton when only pushed cards arrive before the snapshot", async () => {
+		const { api } = await import("../../rpc");
+		vi.mocked(api.request.getTasks).mockReturnValueOnce(new Promise<Task[]>(() => {}));
+		const { rerender } = renderView({});
+		await waitFor(() => expect(screen.getByTestId("kanban-skeleton")).toBeInTheDocument());
+
+		const pushed = { id: "t1", projectId: "p1", title: "T", status: "todo" } as unknown as Task;
+		window.dispatchEvent(new CustomEvent("rpc:taskUpdated", { detail: { task: pushed } }));
+		rerender(viewElement({ tasks: [pushed] }));
+
+		expect(screen.getByTestId("kanban-skeleton")).toBeInTheDocument();
+		expect(screen.queryByTestId("kanban")).not.toBeInTheDocument();
+	});
+
+	it("turns a fetch that never settles into the retry panel, and recovers on retry", async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		try {
+			const { api } = await import("../../rpc");
+			vi.mocked(api.request.getTasks)
+				.mockReturnValueOnce(new Promise<Task[]>(() => {}))
+				.mockResolvedValueOnce([]);
+			const pushed = { id: "t1", projectId: "p1", title: "T", status: "todo" } as unknown as Task;
+			const { rerender } = renderView({});
+			rerender(viewElement({ tasks: [pushed] }));
+
+			act(() => {
+				vi.advanceTimersByTime(TASKS_FETCH_TIMEOUT_MS);
+			});
+			expect(screen.getByTestId("board-load-failed")).toBeInTheDocument();
+			expect(screen.queryByTestId("kanban")).not.toBeInTheDocument();
+
+			await userEvent.click(screen.getByText("Retry"));
+			await waitFor(() => expect(api.request.getTasks).toHaveBeenCalledTimes(2));
+			await waitFor(() => expect(screen.getByTestId("kanban")).toBeInTheDocument());
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("surfaces a retry panel when the fetch fails, and refetches on retry", async () => {
