@@ -35,11 +35,13 @@ function task(projectId: string, seq: number, extra: Partial<Task> = {}): Task {
 const TASKS: Record<string, Task[]> = { [PROJECT_A]: [task(PROJECT_A, 1), task(PROJECT_A, 2, { status: "in-progress" })], [PROJECT_B]: [task(PROJECT_B, 1)] };
 
 let calls: CliRequest[];
+let signals: Array<AbortSignal | undefined>;
 let storePath: string;
 let dir: string;
 
-async function handle(req: CliRequest): Promise<CliResponse> {
+async function handle(req: CliRequest, signal?: AbortSignal): Promise<CliResponse> {
 	calls.push(req);
+	signals.push(signal);
 	const p = req.params ?? {};
 	const data = (() => {
 		switch (req.method) {
@@ -47,6 +49,7 @@ async function handle(req: CliRequest): Promise<CliResponse> {
 			case "spaces.list": return { spaces: [], order: [] };
 			case "tasks.list": return TASKS[String(p.projectId)] ?? [];
 			case "ui.state": return { appRunning: true, foreground: true, activeProjectId: PROJECT_B, activeTaskId: "x", userIdleSeconds: 3, tmux: { secret: 1 } };
+			case "sender.wait": return { items: [], cursor: null, more: false };
 			case "approvals.list": return { requests: [{ projectId: PROJECT_A, taskId: "t" }, { projectId: PROJECT_B, taskId: "u" }] };
 			default: return {};
 		}
@@ -87,6 +90,7 @@ async function callTool(h: ReturnType<typeof makeHandler>, token: string, name: 
 
 beforeEach(() => {
 	calls = [];
+	signals = [];
 	logged.length = 0;
 	_resetAuthRateLimitForTests();
 	dir = mkdtempSync(`${tmpdir()}/dev3-mcp-store-`);
@@ -242,5 +246,17 @@ describe("contracts", () => {
 	it("never declares free text as a trusted field", () => {
 		const FREE_TEXT = /(^|\.|\[\])(title|taskTitle|description|overview|content|name|label|subject|body|text|snippets|message|path|branch|baseBranch|prUrl|url|replyCommand|requesterTitle|projectName|fromTitle|detail)(\[\])?$/;
 		for (const tool of MCP_TOOLS) for (const field of tool.trustedFields) expect(FREE_TEXT.test(field), `${tool.name}: ${field}`).toBe(false);
+	});
+});
+
+describe("disconnects", () => {
+	it("abort a read-only park (inbox_wait) and nothing else", async () => {
+		const { token, record } = issue({ scopes: ["read", "send"] });
+		writeStore([record]);
+		const h = makeHandler();
+		await callTool(h, token, "inbox_wait", { clientId: "gw" });
+		expect(signals[calls.findIndex((c) => c.method === "sender.wait")]).toBeInstanceOf(AbortSignal);
+		await callTool(h, token, "tasks_list", { project: PROJECT_A });
+		expect(signals[calls.findIndex((c) => c.method === "tasks.list")]).toBeUndefined();
 	});
 });
