@@ -1,7 +1,7 @@
 import { existsSync, linkSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import type { GlobalSettings, ShortcutOverride } from "../shared/types";
-import { DEFAULT_AGENTS, DEFAULT_RESOURCE_LEVELS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
+import { DEFAULT_AGENTS, DEFAULT_CLAUDE_CONFIG_ID, DEFAULT_RESOURCE_LEVELS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
 import { hasEnvLineBreak, sanitizeEnvMap } from "../shared/env-text";
 import { recordFavoriteUsage, sanitizeFavorites } from "../shared/favorites";
 import { coerceUpdateChannel, DEFAULT_UPDATE_CHANNEL } from "../shared/update-channel";
@@ -84,7 +84,7 @@ function sanitizeRemoteTunnel(raw: unknown): GlobalSettings["remoteTunnel"] {
 
 const DEFAULT_SETTINGS: GlobalSettings = {
 	defaultAgentId: "builtin-claude",
-	defaultConfigId: "claude-auto-opus55-medium",
+	defaultConfigId: DEFAULT_CLAUDE_CONFIG_ID,
 	taskSortOrder: "oldest-first",
 	updateChannel: DEFAULT_UPDATE_CHANNEL,
 };

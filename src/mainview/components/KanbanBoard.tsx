@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import { toast } from "../toast";
 import type { BoardColumnSlot, CustomColumn, DevServerSummary, GlobalSettings, Label, PortInfo, Project, ResourceUsage, Space, Task, TaskStatus } from "../../shared/types";
+import { DEFAULT_GLOBAL_SETTINGS } from "./global-settings/utils";
 import { ALL_STATUSES, ACTIVE_STATUSES, ALL_PRIORITIES, getBoardColumns, laneAcceptsProject, laneColumnIdForProject, laneKey, normalizeLaneName, DEFAULT_PRIORITY } from "../../shared/types";
 import { PRIORITY_NAME_KEYS } from "./priorityStyles";
 
@@ -108,12 +109,7 @@ function KanbanBoard({
 	const columnCreationHidden = useIsControlHidden("custom-column-creation");
 	const statusColors = useStatusColors();
 	const agents = useAgents();
-	const [globalSettings, setGlobalSettings] = useState<GlobalSettings>({
-		defaultAgentId: "builtin-claude",
-		defaultConfigId: "claude-auto",
-		taskSortOrder: "oldest-first",
-		updateChannel: "stable",
-	});
+	const [globalSettings, setGlobalSettings] = useState<GlobalSettings>(DEFAULT_GLOBAL_SETTINGS);
 	const [launchModal, setLaunchModal] = useState<{ task: Task; targetStatus: TaskStatus; mode?: "spawn" | "addAttempts" } | null>(null);
 	const [dragFromStatus, setDragFromStatus] = useState<TaskStatus | null>(null);
 	// Draft being edited: reopens the New Task popup prefilled from the card.
