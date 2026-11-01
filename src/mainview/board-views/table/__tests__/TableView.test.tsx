@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { Context } from "cordis";
 import type { BoardColumnSlot, CodingAgent, Label, Project, Task } from "../../../../shared/types";
 import { I18nProvider } from "../../../i18n";
-import { BoardService, type BoardActions, type BoardModel } from "../../board-service";
+import { BoardService, type BoardActions, type BoardAllActions, type BoardModel } from "../../board-service";
 import { BoardViewSlot } from "../../BoardViewChrome";
 import { BoardViewRegistry } from "../../registry";
 import "../../root";
@@ -74,16 +74,18 @@ async function renderTable(setup: Setup = {}) {
 		tasks,
 		matches: setup.matches ?? (() => false),
 		columns,
+		occupiedColumns: columns,
 		labels: [bug, ui],
 		agents,
 		projects,
 		layout: (id) => layouts.get(id),
 		setLayout: vi.fn((id: string, layout: unknown) => layouts.set(id, layout)),
-		actions: act$ as unknown as BoardActions,
+		preferences: { taskSortOrder: "newest-first", tipsDisabled: true },
+		actions: act$ as unknown as BoardAllActions,
 	};
 	const root = new Context();
 	new BoardViewRegistry(root);
-	root.provide("board", new BoardService({ current: model }));
+	root.provide("board", new BoardService({ current: model }, () => null));
 	installTableView(root);
 	// Cordis applies a plugin asynchronously, once its injected services are ready.
 	const view = await vi.waitFor(() => root.boardViews.get(TABLE_VIEW_ID) ?? Promise.reject(new Error("not registered")));
@@ -202,10 +204,10 @@ describe("Table board view", () => {
 		const row = screen.getByTestId("board-table-row-t1");
 		fireEvent.click(within(row).getByRole("button", { name: /Change status/ }));
 		fireEvent.click(screen.getByRole("button", { name: /^Completed/ }));
-		expect(actions.moveTask).toHaveBeenCalledWith("t1", { status: "completed" });
+		expect(actions.moveTask).toHaveBeenCalledWith("t1", { status: "completed" }, undefined);
 		fireEvent.click(within(row).getByRole("button", { name: /Change status/ }));
 		fireEvent.click(screen.getByRole("button", { name: /^QA/ }));
-		expect(actions.moveTask).toHaveBeenCalledWith("t1", { customColumnId: "c-qa" });
+		expect(actions.moveTask).toHaveBeenCalledWith("t1", { customColumnId: "c-qa" }, undefined);
 		expect(actions.openTask).not.toHaveBeenCalled();
 	});
 

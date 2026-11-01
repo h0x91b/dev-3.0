@@ -19,6 +19,8 @@ export interface LaunchRequestedDetail {
 	task: Task;
 	project: Project;
 	targetStatus: TaskStatus;
+	/** `addAttempts` adds variants to a running task instead of starting one. */
+	mode?: "spawn" | "addAttempts";
 }
 import type { AppAction } from "../state";
 import type { TFunction } from "../i18n";
@@ -65,6 +67,35 @@ export interface MoveTaskToStatusOptions {
 	 * so the failure is only logged.
 	 */
 	revertOnFailure?: boolean;
+}
+
+/**
+ * Hand a launch to the app-level launch modal. A To Do card still owning a
+ * worktree from an earlier run is reset (with consent) first — the lifecycle
+ * refuses to re-initialise it. Resolves false when the user declined the reset.
+ */
+export async function requestTaskLaunch({
+	task,
+	project,
+	targetStatus,
+	dispatch,
+	t,
+	onOpenTask,
+	mode,
+}: Pick<MoveTaskToStatusOptions, "task" | "project" | "dispatch" | "t" | "onOpenTask"> & {
+	targetStatus: TaskStatus;
+	mode?: LaunchRequestedDetail["mode"];
+}): Promise<boolean> {
+	let launchTask = task;
+	if (mode !== "addAttempts" && task.status === "todo" && task.worktreePath) {
+		const outcome = await resetTaskToTodoWithConsent({ task, project, dispatch, t, onOpenTask });
+		if (outcome !== "reset") return false;
+		launchTask = { ...task, worktreePath: null, branchName: null };
+	}
+	window.dispatchEvent(new CustomEvent<LaunchRequestedDetail>(LAUNCH_REQUESTED_EVENT, {
+		detail: { task: launchTask, project, targetStatus, mode },
+	}));
+	return true;
 }
 
 type ResetOptions = Pick<MoveTaskToStatusOptions,
@@ -159,17 +190,7 @@ export async function moveTaskToStatus({
 	}
 
 	if (task.status === "todo" && ACTIVE_STATUSES.includes(newStatus)) {
-		// A card still owning a worktree from an earlier run is reset first.
-		let launchTask = task;
-		if (task.worktreePath) {
-			const outcome = await resetTaskToTodoWithConsent({ task, project, dispatch, t, onOpenTask });
-			if (outcome !== "reset") return false;
-			launchTask = { ...task, worktreePath: null, branchName: null };
-		}
-		window.dispatchEvent(new CustomEvent<LaunchRequestedDetail>(LAUNCH_REQUESTED_EVENT, {
-			detail: { task: launchTask, project, targetStatus: newStatus },
-		}));
-		return true;
+		return requestTaskLaunch({ task, project, targetStatus: newStatus, dispatch, t, onOpenTask });
 	}
 
 	if (confirm && terminal && (task.worktreePath || alwaysConfirm)) {
