@@ -1,28 +1,12 @@
 const activity = new Map<string, number>();
-const viewers = new Map<string, { taskId: string; expiresAt: number }>();
-let policyChangedAt = 0;
-
-export function reportTaskViewer(clientId: string, taskId: string | null, focused: boolean, now = Date.now()): void {
-	viewers.delete(clientId);
-	if (!taskId) return;
-	recordTaskActivity(taskId, now);
-	if (focused) viewers.set(clientId, { taskId, expiresAt: now + 30_000 });
-}
-
-export function isTaskBeingViewed(taskId: string, now = Date.now()): boolean {
-	for (const [client, viewer] of viewers) {
-		if (viewer.expiresAt <= now) viewers.delete(client);
-		else if (viewer.taskId === taskId) return true;
-	}
-	return false;
-}
+let policyRevision = 0;
 
 export function recordAutoHibernatePolicyChange(): void {
-	policyChangedAt = Date.now();
+	policyRevision++;
 }
 
 export function lastAutoHibernatePolicyChange(): number {
-	return policyChangedAt;
+	return policyRevision;
 }
 
 export function recordTaskActivity(taskId: string, at = Date.now()): void {

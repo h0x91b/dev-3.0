@@ -1,4 +1,17 @@
 const kanban = {
+	"autoHibernateSuggestion.inactive_one": "Inactive for {count} minute",
+	"autoHibernateSuggestion.inactive_other": "Inactive for {count} minutes",
+	"autoHibernateSuggestion.hibernate_one": "Hibernate selected ({count})",
+	"autoHibernateSuggestion.hibernate_other": "Hibernate selected ({count})",
+	"autoHibernateSuggestion.title": "Hibernate inactive tasks?",
+	"autoHibernateSuggestion.description": "These tasks have been quiet. Select the ones to hibernate and free their resources.",
+	"autoHibernateSuggestion.losses": "Hibernation stops their agents and terminals. Terminal scrollback is permanently lost.",
+	"autoHibernateSuggestion.preserved": "Your worktrees, files and conversations are preserved.",
+	"autoHibernateSuggestion.tasks": "Inactive tasks",
+	"autoHibernateSuggestion.held": "Auto-hibernation is paused. Review the selection, then hibernate or choose Not now.",
+	"autoHibernateSuggestion.countdown": "Hibernates automatically in {time}. Interact with this dialog to pause.",
+	"autoHibernateSuggestion.waiting": "Waiting to start the confirmation countdown.",
+	"autoHibernateSuggestion.notNow": "Not now",
 	"task.autoHibernated": "Task automatically hibernated after inactivity.",
 	// KanbanColumn
 	"kanban.noTasks": "No tasks",
