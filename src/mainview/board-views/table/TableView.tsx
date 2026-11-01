@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, type KeyboardEvent, type MouseEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Context } from "cordis";
-import type { Task } from "../../../shared/types";
-import { getTaskTitle } from "../../../shared/types";
+import type { Label, Task } from "../../../shared/types";
+import { getTaskTitle, projectDisplayName } from "../../../shared/types";
 import { useT, type TranslationKey } from "../../i18n";
 import { useBoard } from "../react";
 import type { BoardService } from "../board-service";
@@ -37,8 +37,24 @@ const COLUMN_WIDTH: Record<TableColumnId, string> = {
 	type: "7rem",
 };
 
+const COLUMN_LABEL_KEYS = {
+	seq: "boardTable.col.seq",
+	title: "boardTable.col.title",
+	project: "boardTable.col.project",
+	status: "boardTable.col.status",
+	priority: "boardTable.col.priority",
+	labels: "boardTable.col.labels",
+	agent: "boardTable.col.agent",
+	pr: "boardTable.col.pr",
+	activity: "boardTable.col.activity",
+	parent: "boardTable.col.parent",
+	created: "boardTable.col.created",
+	branch: "boardTable.col.branch",
+	type: "boardTable.col.type",
+} as const satisfies Record<TableColumnId, TranslationKey>;
+
 export function columnLabelKey(column: TableColumnId): TranslationKey {
-	return `boardTable.col.${column}` as TranslationKey;
+	return COLUMN_LABEL_KEYS[column];
 }
 
 /** The Table's layout for the board on screen, normalised, with a setter that persists it. */
@@ -50,6 +66,8 @@ export function useTableLayout(board: BoardService): [TableLayout, (next: TableL
 }
 
 function useRowContext(board: BoardService): TableRowContext {
+	const t = useT();
+	const opsBoardName = t("ops.boardName");
 	const columns = board.columns();
 	const projects = board.projects();
 	const agents = board.agents();
@@ -59,16 +77,26 @@ function useRowContext(board: BoardService): TableRowContext {
 		const seen = new Set<number>();
 		const sharedSeqs = new Set<number>();
 		for (const task of scopeTasks) (seen.has(task.seq) ? sharedSeqs : seen).add(task.seq);
+		const projectById = new Map(projects.map((p) => [p.id, p]));
+		const labelsById = new Map(projects.map((p) => [p.id, new Map((p.labels ?? []).map((label) => [label.id, label]))]));
 		return {
 			board,
 			columns,
-			projectById: new Map(projects.map((p) => [p.id, p])),
+			projectById,
 			agentNameById: new Map(agents.map((a) => [a.id, a.name])),
 			taskById: new Map(scopeTasks.map((task) => [task.id, task])),
 			sharedSeqs,
 			narrow,
+			projectName: (id) => {
+				const project = projectById.get(id);
+				return project ? projectDisplayName(project, opsBoardName) : "";
+			},
+			labelsOf: (task) => {
+				const own = labelsById.get(task.projectId);
+				return (task.labelIds ?? []).map((id) => own?.get(id)).filter((label): label is Label => !!label);
+			},
 		};
-	}, [board, columns, projects, agents, scopeTasks, narrow]);
+	}, [board, columns, projects, agents, scopeTasks, narrow, opsBoardName]);
 }
 
 /** `builtin:table` (spec D18): every task of the board as sortable, virtualised rows. */
@@ -81,8 +109,9 @@ export function TableView(_props: { ctx: Context }) {
 	const sorted = useMemo(() => sortTableTasks(tasks, layout.sort, {
 		columns: rowCtx.columns,
 		agentName: (id) => (id ? rowCtx.agentNameById.get(id) ?? "" : ""),
-		projectName: (id) => rowCtx.projectById.get(id)?.name ?? "",
+		projectName: (id) => rowCtx.projectName(id),
 		taskSeqById: (id) => rowCtx.taskById.get(id)?.seq ?? null,
+		labelNames: (task) => rowCtx.labelsOf(task).map((label) => label.name),
 	}), [tasks, layout.sort, rowCtx]);
 
 	const narrow = board.formFactor === "narrow";
@@ -161,7 +190,8 @@ export function TableView(_props: { ctx: Context }) {
 								<div className="flex h-full flex-col justify-between rounded-xl bg-raised px-3 py-2 shadow-[0_0_0_1px_rgb(var(--border-default))] active:bg-raised-hover">
 									<div className="flex min-w-0 items-baseline gap-2">
 										<span className="flex-shrink-0 text-xs tabular-nums text-fg-3">{rowSeqLabel(task, rowCtx)}</span>
-										<span className="truncate text-sm text-fg">{getTaskTitle(task)}</span>
+										<span className="min-w-0 flex-1 truncate text-sm text-fg">{getTaskTitle(task)}</span>
+										<span className="flex-shrink-0"><TableCell column="activity" task={task} ctx={rowCtx} /></span>
 									</div>
 									<div className="flex min-w-0 items-center gap-2">
 										<StatusCell task={task} ctx={rowCtx} />

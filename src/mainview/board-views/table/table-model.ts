@@ -1,5 +1,5 @@
 import type { BoardColumnSlot, Task } from "../../../shared/types";
-import { priorityRank } from "../../../shared/types";
+import { getTaskTitle, priorityRank } from "../../../shared/types";
 import { parentTaskIdOf } from "../../../shared/types/task-origin";
 import { taskLastActivityMs } from "../../utils/projectActivity";
 
@@ -33,7 +33,8 @@ function isColumnId(value: unknown): value is TableColumnId {
 	return typeof value === "string" && (TABLE_COLUMNS as readonly string[]).includes(value);
 }
 
-function allowedOn(kind: TableBoardKind, column: TableColumnId): boolean {
+/** The project column only means something on a space board. */
+export function columnAllowedOn(kind: TableBoardKind, column: TableColumnId): boolean {
 	return column !== "project" || kind === "space";
 }
 
@@ -53,10 +54,10 @@ export function normalizeTableLayout(raw: unknown, kind: TableBoardKind): TableL
 	if (typeof raw !== "object" || raw === null || !Array.isArray((raw as { columns?: unknown }).columns)) return fallback;
 	const stored = raw as { columns: unknown[]; sort?: unknown };
 
-	const columns = canonical([...stored.columns.filter(isColumnId).filter((c) => allowedOn(kind, c)), "title"]);
+	const columns = canonical([...stored.columns.filter(isColumnId).filter((c) => columnAllowedOn(kind, c)), "title"]);
 
 	const sort = stored.sort;
-	const validSort = Array.isArray(sort) && sort.length === 2 && isColumnId(sort[0]) && allowedOn(kind, sort[0])
+	const validSort = Array.isArray(sort) && sort.length === 2 && isColumnId(sort[0]) && columnAllowedOn(kind, sort[0])
 		&& (sort[1] === "asc" || sort[1] === "desc");
 	return { columns, sort: validSort ? [sort[0], sort[1]] as TableSort : DEFAULT_SORT };
 }
@@ -69,7 +70,7 @@ export function toggleTableSort(layout: TableLayout, column: TableColumnId): Tab
 
 /** Show or hide one column; shown columns keep the canonical order. The title is never hidden. */
 export function toggleTableColumn(layout: TableLayout, column: TableColumnId, kind: TableBoardKind): TableLayout {
-	if (column === "title" || !allowedOn(kind, column)) return layout;
+	if (column === "title" || !columnAllowedOn(kind, column)) return layout;
 	const shown = layout.columns.includes(column);
 	const columns = shown ? layout.columns.filter((c) => c !== column) : canonical([...layout.columns, column]);
 	return { ...layout, columns };
@@ -93,6 +94,8 @@ export interface TableSortContext {
 	columns: readonly BoardColumnSlot[];
 	agentName(agentId: string | null): string;
 	projectName(projectId: string): string;
+	/** The names of a task's labels, for sorting the labels column alphabetically. */
+	labelNames(task: Task): string[];
 	taskSeqById(taskId: string): number | null;
 }
 
@@ -102,17 +105,17 @@ function sortKey(task: Task, column: TableColumnId, ctx: TableSortContext): Sort
 	switch (column) {
 		// Variants share a seq; they order by attempt number inside it.
 		case "seq": return task.seq + (task.variantIndex ?? 0) / 1000;
-		case "title": return (task.customTitle || task.title).toLocaleLowerCase();
+		case "title": return getTaskTitle(task).toLocaleLowerCase();
 		case "project": return ctx.projectName(task.projectId).toLocaleLowerCase() || null;
 		case "status": {
 			const lane = laneOfTask(task, ctx.columns);
 			return lane >= 0 ? lane : Number.MAX_SAFE_INTEGER;
 		}
 		case "priority": return priorityRank(task.priority);
-		case "labels": return task.labelIds?.length || null;
+		case "labels": return ctx.labelNames(task).map((n) => n.toLocaleLowerCase()).sort().join("\u0000") || null;
 		case "agent": return ctx.agentName(task.agentId).toLocaleLowerCase() || null;
 		case "pr": return taskPrNumber(task);
-		case "activity": return taskLastActivityMs(task);
+		case "activity": return taskLastActivityMs(task) || null;
 		case "parent": {
 			const parentId = parentTaskIdOf(task);
 			return parentId ? ctx.taskSeqById(parentId) : null;

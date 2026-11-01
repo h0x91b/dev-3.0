@@ -62,7 +62,8 @@ interface Setup {
 async function renderTable(setup: Setup = {}) {
 	const layouts = new Map<string, unknown>(setup.layout ? [[TABLE_VIEW_ID, setup.layout]] : []);
 	const act$ = actions();
-	const projects = setup.kind === "space" ? [project("p1", "Alpha"), project("p2", "Beta")] : [project("p1", "Alpha")];
+	const ops = { ...project("ops", "Operations"), kind: "virtual", builtin: true } as Project;
+	const projects = setup.kind === "space" ? [project("p1", "Alpha"), project("p2", "Beta"), ops] : [project("p1", "Alpha")];
 	const tasks = setup.tasks ?? [];
 	const model: BoardModel = {
 		scope: { kind: setup.kind ?? "project", id: "b1", projectIds: projects.map((p) => p.id) },
@@ -150,6 +151,11 @@ describe("Table board view", () => {
 		await renderTable({ kind: "space", tasks: [task("t1", 1, { projectId: "p2" })] });
 		expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toContain("Project");
 		expect(within(screen.getByTestId("board-table-row-t1")).getByText("Beta")).toBeInTheDocument();
+	});
+
+	it("names the built-in ops board the way the rest of the app does", async () => {
+		await renderTable({ kind: "space", tasks: [task("t1", 1, { projectId: "ops" })] });
+		expect(within(screen.getByTestId("board-table-row-t1")).getByText("[ Operations ]")).toBeInTheDocument();
 	});
 
 	it("sorts by a header click, persists the sort through ctx.board, and flips on a second click", async () => {

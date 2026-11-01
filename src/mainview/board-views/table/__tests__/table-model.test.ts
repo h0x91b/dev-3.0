@@ -33,6 +33,7 @@ const ctx: TableSortContext = {
 	agentName: (id) => ({ a1: "Claude", a2: "Codex" })[id ?? ""] ?? "",
 	projectName: (id) => ({ p1: "Alpha", p2: "Beta" })[id] ?? "",
 	taskSeqById: (id) => ({ parent1: 5, parent2: 2 })[id] ?? null,
+	labelNames: (task) => (task.labelIds ?? []).map((id) => ({ x: "Bug", y: "Alpha" })[id] ?? ""),
 };
 
 describe("defaultTableLayout", () => {
@@ -140,10 +141,12 @@ describe("sortTableTasks", () => {
 		expect(ids(["priority", "asc"])).toEqual(["b", "a", "c"]);
 	});
 
-	it("sorts by agent name, project name, label count, PR, branch, parent seq and created", () => {
+	it("sorts by agent name, project name, label names, PR, branch, parent seq and created", () => {
 		expect(ids(["agent", "asc"])).toEqual(["b", "a", "c"]);
 		expect(ids(["project", "asc"])).toEqual(["c", "b", "a"]);
-		expect(ids(["labels", "desc"])).toEqual(["a", "c", "b"]);
+		// a has "Alpha, Bug", c has "Bug"; b has none and goes last.
+		expect(ids(["labels", "asc"])).toEqual(["a", "c", "b"]);
+		expect(ids(["labels", "desc"])).toEqual(["c", "a", "b"]);
 		expect(ids(["pr", "desc"])[0]).toBe("a");
 		expect(ids(["branch", "asc"])).toEqual(["c", "a", "b"]);
 		expect(ids(["parent", "asc"])).toEqual(["c", "b", "a"]);
@@ -151,6 +154,8 @@ describe("sortTableTasks", () => {
 	});
 
 	it("keeps empty values last in both directions", () => {
+		const idle = task({ id: "idle", seq: 9, createdAt: "" });
+		expect(sortTableTasks([idle, ...all], ["activity", "asc"], ctx).map((t) => t.id).pop()).toBe("idle");
 		expect(ids(["branch", "desc"])).toEqual(["a", "c", "b"]);
 		expect(ids(["agent", "desc"])).toEqual(["a", "b", "c"]);
 	});

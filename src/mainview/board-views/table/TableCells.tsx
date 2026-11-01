@@ -31,6 +31,10 @@ export interface TableRowContext {
 	taskById: ReadonlyMap<string, Task>;
 	/** Seqs more than one task on the board answers to — only those get a variant suffix. */
 	sharedSeqs: ReadonlySet<number>;
+	/** The project's name as the rest of the app shows it (the built-in ops board has its own). */
+	projectName(projectId: string): string;
+	/** A task's labels, resolved against its own project. */
+	labelsOf(task: Task): Label[];
 	narrow: boolean;
 }
 
@@ -121,9 +125,7 @@ export function LabelsCell({ task, ctx }: { task: Task; ctx: TableRowContext }) 
 	const anchorRef = useRef<HTMLButtonElement>(null);
 	const project = ctx.projectById.get(task.projectId);
 	const ids = task.labelIds ?? [];
-	const assigned = ids
-		.map((id) => project?.labels?.find((label) => label.id === id))
-		.filter((label): label is Label => !!label);
+	const assigned = ctx.labelsOf(task);
 	const toggle = (labelId: string) => {
 		const next = ids.includes(labelId) ? ids.filter((id) => id !== labelId) : [...ids, labelId];
 		void ctx.board.setLabels(task.id, next);
@@ -140,7 +142,7 @@ export function LabelsCell({ task, ctx }: { task: Task; ctx: TableRowContext }) 
 				className="flex min-w-0 items-center gap-1 overflow-hidden rounded-md px-1 py-0.5 hover:bg-fg/8 focus-visible:ring-1 focus-visible:ring-accent/60"
 			>
 				{assigned.length === 0 ? (
-					<span className="text-xs text-fg-muted">—</span>
+					<Muted />
 				) : (
 					assigned.map((label) => <LabelChip key={label.id} label={label} size="xs" />)
 				)}
@@ -190,7 +192,7 @@ export function TableCell({ column, task, ctx }: { column: TableColumnId; task: 
 		case "title":
 			return <span className="block truncate text-sm text-fg" title={getTaskTitle(task)}>{getTaskTitle(task)}</span>;
 		case "project":
-			return <Text>{ctx.projectById.get(task.projectId)?.name ?? ""}</Text>;
+			return <Text>{ctx.projectName(task.projectId)}</Text>;
 		case "status":
 			return <StatusCell task={task} ctx={ctx} />;
 		case "priority":
