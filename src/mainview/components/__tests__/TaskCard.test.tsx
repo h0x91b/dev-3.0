@@ -2270,6 +2270,16 @@ describe("coordinator card", () => {
 	});
 });
 
+describe("board-cleanup card", () => {
+	it("outlines the card with a dashed danger border", () => {
+		const { container } = renderCard(makeTask({ taskType: "board-cleanup" }));
+		const card = container.querySelector("[data-task-id='t1']");
+
+		expect(card?.className).toContain("border-dashed");
+		expect(card?.className).toContain("task-card-board-cleanup");
+	});
+});
+
 describe("hibernated card", () => {
 	function hibernated(overrides?: Partial<Task>): Task {
 		return makeTask({
