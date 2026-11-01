@@ -1,3 +1,4 @@
+import EpicsSettingsSection from "./global-settings/EpicsSettingsSection";
 import {
 	useCallback,
 	useEffect,
@@ -1022,25 +1023,28 @@ function GlobalSettings({
 				);
 			case "tasks":
 				return (
-					<BehaviorSettingsSection
-						t={t}
-						globalSettings={globalSettings}
-						tipsResetDone={tipsResetDone}
-						onDefaultDiffViewModeChange={handleDefaultDiffViewModeChange}
-						onOpenArtifactsInPopupToggle={handleOpenArtifactsInPopupToggle}
-						onArtifactTemplateChange={handleArtifactTemplateChange}
-						onArtifactTemplatePathChange={handleArtifactTemplatePathChange}
-						onSuggestCompletingTasksAfterMergeToggle={handleSuggestCompletingTasksAfterMergeToggle}
-						onPrOriginTaskLinkToggle={handlePrOriginTaskLinkToggle}
-						onAgentLaunchAutoApproveChange={handleAgentLaunchAutoApproveChange}
-						prOriginTaskLinkSupported={prOriginTaskLinkSupported}
-						onTaskSortOrderChange={handleTaskSortOrderChange}
-						onTaskOpenModeChange={handleTaskOpenModeChange}
-						onTipsDisabledToggle={handleTipsDisabledToggle}
-						onTipsReset={handleTipsReset}
-						onReviewModePromptChange={handleReviewModePromptChange}
-						onCoordinatorPromptChange={handleCoordinatorPromptChange}
-					/>
+					<>
+						<BehaviorSettingsSection
+							t={t}
+							globalSettings={globalSettings}
+							tipsResetDone={tipsResetDone}
+							onDefaultDiffViewModeChange={handleDefaultDiffViewModeChange}
+							onOpenArtifactsInPopupToggle={handleOpenArtifactsInPopupToggle}
+							onArtifactTemplateChange={handleArtifactTemplateChange}
+							onArtifactTemplatePathChange={handleArtifactTemplatePathChange}
+							onSuggestCompletingTasksAfterMergeToggle={handleSuggestCompletingTasksAfterMergeToggle}
+							onPrOriginTaskLinkToggle={handlePrOriginTaskLinkToggle}
+							onAgentLaunchAutoApproveChange={handleAgentLaunchAutoApproveChange}
+							prOriginTaskLinkSupported={prOriginTaskLinkSupported}
+							onTaskSortOrderChange={handleTaskSortOrderChange}
+							onTaskOpenModeChange={handleTaskOpenModeChange}
+							onTipsDisabledToggle={handleTipsDisabledToggle}
+							onTipsReset={handleTipsReset}
+							onReviewModePromptChange={handleReviewModePromptChange}
+							onCoordinatorPromptChange={handleCoordinatorPromptChange}
+						/>
+						<EpicsSettingsSection t={t} />
+					</>
 				);
 			case "notifications":
 				return (

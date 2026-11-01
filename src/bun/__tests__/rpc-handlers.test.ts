@@ -4335,7 +4335,7 @@ describe("handlers.spawnVariants", () => {
 	it("gives every new variant the source task's parent, so the group is one lineage node", async () => {
 		const project = makeProject();
 		const origin = { kind: "task", taskId: "parent-1", projectId: "proj-9" } as const;
-		const sourceTask = makeTask({ status: "todo", seq: 5, worktreePath: null, branchName: null, origin });
+		const sourceTask = makeTask({ status: "todo", seq: 5, worktreePath: null, branchName: null, origin, epicId: "epic-1" });
 		const secondVariant = makeTask({ id: "variant-2", status: "in-progress", preparing: true });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
@@ -4350,7 +4350,8 @@ describe("handlers.spawnVariants", () => {
 			targetStatus: "in-progress",
 			variants: [{ agentId: "agent-1", configId: null }, { agentId: "agent-2", configId: null }],
 		});
-		expect(vi.mocked(data.addTask).mock.calls[0][3]).toEqual(expect.objectContaining({ origin }));
+		// Variants also start in the source's epic; each one is edited independently after.
+		expect(vi.mocked(data.addTask).mock.calls[0][3]).toEqual(expect.objectContaining({ origin, epicId: "epic-1" }));
 	});
 
 	// The in-place transform re-checks the status under the file lock: a
@@ -5094,6 +5095,7 @@ describe("handlers.addAttempts", () => {
 			variantIndex: 1,
 			existingBranch: "feature/login",
 			origin,
+			epicId: "epic-1",
 		});
 		const attemptTask = makeTask({
 			id: "attempt-2",
@@ -5131,6 +5133,7 @@ describe("handlers.addAttempts", () => {
 			expect.objectContaining({
 				existingBranch: "feature/login",
 				origin,
+				epicId: "epic-1",
 			}),
 		);
 

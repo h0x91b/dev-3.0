@@ -4,6 +4,7 @@ import { isTaskSoundEnabled } from "../../shared/task-sound-statuses";
 import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, normalizeTaskType, reviewTaskTitle } from "../../shared/types";
 import * as data from "../data";
 import { loadTaskLineage } from "../task-lineage";
+import { epicForNewTask } from "../task-epics";
 import * as git from "../git";
 import * as github from "../github";
 import { pendingAgentLaunchDialogs, holdAgentRequestAutoApprove as holdAutoApprove, listPendingAgentRequests, markAgentRequestShown as markShown, resolveAgentRequest, setAgentRequestLaunchChoice } from "../agent-requests";
@@ -194,7 +195,7 @@ async function getAllProjectTasks(): Promise<{ projectId: string; tasks: Task[];
  * too — a second creation path is how `foreignCode` came to be set in the GUI
  * and nowhere else.
  */
-export async function createTask(params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType; origin?: TaskOrigin }): Promise<Task> {
+export async function createTask(params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType; origin?: TaskOrigin; epicId?: string }): Promise<Task> {
 	log.info("→ createTask", {
 		projectId: params.projectId,
 		requestedStatus: params.status ?? "todo",
@@ -206,6 +207,7 @@ export async function createTask(params: { projectId: string; description: strin
 		priority: params.priority,
 		taskType: params.taskType,
 		origin: params.origin?.kind ?? "user",
+		hasEpic: Boolean(params.epicId),
 	});
 	const project = await data.getProject(params.projectId);
 	const isScratch = params.scratch === true;
@@ -256,6 +258,7 @@ export async function createTask(params: { projectId: string; description: strin
 		...(params.taskType ? { taskType: params.taskType } : {}),
 		...(reviewIdentity?.reviewedPr ? { reviewedPr: reviewIdentity.reviewedPr } : {}),
 		...(params.origin ? { origin: params.origin } : {}),
+		...(params.epicId ? { epicId: params.epicId } : {}),
 	};
 	const initialStatus = isActive(status) ? "todo" : status;
 	const createdTask = await data.addTask(project, description, initialStatus, Object.keys(extras).length ? extras : undefined);
@@ -293,9 +296,9 @@ export async function createTask(params: { projectId: string; description: strin
  * to the agent. A scratch task has no prompt by definition — whoever asked for it
  * drives it with messages afterwards.
  */
-export async function createScratchTask(projectId: string, origin?: TaskOrigin): Promise<Task> {
+export async function createScratchTask(projectId: string, origin?: TaskOrigin, epicId?: string): Promise<Task> {
 	const project = await data.getProject(projectId);
-	const task = await data.addTask(project, scratchPlaceholder(), "todo", { scratch: true, ...(origin ? { origin } : {}) });
+	const task = await data.addTask(project, scratchPlaceholder(), "todo", { scratch: true, ...(origin ? { origin } : {}), ...(epicId ? { epicId } : {}) });
 	getPushMessage()?.("taskUpdated", { projectId: project.id, task });
 	log.info("← createScratchTask", { taskId: task.id.slice(0, 8) });
 	return task;
@@ -666,6 +669,8 @@ async function spawnVariants(params: {
 				priority: sourceTask.priority,
 				// A variant group is one node in the lineage: siblings share the parent.
 				origin: sourceTask.origin,
+				// Variants start in the original's epic; each one changes independently after.
+				epicId: sourceTask.epicId,
 				// Virtual ("Operations") tasks: carry the chosen working folder onto
 				// each variant so the worktree-less launch path targets it instead
 				// of falling back to a managed dir.
@@ -795,6 +800,7 @@ async function addAttempts(params: {
 				priority: sourceTask.priority,
 				// Same parent as the original — an attempt is never a child of it.
 				origin: sourceTask.origin,
+				epicId: sourceTask.epicId,
 				// NOTE: notes/overview are intentionally NOT copied here — addAttempts
 				// keeps the source task (returns it alongside the new attempts), so its
 				// notes are not lost; copying them would duplicate them across siblings.
@@ -1328,7 +1334,13 @@ export const taskLifecycleHandlers = {
 	getTaskLineage: () => loadTaskLineage(),
 	openQuickShell,
 	// A GUI create is the user's by definition; only the CLI socket records a parent.
-	createTask: ({ origin: _origin, ...params }: Parameters<typeof createTask>[0]) => createTask(params),
+	// A picked epic is re-checked here: the picker may be stale, and an archived epic takes no new work.
+	// The push lets every window's epic counts see the new member; a plain To Do create sends none.
+	createTask: async ({ origin: _origin, epicId, ...params }: Parameters<typeof createTask>[0]) => {
+		const task = await createTask({ ...params, epicId: await epicForNewTask({ epic: epicId, creator: null }) });
+		if (task.epicId) getPushMessage()?.("taskUpdated", { projectId: task.projectId, task });
+		return task;
+	},
 	moveTask,
 	debugEmitTaskSound,
 	cancelTaskPreparation,

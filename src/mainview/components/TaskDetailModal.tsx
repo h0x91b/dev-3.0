@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type Dispatch } from "react";
 import { toast } from "../toast";
 import TaskOriginRow from "./TaskOriginRow";
+import TaskEpicRow from "./TaskEpicRow";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { Project, Task, TaskStatus } from "../../shared/types";
 import { titleFromDescription, getAllowedTransitions, getTaskTitle, taskOrigin } from "../../shared/types";
@@ -457,11 +458,10 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 
 				{/* Content */}
 				<div className="px-6 pb-5 overflow-y-auto flex-1">
-					{taskOrigin(task).kind !== "user" && (
-						<div className="mb-3 grid grid-cols-[auto_1fr] gap-x-4 text-xs">
-							<TaskOriginRow task={task} testId="task-detail-origin" navigate={navigateAway} />
-						</div>
-					)}
+					<div className="mb-3 grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1.5 text-xs">
+						{taskOrigin(task).kind !== "user" && <TaskOriginRow task={task} testId="task-detail-origin" navigate={navigateAway} />}
+						<TaskEpicRow task={task} testId="task-detail-epic" />
+					</div>
 					{/* Title with rename */}
 					{isRenaming ? (
 						<div className="mb-4 space-y-1.5">
@@ -959,6 +959,7 @@ function ArchivedView({
 									testId="task-detail-origin"
 									navigate={navigate}
 								/>
+								<TaskEpicRow task={task} testId="task-detail-epic" />
 
 								<span className="text-fg-3">{t("infoPanel.updated")}</span>
 								<span className="text-fg-3">{formatDate(task.updatedAt)}</span>

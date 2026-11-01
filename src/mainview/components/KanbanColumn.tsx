@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type Dispatch } from "react";
 import type { CardLineage } from "../utils/taskLineage";
-import type { CodingAgent, DevServerSummary, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus, TipState } from "../../shared/types";
+import type { CodingAgent, DevServerSummary, Epic, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus, TipState } from "../../shared/types";
 import { hexToRgb, getAllowedTransitions } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { useT } from "../i18n";
@@ -66,6 +66,7 @@ interface KanbanColumnProps {
 	onSetMoving: (taskId: string, isMoving: boolean) => void;
 	siblingMap: Map<string, Task[]>;
 	lineageFor?: (task: Task) => CardLineage | undefined;
+	onFilterByEpic?: (epic: Epic) => void;
 	// Custom column support
 	isCustomColumn?: boolean;
 	customColumnId?: string;
@@ -133,6 +134,7 @@ function KanbanColumn({
 	onSetMoving,
 	siblingMap,
 	lineageFor,
+	onFilterByEpic,
 	taskPrMap,
 	onOpenUnresolvedComments,
 	onEditDraft,
@@ -648,6 +650,7 @@ function KanbanColumn({
 							onSetMoving={onSetMoving}
 							siblingMap={siblingMap}
 							lineage={lineageFor?.(task)}
+							onFilterByEpic={onFilterByEpic}
 							prInfo={taskPrMap?.get(task.id)}
 							onOpenUnresolvedComments={onOpenUnresolvedComments}
 							onEditDraft={onEditDraft}

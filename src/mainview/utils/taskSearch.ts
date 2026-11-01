@@ -23,7 +23,7 @@ import { normalizeChildrenValue } from "./taskLineage";
  */
 
 /** Ordered set of recognized facet keys. Extend here to add a facet. */
-export const FACET_KEYS = ["priority", "label", "agent", "status", "type", "space", "children", "is", "has", "pr"] as const;
+export const FACET_KEYS = ["priority", "label", "agent", "status", "type", "space", "epic", "children", "is", "has", "pr"] as const;
 export type FacetKey = (typeof FACET_KEYS)[number];
 
 /**
@@ -72,6 +72,8 @@ export interface TaskQueryContext {
 	/** Every `children:` value that selects this task — its own variant group and
 	 *  its parent's (see `childrenTokenRefs`). Absent where lineage is not loaded. */
 	childrenRefs?: readonly string[];
+	/** The task's epic; null for none or where the registry is not loaded. */
+	epic?: { id: string; name: string } | null;
 }
 
 interface FacetDef {
@@ -113,6 +115,13 @@ const FACET_DEFS: Record<FacetKey, FacetDef> = {
 		key: "space",
 		kind: "free",
 		match: (ctx, v) => (ctx.spaceNames ?? []).some((n) => n.toLowerCase().includes(v)),
+	},
+	epic: {
+		key: "epic",
+		kind: "free",
+		// The whole name (any case), or an id prefix of ≥ 4 — never a substring,
+		// so `epic:pay` does not quietly widen to every epic with "pay" in it.
+		match: (ctx, v) => !!ctx.epic && (ctx.epic.name.toLowerCase() === v || (v.length >= 4 && ctx.epic.id.toLowerCase().startsWith(v))),
 	},
 	children: {
 		key: "children",
@@ -180,7 +189,7 @@ function unescapeDslValue(inner: string): string {
 }
 
 function emptyFacets(): Record<FacetKey, string[]> {
-	return { priority: [], label: [], agent: [], status: [], type: [], space: [], children: [], is: [], has: [], pr: [] };
+	return { priority: [], label: [], agent: [], status: [], type: [], space: [], epic: [], children: [], is: [], has: [], pr: [] };
 }
 
 /**

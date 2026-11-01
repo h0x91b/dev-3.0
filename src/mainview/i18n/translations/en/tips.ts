@@ -210,7 +210,7 @@ const tips = {
 	"tip.llmProvider.title": "Run agents on Amazon Bedrock",
 	"tip.llmProvider.body": "The LLM Provider setting points Claude or Codex at Amazon Bedrock — dev3 pins the mapped model; credentials and region stay in your own config.",
 	"tip.filterTokens.title": "Filter tasks with tokens",
-	"tip.filterTokens.body": "In the search box type priority:P0 label:Bug agent:Codex status:review children:1801 is:attention pr:merged — or click the funnel to build it.",
+	"tip.filterTokens.body": "In the search box type priority:P0 label:Bug agent:Codex status:review epic:Payments children:1801 is:attention pr:merged — or click the funnel to build it.",
 	"tip.cycleTaskVariants.title": "Cycle task variants",
 	"tip.cycleTaskVariants.body": "Press Shift+Cmd+[ or ] (Ctrl on Linux) to move between live variants without leaving the terminal.",
 	"tip.mobileTaskGit.title": "Git from your phone",

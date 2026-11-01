@@ -19,6 +19,7 @@ Every hour the app is running (checked twice an hour), each protected file gets:
 | `projects.json` | The project list. Losing it makes every board unreachable and re-adding a project by hand gives it a new id, orphaning all its tasks. |
 | `virtual-projects.json` | The Operations boards. Same failure as above, for boards with no git repo behind them. |
 | `spaces.json` | Your spaces. Authored entirely by hand and reconstructable from nothing else. |
+| `epics.json` | Your epics (cross-project task groups). Authored by you and your coordinators; task membership points at them by id. |
 | `settings.json` | Default agent, binary paths, update channel, theme. Losing it silently reset the update channel to `stable` on a canary install. |
 | `agents.json` | Your agent presets. Tens of kilobytes of hand-tuned configuration. |
 | `model-catalog.json` | The providers and named models you defined for the proxy sidecar. |

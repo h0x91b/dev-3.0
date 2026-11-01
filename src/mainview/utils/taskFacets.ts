@@ -94,6 +94,8 @@ export interface FacetResolver {
 	prStateFor?: (task: Task) => string | null;
 	/** `children:` values that select the task (see `childrenTokenRefs`). */
 	childrenRefsFor?: (task: Task) => readonly string[];
+	/** The task's epic for `epic:`. */
+	epicFor?: (task: Task) => { id: string; name: string } | null;
 }
 
 /**
@@ -136,6 +138,7 @@ export function taskQueryContext(task: Task, resolver: FacetResolver, nowMs: num
 		spaceNames: resolver.spaceNamesFor ? resolver.spaceNamesFor(task) : null,
 		prNumber: livePrNumber,
 		childrenRefs: resolver.childrenRefsFor?.(task) ?? [],
+		epic: resolver.epicFor?.(task) ?? null,
 	};
 }
 

@@ -1,4 +1,5 @@
-import type { AgentMessageSource, Project, Task, TaskOriginParent } from "../../shared/types";
+import type { AgentMessageSource, Project, Task, TaskEpicRef, TaskOriginParent } from "../../shared/types";
+import { getEpicById } from "../epics-data";
 import { seqIsShared } from "../../shared/agent-message-envelope";
 import { ID_PREFIX_MIN_LENGTH, getTaskTitle, isCoordinatorTask, parentTaskIdOf } from "../../shared/types";
 import * as data from "../data";
@@ -154,6 +155,16 @@ export async function scopedTaskNotFoundError(ref: string, scopedProject: Projec
 export async function withArchivedHistory(project: Project, task: Task): Promise<Task> {
 	const history = await loadEffectiveTaskHistory(project, task);
 	return history.length > 0 ? { ...task, history } : task;
+}
+
+/**
+ * `task.show` answers with the task's epic resolved, so `current` and `task show`
+ * can print its name. `epic` is null when the id points at no epic any more.
+ */
+export async function withEpic<T extends Task>(task: T): Promise<T & { epic?: TaskEpicRef | null }> {
+	if (!task.epicId) return task;
+	const epic = await getEpicById(task.epicId).catch(() => null);
+	return { ...task, epic: epic ? { id: epic.id, name: epic.name, color: epic.color, archived: epic.archived } : null };
 }
 
 /**

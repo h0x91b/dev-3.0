@@ -906,6 +906,8 @@ export async function addTask(
 		importedSessionId?: string;
 		/** Who created the task; a user origin is stored as the absent field. See Task.origin. */
 		origin?: TaskOrigin;
+		/** See Task.epicId. */
+		epicId?: string;
 	},
 ): Promise<Task> {
 	const file = tasksFile(project);
@@ -973,6 +975,7 @@ export async function addTask(
 			...(extras?.userOverview ? { userOverview: extras.userOverview } : {}),
 			...(extras?.automationId ? { automationId: extras.automationId } : {}),
 			...(extras?.origin && extras.origin.kind !== "user" ? { origin: extras.origin } : {}),
+			...(extras?.epicId ? { epicId: extras.epicId } : {}),
 			...(hidden ? { hidden: true } : {}),
 			...(newBackend ? { [TERMINAL_BACKEND_FIELD]: newBackend } : {}),
 		};

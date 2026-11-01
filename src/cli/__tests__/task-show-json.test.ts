@@ -78,11 +78,18 @@ describe("task show --json", () => {
 
 	it("is a fixed projection: the key set is the contract, internals never leak", () => {
 		expect(Object.keys(buildTaskShowJson(TASK)).sort()).toEqual([
-			"baseBranch", "branch", "createdAt", "customColumnId", "description", "draft", "groupId", "hibernated", "id",
+			"baseBranch", "branch", "createdAt", "customColumnId", "description", "draft", "epic", "groupId", "hibernated", "id",
 			"keepAlive", "labelIds", "manualCompletion", "movedAt", "noteCount", "origin", "overview", "prNumber", "prStatus", "prUrl", "priority",
 			"projectId", "pullRequests", "schemaVersion", "seq", "status", "statusLabel", "taskType", "title", "titleEditedByUser",
 			"updatedAt", "variantIndex", "worktree",
 		]);
+	});
+
+	it("names the task's epic, and null when it has none", () => {
+		expect(buildTaskShowJson(TASK).epic).toBeNull();
+		const json = buildTaskShowJson({ ...TASK, epicId: "ep-1111-2222", epic: { id: "ep-1111-2222", name: "Payments v2", color: "#3b82f6", archived: true } });
+		expect(json.epic).toEqual({ id: "ep-1111-2222", name: "Payments v2", archived: true });
+		expect(buildTaskShowJson({ ...TASK, epicId: "gone", epic: null }).epic).toEqual({ id: "gone", name: null, archived: false });
 	});
 
 	it("lists every PR the task had, newest first, beside the current prNumber", () => {
