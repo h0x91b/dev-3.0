@@ -88,6 +88,8 @@ export function reconnectRpc(): void {
 
 // Push message handlers — shared between Electrobun and browser transports
 const pushMessageHandlers: Record<string, (payload: any) => void> = {
+	secretRequested: (payload) => window.dispatchEvent(new CustomEvent("rpc:secretRequested", { detail: payload })),
+	secretRequestResolved: (payload) => window.dispatchEvent(new CustomEvent("rpc:secretRequestResolved", { detail: payload })),
 	taskUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:taskUpdated", { detail: payload })),
 	taskRemoved: (payload) => window.dispatchEvent(new CustomEvent("rpc:taskRemoved", { detail: payload })),
 	projectUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:projectUpdated", { detail: payload })),

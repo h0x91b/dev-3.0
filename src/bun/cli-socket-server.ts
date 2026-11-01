@@ -17,6 +17,7 @@ import { statsHandlers } from "./cli-socket/stats-commands";
 import { systemHandlers } from "./cli-socket/system-commands";
 import { taskHandlers } from "./cli-socket/task-commands";
 import { uiHandlers } from "./cli-socket/ui-commands";
+import { secretCliHandlers } from "./cli-socket/secret-commands";
 
 const SOCKETS_DIR = `${DEV3_HOME}/sockets`;
 
@@ -54,6 +55,7 @@ function cleanupStaleSockets(): void {
 }
 
 const handlers: Record<string, Handler> = {
+	...secretCliHandlers,
 	...agentHandlers,
 	...paneHandlers,
 	...boardMetadataHandlers,
