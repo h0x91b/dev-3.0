@@ -312,6 +312,10 @@ export interface GlobalSettings {
 	agentLaunchAutoApproveMinutes?: number;
 	/** Where the CPU and disk readouts turn yellow / red. Sparse: absent keys use the defaults. */
 	resourceLevels?: Partial<ResourceLevels>;
+	/** Inactivity before a hibernation suggestion; absent uses 24 hours, 0 disables. */
+	autoHibernateMinutes?: number;
+	/** Suggestion auto-confirm delay in whole minutes; absent uses 30 minutes. */
+	autoHibernateConfirmMinutes?: number;
 	/**
 	 * When false, the Create-PR handoff stops asking the agent to append the
 	 * deep link back to the originating task. Default on; the opt-out exists

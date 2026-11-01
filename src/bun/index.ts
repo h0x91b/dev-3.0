@@ -1,5 +1,6 @@
 import { stopAgentMessageLogWatches } from "./agent-message-log-watch";
 import { startBoardCopy, stopBoardCopy } from "./board-copy";
+import { startAutoHibernate, stopAutoHibernate } from "./auto-hibernate";
 import { claudeSessionWatches } from "./claude-session-watch";
 import Electrobun, {
 	ApplicationMenu,
@@ -655,6 +656,7 @@ startRendererWatchdog({
 
 // Reconcile persisted lifecycle hints before background activity starts.
 await rehydrateTaskLifecycles();
+startAutoHibernate();
 
 // Start background merge detection poller
 startMergeDetectionPoller();
@@ -880,6 +882,7 @@ function runGlobalQuitCleanup(): void {
 	claudeSessionWatches.close();
 	// Snapshot window geometry so an update restart reopens on the same screen.
 	try { flushWindowState(); } catch (err) { log.warn("flushWindowState failed", { error: String(err) }); }
+	stopAutoHibernate();
 	try { stopPortScanPoller(); } catch (err) { log.warn("stopPortScanPoller failed", { error: String(err) }); }
 	try { stopFocusTracker(); } catch (err) { log.warn("stopFocusTracker failed", { error: String(err) }); }
 	try { stopResourceMonitor(); } catch (err) { log.warn("stopResourceMonitor failed", { error: String(err) }); }

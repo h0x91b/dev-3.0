@@ -1,5 +1,6 @@
 import { existsSync, linkSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { normalizeAutoHibernateMinutes, normalizeAutoHibernateConfirmMinutes } from "../shared/auto-hibernate";
 import type { GlobalSettings, ShortcutOverride } from "../shared/types";
 import { DEFAULT_AGENTS, DEFAULT_CLAUDE_CONFIG_ID, DEFAULT_RESOURCE_LEVELS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
 import { hasEnvLineBreak, sanitizeEnvMap } from "../shared/env-text";
@@ -237,6 +238,8 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		resourceLevels: sanitizeResourceLevels(d.resourceLevels),
 		// Default-on toggle — only an explicit false is a stored opt-out.
 		prOriginTaskLink: d.prOriginTaskLink === false ? false : undefined,
+		autoHibernateMinutes: normalizeAutoHibernateMinutes(d.autoHibernateMinutes),
+		autoHibernateConfirmMinutes: normalizeAutoHibernateConfirmMinutes(d.autoHibernateConfirmMinutes),
 		agentsLayoutRevision: typeof d.agentsLayoutRevision === "number" ? d.agentsLayoutRevision : undefined,
 		// Default-off experimental toggle — only an explicit true is a stored opt-in.
 		pxpipeProxyEnabled: d.pxpipeProxyEnabled === true ? true : undefined,

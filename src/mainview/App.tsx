@@ -1,3 +1,4 @@
+import AutoHibernateSuggestions from "./components/AutoHibernateSuggestions";
 import InterfaceOnboarding from "./components/InterfaceOnboarding";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAppState, canGoBack, routeTaskId, routeShowsTaskWorkspace, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, taskOpenRoute, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type Route } from "./state";
@@ -1761,6 +1762,15 @@ function App() {
 		return () => window.removeEventListener("rpc:taskUpdated", onTaskUpdated);
 	}, [dispatch]);
 
+	useEffect(() => {
+		const onAutoHibernate = (event: Event) => {
+			const { taskId, projectId } = (event as CustomEvent).detail;
+			toast.info(t("task.autoHibernated"), { taskId, projectId });
+		};
+		window.addEventListener("rpc:taskAutoHibernated", onAutoHibernate);
+		return () => window.removeEventListener("rpc:taskAutoHibernated", onAutoHibernate);
+	}, [t]);
+
 	// A task left a project's board (moved to another project). Scoped to the
 	// source project so a window viewing the TARGET keeps the just-added card.
 	useEffect(() => {
@@ -2671,6 +2681,7 @@ function App() {
 		const taskId = routeTaskId(route);
 		void api.request.setActiveContext?.({ projectId, taskId })?.catch?.(() => { /* best-effort */ });
 	}, [state.route]);
+
 
 	// Publish the sensitive ids so surfaces that only know a projectId (tmux
 	// sessions, notification payloads) can ask for the privacy verdict.
@@ -3771,6 +3782,7 @@ function App() {
 			/>
 			{updatePreviewOpen && <UpdatePopoverSimulatorModal onClose={() => setUpdatePreviewOpen(false)} />}
 			<ConfirmHost />
+			<AutoHibernateSuggestions blocked={launchRequests.length > 0} />
 			{launchRequests[0] && (
 				<AgentLaunchRequestModal
 					key={launchRequests[0].requestId}

@@ -1,4 +1,6 @@
 import { normalizeSimplifiedInterface } from "../../shared/simplified-interface";
+import { normalizeAutoHibernateMinutes, normalizeAutoHibernateConfirmMinutes } from "../../shared/auto-hibernate";
+import { recordAutoHibernatePolicyChange } from "../task-activity";
 import { noteInterfaceModeChange } from "../interface-onboarding";
 import { chmodSync, existsSync, mkdirSync, symlinkSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
@@ -291,6 +293,15 @@ async function applyTmuxConfigChange(
 }
 
 async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
+	if (params.autoHibernateMinutes !== undefined && params.autoHibernateMinutes !== 0
+		&& normalizeAutoHibernateMinutes(params.autoHibernateMinutes) === 0) {
+		throw new Error("Hibernation suggestions must be off or a whole number of minutes from 1 to 43200.");
+	}
+	if (params.autoHibernateConfirmMinutes !== undefined && (typeof params.autoHibernateConfirmMinutes !== "number"
+		|| !Number.isInteger(params.autoHibernateConfirmMinutes) || params.autoHibernateConfirmMinutes < 1
+		|| params.autoHibernateConfirmMinutes > 43_200)) {
+		throw new Error("Hibernation confirmation must be a whole number of minutes from 1 to 43200.");
+	}
 	log.info("→ saveGlobalSettings", { params });
 	// Terminals launched after this point must use the newly chosen shell; the
 	// resolver caches for an hour, so it has to be told.
@@ -306,6 +317,10 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 	// minted after the snapshot was taken, so trusting the payload erased it on every
 	// settings change and the install got a new id on every launch.
 	const stored = await loadSettings();
+	if (normalizeAutoHibernateMinutes(stored.autoHibernateMinutes) !== normalizeAutoHibernateMinutes(params.autoHibernateMinutes)
+		|| normalizeAutoHibernateConfirmMinutes(stored.autoHibernateConfirmMinutes) !== normalizeAutoHibernateConfirmMinutes(params.autoHibernateConfirmMinutes)) {
+		recordAutoHibernatePolicyChange();
+	}
 	const next: GlobalSettings = {
 		...params,
 		...normalizeSimplifiedInterface({

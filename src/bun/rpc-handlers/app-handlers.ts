@@ -1,4 +1,5 @@
 import { interfaceOnboarding } from "../interface-onboarding";
+import { getAutoHibernateSuggestion, presentAutoHibernateSuggestion, respondAutoHibernateSuggestion } from "../auto-hibernate";
 import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
@@ -1108,6 +1109,9 @@ export const appHandlers = {
 	setWindowTitleContext,
 	setTerminalFocus: setTerminalFocusHandler,
 	setActiveContext: setActiveContextHandler,
+	getAutoHibernateSuggestion: async () => getAutoHibernateSuggestion(),
+	presentAutoHibernateSuggestion: async (params: { id: string }) => presentAutoHibernateSuggestion(params.id),
+	respondAutoHibernateSuggestion,
 	setStreamerPrivacy: setStreamerPrivacyHandler,
 	ping,
 	updateMenuContext,
