@@ -49,6 +49,7 @@ import AppearanceSettingsSection from "./global-settings/AppearanceSettingsSecti
 import BehaviorSettingsSection from "./global-settings/BehaviorSettingsSection";
 import DeveloperToolsSection from "./global-settings/DeveloperToolsSection";
 import KeyboardSettingsSection from "./global-settings/KeyboardSettingsSection";
+import ExtensionsSettingsSection from "./global-settings/ExtensionsSettingsSection";
 import ModelCatalogSection from "./global-settings/ModelCatalogSection";
 import NotificationSettingsSection from "./global-settings/NotificationSettingsSection";
 import PxpipeProxySettingsSection from "./global-settings/PxpipeProxySettingsSection";
@@ -1117,6 +1118,8 @@ function GlobalSettings({
 				return <AgentAccountsSection t={t} />;
 			case "models":
 				return <ModelCatalogSection t={t} />;
+			case "extensions":
+				return <ExtensionsSettingsSection t={t} />;
 			case "workspace":
 				return (
 					<WorkspaceSettingsSection

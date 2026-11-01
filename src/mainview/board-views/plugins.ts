@@ -33,6 +33,9 @@ const extensionFibers = new Map<string, { fiber: Fiber; declared: Set<string> }>
 let snapshot: RuntimeSnapshot = { overview: null, loads: {} };
 const listeners = new Set<() => void>();
 let guardInstalled = false;
+/** The extension whose module is being evaluated / started right now (loads are serialized). */
+let loadingExtension: string | null = null;
+const refusals = new Map<string, string>();
 let syncChain: Promise<void> = Promise.resolve();
 
 function publish(next: Partial<RuntimeSnapshot>): void {
@@ -110,6 +113,13 @@ function installRegistryGuard(): void {
 	if (guardInstalled) return;
 	guardInstalled = true;
 	const registry = getBoardViewRegistry();
+	registry.onRefused((viewId, ctx) => {
+		const owner = owningExtension(ctx) ?? loadingExtension;
+		if (!owner) return;
+		const error = `tried to register board view "${viewId}", which another view already owns`;
+		console.error(`[extensions] ${owner} ${error}`);
+		refusals.set(owner, error);
+	});
 	registry.subscribe(() => {
 		for (const view of registry.list()) {
 			const owner = owningExtension(view.ctx);
@@ -142,21 +152,27 @@ async function loadExtension(ext: InstalledExtension): Promise<void> {
 	const manifest = ext.manifest!;
 	const declared = new Set(manifest.contributes.boardViews.map((view) => extensionViewId(manifest.id, view.id)));
 	let url: string | null = null;
+	installRegistryGuard();
 	try {
 		const source = await api.request.getExtensionSource({ id: ext.id });
 		url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
 		const mod = (await import(/* @vite-ignore */ url)) as { default?: unknown };
 		if (!isPlugin(mod.default)) throw new Error("index.js must default-export a Cordis plugin");
+		loadingExtension = ext.id;
+		refusals.delete(ext.id);
 		const fiber = getBoardRoot().plugin(mod.default as Parameters<Context["plugin"]>[0]);
 		extensionFibers.set(ext.id, { fiber, declared });
 		await fiber;
 		if (!extensionFibers.has(ext.id)) return; // unloaded by the guard while starting
+		const refusal = refusals.get(ext.id);
+		if (refusal) throw new Error(refusal);
 		if (fiber.state === FIBER_FAILED) throw new Error("its plugin failed to start (see the console)");
 		publish({ loads: { ...snapshot.loads, [ext.id]: { state: "loaded" } } });
 	} catch (err) {
 		console.error(`[extensions] ${ext.id} failed to load:`, err);
 		unloadExtension(ext.id, { state: "failed", error: err instanceof Error ? err.message : String(err) });
 	} finally {
+		loadingExtension = null;
 		if (url) URL.revokeObjectURL(url);
 	}
 }
@@ -177,10 +193,7 @@ async function reconcile(overview: ExtensionsOverview): Promise<void> {
 	const wantedIds = new Set(wanted.map((ext) => ext.id));
 	for (const id of [...extensionFibers.keys()]) if (!wantedIds.has(id)) unloadExtension(id);
 	for (const id of Object.keys(snapshot.loads)) if (!wantedIds.has(id) && !extensionFibers.has(id)) unloadExtension(id);
-	if (wanted.length > 0) {
-		exposeSharedModules();
-		installRegistryGuard();
-	}
+	if (wanted.length > 0) exposeSharedModules();
 	for (const ext of wanted) {
 		if (!extensionFibers.has(ext.id) && snapshot.loads[ext.id]?.state !== "failed") await loadExtension(ext);
 	}
@@ -216,13 +229,16 @@ export function clearExtensionFailure(id: string): void {
 
 /** At renderer start: built-ins synchronously (from the last known toggles), then the host's real state. */
 export function startBoardPlugins(): void {
+	installRegistryGuard();
 	applyBuiltinBoardViews(readCachedDisabledBuiltins());
 	void syncBoardPlugins();
 }
 
 /** Whether any third-party code runs in this window — the crash screens offer their escape only then. */
 export function hasLoadedExtensions(): boolean {
-	return extensionFibers.size > 0;
+	if (extensionFibers.size > 0) return true;
+	const overview = snapshot.overview;
+	return !!overview?.enabled && overview.extensions.some((ext) => ext.status === "active");
 }
 
 /**
@@ -248,5 +264,7 @@ export function resetBoardPluginsForTests(): void {
 	snapshot = { overview: null, loads: {} };
 	listeners.clear();
 	guardInstalled = false;
+	loadingExtension = null;
+	refusals.clear();
 	syncChain = Promise.resolve();
 }

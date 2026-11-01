@@ -123,7 +123,7 @@ export type ManifestValidation = { ok: true; manifest: ExtensionManifest } | { o
 /**
  * Validates a parsed `dev3-extension.json` without executing anything. `folderName`
  * is the directory it was found in, which must equal the id once installed.
- * The semver range itself is checked by the caller (bun has `Bun.semver`).
+ * Whether the `engines.dev3` range matches this host is `satisfiesRange`'s job.
  */
 export function validateExtensionManifest(raw: unknown, folderName?: string): ManifestValidation {
 	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false, error: "manifest is not a JSON object" };
@@ -186,4 +186,74 @@ export function boardViewTelemetryId(viewId: string): string {
 /** `DEV3_EXTENSIONS=off` (also `0`, `false`, `no`) forces every third-party extension off. */
 export function extensionsEnvLock(value: string | undefined): boolean {
 	return typeof value === "string" && ["off", "0", "false", "no"].includes(value.trim().toLowerCase());
+}
+
+type Triple = [number, number, number];
+
+function parseLoose(text: string): { parts: Triple; given: number } | null {
+	const match = /^v?(\d+|[xX*])(?:\.(\d+|[xX*]))?(?:\.(\d+|[xX*]))?(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.exec(text);
+	if (!match) return null;
+	const raw = [match[1], match[2], match[3]];
+	let given = 0;
+	const parts = [0, 0, 0] as Triple;
+	for (let i = 0; i < 3; i++) {
+		const piece = raw[i];
+		if (piece === undefined || /^[xX*]$/.test(piece)) break;
+		parts[i] = Number(piece);
+		given = i + 1;
+	}
+	return { parts, given };
+}
+
+function compare(a: Triple, b: Triple): number {
+	for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1;
+	return 0;
+}
+
+/** The exclusive upper bound of a partial version: `1` → `2.0.0`, `1.2` → `1.3.0`. */
+function bump(parts: Triple, given: number): Triple {
+	if (given <= 1) return [parts[0] + 1, 0, 0];
+	return [parts[0], parts[1] + 1, 0];
+}
+
+function comparatorMatches(version: Triple, comparator: string): boolean | null {
+	const match = /^(\^|~|>=|<=|>|<|=)?\s*(.+)$/.exec(comparator);
+	if (!match) return null;
+	const op = match[1] ?? "";
+	const target = parseLoose(match[2]);
+	if (!target) return null;
+	const { parts, given } = target;
+	const c = compare(version, parts);
+	if (given === 0) return op === "" || op === "=" || op === ">=" || op === "^" || op === "~" ? true : op === "<=" ;
+	switch (op) {
+		case ">=": return c >= 0;
+		case ">": return given < 3 ? compare(version, bump(parts, given)) >= 0 : c > 0;
+		case "<": return c < 0;
+		case "<=": return given < 3 ? compare(version, bump(parts, given)) < 0 : c <= 0;
+		case "~": return c >= 0 && compare(version, given >= 2 ? [parts[0], parts[1] + 1, 0] : [parts[0] + 1, 0, 0]) < 0;
+		case "^": {
+			const upper: Triple = parts[0] > 0 || given === 1 ? [parts[0] + 1, 0, 0]
+				: parts[1] > 0 || given === 2 ? [0, parts[1] + 1, 0]
+				: [0, 0, parts[2] + 1];
+			return c >= 0 && compare(version, upper) < 0;
+		}
+		default: return given === 3 ? c === 0 : c >= 0 && compare(version, bump(parts, given)) < 0;
+	}
+}
+
+/**
+ * npm-style range check for `engines.dev3`: `^`, `~`, `>=`/`>`/`<=`/`<`, `=`, `x`/`*`
+ * wildcards, space-joined comparators (AND) and `||` (OR). Hyphen ranges and
+ * prerelease semantics are not supported; an unparsable range never matches.
+ */
+export function satisfiesRange(version: string, range: string): boolean {
+	const parsed = parseLoose(version.trim());
+	if (!parsed || parsed.given !== 3) return false;
+	const alternatives = range.split("||").map((alt) => alt.trim());
+	if (alternatives.length === 0) return false;
+	return alternatives.some((alt) => {
+		if (alt === "") return alternatives.length === 1;
+		const comparators = alt.replace(/(\^|~|>=|<=|>|<|=)\s+/g, "$1").split(/\s+/);
+		return comparators.every((comparator) => comparatorMatches(parsed.parts, comparator) === true);
+	});
 }

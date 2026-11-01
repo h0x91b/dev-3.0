@@ -12,6 +12,7 @@ import {
 	extensionsEnvLock,
 	isValidExtensionId,
 	normalizeExtensionsState,
+	satisfiesRange,
 	validateExtensionManifest,
 	type ExtensionInspection,
 	type ExtensionManifest,
@@ -57,11 +58,7 @@ export async function updateExtensionsState(change: (state: ExtensionsStateFile)
 
 /** Whether `range` (an `engines.dev3` value) admits this host's extension API. An unparsable range is a mismatch. */
 export function isApiCompatible(range: string): boolean {
-	try {
-		return Bun.semver.satisfies(EXTENSION_API_VERSION, range);
-	} catch {
-		return false;
-	}
+	return satisfiesRange(EXTENSION_API_VERSION, range);
 }
 
 type ReadResult = { ok: true; manifest: ExtensionManifest } | { ok: false; error: string };

@@ -1,10 +1,13 @@
 import type { Context, Fiber } from "cordis";
+import type { TranslationKey } from "../i18n";
 import { KANBAN_VIEW_ID } from "../../shared/board-view-state";
 import { installKanbanView } from "./kanban";
 import { installTableView, TABLE_VIEW_ID } from "./table";
 
 export interface BuiltinBoardView {
 	id: string;
+	/** Shown in Settings → Extensions; the same key the view registers its label with. */
+	labelKey: TranslationKey;
 	install(ctx: Context): Fiber;
 }
 
@@ -14,6 +17,6 @@ export interface BuiltinBoardView {
  * adds its entry here and its id to `TOGGLEABLE_BUILTIN_VIEWS`.
  */
 export const BUILTIN_BOARD_VIEWS: readonly BuiltinBoardView[] = [
-	{ id: KANBAN_VIEW_ID, install: installKanbanView },
-	{ id: TABLE_VIEW_ID, install: installTableView },
+	{ id: KANBAN_VIEW_ID, labelKey: "boardView.kanban", install: installKanbanView },
+	{ id: TABLE_VIEW_ID, labelKey: "boardView.table", install: installTableView },
 ];
