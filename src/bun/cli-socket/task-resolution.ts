@@ -221,7 +221,12 @@ export function senderRequester(params: Record<string, unknown>): ExternalSender
 	if (params.asSender === undefined) return null;
 	const sender = requireExternalSender(params.asSender);
 	if (params.sourceTaskId) throw new Error("--as-sender cannot be used from inside a task worktree.");
-	return { senderId: sender.id, label: sender.label };
+	return {
+		senderId: sender.id,
+		label: sender.label,
+		...(params.interactiveOnly === true ? { interactiveOnly: true } : {}),
+		...(typeof params.viaTokenId === "string" && /^[0-9a-f]{8}$/.test(params.viaTokenId) ? { viaTokenId: params.viaTokenId } : {}),
+	};
 }
 
 /** A task for `dev3 review`: scoped to a project when the CLI knows it, else found across projects. */

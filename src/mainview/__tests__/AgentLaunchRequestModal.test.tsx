@@ -176,6 +176,15 @@ describe("AgentLaunchRequestModal", () => {
 		expect(screen.queryByText(/Asked by task #/)).not.toBeInTheDocument();
 	});
 
+	it("says when a sender asked over the network, and through which token", async () => {
+		renderModal(makeRequest({
+			requesterSeq: 0,
+			requesterTitle: "Main",
+			requesterSender: { senderId: "openclaw:home:main", label: "Main", interactiveOnly: true, viaTokenId: "3fa9c0d1" },
+		}));
+		expect(await screen.findByText("Asked over the network by external sender Main (openclaw:home:main), MCP token 3fa9c0d1")).toBeInTheDocument();
+	});
+
 	it("marks the dialog as an AI-agent request", async () => {
 		renderModal();
 		expect(await screen.findByText(/AI agent request/i)).toBeInTheDocument();

@@ -8,6 +8,7 @@ import type { AgentLaunchChoice, LaunchVariant } from "../../shared/types";
 import { deliverLaunchHandoff } from "../agent-launch-handoff";
 import { getPushMessage, launchTaskWithAgentChoice, moveTask, resetTaskToTodo } from "../rpc-handlers";
 import { loadSettings } from "../settings";
+import { senderAutoApproveMs } from "../cli-session-approval";
 import { loadBoardTasks, resolveTaskAcrossProjects, resolveTaskFromParams } from "./task-resolution";
 import { awaitLaunchPreparation } from "./launch-preparation";
 import type { LaunchPreparationOutcome } from "../../shared/launch-preparation";
@@ -220,7 +221,7 @@ export async function requestAgentLaunchApproval(opts: {
 	// pinning the requesting agent to a dead socket. The completion dialog
 	// deliberately does not do this — it destroys a worktree.
 	const defaultPriority = await resolveLaunchPriority(task, requester);
-	const autoApproveAfterMs = agentLaunchAutoApproveMs(await loadSettings());
+	const autoApproveAfterMs = senderAutoApproveMs(requester, agentLaunchAutoApproveMs(await loadSettings()));
 	const joining = getAgentRequestState("launch", task.id).state === "pending";
 	const subject = buildTaskDialogSubject(task, project);
 	const asker = isExternalSenderRequester(requester)

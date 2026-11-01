@@ -10,15 +10,19 @@
  */
 
 import type { CliResponse, Project, SpacesFile, Task, TaskPriority } from "../../shared/types";
-import { ALL_PRIORITIES, ALL_STATUSES, EMPTY_SPACES_FILE, ID_PREFIX_MIN_LENGTH, normalizePriority } from "../../shared/types";
+import { ACTIVE_STATUSES, ALL_PRIORITIES, ALL_STATUSES, EMPTY_SPACES_FILE, ID_PREFIX_MIN_LENGTH, normalizePriority } from "../../shared/types";
 import type { AgentUsageReport, ProductivityStats, SystemMemorySnapshot, TaskUsageReport } from "../../shared/types";
 import type { AgentRateLimitsReport } from "../../shared/rate-limits";
 import type { PendingApprovalSummary } from "../../shared/agent-approval";
 import { toCliProject } from "../../shared/project-registration";
 import { classifyAppError } from "../../shared/cli-errors";
 import {
+	CLI_EXIT_CODE_APPROVAL_STILL_PENDING,
 	CLI_EXIT_CODE_COMMAND_FAILED,
 	CLI_EXIT_CODE_DELIVERY_UNCONFIRMED,
+	CLI_EXIT_CODE_LAUNCH_DECLINED,
+	CLI_EXIT_CODE_RESUME_ALREADY_RUNNING,
+	CLI_EXIT_CODE_RESUME_UNAVAILABLE,
 	CLI_EXIT_CODE_EVENT_CURSOR_INVALID,
 	CLI_EXIT_CODE_MESSAGE_SUBJECT_REQUIRED,
 	CLI_EXIT_CODE_SUCCESS,
@@ -27,6 +31,8 @@ import {
 import { DEFAULT_EVENT_LIMIT, MAX_EVENT_LIMIT, isEventIdPrefix, parseEventCursor, type EventSelection } from "../../shared/board-events";
 import { buildTaskShowJson, type ShownTask } from "../../shared/cli-json/task-show";
 import { buildTasksListJson } from "../../shared/cli-json/tasks-list";
+import { taskMutationJson } from "../../shared/cli-json/task-mutation";
+import type { CliResumeOutcome } from "../../shared/agent-resume";
 import {
 	approvalsJson,
 	limitsJson,
@@ -53,6 +59,8 @@ export interface ToolContext {
 	call: CallApp;
 	/** Aborts when the HTTP client disconnects. Only read-only parking honours it. */
 	signal?: AbortSignal;
+	/** Tests shorten the dialog wait. */
+	approvalWaitMs?: number;
 }
 
 export interface ToolError {
@@ -169,6 +177,8 @@ function obj(properties: ObjectSchema["properties"], required: string[] = []): O
 }
 
 const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+
+const MUTATION_TRUSTED = ["schemaVersion", "task.id", "task.seq", "task.projectId", "task.status", "task.customColumnId", "task.priority", "task.taskType", "task.manualCompletion", "task.draft"];
 
 // ── read ────────────────────────────────────────────────────────────────────
 
@@ -482,6 +492,229 @@ const inboxAck: ToolDef = {
 	},
 };
 
+// ── write: To Do tasks and priority ─────────────────────────────────────────
+
+const taskCreate: ToolDef = {
+	name: "task_create",
+	// No pr/branch: resolving them runs gh and fetches fork code on the host, which a
+	// network token must not trigger.
+	description: "Create a task in To Do, as `dev3 task create --json`. It does not start; task_start asks the user.",
+	scope: "write",
+	mutating: true,
+	inputSchema: obj({
+		project: PROJECT_REF,
+		title: { type: "string", minLength: 1, maxLength: 200 },
+		description: { type: "string", maxLength: MAX_SCHEDULED_MESSAGE_LENGTH },
+		type: { type: "string", enum: ["coordinator", "pr-review", "board-cleanup", "standard"] },
+		priority: { type: "string", enum: ALL_PRIORITIES },
+	}, ["project", "title"]),
+	trustedFields: MUTATION_TRUSTED,
+	successCodes: [0],
+	async run(args, ctx) {
+		const project = await resolveProject(ctx, String(args.project));
+		const title = String(args.title).trim();
+		if (!title) usage("title cannot be blank.");
+		const task = await appData<Task>(ctx, "task.create", {
+			projectId: project.id,
+			title,
+			...(str(args.description)?.trim() ? { description: String(args.description) } : {}),
+			...(args.type && args.type !== "standard" ? { taskType: args.type } : {}),
+			...(args.priority ? { priority: args.priority } : {}),
+		});
+		return ok(taskMutationJson(task));
+	},
+};
+
+const taskSetPriority: ToolDef = {
+	name: "task_set_priority",
+	description: "Set one task's priority (P0 highest … P4), as `dev3 task update --priority --json`.",
+	scope: "write",
+	mutating: true,
+	inputSchema: obj({ task: TASK_REF, project: PROJECT_REF, priority: { type: "string", enum: ALL_PRIORITIES } }, ["task", "priority"]),
+	trustedFields: [...MUTATION_TRUSTED, "titlePreserved", "roleDelivery"],
+	successCodes: [0],
+	async run(args, ctx) {
+		const { project, task } = await resolveTask(ctx, String(args.task), str(args.project));
+		const result = await appData<Task | { task: Task; titlePreserved?: boolean; roleDelivery?: string }>(ctx, "task.update", {
+			taskId: task.id, projectId: project.id, priority: args.priority,
+		});
+		const updated = "task" in result ? result.task : result;
+		const extra: { titlePreserved?: boolean; roleDelivery?: string } = "task" in result ? result : {};
+		return ok({ ...taskMutationJson(updated), titlePreserved: Boolean(extra.titlePreserved), roleDelivery: extra.roleDelivery ?? null });
+	},
+};
+
+// ── start: launches and resumes, always through the approval dialog ─────────
+
+/** How long one call waits on the dialog before answering "still pending" (exit 25). */
+export const MCP_APPROVAL_WAIT_MS = 20_000;
+
+async function pendingRequest(ctx: ToolContext, taskId: string): Promise<{ requests: PendingApprovalSummary[]; mine: PendingApprovalSummary | null }> {
+	const { requests } = await appData<{ requests: PendingApprovalSummary[] }>(ctx, "approvals.list");
+	return { requests, mine: requests.find((r) => r.kind === "launch" && r.taskId === taskId) ?? null };
+}
+
+function pendingOutcome(mine: PendingApprovalSummary | null): ToolOutcome {
+	return {
+		exitCode: CLI_EXIT_CODE_APPROVAL_STILL_PENDING,
+		json: { pending: true, requestId: mine?.requestId ?? null, autoApproveAt: mine?.autoApproveAt ?? null },
+		error: { code: "APPROVAL_STILL_PENDING", message: "The approval dialog is still open. Call again to keep waiting; it never opens a second dialog.", retryAfterS: 2 },
+	};
+}
+
+async function refuseTooManyPending(ctx: ToolContext): Promise<void> {
+	const { requests } = await pendingRequest(ctx, "");
+	const open = requests.filter((r) => r.requesterSenderId === ctx.token.sender).length;
+	if (open >= MCP_LIMITS.pendingDialogsPerSender) {
+		fail(CLI_EXIT_CODE_COMMAND_FAILED, "TOO_MANY_PENDING", `This sender already has ${open} approval dialogs open; wait for the user to answer them.`);
+	}
+}
+
+/** Race a detached call against the wait; the call itself keeps running and is joined by the next one. */
+async function raceApproval<T>(promise: Promise<T>, waitMs: number): Promise<{ settled: true; value: T } | { settled: false }> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timeout = new Promise<{ settled: false }>((resolve) => {
+		timer = setTimeout(() => resolve({ settled: false }), waitMs);
+	});
+	try {
+		return await Promise.race([promise.then((value) => ({ settled: true as const, value })), timeout]);
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+interface StartEntry {
+	sender: string;
+	promise: Promise<CliResponse>;
+	settled?: { at: number; resp: CliResponse };
+}
+
+/**
+ * One launch per task, whoever re-asks: a re-call joins the running request, and
+ * an answer given in the last 15 minutes is handed back instead of asking again.
+ * The handler never runs twice for one answer.
+ */
+const starts = new Map<string, StartEntry>();
+const START_OUTCOME_TTL_MS = 15 * 60_000;
+
+export function _resetMcpStartsForTests(): void {
+	starts.clear();
+}
+
+function startOutcome(resp: CliResponse): ToolOutcome {
+	if (!resp.ok) {
+		const classified = classifyAppError(resp.error, "Failed to start the task");
+		return { exitCode: classified.exitCode, error: { code: classified.code, message: classified.message } };
+	}
+	const data = resp.data as { approved?: boolean } & Partial<Task>;
+	if (data.approved === false) {
+		return { exitCode: CLI_EXIT_CODE_LAUNCH_DECLINED, json: { schemaVersion: 1, approved: false }, error: { code: "LAUNCH_DECLINED", message: "The user declined the launch request." } };
+	}
+	if (data.approved === true) return ok({ schemaVersion: 1, ...data });
+	// The task was already in the target column: a same-status move is a no-op.
+	return ok({ schemaVersion: 1, alreadyActive: true, task: { id: data.id, seq: data.seq, status: data.status } });
+}
+
+const taskStart: ToolDef = {
+	name: "task_start",
+	description:
+		"Ask the user to start a To Do task (target: in-progress) through the approval dialog. Answers exit 25 while the dialog is open — call again to keep waiting; it never opens a second one. Exit 10 if declined.",
+	scope: "start",
+	parked: true,
+	mutating: true,
+	inputSchema: obj({ task: TASK_REF, project: PROJECT_REF }, ["task"]),
+	trustedFields: ["schemaVersion", "approved", "seq", "launched[].variantIndex", "alreadyActive", "task.id", "task.seq", "task.status", "pending", "requestId", "autoApproveAt"],
+	successCodes: [0],
+	async run(args, ctx) {
+		const { project, task } = await resolveTask(ctx, String(args.task), str(args.project));
+		const now = Date.now();
+		let entry = starts.get(task.id);
+		if (entry?.settled && (now - entry.settled.at > START_OUTCOME_TTL_MS || entry.sender !== ctx.token.sender)) {
+			starts.delete(task.id);
+			entry = undefined;
+		}
+		if (entry && !entry.settled && entry.sender !== ctx.token.sender) {
+			fail(CLI_EXIT_CODE_COMMAND_FAILED, "COMMAND_FAILED", "Another sender's launch request is pending for this task — wait for its answer.");
+		}
+		if (entry?.settled) return startOutcome(entry.settled.resp);
+		if (!entry) {
+			if (ACTIVE_STATUSES.includes(task.status)) {
+				return ok({ schemaVersion: 1, alreadyActive: true, task: { id: task.id, seq: task.seq, status: task.status } });
+			}
+			await refuseTooManyPending(ctx);
+			const created: StartEntry = {
+				sender: ctx.token.sender,
+				// Detached from the HTTP request on purpose: a dropped client must not cancel a launch the user may approve.
+				promise: ctx.call("task.moveAsSender", {
+					taskId: task.id,
+					projectId: project.id,
+					newStatus: "in-progress",
+					asSender: ctx.token.sender,
+					viaTokenId: ctx.token.id,
+					...(ctx.token.autoApprove ? {} : { interactiveOnly: true }),
+				}),
+			};
+			// Only an answer is remembered; a failure (a draft, a missing window) is retried fresh next time.
+			const forget = () => {
+				if (starts.get(task.id) === created) starts.delete(task.id);
+			};
+			created.promise.then((resp) => {
+				if (resp.ok && typeof (resp.data as { approved?: unknown })?.approved === "boolean") created.settled = { at: Date.now(), resp };
+				else forget();
+			}, forget);
+			starts.set(task.id, created);
+			entry = created;
+		}
+		const raced = await raceApproval(entry.promise, ctx.approvalWaitMs ?? MCP_APPROVAL_WAIT_MS);
+		if (raced.settled) return startOutcome(raced.value);
+		return pendingOutcome((await pendingRequest(ctx, task.id)).mine);
+	},
+};
+
+const RESUME_OUTCOME_EXIT: Record<CliResumeOutcome["outcome"], number> = {
+	resumed: CLI_EXIT_CODE_SUCCESS,
+	"already-running": CLI_EXIT_CODE_RESUME_ALREADY_RUNNING,
+	unavailable: CLI_EXIT_CODE_RESUME_UNAVAILABLE,
+	declined: CLI_EXIT_CODE_LAUNCH_DECLINED,
+};
+
+const agentResume: ToolDef = {
+	name: "agent_resume",
+	description:
+		"Ask the user to resume a task's saved agent session through the approval dialog, as `dev3 agent resume --json`. Exit 25 while the dialog is open (call again), 31 if already running.",
+	scope: "start",
+	parked: true,
+	mutating: true,
+	inputSchema: obj({ task: TASK_REF, project: PROJECT_REF }, ["task"]),
+	trustedFields: ["outcome", "taskId", "seq", "backend", "reason", "stale", "resume.seq", "resume.backend", "resume.woke", "pending", "requestId", "autoApproveAt"],
+	successCodes: [CLI_EXIT_CODE_SUCCESS, CLI_EXIT_CODE_RESUME_ALREADY_RUNNING],
+	async run(args, ctx) {
+		const { project, task } = await resolveTask(ctx, String(args.task), str(args.project));
+		const { mine } = await pendingRequest(ctx, task.id);
+		if (!mine) await refuseTooManyPending(ctx);
+		// cli-agent-resume joins a re-ask from the same sender onto the open request,
+		// so the call can be detached here and simply re-issued.
+		const promise = ctx.call("agent.resumeAsSender", {
+			taskId: task.id,
+			projectId: project.id,
+			asSender: ctx.token.sender,
+			viaTokenId: ctx.token.id,
+			...(ctx.token.autoApprove ? {} : { interactiveOnly: true }),
+		});
+		const raced = await raceApproval(promise, ctx.approvalWaitMs ?? MCP_APPROVAL_WAIT_MS);
+		if (!raced.settled) return pendingOutcome((await pendingRequest(ctx, task.id)).mine);
+		const resp = raced.value;
+		if (!resp.ok) {
+			const classified = classifyAppError(resp.error, "Failed to resume");
+			return { exitCode: classified.exitCode, error: { code: classified.code, message: classified.message } };
+		}
+		const result = resp.data as CliResumeOutcome;
+		const exitCode = RESUME_OUTCOME_EXIT[result.outcome];
+		const codes: Record<number, string> = { 31: "RESUME_ALREADY_RUNNING", 32: "RESUME_UNAVAILABLE", 10: "LAUNCH_DECLINED" };
+		return exitCode === 0 ? ok(result) : { exitCode, json: result, error: { code: codes[exitCode], message: "message" in result ? result.message : result.outcome } };
+	},
+};
+
 // ── the table ───────────────────────────────────────────────────────────────
 
 const whoami: ToolDef = {
@@ -535,6 +768,10 @@ export const MCP_TOOLS: ToolDef[] = [
 	messageSend,
 	inboxWait,
 	inboxAck,
+	taskCreate,
+	taskSetPriority,
+	taskStart,
+	agentResume,
 ];
 
 export function toolAllowed(tool: ToolDef, token: McpTokenRecord): boolean {
