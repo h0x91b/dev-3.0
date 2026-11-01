@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { TokenCounts } from "../shared/agent-pricing";
 import type { AgentUsageSource } from "../shared/types";
@@ -106,6 +106,16 @@ async function retainLegacyHistory(current: States): Promise<States> {
 		// Leave unreadable or newer history intact; live usage remains available.
 		log.warn("Usage history unavailable; returning current logs", { error: String(error) });
 		return current;
+	}
+}
+
+/** Changes whenever the Claude/Codex history file is rewritten or removed, by any app version. */
+export function usageHistoryStamp(): string | null {
+	try {
+		const stat = statSync(HISTORY_FILE);
+		return `${stat.ino}:${stat.size}:${stat.mtimeMs}`;
+	} catch {
+		return null;
 	}
 }
 

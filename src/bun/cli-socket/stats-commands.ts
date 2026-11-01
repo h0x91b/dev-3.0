@@ -6,11 +6,12 @@ import type { Handler } from "./shared";
 /**
  * Read-only views of what the Stats page and the approval dialogs show. Each is
  * the renderer's own handler, unchanged; filtering by project or time happens in
- * the CLI so these stay plain pass-throughs.
+ * the CLI so these stay plain pass-throughs (`since` only lets the usage scan skip old files).
  */
 export const statsHandlers: Record<string, Handler> = {
 	"stats.productivity": async () => rpc.getProductivityStats(),
-	"stats.usage": async () => rpc.getAgentUsage(),
+	// `since` only narrows which transcripts are read; the CLI still filters the days.
+	"stats.usage": async (params) => rpc.getAgentUsage(typeof params.since === "string" ? { since: params.since } : {}),
 	// Loaded on demand, like `stats.prices`: the transcript locators pull the conversation stack.
 	"stats.taskUsage": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params);

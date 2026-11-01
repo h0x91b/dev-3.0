@@ -1,4 +1,5 @@
-import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { TERMINAL_STATUSES, type AgentUsageReport, type AgentUsageSource, type Project, type SystemLoadSnapshot, type SystemMemorySnapshot, type Task, type TaskUsageReport, type WorktreeOrphanGroup } from "../../shared/types";
@@ -10,7 +11,7 @@ import { killPids, scanWorktreeOrphans as scanOrphans } from "../worktree-reaper
 import { nativeModelIdForWireName } from "../../shared/model-catalog";
 import { loadModelCatalog } from "../model-catalog-store";
 import { listAgentDirAccountDirs, listClaudeAccountDirs, listCodexAccountDirs } from "../agent-accounts";
-import { retainUsageHistory } from "../agent-usage-history";
+import { retainUsageHistory, usageHistoryStamp } from "../agent-usage-history";
 import { getPricingResolver } from "../agent-pricing-refresh";
 import { DEV3_HOME } from "../paths";
 import { resolveCopilotHome } from "../copilot-config";
@@ -60,49 +61,111 @@ function collectTranscriptFiles(dir: string, out: string[], codex = false): void
 	}
 }
 
-function foldJsonlFiles(
+/** Parse in short slices so socket and RPC calls keep answering during a multi-GB scan. */
+const SCAN_SLICE_MS = 20;
+let sliceStartedAt = performance.now();
+
+async function yieldToEventLoop(): Promise<void> {
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	sliceStartedAt = performance.now();
+}
+
+async function foldJsonlFiles(
 	files: string[],
 	state: UsageState,
 	fold: (state: UsageState, entry: unknown) => void,
 	beforeFile?: (state: UsageState) => void,
-): void {
+): Promise<void> {
 	for (const file of files) {
 		beforeFile?.(state);
 		let text: string;
 		try {
-			text = readFileSync(file, "utf8");
+			text = await readFile(file, "utf8");
 		} catch (err) {
 			log.warn("getAgentUsage: read failed (skipped)", { file, error: String(err) });
 			continue;
 		}
-		for (const line of text.split("\n")) {
-			const trimmed = line.trim();
-			if (!trimmed) continue;
-			try {
-				fold(state, JSON.parse(trimmed));
-			} catch {
-				// tolerate a truncated / partially-written last line
+		for (let start = 0; start <= text.length;) {
+			const newline = text.indexOf("\n", start);
+			const end = newline === -1 ? text.length : newline;
+			const trimmed = text.slice(start, end).trim();
+			start = end + 1;
+			if (trimmed) {
+				try {
+					fold(state, JSON.parse(trimmed));
+				} catch {
+					// tolerate a truncated / partially-written last line
+				}
 			}
+			if (performance.now() - sliceStartedAt >= SCAN_SLICE_MS) await yieldToEventLoop();
 		}
 	}
 }
 
-export async function getAgentUsage(): Promise<AgentUsageReport> {
+/**
+ * Transcripts whose records are already merged into the usage history, as
+ * path → size:mtime. Every record ever seen is retained there, so an unchanged
+ * file adds nothing on a repeat scan. Valid only while the history file is the
+ * one this process last saw: a rewrite by another app version, or a removal,
+ * drops the whole map. Bounded by the transcripts on disk; a full scan prunes it.
+ */
+const foldedTranscripts = new Map<string, string>();
+let foldedHistoryStamp: string | null = null;
+
+/** Stamps every candidate it keeps in `seen`; returns only those not yet in the history. */
+function transcriptsToRead(files: string[], notBefore: number, seen: Map<string, string>): string[] {
+	return files.filter((file) => {
+		let stat: import("node:fs").Stats;
+		try { stat = statSync(file); } catch { return false; }
+		// A transcript is only ever appended to, so its records are no newer than its mtime.
+		if (stat.mtimeMs < notBefore) return false;
+		const stamp = `${stat.size}:${stat.mtimeMs}`;
+		seen.set(file, stamp);
+		return foldedTranscripts.get(file) !== stamp;
+	});
+}
+
+/** Local midnight of `since`'s day: the CLI keeps every day that overlaps the window, whole. */
+function windowStart(since: string | undefined): number {
+	const at = since === undefined ? NaN : Date.parse(since);
+	if (!Number.isFinite(at)) return -Infinity;
+	const day = new Date(at);
+	return new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
+}
+
+const usageScans = new Map<number, Promise<AgentUsageReport>>();
+
+/**
+ * Daily usage across every agent. With `since`, transcripts last written before
+ * that day are not read, so days before it may be incomplete. A caller retrying
+ * while the same window is still scanning joins that scan.
+ */
+export function getAgentUsage(params?: { since?: string } | void): Promise<AgentUsageReport> {
+	const notBefore = windowStart(params ? params.since : undefined);
+	let scan = usageScans.get(notBefore);
+	if (!scan) {
+		scan = scanAgentUsage(notBefore).finally(() => usageScans.delete(notBefore));
+		usageScans.set(notBefore, scan);
+	}
+	return scan;
+}
+
+async function scanAgentUsage(notBefore: number): Promise<AgentUsageReport> {
+	if (usageHistoryStamp() !== foldedHistoryStamp) foldedTranscripts.clear();
+	const seen = new Map<string, string>();
 	const claudeState = newUsageState();
 	const claudeFiles: string[] = [];
-	for (const dir of new Set([claudeProjectsDir(), ...listClaudeAccountDirs().map((home) => join(home, "projects"))])) {
-		collectTranscriptFiles(dir, claudeFiles);
-	}
-	foldJsonlFiles(claudeFiles, claudeState, foldClaudeEntry);
+	// A managed account's store is often a symlink onto the home one; read it once.
+	for (const dir of uniqueRealDirs(claudeProjectRoots())) collectTranscriptFiles(dir, claudeFiles);
+	const claudeToRead = transcriptsToRead(claudeFiles, notBefore, seen);
+	await foldJsonlFiles(claudeToRead, claudeState, foldClaudeEntry);
 
 	const codexState = newUsageState();
 	const codexFiles: string[] = [];
-	for (const home of new Set([codexHome(), ...listCodexAccountDirs()])) {
-		for (const store of ["sessions", "archived_sessions"]) {
-			collectTranscriptFiles(join(home, store), codexFiles, true);
-		}
-	}
-	foldJsonlFiles(codexFiles, codexState, foldCodexEntry, beginCodexRollout);
+	const codexStores = [...new Set([codexHome(), ...listCodexAccountDirs()])].flatMap((home) => [join(home, "sessions"), join(home, "archived_sessions")]);
+	for (const store of uniqueRealDirs(codexStores)) collectTranscriptFiles(store, codexFiles, true);
+	const codexToRead = transcriptsToRead(codexFiles, notBefore, seen);
+	await foldJsonlFiles(codexToRead, codexState, foldCodexEntry, beginCodexRollout);
 	const states = {
 		claude: claudeState, codex: codexState,
 		gemini: newUsageState(), cursor: newUsageState(), copilot: newUsageState(),
@@ -134,6 +197,12 @@ export async function getAgentUsage(): Promise<AgentUsageReport> {
 	}
 
 	const retained = await retainUsageHistory(states);
+	// Handed back unchanged when the history could not be read or written: nothing was kept, so nothing is cached.
+	if (retained.claude !== claudeState && retained.codex !== codexState) {
+		if (notBefore === -Infinity) foldedTranscripts.clear();
+		for (const [file, stamp] of seen) foldedTranscripts.set(file, stamp);
+		foldedHistoryStamp = usageHistoryStamp();
+	}
 	const resolveRate = await getPricingResolver();
 	const reports = (Object.entries(retained) as [AgentUsageSource, UsageState][])
 		.map(([source, state]) => finalizeUsage(state, source, pricingId, resolveRate));
@@ -144,6 +213,8 @@ export async function getAgentUsage(): Promise<AgentUsageReport> {
 	log.info("getAgentUsage computed", {
 		claudeFiles: claudeFiles.length,
 		codexFiles: codexFiles.length,
+		claudeRead: claudeToRead.length,
+		codexRead: codexToRead.length,
 		days: days.length,
 		hasUnpriced,
 	});
@@ -319,10 +390,10 @@ export async function getTaskAgentUsage(project: Project, task: Task): Promise<T
 	const workingDir = taskWorkingDir(project, task);
 	const state = newUsageState();
 	const ownClaude = taskClaudeFiles(workingDir);
-	foldJsonlFiles(ownClaude, state, foldClaudeEntry);
+	await foldJsonlFiles(ownClaude, state, foldClaudeEntry);
 	const rollouts = allCodexRollouts();
 	const ownCodex = taskCodexFiles(rollouts, workingDir);
-	foldJsonlFiles(ownCodex, state, foldCodexEntry, beginCodexRollout);
+	await foldJsonlFiles(ownCodex, state, foldCodexEntry, beginCodexRollout);
 	const sharedWorkingDir = project.kind === "virtual" && !!task.opsWorkDir?.trim();
 	if (sharedWorkingDir) keepTaskLifetime(state, task);
 
@@ -331,8 +402,8 @@ export async function getTaskAgentUsage(project: Project, task: Task): Promise<T
 	const resumedClaude = resumedClaudeFiles(ids, new Set(ownClaude));
 	const resumedCodex = resumedCodexFiles(rollouts, ids, new Set(ownCodex));
 	const resumed = newUsageState();
-	foldJsonlFiles(resumedClaude, resumed, foldClaudeEntry);
-	foldJsonlFiles(resumedCodex, resumed, foldCodexEntry, beginCodexRollout);
+	await foldJsonlFiles(resumedClaude, resumed, foldClaudeEntry);
+	await foldJsonlFiles(resumedCodex, resumed, foldCodexEntry, beginCodexRollout);
 	keepTaskLifetime(resumed, task);
 	for (const [key, record] of resumed.records) if (!state.records.has(key)) state.records.set(key, record);
 	const claudeFiles = [...ownClaude, ...resumedClaude];

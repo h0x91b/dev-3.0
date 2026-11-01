@@ -1,5 +1,7 @@
 # Stats and approvals CLI: pass-through socket methods, CLI-side filters
 
+Superseded in part on 2026-11-01 by `decisions/2026/11/01/usage-scan-reads-only-what-history-lacks.md`: `stats.usage` now takes `since` so the scan can skip old transcripts; the CLI still filters the days.
+
 ## Context
 The Stats page, rate-limit indicator, memory widget and approval dialogs read renderer-only RPC. Agents outside the app (the OpenClaw bridge) need the same numbers, and the CLI's `--json` is the only versioned contract dev3 offers; a raw socket call or a read of the data files would break silently on an update.
 

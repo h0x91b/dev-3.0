@@ -1,6 +1,7 @@
 # Retained usage and refreshable prices
 
 Extended on 2026-10-26 by [usage collectors for major agents](../26/usage-collectors-for-major-agents.md) with Gemini, Cursor and Copilot sources and separate additive history files.
+Extended on 2026-11-01 by [usage scan reads only what history lacks](../../11/01/usage-scan-reads-only-what-history-lacks.md): the "full reads" follow-up below is addressed for transcripts.
 
 ## Context
 
