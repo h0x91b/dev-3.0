@@ -29,6 +29,7 @@ import { handleMessage, unreachableAppVerdict } from "./commands/message";
 import { handlePeek } from "./commands/peek";
 import { handlePr } from "./commands/pr";
 import { handlePrWatch } from "./commands/pr-watch";
+import { handleSecret } from "./commands/secret";
 import { handlePane } from "./commands/pane";
 import { handleAgent } from "./commands/agent";
 import { handleSender } from "./commands/sender";
@@ -64,6 +65,7 @@ const HELP = `dev3 — AI-facing CLI for the dev-3.0 Kanban board.
 Auto-detects project and task from the worktree context.
 
 Commands:
+  dev3 secret run --env NAME -- command [args...]  Ask for a secret in the app; run once, discard output
   dev3 agent list [--json]              List agent and preset IDs for managed launches
   dev3 agent spawn [--task <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--json]
   dev3 agent resume [--task <id>] [--allow-agent-latest] [--json]
@@ -460,6 +462,8 @@ async function main(): Promise<void> {
 
 	try {
 		switch (command) {
+			case "secret":
+				return await handleSecret(subcommand, args, socketPath, context);
 			case "projects":
 			// Alias: the plural is the real command, but `dev3 project list` is the
 			// natural mistype and used to answer "Unknown command" with no hint —

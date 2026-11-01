@@ -14,6 +14,7 @@ import type { ReviewComment, ReviewReplyAuthor } from "../review";
 import type { LiveChange } from "../live-artifact";
 import type { TelemetryProfile } from "../telemetry-profile";
 import type { AgentPromptDelivery } from "../agent-prompt-delivery";
+import type { SecretRequest } from "../secret-request";
 import type { AgentMessageLogPage } from "../agent-message-log";
 import type { NotificationLogPage } from "../notification-log";
 import type { TaskPeekSnapshot } from "../task-peek";
@@ -78,6 +79,8 @@ export interface CliResponse {
 export type AppRPCSchema = {
 	bun: RPCSchema<{
 		requests: {
+			listSecretRequests: { params: {}; response: SecretRequest[] };
+			respondToSecretRequest: { params: { requestId: string; secret?: string }; response: boolean };
 			getProjects: {
 				params: void;
 				response: Project[];
@@ -1941,6 +1944,8 @@ export type AppRPCSchema = {
 			 * picker) and answers via `respondToAgentLaunchRequest`. `requesterSeq`
 			 * names the asking task so the user can see who wants this.
 			 */
+			secretRequested: SecretRequest;
+			secretRequestResolved: { requestId: string };
 			agentLaunchRequested: AgentLaunchRequest;
 			/**
 			 * An agent-initiated request (`complete` or `launch`) got its answer.

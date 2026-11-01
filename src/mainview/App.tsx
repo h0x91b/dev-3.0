@@ -74,6 +74,8 @@ import RemoteAccessDownNotice from "./components/RemoteAccessDownNotice";
 import RemoteSignIn from "./components/RemoteSignIn";
 import RemoteAccessExposedPorts from "./components/RemoteAccessExposedPorts";
 import { ConfirmHost, confirm, whenConfirmHostMounted } from "./confirm";
+import SecretRequestModal from "./components/SecretRequestModal";
+import type { SecretRequest } from "../shared/secret-request";
 import AgentLaunchRequestModal from "./components/AgentLaunchRequestModal";
 import AboutModal from "./components/AboutModal";
 import FeatureFlagsModal from "./components/FeatureFlagsModal";
@@ -349,8 +351,10 @@ function App() {
 	const dontShowAgainRef = useRef(dontShowAgain);
 	dontShowAgainRef.current = dontShowAgain;
 
-	// Pending agent-initiated launch requests; only the head is on screen.
-	const [launchRequests, setLaunchRequests] = useState<AgentLaunchRequest[]>([]);
+	// Pending agent requests; only the head is on screen.
+	const [agentRequests, setAgentRequests] = useState<(AgentLaunchRequest | SecretRequest)[]>([]);
+	const [confirmBusy, setConfirmBusy] = useState(false);
+	const pendingAgentRequest = agentRequests[0];
 
 	// The bun `before-quit` gate asks us to confirm before the app actually quits
 	// (Cmd+Q, menu Quit, dock Quit). We just open the dialog; the real quit
@@ -2498,7 +2502,7 @@ function App() {
 		function onAgentLaunchRequested(e: Event) {
 			const request = (e as CustomEvent).detail as AgentLaunchRequest;
 			if (resolvedRequestIds.has(request.requestId)) return;
-			setLaunchRequests((queue) => (
+			setAgentRequests((queue) => (
 				queue.some((r) => r.requestId === request.requestId) ? queue : [...queue, request]
 			));
 		}
@@ -2507,12 +2511,12 @@ function App() {
 		function onAgentRequestResolved(e: Event) {
 			const { requestId } = (e as CustomEvent).detail as { requestId: string };
 			resolvedRequestIds.add(requestId);
-			setLaunchRequests((queue) => queue.filter((r) => r.requestId !== requestId));
+			setAgentRequests((queue) => queue.filter((r) => r.requestId !== requestId));
 		}
 		let cancelled = false;
 		function restoreLaunchRequests() {
 			startupRead("pending agent launch requests", () => api.request.getPendingAgentLaunchRequests({}), { isCancelled: () => cancelled }).then((requests) => {
-				if (!cancelled) setLaunchRequests((queue) => [...queue, ...requests.filter((r) => !resolvedRequestIds.has(r.requestId) && !queue.some((q) => q.requestId === r.requestId))]);
+				if (!cancelled) setAgentRequests((queue) => [...queue, ...requests.filter((r) => !resolvedRequestIds.has(r.requestId) && !queue.some((q) => q.requestId === r.requestId))]);
 			}).catch(ignoreStartupReadFailure);
 		}
 		window.addEventListener(RPC_STATUS_EVENT, restoreLaunchRequests);
@@ -2527,13 +2531,42 @@ function App() {
 		};
 	}, []);
 
+	useEffect(() => {
+		let cancelled = false;
+		const resolved = new Set<string>();
+		const add = (requests: SecretRequest[]) => setAgentRequests((queue) => [
+			...queue, ...requests.filter((request) => !resolved.has(request.requestId) && !queue.some((item) => item.requestId === request.requestId)),
+		]);
+		const restore = () => {
+			void startupRead("pending secret requests", () => api.request.listSecretRequests({}), { isCancelled: () => cancelled })
+				.then((requests) => { if (!cancelled) add(requests); })
+				.catch(ignoreStartupReadFailure);
+		};
+		const requested = (event: Event) => add([(event as CustomEvent<SecretRequest>).detail]);
+		const finished = (event: Event) => {
+			const { requestId } = (event as CustomEvent<{ requestId: string }>).detail;
+			resolved.add(requestId);
+			setAgentRequests((queue) => queue.filter((request) => request.requestId !== requestId));
+		};
+		window.addEventListener("rpc:secretRequested", requested);
+		window.addEventListener("rpc:secretRequestResolved", finished);
+		window.addEventListener(RPC_STATUS_EVENT, restore);
+		restore();
+		return () => {
+			cancelled = true;
+			window.removeEventListener("rpc:secretRequested", requested);
+			window.removeEventListener("rpc:secretRequestResolved", finished);
+			window.removeEventListener(RPC_STATUS_EVENT, restore);
+		};
+	}, []);
+
 	const respondToLaunchRequest = useCallback((
 		request: AgentLaunchRequest,
 		approved: boolean,
 		launch?: AgentLaunchChoice,
 	) => {
 		const { requestId } = request;
-		setLaunchRequests((queue) => queue.filter((r) => r.requestId !== requestId));
+		setAgentRequests((queue) => queue.filter((r) => r.requestId !== requestId));
 		if (approved && !request.spawn && !request.resume && !request.sessionAction) {
 			trackEvent("task_moved", { to_status: "in-progress", agent_requested: true });
 			const variantCount = launch?.variants.length ?? 1;
@@ -3770,14 +3803,17 @@ function App() {
 				onClose={() => setShortcutsModal((s) => ({ ...s, open: false }))}
 			/>
 			{updatePreviewOpen && <UpdatePopoverSimulatorModal onClose={() => setUpdatePreviewOpen(false)} />}
-			<ConfirmHost />
-			{launchRequests[0] && (
+			<ConfirmHost onBusyChange={setConfirmBusy} />
+			{!confirmBusy && pendingAgentRequest && ("env" in pendingAgentRequest ? (
+				<SecretRequestModal key={pendingAgentRequest.requestId} request={pendingAgentRequest}
+					onDone={() => setAgentRequests((queue) => queue.filter((request) => request.requestId !== pendingAgentRequest.requestId))} />
+			) : (
 				<AgentLaunchRequestModal
-					key={launchRequests[0].requestId}
-					request={launchRequests[0]}
-					onRespond={(approved, launch) => respondToLaunchRequest(launchRequests[0]!, approved, launch)}
+					key={pendingAgentRequest.requestId}
+					request={pendingAgentRequest}
+					onRespond={(approved, launch) => respondToLaunchRequest(pendingAgentRequest, approved, launch)}
 				/>
-			)}
+			))}
 			{artifactViewer && (
 				<TaskArtifactViewer
 					taskId={artifactViewer.taskId}
