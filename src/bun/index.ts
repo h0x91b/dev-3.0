@@ -62,6 +62,7 @@ import { buildApplicationMenu, getMenuContext, MENU_ACTIONS, onMenuContextChange
 import { openLogsDirectory } from "./menu-actions";
 import { startLoopMonitor } from "./loop-monitor";
 import { configureHandoffWorker } from "./conversation-handoff-runner";
+import { configureConversationSearchWorker } from "./conversation-search-project";
 import { configureClonefileWorker } from "./cow-clone";
 import { configureWorktreeCleanupWorker } from "./worktree-cleanup-scheduler";
 import { configureClipboardImageWorker } from "./clipboard-image-reader";
@@ -432,6 +433,7 @@ async function getMainViewUrl(): Promise<string> {
 const url = await getMainViewUrl();
 log.info("Loading URL", { url });
 configureHandoffWorker(resolve(PATHS.VIEWS_FOLDER, "..", "workers", "conversation-handoff-worker.js"));
+configureConversationSearchWorker(resolve(PATHS.VIEWS_FOLDER, "..", "workers", "conversation-search-worker.js"));
 configureClonefileWorker(resolve(PATHS.VIEWS_FOLDER, "..", "workers", "clonefile-worker.js"));
 configureClipboardImageWorker(resolve(PATHS.VIEWS_FOLDER, "..", "workers", "clipboard-image-worker.js"));
 configureWorktreeCleanupWorker(resolve(PATHS.VIEWS_FOLDER, "..", "workers", "worktree-cleanup-worker.js"));

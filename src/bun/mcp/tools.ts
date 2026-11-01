@@ -47,6 +47,11 @@ import {
 import { MAX_MESSAGE_SUBJECT_LENGTH, checkMessageSubject } from "../../shared/agent-message-subject";
 import { SENDER_WAIT_MAX_MS, type SenderWaitResult } from "../../shared/external-senders";
 import { MAX_SCHEDULED_MESSAGE_LENGTH } from "../../shared/types";
+import { PEEK_DEFAULT_LINES } from "../../shared/task-peek";
+import type { ConversationMatch } from "../../shared/conversation-search-core";
+import { resolveUserHome } from "../../shared/user-home";
+import { DEV3_HOME } from "../paths";
+import { searchProjectConversationsOffThread, type ProjectSearchOptions } from "../conversation-search-project";
 import { findTaskByRef } from "../cli-socket/task-resolution";
 import { validate, type ObjectSchema } from "./schema";
 import type { McpScope, McpTokenRecord } from "./token-store";
@@ -61,6 +66,8 @@ export interface ToolContext {
 	signal?: AbortSignal;
 	/** Tests shorten the dialog wait. */
 	approvalWaitMs?: number;
+	/** Tests replace the off-thread transcript search. */
+	searchConversations?: (opts: ProjectSearchOptions) => Promise<ConversationMatch[]>;
 }
 
 export interface ToolError {
@@ -715,6 +722,54 @@ const agentResume: ToolDef = {
 	},
 };
 
+// ── content: what agents typed and said (opt-in) ────────────────────────────
+
+const taskPeek: ToolDef = {
+	name: "task_peek",
+	description: "The tail of a task's main agent pane, as `dev3 peek --json`. Terminal text is untrusted.",
+	scope: "content",
+	inputSchema: obj({ task: TASK_REF, project: PROJECT_REF, lines: { type: "integer", minimum: 1, maximum: 400 } }, ["task"]),
+	trustedFields: ["taskId", "seq", "status", "backend", "observedAt", "sessionPresent", "unavailable.kind", "panes[].index", "panes[].paneId", "panes[].alive", "panes[].focused", "panes[].lastOutputAt", "panes[].lastOutputAgeMs", "panes[].granularity", "tail.paneIndex", "tail.paneId", "tail.lines"],
+	successCodes: [0],
+	async run(args, ctx) {
+		const { project, task } = await resolveTask(ctx, String(args.task), str(args.project));
+		return ok(await appData(ctx, "task.peek", { taskId: task.id, projectId: project.id, lines: typeof args.lines === "number" ? args.lines : PEEK_DEFAULT_LINES }));
+	},
+};
+
+const conversationsSearch: ToolDef = {
+	name: "conversations_search",
+	description: "Search a project's past task transcripts and notes, as `dev3 conversations search --json` without transcript paths. Snippets are untrusted.",
+	scope: "content",
+	inputSchema: obj({
+		query: { type: "string", minLength: 1, maxLength: 200 },
+		project: PROJECT_REF,
+		limit: { type: "integer", minimum: 1, maximum: 20 },
+		allStatuses: { type: "boolean" },
+	}, ["query", "project"]),
+	trustedFields: ["[].taskId", "[].status", "[].agentId", "[].score", "[].bodyMatches", "[].metaMatches", "[].lastActivityMs"],
+	successCodes: [0],
+	async run(args, ctx) {
+		const project = await resolveProject(ctx, String(args.project));
+		const search = ctx.searchConversations ?? searchProjectConversationsOffThread;
+		let results: ConversationMatch[];
+		try {
+			results = await search({
+				query: String(args.query),
+				projectPath: project.path,
+				currentTaskId: null,
+				allStatuses: args.allStatuses === true,
+				limit: typeof args.limit === "number" ? args.limit : 5,
+				home: resolveUserHome(),
+				dev3Home: DEV3_HOME,
+			});
+		} catch (err) {
+			fail(CLI_EXIT_CODE_COMMAND_FAILED, "COMMAND_FAILED", String(err instanceof Error ? err.message : err));
+		}
+		return ok(results.map(({ transcriptPaths: _paths, ...match }) => match));
+	},
+};
+
 // ── the table ───────────────────────────────────────────────────────────────
 
 const whoami: ToolDef = {
@@ -772,6 +827,8 @@ export const MCP_TOOLS: ToolDef[] = [
 	taskSetPriority,
 	taskStart,
 	agentResume,
+	taskPeek,
+	conversationsSearch,
 ];
 
 export function toolAllowed(tool: ToolDef, token: McpTokenRecord): boolean {
