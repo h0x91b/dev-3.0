@@ -1,6 +1,6 @@
 {
 	"name": "electrobun-react-tailwind-vite",
-	"version": "1.62.1",
+	"version": "1.62.2",
 	"description": "Terminal-centric project manager built with Electrobun, React, Tailwind CSS, and Vite",
 	"license": "Apache-2.0",
 	"author": "Arseny Pavlenko",
