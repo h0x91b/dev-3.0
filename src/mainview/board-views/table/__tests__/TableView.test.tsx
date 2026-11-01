@@ -73,6 +73,7 @@ async function renderTable(setup: Setup = {}) {
 		scopeTasks: setup.scopeTasks ?? tasks,
 		tasks,
 		matches: setup.matches ?? (() => false),
+		lineageNode: () => null,
 		columns,
 		occupiedColumns: columns,
 		labels: [bug, ui],

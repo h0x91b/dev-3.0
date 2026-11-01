@@ -1,8 +1,10 @@
 import type { Context, Fiber } from "cordis";
 import type { TranslationKey } from "../i18n";
-import { KANBAN_VIEW_ID } from "../../shared/board-view-state";
+import { ATTENTION_VIEW_ID, KANBAN_VIEW_ID } from "../../shared/board-view-state";
 import { installKanbanView } from "./kanban";
 import { installTableView, TABLE_VIEW_ID } from "./table";
+import { installTreeView, TREE_VIEW_ID } from "./tree";
+import { installAttentionView } from "./attention";
 
 export interface BuiltinBoardView {
 	id: string;
@@ -19,4 +21,6 @@ export interface BuiltinBoardView {
 export const BUILTIN_BOARD_VIEWS: readonly BuiltinBoardView[] = [
 	{ id: KANBAN_VIEW_ID, labelKey: "boardView.kanban", install: installKanbanView },
 	{ id: TABLE_VIEW_ID, labelKey: "boardView.table", install: installTableView },
+	{ id: TREE_VIEW_ID, labelKey: "boardView.tree", install: installTreeView },
+	{ id: ATTENTION_VIEW_ID, labelKey: "boardView.attention", install: installAttentionView },
 ];

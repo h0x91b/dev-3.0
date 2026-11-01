@@ -32,6 +32,7 @@ export interface BoardViewState {
 }
 
 export const KANBAN_VIEW_ID = "builtin:kanban";
+export const ATTENTION_VIEW_ID = "builtin:attention";
 export const DEFAULT_SAVED_VIEW_ID = "sv-default";
 
 export function defaultBoardViewState(): BoardViewState {

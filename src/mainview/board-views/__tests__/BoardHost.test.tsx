@@ -13,6 +13,8 @@ import { installKanbanView } from "../kanban";
 import { useBoard } from "../react";
 import { resetBoardViewStateCacheForTests } from "../useBoardViewState";
 import { defaultBoardViewState, withViewType } from "../../../shared/board-view-state";
+import { _resetTaskLineageStoreForTest } from "../../hooks/useTaskLineage";
+import { setStreamerMode } from "../../streamer-mode";
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -67,13 +69,14 @@ function makeTask(id: string, title: string, overrides: Partial<Task> = {}): Tas
 
 const tasks = [makeTask("t1", "alpha"), makeTask("t2", "beta", { status: "completed" })];
 
-function renderHost(props: { tasks?: Task[]; strict?: boolean; dispatch?: Dispatch<AppAction>; project?: Project; space?: Space } = {}) {
+function renderHost(props: { tasks?: Task[]; strict?: boolean; dispatch?: Dispatch<AppAction>; project?: Project; space?: Space; allProjects?: Project[] } = {}) {
 	const tree = (list: Task[]) => (
 		<I18nProvider>
 			<BoardHost
 				project={props.project ?? project}
 				space={props.space}
 				memberProjects={props.space ? [props.project ?? project] : undefined}
+				allProjects={props.allProjects}
 				tasks={list}
 				dispatch={props.dispatch ?? vi.fn()}
 				navigate={vi.fn()}
@@ -242,6 +245,29 @@ describe("BoardHost", () => {
 			getBoardRoot().board.columns(opts).flatMap((slot) => (slot.type === "builtin" ? [slot.status] : []));
 		expect(statuses()).not.toContain("review-by-ai");
 		expect(statuses({ includeOccupied: true })).toContain("review-by-ai");
+	});
+
+	it("resolves lineage nodes off the board: null while loading, then the node or 'deleted'", async () => {
+		_resetTaskLineageStoreForTest();
+		let resolveIndex: ((index: unknown) => void) | undefined;
+		vi.mocked(api.request.getTaskLineage).mockImplementationOnce(() => new Promise((resolve) => { resolveIndex = resolve; }) as never);
+		const secret = { ...project, id: "p9", name: "Secret", sensitive: true };
+		const parent = { id: "x1", projectId: "p9", projectName: "Secret", seq: 77, variantIndex: null, status: "in-progress", title: "Hidden plan" };
+		renderHost({ allProjects: [project, secret] });
+		expect(getBoardRoot().board.lineageNode("x1")).toBeNull();
+		await waitFor(() => expect(resolveIndex).toBeTypeOf("function"));
+		expect(getBoardRoot().board.lineageNode("x1")).toBeNull();
+		await act(async () => {
+			resolveIndex!({ nodes: [parent], edges: [] });
+		});
+		await waitFor(() => expect(getBoardRoot().board.lineageNode("x1")).toMatchObject({ seq: 77, title: "Hidden plan" }));
+		expect(getBoardRoot().board.lineageNode("gone")).toBe("deleted");
+		act(() => setStreamerMode(true));
+		try {
+			expect(getBoardRoot().board.lineageNode("x1")).toMatchObject({ seq: 77, projectName: "Secret", title: null });
+		} finally {
+			act(() => setStreamerMode(false));
+		}
 	});
 
 	it("hands views the real task card through ctx.board.TaskCard", async () => {
