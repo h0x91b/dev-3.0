@@ -32,6 +32,8 @@ import type { ModelCatalogView, ModelSidecarStatus, PxpipeProxyStatus } from "./
 import type { AutoConfigureResult, BoardCopyFailureReason, BoardCopyOffer, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GitInitOffer, Project, ProjectSettingsUpdate, PrResolveFailureReason, ShellAvailability, ShellPromptPreview } from "./project";
 import type { CustomColumn, Label } from "./labels-columns";
 import type { Space, SpacesFile } from "./spaces";
+import type { BoardRef, BoardViewState } from "../board-view-state";
+import type { ExtensionInspection, ExtensionsOverview, InstalledExtension } from "../extensions";
 import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, AgentLaunchRequest, LaunchVariant, TaskDialogSubject } from "./agent-launch";
 import type { ScheduledMessageTarget } from "./scheduled-messages";
 import type { LiveArtifact, SharedArtifact, SharedImage } from "./shared-media";
@@ -117,6 +119,56 @@ export type AppRPCSchema = {
 			reorderSpaceProjects: {
 				params: { spaceId: string; projectIds: string[] };
 				response: Space;
+			};
+			/** Board-view selection and layouts of one project or space board (`board-views.json`). */
+			getBoardViewState: {
+				params: { board: BoardRef };
+				response: BoardViewState;
+			};
+			setBoardViewState: {
+				params: { board: BoardRef; state: BoardViewState };
+				response: BoardViewState;
+			};
+			/** Board-view extensions (`~/.dev3.0/extensions/`), the kill switch and built-in toggles. */
+			listExtensions: {
+				params: void;
+				response: ExtensionsOverview;
+			};
+			/** Reads and validates a picked folder's manifest without running it. Desktop only. */
+			inspectExtension: {
+				params: { path: string };
+				response: ExtensionInspection;
+			};
+			/** Copies the extension in and records trust; `consent` is required unless it is already trusted. Desktop only. */
+			installExtension: {
+				params: { path: string; consent: boolean };
+				response: InstalledExtension;
+			};
+			trustExtension: {
+				params: { id: string };
+				response: InstalledExtension;
+			};
+			setExtensionEnabled: {
+				params: { id: string; enabled: boolean };
+				response: void;
+			};
+			setBuiltinBoardViewEnabled: {
+				params: { viewId: string; enabled: boolean };
+				response: void;
+			};
+			/** The kill switch. A remote session may only turn it off. */
+			setExtensionsEnabled: {
+				params: { enabled: boolean };
+				response: void;
+			};
+			uninstallExtension: {
+				params: { id: string };
+				response: void;
+			};
+			/** The bundle of an active extension, for the renderer's loader. */
+			getExtensionSource: {
+				params: { id: string };
+				response: string;
 			};
 			listDirectory: {
 				params: { path?: string | null; includeFiles?: boolean; showHidden?: boolean };

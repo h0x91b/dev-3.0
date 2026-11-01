@@ -15,6 +15,18 @@
     <!-- Web Push on iOS is granted only to a Home Screen install, and only a
          standalone display mode counts as installed. -->
     <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- Board-view extensions import bare "react"/"react-dom"/"cordis"; this map hands them
+         the host's own copies through public/ext-shared shims (board-views/extensions.ts). -->
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "/ext-shared/react.js",
+          "react/jsx-runtime": "/ext-shared/react-jsx-runtime.js",
+          "react-dom": "/ext-shared/react-dom.js",
+          "cordis": "/ext-shared/cordis.js"
+        }
+      }
+    </script>
     <title>dev-3.0</title>
     <style>
       /* Pre-React boot fallback. Inline + theme-neutral on purpose: it must be

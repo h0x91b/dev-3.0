@@ -1,0 +1,11 @@
+{
+  "id": "focus-list",
+  "name": "Focus list",
+  "version": "1.0.0",
+  "publisher": "dev3 examples",
+  "engines": { "dev3": "^1.0.0" },
+  "contributes": {
+    "boardViews": [{ "id": "focus", "label": "Focus list" }]
+  },
+  "main": "index.js"
+}

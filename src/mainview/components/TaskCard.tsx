@@ -9,6 +9,7 @@ import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { useT } from "../i18n";
+import { createProjectLabel } from "../utils/createProjectLabel";
 import { formatBytes } from "../utils/formatBytes";
 import { formatCountdown } from "../../shared/duration";
 import { trackEvent, agentNameFromId } from "../analytics";
@@ -1135,8 +1136,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 									{pickerOpen && (pickerAnchorRef.current ?? labelRowRef.current) && (
 										<LabelPicker
 											project={project}
-											dispatch={dispatch}
-											taskId={task.id}
+											onCreateLabel={(name) => createProjectLabel({ project, name, dispatch, t, taskId: task.id })}
 											onClose={() => setPickerOpen(false)}
 											anchorEl={(pickerAnchorRef.current ?? labelRowRef.current)!}
 											selectedIds={taskLabelIds}

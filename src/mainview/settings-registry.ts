@@ -44,6 +44,11 @@ export const SETTINGS_CATEGORIES = [
 		descriptionKey: "settings.categoryModelsDesc",
 	},
 	{
+		id: "extensions",
+		labelKey: "settings.categoryExtensions",
+		descriptionKey: "settings.categoryExtensionsDesc",
+	},
+	{
 		id: "workspace",
 		labelKey: "settings.categoryWorkspace",
 		descriptionKey: "settings.categoryWorkspaceDesc",
@@ -558,6 +563,30 @@ export const SETTINGS_ENTRIES = [
 		descriptionKey: "catalog.sectionDesc",
 		anchor: "model-catalog",
 		storage: "surface",
+	},
+	{
+		id: "extensions-kill-switch",
+		category: "extensions",
+		titleKey: "extensions.killSwitch",
+		descriptionKey: "extensions.killSwitchDesc",
+		anchor: "extensions-kill-switch",
+		storage: "sidecar",
+	},
+	{
+		id: "board-view-builtins",
+		category: "extensions",
+		titleKey: "extensions.builtinsTitle",
+		descriptionKey: "extensions.builtinsDesc",
+		anchor: "board-view-builtins",
+		storage: "sidecar",
+	},
+	{
+		id: "extensions-installed",
+		category: "extensions",
+		titleKey: "extensions.installedTitle",
+		descriptionKey: "extensions.installedDesc",
+		anchor: "extensions-installed",
+		storage: "sidecar",
 	},
 	{
 		id: "token-saving-proxy",

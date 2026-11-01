@@ -1,13 +1,14 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import KanbanBoard from "../KanbanBoard";
-import { I18nProvider } from "../../i18n";
-import type { Project, Task, TaskLineageIndex } from "../../../shared/types";
-import { resetRememberedFiltersForTests } from "../../hooks/useRememberedFilter";
+// The board renders through its host, which owns the shared filter row.
+import BoardHost from "../../BoardHost";
+import { I18nProvider } from "../../../i18n";
+import type { Project, Task, TaskLineageIndex } from "../../../../shared/types";
+import { resetRememberedFiltersForTests } from "../../../hooks/useRememberedFilter";
 
 const lineageIndex = vi.hoisted(() => ({ current: { nodes: [], edges: [] } as TaskLineageIndex }));
 
-vi.mock("../../rpc", () => ({
+vi.mock("../../../rpc", () => ({
 	api: {
 		request: {
 			getAgents: vi.fn().mockResolvedValue([]),
@@ -20,8 +21,8 @@ vi.mock("../../rpc", () => ({
 		},
 	},
 }));
-vi.mock("../../analytics", () => ({ trackEvent: vi.fn(), agentNameFromId: vi.fn(() => "unknown") }));
-vi.mock("../../toast", () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
+vi.mock("../../../analytics", () => ({ trackEvent: vi.fn(), agentNameFromId: vi.fn(() => "unknown") }));
+vi.mock("../../../toast", () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
 
 function makeProject(id: string, name: string): Project {
 	return { id, name, path: `/tmp/${id}`, setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "2025-01-01T00:00:00Z" };
@@ -48,7 +49,7 @@ async function renderBoard(navigate = vi.fn()) {
 	await act(async () => {
 		render(
 			<I18nProvider>
-				<KanbanBoard
+				<BoardHost
 					project={HOME}
 					allProjects={[HOME, BREW]}
 					tasks={[coordinator, child, mine]}
@@ -103,7 +104,7 @@ describe("KanbanBoard lineage", () => {
 		await act(async () => {
 			render(
 				<I18nProvider>
-					<KanbanBoard project={BREW} allProjects={[HOME, BREW]} tasks={[brewChild]} dispatch={vi.fn()} navigate={vi.fn()} bellCounts={new Map()} taskPorts={new Map()} taskDevServers={new Map()} />
+					<BoardHost project={BREW} allProjects={[HOME, BREW]} tasks={[brewChild]} dispatch={vi.fn()} navigate={vi.fn()} bellCounts={new Map()} taskPorts={new Map()} taskDevServers={new Map()} />
 				</I18nProvider>,
 			);
 		});

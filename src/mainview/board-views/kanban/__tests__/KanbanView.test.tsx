@@ -1,12 +1,13 @@
 import { act, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import KanbanBoard from "../KanbanBoard";
-import { I18nProvider } from "../../i18n";
-import { api } from "../../rpc";
-import { toast } from "../../toast";
-import type { CustomColumn, PRInfo, Project, Task, TipState } from "../../../shared/types";
+// The board renders through its host, which owns the shared filter row.
+import BoardHost from "../../BoardHost";
+import { I18nProvider } from "../../../i18n";
+import { api } from "../../../rpc";
+import { toast } from "../../../toast";
+import type { CustomColumn, PRInfo, Project, Task, TipState } from "../../../../shared/types";
 
-vi.mock("../../rpc", () => ({
+vi.mock("../../../rpc", () => ({
 	api: {
 		request: {
 			getAgents: vi.fn().mockResolvedValue([]),
@@ -29,9 +30,9 @@ vi.mock("../../rpc", () => ({
 	},
 }));
 
-vi.mock("../../analytics", () => ({ trackEvent: vi.fn(), agentNameFromId: vi.fn(() => "unknown") }));
+vi.mock("../../../analytics", () => ({ trackEvent: vi.fn(), agentNameFromId: vi.fn(() => "unknown") }));
 
-vi.mock("../../toast", () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
+vi.mock("../../../toast", () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
 
 const project: Project = {
 	id: "p1",
@@ -105,12 +106,12 @@ function startColumnDrag(handle: Element) {
 	dispatchDrag(handle, "dragstart", { dataTransfer: dt });
 }
 
-async function renderBoardWith(props: Partial<React.ComponentProps<typeof KanbanBoard>> = {}) {
+async function renderBoardWith(props: Partial<React.ComponentProps<typeof BoardHost>> = {}) {
 	let result: ReturnType<typeof render>;
 	await act(async () => {
 		result = render(
 			<I18nProvider>
-				<KanbanBoard
+				<BoardHost
 					project={props.project ?? project}
 					space={props.space}
 					memberProjects={props.memberProjects}
@@ -445,7 +446,7 @@ describe("tip rotation", () => {
 		await act(async () => {
 			render(
 				<I18nProvider>
-					<KanbanBoard
+					<BoardHost
 						project={project}
 						// One task, deliberately: a board with none at all belongs to a user
 						// who has not started, and its To Do column explains the first task
@@ -469,7 +470,7 @@ describe("tip rotation", () => {
 		await act(async () => {
 			render(
 				<I18nProvider>
-					<KanbanBoard
+					<BoardHost
 						project={project}
 						tasks={[]}
 						dispatch={vi.fn()}
@@ -1011,7 +1012,7 @@ describe("detail modal requested by id", () => {
 		await act(async () => {
 			rerender(
 				<I18nProvider>
-					<KanbanBoard
+					<BoardHost
 						project={project}
 						tasks={buried}
 						dispatch={vi.fn()}
@@ -1043,7 +1044,7 @@ describe("KanbanBoard filter memory", () => {
 	function boardFor(p: Project) {
 		return (
 			<I18nProvider>
-				<KanbanBoard
+				<BoardHost
 					project={p}
 					tasks={[]}
 					dispatch={vi.fn()}

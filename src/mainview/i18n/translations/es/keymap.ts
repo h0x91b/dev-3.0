@@ -29,6 +29,7 @@ const keymap = {
 	"keymap.shortcut.taskSwitcherGlobal": "Cambiar entre tareas activas (todos los proyectos)",
 	"keymap.shortcut.taskHints": "Saltar a una tarea o proyecto por pista",
 	"keymap.shortcut.goTo": "Ir a… (D panel · P proyecto · T tareas · S ajustes · dígito = proyecto N; P/T + dígito = tablero/tareas del proyecto N)",
+	"keymap.shortcut.boardView": "Vista del tablero (dígito = N.ª vista · V = vista anterior)",
 	"keymap.shortcut.zoomOutToSpace": "Ampliar al tablero del espacio",
 	"keymap.shortcut.focusSearch": "Enfocar búsqueda",
 	"keymap.shortcut.escape": "Cerrar diálogo / volver atrás (no dentro de una tarea — ahí lo recibe el agente)",

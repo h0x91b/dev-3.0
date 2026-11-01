@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleMenuAction } from "../menuRouter";
+import { BROWSER_HANDLED_ACTIONS, handleMenuAction } from "../menuRouter";
+import { registerBoardViewCommandHandler, resetBoardViewCommandsForTests } from "../board-views/view-commands";
+import { MENU_ACTIONS } from "../../shared/application-menu";
 import type { AppState } from "../state";
 
 const { moveTaskToStatus } = vi.hoisted(() => ({ moveTaskToStatus: vi.fn((_opts: unknown) => Promise.resolve(true)) }));
@@ -178,5 +180,49 @@ describe("handleMenuAction — view-toggle-file-explorer", () => {
 			expect(c.dispatch).not.toHaveBeenCalled();
 		}
 		expect(getFileExplorerPrefs().mode).toBe("pinned");
+	});
+});
+
+describe("handleMenuAction — board views", () => {
+	const routeCtx = (route: unknown) => ({ ...ctx, dispatch: vi.fn(), state: { route, projects: [] } as unknown as AppState });
+
+	it("switches the view in place on a board", async () => {
+		resetBoardViewCommandsForTests();
+		const handler = vi.fn(() => true);
+		const off = registerBoardViewCommandHandler(handler);
+		const c = routeCtx({ screen: "project", projectId: "p1" });
+		await handleMenuAction("view-board:builtin:table", c);
+		off();
+		expect(c.dispatch).not.toHaveBeenCalled();
+		expect(handler).toHaveBeenCalledWith({ kind: "pick", viewId: "builtin:table" }, false);
+	});
+
+	it("opens the board first from a task, keeping the space, then picks the view", async () => {
+		resetBoardViewCommandsForTests();
+		const c = routeCtx({ screen: "task", projectId: "p1", spaceId: "s1", taskId: "t1" });
+		await handleMenuAction("view-board:builtin:tree", c);
+		expect(c.dispatch).toHaveBeenCalledWith({ type: "navigate", route: { screen: "project", projectId: "p1", spaceId: "s1" } });
+		const handler = vi.fn(() => true);
+		registerBoardViewCommandHandler(handler)();
+		expect(handler).toHaveBeenCalledWith({ kind: "pick", viewId: "builtin:tree" }, true);
+	});
+
+	it("does nothing off a project", async () => {
+		resetBoardViewCommandsForTests();
+		const c = routeCtx({ screen: "dashboard" });
+		await handleMenuAction("view-board:builtin:table", c);
+		expect(c.dispatch).not.toHaveBeenCalled();
+	});
+
+	it("Show Board keeps the space board", async () => {
+		const c = routeCtx({ screen: "project", projectId: "p1", spaceId: "s1", activeTaskId: "t1" });
+		await handleMenuAction("view-board", c);
+		expect(c.dispatch).toHaveBeenCalledWith({ type: "navigate", route: { screen: "project", projectId: "p1", spaceId: "s1" } });
+	});
+
+	it("runs every built-in board-view menu item in the browser too", () => {
+		for (const action of [MENU_ACTIONS.viewBoardKanban, MENU_ACTIONS.viewBoardTable, MENU_ACTIONS.viewBoardTree, MENU_ACTIONS.viewBoardAttention]) {
+			expect(BROWSER_HANDLED_ACTIONS.has(action)).toBe(true);
+		}
 	});
 });
