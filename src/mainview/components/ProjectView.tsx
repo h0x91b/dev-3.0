@@ -54,6 +54,9 @@ interface ProjectViewProps {
 	taskDetailId?: string;
 }
 
+/** How long the board waits for its task snapshot before offering a retry. */
+export const TASKS_FETCH_TIMEOUT_MS = 20_000;
+
 function ProjectView({
 	projectId,
 	spaceId,
@@ -108,6 +111,9 @@ function ProjectView({
 	// so for one commit the status still says "ready" about the PREVIOUS board's tasks.
 	const [readyBoardKey, setReadyBoardKey] = useState<string | null>(null);
 	const [tasksReloadNonce, setTasksReloadNonce] = useState(0);
+	// Tasks already on screen at mount are a real snapshot (e.g. back from a full-page
+	// task). Cards that arrive later by push alone are not — they only fill a fragment.
+	const [cachedBoardKey] = useState(() => (tasks.length > 0 ? boardProjectIds.join(",") : null));
 
 	const rpcState = useRpcStatus();
 	const transportWasDownRef = useRef(false);
@@ -152,6 +158,13 @@ function ProjectView({
 		let cancelled = false;
 		setTasksStatus("loading");
 		const ids = boardProjectKey.split(",");
+		// A response lost across a socket reconnect never settles; surface the retry
+		// panel instead of a board stuck on "loading". A late answer still lands.
+		const timeout = setTimeout(() => {
+			if (cancelled) return;
+			console.warn(`Task fetch for ${ids.length} board project(s) timed out`);
+			setTasksStatus((status) => (status === "loading" ? "error" : status));
+		}, TASKS_FETCH_TIMEOUT_MS);
 		(async () => {
 			try {
 				const snapshots = await Promise.all(
@@ -159,6 +172,7 @@ function ProjectView({
 				);
 				// A superseded fetch must not touch the flag — a newer one owns it now.
 				if (cancelled) return;
+				clearTimeout(timeout);
 				tasksFetchInFlightRef.current = false;
 				for (const [id, tasks] of snapshots) {
 					// Fast path: nothing raced the fetch, so the snapshot ships untouched.
@@ -178,12 +192,14 @@ function ProjectView({
 			} catch (err) {
 				console.error("Failed to load tasks:", err);
 				if (cancelled) return;
+				clearTimeout(timeout);
 				tasksFetchInFlightRef.current = false;
 				setTasksStatus("error");
 			}
 		})();
 		return () => {
 			cancelled = true;
+			clearTimeout(timeout);
 			tasksFetchInFlightRef.current = false;
 			pushed.clear();
 		};
@@ -356,8 +372,10 @@ function ProjectView({
 	}
 
 	// Cached tasks always win: a background refetch (or a reconnect) must not blank
-	// a board the user is already reading.
-	if (tasks.length === 0 && tasksStatus !== "ready") {
+	// a board the user is already reading. Push-only cards are not a snapshot, so
+	// until the fetch lands they keep the skeleton (or the retry panel) up.
+	const hasSnapshot = readyBoardKey === boardProjectKey || cachedBoardKey === boardProjectKey;
+	if (!hasSnapshot) {
 		return (
 			<div className="flex-1 min-h-0 w-full overflow-hidden flex flex-col">
 				{tasksStatus === "loading" ? (
