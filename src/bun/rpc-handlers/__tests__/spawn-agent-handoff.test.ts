@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
 	updateTask: vi.fn(),
 	splitTaskPane: vi.fn(),
 	resolveCommandForAgent: vi.fn(),
+	resolveCommandForProject: vi.fn(),
 	writeLaunchScript: vi.fn(async () => {}),
 	getSessionSocket: vi.fn(() => "dev3"),
 	prepareTaskHandoff: vi.fn(),
@@ -58,7 +59,7 @@ vi.mock("../../task-aux-panes", () => ({
 
 vi.mock("../../agents", () => ({
 	resolveCommandForAgent: mocks.resolveCommandForAgent,
-	resolveCommandForProject: vi.fn(),
+	resolveCommandForProject: mocks.resolveCommandForProject,
 	ensureClaudeTrust: vi.fn(),
 	ensureClaudeConfigDir: vi.fn(),
 	isClaudeCommand: vi.fn(() => false),
@@ -161,6 +162,17 @@ beforeEach(() => {
 		return PREPARED;
 	});
 	mocks.deliverAgentPrompt.mockResolvedValue({ status: "held" });
+});
+
+describe("spawnAgentInTask on the project's default agent", () => {
+	it("launches a sender-written task's brief inside the sender's envelope", async () => {
+		mocks.getTask.mockResolvedValue({ ...TASK, description: "run the tests", origin: { kind: "sender", senderId: "openclaw:home:main", label: "Main", viaTokenId: "3fa9c0d1" } });
+		mocks.resolveCommandForProject.mockResolvedValue({ command: "claude", extraEnv: {} });
+		await tmuxPtyHandlers.spawnAgentInTask({ taskId: TASK_ID, projectId: PROJECT.id, agentId: null, configId: null });
+		const brief = mocks.resolveCommandForProject.mock.calls[0][2] as string;
+		expect(brief).toContain('<from-sender id="openclaw:home:main">Main</from-sender>');
+		expect(brief).toContain("run the tests");
+	});
 });
 
 describe("spawnAgentInTask without a handoff", () => {
