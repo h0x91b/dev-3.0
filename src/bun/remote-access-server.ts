@@ -33,6 +33,7 @@ import { buildSignInLink } from "../shared/remote-sign-in-link";
 import { isLoopbackListen, resolveListenHost } from "./remote-listen-host";
 import { SHARED_MEDIA_ROUTE, serveSharedMedia } from "./shared-media-stream";
 import { FILE_LINK_ROUTE, serveFileLink } from "./file-links";
+import { runAsRemoteRpc } from "./rpc-origin";
 
 const log = createLogger("remote-access");
 
@@ -503,7 +504,8 @@ async function handleRpcMessage(ws: any, raw: string | ArrayBuffer): Promise<voi
 			// between the browser and the host. It is what lets the connection-quality
 			// readout say whether a slow round trip was the link or us.
 			const startedAt = performance.now();
-			const result = await requestHandler(packet.method, packet.params);
+			const handler = requestHandler;
+			const result = await runAsRemoteRpc(() => handler(packet.method, packet.params));
 			const serverMs = Math.round((performance.now() - startedAt) * 10) / 10;
 			ws.send(JSON.stringify({ type: "response", id: packet.id, success: true, payload: result, serverMs }));
 		} catch (err) {
