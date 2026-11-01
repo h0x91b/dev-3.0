@@ -48,6 +48,13 @@ export function useTaskForest(board: BoardService, layout: TreeLayout): TreeNode
 	return layout.lineageOnly ? roots.filter((node) => !isStandalone(node)) : roots;
 }
 
+/** The row's accessible name: its seq and title, never the chevron's "Expand". */
+function rowLabel(node: TreeNode, hiddenTitle: string): string {
+	if (node.kind === "ghost") return `#${node.ref.seq} ${node.ref.title ?? hiddenTitle} · ${node.ref.projectName}`;
+	const lead = node.tasks[0];
+	return `#${node.tasks.length > 1 ? lead.seq : taskSeqLabel(lead)} ${getTaskTitle(lead)}`;
+}
+
 function Chevron({ open }: { open: boolean }) {
 	return (
 		<svg aria-hidden className={`h-3.5 w-3.5 transition-transform duration-150 ${open ? "rotate-90" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -133,7 +140,7 @@ function RowBody({ row, narrow, projectById, showProject, projectName, onToggle 
 			<span className="min-w-0 flex-1 truncate text-sm italic text-fg-3">
 				{node.ref.title ?? t("boardTree.hiddenTitle")}
 			</span>
-			<span className="streamer-private flex-shrink-0 truncate rounded border border-dashed border-edge px-1.5 text-xs text-fg-3" title={t("boardTree.otherProject")}>
+			<span className="flex-shrink-0 truncate rounded border border-dashed border-edge px-1.5 text-xs text-fg-3" title={t("boardTree.otherProject")}>
 				{node.ref.projectName}
 			</span>
 		</>
@@ -170,7 +177,7 @@ function TaskContent({ node, narrow, project, showProject, projectName }: {
 			<span className="min-w-0 flex-1 truncate text-sm text-fg">{getTaskTitle(lead)}</span>
 			{variants && <VariantDots tasks={node.tasks} />}
 			{showProject && !narrow && (
-				<span className="streamer-private max-w-[9rem] flex-shrink-0 truncate text-xs text-fg-3">{projectName(lead.projectId)}</span>
+				<span className="max-w-[9rem] flex-shrink-0 truncate text-xs text-fg-3">{projectName(lead.projectId)}</span>
 			)}
 			<span className={narrow ? "flex-shrink-0" : "w-28 flex-shrink-0"}>
 				<StatusMark task={lead} project={project} compact={narrow} />
@@ -316,6 +323,7 @@ export function TreeView(_props: { ctx: Context }) {
 							key={item.key}
 							role="treeitem"
 							aria-level={row.depth + 1}
+							aria-label={rowLabel(node, t("boardTree.hiddenTitle"))}
 							aria-expanded={hasChildren ? row.expanded : undefined}
 							aria-selected={false}
 							tabIndex={0}
