@@ -1,5 +1,6 @@
 import { useT } from "../i18n";
 import { useRpcStatus } from "../hooks/useDiagnostics";
+import { hasLoadedExtensions, restartWithExtensionsOff } from "../board-views/plugins";
 
 /**
  * Board-level error state: the task fetch failed and there is nothing cached to
@@ -31,6 +32,17 @@ export default function BoardLoadFailed({ onRetry }: { onRetry: () => void }) {
 				>
 					{t("kanban.loadRetry")}
 				</button>
+				{/* A broken extension must never lock the user out of their board (spec §4.3). */}
+				{hasLoadedExtensions() && (
+					<button
+						type="button"
+						onClick={() => void restartWithExtensionsOff()}
+						data-testid="restart-without-extensions"
+						className="block mx-auto px-4 py-2 text-sm rounded-lg text-fg-2 border border-edge hover:text-fg hover:bg-elevated-hover transition-colors"
+					>
+						{t("extensions.restartWithoutExtensions")}
+					</button>
+				)}
 			</div>
 		</div>
 	);

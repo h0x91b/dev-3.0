@@ -2,8 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import type { DevServerSummary, GlobalSettings, PortInfo, Project, ResourceUsage, Space, Task, TaskStatus } from "../../shared/types";
 import { getBoardColumns, laneKey } from "../../shared/types";
 import { KANBAN_VIEW_ID, type BoardFormFactor, type BoardRef } from "../../shared/board-view-state";
-import { getTaskOpenMode, type AppAction, type Route } from "../state";
+import { getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type AppAction, type OpenSettingsSectionDetail, type Route } from "../state";
 import { api } from "../rpc";
+import { trackEvent } from "../analytics";
+import { boardViewTelemetryId } from "../../shared/extensions";
 import { ignoreStartupReadFailure, startupRead } from "../startup-read";
 import { useT } from "../i18n";
 import LabelFilterBar from "../components/LabelFilterBar";
@@ -302,12 +304,21 @@ function BoardHost(props: BoardHostProps) {
 	);
 	const active = offered.find((view) => view.def.id === viewState.viewType)
 		?? offered.find((view) => view.def.id === KANBAN_VIEW_ID);
-	useBoardViewCommands(`${boardRef.kind}:${boardRef.id}`, offered, active?.def.id, viewState.setViewType);
 	const kanbanFallback = <BoardViewSlot ctx={root} component={KanbanView} />;
 
+	const { setViewType } = viewState;
+	const pickView = useCallback((viewId: string) => {
+		setViewType(viewId);
+		// Telemetry rule 1: a built-in id or `third_party`, never an extension's id or name.
+		trackEvent("board_view_selected", { view: boardViewTelemetryId(viewId) });
+	}, [setViewType]);
+	useBoardViewCommands(`${boardRef.kind}:${boardRef.id}`, offered, active?.def.id, pickView);
+	const manageViews = useCallback(() => {
+		window.dispatchEvent(new CustomEvent<OpenSettingsSectionDetail>(OPEN_SETTINGS_SECTION_EVENT, { detail: "extensions" }));
+	}, []);
 	const showSwitcher = !simplified && offered.length > 1;
 	const switcher = showSwitcher && active ? (
-		<BoardViewSwitcher views={offered} activeId={active.def.id} onPick={viewState.setViewType} />
+		<BoardViewSwitcher views={offered} activeId={active.def.id} onPick={pickView} onManage={manageViews} />
 	) : null;
 	const options = active?.def.Options ? <BoardViewOptionsButton view={active} /> : null;
 

@@ -44,11 +44,14 @@ const UX_DIR = fileURLToPath(new URL("../../../docs/ux", import.meta.url));
  * file is §10 rows whose why exists nowhere else.
  */
 const BUDGET_KB: Record<string, number> = {
-	// 133 → 136 for board views (spec D25): §5.11 is a new surface family — the host, its
+	"PRODUCT_UX_BIBLE.md": 137,
+	// 134 → 137 for board views (spec D25): §5.11 is a new surface family — the host, its
 	// switcher/options chrome, four built-in views with narrow forms, and the not-a-destination
 	// rule — plus its §5/§10/§12.3 rows. The stale `Proposed` board-filters row was compacted
 	// into the observed one first; the section itself is one line per rule.
-	"PRODUCT_UX_BIBLE.md": 136,
+	// 133 → 134 for board-view extensions (spec D25): the §3 `Extension` object row — a new object
+	// whose trust rule (danger consent, desktop-only install, remote may only switch all off) has
+	// no other home in the file — plus Settings growing to eleven categories.
 	// 132 → 133 for the keep-alive / auto-revive rule: a new durable task property
 	// (`Task.keepAlive`, same class as draft/hibernated/sensitive) with a §3 object
 	// note and a §10 placement row whose why — a cross-cutting property is never a
@@ -138,9 +141,10 @@ const BUDGET_KB: Record<string, number> = {
 	// stopped-session warning. §5.9 is at its floor — every sentence in it is one distinct rule
 	// stated once, and the bible has EIGHT bytes of slack. The next traffic feature needs its
 	// own compaction pass before it writes a word here.
-	// 121 → 124 for board views (spec D25): `board_view_host` and `board_view_table/_tree/_attention`
+	"ux-architecture.yaml": 125,
+	// 122 → 125 for board views (spec D25): `board_view_host` and `board_view_table/_tree/_attention`
 	// surfaces, their narrow rows, and the `board-view-is-not-a-destination` placement rule.
-	"ux-architecture.yaml": 124,
+	// 121 → 122 for board-view extensions (spec D25): the new `objects.extension` entry.
 	// 120 → 121 for `surfaces.context_menu.task_menu` plus `row_context_menu` in
 	// `surfaces.sidebar.allowed`: the row context menu the §10 budget row has named as the
 	// sidebar's overflow home since it was written finally exists, and one shared task menu
