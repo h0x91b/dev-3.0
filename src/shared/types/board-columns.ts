@@ -70,7 +70,7 @@ export function laneKey(lane: BoardColumnSlot): string {
  * respecting `columnOrder` and hiding columns that don't apply (virtual boards
  * have no AI/PR review; `peerReviewEnabled === false` hides PR review; AI review
  * hides when disabled). Single source of truth for the board's column layout —
- * see [[KanbanBoard]].
+ * see [[KanbanView]].
  *
  * Pure function of the project plus `opts.occupiedStatuses` — the built-in
  * statuses that currently hold at least one card. **A column holding tasks is

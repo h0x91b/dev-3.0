@@ -1,16 +1,14 @@
-import { useState, useRef, useEffect, type Dispatch } from "react";
-import type { CardLineage } from "../utils/taskLineage";
-import type { CodingAgent, DevServerSummary, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus, TipState } from "../../shared/types";
-import { hexToRgb, getAllowedTransitions } from "../../shared/types";
-import type { AppAction, Route } from "../state";
-import { useT } from "../i18n";
-import { useStatusColors, useStatusColorsInk } from "../hooks/useStatusColors";
-import { useNarrowViewport } from "../hooks/useNarrowViewport";
-import TaskCard from "./TaskCard";
-import TipCard from "./TipCard";
-import HelpSpot from "./HelpSpot";
-import { statusHelpTopicId } from "../help";
-import type { Tip } from "../tips";
+import { useState, useRef, useEffect, type ComponentType } from "react";
+import type { Task, TaskStatus, TipState } from "../../../shared/types";
+import { hexToRgb, getAllowedTransitions } from "../../../shared/types";
+import { useT } from "../../i18n";
+import { useStatusColors, useStatusColorsInk } from "../../hooks/useStatusColors";
+import { useNarrowViewport } from "../../hooks/useNarrowViewport";
+import TipCard from "../../components/TipCard";
+import HelpSpot from "../../components/HelpSpot";
+import { statusHelpTopicId } from "../../help";
+import type { Tip } from "../../tips";
+import type { BoardTaskCardProps } from "../board-service";
 
 const COLUMN_TASK_LIMIT = 15;
 
@@ -28,13 +26,7 @@ interface KanbanColumnProps {
 	label: string;
 	description?: string;
 	tasks: Task[];
-	project: Project;
-	dispatch: Dispatch<AppAction>;
-	navigate: (route: Route) => void;
 	onAddTask: () => void;
-	agents: CodingAgent[];
-	onLaunchVariants: (task: Task, targetStatus: TaskStatus) => void;
-	onAddAttempts: (task: Task) => void;
 	onTaskDrop: (taskId: string, targetStatus: TaskStatus) => void;
 	onTaskDropToCustomColumn?: (taskId: string, customColumnId: string) => void;
 	dragFromStatus: TaskStatus | null;
@@ -48,24 +40,13 @@ interface KanbanColumnProps {
 	 * letting go instead of from a toast afterwards.
 	 */
 	laneRefusesDrag?: boolean;
-	/**
-	 * The card's own project, on a board whose subject is a space. Undefined on a
-	 * project board — there is only one project and the mark would be noise.
-	 */
-	projectForTask?: (task: Task) => Project;
+	/** `ctx.board.TaskCard` — the host binds everything a card needs beyond these props. */
+	TaskCard: ComponentType<BoardTaskCardProps>;
 	/** How many projects a merged custom lane covers. Undefined = not a merge. */
 	mergedProjectCount?: number;
 	onDragStart: (taskId: string) => void;
-	bellCounts: Map<string, number>;
-	bellReasons?: Map<string, string[]>;
-	taskPorts: Map<string, PortInfo[]>;
-	taskDevServers: Map<string, DevServerSummary>;
-	taskResourceUsage?: Map<string, ResourceUsage>;
-	activeTaskId?: string;
 	movingTaskIds: Set<string>;
 	onSetMoving: (taskId: string, isMoving: boolean) => void;
-	siblingMap: Map<string, Task[]>;
-	lineageFor?: (task: Task) => CardLineage | undefined;
 	// Custom column support
 	isCustomColumn?: boolean;
 	customColumnId?: string;
@@ -75,11 +56,6 @@ interface KanbanColumnProps {
 	onColumnDragEnd?: () => void;
 	// Column reorder drop target (left half = "before", right half = "after")
 	onColumnDrop?: (side: "before" | "after") => void;
-	// PR numbers for task cards
-	taskPrMap?: Map<string, TaskPRBadgeInfo>;
-	onOpenUnresolvedComments?: (task: Task) => void;
-	/** Reopens the New Task popup on a draft card. */
-	onEditDraft?: (task: Task) => void;
 	// Feature discovery tip
 	tip?: Tip | null;
 	tipState?: TipState;
@@ -107,35 +83,18 @@ function KanbanColumn({
 	label,
 	description,
 	tasks,
-	project,
-	dispatch,
-	navigate,
 	onAddTask,
-	agents,
-	onLaunchVariants,
-	onAddAttempts,
+	TaskCard,
 	onTaskDrop,
 	onTaskDropToCustomColumn,
 	dragFromStatus,
 	dragFromCustomColumnId,
 	dragFromDraft = false,
 	laneRefusesDrag = false,
-	projectForTask,
 	mergedProjectCount,
 	onDragStart,
-	bellCounts,
-	bellReasons,
-	taskPorts,
-	taskDevServers,
-	taskResourceUsage,
-	activeTaskId,
 	movingTaskIds,
 	onSetMoving,
-	siblingMap,
-	lineageFor,
-	taskPrMap,
-	onOpenUnresolvedComments,
-	onEditDraft,
 	isCustomColumn,
 	customColumnId,
 	colorOverride,
@@ -258,15 +217,15 @@ function KanbanColumn({
 		onRenameColumn(trimmed);
 	}
 
-	// A board-created custom column mounts straight into rename mode (issue #222)
-	// so the user names it in place. Runs once on mount; the parent clears the
-	// trigger via onAutoEditConsumed so it never re-fires on later re-renders.
+	// A board-created custom column opens in rename mode (issue #222) — on mount, or
+	// when the trigger arrives after the column already mounted (the project push
+	// can draw it first). The parent clears the trigger via onAutoEditConsumed.
 	useEffect(() => {
 		if (!autoStartEditing) return;
 		startEditing();
 		onAutoEditConsumed?.();
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, []);
+	}, [autoStartEditing]);
 
 	// A draft may only ever be dropped back into To Do — the mouse must not become
 	// a loophole around the non-runnable guarantee.
@@ -630,27 +589,9 @@ function KanbanColumn({
 					<div key={task.id} data-task-id={task.id}>
 						<TaskCard
 							task={task}
-							project={projectForTask ? projectForTask(task) : project}
-							showProjectMark={!!projectForTask}
-							dispatch={dispatch}
-							navigate={navigate}
-							agents={agents}
-							onLaunchVariants={onLaunchVariants}
-							onAddAttempts={onAddAttempts}
 							onDragStart={onDragStart}
-							bellCount={bellCounts.get(task.id) ?? 0}
-							bellReasons={bellReasons?.get(task.id)}
-							resourceUsage={taskResourceUsage?.get(task.id.slice(0, 8))}
-							ports={taskPorts.get(task.id)}
-							devServer={taskDevServers.get(task.id)}
-							isActiveInSplit={task.id === activeTaskId}
 							isMoving={movingTaskIds.has(task.id)}
 							onSetMoving={onSetMoving}
-							siblingMap={siblingMap}
-							lineage={lineageFor?.(task)}
-							prInfo={taskPrMap?.get(task.id)}
-							onOpenUnresolvedComments={onOpenUnresolvedComments}
-							onEditDraft={onEditDraft}
 						/>
 					</div>
 				))}

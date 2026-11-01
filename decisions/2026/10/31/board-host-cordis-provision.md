@@ -1,5 +1,7 @@
 # Board host: how `ctx.board` and the view registry live in Cordis
 
+Partly superseded on 2026-11-01 by `decisions/2026/11/01/kanban-board-view-on-the-contract.md`: the Kanban adapter and `LegacyKanbanBridge` are gone; the contract gained `TaskCard`, column actions and preferences.
+
 ## Context
 
 Board views task 1 (spec `board-views-spec.md` §4, the `pluggable-board-views-on-cordis` record) puts
