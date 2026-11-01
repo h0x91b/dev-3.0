@@ -29,6 +29,7 @@ export const WORKER_ENTRIES = [
 	"src/bun/workers/clonefile-worker.ts",
 	"src/bun/workers/clipboard-image-worker.ts",
 	"src/bun/workers/worktree-cleanup-worker.ts",
+	"src/bun/workers/conversation-search-worker.ts",
 ];
 
 function runOrExit(command: string[], label: string): void {

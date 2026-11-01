@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { Worker } from "node:worker_threads";
 import type { Task, TaskHistoryEntry, TaskStatus } from "../shared/types";
 import { ALL_STATUSES } from "../shared/types";
 import { projectSlug, type ConversationMatch } from "../shared/conversation-search-core";
@@ -82,5 +83,36 @@ export function searchProjectConversations(opts: {
 		limit: opts.limit,
 		home: opts.home,
 		dev3Home,
+	});
+}
+
+export type ProjectSearchOptions = Parameters<typeof searchProjectConversations>[0];
+
+let searchWorkerPath: string | null = null;
+
+/** Point the app at the bundled search worker. Without one, the app refuses to search rather than block its thread. */
+export function configureConversationSearchWorker(path: string | null): void {
+	searchWorkerPath = path;
+}
+
+/** The app's way to search (the MCP `conversations_search` tool): always in a worker, never on the host thread. */
+export function searchProjectConversationsOffThread(opts: ProjectSearchOptions, timeoutMs = 20_000): Promise<ConversationMatch[]> {
+	const path = searchWorkerPath;
+	if (!path || !existsSync(path)) return Promise.reject(new Error("Conversation search is unavailable in this build (no search worker)."));
+	return new Promise((resolve, reject) => {
+		const worker = new Worker(path, { workerData: opts });
+		let settled = false;
+		const finish = (settle: () => void) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			void worker.terminate().catch(() => {});
+			settle();
+		};
+		const timer = setTimeout(() => finish(() => reject(new Error(`Conversation search timed out after ${timeoutMs} ms`))), timeoutMs);
+		worker.on("message", (m: { ok: boolean; result?: ConversationMatch[]; error?: string }) =>
+			finish(() => (m.ok && m.result ? resolve(m.result) : reject(new Error(m.error ?? "search worker failed")))));
+		worker.on("error", (err) => finish(() => reject(err)));
+		worker.on("exit", (code) => finish(() => reject(new Error(`search worker exited with code ${code}`))));
 	});
 }

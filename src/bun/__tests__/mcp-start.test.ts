@@ -175,3 +175,27 @@ describe("the approval side", () => {
 		expect(senderRequester({ asSender: SENDER, viaTokenId: "<b>x</b>" })!.viaTokenId).toBeUndefined();
 	});
 });
+
+describe("content scope", () => {
+	it("is refused to a token without it", async () => {
+		for (const [name, args] of [["task_peek", { task: "seq:8" }], ["conversations_search", { query: "x", project: PROJECT.id }]] as const) {
+			const out = await run(name, args, ctx(token({ scopes: ["read", "send", "start"] })));
+			expect(out.error?.code, name).toBe("SCOPE_DENIED");
+		}
+		expect(count("task.peek")).toBe(0);
+	});
+
+	it("searches off the host thread and drops transcript paths", async () => {
+		const search = vi.fn(async () => [{ taskId: "t", title: "x", status: "completed", agentId: null, score: 1, bodyMatches: 1, metaMatches: 0, snippets: ["s"], transcriptPaths: ["/home/u/.claude/x.jsonl"], lastActivityMs: 1 }]);
+		const out = await run("conversations_search", { query: "x", project: PROJECT.id }, { ...ctx(), searchConversations: search as never });
+		expect(search).toHaveBeenCalledWith(expect.objectContaining({ projectPath: "/a", query: "x", limit: 5 }));
+		expect(JSON.stringify(out.json)).not.toContain("transcriptPaths");
+		expect((out.json as unknown[])).toHaveLength(1);
+	});
+
+	it("refuses to search on the host thread when no worker is configured", async () => {
+		const { searchProjectConversationsOffThread } = await import("../conversation-search-project");
+		await expect(searchProjectConversationsOffThread({ query: "x", projectPath: "/a", currentTaskId: null, allStatuses: false, limit: 1, home, dev3Home: home }))
+			.rejects.toThrow(/no search worker/);
+	});
+});
