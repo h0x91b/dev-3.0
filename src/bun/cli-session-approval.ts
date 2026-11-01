@@ -9,12 +9,12 @@ import { getPushMessage } from "./rpc-handlers/shared-pure";
 /** Who asked: another task's agent, or a registered external sender. */
 export type LaunchRequester = Task | ExternalSenderRequester;
 
-/** The dialog's "asked by" fields. A sender has no seq, so the dialog names it instead. */
 /** A sender's request marked interactive-only (MCP without `--auto-approve`) never approves itself. */
 export function senderAutoApproveMs(requester: LaunchRequester | AgentMessageSource, configuredMs: number): number {
 	return isExternalSenderRequester(requester) && requester.interactiveOnly ? 0 : configuredMs;
 }
 
+/** The dialog's "asked by" fields. A sender has no seq, so the dialog names it instead. */
 export function launchRequesterFields(requester: LaunchRequester): Pick<AgentLaunchRequest, "requesterSeq" | "requesterTitle" | "requesterSender"> {
 	if (isExternalSenderRequester(requester)) {
 		return { requesterSeq: 0, requesterTitle: requester.label, requesterSender: requester };

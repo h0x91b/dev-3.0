@@ -1,18 +1,12 @@
 /**
- * `dev3 mcp`: MCP (Streamable HTTP, stateless, JSON responses only) on its own
- * loopback listener, for agents outside dev3. Never on the remote-access server or
- * its tunnel, never with that server's JWT. Remote clients reach it through
- * `tailscale serve --tcp` or `ssh -L`. Off until `dev3 mcp enable`.
- *
- * Order of checks on every request, cheapest refusal first and before the body is
- * read: path → Origin (403, the DNS-rebinding defence) → method → bearer token →
- * the token's sender still registered → body size.
- * See decisions/2026/11/01/mcp-http-listener-for-external-senders.md.
+ * `dev3 mcp`: stateless MCP (JSON responses only) on its own 127.0.0.1 listener, for
+ * agents outside dev3. See decisions/2026/11/01/mcp-http-listener-for-external-senders.md.
  */
 
 import type { CliRequest, CliResponse } from "../../shared/types";
 import { CLI_EXIT_CODE_COMMAND_FAILED, CLI_EXIT_CODE_INTERNAL_ERROR } from "../../shared/cli-exit-codes";
 import { createLogger } from "../logger";
+import type { McpRequestOrigin } from "../cli-socket/shared";
 import { requireExternalSender } from "../external-senders";
 import { authAttemptRetryAfterS, recordAuthFailure } from "../remote-auth-rate-limit";
 import { McpConfigCache, type McpTokenRecord } from "./token-store";
@@ -30,7 +24,7 @@ import {
 
 const log = createLogger("mcp");
 
-export type HandleAppRequest = (req: CliRequest, signal?: AbortSignal) => Promise<CliResponse>;
+export type HandleAppRequest = (req: CliRequest, signal?: AbortSignal, mcp?: McpRequestOrigin) => Promise<CliResponse>;
 
 export interface McpCallRecord {
 	at: string;
@@ -141,6 +135,7 @@ export function createMcpHandler(deps: McpServerDeps) {
 	const limits = new Limits();
 	const recent: McpCallRecord[] = [];
 	const seen = new Set<string>();
+	const bodyReads = new Map<string, number>();
 	let callSeq = 0;
 
 	function audit(record: McpCallRecord): void {
@@ -156,23 +151,26 @@ export function createMcpHandler(deps: McpServerDeps) {
 		const args = (params.arguments ?? {}) as Record<string, unknown>;
 		const started = now();
 		let outcome: ToolOutcome;
-		const wait = toolAllowed(tool, token) ? limits.admit(token.id, tool, started) : null;
+		const wait = limits.admit(token.id, tool, started);
 		if (wait !== null) {
 			outcome = { exitCode: CLI_EXIT_CODE_COMMAND_FAILED, error: { code: "RATE_LIMITED", message: "Too many calls for this token; retry later.", retryAfterS: wait } };
 		} else {
-			const counted = toolAllowed(tool, token);
 			try {
 				outcome = await runTool(tool, args, {
 					token,
 					senderLabel,
 					signal,
-					call: (method, p) => deps.handle({ id: `mcp-${++callSeq}`, method, params: p }, tool.parked && !tool.mutating ? signal : undefined),
+					call: (method, p) => deps.handle(
+						{ id: `mcp-${++callSeq}`, method, params: p },
+						tool.parked && !tool.mutating ? signal : undefined,
+						{ tokenId: token.id, interactiveOnly: !token.autoApprove },
+					),
 				});
 			} catch (err) {
 				log.error("tool threw", { tool: tool.name, tokenId: token.id, error: String(err instanceof Error ? err.message : err) });
 				outcome = { exitCode: CLI_EXIT_CODE_INTERNAL_ERROR, error: { code: "INTERNAL", message: "Internal error in the MCP layer." } };
 			} finally {
-				if (counted) limits.release(token.id, tool);
+				limits.release(token.id, tool);
 			}
 		}
 		audit({
@@ -229,7 +227,16 @@ export function createMcpHandler(deps: McpServerDeps) {
 
 		const declared = Number(req.headers.get("content-length") ?? "0");
 		if (declared > MCP_LIMITS.bodyBytes) return new Response("Payload too large", { status: 413 });
-		const text = await readCapped(req, MCP_LIMITS.bodyBytes);
+		// Slow uploads count too: a token gets as many body reads at once as calls in flight.
+		const reading = bodyReads.get(token.id) ?? 0;
+		if (reading >= MCP_LIMITS.perTokenInFlight) return new Response("Too many concurrent requests", { status: 429, headers: { "retry-after": "1" } });
+		bodyReads.set(token.id, reading + 1);
+		let text: string | null;
+		try {
+			text = await readCapped(req, MCP_LIMITS.bodyBytes);
+		} finally {
+			bodyReads.set(token.id, (bodyReads.get(token.id) ?? 1) - 1);
+		}
 		if (text === null) return new Response("Payload too large", { status: 413 });
 
 		let msg: unknown;
@@ -308,7 +315,11 @@ export function syncMcpListener(): void {
 	const wanted = config.enabled ? config.listen.port : null;
 	if (wanted === state.port && (wanted === null || state.server)) return;
 	stopServer();
-	if (wanted === null) return;
+	if (wanted === null) {
+		state.port = null;
+		state.bindError = null;
+		return;
+	}
 	try {
 		state.server = Bun.serve({
 			hostname: "127.0.0.1",
@@ -342,7 +353,7 @@ export function startMcpListener(handle: HandleAppRequest): void {
 	}
 	state.handler = createMcpHandler({ handle });
 	syncMcpListener();
-	// ponytail: a 2 s stat poll of one small file; fs.watch is unreliable across platforms for atomic renames.
+	// A 2 s stat poll of one small file: fs.watch is unreliable across platforms for atomic renames.
 	state.timer = setInterval(syncMcpListener, SYNC_INTERVAL_MS);
 	state.timer.unref?.();
 }

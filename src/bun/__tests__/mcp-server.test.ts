@@ -36,12 +36,14 @@ const TASKS: Record<string, Task[]> = { [PROJECT_A]: [task(PROJECT_A, 1), task(P
 
 let calls: CliRequest[];
 let signals: Array<AbortSignal | undefined>;
+let origins: unknown[];
 let storePath: string;
 let dir: string;
 
-async function handle(req: CliRequest, signal?: AbortSignal): Promise<CliResponse> {
+async function handle(req: CliRequest, signal?: AbortSignal, origin?: unknown): Promise<CliResponse> {
 	calls.push(req);
 	signals.push(signal);
+	origins.push(origin);
 	const p = req.params ?? {};
 	const data = (() => {
 		switch (req.method) {
@@ -91,6 +93,7 @@ async function callTool(h: ReturnType<typeof makeHandler>, token: string, name: 
 beforeEach(() => {
 	calls = [];
 	signals = [];
+	origins = [];
 	logged.length = 0;
 	_resetAuthRateLimitForTests();
 	dir = mkdtempSync(`${tmpdir()}/dev3-mcp-store-`);
@@ -258,5 +261,18 @@ describe("disconnects", () => {
 		expect(signals[calls.findIndex((c) => c.method === "sender.wait")]).toBeInstanceOf(AbortSignal);
 		await callTool(h, token, "tasks_list", { project: PROJECT_A });
 		expect(signals[calls.findIndex((c) => c.method === "tasks.list")]).toBeUndefined();
+	});
+});
+
+describe("request origin", () => {
+	it("tells every handler the call came over MCP, interactive-only unless the token may auto-approve", async () => {
+		const plain = issue();
+		const auto = issue({ autoApprove: true });
+		writeStore([plain.record, auto.record]);
+		const h = makeHandler();
+		await callTool(h, plain.token, "tasks_list", { project: PROJECT_A });
+		expect(origins[origins.length - 1]).toEqual({ tokenId: plain.record.id, interactiveOnly: true });
+		await callTool(h, auto.token, "tasks_list", { project: PROJECT_A });
+		expect(origins[origins.length - 1]).toEqual({ tokenId: auto.record.id, interactiveOnly: false });
 	});
 });

@@ -1,13 +1,6 @@
 /**
- * The MCP token store: `$XDG_CONFIG_HOME/dev3/mcp.json` (`~/.config/dev3/mcp.json`),
- * `%APPDATA%\dev3\mcp.json` on Windows. Deliberately OUTSIDE `~/.dev3.0`: the Codex
- * sandbox profile dev3 writes grants write access to the whole data root, and a
- * prompt-injected task that could write this file could enrol a token of its own.
- *
- * Written only by the `dev3 mcp` CLI (locked read-modify-write, atomic, 0600) and
- * only READ by the app — no socket method, RPC or MCP tool mints a token. Holds
- * sha256 hashes, never a token: any task can read files.
- * See decisions/2026/11/01/mcp-http-listener-for-external-senders.md.
+ * MCP tokens, as sha256 hashes, in `~/.config/dev3/mcp.json` — outside `~/.dev3.0`, which task
+ * sandboxes can write. Only the CLI writes it. See decisions/2026/11/01/mcp-http-listener-for-external-senders.md.
  */
 
 import { createHash, randomBytes } from "node:crypto";
