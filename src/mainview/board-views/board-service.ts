@@ -22,6 +22,18 @@ export interface BoardMoveOptions {
 	onMovingChange?(moving: boolean): void;
 }
 
+/** A lineage task anywhere in dev3 — how a view names a parent that lives on another board. */
+export interface BoardLineageNode {
+	id: string;
+	projectId: string;
+	projectName: string;
+	seq: number;
+	variantIndex: number | null;
+	status: TaskStatus;
+	/** Null when streamer mode hides a sensitive project's titles. */
+	title: string | null;
+}
+
 /** Board-level user preferences a view may honour. */
 export interface BoardPreferences {
 	taskSortOrder: GlobalSettings["taskSortOrder"];
@@ -88,6 +100,7 @@ export interface BoardModel {
 	labels: Label[];
 	agents: CodingAgent[];
 	projects: Project[];
+	lineageNode(id: string): BoardLineageNode | "deleted" | null;
 	layout(viewId: string): unknown;
 	setLayout(viewId: string, layout: unknown): void;
 	preferences: BoardPreferences;
@@ -138,6 +151,12 @@ export class BoardService {
 	agents(): CodingAgent[] { return this.model.agents; }
 	projects(): Project[] { return this.model.projects; }
 	preferences(): BoardPreferences { return this.model.preferences; }
+	/**
+	 * Any lineage task by id, across every project — for a parent outside the board.
+	 * `null`: the lineage index has not loaded yet, so nothing is known — draw no ghost.
+	 * `"deleted"`: the index is loaded and the task no longer exists.
+	 */
+	lineageNode(id: string): BoardLineageNode | "deleted" | null { return this.model.lineageNode(id); }
 
 	/** The real dev3 task card, bound by the host. A stable component type: safe to render directly. */
 	get TaskCard(): ComponentType<BoardTaskCardProps> { return this.cardComponent; }
