@@ -220,6 +220,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "auto-hibernate-confirm",
+		category: "tasks",
+		titleKey: "settings.autoHibernateConfirmAfter",
+		descriptionKey: "settings.autoHibernateWarning",
+		anchor: "auto-hibernate",
+		globalField: "autoHibernateConfirmMinutes",
+		storage: "global",
+	},
+	{
 		id: "pr-origin-task-link",
 		category: "tasks",
 		titleKey: "settings.prOriginTaskLink",
@@ -733,6 +742,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"agentLaunchAutoApproveMinutes",
 	"resourceLevels",
 	"autoHibernateMinutes",
+	"autoHibernateConfirmMinutes",
 	"agentsLayoutRevision",
 	"pxpipeProxyEnabled",
 	"remoteTunnel",

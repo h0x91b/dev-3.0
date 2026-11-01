@@ -5,15 +5,16 @@ import SettingsSection from "./SettingsSection";
 import SettingsEntry from "./SettingsEntry";
 import SettingsToggle from "./SettingsToggle";
 import ArtifactTemplateFolderField from "./ArtifactTemplateFolderField";
-import { DEFAULT_AUTO_HIBERNATE_MINUTES, MAX_AUTO_HIBERNATE_MINUTES, normalizeAutoHibernateMinutes } from "../../../shared/auto-hibernate";
+import { DEFAULT_AUTO_HIBERNATE_MINUTES, MAX_AUTO_HIBERNATE_MINUTES, normalizeAutoHibernateMinutes, normalizeAutoHibernateConfirmMinutes } from "../../../shared/auto-hibernate";
 
 const AUTO_OPEN_IMAGES_KEY = "dev3-auto-open-shared-images";
 
-function AutoHibernateEntry({ t, minutes, onChange }: { t: TFunction; minutes: number; onChange: (minutes: number) => void }) {
+function AutoHibernateEntry({ t, minutes, confirmMinutes, onChange, onConfirmChange }: { t: TFunction; minutes: number; confirmMinutes: number; onChange: (minutes: number) => void; onConfirmChange: (minutes: number) => void }) {
 	const enabled = minutes > 0;
 	const [remembered, setRemembered] = useState(minutes || DEFAULT_AUTO_HIBERNATE_MINUTES);
 	const [draft, setDraft] = useState<string | null>(null);
 	const shown = minutes || remembered;
+	const [confirmDraft, setConfirmDraft] = useState<string | null>(null);
 	const commit = () => {
 		const next = normalizeAutoHibernateMinutes(draft === null ? shown : Number(draft));
 		setDraft(null);
@@ -29,7 +30,8 @@ function AutoHibernateEntry({ t, minutes, onChange }: { t: TFunction; minutes: n
 				onLabel={t("settings.on")} offLabel={t("settings.off")}
 				onToggle={() => { setDraft(null); setRemembered(shown); onChange(enabled ? 0 : shown); }} />
 			{enabled && (
-				<label className="flex flex-wrap items-center gap-3 mt-3">
+				<div className="space-y-3 mt-3">
+				<label className="flex flex-wrap items-center gap-3">
 					<span className="text-fg-3 text-sm">{t("settings.autoHibernateAfter")}</span>
 					<input type="number" inputMode="numeric" min={1} max={MAX_AUTO_HIBERNATE_MINUTES} step={1}
 						aria-label={t("settings.autoHibernateAfter")} value={draft ?? String(shown)}
@@ -38,6 +40,20 @@ function AutoHibernateEntry({ t, minutes, onChange }: { t: TFunction; minutes: n
 						className="w-24 px-3 py-3 bg-raised border border-edge rounded-xl text-fg text-sm text-center tabular-nums outline-none focus:border-edge-active" />
 					<span className="text-fg-3 text-sm">{t("settings.autoHibernateMinutes")}</span>
 				</label>
+				<label className="flex flex-wrap items-center gap-3">
+					<span className="text-fg-3 text-sm">{t("settings.autoHibernateConfirmAfter")}</span>
+					<input type="number" inputMode="numeric" min={1} max={MAX_AUTO_HIBERNATE_MINUTES} step={1}
+						aria-label={t("settings.autoHibernateConfirmAfter")} value={confirmDraft ?? String(confirmMinutes)}
+						onChange={e => setConfirmDraft(e.target.value)} onBlur={() => {
+							const value = Number(confirmDraft ?? confirmMinutes);
+							setConfirmDraft(null);
+							if (Number.isInteger(value) && value >= 1 && value <= MAX_AUTO_HIBERNATE_MINUTES) onConfirmChange(value);
+						}}
+						onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
+						className="w-24 px-3 py-3 bg-raised border border-edge rounded-xl text-fg text-sm text-center tabular-nums outline-none focus:border-edge-active" />
+					<span className="text-fg-3 text-sm">{t("settings.autoHibernateMinutes")}</span>
+				</label>
+				</div>
 			)}
 			<p className="text-fg-muted text-xs mt-3">{t("settings.autoHibernateWarning")}</p>
 		</div>
@@ -147,6 +163,7 @@ interface BehaviorSettingsSectionProps {
 	/** Minutes before an unanswered agent-launch dialog approves itself; 0 = never. */
 	onAgentLaunchAutoApproveChange: (minutes: number) => void;
 	onAutoHibernateChange: (minutes: number) => void;
+	onAutoHibernateConfirmChange: (minutes: number) => void;
 	/** False on a host with no OS-registered `dev3://` handler (Windows, Linux) — the
 	 *  toggle then reads Off and inert, while the stored preference on disk is untouched. */
 	prOriginTaskLinkSupported: boolean;
@@ -172,6 +189,7 @@ export default function BehaviorSettingsSection({
 	onPrOriginTaskLinkToggle,
 	onAgentLaunchAutoApproveChange,
 	onAutoHibernateChange,
+	onAutoHibernateConfirmChange,
 	prOriginTaskLinkSupported,
 	onTaskSortOrderChange,
 	onTaskOpenModeChange,
@@ -270,7 +288,7 @@ export default function BehaviorSettingsSection({
 			</SettingsEntry>
 
 			<SettingsEntry anchor="auto-hibernate">
-				<AutoHibernateEntry t={t} minutes={globalSettings.autoHibernateMinutes ?? 0} onChange={onAutoHibernateChange} />
+				<AutoHibernateEntry t={t} minutes={normalizeAutoHibernateMinutes(globalSettings.autoHibernateMinutes)} confirmMinutes={normalizeAutoHibernateConfirmMinutes(globalSettings.autoHibernateConfirmMinutes)} onChange={onAutoHibernateChange} onConfirmChange={onAutoHibernateConfirmChange} />
 			</SettingsEntry>
 
 			<SettingsEntry anchor="agent-launch-auto-approve">

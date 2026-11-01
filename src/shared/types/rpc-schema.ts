@@ -1,3 +1,4 @@
+import type { AutoHibernateSuggestion } from "../auto-hibernate";
 import type { InterfaceOnboardingRequest, InterfaceOnboardingResponse } from "../interface-onboarding";
 import type { RPCSchema } from "electrobun/bun";
 import type { ConversationMatch } from "../conversation-search-core";
@@ -1737,8 +1738,10 @@ export type AppRPCSchema = {
 				params: { projectId: string | null; taskId: string | null };
 				response: void;
 			};
-			reportTaskActivity: {
-				params: { clientId: string; taskId: string | null; focused: boolean };
+			getAutoHibernateSuggestion: { params: {}; response: AutoHibernateSuggestion | null };
+			presentAutoHibernateSuggestion: { params: { id: string }; response: void };
+			respondAutoHibernateSuggestion: {
+				params: { id: string; action: "hibernate" | "snooze" | "hold"; taskIds: string[] };
 				response: void;
 			};
 			/**
@@ -2026,6 +2029,7 @@ export type AppRPCSchema = {
 			openDeepLink: DeepLinkNav;
 			/** Automatic hibernation notification; the renderer owns localized copy. */
 			taskAutoHibernated: { projectId: string; taskId: string };
+			autoHibernateSuggestionChanged: { suggestion: AutoHibernateSuggestion | null };
 			/**
 			 * CLI-initiated in-app toast (`dev3 notify`). When `taskId`/`projectId`
 			 * are present the toast is clickable and navigates to that task.

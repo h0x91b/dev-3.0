@@ -1,3 +1,5 @@
+Superseded on 2026-11-01 by `decisions/2026/11/01/inactive-task-hibernation-suggestions.md`: grouped, timed suggestions replace silent hibernation; viewing no longer counts as activity.
+
 # Auto-hibernate only observably inactive tasks
 
 ## Context

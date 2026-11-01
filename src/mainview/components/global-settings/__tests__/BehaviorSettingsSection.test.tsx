@@ -29,6 +29,7 @@ function renderSection(
 	const onOpenArtifactsInPopupToggle = vi.fn();
 	const onArtifactTemplateChange = vi.fn();
 	const onAutoHibernateChange = vi.fn();
+	const onAutoHibernateConfirmChange = vi.fn();
 	render(
 		<I18nProvider>
 			<BehaviorSettingsSection
@@ -43,6 +44,7 @@ function renderSection(
 				onPrOriginTaskLinkToggle={onPrOriginTaskLinkToggle}
 				onAgentLaunchAutoApproveChange={vi.fn()}
 				onAutoHibernateChange={onAutoHibernateChange}
+				onAutoHibernateConfirmChange={onAutoHibernateConfirmChange}
 				prOriginTaskLinkSupported={prOriginTaskLinkSupported}
 				onTaskSortOrderChange={vi.fn()}
 				onTaskOpenModeChange={vi.fn()}
@@ -55,17 +57,35 @@ function renderSection(
 	);
 	const textarea = screen.getByLabelText("settings.reviewModePrompt") as HTMLTextAreaElement;
 	const reset = screen.getByRole("button", { name: "settings.reviewModePromptReset" });
-	return { textarea, reset, onReviewModePromptChange, onPrOriginTaskLinkToggle, onOpenArtifactsInPopupToggle, onArtifactTemplateChange, onAutoHibernateChange };
+	return { textarea, reset, onReviewModePromptChange, onPrOriginTaskLinkToggle, onOpenArtifactsInPopupToggle, onArtifactTemplateChange, onAutoHibernateChange, onAutoHibernateConfirmChange };
 }
 
 describe("automatic hibernation policy", () => {
-	it("is off by default and enables a one-hour timeout", async () => {
+	it("is on by default with a 24-hour threshold and 30-minute confirmation", async () => {
 		const { onAutoHibernateChange } = renderSection();
 		const toggle = screen.getByRole("switch", { name: "settings.autoHibernate" });
-		expect(toggle).toHaveAttribute("aria-checked", "false");
-		expect(screen.queryByRole("spinbutton", { name: "settings.autoHibernateAfter" })).not.toBeInTheDocument();
+		expect(toggle).toHaveAttribute("aria-checked", "true");
+		expect(screen.getByRole("spinbutton", { name: "settings.autoHibernateAfter" })).toHaveValue(1440);
+		expect(screen.getByRole("spinbutton", { name: "settings.autoHibernateConfirmAfter" })).toHaveValue(30);
 		await userEvent.click(toggle);
-		expect(onAutoHibernateChange).toHaveBeenCalledWith(60);
+		expect(onAutoHibernateChange).toHaveBeenCalledWith(0);
+	});
+
+	it("enables an explicitly disabled policy with the default threshold", async () => {
+		const { onAutoHibernateChange } = renderSection({ autoHibernateMinutes: 0 });
+		expect(screen.queryByRole("spinbutton", { name: "settings.autoHibernateAfter" })).not.toBeInTheDocument();
+		await userEvent.click(screen.getByRole("switch", { name: "settings.autoHibernate" }));
+		expect(onAutoHibernateChange).toHaveBeenCalledWith(1440);
+	});
+
+	it("saves a custom confirmation delay separately from the threshold", async () => {
+		const { onAutoHibernateConfirmChange, onAutoHibernateChange } = renderSection();
+		const input = screen.getByRole("spinbutton", { name: "settings.autoHibernateConfirmAfter" });
+		await userEvent.clear(input);
+		await userEvent.type(input, "10");
+		await userEvent.tab();
+		expect(onAutoHibernateConfirmChange).toHaveBeenCalledWith(10);
+		expect(onAutoHibernateChange).not.toHaveBeenCalled();
 	});
 
 	it("persists a custom duration on blur, rejects zero, and switches off explicitly", async () => {

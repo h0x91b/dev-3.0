@@ -89,6 +89,7 @@ export function reconnectRpc(): void {
 // Push message handlers — shared between Electrobun and browser transports
 const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	taskUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:taskUpdated", { detail: payload })),
+	autoHibernateSuggestionChanged: (payload) => window.dispatchEvent(new CustomEvent("rpc:autoHibernateSuggestionChanged", { detail: payload })),
 	taskAutoHibernated: (payload) => window.dispatchEvent(new CustomEvent("rpc:taskAutoHibernated", { detail: payload })),
 	taskRemoved: (payload) => window.dispatchEvent(new CustomEvent("rpc:taskRemoved", { detail: payload })),
 	projectUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:projectUpdated", { detail: payload })),
