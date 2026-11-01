@@ -6,7 +6,7 @@ import type { Handler } from "./shared";
 /**
  * Read-only views of what the Stats page and the approval dialogs show. Each is
  * the renderer's own handler, unchanged; filtering by project or time happens in
- * the CLI so these stay plain pass-throughs (`since` only lets the usage scan skip old files).
+ * the CLI so these stay plain pass-throughs.
  */
 export const statsHandlers: Record<string, Handler> = {
 	"stats.productivity": async () => rpc.getProductivityStats(),

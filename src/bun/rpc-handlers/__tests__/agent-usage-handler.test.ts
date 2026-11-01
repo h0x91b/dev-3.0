@@ -1,4 +1,4 @@
-import { mkdirSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,6 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../shared", () => ({
 	log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
+
+vi.mock("../../atomic-write", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../../atomic-write")>();
+	return { ...actual, atomicWriteFile: vi.fn(actual.atomicWriteFile) };
+});
 
 vi.mock("../../rate-limit-monitor", () => ({
 	getAgentRateLimitsReport: vi.fn(),
@@ -27,6 +32,7 @@ vi.mock("node:os", async (importOriginal) => ({
 import { getAgentUsage, getTaskAgentUsage, isSubagentTranscript, taskStartedAt } from "../agent-usage";
 import { taskDir } from "../../git";
 import { log } from "../shared";
+import { atomicWriteFile } from "../../atomic-write";
 import type { Project, Task } from "../../../shared/types";
 import { defaultAccountPaths } from "../../agent-accounts";
 import { recordCursorHookUsage } from "../../usage-collectors/cursor";
@@ -402,6 +408,63 @@ describe("getAgentUsage incremental scan", () => {
 		expect((await getAgentUsage()).days).toEqual(cold);
 		rmSync(historyFile());
 		expect((await getAgentUsage()).days).toEqual(cold);
+	});
+
+	it("still counts skipped transcripts when a warm scan cannot keep the history", async () => {
+		const at = Date.parse("2026-10-20T12:00:00Z");
+		writeJsonl(claudeFile("old.jsonl"), [claudeEntry("old", "2026-10-20T12:00:00Z")]);
+		setMtime(claudeFile("old.jsonl"), at);
+		writeJsonl(claudeFile("live.jsonl"), [claudeEntry("live", "2026-10-20T12:00:00Z")]);
+		expect(totalInput((await getAgentUsage()).days)).toBe(2_000_000);
+		writeFileSync(claudeFile("live.jsonl"), `\n${JSON.stringify(claudeEntry("more", "2026-10-20T13:00:00Z"))}`, { flag: "a" });
+		// The lock is held and the history read, but the write fails (ENOSPC, EROFS…).
+		vi.mocked(atomicWriteFile).mockRejectedValueOnce(new Error("ENOSPC"));
+		expect(totalInput((await getAgentUsage()).days)).toBe(3_000_000);
+	});
+
+	it("still counts skipped transcripts when the history cannot even be locked", async () => {
+		const at = Date.parse("2026-10-20T12:00:00Z");
+		writeJsonl(claudeFile("old.jsonl"), [claudeEntry("old", "2026-10-20T12:00:00Z")]);
+		setMtime(claudeFile("old.jsonl"), at);
+		writeJsonl(claudeFile("live.jsonl"), [claudeEntry("live", "2026-10-20T12:00:00Z")]);
+		expect(totalInput((await getAgentUsage()).days)).toBe(2_000_000);
+		writeFileSync(claudeFile("live.jsonl"), `\n${JSON.stringify(claudeEntry("more", "2026-10-20T13:00:00Z"))}`, { flag: "a" });
+		const dev3Home = dirname(historyFile());
+		chmodSync(dev3Home, 0o555);
+		try {
+			expect(totalInput((await getAgentUsage()).days)).toBe(3_000_000);
+		} finally {
+			chmodSync(dev3Home, 0o755);
+		}
+	});
+
+	it("re-reads a transcript whose read failed once it becomes readable", async () => {
+		const at = Date.parse("2026-10-20T12:00:00Z");
+		writeJsonl(claudeFile("a.jsonl"), [claudeEntry("a", "2026-10-20T12:00:00Z")]);
+		writeJsonl(claudeFile("b.jsonl"), [claudeEntry("b", "2026-10-20T12:00:00Z")]);
+		setMtime(claudeFile("b.jsonl"), at);
+		chmodSync(claudeFile("b.jsonl"), 0o000);
+		try {
+			expect(totalInput((await getAgentUsage()).days)).toBe(1_000_000);
+		} finally {
+			chmodSync(claudeFile("b.jsonl"), 0o644);
+		}
+		expect(totalInput((await getAgentUsage()).days)).toBe(2_000_000);
+	});
+
+	it("rescans in full when the history is removed while a warm scan runs", async () => {
+		const at = Date.parse("2026-10-20T12:00:00Z");
+		writeJsonl(claudeFile("old.jsonl"), [claudeEntry("old", "2026-10-20T12:00:00Z")]);
+		setMtime(claudeFile("old.jsonl"), at);
+		writeJsonl(claudeFile("live.jsonl"), [claudeEntry("live", "2026-10-20T12:00:00Z")]);
+		expect(totalInput((await getAgentUsage()).days)).toBe(2_000_000);
+		writeFileSync(claudeFile("live.jsonl"), `\n${JSON.stringify(claudeEntry("more", "2026-10-20T13:00:00Z"))}`, { flag: "a" });
+		const scan = getAgentUsage();
+		rmSync(historyFile());
+		expect(totalInput((await scan).days)).toBe(3_000_000);
+		expect(totalInput((await getAgentUsage()).days)).toBe(3_000_000);
+		const history = JSON.parse(readFileSync(historyFile(), "utf8"));
+		expect(history.claude).toHaveLength(3);
 	});
 
 	it("reads a managed account store that links onto the home store once", async () => {

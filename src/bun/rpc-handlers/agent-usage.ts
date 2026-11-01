@@ -46,6 +46,12 @@ function codexHome(): string {
 	return process.env.CODEX_HOME?.trim() || join(homedir(), ".codex");
 }
 
+/** Live and archived rollout stores of every Codex home, a store linked onto another read once. */
+function codexStores(): string[] {
+	const homes = [...new Set([codexHome(), ...listCodexAccountDirs()])];
+	return uniqueRealDirs(homes.flatMap((home) => [join(home, "sessions"), join(home, "archived_sessions")]));
+}
+
 /** Recursively collect every *.jsonl transcript under the projects dir. Never throws. */
 function collectTranscriptFiles(dir: string, out: string[], codex = false): void {
 	let entries: import("node:fs").Dirent[];
@@ -75,7 +81,8 @@ async function foldJsonlFiles(
 	state: UsageState,
 	fold: (state: UsageState, entry: unknown) => void,
 	beforeFile?: (state: UsageState) => void,
-): Promise<void> {
+): Promise<string[]> {
+	const unread: string[] = [];
 	for (const file of files) {
 		beforeFile?.(state);
 		let text: string;
@@ -83,6 +90,7 @@ async function foldJsonlFiles(
 			text = await readFile(file, "utf8");
 		} catch (err) {
 			log.warn("getAgentUsage: read failed (skipped)", { file, error: String(err) });
+			unread.push(file);
 			continue;
 		}
 		for (let start = 0; start <= text.length;) {
@@ -100,14 +108,12 @@ async function foldJsonlFiles(
 			if (performance.now() - sliceStartedAt >= SCAN_SLICE_MS) await yieldToEventLoop();
 		}
 	}
+	return unread;
 }
 
 /**
- * Transcripts whose records are already merged into the usage history, as
- * path → size:mtime. Every record ever seen is retained there, so an unchanged
- * file adds nothing on a repeat scan. Valid only while the history file is the
- * one this process last saw: a rewrite by another app version, or a removal,
- * drops the whole map. Bounded by the transcripts on disk; a full scan prunes it.
+ * path → size:mtime of transcripts already merged into the usage history, valid only
+ * while that file is the one this process last merged into (see the decision record).
  */
 const foldedTranscripts = new Map<string, string>();
 let foldedHistoryStamp: string | null = null;
@@ -152,20 +158,22 @@ export function getAgentUsage(params?: { since?: string } | void): Promise<Agent
 
 async function scanAgentUsage(notBefore: number): Promise<AgentUsageReport> {
 	if (usageHistoryStamp() !== foldedHistoryStamp) foldedTranscripts.clear();
+	const trustedStamp = foldedHistoryStamp;
 	const seen = new Map<string, string>();
 	const claudeState = newUsageState();
 	const claudeFiles: string[] = [];
 	// A managed account's store is often a symlink onto the home one; read it once.
 	for (const dir of uniqueRealDirs(claudeProjectRoots())) collectTranscriptFiles(dir, claudeFiles);
 	const claudeToRead = transcriptsToRead(claudeFiles, notBefore, seen);
-	await foldJsonlFiles(claudeToRead, claudeState, foldClaudeEntry);
+	const unread = await foldJsonlFiles(claudeToRead, claudeState, foldClaudeEntry);
 
 	const codexState = newUsageState();
 	const codexFiles: string[] = [];
-	const codexStores = [...new Set([codexHome(), ...listCodexAccountDirs()])].flatMap((home) => [join(home, "sessions"), join(home, "archived_sessions")]);
-	for (const store of uniqueRealDirs(codexStores)) collectTranscriptFiles(store, codexFiles, true);
+	for (const store of codexStores()) collectTranscriptFiles(store, codexFiles, true);
 	const codexToRead = transcriptsToRead(codexFiles, notBefore, seen);
-	await foldJsonlFiles(codexToRead, codexState, foldCodexEntry, beginCodexRollout);
+	unread.push(...await foldJsonlFiles(codexToRead, codexState, foldCodexEntry, beginCodexRollout));
+	const cacheHits = seen.size - claudeToRead.length - codexToRead.length;
+	for (const file of unread) seen.delete(file);
 	const states = {
 		claude: claudeState, codex: codexState,
 		gemini: newUsageState(), cursor: newUsageState(), copilot: newUsageState(),
@@ -196,9 +204,17 @@ async function scanAgentUsage(notBefore: number): Promise<AgentUsageReport> {
 		}
 	}
 
-	const retained = await retainUsageHistory(states);
-	// Handed back unchanged when the history could not be read or written: nothing was kept, so nothing is cached.
-	if (retained.claude !== claudeState && retained.codex !== codexState) {
+	let mergeBase: string | null | undefined;
+	const retained = await retainUsageHistory(states, (stamp) => { mergeBase = stamp; });
+	// Handed back unchanged when the history could not be read or written.
+	const kept = retained.claude !== claudeState && retained.codex !== codexState;
+	if (cacheHits > 0 && (!kept || mergeBase !== trustedStamp)) {
+		// Skipped files are covered only by the history they were merged into: read everything once.
+		foldedTranscripts.clear();
+		foldedHistoryStamp = null;
+		return scanAgentUsage(notBefore);
+	}
+	if (kept) {
 		if (notBefore === -Infinity) foldedTranscripts.clear();
 		for (const [file, stamp] of seen) foldedTranscripts.set(file, stamp);
 		foldedHistoryStamp = usageHistoryStamp();
@@ -286,9 +302,7 @@ function cachedRolloutCwd(file: string): string | null {
 /** Every Codex rollout, from the same stores `getAgentUsage` reads. */
 function allCodexRollouts(): string[] {
 	const rollouts: string[] = [];
-	for (const home of new Set([codexHome(), ...listCodexAccountDirs()])) {
-		for (const store of ["sessions", "archived_sessions"]) collectTranscriptFiles(join(home, store), rollouts, true);
-	}
+	for (const store of codexStores()) collectTranscriptFiles(store, rollouts, true);
 	return rollouts;
 }
 
