@@ -59,18 +59,18 @@ export function recordPullRequestSighting(
 }
 
 /** The finished PRs a follow-up replaced, newest first. */
-export function earlierPullRequests(task: Pick<Task, "prNumber" | "pullRequests">): TaskPullRequestRecord[] {
-	return (task.pullRequests ?? []).filter((entry) => entry.number !== task.prNumber).reverse();
+export function earlierPullRequests(task: Pick<Task, "prNumber" | "pullRequests"> & TaskWithStatus): TaskPullRequestRecord[] {
+	return (task.pullRequests ?? []).filter((entry) => entry.number !== task.prNumber).reverse().map((entry) => trustedRecord(task, entry));
 }
 
 /**
  * Every PR the task has had, newest first. A task no newer build has touched yet
  * has no ledger, so its legacy fields stand in for it.
  */
-export function allPullRequests(task: Pick<Task, "prNumber" | "prUrl" | "prStatusCache" | "pullRequests">): TaskPullRequestRecord[] {
+export function allPullRequests(task: Pick<Task, "prNumber" | "prUrl" | "prStatusCache" | "pullRequests"> & TaskWithStatus): TaskPullRequestRecord[] {
 	const ledger = task.pullRequests ?? [];
-	if (ledger.length > 0 || task.prNumber == null || !task.prUrl) return [...ledger].reverse();
-	const cache = task.prStatusCache?.number === task.prNumber ? task.prStatusCache : null;
+	if (ledger.length > 0 || task.prNumber == null || !task.prUrl) return [...ledger].reverse().map((entry) => trustedRecord(task, entry));
+	const cache = task.prStatusCache?.number === task.prNumber ? trustedPrStatusCache(task) : null;
 	return [{
 		number: task.prNumber,
 		url: task.prUrl,
@@ -91,4 +91,33 @@ export function savedPrMergedFromBranch(
 		&& cache?.number === task.prNumber
 		&& cache.mergeState?.state === "MERGED"
 		&& cache.headRefName === branch;
+}
+
+/** Callers that know nothing about the task's column count as live. */
+type TaskWithStatus = { status?: Task["status"] };
+
+const FINISHED_TASK_STATUSES = new Set<Task["status"]>(["completed", "cancelled"]);
+
+/**
+ * Whether a stored PR state can still be believed. Nothing polls a finished task's
+ * PR, so its last OPEN froze before the merge or close it was waiting on; only the
+ * final states (MERGED, CLOSED) stay true forever.
+ */
+export function isTrustedStoredPrState(task: TaskWithStatus, state: string | null | undefined): boolean {
+	if (!state) return false;
+	return !task.status || !FINISHED_TASK_STATUSES.has(task.status) || state.toUpperCase() !== "OPEN";
+}
+
+function trustedRecord(task: TaskWithStatus, entry: TaskPullRequestRecord): TaskPullRequestRecord {
+	return entry.state && !isTrustedStoredPrState(task, entry.state) ? { ...entry, state: null } : entry;
+}
+
+/**
+ * The task's PR status cache with a stale (see {@link isTrustedStoredPrState}) merge
+ * state dropped whole: its mergeable/status described an open PR that has since moved on.
+ */
+export function trustedPrStatusCache(task: Pick<Task, "prStatusCache"> & TaskWithStatus): Task["prStatusCache"] {
+	const cache = task.prStatusCache;
+	if (!cache?.mergeState?.state || isTrustedStoredPrState(task, cache.mergeState.state)) return cache;
+	return { ...cache, mergeState: null };
 }
