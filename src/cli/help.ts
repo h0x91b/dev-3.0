@@ -137,7 +137,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "create",
-				usage: 'dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|board-cleanup|standard] | dev3 task create --scratch --run [--agent <id> [--config <id>]]',
+				usage: 'dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|board-cleanup|standard] [--json] | dev3 task create --scratch --run [--agent <id> [--config <id>]]',
 				summary: "Create a task in To Do, or ask the user to start a scratch peer agent.",
 				details: [
 					"--title <text>        Task title (required).",
@@ -161,6 +161,8 @@ const COMMANDS: CommandHelp[] = [
 					"Unresolvable --pr/--branch creates nothing and exits 18.",
 					"Run inside a task (worktree or DEV3_TASK_ID), the new task records that task as its",
 					"parent for good — `task show` prints it as Created by. Outside one, it is yours.",
+					"--json                Print {schemaVersion, task:{id, seq, projectId, title, status, customColumnId,",
+					"                      priority, taskType, manualCompletion, draft}} instead of the sentence.",
 					"--scratch --run       Ask the user to start a throwaway peer agent — no title,",
 					"                      no prompt. Blocks up to 10 min on their approval in the",
 					"                      app; exit 10 if declined, 46 if it failed to prepare.",
@@ -175,7 +177,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "update",
-				usage: 'dev3 task update [<id>] [--title "..."] [--description "..." | --description -] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard]',
+				usage: 'dev3 task update [<id>] [--title "..."] [--description "..." | --description -] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard] [--json]',
 				summary: "Update a task's title, description, priority, completion policy, or type.",
 				details: [
 					"--title <text>        New title (cannot be empty).",
@@ -193,16 +195,22 @@ const COMMANDS: CommandHelp[] = [
 					"                      instead of typing it into your own pane, and print it again on a",
 					"                      repeat that changes nothing. This is what /dev3-coordinator runs.",
 					"--force               Overwrite a user-edited title (diagnostics only — avoid).",
+					"--json                Print the same {schemaVersion, task} as `task create --json`, plus",
+					"                      titlePreserved and roleDelivery. Not with --print-role.",
 				],
 			},
 			{
 				name: "move",
-				usage: "dev3 task move [<id>] --status <status> [--agent <id> [--config <id>]] [--as-sender <id>]",
+				usage: "dev3 task move [<id>] --status <status> [--agent <id> [--config <id>]] [--as-sender <id>] [--json]",
 				summary: "Change a task's status / column.",
 				details: [
 					"--status <status>        Target status or custom column id (required).",
 					"--if-status <status>     Only move if the current status matches.",
 					"--if-status-not <s>      Only move if the current status differs.",
+					"--json                   A plain move prints {schemaVersion, task} as `task create --json`;",
+					"                         a start that asked the user prints {schemaVersion, approved, seq,",
+					"                         title, launched} (exit 10 when declined). Not with completed,",
+					"                         cancelled or todo.",
 					"--tolerate-app-offline   Exit 0 (with a stderr warning) when the app is not",
 					"                         running, instead of exit 2. For generated hooks.",
 					"Built-in: todo, in-progress, user-questions, review-by-ai, review-by-user.",
