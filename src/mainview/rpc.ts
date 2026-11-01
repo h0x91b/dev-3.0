@@ -6,6 +6,7 @@ import { recordDiagnostic, RPC_STATUS_EVENT, type RpcConnectionState } from "./d
 import { createRemoteSession, type AccessCodeOutcome, type RemoteSessionState, type SocketLike } from "./remote-session";
 import { readCodeFromFragment, stripCodeFromFragment } from "../shared/remote-sign-in-link";
 import { debugLog } from "./debug-log";
+import { createBridgeSendGate } from "./bridge-send-gate";
 
 // ── Transport connection state ──────────────────────────────────────
 // Surfaced to the bootstrap screen so a stuck "Loading…" can tell the user
@@ -356,6 +357,37 @@ function startBridgeWatchdog(electroview: Electroview<any>, rawRequest: RequestP
 	window.addEventListener("focus", () => void check());
 }
 
+// Long enough for a cold start to open its socket; short enough that a webview
+// with no socket at all still gets its requests out through the native bridge.
+const BRIDGE_SOCKET_WAIT_MS = 5_000;
+
+type BridgeInternals = {
+	bunSocket?: WebSocket;
+	initSocketToBun: () => void;
+	bunBridge: (message: string) => unknown;
+};
+
+/** Route every pre-socket message through the socket once it opens (see bridge-send-gate.ts). */
+function holdMessagesUntilBridgeSocketOpens(electroview: Electroview<any>): void {
+	const bridge = electroview as unknown as BridgeInternals;
+	const originalSend = bridge.bunBridge.bind(electroview);
+	const gate = createBridgeSendGate({
+		isSocketOpen: () => bridge.bunSocket?.readyState === WebSocket.OPEN,
+		isSocketPending: () => bridge.bunSocket?.readyState === WebSocket.CONNECTING,
+		send: (message) => void originalSend(message),
+		fallbackMs: BRIDGE_SOCKET_WAIT_MS,
+		onFallback: (held) => console.warn(`[rpc] bridge socket did not open in ${BRIDGE_SOCKET_WAIT_MS} ms — sending ${held} message(s) through the native bridge`),
+	});
+	const watchSocket = () => bridge.bunSocket?.addEventListener?.("open", () => gate.socketOpened());
+	watchSocket();
+	const originalInitSocket = bridge.initSocketToBun.bind(electroview);
+	bridge.initSocketToBun = () => {
+		originalInitSocket();
+		watchSocket();
+	};
+	bridge.bunBridge = (message: string) => gate.send(message);
+}
+
 function initElectrobunApi(): ApiShape {
 	const rpc = Electroview.defineRPC<AppRPCSchema>({
 		maxRequestTime: RPC_TIMEOUT_MS,
@@ -366,6 +398,7 @@ function initElectrobunApi(): ApiShape {
 	});
 
 	const electroview = new Electroview({ rpc });
+	holdMessagesUntilBridgeSocketOpens(electroview);
 	const rawApi = electroview.rpc!;
 	startBridgeWatchdog(electroview, rawApi.request as any);
 	// Desktop socket is local — seed "connected" and wire a soft reconnect so the
@@ -532,6 +565,9 @@ function initBrowserApi(): ApiShape {
 			},
 			onExpired: (detail) => {
 				activeSocket = null;
+				// The session detaches the socket before closing it, so no close event
+				// reaches onSocketClosed — reject here or these wait out the full timeout.
+				rejectSentRequests(new Error("RPC session expired"));
 				console.warn("[browser-rpc] Session expired — scan a fresh QR", detail);
 				dispatchAuthFailed(detail);
 			},

@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAppState, canGoBack, routeTaskId, routeShowsTaskWorkspace, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, taskOpenRoute, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type Route } from "./state";
 import { lastProjectForSpace, rememberProjectForSpace } from "./utils/spaceBoardMemory";
 import { api, isElectrobun, getRpcConnectionState } from "./rpc";
+import { ignoreStartupReadFailure, startupRead } from "./startup-read";
 import { setWebNotificationsSuppressed, showWebNotificationOrToast, type WebNotificationDetail } from "./utils/webNotification";
 import { useT, useLocale, type TranslationKey } from "./i18n";
 import { useStreamerMode } from "./streamer-mode";
@@ -599,9 +600,9 @@ function App() {
 	}, []);
 	useEffect(() => {
 		let alive = true;
-		api.request.getGlobalSettings()
+		startupRead("global settings", () => api.request.getGlobalSettings(), { isCancelled: () => !alive })
 			.then((next) => { if (alive) adoptHostSettings(next); })
-			.catch(() => {});
+			.catch(ignoreStartupReadFailure);
 		return () => { alive = false; };
 	}, [adoptHostSettings]);
 
@@ -619,12 +620,12 @@ function App() {
 			persist();
 			return;
 		}
-		api.request.getGlobalSettings()
+		startupRead("global settings", () => api.request.getGlobalSettings())
 			.then((loaded) => {
 				if (!settingsLoadedRef.current) adoptHostSettings(loaded);
 				persist();
 			})
-			.catch(() => {});
+			.catch(ignoreStartupReadFailure);
 	}, [adoptHostSettings]);
 
 	// The header's `?` wears a dismissible callout on the main screens until help
@@ -2510,9 +2511,9 @@ function App() {
 		}
 		let cancelled = false;
 		function restoreLaunchRequests() {
-			api.request.getPendingAgentLaunchRequests({}).then((requests) => {
+			startupRead("pending agent launch requests", () => api.request.getPendingAgentLaunchRequests({}), { isCancelled: () => cancelled }).then((requests) => {
 				if (!cancelled) setLaunchRequests((queue) => [...queue, ...requests.filter((r) => !resolvedRequestIds.has(r.requestId) && !queue.some((q) => q.requestId === r.requestId))]);
-			}).catch(() => {});
+			}).catch(ignoreStartupReadFailure);
 		}
 		window.addEventListener(RPC_STATUS_EVENT, restoreLaunchRequests);
 		restoreLaunchRequests();

@@ -11,6 +11,7 @@ type ColumnSlot = BoardColumnSlot;
 import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import { useT, statusKey, statusDescKey } from "../i18n";
 import { api } from "../rpc";
+import { ignoreStartupReadFailure, startupRead } from "../startup-read";
 import KanbanColumn from "./KanbanColumn";
 import LaunchVariantsModal from "./LaunchVariantsModal";
 import CreateTaskModal from "./CreateTaskModal";
@@ -143,7 +144,7 @@ function KanbanBoard({
 	}, []);
 
 	useEffect(() => {
-		api.request.getGlobalSettings().then(setGlobalSettings).catch(() => {});
+		startupRead("global settings", () => api.request.getGlobalSettings()).then(setGlobalSettings).catch(ignoreStartupReadFailure);
 		// Follow the settings push, like the sidebar's useTaskSortOrder does: a sort
 		// order changed in another window (or the remote browser) has to reorder this
 		// board too, or the two surfaces disagree until the board remounts.
