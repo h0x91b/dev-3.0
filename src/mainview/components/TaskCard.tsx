@@ -763,7 +763,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			onContextMenu={handleContextMenu}
 			onMouseEnter={handleCardMouseEnter}
 			onMouseLeave={handleCardMouseLeave}
-			className={`group relative flex flex-col overflow-hidden glass-card rounded-xl transition-[transform,box-shadow,background-color,border-color,opacity,filter] duration-150 ease-out border ${isDraft ? "border-dashed border-edge-active" : isActiveInSplit ? "border-accent ring-2 ring-accent/70 shadow-lg shadow-accent/20" : isCoordinator ? "border-dashed task-card-coordinator" : "border-transparent"} ${
+			className={`group relative flex flex-col overflow-hidden glass-card rounded-xl transition-[transform,box-shadow,background-color,border-color,opacity,filter] duration-150 ease-out border ${isDraft ? "border-dashed border-edge-active" : isActiveInSplit ? "border-accent ring-2 ring-accent/70 shadow-lg shadow-accent/20" : isCoordinator ? "border-dashed task-card-coordinator" : task.taskType === "board-cleanup" ? "border-dashed task-card-board-cleanup" : "border-transparent"} ${
 				isActive || isCompleted || isCancelled
 					? "cursor-pointer hover:-translate-y-0.5 hover:shadow-card-hover"
 					: "cursor-grab active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-card-hover"
@@ -944,7 +944,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				)}
 				{task.taskType === "board-cleanup" && (
 					<Tooltip content={t("task.boardCleanupBadge")} detail={t("task.boardCleanupHint")}>
-						<span data-testid="task-card-board-cleanup-badge" className="flex-shrink-0 text-dense font-semibold uppercase tracking-[0.06em] text-fg-3">
+						<span data-testid="task-card-board-cleanup-badge" className="flex-shrink-0 rounded border border-dashed border-danger/60 px-1.5 py-0.5 text-dense font-semibold uppercase tracking-[0.06em] text-danger-strong">
 							{t("task.boardCleanupBadge")}
 						</span>
 					</Tooltip>

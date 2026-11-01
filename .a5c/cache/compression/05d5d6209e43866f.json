@@ -1,0 +1,7 @@
+{
+  "filePath": "/Users/nadavsh/.claude/plugins/cache/a5c-ai/babysitter/4.0.157/skills/babysit/SKILL.md",
+  "compressedContent": "description: Orchestrate via @babysitter. Use this skill when asked to babysit a run, orchestrate a process or whenever it is called explicitly. (babysit, babysitter, orchestrate, orchestrate a run, workflow, etc. allowed-tools: Read, Grep, Write, Task, Bash, Edit, Grep, Glob, WebFetch, WebSearch, Search, AskUserQuestion, TodoWrite, TodoRead, Skill, BashOutput, KillShell, MultiEdit, LS a5c/runs/<runId>/` through iterative execution. SDK_VERSION=$(node -e \"try{console. readFileSync('${CLAUDE_PLUGIN_ROOT}/versions. sdkVersion||'latest')}catch{console. sudo npm i -g @a5c-ai/babysitter-sdk@$SDK_VERSION **Alternatively, use the CLI alias:** `CLI=\"npx -y @a5c-ai/babysitter-sdk@$SDK_VERSION\"` make sure you have jq installed and available in the path. babysitter instructions:babysit-skill --harness claude-code --interactive For non-interactive mode (running with `-p` flag or no AskUserQuestion tool): babysitter instructions:babysit-skill --harness claude-code --no-interactive Follow the instructions returned by the command above to orchestrate the run.",
+  "originalTokens": 405,
+  "compressedTokens": 263,
+  "compressedAt": "2026-11-01T19:11:26.655Z"
+}

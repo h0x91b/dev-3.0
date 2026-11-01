@@ -515,6 +515,11 @@ body, #root {
 	border-color: rgb(var(--success) / 0.6);
 	border-width: 2px;
 }
+.task-card-board-cleanup,
+.task-card-board-cleanup:hover {
+	border-color: rgb(var(--danger) / 0.6);
+	border-width: 2px;
+}
 
 .glass-header {
 	background: rgb(var(--glass-header-rgb) / var(--glass-header-alpha));
