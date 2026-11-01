@@ -63,6 +63,7 @@ import { useAgentTrafficEnabled } from "./hooks/useAgentTrafficEnabled";
 import { isControlHidden, syncHiddenControlsFromGlobalSettings } from "./hidden-controls";
 import { useIsControlHidden } from "./hooks/useIsControlHidden";
 import { syncGlobalSettingsCache } from "./global-settings-cache";
+import { DEFAULT_GLOBAL_SETTINGS } from "./components/global-settings/utils";
 import StuckPreparationPopover from "./components/StuckPreparationPopover";
 import FolderPickerHost from "./components/FolderPickerModal";
 import KeyboardShortcutsModal, { type ShortcutsTab } from "./components/KeyboardShortcutsModal";
@@ -540,12 +541,7 @@ function App() {
 	// every visit to Settings and every provider connect, so a fetch-once
 	// snapshot hid presets seeded or renamed after the first New Task modal.
 	const agents = useAgents();
-	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>({
-		defaultAgentId: "builtin-claude",
-		defaultConfigId: "claude-auto",
-		taskSortOrder: "oldest-first",
-		updateChannel: "stable",
-	});
+	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>(DEFAULT_GLOBAL_SETTINGS);
 	// Which task's workspace pane may dock the artifact panel. Docking is the
 	// default; the popup is the explicit opt-in. Every surface with no pane of its
 	// own — the archived task modal, immersive fullscreen, a toast for a task that
@@ -595,26 +591,49 @@ function App() {
 	// Guarded on by the guided tour: acting on default settings would replay a
 	// finished tour on every launch.
 	const [settingsLoaded, setSettingsLoaded] = useState(false);
+	const settingsLoadedRef = useRef(false);
+	const adoptHostSettings = useCallback((next: GlobalSettingsType) => {
+		settingsLoadedRef.current = true;
+		setGlobalSettings(next);
+		setSettingsLoaded(true);
+	}, []);
 	useEffect(() => {
 		let alive = true;
 		api.request.getGlobalSettings()
-			.then((next) => { if (alive) { setGlobalSettings(next); setSettingsLoaded(true); } })
+			.then((next) => { if (alive) adoptHostSettings(next); })
 			.catch(() => {});
 		return () => { alive = false; };
-	}, []);
+	}, [adoptHostSettings]);
+
+	// Every save sends the WHOLE object, so it is built from the host's settings —
+	// never from the placeholder. Saving the placeholder (a lost load, then the
+	// first `?`) overwrote settings.json and flipped the default preset to Fable 5.
+	const persistAppSettings = useCallback((update: (prev: GlobalSettingsType) => GlobalSettingsType | null) => {
+		const persist = () => setGlobalSettings((prev) => {
+			const next = update(prev);
+			if (!next) return prev;
+			api.request.saveGlobalSettings(next).catch(() => {});
+			return next;
+		});
+		if (settingsLoadedRef.current) {
+			persist();
+			return;
+		}
+		api.request.getGlobalSettings()
+			.then((loaded) => {
+				if (!settingsLoadedRef.current) adoptHostSettings(loaded);
+				persist();
+			})
+			.catch(() => {});
+	}, [adoptHostSettings]);
 
 	// The header's `?` wears a dismissible callout on the main screens until help
 	// mode has been opened once. Recorded here rather than at each entry point, so
 	// the shortcut, the menu, the palette, a HelpCard link and the button itself
 	// all count as discovery. One-way — never written back to false.
 	const markHelpDiscovered = useCallback(() => {
-		setGlobalSettings((prev) => {
-			if (prev.helpModeDiscovered) return prev;
-			const next = { ...prev, helpModeDiscovered: true };
-			api.request.saveGlobalSettings(next).catch(() => {});
-			return next;
-		});
-	}, []);
+		persistAppSettings((prev) => (prev.helpModeDiscovered ? null : { ...prev, helpModeDiscovered: true }));
+	}, [persistAppSettings]);
 
 	useEffect(() => {
 		if (helpMode) markHelpDiscovered();
@@ -632,13 +651,12 @@ function App() {
 	const finishTour = useCallback((tourId: string, completed: boolean) => {
 		setTour(null);
 		if (!completed) return;
-		setGlobalSettings((prev) => {
-			if (prev.completedTours?.includes(tourId)) return prev;
-			const next = { ...prev, completedTours: [...(prev.completedTours ?? []), tourId] };
-			api.request.saveGlobalSettings(next).catch(() => {});
-			return next;
-		});
-	}, []);
+		persistAppSettings((prev) => (
+			prev.completedTours?.includes(tourId)
+				? null
+				: { ...prev, completedTours: [...(prev.completedTours ?? []), tourId] }
+		));
+	}, [persistAppSettings]);
 
 	useEffect(() => {
 		function onStart(e: Event) {
@@ -1755,11 +1773,11 @@ function App() {
 
 	useEffect(() => {
 		function onGlobalSettingsUpdated(e: Event) {
-			setGlobalSettings((e as CustomEvent<GlobalSettingsType>).detail);
+			adoptHostSettings((e as CustomEvent<GlobalSettingsType>).detail);
 		}
 		window.addEventListener("rpc:globalSettingsUpdated", onGlobalSettingsUpdated);
 		return () => window.removeEventListener("rpc:globalSettingsUpdated", onGlobalSettingsUpdated);
-	}, []);
+	}, [adoptHostSettings]);
 
 	// Terminal panes read the BiDi flag from a module cache, not from React state —
 	// one effect here covers every path that lands settings (initial load, push,
@@ -1779,9 +1797,10 @@ function App() {
 	// (a right-click on a task card, say) can patch-and-save without owning
 	// Settings screen state.
 	useEffect(() => {
-		syncGlobalSettingsCache(globalSettings);
+		// The cache is a save base, so it never holds the pre-load placeholder.
+		if (settingsLoaded) syncGlobalSettingsCache(globalSettings);
 		syncHiddenControlsFromGlobalSettings(globalSettings);
-	}, [globalSettings]);
+	}, [globalSettings, settingsLoaded]);
 
 	useEffect(() => {
 		function onProjectUpdated(e: Event) {
