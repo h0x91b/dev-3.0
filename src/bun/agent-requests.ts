@@ -127,6 +127,11 @@ export function createAgentRequest(
 	if (existingId) {
 		const existing = pendingByRequestId.get(existingId);
 		if (existing) {
+			// Joining inherits the countdown: an interactive-only request (MCP) must never ride
+			// an auto-approving one, nor make a local requester's wait deadline-free.
+			if ((existing.autoApproveMs > 0) !== ((opts.autoApproveAfterMs ?? 0) > 0)) {
+				throw new Error("Another request for this task is waiting under a different auto-approve policy — wait for its answer.");
+			}
 			log.info("Joining existing agent request", { kind, taskId: taskId.slice(0, 8), requestId: existingId });
 			// A retry joins the original deadline instead of extending it — otherwise
 			// an agent that re-asks every few minutes would postpone the launch forever.

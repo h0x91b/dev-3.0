@@ -69,7 +69,8 @@ export interface TaskShowJson {
 		| { kind: "user" }
 		| { kind: "task"; taskId: string; projectId: string; parent: TaskOriginParent | null }
 		| { kind: "automation"; automationId: string | null }
-		| { kind: "import" };
+		| { kind: "import" }
+		| { kind: "sender"; senderId: string; label: string; viaTokenId: string | null };
 	/** The task's epic, or null for none. `name` is null when the epic no longer exists. */
 	epic: { id: string; name: string | null; archived: boolean } | null;
 	notes?: Array<Pick<TaskNote, "id" | "source" | "content" | "createdAt" | "updatedAt">>;
@@ -95,6 +96,7 @@ function originJson(task: ShownTask): TaskShowJson["origin"] {
 	const origin = taskOrigin(task);
 	if (origin.kind === "task") return { ...origin, parent: task.originParent ?? null };
 	if (origin.kind === "automation") return { kind: "automation", automationId: task.automationId ?? null };
+	if (origin.kind === "sender") return { kind: "sender", senderId: origin.senderId, label: origin.label, viaTokenId: origin.viaTokenId ?? null };
 	return origin;
 }
 
@@ -104,6 +106,7 @@ export function describeTaskOrigin(task: ShownTask): string | null {
 	if (origin.kind === "user") return null;
 	if (origin.kind === "automation") return task.automationId ? `automation ${task.automationId.slice(0, 8)}` : "an automation";
 	if (origin.kind === "import") return "a conversation import";
+	if (origin.kind === "sender") return `external sender ${origin.senderId}${origin.viaTokenId ? ` (MCP token ${origin.viaTokenId})` : ""}`;
 	const parent = task.originParent;
 	if (!parent) return `a task (deleted) — ${origin.taskId.slice(0, 8)}`;
 	const seq = parent.variantIndex !== null ? `${parent.seq}-${parent.variantIndex}` : String(parent.seq);

@@ -124,3 +124,16 @@ describe("the app's cache", () => {
 		expect(cache.lookup(live.token)).not.toBeNull();
 	});
 });
+
+describe("a failed read", () => {
+	it.skipIf(process.platform === "win32" || process.getuid?.() === 0)("is retried on the next lookup, not cached until the file changes", async () => {
+		const path = `${tempDir()}/mcp.json`;
+		const live = record();
+		await updateMcpConfig((c) => c.tokens.push(live.record), path);
+		const cache = new McpConfigCache(path);
+		require("node:fs").chmodSync(path, 0o000);
+		expect(cache.lookup(live.token)).toBeNull();
+		require("node:fs").chmodSync(path, 0o600);
+		expect(cache.lookup(live.token)).not.toBeNull();
+	});
+});

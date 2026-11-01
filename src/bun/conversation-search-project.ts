@@ -96,7 +96,7 @@ export function configureConversationSearchWorker(path: string | null): void {
 }
 
 /** The app's way to search (the MCP `conversations_search` tool): always in a worker, never on the host thread. */
-export function searchProjectConversationsOffThread(opts: ProjectSearchOptions, timeoutMs = 20_000): Promise<ConversationMatch[]> {
+export function searchProjectConversationsOffThread(opts: ProjectSearchOptions, signal?: AbortSignal, timeoutMs = 20_000): Promise<ConversationMatch[]> {
 	const path = searchWorkerPath;
 	if (!path || !existsSync(path)) return Promise.reject(new Error("Conversation search is unavailable in this build (no search worker)."));
 	return new Promise((resolve, reject) => {
@@ -110,6 +110,9 @@ export function searchProjectConversationsOffThread(opts: ProjectSearchOptions, 
 			settle();
 		};
 		const timer = setTimeout(() => finish(() => reject(new Error(`Conversation search timed out after ${timeoutMs} ms`))), timeoutMs);
+		// Nobody is waiting for the answer once the client disconnects.
+		if (signal?.aborted) finish(() => reject(new Error("Conversation search cancelled: the client disconnected")));
+		signal?.addEventListener("abort", () => finish(() => reject(new Error("Conversation search cancelled: the client disconnected"))), { once: true });
 		worker.on("message", (m: { ok: boolean; result?: ConversationMatch[]; error?: string }) =>
 			finish(() => (m.ok && m.result ? resolve(m.result) : reject(new Error(m.error ?? "search worker failed")))));
 		worker.on("error", (err) => finish(() => reject(err)));

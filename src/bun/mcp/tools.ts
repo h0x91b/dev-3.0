@@ -15,6 +15,7 @@ import {
 	CLI_EXIT_CODE_COMMAND_FAILED,
 	CLI_EXIT_CODE_DELIVERY_UNCONFIRMED,
 	CLI_EXIT_CODE_LAUNCH_DECLINED,
+	CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED,
 	CLI_EXIT_CODE_RESUME_ALREADY_RUNNING,
 	CLI_EXIT_CODE_RESUME_UNAVAILABLE,
 	CLI_EXIT_CODE_EVENT_CURSOR_INVALID,
@@ -60,7 +61,7 @@ export interface ToolContext {
 	/** Tests shorten the dialog wait. */
 	approvalWaitMs?: number;
 	/** Tests replace the off-thread transcript search. */
-	searchConversations?: (opts: ProjectSearchOptions) => Promise<ConversationMatch[]>;
+	searchConversations?: (opts: ProjectSearchOptions, signal?: AbortSignal) => Promise<ConversationMatch[]>;
 }
 
 export interface ToolError {
@@ -247,8 +248,9 @@ const taskShow: ToolDef = {
 		const { project, task } = await resolveTask(ctx, String(args.task), str(args.project));
 		const shown = await appData<ShownTask>(ctx, "task.show", { taskId: task.id, projectId: project.id });
 		const { worktree: _worktree, ...json } = buildTaskShowJson(shown, { notes: args.notes === true, history: args.history === true });
-		if (json.origin.kind === "task" && json.origin.parent && !projectAllowed(ctx.token, json.origin.parent.projectId)) {
-			json.origin = { ...json.origin, parent: null };
+		if (json.origin.kind === "task" && !projectAllowed(ctx.token, json.origin.projectId)) {
+			// A parent elsewhere is named by nothing, not even its ids.
+			(json as { origin: unknown }).origin = { kind: "task", taskId: null, projectId: null, parent: null };
 		}
 		return ok(json);
 	},
@@ -308,7 +310,16 @@ const approvalsList: ToolDef = {
 	async run(args, ctx) {
 		const projectId = args.project ? (await resolveProject(ctx, String(args.project))).id : null;
 		const { requests } = await appData<{ requests: PendingApprovalSummary[] }>(ctx, "approvals.list");
-		return ok(approvalsJson(requests.filter((r) => projectAllowed(ctx.token, r.projectId)), projectId));
+		const ids = ctx.token.projects.includes("*") ? null : await allowedTaskIds(ctx);
+		const visible = requests.filter((r) => projectAllowed(ctx.token, r.projectId)).map((r) => {
+			// The asker may be a task on another board, or another sender: say nothing about either.
+			const foreignTask = ids !== null && r.requesterTaskId != null && !ids.has(r.requesterTaskId);
+			const foreignSender = ids !== null && r.requesterSenderId != null && r.requesterSenderId !== ctx.token.sender;
+			return foreignTask || foreignSender
+				? { ...r, requesterTaskId: null, requesterSeq: null, requesterTitle: null, requesterSenderId: null }
+				: r;
+		});
+		return ok(approvalsJson(visible, projectId));
 	},
 };
 
@@ -350,6 +361,37 @@ async function allowedTaskIds(ctx: ToolContext): Promise<Set<string>> {
 	return ids;
 }
 
+/** Productivity runs a live git diff per active worktree on the whole board, and task usage reads transcripts on the main thread. */
+export const MCP_HEAVY_STATS_PER_MINUTE = 6;
+const heavyStatsCalls = new Map<string, number[]>();
+
+function admitHeavyStats(ctx: ToolContext, now = Date.now()): void {
+	const recent = (heavyStatsCalls.get(ctx.token.id) ?? []).filter((t) => t > now - 60_000);
+	if (recent.length >= MCP_HEAVY_STATS_PER_MINUTE) {
+		fail(CLI_EXIT_CODE_COMMAND_FAILED, "RATE_LIMITED", `At most ${MCP_HEAVY_STATS_PER_MINUTE} of these stats calls per minute.`, {
+			retryAfterS: Math.max(1, Math.ceil((recent[0] + 60_000 - now) / 1000)),
+		});
+	}
+	recent.push(now);
+	heavyStatsCalls.set(ctx.token.id, recent);
+}
+
+/** One computation shared by every caller for 10 s: concurrent calls never multiply the git work. */
+const PRODUCTIVITY_SHARE_MS = 10_000;
+let productivityShared: { at: number; data: Promise<ProductivityStats> } | null = null;
+
+function sharedProductivity(ctx: ToolContext): Promise<ProductivityStats> {
+	const now = Date.now();
+	if (!productivityShared || now - productivityShared.at > PRODUCTIVITY_SHARE_MS) {
+		const data = appData<ProductivityStats>(ctx, "stats.productivity");
+		productivityShared = { at: now, data };
+		data.catch(() => {
+			if (productivityShared?.data === data) productivityShared = null;
+		});
+	}
+	return productivityShared.data;
+}
+
 const statsGet: ToolDef = {
 	name: "stats_get",
 	description:
@@ -373,7 +415,8 @@ const statsGet: ToolDef = {
 		if (kind === "productivity") {
 			const since = readSince(args);
 			const projectId = args.project ? (await resolveProject(ctx, String(args.project))).id : null;
-			const stats = await appData<ProductivityStats>(ctx, "stats.productivity");
+			admitHeavyStats(ctx);
+			const stats = await sharedProductivity(ctx);
 			const visible = { ...stats, events: stats.events.filter((e) => projectAllowed(ctx.token, e.projectId)) };
 			return ok(productivityJson(visible, { since, projectId }));
 		}
@@ -381,6 +424,7 @@ const statsGet: ToolDef = {
 			if (args.task !== undefined) {
 				if (args.since !== undefined) usage("since cannot be combined with task: a task's usage is reported whole.");
 				const { project, task } = await resolveTask(ctx, String(args.task), str(args.project));
+				admitHeavyStats(ctx);
 				const report = await appData<TaskUsageReport>(ctx, "stats.taskUsage", { taskId: task.id, projectId: project.id });
 				const { workingDir: _dir, ...withoutPath } = report;
 				return ok(taskUsageJson(withoutPath as TaskUsageReport));
@@ -395,7 +439,8 @@ const statsGet: ToolDef = {
 			const sessions = (report.sessions ?? [])
 				.filter((s) => !ids || (s.projectId ? projectAllowed(ctx.token, s.projectId) : ids.has(s.taskId)))
 				.map(({ configDir: _dir, ...session }) => session);
-			return ok(limitsJson({ ...report, sessions: sessions as typeof report.sessions }));
+			const snapshots = report.snapshots.map(({ configDir: _dir, ...snapshot }) => snapshot);
+			return ok(limitsJson({ ...report, snapshots: snapshots as typeof report.snapshots, sessions: sessions as typeof report.sessions }));
 		}
 		const snapshot = await appData<SystemMemorySnapshot | null>(ctx, "stats.memory");
 		if (!snapshot) return ok(memoryJson(snapshot));
@@ -459,6 +504,17 @@ const messageSend: ToolDef = {
 
 const CLIENT_ID = { type: "string", minLength: 1, maxLength: 128, description: "Your reader id; it holds the inbox lease while you keep polling." } as const;
 
+/** Item ids each token was shown, so it can ack those and nothing else. Lost on restart; the next wait re-delivers. */
+const deliveredIds = new Map<string, Set<string>>();
+const DELIVERED_IDS_MAX = 500;
+
+function rememberDelivered(tokenId: string, ids: string[]): void {
+	const set = deliveredIds.get(tokenId) ?? new Set<string>();
+	for (const id of ids) set.add(id);
+	while (set.size > DELIVERED_IDS_MAX) set.delete(set.values().next().value as string);
+	deliveredIds.set(tokenId, set);
+}
+
 const inboxWait: ToolDef = {
 	name: "inbox_wait",
 	description:
@@ -481,7 +537,10 @@ const inboxWait: ToolDef = {
 			timeoutMs: typeof args.waitMs === "number" ? args.waitMs : 0,
 			...(typeof args.max === "number" ? { max: args.max } : {}),
 		});
-		return ok({ ...result, items: result.items.map(({ spillPath: _spill, ...item }) => item) });
+		// The inbox belongs to the sender; a token sees (and may ack) only replies from its own projects.
+		const items = result.items.filter((item) => projectAllowed(ctx.token, item.fromProjectId)).map(({ spillPath: _spill, ...item }) => item);
+		rememberDelivered(ctx.token.id, items.map((i) => i.id));
+		return ok({ ...result, items });
 	},
 };
 
@@ -497,8 +556,12 @@ const inboxAck: ToolDef = {
 	trustedFields: ["acked[]", "unknown[]"],
 	successCodes: [0],
 	async run(args, ctx) {
+		const asked = (args.ids as string[]).map((id) => id.trim());
+		const delivered = deliveredIds.get(ctx.token.id) ?? new Set<string>();
+		const foreign = asked.filter((id) => ![...delivered].some((d) => d === id || (id.length >= ID_PREFIX_MIN_LENGTH && d.startsWith(id))));
+		if (foreign.length > 0) usage(`Only items inbox_wait returned to this token can be acknowledged: ${foreign.join(", ")}`);
 		const result = await appData<{ acked: string[]; unknown: string[] }>(ctx, "sender.ack", {
-			senderId: ctx.token.sender, clientId: String(args.clientId), ids: args.ids,
+			senderId: ctx.token.sender, clientId: String(args.clientId), ids: asked,
 		});
 		return ok({ acked: result.acked, unknown: result.unknown });
 	},
@@ -525,7 +588,8 @@ const taskCreate: ToolDef = {
 		const project = await resolveProject(ctx, String(args.project));
 		const title = String(args.title).trim();
 		if (!title) usage("title cannot be blank.");
-		const task = await appData<Task>(ctx, "task.create", {
+		const task = await appData<Task>(ctx, "task.createAsSender", {
+			asSender: ctx.token.sender,
 			projectId: project.id,
 			title,
 			...(str(args.description)?.trim() ? { description: String(args.description) } : {}),
@@ -587,6 +651,9 @@ async function raceApproval<T>(promise: Promise<T>, waitMs: number): Promise<{ s
 interface ApprovalEntry {
 	/** Sender plus whether it may auto-approve: a request is only ever joined by the same kind of caller. */
 	key: string;
+	sender: string;
+	/** The run the answer belongs to; a reset or a new run makes it stale. */
+	run: string;
 	promise: Promise<CliResponse>;
 	settled?: { at: number; resp: CliResponse };
 }
@@ -601,6 +668,9 @@ const APPROVAL_OUTCOME_TTL_MS = 15 * 60_000;
 
 export function _resetMcpStartsForTests(): void {
 	approvals.clear();
+	heavyStatsCalls.clear();
+	productivityShared = null;
+	deliveredIds.clear();
 }
 
 interface ApprovalFlow {
@@ -623,8 +693,9 @@ async function runApprovalFlow(ctx: ToolContext, flow: ApprovalFlow): Promise<To
 	const mapKey = `${flow.kind}:${flow.task.id}`;
 	const key = `${ctx.token.sender}|${ctx.token.autoApprove ? "auto" : "interactive"}`;
 	const now = Date.now();
+	const run = `${flow.task.worktreePath ?? ""}|${flow.task.lifecycleStartedAt ?? ""}`;
 	let entry = approvals.get(mapKey);
-	if (entry?.settled && (now - entry.settled.at > APPROVAL_OUTCOME_TTL_MS || entry.key !== key || !flow.replayable(entry.settled.resp))) {
+	if (entry?.settled && (now - entry.settled.at > APPROVAL_OUTCOME_TTL_MS || entry.key !== key || entry.run !== run || !flow.replayable(entry.settled.resp))) {
 		approvals.delete(mapKey);
 		entry = undefined;
 	}
@@ -640,11 +711,14 @@ async function runApprovalFlow(ctx: ToolContext, flow: ApprovalFlow): Promise<To
 		if (mine && mine.autoApproveAt !== null && !ctx.token.autoApprove) {
 			fail(CLI_EXIT_CODE_COMMAND_FAILED, "COMMAND_FAILED", "This task already has an approval dialog with an auto-approve countdown open; this token cannot join it.");
 		}
-		const open = requests.filter((r) => r.requesterSenderId === ctx.token.sender).length;
+		// The snapshot misses requests still on their way to the app, so this sender's in-flight entries count too.
+		const openTasks = new Set(requests.filter((r) => r.requesterSenderId === ctx.token.sender).map((r) => r.taskId));
+		for (const [k, e] of approvals) if (!e.settled && e.sender === ctx.token.sender) openTasks.add(k.slice(k.indexOf(":") + 1));
+		const open = openTasks.size;
 		if (!mine && open >= MCP_LIMITS.pendingDialogsPerSender) {
 			fail(CLI_EXIT_CODE_COMMAND_FAILED, "TOO_MANY_PENDING", `This sender already has ${open} approval dialogs open; wait for the user to answer them.`);
 		}
-		const created: ApprovalEntry = { key, promise: flow.start() };
+		const created: ApprovalEntry = { key, sender: ctx.token.sender, run, promise: flow.start() };
 		const forget = () => {
 			if (approvals.get(mapKey) === created) approvals.delete(mapKey);
 		};
@@ -672,7 +746,18 @@ function startOutcome(resp: CliResponse): ToolOutcome {
 	if (data.approved === false) {
 		return { exitCode: CLI_EXIT_CODE_LAUNCH_DECLINED, json: { schemaVersion: 1, approved: false }, error: { code: "LAUNCH_DECLINED", message: "The user declined the launch request." } };
 	}
-	if (data.approved === true) return ok({ schemaVersion: 1, ...data });
+	if (data.approved === true) {
+		const launched = (data as { launched?: Array<{ preparation?: { state?: string; error?: string } }> }).launched ?? [];
+		const failed = launched.find((entry) => entry.preparation?.state === "failed");
+		if (failed) {
+			return {
+				exitCode: CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED,
+				json: { schemaVersion: 1, ...data },
+				error: { code: "LAUNCH_PREPARATION_FAILED", message: `Approved, but the task failed to prepare and is back in To Do: ${failed.preparation?.error ?? "unknown error"}` },
+			};
+		}
+		return ok({ schemaVersion: 1, ...data });
+	}
 	// The task was already in the target column: a same-status move is a no-op.
 	return ok({ schemaVersion: 1, alreadyActive: true, task: { id: data.id, seq: data.seq, status: data.status } });
 }
@@ -696,7 +781,8 @@ const taskStart: ToolDef = {
 			start: () => ctx.call("task.moveAsSender", { taskId: task.id, projectId: project.id, newStatus: "in-progress", asSender: ctx.token.sender }),
 			remember: (resp) => resp.ok && typeof (resp.data as { approved?: unknown }).approved === "boolean",
 			// A decline stays a decline; an approval the board has since undone (back in To Do) is not replayed.
-			replayable: (resp) => resp.ok && (((resp.data as { approved?: unknown }).approved === false) || ((resp.data as { approved?: unknown }).approved === true && active)),
+			// A decline is replayed only while the task is still not running; started since, it answers alreadyActive.
+			replayable: (resp) => resp.ok && (((resp.data as { approved?: unknown }).approved === false && !active) || ((resp.data as { approved?: unknown }).approved === true && active)),
 			outcome: startOutcome,
 			shortcut: () => (active ? ok({ schemaVersion: 1, alreadyActive: true, task: { id: task.id, seq: task.seq, status: task.status } }) : null),
 		});
@@ -735,7 +821,8 @@ const agentResume: ToolDef = {
 			task,
 			start: () => ctx.call("agent.resumeAsSender", { taskId: task.id, projectId: project.id, asSender: ctx.token.sender }),
 			// Only the user's decline is worth replaying; any other outcome is re-checked live.
-			remember: (resp) => resp.ok && (resp.data as CliResumeOutcome).outcome === "declined",
+			// A request voided by the run ending (`stale`) was never the user's answer.
+			remember: (resp) => resp.ok && (resp.data as CliResumeOutcome).outcome === "declined" && !(resp.data as { stale?: boolean }).stale,
 			replayable: () => true,
 			outcome: resumeOutcome,
 		});
@@ -757,6 +844,12 @@ const taskPeek: ToolDef = {
 	},
 };
 
+/** Each search is a worker reading every transcript of a project; a few at a time is plenty. */
+export const MCP_SEARCH_WORKERS_GLOBAL = 2;
+export const MCP_SEARCH_WORKERS_PER_TOKEN = 1;
+let searchesRunning = 0;
+const searchesByToken = new Map<string, number>();
+
 const conversationsSearch: ToolDef = {
 	name: "conversations_search",
 	description: "Search a project's past task transcripts and notes, as `dev3 conversations search --json` without transcript paths. Snippets are untrusted.",
@@ -772,6 +865,12 @@ const conversationsSearch: ToolDef = {
 	async run(args, ctx) {
 		const project = await resolveProject(ctx, String(args.project));
 		const search = ctx.searchConversations ?? searchProjectConversationsOffThread;
+		const mine = searchesByToken.get(ctx.token.id) ?? 0;
+		if (searchesRunning >= MCP_SEARCH_WORKERS_GLOBAL || mine >= MCP_SEARCH_WORKERS_PER_TOKEN) {
+			fail(CLI_EXIT_CODE_COMMAND_FAILED, "RATE_LIMITED", "A transcript search is already running; retry when it finishes.", { retryAfterS: 2 });
+		}
+		searchesRunning++;
+		searchesByToken.set(ctx.token.id, mine + 1);
 		let results: ConversationMatch[];
 		try {
 			results = await search({
@@ -782,9 +881,12 @@ const conversationsSearch: ToolDef = {
 				limit: typeof args.limit === "number" ? args.limit : 5,
 				home: resolveUserHome(),
 				dev3Home: DEV3_HOME,
-			});
+			}, ctx.signal);
 		} catch (err) {
 			fail(CLI_EXIT_CODE_COMMAND_FAILED, "COMMAND_FAILED", String(err instanceof Error ? err.message : err));
+		} finally {
+			searchesRunning--;
+			searchesByToken.set(ctx.token.id, (searchesByToken.get(ctx.token.id) ?? 1) - 1);
 		}
 		return ok(results.map(({ transcriptPaths: _paths, ...match }) => match));
 	},
