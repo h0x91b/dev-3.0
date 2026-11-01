@@ -13,11 +13,11 @@ import { CAROUSEL_MAX_WIDTH } from "../components/MobileBoardCarousel";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useAgents } from "../hooks/useAgents";
 import { boardFilterKey, rememberFilter } from "../hooks/useRememberedFilter";
-import { childrenFilterToken, lineageChildren, lineageParent, parentSeqLabel, type CardLineage } from "../utils/taskLineage";
+import { childrenFilterToken, lineageChildren, lineageNodeOf, lineageParent, parentSeqLabel, type CardLineage } from "../utils/taskLineage";
 import { requestTaskLaunch } from "../utils/moveTaskToStatus";
 import { useStreamerMode } from "../streamer-mode";
 import { HIDDEN_CONTROLS_CHANGED_EVENT, isSimplifyViewApplied } from "../hidden-controls";
-import { BoardService, type BoardModel, type BoardModelSource, type BoardPreferences } from "./board-service";
+import { BoardService, type BoardLineageNode, type BoardModel, type BoardModelSource, type BoardPreferences } from "./board-service";
 import { BoardCardBindingsContext, BoardTaskCard, type BoardCardBindings } from "./BoardTaskCard";
 import { getBoardRoot } from "./root";
 import { useRegisteredBoardViews } from "./react";
@@ -132,6 +132,17 @@ function BoardHost(props: BoardHostProps) {
 		laneOrder: () => [...laneOrderRef.current],
 	});
 
+	// The one streamer-mode rule for lineage titles: card clusters and ghost parents both ask it.
+	const lineageTitleHidden = useCallback(
+		(projectId: string) => isStreamerOn && !!filter.knownProjects.find((p) => p.id === projectId)?.sensitive,
+		[filter.knownProjects, isStreamerOn],
+	);
+	const lineageNode = useCallback((id: string): BoardLineageNode | "deleted" | null => {
+		const node = lineageNodeOf(id, filter.lineage);
+		if (!node || node === "deleted") return node;
+		return { ...node, title: lineageTitleHidden(node.projectId) ? null : node.title };
+	}, [filter.lineage, lineageTitleHidden]);
+
 	const model = useMemo<BoardModel>(() => ({
 		scope: { kind: boardRef.kind, id: boardRef.id, projectIds: boardProjects.map((p) => p.id) },
 		formFactor,
@@ -140,6 +151,7 @@ function BoardHost(props: BoardHostProps) {
 		scopeTasks: tasks,
 		tasks: filter.displayTasks,
 		matches: filter.matches,
+		lineageNode,
 		columns,
 		occupiedColumns,
 		labels: filter.labels,
@@ -149,7 +161,7 @@ function BoardHost(props: BoardHostProps) {
 		setLayout: viewState.setLayout,
 		preferences,
 		actions,
-	}), [boardRef, boardProjects, formFactor, filter.query, filter.setQuery, tasks, filter.displayTasks, filter.matches, columns, occupiedColumns, filter.labels, agents, viewState.layout, viewState.setLayout, preferences, actions]);
+	}), [boardRef, boardProjects, formFactor, filter.query, filter.setQuery, tasks, filter.displayTasks, filter.matches, lineageNode, columns, occupiedColumns, filter.labels, agents, viewState.layout, viewState.setLayout, preferences, actions]);
 
 	// Draft being edited: reopens the New Task popup prefilled from the card.
 	// Resolved from the live list, so it closes by itself once the draft is promoted or deleted.
@@ -180,7 +192,7 @@ function BoardHost(props: BoardHostProps) {
 		if (parent === null && childCount === 0) return undefined;
 		const parentNode = parent && parent !== "deleted" ? parent : null;
 		const parentProject = parentNode ? knownProjects.find((p) => p.id === parentNode.projectId) : undefined;
-		const shareable = parentNode && !(isStreamerOn && parentProject?.sensitive);
+		const shareable = parentNode && !lineageTitleHidden(parentNode.projectId);
 		return {
 			parentLabel: parent === "deleted" ? "deleted" : parentNode ? parentSeqLabel(parentNode) : null,
 			parentTitle: shareable && parentNode
@@ -190,7 +202,7 @@ function BoardHost(props: BoardHostProps) {
 			onFilterByParent: parentNode ? () => applyChildrenFilter(parentNode) : null,
 			onFilterByChildren: childCount > 0 ? () => applyChildrenFilter(task) : null,
 		};
-	}, [lineage, knownProjects, applyChildrenFilter, isStreamerOn]);
+	}, [lineage, knownProjects, applyChildrenFilter, lineageTitleHidden]);
 
 	const cardBindings = useMemo<BoardCardBindings>(() => ({
 		projectOf,
