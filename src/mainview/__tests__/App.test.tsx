@@ -1,6 +1,7 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "../App";
+import { registerBoardViewCommandHandler, resetBoardViewCommandsForTests } from "../board-views/view-commands";
 import { I18nProvider } from "../i18n";
 
 const rpcTransport = vi.hoisted(() => ({ isElectrobun: true }));
@@ -581,6 +582,34 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
 			await userEvent.keyboard("{Escape}");
 			expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
+		});
+	});
+
+	describe("board view chord (v 1..9 / v v)", () => {
+		afterEach(() => resetBoardViewCommandsForTests());
+
+		it("v then a digit picks the Nth view, v then v the previous one", async () => {
+			await renderApp();
+			const handler = vi.fn(() => true);
+			registerBoardViewCommandHandler(handler);
+			await userEvent.keyboard("v2");
+			expect(handler).toHaveBeenLastCalledWith({ kind: "nth", n: 2 }, false);
+			await userEvent.keyboard("vv");
+			expect(handler).toHaveBeenLastCalledWith({ kind: "previous" }, false);
+			expect(handler).toHaveBeenCalledTimes(2);
+		});
+
+		it("is inert off a board, and while typing in a field", async () => {
+			await renderApp();
+			await userEvent.keyboard("v2");
+			const handler = vi.fn(() => true);
+			registerBoardViewCommandHandler(handler);
+			const input = document.createElement("input");
+			document.body.appendChild(input);
+			input.focus();
+			await userEvent.keyboard("v2");
+			input.remove();
+			expect(handler).not.toHaveBeenCalled();
 		});
 	});
 

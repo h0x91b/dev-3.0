@@ -221,6 +221,13 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 		remappable: false, fixedReasonKey: "keymap.fixed.activatesFocused",
 		display: { mac: "Space", other: "Space" },
 	},
+	// Bare `v`, like `g`: skipped while a terminal or input has focus, armed only on a board.
+	// The digit indexes the views the board offers, so its meaning moves with them.
+	{
+		id: "board-view", primary: [], descKey: "keymap.shortcut.boardView", category: "view",
+		remappable: false, fixedReasonKey: "keymap.fixed.chordSequence",
+		display: { mac: "V then 1–9 / V", other: "V then 1–9 / V" },
+	},
 	{ id: "help-mode", primary: [mod("Slash", "Shift")], descKey: "keymap.shortcut.helpMode", category: "view" },
 	// F11 is the browser's own fullscreen off macOS; the ⇧⌘F alias carries remote.
 	{ id: "terminal-fullscreen", primary: [{ code: "F11", mods: [], desktopOnly: true }], alias: [mod("KeyF", "Shift")], descKey: "keymap.shortcut.terminalFullscreen", category: "view" },

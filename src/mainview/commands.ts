@@ -1,6 +1,7 @@
 import { getAgentTrafficEnabled } from "./agent-traffic-flag";
 import { isControlHidden } from "./hidden-controls";
 import type { TranslationKey } from "./i18n";
+import { boardViewAction } from "./board-views/view-commands";
 
 /**
  * Registry for the Cmd/Ctrl+Shift+P action palette. Each command is a thin
@@ -27,6 +28,8 @@ export interface PaletteCommand {
 	labelKey: TranslationKey;
 	category: CommandCategory;
 	scope: CommandScope;
+	/** Interpolation values for `labelKey`, for commands generated at runtime. */
+	labelVars?: Record<string, string>;
 }
 
 export const COMMAND_CATEGORY_KEY: Record<CommandCategory, TranslationKey> = {
@@ -53,7 +56,7 @@ export const ALL_COMMANDS: PaletteCommand[] = [
 
 	// ── Navigation ──
 	{ id: "view-dashboard", labelKey: "command.viewDashboard", category: "nav", scope: "always" },
-	{ id: "view-kanban", labelKey: "command.viewKanban", category: "nav", scope: "project" },
+	{ id: "view-board", labelKey: "command.viewBoard", category: "nav", scope: "project" },
 	{ id: "find-coordinator", labelKey: "command.findCoordinator", category: "nav", scope: "always" },
 	// The "Go to" palette's task / combined modes (projects mode keeps its own
 	// ⇧⌘K + View-menu entry). Ids are the menu-action strings the native View
@@ -125,6 +128,12 @@ export interface CommandContext {
 	 * silently do nothing visible for a remote user.
 	 */
 	remote?: boolean;
+	/**
+	 * The board views on offer, display names resolved. Each becomes a
+	 * "Board view: X" command right after "Go to board" — built-ins and
+	 * extensions alike, which the static native menu cannot list.
+	 */
+	boardViews?: readonly { id: string; name: string }[];
 }
 
 /** Palette commands hidden in browser remote mode (host-local desktop effect). */
@@ -132,7 +141,15 @@ const REMOTE_HIDDEN_COMMANDS = new Set<string>(["task-open-in-finder"]);
 
 /** Commands runnable in the current route context, in registry order. */
 export function availableCommands(ctx: CommandContext): PaletteCommand[] {
-	return ALL_COMMANDS.filter((c) => {
+	const boardViewCommands: PaletteCommand[] = (ctx.boardViews ?? []).map((view) => ({
+		id: boardViewAction(view.id),
+		labelKey: "command.boardView",
+		labelVars: { name: view.name },
+		category: "nav",
+		scope: "project",
+	}));
+	const commands = ALL_COMMANDS.flatMap((c) => (c.id === "view-board" ? [c, ...boardViewCommands] : [c]));
+	return commands.filter((c) => {
 		if (ctx.remote && REMOTE_HIDDEN_COMMANDS.has(c.id)) return false;
 		// Beta, off by default: a palette entry that opens nothing is worse than no
 		// entry, so the command disappears with the feature. Individually hideable

@@ -22,6 +22,7 @@ this page and the website all read from it.
 | Keyboard shortcuts panel | ⌘/ | Ctrl+/ |
 | Agent traffic screen (beta — Settings → System → Advanced Experience) | ⇧⌘M | Ctrl+Shift+M |
 | Play or pause the traffic replay (inside the traffic log) | Space | Space |
+| Board view: Nth view / back to the previous one (on a board) | V then 1–9 / V then V | V then 1–9 / V then V |
 | Help mode (explain this screen) | ⇧⌘/ | Ctrl+Shift+/ |
 | Open current project/worktree in an app (picker) | ⌘O | Ctrl+O |
 | Terminal immersive fullscreen | F11 / ⇧⌘F | F11 / Ctrl+Shift+F |
