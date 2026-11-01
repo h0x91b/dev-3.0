@@ -1,3 +1,4 @@
+import { taskMutationJson } from "../../shared/cli-json/task-mutation";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { CliResponse, Task, TaskStatus, TaskType, TaskHistoryEntry, TaskNote } from "../../shared/types";
@@ -212,6 +213,14 @@ function printTask(task: ShownTask, opts: ShowTaskOptions = {}): void {
 	if (opts.history && task.history && task.history.length > 0) printHistory(task.history);
 }
 
+/** `--json` takes no value: `--json seq:12` would otherwise swallow the task ref. */
+function readJsonFlag(args: ParsedArgs, command: string): boolean {
+	if (args.flags.json !== undefined && args.flags.json !== "true") {
+		exitUsage(`--json takes no value (got "${args.flags.json}"). Put it last: ${command} ... --json`);
+	}
+	return args.flags.json === "true";
+}
+
 function resolveTaskId(args: ParsedArgs, context: CliContext | null): string | undefined {
 	const raw = args.positional[0] || args.flags.task || args.flags["task-id"] || args.flags.id || context?.taskId;
 	if (!raw) return undefined;
@@ -257,8 +266,9 @@ function epicParams(args: ParsedArgs): Record<string, unknown> {
 
 async function createTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
 	args = withBooleanFlags(args, ["no-epic"]);
-	rejectUnknownFlags(args, ["project", "title", "description", "type", "scratch", "run", "pr", "branch", "handoff-file", "agent", "config", "epic", "no-epic"]);
+	rejectUnknownFlags(args, ["project", "title", "description", "type", "scratch", "run", "pr", "branch", "handoff-file", "agent", "config", "epic", "no-epic", "json"]);
 	const epic = epicParams(args);
+	const json = readJsonFlag(args, "dev3 task create");
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (!projectId) {
 		exitUsage("--project <id> is required (or run from the project's worktree or checkout)");
@@ -279,6 +289,7 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 				"Create a normal task instead, or send instructions with `dev3 message --task seq:<N>` after it starts.",
 			);
 		}
+		if (json) exitUsage("--json does not apply to --scratch --run yet.");
 		return createScratchAndRun(projectId, socketPath, context, readHandoffFile(args), readLaunchSuggestion(args), epic);
 	}
 	if (args.flags["handoff-file"] !== undefined) {
@@ -340,7 +351,8 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 	}
 
 	const task = resp.data as Task;
-	process.stdout.write(`Created task ${task.id.slice(0, 8)} (seq ${task.seq}): ${getTaskTitle(task)}\n`);
+	if (json) process.stdout.write(`${JSON.stringify(taskMutationJson(task), null, 2)}\n`);
+	else process.stdout.write(`Created task ${task.id.slice(0, 8)} (seq ${task.seq}): ${getTaskTitle(task)}\n`);
 	if (task.epicId) process.stderr.write(`Epic: ${task.epicId.slice(0, 8)}${epic.epic ? "" : " (inherited from the creating task)"}\n`);
 	// The type is only real once the role brief is in the description the agent
 	// will read, so name it rather than leaving the caller to check the card.
@@ -358,7 +370,8 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 
 async function updateTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
 	args = withBooleanFlags(args, ["no-epic"]);
-	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description", "priority", "manual-completion", "type", "force", "print-role", "epic", "no-epic"]);
+	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description", "priority", "manual-completion", "type", "force", "print-role", "epic", "no-epic", "json"]);
+	const json = readJsonFlag(args, "dev3 task update");
 	const taskId = resolveTaskId(args, context);
 	if (!taskId) {
 		exitUsage("Usage: dev3 task update <id|--task id|--task-id id|--id id> [--title '...'] [--description '...'] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic]");
@@ -411,6 +424,7 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 	const printRole = args.flags["print-role"] === "true";
 	if (printRole) {
 		if (rawType === undefined) exitUsage("--print-role only applies together with --type");
+		if (json) exitUsage("--print-role prints a brief for the agent to read and cannot be combined with --json");
 		if (args.positional[0] || args.flags.task || args.flags["task-id"] || args.flags.id) {
 			exitUsage("--print-role prints YOUR OWN task's role brief, so it cannot target another task");
 		}
@@ -456,7 +470,11 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 			`Note: title preserved — task ${task.id.slice(0, 8)} has a user-edited title that the CLI will not overwrite. Pass --force to override.\n`,
 		);
 	}
-	process.stdout.write(`Updated task ${task.id.slice(0, 8)}: ${getTaskTitle(task)}\n`);
+	if (json) {
+		process.stdout.write(`${JSON.stringify({ ...taskMutationJson(task), titlePreserved, roleDelivery: roleDelivery ?? null }, null, 2)}\n`);
+	} else {
+		process.stdout.write(`Updated task ${task.id.slice(0, 8)}: ${getTaskTitle(task)}\n`);
+	}
 	// The role brief goes to stdout as the command's payload: the agent that ran it
 	// reads it right here, and re-running prints the same text whether or not the
 	// type had to change.
@@ -477,7 +495,7 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 	// the board and not the agent. Docs are read once; the mistake happens here.
 	if (params.description !== undefined && taskAgentSessionLooksLive(task)) {
 		const projectFlag = args.flags.project ? ` --project ${args.flags.project}` : "";
-		process.stdout.write(
+		(json ? process.stderr : process.stdout).write(
 			`Note: the running agent will NOT see this — a description is delivered as its first prompt at launch, and nothing re-delivers it.\n`
 			+ `Tell it too: dev3 message --task ${task.id.slice(0, 8)}${projectFlag} --subject "brief updated" "<what changed>"\n`,
 		);
@@ -944,8 +962,9 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	// decided before dispatch (main.ts) — accepted and ignored here.
 	rejectUnknownFlags(args, [
 		"id", "task", "task-id", "project", "status", "if-status", "if-status-not", "handoff-file", "agent", "config", "as-sender",
-		CODEX_STOP_HOOK_FLAG.slice(2), TOLERATE_APP_OFFLINE_FLAG.slice(2),
+		CODEX_STOP_HOOK_FLAG.slice(2), TOLERATE_APP_OFFLINE_FLAG.slice(2), "json",
 	]);
+	const json = readJsonFlag(args, "dev3 task move");
 	// An external sender starting a task gets the launch dialog, like an agent does.
 	const asSender = readSenderFlag(args, "as-sender", context);
 	const taskId = resolveTaskId(args, context);
@@ -975,6 +994,9 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	const ifStatus = args.flags["if-status"];
 	const ifStatusNot = args.flags["if-status-not"];
 	const codexStopHook = args.flags[CODEX_STOP_HOOK_FLAG.slice(2)] === "true";
+	if (json && (codexStopHook || newStatus === "completed" || newStatus === "cancelled" || newStatus === "todo")) {
+		exitUsage("--json applies to a plain move or a start; it cannot be combined with completed, cancelled, todo or the Codex stop hook.");
+	}
 
 	// `completed` is not a direct move — it asks the user for approval in the
 	// app and blocks until they answer (or the wait times out).
@@ -1041,10 +1063,19 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	// The server answered with an approval outcome, not a moved task: this move
 	// was an agent-initiated launch and went through the dialog.
 	if (isLaunchApprovalOutcome(resp.data)) {
+		if (json) {
+			process.stdout.write(`${JSON.stringify({ schemaVersion: 1, ...resp.data }, null, 2)}\n`);
+			if (!resp.data.approved) process.exit(CLI_EXIT_CODE_LAUNCH_DECLINED);
+			return;
+		}
 		return reportLaunchOutcome(resp.data, codexStopHook, Boolean(asSender));
 	}
 
 	const task = resp.data as Task;
+	if (json) {
+		process.stdout.write(`${JSON.stringify(taskMutationJson(task), null, 2)}\n`);
+		return;
+	}
 	if (codexStopHook) {
 		// Codex Stop hooks may require a JSON object even on success.
 		process.stdout.write(CODEX_STOP_HOOK_SUCCESS_JSON);

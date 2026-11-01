@@ -137,7 +137,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "create",
-				usage: 'dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] | dev3 task create --scratch --run [--agent <id> [--config <id>]]',
+				usage: 'dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] [--json] | dev3 task create --scratch --run [--agent <id> [--config <id>]]',
 				summary: "Create a task in To Do, or ask the user to start a scratch peer agent.",
 				details: [
 					"--title <text>        Task title (required).",
@@ -165,6 +165,8 @@ const COMMANDS: CommandHelp[] = [
 					"--epic <name|id>      Put the new task in this epic instead (overrides inheritance).",
 					"                      Unknown, ambiguous or archived epic: nothing is created, exit 44.",
 					"--no-epic             Create it in no epic even when the creating task has one.",
+					"--json                Print {schemaVersion, task:{id, seq, projectId, title, status, customColumnId,",
+					"                      priority, taskType, manualCompletion, draft}} instead of the sentence.",
 					"--scratch --run       Ask the user to start a throwaway peer agent — no title,",
 					"                      no prompt. Blocks up to 10 min on their approval in the",
 					"                      app; exit 10 if declined, 46 if it failed to prepare.",
@@ -179,7 +181,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "update",
-				usage: 'dev3 task update [<id>] [--title "..."] [--description "..." | --description -] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic]',
+				usage: 'dev3 task update [<id>] [--title "..."] [--description "..." | --description -] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] [--json]',
 				summary: "Update a task's title, description, priority, completion policy, type, or epic.",
 				details: [
 					"--title <text>        New title (cannot be empty).",
@@ -199,16 +201,22 @@ const COMMANDS: CommandHelp[] = [
 					"--epic <name|id>      Move this task into an existing epic (exit 44 if it names none or an archived one).",
 					"--no-epic             Take this task out of its epic. Neither flag touches its children.",
 					"--force               Overwrite a user-edited title (diagnostics only — avoid).",
+					"--json                Print the same {schemaVersion, task} as `task create --json`, plus",
+					"                      titlePreserved and roleDelivery. Not with --print-role.",
 				],
 			},
 			{
 				name: "move",
-				usage: "dev3 task move [<id>] --status <status> [--agent <id> [--config <id>]] [--as-sender <id>]",
+				usage: "dev3 task move [<id>] --status <status> [--agent <id> [--config <id>]] [--as-sender <id>] [--json]",
 				summary: "Change a task's status / column.",
 				details: [
 					"--status <status>        Target status or custom column id (required).",
 					"--if-status <status>     Only move if the current status matches.",
 					"--if-status-not <s>      Only move if the current status differs.",
+					"--json                   A plain move prints {schemaVersion, task} as `task create --json`;",
+					"                         a start that asked the user prints {schemaVersion, approved, seq,",
+					"                         title, launched} (exit 10 when declined). Not with completed,",
+					"                         cancelled or todo.",
 					"--tolerate-app-offline   Exit 0 (with a stderr warning) when the app is not",
 					"                         running, instead of exit 2. For generated hooks.",
 					"Built-in: todo, in-progress, user-questions, review-by-ai, review-by-user.",
