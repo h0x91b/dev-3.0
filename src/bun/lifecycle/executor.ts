@@ -127,6 +127,7 @@ function runtimeState(runtime: LifecycleRuntime): TaskRuntimeState {
 			runtime: "preparing",
 			stage: runtime.stage,
 			runId: runtime.runId,
+			ownerPid: process.pid,
 			updatedAt: Date.now(),
 		};
 	}
@@ -135,6 +136,7 @@ function runtimeState(runtime: LifecycleRuntime): TaskRuntimeState {
 			runtime: "tearing-down",
 			stage: runtime.targetStatus,
 			runId: runtime.runId,
+			ownerPid: process.pid,
 			updatedAt: Date.now(),
 		};
 	}
@@ -1294,6 +1296,7 @@ export async function executeLifecycleEffect(
 					runtime: "preparing",
 					stage: effect.stage,
 					runId: effect.runId,
+					ownerPid: process.pid,
 					updatedAt: Date.now(),
 				},
 			};

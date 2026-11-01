@@ -179,6 +179,8 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	_resetAgentRequestsForTests();
 	vi.mocked(deliverLaunchHandoff).mockResolvedValue(true);
+	// The launch answers once the child's preparation settles; by default it started.
+	vi.mocked(data.getTask).mockImplementation(async (_project, id) => makeTask({ id, status: "in-progress", runtimeState: { runtime: "running", updatedAt: 1 } }));
 });
 
 describe("task.move — agent-initiated launch approval", () => {
@@ -285,6 +287,37 @@ describe("task.move — agent-initiated launch approval", () => {
 			// No --handoff-file: the child still gets dev3's own default note.
 			launcherNote: null,
 		}));
+	});
+
+	// 2026-11-01 incident: the launch answered "started" at dispatch, while another
+	// dev3 instance was deleting the child's worktree. The reply must carry how the
+	// preparation actually ended.
+	it("reports a preparation that failed after approval instead of a start", async () => {
+		const target = makeTask();
+		setupBoard(target);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([{ ...target, status: "in-progress" as const }]);
+		const preparing = makeTask({ status: "in-progress", preparing: true, runtimeState: { runtime: "preparing", stage: "creating-worktree", runId: "r1", updatedAt: 1 } });
+		const failed = makeTask({ status: "todo", preparationError: "Preparation interrupted by app restart", runtimeState: { runtime: "idle", updatedAt: 2 } });
+		vi.mocked(data.getTask).mockResolvedValueOnce(preparing).mockResolvedValue(failed);
+
+		const respPromise = handleRequest(moveRequest({
+			taskId: TARGET_ID,
+			newStatus: "in-progress",
+			projectId: "proj-1",
+			sourceTaskId: REQUESTER_ID,
+		}));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		const [, payload] = pushFn.mock.calls[0] as [string, Record<string, unknown>];
+		resolveAgentRequest(payload.requestId as string, { approved: true });
+
+		const resp = await respPromise;
+		expect((resp.data as { launched: Array<{ preparation: unknown }> }).launched[0]!.preparation).toEqual({
+			state: "failed",
+			error: "Preparation interrupted by app restart",
+		});
+		expect(data.getTask).toHaveBeenCalledTimes(2);
 	});
 
 	it("lists the pending launch in approvals.list with the dialog's context and who asked", async () => {

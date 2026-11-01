@@ -53,6 +53,11 @@ export interface TaskRuntimeState {
 	runtime: "idle" | "preparing" | "running" | "tearing-down";
 	stage?: string;
 	runId?: string;
+	/**
+	 * Pid of the dev3 instance running this `preparing`/`tearing-down` run. Several
+	 * instances share `~/.dev3.0`; boot recovery must leave a live peer's run alone.
+	 */
+	ownerPid?: number;
 	updatedAt: number;
 }
 

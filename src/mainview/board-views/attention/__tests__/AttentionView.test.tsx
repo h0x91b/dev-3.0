@@ -25,6 +25,9 @@ vi.mock("../../../rpc", () => ({
 	},
 }));
 
+// The host paints Kanban until the saved view state lands; its own suites cover it.
+vi.mock("../../kanban/KanbanView", () => ({ KanbanView: () => <div data-testid="kanban" /> }));
+
 const project: Project = {
 	id: "p1", name: "Test Project", path: "/tmp/test", setupScript: "", devScript: "", cleanupScript: "",
 	defaultBaseBranch: "main", createdAt: "2025-01-01T00:00:00Z",

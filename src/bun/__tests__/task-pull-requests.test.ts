@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { earlierPullRequests, recordPullRequestSighting, savedPrMergedFromBranch } from "../../shared/task-pull-requests";
+import { allPullRequests, earlierPullRequests, recordPullRequestSighting, savedPrMergedFromBranch, trustedPrStatusCache } from "../../shared/task-pull-requests";
 import type { Task, TaskPRStatusCache } from "../../shared/types";
 
 const SEEN = "2026-09-29T10:00:00.000Z";
@@ -122,5 +122,28 @@ describe("savedPrMergedFromBranch", () => {
 		expect(savedPrMergedFromBranch(task({ prNumber: 8 }), "feat/a")).toBe(false);
 		expect(savedPrMergedFromBranch(task({ prNumber: null }), "feat/a")).toBe(false);
 		expect(savedPrMergedFromBranch(task({ prStatusCache: null }), "feat/a")).toBe(false);
+	});
+});
+
+describe("stale OPEN on a finished task", () => {
+	const openCache = { ...mergedCache(7, "PR"), mergeState: { mergeable: null, status: null, state: "OPEN" } };
+
+	it("the status cache reads unknown once the task is completed or cancelled", () => {
+		expect(trustedPrStatusCache({ status: "completed", prStatusCache: openCache })?.mergeState).toBeNull();
+		expect(trustedPrStatusCache({ status: "cancelled", prStatusCache: openCache })?.mergeState).toBeNull();
+		expect(trustedPrStatusCache({ status: "review-by-user", prStatusCache: openCache })).toBe(openCache);
+		const merged = mergedCache(7, "PR");
+		expect(trustedPrStatusCache({ status: "completed", prStatusCache: merged })).toBe(merged);
+	});
+
+	it("the ledger and its legacy fallback do the same", () => {
+		const ledgerTask = { status: "completed" as const, prNumber: 7, prUrl: "u7", prStatusCache: null, pullRequests: [
+			{ number: 5, url: "u5", state: "OPEN", firstSeenAt: SEEN },
+			{ number: 7, url: "u7", state: "OPEN", firstSeenAt: LATER },
+		] };
+		expect(allPullRequests(ledgerTask).map((entry) => entry.state)).toEqual([null, null]);
+		expect(earlierPullRequests(ledgerTask).map((entry) => entry.state)).toEqual([null]);
+		const legacy = { status: "completed" as const, prNumber: 7, prUrl: "u7", prStatusCache: openCache, pullRequests: null };
+		expect(allPullRequests(legacy)[0].state).toBeNull();
 	});
 });

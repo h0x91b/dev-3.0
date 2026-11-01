@@ -20,6 +20,7 @@ import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { useT } from "../i18n";
+import { createProjectLabel } from "../utils/createProjectLabel";
 import HelpSpot from "./HelpSpot";
 import { getStatusLabel } from "../utils/statusLabel";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
@@ -639,8 +640,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 							{pickerOpen && pickerAnchorRef.current && (
 								<LabelPicker
 									project={project}
-									dispatch={dispatch}
-									taskId={task.id}
+									onCreateLabel={(name) => createProjectLabel({ project, name, dispatch, t, taskId: task.id })}
 									onClose={() => setPickerOpen(false)}
 									anchorEl={pickerAnchorRef.current}
 									selectedIds={task.labelIds ?? []}
