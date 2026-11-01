@@ -2,6 +2,7 @@ import type { CodingAgent, Label, Task, TaskStatus, TaskType } from "../../share
 import { AGENT_TIME_STATUSES, TASK_TYPES, isTaskDisconnected } from "../../shared/types";
 import type { FacetKey, TaskQueryContext } from "./taskSearch";
 import { getTaskAgentMeta } from "./taskAgentMeta";
+import { isTrustedStoredPrState } from "../../shared/task-pull-requests";
 import { taskActivityTime } from "../components/sortTasks";
 
 /**
@@ -66,13 +67,14 @@ export function isTaskStalled(task: Task, nowMs: number): boolean {
 /**
  * GitHub state of the task's current PR, lowercased: the live state when the
  * surface tracks one, else the persisted status cache or PR ledger for that number.
+ * A finished task's OPEN is stale (nothing polls it any more), so it reads as unknown.
  */
 export function taskPrState(task: Task, prNumber: number | null, liveState: string | null | undefined): string | null {
 	if (prNumber == null) return null;
-	if (liveState) return liveState.toLowerCase();
 	const cache = task.prStatusCache?.number === prNumber ? task.prStatusCache.mergeState?.state : null;
 	const ledger = task.pullRequests?.find((entry) => entry.number === prNumber)?.state;
-	return (cache ?? ledger)?.toLowerCase() ?? null;
+	const state = [liveState, cache, ledger].find((candidate) => isTrustedStoredPrState(task, candidate));
+	return state?.toLowerCase() ?? null;
 }
 
 export interface FacetResolver {
