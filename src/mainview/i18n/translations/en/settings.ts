@@ -1075,7 +1075,7 @@ const settings = {
 	"extensions.installedTitle": "Installed extensions",
 	"extensions.installedDesc": "Board views from you and third parties. They run with the same rights as dev3.",
 	"extensions.empty": "No extensions installed.",
-	"extensions.authoringHint": "To build one, see docs/extensions.md in the dev3 repository.",
+	"extensions.emptyHint": "To build one, see docs/extensions.md in the dev3 repository.",
 	"extensions.install": "Install from folder…",
 	"extensions.pickTitle": "Choose an extension folder",
 	"extensions.remoteReadOnly": "Install, trust and enable extensions in the desktop app.",

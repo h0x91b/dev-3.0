@@ -180,7 +180,7 @@ export default function ExtensionsSettingsSection({ t }: { t: TFunction }) {
 					<div className="space-y-3">
 						{extensions.length === 0 ? (
 							<p className="text-fg-3 text-sm" data-testid="extensions-empty">
-								{t("extensions.empty")} {t("extensions.authoringHint")}
+								{t("extensions.empty")} {t("extensions.emptyHint")}
 							</p>
 						) : (
 							<ul className="divide-y divide-edge/50 rounded-xl border border-edge" data-testid="installed-extensions">

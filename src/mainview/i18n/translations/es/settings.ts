@@ -1076,7 +1076,7 @@ const settings = {
 	"extensions.installedTitle": "Extensiones instaladas",
 	"extensions.installedDesc": "Vistas del tablero tuyas y de terceros. Se ejecutan con los mismos permisos que dev3.",
 	"extensions.empty": "No hay extensiones instaladas.",
-	"extensions.authoringHint": "Para crear una, consulta docs/extensions.md en el repositorio de dev3.",
+	"extensions.emptyHint": "Para crear una, consulta docs/extensions.md en el repositorio de dev3.",
 	"extensions.install": "Instalar desde carpeta…",
 	"extensions.pickTitle": "Elige la carpeta de la extensión",
 	"extensions.remoteReadOnly": "Instala, confía y activa extensiones en la app de escritorio.",

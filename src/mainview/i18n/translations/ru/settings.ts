@@ -1113,7 +1113,7 @@ const settings = {
 	"extensions.installedTitle": "Установленные расширения",
 	"extensions.installedDesc": "Виды доски от вас и сторонних авторов. Они работают с теми же правами, что и dev3.",
 	"extensions.empty": "Расширения не установлены.",
-	"extensions.authoringHint": "Как написать своё — см. docs/extensions.md в репозитории dev3.",
+	"extensions.emptyHint": "Как написать своё — см. docs/extensions.md в репозитории dev3.",
 	"extensions.install": "Установить из папки…",
 	"extensions.pickTitle": "Выберите папку расширения",
 	"extensions.remoteReadOnly": "Устанавливать, доверять и включать расширения можно в десктопном приложении.",

@@ -28,8 +28,16 @@ interface RuntimeSnapshot {
 	loads: Readonly<Record<string, ExtensionLoadState>>;
 }
 
+// A blob: URL module resolves its bare imports through the document's import map.
+let importModule: (url: string) => Promise<unknown> = (url) => import(/* @vite-ignore */ url);
+
+/** happy-dom cannot evaluate a blob: module, so loader tests hand in the module themselves. */
+export function setExtensionImporterForTests(importer: (url: string) => Promise<unknown>): void {
+	importModule = importer;
+}
+
 const builtinFibers = new Map<string, Fiber>();
-const extensionFibers = new Map<string, { fiber: Fiber; declared: Set<string> }>();
+const extensionFibers = new Map<string, { fiber: Fiber; declared: ReadonlySet<string> }>();
 let snapshot: RuntimeSnapshot = { overview: null, loads: {} };
 const listeners = new Set<() => void>();
 let guardInstalled = false;
@@ -120,16 +128,18 @@ function installRegistryGuard(): void {
 		console.error(`[extensions] ${owner} ${error}`);
 		refusals.set(owner, error);
 	});
-	registry.subscribe(() => {
-		for (const view of registry.list()) {
-			const owner = owningExtension(view.ctx);
-			if (!owner) continue;
-			const entry = extensionFibers.get(owner);
-			if (entry && !entry.declared.has(view.def.id)) {
-				unloadExtension(owner, { state: "failed", error: `registered an undeclared board view "${view.def.id}"` });
-			}
+	registry.subscribe(enforceDeclaredViews);
+}
+
+function enforceDeclaredViews(): void {
+	for (const view of getBoardViewRegistry().list()) {
+		const owner = owningExtension(view.ctx);
+		if (!owner) continue;
+		const entry = extensionFibers.get(owner);
+		if (entry && !entry.declared.has(view.def.id)) {
+			unloadExtension(owner, { state: "failed", error: `registered an undeclared board view "${view.def.id}"` });
 		}
-	});
+	}
 }
 
 function unloadExtension(id: string, outcome?: ExtensionLoadState): void {
@@ -156,17 +166,22 @@ async function loadExtension(ext: InstalledExtension): Promise<void> {
 	try {
 		const source = await api.request.getExtensionSource({ id: ext.id });
 		url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
-		const mod = (await import(/* @vite-ignore */ url)) as { default?: unknown };
+		const mod = (await importModule(url)) as { default?: unknown };
 		if (!isPlugin(mod.default)) throw new Error("index.js must default-export a Cordis plugin");
 		loadingExtension = ext.id;
 		refusals.delete(ext.id);
 		const fiber = getBoardRoot().plugin(mod.default as Parameters<Context["plugin"]>[0]);
 		extensionFibers.set(ext.id, { fiber, declared });
-		await fiber;
+		// `plugin()` hands back a thenable wrapper; the fiber a plugin's context points at is
+		// what it resolves to, so ownership checks can only start once it has.
+		const started = await fiber;
+		const entry = extensionFibers.get(ext.id);
+		if (entry) entry.fiber = started;
+		enforceDeclaredViews();
 		if (!extensionFibers.has(ext.id)) return; // unloaded by the guard while starting
 		const refusal = refusals.get(ext.id);
 		if (refusal) throw new Error(refusal);
-		if (fiber.state === FIBER_FAILED) throw new Error("its plugin failed to start (see the console)");
+		if (started.state === FIBER_FAILED) throw new Error("its plugin failed to start (see the console)");
 		publish({ loads: { ...snapshot.loads, [ext.id]: { state: "loaded" } } });
 	} catch (err) {
 		console.error(`[extensions] ${ext.id} failed to load:`, err);
