@@ -1,7 +1,7 @@
 import type { Epic, EpicMember, EpicsFile, Task } from "../../shared/types";
 import * as data from "../data";
 import * as epicsData from "../epics-data";
-import { loadEpicMembers, setTaskEpic as writeTaskEpic } from "../task-epics";
+import { assertEpicAttachable, loadEpicMembers, setTaskEpic as writeTaskEpic } from "../task-epics";
 import { getPushMessage } from "./shared";
 
 /** Broadcast the fresh registry after any mutation so every window stays in sync. */
@@ -33,11 +33,13 @@ async function updateEpic(params: { epicId: string; name?: string; color?: strin
 
 /** Set or clear one task's epic. Archived epics may stay but never be newly picked. */
 async function setTaskEpic(params: { projectId: string; taskId: string; epicId: string | null }): Promise<Task> {
+	const project = await data.getProject(params.projectId);
 	if (params.epicId) {
 		const epic = await epicsData.getEpicById(params.epicId);
 		if (!epic) throw new Error(`Epic not found: ${params.epicId}`);
+		const current = (await data.loadTasks(project)).find((t) => t.id === params.taskId) ?? null;
+		assertEpicAttachable(epic, current);
 	}
-	const project = await data.getProject(params.projectId);
 	const task = await writeTaskEpic(project, params.taskId, params.epicId);
 	getPushMessage()?.("taskUpdated", { projectId: project.id, task });
 	return task;

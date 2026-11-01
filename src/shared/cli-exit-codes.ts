@@ -310,7 +310,7 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		constant: "CLI_EXIT_CODE_EPIC_REF_INVALID",
 		code: CLI_EXIT_CODE_EPIC_REF_INVALID,
 		description:
-			"`--epic <name|id>` (on `task create`, `task update`, `tasks list`) or the epic named by `dev3 epic update|archive|unarchive` matches no epic, matches more than one, or — on `task create` — names an archived epic. NOTHING was created or changed, and no epic is ever created from a typo. Run `dev3 epic list` for the valid names and ids. Distinct from exit 1 so an agent can tell a wrong epic name from a failed command.",
+			"`--epic <name|id>` (on `task create`, `task update`, `tasks list`) or the epic named by `dev3 epic update|archive|unarchive` matches no epic, matches more than one, or — on `task create` and `task update` — names an archived epic the task is not already in. NOTHING was created or changed, and no epic is ever created from a typo. Run `dev3 epic list` for the valid names and ids. Distinct from exit 1 so an agent can tell a wrong epic name from a failed command.",
 	},
 	{
 		constant: "CLI_EXIT_CODE_EPIC_CREATE_FORBIDDEN",

@@ -2104,6 +2104,19 @@ describe("task.create", () => {
 			expect(bad.error).toMatch(/^epic-ref-invalid: /);
 		});
 
+		it("task.update refuses to put a task into an archived epic, but a member may keep it", async () => {
+			const parent = wire(undefined);
+			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...parent, ...updates }));
+			const joined = await handleRequest(makeRequest("task.update", { taskId: parent.id, epic: "Old effort" }));
+			expect(joined.error).toMatch(/^epic-ref-invalid: .*archived/);
+			expect(data.updateTask).not.toHaveBeenCalled();
+
+			const member = wire(closed.id);
+			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...member, ...updates }));
+			const kept = await handleRequest(makeRequest("task.update", { taskId: member.id, epic: "Old effort" }));
+			expect(kept.ok).toBe(true);
+		});
+
 		it("epic.tasks lists an epic's tasks from every project; task.show names the epic", async () => {
 			wire(payments.id);
 			const mine = makeTask({ id: "mine-0000-1111", seq: 3, status: "completed", epicId: payments.id });

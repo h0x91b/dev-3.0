@@ -1,4 +1,4 @@
-import type { EpicMember, Project, Task } from "../shared/types";
+import type { Epic, EpicMember, Project, Task } from "../shared/types";
 import { EPIC_REF_INVALID_PREFIX } from "../shared/types";
 import * as data from "./data";
 import { findEpic, getEpicById } from "./epics-data";
@@ -30,13 +30,20 @@ export async function loadEpicMembers(epicId?: string): Promise<EpicMember[]> {
  * otherwise the creator task's epic unless it is archived. An unresolvable
  * creator means no epic and never fails the create.
  */
+/**
+ * An archived epic takes no new member; a task already in it may keep it.
+ * Throws the CLI-coded error otherwise.
+ */
+export function assertEpicAttachable(epic: Epic, task: Pick<Task, "epicId"> | null): void {
+	if (!epic.archived || task?.epicId === epic.id) return;
+	throw new Error(`${EPIC_REF_INVALID_PREFIX}Epic "${epic.name}" is archived; tasks cannot join it. Unarchive it first with "dev3 epic unarchive ${epic.id.slice(0, 8)}".`);
+}
+
 export async function epicForNewTask(params: { epic?: unknown; noEpic?: unknown; creator: Task | null }): Promise<string | undefined> {
 	if (params.noEpic === true) return undefined;
 	if (typeof params.epic === "string" && params.epic.trim()) {
 		const epic = await findEpic(params.epic);
-		if (epic.archived) {
-			throw new Error(`${EPIC_REF_INVALID_PREFIX}Epic "${epic.name}" is archived; new tasks cannot join it. Unarchive it first with "dev3 epic unarchive ${epic.id.slice(0, 8)}".`);
-		}
+		assertEpicAttachable(epic, null);
 		return epic.id;
 	}
 	const inherited = params.creator?.epicId;

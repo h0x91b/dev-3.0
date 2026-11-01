@@ -15,7 +15,7 @@ import { loadSettings } from "../settings";
 import { syncTaskBranchName } from "../task-branch-sync";
 import { taskPeek } from "../task-peek";
 import { loadTaskChildren } from "../task-lineage";
-import { epicForNewTask, setTaskEpic } from "../task-epics";
+import { assertEpicAttachable, epicForNewTask, setTaskEpic } from "../task-epics";
 import { findEpic } from "../epics-data";
 import { readTaskTerminalBackendState, switchTaskTerminalBackend } from "../task-terminal-backend-switch";
 import { approvalStatusOf, launchSuggestionRequested, launcherHandoffNote, requestAgentLaunchApproval, requestDestructiveApproval, resolveLaunchSuggestion } from "./approvals";
@@ -425,7 +425,11 @@ export const taskHandlers: Record<string, Handler> = {
 		assertEpicFlagsExclusive(params);
 		let epicChange: { epicId: string | null } | undefined;
 		if (params.noEpic === true) epicChange = { epicId: null };
-		else if (typeof params.epic === "string") epicChange = { epicId: (await findEpic(params.epic)).id };
+		else if (typeof params.epic === "string") {
+			const epic = await findEpic(params.epic);
+			assertEpicAttachable(epic, task);
+			epicChange = { epicId: epic.id };
+		}
 		if (params.manualCompletion !== undefined) {
 			if (typeof params.manualCompletion !== "boolean") {
 				throw new Error("manualCompletion must be a boolean");

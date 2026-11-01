@@ -196,7 +196,7 @@ const COMMANDS: CommandHelp[] = [
 					"                      under a 'Brief source:' line (project, app-wide or built-in)",
 					"                      instead of typing it into your own pane, and print it again on a",
 					"                      repeat that changes nothing. This is what /dev3-coordinator runs.",
-					"--epic <name|id>      Move this task into an existing epic (exit 44 if it names none).",
+					"--epic <name|id>      Move this task into an existing epic (exit 44 if it names none or an archived one).",
 					"--no-epic             Take this task out of its epic. Neither flag touches its children.",
 					"--force               Overwrite a user-edited title (diagnostics only — avoid).",
 				],
