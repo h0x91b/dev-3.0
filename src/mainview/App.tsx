@@ -94,6 +94,7 @@ import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
 import TaskSwitcherOverlay from "./components/TaskSwitcherOverlay";
 import GoToPalette, { type GoToMode } from "./components/GoToPalette";
 import CommandPaletteModal from "./components/CommandPaletteModal";
+import { isBoardMounted, runBoardViewCommand } from "./board-views/view-commands";
 import CoordinatorFinderModal from "./components/CoordinatorFinderModal";
 import OpenInPickerModal from "./components/OpenInPickerModal";
 import TaskImageViewer from "./components/TaskImageViewer";
@@ -1162,6 +1163,23 @@ function App() {
 		[goToCurrentProject],
 	);
 
+	// `v`-prefix board-view sequence: `v 1..9` picks the Nth view, `v v` the previous
+	// one. Armed only while a board is on screen, so a stray `v` elsewhere stays inert.
+	const viewChordRef = useRef(false);
+	const viewChordTimerRef = useRef<number | null>(null);
+	const clearViewChord = useCallback(() => {
+		viewChordRef.current = false;
+		if (viewChordTimerRef.current !== null) {
+			window.clearTimeout(viewChordTimerRef.current);
+			viewChordTimerRef.current = null;
+		}
+	}, []);
+	const armViewChord = useCallback(() => {
+		viewChordRef.current = true;
+		if (viewChordTimerRef.current !== null) window.clearTimeout(viewChordTimerRef.current);
+		viewChordTimerRef.current = window.setTimeout(clearViewChord, 1500);
+	}, [clearViewChord]);
+
 	// Option+Tab (project) / Option+Shift+Tab (global) task switcher.
 	const switcher = useTaskSwitcher({
 		projectTasks: state.currentProjectTasks,
@@ -1383,6 +1401,15 @@ function App() {
 				const n = digitFromCode(e.code);
 				if (n !== null) goToProjectIndex(n, mode.view);
 				else goToCurrentProject(mode.view);
+				return;
+			}
+			if (viewChordRef.current && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !isTypingContext()) {
+				clearViewChord();
+				const n = digitFromCode(e.code);
+				if (n === null && e.code !== "KeyV") return; // anything else cancels
+				e.preventDefault();
+				e.stopPropagation();
+				runBoardViewCommand(n === null ? { kind: "previous" } : { kind: "nth", n });
 				return;
 			}
 			// In browser remote mode the native menu is gone and the browser claims
@@ -1625,10 +1652,14 @@ function App() {
 					e.preventDefault();
 					e.stopPropagation();
 					armGoToVerb();
+				} else if (e.code === "KeyV" && isBoardMounted()) {
+					e.preventDefault();
+					e.stopPropagation();
+					armViewChord();
 				}
 			}
 		},
-		[armGoToIndex, armGoToVerb, clearGoTo, createTaskProjectId, cycleVariant, dispatch, goToCurrentProject, goToProjectIndex, handleMenuBarAction, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, openInCurrent, openQuickShell, showAddProjectModal, showQuitDialog, state.projects, state.route, toggleTerminalImmersive],
+		[armGoToIndex, armGoToVerb, armViewChord, clearGoTo, clearViewChord, createTaskProjectId, cycleVariant, dispatch, goToCurrentProject, goToProjectIndex, handleMenuBarAction, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, openInCurrent, openQuickShell, showAddProjectModal, showQuitDialog, state.projects, state.route, toggleTerminalImmersive],
 		{ capture: true },
 	);
 

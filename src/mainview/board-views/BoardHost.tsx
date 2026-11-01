@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import type { DevServerSummary, GlobalSettings, PortInfo, Project, ResourceUsage, Space, Task, TaskStatus } from "../../shared/types";
 import { getBoardColumns, laneKey } from "../../shared/types";
 import { KANBAN_VIEW_ID, type BoardFormFactor, type BoardRef } from "../../shared/board-view-state";
-import { getTaskOpenMode, type AppAction, type Route } from "../state";
+import { getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type AppAction, type OpenSettingsSectionDetail, type Route } from "../state";
 import { api } from "../rpc";
 import { trackEvent } from "../analytics";
 import { boardViewTelemetryId } from "../../shared/extensions";
@@ -29,6 +29,9 @@ import { useBoardViewState } from "./useBoardViewState";
 import { useBoardActions } from "./useBoardActions";
 import { BoardViewErrorBoundary, BoardViewOptionsButton, BoardViewSlot, BoardViewSwitcher } from "./BoardViewChrome";
 import { KanbanView } from "./kanban";
+import { flushPendingBoardViewCommand, registerBoardViewCommandHandler, type BoardViewCommand } from "./view-commands";
+import type { RegisteredBoardView } from "./registry";
+import { toast } from "../toast";
 
 export interface BoardHostProps {
 	/** The board's anchor project: the subject of a project board, the zoom-out origin of a space board. */
@@ -80,6 +83,49 @@ function useBoardPreferences(): BoardPreferences {
 function subscribeHiddenControls(listener: () => void): () => void {
 	window.addEventListener(HIDDEN_CONTROLS_CHANGED_EVENT, listener);
 	return () => window.removeEventListener(HIDDEN_CONTROLS_CHANGED_EVENT, listener);
+}
+
+// The view each board showed before its current one, for `v v`. Session memory, not board state.
+const previousViews = new Map<string, string>();
+
+/** Answers the `v` chord, the View → Board View menu and the palette for the board on screen. */
+function useBoardViewCommands(boardKey: string, offered: readonly RegisteredBoardView[], activeId: string | undefined, pick: (id: string) => void) {
+	const t = useT();
+	const lastActive = useRef<{ boardKey: string; id: string } | null>(null);
+	useEffect(() => {
+		if (!activeId) return;
+		const last = lastActive.current;
+		if (last && last.boardKey === boardKey && last.id !== activeId) previousViews.set(boardKey, last.id);
+		lastActive.current = { boardKey, id: activeId };
+	}, [boardKey, activeId]);
+
+	const latest = useRef({ boardKey, offered, activeId, pick, t });
+	latest.current = { boardKey, offered, activeId, pick, t };
+	useEffect(() => registerBoardViewCommandHandler((command: BoardViewCommand, queued: boolean) => {
+		const { boardKey: key, offered: views, activeId: current, pick: choose, t: translate } = latest.current;
+		const isOffered = (id: string | undefined) => !!id && views.some((view) => view.def.id === id);
+		let target: string | undefined;
+		if (command.kind === "pick") {
+			if (!isOffered(command.viewId)) {
+				if (queued) return false;
+				toast.info(translate("boardView.unavailable"));
+				return true;
+			}
+			target = command.viewId;
+		} else if (command.kind === "nth") {
+			target = views[command.n - 1]?.def.id;
+		} else {
+			target = previousViews.get(key);
+			if (!isOffered(target)) return true;
+		}
+		if (target && target !== current) choose(target);
+		return true;
+	}), []);
+	useEffect(flushPendingBoardViewCommand, [offered]);
+}
+
+export function resetPreviousBoardViewsForTests(): void {
+	previousViews.clear();
 }
 
 /**
@@ -266,9 +312,13 @@ function BoardHost(props: BoardHostProps) {
 		// Telemetry rule 1: a built-in id or `third_party`, never an extension's id or name.
 		trackEvent("board_view_selected", { view: boardViewTelemetryId(viewId) });
 	}, [setViewType]);
+	useBoardViewCommands(`${boardRef.kind}:${boardRef.id}`, offered, active?.def.id, pickView);
+	const manageViews = useCallback(() => {
+		window.dispatchEvent(new CustomEvent<OpenSettingsSectionDetail>(OPEN_SETTINGS_SECTION_EVENT, { detail: "extensions" }));
+	}, []);
 	const showSwitcher = !simplified && offered.length > 1;
 	const switcher = showSwitcher && active ? (
-		<BoardViewSwitcher views={offered} activeId={active.def.id} onPick={pickView} />
+		<BoardViewSwitcher views={offered} activeId={active.def.id} onPick={pickView} onManage={manageViews} />
 	) : null;
 	const options = active?.def.Options ? <BoardViewOptionsButton view={active} /> : null;
 

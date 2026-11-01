@@ -29,6 +29,7 @@ const keymap = {
 	"keymap.shortcut.taskSwitcherGlobal": "Циклический выбор активных задач (все проекты)",
 	"keymap.shortcut.taskHints": "Переход к задаче или проекту по подсказке",
 	"keymap.shortcut.goTo": "Перейти к… (D дашборд · P проект · T задачи · S настройки · цифра = проект N; P/T + цифра = доска/задачи проекта N)",
+	"keymap.shortcut.boardView": "Вид доски (цифра = N-й вид · V = предыдущий вид)",
 	"keymap.shortcut.zoomOutToSpace": "Выйти на доску пространства",
 	"keymap.shortcut.focusSearch": "Фокус в поиск",
 	"keymap.shortcut.escape": "Закрыть диалог / шаг назад (кроме открытой задачи — там его получает агент)",

@@ -44,7 +44,11 @@ const UX_DIR = fileURLToPath(new URL("../../../docs/ux", import.meta.url));
  * file is §10 rows whose why exists nowhere else.
  */
 const BUDGET_KB: Record<string, number> = {
-	"PRODUCT_UX_BIBLE.md": 134,
+	"PRODUCT_UX_BIBLE.md": 137,
+	// 134 → 137 for board views (spec D25): §5.11 is a new surface family — the host, its
+	// switcher/options chrome, four built-in views with narrow forms, and the not-a-destination
+	// rule — plus its §5/§10/§12.3 rows. The stale `Proposed` board-filters row was compacted
+	// into the observed one first; the section itself is one line per rule.
 	// 133 → 134 for board-view extensions (spec D25): the §3 `Extension` object row — a new object
 	// whose trust rule (danger consent, desktop-only install, remote may only switch all off) has
 	// no other home in the file — plus Settings growing to eleven categories.
@@ -137,7 +141,9 @@ const BUDGET_KB: Record<string, number> = {
 	// stopped-session warning. §5.9 is at its floor — every sentence in it is one distinct rule
 	// stated once, and the bible has EIGHT bytes of slack. The next traffic feature needs its
 	// own compaction pass before it writes a word here.
-	"ux-architecture.yaml": 122,
+	"ux-architecture.yaml": 125,
+	// 122 → 125 for board views (spec D25): `board_view_host` and `board_view_table/_tree/_attention`
+	// surfaces, their narrow rows, and the `board-view-is-not-a-destination` placement rule.
 	// 121 → 122 for board-view extensions (spec D25): the new `objects.extension` entry.
 	// 120 → 121 for `surfaces.context_menu.task_menu` plus `row_context_menu` in
 	// `surfaces.sidebar.allowed`: the row context menu the §10 budget row has named as the
@@ -153,7 +159,8 @@ const BUDGET_KB: Record<string, number> = {
 	// hide-list + never-hides list for the new Simplify preference. Compacted first
 	// (dropped one duplicated evidence line, shortened every string value) but `main`
 	// had ~50 bytes of headroom on each file before this landed. Status: Proposed.
-	"UX_DECISIONS.md": 84,
+	// 84 → 85: the board-views pointer (bible §5.11), already the one-line form.
+	"UX_DECISIONS.md": 85,
 	// 82 → 83: two follow-up log entries the same day widened `simplify_mode`'s hide-list
 	// and swapped spawn-extra-agent back for the Setup Dev Server prompt. Each entry is
 	// already the compact one-line-rule form; `main` had ~90 bytes of headroom for both.
@@ -252,7 +259,8 @@ const BUDGET_KB: Record<string, number> = {
  * backstop against a fourth file appearing. Per-file caps are deliberately untouched: they are what
  * keeps one document from bloating, and lowering one is still always welcome.
  */
-const TOTAL_BUDGET_KB = 340;
+// 340 → 347: the board-views raises above (3 + 3 + 1 KB), nothing else.
+const TOTAL_BUDGET_KB = 347;
 
 /**
  * A byte allowance on top of one KB budget, and the only one there is.

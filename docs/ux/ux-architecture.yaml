@@ -255,11 +255,33 @@ ux_architecture:
         dropdown_length: "unbounded — it is the overflow/expert surface"
       status: "observed"
       evidence: ["src/mainview/components/AppMenuBar.tsx", "src/shared/application-menu.ts", "src/mainview/menuRouter.ts (BROWSER_HANDLED_ACTIONS)", "src/mainview/App.tsx (browser-only mount)"]
+    board_view_host:
+      purpose: "A project/space board: shared filter row + the active board view + ctx.board (bible §5.11)."
+      allowed: ["view_switch", "manage_views_to_settings_extensions", "view_options", "shared_filter", "lineage_filter_notice"]
+      forbidden: ["global_destination", "route_state", "back_forward_history"]
+      entry_points: ["filter-row Select (hidden with 1 view / Simplified Mode)", "V 1–9 / V V chord", "command_palette Board view: X", "application_menu.View > Board View (built-ins)"]
+      status: "observed"
+      evidence: ["board-views/BoardHost.tsx", "board-views/BoardViewChrome.tsx", "board-views/view-commands.ts"]
     kanban_board:
-      purpose: "Primary work surface: columns by status, task cards, drag-to-move, per-column add."
-      allowed: ["object_card", "create_in_column", "drag_move", "column_config", "label_filter"]
+      purpose: "The builtin:kanban board view and the fallback for any failed view: columns by status, task cards, drag-to-move, per-column add."
+      allowed: ["object_card", "create_in_column", "drag_move", "column_config"]
       forbidden: ["durable_global_configuration"]
-      evidence: ["board-views/kanban/KanbanView.tsx", "board-views/kanban/KanbanColumn.tsx", "src/mainview/components/LabelFilterBar.tsx"]
+      evidence: ["board-views/kanban/KanbanView.tsx", "board-views/kanban/KanbanColumn.tsx"]
+    board_view_table:
+      purpose: "builtin:table — every board task as sortable virtualised rows."
+      allowed: ["header_sort", "inline_status_priority_labels", "context_menu", "open_task", "column_toggles_in_view_options"]
+      forbidden: ["bulk_actions", "durable_global_configuration"]
+      evidence: ["board-views/table/"]
+    board_view_tree:
+      purpose: "builtin:tree — lineage forest; variants one node, off-board parent a ghost root, collapsed by default."
+      allowed: ["expand_collapse", "open_task", "context_menu", "lineage_only_and_expand_all_in_view_options"]
+      forbidden: ["reparenting", "durable_global_configuration"]
+      evidence: ["board-views/tree/"]
+    board_view_attention:
+      purpose: "builtin:attention — buckets of named token queries; a task lands in the first match; capped rows."
+      allowed: ["open_task", "context_menu", "show_more", "bucket_editor_in_view_options"]
+      forbidden: ["durable_global_configuration"]
+      evidence: ["board-views/attention/"]
     task_card:
       purpose: "Compact object summary on the board with the most relevant per-task affordances."
       allowed: ["status_dot", "label_chip", "variant_dots", "open_action", "context_menu", "git_status_badge", "deferred_timer_chip", "native_backend_mark", "dev_server_control"]
@@ -757,6 +779,12 @@ ux_architecture:
       reject: ["task_card", "modal", "toolbar"]
       status: "observed"
       rationale: "Navigation should contain stable places, not one-off commands."
+    - id: "board-view-is-not-a-destination"
+      when: { feature_class: "view_mode", surface: "board_view_host" }
+      place_in: ["board_view_host filter row", "keyboard V chord", "command_palette", "application_menu.View > Board View"]
+      reject: ["Route / history", "global_header", "sidebar", "navigation"]
+      status: "observed"
+      rationale: "A view shows a place, it is not one: the choice is per-board state (wide/narrow slots), so it never moves Back/Forward."
     - id: "task-scoped-actions-in-inspector-or-menu"
       when: { feature_class: "object_action", scope: "single_task" }
       place_in: ["task_info_panel", "task_card.context_menu", "application_menu.Task"]
@@ -883,7 +911,10 @@ ux_architecture:
       mobile_orientation: { narrow: "portrait-only device guard — best-effort Screen Orientation API lock, with a blocking localized rotate prompt and inert app fallback when landscape cannot be locked", status: observed, evidence: "MobilePortraitGate.tsx, usePortraitOrientation.ts" }
       kanban_board: { narrow: "column carousel (one column/screen, swipe; vertical task scroll; collapsed cols excluded, empty kept)", status: observed, evidence: "MobileBoardCarousel.tsx, KanbanView.tsx useNarrowViewport(768), KanbanColumn fullWidth" }
       task_move_drag: { narrow: "drag impossible -> 'Move to <status>' bottom action sheet (long-press) on existing status path; completion reuses confirmTaskCompletion", status: proposed }
-      board_filters: { narrow: "bottom sheet behind a header funnel button (LabelFilterBar + search)", status: proposed }
+      board_filters: { narrow: "compact row: view Select + search inline, funnel → bottom sheet", status: observed }
+      board_view_table: { narrow: "virtualised card list", status: observed }
+      board_view_tree: { narrow: "outline, indent capped at 3 then a level marker", status: observed }
+      board_view_attention: { narrow: "stacked buckets", status: observed }
       terminal_panes: { narrow: "pane carousel — one pane at a time + axis-arbitrated horizontal swipe + a slim non-overlapping top dots strip + Arrow keys; backend-neutral via taskPaneState / taskPaneAction RPCs; native tasks page the same way; MobileWindowCarousel not rendered for native tasks", status: observed, evidence: "MobilePaneCarousel.tsx, TaskTerminal.tsx, task-panes.ts taskPaneState, decision 089" }
       terminal_windows: { desktop: "always: tabs replace tmux bar; agent first; output/bell dots; rename", narrow: "window switcher — a slim 'prev / named dropdown / next' bar ABOVE the pane bar; buttons + dropdown + Arrow-while-focused, NO swipe (terminal swipe is the pane carousel's); tmux tasks only (native tasks have no window concept); only at > 1 window; via tmuxWindowNavigate", status: observed, evidence: "MobileWindowCarousel.tsx, TaskTerminal.tsx, tmux-pty/tmux-control.ts tmuxWindowNavigate, decision 093" }
       terminal_input: { narrow: "touch input model (gate = !isElectrobun && isTouchDevice, NOT width — an input-model switch, tablets included): terminal tap never summons the OSK; a docked autogrow chat composer between the terminal and ExtraKeyBar owns text entry — Send = mode-2004-aware paste + Enter, Insert = paste only, expand state for long prompts, terminal tail stays visible; sticky '⌨ raw' toggle on ExtraKeyBar restores direct typing + select-to-copy/TUI mouse; chrome collapses on composer FOCUS (not visualViewport); covers TaskTerminal AND ProjectTerminal (Quick Shell); Android-first, iOS visualViewport pinning additive", status: proposed, evidence: "UX decision 2026-07-02" }

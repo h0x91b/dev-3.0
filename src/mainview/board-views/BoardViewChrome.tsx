@@ -13,17 +13,28 @@ export function useViewLabel(): (view: RegisteredBoardView) => string {
 	return (view) => (view.def.id.startsWith("builtin:") ? t(view.def.label as TranslationKey) : view.def.label);
 }
 
-/** "Kanban ▾" at the left end of the filter row (D13). The host decides whether it shows at all. */
-export function BoardViewSwitcher({ views, activeId, onPick }: { views: readonly RegisteredBoardView[]; activeId: string; onPick: (id: string) => void }) {
+const MANAGE_VIEWS = "__manage-views__";
+
+/** "Kanban ▾" at the left end of the filter row (D13), ending in "Manage views…". The host decides whether it shows at all. */
+export function BoardViewSwitcher({ views, activeId, onPick, onManage }: {
+	views: readonly RegisteredBoardView[];
+	activeId: string;
+	onPick: (id: string) => void;
+	onManage: () => void;
+}) {
 	const t = useT();
 	const labelOf = useViewLabel();
 	return (
 		<div className="flex-shrink-0" data-testid="board-view-switcher">
 			<Select
 				value={activeId}
-				options={views.map((view) => ({ value: view.def.id, label: labelOf(view) }))}
-				onChange={onPick}
+				options={[
+					...views.map((view) => ({ value: view.def.id, label: labelOf(view) })),
+					{ value: MANAGE_VIEWS, label: t("boardView.manage") },
+				]}
+				onChange={(value) => (value === MANAGE_VIEWS ? onManage() : onPick(value))}
 				ariaLabel={t("boardView.switcherAria")}
+				growList
 			/>
 		</div>
 	);

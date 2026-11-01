@@ -497,6 +497,8 @@ const kanban = {
 	"boardView.switcherAria": "Vista del tablero",
 	"boardView.optionsAria": "Opciones de vista",
 	"boardView.crashed": "Esta vista del tablero no se pudo cargar, así que el tablero se muestra como Kanban. Tu elección de vista se conserva.",
+	"boardView.unavailable": "Esa vista del tablero no está disponible aquí.",
+	"boardView.manage": "Gestionar vistas…",
 	"boardView.attention": "Atención",
 	"boardView.attention.bucket.needsYou": "Te necesitan",
 	"boardView.attention.bucket.ready": "Listas para empezar",

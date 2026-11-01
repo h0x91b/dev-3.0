@@ -498,6 +498,8 @@ const kanban = {
 	"boardView.switcherAria": "Board view",
 	"boardView.optionsAria": "View options",
 	"boardView.crashed": "This board view failed to load, so the board is shown as Kanban. Your view choice is kept.",
+	"boardView.unavailable": "That board view is not available on this board.",
+	"boardView.manage": "Manage views…",
 	"boardView.attention": "Attention",
 	"boardView.attention.bucket.needsYou": "Needs you",
 	"boardView.attention.bucket.ready": "Ready to start",

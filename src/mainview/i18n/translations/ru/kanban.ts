@@ -521,6 +521,8 @@ const kanban = {
 	"boardView.switcherAria": "Вид доски",
 	"boardView.optionsAria": "Настройки вида",
 	"boardView.crashed": "Этот вид доски не загрузился, поэтому доска показана как Канбан. Выбранный вид сохранён.",
+	"boardView.unavailable": "Этот вид доски здесь недоступен.",
+	"boardView.manage": "Управление видами…",
 	"boardView.attention": "Внимание",
 	"boardView.attention.bucket.needsYou": "Ждут вас",
 	"boardView.attention.bucket.ready": "Можно начинать",

@@ -15,6 +15,9 @@ import { resetBoardViewStateCacheForTests } from "../useBoardViewState";
 import { defaultBoardViewState, withViewType } from "../../../shared/board-view-state";
 import { _resetTaskLineageStoreForTest } from "../../hooks/useTaskLineage";
 import { setStreamerMode } from "../../streamer-mode";
+import { isBoardMounted, resetBoardViewCommandsForTests, runBoardViewCommand } from "../view-commands";
+import { resetPreviousBoardViewsForTests } from "../BoardHost";
+import { toast } from "../../toast";
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -109,6 +112,8 @@ function registerView(id: string, opts: { supportsNarrow?: boolean; component?: 
 beforeEach(() => {
 	resetBoardRootForTests();
 	resetBoardViewStateCacheForTests();
+	resetBoardViewCommandsForTests();
+	resetPreviousBoardViewsForTests();
 	setHiddenControlsForTests([]);
 	vi.mocked(api.request.getBoardViewState).mockResolvedValue(defaultBoardViewState());
 	vi.mocked(api.request.setBoardViewState).mockClear();
@@ -336,5 +341,79 @@ describe("BoardHost", () => {
 		expect(order.indexOf("col-new")).toBe(order.indexOf("completed") - 1);
 		const update = dispatch.mock.calls[dispatch.mock.calls.length - 1][0] as { project: Project };
 		expect(update.project.customColumns).toEqual([column]);
+	});
+	describe("board-view commands (v chord, menu, palette)", () => {
+		it("answers commands only while mounted", async () => {
+			startBoardViews([installKanbanView]);
+			const { unmount } = renderHost();
+			expect(isBoardMounted()).toBe(true);
+			unmount();
+			expect(isBoardMounted()).toBe(false);
+		});
+
+		it("v N picks the Nth offered view; out of range does nothing", async () => {
+			startBoardViews([installKanbanView]);
+			registerView("ext:a");
+			registerView("ext:b");
+			renderHost();
+			await screen.findByTestId("board-view-switcher");
+			act(() => runBoardViewCommand({ kind: "nth", n: 3 }));
+			expect(await screen.findByTestId("view-ext:b")).toBeInTheDocument();
+			act(() => runBoardViewCommand({ kind: "nth", n: 9 }));
+			expect(screen.getByTestId("view-ext:b")).toBeInTheDocument();
+		});
+
+		it("v v toggles back to the previous view, and again", async () => {
+			startBoardViews([installKanbanView]);
+			registerView("ext:a");
+			renderHost();
+			await screen.findByTestId("board-view-switcher");
+			act(() => runBoardViewCommand({ kind: "previous" }));
+			expect(screen.getByTestId("kanban")).toBeInTheDocument();
+			act(() => runBoardViewCommand({ kind: "nth", n: 2 }));
+			expect(await screen.findByTestId("view-ext:a")).toBeInTheDocument();
+			act(() => runBoardViewCommand({ kind: "previous" }));
+			expect(await screen.findByTestId("kanban")).toBeInTheDocument();
+			act(() => runBoardViewCommand({ kind: "previous" }));
+			expect(await screen.findByTestId("view-ext:a")).toBeInTheDocument();
+		});
+
+		it("picks a view by id and says so when the board does not offer it", async () => {
+			const info = vi.spyOn(toast, "info").mockImplementation(() => "");
+			startBoardViews([installKanbanView]);
+			registerView("ext:a");
+			registerView("ext:wide-only", { supportsNarrow: false });
+			renderHost();
+			await screen.findByTestId("board-view-switcher");
+			act(() => runBoardViewCommand({ kind: "pick", viewId: "ext:a" }));
+			expect(await screen.findByTestId("view-ext:a")).toBeInTheDocument();
+			act(() => runBoardViewCommand({ kind: "pick", viewId: "ext:missing" }));
+			expect(info).toHaveBeenCalledTimes(1);
+			expect(screen.getByTestId("view-ext:a")).toBeInTheDocument();
+			info.mockRestore();
+		});
+
+		it("ends the switcher with Manage views…, which opens Settings → Extensions", async () => {
+			startBoardViews([installKanbanView]);
+			registerView("ext:a");
+			const opened = vi.fn();
+			window.addEventListener("dev3:openSettingsSection", opened);
+			renderHost();
+			const switcher = await screen.findByTestId("board-view-switcher");
+			fireEvent.click(switcher.querySelector("button")!);
+			fireEvent.click(await screen.findByRole("option", { name: "Manage views…" }));
+			window.removeEventListener("dev3:openSettingsSection", opened);
+			expect((opened.mock.calls[0][0] as CustomEvent).detail).toBe("extensions");
+			expect(screen.getByTestId("kanban")).toBeInTheDocument();
+			expect(api.request.setBoardViewState).not.toHaveBeenCalled();
+		});
+
+		it("runs a command sent before the board mounted", async () => {
+			startBoardViews([installKanbanView]);
+			registerView("ext:a");
+			runBoardViewCommand({ kind: "pick", viewId: "ext:a" });
+			renderHost();
+			expect(await screen.findByTestId("view-ext:a")).toBeInTheDocument();
+		});
 	});
 });
