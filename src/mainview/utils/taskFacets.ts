@@ -1,7 +1,8 @@
 import type { CodingAgent, Label, Task, TaskStatus, TaskType } from "../../shared/types";
-import { TASK_TYPES, isTaskDisconnected } from "../../shared/types";
+import { AGENT_TIME_STATUSES, TASK_TYPES, isTaskDisconnected } from "../../shared/types";
 import type { FacetKey, TaskQueryContext } from "./taskSearch";
 import { getTaskAgentMeta } from "./taskAgentMeta";
+import { taskActivityTime } from "../components/sortTasks";
 
 /**
  * Facet-pool builders shared by the Kanban filter bar and the Active Tasks
@@ -46,6 +47,34 @@ export function isAttentionTask(task: Task): boolean {
 	return ATTENTION_STATUSES.includes(task.status);
 }
 
+/**
+ * Quiet time after which an active task counts as stalled. Agent hooks re-stamp
+ * the activity clock on every turn, so 4h without a status change means one turn
+ * that never ended (hung or dead agent) — long workflow runs stay under it.
+ */
+export const STALLED_AFTER_HOURS = 4;
+const STALLED_AFTER_MS = STALLED_AFTER_HOURS * 60 * 60 * 1000;
+
+/** An agent-time status (`in-progress`, `review-by-ai`) idle for {@link STALLED_AFTER_HOURS} (`is:stalled`).
+ *  A task parked in a custom column was put there on purpose, so it never stalls. */
+export function isTaskStalled(task: Task, nowMs: number): boolean {
+	if (task.customColumnId || !AGENT_TIME_STATUSES.includes(task.status)) return false;
+	const since = taskActivityTime(task);
+	return since > 0 && nowMs - since >= STALLED_AFTER_MS;
+}
+
+/**
+ * GitHub state of the task's current PR, lowercased: the live state when the
+ * surface tracks one, else the persisted status cache or PR ledger for that number.
+ */
+export function taskPrState(task: Task, prNumber: number | null, liveState: string | null | undefined): string | null {
+	if (prNumber == null) return null;
+	if (liveState) return liveState.toLowerCase();
+	const cache = task.prStatusCache?.number === prNumber ? task.prStatusCache.mergeState?.state : null;
+	const ledger = task.pullRequests?.find((entry) => entry.number === prNumber)?.state;
+	return (cache ?? ledger)?.toLowerCase() ?? null;
+}
+
 export interface FacetResolver {
 	agents: CodingAgent[];
 	labelsFor: (task: Task) => Label[];
@@ -59,6 +88,8 @@ export interface FacetResolver {
 	 *  (a single project's board) return [] so the SPACES group is dropped. */
 	spaceNamesFor?: (task: Task) => string[];
 	prNumberFor?: (task: Task) => number | null;
+	/** Live GitHub state (OPEN/MERGED/CLOSED) of that PR, when the surface tracks one. */
+	prStateFor?: (task: Task) => string | null;
 	/** `children:` values that select the task (see `childrenTokenRefs`). */
 	childrenRefsFor?: (task: Task) => readonly string[];
 }
@@ -83,7 +114,9 @@ export function taskAgentName(task: Task, agents: CodingAgent[]): string | null 
 }
 
 /** Build the pure per-task facet context the matcher consumes. */
-export function taskQueryContext(task: Task, resolver: FacetResolver): TaskQueryContext {
+export function taskQueryContext(task: Task, resolver: FacetResolver, nowMs: number = Date.now()): TaskQueryContext {
+	const livePrNumber = resolver.prNumberFor?.(task) ?? null;
+	const prNumber = livePrNumber ?? task.prNumber ?? null;
 	return {
 		labelNames: resolver.labelsFor(task).map((l) => l.name),
 		agentName: taskAgentName(task, resolver.agents),
@@ -95,8 +128,11 @@ export function taskQueryContext(task: Task, resolver: FacetResolver): TaskQuery
 		isHidden: task.hidden === true,
 		isHibernated: isTaskNotRunning(task),
 		isKeptAlive: task.keepAlive?.enabled === true,
+		isStalled: isTaskStalled(task, nowMs),
+		hasPr: prNumber != null,
+		prState: taskPrState(task, prNumber, livePrNumber != null ? resolver.prStateFor?.(task) : null),
 		spaceNames: resolver.spaceNamesFor ? resolver.spaceNamesFor(task) : null,
-		prNumber: resolver.prNumberFor?.(task) ?? null,
+		prNumber: livePrNumber,
 		childrenRefs: resolver.childrenRefsFor?.(task) ?? [],
 	};
 }

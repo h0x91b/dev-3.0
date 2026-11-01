@@ -386,6 +386,7 @@ function KanbanBoard({
 		hasPortFor: (task) => (taskPorts.get(task.id)?.length ?? 0) > 0,
 		isAttentionFor: isAttentionTask,
 		prNumberFor: (task) => taskPrMap.get(task.id)?.number ?? null,
+		prStateFor: (task) => taskPrMap.get(task.id)?.mergeState?.state ?? null,
 		childrenRefsFor: (task) => childrenTokenRefs(task, lineage, knownProjects, lineageProjectId),
 	}), [agents, projectById, customStatusLabels, taskPorts, taskPrMap, t, lineage, knownProjects, lineageProjectId]);
 

@@ -58,6 +58,9 @@ function ctx(overrides: Partial<TaskQueryContext> = {}): TaskQueryContext {
 		isHibernated: false,
 		isAttention: false,
 		isKeptAlive: false,
+		isStalled: false,
+		hasPr: false,
+		prState: null,
 		prNumber: null,
 		...overrides,
 	};
@@ -285,6 +288,33 @@ describe("matchesTaskQuery — facets", () => {
 	it("has:port matches only when the context flag is set", () => {
 		expect(matchesTaskQuery(makeTask(), "has:port", ctx({ hasPort: true }))).toBe(true);
 		expect(matchesTaskQuery(makeTask(), "has:port", ctx({ hasPort: false }))).toBe(false);
+	});
+
+	it("has:pr matches only a task with a current PR", () => {
+		expect(parseTaskQuery("has:pr").facets.has).toEqual(["pr"]);
+		expect(matchesTaskQuery(makeTask(), "has:pr", ctx({ hasPr: true }))).toBe(true);
+		expect(matchesTaskQuery(makeTask(), "has:pr", ctx({ hasPr: false, hasPort: true }))).toBe(false);
+	});
+
+	it("is:stalled matches only a stalled task", () => {
+		expect(parseTaskQuery("is:stalled").facets.is).toEqual(["stalled"]);
+		expect(matchesTaskQuery(makeTask(), "is:stalled", ctx({ isStalled: true }))).toBe(true);
+		expect(matchesTaskQuery(makeTask(), "is:stalled", ctx({ isStalled: false, isHibernated: true }))).toBe(false);
+	});
+
+	it.each(["open", "merged", "closed"])("pr:%s matches exactly that PR state", (state) => {
+		expect(parseTaskQuery(`pr:${state.toUpperCase()}`).facets.pr).toEqual([state]);
+		expect(matchesTaskQuery(makeTask(), `pr:${state}`, ctx({ hasPr: true, prState: state }))).toBe(true);
+		const other = state === "open" ? "merged" : "open";
+		expect(matchesTaskQuery(makeTask(), `pr:${state}`, ctx({ hasPr: true, prState: other }))).toBe(false);
+		expect(matchesTaskQuery(makeTask(), `pr:${state}`, ctx({ hasPr: true, prState: null }))).toBe(false);
+	});
+
+	it("ORs pr: states and leaves an unknown state as free text", () => {
+		expect(matchesTaskQuery(makeTask(), "pr:open pr:merged", ctx({ prState: "merged" }))).toBe(true);
+		const parsed = parseTaskQuery("pr:draft");
+		expect(parsed.facets.pr).toEqual([]);
+		expect(parsed.freeText).toBe("pr:draft");
 	});
 
 	it("priority matches the task's effective level (case-insensitive)", () => {
