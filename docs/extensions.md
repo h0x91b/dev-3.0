@@ -68,6 +68,11 @@ export default {
 };
 ```
 
+**Styling**: dev3's Tailwind classes are not guaranteed to exist for your markup. Use inline styles or your own
+CSS, and take colours from dev3's theme variables so the view follows light and dark themes:
+`rgb(var(--text-primary))`, `--text-secondary`, `--text-tertiary`, `--text-muted`, `--surface-raised`,
+`--surface-elevated`, `--border-default`, `--accent`, `--danger` (each holds an `r g b` triple).
+
 Bundling JSX or TypeScript is fine — emit one ESM file with `react`, `react-dom` and `cordis` marked external
 (esbuild: `--format=esm --bundle --external:react --external:react-dom --external:cordis --jsx=automatic`).
 

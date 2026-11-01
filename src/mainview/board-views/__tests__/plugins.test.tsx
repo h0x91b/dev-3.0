@@ -8,13 +8,14 @@ import {
 	getBoardPluginsSnapshot,
 	resetBoardPluginsForTests,
 	setExtensionImporterForTests,
+	restartWithExtensionsOff,
 	startBoardPlugins,
 	syncBoardPlugins,
 } from "../plugins";
 import type { BuiltinBoardView } from "../builtins";
 
 vi.mock("../../rpc", () => ({
-	api: { request: { listExtensions: vi.fn(), getExtensionSource: vi.fn() } },
+	api: { request: { listExtensions: vi.fn(), getExtensionSource: vi.fn(), setExtensionsEnabled: vi.fn() } },
 }));
 
 function viewPlugin(name: string, ids: string[]) {
@@ -145,5 +146,21 @@ describe("extension loader", () => {
 		vi.mocked(api.request.listExtensions).mockResolvedValue(overview([extension("empty", ["v"])]));
 		await syncBoardPlugins();
 		expect(getBoardPluginsSnapshot().loads["empty"]).toMatchObject({ state: "failed", error: expect.stringMatching(/default-export/) });
+	});
+
+	it("Restart with extensions off: turns the kill switch off, and the next load skips extensions even if the host was unreachable", async () => {
+		const reload = vi.fn();
+		vi.spyOn(window, "location", "get").mockReturnValue({ ...window.location, reload } as Location);
+		vi.mocked(api.request.setExtensionsEnabled).mockRejectedValue(new Error("offline"));
+		await restartWithExtensionsOff();
+		expect(api.request.setExtensionsEnabled).toHaveBeenCalledWith({ enabled: false });
+		expect(reload).toHaveBeenCalled();
+
+		modules["focus-list"] = viewPlugin("focus-list", ["focus-list:focus"]);
+		vi.mocked(api.request.listExtensions).mockResolvedValue(overview([extension("focus-list", ["focus"])]));
+		await syncBoardPlugins();
+		expect(api.request.getExtensionSource).not.toHaveBeenCalled();
+		await syncBoardPlugins(); // "once": a later sync loads it again
+		await waitFor(() => expect(ids()).toContain("focus-list:focus"));
 	});
 });
