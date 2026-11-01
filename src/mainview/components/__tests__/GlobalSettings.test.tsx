@@ -417,6 +417,26 @@ describe("GlobalSettings", () => {
 		});
 	});
 
+	describe("save base", () => {
+		it("saves on top of the host's settings even when the screen's load is lost", async () => {
+			setupMocks();
+			const stored: GlobalSettingsType = { ...mockGlobalSettings, theme: "light", tipsDisabled: true };
+			mockedApi.request.getGlobalSettings
+				.mockImplementationOnce(() => new Promise(() => {}))
+				.mockResolvedValueOnce(stored);
+			const user = userEvent.setup();
+			renderGlobalSettings("notifications");
+			await waitForLoad();
+
+			await user.click(screen.getByRole("switch", { name: "Watch tasks by default" }));
+
+			await waitFor(() => expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalled());
+			const saved = mockedApi.request.saveGlobalSettings.mock.calls.map((c) => c[0]);
+			expect(saved.some((s) => s.defaultConfigId !== "cfg-1")).toBe(false);
+			expect(saved[saved.length - 1]).toEqual({ ...stored, watchByDefault: true });
+		});
+	});
+
 	describe("watch default", () => {
 		function getWatchDefaultSwitch() {
 			return screen.getByRole("switch", { name: "Watch tasks by default" });

@@ -212,14 +212,36 @@ function GlobalSettings({
 		[setGlobalSettingsState],
 	);
 
+	const hostSettingsLoadedRef = useRef(false);
+	const adoptHostSettings = useCallback((next: GlobalSettingsType) => {
+		hostSettingsLoadedRef.current = true;
+		setGlobalSettingsState(next);
+	}, [setGlobalSettingsState]);
+
+	// Every save sends the WHOLE object. Until the host has answered that object is
+	// DEFAULT_GLOBAL_SETTINGS, and saving it would overwrite the user's settings.json.
+	const whenHostSettingsLoaded = useCallback((run: () => void) => {
+		if (hostSettingsLoadedRef.current) {
+			run();
+			return;
+		}
+		api.request.getGlobalSettings()
+			.then((loaded) => {
+				if (!hostSettingsLoadedRef.current) adoptHostSettings(loaded);
+				run();
+			})
+			.catch(() => {});
+	}, [adoptHostSettings]);
+
 	const persistGlobalSettings = useCallback(
 		(updater: GlobalSettingsUpdater, options: PersistOptions = {}) => {
-			const next = applyGlobalSettingsLocally(updater);
-			options.onLocalUpdate?.(next);
-			api.request.saveGlobalSettings(next).catch(() => {});
-			return next;
+			whenHostSettingsLoaded(() => {
+				const next = applyGlobalSettingsLocally(updater);
+				options.onLocalUpdate?.(next);
+				api.request.saveGlobalSettings(next).catch(() => {});
+			});
 		},
-		[applyGlobalSettingsLocally],
+		[applyGlobalSettingsLocally, whenHostSettingsLoaded],
 	);
 
 	const persistGlobalSettingsPatch = useCallback(
@@ -277,7 +299,7 @@ function GlobalSettings({
 	useEffect(() => {
 		api.request.getAgents().then(setAgents).catch(() => {});
 		api.request.getGlobalSettings().then((settings) => {
-			setGlobalSettingsState(settings);
+			adoptHostSettings(settings);
 			if (settings.taskOpenMode === "fullscreen") {
 				localStorage.setItem("dev3-task-open-mode", "fullscreen");
 			} else {
@@ -289,11 +311,11 @@ function GlobalSettings({
 		// from outside this screen since — `hiddenControls` (a right-click "Hide", the
 		// Simplify View preset) being the field that actually got erased.
 		function onSettingsUpdated(e: Event) {
-			setGlobalSettingsState((e as CustomEvent<GlobalSettingsType>).detail);
+			adoptHostSettings((e as CustomEvent<GlobalSettingsType>).detail);
 		}
 		window.addEventListener("rpc:globalSettingsUpdated", onSettingsUpdated);
 		return () => window.removeEventListener("rpc:globalSettingsUpdated", onSettingsUpdated);
-	}, [setGlobalSettingsState]);
+	}, [adoptHostSettings]);
 
 	useEffect(() => {
 		api.request.getNativeTerminalAvailability()
@@ -852,14 +874,16 @@ function GlobalSettings({
 
 	const saveExternalApps = useCallback(
 		(apps: ExternalApp[]) => {
-			api.request.saveGlobalSettings({
-				...globalSettingsRef.current,
-				externalApps: normalizeExternalApps(apps),
-			}).then(() => {
-				invalidateAvailableApps();
-			}).catch(() => {});
+			whenHostSettingsLoaded(() => {
+				api.request.saveGlobalSettings({
+					...globalSettingsRef.current,
+					externalApps: normalizeExternalApps(apps),
+				}).then(() => {
+					invalidateAvailableApps();
+				}).catch(() => {});
+			});
 		},
-		[],
+		[whenHostSettingsLoaded],
 	);
 
 	const debouncedSaveExternalApps = useDebouncedCallback(saveExternalApps, 500);
