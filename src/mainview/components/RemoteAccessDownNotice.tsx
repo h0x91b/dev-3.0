@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { RemoteAccessStatus } from "../../shared/types";
 import { useT } from "../i18n";
 import { api } from "../rpc";
+import { ignoreStartupReadFailure, startupRead } from "../startup-read";
 
 /**
  * Live remote-access status. The app keeps booting when the server cannot bind
@@ -13,7 +14,9 @@ export function useRemoteAccessStatus(): [RemoteAccessStatus | null, (next: Remo
 
 	useEffect(() => {
 		let alive = true;
-		api.request.getRemoteAccessStatus().then((next) => { if (alive) setStatus(next); }).catch(() => {});
+		startupRead("remote access status", () => api.request.getRemoteAccessStatus(), { isCancelled: () => !alive })
+			.then((next) => { if (alive) setStatus(next); })
+			.catch(ignoreStartupReadFailure);
 		const onChanged = (event: Event) => setStatus((event as CustomEvent<RemoteAccessStatus>).detail);
 		window.addEventListener("rpc:remoteAccessStatusChanged", onChanged);
 		return () => {

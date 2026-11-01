@@ -6,6 +6,7 @@ import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
 import { trackEvent } from "../analytics";
 import { boardViewTelemetryId } from "../../shared/extensions";
+import { ignoreStartupReadFailure, startupRead } from "../startup-read";
 import { useT } from "../i18n";
 import LabelFilterBar from "../components/LabelFilterBar";
 import LineageFilterNotice from "../components/LineageFilterNotice";
@@ -61,7 +62,9 @@ function useBoardPreferences(): BoardPreferences {
 	const [preferences, setPreferences] = useState(DEFAULT_PREFERENCES);
 	useEffect(() => {
 		let live = true;
-		api.request.getGlobalSettings().then((settings) => { if (live) setPreferences(toPreferences(settings)); }).catch(() => {});
+		startupRead("global settings", () => api.request.getGlobalSettings(), { isCancelled: () => !live })
+			.then((settings) => { if (live) setPreferences(toPreferences(settings)); })
+			.catch(ignoreStartupReadFailure);
 		function onSettingsUpdated(e: Event) {
 			setPreferences(toPreferences((e as CustomEvent<GlobalSettings>).detail));
 		}

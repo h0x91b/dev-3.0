@@ -197,6 +197,11 @@ function createOmpBypassPresets(levels: readonly OmpThinkingLevel[]): AgentConfi
 	}));
 }
 
+/** The Claude preset a fresh install launches with. The host's settings defaults and
+ *  the renderer's pre-load placeholder both use it, so neither can name a retired id
+ *  that `DEPRECATED_DEFAULT_CONFIG_REMAP` would turn into some other preset. */
+export const DEFAULT_CLAUDE_CONFIG_ID = "claude-auto-opus55-medium";
+
 export const DEFAULT_AGENTS: CodingAgent[] = [
 	{
 		id: "builtin-claude",
@@ -296,7 +301,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "claude-fable5-cost-trick-default-high", name: "Fable 5 (cost trick, Default, High)", model: "claude-fable-5", groupLabel: "Fable 5 (cost trick)", effort: "high", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1", ANTHROPIC_BASE_URL: PXPIPE_PROXY_BASE_URL }, requiresPxpipeProxy: true, version: 1 },
 			{ id: "claude-fable5-cost-trick-default-xhigh", name: "Fable 5 (cost trick, Default, X-High)", model: "claude-fable-5", groupLabel: "Fable 5 (cost trick)", effort: "xhigh", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1", ANTHROPIC_BASE_URL: PXPIPE_PROXY_BASE_URL }, requiresPxpipeProxy: true, version: 1 },
 		],
-		defaultConfigId: "claude-auto-opus55-medium",
+		defaultConfigId: DEFAULT_CLAUDE_CONFIG_ID,
 	},
 	{
 		id: "builtin-codex",
@@ -595,10 +600,10 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
  *  equivalent. Applied to `GlobalSettings.defaultConfigId` on load so a stale
  *  reference to a deleted preset doesn't leave "Launch Task" with no selection. */
 export const DEPRECATED_DEFAULT_CONFIG_REMAP: Record<string, string> = {
-	// Plain Fable 5 Auto/Bypass replaced by explicit Medium/X-High effort tiers
-	// (mirrors what was done for Opus 4.8) — keep Fable users on Fable's top tier.
-	"claude-auto": "claude-auto-fable5-xhigh",
-	"claude-bypass": "claude-bypass-fable5-xhigh",
+	// Retired plain Auto/Bypass land on the default tier: these ids were also the
+	// renderer's pre-load placeholder, so a stray copy on disk is not a Fable choice.
+	"claude-auto": DEFAULT_CLAUDE_CONFIG_ID,
+	"claude-bypass": "claude-bypass-opus55-medium",
 	"claude-auto-opus48": "claude-auto-opus48-xhigh",
 	"claude-bypass-opus48": "claude-bypass-opus48-xhigh",
 	"claude-dontask-opus48": "claude-auto-opus48-xhigh",

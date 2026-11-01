@@ -531,6 +531,34 @@ describe("App keyboard shortcuts", () => {
 		});
 	});
 
+	describe("settings save base", () => {
+		const stored = {
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-auto-opus55-medium",
+			taskSortOrder: "oldest-first" as const,
+			updateChannel: "stable" as const,
+			theme: "light" as const,
+			tipsDisabled: true,
+		};
+
+		it("never saves the pre-load placeholder when the startup settings load is lost", async () => {
+			// The mount-time read never answers; the next read does.
+			vi.mocked(api.request.getGlobalSettings)
+				.mockImplementationOnce(() => new Promise(() => {}))
+				.mockResolvedValueOnce(stored);
+			await renderApp();
+
+			act(() => {
+				window.dispatchEvent(new CustomEvent("menu:enter-help-mode"));
+			});
+
+			await waitFor(() => expect(api.request.saveGlobalSettings).toHaveBeenCalled());
+			const saved = vi.mocked(api.request.saveGlobalSettings).mock.calls.map((c) => c[0]);
+			expect(saved.some((s) => s.defaultConfigId === "claude-auto")).toBe(false);
+			expect(saved[saved.length - 1]).toEqual({ ...stored, helpModeDiscovered: true });
+		});
+	});
+
 	describe("settings (Cmd+, / Ctrl+,)", () => {
 		it("Cmd+, navigates to the settings screen", async () => {
 			await renderApp();
