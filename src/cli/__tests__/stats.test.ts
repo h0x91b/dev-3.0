@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { handleApprovals, handleStats, productivityEventActiveSince, usageDayOverlapsSince } from "../commands/stats";
+import { handleApprovals, handleStats } from "../commands/stats";
+import { productivityEventActiveSince, usageDayOverlapsSince } from "../../shared/cli-json/stats";
 import type { CliContext } from "../context";
 import type { ParsedArgs } from "../args";
 import type { AgentUsageDay, CliResponse, ProductivityStatEvent, SystemMemorySnapshot, TaskUsageReport, TaskUsageTotals } from "../../shared/types";

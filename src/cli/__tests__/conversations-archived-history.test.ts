@@ -6,7 +6,8 @@
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { loadArchivedHistory, resolveHomes } from "../commands/conversations";
+import { resolveHomes } from "../commands/conversations";
+import { loadArchivedHistory } from "../../bun/conversation-search-project";
 
 const HOME = `${process.env.DEV3_TEST_ROOT}/cli-archived-history`;
 const DIR = `${HOME}/data/slug/task-blobs`;

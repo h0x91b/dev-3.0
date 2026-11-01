@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { handleTask } from "../commands/task";
-import { buildTaskShowJson } from "../task-json";
+import { buildTaskShowJson } from "../../shared/cli-json/task-show";
 import type { ParsedArgs } from "../args";
 import type { CliResponse, Task } from "../../shared/types";
 
