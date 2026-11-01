@@ -399,6 +399,14 @@ describe("TerminalView – resilient re-fit on late layout growth", () => {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
+describe("TerminalView – contenteditable caret", () => {
+	it("hides the native caret WebKit paints beside the canvas of a focused terminal", async () => {
+		await renderAndSetup();
+		const container = document.querySelector<HTMLElement>("[data-terminal='true']")!;
+		expect(container.style.caretColor).toBe("transparent");
+	});
+});
+
 describe("TerminalView – focus-on-type", () => {
 	it("focuses the terminal and feeds the key when body is active and a printable key is pressed", async () => {
 		await renderAndSetup();

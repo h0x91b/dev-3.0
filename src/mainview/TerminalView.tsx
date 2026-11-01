@@ -2848,7 +2848,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 				ref={containerRef}
 				className="w-full h-full overflow-hidden"
 				data-terminal="true"
-				style={{ backgroundColor: termBg }}
+				// ghostty-web makes this element contenteditable; WebKit then paints its native
+				// caret beside the canvas — a full-height blinking accent line (#2124).
+				style={{ backgroundColor: termBg, caretColor: "transparent" }}
 				onClick={handleTerminalClick}
 				onContextMenu={(e) => e.preventDefault()}
 				onDragOver={handleDragOver}
