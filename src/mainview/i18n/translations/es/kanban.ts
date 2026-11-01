@@ -524,6 +524,21 @@ const kanban = {
 	"boardTable.col.created": "Creada",
 	"boardTable.col.branch": "Rama",
 	"boardTable.col.type": "Tipo",
+	"boardView.tree": "Árbol",
+	"boardTree.emptyBoard": "Todavía no hay tareas en este tablero.",
+	"boardTree.noMatches": "Ninguna tarea coincide con el filtro.",
+	"boardTree.expand": "Expandir",
+	"boardTree.collapse": "Contraer",
+	"boardTree.expandAll": "Expandir todo",
+	"boardTree.collapseAll": "Contraer todo",
+	"boardTree.lineageOnly": "Solo tareas con padre o subtareas",
+	"boardTree.otherProject": "Padre de otro proyecto",
+	"boardTree.hiddenTitle": "Oculto en modo streamer",
+	"boardTree.level": "Nivel {level}",
+	"boardTree.variants_one": "{count} variante",
+	"boardTree.variants_other": "{count} variantes",
+	"boardTree.nested_one": "+{count} dentro",
+	"boardTree.nested_other": "+{count} dentro",
 };
 
 export default kanban;

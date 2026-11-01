@@ -525,6 +525,21 @@ const kanban = {
 	"boardTable.col.created": "Created",
 	"boardTable.col.branch": "Branch",
 	"boardTable.col.type": "Type",
+	"boardView.tree": "Tree",
+	"boardTree.emptyBoard": "No tasks on this board yet.",
+	"boardTree.noMatches": "No tasks match the filter.",
+	"boardTree.expand": "Expand",
+	"boardTree.collapse": "Collapse",
+	"boardTree.expandAll": "Expand all",
+	"boardTree.collapseAll": "Collapse all",
+	"boardTree.lineageOnly": "Only tasks with a parent or subtasks",
+	"boardTree.otherProject": "Parent from another project",
+	"boardTree.hiddenTitle": "Hidden in streamer mode",
+	"boardTree.level": "Level {level}",
+	"boardTree.variants_one": "{count} variant",
+	"boardTree.variants_other": "{count} variants",
+	"boardTree.nested_one": "+{count} inside",
+	"boardTree.nested_other": "+{count} inside",
 } as const;
 
 export default kanban;
