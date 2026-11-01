@@ -9,7 +9,7 @@ Several dev3 processes share `~/.dev3.0`: the installed app, a `bun run dev` bui
 - `TaskRuntimeState.ownerPid` (additive; older builds ignore it) is stamped with `process.pid` on every persisted `preparing` / `tearing-down` state (`runtimeState()` and `persistPreparationStage` in `src/bun/lifecycle/executor.ts`).
 - `foreignRunOwner()` (`src/bun/lifecycle/run-ownership.ts`) decides: a stamp naming a live peer with a socket in `~/.dev3.0/sockets` (`peerEndpointForPid`) → the run is that peer's; a stamp naming a dead or own pid → recover as before. **No stamp** (written by a build before this fix — the installed app in the incident) → leave it alone while ANY peer is alive (`discoverPeerSockets`).
 - `rehydrateTaskLifecycles` skips `bootObserved` for such tasks and logs it; their worktree paths stay protected from stale-entry recovery.
-- An agent-initiated launch (`requestAgentLaunchApproval`) now waits, up to `LAUNCH_PREPARATION_REPORT_BUDGET_MS`, for the child's persisted preparation to settle and reports it; the CLI exits `CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED` (44) on failure.
+- An agent-initiated launch (`requestAgentLaunchApproval`) now waits, up to `LAUNCH_PREPARATION_REPORT_BUDGET_MS`, for the child's persisted preparation to settle and reports it; the CLI exits `CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED` (46) on failure.
 
 ## Risks
 
