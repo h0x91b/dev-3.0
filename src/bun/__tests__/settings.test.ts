@@ -283,6 +283,13 @@ describe("saveSettings", () => {
 		expect((await loadSettings()).defaultConfigId).toBe("claude-bypass-opus48-xhigh");
 	});
 
+	it("lands the retired plain Auto/Bypass ids on the default Opus 5.5 Medium tier", async () => {
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ defaultConfigId: "claude-auto" }), null, 2), "utf-8");
+		expect((await loadSettings()).defaultConfigId).toBe("claude-auto-opus55-medium");
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ defaultConfigId: "claude-bypass" }), null, 2), "utf-8");
+		expect((await loadSettings()).defaultConfigId).toBe("claude-bypass-opus55-medium");
+	});
+
 	it("falls back to the current default for a dangling builtin-looking id with no remap entry", async () => {
 		writeFileSync(settingsPath, JSON.stringify(makeSettings({ defaultConfigId: "claude-some-preset-that-never-existed" }), null, 2), "utf-8");
 		expect((await loadSettings()).defaultConfigId).toBe("claude-auto-opus55-medium");
