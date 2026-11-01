@@ -221,6 +221,8 @@ export class McpConfigCache {
 			} else {
 				this.config = { ...this.config, tokens: [] };
 				this.error = read.error;
+				// Retry next time: a read can fail for reasons the file's stamp never shows (EMFILE, EIO).
+				this.stamp = null;
 			}
 		}
 		return { config: this.config, error: this.error };

@@ -1,6 +1,6 @@
 import type { PrStatusNotice, PrWatchUntil } from "./pr-watch";
 import { parseGitHubPullRequestUrl } from "./pr-status";
-import { ID_PREFIX_MIN_LENGTH, type AgentMessageSource } from "./types";
+import { ID_PREFIX_MIN_LENGTH, taskOrigin, type AgentMessageSource, type Task } from "./types";
 import { encodeAgentHandle } from "./agent-handle";
 
 /**
@@ -121,6 +121,16 @@ export function wrapExternalSenderMessage(text: string, sender: ExternalSenderSt
 		"</dev3-ai-message>",
 	);
 	return lines.join("\n");
+}
+
+/**
+ * The description as the agent's first prompt. A brief an external sender wrote
+ * arrives in that sender's envelope, never as the user's own words.
+ */
+export function launchBrief(task: Pick<Task, "id" | "description" | "origin">): string {
+	const origin = taskOrigin(task);
+	if (origin.kind !== "sender" || !task.description) return task.description;
+	return wrapExternalSenderMessage(task.description, { id: origin.senderId, label: origin.label, messageId: task.id }, "Task brief");
 }
 
 /**

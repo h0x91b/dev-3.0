@@ -21,6 +21,15 @@ function TaskOriginRow({ task, navigate, testId = "task-origin-row" }: { task: T
 	let value: ReactNode;
 	if (origin.kind === "automation") value = <span className="text-fg-3">{t("infoPanel.createdByAutomation")}</span>;
 	else if (origin.kind === "import") value = <span className="text-fg-3">{t("infoPanel.createdByImport")}</span>;
+	else if (origin.kind === "sender") {
+		value = (
+			<span className="text-fg-3">
+				{origin.viaTokenId
+					? t("infoPanel.createdBySenderViaNetwork", { label: origin.label, id: origin.senderId, token: origin.viaTokenId })
+					: t("infoPanel.createdBySender", { label: origin.label, id: origin.senderId })}
+			</span>
+		);
+	}
 	else {
 		const parent = lineageParent(task, lineage);
 		if (parent === null) {

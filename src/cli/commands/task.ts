@@ -1042,6 +1042,8 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 		if (json) {
 			process.stdout.write(`${JSON.stringify({ schemaVersion: 1, ...resp.data }, null, 2)}\n`);
 			if (!resp.data.approved) process.exit(CLI_EXIT_CODE_LAUNCH_DECLINED);
+			// Same exit code as without --json: an approved start that failed to prepare runs no agent.
+			exitOnFailedPreparation(resp.data, resp.data.launched ?? []);
 			return;
 		}
 		return reportLaunchOutcome(resp.data, codexStopHook, Boolean(asSender));

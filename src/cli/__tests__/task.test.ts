@@ -2522,6 +2522,15 @@ describe("task create|update|move --json", () => {
 		expect(JSON.parse(stdoutOutput)).toEqual({ schemaVersion: 1, approved: false });
 	});
 
+	it("move --json exits 46 when the approved start failed to prepare, like the plain form", async () => {
+		mockSend.mockImplementation(async (_s, method) => okResp(method === "task.move"
+			? { approved: true, seq: 12, title: "t", launched: [{ variantIndex: null, replyCommand: "c", preparation: { state: "failed", error: "setup failed" } }] }
+			: {}));
+		await expect(handleTask("move", args(["bbbbbbbb"], { status: "in-progress", json: "true" }), SOCKET, CTX))
+			.rejects.toThrow("EXIT_46");
+		expect(JSON.parse(stdoutOutput)).toMatchObject({ schemaVersion: 1, approved: true });
+	});
+
 	it("refuses --json with a value, which would swallow the task ref", async () => {
 		await expect(handleTask("move", args([], { json: "seq:12", status: "in-progress" }), SOCKET, null)).rejects.toThrow(/EXIT_3/);
 		expect(mockSend).not.toHaveBeenCalled();

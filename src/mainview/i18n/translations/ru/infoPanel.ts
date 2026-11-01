@@ -11,6 +11,8 @@ const infoPanel = {
 	"infoPanel.createdByDeleted": "задача (удалена)",
 	"infoPanel.createdByAutomation": "автоматизация",
 	"infoPanel.createdByImport": "импорт разговора",
+	"infoPanel.createdBySender": "внешний отправитель {label} ({id})",
+	"infoPanel.createdBySenderViaNetwork": "внешний отправитель {label} ({id}) по сети, MCP-токен {token}",
 	"infoPanel.updated": "Обновлено",
 	"infoPanel.collapse": "Свернуть панель",
 	"infoPanel.expand": "Развернуть панель",
