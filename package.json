@@ -82,6 +82,7 @@
 		"@headless-tree/core": "^1.6.3",
 		"@headless-tree/react": "^1.6.3",
 		"@streamdown/mermaid": "1.0.2",
+		"@tanstack/react-virtual": "3.14.21",
 		"@zkl2333/freetype-wasm": "2.14.3",
 		"bidi-js": "^1.0.3",
 		"cordis": "4.0.0-rc.11",

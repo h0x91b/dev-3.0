@@ -26,6 +26,7 @@ import MobilePortraitGate from "./components/MobilePortraitGate";
 import { recordError, recordRejection } from "./diagnostics";
 import { startBoardViews } from "./board-views/root";
 import { installKanbanView } from "./board-views/kanban";
+import { installTableView } from "./board-views/table";
 
 // ── Global crash handlers (renderer) ──
 // Catch unhandled errors that would otherwise silently kill the page. Besides
@@ -163,7 +164,7 @@ async function bootstrap() {
 	}
 
 	// The board-view runtime (Cordis root + built-in views) is up before the first board renders.
-	startBoardViews([installKanbanView]);
+	startBoardViews([installKanbanView, installTableView]);
 
 	debugLog("boot", "[main] Rendering React app...");
 	// RootErrorBoundary wraps the providers (not just <App/>) so a crash in
