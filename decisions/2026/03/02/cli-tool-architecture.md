@@ -21,6 +21,6 @@ The CLI is a **standalone Bun script** (`src/cli/main.ts`) that communicates wit
 ## Alternatives considered
 
 - **Built into Electrobun binary**: Not feasible due to Zig launcher GUI initialization.
-- **HTTP server instead of Unix socket**: More overhead, port conflicts, security concerns.
+- **HTTP server instead of Unix socket**: More overhead, port conflicts, security concerns. (For clients outside dev3, see `decisions/2026/11/01/mcp-http-listener-for-external-senders.md`.)
 - **Direct file access (no socket)**: Can't trigger side effects like PTY/worktree creation on status change.
-- **MCP server**: Higher token cost, more complex setup. CLI is simpler for agents.
+- **MCP server**: Higher token cost, more complex setup. CLI is simpler for agents. (For clients outside dev3, see `decisions/2026/11/01/mcp-http-listener-for-external-senders.md`.)

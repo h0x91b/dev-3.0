@@ -2,6 +2,7 @@ import type { AgentUsageDay, AgentUsageReport, ProductivityStatEvent, Productivi
 import type { AgentRateLimitsReport } from "../rate-limits";
 import type { PendingApprovalSummary } from "../agent-approval";
 import type { ModelRate } from "../agent-pricing";
+import { parseEventCursor } from "../board-events";
 
 /**
  * `dev3 stats … --json` and `dev3 approvals list --json` are public contracts
@@ -76,4 +77,22 @@ export function memoryJson(snapshot: SystemMemorySnapshot | null) {
 /** `dev3 approvals list --json`. */
 export function approvalsJson(requests: PendingApprovalSummary[], projectId: string | null) {
 	return statsJson({ projectId, requests: projectId ? requests.filter((r) => r.projectId === projectId) : requests });
+}
+
+/**
+ * `--since 7d` / a date / a timestamp, resolved to ISO; null when unparseable. A
+ * bare date is LOCAL midnight, the clock usage days are cut on; a timestamp is
+ * UTC, as in `dev3 events --from`.
+ */
+export function parseSinceValue(raw: string): string | null {
+	const trimmed = raw.trim();
+	return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? localMidnight(trimmed) : parseEventCursor(raw);
+}
+
+/** Null for an impossible date: `new Date` would roll 2026-02-31 over to March. */
+function localMidnight(date: string): string | null {
+	const [y, m, d] = date.split("-").map(Number);
+	const at = new Date(y, m - 1, d);
+	if (at.getFullYear() !== y || at.getMonth() !== m - 1 || at.getDate() !== d) return null;
+	return at.toISOString();
 }

@@ -1,8 +1,7 @@
 import type { AgentUsageReport, ProductivityStatEvent, ProductivityStats, SystemMemorySnapshot, TaskUsageReport } from "../../shared/types";
 import type { AgentRateLimitsReport } from "../../shared/rate-limits";
 import type { PendingApprovalSummary } from "../../shared/agent-approval";
-import { approvalsJson, limitsJson, memoryJson, pricesJson, productivityJson, statsJson, taskUsageJson, usageJson, type PricesWire } from "../../shared/cli-json/stats";
-import { parseEventCursor } from "../../shared/board-events";
+import { approvalsJson, limitsJson, memoryJson, parseSinceValue, pricesJson, productivityJson, statsJson, taskUsageJson, usageJson, type PricesWire } from "../../shared/cli-json/stats";
 import { sendRequest } from "../socket-client";
 import { exitError, exitUsage, printTable } from "../output";
 import type { ParsedArgs } from "../args";
@@ -30,21 +29,11 @@ function readSince(args: ParsedArgs): string | null {
 	const raw = args.flags.since;
 	if (raw === undefined) return null;
 	if (raw === "true") exitUsage("--since needs a value, e.g. --since 7d");
-	const since = /^\d{4}-\d{2}-\d{2}$/.test(raw.trim())
-		? localMidnight(raw.trim())
-		: parseEventCursor(raw);
+	const since = parseSinceValue(raw);
 	if (!since) {
 		exitUsage(`Unparseable --since value: ${raw}. Use a duration (30m, 12h, 7d, 2w), a date (2026-10-01, local midnight) or a UTC timestamp (2026-10-01T09:00:00).`);
 	}
 	return since;
-}
-
-/** Null for an impossible date: `new Date` would roll 2026-02-31 over to March. */
-function localMidnight(date: string): string | null {
-	const [y, m, d] = date.split("-").map(Number);
-	const at = new Date(y, m - 1, d);
-	if (at.getFullYear() !== y || at.getMonth() !== m - 1 || at.getDate() !== d) return null;
-	return at.toISOString();
 }
 
 /** Filtering happens here, so an id that matches no project must fail — not print an empty result. */

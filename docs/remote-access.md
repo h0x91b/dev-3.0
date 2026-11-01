@@ -327,6 +327,9 @@ turning it off in Settings removes only the device you are on.
 - SSH port-forwarding exposes nothing publicly and reuses your existing SSH credentials. It is
   the right default for anything sensitive.
 - External senders (`dev3 message --as-sender`, `dev3 sender inbox`) speak only over the local
-  CLI socket, never through the remote server or its tunnel; see the glossary.
+  CLI socket, never through the remote server or its tunnel; see the glossary. The second
+  sender path is `dev3 mcp`: its own loopback listener (127.0.0.1:7391) with per-sender tokens,
+  never mounted on the remote server and never tunnelled — reach it with `tailscale serve --tcp`
+  or `ssh -L`, not a public Funnel.
 
 `dev3 remote --help` prints the complete flag reference.

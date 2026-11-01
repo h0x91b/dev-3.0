@@ -12,6 +12,9 @@ import { log, type Handler } from "./shared";
 import { readEnvParam, readServerParams, resolveTaskFromParams } from "./task-resolution";
 
 export const systemHandlers: Record<string, Handler> = {
+	// `dev3 mcp status`: read-only. Nothing on the socket can mint a token or change the listener.
+	"mcp.status": async () => (await import("../mcp/server")).mcpListenerStatus(),
+
 	// A second Linux desktop launch asking this instance to show a window instead.
 	[LAUNCH_ACTIVATE_METHOD]: async (params) => handleLaunchActivate(params),
 

@@ -46,7 +46,8 @@ import { DEV3_HOME } from "./paths";
 import { resolveUserHome } from "../shared/user-home";
 import { normalizeEnvPath } from "../shared/env-path";
 import { applyFullShellEnvToProcess, getShellRcFiles, getUserShell, resolveShellEnv } from "./shell-env";
-import { startSocketServer, stopSocketServer } from "./cli-socket-server";
+import { handleRequest, startSocketServer, stopSocketServer } from "./cli-socket-server";
+import { startMcpListener, stopMcpListener } from "./mcp/server";
 import { startRemoteAccessServerGuarded, setRemoteAccessStatusHook } from "./remote-access-server";
 import { writeSystemClipboard } from "./system-clipboard";
 import { stopTunnel } from "./cloudflare-tunnel";
@@ -336,6 +337,7 @@ applyFullShellEnvToProcess(shellEnv, (await loadSettings()).importShellEnv !== f
 // Unix domain socket on POSIX, loopback-only TCP plus an endpoint record on
 // Windows (see src/bun/cli-listener.ts).
 const cliSocketPath = startSocketServer();
+startMcpListener(handleRequest);
 log.info("CLI socket server ready", { path: cliSocketPath });
 
 // User-state safety snapshots: hourly copies (72 kept) of every file in the
@@ -885,6 +887,7 @@ function runGlobalQuitCleanup(): void {
 	try { stopResourceMonitor(); } catch (err) { log.warn("stopResourceMonitor failed", { error: String(err) }); }
 	try { stopRateLimitMonitor(); } catch (err) { log.warn("stopRateLimitMonitor failed", { error: String(err) }); }
 	try { stopSocketServer(); } catch (err) { log.warn("stopSocketServer failed", { error: String(err) }); }
+	stopMcpListener();
 	// Tear down every per-task cloudflared process spawned by the GUI's
 	// `Expose port` button or by `--expose-ports`. Leaving them running
 	// would orphan tunnels (and trycloudflare quotas) on app exit.

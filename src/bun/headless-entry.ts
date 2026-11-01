@@ -31,7 +31,8 @@ import { DEV3_HOME } from "./paths";
 import { ensureDev3CliSymlink } from "./cli-self-install";
 import { managedCliWriteAllowed } from "./managed-cli-guard";
 import { applyFullShellEnvToProcess, getUserShell, resolveShellEnv } from "./shell-env";
-import { startSocketServer, stopSocketServer } from "./cli-socket-server";
+import { handleRequest, startSocketServer, stopSocketServer } from "./cli-socket-server";
+import { startMcpListener, stopMcpListener } from "./mcp/server";
 import { startRemoteAccessServer, pushToBrowserClients, getServerPort, getAccessUrl, getStaticCode } from "./remote-access-server";
 import { startTunnel, stopTunnel, isTunnelBinaryAvailable, getTunnelUrl, retryMainTunnel } from "./cloudflare-tunnel";
 import { renderHeadlessBanner, startQrAutoRefresh, stopQrAutoRefresh, markQrConsumed, printExposedPortsLive } from "./remote-console";
@@ -260,6 +261,7 @@ applyFullShellEnvToProcess(shellEnv, (await loadSettings()).importShellEnv !== f
 // Unlike the GUI entry, headless mode has no other control surface: `dev3 remote
 // status/url/stop` reach this process only over this transport.
 const cliSocketPath = startSocketServer();
+startMcpListener(handleRequest);
 log.info("CLI socket server ready", { path: cliSocketPath });
 
 // Exclude the worktrees root from OS backups (Time Machine) once at startup.
@@ -603,6 +605,7 @@ function shutdown(signal: string): void {
 	stopRateLimitMonitor();
 	stopSelfUpdateWatch();
 	stopSocketServer();
+	stopMcpListener();
 	clearRemoteStateIfOwnedBy(process.pid);
 	cleanupAllTunnels();
 	accountLogins.closeAll();
