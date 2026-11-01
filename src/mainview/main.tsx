@@ -28,6 +28,7 @@ import { startBoardViews } from "./board-views/root";
 import { installKanbanView } from "./board-views/kanban";
 import { installTableView } from "./board-views/table";
 import { installTreeView } from "./board-views/tree";
+import { installAttentionView } from "./board-views/attention";
 
 // ── Global crash handlers (renderer) ──
 // Catch unhandled errors that would otherwise silently kill the page. Besides
@@ -165,7 +166,7 @@ async function bootstrap() {
 	}
 
 	// The board-view runtime (Cordis root + built-in views) is up before the first board renders.
-	startBoardViews([installKanbanView, installTableView, installTreeView]);
+	startBoardViews([installKanbanView, installTableView, installTreeView, installAttentionView]);
 
 	debugLog("boot", "[main] Rendering React app...");
 	// RootErrorBoundary wraps the providers (not just <App/>) so a crash in
