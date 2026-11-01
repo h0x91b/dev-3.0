@@ -1,6 +1,6 @@
-import type { PRCIStatus, PRMergeState, PRReviewDecision, Task, TaskHistoryEntry, TaskNote, TaskOriginParent } from "../shared/types";
-import { DEFAULT_PRIORITY, STATUS_LABELS, getTaskOverview, getTaskTitle, taskCompletesManually, taskOrigin } from "../shared/types";
-import { allPullRequests } from "../shared/task-pull-requests";
+import type { PRCIStatus, PRMergeState, PRReviewDecision, Task, TaskHistoryEntry, TaskNote, TaskOriginParent } from "../types";
+import { DEFAULT_PRIORITY, STATUS_LABELS, getTaskOverview, getTaskTitle, taskCompletesManually, taskOrigin } from "../types";
+import { allPullRequests } from "../task-pull-requests";
 
 /**
  * `dev3 task show --json` is a public contract, so it is a projection with a

@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { CliResponse, Task, TaskStatus, TaskType, TaskHistoryEntry, TaskNote } from "../../shared/types";
-import { STATUS_LABELS, ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DRAFT_TASK_ACTIVATION_ERROR, TASK_REF_UNRESOLVED_PREFIX, TASK_TYPES, getTaskTitle, getTaskOverview, normalizePriority, normalizeTaskType, taskAgentSessionLooksLive, taskCompletesManually } from "../../shared/types";
-import { CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN, CLI_EXIT_CODE_APPROVAL_STILL_PENDING, CLI_EXIT_CODE_CANCELLATION_DECLINED, CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_HIBERNATE_DECLINED, CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED, CLI_EXIT_CODE_RESET_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT, CLI_EXIT_CODE_TASK_NOT_HIBERNATED, CLI_EXIT_CODE_TASK_REF_UNRESOLVED } from "../../shared/cli-exit-codes";
+import { STATUS_LABELS, ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, TASK_TYPES, getTaskTitle, getTaskOverview, normalizePriority, normalizeTaskType, taskAgentSessionLooksLive, taskCompletesManually } from "../../shared/types";
+import { CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN, CLI_EXIT_CODE_APPROVAL_STILL_PENDING, CLI_EXIT_CODE_CANCELLATION_DECLINED, CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_HIBERNATE_DECLINED, CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED, CLI_EXIT_CODE_RESET_DECLINED, CLI_EXIT_CODE_TASK_NOT_HIBERNATED } from "../../shared/cli-exit-codes";
+import { classifyAppError } from "../../shared/cli-errors";
 import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON, TOLERATE_APP_OFFLINE_FLAG } from "../../shared/agent-hooks";
 import { allPullRequests } from "../../shared/task-pull-requests";
 import { sendRequest } from "../socket-client";
@@ -20,7 +21,7 @@ import type { LaunchPreparationOutcome } from "../../shared/launch-preparation";
 import { handleTasks } from "./tasks";
 import { reportResumeOutcome } from "./agent";
 import type { CliHibernateOutcome, CliWakeOutcome } from "../../shared/task-hibernate";
-import { buildTaskShowJson, describeTaskOrigin, type ShownTask } from "../task-json";
+import { buildTaskShowJson, describeTaskOrigin, type ShownTask } from "../../shared/cli-json/task-show";
 
 // Statuses that destroy the worktree + terminal are never a direct CLI move.
 // Both become a blocking approval request the user answers in the app, so an
@@ -315,14 +316,8 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 	if (!resp.ok) {
 		// An unresolvable --pr/--branch created NOTHING, and it is not the same
 		// failure as "the task could not be written".
-		const marker = resp.error?.indexOf(TASK_REF_UNRESOLVED_PREFIX) ?? -1;
-		if (marker >= 0 && resp.error) {
-			exitError(
-				resp.error.slice(marker + TASK_REF_UNRESOLVED_PREFIX.length),
-				"No task was created.",
-				CLI_EXIT_CODE_TASK_REF_UNRESOLVED,
-			);
-		}
+		const classified = classifyAppError(resp.error);
+		if (classified.code === "TASK_REF_UNRESOLVED") exitError(classified.message, "No task was created.", classified.exitCode);
 		exitError(resp.error || "Failed to create task");
 	}
 
@@ -1008,11 +1003,12 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 		exitOnSenderError(resp.error);
 		// A draft was deliberately parked by the human — give it its own exit code
 		// so an agent can tell "not ready yet" apart from a real failure.
-		if (resp.error?.includes(DRAFT_TASK_ACTIVATION_ERROR)) {
+		const classified = classifyAppError(resp.error);
+		if (classified.code === "TASK_IS_DRAFT") {
 			exitError(
-				resp.error,
+				classified.message,
 				"Ask the user to finish the draft's description and save it as a normal task before starting work.",
-				CLI_EXIT_CODE_TASK_IS_DRAFT,
+				classified.exitCode,
 			);
 		}
 		exitError(resp.error || "Failed to move task");

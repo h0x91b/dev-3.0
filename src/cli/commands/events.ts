@@ -1,7 +1,7 @@
+import { classifyAppError } from "../../shared/cli-errors";
 import {
 	DEFAULT_EVENT_LIMIT,
 	DEFAULT_EVENT_WINDOW_MS,
-	EVENT_CURSOR_UNRESOLVED_PREFIX,
 	MAX_EVENT_LIMIT,
 	isEventIdPrefix,
 	parseEventCursor,
@@ -174,10 +174,10 @@ async function listEvents(args: ParsedArgs, socketPath: string, context: CliCont
 	if (!resp.ok) {
 		// An id that points at nothing is a cursor problem, not a failed read:
 		// answering "no events since then" would read as a quiet board.
-		const marker = resp.error?.indexOf(EVENT_CURSOR_UNRESOLVED_PREFIX) ?? -1;
-		if (marker !== -1 && resp.error) {
-			const [head, ...rest] = resp.error.slice(marker + EVENT_CURSOR_UNRESOLVED_PREFIX.length).split("\n");
-			exitError(head, rest.join("\n") || undefined, CLI_EXIT_CODE_EVENT_CURSOR_INVALID);
+		const classified = classifyAppError(resp.error);
+		if (classified.code === "EVENT_CURSOR_INVALID") {
+			const [head, ...rest] = classified.message.split("\n");
+			exitError(head, rest.join("\n") || undefined, classified.exitCode);
 		}
 		exitError(resp.error || "Failed to read events");
 	}

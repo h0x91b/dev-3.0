@@ -3,14 +3,8 @@ import type { CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 import { exitError, exitUsage } from "../output";
 import { sendRequest } from "../socket-client";
-import {
-	isValidSenderId,
-	SENDER_INBOX_BUSY_ERROR,
-	SENDER_WAIT_MAX_MS,
-	type SenderWaitResult,
-	UNKNOWN_EXTERNAL_SENDER_ERROR,
-} from "../../shared/external-senders";
-import { CLI_EXIT_CODE_EXTERNAL_SENDER_UNKNOWN, CLI_EXIT_CODE_SENDER_INBOX_BUSY } from "../../shared/cli-exit-codes";
+import { isValidSenderId, SENDER_WAIT_MAX_MS, type SenderWaitResult } from "../../shared/external-senders";
+import { classifyAppError } from "../../shared/cli-errors";
 
 const USAGE =
 	"Usage: dev3 sender inbox --as-sender <id> [--wait <s>] [--client <cid>] [--cursor <c>] [--max <n>] [--take-over] [--json]\n" +
@@ -42,8 +36,10 @@ export function exitOnSenderError(error: string | undefined): void {
 			"Update the app (or restart it after an update) and run the command again.",
 		);
 	}
-	if (error?.startsWith(UNKNOWN_EXTERNAL_SENDER_ERROR)) exitError(error, undefined, CLI_EXIT_CODE_EXTERNAL_SENDER_UNKNOWN);
-	if (error?.startsWith(SENDER_INBOX_BUSY_ERROR)) exitError(error, undefined, CLI_EXIT_CODE_SENDER_INBOX_BUSY);
+	const classified = classifyAppError(error);
+	if (classified.code === "EXTERNAL_SENDER_UNKNOWN" || classified.code === "SENDER_INBOX_BUSY") {
+		exitError(classified.message, undefined, classified.exitCode);
+	}
 }
 
 function requireSender(args: ParsedArgs, context: CliContext | null): string {
