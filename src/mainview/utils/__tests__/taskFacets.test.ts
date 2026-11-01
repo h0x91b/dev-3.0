@@ -390,6 +390,25 @@ describe("has:pr / pr: context", () => {
 		expect(taskQueryContext(ledgerOnly, base).prState).toBe("merged");
 	});
 
+	it("a finished task's frozen OPEN reads as unknown, so pr:open skips it", () => {
+		for (const status of ["completed", "cancelled"] as const) {
+			const task = makeTask({ status, prNumber: 5, prStatusCache: cache(5, "OPEN"), pullRequests: [{ number: 5, url: "u", state: "OPEN", firstSeenAt: "" }] });
+			expect(taskQueryContext(task, base).prState).toBeNull();
+			expect(taskQueryContext(task, { ...base, prNumberFor: () => 5, prStateFor: () => "OPEN" }).prState).toBeNull();
+			expect(taskQueryContext(task, base).hasPr).toBe(true);
+		}
+	});
+
+	it("a finished task keeps its final states and prefers the ledger's over a stale cache", () => {
+		expect(taskQueryContext(makeTask({ status: "completed", prNumber: 5, prStatusCache: cache(5, "MERGED") }), base).prState).toBe("merged");
+		const ledgerMerged = makeTask({ status: "completed", prNumber: 5, prStatusCache: cache(5, "OPEN"), pullRequests: [{ number: 5, url: "u", state: "MERGED", firstSeenAt: "" }] });
+		expect(taskQueryContext(ledgerMerged, base).prState).toBe("merged");
+	});
+
+	it("a live task's OPEN is still believed", () => {
+		expect(taskQueryContext(makeTask({ status: "review-by-user", prNumber: 5, prStatusCache: cache(5, "OPEN") }), base).prState).toBe("open");
+	});
+
 	it("a live PR with no known state never borrows another PR's state", () => {
 		const task = makeTask({ prNumber: 5, prStatusCache: cache(5, "MERGED") });
 		const c = taskQueryContext(task, { ...base, prNumberFor: () => 9 });

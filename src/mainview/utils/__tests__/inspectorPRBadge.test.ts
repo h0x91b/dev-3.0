@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Task, TaskPRBadgeInfo, TaskPRStatusCache } from "../../../shared/types";
-import { inspectorPRBadge } from "../taskPrBadge";
+import { hydrateTaskPRMap, inspectorPRBadge } from "../taskPrBadge";
 
 const url = (n: number) => `https://github.com/acme/widget/pull/${n}`;
 
@@ -60,5 +60,25 @@ describe("inspectorPRBadge", () => {
 
 	it("returns nothing for a task with no PR at all", () => {
 		expect(inspectorPRBadge(task(), null, null)).toBeNull();
+	});
+});
+
+describe("hydrateTaskPRMap on a finished task", () => {
+	it("drops the OPEN its cache froze at to unknown, keeping the PR identity", () => {
+		const done = task({ status: "completed", prNumber: 42, prUrl: url(42), prStatusCache: cacheFor(42, "OPEN") });
+		const badge = hydrateTaskPRMap([done]).get("t1");
+		expect(badge?.number).toBe(42);
+		expect(badge?.mergeState).toBeNull();
+	});
+
+	it("does not let an in-session OPEN from before completion outlive it", () => {
+		const done = task({ status: "cancelled", prNumber: 42, prUrl: url(42), prStatusCache: cacheFor(42, "OPEN") });
+		const previous = new Map([["t1", { number: 42, url: url(42), mergeState: { mergeable: null, status: null, state: "OPEN" } } as TaskPRBadgeInfo]]);
+		expect(hydrateTaskPRMap([done], previous).get("t1")?.mergeState).toBeNull();
+	});
+
+	it("keeps a final state, and a live task's OPEN", () => {
+		expect(hydrateTaskPRMap([task({ status: "completed", prNumber: 42, prUrl: url(42), prStatusCache: cacheFor(42, "MERGED") })]).get("t1")?.mergeState?.state).toBe("MERGED");
+		expect(hydrateTaskPRMap([task({ status: "in-progress", prNumber: 42, prUrl: url(42), prStatusCache: cacheFor(42, "OPEN") })]).get("t1")?.mergeState?.state).toBe("OPEN");
 	});
 });
