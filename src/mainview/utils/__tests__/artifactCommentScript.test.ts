@@ -1,4 +1,4 @@
-import { ARTIFACT_COMMENT_TEXT_LIMIT, artifactCommentScript, installArtifactCommentTools } from "../artifactCommentScript";
+import { ARTIFACT_COMMENT_TEXT_LIMIT, artifactCommentScript, installArtifactCommentTools } from "../../../shared/artifact-comment-script";
 import { installArtifactChannel } from "../artifactChannel";
 
 interface Sent { type: string; [key: string]: unknown }
@@ -47,6 +47,22 @@ afterEach(() => {
 });
 
 describe("artifact comment tools", () => {
+	it("steps a pick out to its parent on widen, and keeps a press from working the page while picking", () => {
+		const { sent, host } = install();
+		host({ type: "dev3-artifact-comment-widen" });
+		expect(sent.filter((m) => m.type === "dev3-artifact-comment-pick")).toEqual([]);
+
+		host({ type: "dev3-artifact-comment-mode", on: true });
+		const value = document.querySelectorAll(".kpi b")[0] as HTMLElement;
+		const press = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+		value.dispatchEvent(press);
+		expect(press.defaultPrevented).toBe(true);
+		value.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+		host({ type: "dev3-artifact-comment-widen" });
+		const picks = sent.filter((m) => m.type === "dev3-artifact-comment-pick").map((m) => (m.pick as { selector: string }).selector);
+		expect(picks).toEqual(["#overview > div:nth-of-type(1) > b", "#overview > div:nth-of-type(1)"]);
+	});
+
 	it("ignores clicks until comment mode is on, then reports the picked element with selector, text and heading", () => {
 		const { sent, host } = install();
 		const kpi = document.querySelectorAll(".kpi")[1] as HTMLElement;

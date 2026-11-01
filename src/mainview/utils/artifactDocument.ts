@@ -1,5 +1,5 @@
 import { artifactBridgeScript } from "./artifactBridge";
-import { artifactCommentScript } from "./artifactCommentScript";
+import { artifactCommentScript } from "../../shared/artifact-comment-script";
 import { artifactChannelScript } from "./artifactChannel";
 import { artifactLinksScript } from "./artifactLinks";
 import { LIVE_CLIENT_GESTURE_MS, LIVE_CLIENT_TIMEOUT_MS, liveArtifactClientScript } from "../../shared/live-artifact-client";

@@ -425,11 +425,11 @@ describe("TaskArtifactViewer", () => {
 		}
 	});
 
-	it("hands the stored artifact file to the OS browser on desktop", async () => {
+	it("opens the artifact version in the browser shell on desktop", async () => {
 		render(<I18nProvider><TaskArtifactViewer taskId="t1" artifacts={[artifact("a")]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
 		await screen.findByTitle("Artifact a");
 		await userEvent.click(screen.getByTestId("artifact-viewer-open-browser"));
-		expect(mockedApi.request.openArtifactInBrowser).toHaveBeenCalledWith({ artifact: artifact("a") });
+		expect(mockedApi.request.openArtifactInBrowser).toHaveBeenCalledWith(expect.objectContaining({ artifactId: artifact("a").id, version: 1 }));
 	});
 
 	// A real browser returns null from window.open when `noopener` is passed, so the
