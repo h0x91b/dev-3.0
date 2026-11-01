@@ -1,13 +1,13 @@
 import { act, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 // The board renders through its host, which owns the shared filter row.
-import BoardHost from "../../board-views/BoardHost";
-import { I18nProvider } from "../../i18n";
-import { api } from "../../rpc";
-import { toast } from "../../toast";
-import type { CustomColumn, PRInfo, Project, Task, TipState } from "../../../shared/types";
+import BoardHost from "../../BoardHost";
+import { I18nProvider } from "../../../i18n";
+import { api } from "../../../rpc";
+import { toast } from "../../../toast";
+import type { CustomColumn, PRInfo, Project, Task, TipState } from "../../../../shared/types";
 
-vi.mock("../../rpc", () => ({
+vi.mock("../../../rpc", () => ({
 	api: {
 		request: {
 			getAgents: vi.fn().mockResolvedValue([]),
@@ -30,9 +30,9 @@ vi.mock("../../rpc", () => ({
 	},
 }));
 
-vi.mock("../../analytics", () => ({ trackEvent: vi.fn(), agentNameFromId: vi.fn(() => "unknown") }));
+vi.mock("../../../analytics", () => ({ trackEvent: vi.fn(), agentNameFromId: vi.fn(() => "unknown") }));
 
-vi.mock("../../toast", () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
+vi.mock("../../../toast", () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
 
 const project: Project = {
 	id: "p1",

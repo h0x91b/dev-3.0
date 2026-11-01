@@ -2,7 +2,7 @@ import { StrictMode, memo, type Dispatch } from "react";
 import type { AppAction } from "../../state";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Context } from "cordis";
-import type { Project, Task } from "../../../shared/types";
+import type { Project, Space, Task } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
 import { api } from "../../rpc";
 import { setHiddenControlsForTests } from "../../hidden-controls";
@@ -22,17 +22,25 @@ vi.mock("../../rpc", () => ({
 			getBoardViewState: vi.fn(),
 			setBoardViewState: vi.fn(async ({ state }) => state),
 			createLabel: vi.fn(),
+			getGlobalSettings: vi.fn().mockResolvedValue({ taskSortOrder: "oldest-first" }),
+			moveTaskToCustomColumn: vi.fn(),
+			createCustomColumn: vi.fn(),
+			reorderColumns: vi.fn().mockResolvedValue(undefined),
 		},
 	},
 }));
 
-// The old Kanban is covered by its own suites (rendered through this host);
-// here it only has to prove which tasks it was handed.
-vi.mock("../../components/KanbanBoard", () => ({
-	default: ({ tasks, displayTasks }: { tasks: Task[]; displayTasks: Task[] }) => (
-		<div data-testid="kanban" data-total={tasks.length} data-shown={displayTasks.map((t) => t.id).join(",")} />
-	),
-}));
+// Kanban is covered by its own suites (rendered through this host); here it
+// only has to prove which tasks `ctx.board` handed it.
+vi.mock("../kanban/KanbanView", async () => {
+	const { useBoard } = await import("../react");
+	return {
+		KanbanView: () => {
+			const board = useBoard();
+			return <div data-testid="kanban" data-total={board.scopeTasks().length} data-shown={board.tasks().map((t) => t.id).join(",")} />;
+		},
+	};
+});
 
 const project: Project = {
 	id: "p1",
@@ -56,11 +64,13 @@ function makeTask(id: string, title: string, overrides: Partial<Task> = {}): Tas
 
 const tasks = [makeTask("t1", "alpha"), makeTask("t2", "beta", { status: "completed" })];
 
-function renderHost(props: { tasks?: Task[]; strict?: boolean; dispatch?: Dispatch<AppAction> } = {}) {
+function renderHost(props: { tasks?: Task[]; strict?: boolean; dispatch?: Dispatch<AppAction>; project?: Project; space?: Space } = {}) {
 	const tree = (list: Task[]) => (
 		<I18nProvider>
 			<BoardHost
-				project={project}
+				project={props.project ?? project}
+				space={props.space}
+				memberProjects={props.space ? [props.project ?? project] : undefined}
 				tasks={list}
 				dispatch={props.dispatch ?? vi.fn()}
 				navigate={vi.fn()}
@@ -203,5 +213,81 @@ describe("BoardHost", () => {
 		vi.mocked(api.request.createLabel).mockRejectedValueOnce(new Error("nope"));
 		await expect(getBoardRoot().board.createLabel("p1", "Ops")).rejects.toThrow("nope");
 		await expect(getBoardRoot().board.createLabel("elsewhere", "Ops")).rejects.toThrow(/not on this board/);
+	});
+	it("lists the config's lanes by default and adds occupied hidden built-ins on request", () => {
+		const ops: Project = { ...project, kind: "virtual" };
+		renderHost({ project: ops, tasks: [makeTask("t1", "alpha", { status: "review-by-ai" })] });
+		const statuses = (opts?: { includeOccupied?: boolean }) =>
+			getBoardRoot().board.columns(opts).flatMap((slot) => (slot.type === "builtin" ? [slot.status] : []));
+		expect(statuses()).not.toContain("review-by-ai");
+		expect(statuses({ includeOccupied: true })).toContain("review-by-ai");
+	});
+
+	it("hands views the real task card through ctx.board.TaskCard", async () => {
+		function Cards() {
+			const board = useBoard();
+			const Card = board.TaskCard;
+			return <>{board.tasks().map((task) => <Card key={task.id} task={task} />)}</>;
+		}
+		registerView("ext:cards", { component: Cards });
+		vi.mocked(api.request.getBoardViewState).mockResolvedValue(withViewType(defaultBoardViewState(), "wide", "ext:cards"));
+		renderHost();
+		expect(await screen.findByText("alpha")).toBeInTheDocument();
+	});
+
+	it("moves to a custom column optimistically, reporting progress, and reverts on failure", async () => {
+		const dispatch = vi.fn();
+		renderHost({ dispatch });
+		const moving = vi.fn();
+		vi.mocked(api.request.moveTaskToCustomColumn).mockRejectedValueOnce(new Error("nope"));
+		await act(() => getBoardRoot().board.moveTask("t1", { customColumnId: "col-a" }, { onMovingChange: moving }));
+		expect(dispatch).toHaveBeenNthCalledWith(1, { type: "updateTask", task: { ...tasks[0], customColumnId: "col-a" } });
+		expect(dispatch).toHaveBeenLastCalledWith({ type: "updateTask", task: tasks[0] });
+		expect(moving.mock.calls).toEqual([[true], [false]]);
+	});
+
+	it("reorders a project board's columns and refuses column edits on a space board", async () => {
+		const dispatch = vi.fn();
+		const { unmount } = renderHost({ dispatch });
+		await act(() => getBoardRoot().board.reorderColumns(["completed", "todo"]));
+		expect(api.request.reorderColumns).toHaveBeenCalledWith({ projectId: "p1", columnOrder: ["completed", "todo"] });
+		expect(dispatch).toHaveBeenCalledWith({ type: "updateProject", project: { ...project, customColumns: [], columnOrder: ["completed", "todo"] } });
+		unmount();
+
+		const space = { id: "s1", name: "Space", projectIds: ["p1"] } as unknown as Space;
+		renderHost({ space });
+		await expect(getBoardRoot().board.reorderColumns(["todo"])).rejects.toThrow(/space board/);
+		await expect(getBoardRoot().board.createColumn()).rejects.toThrow(/space board/);
+	});
+
+	it("follows the settings push for the sort order", async () => {
+		renderHost();
+		await waitFor(() => expect(getBoardRoot().board.preferences().taskSortOrder).toBe("oldest-first"));
+		act(() => {
+			window.dispatchEvent(new CustomEvent("rpc:globalSettingsUpdated", { detail: { taskSortOrder: "newest-first", tipsDisabled: true } }));
+		});
+		expect(getBoardRoot().board.preferences()).toEqual({ taskSortOrder: "newest-first", tipsDisabled: true });
+	});
+	it("creates a column once even when the project push lands before the RPC returns", async () => {
+		const dispatch = vi.fn();
+		const column = { id: "col-new", name: "New Column", color: "#f00", llmInstruction: "" };
+		const pushed: Project = { ...project, customColumns: [column], columnOrder: ["todo", "col-new", "completed"] };
+		const host = (p: Project) => (
+			<I18nProvider>
+				<BoardHost project={p} tasks={tasks} dispatch={dispatch} navigate={vi.fn()} bellCounts={new Map()} taskPorts={new Map()} taskDevServers={new Map()} />
+			</I18nProvider>
+		);
+		const { rerender } = render(host(project));
+		vi.mocked(api.request.createCustomColumn).mockImplementationOnce(async () => {
+			act(() => rerender(host(pushed)));
+			return column;
+		});
+		await expect(getBoardRoot().board.createColumn()).resolves.toBe("col-new");
+		const reorders = vi.mocked(api.request.reorderColumns).mock.calls;
+		const order: string[] = reorders[reorders.length - 1][0].columnOrder;
+		expect(order.filter((id) => id === "col-new")).toHaveLength(1);
+		expect(order.indexOf("col-new")).toBe(order.indexOf("completed") - 1);
+		const update = dispatch.mock.calls[dispatch.mock.calls.length - 1][0] as { project: Project };
+		expect(update.project.customColumns).toEqual([column]);
 	});
 });

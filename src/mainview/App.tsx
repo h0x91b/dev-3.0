@@ -465,13 +465,12 @@ function App() {
 	// Prefill for the Create Task modal when opened from a `dev3://new-task` deep
 	// link. Consumed once by CreateTaskModal's initial description; cleared on close.
 	const [createTaskInitialText, setCreateTaskInitialText] = useState<string>("");
-	const [launchModal, setLaunchModal] = useState<{ task: Task; targetStatus: TaskStatus; project: Project } | null>(null);
+	const [launchModal, setLaunchModal] = useState<LaunchRequestedDetail | null>(null);
 	// Surfaces that only know "move to status" (context menu, native menu) start a
 	// To Do card through the same launch modal the board uses.
 	useEffect(() => {
 		const onLaunchRequested = (e: Event) => {
-			const { task, project, targetStatus } = (e as CustomEvent<LaunchRequestedDetail>).detail;
-			setLaunchModal({ task, project, targetStatus });
+			setLaunchModal((e as CustomEvent<LaunchRequestedDetail>).detail);
 		};
 		window.addEventListener(LAUNCH_REQUESTED_EVENT, onLaunchRequested);
 		return () => window.removeEventListener(LAUNCH_REQUESTED_EVENT, onLaunchRequested);
@@ -3299,6 +3298,7 @@ function App() {
 					globalSettings={globalSettings}
 					dispatch={dispatch}
 					onClose={() => setLaunchModal(null)}
+					mode={launchModal.mode}
 					onGlobalSettingsChange={setGlobalSettings}
 				/>
 			)}
