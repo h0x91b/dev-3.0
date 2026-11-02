@@ -12,6 +12,7 @@ import { MCP_TOOLS, _resetMcpStartsForTests, findTool, runTool, type ToolContext
 import type { McpTokenRecord } from "../mcp/token-store";
 import { senderAutoApproveMs } from "../cli-session-approval";
 import { senderRequester } from "../cli-socket/task-resolution";
+import { parseSinceValue } from "../../shared/cli-json/stats";
 
 const PROJECT = { id: "aaaaaaaa-0000-0000-0000-000000000001", name: "A", path: "/a" } as Project;
 let TODO = { id: "aaaaaaaa-task-0000-0000-000000000001", seq: 7, projectId: PROJECT.id, status: "todo", title: "t" } as Task;
@@ -230,10 +231,25 @@ describe("content scope", () => {
 });
 
 describe("stats and creation over the network", () => {
-	it("refuses all-agent usage (an unbounded main-thread scan) and since where it means nothing", async () => {
+	it("refuses all-agent usage without since or from a project-scoped token, and since where it means nothing", async () => {
+		expect((await run("stats_get", { kind: "usage" }, ctx(token({ projects: ["*"] })))).exitCode).toBe(3);
 		expect((await run("stats_get", { kind: "usage", since: "1d" })).exitCode).toBe(3);
 		expect((await run("stats_get", { kind: "limits", since: "1d" })).exitCode).toBe(3);
 		expect(count("stats.usage")).toBe(0);
+	});
+
+	it("passes since to the all-agent usage scan and filters days to it", async () => {
+		const c = ctx(token({ projects: ["*"] }));
+		const base = c.call;
+		const day = (date: string) => ({ date, startMs: Date.parse(`${date}T00:00:00`), source: "claude", inputTokens: 1, outputTokens: 1, cacheCreationInputTokens: 0, cacheReadInputTokens: 0, costUsd: 1, fullyPriced: true });
+		let sent: unknown;
+		c.call = async (m, p) => m === "stats.usage"
+			? (sent = p, { id: "x", ok: true, data: { generatedAt: "g", hasUnpricedModels: false, models: [], days: [day("2026-01-01"), day("2026-10-20")] } })
+			: base(m, p);
+		const out = await run("stats_get", { kind: "usage", since: "2026-10-01" }, c);
+		expect(out.exitCode).toBe(0);
+		expect(sent).toEqual({ since: parseSinceValue("2026-10-01") });
+		expect((out.json as { days: Array<{ date: string }> }).days.map((d) => d.date)).toEqual(["2026-10-20"]);
 	});
 
 	it("filters limit sessions to the allow-list and drops their config dirs", async () => {

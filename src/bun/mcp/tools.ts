@@ -5,7 +5,7 @@
 
 import type { CliResponse, Project, SpacesFile, Task, TaskPriority } from "../../shared/types";
 import { ACTIVE_STATUSES, ALL_PRIORITIES, ALL_STATUSES, EMPTY_SPACES_FILE, ID_PREFIX_MIN_LENGTH, normalizePriority } from "../../shared/types";
-import type { ProductivityStats, SystemMemorySnapshot, TaskUsageReport } from "../../shared/types";
+import type { AgentUsageReport, ProductivityStats, SystemMemorySnapshot, TaskUsageReport } from "../../shared/types";
 import type { AgentRateLimitsReport } from "../../shared/rate-limits";
 import type { PendingApprovalSummary } from "../../shared/agent-approval";
 import { toCliProject } from "../../shared/project-registration";
@@ -36,6 +36,7 @@ import {
 	pricesJson,
 	productivityJson,
 	taskUsageJson,
+	usageJson,
 	type PricesWire,
 } from "../../shared/cli-json/stats";
 import { MAX_MESSAGE_SUBJECT_LENGTH, checkMessageSubject } from "../../shared/agent-message-subject";
@@ -395,7 +396,7 @@ function sharedProductivity(ctx: ToolContext): Promise<ProductivityStats> {
 const statsGet: ToolDef = {
 	name: "stats_get",
 	description:
-		"`dev3 stats <kind> --json`. kind usage takes `task` (one task's usage); usage across every agent is not served over MCP yet.",
+		"`dev3 stats <kind> --json`. kind usage takes `task` (one task's usage), or `since` for usage across every agent (all-projects tokens only).",
 	scope: "stats",
 	inputSchema: obj({
 		kind: { type: "string", enum: ["productivity", "usage", "limits", "memory"] },
@@ -429,9 +430,13 @@ const statsGet: ToolDef = {
 				const { workingDir: _dir, ...withoutPath } = report;
 				return ok(taskUsageJson(withoutPath as TaskUsageReport));
 			}
-			// The all-agent scan runs on the app's main thread and ignores `since` (~80 s on a big
-			// transcript store). Refused until h0x91b/dev-3.0#2150 bounds it; then require `since` instead.
-			usage("usage across every agent is not available over MCP yet; pass task for one task's usage.");
+			// `since` bounds the scan to recently written transcripts; the totals span every project,
+			// so only an all-projects token may read them.
+			if (args.since === undefined) usage("usage across every agent needs since (e.g. 7d), or pass task for one task's usage.");
+			if (!ctx.token.projects.includes("*")) usage("usage across every agent spans all projects; it needs a token for every project, or pass task.");
+			const since = readSince(args);
+			admitHeavyStats(ctx);
+			return ok(usageJson(await appData<AgentUsageReport>(ctx, "stats.usage", { since }), since));
 		}
 		if (kind === "limits") {
 			const report = await appData<AgentRateLimitsReport>(ctx, "stats.limits");
@@ -454,8 +459,8 @@ const statsGet: ToolDef = {
 
 const statsPrices: ToolDef = {
 	name: "stats_prices",
-	// `models` is required: without it the app lists every model seen, which runs the
-	// same all-agent usage scan `stats_get kind:usage` needs `since` for.
+	// `models` is required: without it the app lists every model seen, which runs an
+	// all-agent usage scan with no `since` to bound it.
 	description: "Token prices for the named models, as `dev3 stats prices --model … --json`.",
 	scope: "stats",
 	inputSchema: obj({ models: { type: "array", items: { type: "string", minLength: 1, maxLength: 128 }, minItems: 1, maxItems: 50 } }, ["models"]),

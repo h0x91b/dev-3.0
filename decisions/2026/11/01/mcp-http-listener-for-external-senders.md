@@ -6,7 +6,7 @@ External senders (`decisions/2026/10/26/external-senders.md`) reach dev3 only th
 
 ## Investigation
 
-The remote-access server binds `0.0.0.0` and its tunnel forwards it whole, and its JWT has no scope, so neither can carry this. dev3's Codex sandbox profile can write all of `~/.dev3.0`, so a token store there could be enrolled into by a task. `message.sendAsSender` types into a live agent with no dialog, and the all-agent `stats.usage` scan runs on the app's main thread and ignores any `since`.
+The remote-access server binds `0.0.0.0` and its tunnel forwards it whole, and its JWT has no scope, so neither can carry this. dev3's Codex sandbox profile can write all of `~/.dev3.0`, so a token store there could be enrolled into by a task. `message.sendAsSender` types into a live agent with no dialog, and the all-agent `stats.usage` scan used to run on the app's main thread ignoring `since` (fixed by #2150, so MCP serves it only with `since` and only to an all-projects token, since its totals cannot be filtered by project).
 
 ## Decision
 
