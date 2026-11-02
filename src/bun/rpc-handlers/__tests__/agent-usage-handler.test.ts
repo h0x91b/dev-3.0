@@ -1,4 +1,4 @@
-import { mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,6 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../shared", () => ({
 	log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
+
+vi.mock("../../atomic-write", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../../atomic-write")>();
+	return { ...actual, atomicWriteFile: vi.fn(actual.atomicWriteFile) };
+});
 
 vi.mock("../../rate-limit-monitor", () => ({
 	getAgentRateLimitsReport: vi.fn(),
@@ -26,9 +31,12 @@ vi.mock("node:os", async (importOriginal) => ({
 
 import { getAgentUsage, getTaskAgentUsage, isSubagentTranscript, taskStartedAt } from "../agent-usage";
 import { taskDir } from "../../git";
+import { log } from "../shared";
+import { atomicWriteFile } from "../../atomic-write";
 import type { Project, Task } from "../../../shared/types";
 import { defaultAccountPaths } from "../../agent-accounts";
 import { recordCursorHookUsage } from "../../usage-collectors/cursor";
+import { buildClaudeUsageDays, buildCodexUsageDays } from "../agent-usage-parse";
 
 let tempRoot: string;
 
@@ -288,6 +296,219 @@ describe("getAgentUsage", () => {
 		const report = await getAgentUsage();
 		expect(report.days).toEqual([]);
 		expect(report.hasUnpricedModels).toBe(false);
+	});
+});
+
+describe("getAgentUsage incremental scan", () => {
+	const DAY = 86_400_000;
+	const claudeEntry = (id: string, timestamp: string, input = 1_000_000) => ({
+		type: "assistant", requestId: id, timestamp,
+		message: { id, model: "claude-sonnet-4-6", usage: { input_tokens: input } },
+	});
+	const totalInput = (days: { inputTokens: number }[]) => days.reduce((sum, d) => sum + d.inputTokens, 0);
+	const claudeFile = (name: string) => join(tempRoot, "claude", "projects", "repo", name);
+	/** Second-granular, so restoring it after a same-size rewrite reproduces the exact stat. */
+	const setMtime = (path: string, ms: number) => utimesSync(path, Math.floor(ms / 1000), Math.floor(ms / 1000));
+	const historyFile = () => join(tempRoot, ".dev3.0", "agent-usage-history-v1.json");
+
+	it("does not read a transcript last written before the since day, and a full scan still does", async () => {
+		const now = Date.now();
+		// The stale file's record claims today, which only an unread file can keep out of the report.
+		writeJsonl(claudeFile("stale.jsonl"), [claudeEntry("stale", new Date(now).toISOString())]);
+		setMtime(claudeFile("stale.jsonl"), now - 10 * DAY);
+		writeJsonl(claudeFile("live.jsonl"), [claudeEntry("live", new Date(now).toISOString())]);
+		expect(totalInput((await getAgentUsage({ since: new Date(now - 2 * DAY).toISOString() })).days)).toBe(1_000_000);
+		expect(totalInput((await getAgentUsage()).days)).toBe(2_000_000);
+	});
+
+	it("reads a file written on the since day before the since time, with every day it holds", async () => {
+		const today = new Date();
+		const midnight = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+		const old = new Date(midnight - 30 * DAY + 3_600_000).toISOString();
+		const early = new Date(midnight + 60_000).toISOString();
+		writeJsonl(claudeFile("early.jsonl"), [claudeEntry("old", old), claudeEntry("early", early)]);
+		setMtime(claudeFile("early.jsonl"), midnight + 120_000);
+		const report = await getAgentUsage({ since: new Date(midnight + 12 * 3_600_000).toISOString() });
+		expect(report.days.map((d) => d.startMs)).toEqual([new Date(Date.parse(old)).setHours(0, 0, 0, 0), midnight]);
+	});
+
+	it("ignores an unparseable since and scans everything", async () => {
+		writeJsonl(claudeFile("a.jsonl"), [claudeEntry("a", "2026-10-20T12:00:00Z")]);
+		setMtime(claudeFile("a.jsonl"), Date.parse("2026-10-20T12:00:00Z"));
+		expect(totalInput((await getAgentUsage({ since: "not a date" })).days)).toBe(1_000_000);
+	});
+
+	it("skips an unchanged transcript on a repeat scan and re-reads one that grew", async () => {
+		const at = Date.parse("2026-10-20T12:00:00Z");
+		writeJsonl(claudeFile("done.jsonl"), [claudeEntry("done", "2026-10-20T12:00:00Z", 1_000_000)]);
+		setMtime(claudeFile("done.jsonl"), at);
+		writeJsonl(claudeFile("live.jsonl"), [claudeEntry("live", "2026-10-20T12:00:00Z")]);
+		expect(totalInput((await getAgentUsage()).days)).toBe(2_000_000);
+
+		// Same size and mtime: a cache hit never sees the new count.
+		writeJsonl(claudeFile("done.jsonl"), [claudeEntry("done", "2026-10-20T12:00:00Z", 9_000_000)]);
+		setMtime(claudeFile("done.jsonl"), at);
+		writeFileSync(claudeFile("live.jsonl"), `\n${JSON.stringify(claudeEntry("more", "2026-10-20T13:00:00Z"))}`, { flag: "a" });
+		expect(totalInput((await getAgentUsage()).days)).toBe(3_000_000);
+	});
+
+	it("rescans everything once the history file is removed", async () => {
+		const at = Date.parse("2026-10-20T12:00:00Z");
+		writeJsonl(claudeFile("done.jsonl"), [claudeEntry("done", "2026-10-20T12:00:00Z", 1_000_000)]);
+		setMtime(claudeFile("done.jsonl"), at);
+		expect(totalInput((await getAgentUsage()).days)).toBe(1_000_000);
+		rmSync(historyFile());
+		writeJsonl(claudeFile("done.jsonl"), [claudeEntry("done", "2026-10-20T12:00:00Z", 9_000_000)]);
+		setMtime(claudeFile("done.jsonl"), at);
+		expect(totalInput((await getAgentUsage()).days)).toBe(9_000_000);
+	});
+
+	it("does not cache when the history cannot be kept", async () => {
+		const at = Date.parse("2026-10-20T12:00:00Z");
+		mkdirSync(dirname(historyFile()), { recursive: true });
+		writeFileSync(historyFile(), JSON.stringify({ version: 99 }));
+		writeJsonl(claudeFile("done.jsonl"), [claudeEntry("done", "2026-10-20T12:00:00Z", 1_000_000)]);
+		setMtime(claudeFile("done.jsonl"), at);
+		expect(totalInput((await getAgentUsage()).days)).toBe(1_000_000);
+		writeJsonl(claudeFile("done.jsonl"), [claudeEntry("done", "2026-10-20T12:00:00Z", 9_000_000)]);
+		setMtime(claudeFile("done.jsonl"), at);
+		expect(totalInput((await getAgentUsage()).days)).toBe(9_000_000);
+	});
+
+	it("reports the same days cold, warm, and after a full rescan, matching a plain fold of every file", async () => {
+		const snapshot = (output: number) => ({
+			type: "assistant", requestId: "dup", timestamp: "2026-10-21T09:00:00Z",
+			message: { id: "dup", model: "claude-sonnet-4-6", usage: { input_tokens: 10, output_tokens: output } },
+		});
+		const claude = {
+			"a.jsonl": [claudeEntry("a1", "2026-10-20T12:00:00Z"), snapshot(5), "{truncated"],
+			"b.jsonl": [snapshot(50), claudeEntry("b1", "2026-10-21T12:00:00Z", 300)],
+			"b/subagents/agent-1.jsonl": [claudeEntry("sub", "2026-10-22T08:00:00Z", 70)],
+		};
+		for (const [name, entries] of Object.entries(claude)) writeJsonl(claudeFile(name), entries);
+		const usage = (input: number, output: number) => ({ input_tokens: input, output_tokens: output });
+		const codex = [
+			{ type: "session_meta", payload: { id: "s" } },
+			{ type: "turn_context", payload: { model: "gpt-5.1-codex" } },
+			{ type: "event_msg", timestamp: "2026-10-21T10:00:00Z", payload: { type: "token_count", info: { last_token_usage: usage(100, 10), total_token_usage: usage(100, 10) } } },
+			{ type: "event_msg", timestamp: "2026-10-21T10:00:01Z", payload: { type: "token_count", info: { last_token_usage: usage(100, 10), total_token_usage: usage(100, 10) } } },
+			{ type: "event_msg", timestamp: "2026-10-22T10:00:00Z", payload: { type: "token_count", info: { last_token_usage: usage(40, 4), total_token_usage: usage(140, 14) } } },
+		];
+		writeJsonl(join(tempRoot, "codex", "sessions", "2026", "rollout-s.jsonl"), codex);
+
+		const tokens = (days: { date: string; source: string; inputTokens: number; outputTokens: number }[]) =>
+			days.map(({ date, source, inputTokens, outputTokens }) => ({ date, source, inputTokens, outputTokens }));
+		const plain = [
+			...buildClaudeUsageDays(Object.values(claude).flat()).days,
+			...buildCodexUsageDays(codex).days,
+		].sort((a, b) => a.startMs - b.startMs || a.source.localeCompare(b.source));
+
+		const cold = (await getAgentUsage()).days;
+		expect(tokens(cold)).toEqual(tokens(plain));
+		expect((await getAgentUsage()).days).toEqual(cold);
+		rmSync(historyFile());
+		expect((await getAgentUsage()).days).toEqual(cold);
+	});
+
+	it("still counts skipped transcripts when a warm scan cannot keep the history", async () => {
+		const at = Date.parse("2026-10-20T12:00:00Z");
+		writeJsonl(claudeFile("old.jsonl"), [claudeEntry("old", "2026-10-20T12:00:00Z")]);
+		setMtime(claudeFile("old.jsonl"), at);
+		writeJsonl(claudeFile("live.jsonl"), [claudeEntry("live", "2026-10-20T12:00:00Z")]);
+		expect(totalInput((await getAgentUsage()).days)).toBe(2_000_000);
+		writeFileSync(claudeFile("live.jsonl"), `\n${JSON.stringify(claudeEntry("more", "2026-10-20T13:00:00Z"))}`, { flag: "a" });
+		// The lock is held and the history read, but the write fails (ENOSPC, EROFS…).
+		vi.mocked(atomicWriteFile).mockRejectedValueOnce(new Error("ENOSPC"));
+		expect(totalInput((await getAgentUsage()).days)).toBe(3_000_000);
+	});
+
+	it("still counts skipped transcripts when the history cannot even be locked", async () => {
+		const at = Date.parse("2026-10-20T12:00:00Z");
+		writeJsonl(claudeFile("old.jsonl"), [claudeEntry("old", "2026-10-20T12:00:00Z")]);
+		setMtime(claudeFile("old.jsonl"), at);
+		writeJsonl(claudeFile("live.jsonl"), [claudeEntry("live", "2026-10-20T12:00:00Z")]);
+		expect(totalInput((await getAgentUsage()).days)).toBe(2_000_000);
+		writeFileSync(claudeFile("live.jsonl"), `\n${JSON.stringify(claudeEntry("more", "2026-10-20T13:00:00Z"))}`, { flag: "a" });
+		const dev3Home = dirname(historyFile());
+		chmodSync(dev3Home, 0o555);
+		try {
+			expect(totalInput((await getAgentUsage()).days)).toBe(3_000_000);
+		} finally {
+			chmodSync(dev3Home, 0o755);
+		}
+	});
+
+	it("re-reads a transcript whose read failed once it becomes readable", async () => {
+		const at = Date.parse("2026-10-20T12:00:00Z");
+		writeJsonl(claudeFile("a.jsonl"), [claudeEntry("a", "2026-10-20T12:00:00Z")]);
+		writeJsonl(claudeFile("b.jsonl"), [claudeEntry("b", "2026-10-20T12:00:00Z")]);
+		setMtime(claudeFile("b.jsonl"), at);
+		chmodSync(claudeFile("b.jsonl"), 0o000);
+		try {
+			expect(totalInput((await getAgentUsage()).days)).toBe(1_000_000);
+		} finally {
+			chmodSync(claudeFile("b.jsonl"), 0o644);
+		}
+		expect(totalInput((await getAgentUsage()).days)).toBe(2_000_000);
+	});
+
+	it("rescans in full when the history is removed while a warm scan runs", async () => {
+		const at = Date.parse("2026-10-20T12:00:00Z");
+		writeJsonl(claudeFile("old.jsonl"), [claudeEntry("old", "2026-10-20T12:00:00Z")]);
+		setMtime(claudeFile("old.jsonl"), at);
+		writeJsonl(claudeFile("live.jsonl"), [claudeEntry("live", "2026-10-20T12:00:00Z")]);
+		expect(totalInput((await getAgentUsage()).days)).toBe(2_000_000);
+		writeFileSync(claudeFile("live.jsonl"), `\n${JSON.stringify(claudeEntry("more", "2026-10-20T13:00:00Z"))}`, { flag: "a" });
+		const scan = getAgentUsage();
+		rmSync(historyFile());
+		expect(totalInput((await scan).days)).toBe(3_000_000);
+		expect(totalInput((await getAgentUsage()).days)).toBe(3_000_000);
+		const history = JSON.parse(readFileSync(historyFile(), "utf8"));
+		expect(history.claude).toHaveLength(3);
+	});
+
+	it("keeps a routed model's pricing identity learned on a warm scan after the route is removed", async () => {
+		const catalogFile = join(tempRoot, ".dev3.0", "model-catalog.json");
+		writeJsonl(claudeFile("route.jsonl"), [{
+			type: "assistant", requestId: "routed", timestamp: "2026-10-20T12:00:00Z",
+			message: { id: "routed", model: "openrouter/my-label", usage: { input_tokens: 1_000_000 } },
+		}]);
+		setMtime(claudeFile("route.jsonl"), Date.parse("2026-10-20T12:00:00Z"));
+		expect((await getAgentUsage()).days[0]).toMatchObject({ costUsd: 0, fullyPriced: false });
+		writeFileSync(catalogFile, JSON.stringify({
+			providers: [{ id: "router", kind: "openrouter", label: "OpenRouter" }],
+			models: [{ id: "route", providerId: "router", name: "my-label", modelId: "openai/gpt-6.1-sol" }],
+		}));
+		expect((await getAgentUsage()).days[0]).toMatchObject({ costUsd: 2, fullyPriced: true });
+		rmSync(catalogFile);
+		expect((await getAgentUsage()).days[0]).toMatchObject({ costUsd: 2, fullyPriced: true });
+	});
+
+	it("reads a managed account store that links onto the home store once", async () => {
+		registerAccounts(["linked"], ["linked"]);
+		const accountsDir = defaultAccountPaths().accountsDir;
+		writeJsonl(claudeFile("a.jsonl"), [claudeEntry("a", "2026-10-20T12:00:00Z")]);
+		writeJsonl(join(tempRoot, "codex", "sessions", "rollout-a.jsonl"), [
+			{ type: "token_usage_record", timestamp: "2026-10-20T12:00:00Z", payload: { response_id: "c", usage: { input_tokens: 5, output_tokens: 0 } } },
+		]);
+		mkdirSync(join(accountsDir, "claude", "linked"), { recursive: true });
+		symlinkSync(join(tempRoot, "claude", "projects"), join(accountsDir, "claude", "linked", "projects"));
+		mkdirSync(join(accountsDir, "codex", "linked"), { recursive: true });
+		symlinkSync(join(tempRoot, "codex", "sessions"), join(accountsDir, "codex", "linked", "sessions"));
+		vi.mocked(log.info).mockClear();
+		await getAgentUsage();
+		expect(log.info).toHaveBeenCalledWith("getAgentUsage computed", expect.objectContaining({ claudeFiles: 1, codexFiles: 1 }));
+	});
+
+	it("lets a caller join a scan of the same window that is still running", async () => {
+		const since = new Date().toISOString();
+		const scans = [getAgentUsage({ since }), getAgentUsage({ since: new Date().toISOString() }), getAgentUsage(), getAgentUsage()];
+		expect(scans[0]).toBe(scans[1]);
+		expect(scans[2]).toBe(scans[3]);
+		expect(scans[0]).not.toBe(scans[2]);
+		await Promise.all(scans);
+		expect(getAgentUsage()).not.toBe(scans[2]);
+		await getAgentUsage();
 	});
 });
 

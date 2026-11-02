@@ -399,7 +399,8 @@ export type AppRPCSchema = {
 				response: ProductivityStats;
 			};
 			getAgentUsage: {
-				params: void;
+				/** `since` (ISO) skips transcripts last written before that local day. */
+				params: { since?: string } | void;
 				response: AgentUsageReport;
 			};
 			getAgentRateLimits: {

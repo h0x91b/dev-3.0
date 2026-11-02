@@ -47,12 +47,21 @@ beforeEach(() => {
 });
 
 describe("stats.* socket methods", () => {
+	it("hands stats.usage a string since so the scan can skip old transcripts", async () => {
+		await statsHandlers["stats.usage"]({ since: "2026-10-25T00:00:00.000Z" });
+		expect(rpc.getAgentUsage).toHaveBeenLastCalledWith({ since: "2026-10-25T00:00:00.000Z" });
+		await statsHandlers["stats.usage"]({ since: 7 });
+		expect(rpc.getAgentUsage).toHaveBeenLastCalledWith({});
+	});
+
+
 	it("pass the renderer handlers' answers through unchanged", async () => {
 		expect(await statsHandlers["stats.productivity"]({})).toEqual({ events: [], generatedAt: "2026-10-27T00:00:00.000Z" });
 		expect(await statsHandlers["stats.usage"]({})).toMatchObject({ days: [], hasUnpricedModels: false });
 		expect(await statsHandlers["stats.limits"]({})).toEqual({ snapshots: [], generatedAt: 1 });
 		expect(await statsHandlers["stats.memory"]({})).toBeNull();
 		expect(await statsHandlers["stats.taskUsage"]({ taskId: "seq:9", projectId: "p-1" })).toEqual({ projectId: "p-1", taskId: "t-9" });
+		expect(rpc.getAgentUsage).toHaveBeenCalledWith({});
 		expect(rpc.getProductivityStats).toHaveBeenCalledTimes(1);
 		expect(rpc.getSystemMemory).toHaveBeenCalledTimes(1);
 	});

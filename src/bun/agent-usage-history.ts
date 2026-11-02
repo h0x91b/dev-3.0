@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { TokenCounts } from "../shared/agent-pricing";
 import type { AgentUsageSource } from "../shared/types";
@@ -86,9 +86,10 @@ function mergeState(retained: UsageState, current: UsageState): boolean {
 	return changed;
 }
 
-async function retainLegacyHistory(current: States): Promise<States> {
+async function retainLegacyHistory(current: States, onMergeBase?: (stamp: string | null) => void): Promise<States> {
 	try {
 		return await withFileLock(HISTORY_FILE, async () => {
+			onMergeBase?.(usageHistoryStamp());
 			const retained = readHistory();
 			let changed = false;
 			for (const source of ["claude", "codex"] as const) {
@@ -106,6 +107,16 @@ async function retainLegacyHistory(current: States): Promise<States> {
 		// Leave unreadable or newer history intact; live usage remains available.
 		log.warn("Usage history unavailable; returning current logs", { error: String(error) });
 		return current;
+	}
+}
+
+/** Changes whenever the Claude/Codex history file is rewritten or removed, by any app version. */
+export function usageHistoryStamp(): string | null {
+	try {
+		const stat = statSync(HISTORY_FILE);
+		return `${stat.ino}:${stat.size}:${stat.mtimeMs}`;
+	} catch {
+		return null;
 	}
 }
 
@@ -135,13 +146,19 @@ async function retainAdditionalHistory(source: AdditionalSource, current: UsageS
 	}
 }
 
-/** Keep new agent stores separate so older two-source writers cannot erase their history. */
-export async function retainUsageHistory<S extends AgentUsageSource>(current: Record<S, UsageState>): Promise<Record<S, UsageState>> {
+/**
+ * Keep new agent stores separate so older two-source writers cannot erase their history.
+ * `onLegacyMergeBase` gets the Claude/Codex history stamp seen under the lock, before merging.
+ */
+export async function retainUsageHistory<S extends AgentUsageSource>(
+	current: Record<S, UsageState>,
+	onLegacyMergeBase?: (stamp: string | null) => void,
+): Promise<Record<S, UsageState>> {
 	const requested: States = current;
 	const result: States = { ...current };
 	const work: Promise<void>[] = [];
 	if (requested.claude || requested.codex) {
-		work.push(retainLegacyHistory(requested).then((retained) => {
+		work.push(retainLegacyHistory(requested, onLegacyMergeBase).then((retained) => {
 			for (const source of ["claude", "codex"] as const) if (requested[source]) result[source] = retained[source];
 		}));
 	}

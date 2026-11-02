@@ -165,7 +165,7 @@ async function usage(args: ParsedArgs, socketPath: string, context: CliContext |
 		exitUsage("dev3 stats usage --project needs --task: daily usage is recorded per agent and day, not per project.");
 	}
 	const since = readSince(args);
-	const report = await request<AgentUsageReport>(socketPath, "stats.usage", "stats usage");
+	const report = await request<AgentUsageReport>(socketPath, "stats.usage", "stats usage", since ? { since } : {});
 	const days = since ? report.days.filter((d) => usageDayOverlapsSince(d, since)) : report.days;
 
 	if (args.flags.json === "true") {
