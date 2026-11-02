@@ -1,6 +1,7 @@
 import { assertTaskWorkspacePresent } from "../../task-workspace-guard";
 import type { AgentFamily, ColumnAgentConfig, PermissionMode, Project, Task } from "../../../shared/types";
-import { getPrimaryStopTarget } from "../../../shared/types";
+import { getPrimaryStopTarget, isCoordinatorTask } from "../../../shared/types";
+import { coordinatorLaunchDefault } from "../../../shared/coordinator-launch";
 import * as data from "../../data";
 import * as git from "../../git";
 import * as pty from "../../pty-server";
@@ -286,6 +287,11 @@ export async function launchTaskPty(
 ): Promise<void> {
 	// First, before any trust/hook/config write: tmux would start a missing cwd in $HOME.
 	assertTaskWorkspacePresent(project, worktreePath);
+	// Only a fresh coordinator launch with no picked agent; every other task keeps the global default.
+	if (!agentId && !resume && !opts?.shellNotice && isCoordinatorTask(task)) {
+		const coordinator = coordinatorLaunchDefault(await agents.getAllAgents(), await loadSettings());
+		if (coordinator) ({ agentId, configId } = coordinator);
+	}
 	const sessionId = opts?.sessionId;
 	const accountId = opts?.codexHome
 		? codexAccountIdForHome(opts.codexHome) ?? null

@@ -13,6 +13,7 @@ import type {
 	ProviderSettings,
 } from "../../../shared/types";
 import { LLM_PROVIDER } from "../../../shared/types";
+import { coordinatorLaunchDefault } from "../../../shared/coordinator-launch";
 import { agentKey, autoAgentFamily, isKnownAgentCommand, SELECTABLE_AGENT_FAMILIES } from "../../../shared/agent-adapters/families";
 import { randomUUID } from "../../uuid";
 import { ListEditor } from "../ListEditor";
@@ -67,6 +68,7 @@ interface AgentSettingsSectionProps {
 	onAgentsChange: (updated: CodingAgent[]) => void | Promise<void>;
 	onDefaultAgentChange: (agentId: string) => void;
 	onDefaultConfigChange: (configId: string) => void;
+	onCoordinatorDefaultChange: (agentId: string, configId: string | null) => void;
 	/** Fresh settings after a favorite toggle, so the stars re-render. */
 	onGlobalSettingsChange: (settings: GlobalSettings) => void;
 	/** A preset a deep-link wants shown: selected, revealed on narrow viewports,
@@ -88,6 +90,7 @@ export default function AgentSettingsSection({
 	onAgentsChange,
 	onDefaultAgentChange,
 	onDefaultConfigChange,
+	onCoordinatorDefaultChange,
 	onGlobalSettingsChange,
 	focusPreset,
 	onFocusPresetHandled,
@@ -113,6 +116,7 @@ export default function AgentSettingsSection({
 		(agent) => agent.id === globalSettings.defaultAgentId,
 	);
 	const defaultAgentConfigs = selectedDefaultAgent?.configurations || [];
+	const coordinatorDefault = coordinatorLaunchDefault(agents, globalSettings);
 
 	const activeAgent = agents.find((agent) => agent.id === activeAgentId) ?? agents[0];
 	const availability = agentAvailability.find((item) => item.agentId === activeAgent?.id);
@@ -343,6 +347,27 @@ export default function AgentSettingsSection({
 			})() : null}
 			</div>
 
+			</SettingsEntry>
+			<SettingsEntry anchor="coordinator-agent">
+			<div>
+				<p className="block text-fg text-sm font-semibold mb-2">
+					{t("settings.coordinatorAgent")}
+				</p>
+				<p className="text-fg-3 text-sm mb-3">
+					{t("settings.coordinatorAgentDesc")}
+				</p>
+				<AgentConfigPicker
+					idPrefix="coordinator-agent"
+					agents={agents}
+					agentId={coordinatorDefault?.agentId ?? null}
+					configId={coordinatorDefault?.configId ?? null}
+					agentAvailability={agentAvailability}
+					pxpipeProxyEnabled={globalSettings.pxpipeProxyEnabled ?? false}
+					onChange={(next) => {
+						if (next.agentId) onCoordinatorDefaultChange(next.agentId, next.configId);
+					}}
+				/>
+			</div>
 			</SettingsEntry>
 			<SettingsEntry anchor="agents-editor">
 			<div className="space-y-3">

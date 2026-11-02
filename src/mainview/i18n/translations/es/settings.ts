@@ -148,6 +148,8 @@ const settings = {
 	"settings.defaultAgentDesc": "Agente utilizado para nuevas tareas",
 	"settings.defaultConfig": "Configuración predeterminada",
 	"settings.defaultConfigDesc": "Configuración aplicada al lanzar tareas",
+	"settings.coordinatorAgent": "Agente coordinador",
+	"settings.coordinatorAgentDesc": "Agente y preajuste con los que arranca una tarea coordinadora. Las demás tareas usan el agente predeterminado.",
 	"settings.llmProvider": "Proveedor LLM",
 	"settings.llmProviderDesc": "Backend de este agente. Un proveedor externo fija sus propios ids de modelo en lugar de los alias de dev3.",
 	"settings.providerNative": "Nativo",

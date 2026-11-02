@@ -148,6 +148,8 @@ const settings = {
 	"settings.defaultAgentDesc": "Agent used for new tasks",
 	"settings.defaultConfig": "Default configuration",
 	"settings.defaultConfigDesc": "Configuration applied when launching tasks",
+	"settings.coordinatorAgent": "Coordinator agent",
+	"settings.coordinatorAgentDesc": "Agent and preset a coordinator task starts on. Other tasks keep the default agent.",
 	"settings.llmProvider": "LLM Provider",
 	"settings.llmProviderDesc": "Backend for this agent. A third-party provider pins its own model ids in place of dev3's aliases.",
 	"settings.providerNative": "Native",
