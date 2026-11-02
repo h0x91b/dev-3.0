@@ -124,6 +124,15 @@ describe("resolveModelAvailability", () => {
 		expect(result).toEqual({ status: "resolved", unavailable: ["gpt-6-sol"] });
 	});
 
+	it("returns unknown and probes nothing when the custom executable is broken", async () => {
+		mockApplyBinaryPathOverride.mockImplementation(() => {
+			throw new Error("Custom executable for agent \"Codex\" not found or not executable: /gone");
+		});
+		const result = await resolveModelAvailability(codexAgent(["gpt-6-astra"]));
+		expect(result).toEqual({ status: "unknown" });
+		expect(mockSpawn).not.toHaveBeenCalled();
+	});
+
 	it("treats a Cursor xhigh preset as available when the base family is listed", async () => {
 		// The account lists gpt-5.6-sol-high (not -xhigh); base-family match keeps the
 		// dev3 preset gpt-5.6-sol-xhigh available, and flags an absent family.

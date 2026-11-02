@@ -204,6 +204,35 @@ Two things break this:
   into the worktree in a task, which has only what git tracks. Keep such files tracked, or
   reference them by absolute path.
 
+### Claude Code: a wrapper executable and an account without a sign-in
+
+Some setups start Claude through their own launcher (a wrapper script that picks credentials). Two
+settings let dev3 use it.
+
+**Custom executable** (Settings → Agents, the agent's path). The path is strict: if the file is
+missing or not executable the launch fails with an error naming the agent and the path. dev3 never
+falls back to the `claude` on your PATH. The wrapper receives `CLAUDE_CONFIG_DIR`, the arguments,
+the working directory and stdio of a normal launch. If the wrapper itself fails, dev3 does not retry.
+
+**Add without signing in.** In Settings → Agent Accounts, click Add account for Claude Code, then
+**Add without signing in** in the sign-in window. dev3 stops the sign-in and keeps its folder as an
+account with no identity. The window shows the command to sign in later by hand
+(`CLAUDE_CONFIG_DIR='…' claude /login`); once a login runs there, the account shows its email by
+itself and replaces the placeholder name "Account N" (unless you renamed it). The new account does not become the default. A wrapper may replace the account's folder
+(`~/.dev3.0/agent-accounts/claude/<id>`) with a symlink to its own config dir: dev3 never fills such
+a link from `~/.claude`, still writes its own service files through it (the `dev3` skill, hooks and
+permissions in `settings.json`, trust entries in `.claude.json`), and removing the account removes
+only the link.
+
+A launch that selects an account that cannot launch (unknown id, deleted or dangling config dir, a
+managed account whose sign-in never finished) fails instead of running on the system login.
+
+Settings priority for one launch, highest first:
+
+1. `baseCommandOverride` in an agent preset wins over a working custom executable. A broken custom path still fails every preset of that agent, because the path belongs to the agent.
+2. `envVars.CLAUDE_CONFIG_DIR` in the agent preset disables account injection entirely.
+3. Otherwise the selected account's config dir is injected as `CLAUDE_CONFIG_DIR`.
+
 ## Linux
 
 The fastest way to run dev-3.0 on a Linux box (cloud VM, dev server, headless host) is the

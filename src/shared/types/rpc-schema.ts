@@ -521,6 +521,11 @@ export type AppRPCSchema = {
 				params: { loginId: string };
 				response: void;
 			};
+			/** Keep a Claude sign-in's folder as an account without signing in; the state carries the new account and the manual login command. */
+			addClaudeAccountWithoutLogin: {
+				params: { loginId: string };
+				response: AccountLoginState;
+			};
 			/** `accountId: "auto"` makes the usage-balanced router the default (claude/codex). */
 			setActiveAgentAccount: {
 				params: { kind: AgentAccountKind; accountId: string | null };
@@ -1000,6 +1005,11 @@ export type AppRPCSchema = {
 			};
 			setAgentBinaryPath: {
 				params: { agentId: string; path: string };
+				response: void;
+			};
+			/** Forget the custom executable stored for an agent. */
+			clearAgentBinaryPath: {
+				params: { agentId: string };
 				response: void;
 			};
 			getChangelogs: {
@@ -2059,6 +2069,8 @@ export type AppRPCSchema = {
 				taskId: string | null;
 				projectId: string | null;
 				message: string;
+				/** Renderer translation key for `message`, which stays the English fallback. */
+				messageKey?: "kanban.launchAccountRemoved";
 				level: "info" | "success" | "error";
 				/** Optional in-app toast lifetime in milliseconds; omitted uses the default. */
 				durationMs?: number;

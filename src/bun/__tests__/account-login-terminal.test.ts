@@ -14,10 +14,12 @@ import {
 	createAccountLoginManager,
 	loginArgv,
 	loginEnv,
+	resolveLoginExecutable,
 	type AccountLoginDeps,
 	type LoginSpawnOptions,
 } from "../account-login-terminal";
 import type { ExternalPtySession, ExternalPtyViewer } from "../pty-server";
+import { loadSettings } from "../settings";
 
 /** Hand-cranked clock: every timer fires only when the test advances it. */
 function fakeClock() {
@@ -92,6 +94,10 @@ function setup(overrides: Partial<AccountLoginDeps> = {}) {
 		}),
 		complete,
 		hasIdentity: (_kind, accountId) => identity.has(accountId),
+		addWithoutLogin: (kind, accountId) => {
+			registered.add(accountId);
+			return { id: accountId, kind, label: "Account 1" } as AgentAccount;
+		},
 		discard: (_kind, accountId) => {
 			discardCalls.push(accountId);
 			if (registered.has(accountId)) return false;
@@ -283,6 +289,69 @@ describe("account login manager", () => {
 		expect(env.manager.get("claude")?.phase).toBe("succeeded");
 	});
 
+	it("add without signing in registers the staged dir, stops the terminal and keeps the login command", async () => {
+		const started = await env.manager.start("claude", { remoteViewer: false });
+		const state = env.manager.addWithoutSignIn(started.loginId);
+		expect(state).toMatchObject({ phase: "added-unsigned", sessionKey: null, manualCommand: "claude /login", account: { id: "acc-1", label: "Account 1" } });
+		expect(env.procs[0].signals).toEqual(["SIGTERM"]);
+		expect(env.manager.get("claude")?.phase).toBe("added-unsigned");
+		expect(env.pushes[env.pushes.length - 1]).toMatchObject({ kind: "claude", state: { phase: "added-unsigned" } });
+		// Nothing watches or expires it any more, and closing it keeps the account.
+		await env.clock.advance(ACCOUNT_LOGIN_TTL_MS);
+		expect(env.manager.get("claude")?.phase).toBe("added-unsigned");
+		env.manager.close(started.loginId);
+		expect(env.discarded).toEqual([]);
+	});
+
+	it("add without signing in works from exited and missing-executable too", async () => {
+		env = setup({ resolveExecutable: async () => null });
+		const started = await env.manager.start("claude", { remoteViewer: false });
+		expect(started.phase).toBe("missing-executable");
+		expect(env.manager.addWithoutSignIn(started.loginId).phase).toBe("added-unsigned");
+	});
+
+	it("add without signing in refuses a non-Claude sign-in, an unknown login and a finished one", async () => {
+		const codex = await env.manager.start("codex", { remoteViewer: false });
+		expect(() => env.manager.addWithoutSignIn(codex.loginId)).toThrow(/Only a Claude sign-in/);
+		expect(() => env.manager.addWithoutSignIn("no-such-login")).toThrow(/already ended/);
+		const claude = await env.manager.start("claude", { remoteViewer: false });
+		env.identity.add("acc-2");
+		await env.clock.advance(ACCOUNT_LOGIN_POLL_MS);
+		expect(env.manager.get("claude")?.phase).toBe("succeeded");
+		expect(() => env.manager.addWithoutSignIn(claude.loginId)).toThrow(/no longer/);
+	});
+
+	it("add without signing in refuses while verifying and when a sign-in was already found", async () => {
+		env.complete.mockImplementation(() => new Promise<AgentAccount>(() => {}));
+		const started = await env.manager.start("claude", { remoteViewer: false });
+		env.identity.add("acc-1");
+		expect(() => env.manager.addWithoutSignIn(started.loginId)).toThrow(/wait for dev3 to confirm/);
+		await env.clock.advance(ACCOUNT_LOGIN_POLL_MS);
+		expect(env.manager.get("claude")?.phase).toBe("verifying");
+		expect(() => env.manager.addWithoutSignIn(started.loginId)).toThrow(/no longer/);
+		expect(env.registered.has("acc-1")).toBe(false);
+	});
+
+	it("an add without signing in during the executable lookup is not overwritten by the launch", async () => {
+		let release!: (path: string) => void;
+		env = setup({ resolveExecutable: () => new Promise<string | null>((resolve) => { release = resolve; }) });
+		const starting = env.manager.start("claude", { remoteViewer: false });
+		await flush();
+		env.manager.addWithoutSignIn(env.manager.get("claude")!.loginId);
+		release("/usr/local/bin/claude");
+		await starting;
+		expect(env.manager.get("claude")?.phase).toBe("added-unsigned");
+		expect(env.procs).toHaveLength(0);
+	});
+
+	it("a broken custom executable fails the sign-in with its path and releases the staged dir", async () => {
+		env = setup({ resolveExecutable: async () => { throw new Error("Custom executable for agent \"Claude Code\" not found or not executable: /gone"); } });
+		const state = await env.manager.start("claude", { remoteViewer: false });
+		expect(state).toMatchObject({ phase: "failed", sessionKey: null, error: expect.stringContaining("/gone") });
+		expect(env.procs).toHaveLength(0);
+		expect(env.discarded).toEqual(["acc-1"]);
+	});
+
 	it("expires after the TTL: stops the process and discards the staged dir", async () => {
 		await env.manager.start("claude", { remoteViewer: false });
 		await env.clock.advance(ACCOUNT_LOGIN_TTL_MS);
@@ -402,5 +471,17 @@ describe("loginEnv", () => {
 		expect(env.PI_CODING_AGENT_DIR).toBe("/staged/o");
 		expect(env.OPENAI_API_KEY).toBe("o");
 		expect(env.ANTHROPIC_API_KEY).toBe("k");
+	});
+});
+
+describe("resolveLoginExecutable with a custom executable", () => {
+	it("throws for a broken custom path instead of finding the CLI on PATH", async () => {
+		vi.mocked(loadSettings).mockResolvedValueOnce({ agentCustomBinaryPaths: { "builtin-claude": "/definitely/not/here/claude" } } as never);
+		await expect(resolveLoginExecutable("claude", "node")).rejects.toThrow("/definitely/not/here/claude");
+	});
+
+	it("uses a working custom path", async () => {
+		vi.mocked(loadSettings).mockResolvedValueOnce({ agentCustomBinaryPaths: { "builtin-claude": process.execPath } } as never);
+		expect(await resolveLoginExecutable("claude", "claude")).toBe(process.execPath);
 	});
 });

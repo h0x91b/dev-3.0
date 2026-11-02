@@ -21,7 +21,7 @@ import { isAgentDirAccountKind, type AccountLoginPhase, type AccountLoginState, 
 import { DEFAULT_AGENTS } from "../shared/types";
 import * as accounts from "./agent-accounts";
 import type { PreparedAccountLogin } from "./agent-accounts";
-import { agentBinaryPathOverride, isExecutableFile } from "./executable";
+import { agentBinaryPathOverride, brokenCustomPath, customExecutableMessage, isExecutableFile } from "./executable";
 import { createLogger } from "./logger";
 import { registerExternalPtySession, type ExternalPtyViewer } from "./pty-server";
 import { loadSettings } from "./settings";
@@ -70,6 +70,8 @@ export interface AccountLoginDeps {
 	prepare(kind: AgentAccountKind, opts: { deviceAuth: boolean }): Promise<PreparedAccountLogin>;
 	complete(kind: AgentAccountKind, accountId: string, ctx: { signal: AbortSignal; stillWanted: () => boolean }): Promise<AgentAccount>;
 	hasIdentity(kind: AgentAccountKind, accountId: string): boolean;
+	/** Register the staged dir as an account without a sign-in (Claude only). */
+	addWithoutLogin(kind: AgentAccountKind, accountId: string): AgentAccount;
 	discard(kind: AgentAccountKind, accountId: string): boolean;
 	/** Leftovers of sign-ins a killed app never closed; see `sweepAbandonedStagedLogins`. */
 	sweepAbandoned(kind: AgentAccountKind): void;
@@ -229,7 +231,7 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 			}
 		}
 		record.viewers.clear();
-		if (record.state.phase !== "succeeded") {
+		if (record.state.phase !== "succeeded" && record.state.phase !== "added-unsigned") {
 			const discarded = deps.discard(record.state.kind, record.accountId);
 			log.info("Staged login dir released", { kind: record.state.kind, loginId: shortId(record.state.loginId), discarded });
 		}
@@ -311,7 +313,20 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 
 	async function launch(record: LoginRecord, prepared: PreparedAccountLogin): Promise<void> {
 		const { kind } = record.state;
-		const resolved = await deps.resolveExecutable(kind, prepared.launch.command);
+		const startPhase = record.state.phase;
+		// A close or "add without signing in" during the lookup must not be overwritten.
+		const stillWanted = () => byKind.get(kind) === record && record.state.phase === startPhase;
+		let resolved: string | null;
+		try {
+			resolved = await deps.resolveExecutable(kind, prepared.launch.command);
+		} catch (err) {
+			if (!stillWanted()) return;
+			// A broken custom executable is shown as the reason, never replaced by the system CLI.
+			deps.discard(kind, record.accountId);
+			setPhase(record, "failed", { sessionKey: null, error: err instanceof Error ? err.message : String(err) });
+			return;
+		}
+		if (!stillWanted()) return;
 		if (!resolved) {
 			setPhase(record, "missing-executable", { sessionKey: null });
 			return;
@@ -391,6 +406,7 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 		byKind.set(kind, record);
 		log.info("Account login started", { kind, loginId: shortId(loginId), deviceAuth });
 		await launch(record, prepared);
+		if (byKind.get(kind) !== record || !ACTIVE_PHASES.has(record.state.phase)) return { ...record.state };
 		record.expiryTimer = deps.setTimer(() => expire(record), ACCOUNT_LOGIN_TTL_MS);
 		schedulePoll(record);
 		return { ...record.state };
@@ -429,6 +445,23 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 		return start(kind, opts);
 	}
 
+	/** "Add without signing in": keep the staged dir as an account, stop the login terminal.
+	 *  The login command stays in the state so the user can sign in later by hand. */
+	function addWithoutSignIn(loginId: string): AccountLoginState {
+		const record = findById(loginId);
+		if (!record) throw new Error("This sign-in has already ended.");
+		if (record.state.kind !== "claude") throw new Error("Only a Claude sign-in can be added without signing in.");
+		if (!WATCHED_PHASES.has(record.state.phase)) throw new Error("This sign-in can no longer be added without signing in.");
+		if (deps.hasIdentity(record.state.kind, record.accountId)) {
+			throw new Error("A sign-in was found — wait for dev3 to confirm it.");
+		}
+		const account = deps.addWithoutLogin(record.state.kind, record.accountId);
+		clearTimers(record);
+		stopProcess(record);
+		setPhase(record, "added-unsigned", { account, sessionKey: null, error: null, pending: null });
+		return { ...record.state };
+	}
+
 	function get(kind: AgentAccountKind): AccountLoginState | null {
 		const record = byKind.get(kind);
 		return record ? { ...record.state } : null;
@@ -439,13 +472,15 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 		for (const record of [...byKind.values()]) close(record.state.loginId);
 	}
 
-	return { start, restart, close, get, closeAll };
+	return { start, restart, close, get, closeAll, addWithoutSignIn };
 }
 
 export type AccountLoginManager = ReturnType<typeof createAccountLoginManager>;
 
-async function resolveLoginExecutable(kind: AgentAccountKind, command: string): Promise<string | null> {
+export async function resolveLoginExecutable(kind: AgentAccountKind, command: string): Promise<string | null> {
 	const settings = await loadSettings();
+	const broken = brokenCustomPath(`builtin-${kind}`, settings.agentCustomBinaryPaths);
+	if (broken) throw new Error(customExecutableMessage(kind === "claude" ? "Claude Code" : kind, broken));
 	const override = agentBinaryPathOverride(`builtin-${kind}`, command, settings.agentBinaryPaths, settings.agentCustomBinaryPaths);
 	if (override && isExecutableFile(override)) return override;
 	return Bun.which(command, { PATH: process.env.PATH ?? "" }) ?? null;
@@ -483,7 +518,13 @@ function spawnLoginProcess(argv: string[], opts: LoginSpawnOptions): LoginProces
  */
 async function runClaudeAuthStatus(configDir: string, signal: AbortSignal): Promise<{ exitCode: number | null; stdout: string } | null> {
 	if (signal.aborted) return null;
-	const resolved = await resolveLoginExecutable("claude", "claude");
+	let resolved: string | null;
+	try {
+		resolved = await resolveLoginExecutable("claude", "claude");
+	} catch (err) {
+		log.warn("claude auth status skipped", { error: String(err) });
+		return null;
+	}
 	if (!resolved) return null;
 	let proc: ReturnType<typeof spawn>;
 	try {
@@ -541,6 +582,7 @@ export const accountLogins = createAccountLoginManager({
 				? accounts.completeAgentDirLogin(kind, id, accounts.defaultAccountPaths(), undefined, ctx)
 				: accounts.completeCodexLogin(id, accounts.defaultAccountPaths(), ctx),
 	hasIdentity: (kind, id) => accounts.stagedLoginHasIdentity(kind, id),
+	addWithoutLogin: (_kind, id) => accounts.registerStagedClaudeAccount(id),
 	discard: (kind, id) => accounts.discardStagedLogin(kind, id),
 	sweepAbandoned: (kind) => void accounts.sweepAbandonedStagedLogins(kind, ACCOUNT_LOGIN_TTL_MS),
 	resolveExecutable: resolveLoginExecutable,

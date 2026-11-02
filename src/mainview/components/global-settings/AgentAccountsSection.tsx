@@ -527,7 +527,7 @@ function ApiProfileFormCard({
 
 /** A sign-in the modal no longer shows: it is still running (or finished) on the host. */
 function LoginInProgressRow({ login, onOpen, onCancel, t }: { login: AccountLoginState; onOpen: () => void; onCancel: () => void; t: TFunction }) {
-	const done = login.phase === "succeeded";
+	const done = login.phase === "succeeded" || login.phase === "added-unsigned";
 	const attention = login.phase === "failed" || login.phase === "expired" || login.phase === "exited" || login.phase === "missing-executable";
 	return (
 		<div className="flex flex-wrap items-center gap-2.5 px-3 py-2 rounded-lg bg-accent/10" data-testid={`account-login-row-${login.kind}`}>
@@ -536,7 +536,9 @@ function LoginInProgressRow({ login, onOpen, onCancel, t }: { login: AccountLogi
 				className={`w-2 h-2 rounded-full shrink-0 ${done ? "bg-success" : attention ? "bg-warning" : "bg-accent motion-safe:animate-pulse"}`}
 			/>
 			<span className="text-fg-2 text-sm flex-1 min-w-0">
-				{done
+				{login.phase === "added-unsigned"
+					? loginPhaseTitle(login, !isElectrobun, t)
+					: done
 					? t("settings.accountLoginRowDone")
 					: attention
 						? loginPhaseTitle(login, !isElectrobun, t)
@@ -590,7 +592,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 		function onLoginChanged(e: Event) {
 			const { kind, state: login } = (e as CustomEvent<{ kind: AgentAccountKind; state: AccountLoginState | null }>).detail;
 			setLogins((prev) => ({ ...prev, [kind]: login }));
-			if (login?.phase === "succeeded") {
+			if (login?.phase === "succeeded" || login?.phase === "added-unsigned") {
 				reload();
 				notifyAgentAccountsChanged();
 			}
@@ -652,6 +654,19 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 			setLoginBusy(false);
 		}
 	}, [t]);
+
+	const handleAddUnsigned = useCallback(async (login: AccountLoginState) => {
+		setLoginBusy(true);
+		try {
+			const next = await api.request.addClaudeAccountWithoutLogin({ loginId: login.loginId });
+			// The accounts list refreshes from the host's `accountLoginChanged` push.
+			setLogins((prev) => ({ ...prev, [login.kind]: next }));
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : String(err), { source: "settings" });
+		} finally {
+			setLoginBusy(false);
+		}
+	}, []);
 
 	/** Cancel, Close and Done are one backend call: stop our process, keep only a verified account. */
 	const handleCloseLogin = useCallback(async (login: AccountLoginState) => {
@@ -810,6 +825,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 							label={account.label}
 							identity={account.identity}
 							api={account.api}
+							note={kind === "claude" && account.auth !== "api" && !account.identity ? t("settings.accountsNotSignedIn") : null}
 							isActive={account.id === activeId}
 							onActivate={account.id === activeId ? undefined : () => handleSetActive(kind, account.id)}
 							onRename={account.auth === "api" ? undefined : (label) => handleRename(kind, account.id, label)}
@@ -1005,6 +1021,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 					onHide={() => setShownLogin(null)}
 					onCancel={() => void handleCloseLogin(logins[shownLogin]!)}
 					onRetry={() => void handleRetryLogin(logins[shownLogin]!)}
+					onAddUnsigned={() => void handleAddUnsigned(logins[shownLogin]!)}
 					onDone={() => void handleCloseLogin(logins[shownLogin]!)}
 					t={t}
 				/>

@@ -14,6 +14,7 @@ const kanban = {
 	"kanban.columnAgentFailedMoved": "No se pudo iniciar el agente de la columna \"{columnName}\" — movida a {status}: {error}",
 	"kanban.columnAgentNoTerminal": "No se puede iniciar el agente de \"{columnName}\": la terminal de esta tarea no está en marcha. Abre la tarea para iniciarla y vuelve a intentarlo.",
 	"kanban.columnAgentNoTerminalMoved": "No se puede iniciar el agente de \"{columnName}\": la terminal de esta tarea no está en marcha, así que la tarea se movió a {status}. Abre la tarea, inicia su terminal y vuelve a moverla.",
+	"kanban.launchAccountRemoved": "La cuenta que usaba esta tarea fue eliminada: se inició con la cuenta predeterminada.",
 	"kanban.taskPreparationFailed": "No se pudo preparar \"{taskTitle}\" — devuelta a Por hacer: {error}",
 	"task.launchFailed": "Error de inicio: {error}",
 	"kanban.failedReorderColumns": "No se pudo reordenar las columnas: {error}",

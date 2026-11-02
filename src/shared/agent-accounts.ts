@@ -187,12 +187,13 @@ export interface AgentAccountsState {
 /**
  * Where an in-app sign-in stands. `running`/`exited`/`missing-executable` keep
  * watching the staging dir, so a login finished in any terminal still lands;
- * `succeeded`, `failed` and `expired` are final.
+ * `succeeded`, `added-unsigned`, `failed` and `expired` are final.
  */
 export type AccountLoginPhase =
 	| "running"
 	| "verifying"
 	| "succeeded"
+	| "added-unsigned"
 	| "exited"
 	| "missing-executable"
 	| "failed"

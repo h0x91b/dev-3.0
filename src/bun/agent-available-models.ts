@@ -141,7 +141,12 @@ export async function resolveModelAvailability(
 	// Resolve the same binary a launch would: the user's custom path override,
 	// then a preset's baseCommandOverride (resolveCommandForAgent, agents.ts).
 	const settings = await loadSettings();
-	const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths, settings.agentCustomBinaryPaths);
+	let agentWithPath: CodingAgent;
+	try {
+		agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths, settings.agentCustomBinaryPaths);
+	} catch {
+		return { status: "unknown" }; // broken custom executable: never probe the system binary instead
+	}
 	const defaultConfig =
 		agentWithPath.configurations.find((c) => c.id === agentWithPath.defaultConfigId) ?? agentWithPath.configurations[0];
 	const baseCommand = defaultConfig?.baseCommandOverride || agentWithPath.baseCommand;

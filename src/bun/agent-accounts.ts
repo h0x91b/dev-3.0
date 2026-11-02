@@ -8,6 +8,9 @@
  *       .credentials.json                          — per-account OAuth token (0600)
  *       everything else                            — symlinks into ~/.claude,
  *                                                    minus CLAUDE_PRIVATE_ENTRIES
+ *       a symlink instead of a dir                 — a slot the user's own tool linked to its
+ *                                                    folder: never scaffolded into, never removed
+ *                                                    through (see isLinkedClaudeSlot)
  *   ~/.dev3.0/agent-accounts/codex/<id>/auth.json  — per-account snapshot of ~/.codex/auth.json
  *   ~/.dev3.0/agent-accounts/omp-accounts.json     — omp registry (own file: older builds
  *                                                    rewrite accounts.json and would drop it)
@@ -37,10 +40,12 @@ import {
 	mkdirSync,
 	readdirSync,
 	readFileSync,
+	realpathSync,
 	renameSync,
 	rmSync,
 	statSync,
 	symlinkSync,
+	unlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
@@ -176,6 +181,9 @@ interface RegistryEntry {
 	workspaceName?: string;
 	/** Absent = "oauth" (pre-API-profile registries stay readable as-is). */
 	auth?: AgentAccountAuth;
+	/** Claude account added without a sign-in: the label becomes the email once one appears.
+	 *  Older versions drop it on save, which only loses that rename. */
+	autoLabel?: true;
 	createdAt: number;
 }
 
@@ -213,6 +221,7 @@ function loadRegistry(paths: AccountPaths): Registry {
 						label: typeof a.label === "string" ? a.label : a.id,
 						workspaceName: typeof a.workspaceName === "string" && a.workspaceName.trim() ? a.workspaceName.trim() : undefined,
 						auth: a.auth === "api" ? ("api" as const) : undefined,
+						autoLabel: a.autoLabel === true ? (true as const) : undefined,
 						createdAt: typeof a.createdAt === "number" ? a.createdAt : 0,
 					}))
 				: [],
@@ -248,6 +257,29 @@ function assertSafeAccountId(id: string): void {
 export function claudeAccountDir(id: string, paths: AccountPaths = defaultAccountPaths()): string {
 	assertSafeAccountId(id);
 	return join(paths.accountsDir, "claude", id);
+}
+
+/** A slot the user's own tool replaced with a link (a symlink, or a junction on Windows) to its folder.
+ *  The realpath check also catches a link lstat does not report as one: a slot that is a real
+ *  dir resolves to `<realpath of its parent>/<id>`, anything else leads somewhere else. */
+export function isLinkedClaudeSlot(slot: string): boolean {
+	try {
+		if (lstatSync(slot).isSymbolicLink()) return true;
+		return realpathSync(slot) !== join(realpathSync(dirname(slot)), basename(slot));
+	} catch {
+		return false;
+	}
+}
+
+/** Delete a slot without following it: a linked slot is unlinked, a real dir is removed with its content. */
+function removeAccountSlot(slot: string): void {
+	try {
+		lstatSync(slot);
+	} catch {
+		return; // nothing there
+	}
+	if (isLinkedClaudeSlot(slot)) unlinkSync(slot);
+	else rmSync(slot, { recursive: true, force: true });
 }
 
 export function codexAccountDir(id: string, paths: AccountPaths = defaultAccountPaths()): string {
@@ -666,6 +698,7 @@ export async function listAgentAccounts(paths: AccountPaths = defaultAccountPath
 	if (applyCodexWorkspaceNames(registry, {}, paths)) saveRegistry(registry, paths);
 	await backfillCodexWorkspaceNames(registry, paths);
 	registry = loadRegistry(paths);
+	if (applyAutoLabels(registry, paths)) saveRegistry(registry, paths);
 	return {
 		claude: {
 			accounts: registry.claude.accounts.map((e) => toAccount(e, "claude", paths)),
@@ -714,20 +747,58 @@ export function effectiveAccountId(
 	return id && ids.includes(id) ? id : null;
 }
 
+/** The Claude account a launch selects, or null for the system login. A
+ *  selection that cannot launch throws: falling back to the system login would
+ *  run the agent on a different account than the one asked for. A stale registry
+ *  default (no such entry any more) still means the system login, as in the UI. */
+function selectedClaudeAccount(
+	registry: Registry,
+	accountIdOverride: string | null | undefined,
+	paths: AccountPaths,
+): { entry: RegistryEntry; dir: string } | null {
+	const id = resolveAccountIdOverride(registry.claude.activeId, accountIdOverride);
+	if (!id) return null;
+	const entry = registry.claude.accounts.find((e) => e.id === id);
+	if (!entry) {
+		if (typeof accountIdOverride === "string") throw new Error(`Unknown Claude account: ${id}`);
+		return null;
+	}
+	const dir = claudeAccountDir(id, paths);
+	// statSync follows the link, so a dangling linked slot fails here too.
+	if (!isDirectory(dir)) throw new Error(`Claude account "${entry.label}": config folder not found: ${dir}`);
+	// A managed dir without .claude.json is a login that never completed; a linked
+	// slot is the user's own folder, and an empty one just means "logged out".
+	if (!isLinkedClaudeSlot(dir) && !existsSync(join(dir, ".claude.json"))) {
+		throw new Error(`Claude account "${entry.label}" is not signed in (no .claude.json in ${dir})`);
+	}
+	return { entry, dir };
+}
+
+/** Whether a Claude account with this id is still in the registry. */
+export function claudeAccountRegistered(id: string, paths: AccountPaths = defaultAccountPaths()): boolean {
+	return loadRegistry(paths).claude.accounts.some((e) => e.id === id);
+}
+
+function isDirectory(path: string): boolean {
+	try {
+		return statSync(path).isDirectory();
+	} catch {
+		return false;
+	}
+}
+
 /** CLAUDE_CONFIG_DIR to inject into new Claude sessions, or null for ~/.claude.
  *  `accountIdOverride` selects a specific account for THIS launch (per-launch
- *  selector); omit it to use the registry default. */
+ *  selector); omit it to use the registry default. Throws when the selected
+ *  account cannot launch (see selectedClaudeAccount). */
 export async function getActiveClaudeConfigDir(
 	accountIdOverride?: string | null,
 	paths: AccountPaths = defaultAccountPaths(),
 ): Promise<string | null> {
-	const registry = loadRegistry(paths);
-	const id = resolveAccountIdOverride(registry.claude.activeId, accountIdOverride);
-	if (!id || !registry.claude.accounts.some((e) => e.id === id)) return null;
-	const dir = claudeAccountDir(id, paths);
-	if (!existsSync(join(dir, ".claude.json"))) return null;
-	scaffoldClaudeAccountDir(dir, paths); // backfill entries added since this account was created
-	return dir;
+	const selected = selectedClaudeAccount(loadRegistry(paths), accountIdOverride, paths);
+	if (!selected) return null;
+	scaffoldClaudeAccountDir(selected.dir, paths); // backfill entries added since this account was created
+	return selected.dir;
 }
 
 /** Fan the profile's model overrides into the four Claude alias slots
@@ -783,38 +854,31 @@ export async function getActiveClaudeSessionEnv(
 	paths: AccountPaths = defaultAccountPaths(),
 ): Promise<Record<string, string>> {
 	const registry = loadRegistry(paths);
+	const selected = selectedClaudeAccount(registry, accountIdOverride, paths);
 	if (registry.claude.accounts.length === 0) return {};
 
 	const env: Record<string, string> = {};
-	const id = resolveAccountIdOverride(registry.claude.activeId, accountIdOverride);
-	const entry = id ? registry.claude.accounts.find((e) => e.id === id) : undefined;
-	let selectedDir: string | null = null;
-	if (entry) {
-		const dir = claudeAccountDir(entry.id, paths);
-		if (existsSync(join(dir, ".claude.json"))) {
-			selectedDir = dir;
-			env.CLAUDE_CONFIG_DIR = dir;
-			if (entry.auth === "api") {
-				const profile = readApiProfile(entry.id, paths);
-				if (profile) {
-					// Profile-level vars first, specific fields last so the structured fields win.
-					Object.assign(env, profile.env);
-					if (profile.baseUrl) env.ANTHROPIC_BASE_URL = profile.baseUrl;
-					if (profile.apiKey) env.ANTHROPIC_API_KEY = profile.apiKey;
-					applyApiProfileModelEnv(env, profile);
-					env.CLAUDE_CONFIG_DIR = dir;
-				} else {
-					log.warn("Active Claude API profile has no api-profile.json", { id: entry.id });
-				}
+	if (selected) {
+		const { entry, dir } = selected;
+		env.CLAUDE_CONFIG_DIR = dir;
+		if (entry.auth === "api") {
+			const profile = readApiProfile(entry.id, paths);
+			if (profile) {
+				// Profile-level vars first, specific fields last so the structured fields win.
+				Object.assign(env, profile.env);
+				if (profile.baseUrl) env.ANTHROPIC_BASE_URL = profile.baseUrl;
+				if (profile.apiKey) env.ANTHROPIC_API_KEY = profile.apiKey;
+				applyApiProfileModelEnv(env, profile);
+				env.CLAUDE_CONFIG_DIR = dir;
+			} else {
+				log.warn("Active Claude API profile has no api-profile.json", { id: entry.id });
 			}
 		}
 	}
-	// This is deliberately unset for the system login and for a missing account
-	// snapshot, so a long-lived tmux server cannot attribute a later system-login
-	// session to the account that was selected before it.
-	if (registry.claude.accounts.length > 0) {
-		env[DEV3_AGENT_ACCOUNT_ID_ENV] = selectedDir && entry ? entry.id : ENV_UNSET;
-	}
+	// This is deliberately unset for the system login, so a long-lived tmux
+	// server cannot attribute a later system-login session to the account that
+	// was selected before it.
+	env[DEV3_AGENT_ACCOUNT_ID_ENV] = selected ? selected.entry.id : ENV_UNSET;
 	for (const key of collectClearableEnvKeys(registry, paths)) {
 		if (!(key in env)) env[key] = ENV_UNSET;
 	}
@@ -862,6 +926,7 @@ export async function getActiveAgentDirSessionEnv(
  *  account dir is left exactly as it is — never replaced, never deleted, so
  *  real per-account state written by older builds survives untouched. */
 function scaffoldClaudeAccountDir(dir: string, paths: AccountPaths): void {
+	if (isLinkedClaudeSlot(dir)) return; // the user's own folder: never fill it with links into ~/.claude
 	mkdirSync(dir, { recursive: true });
 	let entries: string[] = [];
 	try {
@@ -1108,19 +1173,20 @@ function assertNoDuplicate(
 	}
 }
 
-function registerAccount(
+/** Label for an account with a known identity; `selfId` is left out of the same-email check. */
+function derivedAccountLabel(
 	registry: Registry,
 	kind: RegistryKind,
-	id: string,
 	identity: AgentAccountIdentity | null,
 	paths: AccountPaths,
-	opts?: { auth?: AgentAccountAuth; label?: string; workspaceName?: string | null },
-): AgentAccount {
-	let label = opts?.label ?? defaultAccountLabel(identity, registry[kind].accounts.length + 1);
+	selfId?: string,
+): string {
+	let label = defaultAccountLabel(identity, registry[kind].accounts.length + 1);
 	// Same login email may represent several Claude organizations or Codex
 	// workspaces. Append the provider-specific discriminator to later rows.
-	if (!opts?.label && identity?.email) {
+	if (identity?.email) {
 		const emailTaken = registry[kind].accounts.some((existing) => {
+			if (existing.id === selfId) return false;
 			const other = kind === "claude" ? claudeAccountIdentity(existing.id, paths) : codexAccountIdentity(existing.id, paths);
 			return other?.email === identity.email;
 		});
@@ -1132,9 +1198,36 @@ function registerAccount(
 			label = `${identity.email} (${identity.organization})`;
 		}
 	}
+	return label;
+}
+
+/** Replace the placeholder label of an account added without a sign-in once its identity has an email. */
+function applyAutoLabels(registry: Registry, paths: AccountPaths): boolean {
+	let changed = false;
+	for (const entry of registry.claude.accounts) {
+		if (!entry.autoLabel) continue;
+		const identity = claudeAccountIdentity(entry.id, paths);
+		if (!identity?.email) continue;
+		entry.label = derivedAccountLabel(registry, "claude", identity, paths, entry.id);
+		delete entry.autoLabel;
+		changed = true;
+	}
+	return changed;
+}
+
+function registerAccount(
+	registry: Registry,
+	kind: RegistryKind,
+	id: string,
+	identity: AgentAccountIdentity | null,
+	paths: AccountPaths,
+	opts?: { auth?: AgentAccountAuth; label?: string; workspaceName?: string | null; autoLabel?: true },
+): AgentAccount {
+	const label = opts?.label ?? derivedAccountLabel(registry, kind, identity, paths);
 	const entry: RegistryEntry = {
 		id,
 		label,
+		autoLabel: opts?.autoLabel,
 		workspaceName: kind === "codex" ? opts?.workspaceName ?? undefined : undefined,
 		auth: opts?.auth === "api" ? "api" : undefined,
 		createdAt: Date.now(),
@@ -1396,6 +1489,22 @@ export async function completeClaudeLogin(
 	return account;
 }
 
+/** Register a staged sign-in dir as an account without waiting for the sign-in. No
+ *  identity is known, so there is no duplicate check and no `claude auth status`
+ *  probe; the identity appears by itself once a login writes `.claude.json`. The
+ *  dir stops being staged, so the abandoned-sign-in sweep never deletes it, and
+ *  the default account does not change. Registering the same id again returns the account. */
+export function registerStagedClaudeAccount(accountId: string, paths: AccountPaths = defaultAccountPaths()): AgentAccount {
+	const dir = claudeAccountDir(accountId, paths);
+	const registry = loadRegistry(paths);
+	const existing = registry.claude.accounts.find((e) => e.id === accountId);
+	if (existing) return toAccount(existing, "claude", paths);
+	if (!isDirectory(dir)) throw new Error("This sign-in has already ended.");
+	const account = registerAccount(registry, "claude", accountId, null, paths, { autoLabel: true });
+	unmarkStagedLogin(dir);
+	return account;
+}
+
 /** Import the login currently in ~/.codex/auth.json as a managed snapshot. */
 export async function importCurrentCodexAccount(paths: AccountPaths = defaultAccountPaths()): Promise<AgentAccount> {
 	const authFile = join(paths.codexHome, "auth.json");
@@ -1510,7 +1619,7 @@ function stagedAccountDir(kind: AgentAccountKind, accountId: string, paths: Acco
  *  refused: its dir IS a saved login, and only an explicit Remove may delete it. */
 export function discardStagedLogin(kind: AgentAccountKind, accountId: string, paths: AccountPaths = defaultAccountPaths()): boolean {
 	if (registeredAccountIds(kind, paths).has(accountId)) return false;
-	rmSync(stagedAccountDir(kind, accountId, paths), { recursive: true, force: true });
+	removeAccountSlot(stagedAccountDir(kind, accountId, paths));
 	checkedAuthFingerprints.delete(accountId);
 	return true;
 }
@@ -1540,7 +1649,7 @@ export function sweepAbandonedStagedLogins(
 		if (!isSafeAccountId(id) || registered.has(id)) continue;
 		const marker = safeReadJson(join(root, id, STAGED_LOGIN_MARKER)) as { createdAt?: unknown } | null;
 		if (typeof marker?.createdAt !== "number" || now - marker.createdAt < olderThanMs) continue;
-		rmSync(join(root, id), { recursive: true, force: true });
+		removeAccountSlot(join(root, id));
 		swept += 1;
 	}
 	if (swept > 0) log.info("Abandoned staged sign-ins removed", { kind, swept });
@@ -1712,7 +1821,8 @@ export async function setActiveCodexAccount(accountId: string | null, paths: Acc
 	log.info("Codex default account set", { accountId });
 }
 
-/** Remove a managed account (stored snapshot/config dir). The provider-side
+/** Remove an account (a managed one's stored snapshot/config dir goes too; a
+ *  linked slot is only unlinked, never its folder). The provider-side
  *  login is untouched; for Codex the current ~/.codex/auth.json stays as-is. */
 export async function removeAgentAccount(kind: AgentAccountKind, accountId: string, paths: AccountPaths = defaultAccountPaths()): Promise<void> {
 	if (isAgentDirAccountKind(kind)) {
@@ -1729,7 +1839,7 @@ export async function removeAgentAccount(kind: AgentAccountKind, accountId: stri
 	if (registry[kind].activeId === accountId) registry[kind].activeId = null;
 	saveRegistry(registry, paths);
 	const dir = kind === "claude" ? claudeAccountDir(accountId, paths) : codexAccountDir(accountId, paths);
-	rmSync(dir, { recursive: true, force: true });
+	removeAccountSlot(dir);
 }
 
 export async function renameAgentAccount(kind: AgentAccountKind, accountId: string, label: string, paths: AccountPaths = defaultAccountPaths()): Promise<void> {
@@ -1747,5 +1857,6 @@ export async function renameAgentAccount(kind: AgentAccountKind, accountId: stri
 	const entry = registry[kind].accounts.find((e) => e.id === accountId);
 	if (!entry) throw new Error(`Unknown ${kind} account: ${accountId}`);
 	entry.label = trimmed;
+	delete entry.autoLabel;
 	saveRegistry(registry, paths);
 }

@@ -1867,10 +1867,11 @@ function App() {
 	// is clickable and opens that task, honoring the user's task-open-mode.
 	useEffect(() => {
 		function onCliToast(e: Event) {
-			const { taskId, projectId, message, level, durationMs, taskSeq, taskTitle, projectName } = (e as CustomEvent).detail as {
+			const { taskId, projectId, message, messageKey, level, durationMs, taskSeq, taskTitle, projectName } = (e as CustomEvent).detail as {
 				taskId: string | null;
 				projectId: string | null;
 				message: string;
+				messageKey?: "kanban.launchAccountRemoved";
 				level: "info" | "success" | "error";
 				durationMs?: number;
 				taskSeq?: number;
@@ -1884,11 +1885,11 @@ function App() {
 					? () => openTaskFromNotification(taskId, projectId)
 					: undefined;
 			const context = taskToastContext(taskSeq, projectName, taskTitle);
-			toast[level](message, { durationMs, onClick, context, taskId: taskId ?? undefined });
+			toast[level](messageKey ? t(messageKey) : message, { durationMs, onClick, context, taskId: taskId ?? undefined });
 		}
 		window.addEventListener("rpc:cliToast", onCliToast);
 		return () => window.removeEventListener("rpc:cliToast", onCliToast);
-	}, [openTaskFromNotification]);
+	}, [openTaskFromNotification, t]);
 
 	// One agent wrote into another task's agent (`dev3 message` from a worktree).
 	// Its own violet variant and a two-identity source line — the only toast whose

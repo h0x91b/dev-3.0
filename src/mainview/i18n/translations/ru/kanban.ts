@@ -14,6 +14,7 @@ const kanban = {
 	"kanban.columnAgentFailedMoved": "Не удалось запустить агента для колонки «{columnName}» — задача перемещена в «{status}»: {error}",
 	"kanban.columnAgentNoTerminal": "Не запустить агента колонки «{columnName}»: терминал этой задачи не работает. Откройте задачу, чтобы его запустить, и повторите.",
 	"kanban.columnAgentNoTerminalMoved": "Не запустить агента колонки «{columnName}»: терминал этой задачи не работает, поэтому задача перемещена в «{status}». Откройте задачу, запустите терминал и верните её обратно.",
+	"kanban.launchAccountRemoved": "Аккаунт, который использовала эта задача, удалён — запуск на аккаунте по умолчанию.",
 	"kanban.taskPreparationFailed": "Не удалось подготовить «{taskTitle}» — задача возвращена в To Do: {error}",
 	"task.launchFailed": "Ошибка запуска: {error}",
 	"kanban.failedReorderColumns": "Не удалось изменить порядок колонок: {error}",

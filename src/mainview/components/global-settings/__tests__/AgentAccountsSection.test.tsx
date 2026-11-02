@@ -18,6 +18,7 @@ vi.mock("../../../rpc", () => ({
 			getAccountLogin: vi.fn().mockResolvedValue(null),
 			restartAccountLogin: vi.fn(),
 			closeAccountLogin: vi.fn().mockResolvedValue(undefined),
+			addClaudeAccountWithoutLogin: vi.fn(),
 			getAccountLoginPtyUrl: vi.fn().mockResolvedValue("ws://localhost:1/?session=account-login-l1"),
 			setActiveAgentAccount: vi.fn(),
 			removeAgentAccount: vi.fn(),
@@ -37,6 +38,7 @@ vi.mock("../../../confirm", () => ({
 
 import { api } from "../../../rpc";
 import { confirm } from "../../../confirm";
+import { toast } from "../../../toast";
 
 const mockedApi = vi.mocked(api, true);
 const mockedConfirm = vi.mocked(confirm);
@@ -306,7 +308,7 @@ describe("AgentAccountsSection", () => {
 		inner.focus();
 
 		await user.keyboard("{Tab}");
-		expect(document.activeElement).toBe(screen.getByTestId("account-login-cancel"));
+		expect(document.activeElement).toBe(screen.getByTestId("account-login-add-unsigned"));
 		inner.focus();
 		await user.keyboard("{Shift>}{Tab}{/Shift}");
 		expect(document.activeElement).toBe(screen.getByTestId("account-login-hide"));
@@ -323,6 +325,77 @@ describe("AgentAccountsSection", () => {
 		pushLogin(login({ pending: "status-unavailable" }));
 		expect((await screen.findByTestId("account-login-pending")).textContent).toContain("claude auth status");
 		expect(screen.queryByTestId("account-login-done")).toBeNull();
+	});
+
+	it.each([
+		["claude", "running", true],
+		["claude", "exited", true],
+		["claude", "missing-executable", true],
+		["claude", "verifying", false],
+		["claude", "failed", false],
+		["claude", "succeeded", false],
+		["codex", "running", false],
+		["omp", "running", false],
+	] as const)("the add-without-signing-in button for %s in phase %s: %s", async (kind, phase, visible) => {
+		mockedApi.request.startAccountLogin.mockResolvedValue(login({ kind, phase }));
+		const user = userEvent.setup();
+		renderSection();
+		await screen.findByText("Default login (/home/me/.claude)");
+		await user.click(screen.getAllByText("Add account")[kind === "claude" ? 0 : kind === "codex" ? 1 : 2]);
+		await screen.findByTestId("account-login-modal");
+		expect(!!screen.queryByTestId("account-login-add-unsigned")).toBe(visible);
+	});
+
+	it("add without signing in shows the new phase with the login command, and Done closes it", async () => {
+		mockedApi.request.startAccountLogin.mockResolvedValue(login());
+		mockedApi.request.addClaudeAccountWithoutLogin.mockResolvedValue(
+			login({ phase: "added-unsigned", sessionKey: null, account: { id: "cl-9", label: "Account 2" } as any }),
+		);
+		const user = userEvent.setup();
+		renderSection();
+		await screen.findByText("Default login (/home/me/.claude)");
+		await user.click(screen.getAllByText("Add account")[0]);
+		await screen.findByTestId("terminal-view");
+		const button = screen.getByTestId("account-login-add-unsigned");
+		mockedApi.request.listAgentAccounts.mockClear();
+
+		await user.click(button);
+
+		expect(mockedApi.request.addClaudeAccountWithoutLogin).toHaveBeenCalledWith({ loginId: "l1" });
+		expect(await screen.findByText("Account added without signing in")).toBeTruthy();
+		expect(screen.getByText(/Sign in later with the command below/)).toBeTruthy();
+		expect(screen.queryByTestId("account-login-terminal")).toBeNull();
+		expect(screen.queryByTestId("account-login-add-unsigned")).toBeNull();
+		expect(screen.queryByTestId("account-login-cancel")).toBeNull();
+		expect(screen.getByTestId("account-login-manual").textContent).toContain("CLAUDE_CONFIG_DIR='/x' claude /login");
+		expect(screen.getByText("Sign in with:")).toBeTruthy();
+		expect(screen.queryByText("Run it yourself instead:")).toBeNull();
+		// The host's push, not the click handler, refreshes the accounts list.
+		act(() => {
+			window.dispatchEvent(new CustomEvent("rpc:accountLoginChanged", {
+				detail: { kind: "claude", state: login({ phase: "added-unsigned", sessionKey: null }) },
+			}));
+		});
+		await waitFor(() => expect(mockedApi.request.listAgentAccounts).toHaveBeenCalled());
+		await user.click(screen.getByTestId("account-login-done"));
+		await waitFor(() => expect(mockedApi.request.closeAccountLogin).toHaveBeenCalledWith({ loginId: "l1" }));
+		await waitFor(() => expect(screen.queryByTestId("account-login-modal")).toBeNull());
+	});
+
+	it("add without signing in reports a refusal as a toast and stays in the same phase", async () => {
+		mockedApi.request.startAccountLogin.mockResolvedValue(login());
+		mockedApi.request.addClaudeAccountWithoutLogin.mockRejectedValue(new Error("This sign-in has already ended."));
+		const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "test-toast");
+		const user = userEvent.setup();
+		renderSection();
+		await screen.findByText("Default login (/home/me/.claude)");
+		await user.click(screen.getAllByText("Add account")[0]);
+		await user.click(await screen.findByTestId("account-login-add-unsigned"));
+
+		await waitFor(() => expect(errorToast).toHaveBeenCalledWith("This sign-in has already ended.", expect.anything()));
+		expect(screen.getByTestId("account-login-status").getAttribute("data-phase")).toBe("running");
+		expect(screen.getByTestId("account-login-add-unsigned")).toBeTruthy();
+		errorToast.mockRestore();
 	});
 
 	it("hiding keeps the sign-in running and offers Open / Cancel in the list", async () => {
@@ -666,6 +739,22 @@ describe("AgentAccountsSection", () => {
 		);
 		renderSection();
 		expect(await screen.findByText("Not signed in")).toBeTruthy();
+	});
+
+	it("marks a Claude account without identity as not signed in", async () => {
+		const base = makeState().claude;
+		mockedApi.request.listAgentAccounts.mockResolvedValue(
+			makeState({
+				claude: {
+					...base,
+					accounts: [{ ...base.accounts[0], id: "cl-2", label: "Account 2", identity: null }],
+				},
+			}),
+		);
+		renderSection();
+		expect(await screen.findByText("Account 2")).toBeTruthy();
+		expect(screen.getByText("Not signed in")).toBeTruthy();
+		expect(screen.queryByText("work@example.com")).toBeNull();
 	});
 
 	it("warns that managed accounts override the pins", async () => {

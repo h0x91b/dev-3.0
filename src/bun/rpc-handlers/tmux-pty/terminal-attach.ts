@@ -80,6 +80,12 @@ export async function checkWorktreeState(params: { path: string; requireGit?: bo
 	return worktreeAccessState(params.path, { requireGit: params.requireGit === true });
 }
 
+async function notifyLaunchFailed(task: { id: string }, project: { id: string }, err: unknown): Promise<void> {
+	// Loaded on demand: ../shared pulls in the whole desktop shell, which this module must not.
+	const { pushCliToast } = await import("../shared");
+	pushCliToast({ taskId: task.id, projectId: project.id, level: "error", message: err instanceof Error ? err.message : String(err) });
+}
+
 export async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 	log.info("→ getPtyUrl", {
 		taskId: params.taskId,
@@ -167,6 +173,7 @@ export async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 					await markTerminalAttached(foundProject, foundTask);
 				} catch (err) {
 					log.error("Failed to reconnect to tmux session", { taskId: params.taskId.slice(0, 8), error: String(err) });
+					await notifyLaunchFailed(foundTask, foundProject, err);
 				}
 			} else if (foundTask.sessionState?.panes?.length) {
 				// No tmux session but we have stored pane sessions — offer recovery
@@ -193,6 +200,7 @@ export async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 					await markTerminalAttached(foundProject, foundTask);
 				} catch (err) {
 					log.error("Failed to launch fresh PTY session", { taskId: params.taskId.slice(0, 8), error: String(err) });
+					await notifyLaunchFailed(foundTask, foundProject, err);
 				}
 			}
 		} else {

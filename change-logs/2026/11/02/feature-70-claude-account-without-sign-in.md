@@ -1,0 +1,3 @@
+Short: Add Claude account without signing in
+
+The Claude sign-in window now has "Add without signing in", which keeps the account's folder with no identity and shows the command to sign in later (the account's name becomes its email once a login appears), for setups where a wrapper owns the credentials. A custom Claude executable now fails the launch with a clear error instead of silently running the system `claude` (its path can now be set or reset even when `claude` is installed), and an account that cannot launch fails instead of falling back to the system login.

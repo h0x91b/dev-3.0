@@ -146,6 +146,14 @@ async function getAccountLoginPtyUrl(params: { sessionKey: string }): Promise<st
 	return `ws://localhost:${getPtyPort()}?session=${encodeURIComponent(params.sessionKey)}`;
 }
 
+/** Keep a Claude sign-in's folder as an account without waiting for the login. */
+async function addClaudeAccountWithoutLogin(params: { loginId: string }): Promise<AccountLoginState> {
+	log.info("→ addClaudeAccountWithoutLogin", { loginId: params.loginId.slice(0, 8) });
+	const state = accountLogins.addWithoutSignIn(params.loginId);
+	log.info("← addClaudeAccountWithoutLogin", { accountId: state.account?.id.slice(0, 8) });
+	return state;
+}
+
 /** Cancel a sign-in in progress, or dismiss a finished one. */
 async function closeAccountLogin(params: { loginId: string }): Promise<void> {
 	log.info("→ closeAccountLogin", { loginId: params.loginId.slice(0, 8) });
@@ -250,6 +258,7 @@ export const agentAccountHandlers = {
 	restartAccountLogin,
 	getAccountLoginPtyUrl,
 	closeAccountLogin,
+	addClaudeAccountWithoutLogin,
 	setActiveAgentAccount,
 	previewAutoAccount,
 	removeAgentAccount,

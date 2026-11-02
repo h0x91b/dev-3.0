@@ -45,3 +45,15 @@ export function agentBinaryPathOverride(
 	const cachedPath = cachedPaths?.[agentId];
 	return cachedPath && binaryPathMatchesCommand(cachedPath, baseCommand) ? cachedPath : undefined;
 }
+
+/** The path the user chose for an agent when it is set but unusable (missing or
+ *  not executable), else null. A broken choice is never replaced by the system
+ *  binary: that would run a different program than the one the user picked. */
+export function brokenCustomPath(agentId: string, customPaths: Record<string, string> | undefined): string | null {
+	const path = customPaths?.[agentId];
+	return path && !isExecutableFile(path) ? path : null;
+}
+
+export function customExecutableMessage(agentName: string, path: string): string {
+	return `Custom executable for agent "${agentName}" not found or not executable: ${path}`;
+}
