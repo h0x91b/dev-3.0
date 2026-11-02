@@ -10,6 +10,8 @@ import { ignoreStartupReadFailure, startupRead } from "../startup-read";
 import { useT } from "../i18n";
 import LabelFilterBar from "../components/LabelFilterBar";
 import LineageFilterNotice from "../components/LineageFilterNotice";
+import EpicFilterNotice from "../components/EpicFilterNotice";
+import { epicFilterToken } from "../utils/taskEpic";
 import CreateTaskModal from "../components/CreateTaskModal";
 import TaskDetailModal from "../components/TaskDetailModal";
 import { CAROUSEL_MAX_WIDTH } from "../components/MobileBoardCarousel";
@@ -270,11 +272,12 @@ function BoardHost(props: BoardHostProps) {
 		siblingMap,
 		taskPrMap: filter.taskPrMap,
 		lineageFor,
+		onFilterByEpic: filter.applyEpicFilter,
 		onLaunchVariants: (task, targetStatus) => launch(task, targetStatus),
 		onAddAttempts: (task) => launch(task, task.status, "addAttempts"),
 		onEditDraft: (task) => setEditDraftTaskId(task.id),
 		onOpenUnresolvedComments: props.onOpenUnresolvedComments,
-	}), [projectOf, space, dispatch, navigate, agents, props.bellCounts, props.bellReasons, taskPorts, props.taskDevServers, props.taskResourceUsage, props.activeTaskId, siblingMap, filter.taskPrMap, lineageFor, launch, props.onOpenUnresolvedComments]);
+	}), [projectOf, space, dispatch, navigate, agents, props.bellCounts, props.bellReasons, taskPorts, props.taskDevServers, props.taskResourceUsage, props.activeTaskId, siblingMap, filter.taskPrMap, lineageFor, filter.applyEpicFilter, launch, props.onOpenUnresolvedComments]);
 
 	// Written during render so a view rendering in this same pass already reads it.
 	const sourceRef = useRef<BoardModelSource | null>(null);
@@ -342,6 +345,17 @@ function BoardHost(props: BoardHostProps) {
 				onPickProject={filter.applyChildrenFilter}
 				onOpenProject={(projectId, parent) => {
 					rememberFilter(boardFilterKey(projectId), childrenFilterToken(parent, filter.knownProjects, projectId));
+					navigate({ screen: "project", projectId });
+				}}
+			/>
+			<EpicFilterNotice
+				searchQuery={filter.query}
+				epics={filter.epics}
+				members={filter.epicMembers}
+				allProjects={filter.knownProjects}
+				boardProjectIds={filter.boardProjectIds}
+				onOpenProject={(projectId, epic) => {
+					rememberFilter(boardFilterKey(projectId), epicFilterToken(epic));
 					navigate({ screen: "project", projectId });
 				}}
 			/>

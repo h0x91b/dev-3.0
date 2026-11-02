@@ -1,9 +1,11 @@
 import { useCallback, useMemo } from "react";
-import type { CodingAgent, CustomColumn, Label, PortInfo, Project, Space, Task, TaskPRBadgeInfo } from "../../shared/types";
+import type { CodingAgent, CustomColumn, Epic, EpicMember, Label, PortInfo, Project, Space, Task, TaskPRBadgeInfo } from "../../shared/types";
 import { ALL_PRIORITIES, ALL_STATUSES, DEFAULT_PRIORITY, normalizeLaneName } from "../../shared/types";
 import { statusKey, useT } from "../i18n";
 import { PRIORITY_NAME_KEYS } from "../components/priorityStyles";
 import { useTaskLineage } from "../hooks/useTaskLineage";
+import { useEpicMembers, useEpics } from "../hooks/useEpics";
+import { epicFilterToken, epicOf, withEpicToken } from "../utils/taskEpic";
 import { useTaskPrBadges } from "../hooks/useTaskPrBadges";
 import { boardFilterKey, useRememberedFilter } from "../hooks/useRememberedFilter";
 import { childrenFilterToken, childrenTokenRefs, withChildrenToken, type TaskLineage } from "../utils/taskLineage";
@@ -44,6 +46,10 @@ export interface BoardFilter {
 	taskPrMap: Map<string, TaskPRBadgeInfo>;
 	lineage: TaskLineage;
 	applyChildrenFilter: (parent: { projectId: string; seq: number }) => void;
+	/** Epics are global: the registry and every member task across projects. */
+	epics: Epic[];
+	epicMembers: EpicMember[];
+	applyEpicFilter: (epic: Epic) => void;
 }
 
 /**
@@ -79,6 +85,11 @@ export function useBoardFilter({ project, space, memberProjects, tasks, agents, 
 	const applyChildrenFilter = useCallback((parent: { projectId: string; seq: number }) => {
 		setQuery(withChildrenToken(query, childrenFilterToken(parent, knownProjects, lineageProjectId)));
 	}, [query, setQuery, knownProjects, lineageProjectId]);
+	const { epics, byId: epicsById } = useEpics();
+	const epicMembers = useEpicMembers();
+	const applyEpicFilter = useCallback((epic: Epic) => {
+		setQuery(withEpicToken(query, epicFilterToken(epic)));
+	}, [query, setQuery]);
 
 	// Filter chips: one per label NAME across the board's projects, same merge rule
 	// as the lanes. The `label:"…"` token already matches by name, so a merged chip
@@ -117,7 +128,8 @@ export function useBoardFilter({ project, space, memberProjects, tasks, agents, 
 		prNumberFor: (task) => taskPrMap.get(task.id)?.number ?? null,
 		prStateFor: (task) => taskPrMap.get(task.id)?.mergeState?.state ?? null,
 		childrenRefsFor: (task) => childrenTokenRefs(task, lineage, knownProjects, lineageProjectId),
-	}), [agents, projectById, customStatusLabels, taskPorts, taskPrMap, t, lineage, knownProjects, lineageProjectId]);
+		epicFor: (task) => epicOf(task, epicsById),
+	}), [agents, projectById, customStatusLabels, taskPorts, taskPrMap, t, lineage, knownProjects, lineageProjectId, epicsById]);
 
 	const matches = useCallback(
 		(task: Task, q: string) => !q.trim() || matchesTaskQuery(task, q, taskQueryContext(task, resolver)),
@@ -187,5 +199,8 @@ export function useBoardFilter({ project, space, memberProjects, tasks, agents, 
 		taskPrMap,
 		lineage,
 		applyChildrenFilter,
+		epics,
+		epicMembers,
+		applyEpicFilter,
 	};
 }

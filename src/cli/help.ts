@@ -137,7 +137,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "create",
-				usage: 'dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|board-cleanup|standard] | dev3 task create --scratch --run [--agent <id> [--config <id>]]',
+				usage: 'dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] | dev3 task create --scratch --run [--agent <id> [--config <id>]]',
 				summary: "Create a task in To Do, or ask the user to start a scratch peer agent.",
 				details: [
 					"--title <text>        Task title (required).",
@@ -161,6 +161,10 @@ const COMMANDS: CommandHelp[] = [
 					"Unresolvable --pr/--branch creates nothing and exits 18.",
 					"Run inside a task (worktree or DEV3_TASK_ID), the new task records that task as its",
 					"parent for good — `task show` prints it as Created by. Outside one, it is yours.",
+					"It also joins that task's epic, across projects, unless the epic is archived.",
+					"--epic <name|id>      Put the new task in this epic instead (overrides inheritance).",
+					"                      Unknown, ambiguous or archived epic: nothing is created, exit 44.",
+					"--no-epic             Create it in no epic even when the creating task has one.",
 					"--scratch --run       Ask the user to start a throwaway peer agent — no title,",
 					"                      no prompt. Blocks up to 10 min on their approval in the",
 					"                      app; exit 10 if declined, 46 if it failed to prepare.",
@@ -175,8 +179,8 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "update",
-				usage: 'dev3 task update [<id>] [--title "..."] [--description "..." | --description -] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard]',
-				summary: "Update a task's title, description, priority, completion policy, or type.",
+				usage: 'dev3 task update [<id>] [--title "..."] [--description "..." | --description -] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic]',
+				summary: "Update a task's title, description, priority, completion policy, type, or epic.",
 				details: [
 					"--title <text>        New title (cannot be empty).",
 					'--description <text>  New description ("" clears it); use - to read it from stdin.',
@@ -192,6 +196,8 @@ const COMMANDS: CommandHelp[] = [
 					"                      under a 'Brief source:' line (project, app-wide or built-in)",
 					"                      instead of typing it into your own pane, and print it again on a",
 					"                      repeat that changes nothing. This is what /dev3-coordinator runs.",
+					"--epic <name|id>      Move this task into an existing epic (exit 44 if it names none or an archived one).",
+					"--no-epic             Take this task out of its epic. Neither flag touches its children.",
 					"--force               Overwrite a user-edited title (diagnostics only — avoid).",
 				],
 			},
@@ -274,7 +280,7 @@ const COMMANDS: CommandHelp[] = [
 		subcommands: [
 			{
 				name: "list",
-				usage: "dev3 tasks list [--open] [--json] [--status <s>] [--label <id>] [--priority <P0..P4>] [--sort priority|seq] [--limit <n>] [--offset <n>] [--children-of <seq:N|id>]",
+				usage: "dev3 tasks list [--open] [--json] [--status <s>] [--label <id>] [--priority <P0..P4>] [--sort priority|seq] [--limit <n>] [--offset <n>] [--children-of <seq:N|id>] [--epic <name|id>]",
 				summary: "List tasks: live work, then To Do, then completed, then cancelled (default 50 per page).",
 				details: [
 					"Highest priority first inside each group, exactly as the board ranks a column; newest (highest seq) breaks ties.",
@@ -289,6 +295,7 @@ const COMMANDS: CommandHelp[] = [
 					"--offset <n>       Skip n tasks, for paging.",
 					"--children-of <ref>  The tasks created from inside that task (its whole variant group), from every project.",
 					"                  The parent resolves in --project, else the current one. Direct children only.",
+					'--epic <name|id>  Every task in that epic, from every project and in every status (exit 44 if unknown).',
 				],
 			},
 		],
@@ -844,6 +851,45 @@ const COMMANDS: CommandHelp[] = [
 					"Space flags, --json and exit codes 33 / 34 work exactly as for `projects add`.",
 					"An existing git repo already at <parent>/<name> is registered without cloning.",
 				],
+			},
+		],
+	},
+	{
+		name: "epic",
+		summary: "Global epics: one named effort that groups tasks across projects.",
+		subcommands: [
+			{
+				name: "list",
+				usage: "dev3 epic list [--all] [--json]",
+				summary: "List active epics with id, colour, name, state and task count (default subcommand).",
+				details: [
+					"--all    Include archived epics.",
+					"See an epic's tasks with: dev3 tasks list --epic <name|id>",
+				],
+			},
+			{
+				name: "create",
+				usage: 'dev3 epic create --name "..." [--color #hex] [--json]',
+				summary: "Create an epic. Only the user (outside any task) or a coordinator task may; anyone else exits 45.",
+				details: [
+					"A name another epic already uses (case-insensitive, archived included) is refused.",
+					"Attach your own task next (dev3 task update --epic <id>) so every task you create inherits it.",
+				],
+			},
+			{
+				name: "update",
+				usage: 'dev3 epic update <name|id> [--name "..."] [--color #hex] [--json]',
+				summary: "Rename or recolour an epic. Membership is by id, so no task changes.",
+			},
+			{
+				name: "archive",
+				usage: "dev3 epic archive <name|id> [--json]",
+				summary: "Close an epic: it stays on its tasks and in filters, but takes no new tasks and is not inherited.",
+			},
+			{
+				name: "unarchive",
+				usage: "dev3 epic unarchive <name|id> [--json]",
+				summary: "Reopen an archived epic. There is no delete.",
 			},
 		],
 	},

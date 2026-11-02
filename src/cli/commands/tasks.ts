@@ -1,4 +1,5 @@
-import type { Task, TaskPriority, TaskStatus } from "../../shared/types";
+import type { Epic, EpicMember, Task, TaskPriority, TaskStatus } from "../../shared/types";
+import { exitEpicRequestFailed } from "./epic";
 import {
 	STATUS_LABELS,
 	ALL_STATUSES,
@@ -107,12 +108,49 @@ async function listChildren(args: ParsedArgs, socketPath: string, context: CliCo
 	);
 }
 
+/**
+ * `tasks list --epic <ref>`: every task in one epic, from every project and in
+ * every status. The epic is global, so --project does not narrow it.
+ */
+async function listEpicTasks(args: ParsedArgs, socketPath: string): Promise<void> {
+	const ref = args.flags.epic?.trim();
+	if (!ref || ref === "true") exitUsage('--epic needs an epic: --epic "Payments v2" (or an id from dev3 epic list).');
+	const resp = await sendRequest(socketPath, "epic.tasks", { epic: ref });
+	if (!resp.ok) exitEpicRequestFailed(resp, "Failed to list the epic's tasks");
+	const { epic, tasks } = resp.data as { epic: Epic; tasks: EpicMember[] };
+	const rows = [...tasks].sort((a, b) => a.projectName.localeCompare(b.projectName) || a.seq - b.seq);
+
+	if (args.flags.json !== undefined) {
+		process.stdout.write(`${JSON.stringify({ schemaVersion: 1, epic, tasks: rows }, null, 2)}\n`);
+		return;
+	}
+	process.stdout.write(`Epic ${epic.name} (${epic.id.slice(0, 8)})${epic.archived ? " — archived" : ""}\n\n`);
+	if (rows.length === 0) {
+		process.stdout.write("No tasks in this epic.\n");
+		return;
+	}
+	printTable(
+		["PROJECT", "SEQ", "ID", "STATUS", "TITLE"],
+		rows.map((t) => [
+			t.projectName,
+			t.variantIndex !== null ? `${t.seq}-${t.variantIndex}` : String(t.seq),
+			t.id.slice(0, 8),
+			STATUS_LABELS[t.status] || t.status,
+			t.title.length > 60 ? t.title.slice(0, 57) + "..." : t.title,
+		]),
+	);
+}
+
 export async function handleTasks(
 	subcommand: string | undefined,
 	args: ParsedArgs,
 	socketPath: string,
 	context: CliContext | null,
 ): Promise<void> {
+	if ((subcommand === "list" || !subcommand) && args.flags.epic !== undefined) {
+		if (args.flags["children-of"] !== undefined) exitUsage("--epic and --children-of are two different lists — pass one of them.");
+		return listEpicTasks(args, socketPath);
+	}
 	if ((subcommand === "list" || !subcommand) && args.flags["children-of"] !== undefined) {
 		return listChildren(args, socketPath, context);
 	}

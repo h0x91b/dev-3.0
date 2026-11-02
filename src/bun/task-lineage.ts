@@ -2,13 +2,13 @@ import type { Project, Task, TaskLineageIndex, TaskLineageNode } from "../shared
 import { getTaskTitle, parentTaskIdOf } from "../shared/types";
 import * as data from "./data";
 
-async function allBoards(): Promise<Array<{ project: Project; tasks: Task[] }>> {
+export async function allBoards(): Promise<Array<{ project: Project; tasks: Task[] }>> {
 	const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
 	return Promise.all(projects.map(async (project) => ({ project, tasks: await data.loadTasks(project) })));
 }
 
 /** `variantIndex` only for a real group: a lone launched task still carries index 1. */
-function lineageNode(task: Task, project: Project, groupSizes: ReadonlyMap<string, number>): TaskLineageNode {
+export function lineageNode(task: Task, project: Project, groupSizes: ReadonlyMap<string, number>): TaskLineageNode {
 	const inGroup = task.groupId !== null && (groupSizes.get(task.groupId) ?? 0) > 1;
 	return {
 		id: task.id,

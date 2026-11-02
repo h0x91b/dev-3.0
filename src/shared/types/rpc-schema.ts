@@ -34,6 +34,7 @@ import type { CustomColumn, Label } from "./labels-columns";
 import type { Space, SpacesFile } from "./spaces";
 import type { BoardRef, BoardViewState } from "../board-view-state";
 import type { ExtensionInspection, ExtensionsOverview, InstalledExtension } from "../extensions";
+import type { Epic, EpicMember, EpicsFile } from "./epics";
 import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, AgentLaunchRequest, LaunchVariant, TaskDialogSubject } from "./agent-launch";
 import type { ScheduledMessageTarget } from "./scheduled-messages";
 import type { LiveArtifact, SharedArtifact, SharedImage } from "./shared-media";
@@ -169,6 +170,29 @@ export type AppRPCSchema = {
 			getExtensionSource: {
 				params: { id: string };
 				response: string;
+			};
+			getEpics: {
+				params: Record<string, never>;
+				response: EpicsFile;
+			};
+			/** Every task in any epic, across all projects. */
+			getEpicMembers: {
+				params: Record<string, never>;
+				response: EpicMember[];
+			};
+			createEpic: {
+				params: { name: string; color?: string };
+				response: Epic;
+			};
+			/** Rename, recolour, archive or unarchive. There is deliberately no delete. */
+			updateEpic: {
+				params: { epicId: string; name?: string; color?: string; archived?: boolean };
+				response: Epic;
+			};
+			/** Set or clear one task's epic; never propagates to its children. */
+			setTaskEpic: {
+				params: { projectId: string; taskId: string; epicId: string | null };
+				response: Task;
 			};
 			listDirectory: {
 				params: { path?: string | null; includeFiles?: boolean; showHidden?: boolean };
@@ -615,7 +639,7 @@ export type AppRPCSchema = {
 				 * `renameTask`'s customTitle: this does NOT mark the title user-edited,
 				 * so an agent may still rename it.
 				 */
-				params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType };
+				params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType; epicId?: string };
 				response: Task;
 			};
 			/** Stored PR a review task reviews; looks it up once for tasks created before it was stored. */
@@ -1937,6 +1961,7 @@ export type AppRPCSchema = {
 			/** A project registered outside the renderer (`dev3 projects add|clone`). */
 			projectAdded: { project: Project };
 			spacesUpdated: { file: SpacesFile };
+			epicsUpdated: { file: EpicsFile };
 			taskSound: { status: TaskSoundStatus; taskId: string };
 			ptyDied: { taskId: string };
 			/** A saved session was resumed — possibly from the CLI, so a recovery screen still on display must re-read. */

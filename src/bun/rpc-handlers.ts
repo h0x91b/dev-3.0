@@ -94,6 +94,7 @@ import { taskPanesHandlers } from "./rpc-handlers/task-panes";
 import { spacesHandlers } from "./rpc-handlers/spaces";
 import { boardViewsHandlers } from "./rpc-handlers/board-views";
 import { extensionsHandlers } from "./rpc-handlers/extensions";
+import { epicsHandlers } from "./rpc-handlers/epics";
 
 export const handlers = {
 	...appHandlers,
@@ -123,4 +124,5 @@ export const handlers = {
 	...spacesHandlers,
 	...boardViewsHandlers,
 	...extensionsHandlers,
+	...epicsHandlers,
 };

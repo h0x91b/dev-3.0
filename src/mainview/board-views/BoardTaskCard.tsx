@@ -1,5 +1,5 @@
 import { createContext, useContext, type Dispatch } from "react";
-import type { CodingAgent, DevServerSummary, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
+import type { CodingAgent, DevServerSummary, Epic, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import type { CardLineage } from "../utils/taskLineage";
 import TaskCard from "../components/TaskCard";
@@ -22,6 +22,7 @@ export interface BoardCardBindings {
 	siblingMap: Map<string, Task[]>;
 	taskPrMap: Map<string, TaskPRBadgeInfo>;
 	lineageFor(task: Task): CardLineage | undefined;
+	onFilterByEpic?: (epic: Epic) => void;
 	onLaunchVariants(task: Task, targetStatus: TaskStatus): void;
 	onAddAttempts(task: Task): void;
 	onEditDraft(task: Task): void;
@@ -55,6 +56,7 @@ export function BoardTaskCard({ task, onDragStart, isMoving = false, onSetMoving
 			onSetMoving={onSetMoving}
 			siblingMap={host.siblingMap}
 			lineage={host.lineageFor(task)}
+			onFilterByEpic={host.onFilterByEpic}
 			prInfo={host.taskPrMap.get(task.id)}
 			onOpenUnresolvedComments={host.onOpenUnresolvedComments}
 			onEditDraft={host.onEditDraft}

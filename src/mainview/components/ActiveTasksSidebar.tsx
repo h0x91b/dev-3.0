@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback, type Dispatch } from "react";
+import { useEpics } from "../hooks/useEpics";
 import { useTaskSortOrder } from "../hooks/useTaskSortOrder";
 import type { CodingAgent, PortInfo, Project, Task, TaskPriority, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, ALL_PRIORITIES } from "../../shared/types";
@@ -353,9 +354,10 @@ function ActiveTasksSidebar({
 	// keeps its own board-scoped one). Labels/statuses/spaces resolve per the
 	// task's OWN project, so this cross-project pool filters correctly.
 	const lineage = useTaskLineage();
+	const { byId: epicsById } = useEpics();
 	const resolver: FacetResolver = useMemo(
-		() => buildFacetResolver({ agents, projectById, taskPorts, spaces, t, prNumberFor: (task) => taskPrMap.get(task.id)?.number ?? null, prStateFor: (task) => taskPrMap.get(task.id)?.mergeState?.state ?? null, lineage, currentProjectId: project?.id ?? null }),
-		[agents, projectById, taskPorts, spaces, t, taskPrMap, lineage, project],
+		() => buildFacetResolver({ agents, projectById, taskPorts, spaces, t, prNumberFor: (task) => taskPrMap.get(task.id)?.number ?? null, prStateFor: (task) => taskPrMap.get(task.id)?.mergeState?.state ?? null, lineage, currentProjectId: project?.id ?? null, epicsById }),
+		[agents, projectById, taskPorts, spaces, t, taskPrMap, lineage, project, epicsById],
 	);
 
 	const priorityCandidates = useMemo<FilterFunnelOption[]>(
