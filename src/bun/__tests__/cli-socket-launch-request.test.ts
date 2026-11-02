@@ -98,6 +98,10 @@ vi.mock("../cli-agent-spawn", () => ({
 	validateLaunchSuggestion: vi.fn(),
 }));
 
+vi.mock("../agents", async () => {
+	const { DEFAULT_AGENTS } = await import("../../shared/types");
+	return { getAllAgents: vi.fn().mockResolvedValue(DEFAULT_AGENTS) };
+});
 vi.mock("node:fs", () => ({
 	existsSync: vi.fn(() => false),
 	readdirSync: vi.fn(() => []),
@@ -886,8 +890,8 @@ describe("task.move — agent-initiated launch with variants", () => {
 describe("launch requests with a suggested agent/config (issue #1911)", () => {
 	const SUGGESTED = { agentId: "builtin-codex", configId: "codex-low" };
 
-	async function startMove(params: Record<string, unknown> = {}) {
-		const target = makeTask();
+	async function startMove(params: Record<string, unknown> = {}, taskOverrides: Partial<Task> = {}) {
+		const target = makeTask(taskOverrides);
 		setupBoard(target);
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
@@ -932,6 +936,23 @@ describe("launch requests with a suggested agent/config (issue #1911)", () => {
 			vi.useRealTimers();
 		}
 		expect(launchTaskWithAgentChoice).toHaveBeenCalledWith(expect.objectContaining({ choice: { variants: [SUGGESTED], priority: "P3" } }));
+	});
+
+	it("a coordinator with no flags preselects and auto-launches the coordinator preset", async () => {
+		vi.mocked(loadSettings).mockReturnValue({ agentLaunchAutoApproveMinutes: 1 } as never);
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		const coordinator = { agentId: "builtin-claude", configId: "claude-auto-fable51-medium" };
+		let payload: Record<string, unknown>;
+		try {
+			const started = await startMove({}, { taskType: "coordinator" });
+			payload = started.payload;
+			vi.advanceTimersByTime(60_000);
+			await started.respPromise;
+		} finally {
+			vi.useRealTimers();
+		}
+		expect(payload.suggested).toEqual(coordinator);
+		expect(launchTaskWithAgentChoice).toHaveBeenCalledWith(expect.objectContaining({ choice: { variants: [coordinator], priority: "P3" } }));
 	});
 
 	it("without flags: no suggestion, no validation, and auto-approval keeps the default variant", async () => {

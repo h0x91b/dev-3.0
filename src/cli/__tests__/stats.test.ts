@@ -200,6 +200,7 @@ describe("dev3 stats usage", () => {
 		mockSend.mockResolvedValue(ok({ days: [usageDay({ fullyPriced: false })], generatedAt: "G", hasUnpricedModels: true }));
 		await handleStats("usage", args({ json: "true" }), SOCKET, CTX);
 		expect(json()).toMatchObject({ schemaVersion: 1, hasUnpricedModels: true, since: null, days: [{ source: "claude", costUsd: 3.5 }] });
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "stats.usage", {});
 	});
 
 	it("recomputes hasUnpricedModels for the days --since kept", async () => {
@@ -209,6 +210,7 @@ describe("dev3 stats usage", () => {
 		}));
 		await handleStats("usage", args({ json: "true", since: "2098-12-31" }), SOCKET, CTX);
 		expect(json()).toMatchObject({ hasUnpricedModels: false, days: [{ date: "2099-01-01" }] });
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "stats.usage", { since: new Date(2098, 11, 31).toISOString() });
 	});
 
 	it("takes --project only with --task, and says why", async () => {

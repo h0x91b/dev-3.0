@@ -95,8 +95,10 @@ import { spacesHandlers } from "./rpc-handlers/spaces";
 import { boardViewsHandlers } from "./rpc-handlers/board-views";
 import { extensionsHandlers } from "./rpc-handlers/extensions";
 import { epicsHandlers } from "./rpc-handlers/epics";
+import { secretHandlers } from "./rpc-handlers/secrets";
 
 export const handlers = {
+	...secretHandlers,
 	...appHandlers,
 	...terminalPathHandlers,
 	...fileExplorerHandlers,

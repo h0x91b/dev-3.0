@@ -53,6 +53,24 @@ const GLOBAL_OPTIONS = [
 
 const COMMANDS: CommandHelp[] = [
 	{
+		name: "secret",
+		summary: "Use a secret in one command without putting it in the conversation.",
+		subcommands: [{
+			name: "run",
+			usage: "dev3 secret run --env NAME [--task <id>] -- command [args...]",
+			summary: "Ask the user for a secret in a masked app dialog, then run the displayed command.",
+			details: [
+				"Never pass the secret as an argument. The user enters it only in the app.",
+				"The secret reaches only the approved child environment; dev3 does not save it.",
+				"stdin is closed. stdout/stderr are discarded; only success/failure returns to the agent.",
+				"The command runs directly (no implicit shell) in the task worktree, for up to five minutes.",
+				"The request expires after ten minutes; closing the CLI cancels it. Never auto-approved.",
+				"The approved command and its descendants can read, store or transmit the secret. Review them first.",
+				"Example: dev3 secret run --env API_TOKEN -- node scripts/upload.mjs",
+			],
+		}],
+	},
+	{
 		name: "agent",
 		summary: "Add managed agents to existing task terminals (the CLI equivalent of +Agent).",
 		subcommands: [

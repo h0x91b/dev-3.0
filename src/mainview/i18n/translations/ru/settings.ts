@@ -154,6 +154,8 @@ const settings = {
 	"settings.defaultAgentDesc": "Агент для запуска новых задач",
 	"settings.defaultConfig": "Конфигурация по умолчанию",
 	"settings.defaultConfigDesc": "Конфигурация при запуске задач",
+	"settings.coordinatorAgent": "Агент координатора",
+	"settings.coordinatorAgentDesc": "Агент и пресет, с которыми запускается задача-координатор. Остальные задачи используют агента по умолчанию.",
 	"settings.llmProvider": "Провайдер LLM",
 	"settings.llmProviderDesc": "Бэкенд для этого агента. Сторонний провайдер закрепляет собственные id моделей вместо алиасов dev3.",
 	"settings.providerNative": "Нативный",
