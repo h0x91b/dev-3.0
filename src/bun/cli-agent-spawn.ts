@@ -7,6 +7,7 @@ import { launchRequesterSummary } from "./cli-session-approval";
 import { listAgentAccounts } from "./agent-accounts";
 import { isAutoAccountId, isRoutableAccountKind } from "../shared/agent-accounts";
 import { applyBinaryPathOverride, getAllAgents } from "./agents";
+import { brokenCustomPath, customExecutableMessage } from "./executable";
 import { getTask } from "./data";
 import { loadSettings } from "./settings";
 import { getPushMessage } from "./rpc-handlers/shared-pure";
@@ -57,7 +58,11 @@ async function validateChoice(choice: LaunchVariant): Promise<LaunchVariant> {
 	}
 	const availability = await settingsConfigHandlers.checkAgentAvailability();
 	const check = availability.find((a) => a.agentId === id);
-	if (!check?.installed) throw new Error(`Agent "${id}" is not installed.${check?.installCommand ? ` Install it with: ${check.installCommand}` : ""}`);
+	if (!check?.installed) {
+		const broken = check?.customPathError ? brokenCustomPath(id, settings.agentCustomBinaryPaths) : null;
+		if (broken) throw new Error(customExecutableMessage(agent.name, broken));
+		throw new Error(`Agent "${id}" is not installed.${check?.installCommand ? ` Install it with: ${check.installCommand}` : ""}`);
+	}
 	return { ...choice, agentId: id, configId };
 }
 

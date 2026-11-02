@@ -499,9 +499,14 @@ export type AppRPCSchema = {
 				params: { kind: AgentAccountKind; accountId: string; label?: string; baseUrl?: string; apiKey?: string; model?: string; slotModels?: ClaudeSlotModels; envText?: string };
 				response: AgentAccount;
 			};
-			/** Start or join the in-app sign-in terminal for a managed account (one per CLI). */
+			/** Start or join the in-app sign-in terminal for a managed account (one per CLI). `created`: this call made the record, it did not join one. */
 			startAccountLogin: {
 				params: { kind: AgentAccountKind; remoteViewer: boolean };
+				response: AccountLoginState & { created: boolean };
+			};
+			/** Run the login command of a sign-in that is still "ready"; nothing starts before this call. */
+			beginAccountLogin: {
+				params: { loginId: string };
 				response: AccountLoginState;
 			};
 			getAccountLogin: {
@@ -520,6 +525,11 @@ export type AppRPCSchema = {
 			closeAccountLogin: {
 				params: { loginId: string };
 				response: void;
+			};
+			/** Keep a Claude sign-in's folder as an account without signing in; the state carries the new account and the manual login command. */
+			addClaudeAccountWithoutLogin: {
+				params: { loginId: string };
+				response: AccountLoginState;
 			};
 			/** `accountId: "auto"` makes the usage-balanced router the default (claude/codex). */
 			setActiveAgentAccount: {
@@ -1000,6 +1010,11 @@ export type AppRPCSchema = {
 			};
 			setAgentBinaryPath: {
 				params: { agentId: string; path: string };
+				response: void;
+			};
+			/** Forget the custom executable stored for an agent. */
+			clearAgentBinaryPath: {
+				params: { agentId: string };
 				response: void;
 			};
 			getChangelogs: {
@@ -2059,6 +2074,8 @@ export type AppRPCSchema = {
 				taskId: string | null;
 				projectId: string | null;
 				message: string;
+				/** Renderer translation key for `message`, which stays the English fallback. */
+				messageKey?: "kanban.launchAccountRemoved";
 				level: "info" | "success" | "error";
 				/** Optional in-app toast lifetime in milliseconds; omitted uses the default. */
 				durationMs?: number;

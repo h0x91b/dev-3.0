@@ -15,6 +15,7 @@ const kanban = {
 	"kanban.columnAgentFailedMoved": "Column agent failed to launch for \"{columnName}\" — moved to {status}: {error}",
 	"kanban.columnAgentNoTerminal": "Can't start the \"{columnName}\" agent: this task's terminal isn't running. Open the task to start it, then try again.",
 	"kanban.columnAgentNoTerminalMoved": "Can't start the \"{columnName}\" agent: this task's terminal isn't running, so the task was moved to {status}. Open the task to start its terminal, then move it back.",
+	"kanban.launchAccountRemoved": "The account this task used was removed — launched on the default account.",
 	"kanban.taskPreparationFailed": "Couldn't prepare \"{taskTitle}\" — moved back to To Do: {error}",
 	"task.launchFailed": "Launch failed: {error}",
 	"kanban.failedReorderColumns": "Failed to reorder columns: {error}",

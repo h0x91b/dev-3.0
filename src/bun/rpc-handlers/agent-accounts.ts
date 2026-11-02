@@ -124,11 +124,18 @@ async function updateAgentApiProfile(params: {
 
 /** Start (or join) the in-app sign-in for `kind`. `remoteViewer`: the page asking is
  *  not on the host, so a host-side browser callback cannot reach the user. */
-async function startAccountLogin(params: { kind: AgentAccountKind; remoteViewer: boolean }): Promise<AccountLoginState> {
+async function startAccountLogin(params: { kind: AgentAccountKind; remoteViewer: boolean }): Promise<AccountLoginState & { created: boolean }> {
 	log.info("→ startAccountLogin", params);
+	const before = accountLogins.get(params.kind);
 	const state = await accountLogins.start(params.kind, { remoteViewer: params.remoteViewer });
-	log.info("← startAccountLogin", { loginId: state.loginId.slice(0, 8), phase: state.phase });
-	return state;
+	const created = before?.loginId !== state.loginId;
+	log.info("← startAccountLogin", { loginId: state.loginId.slice(0, 8), phase: state.phase, created });
+	return { ...state, created };
+}
+
+async function beginAccountLogin(params: { loginId: string }): Promise<AccountLoginState> {
+	log.info("→ beginAccountLogin", { loginId: params.loginId.slice(0, 8) });
+	return accountLogins.begin(params.loginId);
 }
 
 async function getAccountLogin(params: { kind: AgentAccountKind }): Promise<AccountLoginState | null> {
@@ -144,6 +151,14 @@ async function restartAccountLogin(params: { loginId: string; remoteViewer: bool
 async function getAccountLoginPtyUrl(params: { sessionKey: string }): Promise<string> {
 	if (!params.sessionKey.startsWith(ACCOUNT_LOGIN_SESSION_PREFIX)) throw new Error("Not a sign-in terminal");
 	return `ws://localhost:${getPtyPort()}?session=${encodeURIComponent(params.sessionKey)}`;
+}
+
+/** Keep a Claude sign-in's folder as an account without waiting for the login. */
+async function addClaudeAccountWithoutLogin(params: { loginId: string }): Promise<AccountLoginState> {
+	log.info("→ addClaudeAccountWithoutLogin", { loginId: params.loginId.slice(0, 8) });
+	const state = accountLogins.addWithoutSignIn(params.loginId);
+	log.info("← addClaudeAccountWithoutLogin", { accountId: state.account?.id.slice(0, 8) });
+	return state;
 }
 
 /** Cancel a sign-in in progress, or dismiss a finished one. */
@@ -246,10 +261,12 @@ export const agentAccountHandlers = {
 	getAgentApiProfileDraft,
 	updateAgentApiProfile,
 	startAccountLogin,
+	beginAccountLogin,
 	getAccountLogin,
 	restartAccountLogin,
 	getAccountLoginPtyUrl,
 	closeAccountLogin,
+	addClaudeAccountWithoutLogin,
 	setActiveAgentAccount,
 	previewAutoAccount,
 	removeAgentAccount,

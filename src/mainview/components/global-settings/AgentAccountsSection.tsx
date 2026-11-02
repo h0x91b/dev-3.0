@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type {
 	AgentAccount,
 	AgentAccountIdentity,
@@ -10,9 +10,9 @@ import type {
 	ClaudeSlotModels,
 } from "../../../shared/agent-accounts";
 import type { AccountLoginState } from "../../../shared/agent-accounts";
-import { AUTO_ACCOUNT_ID, CLAUDE_MODEL_SLOTS, isAgentDirAccountKind, managedCodexTwin, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../../shared/agent-accounts";
+import { AUTO_ACCOUNT_ID, CLAUDE_MODEL_SLOTS, isAccountLoginRefusal, isAgentDirAccountKind, managedCodexTwin, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../../shared/agent-accounts";
 import { api, isElectrobun } from "../../rpc";
-import AccountLoginModal, { loginPhaseTitle } from "./AccountLoginModal";
+import AccountLoginModal, { AGENT_NAMES, loginPhaseTitle } from "./AccountLoginModal";
 import { confirm } from "../../confirm";
 import { toast } from "../../toast";
 import type { TFunction } from "../../i18n";
@@ -527,16 +527,19 @@ function ApiProfileFormCard({
 
 /** A sign-in the modal no longer shows: it is still running (or finished) on the host. */
 function LoginInProgressRow({ login, onOpen, onCancel, t }: { login: AccountLoginState; onOpen: () => void; onCancel: () => void; t: TFunction }) {
-	const done = login.phase === "succeeded";
+	const done = login.phase === "succeeded" || login.phase === "added-unsigned";
 	const attention = login.phase === "failed" || login.phase === "expired" || login.phase === "exited" || login.phase === "missing-executable";
+	const idle = login.phase === "ready";
 	return (
 		<div className="flex flex-wrap items-center gap-2.5 px-3 py-2 rounded-lg bg-accent/10" data-testid={`account-login-row-${login.kind}`}>
 			<span
 				aria-hidden
-				className={`w-2 h-2 rounded-full shrink-0 ${done ? "bg-success" : attention ? "bg-warning" : "bg-accent motion-safe:animate-pulse"}`}
+				className={`w-2 h-2 rounded-full shrink-0 ${done ? "bg-success" : attention ? "bg-warning" : idle ? "bg-fg-muted" : "bg-accent motion-safe:animate-pulse"}`}
 			/>
 			<span className="text-fg-2 text-sm flex-1 min-w-0">
-				{done
+				{login.phase === "added-unsigned" || idle
+					? loginPhaseTitle(login, !isElectrobun, t)
+					: done
 					? t("settings.accountLoginRowDone")
 					: attention
 						? loginPhaseTitle(login, !isElectrobun, t)
@@ -570,6 +573,8 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 	// Which sign-in is on screen; hiding the modal leaves the login running on the host.
 	const [shownLogin, setShownLogin] = useState<AgentAccountKind | null>(null);
 	const [loginBusy, setLoginBusy] = useState(false);
+	const loginsRef = useRef(logins);
+	loginsRef.current = logins;
 	const [apiForm, setApiForm] = useState<ApiFormDraft | null>(null);
 	// null → the form creates a new profile; set → it edits this existing one.
 	const [apiEdit, setApiEdit] = useState<{ id: string } | null>(null);
@@ -590,7 +595,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 		function onLoginChanged(e: Event) {
 			const { kind, state: login } = (e as CustomEvent<{ kind: AgentAccountKind; state: AccountLoginState | null }>).detail;
 			setLogins((prev) => ({ ...prev, [kind]: login }));
-			if (login?.phase === "succeeded") {
+			if (login?.phase === "succeeded" || login?.phase === "added-unsigned") {
 				reload();
 				notifyAgentAccountsChanged();
 			}
@@ -629,12 +634,47 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 	);
 
 	const handleStartAdd = useCallback(async (kind: AgentAccountKind) => {
+		const agent = AGENT_NAMES[kind];
+		const claude = kind === "claude";
+		const options = {
+			title: t("settings.accountAddChoiceTitle", { agent }),
+			message: t(claude ? "settings.accountAddChoiceMessageClaude" : "settings.accountAddChoiceMessage", { agent }),
+			confirmLabel: t("settings.accountAddChoiceSignIn"),
+			cancelLabel: t("kanban.cancel"),
+		};
+		// Nothing is created until the user chooses.
+		const choice = claude
+			? await confirm({ ...options, alternativeAction: { label: t("settings.accountLoginAddUnsigned"), value: "unsigned" } })
+			: await confirm(options);
+		if (!choice) return;
 		setLoginBusy(true);
+		let started: AccountLoginState | null = null;
+		let created = false;
 		try {
-			const login = await api.request.startAccountLogin({ kind, remoteViewer: !isElectrobun });
+			const response = await api.request.startAccountLogin({ kind, remoteViewer: !isElectrobun });
+			const { created: wasCreated, ...state } = response;
+			created = wasCreated;
+			started = state;
+			const startedId = started.loginId;
+			loginsRef.current = { ...loginsRef.current, [kind]: started };
+			setLogins((prev) => ({ ...prev, [kind]: started }));
+			let login = started;
+			// Joining a sign-in that is already running needs no second step.
+			if (login.phase === "ready") {
+				login = choice === "unsigned"
+					? await api.request.addClaudeAccountWithoutLogin({ loginId: startedId })
+					: await api.request.beginAccountLogin({ loginId: startedId });
+				// A cancel from the list that landed meanwhile must not bring the sign-in back.
+				if (loginsRef.current[kind]?.loginId !== startedId) return;
+			}
 			setLogins((prev) => ({ ...prev, [kind]: login }));
 			setShownLogin(kind);
 		} catch (err) {
+			// Close only a record this handler created and that failed for its own reason: a refusal
+			// means another window moved the shared record on, and closing it would kill their sign-in.
+			if (created && started?.phase === "ready" && !isAccountLoginRefusal(err)) void api.request.closeAccountLogin({ loginId: started.loginId }).catch(() => {});
+			// The user cancelled meanwhile: nothing left to report.
+			if (started && loginsRef.current[kind]?.loginId !== started.loginId) return;
 			toast.error(t("settings.accountLoginStartFailed", { error: err instanceof Error ? err.message : String(err) }), { source: "settings" });
 		} finally {
 			setLoginBusy(false);
@@ -652,6 +692,19 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 			setLoginBusy(false);
 		}
 	}, [t]);
+
+	const handleAddUnsigned = useCallback(async (login: AccountLoginState) => {
+		setLoginBusy(true);
+		try {
+			const next = await api.request.addClaudeAccountWithoutLogin({ loginId: login.loginId });
+			// The accounts list refreshes from the host's `accountLoginChanged` push.
+			setLogins((prev) => ({ ...prev, [login.kind]: next }));
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : String(err), { source: "settings" });
+		} finally {
+			setLoginBusy(false);
+		}
+	}, []);
 
 	/** Cancel, Close and Done are one backend call: stop our process, keep only a verified account. */
 	const handleCloseLogin = useCallback(async (login: AccountLoginState) => {
@@ -810,6 +863,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 							label={account.label}
 							identity={account.identity}
 							api={account.api}
+							note={kind === "claude" && account.auth !== "api" && !account.identity ? t("settings.accountsNotSignedIn") : null}
 							isActive={account.id === activeId}
 							onActivate={account.id === activeId ? undefined : () => handleSetActive(kind, account.id)}
 							onRename={account.auth === "api" ? undefined : (label) => handleRename(kind, account.id, label)}
@@ -1005,6 +1059,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 					onHide={() => setShownLogin(null)}
 					onCancel={() => void handleCloseLogin(logins[shownLogin]!)}
 					onRetry={() => void handleRetryLogin(logins[shownLogin]!)}
+					onAddUnsigned={() => void handleAddUnsigned(logins[shownLogin]!)}
 					onDone={() => void handleCloseLogin(logins[shownLogin]!)}
 					t={t}
 				/>

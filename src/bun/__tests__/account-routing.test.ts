@@ -242,6 +242,17 @@ describe("buildRoutableAccounts", () => {
 		expect(autoCandidateCount(list)).toBe(1);
 	});
 
+	it("leaves out a Claude account with no identity, but keeps a signed-in one and an API profile", () => {
+		const claude = (id: string, extra: Partial<AgentAccount> = {}) => account(id, { kind: "claude", ...extra });
+		const st = state([]);
+		st.claude.accounts = [
+			claude("a"),
+			claude("unsigned", { identity: null }),
+			claude("api", { identity: null, auth: "api" }),
+		];
+		expect(buildRoutableAccounts("claude", st, null).map((a) => a.id)).toEqual(["a", "api"]);
+	});
+
 	it("counts a system login sharing a managed identity once", () => {
 		expect(autoCandidateCount(buildRoutableAccounts("codex", state([account("a"), account("d")]), null))).toBe(2);
 	});

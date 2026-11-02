@@ -37,6 +37,8 @@ export interface AgentCheckResult {
 	alternativeInstallCommand?: string;
 	installUrl?: string;
 	customPathError?: boolean;
+	/** The custom executable stored for this agent, if any. */
+	customPath?: string;
 }
 
 /**

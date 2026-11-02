@@ -134,7 +134,15 @@ export default function AgentSettingsSection({
 	const loadAgentAvailability = useCallback(() => {
 		setAgentCheckLoading(true);
 		api.request.checkAgentAvailability()
-			.then(setAgentAvailability)
+			.then((results) => {
+				setAgentAvailability(results);
+				// Show the stored custom path in its input, without overwriting an edit in progress.
+				setAgentCustomPaths((current) => {
+					const next = { ...current };
+					for (const r of results) if (r.customPath && next[r.agentId] === undefined) next[r.agentId] = r.customPath;
+					return next;
+				});
+			})
 			.catch(() => {})
 			.finally(() => setAgentCheckLoading(false));
 	}, []);
@@ -550,6 +558,20 @@ export default function AgentSettingsSection({
 											loadAgentAvailability();
 										} catch {
 											toast.error(t("settings.agentPathSaveFailed"), { source: "settings" });
+										}
+										setAgentSavingId(null);
+									}}
+									onResetPath={async () => {
+										setAgentSavingId(activeAgent.id);
+										try {
+											await api.request.clearAgentBinaryPath({ agentId: activeAgent.id });
+											setAgentCustomPaths((current) => {
+												const { [activeAgent.id]: _dropped, ...rest } = current;
+												return rest;
+											});
+											loadAgentAvailability();
+										} catch {
+											toast.error(t("settings.agentPathResetFailed"), { source: "settings" });
 										}
 										setAgentSavingId(null);
 									}}
@@ -1033,6 +1055,78 @@ function AgentFamilyField({
 	);
 }
 
+function CustomPathRow({
+	t,
+	agent,
+	availability,
+	customPath,
+	saving,
+	className,
+	onCustomPathChange,
+	onSavePath,
+	onResetPath,
+}: {
+	t: TFunction;
+	agent: CodingAgent;
+	availability: AgentCheckResult;
+	customPath: string;
+	saving: boolean;
+	className: string;
+	onCustomPathChange: (path: string) => void;
+	onSavePath: () => void;
+	onResetPath: () => void;
+}) {
+	return (
+		<div className={className}>
+			<p className="text-fg-3 text-xs mb-1.5">{t("settings.agentCustomPath")}</p>
+			{availability.customPathError ? (
+				<p className="text-danger text-xs mb-1.5">{t("settings.agentPathNotFound")}</p>
+			) : null}
+			<div className="flex items-center gap-1.5">
+				<input
+					type="text"
+					value={customPath}
+					onChange={(event) => onCustomPathChange(event.target.value)}
+					placeholder={`/path/to/${agent.baseCommand}`}
+					className={`flex-1 bg-base border rounded px-2 py-1 text-xs font-mono text-fg placeholder:text-fg-muted focus:border-accent ${
+						availability.customPathError && !availability.installed ? "border-danger" : "border-edge"
+					}`}
+				/>
+				<button
+					type="button"
+					onClick={() => {
+						void openFilePicker({ initialPath: customPath.trim() || null })
+							.then((picked) => { if (picked) onCustomPathChange(picked); });
+					}}
+					aria-label={t("folderPicker.browseAria", { name: agent.baseCommand })}
+					className="px-2.5 py-1 rounded border border-edge text-fg-2 text-xs font-medium hover:bg-elevated hover:text-fg transition-colors shrink-0"
+				>
+					{t("folderPicker.browse")}
+				</button>
+				{availability.customPath ? (
+					<button
+						type="button"
+						onClick={onResetPath}
+						disabled={saving}
+						data-testid="agent-path-reset"
+						className="px-2.5 py-1 rounded border border-edge text-fg-2 text-xs font-medium hover:bg-elevated hover:text-fg transition-colors shrink-0 disabled:opacity-50"
+					>
+						{t("settings.agentPathReset")}
+					</button>
+				) : null}
+				<button
+					type="button"
+					onClick={onSavePath}
+					disabled={!customPath.trim() || saving}
+					className="px-2.5 py-1 rounded bg-accent-fill text-white text-xs font-medium hover:bg-accent-fill-hover disabled:opacity-50 transition-colors shrink-0"
+				>
+					{t("requirements.setPath")}
+				</button>
+			</div>
+		</div>
+	);
+}
+
 function AgentPane({
 	t,
 	agent,
@@ -1043,6 +1137,7 @@ function AgentPane({
 	onCustomPathChange,
 	onCopyInstall,
 	onSavePath,
+	onResetPath,
 	onChange,
 	onDelete,
 }: {
@@ -1055,6 +1150,7 @@ function AgentPane({
 	onCustomPathChange: (path: string) => void;
 	onCopyInstall: (command: string) => void;
 	onSavePath: () => void;
+	onResetPath: () => void;
 	onChange: (patch: Partial<CodingAgent>) => void;
 	onDelete: () => void;
 }) {
@@ -1076,6 +1172,7 @@ function AgentPane({
 					}`}
 				>
 					{availability.installed ? (
+						<>
 						<div className="flex items-center gap-2">
 							<span className="text-success text-sm">&#10003;</span>
 							<span className="text-fg-2 text-xs">{t("settings.agentInstalled")}</span>
@@ -1083,6 +1180,18 @@ function AgentPane({
 								<span className="text-fg-muted text-xs font-mono truncate">{availability.resolvedPath}</span>
 							) : null}
 						</div>
+						<CustomPathRow
+							t={t}
+							agent={agent}
+							availability={availability}
+							customPath={customPath}
+							saving={saving}
+							className="mt-2 pt-2 border-t border-success/20"
+							onCustomPathChange={onCustomPathChange}
+							onSavePath={onSavePath}
+							onResetPath={onResetPath}
+						/>
+						</>
 					) : (
 						<div className="space-y-2">
 							<div className="flex items-center gap-2">
@@ -1106,42 +1215,17 @@ function AgentPane({
 								</div>
 							) : null}
 							<p className="text-fg-muted text-xs">{t("settings.agentLoginReminder")}</p>
-							<div className="pt-2 border-t border-edge/50">
-								<p className="text-fg-3 text-xs mb-1.5">{t("settings.agentCustomPath")}</p>
-								{availability.customPathError ? (
-									<p className="text-danger text-xs mb-1.5">{t("settings.agentPathNotFound")}</p>
-								) : null}
-								<div className="flex items-center gap-1.5">
-									<input
-										type="text"
-										value={customPath}
-										onChange={(event) => onCustomPathChange(event.target.value)}
-										placeholder={`/path/to/${agent.baseCommand}`}
-										className={`flex-1 bg-base border rounded px-2 py-1 text-xs font-mono text-fg placeholder:text-fg-muted focus:border-accent ${
-											availability.customPathError ? "border-danger" : "border-edge"
-										}`}
-									/>
-									<button
-										type="button"
-										onClick={() => {
-											void openFilePicker({ initialPath: customPath.trim() || null })
-												.then((picked) => { if (picked) onCustomPathChange(picked); });
-										}}
-										aria-label={t("folderPicker.browseAria", { name: agent.baseCommand })}
-										className="px-2.5 py-1 rounded border border-edge text-fg-2 text-xs font-medium hover:bg-elevated hover:text-fg transition-colors shrink-0"
-									>
-										{t("folderPicker.browse")}
-									</button>
-									<button
-										type="button"
-										onClick={onSavePath}
-										disabled={!customPath.trim() || saving}
-										className="px-2.5 py-1 rounded bg-accent-fill text-white text-xs font-medium hover:bg-accent-fill-hover disabled:opacity-50 transition-colors shrink-0"
-									>
-										{t("requirements.setPath")}
-									</button>
-								</div>
-							</div>
+							<CustomPathRow
+								t={t}
+								agent={agent}
+								availability={availability}
+								customPath={customPath}
+								saving={saving}
+								className="pt-2 border-t border-edge/50"
+								onCustomPathChange={onCustomPathChange}
+								onSavePath={onSavePath}
+								onResetPath={onResetPath}
+							/>
 						</div>
 					)}
 				</div>

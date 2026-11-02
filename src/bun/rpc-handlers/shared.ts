@@ -149,6 +149,8 @@ export interface TerminalFocusToastPayload {
 	taskId: string | null;
 	projectId: string | null;
 	message: string;
+	/** Renderer translation key for `message`, which stays the English fallback. */
+	messageKey?: "kanban.launchAccountRemoved";
 	level: "info" | "success" | "error";
 	durationMs?: number;
 	taskSeq?: number;

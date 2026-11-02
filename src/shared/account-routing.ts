@@ -369,7 +369,9 @@ export function buildRoutableAccounts(
 	const snapshotFor = (id: string | null) => (report ? findRateLimitSnapshot(report, kind, id) : null);
 	const kindState = state[kind];
 	const twin = kind === "codex" ? managedCodexTwin(state) : null;
-	const out: RoutableAccount[] = kindState.accounts.map((account) => {
+	// A Claude account with no identity (added without a sign-in) is not routable, like a signed-out system login.
+	const routable = kindState.accounts.filter((a) => kind !== "claude" || a.auth === "api" || a.identity);
+	const out: RoutableAccount[] = routable.map((account) => {
 		const own = snapshotFor(account.id);
 		// The default login of the same identity reads the same quota, often more recently.
 		const snapshot = account.id === twin?.id ? newerRateLimitSnapshot(own, snapshotFor(null)) : own;
