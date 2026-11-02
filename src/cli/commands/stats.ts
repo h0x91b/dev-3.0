@@ -1,8 +1,7 @@
-import type { AgentUsageDay, AgentUsageReport, ProductivityStatEvent, ProductivityStats, SystemMemorySnapshot, TaskUsageReport } from "../../shared/types";
+import type { AgentUsageReport, ProductivityStatEvent, ProductivityStats, SystemMemorySnapshot, TaskUsageReport } from "../../shared/types";
 import type { AgentRateLimitsReport } from "../../shared/rate-limits";
 import type { PendingApprovalSummary } from "../../shared/agent-approval";
-import type { ModelRate } from "../../shared/agent-pricing";
-import { parseEventCursor } from "../../shared/board-events";
+import { approvalsJson, limitsJson, memoryJson, parseSinceValue, pricesJson, productivityJson, statsJson, taskUsageJson, usageJson, type PricesWire } from "../../shared/cli-json/stats";
 import { sendRequest } from "../socket-client";
 import { exitError, exitUsage, printTable } from "../output";
 import type { ParsedArgs } from "../args";
@@ -10,16 +9,10 @@ import { ID_PREFIX_MIN_LENGTH } from "../../shared/types";
 import { expandShortId, expandShortProjectId, readProjectDirect, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 
-/**
- * `--json` output is a public contract like `task show --json`: additive changes
- * keep the version, removing or renaming a field bumps it.
- */
-export const STATS_JSON_SCHEMA_VERSION = 1;
-
 const MAX_HUMAN_ROWS = 50;
 
-function printJson(payload: Record<string, unknown>): void {
-	process.stdout.write(`${JSON.stringify({ schemaVersion: STATS_JSON_SCHEMA_VERSION, ...payload }, null, 2)}\n`);
+function printJson(payload: ReturnType<typeof statsJson>): void {
+	process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
 }
 
 /** Flags only: a stray word is a typo, and ignoring it would answer a different question. */
@@ -36,21 +29,11 @@ function readSince(args: ParsedArgs): string | null {
 	const raw = args.flags.since;
 	if (raw === undefined) return null;
 	if (raw === "true") exitUsage("--since needs a value, e.g. --since 7d");
-	const since = /^\d{4}-\d{2}-\d{2}$/.test(raw.trim())
-		? localMidnight(raw.trim())
-		: parseEventCursor(raw);
+	const since = parseSinceValue(raw);
 	if (!since) {
 		exitUsage(`Unparseable --since value: ${raw}. Use a duration (30m, 12h, 7d, 2w), a date (2026-10-01, local midnight) or a UTC timestamp (2026-10-01T09:00:00).`);
 	}
 	return since;
-}
-
-/** Null for an impossible date: `new Date` would roll 2026-02-31 over to March. */
-function localMidnight(date: string): string | null {
-	const [y, m, d] = date.split("-").map(Number);
-	const at = new Date(y, m - 1, d);
-	if (at.getFullYear() !== y || at.getMonth() !== m - 1 || at.getDate() !== d) return null;
-	return at.toISOString();
 }
 
 /** Filtering happens here, so an id that matches no project must fail — not print an empty result. */
@@ -73,21 +56,6 @@ async function request<T>(socketPath: string, method: string, what: string, para
 		exitError(resp.error || `Failed to read ${what}`);
 	}
 	return resp.data as T;
-}
-
-/** A task counts when anything happened to it at or after `since`. */
-export function productivityEventActiveSince(event: ProductivityStatEvent, since: string): boolean {
-	const sinceMs = Date.parse(since);
-	const after = (iso: string | null) => iso !== null && Date.parse(iso) >= sinceMs;
-	return after(event.createdAt) || after(event.movedAt) || after(event.statusEnteredAt)
-		|| event.movements.some((m) => after(m.at));
-}
-
-/** A day counts when any part of it falls at or after `since`. Days are local, so a DST day is 23 or 25 hours. */
-export function usageDayOverlapsSince(day: AgentUsageDay, since: string): boolean {
-	const start = new Date(day.startMs);
-	const nextMidnight = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1).getTime();
-	return nextMidnight > Date.parse(since);
 }
 
 function lastActivity(event: ProductivityStatEvent): string {
@@ -125,11 +93,11 @@ async function productivity(args: ParsedArgs, socketPath: string, context: CliCo
 	const since = readSince(args);
 	const projectId = readProject(args, context);
 	const stats = await request<ProductivityStats>(socketPath, "stats.productivity", "stats productivity");
-	const events = stats.events.filter((e) =>
-		(!projectId || e.projectId === projectId) && (!since || productivityEventActiveSince(e, since)));
+	const json = productivityJson(stats, { since, projectId });
+	const { events } = json;
 
 	if (args.flags.json === "true") {
-		printJson({ generatedAt: stats.generatedAt, since, projectId, events });
+		printJson(json);
 		return;
 	}
 	if (events.length === 0) {
@@ -166,10 +134,11 @@ async function usage(args: ParsedArgs, socketPath: string, context: CliContext |
 	}
 	const since = readSince(args);
 	const report = await request<AgentUsageReport>(socketPath, "stats.usage", "stats usage");
-	const days = since ? report.days.filter((d) => usageDayOverlapsSince(d, since)) : report.days;
+	const json = usageJson(report, since);
+	const { days } = json;
 
 	if (args.flags.json === "true") {
-		printJson({ generatedAt: report.generatedAt, since, hasUnpricedModels: days.some((d) => !d.fullyPriced), days });
+		printJson(json);
 		return;
 	}
 	if (days.length === 0) {
@@ -206,7 +175,7 @@ async function taskUsage(args: ParsedArgs, socketPath: string, context: CliConte
 	const report = await request<TaskUsageReport>(socketPath, "stats.taskUsage", "stats usage --task", params);
 
 	if (args.flags.json === "true") {
-		printJson({ ...report });
+		printJson(taskUsageJson(report));
 		return;
 	}
 	const { totals, coverage } = report;
@@ -246,7 +215,7 @@ async function limits(args: ParsedArgs, socketPath: string): Promise<void> {
 	const report = await request<AgentRateLimitsReport>(socketPath, "stats.limits", "stats limits");
 
 	if (args.flags.json === "true") {
-		printJson({ generatedAt: new Date(report.generatedAt).toISOString(), snapshots: report.snapshots, sessions: report.sessions ?? [] });
+		printJson(limitsJson(report));
 		return;
 	}
 	if (report.snapshots.length === 0) {
@@ -269,7 +238,7 @@ async function memory(args: ParsedArgs, socketPath: string): Promise<void> {
 	const snapshot = await request<SystemMemorySnapshot | null>(socketPath, "stats.memory", "stats memory");
 
 	if (args.flags.json === "true") {
-		printJson({ snapshot });
+		printJson(memoryJson(snapshot));
 		return;
 	}
 	if (!snapshot) {
@@ -288,11 +257,6 @@ async function memory(args: ParsedArgs, socketPath: string): Promise<void> {
 	}
 }
 
-interface PricesWire {
-	fetchedAt: number | null;
-	models: Array<{ model: string; rate: ModelRate | null }>;
-}
-
 function usd(n: number): string {
 	return `$${Number(n.toFixed(4))}`;
 }
@@ -309,15 +273,11 @@ async function prices(args: ParsedArgs, socketPath: string): Promise<void> {
 		}
 		exitError(resp.error || "Failed to read prices");
 	}
-	const wire = resp.data as PricesWire;
-	const fetchedAt = wire.fetchedAt === null ? null : new Date(wire.fetchedAt).toISOString();
-	const source = fetchedAt ? "refreshed" : "built-in";
-	const models = wire.models.map(({ model, rate }) => rate
-		? { model, priced: true as const, input: rate.input, output: rate.output, cacheWrite5m: rate.cacheWrite5m, cacheWrite1h: rate.cacheWrite1h, cacheRead: rate.cacheRead }
-		: { model, priced: false as const });
+	const json = pricesJson(resp.data as PricesWire);
+	const { source, fetchedAt, models } = json;
 
 	if (args.flags.json === "true") {
-		printJson({ currency: "USD", unit: "per 1M tokens", source, fetchedAt, models });
+		process.stdout.write(`${JSON.stringify(json, null, 2)}\n`);
 		return;
 	}
 	if (models.length === 0) {
@@ -341,10 +301,11 @@ async function approvalsList(args: ParsedArgs, socketPath: string, context: CliC
 	rejectPositionals(args, "dev3 approvals list [--project <id>] [--json]");
 	const projectId = readProject(args, context);
 	const { requests } = await request<{ requests: PendingApprovalSummary[] }>(socketPath, "approvals.list", "approvals list");
-	const pending = projectId ? requests.filter((r) => r.projectId === projectId) : requests;
+	const json = approvalsJson(requests, projectId);
+	const pending = json.requests;
 
 	if (args.flags.json === "true") {
-		printJson({ projectId, requests: pending });
+		printJson(json);
 		return;
 	}
 	if (pending.length === 0) {

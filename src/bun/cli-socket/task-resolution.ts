@@ -6,6 +6,7 @@ import { loadEffectiveTaskHistory } from "../task-blobs";
 import { captureSenderAgent } from "../scheduled-message-author";
 import { requireExternalSender } from "../external-senders";
 import type { ExternalSenderRequester } from "../../shared/external-senders";
+import type { McpRequestOrigin } from "./shared";
 
 const MIN_PREFIX_LENGTH = ID_PREFIX_MIN_LENGTH;
 
@@ -217,11 +218,16 @@ export async function resolveRequesterTask(params: Record<string, unknown>, what
  * The external sender a request speaks for (`--as-sender`), or null. Unknown ids
  * throw; a request from inside a task cannot also claim to be a sender.
  */
-export function senderRequester(params: Record<string, unknown>): ExternalSenderRequester | null {
+export function senderRequester(params: Record<string, unknown>, mcp?: McpRequestOrigin): ExternalSenderRequester | null {
 	if (params.asSender === undefined) return null;
 	const sender = requireExternalSender(params.asSender);
 	if (params.sourceTaskId) throw new Error("--as-sender cannot be used from inside a task worktree.");
-	return { senderId: sender.id, label: sender.label };
+	return {
+		senderId: sender.id,
+		label: sender.label,
+		...(mcp?.interactiveOnly ? { interactiveOnly: true } : {}),
+		...(mcp ? { viaTokenId: mcp.tokenId } : {}),
+	};
 }
 
 /** A task for `dev3 review`: scoped to a project when the CLI knows it, else found across projects. */

@@ -1,4 +1,4 @@
-import type { AgentLaunchRequest, Project, Task } from "../shared/types";
+import type { AgentLaunchRequest, AgentMessageSource, Project, Task } from "../shared/types";
 import { agentLaunchAutoApproveMs, buildTaskDialogSubject, DEFAULT_PRIORITY, getTaskTitle } from "../shared/types";
 import { type ExternalSenderRequester, isExternalSenderRequester } from "../shared/external-senders";
 import { type AgentRequestRequester, createAgentRequest, getAgentRequestState, setAgentLaunchDialog } from "./agent-requests";
@@ -8,6 +8,11 @@ import { getPushMessage } from "./rpc-handlers/shared-pure";
 
 /** Who asked: another task's agent, or a registered external sender. */
 export type LaunchRequester = Task | ExternalSenderRequester;
+
+/** A sender's request marked interactive-only (MCP without `--auto-approve`) never approves itself. */
+export function senderAutoApproveMs(requester: LaunchRequester | AgentMessageSource, configuredMs: number): number {
+	return isExternalSenderRequester(requester) && requester.interactiveOnly ? 0 : configuredMs;
+}
 
 /** The dialog's "asked by" fields. A sender has no seq, so the dialog names it instead. */
 export function launchRequesterFields(requester: LaunchRequester): Pick<AgentLaunchRequest, "requesterSeq" | "requesterTitle" | "requesterSender"> {
@@ -60,7 +65,7 @@ export async function askSessionApproval(opts: {
 	const { project, task, requester } = opts;
 	const push = getPushMessage();
 	if (!push) throw new Error("No app window is connected — cannot ask the user for approval");
-	const autoApproveAfterMs = agentLaunchAutoApproveMs(await loadSettings());
+	const autoApproveAfterMs = senderAutoApproveMs(requester, agentLaunchAutoApproveMs(await loadSettings()));
 	// Checked in the same tick as the create: across an await a second request would
 	// pass too, then JOIN the first one's decision — one approval acting twice.
 	if (getAgentRequestState("launch", task.id).state === "pending") throw new Error(opts.alreadyPending);

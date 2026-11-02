@@ -13,7 +13,16 @@ export async function conversationImport() {
 }
 
 /** `signal` aborts when the CLI client's connection closes. */
-export type Handler = (params: Record<string, unknown>, ctx?: { signal?: AbortSignal }) => Promise<unknown>;
+/**
+ * Set only by the in-process MCP listener, never from socket params, so a local
+ * caller cannot claim a request came over the network.
+ */
+export interface McpRequestOrigin {
+	tokenId: string;
+	interactiveOnly: boolean;
+}
+
+export type Handler = (params: Record<string, unknown>, ctx?: { signal?: AbortSignal; mcp?: McpRequestOrigin }) => Promise<unknown>;
 
 /**
  * Split one handler into `<method>` and `<method>AsSender`. `--as-sender` travels

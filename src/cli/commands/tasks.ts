@@ -4,38 +4,14 @@ import {
 	ALL_STATUSES,
 	ALL_PRIORITIES,
 	DEFAULT_PRIORITY,
-	compareTaskSortRank,
 	getTaskTitle,
 	normalizePriority,
 } from "../../shared/types";
+import { DEFAULT_TASKS_LIST_LIMIT, selectTasksPage, tasksListRow, type TasksListJson } from "../../shared/cli-json/tasks-list";
 import { sendRequest } from "../socket-client";
 import { printTable, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
 import { resolveProjectId, type CliContext } from "../context";
-
-// Default page size for `tasks list` when --limit is omitted. Keeps large
-// boards (hundreds of tasks) from flooding the terminal; page with --offset.
-const DEFAULT_LIST_LIMIT = 50;
-
-// Listing order: live work first, then the backlog, then the archive. A default
-// page must never be filled with completed tasks while something is running.
-const STATUS_GROUP_RANK: Record<TaskStatus, number> = {
-	"in-progress": 0,
-	"user-questions": 0,
-	"review-by-ai": 0,
-	"review-by-user": 0,
-	"review-by-colleague": 0,
-	todo: 1,
-	completed: 2,
-	cancelled: 3,
-};
-
-// Custom-column tasks are live work too — they left To Do and never reached
-// completed/cancelled, so they rank with the active group.
-function groupRank(task: Task): number {
-	if (task.customColumnId) return 0;
-	return STATUS_GROUP_RANK[task.status] ?? 1;
-}
 
 /**
  * Parse `--priority P0,P1` into the set to keep. Accepts anything
@@ -139,7 +115,7 @@ export async function handleTasks(
 			exitUsage(`Invalid --sort: "${args.flags.sort}". Valid: priority, seq.`);
 		}
 
-		let limit = DEFAULT_LIST_LIMIT;
+		let limit = DEFAULT_TASKS_LIST_LIMIT;
 		if (args.flags.limit) {
 			const parsed = Number(args.flags.limit);
 			if (!Number.isInteger(parsed) || parsed <= 0) {
@@ -160,50 +136,18 @@ export async function handleTasks(
 		const resp = await sendRequest(socketPath, "tasks.list", params);
 		if (!resp.ok) exitError(resp.error || "Failed to list tasks");
 
-		let tasks = resp.data as Task[];
-		if (args.flags.open !== undefined) {
-			tasks = tasks.filter((task) => task.status !== "completed" && task.status !== "cancelled");
-		}
-
-		// Client-side label filter (server returns all tasks, we filter here)
-		if (args.flags.label) {
-			const labelId = args.flags.label;
-			tasks = tasks.filter((t) => t.labelIds?.some((id) => id === labelId || id.startsWith(labelId)));
-		}
-
-		if (priorityFilter) {
-			tasks = tasks.filter((t) => priorityFilter.has(t.priority ?? DEFAULT_PRIORITY));
-		}
-
-		// Live work first, then To Do, then completed, then cancelled. Inside a
-		// group the default is the board's own comparator (priority bands, with
-		// the coordinator lift and the hibernated sink), so a listing and the
-		// Kanban column agree on what is at the top; seq breaks ties, newest
-		// first. `--sort seq` drops the priority key for chronological reading.
-		// Done before paging so --offset/--limit walk the printed order.
-		tasks = [...tasks].sort((a, b) =>
-			groupRank(a) - groupRank(b)
-			|| (sortKey === "priority" ? compareTaskSortRank(a, b) : 0)
-			|| b.seq - a.seq,
-		);
-
-		// Client-side paging (server returns all tasks matching status filter).
-		// Defaults to the newest DEFAULT_LIST_LIMIT so large boards don't flood.
-		const total = tasks.length;
-		const page = tasks.slice(offset, offset + limit);
+		const { page, total } = selectTasksPage(resp.data as Task[], {
+			open: args.flags.open !== undefined,
+			label: args.flags.label || undefined,
+			priorities: priorityFilter ?? undefined,
+			sort: sortKey,
+			limit,
+			offset,
+		});
 
 		if (args.flags.json !== undefined) {
-			const rows = page.map((task) => ({
-				id: task.id, seq: task.seq, projectId: task.projectId,
-				title: getTaskTitle(task), status: task.status,
-				customColumnId: task.customColumnId ?? null,
-				priority: task.priority ?? DEFAULT_PRIORITY,
-				taskType: task.taskType ?? null,
-				draft: task.draft === true, hibernated: task.hibernated === true,
-				runtimeState: task.runtimeState ?? null,
-				updatedAt: task.updatedAt,
-			}));
-			process.stdout.write(`${JSON.stringify({ schemaVersion: 1, tasks: rows, total, offset, limit }, null, 2)}\n`);
+			const json: TasksListJson = { schemaVersion: 1, tasks: page.map(tasksListRow), total, offset, limit };
+			process.stdout.write(`${JSON.stringify(json, null, 2)}\n`);
 			return;
 		}
 

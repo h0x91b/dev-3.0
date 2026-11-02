@@ -21,6 +21,7 @@ import { handleInstallSkills } from "./commands/install-skills";
 import { handleConfig } from "./commands/config";
 import { handleDevServer } from "./commands/dev-server";
 import { handleRemote } from "./commands/remote";
+import { handleMcp } from "./commands/mcp";
 import { LOCAL_HELP, expandLocalAlias, localHostError } from "./commands/local";
 import { handleGui } from "./commands/gui";
 import { handleConversations, handleImportCurrentSession, resolveImportTarget } from "./commands/conversations";
@@ -165,6 +166,8 @@ Commands:
   dev3 spaces list [--json]             List spaces with their projects and ids
   dev3 spaces create "name" [--project <id>]...  Create a space (never empty: defaults to the current project)
   dev3 spaces set|add|remove <space>... [--project <id>]  Change a project's spaces (set REPLACES; set --no-space = none)
+  dev3 mcp token issue|list|revoke       Network API (MCP over HTTP) tokens for agents outside dev3
+  dev3 mcp enable|disable|status         Turn the loopback MCP listener on or off, or inspect it
   dev3 remote [start|status|url|stop]    Run headless — serve the UI to a browser
                                          (backgrounds by default; manage it with
                                           status / url / restart / logs / stop.
@@ -422,6 +425,11 @@ async function main(): Promise<void> {
 			}
 		}
 		return await handleConversations(subcommand, args, context, socketPath ?? null);
+	}
+	if (command === "mcp") {
+		// The token store and on/off switch are files; only `status` asks the app.
+		if (subcommand === "status" && !socketPath) socketPath = await resolveSocketPathWithRetry();
+		return await handleMcp(subcommand, args, context, socketPath ?? null);
 	}
 	if (command === "remote") {
 		// `dev3 remote` IS the app in headless mode — it must not require a

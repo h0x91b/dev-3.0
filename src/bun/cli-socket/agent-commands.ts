@@ -107,12 +107,12 @@ export const agentHandlers: Record<string, Handler> = {
 			prompt: typeof params.prompt === "string" ? params.prompt : undefined, handoff: params.handoff === true,
 		});
 	},
-	...withSenderVariant("agent.resume", async (params) => {
+	...withSenderVariant("agent.resume", async (params, ctx) => {
 		for (const key of ["agentId", "configId", "accountId", "prompt"]) {
 			if (key in params) throw new Error(`agent.resume takes no ${key} — it restores the saved harness, config and account.`);
 		}
 		const { project, task } = await requirePaneTask(params);
-		const requester = senderRequester(params) ?? await resolveRequesterTask(params, "resume request");
+		const requester = senderRequester(params, ctx?.mcp) ?? await resolveRequesterTask(params, "resume request");
 		const { resumeCliAgent } = await import("../cli-agent-resume");
 		return resumeCliAgent({ project, task, requester, allowAgentLatest: params.allowAgentLatest === true });
 	}),

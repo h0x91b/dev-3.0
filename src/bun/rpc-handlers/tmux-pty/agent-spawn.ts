@@ -1,4 +1,5 @@
 import { assertTaskWorkspacePresent } from "../../task-workspace-guard";
+import { launchBrief } from "../../../shared/agent-message-envelope";
 import type { AgentFamily } from "../../../shared/types";
 import { getPrimaryStopTarget } from "../../../shared/types";
 import * as data from "../../data";
@@ -99,7 +100,7 @@ export async function spawnAgentInTask(params: {
 			task.title,
 			// A takeover replaces the brief: the retelling already carries the original
 			// request, so re-launching on the raw description would start the work twice.
-			handoff || params.prompt !== undefined ? ctx.taskDescription : task.description,
+			handoff || params.prompt !== undefined ? ctx.taskDescription : launchBrief(task),
 			task.worktreePath,
 			undefined,
 			cmdOptions,

@@ -194,7 +194,7 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		constant: "CLI_EXIT_CODE_APPROVAL_STILL_PENDING",
 		code: CLI_EXIT_CODE_APPROVAL_STILL_PENDING,
 		description:
-			"`dev3 task move --status completed|cancelled|todo` (todo = a reset) stopped waiting and the app confirms the request is STILL PENDING: the ten-minute wait ran out, or the connection dropped and came back after the wait was already spent. The dialog is still open and an answer will still take effect. Running the same command again waits on that same request — it does not open a second dialog. Distinct from exit 1 so an agent never reads 'still waiting' as 'failed' and asks anew.",
+			"`dev3 task move --status completed|cancelled|todo` (todo = a reset) stopped waiting and the app confirms the request is STILL PENDING: the ten-minute wait ran out, or the connection dropped and came back after the wait was already spent. The dialog is still open and an answer will still take effect. Running the same command again waits on that same request — it does not open a second dialog. Distinct from exit 1 so an agent never reads 'still waiting' as 'failed' and asks anew. Over the MCP network API (`dev3 mcp`), `task_start` and `agent_resume` answer 25 too, after a 20-second wait: the launch or resume dialog is still open, and calling the tool again joins it.",
 	},
 	{
 		constant: "CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN",

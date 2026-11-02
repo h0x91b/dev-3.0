@@ -46,7 +46,8 @@ import { DEV3_HOME } from "./paths";
 import { resolveUserHome } from "../shared/user-home";
 import { normalizeEnvPath } from "../shared/env-path";
 import { applyFullShellEnvToProcess, getShellRcFiles, getUserShell, resolveShellEnv } from "./shell-env";
-import { startSocketServer, stopSocketServer } from "./cli-socket-server";
+import { handleRequest, startSocketServer, stopSocketServer } from "./cli-socket-server";
+import { startMcpListener, stopMcpListener } from "./mcp/server";
 import { startRemoteAccessServerGuarded, setRemoteAccessStatusHook } from "./remote-access-server";
 import { writeSystemClipboard } from "./system-clipboard";
 import { stopTunnel } from "./cloudflare-tunnel";
@@ -61,6 +62,7 @@ import { buildApplicationMenu, getMenuContext, MENU_ACTIONS, onMenuContextChange
 import { openLogsDirectory } from "./menu-actions";
 import { startLoopMonitor } from "./loop-monitor";
 import { configureHandoffWorker } from "./conversation-handoff-runner";
+import { configureConversationSearchWorker } from "./conversation-search-project";
 import { configureClonefileWorker } from "./cow-clone";
 import { configureWorktreeCleanupWorker } from "./worktree-cleanup-scheduler";
 import { configureClipboardImageWorker } from "./clipboard-image-reader";
@@ -336,6 +338,7 @@ applyFullShellEnvToProcess(shellEnv, (await loadSettings()).importShellEnv !== f
 // Unix domain socket on POSIX, loopback-only TCP plus an endpoint record on
 // Windows (see src/bun/cli-listener.ts).
 const cliSocketPath = startSocketServer();
+startMcpListener(handleRequest);
 log.info("CLI socket server ready", { path: cliSocketPath });
 
 // User-state safety snapshots: hourly copies (72 kept) of every file in the
@@ -430,6 +433,7 @@ async function getMainViewUrl(): Promise<string> {
 const url = await getMainViewUrl();
 log.info("Loading URL", { url });
 configureHandoffWorker(resolve(PATHS.VIEWS_FOLDER, "..", "workers", "conversation-handoff-worker.js"));
+configureConversationSearchWorker(resolve(PATHS.VIEWS_FOLDER, "..", "workers", "conversation-search-worker.js"));
 configureClonefileWorker(resolve(PATHS.VIEWS_FOLDER, "..", "workers", "clonefile-worker.js"));
 configureClipboardImageWorker(resolve(PATHS.VIEWS_FOLDER, "..", "workers", "clipboard-image-worker.js"));
 configureWorktreeCleanupWorker(resolve(PATHS.VIEWS_FOLDER, "..", "workers", "worktree-cleanup-worker.js"));
@@ -885,6 +889,7 @@ function runGlobalQuitCleanup(): void {
 	try { stopResourceMonitor(); } catch (err) { log.warn("stopResourceMonitor failed", { error: String(err) }); }
 	try { stopRateLimitMonitor(); } catch (err) { log.warn("stopRateLimitMonitor failed", { error: String(err) }); }
 	try { stopSocketServer(); } catch (err) { log.warn("stopSocketServer failed", { error: String(err) }); }
+	stopMcpListener();
 	// Tear down every per-task cloudflared process spawned by the GUI's
 	// `Expose port` button or by `--expose-ports`. Leaving them running
 	// would orphan tunnels (and trycloudflare quotas) on app exit.

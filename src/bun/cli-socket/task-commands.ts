@@ -17,7 +17,7 @@ import { taskPeek } from "../task-peek";
 import { loadTaskChildren } from "../task-lineage";
 import { readTaskTerminalBackendState, switchTaskTerminalBackend } from "../task-terminal-backend-switch";
 import { approvalStatusOf, launchSuggestionRequested, launcherHandoffNote, requestAgentLaunchApproval, requestDestructiveApproval, resolveLaunchSuggestion } from "./approvals";
-import { log, type Handler, withSenderVariant } from "./shared";
+import { log, type Handler, type McpRequestOrigin, withSenderVariant } from "./shared";
 import { findByIdPrefix, findTaskByRef, parseSeqRef, resolveAgentMessageSource, resolveRequesterTask, resolveTaskAcrossProjects, resolveTaskFromParams, scopedTaskNotFoundError, senderRequester, taskNotFoundError, withArchivedHistory, withOriginParent, withSenderAgent } from "./task-resolution";
 
 // Lazy like `conversationImport` (shared.ts): it reaches the app and spaces handler domains.
@@ -81,6 +81,12 @@ async function creatorOrigin(params: Record<string, unknown>): Promise<TaskOrigi
 	}
 	log.warn("Creator task not found; recording the user as origin", { sourceId });
 	return undefined;
+}
+
+/** A task an external sender created: recorded as theirs, so its brief never reads as the user's. */
+function senderOrigin(params: Record<string, unknown>, mcp?: McpRequestOrigin): TaskOrigin {
+	const sender = senderRequester(params, mcp)!;
+	return { kind: "sender", senderId: sender.senderId, label: sender.label, ...(sender.viaTokenId ? { viaTokenId: sender.viaTokenId } : {}) };
 }
 
 const SENDER_MOVE_REFUSED = "A sender can only start a task that is not running.";
@@ -231,7 +237,7 @@ export const taskHandlers: Record<string, Handler> = {
 		});
 	},
 
-	"task.create": async (params) => {
+	...withSenderVariant("task.create", async (params, ctx) => {
 		const projectId = params.projectId as string;
 		const title = params.title as string;
 		const description = (params.description as string | undefined)?.trim() || "";
@@ -239,6 +245,8 @@ export const taskHandlers: Record<string, Handler> = {
 		if (!title) throw new Error("title is required");
 		const prRef = typeof params.pr === "string" ? params.pr : undefined;
 		const branchRef = typeof params.branch === "string" ? params.branch : undefined;
+		// Resolving a ref runs gh and fetches fork code on the host; never on a sender's behalf.
+		if (params.asSender !== undefined && (prRef || branchRef)) throw new Error("A sender cannot create a task from a PR or branch.");
 
 		let priority = undefined;
 		if (params.priority !== undefined) {
@@ -268,7 +276,7 @@ export const taskHandlers: Record<string, Handler> = {
 		// The GUI's own creation handler — never a parallel path. It owns
 		// foreignCode, and the CLI reached feature parity by calling it rather than
 		// by copying it.
-		const origin = await creatorOrigin(params);
+		const origin = params.asSender === undefined ? await creatorOrigin(params) : senderOrigin(params, ctx?.mcp);
 		const task = await createTask({
 			projectId: project.id,
 			description: body,
@@ -287,7 +295,7 @@ export const taskHandlers: Record<string, Handler> = {
 		}
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task });
 		return task;
-	},
+	}),
 
 	// `dev3 task create --scratch --run`: an agent asking for a throwaway peer.
 	// Creates the bare scratch task, then reuses the launch approval dialog — so
@@ -323,7 +331,8 @@ export const taskHandlers: Record<string, Handler> = {
 		// A declined scratch task has no reason to exist — it was created only to
 		// have something for the dialog to launch. Leaving it would litter To Do
 		// with empty placeholders every time the user says no.
-		if (!outcome.approved) {
+		// A voided dialog means the task started another way — it is not a placeholder any more.
+		if (!outcome.approved && !outcome.stale) {
 			await deleteTask({ taskId: task.id, projectId: project.id });
 		}
 		return outcome;
@@ -521,7 +530,7 @@ export const taskHandlers: Record<string, Handler> = {
 	"task.addLabels": (params) => changeTaskLabels(params, "add"),
 	"task.removeLabels": (params) => changeTaskLabels(params, "remove"),
 
-	...withSenderVariant("task.move", async (params) => {
+	...withSenderVariant("task.move", async (params, ctx) => {
 		const taskId = params.taskId as string;
 		const newStatus = params.newStatus as string;
 		if (!taskId) throw new Error("taskId is required");
@@ -576,7 +585,7 @@ export const taskHandlers: Record<string, Handler> = {
 		// human at a terminal (no sourceTaskId) both stay on the silent path.
 		// A registered external sender (`--as-sender`) starting a task gets the same
 		// dialog an agent does — and its auto-approve setting. No opt-out.
-		const sender = senderRequester(params);
+		const sender = senderRequester(params, ctx?.mcp);
 		const requester = sender ?? await resolveAgentMessageSource(params, task.id);
 		const isActivation = !ACTIVE_STATUSES.includes(task.status) && ACTIVE_STATUSES.includes(builtinStatus);
 		// A sender's only power is a start through the dialog: a plain move of a

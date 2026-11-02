@@ -281,3 +281,22 @@ describe("judgeFailureWorkspace fails closed (S-F1a)", () => {
 		expect(git.removeWorktree).not.toHaveBeenCalled();
 	});
 });
+
+describe("persistColumn — a task started another way voids its open launch dialog", () => {
+	const column = { status: "in-progress", customColumnId: null };
+	const persistColumn = (patch: "activation" | "status") => ({ type: "persistColumn", column, patch, onError: "abort" }) as unknown as LifecycleEffect;
+
+	it("voids the pending launch request when the task is activated", async () => {
+		const todo = liveTask({ status: "todo", customColumnId: null });
+		vi.mocked(data.updateTask).mockResolvedValueOnce({ ...todo, status: "in-progress" } as never);
+		await executeLifecycleEffect(persistColumn("activation"), ctx(todo));
+		expect(vi.mocked(voidAgentRequest)).toHaveBeenCalledWith("launch", TASK_ID, "the task started another way");
+	});
+
+	it("leaves it alone for an ordinary move between active columns", async () => {
+		const running = liveTask({ status: "user-questions", customColumnId: null });
+		vi.mocked(data.updateTask).mockResolvedValueOnce({ ...running, status: "in-progress" } as never);
+		await executeLifecycleEffect(persistColumn("status"), ctx(running));
+		expect(vi.mocked(voidAgentRequest)).not.toHaveBeenCalled();
+	});
+});

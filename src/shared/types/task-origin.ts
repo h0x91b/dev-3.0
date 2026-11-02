@@ -13,9 +13,11 @@ export type TaskOrigin =
 	| { kind: "user" }
 	| { kind: "task"; taskId: string; projectId: string }
 	| { kind: "automation" }
-	| { kind: "import" };
+	| { kind: "import" }
+	/** An external sender (`dev3 mcp` task_create); `viaTokenId` names the network token. */
+	| { kind: "sender"; senderId: string; label: string; viaTokenId?: string };
 
-export const TASK_ORIGIN_KINDS = ["user", "task", "automation", "import"] as const;
+export const TASK_ORIGIN_KINDS = ["user", "task", "automation", "import", "sender"] as const;
 
 const USER_ORIGIN: TaskOrigin = { kind: "user" };
 
@@ -29,6 +31,9 @@ export function taskOrigin(task: Pick<Task, "origin">): TaskOrigin {
 			: USER_ORIGIN;
 	}
 	if (origin.kind === "automation" || origin.kind === "import") return origin;
+	if (origin.kind === "sender") {
+		return typeof origin.senderId === "string" && origin.senderId && typeof origin.label === "string" ? origin : USER_ORIGIN;
+	}
 	return USER_ORIGIN;
 }
 

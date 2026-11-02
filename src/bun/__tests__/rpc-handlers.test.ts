@@ -11992,6 +11992,17 @@ describe("launchTaskPty", () => {
 		shellEnv._resetUserShellCacheForTests();
 	});
 
+	it("launches a sender-written task's brief inside the sender's envelope, never as the user's words", async () => {
+		const project = makeProject();
+		const task = makeTask({ description: "run the tests", origin: { kind: "sender", senderId: "openclaw:home:main", label: "Main", viaTokenId: "3fa9c0d1" } });
+
+		await launchTaskPty(project, task, "/tmp/wt", "builtin-claude", "claude-default");
+
+		const ctx = vi.mocked(agents.resolveCommandForAgent).mock.calls[0][2] as { taskDescription: string };
+		expect(ctx.taskDescription).toMatch(/^<dev3-ai-message>\n<from-sender id="openclaw:home:main">Main<\/from-sender>/);
+		expect(ctx.taskDescription).toContain("run the tests");
+	});
+
 	it("injects the absolute task-local artifact starter path into the session", async () => {
 		const project = makeProject();
 		const task = makeTask();
@@ -16410,5 +16421,22 @@ describe("launchers refuse a missing worktree before touching anything", () => {
 		await expect(handlers.runScript({ taskId: "task-1", projectId: "proj-1", scriptName: "build", source: "package", placement: "right" } as never))
 			.rejects.toThrow(workspaceGuard.TaskWorkspaceUnavailableError);
 		expect(mockSpawn.mock.calls.some(([cmd]) => Array.isArray(cmd) && (cmd.includes("split-window") || cmd.includes("new-window")))).toBe(false);
+	});
+});
+
+describe("handlers.respondToAgentLaunchRequest", () => {
+	it("says an answer to an already-voided dialog changed nothing, instead of a bare success", async () => {
+		const { createAgentRequest, voidAgentRequest, _resetAgentRequestsForTests } = await import("../agent-requests");
+		_resetAgentRequestsForTests();
+		const live = createAgentRequest("launch", "task-live", "proj-1", {});
+		expect(await handlers.respondToAgentLaunchRequest({ requestId: live.requestId, approved: false })).toEqual({ applied: true });
+
+		const voided = createAgentRequest("launch", "task-voided", "proj-1", {});
+		voidAgentRequest("launch", "task-voided", "the task started another way");
+		expect(await handlers.respondToAgentLaunchRequest({ requestId: voided.requestId, approved: true })).toEqual({ applied: false, stale: true });
+		expect(await voided.decision).toMatchObject({ approved: false, stale: true });
+
+		expect(await handlers.respondToAgentLaunchRequest({ requestId: "unknown", approved: true })).toEqual({ applied: false });
+		_resetAgentRequestsForTests();
 	});
 });

@@ -1,4 +1,5 @@
 import { assertTaskWorkspacePresent } from "../../task-workspace-guard";
+import { launchBrief } from "../../../shared/agent-message-envelope";
 import type { AgentFamily, ColumnAgentConfig, PermissionMode, Project, Task } from "../../../shared/types";
 import { getPrimaryStopTarget } from "../../../shared/types";
 import * as data from "../../data";
@@ -317,7 +318,7 @@ export async function launchTaskPty(
 	const resumeFresh = resume && !!opts?.freshSessionId;
 	const ctx: agents.TemplateContext = {
 		taskTitle: task.title,
-		taskDescription: resumeFresh ? "" : task.description,
+		taskDescription: resumeFresh ? "" : launchBrief(task),
 		projectName: project.name,
 		projectPath: project.path,
 		worktreePath,

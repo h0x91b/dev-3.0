@@ -256,10 +256,16 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 
 					<p className="text-fg-2 text-sm leading-relaxed">
 						{request.requesterSender
-							? t("agentLaunch.requestedBySender", {
-								label: request.requesterSender.label,
-								id: request.requesterSender.senderId,
-							})
+							? request.requesterSender.viaTokenId
+								? t("agentLaunch.requestedBySenderViaNetwork", {
+									label: request.requesterSender.label,
+									id: request.requesterSender.senderId,
+									token: request.requesterSender.viaTokenId,
+								})
+								: t("agentLaunch.requestedBySender", {
+									label: request.requesterSender.label,
+									id: request.requesterSender.senderId,
+								})
 							: t("agentLaunch.requestedBy", {
 								seq: String(request.requesterSeq),
 								title: request.requesterTitle,

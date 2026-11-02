@@ -1811,7 +1811,8 @@ export type AppRPCSchema = {
 					approved: boolean;
 					launch?: AgentLaunchChoice;
 				};
-				response: void;
+				/** `applied: false` = nothing changed; `stale` = the task started or reset another way first. */
+				response: { applied: boolean; stale?: true };
 			};
 			/**
 			 * Mirror the dialog's current variants/priority pick into the pending

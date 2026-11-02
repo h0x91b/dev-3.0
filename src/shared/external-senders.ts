@@ -112,6 +112,10 @@ export interface SenderWaitResult {
 export interface ExternalSenderRequester {
 	senderId: string;
 	label: string;
+	/** Never auto-approve this request: set by the MCP listener unless the token opted in. Can only make a request stricter. */
+	interactiveOnly?: boolean;
+	/** The MCP token (public id) the request came through, shown in the dialog. Display only. */
+	viaTokenId?: string;
 }
 
 export function isExternalSenderRequester(value: unknown): value is ExternalSenderRequester {

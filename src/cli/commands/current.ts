@@ -6,7 +6,7 @@ import { sendRequest } from "../socket-client";
 import { spaceFields } from "../spaces";
 import { printDetail, exitError } from "../output";
 import { BUILD_TIME, BUILD_COMMIT, BUILD_VERSION } from "../../shared/build-info.generated";
-import { describeTaskOrigin, type ShownTask } from "../task-json";
+import { describeTaskOrigin, type ShownTask } from "../../shared/cli-json/task-show";
 
 /**
  * Print the project's custom columns and their move IDs. Shared by the online

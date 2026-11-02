@@ -1,9 +1,6 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import type { Task, TaskHistoryEntry, TaskStatus } from "../../shared/types";
-import { ALL_STATUSES } from "../../shared/types";
 import { projectSlug } from "../../shared/conversation-search-core";
 import { toPosixSeparators } from "../../shared/project-storage-key";
-import { searchConversations, type EngineTask } from "../../bun/conversation-search";
+import { loadProjectTasks, searchProjectConversations } from "../../bun/conversation-search-project";
 import {
 	conversationDumpDir,
 	conversationDumpName,
@@ -61,38 +58,6 @@ export function resolveHomes(cwd: string = process.cwd()): { home: string; dev3H
 	return { home: homeFromWorktree || resolveUserHome(), dev3Home: info?.realDev3Home ?? resolveDev3Home() };
 }
 
-function loadProjectTasks(dev3Home: string, slug: string): Task[] {
-	const tasksFile = `${dev3Home}/data/${slug}/tasks.json`;
-	if (!existsSync(tasksFile)) return [];
-	try {
-		return JSON.parse(readFileSync(tasksFile, "utf-8")) as Task[];
-	} catch {
-		return [];
-	}
-}
-
-/**
- * Title/overview history moved out of tasks.json into per-task sidecars, and
- * this command reads the store directly rather than through the app. Reading the
- * blob directory once keeps the search's history signal intact; a missing or
- * unparseable sidecar just contributes nothing.
- */
-export function loadArchivedHistory(dev3Home: string, slug: string): Map<string, TaskHistoryEntry[]> {
-	const byTask = new Map<string, TaskHistoryEntry[]>();
-	const dir = `${dev3Home}/data/${slug}/task-blobs`;
-	if (!existsSync(dir)) return byTask;
-	for (const entry of readdirSync(dir)) {
-		if (!entry.endsWith(".json")) continue;
-		try {
-			const blob = JSON.parse(readFileSync(`${dir}/${entry}`, "utf-8")) as { taskId?: string; history?: TaskHistoryEntry[] };
-			if (blob.taskId && blob.history?.length) byTask.set(blob.taskId, blob.history);
-		} catch {
-			// A half-written sidecar is not worth failing a search over.
-		}
-	}
-	return byTask;
-}
-
 async function searchCmd(args: ParsedArgs, context: CliContext | null): Promise<void> {
 	rejectUnknownFlags(args, ["limit", "all-statuses", "json", "project", "task", "task-id"]);
 
@@ -111,42 +76,12 @@ async function searchCmd(args: ParsedArgs, context: CliContext | null): Promise<
 	}
 
 	const { home, dev3Home } = resolveHomes();
-	const slug = projectSlug(project.path);
-	const tasks = loadProjectTasks(dev3Home, slug);
-
-	const currentTaskId = (args.flags.task || args.flags["task-id"] || context?.taskId) ?? null;
-	const currentTask = currentTaskId ? tasks.find((t) => t.id === currentTaskId || t.id.startsWith(currentTaskId)) : null;
-	const currentGroupId = currentTask?.groupId ?? null;
-	const resolvedCurrentId = currentTask?.id ?? currentTaskId;
-
 	const limit = args.flags.limit ? Math.max(1, parseInt(args.flags.limit, 10) || 5) : 5;
-	const allStatuses = args.flags["all-statuses"] === "true";
-	const statuses: TaskStatus[] | undefined = allStatuses ? [...ALL_STATUSES] : undefined;
-
-	const archivedHistory = loadArchivedHistory(dev3Home, slug);
-
-	const engineTasks: EngineTask[] = tasks.map((t) => ({
-		id: t.id,
-		title: t.title,
-		description: t.description,
-		overview: t.overview,
-		userOverview: t.userOverview,
-		notes: (t.notes ?? []).map((n) => n.content),
-		historyTexts: [...(t.history ?? []), ...(archivedHistory.get(t.id) ?? [])]
-			.flatMap((h) => [h.title, h.overview])
-			.filter((s): s is string => !!s),
-		status: t.status,
-		groupId: t.groupId,
-		agentId: t.agentId,
-	}));
-
-	const results = searchConversations({
+	const results = searchProjectConversations({
 		query,
-		tasks: engineTasks,
-		projectSlug: slug,
-		currentTaskId: resolvedCurrentId,
-		currentGroupId,
-		statuses,
+		projectPath: project.path,
+		currentTaskId: (args.flags.task || args.flags["task-id"] || context?.taskId) ?? null,
+		allStatuses: args.flags["all-statuses"] === "true",
 		limit,
 		home,
 		dev3Home,
