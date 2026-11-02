@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type {
 	AgentAccount,
 	AgentAccountIdentity,
@@ -573,6 +573,8 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 	// Which sign-in is on screen; hiding the modal leaves the login running on the host.
 	const [shownLogin, setShownLogin] = useState<AgentAccountKind | null>(null);
 	const [loginBusy, setLoginBusy] = useState(false);
+	const loginsRef = useRef(logins);
+	loginsRef.current = logins;
 	const [apiForm, setApiForm] = useState<ApiFormDraft | null>(null);
 	// null → the form creates a new profile; set → it edits this existing one.
 	const [apiEdit, setApiEdit] = useState<{ id: string } | null>(null);
@@ -647,19 +649,31 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 		if (!choice) return;
 		setLoginBusy(true);
 		let started: AccountLoginState | null = null;
+		let created = false;
 		try {
-			started = await api.request.startAccountLogin({ kind, remoteViewer: !isElectrobun });
+			const response = await api.request.startAccountLogin({ kind, remoteViewer: !isElectrobun });
+			const { created: wasCreated, ...state } = response;
+			created = wasCreated;
+			started = state;
+			const startedId = started.loginId;
+			loginsRef.current = { ...loginsRef.current, [kind]: started };
+			setLogins((prev) => ({ ...prev, [kind]: started }));
 			let login = started;
 			// Joining a sign-in that is already running needs no second step.
 			if (login.phase === "ready") {
 				login = choice === "unsigned"
-					? await api.request.addClaudeAccountWithoutLogin({ loginId: login.loginId })
-					: await api.request.beginAccountLogin({ loginId: login.loginId });
+					? await api.request.addClaudeAccountWithoutLogin({ loginId: startedId })
+					: await api.request.beginAccountLogin({ loginId: startedId });
+				// A cancel from the list that landed meanwhile must not bring the sign-in back.
+				if (loginsRef.current[kind]?.loginId !== startedId) return;
 			}
 			setLogins((prev) => ({ ...prev, [kind]: login }));
 			setShownLogin(kind);
 		} catch (err) {
-			if (started?.phase === "ready") void api.request.closeAccountLogin({ loginId: started.loginId }).catch(() => {});
+			// Only a record this handler created is ours to close; a joined one belongs to someone else.
+			if (created && started?.phase === "ready") void api.request.closeAccountLogin({ loginId: started.loginId }).catch(() => {});
+			// The user cancelled meanwhile: nothing left to report.
+			if (started && loginsRef.current[kind]?.loginId !== started.loginId) return;
 			toast.error(t("settings.accountLoginStartFailed", { error: err instanceof Error ? err.message : String(err) }), { source: "settings" });
 		} finally {
 			setLoginBusy(false);

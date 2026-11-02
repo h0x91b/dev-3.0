@@ -103,6 +103,8 @@ interface LoginRecord {
 	expiryTimer: unknown;
 	lingerTimer: unknown;
 	completing: boolean;
+	/** `begin` is awaiting its launch; a second click must not start another process. */
+	beginning: boolean;
 	/** Earliest time the next verification may run (probe backoff). */
 	nextVerifyAt: number;
 	/** Aborts an in-flight status probe on cancel, TTL or shutdown. */
@@ -316,7 +318,7 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 		};
 	}
 
-	async function launch(record: LoginRecord, prepared: PreparedAccountLogin): Promise<void> {
+	async function launch(record: LoginRecord, prepared: PreparedAccountLogin, running: Pick<AccountLoginState, "sessionKey" | "startedAt" | "expiresAt">): Promise<void> {
 		const { kind } = record.state;
 		const startPhase = record.state.phase;
 		// A close or "add without signing in" during the lookup must not be overwritten.
@@ -346,7 +348,7 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 				onData: (data) => broadcast(record, data),
 			});
 			record.proc = proc;
-			record.unregister = deps.registerViewerSession(record.state.sessionKey!, viewerSession(record));
+			record.unregister = deps.registerViewerSession(running.sessionKey!, viewerSession(record));
 			void proc.exited.then((code) => {
 				if (record.proc !== proc) return;
 				record.proc = null;
@@ -356,7 +358,7 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 				// One look right away: a CLI that exits after writing the login should not wait a tick.
 				void poll(record);
 			});
-			setPhase(record, "running");
+			setPhase(record, "running", running);
 		} catch (err) {
 			log.warn("Account login process failed to start", { kind, loginId: shortId(record.state.loginId), error: String(err) });
 			setPhase(record, "missing-executable", { sessionKey: null, error: err instanceof Error ? err.message : String(err) });
@@ -390,6 +392,7 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 			expiryTimer: null,
 			lingerTimer: null,
 			completing: false,
+			beginning: false,
 			nextVerifyAt: 0,
 			abort: new AbortController(),
 			state: {
@@ -419,8 +422,13 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 	async function begin(loginId: string): Promise<AccountLoginState> {
 		const record = findById(loginId);
 		if (!record) throw new Error("This sign-in has already ended.");
-		if (record.state.phase !== "ready") throw new Error("This sign-in has already started.");
+		if (record.state.phase === "ready") {
+			if (record.beginning) throw new Error("This sign-in has already started.");
+		} else {
+			throw new Error(ACTIVE_PHASES.has(record.state.phase) ? "This sign-in has already started." : "This sign-in has already ended.");
+		}
 		const { kind } = record.state;
+		record.beginning = true;
 		// The window runs from the click, not from when the dialog opened.
 		if (record.expiryTimer !== null) deps.clearTimer(record.expiryTimer);
 		try {
@@ -429,10 +437,17 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 			log.warn("Could not refresh the staged sign-in marker", { kind, error: String(err) });
 		}
 		const startedAt = deps.now();
-		// Not published: the viewer session is registered inside launch(), whose own "running" push follows it.
-		record.state = { ...record.state, phase: "running", sessionKey: `${ACCOUNT_LOGIN_SESSION_PREFIX}${loginId}`, startedAt, expiresAt: startedAt + ACCOUNT_LOGIN_TTL_MS };
 		record.expiryTimer = deps.setTimer(() => expire(record), ACCOUNT_LOGIN_TTL_MS);
-		await launch(record, record.prepared);
+		// The record stays "ready" without a session key until launch() has registered the viewer session and published "running".
+		try {
+			await launch(record, record.prepared, {
+				sessionKey: `${ACCOUNT_LOGIN_SESSION_PREFIX}${loginId}`,
+				startedAt,
+				expiresAt: startedAt + ACCOUNT_LOGIN_TTL_MS,
+			});
+		} finally {
+			record.beginning = false;
+		}
 		if (byKind.get(kind) !== record) throw new Error("This sign-in has already ended.");
 		if (!ACTIVE_PHASES.has(record.state.phase)) return { ...record.state };
 		schedulePoll(record);

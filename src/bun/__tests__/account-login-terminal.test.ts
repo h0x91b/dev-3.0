@@ -216,6 +216,27 @@ describe("account login manager", () => {
 		expect(env.pushes.filter((p) => p.state?.phase === "running")).toHaveLength(1);
 	});
 
+	it("while the launch is pending the sign-in still reads as ready with no session key, and a second begin is refused", async () => {
+		let release!: (path: string) => void;
+		env = setup({ resolveExecutable: () => new Promise<string | null>((resolve) => { release = resolve; }) });
+		const ready = await env.manager.start("claude", { remoteViewer: false });
+		const beginning = env.manager.begin(ready.loginId);
+		await flush();
+		expect(env.manager.get("claude")).toMatchObject({ phase: "ready", sessionKey: null });
+		expect(await env.manager.start("claude", { remoteViewer: false })).toMatchObject({ phase: "ready", sessionKey: null });
+		await expect(env.manager.begin(ready.loginId)).rejects.toThrow(/already started/);
+		release("/usr/local/bin/claude");
+		expect(await beginning).toMatchObject({ phase: "running", sessionKey: `${ACCOUNT_LOGIN_SESSION_PREFIX}${ready.loginId}` });
+		expect(env.procs).toHaveLength(1);
+	});
+
+	it("begin on a finished sign-in says it has ended", async () => {
+		env = setup({ resolveExecutable: async () => { throw new Error("Custom executable for agent \"Claude Code\" not found or not executable: /gone"); } });
+		const failed = await env.startRunning("claude", { remoteViewer: false });
+		expect(failed.phase).toBe("failed");
+		await expect(env.manager.begin(failed.loginId)).rejects.toThrow(/already ended/);
+	});
+
 	it("Start sign-in refreshes the staged dir's abandoned clock", async () => {
 		const ready = await env.manager.start("claude", { remoteViewer: false });
 		await env.manager.begin(ready.loginId);

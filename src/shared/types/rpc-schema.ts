@@ -499,10 +499,10 @@ export type AppRPCSchema = {
 				params: { kind: AgentAccountKind; accountId: string; label?: string; baseUrl?: string; apiKey?: string; model?: string; slotModels?: ClaudeSlotModels; envText?: string };
 				response: AgentAccount;
 			};
-			/** Start or join the in-app sign-in terminal for a managed account (one per CLI). */
+			/** Start or join the in-app sign-in terminal for a managed account (one per CLI). `created`: this call made the record, it did not join one. */
 			startAccountLogin: {
 				params: { kind: AgentAccountKind; remoteViewer: boolean };
-				response: AccountLoginState;
+				response: AccountLoginState & { created: boolean };
 			};
 			/** Run the login command of a sign-in that is still "ready"; nothing starts before this call. */
 			beginAccountLogin: {

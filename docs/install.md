@@ -214,10 +214,10 @@ missing or not executable the launch fails with an error naming the agent and th
 falls back to the `claude` on your PATH. The wrapper receives `CLAUDE_CONFIG_DIR`, the arguments,
 the working directory and stdio of a normal launch. If the wrapper itself fails, dev3 does not retry.
 
-**Add without signing in.** In Settings → Agent Accounts, click Add account. The sign-in window starts
-nothing by itself: it shows the login command and runs it only when you click **Start sign-in**. For
-Claude Code, **Add without signing in** keeps the account's folder as an
-account with no identity. The window shows the command to sign in later by hand
+**Add without signing in.** In Settings → Agent Accounts, click Add account. dev3 first asks what to
+do — **Sign in**, **Cancel**, and for Claude Code also **Add without signing in** — and creates or
+runs nothing until you choose. **Sign in** opens the sign-in terminal. **Add without signing in**
+keeps the account's folder as an account with no identity. The window shows the command to sign in later by hand
 (`CLAUDE_CONFIG_DIR='…' claude /login`); once a login runs there, the account shows its email by
 itself and replaces the placeholder name "Account N" (unless you renamed it). The new account does not become the default. A wrapper may replace the account's folder
 (`~/.dev3.0/agent-accounts/claude/<id>`) with a symlink to its own config dir: dev3 never fills such

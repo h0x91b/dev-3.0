@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { act } from "react";
 import type { AccountLoginState, AgentAccountsState } from "../../../../shared/agent-accounts";
@@ -155,6 +155,7 @@ describe("AgentAccountsSection", () => {
 
 	it("omp: no import, and Add account runs omp login in the embedded terminal", async () => {
 		mockedApi.request.startAccountLogin.mockResolvedValue({
+			created: true,
 			loginId: "o1",
 			kind: "omp",
 			phase: "running",
@@ -188,6 +189,7 @@ describe("AgentAccountsSection", () => {
 
 	it("pi: its own block with no import, and Add account opens pi's sign-in", async () => {
 		mockedApi.request.startAccountLogin.mockResolvedValue({
+			created: true,
 			loginId: "p1",
 			kind: "pi",
 			phase: "running",
@@ -229,8 +231,9 @@ describe("AgentAccountsSection", () => {
 		});
 	});
 
-	function login(overrides?: Partial<AccountLoginState>): AccountLoginState {
+	function login(overrides?: Partial<AccountLoginState> & { created?: boolean }): AccountLoginState & { created: boolean } {
 		return {
+			created: true,
 			loginId: "l1",
 			kind: "claude",
 			phase: "running",
@@ -417,6 +420,22 @@ describe("AgentAccountsSection", () => {
 		mockedApi.request.getAccountLogin.mockResolvedValue(null);
 	});
 
+	it("cancelling from the list while the sign-in is being begun does not bring it back", async () => {
+		mockedApi.request.startAccountLogin.mockResolvedValue(login({ phase: "ready", sessionKey: null }));
+		let finish!: (state: AccountLoginState) => void;
+		mockedApi.request.beginAccountLogin.mockReturnValue(new Promise<AccountLoginState>((resolve) => { finish = resolve; }));
+		const user = userEvent.setup();
+		renderSection();
+		await screen.findByText("Default login (/home/me/.claude)");
+		await user.click(screen.getAllByText("Add account")[0]);
+		const row = await screen.findByTestId("account-login-row-claude");
+		await user.click(within(row).getByText("Cancel sign-in"));
+		await waitFor(() => expect(screen.queryByTestId("account-login-row-claude")).toBeNull());
+		await act(async () => { finish(login()); });
+		expect(screen.queryByTestId("account-login-modal")).toBeNull();
+		expect(screen.queryByTestId("account-login-row-claude")).toBeNull();
+	});
+
 	it("a refused begin closes the staged sign-in again and says why", async () => {
 		mockedApi.request.startAccountLogin.mockResolvedValue(login({ phase: "ready", sessionKey: null }));
 		mockedApi.request.beginAccountLogin.mockRejectedValue(new Error("boom"));
@@ -428,6 +447,36 @@ describe("AgentAccountsSection", () => {
 		await waitFor(() => expect(mockedApi.request.closeAccountLogin).toHaveBeenCalledWith({ loginId: "l1" }));
 		expect(errorToast).toHaveBeenCalledWith(expect.stringContaining("boom"), expect.anything());
 		expect(screen.queryByTestId("account-login-modal")).toBeNull();
+		errorToast.mockRestore();
+	});
+
+	it("a refused begin on a joined sign-in does not close it", async () => {
+		mockedApi.request.startAccountLogin.mockResolvedValue(login({ phase: "ready", sessionKey: null, created: false }));
+		mockedApi.request.beginAccountLogin.mockRejectedValue(new Error("This sign-in has already started."));
+		const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "test-toast");
+		const user = userEvent.setup();
+		renderSection();
+		await screen.findByText("Default login (/home/me/.claude)");
+		await user.click(screen.getAllByText("Add account")[0]);
+		await waitFor(() => expect(errorToast).toHaveBeenCalled());
+		expect(mockedApi.request.closeAccountLogin).not.toHaveBeenCalled();
+		errorToast.mockRestore();
+	});
+
+	it("a refused begin after the user cancelled meanwhile shows no error", async () => {
+		mockedApi.request.startAccountLogin.mockResolvedValue(login({ phase: "ready", sessionKey: null }));
+		let fail!: (err: Error) => void;
+		mockedApi.request.beginAccountLogin.mockReturnValue(new Promise<AccountLoginState>((_, reject) => { fail = reject; }));
+		const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "test-toast");
+		const user = userEvent.setup();
+		renderSection();
+		await screen.findByText("Default login (/home/me/.claude)");
+		await user.click(screen.getAllByText("Add account")[0]);
+		const row = await screen.findByTestId("account-login-row-claude");
+		await user.click(within(row).getByText("Cancel sign-in"));
+		await waitFor(() => expect(screen.queryByTestId("account-login-row-claude")).toBeNull());
+		await act(async () => { fail(new Error("boom")); });
+		expect(errorToast).not.toHaveBeenCalled();
 		errorToast.mockRestore();
 	});
 

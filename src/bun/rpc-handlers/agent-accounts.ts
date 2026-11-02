@@ -124,11 +124,13 @@ async function updateAgentApiProfile(params: {
 
 /** Start (or join) the in-app sign-in for `kind`. `remoteViewer`: the page asking is
  *  not on the host, so a host-side browser callback cannot reach the user. */
-async function startAccountLogin(params: { kind: AgentAccountKind; remoteViewer: boolean }): Promise<AccountLoginState> {
+async function startAccountLogin(params: { kind: AgentAccountKind; remoteViewer: boolean }): Promise<AccountLoginState & { created: boolean }> {
 	log.info("→ startAccountLogin", params);
+	const before = accountLogins.get(params.kind);
 	const state = await accountLogins.start(params.kind, { remoteViewer: params.remoteViewer });
-	log.info("← startAccountLogin", { loginId: state.loginId.slice(0, 8), phase: state.phase });
-	return state;
+	const created = before?.loginId !== state.loginId;
+	log.info("← startAccountLogin", { loginId: state.loginId.slice(0, 8), phase: state.phase, created });
+	return { ...state, created };
 }
 
 async function beginAccountLogin(params: { loginId: string }): Promise<AccountLoginState> {
