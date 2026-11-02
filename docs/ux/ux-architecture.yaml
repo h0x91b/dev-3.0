@@ -273,8 +273,8 @@ ux_architecture:
       forbidden: ["bulk_actions", "durable_global_configuration"]
       evidence: ["board-views/table/"]
     board_view_tree:
-      purpose: "builtin:tree — lineage forest; variants one node, off-board parent a ghost root, collapsed by default."
-      allowed: ["expand_collapse", "open_task", "context_menu", "lineage_only_and_expand_all_in_view_options"]
+      purpose: "builtin:tree — lineage forest; variants one node, off-board parent a ghost root, collapsed by default; optional epic groups on top (archived closed, No epic last)."
+      allowed: ["expand_collapse", "open_task", "context_menu", "group_by_epic_lineage_only_and_expand_all_in_view_options"]
       forbidden: ["reparenting", "durable_global_configuration"]
       evidence: ["board-views/tree/"]
     board_view_attention:

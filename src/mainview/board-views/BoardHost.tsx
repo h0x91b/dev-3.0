@@ -210,11 +210,12 @@ function BoardHost(props: BoardHostProps) {
 		labels: filter.labels,
 		agents,
 		projects: boardProjects,
+		epics: filter.epics,
 		layout: viewState.layout,
 		setLayout: viewState.setLayout,
 		preferences,
 		actions,
-	}), [boardRef, boardProjects, formFactor, filter.query, filter.setQuery, tasks, filter.displayTasks, filter.matches, lineageNode, columns, occupiedColumns, filter.labels, agents, viewState.layout, viewState.setLayout, preferences, actions]);
+	}), [boardRef, boardProjects, formFactor, filter.query, filter.setQuery, tasks, filter.displayTasks, filter.matches, lineageNode, columns, occupiedColumns, filter.labels, agents, filter.epics, viewState.layout, viewState.setLayout, preferences, actions]);
 
 	// Draft being edited: reopens the New Task popup prefilled from the card.
 	// Resolved from the live list, so it closes by itself once the draft is promoted or deleted.

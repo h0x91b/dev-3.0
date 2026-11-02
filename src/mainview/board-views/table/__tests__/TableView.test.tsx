@@ -79,6 +79,7 @@ async function renderTable(setup: Setup = {}) {
 		labels: [bug, ui],
 		agents,
 		projects,
+		epics: [],
 		layout: (id) => layouts.get(id),
 		setLayout: vi.fn((id: string, layout: unknown) => layouts.set(id, layout)),
 		preferences: { taskSortOrder: "newest-first", tipsDisabled: true },

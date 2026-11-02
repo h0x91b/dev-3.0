@@ -12,8 +12,10 @@ import { taskLastActivityMs } from "../../utils/projectActivity";
 import { useBoard } from "../react";
 import type { BoardService } from "../board-service";
 import {
+	buildEpicForest,
 	buildTaskTree,
 	flattenTree,
+	isGroupOpen,
 	isStandalone,
 	normalizeTreeLayout,
 	toggleExpanded,
@@ -40,16 +42,33 @@ export function useTreeLayout(board: BoardService): [TreeLayout, (next: TreeLayo
 	return [layout, setLayout];
 }
 
-/** The forest for the board on screen, honouring the lineage-only option. */
+/** The forest for the board on screen, honouring the lineage-only and group-by options. */
 export function useTaskForest(board: BoardService, layout: TreeLayout): TreeNode[] {
 	// Rebuilt on every render (each one is a `board/changed`): the lineage index has
 	// no identity a memo could key on, and one linear pass over the board is cheap.
-	const roots = buildTaskTree({ tasks: board.tasks(), scopeTasks: board.scopeTasks(), lineageNode: (id) => board.lineageNode(id) });
+	const input = { tasks: board.tasks(), scopeTasks: board.scopeTasks(), lineageNode: (id: string) => board.lineageNode(id) };
+	if (layout.groupBy === "epic") return buildEpicForest({ ...input, epics: board.epics() }, { lineageOnly: layout.lineageOnly });
+	const roots = buildTaskTree(input);
 	return layout.lineageOnly ? roots.filter((node) => !isStandalone(node)) : roots;
 }
 
+/** Expanded task keys plus the epic groups that are open — what the rows are walked with. */
+export function openKeys(roots: readonly TreeNode[], layout: TreeLayout): Set<string> {
+	const keys = new Set(layout.expanded);
+	for (const node of roots) if (node.kind === "group" && isGroupOpen(node, layout.groupOpen)) keys.add(node.key);
+	return keys;
+}
+
+/** Tasks in a group that match the query; context ancestors shown only for a hit are not counted. */
+function countTasks(node: TreeNode): number {
+	let count = 0;
+	for (const child of node.children) count += (child.kind === "task" && child.matches ? 1 : 0) + countTasks(child);
+	return count;
+}
+
 /** The row's accessible name: its seq and title, never the chevron's "Expand". */
-function rowLabel(node: TreeNode, hiddenTitle: string): string {
+function rowLabel(node: TreeNode, hiddenTitle: string, groupName: (node: Extract<TreeNode, { kind: "group" }>) => string): string {
+	if (node.kind === "group") return groupName(node);
 	if (node.kind === "ghost") return `#${node.ref.seq} ${node.ref.title ?? hiddenTitle} · ${node.ref.projectName}`;
 	const lead = node.tasks[0];
 	return `#${node.tasks.length > 1 ? lead.seq : taskSeqLabel(lead)} ${getTaskTitle(lead)}`;
@@ -130,11 +149,13 @@ function RowBody({ row, narrow, projectById, showProject, projectName, onToggle 
 			L{row.depth + 1}
 		</span>
 	) : null;
-	const nested = hasChildren && !row.expanded ? (
+	const nested = hasChildren && !row.expanded && node.kind !== "group" ? (
 		<span className="flex-shrink-0 text-xs tabular-nums text-fg-3">{t.plural("boardTree.nested", row.descendantCount)}</span>
 	) : null;
 
-	const content = node.kind === "ghost" ? (
+	const content = node.kind === "group" ? (
+		<EpicGroupContent node={node} />
+	) : node.kind === "ghost" ? (
 		<>
 			<span className="flex-shrink-0 text-xs tabular-nums text-fg-3">#{node.ref.seq}</span>
 			<span className="min-w-0 flex-1 truncate text-sm italic text-fg-3">
@@ -158,6 +179,24 @@ function RowBody({ row, narrow, projectById, showProject, projectName, onToggle 
 			{content}
 			{nested}
 		</div>
+	);
+}
+
+function EpicGroupContent({ node }: { node: Extract<TreeNode, { kind: "group" }> }) {
+	const t = useT();
+	const { epic } = node;
+	return (
+		<>
+			<span aria-hidden className="h-3.5 w-[3px] flex-shrink-0 rounded-full bg-fg-muted" style={epic ? { backgroundColor: epic.color } : undefined} />
+			<span className={`min-w-0 truncate text-sm font-semibold ${epic ? "text-fg" : "text-fg-2"} ${epic?.archived ? "opacity-60" : ""}`}>
+				{epic ? epic.name : t("boardTree.noEpic")}
+			</span>
+			{epic?.archived && (
+				<span className="flex-shrink-0 rounded border border-edge px-1.5 text-dense text-fg-3">{t("boardTree.archivedEpic")}</span>
+			)}
+			<span className="min-w-0 flex-1" />
+			<span className="flex-shrink-0 text-xs tabular-nums text-fg-3">{t.plural("epic.taskCount", countTasks(node))}</span>
+		</>
 	);
 }
 
@@ -202,7 +241,7 @@ export function TreeView(_props: { ctx: Context }) {
 	const board = useBoard();
 	const [layout, setLayout] = useTreeLayout(board);
 	const roots = useTaskForest(board, layout);
-	const expanded = useMemo(() => new Set(layout.expanded), [layout.expanded]);
+	const expanded = openKeys(roots, layout);
 	const query = board.query.trim();
 	const revealMatches = query !== "";
 	// Ancestors a query opened by themselves can still be closed; that choice lasts until the query changes.
@@ -242,7 +281,8 @@ export function TreeView(_props: { ctx: Context }) {
 			setQueryClosed({ query, keys });
 			return;
 		}
-		setLayout(toggleExpanded(layout, node.key, open));
+		if (node.kind === "group") setLayout({ ...layout, groupOpen: { ...layout.groupOpen, [node.key]: open } });
+		else setLayout(toggleExpanded(layout, node.key, open));
 	};
 	const onToggle = (row: TreeRow) => setOpen(row, !row.expanded);
 
@@ -311,6 +351,11 @@ export function TreeView(_props: { ctx: Context }) {
 	}
 
 	const showProject = board.scope.kind === "space";
+	const groupName = (node: Extract<TreeNode, { kind: "group" }>) => {
+		const name = node.epic ? node.epic.name : t("boardTree.noEpic");
+		const archived = node.epic?.archived ? ` · ${t("boardTree.archivedEpic")}` : "";
+		return `${name}${archived} · ${t.plural("epic.taskCount", countTasks(node))}`;
+	};
 	return (
 		<div ref={scrollRef} className={`min-h-0 flex-1 overflow-y-auto pb-6 ${narrow ? "px-3 pt-2" : "px-6"}`} data-testid="board-tree">
 			<div role="tree" aria-label={t("boardView.tree")} className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
@@ -323,13 +368,14 @@ export function TreeView(_props: { ctx: Context }) {
 							key={item.key}
 							role="treeitem"
 							aria-level={row.depth + 1}
-							aria-label={rowLabel(node, t("boardTree.hiddenTitle"))}
+							aria-label={rowLabel(node, t("boardTree.hiddenTitle"), groupName)}
 							aria-expanded={hasChildren ? row.expanded : undefined}
 							aria-selected={false}
 							tabIndex={0}
 							data-row-index={item.index}
 							data-testid={`board-tree-row-${node.key}`}
 							data-ghost={node.kind === "ghost" ? "" : undefined}
+							data-group={node.kind === "group" ? "" : undefined}
 							onClick={() => open(row)}
 							onContextMenu={(e) => openMenu(row, e)}
 							onKeyDown={(e) => onRowKeyDown(row, item.index, e)}
