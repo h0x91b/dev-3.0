@@ -131,6 +131,11 @@ async function startAccountLogin(params: { kind: AgentAccountKind; remoteViewer:
 	return state;
 }
 
+async function beginAccountLogin(params: { loginId: string }): Promise<AccountLoginState> {
+	log.info("→ beginAccountLogin", { loginId: params.loginId.slice(0, 8) });
+	return accountLogins.begin(params.loginId);
+}
+
 async function getAccountLogin(params: { kind: AgentAccountKind }): Promise<AccountLoginState | null> {
 	return accountLogins.get(params.kind);
 }
@@ -254,6 +259,7 @@ export const agentAccountHandlers = {
 	getAgentApiProfileDraft,
 	updateAgentApiProfile,
 	startAccountLogin,
+	beginAccountLogin,
 	getAccountLogin,
 	restartAccountLogin,
 	getAccountLoginPtyUrl,

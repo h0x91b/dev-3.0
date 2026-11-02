@@ -12,7 +12,7 @@ import type {
 import type { AccountLoginState } from "../../../shared/agent-accounts";
 import { AUTO_ACCOUNT_ID, CLAUDE_MODEL_SLOTS, isAgentDirAccountKind, managedCodexTwin, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../../shared/agent-accounts";
 import { api, isElectrobun } from "../../rpc";
-import AccountLoginModal, { loginPhaseTitle } from "./AccountLoginModal";
+import AccountLoginModal, { AGENT_NAMES, loginPhaseTitle } from "./AccountLoginModal";
 import { confirm } from "../../confirm";
 import { toast } from "../../toast";
 import type { TFunction } from "../../i18n";
@@ -529,14 +529,15 @@ function ApiProfileFormCard({
 function LoginInProgressRow({ login, onOpen, onCancel, t }: { login: AccountLoginState; onOpen: () => void; onCancel: () => void; t: TFunction }) {
 	const done = login.phase === "succeeded" || login.phase === "added-unsigned";
 	const attention = login.phase === "failed" || login.phase === "expired" || login.phase === "exited" || login.phase === "missing-executable";
+	const idle = login.phase === "ready";
 	return (
 		<div className="flex flex-wrap items-center gap-2.5 px-3 py-2 rounded-lg bg-accent/10" data-testid={`account-login-row-${login.kind}`}>
 			<span
 				aria-hidden
-				className={`w-2 h-2 rounded-full shrink-0 ${done ? "bg-success" : attention ? "bg-warning" : "bg-accent motion-safe:animate-pulse"}`}
+				className={`w-2 h-2 rounded-full shrink-0 ${done ? "bg-success" : attention ? "bg-warning" : idle ? "bg-fg-muted" : "bg-accent motion-safe:animate-pulse"}`}
 			/>
 			<span className="text-fg-2 text-sm flex-1 min-w-0">
-				{login.phase === "added-unsigned"
+				{login.phase === "added-unsigned" || idle
 					? loginPhaseTitle(login, !isElectrobun, t)
 					: done
 					? t("settings.accountLoginRowDone")
@@ -631,12 +632,34 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 	);
 
 	const handleStartAdd = useCallback(async (kind: AgentAccountKind) => {
+		const agent = AGENT_NAMES[kind];
+		const claude = kind === "claude";
+		const options = {
+			title: t("settings.accountAddChoiceTitle", { agent }),
+			message: t(claude ? "settings.accountAddChoiceMessageClaude" : "settings.accountAddChoiceMessage", { agent }),
+			confirmLabel: t("settings.accountAddChoiceSignIn"),
+			cancelLabel: t("kanban.cancel"),
+		};
+		// Nothing is created until the user chooses.
+		const choice = claude
+			? await confirm({ ...options, alternativeAction: { label: t("settings.accountLoginAddUnsigned"), value: "unsigned" } })
+			: await confirm(options);
+		if (!choice) return;
 		setLoginBusy(true);
+		let started: AccountLoginState | null = null;
 		try {
-			const login = await api.request.startAccountLogin({ kind, remoteViewer: !isElectrobun });
+			started = await api.request.startAccountLogin({ kind, remoteViewer: !isElectrobun });
+			let login = started;
+			// Joining a sign-in that is already running needs no second step.
+			if (login.phase === "ready") {
+				login = choice === "unsigned"
+					? await api.request.addClaudeAccountWithoutLogin({ loginId: login.loginId })
+					: await api.request.beginAccountLogin({ loginId: login.loginId });
+			}
 			setLogins((prev) => ({ ...prev, [kind]: login }));
 			setShownLogin(kind);
 		} catch (err) {
+			if (started?.phase === "ready") void api.request.closeAccountLogin({ loginId: started.loginId }).catch(() => {});
 			toast.error(t("settings.accountLoginStartFailed", { error: err instanceof Error ? err.message : String(err) }), { source: "settings" });
 		} finally {
 			setLoginBusy(false);

@@ -504,6 +504,11 @@ export type AppRPCSchema = {
 				params: { kind: AgentAccountKind; remoteViewer: boolean };
 				response: AccountLoginState;
 			};
+			/** Run the login command of a sign-in that is still "ready"; nothing starts before this call. */
+			beginAccountLogin: {
+				params: { loginId: string };
+				response: AccountLoginState;
+			};
 			getAccountLogin: {
 				params: { kind: AgentAccountKind };
 				response: AccountLoginState | null;

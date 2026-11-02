@@ -6,6 +6,8 @@
  * it through the PTY WebSocket (`registerExternalPtySession`), so desktop and
  * remote mode share one path, and no tmux is involved (Windows has none).
  *
+ * Opening a sign-in only stages the dir (`ready`); nothing runs until `begin`.
+ *
  * Success is decided by the existing verification (`complete*Login`) against the
  * staged dir, which this module polls; the process exiting proves nothing. The
  * watch keeps running after an exit and when the CLI is missing, so a login the
@@ -43,7 +45,7 @@ export const ACCOUNT_LOGIN_PROBE_TIMEOUT_MS = 10_000;
 export const ACCOUNT_LOGIN_REPLAY_CHARS = 64 * 1024;
 const KILL_GRACE_MS = 2_000;
 
-const ACTIVE_PHASES: ReadonlySet<AccountLoginPhase> = new Set(["running", "verifying", "exited", "missing-executable"]);
+const ACTIVE_PHASES: ReadonlySet<AccountLoginPhase> = new Set(["ready", "running", "verifying", "exited", "missing-executable"]);
 const WATCHED_PHASES: ReadonlySet<AccountLoginPhase> = new Set(["running", "exited", "missing-executable"]);
 
 export interface LoginTerminal {
@@ -73,6 +75,8 @@ export interface AccountLoginDeps {
 	/** Register the staged dir as an account without a sign-in (Claude only). */
 	addWithoutLogin(kind: AgentAccountKind, accountId: string): AgentAccount;
 	discard(kind: AgentAccountKind, accountId: string): boolean;
+	/** Restart the staged dir's abandoned-sign-in clock when the user starts the sign-in. */
+	touchStaged(kind: AgentAccountKind, accountId: string): void;
 	/** Leftovers of sign-ins a killed app never closed; see `sweepAbandonedStagedLogins`. */
 	sweepAbandoned(kind: AgentAccountKind): void;
 	resolveExecutable(kind: AgentAccountKind, command: string): Promise<string | null>;
@@ -90,6 +94,7 @@ export interface AccountLoginDeps {
 interface LoginRecord {
 	state: AccountLoginState;
 	accountId: string;
+	prepared: PreparedAccountLogin;
 	proc: LoginProcess | null;
 	viewers: Set<ExternalPtyViewer>;
 	replay: string;
@@ -376,6 +381,7 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 		const loginId = crypto.randomUUID();
 		const record: LoginRecord = {
 			accountId: prepared.accountId,
+			prepared,
 			proc: null,
 			viewers: new Set(),
 			replay: "",
@@ -389,8 +395,8 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 			state: {
 				loginId,
 				kind,
-				phase: "running",
-				sessionKey: `${ACCOUNT_LOGIN_SESSION_PREFIX}${loginId}`,
+				phase: "ready",
+				sessionKey: null,
 				deviceAuth,
 				manualCommand: prepared.loginCommand,
 				executable: prepared.launch.command,
@@ -404,10 +410,31 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 			},
 		};
 		byKind.set(kind, record);
-		log.info("Account login started", { kind, loginId: shortId(loginId), deviceAuth });
-		await launch(record, prepared);
-		if (byKind.get(kind) !== record || !ACTIVE_PHASES.has(record.state.phase)) return { ...record.state };
 		record.expiryTimer = deps.setTimer(() => expire(record), ACCOUNT_LOGIN_TTL_MS);
+		log.info("Account login ready", { kind, loginId: shortId(loginId), deviceAuth });
+		return { ...record.state };
+	}
+
+	/** "Start sign-in": the only point where a login process may start. Allowed from "ready" only. */
+	async function begin(loginId: string): Promise<AccountLoginState> {
+		const record = findById(loginId);
+		if (!record) throw new Error("This sign-in has already ended.");
+		if (record.state.phase !== "ready") throw new Error("This sign-in has already started.");
+		const { kind } = record.state;
+		// The window runs from the click, not from when the dialog opened.
+		if (record.expiryTimer !== null) deps.clearTimer(record.expiryTimer);
+		try {
+			deps.touchStaged(kind, record.accountId);
+		} catch (err) {
+			log.warn("Could not refresh the staged sign-in marker", { kind, error: String(err) });
+		}
+		const startedAt = deps.now();
+		// Not published: the viewer session is registered inside launch(), whose own "running" push follows it.
+		record.state = { ...record.state, phase: "running", sessionKey: `${ACCOUNT_LOGIN_SESSION_PREFIX}${loginId}`, startedAt, expiresAt: startedAt + ACCOUNT_LOGIN_TTL_MS };
+		record.expiryTimer = deps.setTimer(() => expire(record), ACCOUNT_LOGIN_TTL_MS);
+		await launch(record, record.prepared);
+		if (byKind.get(kind) !== record) throw new Error("This sign-in has already ended.");
+		if (!ACTIVE_PHASES.has(record.state.phase)) return { ...record.state };
 		schedulePoll(record);
 		return { ...record.state };
 	}
@@ -442,7 +469,8 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 		if (!record) throw new Error("This sign-in has already ended.");
 		const kind = record.state.kind;
 		close(loginId);
-		return start(kind, opts);
+		const fresh = await start(kind, opts);
+		return begin(fresh.loginId);
 	}
 
 	/** "Add without signing in": keep the staged dir as an account, stop the login terminal.
@@ -451,7 +479,7 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 		const record = findById(loginId);
 		if (!record) throw new Error("This sign-in has already ended.");
 		if (record.state.kind !== "claude") throw new Error("Only a Claude sign-in can be added without signing in.");
-		if (!WATCHED_PHASES.has(record.state.phase)) throw new Error("This sign-in can no longer be added without signing in.");
+		if (record.state.phase !== "ready" && !WATCHED_PHASES.has(record.state.phase)) throw new Error("This sign-in can no longer be added without signing in.");
 		if (deps.hasIdentity(record.state.kind, record.accountId)) {
 			throw new Error("A sign-in was found — wait for dev3 to confirm it.");
 		}
@@ -472,7 +500,7 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 		for (const record of [...byKind.values()]) close(record.state.loginId);
 	}
 
-	return { start, restart, close, get, closeAll, addWithoutSignIn };
+	return { start, begin, restart, close, get, closeAll, addWithoutSignIn };
 }
 
 export type AccountLoginManager = ReturnType<typeof createAccountLoginManager>;
@@ -584,6 +612,7 @@ export const accountLogins = createAccountLoginManager({
 	hasIdentity: (kind, id) => accounts.stagedLoginHasIdentity(kind, id),
 	addWithoutLogin: (_kind, id) => accounts.registerStagedClaudeAccount(id),
 	discard: (kind, id) => accounts.discardStagedLogin(kind, id),
+	touchStaged: (kind, id) => accounts.refreshStagedLogin(kind, id),
 	sweepAbandoned: (kind) => void accounts.sweepAbandonedStagedLogins(kind, ACCOUNT_LOGIN_TTL_MS),
 	resolveExecutable: resolveLoginExecutable,
 	spawnLogin: spawnLoginProcess,

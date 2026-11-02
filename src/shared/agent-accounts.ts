@@ -190,6 +190,7 @@ export interface AgentAccountsState {
  * `succeeded`, `added-unsigned`, `failed` and `expired` are final.
  */
 export type AccountLoginPhase =
+	| "ready"
 	| "running"
 	| "verifying"
 	| "succeeded"

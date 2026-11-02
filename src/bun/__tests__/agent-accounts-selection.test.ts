@@ -9,6 +9,7 @@ import {
 	importCurrentClaudeAccount,
 	listAgentAccounts,
 	prepareClaudeLogin,
+	refreshStagedLogin,
 	registerStagedClaudeAccount,
 	removeAgentAccount,
 	renameAgentAccount,
@@ -176,6 +177,25 @@ describe("registerStagedClaudeAccount (add without signing in)", () => {
 
 	it("refuses a dir that is gone", async () => {
 		expect(() => registerStagedClaudeAccount("11111111-2222-3333-4444-555555555555", paths)).toThrow(/already ended/);
+	});
+});
+
+describe("refreshStagedLogin", () => {
+	it("restarts the abandoned clock, so another instance's sweep keeps a login that was just started", async () => {
+		const { accountId } = await stagedLogin();
+		const dir = claudeAccountDir(accountId, paths);
+		writeFileSync(join(dir, STAGED_LOGIN_MARKER), JSON.stringify({ createdAt: 1 }));
+		const later = 25 * 60_000;
+		refreshStagedLogin("claude", accountId, paths);
+		expect(sweepAbandonedStagedLogins("claude", 20 * 60_000, Date.now() + later - 10 * 60_000, paths)).toBe(0);
+		expect(existsSync(dir)).toBe(true);
+	});
+
+	it("leaves an unmarked (registered) dir alone", async () => {
+		const { accountId } = await stagedLogin();
+		registerStagedClaudeAccount(accountId, paths);
+		refreshStagedLogin("claude", accountId, paths);
+		expect(existsSync(join(claudeAccountDir(accountId, paths), STAGED_LOGIN_MARKER))).toBe(false);
 	});
 });
 

@@ -7,7 +7,7 @@ import TerminalView, { type TerminalHandle } from "../../TerminalView";
 import { DARK_TERMINAL_THEME, LIGHT_TERMINAL_THEME } from "../../terminal-themes";
 import { useFocusTrap } from "../../utils/useFocusTrap";
 
-const AGENT_NAMES = { claude: "Claude Code", codex: "Codex", omp: "Oh My Pi", pi: "Pi" } as const;
+export const AGENT_NAMES = { claude: "Claude Code", codex: "Codex", omp: "Oh My Pi", pi: "Pi" } as const;
 
 const RUNNING_HINTS = {
 	claude: "settings.accountLoginRunningClaude",
@@ -46,6 +46,8 @@ function StatusIcon({ tone }: { tone: Tone }) {
 /** The status headline for a phase; the Settings row reuses it so both say the same thing. */
 export function loginPhaseTitle(login: AccountLoginState, remote: boolean, t: TFunction): string {
 	switch (login.phase) {
+		case "ready":
+			return t("settings.accountLoginReady");
 		case "running":
 			return t("settings.accountLoginRunning");
 		case "verifying":
@@ -188,6 +190,7 @@ export default function AccountLoginModal({ login, busy, onHide, onCancel, onRet
 	const active = login.phase === "running" || login.phase === "verifying" || login.phase === "exited" || login.phase === "missing-executable";
 	const canRetry = login.phase === "exited" || login.phase === "missing-executable" || login.phase === "failed" || login.phase === "expired";
 	const showManual = login.phase === "missing-executable" || login.phase === "exited" || login.phase === "added-unsigned";
+	const ready = login.phase === "ready";
 	const canAddUnsigned = login.kind === "claude" && (login.phase === "running" || login.phase === "exited" || login.phase === "missing-executable");
 	const showTerminal = login.sessionKey !== null && login.phase !== "expired";
 
@@ -212,7 +215,7 @@ export default function AccountLoginModal({ login, busy, onHide, onCancel, onRet
 					<button
 						ref={hideRef}
 						type="button"
-						onClick={login.phase === "added-unsigned" ? onDone : onHide}
+						onClick={login.phase === "added-unsigned" ? onDone : ready ? onCancel : onHide}
 						title={active ? t("settings.accountLoginHideHint") : undefined}
 						aria-label={active ? t("settings.accountLoginHide") : t("settings.accountLoginClose")}
 						className={`text-fg-muted hover:text-fg p-1.5 -mr-1.5 rounded-lg hover:bg-fg/5 shrink-0 ${PRESS}`}
@@ -294,7 +297,7 @@ export default function AccountLoginModal({ login, busy, onHide, onCancel, onRet
 							{t("settings.accountLoginAddUnsigned")}
 						</button>
 					) : null}
-					{active || canRetry ? (
+					{active || canRetry || ready ? (
 						<button
 							type="button"
 							onClick={onCancel}
@@ -302,7 +305,7 @@ export default function AccountLoginModal({ login, busy, onHide, onCancel, onRet
 							data-testid="account-login-cancel"
 							className={`px-3.5 py-2 rounded-xl text-sm text-fg-2 hover:text-fg hover:bg-overlay-hover disabled:opacity-50 ${PRESS}`}
 						>
-							{t(active ? "settings.accountLoginCancel" : "settings.accountLoginClose")}
+							{t(active || ready ? "settings.accountLoginCancel" : "settings.accountLoginClose")}
 						</button>
 					) : null}
 					{canRetry ? (

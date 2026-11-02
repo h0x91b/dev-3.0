@@ -1044,6 +1044,12 @@ function markStagedLogin(dir: string): void {
 	writeFileSync(join(dir, STAGED_LOGIN_MARKER), JSON.stringify({ createdAt: Date.now() }));
 }
 
+/** Restart the abandoned-sign-in clock of a login that is still staged (another app instance sweeps by it). */
+export function refreshStagedLogin(kind: AgentAccountKind, accountId: string, paths: AccountPaths = defaultAccountPaths()): void {
+	const dir = stagedAccountDir(kind, accountId, paths);
+	if (existsSync(join(dir, STAGED_LOGIN_MARKER))) markStagedLogin(dir);
+}
+
 function unmarkStagedLogin(dir: string): void {
 	rmSync(join(dir, STAGED_LOGIN_MARKER), { force: true });
 }

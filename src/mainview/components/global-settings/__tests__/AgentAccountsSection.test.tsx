@@ -15,6 +15,7 @@ vi.mock("../../../rpc", () => ({
 			getAgentApiProfileDraft: vi.fn(),
 			updateAgentApiProfile: vi.fn(),
 			startAccountLogin: vi.fn(),
+			beginAccountLogin: vi.fn(),
 			getAccountLogin: vi.fn().mockResolvedValue(null),
 			restartAccountLogin: vi.fn(),
 			closeAccountLogin: vi.fn().mockResolvedValue(undefined),
@@ -344,6 +345,90 @@ describe("AgentAccountsSection", () => {
 		await user.click(screen.getAllByText("Add account")[kind === "claude" ? 0 : kind === "codex" ? 1 : 2]);
 		await screen.findByTestId("account-login-modal");
 		expect(!!screen.queryByTestId("account-login-add-unsigned")).toBe(visible);
+	});
+
+	it("Add account asks first: Claude offers Sign in, Add without signing in and Cancel; Codex has no alternative", async () => {
+		mockedApi.request.startAccountLogin.mockResolvedValue(login());
+		const user = userEvent.setup();
+		renderSection();
+		await screen.findByText("Default login (/home/me/.claude)");
+
+		await user.click(screen.getAllByText("Add account")[0]);
+		expect(mockedConfirm).toHaveBeenLastCalledWith(expect.objectContaining({
+			title: "Add a Claude Code account",
+			message: expect.stringContaining("Without signing in, the account is added right away"),
+			confirmLabel: "Sign in",
+			cancelLabel: "Cancel",
+			alternativeAction: { label: "Add without signing in", value: "unsigned" },
+		}));
+
+		await user.click(screen.getAllByText("Add account")[1]);
+		const codexOptions = mockedConfirm.mock.calls[mockedConfirm.mock.calls.length - 1][0];
+		expect(codexOptions.title).toBe("Add a Codex account");
+		expect(String(codexOptions.message)).not.toContain("Without signing in");
+		expect(codexOptions.alternativeAction).toBeUndefined();
+	});
+
+	it("declining the question creates nothing", async () => {
+		mockedConfirm.mockResolvedValueOnce(false);
+		const user = userEvent.setup();
+		renderSection();
+		await screen.findByText("Default login (/home/me/.claude)");
+		await user.click(screen.getAllByText("Add account")[0]);
+		await waitFor(() => expect(mockedConfirm).toHaveBeenCalled());
+		expect(mockedApi.request.startAccountLogin).not.toHaveBeenCalled();
+		expect(screen.queryByTestId("account-login-modal")).toBeNull();
+	});
+
+	it("Sign in starts the sign-in and then begins it, opening the terminal", async () => {
+		mockedApi.request.startAccountLogin.mockResolvedValue(login({ phase: "ready", sessionKey: null }));
+		mockedApi.request.beginAccountLogin.mockResolvedValue(login());
+		const user = userEvent.setup();
+		renderSection();
+		await screen.findByText("Default login (/home/me/.claude)");
+		await user.click(screen.getAllByText("Add account")[0]);
+		expect(await screen.findByTestId("terminal-view")).toBeTruthy();
+		expect(mockedApi.request.beginAccountLogin).toHaveBeenCalledWith({ loginId: "l1" });
+		expect(mockedApi.request.addClaudeAccountWithoutLogin).not.toHaveBeenCalled();
+	});
+
+	it("Add without signing in starts the sign-in and then adds it unsigned", async () => {
+		mockedConfirm.mockResolvedValueOnce("unsigned" as never);
+		mockedApi.request.startAccountLogin.mockResolvedValue(login({ phase: "ready", sessionKey: null }));
+		mockedApi.request.addClaudeAccountWithoutLogin.mockResolvedValue(login({ phase: "added-unsigned", sessionKey: null }));
+		const user = userEvent.setup();
+		renderSection();
+		await screen.findByText("Default login (/home/me/.claude)");
+		await user.click(screen.getAllByText("Add account")[0]);
+		expect(await screen.findByText("Account added without signing in")).toBeTruthy();
+		expect(mockedApi.request.addClaudeAccountWithoutLogin).toHaveBeenCalledWith({ loginId: "l1" });
+		expect(mockedApi.request.beginAccountLogin).not.toHaveBeenCalled();
+		expect(screen.getByTestId("account-login-manual").textContent).toContain("claude /login");
+	});
+
+	it("a sign-in left in the ready state (picked up after a reload) is visible and cancellable", async () => {
+		mockedApi.request.getAccountLogin.mockImplementation(async ({ kind }) => (kind === "claude" ? login({ phase: "ready", sessionKey: null }) : null));
+		const user = userEvent.setup();
+		renderSection();
+		const row = await screen.findByTestId("account-login-row-claude");
+		expect(row.textContent).toContain("Sign-in not started");
+		await user.click(screen.getByText("Cancel sign-in"));
+		await waitFor(() => expect(mockedApi.request.closeAccountLogin).toHaveBeenCalledWith({ loginId: "l1" }));
+		mockedApi.request.getAccountLogin.mockResolvedValue(null);
+	});
+
+	it("a refused begin closes the staged sign-in again and says why", async () => {
+		mockedApi.request.startAccountLogin.mockResolvedValue(login({ phase: "ready", sessionKey: null }));
+		mockedApi.request.beginAccountLogin.mockRejectedValue(new Error("boom"));
+		const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "test-toast");
+		const user = userEvent.setup();
+		renderSection();
+		await screen.findByText("Default login (/home/me/.claude)");
+		await user.click(screen.getAllByText("Add account")[0]);
+		await waitFor(() => expect(mockedApi.request.closeAccountLogin).toHaveBeenCalledWith({ loginId: "l1" }));
+		expect(errorToast).toHaveBeenCalledWith(expect.stringContaining("boom"), expect.anything());
+		expect(screen.queryByTestId("account-login-modal")).toBeNull();
+		errorToast.mockRestore();
 	});
 
 	it("add without signing in shows the new phase with the login command, and Done closes it", async () => {
