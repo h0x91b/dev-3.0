@@ -211,6 +211,14 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "epics",
+		category: "tasks",
+		titleKey: "epic.settingsTitle",
+		descriptionKey: "epic.settingsDesc",
+		anchor: "epics",
+		storage: "sidecar",
+	},
+	{
 		id: "pr-origin-task-link",
 		category: "tasks",
 		titleKey: "settings.prOriginTaskLink",

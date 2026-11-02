@@ -10,6 +10,7 @@ import { trackEvent } from "../analytics";
 import posthog from "../posthog";
 import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
+import EpicSelect from "./EpicSelect";
 import PriorityBadge from "./PriorityBadge";
 import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
 import { useClipboardPaste } from "../hooks/useClipboardPaste";
@@ -90,6 +91,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 	const [description, setDescription] = useState(draftTask?.description ?? initialText ?? "");
 	const [creating, setCreating] = useState(false);
 	const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>(draftTask?.labelIds ?? []);
+	const [epicId, setEpicId] = useState<string | null>(draftTask?.epicId ?? null);
 	const [priority, setPriority] = useState<TaskPriority>(draftTask?.priority ?? DEFAULT_PRIORITY);
 	const [labelPickerOpen, setLabelPickerOpen] = useState(false);
 	const [confirmDiscard, setConfirmDiscard] = useState(false);
@@ -348,6 +350,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 	const hasAnyInput = !!description.trim()
 		|| !!customTitle
 		|| selectedLabelIds.length > 0
+		|| epicId !== null
 		|| priority !== DEFAULT_PRIORITY
 		|| branchTouched;
 
@@ -357,6 +360,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 		|| (customTitle ?? null) !== (draftTask.customTitle ?? null)
 		|| priority !== (draftTask.priority ?? DEFAULT_PRIORITY)
 		|| !sameLabelIds(selectedLabelIds, draftTask.labelIds ?? [])
+		|| epicId !== (draftTask.epicId ?? null)
 		|| (selectedBranch ?? null) !== (draftTask.existingBranch ?? null)
 	);
 
@@ -404,7 +408,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 		if (creating) return;
 		setCreating(true);
 		try {
-			const updated = await api.request.editTask({
+			let updated = await api.request.editTask({
 				taskId: draftTask.id,
 				projectId: draftTask.projectId,
 				description: trimmed,
@@ -417,6 +421,9 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				...((taskType === "standard" ? null : taskType) !== (draftTask.taskType ?? null)
 					? { taskType: taskType === "standard" ? null : taskType } : {}),
 			});
+			if (epicId !== (draftTask.epicId ?? null)) {
+				updated = await api.request.setTaskEpic({ projectId: draftTask.projectId, taskId: draftTask.id, epicId });
+			}
 			dispatch({ type: "updateTask", task: updated });
 			trackEvent("task_edited", { project_id: project.id, source: keepDraft ? "draft_save" : "draft_promote" });
 			posthog.capture("task_edited", { source: keepDraft ? "draft_save" : "draft_promote" });
@@ -454,6 +461,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				...(priority !== DEFAULT_PRIORITY ? { priority } : {}),
 				// Persist the role alongside its standing brief.
 				...(mode !== "scratch" && taskType !== "standard" ? { taskType } : {}),
+				...(epicId ? { epicId } : {}),
 			});
 			// The task is now persisted on disk. Make it visible on the board
 			// IMMEDIATELY — a task created into "todo" pushes no taskUpdated, so
@@ -917,6 +925,16 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 								onToggle={toggleLabelId}
 							/>
 						)}
+					</div>
+				</div>
+
+				{/* Epic — optional; a GUI task joins none unless the user picks one. */}
+				<div className="space-y-2">
+					<label htmlFor="create-task-epic" className="text-fg-2 text-sm font-medium">
+						{t("epic.row")}
+					</label>
+					<div className="max-w-xs" data-testid="create-task-epic">
+						<EpicSelect id="create-task-epic" value={epicId} onChange={setEpicId} />
 					</div>
 				</div>
 

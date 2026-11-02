@@ -1,9 +1,10 @@
-import type { CodingAgent, Project, Space, Task } from "../../shared/types";
+import type { CodingAgent, Epic, Project, Space, Task } from "../../shared/types";
 import { DEFAULT_PRIORITY, spacesOfProject } from "../../shared/types";
 import type { TFunction } from "../i18n";
 import { type FacetResolver, isAttentionTask, taskStatusValues } from "./taskFacets";
 import { getStatusLabel } from "./statusLabel";
 import { childrenTokenRefs, type TaskLineage } from "./taskLineage";
+import { epicOf } from "./taskEpic";
 
 /**
  * Shared builder for the token-DSL search `FacetResolver`. Labels, statuses and
@@ -28,9 +29,11 @@ export interface FacetResolverConfig {
 	/** Lineage for `children:`; a bare seq means `currentProjectId` (none ⇒ only `project/seq`). */
 	lineage?: TaskLineage;
 	currentProjectId?: string | null;
+	/** The epic registry for `epic:`. */
+	epicsById?: ReadonlyMap<string, Epic>;
 }
 
-export function buildFacetResolver({ agents, projectById, taskPorts, spaces, t, prNumberFor, prStateFor, lineage, currentProjectId = null }: FacetResolverConfig): FacetResolver {
+export function buildFacetResolver({ agents, projectById, taskPorts, spaces, t, prNumberFor, prStateFor, lineage, currentProjectId = null, epicsById }: FacetResolverConfig): FacetResolver {
 	return {
 		agents,
 		labelsFor: (task) => {
@@ -48,6 +51,7 @@ export function buildFacetResolver({ agents, projectById, taskPorts, spaces, t, 
 		spaceNamesFor: (task) => spacesOfProject(spaces, task.projectId).map((s) => s.name),
 		prNumberFor: prNumberFor ?? (() => null),
 		prStateFor: prStateFor ?? (() => null),
+		...(epicsById ? { epicFor: (task: Task) => epicOf(task, epicsById) } : {}),
 		...(lineage ? { childrenRefsFor: (task: Task) => childrenTokenRefs(task, lineage, [...projectById.values()], currentProjectId) } : {}),
 	};
 }

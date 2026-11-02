@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import { toast } from "../toast";
-import type { BoardColumnSlot, CustomColumn, DevServerSummary, GlobalSettings, Label, PortInfo, Project, ResourceUsage, Space, Task, TaskStatus } from "../../shared/types";
+import type { BoardColumnSlot, CustomColumn, DevServerSummary, Epic, GlobalSettings, Label, PortInfo, Project, ResourceUsage, Space, Task, TaskStatus } from "../../shared/types";
 import { DEFAULT_GLOBAL_SETTINGS } from "./global-settings/utils";
 import { ALL_STATUSES, ACTIVE_STATUSES, ALL_PRIORITIES, getBoardColumns, laneAcceptsProject, laneColumnIdForProject, laneKey, normalizeLaneName, DEFAULT_PRIORITY } from "../../shared/types";
 import { PRIORITY_NAME_KEYS } from "./priorityStyles";
@@ -20,6 +20,9 @@ import { sortTasksForColumn } from "./sortTasks";
 import { partitionTasksByStatus } from "./partitionTasks";
 import LabelFilterBar from "./LabelFilterBar";
 import LineageFilterNotice from "./LineageFilterNotice";
+import EpicFilterNotice from "./EpicFilterNotice";
+import { useEpicMembers, useEpics } from "../hooks/useEpics";
+import { epicFilterToken, epicOf, withEpicToken } from "../utils/taskEpic";
 import { useTaskLineage } from "../hooks/useTaskLineage";
 import { childrenFilterToken, childrenTokenRefs, lineageChildren, lineageParent, parentSeqLabel, withChildrenToken, type CardLineage } from "../utils/taskLineage";
 import { useStreamerMode } from "../streamer-mode";
@@ -297,6 +300,13 @@ function KanbanBoard({
 	const applyChildrenFilter = useCallback((parent: { projectId: string; seq: number }) => {
 		setSearchQuery(withChildrenToken(searchQuery, childrenFilterToken(parent, knownProjects, lineageProjectId)));
 	}, [searchQuery, setSearchQuery, knownProjects, lineageProjectId]);
+	// Epics are global: a chip click filters this board, and the notice below the
+	// filter bar points at the epic's tasks on other boards.
+	const { epics, byId: epicsById } = useEpics();
+	const epicMembers = useEpicMembers();
+	const applyEpicFilter = useCallback((epic: Epic) => {
+		setSearchQuery(withEpicToken(searchQuery, epicFilterToken(epic)));
+	}, [searchQuery, setSearchQuery]);
 	const lineageFor = useCallback((task: Task): CardLineage | undefined => {
 		const parent = lineageParent(task, lineage);
 		const childCount = lineageChildren(task, lineage).length;
@@ -385,7 +395,8 @@ function KanbanBoard({
 		prNumberFor: (task) => taskPrMap.get(task.id)?.number ?? null,
 		prStateFor: (task) => taskPrMap.get(task.id)?.mergeState?.state ?? null,
 		childrenRefsFor: (task) => childrenTokenRefs(task, lineage, knownProjects, lineageProjectId),
-	}), [agents, projectById, customStatusLabels, taskPorts, taskPrMap, t, lineage, knownProjects, lineageProjectId]);
+		epicFor: (task) => epicOf(task, epicsById),
+	}), [agents, projectById, customStatusLabels, taskPorts, taskPrMap, t, lineage, knownProjects, lineageProjectId, epicsById]);
 
 	// Priority leads the funnel; the board offers all five levels (P0…P4).
 	const priorityCandidates = useMemo<FilterFunnelOption[]>(
@@ -670,6 +681,7 @@ function KanbanBoard({
 		movingTaskIds,
 		siblingMap,
 		lineageFor,
+		onFilterByEpic: applyEpicFilter,
 		onSetMoving: handleSetMoving,
 		taskPrMap,
 		onOpenUnresolvedComments,
@@ -778,6 +790,17 @@ function KanbanBoard({
 				onPickProject={applyChildrenFilter}
 				onOpenProject={(projectId, parent) => {
 					rememberFilter(boardFilterKey(projectId), childrenFilterToken(parent, knownProjects, projectId));
+					navigate({ screen: "project", projectId });
+				}}
+			/>
+			<EpicFilterNotice
+				searchQuery={searchQuery}
+				epics={epics}
+				members={epicMembers}
+				allProjects={knownProjects}
+				boardProjectIds={boardProjectIds}
+				onOpenProject={(projectId, epic) => {
+					rememberFilter(boardFilterKey(projectId), epicFilterToken(epic));
 					navigate({ screen: "project", projectId });
 				}}
 			/>

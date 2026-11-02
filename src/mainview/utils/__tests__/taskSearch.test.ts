@@ -519,3 +519,32 @@ describe("matchesTaskQuery — type facet", () => {
 		expect(countActiveFacetTokens("type:coordinator login")).toBe(1);
 	});
 });
+
+describe("matchesTaskQuery — epic:", () => {
+	const payments = ctx({ epic: { id: "epic1234-0000-1111", name: "Оплата v2" }, labelNames: ["Bug"], priorityValue: "p0" });
+
+	it("matches the whole epic name in any case, quoted or bare", () => {
+		expect(matchesTaskQuery(makeTask(), 'epic:"оплата V2"', payments)).toBe(true);
+		expect(matchesTaskQuery(makeTask(), "epic:Оплата", payments)).toBe(false);
+		expect(matchesTaskQuery(makeTask(), 'epic:"Оплата v2"', ctx())).toBe(false);
+	});
+
+	it("matches an id prefix of four or more characters", () => {
+		expect(matchesTaskQuery(makeTask(), "epic:epic12", payments)).toBe(true);
+		expect(matchesTaskQuery(makeTask(), "epic:epi", payments)).toBe(false);
+	});
+
+	it("matches nothing for a value that names no epic", () => {
+		expect(matchesTaskQuery(makeTask(), "epic:Paymnts", payments)).toBe(false);
+	});
+
+	it("ANDs with the other facets", () => {
+		expect(matchesTaskQuery(makeTask(), 'epic:"Оплата v2" label:bug priority:P0', payments)).toBe(true);
+		expect(matchesTaskQuery(makeTask(), 'epic:"Оплата v2" label:docs', payments)).toBe(false);
+	});
+
+	it("serialises a multi-word epic name as one quoted token", () => {
+		expect(facetToken("epic", "Payments v2")).toBe('epic:"Payments v2"');
+		expect(parseTaskQuery('epic:"Payments v2" fix').facets.epic).toEqual(["payments v2"]);
+	});
+});
