@@ -287,6 +287,11 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		coordinatorPrompt: typeof d.coordinatorPrompt === "string" && d.coordinatorPrompt.trim()
 			? d.coordinatorPrompt
 			: undefined,
+		// Unset ⇒ the built-in coordinator preset; see coordinatorLaunchDefault.
+		coordinatorAgentId: typeof d.coordinatorAgentId === "string" && d.coordinatorAgentId ? d.coordinatorAgentId : undefined,
+		coordinatorConfigId: typeof d.coordinatorConfigId === "string" && d.coordinatorConfigId
+			? resolveDefaultConfigId(d.coordinatorConfigId)
+			: undefined,
 	};
 }
 

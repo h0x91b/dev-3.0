@@ -351,6 +351,8 @@ describe("saveSettings", () => {
 		});
 		const full: Required<GlobalSettings> = {
 			coordinatorPrompt: "Coordinate, do not code.",
+			coordinatorAgentId: "builtin-codex",
+			coordinatorConfigId: "codex-default",
 			staticAccessCode: "correct-horse-battery-staple",
 			remoteTunnel: { provider: "custom", command: "ngrok http {port} --log stdout", urlPattern: "https://\\S+" },
 			remotePort: 41234,

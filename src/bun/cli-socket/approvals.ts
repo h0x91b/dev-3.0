@@ -1,7 +1,9 @@
 import type { AgentMessageSource, Project, ResetKeptBranch, Task, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus } from "../../shared/types";
 import { agentReplyCommand, seqIsShared } from "../../shared/agent-message-envelope";
 import { type ExternalSenderRequester, isExternalSenderRequester } from "../../shared/external-senders";
-import { DEFAULT_PRIORITY, agentLaunchAutoApproveMs, buildTaskDialogSubject, getTaskTitle, taskNeedsReset, taskResetConsent } from "../../shared/types";
+import { DEFAULT_PRIORITY, agentLaunchAutoApproveMs, buildTaskDialogSubject, getTaskTitle, isCoordinatorTask, taskNeedsReset, taskResetConsent } from "../../shared/types";
+import { coordinatorLaunchDefault } from "../../shared/coordinator-launch";
+import { getAllAgents } from "../agents";
 import { createAgentRequest, getAgentRequestState, joinAgentRequest, setAgentRequestLaunchChoice } from "../agent-requests";
 import { DESTRUCTIVE_APPROVAL_TARGET, type AgentApprovalNotAttached, type AgentApprovalStatus, type DestructiveApprovalKind } from "../../shared/agent-approval";
 import type { AgentLaunchChoice, LaunchVariant } from "../../shared/types";
@@ -208,6 +210,10 @@ export async function requestAgentLaunchApproval(opts: {
 	suggested?: LaunchVariant | null;
 }): Promise<LaunchApprovalOutcome> {
 	const { project, task, targetStatus, requester } = opts;
+	// A coordinator's own preset preselects the dialog and is what an unwatched auto-approval launches.
+	const suggested = opts.suggested ?? (isCoordinatorTask(task)
+		? coordinatorLaunchDefault(await getAllAgents(), await loadSettings())
+		: null);
 	if (isExternalSenderRequester(requester) && opts.launcherNote) {
 		throw new Error("--handoff-file does not apply with --as-sender: a sender's launch gets no handoff note.");
 	}
@@ -234,7 +240,7 @@ export async function requestAgentLaunchApproval(opts: {
 	);
 	// Seeds what an unwatched auto-approval launches. A joined retry must not
 	// overwrite a pick the user may already have made in the open dialog.
-	if (opts.suggested && !joining) setAgentRequestLaunchChoice(requestId, { variants: [opts.suggested] });
+	if (suggested && !joining) setAgentRequestLaunchChoice(requestId, { variants: [suggested] });
 	// Pushed on EVERY attempt, joined retries included — see the note on
 	// `task.requestCancellation`. Clients dedup by `requestId`, so a dialog that
 	// is already on screen is untouched and nothing here re-arms the countdown.
@@ -254,7 +260,7 @@ export async function requestAgentLaunchApproval(opts: {
 		defaultPriority,
 		canAddVariants: canSpawnAsVariants(task),
 		autoApproveAt,
-		...(opts.suggested ? { suggested: opts.suggested } : {}),
+		...(suggested ? { suggested } : {}),
 	});
 
 	const answer = await decision;

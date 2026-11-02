@@ -394,6 +394,36 @@ describe("missing agent binary — hooks belong to the agent, not the retry wrap
 	});
 });
 
+describe("coordinator default agent", () => {
+	beforeEach(async () => {
+		const { DEFAULT_AGENTS } = await import("../../shared/types");
+		vi.mocked(agents.getAllAgents).mockResolvedValue(DEFAULT_AGENTS);
+	});
+	afterEach(() => {
+		vi.mocked(agents.getAllAgents).mockResolvedValue([]);
+	});
+
+	it("launches a coordinator with no picked agent on the coordinator preset", async () => {
+		await launchTaskPty(makeProject(), makeTask({ taskType: "coordinator" }), WORKTREE);
+
+		expect(agents.resolveCommandForAgent).toHaveBeenCalledWith("builtin-claude", "claude-auto-fable51-medium", expect.anything(), expect.anything());
+		expect(agents.resolveCommandForProject).not.toHaveBeenCalled();
+	});
+
+	it("leaves a standard task on the global default", async () => {
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+
+		expect(agents.resolveCommandForProject).toHaveBeenCalled();
+		expect(agents.resolveCommandForAgent).not.toHaveBeenCalled();
+	});
+
+	it("never overrides an agent the user picked", async () => {
+		await launchTaskPty(makeProject(), makeTask({ taskType: "coordinator" }), WORKTREE, "builtin-codex", "codex-default");
+
+		expect(agents.resolveCommandForAgent).toHaveBeenCalledWith("builtin-codex", "codex-default", expect.anything(), expect.anything());
+	});
+});
+
 describe("unmarked task — the legacy tmux path is untouched", () => {
 	it("creates a tmux PTY session and never a native one", async () => {
 		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
