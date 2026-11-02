@@ -1,6 +1,7 @@
-import type { Task } from "../../../../shared/types";
+import type { Epic, Task } from "../../../../shared/types";
 import type { BoardLineageNode } from "../../board-service";
 import {
+	buildEpicForest,
 	buildTaskTree,
 	expandableKeys,
 	flattenTree,
@@ -26,7 +27,7 @@ const outsideParent: BoardLineageNode = {
 
 function shape(nodes: readonly TreeNode[]): unknown[] {
 	return nodes.map((node) => {
-		const label = node.kind === "ghost" ? `ghost ${node.ref.seq}` : `${node.matches ? "" : "~"}${node.key}`;
+		const label = node.kind === "group" ? node.key : node.kind === "ghost" ? `ghost ${node.ref.seq}` : `${node.matches ? "" : "~"}${node.key}`;
 		return node.children.length ? [label, shape(node.children)] : label;
 	});
 }
@@ -103,14 +104,71 @@ describe("flattenTree", () => {
 
 describe("tree layout", () => {
 	it("normalises anything stored into a collapsed default", () => {
-		expect(normalizeTreeLayout(undefined)).toEqual({ groupBy: "none", expanded: [], lineageOnly: false });
+		expect(normalizeTreeLayout(undefined)).toEqual({ groupBy: "none", expanded: [], lineageOnly: false, groupOpen: {} });
 		expect(normalizeTreeLayout({ expanded: ["a", 3, "a"], lineageOnly: true, groupBy: "bogus" }))
-			.toEqual({ groupBy: "none", expanded: ["a"], lineageOnly: true });
+			.toEqual({ groupBy: "none", expanded: ["a"], lineageOnly: true, groupOpen: {} });
 	});
 
 	it("toggles a key without duplicating it", () => {
 		const open = toggleExpanded(normalizeTreeLayout(undefined), "k", true);
 		expect(toggleExpanded(open, "k", true)).toBe(open);
 		expect(toggleExpanded(open, "k", false).expanded).toEqual([]);
+	});
+});
+
+describe("buildEpicForest", () => {
+	const a: Epic = { id: "ea", name: "alpha", color: "#22c55e", archived: false, createdAt: 2 };
+	const b: Epic = { id: "eb", name: "Beta", color: "#3b82f6", archived: false, createdAt: 1 };
+	const gone: Epic = { id: "ez", name: "Archived one", color: "#ef4444", archived: true, createdAt: 0 };
+	const forest = (tasks: Task[], opts: { scopeTasks?: Task[]; lineageOnly?: boolean; lineage?: BoardLineageNode } = {}) =>
+		buildEpicForest(
+			{ tasks, scopeTasks: opts.scopeTasks ?? tasks, epics: [gone, b, a], lineageNode: (id) => (opts.lineage?.id === id ? opts.lineage : null) },
+			{ lineageOnly: opts.lineageOnly ?? false },
+		);
+
+	it("orders active epics by name, then archived, then No epic; empty epics are left out", () => {
+		const tasks = [task("t1", 1, { epicId: "ez" }), task("t2", 2), task("t3", 3, { epicId: "eb" }), task("t4", 4, { epicId: "ea" })];
+		expect(shape(forest(tasks))).toEqual([
+			["epic:ea", ["p1#4"]], ["epic:eb", ["p1#3"]], ["epic:ez", ["p1#1"]], ["epic:none", ["p1#2"]],
+		]);
+	});
+
+	it("keeps a child in its own epic as a root there, even when its parent is in another", () => {
+		const tasks = [task("p", 1, { epicId: "ea" }), task("c", 2, { ...childOf("p"), epicId: "eb" }), task("cc", 3, { ...childOf("c"), epicId: "eb" })];
+		expect(shape(forest(tasks))).toEqual([["epic:ea", ["p1#1"]], ["epic:eb", [["p1#2", ["p1#3"]]]]]);
+	});
+
+	it("keeps variants together under their first attempt's epic", () => {
+		const tasks = [task("v2", 5, { variantIndex: 2, groupId: "g", epicId: "eb" }), task("v1", 5, { variantIndex: 1, groupId: "g", epicId: "ea" })];
+		const roots = forest(tasks);
+		expect(shape(roots)).toEqual([["epic:ea", ["p1#5"]]]);
+		expect((roots[0].children[0] as Extract<TreeNode, { kind: "task" }>).tasks.map((t) => t.id)).toEqual(["v1", "v2"]);
+	});
+
+	it("files a task whose epic is not in the registry under No epic", () => {
+		expect(shape(forest([task("t", 1, { epicId: "missing" })]))).toEqual([["epic:none", ["p1#1"]]]);
+	});
+
+	it("namespaces a cross-project ghost by group so two epics can share one", () => {
+		const tasks = [task("x", 1, { ...childOf("far", "p9"), epicId: "ea" }), task("y", 2, { ...childOf("far", "p9"), epicId: "eb" })];
+		const roots = forest(tasks, { lineage: outsideParent });
+		expect(roots.map((g) => g.children[0].key)).toEqual(["epic:ea/ghost:p9#900", "epic:eb/ghost:p9#900"]);
+	});
+
+	it("shows only groups with a query hit, keeping in-epic ancestors as context", () => {
+		const scope = [task("p", 1, { epicId: "ea" }), task("c", 2, { ...childOf("p"), epicId: "ea" }), task("o", 3, { epicId: "eb" })];
+		expect(shape(forest([scope[1]], { scopeTasks: scope }))).toEqual([["epic:ea", [["~p1#1", ["p1#2"]]]]]);
+	});
+
+	it("drops standalone roots, and groups left empty, when lineage-only", () => {
+		const tasks = [task("p", 1, { epicId: "ea" }), task("c", 2, { ...childOf("p"), epicId: "ea" }), task("s", 3, { epicId: "eb" })];
+		expect(shape(forest(tasks, { lineageOnly: true }))).toEqual([["epic:ea", [["p1#1", ["p1#2"]]]]]);
+	});
+
+	it("round-trips groupBy and group choices through normalisation, dropping junk", () => {
+		expect(normalizeTreeLayout({ groupBy: "epic", groupOpen: { "epic:ea": false, bad: 1 } })).toEqual({
+			groupBy: "epic", expanded: [], lineageOnly: false, groupOpen: { "epic:ea": false },
+		});
+		expect(normalizeTreeLayout({ groupBy: "label" }).groupBy).toBe("none");
 	});
 });

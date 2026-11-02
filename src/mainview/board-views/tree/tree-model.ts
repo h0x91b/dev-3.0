@@ -1,13 +1,9 @@
-import type { Task } from "../../../shared/types";
+import type { Epic, Task } from "../../../shared/types";
 import { parentTaskIdOf } from "../../../shared/types/task-origin";
 import type { BoardLineageNode } from "../board-service";
 
-/**
- * How the Tree groups its top level. Only `none` exists today; `epic` (seq:2307)
- * is meant to slot in as one more value whose groups become the top level, with
- * lineage trees under them — the stored shape does not change for it.
- */
-export type TreeGroupBy = "none";
+/** How the Tree groups its top level: not at all, or one group per epic with lineage trees under it. */
+export type TreeGroupBy = "none" | "epic";
 
 /** What the Tree persists through `ctx.board.setLayout("builtin:tree", …)`. */
 export interface TreeLayout {
@@ -16,15 +12,29 @@ export interface TreeLayout {
 	expanded: string[];
 	/** Hide top-level tasks that have no parent and no children. */
 	lineageOnly: boolean;
+	/**
+	 * Epic groups the user opened or closed, by group key. Groups have their own
+	 * default — open, except archived epics — so only a choice against it is stored.
+	 */
+	groupOpen: Record<string, boolean>;
 }
 
-export const DEFAULT_TREE_LAYOUT: TreeLayout = { groupBy: "none", expanded: [], lineageOnly: false };
+export const DEFAULT_TREE_LAYOUT: TreeLayout = { groupBy: "none", expanded: [], lineageOnly: false, groupOpen: {} };
 
 export function normalizeTreeLayout(raw: unknown): TreeLayout {
 	if (typeof raw !== "object" || raw === null) return DEFAULT_TREE_LAYOUT;
-	const stored = raw as { expanded?: unknown; lineageOnly?: unknown };
+	const stored = raw as { groupBy?: unknown; expanded?: unknown; lineageOnly?: unknown; groupOpen?: unknown };
 	const expanded = Array.isArray(stored.expanded) ? stored.expanded.filter((k): k is string => typeof k === "string") : [];
-	return { groupBy: "none", expanded: [...new Set(expanded)], lineageOnly: stored.lineageOnly === true };
+	const groupOpen: Record<string, boolean> = {};
+	if (typeof stored.groupOpen === "object" && stored.groupOpen !== null) {
+		for (const [key, open] of Object.entries(stored.groupOpen)) if (typeof open === "boolean") groupOpen[key] = open;
+	}
+	return {
+		groupBy: stored.groupBy === "epic" ? "epic" : "none",
+		expanded: [...new Set(expanded)],
+		lineageOnly: stored.lineageOnly === true,
+		groupOpen,
+	};
 }
 
 /** One task's variant group: every variant of a task shares its project and seq. */
@@ -51,6 +61,14 @@ export type TreeNode =
 		kind: "ghost";
 		key: string;
 		ref: BoardLineageNode;
+		matches: false;
+		children: TreeNode[];
+	}
+	| {
+		/** One epic (or "No epic", `epic: null`) holding the lineage trees of its tasks. */
+		kind: "group";
+		key: string;
+		epic: Epic | null;
 		matches: false;
 		children: TreeNode[];
 	};
@@ -149,7 +167,66 @@ export function buildTaskTree({ tasks, scopeTasks, lineageNode }: TreeInput): Tr
 }
 
 export function nodeSeq(node: TreeNode): number {
+	if (node.kind === "group") return 0;
 	return node.kind === "ghost" ? node.ref.seq : node.tasks[0].seq;
+}
+
+export const NO_EPIC_GROUP_KEY = "epic:none";
+
+export function epicGroupKey(epicId: string | null): string {
+	return epicId ? `epic:${epicId}` : NO_EPIC_GROUP_KEY;
+}
+
+/** A group opens by itself unless its epic is archived; the user's choice wins. */
+export function isGroupOpen(node: Extract<TreeNode, { kind: "group" }>, groupOpen: Readonly<Record<string, boolean>>): boolean {
+	return groupOpen[node.key] ?? !node.epic?.archived;
+}
+
+/**
+ * The forest split by epic (spec D19): one group per epic that has a task here,
+ * active epics by name, then archived ones, then "No epic". A task sits in its
+ * own epic; a parent in another epic does not pull it out, so the child is a
+ * root of its group. An epic id missing from the registry counts as no epic,
+ * the same rule the `epic:` search token follows.
+ */
+export function buildEpicForest(input: TreeInput & { epics: readonly Epic[] }, opts: { lineageOnly: boolean }): TreeNode[] {
+	const epicsById = new Map(input.epics.map((epic) => [epic.id, epic]));
+	const groupOf = (task: Task) => (task.epicId && epicsById.has(task.epicId) ? task.epicId : null);
+	// Variants follow their first attempt, so a variant group is never split.
+	const leads = new Map<string, Task>();
+	for (const task of [...input.scopeTasks, ...input.tasks]) {
+		const key = unitKey(task);
+		const lead = leads.get(key);
+		if (!lead || byAttempt(task, lead) < 0) leads.set(key, task);
+	}
+	const unitGroup = (task: Task) => groupOf(leads.get(unitKey(task))!);
+	const scopeIds = new Set(input.scopeTasks.map((task) => task.id));
+	const partitions = new Map<string | null, { tasks: Task[]; scopeTasks: Task[] }>();
+	const partition = (group: string | null) => {
+		let part = partitions.get(group);
+		if (!part) partitions.set(group, (part = { tasks: [], scopeTasks: [] }));
+		return part;
+	};
+	for (const task of input.scopeTasks) partition(unitGroup(task)).scopeTasks.push(task);
+	for (const task of input.tasks) partition(unitGroup(task)).tasks.push(task);
+
+	const groups: TreeNode[] = [];
+	for (const [epicId, part] of partitions) {
+		if (part.tasks.length === 0) continue;
+		const key = epicGroupKey(epicId);
+		let children = buildTaskTree({
+			tasks: part.tasks,
+			scopeTasks: part.scopeTasks,
+			// A parent on this board but in another epic is not a ghost: the child just starts its group's tree.
+			lineageNode: (id) => (scopeIds.has(id) ? null : input.lineageNode(id)),
+		}).map((node) => (node.kind === "ghost" ? { ...node, key: `${key}/${node.key}` } : node));
+		if (opts.lineageOnly) children = children.filter((node) => !isStandalone(node));
+		if (children.length === 0) continue;
+		groups.push({ kind: "group", key, epic: epicId ? epicsById.get(epicId)! : null, matches: false, children });
+	}
+	const rank = (node: TreeNode) => (node.kind !== "group" || !node.epic ? 2 : node.epic.archived ? 1 : 0);
+	const name = (node: TreeNode) => (node.kind === "group" && node.epic ? node.epic.name : "");
+	return groups.sort((a, b) => rank(a) - rank(b) || name(a).localeCompare(name(b)));
 }
 
 /** A root with neither parent nor children: lineage-only boards hide it. */
@@ -203,13 +280,13 @@ export function toggleExpanded(layout: TreeLayout, key: string, open: boolean): 
 	return { ...layout, expanded: open ? [...layout.expanded, key] : layout.expanded.filter((k) => k !== key) };
 }
 
-/** Every key with children in the forest, for "Expand all". */
+/** Every task or ghost key with children in the forest, for "Expand all". Epic groups open through `groupOpen`. */
 export function expandableKeys(roots: readonly TreeNode[]): string[] {
 	const keys: string[] = [];
 	const walk = (list: readonly TreeNode[]) => {
 		for (const node of list) {
 			if (node.children.length === 0) continue;
-			keys.push(node.key);
+			if (node.kind !== "group") keys.push(node.key);
 			walk(node.children);
 		}
 	};

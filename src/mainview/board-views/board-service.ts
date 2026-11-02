@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import type { BoardColumnSlot, CodingAgent, GlobalSettings, Label, Project, Task, TaskPriority, TaskStatus } from "../../shared/types";
+import type { BoardColumnSlot, CodingAgent, Epic, GlobalSettings, Label, Project, Task, TaskPriority, TaskStatus } from "../../shared/types";
 import type { BoardFormFactor, BoardKind } from "../../shared/board-view-state";
 
 export interface BoardScope {
@@ -100,6 +100,8 @@ export interface BoardModel {
 	labels: Label[];
 	agents: CodingAgent[];
 	projects: Project[];
+	/** The global epic registry, archived epics included, in registry order. */
+	epics: Epic[];
 	lineageNode(id: string): BoardLineageNode | "deleted" | null;
 	layout(viewId: string): unknown;
 	setLayout(viewId: string, layout: unknown): void;
@@ -150,6 +152,8 @@ export class BoardService {
 	labels(): Label[] { return this.model.labels; }
 	agents(): CodingAgent[] { return this.model.agents; }
 	projects(): Project[] { return this.model.projects; }
+	/** Every epic, archived included, in registry order. A task names its own with `Task.epicId`. */
+	epics(): Epic[] { return this.model.epics; }
 	preferences(): BoardPreferences { return this.model.preferences; }
 	/**
 	 * Any lineage task by id, across every project — for a parent outside the board.

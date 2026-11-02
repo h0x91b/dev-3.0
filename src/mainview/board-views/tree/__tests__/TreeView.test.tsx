@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { Context } from "cordis";
-import type { Project, Task } from "../../../../shared/types";
+import type { Epic, Project, Task } from "../../../../shared/types";
 import { I18nProvider } from "../../../i18n";
 import { BoardService, type BoardActions, type BoardAllActions, type BoardLineageNode, type BoardModel } from "../../board-service";
 import { BoardViewSlot } from "../../BoardViewChrome";
@@ -41,6 +41,7 @@ interface Setup {
 	formFactor?: "wide" | "narrow";
 	layout?: unknown;
 	lineage?: Record<string, BoardLineageNode>;
+	epics?: Epic[];
 }
 
 async function renderTree(setup: Setup = {}) {
@@ -61,6 +62,7 @@ async function renderTree(setup: Setup = {}) {
 		labels: [],
 		agents: [],
 		projects: [alpha],
+		epics: setup.epics ?? [],
 		layout: (id) => layouts.get(id),
 		setLayout: vi.fn((id: string, layout: unknown) => layouts.set(id, layout)),
 		preferences: { taskSortOrder: "newest-first", tipsDisabled: true },
@@ -127,7 +129,7 @@ describe("Tree board view", () => {
 	it("expands from the chevron and persists the open node in the view layout", async () => {
 		const { layouts, rerender, actions } = await renderTree({ tasks: family });
 		fireEvent.click(screen.getByTestId("board-tree-toggle-p1#1"));
-		expect(layouts.get(TREE_VIEW_ID)).toEqual({ groupBy: "none", expanded: ["p1#1"], lineageOnly: false });
+		expect(layouts.get(TREE_VIEW_ID)).toEqual({ groupBy: "none", expanded: ["p1#1"], lineageOnly: false, groupOpen: {} });
 		rerender();
 		expect(rowKeys()).toEqual(["p1#4", "p1#1", "p1#2"]);
 		expect(actions.openTask).not.toHaveBeenCalled();
@@ -195,5 +197,69 @@ describe("Tree board view", () => {
 		fireEvent.click(screen.getByTestId("board-tree-collapse-all"));
 		rerender();
 		expect(rowKeys()).toEqual(["p1#1"]);
+	});
+
+	describe("group by epic", () => {
+		const payments: Epic = { id: "e1", name: "Payments v2", color: "#22c55e", archived: false, createdAt: 1 };
+		const legacy: Epic = { id: "e0", name: "Legacy", color: "#ef4444", archived: true, createdAt: 0 };
+		const grouped = [
+			task("root", 1, { epicId: "e1" }),
+			task("kid", 2, { ...childOf("root"), epicId: "e1" }),
+			task("old", 3, { epicId: "e0", status: "completed" }),
+			task("solo", 4),
+		];
+
+		it("turns on from View options and puts epics on top, archived ones closed, No epic last", async () => {
+			const { layouts, renderOptions, rerender } = await renderTree({ tasks: grouped, epics: [legacy, payments] });
+			renderOptions();
+			fireEvent.click(screen.getByTestId("board-tree-option-group-by-epic"));
+			expect(layouts.get(TREE_VIEW_ID)).toMatchObject({ groupBy: "epic" });
+			rerender();
+			expect(rowKeys()).toEqual(["epic:e1", "p1#1", "epic:e0", "epic:none", "p1#4"]);
+			const group = screen.getByTestId("board-tree-row-epic:e1");
+			expect(group).toHaveAttribute("data-group");
+			expect(group).toHaveAttribute("aria-expanded", "true");
+			expect(group).toHaveAccessibleName("Payments v2 · 2 tasks");
+			expect(screen.getByTestId("board-tree-row-epic:e0")).toHaveAccessibleName("Legacy · Archived · 1 task");
+			expect(screen.getByTestId("board-tree-row-epic:none")).toHaveTextContent("No epic");
+		});
+
+		it("toggles a group on click without opening a task, and persists the choice", async () => {
+			const { layouts, rerender, actions } = await renderTree({ tasks: grouped, epics: [legacy, payments], layout: { groupBy: "epic" } });
+			fireEvent.click(screen.getByTestId("board-tree-row-epic:e1"));
+			expect(layouts.get(TREE_VIEW_ID)).toMatchObject({ groupOpen: { "epic:e1": false } });
+			rerender();
+			fireEvent.click(screen.getByTestId("board-tree-row-epic:e0"));
+			expect(layouts.get(TREE_VIEW_ID)).toMatchObject({ groupOpen: { "epic:e1": false, "epic:e0": true } });
+			rerender();
+			expect(rowKeys()).toEqual(["epic:e1", "epic:e0", "p1#3", "epic:none", "p1#4"]);
+			expect(actions.openTask).not.toHaveBeenCalled();
+			expect(actions.openContextMenu).not.toHaveBeenCalled();
+		});
+
+		it("collapse all closes the groups too; expand all opens everything", async () => {
+			const { layouts, renderOptions, rerender } = await renderTree({ tasks: grouped, epics: [legacy, payments], layout: { groupBy: "epic" } });
+			renderOptions();
+			fireEvent.click(screen.getByTestId("board-tree-collapse-all"));
+			rerender();
+			expect(rowKeys()).toEqual(["epic:e1", "epic:e0", "epic:none"]);
+			expect(screen.getByTestId("board-tree-collapse-all")).toBeDisabled();
+			fireEvent.click(screen.getByTestId("board-tree-expand-all"));
+			expect(layouts.get(TREE_VIEW_ID)).toMatchObject({ expanded: ["p1#1"] });
+			rerender();
+			expect(rowKeys()).toEqual(["epic:e1", "p1#1", "p1#2", "epic:e0", "p1#3", "epic:none", "p1#4"]);
+		});
+
+		it("counts only query hits in a group, not the ancestors shown as context", async () => {
+			await renderTree({ tasks: [grouped[1]], scopeTasks: grouped, epics: [payments], query: "Task 2", layout: { groupBy: "epic" } });
+			expect(rowKeys()).toEqual(["epic:e1", "p1#1", "p1#2"]);
+			expect(screen.getByTestId("board-tree-row-epic:e1")).toHaveAccessibleName("Payments v2 · 1 task");
+		});
+
+		it("counts groups as a level in the narrow outline", async () => {
+			await renderTree({ tasks: grouped, epics: [payments], formFactor: "narrow", layout: { groupBy: "epic", expanded: ["p1#1"] } });
+			expect(screen.getByTestId("board-tree-row-epic:e1")).toHaveAttribute("aria-level", "1");
+			expect(screen.getByTestId("board-tree-row-p1#2")).toHaveAttribute("aria-level", "3");
+		});
 	});
 });

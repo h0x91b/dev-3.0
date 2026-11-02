@@ -14,6 +14,7 @@ import { useBoard } from "../react";
 import { resetBoardViewStateCacheForTests } from "../useBoardViewState";
 import { defaultBoardViewState, withViewType } from "../../../shared/board-view-state";
 import { _resetTaskLineageStoreForTest } from "../../hooks/useTaskLineage";
+import { _resetEpicStoresForTest } from "../../hooks/useEpics";
 import { setStreamerMode } from "../../streamer-mode";
 import { isBoardMounted, resetBoardViewCommandsForTests, runBoardViewCommand } from "../view-commands";
 import { resetPreviousBoardViewsForTests } from "../BoardHost";
@@ -25,6 +26,8 @@ vi.mock("../../rpc", () => ({
 			getAgents: vi.fn().mockResolvedValue([]),
 			getProjectPRs: vi.fn().mockResolvedValue([]),
 			getTaskLineage: vi.fn().mockResolvedValue({ nodes: [] }),
+			getEpics: vi.fn().mockResolvedValue({ version: 1, epics: [] }),
+			getEpicMembers: vi.fn().mockResolvedValue([]),
 			getBoardViewState: vi.fn(),
 			setBoardViewState: vi.fn(async ({ state }) => state),
 			createLabel: vi.fn(),
@@ -273,6 +276,17 @@ describe("BoardHost", () => {
 		} finally {
 			act(() => setStreamerMode(false));
 		}
+	});
+
+	it("hands views the whole epic registry, archived epics included, in registry order", async () => {
+		_resetEpicStoresForTest();
+		const epics = [
+			{ id: "e2", name: "Payments v2", color: "#22c55e", archived: false, createdAt: 2 },
+			{ id: "e1", name: "Old launch", color: "#ef4444", archived: true, createdAt: 1 },
+		];
+		vi.mocked(api.request.getEpics).mockResolvedValueOnce({ version: 1, epics });
+		renderHost();
+		await waitFor(() => expect(getBoardRoot().board.epics()).toEqual(epics));
 	});
 
 	it("hands views the real task card through ctx.board.TaskCard", async () => {
