@@ -10,7 +10,8 @@ import type { Handler } from "./shared";
  */
 export const statsHandlers: Record<string, Handler> = {
 	"stats.productivity": async () => rpc.getProductivityStats(),
-	"stats.usage": async () => rpc.getAgentUsage(),
+	// `since` only narrows which transcripts are read; the CLI still filters the days.
+	"stats.usage": async (params) => rpc.getAgentUsage(typeof params.since === "string" ? { since: params.since } : {}),
 	// Loaded on demand, like `stats.prices`: the transcript locators pull the conversation stack.
 	"stats.taskUsage": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params);
