@@ -6,7 +6,7 @@ import * as data from "../data";
 import { loadTaskLineage } from "../task-lineage";
 import * as git from "../git";
 import * as github from "../github";
-import { pendingAgentLaunchDialogs, holdAgentRequestAutoApprove as holdAutoApprove, listPendingAgentRequests, markAgentRequestShown as markShown, resolveAgentRequest, setAgentRequestLaunchChoice } from "../agent-requests";
+import { pendingAgentLaunchDialogs, holdAgentRequestAutoApprove as holdAutoApprove, listPendingAgentRequests, markAgentRequestShown as markShown, resolveAgentRequest, setAgentRequestLaunchChoice, wasAgentRequestVoided } from "../agent-requests";
 import { loadSettingsSync, recordFavoriteUsages } from "../settings";
 import { emitTaskSound, takeResetBranchOutcome } from "../lifecycle/executor";
 import { getPushMessage, isActive, log, pushCliAttention } from "./shared";
@@ -1067,14 +1067,15 @@ async function respondToAgentLaunchRequest(params: {
 	requestId: string;
 	approved: boolean;
 	launch?: AgentLaunchChoice;
-}): Promise<void> {
+}): Promise<{ applied: boolean; stale?: true }> {
 	const known = resolveAgentRequest(params.requestId, {
 		approved: params.approved,
 		...(params.approved && params.launch ? { launch: params.launch } : {}),
 	}, "launch");
-	if (!known) {
-		log.debug("respondToAgentLaunchRequest: request expired or unknown", { requestId: params.requestId });
-	}
+	if (known) return { applied: true };
+	log.debug("respondToAgentLaunchRequest: request expired or unknown", { requestId: params.requestId });
+	// The task started (or was reset) another way first, so this answer changed nothing.
+	return wasAgentRequestVoided(params.requestId) ? { applied: false, stale: true } : { applied: false };
 }
 
 /**

@@ -16423,3 +16423,20 @@ describe("launchers refuse a missing worktree before touching anything", () => {
 		expect(mockSpawn.mock.calls.some(([cmd]) => Array.isArray(cmd) && (cmd.includes("split-window") || cmd.includes("new-window")))).toBe(false);
 	});
 });
+
+describe("handlers.respondToAgentLaunchRequest", () => {
+	it("says an answer to an already-voided dialog changed nothing, instead of a bare success", async () => {
+		const { createAgentRequest, voidAgentRequest, _resetAgentRequestsForTests } = await import("../agent-requests");
+		_resetAgentRequestsForTests();
+		const live = createAgentRequest("launch", "task-live", "proj-1", {});
+		expect(await handlers.respondToAgentLaunchRequest({ requestId: live.requestId, approved: false })).toEqual({ applied: true });
+
+		const voided = createAgentRequest("launch", "task-voided", "proj-1", {});
+		voidAgentRequest("launch", "task-voided", "the task started another way");
+		expect(await handlers.respondToAgentLaunchRequest({ requestId: voided.requestId, approved: true })).toEqual({ applied: false, stale: true });
+		expect(await voided.decision).toMatchObject({ approved: false, stale: true });
+
+		expect(await handlers.respondToAgentLaunchRequest({ requestId: "unknown", approved: true })).toEqual({ applied: false });
+		_resetAgentRequestsForTests();
+	});
+});

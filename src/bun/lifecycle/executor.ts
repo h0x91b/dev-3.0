@@ -1264,7 +1264,7 @@ export async function executeLifecycleEffect(
 			ctx.task = taskAfterPersistedUpdate(ctx.task, persisted, updates);
 			ctx.stateTask = ctx.task;
 			// Started by another path: a launch dialog still open for it would answer "pending" for a running task.
-			if (effect.patch === "activation") voidAgentRequest("launch", ctx.task.id);
+			if (effect.patch === "activation") voidAgentRequest("launch", ctx.task.id, "the task started another way");
 			return {};
 		}
 		case "persistTerminalTask": {

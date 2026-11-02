@@ -290,7 +290,7 @@ describe("persistColumn — a task started another way voids its open launch dia
 		const todo = liveTask({ status: "todo", customColumnId: null });
 		vi.mocked(data.updateTask).mockResolvedValueOnce({ ...todo, status: "in-progress" } as never);
 		await executeLifecycleEffect(persistColumn("activation"), ctx(todo));
-		expect(vi.mocked(voidAgentRequest)).toHaveBeenCalledWith("launch", TASK_ID);
+		expect(vi.mocked(voidAgentRequest)).toHaveBeenCalledWith("launch", TASK_ID, "the task started another way");
 	});
 
 	it("leaves it alone for an ordinary move between active columns", async () => {
