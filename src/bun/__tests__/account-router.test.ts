@@ -125,6 +125,15 @@ describe("pickAutoAccount", () => {
 		setup([account("a"), account("b")], [snapshot("a", 10), snapshot("b", 40)]);
 		expect((await pickAutoAccount({ kind: "claude", exclusions: ["a"], reservationKey: "e" })).accountId).toBe("b");
 	});
+
+	it("honours the app-wide exclusions on top of the project's", async () => {
+		setup([account("a"), account("b"), account("c")], [snapshot("a", 10), snapshot("b", 20), snapshot("c", 40)]);
+		state.settings = { autoAccountExclusions: ["a"] };
+		expect((await pickAutoAccount({ kind: "claude", reservationKey: "g1" })).accountId).toBe("b");
+		expect((await pickAutoAccount({ kind: "claude", exclusions: ["b"], reservationKey: "g2" })).accountId).toBe("c");
+		const preview = await previewAutoAccount({ kind: "claude" });
+		expect(preview.assessed.find((a) => a.id === "a")?.status).toBe("excluded");
+	});
 });
 
 describe("autoRoutingContext", () => {

@@ -162,6 +162,8 @@ export interface AgentAccountsState {
 		systemIdentity: AgentAccountIdentity | null;
 		/** New launches left on the default go to Auto (the usage-balanced router). */
 		autoDefault?: boolean;
+		/** Exclusion keys of the logins Auto never picks in any project. */
+		autoExcluded?: string[];
 	};
 	codex: {
 		accounts: AgentAccount[];
@@ -171,6 +173,8 @@ export interface AgentAccountsState {
 		currentIdentity: AgentAccountIdentity | null;
 		/** New launches left on the default go to Auto (the usage-balanced router). */
 		autoDefault?: boolean;
+		/** Exclusion keys of the logins Auto never picks in any project. */
+		autoExcluded?: string[];
 	};
 	omp: {
 		accounts: AgentAccount[];

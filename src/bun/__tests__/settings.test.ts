@@ -415,6 +415,7 @@ describe("saveSettings", () => {
 			focusMode: true,
 			agentRateLimitTracking: false,
 			autoAccountDefault: { claude: true },
+			autoAccountExclusions: ["system:claude"],
 			watchByDefault: true,
 			suggestCompletingTasksAfterMerge: false,
 			prOriginTaskLink: false,

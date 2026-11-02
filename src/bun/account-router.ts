@@ -80,12 +80,14 @@ function liveReservations(kind: RoutableAccountKind, now: number): TaggedReserva
 	return reservations.filter((r) => r.kind === kind);
 }
 
+/** A project's exclusions only add to the app-wide ones; they never re-admit a login. */
 async function routingInputs(kind: RoutableAccountKind, exclusions: readonly string[]) {
-	const [state, report] = await Promise.all([
+	const [state, report, settings] = await Promise.all([
 		listAgentAccounts(),
 		Promise.resolve(getCachedRateLimitsReport() ?? getAgentRateLimitsReport()),
+		loadSettings(),
 	]);
-	return buildRoutableAccounts(kind, state, report, exclusions);
+	return buildRoutableAccounts(kind, state, report, [...(settings.autoAccountExclusions ?? []), ...exclusions]);
 }
 
 /** Whether a launch left on the default should be routed for this harness. */

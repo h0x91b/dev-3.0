@@ -18,6 +18,8 @@ import { toast } from "../../toast";
 import type { TFunction } from "../../i18n";
 import { AGENT_ACCOUNTS_CHANGED_EVENT, notifyAgentAccountsChanged, usePinnedClaudeLogins } from "../AgentAccountIndicator";
 import Tooltip from "../Tooltip";
+import { ToggleSwitch } from "../project-settings/fields";
+import { exclusionKey } from "../../../shared/account-routing";
 import SettingsEntry from "./SettingsEntry";
 import SettingsSection from "./SettingsSection";
 
@@ -123,6 +125,7 @@ function AccountRow({
 	onRemove,
 	note,
 	labelPublic,
+	autoSwitch,
 	t,
 }: {
 	kind: AgentAccountKind;
@@ -139,6 +142,8 @@ function AccountRow({
 	note?: string | null;
 	/** The label names no identity ("Auto (balanced)"), so streamer mode shows it. */
 	labelPublic?: boolean;
+	/** Whether Auto may pick this login; absent where Auto has nothing to balance. */
+	autoSwitch?: { included: boolean; onToggle: () => void };
 	t: TFunction;
 }) {
 	const [editing, setEditing] = useState(false);
@@ -214,8 +219,28 @@ function AccountRow({
 					<IdentityBadges identity={identity} hideEmail={label} kind={kind} t={t} />
 				)}
 				{note ? <span className="text-fg-muted text-xs">{note}</span> : null}
+				{autoSwitch && !autoSwitch.included ? (
+					<span className="text-fg-muted text-xs">{t("settings.accountsAutoSkipped")}</span>
+				) : null}
 			</div>
 			<div className="ml-auto flex items-center justify-end gap-1 shrink-0">
+				{autoSwitch ? (
+					// The row itself is a radio: keep the switch's click and Space from choosing it.
+					<span
+						className="flex items-center gap-1.5 pr-1"
+						onClick={(event) => event.stopPropagation()}
+						onKeyDown={(event) => event.stopPropagation()}
+						title={t("settings.accountsAutoSwitchHint")}
+					>
+						<span className="text-fg-3 text-xs">{t("settings.accountsAutoSwitch")}</span>
+						<ToggleSwitch
+							size="sm"
+							checked={autoSwitch.included}
+							ariaLabel={t("settings.accountsAutoSwitchFor", { label })}
+							onToggle={autoSwitch.onToggle}
+						/>
+					</span>
+				) : null}
 				{isActive ? (
 					<span className="text-success text-xs px-1.5 py-0.5 bg-success/15 rounded shrink-0">
 						{t("settings.accountsActive")}
@@ -752,6 +777,12 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 		[run, t],
 	);
 
+	const handleAutoExcluded = useCallback(
+		(kind: "claude" | "codex", accountId: string | null, excluded: boolean) =>
+			run(() => api.request.setAutoAccountExcluded({ kind, accountId, excluded })),
+		[run],
+	);
+
 	const handleRename = useCallback(
 		(kind: AgentAccountKind, accountId: string, label: string) =>
 			run(() => api.request.renameAgentAccount({ kind, accountId, label })),
@@ -815,6 +846,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 							onRename={account.auth === "api" ? undefined : (label) => handleRename(kind, account.id, label)}
 							onEditApi={account.auth === "api" ? () => handleStartEditApi(account) : undefined}
 							onRemove={() => handleRemove(kind, account)}
+							autoSwitch={account.auth === "api" ? undefined : autoSwitchFor(kind, account.id)}
 							t={t}
 						/>
 					))}
@@ -897,13 +929,23 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 
 	// "Auto (balanced)" sits beside the accounts as one more default: it earns its
 	// row once two subscription logins could be balanced, and keeps it while chosen.
-	const autoRow = (kind: "claude" | "codex") => {
+	const autoBalances = (kind: "claude" | "codex") => {
 		const kindState = state[kind];
 		const systemIdentity = kind === "claude" ? state.claude.systemIdentity : state.codex.currentIdentity;
 		// ~/.codex signed into a managed account's identity is not a second login.
 		const separateSystemLogin = !!systemIdentity && !(kind === "codex" && managedCodexTwin(state));
 		const logins = kindState.accounts.filter((a) => a.auth !== "api").length + (separateSystemLogin ? 1 : 0);
-		if (!kindState.autoDefault && logins < 2) return null;
+		return kindState.autoDefault === true || logins >= 2;
+	};
+	function autoSwitchFor(kind: AgentAccountKind, accountId: string | null) {
+		if (kind !== "claude" && kind !== "codex") return undefined;
+		if (!state || !autoBalances(kind)) return undefined;
+		const excluded = state[kind].autoExcluded?.includes(exclusionKey(kind, accountId)) === true;
+		return { included: !excluded, onToggle: () => handleAutoExcluded(kind, accountId, !excluded) };
+	}
+	const autoRow = (kind: "claude" | "codex") => {
+		const kindState = state[kind];
+		if (!autoBalances(kind)) return null;
 		return (
 			<AccountRow
 				kind={kind}
@@ -939,6 +981,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 						label={t("settings.accountsDefaultLogin", { dir: state.claude.systemConfigDir })}
 						identity={state.claude.systemIdentity}
 						note={state.claude.systemIdentity ? null : t("settings.accountsNotSignedIn")}
+						autoSwitch={state.claude.systemIdentity ? autoSwitchFor("claude", null) : undefined}
 						isActive={claudeActiveId === null}
 						onActivate={
 							claudeActiveId === null

@@ -295,6 +295,11 @@ export interface GlobalSettings {
 	 */
 	autoAccountDefault?: { claude?: true; codex?: true };
 	/**
+	 * Logins Auto never picks, in any project — e.g. a personal account kept out
+	 * of a work pool. Same keys as `Project.autoAccountExclusions`.
+	 */
+	autoAccountExclusions?: string[];
+	/**
 	 * Remembered state of the Watch toggle in the launch/create-variant modal.
 	 * When a task is launched, the toggle's on/off choice is persisted here and
 	 * reused as the default for the next launch. Undefined → default to unwatched.

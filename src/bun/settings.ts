@@ -120,6 +120,12 @@ function normalizeAutoAccountDefault(raw: unknown): GlobalSettings["autoAccountD
 	return Object.keys(out).length ? out : undefined;
 }
 
+function normalizeAutoAccountExclusions(raw: unknown): string[] | undefined {
+	if (!Array.isArray(raw)) return undefined;
+	const keys = [...new Set(raw.filter((v): v is string => typeof v === "string" && v.length > 0))];
+	return keys.length ? keys : undefined;
+}
+
 /** Keep only positive finite numbers under known keys; nothing left ⇒ undefined (all defaults). */
 function sanitizeResourceLevels(raw: unknown): GlobalSettings["resourceLevels"] {
 	if (!raw || typeof raw !== "object") return undefined;
@@ -221,6 +227,7 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		// Default-on toggle — only an explicit false is a stored opt-out.
 		agentRateLimitTracking: d.agentRateLimitTracking === false ? false : undefined,
 		autoAccountDefault: normalizeAutoAccountDefault(d.autoAccountDefault),
+		autoAccountExclusions: normalizeAutoAccountExclusions(d.autoAccountExclusions),
 		// Boolean preference — both true (watch) and false (don't watch) are
 		// meaningful stored choices, so preserve either; only undefined drops.
 		watchByDefault: typeof d.watchByDefault === "boolean" ? d.watchByDefault : undefined,
