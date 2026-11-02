@@ -376,11 +376,17 @@ export function resolveAgentRequest(requestId: string, decision: AgentRequestDec
  * THAT run must not be answerable any more — an approval arriving later would
  * apply to a different run. Resolved as declined + stale, never approved.
  */
-export function voidAgentRequest(kind: AgentRequestKind, taskId: string): boolean {
+export function voidAgentRequest(kind: AgentRequestKind, taskId: string, why = "its run ended"): boolean {
 	const pendingId = requestIdByKey.get(dedupKey(kind, taskId));
 	if (!pendingId) return false;
-	log.info("Voiding agent request — its run ended", { kind, taskId: taskId.slice(0, 8), requestId: pendingId });
+	log.info(`Voiding agent request — ${why}`, { kind, taskId: taskId.slice(0, 8), requestId: pendingId });
 	return resolveAgentRequest(pendingId, { approved: false, stale: true });
+}
+
+/** Whether this request was settled by a void (its task changed), not by an answer. */
+export function wasAgentRequestVoided(requestId: string): boolean {
+	for (const outcome of recentOutcomeByKey.values()) if (outcome.requestId === requestId) return outcome.stale === true;
+	return false;
 }
 
 export function _resetAgentRequestsForTests(): void {
