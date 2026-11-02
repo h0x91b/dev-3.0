@@ -62,6 +62,7 @@ function renderSection(claudePatch: Partial<CodingAgent> = {}, onAgentsChange = 
 				onAgentsChange={onAgentsChange}
 				onDefaultAgentChange={vi.fn()}
 				onDefaultConfigChange={vi.fn()}
+				onCoordinatorDefaultChange={vi.fn()}
 				onGlobalSettingsChange={vi.fn()}
 			/>
 		</I18nProvider>,
@@ -185,6 +186,7 @@ describe("AgentSettingsSection — per-agent provider selector", () => {
 					onAgentsChange={vi.fn()}
 					onDefaultAgentChange={vi.fn()}
 					onDefaultConfigChange={vi.fn()}
+					onCoordinatorDefaultChange={vi.fn()}
 					onGlobalSettingsChange={vi.fn()}
 				/>
 			</I18nProvider>,
@@ -335,6 +337,7 @@ describe("AgentSettingsSection — preset library", () => {
 					onAgentsChange={vi.fn()}
 					onDefaultAgentChange={vi.fn()}
 					onDefaultConfigChange={vi.fn()}
+					onCoordinatorDefaultChange={vi.fn()}
 					onGlobalSettingsChange={vi.fn()}
 				/>
 			</I18nProvider>,
@@ -363,6 +366,7 @@ describe("AgentSettingsSection — preset library", () => {
 					onAgentsChange={vi.fn()}
 					onDefaultAgentChange={vi.fn()}
 					onDefaultConfigChange={vi.fn()}
+					onCoordinatorDefaultChange={vi.fn()}
 					onGlobalSettingsChange={vi.fn()}
 				/>
 			</I18nProvider>,
@@ -541,6 +545,7 @@ describe("a deep-link that names one preset", () => {
 					onAgentsChange={vi.fn()}
 					onDefaultAgentChange={vi.fn()}
 					onDefaultConfigChange={vi.fn()}
+					onCoordinatorDefaultChange={vi.fn()}
 					onGlobalSettingsChange={vi.fn()}
 					focusPreset={{ agentId: claude.id, configId: target.id }}
 					onFocusPresetHandled={onHandled}
@@ -570,6 +575,7 @@ describe("a deep-link that names one preset", () => {
 					onAgentsChange={vi.fn()}
 					onDefaultAgentChange={vi.fn()}
 					onDefaultConfigChange={vi.fn()}
+					onCoordinatorDefaultChange={vi.fn()}
 					onGlobalSettingsChange={vi.fn()}
 					focusPreset={{ agentId: claude.id, configId: target.id }}
 					onFocusPresetHandled={onHandled}
@@ -591,6 +597,7 @@ describe("a deep-link that names one preset", () => {
 					onAgentsChange={vi.fn()}
 					onDefaultAgentChange={vi.fn()}
 					onDefaultConfigChange={vi.fn()}
+					onCoordinatorDefaultChange={vi.fn()}
 					onGlobalSettingsChange={vi.fn()}
 					focusPreset={{ agentId: claude.id, configId: "deleted-long-ago" }}
 					onFocusPresetHandled={onHandled}

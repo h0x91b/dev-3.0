@@ -360,6 +360,12 @@ export interface GlobalSettings {
 	 */
 	coordinatorPrompt?: string;
 	/**
+	 * Agent/preset a coordinator task launches on when nobody picked one.
+	 * Absent ⇒ DEFAULT_COORDINATOR_AGENT_ID / DEFAULT_COORDINATOR_CONFIG_ID.
+	 */
+	coordinatorAgentId?: string;
+	coordinatorConfigId?: string;
+	/**
 	 * Cross-provider "favorite" agent configs shown as quick-pick chips on the
 	 * launch picker (Launch/Retry, Spawn, Bug Hunters). Thin pointers, capped at
 	 * MAX_FAVORITES with LFU-then-LRU eviction; ordered by uses then recency.

@@ -955,6 +955,13 @@ function GlobalSettings({
 		[agents, persistSettingChange],
 	);
 
+	const handleCoordinatorDefaultChange = useCallback(
+		(agentId: string, configId: string | null) => {
+			persistSettingChange({ coordinatorAgentId: agentId, coordinatorConfigId: configId ?? undefined });
+		},
+		[persistSettingChange],
+	);
+
 	const handleDefaultConfigChange = useCallback(
 		(configId: string) => {
 			persistSettingChange({ defaultConfigId: configId });
@@ -1097,6 +1104,7 @@ function GlobalSettings({
 							onAgentsChange={persistAgents}
 							onDefaultAgentChange={handleDefaultAgentChange}
 							onDefaultConfigChange={handleDefaultConfigChange}
+							onCoordinatorDefaultChange={handleCoordinatorDefaultChange}
 							onGlobalSettingsChange={setGlobalSettings}
 							focusPreset={focusPreset}
 							onFocusPresetHandled={clearFocusPreset}
