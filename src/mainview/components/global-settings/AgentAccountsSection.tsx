@@ -10,7 +10,7 @@ import type {
 	ClaudeSlotModels,
 } from "../../../shared/agent-accounts";
 import type { AccountLoginState } from "../../../shared/agent-accounts";
-import { AUTO_ACCOUNT_ID, CLAUDE_MODEL_SLOTS, isAgentDirAccountKind, managedCodexTwin, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../../shared/agent-accounts";
+import { AUTO_ACCOUNT_ID, CLAUDE_MODEL_SLOTS, isAccountLoginRefusal, isAgentDirAccountKind, managedCodexTwin, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../../shared/agent-accounts";
 import { api, isElectrobun } from "../../rpc";
 import AccountLoginModal, { AGENT_NAMES, loginPhaseTitle } from "./AccountLoginModal";
 import { confirm } from "../../confirm";
@@ -670,8 +670,9 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 			setLogins((prev) => ({ ...prev, [kind]: login }));
 			setShownLogin(kind);
 		} catch (err) {
-			// Only a record this handler created is ours to close; a joined one belongs to someone else.
-			if (created && started?.phase === "ready") void api.request.closeAccountLogin({ loginId: started.loginId }).catch(() => {});
+			// Close only a record this handler created and that failed for its own reason: a refusal
+			// means another window moved the shared record on, and closing it would kill their sign-in.
+			if (created && started?.phase === "ready" && !isAccountLoginRefusal(err)) void api.request.closeAccountLogin({ loginId: started.loginId }).catch(() => {});
 			// The user cancelled meanwhile: nothing left to report.
 			if (started && loginsRef.current[kind]?.loginId !== started.loginId) return;
 			toast.error(t("settings.accountLoginStartFailed", { error: err instanceof Error ? err.message : String(err) }), { source: "settings" });

@@ -230,6 +230,27 @@ describe("account login manager", () => {
 		expect(env.procs).toHaveLength(1);
 	});
 
+	it("every host refusal is recognised by the UI as a refusal, and a real failure is not", async () => {
+		const { isAccountLoginRefusal } = await import("../../shared/agent-accounts");
+		const refusal = async (call: () => unknown) => {
+			try { await call(); } catch (err) { return err; }
+			throw new Error("expected a refusal");
+		};
+		const ready = await env.manager.start("claude", { remoteViewer: false });
+		const running = await env.manager.begin(ready.loginId);
+		const errors = [
+			await refusal(() => env.manager.begin(running.loginId)), // already started
+			await refusal(() => env.manager.begin("no-such-login")), // already ended
+		];
+		env.identity.add("acc-1");
+		errors.push(await refusal(() => env.manager.addWithoutSignIn(running.loginId))); // a sign-in was found
+		await env.clock.advance(ACCOUNT_LOGIN_POLL_MS);
+		expect(env.manager.get("claude")?.phase).toBe("succeeded");
+		errors.push(await refusal(() => env.manager.addWithoutSignIn(running.loginId))); // can no longer be added
+		for (const err of errors) expect(isAccountLoginRefusal(err)).toBe(true);
+		expect(isAccountLoginRefusal(new Error("boom"))).toBe(false);
+	});
+
 	it("begin on a finished sign-in says it has ended", async () => {
 		env = setup({ resolveExecutable: async () => { throw new Error("Custom executable for agent \"Claude Code\" not found or not executable: /gone"); } });
 		const failed = await env.startRunning("claude", { remoteViewer: false });

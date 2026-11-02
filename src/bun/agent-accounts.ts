@@ -64,6 +64,7 @@ import type {
 	ProviderLogin,
 } from "../shared/agent-accounts";
 import {
+	ACCOUNT_LOGIN_ENDED_MESSAGE,
 	CLAUDE_MODEL_SLOTS,
 	DEV3_AGENT_ACCOUNT_ID_ENV,
 	ENV_UNSET,
@@ -1505,7 +1506,7 @@ export function registerStagedClaudeAccount(accountId: string, paths: AccountPat
 	const registry = loadRegistry(paths);
 	const existing = registry.claude.accounts.find((e) => e.id === accountId);
 	if (existing) return toAccount(existing, "claude", paths);
-	if (!isDirectory(dir)) throw new Error("This sign-in has already ended.");
+	if (!isDirectory(dir)) throw new Error(ACCOUNT_LOGIN_ENDED_MESSAGE);
 	const account = registerAccount(registry, "claude", accountId, null, paths, { autoLabel: true });
 	unmarkStagedLogin(dir);
 	return account;

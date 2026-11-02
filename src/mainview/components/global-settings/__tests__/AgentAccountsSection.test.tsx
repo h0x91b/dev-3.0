@@ -463,6 +463,19 @@ describe("AgentAccountsSection", () => {
 		errorToast.mockRestore();
 	});
 
+	it("a refused begin on a record this handler created does not close it either: the winner owns it", async () => {
+		mockedApi.request.startAccountLogin.mockResolvedValue(login({ phase: "ready", sessionKey: null, created: true }));
+		mockedApi.request.beginAccountLogin.mockRejectedValue(new Error("This sign-in has already started."));
+		const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "test-toast");
+		const user = userEvent.setup();
+		renderSection();
+		await screen.findByText("Default login (/home/me/.claude)");
+		await user.click(screen.getAllByText("Add account")[0]);
+		await waitFor(() => expect(errorToast).toHaveBeenCalled());
+		expect(mockedApi.request.closeAccountLogin).not.toHaveBeenCalled();
+		errorToast.mockRestore();
+	});
+
 	it("a refused begin after the user cancelled meanwhile shows no error", async () => {
 		mockedApi.request.startAccountLogin.mockResolvedValue(login({ phase: "ready", sessionKey: null }));
 		let fail!: (err: Error) => void;

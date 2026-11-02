@@ -19,7 +19,7 @@
  */
 
 import { extname } from "node:path";
-import { isAgentDirAccountKind, type AccountLoginPhase, type AccountLoginState, type AgentAccount, type AgentAccountKind } from "../shared/agent-accounts";
+import { ACCOUNT_LOGIN_ENDED_MESSAGE, ACCOUNT_LOGIN_FOUND_MESSAGE, ACCOUNT_LOGIN_NOT_ADDABLE_MESSAGE, ACCOUNT_LOGIN_STARTED_MESSAGE, isAgentDirAccountKind, type AccountLoginPhase, type AccountLoginState, type AgentAccount, type AgentAccountKind } from "../shared/agent-accounts";
 import { DEFAULT_AGENTS } from "../shared/types";
 import * as accounts from "./agent-accounts";
 import type { PreparedAccountLogin } from "./agent-accounts";
@@ -421,11 +421,11 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 	/** "Start sign-in": the only point where a login process may start. Allowed from "ready" only. */
 	async function begin(loginId: string): Promise<AccountLoginState> {
 		const record = findById(loginId);
-		if (!record) throw new Error("This sign-in has already ended.");
+		if (!record) throw new Error(ACCOUNT_LOGIN_ENDED_MESSAGE);
 		if (record.state.phase === "ready") {
-			if (record.beginning) throw new Error("This sign-in has already started.");
+			if (record.beginning) throw new Error(ACCOUNT_LOGIN_STARTED_MESSAGE);
 		} else {
-			throw new Error(ACTIVE_PHASES.has(record.state.phase) ? "This sign-in has already started." : "This sign-in has already ended.");
+			throw new Error(ACTIVE_PHASES.has(record.state.phase) ? ACCOUNT_LOGIN_STARTED_MESSAGE : ACCOUNT_LOGIN_ENDED_MESSAGE);
 		}
 		const { kind } = record.state;
 		record.beginning = true;
@@ -448,7 +448,7 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 		} finally {
 			record.beginning = false;
 		}
-		if (byKind.get(kind) !== record) throw new Error("This sign-in has already ended.");
+		if (byKind.get(kind) !== record) throw new Error(ACCOUNT_LOGIN_ENDED_MESSAGE);
 		if (!ACTIVE_PHASES.has(record.state.phase)) return { ...record.state };
 		schedulePoll(record);
 		return { ...record.state };
@@ -481,7 +481,7 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 
 	async function restart(loginId: string, opts: { remoteViewer: boolean }): Promise<AccountLoginState> {
 		const record = findById(loginId);
-		if (!record) throw new Error("This sign-in has already ended.");
+		if (!record) throw new Error(ACCOUNT_LOGIN_ENDED_MESSAGE);
 		const kind = record.state.kind;
 		close(loginId);
 		const fresh = await start(kind, opts);
@@ -492,11 +492,11 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 	 *  The login command stays in the state so the user can sign in later by hand. */
 	function addWithoutSignIn(loginId: string): AccountLoginState {
 		const record = findById(loginId);
-		if (!record) throw new Error("This sign-in has already ended.");
+		if (!record) throw new Error(ACCOUNT_LOGIN_ENDED_MESSAGE);
 		if (record.state.kind !== "claude") throw new Error("Only a Claude sign-in can be added without signing in.");
-		if (record.state.phase !== "ready" && !WATCHED_PHASES.has(record.state.phase)) throw new Error("This sign-in can no longer be added without signing in.");
+		if (record.state.phase !== "ready" && !WATCHED_PHASES.has(record.state.phase)) throw new Error(ACCOUNT_LOGIN_NOT_ADDABLE_MESSAGE);
 		if (deps.hasIdentity(record.state.kind, record.accountId)) {
-			throw new Error("A sign-in was found — wait for dev3 to confirm it.");
+			throw new Error(ACCOUNT_LOGIN_FOUND_MESSAGE);
 		}
 		const account = deps.addWithoutLogin(record.state.kind, record.accountId);
 		clearTimers(record);
