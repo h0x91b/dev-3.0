@@ -36,6 +36,8 @@ async function measureWorktrees(): Promise<WorktreeDiskUsage[]> {
 	for (const project of [...(await loadProjects()), ...(await loadVirtualProjects())]) {
 		for (const task of await loadTasks(project)) {
 			if (!task.worktreePath) continue;
+			// An Operations task may run in a user-picked folder; dev3 does not own it.
+			if (project.kind === "virtual" && task.opsWorkDir?.trim()) continue;
 			byPath.set(task.worktreePath, {
 				shortId: task.id.slice(0, 8),
 				taskId: task.id,
