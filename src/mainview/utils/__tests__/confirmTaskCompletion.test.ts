@@ -313,4 +313,56 @@ describe("confirmTaskCompletion", () => {
 			expect(ok).toBe(false);
 		});
 	});
+	describe("Operations (virtual) tasks", () => {
+		const ops = { id: "p1", name: "Ops", path: "/ops", kind: "virtual" } as Project;
+
+		it("does not look at git for a plain Operations task", async () => {
+			const ok = await confirmTaskCompletion(baseTask, ops, "completed", t);
+
+			expect(ok).toBe(true);
+			expect(mockedBranchStatus).not.toHaveBeenCalled();
+			expect(mockedConfirm).not.toHaveBeenCalled();
+		});
+
+		it("does not stream a git check into the quick-complete dialog of a plain Operations task", async () => {
+			await confirmTaskCompletion(baseTask, ops, "completed", t, undefined, { alwaysConfirm: true });
+
+			expect(mockedUnsavedWork).not.toHaveBeenCalled();
+			expect(mockedConfirm.mock.calls[0]![0].deferred).toBeUndefined();
+		});
+
+		it("warns about unsaved work of a worktree-mode task like a git task", async () => {
+			const wtTask = { ...baseTask, attachedRepo: "/repo", opsWorktree: true } as Task;
+			await confirmTaskCompletion(wtTask, ops, "completed", t);
+
+			expect(mockedBranchStatus).toHaveBeenCalled();
+			expect(mockedConfirm).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("task.warnUncommitted") }));
+		});
+
+		it("asks before completing a worktree-mode task whose branch status cannot be read (drag path)", async () => {
+			mockedBranchStatus.mockRejectedValueOnce(new Error("Attached repository not found"));
+			const wtTask = { ...baseTask, attachedRepo: "/repo", opsWorktree: true } as Task;
+
+			await confirmTaskCompletion(wtTask, ops, "completed", t);
+
+			expect(mockedConfirm).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("task.branchStateUnknown") }));
+		});
+
+		it("still lets a git task through when its branch status cannot be read", async () => {
+			mockedBranchStatus.mockRejectedValueOnce(new Error("boom"));
+
+			expect(await confirmTaskCompletion(baseTask, project, "completed", t)).toBe(true);
+			expect(mockedConfirm).not.toHaveBeenCalled();
+		});
+
+		it("keeps the unsaved-work check for a worktree-mode task even when existingBranch is set", async () => {
+			const wtTask = { ...baseTask, attachedRepo: "/repo", opsWorktree: true, existingBranch: "master" } as Task;
+
+			await confirmTaskCompletion(wtTask, ops, "completed", t);
+			expect(mockedBranchStatus).toHaveBeenCalled();
+
+			await confirmTaskCompletion(wtTask, ops, "completed", t, undefined, { alwaysConfirm: true });
+			expect(mockedUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+		});
+	});
 });

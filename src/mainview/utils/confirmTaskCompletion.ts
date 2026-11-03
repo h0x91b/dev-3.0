@@ -2,6 +2,7 @@ import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { taskDialogInfo } from "./taskDialogInfo";
 import type { Task, Project, TaskStatus, BranchStatus, UnsavedWork } from "../../shared/types";
+import { isOpsWorktreeTask } from "../../shared/types";
 import type { TFunction } from "../i18n";
 
 /**
@@ -92,7 +93,9 @@ export async function confirmTaskCompletion(
 	// PR-review tasks check out someone else's existing branch — the commits,
 	// unpushed and unmerged state aren't the user's work, so completing them
 	// must not warn about uncommitted/unpushed/unmerged changes.
-	const skipGitCheck = !task.worktreePath || Boolean(task.existingBranch);
+	// An Operations task has nothing to lose in git, unless it works in its own worktree.
+	const skipGitCheck = !task.worktreePath || (Boolean(task.existingBranch) && !isOpsWorktreeTask(task))
+		|| (project.kind === "virtual" && !isOpsWorktreeTask(task));
 	if (skipGitCheck && !alwaysConfirm) return true;
 
 	const tail = task.worktreePath
@@ -127,18 +130,23 @@ export async function confirmTaskCompletion(
 	try {
 		status = await api.request.getBranchStatus({ taskId: task.id, projectId: project.id });
 	} catch {
-		// Can't check — don't block the move
-		return true;
+		// Can't check — don't block the move, unless completing deletes an owned worktree.
+		if (!isOpsWorktreeTask(task)) return true;
+		return confirmWarnings([t("task.branchStateUnknown")]);
 	}
 	if (!status) return true;
 
 	const warnings = gitWarnings(status, task, project, t);
 	if (warnings.length === 0) return true;
 
-	return confirm({
-		title: t("task.warnCompletionTitle"),
-		confirmLabel: t(newStatus === "completed" ? "task.confirmCompleteLabel" : "task.confirmCancelLabel"),
-		info,
-		message: `${warnings.map((w) => `• ${w}`).join("\n")}\n\n${tail}`,
-	});
+	return confirmWarnings(warnings);
+
+	function confirmWarnings(lines: string[]): Promise<boolean> {
+		return confirm({
+			title: t("task.warnCompletionTitle"),
+			confirmLabel: t(newStatus === "completed" ? "task.confirmCompleteLabel" : "task.confirmCancelLabel"),
+			info,
+			message: `${lines.map((w) => `• ${w}`).join("\n")}\n\n${tail}`,
+		});
+	}
 }

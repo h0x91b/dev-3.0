@@ -4304,6 +4304,20 @@ describe("App keyboard shortcuts", () => {
 			expect(opts.deferred?.gateConfirm).toBe(true);
 		});
 
+		it("says the branch is kept when the task's branch survives the reset", async () => {
+			vi.mocked(confirm).mockResolvedValue(false);
+			await renderApp();
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:agentResetRequested", {
+					detail: { requestId: "req-r2", taskId: "t1", projectId: "p1", taskTitle: "Ops task", branchKept: true },
+				}));
+			});
+			await waitFor(() => expect(confirm).toHaveBeenCalled());
+			const message = vi.mocked(confirm).mock.calls[0][0].message as string;
+			expect(message).toContain("branch is kept");
+			expect(message).not.toContain("plus its branch");
+		});
+
 		it("replays a pending reset request on connect", async () => {
 			vi.mocked(api.request.listPendingResetRequests).mockResolvedValue([
 				{ requestId: "req-r-orphan", taskId: "t1", projectId: "p1", taskTitle: "Stranded", subject: undefined },

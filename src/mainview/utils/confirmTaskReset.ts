@@ -2,7 +2,7 @@ import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { taskDialogInfo } from "./taskDialogInfo";
 import { unsavedWorkWarning } from "./confirmTaskCompletion";
-import { taskResetConsent, type Project, type Task, type TaskResetConsent } from "../../shared/types";
+import { isOpsWorktreeTask, taskResetConsent, type Project, type Task, type TaskResetConsent } from "../../shared/types";
 import type { TFunction } from "../i18n";
 
 /**
@@ -20,16 +20,19 @@ export async function confirmTaskReset(
 	const consent = taskResetConsent(task);
 	const virtual = project.kind === "virtual";
 	const branch = task.branchName;
-	const unsaved = task.worktreePath && !virtual && !task.existingBranch
+	const opsWorktree = isOpsWorktreeTask(task);
+	const unsaved = task.worktreePath && ((!virtual && !task.existingBranch) || opsWorktree)
 		? api.request.getUnsavedWork({ taskId: task.id, projectId: project.id })
 		: null;
 	const approved = await confirm({
 		title: t("task.confirmResetTitle"),
-		message: virtual
-			? t("task.confirmResetMessageVirtual")
-			: branch
-				? t("task.confirmResetMessage", { branch })
-				: t("task.confirmResetMessageNoBranch"),
+		message: opsWorktree
+			? t("task.confirmResetMessageOpsWorktree", { branch: branch ?? "" })
+			: virtual
+				? t("task.confirmResetMessageVirtual")
+				: branch
+					? t("task.confirmResetMessage", { branch })
+					: t("task.confirmResetMessageNoBranch"),
 		confirmLabel: t("task.confirmResetLabel"),
 		cancelLabel: t("task.confirmResetCancel"),
 		danger: true,

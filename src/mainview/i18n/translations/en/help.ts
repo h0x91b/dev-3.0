@@ -72,7 +72,7 @@ const help = {
 		"Points dev-3.0 at a git repository on this machine — pick a folder you already have, clone a URL, or create an empty repo. Nothing in it is modified by adding it. Every task on the resulting board gets its own branch, folder and terminal. The Operations option makes a board with no git at all, for work that is not code.",
 	"help.dashboard.opsBoard.title": "The Operations board",
 	"help.dashboard.opsBoard.body":
-		"A board for work that is not about a repository: research, one-off scripts, notes to an agent, anything you would otherwise not know where to file. Its tasks get a managed folder instead of a git worktree, so there is no branch, no diff and no pull request — everything else, including the agent and the terminal, works exactly as on a git board. Every install starts with this one, and you can add more.",
+		"A board for work that is not about a repository: research, one-off scripts, notes to an agent, anything you would otherwise not know where to file. Its tasks get a managed folder instead of a git worktree, so by default there is no branch and no diff; pick a repository as the working folder, or attach one from the Git bar, to get its diff and review — everything else, including the agent and the terminal, works exactly as on a git board. Every install starts with this one, and you can add more.",
 	"help.dashboard.firstRun.title": "Getting started",
 	"help.dashboard.firstRun.body":
 		"Shown until you add your first repository, then it is replaced by the Productivity Stats card. The shortest path is: add a project, open its board, write one task in plain words, and press Save & Start — that launches an agent on it straight away.",

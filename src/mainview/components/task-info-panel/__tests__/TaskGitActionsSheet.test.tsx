@@ -28,10 +28,10 @@ const git = {
 	refreshingStatus: false, statusError: null, statusLoading: false,
 } as unknown as TaskBranchStatusController;
 
-function renderSheet(task: Task, onAction = vi.fn()) {
+function renderSheet(task: Task, onAction = vi.fn(), sheetProject: Project = project, onOpenInlineDiff?: () => void) {
 	render(
 		<I18nProvider>
-			<TaskGitActionsSheet task={task} project={project} isTaskActive git={git} rowClassName="row" onAction={onAction} />
+			<TaskGitActionsSheet task={task} project={sheetProject} isTaskActive git={git} rowClassName="row" onAction={onAction} onOpenInlineDiff={onOpenInlineDiff} />
 		</I18nProvider>,
 	);
 	return onAction;
@@ -60,5 +60,22 @@ describe("TaskGitActionsSheet reviewed PR row", () => {
 		renderSheet(reviewTask({ reviewedPr: null }));
 
 		expect(screen.queryByRole("button", { name: /Open reviewed PR/ })).not.toBeInTheDocument();
+	});
+});
+
+describe("TaskGitActionsSheet on an Operations task", () => {
+	const ops: Project = { ...project, kind: "virtual" };
+
+	it("renders nothing without an attached repo", () => {
+		renderSheet(reviewTask(), vi.fn(), ops, vi.fn());
+
+		expect(screen.queryByRole("button")).not.toBeInTheDocument();
+	});
+
+	it("with an attached repo offers Show diff and no write action", () => {
+		renderSheet(reviewTask({ attachedRepo: "/Users/me/repo", reviewedPr: null }), vi.fn(), ops, vi.fn());
+
+		expect(screen.getByRole("button", { name: /Show Diff/ })).toBeInTheDocument();
+		expect(screen.getAllByRole("button")).toHaveLength(1);
 	});
 });

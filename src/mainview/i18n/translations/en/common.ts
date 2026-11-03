@@ -40,6 +40,7 @@ const common = {
 	"app.agentCancellationCancel": "Keep the task",
 	"app.agentResetTitle": "Reset to To Do requested",
 	"app.agentResetMessage": "A dev3 command — usually an AI agent — asks to move this running task back to To Do. Approving stops its agent and deletes the worktree with everything uncommitted in it, plus its branch if dev3 created it. A task note records how to recover deleted commits.\n\nThe card stays in To Do with its title, description, notes, labels and settings, and starts fresh next time.",
+	"app.agentResetMessageBranchKept": "A dev3 command — usually an AI agent — asks to move this running task back to To Do. Approving stops its agent and deletes the worktree with everything uncommitted in it. The task's branch is kept.\n\nThe card stays in To Do with its title, description, notes, labels and settings, and starts fresh next time.",
 	"app.agentResetConfirm": "Reset task",
 	"app.agentResetCancel": "Keep as is",
 
