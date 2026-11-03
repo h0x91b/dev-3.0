@@ -217,6 +217,9 @@
        would otherwise stack on top of it and sink the text below the edge. */
     .card > :first-child { margin-top: 0; }
     .card > :last-child { margin-bottom: 0; }
+    /* No widget carries its own margin, so a slider form, a preset row and a KPI
+       grid stacked in one card would touch. */
+    .card > :is(form, .controls, .option-group, .grid, .stack) + *, .card > * + :is(form, .controls, .option-group, .grid, .stack) { margin-top: 14px; }
     /* A toned panel carries its hue on its own edge, so a grid of cards reads as
        a set of distinct panels rather than one repeated grey box. */
     .card:is(.tone-1, .tone-2, .tone-3, .tone-4, .tone-5, .tone-6, .tone-gold) {
@@ -502,6 +505,8 @@
        enlarged text instead of turning into a dot. */
     .ui-range-control { height: 2.43em; margin: .5em .79em 1.29em; border: 0; background: transparent; box-shadow: none; }
     .ui-range-control.noUi-horizontal { height: .5em; }
+    /* Pip labels hang below the track; reserve their room or they overlap the next row. */
+    .ui-range-control:has(.noUi-pips) { margin-bottom: 2.1em; }
     .ui-range-control .noUi-base {
       border-radius: 999px;
       background: rgb(var(--dev3-border) / .72);

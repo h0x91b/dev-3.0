@@ -507,6 +507,13 @@ describe("bundled artifact starter contract", () => {
 		expect(readFileSync(appPath, "utf8")).toContain("pill.title = pill.textContent.trim();");
 	});
 
+	it("keeps stacked card widgets and slider pip labels from overlapping", () => {
+		const css = readFileSync(cssPath, "utf8");
+
+		expect(css).toContain(".card > :is(form, .controls, .option-group, .grid, .stack) + *, .card > * + :is(form, .controls, .option-group, .grid, .stack) { margin-top: 14px; }");
+		expect(css).toContain(".ui-range-control:has(.noUi-pips) { margin-bottom: 2.1em; }");
+	});
+
 	it("stacks a table into labelled lines instead of scrolling it sideways", () => {
 		const css = readFileSync(cssPath, "utf8");
 		const app = readFileSync(appPath, "utf8");
