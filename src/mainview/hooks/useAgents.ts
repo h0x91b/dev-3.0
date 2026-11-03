@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { CodingAgent } from "../../shared/types";
 import { api } from "../rpc";
+import { ignoreStartupReadFailure, startupRead } from "../startup-read";
 
 /**
  * The agent presets, kept current for the lifetime of the surface.
@@ -14,12 +15,18 @@ import { api } from "../rpc";
 export function useAgents(): CodingAgent[] {
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	useEffect(() => {
-		api.request.getAgents().then(setAgents).catch(() => {});
+		let alive = true;
+		startupRead("agent presets", () => api.request.getAgents(), { isCancelled: () => !alive })
+			.then((next) => { if (alive) setAgents(next); })
+			.catch(ignoreStartupReadFailure);
 		function onUpdated(e: Event) {
 			setAgents((e as CustomEvent<CodingAgent[]>).detail);
 		}
 		window.addEventListener("rpc:agentsUpdated", onUpdated);
-		return () => window.removeEventListener("rpc:agentsUpdated", onUpdated);
+		return () => {
+			alive = false;
+			window.removeEventListener("rpc:agentsUpdated", onUpdated);
+		};
 	}, []);
 	return agents;
 }

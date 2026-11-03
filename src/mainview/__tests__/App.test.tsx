@@ -2,6 +2,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "../App";
 import { I18nProvider } from "../i18n";
+import type { SecretRequest } from "../../shared/secret-request";
 
 const rpcTransport = vi.hoisted(() => ({ isElectrobun: true }));
 
@@ -75,6 +76,8 @@ vi.mock("../rpc", () => ({
 			listPendingResetRequests: vi.fn().mockResolvedValue([]),
 			getUnsavedWork: vi.fn().mockResolvedValue({ insertions: 0, deletions: 0, unpushed: 0, ahead: 0, baseUnreachable: false }),
 			getPendingAgentLaunchRequests: vi.fn().mockResolvedValue([]),
+			listSecretRequests: vi.fn().mockResolvedValue([]),
+			respondToSecretRequest: vi.fn().mockResolvedValue(true),
 			respondToAgentLaunchRequest: vi.fn().mockResolvedValue(undefined),
 			// The launch dialog reports itself on screen on mount so the bun side
 			// restarts its countdown; null means there is no timer to restart.
@@ -528,6 +531,34 @@ describe("App keyboard shortcuts", () => {
 			const event = new KeyboardEvent("keydown", { key: "p", code: "KeyP", ctrlKey: true, bubbles: true, cancelable: true });
 			act(() => window.dispatchEvent(event));
 			expect(event.defaultPrevented).toBe(true);
+		});
+	});
+
+	describe("settings save base", () => {
+		const stored = {
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-auto-opus55-medium",
+			taskSortOrder: "oldest-first" as const,
+			updateChannel: "stable" as const,
+			theme: "light" as const,
+			tipsDisabled: true,
+		};
+
+		it("never saves the pre-load placeholder when the startup settings load is lost", async () => {
+			// The mount-time read never answers; the next read does.
+			vi.mocked(api.request.getGlobalSettings)
+				.mockImplementationOnce(() => new Promise(() => {}))
+				.mockResolvedValueOnce(stored);
+			await renderApp();
+
+			act(() => {
+				window.dispatchEvent(new CustomEvent("menu:enter-help-mode"));
+			});
+
+			await waitFor(() => expect(api.request.saveGlobalSettings).toHaveBeenCalled());
+			const saved = vi.mocked(api.request.saveGlobalSettings).mock.calls.map((c) => c[0]);
+			expect(saved.some((s) => s.defaultConfigId === "claude-auto")).toBe(false);
+			expect(saved[saved.length - 1]).toEqual({ ...stored, helpModeDiscovered: true });
 		});
 	});
 
@@ -4276,6 +4307,37 @@ describe("App keyboard shortcuts", () => {
 	// before answering never sees it again — and the blocked agent's retry joins
 	// the same request rather than pushing a second time. A connecting client asks
 	// what is still pending, which is what makes the request answerable at all.
+	describe("private secret request queue", () => {
+		const secret: SecretRequest = {
+			requestId: "secret-1", taskId: "t1", projectId: "p1", taskTitle: "Private upload", env: "TOKEN",
+			command: ["upload"], cwd: "/synthetic", expiresAt: Date.now() + 60_000, runStartedAt: null,
+		};
+
+		it("restores pending metadata and queues requests without duplicate dialogs", async () => {
+			vi.mocked(api.request.listSecretRequests).mockResolvedValueOnce([secret]);
+			await renderApp();
+			expect(await screen.findByRole("dialog", { name: "Run once with a secret" })).toBeInTheDocument();
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:secretRequested", { detail: secret }));
+				window.dispatchEvent(new CustomEvent("rpc:secretRequested", { detail: { ...secret, requestId: "secret-2", taskId: "t2", env: "OTHER_TOKEN" } }));
+			});
+			expect(screen.getAllByRole("dialog", { name: "Run once with a secret" })).toHaveLength(1);
+			act(() => { window.dispatchEvent(new CustomEvent("rpc:secretRequestResolved", { detail: { requestId: "secret-1" } })); });
+			expect(await screen.findByLabelText("Secret for OTHER_TOKEN")).toBeInTheDocument();
+		});
+
+		it("does not reopen a resolved request when a reconnect listing arrives late", async () => {
+			let replay!: (requests: SecretRequest[]) => void;
+			vi.mocked(api.request.listSecretRequests).mockReturnValueOnce(new Promise((resolve) => { replay = resolve; }));
+			await renderApp();
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:secretRequestResolved", { detail: { requestId: secret.requestId } }));
+				replay([secret]);
+			});
+			expect(screen.queryByRole("dialog", { name: "Run once with a secret" })).not.toBeInTheDocument();
+		});
+	});
+
 	describe("pending completion requests on connect", () => {
 		it("draws a dialog for a request that was pushed before this window existed", async () => {
 			vi.mocked(api.request.listPendingCompletionRequests).mockResolvedValue([

@@ -64,6 +64,9 @@ const {
 		hasMouseTracking: vi.fn(() => false),
 		hasBracketedPaste: vi.fn(() => false),
 		scrollToBottom: vi.fn(),
+		scrollToLine: vi.fn(),
+		getViewportY: vi.fn(() => 0),
+		getScrollbackLength: vi.fn(() => 0),
 		hasSelection: vi.fn(() => false),
 		isAlternateScreen: vi.fn(() => false),
 		getSelection: vi.fn(() => ""),
@@ -395,6 +398,14 @@ describe("TerminalView – resilient re-fit on late layout growth", () => {
 });
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
+
+describe("TerminalView – contenteditable caret", () => {
+	it("hides the native caret WebKit paints beside the canvas of a focused terminal", async () => {
+		await renderAndSetup();
+		const container = document.querySelector<HTMLElement>("[data-terminal='true']")!;
+		expect(container.style.caretColor).toBe("transparent");
+	});
+});
 
 describe("TerminalView – focus-on-type", () => {
 	it("focuses the terminal and feeds the key when body is active and a printable key is pressed", async () => {
@@ -1866,6 +1877,47 @@ describe("TerminalView – paste routing", () => {
 		expect(mockedUploadFileBase64).not.toHaveBeenCalled();
 	});
 
+	it("uploads a non-image file copied in Finder and types its path, like a drop", async () => {
+		// WKWebView hands a Finder file copy over as a File and hides the filename text.
+		mockedUploadFileBase64.mockImplementation(async ({ filename }) => ({ path: `/tmp/uploads/${filename}` }) as any);
+		const { container } = await renderAndSetup();
+		const terminal = container.querySelector('[data-terminal="true"]')!;
+		const pdf = new File(["%PDF-1.4"], "my report.pdf", { type: "application/pdf" });
+		const png = new File([new Uint8Array([0x89, 0x50])], "photo.png", { type: "image/png" });
+
+		const { preventDefault } = dispatchPaste(terminal, "", [{ type: "application/pdf" }, { type: "image/png" }], [pdf, png]);
+
+		await waitFor(() => {
+			expect(
+				lastWebSocket?.send,
+				"cause: non-image files in a Finder paste were dropped or paths escaped twice. fix: upload all clipboard files when there is no text; escape each path once",
+			).toHaveBeenCalledWith("/tmp/uploads/my\\ report.pdf /tmp/uploads/photo.png");
+		});
+		expect(preventDefault).toHaveBeenCalled();
+		expect(mockedPasteClipboardImage).not.toHaveBeenCalled();
+		expect(mockPaste).not.toHaveBeenCalled();
+	});
+
+	it("a copied folder fails with a toast while the file copied with it still lands", async () => {
+		mockedUploadFileBase64.mockResolvedValue({ path: "/tmp/uploads/data.zip" } as any);
+		const { container } = await renderAndSetup();
+		const terminal = container.querySelector('[data-terminal="true"]')!;
+		// WKWebView gives a copied folder as an empty, untyped File whose bytes cannot be read.
+		const folder = new File([], "photos");
+		Object.defineProperty(folder, "arrayBuffer", { value: () => Promise.reject(new Error("NotReadableError")) });
+		const zip = new File(["PK"], "data.zip", { type: "application/zip" });
+
+		dispatchPaste(terminal, "", [], [folder, zip]);
+
+		await waitFor(() => {
+			expect(
+				lastWebSocket?.send,
+				"cause: one unreadable file dropped the whole paste. fix: catch upload errors per file",
+			).toHaveBeenCalledWith("/tmp/uploads/data.zip");
+		});
+		expect(toast.error).toHaveBeenCalledTimes(1);
+	});
+
 	it("still diverts large text pastes to the .txt uploader (not term.paste)", async () => {
 		mockedUploadFileBase64.mockResolvedValue({ path: "/tmp/uploads/pasted-text.txt" } as any);
 		const { container } = await renderAndSetup();
@@ -2380,6 +2432,29 @@ describe("TerminalView – native stream framing", () => {
 		return `\x1b_dev3nt;${JSON.stringify({ v: 1, ...header })}\x1b\\${payload}`;
 	}
 
+	afterEach(() => {
+		mockTermInstance.getViewportY.mockReset();
+		mockTermInstance.getScrollbackLength.mockReset();
+		mockTermInstance.viewportY = 0;
+	});
+
+	async function renderNativeWithSignal() {
+		const onScrolledIntoHistory = vi.fn();
+		await act(async () => {
+			render(
+				<I18nProvider>
+					<TerminalView ptyUrl={PTY_URL} taskId="t1" projectId="p1" onScrolledIntoHistory={onScrolledIntoHistory} />
+				</I18nProvider>,
+			);
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+		await act(async () => { fireResize?.(); });
+		await waitForInitialSocket();
+		const onScroll = (mockTermInstance.onScroll.mock.lastCall as unknown as [() => void])[0];
+		return { onScrolledIntoHistory, onScroll };
+	}
+
 	it("connects without a watermark and resumes from one after a drop", async () => {
 		const onNativeStatus = vi.fn();
 		await renderNative(onNativeStatus);
@@ -2428,6 +2503,8 @@ describe("TerminalView – native stream framing", () => {
 	it("replaces the screen in one write when the server rebuilt it", async () => {
 		await renderNative();
 		mockTermInstance.write.mockClear();
+		mockTermInstance.getViewportY.mockReturnValue(30);
+		mockTermInstance.getScrollbackLength.mockReturnValue(100);
 
 		deliver(frame({
 			t: "attach",
@@ -2442,6 +2519,10 @@ describe("TerminalView – native stream framing", () => {
 		}, "rebuilt"));
 
 		expect(mockTermInstance.write).toHaveBeenCalledWith("\x1bcrebuilt");
+		expect(mockTermInstance.scrollToLine).not.toHaveBeenCalled();
+
+		deliver(frame({ t: "o", seq: 3 }, "more\r\n"));
+		expect(mockTermInstance.scrollToLine).toHaveBeenCalledWith(30);
 	});
 
 	it("appends a resumed delta without resetting the screen", async () => {
@@ -2460,6 +2541,97 @@ describe("TerminalView – native stream framing", () => {
 		}, "delta"));
 
 		expect(mockTermInstance.write).toHaveBeenCalledWith("delta");
+	});
+
+	it("keeps a reader in history on the same rows while output arrives", async () => {
+		await renderNative();
+		mockTermInstance.getViewportY.mockReturnValueOnce(30);
+		mockTermInstance.getScrollbackLength.mockReturnValueOnce(100).mockReturnValueOnce(103);
+
+		deliver(frame({ t: "o", seq: 5 }, "a\r\nb\r\nc\r\n"));
+
+		expect(mockTermInstance.write).toHaveBeenCalledWith("a\r\nb\r\nc\r\n");
+		expect(mockTermInstance.scrollToLine).toHaveBeenCalledWith(33);
+	});
+
+	it("reports only the final history state of a held write", async () => {
+		const { onScrolledIntoHistory, onScroll } = await renderNativeWithSignal();
+		const term = mockTermInstance;
+		term.viewportY = 30;
+		onScroll();
+		onScrolledIntoHistory.mockClear();
+		mockTermInstance.getViewportY.mockReturnValueOnce(30);
+		mockTermInstance.getScrollbackLength.mockReturnValueOnce(100).mockReturnValueOnce(101);
+		mockTermInstance.write.mockImplementationOnce(() => { term.viewportY = 0; onScroll(); });
+		mockTermInstance.scrollToLine.mockImplementationOnce(() => { term.viewportY = 31; onScroll(); });
+
+		deliver(frame({ t: "o", seq: 5 }, "x\r\n"));
+
+		expect(onScrolledIntoHistory).not.toHaveBeenCalled();
+	});
+
+	it("raises the history state when a held write ends in history and lowers it at the bottom", async () => {
+		const { onScrolledIntoHistory, onScroll } = await renderNativeWithSignal();
+		const term = mockTermInstance;
+		term.viewportY = 30;
+		mockTermInstance.getViewportY.mockReturnValueOnce(30);
+		mockTermInstance.getScrollbackLength.mockReturnValueOnce(100).mockReturnValueOnce(101);
+		mockTermInstance.write.mockImplementationOnce(() => { term.viewportY = 0; onScroll(); });
+		mockTermInstance.scrollToLine.mockImplementationOnce(() => { term.viewportY = 31; onScroll(); });
+
+		deliver(frame({ t: "o", seq: 5 }, "x\r\n"));
+		expect(onScrolledIntoHistory).toHaveBeenLastCalledWith(true);
+
+		term.viewportY = 0;
+		deliver(frame({ t: "o", seq: 6 }, "y\r\n"));
+		expect(onScrolledIntoHistory).toHaveBeenLastCalledWith(false);
+	});
+
+	it("leaves a tmux stream to plain writes and keeps typing from scrolling", async () => {
+		await renderNative();
+		mockTermInstance.write.mockClear();
+		mockTermInstance.getViewportY.mockReturnValue(30);
+		mockTermInstance.getScrollbackLength.mockReturnValue(100);
+
+		deliver("$ ls\r\n");
+		(mockTermInstance.onData.mock.lastCall as unknown as [(s: string) => void])[0]("x");
+
+		expect(mockTermInstance.write).toHaveBeenCalledWith("$ ls\r\n");
+		expect(mockTermInstance.scrollToLine).not.toHaveBeenCalled();
+		expect(mockTermInstance.scrollToBottom).not.toHaveBeenCalled();
+	});
+
+	it("returns to live output on the extra-key bar and on a file drop", async () => {
+		mockedUploadFileBase64.mockResolvedValue({ path: "/tmp/uploads/a.txt" } as any);
+		let handle: TerminalHandle | null = null;
+		await act(async () => {
+			render(
+				<I18nProvider>
+					<TerminalView ptyUrl={PTY_URL} taskId="t1" projectId="p1" onReady={(h) => { handle = h; }} />
+				</I18nProvider>,
+			);
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+		await act(async () => { fireResize?.(); });
+		await waitForInitialSocket();
+
+		handle!.sendInput("\r");
+		expect(mockTermInstance.scrollToBottom).toHaveBeenCalledTimes(1);
+
+		dispatchDrop(document.querySelector("[data-terminal='true']")!, [new File(["a"], "a.txt", { type: "text/plain" })]);
+		await waitFor(() => expect(lastWebSocket?.send).toHaveBeenCalledWith("/tmp/uploads/a.txt "));
+		expect(mockTermInstance.scrollToBottom).toHaveBeenCalledTimes(2);
+	});
+
+	it("returns to live output on typing, not on a mouse report", async () => {
+		await renderNative();
+		const data = (mockTermInstance.onData.mock.lastCall as unknown as [(s: string) => void])[0];
+
+		data("\x1b[<0;3;4M");
+		expect(mockTermInstance.scrollToBottom).not.toHaveBeenCalled();
+		data("x");
+		expect(mockTermInstance.scrollToBottom).toHaveBeenCalled();
 	});
 
 	it("reports the role, and a refusal, to the surrounding UI", async () => {

@@ -4,10 +4,11 @@ import type { Project, Task } from "../../../shared/types";
 import { api } from "../../rpc";
 import { useT } from "../../i18n";
 import { toast } from "../../toast";
+import { requestTaskTerminalFocus } from "../../terminal-focus-request";
 import Tooltip from "../Tooltip";
 
 /**
- * The yazi terminal file manager in a tmux pane beside the agent. It is the
+ * The yazi terminal file manager in a terminal pane beside the agent. It is the
  * secondary path now: the file explorer panel needs nothing installed, and this
  * is offered from its header menu for users who want yazi's file operations.
  */
@@ -21,6 +22,9 @@ export function useYaziLauncher(task: Task | undefined, project: Project | undef
 	async function launch() {
 		if (!task || !project) return;
 		try {
+			// Before the RPC: the terminal waits for a pane it has not seen yet, and
+			// polling may report the new pane before the reply arrives.
+			requestTaskTerminalFocus(task.id);
 			const result = await api.request.openFileBrowser({ taskId: task.id, projectId: project.id });
 			if (result && (result as { notInstalled?: boolean }).notInstalled) {
 				setInstallCmd((result as { installCommand?: string }).installCommand ?? "");

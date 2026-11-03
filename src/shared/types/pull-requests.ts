@@ -54,6 +54,8 @@ export interface TaskPRStatusCache {
 	checks: PRCheckInfo[];
 	prTitle: string | null;
 	isDraft: boolean | null;
+	/** Head branch of the cached PR; absent in caches written before this field existed. */
+	headRefName?: string | null;
 	cachedAt: string;
 }
 

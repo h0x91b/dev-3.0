@@ -479,6 +479,67 @@ describe("fetch queue priority", () => {
 	});
 });
 
+describe("unreachable remote backoff", () => {
+	const GONE = "ERROR: Repository not found.\nfatal: Could not read from remote repository.";
+	const NO_ORIGIN = "fatal: 'origin' does not appear to be a git repository";
+
+	it.each([GONE, NO_ORIGIN])("one failure backs off every branch of the remote: %s", async (stderr) => {
+		queueResponse(128, "", stderr);
+		expect(await fetchOrigin("/repo", "main")).toBe(false);
+		queueResponse(0, "");
+		expect(await fetchOrigin("/repo", "feat/other")).toBe(false);
+		expect(await fetchOrigin("/repo")).toBe(false);
+		expect(await fetchOriginBranches("/repo", ["a", "b"])).toBe(false);
+		expect(fetchArgs()).toHaveLength(1);
+		// Another project is unaffected.
+		expect(await fetchOrigin("/other", "main")).toBe(true);
+	});
+
+	it("keeps doubling past the per-branch 30-minute cap", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		try {
+			let elapsed = 0;
+			for (let failures = 1; failures <= 6; failures++) {
+				queueResponse(128, "", GONE);
+				expect(await fetchOrigin("/repo", "main")).toBe(false);
+				elapsed = Math.min(2 * 60_000 * 2 ** (failures - 1), 6 * 60 * 60_000);
+				vi.setSystemTime(Date.now() + elapsed);
+			}
+			// Sixth failure: 64 minutes. Half an hour later is still inside it.
+			vi.setSystemTime(Date.now() - elapsed + 30 * 60_000);
+			queueResponse(0, "");
+			expect(await fetchOrigin("/repo", "main")).toBe(false);
+			expect(spawnResponses).toHaveLength(1);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("force bypasses it and a success clears it for every branch", async () => {
+		queueResponse(128, "", GONE);
+		expect(await fetchOrigin("/repo", "main")).toBe(false);
+		queueResponse(0, "");
+		expect(await fetchOrigin("/repo", "main", undefined, { force: true })).toBe(true);
+		queueResponse(0, "");
+		expect(await fetchOrigin("/repo", "feat/other")).toBe(true);
+		expect(fetchArgs()).toHaveLength(3);
+	});
+
+	it("a combined fetch of a missing repository does not retry branch by branch", async () => {
+		queueResponse(128, "", GONE);
+		expect(await fetchOriginBranches("/repo", ["main", "feat/x"])).toBe(false);
+		expect(fetchArgs()).toHaveLength(1);
+		expect(lastOriginFetchError("/repo", "feat/x")).toContain("Repository not found");
+	});
+
+	it("an ordinary failure still backs off only its own branch", async () => {
+		queueResponse(128, "", "fatal: couldn't find remote ref dead");
+		expect(await fetchOrigin("/repo", "dead")).toBe(false);
+		queueResponse(0, "");
+		expect(await fetchOrigin("/repo", "main")).toBe(true);
+	});
+});
+
 describe("fetchOriginBranches", () => {
 	it("fetches both branches in one git process and sets each cooldown", async () => {
 		queueResponse(0, "");

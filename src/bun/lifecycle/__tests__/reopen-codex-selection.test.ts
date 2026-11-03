@@ -48,7 +48,7 @@ vi.mock("../../repo-config", () => ({ resolveProjectConfig: vi.fn(async (p: Proj
 vi.mock("../../settings", () => ({ loadSettingsSync: vi.fn(() => ({ defaultAgentId: "builtin-codex", defaultConfigId: "codex-default" })) }));
 vi.mock("../../shell-env", () => ({ getUserShell: vi.fn(() => "/bin/zsh") }));
 vi.mock("../../spawn", () => ({ spawn: vi.fn(() => ({ exited: Promise.resolve(0) })) }));
-vi.mock("../../temp-paths", () => ({ dev3TaskTempPath: vi.fn(() => "/tmp/dev3/task") }));
+vi.mock("../../temp-paths", () => ({ dev3TaskTempPath: vi.fn(() => "/tmp/dev3/task"), dev3TempPath: vi.fn((name: string) => `/tmp/${name}`) }));
 vi.mock("../../tmux", () => ({
 	DEFAULT_TMUX_SOCKET: "dev3",
 	activeTmuxConfigPath: vi.fn(() => "/tmp/dev3.tmux.conf"),

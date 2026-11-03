@@ -14,6 +14,7 @@ import type { ReviewComment, ReviewReplyAuthor } from "../review";
 import type { LiveChange } from "../live-artifact";
 import type { TelemetryProfile } from "../telemetry-profile";
 import type { AgentPromptDelivery } from "../agent-prompt-delivery";
+import type { SecretRequest } from "../secret-request";
 import type { AgentMessageLogPage } from "../agent-message-log";
 import type { NotificationLogPage } from "../notification-log";
 import type { TaskPeekSnapshot } from "../task-peek";
@@ -32,6 +33,7 @@ import type { ModelCatalogView, ModelSidecarStatus, PxpipeProxyStatus } from "./
 import type { AutoConfigureResult, BoardCopyFailureReason, BoardCopyOffer, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GitInitOffer, Project, ProjectSettingsUpdate, PrResolveFailureReason, ShellAvailability, ShellPromptPreview } from "./project";
 import type { CustomColumn, Label } from "./labels-columns";
 import type { Space, SpacesFile } from "./spaces";
+import type { Epic, EpicMember, EpicsFile } from "./epics";
 import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, AgentLaunchRequest, LaunchVariant, TaskDialogSubject } from "./agent-launch";
 import type { ScheduledMessageTarget } from "./scheduled-messages";
 import type { LiveArtifact, SharedArtifact, SharedImage } from "./shared-media";
@@ -78,6 +80,8 @@ export interface CliResponse {
 export type AppRPCSchema = {
 	bun: RPCSchema<{
 		requests: {
+			listSecretRequests: { params: {}; response: SecretRequest[] };
+			respondToSecretRequest: { params: { requestId: string; secret?: string }; response: boolean };
 			getProjects: {
 				params: void;
 				response: Project[];
@@ -117,6 +121,29 @@ export type AppRPCSchema = {
 			reorderSpaceProjects: {
 				params: { spaceId: string; projectIds: string[] };
 				response: Space;
+			};
+			getEpics: {
+				params: Record<string, never>;
+				response: EpicsFile;
+			};
+			/** Every task in any epic, across all projects. */
+			getEpicMembers: {
+				params: Record<string, never>;
+				response: EpicMember[];
+			};
+			createEpic: {
+				params: { name: string; color?: string };
+				response: Epic;
+			};
+			/** Rename, recolour, archive or unarchive. There is deliberately no delete. */
+			updateEpic: {
+				params: { epicId: string; name?: string; color?: string; archived?: boolean };
+				response: Epic;
+			};
+			/** Set or clear one task's epic; never propagates to its children. */
+			setTaskEpic: {
+				params: { projectId: string; taskId: string; epicId: string | null };
+				response: Task;
 			};
 			listDirectory: {
 				params: { path?: string | null; includeFiles?: boolean; showHidden?: boolean };
@@ -401,7 +428,8 @@ export type AppRPCSchema = {
 				response: ProductivityStats;
 			};
 			getAgentUsage: {
-				params: void;
+				/** `since` (ISO) skips transcripts last written before that local day. */
+				params: { since?: string } | void;
 				response: AgentUsageReport;
 			};
 			getAgentRateLimits: {
@@ -473,9 +501,14 @@ export type AppRPCSchema = {
 				params: { kind: AgentAccountKind; accountId: string; label?: string; baseUrl?: string; apiKey?: string; model?: string; slotModels?: ClaudeSlotModels; envText?: string };
 				response: AgentAccount;
 			};
-			/** Start or join the in-app sign-in terminal for a managed account (one per CLI). */
+			/** Start or join the in-app sign-in terminal for a managed account (one per CLI). `created`: this call made the record, it did not join one. */
 			startAccountLogin: {
 				params: { kind: AgentAccountKind; remoteViewer: boolean };
+				response: AccountLoginState & { created: boolean };
+			};
+			/** Run the login command of a sign-in that is still "ready"; nothing starts before this call. */
+			beginAccountLogin: {
+				params: { loginId: string };
 				response: AccountLoginState;
 			};
 			getAccountLogin: {
@@ -494,6 +527,11 @@ export type AppRPCSchema = {
 			closeAccountLogin: {
 				params: { loginId: string };
 				response: void;
+			};
+			/** Keep a Claude sign-in's folder as an account without signing in; the state carries the new account and the manual login command. */
+			addClaudeAccountWithoutLogin: {
+				params: { loginId: string };
+				response: AccountLoginState;
 			};
 			/** `accountId: "auto"` makes the usage-balanced router the default (claude/codex). */
 			setActiveAgentAccount: {
@@ -565,7 +603,7 @@ export type AppRPCSchema = {
 				 * `renameTask`'s customTitle: this does NOT mark the title user-edited,
 				 * so an agent may still rename it.
 				 */
-				params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType };
+				params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType; epicId?: string };
 				response: Task;
 			};
 			/** Stored PR a review task reviews; looks it up once for tasks created before it was stored. */
@@ -974,6 +1012,11 @@ export type AppRPCSchema = {
 			};
 			setAgentBinaryPath: {
 				params: { agentId: string; path: string };
+				response: void;
+			};
+			/** Forget the custom executable stored for an agent. */
+			clearAgentBinaryPath: {
+				params: { agentId: string };
 				response: void;
 			};
 			getChangelogs: {
@@ -1887,6 +1930,7 @@ export type AppRPCSchema = {
 			/** A project registered outside the renderer (`dev3 projects add|clone`). */
 			projectAdded: { project: Project };
 			spacesUpdated: { file: SpacesFile };
+			epicsUpdated: { file: EpicsFile };
 			taskSound: { status: TaskSoundStatus; taskId: string };
 			ptyDied: { taskId: string };
 			/** A saved session was resumed — possibly from the CLI, so a recovery screen still on display must re-read. */
@@ -1943,6 +1987,8 @@ export type AppRPCSchema = {
 			 * picker) and answers via `respondToAgentLaunchRequest`. `requesterSeq`
 			 * names the asking task so the user can see who wants this.
 			 */
+			secretRequested: SecretRequest;
+			secretRequestResolved: { requestId: string };
 			agentLaunchRequested: AgentLaunchRequest;
 			/**
 			 * An agent-initiated request (`complete` or `launch`) got its answer.
@@ -2030,6 +2076,8 @@ export type AppRPCSchema = {
 				taskId: string | null;
 				projectId: string | null;
 				message: string;
+				/** Renderer translation key for `message`, which stays the English fallback. */
+				messageKey?: "kanban.launchAccountRemoved";
 				level: "info" | "success" | "error";
 				/** Optional in-app toast lifetime in milliseconds; omitted uses the default. */
 				durationMs?: number;

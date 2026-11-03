@@ -317,9 +317,7 @@ const dashboard = {
 	"fileBrowser.clickAgainHint": "После установки нажмите Files снова — всё заработает.",
 
 	// CPU and disk rows in the header kebab (beside "Memory left").
-	"systemLoad.cpu": "Нагрузка CPU",
-	"systemLoad.load": "нагрузка",
-	"systemLoad.busyPercent": "занято {busy}",
+	"systemLoad.cpu": "CPU",
 	"systemLoad.cpuLevel.normal": "в норме",
 	"systemLoad.cpuLevel.warn": "высокая",
 	"systemLoad.cpuLevel.critical": "перегрузка",
@@ -329,7 +327,7 @@ const dashboard = {
 	"systemLoad.cpuAria": "CPU занят на {busy}",
 	"systemLoad.busy": "занято",
 	"systemLoad.cores": "ядер: {cores}",
-	"systemLoad.loadAvg": "нагрузка {load}",
+	"systemLoad.loadAvg": "средняя нагрузка {load}",
 	"systemLoad.outsideDev3": "Самое загруженное вне dev-3.0",
 	"systemLoad.nothingBusy": "Вне dev-3.0 ничего не нагружает процессор.",
 	"systemLoad.coreNote": "Для процессов: 100% — одно ядро целиком.",

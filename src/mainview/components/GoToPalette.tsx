@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useEpics } from "../hooks/useEpics";
 import type { Project, Space, Task } from "../../shared/types";
 import { getTaskTitle, isBuiltinOpsProject, projectDisplayName } from "../../shared/types";
 import { useT, type TranslationKey } from "../i18n";
@@ -112,9 +113,10 @@ function GoToPalette({
 	}, [needsTasks, tasks]);
 
 	const lineage = useTaskLineage();
+	const { byId: epicsById } = useEpics();
 	const resolver = useMemo(
-		() => buildFacetResolver({ agents, projectById, taskPorts, spaces, t, lineage }),
-		[agents, projectById, taskPorts, spaces, t, lineage],
+		() => buildFacetResolver({ agents, projectById, taskPorts, spaces, t, lineage, epicsById }),
+		[agents, projectById, taskPorts, spaces, t, lineage, epicsById],
 	);
 	const ctxByTask = useMemo(() => {
 		const map = new Map<string, TaskQueryContext>();

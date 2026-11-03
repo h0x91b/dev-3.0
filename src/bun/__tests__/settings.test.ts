@@ -283,6 +283,13 @@ describe("saveSettings", () => {
 		expect((await loadSettings()).defaultConfigId).toBe("claude-bypass-opus48-xhigh");
 	});
 
+	it("lands the retired plain Auto/Bypass ids on the default Opus 5.5 Medium tier", async () => {
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ defaultConfigId: "claude-auto" }), null, 2), "utf-8");
+		expect((await loadSettings()).defaultConfigId).toBe("claude-auto-opus55-medium");
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ defaultConfigId: "claude-bypass" }), null, 2), "utf-8");
+		expect((await loadSettings()).defaultConfigId).toBe("claude-bypass-opus55-medium");
+	});
+
 	it("falls back to the current default for a dangling builtin-looking id with no remap entry", async () => {
 		writeFileSync(settingsPath, JSON.stringify(makeSettings({ defaultConfigId: "claude-some-preset-that-never-existed" }), null, 2), "utf-8");
 		expect((await loadSettings()).defaultConfigId).toBe("claude-auto-opus55-medium");
@@ -344,11 +351,13 @@ describe("saveSettings", () => {
 		});
 		const full: Required<GlobalSettings> = {
 			coordinatorPrompt: "Coordinate, do not code.",
+			coordinatorAgentId: "builtin-codex",
+			coordinatorConfigId: "codex-default",
 			staticAccessCode: "correct-horse-battery-staple",
 			remoteTunnel: { provider: "custom", command: "ngrok http {port} --log stdout", urlPattern: "https://\\S+" },
 			remotePort: 41234,
 			agentLaunchAutoApproveMinutes: 2,
-			resourceLevels: { cpuWarnPercent: 80, diskCriticalGb: 10 },
+			resourceLevels: { cpuBusyWarnPercent: 70, diskCriticalGb: 10 },
 			defaultAgentId: "builtin-codex",
 			defaultConfigId: "codex-default",
 			taskSortOrder: "newest-first",
@@ -402,6 +411,7 @@ describe("saveSettings", () => {
 			preventSleepWhileRunning: true,
 			skipQuitDialog: true,
 			importShellEnv: false,
+			agentEnvDefaults: { CLAUDE_CONFIG_DIR: "{home}/.claude-projects/{projectName}" },
 			focusMode: true,
 			agentRateLimitTracking: false,
 			autoAccountDefault: { claude: true },
@@ -433,6 +443,14 @@ describe("saveSettings", () => {
 		for (const key of Object.keys(full) as (keyof GlobalSettings)[]) {
 			expect(loadedSync[key], `field "${key}" was dropped by loadSettingsSync`).toEqual(full[key]);
 		}
+	});
+
+	it("drops malformed and multi-line agentEnvDefaults entries, and stores none when nothing is left", async () => {
+		writeFileSync(settingsPath, JSON.stringify({ agentEnvDefaults: { GOOD: "{projectPath}/x", "BAD-KEY": "v", NUM: 1, MULTI: "a\nb" } }));
+		expect((await loadSettings()).agentEnvDefaults).toEqual({ GOOD: "{projectPath}/x" });
+
+		writeFileSync(settingsPath, JSON.stringify({ agentEnvDefaults: { "BAD-KEY": "v" } }));
+		expect((await loadSettings()).agentEnvDefaults).toBeUndefined();
 	});
 
 	it("creates the settings directory before writing the file", async () => {

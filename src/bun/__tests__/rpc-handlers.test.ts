@@ -56,7 +56,7 @@ vi.mock("../changelog-bundled", () => ({
 	get BUNDLED_CHANGELOG() { return mockBundledChangelog; },
 }));
 
-vi.mock("../pr-watch-runner", () => ({ runPrWatches: vi.fn(async () => undefined), mergeOfferHeld: vi.fn(() => false) }));
+vi.mock("../pr-watch-runner", () => ({ runPrWatches: vi.fn(async () => undefined), mergeOfferHeld: vi.fn(() => false), hasMergeOfferHold: vi.fn(() => false) }));
 
 vi.mock("../data", () => ({
 	getProject: vi.fn(),
@@ -111,6 +111,8 @@ vi.mock("../git", () => ({
 	// every caller: explicit ref wins, otherwise git decides.
 	resolveCompareRef: vi.fn(async (path: string, baseBranch: string, explicit?: string) =>
 		explicit || git.detectDefaultCompareRef(path, baseBranch)),
+	resolveConfiguredCompareRef: vi.fn(async (path: string, baseBranch: string, configured: string) =>
+		await git.refExists(path, configured) ? configured : git.resolveCompareRef(path, baseBranch)),
 	isForeignBranchRef: vi.fn().mockResolvedValue(false),
 	localBranchNameForRef: vi.fn(async (_path: string, ref: string) => ref.replace(/^origin\//, "")),
 	refAuthorAndSubject: vi.fn().mockResolvedValue({ author: null, subject: null }),
@@ -427,7 +429,7 @@ import * as data from "../data";
 import { clearResourceMonitorBoost, isResourceMonitorBoosted } from "../resource-monitor";
 import * as git from "../git";
 import * as github from "../github";
-import { mergeOfferHeld, runPrWatches } from "../pr-watch-runner";
+import { hasMergeOfferHold, mergeOfferHeld, runPrWatches } from "../pr-watch-runner";
 import * as pty from "../pty-server";
 import { getUserShell } from "../shell-env";
 import { tmux } from "../tmux";
@@ -505,6 +507,8 @@ const {
 	tmuxPaneCount,
 	tmuxPaneNavigate,
 } = await import("../rpc-handlers/tmux-pty");
+const { PR_POLLER_HEARTBEAT_MS, PR_TASK_POLL_TIMEOUT_MS, PR_TICK_STALL_MS, runPRDetectionTick } = await import("../lifecycle/activities");
+const { log: pollerLog } = await import("../rpc-handlers/shared-pure");
 const { AuxPaneUnavailableError } = await import("../task-aux-panes");
 const { placePaneSession } = await import("../pane-session-capture");
 const { dev3TaskTempPath } = await import("../temp-paths");
@@ -4505,7 +4509,7 @@ describe("handlers.spawnVariants", () => {
 	it("gives every new variant the source task's parent, so the group is one lineage node", async () => {
 		const project = makeProject();
 		const origin = { kind: "task", taskId: "parent-1", projectId: "proj-9" } as const;
-		const sourceTask = makeTask({ status: "todo", seq: 5, worktreePath: null, branchName: null, origin });
+		const sourceTask = makeTask({ status: "todo", seq: 5, worktreePath: null, branchName: null, origin, epicId: "epic-1" });
 		const secondVariant = makeTask({ id: "variant-2", status: "in-progress", preparing: true });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
@@ -4520,7 +4524,8 @@ describe("handlers.spawnVariants", () => {
 			targetStatus: "in-progress",
 			variants: [{ agentId: "agent-1", configId: null }, { agentId: "agent-2", configId: null }],
 		});
-		expect(vi.mocked(data.addTask).mock.calls[0][3]).toEqual(expect.objectContaining({ origin }));
+		// Variants also start in the source's epic; each one is edited independently after.
+		expect(vi.mocked(data.addTask).mock.calls[0][3]).toEqual(expect.objectContaining({ origin, epicId: "epic-1" }));
 	});
 
 	// The in-place transform re-checks the status under the file lock: a
@@ -5264,6 +5269,7 @@ describe("handlers.addAttempts", () => {
 			variantIndex: 1,
 			existingBranch: "feature/login",
 			origin,
+			epicId: "epic-1",
 		});
 		const attemptTask = makeTask({
 			id: "attempt-2",
@@ -5301,6 +5307,7 @@ describe("handlers.addAttempts", () => {
 			expect.objectContaining({
 				existingBranch: "feature/login",
 				origin,
+				epicId: "epic-1",
 			}),
 		);
 
@@ -6267,6 +6274,34 @@ describe("handlers.getBranchStatus", () => {
 			expect(result.mergedByContent).toBe(true);
 		});
 
+		it("shows the saved merged PR of this branch without asking GitHub about it", async () => {
+			const project = makeProject();
+			const task = makeTask({
+				worktreePath: "/tmp/wt", branchName: "fix/mine", prNumber: 1300, prUrl: "https://gh/pr/1300",
+				prStatusCache: {
+					number: 1300, url: "https://gh/pr/1300", ciStatus: null, reviewState: null, unresolvedCount: 0,
+					mergeState: { mergeable: "UNKNOWN", status: "UNKNOWN", state: "MERGED" }, checks: [], prTitle: "PR", isDraft: false,
+					headRefName: "fix/mine", cachedAt: "2026-09-28T00:00:00.000Z",
+				},
+			});
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.getTask).mockResolvedValue(task);
+			mockClean();
+			vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 0, behind: 3, baseUnreachable: false });
+			vi.mocked(github.getPullRequestSnapshot).mockClear();
+			vi.mocked(github.isPullRequestMerged).mockClear();
+			vi.mocked(github.findOpenPullRequest).mockClear();
+
+			const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+
+			expect(result.prNumber).toBe(1300);
+			expect(result.prState).toBe("MERGED");
+			expect(result.mergedByContent).toBe(true);
+			expect(github.getPullRequestSnapshot).not.toHaveBeenCalled();
+			expect(github.isPullRequestMerged).not.toHaveBeenCalled();
+			expect(github.findOpenPullRequest).toHaveBeenCalledWith(project, "/tmp/wt", "fix/mine", expect.objectContaining({ prNumber: null }));
+		});
+
 		it("keeps the stored badge when GitHub cannot answer at all (offline)", async () => {
 			const project = makeProject();
 			const task = makeTask({
@@ -7160,6 +7195,30 @@ describe("handlers.getPtyUrl", () => {
 
 		const result = await handlers.getPtyUrl({ taskId: "task-1" });
 		expect(result).toEqual({ recoverable: true, sessionState });
+	});
+
+	it.each([
+		["reconnecting to a live tmux session", true, expect.stringContaining("/gone")],
+		["launching a fresh session", false, expect.any(String)],
+	])("shows the user why the terminal is dead when %s fails", async (_label, tmuxAlive, message) => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
+		const push = vi.fn();
+		setPushMessage(push);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(tmuxAlive);
+		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(repoConfig.resolveProjectConfig).mockRejectedValueOnce(new Error("Custom executable for agent \"Claude Code\" not found or not executable: /gone"));
+
+		await handlers.getPtyUrl({ taskId: "task-1" });
+
+		expect(push).toHaveBeenCalledWith("cliToast", expect.objectContaining({
+			taskId: task.id,
+			level: "error",
+			message,
+		}));
 	});
 
 	it("resolves project config before restoring a PTY session", async () => {
@@ -10882,6 +10941,26 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		expect(prompt).not.toContain("origin/main");
 	});
 
+	it("falls back to the detected ref when the configured compareRef is missing", async () => {
+		const project = makeProject({ defaultCompareRef: "origin/master" });
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude", extraEnv: {} });
+		(git.refExists as any).mockImplementation(async (_path: string, ref: string) => ref !== "origin/master");
+		const server = makeSplitMock(["%10"]);
+
+		await runLaunch(
+			handlers.spawnBugHuntersInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default", count: 1 }),
+			1,
+		);
+
+		const prompt = server.sends.filter((send) => send.text !== "")[0].text;
+		expect(prompt).toContain("git merge-base origin/main HEAD");
+		expect(prompt).not.toContain("origin/master");
+		(git.refExists as any).mockResolvedValue(true);
+	});
+
 	it("uses local base branch when defaultCompareRefMode is 'local'", async () => {
 		const project = makeProject({ defaultCompareRefMode: "local" });
 		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
@@ -11686,6 +11765,47 @@ describe("resumeTask gives every Claude pane its own conversation (#1950)", () =
 		const last = (data.updateTask as any).mock.calls.filter((call: any[]) => call[2]?.sessionState).at(-1)[2];
 		expect(last.sessionState.panes.slice(1).map((p: any) => [p.paneId, p.sessionId])).toEqual([["%2", fresh], ["%3", fresh2]]);
 	});
+
+	it("surfaces a main-pane launch error instead of starting the saved command", async () => {
+		seedStore([MAIN]);
+		(data.getTask as any).mockResolvedValue(makeTask({ worktreePath: WORKTREE, sessionState: { panes: [claudePane(MAIN)] } }));
+		const resolve = vi.mocked(agents.resolveCommandForAgent);
+		const original = resolve.getMockImplementation()!;
+		resolve.mockRejectedValue(new Error("Custom executable for agent \"Claude\" not found or not executable: /gone"));
+		vi.mocked(pty.createSession).mockClear();
+		try {
+			await expect(handlers.resumeTask({ taskId: "task-1" })).rejects.toThrow("Custom executable for agent");
+			expect(pty.createSession).not.toHaveBeenCalled();
+		} finally {
+			resolve.mockImplementation(original);
+		}
+	});
+
+	it("fails an extra pane whose agent record is gone instead of launching its saved command", async () => {
+		const { resumeTaskSession } = await import("../rpc-handlers/tmux-pty");
+		vi.mocked(pty.splitAndRunCommand).mockReset(); // drop the ids beforeEach queued: nothing splits here
+		seedStore([NEWEST, MAIN]);
+		(data.getTask as any).mockResolvedValue(makeTask({
+			worktreePath: WORKTREE,
+			sessionState: { panes: [claudePane(MAIN), { ...claudePane(NEWEST), agentId: "deleted-agent", agentCmd: "claude-saved-command" }] },
+		}));
+		const resolve = vi.mocked(agents.resolveCommandForAgent);
+		const original = resolve.getMockImplementation()!;
+		resolve.mockImplementation(async (agentId: string, ...rest: any[]) => {
+			if (agentId === "deleted-agent") throw new Error("Agent not found: deleted-agent");
+			return (original as any)(agentId, ...rest);
+		});
+		try {
+			const outcome = await resumeTaskSession("task-1", {});
+			expect(outcome).toMatchObject({ kind: "resumed", result: { panes: [
+				expect.objectContaining({ index: 0, status: "resumed" }),
+				expect.objectContaining({ index: 1, status: "failed", detail: expect.stringContaining("Agent not found: deleted-agent") }),
+			] } });
+			expect(pty.splitAndRunCommand).not.toHaveBeenCalled();
+		} finally {
+			resolve.mockImplementation(original);
+		}
+	});
 });
 
 describe("restartTask (start fresh) floors the Codex scan", () => {
@@ -11703,6 +11823,51 @@ describe("restartTask (start fresh) floors the Codex scan", () => {
 		const clear = vi.mocked(data.updateTask).mock.calls.find((call) => call[2].sessionState === null)?.[2];
 		expect(Date.parse(clear?.codexScanFloorAt ?? "")).toBeGreaterThanOrEqual(before);
 		expect(clear?.lifecycleStartedAt).toBeUndefined();
+	});
+});
+
+describe("restartTask and resume with a stored account or a refused launch", () => {
+	beforeEach(() => vi.clearAllMocks());
+	const claudePanes = [{ agentCmd: "claude", agentFamily: "claude", agentId: "builtin-claude", configId: "claude-default", sessionId: "00000000-0000-4000-8000-0000c0de2799", accountId: "removed-account" }];
+	function arrange() {
+		const project = makeProject();
+		const task = makeTask({ sessionState: { panes: claudePanes as any } });
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		return { project, task };
+	}
+
+	it("restartTask puts the saved session back when the launch is refused", async () => {
+		const { task } = arrange();
+		vi.mocked(agents.resolveCommandForAgent).mockRejectedValueOnce(new Error("Custom executable for agent \"Claude\" not found or not executable: /gone"));
+		await expect(handlers.restartTask({ taskId: task.id })).rejects.toThrow("Custom executable");
+		const updates = vi.mocked(data.updateTask).mock.calls.map((call) => call[2]);
+		expect(updates[0].sessionState).toBeNull();
+		expect(updates[updates.length - 1]).toMatchObject({ sessionState: { panes: claudePanes }, codexScanFloorAt: null });
+	});
+
+	it("resume marks the stored account as such, tells the user when it was dropped, and records the account actually used", async () => {
+		const { task } = arrange();
+		const push = vi.fn();
+		setPushMessage(push);
+		const resolve = vi.mocked(agents.resolveCommandForAgent);
+		const original = resolve.getMockImplementation();
+		resolve.mockResolvedValue({ command: "claude", extraEnv: {}, agentFamily: "claude", resolvedAccountId: null, staleAccountDropped: true } as any);
+		try {
+			const { resumeTaskSession } = await import("../rpc-handlers/tmux-pty");
+			const outcome = await resumeTaskSession(task.id, {});
+			expect(outcome).toMatchObject({ kind: "resumed", result: { panes: [expect.objectContaining({ index: 0, accountId: null })] } });
+			expect(resolve).toHaveBeenCalledWith("builtin-claude", "claude-default", expect.anything(), expect.objectContaining({ accountId: "removed-account", accountFromStore: true }));
+			expect(push).toHaveBeenCalledWith("cliToast", expect.objectContaining({ taskId: task.id, level: "info", messageKey: "kanban.launchAccountRemoved" }));
+			const last = vi.mocked(data.updateTask).mock.calls.map((call) => call[2]).filter((u) => u.sessionState).pop()!;
+			expect(last.sessionState!.panes[0].accountId).toBeNull();
+			// The task keeps the account actually used, so Start Fresh does not warn again.
+			expect(vi.mocked(data.updateTask).mock.calls.some((call) => call[2].accountId === null)).toBe(true);
+		} finally {
+			resolve.mockImplementation(original!);
+		}
 	});
 });
 
@@ -12746,6 +12911,62 @@ describe("checkOpenPRsForPromotion", () => {
 		);
 	});
 
+	it("reads a PR followed with --pr by number for a task without a PR of its own, and leaves its identity alone", async () => {
+		const pinned = { id: "w", until: "ci" as const, prNumber: 2111, headSha: "fork-head", createdAt: "2026-10-31T10:00:00.000Z", pinned: true as const };
+		const { project, task } = setup({ status: "in-progress", prNumber: null, prUrl: null, prWatches: [pinned] });
+		vi.mocked(github.readTaskPullRequest).mockResolvedValue({
+			...answer({ number: 2111, url: "https://github.com/a/b/pull/2111", headRefName: "contrib/fix", headRefOid: "fork-head-2" }), checkedAt: 99,
+		});
+		vi.mocked(runPrWatches).mockClear();
+
+		await checkOpenPRsForPromotion();
+
+		expect(github.readTaskPullRequest).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(github.readTaskPullRequest).mock.calls[0].slice(2, 4)).toEqual(["", 2111]);
+		expect(runPrWatches).toHaveBeenCalledWith(
+			project, task.id, { number: 2111, state: "OPEN", headRefOid: "fork-head-2", checks: [] }, "https://github.com/a/b/pull/2111", 99, false, 2111,
+		);
+		expect(data.updateTask).not.toHaveBeenCalledWith(project, task.id, expect.objectContaining({ prNumber: 2111 }));
+	});
+
+	it("backs off a followed PR that keeps failing to read, and reads it again once the backoff ends", async () => {
+		vi.useFakeTimers();
+		try {
+			const pinned = { id: "w", until: "ci" as const, prNumber: 2111, headSha: "x", createdAt: "2026-10-31T10:00:00.000Z", pinned: true as const };
+			setup({ status: "in-progress", prNumber: null, prUrl: null, prWatches: [pinned] });
+			vi.mocked(github.readTaskPullRequest).mockResolvedValue(null);
+			// Ticks 15 s apart like the real poller: a longer gap reads as a wake from sleep.
+			const tick = async (ms: number) => {
+				for (let left = ms; left > 0; left -= 15_000) { vi.setSystemTime(Date.now() + Math.min(15_000, left)); await checkOpenPRsForPromotion(); }
+			};
+
+			for (let i = 0; i < 3; i++) await tick(61_000);
+			expect(github.readTaskPullRequest).toHaveBeenCalledTimes(3);
+			await tick(61_000);
+			await tick(61_000);
+			expect(github.readTaskPullRequest).toHaveBeenCalledTimes(3);
+			await tick(5 * 60_000);
+			expect(github.readTaskPullRequest).toHaveBeenCalledTimes(4);
+		} finally { vi.useRealTimers(); }
+	});
+
+	it("polls the task's own PR and a followed PR side by side, each with its own watches", async () => {
+		const own = { id: "own", until: "ci" as const, prNumber: 42, headSha: "abc", createdAt: "2026-10-31T10:00:00.000Z" };
+		const pinned = { id: "pin", until: "merged" as const, prNumber: 7, headSha: "x", createdAt: "2026-10-31T10:00:00.000Z", pinned: true as const };
+		setup({ prWatches: [own, pinned] });
+		vi.mocked(github.readTaskPullRequest).mockImplementation(async (_p, _cwd, _branch, prNumber) => (
+			prNumber === 7 ? answer({ number: 7, url: "https://github.com/a/b/pull/7", headRefName: "other", state: "MERGED" }) : answer()
+		));
+		vi.mocked(runPrWatches).mockClear();
+
+		await checkOpenPRsForPromotion();
+
+		const scopes = vi.mocked(runPrWatches).mock.calls.map((call) => [call[2].number, call[6]]);
+		expect(scopes).toEqual(expect.arrayContaining([[42, undefined], [7, 7]]));
+		expect(vi.mocked(runPrWatches).mock.calls.find((call) => call[2].number === 42)).toHaveLength(6);
+		expect(scopes).toHaveLength(2);
+	});
+
 	describe("the merge-completion offer hold for a watching agent", () => {
 		const watched = { prNumber: 42, prWatches: [{ id: "w", until: "merged" as const, prNumber: 42, headSha: "head-sha", createdAt: "2026-10-22T10:00:00.000Z" }] };
 
@@ -12956,6 +13177,83 @@ describe("checkOpenPRsForPromotion", () => {
 		] }));
 	});
 
+	describe("a saved PR that is already merged", () => {
+		const mergedCache = (overrides: Record<string, unknown> = {}) => ({
+			number: 41, url: "https://github.com/test/repo/pull/41", ciStatus: null, reviewState: null, unresolvedCount: 0,
+			mergeState: { mergeable: "UNKNOWN", status: "UNKNOWN", state: "MERGED" }, checks: [], prTitle: "First PR", isDraft: false,
+			headRefName: "dev3/my-feature", cachedAt: "2026-09-28T00:00:00.000Z", ...overrides,
+		});
+		const savedPr = { prNumber: 41, prUrl: "https://github.com/test/repo/pull/41" };
+
+		it("is not read again, only the branch is searched for a new PR", async () => {
+			const { project, task } = setup({ ...savedPr, prStatusCache: mergedCache() });
+			vi.mocked(github.readTaskPullRequest).mockResolvedValue({ isGitHub: true, checkedAt: 1, pr: null });
+			await checkOpenPRsForPromotion();
+			expect(github.readTaskPullRequest).toHaveBeenCalledWith(project, task.worktreePath, "dev3/my-feature", null, expect.anything());
+			expect(data.updateTask).not.toHaveBeenCalled();
+		});
+
+		it("still searches the branch for a new PR when origin/<branch> is missing (fork PR)", async () => {
+			const { project, task } = setup({ ...savedPr, prStatusCache: mergedCache() });
+			vi.mocked(git.getUnpushedCount).mockResolvedValue(-1);
+			vi.mocked(github.readTaskPullRequest).mockResolvedValue(answer());
+			await checkOpenPRsForPromotion();
+			expect(github.readTaskPullRequest).toHaveBeenCalledWith(project, task.worktreePath, "dev3/my-feature", null, expect.anything());
+			expect(data.updateTask).toHaveBeenCalledWith(project, task.id, expect.objectContaining({ prNumber: 42 }));
+		});
+
+		it("still reports a new open PR found on the branch", async () => {
+			const { project, task } = setup({ ...savedPr, prStatusCache: mergedCache() });
+			vi.mocked(github.readTaskPullRequest).mockResolvedValue(answer());
+			await checkOpenPRsForPromotion();
+			expect(data.updateTask).toHaveBeenCalledWith(project, task.id, expect.objectContaining({ prNumber: 42 }));
+		});
+
+		it.each([
+			["CLOSED", { mergeState: { mergeable: "UNKNOWN", status: "UNKNOWN", state: "CLOSED" } }],
+			["OPEN", { mergeState: { mergeable: "UNKNOWN", status: "UNKNOWN", state: "OPEN" } }],
+			["cached without a head branch", { headRefName: undefined }],
+			["cached for another branch", { headRefName: "other/branch" }],
+		])("is still read by number when %s", async (_name, cache) => {
+			const { project, task } = setup({ ...savedPr, prStatusCache: mergedCache(cache) });
+			vi.mocked(github.readTaskPullRequest).mockResolvedValue(answer({ number: 41, state: "OPEN" }));
+			await checkOpenPRsForPromotion();
+			expect(github.readTaskPullRequest).toHaveBeenCalledWith(project, task.worktreePath, "dev3/my-feature", 41, expect.anything());
+		});
+
+		it("is still read by number while a pr watch is active", async () => {
+			const { project, task } = setup({
+				...savedPr, prStatusCache: mergedCache(),
+				prWatches: [{ id: "w", until: "merged", prNumber: 41, headSha: "abc", createdAt: "2026-10-22T10:00:00.000Z" }],
+			});
+			vi.mocked(github.readTaskPullRequest).mockResolvedValue(answer({ number: 41, state: "MERGED" }));
+			await checkOpenPRsForPromotion();
+			expect(github.readTaskPullRequest).toHaveBeenCalledWith(project, task.worktreePath, "dev3/my-feature", 41, expect.anything());
+		});
+
+		it("is still read by number while a merge-offer hold is pending", async () => {
+			const { project, task } = setup({ ...savedPr, prStatusCache: mergedCache() });
+			vi.mocked(hasMergeOfferHold).mockReturnValueOnce(true);
+			vi.mocked(github.readTaskPullRequest).mockResolvedValue(answer({ number: 41, state: "MERGED" }));
+			await checkOpenPRsForPromotion();
+			expect(github.readTaskPullRequest).toHaveBeenCalledWith(project, task.worktreePath, "dev3/my-feature", 41, expect.anything());
+		});
+
+		it("is still read by number on an explicit refresh", async () => {
+			const { project, task } = setup({ ...savedPr, prStatusCache: mergedCache() });
+			vi.mocked(github.readTaskPullRequest).mockResolvedValue(answer({ number: 41, state: "MERGED" }));
+			await handlers.refreshTaskPrStatus({ taskId: task.id, projectId: project.id });
+			expect(github.readTaskPullRequest).toHaveBeenCalledWith(project, task.worktreePath, "dev3/my-feature", 41, expect.objectContaining({ force: true }));
+		});
+	});
+
+	it("persists the head branch of the polled PR in the cache", async () => {
+		const { project, task } = setup();
+		vi.mocked(github.readTaskPullRequest).mockResolvedValue(answer());
+		await checkOpenPRsForPromotion();
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, expect.objectContaining({ prStatusCache: expect.objectContaining({ headRefName: "dev3/my-feature" }) }));
+	});
+
 	it("persists full CI and review diagnostics from the shared read", async () => {
 		const { project, task } = setup({ status: "review-by-colleague" });
 		vi.mocked(github.readTaskPullRequest).mockResolvedValue(answer({
@@ -13038,6 +13336,119 @@ describe("checkOpenPRsForPromotion", () => {
 	);
 });
 
+
+describe("PR detection poller resilience", () => {
+	const never = <T,>() => new Promise<T>(() => {});
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+		vi.setSystemTime(1_000_000);
+		vi.mocked(data.loadProjects).mockReset();
+		vi.mocked(data.loadTasks).mockReset();
+		vi.mocked(data.updateTask).mockReset();
+		vi.mocked(git.getCurrentBranch).mockReset().mockResolvedValue("dev3/my-feature");
+		vi.mocked(git.getUnpushedCount).mockReset().mockResolvedValue(0);
+		vi.mocked(git.isWorktreeDirty).mockReset().mockResolvedValue(false);
+		vi.mocked(github.readTaskPullRequest).mockReset().mockImplementation(async () => ({ isGitHub: true, checkedAt: Date.now(), pr: {
+			number: 42, url: "https://github.com/test/repo/pull/42", title: "Change", state: "OPEN",
+			headRefName: "dev3/my-feature", headRefOid: "head-sha", isDraft: false, autoMergeRequest: null,
+			mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN", reviewDecision: null, author: null,
+			statusCheckRollup: [], unresolvedCount: 0,
+		} }) as NonNullable<Awaited<ReturnType<typeof github.readTaskPullRequest>>>);
+		vi.mocked(pollerLog.info).mockClear();
+		vi.mocked(pollerLog.warn).mockClear();
+		vi.mocked(pollerLog.error).mockClear();
+		_resetPRPollerState();
+		_setScheduleRandomForTest(() => 0);
+		setPushMessage(vi.fn());
+	});
+
+	afterEach(() => {
+		_resetPRPollerState();
+		vi.mocked(runPrWatches).mockImplementation(async () => undefined);
+		vi.useRealTimers();
+	});
+
+	function setupTasks(...tasks: Partial<Task>[]) {
+		const project = makeProject();
+		const made = tasks.map((overrides, i) => makeTask({ id: `task-${i}`, status: "review-by-colleague", prNumber: 42, ...overrides }));
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue(made);
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockImplementation(async (_p, id) => made.find((t) => t.id === id)!);
+		vi.mocked(data.updateTask).mockImplementation(async (_p, taskId, updates) => ({ ...made[0], ...updates, id: taskId } as Task));
+		return { project, tasks: made };
+	}
+
+	const readPaths = () => vi.mocked(github.readTaskPullRequest).mock.calls.map((call) => call[1]);
+
+	it("times out a hung task poll and still polls the tasks after it", async () => {
+		setupTasks({ worktreePath: "/wt-hung" }, { worktreePath: "/wt-ok" });
+		vi.mocked(git.getCurrentBranch).mockImplementation(async (path) => (path === "/wt-hung" ? never<string>() : "dev3/my-feature"));
+
+		const tick = checkOpenPRsForPromotion();
+		await vi.advanceTimersByTimeAsync(PR_TASK_POLL_TIMEOUT_MS);
+		await tick;
+
+		expect(readPaths()).toEqual(["/wt-ok"]);
+		expect(pollerLog.warn).toHaveBeenCalledWith("PR check timed out for task", expect.objectContaining({ stage: "current-branch" }));
+	});
+
+	it("does not stack a new poll on a task whose timed-out poll is still pending", async () => {
+		setupTasks({ worktreePath: "/wt-hung" }, { worktreePath: "/wt-ok" });
+		vi.mocked(git.getCurrentBranch).mockImplementation(async (path) => (path === "/wt-hung" ? never<string>() : "dev3/my-feature"));
+		const first = checkOpenPRsForPromotion();
+		await vi.advanceTimersByTimeAsync(PR_TASK_POLL_TIMEOUT_MS);
+		await first;
+
+		// 15 s steps: one big jump would read as host sleep and re-spread instead of polling.
+		for (let i = 0; i < 24; i++) { vi.setSystemTime(Date.now() + 15_000); await checkOpenPRsForPromotion(); }
+
+		expect(vi.mocked(git.getCurrentBranch).mock.calls.filter(([path]) => path === "/wt-hung")).toHaveLength(1);
+		expect(readPaths().length).toBeGreaterThan(1);
+		expect(readPaths().every((path) => path === "/wt-ok")).toBe(true);
+		expect(pollerLog.warn).toHaveBeenCalledWith("PR check skipped: the previous poll of this task has not finished", expect.objectContaining({ stage: "current-branch" }));
+	});
+
+	it("never runs two ticks at once, and the watchdog replaces a stalled one", async () => {
+		const { project } = setupTasks({ worktreePath: "/wt" });
+		vi.mocked(data.loadProjects).mockReturnValueOnce(never()).mockResolvedValue([project]);
+
+		void runPRDetectionTick();
+		vi.setSystemTime(Date.now() + 15_000);
+		await runPRDetectionTick();
+		expect(data.loadProjects).toHaveBeenCalledTimes(1);
+
+		vi.setSystemTime(Date.now() + PR_TICK_STALL_MS);
+		await runPRDetectionTick();
+		expect(data.loadProjects).toHaveBeenCalledTimes(2);
+		expect(pollerLog.error).toHaveBeenCalledWith("PR detection tick stalled; starting a fresh one", expect.objectContaining({ stage: "load-projects" }));
+		expect(readPaths()).toEqual(["/wt"]);
+	});
+
+	it("logs a heartbeat with its counters", async () => {
+		setupTasks({ worktreePath: "/wt" });
+		await runPRDetectionTick();
+		expect(pollerLog.info).not.toHaveBeenCalledWith("PR detection poller heartbeat", expect.anything());
+		vi.setSystemTime(Date.now() + PR_POLLER_HEARTBEAT_MS);
+		await runPRDetectionTick();
+		expect(pollerLog.info).toHaveBeenCalledWith("PR detection poller heartbeat", expect.objectContaining({ ticks: 1, tasksPolled: 1, taskTimeouts: 0 }));
+	});
+
+	it("does not wait for PR watch delivery inside the poll", async () => {
+		setupTasks({ worktreePath: "/wt", prWatches: [{ id: "w", until: "ci", prNumber: 42, headSha: "abc", createdAt: "2026-10-22T10:00:00.000Z" }] });
+		vi.mocked(runPrWatches).mockClear().mockImplementation(() => never());
+
+		const tick = checkOpenPRsForPromotion();
+		let done = false;
+		void tick.then(() => { done = true; });
+		await vi.advanceTimersByTimeAsync(0);
+
+		expect(runPrWatches).toHaveBeenCalledTimes(1);
+		expect(done).toBe(true);
+		expect(pollerLog.warn).not.toHaveBeenCalledWith("PR check timed out for task", expect.anything());
+	});
+});
 // ================================================================
 // getChangelogs
 // ================================================================
@@ -13814,6 +14225,42 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		expect(push).toHaveBeenCalledWith("branchMerged", expect.objectContaining({ taskId: task.id }));
 	});
 
+	it("trusts the saved merged PR of this branch without asking GitHub", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/test-worktree",
+			branchName: "dev3/task-test",
+			prNumber: 1077,
+			prUrl: "https://gh/pr/1077",
+			prStatusCache: {
+				number: 1077, url: "https://gh/pr/1077", ciStatus: null, reviewState: null, unresolvedCount: 0,
+				mergeState: { mergeable: "UNKNOWN", status: "UNKNOWN", state: "MERGED" }, checks: [], prTitle: "PR", isDraft: false,
+				headRefName: "dev3/task-test", cachedAt: "2026-09-28T00:00:00.000Z",
+			},
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(-1);
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(false);
+		vi.mocked(git.isBranchMergedViaGitHubPR).mockResolvedValue(false);
+		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 0, behind: 4, baseUnreachable: false });
+		vi.mocked(github.isPullRequestMerged).mockClear();
+		vi.mocked(git.isBranchMergedViaGitHubPR).mockClear();
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(github.isPullRequestMerged).not.toHaveBeenCalled();
+		expect(git.isBranchMergedViaGitHubPR).not.toHaveBeenCalled();
+		expect(push).toHaveBeenCalledWith("branchMerged", expect.objectContaining({ taskId: task.id }));
+	});
+
 	it("does not prompt when the task's PR merged but the branch has new commits of its own", async () => {
 		const project = makeProject();
 		const task = makeTask({
@@ -14461,6 +14908,35 @@ describe("checkAgentAvailability", () => {
 		expect(saveSettings).not.toHaveBeenCalled();
 	});
 
+	it("reports a broken custom path as an error and does not look for the system binary or cache it", async () => {
+		vi.mocked(agents.getAllAgents).mockResolvedValue([
+			{ id: "builtin-claude", name: "Claude", baseCommand: "claude", isDefault: true, configurations: [] },
+		] as any);
+		vi.mocked(loadSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskSortOrder: "oldest-first",
+			updateChannel: "stable",
+			agentCustomBinaryPaths: { "builtin-claude": "/opt/wrappers/gone" },
+		});
+		// The system claude exists on PATH; the broken custom path must not fall back to it.
+		vi.mocked(existsSync).mockImplementation((path) => String(path) === "/usr/local/bin/claude");
+		mockSpawnSync.mockImplementation((args: string[]) => {
+			if (args[0] === "which" && args[1] === "claude") {
+				return { exitCode: 0, stdout: new TextEncoder().encode("/usr/local/bin/claude") };
+			}
+			return { exitCode: 1, stdout: null };
+		});
+
+		vi.mocked(saveSettings).mockClear();
+		const claude = (await handlers.checkAgentAvailability()).find((r) => r.agentId === "builtin-claude");
+		expect(claude?.installed).toBe(false);
+		expect(claude?.resolvedPath).toBeUndefined();
+		expect(claude?.customPathError).toBe(true);
+		expect(claude?.customPath).toBe("/opt/wrappers/gone");
+		expect(saveSettings).not.toHaveBeenCalled();
+	});
+
 	it("reports customPathError when saved path no longer exists", async () => {
 		vi.mocked(loadSettings).mockResolvedValue({
 			defaultAgentId: "builtin-claude",
@@ -14511,6 +14987,50 @@ describe("setAgentBinaryPath", () => {
 		vi.mocked(existsSync).mockReturnValue(false);
 		await expect(handlers.setAgentBinaryPath({ agentId: "builtin-claude", path: "/bad/path" }))
 			.rejects.toThrow("File not found");
+	});
+
+	it("rejects a file that is not executable without saving it", async () => {
+		vi.mocked(accessSync).mockImplementationOnce(() => { throw new Error("EACCES"); });
+		vi.mocked(saveSettings).mockClear();
+		await expect(handlers.setAgentBinaryPath({ agentId: "builtin-claude", path: "/opt/wrappers/plain.txt" }))
+			.rejects.toThrow("File is not executable");
+		expect(saveSettings).not.toHaveBeenCalled();
+	});
+});
+
+describe("clearAgentBinaryPath", () => {
+	it("drops the custom path and the cache copy it wrote, and keeps other agents", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskSortOrder: "oldest-first",
+			updateChannel: "stable",
+			agentCustomBinaryPaths: { "builtin-claude": "/opt/w/claude", "builtin-codex": "/opt/w/codex" },
+			agentBinaryPaths: { "builtin-claude": "/opt/w/claude", "builtin-codex": "/auto/codex" },
+		});
+		vi.mocked(saveSettings).mockClear();
+		await handlers.clearAgentBinaryPath({ agentId: "builtin-claude" });
+		expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+			agentCustomBinaryPaths: { "builtin-codex": "/opt/w/codex" },
+			agentBinaryPaths: { "builtin-codex": "/auto/codex" },
+		}));
+	});
+
+	it("keeps an auto-found cache path that differs from the custom one", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskSortOrder: "oldest-first",
+			updateChannel: "stable",
+			agentCustomBinaryPaths: { "builtin-claude": "/opt/w/claude" },
+			agentBinaryPaths: { "builtin-claude": "/usr/local/bin/claude" },
+		});
+		vi.mocked(saveSettings).mockClear();
+		await handlers.clearAgentBinaryPath({ agentId: "builtin-claude" });
+		expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+			agentCustomBinaryPaths: {},
+			agentBinaryPaths: { "builtin-claude": "/usr/local/bin/claude" },
+		}));
 	});
 });
 

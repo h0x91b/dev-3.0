@@ -39,6 +39,7 @@ import {
 	writeMergeCommitMessage,
 } from "../git-op-script";
 import { launchDialectId } from "../../shared/platform-launch";
+import { savedPrMergedFromBranch } from "../../shared/task-pull-requests";
 import { lifecycleActorRuntime } from "../lifecycle/service";
 import {
 	PR_DETECTION_TIMEOUT_MS,
@@ -177,6 +178,10 @@ function monitorGitPane(paneId: string | null, task: Task, projectId: string, op
  * a button runs against is the ref the git bar named.
  */
 function resolveCompareRef(project: Project, baseBranch: string, explicit?: string): Promise<string> {
+	// The project's own configured ref is checked; a ref the user picked for this task is not.
+	if (explicit && explicit === project.defaultCompareRef) {
+		return git.resolveConfiguredCompareRef(project.path, baseBranch, explicit);
+	}
 	if (explicit) return Promise.resolve(explicit);
 	// A task-specific base branch is local by definition — it was forked from a
 	// branch in this repo, and origin/<it> usually does not exist at all.
@@ -271,10 +276,11 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	const baseBranch = await healDeadCompareBase(project, task, resolvedBase);
 	const ref = await resolveCompareRef(project, baseBranch, params.compareRef);
 	// PR discovery shares the rich status cache with the board and inspector.
+	const savedMerged = !params.refresh && savedPrMergedFromBranch(task, branchForPush);
 	const prDetection: Promise<github.OpenPullRequestProbe> = (async () => {
 		try {
 			const probe = await github.findOpenPullRequest(project, task.worktreePath!, branchForPush, {
-				timeoutMs: PR_DETECTION_TIMEOUT_MS, prNumber: task.prNumber,
+				timeoutMs: PR_DETECTION_TIMEOUT_MS, prNumber: savedMerged ? null : task.prNumber,
 			});
 			if (probe.pr?.url) await persistTaskPrIdentity(project, task, probe.pr.number, probe.pr.url);
 			if (probe.status) {
@@ -308,7 +314,10 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	// naming a review task, not for the branch-status payload.
 	let prInfo: { number: number; url: string } | null = detected.pr;
 	let prState: string | null = prInfo ? "OPEN" : null;
-	if (!prInfo && task.prNumber != null && task.prUrl) {
+	if (!prInfo && savedMerged && task.prNumber != null && task.prUrl) {
+		prInfo = { number: task.prNumber, url: task.prUrl };
+		prState = "MERGED";
+	} else if (!prInfo && task.prNumber != null && task.prUrl) {
 		// The sticky number outlives the branch it was opened from: rename the
 		// branch, or inherit the number from the review task this one grew out of,
 		// and it points at a stranger's PR. Show it only while GitHub says the PR
@@ -338,7 +347,8 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	const mergedByContent = await git.isContentMergedInto(task.worktreePath, ref, project) === true
 		|| (status.ahead === 0
 			&& prNumberForMergeProof != null
-			&& await github.isPullRequestMerged(project, task.worktreePath, prNumberForMergeProof, branchForPush || null) === true);
+			&& ((savedMerged && prNumberForMergeProof === task.prNumber)
+				|| await github.isPullRequestMerged(project, task.worktreePath, prNumberForMergeProof, branchForPush || null) === true));
 	const mergeCompletionFingerprint = mergedByContent
 		? (await getMergeCompletionFingerprint(task, branchForPush)).fingerprint
 		: null;

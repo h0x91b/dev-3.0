@@ -157,12 +157,13 @@ export function wrapArtifactMessage(
 	].join("\n");
 }
 
-export type PrMergedCompletion = "offered" | "not-offered" | "after-local-work";
+export type PrMergedCompletion = "offered" | "not-offered" | "after-local-work" | "pinned";
 
 const PR_MERGED_SENTENCE: Record<PrMergedCompletion, (prNumber: number) => string> = {
 	offered: (n) => `PR #${n} merged. Wrap up now (final report, notes, report to whoever started you); dev3 offers the user task completion after your turn ends, so do not request it yourself.`,
 	"not-offered": (n) => `PR #${n} merged. dev3 does not offer completion for this task; continue per your task rules.`,
 	"after-local-work": (n) => `PR #${n} merged, but this worktree has uncommitted changes or commits the PR does not include; dev3 offers completion only once they are merged or dropped.`,
+	pinned: (n) => `PR #${n} merged. It is not this task's own PR, so dev3 offers no completion for it.`,
 };
 
 function prNoticeSentence(prNumber: number, notice: PrStatusNotice, completion: PrMergedCompletion): string {

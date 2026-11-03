@@ -204,6 +204,11 @@ describe("openAuxPane (native)", () => {
 		expect(mocks.focusNativeTaskPane).toHaveBeenCalledWith(TASK_ID, "pane-1");
 	});
 
+	it("leaves focus on the new pane when the opener asks for it", async () => {
+		await openAuxPane(spec(nativeTask, { focusNewPane: true }));
+		expect(mocks.focusNativeTaskPane).not.toHaveBeenCalled();
+	});
+
 	it("forces focus nowhere when the coordinator had no active pane", async () => {
 		mocks.nativeTaskPanesState.mockResolvedValue(nativeState(["pane-1"], null));
 
@@ -312,7 +317,7 @@ describe("native pane lookup by launch-command marker", () => {
 	// launches on the other platform and is then invisible to every later lookup —
 	// is it running, replace it, stop it (Seq 1546).
 	it("matches the launched script on BOTH platforms' file names", () => {
-		for (const purpose of ["devServer", "columnAgent"] as const) {
+		for (const purpose of ["devServer", "columnAgent", "fileBrowser"] as const) {
 			const marker = auxPaneMarker(TASK_ID, purpose);
 			expect(marker).not.toMatch(/\.(sh|ps1)$/);
 			for (const extension of [".sh", ".ps1"]) {

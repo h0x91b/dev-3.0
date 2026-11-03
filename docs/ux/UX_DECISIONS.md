@@ -737,3 +737,7 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 ## 2026-10-02 - Git workflow is a project property, switched on the Board tab
 - **Rule:** `Project.gitWorkflow=false` hides the git domain like a virtual board but keeps the real folder and its config. The switch is a Board-tab ToggleSwitch beside Privacy, refused while a task is live. AddProject's folder pane carries the same switch (off: Local only, shared-folder copy); a non-git folder picked with it on gets an inline offer; no dashboard badge.
 - **Why:** project-record state like `sensitive`, not git-committed config. Rejected: a per-task toggle (columns and teardown are board-level), a third AddProject kind segment, a "No git" badge. Evidence: `ProjectSettings.tsx`, `AddProjectModal.tsx`, `decisions/2026/10/02/per-project-git-workflow-switch.md`.
+
+## 2026-10-31 — Epics: a global object with no destination of its own
+- **Rule:** chip above the card title (click filters `epic:`), an Epic row in the detail metadata grid, optional New Task field, management in Settings → Tasks & Board → Epics; a cross-board footnote reuses the lineage notice. Bible §3.
+- **Why:** a nav item or board header button would spend a budget for an occasional job. `decisions/2026/10/31/global-epics.md`.

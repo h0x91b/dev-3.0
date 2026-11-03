@@ -3,6 +3,7 @@ import { detectContext, resolveInstanceSocket, resolveSocketPath, resolveSocketP
 import { exitAppNotRunning, exitInternalError, exitUsage } from "./output";
 import { handleProjects } from "./commands/projects";
 import { handleSpaces } from "./commands/spaces";
+import { handleEpic } from "./commands/epic";
 import { handleTasks } from "./commands/tasks";
 import { handleTask } from "./commands/task";
 import { handleCurrent } from "./commands/current";
@@ -29,6 +30,7 @@ import { handleMessage, unreachableAppVerdict } from "./commands/message";
 import { handlePeek } from "./commands/peek";
 import { handlePr } from "./commands/pr";
 import { handlePrWatch } from "./commands/pr-watch";
+import { handleSecret } from "./commands/secret";
 import { handlePane } from "./commands/pane";
 import { handleAgent } from "./commands/agent";
 import { handleSender } from "./commands/sender";
@@ -65,6 +67,7 @@ const HELP = `dev3 — AI-facing CLI for the dev-3.0 Kanban board.
 Auto-detects project and task from the worktree context.
 
 Commands:
+  dev3 secret run --env NAME -- command [args...]  Ask for a secret in the app; run once, discard output
   dev3 agent list [--json]              List agent and preset IDs for managed launches
   dev3 agent spawn [--task <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--json]
   dev3 agent resume [--task <id>] [--allow-agent-latest] [--json]
@@ -77,8 +80,8 @@ Commands:
   dev3 task terminal-backend [--task <id>] [--to tmux|native]  Inspect/switch this task's terminal backend
   dev3 task hibernate [<id>|--task <id>] [--json]  Park a task: stop agent, terminal, dev server; keep the worktree
   dev3 task wake [<id>|--task <id>] --resume|--shell [--json]  Wake a hibernated task (resume the agent, or a plain shell)
-  dev3 task update [--task <id>] --title "..." [--description "..." | --description -] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard]  Update task fields
-  dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|board-cleanup|standard]  Create a new task (To Do)
+  dev3 task update [--task <id>] --title "..." [--description "..." | --description -] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic]  Update task fields
+  dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic]  Create a new task (To Do)
                                          (--pr <n> starts the worktree on that pull request's branch and implies --type pr-review)
   dev3 note add "..." [--content "..."] [--task <id>] [--source user]  Add note to a task
   dev3 note list [--task <id>]          List notes
@@ -111,6 +114,11 @@ Commands:
   dev3 label set --clear [--task <id>]  Remove all labels from a task
   dev3 tasks list [--open] [--json] [--status <s>] [--label <id>] [--priority P0,P1] [--sort priority|seq] [--limit <n>] [--offset <n>]  List tasks (highest priority first, default 50)
   dev3 tasks list --children-of seq:<N> [--project <id>] [--json]  Tasks created from inside that task, across projects
+  dev3 tasks list --epic <name|id> [--json]  Every task in that epic, across projects and statuses
+  dev3 epic list [--all] [--json]       List epics (id, colour, name, state, task count); --all includes archived
+  dev3 epic create --name "..." [--color #hex]  Create an epic (the user, or a coordinator task; exit 45 otherwise)
+  dev3 epic update <name|id> [--name "..."] [--color #hex]  Rename or recolour an epic
+  dev3 epic archive|unarchive <name|id>  Close or reopen an epic (there is no delete)
   dev3 automations list                 List project automations (scheduled agent runs)
   dev3 automations show <id>            Automation details + run history
   dev3 automations create --name "..." [--prompt "..." | --prompt -] --rrule "FREQ=DAILY;BYHOUR=9" [--template shipped-report]
@@ -470,6 +478,8 @@ async function main(): Promise<void> {
 
 	try {
 		switch (command) {
+			case "secret":
+				return await handleSecret(subcommand, args, socketPath, context);
 			case "projects":
 			// Alias: the plural is the real command, but `dev3 project list` is the
 			// natural mistype and used to answer "Unknown command" with no hint —
@@ -479,6 +489,9 @@ async function main(): Promise<void> {
 			case "spaces":
 			case "space":
 				return await handleSpaces(subcommand, args, socketPath, context);
+			case "epic":
+			case "epics":
+				return await handleEpic(subcommand, args, socketPath, context);
 			case "tasks":
 				return await handleTasks(subcommand, args, socketPath, context);
 			case "task":

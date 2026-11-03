@@ -7,6 +7,7 @@ import { cliTransportFor, startCliListener } from "./cli-listener";
 import { agentHandlers } from "./cli-socket/agent-commands";
 import { automationHandlers } from "./cli-socket/automation-commands";
 import { boardMetadataHandlers } from "./cli-socket/board-metadata-commands";
+import { epicHandlers } from "./cli-socket/epic-commands";
 import { externalSenderHandlers } from "./cli-socket/external-sender-commands";
 import { liveHandlers } from "./cli-socket/live-commands";
 import { messageHandlers } from "./cli-socket/message-commands";
@@ -17,6 +18,7 @@ import { statsHandlers } from "./cli-socket/stats-commands";
 import { systemHandlers } from "./cli-socket/system-commands";
 import { taskHandlers } from "./cli-socket/task-commands";
 import { uiHandlers } from "./cli-socket/ui-commands";
+import { secretCliHandlers } from "./cli-socket/secret-commands";
 
 const SOCKETS_DIR = `${DEV3_HOME}/sockets`;
 
@@ -54,6 +56,7 @@ function cleanupStaleSockets(): void {
 }
 
 const handlers: Record<string, Handler> = {
+	...secretCliHandlers,
 	...agentHandlers,
 	...paneHandlers,
 	...boardMetadataHandlers,
@@ -65,6 +68,7 @@ const handlers: Record<string, Handler> = {
 	...statsHandlers,
 	...systemHandlers,
 	...taskHandlers,
+	...epicHandlers,
 	...liveHandlers,
 };
 

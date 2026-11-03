@@ -28,7 +28,7 @@
 - Decomposed accents (combining marks) are not searchable, since `getChars()` returns the base code point only.
 - Wrapped scrollback rows are not rejoined, so a match split by a soft wrap is missed.
 - A filled native pane holds up to about 66 MB of scrollback.
-- ghostty scrolls to the bottom on any write while `viewportY > 0`, so live output moves the view off the current match until the next Enter.
+- ghostty scrolls to the bottom on any write while `viewportY > 0`; a native pane puts the view back after each write (`decisions/2026/10/29/hold-native-terminal-viewport-on-write.md`).
 - `select()`'s quirk is worked around, not fixed; a ghostty-web fix of its row base would make the first scroll harmless but redundant.
 
 ## Alternatives considered

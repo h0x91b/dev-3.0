@@ -17,7 +17,6 @@ const mockedScan = api.request.scanWorktreeDiskUsage as ReturnType<typeof vi.fn>
 function snapshot(overrides?: Partial<SystemLoadSnapshot>): SystemLoadSnapshot {
 	return {
 		cpuBusy: 0.42,
-		cpuLoadPercent: 42,
 		cpuPressure: "normal",
 		cores: 10,
 		loadAvg: [3.5, 2.25, 1],
@@ -62,7 +61,7 @@ describe("SystemLoadRows", () => {
 		expect(screen.getByTestId("disk-space-row")).toHaveAccessibleName("120 GB of disk still free");
 
 		await act(async () => {
-			window.dispatchEvent(new CustomEvent("rpc:systemLoadUpdated", { detail: snapshot({ cpuLoadPercent: 90, disk: null }) }));
+			window.dispatchEvent(new CustomEvent("rpc:systemLoadUpdated", { detail: snapshot({ cpuBusy: 0.9, disk: null }) }));
 		});
 		expect(screen.getByTestId("cpu-load-row")).toHaveTextContent("90%");
 		expect(screen.queryByTestId("disk-space-row")).toBeNull();
@@ -75,7 +74,8 @@ describe("SystemLoadRows", () => {
 		const panel = await screen.findByTestId("cpu-load-row-popover");
 		expect(panel).toHaveTextContent("Docker");
 		expect(panel).toHaveTextContent("120%");
-		expect(panel).toHaveTextContent("load 3.50 2.25 1.00");
+		expect(panel).toHaveTextContent("42% busy");
+		expect(panel).toHaveTextContent("load average 3.50 2.25 1.00");
 
 		await user.click(within(panel).getByText("Fix the parser"));
 		expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1", activeTaskId: "abc12345-full" });
@@ -129,11 +129,11 @@ describe("SystemLoadRows", () => {
 
 	it("header pills appear only for a resource at warn or critical, coloured by its level", async () => {
 		mockedGet.mockResolvedValue(
-			snapshot({ cpuLoadPercent: 160, cpuPressure: "critical", disk: { free: 120e9, total: 500e9, pressure: "normal" } }),
+			snapshot({ cpuBusy: 0.97, cpuPressure: "critical", disk: { free: 120e9, total: 500e9, pressure: "normal" } }),
 		);
 		renderRows(vi.fn(), "bar");
 		const cpu = await screen.findByTestId("cpu-load-pill");
-		expect(cpu).toHaveTextContent("160%");
+		expect(cpu).toHaveTextContent("97%");
 		expect(cpu.className).toContain("text-danger");
 		expect(screen.queryByTestId("disk-space-pill")).toBeNull();
 

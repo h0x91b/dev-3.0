@@ -291,9 +291,7 @@ const dashboard = {
 	"fileBrowser.clickAgainHint": "Después de la instalación, haz clic en Files de nuevo y funcionará.",
 
 	// CPU and disk rows in the header kebab (beside "Memory left").
-	"systemLoad.cpu": "Carga de CPU",
-	"systemLoad.load": "de carga",
-	"systemLoad.busyPercent": "{busy} ocupado",
+	"systemLoad.cpu": "CPU",
 	"systemLoad.cpuLevel.normal": "normal",
 	"systemLoad.cpuLevel.warn": "alta",
 	"systemLoad.cpuLevel.critical": "sobrecargada",
@@ -303,7 +301,7 @@ const dashboard = {
 	"systemLoad.cpuAria": "{busy} de CPU en uso",
 	"systemLoad.busy": "ocupado",
 	"systemLoad.cores": "{cores} núcleos",
-	"systemLoad.loadAvg": "carga {load}",
+	"systemLoad.loadAvg": "carga media {load}",
 	"systemLoad.outsideDev3": "Lo más ocupado fuera de dev-3.0",
 	"systemLoad.nothingBusy": "Nada fuera de dev-3.0 está ocupando la CPU.",
 	"systemLoad.coreNote": "Por proceso: 100% es un núcleo completo.",

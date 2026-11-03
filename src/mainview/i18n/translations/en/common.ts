@@ -1,4 +1,14 @@
 const common = {
+	"secret.title": "Run once with a secret",
+	"secret.command": "Command to run (exact arguments)",
+	"secret.privacy": "dev3 does not save this value or send it to the conversation. Command output is discarded; the agent receives only success or failure.",
+	"secret.trust": "Only approve a command you trust. It and its child processes can read, save or transmit the secret. The command stops after five minutes; background processes may outlive it.",
+	"secret.value": "Secret for {name}",
+	"secret.insecure": "Use HTTPS or open dev3 on this machine to enter a secret.",
+	"secret.error": "Could not submit the request. The field was cleared; enter the secret again to retry.",
+	"secret.decline": "Decline",
+	"secret.run": "Use secret and run",
+
 	// Landmark labels
 	"nav.appHeader": "Application header",
 	"nav.activeTasks": "Active tasks",

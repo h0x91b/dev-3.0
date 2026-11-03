@@ -1,0 +1,1 @@
+Routine "is this commit already merged?" checks no longer flood the log with "Git command failed" warnings: a `git merge-base --is-ancestor` that answers "no" is now treated as a normal result, while real git errors are still logged.
