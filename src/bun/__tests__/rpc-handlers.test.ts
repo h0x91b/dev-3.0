@@ -216,6 +216,7 @@ const mockNativePanes = {
 	nativeTaskPanesState: vi.fn(async () => null as any),
 	nativeTaskPaneLayout: vi.fn(async (..._args: any[]) => null as any),
 	nativeTaskPanesAlive: vi.fn(async () => false),
+	stopNativeTaskPanes: vi.fn(async () => undefined),
 	nativeTaskPaneCommands: vi.fn(async () => [] as any[]),
 	// Serves the same fake pane list as the tolerant read; the undecidable and
 	// unreadable-record cases run against the real discovery path in
@@ -11508,6 +11509,136 @@ describe("resumeTaskSession — the Resume Session path dev3 agent resume reuses
 		expect(click).toContain("session=task-1");
 		expect(agents.resolveCommandForAgent).toHaveBeenCalledTimes(1);
 	});
+
+	it("restarts the saved conversation once and leaves its account and hibernation metadata intact", async () => {
+		const task = arrange([LIVE], [`${LIVE}.jsonl`]);
+		task.sessionState!.panes[0].accountId = "account-1";
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+		(pty.hasSession as any).mockReturnValue(true);
+
+		await Promise.all([
+			handlers.resumeTask({ taskId: task.id, restart: true }),
+			handlers.resumeTask({ taskId: task.id, restart: true }),
+		]);
+
+		expect(pty.destroySession).toHaveBeenCalledTimes(1);
+		expect(agents.resolveCommandForAgent).toHaveBeenCalledTimes(1);
+		expect((agents.resolveCommandForAgent as any).mock.calls[0][3]).toMatchObject({ resume: true, sessionId: LIVE, accountId: "account-1" });
+		const writes = vi.mocked(data.updateTask).mock.calls.map((call) => call[2]);
+		expect(writes.some((patch) => patch.sessionState?.panes[0]?.parked)).toBe(true);
+		expect(writes[writes.length - 1]?.sessionState?.panes[0]).toMatchObject({ sessionId: LIVE, accountId: "account-1" });
+		expect(writes.some((patch) => patch.hibernated !== undefined)).toBe(false);
+	});
+
+	it.each(["alive", "unknown"] as const)("rechecks a watchdog restart inside the resume flight and refuses a %s agent", async (liveness) => {
+		arrange([LIVE], [`${LIVE}.jsonl`]);
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
+		const probe = vi.spyOn(await import("../scheduled-message-author"), "taskMainAgentLiveness").mockResolvedValue(liveness);
+		try {
+			await expect(resumeTaskSession("task-1", { restart: "if-exited" })).resolves.toEqual({ kind: "already-running", backend: "tmux" });
+			expect(probe).toHaveBeenCalledTimes(1);
+			expect(pty.destroySession).not.toHaveBeenCalled();
+			expect(agents.resolveCommandForAgent).not.toHaveBeenCalled();
+		} finally { probe.mockRestore(); }
+	});
+
+	it("restarts an exited agent when the watchdog recheck confirms it", async () => {
+		arrange([LIVE], [`${LIVE}.jsonl`]);
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValueOnce(true).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+		const probe = vi.spyOn(await import("../scheduled-message-author"), "taskMainAgentLiveness").mockResolvedValue("exited");
+		try {
+			await expect(resumeTaskSession("task-1", { restart: "if-exited" })).resolves.toMatchObject({ kind: "resumed" });
+			expect(pty.destroySession).toHaveBeenCalledTimes(1);
+			expect(agents.resolveCommandForAgent).toHaveBeenCalledTimes(1);
+		} finally { probe.mockRestore(); }
+	});
+
+	it("honors an explicit restart that joined a watchdog probe which left the live agent alone", async () => {
+		arrange([LIVE], [`${LIVE}.jsonl`]);
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValueOnce(true).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+		const probe = vi.spyOn(await import("../scheduled-message-author"), "taskMainAgentLiveness").mockResolvedValue("alive");
+		try {
+			const [automatic, explicit] = await Promise.all([
+				resumeTaskSession("task-1", { restart: "if-exited" }),
+				handlers.resumeTask({ taskId: "task-1", restart: true }),
+			]);
+			expect(automatic.kind).toBe("already-running");
+			expect(explicit).toContain("session=task-1");
+			expect(pty.destroySession).toHaveBeenCalledTimes(1);
+			expect(agents.resolveCommandForAgent).toHaveBeenCalledTimes(1);
+		} finally { probe.mockRestore(); }
+	});
+
+	it.each([
+		["missing", [DEAD], []],
+		["substituted", [DEAD], [`${LIVE}.jsonl`]],
+		["fresh extra", [LIVE, DEAD], [`${LIVE}.jsonl`]],
+	] as const)("refuses a %s conversation before stopping the live terminal", async (_name, ids, files) => {
+		arrange([...ids], [...files]);
+		(pty.hasSession as any).mockReturnValue(true);
+		await expect(handlers.resumeTask({ taskId: "task-1", restart: true })).rejects.toThrow("Nothing was stopped");
+		expect(pty.destroySession).not.toHaveBeenCalled();
+		expect(pty.destroySessionAwaited).not.toHaveBeenCalled();
+		expect(agents.resolveCommandForAgent).not.toHaveBeenCalled();
+	});
+
+	it.each([{ status: "todo" }, { hibernated: true }, { preparing: true }, { shuttingDown: true }])("refuses restart when the task cannot run: %j", async (state) => {
+		arrange([LIVE], [`${LIVE}.jsonl`], state as Partial<Task>);
+		await expect(handlers.resumeTask({ taskId: "task-1", restart: true })).rejects.toThrow("task must be active");
+		expect(pty.destroySession).not.toHaveBeenCalled();
+	});
+
+	it.each([["pane-1", "pane-2"], ["pane-2"]])("refuses unsaved native extra panes, including a lone auxiliary pane: %j", async (...paneIds) => {
+		arrange([LIVE], [`${LIVE}.jsonl`], { terminalBackend: "native" });
+		mockNativePanes.nativeTaskPaneCommandsStrict.mockResolvedValueOnce({ kind: "read", panes: paneIds.map((paneId) => ({ paneId })) as any[], unreadable: [] });
+		await expect(handlers.resumeTask({ taskId: "task-1", restart: true })).rejects.toThrow("extra panes");
+		expect(pty.destroySessionAwaited).not.toHaveBeenCalled();
+		expect(mockNativePanes.stopNativeTaskPanes).not.toHaveBeenCalled();
+	});
+
+	it("refuses an unreadable native pane set before teardown", async () => {
+		arrange([LIVE], [`${LIVE}.jsonl`], { terminalBackend: "native" });
+		mockNativePanes.nativeTaskPaneCommandsStrict.mockRejectedValueOnce(new Error("cannot read pane identity"));
+		await expect(handlers.resumeTask({ taskId: "task-1", restart: true })).rejects.toThrow("cannot read pane identity");
+		expect(mockNativePanes.stopNativeTaskPanes).not.toHaveBeenCalled();
+	});
+
+	it("restarts a single native pane on its saved conversation", async () => {
+		arrange([LIVE], [`${LIVE}.jsonl`], { terminalBackend: "native" });
+		mockNativePanes.nativeTaskPaneCommandsStrict.mockResolvedValueOnce({ kind: "read", panes: [{ paneId: "pane-1" }] as any[], unreadable: [] });
+		mockNativePanes.nativeTaskPanesAlive.mockResolvedValueOnce(false);
+		await handlers.resumeTask({ taskId: "task-1", restart: true });
+		expect(mockNativePanes.stopNativeTaskPanes).toHaveBeenCalledWith("task-1");
+		expect((agents.resolveCommandForAgent as any).mock.calls[0][3]).toMatchObject({ resume: true, sessionId: LIVE });
+	});
+
+	it("keeps the old pane identity when native teardown fails", async () => {
+		const task = arrange([LIVE], [`${LIVE}.jsonl`], { terminalBackend: "native" });
+		const priorState = task.sessionState;
+		mockNativePanes.stopNativeTaskPanes.mockRejectedValueOnce(new Error("still running"));
+		await expect(handlers.resumeTask({ taskId: task.id, restart: true })).rejects.toThrow("still running");
+		expect(data.updateTask).toHaveBeenLastCalledWith(expect.anything(), task.id, { sessionState: priorState });
+		expect(agents.resolveCommandForAgent).not.toHaveBeenCalled();
+	});
+
+	it("does not launch into a native terminal that survived teardown", async () => {
+		arrange([LIVE], [`${LIVE}.jsonl`], { terminalBackend: "native" });
+		mockNativePanes.nativeTaskPanesAlive.mockResolvedValueOnce(true);
+		await expect(handlers.resumeTask({ taskId: "task-1", restart: true })).rejects.toThrow("previous terminal has not stopped");
+		expect(agents.resolveCommandForAgent).not.toHaveBeenCalled();
+	});
+
+	it("reports an extra pane launch failure and keeps its saved conversation", async () => {
+		const task = arrange([LIVE, DEAD], [`${LIVE}.jsonl`, `${DEAD}.jsonl`]);
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+		vi.mocked(pty.splitAndRunCommand).mockRejectedValueOnce(new Error("split failed"));
+		await expect(handlers.resumeTask({ taskId: task.id, restart: true })).rejects.toThrow("some agent panes could not be restored");
+		expect(vi.mocked(data.updateTask).mock.calls.some((call) => call[2].sessionState?.panes[1]?.sessionId === DEAD)).toBe(true);
+	});
 });
 
 describe("resumeTask gives every Claude pane its own conversation (#1950)", () => {
@@ -11790,6 +11921,23 @@ describe("resumeTask resumes the Codex conversations the selection engine chose"
 		try {
 			await handlers.resumeTask({ taskId: task.id });
 			expect(chooseTaskCodexConversations).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: task.id }), [expect.objectContaining({ sessionId })], "explicit-resume", expect.objectContaining({ persist: true }));
+			expect(pty.createSession).toHaveBeenLastCalledWith(task.id, project.id, task.worktreePath, expect.any(String), expect.objectContaining({ CODEX_HOME: home }), expect.any(String));
+			expect((await data.getTask(project, task.id)).sessionState?.panes[0]).toMatchObject({ sessionId, accountId: "account-b" });
+		} finally { accountSpy.mockRestore(); }
+	});
+
+	it("keeps Codex resumable after restart and a later hibernation wake", async () => {
+		const { project, task } = arrange();
+		const accountSpy = vi.spyOn(agentAccounts, "codexAccountIdForHome").mockImplementation((value) => value === home ? "account-b" : undefined);
+		chose([0, sessionId, home]);
+		try {
+			vi.mocked(pty.hasSession).mockReturnValue(true);
+			vi.mocked(pty.tmuxSessionExists).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+			await handlers.resumeTask({ taskId: task.id, restart: true });
+			expect((await data.getTask(project, task.id)).sessionState?.panes[0]).toMatchObject({ sessionId, accountId: "account-b" });
+			await data.updateTask(project, task.id, { hibernated: true });
+			vi.mocked(pty.hasSession).mockReturnValue(false);
+			await handlers.resumeTask({ taskId: task.id });
 			expect(pty.createSession).toHaveBeenLastCalledWith(task.id, project.id, task.worktreePath, expect.any(String), expect.objectContaining({ CODEX_HOME: home }), expect.any(String));
 			expect((await data.getTask(project, task.id)).sessionState?.panes[0]).toMatchObject({ sessionId, accountId: "account-b" });
 		} finally { accountSpy.mockRestore(); }
