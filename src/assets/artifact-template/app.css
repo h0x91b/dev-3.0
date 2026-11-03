@@ -140,7 +140,7 @@
       box-shadow: inset 0 0 0 1px rgb(var(--dev3-accent) / .28);
       color: rgb(var(--dev3-accent));
     }
-    .section-anchor { scroll-margin-top: 4.25rem; }
+    .section-anchor { scroll-margin-top: max(4.25rem, 60px); }
     .status {
       display: inline-flex;
       align-items: center;
@@ -217,9 +217,9 @@
        would otherwise stack on top of it and sink the text below the edge. */
     .card > :first-child { margin-top: 0; }
     .card > :last-child { margin-bottom: 0; }
-    /* No widget carries its own margin, so a slider form, a preset row and a KPI
-       grid stacked in one card would touch. */
-    .card > :is(form, .controls, .option-group, .grid, .stack) + *, .card > * + :is(form, .controls, .option-group, .grid, .stack) { margin-top: 14px; }
+    /* No widget carries its own margin, so sliders, presets, a chart, a table or a
+       KPI grid stacked in one card would touch. */
+    .card > :is(form, .controls, .option-group, .grid, .stack, .field, .check, .switch, .segmented, .choices, .form-actions, .chart-host, table, input, textarea, select) + *, .card > * + :is(form, .controls, .option-group, .grid, .stack, .field, .check, .switch, .segmented, .choices, .form-actions, .chart-host, table, input, textarea, select) { margin-top: 14px; }
     /* A toned panel carries its hue on its own edge, so a grid of cards reads as
        a set of distinct panels rather than one repeated grey box. */
     .card:is(.tone-1, .tone-2, .tone-3, .tone-4, .tone-5, .tone-6, .tone-gold) {
@@ -287,13 +287,14 @@
     }
     .section-copy { margin-top: 4px; color: rgb(var(--dev3-text-secondary)); font-size: .8125rem; line-height: 1.45; }
     .segmented {
+      flex-wrap: wrap;
       gap: 3px;
       padding: 3px;
       border: 1px solid rgb(var(--dev3-border));
       border-radius: 11px;
       background: rgb(var(--dev3-surface-base));
     }
-    .segmented button { padding: 6px 9px; border: 0; background: transparent; }
+    .segmented button { flex: 1 1 auto; padding: 6px 9px; border: 0; background: transparent; overflow-wrap: normal; }
     /* The readout is the reset button, so the group needs no fourth control. Its
        width is fixed in ch so stepping 90% → 100% cannot shift the topbar. */
     .text-size button { min-height: 30px; font-weight: 700; }
@@ -339,6 +340,8 @@
       letter-spacing: 0;
       font-variant-numeric: tabular-nums;
       text-transform: none;
+      flex: none;
+      white-space: nowrap;
     }
     /* One shell for every control, hung off the elements rather than off
        `.field`, so a bare <textarea> or <select> dropped into a hand-written
@@ -889,7 +892,7 @@
          the width pressure being removed. */
       thead { display: none; }
       table, tbody { display: block; }
-      tbody tr { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 2px 16px; padding: 12px var(--dev3-table-edge, 16px); border-top: 1px solid rgb(var(--dev3-border)); }
+      tbody tr { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr)); gap: 2px 16px; padding: 12px var(--dev3-table-edge, 16px); border-top: 1px solid rgb(var(--dev3-border)); }
       /* :nth-child(n) only lifts specificity: the column rule and the ledger's
          cell padding are class-level, and a stacked cell must shed both. */
       tbody :is(th, td):nth-child(n) { display: block; padding: 4px 0; border: 0; text-align: left; font-size: .875rem; }
