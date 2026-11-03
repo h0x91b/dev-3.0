@@ -55,7 +55,7 @@ interface LoadedConversation {
 }
 
 /** Where this task's files live, whether or not it still has a worktree. */
-function taskWorkingDir(project: Project, task: Task): string {
+export function taskWorkingDir(project: Project, task: Task): string {
 	return folderWorkDir(project, task) ?? task.worktreePath ?? `${taskDir(project, task)}/worktree`;
 }
 

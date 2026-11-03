@@ -53,6 +53,11 @@ export interface TaskRuntimeState {
 	runtime: "idle" | "preparing" | "running" | "tearing-down";
 	stage?: string;
 	runId?: string;
+	/**
+	 * Pid of the dev3 instance running this `preparing`/`tearing-down` run. Several
+	 * instances share `~/.dev3.0`; boot recovery must leave a live peer's run alone.
+	 */
+	ownerPid?: number;
 	updatedAt: number;
 }
 
@@ -404,6 +409,12 @@ export interface Task {
 	 * never by an update; absent means the user. Read through `taskOrigin()`.
 	 */
 	origin?: TaskOrigin;
+	/**
+	 * The global epic this task belongs to (see `Epic`), absent for none. Kept
+	 * out of `labelIds` on purpose: an older build's label editor saves only the
+	 * project's own labels and would silently drop a foreign id.
+	 */
+	epicId?: string;
 	/**
 	 * Deferred launch ("Start in…"). Set from the Launch modal when the user
 	 * schedules the spawn instead of firing it immediately. Only meaningful on

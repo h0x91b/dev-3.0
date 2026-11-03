@@ -29,7 +29,7 @@ export type AgentIdentity =
 export const AGENT_IDENTITY_UNSUPPORTED_DETAIL = "agent identity cannot be verified on Windows yet";
 
 const SCRIPT_RUNTIMES = new Set(["node", "bun", "deno", "python", "python3"]);
-const SHELLS = new Set(["sh", "bash", "zsh", "fish", "dash", "ksh", "mksh", "tcsh", "csh", "nu", "elvish", "xonsh", "pwsh", "powershell"]);
+const SHELLS = new Set(["sh", "bash", "zsh", "fish", "dash", "ash", "ksh", "mksh", "tcsh", "csh", "nu", "elvish", "xonsh", "pwsh", "powershell"]);
 const MAX_ANCESTRY = 64;
 
 type ProcessTable = { parentOf: Map<number, number>; childrenOf: Map<number, number[]>; cmdlines: Map<number, string> };
@@ -167,11 +167,16 @@ export async function readPaneAgentIdentity(task: Task, paneId: string, options:
 	return identityOf(task, paneId, root, agentPid, options.generation === true);
 }
 
-/** Does `paneId` run an agent right now — a live non-shell child of its launch script? */
+/**
+ * Does `paneId` run an agent right now — a live non-shell child of its launch script?
+ * A bare shell at the root is what an exited agent leaves: whatever runs in it, a dev
+ * server or the agent started again by hand, is not the agent a message may follow.
+ */
 async function paneRunsAgent(task: Task, paneId: string): Promise<PaneRoot | null> {
 	const root = await paneRoot(task, paneId);
 	if (!root) return null;
 	const table = await processTable();
+	if (!table.cmdlines.has(root.rootPid) || isHandedOverShell(table, root.rootPid)) return null;
 	return (table.childrenOf.get(root.rootPid) ?? []).some((pid) => !isShell(table, pid)) ? root : null;
 }
 
@@ -305,12 +310,8 @@ export async function resolveScheduledMessageAuthorPane(task: Task, author: Sche
 async function resolveNativeMainAuthor(task: Task, author: ScheduledMessageAuthor, gone: AuthorPaneResolution): Promise<AuthorPaneResolution> {
 	if (author.paneId !== NATIVE_AGENT_PANE_ID || !author.sessionId || !author.paneGeneration) return gone;
 	if (entryFor(task, NATIVE_AGENT_PANE_ID)?.sessionId !== author.sessionId) return gone;
-	const root = await paneRoot(task, NATIVE_AGENT_PANE_ID);
+	const root = await paneRunsAgent(task, NATIVE_AGENT_PANE_ID);
 	if (!root) return gone;
-	// A bare shell at the root is what an exited or hibernated agent leaves: whatever runs in it is not the agent.
-	const table = await processTable();
-	if (!table.cmdlines.has(root.rootPid) || isHandedOverShell(table, root.rootPid)) return gone;
-	if (!(table.childrenOf.get(root.rootPid) ?? []).some((pid) => !isShell(table, pid))) return gone;
 	const current = await readAgentProcessSignature(root.rootPid);
 	// Compared by pid: a signature string alone can differ for the same process (lstart is local time).
 	const was = rootPidOf(author.paneGeneration);

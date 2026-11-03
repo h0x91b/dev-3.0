@@ -54,16 +54,14 @@ export function readDiskFacts(path: string): { free: number; total: number } | n
 }
 
 /**
- * Load average as a % of capacity. Where the OS has no load average (Windows
- * reports zeros) busy % is the only honest stand-in.
+ * Judged on sampled busy time, not load average: macOS counts threads blocked
+ * on I/O in the load, so it reads 600% on a 30%-busy machine and lags minutes
+ * behind (decisions/2026/10/31/cpu-pressure-from-busy-time-not-load-average.md).
  */
-export function cpuLoadPercent(loadAvg1: number, cores: number, busy: number): number {
-	return loadAvg1 > 0 && cores > 0 ? (loadAvg1 / cores) * 100 : busy * 100;
-}
-
-export function classifyCpu(loadPercent: number, levels: ResourceLevels): MemoryPressure {
-	if (loadPercent >= levels.cpuCriticalPercent) return "critical";
-	return loadPercent >= levels.cpuWarnPercent ? "warn" : "normal";
+export function classifyCpu(busy: number, levels: ResourceLevels): MemoryPressure {
+	const percent = busy * 100;
+	if (percent >= levels.cpuBusyCriticalPercent) return "critical";
+	return percent >= levels.cpuBusyWarnPercent ? "warn" : "normal";
 }
 
 /** Levels are decimal GB because that is the unit Finder and `df -H` show. */
@@ -92,7 +90,6 @@ export function loadSnapshotWorthPushing(prev: SystemLoadSnapshot | null, next: 
 	if (!prev) return true;
 	if (prev.cpuPressure !== next.cpuPressure || prev.disk?.pressure !== next.disk?.pressure) return true;
 	if (Math.abs(next.cpuBusy - prev.cpuBusy) >= CPU_PUSH_THRESHOLD) return true;
-	if (Math.abs(next.cpuLoadPercent - prev.cpuLoadPercent) >= CPU_PUSH_THRESHOLD * 100) return true;
 	if (!prev.disk !== !next.disk) return true;
 	if (prev.disk && next.disk && Math.abs(next.disk.free - prev.disk.free) >= DISK_PUSH_THRESHOLD) return true;
 	const names = (s: SystemLoadSnapshot) => s.topCpuConsumers.map((c) => c.name).join(" ");

@@ -9,7 +9,7 @@ A one-hour log audit showed ~8,200 subprocess spawns/hour and 6,400+ full reads 
 Four independent caches, all in the bun process:
 
 1. **`src/bun/data.ts`** — mtime+size stat-validated cache for `loadProjects()`/`loadTasks()`. `stat()` is taken *before* `readFile` so a concurrent write can only over-invalidate, never serve stale. Cache hits return shallow copies (`{...item}`); mutator paths (`strict`/`persistMigrations`) bypass the cache; saves invalidate it.
-2. **`src/bun/git.ts` `fetchOrigin`** — exponential failure backoff (2 min base, doubling, 30 min cap) per `projectPath:branch` key, cleared on success.
+2. **`src/bun/git.ts` `fetchOrigin`** — exponential failure backoff (2 min base, doubling, 30 min cap) per `projectPath:branch` key, cleared on success. Extended on 2026-10-31 by `decisions/2026/10/31/unreachable-repository-backoff.md`: a missing repository or remote now backs off the whole remote, capped at 6 h.
 3. **`src/bun/git.ts` `detectDefaultCompareRef`** — 10 min TTL promise cache keyed on `projectPath\0baseBranch` (it spawns several git commands on every `resolveProjectConfig`; the 2-week `git shortlog` scan it originally ran was dropped in decision 183).
 4. **`src/bun/github.ts`** — `gh auth status` cached 60s (only the `authenticated` result, so a fresh `gh auth login` is visible immediately) and `gh auth token` cached 5 min per host+login.
 

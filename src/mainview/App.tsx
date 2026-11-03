@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAppState, canGoBack, routeTaskId, routeShowsTaskWorkspace, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, taskOpenRoute, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type Route } from "./state";
 import { lastProjectForSpace, rememberProjectForSpace } from "./utils/spaceBoardMemory";
 import { api, isElectrobun, getRpcConnectionState } from "./rpc";
+import { ignoreStartupReadFailure, startupRead } from "./startup-read";
 import { setWebNotificationsSuppressed, showWebNotificationOrToast, type WebNotificationDetail } from "./utils/webNotification";
 import { useT, useLocale, type TranslationKey } from "./i18n";
 import { useStreamerMode } from "./streamer-mode";
@@ -63,6 +64,7 @@ import { useAgentTrafficEnabled } from "./hooks/useAgentTrafficEnabled";
 import { isControlHidden, syncHiddenControlsFromGlobalSettings } from "./hidden-controls";
 import { useIsControlHidden } from "./hooks/useIsControlHidden";
 import { syncGlobalSettingsCache } from "./global-settings-cache";
+import { DEFAULT_GLOBAL_SETTINGS } from "./components/global-settings/utils";
 import StuckPreparationPopover from "./components/StuckPreparationPopover";
 import FolderPickerHost from "./components/FolderPickerModal";
 import KeyboardShortcutsModal, { type ShortcutsTab } from "./components/KeyboardShortcutsModal";
@@ -72,6 +74,8 @@ import RemoteAccessDownNotice from "./components/RemoteAccessDownNotice";
 import RemoteSignIn from "./components/RemoteSignIn";
 import RemoteAccessExposedPorts from "./components/RemoteAccessExposedPorts";
 import { ConfirmHost, confirm, whenConfirmHostMounted } from "./confirm";
+import SecretRequestModal from "./components/SecretRequestModal";
+import type { SecretRequest } from "../shared/secret-request";
 import AgentLaunchRequestModal from "./components/AgentLaunchRequestModal";
 import AboutModal from "./components/AboutModal";
 import FeatureFlagsModal from "./components/FeatureFlagsModal";
@@ -347,8 +351,10 @@ function App() {
 	const dontShowAgainRef = useRef(dontShowAgain);
 	dontShowAgainRef.current = dontShowAgain;
 
-	// Pending agent-initiated launch requests; only the head is on screen.
-	const [launchRequests, setLaunchRequests] = useState<AgentLaunchRequest[]>([]);
+	// Pending agent requests; only the head is on screen.
+	const [agentRequests, setAgentRequests] = useState<(AgentLaunchRequest | SecretRequest)[]>([]);
+	const [confirmBusy, setConfirmBusy] = useState(false);
+	const pendingAgentRequest = agentRequests[0];
 
 	// The bun `before-quit` gate asks us to confirm before the app actually quits
 	// (Cmd+Q, menu Quit, dock Quit). We just open the dialog; the real quit
@@ -540,12 +546,7 @@ function App() {
 	// every visit to Settings and every provider connect, so a fetch-once
 	// snapshot hid presets seeded or renamed after the first New Task modal.
 	const agents = useAgents();
-	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>({
-		defaultAgentId: "builtin-claude",
-		defaultConfigId: "claude-auto",
-		taskSortOrder: "oldest-first",
-		updateChannel: "stable",
-	});
+	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>(DEFAULT_GLOBAL_SETTINGS);
 	// Which task's workspace pane may dock the artifact panel. Docking is the
 	// default; the popup is the explicit opt-in. Every surface with no pane of its
 	// own — the archived task modal, immersive fullscreen, a toast for a task that
@@ -595,26 +596,49 @@ function App() {
 	// Guarded on by the guided tour: acting on default settings would replay a
 	// finished tour on every launch.
 	const [settingsLoaded, setSettingsLoaded] = useState(false);
+	const settingsLoadedRef = useRef(false);
+	const adoptHostSettings = useCallback((next: GlobalSettingsType) => {
+		settingsLoadedRef.current = true;
+		setGlobalSettings(next);
+		setSettingsLoaded(true);
+	}, []);
 	useEffect(() => {
 		let alive = true;
-		api.request.getGlobalSettings()
-			.then((next) => { if (alive) { setGlobalSettings(next); setSettingsLoaded(true); } })
-			.catch(() => {});
+		startupRead("global settings", () => api.request.getGlobalSettings(), { isCancelled: () => !alive })
+			.then((next) => { if (alive) adoptHostSettings(next); })
+			.catch(ignoreStartupReadFailure);
 		return () => { alive = false; };
-	}, []);
+	}, [adoptHostSettings]);
+
+	// Every save sends the WHOLE object, so it is built from the host's settings —
+	// never from the placeholder. Saving the placeholder (a lost load, then the
+	// first `?`) overwrote settings.json and flipped the default preset to Fable 5.
+	const persistAppSettings = useCallback((update: (prev: GlobalSettingsType) => GlobalSettingsType | null) => {
+		const persist = () => setGlobalSettings((prev) => {
+			const next = update(prev);
+			if (!next) return prev;
+			api.request.saveGlobalSettings(next).catch(() => {});
+			return next;
+		});
+		if (settingsLoadedRef.current) {
+			persist();
+			return;
+		}
+		startupRead("global settings", () => api.request.getGlobalSettings())
+			.then((loaded) => {
+				if (!settingsLoadedRef.current) adoptHostSettings(loaded);
+				persist();
+			})
+			.catch(ignoreStartupReadFailure);
+	}, [adoptHostSettings]);
 
 	// The header's `?` wears a dismissible callout on the main screens until help
 	// mode has been opened once. Recorded here rather than at each entry point, so
 	// the shortcut, the menu, the palette, a HelpCard link and the button itself
 	// all count as discovery. One-way — never written back to false.
 	const markHelpDiscovered = useCallback(() => {
-		setGlobalSettings((prev) => {
-			if (prev.helpModeDiscovered) return prev;
-			const next = { ...prev, helpModeDiscovered: true };
-			api.request.saveGlobalSettings(next).catch(() => {});
-			return next;
-		});
-	}, []);
+		persistAppSettings((prev) => (prev.helpModeDiscovered ? null : { ...prev, helpModeDiscovered: true }));
+	}, [persistAppSettings]);
 
 	useEffect(() => {
 		if (helpMode) markHelpDiscovered();
@@ -632,13 +656,12 @@ function App() {
 	const finishTour = useCallback((tourId: string, completed: boolean) => {
 		setTour(null);
 		if (!completed) return;
-		setGlobalSettings((prev) => {
-			if (prev.completedTours?.includes(tourId)) return prev;
-			const next = { ...prev, completedTours: [...(prev.completedTours ?? []), tourId] };
-			api.request.saveGlobalSettings(next).catch(() => {});
-			return next;
-		});
-	}, []);
+		persistAppSettings((prev) => (
+			prev.completedTours?.includes(tourId)
+				? null
+				: { ...prev, completedTours: [...(prev.completedTours ?? []), tourId] }
+		));
+	}, [persistAppSettings]);
 
 	useEffect(() => {
 		function onStart(e: Event) {
@@ -1761,11 +1784,11 @@ function App() {
 
 	useEffect(() => {
 		function onGlobalSettingsUpdated(e: Event) {
-			setGlobalSettings((e as CustomEvent<GlobalSettingsType>).detail);
+			adoptHostSettings((e as CustomEvent<GlobalSettingsType>).detail);
 		}
 		window.addEventListener("rpc:globalSettingsUpdated", onGlobalSettingsUpdated);
 		return () => window.removeEventListener("rpc:globalSettingsUpdated", onGlobalSettingsUpdated);
-	}, []);
+	}, [adoptHostSettings]);
 
 	// Terminal panes read the BiDi flag from a module cache, not from React state —
 	// one effect here covers every path that lands settings (initial load, push,
@@ -1785,9 +1808,10 @@ function App() {
 	// (a right-click on a task card, say) can patch-and-save without owning
 	// Settings screen state.
 	useEffect(() => {
-		syncGlobalSettingsCache(globalSettings);
+		// The cache is a save base, so it never holds the pre-load placeholder.
+		if (settingsLoaded) syncGlobalSettingsCache(globalSettings);
 		syncHiddenControlsFromGlobalSettings(globalSettings);
-	}, [globalSettings]);
+	}, [globalSettings, settingsLoaded]);
 
 	useEffect(() => {
 		function onProjectUpdated(e: Event) {
@@ -1849,10 +1873,11 @@ function App() {
 	// is clickable and opens that task, honoring the user's task-open-mode.
 	useEffect(() => {
 		function onCliToast(e: Event) {
-			const { taskId, projectId, message, level, durationMs, taskSeq, taskTitle, projectName } = (e as CustomEvent).detail as {
+			const { taskId, projectId, message, messageKey, level, durationMs, taskSeq, taskTitle, projectName } = (e as CustomEvent).detail as {
 				taskId: string | null;
 				projectId: string | null;
 				message: string;
+				messageKey?: "kanban.launchAccountRemoved";
 				level: "info" | "success" | "error";
 				durationMs?: number;
 				taskSeq?: number;
@@ -1866,11 +1891,11 @@ function App() {
 					? () => openTaskFromNotification(taskId, projectId)
 					: undefined;
 			const context = taskToastContext(taskSeq, projectName, taskTitle);
-			toast[level](message, { durationMs, onClick, context, taskId: taskId ?? undefined });
+			toast[level](messageKey ? t(messageKey) : message, { durationMs, onClick, context, taskId: taskId ?? undefined });
 		}
 		window.addEventListener("rpc:cliToast", onCliToast);
 		return () => window.removeEventListener("rpc:cliToast", onCliToast);
-	}, [openTaskFromNotification]);
+	}, [openTaskFromNotification, t]);
 
 	// One agent wrote into another task's agent (`dev3 message` from a worktree).
 	// Its own violet variant and a two-identity source line — the only toast whose
@@ -2489,7 +2514,7 @@ function App() {
 		function onAgentLaunchRequested(e: Event) {
 			const request = (e as CustomEvent).detail as AgentLaunchRequest;
 			if (resolvedRequestIds.has(request.requestId)) return;
-			setLaunchRequests((queue) => (
+			setAgentRequests((queue) => (
 				queue.some((r) => r.requestId === request.requestId) ? queue : [...queue, request]
 			));
 		}
@@ -2498,13 +2523,13 @@ function App() {
 		function onAgentRequestResolved(e: Event) {
 			const { requestId } = (e as CustomEvent).detail as { requestId: string };
 			resolvedRequestIds.add(requestId);
-			setLaunchRequests((queue) => queue.filter((r) => r.requestId !== requestId));
+			setAgentRequests((queue) => queue.filter((r) => r.requestId !== requestId));
 		}
 		let cancelled = false;
 		function restoreLaunchRequests() {
-			api.request.getPendingAgentLaunchRequests({}).then((requests) => {
-				if (!cancelled) setLaunchRequests((queue) => [...queue, ...requests.filter((r) => !resolvedRequestIds.has(r.requestId) && !queue.some((q) => q.requestId === r.requestId))]);
-			}).catch(() => {});
+			startupRead("pending agent launch requests", () => api.request.getPendingAgentLaunchRequests({}), { isCancelled: () => cancelled }).then((requests) => {
+				if (!cancelled) setAgentRequests((queue) => [...queue, ...requests.filter((r) => !resolvedRequestIds.has(r.requestId) && !queue.some((q) => q.requestId === r.requestId))]);
+			}).catch(ignoreStartupReadFailure);
 		}
 		window.addEventListener(RPC_STATUS_EVENT, restoreLaunchRequests);
 		restoreLaunchRequests();
@@ -2518,13 +2543,42 @@ function App() {
 		};
 	}, []);
 
+	useEffect(() => {
+		let cancelled = false;
+		const resolved = new Set<string>();
+		const add = (requests: SecretRequest[]) => setAgentRequests((queue) => [
+			...queue, ...requests.filter((request) => !resolved.has(request.requestId) && !queue.some((item) => item.requestId === request.requestId)),
+		]);
+		const restore = () => {
+			void startupRead("pending secret requests", () => api.request.listSecretRequests({}), { isCancelled: () => cancelled })
+				.then((requests) => { if (!cancelled) add(requests); })
+				.catch(ignoreStartupReadFailure);
+		};
+		const requested = (event: Event) => add([(event as CustomEvent<SecretRequest>).detail]);
+		const finished = (event: Event) => {
+			const { requestId } = (event as CustomEvent<{ requestId: string }>).detail;
+			resolved.add(requestId);
+			setAgentRequests((queue) => queue.filter((request) => request.requestId !== requestId));
+		};
+		window.addEventListener("rpc:secretRequested", requested);
+		window.addEventListener("rpc:secretRequestResolved", finished);
+		window.addEventListener(RPC_STATUS_EVENT, restore);
+		restore();
+		return () => {
+			cancelled = true;
+			window.removeEventListener("rpc:secretRequested", requested);
+			window.removeEventListener("rpc:secretRequestResolved", finished);
+			window.removeEventListener(RPC_STATUS_EVENT, restore);
+		};
+	}, []);
+
 	const respondToLaunchRequest = useCallback((
 		request: AgentLaunchRequest,
 		approved: boolean,
 		launch?: AgentLaunchChoice,
 	) => {
 		const { requestId } = request;
-		setLaunchRequests((queue) => queue.filter((r) => r.requestId !== requestId));
+		setAgentRequests((queue) => queue.filter((r) => r.requestId !== requestId));
 		if (approved && !request.spawn && !request.resume && !request.sessionAction) {
 			trackEvent("task_moved", { to_status: "in-progress", agent_requested: true });
 			const variantCount = launch?.variants.length ?? 1;
@@ -3765,14 +3819,17 @@ function App() {
 				onClose={() => setShortcutsModal((s) => ({ ...s, open: false }))}
 			/>
 			{updatePreviewOpen && <UpdatePopoverSimulatorModal onClose={() => setUpdatePreviewOpen(false)} />}
-			<ConfirmHost />
-			{launchRequests[0] && (
+			<ConfirmHost onBusyChange={setConfirmBusy} />
+			{!confirmBusy && pendingAgentRequest && ("env" in pendingAgentRequest ? (
+				<SecretRequestModal key={pendingAgentRequest.requestId} request={pendingAgentRequest}
+					onDone={() => setAgentRequests((queue) => queue.filter((request) => request.requestId !== pendingAgentRequest.requestId))} />
+			) : (
 				<AgentLaunchRequestModal
-					key={launchRequests[0].requestId}
-					request={launchRequests[0]}
-					onRespond={(approved, launch) => respondToLaunchRequest(launchRequests[0]!, approved, launch)}
+					key={pendingAgentRequest.requestId}
+					request={pendingAgentRequest}
+					onRespond={(approved, launch) => respondToLaunchRequest(pendingAgentRequest, approved, launch)}
 				/>
-			)}
+			))}
 			{artifactViewer && (
 				<TaskArtifactViewer
 					taskId={artifactViewer.taskId}

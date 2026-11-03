@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
 	bm25Score,
 	claudeEncodePath,
+	findClaudeStoreName,
 	computeExclusionSet,
 	countOccurrences,
 	countTermFrequencies,
@@ -22,6 +23,33 @@ describe("claudeEncodePath", () => {
 		expect(claudeEncodePath("/Users/a/.dev3.0/worktrees/proj/e5065a6f/worktree")).toBe(
 			"-Users-a--dev3-0-worktrees-proj-e5065a6f-worktree",
 		);
+	});
+
+	it("turns every other non-alphanumeric character into a dash too, as Claude Code does", () => {
+		expect(claudeEncodePath("/var/folders/5qkl_yy/T/my repo,v2")).toBe("-var-folders-5qkl-yy-T-my-repo-v2");
+		expect(claudeEncodePath("C:\\Users\\a\\repo")).toBe("C--Users-a-repo");
+	});
+
+	it("cuts a name over 200 characters and appends Claude Code's path hash (a real store name on disk)", () => {
+		const path = "/private/var/folders/yg/5qkl_yy11t92kql23hk52t9w0000gp/T/dev3-qa/2ac1b9695631/seeded/home/.dev3.0/worktrees/var-folders-yg-5qkl_yy11t92kql23hk52t9w0000gp-T-dev3-qa-2ac1b9695631-seeded-fixture-repo/c9aa4f3a/worktree";
+		expect(claudeEncodePath(path)).toBe(
+			"-private-var-folders-yg-5qkl-yy11t92kql23hk52t9w0000gp-T-dev3-qa-2ac1b9695631-seeded-home--dev3-0-worktrees-var-folders-yg-5qkl-yy11t92kql23hk52t9w0000gp-T-dev3-qa-2ac1b9695631-seeded-fixture-repo-c9a-sw8x6g",
+		);
+	});
+});
+
+describe("findClaudeStoreName", () => {
+	const long = `/w/${"a".repeat(220)}`;
+
+	it("prefers the exact store name", () => {
+		expect(findClaudeStoreName(["-w-repo", "-w-repo-sub"], "/w/repo")).toBe("-w-repo");
+		expect(findClaudeStoreName(["-w-repo-sub"], "/w/repo")).toBeNull();
+	});
+
+	it("finds a cut store by its 200-character prefix when the hash differs, unique match only", () => {
+		const cut = claudeEncodePath(long).slice(0, 200);
+		expect(findClaudeStoreName([`${cut}-otherhash`], long)).toBe(`${cut}-otherhash`);
+		expect(findClaudeStoreName([`${cut}-one`, `${cut}-two`], long)).toBeNull();
 	});
 });
 

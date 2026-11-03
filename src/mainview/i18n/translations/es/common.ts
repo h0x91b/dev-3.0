@@ -1,4 +1,14 @@
 const common = {
+	"secret.title": "Ejecutar una vez con un secreto",
+	"secret.command": "Comando que se ejecutará (argumentos exactos)",
+	"secret.privacy": "dev3 no guarda este valor ni lo envía a la conversación. La salida del comando se descarta; el agente solo recibe el resultado de éxito o error.",
+	"secret.trust": "Autoriza solo comandos de confianza. El comando y sus procesos secundarios pueden leer, guardar o transmitir el secreto. El comando se detiene tras cinco minutos; los procesos en segundo plano pueden continuar.",
+	"secret.value": "Secreto para {name}",
+	"secret.insecure": "Usa HTTPS o abre dev3 en este equipo para introducir un secreto.",
+	"secret.error": "No se pudo enviar la respuesta. El campo se ha borrado; vuelve a introducir el secreto para reintentarlo.",
+	"secret.decline": "Rechazar",
+	"secret.run": "Usar secreto y ejecutar",
+
 	// Landmark labels
 	"nav.appHeader": "Encabezado de la aplicación",
 	"nav.activeTasks": "Tareas activas",

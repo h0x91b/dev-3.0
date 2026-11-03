@@ -21,7 +21,7 @@ vi.mock("../../pty-server", () => ({}));
 vi.mock("../../settings", () => ({ loadSettings: vi.fn(async () => ({})), loadSettingsSync: vi.fn(() => ({})) }));
 vi.mock("../../shell-env", () => ({ getUserShell: vi.fn(() => "/bin/zsh") }));
 vi.mock("../../spawn", () => ({ spawn: vi.fn() }));
-vi.mock("../../temp-paths", () => ({ dev3TaskTempPath: vi.fn(() => "/tmp/dev3/task") }));
+vi.mock("../../temp-paths", () => ({ dev3TaskTempPath: vi.fn(() => "/tmp/dev3/task"), dev3TempPath: vi.fn((name: string) => `/tmp/${name}`) }));
 vi.mock("../../tmux", () => ({ DEFAULT_TMUX_SOCKET: "dev3", activeTmuxConfigPath: vi.fn(), cleanupSessionName: vi.fn(), tmux: {} }));
 vi.mock("../../rpc-handlers/tmux-pty", () => ({
 	cleanupTaskTmuxState: vi.fn(),

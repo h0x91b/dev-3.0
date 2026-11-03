@@ -23,6 +23,13 @@ vi.mock("../../shared/model-catalog", () => ({
 	nativeModelIdForWireName: vi.fn((_catalog: unknown, wire: string) => (wire === "dev3-opus-route" ? "claude-opus-5-5" : undefined)),
 }));
 
+vi.mock("../rpc-handlers/agent-usage", () => ({
+	getTaskAgentUsage: vi.fn(async (project: { id: string }, task: { id: string }) => ({ projectId: project.id, taskId: task.id })),
+}));
+vi.mock("../cli-socket/task-resolution", () => ({
+	resolveTaskFromParams: vi.fn(async (params: Record<string, unknown>) => ({ project: { id: params.projectId }, task: { id: "t-9" } })),
+}));
+
 import { statsHandlers } from "../cli-socket/stats-commands";
 import { handlers as rpc } from "../rpc-handlers";
 import {
@@ -40,11 +47,21 @@ beforeEach(() => {
 });
 
 describe("stats.* socket methods", () => {
+	it("hands stats.usage a string since so the scan can skip old transcripts", async () => {
+		await statsHandlers["stats.usage"]({ since: "2026-10-25T00:00:00.000Z" });
+		expect(rpc.getAgentUsage).toHaveBeenLastCalledWith({ since: "2026-10-25T00:00:00.000Z" });
+		await statsHandlers["stats.usage"]({ since: 7 });
+		expect(rpc.getAgentUsage).toHaveBeenLastCalledWith({});
+	});
+
+
 	it("pass the renderer handlers' answers through unchanged", async () => {
 		expect(await statsHandlers["stats.productivity"]({})).toEqual({ events: [], generatedAt: "2026-10-27T00:00:00.000Z" });
 		expect(await statsHandlers["stats.usage"]({})).toMatchObject({ days: [], hasUnpricedModels: false });
 		expect(await statsHandlers["stats.limits"]({})).toEqual({ snapshots: [], generatedAt: 1 });
 		expect(await statsHandlers["stats.memory"]({})).toBeNull();
+		expect(await statsHandlers["stats.taskUsage"]({ taskId: "seq:9", projectId: "p-1" })).toEqual({ projectId: "p-1", taskId: "t-9" });
+		expect(rpc.getAgentUsage).toHaveBeenCalledWith({});
 		expect(rpc.getProductivityStats).toHaveBeenCalledTimes(1);
 		expect(rpc.getSystemMemory).toHaveBeenCalledTimes(1);
 	});

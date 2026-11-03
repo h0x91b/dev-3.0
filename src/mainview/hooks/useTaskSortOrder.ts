@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../rpc";
+import { ignoreStartupReadFailure, startupRead } from "../startup-read";
 import type { GlobalSettings } from "../../shared/types";
 import type { TaskSortOrder } from "../components/sortTasks";
 
@@ -21,9 +22,9 @@ export function useTaskSortOrder(): TaskSortOrder {
 	const [order, setOrder] = useState<TaskSortOrder>("oldest-first");
 	useEffect(() => {
 		let alive = true;
-		api.request.getGlobalSettings()
+		startupRead("task sort order", () => api.request.getGlobalSettings(), { isCancelled: () => !alive })
 			.then((s) => { if (alive) setOrder(coerce(s.taskSortOrder)); })
-			.catch(() => {});
+			.catch(ignoreStartupReadFailure);
 		function onUpdated(e: Event) {
 			setOrder(coerce((e as CustomEvent<GlobalSettings>).detail.taskSortOrder));
 		}

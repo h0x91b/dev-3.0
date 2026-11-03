@@ -75,8 +75,12 @@ export function useTerminalPreview() {
 
 	const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+	const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	// Bumped on every open and close; async continuations from an older generation must not touch state.
+	const genRef = useRef(0);
+	const openedRef = useRef(false);
 	const activeTaskIdRef = useRef<string | null>(null);
+	const activeAnchorRef = useRef<HTMLElement | null>(null);
 	const isDraggingRef = useRef(false);
 
 	const cancelTimers = useCallback(() => {
@@ -92,18 +96,22 @@ export function useTerminalPreview() {
 
 	const close = useCallback(() => {
 		cancelTimers();
-		if (intervalRef.current) {
-			clearInterval(intervalRef.current);
-			intervalRef.current = null;
+		genRef.current++;
+		openedRef.current = false;
+		if (pollTimerRef.current) {
+			clearTimeout(pollTimerRef.current);
+			pollTimerRef.current = null;
 		}
 		setOpen(false);
 		setHtml(null);
 		setLoading(false);
 		activeTaskIdRef.current = null;
+		activeAnchorRef.current = null;
 		setActiveTaskId(null);
 	}, [cancelTimers]);
 
 	const scheduleClose = useCallback(() => {
+		if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
 		closeTimerRef.current = setTimeout(() => {
 			close();
 		}, CLOSE_DELAY);
@@ -124,44 +132,50 @@ export function useTerminalPreview() {
 		if (isDraggingRef.current) return;
 		// No hover preview on touch / narrow (mobile carousel) viewports.
 		if (!hoverPreviewEnabled()) return;
+		// Already opening or open for this task: just keep it, never restart the poll.
+		if (activeTaskIdRef.current === taskId && activeAnchorRef.current === anchorEl) {
+			cancelClose();
+			return;
+		}
 		cancelTimers();
-		if (activeTaskIdRef.current && activeTaskIdRef.current !== taskId) {
+		if (activeTaskIdRef.current) {
 			close();
 		}
 		activeTaskIdRef.current = taskId;
+		activeAnchorRef.current = anchorEl;
 
-		openTimerRef.current = setTimeout(async () => {
-			if (!anchorEl.isConnected) return;
+		openTimerRef.current = setTimeout(() => {
+			if (!anchorEl.isConnected) {
+				activeTaskIdRef.current = null;
+				activeAnchorRef.current = null;
+				return;
+			}
+			const gen = ++genRef.current;
+			openedRef.current = true;
 			const rect = anchorEl.getBoundingClientRect();
-			const position = clampPosition(rect);
 
-			setPos(position);
+			setPos(clampPosition(rect));
 			setOpen(true);
 			setLoading(true);
 			setActiveTaskId(taskId);
 
-			try {
-				const content = await api.request.getTerminalPreview({ taskId });
-				if (content) {
-					setHtml(ansiToHtml(content));
-				} else {
-					setHtml(null);
-				}
-			} catch {
-				setHtml(null);
-			}
-			setLoading(false);
-
-			intervalRef.current = setInterval(async () => {
+			const capture = async (first: boolean) => {
 				try {
 					const content = await api.request.getTerminalPreview({ taskId });
+					if (gen !== genRef.current) return;
 					if (content) {
 						setHtml(ansiToHtml(content));
+					} else if (first) {
+						setHtml(null);
 					}
 				} catch {
-					// ignore refresh errors
+					if (gen !== genRef.current) return;
+					if (first) setHtml(null);
 				}
-			}, REFRESH_INTERVAL);
+				if (first) setLoading(false);
+				pollTimerRef.current = setTimeout(() => capture(false), REFRESH_INTERVAL);
+			};
+			capture(true);
 		}, OPEN_DELAY);
 	}
 
@@ -170,8 +184,11 @@ export function useTerminalPreview() {
 			clearTimeout(openTimerRef.current);
 			openTimerRef.current = null;
 		}
-		if (open) {
+		if (openedRef.current) {
 			scheduleClose();
+		} else {
+			activeTaskIdRef.current = null;
+			activeAnchorRef.current = null;
 		}
 	}
 
@@ -179,9 +196,10 @@ export function useTerminalPreview() {
 	useEffect(() => {
 		return () => {
 			cancelTimers();
-			if (intervalRef.current) {
-				clearInterval(intervalRef.current);
-				intervalRef.current = null;
+			genRef.current++;
+			if (pollTimerRef.current) {
+				clearTimeout(pollTimerRef.current);
+				pollTimerRef.current = null;
 			}
 		};
 	}, [cancelTimers]);

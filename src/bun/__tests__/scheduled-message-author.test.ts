@@ -326,6 +326,28 @@ describe("resolveScheduledMessageAuthorPane — where the reminder may land", ()
 		expect((await resolveScheduledMessageAuthorPane(task([pane("%7", "conv-a")]), a)).ok).toBe(false);
 	});
 
+	it.each(["-zsh", "/bin/ash"])("refuses a resumed pane whose agent exited and the user now runs a dev server in its shell (%s)", async (shell) => {
+		const a = await authorOf("%1", 103);
+		serverToken = "gen-2";
+		panes = { "%7": 700 };
+		procs = [
+			{ pid: 700, ppid: 50, args: shell },
+			{ pid: 701, ppid: 700, args: "bun run dev" },
+		];
+		expect((await resolveScheduledMessageAuthorPane(task([pane("%7", "conv-a")]), a)).ok).toBe(false);
+	});
+
+	it("refuses a resumed pane whose agent exited and the user started the agent again by hand", async () => {
+		const a = await authorOf("%1", 103);
+		serverToken = "gen-2";
+		panes = { "%7": 700 };
+		procs = [
+			{ pid: 700, ppid: 50, args: "-zsh" },
+			{ pid: 701, ppid: 700, args: "claude --resume conv-a" },
+		];
+		expect((await resolveScheduledMessageAuthorPane(task([pane("%7", "conv-a")]), a)).ok).toBe(false);
+	});
+
 	it("refuses the reviewer after a restart: it has no conversation id to follow", async () => {
 		const reviewer = await authorOf("%3", 303);
 		serverToken = "gen-2";

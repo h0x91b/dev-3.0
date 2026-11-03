@@ -14,10 +14,12 @@ import {
 	createAccountLoginManager,
 	loginArgv,
 	loginEnv,
+	resolveLoginExecutable,
 	type AccountLoginDeps,
 	type LoginSpawnOptions,
 } from "../account-login-terminal";
 import type { ExternalPtySession, ExternalPtyViewer } from "../pty-server";
+import { loadSettings } from "../settings";
 
 /** Hand-cranked clock: every timer fires only when the test advances it. */
 function fakeClock() {
@@ -92,12 +94,17 @@ function setup(overrides: Partial<AccountLoginDeps> = {}) {
 		}),
 		complete,
 		hasIdentity: (_kind, accountId) => identity.has(accountId),
+		addWithoutLogin: (kind, accountId) => {
+			registered.add(accountId);
+			return { id: accountId, kind, label: "Account 1" } as AgentAccount;
+		},
 		discard: (_kind, accountId) => {
 			discardCalls.push(accountId);
 			if (registered.has(accountId)) return false;
 			discarded.push(accountId);
 			return true;
 		},
+		touchStaged: vi.fn(),
 		sweepAbandoned: vi.fn(),
 		resolveExecutable: async (_kind, command) => `/usr/local/bin/${command}`,
 		spawnLogin: (argv, opts) => {
@@ -140,7 +147,9 @@ function setup(overrides: Partial<AccountLoginDeps> = {}) {
 		...overrides,
 	};
 	const manager = createAccountLoginManager(deps);
-	return { manager, deps, clock, procs, identity, registered, discarded, discardCalls, pushes, viewerSessions, complete };
+	/** Open the sign-in and click "Start sign-in". */
+	const startRunning = async (kind: AgentAccountKind, opts: { remoteViewer: boolean }) => manager.start(kind, opts).then((state) => (state.phase === "ready" ? manager.begin(state.loginId) : state));
+	return { manager, startRunning, deps, clock, procs, identity, registered, discarded, discardCalls, pushes, viewerSessions, complete };
 }
 
 function viewer() {
@@ -160,8 +169,137 @@ describe("account login manager", () => {
 		env = setup();
 	});
 
+	it("opening a sign-in spawns nothing: no process, no executable lookup, no status probe, no polling", async () => {
+		const resolveExecutable = vi.spyOn(env.deps, "resolveExecutable");
+		const spawnLogin = vi.spyOn(env.deps, "spawnLogin");
+		for (const kind of ["claude", "codex", "omp", "pi"] as const) {
+			const state = await env.manager.start(kind, { remoteViewer: false });
+			expect(state).toMatchObject({ phase: "ready", sessionKey: null, manualCommand: expect.any(String) });
+			env.manager.close(state.loginId);
+		}
+		await env.clock.advance(ACCOUNT_LOGIN_POLL_MS * 5);
+		expect(resolveExecutable).not.toHaveBeenCalled();
+		expect(spawnLogin).not.toHaveBeenCalled();
+		expect(env.complete).not.toHaveBeenCalled();
+		expect(env.procs).toHaveLength(0);
+	});
+
+	it("a ready sign-in is not polled even when an identity shows up in its dir", async () => {
+		await env.manager.start("claude", { remoteViewer: false });
+		env.identity.add("acc-1");
+		await env.clock.advance(ACCOUNT_LOGIN_POLL_MS * 5);
+		expect(env.complete).not.toHaveBeenCalled();
+		expect(env.manager.get("claude")?.phase).toBe("ready");
+	});
+
+	it("Start sign-in launches from ready, only once", async () => {
+		const ready = await env.manager.start("claude", { remoteViewer: false });
+		const state = await env.manager.begin(ready.loginId);
+		expect(state).toMatchObject({ phase: "running", sessionKey: `${ACCOUNT_LOGIN_SESSION_PREFIX}${ready.loginId}` });
+		expect(env.procs).toHaveLength(1);
+		await expect(env.manager.begin(ready.loginId)).rejects.toThrow(/already started/);
+		await expect(env.manager.begin("no-such-login")).rejects.toThrow(/already ended/);
+		expect(env.procs).toHaveLength(1);
+	});
+
+	it("Start sign-in does not publish running before the viewer session exists", async () => {
+		let release!: (path: string) => void;
+		env = setup({ resolveExecutable: () => new Promise<string | null>((resolve) => { release = resolve; }) });
+		const ready = await env.manager.start("claude", { remoteViewer: false });
+		env.pushes.length = 0;
+		const beginning = env.manager.begin(ready.loginId);
+		await flush();
+		expect(env.pushes.filter((p) => p.state?.phase === "running")).toEqual([]);
+		release("/usr/local/bin/claude");
+		const state = await beginning;
+		expect(env.viewerSessions.has(state.sessionKey!)).toBe(true);
+		expect(env.pushes.filter((p) => p.state?.phase === "running")).toHaveLength(1);
+	});
+
+	it("while the launch is pending the sign-in still reads as ready with no session key, and a second begin is refused", async () => {
+		let release!: (path: string) => void;
+		env = setup({ resolveExecutable: () => new Promise<string | null>((resolve) => { release = resolve; }) });
+		const ready = await env.manager.start("claude", { remoteViewer: false });
+		const beginning = env.manager.begin(ready.loginId);
+		await flush();
+		expect(env.manager.get("claude")).toMatchObject({ phase: "ready", sessionKey: null });
+		expect(await env.manager.start("claude", { remoteViewer: false })).toMatchObject({ phase: "ready", sessionKey: null });
+		await expect(env.manager.begin(ready.loginId)).rejects.toThrow(/already started/);
+		release("/usr/local/bin/claude");
+		expect(await beginning).toMatchObject({ phase: "running", sessionKey: `${ACCOUNT_LOGIN_SESSION_PREFIX}${ready.loginId}` });
+		expect(env.procs).toHaveLength(1);
+	});
+
+	it("every host refusal is recognised by the UI as a refusal, and a real failure is not", async () => {
+		const { isAccountLoginRefusal } = await import("../../shared/agent-accounts");
+		const refusal = async (call: () => unknown) => {
+			try { await call(); } catch (err) { return err; }
+			throw new Error("expected a refusal");
+		};
+		const ready = await env.manager.start("claude", { remoteViewer: false });
+		const running = await env.manager.begin(ready.loginId);
+		const errors = [
+			await refusal(() => env.manager.begin(running.loginId)), // already started
+			await refusal(() => env.manager.begin("no-such-login")), // already ended
+		];
+		env.identity.add("acc-1");
+		errors.push(await refusal(() => env.manager.addWithoutSignIn(running.loginId))); // a sign-in was found
+		await env.clock.advance(ACCOUNT_LOGIN_POLL_MS);
+		expect(env.manager.get("claude")?.phase).toBe("succeeded");
+		errors.push(await refusal(() => env.manager.addWithoutSignIn(running.loginId))); // can no longer be added
+		for (const err of errors) expect(isAccountLoginRefusal(err)).toBe(true);
+		expect(isAccountLoginRefusal(new Error("boom"))).toBe(false);
+	});
+
+	it("begin on a finished sign-in says it has ended", async () => {
+		env = setup({ resolveExecutable: async () => { throw new Error("Custom executable for agent \"Claude Code\" not found or not executable: /gone"); } });
+		const failed = await env.startRunning("claude", { remoteViewer: false });
+		expect(failed.phase).toBe("failed");
+		await expect(env.manager.begin(failed.loginId)).rejects.toThrow(/already ended/);
+	});
+
+	it("Start sign-in refreshes the staged dir's abandoned clock", async () => {
+		const ready = await env.manager.start("claude", { remoteViewer: false });
+		await env.manager.begin(ready.loginId);
+		expect(env.deps.touchStaged).toHaveBeenCalledWith("claude", "acc-1");
+	});
+
+	it("Start sign-in fails as ended when the sign-in was cancelled during the launch", async () => {
+		let release!: (path: string) => void;
+		env = setup({ resolveExecutable: () => new Promise<string | null>((resolve) => { release = resolve; }) });
+		const ready = await env.manager.start("claude", { remoteViewer: false });
+		const beginning = env.manager.begin(ready.loginId);
+		const settled = beginning.catch((e) => e);
+		await flush();
+		env.manager.close(ready.loginId);
+		release("/usr/local/bin/claude");
+		expect(String(await settled)).toContain("already ended");
+		expect(env.procs).toHaveLength(0);
+	});
+
+	it("a ready sign-in expires after the TTL and releases its staged dir", async () => {
+		await env.manager.start("claude", { remoteViewer: false });
+		await env.clock.advance(ACCOUNT_LOGIN_TTL_MS);
+		expect(env.manager.get("claude")?.phase).toBe("expired");
+		expect(env.discarded).toEqual(["acc-1"]);
+	});
+
+	it("cancelling a ready sign-in discards its staged dir", async () => {
+		const ready = await env.manager.start("codex", { remoteViewer: false });
+		env.manager.close(ready.loginId);
+		expect(env.manager.get("codex")).toBeNull();
+		expect(env.discarded).toEqual(["acc-1"]);
+	});
+
+	it("a Claude sign-in can be added without signing in straight from ready", async () => {
+		const ready = await env.manager.start("claude", { remoteViewer: false });
+		const state = env.manager.addWithoutSignIn(ready.loginId);
+		expect(state).toMatchObject({ phase: "added-unsigned", account: { id: "acc-1" } });
+		expect(env.procs).toHaveLength(0);
+	});
+
 	it("spawns the provider's login scoped to the staged dir and serves it as a PTY session", async () => {
-		const state = await env.manager.start("claude", { remoteViewer: false });
+		const state = await env.startRunning("claude", { remoteViewer: false });
 
 		expect(state.phase).toBe("running");
 		expect(state.sessionKey).toBe(`${ACCOUNT_LOGIN_SESSION_PREFIX}${state.loginId}`);
@@ -173,7 +311,7 @@ describe("account login manager", () => {
 	});
 
 	it("process exit is not success: it reports `exited` and keeps watching the staged dir", async () => {
-		await env.manager.start("codex", { remoteViewer: false });
+		await env.startRunning("codex", { remoteViewer: false });
 		env.procs[0].exit(0);
 		await flush();
 
@@ -189,7 +327,7 @@ describe("account login manager", () => {
 	});
 
 	it("succeeds only through the existing verification, then stops the lingering REPL", async () => {
-		await env.manager.start("claude", { remoteViewer: false });
+		await env.startRunning("claude", { remoteViewer: false });
 		await env.clock.advance(ACCOUNT_LOGIN_POLL_MS * 3);
 		expect(env.complete).not.toHaveBeenCalled();
 
@@ -211,7 +349,7 @@ describe("account login manager", () => {
 
 	it("an identity whose credentials are not written yet keeps waiting instead of failing", async () => {
 		env.complete.mockRejectedValueOnce(new LoginNotReadyError("credentials missing"));
-		await env.manager.start("claude", { remoteViewer: false });
+		await env.startRunning("claude", { remoteViewer: false });
 		env.identity.add("acc-1");
 		await env.clock.advance(ACCOUNT_LOGIN_POLL_MS);
 		expect(env.manager.get("claude")?.phase).toBe("running");
@@ -222,7 +360,7 @@ describe("account login manager", () => {
 
 	it("a real verification error (duplicate) fails, stops the process, and Close discards the staged dir", async () => {
 		env.complete.mockRejectedValueOnce(new Error('This account is already added ("work")'));
-		const state = await env.manager.start("claude", { remoteViewer: false });
+		const state = await env.startRunning("claude", { remoteViewer: false });
 		env.identity.add("acc-1");
 		await env.clock.advance(ACCOUNT_LOGIN_POLL_MS);
 
@@ -233,8 +371,8 @@ describe("account login manager", () => {
 	});
 
 	it("cancel stops only its own process and releases only its unregistered dir", async () => {
-		const claude = await env.manager.start("claude", { remoteViewer: false });
-		await env.manager.start("codex", { remoteViewer: false });
+		const claude = await env.startRunning("claude", { remoteViewer: false });
+		await env.startRunning("codex", { remoteViewer: false });
 		const v = viewer();
 		env.viewerSessions.get(claude.sessionKey!)!.attach(v);
 
@@ -249,21 +387,21 @@ describe("account login manager", () => {
 	});
 
 	it("a new sign-in first sweeps abandoned leftovers for its CLI, a joined one does not", async () => {
-		await env.manager.start("claude", { remoteViewer: false });
-		await env.manager.start("claude", { remoteViewer: false });
+		await env.startRunning("claude", { remoteViewer: false });
+		await env.startRunning("claude", { remoteViewer: false });
 		expect(env.deps.sweepAbandoned).toHaveBeenCalledTimes(1);
 		expect(env.deps.sweepAbandoned).toHaveBeenCalledWith("claude");
 	});
 
 	it("a second Add for the same CLI joins the running sign-in instead of racing it", async () => {
-		const first = await env.manager.start("codex", { remoteViewer: false });
-		const second = await env.manager.start("codex", { remoteViewer: true });
+		const first = await env.startRunning("codex", { remoteViewer: false });
+		const second = await env.startRunning("codex", { remoteViewer: true });
 		expect(second.loginId).toBe(first.loginId);
 		expect(env.procs).toHaveLength(1);
 	});
 
 	it("a remote viewer or headless host gets Codex device auth", async () => {
-		const remote = await env.manager.start("codex", { remoteViewer: true });
+		const remote = await env.startRunning("codex", { remoteViewer: true });
 		expect(remote.deviceAuth).toBe(true);
 		expect(env.procs[0].argv).toEqual(["/usr/local/bin/codex", "login", "--device-auth"]);
 
@@ -274,7 +412,7 @@ describe("account login manager", () => {
 
 	it("a missing CLI starts no process but still watches, so the manual fallback lands", async () => {
 		env = setup({ resolveExecutable: async () => null });
-		const state = await env.manager.start("claude", { remoteViewer: false });
+		const state = await env.startRunning("claude", { remoteViewer: false });
 		expect(state).toMatchObject({ phase: "missing-executable", sessionKey: null, manualCommand: "claude /login" });
 		expect(env.procs).toHaveLength(0);
 
@@ -283,8 +421,71 @@ describe("account login manager", () => {
 		expect(env.manager.get("claude")?.phase).toBe("succeeded");
 	});
 
+	it("add without signing in registers the staged dir, stops the terminal and keeps the login command", async () => {
+		const started = await env.startRunning("claude", { remoteViewer: false });
+		const state = env.manager.addWithoutSignIn(started.loginId);
+		expect(state).toMatchObject({ phase: "added-unsigned", sessionKey: null, manualCommand: "claude /login", account: { id: "acc-1", label: "Account 1" } });
+		expect(env.procs[0].signals).toEqual(["SIGTERM"]);
+		expect(env.manager.get("claude")?.phase).toBe("added-unsigned");
+		expect(env.pushes[env.pushes.length - 1]).toMatchObject({ kind: "claude", state: { phase: "added-unsigned" } });
+		// Nothing watches or expires it any more, and closing it keeps the account.
+		await env.clock.advance(ACCOUNT_LOGIN_TTL_MS);
+		expect(env.manager.get("claude")?.phase).toBe("added-unsigned");
+		env.manager.close(started.loginId);
+		expect(env.discarded).toEqual([]);
+	});
+
+	it("add without signing in works from exited and missing-executable too", async () => {
+		env = setup({ resolveExecutable: async () => null });
+		const started = await env.startRunning("claude", { remoteViewer: false });
+		expect(started.phase).toBe("missing-executable");
+		expect(env.manager.addWithoutSignIn(started.loginId).phase).toBe("added-unsigned");
+	});
+
+	it("add without signing in refuses a non-Claude sign-in, an unknown login and a finished one", async () => {
+		const codex = await env.startRunning("codex", { remoteViewer: false });
+		expect(() => env.manager.addWithoutSignIn(codex.loginId)).toThrow(/Only a Claude sign-in/);
+		expect(() => env.manager.addWithoutSignIn("no-such-login")).toThrow(/already ended/);
+		const claude = await env.startRunning("claude", { remoteViewer: false });
+		env.identity.add("acc-2");
+		await env.clock.advance(ACCOUNT_LOGIN_POLL_MS);
+		expect(env.manager.get("claude")?.phase).toBe("succeeded");
+		expect(() => env.manager.addWithoutSignIn(claude.loginId)).toThrow(/no longer/);
+	});
+
+	it("add without signing in refuses while verifying and when a sign-in was already found", async () => {
+		env.complete.mockImplementation(() => new Promise<AgentAccount>(() => {}));
+		const started = await env.startRunning("claude", { remoteViewer: false });
+		env.identity.add("acc-1");
+		expect(() => env.manager.addWithoutSignIn(started.loginId)).toThrow(/wait for dev3 to confirm/);
+		await env.clock.advance(ACCOUNT_LOGIN_POLL_MS);
+		expect(env.manager.get("claude")?.phase).toBe("verifying");
+		expect(() => env.manager.addWithoutSignIn(started.loginId)).toThrow(/no longer/);
+		expect(env.registered.has("acc-1")).toBe(false);
+	});
+
+	it("an add without signing in during the executable lookup is not overwritten by the launch", async () => {
+		let release!: (path: string) => void;
+		env = setup({ resolveExecutable: () => new Promise<string | null>((resolve) => { release = resolve; }) });
+		const starting = env.startRunning("claude", { remoteViewer: false });
+		await flush();
+		env.manager.addWithoutSignIn(env.manager.get("claude")!.loginId);
+		release("/usr/local/bin/claude");
+		await starting;
+		expect(env.manager.get("claude")?.phase).toBe("added-unsigned");
+		expect(env.procs).toHaveLength(0);
+	});
+
+	it("a broken custom executable fails the sign-in with its path and releases the staged dir", async () => {
+		env = setup({ resolveExecutable: async () => { throw new Error("Custom executable for agent \"Claude Code\" not found or not executable: /gone"); } });
+		const state = await env.startRunning("claude", { remoteViewer: false });
+		expect(state).toMatchObject({ phase: "failed", sessionKey: null, error: expect.stringContaining("/gone") });
+		expect(env.procs).toHaveLength(0);
+		expect(env.discarded).toEqual(["acc-1"]);
+	});
+
 	it("expires after the TTL: stops the process and discards the staged dir", async () => {
-		await env.manager.start("claude", { remoteViewer: false });
+		await env.startRunning("claude", { remoteViewer: false });
 		await env.clock.advance(ACCOUNT_LOGIN_TTL_MS);
 		expect(env.manager.get("claude")?.phase).toBe("expired");
 		expect(env.procs[0].signals).toEqual(["SIGTERM"]);
@@ -292,7 +493,7 @@ describe("account login manager", () => {
 	});
 
 	it("restart replaces the attempt with a fresh staged dir", async () => {
-		const first = await env.manager.start("claude", { remoteViewer: false });
+		const first = await env.startRunning("claude", { remoteViewer: false });
 		env.procs[0].exit(1);
 		await flush();
 		const next = await env.manager.restart(first.loginId, { remoteViewer: false });
@@ -302,7 +503,7 @@ describe("account login manager", () => {
 	});
 
 	it("a viewer that (re)opens gets the output so far, and its keys and size reach the PTY", async () => {
-		const state = await env.manager.start("claude", { remoteViewer: false });
+		const state = await env.startRunning("claude", { remoteViewer: false });
 		env.procs[0].opts.onData("Select login method:\r\n");
 		const late = viewer();
 		const session = env.viewerSessions.get(state.sessionKey!)!;
@@ -319,7 +520,7 @@ describe("account login manager", () => {
 		env.complete.mockImplementation(async () => {
 			throw new LoginNotReadyError("not confirmed", "status-unavailable");
 		});
-		await env.manager.start("claude", { remoteViewer: false });
+		await env.startRunning("claude", { remoteViewer: false });
 		env.identity.add("acc-1");
 		await env.clock.advance(ACCOUNT_LOGIN_POLL_MS);
 		expect(env.complete).toHaveBeenCalledTimes(1);
@@ -340,7 +541,7 @@ describe("account login manager", () => {
 			stillWanted = ctx!.stillWanted;
 			return new Promise<AgentAccount>((resolve) => { finish = resolve; void accountId; });
 		});
-		const state = await env.manager.start("claude", { remoteViewer: false });
+		const state = await env.startRunning("claude", { remoteViewer: false });
 		env.identity.add("acc-1");
 		await env.clock.advance(ACCOUNT_LOGIN_POLL_MS);
 		expect(env.manager.get("claude")?.phase).toBe("verifying");
@@ -355,7 +556,7 @@ describe("account login manager", () => {
 	});
 
 	it("pushes carry phase only — never terminal output", async () => {
-		await env.manager.start("claude", { remoteViewer: false });
+		await env.startRunning("claude", { remoteViewer: false });
 		env.procs[0].opts.onData("https://example.com/oauth?code=SECRET\r\n");
 		env.procs[0].exit(1);
 		await flush();
@@ -402,5 +603,17 @@ describe("loginEnv", () => {
 		expect(env.PI_CODING_AGENT_DIR).toBe("/staged/o");
 		expect(env.OPENAI_API_KEY).toBe("o");
 		expect(env.ANTHROPIC_API_KEY).toBe("k");
+	});
+});
+
+describe("resolveLoginExecutable with a custom executable", () => {
+	it("throws for a broken custom path instead of finding the CLI on PATH", async () => {
+		vi.mocked(loadSettings).mockResolvedValueOnce({ agentCustomBinaryPaths: { "builtin-claude": "/definitely/not/here/claude" } } as never);
+		await expect(resolveLoginExecutable("claude", "node")).rejects.toThrow("/definitely/not/here/claude");
+	});
+
+	it("uses a working custom path", async () => {
+		vi.mocked(loadSettings).mockResolvedValueOnce({ agentCustomBinaryPaths: { "builtin-claude": process.execPath } } as never);
+		expect(await resolveLoginExecutable("claude", "claude")).toBe(process.execPath);
 	});
 });

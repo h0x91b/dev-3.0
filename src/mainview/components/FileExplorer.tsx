@@ -62,7 +62,7 @@ export interface FileExplorerProps {
 	onHide: () => void;
 	/** A file was opened or its path sent to the terminal; an auto-hidden panel slides away. */
 	onHandOff?: () => void;
-	/** The legacy yazi pane, offered from the header menu on tmux-backed tasks. */
+	/** The legacy yazi pane, offered from the header menu. */
 	onOpenYazi?: () => void;
 	/** Bumped by the frame when the tree should take keyboard focus. */
 	focusSignal?: number;

@@ -9,7 +9,7 @@ import PriorityBadge from "./PriorityBadge";
 import OpenInMenu from "./OpenInMenu";
 import { formatDate } from "./NoteItem";
 import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle, isCoordinatorTask, isSharedClip, resolveTaskCompareBaseBranch, taskCompletesManually, taskSharedMedia, taskUsesWorktree } from "../../shared/types";
-import { earlierPullRequests } from "../../shared/task-pull-requests";
+import { earlierPullRequests, trustedPrStatusCache } from "../../shared/task-pull-requests";
 import InlineRename from "./InlineRename";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
@@ -76,6 +76,7 @@ import HelpSpot from "./HelpSpot";
 import Tooltip from "./Tooltip";
 import ForeignCodeMark from "./ForeignCodeMark";
 import TaskOriginRow from "./TaskOriginRow";
+import TaskEpicRow from "./TaskEpicRow";
 import VariantSwitcher from "./VariantSwitcher";
 import { isMac } from "../utils/platform";
 import { terminalFullscreenShortcutLabel } from "../utils/terminalFullscreen";
@@ -654,7 +655,7 @@ function TaskInfoPanel({
 	const metadataBranchStatus = branchMeta?.branchStatus ?? null;
 	const diffCompareLabel = branchMeta?.compareLabel ?? project.defaultCompareRef ?? resolveTaskCompareBaseBranch(task, project);
 	const metadataPrInfo: TaskPRBadgeInfo | null = inspectorPRBadge(task, branchMeta?.prStatus, metadataBranchStatus);
-	const metadataPrState = metadataPrInfo ? prBadgeDisplayState(metadataPrInfo, metadataBranchStatus, task.prStatusCache) : undefined;
+	const metadataPrState = metadataPrInfo ? prBadgeDisplayState(metadataPrInfo, metadataBranchStatus, trustedPrStatusCache(task)) : undefined;
 	const metadataPrTone = metadataPrState ? prStateTone(metadataPrState) : null;
 	const allDiffFileStats = metadataBranchStatus?.diffFileStats ?? [];
 	// Per-file stats are what the filter subtracts from. Without them there is
@@ -1279,6 +1280,7 @@ function TaskInfoPanel({
 							<span className="text-fg-3">{formatDate(task.createdAt)}</span>
 
 							<TaskOriginRow task={task} navigate={navigate} testId="info-panel-origin" />
+							<TaskEpicRow task={task} testId="info-panel-epic" />
 
 							<span className="text-fg-3">{t("infoPanel.updated")}</span>
 							<span className="text-fg-3">{formatDate(task.updatedAt)}</span>

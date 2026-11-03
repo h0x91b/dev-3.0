@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CpuInfo } from "node:os";
 import type { SystemLoadSnapshot } from "../../shared/types";
 import { DEFAULT_RESOURCE_LEVELS } from "../../shared/types";
-import { classifyCpu, classifyDisk, cpuBusyRatio, cpuLoadPercent, groupCpuConsumers, loadSnapshotWorthPushing, parseDuOutput, sumCpuTimes } from "../system-load";
+import { classifyCpu, classifyDisk, cpuBusyRatio, groupCpuConsumers, loadSnapshotWorthPushing, parseDuOutput, sumCpuTimes } from "../system-load";
 
 function core(user: number, idle: number): CpuInfo {
 	return { model: "x", speed: 0, times: { user, nice: 0, sys: 0, idle, irq: 0 } };
@@ -11,7 +11,6 @@ function core(user: number, idle: number): CpuInfo {
 function snapshot(overrides?: Partial<SystemLoadSnapshot>): SystemLoadSnapshot {
 	return {
 		cpuBusy: 0.2,
-		cpuLoadPercent: 30,
 		cpuPressure: "normal",
 		cores: 8,
 		loadAvg: [1, 1, 1],
@@ -80,12 +79,11 @@ describe("loadSnapshotWorthPushing", () => {
 describe("levels", () => {
 	const levels = DEFAULT_RESOURCE_LEVELS;
 
-	it("judges CPU on load as a % of cores, falling back to busy % without a load average", () => {
-		expect(cpuLoadPercent(12, 12, 0.3)).toBe(100);
-		expect(cpuLoadPercent(0, 12, 0.3)).toBeCloseTo(30);
-		expect(classifyCpu(99, levels)).toBe("normal");
-		expect(classifyCpu(100, levels)).toBe("warn");
-		expect(classifyCpu(150, levels)).toBe("critical");
+	it("judges CPU on busy time against the busy levels", () => {
+		expect(classifyCpu(0.79, levels)).toBe("normal");
+		expect(classifyCpu(0.8, levels)).toBe("warn");
+		expect(classifyCpu(0.95, levels)).toBe("critical");
+		expect(classifyCpu(1, { ...levels, cpuBusyCriticalPercent: 100 })).toBe("critical");
 	});
 
 	it("judges disk on free decimal GB", () => {

@@ -240,6 +240,12 @@ export interface GlobalSettings {
 	 */
 	importShellEnv?: boolean;
 	/**
+	 * Env vars every agent session gets when its project does not set the key
+	 * itself (`.dev3/config.json`, `.dev3/config.local.json`, Project Settings).
+	 * Values expand `{projectPath}` and `{projectName}`. Absent ⇒ no change.
+	 */
+	agentEnvDefaults?: Record<string, string>;
+	/**
 	 * Which POSIX shell dev3 runs in its terminals and generated wrapper
 	 * scripts. Undefined ⇒ auto-detect (the user's login shell, else the first
 	 * of zsh → bash → sh that is installed). Set it when the detected shell is
@@ -353,6 +359,12 @@ export interface GlobalSettings {
 	 * can override it; see resolvePresetPrompt.
 	 */
 	coordinatorPrompt?: string;
+	/**
+	 * Agent/preset a coordinator task launches on when nobody picked one.
+	 * Absent ⇒ DEFAULT_COORDINATOR_AGENT_ID / DEFAULT_COORDINATOR_CONFIG_ID.
+	 */
+	coordinatorAgentId?: string;
+	coordinatorConfigId?: string;
 	/**
 	 * Cross-provider "favorite" agent configs shown as quick-pick chips on the
 	 * launch picker (Launch/Retry, Spawn, Bug Hunters). Thin pointers, capped at

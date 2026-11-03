@@ -1,5 +1,7 @@
 import { assertTaskWorkspacePresent } from "../../task-workspace-guard";
 import type { AgentFamily, ColumnAgentConfig, PermissionMode, Project, Task } from "../../../shared/types";
+import { getPrimaryStopTarget, isCoordinatorTask } from "../../../shared/types";
+import { coordinatorLaunchDefault } from "../../../shared/coordinator-launch";
 import * as data from "../../data";
 import * as git from "../../git";
 import * as pty from "../../pty-server";
@@ -32,7 +34,8 @@ import { openAuxPane } from "../../task-aux-panes";
 import { getPushMessage, AGENT_ENV_DEFAULTS, buildAgentEnv, buildAgentRetryWrapper, buildCmdScript, buildModelVersionGateWrapper, buildSetupStartupWrapper, buildScriptRunnerCommand, buildTaskLifecycleEnv, withResolvedCodexBinary, agentExitReportArgv, generatedScriptLaunch, generatedScriptName, log, writeLaunchScript } from "../shared-pure";
 import { launchDialect } from "../../../shared/platform-launch";
 import { devViewerPaneIds, setTmuxSessionPortEnv } from "./dev-servers";
-import { fileBrowserPaneIds, findTaskAcrossProjects } from "./task-state";
+import { dev3ShellPromptEnv } from "../../shell-init";
+import { findTaskAcrossProjects } from "./task-state";
 
 const MAIN_AGENT_PANE_CAPTURE_ATTEMPTS = 10;
 
@@ -94,6 +97,19 @@ async function persistInitialAgentPaneId(
 	}
 
 	log.warn("Could not capture initial agent pane ID", { taskId: task.id.slice(0, 8) });
+}
+
+/** Tell the user a stored Claude account was removed and the launch used the default one. */
+export async function notifyStaleAccountDropped(task: Pick<Task, "id" | "projectId">): Promise<void> {
+	// Loaded on demand: ../shared pulls in the whole desktop shell, which this module must not.
+	const { pushCliToast } = await import("../shared");
+	pushCliToast({
+		taskId: task.id,
+		projectId: task.projectId,
+		level: "info",
+		message: "The account this task used was removed — launched on the default account.",
+		messageKey: "kanban.launchAccountRemoved",
+	});
 }
 
 /**
@@ -211,9 +227,10 @@ async function launchNativeTaskSession(
 	task: Task,
 	worktreePath: string,
 	runScriptPath: string,
-	env: Record<string, string>,
+	taskEnv: Record<string, string>,
 	userShell: string,
 ): Promise<void> {
+	const env = { ...dev3ShellPromptEnv(worktreePath), ...taskEnv };
 	// The dialect decides how the wrapper is invoked: a POSIX login shell running
 	// the `.sh`, or `powershell.exe -File` running the `.ps1`.
 	const launch = launchDialect().scriptLaunch(runScriptPath, { cwd: worktreePath, env, shellPath: userShell });
@@ -293,9 +310,14 @@ export async function launchTaskPty(
 		 *  new id, with no brief, rather than `--continue` into another pane's. */
 		freshSessionId?: string;
 	},
-): Promise<void> {
+): Promise<string | null | undefined> {
 	// First, before any trust/hook/config write: tmux would start a missing cwd in $HOME.
 	assertTaskWorkspacePresent(project, worktreePath, task);
+	// Only a fresh coordinator launch with no picked agent; every other task keeps the global default.
+	if (!agentId && !resume && !opts?.shellNotice && isCoordinatorTask(task)) {
+		const coordinator = coordinatorLaunchDefault(await agents.getAllAgents(), await loadSettings());
+		if (coordinator) ({ agentId, configId } = coordinator);
+	}
 	const sessionId = opts?.sessionId;
 	const accountId = opts?.codexHome
 		? codexAccountIdForHome(opts.codexHome) ?? null
@@ -350,12 +372,13 @@ export async function launchTaskPty(
 	// The account the session really runs on: the default applied, or Auto's pick.
 	let launchAccountId = accountId;
 	let accountPick: agents.ResolvedAgentCommand["accountPick"];
+	let staleAccountDropped = false;
 	let freshLaunchSessionId: string | null = null;
 
 	try {
 		// Recovery carries the pane's account alongside its session id. Older pane
 		// snapshots fall back to the task selection; undefined uses the default.
-		const cmdOptions: agents.CommandOptions = { accountId };
+		const cmdOptions: agents.CommandOptions = { accountId, accountFromStore: typeof accountId === "string" ? true : undefined };
 		let freshSessionId: string | null = null;
 		if (!resume && !skipSessionPersist && !opts?.shellNotice) {
 			cmdOptions.autoRouting = await autoRoutingContext(project, reservationKey, projectEnv);
@@ -391,6 +414,7 @@ export async function launchTaskPty(
 			resolvedLaunchModel = resolved.launchModel;
 			if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
 			accountPick = resolved.accountPick;
+			staleAccountDropped = !!resolved.staleAccountDropped;
 		} else {
 			log.info("Resolving command for project", { projectName: project.name });
 			const resolved = await agents.resolveCommandForProject(
@@ -409,7 +433,9 @@ export async function launchTaskPty(
 			resolvedLaunchModel = resolved.launchModel;
 			if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
 			accountPick = resolved.accountPick;
+			staleAccountDropped = !!resolved.staleAccountDropped;
 		}
+		if (staleAccountDropped) await notifyStaleAccountDropped(task);
 
 		if (opts?.codexHome) extraEnv.CODEX_HOME = opts.codexHome;
 
@@ -431,7 +457,7 @@ export async function launchTaskPty(
 				sessionId: effectiveSessionId ?? null,
 				agentId: agentId ?? task.agentId,
 				configId: configId ?? task.configId,
-				accountId: resume ? accountId : (agentKey(resolvedBaseCmd, resolvedAgentFamily) === "codex"
+				accountId: resume && !staleAccountDropped ? accountId : (agentKey(resolvedBaseCmd, resolvedAgentFamily) === "codex"
 					? codexAccountIdForHome(extraEnv.CODEX_HOME) : undefined) ?? launchAccountId,
 				agentFamily: resolvedAgentFamily,
 				sessionOriginCwd: carriedOriginCwd,
@@ -442,7 +468,8 @@ export async function launchTaskPty(
 			// and legacy-pane resume read a concrete account instead of routing again.
 			const routedPatch: Partial<Task> = accountPick
 				? { accountId: accountPick.accountId, accountPick: { reason: accountPick.reason, at: new Date().toISOString() } }
-				: {};
+				// A removed stored account is replaced on the task too, so the notice does not repeat.
+				: staleAccountDropped && launchAccountId !== undefined ? { accountId: launchAccountId } : {};
 			try {
 				await data.updateTask(project, task.id, { sessionState, ...routedPatch });
 				log.info("Persisted sessionState", { taskId: task.id.slice(0, 8), sessionId: paneEntry.sessionId });
@@ -507,7 +534,7 @@ export async function launchTaskPty(
 	// Hooks splice a flag after the command's FIRST token, so they must land on the
 	// agent's own command line — applied after the retry wrapper below, `--hook`
 	// went to the wrapper's shell (`zsh --hook …`: "no such option").
-	const stopTarget = project.autoReviewEnabled ? "review-by-ai" : "review-by-user";
+	const stopTarget = getPrimaryStopTarget(project.autoReviewEnabled, task.taskType);
 	tmuxCmd = await applyAgentHooksToCommand(worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget,
 		permissionMode: resolvedPermissionMode,
@@ -633,7 +660,7 @@ export async function launchTaskPty(
 	// backends. Only the session itself differs.
 	if (nativeBackend) {
 		await launchNativeTaskSession(project, task, worktreePath, runScriptPath, env, userShell);
-		return;
+		return launchAccountId;
 	}
 
 	try {
@@ -658,6 +685,7 @@ export async function launchTaskPty(
 		if (project.kind === "virtual" && !sessionPreexisted) {
 			await addVirtualShellPane(task, worktreePath, sessionSocket, userShell);
 		}
+		return launchAccountId;
 	} catch (err) {
 		log.error("pty.createSession FAILED", {
 			taskId: task.id.slice(0, 8),
@@ -796,7 +824,7 @@ export async function launchColumnAgent(
 	};
 	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, launchAccountId, task.foreignCode, resolvedAgentFamily, env);
 	tmuxCmd = await applyAgentHooksToCommand(worktreePath, resolvedBaseCmd, tmuxCmd, {
-		stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
+		stopTarget: getPrimaryStopTarget(project.autoReviewEnabled, task.taskType),
 		permissionMode: resolvedPermissionMode,
 		family: resolvedAgentFamily,
 	});
@@ -836,7 +864,6 @@ export async function launchColumnAgent(
 }
 
 export function cleanupTaskTmuxState(taskId: string): void {
-	fileBrowserPaneIds.delete(taskId);
 	// One viewer pane per dev server, all keyed under this task.
 	for (const key of [...devViewerPaneIds.keys()]) {
 		if (key.startsWith(`${taskId}::`)) devViewerPaneIds.delete(key);

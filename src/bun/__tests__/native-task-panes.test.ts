@@ -31,6 +31,11 @@ vi.mock("../native-terminal-registry/record", () => ({
 	inspectRecordFile: vi.fn(() => ({ ok: false, problem: { kind: "absent" } })),
 }));
 
+vi.mock("../shell-init", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../shell-init")>()),
+	dev3ShellPromptEnv: (root: string) => ({ ZDOTDIR: "/tmp/dev3-shell", ENV: "/tmp/dev3-shell/.shrc", DEV3_WORKTREE_ROOT: root }),
+}));
+
 vi.mock("../native-terminal-registry/registry", () => ({
 	stop: vi.fn(async () => true),
 	defaultDeps: {},
@@ -218,6 +223,14 @@ describe("split cwd/env inheritance (fix #2)", () => {
 		expect(splitOpts.launch.cwd).toBe("/task-work");
 		expect(splitOpts.launch.env).toMatchObject({ PATH: "/custom", MY_ENV: "value" });
 		void firstPaneId;
+	});
+
+	it("split carries the dev3 prompt env; the caller's own values win", async () => {
+		await startNativeTaskPanes({ taskId: TASK_ID, cwd: "/work", env: {}, launch: LAUNCH, cols: 80, rows: 24 });
+		await splitNativeTaskPane(TASK_ID, "pane-1", "horizontal", { cwd: "/work", env: { ENV: "/mine/.shrc" } });
+
+		const splitOpts = startedPanes[1]!.opts as { launch: { env: Record<string, string> } };
+		expect(splitOpts.launch.env).toMatchObject({ ZDOTDIR: "/tmp/dev3-shell", ENV: "/mine/.shrc", DEV3_WORKTREE_ROOT: "/work" });
 	});
 
 	it("splits a pane set recovered by a fresh process — no in-process context needed", async () => {

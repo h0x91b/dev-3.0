@@ -54,7 +54,7 @@ vi.mock("../../repo-config", () => ({ resolveProjectConfig: vi.fn(async (p: Proj
 vi.mock("../../settings", () => ({ loadSettingsSync: vi.fn(() => ({})) }));
 vi.mock("../../shell-env", () => ({ getUserShell: vi.fn(() => "/bin/zsh") }));
 vi.mock("../../spawn", () => ({ spawn: vi.fn(() => ({ exited: Promise.resolve(0) })) }));
-vi.mock("../../temp-paths", () => ({ dev3TaskTempPath: vi.fn(() => "/tmp/dev3/task") }));
+vi.mock("../../temp-paths", () => ({ dev3TaskTempPath: vi.fn(() => "/tmp/dev3/task"), dev3TempPath: vi.fn((name: string) => `/tmp/${name}`) }));
 vi.mock("../../tmux", () => ({
 	DEFAULT_TMUX_SOCKET: "dev3",
 	activeTmuxConfigPath: vi.fn(() => "/tmp/dev3.tmux.conf"),
@@ -222,5 +222,19 @@ describe("missing harness at the launch boundary", () => {
 		).catch(() => undefined);
 
 		expect(assertLaunchAgentsInstalled).not.toHaveBeenCalled();
+	});
+});
+
+// Boot recovery in another dev3 instance reads this stamp to tell a live peer's
+// run from a stale one (`boot-recovery-respects-live-run-owner` record).
+describe("preparation runtime ownership", () => {
+	it("stamps every persisted preparation stage with this process's pid", async () => {
+		await executeLifecycleEffect(
+			{ type: "persistPreparationStage", stage: "creating-worktree", runId: "run-1" } as unknown as LifecycleEffect,
+			context(project([]), task()),
+		);
+
+		const written = vi.mocked(data.updateTask).mock.calls[0]?.[2] as Partial<Task>;
+		expect(written.runtimeState).toMatchObject({ runtime: "preparing", runId: "run-1", ownerPid: process.pid });
 	});
 });

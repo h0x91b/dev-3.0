@@ -8,7 +8,7 @@ export { skillInvocationPrefix } from "../shared/types";
 import { buildProviderEnv, getProviderDefinition, providerOmitsModelFlag, providerPinnedModel } from "../shared/llm-provider";
 import { createLogger } from "./logger";
 import { backupUnparsableCodexConfig, joinLike as joinLikeHome, detectCodexProfileLaunchFlag, detectCodexVersion, resetCodexVersionProbe, resetCodexHelpProbe, ensureCodexConfig, ensureCodexProfileFiles, getCodexSyntaxForVersion, resolveCodexInstallRoots, type CodexProfileLaunchFlag } from "./codex-config";
-import { agentBinaryPathOverride } from "./executable";
+import { agentBinaryPathOverride, brokenCustomPath, customExecutableMessage } from "./executable";
 import { DEV3_HOME } from "./paths";
 // Writer and pruner share one path constant: whatever registers an entry must
 // agree with whatever removes it.
@@ -24,7 +24,7 @@ import { loadSettings, saveSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from "./theme-state";
 import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
 import { ensureAgentSystemPromptFile } from "./agent-system-prompt-file";
-import { effectiveAccountId, getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveAgentDirSessionEnv, getActiveCodexSessionEnv, listClaudeAccountDirs } from "./agent-accounts";
+import { claudeAccountRegistered, effectiveAccountId, getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveAgentDirSessionEnv, getActiveCodexSessionEnv, listClaudeAccountDirs, isLinkedClaudeSlot } from "./agent-accounts";
 import { ENV_UNSET, claudeModelFamily, isAutoAccountId, isRoutableAccountKind, type AgentAccountKind } from "../shared/agent-accounts";
 import { isAutoAccountDefault, pickAutoAccount, type AutoAccountPick, type AutoRoutingContext } from "./account-router";
 import { hasOmpFlag } from "../shared/agent-adapters/omp-flags";
@@ -515,6 +515,9 @@ export interface CommandOptions {
 	 *  Threaded into the account env resolution so each spawned session locks to
 	 *  its chosen account instead of a single global active one. */
 	accountId?: string | null;
+	/** `accountId` was read from stored task/pane state, not picked for this launch: a Claude
+	 *  account removed since then falls back to the default instead of failing the launch. */
+	accountFromStore?: boolean;
 	/** Fresh-launch routing context. Present → an `"auto"` account (or a default
 	 *  set to Auto) is resolved by the usage-balanced router. Resume paths never
 	 *  pass it, so a resumed conversation is never re-routed. */
@@ -783,7 +786,7 @@ async function resolveLaunchAccount(
 	family: AgentFamily | undefined,
 	extraEnv: Record<string, string>,
 	options: CommandOptions | undefined,
-): Promise<{ accountId: string | null | undefined; resolvedAccountId: string | null | undefined; pick?: AutoAccountPick }> {
+): Promise<{ accountId: string | null | undefined; resolvedAccountId: string | null | undefined; pick?: AutoAccountPick; staleAccountDropped?: true }> {
 	const kind: AgentAccountKind | null = isClaudeCommand(baseCmd, family)
 		? "claude"
 		: agentKey(baseCmd, family) === "codex"
@@ -792,16 +795,26 @@ async function resolveLaunchAccount(
 				? "omp"
 				: null;
 	const requested = options?.accountId;
-	const explicit = isAutoAccountId(requested) ? undefined : requested;
+	let explicit = isAutoAccountId(requested) ? undefined : requested;
 	const bypassed = kind === "claude" ? !!extraEnv.CLAUDE_CONFIG_DIR : kind === "codex" ? !!extraEnv.CODEX_HOME : kind === "omp" ? !!extraEnv.PI_CODING_AGENT_DIR : true;
 	if (!kind || bypassed) return { accountId: explicit, resolvedAccountId: undefined };
-	const settle = (accountId: string | null | undefined) => ({ accountId, resolvedAccountId: effectiveAccountId(kind, accountId) });
+	let staleAccountDropped: true | undefined;
+	if (kind === "claude" && options?.accountFromStore && typeof explicit === "string" && !claudeAccountRegistered(explicit)) {
+		log.warn("Stored Claude account was removed — launching on the default account", { accountId: explicit });
+		explicit = undefined;
+		staleAccountDropped = true;
+	}
+	const settle = (accountId: string | null | undefined) => ({
+		accountId,
+		resolvedAccountId: effectiveAccountId(kind, accountId),
+		...(staleAccountDropped ? { staleAccountDropped } : {}),
+	});
 	const routing = options?.autoRouting;
 	if (!routing || !isRoutableAccountKind(kind)) return settle(explicit);
-	const wantsAuto = isAutoAccountId(requested) || (requested === undefined && (await isAutoAccountDefault(kind)));
+	const wantsAuto = isAutoAccountId(requested) || ((requested === undefined || staleAccountDropped) && (await isAutoAccountDefault(kind)));
 	if (!wantsAuto || (kind === "claude" && routing.claudeConfigPinned)) return settle(explicit);
 	const pick = await pickAutoAccount({ kind, exclusions: routing.exclusions, reservationKey: routing.reservationKey });
-	return { accountId: pick.accountId, resolvedAccountId: pick.accountId, pick };
+	return { accountId: pick.accountId, resolvedAccountId: pick.accountId, pick, ...(staleAccountDropped ? { staleAccountDropped } : {}) };
 }
 
 /** Inject the active managed account's env into Claude-based commands (agent
@@ -809,7 +822,7 @@ async function resolveLaunchAccount(
  *  and extra vars for API profiles. An explicit CLAUDE_CONFIG_DIR in the
  *  config's envVars disables the injection entirely, and per-key values set by
  *  the config always win. Affects new sessions only; running agents keep their
- *  in-memory credentials. */
+ *  in-memory credentials. Throws when the selected account cannot launch. */
 async function applyClaudeAccountEnv(
 	baseCmd: string,
 	extraEnv: Record<string, string>,
@@ -817,13 +830,10 @@ async function applyClaudeAccountEnv(
 	family?: AgentFamily,
 ): Promise<void> {
 	if (!isClaudeCommand(baseCmd, family) || extraEnv.CLAUDE_CONFIG_DIR) return;
-	try {
-		const accountEnv = await getActiveClaudeSessionEnv(accountId);
-		for (const [key, value] of Object.entries(accountEnv)) {
-			if (!(key in extraEnv)) extraEnv[key] = value;
-		}
-	} catch (err) {
-		log.warn("Failed to resolve active Claude account env", { error: String(err) });
+	// Not caught: an account that cannot launch must fail the launch, not fall back to the system login.
+	const accountEnv = await getActiveClaudeSessionEnv(accountId);
+	for (const [key, value] of Object.entries(accountEnv)) {
+		if (!(key in extraEnv)) extraEnv[key] = value;
 	}
 }
 
@@ -915,9 +925,12 @@ export function applyModelOverride(
 	return { ...config, model: override };
 }
 
-/** Apply the binary path override that still exists on disk: a user-chosen path
- *  always, an auto-cached one only while it still names the binary the agent's
- *  base command does — an edited base command must win over a stale cache.
+/** Apply the binary path override. A user-chosen path is strict: when the file
+ *  is missing or not executable the launch fails, because falling back to the
+ *  system binary would run a different program than the one the user chose. An
+ *  auto-cached path applies only while it still exists and still names the
+ *  binary the agent's base command does — an edited base command must win over
+ *  a stale cache.
  *
  *  Swapping in the path REPLACES the base command, so the agent's identity would
  *  otherwise be re-guessed from the new file name: pointing built-in Claude at
@@ -930,6 +943,8 @@ export function applyBinaryPathOverride(
 	cachedPaths: Record<string, string> | undefined,
 	customPaths?: Record<string, string>,
 ): CodingAgent {
+	const broken = brokenCustomPath(agent.id, customPaths);
+	if (broken) throw new Error(customExecutableMessage(agent.name, broken));
 	const path = agentBinaryPathOverride(agent.id, agent.baseCommand, cachedPaths, customPaths);
 	if (!path || !existsSync(path)) return agent;
 	// Only pin a family the ORIGINAL command actually resolved to. When it was
@@ -963,6 +978,8 @@ export interface ResolvedAgentCommand<A extends CodingAgent | null = CodingAgent
 	resolvedAccountId?: string | null;
 	/** Set when the usage-balanced router chose `resolvedAccountId`. */
 	accountPick?: AutoAccountPick;
+	/** The stored Claude account no longer exists; the default was used instead. */
+	staleAccountDropped?: true;
 }
 
 export async function resolveCommandForAgent(
@@ -1019,6 +1036,7 @@ export async function resolveCommandForAgent(
 		launchModel: nativeLaunchModel(launchConfig, providerOpts, routed.pinnedModel),
 		resolvedAccountId: account.resolvedAccountId,
 		...(account.pick ? { accountPick: account.pick } : {}),
+		...(account.staleAccountDropped ? { staleAccountDropped: true as const } : {}),
 	};
 }
 
@@ -1152,6 +1170,7 @@ export async function resolveCommandForProject(
 			launchModel: nativeLaunchModel(launchConfig, providerOpts, routed.pinnedModel),
 			resolvedAccountId: account.resolvedAccountId,
 			...(account.pick ? { accountPick: account.pick } : {}),
+			...(account.staleAccountDropped ? { staleAccountDropped: true as const } : {}),
 		};
 	}
 
@@ -1380,13 +1399,15 @@ export async function ensureClaudeTrust(
  * Give a launch's pinned Claude config dir (`CLAUDE_CONFIG_DIR` from project or
  * agent-config env) the dev3 skills and settings that startup installs into
  * ~/.claude. The default dir and managed account dirs are already covered at
- * startup, so they are skipped. `cwd` is the agent's working dir, which a relative
+ * startup, so they are skipped; a slot the user's own tool linked to its folder is not. `cwd` is the agent's working dir, which a relative
  * pin resolves against. Never throws.
  */
 export function ensureClaudeConfigDir(launchEnv: Record<string, string> | undefined, cwd: string): void {
 	try {
 		const location = launchClaudeConfigLocation(launchEnv, process.env, homedir(), cwd);
-		if (!location.pinned || listClaudeAccountDirs().includes(location.dir)) return;
+		// A linked slot (the user's own folder) gets no startup install, so only real managed dirs are skipped here.
+		const managed = listClaudeAccountDirs().includes(location.dir) && !isLinkedClaudeSlot(location.dir);
+		if (!location.pinned || managed) return;
 		installClaudeConfigDir(location.dir);
 	} catch (err) {
 		log.warn("Failed to provision pinned Claude config dir (non-fatal)", { error: String(err) });

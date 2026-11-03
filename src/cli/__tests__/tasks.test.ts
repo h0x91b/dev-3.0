@@ -756,3 +756,30 @@ describe("tasks list --children-of", () => {
 		expect(stdoutOutput).toContain("No children.");
 	});
 });
+
+describe("tasks list --epic", () => {
+	const RESULT = {
+		epic: { id: "epicpay1-0000", name: "Payments v2", color: "#3b82f6", archived: false, createdAt: 0 },
+		tasks: [
+			{ id: "tttttttt-2", seq: 9, variantIndex: null, projectId: "proj-002", projectName: "backend", status: "completed", title: "Payments API", epicId: "epicpay1-0000" },
+			{ id: "tttttttt-1", seq: 1802, variantIndex: null, projectId: "proj-001", projectName: "app", status: "in-progress", title: "Checkout page", epicId: "epicpay1-0000" },
+		],
+	};
+
+	it("lists the epic's tasks from every project and every status, ignoring the current project", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: RESULT } as CliResponse);
+		await handleTasks("list", { positional: [], flags: { epic: "Payments v2" } }, SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "epic.tasks", { epic: "Payments v2" });
+		expect(stdoutOutput).toContain("Epic Payments v2 (epicpay1)");
+		expect(stdoutOutput).toContain("backend");
+		expect(stdoutOutput).toContain("Completed");
+		expect(stdoutOutput.indexOf("app  ")).toBeLessThan(stdoutOutput.indexOf("backend"));
+	});
+
+	it("prints JSON", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: RESULT } as CliResponse);
+		await handleTasks("list", { positional: [], flags: { epic: "Payments v2", json: "true" } }, SOCKET, CTX);
+		expect(JSON.parse(stdoutOutput).tasks.map((t: { seq: number }) => t.seq)).toEqual([1802, 9]);
+	});
+});

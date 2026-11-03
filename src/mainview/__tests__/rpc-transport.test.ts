@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { defineRPCMock, adjustZoomMock, applyZoomMock, pingMock, initSocketToBunMock } = vi.hoisted(() => ({
+const { defineRPCMock, adjustZoomMock, applyZoomMock, pingMock, initSocketToBunMock, bunBridgeMock, electroviewInstances, socketFactory } = vi.hoisted(() => ({
+	bunBridgeMock: vi.fn(),
+	electroviewInstances: [] as any[],
+	socketFactory: { make: (): any => ({ close: vi.fn() }) },
 	defineRPCMock: vi.fn(),
 	adjustZoomMock: vi.fn(),
 	applyZoomMock: vi.fn(),
@@ -12,10 +15,13 @@ vi.mock("electrobun/view", () => {
 	class ElectroviewMock {
 		static defineRPC = defineRPCMock;
 		rpc = { request: { ping: pingMock } };
-		bunSocket = { close: vi.fn() };
+		bunSocket = socketFactory.make();
 		initSocketToBun = initSocketToBunMock;
+		bunBridge = bunBridgeMock;
 
-		constructor(_options: unknown) {}
+		constructor(_options: unknown) {
+			electroviewInstances.push(this);
+		}
 	}
 
 	return { Electroview: ElectroviewMock };
@@ -257,5 +263,33 @@ describe("Browser RPC transport", () => {
 		expect(replacement.send).toHaveBeenCalledTimes(1);
 		await vi.advanceTimersByTimeAsync(2_000);
 		expect(sockets).toHaveLength(2);
+	});
+	// The startup loss on desktop: a request sent before the bridge socket opened
+	// went through the native postMessage bridge, which frees its copy after 1 s.
+	it("holds bridge messages until the Electrobun socket opens", async () => {
+		bunBridgeMock.mockReset();
+		electroviewInstances.length = 0;
+		const listeners: Record<string, () => void> = {};
+		const socket = {
+			readyState: WebSocket.CONNECTING as number,
+			close: vi.fn(),
+			addEventListener: (type: string, cb: () => void) => { listeners[type] = cb; },
+		};
+		const defaultFactory = socketFactory.make;
+		socketFactory.make = () => socket;
+		defineRPCMock.mockReturnValue({});
+		vi.resetModules();
+		(window as any).__electrobunWebviewId = "test-webview";
+
+		await import("../rpc");
+		const view = electroviewInstances[0];
+		view.bunBridge('{"type":"request","method":"getGlobalSettings"}');
+		expect(bunBridgeMock).not.toHaveBeenCalled();
+
+		socket.readyState = WebSocket.OPEN;
+		listeners.open?.();
+		expect(bunBridgeMock).toHaveBeenCalledWith('{"type":"request","method":"getGlobalSettings"}');
+		socketFactory.make = defaultFactory;
+		delete (window as any).__electrobunWebviewId;
 	});
 });

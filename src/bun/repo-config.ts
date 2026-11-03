@@ -1,7 +1,10 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { homedir } from "node:os";
 import type { Project, Dev3RepoConfig, ConfigSourceEntry, ResolvedConfigSource } from "../shared/types";
 import { DEV3_REPO_CONFIG_KEYS, hasGitWorkflow, remapColumnAgents, repoConfigEnabled } from "../shared/types";
 import { sanitizeEnvMap } from "../shared/env-text";
+import { applyAgentEnvDefaults } from "../shared/agent-env-defaults";
+import { loadSettings } from "./settings";
 import { createLogger } from "./logger";
 import * as git from "./git";
 
@@ -276,32 +279,33 @@ async function applyConfigCascade(
 	resolved.env = Object.keys(envMerged).length > 0 ? envMerged : undefined;
 
 	// defaultCompareRef: explicit value wins; else derive from mode + base branch;
-	// else auto-detect from git (resilient to a missing/broken folder). Merge raw
-	// layer values low→high so the highest-priority layer wins, matching the cascade.
+	// else auto-detect from git. A configured ref the repo lacks falls back to the
+	// detected one. Merge raw layer values low→high so the highest-priority layer wins.
 	const merged: Dev3RepoConfig = {};
 	for (let i = layers.length - 1; i >= 0; i--) Object.assign(merged, layers[i].config ?? {});
-	if (merged.defaultCompareRef !== undefined) {
-		resolved.defaultCompareRef = merged.defaultCompareRef;
-	} else if (merged.defaultCompareRefMode !== undefined) {
-		resolved.defaultCompareRef = merged.defaultCompareRefMode === "local"
-			? resolved.defaultBaseBranch
-			: `origin/${resolved.defaultBaseBranch}`;
-	} else if (resolved.defaultCompareRef === undefined) {
-		// A deleted project folder (or any git/spawn failure) must not reject — one broken
-		// project would otherwise blow up the whole project list (Promise.all in getProjects).
-		// Without the git workflow nothing is ever compared, and the folder may not be a repo.
-		if (!existsSync(compareRefBasePath) || !hasGitWorkflow(project)) {
-			resolved.defaultCompareRef = resolved.defaultBaseBranch;
-		} else {
-			try {
-				resolved.defaultCompareRef = await git.detectDefaultCompareRef(compareRefBasePath, resolved.defaultBaseBranch);
-			} catch (err) {
-				log.warn("Failed to detect default compare ref, falling back to base branch", {
-					path: compareRefBasePath,
-					error: String(err),
-				});
-				resolved.defaultCompareRef = resolved.defaultBaseBranch;
-			}
+	const configuredCompareRef = merged.defaultCompareRef !== undefined
+		? merged.defaultCompareRef
+		: merged.defaultCompareRefMode !== undefined
+			? merged.defaultCompareRefMode === "local" ? resolved.defaultBaseBranch : `origin/${resolved.defaultBaseBranch}`
+			: resolved.defaultCompareRef;
+	// A deleted project folder (or any git/spawn failure) must not reject — one broken
+	// project would otherwise blow up the whole project list (Promise.all in getProjects).
+	// Without the git workflow nothing is ever compared, and the folder may not be a repo.
+	if (!existsSync(compareRefBasePath) || !hasGitWorkflow(project)) {
+		resolved.defaultCompareRef = configuredCompareRef ?? resolved.defaultBaseBranch;
+	} else {
+		try {
+			resolved.defaultCompareRef = configuredCompareRef === undefined
+				? await git.detectDefaultCompareRef(compareRefBasePath, resolved.defaultBaseBranch)
+				: configuredCompareRef === resolved.defaultBaseBranch
+					? configuredCompareRef
+					: await git.resolveConfiguredCompareRef(compareRefBasePath, resolved.defaultBaseBranch, configuredCompareRef);
+		} catch (err) {
+			log.warn("Failed to detect default compare ref, falling back to base branch", {
+				path: compareRefBasePath,
+				error: String(err),
+			});
+			resolved.defaultCompareRef = configuredCompareRef ?? resolved.defaultBaseBranch;
 		}
 	}
 
@@ -380,14 +384,24 @@ export async function resolveOperationalProjectConfig(
 /** Per-key-merged project env for a terminal or task session, re-read at launch
  *  time so config-file edits apply on the next launch. Never throws.
  *  Pass the task's `foreignCode` so a reviewed branch cannot export env into
- *  every session it touches (see {@link resolveOperationalProjectConfig}). */
+ *  every session it touches (see {@link resolveOperationalProjectConfig}).
+ *  Keys the project leaves unset come from the global `agentEnvDefaults`. */
 export async function resolveProjectEnv(
 	project: Project,
 	worktreePath?: string | null,
 	opts?: { foreignCode?: boolean },
 ): Promise<Record<string, string>> {
 	const resolved = await resolveOperationalProjectConfig(project, worktreePath ?? undefined, opts);
-	return resolved.env ?? {};
+	return applyAgentEnvDefaults(resolved.env ?? {}, await loadAgentEnvDefaults(), project, homedir());
+}
+
+async function loadAgentEnvDefaults(): Promise<Record<string, string> | undefined> {
+	try {
+		return (await loadSettings()).agentEnvDefaults;
+	} catch (err) {
+		log.warn("Failed to read agent env defaults", { error: String(err) });
+		return undefined;
+	}
 }
 
 /**

@@ -86,8 +86,14 @@ describe("findMissingLaunchAgent", () => {
 	});
 
 	it("honours a custom binary path saved for that agent", async () => {
-		vi.mocked(loadSettings).mockResolvedValueOnce({ agentCustomBinaryPaths: { "builtin-omp": "/opt/omp/bin/omp" } } as never);
+		vi.mocked(loadSettings).mockResolvedValueOnce({ agentCustomBinaryPaths: { "builtin-omp": process.execPath } } as never);
 		expect(await findMissingLaunchAgent([{ agentId: "builtin-omp", configId: null }])).toBeNull();
+	});
+
+	it("reports the agent missing when its custom path is broken, even though the binary is on PATH", async () => {
+		installedBinaries.add("omp");
+		vi.mocked(loadSettings).mockResolvedValueOnce({ agentCustomBinaryPaths: { "builtin-omp": "/gone/omp" } } as never);
+		expect((await findMissingLaunchAgent([{ agentId: "builtin-omp", configId: null }]))?.agentId).toBe("builtin-omp");
 	});
 
 	it("judges a path-shaped command by that path, not by a same-named binary on PATH", async () => {
@@ -124,6 +130,15 @@ describe("findMissingLaunchAgent", () => {
 });
 
 describe("assertLaunchAgentsInstalled", () => {
+	it("names a broken custom executable instead of claiming the agent is not installed", async () => {
+		installedBinaries.add("omp");
+		vi.mocked(loadSettings).mockResolvedValueOnce({ agentCustomBinaryPaths: { "builtin-omp": "/gone/omp" } } as never);
+		const error = await assertLaunchAgentsInstalled([{ agentId: "builtin-omp" }]).catch((e) => e);
+		expect(error).toBeInstanceOf(AgentNotInstalledError);
+		expect(String(error)).toContain('Custom executable for agent "Oh My Pi" not found or not executable: /gone/omp');
+		expect(String(error)).not.toContain("not found on PATH");
+	});
+
 	it("throws an error the renderer can recognise across RPC", async () => {
 		const error = await assertLaunchAgentsInstalled([{ agentId: "builtin-omp" }]).catch((e) => e);
 		expect(error).toBeInstanceOf(AgentNotInstalledError);

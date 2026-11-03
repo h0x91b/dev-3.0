@@ -1,5 +1,6 @@
 import { assertTaskWorkspacePresent } from "../../task-workspace-guard";
 import type { AgentFamily } from "../../../shared/types";
+import { getPrimaryStopTarget } from "../../../shared/types";
 import * as data from "../../data";
 import * as git from "../../git";
 import { folderWorkDir } from "../../task-folder";
@@ -132,7 +133,7 @@ export async function spawnAgentInTask(params: {
 	};
 	await ensureAgentTrust(task.worktreePath, project.path, resolvedBaseCmd, launchAccountId, task.foreignCode, resolvedAgentFamily, env);
 	tmuxCmd = await applyAgentHooksToCommand(task.worktreePath, resolvedBaseCmd, tmuxCmd, {
-		stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
+		stopTarget: getPrimaryStopTarget(project.autoReviewEnabled, task.taskType),
 		family: resolvedAgentFamily,
 	});
 	tmuxCmd = await applyModelVersionNotice(task.id, tmuxCmd, {

@@ -1,4 +1,5 @@
 import { isPullRequestFinished, type ReviewedPullRequest, type Task, type TaskPRBadgeInfo } from "../../shared/types";
+import { isTrustedStoredPrState, trustedPrStatusCache } from "../../shared/task-pull-requests";
 
 export type PRIdentity = Pick<TaskPRBadgeInfo, "number" | "url">;
 
@@ -33,7 +34,7 @@ export function samePRIdentity(left: TaskPRBadgeInfo | null | undefined, right: 
  * nothing has polled yet yields an identity-only badge rather than nothing.
  */
 export function taskPRBadgeFromStoredData(task: Task, identity?: PRIdentity): TaskPRBadgeInfo | null {
-	const cache = task.prStatusCache;
+	const cache = trustedPrStatusCache(task);
 	const sticky = task.prNumber != null && task.prUrl ? { number: task.prNumber, url: task.prUrl } : undefined;
 	const cachedIdentity = cache?.url ? { number: cache.number, url: cache.url } : undefined;
 	const pr = identity ?? sticky ?? cachedIdentity;
@@ -54,6 +55,12 @@ export function taskPRBadgeFromStoredData(task: Task, identity?: PRIdentity): Ta
 	};
 }
 
+/** An in-session OPEN pushed before the task finished: no poll will ever correct it. */
+function staleState(task: Task, badge: TaskPRBadgeInfo): boolean {
+	const state = badge.mergeState?.state;
+	return !!state && !isTrustedStoredPrState(task, state);
+}
+
 /** Stored data, with the fresher in-session fields of a same-PR entry kept. */
 export function mergeTaskPRBadge(
 	task: Task,
@@ -70,7 +77,7 @@ export function mergeTaskPRBadge(
 		reviewState: existing.reviewState ?? stored.reviewState,
 		reviewDecision: existing.reviewDecision ?? stored.reviewDecision,
 		unresolvedCount: existing.unresolvedCount ?? stored.unresolvedCount,
-		mergeState: existing.mergeState ?? stored.mergeState,
+		mergeState: staleState(task, existing) ? stored.mergeState : existing.mergeState ?? stored.mergeState,
 		checks: existing.checks && existing.checks.length > 0 ? existing.checks : stored.checks,
 		prTitle: existing.prTitle ?? stored.prTitle,
 		isDraft: existing.isDraft ?? stored.isDraft,

@@ -43,17 +43,17 @@ vi.mock("../data", () => ({
 
 // Frozen core times by default: no elapsed time means no busy reading, so the
 // CPU/disk snapshot stays silent unless a test advances `cpuClock`.
-const cpuClock = vi.hoisted(() => ({ user: 0, idle: 0 }));
+const cpuClock = vi.hoisted(() => ({ user: 0, idle: 0, loadavg: [0, 0, 0] }));
 vi.mock("node:os", async (importActual) => {
 	const actual = await importActual<typeof import("node:os")>();
 	return {
 		...actual,
 		cpus: () => [{ model: "x", speed: 0, times: { user: cpuClock.user, nice: 0, sys: 0, idle: cpuClock.idle, irq: 0 } }],
-		loadavg: () => [0, 0, 0],
+		loadavg: () => cpuClock.loadavg,
 	};
 });
 
-vi.mock("../settings", () => ({ loadSettings: vi.fn(async () => ({ resourceLevels: { cpuWarnPercent: 50 } })) }));
+vi.mock("../settings", () => ({ loadSettings: vi.fn(async () => ({ resourceLevels: { cpuBusyWarnPercent: 50 } })) }));
 
 const nativeRecords = vi.hoisted(() => ({
 	listTaskIds: vi.fn((): string[] => []),
@@ -868,6 +868,7 @@ describe("system load snapshot", () => {
 		clearProcessInfoCache();
 		cpuClock.user = 0;
 		cpuClock.idle = 0;
+		cpuClock.loadavg = [0, 0, 0];
 	});
 
 	afterEach(() => {
@@ -890,14 +891,29 @@ describe("system load snapshot", () => {
 		const loads = push.mock.calls.filter(([name]) => name === "systemLoadUpdated").map(([, payload]) => payload);
 		expect(loads).toHaveLength(1);
 		expect(loads[0]).toMatchObject({
+			// Judged on busy time against the stored 50% level.
 			cpuBusy: 0.75,
-			// No load average (zeros) → busy % stands in, judged against the stored 50% level.
-			cpuLoadPercent: 75,
 			cpuPressure: "warn",
 			cores: 1,
 			topCpuConsumers: [{ name: "Docker", cpu: 40 }],
 			topCpuTasks: [{ shortId: "abc12345", cpu: 80 }],
 		});
 		expect(getSystemLoadSnapshot()).toEqual(loads[0]);
+	});
+
+	it("a huge load average on a mostly idle CPU is not pressure", async () => {
+		mockGetAllSessionPanePids.mockResolvedValueOnce(paneMap({}));
+		mockSpawn.mockReturnValueOnce(makeProc("  300     1   1000   30.0 /usr/local/bin/dockerd\n"));
+		// The reported case: load 101.25 on 16 cores (633%) while the cores were 30% busy.
+		cpuClock.loadavg = [6.33, 5.59, 3.35];
+
+		const push = vi.fn();
+		startResourceMonitor(push);
+		cpuClock.user = 30;
+		cpuClock.idle = 70;
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		const loads = push.mock.calls.filter(([name]) => name === "systemLoadUpdated").map(([, payload]) => payload);
+		expect(loads[0]).toMatchObject({ cpuBusy: expect.closeTo(0.3), cpuPressure: "normal", loadAvg: [6.33, 5.59, 3.35] });
 	});
 });
