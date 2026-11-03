@@ -312,7 +312,7 @@ describe("GITLESS_COORDINATOR_PROMPT", () => {
 	});
 
 	it("accepts a commit as done, not a merged PR", () => {
-		expect(GITLESS_COORDINATOR_PROMPT).toMatch(/seeing the artefact — its commit or saved files/);
+		expect(GITLESS_COORDINATOR_PROMPT).toMatch(/seeing it: its commit or saved files/);
 		expect(GITLESS_COORDINATOR_PROMPT).not.toMatch(/merged PR/);
 	});
 
