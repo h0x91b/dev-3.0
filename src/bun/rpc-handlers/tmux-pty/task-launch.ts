@@ -432,6 +432,11 @@ export async function launchTaskPty(
 			if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
 			accountPick = resolved.accountPick;
 			staleAccountDropped = !!resolved.staleAccountDropped;
+			// No pick runs the global default; name it, or the card shows no agent at all.
+			if (resolved.agent) {
+				agentId = resolved.agent.id;
+				configId = resolved.config?.id ?? null;
+			}
 		}
 		if (staleAccountDropped) await notifyStaleAccountDropped(task);
 
@@ -469,8 +474,10 @@ export async function launchTaskPty(
 				// A removed stored account is cleared on the task, so the notice does not repeat and the
 				// task follows the default again — `null` would pin it to the system login instead.
 				: staleAccountDropped ? { accountId: undefined } : {};
+			// A task launched with no pick records the agent it really got.
+			const adoptedAgentPatch: Partial<Task> = !task.agentId && agentId ? { agentId, configId: configId ?? null } : {};
 			try {
-				await data.updateTask(project, task.id, { sessionState, ...routedPatch });
+				await data.updateTask(project, task.id, { sessionState, ...routedPatch, ...adoptedAgentPatch });
 				log.info("Persisted sessionState", { taskId: task.id.slice(0, 8), sessionId: paneEntry.sessionId });
 			} catch (err) {
 				log.error("Failed to persist sessionState (non-fatal)", { taskId: task.id.slice(0, 8), error: String(err) });

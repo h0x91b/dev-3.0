@@ -424,6 +424,47 @@ describe("coordinator default agent", () => {
 	});
 });
 
+describe("no picked agent — the default that ran is recorded", () => {
+	function resolveAsDefault() {
+		vi.mocked(agents.resolveCommandForProject).mockResolvedValue({
+			command: "claude",
+			extraEnv: {},
+			agent: { id: "builtin-claude", baseCommand: "claude" },
+			config: { id: "claude-bypass" },
+			agentFamily: "claude",
+			launchModel: undefined,
+		} as never);
+	}
+	afterEach(() => {
+		vi.mocked(agents.resolveCommandForProject).mockResolvedValue({ command: "claude", extraEnv: {} } as never);
+	});
+
+	it("stores the default agent and preset on the task and its pane", async () => {
+		resolveAsDefault();
+
+		await launchTaskPty(makeProject(), makeTask({ agentId: null, configId: null }), WORKTREE);
+
+		expect(vi.mocked(data.updateTask)).toHaveBeenCalledWith(
+			expect.anything(),
+			TASK_ID,
+			expect.objectContaining({
+				agentId: "builtin-claude",
+				configId: "claude-bypass",
+				sessionState: { panes: [expect.objectContaining({ agentId: "builtin-claude", configId: "claude-bypass" })] },
+			}),
+		);
+	});
+
+	it("never overwrites an agent the task already has", async () => {
+		resolveAsDefault();
+
+		await launchTaskPty(makeProject(), makeTask({ agentId: "builtin-codex", configId: "codex-default" }), WORKTREE);
+
+		const patch = vi.mocked(data.updateTask).mock.calls[0]?.[2];
+		expect(patch).not.toHaveProperty("agentId");
+	});
+});
+
 describe("unmarked task — the legacy tmux path is untouched", () => {
 	it("creates a tmux PTY session and never a native one", async () => {
 		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
