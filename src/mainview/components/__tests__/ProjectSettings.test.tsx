@@ -843,6 +843,12 @@ describe("ProjectSettings", () => {
 			expect(screen.queryByText("Worktree Config")).not.toBeInTheDocument();
 		});
 
+		it("keeps the board copy but hides conversation import when the workflow is off", async () => {
+			await renderProjectSettings({ ...mockProject, gitWorkflow: false });
+			expect(screen.getByRole("switch", { name: "Keep a copy of the board in this project" })).toBeInTheDocument();
+			expect(screen.queryByText("Agent conversations")).not.toBeInTheDocument();
+		});
+
 		it("is not offered on an Operations board", async () => {
 			await renderProjectSettings({ ...mockProject, kind: "virtual" });
 			expect(screen.queryByRole("switch", { name: "Worktrees, branches and pull requests" })).not.toBeInTheDocument();
