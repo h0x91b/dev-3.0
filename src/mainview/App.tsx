@@ -51,6 +51,7 @@ import NativePaneLayoutLab from "./labs/native-pane/NativePaneLayoutLab";
 import { setToastSuppressed, taskToastContext, ToastHost, toast, type ToastEntry, type ToastOrigin } from "./toast";
 import { toastClearanceRef } from "./toast-clearance";
 import { agentMessageToast, type AgentMessageDetail, type AgentToastEnd } from "./agent-message-toast";
+import { showStaleAgentPathToast, type StaleAgentPathDetail } from "./stale-agent-path-toast";
 import { useSpaces } from "./useSpaces";
 import AgentTrafficScreen from "./components/agent-traffic/AgentTrafficScreen";
 import { noteTrafficArrival } from "./agent-traffic";
@@ -1893,14 +1894,21 @@ function App() {
 		return () => window.removeEventListener("rpc:cliAttention", onCliAttention);
 	}, [dispatch]);
 
+	useEffect(() => {
+		const onStaleAgentPath = (e: Event) => showStaleAgentPathToast((e as CustomEvent).detail as StaleAgentPathDetail, t);
+		window.addEventListener("rpc:staleAgentPath", onStaleAgentPath);
+		return () => window.removeEventListener("rpc:staleAgentPath", onStaleAgentPath);
+	}, [t]);
+
 	// CLI-initiated in-app toast (`dev3 notify`). When a task is attached the toast
 	// is clickable and opens that task, honoring the user's task-open-mode.
 	useEffect(() => {
 		function onCliToast(e: Event) {
-			const { taskId, projectId, message, level, durationMs, taskSeq, taskTitle, projectName } = (e as CustomEvent).detail as {
+			const { taskId, projectId, message, messageKey, level, durationMs, taskSeq, taskTitle, projectName } = (e as CustomEvent).detail as {
 				taskId: string | null;
 				projectId: string | null;
 				message: string;
+				messageKey?: "kanban.launchAccountRemoved";
 				level: "info" | "success" | "error";
 				durationMs?: number;
 				taskSeq?: number;
@@ -1914,11 +1922,11 @@ function App() {
 					? () => openTaskFromNotification(taskId, projectId)
 					: undefined;
 			const context = taskToastContext(taskSeq, projectName, taskTitle);
-			toast[level](message, { durationMs, onClick, context, taskId: taskId ?? undefined });
+			toast[level](messageKey ? t(messageKey) : message, { durationMs, onClick, context, taskId: taskId ?? undefined });
 		}
 		window.addEventListener("rpc:cliToast", onCliToast);
 		return () => window.removeEventListener("rpc:cliToast", onCliToast);
-	}, [openTaskFromNotification]);
+	}, [openTaskFromNotification, t]);
 
 	// One agent wrote into another task's agent (`dev3 message` from a worktree).
 	// Its own violet variant and a two-identity source line — the only toast whose

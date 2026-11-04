@@ -15,6 +15,7 @@ import { getAllAgents } from "../agents";
 import { getTask } from "../data";
 import { taskTerminalAlive, tmuxPtyHandlers } from "../rpc-handlers/tmux-pty";
 import { settingsConfigHandlers } from "../rpc-handlers/settings-config";
+import { loadSettings } from "../settings";
 import { getPushMessage } from "../rpc-handlers/shared-pure";
 import { listAgentAccounts } from "../agent-accounts";
 import { _resetAgentRequestsForTests, createAgentRequest, resolveAgentRequest, voidAgentRequest, pendingAgentLaunchDialogs } from "../agent-requests";
@@ -185,6 +186,15 @@ describe("managed CLI agent spawning", () => {
 	});
 });
 describe("validateLaunchSuggestion", () => {
+	it("shows the custom-executable error, not an install hint, when the chosen path is broken", async () => {
+		vi.mocked(loadSettings).mockResolvedValueOnce({ defaultAgentId: "agent-1", agentCustomBinaryPaths: { "agent-1": "/gone/codex" }, strictAgentCustomBinaryPaths: { "agent-1": "/gone/codex" } } as never);
+		vi.mocked(settingsConfigHandlers.checkAgentAvailability).mockResolvedValueOnce([{ agentId: "agent-1", installed: false, customPathError: true, installCommand: "npm i -g codex" }] as any);
+		const error = await validateLaunchSuggestion({ agentId: "agent-1", configId: "config-1" }).catch((e) => e);
+		expect(String(error)).toContain("not found or not executable: /gone/codex");
+		expect(String(error)).toContain("Custom executable for agent");
+		expect(String(error)).not.toContain("Install it with");
+	});
+
 	beforeEach(() => {
 		vi.mocked(getAllAgents).mockResolvedValue([
 			{ id: "agent-1", baseCommand: "codex", configurations: [{ id: "config-1" }, { id: "config-cheap" }], defaultConfigId: "config-1" },

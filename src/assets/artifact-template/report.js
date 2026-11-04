@@ -16,7 +16,7 @@
       initialShare: [62, 24, 14],
     },
     capability: {
-      labels: ["Speed", "Quality", "Autonomy", "Coverage", "Efficiency", "Predictability"],
+      labels: ["Speed", "Quality", "Autonomy", "Coverage", "Efficiency", "Stability"],
       currentLabel: "Current scenario",
       targetLabel: "Target",
       initialValues: [78, 82, 68, 88, 75, 72],
@@ -132,7 +132,7 @@
   const capabilityRadar = dev3Chart(document.getElementById("capabilityRadar"), () => ({
     tooltip: {},
     legend: { bottom: 0, icon: "roundRect" },
-    radar: { indicator: report.capability.labels.map((name) => ({ name, max: 100 })), radius: "64%", center: ["50%", "46%"] },
+    radar: { indicator: report.capability.labels.map((name) => ({ name, max: 100 })), radius: "50%", center: ["50%", "50%"] },
     series: [{
       type: "radar",
       symbol: "circle",
@@ -176,6 +176,7 @@
         lineStyle: { color: "gradient", opacity: .25, curveness: .5 },
         itemStyle: { borderRadius: 4 },
         label: { color: tokenColor("--dev3-text-secondary"), fontSize: 11 },
+        labelLayout: { hideOverlap: true },
         data: report.gallery.sankeyNodes.map(({ name, token, alpha }) => ({
           name,
           itemStyle: { color: tokenColor(token, alpha) },

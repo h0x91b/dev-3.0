@@ -22,6 +22,11 @@ import { DEV3_HOME } from "./paths";
 const log = createLogger("settings");
 
 const SETTINGS_FILE = `${DEV3_HOME}/settings.json`;
+/** App-wide Auto exclusions live beside settings.json, not only in it: every released build
+ *  rewrites settings.json from a key whitelist that predates them, so one boot of an older
+ *  build would silently re-admit an excluded login. See the `auto-account-exclusions-sidecar` record. */
+const AUTO_EXCLUSIONS_FILE = `${DEV3_HOME}/auto-account-exclusions.json`;
+const AUTO_EXCLUSIONS_VERSION = 1;
 
 // `GlobalSettings` has a single source of truth in `src/shared/types.ts` (it is
 // the RPC schema type shared with the renderer). Re-export it here so this
@@ -120,6 +125,12 @@ function normalizeAutoAccountDefault(raw: unknown): GlobalSettings["autoAccountD
 	return Object.keys(out).length ? out : undefined;
 }
 
+function normalizeAutoAccountExclusions(raw: unknown): string[] | undefined {
+	if (!Array.isArray(raw)) return undefined;
+	const keys = [...new Set(raw.filter((v): v is string => typeof v === "string" && v.length > 0))];
+	return keys.length ? keys : undefined;
+}
+
 /** Keep only positive finite numbers under known keys; nothing left ⇒ undefined (all defaults). */
 function sanitizeResourceLevels(raw: unknown): GlobalSettings["resourceLevels"] {
 	if (!raw || typeof raw !== "object") return undefined;
@@ -168,6 +179,7 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		customBinaryPaths: d.customBinaryPaths ?? undefined,
 		agentBinaryPaths: d.agentBinaryPaths ?? undefined,
 		agentCustomBinaryPaths: d.agentCustomBinaryPaths ?? undefined,
+		strictAgentCustomBinaryPaths: d.strictAgentCustomBinaryPaths ?? undefined,
 		playSoundOnTaskComplete: d.playSoundOnTaskComplete ?? true,
 		playSoundOnTaskNeedsYou: d.playSoundOnTaskNeedsYou === true ? true : undefined,
 		externalApps: Array.isArray(d.externalApps) ? d.externalApps : undefined,
@@ -221,6 +233,7 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		// Default-on toggle — only an explicit false is a stored opt-out.
 		agentRateLimitTracking: d.agentRateLimitTracking === false ? false : undefined,
 		autoAccountDefault: normalizeAutoAccountDefault(d.autoAccountDefault),
+		autoAccountExclusions: normalizeAutoAccountExclusions(d.autoAccountExclusions),
 		// Boolean preference — both true (watch) and false (don't watch) are
 		// meaningful stored choices, so preserve either; only undefined drops.
 		watchByDefault: typeof d.watchByDefault === "boolean" ? d.watchByDefault : undefined,
@@ -320,11 +333,32 @@ function missingSettingsDefaults(): GlobalSettings {
 	}
 }
 
+/** The sidecar's keys, or null when there is no readable sidecar (the settings.json copy then stands). */
+function readAutoExclusionsSidecar(): string[] | null {
+	try {
+		if (!existsSync(AUTO_EXCLUSIONS_FILE)) return null;
+		const raw = JSON.parse(readFileSync(AUTO_EXCLUSIONS_FILE, "utf-8")) as { version?: unknown; keys?: unknown };
+		// A newer schema is left alone: the settings.json copy is safer than a guess.
+		if (raw?.version !== AUTO_EXCLUSIONS_VERSION || !Array.isArray(raw.keys)) return null;
+		return normalizeAutoAccountExclusions(raw.keys) ?? [];
+	} catch (err) {
+		log.warn("Failed to read the Auto exclusions file", { error: String(err) });
+		return null;
+	}
+}
+
+/** The sidecar wins: settings.json may have lost its copy to an older build's save. */
+function withAutoExclusionsSidecar(settings: GlobalSettings): GlobalSettings {
+	const keys = readAutoExclusionsSidecar();
+	if (keys === null) return settings;
+	return { ...settings, autoAccountExclusions: keys.length ? keys : undefined };
+}
+
 export async function loadSettings(): Promise<GlobalSettings> {
 	try {
 		const file = Bun.file(SETTINGS_FILE);
-		if (!(await file.exists())) return missingSettingsDefaults();
-		return normalizeSettings(await file.json());
+		if (!(await file.exists())) return withAutoExclusionsSidecar(missingSettingsDefaults());
+		return withAutoExclusionsSidecar(normalizeSettings(await file.json()));
 	} catch (err) {
 		log.error("Failed to load settings", { error: String(err) });
 		return { ...DEFAULT_SETTINGS };
@@ -336,6 +370,11 @@ export async function saveSettings(settings: GlobalSettings): Promise<void> {
 	log.info("Saving global settings", { settings });
 	await withFileLock(SETTINGS_FILE, async () => {
 		mkdirSync(DEV3_HOME, { recursive: true });
+		// Written even when empty, so clearing every exclusion is not undone by a stale settings.json copy.
+		const exclusionsTemp = `${AUTO_EXCLUSIONS_FILE}.tmp`;
+		writeFileSync(exclusionsTemp, JSON.stringify({ version: AUTO_EXCLUSIONS_VERSION, keys: settings.autoAccountExclusions ?? [] }, null, 2));
+		renameSync(exclusionsTemp, AUTO_EXCLUSIONS_FILE);
+		// The settings.json copy stays for builds that read it but predate the sidecar.
 		const tempFile = `${SETTINGS_FILE}.tmp`;
 		await Bun.write(tempFile, JSON.stringify(settings, null, 2));
 		renameSync(tempFile, SETTINGS_FILE);
@@ -379,8 +418,8 @@ export async function recordFavoriteUsages(
 
 export function loadSettingsSync(): GlobalSettings {
 	try {
-		if (!existsSync(SETTINGS_FILE)) return missingSettingsDefaults();
-		return normalizeSettings(JSON.parse(readFileSync(SETTINGS_FILE, "utf-8")));
+		if (!existsSync(SETTINGS_FILE)) return withAutoExclusionsSidecar(missingSettingsDefaults());
+		return withAutoExclusionsSidecar(normalizeSettings(JSON.parse(readFileSync(SETTINGS_FILE, "utf-8"))));
 	} catch (err) {
 		log.error("Failed to load settings (sync)", { error: String(err) });
 		return { ...DEFAULT_SETTINGS };

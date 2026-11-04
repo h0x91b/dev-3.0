@@ -31,6 +31,7 @@ import type { ModelListProbeSpec } from "../shared/agent-adapters/types";
 import type { AgentConfiguration, AgentFamily, AgentModelAvailability, CodingAgent } from "../shared/types";
 import { resolveUserHome } from "../shared/user-home";
 import { spawn } from "./spawn";
+import { enforcedCustomBinaryPaths } from "./executable";
 
 /** The probe is a fast local-ish call (~300 ms for Codex), but a picker can open
  *  repeatedly; a short cache spares a spawn per open without going stale for long. */
@@ -141,7 +142,12 @@ export async function resolveModelAvailability(
 	// Resolve the same binary a launch would: the user's custom path override,
 	// then a preset's baseCommandOverride (resolveCommandForAgent, agents.ts).
 	const settings = await loadSettings();
-	const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths, settings.agentCustomBinaryPaths);
+	let agentWithPath: CodingAgent;
+	try {
+		agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths, enforcedCustomBinaryPaths(settings));
+	} catch {
+		return { status: "unknown" }; // broken custom executable: never probe the system binary instead
+	}
 	const defaultConfig =
 		agentWithPath.configurations.find((c) => c.id === agentWithPath.defaultConfigId) ?? agentWithPath.configurations[0];
 	const baseCommand = defaultConfig?.baseCommandOverride || agentWithPath.baseCommand;

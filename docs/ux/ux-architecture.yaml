@@ -662,7 +662,7 @@ ux_architecture:
       definition: "Move task across statuses (mostly hook-driven), complete, cancel."
       placement: ["kanban drag", "status dropdown", "application_menu.Task.MoveToStatus"]
     configuration:
-      definition: "Durable change to project/app behavior (scripts, columns, labels, theme, locale, gh account)."
+      definition: "Durable change to project/app behavior (scripts, columns, labels, theme, locale, gh account, agent path Reset, account Add without signing in)."
       placement: ["settings", "project_settings"]
     destructive:
       definition: "Delete task, remove project, cancel, reset terminal, hard refresh."
@@ -682,10 +682,10 @@ ux_architecture:
     button_roles:
       primary:
         token_class: "bg-accent-fill / hover:bg-accent-fill-hover (text-white)"
-        note: "bg-accent is NOT the primary fill token for white text — white on --accent is 2.98:1 (fails WCAG 4.5:1). --accent-fill (lines 73-74 of index.css) ships a deeper blue that passes at 5.09:1. Use bg-accent only for text/icon tinting on dark surfaces."
+        note: "bg-accent is NOT the primary fill token for white text — white on --accent is 2.98:1 (fails WCAG 4.5:1). --accent-fill ships a deeper blue that passes at 5.09:1. Use bg-accent only for text/icon tinting on dark surfaces."
         use_for: "One main safe action for the current screen (Create, Save, Confirm)."
         max_per_screen: 1
-        evidence: ["src/mainview/components/TaskDetailModal.tsx", "src/mainview/components/CreateTaskModal.tsx", "src/mainview/index.css (--accent-fill comment, lines 70-74)"]
+        evidence: ["src/mainview/components/TaskDetailModal.tsx", "src/mainview/components/CreateTaskModal.tsx", "src/mainview/index.css (--accent-fill)"]
       secondary:
         token_class: "bg-raised / bg-elevated + border-edge, or text-accent bg-accent/10"
         use_for: "Visible supporting action with lower priority than primary."

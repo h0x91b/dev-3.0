@@ -148,3 +148,48 @@ export function computeAnchoredPosition(
 
 	return { top, left, placement: used };
 }
+
+export interface BesidePosition {
+	top: number;
+	left: number;
+	/** Height cap that keeps the box inside the viewport without covering the anchor. */
+	maxHeight: number;
+	placement: PopoverPlacement;
+}
+
+/**
+ * Place a hover card BESIDE its anchor: right, else left, top edge aligned with
+ * the anchor and slid vertically to stay on screen. A sideways box can grow to
+ * the full viewport height without touching the anchor. Only when neither side
+ * has room does it fall back above/below — into the larger gap, height-capped to
+ * it — so the anchor stays clickable whatever the content size.
+ */
+export function computeBesidePosition(
+	anchor: RectLike,
+	pop: SizeLike,
+	options: Omit<AnchoredPositionOptions, "placement" | "align"> = {},
+): BesidePosition {
+	const { gap = 6, pad = 8 } = options;
+	const vp = viewportSize(options.viewport);
+	const fullHeight = Math.max(0, vp.height - pad * 2);
+	const height = Math.min(pop.height, fullHeight);
+
+	const rightLeft = anchor.right + gap;
+	const leftLeft = anchor.left - gap - pop.width;
+	const side: PopoverPlacement | null = rightLeft + pop.width <= vp.width - pad
+		? "right"
+		: leftLeft >= pad ? "left" : null;
+	if (side) {
+		const top = Math.max(pad, Math.min(anchor.top, vp.height - pad - height));
+		return { top, left: side === "right" ? rightLeft : leftLeft, maxHeight: fullHeight, placement: side };
+	}
+
+	const below = Math.max(0, vp.height - pad - (anchor.bottom + gap));
+	const above = Math.max(0, anchor.top - gap - pad);
+	const left = Math.max(pad, Math.min(anchor.left, vp.width - pad - pop.width));
+	if (below >= above) {
+		return { top: anchor.bottom + gap, left, maxHeight: below, placement: "bottom" };
+	}
+	const capped = Math.min(height, above);
+	return { top: anchor.top - gap - capped, left, maxHeight: above, placement: "top" };
+}

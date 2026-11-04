@@ -28,6 +28,7 @@ export interface GitHubPullRequestSummary {
 }
 
 type ApiPR = Omit<GitHubPullRequestSummary, "statusCheckRollup" | "unresolvedCount"> & {
+	mergedAt?: string | null;
 	commits?: { nodes: { commit: { oid: string; statusCheckRollup: { contexts: Page<Check> } | null } }[] };
 	reviewThreads?: Page<{ isResolved: boolean }>;
 };
@@ -64,7 +65,7 @@ const CHECK_FIELDS = `nodes {
   ... on CheckRun { name status conclusion detailsUrl }
   ... on StatusContext { context state targetUrl }
 } pageInfo { hasNextPage endCursor }`;
-const PR_METADATA_FIELDS = `number url title state headRefName headRefOid isDraft
+const PR_METADATA_FIELDS = `number url title state mergedAt headRefName headRefOid isDraft
   author { login ... on User { name } }
   autoMergeRequest { enabledAt } mergeable mergeStateStatus reviewDecision`;
 const PR_FIELDS = `${PR_METADATA_FIELDS}
@@ -161,8 +162,9 @@ async function completePR(account: GitHubAccount, repo: Repository, pr: ApiPR, s
 		unresolvedCount = null;
 	}
 	signal.throwIfAborted();
-	const { commits: _, reviewThreads: __, ...summary } = pr;
-	return { ...summary, statusCheckRollup: checks, unresolvedCount };
+	const { commits: _, reviewThreads: __, mergedAt, ...summary } = pr;
+	// `mergedAt` is the merge itself; a merged PR must never read as CLOSED, whatever `state` says.
+	return { ...summary, state: mergedAt ? "MERGED" : summary.state, statusCheckRollup: checks, unresolvedCount };
 }
 
 async function withinDeadline<T>(fn: (signal: AbortSignal, deadline: number) => Promise<T>, timeoutMs: number): Promise<T> {

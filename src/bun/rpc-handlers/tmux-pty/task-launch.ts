@@ -97,6 +97,30 @@ async function persistInitialAgentPaneId(
 	log.warn("Could not capture initial agent pane ID", { taskId: task.id.slice(0, 8) });
 }
 
+const STALE_ACCOUNT_NOTICE_WINDOW_MS = 60_000;
+const staleAccountNoticeAt = new Map<string, number>();
+
+export function resetStaleAccountNoticesForTests(): void {
+	staleAccountNoticeAt.clear();
+}
+
+/** Tell the user a stored Claude account was removed and the launch used the default one.
+ *  Once per task per window: a resume relaunches every pane, and each may carry the same id. */
+export async function notifyStaleAccountDropped(task: Pick<Task, "id" | "projectId">, now = Date.now()): Promise<void> {
+	const last = staleAccountNoticeAt.get(task.id);
+	if (last !== undefined && now - last < STALE_ACCOUNT_NOTICE_WINDOW_MS) return;
+	staleAccountNoticeAt.set(task.id, now);
+	// Loaded on demand: ../shared pulls in the whole desktop shell, which this module must not.
+	const { pushCliToast } = await import("../shared");
+	pushCliToast({
+		taskId: task.id,
+		projectId: task.projectId,
+		level: "info",
+		message: "The account this task used was removed — launched on the default account.",
+		messageKey: "kanban.launchAccountRemoved",
+	});
+}
+
 /**
  * Register worktree trust for the resolved agent's CLI before spawning it.
  * `launchEnv` is the env the agent will be launched with, so Claude trust and the
@@ -284,7 +308,7 @@ export async function launchTaskPty(
 		 *  new id, with no brief, rather than `--continue` into another pane's. */
 		freshSessionId?: string;
 	},
-): Promise<void> {
+): Promise<string | null | undefined> {
 	// First, before any trust/hook/config write: tmux would start a missing cwd in $HOME.
 	assertTaskWorkspacePresent(project, worktreePath);
 	// Only a fresh coordinator launch with no picked agent; every other task keeps the global default.
@@ -346,12 +370,13 @@ export async function launchTaskPty(
 	// The account the session really runs on: the default applied, or Auto's pick.
 	let launchAccountId = accountId;
 	let accountPick: agents.ResolvedAgentCommand["accountPick"];
+	let staleAccountDropped = false;
 	let freshLaunchSessionId: string | null = null;
 
 	try {
 		// Recovery carries the pane's account alongside its session id. Older pane
 		// snapshots fall back to the task selection; undefined uses the default.
-		const cmdOptions: agents.CommandOptions = { accountId };
+		const cmdOptions: agents.CommandOptions = { accountId, accountFromStore: typeof accountId === "string" ? true : undefined };
 		let freshSessionId: string | null = null;
 		if (!resume && !skipSessionPersist && !opts?.shellNotice) {
 			cmdOptions.autoRouting = await autoRoutingContext(project, reservationKey, projectEnv);
@@ -387,6 +412,7 @@ export async function launchTaskPty(
 			resolvedLaunchModel = resolved.launchModel;
 			if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
 			accountPick = resolved.accountPick;
+			staleAccountDropped = !!resolved.staleAccountDropped;
 		} else {
 			log.info("Resolving command for project", { projectName: project.name });
 			const resolved = await agents.resolveCommandForProject(
@@ -405,7 +431,9 @@ export async function launchTaskPty(
 			resolvedLaunchModel = resolved.launchModel;
 			if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
 			accountPick = resolved.accountPick;
+			staleAccountDropped = !!resolved.staleAccountDropped;
 		}
+		if (staleAccountDropped) await notifyStaleAccountDropped(task);
 
 		if (opts?.codexHome) extraEnv.CODEX_HOME = opts.codexHome;
 
@@ -427,7 +455,7 @@ export async function launchTaskPty(
 				sessionId: effectiveSessionId ?? null,
 				agentId: agentId ?? task.agentId,
 				configId: configId ?? task.configId,
-				accountId: resume ? accountId : (agentKey(resolvedBaseCmd, resolvedAgentFamily) === "codex"
+				accountId: resume && !staleAccountDropped ? accountId : (agentKey(resolvedBaseCmd, resolvedAgentFamily) === "codex"
 					? codexAccountIdForHome(extraEnv.CODEX_HOME) : undefined) ?? launchAccountId,
 				agentFamily: resolvedAgentFamily,
 				sessionOriginCwd: carriedOriginCwd,
@@ -438,7 +466,9 @@ export async function launchTaskPty(
 			// and legacy-pane resume read a concrete account instead of routing again.
 			const routedPatch: Partial<Task> = accountPick
 				? { accountId: accountPick.accountId, accountPick: { reason: accountPick.reason, at: new Date().toISOString() } }
-				: {};
+				// A removed stored account is cleared on the task, so the notice does not repeat and the
+				// task follows the default again — `null` would pin it to the system login instead.
+				: staleAccountDropped ? { accountId: undefined } : {};
 			try {
 				await data.updateTask(project, task.id, { sessionState, ...routedPatch });
 				log.info("Persisted sessionState", { taskId: task.id.slice(0, 8), sessionId: paneEntry.sessionId });
@@ -629,7 +659,7 @@ export async function launchTaskPty(
 	// backends. Only the session itself differs.
 	if (nativeBackend) {
 		await launchNativeTaskSession(project, task, worktreePath, runScriptPath, env, userShell);
-		return;
+		return launchAccountId;
 	}
 
 	try {
@@ -654,6 +684,7 @@ export async function launchTaskPty(
 		if (project.kind === "virtual" && !sessionPreexisted) {
 			await addVirtualShellPane(task, worktreePath, sessionSocket, userShell);
 		}
+		return launchAccountId;
 	} catch (err) {
 		log.error("pty.createSession FAILED", {
 			taskId: task.id.slice(0, 8),

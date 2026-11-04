@@ -2310,6 +2310,23 @@ describe("handlers.saveGlobalSettings", () => {
 		expect(vi.mocked(saveSettings).mock.lastCall?.[0].autoAccountDefault).toBeUndefined();
 	});
 
+	it("keeps the stored app-wide Auto exclusions whatever the renderer's snapshot says", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({ autoAccountExclusions: ["cl-1"] } as GlobalSettings);
+		await handlers.saveGlobalSettings({ updateChannel: "beta" } as unknown as GlobalSettings);
+		expect(vi.mocked(saveSettings).mock.lastCall?.[0].autoAccountExclusions).toEqual(["cl-1"]);
+	});
+
+	it("adds and removes one login's app-wide Auto exclusion", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({ autoAccountExclusions: ["cl-1"] } as GlobalSettings);
+		await handlers.setAutoAccountExcluded({ kind: "claude", accountId: null, excluded: true });
+		expect(vi.mocked(saveSettings).mock.lastCall?.[0].autoAccountExclusions).toEqual(["cl-1", "system:claude"]);
+
+		await handlers.setAutoAccountExcluded({ kind: "claude", accountId: "cl-1", excluded: false });
+		expect(vi.mocked(saveSettings).mock.lastCall?.[0].autoAccountExclusions).toBeUndefined();
+
+		await expect(handlers.setAutoAccountExcluded({ kind: "omp", accountId: "o-1", excluded: true })).rejects.toThrow();
+	});
+
 	// The switch has to reach the collector in this session: a diagnostic that
 	// only starts at the next launch is useless while the app is misbehaving.
 	it("starts and stops the freeze collector when the stored switch changes", async () => {
@@ -2728,6 +2745,24 @@ describe("handlers.getProjectCurrentBranch", () => {
 
 		expect(result).toEqual({ branch: null, isBaseBranch: true, isDirty: false, behindOrigin: 0 });
 		expect(git.getBehindOriginCount).not.toHaveBeenCalled();
+	});
+
+	it("shares one in-flight read between concurrent pollers, then reads afresh", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+		let answer!: (branch: string) => void;
+		vi.mocked(git.getCurrentBranch).mockReturnValueOnce(new Promise((resolve) => { answer = resolve; }));
+		vi.mocked(git.isWorktreeDirty).mockResolvedValue(false);
+
+		const calls = [1, 2, 3].map(() => handlers.getProjectCurrentBranch({ projectId: "proj-1" }));
+		await vi.waitFor(() => expect(answer).toBeTypeOf("function"));
+		answer("feat/x");
+		const results = await Promise.all(calls);
+
+		expect(results.map((r) => r.branch)).toEqual(["feat/x", "feat/x", "feat/x"]);
+		expect(git.getCurrentBranch).toHaveBeenCalledTimes(1);
+
+		vi.mocked(git.getCurrentBranch).mockResolvedValueOnce("feat/y");
+		expect((await handlers.getProjectCurrentBranch({ projectId: "proj-1" })).branch).toBe("feat/y");
 	});
 });
 
@@ -7021,6 +7056,30 @@ describe("handlers.getPtyUrl", () => {
 
 		const result = await handlers.getPtyUrl({ taskId: "task-1" });
 		expect(result).toEqual({ recoverable: true, sessionState });
+	});
+
+	it.each([
+		["reconnecting to a live tmux session", true, expect.stringContaining("/gone")],
+		["launching a fresh session", false, expect.any(String)],
+	])("shows the user why the terminal is dead when %s fails", async (_label, tmuxAlive, message) => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
+		const push = vi.fn();
+		setPushMessage(push);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(tmuxAlive);
+		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(repoConfig.resolveProjectConfig).mockRejectedValueOnce(new Error("Custom executable for agent \"Claude Code\" not found or not executable: /gone"));
+
+		await handlers.getPtyUrl({ taskId: "task-1" });
+
+		expect(push).toHaveBeenCalledWith("cliToast", expect.objectContaining({
+			taskId: task.id,
+			level: "error",
+			message,
+		}));
 	});
 
 	it("resolves project config before restoring a PTY session", async () => {
@@ -11567,6 +11626,47 @@ describe("resumeTask gives every Claude pane its own conversation (#1950)", () =
 		const last = (data.updateTask as any).mock.calls.filter((call: any[]) => call[2]?.sessionState).at(-1)[2];
 		expect(last.sessionState.panes.slice(1).map((p: any) => [p.paneId, p.sessionId])).toEqual([["%2", fresh], ["%3", fresh2]]);
 	});
+
+	it("surfaces a main-pane launch error instead of starting the saved command", async () => {
+		seedStore([MAIN]);
+		(data.getTask as any).mockResolvedValue(makeTask({ worktreePath: WORKTREE, sessionState: { panes: [claudePane(MAIN)] } }));
+		const resolve = vi.mocked(agents.resolveCommandForAgent);
+		const original = resolve.getMockImplementation()!;
+		resolve.mockRejectedValue(new Error("Custom executable for agent \"Claude\" not found or not executable: /gone"));
+		vi.mocked(pty.createSession).mockClear();
+		try {
+			await expect(handlers.resumeTask({ taskId: "task-1" })).rejects.toThrow("Custom executable for agent");
+			expect(pty.createSession).not.toHaveBeenCalled();
+		} finally {
+			resolve.mockImplementation(original);
+		}
+	});
+
+	it("fails an extra pane whose agent record is gone instead of launching its saved command", async () => {
+		const { resumeTaskSession } = await import("../rpc-handlers/tmux-pty");
+		vi.mocked(pty.splitAndRunCommand).mockReset(); // drop the ids beforeEach queued: nothing splits here
+		seedStore([NEWEST, MAIN]);
+		(data.getTask as any).mockResolvedValue(makeTask({
+			worktreePath: WORKTREE,
+			sessionState: { panes: [claudePane(MAIN), { ...claudePane(NEWEST), agentId: "deleted-agent", agentCmd: "claude-saved-command" }] },
+		}));
+		const resolve = vi.mocked(agents.resolveCommandForAgent);
+		const original = resolve.getMockImplementation()!;
+		resolve.mockImplementation(async (agentId: string, ...rest: any[]) => {
+			if (agentId === "deleted-agent") throw new Error("Agent not found: deleted-agent");
+			return (original as any)(agentId, ...rest);
+		});
+		try {
+			const outcome = await resumeTaskSession("task-1", {});
+			expect(outcome).toMatchObject({ kind: "resumed", result: { panes: [
+				expect.objectContaining({ index: 0, status: "resumed" }),
+				expect.objectContaining({ index: 1, status: "failed", detail: expect.stringContaining("Agent not found: deleted-agent") }),
+			] } });
+			expect(pty.splitAndRunCommand).not.toHaveBeenCalled();
+		} finally {
+			resolve.mockImplementation(original);
+		}
+	});
 });
 
 describe("restartTask (start fresh) floors the Codex scan", () => {
@@ -11584,6 +11684,75 @@ describe("restartTask (start fresh) floors the Codex scan", () => {
 		const clear = vi.mocked(data.updateTask).mock.calls.find((call) => call[2].sessionState === null)?.[2];
 		expect(Date.parse(clear?.codexScanFloorAt ?? "")).toBeGreaterThanOrEqual(before);
 		expect(clear?.lifecycleStartedAt).toBeUndefined();
+	});
+});
+
+describe("restartTask and resume with a stored account or a refused launch", () => {
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		(await import("../rpc-handlers/tmux-pty/task-launch")).resetStaleAccountNoticesForTests();
+	});
+	const claudePanes = [{ agentCmd: "claude", agentFamily: "claude", agentId: "builtin-claude", configId: "claude-default", sessionId: "00000000-0000-4000-8000-0000c0de2799", accountId: "removed-account" }];
+	function arrange() {
+		const project = makeProject();
+		const task = makeTask({ sessionState: { panes: claudePanes as any } });
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		return { project, task };
+	}
+
+	it("restartTask puts the saved session back when the launch is refused", async () => {
+		const { task } = arrange();
+		vi.mocked(agents.resolveCommandForAgent).mockRejectedValueOnce(new Error("Custom executable for agent \"Claude\" not found or not executable: /gone"));
+		await expect(handlers.restartTask({ taskId: task.id })).rejects.toThrow("Custom executable");
+		const updates = vi.mocked(data.updateTask).mock.calls.map((call) => call[2]);
+		expect(updates[0].sessionState).toBeNull();
+		expect(updates[updates.length - 1]).toMatchObject({ sessionState: { panes: claudePanes }, codexScanFloorAt: null });
+	});
+
+	it("resume marks the stored account as such, tells the user when it was dropped, and records the account actually used", async () => {
+		const { task } = arrange();
+		const push = vi.fn();
+		setPushMessage(push);
+		const resolve = vi.mocked(agents.resolveCommandForAgent);
+		const original = resolve.getMockImplementation();
+		resolve.mockResolvedValue({ command: "claude", extraEnv: {}, agentFamily: "claude", resolvedAccountId: null, staleAccountDropped: true } as any);
+		try {
+			const { resumeTaskSession } = await import("../rpc-handlers/tmux-pty");
+			const outcome = await resumeTaskSession(task.id, {});
+			expect(outcome).toMatchObject({ kind: "resumed", result: { panes: [expect.objectContaining({ index: 0, accountId: null })] } });
+			expect(resolve).toHaveBeenCalledWith("builtin-claude", "claude-default", expect.anything(), expect.objectContaining({ accountId: "removed-account", accountFromStore: true }));
+			expect(push).toHaveBeenCalledWith("cliToast", expect.objectContaining({ taskId: task.id, level: "info", messageKey: "kanban.launchAccountRemoved" }));
+			const last = vi.mocked(data.updateTask).mock.calls.map((call) => call[2]).filter((u) => u.sessionState).pop()!;
+			expect(last.sessionState!.panes[0].accountId).toBeNull();
+			// The task drops the removed id and follows the default again (null would pin the system login).
+			const cleared = vi.mocked(data.updateTask).mock.calls.find((call) => "accountId" in call[2])?.[2];
+			expect(cleared).toBeDefined();
+			expect(cleared!.accountId).toBeUndefined();
+			expect(vi.mocked(data.updateTask).mock.calls.some((call) => call[2].accountId === null)).toBe(false);
+		} finally {
+			resolve.mockImplementation(original!);
+		}
+	});
+
+	it("resume shows one removed-account notice per task, however many panes carried that account", async () => {
+		const { project, task } = arrange();
+		await data.updateTask(project, task.id, { sessionState: { panes: [claudePanes[0], { ...claudePanes[0], sessionId: null, paneId: "%5" }, { ...claudePanes[0], sessionId: null, paneId: "%6" }] as any } });
+		const push = vi.fn();
+		setPushMessage(push);
+		const resolve = vi.mocked(agents.resolveCommandForAgent);
+		const original = resolve.getMockImplementation();
+		resolve.mockResolvedValue({ command: "claude", extraEnv: {}, agentFamily: "claude", resolvedAccountId: null, staleAccountDropped: true } as any);
+		try {
+			const { resumeTaskSession } = await import("../rpc-handlers/tmux-pty");
+			await resumeTaskSession(task.id, {});
+			expect(resolve.mock.calls.length).toBeGreaterThanOrEqual(3);
+			expect(push.mock.calls.filter((call) => call[0] === "cliToast" && call[1]?.messageKey === "kanban.launchAccountRemoved")).toHaveLength(1);
+		} finally {
+			resolve.mockImplementation(original!);
+		}
 	});
 });
 
@@ -13251,6 +13420,22 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		clearIntervalSpy.mockRestore();
 	});
 
+	it("skips a tick while the previous one is still waiting on git", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "review-by-colleague", worktreePath: "/tmp/test-worktree", branchName: "dev3/task-test" });
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
+		vi.mocked(git.isWorktreeDirty).mockReturnValue(new Promise(() => {}));
+		setPushMessage(vi.fn());
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(5 * 60_000);
+
+		expect(git.isWorktreeDirty).toHaveBeenCalledTimes(1);
+	});
+
 	it("does not offer a merged branch while a watching agent handles it, and offers it after the hold", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "review-by-colleague", worktreePath: "/tmp/test-worktree", branchName: "dev3/task-test" });
@@ -14594,6 +14779,60 @@ describe("checkAgentAvailability", () => {
 		expect(saveSettings).not.toHaveBeenCalled();
 	});
 
+	it("reports a broken custom path as an error and does not look for the system binary or cache it", async () => {
+		vi.mocked(agents.getAllAgents).mockResolvedValue([
+			{ id: "builtin-claude", name: "Claude", baseCommand: "claude", isDefault: true, configurations: [] },
+		] as any);
+		vi.mocked(loadSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskSortOrder: "oldest-first",
+			updateChannel: "stable",
+			agentCustomBinaryPaths: { "builtin-claude": "/opt/wrappers/gone" },
+			strictAgentCustomBinaryPaths: { "builtin-claude": "/opt/wrappers/gone" },
+		});
+		// The system claude exists on PATH; the broken custom path must not fall back to it.
+		vi.mocked(existsSync).mockImplementation((path) => String(path) === "/usr/local/bin/claude");
+		mockSpawnSync.mockImplementation((args: string[]) => {
+			if (args[0] === "which" && args[1] === "claude") {
+				return { exitCode: 0, stdout: new TextEncoder().encode("/usr/local/bin/claude") };
+			}
+			return { exitCode: 1, stdout: null };
+		});
+
+		vi.mocked(saveSettings).mockClear();
+		const claude = (await handlers.checkAgentAvailability()).find((r) => r.agentId === "builtin-claude");
+		expect(claude?.installed).toBe(false);
+		expect(claude?.resolvedPath).toBeUndefined();
+		expect(claude?.customPathError).toBe(true);
+		expect(claude?.customPath).toBe("/opt/wrappers/gone");
+		expect(saveSettings).not.toHaveBeenCalled();
+	});
+
+	it("reports a gone pre-strict custom path as stale, not broken, and finds the CLI on PATH", async () => {
+		vi.mocked(agents.getAllAgents).mockResolvedValue([
+			{ id: "builtin-claude", name: "Claude", baseCommand: "claude", isDefault: true, configurations: [] },
+		] as any);
+		vi.mocked(loadSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskSortOrder: "oldest-first",
+			updateChannel: "stable",
+			agentCustomBinaryPaths: { "builtin-claude": "/old/nvm/bin/claude" },
+			agentBinaryPaths: { "builtin-claude": "/old/nvm/bin/claude" },
+		});
+		vi.mocked(existsSync).mockImplementation((path) => String(path) === "/usr/local/bin/claude");
+		mockSpawnSync.mockImplementation((args: string[]) => {
+			if (args[0] === "which" && args[1] === "claude") {
+				return { exitCode: 0, stdout: new TextEncoder().encode("/usr/local/bin/claude") };
+			}
+			return { exitCode: 1, stdout: null };
+		});
+
+		const claude = (await handlers.checkAgentAvailability()).find((r) => r.agentId === "builtin-claude");
+		expect(claude).toMatchObject({ installed: true, resolvedPath: "/usr/local/bin/claude", customPathError: false, customPathStale: true, customPath: "/old/nvm/bin/claude" });
+	});
+
 	it("reports customPathError when saved path no longer exists", async () => {
 		vi.mocked(loadSettings).mockResolvedValue({
 			defaultAgentId: "builtin-claude",
@@ -14633,10 +14872,11 @@ describe("setAgentBinaryPath", () => {
 		}));
 	});
 
-	it("records the path as user-chosen, not only as a cache entry", async () => {
+	it("records the path as user-chosen and strict, not only as a cache entry", async () => {
 		await handlers.setAgentBinaryPath({ agentId: "builtin-claude", path: "/opt/wrappers/claude-wrapper" });
 		expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({
 			agentCustomBinaryPaths: { "builtin-claude": "/opt/wrappers/claude-wrapper" },
+			strictAgentCustomBinaryPaths: { "builtin-claude": "/opt/wrappers/claude-wrapper" },
 		}));
 	});
 
@@ -14644,6 +14884,52 @@ describe("setAgentBinaryPath", () => {
 		vi.mocked(existsSync).mockReturnValue(false);
 		await expect(handlers.setAgentBinaryPath({ agentId: "builtin-claude", path: "/bad/path" }))
 			.rejects.toThrow("File not found");
+	});
+
+	it("rejects a file that is not executable without saving it", async () => {
+		vi.mocked(accessSync).mockImplementationOnce(() => { throw new Error("EACCES"); });
+		vi.mocked(saveSettings).mockClear();
+		await expect(handlers.setAgentBinaryPath({ agentId: "builtin-claude", path: "/opt/wrappers/plain.txt" }))
+			.rejects.toThrow("File is not executable");
+		expect(saveSettings).not.toHaveBeenCalled();
+	});
+});
+
+describe("clearAgentBinaryPath", () => {
+	it("drops the custom path and the cache copy it wrote, and keeps other agents", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskSortOrder: "oldest-first",
+			updateChannel: "stable",
+			agentCustomBinaryPaths: { "builtin-claude": "/opt/w/claude", "builtin-codex": "/opt/w/codex" },
+			strictAgentCustomBinaryPaths: { "builtin-claude": "/opt/w/claude", "builtin-codex": "/opt/w/codex" },
+			agentBinaryPaths: { "builtin-claude": "/opt/w/claude", "builtin-codex": "/auto/codex" },
+		});
+		vi.mocked(saveSettings).mockClear();
+		await handlers.clearAgentBinaryPath({ agentId: "builtin-claude" });
+		expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+			agentCustomBinaryPaths: { "builtin-codex": "/opt/w/codex" },
+			strictAgentCustomBinaryPaths: { "builtin-codex": "/opt/w/codex" },
+			agentBinaryPaths: { "builtin-codex": "/auto/codex" },
+		}));
+	});
+
+	it("keeps an auto-found cache path that differs from the custom one", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskSortOrder: "oldest-first",
+			updateChannel: "stable",
+			agentCustomBinaryPaths: { "builtin-claude": "/opt/w/claude" },
+			agentBinaryPaths: { "builtin-claude": "/usr/local/bin/claude" },
+		});
+		vi.mocked(saveSettings).mockClear();
+		await handlers.clearAgentBinaryPath({ agentId: "builtin-claude" });
+		expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+			agentCustomBinaryPaths: {},
+			agentBinaryPaths: { "builtin-claude": "/usr/local/bin/claude" },
+		}));
 	});
 });
 

@@ -452,6 +452,14 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "claude-mods",
+		category: "agents",
+		titleKey: "settings.claudeMods",
+		descriptionKey: "settings.claudeModsDesc",
+		anchor: "claude-mods",
+		storage: "surface",
+	},
+	{
 		id: "agent-accounts",
 		category: "accounts",
 		titleKey: "settings.agentAccounts",
@@ -696,11 +704,14 @@ export const SETTINGS_GLOBAL_FIELD_EXCLUSIONS = [
 	"customBinaryPaths",
 	"agentBinaryPaths",
 	"agentCustomBinaryPaths",
+	"strictAgentCustomBinaryPaths",
 	"importShellEnv",
 	"agentsLayoutRevision",
 	"favorites",
 	// Written by the account surfaces' "Auto (balanced)" default row, not a settings control.
 	"autoAccountDefault",
+	// Written by the accounts section's per-login Auto switch, not a settings control.
+	"autoAccountExclusions",
 	// One-way discovery flag for the header's `?`, set by opening help mode — not
 	// a preference and deliberately not user-resettable.
 	"helpModeDiscovered",
@@ -737,6 +748,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"customBinaryPaths",
 	"agentBinaryPaths",
 	"agentCustomBinaryPaths",
+	"strictAgentCustomBinaryPaths",
 	"experimentalTerminalBidi",
 	"hiddenControls",
 	"personalHiddenControls",
@@ -773,6 +785,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"focusMode",
 	"agentRateLimitTracking",
 	"autoAccountDefault",
+	"autoAccountExclusions",
 	"watchByDefault",
 	"suggestCompletingTasksAfterMerge",
 	"prOriginTaskLink",

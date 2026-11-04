@@ -162,6 +162,8 @@ export interface AgentAccountsState {
 		systemIdentity: AgentAccountIdentity | null;
 		/** New launches left on the default go to Auto (the usage-balanced router). */
 		autoDefault?: boolean;
+		/** Exclusion keys of the logins Auto never picks in any project. */
+		autoExcluded?: string[];
 	};
 	codex: {
 		accounts: AgentAccount[];
@@ -171,6 +173,8 @@ export interface AgentAccountsState {
 		currentIdentity: AgentAccountIdentity | null;
 		/** New launches left on the default go to Auto (the usage-balanced router). */
 		autoDefault?: boolean;
+		/** Exclusion keys of the logins Auto never picks in any project. */
+		autoExcluded?: string[];
 	};
 	omp: {
 		accounts: AgentAccount[];
@@ -187,16 +191,30 @@ export interface AgentAccountsState {
 /**
  * Where an in-app sign-in stands. `running`/`exited`/`missing-executable` keep
  * watching the staging dir, so a login finished in any terminal still lands;
- * `succeeded`, `failed` and `expired` are final.
+ * `succeeded`, `added-unsigned`, `failed` and `expired` are final.
  */
 export type AccountLoginPhase =
+	| "ready"
 	| "running"
 	| "verifying"
 	| "succeeded"
+	| "added-unsigned"
 	| "exited"
 	| "missing-executable"
 	| "failed"
 	| "expired";
+
+/** Why the host refuses "start" or "add without signing in" for a sign-in someone else already moved on. */
+export const ACCOUNT_LOGIN_ENDED_MESSAGE = "This sign-in has already ended.";
+export const ACCOUNT_LOGIN_STARTED_MESSAGE = "This sign-in has already started.";
+export const ACCOUNT_LOGIN_NOT_ADDABLE_MESSAGE = "This sign-in can no longer be added without signing in.";
+export const ACCOUNT_LOGIN_FOUND_MESSAGE = "A sign-in was found — wait for dev3 to confirm it.";
+
+/** RPC errors cross as text, so a refusal is told apart by its fixed message: the record is no longer ours to close. */
+export function isAccountLoginRefusal(err: unknown): boolean {
+	const text = err instanceof Error ? err.message : String(err);
+	return [ACCOUNT_LOGIN_ENDED_MESSAGE, ACCOUNT_LOGIN_STARTED_MESSAGE, ACCOUNT_LOGIN_NOT_ADDABLE_MESSAGE, ACCOUNT_LOGIN_FOUND_MESSAGE].some((m) => text.includes(m));
+}
 
 /** The provider wrote a login, but its own status does not confirm it (yet). */
 export type AccountLoginPendingReason = "status-unavailable" | "status-mismatch";

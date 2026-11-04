@@ -1,0 +1,3 @@
+Short: Stale agent paths no longer block launches
+
+A custom agent path saved before custom paths became strict that no longer exists (an nvm path gone after a Node upgrade) now launches the command from PATH with a warning toast and a one-click Reset path, while a path chosen in this version still fails clearly when broken. Also: a task whose stored account was removed follows the default again and shows one notice per resume, a sign-in left waiting offers Sign in and Add without signing in from its window, the system ~/.codex login gets its own Auto switch, the launch picker says when a login is excluded from Auto in all projects, and app-wide Auto exclusions survive an older dev3 build sharing the same data folder.

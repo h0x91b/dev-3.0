@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -127,6 +127,26 @@ describe("ensureClaudeTrust / ensureClaudeConfigDir with a pinned dir", () => {
 
 		expect(existsSync(join(home, ".claude.json"))).toBe(true);
 		expect(remember).not.toHaveBeenCalled();
+	});
+
+	it("provisions a linked account slot at launch but skips a managed account's", async () => {
+		const target = join(home, "target");
+		const external = join(home, "slot-external");
+		const managed = join(home, "slot-managed");
+		mkdirSync(target);
+		mkdirSync(managed);
+		symlinkSync(target, external, "dir");
+		vi.doMock("../agent-accounts", async (importOriginal) => ({
+			...(await importOriginal<typeof import("../agent-accounts")>()),
+			listClaudeAccountDirs: vi.fn(() => [external, managed]),
+		}));
+		const { ensureClaudeConfigDir } = await import("../agents");
+		ensureClaudeConfigDir({ CLAUDE_CONFIG_DIR: external }, worktree);
+		ensureClaudeConfigDir({ CLAUDE_CONFIG_DIR: managed }, worktree);
+
+		expect(existsSync(join(target, "skills/dev3/SKILL.md"))).toBe(true);
+		expect(existsSync(join(target, "settings.json"))).toBe(true);
+		expect(existsSync(join(managed, "skills"))).toBe(false);
 	});
 
 	it("installs the dev3 skills into a pinned dir at launch, and leaves the default dir to startup", async () => {

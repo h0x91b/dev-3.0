@@ -857,6 +857,7 @@ describe("fetchFork", () => {
 				cwd: "/repo",
 				stdout: "pipe",
 				stderr: "pipe",
+				detached: process.platform !== "win32",
 			},
 		);
 	});

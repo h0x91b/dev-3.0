@@ -30,6 +30,7 @@ import type { AgentModelAvailability, CodingAgent } from "./coding-agents";
 import type { AgentLiveModels } from "../agent-live-models";
 import type { ExternalApp, FilePreviewResult, GlobalSettings, NativeTerminalAvailability, ResolvedTerminalPath, TaskTerminalBackendInfo, TipState } from "./global-settings";
 import type { ModelCatalogView, ModelSidecarStatus, PxpipeProxyStatus } from "./model-routing";
+import type { ClaudeModStatus } from "./claude-mods";
 import type { AutoConfigureResult, BoardCopyFailureReason, BoardCopyOffer, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GitInitOffer, Project, ProjectSettingsUpdate, PrResolveFailureReason, ShellAvailability, ShellPromptPreview } from "./project";
 import type { CustomColumn, Label } from "./labels-columns";
 import type { Space, SpacesFile } from "./spaces";
@@ -381,6 +382,17 @@ export type AppRPCSchema = {
 				params: void;
 				response: PxpipeProxyStatus;
 			};
+			/** Whether a Claude Code mod (`CLAUDE_MODS`) is installed and enabled. */
+			claudeModStatus: {
+				params: { modId: string };
+				response: ClaudeModStatus;
+			};
+			/** On installs the latest version (refreshing its marketplace first);
+			 *  off uninstalls it. Throws with the `claude plugin` error on failure. */
+			claudeModSetEnabled: {
+				params: { modId: string; enabled: boolean };
+				response: ClaudeModStatus;
+			};
 			/** The model catalog as the renderer may see it (no credential values). */
 			modelCatalogGet: {
 				params: void;
@@ -551,9 +563,14 @@ export type AppRPCSchema = {
 				params: { kind: AgentAccountKind; accountId: string; label?: string; baseUrl?: string; apiKey?: string; model?: string; slotModels?: ClaudeSlotModels; envText?: string };
 				response: AgentAccount;
 			};
-			/** Start or join the in-app sign-in terminal for a managed account (one per CLI). */
+			/** Start or join the in-app sign-in terminal for a managed account (one per CLI). `created`: this call made the record, it did not join one. */
 			startAccountLogin: {
 				params: { kind: AgentAccountKind; remoteViewer: boolean };
+				response: AccountLoginState & { created: boolean };
+			};
+			/** Run the login command of a sign-in that is still "ready"; nothing starts before this call. */
+			beginAccountLogin: {
+				params: { loginId: string };
 				response: AccountLoginState;
 			};
 			getAccountLogin: {
@@ -573,9 +590,19 @@ export type AppRPCSchema = {
 				params: { loginId: string };
 				response: void;
 			};
+			/** Keep a Claude sign-in's folder as an account without signing in; the state carries the new account and the manual login command. */
+			addClaudeAccountWithoutLogin: {
+				params: { loginId: string };
+				response: AccountLoginState;
+			};
 			/** `accountId: "auto"` makes the usage-balanced router the default (claude/codex). */
 			setActiveAgentAccount: {
 				params: { kind: AgentAccountKind; accountId: string | null };
+				response: void;
+			};
+			/** Keep one login (`accountId: null` = the system login) out of Auto in every project. */
+			setAutoAccountExcluded: {
+				params: { kind: AgentAccountKind; accountId: string | null; excluded: boolean };
 				response: void;
 			};
 			/** What Auto would pick for a launch right now; null for a harness Auto cannot route. */
@@ -1052,6 +1079,11 @@ export type AppRPCSchema = {
 			};
 			setAgentBinaryPath: {
 				params: { agentId: string; path: string };
+				response: void;
+			};
+			/** Forget the custom executable stored for an agent. */
+			clearAgentBinaryPath: {
+				params: { agentId: string };
 				response: void;
 			};
 			getChangelogs: {
@@ -2107,10 +2139,17 @@ export type AppRPCSchema = {
 			 * CLI-initiated in-app toast (`dev3 notify`). When `taskId`/`projectId`
 			 * are present the toast is clickable and navigates to that task.
 			 */
+			/**
+			 * A launch fell back to PATH because a custom executable saved before custom
+			 * paths became strict no longer exists. Once per agent and path per host run.
+			 */
+			staleAgentPath: { agentId: string; agentName: string; path: string; command: string };
 			cliToast: {
 				taskId: string | null;
 				projectId: string | null;
 				message: string;
+				/** Renderer translation key for `message`, which stays the English fallback. */
+				messageKey?: "kanban.launchAccountRemoved";
 				level: "info" | "success" | "error";
 				/** Optional in-app toast lifetime in milliseconds; omitted uses the default. */
 				durationMs?: number;

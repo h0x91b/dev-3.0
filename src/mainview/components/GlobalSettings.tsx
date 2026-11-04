@@ -49,6 +49,7 @@ import AgentSettingsSection from "./global-settings/AgentSettingsSection";
 import AppearanceSettingsSection from "./global-settings/AppearanceSettingsSection";
 import BehaviorSettingsSection from "./global-settings/BehaviorSettingsSection";
 import DeveloperToolsSection from "./global-settings/DeveloperToolsSection";
+import ClaudeModsSection from "./global-settings/ClaudeModsSection";
 import KeyboardSettingsSection from "./global-settings/KeyboardSettingsSection";
 import ExtensionsSettingsSection from "./global-settings/ExtensionsSettingsSection";
 import ModelCatalogSection from "./global-settings/ModelCatalogSection";
@@ -1124,6 +1125,7 @@ function GlobalSettings({
 							globalSettings={globalSettings}
 							onChange={handleAgentEnvDefaultsChange}
 						/>
+						<ClaudeModsSection t={t} />
 					</>
 				);
 			case "accounts":
