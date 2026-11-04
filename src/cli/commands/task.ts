@@ -87,6 +87,34 @@ function readLaunchSuggestion(args: ParsedArgs): { agentId: string; configId?: s
 	return { agentId, ...(configId ? { configId } : {}) };
 }
 
+/** `--start-after <ref> [--until completed|merged]` as request params; validated by the app. */
+function startAfterParams(args: ParsedArgs): Record<string, unknown> {
+	const ref = args.flags["start-after"];
+	const until = args.flags.until;
+	if (ref === undefined) {
+		if (until !== undefined) exitUsage("--until only applies together with --start-after.");
+		return {};
+	}
+	if (ref === "true" || !ref.trim()) exitUsage("--start-after needs the task to wait for: --start-after seq:<N>");
+	if (until !== undefined && until !== "completed" && until !== "merged") {
+		exitUsage(`--until must be completed or merged (got "${until}")`);
+	}
+	const suggestion = readLaunchSuggestion(args);
+	return {
+		startAfter: ref.trim(),
+		...(until !== undefined ? { until } : {}),
+		...(suggestion ? { agentId: suggestion.agentId, configId: suggestion.configId ?? null } : {}),
+	};
+}
+
+function describeLaunchAfter(task: Task): string | null {
+	const cond = task.launchAfter;
+	if (!cond || task.status !== "todo") return null;
+	const what = cond.until === "merged" ? "its PR merges" : "it completes";
+	const via = cond.armedBy ? `, through a launch request from #${cond.armedBy.seq}` : "";
+	return `#${cond.seq}, when ${what}${via}`;
+}
+
 function formatDate(iso: string): string {
 	const d = new Date(iso);
 	return d.toLocaleDateString("en-GB", {
@@ -159,6 +187,8 @@ function printTask(task: ShownTask, opts: ShowTaskOptions = {}): void {
 	// Drafts are deliberately unfinished — say so before an agent reads the
 	// half-written description and starts guessing.
 	if (task.draft === true) fields.push(["Draft:", "yes — cannot be started until the user finishes it"]);
+	const startsAfter = describeLaunchAfter(task);
+	if (startsAfter) fields.push(["Starts after:", startsAfter]);
 
 	if (task.branchName) fields.push(["Branch:", task.branchName]);
 	if (task.worktreePath) fields.push(["Worktree:", task.worktreePath]);
@@ -257,7 +287,7 @@ function epicParams(args: ParsedArgs): Record<string, unknown> {
 
 async function createTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
 	args = withBooleanFlags(args, ["no-epic"]);
-	rejectUnknownFlags(args, ["project", "title", "description", "type", "scratch", "run", "pr", "branch", "handoff-file", "agent", "config", "epic", "no-epic"]);
+	rejectUnknownFlags(args, ["project", "title", "description", "type", "scratch", "run", "pr", "branch", "handoff-file", "agent", "config", "epic", "no-epic", "start-after", "until"]);
 	const epic = epicParams(args);
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (!projectId) {
@@ -273,6 +303,9 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 		);
 	}
 	if (scratch) {
+		if (args.flags["start-after"] !== undefined || args.flags.until !== undefined) {
+			exitUsage("--start-after does not apply to --scratch --run, which starts right away.");
+		}
 		if (args.positional[0] || args.flags.title || args.flags.description || args.flags.type || args.flags.pr || args.flags.branch) {
 			exitUsage(
 				"A scratch task takes no title, description or type — it has no prompt by design.\n" +
@@ -284,8 +317,9 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 	if (args.flags["handoff-file"] !== undefined) {
 		exitUsage("--handoff-file only applies to a launch: `task create --scratch --run` or `task move --status in-progress`.");
 	}
-	if (args.flags.agent !== undefined || args.flags.config !== undefined) {
-		exitUsage("--agent/--config only apply to a launch: `task create --scratch --run` or `task move --status in-progress`.");
+	const startAfter = startAfterParams(args);
+	if (startAfter.startAfter === undefined && (args.flags.agent !== undefined || args.flags.config !== undefined)) {
+		exitUsage("--agent/--config only apply to a launch: `task create --scratch --run`, `task create --start-after`, or `task move --status in-progress`.");
 	}
 
 	const prFlag = args.flags.pr?.trim();
@@ -329,6 +363,7 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 	if (branchFlag) params.branch = branchFlag;
 	// Without either flag the new task inherits the creating task's epic in the app.
 	Object.assign(params, epic);
+	Object.assign(params, startAfter);
 
 	const resp = await sendRequest(socketPath, "task.create", params);
 	if (!resp.ok) {
@@ -359,18 +394,28 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 		process.stderr.write(
 			`Starts on: ${task.existingBranch}${task.foreignCode ? " (someone else's code — the branch's own scripts and MCP config are ignored)" : ""}\n`,
 		);
-	}
+	}	const startsAfter = describeLaunchAfter(task);
+	if (startsAfter) process.stderr.write(`Starts after: ${startsAfter}. Nothing starts until then.\n`);
 }
 
 async function updateTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	args = withBooleanFlags(args, ["no-epic"]);
-	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description", "priority", "manual-completion", "type", "force", "print-role", "epic", "no-epic"]);
+	args = withBooleanFlags(args, ["no-epic", "no-start-after"]);
+	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description", "priority", "manual-completion", "type", "force", "print-role", "epic", "no-epic", "start-after", "until", "no-start-after", "agent", "config"]);
 	const taskId = resolveTaskId(args, context);
 	if (!taskId) {
-		exitUsage("Usage: dev3 task update <id|--task id|--task-id id|--id id> [--title '...'] [--description '...'] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic]");
+		exitUsage("Usage: dev3 task update <id|--task id|--task-id id|--id id> [--title '...'] [--description '...'] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] [--start-after <id> [--until completed|merged] | --no-start-after]");
 	}
 
-	const params: Record<string, unknown> = { taskId, ...epicParams(args) };
+	const startAfter = startAfterParams(args);
+	const noStartAfter = args.flags["no-start-after"] === "true";
+	if (noStartAfter && startAfter.startAfter !== undefined) exitUsage("--start-after and --no-start-after cannot be combined.");
+	if (startAfter.startAfter === undefined && (args.flags.agent !== undefined || args.flags.config !== undefined)) {
+		exitUsage("--agent/--config on task update only apply together with --start-after.");
+	}
+	const params: Record<string, unknown> = { taskId, ...epicParams(args), ...startAfter };
+	if (noStartAfter) params.noStartAfter = true;
+	// Armed from inside a task, the launch later asks the user the way that agent's own move would.
+	if (startAfter.startAfter !== undefined && context?.taskId) params.sourceTaskId = context.taskId;
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (projectId) params.projectId = projectId;
 	// Tri-state semantics:
@@ -431,8 +476,10 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 		&& rawType === undefined
 		&& params.epic === undefined
 		&& params.noEpic === undefined
+		&& params.startAfter === undefined
+		&& !noStartAfter
 	) {
-		exitUsage("Provide --title, --description, --priority, --manual-completion, --type, --epic or --no-epic to update");
+		exitUsage("Provide --title, --description, --priority, --manual-completion, --type, --epic, --no-epic, --start-after or --no-start-after to update");
 	}
 
 	const resp = await sendRequest(socketPath, "task.update", params);
@@ -463,6 +510,11 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 		);
 	}
 	process.stdout.write(`Updated task ${task.id.slice(0, 8)}: ${getTaskTitle(task)}\n`);
+	if (params.startAfter !== undefined) {
+		process.stderr.write(`Starts after: ${describeLaunchAfter(task) ?? "(not set)"}.\n`);
+	} else if (noStartAfter) {
+		process.stderr.write("Start-after cleared: this task starts only when someone starts it.\n");
+	}
 	// The role brief goes to stdout as the command's payload: the agent that ran it
 	// reads it right here, and re-running prints the same text whether or not the
 	// type had to change.

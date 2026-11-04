@@ -6,7 +6,7 @@ import type { TaskStatus } from "./task-status";
 import type { TaskPriority } from "./task-priority";
 import type { TaskType } from "./task-type";
 import type { Project } from "./project";
-import type { ScheduledLaunch } from "./agent-launch";
+import type { LaunchAfter, ScheduledLaunch } from "./agent-launch";
 import type { ScheduledMessage } from "./scheduled-messages";
 import type { KeepAliveState } from "./keep-alive";
 import type { PrWatch } from "../pr-watch";
@@ -432,6 +432,13 @@ export interface Task {
 	 * by setting it back to null.
 	 */
 	scheduledLaunch?: ScheduledLaunch | null;
+	/**
+	 * Conditional launch ("start after"): fires when the prerequisite task
+	 * completes or its PR merges, checked on the scheduled-launch tick. Only
+	 * meaningful on a `todo` task; cleared when it fires, when the task leaves
+	 * To Do, or when the prerequisite can no longer satisfy it.
+	 */
+	launchAfter?: LaunchAfter | null;
 	/**
 	 * Pending scheduled messages ("Send later") — one-shot texts queued to this
 	 * task's live agent/pane, delivered by the bun scheduled-message scheduler

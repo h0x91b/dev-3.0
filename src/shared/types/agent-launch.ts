@@ -2,6 +2,7 @@ import type { ResumeDialogPane } from "../agent-resume";
 import type { AgentSessionAction } from "../task-hibernate";
 import type { ExternalSenderRequester } from "../external-senders";
 import type { TaskStatus } from "./task-status";
+import type { AgentMessageSource } from "./scheduled-messages";
 import { DEFAULT_PRIORITY, type TaskPriority } from "./task-priority";
 import type { Task } from "./task";
 import type { GlobalSettings } from "./global-settings";
@@ -39,6 +40,33 @@ export interface ScheduledLaunch {
 	targetStatus: TaskStatus;
 	/** Agent/config/account variants captured from the Launch modal at schedule time. */
 	variants: LaunchVariant[];
+}
+
+/** What a "start after" launch waits for on its prerequisite task. */
+export type LaunchAfterUntil = "completed" | "merged";
+export const LAUNCH_AFTER_UNTIL: readonly LaunchAfterUntil[] = ["completed", "merged"];
+
+/**
+ * A conditional launch persisted on a `todo` task: it starts when another task
+ * of the same project completes, or when that task's PR merges. Kept apart
+ * from {@link ScheduledLaunch} so an older build that does not know it ignores
+ * it instead of firing early. See {@link Task.launchAfter}.
+ */
+export interface LaunchAfter {
+	/** Prerequisite task id, same project. */
+	taskId: string;
+	/** Prerequisite seq at arm time, for the card chip and CLI output. */
+	seq: number;
+	until: LaunchAfterUntil;
+	/** `--agent`/`--config` given at arm time; absent means the default agent. */
+	variant?: LaunchVariant | null;
+	/**
+	 * The agent that armed it. Absent means a person at a terminal, whose launch
+	 * fires directly; an agent's launch goes through the launch approval dialog.
+	 */
+	armedBy?: AgentMessageSource | null;
+	/** ISO timestamp of arming. */
+	armedAt: string;
 }
 
 /**

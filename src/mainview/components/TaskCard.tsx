@@ -599,6 +599,23 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			</div>,
 		);
 	}
+	const launchAfter = isTodo ? task.launchAfter : null;
+	if (launchAfter) {
+		timeSignals.push(
+			<Tooltip
+				key="after"
+				content={t(launchAfter.until === "merged" ? "task.startsAfterMergedTooltip" : "task.startsAfterCompletedTooltip", { seq: String(launchAfter.seq) })}
+			>
+				<span
+					data-testid="task-card-starts-after-chip"
+					className="flex h-5 flex-shrink-0 items-center gap-1 rounded px-1.5 text-micro text-accent"
+				>
+					<ClockIcon className="w-3 h-3" />
+					{t("task.startsAfter", { seq: String(launchAfter.seq) })}
+				</span>
+			</Tooltip>,
+		);
+	}
 	if (!isTodo) {
 		timeSignals.push(
 			<ScheduledMessagesChip key="msgs" task={task} project={project} dispatch={dispatch} placement="up" />,
