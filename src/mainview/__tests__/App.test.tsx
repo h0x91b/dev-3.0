@@ -20,6 +20,7 @@ vi.mock("../rpc", () => ({
 			getSystemLoad: vi.fn().mockResolvedValue(null),
 			checkSystemRequirements: vi.fn().mockResolvedValue([]),
 			getRosettaWarning: vi.fn().mockResolvedValue(null),
+			getLaunchLocationIssue: vi.fn().mockResolvedValue(null),
 			getTmuxServerNotice: vi.fn().mockResolvedValue({ predatesLaunchd: false }),
 			checkGhAvailable: vi.fn().mockResolvedValue({ available: true, notInstalled: false }),
 			getProjects: vi.fn().mockResolvedValue([]),
@@ -311,6 +312,35 @@ describe("App keyboard shortcuts", () => {
 
 	afterEach(() => {
 		Object.defineProperty(globalThis, "navigator", { value: realNavigator, writable: true, configurable: true });
+	});
+
+	describe("launch-location gate", () => {
+		const issue = {
+			kind: "disk-image" as const,
+			bundlePath: "/Volumes/dev-3.0/dev-3.0.app",
+			volumePath: "/Volumes/dev-3.0",
+			destination: "/Applications/dev-3.0.app",
+			reason: "read-only",
+		};
+
+		afterEach(() => {
+			vi.mocked(api.request.getLaunchLocationIssue).mockResolvedValue(null);
+			(window as Window & { __electrobunWebviewId?: number }).__electrobunWebviewId = 1;
+		});
+
+		it("blocks the desktop app when it runs from a read-only installer", async () => {
+			vi.mocked(api.request.getLaunchLocationIssue).mockResolvedValue(issue);
+			await renderApp();
+			expect(await screen.findByTestId("launch-location-gate")).toBeInTheDocument();
+		});
+
+		it("never asks, or shows it, in a remote browser", async () => {
+			delete (window as unknown as Record<string, unknown>).__electrobunWebviewId;
+			vi.mocked(api.request.getLaunchLocationIssue).mockResolvedValue(issue);
+			await renderApp();
+			expect(api.request.getLaunchLocationIssue).not.toHaveBeenCalled();
+			expect(screen.queryByTestId("launch-location-gate")).toBeNull();
+		});
 	});
 
 	it("opens the native pane layout lab from the debug menu action", async () => {
