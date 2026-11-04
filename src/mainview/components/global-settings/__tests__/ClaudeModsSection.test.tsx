@@ -25,7 +25,16 @@ const t = Object.assign(
 ) as unknown as TFunction;
 
 function status(overrides: Partial<ClaudeModStatus> = {}): ClaudeModStatus {
-	return { modId: "prismantis", claudeAvailable: true, installed: false, enabled: false, version: null, ...overrides };
+	return {
+		modId: "prismantis",
+		claudeAvailable: true,
+		installed: false,
+		enabled: false,
+		version: null,
+		pinnedVersion: "0.40.0",
+		current: false,
+		...overrides,
+	};
 }
 
 beforeEach(() => {
@@ -35,7 +44,7 @@ beforeEach(() => {
 describe("ClaudeModsSection", () => {
 	it("turns prismantis on and reports the installed version", async () => {
 		h.claudeModStatus.mockResolvedValue(status());
-		h.claudeModSetEnabled.mockResolvedValue(status({ installed: true, enabled: true, version: "0.36.0" }));
+		h.claudeModSetEnabled.mockResolvedValue(status({ installed: true, enabled: true, version: "0.40.0", current: true }));
 		render(<ClaudeModsSection t={t} />);
 
 		const toggle = await screen.findByRole("switch", { name: "settings.claudeMod.prismantis.title" });
@@ -45,7 +54,7 @@ describe("ClaudeModsSection", () => {
 		await userEvent.click(toggle);
 
 		expect(h.claudeModSetEnabled).toHaveBeenCalledWith({ modId: "prismantis", enabled: true });
-		await screen.findByText("settings.claudeModVersion|0.36.0");
+		await screen.findByText("settings.claudeModVersion|0.40.0");
 		expect(toggle).toHaveAttribute("aria-checked", "true");
 		expect(h.toastSuccess).toHaveBeenCalledWith("settings.claudeModInstalled|settings.claudeMod.prismantis.title");
 	});
@@ -63,7 +72,7 @@ describe("ClaudeModsSection", () => {
 	});
 
 	it("turns an installed mod off", async () => {
-		h.claudeModStatus.mockResolvedValue(status({ installed: true, enabled: true, version: "0.36.0" }));
+		h.claudeModStatus.mockResolvedValue(status({ installed: true, enabled: true, version: "0.40.0", current: true }));
 		h.claudeModSetEnabled.mockResolvedValue(status());
 		render(<ClaudeModsSection t={t} />);
 
@@ -90,6 +99,15 @@ describe("ClaudeModsSection", () => {
 			),
 		);
 		expect(toggle).toHaveAttribute("aria-checked", "false");
+		await waitFor(() => expect(h.claudeModStatus).toHaveBeenCalledTimes(2));
+	});
+
+	it("tells the user when the installed version is not the one dev3 pins", async () => {
+		h.claudeModStatus.mockResolvedValue(status({ installed: true, enabled: true, version: "0.41.0", current: false }));
+		render(<ClaudeModsSection t={t} />);
+
+		await screen.findByText("settings.claudeModOutdated|0.41.0,0.40.0");
+		expect(screen.getByText("settings.claudeModHow|0.40.0")).toBeInTheDocument();
 	});
 
 	it("disables the switch and explains why when Claude Code is missing", async () => {

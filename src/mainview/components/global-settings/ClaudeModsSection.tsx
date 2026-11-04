@@ -37,6 +37,8 @@ function ClaudeModRow({ t, mod }: { t: TFunction; mod: ClaudeMod }) {
 			toast.success(t(enable ? "settings.claudeModInstalled" : "settings.claudeModRemoved", { name: title }));
 		} catch (err) {
 			toast.error(t("settings.claudeModFailed", { name: title, error: err instanceof Error ? err.message : String(err) }));
+			// A change can fail halfway, or time out here while the backend finishes it.
+			api.request.claudeModStatus({ modId: mod.id }).then(setStatus).catch(() => {});
 		} finally {
 			setPending(null);
 		}
@@ -75,10 +77,14 @@ function ClaudeModRow({ t, mod }: { t: TFunction; mod: ClaudeMod }) {
 						{t(pending === "installing" ? "settings.claudeModInstalling" : "settings.claudeModRemoving")}
 					</span>
 				) : on && status?.version ? (
-					<span className="text-fg-muted text-xs">{t("settings.claudeModVersion", { version: status.version })}</span>
+					<span className="text-fg-muted text-xs">
+						{status.current
+							? t("settings.claudeModVersion", { version: status.version })
+							: t("settings.claudeModOutdated", { version: status.version, pinned: mod.pinnedVersion })}
+					</span>
 				) : null}
 			</div>
-			<p className="text-fg-muted text-xs mt-2">{t("settings.claudeModHow")}</p>
+			<p className="text-fg-muted text-xs mt-2">{t("settings.claudeModHow", { version: mod.pinnedVersion })}</p>
 			{unavailable ? <p className="text-fg-muted text-xs mt-1">{t("settings.claudeModNoCli")}</p> : null}
 		</div>
 	);
