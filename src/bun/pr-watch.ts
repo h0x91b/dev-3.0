@@ -33,12 +33,14 @@ export interface PrWatchOutcome {
 	/** Watches that fired and are done. */
 	removeIds: string[];
 	/** Watches that stay, with the fields that moved. */
-	patches: Record<string, Partial<Pick<PrWatch, "headSha" | "failedNotifiedHead" | "ciSeen" | "tipsAtSubscribe">>>;
+	patches: Record<string, Partial<Pick<PrWatch, "headSha" | "failedNotifiedHead" | "ciSeen" | "closedSeenAt" | "tipsAtSubscribe">>>;
 }
 
 /**
  * Judge a task's watches against one polled PR. A merge or close is a fact about the
- * PR whatever its head. A watch whose PR is no longer the branch's open PR ends.
+ * PR whatever its head; a close is told only once a later poll still sees it, because
+ * GitHub can show a PR being merged as CLOSED first. A watch whose PR is no longer the
+ * branch's open PR ends.
  *
  * For CI the verdict is only about a head that is really the PR's now. With remote tips
  * known, a sample head this repository has must equal a tip or descend from one, else it
@@ -68,11 +70,23 @@ export async function evaluatePrWatches(
 	const mine = watches.filter((watch) => watch.prNumber === sample.number);
 	if (mine.length === 0) return outcome;
 
-	if (state === "MERGED" || state === "CLOSED") {
-		const notice: PrStatusNotice = state === "MERGED" ? { kind: "merged" } : { kind: "closed" };
-		for (const watch of mine) outcome.fired.push({ watch, notice });
+	if (state === "MERGED") {
+		for (const watch of mine) outcome.fired.push({ watch, notice: { kind: "merged" } });
 		outcome.removeIds.push(...mine.map((watch) => watch.id));
 		return outcome;
+	}
+	if (state === "CLOSED") {
+		for (const watch of mine) {
+			if (watch.closedSeenAt === undefined) outcome.patches[watch.id] = { closedSeenAt: now };
+			else if (now - watch.closedSeenAt >= PR_WATCH_CONFIRM_GAP_MS) {
+				outcome.fired.push({ watch, notice: { kind: "closed" } });
+				outcome.removeIds.push(watch.id);
+			}
+		}
+		return outcome;
+	}
+	if (state === "OPEN") {
+		for (const watch of mine.filter((w) => w.closedSeenAt !== undefined)) outcome.patches[watch.id] = { closedSeenAt: undefined };
 	}
 	const head = sample.headRefOid;
 	if (state !== "OPEN" || !head || git.ambiguous) return outcome;
@@ -90,7 +104,7 @@ export async function evaluatePrWatches(
 			if ((watch.tipsAtSubscribe ?? []).includes(head) && !(await git.isAncestor(watch.headSha, head))) continue;
 			// With a known tip the freshness check above already filters lagging samples.
 			if (git.tips.length === 0 && (await git.isAncestor(head, watch.headSha))) continue;
-			outcome.patches[watch.id] = { headSha: head, tipsAtSubscribe: undefined };
+			outcome.patches[watch.id] = { ...outcome.patches[watch.id], headSha: head, tipsAtSubscribe: undefined };
 		}
 		const sameLook = watch.ciSeen?.head === head && watch.ciSeen.total === total;
 		const confirmed = ciDone && sameLook && now - (watch.ciSeen?.at ?? 0) >= PR_WATCH_CONFIRM_GAP_MS;

@@ -16,6 +16,8 @@ export interface PrWatch {
 	failedNotifiedHead?: string;
 	/** The first sample that looked finished (`at`: ms); a verdict needs the same head and total again a poll later. */
 	ciSeen?: { head: string; total: number; at: number };
+	/** When a sample first said CLOSED (ms); "closed" is told only once a poll later still says so, as a merge can read CLOSED first. */
+	closedSeenAt?: number;
 	/** Remote tips of the task branch when the watch was made; a sample showing one of them is the old push, not news. */
 	tipsAtSubscribe?: string[];
 	/** The agent process that subscribed; the message goes to its pane, never to a sibling's. */

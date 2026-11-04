@@ -67,17 +67,39 @@ describe("evaluatePrWatches", () => {
 		expect(out.removeIds).toEqual(["w-ci"]);
 	});
 
-	it("fires `until ci` with `closed` when the PR was closed", async () => {
-		const out = await evaluatePrWatches([watch("ci")], sample({ state: "CLOSED" }), fakeGit());
+	it("fires `until ci` with `closed` once the PR is still closed a poll later", async () => {
+		const out = await evaluatePrWatches([watch("ci", { closedSeenAt: 0 })], sample({ state: "CLOSED" }), fakeGit(), NOW);
 		expect(notices(out)).toEqual([{ kind: "closed" }]);
+		expect(out.removeIds).toEqual(["w-ci"]);
 	});
 
-	it("fires `until merged` on merge and on close, and removes the watch", async () => {
+	it("fires `until merged` on merge and on a confirmed close, and removes the watch", async () => {
 		const merged = await evaluatePrWatches([watch("merged")], sample({ state: "MERGED" }), fakeGit());
-		const closed = await evaluatePrWatches([watch("merged")], sample({ state: "CLOSED" }), fakeGit());
+		const closed = await evaluatePrWatches([watch("merged", { closedSeenAt: 0 })], sample({ state: "CLOSED" }), fakeGit(), NOW);
 		expect(notices(merged)).toEqual([{ kind: "merged" }]);
 		expect(notices(closed)).toEqual([{ kind: "closed" }]);
 		expect(merged.removeIds).toEqual(["w-merged"]);
+		expect(closed.removeIds).toEqual(["w-merged"]);
+	});
+
+	// h0x91b/dev-3.0#2168: a squash merge read CLOSED on one poll and MERGED on the next.
+	it("reports a merge that GitHub showed as CLOSED first as merged, never as closed", async () => {
+		const first = await evaluatePrWatches([watch("merged")], sample({ state: "CLOSED" }), fakeGit(), NOW);
+		expect(first).toEqual({ fired: [], removeIds: [], patches: { "w-merged": { closedSeenAt: NOW } } });
+		const held = applyPrWatchOutcome([watch("merged")], first);
+		const second = await evaluatePrWatches(held, sample({ state: "MERGED" }), fakeGit(), NOW + 60_000);
+		expect(notices(second)).toEqual([{ kind: "merged" }]);
+		expect(second.removeIds).toEqual(["w-merged"]);
+	});
+
+	it("does not confirm a close from a second look inside one poll (a cached read)", async () => {
+		const out = await evaluatePrWatches([watch("merged", { closedSeenAt: NOW })], sample({ state: "CLOSED" }), fakeGit(), NOW);
+		expect(out).toEqual(EMPTY);
+	});
+
+	it("forgets a close the PR reopened from", async () => {
+		const out = await evaluatePrWatches([watch("merged", { closedSeenAt: NOW })], sample(), fakeGit(), NOW + 60_000);
+		expect(out).toEqual({ fired: [], removeIds: [], patches: { "w-merged": { closedSeenAt: undefined } } });
 	});
 
 	it("does not fire `until merged` on a green CI", async () => {
