@@ -5,6 +5,7 @@ import { highlightFileLines, SYNTAX_MAX_CHARS, SYNTAX_MAX_LINE_CHARS, SYNTAX_MAX
 import { I18nProvider } from "../../i18n";
 import { installImmediateIntersectionObserver } from "../../test-utils/immediate-intersection";
 import type { FilePreviewResult } from "../../../shared/types";
+import { FIRST_FRAME_TIME } from "../../utils/video-first-frame";
 
 const readFilePreview = vi.fn<(params: { path: string }) => Promise<FilePreviewResult>>();
 const getFileMediaUrl = vi.fn(async ({ path }: { path: string }) => ({ url: `/file/tok${path}`, path: `/file/tok${path}` }));
@@ -680,6 +681,17 @@ describe("FilePreviewModal audio and video", () => {
 		Object.defineProperty(video, "videoWidth", { value: 0, configurable: true });
 		fireEvent.loadedMetadata(video);
 		expect(screen.getByText(/No playable video track/)).toBeInTheDocument();
+	});
+
+	it("seeks a paused video off zero on metadata so WebKit paints its first frame", async () => {
+		readFilePreview.mockResolvedValue({ kind: "media", media: "video", mime: "video/mp4", size: 3 * MB });
+		renderModal("/cache/clip.mp4");
+		const video = (await screen.findByTestId("file-preview-video")) as HTMLVideoElement;
+		let time = 0;
+		Object.defineProperty(video, "videoWidth", { value: 1280, configurable: true });
+		Object.defineProperty(video, "currentTime", { configurable: true, get: () => time, set: (v: number) => { time = v; } });
+		fireEvent.loadedMetadata(video);
+		expect(video.currentTime).toBe(FIRST_FRAME_TIME);
 	});
 
 	it("does not promise a codec the engine refuses — no stream, the external-open fallbacks stay", async () => {
