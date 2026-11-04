@@ -1193,8 +1193,9 @@ export async function getTask(
  * re-derived: `projectId` → target, `seq` → next free target seq, `baseBranch`
  * → the target project's default. Labels match by NAME (attach the target
  * project's same-name label, else drop — never auto-create). `customColumnId`,
- * `opsWorkDir`, and `scheduledLaunch` are cleared (target has different columns;
- * a deferred launch carries the old project's agent/branch config).
+ * `opsWorkDir`, `scheduledLaunch` and `launchAfter` are cleared (target has
+ * different columns; a deferred launch carries the old project's agent/branch
+ * config, and a start-after condition points at a task on the old board).
  *
  * Guards: only `status === "todo"` is movable; the target must be a different,
  * non-deleted project (cross-kind git↔virtual moves are allowed — a To Do task
@@ -1258,6 +1259,7 @@ export async function moveTaskToProject(
 				customColumnId: null,
 				opsWorkDir: null,
 				scheduledLaunch: null,
+				launchAfter: null,
 				updatedAt: now,
 			};
 
