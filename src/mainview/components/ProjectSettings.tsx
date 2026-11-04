@@ -959,7 +959,7 @@ function ProjectSettings({
 							<ProjectSpacesField projectId={project.id} />
 							</SettingsSection>
 
-							{hasGitWorkflow(project) && (
+							{project.kind !== "virtual" && (
 								<SettingsSection
 									title={t("boardCopy.sectionTitle")}
 									description={t("boardCopy.sectionDesc")}
@@ -993,7 +993,7 @@ function ProjectSettings({
 								</SettingsSection>
 							)}
 
-							{project.kind !== "virtual" && (
+							{hasGitWorkflow(project) && (
 								<SettingsSection
 									title={t("projectSettings.importConversations")}
 									description={t("projectSettings.importConversationsDesc")}
