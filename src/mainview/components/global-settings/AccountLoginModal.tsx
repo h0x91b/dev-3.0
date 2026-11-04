@@ -110,6 +110,8 @@ interface AccountLoginModalProps {
 	onHide: () => void;
 	onCancel: () => void;
 	onRetry: () => void;
+	/** Runs the CLI for a login still waiting in `ready` (e.g. after a reload between start and begin). */
+	onBegin: () => void;
 	onAddUnsigned: () => void;
 	onDone: () => void;
 	t: TFunction;
@@ -120,7 +122,7 @@ interface AccountLoginModalProps {
  * view: hiding it leaves the login running, and its state comes from the host.
  * Escape is NOT bound to close — the CLI inside uses it.
  */
-export default function AccountLoginModal({ login, busy, onHide, onCancel, onRetry, onAddUnsigned, onDone, t }: AccountLoginModalProps) {
+export default function AccountLoginModal({ login, busy, onHide, onCancel, onRetry, onBegin, onAddUnsigned, onDone, t }: AccountLoginModalProps) {
 	const trapRef = useFocusTrap<HTMLDivElement>();
 	const [ptyUrl, setPtyUrl] = useState<string | null>(null);
 	const [handle, setHandle] = useState<TerminalHandle | null>(null);
@@ -191,7 +193,7 @@ export default function AccountLoginModal({ login, busy, onHide, onCancel, onRet
 	const canRetry = login.phase === "exited" || login.phase === "missing-executable" || login.phase === "failed" || login.phase === "expired";
 	const showManual = login.phase === "missing-executable" || login.phase === "exited" || login.phase === "added-unsigned";
 	const ready = login.phase === "ready";
-	const canAddUnsigned = login.kind === "claude" && (login.phase === "running" || login.phase === "exited" || login.phase === "missing-executable");
+	const canAddUnsigned = login.kind === "claude" && (login.phase === "ready" || login.phase === "running" || login.phase === "exited" || login.phase === "missing-executable");
 	const showTerminal = login.sessionKey !== null && login.phase !== "expired";
 
 	return createPortal(
@@ -306,6 +308,18 @@ export default function AccountLoginModal({ login, busy, onHide, onCancel, onRet
 							className={`px-3.5 py-2 rounded-xl text-sm text-fg-2 hover:text-fg hover:bg-overlay-hover disabled:opacity-50 ${PRESS}`}
 						>
 							{t(active || ready ? "settings.accountLoginCancel" : "settings.accountLoginClose")}
+						</button>
+					) : null}
+					{ready ? (
+						<button
+							type="button"
+							onClick={onBegin}
+							disabled={busy}
+							autoFocus
+							data-testid="account-login-begin"
+							className={`px-3.5 py-2 rounded-xl bg-accent-fill text-white text-sm font-medium hover:bg-accent-fill-hover disabled:opacity-50 ${PRESS}`}
+						>
+							{t("settings.accountAddChoiceSignIn")}
 						</button>
 					) : null}
 					{canRetry ? (

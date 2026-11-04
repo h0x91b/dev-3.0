@@ -646,6 +646,19 @@ describe("AgentSettingsSection — custom executable path", () => {
 		await waitFor(() => expect(api.request.checkAgentAvailability).toHaveBeenCalled());
 	});
 
+	it("warns about a stale pre-strict path instead of reporting it broken, with Reset beside it", async () => {
+		vi.mocked(api.request.checkAgentAvailability).mockResolvedValue(
+			missingClaude({ installed: true, resolvedPath: "/usr/local/bin/claude", customPathStale: true, customPath: "/old/nvm/claude" }) as never,
+		);
+		const user = userEvent.setup();
+		renderSection();
+		await expandAgent(user, "Claude");
+		expect(await screen.findByTestId("agent-path-stale")).toBeTruthy();
+		expect(screen.queryByText("settings.agentPathNotFound")).toBeNull();
+		await user.click(screen.getByTestId("agent-path-reset"));
+		await waitFor(() => expect(api.request.clearAgentBinaryPath).toHaveBeenCalledWith({ agentId: "builtin-claude" }));
+	});
+
 	it("offers no Reset when no custom path is stored", async () => {
 		vi.mocked(api.request.checkAgentAvailability).mockResolvedValue(missingClaude({}) as never);
 		const user = userEvent.setup();

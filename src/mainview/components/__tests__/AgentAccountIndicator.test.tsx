@@ -209,6 +209,19 @@ describe("Auto (balanced)", () => {
 		expect(screen.getByText("Excluded from Auto in this project")).toBeInTheDocument();
 	});
 
+	it("says a login switched off in Settings is excluded in all projects, not just this one", async () => {
+		mockedApi.request.listAgentAccounts.mockResolvedValue(makeState({
+			claude: { ...makeState().claude, autoDefault: true, autoExcluded: ["system:claude"] },
+		}));
+		mockedApi.request.previewAutoAccount.mockResolvedValue(preview({ assessed: [assessed("cl-1"), assessed(null, "excluded"), assessed("x")] }));
+		const user = userEvent.setup();
+		renderIndicator(claudeAgent, { value: undefined, onSelect: vi.fn() });
+
+		await user.click(await screen.findByTestId("agent-account-trigger"));
+		expect(await screen.findByText("Excluded from Auto in all projects")).toBeInTheDocument();
+		expect(screen.queryByText("Excluded from Auto in this project")).toBeNull();
+	});
+
 	it("makes Auto the default from the global switcher", async () => {
 		mockedApi.request.previewAutoAccount.mockResolvedValue(preview());
 		const user = userEvent.setup();

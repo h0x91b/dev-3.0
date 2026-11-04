@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agentBinaryPathOverride, binaryPathMatchesCommand } from "../executable";
+import { agentBinaryPathOverride, binaryPathMatchesCommand, brokenCustomPath, enforcedCustomBinaryPaths, staleCustomPath } from "../executable";
 
 describe("binaryPathMatchesCommand", () => {
 	it("matches when the saved path names the same binary", () => {
@@ -62,5 +62,32 @@ describe("agentBinaryPathOverride", () => {
 
 	it("has no override for an agent that never saved one", () => {
 		expect(agentBinaryPathOverride("codex", "codex", cached, {})).toBeUndefined();
+	});
+});
+
+describe("stale pre-strict custom paths", () => {
+	const gone = "/definitely/gone/claude";
+	const works = process.execPath;
+
+	it("a gone path with no strict entry is stale and left out of the enforced paths", () => {
+		const settings = { agentCustomBinaryPaths: { a: gone, b: works } };
+		expect(staleCustomPath("a", settings)).toBe(gone);
+		expect(enforcedCustomBinaryPaths(settings)).toEqual({ b: works });
+		expect(brokenCustomPath("a", enforcedCustomBinaryPaths(settings))).toBeNull();
+	});
+
+	it("a gone path chosen strictly is broken, never stale", () => {
+		const settings = { agentCustomBinaryPaths: { a: gone }, strictAgentCustomBinaryPaths: { a: gone } };
+		expect(staleCustomPath("a", settings)).toBeNull();
+		expect(brokenCustomPath("a", enforcedCustomBinaryPaths(settings))).toBe(gone);
+	});
+
+	it("a strict entry for a different path (rewritten by an older build) does not make the current one strict", () => {
+		const settings = { agentCustomBinaryPaths: { a: gone }, strictAgentCustomBinaryPaths: { a: "/older/choice" } };
+		expect(staleCustomPath("a", settings)).toBe(gone);
+	});
+
+	it("a working pre-strict path is not stale", () => {
+		expect(staleCustomPath("a", { agentCustomBinaryPaths: { a: works } })).toBeNull();
 	});
 });

@@ -145,6 +145,7 @@ const settings = {
 	"settings.recheckAgents": "Re-check",
 	"settings.agentCustomPath": "Or set custom path:",
 	"settings.agentPathNotFound": "Path not found",
+	"settings.agentPathStale": "This saved path no longer exists, so launches use {command} from PATH. Reset it or choose a new one.",
 	"settings.cantDeleteDefault": "Default agents cannot be deleted",
 	"settings.defaultAgent": "Default agent",
 	"settings.defaultAgentDesc": "Agent used for new tasks",

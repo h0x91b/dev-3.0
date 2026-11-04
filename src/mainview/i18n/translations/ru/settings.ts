@@ -151,6 +151,7 @@ const settings = {
 	"settings.recheckAgents": "Перепроверить",
 	"settings.agentCustomPath": "Или укажите путь:",
 	"settings.agentPathNotFound": "Путь не найден",
+	"settings.agentPathStale": "Сохранённого пути больше нет, поэтому запуск идёт через {command} из PATH. Сбросьте его или выберите новый.",
 	"settings.cantDeleteDefault": "Встроенные агенты нельзя удалить",
 	"settings.defaultAgent": "Агент по умолчанию",
 	"settings.defaultAgentDesc": "Агент для запуска новых задач",

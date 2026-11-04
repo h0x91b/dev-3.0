@@ -2087,6 +2087,11 @@ export type AppRPCSchema = {
 			 * CLI-initiated in-app toast (`dev3 notify`). When `taskId`/`projectId`
 			 * are present the toast is clickable and navigates to that task.
 			 */
+			/**
+			 * A launch fell back to PATH because a custom executable saved before custom
+			 * paths became strict no longer exists. Once per agent and path per host run.
+			 */
+			staleAgentPath: { agentId: string; agentName: string; path: string; command: string };
 			cliToast: {
 				taskId: string | null;
 				projectId: string | null;

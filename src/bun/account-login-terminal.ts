@@ -23,7 +23,7 @@ import { ACCOUNT_LOGIN_ENDED_MESSAGE, ACCOUNT_LOGIN_FOUND_MESSAGE, ACCOUNT_LOGIN
 import { DEFAULT_AGENTS } from "../shared/types";
 import * as accounts from "./agent-accounts";
 import type { PreparedAccountLogin } from "./agent-accounts";
-import { agentBinaryPathOverride, brokenCustomPath, customExecutableMessage, isExecutableFile } from "./executable";
+import { agentBinaryPathOverride, brokenCustomPath, customExecutableMessage, enforcedCustomBinaryPaths, isExecutableFile } from "./executable";
 import { createLogger } from "./logger";
 import { registerExternalPtySession, type ExternalPtyViewer } from "./pty-server";
 import { loadSettings } from "./settings";
@@ -522,9 +522,9 @@ export type AccountLoginManager = ReturnType<typeof createAccountLoginManager>;
 
 export async function resolveLoginExecutable(kind: AgentAccountKind, command: string): Promise<string | null> {
 	const settings = await loadSettings();
-	const broken = brokenCustomPath(`builtin-${kind}`, settings.agentCustomBinaryPaths);
+	const broken = brokenCustomPath(`builtin-${kind}`, enforcedCustomBinaryPaths(settings));
 	if (broken) throw new Error(customExecutableMessage(kind === "claude" ? "Claude Code" : kind, broken));
-	const override = agentBinaryPathOverride(`builtin-${kind}`, command, settings.agentBinaryPaths, settings.agentCustomBinaryPaths);
+	const override = agentBinaryPathOverride(`builtin-${kind}`, command, settings.agentBinaryPaths, enforcedCustomBinaryPaths(settings));
 	if (override && isExecutableFile(override)) return override;
 	return Bun.which(command, { PATH: process.env.PATH ?? "" }) ?? null;
 }

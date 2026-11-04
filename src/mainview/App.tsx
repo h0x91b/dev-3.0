@@ -51,6 +51,7 @@ import NativePaneLayoutLab from "./labs/native-pane/NativePaneLayoutLab";
 import { setToastSuppressed, taskToastContext, ToastHost, toast, type ToastEntry, type ToastOrigin } from "./toast";
 import { toastClearanceRef } from "./toast-clearance";
 import { agentMessageToast, type AgentMessageDetail, type AgentToastEnd } from "./agent-message-toast";
+import { showStaleAgentPathToast, type StaleAgentPathDetail } from "./stale-agent-path-toast";
 import { useSpaces } from "./useSpaces";
 import AgentTrafficScreen from "./components/agent-traffic/AgentTrafficScreen";
 import { noteTrafficArrival } from "./agent-traffic";
@@ -1862,6 +1863,12 @@ function App() {
 		window.addEventListener("rpc:cliAttention", onCliAttention);
 		return () => window.removeEventListener("rpc:cliAttention", onCliAttention);
 	}, [dispatch]);
+
+	useEffect(() => {
+		const onStaleAgentPath = (e: Event) => showStaleAgentPathToast((e as CustomEvent).detail as StaleAgentPathDetail, t);
+		window.addEventListener("rpc:staleAgentPath", onStaleAgentPath);
+		return () => window.removeEventListener("rpc:staleAgentPath", onStaleAgentPath);
+	}, [t]);
 
 	// CLI-initiated in-app toast (`dev3 notify`). When a task is attached the toast
 	// is clickable and opens that task, honoring the user's task-open-mode.

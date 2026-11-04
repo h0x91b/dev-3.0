@@ -384,6 +384,7 @@ const kanban = {
 	"launch.accountAutoReasonNone": "Ninguna cuenta de suscripción tiene margen · próximo reinicio en {time}",
 	"launch.accountAutoReasonNoneNever": "No hay ninguna cuenta de suscripción libre para el modo automático",
 	"launch.accountExcludedHere": "Excluida del modo automático en este proyecto",
+	"launch.accountExcludedEverywhere": "Excluida del modo automático en todos los proyectos",
 	"launch.addVariant": "+ Agregar variante",
 	"launch.removeVariant": "Eliminar",
 	"launch.launch": "Lanzar",

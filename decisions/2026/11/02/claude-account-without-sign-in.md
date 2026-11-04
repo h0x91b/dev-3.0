@@ -1,5 +1,7 @@
 # A Claude account can be added without signing in
 
+Superseded in part on 2026-11-04 by `decisions/2026/11/04/grandfather-stale-custom-agent-paths.md`: a custom path saved before strictness that is gone now falls back to PATH with a warning; a removed stored account now clears the task's account (follows the default) instead of pinning the one used.
+
 ## Context
 Some setups start Claude through their own wrapper that owns the credentials and may later point the account folder at its own config dir. dev3 should let such a user create the account without completing a Claude login.
 
