@@ -94,6 +94,69 @@ export function withGitDefaults(cmd: string[]): string[] {
 
 const PROCESS_CLEANUP_GRACE_MS = 1_000;
 
+/**
+ * Read-only probes the pollers fire every few seconds. One that never exits
+ * (wedged fsmonitor, stalled filesystem) used to live forever and the next poll
+ * stacked another on top (#2153), so these get a timeout even when the caller
+ * passes none. See decisions/2026/11/04/git-probe-timeout-and-coalescing.md.
+ */
+const READ_PROBE_SUBCOMMANDS = new Set(["status", "rev-parse", "symbolic-ref", "rev-list", "merge-base"]);
+export const DEFAULT_GIT_PROBE_TIMEOUT_MS = 30_000;
+let gitProbeTimeoutMs = DEFAULT_GIT_PROBE_TIMEOUT_MS;
+
+export function _setGitProbeTimeoutForTest(ms: number | null): void {
+	gitProbeTimeoutMs = ms ?? DEFAULT_GIT_PROBE_TIMEOUT_MS;
+}
+
+function defaultTimeoutFor(cmd: string[]): number | undefined {
+	const sub = gitSubcommand(cmd);
+	return cmd[0] === "git" && sub && READ_PROBE_SUBCOMMANDS.has(sub) ? gitProbeTimeoutMs : undefined;
+}
+
+export type GitRunResult = { ok: boolean; stdout: string; stderr: string; timedOut?: true };
+
+// Windows has neither process groups nor negative-pid kill.
+const OWN_PROCESS_GROUP = process.platform !== "win32";
+
+/**
+ * git runs as its own process-group leader so a timeout reaches what it spawned
+ * too (fsmonitor hook, submodule `git status`). TERM first so git can drop its
+ * lock files, then KILL whatever of the group is still there.
+ */
+async function killProcessGroup(proc: { pid?: number; kill: (signal?: number) => void; exited: Promise<unknown> }): Promise<void> {
+	const signalGroup = (signal: NodeJS.Signals) => {
+		try {
+			if (OWN_PROCESS_GROUP && proc.pid) process.kill(-proc.pid, signal);
+			else proc.kill(signal === "SIGKILL" ? 9 : undefined);
+		} catch {
+			// ESRCH: the group is already gone.
+		}
+	};
+	signalGroup("SIGTERM");
+	const exited = await settleWithin(proc.exited.then(() => true, () => true), PROCESS_CLEANUP_GRACE_MS, false);
+	// Without a group, an exited leader leaves nothing to kill.
+	if (OWN_PROCESS_GROUP && proc.pid || !exited) signalGroup("SIGKILL");
+}
+
+// Probes still running when dev3 exits would otherwise outlive it; they are
+// read-only, so killing them on the way out loses nothing.
+const liveProbeGroups = new Set<number>();
+let probeExitHookInstalled = false;
+
+function trackProbeGroup(pid: number | undefined): () => void {
+	if (!OWN_PROCESS_GROUP || !pid) return () => {};
+	if (!probeExitHookInstalled) {
+		probeExitHookInstalled = true;
+		process.on("exit", () => {
+			for (const group of liveProbeGroups) {
+				try { process.kill(-group, "SIGKILL"); } catch { /* already gone */ }
+			}
+		});
+	}
+	liveProbeGroups.add(pid);
+	return () => liveProbeGroups.delete(pid);
+}
+
 async function settleWithin<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
 	let timeoutId: ReturnType<typeof setTimeout> | undefined;
 	try {
@@ -112,15 +175,18 @@ export async function run(
 	cmd: string[],
 	cwd: string,
 	opts?: { timeoutMs?: number; env?: Record<string, string> },
-): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+): Promise<GitRunResult> {
 	const finalCmd = withGitDefaults(cmd);
+	const timeoutMs = opts?.timeoutMs ?? defaultTimeoutFor(finalCmd);
 	log.debug("Executing git command", { cwd, command: finalCmd });
 	const proc = spawn(finalCmd, {
 		cwd,
 		stdout: "pipe",
 		stderr: "pipe",
 		env: opts?.env,
+		detached: OWN_PROCESS_GROUP,
 	});
+	const untrackProbe = defaultTimeoutFor(finalCmd) ? trackProbeGroup(proc.pid) : () => {};
 	// Start draining stdout/stderr immediately, BEFORE awaiting exit. Otherwise a
 	// command whose output exceeds the OS pipe buffer (~64KB) blocks on write with
 	// nobody reading — proc.exited never resolves and we deadlock (commands without
@@ -129,19 +195,17 @@ export async function run(
 	const stderrPromise = new Response(proc.stderr).text().catch(() => "");
 
 	let timeoutId: ReturnType<typeof setTimeout> | undefined;
-	const outcome = opts?.timeoutMs
+	const outcome = timeoutMs
 		? await Promise.race([
 			proc.exited.then((code) => ({ code, timedOut: false as const })),
 			new Promise<{ code: null; timedOut: true }>((resolve) => {
-				timeoutId = setTimeout(() => resolve({ code: null, timedOut: true }), opts.timeoutMs);
+				timeoutId = setTimeout(() => resolve({ code: null, timedOut: true }), timeoutMs);
 			}),
 		])
 		: { code: await proc.exited, timedOut: false as const };
 	if (timeoutId) clearTimeout(timeoutId);
-	if (outcome.timedOut) {
-		proc.kill();
-		await settleWithin(proc.exited.catch(() => null), PROCESS_CLEANUP_GRACE_MS, null);
-	}
+	if (outcome.timedOut) await killProcessGroup(proc);
+	untrackProbe();
 	// On timeout the killed process closes its pipes, so the readers resolve with
 	// whatever partial output arrived; bound the wait just in case.
 	const [stdout, stderr] = outcome.timedOut
@@ -150,8 +214,8 @@ export async function run(
 			settleWithin(stderrPromise, PROCESS_CLEANUP_GRACE_MS, ""),
 		])
 		: await Promise.all([stdoutPromise, stderrPromise]);
-	const failure = outcome.timedOut ? `timed out after ${opts?.timeoutMs}ms` : stderr.trim();
-	const result = { ok: outcome.code === 0, stdout: stdout.trim(), stderr: failure };
+	const failure = outcome.timedOut ? `timed out after ${timeoutMs}ms` : stderr.trim();
+	const result = { ok: outcome.code === 0, stdout: stdout.trim(), stderr: failure, ...(outcome.timedOut ? { timedOut: true as const } : {}) };
 	if (!result.ok && !isExpectedNo(finalCmd, outcome.code, stderr)) {
 		log.warn("Git command failed", {
 			command: finalCmd,
@@ -1770,8 +1834,22 @@ export async function getRemoteBranchTips(worktreePath: string, branch: string):
 	return distinct(known.filter(({ time }) => time === newest).map(({ sha }) => sha));
 }
 
+// One `git status` per worktree at a time: every caller of isWorktreeDirty is a
+// poller, so a caller arriving mid-scan takes that scan's answer instead of
+// forking another git on top of it.
+const dirtyChecksInFlight = new Map<string, Promise<GitRunResult>>();
+
 export async function isWorktreeDirty(worktreePath: string): Promise<boolean> {
-	const result = await run(["git", "status", "--porcelain"], worktreePath);
+	let check = dirtyChecksInFlight.get(worktreePath);
+	if (!check) {
+		check = run(["git", "status", "--porcelain"], worktreePath)
+			.finally(() => dirtyChecksInFlight.delete(worktreePath));
+		dirtyChecksInFlight.set(worktreePath, check);
+	}
+	const result = await check;
+	// A scan that never finished proves nothing about cleanliness; "clean" would
+	// let the merge watcher offer completion over uncommitted work.
+	if (result.timedOut) return true;
 	if (!result.ok) return false;
 	return result.stdout.trim().length > 0;
 }
