@@ -6,7 +6,7 @@ An agent may need a restart while its terminal still exists, including the shell
 
 ## Investigation
 
-`resumeTaskSession` already preserves the agent, preset, account, conversation and launch hooks. Hibernation also stops dev servers and reaps worktree processes, while native extra agent panes have no saved conversation IDs and cannot currently be restored by recovery.
+`resumeTaskSession` already preserves the agent, preset, account, conversation and launch hooks. Hibernation additionally reaps worktree processes, while native extra agent panes have no saved conversation IDs and cannot currently be restored by recovery. Live QA found that a tmux dev-server viewer's EXIT trap kills its nested server when the task terminal closes, so a separate dev-server session does not imply survival through restart.
 
 ## Decision
 
@@ -14,8 +14,8 @@ Add Restart agent session to the existing task context menu, passing `restart: t
 
 ## Risks
 
-Restart replaces the whole task terminal, losing terminal scrollback and closing auxiliary panes; confirmation names those effects. Native tasks with extra panes refuse before teardown, and missing or substituted conversations also refuse. A launch can still fail after teardown, so saved conversations remain recoverable and partial restoration is reported as an error.
+Restart replaces the whole task terminal, losing terminal scrollback and closing auxiliary panes, including their commands and dev servers; confirmation names those effects. Native tasks with extra panes refuse before teardown, and missing or substituted conversations also refuse. A launch can still fail after teardown, so saved conversations remain recoverable and partial restoration is reported as an error.
 
 ## Alternatives considered
 
-Hibernate then wake is smaller mechanically but unnecessarily stops the development environment. Resuming only after a detected agent exit cannot restart a stuck live agent and depends on platform-specific process evidence. Per-pane restart requires new terminal replacement and native conversation-persistence machinery, so it is outside this minimal change.
+Hibernate then wake adds resource reaping and a parked task state to an operation that only needs terminal replacement. Resuming only after a detected agent exit cannot restart a stuck live agent and depends on platform-specific process evidence. Per-pane restart and preserving dev-server viewers require more pane-management machinery, so they are outside this minimal change.

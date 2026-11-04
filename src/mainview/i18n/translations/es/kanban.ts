@@ -131,7 +131,7 @@ const kanban = {
 	"task.hibernateConfirmCta": "Hibernar",
 	"task.hibernateFailed": "No se pudo hibernar la tarea: {error}",
 	"task.restartSession": "Reiniciar sesión del agente…",
-	"task.restartSessionConfirm": "Detiene el terminal de esta tarea y reabre las conversaciones guardadas de los agentes con las mismas cuentas. Se cierran todos los paneles y se pierde el historial del terminal. Los archivos y los servidores de desarrollo iniciados desde dev3 se conservan; la hibernación sigue disponible. Los terminales nativos solo permiten reiniciar con el panel principal.",
+	"task.restartSessionConfirm": "Detiene el terminal de esta tarea y reabre las conversaciones guardadas de los agentes con las mismas cuentas. Se cierran todos los paneles, se detienen los comandos y servidores de desarrollo que ejecutan y se pierde el historial del terminal. Los archivos se conservan y la hibernación sigue disponible. Los terminales nativos solo permiten reiniciar con el panel principal.",
 	"task.restartSessionCta": "Reiniciar y reanudar",
 	"task.restartedSession": "Sesión del agente reiniciada.",
 	"task.delete": "Eliminar",
