@@ -8,8 +8,9 @@ export { skillInvocationPrefix } from "../shared/types";
 import { buildProviderEnv, getProviderDefinition, providerOmitsModelFlag, providerPinnedModel } from "../shared/llm-provider";
 import { createLogger } from "./logger";
 import { backupUnparsableCodexConfig, joinLike as joinLikeHome, detectCodexProfileLaunchFlag, detectCodexVersion, resetCodexVersionProbe, resetCodexHelpProbe, ensureCodexConfig, ensureCodexProfileFiles, getCodexSyntaxForVersion, resolveCodexInstallRoots, type CodexProfileLaunchFlag } from "./codex-config";
-import { agentBinaryPathOverride, brokenCustomPath, customExecutableMessage } from "./executable";
+import { agentBinaryPathOverride, brokenCustomPath, customExecutableMessage, enforcedCustomBinaryPaths } from "./executable";
 import { DEV3_HOME } from "./paths";
+import { notifyStaleCustomPath } from "./stale-agent-path";
 // Writer and pruner share one path constant: whatever registers an entry must
 // agree with whatever removes it.
 import { GEMINI_TRUSTED_FOLDERS } from "./worktree-trust";
@@ -996,7 +997,8 @@ export async function resolveCommandForAgent(
 	const config = findConfig(agent, configId);
 
 	const settings = await loadSettings();
-	const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths, settings.agentCustomBinaryPaths);
+	const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths, enforcedCustomBinaryPaths(settings));
+	notifyStaleCustomPath(agent, settings);
 
 	// Resolve the session env BEFORE building the command: an active API
 	// profile's model override must rewrite the preset's --model flag.
@@ -1136,7 +1138,8 @@ export async function resolveCommandForProject(
 	const agent = allAgents.find((a) => a.id === settings.defaultAgentId);
 
 	if (agent) {
-		const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths, settings.agentCustomBinaryPaths);
+		const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths, enforcedCustomBinaryPaths(settings));
+		notifyStaleCustomPath(agent, settings);
 		const resolvedConfigId = configId ?? settings.defaultConfigId;
 		const config = findConfig(agent, resolvedConfigId);
 		// Env before command — see resolveCommandForAgent (API profile model override).

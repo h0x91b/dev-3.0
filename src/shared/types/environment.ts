@@ -37,6 +37,8 @@ export interface AgentCheckResult {
 	alternativeInstallCommand?: string;
 	installUrl?: string;
 	customPathError?: boolean;
+	/** The custom path was saved before custom paths became strict and is gone: launches use PATH. */
+	customPathStale?: boolean;
 	/** The custom executable stored for this agent, if any. */
 	customPath?: string;
 }

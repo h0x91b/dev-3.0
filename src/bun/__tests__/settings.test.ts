@@ -384,6 +384,7 @@ describe("saveSettings", () => {
 			customBinaryPaths: { git: "/usr/bin/git" },
 			agentBinaryPaths: { "builtin-codex": "/usr/bin/codex" },
 			agentCustomBinaryPaths: { "builtin-codex": "/opt/wrappers/codex-wrapper" },
+			strictAgentCustomBinaryPaths: { "builtin-codex": "/opt/wrappers/codex-wrapper" },
 			keyboardShortcuts: { "go-to-project": { primary: "Mod+KeyJ", alias: null } },
 			experimentalTerminalBidi: true,
 			hiddenControls: ["bug-hunters", "stats-nav"],
@@ -469,5 +470,54 @@ describe("saveSettings", () => {
 		expect(JSON.parse(readFileSync(settingsPath, "utf-8"))).toEqual(
 			makeSettings({ defaultAgentId: "builtin-codex" }),
 		);
+	});
+});
+
+describe("app-wide Auto exclusions survive an older build's save", () => {
+	const settingsPath = join(TEST_HOME, "settings.json");
+	const sidecarPath = join(TEST_HOME, "auto-account-exclusions.json");
+
+	beforeEach(() => {
+		rmSync(TEST_HOME, { recursive: true, force: true });
+		mkdirSync(TEST_HOME, { recursive: true });
+		vi.spyOn(Bun, "write").mockImplementation(async (target, data) => {
+			writeFileSync(String(target), String(data), "utf-8");
+			return 0;
+		});
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+		rmSync(TEST_HOME, { recursive: true, force: true });
+	});
+
+	it("keeps them when an older build rewrites settings.json without the key", async () => {
+		await saveSettings(makeSettings({ autoAccountExclusions: ["system:claude", "cl-1"] }));
+		expect(JSON.parse(readFileSync(sidecarPath, "utf-8"))).toEqual({ version: 1, keys: ["system:claude", "cl-1"] });
+		// What an older build's whitelist loader writes back on startup.
+		const onDisk = JSON.parse(readFileSync(settingsPath, "utf-8"));
+		delete onDisk.autoAccountExclusions;
+		writeFileSync(settingsPath, JSON.stringify(onDisk));
+		expect((await loadSettings()).autoAccountExclusions).toEqual(["system:claude", "cl-1"]);
+		expect(loadSettingsSync().autoAccountExclusions).toEqual(["system:claude", "cl-1"]);
+	});
+
+	it("a cleared list stays cleared even while settings.json still carries a stale copy", async () => {
+		await saveSettings(makeSettings({ autoAccountExclusions: ["cl-1"] }));
+		await saveSettings(makeSettings({ autoAccountExclusions: undefined }));
+		writeFileSync(settingsPath, JSON.stringify({ ...JSON.parse(readFileSync(settingsPath, "utf-8")), autoAccountExclusions: ["cl-1"] }));
+		expect((await loadSettings()).autoAccountExclusions).toBeUndefined();
+	});
+
+	it("reads the settings.json copy when there is no sidecar yet, or one of an unknown version", async () => {
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ autoAccountExclusions: ["system:codex"] })));
+		expect((await loadSettings()).autoAccountExclusions).toEqual(["system:codex"]);
+		writeFileSync(sidecarPath, JSON.stringify({ version: 2, keys: [] }));
+		expect((await loadSettings()).autoAccountExclusions).toEqual(["system:codex"]);
+	});
+
+	it("keeps the settings.json copy for builds that read it but predate the sidecar", async () => {
+		await saveSettings(makeSettings({ autoAccountExclusions: ["cl-1"] }));
+		expect(JSON.parse(readFileSync(settingsPath, "utf-8")).autoAccountExclusions).toEqual(["cl-1"]);
 	});
 });

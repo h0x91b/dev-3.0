@@ -7,7 +7,7 @@ import { launchRequesterSummary } from "./cli-session-approval";
 import { listAgentAccounts } from "./agent-accounts";
 import { isAutoAccountId, isRoutableAccountKind } from "../shared/agent-accounts";
 import { applyBinaryPathOverride, getAllAgents } from "./agents";
-import { brokenCustomPath, customExecutableMessage } from "./executable";
+import { brokenCustomPath, customExecutableMessage, enforcedCustomBinaryPaths } from "./executable";
 import { getTask } from "./data";
 import { loadSettings } from "./settings";
 import { getPushMessage } from "./rpc-handlers/shared-pure";
@@ -47,7 +47,7 @@ async function validateChoice(choice: LaunchVariant): Promise<LaunchVariant> {
 	if (configId && !findAgentConfig(agent, configId)) throw new Error(`Unknown config "${configId}" for agent "${id}".`);
 	if (choice.accountId !== undefined) {
 		const config = findAgentConfig(agent, configId);
-		const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths, settings.agentCustomBinaryPaths);
+		const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths, enforcedCustomBinaryPaths(settings));
 		const family = agentKey(config?.baseCommandOverride || agentWithPath.baseCommand, agentWithPath.agentFamily);
 		if (family !== "claude" && family !== "codex" && family !== "omp" && family !== "pi") throw new Error(`Agent "${id}" does not support managed accounts.`);
 		if (isAutoAccountId(choice.accountId)) {
@@ -59,7 +59,7 @@ async function validateChoice(choice: LaunchVariant): Promise<LaunchVariant> {
 	const availability = await settingsConfigHandlers.checkAgentAvailability();
 	const check = availability.find((a) => a.agentId === id);
 	if (!check?.installed) {
-		const broken = check?.customPathError ? brokenCustomPath(id, settings.agentCustomBinaryPaths) : null;
+		const broken = check?.customPathError ? brokenCustomPath(id, enforcedCustomBinaryPaths(settings)) : null;
 		if (broken) throw new Error(customExecutableMessage(agent.name, broken));
 		throw new Error(`Agent "${id}" is not installed.${check?.installCommand ? ` Install it with: ${check.installCommand}` : ""}`);
 	}

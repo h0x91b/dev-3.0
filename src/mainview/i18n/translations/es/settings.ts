@@ -145,6 +145,7 @@ const settings = {
 	"settings.recheckAgents": "Verificar de nuevo",
 	"settings.agentCustomPath": "O indica una ruta personalizada:",
 	"settings.agentPathNotFound": "Ruta no encontrada",
+	"settings.agentPathStale": "Esta ruta guardada ya no existe, así que se usa {command} desde el PATH. Restablécela o elige otra.",
 	"settings.cantDeleteDefault": "Los agentes predeterminados no se pueden eliminar",
 	"settings.defaultAgent": "Agente predeterminado",
 	"settings.defaultAgentDesc": "Agente utilizado para nuevas tareas",

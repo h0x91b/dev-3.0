@@ -187,7 +187,7 @@ describe("managed CLI agent spawning", () => {
 });
 describe("validateLaunchSuggestion", () => {
 	it("shows the custom-executable error, not an install hint, when the chosen path is broken", async () => {
-		vi.mocked(loadSettings).mockResolvedValueOnce({ defaultAgentId: "agent-1", agentCustomBinaryPaths: { "agent-1": "/gone/codex" } } as never);
+		vi.mocked(loadSettings).mockResolvedValueOnce({ defaultAgentId: "agent-1", agentCustomBinaryPaths: { "agent-1": "/gone/codex" }, strictAgentCustomBinaryPaths: { "agent-1": "/gone/codex" } } as never);
 		vi.mocked(settingsConfigHandlers.checkAgentAvailability).mockResolvedValueOnce([{ agentId: "agent-1", installed: false, customPathError: true, installCommand: "npm i -g codex" }] as any);
 		const error = await validateLaunchSuggestion({ agentId: "agent-1", configId: "config-1" }).catch((e) => e);
 		expect(String(error)).toContain("not found or not executable: /gone/codex");

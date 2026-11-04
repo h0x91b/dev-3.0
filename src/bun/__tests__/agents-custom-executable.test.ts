@@ -27,6 +27,8 @@ import { resolveCommandForAgent, resolveCommandForProject } from "../agents";
 import type { Project } from "../../shared/types";
 import { DEV3_AGENT_ACCOUNT_ID_ENV } from "../../shared/agent-accounts";
 import { DEV3_HOME } from "../paths";
+import { resetStaleAgentPathNoticesForTests } from "../stale-agent-path";
+import { setPushMessage } from "../rpc-handlers/shared-pure";
 
 const ctx = { taskTitle: "t", taskDescription: "d", projectName: "p", projectPath: "/p", worktreePath: "/w" };
 let root: string;
@@ -58,12 +60,13 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 describe("launch with a custom executable", () => {
 	it("fails with the path in the message when the file is missing, without falling back to the system claude", async () => {
 		const missing = join(root, "missing-wrapper");
-		state.settings = { ...state.settings, agentCustomBinaryPaths: { "builtin-claude": missing } };
+		state.settings = { ...state.settings, agentCustomBinaryPaths: { "builtin-claude": missing }, strictAgentCustomBinaryPaths: { "builtin-claude": missing } };
 		await expect(resolveCommandForAgent("builtin-claude", null, ctx)).rejects.toThrow(missing);
 	});
 
 	it("fails when the file is not executable", async () => {
 		chmodSync(wrapper, 0o644);
+		state.settings = { ...state.settings, strictAgentCustomBinaryPaths: { "builtin-claude": wrapper } };
 		await expect(resolveCommandForAgent("builtin-claude", null, ctx)).rejects.toThrow(/not executable/);
 	});
 
@@ -99,9 +102,37 @@ describe("launch with a custom executable", () => {
 
 	it("fails resolveCommandForProject for a broken custom path too", async () => {
 		const missing = join(root, "missing-wrapper");
-		state.settings = { ...state.settings, agentCustomBinaryPaths: { "builtin-claude": missing } };
+		state.settings = { ...state.settings, agentCustomBinaryPaths: { "builtin-claude": missing }, strictAgentCustomBinaryPaths: { "builtin-claude": missing } };
 		const project = { name: "p", path: "/p" } as Project;
 		await expect(resolveCommandForProject(project, "t", "d", "/w")).rejects.toThrow(missing);
+	});
+});
+
+describe("a custom path saved before custom paths became strict", () => {
+	beforeEach(() => resetStaleAgentPathNoticesForTests());
+
+	it("launches the command from PATH when it is gone, and warns once with the path", async () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		const missing = join(root, "old-nvm", "claude");
+		state.settings = { ...state.settings, agentCustomBinaryPaths: { "builtin-claude": missing }, agentBinaryPaths: { "builtin-claude": missing } };
+		const first = await resolveCommandForAgent("builtin-claude", null, ctx);
+		await resolveCommandForAgent("builtin-claude", null, ctx);
+		expect(first.command).not.toContain(missing);
+		expect(push.mock.calls.filter(([name]) => name === "staleAgentPath")).toEqual([
+			["staleAgentPath", { agentId: "builtin-claude", agentName: expect.any(String), path: missing, command: "claude" }],
+		]);
+	});
+
+	it("still fails when it was re-chosen in a strict build but the strict entry names another path", async () => {
+		const missing = join(root, "missing-wrapper");
+		state.settings = { ...state.settings, agentCustomBinaryPaths: { "builtin-claude": missing }, strictAgentCustomBinaryPaths: { "builtin-claude": missing } };
+		await expect(resolveCommandForAgent("builtin-claude", null, ctx)).rejects.toThrow(missing);
+	});
+
+	it("is used as before while it still works", async () => {
+		state.settings = { ...state.settings, agentCustomBinaryPaths: { "builtin-claude": wrapper } };
+		expect((await resolveCommandForAgent("builtin-claude", null, ctx)).command).toContain(wrapper);
 	});
 });
 

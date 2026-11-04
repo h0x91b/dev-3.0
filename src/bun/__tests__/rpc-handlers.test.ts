@@ -11688,7 +11688,10 @@ describe("restartTask (start fresh) floors the Codex scan", () => {
 });
 
 describe("restartTask and resume with a stored account or a refused launch", () => {
-	beforeEach(() => vi.clearAllMocks());
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		(await import("../rpc-handlers/tmux-pty/task-launch")).resetStaleAccountNoticesForTests();
+	});
 	const claudePanes = [{ agentCmd: "claude", agentFamily: "claude", agentId: "builtin-claude", configId: "claude-default", sessionId: "00000000-0000-4000-8000-0000c0de2799", accountId: "removed-account" }];
 	function arrange() {
 		const project = makeProject();
@@ -11724,8 +11727,29 @@ describe("restartTask and resume with a stored account or a refused launch", () 
 			expect(push).toHaveBeenCalledWith("cliToast", expect.objectContaining({ taskId: task.id, level: "info", messageKey: "kanban.launchAccountRemoved" }));
 			const last = vi.mocked(data.updateTask).mock.calls.map((call) => call[2]).filter((u) => u.sessionState).pop()!;
 			expect(last.sessionState!.panes[0].accountId).toBeNull();
-			// The task keeps the account actually used, so Start Fresh does not warn again.
-			expect(vi.mocked(data.updateTask).mock.calls.some((call) => call[2].accountId === null)).toBe(true);
+			// The task drops the removed id and follows the default again (null would pin the system login).
+			const cleared = vi.mocked(data.updateTask).mock.calls.find((call) => "accountId" in call[2])?.[2];
+			expect(cleared).toBeDefined();
+			expect(cleared!.accountId).toBeUndefined();
+			expect(vi.mocked(data.updateTask).mock.calls.some((call) => call[2].accountId === null)).toBe(false);
+		} finally {
+			resolve.mockImplementation(original!);
+		}
+	});
+
+	it("resume shows one removed-account notice per task, however many panes carried that account", async () => {
+		const { project, task } = arrange();
+		await data.updateTask(project, task.id, { sessionState: { panes: [claudePanes[0], { ...claudePanes[0], sessionId: null, paneId: "%5" }, { ...claudePanes[0], sessionId: null, paneId: "%6" }] as any } });
+		const push = vi.fn();
+		setPushMessage(push);
+		const resolve = vi.mocked(agents.resolveCommandForAgent);
+		const original = resolve.getMockImplementation();
+		resolve.mockResolvedValue({ command: "claude", extraEnv: {}, agentFamily: "claude", resolvedAccountId: null, staleAccountDropped: true } as any);
+		try {
+			const { resumeTaskSession } = await import("../rpc-handlers/tmux-pty");
+			await resumeTaskSession(task.id, {});
+			expect(resolve.mock.calls.length).toBeGreaterThanOrEqual(3);
+			expect(push.mock.calls.filter((call) => call[0] === "cliToast" && call[1]?.messageKey === "kanban.launchAccountRemoved")).toHaveLength(1);
 		} finally {
 			resolve.mockImplementation(original!);
 		}
@@ -14765,6 +14789,7 @@ describe("checkAgentAvailability", () => {
 			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 			agentCustomBinaryPaths: { "builtin-claude": "/opt/wrappers/gone" },
+			strictAgentCustomBinaryPaths: { "builtin-claude": "/opt/wrappers/gone" },
 		});
 		// The system claude exists on PATH; the broken custom path must not fall back to it.
 		vi.mocked(existsSync).mockImplementation((path) => String(path) === "/usr/local/bin/claude");
@@ -14782,6 +14807,30 @@ describe("checkAgentAvailability", () => {
 		expect(claude?.customPathError).toBe(true);
 		expect(claude?.customPath).toBe("/opt/wrappers/gone");
 		expect(saveSettings).not.toHaveBeenCalled();
+	});
+
+	it("reports a gone pre-strict custom path as stale, not broken, and finds the CLI on PATH", async () => {
+		vi.mocked(agents.getAllAgents).mockResolvedValue([
+			{ id: "builtin-claude", name: "Claude", baseCommand: "claude", isDefault: true, configurations: [] },
+		] as any);
+		vi.mocked(loadSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskSortOrder: "oldest-first",
+			updateChannel: "stable",
+			agentCustomBinaryPaths: { "builtin-claude": "/old/nvm/bin/claude" },
+			agentBinaryPaths: { "builtin-claude": "/old/nvm/bin/claude" },
+		});
+		vi.mocked(existsSync).mockImplementation((path) => String(path) === "/usr/local/bin/claude");
+		mockSpawnSync.mockImplementation((args: string[]) => {
+			if (args[0] === "which" && args[1] === "claude") {
+				return { exitCode: 0, stdout: new TextEncoder().encode("/usr/local/bin/claude") };
+			}
+			return { exitCode: 1, stdout: null };
+		});
+
+		const claude = (await handlers.checkAgentAvailability()).find((r) => r.agentId === "builtin-claude");
+		expect(claude).toMatchObject({ installed: true, resolvedPath: "/usr/local/bin/claude", customPathError: false, customPathStale: true, customPath: "/old/nvm/bin/claude" });
 	});
 
 	it("reports customPathError when saved path no longer exists", async () => {
@@ -14823,10 +14872,11 @@ describe("setAgentBinaryPath", () => {
 		}));
 	});
 
-	it("records the path as user-chosen, not only as a cache entry", async () => {
+	it("records the path as user-chosen and strict, not only as a cache entry", async () => {
 		await handlers.setAgentBinaryPath({ agentId: "builtin-claude", path: "/opt/wrappers/claude-wrapper" });
 		expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({
 			agentCustomBinaryPaths: { "builtin-claude": "/opt/wrappers/claude-wrapper" },
+			strictAgentCustomBinaryPaths: { "builtin-claude": "/opt/wrappers/claude-wrapper" },
 		}));
 	});
 
@@ -14853,12 +14903,14 @@ describe("clearAgentBinaryPath", () => {
 			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 			agentCustomBinaryPaths: { "builtin-claude": "/opt/w/claude", "builtin-codex": "/opt/w/codex" },
+			strictAgentCustomBinaryPaths: { "builtin-claude": "/opt/w/claude", "builtin-codex": "/opt/w/codex" },
 			agentBinaryPaths: { "builtin-claude": "/opt/w/claude", "builtin-codex": "/auto/codex" },
 		});
 		vi.mocked(saveSettings).mockClear();
 		await handlers.clearAgentBinaryPath({ agentId: "builtin-claude" });
 		expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({
 			agentCustomBinaryPaths: { "builtin-codex": "/opt/w/codex" },
+			strictAgentCustomBinaryPaths: { "builtin-codex": "/opt/w/codex" },
 			agentBinaryPaths: { "builtin-codex": "/auto/codex" },
 		}));
 	});

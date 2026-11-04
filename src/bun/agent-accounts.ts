@@ -42,6 +42,7 @@ import {
 	readFileSync,
 	realpathSync,
 	renameSync,
+	rmdirSync,
 	rmSync,
 	statSync,
 	symlinkSync,
@@ -279,8 +280,20 @@ function removeAccountSlot(slot: string): void {
 	} catch {
 		return; // nothing there
 	}
-	if (isLinkedClaudeSlot(slot)) unlinkSync(slot);
+	if (isLinkedClaudeSlot(slot)) unlinkLinkedSlot(slot);
 	else rmSync(slot, { recursive: true, force: true });
+}
+
+/** Remove the link itself, never its target. Windows refuses `unlink` on a directory
+ *  symlink or junction (EPERM/EISDIR); a non-recursive `rmdir` removes just the link there. */
+export function unlinkLinkedSlot(slot: string, fs: { unlinkSync: (p: string) => void; rmdirSync: (p: string) => void } = { unlinkSync, rmdirSync }): void {
+	try {
+		fs.unlinkSync(slot);
+	} catch (err) {
+		const code = (err as NodeJS.ErrnoException).code;
+		if (code !== "EPERM" && code !== "EISDIR") throw err;
+		fs.rmdirSync(slot);
+	}
 }
 
 export function codexAccountDir(id: string, paths: AccountPaths = defaultAccountPaths()): string {

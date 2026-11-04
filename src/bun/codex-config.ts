@@ -7,7 +7,7 @@ import { type CliVersion, isCliVersionAtLeast, parseCliVersion } from "../shared
 import type { HookCliDialect } from "../shared/dev3-cli-path";
 import { createLogger } from "./logger";
 import { spawn } from "./spawn";
-import { agentBinaryPathOverride } from "./executable";
+import { agentBinaryPathOverride, enforcedCustomBinaryPaths } from "./executable";
 import { resolveBinaryPath } from "./rpc-handlers/shared-pure";
 import { loadSettings } from "./settings";
 import { DEV3_CODEX_DARK_PROFILE, DEV3_CODEX_LIGHT_PROFILE } from "./theme-state";
@@ -841,7 +841,7 @@ async function probeCodex(flag: "--version" | "--help"): Promise<string | null> 
 export async function resolveCodexInstallRoots(platform: NodeJS.Platform = process.platform): Promise<string[] | undefined> {
 	if (platform !== "darwin") return undefined;
 	const settings = await loadSettings();
-	const override = agentBinaryPathOverride("builtin-codex", "codex", settings.agentBinaryPaths, settings.agentCustomBinaryPaths);
+	const override = agentBinaryPathOverride("builtin-codex", "codex", settings.agentBinaryPaths, enforcedCustomBinaryPaths(settings));
 	const launcher = resolveBinaryPath("codex", override).resolvedPath;
 	if (!launcher) return undefined;
 	return codexInstallReadRoots(launcher);

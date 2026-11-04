@@ -1,4 +1,7 @@
 import { accessSync, constants, existsSync, statSync } from "node:fs";
+import type { GlobalSettings } from "../shared/types";
+
+export type CustomPathSettings = Pick<GlobalSettings, "agentCustomBinaryPaths" | "strictAgentCustomBinaryPaths">;
 
 /** True only when `path` names a regular file the current process can execute. */
 export function isExecutableFile(path: string): boolean {
@@ -46,9 +49,30 @@ export function agentBinaryPathOverride(
 	return cachedPath && binaryPathMatchesCommand(cachedPath, baseCommand) ? cachedPath : undefined;
 }
 
+function isStrictCustomPath(agentId: string, settings: CustomPathSettings): boolean {
+	const path = settings.agentCustomBinaryPaths?.[agentId];
+	return !!path && settings.strictAgentCustomBinaryPaths?.[agentId] === path;
+}
+
+/** A custom path saved before custom paths became strict that no longer works. It
+ *  keeps the PATH fallback it was saved under (a Node upgrade removing an nvm path
+ *  must not brick the agent); the caller warns and offers a reset instead. */
+export function staleCustomPath(agentId: string, settings: CustomPathSettings): string | null {
+	const path = settings.agentCustomBinaryPaths?.[agentId];
+	return path && !isStrictCustomPath(agentId, settings) && !isExecutableFile(path) ? path : null;
+}
+
+/** The custom paths a launch obeys: every one except a stale pre-strict path. */
+export function enforcedCustomBinaryPaths(settings: CustomPathSettings): Record<string, string> | undefined {
+	const paths = settings.agentCustomBinaryPaths;
+	if (!paths) return undefined;
+	return Object.fromEntries(Object.entries(paths).filter(([agentId]) => !staleCustomPath(agentId, settings)));
+}
+
 /** The path the user chose for an agent when it is set but unusable (missing or
  *  not executable), else null. A broken choice is never replaced by the system
- *  binary: that would run a different program than the one the user picked. */
+ *  binary: that would run a different program than the one the user picked.
+ *  Pass `enforcedCustomBinaryPaths(settings)`, so a stale pre-strict path is not one. */
 export function brokenCustomPath(agentId: string, customPaths: Record<string, string> | undefined): string | null {
 	const path = customPaths?.[agentId];
 	return path && !isExecutableFile(path) ? path : null;

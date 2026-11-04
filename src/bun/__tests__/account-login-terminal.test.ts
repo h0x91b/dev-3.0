@@ -608,8 +608,20 @@ describe("loginEnv", () => {
 
 describe("resolveLoginExecutable with a custom executable", () => {
 	it("throws for a broken custom path instead of finding the CLI on PATH", async () => {
-		vi.mocked(loadSettings).mockResolvedValueOnce({ agentCustomBinaryPaths: { "builtin-claude": "/definitely/not/here/claude" } } as never);
+		vi.mocked(loadSettings).mockResolvedValueOnce({ agentCustomBinaryPaths: { "builtin-claude": "/definitely/not/here/claude" }, strictAgentCustomBinaryPaths: { "builtin-claude": "/definitely/not/here/claude" } } as never);
 		await expect(resolveLoginExecutable("claude", "node")).rejects.toThrow("/definitely/not/here/claude");
+	});
+
+	it("falls back to PATH for a gone custom path saved before paths became strict", async () => {
+		vi.mocked(loadSettings).mockResolvedValueOnce({ agentCustomBinaryPaths: { "builtin-claude": "/definitely/not/here/claude" } } as never);
+		const bun = Bun as unknown as { which?: unknown };
+		const original = bun.which;
+		bun.which = vi.fn(() => "/on/path/claude");
+		try {
+			expect(await resolveLoginExecutable("claude", "claude")).toBe("/on/path/claude");
+		} finally {
+			bun.which = original;
+		}
 	});
 
 	it("uses a working custom path", async () => {
