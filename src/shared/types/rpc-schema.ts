@@ -536,6 +536,11 @@ export type AppRPCSchema = {
 				params: { kind: AgentAccountKind; accountId: string | null };
 				response: void;
 			};
+			/** Keep one login (`accountId: null` = the system login) out of Auto in every project. */
+			setAutoAccountExcluded: {
+				params: { kind: AgentAccountKind; accountId: string | null; excluded: boolean };
+				response: void;
+			};
 			/** What Auto would pick for a launch right now; null for a harness Auto cannot route. */
 			previewAutoAccount: {
 				params: { kind: AgentAccountKind; projectId?: string | null };

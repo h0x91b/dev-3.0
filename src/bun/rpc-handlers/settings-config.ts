@@ -315,8 +315,9 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 		}),
 		simplifiedModeSource: stored.simplifiedModeSource,
 		analyticsDistinctId: stored.analyticsDistinctId ?? params.analyticsDistinctId,
-		// Written only by the account surfaces' Auto row, after the snapshot was taken.
+		// Written only by the account surfaces' Auto controls, after the snapshot was taken.
 		autoAccountDefault: stored.autoAccountDefault,
+		autoAccountExclusions: stored.autoAccountExclusions,
 	};
 	await saveSettings(next);
 	await noteInterfaceModeChange(stored.simplifiedMode === true, next.simplifiedMode === true, stored.simplifiedModeSource === "fresh");

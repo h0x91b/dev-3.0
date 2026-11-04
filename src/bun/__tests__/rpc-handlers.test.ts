@@ -2310,6 +2310,23 @@ describe("handlers.saveGlobalSettings", () => {
 		expect(vi.mocked(saveSettings).mock.lastCall?.[0].autoAccountDefault).toBeUndefined();
 	});
 
+	it("keeps the stored app-wide Auto exclusions whatever the renderer's snapshot says", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({ autoAccountExclusions: ["cl-1"] } as GlobalSettings);
+		await handlers.saveGlobalSettings({ updateChannel: "beta" } as unknown as GlobalSettings);
+		expect(vi.mocked(saveSettings).mock.lastCall?.[0].autoAccountExclusions).toEqual(["cl-1"]);
+	});
+
+	it("adds and removes one login's app-wide Auto exclusion", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({ autoAccountExclusions: ["cl-1"] } as GlobalSettings);
+		await handlers.setAutoAccountExcluded({ kind: "claude", accountId: null, excluded: true });
+		expect(vi.mocked(saveSettings).mock.lastCall?.[0].autoAccountExclusions).toEqual(["cl-1", "system:claude"]);
+
+		await handlers.setAutoAccountExcluded({ kind: "claude", accountId: "cl-1", excluded: false });
+		expect(vi.mocked(saveSettings).mock.lastCall?.[0].autoAccountExclusions).toBeUndefined();
+
+		await expect(handlers.setAutoAccountExcluded({ kind: "omp", accountId: "o-1", excluded: true })).rejects.toThrow();
+	});
+
 	// The switch has to reach the collector in this session: a diagnostic that
 	// only starts at the next launch is useless while the app is misbehaving.
 	it("starts and stops the freeze collector when the stored switch changes", async () => {

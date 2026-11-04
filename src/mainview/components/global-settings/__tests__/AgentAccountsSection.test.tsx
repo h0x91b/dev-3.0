@@ -22,6 +22,7 @@ vi.mock("../../../rpc", () => ({
 			addClaudeAccountWithoutLogin: vi.fn(),
 			getAccountLoginPtyUrl: vi.fn().mockResolvedValue("ws://localhost:1/?session=account-login-l1"),
 			setActiveAgentAccount: vi.fn(),
+			setAutoAccountExcluded: vi.fn(),
 			removeAgentAccount: vi.fn(),
 			renameAgentAccount: vi.fn(),
 			listPinnedClaudeLogins: vi.fn().mockResolvedValue([]),
@@ -97,6 +98,7 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	mockedApi.request.listAgentAccounts.mockResolvedValue(makeState());
 	mockedApi.request.setActiveAgentAccount.mockResolvedValue(undefined as any);
+	mockedApi.request.setAutoAccountExcluded.mockResolvedValue(undefined as any);
 	mockedApi.request.removeAgentAccount.mockResolvedValue(undefined as any);
 	mockedApi.request.renameAgentAccount.mockResolvedValue(undefined as any);
 	mockedApi.request.getAccountLogin.mockResolvedValue(null);
@@ -936,6 +938,42 @@ describe("AgentAccountsSection", () => {
 			mockedApi.request.listAgentAccounts.mockResolvedValue(withCurrent({ ...dana, email: "lee@example.test", userId: "user-lee" }));
 			renderSection();
 			expect(await screen.findByText("Auto (balanced)")).toBeTruthy();
+		});
+	});
+
+	describe("per-login Auto switch", () => {
+		it("keeps a login out of Auto without choosing it as the default", async () => {
+			const user = userEvent.setup();
+			renderSection();
+			await user.click(await screen.findByRole("switch", { name: "Let Auto use work@example.com" }));
+			await waitFor(() =>
+				expect(mockedApi.request.setAutoAccountExcluded).toHaveBeenCalledWith({ kind: "claude", accountId: "cl-1", excluded: true }),
+			);
+			expect(mockedApi.request.setActiveAgentAccount).not.toHaveBeenCalled();
+		});
+
+		it("shows an excluded login as skipped and lets it back in", async () => {
+			const user = userEvent.setup();
+			const state = makeState();
+			state.claude.autoExcluded = ["system:claude"];
+			mockedApi.request.listAgentAccounts.mockResolvedValue(state);
+			renderSection();
+			const toggle = await screen.findByRole("switch", { name: "Let Auto use Default login (/home/me/.claude)" });
+			expect(toggle.getAttribute("aria-checked")).toBe("false");
+			expect(screen.getByText("Skipped by Auto")).toBeTruthy();
+			await user.click(toggle);
+			await waitFor(() =>
+				expect(mockedApi.request.setAutoAccountExcluded).toHaveBeenCalledWith({ kind: "claude", accountId: null, excluded: false }),
+			);
+		});
+
+		it("has no switch while Auto has a single login to balance", async () => {
+			mockedApi.request.listAgentAccounts.mockResolvedValue(
+				makeState({ claude: { ...makeState().claude, systemIdentity: null } }),
+			);
+			renderSection();
+			expect(await screen.findByText("work@example.com")).toBeTruthy();
+			expect(screen.queryByRole("switch")).toBeNull();
 		});
 	});
 });
