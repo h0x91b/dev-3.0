@@ -2746,6 +2746,24 @@ describe("handlers.getProjectCurrentBranch", () => {
 		expect(result).toEqual({ branch: null, isBaseBranch: true, isDirty: false, behindOrigin: 0 });
 		expect(git.getBehindOriginCount).not.toHaveBeenCalled();
 	});
+
+	it("shares one in-flight read between concurrent pollers, then reads afresh", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+		let answer!: (branch: string) => void;
+		vi.mocked(git.getCurrentBranch).mockReturnValueOnce(new Promise((resolve) => { answer = resolve; }));
+		vi.mocked(git.isWorktreeDirty).mockResolvedValue(false);
+
+		const calls = [1, 2, 3].map(() => handlers.getProjectCurrentBranch({ projectId: "proj-1" }));
+		await vi.waitFor(() => expect(answer).toBeTypeOf("function"));
+		answer("feat/x");
+		const results = await Promise.all(calls);
+
+		expect(results.map((r) => r.branch)).toEqual(["feat/x", "feat/x", "feat/x"]);
+		expect(git.getCurrentBranch).toHaveBeenCalledTimes(1);
+
+		vi.mocked(git.getCurrentBranch).mockResolvedValueOnce("feat/y");
+		expect((await handlers.getProjectCurrentBranch({ projectId: "proj-1" })).branch).toBe("feat/y");
+	});
 });
 
 describe("handlers.pullProjectMain", () => {
@@ -13376,6 +13394,22 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 
 		setIntervalSpy.mockRestore();
 		clearIntervalSpy.mockRestore();
+	});
+
+	it("skips a tick while the previous one is still waiting on git", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "review-by-colleague", worktreePath: "/tmp/test-worktree", branchName: "dev3/task-test" });
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
+		vi.mocked(git.isWorktreeDirty).mockReturnValue(new Promise(() => {}));
+		setPushMessage(vi.fn());
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(5 * 60_000);
+
+		expect(git.isWorktreeDirty).toHaveBeenCalledTimes(1);
 	});
 
 	it("does not offer a merged branch while a watching agent handles it, and offers it after the hold", async () => {

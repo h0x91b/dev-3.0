@@ -257,6 +257,7 @@ export function createSpawnMock(getGhResponse?: () => string) {
 				// Isolation last: the machine's git config must not reach the code under test.
 				env: { ...(opts?.env as NodeJS.ProcessEnv | undefined ?? process.env), ...GIT_CONFIG_ISOLATION },
 				stdio: ["pipe", "pipe", "pipe"],
+				detached: opts?.detached === true,
 			});
 
 			let sink: ReturnType<typeof nodeStdinAsFileSink> | undefined;
@@ -289,6 +290,7 @@ export function createSpawnMock(getGhResponse?: () => string) {
 			});
 
 			return {
+				pid: child.pid,
 				exited,
 				stdin: sink,
 				stdout: child.stdout ? toWebStream(child.stdout) : emptyStream(),
