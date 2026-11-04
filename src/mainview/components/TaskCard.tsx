@@ -493,9 +493,13 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const railColor = isCompleting || isShuttingDown ? "#888" : activeCol ? activeCol.color : color;
 
 	// ---- IDENTITY zone inputs -----------------------------------------------
-	const agent = task.agentId ? agents.find((a) => a.id === task.agentId) : null;
-	const agentConfig = agent && task.configId
-		? findAgentConfig(agent, task.configId)
+	// No pick follows the global default; a running task shows the one its main pane got.
+	const runningPane = !task.agentId && task.worktreePath ? task.sessionState?.panes?.[0] : undefined;
+	const agentId = task.agentId ?? runningPane?.agentId;
+	const configId = task.agentId ? task.configId : runningPane?.configId;
+	const agent = agentId ? agents.find((a) => a.id === agentId) : null;
+	const agentConfig = agent && configId
+		? findAgentConfig(agent, configId)
 		: agent?.configurations.find((c) => c.id === agent.defaultConfigId) ?? agent?.configurations[0];
 	const configLabel = agentConfig
 		? (agentConfig.model ? `${agentConfig.name} · ${agentConfig.model}` : agentConfig.name)

@@ -424,7 +424,7 @@ describe("coordinator default agent", () => {
 	});
 });
 
-describe("no picked agent — the default that ran is recorded", () => {
+describe("no picked agent — the default that ran is recorded on the pane", () => {
 	function resolveAsDefault() {
 		vi.mocked(agents.resolveCommandForProject).mockResolvedValue({
 			command: "claude",
@@ -439,7 +439,7 @@ describe("no picked agent — the default that ran is recorded", () => {
 		vi.mocked(agents.resolveCommandForProject).mockResolvedValue({ command: "claude", extraEnv: {} } as never);
 	});
 
-	it("stores the default agent and preset on the task and its pane", async () => {
+	it("names the default agent and preset on the main pane", async () => {
 		resolveAsDefault();
 
 		await launchTaskPty(makeProject(), makeTask({ agentId: null, configId: null }), WORKTREE);
@@ -448,20 +448,19 @@ describe("no picked agent — the default that ran is recorded", () => {
 			expect.anything(),
 			TASK_ID,
 			expect.objectContaining({
-				agentId: "builtin-claude",
-				configId: "claude-bypass",
 				sessionState: { panes: [expect.objectContaining({ agentId: "builtin-claude", configId: "claude-bypass" })] },
 			}),
 		);
 	});
 
-	it("never overwrites an agent the task already has", async () => {
+	it("leaves the task itself following the default, so a relaunch picks up a changed one", async () => {
 		resolveAsDefault();
 
-		await launchTaskPty(makeProject(), makeTask({ agentId: "builtin-codex", configId: "codex-default" }), WORKTREE);
+		await launchTaskPty(makeProject(), makeTask({ agentId: null, configId: null }), WORKTREE);
 
 		const patch = vi.mocked(data.updateTask).mock.calls[0]?.[2];
 		expect(patch).not.toHaveProperty("agentId");
+		expect(patch).not.toHaveProperty("configId");
 	});
 });
 
