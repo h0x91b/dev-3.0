@@ -1,0 +1,1 @@
+The repo's Claude Code auto-approve hook now resolves its script from the project root instead of the current directory, so it keeps working after an agent runs `cd` into a subfolder instead of failing with "auto-approve.sh: not found" on every Bash and Read call.
