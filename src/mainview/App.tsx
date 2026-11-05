@@ -10,6 +10,7 @@ import { useStreamerMode } from "./streamer-mode";
 import { isProjectSilencedForDisplay, setSensitiveProjectIds } from "./sensitive-projects";
 import { statusKey } from "./i18n/status";
 import { columnAgentFailureCopy } from "./utils/columnAgentFailureToast";
+import { preparationFailureMessage } from "./utils/preparationFailureMessage";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
 import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, BoardCopyFailureReason, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo, LiveArtifact, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
@@ -2808,7 +2809,7 @@ function App() {
 				taskTitle: string;
 				error: string;
 			};
-			toast.error(t("kanban.taskPreparationFailed", { taskTitle, error }), { taskId });
+			toast.error(t("kanban.taskPreparationFailed", { taskTitle, error: preparationFailureMessage(error, t) }), { taskId });
 		}
 		window.addEventListener("rpc:taskPreparationFailed", onTaskPreparationFailed);
 		return () => window.removeEventListener("rpc:taskPreparationFailed", onTaskPreparationFailed);

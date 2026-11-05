@@ -17,6 +17,7 @@ const kanban = {
 	"kanban.launchAccountRemoved": "La cuenta que usaba esta tarea fue eliminada: se inició con la cuenta predeterminada.",
 	"kanban.taskPreparationFailed": "No se pudo preparar \"{taskTitle}\" — devuelta a Por hacer: {error}",
 	"task.launchFailed": "Error de inicio: {error}",
+	"task.startBranchMissing": "La rama \"{branch}\" de la que parte esta tarea ya no existe. Probablemente se eliminó al fusionar su pull request. Crea una nueva tarea a partir de otra rama.",
 	"kanban.failedReorderColumns": "No se pudo reordenar las columnas: {error}",
 	"kanban.showMore": "Mostrar más ({count})",
 	"kanban.showLess": "Mostrar menos",

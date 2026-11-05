@@ -10,6 +10,7 @@ import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { useT } from "../i18n";
 import { formatBytes } from "../utils/formatBytes";
+import { preparationFailureMessage } from "../utils/preparationFailureMessage";
 import { formatCountdown } from "../../shared/duration";
 import { trackEvent, agentNameFromId } from "../analytics";
 import { useStatusColors } from "../hooks/useStatusColors";
@@ -1066,7 +1067,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 									{""}
 								</span>
 								<span className="line-clamp-2 break-words">
-									{t("task.launchFailed", { error: task.preparationError })}
+									{t("task.launchFailed", { error: preparationFailureMessage(task.preparationError, t) })}
 								</span>
 							</div>
 						)}

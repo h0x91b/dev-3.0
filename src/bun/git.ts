@@ -16,6 +16,7 @@ import { spawn } from "./spawn";
 import { DEV3_HOME } from "./paths";
 import { listDiffSnapshots, readDiffSnapshot, writeDiffSnapshot } from "./diff-snapshots";
 import { projectStorageKey } from "../shared/project-storage-key";
+import { startBranchMissingMessage } from "../shared/preparation-failure";
 import * as github from "./github";
 
 const log = createLogger("git");
@@ -1506,6 +1507,9 @@ export async function createWorktree(
 			}
 
 			log.error("Failed to create worktree from existing branch", { stderr: result.stderr, taskId: task.id });
+			if (!await resolveRef(project.path, existingBranch)) {
+				throw new Error(startBranchMissingMessage(existingBranch));
+			}
 			throw new Error(`Failed to create worktree: ${result.stderr}`);
 		}
 

@@ -18,6 +18,7 @@ const kanban = {
 	"kanban.launchAccountRemoved": "The account this task used was removed — launched on the default account.",
 	"kanban.taskPreparationFailed": "Couldn't prepare \"{taskTitle}\" — moved back to To Do: {error}",
 	"task.launchFailed": "Launch failed: {error}",
+	"task.startBranchMissing": "The branch \"{branch}\" this task starts from no longer exists. It was probably deleted after its pull request merged. Start a new task from another branch instead.",
 	"kanban.failedReorderColumns": "Failed to reorder columns: {error}",
 	"kanban.showMore": "Show more ({count})",
 	"kanban.showLess": "Show less",
