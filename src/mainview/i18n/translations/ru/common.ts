@@ -761,6 +761,7 @@ const common = {
 	"taskRef.openFailed": "Не удалось открыть {ref}: {error}",
 	"taskRef.openTask": "Открыть задачу {ref}",
 	"taskRef.openPr": "Открыть PR {ref}",
+	"taskRef.previewOpen": "Открыть задачу",
 	"taskRef.previewLoading": "Загрузка…",
 	"taskRef.previewNotFound": "На этой доске нет такой задачи или PR.",
 	"taskRef.previewNotes": "Последние заметки",

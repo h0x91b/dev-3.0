@@ -702,6 +702,7 @@ const common = {
 	"taskRef.openFailed": "Couldn't open {ref}: {error}",
 	"taskRef.openTask": "Open task {ref}",
 	"taskRef.openPr": "Open PR {ref}",
+	"taskRef.previewOpen": "Open task",
 	"taskRef.previewLoading": "Loading…",
 	"taskRef.previewNotFound": "No such task or PR on that board.",
 	"taskRef.previewNotes": "Latest notes",

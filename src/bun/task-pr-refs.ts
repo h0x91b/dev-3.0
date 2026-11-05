@@ -133,6 +133,7 @@ export async function previewTaskPrRef(uri: string, contextProjectId?: string, f
 		return {
 			kind: "task",
 			target,
+			...(task.priority ? { priority: task.priority } : {}),
 			overview: getTaskOverview(task),
 			notes: (task.notes ?? []).slice(-PREVIEW_NOTE_LIMIT).map((n) => ({ id: n.id, content: clip(n.content), createdAt: n.createdAt })),
 			images: images.slice(-PREVIEW_IMAGE_LIMIT).reverse(),

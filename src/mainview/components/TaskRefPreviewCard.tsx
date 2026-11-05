@@ -10,10 +10,14 @@ import { useProjectPrivacy } from "../sensitive-projects";
 import { useTaskPrRefPreview, type PreviewState } from "../task-ref-preview";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { ImageThumbnail } from "./ImageThumbnail";
+import { TaskRefText } from "./TaskRefText";
+import PriorityBadge from "./PriorityBadge";
 
 const OPEN_DELAY_MS = 220;
 const HIDE_DELAY_MS = 160;
-const CARD_CLASS = "fixed z-[1200] w-[22rem] max-w-[90vw] rounded-xl border border-edge-active bg-overlay p-3 text-xs shadow-popover";
+const CARD_CLASS = "fixed z-[1200] w-[22rem] max-w-[90vw] overflow-hidden rounded-xl border border-edge-active bg-overlay text-xs shadow-popover";
+const FOOTER_ACTION_CLASS = "inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-accent transition-[color,background-color,transform] duration-150 ease-out hover:bg-accent/15 hover:text-accent-emphasis motion-safe:active:scale-[0.96]";
+const NERD_FONT = { fontFamily: "'JetBrainsMono Nerd Font Mono'" };
 
 type TaskPreview = Extract<TaskPrRefPreview, { kind: "task" }>;
 type PrPreview = Extract<TaskPrRefPreview, { kind: "pr" }>;
@@ -27,7 +31,16 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 	);
 }
 
-/** What a `<seq:N>` preview shows: who the task is, where it stands, what it left behind. */
+/** The kanban card's identity row: who this is, before what it says. */
+function IdentityRow({ children }: { children: ReactNode }) {
+	return <div className="flex min-w-0 items-center gap-1.5 border-b border-edge py-1.5 pl-2 pr-2.5">{children}</div>;
+}
+
+function Footer({ children }: { children: ReactNode }) {
+	return <div className="flex items-center justify-end border-t border-edge bg-base/50 px-2 py-1">{children}</div>;
+}
+
+/** What a `<seq:N>` preview shows, dressed like its kanban card: status strip, identity row, title. */
 export function TaskRefPreviewBody({ preview, contextProjectId }: { preview: TaskPreview; contextProjectId?: string }) {
 	const t = useT();
 	const privacy = useProjectPrivacy();
@@ -35,102 +48,129 @@ export function TaskRefPreviewBody({ preview, contextProjectId }: { preview: Tas
 	const color = STATUS_COLORS[target.status];
 	const moreImages = preview.imageCount - preview.images.length;
 	const moreArtifacts = preview.artifactCount - preview.artifacts.length;
+	const openTask = () => window.dispatchEvent(new CustomEvent("rpc:openDeepLink", {
+		detail: { kind: "task", taskId: target.taskId, projectId: target.projectId },
+	}));
 	return (
 		<div data-testid="task-ref-preview">
-			<div className="flex items-start justify-between gap-3">
-				<div className="min-w-0">
-					<div className="font-semibold leading-snug text-fg">{target.title}</div>
-					{target.projectId !== contextProjectId && (
-						<div className={`mt-0.5 truncate text-fg-3 ${privacy.maskClass(target.projectId)}`}>{target.projectName}</div>
-					)}
-				</div>
-				<span
-					className="flex-shrink-0 rounded px-1.5 py-0.5 font-medium"
-					style={color ? { color, backgroundColor: `${color}1f` } : undefined}
-				>
+			<div aria-hidden="true" className="h-[3px] w-full" style={{ background: color }} />
+			<IdentityRow>
+				<PriorityBadge priority={preview.priority} />
+				<span className="flex-shrink-0 font-mono text-micro font-semibold text-accent">#{target.seq}</span>
+				{target.projectId !== contextProjectId && (
+					<span className={`min-w-0 truncate text-micro text-fg-3 ${privacy.maskClass(target.projectId)}`}>{target.projectName}</span>
+				)}
+				<span className="ml-auto flex flex-shrink-0 items-center gap-1.5 text-micro font-medium" style={{ color }}>
+					<span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
 					{t(statusKey(target.status))}
 				</span>
-			</div>
-			{preview.overview && <p className="mt-2 whitespace-pre-wrap break-words text-fg-2">{preview.overview}</p>}
-			{preview.notes.length > 0 && (
-				<Section title={t("taskRef.previewNotes")}>
-					<ul className="space-y-1.5">
-						{preview.notes.map((note) => (
-							<li key={note.id} className="line-clamp-3 whitespace-pre-wrap break-words text-fg-2">{note.content}</li>
-						))}
-					</ul>
-				</Section>
-			)}
-			{preview.images.length > 0 && (
-				<Section title={t("taskRef.previewImages")}>
-					<div className="flex items-center gap-2 overflow-hidden">
-						{preview.images.map((image, index) => (
-							<ImageThumbnail
-								key={image.id}
-								path={image.storedPath}
-								onClick={() => window.dispatchEvent(new CustomEvent("dev3:openImageViewer", {
-									detail: { taskId: target.taskId, projectId: target.projectId, images: preview.images, index },
-								}))}
-							/>
-						))}
-						{moreImages > 0 && <span className="flex-shrink-0 text-fg-3">{t.plural("taskRef.previewMore", moreImages)}</span>}
-					</div>
-				</Section>
-			)}
-			{preview.artifacts.length > 0 && (
-				<Section title={t("taskRef.previewArtifacts")}>
-					<ul className="space-y-0.5">
-						{preview.artifacts.map((artifact, index) => (
-							<li key={artifact.id}>
-								<button
-									type="button"
-									className="w-full truncate rounded px-1 py-0.5 text-left text-accent hover:bg-overlay-hover hover:text-accent-emphasis"
-									onClick={() => window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
-										detail: { taskId: target.taskId, taskStatus: target.status, projectId: target.projectId, artifacts: preview.artifacts, index, paneless: true },
+			</IdentityRow>
+			<div className="px-3 pb-3 pt-2">
+				<div className="break-words text-sm font-medium leading-relaxed text-fg line-clamp-3">{target.title}</div>
+				{preview.overview && (
+					<p className="mt-1.5 whitespace-pre-wrap break-words text-fg-2">
+						<TaskRefText text={preview.overview} contextProjectId={target.projectId} preview={false} />
+					</p>
+				)}
+				{preview.notes.length > 0 && (
+					<Section title={t("taskRef.previewNotes")}>
+						<ul className="space-y-1.5">
+							{preview.notes.map((note) => (
+								<li key={note.id} className="line-clamp-3 whitespace-pre-wrap break-words text-fg-2">
+									<TaskRefText text={note.content} contextProjectId={target.projectId} preview={false} />
+								</li>
+							))}
+						</ul>
+					</Section>
+				)}
+				{preview.images.length > 0 && (
+					<Section title={t("taskRef.previewImages")}>
+						<div className="flex items-center gap-2 overflow-hidden">
+							{preview.images.map((image, index) => (
+								<ImageThumbnail
+									key={image.id}
+									path={image.storedPath}
+									onClick={() => window.dispatchEvent(new CustomEvent("dev3:openImageViewer", {
+										detail: { taskId: target.taskId, projectId: target.projectId, images: preview.images, index },
 									}))}
-								>
-									{artifact.title}
-								</button>
-							</li>
-						))}
-					</ul>
-					{moreArtifacts > 0 && <div className="mt-0.5 text-fg-3">{t.plural("taskRef.previewMore", moreArtifacts)}</div>}
-				</Section>
-			)}
+								/>
+							))}
+							{moreImages > 0 && <span className="flex-shrink-0 text-fg-3">{t.plural("taskRef.previewMore", moreImages)}</span>}
+						</div>
+					</Section>
+				)}
+				{preview.artifacts.length > 0 && (
+					<Section title={t("taskRef.previewArtifacts")}>
+						<ul className="space-y-0.5">
+							{preview.artifacts.map((artifact, index) => (
+								<li key={artifact.id}>
+									<button
+										type="button"
+										className="w-full truncate rounded px-1 py-0.5 text-left text-accent hover:bg-overlay-hover hover:text-accent-emphasis"
+										onClick={() => window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
+											detail: { taskId: target.taskId, taskStatus: target.status, projectId: target.projectId, artifacts: preview.artifacts, index, paneless: true },
+										}))}
+									>
+										{artifact.title}
+									</button>
+								</li>
+							))}
+						</ul>
+						{moreArtifacts > 0 && <div className="mt-0.5 text-fg-3">{t.plural("taskRef.previewMore", moreArtifacts)}</div>}
+					</Section>
+				)}
+			</div>
+			<Footer>
+				<button type="button" data-testid="task-ref-preview-open" className={FOOTER_ACTION_CLASS} onClick={openTask}>
+					{t("taskRef.previewOpen")}
+				</button>
+			</Footer>
 		</div>
 	);
 }
 
 /**
  * The PR side for surfaces that cannot host `TaskPrStatusPopover` (the terminal
- * has no React trigger to anchor it): title, lifecycle and CI in one glance.
+ * has no React trigger to anchor it): identity, lifecycle and CI in one glance.
  */
 export function PrRefSummary({ preview }: { preview: PrPreview }) {
 	const t = useT();
 	const { badge, target } = preview;
 	const tone = prStateTone(prDisplayState(badge?.mergeState?.state, badge?.isDraft));
 	const ci = badge?.ciStatus;
+	const url = badge?.url || target.url;
 	return (
 		<div data-testid="pr-ref-summary">
-			<div className="font-semibold text-fg">{t("task.prStatusPopover", { number: String(target.number) })}</div>
-			{badge?.prTitle && <div className="mt-0.5 break-words text-fg-2">{badge.prTitle}</div>}
-			<div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-				{tone.labelKey && <span className={`font-medium ${tone.text}`}>{t(tone.labelKey)}</span>}
+			<IdentityRow>
+				<span className="flex-shrink-0 font-mono text-micro font-semibold text-accent">{t("task.prNumber", { number: String(target.number) })}</span>
+				{tone.labelKey && <span className={`ml-auto flex-shrink-0 text-micro font-medium ${tone.text}`}>{t(tone.labelKey)}</span>}
+			</IdentityRow>
+			<div className="px-3 pb-3 pt-2">
+				{badge?.prTitle
+					? <div className="break-words text-sm font-medium leading-relaxed text-fg line-clamp-3">{badge.prTitle}</div>
+					: <div className="text-fg-muted">{t("task.prNotLoaded")}</div>}
 				{ci && (
-					<span className={ci === "success" ? "text-success" : ci === "failure" ? "text-danger" : "text-warning-strong"}>
+					<div className={`mt-1.5 ${ci === "success" ? "text-success" : ci === "failure" ? "text-danger" : "text-warning-strong"}`}>
 						{t("task.prChecks")}: {t(ci === "success" ? "task.prCheckPassed" : ci === "failure" ? "task.prCheckFailed" : "task.prCheckPending")}
-					</span>
+					</div>
 				)}
-				{!badge && <span className="text-fg-muted">{t("task.prNotLoaded")}</span>}
 			</div>
+			{url && (
+				<Footer>
+					<a href={url} target="_blank" rel="noopener noreferrer" data-testid="pr-ref-summary-open" className={FOOTER_ACTION_CLASS}>
+						<span aria-hidden="true" className="leading-none" style={NERD_FONT}>{"\u{F0401}"}</span>
+						{t("task.openPR", { number: String(target.number) })}
+					</a>
+				</Footer>
+			)}
 		</div>
 	);
 }
 
 function PreviewContent({ state, contextProjectId }: { state: PreviewState; contextProjectId?: string }) {
 	const t = useT();
-	if (state.status !== "ready") return <div className="text-fg-muted">{t("taskRef.previewLoading")}</div>;
-	if (!state.preview) return <div className="text-fg-muted">{t("taskRef.previewNotFound")}</div>;
+	if (state.status !== "ready") return <div className="p-3 text-fg-muted">{t("taskRef.previewLoading")}</div>;
+	if (!state.preview) return <div className="p-3 text-fg-muted">{t("taskRef.previewNotFound")}</div>;
 	return state.preview.kind === "task"
 		? <TaskRefPreviewBody preview={state.preview} contextProjectId={contextProjectId} />
 		: <PrRefSummary preview={state.preview} />;

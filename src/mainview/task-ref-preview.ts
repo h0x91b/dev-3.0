@@ -36,6 +36,7 @@ export function useTaskPrRefPreview(ref: string, contextProjectId?: string) {
 		setState((prev) => (prev.status === "ready" ? prev : { status: "loading" }));
 		const preview = await loadTaskPrRefPreview(ref, contextProjectId, fresh);
 		if (alive.current) setState({ status: "ready", preview });
+		return preview;
 	}, [contextProjectId, ref]);
 
 	const load = useCallback(() => { void run(false); }, [run]);

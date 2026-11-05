@@ -703,6 +703,7 @@ const common = {
 	"taskRef.openFailed": "No se pudo abrir {ref}: {error}",
 	"taskRef.openTask": "Abrir tarea {ref}",
 	"taskRef.openPr": "Abrir PR {ref}",
+	"taskRef.previewOpen": "Abrir tarea",
 	"taskRef.previewLoading": "Cargando…",
 	"taskRef.previewNotFound": "No existe esa tarea o PR en ese tablero.",
 	"taskRef.previewNotes": "Últimas notas",

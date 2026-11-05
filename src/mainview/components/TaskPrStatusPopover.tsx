@@ -16,8 +16,8 @@ interface TaskPrStatusPopoverProps {
 	/** The task whose polled PR status this is; with `projectId` it powers Refresh. */
 	projectId?: string;
 	taskId?: string;
-	/** Replaces the task-cache refresh, for a PR no task polls (a `<pr:N>` reference). */
-	onRefresh?: () => Promise<void>;
+	/** Replaces the task-cache refresh, for a PR no task polls (a `<pr:N>` reference); resolves false when GitHub had nothing. */
+	onRefresh?: () => Promise<boolean>;
 	/** Called each time the popover or sheet opens, so a lazy owner can load `prInfo`. */
 	onOpen?: () => void;
 	/** When provided, the "N unresolved comments" row becomes a deep link that
@@ -236,8 +236,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onRefre
 		setRefreshing(true);
 		try {
 			if (onRefresh) {
-				await onRefresh();
-				setRefreshNotice(null);
+				setRefreshNotice((await onRefresh()) ? null : "unavailable");
 			} else if (taskId && projectId) {
 				const result = await api.request.refreshTaskPrStatus({ taskId, projectId });
 				const outcome = result?.outcome;

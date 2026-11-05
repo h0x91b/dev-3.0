@@ -25,6 +25,8 @@ interface TaskRefLinkProps {
 	taskId?: string;
 	/** A markdown link's own label; defaults to the token. */
 	children?: ReactNode;
+	/** False inside a preview card: a nested card would close its parent on the way in. */
+	preview?: boolean;
 }
 
 /**
@@ -33,7 +35,7 @@ interface TaskRefLinkProps {
  * the same token agents write. A task opens in the app, a PR on GitHub; hovering
  * previews either one.
  */
-export function TaskRefLink({ taskRef, contextProjectId, taskId, children }: TaskRefLinkProps) {
+export function TaskRefLink({ taskRef, contextProjectId, taskId, children, preview = true }: TaskRefLinkProps) {
 	const t = useT();
 	const scope = useContext(TaskRefScopeContext);
 	const projectId = contextProjectId ?? scope.projectId;
@@ -57,6 +59,7 @@ export function TaskRefLink({ taskRef, contextProjectId, taskId, children }: Tas
 			{children ?? uri}
 		</button>
 	);
+	if (!preview) return link;
 	return taskRef.kind === "task"
 		? <TaskRefHoverCard refUri={uri} contextProjectId={projectId}>{link}</TaskRefHoverCard>
 		: <PrRefPopover number={taskRef.number} refUri={uri} contextProjectId={projectId}>{link}</PrRefPopover>;
@@ -68,7 +71,14 @@ function PrRefPopover({ number, refUri: uri, contextProjectId, children }: { num
 	const preview = state.status === "ready" && state.preview?.kind === "pr" ? state.preview : null;
 	const prInfo: TaskPRBadgeInfo = preview?.badge ?? { number, url: preview?.target.url ?? "" };
 	return (
-		<TaskPrStatusPopover prInfo={prInfo} onOpen={load} onRefresh={refresh}>
+		<TaskPrStatusPopover
+			prInfo={prInfo}
+			onOpen={load}
+			onRefresh={async () => {
+				const fresh = await refresh();
+				return fresh?.kind === "pr" && fresh.badge != null;
+			}}
+		>
 			{children}
 		</TaskPrStatusPopover>
 	);
@@ -91,6 +101,7 @@ interface TaskRefTextProps {
 	text: string;
 	contextProjectId?: string;
 	taskId?: string;
+	preview?: boolean;
 }
 
 /**
@@ -98,12 +109,12 @@ interface TaskRefTextProps {
  * Renders inline fragments only, so it drops into any existing `whitespace-pre-wrap`
  * container without changing its layout.
  */
-export function TaskRefText({ text, contextProjectId, taskId }: TaskRefTextProps): ReactNode {
+export function TaskRefText({ text, contextProjectId, taskId, preview }: TaskRefTextProps): ReactNode {
 	const parts = useMemo(() => splitTaskRefs(text), [text]);
 	if (parts.length === 1 && typeof parts[0] === "string") return parts[0];
 	return parts.map((part, i) =>
 		typeof part === "string"
 			? <Fragment key={`t${i}`}>{part}</Fragment>
-			: <TaskRefLink key={`r${part.key}`} taskRef={part.ref} contextProjectId={contextProjectId} taskId={taskId} />,
+			: <TaskRefLink key={`r${part.key}`} taskRef={part.ref} contextProjectId={contextProjectId} taskId={taskId} preview={preview} />,
 	);
 }

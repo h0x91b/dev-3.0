@@ -98,7 +98,7 @@ describe("hover previews", () => {
 			kind: "task",
 			target: { kind: "task", taskId: "t-9", projectId: "p-1", projectName: "x", seq: 9, title: "Fix auth race", status: "in-progress" },
 			overview: "Lock landed, verifying.",
-			notes: [{ id: "n1", content: "Root cause is the token refresh.", createdAt: "" }],
+			notes: [{ id: "n1", content: "Root cause is the token refresh, see <seq:5>.", createdAt: "" }],
 			images: [],
 			imageCount: 0,
 			artifacts: [{ id: "a1", title: "Race report" }],
@@ -110,11 +110,20 @@ describe("hover previews", () => {
 		expect(previewTaskPrRef).toHaveBeenCalledWith({ ref: "seq:9", contextProjectId: "p-1" });
 		expect(card.textContent).toContain("Fix auth race");
 		expect(card.textContent).toContain("Lock landed, verifying.");
-		expect(card.textContent).toContain("Root cause is the token refresh.");
+		expect(card.textContent).toContain("Root cause is the token refresh, see seq:5.");
+		// A ref inside the card is a plain link: a nested card would close this one on the way in.
+		const nested = card.querySelector("[data-task-ref='seq:5']")!;
+		expect(nested.tagName).toBe("BUTTON");
+		expect(nested.parentElement?.tagName).toBe("LI");
 		expect(card.textContent).toContain("Race report");
 		expect(card.textContent).toContain("+2 more");
 		// Same project as the text: no project line to repeat it.
 		expect(screen.queryByText("x")).toBeNull();
+		const opened = vi.fn();
+		window.addEventListener("rpc:openDeepLink", opened as EventListener);
+		fireEvent.click(screen.getByTestId("task-ref-preview-open"));
+		expect((opened.mock.calls[0][0] as CustomEvent).detail).toEqual({ kind: "task", taskId: "t-9", projectId: "p-1" });
+		window.removeEventListener("rpc:openDeepLink", opened as EventListener);
 	});
 
 	it("says so when the reference resolves to nothing", async () => {
@@ -136,5 +145,20 @@ describe("hover previews", () => {
 		const popover = await screen.findByTestId("pr-status-popover");
 		await waitFor(() => expect(popover.textContent).toContain("Add the lock"));
 		expect(previewTaskPrRef).toHaveBeenCalledWith({ ref: "pr:7", contextProjectId: "p-1" });
+	});
+});
+
+describe("PrRefSummary", () => {
+	it("opens the PR on GitHub in a new tab", async () => {
+		const { PrRefSummary } = await import("../TaskRefPreviewCard");
+		wrap(<PrRefSummary preview={{
+			kind: "pr",
+			target: { kind: "pr", number: 2191, projectId: "p-1", projectName: "x", url: "https://github.com/o/r/pull/2191" },
+			badge: { number: 2191, url: "https://github.com/o/r/pull/2191", prTitle: "Run cleanup", mergeState: { mergeable: null, status: null, state: "MERGED" }, ciStatus: "success" },
+		}} />);
+		const open = screen.getByTestId("pr-ref-summary-open");
+		expect(open.getAttribute("href")).toBe("https://github.com/o/r/pull/2191");
+		expect(open.getAttribute("target")).toBe("_blank");
+		expect(open.getAttribute("rel")).toContain("noopener");
 	});
 });
