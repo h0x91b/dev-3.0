@@ -12,6 +12,8 @@ import { useResolvedTheme } from "../../hooks/useResolvedTheme";
 import { MarkdownImage, MarkdownImageProvider } from "./markdown-images";
 import { createSourceLineComponents } from "./markdown-source-lines";
 import { remarkProtectRelativeUrls, safeLinkHref, unprotect } from "./markdown-urls";
+import { parseRefUri } from "../../../shared/task-refs";
+import { TaskRefLink } from "../TaskRefText";
 
 const mermaidPlugin = createMermaidPlugin();
 const plugins = { mermaid: mermaidPlugin };
@@ -149,9 +151,12 @@ export function MarkdownContent({
 				return <tr {...props} className={`border-border ${className ?? ""}`} data-streamdown="table-row" data-diff-kind={kind} />;
 			},
 		}),
-		a: ({ node: _node, href, ...props }) => (
-			<ExternalMarkdownLink {...props} href={safeLinkHref(unprotect(href))} />
-		),
+		a: ({ node: _node, href, children, ...props }) => {
+			const target = unprotect(href);
+			const taskRef = target ? parseRefUri(target) : null;
+			if (taskRef) return <TaskRefLink taskRef={taskRef}>{children}</TaskRefLink>;
+			return <ExternalMarkdownLink {...props} href={safeLinkHref(target)}>{children}</ExternalMarkdownLink>;
+		},
 		img: ({ node: _node, src, ...props }) => (
 			<MarkdownImage
 				{...props}

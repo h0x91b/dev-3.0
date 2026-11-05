@@ -1,5 +1,6 @@
 import { useState, type Dispatch } from "react";
 import { TaskRoleChip } from "./TaskRoleBand";
+import { TaskRefText } from "./TaskRefText";
 import type { CodingAgent, Label, PortInfo, Project, Task, TaskPRBadgeInfo, TaskPriority, TaskStatus } from "../../shared/types";
 import { getAllowedTransitions, getTaskTitle, isCoordinatorTask, isTaskDisconnected } from "../../shared/types";
 import { earlierPullRequests } from "../../shared/task-pull-requests";
@@ -345,7 +346,7 @@ export default function ActiveTaskRow({
 							className="mt-1.5 pt-1.5 border-t border-accent/20 text-xs leading-relaxed text-fg-2 whitespace-pre-wrap break-words"
 							data-testid={`active-task-overview-${task.id}`}
 						>
-							{effective}
+							<TaskRefText text={effective} contextProjectId={task.projectId} taskId={task.id} />
 						</div>
 					);
 				})()}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { TaskRefText } from "./TaskRefText";
 import type { TaskNote } from "../../shared/types";
 import { useT } from "../i18n";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
@@ -129,7 +130,7 @@ export function NoteItem({ note, onSave, onDelete, projectId, taskId, clamp }: N
 						className={`text-xs text-fg-2 whitespace-pre-wrap ${clamp && !expanded ? CLAMP_CLASS : ""}`}
 						data-testid="note-body"
 					>
-						{note.content}
+						<TaskRefText text={note.content} contextProjectId={projectId} taskId={taskId} />
 					</div>
 					{clamp && (overflows || expanded) && (
 						<button

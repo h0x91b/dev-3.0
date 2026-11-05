@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { TaskRefText } from "./TaskRefText";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import type { TerminalPreviewState } from "../hooks/useTerminalPreview";
@@ -312,7 +313,7 @@ function TerminalPreviewPopover({
 								overflow: "hidden",
 							}}
 						>
-							{displayText || t("overview.empty")}
+							{displayText ? <TaskRefText text={displayText} contextProjectId={projectId ?? undefined} taskId={taskId ?? undefined} /> : t("overview.empty")}
 						</p>
 					)}
 				</div>
