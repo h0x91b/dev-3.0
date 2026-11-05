@@ -20,6 +20,7 @@ export function startBackgroundSchedulers(): void {
 	// Revives opted-in tasks whose agent conversation died (exit, rate limit, network).
 	startTaskKeepAliveScheduler();
 	// Daily `doctor --worktrees --prune-older-than 14d`. First check an hour after boot.
+	// A desktop app beside a headless server is safe: the shared state file claims the day.
 	startWorktreeCleanupScheduler();
 	// Per-task attention time ("your time" on the Productivity dashboard), from the
 	// window focus and active task that any client, desktop or browser, reports.

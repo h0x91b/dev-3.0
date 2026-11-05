@@ -42,7 +42,7 @@ import { startSelfUpdateWatch, stopSelfUpdateWatch } from "./self-update-watch";
 import { VIEWS_DIR_AUTO_ENV } from "./self-update";
 import { configureHandoffWorker } from "./conversation-handoff-runner";
 import { configureClonefileWorker } from "./cow-clone";
-import { configureWorktreeCleanupWorker, startWorktreeCleanupScheduler, stopWorktreeCleanupScheduler } from "./worktree-cleanup-scheduler";
+import { configureWorktreeCleanupWorker } from "./worktree-cleanup-scheduler";
 
 const log = createLogger("headless");
 
@@ -518,10 +518,6 @@ startResourceMonitor((name, payload) => {
 	pushToBrowserClients(name, payload);
 });
 
-// Daily `doctor --worktrees --prune-older-than 14d`, same as the GUI entry. A desktop
-// app running beside this server is safe: the shared state file claims the day.
-startWorktreeCleanupScheduler();
-
 // ── Self-update watch ──
 // A headless box is the one place where "there is an update, press restart" never
 // gets pressed — nobody opens a terminal on it. This checks on the same 30-minute
@@ -609,7 +605,6 @@ function shutdown(signal: string): void {
 	stopQrAutoRefresh();
 	stopPortScanPoller();
 	stopResourceMonitor();
-	stopWorktreeCleanupScheduler();
 	stopRateLimitMonitor();
 	stopBackgroundSchedulers();
 	stopSelfUpdateWatch();
