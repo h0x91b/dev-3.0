@@ -118,7 +118,8 @@ export class ResumeUnavailableError extends Error {
 }
 
 export interface ResumeTaskOptions {
-	/** Replace the terminal, but only when every saved conversation can be resumed. */
+	/** Replace the live terminal. "always" (user restart) refuses unless every conversation is restored exactly;
+	 * "if-exited" (keep-alive) acts only on a dead agent and reopens it like a plain resume. */
 	restart?: "always" | "if-exited";
 	/** Report a live terminal instead of tearing it down to relaunch. */
 	refuseLive?: boolean;
@@ -201,11 +202,16 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 			throw new Error("Cannot restart: the task must be active and neither preparing, shutting down nor hibernated.");
 		}
 		assertTaskWorkspacePresent(project, task.worktreePath);
-		if (taskTerminalBackendIdentity(task) === "native") {
+		// A user restart must restore everything it stops; the watchdog only revives an agent that already died.
+		if (opts.restart === "always" && taskTerminalBackendIdentity(task) === "native") {
 			const live = await nativeTaskPaneCommandsStrict(task.id);
 			if ((task.sessionState?.panes.length ?? 0) > 1 || (live.kind === "read" && live.panes.some((pane) => pane.paneId !== NATIVE_AGENT_PANE_ID))) {
 				throw new Error("Cannot restart a native terminal with extra panes: only its main agent can be restored. Close the extra panes first. Nothing was stopped.");
 			}
+		}
+		// Before anything is claimed or woken: a leave-alone pass must write nothing.
+		if (opts.restart === "if-exited" && await taskTerminalAlive(task) && await taskMainAgentLiveness(task) !== "exited") {
+			return { kind: "already-running", backend: taskTerminalBackendIdentity(task) };
 		}
 	}
 	if (opts.refuseLive && await taskTerminalAlive(task)) {
@@ -252,7 +258,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 		status: "skipped",
 		paneId: null,
 	}));
-	if (opts.restart && targets.some((target, i) =>
+	if (opts.restart === "always" && targets.some((target, i) =>
 		!target.sessionId || (target.mode !== "exact" && target.mode !== "unverified")
 		|| (stored[i]?.sessionId && target.sessionId !== stored[i].sessionId),
 	)) {
@@ -275,9 +281,6 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 	await wakeIfHibernated(project, task);
 
 	if (opts.restart) {
-		if (opts.restart === "if-exited" && await taskTerminalAlive(task) && await taskMainAgentLiveness(task) !== "exited") {
-			return { kind: "already-running", backend: taskTerminalBackendIdentity(task) };
-		}
 		// Pane-exit reconciliation must not discard the conversations while the old terminal dies.
 		const priorState = task.sessionState;
 		task.sessionState = { panes: panes.map((pane, i) => ({ ...pane, sessionId: targets[i].sessionId, paneId: null, parked: true })) };

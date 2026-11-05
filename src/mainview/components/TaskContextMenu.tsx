@@ -82,7 +82,7 @@ export default function TaskContextMenu({
 	const labelIds = task.labelIds ?? [];
 	const disconnected = isTaskDisconnected(task);
 	const hasSession = !!task.worktreePath && !task.hibernated && !task.preparing && !task.shuttingDown && !disconnected;
-	const canRestart = ACTIVE_STATUSES.includes(task.status) && !!task.worktreePath && !task.draft && !task.hibernated && !task.preparing && !task.shuttingDown;
+	const canRestart = hasSession && ACTIVE_STATUSES.includes(task.status) && !task.draft;
 
 	function openSub(next: SubSurface) {
 		if (pos) setAnchorPos(pos);
@@ -197,7 +197,7 @@ export default function TaskContextMenu({
 	async function handleRestartSession() {
 		onClose();
 		if (!await confirm({
-			title: t("task.restartSession"),
+			title: t("task.restartSessionTitle"),
 			message: t("task.restartSessionConfirm"),
 			confirmLabel: t("task.restartSessionCta"),
 			danger: true,

@@ -11615,6 +11615,50 @@ describe("resumeTaskSession — the Resume Session path dev3 agent resume reuses
 		expect((agents.resolveCommandForAgent as any).mock.calls[0][3]).toMatchObject({ resume: true, sessionId: LIVE });
 	});
 
+	// Keep-alive revives an agent that already died the way a plain resume would; the strict user-restart guards do not apply.
+	it.each([
+		["agent-latest", [DEAD], [], (_t: Task) => {}],
+		["substituted", [DEAD], [`${LIVE}.jsonl`], (_t: Task) => {}],
+		["fresh-session", [LIVE, DEAD], [`${LIVE}.jsonl`], (_t: Task) => {}],
+		["fresh", ["generic-1"], [], (t: Task) => { t.sessionState!.panes[0] = { ...t.sessionState!.panes[0], agentCmd: "/opt/tools/my-wrapper", agentFamily: null, agentId: null }; }],
+	] as const)("revives an exited agent in %s mode through the watchdog restart", async (mode, ids, files, tweak) => {
+		const task = arrange([...ids], [...files]);
+		tweak(task);
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValueOnce(true).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+		const probe = vi.spyOn(await import("../scheduled-message-author"), "taskMainAgentLiveness").mockResolvedValue("exited");
+		try {
+			const outcome = await resumeTaskSession("task-1", { restart: "if-exited" });
+			expect(outcome).toMatchObject({ kind: "resumed" });
+			if (outcome.kind === "resumed") expect(outcome.result.panes.map((pane) => pane.mode)).toContain(mode);
+			expect(pty.destroySession).toHaveBeenCalledTimes(1);
+		} finally { probe.mockRestore(); }
+	});
+
+	it("revives the main agent of a native terminal with extra panes through the watchdog restart", async () => {
+		arrange([LIVE, LIVE], [`${LIVE}.jsonl`], { terminalBackend: "native" });
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		mockNativePanes.nativeTaskPanesAlive.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+		const probe = vi.spyOn(await import("../scheduled-message-author"), "taskMainAgentLiveness").mockResolvedValue("exited");
+		try {
+			await expect(resumeTaskSession("task-1", { restart: "if-exited" })).resolves.toMatchObject({ kind: "resumed" });
+			expect(pty.destroySessionAwaited).toHaveBeenCalledTimes(1);
+			expect(agents.resolveCommandForAgent).toHaveBeenCalled();
+		} finally { probe.mockRestore(); }
+	});
+
+	it("writes nothing when the watchdog restart finds the agent still alive", async () => {
+		arrange([LIVE], [`${LIVE}.jsonl`], { hibernated: false });
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
+		const probe = vi.spyOn(await import("../scheduled-message-author"), "taskMainAgentLiveness").mockResolvedValue("alive");
+		try {
+			await expect(resumeTaskSession("task-1", { restart: "if-exited" })).resolves.toMatchObject({ kind: "already-running" });
+			expect(data.updateTask).not.toHaveBeenCalled();
+			expect(agents.getAllAgents).not.toHaveBeenCalled();
+		} finally { probe.mockRestore(); }
+	});
+
 	it("keeps the old pane identity when native teardown fails", async () => {
 		const task = arrange([LIVE], [`${LIVE}.jsonl`], { terminalBackend: "native" });
 		const priorState = task.sessionState;

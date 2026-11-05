@@ -187,6 +187,7 @@ describe("TaskContextMenu", () => {
 		const { onClose } = renderMenu();
 		await userEvent.click(screen.getByRole("menuitem", { name: "Restart agent session…" }));
 		expect(confirm).toHaveBeenCalledWith(expect.objectContaining({
+			title: "Restart agent session?",
 			message: expect.stringContaining("All terminal panes close"),
 			confirmLabel: "Restart and resume",
 		}));
@@ -214,7 +215,7 @@ describe("TaskContextMenu", () => {
 		}
 	});
 
-	it.each([{ status: "todo" }, { preparing: true }, { shuttingDown: true }, { draft: true }, { worktreePath: null }])("disables restart for %j", (state) => {
+	it.each([{ status: "todo" }, { preparing: true }, { shuttingDown: true }, { draft: true }, { worktreePath: null }, { runtimeState: { runtime: "idle" } }])("disables restart for %j", (state) => {
 		renderMenu(makeTask(state as Partial<Task>));
 		expect(screen.getByTestId("task-menu-restartSession")).toBeDisabled();
 	});
