@@ -63,8 +63,12 @@ async function tick(): Promise<void> {
 async function tickProject(project: Project): Promise<void> {
 	const tasks = await data.loadTasks(project);
 	const now = Date.now();
-	// "Start after" conditions ride the same tick and the same task read.
-	await tickLaunchAfter(project, tasks, now);
+	// "Start after" conditions ride the same tick and the same task read; a fault there must not cost "Start in".
+	try {
+		await tickLaunchAfter(project, tasks, now);
+	} catch (err) {
+		log.error("Start-after pass failed", { projectId: project.id.slice(0, 8), error: String(err) });
+	}
 	for (const task of tasks) {
 		const sched = task.scheduledLaunch;
 		if (!sched) continue;

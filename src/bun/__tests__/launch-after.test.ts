@@ -132,6 +132,26 @@ describe("start-after tick", () => {
 		expect(moveTask).not.toHaveBeenCalled();
 	});
 
+	it("records a failure when the approval dialog cannot be shown", async () => {
+		requestAgentLaunchApproval.mockRejectedValueOnce(new Error("No app window is connected"));
+		store = [task({ id: "a", status: "completed" }), task({ id: "b", seq: 2, launchAfter: cond({ armedBy: { taskId: "c", seq: 9 } }) })];
+		await tick();
+		// The dialog is not awaited by the tick, so its failure lands a moment later.
+		await vi.waitFor(() => expect(pushCliAttention).toHaveBeenCalledTimes(1));
+		expect(store[1].preparationError).toMatch(/No app window/);
+	});
+
+	it("leaves a declined start in To Do and never asks again", async () => {
+		requestAgentLaunchApproval.mockResolvedValue({ approved: false });
+		store = [task({ id: "a", status: "completed" }), task({ id: "b", seq: 2, launchAfter: cond({ armedBy: { taskId: "c", seq: 9 } }) })];
+		await tick();
+		await tick();
+		expect(requestAgentLaunchApproval).toHaveBeenCalledTimes(1);
+		expect(moveTask).not.toHaveBeenCalled();
+		expect(store[1]).toMatchObject({ status: "todo", launchAfter: null });
+		expect(store[1].preparationError).toBeUndefined();
+	});
+
 	it("records a failed launch on the card and lights attention", async () => {
 		moveTask.mockRejectedValueOnce(new Error("agent missing"));
 		store = [task({ id: "a", status: "completed" }), task({ id: "b", seq: 2, launchAfter: cond() })];
@@ -172,6 +192,40 @@ describe("start-after until merged", () => {
 		await tick(t0 + LAUNCH_AFTER_PROBE_INTERVAL_MS);
 		expect(getPullRequestSnapshot).toHaveBeenCalledTimes(2);
 		expect(moveTask).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps waiting when GitHub cannot be reached, and asks again after the interval", async () => {
+		getPullRequestSnapshot.mockResolvedValue(null);
+		store = [task({ id: "a", status: "completed", prNumber: 7 }), task({ id: "b", seq: 2, launchAfter: cond({ until: "merged" }) })];
+		const t0 = 1_000_000;
+		await tick(t0);
+		expect(store[1].launchAfter).not.toBeNull();
+		expect(store[1].preparationError).toBeUndefined();
+		await tick(t0 + LAUNCH_AFTER_PROBE_INTERVAL_MS);
+		expect(getPullRequestSnapshot).toHaveBeenCalledTimes(2);
+		expect(moveTask).not.toHaveBeenCalled();
+	});
+
+	it("probes a re-armed condition at once instead of inheriting the old wait", async () => {
+		getPullRequestSnapshot.mockResolvedValue({ state: "OPEN" });
+		store = [task({ id: "a", status: "completed", prNumber: 7 }), task({ id: "b", seq: 2, launchAfter: cond({ until: "merged" }) })];
+		await tick(1_000_000);
+		store[1] = { ...store[1], launchAfter: cond({ until: "merged", armedAt: "2026-11-04T12:00:00.000Z" }) };
+		await tick(1_030_000);
+		expect(getPullRequestSnapshot).toHaveBeenCalledTimes(2);
+	});
+
+	it("a failing probe does not hold up the other waiting tasks", async () => {
+		getPullRequestSnapshot.mockRejectedValue(new Error("network down"));
+		store = [
+			task({ id: "a", status: "completed", prNumber: 7 }),
+			task({ id: "b", seq: 2, launchAfter: cond({ until: "merged" }) }),
+			task({ id: "c", seq: 3, launchAfter: cond() }),
+		];
+		await tick();
+		expect(moveTask).toHaveBeenCalledTimes(1);
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ taskId: "c" }));
+		expect(store[1].launchAfter).not.toBeNull();
 	});
 
 	it("gives up when the completed task's PR was closed without merging", async () => {

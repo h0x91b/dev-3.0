@@ -17,6 +17,8 @@ vi.mock("../account-router", () => ({
 }));
 const pushMessage = vi.fn();
 vi.mock("../rpc-handlers/shared-pure", () => ({ getPushMessage: () => pushMessage }));
+const tickLaunchAfter = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined));
+vi.mock("../launch-after", () => ({ tickLaunchAfter }));
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
@@ -62,6 +64,23 @@ describe("scheduled-launch scheduler", () => {
 		await flush();
 		expect(fireScheduledLaunch).toHaveBeenCalledTimes(1);
 		expect(fireScheduledLaunch).toHaveBeenCalledWith(project, task);
+	});
+
+	it("hands the same task list to the start-after pass", async () => {
+		const tasks = [makeTask()];
+		vi.mocked(data.loadTasks).mockResolvedValue(tasks as never);
+		startScheduledLaunchScheduler();
+		await flush();
+		expect(tickLaunchAfter).toHaveBeenCalledWith(project, tasks, expect.any(Number));
+		expect(data.loadTasks).toHaveBeenCalledTimes(1);
+	});
+
+	it("still fires a due \"Start in\" launch when the start-after pass throws", async () => {
+		tickLaunchAfter.mockRejectedValueOnce(new Error("boom"));
+		vi.mocked(data.loadTasks).mockResolvedValue([makeTask()] as never);
+		startScheduledLaunchScheduler();
+		await flush();
+		expect(fireScheduledLaunch).toHaveBeenCalledTimes(1);
 	});
 
 	it("does not fire launches scheduled in the future", async () => {
