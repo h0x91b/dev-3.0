@@ -535,10 +535,10 @@ startRateLimitMonitor((name, payload) => {
 	pushToBrowserClients(name, payload);
 });
 
-// ── Deferred task launches ("Start in" times and "start after" conditions) ──
-// The desktop entry starts this in index.ts; without it here a headless box never fires either.
-const { startScheduledLaunchScheduler, stopScheduledLaunchScheduler } = await import("./scheduled-launch-scheduler");
-startScheduledLaunchScheduler();
+// ── Clock-driven schedulers (automations, "Start in", "Send later", keep-alive, cleanup) ──
+// Same call as index.ts. Without it a headless box never fires any of them.
+const { startBackgroundSchedulers, stopBackgroundSchedulers } = await import("./background-schedulers");
+startBackgroundSchedulers();
 
 // ── PTY event wiring (no mainWindow.webview.rpc — just push to browser) ──
 setOnPtyDied((sessionKey) => {
@@ -611,7 +611,7 @@ function shutdown(signal: string): void {
 	stopResourceMonitor();
 	stopWorktreeCleanupScheduler();
 	stopRateLimitMonitor();
-	stopScheduledLaunchScheduler();
+	stopBackgroundSchedulers();
 	stopSelfUpdateWatch();
 	stopSocketServer();
 	clearRemoteStateIfOwnedBy(process.pid);
