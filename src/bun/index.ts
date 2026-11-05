@@ -732,17 +732,10 @@ startRateLimitMonitor((name, payload) => {
 	}
 });
 
-// Every clock-driven scheduler (automations, "Start in", "Send later", keep-alive,
-// worktree cleanup). headless-entry.ts starts the same set through the same call.
-const { startBackgroundSchedulers } = await import("./background-schedulers");
+// Every clock-driven background job (automations, "Start in", "Send later", keep-alive,
+// worktree cleanup, focus tracking). headless-entry.ts starts the same set the same way.
+const { startBackgroundSchedulers, stopBackgroundSchedulers } = await import("./background-schedulers");
 startBackgroundSchedulers();
-
-// Start the focus tracker — accumulates real UI attention time per task (the
-// "your time" metric on the Productivity dashboard) from the foreground +
-// idle + active-context signals the renderer already reports. Desktop only:
-// headless-entry.ts does not start it.
-const { startFocusTracker, stopFocusTracker } = await import("./focus-tracker");
-startFocusTracker();
 
 // Wire PTY death notifications. This is what replaces a dead terminal with the
 // "session ended" screen, so it has to reach an attached browser too — without it
@@ -850,7 +843,7 @@ function runGlobalQuitCleanup(): void {
 	// Snapshot window geometry so an update restart reopens on the same screen.
 	try { flushWindowState(); } catch (err) { log.warn("flushWindowState failed", { error: String(err) }); }
 	try { stopPortScanPoller(); } catch (err) { log.warn("stopPortScanPoller failed", { error: String(err) }); }
-	try { stopFocusTracker(); } catch (err) { log.warn("stopFocusTracker failed", { error: String(err) }); }
+	try { stopBackgroundSchedulers(); } catch (err) { log.warn("stopBackgroundSchedulers failed", { error: String(err) }); }
 	try { stopResourceMonitor(); } catch (err) { log.warn("stopResourceMonitor failed", { error: String(err) }); }
 	try { stopRateLimitMonitor(); } catch (err) { log.warn("stopRateLimitMonitor failed", { error: String(err) }); }
 	try { stopSocketServer(); } catch (err) { log.warn("stopSocketServer failed", { error: String(err) }); }

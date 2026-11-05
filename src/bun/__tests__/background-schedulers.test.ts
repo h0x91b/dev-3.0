@@ -7,6 +7,10 @@ const { calls, record } = vi.hoisted(() => {
 	return { calls, record: (name: string) => () => { calls.push(name); } };
 });
 
+vi.mock("../focus-tracker", () => ({
+	startFocusTracker: record("startFocusTracker"),
+	stopFocusTracker: record("stopFocusTracker"),
+}));
 vi.mock("../automations-scheduler", () => ({
 	startAutomationsScheduler: record("startAutomationsScheduler"),
 	stopAutomationsScheduler: record("stopAutomationsScheduler"),
@@ -33,13 +37,16 @@ const { startBackgroundSchedulers, stopBackgroundSchedulers } = await import("..
 const BUN_DIR = join(import.meta.dirname, "..");
 const source = (file: string) => readFileSync(join(BUN_DIR, file), "utf8");
 
+// Background jobs that are not `*-scheduler.ts` files but belong in the shared path.
+const OTHER_JOBS = { start: ["startFocusTracker"], stop: ["stopFocusTracker"] };
+
 // Every `start*Scheduler` exported by a `src/bun/*-scheduler.ts` module, read from disk
 // so a new scheduler file fails this suite until it joins the shared start path.
-function schedulerExports(prefix: "start" | "stop"): string[] {
-	return readdirSync(BUN_DIR)
+function expectedJobs(prefix: "start" | "stop"): string[] {
+	const schedulers = readdirSync(BUN_DIR)
 		.filter((file) => file.endsWith("-scheduler.ts"))
-		.flatMap((file) => [...source(file).matchAll(new RegExp(`^export function (${prefix}\\w+Scheduler)\\(`, "gm"))].map((m) => m[1]))
-		.sort();
+		.flatMap((file) => [...source(file).matchAll(new RegExp(`^export function (${prefix}\\w+Scheduler)\\(`, "gm"))].map((m) => m[1]));
+	return [...schedulers, ...OTHER_JOBS[prefix]].sort();
 }
 
 // Top-level `startX(` statements of an entry. Both entries boot the whole app, so
@@ -54,27 +61,27 @@ const DESKTOP_ONLY: Record<string, string> = {
 	startAutoCheck: "headless updates through startSelfUpdateWatch",
 	startDisplayWatch: "watches native window geometry",
 	startRendererWatchdog: "watches the desktop renderer's heartbeat",
-	startFocusTracker: "reads desktop window focus and HID idle",
 	startLoopMonitor: "desktop stall diagnostic",
 };
 
 describe("background schedulers", () => {
 	beforeEach(() => { calls.length = 0; });
 
-	it("starts every scheduler module in src/bun", () => {
+	it("starts every scheduler module in src/bun and the focus tracker", () => {
 		startBackgroundSchedulers();
-		expect([...calls].sort()).toEqual(schedulerExports("start"));
+		expect([...calls].sort()).toEqual(expectedJobs("start"));
 	});
 
-	it("stops every scheduler module in src/bun", () => {
+	it("stops every scheduler module in src/bun and the focus tracker", () => {
 		stopBackgroundSchedulers();
-		expect([...calls].sort()).toEqual(schedulerExports("stop"));
+		expect([...calls].sort()).toEqual(expectedJobs("stop"));
 	});
 
 	it.each(["index.ts", "headless-entry.ts"])("%s starts them through the shared call only", (file) => {
 		const starts = topLevelStarts(file);
 		expect(starts.has("startBackgroundSchedulers")).toBe(true);
-		expect([...starts].filter((name) => /Scheduler$/.test(name))).toEqual([]);
+		const shared = new Set(expectedJobs("start"));
+		expect([...starts].filter((name) => shared.has(name))).toEqual([]);
 	});
 
 	it("headless starts everything the desktop starts, except the listed desktop-only parts", () => {

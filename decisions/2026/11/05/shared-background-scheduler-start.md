@@ -1,16 +1,16 @@
-# One shared start path for the background schedulers
+# One shared start path for the background jobs
 
 ## Context
 
-The desktop entry (`src/bun/index.ts`) started five clock-driven schedulers inline. `dev3 remote` boots through `src/bun/headless-entry.ts`, which started none of them, while comments in `index.ts` and the automations record claimed they "run in headless too". On a headless box, automations, "Start in" launches, "Send later" messages, keep-alive and worktree cleanup never fired, with no error.
+The desktop entry (`src/bun/index.ts`) started five clock-driven schedulers and the focus tracker inline. `dev3 remote` boots through `src/bun/headless-entry.ts`, which started none of them, while comments in `index.ts` and the automations record claimed they "run in headless too". On a headless box, automations, "Start in" launches, "Send later" messages, keep-alive and worktree cleanup never fired, and no focus time was recorded, with no error.
 
 ## Decision
 
-`src/bun/background-schedulers.ts` owns `startBackgroundSchedulers()` / `stopBackgroundSchedulers()`, and both entries call them. A new scheduler goes into that module, never into one entry. `src/bun/__tests__/background-schedulers.test.ts` checks that the module starts and stops every `start*Scheduler` / `stop*Scheduler` exported by a `src/bun/*-scheduler.ts` file, that neither entry starts a scheduler directly, and that every top-level `start*()` in `index.ts` also runs in `headless-entry.ts` unless it is in the test's `DESKTOP_ONLY` list with a reason.
+`src/bun/background-schedulers.ts` owns `startBackgroundSchedulers()` / `stopBackgroundSchedulers()`, and both entries call them. A new scheduler goes into that module, never into one entry. The focus tracker (`src/bun/focus-tracker.ts`) is in the same call: its inputs, window focus and the active task, arrive through the `setWindowForeground` and `setActiveContext` RPCs, which a browser client sends exactly like the desktop renderer. `src/bun/__tests__/background-schedulers.test.ts` checks that the module starts and stops every `start*Scheduler` / `stop*Scheduler` exported by a `src/bun/*-scheduler.ts` file plus the focus tracker, that neither entry starts a scheduler directly, and that every top-level `start*()` in `index.ts` also runs in `headless-entry.ts` unless it is in the test's `DESKTOP_ONLY` list with a reason.
 
 ## Risks
 
-The entry checks read source text, because both entries boot the whole app on import. A start call that is not a top-level statement (for example inside a callback) is invisible to the parity check. The focus tracker stays desktop only: it reads desktop window focus and HID idle, which a headless box does not have.
+The entry checks read source text, because both entries boot the whole app on import. A start call that is not a top-level statement (for example inside a callback) is invisible to the parity check. The focus tracker's idle gate reads the host's HID idle on macOS only. On a macOS headless box, a user working from a browser gets no focus credit while nobody touches the host's own keyboard and mouse. Linux and Windows report idle as unknown, so there a focused browser tab is credited, the same as the desktop app on those platforms.
 
 ## Alternatives considered
 
