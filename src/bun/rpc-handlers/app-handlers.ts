@@ -17,6 +17,7 @@ import { consumeQuitDialogPending, markQuitConfirmed } from "../quit-manager";
 import { consumePendingDeepLinkNav as consumeDeepLinkNavPending } from "../deep-link-nav";
 import { parseDeepLink, type DeepLinkNav } from "../../shared/deep-link";
 import { resolveDeepLink as resolveDeepLinkTarget } from "../deep-link";
+import { resolveTaskPrRef as resolveTaskPrRefTarget, type TaskPrRefResolution } from "../task-pr-refs";
 import { BUNDLED_CHANGELOG } from "../changelog-bundled";
 import * as repoConfig from "../repo-config";
 import { autoConfigureProject } from "../project-autoconfig";
@@ -123,6 +124,12 @@ async function resolveDeepLinkNav(params: { url: string }): Promise<DeepLinkNav 
 		return null;
 	}
 	return resolveDeepLinkTarget(target);
+}
+
+// A `<seq:N>` / `<pr:N>` reference clicked or hovered in agent-written text.
+// A bare reference resolves on `contextProjectId`, the project of the text.
+async function resolveTaskPrRef(params: { ref: string; contextProjectId?: string }): Promise<TaskPrRefResolution | null> {
+	return resolveTaskPrRefTarget(params.ref ?? "", params.contextProjectId);
 }
 
 // Renderer-initiated new window (Cmd+Shift+N). Electrobun's native menu
@@ -1131,6 +1138,7 @@ export const appHandlers = {
 	consumePendingQuitDialog,
 	consumePendingDeepLinkNav,
 	resolveDeepLinkNav,
+	resolveTaskPrRef,
 	openNewWindow,
 	hideApp,
 	setWindowForeground,

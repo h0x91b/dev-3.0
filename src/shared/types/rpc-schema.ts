@@ -10,6 +10,7 @@ import type { AccountLoginState, AgentAccount, AgentAccountKind, AgentAccountsSt
 import type { TerminalBackendIdentity } from "../terminal-backend-identity";
 import type { TaskPaneState, TaskPaneAction, TmuxCloseWindowResult } from "../task-panes";
 import type { DeepLinkNav } from "../deep-link";
+import type { TaskPrRefResolution } from "../task-refs";
 import type { ReviewComment, ReviewReplyAuthor } from "../review";
 import type { LiveChange } from "../live-artifact";
 import type { TelemetryProfile } from "../telemetry-profile";
@@ -1092,6 +1093,11 @@ export type AppRPCSchema = {
 			resolveDeepLinkNav: {
 				params: { url: string };
 				response: DeepLinkNav | null;
+			};
+			/** Resolve a `<seq:N>` / `<pr:N>` reference; a bare one uses `contextProjectId`. */
+			resolveTaskPrRef: {
+				params: { ref: string; contextProjectId?: string };
+				response: TaskPrRefResolution | null;
 			};
 			openNewWindow: {
 				params: void;

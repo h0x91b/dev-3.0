@@ -1,4 +1,5 @@
 import type { AgentUsageDay, AgentUsageReport, ProductivityStatEvent, ProductivityStats, SystemMemorySnapshot, TaskUsageReport } from "../../shared/types";
+import { formatTaskRef } from "../../shared/task-refs";
 import type { AgentRateLimitsReport } from "../../shared/rate-limits";
 import type { PendingApprovalSummary } from "../../shared/agent-approval";
 import type { ModelRate } from "../../shared/agent-pricing";
@@ -210,7 +211,7 @@ async function taskUsage(args: ParsedArgs, socketPath: string, context: CliConte
 		return;
 	}
 	const { totals, coverage } = report;
-	process.stdout.write(`Task #${report.seq} ${truncate(report.title, 60)} (${report.status})\n`);
+	process.stdout.write(`Task ${formatTaskRef(report.seq)} ${truncate(report.title, 60)} (${report.status})\n`);
 	process.stdout.write(`Working dir: ${report.workingDir}${report.worktreeExists ? "" : " (removed)"}\n\n`);
 	if (report.models.length === 0) {
 		process.stdout.write(`No agent usage found in this task's Claude or Codex transcripts${report.coverage.uncoveredArchivedSessions ? ` (${report.coverage.uncoveredArchivedSessions} archived session(s) have no transcript left)` : ""}.\n`);

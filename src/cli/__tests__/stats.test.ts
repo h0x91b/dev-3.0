@@ -259,7 +259,7 @@ describe("dev3 stats usage --task", () => {
 			coverage: { ...taskUsageReport().coverage, uncoveredArchivedSessions: 2, unsupportedArchivedSessions: 1, sharedWorkingDir: true },
 		})));
 		await handleStats("usage", args({ task: "seq:11" }), SOCKET, CTX);
-		expect(stdout).toContain("Task #11 Fix heartbeats (completed)");
+		expect(stdout).toContain("Task <seq:11> Fix heartbeats (completed)");
 		expect(stdout).toContain("(removed)");
 		expect(stdout).toContain("TOTAL");
 		expect(stdout).toContain("0 / 150.0k");

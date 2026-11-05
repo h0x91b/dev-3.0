@@ -698,6 +698,11 @@ const common = {
 	"mobile.backExitToast": "Pulsa Atrás de nuevo para salir",
 	"streamer.privateTitle": "Proyecto privado",
 	"streamer.projectLocked": "Proyecto sensible — bloqueado mientras el modo streamer está activo",
+	"taskRef.notFound": "No hay nada que abrir en {ref}: no existe esa tarea o PR en ese tablero.",
+	"taskRef.prUnknownRepo": "No se encontró el repositorio de GitHub para {ref}.",
+	"taskRef.openFailed": "No se pudo abrir {ref}: {error}",
+	"taskRef.openTask": "Abrir tarea {ref}",
+	"taskRef.openPr": "Abrir PR {ref}",
 };
 
 export default common;

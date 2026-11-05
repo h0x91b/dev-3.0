@@ -107,9 +107,9 @@ describe("runPrWatches", () => {
 		expect(sendMessageImmediately).toHaveBeenCalledTimes(1);
 		const [, text, target, source, opts] = vi.mocked(sendMessageImmediately).mock.calls[0];
 		expect(text).toContain("<dev3-pr-status>");
-		expect(text).toContain("PR #7: CI finished on 2222222: all 1 checks GitHub listed passed.");
+		expect(text).toContain("<pr:7>: CI finished on 2222222: all 1 checks GitHub listed passed.");
 		expect([target, source]).toEqual([{ kind: "pane", paneId: "%1" }, null]);
-		expect(opts).toEqual({ subject: "PR #7: CI passed", origin: "dev3" });
+		expect(opts).toEqual({ subject: "<pr:7>: CI passed", origin: "dev3" });
 		expect(lastStoredWatches()).toBeNull();
 	});
 
@@ -254,7 +254,7 @@ describe("runPrWatches", () => {
 		current = task({ prWatches: [watch("ci", { prNumber: 5 })] });
 		await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
 
-		expect(vi.mocked(sendMessageImmediately).mock.calls[0][1]).toContain("PR #5 is no longer this branch's open PR; watch ended.");
+		expect(vi.mocked(sendMessageImmediately).mock.calls[0][1]).toContain("<pr:5> is no longer this branch's open PR; watch ended.");
 		expect(vi.mocked(sendMessageImmediately).mock.calls[0][1]).not.toContain("#7");
 		expect(lastStoredWatches()).toBeNull();
 	});
@@ -501,7 +501,7 @@ describe("a PR followed with --pr", () => {
 		expect(git.getRemoteBranchTips).not.toHaveBeenCalled();
 		expect(git.commitExists).not.toHaveBeenCalled();
 		const [, text, target] = vi.mocked(sendMessageImmediately).mock.calls[0];
-		expect(text).toContain("PR #2111: CI finished on fffffff: all 1 checks GitHub listed passed.");
+		expect(text).toContain("<pr:2111>: CI finished on fffffff: all 1 checks GitHub listed passed.");
 		expect(target).toEqual({ kind: "pane", paneId: "%5" });
 		expect(lastStoredWatches()).toBeNull();
 	});
@@ -510,13 +510,13 @@ describe("a PR followed with --pr", () => {
 		current = task({ prWatches: [watch("ci"), pinned("ci")] });
 
 		await runPrWatches(project, "t1", greenSample, URL, Date.now(), true);
-		expect(vi.mocked(sendMessageImmediately).mock.calls[0][1]).toContain("PR #7: CI finished");
+		expect(vi.mocked(sendMessageImmediately).mock.calls[0][1]).toContain("<pr:7>: CI finished");
 		expect(vi.mocked(sendMessageImmediately).mock.calls[0][1]).not.toContain("#2111");
 		expect(lastStoredWatches()).toEqual([pinned("ci")]);
 
 		current = { ...current, prWatches: lastStoredWatches()! };
 		await runPrWatches(project, "t1", forkSample(), FORK_URL, Date.now(), false, 2111);
-		expect(vi.mocked(sendMessageImmediately).mock.calls[1][1]).toContain("PR #2111: CI finished");
+		expect(vi.mocked(sendMessageImmediately).mock.calls[1][1]).toContain("<pr:2111>: CI finished");
 		expect(lastStoredWatches()).toBeNull();
 	});
 
@@ -537,7 +537,7 @@ describe("a PR followed with --pr", () => {
 		current = task({ prWatches: [pinned("merged")] });
 		await runPrWatches(project, "t1", forkSample({ state: "MERGED" }), FORK_URL, Date.now(), false, 2111);
 
-		expect(vi.mocked(sendMessageImmediately).mock.calls[0][1]).toContain("PR #2111 merged. It is not this task's own PR, so dev3 offers no completion for it.");
+		expect(vi.mocked(sendMessageImmediately).mock.calls[0][1]).toContain("<pr:2111> merged. It is not this task's own PR, so dev3 offers no completion for it.");
 		expect(hasMergeOfferHold("t1")).toBe(false);
 	});
 

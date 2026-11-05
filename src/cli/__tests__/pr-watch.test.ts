@@ -76,7 +76,7 @@ describe("dev3 pr watch", () => {
 			{ taskId: "task-1", projectId: "proj-1", until: "ci", sourceTaskId: "task-1" },
 			{ timeoutMs: 45_000 },
 		);
-		expect(stdout).toBe("Watching PR #2041 until CI finishes — dev3 will message this agent. No need to poll gh.\n");
+		expect(stdout).toBe("Watching <pr:2041> until CI finishes — dev3 will message this agent. No need to poll gh.\n");
 	});
 
 	it("passes --until merged, --pr, --task and --project through", async () => {
@@ -122,7 +122,7 @@ describe("dev3 pr watch", () => {
 	it("says when the watched PR is not the task's own", async () => {
 		send.mockResolvedValue({ id: "1", ok: true, data: { prNumber: 2111, pinned: true } });
 		await run({ pr: "2111", until: "merged" });
-		expect(stdout).toBe("Watching PR #2111 (not this task's own PR) until it is merged or closed — dev3 will message this agent. No need to poll gh.\n");
+		expect(stdout).toBe("Watching <pr:2111> (not this task's own PR) until it is merged or closed — dev3 will message this agent. No need to poll gh.\n");
 	});
 
 	it("removes only one PR's watches with --off --pr", async () => {
@@ -131,7 +131,7 @@ describe("dev3 pr watch", () => {
 		await run({ off: "true", pr: "2111" });
 
 		expect(send).toHaveBeenCalledWith("/tmp/x.sock", "pr.watch.off", { taskId: "task-1", projectId: "proj-1", prNumber: 2111 });
-		expect(stdout).toBe("Removed 1 PR watch on PR #2111.\n");
+		expect(stdout).toBe("Removed 1 PR watch on <pr:2111>.\n");
 	});
 
 	it("refuses --list with --pr", async () => {
@@ -146,7 +146,7 @@ describe("dev3 pr watch", () => {
 			data: { watches: [{ until: "ci", prNumber: 2111, headSha: "fffffff", createdAt: "2026-10-31T10:00:00.000Z", pinned: true }] },
 		});
 		await run({ list: "true" });
-		expect(stdout).toBe("PR #2111  until ci  head fffffff  since 2026-10-31T10:00:00.000Z  (followed, not this task's PR)\n");
+		expect(stdout).toBe("<pr:2111>  until ci  head fffffff  since 2026-10-31T10:00:00.000Z  (followed, not this task's PR)\n");
 	});
 
 	it("exits 1 on any other app error", async () => {
@@ -195,7 +195,7 @@ describe("dev3 pr watch", () => {
 		await run({ list: "true" });
 
 		expect(send).toHaveBeenCalledWith("/tmp/x.sock", "pr.watch.list", { taskId: "task-1", projectId: "proj-1" });
-		expect(stdout).toBe("PR #7  until merged  head abc1234  since 2026-10-22T10:00:00.000Z\n");
+		expect(stdout).toBe("<pr:7>  until merged  head abc1234  since 2026-10-22T10:00:00.000Z\n");
 	});
 
 	it("says so when there is nothing to list", async () => {

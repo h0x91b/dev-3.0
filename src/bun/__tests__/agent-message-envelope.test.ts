@@ -39,7 +39,7 @@ describe("wrapAgentMessage", () => {
 		expect(out).toBe(
 			[
 				"<dev3-ai-message>",
-				"<from-task>seq:1310</from-task>",
+				"<from-task><seq:1310></from-task>",
 				"<from-title>Fix the parser</from-title>",
 				`<reply-with>dev3 message --task seq:1310 --agent ${HANDLE} --subject "what your reply is about" "your reply"</reply-with>`,
 				"<message>",
@@ -152,7 +152,7 @@ describe("wrapAgentMessage", () => {
 			{ taskId: "824c6557-59be-47ca-ac0e-f7db974cfe08", seq: 490, variantIndex: 1, seqShared: false, agent: AGENT },
 			PROJECT_A,
 		);
-		expect(out).toContain("<from-task>seq:490</from-task>");
+		expect(out).toContain("<from-task><seq:490></from-task>");
 		expect(out).toContain(`<reply-with>dev3 message --task seq:490 --agent ${HANDLE} --subject "what your reply is about" "your reply"</reply-with>`);
 		expect(out).not.toContain("824c6557");
 	});
@@ -295,7 +295,7 @@ describe("wrapHeldBatchPointer — the one envelope typed for a held backlog", (
 	const envelope = (seq: number) => wrapAgentMessage("x", { taskId: `t-${seq}`, seq, title: "T", projectId: PROJECT_A }, PROJECT_A);
 
 	it("reads each sender once, in first-seen order, skipping non-envelopes", () => {
-		expect(heldBatchSenders([envelope(7), "plain text", envelope(3), envelope(7)])).toEqual(["seq:7", "seq:3"]);
+		expect(heldBatchSenders([envelope(7), "plain text", envelope(3), envelope(7)])).toEqual(["<seq:7>", "<seq:3>"]);
 	});
 
 	it("cuts the sender list, never the path, to stay inside one read", () => {
@@ -323,7 +323,7 @@ describe("wrapPrStatusMessage", () => {
 		expect(out).toBe(
 			[
 				"<dev3-pr-status>",
-				"PR #2041: CI finished on 1a2b3c4: 2 of 14 checks GitHub listed failed; see `gh pr checks 2041`.",
+				"<pr:2041>: CI finished on 1a2b3c4: 2 of 14 checks GitHub listed failed; see `gh pr checks 2041`.",
 				URL,
 				"Watch until merged stays active. Act per your task rules.",
 				"</dev3-pr-status>",
@@ -333,20 +333,20 @@ describe("wrapPrStatusMessage", () => {
 
 	it("tells the agent to wrap up before dev3 offers completion, and says no watch is left", () => {
 		const out = wrapPrStatusMessage({ prNumber: 5, url: URL, notices: [{ kind: "merged" }], remaining: [], completion: "offered" });
-		expect(out).toContain("PR #5 merged. Wrap up now (final report, notes, report to whoever started you); dev3 offers the user task completion after your turn ends, so do not request it yourself.\n");
+		expect(out).toContain("<pr:5> merged. Wrap up now (final report, notes, report to whoever started you); dev3 offers the user task completion after your turn ends, so do not request it yourself.\n");
 		expect(out).toContain("No watch is left. Act per your task rules.");
 	});
 
 	it("words the merged notice per completion mode", () => {
 		const text = (completion: "not-offered" | "after-local-work") => wrapPrStatusMessage({ prNumber: 5, url: URL, notices: [{ kind: "merged" }], remaining: [], completion });
-		expect(text("not-offered")).toContain("PR #5 merged. dev3 does not offer completion for this task; continue per your task rules.\n");
-		expect(text("after-local-work")).toContain("PR #5 merged, but this worktree has uncommitted changes or commits the PR does not include; dev3 offers completion only once they are merged or dropped.\n");
+		expect(text("not-offered")).toContain("<pr:5> merged. dev3 does not offer completion for this task; continue per your task rules.\n");
+		expect(text("after-local-work")).toContain("<pr:5> merged, but this worktree has uncommitted changes or commits the PR does not include; dev3 offers completion only once they are merged or dropped.\n");
 	});
 
 	it("words green as what was true: all the checks GitHub listed finished and passed", () => {
 		const text = (notice: PrStatusNotice) => wrapPrStatusMessage({ prNumber: 5, url: URL, notices: [notice], remaining: [], completion: "offered" });
-		expect(text({ kind: "ci-passed", sha: "abcdef0123", totalChecks: 9 })).toContain("PR #5: CI finished on abcdef0: all 9 checks GitHub listed passed.");
-		expect(text({ kind: "closed" })).toContain("PR #5 closed without merge.");
+		expect(text({ kind: "ci-passed", sha: "abcdef0123", totalChecks: 9 })).toContain("<pr:5>: CI finished on abcdef0: all 9 checks GitHub listed passed.");
+		expect(text({ kind: "closed" })).toContain("<pr:5> closed without merge.");
 	});
 
 	it("collapses identical notices into one sentence", () => {
@@ -381,7 +381,7 @@ describe("wrapPrStatusMessage", () => {
 	});
 
 	it("names the event in the traffic-log subject", () => {
-		expect(prStatusSubject(2041, [failed])).toBe("PR #2041: CI failed");
-		expect(prStatusSubject(2041, [{ kind: "closed" }])).toBe("PR #2041: closed without merge");
+		expect(prStatusSubject(2041, [failed])).toBe("<pr:2041>: CI failed");
+		expect(prStatusSubject(2041, [{ kind: "closed" }])).toBe("<pr:2041>: closed without merge");
 	});
 });

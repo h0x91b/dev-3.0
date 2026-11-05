@@ -756,6 +756,11 @@ const common = {
 	"mobile.backExitToast": "Нажмите «Назад» ещё раз для выхода",
 	"streamer.privateTitle": "Приватный проект",
 	"streamer.projectLocked": "Чувствительный проект — заблокирован, пока включён режим стримера",
+	"taskRef.notFound": "Нечего открывать по {ref} — такой задачи или PR на этой доске нет.",
+	"taskRef.prUnknownRepo": "Не удалось найти GitHub-репозиторий для {ref}.",
+	"taskRef.openFailed": "Не удалось открыть {ref}: {error}",
+	"taskRef.openTask": "Открыть задачу {ref}",
+	"taskRef.openPr": "Открыть PR {ref}",
 };
 
 export default common;
