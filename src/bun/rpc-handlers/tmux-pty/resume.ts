@@ -201,7 +201,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 		if (!ACTIVE_STATUSES.includes(task.status) || task.draft || task.hibernated || task.preparing || task.shuttingDown) {
 			throw new Error("Cannot restart: the task must be active and neither preparing, shutting down nor hibernated.");
 		}
-		assertTaskWorkspacePresent(project, task.worktreePath);
+		assertTaskWorkspacePresent(project, task.worktreePath, task);
 		// A user restart must restore everything it stops; the watchdog only revives an agent that already died.
 		if (opts.restart === "always" && taskTerminalBackendIdentity(task) === "native") {
 			const live = await nativeTaskPaneCommandsStrict(task.id);

@@ -11785,6 +11785,16 @@ describe("resumeTaskSession — the Resume Session path dev3 agent resume reuses
 		expect(writes.some((patch) => patch.hibernated !== undefined)).toBe(false);
 	});
 
+	it("checks the task's own workspace before a restart, so an own worktree gets its .git link checked", async () => {
+		const task = arrange([LIVE], [`${LIVE}.jsonl`], { ownWorktree: true });
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+		(pty.hasSession as any).mockReturnValue(true);
+
+		await handlers.resumeTask({ taskId: task.id, restart: true });
+
+		expect(workspaceGuard.assertTaskWorkspacePresent).toHaveBeenNthCalledWith(1, expect.anything(), WORKTREE, expect.objectContaining({ ownWorktree: true }));
+	});
+
 	it.each(["alive", "unknown"] as const)("rechecks a watchdog restart inside the resume flight and refuses a %s agent", async (liveness) => {
 		arrange([LIVE], [`${LIVE}.jsonl`]);
 		vi.mocked(pty.hasSession).mockReturnValue(true);
