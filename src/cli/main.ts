@@ -49,6 +49,7 @@ import { handleCopilotHook } from "./commands/copilot-hook";
 import { handleCursorUsage } from "./commands/cursor-usage";
 import { handleExtensionHook } from "./commands/extension-hook";
 import { handleClaudePrompt } from "./commands/claude-prompt";
+import { handleClaudePostTool } from "./commands/claude-post-tool";
 import { handleClaudeTurnEnded } from "./commands/claude-turn-ended";
 import { handleClaudeSessionStart, handleNoteRecent } from "./commands/recent-notes";
 import { handleAgentExitedHook } from "./commands/agent-exited";
@@ -350,6 +351,10 @@ async function main(): Promise<void> {
 			socketPath || context?.socketPath || null,
 			context,
 		);
+	}
+	if (command === "hook" && subcommand === "claude-post-tool") {
+		// Status move plus the hook mailbox, in one request per tool call.
+		return await handleClaudePostTool(await Bun.stdin.text(), socketPath || context?.socketPath || null, context);
 	}
 	if (command === "hook" && subcommand === "claude-turn-ended") {
 		return await handleClaudeTurnEnded(await Bun.stdin.text(), socketPath || context?.socketPath || null, context);

@@ -185,6 +185,37 @@ describe("append and read", () => {
 	});
 });
 
+describe("hook delivery receipts", () => {
+	const receipt = (messageId: string, at: string) =>
+		makeRow({ at, receiptFor: messageId, body: "", status: "delivered", deliveredVia: "hook" });
+
+	it("folds a receipt into its message's row: one row, delivered through the hook", () => {
+		const day = new Date(2026, 7, 23, 12, 0, 0);
+		appendAgentMessageLog(project, makeRow({ messageId: "m-1", status: "held", body: "report" }), day);
+		appendAgentMessageLog(project, receipt("m-1", "2026-08-23T12:00:09.000Z"), day);
+		const page = readAgentMessageLog(project);
+		expect(page.rows).toHaveLength(1);
+		expect(page.rows[0]).toMatchObject({ messageId: "m-1", body: "report", status: "delivered", deliveredVia: "hook", deliveredAt: "2026-08-23T12:00:09.000Z" });
+	});
+
+	it("folds across a day boundary and never counts a receipt against the limit", () => {
+		appendAgentMessageLog(project, makeRow({ messageId: "m-1", status: "held", body: "late night" }), new Date(2026, 7, 22, 23, 59, 50));
+		appendAgentMessageLog(project, receipt("m-1", "2026-08-23T00:00:05.000Z"), new Date(2026, 7, 23, 0, 0, 5));
+		const page = readAgentMessageLog(project, 1);
+		expect(page.rows.map((r) => [r.body, r.status])).toEqual([["late night", "delivered"]]);
+		expect(page.hasMore).toBe(false);
+	});
+
+	it("leaves a typed message without a receipt exactly as written", () => {
+		const day = new Date(2026, 7, 23, 12, 0, 0);
+		appendAgentMessageLog(project, makeRow({ messageId: "m-2", status: "held" }), day);
+		appendAgentMessageLog(project, receipt("other", "2026-08-23T12:00:09.000Z"), day);
+		const [row] = readAgentMessageLog(project).rows;
+		expect(row?.status).toBe("held");
+		expect(row).not.toHaveProperty("deliveredVia");
+	});
+});
+
 describe("retention", () => {
 	it("deletes day-files past the window and keeps the boundary day", () => {
 		const now = new Date(2026, 7, 23, 12, 0, 0);

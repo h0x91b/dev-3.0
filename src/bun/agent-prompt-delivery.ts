@@ -35,7 +35,8 @@ import { type HeldMessageTarget, addressedAgentRefusal, resolveMainAgentTarget }
 import { sendPromptToNativeAgentPane, sendPromptToNativePane } from "./agent-prompt-native";
 import { taskTerminalBackendIdentity } from "./task-terminal-backend";
 import { refreshClaudeHooksForTask } from "./agent-hooks-refresh";
-import { noteDev3TypedPrompt } from "./agent-typed-prompt-claims";
+import { noteDev3TypedPrompt, retractDev3TypedPrompt } from "./agent-typed-prompt-claims";
+import type { HookDeliverable } from "./agent-message-hold";
 
 /**
  * Text appended once at the end of the agent's turn, after every message in the
@@ -67,7 +68,13 @@ export async function deliverAgentPrompt(
 	task: Task,
 	prompt: string,
 	target: ScheduledMessageTarget = { kind: "agent" },
-	opts: { hold?: boolean; epilogue?: AgentPromptEpilogue; author?: ScheduledMessageAuthor | null } = {},
+	opts: {
+		hold?: boolean;
+		epilogue?: AgentPromptEpilogue;
+		author?: ScheduledMessageAuthor | null;
+		/** Lets the agent's tool hook take a held message instead of the pane (tmux only). */
+		hook?: Pick<HookDeliverable, "text" | "delivered">;
+	} = {},
 ): Promise<AgentPromptDelivery> {
 	// The prompt about to land will fire UserPromptSubmit, so the hooks have to be
 	// in place before it is typed, not after. A no-op unless something rewrote the
@@ -87,7 +94,7 @@ export async function deliverAgentPrompt(
 		if (!bound.ok) return { status: "not-delivered", reason: "pane-absent", detail: bound.detail, paneId: "" };
 		const author = bound.author;
 		const verify = author ? () => addressedAgentRefusal(task, author, bound.paneId) : undefined;
-		if (!native) return holdMessageForPane(task, bound.paneId, prompt, opts.epilogue, verify);
+		if (!native) return holdMessageForPane(task, bound.paneId, prompt, opts.epilogue, verify, hookOffer(task, prompt, opts));
 		// The native arm folds the trailer in NOW rather than at release time, so a
 		// held message carries a snapshot up to one hold window old. Its delivery is
 		// a closure that may be forwarded to whichever process owns the pane's
@@ -109,6 +116,28 @@ export async function deliverAgentPrompt(
 			? await sendPromptToPane(task, target.paneId, text)
 			: await sendPromptToAgentPane(task, text, task.sessionState?.panes);
 	return agentPromptDeliveryFromPaneInput(outcome);
+}
+
+/**
+ * The hook side of a held message. A drained message is never typed, so the receipt
+ * left for its prompt-submit hook is taken back: it would otherwise sit there and
+ * swallow the user's own prompt if he ever typed the same text.
+ */
+function hookOffer(
+	task: Task,
+	prompt: string,
+	opts: { epilogue?: AgentPromptEpilogue; hook?: Pick<HookDeliverable, "text" | "delivered"> },
+): HookDeliverable | undefined {
+	const hook = opts.hook;
+	if (!hook) return undefined;
+	return {
+		text: hook.text,
+		delivered: () => {
+			retractDev3TypedPrompt(task.id, prompt);
+			hook.delivered();
+		},
+		...(opts.epilogue ? { trailer: opts.epilogue } : {}),
+	};
 }
 
 /** The pane a held message waits for, and the agent it is bound to there, if any. */

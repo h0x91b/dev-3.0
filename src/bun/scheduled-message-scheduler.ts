@@ -19,6 +19,8 @@ import { type ExternalSenderStamp, wrapAgentMessage, wrapExternalSenderMessage }
 import type { ExternalSender } from "../shared/external-senders";
 import { spillOversizedAgentMessage } from "./agent-message-spill";
 import { appendAgentMessageLog } from "./agent-message-log";
+import { AGENT_MESSAGE_HOOK_MAX_CHARS } from "./agent-message-hold";
+import { readFile } from "node:fs/promises";
 import { resolveScheduledMessageAuthorPane } from "./scheduled-message-author";
 import { type AgentPaneRole, agentPaneRoles, isSoleMainAgent } from "./agent-message-target";
 // Import push via the barrel (not ./rpc-handlers/shared) so tests that mock
@@ -111,10 +113,11 @@ async function deliverToTarget(
 	// Agent-to-agent traffic is wrapped at delivery time, so the queue (and the
 	// card chip that previews it) keeps the plain text the sender wrote. The spill
 	// measured it at queue time with `--agent`, the longest it gets, so it fits one pty read.
+	const alone = !sender && message.source ? await senderIsAlone(message.source) : false;
 	const text = sender
 		? wrapExternalSenderMessage(message.text, sender, message.subject)
 		: message.source
-			? wrapAgentMessage(message.text, message.source, task.projectId, message.subject, await senderIsAlone(message.source))
+			? wrapAgentMessage(message.text, message.source, task.projectId, message.subject, alone)
 			: message.text;
 	// A coordinator's picture of the board goes stale between the messages it
 	// receives: things moved while it was not being spoken to. So every message
@@ -133,10 +136,60 @@ async function deliverToTarget(
 	// writing three in a row, or several peers reporting at once) then become one
 	// agent turn, and no text lands in the middle of the user's own line. See
 	// agent-message-hold.ts.
-	const delivery = await deliverAgentPrompt(task, text, target, { hold, epilogue, author: message.author ?? null });
+	const hook = hold && !sender && message.source
+		? { text: await hookText(task, message, message.source, alone, text), delivered: () => recordHookDelivery(task, message) }
+		: undefined;
+	const delivery = await deliverAgentPrompt(task, text, target, { hold, epilogue, author: message.author ?? null, hook });
 	if (message.source) announceAgentMessage(task, message, delivery);
 	const agentRole = await recipientRole(task, delivery.paneId);
 	return agentRole ? { ...delivery, agentRole } : delivery;
+}
+
+/**
+ * What a hook drain hands the agent: the whole envelope, body inline, when it fits
+ * the hook cap (the pane's one-read limit does not apply to hook context), and
+ * the typed envelope with its spill pointer otherwise. Agent traffic only: an
+ * external sender's text must not gain the authority hook context reads with.
+ */
+async function hookText(task: Task, message: ScheduledMessage, source: AgentMessageSource, alone: boolean, typed: string): Promise<string> {
+	if (!message.spilledPath) return typed;
+	let body: string;
+	try {
+		body = await readFile(message.spilledPath, "utf8");
+	} catch {
+		return typed;
+	}
+	const inline = wrapAgentMessage(body, source, task.projectId, message.subject, alone);
+	return inline.length <= AGENT_MESSAGE_HOOK_MAX_CHARS ? inline : typed;
+}
+
+/**
+ * The receipt for a message the agent's own tool hook took: proof it reached the
+ * agent, which a typed delivery can never give. The reader folds it into the
+ * message's own row (`receiptFor`), so the traffic view shows one message, delivered.
+ */
+function recordHookDelivery(task: Task, message: ScheduledMessage): void {
+	void (async () => {
+		try {
+			const project = await data.getProject(task.projectId);
+			appendAgentMessageLog(project, {
+				at: new Date().toISOString(),
+				receiptFor: message.id,
+				fromTaskId: message.source?.taskId ?? null,
+				fromSeq: message.source?.seq ?? null,
+				toTaskId: task.id,
+				toSeq: task.seq,
+				toProjectId: task.projectId,
+				kind: message.at ? "scheduled" : "immediate",
+				body: "",
+				bodyKind: "text",
+				status: "delivered",
+				deliveredVia: "hook",
+			});
+		} catch (err) {
+			log.warn("Could not record the hook delivery in the project log", { taskId: task.id.slice(0, 8), error: String(err) });
+		}
+	})();
 }
 
 /**

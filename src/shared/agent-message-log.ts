@@ -121,6 +121,15 @@ export interface AgentMessageLogRow {
 	status: AgentPromptDeliveryStatus;
 	reason?: string;
 	detail?: string;
+	/**
+	 * Set on a receipt row: the `messageId` of the message this confirms. The reader
+	 * folds a receipt into that message's row and never lists it on its own.
+	 */
+	receiptFor?: string;
+	/** How the message reached the agent, when not by typing: its own tool hook took it. */
+	deliveredVia?: "hook";
+	/** When the receipt said so; set on a folded row. */
+	deliveredAt?: string;
 }
 
 /** Everything needed to write a row, minus the version and the clock. */

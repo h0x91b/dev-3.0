@@ -132,9 +132,22 @@ export function appendAgentMessageLog(project: Project, input: AgentMessageLogIn
 	}
 }
 
+/** The message's row with its delivery receipt applied, when one was written. */
+function withReceipt(row: AgentMessageLogRow, receipts: ReadonlyMap<string, AgentMessageLogRow>): AgentMessageLogRow {
+	const receipt = row.messageId ? receipts.get(row.messageId) : undefined;
+	if (!receipt) return row;
+	return {
+		...row,
+		status: receipt.status,
+		...(receipt.deliveredVia ? { deliveredVia: receipt.deliveredVia } : {}),
+		deliveredAt: receipt.at,
+	};
+}
+
 /**
- * Read recent history, newest first. Torn and unparseable lines are skipped —
- * losing one row beats losing the day it lives in.
+ * Read recent history, newest first. Torn and unparseable lines are skipped:
+ * losing one row beats losing the day it lives in. A receipt row is folded into the
+ * row of the message it confirms and is not returned on its own.
  */
 export function readAgentMessageLog(project: Project, limit = 500): AgentMessageLogPage {
 	const dir = messageLogDir(project);
@@ -146,6 +159,8 @@ export function readAgentMessageLog(project: Project, limit = 500): AgentMessage
 	}
 	const oldestDay = days[0] ? days[0].slice(0, -".jsonl".length) : null;
 	const rows: AgentMessageLogRow[] = [];
+	// Newest first, so a receipt is always met before the message it confirms.
+	const receipts = new Map<string, AgentMessageLogRow>();
 	let hasMore = false;
 	for (const name of [...days].reverse()) {
 		if (rows.length >= limit) {
@@ -165,11 +180,15 @@ export function readAgentMessageLog(project: Project, limit = 500): AgentMessage
 		}
 		dayRows.reverse();
 		for (const row of dayRows) {
+			if (row.receiptFor) {
+				receipts.set(row.receiptFor, row);
+				continue;
+			}
 			if (rows.length >= limit) {
 				hasMore = true;
 				break;
 			}
-			rows.push(row);
+			rows.push(withReceipt(row, receipts));
 		}
 	}
 	return { rows, oldestDay, retentionDays: AGENT_MESSAGE_LOG_RETENTION_DAYS, hasMore };

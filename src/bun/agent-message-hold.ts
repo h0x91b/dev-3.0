@@ -47,6 +47,12 @@
  *    typed into whatever runs there now (#1809).
  *  - Putting anything back never overwrites a hold that started meanwhile; the
  *    leftovers go in front of it, so arrival order survives.
+ *  - A busy Claude agent can take its messages through its PostToolUse hook instead
+ *    ({@link claimHeldAgentMessagesForHook}). Each message goes out exactly once: the
+ *    claim and the release both take messages out of the hold synchronously, so
+ *    whichever runs first wins and the other finds nothing. Only leading messages that
+ *    opted in are claimed, so arrival order survives, and a stranded turn is never
+ *    claimed around.
  *  - In-memory and deliberately not persisted. If the app dies inside the window the
  *    message is LOST, and nothing is left in the input box either. Accepted; see
  *    `decisions/2026/08/23/hold-the-agent-message-not-just-its-enter.md`.
@@ -79,6 +85,12 @@ export type HeldAgentMessageReport =
 	| { kind: "stranded"; waiting: number }
 	/** `paths`: batch files that still hold the undelivered messages, so they stay readable. */
 	| { kind: "dropped"; messages: number; why: string; paths?: string[] };
+
+/**
+ * Characters one hook drain may hand the agent. Claude Code saves any hook context
+ * over 10 000 characters to a file and shows only a preview; this stays clear of it.
+ */
+export const AGENT_MESSAGE_HOOK_MAX_CHARS = 9_000;
 
 /** At most this many messages go into one batch file; the rest wait for the next turn. */
 export const AGENT_MESSAGE_BATCH_MAX_MESSAGES = 50;
@@ -149,13 +161,31 @@ export interface HeldAgentMessage {
 	 * longer the one in the pane is dropped and reported, never typed. Absent means "yes".
 	 */
 	verify?: () => Promise<string | null>;
+	/**
+	 * Present when the agent's own PostToolUse hook may take this message instead of
+	 * the pane. Absent means typed only (external senders, other harnesses).
+	 */
+	hook?: HookDeliverable;
+}
+
+/** How a held message reads when a hook delivers it, and who to tell once it did. */
+export interface HookDeliverable {
+	/** The full envelope, or its spill pointer when the body is over the hook cap. */
+	text: string;
+	/** Called once the hook took it: the delivery receipt. */
+	delivered: () => void;
+	/**
+	 * Text added once after the whole drain, like the typed epilogue: the coordinator's
+	 * board snapshot. The newest message's trailer wins; null or too long adds nothing.
+	 */
+	trailer?: () => Promise<string | null>;
 }
 
 /**
  * One typing step. A batch pointer is one step that stands for `originals`: those are
  * what goes back in the queue when the pointer was never typed.
  */
-type HeldDelivery = Pick<HeldAgentMessage, "deliver" | "bytes" | "text" | "verify"> & {
+type HeldDelivery = Pick<HeldAgentMessage, "deliver" | "bytes" | "text" | "verify" | "hook"> & {
 	originals?: HeldDelivery[];
 	path?: string;
 	discard?: HeldMessageBatch["discard"];
@@ -300,7 +330,13 @@ export function holdAgentMessage(key: string, message: HeldAgentMessage, context
 		stranded: null,
 		modeDeferred: false,
 	};
-	hold.deliveries.push({ deliver: message.deliver, bytes: message.bytes, text: message.text, verify: message.verify });
+	hold.deliveries.push({
+		deliver: message.deliver,
+		bytes: message.bytes,
+		text: message.text,
+		verify: message.verify,
+		...(message.hook ? { hook: message.hook } : {}),
+	});
 	hold.epilogue = message.epilogue;
 	hold.submit = message.submit;
 	hold.alive = message.alive;
@@ -398,6 +434,85 @@ export function releaseStrandedAgentMessagesOnSubmission(taskId: string, submitt
 		rearm(key, hold, Date.now());
 	}
 	return released;
+}
+
+/** What a hook drain hands the agent: the envelopes, burst-separated, and how many. */
+export interface HookClaim {
+	text: string;
+	messages: number;
+}
+
+/**
+ * The agent in this pane just finished a tool call, so it is mid-turn and will read
+ * hook context before its next step. Take the leading held messages that allow it,
+ * up to `budgetChars` in total, and return them as one block. Whatever is left keeps
+ * its hold and its timer. Returns null when nothing was taken.
+ */
+export async function claimHeldAgentMessagesForHook(key: string, budgetChars: number): Promise<HookClaim | null> {
+	const hold = holds.get(key);
+	if (!hold || hold.stranded) return null;
+	let used = 0;
+	let count = 0;
+	for (const delivery of hold.deliveries) {
+		if (!delivery.hook) break;
+		const cost = delivery.hook.text.length + (count === 0 ? 0 : AGENT_MESSAGE_BURST_SEPARATOR.length);
+		if (used + cost > budgetChars) break;
+		used += cost;
+		count += 1;
+	}
+	if (count === 0) return null;
+	// Synchronous take: a release that starts after this line finds only the rest.
+	const taken = hold.deliveries.splice(0, count);
+	if (hold.deliveries.length === 0) {
+		if (hold.timer) clearTimeout(hold.timer);
+		holds.delete(key);
+	}
+	const kept: HeldDelivery[] = [];
+	for (const delivery of taken) {
+		let refusal: string | null = null;
+		try {
+			refusal = delivery.verify ? await delivery.verify() : null;
+		} catch (err) {
+			refusal = `the addressed agent could not be verified (${String(err)})`;
+		}
+		if (refusal === null) {
+			kept.push(delivery);
+			continue;
+		}
+		log.warn("hook-claimed agent message dropped: its agent is not the one in this pane", { ...hold.context, why: refusal });
+		report(hold, { kind: "dropped", messages: 1, why: refusal });
+	}
+	if (kept.length === 0) return null;
+	for (const delivery of kept) {
+		try {
+			delivery.hook?.delivered();
+		} catch (err) {
+			log.warn("hook delivery receipt failed", { ...hold.context, error: String(err) });
+		}
+	}
+	const parts = kept.map((d) => d.hook?.text ?? "");
+	const trailer = await hookTrailer(hold, kept[kept.length - 1], budgetChars - used - AGENT_MESSAGE_BURST_SEPARATOR.length);
+	if (trailer) parts.push(trailer);
+	log.info("held agent messages delivered through the agent's tool hook", {
+		...hold.context,
+		messages: String(kept.length),
+		chars: String(used),
+		trailer: String(Boolean(trailer)),
+		waiting: String(hold.deliveries.length),
+	});
+	return { text: parts.join(AGENT_MESSAGE_BURST_SEPARATOR), messages: kept.length };
+}
+
+/** The drain's trailer when it fits what is left of the budget; a failure costs only the trailer. */
+async function hookTrailer(hold: Hold, newest: HeldDelivery, budgetChars: number): Promise<string | null> {
+	if (!newest.hook?.trailer || budgetChars <= 0) return null;
+	try {
+		const trailer = await newest.hook.trailer();
+		return trailer && trailer.length <= budgetChars ? trailer : null;
+	} catch (err) {
+		log.warn("hook drain trailer failed", { ...hold.context, error: String(err) });
+		return null;
+	}
 }
 
 /** Bytes the boundary between two messages costs, counted like the messages themselves. */

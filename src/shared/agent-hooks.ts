@@ -324,6 +324,11 @@ export const CLAUDE_PROMPT_HOOK_SUBCOMMAND = "hook claude-prompt";
  * tool hooks, and a fresh session that only opened is not working yet.
  */
 export const CLAUDE_SESSION_START_HOOK_SUBCOMMAND = "hook claude-session-start";
+/**
+ * Claude's PostToolUse: the working-status move plus the hook mailbox, which hands a
+ * busy agent its held `dev3 message`s at its next tool call. Always exits 0.
+ */
+export const CLAUDE_POST_TOOL_HOOK_SUBCOMMAND = "hook claude-post-tool";
 /** `resume` is left out: the resumed transcript already holds the block it was given. */
 export const CLAUDE_SESSION_START_MATCHER = "startup|clear|compact";
 /**
@@ -525,7 +530,7 @@ export function buildClaudeHooks(
 			{ hooks: [{ type: "command", command: workingCmd }] },
 		],
 		PostToolUse: [
-			{ hooks: [{ type: "command", command: workingCmd }] },
+			{ hooks: [{ type: "command", command: `${dialect.cli} ${CLAUDE_POST_TOOL_HOOK_SUBCOMMAND}`, timeout: 5 }] },
 		],
 		PermissionRequest: [
 			{ hooks: [{ type: "command", command: move("user-questions") }] },

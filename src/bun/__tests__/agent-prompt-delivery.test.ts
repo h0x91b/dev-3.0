@@ -29,6 +29,7 @@ import { addressedAgentRefusal, resolveMainAgentTarget } from "../agent-message-
 import { sendPromptToNativeAgentPane, sendPromptToNativePane } from "../agent-prompt-native";
 import { refreshClaudeHooksForTask } from "../agent-hooks-refresh";
 import { deliverAgentPrompt } from "../agent-prompt-delivery";
+import { resetTypedPromptClaims, typedPromptClaimCount } from "../agent-typed-prompt-claims";
 import type { PaneSessionEntry, ScheduledMessageAuthor, Task } from "../../shared/types";
 
 const TASK_ID = "task-1234";
@@ -190,7 +191,7 @@ describe("deliverAgentPrompt — a held dev3 message", () => {
 			status: "held",
 		});
 		expect(resolveMainAgentTarget).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }));
-		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), "%1", "check CI", undefined, undefined);
+		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), "%1", "check CI", undefined, undefined, undefined);
 		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
 		expect(sendPromptToPane).not.toHaveBeenCalled();
 	});
@@ -218,7 +219,7 @@ describe("deliverAgentPrompt — a held dev3 message", () => {
 
 	it("sends a concrete tmux pane target down the hold path, unbound", async () => {
 		await deliverAgentPrompt(task(), "check CI", { kind: "pane", paneId: "%4" }, { hold: true });
-		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), "%4", "check CI", undefined, undefined);
+		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), "%4", "check CI", undefined, undefined, undefined);
 		expect(resolveMainAgentTarget).not.toHaveBeenCalled();
 		expect(sendPromptToPane).not.toHaveBeenCalled();
 	});
@@ -229,6 +230,30 @@ describe("deliverAgentPrompt — a held dev3 message", () => {
 		expect(verify).toBeTypeOf("function");
 		await expect(verify!()).resolves.toBeNull();
 		expect(addressedAgentRefusal).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), AUTHOR, "%4");
+	});
+
+	it("offers a tmux hold to the agent's tool hook, with the board trailer, and takes back the typed receipt once drained", async () => {
+		resetTypedPromptClaims();
+		const delivered = vi.fn();
+		const epilogue = vi.fn(async () => "board");
+		await deliverAgentPrompt(task(), "check CI", { kind: "agent" }, { hold: true, epilogue, hook: { text: "inline envelope", delivered } });
+		const hook = vi.mocked(holdMessageForPane).mock.calls[0]![5]!;
+		expect(hook.text).toBe("inline envelope");
+		expect(hook.trailer).toBe(epilogue);
+		expect(typedPromptClaimCount(TASK_ID)).toBe(1);
+		hook.delivered();
+		expect(delivered).toHaveBeenCalledTimes(1);
+		expect(typedPromptClaimCount(TASK_ID)).toBe(0);
+	});
+
+	it("never offers a native hold to the tool hook: the native arm keeps the typed path", async () => {
+		vi.mocked(resolveMainAgentTarget).mockResolvedValue({ ok: true, paneId: "pane-1", author: null });
+		vi.mocked(sendPromptToNativePane).mockResolvedValue(HELD);
+		await deliverAgentPrompt(task({ terminalBackend: "native" } as Partial<Task>), "check CI", { kind: "agent" }, {
+			hold: true,
+			hook: { text: "inline envelope", delivered: vi.fn() },
+		});
+		expect(vi.mocked(sendPromptToNativePane).mock.calls[0]![3]).not.toHaveProperty("hook");
 	});
 
 	it("passes the hold and the binding on to the native arm, which owns its own holding", async () => {
