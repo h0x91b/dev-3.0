@@ -732,36 +732,15 @@ startRateLimitMonitor((name, payload) => {
 	}
 });
 
-// Start the Automations scheduler (scheduled agent runs). The first tick also
-// detects occurrences missed while the app was offline and surfaces them.
-// Runs in headless (`dev3 remote`) too — same main process.
-const { startAutomationsScheduler } = await import("./automations-scheduler");
-startAutomationsScheduler();
-
-// Start the scheduled-launch scheduler ("Start in…" deferred task launches).
-// One-shot fires; the first tick catches up launches that came due offline.
-const { startScheduledLaunchScheduler } = await import("./scheduled-launch-scheduler");
-startScheduledLaunchScheduler();
-
-// Start the scheduled-message scheduler ("Send later" — deliver a queued prompt
-// into a task's live agent). One-shot; the first tick catches up messages that
-// came due while the app was offline (fires late + notifies).
-const { startScheduledMessageScheduler } = await import("./scheduled-message-scheduler");
-startScheduledMessageScheduler();
-
-// Start the keep-alive watchdog — auto-revives tasks the user opted into when
-// their agent conversation dies (exit / rate limit / network). Runs headless too.
-const { startTaskKeepAliveScheduler } = await import("./task-keep-alive-scheduler");
-startTaskKeepAliveScheduler();
-
-// Daily `doctor --worktrees --prune-older-than 14d` — first check an hour after
-// launch, never at startup; the last run is persisted so restarts do not repeat it.
-const { startWorktreeCleanupScheduler } = await import("./worktree-cleanup-scheduler");
-startWorktreeCleanupScheduler();
+// Every clock-driven scheduler (automations, "Start in", "Send later", keep-alive,
+// worktree cleanup). headless-entry.ts starts the same set through the same call.
+const { startBackgroundSchedulers } = await import("./background-schedulers");
+startBackgroundSchedulers();
 
 // Start the focus tracker — accumulates real UI attention time per task (the
 // "your time" metric on the Productivity dashboard) from the foreground +
-// idle + active-context signals the renderer already reports. Runs headless too.
+// idle + active-context signals the renderer already reports. Desktop only:
+// headless-entry.ts does not start it.
 const { startFocusTracker, stopFocusTracker } = await import("./focus-tracker");
 startFocusTracker();
 
