@@ -967,6 +967,47 @@ button {
 	}
 }
 
+/* ---- Overflow scroll (OverflowScroll.tsx) ----------------------------------
+   A one-line label too wide for its box fades at the right edge; while its row
+   (a button or listbox option) is hovered or keyboard-active, the hidden tail
+   scrolls into view and back. Shift and duration come from the component. */
+@keyframes dev3-overflow-scroll {
+	0%, 15% { transform: translateX(0); }
+	85%, 100% { transform: translateX(var(--dev3-overflow-shift, 0)); }
+}
+
+.dev3-overflow-scroll {
+	display: block;
+	overflow: hidden;
+	white-space: nowrap;
+}
+
+.dev3-overflow-scroll-track {
+	display: inline-block;
+	width: max-content;
+}
+
+.dev3-overflow-scroll[data-overflowing] {
+	mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
+}
+
+:is(button:hover, button:focus-visible, [data-active]) .dev3-overflow-scroll[data-overflowing] {
+	mask-image: none;
+}
+
+:is(button:hover, button:focus-visible, [data-active]) .dev3-overflow-scroll[data-overflowing] > .dev3-overflow-scroll-track {
+	animation: dev3-overflow-scroll var(--dev3-overflow-duration, 3s) ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	:is(button:hover, button:focus-visible, [data-active]) .dev3-overflow-scroll[data-overflowing] > .dev3-overflow-scroll-track {
+		animation: none;
+	}
+	:is(button:hover, button:focus-visible, [data-active]) .dev3-overflow-scroll[data-overflowing] {
+		mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
+	}
+}
+
 /* ---- Narrow-viewport modal clamp ------------------------------------------
    On a phone-width viewport, centered modal/palette panels keep their fixed
    `w-[..rem]` width and overflow off-screen. Clamp every modal (role="dialog"

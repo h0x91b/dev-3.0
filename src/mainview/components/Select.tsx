@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { AgentCheckResult } from "../../shared/types";
 import { useOverlayLayer } from "../utils/useOverlayLayer";
 import { useReducedMotion } from "../utils/useReducedMotion";
+import { OverflowScroll } from "./OverflowScroll";
 
 export interface SelectOption {
 	value: string;
@@ -205,6 +206,7 @@ function SelectListbox({
 						tabIndex={-1}
 						aria-selected={isSelected}
 						aria-disabled={opt.disabled || undefined}
+						data-active={isActive || undefined}
 						onMouseDown={(e) => e.preventDefault()}
 						onMouseEnter={() => onHover(index)}
 						onClick={() => onPick(index)}
@@ -220,7 +222,7 @@ function SelectListbox({
 					>
 						{/* The lock is the option's state, not its content, so it survives a
 						    caller's renderOption — a custom row must not silently drop it. */}
-						<span className="flex-1 min-w-0 truncate">
+						<OverflowScroll className="flex-1" fullText={opt.label}>
 							{renderOption && !opt.custom ? (
 								opt.disabled ? (
 									<span className="flex items-center gap-1.5 opacity-70">
@@ -238,7 +240,7 @@ function SelectListbox({
 							) : (
 								opt.label
 							)}
-						</span>
+						</OverflowScroll>
 						{isSelected && <CheckIcon />}
 					</button>
 					</Fragment>
@@ -498,11 +500,11 @@ function Select({
 					open ? "border-accent" : "border-edge hover:border-edge-active"
 				}`}
 			>
-				<span className={`truncate ${selected ? "" : "text-fg-muted"}`}>
+				<OverflowScroll className={selected ? "" : "text-fg-muted"} fullText={selected?.label ?? placeholder}>
 					{selected
 						? (renderOption && !selected.custom ? renderOption(selected) : selected.label)
 						: (placeholder ?? "")}
-				</span>
+				</OverflowScroll>
 				<svg
 					className={`w-3.5 h-3.5 text-fg-3 flex-shrink-0 transition-transform duration-150 ${open ? "rotate-180" : ""}`}
 					viewBox="0 0 12 12"
