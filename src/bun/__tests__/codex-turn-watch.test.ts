@@ -76,6 +76,16 @@ describe("Codex turn rollout watch", () => {
 		expect(onFailure).toHaveBeenCalledTimes(1);
 	});
 
+	it("watches a rollout Codex has not created yet from its start", async () => {
+		const { transcriptPath, onFailure, watcher } = fixture();
+		const missing = `${transcriptPath}.new`;
+		watcher.observe({ projectId: "project", taskId: "task", sessionId: "fresh", transcriptPath: missing }, onFailure);
+		await watcher.check("task", "fresh");
+		writeFileSync(missing, failed);
+		await watcher.check("task", "fresh");
+		expect(onFailure).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "fresh", message: ERROR }));
+	});
+
 	it("reports nothing once the Stop hook ended the turn", async () => {
 		const { transcriptPath, onFailure, watcher, check } = fixture();
 		watcher.endTurn("task", "session");

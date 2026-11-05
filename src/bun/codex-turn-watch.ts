@@ -51,8 +51,9 @@ export class CodexTurnWatches {
 	observe(input: CodexTurnObservation, onFailure: Observation["onFailure"]): void {
 		const key = this.key(input.taskId, input.sessionId);
 		this.remove(key);
-		let offset: number;
-		try { offset = statSync(input.transcriptPath).size; } catch { return; }
+		// Codex creates a fresh session's rollout lazily, so a missing file is watched from its start.
+		let offset = 0;
+		try { offset = statSync(input.transcriptPath).size; } catch { /* not written yet */ }
 		const changed = () => { void this.check(input.taskId, input.sessionId).catch(error => log.warn("Rollout check failed", { error: String(error) })); };
 		this.observations.set(key, { input, offset, partial: "", decoder: new StringDecoder("utf8"), changed, onFailure });
 		// ponytail: lost on app restart mid-turn; the next prompt re-arms it.
@@ -87,8 +88,9 @@ export class CodexTurnWatches {
 
 	private readAppended(observation: Observation): string | null {
 		let fd: number | null = null;
+		let size: number;
+		try { size = statSync(observation.input.transcriptPath).size; } catch { return ""; }
 		try {
-			const size = statSync(observation.input.transcriptPath).size;
 			if (size < observation.offset) return null;
 			const length = size - observation.offset;
 			if (length === 0) return "";

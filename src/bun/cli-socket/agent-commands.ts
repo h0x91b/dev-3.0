@@ -7,7 +7,8 @@ import { recordTerminalPromptSubmission } from "../agent-terminal-prompt-log";
 import type { PromptSubmitHarness } from "../../shared/agent-terminal-prompt";
 import { loadSettings } from "../settings";
 import { CodexQuestionState } from "../codex-question-state";
-import { capturePaneSession } from "./pane-sessions";
+import { capturePaneSession, taskCodexHomes } from "./pane-sessions";
+import { isInteractiveCodexConversation } from "../codex-resume-home";
 import { noteAgentExited, noteAgentSessionActive, noteAgentSessionStarted } from "../agent-session-receipts";
 import { log, type Handler, withSenderVariant } from "./shared";
 import { requirePaneTask, resolveRequesterTask, resolveTaskFromParams, senderRequester } from "./task-resolution";
@@ -55,8 +56,11 @@ async function codexTurnFailed(failure: CodexTurnFailure): Promise<void> {
 		const { project, task } = await resolveTaskFromParams({ projectId: failure.projectId, taskId: failure.taskId });
 		if (task.status !== "in-progress" && task.status !== "review-by-ai") return;
 		if (task.hibernated) return;
+		// A subagent's or `codex exec`'s failed turn says nothing about the user's own conversation.
+		if (!(await isInteractiveCodexConversation(failure.sessionId, await taskCodexHomes(project, task)))) return;
 		log.info("Codex turn ended on an error", { taskId: task.id.slice(0, 8), sessionId: failure.sessionId });
-		await parkFailedTurn(project, task, describeCodexTurnError(failure.message));
+		const updated = await parkFailedTurn(project, task, describeCodexTurnError(failure.message));
+		if (updated.status === "user-questions") rememberResumeStatus(`${task.id}:${failure.sessionId}`, task.status);
 	});
 }
 
@@ -69,6 +73,10 @@ const approvalResumeStatuses = new Map<
 	string,
 	{ status: "in-progress" | "review-by-ai"; expiresAt: number }
 >();
+
+function rememberResumeStatus(key: string, status: "in-progress" | "review-by-ai"): void {
+	approvalResumeStatuses.set(key, { status, expiresAt: Date.now() + APPROVAL_RESUME_TTL_MS });
+}
 
 function getApprovalResumeStatus(
 	key: string | null,
@@ -181,15 +189,16 @@ export const agentHandlers: Record<string, Handler> = {
 		const currentStatus = questionState.resumeStatus && task.status === "user-questions"
 			? questionState.resumeStatus : task.status;
 		let target = getAgentHookTargetStatus(event, currentStatus, getPrimaryStopTarget(project.autoReviewEnabled, task.taskType), rememberedResumeStatus);
+		// Only a Stop that would have moved the card may park it; a finished task stays finished.
 		const approvalHold = event === "Stop" && harness === "codex" && typeof params.approvalHold === "string"
-			? params.approvalHold : null;
+			&& (target !== null || task.status === "user-questions") ? params.approvalHold : null;
 		if (questionState.pending || approvalHold) target = "user-questions";
 		else if (questionState.resumeStatus && task.status === "user-questions" && event !== "Stop") {
 			target = event === "Interrupt" || event === "SessionEnd" ? "review-by-user" : questionState.resumeStatus;
 		}
 		// A To Do card has no run to report on — not even a pending question.
 		if (task.status === "todo") target = null;
-		const resumeStatus = event === "PermissionRequest"
+		const resumeStatus = (event === "PermissionRequest" || approvalHold)
 			&& (task.status === "in-progress" || task.status === "review-by-ai")
 			? task.status
 			: null;
@@ -210,15 +219,12 @@ export const agentHandlers: Record<string, Handler> = {
 			moveAccepted = updated.status === target && updated.customColumnId == null;
 		}
 		if (resumeKey && resumeStatus && moveAccepted) {
-			approvalResumeStatuses.set(resumeKey, {
-				status: resumeStatus,
-				expiresAt: Date.now() + APPROVAL_RESUME_TTL_MS,
-			});
+			rememberResumeStatus(resumeKey, resumeStatus);
 		} else if (resumeKey && clearResumeStatus && moveAccepted) {
 			approvalResumeStatuses.delete(resumeKey);
 		}
 
-		if (approvalHold && moveAccepted) {
+		if (approvalHold && updated.status === "user-questions") {
 			await raiseTurnAttention(project, updated, `Security hold — reply "${approvalHold}" in the terminal`);
 		}
 
