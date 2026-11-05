@@ -64,9 +64,18 @@ export interface ScheduledMessageAuthor {
 	paneId: string;
 	/** That pane's agent conversation id from `sessionState`, when known. */
 	sessionId: string | null;
-	/** The pane's generation: tmux server token, or the native registry session id. */
+	/**
+	 * The pane's generation: tmux server token, or the native registry session id.
+	 * Never reinterpreted: older versions compare it while the agent is alive.
+	 */
 	paneToken: string;
-	/** Start signature (`pid@lstart`) of the agent process itself. */
+	/**
+	 * Native main agent only: start signature of the pane's root process, which a
+	 * restart changes while `paneToken` (deterministic per pane) does not. Additive;
+	 * absent on tmux and on records written before it, which are never rebound.
+	 */
+	paneGeneration?: string;
+	/** Start signature of the agent process itself: `pid@linux:<boot id>:<start tick>` on Linux, `pid@<ps lstart>` elsewhere. */
 	agentProcess: string;
 }
 

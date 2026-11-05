@@ -52,7 +52,7 @@ const keymap = {
 	"keymap.shortcut.reviewCommentSend": "Отправить комментарий из ревью агенту",
 	"keymap.shortcut.toggleProjectTerminal": "Переключить репо (терминал и файлы проекта)",
 	"keymap.shortcut.openQuickShell": "Открыть быструю консоль",
-	"keymap.shortcut.terminalSearch": "Поиск в активном терминале (история tmux)",
+	"keymap.shortcut.terminalSearch": "Поиск в активном терминале (история)",
 	"keymap.shortcut.quit": "Выйти",
 	"keymap.shortcut.hide": "Скрыть приложение",
 

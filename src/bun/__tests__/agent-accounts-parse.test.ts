@@ -70,6 +70,7 @@ describe("parseClaudeIdentity", () => {
 				organizationName: "Acme",
 				userRateLimitTier: "default_claude_max_5x",
 				accountUuid: "uuid-1",
+				organizationUuid: "org-uuid-1",
 			},
 		});
 		expect(identity).toEqual({
@@ -78,6 +79,7 @@ describe("parseClaudeIdentity", () => {
 			plan: "default_claude_max_5x",
 			planLabel: "Max 5x",
 			accountId: "uuid-1",
+			organizationId: "org-uuid-1",
 		});
 	});
 

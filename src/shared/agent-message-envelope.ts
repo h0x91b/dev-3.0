@@ -34,9 +34,11 @@ export const REPLY_UNAVAILABLE_UNRECORDED = "the sending agent's identity was no
  * agent immediately sees the text came from another task's agent (not from the
  * human) and knows the exact command to answer with.
  *
- * The reply command addresses the sending AGENT (`--agent`), never just its task:
- * a task-level reply may reach a sibling of the asker. With no proven sender there
- * is no reply command at all, only `<reply-unavailable>` saying why (#1809).
+ * The reply command addresses the sending AGENT (`--agent`): a task-level reply
+ * may reach a sibling of the asker. `senderAlone` drops it when the caller proved
+ * the sender is its task's only agent and the main one, which a task-level reply
+ * reaches anyway. With no proven sender there is no reply command at all, only
+ * `<reply-unavailable>` saying why (#1809).
  *
  * `receiverProjectId` is the project of the task being written TO — it decides
  * whether the reply command needs `--project` (see {@link agentReplyCommand}).
@@ -50,6 +52,7 @@ export function wrapAgentMessage(
 	source: AgentMessageSource,
 	receiverProjectId: string,
 	subject?: string,
+	senderAlone = false,
 ): string {
 	// A record queued before `seqShared` existed only knows it was a variant, so it
 	// keeps the old pessimistic address rather than risking an ambiguous seq.
@@ -79,7 +82,7 @@ export function wrapAgentMessage(
 				},
 				fromProjectId: receiverProjectId,
 				quoted: "your reply",
-				agentHandle: encodeAgentHandle(source.agent),
+				agentHandle: senderAlone ? undefined : encodeAgentHandle(source.agent),
 			})}</reply-with>`
 			: `<reply-unavailable>${escapeXmlText(source.agentUnavailable || REPLY_UNAVAILABLE_UNRECORDED)}</reply-unavailable>`,
 		"<message>",
@@ -113,11 +116,19 @@ export function wrapExternalSenderMessage(text: string, sender: ExternalSenderSt
 	lines.push(
 		`<reply-with>${externalSenderReplyCommand(sender.id, sender.messageId)}</reply-with>`,
 		"<message>",
-		text,
+		neutralizeEnvelopeTags(text),
 		"</message>",
 		"</dev3-ai-message>",
 	);
 	return lines.join("\n");
+}
+
+/**
+ * A sender may relay third-party text; a `</message>` inside it would close the
+ * envelope and let the rest forge a `<from-task>` block. Escaping the `<` keeps it readable.
+ */
+function neutralizeEnvelopeTags(text: string): string {
+	return text.replace(/<(?=\s*\/\s*message\b|\s*\/?\s*dev3-ai-message\b)/gi, "&lt;");
 }
 
 /** The command a task's agent runs to answer an external sender. */
@@ -146,12 +157,13 @@ export function wrapArtifactMessage(
 	].join("\n");
 }
 
-export type PrMergedCompletion = "offered" | "not-offered" | "after-local-work";
+export type PrMergedCompletion = "offered" | "not-offered" | "after-local-work" | "pinned";
 
 const PR_MERGED_SENTENCE: Record<PrMergedCompletion, (prNumber: number) => string> = {
 	offered: (n) => `PR #${n} merged. Wrap up now (final report, notes, report to whoever started you); dev3 offers the user task completion after your turn ends, so do not request it yourself.`,
 	"not-offered": (n) => `PR #${n} merged. dev3 does not offer completion for this task; continue per your task rules.`,
 	"after-local-work": (n) => `PR #${n} merged, but this worktree has uncommitted changes or commits the PR does not include; dev3 offers completion only once they are merged or dropped.`,
+	pinned: (n) => `PR #${n} merged. It is not this task's own PR, so dev3 offers no completion for it.`,
 };
 
 function prNoticeSentence(prNumber: number, notice: PrStatusNotice, completion: PrMergedCompletion): string {

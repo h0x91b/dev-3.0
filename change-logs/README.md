@@ -20,6 +20,13 @@ The `YYYY/MM/DD` is the **expected PR merge date**, not the day you started. If 
 - `fix-` entries: add one when the fix is user-visible enough to headline; otherwise a crude auto-derived short (first few words of the sentence) is used as a fallback.
 - `refactor-`/`docs-`/`chore-`: usually skip — they don't surface in the popover.
 
+## Credits
+
+Credit lines stand on their own line at the end of the file and are stripped from the entry text.
+
+- `Suggested by @<login> (h0x91b/dev-3.0#<issue number>)` — the external author of the GitHub issue behind the change.
+- `Contributed by @<login> (h0x91b/dev-3.0#<PR number>)` — the author of the pull request, added only when they are an external contributor (not the maintainer `h0x91b`). The ref may be the short `(#<PR number>)` (the repo defaults to `h0x91b/dev-3.0`) or left out when the PR number is not known yet. Login only, never a name or email.
+
 ## Example
 
 File: `change-logs/2026/02/21/feature-00-add-dark-mode.md`

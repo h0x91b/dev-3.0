@@ -92,6 +92,71 @@ describe("Changelog", () => {
 		expect(screen.getByText(/long first sentence/)).toBeInTheDocument();
 	});
 
+	it("renders the contributor credit before the issue credit", async () => {
+		mockedApi.request.getChangelogs.mockResolvedValue([
+			{
+				date: "2026-02-26",
+				type: "fix",
+				slug: "both",
+				title: "Both credits",
+				contributedBy: "alice",
+				prUrl: "https://github.com/h0x91b/dev-3.0/pull/42",
+				prRef: "#42",
+				suggestedBy: "bob",
+				issueUrl: "https://github.com/h0x91b/dev-3.0/issues/7",
+				issueRef: "#7",
+			},
+			{ date: "2026-02-26", type: "fix", slug: "only", title: "Contributor only", contributedBy: "carol" },
+		] as ChangelogEntry[]);
+		renderChangelog();
+
+		await screen.findByText("Both credits");
+		expect(screen.getByRole("link", { name: "@alice" })).toHaveAttribute(
+			"href",
+			"https://github.com/h0x91b/dev-3.0/pull/42",
+		);
+		expect(screen.getByRole("link", { name: "#42" })).toBeInTheDocument();
+		const bothCredit = screen.getByRole("link", { name: "@alice" }).parentElement!;
+		expect(bothCredit.textContent).toBe("PR by @alice #42 · by @bob #7");
+		expect(screen.getByText("@carol").parentElement!.textContent).toBe("PR by @carol");
+	});
+
+	it("renders the Suggested-by credit alone", async () => {
+		mockedApi.request.getChangelogs.mockResolvedValue([
+			{
+				date: "2026-02-26",
+				type: "fix",
+				slug: "s",
+				title: "Suggested only",
+				suggestedBy: "bob",
+				issueUrl: "https://github.com/h0x91b/dev-3.0/issues/7",
+				issueRef: "#7",
+			},
+		] as ChangelogEntry[]);
+		renderChangelog();
+
+		await screen.findByText("Suggested only");
+		expect(screen.getByRole("link", { name: "@bob" }).parentElement!.textContent).toBe("by @bob #7");
+	});
+
+	it("keeps the credits English in a non-English locale", async () => {
+		localStorage.setItem("dev3-locale", "ru");
+		try {
+			mockedApi.request.getChangelogs.mockResolvedValue([
+				{ date: "2026-02-26", type: "fix", slug: "pr", title: "Contributor", contributedBy: "carol" },
+				{ date: "2026-02-26", type: "fix", slug: "s", title: "Suggested", suggestedBy: "bob" },
+			] as ChangelogEntry[]);
+			renderChangelog();
+
+			await screen.findByText("Contributor");
+			expect(screen.getByPlaceholderText("Поиск по изменениям…")).toBeInTheDocument();
+			expect(screen.getByText("@carol").parentElement!.textContent).toBe("PR by @carol");
+			expect(screen.getByText("@bob").parentElement!.textContent).toBe("by @bob");
+		} finally {
+			localStorage.removeItem("dev3-locale");
+		}
+	});
+
 	it("does not make an entry without a body clickable", async () => {
 		const entries: ChangelogEntry[] = [
 			{ date: "2026-02-26", type: "fix", slug: "x", title: "Just a one-liner" },

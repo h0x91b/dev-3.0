@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { cloneElement, useEffect, useMemo, useRef, useState, type Dispatch, type ReactElement, type ReactNode } from "react";
 import type { BranchStatus, Project, Task, TaskPRBadgeInfo } from "../../../shared/types";
-import { earlierPullRequests } from "../../../shared/task-pull-requests";
+import { earlierPullRequests, trustedPrStatusCache } from "../../../shared/task-pull-requests";
 import type { AppAction, Route } from "../../state";
 import { useT } from "../../i18n";
 import { useTaskBranchStatus } from "./useTaskBranchStatus";
@@ -260,7 +260,7 @@ export default function TaskGitActions({
 		})
 		: undefined;
 
-	const prState = prInfo ? prBadgeDisplayState(prInfo, branchStatus, task.prStatusCache) : null;
+	const prState = prInfo ? prBadgeDisplayState(prInfo, branchStatus, trustedPrStatusCache(task)) : null;
 	const reviewedPr = reviewedPrLink(task, prInfo);
 	useReviewedPrBackfill(useMemo(() => [task], [task]));
 	const prTone = prState ? prStateTone(prState) : null;
@@ -493,7 +493,7 @@ export default function TaskGitActions({
 				// Circular ring spinner: radially symmetric, so animate-spin rotates it perfectly
 				// around its own center — zero wobble.
 				<span
-					className={`w-2.5 h-2.5 rounded-full border-2 border-current/30 border-t-current${reducedMotion ? "" : " animate-spin"}`}
+					className={`w-2.5 h-2.5 rounded-full border-2 border-[color-mix(in_srgb,currentColor_30%,transparent)] border-t-current${reducedMotion ? "" : " animate-spin"}`}
 				/>
 			) : (
 				icon
@@ -723,7 +723,7 @@ export default function TaskGitActions({
 					role="menuitem"
 					type="button"
 					onClick={() => copyToClipboard(item.value, item.done)}
-					className="block w-full text-left px-3 py-1.5 text-micro text-fg-2 hover:bg-elevated-hover hover:text-fg transition-colors"
+					className="block w-full text-left px-3 py-1.5 text-micro text-fg-2 hover:bg-overlay-hover hover:text-fg transition-colors"
 				>
 					{item.label}
 				</button>
@@ -742,7 +742,7 @@ export default function TaskGitActions({
 							selectCompareRef(option.value);
 							setBranchMenuOpen(false);
 						}}
-						className={`flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-micro transition-colors hover:bg-elevated-hover ${
+						className={`flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-micro transition-colors hover:bg-overlay-hover ${
 							displayRef === option.ref ? "text-accent font-medium" : "text-fg-2 hover:text-fg"
 						}`}
 					>

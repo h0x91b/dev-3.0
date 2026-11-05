@@ -38,6 +38,7 @@ import {
 	writeMergeCommitMessage,
 } from "../git-op-script";
 import { launchDialectId } from "../../shared/platform-launch";
+import { savedPrMergedFromBranch } from "../../shared/task-pull-requests";
 import { lifecycleActorRuntime } from "../lifecycle/service";
 import {
 	PR_DETECTION_TIMEOUT_MS,
@@ -173,6 +174,10 @@ function monitorGitPane(paneId: string | null, task: Task, projectId: string, op
  * a button runs against is the ref the git bar named.
  */
 function resolveCompareRef(project: Project, baseBranch: string, explicit?: string): Promise<string> {
+	// The project's own configured ref is checked; a ref the user picked for this task is not.
+	if (explicit && explicit === project.defaultCompareRef) {
+		return git.resolveConfiguredCompareRef(project.path, baseBranch, explicit);
+	}
 	if (explicit) return Promise.resolve(explicit);
 	// A task-specific base branch is local by definition — it was forked from a
 	// branch in this repo, and origin/<it> usually does not exist at all.
@@ -267,10 +272,11 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	const baseBranch = await healDeadCompareBase(project, task, resolvedBase);
 	const ref = await resolveCompareRef(project, baseBranch, params.compareRef);
 	// PR discovery shares the rich status cache with the board and inspector.
+	const savedMerged = !params.refresh && savedPrMergedFromBranch(task, branchForPush);
 	const prDetection: Promise<github.OpenPullRequestProbe> = (async () => {
 		try {
 			const probe = await github.findOpenPullRequest(project, task.worktreePath!, branchForPush, {
-				timeoutMs: PR_DETECTION_TIMEOUT_MS, prNumber: task.prNumber,
+				timeoutMs: PR_DETECTION_TIMEOUT_MS, prNumber: savedMerged ? null : task.prNumber,
 			});
 			if (probe.pr?.url) await persistTaskPrIdentity(project, task, probe.pr.number, probe.pr.url);
 			if (probe.status) {
@@ -304,7 +310,10 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	// naming a review task, not for the branch-status payload.
 	let prInfo: { number: number; url: string } | null = detected.pr;
 	let prState: string | null = prInfo ? "OPEN" : null;
-	if (!prInfo && task.prNumber != null && task.prUrl) {
+	if (!prInfo && savedMerged && task.prNumber != null && task.prUrl) {
+		prInfo = { number: task.prNumber, url: task.prUrl };
+		prState = "MERGED";
+	} else if (!prInfo && task.prNumber != null && task.prUrl) {
 		// The sticky number outlives the branch it was opened from: rename the
 		// branch, or inherit the number from the review task this one grew out of,
 		// and it points at a stranger's PR. Show it only while GitHub says the PR
@@ -334,7 +343,8 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	const mergedByContent = await git.isContentMergedInto(task.worktreePath, ref, project) === true
 		|| (status.ahead === 0
 			&& prNumberForMergeProof != null
-			&& await github.isPullRequestMerged(project, task.worktreePath, prNumberForMergeProof, branchForPush || null) === true);
+			&& ((savedMerged && prNumberForMergeProof === task.prNumber)
+				|| await github.isPullRequestMerged(project, task.worktreePath, prNumberForMergeProof, branchForPush || null) === true));
 	const mergeCompletionFingerprint = mergedByContent
 		? (await getMergeCompletionFingerprint(task, branchForPush)).fingerprint
 		: null;
@@ -862,7 +872,8 @@ async function fetchBranches(params: { projectId: string; forkRef?: string }): P
 			}
 		}
 	} else {
-		await git.fetchOrigin(project.path);
+		// The refresh button: a fetch that failed minutes ago must not skip this one.
+		await git.fetchOrigin(project.path, undefined, undefined, { force: true });
 	}
 	return git.listBranches(project.path);
 }
@@ -887,8 +898,23 @@ function maybeRefreshOriginRef(projectPath: string, branch: string): void {
 	});
 }
 
-async function getProjectCurrentBranch(params: { projectId: string }): Promise<{ branch: string | null; isBaseBranch: boolean; isDirty: boolean; behindOrigin: number }> {
-	const project = await data.getProject(params.projectId);
+type ProjectCurrentBranch = { branch: string | null; isBaseBranch: boolean; isDirty: boolean; behindOrigin: number };
+
+// Every open window and remote browser polls this per project; concurrent calls
+// share one run so a slow repo cannot accumulate git processes (#2153).
+const projectBranchInFlight = new Map<string, Promise<ProjectCurrentBranch>>();
+
+function getProjectCurrentBranch(params: { projectId: string }): Promise<ProjectCurrentBranch> {
+	const existing = projectBranchInFlight.get(params.projectId);
+	if (existing) return existing;
+	const promise = readProjectCurrentBranch(params.projectId)
+		.finally(() => projectBranchInFlight.delete(params.projectId));
+	projectBranchInFlight.set(params.projectId, promise);
+	return promise;
+}
+
+async function readProjectCurrentBranch(projectId: string): Promise<ProjectCurrentBranch> {
+	const project = await data.getProject(projectId);
 	const [branch, isDirty] = await Promise.all([
 		git.getCurrentBranch(project.path),
 		git.isWorktreeDirty(project.path),

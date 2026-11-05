@@ -34,6 +34,7 @@ import {
 	defaultNativeShellLaunchSpec,
 } from "./native-terminal-registry/shell-launch";
 import type { SplitOrientation } from "../shared/split-tree";
+import { dev3ShellPromptEnv } from "./shell-init";
 
 const log = createLogger("native-task-panes");
 
@@ -234,7 +235,8 @@ export async function splitNativeTaskPane(
 	orientation: SplitOrientation,
 	spec: { cwd: string; env: Record<string, string>; launch?: TerminalLaunchSpec; cols?: number; rows?: number; outputLogPath?: string },
 ): Promise<{ paneId: string; state: NativeTaskPanesState }> {
-	const { cwd, env } = spec;
+	const { cwd } = spec;
+	const env = { ...dev3ShellPromptEnv(cwd), ...spec.env };
 
 	// Derive geometry from the source pane's record; fall back to 80×24 and log.
 	const backend = getBackend();
@@ -419,6 +421,21 @@ export async function nativeTaskPaneCommandsStrict(taskId: string): Promise<Nati
 	const unknown = panes.filter((pane) => pane.command.length === 0).map((pane) => pane.paneId);
 	if (unknown.length > 0) throw new NativePaneIdentityUnknownError(taskId, unknown);
 	return { kind: "read", panes };
+}
+
+/** Ids of the tasks with a native pane set on disk. Reads files only — no recovery, no `ps`. */
+export function nativeTaskIdsOnDisk(): string[] {
+	const prefix = nativeTaskSessionId("");
+	return getBackend().listCoordinatorIds()
+		.filter((id) => id.startsWith(prefix))
+		.map((id) => id.slice(prefix.length));
+}
+
+/** A task's pane records as written, with no ownership check. For pollers that cross-check `ps` themselves. */
+export function nativeTaskPaneRecords(
+	taskId: string,
+): Array<{ paneId: string; hostPid: number; shellPid: number; command: string[] }> {
+	return getBackend().readPaneRecords(coordinatorId(taskId));
 }
 
 /**

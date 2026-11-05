@@ -23,7 +23,7 @@ Nothing about that is per-account.
 
 Claude rate-limit attribution does not read inside the account dir either — the statusline
 wrapper writes per-account dumps into `~/.dev3.0/data/rate-limits/claude/<id>.json`, keyed by
-`DEV3_AGENT_ACCOUNT_ID_ENV` (`rate-limit-monitor.ts`). Only Codex reads per-account sessions.
+the account dir `CLAUDE_CONFIG_DIR` names (see `decisions/2026/11/05/claude-usage-owner-from-config-dir.md`). Only Codex reads per-account sessions.
 
 ## Decision
 

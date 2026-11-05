@@ -1,5 +1,7 @@
 # Usage collectors for major agents
 
+Extended on 2026-10-26 by [usage collectors for OpenCode, pi and Oh My Pi](usage-collectors-opencode-pi-omp.md).
+
 ## Context
 
 Productivity Stats previously collected only Claude Code and Codex, leaving other supported harnesses outside its token and API-equivalent cost totals. The same retained-history and refreshed-price behavior must apply to Gemini CLI, Cursor Agent and GitHub Copilot CLI.

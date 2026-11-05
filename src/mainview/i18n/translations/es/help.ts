@@ -37,13 +37,13 @@ const help = {
 	// ── Board chrome ──
 	"help.board.filterBar.title": "Búsqueda y filtros",
 	"help.board.filterBar.body":
-		"Una sola caja busca y filtra el tablero. Escribe texto libre para una búsqueda difusa por título/descripción, o filtra con tokens — priority:P0 label:\"Bug Fix\" agent:Codex status:review type:coordinator space:\"Client X\" is:attention is:home is:hidden is:hibernated is:keepalive has:port. Los chips de prioridad P0–P4, los chips de etiquetas y el embudo editan estos mismos tokens, así que escribir y hacer clic nunca se contradicen. La × lo borra todo. Gestiona las etiquetas en Configuración del proyecto → Etiquetas.",
+		"Una sola caja busca y filtra el tablero. Escribe texto libre para una búsqueda difusa por título/descripción, o filtra con tokens — priority:P0 label:\"Bug Fix\" agent:Codex status:review type:coordinator space:\"Client X\" epic:\"Payments v2\" children:1801 is:attention is:home is:hidden is:hibernated is:keepalive is:stalled has:port has:pr pr:open pr:merged pr:closed. Los chips de prioridad P0–P4, los chips de etiquetas y el embudo editan estos mismos tokens, así que escribir y hacer clic nunca se contradicen. La × lo borra todo. Gestiona las etiquetas en Configuración del proyecto → Etiquetas.",
 	"help.board.priorityFilter.title": "Filtro de prioridad",
 	"help.board.priorityFilter.body":
 		"Cada tarea tiene una prioridad P0 (la más alta) … P4 (la más baja, P3 por defecto). Las columnas siempre se ordenan por ella, así lo más importante queda arriba. Haz clic en un chip para mostrar solo esa prioridad; arrastra una tarjeta a otra banda para recategorizarla.",
 	"help.filters.dsl.title": "Búsqueda y filtros",
 	"help.filters.dsl.body":
-		"Escribe para una búsqueda difusa por títulos y descripciones, o filtra con tokens: priority:P0 label:\"Bug Fix\" agent:Codex status:review type:coordinator space:\"Client X\" is:attention is:home is:hidden is:hibernated is:keepalive has:port. Entrecomilla los valores con espacios. Combina facetas (Y); repite una faceta para ampliar (O). Los chips P0–P4, los chips de etiquetas y el embudo editan estos mismos tokens. Gestiona las etiquetas en Configuración del proyecto → Etiquetas.",
+		"Escribe para una búsqueda difusa por títulos y descripciones, o filtra con tokens: priority:P0 label:\"Bug Fix\" agent:Codex status:review type:coordinator space:\"Client X\" epic:\"Payments v2\" children:1801 is:attention is:home is:hidden is:hibernated is:keepalive is:stalled has:port has:pr pr:open pr:merged pr:closed. Entrecomilla los valores con espacios. children:1801 (o children:proyecto/1801) muestra esa tarea con las tareas que creó. is:stalled encuentra tareas en curso o en revisión por IA sin cambio de estado en 4 horas; pr:open/merged/closed filtran por el estado del pull request actual. epic:\"Payments v2\" muestra las tareas de una épica — o haz clic en el chip de épica de una tarjeta. Combina facetas (Y); repite una faceta para ampliar (O). Los chips P0–P4, los chips de etiquetas y el embudo editan estos mismos tokens. Gestiona las etiquetas en Configuración del proyecto → Etiquetas.",
 	"help.board.taskCard.title": "Tarjeta de tarea",
 	"help.board.taskCard.body":
 		"Los puntos de colores son variantes paralelas de agentes (cada una en su worktree), la campana significa que el agente te llama, y la insignia #123 es el PR de la tarea con su estado de CI y revisión. Clic derecho para todas las acciones.",
@@ -205,7 +205,7 @@ const help = {
 	// ── Viewers & workspace ──
 	"help.viewer.images.title": "Imágenes compartidas",
 	"help.viewer.images.body":
-		"Capturas y renders que un agente compartió con `dev3 show-image`, las más nuevas primero. Recorre el historial, descarga una imagen (también con clic derecho), copia su ruta o revela el archivo original en disco. Un vídeo compartido con `dev3 show-video` se reproduce aquí mismo: reproducir, pausar, buscar y volumen están en el reproductor, y nunca arranca solo.",
+		"Capturas y renders que un agente compartió con `dev3 show-image`, las más nuevas primero. Recorre el historial, descarga una imagen (también con clic derecho), copia su ruta o revela el archivo original en disco. El vídeo y el audio compartidos con `dev3 show-media` se reproducen aquí mismo: reproducir, pausar, buscar y volumen están en el reproductor, y nada empieza por sí solo.",
 	"help.viewer.artifact.title": "Artefacto",
 	"help.viewer.artifact.body":
 		"Un informe HTML interactivo que un agente construyó con `dev3 show-artifact`, aislado y abierto como una ventana emergente sobre la tarea, igual que las imágenes. Ponlo a pantalla completa, recorre artefactos pasados o descárgalo como HTML (o un ZIP cuando incluye imágenes). Escape lo cierra.",

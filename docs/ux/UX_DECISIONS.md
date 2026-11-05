@@ -10,6 +10,9 @@ reasoning (48 of 50 dates), so the record wins and this file stays an index. Wri
 in full only while no record exists — the case for 84 below, whose reasoning lives nowhere
 else, so never compact them by deleting it.
 
+## 2026-11-04 — A gone pre-strict agent path warns, not fails
+- **Rule:** PATH fallback + toast with Reset path; record `grandfather-stale-custom-agent-paths`.
+
 ## 2026-10-27 — CPU and disk pills, earned by user-set levels
 - **Rule:** yaml `global_header.ambient_resource_readout`.
 - **Why:** user asked for pills; no OS verdict exists, so levels are a setting with defaults, and pills show only at warn/critical so a calm machine keeps a calm header.
@@ -34,7 +37,7 @@ Bible §5.7: card → sender (inert without one), traffic only via its action; a
 
 ## 2026-09-25 — Clips play inside the image viewer
 
-Bible §3 `Task image viewer` / yaml `task_image_viewer`: `dev3 show-video` clips (own `sharedVideos` field, merged by `taskSharedMedia`) join the same history and stage as images; no second viewer or panel. Why: decisions/2026/09/25/show-video-additive-shared-videos-field.md.
+Bible §3 `Task image viewer` / yaml `task_image_viewer`: `dev3 show-media` clips (videos in `sharedVideos`, audio in `sharedAudio`, merged by `taskSharedMedia`) join the same history and stage as images; no second viewer or panel. Why: decisions/2026/09/25/show-video-additive-shared-videos-field.md, decisions/2026/10/27/show-media-replaces-show-video.md.
 
 2026-09-22 — One task context menu for card and sidebar row; yaml `context_menu.task_menu`. Why: decisions/2026/09/22/one-task-context-menu-for-card-and-sidebar-row.md.
 
@@ -735,3 +738,7 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 
 ## 2026-10-16 — A hibernated rail trades ✓ for ✕ Cancel
 - **Rule/why:** a parked task is one the user walked away from; complete stays in Move to. Rejected ✓+✕ (weak) and the hover-only header ✕. yaml `lifecycle`.
+
+## 2026-10-31 — Epics: a global object with no destination of its own
+- **Rule:** chip above the card title (click filters `epic:`), an Epic row in the detail metadata grid, optional New Task field, management in Settings → Tasks & Board → Epics; a cross-board footnote reuses the lineage notice. Bible §3.
+- **Why:** a nav item or board header button would spend a budget for an occasional job. `decisions/2026/10/31/global-epics.md`.

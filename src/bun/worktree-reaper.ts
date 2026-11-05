@@ -164,7 +164,7 @@ const WORKTREES_ROOT = `${DEV3_HOME}/worktrees`;
 export function taskShortIdFromWorktreePath(cwd: string, root = WORKTREES_ROOT): string | null {
 	if (!cwd.startsWith(`${root}/`)) return null;
 	const segments = cwd.slice(root.length + 1).split("/");
-	// [slug, taskId8, ...]; `uploads` / `shared-artifacts` siblings have no id.
+	// [slug, taskId8, ...]; `uploads` / `shared-artifacts` / `live-artifacts` siblings have no id.
 	const shortId = segments[1];
 	return shortId !== undefined && /^[0-9a-f]{8}$/.test(shortId) ? shortId : null;
 }

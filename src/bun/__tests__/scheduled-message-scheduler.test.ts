@@ -19,6 +19,10 @@ vi.mock("../agent-message-target", () => ({
 	resolveMainAgentTarget: vi.fn(),
 	addressedAgentRefusal: vi.fn(async () => null),
 	agentPaneRoles: vi.fn(async () => new Map([["%1", "main"], ["%2", "agent"]])),
+	isSoleMainAgent: vi.fn(async () => false),
+}));
+vi.mock("../cli-socket/task-resolution", () => ({
+	resolveTaskAcrossProjects: vi.fn(async (taskId: string) => ({ project: { id: "proj-2" }, task: { id: taskId } })),
 }));
 vi.mock("../agent-prompt-native", () => ({
 	sendPromptToNativeAgentPane: vi.fn(async () => true),
@@ -41,7 +45,7 @@ vi.mock("../logger", () => ({
 
 import * as data from "../data";
 import { holdMessageForPane, sendPromptToAgentPane, sendPromptToPane } from "../agent-prompt";
-import { resolveMainAgentTarget } from "../agent-message-target";
+import { isSoleMainAgent, resolveMainAgentTarget } from "../agent-message-target";
 import { encodeAgentHandle } from "../../shared/agent-handle";
 import { sendPromptToNativeAgentPane, sendPromptToNativePane } from "../agent-prompt-native";
 import { resolveScheduledMessageAuthorPane } from "../scheduled-message-author";
@@ -383,6 +387,14 @@ describe("cancel / send-now / immediate", () => {
 		});
 		const text = vi.mocked(holdMessageForPane).mock.calls[0]![2];
 		expect(text).toContain(`<reply-with>dev3 message --task seq:7 --agent ${encodeAgentHandle(senderAgent)} --subject "what your reply is about" "your reply"</reply-with>`);
+	});
+
+	it("drops --agent when the sender is its task's only agent, asked at delivery", async () => {
+		vi.mocked(isSoleMainAgent).mockResolvedValueOnce(true);
+		await sendMessageImmediately(makeTask() as never, "hello now", null, { taskId: "other", seq: 7, projectId: "proj-1", agent: senderAgent });
+		const text = vi.mocked(holdMessageForPane).mock.calls[0]![2];
+		expect(isSoleMainAgent).toHaveBeenCalledWith({ id: "other" }, senderAgent);
+		expect(text).toContain(`<reply-with>dev3 message --task seq:7 --subject "what your reply is about" "your reply"</reply-with>`);
 	});
 
 	it("offers no reply command at all when the sending agent could not be proven", async () => {

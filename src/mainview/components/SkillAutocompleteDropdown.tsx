@@ -30,7 +30,7 @@ function SkillAutocompleteDropdown({ items, activeIndex, onHover, onSelect, invo
 						onSelect(skill);
 					}}
 					className={`w-full flex items-baseline gap-2 px-3 py-1.5 text-left text-sm transition-colors ${
-						index === activeIndex ? "bg-accent/15 text-fg" : "text-fg-2 hover:bg-elevated-hover"
+						index === activeIndex ? "bg-accent/15 text-fg" : "text-fg-2 hover:bg-overlay-hover"
 					}`}
 				>
 					<span className="font-medium text-fg shrink-0">{invocationPrefix}{skill.name}</span>

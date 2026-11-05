@@ -14,17 +14,20 @@ import type { MatcherGroup } from "../../shared/agent-hooks";
 import { getPrimaryStopTarget, isStatusGuardBlocked, type TaskStatus } from "../../shared/types";
 import {
 	CODEX_DEV3_HOOK_COMMAND,
-	DEV3_BASH_PERMISSION,
 	dev3BashPermissions,
 	ensureDefaultMode,
 	ensureDevPermission,
 	getAgentHookTargetStatus,
+	isBroadDev3Rule,
 	TOLERATE_APP_OFFLINE_FLAG,
+	claudeSessionStartHookInstalled,
 } from "../../shared/agent-hooks";
 import { hookCliDialect } from "../../shared/dev3-cli-path";
 import { buildDev3CodexHooksBlock } from "../codex-config";
 
 const DEV3_CLI = "~/.dev3.0/bin/dev3";
+/** One representative metadata rule from the injected allowlist. */
+const DEV3_BASH_PERMISSION = "Bash(dev3 note *)";
 
 describe("buildClaudeHooks", () => {
 	it("returns UserPromptSubmit, tool, PermissionRequest and Stop matcher groups", () => {
@@ -451,43 +454,47 @@ describe("buildCodexHooks", () => {
 
 describe("getAgentHookTargetStatus", () => {
 	it.each([
-		["SessionStart", "review-by-user", true, "in-progress"],
-		["UserPromptSubmit", "in-progress", false, "in-progress"],
-		["PreToolUse", "user-questions", false, "in-progress"],
-		["PostToolUse", "user-questions", false, "in-progress"],
-		["PermissionRequest", "in-progress", false, "user-questions"],
-		["Stop", "in-progress", false, "review-by-user"],
-		["Stop", "in-progress", true, "review-by-ai"],
-		["Stop", "review-by-ai", true, "review-by-user"],
-	] as const)("maps %s from %s (auto-review=%s)", (event, current, autoReview, expected) => {
-		expect(getAgentHookTargetStatus(event, current, autoReview)).toBe(expected);
+		["SessionStart", "review-by-user", true, null, "in-progress"],
+		["UserPromptSubmit", "in-progress", false, null, "in-progress"],
+		["PreToolUse", "user-questions", false, null, "in-progress"],
+		["PostToolUse", "user-questions", false, null, "in-progress"],
+		["PermissionRequest", "in-progress", false, null, "user-questions"],
+		["Stop", "in-progress", false, null, "review-by-user"],
+		["Stop", "in-progress", true, null, "review-by-ai"],
+		["Stop", "review-by-ai", true, null, "review-by-user"],
+		// #2127: these roles leave no diff of their own, so automatic review skips them.
+		["Stop", "in-progress", true, "coordinator", "review-by-user"],
+		["Stop", "in-progress", true, "pr-review", "review-by-user"],
+		["Stop", "in-progress", true, "board-cleanup", "review-by-user"],
+	] as const)("maps %s from %s (auto-review=%s, type=%s)", (event, current, autoReview, taskType, expected) => {
+		expect(getAgentHookTargetStatus(event, current, getPrimaryStopTarget(autoReview, taskType))).toBe(expected);
 	});
 
 	it("preserves AI review while its agent is working", () => {
-		expect(getAgentHookTargetStatus("PreToolUse", "review-by-ai", true)).toBeNull();
+		expect(getAgentHookTargetStatus("PreToolUse", "review-by-ai", "review-by-ai")).toBeNull();
 	});
 
 	// A scratch task launches parked in user-questions with no prompt. Codex
 	// fires SessionStart at startup, which must not claim the task is working —
 	// only a real prompt may.
 	it("leaves a task parked in user-questions when the session starts", () => {
-		expect(getAgentHookTargetStatus("SessionStart", "user-questions", false)).toBeNull();
+		expect(getAgentHookTargetStatus("SessionStart", "user-questions", "review-by-user")).toBeNull();
 	});
 
 	it("resumes the remembered status when the session starts after an approval", () => {
-		expect(getAgentHookTargetStatus("SessionStart", "user-questions", false, "in-progress"))
+		expect(getAgentHookTargetStatus("SessionStart", "user-questions", "review-by-user", "in-progress"))
 			.toBe("in-progress");
 	});
 
 	it.each(["todo", "user-questions", "review-by-user"] as const)(
 		"does not overwrite %s when a turn stops",
 		(status) => {
-			expect(getAgentHookTargetStatus("Stop", status, true)).toBeNull();
+			expect(getAgentHookTargetStatus("Stop", status, "review-by-ai")).toBeNull();
 		},
 	);
 
 	it.each(["completed", "cancelled"] as const)("never reopens terminal status %s", (status) => {
-		expect(getAgentHookTargetStatus("UserPromptSubmit", status, true)).toBeNull();
+		expect(getAgentHookTargetStatus("UserPromptSubmit", status, "review-by-ai")).toBeNull();
 	});
 });
 
@@ -1171,36 +1178,99 @@ describe("mergeClaudeHooks with malformed settings", () => {
 	});
 });
 
-describe("dev3BashPermissions — every spelling the agent may type", () => {
+describe("dev3BashPermissions — metadata subcommands, every spelling the agent may type", () => {
 	const POSIX = { cli: "~/.dev3.0/bin/dev3", posixShell: true };
 	const WINDOWS = { cli: '"C:/Users/dev/.dev3.0/bin/dev3.exe"', posixShell: false };
 
 	// The skill and hook text dev3 generates spells the CLI as an absolute path,
 	// while the protocol tells the agent to type a bare `dev3`. Claude Code matches
-	// the literal command text, so a worktree missing either rule prompts for
-	// commands dev3 itself put in front of the agent.
-	it("covers both the bare CLI and the POSIX absolute path", () => {
-		expect(dev3BashPermissions(POSIX)).toEqual(["Bash(dev3:*)", "Bash(~/.dev3.0/bin/dev3 *)"]);
+	// the literal command text, so both spellings carry the same allowlist.
+	it("covers metadata subcommands in the bare CLI and the POSIX absolute path", () => {
+		const rules = dev3BashPermissions(POSIX);
+		for (const rule of ["Bash(dev3 current)", "Bash(dev3 task *)", "Bash(dev3 pane logs *)",
+			"Bash(~/.dev3.0/bin/dev3 current)", "Bash(~/.dev3.0/bin/dev3 note *)"]) {
+			expect(rules).toContain(rule);
+		}
 	});
 
 	it("covers the quoted absolute dev3.exe on Windows", () => {
-		expect(dev3BashPermissions(WINDOWS)).toEqual([
-			"Bash(dev3:*)",
-			'Bash("C:/Users/dev/.dev3.0/bin/dev3.exe" *)',
-		]);
+		expect(dev3BashPermissions(WINDOWS)).toContain('Bash("C:/Users/dev/.dev3.0/bin/dev3.exe" task *)');
 	});
 
-	it("emits one rule when the dialect already is the bare CLI", () => {
-		expect(dev3BashPermissions({ cli: "dev3", posixShell: true })).toEqual(["Bash(dev3:*)"]);
+	it("emits only bare-CLI rules when the dialect already is the bare CLI", () => {
+		const rules = dev3BashPermissions({ cli: "dev3", posixShell: true });
+		expect(rules.every((rule) => rule.startsWith("Bash(dev3 "))).toBe(true);
+		expect(new Set(rules).size).toBe(rules.length);
 	});
 
-	it("writes both rules once, however often the hooks are re-asserted", () => {
+	// Issue #2043: any of these approved here skips the harness's own check on
+	// a command the agent could not have run directly.
+	it.each([
+		"dev3 pane run",
+		"dev3 __pane-run",
+		"dev3 dev-server start",
+		"dev3 dev-server restart",
+		"dev3 agent spawn",
+		"dev3 automations run",
+		"dev3 automations create",
+		"dev3 remote",
+		"dev3 local",
+		"dev3 update",
+		"dev3 projects clone",
+		"dev3 doctor",
+	])("never approves the executing command %s", (command) => {
+		for (const dialect of [POSIX, WINDOWS]) {
+			const rules = dev3BashPermissions(dialect);
+			const cli = command.replace(/^dev3/, dialect.cli);
+			for (const spelled of [command, cli]) {
+				expect(rules).not.toContain(`Bash(${spelled})`);
+				expect(rules).not.toContain(`Bash(${spelled} *)`);
+			}
+			expect(rules.some((rule) => rule === "Bash(dev3:*)" || rule === `Bash(${dialect.cli} *)`)).toBe(false);
+		}
+	});
+
+	it("keeps a ` *` word boundary so `pr` cannot reach `projects`", () => {
+		const rules = dev3BashPermissions(POSIX);
+		expect(rules).toContain("Bash(dev3 pr *)");
+		expect(rules.some((rule) => /:\*\)$/.test(rule) || /[^ ]\*\)$/.test(rule))).toBe(false);
+	});
+
+	it("writes the rules once, however often the hooks are re-asserted", () => {
 		const first = ensureDevPermission({}, POSIX);
 		const second = ensureDevPermission(ensureDevPermission(first, POSIX), POSIX) as {
 			permissions: { allow: string[] };
 		};
-		expect(second.permissions.allow).toEqual(["Bash(dev3:*)", "Bash(~/.dev3.0/bin/dev3 *)"]);
+		expect(second.permissions.allow).toEqual(dev3BashPermissions(POSIX));
 	});
+
+	it("takes the broad whole-CLI rule an older dev3 wrote back out, keeping the user's own rules", () => {
+		const legacy = { permissions: { allow: ["Bash(gh:*)", "Bash(dev3:*)", "Bash(~/.dev3.0/bin/dev3 *)", "Bash(dev3 pane run *)"] } };
+		const result = ensureDevPermission(legacy, POSIX) as { permissions: { allow: string[] } };
+		expect(result.permissions.allow).not.toContain("Bash(dev3:*)");
+		expect(result.permissions.allow).not.toContain("Bash(~/.dev3.0/bin/dev3 *)");
+		// A narrow rule the user added themselves is an explicit opt-in and stays.
+		expect(result.permissions.allow.slice(0, 2)).toEqual(["Bash(gh:*)", "Bash(dev3 pane run *)"]);
+	});
+});
+
+describe("isBroadDev3Rule", () => {
+	it.each([
+		"Bash(dev3:*)",
+		"Bash(dev3 *)",
+		"Bash(~/.dev3.0/bin/dev3 *)",
+		'Bash("C:/Users/dev/.dev3.0/bin/dev3.exe" *)',
+		'Bash("C:\\Users\\dev\\.dev3.0\\bin\\dev3.exe" *)',
+	])("recognizes %s", (rule) => {
+		expect(isBroadDev3Rule(rule)).toBe(true);
+	});
+
+	it.each(["Bash(dev3 note *)", "Bash(dev3 pane run *)", "Bash(gh:*)", "Bash(*)", "Read(dev3)", 42])(
+		"leaves %s alone",
+		(rule) => {
+			expect(isBroadDev3Rule(rule)).toBe(false);
+		},
+	);
 });
 
 describe("ensureDevPermission / ensureDefaultMode with malformed settings", () => {
@@ -1460,8 +1530,32 @@ describe("getAgentHookTargetStatus on a To Do task", () => {
 	// An agent that outlived a reset must never start the fresh card again.
 	it.each(["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop", "Interrupt", "SessionEnd"] as const)(
 		"%s → no move", (event) => {
-			expect(getAgentHookTargetStatus(event, "todo", true)).toBeNull();
-			expect(getAgentHookTargetStatus(event, "todo", false)).toBeNull();
+			expect(getAgentHookTargetStatus(event, "todo", "review-by-ai")).toBeNull();
+			expect(getAgentHookTargetStatus(event, "todo", "review-by-user")).toBeNull();
 		},
 	);
+});
+
+describe("claudeSessionStartHookInstalled", () => {
+	let tmp = "";
+	beforeEach(() => {
+		tmp = mkdtempSync(join(tmpdir(), "dev3-session-start-hook-"));
+	});
+	afterEach(() => {
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	it("sees the hook writeClaudeHooks installs", () => {
+		expect(claudeSessionStartHookInstalled(tmp)).toBe(false);
+		writeClaudeHooks(tmp);
+		expect(claudeSessionStartHookInstalled(tmp)).toBe(true);
+	});
+
+	it("answers false for settings whose SessionStart is someone else's", () => {
+		mkdirSync(join(tmp, ".claude"));
+		writeFileSync(join(tmp, ".claude", "settings.local.json"), JSON.stringify({
+			hooks: { SessionStart: [{ hooks: [{ type: "command", command: "echo hi" }] }] },
+		}));
+		expect(claudeSessionStartHookInstalled(tmp)).toBe(false);
+	});
 });

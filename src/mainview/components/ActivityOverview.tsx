@@ -110,7 +110,7 @@ function ActionSheetButton({
 			type="button"
 			onClick={onClick}
 			disabled={disabled}
-			className={`flex w-full items-center gap-3 rounded-lg px-2 py-3 min-h-[44px] text-left text-sm transition-colors disabled:opacity-40 ${danger ? "text-danger hover:bg-danger/10" : "text-fg-2 hover:bg-elevated hover:text-fg"}`}
+			className={`flex w-full items-center gap-3 rounded-lg px-2 py-3 min-h-[44px] text-left text-sm transition-colors disabled:opacity-40 ${danger ? "text-danger hover:bg-danger/10" : "text-fg-2 hover:bg-overlay-hover hover:text-fg"}`}
 		>
 			<span
 				aria-hidden="true"

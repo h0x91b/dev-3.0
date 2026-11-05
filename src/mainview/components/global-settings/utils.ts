@@ -6,6 +6,7 @@ import type {
 	LlmProvider,
 	ProviderConfig,
 } from "../../../shared/types";
+import { DEFAULT_CLAUDE_CONFIG_ID } from "../../../shared/types";
 import { agentKey } from "../../../shared/agent-adapters/families";
 import { hasOmpFlag, OMP_APPROVAL_MODE } from "../../../shared/agent-adapters/omp-flags";
 import { buildProviderEnv, getProviderDefinition, providerPinnedModel } from "../../../shared/llm-provider";
@@ -18,9 +19,11 @@ const PREVIEW_RUNTIME = { baseUrl: "http://127.0.0.1:PORT", sessionKey: "sk-bf-â
 
 export type Theme = "dark" | "light" | "system";
 
+/** Shown until the host answers. Never a save base: every save sends the whole
+ *  object, so persisting this would overwrite the user's settings.json. */
 export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
 	defaultAgentId: "builtin-claude",
-	defaultConfigId: "claude-auto",
+	defaultConfigId: DEFAULT_CLAUDE_CONFIG_ID,
 	taskSortOrder: "oldest-first",
 	updateChannel: "stable",
 };

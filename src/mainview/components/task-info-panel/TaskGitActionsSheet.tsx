@@ -238,7 +238,7 @@ export default function TaskGitActionsSheet({
 			<h3 className="mb-2 flex items-center gap-2 text-dense font-semibold uppercase tracking-wider text-fg-muted">
 				{t("infoPanel.gitSection")}
 				{statusLoading && (
-					<span className="h-3 w-3 animate-spin rounded-full border-2 border-current/30 border-t-current" aria-hidden="true" />
+					<span className="h-3 w-3 animate-spin rounded-full border-2 border-[color-mix(in_srgb,currentColor_30%,transparent)] border-t-current" aria-hidden="true" />
 				)}
 				{statusError && !branchStatus && (
 					<span className="flex items-center gap-1 text-micro font-normal normal-case tracking-normal text-danger" title={statusError}>

@@ -252,7 +252,7 @@ export default function ShortcutRow({ spec, t, remote, onRebind, onReset }: Shor
 						setRejected(false);
 						setRecording(slot);
 					}}
-					className={`px-1 py-0.5 -mx-1 rounded-lg border border-transparent hover:border-edge-active hover:bg-raised ${PRESS}`}
+					className={`px-1 py-0.5 -mx-1 rounded-lg border border-transparent hover:border-edge-active hover:bg-raised-hover ${PRESS}`}
 				>
 					{bindings.length > 0 ? (
 						// More than one entry here means platform variants, never an alias —
@@ -286,7 +286,7 @@ export default function ShortcutRow({ spec, t, remote, onRebind, onReset }: Shor
 	}
 
 	return (
-		<div className={`${rowBase} ${recording ? "bg-accent/5" : "hover:bg-raised/50"}`}>
+		<div className={`${rowBase} ${recording ? "bg-accent/5" : "hover:bg-raised-hover"}`}>
 			<div className="min-w-0">
 				<div className="flex items-center gap-1.5">
 					{overridden ? (

@@ -96,7 +96,7 @@ export default function FilterFunnel({ query, onChange, groups, size = "sm", ope
 								role="checkbox"
 								aria-checked={checked}
 								onClick={() => handleToggle(opt)}
-								className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg transition-colors"
+								className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm text-fg-2 hover:bg-overlay-hover hover:text-fg transition-colors"
 							>
 								<span
 									aria-hidden

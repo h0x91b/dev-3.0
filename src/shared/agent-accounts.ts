@@ -87,10 +87,6 @@ export type ClaudeSlotModels = Partial<Record<ClaudeModelSlot, ClaudeSlotModel>>
  *  launch is not enough, they must be explicitly removed. */
 export const ENV_UNSET = "\u0000dev3:unset\u0000";
 
-/** Internal marker carried into launched Claude sessions so local statusline
- * telemetry can attribute a snapshot to the managed account that produced it. */
-export const DEV3_AGENT_ACCOUNT_ID_ENV = "DEV3_AGENT_ACCOUNT_ID";
-
 /** Every fixed env var the Claude API-profile mechanism can set. When the
  *  active selection does not set one of these, it is actively unset so a value
  *  leaked from a previously active profile (or the ambient shell) cannot hijack
@@ -132,6 +128,9 @@ export interface AgentAccountIdentity {
 	accountId: string | null;
 	/** Codex only: the person's `chatgpt_user_id`, when the id_token carries it. */
 	userId?: string | null;
+	/** Claude only: `organizationUuid`. One person (`accountId`) can sign in to
+	 *  several orgs with one email, and org names are not unique. */
+	organizationId?: string | null;
 }
 
 export interface AgentAccount {
@@ -162,6 +161,8 @@ export interface AgentAccountsState {
 		systemIdentity: AgentAccountIdentity | null;
 		/** New launches left on the default go to Auto (the usage-balanced router). */
 		autoDefault?: boolean;
+		/** Exclusion keys of the logins Auto never picks in any project. */
+		autoExcluded?: string[];
 	};
 	codex: {
 		accounts: AgentAccount[];
@@ -171,6 +172,8 @@ export interface AgentAccountsState {
 		currentIdentity: AgentAccountIdentity | null;
 		/** New launches left on the default go to Auto (the usage-balanced router). */
 		autoDefault?: boolean;
+		/** Exclusion keys of the logins Auto never picks in any project. */
+		autoExcluded?: string[];
 	};
 	omp: {
 		accounts: AgentAccount[];
@@ -187,16 +190,30 @@ export interface AgentAccountsState {
 /**
  * Where an in-app sign-in stands. `running`/`exited`/`missing-executable` keep
  * watching the staging dir, so a login finished in any terminal still lands;
- * `succeeded`, `failed` and `expired` are final.
+ * `succeeded`, `added-unsigned`, `failed` and `expired` are final.
  */
 export type AccountLoginPhase =
+	| "ready"
 	| "running"
 	| "verifying"
 	| "succeeded"
+	| "added-unsigned"
 	| "exited"
 	| "missing-executable"
 	| "failed"
 	| "expired";
+
+/** Why the host refuses "start" or "add without signing in" for a sign-in someone else already moved on. */
+export const ACCOUNT_LOGIN_ENDED_MESSAGE = "This sign-in has already ended.";
+export const ACCOUNT_LOGIN_STARTED_MESSAGE = "This sign-in has already started.";
+export const ACCOUNT_LOGIN_NOT_ADDABLE_MESSAGE = "This sign-in can no longer be added without signing in.";
+export const ACCOUNT_LOGIN_FOUND_MESSAGE = "A sign-in was found — wait for dev3 to confirm it.";
+
+/** RPC errors cross as text, so a refusal is told apart by its fixed message: the record is no longer ours to close. */
+export function isAccountLoginRefusal(err: unknown): boolean {
+	const text = err instanceof Error ? err.message : String(err);
+	return [ACCOUNT_LOGIN_ENDED_MESSAGE, ACCOUNT_LOGIN_STARTED_MESSAGE, ACCOUNT_LOGIN_NOT_ADDABLE_MESSAGE, ACCOUNT_LOGIN_FOUND_MESSAGE].some((m) => text.includes(m));
+}
 
 /** The provider wrote a login, but its own status does not confirm it (yet). */
 export type AccountLoginPendingReason = "status-unavailable" | "status-mismatch";
@@ -290,7 +307,16 @@ export function parseClaudeIdentity(claudeJson: unknown): AgentAccountIdentity |
 		plan,
 		planLabel: claudePlanLabel(plan),
 		accountId: asString(oauth.accountUuid),
+		organizationId: asString(oauth.organizationUuid),
 	};
+}
+
+/** Whether two Claude identities are one login: the same person in the same org.
+ *  The org uuid decides when both carry it; the name is only a fallback. */
+export function sameClaudeLogin(a: AgentAccountIdentity | null | undefined, b: AgentAccountIdentity | null | undefined): boolean {
+	if (!a?.accountId || a.accountId !== b?.accountId) return false;
+	if (a.organizationId && b.organizationId) return a.organizationId === b.organizationId;
+	return (a.organization ?? null) === (b.organization ?? null);
 }
 
 /** Decode a JWT payload without verifying the signature (local trust, display only). */

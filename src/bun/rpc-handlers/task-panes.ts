@@ -5,6 +5,7 @@
  * `taskPaneAction` — execute a split/focus/zoom/close/layout/resize action.
  * `tmuxNewWindow`  — tmux-only: open a new window in the task session.
  * `tmuxCloseWindow` — tmux-only: close one window, never the last, agent windows on confirm.
+ * `tmuxRenameWindow` — tmux-only: give a window a sticky name, or hand it back to automatic naming.
  * `getPanePtyUrl`  — native-only: return the WS URL for one native pane's viewer.
  * `peekTaskTerminal` — read-only text snapshot of one task's terminal (`dev3 peek`).
  *
@@ -18,8 +19,10 @@ import {
 	tmux,
 	PANE_CWD_FORMAT,
 	TmuxError,
+	TMUX_WINDOW_NAME_OPTION,
 	WINDOW_PANE_FORMAT,
 } from "../tmux";
+import { normalizeWindowName } from "../../shared/window-name";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
 import { buildTaskLifecycleEnv } from "./shared-pure";
 import { auxPaneTitle, auxPurposeOfCommand } from "../task-aux-panes";
@@ -600,6 +603,41 @@ async function tmuxCloseWindow(params: { taskId: string; windowId?: string; forc
 	return { closed: true };
 }
 
+// ── Handler: tmuxRenameWindow ─────────────────────────────────────────────────
+
+/**
+ * Name one window of the task session. The name lives in a window user option the
+ * tab bar and the tmux status line both read first, so no program's title can
+ * overwrite it; an empty name unsets it and automatic naming takes over again.
+ */
+async function tmuxRenameWindow(params: { taskId: string; windowId: string; name: string }): Promise<{ renamed: boolean }> {
+	const { task } = await findTaskAcrossProjects(params.taskId);
+	if (task && taskTerminalBackendIdentity(task) === "native") return { renamed: false };
+	if (!/^@\d+$/.test(params.windowId)) return { renamed: false };
+
+	const socket = pty.getSessionSocket(params.taskId);
+	const tmuxSession = pty.getSessionTmuxName(params.taskId);
+	let rows;
+	try {
+		rows = await tmux.listPanes(WINDOW_PANE_FORMAT, { target: tmuxSession, scope: "session", socket });
+	} catch {
+		return { renamed: false };
+	}
+	// Only a window of THIS task's session: the dev3 server hosts every task's windows.
+	if (!rows.some((row) => row.windowId === params.windowId)) return { renamed: false };
+
+	const name = normalizeWindowName(params.name);
+	try {
+		if (name) await tmux.setWindowOption(params.windowId, TMUX_WINDOW_NAME_OPTION, name, { socket });
+		else await tmux.unsetWindowOption(params.windowId, TMUX_WINDOW_NAME_OPTION, { socket });
+	} catch (err) {
+		if (!(err instanceof TmuxError)) throw err;
+		throw new Error(`tmux set-option failed: ${err.stderr || "unknown error"}`);
+	}
+	log.info("tmuxRenameWindow", { taskId: params.taskId.slice(0, 8), windowId: params.windowId, cleared: !name });
+	return { renamed: true };
+}
+
 // ── Handler: getPanePtyUrl ────────────────────────────────────────────────────
 
 async function getPanePtyUrl(params: { taskId: string; paneId: string }): Promise<{ url: string } | { gone: true }> {
@@ -694,6 +732,7 @@ export const taskPanesHandlers = {
 	taskPaneAction,
 	tmuxNewWindow,
 	tmuxCloseWindow,
+	tmuxRenameWindow,
 	getPanePtyUrl,
 	peekTaskTerminal,
 };

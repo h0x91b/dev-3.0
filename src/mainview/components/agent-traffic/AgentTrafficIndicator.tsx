@@ -69,7 +69,7 @@ export default function AgentTrafficIndicator({
 			}}
 			className={
 				variant === "sheet"
-					? "w-full px-2 py-3 gap-2 rounded-lg text-fg-2 hover:bg-elevated hover:text-fg transition-colors text-sm active:scale-[0.96]"
+					? "w-full px-2 py-3 gap-2 rounded-lg text-fg-2 hover:bg-overlay-hover hover:text-fg transition-colors text-sm active:scale-[0.96]"
 					: `header-anim flex items-center gap-2 rounded-lg text-agent hover:bg-elevated transition-colors active:scale-[0.96] ${variant === "bar" ? "shrink-0 px-1.5 py-1" : "w-full px-3 py-2.5"} ${arrived ? "hdr-wire-arrive" : ""}`
 			}
 		>

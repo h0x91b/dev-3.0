@@ -1344,3 +1344,27 @@ describe("AI Review column fields", () => {
 		expect(api.request.updateProjectSettings).not.toHaveBeenCalled();
 	});
 });
+
+describe("board copy section", () => {
+	it("turns the copy on from the Board tab and shows the messages switch only while it is on", async () => {
+		const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+		mockSave.mockClear();
+		const user = userEvent.setup();
+		await renderProjectSettings();
+
+		expect(screen.getByRole("switch", { name: "Keep a copy of the board in this project" })).toHaveAttribute("aria-checked", "false");
+		expect(screen.queryByRole("switch", { name: "Include agent messages" })).not.toBeInTheDocument();
+		await user.click(screen.getByRole("switch", { name: "Keep a copy of the board in this project" }));
+		expect(mockSave).toHaveBeenCalledWith({ projectId: "proj-1", boardCopy: true });
+	});
+
+	it("saves the messages option alone", async () => {
+		const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+		mockSave.mockClear();
+		const user = userEvent.setup();
+		await renderProjectSettings(mockProject, { boardCopy: true });
+
+		await user.click(screen.getByRole("switch", { name: "Include agent messages" }));
+		expect(mockSave).toHaveBeenCalledWith({ projectId: "proj-1", boardCopyMessages: true });
+	});
+});

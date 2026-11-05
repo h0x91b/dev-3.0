@@ -1,3 +1,5 @@
+> Superseded on 2026-10-26 in part by `decisions/2026/10/26/compact-agent-handles-and-sole-agent-replies.md`: the handle is now `<pane>.<generation digest>`, resolved by the app, and a reply drops `--agent` when the sender is its task's only agent.
+
 # Address messages to one agent process, and route replies back to it
 
 ## 1. Context
@@ -13,7 +15,7 @@ A task can run several agents: the main one, `+ Agent` extras and the AI Review 
 - The sender is captured on every agent-sent message (`withSenderAgent`, including the launch hand-off), and `<reply-with>` carries `--agent <sender handle>`. With no proven sender the envelope has `<reply-unavailable>` and no reply command, and the CLI tells the sender.
 
 ## 4. Risks
-Windows has no `pid@start` reader, so there `--agent` is refused and replies are unavailable (follow-up issue). A native delivery forwarded to another app process is checked right before the hand-over, not again at release. Native `+ Agent` panes are not recorded, so `dev3 pane list` cannot label them. A message the user's own shell sends from a worktree no longer gets a task-level reply command.
+Windows has no `pid@start` reader, so there `--agent` is refused and replies are unavailable (follow-up issue). A native delivery forwarded to another app process is checked right before the hand-over, not again at release. Native `+ Agent` panes are not recorded in `sessionState` (updated 2026-10-28: they and bug hunters are labeled from a launch-script sidecar, see `native-agent-attribution.ts`). A message the user's own shell sends from a worktree no longer gets a task-level reply command.
 
 ## 5. Alternatives considered
 Raw pane ids as addresses: reused across tmux servers and blind to a replaced agent. Registering AI Review in `sessionState`: rejected in the author-binding record for its recovery blast radius. A short id stored in the app: new on-disk state for something the handle carries itself. A task-level reply when the sender is unknown: may reach a sibling of the asker, which is the defect.

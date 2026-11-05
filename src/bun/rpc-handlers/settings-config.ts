@@ -29,9 +29,10 @@ import { getCurrentUiTheme, setCurrentUiTheme } from "../theme-state";
 import { getAllFeatureFlags, setFeatureFlags as cacheFeatureFlags } from "../feature-flags";
 import { resolveAnalyticsDistinctId as resolveDistinctId } from "../analytics-identity";
 import { collectTelemetryProfile } from "../telemetry-profile";
+import { runBoardCopy } from "../board-copy";
 import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath, setFocusMode } from "./shared";
 import { binaryCandidatesOnPath, tmuxSearchPaths } from "./shared-pure";
-import { agentBinaryPathOverride, isExecutableFile } from "../executable";
+import { agentBinaryPathOverride, brokenCustomPath, enforcedCustomBinaryPaths, isExecutableFile, staleCustomPath } from "../executable";
 import { agentAlternativeInstallCommand, agentInstallCommand } from "../../shared/agent-install";
 import { harnessReadinessFrom } from "../harness-readiness";
 import { validateEnvMap } from "../../shared/env-text";
@@ -135,6 +136,8 @@ async function updateProjectSettings(params: { projectId: string } & ProjectSett
 		...(params.githubAuthHost !== undefined ? { githubAuthHost: params.githubAuthHost } : {}),
 		...(params.githubAuthLogin !== undefined ? { githubAuthLogin: params.githubAuthLogin } : {}),
 		...(params.sensitive !== undefined ? { sensitive: params.sensitive } : {}),
+		...(params.boardCopy !== undefined && project.kind !== "virtual" ? { boardCopy: params.boardCopy || undefined } : {}),
+		...(params.boardCopyMessages !== undefined ? { boardCopyMessages: params.boardCopyMessages || undefined } : {}),
 		...(params.autoAccountExclusions !== undefined
 			? { autoAccountExclusions: normalizeAccountExclusions(params.autoAccountExclusions) }
 			: {}),
@@ -158,6 +161,7 @@ async function updateProjectSettings(params: { projectId: string } & ProjectSett
 	// not a raw record a config file may override.
 	const updated = saved.kind === "virtual" ? saved : await repoConfig.resolveProjectConfig(saved);
 	getPushMessage()?.("projectUpdated", { project: updated });
+	if (params.boardCopy === true) void runBoardCopy(saved.id);
 	log.info("← updateProjectSettings done");
 	return updated;
 }
@@ -311,8 +315,9 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 		}),
 		simplifiedModeSource: stored.simplifiedModeSource,
 		analyticsDistinctId: stored.analyticsDistinctId ?? params.analyticsDistinctId,
-		// Written only by the account surfaces' Auto row, after the snapshot was taken.
+		// Written only by the account surfaces' Auto controls, after the snapshot was taken.
 		autoAccountDefault: stored.autoAccountDefault,
+		autoAccountExclusions: stored.autoAccountExclusions,
 	};
 	await saveSettings(next);
 	await noteInterfaceModeChange(stored.simplifiedMode === true, next.simplifiedMode === true, stored.simplifiedModeSource === "fresh");
@@ -701,8 +706,16 @@ async function checkAgentAvailability(): Promise<AgentCheckResult[]> {
 	const results: AgentCheckResult[] = allAgents.map((agent) => {
 		// The user's own path always applies; a path cached for a previous base
 		// command is stale, not an error — drop it.
-		const overridePath = agentBinaryPathOverride(agent.id, agent.baseCommand, settings.agentBinaryPaths, settings.agentCustomBinaryPaths);
-		const { resolvedPath, customPathError } = resolveBinaryPath(agent.baseCommand, overridePath);
+		const overridePath = agentBinaryPathOverride(agent.id, agent.baseCommand, settings.agentBinaryPaths, enforcedCustomBinaryPaths(settings));
+		// A broken custom path is an error, never a reason to report the system binary as this agent.
+		const customPathStale = !!staleCustomPath(agent.id, settings);
+		const resolved = brokenCustomPath(agent.id, enforcedCustomBinaryPaths(settings))
+			? { resolvedPath: undefined, customPathError: true }
+			: resolveBinaryPath(agent.baseCommand, overridePath);
+		const resolvedPath = resolved.resolvedPath;
+		// A stale pre-strict path is a warning, not an error: the launch uses PATH. Its cache copy
+		// can still be the override here, which is the only reason resolveBinaryPath flags it.
+		const customPathError = resolved.customPathError && !customPathStale;
 		log.info(`  agent ${agent.id} (${agent.baseCommand}): ${resolvedPath ? "found" : "NOT found"}`, { path: resolvedPath ?? "none" });
 		return {
 			agentId: agent.id,
@@ -714,6 +727,8 @@ async function checkAgentAvailability(): Promise<AgentCheckResult[]> {
 			alternativeInstallCommand: agentAlternativeInstallCommand(agent, process.platform),
 			installUrl: agent.installUrl,
 			customPathError,
+			customPathStale: customPathStale || undefined,
+			customPath: settings.agentCustomBinaryPaths?.[agent.id],
 		};
 	});
 
@@ -748,15 +763,34 @@ async function setAgentBinaryPath(params: { agentId: string; path: string }): Pr
 	if (!existsSync(params.path)) {
 		throw new Error(`File not found: ${params.path}`);
 	}
+	if (!isExecutableFile(params.path)) {
+		throw new Error(`File is not executable: ${params.path}`);
+	}
 	const settings = await loadSettings();
 	// Written to both maps: the custom one is what every launch reads, the cache
 	// copy keeps an older app version on the same ~/.dev3.0 pointing at it too.
 	await saveSettings({
 		...settings,
 		agentCustomBinaryPaths: { ...(settings.agentCustomBinaryPaths ?? {}), [params.agentId]: params.path },
+		// Chosen (and checked) now, so it is strict: once broken it fails instead of falling back.
+		strictAgentCustomBinaryPaths: { ...(settings.strictAgentCustomBinaryPaths ?? {}), [params.agentId]: params.path },
 		agentBinaryPaths: { ...(settings.agentBinaryPaths ?? {}), [params.agentId]: params.path },
 	});
 	log.info("<- setAgentBinaryPath saved");
+}
+
+async function clearAgentBinaryPath(params: { agentId: string }): Promise<void> {
+	log.info("-> clearAgentBinaryPath", params);
+	const settings = await loadSettings();
+	const custom = { ...(settings.agentCustomBinaryPaths ?? {}) };
+	const cached = { ...(settings.agentBinaryPaths ?? {}) };
+	// The cache copy setAgentBinaryPath wrote goes too; a different (auto-found) path stays.
+	if (cached[params.agentId] === custom[params.agentId]) delete cached[params.agentId];
+	delete custom[params.agentId];
+	const strict = { ...(settings.strictAgentCustomBinaryPaths ?? {}) };
+	delete strict[params.agentId];
+	await saveSettings({ ...settings, agentCustomBinaryPaths: custom, strictAgentCustomBinaryPaths: strict, agentBinaryPaths: cached });
+	log.info("<- clearAgentBinaryPath saved");
 }
 
 async function setTmuxTheme(params: { theme: "dark" | "light"; preference?: "dark" | "light" | "system" }): Promise<void> {
@@ -829,6 +863,7 @@ export const settingsConfigHandlers = {
 	checkAgentAvailability,
 	checkHarnessReadiness,
 	setAgentBinaryPath,
+	clearAgentBinaryPath,
 	setTmuxTheme,
 };
 

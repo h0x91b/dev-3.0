@@ -46,7 +46,7 @@ export function PipelineMenuAction({
 		<div className={touch ? "px-1" : "px-3"}>
 			<button
 				onClick={onClick}
-				className={`task-anim flex w-full items-center gap-2 rounded-md text-left font-medium text-fg-2 transition-colors hover:bg-elevated-hover hover:text-fg ${
+				className={`task-anim flex w-full items-center gap-2 rounded-md text-left font-medium text-fg-2 transition-colors hover:bg-overlay-hover hover:text-fg ${
 					touch ? "min-h-[2.75rem] px-2 py-2.5 text-base" : "px-1.5 py-1.5 text-base-sm"
 				}`}
 			>
@@ -152,7 +152,7 @@ export default function PipelineDropdown({
 										: canTransition
 											? stage === "completed"
 												? "font-semibold text-success hover:bg-success/15 cursor-pointer"
-												: "font-medium text-fg-2 hover:bg-elevated-hover hover:text-fg cursor-pointer"
+												: "font-medium text-fg-2 hover:bg-overlay-hover hover:text-fg cursor-pointer"
 											: "font-medium text-fg-muted/40 cursor-default"
 								}`}
 							>
@@ -192,7 +192,7 @@ export default function PipelineDropdown({
 										isCurrentSide
 											? "text-fg font-semibold cursor-default"
 											: canTransition
-												? "font-medium text-fg-2 hover:bg-elevated-hover hover:text-fg cursor-pointer"
+												? "font-medium text-fg-2 hover:bg-overlay-hover hover:text-fg cursor-pointer"
 												: "font-medium text-fg-muted/40 cursor-default"
 									}`}
 								>
@@ -232,7 +232,7 @@ export default function PipelineDropdown({
 									className={`w-full text-left flex items-center gap-2.5 ${rowPad} ${rowText} rounded-md transition-colors ${
 										isCurrent
 											? "text-fg font-semibold cursor-default"
-											: "font-medium text-fg-2 hover:bg-elevated-hover hover:text-fg cursor-pointer"
+											: "font-medium text-fg-2 hover:bg-overlay-hover hover:text-fg cursor-pointer"
 									}`}
 								>
 									<div

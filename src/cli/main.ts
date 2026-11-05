@@ -3,6 +3,7 @@ import { detectContext, resolveInstanceSocket, resolveSocketPath, resolveSocketP
 import { exitAppNotRunning, exitInternalError, exitUsage } from "./output";
 import { handleProjects } from "./commands/projects";
 import { handleSpaces } from "./commands/spaces";
+import { handleEpic } from "./commands/epic";
 import { handleTasks } from "./commands/tasks";
 import { handleTask } from "./commands/task";
 import { handleCurrent } from "./commands/current";
@@ -14,6 +15,7 @@ import { handleVents } from "./commands/vents";
 import { handleOverview } from "./commands/overview";
 import { handleKeepAlive } from "./commands/keep-alive";
 import { handleLabel } from "./commands/label";
+import { handleBoard } from "./commands/board";
 import { handleAutomations } from "./commands/automations";
 import { handleInstallHooks } from "./commands/install-hooks";
 import { handleInstallSkills } from "./commands/install-skills";
@@ -28,6 +30,7 @@ import { handleMessage, unreachableAppVerdict } from "./commands/message";
 import { handlePeek } from "./commands/peek";
 import { handlePr } from "./commands/pr";
 import { handlePrWatch } from "./commands/pr-watch";
+import { handleSecret } from "./commands/secret";
 import { handlePane } from "./commands/pane";
 import { handleAgent } from "./commands/agent";
 import { handleSender } from "./commands/sender";
@@ -35,8 +38,9 @@ import { handlePaneExec } from "./commands/pane-exec";
 import { PANE_RUN_VERB } from "../bun/pane-run-store";
 import { DEV_SERVER_LOG_SINK_VERB } from "../shared/dev-server-log";
 import { handleDevServerLogSink } from "./commands/dev-server-log-sink";
-import { handleShowImage, handleShowVideo } from "./commands/show-image";
+import { handleShowImage, handleShowMedia } from "./commands/show-image";
 import { handleShowArtifact } from "./commands/show-artifact";
+import { handleLive } from "./commands/live";
 import { handleArtifactTemplate } from "./commands/artifact-template";
 import { handleInlineHtml } from "./commands/inline-html";
 import { handleStatusLine } from "./commands/statusline";
@@ -47,6 +51,7 @@ import { handleExtensionHook } from "./commands/extension-hook";
 import { handleClaudePrompt } from "./commands/claude-prompt";
 import { handleClaudeTurnEnded } from "./commands/claude-turn-ended";
 import { handleClaudeSessionStart, handleNoteRecent } from "./commands/recent-notes";
+import { handleAgentExitedHook } from "./commands/agent-exited";
 import { handleClaudeStopFailure } from "./commands/claude-stop-failure";
 import { handleDoctor } from "./commands/doctor";
 import { handleUpdate } from "./commands/update";
@@ -61,6 +66,7 @@ const HELP = `dev3 — AI-facing CLI for the dev-3.0 Kanban board.
 Auto-detects project and task from the worktree context.
 
 Commands:
+  dev3 secret run --env NAME -- command [args...]  Ask for a secret in the app; run once, discard output
   dev3 agent list [--json]              List agent and preset IDs for managed launches
   dev3 agent spawn [--task <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--json]
   dev3 agent resume [--task <id>] [--allow-agent-latest] [--json]
@@ -73,8 +79,8 @@ Commands:
   dev3 task terminal-backend [--task <id>] [--to tmux|native]  Inspect/switch this task's terminal backend
   dev3 task hibernate [<id>|--task <id>] [--json]  Park a task: stop agent, terminal, dev server; keep the worktree
   dev3 task wake [<id>|--task <id>] --resume|--shell [--json]  Wake a hibernated task (resume the agent, or a plain shell)
-  dev3 task update [--task <id>] --title "..." [--description "..." | --description -] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard]  Update task fields
-  dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|board-cleanup|standard]  Create a new task (To Do)
+  dev3 task update [--task <id>] --title "..." [--description "..." | --description -] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic]  Update task fields
+  dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic]  Create a new task (To Do)
                                          (--pr <n> starts the worktree on that pull request's branch and implies --type pr-review)
   dev3 note add "..." [--content "..."] [--task <id>] [--source user]  Add note to a task
   dev3 note list [--task <id>]          List notes
@@ -97,6 +103,7 @@ Commands:
   dev3 keep-alive off [--task <id>]     Stop auto-reviving this task
   dev3 keep-alive status [--task <id>]  Show keep-alive state for a task
   dev3 keep-alive list [--all]          List kept-alive tasks (current project, or --all)
+  dev3 board export [--project <id>] [--json]  Write the board copy in .dev3/board/ now (copy must be on)
   dev3 label list                       List project labels
   dev3 label create "name" [--color "#hex"]  Create label
   dev3 label delete <id>                Delete label
@@ -105,6 +112,12 @@ Commands:
   dev3 label remove <id> [<id>...] [--task <task>]  Remove only these labels
   dev3 label set --clear [--task <id>]  Remove all labels from a task
   dev3 tasks list [--open] [--json] [--status <s>] [--label <id>] [--priority P0,P1] [--sort priority|seq] [--limit <n>] [--offset <n>]  List tasks (highest priority first, default 50)
+  dev3 tasks list --children-of seq:<N> [--project <id>] [--json]  Tasks created from inside that task, across projects
+  dev3 tasks list --epic <name|id> [--json]  Every task in that epic, across projects and statuses
+  dev3 epic list [--all] [--json]       List epics (id, colour, name, state, task count); --all includes archived
+  dev3 epic create --name "..." [--color #hex]  Create an epic (the user, or a coordinator task; exit 45 otherwise)
+  dev3 epic update <name|id> [--name "..."] [--color #hex]  Rename or recolour an epic
+  dev3 epic archive|unarchive <name|id>  Close or reopen an epic (there is no delete)
   dev3 automations list                 List project automations (scheduled agent runs)
   dev3 automations show <id>            Automation details + run history
   dev3 automations create --name "..." [--prompt "..." | --prompt -] --rrule "FREQ=DAILY;BYHOUR=9" [--template shipped-report]
@@ -128,8 +141,9 @@ Commands:
   dev3 message --list [--json] [--task <id>]  Pending scheduled messages (id, due in local + UTC, sender)
   dev3 message --cancel <id> [--task <id>]  Cancel one pending scheduled message
   dev3 show-image <path> [--caption "..."] [<path> ...]  Show images (screenshots/renders) in an in-app viewer bound to the task; each --caption annotates the preceding image
-  dev3 show-video <file.mp4|file.webm> [--caption "..."] [<path> ...]  Play MP4/WebM clips (max 300 MB each) in the same viewer as show-image; never autoplays
+  dev3 show-media <video|audio> [--caption "..."] [<path> ...]  Play MP4/WebM video and MP3/M4A/WAV/OGG audio (max 300 MB each) in the same viewer as show-image; never autoplays
   dev3 show-artifact <report-dir | file.html> [--assets <file...>] [--title "..."]  Show a task-bound HTML artifact; a directory publishes with every CSS, JS, image, video and audio file under it
+  dev3 live <publish|adopt|url|status|list|get|set|patch|delete|events|ack|clear>  The task's one Live Artifact: a page replaced in place plus a store it shares with the agent (dev3 live for usage)
   dev3 artifact-template [--task <id>]   Copy this task's dev3 artifact starter into ./dev3-artifact-report — recovery when $DEV3_ARTIFACT_TEMPLATE_DIR is missing
   dev3 inline-html <index.html|dir> -o <out.html> [--json]  Fold a multi-file HTML report into one self-contained file (for a gist / preview URL); refuses on missing assets or embedded credentials
   dev3 peek [--task <id>] [--pane <N|paneId>] [--lines <N>] [--json] [--follow [--interval <s>]]  Read-only glance at a task's terminal: pane summary with output freshness + the tail of one pane; --follow re-prints only changed screens
@@ -325,6 +339,10 @@ async function main(): Promise<void> {
 			context,
 		);
 	}
+	if (command === "hook" && subcommand === "agent-exited") {
+		// Internal: the launch wrapper's report that its agent process ended.
+		return await handleAgentExitedHook(args, socketPath || context?.socketPath || null, context);
+	}
 	if (command === "hook" && subcommand === "claude-prompt") {
 		// Record the prompt and start its lifecycle observation atomically.
 		return await handleClaudePrompt(
@@ -450,6 +468,8 @@ async function main(): Promise<void> {
 
 	try {
 		switch (command) {
+			case "secret":
+				return await handleSecret(subcommand, args, socketPath, context);
 			case "projects":
 			// Alias: the plural is the real command, but `dev3 project list` is the
 			// natural mistype and used to answer "Unknown command" with no hint —
@@ -459,6 +479,9 @@ async function main(): Promise<void> {
 			case "spaces":
 			case "space":
 				return await handleSpaces(subcommand, args, socketPath, context);
+			case "epic":
+			case "epics":
+				return await handleEpic(subcommand, args, socketPath, context);
 			case "tasks":
 				return await handleTasks(subcommand, args, socketPath, context);
 			case "task":
@@ -488,6 +511,8 @@ async function main(): Promise<void> {
 					return await handleKeepAlive(subcommand, args, socketPath, context);
 			case "label":
 				return await handleLabel(subcommand, args, socketPath, context);
+			case "board":
+				return await handleBoard(subcommand, args, socketPath, context);
 			case "automations":
 				return await handleAutomations(subcommand, args, socketPath, context);
 			case "config":
@@ -510,12 +535,14 @@ async function main(): Promise<void> {
 				// path), so hand the raw tokens straight to the handler rather than
 				// through the order-losing `parseArgs`.
 				return await handleShowImage(rawArgs.slice(1), socketPath, context);
-			case "show-video":
-				return await handleShowVideo(rawArgs.slice(1), socketPath, context);
+			case "show-media":
+				return await handleShowMedia(rawArgs.slice(1), socketPath, context);
 			case "show-artifact":
 				return await handleShowArtifact(rawArgs.slice(1), socketPath, context);
 			case "artifact-template":
 				return await handleArtifactTemplate(args, socketPath, context);
+			case "live":
+				return await handleLive(subcommand, args, socketPath, context);
 			case "peek":
 				return await handlePeek(args, socketPath, context);
 			case "pane":

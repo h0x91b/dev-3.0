@@ -139,7 +139,7 @@ export default function FeatureFlagsModal({ onClose }: FeatureFlagsModalProps) {
 							className={`shrink-0 px-3 py-2 text-xs rounded-lg border transition-colors disabled:opacity-40 ${
 								copied
 									? "border-success/40 bg-success/10 text-success"
-									: "border-edge text-fg-2 hover:text-fg hover:bg-elevated"
+									: "border-edge text-fg-2 hover:text-fg hover:bg-overlay-hover"
 							}`}
 						>
 							{copied ? t("featureFlags.copied") : t("featureFlags.copy")}
@@ -173,7 +173,7 @@ export default function FeatureFlagsModal({ onClose }: FeatureFlagsModalProps) {
 						type="button"
 						onClick={handleRefresh}
 						disabled={refreshState === "pending"}
-						className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors active:scale-[0.96] disabled:opacity-50 disabled:active:scale-100"
+						className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-overlay-hover transition-colors active:scale-[0.96] disabled:opacity-50 disabled:active:scale-100"
 					>
 						{refreshLabel}
 					</button>

@@ -11,7 +11,7 @@
 import type { CodingAgent, GlobalSettings } from "../shared/types";
 import { agentAlternativeInstallCommand, agentInstallCommand, agentNotInstalledMessage } from "../shared/agent-install";
 import { findConfig, getAllAgents } from "./agents";
-import { agentBinaryPathOverride, isExecutableFile } from "./executable";
+import { agentBinaryPathOverride, brokenCustomPath, customExecutableMessage, enforcedCustomBinaryPaths, isExecutableFile } from "./executable";
 import { createLogger } from "./logger";
 import { resolveBinaryPath } from "./rpc-handlers/shared-pure";
 import { loadSettings } from "./settings";
@@ -26,11 +26,13 @@ export interface MissingAgentBinary {
 	binaryName: string;
 	installCommand?: string;
 	alternativeInstallCommand?: string;
+	/** The configured custom executable that is missing or not executable. */
+	customPath?: string;
 }
 
 export class AgentNotInstalledError extends Error {
 	constructor(readonly missing: MissingAgentBinary) {
-		super(agentNotInstalledMessage(missing));
+		super(missing.customPath ? customExecutableMessage(missing.agentName, missing.customPath) : agentNotInstalledMessage(missing));
 		this.name = "AgentNotInstalledError";
 	}
 }
@@ -40,10 +42,12 @@ export class AgentNotInstalledError extends Error {
 export function resolveAgentLaunchBinary(
 	agentId: string,
 	baseCmd: string,
-	settings: Pick<GlobalSettings, "agentBinaryPaths" | "agentCustomBinaryPaths">,
-): { binaryName: string; resolvedPath?: string } {
+	settings: Pick<GlobalSettings, "agentBinaryPaths" | "agentCustomBinaryPaths" | "strictAgentCustomBinaryPaths">,
+): { binaryName: string; resolvedPath?: string; customPath?: string } {
 	const binaryName = baseCmd.split("/").pop() ?? baseCmd;
-	const overridePath = agentBinaryPathOverride(agentId, binaryName, settings.agentBinaryPaths, settings.agentCustomBinaryPaths);
+	const customPath = brokenCustomPath(agentId, enforcedCustomBinaryPaths(settings));
+	if (customPath) return { binaryName, customPath };
+	const overridePath = agentBinaryPathOverride(agentId, binaryName, settings.agentBinaryPaths, enforcedCustomBinaryPaths(settings));
 	// A command given as a path is exec'd as that path: a same-named binary
 	// elsewhere on PATH does not make it launchable.
 	if (baseCmd.includes("/")) {
@@ -97,13 +101,14 @@ export async function findMissingLaunchAgent(
 			log.warn("Agent binary probe failed — launch not blocked", { agentId: target.agent.id, error: String(err) });
 			continue;
 		}
-		const { binaryName, resolvedPath } = probe;
+		const { binaryName, resolvedPath, customPath } = probe;
 		if (resolvedPath) continue;
 		log.warn("Launch refused: agent binary missing", { agentId: target.agent.id, binaryName });
 		return {
 			agentId: target.agent.id,
 			agentName: target.agent.name,
 			binaryName,
+			customPath,
 			installCommand: agentInstallCommand(target.agent, process.platform),
 			alternativeInstallCommand: agentAlternativeInstallCommand(target.agent, process.platform),
 		};

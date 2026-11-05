@@ -212,10 +212,10 @@ function SelectListbox({
 							isActive ? "ring-1 ring-inset ring-accent" : ""
 						} ${
 							opt.disabled
-								? "text-fg-muted hover:bg-elevated-hover"
+								? "text-fg-muted hover:bg-overlay-hover"
 								: isSelected
 									? "bg-accent/15 text-fg font-medium"
-									: "text-fg-2 hover:bg-elevated-hover hover:text-fg"
+									: "text-fg-2 hover:bg-overlay-hover hover:text-fg"
 						}`}
 					>
 						{/* The lock is the option's state, not its content, so it survives a

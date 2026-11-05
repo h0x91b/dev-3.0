@@ -4,7 +4,8 @@ import type { TaskStatus, TmuxWindowEntry } from "../../shared/types";
 import { useT, type TFunction } from "../i18n";
 import { useTmuxWindows } from "../hooks/useTmuxWindows";
 import { requestTaskTerminalFocus } from "../terminal-focus-request";
-import { closeTmuxWindow, openTmuxWindow } from "../terminal-window-nav";
+import { closeTmuxWindow, openTmuxWindow, renameTmuxWindow } from "../terminal-window-nav";
+import { WINDOW_NAME_MAX } from "../../shared/window-name";
 import { toast } from "../toast";
 import Tooltip from "./Tooltip";
 
@@ -35,7 +36,13 @@ export default function TerminalWindowNav({
 	const visible = windows.length > 0;
 
 	const select = (w: TmuxWindowEntry) => {
-		void navigate({ windowId: w.windowId }).then(() => requestTaskTerminalFocus(taskId));
+		// The first click of a double-click switches; its late focus must not steal the rename field.
+		void navigate({ windowId: w.windowId }).then(() => {
+			if (!document.activeElement?.closest("[data-window-rename]")) requestTaskTerminalFocus(taskId);
+		});
+	};
+	const rename = (w: TmuxWindowEntry, name: string) => {
+		void renameTmuxWindow(taskId, w.windowId, name).catch((err) => toast.error(t("panes.actionFailed", { error: String(err) }), { taskId }));
 	};
 	const close = (w: TmuxWindowEntry) => {
 		// tmux never closes a session's last window; offering it would be a dead control.
@@ -53,6 +60,7 @@ export default function TerminalWindowNav({
 					agentWaiting={taskStatus === "user-questions"}
 					onSelect={select}
 					onClose={close}
+					onRename={rename}
 					onNew={() => void openTmuxWindow(taskId).then(() => requestTaskTerminalFocus(taskId))}
 					homeTitle={taskTitle}
 					t={t}
@@ -66,8 +74,13 @@ export default function TerminalWindowNav({
 	);
 }
 
-/** The agent's home window carries the task's title — the same name the tmux bar shows. */
+/** The name a user gave the window wins; else the home window carries the task's title — the same order the tmux bar uses. */
 export function windowName(w: TmuxWindowEntry, t: TFunction, homeTitle?: string): string {
+	return w.customName || automaticWindowName(w, t, homeTitle);
+}
+
+/** What the window is called when nobody named it — what clearing a rename brings back. */
+function automaticWindowName(w: TmuxWindowEntry, t: TFunction, homeTitle?: string): string {
 	return (w.home && homeTitle) || w.label || t("windowPager.window", { index: String(w.index) });
 }
 
@@ -87,6 +100,7 @@ function WindowTabs({
 	agentWaiting,
 	onSelect,
 	onClose,
+	onRename,
 	onNew,
 	homeTitle,
 	t,
@@ -97,13 +111,15 @@ function WindowTabs({
 	agentWaiting: boolean;
 	onSelect: (w: TmuxWindowEntry) => void;
 	onClose: (w: TmuxWindowEntry) => void;
+	onRename: (w: TmuxWindowEntry, name: string) => void;
 	onNew: () => void;
 	homeTitle?: string;
 	t: TFunction;
 }) {
 	const listRef = useRef<HTMLDivElement>(null);
 	const [menu, setMenu] = useState<WindowMenuState | null>(null);
-	// A lone window has nothing to switch to and cannot be closed, so it gets no × and no menu.
+	const [editing, setEditing] = useState<{ windowId: string; width: number } | null>(null);
+	// A lone window cannot be closed, so it gets no ×.
 	const closable = windows.length > 1;
 	const activeId = windows.find((w) => w.active)?.windowId;
 
@@ -111,6 +127,19 @@ function WindowTabs({
 		const el = listRef.current?.querySelector<HTMLElement>('[aria-selected="true"]');
 		el?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
 	}, [activeId]);
+
+	const tabOf = (windowId: string) => listRef.current?.querySelector<HTMLElement>(`[role="tab"][data-window-id="${windowId}"]`) ?? null;
+
+	// The field takes the tab's own width (never narrower than a short name), so the row does not jump.
+	const startRename = (w: TmuxWindowEntry) => {
+		const width = tabOf(w.windowId)?.getBoundingClientRect().width ?? 0;
+		setEditing({ windowId: w.windowId, width });
+	};
+	const finishRename = (w: TmuxWindowEntry, name: string | null) => {
+		setEditing(null);
+		if (name !== null) onRename(w, name);
+		requestAnimationFrame(() => tabOf(w.windowId)?.focus());
+	};
 
 	// Roving focus: arrows move between windows, Enter/Space switches (manual
 	// activation — switching repaints the whole terminal, so focus alone must not).
@@ -120,10 +149,18 @@ function WindowTabs({
 		if (at < 0) return;
 		if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
 			const target = windows.find((w) => w.windowId === tabs[at].dataset.windowId);
-			if (target && closable) {
+			if (target) {
 				e.preventDefault();
 				const r = tabs[at].getBoundingClientRect();
 				setMenu({ window: target, x: r.left, y: r.bottom, opener: tabs[at] });
+			}
+			return;
+		}
+		if (e.key === "F2") {
+			const target = windows.find((w) => w.windowId === tabs[at].dataset.windowId);
+			if (target) {
+				e.preventDefault();
+				startRename(target);
 			}
 			return;
 		}
@@ -147,7 +184,7 @@ function WindowTabs({
 
 	const openMenu = (w: TmuxWindowEntry) => (e: MouseEvent<HTMLButtonElement>) => {
 		e.preventDefault();
-		if (closable) setMenu({ window: w, x: e.clientX, y: e.clientY, opener: e.currentTarget });
+		setMenu({ window: w, x: e.clientX, y: e.clientY, opener: e.currentTarget });
 	};
 
 	return (
@@ -165,6 +202,18 @@ function WindowTabs({
 				const name = windowName(w, t, homeTitle);
 				const state = windowStateText(w, isUnseen, t, agentWorking, agentWaiting);
 				const accessibleName = state ? `${name}, ${state}` : name;
+				if (editing?.windowId === w.windowId) {
+					return (
+						<WindowRenameField
+							key={w.windowId}
+							window={w}
+							width={editing.width}
+							automaticName={automaticWindowName(w, t, homeTitle)}
+							onDone={(value) => finishRename(w, value)}
+							t={t}
+						/>
+					);
+				}
 				return (
 					<div key={w.windowId} role="presentation" className="group relative flex-shrink-0 flex">
 					<Tooltip content={name} detail={state || undefined} placement="bottom">
@@ -176,6 +225,7 @@ function WindowTabs({
 							tabIndex={w.active ? 0 : -1}
 							data-window-id={w.windowId}
 							onClick={() => onSelect(w)}
+							onDoubleClick={() => startRename(w)}
 							onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
 							onAuxClick={(e) => { if (e.button === 1) onClose(w); }}
 							onContextMenu={openMenu(w)}
@@ -183,12 +233,28 @@ function WindowTabs({
 								w.active ? "bg-accent/15 text-fg shadow-[inset_0_0_0_1px_rgb(var(--accent)/0.3)]" : "text-fg-3 hover:text-fg-2 hover:bg-elevated"
 							}`}
 						>
-							{w.home ? <HomeGlyph working={agentWorking} /> : <span aria-hidden="true" className={`tabular-nums ${w.active ? "text-accent" : "text-fg-muted"}`}>{w.index}</span>}
+							{/* The leading glyph steps aside for the rename pencil, which takes its slot — the tab never changes width. */}
+							<span aria-hidden="true" className="flex-shrink-0 transition-opacity duration-150 ease-out group-hover:opacity-0 group-focus-within:opacity-0">
+								{w.home ? <HomeGlyph working={agentWorking} /> : <span className={`tabular-nums ${w.active ? "text-accent" : "text-fg-muted"}`}>{w.index}</span>}
+							</span>
 							<span aria-hidden="true" className="truncate">{name}</span>
 							<WindowMarker window={w} unseen={isUnseen} />
 						</button>
 					</Tooltip>
-						{/* Keyboard users close with Delete on the focused tab; this is the pointer path. */}
+						{/* Keyboard users rename with F2 and close with Delete on the focused tab; these are the pointer paths. */}
+						<button
+							type="button"
+							tabIndex={-1}
+							aria-label={t("windowNav.rename", { name })}
+							title={t("windowNav.rename", { name })}
+							data-window-rename-button={w.windowId}
+							onClick={() => startRename(w)}
+							className={`absolute left-1 top-1/2 -translate-y-1/2 w-4 h-4 rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-[opacity,background-color,color,scale] duration-150 ease-out active:scale-[0.96] ${
+								w.active ? "text-accent hover:bg-accent/20" : "text-fg-muted hover:text-fg hover:bg-elevated-hover"
+							}`}
+						>
+							<svg aria-hidden="true" viewBox="0 0 12 12" className="w-2.5 h-2.5" fill="none" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round"><path d="M7.6 2.4l2 2M2.5 9.5l.5-2.2 5.3-5.3a1 1 0 0 1 1.4 0l.6.6a1 1 0 0 1 0 1.4L5 9.3z" /></svg>
+						</button>
 						{closable && <button
 							type="button"
 							tabIndex={-1}
@@ -205,7 +271,7 @@ function WindowTabs({
 					</div>
 				);
 			})}
-			{menu && <WindowMenu state={menu} onSelect={onSelect} onClose={onClose} onDismiss={() => setMenu(null)} t={t} />}
+			{menu && <WindowMenu state={menu} closable={closable} onSelect={onSelect} onClose={onClose} onRename={startRename} onDismiss={() => setMenu(null)} t={t} />}
 		</div>
 			{/* Right after the last tab, like the tmux bar's own +; it lands on the new window. */}
 			<Tooltip content={t("tmux.newWindowDesc")} placement="bottom">
@@ -231,17 +297,21 @@ interface WindowMenuState {
 	opener: HTMLElement;
 }
 
-/** Right-click (or ⇧F10) menu on a window: switch to it or close it. */
+/** Right-click (or ⇧F10) menu on a window: switch to it, rename it, or close it. */
 function WindowMenu({
 	state,
+	closable,
 	onSelect,
 	onClose,
+	onRename,
 	onDismiss,
 	t,
 }: {
 	state: WindowMenuState;
+	closable: boolean;
 	onSelect: (w: TmuxWindowEntry) => void;
 	onClose: (w: TmuxWindowEntry) => void;
+	onRename: (w: TmuxWindowEntry) => void;
 	onDismiss: () => void;
 	t: TFunction;
 }) {
@@ -294,16 +364,81 @@ function WindowMenu({
 				style={{ top: state.y, left: state.x }}
 			>
 				{!w.active && (
-					<button type="button" role="menuitem" onClick={() => run(() => onSelect(w))} className={`${item} text-fg-2 hover:bg-elevated hover:text-fg focus:bg-elevated focus:text-fg`}>
+					<button type="button" role="menuitem" onClick={() => run(() => onSelect(w))} className={`${item} text-fg-2 hover:bg-overlay-hover hover:text-fg focus:bg-overlay-hover focus:text-fg`}>
 						{t("windowNav.switchTo")}
 					</button>
 				)}
-				<button type="button" role="menuitem" onClick={() => run(() => onClose(w))} className={`${item} text-danger hover:bg-danger/10 focus:bg-danger/10`}>
-					{t("tmux.closeWindowDesc")}
+				<button type="button" role="menuitem" onClick={() => run(() => onRename(w))} className={`${item} text-fg-2 hover:bg-overlay-hover hover:text-fg focus:bg-overlay-hover focus:text-fg`}>
+					{t("windowNav.renameItem")}
 				</button>
+				{closable && (
+					<button type="button" role="menuitem" onClick={() => run(() => onClose(w))} className={`${item} text-danger hover:bg-danger/10 focus:bg-danger/10`}>
+						{t("tmux.closeWindowDesc")}
+					</button>
+				)}
 			</div>
 		</>,
 		document.body,
+	);
+}
+
+/**
+ * The tab turned into its own name field. Enter or leaving the field keeps the
+ * text, Esc drops it; an empty field hands the window back to automatic naming,
+ * which the placeholder shows.
+ */
+function WindowRenameField({
+	window: w,
+	width,
+	automaticName,
+	onDone,
+	t,
+}: {
+	window: TmuxWindowEntry;
+	width: number;
+	automaticName: string;
+	onDone: (name: string | null) => void;
+	t: TFunction;
+}) {
+	const inputRef = useRef<HTMLInputElement>(null);
+	const doneRef = useRef(false);
+	const finish = (name: string | null) => {
+		if (doneRef.current) return;
+		doneRef.current = true;
+		// Confirming the name it already had must not pin an automatic name in place.
+		onDone(name !== null && name.trim() === (w.customName ?? automaticName) ? null : name);
+	};
+
+	useEffect(() => {
+		inputRef.current?.focus();
+		inputRef.current?.select();
+	}, []);
+
+	return (
+		<div data-window-rename={w.windowId} className="flex-shrink-0 flex" style={{ width: Math.max(width, 128) }}>
+			<input
+				ref={inputRef}
+				type="text"
+				defaultValue={w.customName ?? automaticName}
+				placeholder={automaticName}
+				maxLength={WINDOW_NAME_MAX}
+				aria-label={t("windowNav.renameField")}
+				spellCheck={false}
+				autoComplete="off"
+				onKeyDown={(e) => {
+					e.stopPropagation();
+					if (e.key === "Enter") {
+						e.preventDefault();
+						finish(e.currentTarget.value);
+					} else if (e.key === "Escape") {
+						e.preventDefault();
+						finish(null);
+					}
+				}}
+				onBlur={(e) => finish(e.currentTarget.value)}
+				className="w-full h-6 px-2 rounded-lg bg-base text-fg text-xs font-medium placeholder:text-fg-muted"
+			/>
+		</div>
 	);
 }
 

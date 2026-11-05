@@ -2,7 +2,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { claudeDumpFilePaths, configDirDumpName, resolveOriginalStatusLine, sessionDumpFilePath } from "../commands/statusline";
+import { ENV_UNSET } from "../../shared/agent-accounts";
+import { claudeDumpFilePaths, claudeDumpOwner, configDirDumpName, resolveOriginalStatusLine, sessionDumpFilePath } from "../commands/statusline";
 
 let tmp: string;
 let projectDir: string;
@@ -124,5 +125,48 @@ describe("sessionDumpFilePath", () => {
 		expect(sessionDumpFilePath(undefined, "/base")).toBeNull();
 		expect(sessionDumpFilePath("  ", "/base")).toBeNull();
 		expect(sessionDumpFilePath("../escape", "/base")).toBeNull();
+	});
+});
+
+describe("claudeDumpOwner", () => {
+	const dev3Home = "/u/.dev3.0";
+	const accountDir = (id: string) => `${dev3Home}/agent-accounts/claude/${id}`;
+	const WIX = "790d55d8-70f4-4e55-b03e-a37e7c16e00b";
+	const BASE44 = "43992250-2170-469a-a726-8688c56ad0bc";
+
+	it("attributes usage to the account whose config dir Claude runs on, not a stale account id", () => {
+		// A Claude teammate pane: Claude forwards CLAUDE_CONFIG_DIR, while the
+		// account id comes from a tmux session created for the task's earlier account.
+		const env = { CLAUDE_CONFIG_DIR: accountDir(BASE44), DEV3_AGENT_ACCOUNT_ID: WIX };
+		expect(claudeDumpOwner(env, "/u", "/w", dev3Home)).toEqual({ accountId: BASE44, configDir: null });
+	});
+
+	it("reads a managed account from its config dir alone", () => {
+		expect(claudeDumpOwner({ CLAUDE_CONFIG_DIR: `${accountDir(WIX)}/` }, "/u", "/w", dev3Home)).toEqual({
+			accountId: WIX,
+			configDir: null,
+		});
+	});
+
+	it("treats a session on ~/.claude as the system login even when an account id leaked in", () => {
+		expect(claudeDumpOwner({ DEV3_AGENT_ACCOUNT_ID: WIX }, "/u", "/w", dev3Home)).toEqual({ accountId: null, configDir: null });
+		expect(claudeDumpOwner({ CLAUDE_CONFIG_DIR: ENV_UNSET, DEV3_AGENT_ACCOUNT_ID: WIX }, "/u", "/w", dev3Home)).toEqual({
+			accountId: null,
+			configDir: null,
+		});
+	});
+
+	it("keeps a project-pinned dir as a config-dir login", () => {
+		expect(claudeDumpOwner({ CLAUDE_CONFIG_DIR: "/work/proj/.claude", DEV3_AGENT_ACCOUNT_ID: WIX }, "/u", "/w", dev3Home)).toEqual({
+			accountId: null,
+			configDir: "/work/proj/.claude",
+		});
+	});
+
+	it("does not read an account id out of a dir that only looks like an account slot", () => {
+		const elsewhere = "/tmp/agent-accounts/claude/x";
+		expect(claudeDumpOwner({ CLAUDE_CONFIG_DIR: elsewhere }, "/u", "/w", dev3Home)).toEqual({ accountId: null, configDir: elsewhere });
+		const nested = `${accountDir(WIX)}/projects`;
+		expect(claudeDumpOwner({ CLAUDE_CONFIG_DIR: nested }, "/u", "/w", dev3Home)).toEqual({ accountId: null, configDir: nested });
 	});
 });

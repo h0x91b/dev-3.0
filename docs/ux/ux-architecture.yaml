@@ -260,7 +260,7 @@ ux_architecture:
         order: ["lifecycle", "identity", "content", "signals", "actions"]
         lifecycle: "The 3px top strip + left rail (TaskCardRail.tsx). Owns ONLY what changes or reports the column: pipeline ring, upright status name, bell count, quick-complete (hibernated: quick-cancel in its place). Clicking the rail opens Move-to. Nothing informational may enter it."
         identity: "One full-width header row above the rail: priority (frozen PriorityBadge), #seq, attempt, agent + config, variant dots, scratch/automation/native marks, dismiss. Full width is deliberate — the agent config string had 182px next to a rail and now has 244px. Never grows past one line; overflow goes to the tooltip."
-        content: "Epic (future), title (3-line clamp), label chips. The only zone allowed to be the card's visual focus. The show-description affordance is an icon on the label row, never its own row."
+        content: "Epic chip, title (3-line clamp), label chips. The only zone allowed to be the card's visual focus. The show-description affordance is an icon on the label row, never its own row."
         signals: "Read-only facts in the segmented bottom bar, sub-grouped git / run / time with 1px dividers between groups. This is where new badges land."
         actions: "A reserved strip at the very bottom of the bar (min-height 36px) so signals can never squeeze actions out. Max 4 visible, rest to the context menu."
       rail_label: "Short uppercase status form, max 8 upright letters (status.rail.* keys per locale; custom columns clipped to 8 chars). Upright means writing-mode: vertical-rl + text-orientation: upright — never rotated 90deg. The full column label lives in the rail's accessible name and tooltip."
@@ -403,12 +403,12 @@ ux_architecture:
       purpose: "Focused create/confirm flows."
       allowed: ["create_flow", "confirm", "destructive_confirm", "focused_config", "agent_request", "onboarding_invitation (§5.10)"]
       forbidden: ["primary_navigation", "persistent_dashboard"]
-      observed: ["CreateTaskModal", "AddProjectModal", "TaskDetailModal", "LaunchVariantsModal", "SpawnAgentModal", "AgentLaunchRequestModal", "GitPullErrorModal", "FolderPickerModal", "AccountLoginModal"]
+      observed: ["CreateTaskModal", "AddProjectModal", "TaskDetailModal", "LaunchVariantsModal", "SpawnAgentModal", "AgentLaunchRequestModal", "SecretRequestModal", "GitPullErrorModal", "FolderPickerModal", "AccountLoginModal"]
       agent_request:
-        rule: "An agent asking the user to act carries the SAME identity treatment wherever it appears: accent border, AI-agent-request badge, refusing button autofocused. Severity is a separate axis, decided by what the action does — destructive role only when it destroys state. A request needing input beyond yes/no gets its own modal (confirm() stays boolean); one dialog at a time, queued."
+        rule: "Agent requests share an accent border, AI badge and autofocused decline. Severity follows the action: destructive only for destroying state. Input beyond yes/no uses its own modal; confirm() stays boolean. Requests queue, one dialog at a time."
         identity: ["accent border", "AI agent request badge", "autofocused decline"]
         severity_by_action: { destroys_state: "destructive", creates_state: "primary" }
-        observed: ["agentCompletionRequested → confirm() (destructive)", "agentLaunchRequested → AgentLaunchRequestModal (primary)"]
+        observed: ["agentCompletionRequested → confirm() (destructive)", "agentLaunchRequested → AgentLaunchRequestModal (primary)", "secretRequested → SecretRequestModal (primary; explicit approval only, masked input, no output)"]
       evidence: ["src/mainview/components/*Modal.tsx", "src/mainview/confirm.tsx"]
     popover:
       purpose: "Lightweight contextual preview/hint anchored to an element."
@@ -569,7 +569,7 @@ ux_architecture:
       observed: ["ProjectQuickSwitchModal", "CommandPaletteModal", "PaletteShell", "commands.ts", "utils/fuzzyMatch.ts"]
       evidence: ["src/mainview/components/PaletteShell.tsx", "src/mainview/components/ProjectQuickSwitchModal.tsx", "src/mainview/components/CommandPaletteModal.tsx", "src/mainview/commands.ts", "src/mainview/menuRouter.ts", "src/mainview/App.tsx (Cmd+K + Cmd+Shift+P handlers)", "UX_DECISIONS 2026-06-18"]
     task_image_viewer:
-      purpose: "Task-bound lightbox for images (and, via `dev3 show-video`, MP4/WebM clips played in the same stage -- native controls, no autoplay, no comment mode) an agent surfaced via `dev3 show-image`, with a clickable history (thumbnail rail, newest first). One large image + prev/next + Esc; opened for a taskId regardless of route (closing restores position). Read/view only -- no git/lifecycle/mutation, as with the diff viewer."
+      purpose: "Task-bound lightbox for images (and, via `dev3 show-media`, MP4/WebM video and MP3/M4A/WAV/OGG audio played in the same stage -- native controls, no autoplay, no comment mode) an agent surfaced via `dev3 show-image`, with a clickable history (thumbnail rail, newest first). One large image + prev/next + Esc; opened for a taskId regardless of route (closing restores position). Read/view only -- no git/lifecycle/mutation, as with the diff viewer."
       feature_class: ["overlay_viewer", "object_action", "notification"]
       reached_from: ["arrival_push (rpc:cliShowImage -- auto-open only when focused on that task + window foreground; else toast + attention badge)", "inspector:image_count_badge (Context bar, count>0, next to diff_summary_badge)", "archived_task_modal:shared-outputs row (per image)", "command_palette ⇧⌘P (Show shared images, scope task)", "application_menu.Task"]
       allowed: ["image_display", "history_nav (thumbnail rail + prev/next + arrows)", "copy_image", "download_image (header icon + own right-click menu; native WKWebView Save Image As is dead)", "reveal_original_path", "clear_images (destructive, confirm)", "comment_mode (one header toggle; drag a region or click a spot on the drawn picture -> image-region anchor, normalised 0..1; regions drawn over the picture; the same review aside as the artifact viewer)"]
@@ -591,7 +591,7 @@ ux_architecture:
       purpose: "Task-bound interactive HTML via dev3 show-artifact; one viewer, three shapes (see layout)."
       feature_class: ["object_action", "data_visualization", "notification"]
       reached_from: ["arrival_push (auto-open only on the focused task)", "inspector:Artifacts count button", "archived_task_modal:shared-outputs row"]
-      allowed: ["sandboxed_html", "history_navigation", "version_switching (same-title republish groups into one record; header picker, newest on open)", "theme_sync", "fullscreen", "find_in_content", "download_html", "download_zip", "open_in_external_browser", "unsent_input_recovery", "comment_mode"]
+      allowed: ["sandboxed_html", "history_navigation", "version_switching (same-title republish groups into one record; header picker, newest on open)", "theme_sync", "fullscreen", "find_in_content", "download_html", "download_zip", "open_in_external_browser", "unsent_input_recovery", "comment_mode", "live_page"]
       forbidden: ["global_destination", "task_lifecycle_action", "git_mutation", "parent_dom_or_rpc_access", "native_dialog"]
       comment_mode: "One header toggle (speech bubble; hidden without a project or on a finished task). The injected script reports the clicked element {selector, text, heading}; a 22rem aside reuses the diff viewer's composer and bubbles (src/mainview/review). The frame draws the pins; unplaced ids show as `Not found in this version`. Escape leaves the mode."
       find_in_content: "Floating bar over the iframe (top-right), toggled by Cmd/Ctrl+F (keymap.ts) plus exactly ONE earned magnifier icon in the header; the field never moves into the header. Full rule in bible section 10. The parent cannot reach the opaque-origin document, so query/step go by postMessage to an injected script owning highlight and scroll, reporting {matches,index}."
@@ -600,7 +600,8 @@ ux_architecture:
       escape: "A modal presentation (the popup, or either in fullscreen) joins the overlay-layer stack, one layer per press: find bar -> fullscreen -> close -- that is what wins Escape against the archived task modal underneath, and it claims Cmd/Ctrl+F and the arrows unconditionally. The docked panel is not modal (the terminal beside it is live), so it claims those keys only while focused."
       no_focus_trap: "The one divergence from the image lightbox: an artifact may draw a form the user sends to the agent, and the opaque-origin iframe is not in the trap tabbable set, so a trap would put it out of keyboard reach."
       export: "One folded HTML; ZIP only if a file is media, a download link, or not embedded statically."
-      open_in_external_browser: "One neutral external-link icon in the header, grouped with download (the hand-off pair). Desktop hands the stored HTML path to the OS browser via RPC (relative assets resolve on disk); browser/remote opens a blob URL of the composed document in a new tab, synchronously inside the click so popup blockers allow it. Failure is a toast, never a dialog. No shortcut."
+      live_page: "One per task: last entry, LIVE badge; new page reloads, draft kept; Make live elsewhere (confirm to replace); browser via loopback."
+      open_in_external_browser: "One neutral external-link icon in the header, grouped with download. Desktop: stored HTML path via RPC to the OS browser; remote: sandboxed link over the stored folder. Failure toast; no shortcut."
       evidence: ["src/mainview/components/TaskArtifactViewer.tsx", "src/mainview/components/TaskWorkspacePane.tsx", "src/mainview/utils/artifact-dock.ts", "src/bun/shared-artifacts.ts", "decisions/2026/09/07/artifact-panel-default-popup-opt-in.md", "decisions/2026/09/16/review-comments-on-the-task-record.md"]
     file_explorer:
       purpose: "Read-only tree left of a terminal, listing its folder (task worktree; project checkout on Repo). Never on the board: the toggle opens Repo there. Pinned, auto-hide overlay or hidden, app-wide."
@@ -630,7 +631,7 @@ ux_architecture:
       definition: "Move task across statuses (mostly hook-driven), complete, cancel."
       placement: ["kanban drag", "status dropdown", "application_menu.Task.MoveToStatus"]
     configuration:
-      definition: "Durable change to project/app behavior (scripts, columns, labels, theme, locale, gh account)."
+      definition: "Durable change to project/app behavior (scripts, columns, labels, theme, locale, gh account, agent path Reset, account Add without signing in)."
       placement: ["settings", "project_settings"]
     destructive:
       definition: "Delete task, remove project, cancel, reset terminal, hard refresh."
@@ -650,10 +651,10 @@ ux_architecture:
     button_roles:
       primary:
         token_class: "bg-accent-fill / hover:bg-accent-fill-hover (text-white)"
-        note: "bg-accent is NOT the primary fill token for white text — white on --accent is 2.98:1 (fails WCAG 4.5:1). --accent-fill (lines 73-74 of index.css) ships a deeper blue that passes at 5.09:1. Use bg-accent only for text/icon tinting on dark surfaces."
+        note: "bg-accent is NOT the primary fill token for white text — white on --accent is 2.98:1 (fails WCAG 4.5:1). --accent-fill ships a deeper blue that passes at 5.09:1. Use bg-accent only for text/icon tinting on dark surfaces."
         use_for: "One main safe action for the current screen (Create, Save, Confirm)."
         max_per_screen: 1
-        evidence: ["src/mainview/components/TaskDetailModal.tsx", "src/mainview/components/CreateTaskModal.tsx", "src/mainview/index.css (--accent-fill comment, lines 70-74)"]
+        evidence: ["src/mainview/components/TaskDetailModal.tsx", "src/mainview/components/CreateTaskModal.tsx", "src/mainview/index.css (--accent-fill)"]
       secondary:
         token_class: "bg-raised / bg-elevated + border-edge, or text-accent bg-accent/10"
         use_for: "Visible supporting action with lower priority than primary."
@@ -875,7 +876,7 @@ ux_architecture:
       task_move_drag: { narrow: "drag impossible -> 'Move to <status>' bottom action sheet (long-press) on existing status path; completion reuses confirmTaskCompletion", status: proposed }
       board_filters: { narrow: "bottom sheet behind a header funnel button (LabelFilterBar + search)", status: proposed }
       terminal_panes: { narrow: "pane carousel — one pane at a time + axis-arbitrated horizontal swipe + a slim non-overlapping top dots strip + Arrow keys; backend-neutral via taskPaneState / taskPaneAction RPCs; native tasks page the same way; MobileWindowCarousel not rendered for native tasks", status: observed, evidence: "MobilePaneCarousel.tsx, TaskTerminal.tsx, task-panes.ts taskPaneState, decision 089" }
-      terminal_windows: { desktop: "always: top tabs replace tmux bar; agent first; output/bell dots", narrow: "window switcher — a slim 'prev / named dropdown / next' bar ABOVE the pane bar; buttons + dropdown + Arrow-while-focused, NO swipe (terminal swipe is the pane carousel's); tmux tasks only (native tasks have no window concept); only at > 1 window; via tmuxWindowNavigate", status: observed, evidence: "MobileWindowCarousel.tsx, TaskTerminal.tsx, tmux-pty/tmux-control.ts tmuxWindowNavigate, decision 093" }
+      terminal_windows: { desktop: "always: tabs replace tmux bar; agent first; output/bell dots; rename", narrow: "window switcher — a slim 'prev / named dropdown / next' bar ABOVE the pane bar; buttons + dropdown + Arrow-while-focused, NO swipe (terminal swipe is the pane carousel's); tmux tasks only (native tasks have no window concept); only at > 1 window; via tmuxWindowNavigate", status: observed, evidence: "MobileWindowCarousel.tsx, TaskTerminal.tsx, tmux-pty/tmux-control.ts tmuxWindowNavigate, decision 093" }
       terminal_input: { narrow: "touch input model (gate = !isElectrobun && isTouchDevice, NOT width — an input-model switch, tablets included): terminal tap never summons the OSK; a docked autogrow chat composer between the terminal and ExtraKeyBar owns text entry — Send = mode-2004-aware paste + Enter, Insert = paste only, expand state for long prompts, terminal tail stays visible; sticky '⌨ raw' toggle on ExtraKeyBar restores direct typing + select-to-copy/TUI mouse; chrome collapses on composer FOCUS (not visualViewport); covers TaskTerminal AND ProjectTerminal (Quick Shell); Android-first, iOS visualViewport pinning additive", status: proposed, evidence: "UX decision 2026-07-02" }
       active_tasks: { narrow: "No persistent task strip; use TaskSwitcherOverlay for keyboard task switching and the breadcrumb → board carousel on narrow viewports", status: observed, evidence: ["ProjectView.tsx browser/narrow branch", "TaskSwitcherOverlay.tsx", "MobileBoardCarousel.tsx"] }
       task_inspector: { narrow: "2x2 bar grid cannot fit -> one summary bar + 'task actions' bottom sheet (bars become sheet sections); metadata grid already reflows", tight: "ABOVE narrow the bars gate on the PANEL width (useContainerWidth, ResizeObserver — the board eats the viewport in split view): <1280 folds the label strip to +k, clamps the branch name, drops pane-layout/Runtime text labels; <900 also drops the label strip + include-tests toggle. Every bar is boxed min-w-0 overflow-hidden so nothing paints over a neighbour or the pinned chrome (decision 164).", status: observed, evidence: "TaskInfoPanel.tsx, useContainerWidth.ts" }

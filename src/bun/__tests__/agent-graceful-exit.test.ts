@@ -3,7 +3,7 @@
  * agent's own quit command into each live agent pane and waits — bounded — for the
  * agent's process tree to empty, so the CLI's session-end hooks get to run.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Task } from "../../shared/types";
 
 vi.mock("../logger", () => ({
@@ -20,14 +20,17 @@ vi.mock("../port-scanner", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("../port-scanner")>();
 	return { ...actual, collectProcessInfo: vi.fn() };
 });
-vi.mock("../native-task-panes", () => ({ nativeTaskPanesState: vi.fn() }));
+vi.mock("../native-task-panes", () => ({ nativeTaskPanesState: vi.fn(), nativeTaskPaneCommands: vi.fn() }));
 
 import {
 	leadingProgramNames,
 	requestGracefulAgentExit,
 	resolveAgentExitTargets,
 } from "../agent-graceful-exit";
-import { nativeTaskPanesState } from "../native-task-panes";
+import { writeNativeAgentAttribution } from "../native-agent-attribution";
+import { nativeTaskPaneCommands, nativeTaskPanesState } from "../native-task-panes";
+import { dev3TaskTempPath } from "../temp-paths";
+import { rmSync } from "node:fs";
 import { sendPaneInput } from "../pane-input";
 import { collectProcessInfo, type ProcessInfoResult } from "../port-scanner";
 import { tmux } from "../tmux";
@@ -96,6 +99,7 @@ beforeEach(() => {
 	vi.mocked(sendPaneInput).mockReset();
 	vi.mocked(collectProcessInfo).mockReset();
 	vi.mocked(nativeTaskPanesState).mockReset();
+	vi.mocked(nativeTaskPaneCommands).mockReset().mockResolvedValue([]);
 	vi.mocked(tmux.listPanes).mockResolvedValue([{ paneId: "%3", panePid: AGENT_ROOT_PID }] as never);
 	vi.mocked(sendPaneInput).mockResolvedValue({
 		deliveryId: "d1",
@@ -154,6 +158,57 @@ describe("resolveAgentExitTargets", () => {
 			panes: [{ paneId: "pane-1", sessionId: "s", hostPid: 1, shellPid: 555, cols: 80, rows: 24, alive: false }],
 		});
 		expect(await resolveAgentExitTargets(task({ terminalBackend: "native" } as Partial<Task>))).toEqual([]);
+	});
+});
+
+describe("resolveAgentExitTargets — native extra agents", () => {
+	const nativeTask = (over: Partial<Task> = {}) => task({ terminalBackend: "native", ...over } as Partial<Task>);
+	const script = (name: string) => dev3TaskTempPath(nativeTask().id, `${name}.sh`);
+	const spawned = script("spawn-1");
+	const hunted = script("bughunt-1-abc");
+	const orphan = script("spawn-2");
+	const dead = script("spawn-3");
+	const pane = (paneId: string, shellPid: number, alive = true) =>
+		({ paneId, sessionId: paneId, hostPid: 1, shellPid, cols: 80, rows: 24, alive });
+	const command = (paneId: string, path: string, shellPid: number, alive = true) =>
+		({ paneId, sessionId: paneId, command: ["/bin/bash", path], shellPid, alive });
+
+	afterEach(() => {
+		for (const path of [spawned, hunted, orphan, dead]) rmSync(`${path}.json`, { force: true });
+	});
+
+	it("targets the main pane, a + Agent pane and a hunter, skipping dead and sidecar-less panes", async () => {
+		await writeNativeAgentAttribution(spawned, { agentCmd: "codex", agentId: "builtin-codex", configId: null, accountId: "c1" });
+		await writeNativeAgentAttribution(hunted, { agentCmd: "claude", agentId: "builtin-claude", configId: null });
+		await writeNativeAgentAttribution(dead, { agentCmd: "claude", agentId: "builtin-claude", configId: null });
+		vi.mocked(nativeTaskPanesState).mockResolvedValue({
+			taskId: "x", layout: "", activePaneId: "pane-1",
+			panes: [pane("pane-1", 555), pane("pane-2", 556), pane("pane-3", 557), pane("pane-4", 558), pane("pane-5", 559, false)],
+		});
+		vi.mocked(nativeTaskPaneCommands).mockResolvedValue([
+			command("pane-1", script("launch"), 555),
+			command("pane-2", spawned, 556),
+			command("pane-3", hunted, 557),
+			command("pane-4", orphan, 558),
+			command("pane-5", dead, 559, false),
+		]);
+		const targets = await resolveAgentExitTargets(nativeTask());
+		expect(targets.map((t) => [t.paneId, t.rootPid, t.entry.agentCmd])).toEqual([
+			["pane-1", 555, "claude"],
+			["pane-2", 556, "codex"],
+			["pane-3", 557, "claude"],
+		]);
+		expect(targets[1]!.entry.sessionId).toBeNull();
+	});
+
+	it("finds extras while sessionState.panes is empty", async () => {
+		await writeNativeAgentAttribution(spawned, { agentCmd: "codex", agentId: "builtin-codex", configId: null });
+		vi.mocked(nativeTaskPanesState).mockResolvedValue({
+			taskId: "x", layout: "", activePaneId: "pane-2", panes: [pane("pane-2", 556)],
+		});
+		vi.mocked(nativeTaskPaneCommands).mockResolvedValue([command("pane-2", spawned, 556)]);
+		const targets = await resolveAgentExitTargets(nativeTask({ sessionState: { panes: [] } } as Partial<Task>));
+		expect(targets.map((t) => [t.paneId, t.rootPid])).toEqual([["pane-2", 556]]);
 	});
 });
 

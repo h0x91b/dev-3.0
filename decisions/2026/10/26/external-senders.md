@@ -22,6 +22,8 @@ The CLI socket answers one request batch per connection and the client gives up 
 
 Threat model: the identity is self-asserted on a socket only the same user can reach, so it is attribution, not authentication. Inbound is no worse than today, where outside text already reads as the user. Outbound is the real exposure: any local task can `--to-sender` any registered sender, so a sender must treat every inbox item as untrusted data. The lease is in memory per instance, so two instances could each grant one; the cap is soft across instances for the same reason. Two instances that both scan before either prunes can still write two `pruned` rows for one day — a harmless duplicate notice, accepted.
 
+Two gaps closed on 2026-10-27, in the shared code so every caller gets them. Sender text was pasted raw between `<message>` tags, so relayed third-party text could close the envelope and forge a `<from-task>` block; `wrapExternalSenderMessage` now escapes the `<` of `</message>`, `</dev3-ai-message>` and `<dev3-ai-message`. And `task.moveAsSender` on an already running task fell through to a plain move that could start a `review-by-*` column agent with no dialog; now a same-status move is a no-op and any other move, custom columns included, is refused.
+
 ## Alternatives considered
 
 Webhook push to the sender: agent sandboxes block curl to localhost, and it needs an inbound port. Reusing `notifications.json`: that file is user-configured egress with its own semantics, not a per-sender queue. A new `AgentMessageSource` member: it is persisted in `tasks.json`, and the two previous releases would read a shape they do not know.

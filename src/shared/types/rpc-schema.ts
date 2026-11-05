@@ -11,8 +11,10 @@ import type { TerminalBackendIdentity } from "../terminal-backend-identity";
 import type { TaskPaneState, TaskPaneAction, TmuxCloseWindowResult } from "../task-panes";
 import type { DeepLinkNav } from "../deep-link";
 import type { ReviewComment, ReviewReplyAuthor } from "../review";
+import type { LiveChange } from "../live-artifact";
 import type { TelemetryProfile } from "../telemetry-profile";
 import type { AgentPromptDelivery } from "../agent-prompt-delivery";
+import type { SecretRequest } from "../secret-request";
 import type { AgentMessageLogPage } from "../agent-message-log";
 import type { NotificationLogPage } from "../notification-log";
 import type { TaskPeekSnapshot } from "../task-peek";
@@ -22,19 +24,22 @@ import type { TaskResetConsent, TaskResetResult, TaskStatus, WorktreeAccessState
 import type { TaskPriority } from "./task-priority";
 import type { TaskType } from "./task-type";
 import type { Task } from "./task";
+import type { TaskLineageIndex } from "./task-origin";
 import type { ColumnAgentConfig, ColumnAgentFailureReason, ColumnAgentIdentity } from "./column-agents";
 import type { AgentModelAvailability, CodingAgent } from "./coding-agents";
 import type { AgentLiveModels } from "../agent-live-models";
 import type { ExternalApp, FilePreviewResult, GlobalSettings, NativeTerminalAvailability, ResolvedTerminalPath, TaskTerminalBackendInfo, TipState } from "./global-settings";
 import type { ModelCatalogView, ModelSidecarStatus, PxpipeProxyStatus } from "./model-routing";
-import type { AutoConfigureResult, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GitInitOffer, Project, ProjectSettingsUpdate, PrResolveFailureReason, ShellAvailability, ShellPromptPreview } from "./project";
+import type { ClaudeModStatus } from "./claude-mods";
+import type { AutoConfigureResult, BoardCopyFailureReason, BoardCopyOffer, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GitInitOffer, Project, ProjectSettingsUpdate, PrResolveFailureReason, ShellAvailability, ShellPromptPreview } from "./project";
 import type { CustomColumn, Label } from "./labels-columns";
 import type { Space, SpacesFile } from "./spaces";
+import type { Epic, EpicMember, EpicsFile } from "./epics";
 import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, AgentLaunchRequest, LaunchVariant, TaskDialogSubject } from "./agent-launch";
 import type { ScheduledMessageTarget } from "./scheduled-messages";
-import type { SharedArtifact, SharedImage } from "./shared-media";
+import type { LiveArtifact, SharedArtifact, SharedImage } from "./shared-media";
 import type { ScriptPlacement, ScriptRunner, ScriptSource, WorktreeScripts } from "./package-scripts";
-import type { TaskSessionState } from "./task-lifecycle";
+import type { NativeTaskAgent, TaskSessionState } from "./task-lifecycle";
 import type { Automation, AutomationDraft } from "./automations";
 import type { NoteSource } from "./task-notes";
 import type { BranchStatus, MergeRoute, TaskDiffMode, TaskDiffResponse, UnsavedWork } from "./git-status";
@@ -43,7 +48,7 @@ import type { ExposedPort, PortInfo, ResourceUsage, SystemLoadSnapshot, SystemMe
 import type { PtyThroughputStats, TmuxLayout, TmuxSessionInfo, TmuxWindowEntry } from "./tmux";
 import type { DevServerStatus, DevServerSummary } from "./dev-server";
 import type { RemoteAccessStatus, RemoteNetInterface } from "./remote";
-import type { AgentCheckResult, AgentSkillInfo, HarnessReadinessReport, RequirementCheckResult, RosettaWarningInfo } from "./environment";
+import type { AgentCheckResult, AgentSkillInfo, HarnessReadinessReport, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo } from "./environment";
 import type { ExplorerListing, FolderListing } from "./file-explorer";
 import type { AgentUsageReport, ProductivityStats } from "./usage-stats";
 
@@ -76,6 +81,8 @@ export interface CliResponse {
 export type AppRPCSchema = {
 	bun: RPCSchema<{
 		requests: {
+			listSecretRequests: { params: {}; response: SecretRequest[] };
+			respondToSecretRequest: { params: { requestId: string; secret?: string }; response: boolean };
 			getProjects: {
 				params: void;
 				response: Project[];
@@ -115,6 +122,29 @@ export type AppRPCSchema = {
 			reorderSpaceProjects: {
 				params: { spaceId: string; projectIds: string[] };
 				response: Space;
+			};
+			getEpics: {
+				params: Record<string, never>;
+				response: EpicsFile;
+			};
+			/** Every task in any epic, across all projects. */
+			getEpicMembers: {
+				params: Record<string, never>;
+				response: EpicMember[];
+			};
+			createEpic: {
+				params: { name: string; color?: string };
+				response: Epic;
+			};
+			/** Rename, recolour, archive or unarchive. There is deliberately no delete. */
+			updateEpic: {
+				params: { epicId: string; name?: string; color?: string; archived?: boolean };
+				response: Epic;
+			};
+			/** Set or clear one task's epic; never propagates to its children. */
+			setTaskEpic: {
+				params: { projectId: string; taskId: string; epicId: string | null };
+				response: Task;
 			};
 			listDirectory: {
 				params: { path?: string | null; includeFiles?: boolean; showHidden?: boolean };
@@ -161,13 +191,13 @@ export type AppRPCSchema = {
 				/** `name` is optional: the backend derives it from the path, which is the
 				 *  only side that knows how to spell a path on its own platform. */
 				/** `autoConfigure` writes detected settings to `.dev3/config.local.json`; `autoConfigured` reports the outcome. */
-				params: { path: string; name?: string; autoConfigure?: boolean };
+				params: { path: string; name?: string; autoConfigure?: boolean; boardCopy?: boolean };
 				/** `gitInit` is set when the folder could be made a repo in place (needs the user's confirmation). */
-				response: { ok: true; project: Project; autoConfigured?: AutoConfigureResult } | { ok: false; error: string; gitInit?: GitInitOffer };
+				response: { ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer } | { ok: false; error: string; gitInit?: GitInitOffer };
 			};
 			cloneAndAddProject: {
-				params: { url: string; baseDir: string; repoName?: string; progressId?: string; autoConfigure?: boolean };
-				response: { ok: true; project: Project; autoConfigured?: AutoConfigureResult } | { ok: false; error: string };
+				params: { url: string; baseDir: string; repoName?: string; progressId?: string; autoConfigure?: boolean; boardCopy?: boolean };
+				response: { ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer } | { ok: false; error: string };
 			};
 			createDirectory: {
 				params: { parentPath: string; name: string };
@@ -175,8 +205,19 @@ export type AppRPCSchema = {
 			};
 			initAndAddProject: {
 				/** `initNonEmpty`: the user confirmed initializing a folder that already has files. */
-				params: { path: string; name?: string; initNonEmpty?: boolean; autoConfigure?: boolean };
-				response: { ok: true; project: Project; gitInit?: GitInitOffer; autoConfigured?: AutoConfigureResult } | { ok: false; error: string; gitInit?: GitInitOffer };
+				params: { path: string; name?: string; initNonEmpty?: boolean; autoConfigure?: boolean; boardCopy?: boolean };
+				response: { ok: true; project: Project; gitInit?: GitInitOffer; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer } | { ok: false; error: string; gitInit?: GitInitOffer };
+			};
+			/**
+			 * Restore an EMPTY board from the copy in its project folder (`.dev3/board/`).
+			 * Refuses a board with tasks, a missing or unreadable copy, and a copy in a
+			 * format this version does not read. Turns the copy on.
+			 */
+			restoreBoardCopy: {
+				params: { projectId: string };
+				response:
+					| { ok: true; restored: number; missing: number }
+					| { ok: false; reason: "no-copy" | "invalid" | "unsupported-version" | "board-not-empty"; version?: string };
 			};
 			/** Create (or re-open) the throwaway sandbox repo dev3 owns, under `~/.dev3.0/sandbox`. */
 			createSandboxProject: {
@@ -289,6 +330,17 @@ export type AppRPCSchema = {
 				params: void;
 				response: PxpipeProxyStatus;
 			};
+			/** Whether a Claude Code mod (`CLAUDE_MODS`) is installed and enabled. */
+			claudeModStatus: {
+				params: { modId: string };
+				response: ClaudeModStatus;
+			};
+			/** On installs the latest version (refreshing its marketplace first);
+			 *  off uninstalls it. Throws with the `claude plugin` error on failure. */
+			claudeModSetEnabled: {
+				params: { modId: string; enabled: boolean };
+				response: ClaudeModStatus;
+			};
 			/** The model catalog as the renderer may see it (no credential values). */
 			modelCatalogGet: {
 				params: void;
@@ -376,12 +428,18 @@ export type AppRPCSchema = {
 				 *  what it is hiding instead of implying the project holds nothing else. */
 				response: { projectId: string; tasks: Task[]; todoCount: number }[];
 			};
+			/** Every parent→child edge on every board, for the lineage markers and `children:`. */
+			getTaskLineage: {
+				params: void;
+				response: TaskLineageIndex;
+			};
 			getProductivityStats: {
 				params: void;
 				response: ProductivityStats;
 			};
 			getAgentUsage: {
-				params: void;
+				/** `since` (ISO) skips transcripts last written before that local day. */
+				params: { since?: string } | void;
 				response: AgentUsageReport;
 			};
 			getAgentRateLimits: {
@@ -453,9 +511,14 @@ export type AppRPCSchema = {
 				params: { kind: AgentAccountKind; accountId: string; label?: string; baseUrl?: string; apiKey?: string; model?: string; slotModels?: ClaudeSlotModels; envText?: string };
 				response: AgentAccount;
 			};
-			/** Start or join the in-app sign-in terminal for a managed account (one per CLI). */
+			/** Start or join the in-app sign-in terminal for a managed account (one per CLI). `created`: this call made the record, it did not join one. */
 			startAccountLogin: {
 				params: { kind: AgentAccountKind; remoteViewer: boolean };
+				response: AccountLoginState & { created: boolean };
+			};
+			/** Run the login command of a sign-in that is still "ready"; nothing starts before this call. */
+			beginAccountLogin: {
+				params: { loginId: string };
 				response: AccountLoginState;
 			};
 			getAccountLogin: {
@@ -475,9 +538,19 @@ export type AppRPCSchema = {
 				params: { loginId: string };
 				response: void;
 			};
+			/** Keep a Claude sign-in's folder as an account without signing in; the state carries the new account and the manual login command. */
+			addClaudeAccountWithoutLogin: {
+				params: { loginId: string };
+				response: AccountLoginState;
+			};
 			/** `accountId: "auto"` makes the usage-balanced router the default (claude/codex). */
 			setActiveAgentAccount: {
 				params: { kind: AgentAccountKind; accountId: string | null };
+				response: void;
+			};
+			/** Keep one login (`accountId: null` = the system login) out of Auto in every project. */
+			setAutoAccountExcluded: {
+				params: { kind: AgentAccountKind; accountId: string | null; excluded: boolean };
 				response: void;
 			};
 			/** What Auto would pick for a launch right now; null for a harness Auto cannot route. */
@@ -545,7 +618,7 @@ export type AppRPCSchema = {
 				 * `renameTask`'s customTitle: this does NOT mark the title user-edited,
 				 * so an agent may still rename it.
 				 */
-				params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType };
+				params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType; epicId?: string };
 				response: Task;
 			};
 			/** Stored PR a review task reviews; looks it up once for tasks created before it was stored. */
@@ -719,7 +792,7 @@ export type AppRPCSchema = {
 				response: { url: string } | { gone: true };
 			};
 			resumeTask: {
-				params: { taskId: string };
+				params: { taskId: string; restart?: boolean };
 				response: string;
 			};
 			restartTask: {
@@ -930,6 +1003,16 @@ export type AppRPCSchema = {
 				params: void;
 				response: RosettaWarningInfo;
 			};
+			/** macOS: the running bundle sits where it cannot update itself (DMG, translocation). */
+			getLaunchLocationIssue: {
+				params: void;
+				response: LaunchLocationIssue;
+			};
+			/** Copy the bundle into Applications, then quit and relaunch from there; `ok: true` arrives just before the quit. */
+			moveAppToApplications: {
+				params: void;
+				response: { ok: true; destination: string } | { ok: false; error: string };
+			};
 			/** macOS: task terminals still run on a tmux server started outside launchd. */
 			getTmuxServerNotice: {
 				params: void;
@@ -954,6 +1037,11 @@ export type AppRPCSchema = {
 			};
 			setAgentBinaryPath: {
 				params: { agentId: string; path: string };
+				response: void;
+			};
+			/** Forget the custom executable stored for an agent. */
+			clearAgentBinaryPath: {
+				params: { agentId: string };
 				response: void;
 			};
 			getChangelogs: {
@@ -1237,6 +1325,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; windowId?: string; force?: boolean };
 				response: TmuxCloseWindowResult;
 			};
+			tmuxRenameWindow: {
+				params: { taskId: string; windowId: string; name: string };
+				response: { renamed: boolean };
+			};
 			tmuxLayout: {
 				params: { taskId: string };
 				response: TmuxLayout;
@@ -1290,6 +1382,11 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string };
 				response: HandoffPreview | null;
 			};
+			/** Extra agents of a native task (not in sessionState.panes), with their launch account. */
+			getNativeTaskAgents: {
+				params: { taskId: string; projectId: string };
+				response: NativeTaskAgent[];
+			};
 			spawnBugHuntersInTask: {
 				params: { taskId: string; projectId: string; agentId: string | null; configId: string | null; count: number; accountId?: string | null };
 				response: { spawned: number };
@@ -1302,8 +1399,8 @@ export type AppRPCSchema = {
 				params: { path: string };
 				response: { dataUrl: string } | null;
 			};
-			/** A streamable URL for a stored `dev3 show-video` clip: `url` for the desktop webview, `path` for the remote browser's own origin. */
-			getSharedVideoUrl: {
+			/** A streamable URL for a stored `dev3 show-media` clip (video or audio): `url` for the desktop webview, `path` for the remote browser's own origin. */
+			getSharedMediaUrl: {
 				params: { path: string };
 				response: { url: string; path: string } | null;
 			};
@@ -1323,6 +1420,25 @@ export type AppRPCSchema = {
 			openArtifactInBrowser: {
 				params: { artifact: SharedArtifact };
 				response: void;
+			};
+			/** Live Artifact page operation from the viewer's frame, run as the user (`dev3.live.*`). Failures come back as a value so the frame can branch on `reason`. */
+			liveArtifactOp: {
+				params: { taskId: string; projectId?: string; op: string; args: Record<string, unknown> };
+				response: { ok: true; result: unknown } | { ok: false; reason: string; error: string };
+			};
+			/** The live page's loopback browser URL; starts the live server on first use. */
+			liveArtifactUrl: {
+				params: { taskId: string; projectId?: string };
+				response: { url: string };
+			};
+			openLiveArtifactInBrowser: {
+				params: { taskId: string; projectId?: string };
+				response: void;
+			};
+			/** Make live: an existing artifact version becomes the task's live page (replacing any previous one). */
+			adoptLiveArtifact: {
+				params: { taskId: string; projectId?: string; artifactId: string; version?: number };
+				response: LiveArtifact;
 			};
 			/** Remote mode: a sandboxed tab link over the artifact's stored folder (served by the remote server). */
 			createArtifactLink: {
@@ -1834,9 +1950,12 @@ export type AppRPCSchema = {
 		messages: {
 			taskUpdated: { projectId: string; task: Task };
 			projectUpdated: { project: Project };
+			/** A board-copy write failed; sent once per failure streak, cleared by the next write that succeeds. */
+			boardCopyFailed: { projectId: string; projectName: string; reason: BoardCopyFailureReason };
 			/** A project registered outside the renderer (`dev3 projects add|clone`). */
 			projectAdded: { project: Project };
 			spacesUpdated: { file: SpacesFile };
+			epicsUpdated: { file: EpicsFile };
 			taskSound: { status: TaskSoundStatus; taskId: string };
 			ptyDied: { taskId: string };
 			/** A saved session was resumed — possibly from the CLI, so a recovery screen still on display must re-read. */
@@ -1893,6 +2012,8 @@ export type AppRPCSchema = {
 			 * picker) and answers via `respondToAgentLaunchRequest`. `requesterSeq`
 			 * names the asking task so the user can see who wants this.
 			 */
+			secretRequested: SecretRequest;
+			secretRequestResolved: { requestId: string };
 			agentLaunchRequested: AgentLaunchRequest;
 			/**
 			 * An agent-initiated request (`complete` or `launch`) got its answer.
@@ -1976,10 +2097,17 @@ export type AppRPCSchema = {
 			 * CLI-initiated in-app toast (`dev3 notify`). When `taskId`/`projectId`
 			 * are present the toast is clickable and navigates to that task.
 			 */
+			/**
+			 * A launch fell back to PATH because a custom executable saved before custom
+			 * paths became strict no longer exists. Once per agent and path per host run.
+			 */
+			staleAgentPath: { agentId: string; agentName: string; path: string; command: string };
 			cliToast: {
 				taskId: string | null;
 				projectId: string | null;
 				message: string;
+				/** Renderer translation key for `message`, which stays the English fallback. */
+				messageKey?: "kanban.launchAccountRemoved";
 				level: "info" | "success" | "error";
 				/** Optional in-app toast lifetime in milliseconds; omitted uses the default. */
 				durationMs?: number;
@@ -2041,8 +2169,8 @@ export type AppRPCSchema = {
 				projectId: string;
 				images: SharedImage[];
 				newCount: number;
-				/** Kind of the new arrivals (`dev3 show-video` sends "video"). Absent = images. */
-				newKind?: "image" | "video";
+				/** Kind of the new arrivals (`dev3 show-media`: "video", "audio", or "media" for a mix). Absent = images. */
+				newKind?: "image" | "video" | "audio" | "media";
 				taskSeq?: number;
 				taskTitle?: string;
 				projectName?: string;
@@ -2059,6 +2187,11 @@ export type AppRPCSchema = {
 				taskSeq?: number;
 				taskTitle?: string;
 				projectName?: string;
+			};
+			/** A Live Artifact store changed; the open viewer forwards it into the live page. */
+			liveArtifactChange: {
+				taskId: string;
+				changes: LiveChange[];
 			};
 			/**
 			 * Browser Web Notification request. Mirrors a native OS notification

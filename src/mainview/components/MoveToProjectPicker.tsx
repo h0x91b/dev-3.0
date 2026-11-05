@@ -130,7 +130,7 @@ export default function MoveToProjectPicker({ currentProjectId, anchorEl, onSele
 							if (privacy.isLocked(p)) return;
 							onSelect(p);
 						}}
-						className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-elevated-hover"
+						className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-overlay-hover"
 					>
 						<span className={`truncate text-sm text-fg ${privacy.maskClass(p)}`}>{p.name}</span>
 					</button>

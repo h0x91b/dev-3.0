@@ -162,7 +162,7 @@ Three rules the signature implies, each of which used to fail quietly:
 - **`update()` and `remount()` take no arguments.** They re-read your factory, so change the data the factory closes over and then call them. Passing a new option object used to be ignored and read like a caching bug; it now throws.
 - **A throwing `chart()` call kills the whole report**, because `report.js` is one IIFE — every later chart, table, and listener in the file dies with it. A blank report with one error is usually one bad `chart()` call, not four broken panels.
 
-ECharts places a top legend and the y-axis `name` in the same strip above the plot, so a chart with both collides unless that strip is tall enough. Give a hand-set `grid.top` at least `56`. Moving the legend to the bottom only moves the collision onto the x-axis labels. Long category labels are silently thinned to every other one; shorten them rather than letting a series lose its label.
+ECharts places a top legend and the y-axis `name` in the same strip above the plot, so a chart with both collides unless that strip is tall enough. Give a hand-set `grid.top` at least `56`. Moving the legend to the bottom only moves the collision onto the x-axis labels. Long category labels are silently thinned to every other one; shorten them rather than letting a series lose its label. Two `markLine` labels on nearby values land on top of each other at the line end: give them different `label.position` (`insideEndTop` / `insideEndBottom`) or put the value in the legend.
 
 Use `.remount()` when switching a chart view so ECharts redraws its geometry from left to right; use `.update()` when live data should morph in place. The shell keeps ECharts' native timing and disables motion when the user prefers reduced motion. A few option shapes that render well on the shell, all colored from the viz ramp unless a series carries a verdict:
 
@@ -297,6 +297,35 @@ addEventListener("dev3:draft-restore", (event) => {
   applyMyState(event.detail);                          // exactly what saveDraft() was given
 });
 ```
+
+## Live pages (`window.dev3.live`)
+
+A task can have one **Live Artifact**: a page that `dev3 live publish <dir>` replaces in place (no versions), plus a small store of JSON documents shared by the page, the agent and every open copy — the dev3 viewer, a browser tab (`dev3 live url`) and the phone. Build it from this same starter; only the data moves to the store.
+
+```js
+const live = window.dev3?.live;              // absent in an ordinary artifact
+if (live) {
+  live.on("ready", render);                  // the store has loaded
+  live.on("change", render);                 // the agent (or another tab) changed a document
+}
+function render() {
+  const cards = live.list("cards");          // [{ id, data, rev, updatedAt, updatedBy }]
+  const title = live.get("meta", "page")?.title;
+  /* …draw from data… */
+}
+approve.addEventListener("click", async () => {
+  await live.patch("cards", card.id, { answer: "approve" });   // JSON Merge Patch; null removes a key
+  await live.send("Answered 1 card");        // wakes the agent — only right after a real click
+});
+```
+
+- **Reads are synchronous** from a local copy (`get`, `doc`, `list`, `collections`, `rev`); `ready` is also a promise.
+- **Writes** — `set(c, id, data)`, `patch(c, id, patch)`, `delete(c, id)` — resolve with the change. Pass `{ ifRev }` to refuse a stale write (rejects with `reason: "conflict"`). Names are 1–64 letters, digits, `.` `_` `:` `-`.
+- **`emit(name, payload)`** records an event for the agent without waking it; **`send(text)`** wakes it and needs a click within the last 5 s. User writes are logged too; the agent reads them with `dev3 live events` and marks them `dev3 live ack`.
+- **Agent side:** `dev3 live set|patch|get|list|delete <collection> <id> [json|@file|-]`. Never rebuild the page to change data — write the document and every open copy redraws.
+- **A new page reloads by itself** and keeps what the user typed in its controls; render from the store, not from values baked into the HTML.
+- **A finished task's live page is read-only**: writes reject with `reason: "read-only"`; hide the controls when `live.list` is all you can do.
+- A rejected call's `Error.reason` is one of `unavailable`, `invalid`, `conflict`, `read-only`, `no-gesture`, `empty`, `timeout`, `failed`.
 
 ## Contracts to preserve
 

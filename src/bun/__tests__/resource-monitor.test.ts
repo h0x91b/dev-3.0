@@ -43,17 +43,22 @@ vi.mock("../data", () => ({
 
 // Frozen core times by default: no elapsed time means no busy reading, so the
 // CPU/disk snapshot stays silent unless a test advances `cpuClock`.
-const cpuClock = vi.hoisted(() => ({ user: 0, idle: 0 }));
+const cpuClock = vi.hoisted(() => ({ user: 0, idle: 0, loadavg: [0, 0, 0] }));
 vi.mock("node:os", async (importActual) => {
 	const actual = await importActual<typeof import("node:os")>();
 	return {
 		...actual,
 		cpus: () => [{ model: "x", speed: 0, times: { user: cpuClock.user, nice: 0, sys: 0, idle: cpuClock.idle, irq: 0 } }],
-		loadavg: () => [0, 0, 0],
+		loadavg: () => cpuClock.loadavg,
 	};
 });
 
-vi.mock("../settings", () => ({ loadSettings: vi.fn(async () => ({ resourceLevels: { cpuWarnPercent: 50 } })) }));
+vi.mock("../settings", () => ({ loadSettings: vi.fn(async () => ({ resourceLevels: { cpuBusyWarnPercent: 50 } })) }));
+
+const nativeRecords = vi.hoisted(() => ({
+	listTaskIds: vi.fn((): string[] => []),
+	readPanes: vi.fn((_taskId: string): Array<{ hostPid: number; shellPid: number; command: string[] }> => []),
+}));
 
 // Partial mock: stub only getAllSessionPanePids; let collectProcessInfo and
 // collectDescendants run through their real implementations (which go through
@@ -68,7 +73,7 @@ vi.mock("../port-scanner", async (importActual) => {
 
 import { startResourceMonitor, stopResourceMonitor, getResourceUsage, aggregateResources, getSystemLoadSnapshot, getSystemMemorySnapshot, boostResourceMonitor, clearResourceMonitorBoost, isResourceMonitorBoosted } from "../resource-monitor";
 import { spawn } from "../spawn";
-import { getAllSessionPanePids, clearProcessInfoCache } from "../port-scanner";
+import { getAllSessionPanePids, clearProcessInfoCache, setNativePaneRecordsReader } from "../port-scanner";
 import { probeMemoryFacts } from "../system-memory-probe";
 import { loadProjects, loadTasks } from "../data";
 import { startSleepInhibitWatch, stopSleepInhibitWatch } from "../caffeinate";
@@ -148,6 +153,8 @@ describe("resource-monitor poller", () => {
 		mockSpawn.mockReset();
 		mockGetAllSessionPanePids.mockReset();
 		mockProbe.mockReset();
+		nativeRecords.listTaskIds.mockReset().mockReturnValue([]);
+		setNativePaneRecordsReader(nativeRecords);
 		// Default: no platform snapshot, so the existing per-task expectations
 		// below are unaffected by the memory widget's tick.
 		mockProbe.mockResolvedValue(null);
@@ -295,6 +302,113 @@ describe("resource-monitor poller", () => {
 		expect(mockSpawn).toHaveBeenCalledTimes(1);
 		expect(mockGetAllSessionPanePids).toHaveBeenCalledTimes(1);
 		expect(push).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe("resource-monitor on native tasks", () => {
+	const NATIVE_TASK_ID = "natv1234-aaaa-bbbb-cccc-ddddeeeeffff";
+
+	function nativeTaskOnDisk() {
+		nativeRecords.listTaskIds.mockReturnValue([NATIVE_TASK_ID]);
+		nativeRecords.readPanes.mockReturnValue([{ hostPid: 10, shellPid: 11, command: [] }]);
+	}
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+		mockSpawn.mockReset();
+		mockGetAllSessionPanePids.mockReset();
+		mockProbe.mockReset().mockResolvedValue(null);
+		nativeRecords.listTaskIds.mockReset().mockReturnValue([]);
+		setNativePaneRecordsReader(nativeRecords);
+		clearProcessInfoCache();
+	});
+
+	afterEach(() => {
+		stopResourceMonitor();
+		vi.useRealTimers();
+	});
+
+	it("counts the live shell tree of a native task under its short id", async () => {
+		nativeTaskOnDisk();
+		mockGetAllSessionPanePids.mockResolvedValueOnce(paneMap({}));
+		mockSpawn.mockReturnValueOnce(makeProc(
+			"  10     1   1000   0.0\n  11    10   204800   5.0\n  12    11   102400   2.0\n",
+		));
+
+		const push = vi.fn();
+		startResourceMonitor(push);
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		expect(push).toHaveBeenCalledWith("resourceUsageUpdated", {
+			taskId: "natv1234",
+			usage: { cpu: expect.closeTo(7, 1), rss: (204800 + 102400) * 1024 },
+		});
+		expect(mockGetAllSessionPanePids).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not count a pane whose shell is no longer a child of its host", async () => {
+		nativeTaskOnDisk();
+		mockGetAllSessionPanePids.mockResolvedValueOnce(paneMap({}));
+		mockSpawn.mockReturnValueOnce(makeProc("  10     1   1000   0.0\n  11     1   204800   5.0\n"));
+
+		const push = vi.fn();
+		startResourceMonitor(push);
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		expect(push).not.toHaveBeenCalled();
+	});
+
+	it("leaves a tmux task's usage alone when a stale native record shares its id", async () => {
+		nativeTaskOnDisk();
+		mockGetAllSessionPanePids.mockResolvedValueOnce(paneMap({ "dev3-natv1234": [50] }));
+		mockSpawn.mockReturnValueOnce(makeProc("  50     1   102400   5.0\n"));
+
+		const push = vi.fn();
+		startResourceMonitor(push);
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		expect(push.mock.calls.filter((c) => c[0] === "resourceUsageUpdated")).toEqual([
+			["resourceUsageUpdated", { taskId: "natv1234", usage: { cpu: 5, rss: 102400 * 1024 } }],
+		]);
+		expect(getResourceUsage("natv1234-x")).toEqual({ cpu: 5, rss: 102400 * 1024 });
+	});
+
+	it("pushes zero usage when a listed native task has no live pane left in the process table", async () => {
+		nativeTaskOnDisk();
+		mockGetAllSessionPanePids.mockResolvedValue(paneMap({}));
+		mockSpawn.mockReturnValueOnce(makeProc("  10     1   1000   0.0\n  11    10   204800   5.0\n"));
+
+		const push = vi.fn();
+		startResourceMonitor(push);
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(getResourceUsage("natv1234-x")).toBeDefined();
+
+		clearProcessInfoCache();
+		mockSpawn.mockReturnValueOnce(makeProc("  1     0   1000   0.0\n"));
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		expect(getResourceUsage("natv1234-x")).toBeUndefined();
+		expect(push).toHaveBeenLastCalledWith("resourceUsageUpdated", { taskId: "natv1234", usage: { cpu: 0, rss: 0 } });
+	});
+
+	it("pushes zero usage once the native task goes away, and not on every tick before", async () => {
+		nativeTaskOnDisk();
+		mockGetAllSessionPanePids.mockResolvedValue(paneMap({}));
+		mockSpawn.mockReturnValue(makeProc("  10     1   1000   0.0\n  11    10   204800   5.0\n"));
+
+		const push = vi.fn();
+		startResourceMonitor(push);
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(push).toHaveBeenCalledTimes(1);
+		clearProcessInfoCache();
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(push).toHaveBeenCalledTimes(1);
+
+		nativeRecords.listTaskIds.mockReturnValue([]);
+		clearProcessInfoCache();
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		expect(push).toHaveBeenLastCalledWith("resourceUsageUpdated", { taskId: "natv1234", usage: { cpu: 0, rss: 0 } });
 	});
 });
 
@@ -754,6 +868,7 @@ describe("system load snapshot", () => {
 		clearProcessInfoCache();
 		cpuClock.user = 0;
 		cpuClock.idle = 0;
+		cpuClock.loadavg = [0, 0, 0];
 	});
 
 	afterEach(() => {
@@ -776,14 +891,29 @@ describe("system load snapshot", () => {
 		const loads = push.mock.calls.filter(([name]) => name === "systemLoadUpdated").map(([, payload]) => payload);
 		expect(loads).toHaveLength(1);
 		expect(loads[0]).toMatchObject({
+			// Judged on busy time against the stored 50% level.
 			cpuBusy: 0.75,
-			// No load average (zeros) → busy % stands in, judged against the stored 50% level.
-			cpuLoadPercent: 75,
 			cpuPressure: "warn",
 			cores: 1,
 			topCpuConsumers: [{ name: "Docker", cpu: 40 }],
 			topCpuTasks: [{ shortId: "abc12345", cpu: 80 }],
 		});
 		expect(getSystemLoadSnapshot()).toEqual(loads[0]);
+	});
+
+	it("a huge load average on a mostly idle CPU is not pressure", async () => {
+		mockGetAllSessionPanePids.mockResolvedValueOnce(paneMap({}));
+		mockSpawn.mockReturnValueOnce(makeProc("  300     1   1000   30.0 /usr/local/bin/dockerd\n"));
+		// The reported case: load 101.25 on 16 cores (633%) while the cores were 30% busy.
+		cpuClock.loadavg = [6.33, 5.59, 3.35];
+
+		const push = vi.fn();
+		startResourceMonitor(push);
+		cpuClock.user = 30;
+		cpuClock.idle = 70;
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		const loads = push.mock.calls.filter(([name]) => name === "systemLoadUpdated").map(([, payload]) => payload);
+		expect(loads[0]).toMatchObject({ cpuBusy: expect.closeTo(0.3), cpuPressure: "normal", loadAvg: [6.33, 5.59, 3.35] });
 	});
 });

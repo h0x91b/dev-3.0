@@ -4,7 +4,7 @@ import { sendRequest } from "../socket-client";
 import { exitError, exitUsage } from "../output";
 import { resolveValue } from "../args";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
-import { MAX_SHARED_IMAGE_BYTES, MAX_SHARED_IMAGES_PER_CALL, MAX_SHARED_VIDEO_BYTES, SHARED_IMAGE_EXTS, SHARED_VIDEO_EXTS, mediaTooLargeDetail } from "../../shared/types";
+import { MAX_SHARED_IMAGE_BYTES, MAX_SHARED_IMAGES_PER_CALL, MAX_SHARED_MEDIA_BYTES, SHARED_IMAGE_EXTS, SHARED_MEDIA_EXTS, mediaTooLargeDetail } from "../../shared/types";
 
 interface MediaKind {
 	command: string;
@@ -24,16 +24,16 @@ const IMAGE: MediaKind = {
 	example: "a.png",
 };
 
-const VIDEO: MediaKind = {
-	command: "show-video",
-	method: "ui.show-video",
-	noun: "video",
-	exts: SHARED_VIDEO_EXTS,
-	maxBytes: MAX_SHARED_VIDEO_BYTES,
+const MEDIA: MediaKind = {
+	command: "show-media",
+	method: "ui.show-media",
+	noun: "media file",
+	exts: SHARED_MEDIA_EXTS,
+	maxBytes: MAX_SHARED_MEDIA_BYTES,
 	example: "demo.mp4",
 };
 
-const VIDEO_COPY_TIMEOUT_MS = 5 * 60_000;
+const CLIP_COPY_TIMEOUT_MS = 5 * 60_000;
 
 // Flags that take a value; anything else with a leading "--" is rejected.
 const GLOBAL_VALUE_FLAGS = new Set(["task", "task-id", "project"]);
@@ -55,19 +55,20 @@ function ext(path: string): string {
  * `--task-id`, `--project`) may appear anywhere.
  */
 export function handleShowImage(argv: string[], socketPath: string, context: CliContext | null): Promise<void> {
-	return handleShowMedia(IMAGE, argv, socketPath, context);
+	return showFiles(IMAGE, argv, socketPath, context);
 }
 
 /**
- * `dev3 show-video <path> [--caption "..."] ...` — the same history and viewer as
- * {@link handleShowImage}, for MP4/WebM clips (a QA recording, a demo). The
- * viewer plays them in place and never autoplays.
+ * `dev3 show-media <path> [--caption "..."] ...` — the same history and viewer as
+ * {@link handleShowImage}, for video (MP4/WebM) and audio (MP3/M4A/WAV/OGG) clips:
+ * a QA recording, a demo, a generated voice-over. The viewer plays them in place
+ * and never autoplays.
  */
-export function handleShowVideo(argv: string[], socketPath: string, context: CliContext | null): Promise<void> {
-	return handleShowMedia(VIDEO, argv, socketPath, context);
+export function handleShowMedia(argv: string[], socketPath: string, context: CliContext | null): Promise<void> {
+	return showFiles(MEDIA, argv, socketPath, context);
 }
 
-async function handleShowMedia(kind: MediaKind, argv: string[], socketPath: string, context: CliContext | null): Promise<void> {
+async function showFiles(kind: MediaKind, argv: string[], socketPath: string, context: CliContext | null): Promise<void> {
 	const supported = new Set(kind.exts);
 	const items: { path: string; caption?: string }[] = [];
 	const flags: Record<string, string> = {};
@@ -96,7 +97,7 @@ async function handleShowMedia(kind: MediaKind, argv: string[], socketPath: stri
 
 			if (key === "caption") {
 				if (items.length === 0) {
-					exitUsage(`\`--caption\` must follow ${kind.noun === "image" ? "an" : "a"} ${kind.noun} path, e.g. \`dev3 ${kind.command} ${kind.example} --caption "..."\`.`);
+					exitUsage(`\`--caption\` must follow ${kind === IMAGE ? "an" : "a"} ${kind.noun} path, e.g. \`dev3 ${kind.command} ${kind.example} --caption "..."\`.`);
 				}
 				const caption = value.trim();
 				if (caption) items[items.length - 1].caption = caption;
@@ -130,13 +131,13 @@ async function handleShowMedia(kind: MediaKind, argv: string[], socketPath: stri
 		}
 		const e = ext(abs);
 		if (!supported.has(e)) {
-			const hint = kind === IMAGE && SHARED_VIDEO_EXTS.includes(e) ? " For a video, use `dev3 show-video`." : "";
+			const hint = kind === IMAGE && SHARED_MEDIA_EXTS.includes(e) ? " For video or audio, use `dev3 show-media`." : "";
 			exitUsage(`Unsupported ${kind.noun} type "${e || "(none)"}" for ${it.path}. Use: ${kind.exts.join(", ")}.${hint}`);
 		}
 		const size = statSync(abs).size;
 		if (size > kind.maxBytes) {
 			const noun = kind.noun[0].toUpperCase() + kind.noun.slice(1);
-			exitUsage(`${noun} too large: ${it.path} (${mediaTooLargeDetail(size, kind.maxBytes)}).${kind === VIDEO ? " Trim or re-encode it smaller." : ""}`);
+			exitUsage(`${noun} too large: ${it.path} (${mediaTooLargeDetail(size, kind.maxBytes)}).${kind === MEDIA ? " Trim or re-encode it smaller." : ""}`);
 		}
 		images.push(it.caption ? { path: abs, caption: it.caption } : { path: abs });
 	}
@@ -154,8 +155,8 @@ async function handleShowMedia(kind: MediaKind, argv: string[], socketPath: stri
 	if (projectId) params.projectId = projectId;
 
 	// A clip near the cap can take longer than the default 30 s to copy on a slow disk.
-	const resp = kind === VIDEO
-		? await sendRequest(socketPath, kind.method, params, { timeoutMs: VIDEO_COPY_TIMEOUT_MS })
+	const resp = kind === MEDIA
+		? await sendRequest(socketPath, kind.method, params, { timeoutMs: CLIP_COPY_TIMEOUT_MS })
 		: await sendRequest(socketPath, kind.method, params);
 	if (!resp.ok) exitError(resp.error || `Failed to show ${kind.noun}`);
 

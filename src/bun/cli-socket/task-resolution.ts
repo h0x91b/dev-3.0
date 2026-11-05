@@ -1,6 +1,7 @@
-import type { AgentMessageSource, Project, Task } from "../../shared/types";
+import type { AgentMessageSource, Project, Task, TaskEpicRef, TaskOriginParent } from "../../shared/types";
+import { getEpicById } from "../epics-data";
 import { seqIsShared } from "../../shared/agent-message-envelope";
-import { ID_PREFIX_MIN_LENGTH, getTaskTitle, isCoordinatorTask } from "../../shared/types";
+import { ID_PREFIX_MIN_LENGTH, getTaskTitle, isCoordinatorTask, parentTaskIdOf } from "../../shared/types";
 import * as data from "../data";
 import { loadEffectiveTaskHistory } from "../task-blobs";
 import { captureSenderAgent } from "../scheduled-message-author";
@@ -29,7 +30,7 @@ export function findByIdPrefix<T extends { id: string }>(items: T[], prefix: str
  * shown on every card; unlike the id it survives launches (all variants of one
  * logical task share it), so it is the safe handle for stored references.
  */
-function parseSeqRef(ref: string): number | null {
+export function parseSeqRef(ref: string): number | null {
 	const match = /^seq:(\d+)$/.exec(ref);
 	return match ? Number(match[1]) : null;
 }
@@ -154,6 +155,41 @@ export async function scopedTaskNotFoundError(ref: string, scopedProject: Projec
 export async function withArchivedHistory(project: Project, task: Task): Promise<Task> {
 	const history = await loadEffectiveTaskHistory(project, task);
 	return history.length > 0 ? { ...task, history } : task;
+}
+
+/**
+ * `task.show` answers with the task's epic resolved, so `current` and `task show`
+ * can print its name. `epic` is null when the id points at no epic any more.
+ */
+export async function withEpic<T extends Task>(task: T): Promise<T & { epic?: TaskEpicRef | null }> {
+	if (!task.epicId) return task;
+	const epic = await getEpicById(task.epicId).catch(() => null);
+	return { ...task, epic: epic ? { id: epic.id, name: epic.name, color: epic.color, archived: epic.archived } : null };
+}
+
+/**
+ * `task.show` answers with the parent resolved, so `dev3 task show`/`current`
+ * can print "Created by" without a second request. `originParent` is null when
+ * the parent no longer exists, absent when the task has no task origin.
+ */
+export async function withOriginParent(task: Task): Promise<Task & { originParent?: TaskOriginParent | null }> {
+	const parentId = parentTaskIdOf(task);
+	if (!parentId) return task;
+	const found = await resolveTaskAcrossProjects(parentId).catch(() => null);
+	if (!found || found.task.id !== parentId) return { ...task, originParent: null };
+	const { project, task: parent } = found;
+	const isGroup = parent.groupId !== null && (await data.loadTasks(project)).some((t) => t.id !== parent.id && t.groupId === parent.groupId);
+	return {
+		...task,
+		originParent: {
+			id: parent.id,
+			projectId: project.id,
+			projectName: project.name,
+			seq: parent.seq,
+			variantIndex: isGroup ? parent.variantIndex : null,
+			title: getTaskTitle(parent),
+		},
+	};
 }
 
 /**

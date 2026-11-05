@@ -31,6 +31,8 @@ const mocks = vi.hoisted(() => ({
 	tmuxKillPane: vi.fn(),
 	tmuxKillWindow: vi.fn(),
 	tmuxListPanes: vi.fn(),
+	tmuxSetWindowOption: vi.fn(),
+	tmuxUnsetWindowOption: vi.fn(),
 	// task-terminal-backend
 	taskTerminalBackendIdentity: vi.fn(),
 	// native-task-panes
@@ -73,6 +75,7 @@ vi.mock("../../pty-server", () => ({
 vi.mock("../../tmux", () => ({
 	PANE_CWD_FORMAT: "#{pane_current_path}",
 	WINDOW_PANE_FORMAT: { formatString: "window-panes" },
+	TMUX_WINDOW_NAME_OPTION: "@dev3_window_name",
 	TmuxError: class TmuxError extends Error {
 		exitCode: number;
 		stderr: string;
@@ -95,6 +98,8 @@ vi.mock("../../tmux", () => ({
 		killPane: mocks.tmuxKillPane,
 		killWindow: mocks.tmuxKillWindow,
 		listPanes: mocks.tmuxListPanes,
+		setWindowOption: mocks.tmuxSetWindowOption,
+		unsetWindowOption: mocks.tmuxUnsetWindowOption,
 	},
 }));
 
@@ -878,6 +883,41 @@ describe("tmuxCloseWindow", () => {
 		mocks.taskTerminalBackendIdentity.mockReturnValue("native");
 		const result = await taskPanesHandlers.tmuxCloseWindow({ taskId: TASK_ID });
 		expect(result).toEqual({ closed: false, reason: "notFound" });
+		expect(mocks.tmuxListPanes).not.toHaveBeenCalled();
+	});
+});
+
+// ── tmuxRenameWindow ──────────────────────────────────────────────────────────
+
+describe("tmuxRenameWindow", () => {
+	beforeEach(() => {
+		mocks.tmuxSetWindowOption.mockReset().mockResolvedValue(undefined);
+		mocks.tmuxUnsetWindowOption.mockReset().mockResolvedValue(undefined);
+	});
+
+	it("stores a cleaned-up name in the window's own option", async () => {
+		const result = await taskPanesHandlers.tmuxRenameWindow({ taskId: TASK_ID, windowId: "@3", name: "  Dev\tserver\n " });
+		expect(result).toEqual({ renamed: true });
+		expect(mocks.tmuxSetWindowOption).toHaveBeenCalledWith("@3", "@dev3_window_name", "Dev server", { socket: "dev3-sock" });
+	});
+
+	it("an empty name hands the window back to automatic naming", async () => {
+		const result = await taskPanesHandlers.tmuxRenameWindow({ taskId: TASK_ID, windowId: "@3", name: "   " });
+		expect(result).toEqual({ renamed: true });
+		expect(mocks.tmuxUnsetWindowOption).toHaveBeenCalledWith("@3", "@dev3_window_name", { socket: "dev3-sock" });
+		expect(mocks.tmuxSetWindowOption).not.toHaveBeenCalled();
+	});
+
+	it("never touches a window outside the task's session or a malformed id", async () => {
+		expect(await taskPanesHandlers.tmuxRenameWindow({ taskId: TASK_ID, windowId: "@9", name: "x" })).toEqual({ renamed: false });
+		expect(await taskPanesHandlers.tmuxRenameWindow({ taskId: TASK_ID, windowId: "dev3-x:1", name: "x" })).toEqual({ renamed: false });
+		expect(mocks.tmuxSetWindowOption).not.toHaveBeenCalled();
+	});
+
+	it("is a no-op for a native task", async () => {
+		mocks.getTask.mockResolvedValue(nativeTask);
+		mocks.taskTerminalBackendIdentity.mockReturnValue("native");
+		expect(await taskPanesHandlers.tmuxRenameWindow({ taskId: TASK_ID, windowId: "@1", name: "x" })).toEqual({ renamed: false });
 		expect(mocks.tmuxListPanes).not.toHaveBeenCalled();
 	});
 });

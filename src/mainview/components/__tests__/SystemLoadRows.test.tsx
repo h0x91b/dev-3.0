@@ -17,7 +17,6 @@ const mockedScan = api.request.scanWorktreeDiskUsage as ReturnType<typeof vi.fn>
 function snapshot(overrides?: Partial<SystemLoadSnapshot>): SystemLoadSnapshot {
 	return {
 		cpuBusy: 0.42,
-		cpuLoadPercent: 42,
 		cpuPressure: "normal",
 		cores: 10,
 		loadAvg: [3.5, 2.25, 1],
@@ -62,7 +61,7 @@ describe("SystemLoadRows", () => {
 		expect(screen.getByTestId("disk-space-row")).toHaveAccessibleName("120 GB of disk still free");
 
 		await act(async () => {
-			window.dispatchEvent(new CustomEvent("rpc:systemLoadUpdated", { detail: snapshot({ cpuLoadPercent: 90, disk: null }) }));
+			window.dispatchEvent(new CustomEvent("rpc:systemLoadUpdated", { detail: snapshot({ cpuBusy: 0.9, disk: null }) }));
 		});
 		expect(screen.getByTestId("cpu-load-row")).toHaveTextContent("90%");
 		expect(screen.queryByTestId("disk-space-row")).toBeNull();
@@ -75,7 +74,8 @@ describe("SystemLoadRows", () => {
 		const panel = await screen.findByTestId("cpu-load-row-popover");
 		expect(panel).toHaveTextContent("Docker");
 		expect(panel).toHaveTextContent("120%");
-		expect(panel).toHaveTextContent("load 3.50 2.25 1.00");
+		expect(panel).toHaveTextContent("42% busy");
+		expect(panel).toHaveTextContent("load average 3.50 2.25 1.00");
 
 		await user.click(within(panel).getByText("Fix the parser"));
 		expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1", activeTaskId: "abc12345-full" });
@@ -99,13 +99,41 @@ describe("SystemLoadRows", () => {
 		expect(mockedScan).toHaveBeenCalledTimes(1);
 	});
 
+	it("the disk breakdown names itself Disk and shows how full it is, never memory's heading", async () => {
+		mockedScan.mockResolvedValue([]);
+		const user = userEvent.setup();
+		renderRows();
+		await user.click(await screen.findByTestId("disk-space-row"));
+		const panel = (await screen.findByTestId("disk-worktrees")).parentElement!;
+		expect(panel).toHaveTextContent("Disk");
+		expect(panel).not.toHaveTextContent("System");
+		expect(panel).toHaveTextContent("76% of 500 GB in use");
+	});
+
+	it("each menu row leads with its own icon", async () => {
+		renderRows();
+		for (const id of ["cpu-load-row", "disk-space-row"]) {
+			expect((await screen.findByTestId(id)).querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(1);
+		}
+	});
+
+	it("header pills carry the icon beside the number", async () => {
+		mockedGet.mockResolvedValue(
+			snapshot({ cpuPressure: "warn", disk: { free: 12e9, total: 500e9, pressure: "warn" } }),
+		);
+		renderRows(vi.fn(), "bar");
+		for (const id of ["cpu-load-pill", "disk-space-pill"]) {
+			expect((await screen.findByTestId(id)).querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(1);
+		}
+	});
+
 	it("header pills appear only for a resource at warn or critical, coloured by its level", async () => {
 		mockedGet.mockResolvedValue(
-			snapshot({ cpuLoadPercent: 160, cpuPressure: "critical", disk: { free: 120e9, total: 500e9, pressure: "normal" } }),
+			snapshot({ cpuBusy: 0.97, cpuPressure: "critical", disk: { free: 120e9, total: 500e9, pressure: "normal" } }),
 		);
 		renderRows(vi.fn(), "bar");
 		const cpu = await screen.findByTestId("cpu-load-pill");
-		expect(cpu).toHaveTextContent("160%");
+		expect(cpu).toHaveTextContent("97%");
 		expect(cpu.className).toContain("text-danger");
 		expect(screen.queryByTestId("disk-space-pill")).toBeNull();
 

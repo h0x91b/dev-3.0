@@ -56,7 +56,7 @@ export default function AboutModal({ version, buildChannel, onClose }: AboutModa
 					<button
 						type="button"
 						onClick={() => window.open("https://h0x91b.github.io/dev-3.0/", "_blank")}
-						className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+						className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-overlay-hover transition-colors"
 					>
 						{t("about.website")}
 					</button>

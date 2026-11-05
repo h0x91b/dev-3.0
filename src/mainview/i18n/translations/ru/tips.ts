@@ -210,7 +210,7 @@ const tips = {
 	"tip.llmProvider.title": "Агенты через Amazon Bedrock",
 	"tip.llmProvider.body": "Настройка «LLM Provider» направляет Claude или Codex в Amazon Bedrock — dev3 подставит модель; учётные данные и регион остаются в вашей конфигурации.",
 	"tip.filterTokens.title": "Фильтруйте задачи токенами",
-	"tip.filterTokens.body": "В поле поиска наберите priority:P0 label:Bug agent:Codex status:review is:attention has:port — или соберите фильтр кликом по воронке.",
+	"tip.filterTokens.body": "В поле поиска наберите priority:P0 label:Bug agent:Codex status:review epic:Payments children:1801 is:attention pr:merged — или соберите фильтр кликом по воронке.",
 	"tip.cycleTaskVariants.title": "Цикл вариантов задачи",
 	"tip.cycleTaskVariants.body": "Нажмите Shift+Cmd+[ или ] (Ctrl в Linux), чтобы переключаться между живыми вариантами прямо из терминала.",
 	"tip.mobileTaskGit.title": "Git с телефона",
@@ -235,6 +235,8 @@ const tips = {
 	"tip.continueInAnotherAgent.body": "В «+ Агент» отметь «Продолжить разговор этой задачи» — новый агент получит пересказ сессии и подхватит работу.",
 	"tip.remoteSelfUpdate.title": "Удалённая машина обновляется сама",
 	"tip.remoteSelfUpdate.body": "Сервер `dev3 remote` ставит обновления сам, когда машина затихла, и сохраняет публичную ссылку — или запустите `dev3 update` вручную.",
+	"tip.renameTerminalWindow.title": "Свои имена для вкладок",
+	"tip.renameTerminalWindow.body": "Дважды кликните вкладку над терминалом (или F2 на ней), чтобы переименовать — имя держится, пока его не очистите.",
 };
 
 export default tips;

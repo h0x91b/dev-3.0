@@ -173,8 +173,9 @@ export function whenConfirmHostMounted(timeoutMs = 10_000): Promise<boolean> {
  * would let a second `confirm()` overwrite the first, whose promise then never
  * resolves — see `decisions/2026/09/08/queue-overlapping-confirm-dialogs.md`.
  */
-export function ConfirmHost() {
+export function ConfirmHost({ onBusyChange }: { onBusyChange?: (busy: boolean) => void } = {}) {
 	const [queue, setQueue] = useState<PendingConfirm[]>([]);
+	useEffect(() => { onBusyChange?.(queue.length > 0); }, [queue.length, onBusyChange]);
 
 	useEffect(() => {
 		listener = (req) => setQueue((current) => [...current, req]);
@@ -310,8 +311,10 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 	}, [pending.signal, close]);
 
 	return (
+		// Above the artifact popup (z-70) and the help overlay (z-80): a confirmation
+		// raised from either must not open hidden behind the surface that asked for it.
 		<div
-			className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
+			className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50"
 			onMouseDown={(e) => {
 				if (e.target !== e.currentTarget) return;
 				if (dismissOnBackdrop) close(false);
@@ -431,7 +434,7 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 							type="button"
 							autoFocus={pending.agentInitiated}
 							onClick={() => close(false)}
-							className="px-4 py-2 text-sm whitespace-nowrap rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+							className="px-4 py-2 text-sm whitespace-nowrap rounded-lg text-fg-2 hover:text-fg hover:bg-overlay-hover transition-colors"
 						>
 							{cancelLabel}
 							{pending.keyboardChoice && <KeyHint keys="Esc" />}
@@ -440,7 +443,7 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 							<button
 								type="button"
 								onClick={() => close(pending.alternativeAction!.value)}
-								className="px-4 py-2 text-sm whitespace-nowrap rounded-lg border border-edge text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+								className="px-4 py-2 text-sm whitespace-nowrap rounded-lg border border-edge text-fg-2 hover:text-fg hover:bg-overlay-hover transition-colors"
 							>
 								{pending.alternativeAction.label}
 							</button>
@@ -471,7 +474,7 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 /** The key that answers a `keyboardChoice` dialog, inside its button. */
 function KeyHint({ keys }: { keys: string }) {
 	return (
-		<kbd className="ml-2 px-1.5 py-0.5 rounded border border-current/30 text-xs font-sans opacity-80" aria-hidden>
+		<kbd className="ml-2 px-1.5 py-0.5 rounded border border-[color-mix(in_srgb,currentColor_30%,transparent)] text-xs font-sans opacity-80" aria-hidden>
 			{keys}
 		</kbd>
 	);
@@ -501,7 +504,7 @@ function OutcomeAction({
 			className={`group flex w-full items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors ${
 				primary
 					? "border-accent/60 bg-accent/10 hover:border-accent hover:bg-accent/15"
-					: "border-edge bg-elevated/55 hover:border-edge-active hover:bg-elevated"
+					: "border-edge bg-elevated/55 hover:border-edge-active hover:bg-elevated-hover"
 			}`}
 		>
 			<span

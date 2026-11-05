@@ -99,7 +99,7 @@ export default function OpenInMenu({ position, path, taskId, onClose }: OpenInMe
 					<button
 						key={app.id}
 						onClick={() => handleOpen(app)}
-						className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
+						className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-overlay-hover hover:text-fg flex items-center gap-2.5 transition-colors"
 					>
 						<span
 							className="w-4 text-center text-sm leading-none flex-shrink-0"
@@ -118,7 +118,7 @@ export default function OpenInMenu({ position, path, taskId, onClose }: OpenInMe
 					setCopied(true);
 					setTimeout(() => { setCopied(false); onClose(); }, 800);
 				}}
-				className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
+				className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-overlay-hover hover:text-fg flex items-center gap-2.5 transition-colors"
 			>
 				<span
 					className="w-4 text-center text-sm leading-none flex-shrink-0"
@@ -135,7 +135,7 @@ export default function OpenInMenu({ position, path, taskId, onClose }: OpenInMe
 						setDeepLinkCopied(true);
 						setTimeout(() => { setDeepLinkCopied(false); onClose(); }, 800);
 					}}
-					className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
+					className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-overlay-hover hover:text-fg flex items-center gap-2.5 transition-colors"
 				>
 					<span
 						className="w-4 text-center text-sm leading-none flex-shrink-0"

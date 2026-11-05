@@ -109,7 +109,7 @@ function SpaceHeaderMenu({
 	}
 
 	const itemClass =
-		"w-full text-left px-3 py-2 text-xs transition-colors hover:bg-elevated-hover";
+		"w-full text-left px-3 py-2 text-xs transition-colors hover:bg-overlay-hover";
 
 	return (
 		<>

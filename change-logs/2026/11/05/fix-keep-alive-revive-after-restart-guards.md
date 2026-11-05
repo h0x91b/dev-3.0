@@ -1,0 +1,1 @@
+Keep-alive revives an exited agent again when its pane has no exact saved conversation (harness latest, substituted, fresh or native with extra panes), which the stricter Restart agent session checks had blocked. Restart agent session is now disabled on a disconnected task, and its in-app guidance says dev servers in the closed panes stop.

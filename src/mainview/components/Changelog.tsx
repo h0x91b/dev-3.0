@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, type ReactNode } from "react";
 import { useT } from "../i18n";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { Route } from "../state";
@@ -92,36 +92,58 @@ function Chevron({ open }: { open: boolean }) {
 	);
 }
 
+function CreditLink({ url, className, children }: { url?: string; className: string; children: ReactNode }) {
+	return url ? (
+		<a
+			href={url}
+			target="_blank"
+			rel="noopener noreferrer"
+			onClick={(e) => e.stopPropagation()}
+			className={`${className} hover:underline`}
+		>
+			{children}
+		</a>
+	) : (
+		<span className={className}>{children}</span>
+	);
+}
+
+// Credits stay English in every locale: changelog entries themselves are English-only.
 function CreditPrefix({ entry }: { entry: ChangelogEntry }) {
-	if (!entry.suggestedBy) return null;
+	if (!entry.suggestedBy && !entry.contributedBy) return null;
 	return (
 		<span className="text-fg-3 mr-1.5">
-			by{" "}
-			{entry.issueUrl ? (
-				<a
-					href={entry.issueUrl}
-					target="_blank"
-					rel="noopener noreferrer"
-					onClick={(e) => e.stopPropagation()}
-					className="text-accent hover:underline"
-				>
-					@{entry.suggestedBy}
-				</a>
-			) : (
-				<span className="text-accent">@{entry.suggestedBy}</span>
-			)}
-			{entry.issueRef && entry.issueUrl && (
+			{entry.contributedBy && (
 				<>
-					{" "}
-					<a
-						href={entry.issueUrl}
-						target="_blank"
-						rel="noopener noreferrer"
-						onClick={(e) => e.stopPropagation()}
-						className="text-fg-muted hover:text-fg-3 hover:underline"
-					>
-						{entry.issueRef}
-					</a>
+					PR by{" "}
+					<CreditLink url={entry.prUrl} className="text-accent">
+						@{entry.contributedBy}
+					</CreditLink>
+					{entry.prRef && entry.prUrl && (
+						<>
+							{" "}
+							<CreditLink url={entry.prUrl} className="text-fg-muted hover:text-fg-3">
+								{entry.prRef}
+							</CreditLink>
+						</>
+					)}
+					{entry.suggestedBy && " · "}
+				</>
+			)}
+			{entry.suggestedBy && (
+				<>
+					by{" "}
+					<CreditLink url={entry.issueUrl} className="text-accent">
+						@{entry.suggestedBy}
+					</CreditLink>
+					{entry.issueRef && entry.issueUrl && (
+						<>
+							{" "}
+							<CreditLink url={entry.issueUrl} className="text-fg-muted hover:text-fg-3">
+								{entry.issueRef}
+							</CreditLink>
+						</>
+					)}
 				</>
 			)}
 		</span>
@@ -312,7 +334,8 @@ function Changelog({ navigate, goBack, canGoBack }: ChangelogProps) {
 			(e.body?.toLowerCase().includes(q) ?? false) ||
 			(e.short?.toLowerCase().includes(q) ?? false) ||
 			e.slug.toLowerCase().includes(q) ||
-			(e.suggestedBy?.toLowerCase().includes(q) ?? false);
+			(e.suggestedBy?.toLowerCase().includes(q) ?? false) ||
+			(e.contributedBy?.toLowerCase().includes(q) ?? false);
 		const filtered = entries.filter(
 			(e) => (activeTypes.size === 0 || activeTypes.has(e.type as EntryType)) && matchesQuery(e),
 		);

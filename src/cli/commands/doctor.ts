@@ -12,10 +12,12 @@ import {
 } from "../../shared/cli-exit-codes";
 import type { ParsedArgs } from "../args";
 import { isExecutableFile } from "../../bun/executable";
+import { compressAllDiffSnapshots, measurePlainDiffSnapshots } from "../../bun/diff-snapshots";
 import { checkRepositoryAccess, type RepoAccessDeps } from "./doctor-repo-access";
 import { collectNativeProcesses, realProcessInventoryDeps, renderNativeProcesses } from "./doctor-processes";
 import {
 	collectWorktreeReport,
+	formatBytes,
 	parseDurationDays,
 	prune,
 	realWorktreeScanDeps,
@@ -511,15 +513,37 @@ function handleWorktrees(args: ParsedArgs, scanDeps: WorktreeScanDeps): never {
 	const report = collectWorktreeReport(scanDeps);
 	const pruning = options.orphans || options.olderThanDays !== null;
 	const outcomes = pruning ? prune(report, options, scanDeps) : [];
+	// After the prune, so nothing is compressed just to be deleted.
+	const gzipping = args.flags?.["gzip-diffs"] === "true";
+	const diffs = gzipping
+		? { gzipped: compressAllDiffSnapshots(report.worktreesRoot, scanDeps.now) }
+		: { uncompressed: measurePlainDiffSnapshots(report.worktreesRoot) };
 
 	if (args.flags?.json) {
-		process.stdout.write(`${JSON.stringify({ worktrees: report, pruned: outcomes }, null, 2)}\n`);
+		process.stdout.write(`${JSON.stringify({ worktrees: report, pruned: outcomes, diffs }, null, 2)}\n`);
 	} else {
 		process.stdout.write(renderWorktreeReport(report));
 		if (pruning) process.stdout.write(`\n${renderPruneOutcomes(outcomes)}`);
+		process.stdout.write(`\n${renderDiffSnapshots(diffs)}`);
 	}
 	const incomplete = outcomes.some((o) => o.action === "skipped" || o.action === "failed");
 	process.exit(incomplete ? CLI_EXIT_CODE_PRUNE_INCOMPLETE : CLI_EXIT_CODE_SUCCESS);
+}
+
+function renderDiffSnapshots(diffs: {
+	gzipped?: ReturnType<typeof compressAllDiffSnapshots>;
+	uncompressed?: ReturnType<typeof measurePlainDiffSnapshots>;
+}): string {
+	if (diffs.gzipped) {
+		const g = diffs.gzipped;
+		if (g.compressed === 0 && g.skipped === 0) return "Diff snapshots: nothing left to gzip.\n";
+		const skipped = g.skipped > 0 ? ` ${g.skipped} left as-is (written in the last minute, or unreadable).` : "";
+		return `Gzipped ${g.compressed} diff snapshots in ${g.dirs} task dirs: ${formatBytes(g.bytesBefore)} → ${formatBytes(g.bytesAfter)}.${skipped}\n`;
+	}
+	const u = diffs.uncompressed!;
+	if (u.files === 0) return "Diff snapshots: all gzip-compressed.\n";
+	const files = u.files === 1 ? "1 file" : `${u.files} files`;
+	return `Uncompressed diff snapshots: ${files} in ${u.dirs} task dirs, ${formatBytes(u.bytes)} — dev3 doctor --worktrees --gzip-diffs\n`;
 }
 
 export async function handleDoctor(

@@ -1,5 +1,6 @@
 import { assertTaskWorkspacePresent } from "../../task-workspace-guard";
 import type { AgentFamily, Project, Task } from "../../../shared/types";
+import { getPrimaryStopTarget } from "../../../shared/types";
 import * as data from "../../data";
 import * as git from "../../git";
 import * as pty from "../../pty-server";
@@ -12,6 +13,7 @@ import { assertLaunchAgentsInstalled } from "../../agent-launch-availability";
 import { ensureArtifactTemplateEnv } from "../../artifact-template";
 import { taskSessionName } from "../../tmux";
 import { dev3TaskTempPath } from "../../temp-paths";
+import { writeNativeAgentAttribution } from "../../native-agent-attribution";
 import { taskTerminalBackendIdentity } from "../../task-terminal-backend";
 import { focusNativeTaskPane, nativeTaskPaneLayout, nativeTaskPanesState, setNativeTaskPaneLayout } from "../../native-task-panes";
 import { setSplitRatio, splitCreatedBySplitting } from "../../../shared/split-tree";
@@ -37,7 +39,7 @@ export async function resolveBugHunterCompareRef(task: Task, project: Project): 
 	const taskBaseBranch = task.baseBranch || projectBaseBranch;
 	// Task forked from a non-default base → compare against that local branch.
 	if (taskBaseBranch !== projectBaseBranch) return taskBaseBranch;
-	if (project.defaultCompareRef) return project.defaultCompareRef;
+	if (project.defaultCompareRef) return git.resolveConfiguredCompareRef(project.path, taskBaseBranch, project.defaultCompareRef);
 	if (project.defaultCompareRefMode === "local") return taskBaseBranch;
 	// Nothing configured: ask git rather than assume a remote, which would send the
 	// hunters at `git merge-base origin/<base> HEAD` in a repo that has no origin.
@@ -144,7 +146,7 @@ async function spawnSingleBugHunterPane(opts: {
 	};
 	await ensureAgentTrust(opts.worktreePath, opts.project.path, resolvedBaseCmd, launchAccountId, opts.task.foreignCode, resolvedAgentFamily, env);
 	tmuxCmd = await applyAgentHooksToCommand(opts.worktreePath, resolvedBaseCmd, tmuxCmd, {
-		stopTarget: opts.project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
+		stopTarget: getPrimaryStopTarget(opts.project.autoReviewEnabled, opts.task.taskType),
 		family: resolvedAgentFamily,
 	});
 
@@ -195,6 +197,14 @@ async function spawnSingleBugHunterPane(opts: {
 		} catch (err) {
 			log.error("Failed to append bug hunter pane to sessionState (non-fatal)", { error: String(err) });
 		}
+	} else {
+		await writeNativeAgentAttribution(scriptPath, {
+			agentCmd: resolvedBaseCmd,
+			agentId: launchedAgentId,
+			configId: launchedConfigId,
+			accountId: launchAccountId,
+			agentFamily: resolvedAgentFamily,
+		});
 	}
 
 	return { handle, baseCmd: resolvedBaseCmd, agentFamily: resolvedAgentFamily };

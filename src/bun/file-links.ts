@@ -4,7 +4,7 @@ import { lstat, open, stat } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { ATTACHMENT_ONLY_EXTS, FILE_LINK_CONTENT_TYPES, PAGE_ASSET_EXTS, fileLinkExt } from "../shared/file-link-types";
 import { spawn } from "./spawn";
-import { serveFileBytes } from "./shared-video-stream";
+import { serveFileBytes } from "./shared-media-stream";
 
 /**
  * Token-only capability links for opening a previewed file in a browser tab.

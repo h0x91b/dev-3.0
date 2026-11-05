@@ -25,6 +25,7 @@ import { getAgentAdapter } from "../shared/agent-adapters";
 import type { PaneSessionEntry, Task } from "../shared/types";
 import { NATIVE_AGENT_PANE_ID } from "./agent-prompt-native";
 import { createLogger } from "./logger";
+import { listNativeTaskAgents } from "./native-agent-attribution";
 import { nativeTaskPanesState } from "./native-task-panes";
 import { sendPaneInput } from "./pane-input";
 import { collectDescendants, collectProcessInfo } from "./port-scanner";
@@ -135,16 +136,22 @@ const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(r
  */
 export async function resolveAgentExitTargets(task: Task): Promise<AgentExitTarget[]> {
 	const entries = task.sessionState?.panes ?? [];
-	if (entries.length === 0) return [];
 
 	if (taskTerminalBackendIdentity(task) === "native") {
 		const state = await nativeTaskPanesState(task.id);
+		const targets: AgentExitTarget[] = [];
 		const agentPane = state?.panes.find((pane) => pane.paneId === NATIVE_AGENT_PANE_ID);
-		const entry = entries[0];
-		if (!agentPane?.alive || !entry) return [];
-		return [{ paneId: agentPane.paneId, rootPid: agentPane.shellPid, entry }];
+		if (agentPane?.alive && entries[0]) {
+			targets.push({ paneId: agentPane.paneId, rootPid: agentPane.shellPid, entry: entries[0] });
+		}
+		// "+ Agent" and hunter panes live in sidecars, not in sessionState.panes.
+		for (const { paneId, shellPid, ...agent } of await listNativeTaskAgents(task)) {
+			if (shellPid > 0) targets.push({ paneId, rootPid: shellPid, entry: { ...agent, sessionId: null } });
+		}
+		return targets;
 	}
 
+	if (entries.length === 0) return [];
 	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 	const rows = await tmux.listPanes(PANE_ID_PID_FORMAT, { target: taskSessionName(task.id), scope: "session", socket });
 	const live = new Map((rows ?? []).map((row) => [row.paneId, row.panePid] as const));

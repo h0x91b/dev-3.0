@@ -365,3 +365,40 @@ export function RescanIcon({ className }: HeaderIconProps) {
 		</svg>
 	);
 }
+
+// 25 — Resource pills. Silhouettes, not drawings: they sit at 12px beside a number,
+// so each must survive as a shape — a wide stick, a square with legs, a drum.
+// Memory: a RAM stick, its contact teeth blink in turn.
+export function MemoryIcon({ className }: HeaderIconProps) {
+	return (
+		<svg {...svgBase(className, 2)}>
+			<rect x="2.5" y="6" width="19" height="9.5" rx="1.5" />
+			<path d="M6.5 15.5v3" className="hdr hdr-res1" />
+			<path d="M10 15.5v3" className="hdr hdr-res2" />
+			<path d="M14 15.5v3" className="hdr hdr-res3" />
+			<path d="M17.5 15.5v3" className="hdr hdr-res1" />
+		</svg>
+	);
+}
+
+// 26 — CPU: a chip with legs on every side, its core pulses.
+export function CpuIcon({ className }: HeaderIconProps) {
+	return (
+		<svg {...svgBase(className, 2)}>
+			<rect x="6.5" y="6.5" width="11" height="11" rx="1.5" />
+			<rect x="10" y="10" width="4" height="4" rx=".5" fill="currentColor" stroke="none" className="hdr hdr-res2" />
+			<path d="M10 3v3.5M14 3v3.5M10 17.5V21M14 17.5V21M3 10h3.5M3 14h3.5M17.5 10H21M17.5 14H21" />
+		</svg>
+	);
+}
+
+// 27 — Disk: a storage drum, its middle band blinks like an activity light.
+export function DiskIcon({ className }: HeaderIconProps) {
+	return (
+		<svg {...svgBase(className, 2)}>
+			<ellipse cx="12" cy="6" rx="7.5" ry="2.75" />
+			<path d="M4.5 6v12c0 1.5 3.4 2.75 7.5 2.75s7.5-1.25 7.5-2.75V6" />
+			<path d="M4.5 12c0 1.5 3.4 2.75 7.5 2.75s7.5-1.25 7.5-2.75" className="hdr hdr-res3" />
+		</svg>
+	);
+}

@@ -1269,7 +1269,7 @@ function makeTask(overrides?: Partial<Task>): Task {
 		expect(screen.getByText("Waiting task")).toBeInTheDocument();
 	});
 
-	it("resets the filter on unmount (ephemeral, component state)", async () => {
+	it("keeps the filter across a remount (navigating away and back)", async () => {
 		const user = userEvent.setup();
 		const tasks = [
 			makeTask({ id: "a", title: "Alpha task", description: "Alpha", status: "in-progress", groupId: null as unknown as string, variantIndex: null }),
@@ -1294,15 +1294,25 @@ function makeTask(overrides?: Partial<Task>): Task {
 		expect(screen.queryByText("Alpha task")).not.toBeInTheDocument();
 
 		unmount();
+		const { unmount: unmount2 } = render(
+			<I18nProvider>
+				<ActiveTasksSidebar {...props} />
+			</I18nProvider>,
+		);
+		// Coming back restores the filter; the clear control still resets it for good.
+		expect(screen.getByPlaceholderText("Search tasks...")).toHaveValue("agent:Codex");
+		expect(screen.queryByText("Alpha task")).not.toBeInTheDocument();
+		expect(screen.getByText("Beta task")).toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: "×" }));
+		unmount2();
 		render(
 			<I18nProvider>
 				<ActiveTasksSidebar {...props} />
 			</I18nProvider>,
 		);
-		// Fresh mount → the search string is empty again, all tasks visible.
 		expect(screen.getByPlaceholderText("Search tasks...")).toHaveValue("");
 		expect(screen.getByText("Alpha task")).toBeInTheDocument();
-		expect(screen.getByText("Beta task")).toBeInTheDocument();
 	});
 
 	// A task that predates status-time tracking has no statusEnteredAt and no
@@ -2214,5 +2224,21 @@ describe("ActiveTasksSidebar port badges", () => {
 		);
 		expect(within(screen.getByTestId("sidebar-ports-t1")).getAllByRole("button")).toHaveLength(3);
 		expect(screen.queryByTestId("sidebar-ports-t1-toggle")).not.toBeInTheDocument();
+	});
+
+	it("marks a coordinator row with the hazard-tape class and leaves an ordinary row plain", () => {
+		const { container } = render(
+			<I18nProvider>
+				<ActiveTasksSidebar project={project} tasks={[makeTask({ id: "coord", title: "Coordinate", taskType: "coordinator", groupId: null, variantIndex: null }), makeTask({ id: "plain", title: "Plain task", groupId: null, variantIndex: null })]}
+					dispatch={vi.fn()} navigate={vi.fn()} agents={[claudeAgent]}
+					bellCounts={new Map<string, number>()} taskPorts={new Map<string, never[]>()} />
+			</I18nProvider>,
+		);
+
+		const marked = [...container.querySelectorAll(".task-row-coordinator")];
+		expect(marked).toHaveLength(1);
+		expect(marked[0]).toHaveTextContent("Coordinate");
+		expect(marked[0]).not.toHaveTextContent("Plain task");
+		expect(within(marked[0] as HTMLElement).getByTestId("sidebar-coordinator-badge").className).toContain("text-coordinator-ink");
 	});
 });

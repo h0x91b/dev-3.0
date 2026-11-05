@@ -70,11 +70,13 @@ describe("buildDevServerSummary", () => {
 describe("buildDevServerSummary on a native task", () => {
 	it("takes its running state and ports from the injected probe, not from tmux", async () => {
 		withDevScript("bun run dev");
-		setNativeDevServerProbe(async () => ({ alive: true, rootPid: 100 }));
+		const probe = vi.fn(async () => ({ alive: true, rootPid: 100 }));
+		setNativeDevServerProbe(probe);
 		try {
 			// No dev session in the pane map at all — a native task never has one.
-			const summary = await buildDevServerSummary(project, task, "dev3", lsof, tree, new Map());
+			const summary = await buildDevServerSummary(project, task, "", lsof, tree, new Map());
 			expect(summary).toMatchObject({ running: true, ports: [5173, 9229] });
+			expect(probe).toHaveBeenCalledWith(task, "", expect.any(String), tree);
 		} finally {
 			setNativeDevServerProbe(async () => null);
 		}

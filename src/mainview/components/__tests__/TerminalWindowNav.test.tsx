@@ -8,7 +8,7 @@ import { notifyTmuxWindowsChanged } from "../../terminal-window-nav";
 import type { TmuxWindowEntry } from "../../../shared/types";
 
 vi.mock("../../rpc", () => ({
-	api: { request: { tmuxWindowNavigate: vi.fn(), tmuxCloseWindow: vi.fn(), tmuxNewWindow: vi.fn() } },
+	api: { request: { tmuxWindowNavigate: vi.fn(), tmuxCloseWindow: vi.fn(), tmuxNewWindow: vi.fn(), tmuxRenameWindow: vi.fn() } },
 }));
 vi.mock("../../confirm", () => ({ confirm: vi.fn() }));
 import { confirm } from "../../confirm";
@@ -49,18 +49,20 @@ describe("TerminalWindowNav", () => {
 		vi.mocked(api.request.tmuxCloseWindow).mockReset().mockResolvedValue({ closed: true });
 		vi.mocked(confirm).mockReset();
 		vi.mocked(api.request.tmuxNewWindow).mockReset().mockResolvedValue(undefined as never);
+		vi.mocked(api.request.tmuxRenameWindow).mockReset().mockResolvedValue({ renamed: true });
 		mounts.count = 0;
 		localStorage.clear();
 	});
 
-	it("stays visible with a single window, which offers no × and no menu", async () => {
+	it("stays visible with a single window, which offers no × and only Rename in its menu", async () => {
 		respond([win(1, "Fix auth", { active: true, home: true })]);
 		renderNav();
 		const tab = await screen.findByRole("tab", { name: "Fix auth, agent" });
 		expect(screen.getByTestId("terminal")).toBeInTheDocument();
 		expect(screen.queryByRole("button", { name: /^Close / })).toBeNull();
 		await userEvent.pointer({ keys: "[MouseRight]", target: tab });
-		expect(screen.queryByRole("menu")).toBeNull();
+		expect(screen.getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Rename"]);
+		await userEvent.keyboard("{Escape}");
 		tab.focus();
 		await userEvent.keyboard("{Delete}");
 		expect(api.request.tmuxCloseWindow).not.toHaveBeenCalled();
@@ -231,7 +233,7 @@ describe("TerminalWindowNav", () => {
 		await userEvent.click(screen.getByRole("menuitem", { name: "Switch to this window" }));
 		expect(navigate()).toHaveBeenCalledWith({ taskId: "task-1", windowId: "@2" });
 		await userEvent.pointer({ keys: "[MouseRight]", target: screen.getByRole("tab", { name: /Fix auth/ }) });
-		expect(screen.getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Close window"]);
+		expect(screen.getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Rename", "Close window"]);
 	});
 
 	it("Shift+F10 opens the menu from the keyboard and Escape returns focus to the window", async () => {
@@ -245,6 +247,72 @@ describe("TerminalWindowNav", () => {
 		expect(screen.queryByRole("menu")).toBeNull();
 		expect(tab).toHaveFocus();
 		expect(api.request.tmuxCloseWindow).not.toHaveBeenCalled();
+	});
+
+	it("a window the user named shows that name over its automatic one and the task title", async () => {
+		respond([win(1, "Claude Code", { home: true, active: true, customName: "Builder" }), win(2, "vite", { customName: "Vite" })]);
+		renderNav(undefined, "Fix auth");
+		expect(await screen.findByRole("tab", { name: "Builder, agent" })).toBeInTheDocument();
+		expect(screen.getByRole("tab", { name: "Vite" })).toBeInTheDocument();
+	});
+
+	it("double-clicking a tab renames it in place; Enter keeps the new name", async () => {
+		respond([win(1, "Fix auth", { home: true, active: true }), win(2, "vite")]);
+		renderNav();
+		await userEvent.dblClick(await screen.findByRole("tab", { name: "vite" }));
+		const field = screen.getByRole("textbox", { name: /Window name/ });
+		expect(field).toHaveFocus();
+		expect(field).toHaveValue("vite");
+		expect(field).toHaveAttribute("placeholder", "vite");
+		await userEvent.clear(field);
+		await userEvent.type(field, "Dev server{Enter}");
+		expect(api.request.tmuxRenameWindow).toHaveBeenCalledWith({ taskId: "task-1", windowId: "@2", name: "Dev server" });
+		expect(screen.queryByRole("textbox")).toBeNull();
+	});
+
+	it("Escape cancels a rename without saving anything", async () => {
+		respond([win(1, "Fix auth", { home: true, active: true }), win(2, "vite")]);
+		renderNav();
+		await userEvent.dblClick(await screen.findByRole("tab", { name: "vite" }));
+		await userEvent.type(screen.getByRole("textbox"), "nope{Escape}");
+		expect(screen.queryByRole("textbox")).toBeNull();
+		expect(api.request.tmuxRenameWindow).not.toHaveBeenCalled();
+		await waitFor(() => expect(screen.getByRole("tab", { name: "vite" })).toHaveFocus());
+	});
+
+	it("emptying the field hands a named window back to its automatic name", async () => {
+		respond([win(1, "Fix auth", { home: true, active: true }), win(2, "vite", { customName: "Vite" })]);
+		renderNav();
+		await userEvent.click(await screen.findByRole("button", { name: "Rename Vite" }));
+		const field = screen.getByRole("textbox");
+		expect(field).toHaveValue("Vite");
+		await userEvent.clear(field);
+		await userEvent.keyboard("{Enter}");
+		expect(api.request.tmuxRenameWindow).toHaveBeenCalledWith({ taskId: "task-1", windowId: "@2", name: "" });
+	});
+
+	it("confirming an untouched automatic name does not pin it", async () => {
+		respond([win(1, "Fix auth", { home: true, active: true }), win(2, "vite")]);
+		renderNav();
+		const tab = await screen.findByRole("tab", { name: "vite" });
+		tab.focus();
+		await userEvent.keyboard("{F2}");
+		await userEvent.keyboard("{Enter}");
+		expect(screen.queryByRole("textbox")).toBeNull();
+		expect(api.request.tmuxRenameWindow).not.toHaveBeenCalled();
+	});
+
+	it("the menu's Rename opens the field; leaving the field keeps what was typed", async () => {
+		respond([win(1, "Fix auth", { home: true, active: true }), win(2, "vite")]);
+		renderNav();
+		const tab = await screen.findByRole("tab", { name: "vite" });
+		await userEvent.pointer({ keys: "[MouseRight]", target: tab });
+		await userEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+		const field = screen.getByRole("textbox");
+		await userEvent.clear(field);
+		await userEvent.type(field, "Logs");
+		await act(async () => field.blur());
+		expect(api.request.tmuxRenameWindow).toHaveBeenCalledWith({ taskId: "task-1", windowId: "@2", name: "Logs" });
 	});
 
 	it("the + after the last tab opens a new window, even with one window", async () => {

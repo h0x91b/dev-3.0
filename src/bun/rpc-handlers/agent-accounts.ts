@@ -14,7 +14,7 @@ import type {
 } from "../../shared/agent-accounts";
 import type { ClaudeApiProfileDraft } from "../agent-accounts";
 import { isAgentDirAccountKind, isAutoAccountId, isRoutableAccountKind, parseEnvLines, shortCodexWorkspaceId, type RoutableAccountKind } from "../../shared/agent-accounts";
-import type { AutoAccountPreview } from "../../shared/account-routing";
+import { exclusionKey, systemLoginExclusionKey, type AutoAccountPreview } from "../../shared/account-routing";
 import { previewAutoAccount as previewAutoAccountNow } from "../account-router";
 import { loadSettings, saveSettings } from "../settings";
 import { pinnedClaudeConfigDir } from "../../shared/claude-config-dir";
@@ -41,6 +41,11 @@ async function listAgentAccounts(): Promise<AgentAccountsState> {
 	const autoDefault = (await loadSettings()).autoAccountDefault;
 	if (autoDefault?.claude) state.claude.autoDefault = true;
 	if (autoDefault?.codex) state.codex.autoDefault = true;
+	const excluded = (await loadSettings()).autoAccountExclusions ?? [];
+	for (const kind of ["claude", "codex"] as const) {
+		const keys = excluded.filter((key) => key === systemLoginExclusionKey(kind) || state[kind].accounts.some((a) => a.id === key));
+		if (keys.length) state[kind].autoExcluded = keys;
+	}
 	log.info("← listAgentAccounts", {
 		claude: state.claude.accounts.length,
 		omp: state.omp.accounts.length,
@@ -124,11 +129,18 @@ async function updateAgentApiProfile(params: {
 
 /** Start (or join) the in-app sign-in for `kind`. `remoteViewer`: the page asking is
  *  not on the host, so a host-side browser callback cannot reach the user. */
-async function startAccountLogin(params: { kind: AgentAccountKind; remoteViewer: boolean }): Promise<AccountLoginState> {
+async function startAccountLogin(params: { kind: AgentAccountKind; remoteViewer: boolean }): Promise<AccountLoginState & { created: boolean }> {
 	log.info("→ startAccountLogin", params);
+	const before = accountLogins.get(params.kind);
 	const state = await accountLogins.start(params.kind, { remoteViewer: params.remoteViewer });
-	log.info("← startAccountLogin", { loginId: state.loginId.slice(0, 8), phase: state.phase });
-	return state;
+	const created = before?.loginId !== state.loginId;
+	log.info("← startAccountLogin", { loginId: state.loginId.slice(0, 8), phase: state.phase, created });
+	return { ...state, created };
+}
+
+async function beginAccountLogin(params: { loginId: string }): Promise<AccountLoginState> {
+	log.info("→ beginAccountLogin", { loginId: params.loginId.slice(0, 8) });
+	return accountLogins.begin(params.loginId);
 }
 
 async function getAccountLogin(params: { kind: AgentAccountKind }): Promise<AccountLoginState | null> {
@@ -144,6 +156,14 @@ async function restartAccountLogin(params: { loginId: string; remoteViewer: bool
 async function getAccountLoginPtyUrl(params: { sessionKey: string }): Promise<string> {
 	if (!params.sessionKey.startsWith(ACCOUNT_LOGIN_SESSION_PREFIX)) throw new Error("Not a sign-in terminal");
 	return `ws://localhost:${getPtyPort()}?session=${encodeURIComponent(params.sessionKey)}`;
+}
+
+/** Keep a Claude sign-in's folder as an account without waiting for the login. */
+async function addClaudeAccountWithoutLogin(params: { loginId: string }): Promise<AccountLoginState> {
+	log.info("→ addClaudeAccountWithoutLogin", { loginId: params.loginId.slice(0, 8) });
+	const state = accountLogins.addWithoutSignIn(params.loginId);
+	log.info("← addClaudeAccountWithoutLogin", { accountId: state.account?.id.slice(0, 8) });
+	return state;
 }
 
 /** Cancel a sign-in in progress, or dismiss a finished one. */
@@ -183,6 +203,17 @@ async function setAutoAccountDefault(kind: RoutableAccountKind, on: boolean): Pr
 	if (on) next[kind] = true;
 	else delete next[kind];
 	await saveSettings({ ...settings, autoAccountDefault: Object.keys(next).length ? next : undefined });
+}
+
+async function setAutoAccountExcluded(params: { kind: AgentAccountKind; accountId: string | null; excluded: boolean }): Promise<void> {
+	log.info("→ setAutoAccountExcluded", { kind: params.kind, system: params.accountId === null, excluded: params.excluded });
+	if (!isRoutableAccountKind(params.kind)) throw new Error(`${params.kind} logins are not routed by Auto`);
+	const key = exclusionKey(params.kind, params.accountId);
+	const settings = await loadSettings();
+	const current = settings.autoAccountExclusions ?? [];
+	if (current.includes(key) === params.excluded) return;
+	const next = params.excluded ? [...current, key] : current.filter((k) => k !== key);
+	await saveSettings({ ...settings, autoAccountExclusions: next.length ? next : undefined });
 }
 
 /** What Auto would pick for a launch in this project right now. Reserves nothing. */
@@ -246,11 +277,14 @@ export const agentAccountHandlers = {
 	getAgentApiProfileDraft,
 	updateAgentApiProfile,
 	startAccountLogin,
+	beginAccountLogin,
 	getAccountLogin,
 	restartAccountLogin,
 	getAccountLoginPtyUrl,
 	closeAccountLogin,
+	addClaudeAccountWithoutLogin,
 	setActiveAgentAccount,
+	setAutoAccountExcluded,
 	previewAutoAccount,
 	removeAgentAccount,
 	renameAgentAccount,

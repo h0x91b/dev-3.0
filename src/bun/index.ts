@@ -1,4 +1,5 @@
 import { stopAgentMessageLogWatches } from "./agent-message-log-watch";
+import { startBoardCopy, stopBoardCopy } from "./board-copy";
 import { claudeSessionWatches } from "./claude-session-watch";
 import Electrobun, {
 	ApplicationMenu,
@@ -61,6 +62,7 @@ import { openLogsDirectory } from "./menu-actions";
 import { startLoopMonitor } from "./loop-monitor";
 import { configureHandoffWorker } from "./conversation-handoff-runner";
 import { configureClonefileWorker } from "./cow-clone";
+import { configureWorktreeCleanupWorker } from "./worktree-cleanup-scheduler";
 import { configureClipboardImageWorker } from "./clipboard-image-reader";
 import { shouldActivateLaunchWindow } from "./fresh-start";
 import { createAppWindow, focusFocusedWindow, getFocusedWindow, getWindowCount, handleDisplayConfigurationChange, loadWindowSession, sendToFocusedWindow, setOpenNewWindow, flushWindowState } from "./window-manager";
@@ -386,7 +388,7 @@ log.info("CLI socket server ready", { path: cliSocketPath });
 
 // Side-effect: starts the PTY WebSocket server (dynamic import so PATH is patched first)
 const { setOnPtyDied, setOnBell, setOnIdle, setOnPaneExited, setOnOsc52Copy, getActiveSessionIds, getPtyPort, registerBackpressureProbe } = await import("./pty-server");
-const { setNativeDevServerProbe, startPortScanPoller, stopPortScanPoller } = await import("./port-scanner");
+const { setNativeDevServerProbe, setNativePaneRecordsReader, startPortScanPoller, stopPortScanPoller } = await import("./port-scanner");
 const { startResourceMonitor, stopResourceMonitor } = await import("./resource-monitor");
 const { startRateLimitMonitor, stopRateLimitMonitor } = await import("./rate-limit-monitor");
 
@@ -430,6 +432,7 @@ log.info("Loading URL", { url });
 configureHandoffWorker(resolve(PATHS.VIEWS_FOLDER, "..", "workers", "conversation-handoff-worker.js"));
 configureClonefileWorker(resolve(PATHS.VIEWS_FOLDER, "..", "workers", "clonefile-worker.js"));
 configureClipboardImageWorker(resolve(PATHS.VIEWS_FOLDER, "..", "workers", "clipboard-image-worker.js"));
+configureWorktreeCleanupWorker(resolve(PATHS.VIEWS_FOLDER, "..", "workers", "worktree-cleanup-worker.js"));
 configureFreezeDiagnostics({
 	workerPath: resolve(PATHS.VIEWS_FOLDER, "..", "freeze-diagnostics", "worker.ts"),
 	version: APP_VERSION, build: lastBuildTime,
@@ -655,6 +658,7 @@ await rehydrateTaskLifecycles();
 
 // Start background merge detection poller
 startMergeDetectionPoller();
+startBoardCopy();
 
 // Start background PR detection poller (auto-moves review-by-user → review-by-colleague)
 startPRDetectionPoller();
@@ -662,15 +666,9 @@ startPRDetectionPoller();
 // The board's dev-server read needs the native aux pane, which lives behind
 // `bun:ffi` — injected here instead of imported by the poller (see
 // `setNativeDevServerProbe`).
-setNativeDevServerProbe(async (task, socket, serverName) => {
-	const { taskTerminalBackendIdentity } = await import("./task-terminal-backend");
-	if (taskTerminalBackendIdentity(task) !== "native") return null;
-	const { auxPaneAlive, nativeAuxPaneShellPid } = await import("./task-aux-panes");
-	const { devServerScriptBase } = await import("../shared/dev-servers");
-	const slot = devServerScriptBase(serverName);
-	const alive = await auxPaneAlive(task, "devServer", socket, slot);
-	return { alive, rootPid: alive ? await nativeAuxPaneShellPid(task, "devServer", slot) : null };
-});
+const nativeScanReaders = await import("./native-scan-readers");
+setNativeDevServerProbe(nativeScanReaders.probeNativeDevServer);
+setNativePaneRecordsReader(nativeScanReaders.nativePaneRecordsReader);
 
 // Start background port scan poller (detects listening TCP ports per task)
 startPortScanPoller(
@@ -765,6 +763,11 @@ startScheduledMessageScheduler();
 // their agent conversation dies (exit / rate limit / network). Runs headless too.
 const { startTaskKeepAliveScheduler } = await import("./task-keep-alive-scheduler");
 startTaskKeepAliveScheduler();
+
+// Daily `doctor --worktrees --prune-older-than 14d` — first check an hour after
+// launch, never at startup; the last run is persisted so restarts do not repeat it.
+const { startWorktreeCleanupScheduler } = await import("./worktree-cleanup-scheduler");
+startWorktreeCleanupScheduler();
 
 // Start the focus tracker — accumulates real UI attention time per task (the
 // "your time" metric on the Productivity dashboard) from the foreground +
@@ -873,6 +876,7 @@ function runGlobalQuitCleanup(): void {
 	log.info("App is quitting, running global cleanup");
 	stopFreezeDiagnostics();
 	stopAgentMessageLogWatches();
+	stopBoardCopy();
 	claudeSessionWatches.close();
 	// Snapshot window geometry so an update restart reopens on the same screen.
 	try { flushWindowState(); } catch (err) { log.warn("flushWindowState failed", { error: String(err) }); }

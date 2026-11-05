@@ -15,6 +15,7 @@ import {
 } from "../../shared/platform-launch";
 import { createLogger } from "../logger";
 import { DEV3_HOME } from "../paths";
+import { hookCliFilePath } from "../hook-cli-capability";
 import { broadcastToOtherInstances } from "../instance-broadcast";
 import { realpathSync } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
@@ -100,10 +101,27 @@ export function generatedScriptName(base: string): string {
 	return `${base}${launchDialect().scriptExtension}`;
 }
 
+/**
+ * How a launch wrapper tells the app its agent process ended — `dev3 hook
+ * agent-exited`, with the exit code appended by `buildCmdScript`. The same CLI
+ * file the hooks run, whose support the launch checked. The session id is the one
+ * this spawn pre-assigned, so the report names exactly one agent.
+ */
+export function agentExitReportArgv(taskId: string, sessionId: string): string[] {
+	return [hookCliFilePath(), "hook", "agent-exited", "--task", taskId, "--session", sessionId];
+}
+
 export function buildCmdScript(
 	tmuxCmd: string,
 	env?: Record<string, string>,
-	options?: { paneTitle?: string; keepShell?: boolean; onExitCommand?: string; shellPath?: string },
+	options?: {
+		paneTitle?: string;
+		keepShell?: boolean;
+		onExitCommand?: string;
+		shellPath?: string;
+		/** argv run on every exit with the exit code appended — `agentExitReportArgv`. */
+		exitReport?: string[];
+	},
 ): string {
 	const d = launchDialect();
 	const exportLines = env && Object.keys(env).length > 0 ? d.envLines(env) : [];
@@ -121,6 +139,7 @@ export function buildCmdScript(
 		...exportLines,
 		...d.announceAndRun(`Starting: ${tmuxCmd}`, tmuxCmd),
 		d.captureExitCode("__EC"),
+		...(options?.exitReport ? [`${d.runCommand(options.exitReport)} ${d.exitCodeArg("__EC")}`] : []),
 	];
 	if (options?.keepShell) {
 		const okNotice = d.print(

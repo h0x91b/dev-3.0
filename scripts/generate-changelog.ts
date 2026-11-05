@@ -8,6 +8,7 @@ import { join } from "path";
 import { readdirSync, existsSync } from "fs";
 import type { ChangelogEntry } from "../src/shared/types";
 import { entryPriority } from "../src/shared/update-changelog";
+import { parseChangelogCredits } from "../src/shared/changelog-credits";
 
 const changeLogsDir = join(import.meta.dir, "..", "change-logs");
 
@@ -33,29 +34,15 @@ if (existsSync(changeLogsDir)) {
 
 					const content = await Bun.file(join(dayPath, file)).text();
 
-					// Extract "Suggested by @username (owner/repo#N)" from any line
-					let suggestedBy: string | undefined;
-					let issueUrl: string | undefined;
-					let issueRef: string | undefined;
-					const creditMatch = content.match(/Suggested by @(\S+)\s+\(([^)]+)\)/);
-					if (creditMatch) {
-						suggestedBy = creditMatch[1];
-						const ref = creditMatch[2];
-						const refMatch = ref.match(/^(.+?)#(\d+)$/);
-						if (refMatch) {
-							issueRef = `#${refMatch[2]}`;
-							issueUrl = `https://github.com/${refMatch[1]}/issues/${refMatch[2]}`;
-						}
-					}
+					const { credits, content: creditFree } = parseChangelogCredits(content);
 
 					// Optional "Short: …" line — the ≤6-word title for the update popover
 					const shortMatch = content.match(/^Short:\s*(.+)$/im);
 					const short = shortMatch ? shortMatch[1].trim() : undefined;
 
-					// Strip the "Short:" and "Suggested by" lines before extracting the title
-					const cleanContent = content
+					// Strip the "Short:" line (credit lines are already gone) before extracting the title
+					const cleanContent = creditFree
 						.replace(/^Short:\s*.+$/im, "")
-						.replace(/\n*Suggested by @\S+\s+\([^)]+\)\s*$/, "")
 						.trim();
 					const firstSentence =
 						cleanContent.split(/\.(?:\s|$)/)[0]?.trim() ?? slug;
@@ -73,9 +60,7 @@ if (existsSync(changeLogsDir)) {
 						title: title || slug,
 						...(body && { body }),
 						...(short && { short }),
-						...(suggestedBy && { suggestedBy }),
-						...(issueUrl && { issueUrl }),
-						...(issueRef && { issueRef }),
+						...credits,
 					});
 				}
 			}

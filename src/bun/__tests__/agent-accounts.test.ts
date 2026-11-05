@@ -459,6 +459,38 @@ describe("claude login flow", () => {
 	});
 });
 
+describe("Claude organizations sharing one login", () => {
+	it("keeps two orgs with the same email, accountUuid and org name apart by organizationUuid", async () => {
+		const writeLogin = (file: string, orgUuid: string) =>
+			writeFileSync(
+				file,
+				JSON.stringify({
+					oauthAccount: { emailAddress: "main@example.com", organizationName: "Org", organizationUuid: orgUuid, accountUuid: "claude-acc-1" },
+				}),
+			);
+		seedClaudeLogin();
+		writeLogin(paths.claudeJson, "org-uuid-a");
+		const first = await importCurrentClaudeAccount(paths);
+		const { accountId } = await prepareClaudeLogin(paths);
+		writeLogin(join(claudeAccountDir(accountId, paths), ".claude.json"), "org-uuid-b");
+
+		await completeClaudeLogin(accountId, paths, confirmedStatus("main@example.com"));
+		const state = await listAgentAccounts(paths);
+		expect(state.claude.accounts.map((a) => a.identity?.organizationId)).toEqual(["org-uuid-a", "org-uuid-b"]);
+		expect(state.claude.accounts[0]?.id).toBe(first.id);
+	});
+
+	it("still rejects the same organization signed in twice", async () => {
+		const login = { emailAddress: "main@example.com", organizationName: "Org", organizationUuid: "org-uuid-a", accountUuid: "claude-acc-1" };
+		seedClaudeLogin();
+		writeFileSync(paths.claudeJson, JSON.stringify({ oauthAccount: login }));
+		await importCurrentClaudeAccount(paths);
+		const { accountId } = await prepareClaudeLogin(paths);
+		writeFileSync(join(claudeAccountDir(accountId, paths), ".claude.json"), JSON.stringify({ oauthAccount: { ...login, organizationName: "Org (renamed)" } }));
+		await expect(completeClaudeLogin(accountId, paths, confirmedStatus("main@example.com"))).rejects.toThrow(/already added/);
+	});
+});
+
 describe("setActiveClaudeAccount / getActiveClaudeConfigDir", () => {
 	it("activation controls the injected CLAUDE_CONFIG_DIR", async () => {
 		seedClaudeLogin();

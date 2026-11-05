@@ -23,3 +23,10 @@ export const TMUX_AGENT_PANE_OPTION = "@dev3_agent";
  */
 export const TMUX_TASK_TITLE_OPTION = "@dev3_task_title";
 
+/**
+ * Window-scoped user option holding the name the user gave a window from the tab
+ * bar. It outranks every automatic name (pane title, command, task title) in both
+ * the in-app tabs and the tmux status line; unset means "name it automatically".
+ */
+export const TMUX_WINDOW_NAME_OPTION = "@dev3_window_name";
+

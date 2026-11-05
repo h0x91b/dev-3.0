@@ -10,6 +10,9 @@ export interface ChangelogEntry {
 	suggestedBy?: string; // GitHub username without @ (e.g. "roiros")
 	issueUrl?: string; // Full GitHub issue URL (e.g. "https://github.com/h0x91b/dev-3.0/issues/191")
 	issueRef?: string; // Short issue ref (e.g. "#191")
+	contributedBy?: string; // GitHub username of an external PR author, without @ (from "Contributed by @login")
+	prUrl?: string; // Full GitHub pull request URL (e.g. "https://github.com/h0x91b/dev-3.0/pull/191")
+	prRef?: string; // Short pull request ref (e.g. "#191")
 }
 
 /**

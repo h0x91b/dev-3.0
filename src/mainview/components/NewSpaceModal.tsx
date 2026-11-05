@@ -88,7 +88,7 @@ function NewSpaceModal({ projects, initialProjectIds, onClose }: NewSpaceModalPr
 						{candidates.map((project) => (
 							<label
 								key={project.id}
-								className="flex items-center gap-2.5 px-3 py-2 hover:bg-elevated-hover transition-colors cursor-pointer"
+								className="flex items-center gap-2.5 px-3 py-2 hover:bg-overlay-hover transition-colors cursor-pointer"
 							>
 								<input
 									type="checkbox"
@@ -110,7 +110,7 @@ function NewSpaceModal({ projects, initialProjectIds, onClose }: NewSpaceModalPr
 					<button
 						type="button"
 						onClick={onClose}
-						className="px-3 py-1.5 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+						className="px-3 py-1.5 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-overlay-hover transition-colors"
 					>
 						{t("spaces.cancel")}
 					</button>

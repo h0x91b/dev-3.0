@@ -171,7 +171,7 @@ async function reorderLabels(params: { projectId: string; labelOrder: string[] }
 async function setTaskLabels(params: { taskId: string; projectId: string; labelIds: string[] }): Promise<Task> {
 	log.info("→ setTaskLabels", { taskId: params.taskId, labelIds: params.labelIds });
 	const project = await data.getProject(params.projectId);
-	const { task, verdict } = await labels.changeTaskLabels(boardPorts, project, params.taskId, { mode: "replace", labelIds: params.labelIds });
+	const { task, verdict } = await labels.changeTaskLabels(boardPorts, project, params.taskId, { mode: "replace", labelIds: params.labelIds }, USER_ACTOR);
 	log.info("← setTaskLabels done", { taskId: params.taskId, verdict });
 	return task;
 }
@@ -186,11 +186,12 @@ async function markTaskSharedItemsRead(params: {
 	const itemIds = new Set(params.itemIds);
 	const { task } = await data.updateTaskWith(project, params.taskId, (current) => {
 		if (params.kind === "images") {
-			// "images" is the viewer's whole history: shared images and shared clips.
+			// "images" is the viewer's whole history: shared images, videos and audio.
 			const markRead = (list: SharedImage[] | undefined) =>
 				list?.map((item) => (itemIds.has(item.id) && item.isUnread ? { ...item, isUnread: false } : item));
 			const updates: Partial<Task> = { sharedImages: markRead(current.sharedImages) ?? [] };
 			if (current.sharedVideos) updates.sharedVideos = markRead(current.sharedVideos);
+			if (current.sharedAudio) updates.sharedAudio = markRead(current.sharedAudio);
 			return { updates, result: undefined };
 		}
 		return {

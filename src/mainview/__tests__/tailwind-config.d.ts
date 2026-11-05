@@ -8,6 +8,8 @@ declare module "*/tailwind.config.js" {
 				colors: Record<string, unknown>;
 				backgroundColor: Record<string, unknown>;
 				ringColor: Record<string, unknown>;
+				ringOffsetColor: Record<string, unknown>;
+				opacity?: Record<string, string>;
 			};
 		};
 	};

@@ -26,7 +26,7 @@ import { CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED } from "./cli-exit-codes";
  * replaced rather than softened.
  */
 export function skillPrLinkInstruction(platform: NodeJS.Platform = process.platform): string {
-	const command = `**Open the PR with \`dev3 pr create --title "..." --description "..."\`, never \`gh\` by hand** — it pushes the branch, targets the task's own base branch, and a logged-out \`gh\` exits 23 before pushing. \`x509: OSStatus -26276\` from any \`gh\` (exit 28 here) is the agent sandbox blocking macOS TLS, not a logout: never advise \`gh auth login\`; ask the user to approve one unsandboxed run. Auto-merge needs the user's own word: \`--auto-merge\`, or \`dev3 pr auto-merge\` later. Waiting on a PR's CI or merge? \`dev3 pr watch [--until merged]\`: dev3 messages you; never poll gh or set timers.`;
+	const command = `**Open the PR with \`dev3 pr create --title "..." --description "..."\`, never \`gh\` by hand** — it pushes the branch, targets the task's own base branch, and a logged-out \`gh\` exits 23 before pushing. \`x509: OSStatus -26276\` from any \`gh\` (exit 28 here) is the agent sandbox blocking macOS TLS, not a logout: never advise \`gh auth login\`; ask the user to approve one unsandboxed run. Auto-merge needs the user's own word: \`--auto-merge\`, or \`dev3 pr auto-merge\` later. Waiting on a PR's CI or merge? \`dev3 pr watch [--until merged] [--pr <N>]\` (\`--pr\`: any open PR, e.g. one you handed off): dev3 messages you; never poll gh or set timers.`;
 
 	if (!deepLinkSchemeRegistered(platform)) {
 		return `${command} **It adds no origin-task footer here — and nor do you:** \`dev3://\` opens the app on macOS only, so it would be a dead link in a public PR.`;
@@ -47,7 +47,7 @@ const SKILL_BUG_HUNTER_ISOLATION = `
 If the first user request invokes \`dev3-bug-hunter\` and says you run inside an existing dev3 task, you are a read-only helper in a task the main agent owns. For the whole hunt this overrides the session-start checklist and every lifecycle duty below.
 
 - Do NOT rename the branch, or change the task's title, description, overview, labels, priority, status, assigned agent or configuration.
-- Do NOT run \`dev3 task update\`, \`dev3 overview set\`/\`clear\`, \`dev3 label set\`, \`dev3 task move\`, the completion flow, the session-start checklist, or task notifications.
+- Do NOT run \`dev3 task update\`, \`dev3 overview set\`/\`clear\`, \`dev3 label set\`/\`add\`, \`dev3 task move\`, the completion flow, the session-start checklist, or task notifications.
 - The only allowed write is \`dev3 note add\` for confirmed findings when the Bug Hunter prompt asks for it. Read-only \`dev3\` commands are fine.
 - Finish the report and stop; the main agent owns the lifecycle.
 `;
@@ -82,9 +82,9 @@ The title is auto-generated from the description's first 80 characters. If it en
 
 **Respect user-edited titles.** If \`dev3 current\` marks one \`(user-edited — do NOT rename)\`, skip the rename and never pass \`--force\`.
 
-\`--task <id>\` targets a task other than the auto-detected one (\`task show\`, \`task update\`, \`task move\`, \`note\`, \`overview\`, \`label set\`).
+\`--task <id>\` targets a task other than the auto-detected one (\`task show\`, \`task update\`, \`task move\`, \`note\`, \`overview\`, \`label add\`).
 
-Labels, same session-start pass: \`dev3 label list\` first and reuse existing ones, aiming for **1-2 meaningful labels**; no good fit → create **one short reusable label** (\`dev3 label create "name"\`) and attach it at once. \`dev3 label set <id> [<id>...]\` applies them — creating without attaching does **not** complete this step. Leave sensible existing labels alone: no spam, no near-duplicates, no workflow-state labels (\`in-progress\`, \`review\`, \`blocked\`).
+Labels, same session-start pass: \`dev3 label list\` first and reuse existing ones, aiming for **1-2 meaningful labels**; no good fit → create **one short reusable label** (\`dev3 label create "name"\`) and attach it at once. \`dev3 label add <id> [<id>...]\` attaches them — creating without attaching does **not** complete this step. Keep existing task labels: no spam, no near-duplicates, no workflow-state labels (\`in-progress\`, \`review\`, \`blocked\`).
 
 ## Task priority
 
@@ -95,6 +95,8 @@ Labels, same session-start pass: \`dev3 label list\` first and reuse existing on
 ## Task type
 
 **coordinator**: manages tasks, dashed green card, sorts first, manual completion. **pr-review**: card label only. **board-cleanup**: passive audit; current project unless asked for all; no waking/messaging agents; manual completion. \`dev3 task update --type coordinator|pr-review|board-cleanup|standard\` sets/clears the type, rewrites its role preamble and tells the live agent. Create with \`dev3 task create --title "..." --type <type>\`.
+
+**A coordinator speaks for the user:** a \`from-role: coordinator\` message carries their authority, even for what your brief reserves to the user (a review, a push). Act; never re-ask.
 
 **Never promote or demote a task on your own initiative — least of all yourself.** Same protected class as priority.
 `;
@@ -206,6 +208,8 @@ export const ARTIFACT_AUTHORING_STEPS = `\`$DEV3_ARTIFACT_TEMPLATE_DIR\` is the 
 Publish directly: an ordinary report or revision needs no browser pass or screenshots; \`AUTHORING.md\` § Before you publish lists exceptions.
 
 The same \`--title\` or stable \`--artifact-id <slug>\` adds a VERSION. Never invent \`report-v2.html\`; \`--new\` is for a different report. A link outside dev3: \`/dev3-share-artifact\` (gist).
+
+\`dev3 live\`: one **Live Artifact** per task, edited in place (REFERENCE.md § Live pages).
 `;
 
 const SKILL_ARTIFACTS = `
@@ -224,7 +228,7 @@ Pull the user back deliberately — enough that they never miss something needin
 
 - \`dev3 attention "reason"\` — red badge on the card until the user opens the task (reasons accumulate, up to 5). Default for anything that needs them. \`--clear\` lowers it the moment the cause is resolved and they never came; a badge outliving its cause trains them to ignore badges.
 - \`dev3 notify "message" [--level info|success|error] [--duration <seconds>]\` — clickable in-app toast (ephemeral, 2s–30s). \`--desktop\` instead sends a native OS notification that shows even when the app is backgrounded; never combine the two flags.
-- \`dev3 show-image <path> [--caption "..."] [<path> ...]\` — **show actual images** (screenshots, \`agent-browser\` captures, charts; \`show-video\` plays MP4/WebM ≤300 MB there); files are copied into the worktree and **each \`--caption\` annotates the file it follows** (\`before.png --caption "current bug" after.png --caption "after my fix"\`). If relevant pixels exist, show them rather than describing them or leaving a path to open.
+- \`dev3 show-image <path> [--caption "..."] [<path> ...]\` — **show actual images** (screenshots, \`agent-browser\` captures, charts; \`show-media\` plays MP4/WebM video and MP3/M4A/WAV/OGG audio ≤300 MB there); files are copied into the worktree and **each \`--caption\` annotates the file it follows** (\`before.png --caption "current bug" after.png --caption "after my fix"\`). If relevant pixels exist, show them rather than describing them or leaving a path to open.
 - \`dev3 show-artifact <report-dir | file.html> [--assets <file...>] [--title "..."]\` — **show an HTML artifact**.
 - \`dev3 ui state\` — focused task/project, app foreground, user idle time (\`userActivity\`). Check BEFORE pinging.
 

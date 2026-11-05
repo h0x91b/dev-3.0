@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
 	splitTaskPane: vi.fn(),
 	resolveCommandForAgent: vi.fn(),
 	writeLaunchScript: vi.fn(async () => {}),
+	writeNativeAgentAttribution: vi.fn(async () => {}),
 	getSessionSocket: vi.fn(() => "dev3"),
 }));
 
@@ -55,6 +56,10 @@ vi.mock("../../agents", () => ({
 	supportsPreAssignedSessionId: vi.fn(() => false),
 }));
 
+vi.mock("../../native-agent-attribution", () => ({
+	writeNativeAgentAttribution: mocks.writeNativeAgentAttribution,
+	listNativeTaskAgents: vi.fn(),
+}));
 vi.mock("../../repo-config", () => ({ resolveProjectEnv: vi.fn(async () => ({})) }));
 vi.mock("../../artifact-template", () => ({ ensureArtifactTemplateEnv: vi.fn(() => ({})) }));
 vi.mock("../../agent-hooks", () => ({ setupAgentHooks: vi.fn(async () => null) }));
@@ -179,5 +184,23 @@ describe(`spawnAgentInTask native launch on ${process.platform}`, () => {
 		const launch = await spawnAndReadLaunch();
 		const [writtenPath] = mocks.writeLaunchScript.mock.calls[0] as unknown as [string];
 		expect(launch.argv[launch.argv.length - 1]).toBe(writtenPath);
+	});
+});
+
+describe("spawnAgentInTask agent attribution", () => {
+	const spawn = () => tmuxPtyHandlers.spawnAgentInTask({ taskId: TASK_ID, projectId: PROJECT.id, agentId: "builtin-claude", configId: "cfg", accountId: "acc-1" });
+
+	it("records a native pane in a sidecar next to its script, not in sessionState.panes", async () => {
+		await spawn();
+		const [writtenPath] = mocks.writeLaunchScript.mock.calls[0] as unknown as [string];
+		expect(mocks.writeNativeAgentAttribution).toHaveBeenCalledWith(writtenPath, expect.objectContaining({ agentId: "builtin-claude", configId: "cfg", accountId: "acc-1" }));
+		expect(mocks.updateTask.mock.calls[0][2]).not.toHaveProperty("sessionState");
+	});
+
+	it("keeps a tmux pane in sessionState.panes and writes no sidecar", async () => {
+		mocks.splitTaskPane.mockResolvedValue({ backend: "tmux", paneId: "%42" });
+		await spawn();
+		expect(mocks.writeNativeAgentAttribution).not.toHaveBeenCalled();
+		expect(mocks.updateTask.mock.calls[0][2].sessionState.panes).toEqual([expect.objectContaining({ paneId: "%42", accountId: "acc-1" })]);
 	});
 });

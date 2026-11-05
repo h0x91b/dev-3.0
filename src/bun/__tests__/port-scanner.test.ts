@@ -16,7 +16,13 @@ vi.mock("../logger", () => ({
 	}),
 }));
 
+vi.mock("../port-tunnels", () => ({ cleanupTaskTunnels: vi.fn() }));
+
+import { cleanupTaskTunnels } from "../port-tunnels";
 import {
+	nativeTaskPaneRoots,
+	listNativeTaskIds,
+	setNativePaneRecordsReader,
 	parseLsofOutput,
 	getDescendantPids,
 	getSessionPanePids,
@@ -907,5 +913,149 @@ describe("poller", () => {
 
 		await vi.advanceTimersByTimeAsync(20_000);
 		expect(getActiveSessions).not.toHaveBeenCalled();
+	});
+});
+
+describe("native task panes", () => {
+	const TASK = "natv1234-aaaa-bbbb-cccc-ddddeeeeffff";
+	// host 10 -> shell 11 -> node 12; pane-2: host 20 whose shell 21 was reparented away.
+	const tree = new Map<number, number[]>([[1, [10, 20, 21]], [10, [11]], [11, [12]]]);
+	const listTaskIds = vi.fn((): string[] => []);
+	const readPanes = vi.fn((_taskId: string): Array<{ hostPid: number; shellPid: number; command: string[] }> => []);
+
+	function records(panes: Array<{ host: number; shell: number; command?: string[] }>) {
+		readPanes.mockReturnValue(panes.map((p) => ({ hostPid: p.host, shellPid: p.shell, command: p.command ?? ["zsh"] })));
+	}
+
+	beforeEach(() => {
+		listTaskIds.mockReset().mockReturnValue([]);
+		readPanes.mockReset().mockReturnValue([]);
+		setNativePaneRecordsReader({ listTaskIds, readPanes });
+	});
+
+	it("keeps a pane whose host still owns its shell", () => {
+		records([{ host: 10, shell: 11, command: ["sh", "run.sh"] }]);
+		expect(nativeTaskPaneRoots(TASK, tree)).toEqual([{ shellPid: 11, command: ["sh", "run.sh"] }]);
+		expect(readPanes).toHaveBeenCalledWith(TASK);
+	});
+
+	it("drops a pane whose shell is not a child of its host", () => {
+		records([{ host: 10, shell: 11 }, { host: 20, shell: 99 }, { host: 30, shell: 31 }]);
+		expect(nativeTaskPaneRoots(TASK, tree).map((r) => r.shellPid)).toEqual([11]);
+	});
+
+	it("is empty for a task with no pane records", () => {
+		expect(nativeTaskPaneRoots(TASK, tree)).toEqual([]);
+	});
+
+	it("lists the reader's task ids", () => {
+		listTaskIds.mockReturnValue([TASK]);
+		expect(listNativeTaskIds()).toEqual([TASK]);
+	});
+
+	describe("poller", () => {
+		beforeEach(() => {
+			vi.clearAllMocks();
+			vi.useFakeTimers();
+			clearProcessInfoCache();
+			stopPortScanPoller();
+		});
+
+		afterEach(() => {
+			stopPortScanPoller();
+			vi.useRealTimers();
+		});
+
+		const NATIVE_PS = "  10     1   1000   0.0\n  11    10   2000   0.0\n  12    11   3000   0.0\n";
+		const NATIVE_LSOF = "p12\ncnode\nn*:5173\n";
+
+		it("still polls an unbound native task whose aux pane outlived the primary shell", async () => {
+			listTaskIds.mockReturnValue([TASK]);
+			records([{ host: 10, shell: 11 }]);
+			routeSpawnByArgv({ ps: NATIVE_PS, lsof: NATIVE_LSOF });
+			const push = vi.fn();
+
+			startPortScanPoller(push, () => []);
+			await vi.advanceTimersByTimeAsync(10_000);
+
+			expect(push).toHaveBeenCalledWith("portsUpdated", {
+				taskId: TASK,
+				ports: [{ port: 5173, pid: 12, processName: "node" }],
+			});
+		});
+
+		it("ignores an on-disk native task with no live pane, and one already bound", async () => {
+			// A fresh id: the poller's port cache outlives a test.
+			const bound = "bound000-aaaa-bbbb-cccc-ddddeeeeffff";
+			listTaskIds.mockReturnValue([bound, "dead0000-aaaa-bbbb-cccc-ddddeeeeffff"]);
+			readPanes.mockImplementation((id: string) =>
+				id === bound ? [{ hostPid: 10, shellPid: 11, command: [] }] : [{ hostPid: 77, shellPid: 78, command: [] }]);
+			routeSpawnByArgv({ ps: NATIVE_PS, lsof: NATIVE_LSOF });
+			const push = vi.fn();
+
+			startPortScanPoller(push, () => [{ taskId: bound, tmuxSocket: "" }]);
+			await vi.advanceTimersByTimeAsync(10_000);
+
+			expect(push.mock.calls.map((c) => c[1].taskId)).toEqual([bound]);
+			// Each task's records are read once per cycle, so a task cannot be added twice.
+			expect(readPanes.mock.calls.map((c) => c[0])).toEqual([bound, "dead0000-aaaa-bbbb-cccc-ddddeeeeffff"]);
+		});
+
+		it("keeps a native task's ports and tunnels when the process table comes back empty", async () => {
+			const id = "empty000-aaaa-bbbb-cccc-ddddeeeeffff";
+			listTaskIds.mockReturnValue([id]);
+			records([{ host: 10, shell: 11 }]);
+			routeSpawnByArgv({ ps: NATIVE_PS, lsof: NATIVE_LSOF });
+			const push = vi.fn();
+
+			startPortScanPoller(push, () => []);
+			await vi.advanceTimersByTimeAsync(10_000);
+			expect(push).toHaveBeenCalledTimes(1);
+
+			routeSpawnByArgv({ ps: "", lsof: NATIVE_LSOF });
+			clearProcessInfoCache();
+			await vi.advanceTimersByTimeAsync(10_000);
+
+			expect(push).toHaveBeenCalledTimes(1);
+			expect(cleanupTaskTunnels).not.toHaveBeenCalledWith(id);
+			expect(getPortsForTask(id)).toHaveLength(1);
+		});
+
+		it("does not scan native sessions on win32, where ps and lsof do not exist", async () => {
+			const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+			Object.defineProperty(process, "platform", { value: "win32" });
+			try {
+				records([{ host: 10, shell: 11 }]);
+				listTaskIds.mockReturnValue([TASK]);
+				const push = vi.fn();
+
+				startPortScanPoller(push, () => [{ taskId: TASK, tmuxSocket: "" }]);
+				await vi.advanceTimersByTimeAsync(10_000);
+
+				expect(mockSpawn).not.toHaveBeenCalled();
+				expect(readPanes).not.toHaveBeenCalled();
+				expect(push).not.toHaveBeenCalled();
+			} finally {
+				Object.defineProperty(process, "platform", platform);
+			}
+		});
+
+		it("finds a native task's ports from the shell tree and never asks tmux with an empty socket", async () => {
+			records([{ host: 10, shell: 11 }]);
+			routeSpawnByArgv({
+				ps: "  10     1   1000   0.0\n  11    10   2000   0.0\n  12    11   3000   0.0\n",
+				lsof: "p12\ncnode\nn*:5173\np99\ncother\nn*:9999\n",
+			});
+			const push = vi.fn();
+
+			startPortScanPoller(push, () => [{ taskId: TASK, tmuxSocket: "" }]);
+			await vi.advanceTimersByTimeAsync(10_000);
+
+			expect(push).toHaveBeenCalledWith("portsUpdated", {
+				taskId: TASK,
+				ports: [{ port: 5173, pid: 12, processName: "node" }],
+			});
+			expect(mockSpawn.mock.calls.filter((args: any) => args[0][0] === "tmux")).toEqual([]);
+		});
 	});
 });

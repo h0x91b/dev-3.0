@@ -7,7 +7,8 @@ import Tooltip from "../Tooltip";
  *  detail modal), so the viewer it opens stays a popup instead of docking. */
 export default function TaskArtifacts({ task, projectId, compact = false, touch = false, paneless = false }: { task: Task; projectId: string; compact?: boolean; touch?: boolean; paneless?: boolean }) {
 	const t = useT();
-	const count = task.sharedArtifacts?.length ?? 0;
+	// The live page rides as the last entry, so opening on the last index lands on it.
+	const count = (task.sharedArtifacts?.length ?? 0) + (task.liveArtifact ? 1 : 0);
 	if (count === 0) return null;
 	const isUnread = task.sharedArtifacts?.some((artifact) => artifact.isUnread) ?? false;
 	const baseLabel = t.plural("infoPanel.artifactsBadge", count);
@@ -17,7 +18,7 @@ export default function TaskArtifacts({ task, projectId, compact = false, touch 
 			<button
 				type="button"
 				onClick={() => window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
-					detail: { taskId: task.id, taskStatus: task.status, projectId, artifacts: task.sharedArtifacts, index: count - 1, paneless },
+					detail: { taskId: task.id, taskStatus: task.status, projectId, artifacts: task.sharedArtifacts ?? [], index: count - 1, paneless, live: task.liveArtifact },
 				}))}
 				className={`task-anim flex items-center gap-1 rounded-lg transition-colors flex-shrink-0 border ${touch ? "min-h-11 px-3" : "px-2 py-1"} ${isUnread
 					? "text-success bg-success/15 border-success/40 hover:bg-success/25"

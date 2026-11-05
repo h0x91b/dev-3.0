@@ -297,6 +297,17 @@ describe("LaunchVariantsModal", () => {
 			expect(getSelectedText(getModelButtons()[0])).toBe("GPT-5.5");
 			expect(getSelectedText(getModeButtons()[0])).toBe("Default (Heavy Bypass)");
 		});
+
+		it("preselects the coordinator preset for a coordinator task only", () => {
+			const gs = makeGlobalSettings({ coordinatorAgentId: "builtin-claude", coordinatorConfigId: "claude-auto-opus" });
+			const { unmount } = renderModal(makeProject(), { globalSettings: gs, task: { ...baseTask, taskType: "coordinator" } });
+			expect(getSelectedText(getModelButtons()[0])).toBe("Opus 4.8");
+			unmount();
+
+			// A standard task must keep the global default, never the coordinator preset.
+			renderModal(makeProject(), { globalSettings: gs });
+			expect(getSelectedText(getModelButtons()[0])).toBe("Sonnet 5");
+		});
 	});
 
 	describe("cascade dropdown population", () => {

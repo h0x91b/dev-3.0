@@ -1,4 +1,5 @@
 import { sendRequest } from "./socket-client";
+import { LAUNCH_PREPARATION_REPORT_BUDGET_MS } from "../shared/launch-preparation";
 
 const BASE_TIMEOUT_MS = 10 * 60 * 1000;
 const GRACE_MS = 2 * 60 * 1000;
@@ -13,4 +14,9 @@ export async function launchApprovalTimeoutMs(socketPath: string): Promise<numbe
 	} catch {
 		return BASE_TIMEOUT_MS;
 	}
+}
+
+/** A task launch also waits for the launched task's preparation to settle before the app answers. */
+export async function launchAndPrepareTimeoutMs(socketPath: string): Promise<number> {
+	return await launchApprovalTimeoutMs(socketPath) + LAUNCH_PREPARATION_REPORT_BUDGET_MS;
 }

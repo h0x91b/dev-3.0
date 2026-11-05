@@ -1,5 +1,7 @@
 # 141 — Terminal ⌘F search runs in tmux copy-mode, not in ghostty's buffer
 
+> Superseded for native-terminal tasks on 2026-10-28 by `decisions/2026/10/28/native-terminal-search-in-ghostty-buffer.md`: a native task has no tmux session, so ⌘F searches ghostty's own buffer in the renderer. Tmux tasks keep the design below.
+
 ## Context
 
 ⌘F should search the focused terminal's scrollback. dev3 runs tmux with `mouse on`, so wheel scroll is forwarded as SGR mouse events and the history lives **inside tmux** — ghostty's own buffer only ever holds the visible screen. A renderer-side buffer search (xterm.js-search-addon style) would therefore see one screenful and nothing else; ghostty-web also ships no search addon.

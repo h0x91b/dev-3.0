@@ -8,6 +8,7 @@ import { log } from "../rpc-handlers/shared";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
 import { nativeTaskPanesAlive } from "../native-task-panes";
 import { dispatchLifecycleEvent } from "./service";
+import { foreignRunOwner } from "./run-ownership";
 
 function shouldRehydrate(task: Task): boolean {
 	return (!!task.runtimeState && task.runtimeState.runtime !== "idle")
@@ -111,6 +112,16 @@ export async function rehydrateTaskLifecycles(): Promise<void> {
 		}
 		for (const task of tasks) {
 			if (!shouldRehydrate(task)) continue;
+			const owner = foreignRunOwner(task);
+			if (owner) {
+				log.info("Lifecycle boot left a run another live instance may own", {
+					projectId: project.id.slice(0, 8),
+					taskId: task.id.slice(0, 8),
+					runtime: task.runtimeState?.runtime ?? "legacy-preparing",
+					...(owner.kind === "owner" ? { ownerPid: owner.pid } : { unattributedPeers: owner.peerCount }),
+				});
+				continue;
+			}
 			work.push(rehydrateTask(project, task).catch((error) => {
 				log.warn("Lifecycle boot rehydration failed", {
 					projectId: project.id.slice(0, 8),

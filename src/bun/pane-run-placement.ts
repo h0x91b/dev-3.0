@@ -44,12 +44,13 @@ export interface PaneRunPlacementRequest {
 
 /**
  * dev3's own output panes: pane runs, dev servers, git operations, a setup
- * re-run. A column agent is an AGENT and is never auxiliary space.
+ * re-run. A column agent is an AGENT and a file browser is an interactive TUI;
+ * neither is auxiliary output space.
  */
 export function isAuxiliaryOutputCommand(taskId: string, command: string): boolean {
 	if (command.includes(PANE_RUN_VERB) && /run-[0-9a-f]{12}/.test(command)) return true;
 	const purpose = auxPurposeOfCommand(taskId, [command]);
-	return purpose !== null && purpose !== "columnAgent";
+	return purpose !== null && purpose !== "columnAgent" && purpose !== "fileBrowser";
 }
 
 /**

@@ -31,8 +31,8 @@ import {
 	type ShellLaunchSpec,
 } from "../native-terminal-registry/shell-launch";
 import { snapshotCaptureLines } from "../native-terminal-adapter/view-reconstruction";
-import { MultipaneRecordUnreadableError, readMultipaneRecordStrict } from "../native-terminal-multipane/record";
-import { inspectRecordFile, readToken, type RecordProblem } from "../native-terminal-registry/record";
+import { MultipaneRecordUnreadableError, listCoordinatorIds, readMultipaneRecord, readMultipaneRecordStrict } from "../native-terminal-multipane/record";
+import { inspectRecordFile, readRecord, readToken, type RecordProblem } from "../native-terminal-registry/record";
 import { classifyOwnership, type OwnershipProbes, type OwnershipVerdict } from "../native-terminal-registry/ownership";
 import {
 	boundCaptureLines,
@@ -244,6 +244,26 @@ export class NativeTerminalBackend implements TerminalBackend {
 
 	constructor(options: NativeTerminalBackendOptions = {}) {
 		this.deps = { ...defaultCoordinatorDeps, ...options.deps };
+	}
+
+	/** Every coordinator id with a record on disk. Reads files only. */
+	listCoordinatorIds(): string[] {
+		return listCoordinatorIds();
+	}
+
+	/**
+	 * The pane set as the records state it, with NO ownership recovery and no process
+	 * spawned — for pollers that check liveness against their own process table.
+	 */
+	readPaneRecords(id: TerminalSessionId): Array<{ paneId: string; hostPid: number; shellPid: number; command: string[] }> {
+		const panes = [];
+		for (const pane of readMultipaneRecord(id)?.panes ?? []) {
+			const record = readRecord(pane.sessionId);
+			if (record) {
+				panes.push({ paneId: pane.paneId, hostPid: record.host.pid, shellPid: record.shell.pid, command: record.shell.command });
+			}
+		}
+		return panes;
 	}
 
 	async openSession(spec: TerminalSessionSpec): Promise<TerminalSessionState> {

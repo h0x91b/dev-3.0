@@ -1,7 +1,7 @@
 import type { Task, SharedArtifact, SharedImage } from "../../shared/types";
 import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATION_MIN_DURATION_MS } from "../../shared/duration";
-import { getTaskTitle, taskSharedMedia } from "../../shared/types";
-import { SharedImageError, saveSharedImage, saveSharedVideos } from "../shared-images";
+import { getTaskTitle, isSharedAudio, taskSharedMedia } from "../../shared/types";
+import { SharedImageError, saveSharedClips, saveSharedImage } from "../shared-images";
 import { SharedArtifactError, saveSharedArtifact } from "../shared-artifacts";
 import { appendArtifactVersion, latestArtifactVersion } from "../../shared/artifact-versions";
 import * as data from "../data";
@@ -13,8 +13,14 @@ import { buildNotificationLogBase, recordNotification } from "./notification-log
 import type { Handler } from "./shared";
 import { resolveTaskFromParams } from "./task-resolution";
 
-/** `ui.show-image` / `ui.show-video`: copy files into the task's shared-media history and surface the viewer. */
-async function showSharedMedia(params: Record<string, unknown>, kind: "image" | "video") {
+/** What a batch of arrivals was, for the toast: a `show-media` call may mix video and audio. */
+function clipBatchKind(incoming: SharedImage[]): "video" | "audio" | "media" {
+	const audio = incoming.filter(isSharedAudio).length;
+	return audio === 0 ? "video" : audio === incoming.length ? "audio" : "media";
+}
+
+/** `ui.show-image` / `ui.show-media`: copy files into the task's shared-media history and surface the viewer. */
+async function showSharedMedia(params: Record<string, unknown>, kind: "image" | "media") {
 	const { project, task } = await resolveTaskFromParams(params);
 	if ((await loadSettings()).focusMode) setFocusMode(true);
 	// Preferred shape: images: [{ path, caption? }] — one note per image.
@@ -41,7 +47,7 @@ async function showSharedMedia(params: Record<string, unknown>, kind: "image" | 
 	// path is invalid, so the agent gets a clear signal and nothing half-lands.
 	let incoming: SharedImage[];
 	try {
-		incoming = kind === "video" ? await saveSharedVideos(project.path, items) : items.map((it) => saveSharedImage(project.path, it.path, it.caption));
+		incoming = kind === "media" ? await saveSharedClips(project.path, items) : items.map((it) => saveSharedImage(project.path, it.path, it.caption));
 	} catch (err) {
 		if (err instanceof SharedImageError) throw err;
 		throw new Error(`Failed to store ${kind}: ${err instanceof Error ? err.message : String(err)}`);
@@ -49,11 +55,14 @@ async function showSharedMedia(params: Record<string, unknown>, kind: "image" | 
 
 	// Append inside the file lock. The history is uncapped — the stored files
 	// live in the worktree and die with it.
-	// Clips get their own additive field: older versions read every sharedImages entry's bytes.
+	// Clips get their own additive fields: older versions read every sharedImages entry's bytes.
 	const { task: updated } = await data.updateTaskWith<void>(project, task.id, (current) => {
-		const updates: Partial<Task> = kind === "video"
-			? { sharedVideos: [...(current.sharedVideos ?? []), ...incoming] }
-			: { sharedImages: [...(current.sharedImages ?? []), ...incoming] };
+		if (kind === "image") return { updates: { sharedImages: [...(current.sharedImages ?? []), ...incoming] }, result: undefined };
+		const audio = incoming.filter(isSharedAudio);
+		const videos = incoming.filter((item) => !isSharedAudio(item));
+		const updates: Partial<Task> = {};
+		if (videos.length > 0) updates.sharedVideos = [...(current.sharedVideos ?? []), ...videos];
+		if (audio.length > 0) updates.sharedAudio = [...(current.sharedAudio ?? []), ...audio];
 		return { updates, result: undefined };
 	});
 
@@ -65,7 +74,7 @@ async function showSharedMedia(params: Record<string, unknown>, kind: "image" | 
 		projectId: project.id,
 		images: taskSharedMedia(updated),
 		newCount: incoming.length,
-		newKind: kind,
+		newKind: kind === "image" ? kind : clipBatchKind(incoming),
 		taskSeq: task.seq,
 		taskTitle: getTaskTitle(task),
 		projectName: project.name,
@@ -200,8 +209,8 @@ export const uiHandlers: Record<string, Handler> = {
 	// UI control: surface images (screenshots, renders, QA captures) an agent wants
 	// the human to look at, bound to the task and kept as a clickable history.
 	"ui.show-image": (params) => showSharedMedia(params, "image"),
-	// Same history and viewer for MP4/WebM clips (`dev3 show-video`).
-	"ui.show-video": (params) => showSharedMedia(params, "video"),
+	// Same history and viewer for video and audio clips (`dev3 show-media`).
+	"ui.show-media": (params) => showSharedMedia(params, "media"),
 
 	"ui.show-artifact": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params);

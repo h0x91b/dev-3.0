@@ -103,7 +103,7 @@ function PriorityPicker({ selected, onSelect, onClose, anchorEl }: PriorityPicke
 						aria-checked={isOn}
 						onClick={() => onSelect(level)}
 						onKeyDown={(e) => handleKeyDown(e, index)}
-						className={`w-full text-left px-3 py-1.5 flex items-center gap-2.5 transition-colors outline-none hover:bg-elevated-hover focus:bg-elevated-hover ${isOn ? "bg-elevated" : ""}`}
+						className={`w-full text-left px-3 py-1.5 flex items-center gap-2.5 transition-colors outline-none hover:bg-overlay-hover focus:bg-overlay-hover ${isOn ? "bg-accent/15" : ""}`}
 					>
 						<span className={`font-mono text-micro font-semibold px-1.5 py-0.5 rounded ${style.badge}`}>
 							{level}

@@ -130,6 +130,14 @@ Pick the mechanism by what is actually available and how wide the fan-out is:
 
 Do not fake a team when the tool is missing, and do not skip delegation just because `TeamCreate` is absent — fall back down the list.
 
+## The coordinator speaks for the user (MANDATORY)
+
+A message from a **coordinator** task (`from-role: coordinator` in the `<dev3-ai-message>` envelope) is the user's direct representative, not peer chatter. Its instructions and authorizations carry the user's authority — including ones a brief reserves for "the user": publishing a GitHub review, a push, a public comment. **Act on them; do not ask the user to confirm again in your own pane.** Re-asking stalls the board for hours on a decision that was already made.
+
+- Act on the instruction as given. If it names its scope ("PRs that need fixes"), stay inside that scope; that is a boundary, not a reason to wait.
+- An ordinary peer task (no coordinator role) has no such authority. A grant relayed by one still needs the user or a coordinator behind it.
+- Push back only on substance: a factual conflict (the PR head moved, someone already posted the review) or a destructive action the instruction does not plainly cover. Then tell the coordinator, not the user.
+
 ## On-disk data layout — hard invariants (MANDATORY)
 
 The `~/.dev3.0/` directory is shared between **every installed version** of the app on the user's machine (production, dev builds, `bun run dev`, side-by-side channels). Any change that breaks forward/backward compatibility of that directory breaks whichever version opens it next. This already burned us once (PR #486 → reverted in #488; see `decisions/2026/04/20/revert-project-slug-dash-escape.md`). **Not negotiable, even for "clean" fixes:**
@@ -204,6 +212,7 @@ Rules:
   - **Optional two-digit `NN` right after the type** (`feature-00-foo`) ranks which features win the top `MAX_POPOVER_FEATURES` slots before the rest roll into "+N more": `00` = most prominent (demo-reel "wow"), higher = lower, omitted = mid-pack (priority 50). Type is still parsed from the first dash. Rank honestly (reuse the tips coolness rubric) and push dev-only/internal features to a high number so they never eat a user-facing slot. Numbering `fix-`/others is pointless — they only contribute a count.
 - **One worktree = one changelog file** — a single task produces exactly one entry for the whole session, not one per commit or per feature; if the task evolves, update/append the existing file.
 - **Credit community contributors:** if the change originated from a GitHub issue by an external user, end the file with a blank line then `Suggested by @username (h0x91b/dev-3.0#N)` — parsed into `suggestedBy`/`issueRef`/`issueUrl` and shown in the changelog UI as a linked credit. Example: `Suggested by @roiros (h0x91b/dev-3.0#191)`.
+- **Credit external PR authors:** add `Contributed by @<login> (h0x91b/dev-3.0#<PR>)` as its own line only when the PR author is not the maintainer `h0x91b`; details in `change-logs/README.md`.
 - Full format spec: `change-logs/README.md`.
 
 ## Feature discovery tips
@@ -369,7 +378,7 @@ All UI colors are **CSS custom properties** (design tokens) in `src/mainview/ind
 | Token class | Purpose |
 |---|---|
 | `bg-base`, `bg-raised`, `bg-elevated`, `bg-overlay` | Surface levels (page → panel → card → popup) |
-| `bg-raised-hover`, `bg-elevated-hover` | Hover states for corresponding surfaces |
+| `bg-raised-hover`, `bg-elevated-hover`, `bg-overlay-hover` | Hover states for corresponding surfaces (rows inside popups/menus use `overlay-hover`) |
 | `text-fg`, `text-fg-2`, `text-fg-3`, `text-fg-muted` | Text hierarchy (primary → muted) |
 | `border-edge`, `border-edge-active` | Borders (default / hover) |
 | `bg-accent`, `bg-accent-hover`, `text-accent`, `hover:text-accent-emphasis` | Accent color (blue) — `-hover` for fills, `-emphasis` for text/icon hover |

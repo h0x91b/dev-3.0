@@ -210,7 +210,7 @@ const tips = {
 	"tip.llmProvider.title": "Agentes en Amazon Bedrock",
 	"tip.llmProvider.body": "El ajuste «LLM Provider» apunta Claude o Codex a Amazon Bedrock — dev3 fija el modelo mapeado; las credenciales y la región quedan en tu propia configuración.",
 	"tip.filterTokens.title": "Filtra tareas con tokens",
-	"tip.filterTokens.body": "En la búsqueda escribe priority:P0 label:Bug agent:Codex status:review is:attention has:port — o usa el embudo para construirlo.",
+	"tip.filterTokens.body": "En la búsqueda escribe priority:P0 label:Bug agent:Codex status:review epic:Payments children:1801 is:attention pr:merged — o usa el embudo para construirlo.",
 	"tip.cycleTaskVariants.title": "Cambia entre variantes",
 	"tip.cycleTaskVariants.body": "Pulsa Shift+Cmd+[ o ] (Ctrl en Linux) para moverte entre variantes activas sin salir del terminal.",
 	"tip.mobileTaskGit.title": "Git desde tu móvil",
@@ -235,6 +235,8 @@ const tips = {
 	"tip.continueInAnotherAgent.body": "En + Agente marca «Continuar la conversación de esta tarea»: el nuevo agente recibe un resumen narrado de la sesión y retoma el trabajo.",
 	"tip.remoteSelfUpdate.title": "Las máquinas remotas se autoactualizan",
 	"tip.remoteSelfUpdate.body": "Un servidor `dev3 remote` instala actualizaciones solo cuando la máquina está tranquila y conserva su enlace público — o ejecuta `dev3 update` tú mismo.",
+	"tip.renameTerminalWindow.title": "Pon nombre a tus pestañas",
+	"tip.renameTerminalWindow.body": "Haz doble clic en una pestaña sobre la terminal (o pulsa F2) para renombrarla; el nombre se queda hasta que lo borres.",
 };
 
 export default tips;

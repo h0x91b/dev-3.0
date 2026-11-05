@@ -117,6 +117,13 @@ export interface GlobalSettings {
 	 */
 	agentCustomBinaryPaths?: Record<string, string>;
 	/**
+	 * agentId → the custom path the user chose in a build that enforces it. Only a
+	 * custom path equal to its entry here is strict (a broken one fails the launch);
+	 * one saved earlier, or rewritten by an older build, keeps the PATH fallback it
+	 * was saved under, with a warning. See decisions/2026/11/04/grandfather-stale-custom-agent-paths.md.
+	 */
+	strictAgentCustomBinaryPaths?: Record<string, string>;
+	/**
 	 * Beta: reorder right-to-left text (Hebrew, Arabic) for display in terminal
 	 * panes. Display-only — copied text keeps its logical order, while mouse
 	 * selection and link hover on those lines stay logical too. On by default —
@@ -180,6 +187,12 @@ export interface GlobalSettings {
 	 */
 	telemetryDisabled?: boolean;
 	/**
+	 * Daily removal of finished tasks' diffs/logs older than 14 days
+	 * (`src/bun/worktree-cleanup-scheduler.ts`). Default on; only an explicit
+	 * false opts out.
+	 */
+	autoCleanupTaskHistory?: boolean;
+	/**
 	 * Set the first time the user opens help mode. Until then the header's `?`
 	 * rests highlighted on the main screens — help mode is the product's only
 	 * teaching channel, so a user who never finds the button never learns
@@ -234,6 +247,12 @@ export interface GlobalSettings {
 	 */
 	importShellEnv?: boolean;
 	/**
+	 * Env vars every agent session gets when its project does not set the key
+	 * itself (`.dev3/config.json`, `.dev3/config.local.json`, Project Settings).
+	 * Values expand `{projectPath}` and `{projectName}`. Absent ⇒ no change.
+	 */
+	agentEnvDefaults?: Record<string, string>;
+	/**
 	 * Which POSIX shell dev3 runs in its terminals and generated wrapper
 	 * scripts. Undefined ⇒ auto-detect (the user's login shell, else the first
 	 * of zsh → bash → sh that is installed). Set it when the detected shell is
@@ -282,6 +301,11 @@ export interface GlobalSettings {
 	 * `activeId` stays untouched so older builds keep a valid default.
 	 */
 	autoAccountDefault?: { claude?: true; codex?: true };
+	/**
+	 * Logins Auto never picks, in any project — e.g. a personal account kept out
+	 * of a work pool. Same keys as `Project.autoAccountExclusions`.
+	 */
+	autoAccountExclusions?: string[];
 	/**
 	 * Remembered state of the Watch toggle in the launch/create-variant modal.
 	 * When a task is launched, the toggle's on/off choice is persisted here and
@@ -347,6 +371,12 @@ export interface GlobalSettings {
 	 * can override it; see resolvePresetPrompt.
 	 */
 	coordinatorPrompt?: string;
+	/**
+	 * Agent/preset a coordinator task launches on when nobody picked one.
+	 * Absent ⇒ DEFAULT_COORDINATOR_AGENT_ID / DEFAULT_COORDINATOR_CONFIG_ID.
+	 */
+	coordinatorAgentId?: string;
+	coordinatorConfigId?: string;
 	/**
 	 * Cross-provider "favorite" agent configs shown as quick-pick chips on the
 	 * launch picker (Launch/Retry, Spawn, Bug Hunters). Thin pointers, capped at

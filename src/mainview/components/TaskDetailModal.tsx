@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback, type Dispatch } from "react";
 import { toast } from "../toast";
+import TaskOriginRow from "./TaskOriginRow";
+import TaskEpicRow from "./TaskEpicRow";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { Project, Task, TaskStatus } from "../../shared/types";
-import { titleFromDescription, getAllowedTransitions, getTaskTitle } from "../../shared/types";
+import { titleFromDescription, getAllowedTransitions, getTaskTitle, taskOrigin } from "../../shared/types";
 import { allPullRequests } from "../../shared/task-pull-requests";
 import { useStatusColors } from "../hooks/useStatusColors";
 import LabelChip from "./LabelChip";
@@ -15,7 +17,7 @@ import SharedOutputsList from "./SharedOutputsList";
 import TaskArtifacts from "./task-info-panel/TaskArtifacts";
 import TaskSharedImages from "./task-info-panel/TaskSharedImages";
 import TaskTerminalBackendRow from "./TaskTerminalBackendRow";
-import type { AppAction } from "../state";
+import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { useT } from "../i18n";
@@ -42,12 +44,15 @@ interface TaskDetailModalProps {
 	onLaunchVariants?: (task: Task, targetStatus: TaskStatus) => void;
 	/** Opens straight into title editing — the context menu's "Rename…". */
 	autoRename?: boolean;
+	/** Makes the "Created by" parent a link; plain text without it. */
+	navigate?: (route: Route) => void;
 }
 
-function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunchVariants, autoRename }: TaskDetailModalProps) {
+function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunchVariants, autoRename, navigate }: TaskDetailModalProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const trapRef = useFocusTrap<HTMLDivElement>();
+	const navigateAway = navigate ? (route: Route) => { onClose(); navigate(route); } : undefined;
 	const isTodo = task.status === "todo";
 	const isArchived = task.status === "completed" || task.status === "cancelled";
 	const [isEditing, setIsEditing] = useState(false);
@@ -404,6 +409,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 			onUpdateNote={handleUpdateNote}
 			onDeleteNote={handleDeleteNote}
 			onClose={onClose}
+			navigate={navigateAway}
 		/>;
 	}
 
@@ -452,6 +458,10 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 
 				{/* Content */}
 				<div className="px-6 pb-5 overflow-y-auto flex-1">
+					<div className="mb-3 grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1.5 text-xs">
+						{taskOrigin(task).kind !== "user" && <TaskOriginRow task={task} testId="task-detail-origin" navigate={navigateAway} />}
+						<TaskEpicRow task={task} testId="task-detail-epic" />
+					</div>
 					{/* Title with rename */}
 					{isRenaming ? (
 						<div className="mb-4 space-y-1.5">
@@ -704,6 +714,7 @@ interface ArchivedViewProps {
 	onUpdateNote: (noteId: string, content: string) => void;
 	onDeleteNote: (noteId: string) => void;
 	onClose: () => void;
+	navigate?: (route: Route) => void;
 }
 
 function ArchivedView({
@@ -711,7 +722,7 @@ function ArchivedView({
 	statusMenuOpen, setStatusMenuOpen,
 	movingStatus, onStatusMove, onMoveToCustomColumn,
 	onAddNote, onUpdateNote, onDeleteNote,
-	onClose,
+	onClose, navigate,
 }: ArchivedViewProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
@@ -764,7 +775,7 @@ function ArchivedView({
 							<button
 								onClick={() => setStatusMenuOpen(!statusMenuOpen)}
 								disabled={movingStatus}
-								className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-fg/5 hover:bg-elevated transition-colors"
+								className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-fg/5 hover:bg-fg/10 transition-colors"
 							>
 								<div
 									className="w-2 h-2 rounded-full flex-shrink-0"
@@ -787,7 +798,7 @@ function ArchivedView({
 										<button
 											key={s}
 											onClick={() => onStatusMove(s)}
-											className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
+											className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-overlay-hover hover:text-fg flex items-center gap-2.5 transition-colors"
 										>
 											<div
 												className="w-2.5 h-2.5 rounded-full flex-shrink-0"
@@ -805,7 +816,7 @@ function ArchivedView({
 													<button
 														key={col.id}
 														onClick={() => onMoveToCustomColumn(col.id)}
-														className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
+														className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-overlay-hover hover:text-fg flex items-center gap-2.5 transition-colors"
 													>
 														<div
 															className="w-2.5 h-2.5 rounded-full flex-shrink-0"
@@ -942,6 +953,13 @@ function ArchivedView({
 
 								<span className="text-fg-3">{t("infoPanel.created")}</span>
 								<span className="text-fg-3">{formatDate(task.createdAt)}</span>
+
+								<TaskOriginRow
+									task={task}
+									testId="task-detail-origin"
+									navigate={navigate}
+								/>
+								<TaskEpicRow task={task} testId="task-detail-epic" />
 
 								<span className="text-fg-3">{t("infoPanel.updated")}</span>
 								<span className="text-fg-3">{formatDate(task.updatedAt)}</span>

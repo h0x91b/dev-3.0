@@ -2,7 +2,7 @@ import { Fragment, useState, useRef, useEffect, useLayoutEffect, type Dispatch }
 import { findAgentConfig } from "../../shared/agent-live-models";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
-import type { CodingAgent, DevServerSummary, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
+import type { CodingAgent, DevServerSummary, Epic, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, getAllowedTransitions, getPreparingStageProgress, getTaskTitle, isCoordinatorTask, isTaskDisconnected, projectDisplayName } from "../../shared/types";
 import { earlierPullRequests } from "../../shared/task-pull-requests";
 import { getTaskOpenMode, type AppAction, type Route } from "../state";
@@ -19,6 +19,10 @@ import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
 import PriorityBadge from "./PriorityBadge";
 import VariantDots from "./VariantDots";
+import LineageCluster from "./LineageCluster";
+import EpicChip from "./EpicChip";
+import { useEpics } from "../hooks/useEpics";
+import type { CardLineage } from "../utils/taskLineage";
 import NativeBackendMark from "./NativeBackendMark";
 import ForeignCodeMark from "./ForeignCodeMark";
 import OpenInMenu from "./OpenInMenu";
@@ -86,9 +90,15 @@ interface TaskCardProps {
 	 * where more than one project shares a board (the unified space board).
 	 */
 	showProjectMark?: boolean;
+	/** Where the task came from and what it created — see LineageCluster. */
+	lineage?: CardLineage;
+	/** Filter the board to an epic; without it the epic chip is plain text. */
+	onFilterByEpic?: (epic: Epic) => void;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, resourceUsage, bellCount = 0, bellReasons, ports, devServer, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo, onOpenUnresolvedComments, onEditDraft, showProjectMark = false }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, resourceUsage, bellCount = 0, bellReasons, ports, devServer, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo, onOpenUnresolvedComments, onEditDraft, showProjectMark = false, lineage, onFilterByEpic }: TaskCardProps) {
+	const { byId: epicsById } = useEpics();
+	const epic = task.epicId ? epicsById.get(task.epicId) : undefined;
 	const t = useT();
 	const statusColors = useStatusColors();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
@@ -705,7 +715,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							toast.error(t("task.devStopFailed", { error: String(err) }));
 						}
 					}}
-					className="flex h-full items-center border-l border-current/20 px-1 text-danger transition-colors hover:bg-danger/15 disabled:opacity-40"
+					className="flex h-full items-center border-l border-danger/20 px-1 text-danger transition-colors hover:bg-danger/15 disabled:opacity-40"
 					aria-label={devDeclared > 1 ? t("task.devStopAll") : t("task.devStop")}
 					disabled={isDisabled || !devServer.running}
 				>
@@ -759,7 +769,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			onContextMenu={handleContextMenu}
 			onMouseEnter={handleCardMouseEnter}
 			onMouseLeave={handleCardMouseLeave}
-			className={`group relative flex flex-col overflow-hidden glass-card rounded-xl transition-[transform,box-shadow,background-color,border-color,opacity,filter] duration-150 ease-out border ${isDraft ? "border-dashed border-edge-active" : isActiveInSplit ? "border-accent ring-2 ring-accent/70 shadow-lg shadow-accent/20" : isCoordinator ? "border-dashed task-card-coordinator" : "border-transparent"} ${
+			className={`group relative flex flex-col overflow-hidden glass-card rounded-xl transition-[transform,box-shadow,background-color,border-color,opacity,filter] duration-150 ease-out border ${isDraft ? "border-dashed border-edge-active" : isActiveInSplit ? "border-accent ring-2 ring-accent/70 shadow-lg shadow-accent/20" : isCoordinator ? "border-dashed task-card-coordinator" : task.taskType === "board-cleanup" ? "border-dashed task-card-board-cleanup" : "border-transparent"} ${
 				isActive || isCompleted || isCancelled
 					? "cursor-pointer hover:-translate-y-0.5 hover:shadow-card-hover"
 					: "cursor-grab active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-card-hover"
@@ -920,7 +930,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					<Tooltip content={t("task.coordinatorBadge")} detail={t("task.coordinatorHint")}>
 						<span
 							data-testid="task-card-coordinator-badge"
-							className="flex-shrink-0 rounded border border-dashed border-success/60 px-1.5 py-0.5 text-dense font-semibold uppercase tracking-[0.06em] text-success-strong"
+							className="flex-shrink-0 rounded border border-dashed border-coordinator/70 px-1.5 py-0.5 text-dense font-semibold uppercase tracking-[0.06em] text-coordinator-ink"
 						>
 							{t("task.coordinatorBadge")}
 						</span>
@@ -940,7 +950,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				)}
 				{task.taskType === "board-cleanup" && (
 					<Tooltip content={t("task.boardCleanupBadge")} detail={t("task.boardCleanupHint")}>
-						<span data-testid="task-card-board-cleanup-badge" className="flex-shrink-0 text-dense font-semibold uppercase tracking-[0.06em] text-fg-3">
+						<span data-testid="task-card-board-cleanup-badge" className="flex-shrink-0 rounded border border-dashed border-danger/60 px-1.5 py-0.5 text-dense font-semibold uppercase tracking-[0.06em] text-danger-strong">
 							{t("task.boardCleanupBadge")}
 						</span>
 					</Tooltip>
@@ -1027,6 +1037,15 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 								{projectDisplayName(project, t("ops.boardName"))}
 							</div>
 						)}
+						{epic && (
+							<div className="mb-1 flex min-w-0">
+								<EpicChip
+									epic={epic}
+									testId="task-card-epic"
+									onClick={onFilterByEpic ? (e) => { e.stopPropagation(); onFilterByEpic(epic); } : undefined}
+								/>
+							</div>
+						)}
 						<div
 							className={`break-words text-sm font-medium leading-relaxed text-fg line-clamp-3 ${isTodo ? "cursor-pointer hover:text-fg-2" : ""}`}
 							onClick={handleTitleClick}
@@ -1034,6 +1053,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						>
 							{displayTitle}
 						</div>
+						{lineage && <LineageCluster lineage={lineage} />}
 						{isTodo && task.preparationError && (
 							<div
 								role="alert"
@@ -1161,7 +1181,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 
 					{/* SIGNALS + ACTIONS — one segmented bar welded to the bottom edge.
 					    mt-auto is what keeps it there when the rail is the taller column. */}
-					<div className="-mx-3 mt-auto border-t border-edge bg-black/20">
+					<div className="-mx-3 mt-auto border-t border-edge bg-base/50">
 						{signalGroups.length > 0 && (
 							<div
 								data-testid="task-card-signals"
@@ -1241,6 +1261,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					onClose={() => setDetailOpen(false)}
 					onOpenTask={openTaskFromDialog}
 					onLaunchVariants={onLaunchVariants}
+					navigate={navigate}
 				/>,
 				document.body
 			)}
@@ -1293,7 +1314,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						<button
 							key={p.port}
 							onClick={() => window.open(`http://localhost:${p.port}`, "_blank")}
-							className="w-full text-left px-3 py-1.5 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
+							className="w-full text-left px-3 py-1.5 text-sm text-fg-2 hover:bg-overlay-hover hover:text-fg flex items-center gap-2.5 transition-colors"
 						>
 							<span className="font-mono font-bold text-accent">:{p.port}</span>
 							<span className="text-fg-muted text-xs">{p.processName}</span>
@@ -1311,6 +1332,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				onClose={contextMenu.close}
 				onOpenTask={openTaskFromDialog}
 				onOpenDetails={() => setDetailOpen(true)}
+				onShowFamily={lineage ? (lineage.onFilterByParent ?? lineage.onFilterByChildren ?? undefined) : undefined}
 				testId={`card-task-menu-${task.id}`}
 			/>
 
@@ -1342,6 +1364,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				userOverview={task.userOverview ?? null}
 				description={task.description}
 				attentionReasons={bellReasons}
+				task={task}
+				agents={agents}
 			/>
 		</div>
 	);

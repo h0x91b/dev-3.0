@@ -9,6 +9,10 @@
  * Regenerate by hand ONLY together with a deliberate, reviewed change to what
  * the user sees in the terminal.
  */
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it, expect, afterEach } from "vitest";
 import {
 	buildAgentRetryWrapper,
@@ -158,6 +162,36 @@ describe("POSIX run wrapper (buildCmdScript)", () => {
 		expect(
 			buildCmdScript("claude 'Fix bug'", { FOO: "bar baz" }, { keepShell: false, shellPath: SHELL, onExitCommand: "echo bye" }),
 		).toBe(RUN_WRAPPER_NO_KEEP_SHELL);
+	});
+
+	it("reports the agent's exit, code included, before either arm runs (#2034)", () => {
+		const script = buildCmdScript("claude", undefined, {
+			keepShell: true,
+			shellPath: SHELL,
+			exitReport: ["/h/.dev3.0/bin/dev3", "hook", "agent-exited", "--task", "T", "--session", "S"],
+		});
+		expect(script).toContain("__EC=$?\n'/h/.dev3.0/bin/dev3' 'hook' 'agent-exited' '--task' 'T' '--session' 'S' \"$__EC\"\nif [ $__EC -ne 0 ]; then");
+	});
+
+	it.skipIf(process.platform === "win32")("runs the report with the real exit code and still hands over to the shell", () => {
+		const dir = mkdtempSync(join(tmpdir(), "dev3-exit-report-"));
+		try {
+			const cli = join(dir, "fake-dev3");
+			writeFileSync(cli, `#!/bin/sh\necho "$@" > ${join(dir, "argv")}\n`, { mode: 0o755 });
+			const script = join(dir, "run.sh");
+			writeFileSync(script, buildCmdScript("sh -c 'exit 3'", undefined, {
+				keepShell: true,
+				shellPath: "/usr/bin/true",
+				exitReport: [cli, "hook", "agent-exited", "--task", "T", "--session", "S"],
+			}));
+			const run = spawnSync("/bin/bash", [script], { encoding: "utf-8" });
+
+			expect(run.status).toBe(0);
+			expect(readFileSync(join(dir, "argv"), "utf-8").trim()).toBe("hook agent-exited --task T --session S 3");
+			expect(run.stdout).toContain("Process exited with code 3");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 
 	it("falls back to $SHELL when no shell path is given", () => {

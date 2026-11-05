@@ -1,8 +1,10 @@
-import type { CodingAgent, Project, Space, Task } from "../../shared/types";
+import type { CodingAgent, Epic, Project, Space, Task } from "../../shared/types";
 import { DEFAULT_PRIORITY, spacesOfProject } from "../../shared/types";
 import type { TFunction } from "../i18n";
 import { type FacetResolver, isAttentionTask, taskStatusValues } from "./taskFacets";
 import { getStatusLabel } from "./statusLabel";
+import { childrenTokenRefs, type TaskLineage } from "./taskLineage";
+import { epicOf } from "./taskEpic";
 
 /**
  * Shared builder for the token-DSL search `FacetResolver`. Labels, statuses and
@@ -22,9 +24,16 @@ export interface FacetResolverConfig {
 	/** Live PR number per task, when the surface tracks one. The matcher falls
 	 *  back to the task's sticky `prNumber`, so omitting it still finds by PR. */
 	prNumberFor?: (task: Task) => number | null;
+	/** Live GitHub state of that PR (`pr:` facet); omitted ⇒ the persisted state. */
+	prStateFor?: (task: Task) => string | null;
+	/** Lineage for `children:`; a bare seq means `currentProjectId` (none ⇒ only `project/seq`). */
+	lineage?: TaskLineage;
+	currentProjectId?: string | null;
+	/** The epic registry for `epic:`. */
+	epicsById?: ReadonlyMap<string, Epic>;
 }
 
-export function buildFacetResolver({ agents, projectById, taskPorts, spaces, t, prNumberFor }: FacetResolverConfig): FacetResolver {
+export function buildFacetResolver({ agents, projectById, taskPorts, spaces, t, prNumberFor, prStateFor, lineage, currentProjectId = null, epicsById }: FacetResolverConfig): FacetResolver {
 	return {
 		agents,
 		labelsFor: (task) => {
@@ -41,5 +50,8 @@ export function buildFacetResolver({ agents, projectById, taskPorts, spaces, t, 
 		isAttentionFor: (task) => isAttentionTask(task),
 		spaceNamesFor: (task) => spacesOfProject(spaces, task.projectId).map((s) => s.name),
 		prNumberFor: prNumberFor ?? (() => null),
+		prStateFor: prStateFor ?? (() => null),
+		...(epicsById ? { epicFor: (task: Task) => epicOf(task, epicsById) } : {}),
+		...(lineage ? { childrenRefsFor: (task: Task) => childrenTokenRefs(task, lineage, [...projectById.values()], currentProjectId) } : {}),
 	};
 }

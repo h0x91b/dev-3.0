@@ -1,4 +1,4 @@
-import { previewTaskHandoffHandler, spawnAgentInTask } from "./tmux-pty/agent-spawn";
+import { getNativeTaskAgents, previewTaskHandoffHandler, spawnAgentInTask } from "./tmux-pty/agent-spawn";
 import { spawnBugHuntersInTask } from "./tmux-pty/bug-hunters";
 import { checkDevServer, getDevServerStatus, restartDevServer, runDevServer, stopDevServer } from "./tmux-pty/dev-servers";
 import { restartTask, resumeTask, wakeTaskShell } from "./tmux-pty/resume";
@@ -8,7 +8,7 @@ import { exitCopyModeAllPanes, killTmuxSession, listTmuxSessions, setResourceMon
 
 export { resolveBugHunterCompareRef, buildBugHunterPrompt, nativeHunterColumnRatios } from "./tmux-pty/bug-hunters";
 export { killDevServerSession, runDevServer, stopDevServer, restartDevServer, getDevServerStatus } from "./tmux-pty/dev-servers";
-export { sessionStateOrLostCodexPane, ResumeUnavailableError, taskTerminalAlive, tearDownTaskTerminal, resumeTaskSession, wakeTaskShell } from "./tmux-pty/resume";
+export { sessionStateOrLostCodexPane, ResumeUnavailableError, taskTerminalAlive, resumeTaskSession, wakeTaskShell } from "./tmux-pty/resume";
 export type { ResumeTaskOptions, ResumeTaskSessionOutcome } from "./tmux-pty/resume";
 export { launchTaskPty, addVirtualShellPane, launchColumnAgent, cleanupTaskTmuxState, handlePaneExited } from "./tmux-pty/task-launch";
 export { tmuxAction, tmuxPaneCount, tmuxKillPane, readPaneLayout, tmuxPaneNavigate } from "./tmux-pty/tmux-control";
@@ -42,6 +42,7 @@ export const tmuxPtyHandlers = {
 	tmuxSearchCancel,
 	spawnAgentInTask,
 	previewTaskHandoff: previewTaskHandoffHandler,
+	getNativeTaskAgents,
 	spawnBugHuntersInTask,
 	resumeTask,
 	restartTask,

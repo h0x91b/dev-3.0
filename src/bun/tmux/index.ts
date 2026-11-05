@@ -19,7 +19,7 @@
  */
 export { tmux, TmuxClient, TmuxMissingCwdError } from "./client";
 export type { TmuxClientOptions, SplitOrientation, TmuxLayoutName } from "./client";
-export { DEFAULT_TMUX_SOCKET, CAPTURE_SCROLLBACK_START_LINE, TMUX_AGENT_PANE_OPTION, TMUX_TASK_TITLE_OPTION } from "./constants";
+export { DEFAULT_TMUX_SOCKET, CAPTURE_SCROLLBACK_START_LINE, TMUX_AGENT_PANE_OPTION, TMUX_TASK_TITLE_OPTION, TMUX_WINDOW_NAME_OPTION } from "./constants";
 export {
 	tmuxSocketDir,
 	tmuxSocketPath,

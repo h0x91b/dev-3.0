@@ -7,6 +7,7 @@ import { api, isElectrobun } from "./rpc";
 import { getTerminalKeyOverride } from "./terminal-key-overrides";
 import { pasteIntoTerminal, terminalBracketsPaste } from "./terminal-paste";
 import { inputTypesText, keyTypesText } from "./terminal-history-input";
+import { writeHoldingViewport } from "./terminal-scroll-hold";
 import { debugLog } from "./debug-log";
 import SharedSizeNotice from "./components/SharedSizeNotice";
 import {
@@ -250,6 +251,8 @@ interface TerminalViewProps {
 	 * refused something it typed. Never fires for a tmux session.
 	 */
 	onNativeStatus?: (status: NativeViewerStatus) => void;
+	/** The task runs on the native backend (known before the first stream frame). */
+	native?: boolean;
 	/**
 	 * The app refused this socket outright (missing/unknown session). Supplying it
 	 * hands recovery to the owner, which renders one shared exited state; without
@@ -292,7 +295,13 @@ const PANE_FOCUS_SHORTCUTS: [string, SplitDirection][] = [
 /** How often to ask tmux whether the pane is still in copy-mode while we believe it is. */
 const COPY_MODE_POLL_MS = 1500;
 
-function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSessionLost, touchComposeMode, onScrolledIntoHistory, onFocusDirection }: TerminalViewProps) {
+/**
+ * ghostty-web's `scrollback` is a byte cap (default 10 KB ≈ 600 rows); tmux keeps its own
+ * history, a native pane has only this one. 50 MB ≈ 33k rows at 120 cols, allocated as output arrives.
+ */
+const NATIVE_SCROLLBACK_BYTES = 50_000_000;
+
+function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, native, onSessionLost, touchComposeMode, onScrolledIntoHistory, onFocusDirection }: TerminalViewProps) {
 	const t = useT();
 	// Rebuild budget for a dead ghostty renderer (see recoverFromRendererCrash).
 	const [terminalGeneration, setTerminalGeneration] = useState(0);
@@ -307,6 +316,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 	const wrapperRef = useRef<HTMLDivElement>(null);
 	const searchBarRef = useRef<TerminalSearchBarHandle | null>(null);
 	const [searchOpen, setSearchOpen] = useState(false);
+	// Native backend: the bar searches ghostty's own buffer (no tmux copy-mode).
+	const [searchTerm, setSearchTerm] = useState<Terminal | null>(null);
+	// True while the native search bar's highlight is the terminal's selection.
+	const searchOwnsSelectionRef = useRef(false);
 	// The link a touch user tapped — rendered as the Open / Copy sheet.
 	const [touchLink, setTouchLink] = useState<TouchLink | null>(null);
 	// The pane the search resolved to, and its %-rect over the terminal canvas —
@@ -442,22 +455,29 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		// A history command may open a tmux search prompt that owns subsequent text.
 		else if (!tmuxHistoryKeyboardRef.current) void exitCopyModeIfNeeded(true);
 	}, [copyModePending, exitCopyModeIfNeeded]);
+	/** Input on a native pane returns to live output, like any terminal; tmux leaves history itself. */
+	const followLiveOutput = useCallback(() => {
+		if (tmuxStreamRef.current) return;
+		try { termRef.current?.scrollToBottom(); } catch { /* disposed */ }
+	}, []);
 	const sendUserInput = useCallback((data: string) => {
 		const send = () => {
 			if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(data);
 		};
+		followLiveOutput();
 		prepareInputForHistory(inputTypesText(data));
 		if (copyModeExitRef.current) void copyModeExitRef.current.then(send);
 		else send();
-	}, [prepareInputForHistory]);
+	}, [followLiveOutput, prepareInputForHistory]);
 	/** A dropped path or attachment always leaves history first, like a paste. */
 	const sendPlacedInput = useCallback((data: string) => {
 		const send = () => {
 			if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(data);
 		};
+		followLiveOutput();
 		if (copyModePending()) void exitCopyModeIfNeeded().then(send);
 		else send();
-	}, [copyModePending, exitCopyModeIfNeeded]);
+	}, [copyModePending, exitCopyModeIfNeeded, followLiveOutput]);
 	const mouseGestureDraggedRef = useRef(false);
 	const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">(
 		() => (document.documentElement.dataset.theme as "dark" | "light") || "dark",
@@ -706,6 +726,15 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		// One screen reset per Terminal instance. A rebuild re-runs this effect and
 		// therefore earns a fresh one; a reconnect does not.
 		let screenResetForThisTerminal = false;
+		// A held write scrolls to the bottom and back; only its final position is news.
+		let holdingViewport = false;
+		function publishGhosttyScroll(target: Terminal) {
+			if (disposed || holdingViewport) return;
+			try {
+				if (target.viewportY > 0) setScrolledIntoHistory(true);
+				else if (!tmuxCopyModeMayBeActiveRef.current) setScrolledIntoHistory(false);
+			} catch { /* disposed */ }
+		}
 		tmuxStreamRef.current = false;
 		let fitAddon: FitAddon | null = null;
 		let ws: WebSocket | null = null;
@@ -797,6 +826,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				cursorBlink: true,
 				cursorStyle: "bar",
 				theme: resolvedTheme === "light" ? LIGHT_TERMINAL_THEME : DARK_TERMINAL_THEME,
+				...(native ? { scrollback: NATIVE_SCROLLBACK_BYTES } : {}),
 			});
 
 			debugLog("terminal", "[TerminalView] Terminal created, loading FitAddon...");
@@ -819,6 +849,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			}
 			debugLog("terminal", "[TerminalView] Terminal opened in DOM successfully");
 			termRef.current = term;
+			setSearchTerm((current) => (current ? term : current));
 			session.liveTerminals += 1;
 			countedLive = true;
 			trail.note("open", `${term.cols}x${term.rows} dpr${lastDpr}`);
@@ -1410,13 +1441,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 							}));
 
 							// ghostty's own scrollback (native backend / tmux without mouse mode).
-							termSubs.push(term.onScroll(() => {
-								if (disposed) return;
-								try {
-									if (term.viewportY > 0) setScrolledIntoHistory(true);
-									else if (!tmuxCopyModeMayBeActiveRef.current) setScrolledIntoHistory(false);
-								} catch { /* disposed */ }
-							}));
+							termSubs.push(term.onScroll(() => publishGhosttyScroll(term)));
 
 							// Expose terminal handle for external input (ExtraKeyBar, TerminalComposer)
 							onReady?.({
@@ -1641,6 +1666,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 						toRow,
 					);
 					if (seq && wsRef.current?.readyState === WebSocket.OPEN) {
+						followLiveOutput();
 						wsRef.current.send(seq);
 					}
 					// Swallow the alt-click even when the move is a no-op so it
@@ -1856,7 +1882,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		 * Callers must concatenate anything that has to land in ONE write (a reset in
 		 * front of a replay) before calling, exactly as they did with the old batch.
 		 */
-		function writeToTerminal(data: string, fromSocket: boolean) {
+		function writeToTerminal(data: string, fromSocket: boolean, holdViewport = false) {
 			if (disposed || !batchTerm) return;
 			// OSC 8 URIs are unrecoverable from the terminal after the write, so
 			// capture them from the raw stream (replays included) before filtering.
@@ -1866,14 +1892,18 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			if (!batch) return;
 			try {
 				const startedAt = performance.now();
-				batchTerm.write(batch);
+				if (holdViewport) {
+					holdingViewport = true;
+					try { writeHoldingViewport(batchTerm, batch); } finally { holdingViewport = false; }
+					publishGhosttyScroll(batchTerm);
+				} else batchTerm.write(batch);
 				latency.noteWrite(performance.now() - startedAt);
 				if (fromSocket) releaseSyncGate();
 				// Drop any stale selection left floating over the
 				// just-repainted cells when the app owns the screen
 				// (alt-screen or primary+mouse-tracking); ghostty-web
 				// won't do it on its own.
-				clearStaleSelectionOnWrite(batchTerm);
+				if (!searchOwnsSelectionRef.current) clearStaleSelectionOnWrite(batchTerm);
 				// ghostty-web never fires onRender, so the write is
 				// the "content changed" signal for the link underlines.
 				linkUnderlines?.requestRedraw();
@@ -1972,7 +2002,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			const cleaned = payload.replace(OSC52_RE, "");
 			// RIS and the replay travel as one string so the screen is replaced in a
 			// single write — see the reset comment above.
-			if (reset || cleaned) writeToTerminal(reset + cleaned, true);
+			// A reset replaces the screen, so only a continuing stream keeps the reader in history.
+			if (reset || cleaned) writeToTerminal(reset + cleaned, true, !reset);
 		}
 
 		function noteTmuxStream() {
@@ -2129,6 +2160,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 						latency.noteInput(data);
 						ws.send(data);
 					};
+					// A mouse report is not typing; a terminal reply fires inside a write, which restores the view.
+					if (!data.startsWith("\x1b[<")) followLiveOutput();
 					// Only a key/paste starts cancellation; replies and mouse reports keep history.
 					if (copyModeExitRef.current) void copyModeExitRef.current.then(send);
 					else send();
@@ -2453,7 +2486,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		return () => window.removeEventListener("keydown", handleKeydown, { capture: true });
 	}, [taskId]);
 
-	// ⌘F (Ctrl+Shift+F elsewhere) — search the terminal via tmux copy-mode.
+	// ⌘F (Ctrl+Shift+F elsewhere) — search the terminal (tmux copy-mode, or the ghostty buffer on native).
 	// Capture phase so ghostty can't swallow it; gated on focus being inside
 	// this terminal (or its search bar) so the browser's native find keeps
 	// working everywhere else in remote mode. The combo comes from the registry
@@ -2467,16 +2500,20 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			if (!wrapper.contains(document.activeElement)) return;
 			e.preventDefault();
 			e.stopPropagation();
+			// A native task never falls back to tmux copy-mode: no terminal yet, no bar.
+			if (native && !termRef.current) return;
+			if (!searchBarRef.current) setSearchTerm(native ? termRef.current : null);
 			setSearchOpen(true);
 			// Already open → re-focus the input and select the query for retyping.
 			searchBarRef.current?.focusInput();
 		}
 		window.addEventListener("keydown", handleSearchShortcut, { capture: true });
 		return () => window.removeEventListener("keydown", handleSearchShortcut, { capture: true });
-	}, []);
+	}, [native]);
 
 	function closeSearch() {
 		setSearchOpen(false);
+		setSearchTerm(null);
 		setSearchPaneId(null);
 		try { termRef.current?.focus(); } catch { /* disposed */ }
 	}
@@ -2618,9 +2655,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		const container = containerRef.current;
 		if (!container) return;
 
-		function sendPathToPty(path: string) {
+		function sendPathToPty(...paths: string[]) {
 			if (wsRef.current?.readyState === WebSocket.OPEN) {
-				const escaped = path.replace(/ /g, "\\ ");
+				const escaped = paths.map((path) => path.replace(/ /g, "\\ ")).join(" ");
 				sendPlacedInput(escaped);
 			}
 			try { termRef.current?.focus(); } catch { /* disposed */ }
@@ -2636,20 +2673,23 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				// over real PNG bytes for a clipboard bitmap. The host-clipboard RPC below
 				// is the fallback — on Windows it returns raw DIB bytes, and in remote mode
 				// it reads the app host's clipboard rather than the user's device.
-				const pastedImages = imageFilesFromClipboard(clip);
-				if (pastedImages.length > 0) {
+				// Files copied in Finder come without text and are uploaded like a drop.
+				const pastedFiles = !text && clip?.files?.length ? Array.from(clip.files) : imageFilesFromClipboard(clip);
+				if (pastedFiles.length > 0) {
 					e.preventDefault();
 					e.stopImmediatePropagation();
-					void Promise.all(pastedImages.map((f) => uploadDroppedFile(projectId, f)))
-						.then((paths) => {
-							const line = paths.filter((p): p is string => Boolean(p)).map((p) => p.replace(/ /g, "\\ ")).join(" ");
-							if (line) sendPathToPty(line);
-							else toast.error(t("imagePaste.failed"), { taskId });
-						})
-						.catch((err) => {
-							console.error("[TerminalView] Image paste upload failed:", err);
-							toast.error(t("fileDrop.uploadFailed", { error: String(err instanceof Error ? err.message : err) }), { taskId });
-						});
+					let failed = false;
+					// Per file, like a drop: a copied folder cannot be read, but the files beside it still land.
+					void Promise.all(pastedFiles.map((f) => uploadDroppedFile(projectId, f).catch((err) => {
+						failed = true;
+						console.error(`[TerminalView] Paste upload failed for "${f.name}":`, err);
+						toast.error(t("fileDrop.uploadFailed", { error: String(err instanceof Error ? err.message : err) }), { taskId });
+						return null;
+					}))).then((paths) => {
+						const uploaded = paths.filter((p): p is string => Boolean(p));
+						if (uploaded.length > 0) sendPathToPty(...uploaded);
+						else if (!failed && pastedFiles.every((f) => f.type.startsWith("image/"))) toast.error(t("imagePaste.failed"), { taskId });
+					});
 					return;
 				}
 
@@ -2808,7 +2848,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				ref={containerRef}
 				className="w-full h-full overflow-hidden"
 				data-terminal="true"
-				style={{ backgroundColor: termBg }}
+				// ghostty-web makes this element contenteditable; WebKit then paints its native
+				// caret beside the canvas — a full-height blinking accent line (#2124).
+				style={{ backgroundColor: termBg, caretColor: "transparent" }}
 				onClick={handleTerminalClick}
 				onContextMenu={(e) => e.preventDefault()}
 				onDragOver={handleDragOver}
@@ -2848,6 +2890,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					taskId={taskId}
 					onClose={closeSearch}
 					onPaneResolved={setSearchPaneId}
+					term={searchTerm ?? undefined}
+					onHighlightChange={(on) => { searchOwnsSelectionRef.current = on; }}
 				/>
 			)}
 		</div>

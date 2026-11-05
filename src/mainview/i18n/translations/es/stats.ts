@@ -72,7 +72,7 @@ const stats = {
 	"stats.counters.allTimeCompleted": "Entregadas histórico",
 	"stats.counters.bestStreak": "Mejor racha",
 	"stats.counters.tokensUsed": "Tokens usados",
-	"stats.counters.tokensUsedHint": "Tokens guardados de entrada, salida y caché de Claude Code, Codex, Gemini CLI, Cursor Agent y GitHub Copilot CLI. Cursor se registra tras configurar los hooks; Copilot, desde puntos de control guardados o al terminar la sesión.",
+	"stats.counters.tokensUsedHint": "Tokens guardados de entrada, salida y caché de Claude Code, Codex, Gemini CLI, Cursor Agent, GitHub Copilot CLI, OpenCode, pi y Oh My Pi. Cursor se registra tras configurar los hooks; Copilot, desde puntos de control guardados o al terminar la sesión.",
 	"stats.counters.apiCost": "~Coste API",
 	"stats.counters.apiCostHint": "Estimación a tarifas públicas de API, actualizadas a diario con conexión. Los cargos de suscripción y créditos pueden variar.",
 	"stats.counters.apiCostHintPartial": "La estimación excluye algunos modelos con precio desconocido, así que la cifra real a tarifa API es mayor.",

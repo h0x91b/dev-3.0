@@ -2,13 +2,13 @@ import { ACTIVE_STATUSES, getTaskTitle } from "../shared/types";
 import { cpus, loadavg } from "node:os";
 import { resolveResourceLevels } from "../shared/types";
 import type { MemoryTaskConsumer, ResourceUsage, SystemLoadSnapshot, SystemMemorySnapshot, TaskStatus } from "../shared/types";
-import { collectProcessInfo, collectDescendants, getAllSessionPanePids } from "./port-scanner";
+import { collectProcessInfo, collectDescendants, getAllSessionPanePids, listNativeTaskIds, nativeTaskPids } from "./port-scanner";
 import { DEFAULT_TMUX_SOCKET, devServerSessionForTaskSession, parseDev3SessionName, TASK_SESSION_PREFIX } from "./tmux";
 import { createLogger } from "./logger";
 import { startSleepInhibitWatch, stopSleepInhibitWatch } from "./caffeinate";
 import { probeMemoryFacts } from "./system-memory-probe";
 import { classifyPressure, groupConsumers, isSwapping, median, type RawConsumer } from "./system-memory";
-import { classifyCpu, classifyDisk, cpuBusyRatio, cpuLoadPercent, groupCpuConsumers, loadSnapshotWorthPushing, readDiskFacts, sumCpuTimes, type CpuTimes } from "./system-load";
+import { classifyCpu, classifyDisk, cpuBusyRatio, groupCpuConsumers, loadSnapshotWorthPushing, readDiskFacts, sumCpuTimes, type CpuTimes } from "./system-load";
 import { loadSettings } from "./settings";
 import { DEV3_HOME } from "./paths";
 
@@ -268,13 +268,11 @@ async function collectSystemLoad(
 	const cores = cpus().length;
 	// Read every tick so a changed level shows within one poll, no restart.
 	const levels = resolveResourceLevels(await loadSettings());
-	const loadPercent = cpuLoadPercent(one, cores, busy);
 	const disk = readDiskFacts(DEV3_HOME);
 
 	const next: SystemLoadSnapshot = {
 		cpuBusy: busy,
-		cpuLoadPercent: loadPercent,
-		cpuPressure: classifyCpu(loadPercent, levels),
+		cpuPressure: classifyCpu(busy, levels),
 		cores,
 		loadAvg: [one, five, fifteen],
 		topCpuConsumers: groupCpuConsumers(outsiders, TOP_CONSUMERS),
@@ -308,7 +306,11 @@ async function poll() {
 		// synchronously, which stalled the main loop under load.
 		const paneMap = await getAllSessionPanePids(DEFAULT_TMUX_SOCKET);
 		const sessionNames = filterTaskSessions(paneMap);
-		const activeShortIds = new Set(sessionNames.map((n) => n.slice(TASK_SESSION_PREFIX.length)));
+		const nativeTaskIds = listNativeTaskIds();
+		const activeShortIds = new Set([
+			...sessionNames.map((n) => n.slice(TASK_SESSION_PREFIX.length)),
+			...nativeTaskIds.map((id) => id.slice(0, 8)),
+		]);
 
 		// Clean up stale cache and notify renderer
 		for (const shortId of usageData.keys()) {
@@ -340,6 +342,23 @@ async function poll() {
 		const taskUsage: Array<{ shortId: string; rss: number; cpu: number }> = [];
 		const allTaskPids = new Set<number>();
 
+		const recordUsage = (shortId: string, allPids: Set<number>) => {
+			// Aggregate resources from pre-collected data (no extra spawns)
+			const usage = aggregateResources(allPids, resources);
+
+			taskUsage.push({ shortId, rss: usage.rss, cpu: usage.cpu });
+			for (const pid of allPids) allTaskPids.add(pid);
+
+			const prev = usageData.get(shortId);
+			const cpuChanged = !prev || Math.abs(usage.cpu - prev.cpu) > 1;
+			const rssChanged = !prev || Math.abs(usage.rss - prev.rss) > 1024 * 1024;
+
+			if (cpuChanged || rssChanged) {
+				usageData.set(shortId, usage);
+				pushMessageFn?.("resourceUsageUpdated", { taskId: shortId, usage });
+			}
+		};
+
 		for (const sessionName of sessionNames) {
 			const shortId = sessionName.slice(TASK_SESSION_PREFIX.length);
 			try {
@@ -356,23 +375,26 @@ async function poll() {
 						allPids.add(d);
 					}
 				}
-
-				// Aggregate resources from pre-collected data (no extra spawns)
-				const usage = aggregateResources(allPids, resources);
-
-				taskUsage.push({ shortId, rss: usage.rss, cpu: usage.cpu });
-				for (const pid of allPids) allTaskPids.add(pid);
-
-				const prev = usageData.get(shortId);
-				const cpuChanged = !prev || Math.abs(usage.cpu - prev.cpu) > 1;
-				const rssChanged = !prev || Math.abs(usage.rss - prev.rss) > 1024 * 1024;
-
-				if (cpuChanged || rssChanged) {
-					usageData.set(shortId, usage);
-					pushMessageFn("resourceUsageUpdated", { taskId: shortId, usage });
-				}
+				recordUsage(shortId, allPids);
 			} catch (err) {
 				log.warn("Resource usage scan failed", { session: sessionName, error: String(err) });
+			}
+		}
+
+		const tmuxShortIds = new Set(sessionNames.map((n) => n.slice(TASK_SESSION_PREFIX.length)));
+		for (const taskId of nativeTaskIds) {
+			const shortId = taskId.slice(0, 8);
+			// A leftover record of a task now on tmux must not overwrite its real usage.
+			if (tmuxShortIds.has(shortId)) continue;
+			try {
+				const allPids = nativeTaskPids(taskId, tree);
+				if (allPids.size > 0) recordUsage(shortId, allPids);
+				else if (usageData.delete(shortId)) {
+					// A leftover coordinator record with no live pane must not freeze the last figures.
+					pushMessageFn?.("resourceUsageUpdated", { taskId: shortId, usage: { cpu: 0, rss: 0 } });
+				}
+			} catch (err) {
+				log.warn("Resource usage scan failed", { session: taskId.slice(0, 8), error: String(err) });
 			}
 		}
 

@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import type { Label, Project, Task } from "../../shared/types";
+import type { CodingAgent, Label, Project, Task } from "../../shared/types";
 import { getTaskTitle, taskSeqLabel } from "../../shared/types";
 import { useT } from "../i18n";
 import { compactAge } from "../utils/statusAge";
@@ -9,10 +9,13 @@ import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useProjectPrivacy } from "../sensitive-projects";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import LabelChip from "./LabelChip";
+import { TaskAgentAccountsList } from "./TaskAgentAccounts";
+import { describeTaskAgentAccounts } from "../utils/taskAgentAccounts";
 
 interface TaskTitleHoverCardProps {
 	task: Task;
 	project: Project | null;
+	agents: CodingAgent[];
 	children: ReactNode;
 }
 
@@ -22,7 +25,7 @@ interface TaskTitleHoverCardProps {
  * Hover-only by design — on touch it stays out of the way, the task view itself
  * carries the same facts.
  */
-export default function TaskTitleHoverCard({ task, project, children }: TaskTitleHoverCardProps) {
+export default function TaskTitleHoverCard({ task, project, agents, children }: TaskTitleHoverCardProps) {
 	const t = useT();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const privacy = useProjectPrivacy();
@@ -81,6 +84,7 @@ export default function TaskTitleHoverCard({ task, project, children }: TaskTitl
 		.filter(Boolean) as Label[];
 	const branch = task.branchName ?? task.existingBranch ?? null;
 	const age = compactAge(task.createdAt);
+	const mountAgents = task.terminalBackend === "native" || describeTaskAgentAccounts(task, agents, null).length > 0;
 
 	const row = (label: string, value: ReactNode) => (
 		<div className="flex items-baseline gap-2">
@@ -119,6 +123,7 @@ export default function TaskTitleHoverCard({ task, project, children }: TaskTitl
 								? <span className={`font-mono break-all ${privacy.maskClass(project ?? task.projectId)}`}>{branch}</span>
 								: <span className="text-fg-muted">{t("taskHover.none")}</span>,
 						)}
+						{mountAgents && <TaskAgentAccountsList task={task} agents={agents} frame={(list) => row(t("taskAgents.title"), list)} />}
 						{row(
 							t("taskHover.labels"),
 							labels.length > 0

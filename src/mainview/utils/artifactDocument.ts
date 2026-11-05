@@ -2,6 +2,7 @@ import { artifactBridgeScript } from "./artifactBridge";
 import { artifactCommentScript } from "./artifactCommentScript";
 import { artifactChannelScript } from "./artifactChannel";
 import { artifactLinksScript } from "./artifactLinks";
+import { LIVE_CLIENT_GESTURE_MS, LIVE_CLIENT_TIMEOUT_MS, liveArtifactClientScript } from "../../shared/live-artifact-client";
 
 interface ArtifactAssetPayload {
 	name: string;
@@ -124,6 +125,7 @@ export function composeArtifactDocument(
 	saveImageLabel?: string,
 	canSendToAgent = false,
 	theme: "light" | "dark" = "light",
+	live?: { pageRev: number },
 ): string {
 	const byName = new Map(assets.map((asset) => [asset.name, asset.dataUrl]));
 	const resolve = (url: string): string => {
@@ -165,7 +167,7 @@ export function composeArtifactDocument(
 	// `allow-popups` for it); it carries no href, so a report's own `<base href>`
 	// still sets the document base URL. `artifactLinksScript` takes the in-page
 	// anchors back off that default.
-	const injected = `<meta http-equiv="Content-Security-Policy" content="${CSP}"><base target="_blank">${artifactChannelScript()}${assetRuntimeScript(assets)}${findScript()}${artifactLinksScript()}${artifactBridgeScript(canSendToAgent)}${artifactCommentScript()}${saveImageLabel ? saveImageMenuScript(saveImageLabel) : ""}`;
+	const injected = `<meta http-equiv="Content-Security-Policy" content="${CSP}"><base target="_blank">${artifactChannelScript()}${assetRuntimeScript(assets)}${findScript()}${artifactLinksScript()}${artifactBridgeScript(canSendToAgent)}${live ? liveArtifactClientScript({ transport: "frame", pageRev: live.pageRev, gestureMs: LIVE_CLIENT_GESTURE_MS, timeoutMs: LIVE_CLIENT_TIMEOUT_MS }) : ""}${artifactCommentScript()}${saveImageLabel ? saveImageMenuScript(saveImageLabel) : ""}`;
 	if (/<head(?:\s|>)/i.test(html)) return applyDocumentTheme(html.replace(/<head([^>]*)>/i, `<head$1>${injected}`), theme);
 	if (/<html(?:\s|>)/i.test(html)) return applyDocumentTheme(html.replace(/<html([^>]*)>/i, `<html$1><head>${injected}</head>`), theme);
 	const body = html.replace(/<!doctype[^>]*>/i, "");

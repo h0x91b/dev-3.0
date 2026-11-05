@@ -120,7 +120,7 @@ function Sheet({ onClose, title, ariaLabel, children, testId }: BottomSheetProps
 								type="button"
 								onClick={onClose}
 								aria-label={t("common.close")}
-								className="-mr-1.5 flex h-9 w-9 items-center justify-center rounded-lg text-fg-muted hover:bg-elevated hover:text-fg transition-colors"
+								className="-mr-1.5 flex h-9 w-9 items-center justify-center rounded-lg text-fg-muted hover:bg-overlay-hover hover:text-fg transition-colors"
 							>
 								<span className="text-base leading-none">×</span>
 							</button>

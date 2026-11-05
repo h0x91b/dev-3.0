@@ -43,13 +43,13 @@ const help = {
 	// ── Board chrome ──
 	"help.board.filterBar.title": "Search & filters",
 	"help.board.filterBar.body":
-		"One box searches and filters the board. Type free text to fuzzy-match titles/descriptions, or filter with tokens — priority:P0 label:\"Bug Fix\" agent:Codex status:review type:coordinator space:\"Client X\" is:attention is:home is:hidden is:hibernated is:keepalive has:port. The P0–P4 priority chips, the label chips and the funnel dropdown all edit these same tokens, so typing and clicking never disagree. The × clears everything. Manage labels in Project Settings → Labels.",
+		"One box searches and filters the board. Type free text to fuzzy-match titles/descriptions, or filter with tokens — priority:P0 label:\"Bug Fix\" agent:Codex status:review type:coordinator space:\"Client X\" epic:\"Payments v2\" children:1801 is:attention is:home is:hidden is:hibernated is:keepalive is:stalled has:port has:pr pr:open pr:merged pr:closed. The P0–P4 priority chips, the label chips and the funnel dropdown all edit these same tokens, so typing and clicking never disagree. The × clears everything. Manage labels in Project Settings → Labels.",
 	"help.board.priorityFilter.title": "Priority filter",
 	"help.board.priorityFilter.body":
 		"Every task has a priority P0 (highest) … P4 (lowest, default P3). Columns always sort by it, so the most important work stays on top. Click a chip to show only that priority; drag a card into another band to re-prioritize it.",
 	"help.filters.dsl.title": "Search & filters",
 	"help.filters.dsl.body":
-		"Type to fuzzy-match titles and descriptions, or filter with tokens: priority:P0 label:\"Bug Fix\" agent:Codex status:review type:coordinator space:\"Client X\" is:attention is:home is:hidden is:hibernated is:keepalive has:port. Quote multi-word values. Combine facets (AND); repeat one facet to broaden (OR). The P0–P4 chips, label chips and the funnel all edit these same tokens. Manage labels in Project Settings → Labels.",
+		"Type to fuzzy-match titles and descriptions, or filter with tokens: priority:P0 label:\"Bug Fix\" agent:Codex status:review type:coordinator space:\"Client X\" epic:\"Payments v2\" children:1801 is:attention is:home is:hidden is:hibernated is:keepalive is:stalled has:port has:pr pr:open pr:merged pr:closed. Quote multi-word values. children:1801 (or children:project/1801) shows that task with the tasks it created. is:stalled finds in-progress or AI-review tasks with no status change for 4 hours; pr:open/merged/closed match the state of the current pull request. epic:\"Payments v2\" shows one epic's tasks — click a card's epic chip to add it. Combine facets (AND); repeat one facet to broaden (OR). The P0–P4 chips, label chips and the funnel all edit these same tokens. Manage labels in Project Settings → Labels.",
 	"help.board.taskCard.title": "Task card",
 	"help.board.taskCard.body":
 		"The colored dots are parallel agent variants (each in its own worktree), the bell means the agent is calling you, and the #123 badge is the task's PR with its CI and review state. Right-click the card for every task action.",
@@ -211,7 +211,7 @@ const help = {
 	// ── Viewers & workspace ──
 	"help.viewer.images.title": "Shared images",
 	"help.viewer.images.body":
-		"Screenshots and renders an agent surfaced with `dev3 show-image`, newest first. Step through the history, download an image (also on right-click), copy its path, or reveal the original file on disk. A video shared with `dev3 show-video` plays in place: play, pause, seek and volume are on the player, and it never starts on its own.",
+		"Screenshots and renders an agent surfaced with `dev3 show-image`, newest first. Step through the history, download an image (also on right-click), copy its path, or reveal the original file on disk. Video and audio shared with `dev3 show-media` play in place: play, pause, seek and volume are on the player, and nothing starts on its own.",
 	"help.viewer.artifact.title": "Artifact",
 	"help.viewer.artifact.body":
 		"An interactive HTML report an agent built with `dev3 show-artifact`, sandboxed and opened as a popup over the task — the same way images open. Go fullscreen, step through past artifacts, or download it as HTML (or a ZIP when it bundles images). Escape closes it.",

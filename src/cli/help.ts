@@ -7,7 +7,7 @@
 // hand-written help inside their handlers and are NOT listed here (see
 // `OWNS_HELP` below).
 
-import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES, MAX_SCHEDULED_MESSAGE_LENGTH, MAX_SHARED_VIDEO_BYTES, formatMediaCap } from "../shared/types";
+import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES, MAX_SCHEDULED_MESSAGE_LENGTH, MAX_SHARED_MEDIA_BYTES, formatMediaCap } from "../shared/types";
 import { MAX_MESSAGE_SUBJECT_LENGTH, MESSAGE_SUBJECT_WORD_GUIDANCE } from "../shared/agent-message-subject";
 import { CLI_EXIT_CODE_HIBERNATE_DECLINED, CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_PANE_NO_ROOM, CLI_EXIT_CODE_RESUME_ALREADY_RUNNING, CLI_EXIT_CODE_RESUME_UNAVAILABLE, CLI_EXIT_CODE_TASK_NOT_HIBERNATED } from "../shared/cli-exit-codes";
 
@@ -52,6 +52,24 @@ const GLOBAL_OPTIONS = [
 ];
 
 const COMMANDS: CommandHelp[] = [
+	{
+		name: "secret",
+		summary: "Use a secret in one command without putting it in the conversation.",
+		subcommands: [{
+			name: "run",
+			usage: "dev3 secret run --env NAME [--task <id>] -- command [args...]",
+			summary: "Ask the user for a secret in a masked app dialog, then run the displayed command.",
+			details: [
+				"Never pass the secret as an argument. The user enters it only in the app.",
+				"The secret reaches only the approved child environment; dev3 does not save it.",
+				"stdin is closed. stdout/stderr are discarded; only success/failure returns to the agent.",
+				"The command runs directly (no implicit shell) in the task worktree, for up to five minutes.",
+				"The request expires after ten minutes; closing the CLI cancels it. Never auto-approved.",
+				"The approved command and its descendants can read, store or transmit the secret. Review them first.",
+				"Example: dev3 secret run --env API_TOKEN -- node scripts/upload.mjs",
+			],
+		}],
+	},
 	{
 		name: "agent",
 		summary: "Add managed agents to existing task terminals (the CLI equivalent of +Agent).",
@@ -137,7 +155,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "create",
-				usage: 'dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|board-cleanup|standard] | dev3 task create --scratch --run [--agent <id> [--config <id>]]',
+				usage: 'dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] | dev3 task create --scratch --run [--agent <id> [--config <id>]]',
 				summary: "Create a task in To Do, or ask the user to start a scratch peer agent.",
 				details: [
 					"--title <text>        Task title (required).",
@@ -159,9 +177,16 @@ const COMMANDS: CommandHelp[] = [
 					"                      pr-review = reviews someone else's code; use --pr to check it out.",
 					'Review a pull request:  dev3 task create --pr 1497 --title "Review of #1497"',
 					"Unresolvable --pr/--branch creates nothing and exits 18.",
+					"Run inside a task (worktree or DEV3_TASK_ID), the new task records that task as its",
+					"parent for good — `task show` prints it as Created by. Outside one, it is yours.",
+					"It also joins that task's epic, across projects, unless the epic is archived.",
+					"--epic <name|id>      Put the new task in this epic instead (overrides inheritance).",
+					"                      Unknown, ambiguous or archived epic: nothing is created, exit 44.",
+					"--no-epic             Create it in no epic even when the creating task has one.",
 					"--scratch --run       Ask the user to start a throwaway peer agent — no title,",
 					"                      no prompt. Blocks up to 10 min on their approval in the",
-					"                      app; exit 10 if declined. Drive it with `dev3 message`.",
+					"                      app; exit 10 if declined, 46 if it failed to prepare.",
+					"                      Drive it with `dev3 message`.",
 					"--handoff-file <path> Append this file's text to the handoff note the new agent",
 					"                      receives, for standing instructions you would otherwise",
 					"                      message by hand. Launches only; unreadable/empty exits 3.",
@@ -172,8 +197,8 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "update",
-				usage: 'dev3 task update [<id>] [--title "..."] [--description "..." | --description -] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard]',
-				summary: "Update a task's title, description, priority, completion policy, or type.",
+				usage: 'dev3 task update [<id>] [--title "..."] [--description "..." | --description -] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic]',
+				summary: "Update a task's title, description, priority, completion policy, type, or epic.",
 				details: [
 					"--title <text>        New title (cannot be empty).",
 					'--description <text>  New description ("" clears it); use - to read it from stdin.',
@@ -189,6 +214,8 @@ const COMMANDS: CommandHelp[] = [
 					"                      under a 'Brief source:' line (project, app-wide or built-in)",
 					"                      instead of typing it into your own pane, and print it again on a",
 					"                      repeat that changes nothing. This is what /dev3-coordinator runs.",
+					"--epic <name|id>      Move this task into an existing epic (exit 44 if it names none or an archived one).",
+					"--no-epic             Take this task out of its epic. Neither flag touches its children.",
 					"--force               Overwrite a user-edited title (diagnostics only — avoid).",
 				],
 			},
@@ -208,7 +235,8 @@ const COMMANDS: CommandHelp[] = [
 					"is stopped and the worktree and its dev3 branch deleted, only after the user",
 					"approves it in the app (exit 27 if not). On a clean task it is a plain move.",
 					"Starting SOMEONE ELSE'S task (--task <other> + an active status) also asks",
-					"the user, who picks the agent; exit 10 if they decline. The task it starts is",
+					"the user, who picks the agent; exit 10 if they decline, 46 if the approved",
+					"task then fails to prepare (it is back in To Do). The task it starts is",
 					"told by default to report back as a file and message you only the path.",
 					"--handoff-file <path>    Append this file's text to that handoff note, for",
 					"                         standing instructions you would otherwise message by",
@@ -270,7 +298,7 @@ const COMMANDS: CommandHelp[] = [
 		subcommands: [
 			{
 				name: "list",
-				usage: "dev3 tasks list [--open] [--json] [--status <s>] [--label <id>] [--priority <P0..P4>] [--sort priority|seq] [--limit <n>] [--offset <n>]",
+				usage: "dev3 tasks list [--open] [--json] [--status <s>] [--label <id>] [--priority <P0..P4>] [--sort priority|seq] [--limit <n>] [--offset <n>] [--children-of <seq:N|id>] [--epic <name|id>]",
 				summary: "List tasks: live work, then To Do, then completed, then cancelled (default 50 per page).",
 				details: [
 					"Highest priority first inside each group, exactly as the board ranks a column; newest (highest seq) breaks ties.",
@@ -283,6 +311,9 @@ const COMMANDS: CommandHelp[] = [
 					"--sort priority|seq  Order inside each group (default priority).",
 					"--limit <n>        Page size (default 50).",
 					"--offset <n>       Skip n tasks, for paging.",
+					"--children-of <ref>  The tasks created from inside that task (its whole variant group), from every project.",
+					"                  The parent resolves in --project, else the current one. Direct children only.",
+					'--epic <name|id>  Every task in that epic, from every project and in every status (exit 44 if unknown).',
 				],
 			},
 		],
@@ -394,10 +425,11 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "usage",
-				usage: "dev3 stats usage [--since <duration|date>] [--json]",
-				summary: "Tokens and API-equivalent cost per agent per day, read from local agent transcripts.",
+				usage: "dev3 stats usage [--since <duration|date>] [--json] | --task <id|seq:N> [--project <id>] [--json]",
+				summary: "Tokens and API-equivalent cost per agent per day, or for one task, read from local agent transcripts.",
 				details: [
-					"Usage is recorded per agent and day, not per project, so there is no --project.",
+					"Daily usage is recorded per agent and day, not per project, so --project only scopes a --task lookup.",
+					"--task <id|seq:N>: one task's tokens by type (cacheWriteTokens, of which the 5m/1h split Claude reports; Codex writes have no TTL), messages and cost per model, from the Claude transcripts of its working directory (subagents included) and the Codex rollouts that ran there. Works after the worktree is gone, while the agent keeps the transcripts; coverage.uncoveredArchivedSessions counts sessions whose transcript was cleaned up and are not in the totals. A conversation a pane resumed from another folder counts only from the task's launch (coverage.resumedTranscriptFiles). An Operations task on a user-chosen folder counts only usage inside its lifetime (coverage.sharedWorkingDir). No --since.",
 					"--json prints { schemaVersion: 1, ... }; new fields may appear, a removed or renamed one bumps schemaVersion.",
 				],
 			},
@@ -497,6 +529,20 @@ const COMMANDS: CommandHelp[] = [
 		],
 	},
 	{
+		name: "board",
+		summary: "The board copy dev3 keeps in the project folder (.dev3/board/) when it is turned on in Project Settings.",
+		subcommands: [
+			{
+				name: "export",
+				usage: "dev3 board export [--project <id>] [--json]",
+				summary: "Write the board copy now instead of waiting for the next board change.",
+				details: [
+					"Compares every file with the disk and writes only what differs. Refuses when the copy is off for the project.",
+				],
+			},
+		],
+	},
+	{
 		name: "label",
 		summary: "Manage project labels and task label assignments.",
 		subcommands: [
@@ -518,10 +564,11 @@ const COMMANDS: CommandHelp[] = [
 			{
 				name: "set",
 				usage: "dev3 label set <id> [<id>...] [--task <id>]",
-				summary: "REPLACE the task's whole label set with exactly these labels.",
+				summary: "REPLACE the task's labels with these, keeping the ones the user set in the app.",
 				details: [
-					"Labels not listed are removed. Use `label add` to keep the existing ones.",
-					"--clear    Remove all labels from the task (dev3 label set --clear).",
+					"Labels not listed are removed, except those the user set in the app:",
+					"only `label remove <id>` naming one takes it off. Prefer `label add`.",
+					"--clear    Remove every label the user did not set (dev3 label set --clear).",
 				],
 			},
 			{
@@ -760,11 +807,20 @@ const COMMANDS: CommandHelp[] = [
 			"             old diffs/logs of finished tasks. Report-only by default.",
 			"  --prune-orphans       Delete orphaned directories and finish the",
 			"                        abandoned teardowns.",
-			"  --prune-older-than D  Delete diffs/logs of finished tasks older than",
-			"                        D (30d, 2w, 6m, 1y).",
+			"  --prune-older-than D  Delete what no open task owns and was last",
+			"                        touched over D ago (30d, 2w, 6m, 1y): orphans,",
+			"                        unfinished teardowns, old diffs/logs. dev3 runs",
+			"                        it with 14d once a day (Settings → System).",
+			"                        An UNMERGED dev3/task-* branch's directory waits",
+			"                        until 60d old; its branch ref is kept.",
 			"  --force-unmerged      Also delete entries whose dev3/task-* branch is",
-			"                        NOT merged into the base branch; without it",
-			"                        those are reported and skipped.",
+			"                        NOT merged into the base branch (and the branch),",
+			"                        at the --prune-older-than age given; without it",
+			"                        --prune-orphans reports and skips them.",
+			"  --gzip-diffs          Gzip the plain .patch diff snapshots of every",
+			"                        task in place (verified before the original",
+			"                        is deleted). Without it the report only",
+			"                        counts them.",
 			"--json       Machine-readable output.",
 			"Exit codes: 0 healthy or warnings only, 7 when problems were found,",
 			"12 when a prune skipped or failed part of what it selected.",
@@ -814,6 +870,45 @@ const COMMANDS: CommandHelp[] = [
 					"Space flags, --json and exit codes 33 / 34 work exactly as for `projects add`.",
 					"An existing git repo already at <parent>/<name> is registered without cloning.",
 				],
+			},
+		],
+	},
+	{
+		name: "epic",
+		summary: "Global epics: one named effort that groups tasks across projects.",
+		subcommands: [
+			{
+				name: "list",
+				usage: "dev3 epic list [--all] [--json]",
+				summary: "List active epics with id, colour, name, state and task count (default subcommand).",
+				details: [
+					"--all    Include archived epics.",
+					"See an epic's tasks with: dev3 tasks list --epic <name|id>",
+				],
+			},
+			{
+				name: "create",
+				usage: 'dev3 epic create --name "..." [--color #hex] [--json]',
+				summary: "Create an epic. Only the user (outside any task) or a coordinator task may; anyone else exits 45.",
+				details: [
+					"A name another epic already uses (case-insensitive, archived included) is refused.",
+					"Attach your own task next (dev3 task update --epic <id>) so every task you create inherits it.",
+				],
+			},
+			{
+				name: "update",
+				usage: 'dev3 epic update <name|id> [--name "..."] [--color #hex] [--json]',
+				summary: "Rename or recolour an epic. Membership is by id, so no task changes.",
+			},
+			{
+				name: "archive",
+				usage: "dev3 epic archive <name|id> [--json]",
+				summary: "Close an epic: it stays on its tasks and in filters, but takes no new tasks and is not inherited.",
+			},
+			{
+				name: "unarchive",
+				usage: "dev3 epic unarchive <name|id> [--json]",
+				summary: "Reopen an archived epic. There is no delete.",
 			},
 		],
 	},
@@ -964,18 +1059,19 @@ const COMMANDS: CommandHelp[] = [
 		],
 	},
 	{
-		name: "show-video",
-		summary: "Play MP4/WebM clips in the task's image viewer.",
+		name: "show-media",
+		summary: "Play video and audio clips in the task's image viewer.",
 		subcommands: [],
-		usage: 'dev3 show-video <file.mp4|file.webm> [--caption "..."] [<path> ...] [--task <id>]',
+		usage: 'dev3 show-media <file.mp4|.webm|.mp3|.m4a|.wav|.ogg> [--caption "..."] [<path> ...] [--task <id>]',
 		details: [
 			"Same history, badge and viewer as show-image: the viewer switches to a player for a clip.",
-			"Each --caption annotates the clip it immediately follows. Up to 20 files per call.",
-			`MP4 or WebM, up to ${formatMediaCap(MAX_SHARED_VIDEO_BYTES)} (${MAX_SHARED_VIDEO_BYTES.toLocaleString("en-US")} bytes) per file — trim or re-encode larger clips.`,
-			"The viewer streams the clip and can seek before it fully loads. H.264/AAC MP4 is the safest codec choice;",
-			"whether a codec plays depends on the engine (only Chromium playback of H.264, VP8 and VP9 was measured).",
+			"Each --caption annotates the clip it immediately follows. Up to 20 files per call; video and audio may mix.",
+			"Video: MP4 or WebM. Audio: MP3, M4A, WAV or OGG. Anything else (FLAC, Opus in WebM, MOV, MKV) — convert it first.",
+			`Up to ${formatMediaCap(MAX_SHARED_MEDIA_BYTES)} (${MAX_SHARED_MEDIA_BYTES.toLocaleString("en-US")} bytes) per file — trim or re-encode larger clips.`,
+			"The extension picks the container; the codec inside is the engine's call. H.264/AAC MP4 and MP3 are the safest.",
 			"A codec the engine cannot decode (HEVC in Chromium, for one) shows a notice pointing at Open in default app.",
-			"Files are copied into the task's shared store, so the original may be deleted afterwards. Never autoplays.",
+			"The viewer streams the clip and can seek before it fully loads. Never autoplays.",
+			"Files are copied into the task's shared store, so the original may be deleted afterwards.",
 		],
 	},
 	{
@@ -1172,8 +1268,8 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "watch",
-				usage: "dev3 pr watch [--until ci|merged] [--pr <N>] [--task <id>] [--project <id>] [--off|--list]",
-				summary: "Ask dev3 to message you when this task's PR finishes CI or is merged; returns at once.",
+				usage: "dev3 pr watch [--until ci|merged] [--pr <N>] [--task <id>] [--project <id>] [--off [--pr <N>]|--list]",
+				summary: "Ask dev3 to message you when a PR (this task's own by default) finishes CI or is merged; returns at once.",
 				details: [
 					"--until ci       (default) One message when every check GitHub lists for the PR's current",
 					"                 head has finished, green or red; also when the PR is merged or closed first.",
@@ -1181,14 +1277,18 @@ const COMMANDS: CommandHelp[] = [
 					"                 by then cannot be waited for.",
 					"--until merged   One message when the PR is merged or closed. A red CI on the way is",
 					"                 reported once per head and the watch stays.",
-					"--pr <N>         A safety check: must be the open PR of this task's own branch. Watching",
-					"                 follows that PR only (a review target is not supported). With no open PR,",
-					"                 or any other number, it exits 38 and subscribes nothing.",
-					"--off            Remove every watch of the task. --list prints them.",
+					"--pr <N>         Any open PR of the project's repository, fork heads included: a review",
+					"                 target, or a PR you handed to another task. The message still comes to you.",
+					"                 Its CI verdict is about the PR's head on GitHub; a push to it moves the",
+					"                 watch, so subscribe after the push you wait for (the message names the SHA).",
+					"                 Its merge offers no completion of your task. Your own branch's PR behaves as",
+					"                 without --pr. No such PR exits 38; already merged or closed exits 43.",
+					"--off [--pr <N>] Remove every watch of the task, or only those on PR N. --list prints them.",
 					"The command stores the subscription in the app and exits; dev3 types the message into",
 					"this agent when it is quiet. Never poll `gh` or set a timer for it.",
 					"A repo with no CI checks never ends a `ci` watch (no run to finish): use --until merged.",
-					"A new push moves the watch to the new head. One watch per --until; repeating replaces it.",
+					"A new push moves the watch to the new head. One watch per --until and PR; repeating",
+					"replaces it. Watches on different PRs coexist (up to 10 followed PRs per task).",
 					"Needs the running app.",
 				],
 			},

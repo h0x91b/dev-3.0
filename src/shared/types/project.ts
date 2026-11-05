@@ -173,6 +173,9 @@ export interface ProjectSettingsUpdate extends Dev3RepoConfig {
 	artifactTemplate?: ArtifactTemplateMode | "inherit";
 	/** Blank string clears the project folder and falls back to the global one. */
 	artifactTemplatePath?: string;
+	/** Turns the board copy in `.dev3/board/` on or off; turning it on writes the copy within seconds. */
+	boardCopy?: boolean;
+	boardCopyMessages?: boolean;
 }
 
 /**
@@ -292,7 +295,32 @@ export interface Project {
 	 * every existing project keeps today's behaviour. See {@link repoConfigEnabled}.
 	 */
 	useRepoConfig?: boolean;
+	/**
+	 * Keep a one-way copy of this board in `<path>/.dev3/board/` (see
+	 * `src/shared/board-copy.ts`). Absent means off. Machine-local, like every
+	 * field here: a repository cannot turn it on for itself.
+	 */
+	boardCopy?: boolean;
+	/** Also copy the messages this board's agents received. Off unless set; only read while {@link boardCopy} is on. */
+	boardCopyMessages?: boolean;
 }
+
+/** Why a board-copy write failed, for the one warning a failure streak shows. */
+export type BoardCopyFailureReason =
+	| "missing-folder"
+	| "not-writable"
+	| "disk-full"
+	/** The board is empty but the folder's copy holds tasks; the copy is kept so it can still be restored. */
+	| "kept-copy"
+	/** The copy was written by a newer dev3 format; this version never overwrites it. */
+	| "unsupported-copy"
+	| "other";
+
+/** What a project folder's board copy holds, offered for restore when the board is empty. */
+export type BoardCopyOffer =
+	| { status: "ok"; taskCount: number; exportedAt: string }
+	| { status: "unsupported-version"; version: string }
+	| { status: "invalid" };
 
 /**
  * Whether dev3 may read this project's `.dev3/` config files at all.

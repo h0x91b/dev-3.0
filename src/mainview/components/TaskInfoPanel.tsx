@@ -8,8 +8,8 @@ import LabelChip from "./LabelChip";
 import PriorityBadge from "./PriorityBadge";
 import OpenInMenu from "./OpenInMenu";
 import { formatDate } from "./NoteItem";
-import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle, isCoordinatorTask, isSharedVideo, resolveTaskCompareBaseBranch, taskCompletesManually, taskSharedMedia } from "../../shared/types";
-import { earlierPullRequests } from "../../shared/task-pull-requests";
+import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle, isCoordinatorTask, isSharedClip, resolveTaskCompareBaseBranch, taskCompletesManually, taskSharedMedia } from "../../shared/types";
+import { earlierPullRequests, trustedPrStatusCache } from "../../shared/task-pull-requests";
 import InlineRename from "./InlineRename";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
@@ -75,6 +75,8 @@ import BottomSheet from "./BottomSheet";
 import HelpSpot from "./HelpSpot";
 import Tooltip from "./Tooltip";
 import ForeignCodeMark from "./ForeignCodeMark";
+import TaskOriginRow from "./TaskOriginRow";
+import TaskEpicRow from "./TaskEpicRow";
 import VariantSwitcher from "./VariantSwitcher";
 import { isMac } from "../utils/platform";
 import { terminalFullscreenShortcutLabel } from "../utils/terminalFullscreen";
@@ -163,6 +165,7 @@ function TaskInfoPanel({
 	const compact = useCompact();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const sharedMedia = taskSharedMedia(task);
+	const artifactEntryCount = (task.sharedArtifacts?.length ?? 0) + (task.liveArtifact ? 1 : 0);
 	// Per-control hiding (§5.10) — each of these can be individually hidden
 	// (right-click "Hide") and restored from the panel's one restore control.
 	const spawnAgentHidden = useIsControlHidden("spawn-agent");
@@ -650,7 +653,7 @@ function TaskInfoPanel({
 	const metadataBranchStatus = branchMeta?.branchStatus ?? null;
 	const diffCompareLabel = branchMeta?.compareLabel ?? project.defaultCompareRef ?? resolveTaskCompareBaseBranch(task, project);
 	const metadataPrInfo: TaskPRBadgeInfo | null = inspectorPRBadge(task, branchMeta?.prStatus, metadataBranchStatus);
-	const metadataPrState = metadataPrInfo ? prBadgeDisplayState(metadataPrInfo, metadataBranchStatus, task.prStatusCache) : undefined;
+	const metadataPrState = metadataPrInfo ? prBadgeDisplayState(metadataPrInfo, metadataBranchStatus, trustedPrStatusCache(task)) : undefined;
 	const metadataPrTone = metadataPrState ? prStateTone(metadataPrState) : null;
 	const allDiffFileStats = metadataBranchStatus?.diffFileStats ?? [];
 	// Per-file stats are what the filter subtracts from. Without them there is
@@ -862,7 +865,7 @@ function TaskInfoPanel({
 				data-testid="task-completion-owner"
 				className={`task-anim flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
 					completionIsManual
-						? "warning-paper text-warning-strong hover:text-warning-strong hover:bg-warning/15 border border-warning/30"
+						? "warning-paper text-warning-strong hover:bg-warning/15 border border-warning/30"
 						: "text-fg-3 hover:text-fg hover:bg-elevated border border-edge"
 				} ${completionIsForced ? "cursor-not-allowed" : ""}`}
 			>
@@ -1088,7 +1091,7 @@ function TaskInfoPanel({
 					data-testid="task-hibernate-button"
 					onClick={handleHibernate}
 					disabled={hibernating}
-					className="task-anim warning-paper flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-warning-strong hover:text-warning-strong hover:bg-warning/15 border border-warning/30 disabled:opacity-50"
+					className="task-anim warning-paper flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-warning-strong hover:bg-warning/15 border border-warning/30 disabled:opacity-50"
 					aria-label={t("task.hibernate")}
 				>
 					{hibernating ? (
@@ -1273,6 +1276,9 @@ function TaskInfoPanel({
 
 							<span className="text-fg-3">{t("infoPanel.created")}</span>
 							<span className="text-fg-3">{formatDate(task.createdAt)}</span>
+
+							<TaskOriginRow task={task} navigate={navigate} testId="info-panel-origin" />
+							<TaskEpicRow task={task} testId="info-panel-epic" />
 
 							<span className="text-fg-3">{t("infoPanel.updated")}</span>
 							<span className="text-fg-3">{formatDate(task.updatedAt)}</span>
@@ -1552,25 +1558,25 @@ function TaskInfoPanel({
 									className={SHEET_ROW_CLASS}
 								>
 									<ImagesIcon className="h-5 w-5 shrink-0 text-fg-3" />
-									<span className="flex-1 text-sm font-medium">{t(sharedMedia.some(isSharedVideo) ? "infoPanel.mediaLabel" : "infoPanel.imagesLabel")}</span>
+									<span className="flex-1 text-sm font-medium">{t(sharedMedia.some(isSharedClip) ? "infoPanel.mediaLabel" : "infoPanel.imagesLabel")}</span>
 									<span className="text-xs font-semibold text-accent tabular-nums">{sharedMedia.length}</span>
 								</button>
 							)}
 
-							{(task.sharedArtifacts?.length ?? 0) > 0 && (
+							{artifactEntryCount > 0 && (
 								<button
 									type="button"
 									onClick={() => {
 										setActionsSheetOpen(false);
 										window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
-											detail: { taskId: task.id, taskStatus: task.status, projectId: project.id, artifacts: task.sharedArtifacts, index: (task.sharedArtifacts?.length ?? 1) - 1 },
+											detail: { taskId: task.id, taskStatus: task.status, projectId: project.id, artifacts: task.sharedArtifacts ?? [], index: artifactEntryCount - 1, live: task.liveArtifact },
 										}));
 									}}
 									className={SHEET_ROW_CLASS}
 								>
 									<ArtifactsIcon className="h-5 w-5 shrink-0 text-fg-3" />
 									<span className="flex-1 text-sm font-medium">{t("infoPanel.artifactsLabel")}</span>
-									<span className="text-xs font-semibold text-accent tabular-nums">{task.sharedArtifacts?.length}</span>
+									<span className="text-xs font-semibold text-accent tabular-nums">{artifactEntryCount}</span>
 								</button>
 							)}
 						</div>

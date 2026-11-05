@@ -1,4 +1,5 @@
 import { stopAgentMessageLogWatches } from "./agent-message-log-watch";
+import { startBoardCopy, stopBoardCopy } from "./board-copy";
 import { claudeSessionWatches } from "./claude-session-watch";
 /**
  * Headless entry point for `dev3 remote`.
@@ -41,6 +42,7 @@ import { startSelfUpdateWatch, stopSelfUpdateWatch } from "./self-update-watch";
 import { VIEWS_DIR_AUTO_ENV } from "./self-update";
 import { configureHandoffWorker } from "./conversation-handoff-runner";
 import { configureClonefileWorker } from "./cow-clone";
+import { configureWorktreeCleanupWorker } from "./worktree-cleanup-scheduler";
 
 const log = createLogger("headless");
 
@@ -180,6 +182,7 @@ if (!process.env.DEV3_VIEWS_DIR) {
 if (process.env.DEV3_VIEWS_DIR) {
 	configureHandoffWorker(resolve(process.env.DEV3_VIEWS_DIR, "workers", "conversation-handoff-worker.js"));
 	configureClonefileWorker(resolve(process.env.DEV3_VIEWS_DIR, "workers", "clonefile-worker.js"));
+	configureWorktreeCleanupWorker(resolve(process.env.DEV3_VIEWS_DIR, "workers", "worktree-cleanup-worker.js"));
 }
 
 // ── Ensure ~/.dev3.0/bin/dev3 resolves to this binary ──
@@ -270,7 +273,7 @@ log.info("CLI socket server ready", { path: cliSocketPath });
 
 // ── PTY / port scanner / resource monitor (dynamic import so PATH is patched first) ──
 const { setOnPtyDied, setOnBell, setOnIdle, setOnPaneExited, setOnOsc52Copy, getActiveSessionIds, getPtyPort, registerBackpressureProbe } = await import("./pty-server");
-const { startPortScanPoller, stopPortScanPoller } = await import("./port-scanner");
+const { setNativeDevServerProbe, setNativePaneRecordsReader, startPortScanPoller, stopPortScanPoller } = await import("./port-scanner");
 const { startResourceMonitor, stopResourceMonitor } = await import("./resource-monitor");
 const { startRateLimitMonitor, stopRateLimitMonitor } = await import("./rate-limit-monitor");
 
@@ -497,7 +500,12 @@ startQrAutoRefresh(() => getAccessUrl());
 await rehydrateTaskLifecycles();
 
 startMergeDetectionPoller();
+startBoardCopy();
 startPRDetectionPoller();
+
+const nativeScanReaders = await import("./native-scan-readers");
+setNativeDevServerProbe(nativeScanReaders.probeNativeDevServer);
+setNativePaneRecordsReader(nativeScanReaders.nativePaneRecordsReader);
 
 startPortScanPoller(
 	(name, payload) => {
@@ -587,6 +595,7 @@ setOnPaneExited((taskId, paneId) => {
 function shutdown(signal: string): void {
 	log.info(`Received ${signal}, shutting down`);
 	stopAgentMessageLogWatches();
+	stopBoardCopy();
 	claudeSessionWatches.close();
 	stopQrAutoRefresh();
 	stopPortScanPoller();

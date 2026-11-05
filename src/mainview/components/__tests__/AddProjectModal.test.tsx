@@ -11,6 +11,9 @@ vi.mock("../../rpc", () => ({
 			addVirtualProject: vi.fn(),
 			cloneAndAddProject: vi.fn(),
 			initAndAddProject: vi.fn(),
+			restoreBoardCopy: vi.fn(),
+			getProjects: vi.fn(() => Promise.resolve([])),
+			getTasks: vi.fn(() => Promise.resolve([])),
 			getGlobalSettings: vi.fn(() =>
 				Promise.resolve({
 					defaultAgentId: "builtin-claude",
@@ -733,6 +736,93 @@ describe("AddProjectModal", () => {
 			await user.click(screen.getByText("New"));
 
 			expect(screen.queryByRole("switch", { name: "Auto-configure" })).not.toBeInTheDocument();
+		});
+	});
+
+	describe("board copy", () => {
+		const SWITCH = "Keep a copy of the board in this project";
+
+		it("is off by default on every git pane and sends nothing", async () => {
+			const user = userEvent.setup();
+			mockedOpenFolderPickerMulti.mockResolvedValue(["/work/app"]);
+			mockedApi.request.addProject.mockResolvedValue({ ok: true as const, project: mockProject });
+			renderModal();
+
+			for (const tab of ["Clone from URL", "New", "Local Folder"]) {
+				await user.click(screen.getByText(tab));
+				expect(screen.getByRole("switch", { name: SWITCH })).toHaveAttribute("aria-checked", "false");
+			}
+			await user.click(screen.getByText("Browse..."));
+			expect(mockedApi.request.addProject).toHaveBeenCalledWith({ path: "/work/app" });
+		});
+
+		it("on: asks the backend to keep the copy", async () => {
+			const user = userEvent.setup();
+			mockedOpenFolderPicker.mockResolvedValue("/tmp/fresh");
+			mockedApi.request.initAndAddProject.mockResolvedValue({ ok: true, project: mockProject } as any);
+			renderModal();
+
+			await user.click(screen.getByText("New"));
+			await user.click(screen.getByRole("switch", { name: SWITCH }));
+			await act(async () => { await user.click(screen.getByText("Pick folder...")); });
+			expect(mockedApi.request.initAndAddProject).toHaveBeenCalledWith({ path: "/tmp/fresh", boardCopy: true });
+		});
+
+		it("offers a restore when the folder holds a copy, and restores only after a yes", async () => {
+			const user = userEvent.setup();
+			const dispatch = vi.fn();
+			mockedOpenFolderPickerMulti.mockResolvedValue(["/work/app"]);
+			mockedApi.request.addProject.mockResolvedValue({
+				ok: true as const,
+				project: mockProject,
+				boardCopyOffer: { status: "ok", taskCount: 12, exportedAt: "2026-10-20T10:00:00.000Z" },
+			});
+			mockedApi.request.restoreBoardCopy.mockResolvedValue({ ok: true, restored: 12, missing: 0 });
+			mockedConfirm.mockResolvedValueOnce(true);
+			renderModal(dispatch);
+
+			await user.click(screen.getByText("Browse..."));
+			expect(mockedConfirm).toHaveBeenCalledWith(expect.objectContaining({
+				title: "Restore board from project copy?",
+				message: expect.stringContaining("12 tasks"),
+			}));
+			expect(mockedApi.request.restoreBoardCopy).toHaveBeenCalledWith({ projectId: "p-new" });
+			expect(toast.success).toHaveBeenCalledWith("Restored 12 tasks to my-repo", expect.anything());
+			expect(dispatch).toHaveBeenCalledWith({ type: "setTasks", projectId: "p-new", tasks: [] });
+		});
+
+		it("declining the restore changes nothing", async () => {
+			const user = userEvent.setup();
+			mockedOpenFolderPickerMulti.mockResolvedValue(["/work/app"]);
+			mockedApi.request.addProject.mockResolvedValue({
+				ok: true as const,
+				project: mockProject,
+				boardCopyOffer: { status: "ok", taskCount: 1, exportedAt: "2026-10-20T10:00:00.000Z" },
+			});
+			mockedConfirm.mockResolvedValueOnce(false);
+			renderModal();
+
+			await user.click(screen.getByText("Browse..."));
+			expect(mockedConfirm).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("1 task,") }));
+			expect(mockedApi.request.restoreBoardCopy).not.toHaveBeenCalled();
+		});
+
+		it("refuses a copy in a format it cannot read, without asking", async () => {
+			const user = userEvent.setup();
+			mockedOpenFolderPickerMulti.mockResolvedValue(["/work/app"]);
+			mockedApi.request.addProject.mockResolvedValue({
+				ok: true as const,
+				project: mockProject,
+				boardCopyOffer: { status: "unsupported-version", version: "2" },
+			});
+			renderModal();
+
+			await user.click(screen.getByText("Browse..."));
+			expect(mockedConfirm).not.toHaveBeenCalled();
+			expect(toast.error).toHaveBeenCalledWith(
+				"The board copy in my-repo uses format 2, which this dev3 cannot read. Update dev3 to restore it.",
+				expect.anything(),
+			);
 		});
 	});
 });

@@ -11,6 +11,7 @@ import { auxPaneTitle, openAuxPane } from "../../task-aux-panes";
 import { getPushMessage, buildSetupRerunScript, buildScriptRunnerCommand, buildTaskLifecycleEnv, generatedScriptLaunch, log, writeLaunchScript } from "../shared-pure";
 import { launchDialect } from "../../../shared/platform-launch";
 import { resolveOperationalProjectConfig } from "../settings-config";
+import * as repoConfig from "../../repo-config";
 import { findTaskAcrossProjects } from "./task-state";
 
 /** Forget a setup verdict and tell every viewer, so the notice cannot come back. */
@@ -59,8 +60,10 @@ export async function rerunSetupScript(params: { taskId: string }): Promise<void
 	const shellPath = getUserShell();
 	await writeLaunchScript(rerunPath, buildSetupRerunScript({ setupPath, shellPath, setupExitPath: setupExitCodePath(task.id) }));
 
+	// Project env with the global agent defaults, as on launch, where the setup
+	// script runs inside the agent session's env.
 	const env = {
-		...(resolved.env ?? {}),
+		...(await repoConfig.resolveProjectEnv(project, task.worktreePath, { foreignCode: task.foreignCode })),
 		...buildTaskLifecycleEnv(project, task, task.worktreePath),
 	};
 	const ports = portPool.getPortAssignments(task.id);

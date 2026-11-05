@@ -78,11 +78,18 @@ describe("task show --json", () => {
 
 	it("is a fixed projection: the key set is the contract, internals never leak", () => {
 		expect(Object.keys(buildTaskShowJson(TASK)).sort()).toEqual([
-			"baseBranch", "branch", "createdAt", "customColumnId", "description", "draft", "groupId", "hibernated", "id",
-			"keepAlive", "labelIds", "manualCompletion", "movedAt", "noteCount", "overview", "prNumber", "prStatus", "prUrl", "priority",
+			"baseBranch", "branch", "createdAt", "customColumnId", "description", "draft", "epic", "groupId", "hibernated", "id",
+			"keepAlive", "labelIds", "manualCompletion", "movedAt", "noteCount", "origin", "overview", "prNumber", "prStatus", "prUrl", "priority",
 			"projectId", "pullRequests", "schemaVersion", "seq", "status", "statusLabel", "taskType", "title", "titleEditedByUser",
 			"updatedAt", "variantIndex", "worktree",
 		]);
+	});
+
+	it("names the task's epic, and null when it has none", () => {
+		expect(buildTaskShowJson(TASK).epic).toBeNull();
+		const json = buildTaskShowJson({ ...TASK, epicId: "ep-1111-2222", epic: { id: "ep-1111-2222", name: "Payments v2", color: "#3b82f6", archived: true } });
+		expect(json.epic).toEqual({ id: "ep-1111-2222", name: "Payments v2", archived: true });
+		expect(buildTaskShowJson({ ...TASK, epicId: "gone", epic: null }).epic).toEqual({ id: "gone", name: null, archived: false });
 	});
 
 	it("lists every PR the task had, newest first, beside the current prNumber", () => {
@@ -176,5 +183,18 @@ describe("task show (human)", () => {
 	it("prints no PR line for a task without one", async () => {
 		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
 		expect(stdout).not.toContain("Pull requests:");
+	});
+
+	it("reports the user as origin for a task without one", () => {
+		expect(buildTaskShowJson(TASK).origin).toEqual({ kind: "user" });
+	});
+
+	it("includes a task origin with its resolved parent, or null once the parent is gone", () => {
+		const parent = { id: "pppppppp-1", projectId: "proj-002", projectName: "homebrew", seq: 7, variantIndex: null, title: "Coordinate" };
+		const child = { ...TASK, origin: { kind: "task", taskId: parent.id, projectId: parent.projectId } } as Task;
+		expect(buildTaskShowJson({ ...child, originParent: parent }).origin).toEqual({
+			kind: "task", taskId: parent.id, projectId: parent.projectId, parent,
+		});
+		expect(buildTaskShowJson({ ...child, originParent: null }).origin).toMatchObject({ kind: "task", parent: null });
 	});
 });

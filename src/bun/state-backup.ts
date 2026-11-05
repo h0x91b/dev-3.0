@@ -71,6 +71,14 @@ export function countSpaces(content: string): number | null {
 	return parsed.spaces.length;
 }
 
+/** Epics recorded in `epics.json`. Epics are archived, never deleted, so this only grows. */
+export function countEpics(content: string): number | null {
+	const parsed = parseJson(content) as { version?: unknown; epics?: unknown } | undefined;
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+	if (parsed.version !== 1 || !Array.isArray(parsed.epics)) return null;
+	return parsed.epics.length;
+}
+
 /** Providers plus named models — the two halves of the catalog a user authored. */
 export function countCatalogEntries(content: string): number | null {
 	const parsed = parseJson(content) as { providers?: unknown; models?: unknown } | undefined;
@@ -158,6 +166,7 @@ export const PROTECTED_STATE_FILES: ProtectedStateFile[] = [
 	protect("projects", "projects.json", collapseGuard(countArrayEntries)),
 	protect("virtual-projects", "virtual-projects.json", collapseGuard(countArrayEntries)),
 	protect("spaces", "spaces.json", collapseGuard(countSpaces)),
+	protect("epics", "epics.json", collapseGuard(countEpics)),
 	protect("agents", "agents.json", collapseGuard(countArrayEntries)),
 	protect("model-catalog", "model-catalog.json", collapseGuard(countCatalogEntries)),
 	protect("settings", "settings.json", settingsAdvance),

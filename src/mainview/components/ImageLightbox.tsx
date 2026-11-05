@@ -129,7 +129,7 @@ export function ImageLightbox({ paths, currentIndex, onClose }: ImageLightboxPro
 				{/* Close button */}
 				<button
 					onClick={onClose}
-					className="absolute -top-2 -right-2 z-10 w-8 h-8 rounded-full bg-overlay border border-edge flex items-center justify-center text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+					className="absolute -top-2 -right-2 z-10 w-8 h-8 rounded-full bg-overlay border border-edge flex items-center justify-center text-fg-2 hover:text-fg hover:bg-overlay-hover transition-colors"
 					title={t("images.close")}
 				>
 					<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

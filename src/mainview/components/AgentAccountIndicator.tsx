@@ -10,6 +10,7 @@ import type {
 	ProjectClaudeLogin,
 } from "../../shared/agent-accounts";
 import { AUTO_ACCOUNT_ID, isAgentDirAccountKind, isAutoAccountId, isRoutableAccountKind, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../shared/agent-accounts";
+import { exclusionKey } from "../../shared/account-routing";
 import { autoCandidateTotal, autoReasonText, useAutoAccountPreview } from "./auto-account-ui";
 import type { CodingAgent } from "../../shared/types";
 import type {
@@ -72,7 +73,7 @@ export function agentAccountKindForCommand(baseCommand: string): AgentAccountKin
 	return null;
 }
 
-function useAgentAccountsState(enabled: boolean): AgentAccountsState | null {
+export function useAgentAccountsState(enabled: boolean): AgentAccountsState | null {
 	const [state, setState] = useState<AgentAccountsState | null>(null);
 	const reload = useCallback(() => {
 		api.request
@@ -417,7 +418,7 @@ function SwitcherPopover({
 					return (
 						<div
 							key={row.key}
-							className={`flex items-start ${inert ? "" : "hover:bg-elevated-hover"} transition-colors`}
+							className={`flex items-start ${inert ? "" : "hover:bg-overlay-hover"} transition-colors`}
 						>
 							<button
 								type="button"
@@ -630,8 +631,13 @@ export default function AgentAccountIndicator({
 	const carriedOver = isLocal && typeof value === "string" && !isAutoAccountId(value) && !kindState.accounts.some((a) => a.id === value);
 	const effectiveSelectedId = isLocal && value !== undefined && !carriedOver && !isAutoAccountId(value) ? value : kindState.activeId;
 	const isRowActive = (id: string | null) => !autoSelected && id === effectiveSelectedId;
+	// The preview merges the app-wide list into the project's, so tell the two apart here.
+	const globallyExcluded = (id: string | null) =>
+		isRoutableAccountKind(kind) && state[kind].autoExcluded?.includes(exclusionKey(kind, id)) === true;
 	const excludedNote = (id: string | null) =>
-		preview?.assessed.some((a) => a.id === id && a.status === "excluded") ? t("launch.accountExcludedHere") : null;
+		!preview?.assessed.some((a) => a.id === id && a.status === "excluded")
+			? null
+			: t(globallyExcluded(id) ? "launch.accountExcludedEverywhere" : "launch.accountExcludedHere");
 
 	const selectedAccount: AgentAccount | null = kindState.accounts.find((a) => a.id === effectiveSelectedId) ?? null;
 	// Any managed Claude account makes every launch set (or unset) CLAUDE_CONFIG_DIR

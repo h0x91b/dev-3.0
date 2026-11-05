@@ -240,7 +240,7 @@ describe("ProductivityStatsView", () => {
 		});
 		renderView();
 		expect(await screen.findByText("$9.00")).toBeInTheDocument();
-		expect(screen.getByTitle(/Gemini CLI, Cursor Agent and GitHub Copilot CLI/)).toBeInTheDocument();
+		expect(screen.getByTitle(/GitHub Copilot CLI, OpenCode, pi and Oh My Pi/)).toBeInTheDocument();
 	});
 });
 

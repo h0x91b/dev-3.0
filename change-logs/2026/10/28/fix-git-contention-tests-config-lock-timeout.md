@@ -1,0 +1,1 @@
+The git worktree contention tests now pin core.configLockTimeout to 0, the real reason the attempt-cap test timed out on CI runners with git 2.56+ (git itself waits up to a second on every held config.lock); a regression test checks the pin reaches git, and the attempt-cap test's 20s timeout override is gone.

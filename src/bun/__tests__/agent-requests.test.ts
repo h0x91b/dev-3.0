@@ -24,6 +24,7 @@ import {
 	getAgentRequestState,
 	joinAgentRequest,
 	AGENT_REQUEST_OUTCOME_TTL_MS,
+	voidAgentRequestsForTask,
 	_resetAgentRequestsForTests,
 } from "../agent-requests";
 import type { TaskDialogSubject } from "../../shared/types";
@@ -469,5 +470,25 @@ describe("getAgentRequestState / joinAgentRequest", () => {
 
 		resolveAgentRequest(created.requestId, { approved: false });
 		expect(joinAgentRequest("cancel", "task-1")).toBeNull();
+	});
+});
+
+describe("voidAgentRequestsForTask", () => {
+	it("voids every kind pending for the task — completion and cancellation included — and closes their dialogs", async () => {
+		const kinds = ["complete", "cancel", "reset", "launch"] as const;
+		const requests = kinds.map((kind) => createAgentRequest(kind, "task-1", "proj-1"));
+		const other = createAgentRequest("complete", "task-2", "proj-1");
+
+		voidAgentRequestsForTask("task-1");
+
+		for (const { decision } of requests) expect(await decision).toEqual({ approved: false, stale: true });
+		const closed = push.mock.calls.filter(([event]) => event === "agentRequestResolved").map(([, p]) => p.requestId);
+		expect(closed.sort()).toEqual(requests.map((r) => r.requestId).sort());
+		expect(getAgentRequestState("complete", "task-2")).toEqual({ state: "pending", requestId: other.requestId });
+	});
+
+	it("is a no-op for a task with nothing pending", () => {
+		voidAgentRequestsForTask("task-1");
+		expect(push).not.toHaveBeenCalled();
 	});
 });

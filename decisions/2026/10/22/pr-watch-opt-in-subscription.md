@@ -1,6 +1,10 @@
 # `dev3 pr watch` is an opt-in subscription, not automatic PR notifications
 
+Partly superseded on 2026-11-04 by `decisions/2026/11/04/pr-watch-confirms-close-before-telling.md`: a close now fires only once a later poll still sees it; a merge still fires at once.
+
 Partly superseded on 2026-10-27 by `decisions/2026/10/27/hold-merge-offer-for-pr-watch.md`: the merge-completion offer now waits for the watching agent, and the merged sentence follows that.
+
+Partly superseded on 2026-10-31 by `decisions/2026/10/31/pr-watch-follows-any-pr.md`: `--pr N` now follows any open PR of the repository (review targets and fork heads included) as a pinned watch; the "own branch only" and "a review task is not supported" statements below hold only for watches without `--pr`.
 
 ## Context
 

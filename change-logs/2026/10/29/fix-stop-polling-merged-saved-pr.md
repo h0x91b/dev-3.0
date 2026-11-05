@@ -1,0 +1,1 @@
+Stop re-reading the full status of a task's saved pull request once it is known merged: the merged state is kept in the task's saved PR status, so the poller only looks for a new open PR on the branch, even after a restart.

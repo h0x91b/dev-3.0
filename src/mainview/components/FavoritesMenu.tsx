@@ -145,7 +145,7 @@ function FavoritesMenu({
 				onClick={onToggleCurrent}
 				title={currentIsFavorite ? t("launch.removeFavorite") : t("launch.addFavorite")}
 				className={`w-full text-left px-3 py-1.5 flex items-center gap-2 text-xs outline-none transition-colors disabled:opacity-40 disabled:cursor-default ${
-					currentIsFavorite ? "text-favorite hover:bg-elevated-hover" : "text-fg-2 hover:bg-elevated-hover hover:text-fg"
+					currentIsFavorite ? "text-favorite hover:bg-overlay-hover" : "text-fg-2 hover:bg-overlay-hover hover:text-fg"
 				}`}
 			>
 				<StarGlyph filled={currentIsFavorite} className="text-sm flex-shrink-0" />
@@ -161,14 +161,14 @@ function FavoritesMenu({
 				return (
 					<div
 						key={`${chip.agentId} ${chip.storedConfigId}`}
-						className={`group flex items-center transition-colors ${isOn ? "bg-elevated" : "hover:bg-elevated-hover"}`}
+						className={`group flex items-center transition-colors ${isOn ? "bg-accent/15" : "hover:bg-overlay-hover"}`}
 					>
 						<button
 							type="button"
 							role="menuitemradio"
 							aria-checked={isOn}
 							onClick={() => onApply(chip.agentId, chip.configId)}
-							className="flex-1 min-w-0 text-left pl-3 pr-2 py-1.5 flex items-center gap-2 outline-none focus:bg-elevated-hover"
+							className="flex-1 min-w-0 text-left pl-3 pr-2 py-1.5 flex items-center gap-2 outline-none focus:bg-overlay-hover"
 							title={chip.label}
 						>
 							<span className={`flex-1 truncate text-xs ${isOn ? "text-accent" : "text-fg-2 group-hover:text-fg"}`}>

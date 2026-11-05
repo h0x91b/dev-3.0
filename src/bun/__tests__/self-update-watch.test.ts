@@ -48,7 +48,7 @@ import { readRemoteState, recordUpdateFailure } from "../remote-state";
 import { getConnectedClientCount } from "../remote-access-server";
 import { loadSettings } from "../settings";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
-import { tmuxSessionExists } from "../pty-server";
+import { getActiveSessionIds, tmuxSessionExists } from "../pty-server";
 import { checkOnce, _resetWatchState } from "../self-update-watch";
 import { QUIET_HOLD_MS } from "../../shared/self-update";
 
@@ -465,6 +465,15 @@ describe("the terminal-quiet probe", () => {
 		await tickPastTheHold();
 
 		expect(mockRun).not.toHaveBeenCalled();
+	});
+
+	it("ignores a native session in the session list: liveNativeSession is the authority there", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		vi.mocked(getActiveSessionIds).mockReturnValueOnce([{ taskId: "task-native", tmuxSocket: "" }]);
+
+		await tickPastTheHold();
+
+		expect(mockRun).toHaveBeenCalled();
 	});
 
 	it("still applies when tmux answers that no server is running", async () => {

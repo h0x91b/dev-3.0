@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { CliResponse, Task, TaskStatus, TaskType, TaskHistoryEntry, TaskNote } from "../../shared/types";
 import { STATUS_LABELS, ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DRAFT_TASK_ACTIVATION_ERROR, TASK_REF_UNRESOLVED_PREFIX, TASK_TYPES, getTaskTitle, getTaskOverview, normalizePriority, normalizeTaskType, taskAgentSessionLooksLive, taskCompletesManually } from "../../shared/types";
-import { CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN, CLI_EXIT_CODE_APPROVAL_STILL_PENDING, CLI_EXIT_CODE_CANCELLATION_DECLINED, CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_HIBERNATE_DECLINED, CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_RESET_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT, CLI_EXIT_CODE_TASK_NOT_HIBERNATED, CLI_EXIT_CODE_TASK_REF_UNRESOLVED } from "../../shared/cli-exit-codes";
+import { CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN, CLI_EXIT_CODE_APPROVAL_STILL_PENDING, CLI_EXIT_CODE_CANCELLATION_DECLINED, CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_HIBERNATE_DECLINED, CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED, CLI_EXIT_CODE_RESET_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT, CLI_EXIT_CODE_TASK_NOT_HIBERNATED, CLI_EXIT_CODE_TASK_REF_UNRESOLVED } from "../../shared/cli-exit-codes";
 import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON, TOLERATE_APP_OFFLINE_FLAG } from "../../shared/agent-hooks";
 import { allPullRequests } from "../../shared/task-pull-requests";
 import { sendRequest } from "../socket-client";
@@ -15,11 +15,14 @@ import { rejectUnknownFlags } from "../flag-validation";
 import { exitOnSenderError, readSenderFlag } from "./sender";
 import { readStdin } from "../stdin";
 import { singleTextInput } from "../text-input";
-import { launchApprovalTimeoutMs } from "../launch-approval";
+import { launchAndPrepareTimeoutMs, launchApprovalTimeoutMs } from "../launch-approval";
+import type { LaunchPreparationOutcome } from "../../shared/launch-preparation";
 import { handleTasks } from "./tasks";
 import { reportResumeOutcome } from "./agent";
 import type { CliHibernateOutcome, CliWakeOutcome } from "../../shared/task-hibernate";
-import { buildTaskShowJson } from "../task-json";
+import { buildTaskShowJson, describeTaskEpic, describeTaskOrigin, type ShownTask } from "../task-json";
+import { exitEpicRequestFailed } from "./epic";
+import { withBooleanFlags } from "./spaces";
 
 // Statuses that destroy the worktree + terminal are never a direct CLI move.
 // Both become a blocking approval request the user answers in the app, so an
@@ -142,7 +145,7 @@ interface ShowTaskOptions {
 	notes?: boolean;
 }
 
-function printTask(task: Task, opts: ShowTaskOptions = {}): void {
+function printTask(task: ShownTask, opts: ShowTaskOptions = {}): void {
 	const titleMarker = task.titleEditedByUser ? " (user-edited — do NOT rename)" : "";
 	const fields: Array<[string, string]> = [
 		["ID:", task.id],
@@ -172,6 +175,10 @@ function printTask(task: Task, opts: ShowTaskOptions = {}): void {
 	}
 
 	fields.push(["Created:", formatDate(task.createdAt)]);
+	const createdBy = describeTaskOrigin(task);
+	if (createdBy) fields.push(["Created by:", createdBy]);
+	const epic = describeTaskEpic(task);
+	if (epic) fields.push(["Epic:", epic]);
 	fields.push(["Updated:", formatDate(task.updatedAt)]);
 	if (task.movedAt) fields.push(["Moved:", formatDate(task.movedAt)]);
 	if (task.notes && task.notes.length > 0) fields.push(["Notes:", String(task.notes.length)]);
@@ -231,14 +238,26 @@ async function showTask(args: ParsedArgs, socketPath: string, context: CliContex
 
 	const opts = { history: args.flags.history === "true", notes: args.flags.notes === "true" };
 	if (args.flags.json !== undefined) {
-		process.stdout.write(`${JSON.stringify(buildTaskShowJson(resp.data as Task, opts), null, 2)}\n`);
+		process.stdout.write(`${JSON.stringify(buildTaskShowJson(resp.data as ShownTask, opts), null, 2)}\n`);
 		return;
 	}
-	printTask(resp.data as Task, opts);
+	printTask(resp.data as ShownTask, opts);
+}
+
+/** `--epic <ref>` / `--no-epic` as request params; both at once is a usage error. */
+function epicParams(args: ParsedArgs): Record<string, unknown> {
+	const noEpic = args.flags["no-epic"] === "true";
+	const epic = args.flags.epic;
+	if (epic === "true") exitUsage('--epic needs an epic name or id: --epic "Payments v2" (see dev3 epic list)');
+	if (noEpic && epic !== undefined) exitUsage("--epic and --no-epic cannot be combined.");
+	if (noEpic) return { noEpic: true };
+	return epic !== undefined ? { epic } : {};
 }
 
 async function createTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["project", "title", "description", "type", "scratch", "run", "pr", "branch", "handoff-file", "agent", "config"]);
+	args = withBooleanFlags(args, ["no-epic"]);
+	rejectUnknownFlags(args, ["project", "title", "description", "type", "scratch", "run", "pr", "branch", "handoff-file", "agent", "config", "epic", "no-epic"]);
+	const epic = epicParams(args);
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (!projectId) {
 		exitUsage("--project <id> is required (or run from the project's worktree or checkout)");
@@ -259,7 +278,7 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 				"Create a normal task instead, or send instructions with `dev3 message --task seq:<N>` after it starts.",
 			);
 		}
-		return createScratchAndRun(projectId, socketPath, context, readHandoffFile(args), readLaunchSuggestion(args));
+		return createScratchAndRun(projectId, socketPath, context, readHandoffFile(args), readLaunchSuggestion(args), epic);
 	}
 	if (args.flags["handoff-file"] !== undefined) {
 		exitUsage("--handoff-file only applies to a launch: `task create --scratch --run` or `task move --status in-progress`.");
@@ -301,10 +320,14 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 	const description = args.flags.description === "-" ? stdinDescription : args.flags.description || positionalContent;
 
 	const params: Record<string, unknown> = { projectId, title };
+	// Inside a task's context that task is the parent, whoever typed the command.
+	if (context?.taskId) params.sourceTaskId = context.taskId;
 	if (description) params.description = description;
 	if (taskType) params.taskType = taskType;
 	if (prFlag) params.pr = prFlag;
 	if (branchFlag) params.branch = branchFlag;
+	// Without either flag the new task inherits the creating task's epic in the app.
+	Object.assign(params, epic);
 
 	const resp = await sendRequest(socketPath, "task.create", params);
 	if (!resp.ok) {
@@ -318,11 +341,12 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 				CLI_EXIT_CODE_TASK_REF_UNRESOLVED,
 			);
 		}
-		exitError(resp.error || "Failed to create task");
+		exitEpicRequestFailed(resp, "Failed to create task");
 	}
 
 	const task = resp.data as Task;
 	process.stdout.write(`Created task ${task.id.slice(0, 8)} (seq ${task.seq}): ${getTaskTitle(task)}\n`);
+	if (task.epicId) process.stderr.write(`Epic: ${task.epicId.slice(0, 8)}${epic.epic ? "" : " (inherited from the creating task)"}\n`);
 	// The type is only real once the role brief is in the description the agent
 	// will read, so name it rather than leaving the caller to check the card.
 	if (task.taskType) {
@@ -338,13 +362,14 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 }
 
 async function updateTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description", "priority", "manual-completion", "type", "force", "print-role"]);
+	args = withBooleanFlags(args, ["no-epic"]);
+	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description", "priority", "manual-completion", "type", "force", "print-role", "epic", "no-epic"]);
 	const taskId = resolveTaskId(args, context);
 	if (!taskId) {
-		exitUsage("Usage: dev3 task update <id|--task id|--task-id id|--id id> [--title '...'] [--description '...'] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard]");
+		exitUsage("Usage: dev3 task update <id|--task id|--task-id id|--id id> [--title '...'] [--description '...'] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic]");
 	}
 
-	const params: Record<string, unknown> = { taskId };
+	const params: Record<string, unknown> = { taskId, ...epicParams(args) };
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (projectId) params.projectId = projectId;
 	// Tri-state semantics:
@@ -403,12 +428,14 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 		&& params.priority === undefined
 		&& rawManualCompletion === undefined
 		&& rawType === undefined
+		&& params.epic === undefined
+		&& params.noEpic === undefined
 	) {
-		exitUsage("Provide --title, --description, --priority, --manual-completion, or --type to update");
+		exitUsage("Provide --title, --description, --priority, --manual-completion, --type, --epic or --no-epic to update");
 	}
 
 	const resp = await sendRequest(socketPath, "task.update", params);
-	if (!resp.ok) exitError(resp.error || "Failed to update task");
+	if (!resp.ok) exitEpicRequestFailed(resp, "Failed to update task");
 
 	const result = resp.data as Task | { task: Task; titlePreserved?: boolean; roleDelivery?: string; rolePrompt?: string; rolePromptSource?: string };
 	const task = "task" in result ? result.task : result;
@@ -662,7 +689,7 @@ function reportApprovalStatus(
 ): void {
 	const target = DESTRUCTIVE_APPROVAL_TARGET[spec.kind];
 	if (status.state === "answered" && !status.approved) {
-		if (status.stale) exitError(STALE_APPROVAL, staleApprovalHint(spec), spec.declinedCode);
+		if (status.stale) return reportVoidedApproval(spec, status.taskStatus, codexStopHook);
 		exitError(spec.declined, spec.declinedHint, spec.declinedCode);
 	}
 	// A legacy To Do card that owns a worktree is already `todo`, so for a reset the
@@ -742,9 +769,9 @@ async function requestDestructiveApproval(
 
 	const resp = wait.resp;
 	if (!resp.ok) exitError(resp.error || spec.failed);
-	const result = resp.data as { approved: boolean; task?: Task; plainMove?: boolean; stale?: boolean; keptBranches?: Array<{ name: string; reason: string }> };
+	const result = resp.data as { approved: boolean; task?: Task; plainMove?: boolean; stale?: boolean; taskStatus?: TaskStatus | null; keptBranches?: Array<{ name: string; reason: string }> };
 	if (!result.approved) {
-		if (result.stale) exitError(STALE_APPROVAL, staleApprovalHint(spec), spec.declinedCode);
+		if (result.stale) return reportVoidedApproval(spec, result.taskStatus, codexStopHook);
 		exitError(spec.declined, spec.declinedHint, spec.declinedCode);
 	}
 	if (result.plainMove) {
@@ -771,6 +798,34 @@ const KEPT_BRANCH_REASON: Record<string, string> = {
 const STALE_APPROVAL = "The request was voided before anyone answered it";
 
 /**
+ * The app voided the request because the task finished or vanished by another
+ * path. Already in the status the agent asked for (the board, a merged PR) is
+ * success, exit 0 — the outcome it wanted, reached without a second click.
+ * Anything else is the kind's decline code with the voided wording.
+ */
+function reportVoidedApproval(
+	spec: DestructiveApprovalSpec,
+	taskStatus: TaskStatus | null | undefined,
+	codexStopHook: boolean,
+): void {
+	// A voided reset never counts: its target `todo` is where every reset lands.
+	if (spec.kind !== "reset" && taskStatus === DESTRUCTIVE_APPROVAL_TARGET[spec.kind]) {
+		if (codexStopHook) {
+			process.stdout.write(CODEX_STOP_HOOK_SUCCESS_JSON);
+			return;
+		}
+		process.stdout.write(
+			`The task is already ${spec.label} — it got there another way (the board, a merged PR) before anyone answered, so the dialog closed itself.\n`,
+		);
+		return;
+	}
+	if (taskStatus === null) {
+		exitError(STALE_APPROVAL, `The task was deleted before the ${spec.label} request was answered, so this request did nothing.`, spec.declinedCode);
+	}
+	exitError(STALE_APPROVAL, staleApprovalHint(spec), spec.declinedCode);
+}
+
+/**
  * Voided = the run the request was about ended first (completed, cancelled or
  * reset elsewhere). Whatever ended it may have removed the worktree — this
  * request did nothing, but "nothing was deleted" would be a claim it cannot make.
@@ -791,6 +846,7 @@ async function createScratchAndRun(
 	context: CliContext | null,
 	handoffNote?: string,
 	suggestion?: { agentId: string; configId?: string },
+	epic: Record<string, unknown> = {},
 ): Promise<void> {
 	if (!context?.taskId) {
 		exitUsage("Run this from inside a task worktree — the new scratch task reports back to yours.");
@@ -804,7 +860,8 @@ async function createScratchAndRun(
 			...senderAgentParams(context),
 			...(handoffNote ? { handoffNote } : {}),
 			...suggestion,
-		}, { timeoutMs: await launchApprovalTimeoutMs(socketPath) });
+			...epic,
+		}, { timeoutMs: await launchAndPrepareTimeoutMs(socketPath) });
 	} catch (err) {
 		if (err instanceof Error && err.message.startsWith("Socket timeout")) {
 			exitError(
@@ -814,7 +871,7 @@ async function createScratchAndRun(
 		}
 		throw err;
 	}
-	if (!resp.ok) exitError(resp.error || "Failed to request a scratch task");
+	if (!resp.ok) exitEpicRequestFailed(resp, "Failed to request a scratch task");
 	if (!isLaunchApprovalOutcome(resp.data)) exitError("Unexpected response to the scratch launch request");
 	reportLaunchOutcome(resp.data, false);
 }
@@ -822,10 +879,12 @@ async function createScratchAndRun(
 /** What the app returns once an agent-initiated launch went through the dialog. */
 interface LaunchApprovalOutcome {
 	approved: boolean;
+	/** Voided: the target task was deleted or finished before anyone answered. */
+	stale?: boolean;
 	seq?: number;
 	title?: string;
 	/** One entry per task that started, in variant order; length 1 for a plain launch. */
-	launched?: Array<{ variantIndex: number | null; replyCommand: string }>;
+	launched?: Array<{ variantIndex: number | null; replyCommand: string; preparation?: LaunchPreparationOutcome }>;
 }
 
 function isLaunchApprovalOutcome(data: unknown): data is LaunchApprovalOutcome {
@@ -852,6 +911,13 @@ function movesForeignTaskIntoActiveColumn(
 /** Print the result of an approved/declined launch, or exit with the decline code. */
 function reportLaunchOutcome(outcome: LaunchApprovalOutcome, codexStopHook: boolean, bySender = false): void {
 	if (!outcome.approved) {
+		if (outcome.stale) {
+			exitError(
+				"The launch request was voided before anyone answered it",
+				"The target task was deleted, completed or cancelled by another path, so its dialog closed and no agent was started.\nCheck `dev3 task show` before asking again.",
+				CLI_EXIT_CODE_LAUNCH_DECLINED,
+			);
+		}
 		exitError(
 			"User declined the launch request",
 			"The task stays where it was and no agent was started.\nAsk the user what they want to change before requesting it again.",
@@ -863,6 +929,7 @@ function reportLaunchOutcome(outcome: LaunchApprovalOutcome, codexStopHook: bool
 		return;
 	}
 	const launched = outcome.launched ?? [];
+	exitOnFailedPreparation(outcome, launched);
 	const fallback = `dev3 message --task seq:${outcome.seq} --subject "what this is about" "your message"`;
 	if (launched.length > 1) {
 		// The user turned one launch into a variant group. Every sibling shares
@@ -875,7 +942,8 @@ function reportLaunchOutcome(outcome: LaunchApprovalOutcome, codexStopHook: bool
 			`User approved — seq:${outcome.seq} is starting as ${launched.length} variants: ${outcome.title ?? ""}\n` +
 			`They all share seq:${outcome.seq}, so address each one by its own id:\n` +
 			`${rows}\n` +
-			"They are independent agents on the same prompt. Each knows you started it and reports back to this task.\n",
+			"They are independent agents on the same prompt. Each knows you started it and reports back to this task.\n" +
+			stillPreparingNote(outcome, launched),
 		);
 		return;
 	}
@@ -884,7 +952,32 @@ function reportLaunchOutcome(outcome: LaunchApprovalOutcome, codexStopHook: bool
 		`Talk to it with: ${launched[0]?.replyCommand ?? fallback}\n` +
 		(bySender
 			? "It does not know who started it yet — your first --as-sender message tells it how to reply.\n"
-			: "It knows you started it and will report back to this task.\n"),
+			: "It knows you started it and will report back to this task.\n") +
+		stillPreparingNote(outcome, launched),
+	);
+}
+
+function stillPreparingNote(outcome: LaunchApprovalOutcome, launched: NonNullable<LaunchApprovalOutcome["launched"]>): string {
+	if (!launched.some((entry) => entry.preparation?.state === "still-preparing")) return "";
+	return `It is still preparing (worktree/setup). If preparation fails it returns to To Do — check with \`dev3 task show --task seq:${outcome.seq}\`.\n`;
+}
+
+/**
+ * An approved launch whose preparation failed started nothing, so it must not
+ * print the "started" lines (2026-11-01 incident). Any failed variant fails the
+ * command: the requester has to look before it relies on the group.
+ */
+function exitOnFailedPreparation(outcome: LaunchApprovalOutcome, launched: NonNullable<LaunchApprovalOutcome["launched"]>): void {
+	const failed = launched.filter((entry) => entry.preparation?.state === "failed");
+	if (failed.length === 0) return;
+	const lines = failed.map((entry) => {
+		const error = entry.preparation?.state === "failed" ? entry.preparation.error : "";
+		return launched.length > 1 ? `variant #${entry.variantIndex ?? "?"}: ${error}` : error;
+	});
+	exitError(
+		`User approved, but task seq:${outcome.seq} failed to prepare — no agent is running for it`,
+		`${lines.join("\n")}\nThe task is back in To Do. Read the error before asking to start it again.`,
+		CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED,
 	);
 }
 
@@ -970,7 +1063,7 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	// into one waits on the long timeout. A silent move still answers instantly.
 	const method = asSender ? "task.moveAsSender" : "task.move";
 	const resp = asSender || movesForeignTaskIntoActiveColumn(taskId, newStatus, context)
-		? await sendRequest(socketPath, method, params, { timeoutMs: await launchApprovalTimeoutMs(socketPath) })
+		? await sendRequest(socketPath, method, params, { timeoutMs: await launchAndPrepareTimeoutMs(socketPath) })
 		: await sendRequest(socketPath, method, params);
 	if (!resp.ok) {
 		exitOnSenderError(resp.error);

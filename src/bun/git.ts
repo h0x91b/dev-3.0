@@ -1,7 +1,8 @@
 import type { Project, Task, TaskDiffFile, TaskDiffFileStatus, TaskDiffMode, TaskDiffResponse, TaskDiffSkippedFile, TaskDiffSummary } from "../shared/types";
 export { extractRepoName } from "../shared/types";
+import { createHash } from "node:crypto";
 import { rm } from "node:fs/promises";
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, statSync, unlinkSync } from "node:fs";
 import {
 	basename as basenamePath,
 	dirname as dirnamePath,
@@ -13,6 +14,7 @@ import { CloneProgressParser } from "./clone-progress";
 import { reportCurrentPreparationStage } from "./preparation-runtime";
 import { spawn } from "./spawn";
 import { DEV3_HOME } from "./paths";
+import { listDiffSnapshots, readDiffSnapshot, writeDiffSnapshot } from "./diff-snapshots";
 import { projectStorageKey } from "../shared/project-storage-key";
 import * as github from "./github";
 
@@ -63,6 +65,20 @@ function gitSubcommand(cmd: string[]): string | undefined {
 }
 
 /**
+ * Exit 1 with empty stderr is a "no", not a failure, for the probes that answer
+ * that way: `rev-parse --verify --quiet` (ref absent) and `merge-base --is-ancestor`
+ * (not an ancestor). An unresolvable ref still exits 128 with stderr and is logged.
+ */
+function isExpectedNo(cmd: string[], code: number | null, stderr: string): boolean {
+	if (code !== 1 || stderr.trim()) return false;
+	switch (gitSubcommand(cmd)) {
+		case "rev-parse": return cmd.includes("--verify") && cmd.includes("--quiet");
+		case "merge-base": return cmd.includes("--is-ancestor");
+		default: return false;
+	}
+}
+
+/**
  * Every git argv dev3 spawns passes through here. `git status` additionally gets
  * `--no-optional-locks`: otherwise it holds index.lock for its whole scan just to
  * cache refreshed stat data, and a concurrent `git add`/`commit` in the same repo
@@ -77,6 +93,69 @@ export function withGitDefaults(cmd: string[]): string[] {
 }
 
 const PROCESS_CLEANUP_GRACE_MS = 1_000;
+
+/**
+ * Read-only probes the pollers fire every few seconds. One that never exits
+ * (wedged fsmonitor, stalled filesystem) used to live forever and the next poll
+ * stacked another on top (#2153), so these get a timeout even when the caller
+ * passes none. See decisions/2026/11/04/git-probe-timeout-and-coalescing.md.
+ */
+const READ_PROBE_SUBCOMMANDS = new Set(["status", "rev-parse", "symbolic-ref", "rev-list", "merge-base"]);
+export const DEFAULT_GIT_PROBE_TIMEOUT_MS = 30_000;
+let gitProbeTimeoutMs = DEFAULT_GIT_PROBE_TIMEOUT_MS;
+
+export function _setGitProbeTimeoutForTest(ms: number | null): void {
+	gitProbeTimeoutMs = ms ?? DEFAULT_GIT_PROBE_TIMEOUT_MS;
+}
+
+function defaultTimeoutFor(cmd: string[]): number | undefined {
+	const sub = gitSubcommand(cmd);
+	return cmd[0] === "git" && sub && READ_PROBE_SUBCOMMANDS.has(sub) ? gitProbeTimeoutMs : undefined;
+}
+
+export type GitRunResult = { ok: boolean; stdout: string; stderr: string; timedOut?: true };
+
+// Windows has neither process groups nor negative-pid kill.
+const OWN_PROCESS_GROUP = process.platform !== "win32";
+
+/**
+ * git runs as its own process-group leader so a timeout reaches what it spawned
+ * too (fsmonitor hook, submodule `git status`). TERM first so git can drop its
+ * lock files, then KILL whatever of the group is still there.
+ */
+async function killProcessGroup(proc: { pid?: number; kill: (signal?: number) => void; exited: Promise<unknown> }): Promise<void> {
+	const signalGroup = (signal: NodeJS.Signals) => {
+		try {
+			if (OWN_PROCESS_GROUP && proc.pid) process.kill(-proc.pid, signal);
+			else proc.kill(signal === "SIGKILL" ? 9 : undefined);
+		} catch {
+			// ESRCH: the group is already gone.
+		}
+	};
+	signalGroup("SIGTERM");
+	const exited = await settleWithin(proc.exited.then(() => true, () => true), PROCESS_CLEANUP_GRACE_MS, false);
+	// Without a group, an exited leader leaves nothing to kill.
+	if (OWN_PROCESS_GROUP && proc.pid || !exited) signalGroup("SIGKILL");
+}
+
+// Probes still running when dev3 exits would otherwise outlive it; they are
+// read-only, so killing them on the way out loses nothing.
+const liveProbeGroups = new Set<number>();
+let probeExitHookInstalled = false;
+
+function trackProbeGroup(pid: number | undefined): () => void {
+	if (!OWN_PROCESS_GROUP || !pid) return () => {};
+	if (!probeExitHookInstalled) {
+		probeExitHookInstalled = true;
+		process.on("exit", () => {
+			for (const group of liveProbeGroups) {
+				try { process.kill(-group, "SIGKILL"); } catch { /* already gone */ }
+			}
+		});
+	}
+	liveProbeGroups.add(pid);
+	return () => liveProbeGroups.delete(pid);
+}
 
 async function settleWithin<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
 	let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -96,15 +175,18 @@ export async function run(
 	cmd: string[],
 	cwd: string,
 	opts?: { timeoutMs?: number; env?: Record<string, string> },
-): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+): Promise<GitRunResult> {
 	const finalCmd = withGitDefaults(cmd);
+	const timeoutMs = opts?.timeoutMs ?? defaultTimeoutFor(finalCmd);
 	log.debug("Executing git command", { cwd, command: finalCmd });
 	const proc = spawn(finalCmd, {
 		cwd,
 		stdout: "pipe",
 		stderr: "pipe",
 		env: opts?.env,
+		detached: OWN_PROCESS_GROUP,
 	});
+	const untrackProbe = defaultTimeoutFor(finalCmd) ? trackProbeGroup(proc.pid) : () => {};
 	// Start draining stdout/stderr immediately, BEFORE awaiting exit. Otherwise a
 	// command whose output exceeds the OS pipe buffer (~64KB) blocks on write with
 	// nobody reading — proc.exited never resolves and we deadlock (commands without
@@ -113,19 +195,17 @@ export async function run(
 	const stderrPromise = new Response(proc.stderr).text().catch(() => "");
 
 	let timeoutId: ReturnType<typeof setTimeout> | undefined;
-	const outcome = opts?.timeoutMs
+	const outcome = timeoutMs
 		? await Promise.race([
 			proc.exited.then((code) => ({ code, timedOut: false as const })),
 			new Promise<{ code: null; timedOut: true }>((resolve) => {
-				timeoutId = setTimeout(() => resolve({ code: null, timedOut: true }), opts.timeoutMs);
+				timeoutId = setTimeout(() => resolve({ code: null, timedOut: true }), timeoutMs);
 			}),
 		])
 		: { code: await proc.exited, timedOut: false as const };
 	if (timeoutId) clearTimeout(timeoutId);
-	if (outcome.timedOut) {
-		proc.kill();
-		await settleWithin(proc.exited.catch(() => null), PROCESS_CLEANUP_GRACE_MS, null);
-	}
+	if (outcome.timedOut) await killProcessGroup(proc);
+	untrackProbe();
 	// On timeout the killed process closes its pipes, so the readers resolve with
 	// whatever partial output arrived; bound the wait just in case.
 	const [stdout, stderr] = outcome.timedOut
@@ -134,12 +214,9 @@ export async function run(
 			settleWithin(stderrPromise, PROCESS_CLEANUP_GRACE_MS, ""),
 		])
 		: await Promise.all([stdoutPromise, stderrPromise]);
-	const failure = outcome.timedOut ? `timed out after ${opts?.timeoutMs}ms` : stderr.trim();
-	const result = { ok: outcome.code === 0, stdout: stdout.trim(), stderr: failure };
-	// `rev-parse --verify --quiet` exits 1 with no stderr when the ref is absent: an answer, not a failure.
-	const quietRefMiss = outcome.code === 1 && !stderr.trim() && gitSubcommand(finalCmd) === "rev-parse"
-		&& finalCmd.includes("--verify") && finalCmd.includes("--quiet");
-	if (!result.ok && !quietRefMiss) {
+	const failure = outcome.timedOut ? `timed out after ${timeoutMs}ms` : stderr.trim();
+	const result = { ok: outcome.code === 0, stdout: stdout.trim(), stderr: failure, ...(outcome.timedOut ? { timedOut: true as const } : {}) };
+	if (!result.ok && !isExpectedNo(finalCmd, outcome.code, stderr)) {
 		log.warn("Git command failed", {
 			command: finalCmd,
 			exitCode: outcome.code,
@@ -1577,6 +1654,8 @@ const COMPARE_REF_CACHE_TTL_MS = 10 * 60_000;
 /** Test-only: clear the detectDefaultCompareRef cache. */
 export function _resetCompareRefCache(): void {
 	compareRefCache.clear();
+	configuredCompareRefCache.clear();
+	warnedMissingCompareRefs.clear();
 }
 
 export async function detectDefaultCompareRef(
@@ -1591,6 +1670,45 @@ export async function detectDefaultCompareRef(
 	const promise = detectDefaultCompareRefUncached(projectPath, baseBranch);
 	compareRefCache.set(key, { at: Date.now(), promise });
 	promise.catch(() => compareRefCache.delete(key));
+	return promise;
+}
+
+// A configured compare ref is checked on the same polled path, so the verdict is
+// cached too — briefly, so a ref that a fetch brings in is picked up within a minute.
+const configuredCompareRefCache = new Map<string, { at: number; promise: Promise<string> }>();
+const CONFIGURED_COMPARE_REF_CACHE_TTL_MS = 60_000;
+const warnedMissingCompareRefs = new Set<string>();
+
+/**
+ * A compare ref the project configures (`defaultCompareRef`, or the `origin/<base>`
+ * that `defaultCompareRefMode: "remote"` implies) when the repo actually has it,
+ * otherwise the auto-detected default. Trusting a missing one made every status
+ * poll and merge check fail forever (`origin/master` in a repo that only has main).
+ */
+export async function resolveConfiguredCompareRef(
+	projectPath: string,
+	baseBranch: string,
+	configured: string,
+): Promise<string> {
+	const key = `${projectPath}\0${baseBranch}\0${configured}`;
+	const cached = configuredCompareRefCache.get(key);
+	if (cached && Date.now() - cached.at < CONFIGURED_COMPARE_REF_CACHE_TTL_MS) {
+		return cached.promise;
+	}
+	const promise = (async () => {
+		if (await refExists(projectPath, configured)) return configured;
+		const fallback = await resolveCompareRef(projectPath, baseBranch);
+		const warnKey = `${projectPath}\0${configured}`;
+		if (!warnedMissingCompareRefs.has(warnKey)) {
+			warnedMissingCompareRefs.add(warnKey);
+			log.warn("Configured compare ref does not exist, using the detected default", {
+				projectPath, configured, fallback,
+			});
+		}
+		return fallback;
+	})();
+	configuredCompareRefCache.set(key, { at: Date.now(), promise });
+	promise.catch(() => configuredCompareRefCache.delete(key));
 	return promise;
 }
 
@@ -1716,8 +1834,22 @@ export async function getRemoteBranchTips(worktreePath: string, branch: string):
 	return distinct(known.filter(({ time }) => time === newest).map(({ sha }) => sha));
 }
 
+// One `git status` per worktree at a time: every caller of isWorktreeDirty is a
+// poller, so a caller arriving mid-scan takes that scan's answer instead of
+// forking another git on top of it.
+const dirtyChecksInFlight = new Map<string, Promise<GitRunResult>>();
+
 export async function isWorktreeDirty(worktreePath: string): Promise<boolean> {
-	const result = await run(["git", "status", "--porcelain"], worktreePath);
+	let check = dirtyChecksInFlight.get(worktreePath);
+	if (!check) {
+		check = run(["git", "status", "--porcelain"], worktreePath)
+			.finally(() => dirtyChecksInFlight.delete(worktreePath));
+		dirtyChecksInFlight.set(worktreePath, check);
+	}
+	const result = await check;
+	// A scan that never finished proves nothing about cleanliness; "clean" would
+	// let the merge watcher offer completion over uncommitted work.
+	if (result.timedOut) return true;
 	if (!result.ok) return false;
 	return result.stdout.trim().length > 0;
 }
@@ -1752,14 +1884,38 @@ const fetchLastFailure = new Map<string, { at: number; failures: number; stderr:
 const FETCH_FAILURE_BACKOFF_BASE_MS = 2 * 60_000;
 const FETCH_FAILURE_BACKOFF_MAX_MS = 30 * 60_000;
 
-function fetchFailureBackoffMs(failures: number): number {
-	return Math.min(FETCH_FAILURE_BACKOFF_BASE_MS * 2 ** (failures - 1), FETCH_FAILURE_BACKOFF_MAX_MS);
+function fetchFailureBackoffMs(failures: number, maxMs = FETCH_FAILURE_BACKOFF_MAX_MS): number {
+	return Math.min(FETCH_FAILURE_BACKOFF_BASE_MS * 2 ** (failures - 1), maxMs);
 }
 
 function isInFailureBackoff(cacheKey: string, now: number): boolean {
 	const failure = fetchLastFailure.get(cacheKey);
 	if (!failure) return false;
 	return now - failure.at < fetchFailureBackoffMs(failure.failures);
+}
+
+// A deleted repo or a missing remote fails every branch the same way, so it is tracked per
+// remote: one shared backoff with a longer cap instead of a 30-minute retry per branch.
+const UNREACHABLE_REMOTE_STDERR = /repository not found|does not appear to be a git repository/i;
+const UNREACHABLE_REMOTE_BACKOFF_MAX_MS = 6 * 60 * 60_000;
+const remoteUnreachable = new Map<string, { at: number; failures: number }>();
+
+function isUnreachableRemoteError(stderr: string): boolean {
+	return UNREACHABLE_REMOTE_STDERR.test(stderr);
+}
+
+function isRemoteInBackoff(projectPath: string, remote: string, now: number): boolean {
+	const failure = remoteUnreachable.get(`${projectPath}:${remote}`);
+	return !!failure && now - failure.at < fetchFailureBackoffMs(failure.failures, UNREACHABLE_REMOTE_BACKOFF_MAX_MS);
+}
+
+/** Returns the next retry delay when the failure marks the whole remote unreachable, else null. */
+function recordRemoteFailure(projectPath: string, remote: string, stderr: string): number | null {
+	if (!isUnreachableRemoteError(stderr)) return null;
+	const key = `${projectPath}:${remote}`;
+	const failures = (remoteUnreachable.get(key)?.failures ?? 0) + 1;
+	remoteUnreachable.set(key, { at: Date.now(), failures });
+	return fetchFailureBackoffMs(failures, UNREACHABLE_REMOTE_BACKOFF_MAX_MS);
 }
 
 /**
@@ -1777,25 +1933,45 @@ export interface FetchOptions {
  * `<path>.<16 random chars>` first, so that suffix has to fit too.
  */
 const SSH_SOCKET_PATH_MAX_BYTES = 103;
-const SSH_CONTROL_SOCKET_NAME_BYTES = "/".length + 40 + ".".length + 16;
+const SSH_ENDPOINT_KEY_HEX = 16;
+const SSH_CONTROL_SOCKET_NAME_BYTES = "/".length + SSH_ENDPOINT_KEY_HEX + ".".length + 16;
+
+/**
+ * `user@host:port` exactly as the remote URL spells it, with the ~/.ssh/config alias kept
+ * (`github.com-work`, not the resolved `github.com`). Null for a URL ssh does not carry.
+ */
+export function sshEndpointOf(url: string): string | null {
+	const sshUrl = /^(?:ssh|git\+ssh|ssh\+git):\/\/(?:([^@/]+)@)?(\[[^\]]+\]|[^:/]+)(?::(\d*))?\//.exec(url);
+	if (sshUrl) return `${sshUrl[1] ?? ""}@${sshUrl[2]}:${sshUrl[3] ?? ""}`;
+	if (/^[a-z][a-z0-9+.-]*:\/\//i.test(url)) return null;
+	const scpLike = /^(?:([^@/:]+)@)?(\[[^\]]+\]|[^:/]+):/.exec(url);
+	return scpLike ? `${scpLike[1] ?? ""}@${scpLike[2]}:` : null;
+}
 
 /**
  * ControlMaster reuse turns a ~2.2 s fetch into ~0.75 s (the SSH handshake is most of it).
- * The ControlPath is double-quoted for ssh and single-quoted for the `sh` that runs GIT_SSH_COMMAND.
+ * The socket is keyed by the remote's own ssh endpoint, never by ssh's `%C`: `%C` hashes the
+ * resolved HostName, so two ~/.ssh/config aliases for two GitHub accounts would share one
+ * master and one identity. The ControlPath is double-quoted for ssh and single-quoted for `sh`.
  */
-export function fetchSshCommand(platform: NodeJS.Platform, controlDir: string | null): string {
+export function fetchSshCommand(platform: NodeJS.Platform, controlDir: string | null, endpoint: string | null): string {
 	const base = "ssh -o BatchMode=yes -o ConnectTimeout=10";
-	if (platform === "win32" || !controlDir) return base;
+	if (platform === "win32" || !controlDir || !endpoint) return base;
 	if (Buffer.byteLength(controlDir) + SSH_CONTROL_SOCKET_NAME_BYTES > SSH_SOCKET_PATH_MAX_BYTES) return base;
-	const controlPath = `ControlPath="${controlDir}/%C"`.replaceAll("'", `'\\''`);
+	const key = createHash("sha256").update(endpoint).digest("hex").slice(0, SSH_ENDPOINT_KEY_HEX);
+	const controlPath = `ControlPath="${controlDir}/${key}"`.replaceAll("'", `'\\''`);
 	return `${base} -o ControlMaster=auto -o '${controlPath}' -o ControlPersist=300`;
 }
 
+/**
+ * A sibling of the `ssh/` dir older versions use: their sockets are keyed by `%C`, so one
+ * of them can hold the wrong account. This version never looks there, and never deletes it.
+ */
 let sshControlDir: string | null | undefined;
 function getSshControlDir(): string | null {
 	if (sshControlDir !== undefined) return sshControlDir;
 	try {
-		const dir = `${DEV3_HOME}/ssh`;
+		const dir = `${DEV3_HOME}/ssh-mux`;
 		mkdirSync(dir, { recursive: true, mode: 0o700 });
 		sshControlDir = dir;
 	} catch (err) {
@@ -1803,6 +1979,22 @@ function getSshControlDir(): string | null {
 		sshControlDir = null;
 	}
 	return sshControlDir;
+}
+
+/**
+ * The ssh command for fetching `remote`. A repo (or the user's environment) that picks
+ * its own ssh command keeps it: GIT_SSH_COMMAND would otherwise override core.sshCommand
+ * and with it the identity that repo was set up to use.
+ */
+async function fetchSshEnv(projectPath: string, remote: string): Promise<Record<string, string>> {
+	if (process.env.GIT_SSH_COMMAND || process.env.GIT_SSH) return {};
+	const [ownCommand, url] = await Promise.all([
+		run(["git", "config", "--get", "core.sshCommand"], projectPath),
+		run(["git", "ls-remote", "--get-url", remote], projectPath),
+	]);
+	if (ownCommand.ok && ownCommand.stdout.trim()) return {};
+	const endpoint = url.ok ? sshEndpointOf(url.stdout.trim()) : null;
+	return { GIT_SSH_COMMAND: fetchSshCommand(process.platform, getSshControlDir(), endpoint) };
 }
 
 function enqueueFetchJob<T>(projectPath: string, branch: string | undefined, priority: boolean, work: () => Promise<T>): Promise<T> {
@@ -1846,13 +2038,10 @@ function drainFetchQueue(projectPath: string, queue: RepoFetchQueue): void {
 	next.start();
 }
 
-async function runGitFetch(projectPath: string, cmd: string[], timeoutMs: number) {
-	return run(cmd, projectPath, {
+async function runGitFetch(projectPath: string, remote: string, args: string[], timeoutMs: number) {
+	return run(["git", "fetch", remote, ...args], projectPath, {
 		timeoutMs,
-		env: {
-			GIT_TERMINAL_PROMPT: "0",
-			GIT_SSH_COMMAND: fetchSshCommand(process.platform, getSshControlDir()),
-		},
+		env: { GIT_TERMINAL_PROMPT: "0", ...await fetchSshEnv(projectPath, remote) },
 	});
 }
 
@@ -1889,12 +2078,13 @@ async function fetchFromRemote(
 		return true;
 	}
 
-	// Skip if recent fetches for this key keep failing (exponential backoff)
-	if (!force && isInFailureBackoff(cacheKey, now)) {
+	// Skip if recent fetches for this key, or the whole remote, keep failing (exponential backoff)
+	if (!force && (isInFailureBackoff(cacheKey, now) || isRemoteInBackoff(projectPath, remote, now))) {
 		log.debug("fetchOrigin: skipping (failure backoff)", {
 			projectPath,
 			branch,
 			failures: fetchLastFailure.get(cacheKey)?.failures,
+			remoteFailures: remoteUnreachable.get(`${projectPath}:${remote}`)?.failures,
 		});
 		return false;
 	}
@@ -1913,7 +2103,7 @@ async function fetchFromRemote(
 			log.debug("fetchOrigin: skipping (cooldown after queue wait)", { projectPath, branch });
 			return true;
 		}
-		if (!force && isInFailureBackoff(cacheKey, Date.now())) {
+		if (!force && (isInFailureBackoff(cacheKey, Date.now()) || isRemoteInBackoff(projectPath, remote, Date.now()))) {
 			log.debug("fetchOrigin: skipping (failure backoff after queue wait)", { projectPath, branch });
 			return false;
 		}
@@ -1922,16 +2112,17 @@ async function fetchFromRemote(
 		// A non-origin remote needs an explicit refspec, otherwise `git fetch <fork>
 		// <branch>` lands in FETCH_HEAD only and refs/remotes/<fork>/<branch> —
 		// the ref every comparison resolves — stays frozen at its old commit.
-		const cmd = branch
+		const args = branch
 			? remote === "origin"
-				? ["git", "fetch", "origin", branch, "--quiet"]
-				: ["git", "fetch", remote, `+refs/heads/${branch}:refs/remotes/${remote}/${branch}`, "--quiet"]
-			: ["git", "fetch", remote, "--quiet"];
+				? [branch, "--quiet"]
+				: [`+refs/heads/${branch}:refs/remotes/${remote}/${branch}`, "--quiet"]
+			: ["--quiet"];
 		log.debug("Fetching remote", { projectPath, remote, branch });
-		const result = await runGitFetch(projectPath, cmd, timeoutMs);
+		const result = await runGitFetch(projectPath, remote, args, timeoutMs);
 		if (result.ok) {
 			fetchLastSuccess.set(cacheKey, Date.now());
 			fetchLastFailure.delete(cacheKey);
+			remoteUnreachable.delete(`${projectPath}:${remote}`);
 			log.debug("fetchOrigin finished", {
 				projectPath,
 				branch,
@@ -1940,12 +2131,14 @@ async function fetchFromRemote(
 		} else {
 			const failures = (fetchLastFailure.get(cacheKey)?.failures ?? 0) + 1;
 			fetchLastFailure.set(cacheKey, { at: Date.now(), failures, stderr: result.stderr });
+			const remoteRetryMs = recordRemoteFailure(projectPath, remote, result.stderr);
 			log.warn("fetchOrigin failed", {
 				projectPath,
 				branch,
 				stderr: result.stderr,
 				failures,
-				nextRetryInMs: fetchFailureBackoffMs(failures),
+				remoteUnreachable: remoteRetryMs !== null,
+				nextRetryInMs: Math.max(fetchFailureBackoffMs(failures), remoteRetryMs ?? 0),
 				durationMs: Math.round(performance.now() - startedAt),
 			});
 		}
@@ -1985,6 +2178,10 @@ export async function fetchOriginBranches(
 			? unique
 			: unique.filter((b) => now - (fetchLastSuccess.get(keyOf(b)) ?? 0) >= FETCH_COOLDOWN_MS && !isInFailureBackoff(keyOf(b), now));
 	};
+	if (!force && isRemoteInBackoff(projectPath, "origin", Date.now())) {
+		log.debug("fetchOrigin: skipping (remote unreachable backoff)", { projectPath, branches: unique });
+		return false;
+	}
 	const due = dueBranches();
 	const backedOff = force ? 0 : unique.filter((b) => isInFailureBackoff(keyOf(b), Date.now())).length;
 	if (due.length === 0) return backedOff === 0;
@@ -1993,18 +2190,32 @@ export async function fetchOriginBranches(
 	const existing = fetchInFlight.get(groupKey);
 	if (existing) return existing;
 
+	let remoteGone = false;
 	const combined: Promise<boolean> = enqueueFetchJob(projectPath, due.join(","), priority, async () => {
 		const stillDue = dueBranches().filter((b) => due.includes(b));
 		if (stillDue.length === 0) return true;
+		if (!force && isRemoteInBackoff(projectPath, "origin", Date.now())) {
+			remoteGone = true;
+			return false;
+		}
 		const startedAt = performance.now();
 		log.debug("Fetching remote", { projectPath, remote: "origin", branches: stillDue });
-		const result = await runGitFetch(projectPath, ["git", "fetch", "origin", ...stillDue, "--quiet"], timeoutMs);
+		const result = await runGitFetch(projectPath, "origin", [...stillDue, "--quiet"], timeoutMs);
 		if (result.ok) {
 			for (const b of stillDue) {
 				fetchLastSuccess.set(keyOf(b), Date.now());
 				fetchLastFailure.delete(keyOf(b));
 			}
+			remoteUnreachable.delete(`${projectPath}:origin`);
 			log.debug("fetchOrigin finished", { projectPath, branches: stillDue, durationMs: Math.round(performance.now() - startedAt) });
+		} else if (recordRemoteFailure(projectPath, "origin", result.stderr) !== null) {
+			// Retrying each branch would only hit the same missing repository again.
+			remoteGone = true;
+			const at = Date.now();
+			for (const b of stillDue) {
+				fetchLastFailure.set(keyOf(b), { at, failures: (fetchLastFailure.get(keyOf(b))?.failures ?? 0) + 1, stderr: result.stderr });
+			}
+			log.warn("fetchOrigin (combined) failed: remote unreachable", { projectPath, branches: stillDue, stderr: result.stderr });
 		} else {
 			log.warn("fetchOrigin (combined) failed, retrying per branch", { projectPath, branches: stillDue, stderr: result.stderr });
 		}
@@ -2017,7 +2228,7 @@ export async function fetchOriginBranches(
 	} finally {
 		fetchInFlight.delete(groupKey);
 	}
-	if (!ok) {
+	if (!ok && !remoteGone) {
 		const results: boolean[] = [];
 		for (const b of due) results.push(await fetchOrigin(projectPath, b, timeoutMs, options));
 		ok = results.every(Boolean);
@@ -2259,6 +2470,7 @@ export function _resetFetchState(): void {
 	fetchInFlight.clear();
 	fetchLastSuccess.clear();
 	fetchLastFailure.clear();
+	remoteUnreachable.clear();
 	fetchProjectQueue.clear();
 }
 
@@ -3179,12 +3391,10 @@ export async function saveDiffSnapshot(
 	}
 
 	// Check if identical to the latest snapshot
-	const existing = readdirSync(dir).filter((f) => f.endsWith(".patch")).sort();
+	const existing = listDiffSnapshots(dir);
 	if (existing.length > 0) {
-		const lastFile = `${dir}/${existing[existing.length - 1]}`;
 		try {
-			const lastContent = readFileSync(lastFile, "utf-8");
-			if (lastContent === diff) {
+			if (readDiffSnapshot(`${dir}/${existing[existing.length - 1]}`) === diff) {
 				log.debug("saveDiffSnapshot: unchanged, skipping");
 				return;
 			}
@@ -3194,12 +3404,11 @@ export async function saveDiffSnapshot(
 	// Save with timestamp
 	const now = new Date();
 	const ts = now.toISOString().replace(/[:.]/g, "-").slice(0, 19);
-	const filename = `${ts}.patch`;
-	writeFileSync(`${dir}/${filename}`, diff);
+	const filename = writeDiffSnapshot(dir, ts, diff);
 	log.info("saveDiffSnapshot: saved", { file: filename, size: diff.length });
 
 	// Prune old snapshots beyond the limit
-	const allFiles = readdirSync(dir).filter((f) => f.endsWith(".patch")).sort();
+	const allFiles = listDiffSnapshots(dir);
 	if (allFiles.length > MAX_DIFF_SNAPSHOTS) {
 		const toRemove = allFiles.slice(0, allFiles.length - MAX_DIFF_SNAPSHOTS);
 		for (const f of toRemove) {

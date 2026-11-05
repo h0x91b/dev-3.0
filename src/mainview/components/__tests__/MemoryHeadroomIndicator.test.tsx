@@ -152,23 +152,23 @@ describe("MemoryHeadroomIndicator — where it lives", () => {
 		mockedGet.mockResolvedValue(snapshot({ pressure: "normal" }));
 		renderMenuRow();
 		await waitFor(() => expect(pill()).toBeInTheDocument());
-		const number = pill().querySelector(".tabular-nums") as HTMLElement;
+		const number = screen.getByTestId("memory-headroom-value");
 		expect(number.className).toContain("text-fg-3");
 		expect(number.className).not.toContain("text-success");
 	});
 
-	it("colours the level bar from the OS verdict, never from the percentage", async () => {
+	it("colours the readout from the OS verdict, never from the percentage", async () => {
 		mockedGet.mockResolvedValue(snapshot({ pressure: "normal" }));
 		renderMenuRow();
 		await waitFor(() => expect(pill()).toBeInTheDocument());
-		const bar = () => pill().querySelector(".hdr-mem-bar") as HTMLElement;
+		const value = () => screen.getByTestId("memory-headroom-value");
 		// 81% used, yet the OS says normal — on a big machine that is genuinely fine,
-		// so the bar must stay accent rather than turning red on our own threshold.
-		expect(bar().className).toContain("bg-accent");
+		// so the readout must stay neutral rather than turning red on our own threshold.
+		expect(value().className).toContain("text-fg-3");
 
 		await pushSnapshot(snapshot({ pressure: "critical" }));
-		expect(bar().className).toContain("bg-danger");
-		expect(bar().className).not.toContain("bg-accent");
+		expect(value().className).toContain("text-danger");
+		expect(value().className).not.toContain("text-fg-3");
 	});
 
 	it("opens the breakdown from the menu row on click", async () => {
@@ -225,7 +225,7 @@ describe("MemoryHeadroomIndicator — the pill", () => {
 	it("spells the unit out, because the number carries the widget on its own", async () => {
 		renderIndicator();
 		await waitFor(() => expect(pill()).toBeInTheDocument());
-		// There is no glyph beside it, so a bare "12G" would read as a code.
+		// The glyph beside it is identity only, so a bare "12G" would still read as a code.
 		expect(pill().textContent).toMatch(/\bGB\b/);
 	});
 
@@ -236,6 +236,19 @@ describe("MemoryHeadroomIndicator — the pill", () => {
 		expect(bar).not.toBeNull();
 		// 52 of 64 GiB used.
 		expect(bar.style.width).toBe("81%");
+	});
+
+	it("leads the number with the memory icon, so it is never mistaken for the disk pill", async () => {
+		renderIndicator();
+		await waitFor(() => expect(pill()).toBeInTheDocument());
+		expect(pill().querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(1);
+	});
+
+	it("leads the menu row with the same icon", async () => {
+		mockedGet.mockResolvedValue(snapshot({ pressure: "normal" }));
+		renderMenuRow();
+		await waitFor(() => expect(pill()).toBeInTheDocument());
+		expect(pill().querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(1);
 	});
 
 	it("says 'free' in its accessible name, so the number is never ambiguous", async () => {

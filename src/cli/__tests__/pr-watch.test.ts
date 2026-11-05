@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ParsedArgs } from "../args";
 import type { CliContext } from "../context";
-import { CLI_EXIT_CODE_PR_WATCH_NO_PR } from "../../shared/cli-exit-codes";
-import { PR_WATCH_NO_PR_PREFIX } from "../../shared/pr-watch";
+import { CLI_EXIT_CODE_PR_WATCH_NO_PR, CLI_EXIT_CODE_PR_WATCH_PR_FINISHED } from "../../shared/cli-exit-codes";
+import { PR_WATCH_NO_PR_PREFIX, PR_WATCH_PR_FINISHED_PREFIX } from "../../shared/pr-watch";
 
 vi.mock("../socket-client", () => ({ sendRequest: vi.fn() }));
 vi.mock("../context", () => ({
@@ -109,6 +109,44 @@ describe("dev3 pr watch", () => {
 		expect(await run({})).toBe(CLI_EXIT_CODE_PR_WATCH_NO_PR);
 		expect(stderr).toContain("No open pull request found for feat/x.");
 		expect(stderr).not.toContain(PR_WATCH_NO_PR_PREFIX);
+	});
+
+	it("exits with its own code when --pr names a PR that is already merged or closed", async () => {
+		send.mockResolvedValue({ id: "1", ok: false, error: `${PR_WATCH_PR_FINISHED_PREFIX}Pull request #2111 is already merged; there is nothing left to watch.` });
+
+		expect(await run({ pr: "2111" })).toBe(CLI_EXIT_CODE_PR_WATCH_PR_FINISHED);
+		expect(stderr).toContain("Pull request #2111 is already merged");
+		expect(stderr).not.toContain(PR_WATCH_PR_FINISHED_PREFIX);
+	});
+
+	it("says when the watched PR is not the task's own", async () => {
+		send.mockResolvedValue({ id: "1", ok: true, data: { prNumber: 2111, pinned: true } });
+		await run({ pr: "2111", until: "merged" });
+		expect(stdout).toBe("Watching PR #2111 (not this task's own PR) until it is merged or closed — dev3 will message this agent. No need to poll gh.\n");
+	});
+
+	it("removes only one PR's watches with --off --pr", async () => {
+		send.mockResolvedValue({ id: "1", ok: true, data: { removed: 1 } });
+
+		await run({ off: "true", pr: "2111" });
+
+		expect(send).toHaveBeenCalledWith("/tmp/x.sock", "pr.watch.off", { taskId: "task-1", projectId: "proj-1", prNumber: 2111 });
+		expect(stdout).toBe("Removed 1 PR watch on PR #2111.\n");
+	});
+
+	it("refuses --list with --pr", async () => {
+		expect(await run({ list: "true", pr: "7" })).toBe(3);
+		expect(send).not.toHaveBeenCalled();
+	});
+
+	it("marks a followed PR in --list", async () => {
+		send.mockResolvedValue({
+			id: "1",
+			ok: true,
+			data: { watches: [{ until: "ci", prNumber: 2111, headSha: "fffffff", createdAt: "2026-10-31T10:00:00.000Z", pinned: true }] },
+		});
+		await run({ list: "true" });
+		expect(stdout).toBe("PR #2111  until ci  head fffffff  since 2026-10-31T10:00:00.000Z  (followed, not this task's PR)\n");
 	});
 
 	it("exits 1 on any other app error", async () => {

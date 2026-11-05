@@ -7,7 +7,9 @@ import type { CliContext } from "../context";
 import type { ParsedArgs } from "../args";
 import type { Task, CliResponse } from "../../shared/types";
 import { DRAFT_TASK_ACTIVATION_ERROR, TASK_REF_UNRESOLVED_PREFIX } from "../../shared/types";
-import { CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_RESET_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT } from "../../shared/cli-exit-codes";
+import { CLI_EXIT_CODE_EPIC_CREATE_FORBIDDEN, CLI_EXIT_CODE_EPIC_REF_INVALID, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED, CLI_EXIT_CODE_RESET_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT } from "../../shared/cli-exit-codes";
+import { LAUNCH_PREPARATION_REPORT_BUDGET_MS } from "../../shared/launch-preparation";
+import { handleEpic } from "../commands/epic";
 
 vi.mock("../stdin", () => ({
 	readStdin: vi.fn(),
@@ -109,6 +111,27 @@ describe("task show", () => {
 		});
 		expect(stdoutOutput).toContain("Fix the login bug");
 		expect(stdoutOutput).toContain("Agent is Working");
+	});
+
+	it("prints no Created by line for a task the user created", async () => {
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).not.toContain("Created by");
+	});
+
+	it("prints the parent a task was created by, and a deleted parent as such", async () => {
+		const child = { ...FAKE_TASK, origin: { kind: "task", taskId: "pppppppp-0000", projectId: "proj-002" } };
+		mockSend.mockResolvedValue(okResp({
+			...child,
+			originParent: { id: "pppppppp-0000", projectId: "proj-002", projectName: "homebrew", seq: 1801, variantIndex: 2, title: "Coordinate" },
+		}));
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).toMatch(/Created by:\s*#1801-2 · homebrew — Coordinate/);
+
+		stdoutOutput = "";
+		mockSend.mockResolvedValue(okResp({ ...child, originParent: null }));
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).toMatch(/Created by:\s*a task \(deleted\)/);
 	});
 
 	it("prints the priority field (defaulting to P3 when absent)", async () => {
@@ -345,6 +368,18 @@ describe("task create", () => {
 
 		const params = mockSend.mock.calls[0]![2]!;
 		expect(params.projectId).toBe(CTX.projectId);
+	});
+
+	it("names the task it runs inside as the creator, even for another project", async () => {
+		mockSend.mockResolvedValue(okResp(createdTask));
+
+		await handleTask("create", args([], { project: "proj-other", title: "New task" }), SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", {
+			projectId: "proj-other",
+			title: "New task",
+			sourceTaskId: CTX.taskId,
+		});
 	});
 
 	it("sends --type and names the role it created", async () => {
@@ -1057,6 +1092,39 @@ describe("task move --status completed", () => {
 		expect(stderrOutput).toContain("requires user approval");
 		expect(stdoutOutput).toContain("User approved");
 		expect(stdoutOutput).toContain("moved to Completed");
+	});
+
+	// The task reached Completed another way (board, merged PR) while the dialog
+	// was open: the app voids the request and the agent got what it asked for.
+	it("succeeds when the request was voided because the task is already completed", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: false, stale: true, taskStatus: "completed" }));
+
+		await handleTask("move", args(["aaaaaaaa"], { status: "completed" }), SOCKET, null);
+		expect(stdoutOutput).toContain("already Completed");
+		expect(stdoutOutput).toContain("got there another way");
+	});
+
+	it("prints the Codex stop-hook JSON when a voided request finds the task completed", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: false, stale: true, taskStatus: "completed" }));
+
+		await handleTask("move", args(["aaaaaaaa"], { status: "completed", "codex-stop-hook": "true" }), SOCKET, null);
+		expect(stdoutOutput).not.toContain("already Completed");
+		expect(stdoutOutput.trim().startsWith("{")).toBe(true);
+	});
+
+	it("exits with code 6 and the voided wording when the task was cancelled instead", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: false, stale: true, taskStatus: "cancelled" }));
+
+		await expect(handleTask("move", args(["aaaaaaaa"], { status: "completed" }), SOCKET, null)).rejects.toThrow("EXIT_6");
+		expect(stderrOutput).toContain("voided before anyone answered");
+		expect(stderrOutput).not.toContain("User declined");
+	});
+
+	it("exits with code 6 and says the task was deleted when it vanished mid-dialog", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: false, stale: true, taskStatus: null }));
+
+		await expect(handleTask("move", args(["aaaaaaaa"], { status: "completed" }), SOCKET, null)).rejects.toThrow("EXIT_6");
+		expect(stderrOutput).toContain("was deleted");
 	});
 
 	it("exits with code 6 when the user declines", async () => {
@@ -2085,7 +2153,7 @@ describe("task move — agent asking to start another task", () => {
 		expect(move[2]!.sourceTaskId).toBe(CTX.taskId);
 		// The dialog can sit open for minutes, so this call waits far longer than
 		// the default socket timeout.
-		expect(move[3]).toEqual({ timeoutMs: 10 * 60 * 1000 });
+		expect(move[3]).toEqual({ timeoutMs: 10 * 60 * 1000 + LAUNCH_PREPARATION_REPORT_BUDGET_MS });
 	});
 
 	it("waits past a one-hour delay instead of giving up after the fixed ten minutes", async () => {
@@ -2100,7 +2168,7 @@ describe("task move — agent asking to start another task", () => {
 		await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
 
 		// One hour plus the two-minute grace, not the ten-minute baseline.
-		expect(moveCall(mockSend)![3]).toEqual({ timeoutMs: 60 * 60 * 1000 + 2 * 60 * 1000 });
+		expect(moveCall(mockSend)![3]).toEqual({ timeoutMs: 60 * 60 * 1000 + 2 * 60 * 1000 + LAUNCH_PREPARATION_REPORT_BUDGET_MS });
 	});
 
 	it("keeps the baseline when the app cannot say what its delay is", async () => {
@@ -2111,7 +2179,7 @@ describe("task move — agent asking to start another task", () => {
 
 		await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
 
-		expect(moveCall(mockSend)![3]).toEqual({ timeoutMs: 10 * 60 * 1000 });
+		expect(moveCall(mockSend)![3]).toEqual({ timeoutMs: 10 * 60 * 1000 + LAUNCH_PREPARATION_REPORT_BUDGET_MS });
 	});
 
 	it("never shortens the wait below the baseline for a short delay", async () => {
@@ -2122,7 +2190,7 @@ describe("task move — agent asking to start another task", () => {
 
 		await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
 
-		expect(moveCall(mockSend)![3]).toEqual({ timeoutMs: 10 * 60 * 1000 });
+		expect(moveCall(mockSend)![3]).toEqual({ timeoutMs: 10 * 60 * 1000 + LAUNCH_PREPARATION_REPORT_BUDGET_MS });
 	});
 
 	it("prints the new task's seq and how to talk to it on approval", async () => {
@@ -2134,6 +2202,56 @@ describe("task move — agent asking to start another task", () => {
 		expect(stdoutOutput).toContain("dev3 message --task seq:77");
 	});
 
+	// 2026-11-01 incident: another dev3 instance deleted the launched task's
+	// worktree mid-preparation, and the requester was still told it started.
+	it("exits with the preparation-failed code when the approved task failed to prepare", async () => {
+		mockSend.mockResolvedValue(okResp({
+			approved: true,
+			seq: 77,
+			title: "Other task",
+			launched: [{ variantIndex: null, replyCommand: "x", preparation: { state: "failed", error: "Preparation interrupted by app restart" } }],
+		}));
+
+		await expect(
+			handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX),
+		).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED}`);
+		expect(stderrOutput).toContain("failed to prepare");
+		expect(stderrOutput).toContain("Preparation interrupted by app restart");
+		expect(stdoutOutput).not.toContain("is starting");
+		expect(stdoutOutput).not.toContain("It knows you started it");
+	});
+
+	it("fails a variant group when any one variant failed to prepare", async () => {
+		mockSend.mockResolvedValue(okResp({
+			approved: true,
+			seq: 77,
+			title: "Other task",
+			launched: [
+				{ variantIndex: 1, replyCommand: "a", preparation: { state: "started" } },
+				{ variantIndex: 2, replyCommand: "b", preparation: { state: "failed", error: "setup script exited 1" } },
+			],
+		}));
+
+		await expect(
+			handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX),
+		).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED}`);
+		expect(stderrOutput).toContain("variant #2: setup script exited 1");
+	});
+
+	it("says a launch is still preparing instead of implying the agent is up", async () => {
+		mockSend.mockResolvedValue(okResp({
+			approved: true,
+			seq: 77,
+			title: "Other task",
+			launched: [{ variantIndex: null, replyCommand: "x", preparation: { state: "still-preparing" } }],
+		}));
+
+		await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("still preparing");
+		expect(stdoutOutput).toContain("dev3 task show --task seq:77");
+	});
+
 	it("exits with the launch-declined code when the user says no", async () => {
 		mockSend.mockResolvedValue(okResp({ approved: false }));
 
@@ -2141,6 +2259,16 @@ describe("task move — agent asking to start another task", () => {
 			handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX),
 		).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_LAUNCH_DECLINED}`);
 		expect(stderrOutput).toContain("declined the launch request");
+	});
+
+	it("says the request was voided, not declined, when the target task went away mid-dialog", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: false, stale: true }));
+
+		await expect(
+			handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX),
+		).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_LAUNCH_DECLINED}`);
+		expect(stderrOutput).toContain("voided before anyone answered");
+		expect(stderrOutput).not.toContain("User declined");
 	});
 
 	it("hands out one address per variant when the user launched a group", async () => {
@@ -2313,7 +2441,7 @@ describe("task create --scratch --run", () => {
 			SOCKET,
 			"task.createScratchAndRun",
 			{ projectId: "proj-001", sourceTaskId: CTX.taskId },
-			{ timeoutMs: 10 * 60 * 1000 },
+			{ timeoutMs: 10 * 60 * 1000 + LAUNCH_PREPARATION_REPORT_BUDGET_MS },
 		);
 		expect(stdoutOutput).toContain("seq:91");
 	});
@@ -2335,7 +2463,7 @@ describe("task create --scratch --run", () => {
 			SOCKET,
 			"task.createScratchAndRun",
 			{ projectId: "proj-001", sourceTaskId: CTX.taskId, agentId: "builtin-codex", configId: "codex-low" },
-			{ timeoutMs: 10 * 60 * 1000 },
+			{ timeoutMs: 10 * 60 * 1000 + LAUNCH_PREPARATION_REPORT_BUDGET_MS },
 		);
 	});
 
@@ -2396,5 +2524,52 @@ describe("task open", () => {
 	it("exits with a usage error when no task can be resolved", async () => {
 		await expect(handleTask("open", args([]), SOCKET, null)).rejects.toThrow(/EXIT_/);
 		expect(mockSend).not.toHaveBeenCalled();
+	});
+});
+
+describe("epic flags", () => {
+	const created = { ...FAKE_TASK, epicId: "epicpay1-0000" };
+
+	it("task create sends --epic and --no-epic and refuses both at once", async () => {
+		mockSend.mockResolvedValue(okResp(created));
+		await handleTask("create", args([], { title: "New", epic: "Payments v2" }), SOCKET, CTX);
+		expect(mockSend.mock.calls[0]![2]).toMatchObject({ title: "New", epic: "Payments v2", sourceTaskId: CTX.taskId });
+
+		mockSend.mockClear();
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+		await handleTask("create", args([], { title: "New", "no-epic": "true" }), SOCKET, CTX);
+		expect(mockSend.mock.calls[0]![2]).toMatchObject({ noEpic: true });
+
+		mockSend.mockClear();
+		await expect(handleTask("create", args([], { title: "New", epic: "X", "no-epic": "true" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("an unknown epic exits 43 and a refused epic create exits 44", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: false, error: 'epic-ref-invalid: No epic "Paymnts".' });
+		await expect(handleTask("update", args(["aaaaaaaa"], { epic: "Paymnts" }), SOCKET, null)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_EPIC_REF_INVALID}`);
+		expect(stderrOutput).toContain('No epic "Paymnts".');
+		expect(stderrOutput).not.toContain("epic-ref-invalid");
+
+		mockSend.mockResolvedValue({ id: "1", ok: false, error: "epic-create-forbidden: Only the user or a coordinator task can create an epic." });
+		await expect(handleEpic("create", args([], { name: "Mine" }), SOCKET, CTX)).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_EPIC_CREATE_FORBIDDEN}`);
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "epic.create", { name: "Mine", sourceTaskId: CTX.taskId });
+	});
+
+	it("task update --no-epic is an update on its own", async () => {
+		mockSend.mockResolvedValue(okResp({ task: FAKE_TASK }));
+		await handleTask("update", args(["aaaaaaaa"], { "no-epic": "true" }), SOCKET, null);
+		expect(mockSend.mock.calls[0]![2]).toMatchObject({ noEpic: true });
+	});
+
+	it("task show prints the epic line only when the task has one", async () => {
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).not.toContain("Epic:");
+
+		stdoutOutput = "";
+		mockSend.mockResolvedValue(okResp({ ...created, epic: { id: "epicpay1-0000", name: "Payments v2", color: "#3b82f6", archived: true } }));
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).toMatch(/Epic:\s*Payments v2 \(epicpay1\) — archived/);
 	});
 });

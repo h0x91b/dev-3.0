@@ -17,8 +17,10 @@ vi.mock("../scheduled-message-scheduler", () => ({
 }));
 
 const pushCliToast = vi.fn();
+const pushCliAttention = vi.fn();
 vi.mock("../rpc-handlers", () => ({
 	pushCliToast: (...args: unknown[]) => pushCliToast(...args),
+	pushCliAttention: (...args: unknown[]) => pushCliAttention(...args),
 }));
 
 vi.mock("../git", () => ({
@@ -28,6 +30,7 @@ vi.mock("../git", () => ({
 import { wrapAgentMessage } from "../../shared/agent-message-envelope";
 import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES } from "../../shared/types";
 import { buildHandoffMessage, deliverLaunchHandoff, HANDOFF_SUBJECT } from "../agent-launch-handoff";
+import { noteAgentExited, noteAgentLaunched, noteAgentSessionStarted, resetAgentSessionRecordsForTests } from "../agent-session-receipts";
 
 const project = { id: "p1", path: "/tmp/proj" };
 const source = { taskId: "parent", seq: 7, title: "Parent" };
@@ -44,6 +47,7 @@ function liveTask(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	resetAgentSessionRecordsForTests();
 	getProject.mockResolvedValue(project);
 	sendMessageImmediately.mockResolvedValue({ status: "delivered", spilledPath: null });
 });
@@ -131,5 +135,114 @@ describe("deliverLaunchHandoff", () => {
 		expect(result).toBe(false);
 		expect(sendMessageImmediately).not.toHaveBeenCalled();
 		expect(pushCliToast).toHaveBeenCalledWith(expect.objectContaining({ level: "error" }));
+	});
+});
+
+// #2034: a Claude session this app launched is typed into only after it says it
+// is past its startup dialogs — the trust prompt's default is "No, exit".
+describe("deliverLaunchHandoff — a launched Claude session", () => {
+	const SESSION = "11111111-2222-4333-8444-555555555555";
+	const claudeTask = () => liveTask({ sessionState: { panes: [{ paneId: "%1", sessionId: SESSION, agentCmd: "claude" }] } });
+
+	/** Runs the handoff on a fake clock; `onTick` may change the world between polls. */
+	function runWithClock(onTick: (elapsedMs: number) => void = () => {}) {
+		let clock = 0;
+		return deliverLaunchHandoff({
+			projectId: "p1",
+			childTaskId: "child-1234",
+			source,
+			sleep: async (ms) => {
+				clock += ms;
+				onTick(clock);
+			},
+			now: () => clock,
+		});
+	}
+
+	beforeEach(() => {
+		getTask.mockResolvedValue(claudeTask());
+		noteAgentLaunched("child-1234", SESSION);
+	});
+
+	it("types nothing while the session has not started — badges the card, then gives up with a toast", async () => {
+		await expect(runWithClock()).resolves.toBe(false);
+
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
+		expect(pushCliAttention).toHaveBeenCalledTimes(1);
+		expect(pushCliAttention.mock.calls[0]![0]).toMatchObject({ taskId: "child-1234", reason: expect.stringContaining("has not finished starting") });
+		expect(pushCliToast).toHaveBeenCalledWith(expect.objectContaining({ level: "error" }));
+	});
+
+	it("delivers once, into the pane the SessionStart receipt came from, after a human-length wait", async () => {
+		const result = await runWithClock((elapsed) => {
+			if (elapsed === 300_000) noteAgentSessionStarted("child-1234", SESSION, "%9");
+		});
+
+		expect(result).toBe(true);
+		expect(sendMessageImmediately).toHaveBeenCalledTimes(1);
+		expect(sendMessageImmediately.mock.calls[0]![2]).toEqual({ kind: "pane", paneId: "%9" });
+		expect(pushCliAttention).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not open for a receipt from another session — a previous run or a second agent", async () => {
+		noteAgentSessionStarted("child-1234", "some-other-session", "%1");
+		noteAgentSessionStarted("other-task", SESSION, "%1");
+		await expect(runWithClock()).resolves.toBe(false);
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
+	});
+
+	it("stops at once when the agent exits before its session started (trust declined)", async () => {
+		const result = await runWithClock((elapsed) => {
+			if (elapsed === 5_000) noteAgentExited("child-1234", SESSION, 1);
+		});
+
+		expect(result).toBe(false);
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
+		expect(pushCliToast).toHaveBeenCalledTimes(1);
+		expect(pushCliToast.mock.calls[0]![0].message).toMatch(/exited before/);
+	});
+
+	it("types nothing once the agent exited, even after its session had started", async () => {
+		const result = await runWithClock((elapsed) => {
+			if (elapsed === 3_000) {
+				noteAgentSessionStarted("child-1234", SESSION, "%1");
+				noteAgentExited("child-1234", SESSION, 0);
+			}
+		});
+		expect(result).toBe(false);
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
+	});
+
+	it("abandons, with a toast, when the task is relaunched under a new session before the note lands", async () => {
+		const result = await runWithClock((elapsed) => {
+			if (elapsed === 10_000) {
+				getTask.mockResolvedValue(liveTask({ sessionState: { panes: [{ paneId: "%2", sessionId: "relaunch", agentCmd: "claude" }] } }));
+				noteAgentLaunched("child-1234", "relaunch");
+				noteAgentSessionStarted("child-1234", "relaunch", "%2");
+			}
+		});
+		expect(result).toBe(false);
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
+		expect(pushCliToast.mock.calls[0]![0].message).toMatch(/restarted/);
+	});
+
+	it("gives a send that keeps failing after the receipt the ordinary budget, not the boot ceiling", async () => {
+		noteAgentSessionStarted("child-1234", SESSION, "%1");
+		sendMessageImmediately.mockRejectedValue(new Error("no live agent session"));
+		let clock = 0;
+		const result = await deliverLaunchHandoff({
+			projectId: "p1", childTaskId: "child-1234", source,
+			sleep: async (ms) => { clock += ms; },
+			now: () => clock,
+		});
+
+		expect(result).toBe(false);
+		expect(clock).toBeLessThanOrEqual(125_000);
+	});
+
+	it("keeps the pane-exists rule for a session nobody registered (other harnesses, older launches)", async () => {
+		resetAgentSessionRecordsForTests();
+		await expect(runWithClock()).resolves.toBe(true);
+		expect(sendMessageImmediately.mock.calls[0]![2]).toBeNull();
 	});
 });

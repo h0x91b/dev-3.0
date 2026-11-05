@@ -1,5 +1,7 @@
 # `dev3 doctor --worktrees` is the only sanctioned deletion under `~/.dev3.0/`
 
+Superseded in part on 2026-10-28 by `decisions/2026/10/28/daily-worktree-cleanup.md`: the app now runs the same `prune()` daily with `--prune-older-than 14d`, which also covers orphans and teardowns (unmerged branches after 60 days).
+
 ## Context
 
 `~/.dev3.0/worktrees/<slug>/<shortId>/` grows one directory per task and never shrinks

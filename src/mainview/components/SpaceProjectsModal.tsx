@@ -120,7 +120,7 @@ function SpaceProjectsModal({ space, projects, onClose, onCreateProject }: Space
 					{shown.map((project) => (
 						<label
 							key={project.id}
-							className="flex items-center gap-2.5 px-3 py-2 hover:bg-elevated-hover transition-colors cursor-pointer"
+							className="flex items-center gap-2.5 px-3 py-2 hover:bg-overlay-hover transition-colors cursor-pointer"
 						>
 							<input
 								type="checkbox"
@@ -144,7 +144,7 @@ function SpaceProjectsModal({ space, projects, onClose, onCreateProject }: Space
 						<button
 							type="button"
 							onClick={() => onCreateProject(space)}
-							className="flex items-center gap-1.5 px-2 py-1.5 -ml-2 text-sm rounded-lg text-accent hover:bg-elevated transition-colors"
+							className="flex items-center gap-1.5 px-2 py-1.5 -ml-2 text-sm rounded-lg text-accent hover:bg-overlay-hover transition-colors"
 							data-testid="space-projects-new-project"
 						>
 							<svg aria-hidden="true" focusable="false" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -157,7 +157,7 @@ function SpaceProjectsModal({ space, projects, onClose, onCreateProject }: Space
 					<button
 						type="button"
 						onClick={onClose}
-						className="px-3 py-1.5 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+						className="px-3 py-1.5 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-overlay-hover transition-colors"
 					>
 						{t("spaces.cancel")}
 					</button>

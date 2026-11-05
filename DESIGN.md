@@ -30,6 +30,8 @@ hold the system together:
    No hue drift up or down a ramp.
 2. **The lightness ramp is monotonic**, so a hover never lands darker than the
    surface it lifts from, and `--surface-overlay` sits *above* `--surface-elevated`.
+   A row inside a popup, menu or sheet hovers to `overlay-hover`: `elevated-hover`
+   is only ΔL 0.013 above overlay in dark and does not show.
 3. **The text ladder is spaced by measured contrast** (APCA), not by eye —
    roughly `Lc 100 / 78 / 62 / 45` from primary to muted, in both themes.
 
@@ -43,6 +45,7 @@ hold the system together:
 | Elevated surface | `--surface-elevated` | `rgb(21, 27, 43)` | `rgb(249, 251, 254)` |
 | Elevated hover | `--surface-elevated-hover` | `rgb(29, 36, 53)` | `rgb(243, 246, 252)` |
 | Overlay (modals) | `--surface-overlay` | `rgb(27, 33, 48)` | `rgb(252, 253, 255)` |
+| Overlay hover | `--surface-overlay-hover` | `rgb(41, 48, 64)` | `rgb(239, 243, 251)` |
 
 ### Text
 

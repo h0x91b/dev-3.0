@@ -73,7 +73,7 @@ function NotesDialog({ task, title, onClose, children }: { task: Task; title: st
 					<button
 						type="button"
 						onClick={onClose}
-						className="flex-shrink-0 rounded p-1 text-fg-3 hover:bg-elevated hover:text-fg transition-colors"
+						className="flex-shrink-0 rounded p-1 text-fg-3 hover:bg-overlay-hover hover:text-fg transition-colors"
 						aria-label={t("common.close")}
 					>
 						<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

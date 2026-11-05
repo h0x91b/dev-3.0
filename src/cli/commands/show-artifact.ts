@@ -53,6 +53,50 @@ function collectDirectoryAssets(dir: string, htmlPath: string): string[] {
 }
 
 /**
+ * Resolve what a publish names — a report directory, an `.html` (+ `--assets`) or
+ * a `.md`/`.txt` — into absolute paths, refusing early what the app would refuse.
+ * Shared by `dev3 show-artifact` and `dev3 live publish`.
+ */
+export function resolveArtifactSource(html: string, assets: string[]): { htmlPath: string; assetPaths: string[] } {
+	let htmlPath = resolvePath(process.cwd(), html);
+	if (existsSync(htmlPath) && statSync(htmlPath).isDirectory()) {
+		const indexPath = join(htmlPath, "index.html");
+		if (!existsSync(indexPath) || !statSync(indexPath).isFile()) exitUsage(`No index.html in ${html} — pass the .html file directly.`);
+		if (!assets.length) assets.push(...collectDirectoryAssets(htmlPath, indexPath));
+		htmlPath = indexPath;
+	}
+	if (!existsSync(htmlPath) || !statSync(htmlPath).isFile()) exitUsage(`Artifact file not found: ${html}`);
+	const sourceExt = extname(htmlPath).toLowerCase();
+	if (sourceExt !== ".html" && !TEXT_EXTS.has(sourceExt)) exitUsage(`Artifact must be an .html, .md or .txt file: ${html}`);
+	if (TEXT_EXTS.has(sourceExt) && assets.length) exitUsage("A Markdown or text artifact takes no --assets — publish an .html report to bundle files.");
+	const htmlBytes = statSync(htmlPath).size;
+	if (htmlBytes > MAX_SHARED_ARTIFACT_HTML_BYTES) exitUsage(`Artifact file is too large: ${html} is ${mb(htmlBytes)} (max ${mb(MAX_SHARED_ARTIFACT_HTML_BYTES)})`);
+	if (assets.length > MAX_SHARED_ARTIFACT_ASSETS) exitUsage(`Too many assets: ${assets.length} (max ${MAX_SHARED_ARTIFACT_ASSETS}). Publish the .html file with an explicit --assets list.`);
+
+	let mediaBytes = 0;
+	const assetPaths = assets.map((path) => {
+		const absolute = resolvePath(process.cwd(), path);
+		if (!existsSync(absolute) || !statSync(absolute).isFile()) exitUsage(`Asset file not found: ${path}`);
+		const ext = extname(absolute).replace(/^\./, "").toLowerCase();
+		if (!ASSET_EXTS.has(ext)) exitUsage(`Unsupported artifact asset type "${ext || "(none)"}": ${path}`);
+		const size = statSync(absolute).size;
+		if (MEDIA_EXTS.has(ext)) {
+			mediaBytes += size;
+			if (size > MAX_SHARED_ARTIFACT_MEDIA_BYTES) {
+				exitUsage(`Artifact media file is too large: ${path} is ${mb(size)} (max ${mb(MAX_SHARED_ARTIFACT_MEDIA_BYTES)} per clip). Shorten it, or re-encode it at a lower bitrate or resolution.`);
+			}
+		} else if (size > MAX_SHARED_ARTIFACT_ASSET_BYTES) {
+			exitUsage(`Artifact asset is too large: ${path} is ${mb(size)} (max ${mb(MAX_SHARED_ARTIFACT_ASSET_BYTES)})`);
+		}
+		return absolute;
+	});
+	if (mediaBytes > MAX_SHARED_ARTIFACT_MEDIA_TOTAL_BYTES) {
+		exitUsage(`Artifact video and audio total ${mb(mediaBytes)} (max ${mb(MAX_SHARED_ARTIFACT_MEDIA_TOTAL_BYTES)} combined). Publish fewer clips, or keep one format per clip instead of several.`);
+	}
+	return { htmlPath, assetPaths };
+}
+
+/**
  * `dev3 show-artifact ./report-dir --title "Report"` publishes `index.html` plus
  * every asset under the directory; `dev3 show-artifact report.html --assets
  * app.css chart.png` names them by hand. A `.md` or `.txt` file publishes as
@@ -101,41 +145,7 @@ export async function handleShowArtifact(argv: string[], socketPath: string, con
 	}
 
 	if (!html) exitUsage('Usage: dev3 show-artifact <report-dir | file.html | notes.md | notes.txt> [--assets <file...>] [--title "..."] [--artifact-id <slug>] [--new] [--task <id>]');
-	let htmlPath = resolvePath(process.cwd(), html);
-	if (existsSync(htmlPath) && statSync(htmlPath).isDirectory()) {
-		const indexPath = join(htmlPath, "index.html");
-		if (!existsSync(indexPath) || !statSync(indexPath).isFile()) exitUsage(`No index.html in ${html} — pass the .html file directly.`);
-		if (!assets.length) assets.push(...collectDirectoryAssets(htmlPath, indexPath));
-		htmlPath = indexPath;
-	}
-	if (!existsSync(htmlPath) || !statSync(htmlPath).isFile()) exitUsage(`Artifact file not found: ${html}`);
-	const sourceExt = extname(htmlPath).toLowerCase();
-	if (sourceExt !== ".html" && !TEXT_EXTS.has(sourceExt)) exitUsage(`Artifact must be an .html, .md or .txt file: ${html}`);
-	if (TEXT_EXTS.has(sourceExt) && assets.length) exitUsage("A Markdown or text artifact takes no --assets — publish an .html report to bundle files.");
-	const htmlBytes = statSync(htmlPath).size;
-	if (htmlBytes > MAX_SHARED_ARTIFACT_HTML_BYTES) exitUsage(`Artifact file is too large: ${html} is ${mb(htmlBytes)} (max ${mb(MAX_SHARED_ARTIFACT_HTML_BYTES)})`);
-	if (assets.length > MAX_SHARED_ARTIFACT_ASSETS) exitUsage(`Too many assets: ${assets.length} (max ${MAX_SHARED_ARTIFACT_ASSETS}). Publish the .html file with an explicit --assets list.`);
-
-	let mediaBytes = 0;
-	const assetPaths = assets.map((path) => {
-		const absolute = resolvePath(process.cwd(), path);
-		if (!existsSync(absolute) || !statSync(absolute).isFile()) exitUsage(`Asset file not found: ${path}`);
-		const ext = extname(absolute).replace(/^\./, "").toLowerCase();
-		if (!ASSET_EXTS.has(ext)) exitUsage(`Unsupported artifact asset type "${ext || "(none)"}": ${path}`);
-		const size = statSync(absolute).size;
-		if (MEDIA_EXTS.has(ext)) {
-			mediaBytes += size;
-			if (size > MAX_SHARED_ARTIFACT_MEDIA_BYTES) {
-				exitUsage(`Artifact media file is too large: ${path} is ${mb(size)} (max ${mb(MAX_SHARED_ARTIFACT_MEDIA_BYTES)} per clip). Shorten it, or re-encode it at a lower bitrate or resolution.`);
-			}
-		} else if (size > MAX_SHARED_ARTIFACT_ASSET_BYTES) {
-			exitUsage(`Artifact asset is too large: ${path} is ${mb(size)} (max ${mb(MAX_SHARED_ARTIFACT_ASSET_BYTES)})`);
-		}
-		return absolute;
-	});
-	if (mediaBytes > MAX_SHARED_ARTIFACT_MEDIA_TOTAL_BYTES) {
-		exitUsage(`Artifact video and audio total ${mb(mediaBytes)} (max ${mb(MAX_SHARED_ARTIFACT_MEDIA_TOTAL_BYTES)} combined). Publish fewer clips, or keep one format per clip instead of several.`);
-	}
+	const { htmlPath, assetPaths } = resolveArtifactSource(html, assets);
 
 	const rawTaskId = flags.task || flags["task-id"] || context?.taskId;
 	if (!rawTaskId) exitUsage("No task in context. Run inside a worktree or pass --task <id> / --task-id <id>.");

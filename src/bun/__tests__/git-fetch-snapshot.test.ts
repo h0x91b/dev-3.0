@@ -3,9 +3,10 @@
  * using mocked spawn() responses. No real git repos needed.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import { gzipSync } from "zlib";
 import type { Project, Task } from "../../shared/types";
 
 vi.mock("../logger", () => ({
@@ -43,11 +44,27 @@ function queueResponse(exitCode: number, stdout: string, stderr = "") {
 	spawnResponses.push({ exitCode, stdout, stderr });
 }
 
+let remoteUrl = "git@github.com:o/r.git";
+let repoSshCommand = "";
+
+/** The two reads behind the fetch ssh command; answered here so the queue holds fetches only. */
+function sshEnvLookupResponse(cmd: string[]): SpawnResponse | null {
+	const args = cmd.filter((arg) => arg !== "-c" && arg !== "core.quotepath=false");
+	if (args[1] === "ls-remote" && args[2] === "--get-url") return { exitCode: 0, stdout: `${remoteUrl}\n`, stderr: "" };
+	if (args[1] === "config" && args[3] === "core.sshCommand") {
+		return repoSshCommand ? { exitCode: 0, stdout: `${repoSshCommand}\n`, stderr: "" } : { exitCode: 1, stdout: "", stderr: "" };
+	}
+	return null;
+}
+
 vi.mock("../spawn", () => ({
 	spawn: (cmd: string[], opts?: { env?: Record<string, string> }) => {
-		lastSpawnOptions = opts;
-		spawnCommands.push(cmd);
-		const response = spawnResponses.shift() ?? { exitCode: 1, stdout: "", stderr: "no response queued" };
+		const lookup = sshEnvLookupResponse(cmd);
+		if (!lookup) {
+			lastSpawnOptions = opts;
+			spawnCommands.push(cmd);
+		}
+		const response = lookup ?? spawnResponses.shift() ?? { exitCode: 1, stdout: "", stderr: "no response queued" };
 		const encoder = new TextEncoder();
 		let resolveExit!: (code: number) => void;
 		const exited = response.hang
@@ -59,9 +76,11 @@ vi.mock("../spawn", () => ({
 					gates.push(() => resolve(response.exitCode));
 				})
 				: Promise.resolve(response.exitCode);
-		activeSpawns += 1;
-		maxActiveSpawns = Math.max(maxActiveSpawns, activeSpawns);
-		void exited.then(() => { activeSpawns -= 1; });
+		if (!lookup) {
+			activeSpawns += 1;
+			maxActiveSpawns = Math.max(maxActiveSpawns, activeSpawns);
+			void exited.then(() => { activeSpawns -= 1; });
+		}
 		return {
 			exited,
 			kill: () => {
@@ -90,12 +109,16 @@ import {
 	fetchOriginBranches,
 	fetchSshCommand,
 	lastOriginFetchError,
+	sshEndpointOf,
 	_resetFetchState,
 	saveDiffSnapshot,
 	taskDir,
 } from "../git";
+import { listDiffSnapshots, readDiffSnapshot } from "../diff-snapshots";
 
 beforeEach(() => {
+	remoteUrl = "git@github.com:o/r.git";
+	repoSshCommand = "";
 	lastSpawnOptions = undefined;
 	spawnResponses = [];
 	spawnCommands = [];
@@ -313,34 +336,60 @@ function fetchArgs(): string[][] {
 }
 
 describe("fetch SSH connection reuse", () => {
+	const base = "ssh -o BatchMode=yes -o ConnectTimeout=10";
+	const work = "git@github.com-work:";
+	const socketOf = (cmd: string) => /ControlPath="([^"]+)"/.exec(cmd)?.[1];
+
 	it("adds ControlMaster options on unix", () => {
 		for (const platform of ["darwin", "linux"] as const) {
-			const cmd = fetchSshCommand(platform, "/home/u/.dev3.0/ssh");
-			expect(cmd).toContain("ssh -o BatchMode=yes -o ConnectTimeout=10");
-			expect(cmd).toContain("-o ControlMaster=auto");
-			expect(cmd).toContain(`-o 'ControlPath="/home/u/.dev3.0/ssh/%C"'`);
+			const cmd = fetchSshCommand(platform, "/home/u/.dev3.0/ssh-mux", work);
+			expect(cmd).toContain(`${base} -o ControlMaster=auto`);
+			expect(socketOf(cmd)).toMatch(/^\/home\/u\/\.dev3\.0\/ssh-mux\/[0-9a-f]{16}$/);
 			expect(cmd).toContain("-o ControlPersist=300");
 		}
 	});
 
-	it("leaves the command unchanged on Windows or without a control dir", () => {
-		const base = "ssh -o BatchMode=yes -o ConnectTimeout=10";
-		expect(fetchSshCommand("win32", "C:/dev3/ssh")).toBe(base);
-		expect(fetchSshCommand("linux", null)).toBe(base);
+	// Two ~/.ssh/config aliases resolving to one HostName share ssh's %C, and so one
+	// master: every repo then authenticated as whichever GitHub account connected first.
+	it("gives each ssh alias of one host its own socket, never ssh's %C", () => {
+		const dir = "/home/u/.dev3.0/ssh-mux";
+		const workCmd = fetchSshCommand("darwin", dir, sshEndpointOf("git@github.com-work:base44-dev/apper.git"));
+		const personalCmd = fetchSshCommand("darwin", dir, sshEndpointOf("git@github.com-personal:h0x91b/dev-3.0.git"));
+		expect(workCmd).not.toContain("%C");
+		expect(socketOf(workCmd)).not.toBe(socketOf(personalCmd));
+		const sameWorkRepo = fetchSshCommand("darwin", dir, sshEndpointOf("git@github.com-work:base44-dev/other.git"));
+		expect(socketOf(sameWorkRepo)).toBe(socketOf(workCmd));
+	});
+
+	it("reads the ssh endpoint a remote URL names", () => {
+		expect(sshEndpointOf("git@github.com-work:base44-dev/apper.git")).toBe("git@github.com-work:");
+		expect(sshEndpointOf("github.com:o/r")).toBe("@github.com:");
+		expect(sshEndpointOf("ssh://git@github.com-work/o/r.git")).toBe("git@github.com-work:");
+		expect(sshEndpointOf("ssh://me@host:2222/o/r.git")).toBe("me@host:2222");
+		expect(sshEndpointOf("git+ssh://[::1]:22/o/r")).toBe("@[::1]:22");
+		expect(sshEndpointOf("https://github.com/o/r.git")).toBeNull();
+		expect(sshEndpointOf("file:///srv/r.git")).toBeNull();
+		expect(sshEndpointOf("/srv/r.git")).toBeNull();
+		expect(sshEndpointOf("./sub:dir/r.git")).toBeNull();
+	});
+
+	it("leaves the command unchanged on Windows, without a control dir, or without an ssh endpoint", () => {
+		expect(fetchSshCommand("win32", "C:/dev3/ssh-mux", work)).toBe(base);
+		expect(fetchSshCommand("linux", null, work)).toBe(base);
+		expect(fetchSshCommand("linux", "/home/u/.dev3.0/ssh-mux", null)).toBe(base);
 	});
 
 	it("drops connection reuse when the socket path would not fit sun_path", () => {
-		const base = "ssh -o BatchMode=yes -o ConnectTimeout=10";
-		const qaHome = "/var/folders/04/ym_1nnl161n0p59pjl247ynr0000gn/T/dev3-qa/0123456789ab/seeded/home/.dev3.0/ssh";
-		expect(fetchSshCommand("darwin", qaHome)).toBe(base);
-		expect(fetchSshCommand("darwin", `/${"a".repeat(44)}`)).toContain("ControlMaster=auto");
-		expect(fetchSshCommand("darwin", `/${"a".repeat(45)}`)).toBe(base);
-		expect(fetchSshCommand("linux", `/${"é".repeat(23)}`)).toBe(base);
+		const qaHome = "/var/folders/04/ym_1nnl161n0p59pjl247ynr0000gn/T/dev3-qa/0123456789ab/seeded/home/.dev3.0/ssh-mux";
+		expect(fetchSshCommand("darwin", qaHome, work)).toBe(base);
+		expect(fetchSshCommand("darwin", `/${"a".repeat(68)}`, work)).toContain("ControlMaster=auto");
+		expect(fetchSshCommand("darwin", `/${"a".repeat(69)}`, work)).toBe(base);
+		expect(fetchSshCommand("linux", `/${"é".repeat(35)}`, work)).toBe(base);
 	});
 
 	it("quotes a control dir with spaces and single quotes for sh", () => {
-		expect(fetchSshCommand("linux", "/Users/a b/it's/ssh")).toContain(
-			`-o 'ControlPath="/Users/a b/it'\\''s/ssh/%C"'`,
+		expect(fetchSshCommand("linux", "/Users/a b/it's/ssh-mux", work)).toMatch(
+			/-o 'ControlPath="\/Users\/a b\/it'\\''s\/ssh-mux\/[0-9a-f]{16}"'/,
 		);
 	});
 
@@ -351,7 +400,7 @@ describe("fetch SSH connection reuse", () => {
 			queueResponse(0, "");
 			await fetchOrigin("/repo", "a");
 			expect(lastSpawnOptions?.env?.GIT_SSH_COMMAND).toContain("ControlMaster=auto");
-			expect(lastSpawnOptions?.env?.GIT_SSH_COMMAND).toContain("/tmp/dev3-test/ssh/%C");
+			expect(socketOf(lastSpawnOptions?.env?.GIT_SSH_COMMAND ?? "")).toMatch(/^\/tmp\/dev3-test\/ssh-mux\/[0-9a-f]{16}$/);
 
 			platform.mockReturnValue("win32");
 			queueResponse(0, "");
@@ -360,6 +409,32 @@ describe("fetch SSH connection reuse", () => {
 		} finally {
 			platform.mockRestore();
 		}
+	});
+
+	it("keys the socket by the remote being fetched", async () => {
+		const platform = vi.spyOn(process, "platform", "get");
+		try {
+			platform.mockReturnValue("darwin");
+			remoteUrl = "git@github.com-work:base44-dev/apper.git";
+			queueResponse(0, "");
+			await fetchOrigin("/work", "main");
+			const workSocket = socketOf(lastSpawnOptions?.env?.GIT_SSH_COMMAND ?? "");
+			remoteUrl = "git@github.com-personal:h0x91b/dev-3.0.git";
+			queueResponse(0, "");
+			await fetchOrigin("/personal", "main");
+			expect(workSocket).toBeDefined();
+			expect(socketOf(lastSpawnOptions?.env?.GIT_SSH_COMMAND ?? "")).not.toBe(workSocket);
+		} finally {
+			platform.mockRestore();
+		}
+	});
+
+	it("leaves a repo's own core.sshCommand in charge", async () => {
+		repoSshCommand = "ssh -i ~/.ssh/work";
+		queueResponse(0, "");
+		await fetchOrigin("/repo", "main");
+		expect(lastSpawnOptions?.env?.GIT_SSH_COMMAND).toBeUndefined();
+		expect(lastSpawnOptions?.env?.GIT_TERMINAL_PROMPT).toBe("0");
 	});
 });
 
@@ -401,6 +476,67 @@ describe("fetch queue priority", () => {
 		await Promise.all([running, ...jobs]);
 
 		expect(fetchArgs().map((cmd) => cmd[3])).toEqual(["running", "p1", "p2", "n1"]);
+	});
+});
+
+describe("unreachable remote backoff", () => {
+	const GONE = "ERROR: Repository not found.\nfatal: Could not read from remote repository.";
+	const NO_ORIGIN = "fatal: 'origin' does not appear to be a git repository";
+
+	it.each([GONE, NO_ORIGIN])("one failure backs off every branch of the remote: %s", async (stderr) => {
+		queueResponse(128, "", stderr);
+		expect(await fetchOrigin("/repo", "main")).toBe(false);
+		queueResponse(0, "");
+		expect(await fetchOrigin("/repo", "feat/other")).toBe(false);
+		expect(await fetchOrigin("/repo")).toBe(false);
+		expect(await fetchOriginBranches("/repo", ["a", "b"])).toBe(false);
+		expect(fetchArgs()).toHaveLength(1);
+		// Another project is unaffected.
+		expect(await fetchOrigin("/other", "main")).toBe(true);
+	});
+
+	it("keeps doubling past the per-branch 30-minute cap", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		try {
+			let elapsed = 0;
+			for (let failures = 1; failures <= 6; failures++) {
+				queueResponse(128, "", GONE);
+				expect(await fetchOrigin("/repo", "main")).toBe(false);
+				elapsed = Math.min(2 * 60_000 * 2 ** (failures - 1), 6 * 60 * 60_000);
+				vi.setSystemTime(Date.now() + elapsed);
+			}
+			// Sixth failure: 64 minutes. Half an hour later is still inside it.
+			vi.setSystemTime(Date.now() - elapsed + 30 * 60_000);
+			queueResponse(0, "");
+			expect(await fetchOrigin("/repo", "main")).toBe(false);
+			expect(spawnResponses).toHaveLength(1);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("force bypasses it and a success clears it for every branch", async () => {
+		queueResponse(128, "", GONE);
+		expect(await fetchOrigin("/repo", "main")).toBe(false);
+		queueResponse(0, "");
+		expect(await fetchOrigin("/repo", "main", undefined, { force: true })).toBe(true);
+		queueResponse(0, "");
+		expect(await fetchOrigin("/repo", "feat/other")).toBe(true);
+		expect(fetchArgs()).toHaveLength(3);
+	});
+
+	it("a combined fetch of a missing repository does not retry branch by branch", async () => {
+		queueResponse(128, "", GONE);
+		expect(await fetchOriginBranches("/repo", ["main", "feat/x"])).toBe(false);
+		expect(fetchArgs()).toHaveLength(1);
+		expect(lastOriginFetchError("/repo", "feat/x")).toContain("Repository not found");
+	});
+
+	it("an ordinary failure still backs off only its own branch", async () => {
+		queueResponse(128, "", "fatal: couldn't find remote ref dead");
+		expect(await fetchOrigin("/repo", "dead")).toBe(false);
+		queueResponse(0, "");
+		expect(await fetchOrigin("/repo", "main")).toBe(true);
 	});
 });
 
@@ -518,7 +654,7 @@ describe("saveDiffSnapshot", () => {
 		rmSync(tmpDir, { recursive: true, force: true });
 	});
 
-	it("saves a .patch file when there are changes", async () => {
+	it("saves a gzip-compressed .patch.gz file when there are changes", async () => {
 		queueResponse(0, " 1 file changed, 1 insertion(+)"); // shortstat
 		queueResponse(0, "diff --git a/feature.ts b/feature.ts\n+export const add = 1;\n");
 		await saveDiffSnapshot(project, task, "origin/main");
@@ -526,11 +662,12 @@ describe("saveDiffSnapshot", () => {
 		const diffsDir = join(taskDir(project, task), "diffs");
 		expect(existsSync(diffsDir)).toBe(true);
 
-		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
+		const files = listDiffSnapshots(diffsDir);
 		expect(files).toHaveLength(1);
 
-		const content = readFileSync(join(diffsDir, files[0]), "utf-8");
-		expect(content).toContain("feature.ts");
+		expect(files[0]).toMatch(/\.patch\.gz$/);
+		expect(readFileSync(join(diffsDir, files[0])).subarray(0, 2)).toEqual(Buffer.from([0x1f, 0x8b]));
+		expect(readDiffSnapshot(join(diffsDir, files[0]))).toContain("feature.ts");
 	});
 
 	it("skips saving when there is no diff", async () => {
@@ -538,7 +675,7 @@ describe("saveDiffSnapshot", () => {
 		await saveDiffSnapshot(project, task, "origin/main");
 
 		const diffsDir = join(taskDir(project, task), "diffs");
-		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
+		const files = listDiffSnapshots(diffsDir);
 		expect(files).toHaveLength(0);
 	});
 
@@ -553,7 +690,7 @@ describe("saveDiffSnapshot", () => {
 		await saveDiffSnapshot(project, task, "origin/main");
 
 		const diffsDir = join(taskDir(project, task), "diffs");
-		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
+		const files = listDiffSnapshots(diffsDir);
 		expect(files).toHaveLength(1);
 	});
 
@@ -571,7 +708,7 @@ describe("saveDiffSnapshot", () => {
 		vi.useRealTimers();
 
 		const diffsDir = join(taskDir(project, task), "diffs");
-		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
+		const files = listDiffSnapshots(diffsDir);
 		expect(files).toHaveLength(2);
 	});
 
@@ -588,8 +725,39 @@ describe("saveDiffSnapshot", () => {
 		queueResponse(0, "new diff content\n");
 		await saveDiffSnapshot(project, task, "origin/main");
 
-		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
+		const files = listDiffSnapshots(diffsDir);
 		expect(files.length).toBeLessThanOrEqual(50);
+	});
+
+	it("skips saving when the newest snapshot is an older version's plain .patch with the same diff", async () => {
+		const diffsDir = join(taskDir(project, task), "diffs");
+		mkdirSync(diffsDir, { recursive: true });
+		writeFileSync(join(diffsDir, "2025-01-01T00-00-00.patch"), "same diff");
+
+		queueResponse(0, " 1 file changed, 1 insertion(+)");
+		queueResponse(0, "same diff\n");
+		await saveDiffSnapshot(project, task, "origin/main");
+
+		expect(listDiffSnapshots(diffsDir)).toEqual(["2025-01-01T00-00-00.patch"]);
+	});
+
+	it("prunes plain and gzip snapshots together, oldest first", async () => {
+		const diffsDir = join(taskDir(project, task), "diffs");
+		mkdirSync(diffsDir, { recursive: true });
+		for (let i = 0; i < 30; i++) {
+			writeFileSync(join(diffsDir, `2025-01-01T00-00-${String(i * 2).padStart(2, "0")}.patch`), `plain-${i}`);
+			writeFileSync(join(diffsDir, `2025-01-01T00-01-${String(i * 2).padStart(2, "0")}.patch.gz`), gzipSync(`gz-${i}`));
+		}
+
+		queueResponse(0, " 1 file changed, 1 insertion(+)");
+		queueResponse(0, "new diff content\n");
+		await saveDiffSnapshot(project, task, "origin/main");
+
+		const files = listDiffSnapshots(diffsDir);
+		expect(files).toHaveLength(50);
+		expect(files[0]).toBe("2025-01-01T00-00-22.patch");
+		expect(files[files.length - 1]).toMatch(/\.patch\.gz$/);
+		expect(readDiffSnapshot(join(diffsDir, files[files.length - 1]))).toBe("new diff content");
 	});
 
 	it("skips saving when shortstat estimates diff exceeds 1 MB", async () => {
@@ -599,7 +767,7 @@ describe("saveDiffSnapshot", () => {
 		await saveDiffSnapshot(project, task, "origin/main");
 
 		const diffsDir = join(taskDir(project, task), "diffs");
-		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
+		const files = listDiffSnapshots(diffsDir);
 		expect(files).toHaveLength(0);
 	});
 
@@ -610,7 +778,7 @@ describe("saveDiffSnapshot", () => {
 		await saveDiffSnapshot(project, task, "origin/main");
 
 		const diffsDir = join(taskDir(project, task), "diffs");
-		const files = readdirSync(diffsDir).filter((f: string) => f.endsWith(".patch"));
+		const files = listDiffSnapshots(diffsDir);
 		expect(files).toHaveLength(0);
 	});
 });

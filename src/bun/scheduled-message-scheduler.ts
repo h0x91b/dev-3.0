@@ -20,7 +20,7 @@ import type { ExternalSender } from "../shared/external-senders";
 import { spillOversizedAgentMessage } from "./agent-message-spill";
 import { appendAgentMessageLog } from "./agent-message-log";
 import { resolveScheduledMessageAuthorPane } from "./scheduled-message-author";
-import { type AgentPaneRole, agentPaneRoles } from "./agent-message-target";
+import { type AgentPaneRole, agentPaneRoles, isSoleMainAgent } from "./agent-message-target";
 // Import push via the barrel (not ./rpc-handlers/shared) so tests that mock
 // `../rpc-handlers` — e.g. the cli-socket lost-update race suites, which reach
 // this module through cli-socket-server — don't load the real Electrobun-backed
@@ -85,6 +85,23 @@ async function recipientRole(task: Task, paneId: string | undefined): Promise<Ag
 	}
 }
 
+/**
+ * Is the sending agent its task's only agent, and the main one? Then the reply
+ * command needs no `--agent`. Asked at delivery, the latest moment before the
+ * receiver reads it; an agent added after that still leaves the reply on the main
+ * agent, which is the sender.
+ */
+async function senderIsAlone(source: AgentMessageSource): Promise<boolean> {
+	if (!source.agent) return false;
+	try {
+		const { resolveTaskAcrossProjects } = await import("./cli-socket/task-resolution");
+		const sender = (await resolveTaskAcrossProjects(source.taskId))?.task;
+		return sender ? await isSoleMainAgent(sender, source.agent) : false;
+	} catch {
+		return false;
+	}
+}
+
 async function deliverToTarget(
 	task: Task,
 	message: ScheduledMessage,
@@ -93,11 +110,11 @@ async function deliverToTarget(
 ): Promise<MessageDelivery> {
 	// Agent-to-agent traffic is wrapped at delivery time, so the queue (and the
 	// card chip that previews it) keeps the plain text the sender wrote. The spill
-	// already measured this exact envelope at queue time, so it fits one pty read.
+	// measured it at queue time with `--agent`, the longest it gets, so it fits one pty read.
 	const text = sender
 		? wrapExternalSenderMessage(message.text, sender, message.subject)
 		: message.source
-			? wrapAgentMessage(message.text, message.source, task.projectId, message.subject)
+			? wrapAgentMessage(message.text, message.source, task.projectId, message.subject, await senderIsAlone(message.source))
 			: message.text;
 	// A coordinator's picture of the board goes stale between the messages it
 	// receives: things moved while it was not being spoken to. So every message

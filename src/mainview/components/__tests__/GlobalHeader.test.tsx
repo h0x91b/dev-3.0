@@ -2,7 +2,7 @@ import { render, screen, act, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import GlobalHeader from "../GlobalHeader";
 import { I18nProvider } from "../../i18n";
-import type { Project, Task, UpdateChangelog } from "../../../shared/types";
+import type { CodingAgent, Project, Task, UpdateChangelog } from "../../../shared/types";
 import type { Route } from "../../state";
 
 vi.mock("../../rpc", () => ({
@@ -174,6 +174,7 @@ function renderHeader(
 		goForward?: () => void;
 		canGoBack?: boolean;
 		canGoForward?: boolean;
+		agents?: CodingAgent[];
 	},
 ) {
 	return render(headerElement(route, projects, navigate, tasks, extra));
@@ -192,7 +193,7 @@ function headerElement(
 				route={route}
 				projects={projects}
 				tasks={tasks}
-				agents={[]}
+				agents={extra?.agents ?? []}
 				navigate={navigate ?? vi.fn()}
 				goBack={extra?.goBack ?? vi.fn()}
 				goForward={extra?.goForward ?? vi.fn()}
@@ -866,6 +867,33 @@ describe("GlobalHeader — breadcrumb inline rename", () => {
 		expect(within(card).getByText("feat/test")).toBeInTheDocument();
 		expect(within(card).getByText("#42")).toBeInTheDocument();
 		expect(within(card).getByText("Bug")).toBeInTheDocument();
+	});
+
+	it("shows the agent's account on the title hover card", async () => {
+		const user = userEvent.setup();
+		const claude = { id: "builtin-claude", name: "Claude Code", baseCommand: "claude", configurations: [] } as CodingAgent;
+		const accounts = {
+			claude: { accounts: [{ id: "a1", kind: "claude", label: "Work", identity: null, auth: "oauth", api: null, createdAt: 0 }], activeId: null, systemConfigDir: "/home/me/.claude", systemIdentity: null },
+			codex: { accounts: [], activeId: null, currentIdentity: null },
+			omp: { accounts: [], activeId: null },
+			pi: { accounts: [], activeId: null },
+		};
+		const defaultImpl = mockedApi.request.listAgentAccounts.getMockImplementation()!;
+		mockedApi.request.listAgentAccounts.mockResolvedValue(accounts as never);
+		try {
+			renderHeader(
+				{ screen: "task", projectId: "p1", taskId: "t1" },
+				[project1],
+				vi.fn(),
+				[makeBreadcrumbTask({ agentId: "builtin-claude", accountId: "a1" })],
+				{ agents: [claude] },
+			);
+			await user.hover(screen.getByText("My Task Title"));
+			const card = screen.getByTestId("task-title-hover-card");
+			expect(await within(card).findByText("Work")).toBeInTheDocument();
+		} finally {
+			mockedApi.request.listAgentAccounts.mockImplementation(defaultImpl);
+		}
 	});
 
 	it("shows pencil icon for task segment in split view", () => {

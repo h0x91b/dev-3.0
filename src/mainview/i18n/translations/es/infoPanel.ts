@@ -7,6 +7,10 @@ const infoPanel = {
 	"infoPanel.description": "Descripción",
 	"infoPanel.worktree": "Worktree",
 	"infoPanel.created": "Creado",
+	"infoPanel.createdBy": "Creada por",
+	"infoPanel.createdByDeleted": "una tarea (eliminada)",
+	"infoPanel.createdByAutomation": "una automatización",
+	"infoPanel.createdByImport": "una importación de conversación",
 	"infoPanel.updated": "Actualizado",
 	"infoPanel.collapse": "Contraer panel",
 	"infoPanel.expand": "Expandir panel",
@@ -325,6 +329,7 @@ const infoPanel = {
 	"infoPanel.sharedItemsUnread": "Hay elementos nuevos sin ver",
 	"infoPanel.openSharedImage": "Abrir la imagen {name}",
 	"infoPanel.openSharedVideo": "Abrir el vídeo {name}",
+	"infoPanel.openSharedAudio": "Abrir el audio {name}",
 	"infoPanel.openSharedArtifact": "Abrir el artefacto {name}",
 
 	"infoPanel.restoreHidden": "Mostrar controles ocultos",

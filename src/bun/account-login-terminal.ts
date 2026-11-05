@@ -6,6 +6,8 @@
  * it through the PTY WebSocket (`registerExternalPtySession`), so desktop and
  * remote mode share one path, and no tmux is involved (Windows has none).
  *
+ * Opening a sign-in only stages the dir (`ready`); nothing runs until `begin`.
+ *
  * Success is decided by the existing verification (`complete*Login`) against the
  * staged dir, which this module polls; the process exiting proves nothing. The
  * watch keeps running after an exit and when the CLI is missing, so a login the
@@ -17,11 +19,11 @@
  */
 
 import { extname } from "node:path";
-import { isAgentDirAccountKind, type AccountLoginPhase, type AccountLoginState, type AgentAccount, type AgentAccountKind } from "../shared/agent-accounts";
+import { ACCOUNT_LOGIN_ENDED_MESSAGE, ACCOUNT_LOGIN_FOUND_MESSAGE, ACCOUNT_LOGIN_NOT_ADDABLE_MESSAGE, ACCOUNT_LOGIN_STARTED_MESSAGE, isAgentDirAccountKind, type AccountLoginPhase, type AccountLoginState, type AgentAccount, type AgentAccountKind } from "../shared/agent-accounts";
 import { DEFAULT_AGENTS } from "../shared/types";
 import * as accounts from "./agent-accounts";
 import type { PreparedAccountLogin } from "./agent-accounts";
-import { agentBinaryPathOverride, isExecutableFile } from "./executable";
+import { agentBinaryPathOverride, brokenCustomPath, customExecutableMessage, enforcedCustomBinaryPaths, isExecutableFile } from "./executable";
 import { createLogger } from "./logger";
 import { registerExternalPtySession, type ExternalPtyViewer } from "./pty-server";
 import { loadSettings } from "./settings";
@@ -43,7 +45,7 @@ export const ACCOUNT_LOGIN_PROBE_TIMEOUT_MS = 10_000;
 export const ACCOUNT_LOGIN_REPLAY_CHARS = 64 * 1024;
 const KILL_GRACE_MS = 2_000;
 
-const ACTIVE_PHASES: ReadonlySet<AccountLoginPhase> = new Set(["running", "verifying", "exited", "missing-executable"]);
+const ACTIVE_PHASES: ReadonlySet<AccountLoginPhase> = new Set(["ready", "running", "verifying", "exited", "missing-executable"]);
 const WATCHED_PHASES: ReadonlySet<AccountLoginPhase> = new Set(["running", "exited", "missing-executable"]);
 
 export interface LoginTerminal {
@@ -70,7 +72,11 @@ export interface AccountLoginDeps {
 	prepare(kind: AgentAccountKind, opts: { deviceAuth: boolean }): Promise<PreparedAccountLogin>;
 	complete(kind: AgentAccountKind, accountId: string, ctx: { signal: AbortSignal; stillWanted: () => boolean }): Promise<AgentAccount>;
 	hasIdentity(kind: AgentAccountKind, accountId: string): boolean;
+	/** Register the staged dir as an account without a sign-in (Claude only). */
+	addWithoutLogin(kind: AgentAccountKind, accountId: string): AgentAccount;
 	discard(kind: AgentAccountKind, accountId: string): boolean;
+	/** Restart the staged dir's abandoned-sign-in clock when the user starts the sign-in. */
+	touchStaged(kind: AgentAccountKind, accountId: string): void;
 	/** Leftovers of sign-ins a killed app never closed; see `sweepAbandonedStagedLogins`. */
 	sweepAbandoned(kind: AgentAccountKind): void;
 	resolveExecutable(kind: AgentAccountKind, command: string): Promise<string | null>;
@@ -88,6 +94,7 @@ export interface AccountLoginDeps {
 interface LoginRecord {
 	state: AccountLoginState;
 	accountId: string;
+	prepared: PreparedAccountLogin;
 	proc: LoginProcess | null;
 	viewers: Set<ExternalPtyViewer>;
 	replay: string;
@@ -96,6 +103,8 @@ interface LoginRecord {
 	expiryTimer: unknown;
 	lingerTimer: unknown;
 	completing: boolean;
+	/** `begin` is awaiting its launch; a second click must not start another process. */
+	beginning: boolean;
 	/** Earliest time the next verification may run (probe backoff). */
 	nextVerifyAt: number;
 	/** Aborts an in-flight status probe on cancel, TTL or shutdown. */
@@ -229,7 +238,7 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 			}
 		}
 		record.viewers.clear();
-		if (record.state.phase !== "succeeded") {
+		if (record.state.phase !== "succeeded" && record.state.phase !== "added-unsigned") {
 			const discarded = deps.discard(record.state.kind, record.accountId);
 			log.info("Staged login dir released", { kind: record.state.kind, loginId: shortId(record.state.loginId), discarded });
 		}
@@ -309,9 +318,22 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 		};
 	}
 
-	async function launch(record: LoginRecord, prepared: PreparedAccountLogin): Promise<void> {
+	async function launch(record: LoginRecord, prepared: PreparedAccountLogin, running: Pick<AccountLoginState, "sessionKey" | "startedAt" | "expiresAt">): Promise<void> {
 		const { kind } = record.state;
-		const resolved = await deps.resolveExecutable(kind, prepared.launch.command);
+		const startPhase = record.state.phase;
+		// A close or "add without signing in" during the lookup must not be overwritten.
+		const stillWanted = () => byKind.get(kind) === record && record.state.phase === startPhase;
+		let resolved: string | null;
+		try {
+			resolved = await deps.resolveExecutable(kind, prepared.launch.command);
+		} catch (err) {
+			if (!stillWanted()) return;
+			// A broken custom executable is shown as the reason, never replaced by the system CLI.
+			deps.discard(kind, record.accountId);
+			setPhase(record, "failed", { sessionKey: null, error: err instanceof Error ? err.message : String(err) });
+			return;
+		}
+		if (!stillWanted()) return;
 		if (!resolved) {
 			setPhase(record, "missing-executable", { sessionKey: null });
 			return;
@@ -326,7 +348,7 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 				onData: (data) => broadcast(record, data),
 			});
 			record.proc = proc;
-			record.unregister = deps.registerViewerSession(record.state.sessionKey!, viewerSession(record));
+			record.unregister = deps.registerViewerSession(running.sessionKey!, viewerSession(record));
 			void proc.exited.then((code) => {
 				if (record.proc !== proc) return;
 				record.proc = null;
@@ -336,7 +358,7 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 				// One look right away: a CLI that exits after writing the login should not wait a tick.
 				void poll(record);
 			});
-			setPhase(record, "running");
+			setPhase(record, "running", running);
 		} catch (err) {
 			log.warn("Account login process failed to start", { kind, loginId: shortId(record.state.loginId), error: String(err) });
 			setPhase(record, "missing-executable", { sessionKey: null, error: err instanceof Error ? err.message : String(err) });
@@ -361,6 +383,7 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 		const loginId = crypto.randomUUID();
 		const record: LoginRecord = {
 			accountId: prepared.accountId,
+			prepared,
 			proc: null,
 			viewers: new Set(),
 			replay: "",
@@ -369,13 +392,14 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 			expiryTimer: null,
 			lingerTimer: null,
 			completing: false,
+			beginning: false,
 			nextVerifyAt: 0,
 			abort: new AbortController(),
 			state: {
 				loginId,
 				kind,
-				phase: "running",
-				sessionKey: `${ACCOUNT_LOGIN_SESSION_PREFIX}${loginId}`,
+				phase: "ready",
+				sessionKey: null,
 				deviceAuth,
 				manualCommand: prepared.loginCommand,
 				executable: prepared.launch.command,
@@ -389,9 +413,43 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 			},
 		};
 		byKind.set(kind, record);
-		log.info("Account login started", { kind, loginId: shortId(loginId), deviceAuth });
-		await launch(record, prepared);
 		record.expiryTimer = deps.setTimer(() => expire(record), ACCOUNT_LOGIN_TTL_MS);
+		log.info("Account login ready", { kind, loginId: shortId(loginId), deviceAuth });
+		return { ...record.state };
+	}
+
+	/** "Start sign-in": the only point where a login process may start. Allowed from "ready" only. */
+	async function begin(loginId: string): Promise<AccountLoginState> {
+		const record = findById(loginId);
+		if (!record) throw new Error(ACCOUNT_LOGIN_ENDED_MESSAGE);
+		if (record.state.phase === "ready") {
+			if (record.beginning) throw new Error(ACCOUNT_LOGIN_STARTED_MESSAGE);
+		} else {
+			throw new Error(ACTIVE_PHASES.has(record.state.phase) ? ACCOUNT_LOGIN_STARTED_MESSAGE : ACCOUNT_LOGIN_ENDED_MESSAGE);
+		}
+		const { kind } = record.state;
+		record.beginning = true;
+		// The window runs from the click, not from when the dialog opened.
+		if (record.expiryTimer !== null) deps.clearTimer(record.expiryTimer);
+		try {
+			deps.touchStaged(kind, record.accountId);
+		} catch (err) {
+			log.warn("Could not refresh the staged sign-in marker", { kind, error: String(err) });
+		}
+		const startedAt = deps.now();
+		record.expiryTimer = deps.setTimer(() => expire(record), ACCOUNT_LOGIN_TTL_MS);
+		// The record stays "ready" without a session key until launch() has registered the viewer session and published "running".
+		try {
+			await launch(record, record.prepared, {
+				sessionKey: `${ACCOUNT_LOGIN_SESSION_PREFIX}${loginId}`,
+				startedAt,
+				expiresAt: startedAt + ACCOUNT_LOGIN_TTL_MS,
+			});
+		} finally {
+			record.beginning = false;
+		}
+		if (byKind.get(kind) !== record) throw new Error(ACCOUNT_LOGIN_ENDED_MESSAGE);
+		if (!ACTIVE_PHASES.has(record.state.phase)) return { ...record.state };
 		schedulePoll(record);
 		return { ...record.state };
 	}
@@ -423,10 +481,28 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 
 	async function restart(loginId: string, opts: { remoteViewer: boolean }): Promise<AccountLoginState> {
 		const record = findById(loginId);
-		if (!record) throw new Error("This sign-in has already ended.");
+		if (!record) throw new Error(ACCOUNT_LOGIN_ENDED_MESSAGE);
 		const kind = record.state.kind;
 		close(loginId);
-		return start(kind, opts);
+		const fresh = await start(kind, opts);
+		return begin(fresh.loginId);
+	}
+
+	/** "Add without signing in": keep the staged dir as an account, stop the login terminal.
+	 *  The login command stays in the state so the user can sign in later by hand. */
+	function addWithoutSignIn(loginId: string): AccountLoginState {
+		const record = findById(loginId);
+		if (!record) throw new Error(ACCOUNT_LOGIN_ENDED_MESSAGE);
+		if (record.state.kind !== "claude") throw new Error("Only a Claude sign-in can be added without signing in.");
+		if (record.state.phase !== "ready" && !WATCHED_PHASES.has(record.state.phase)) throw new Error(ACCOUNT_LOGIN_NOT_ADDABLE_MESSAGE);
+		if (deps.hasIdentity(record.state.kind, record.accountId)) {
+			throw new Error(ACCOUNT_LOGIN_FOUND_MESSAGE);
+		}
+		const account = deps.addWithoutLogin(record.state.kind, record.accountId);
+		clearTimers(record);
+		stopProcess(record);
+		setPhase(record, "added-unsigned", { account, sessionKey: null, error: null, pending: null });
+		return { ...record.state };
 	}
 
 	function get(kind: AgentAccountKind): AccountLoginState | null {
@@ -439,14 +515,16 @@ export function createAccountLoginManager(deps: AccountLoginDeps) {
 		for (const record of [...byKind.values()]) close(record.state.loginId);
 	}
 
-	return { start, restart, close, get, closeAll };
+	return { start, begin, restart, close, get, closeAll, addWithoutSignIn };
 }
 
 export type AccountLoginManager = ReturnType<typeof createAccountLoginManager>;
 
-async function resolveLoginExecutable(kind: AgentAccountKind, command: string): Promise<string | null> {
+export async function resolveLoginExecutable(kind: AgentAccountKind, command: string): Promise<string | null> {
 	const settings = await loadSettings();
-	const override = agentBinaryPathOverride(`builtin-${kind}`, command, settings.agentBinaryPaths, settings.agentCustomBinaryPaths);
+	const broken = brokenCustomPath(`builtin-${kind}`, enforcedCustomBinaryPaths(settings));
+	if (broken) throw new Error(customExecutableMessage(kind === "claude" ? "Claude Code" : kind, broken));
+	const override = agentBinaryPathOverride(`builtin-${kind}`, command, settings.agentBinaryPaths, enforcedCustomBinaryPaths(settings));
 	if (override && isExecutableFile(override)) return override;
 	return Bun.which(command, { PATH: process.env.PATH ?? "" }) ?? null;
 }
@@ -483,7 +561,13 @@ function spawnLoginProcess(argv: string[], opts: LoginSpawnOptions): LoginProces
  */
 async function runClaudeAuthStatus(configDir: string, signal: AbortSignal): Promise<{ exitCode: number | null; stdout: string } | null> {
 	if (signal.aborted) return null;
-	const resolved = await resolveLoginExecutable("claude", "claude");
+	let resolved: string | null;
+	try {
+		resolved = await resolveLoginExecutable("claude", "claude");
+	} catch (err) {
+		log.warn("claude auth status skipped", { error: String(err) });
+		return null;
+	}
 	if (!resolved) return null;
 	let proc: ReturnType<typeof spawn>;
 	try {
@@ -541,7 +625,9 @@ export const accountLogins = createAccountLoginManager({
 				? accounts.completeAgentDirLogin(kind, id, accounts.defaultAccountPaths(), undefined, ctx)
 				: accounts.completeCodexLogin(id, accounts.defaultAccountPaths(), ctx),
 	hasIdentity: (kind, id) => accounts.stagedLoginHasIdentity(kind, id),
+	addWithoutLogin: (_kind, id) => accounts.registerStagedClaudeAccount(id),
 	discard: (kind, id) => accounts.discardStagedLogin(kind, id),
+	touchStaged: (kind, id) => accounts.refreshStagedLogin(kind, id),
 	sweepAbandoned: (kind) => void accounts.sweepAbandonedStagedLogins(kind, ACCOUNT_LOGIN_TTL_MS),
 	resolveExecutable: resolveLoginExecutable,
 	spawnLogin: spawnLoginProcess,

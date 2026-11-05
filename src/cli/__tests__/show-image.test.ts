@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vites
 import { mkdtempSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handleShowImage, handleShowVideo } from "../commands/show-image";
+import { handleShowImage, handleShowMedia } from "../commands/show-image";
 import type { CliContext } from "../context";
 import type { CliResponse } from "../../shared/types";
 
@@ -29,6 +29,8 @@ const MP4 = join(DIR, "demo.mp4");
 writeFileSync(MP4, "MP4DATA");
 const WEBM = join(DIR, "qa.webm");
 writeFileSync(WEBM, "WEBMDATA");
+const MP3 = join(DIR, "voice.mp3");
+writeFileSync(MP3, "ID3DATA");
 const TXT = join(DIR, "notes.txt");
 writeFileSync(TXT, "hi");
 
@@ -150,26 +152,57 @@ describe("show-image", () => {
 	});
 });
 
-describe("show-video", () => {
+describe("show-media", () => {
 	function stderrText(): string {
 		return stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
 	}
 
-	it("sends clips with their captions to ui.show-video", async () => {
+	it("sends video clips with their captions to ui.show-media", async () => {
 		mockSend.mockResolvedValue(okResp({ delivered: true, stored: 2, taskId: CTX.taskId }));
-		await handleShowVideo([MP4, "--caption", "the bug", WEBM], SOCKET, CTX);
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.show-video", {
+		await handleShowMedia([MP4, "--caption", "the bug", WEBM], SOCKET, CTX);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.show-media", {
 			taskId: CTX.taskId,
 			images: [{ path: MP4, caption: "the bug" }, { path: WEBM }],
 			projectId: CTX.projectId,
 		}, { timeoutMs: 300_000 });
-		expect(stdoutOutput).toContain("Shared 2 videos");
+		expect(stdoutOutput).toContain("Shared 2 media files");
+	});
+
+	it("accepts MP3 (the reported repro) and every supported audio container next to video", async () => {
+		const extra = ["take.m4a", "beep.wav", "loop.ogg"].map((name) => {
+			const path = join(DIR, name);
+			writeFileSync(path, "AUDIO");
+			return path;
+		});
+		mockSend.mockResolvedValue(okResp({ delivered: true, stored: 5, taskId: CTX.taskId }));
+		await handleShowMedia([MP3, "-c", "listen", ...extra, MP4], SOCKET, CTX);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.show-media", {
+			taskId: CTX.taskId,
+			images: [{ path: MP3, caption: "listen" }, ...extra.map((path) => ({ path })), { path: MP4 }],
+			projectId: CTX.projectId,
+		}, { timeoutMs: 300_000 });
+		expect(stdoutOutput).toContain("Shared 5 media files");
+	});
+
+	it("says one media file in the singular", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, stored: 1, taskId: CTX.taskId }));
+		await handleShowMedia([MP3], SOCKET, CTX);
+		expect(stdoutOutput).toContain("Shared 1 media file to task");
+	});
+
+	it.each(["track.flac", "track.opus", "track.aac", "clip.mov", "notes.txt"])("rejects %s before contacting the app", async (name) => {
+		const path = join(DIR, name);
+		writeFileSync(path, "x");
+		await expect(handleShowMedia([path], SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(stderrText()).toContain("Unsupported media file type");
+		expect(stderrText()).toContain("mp4, webm, mp3, m4a, wav, ogg");
+		expect(mockSend).not.toHaveBeenCalled();
 	});
 
 	it("rejects an image and names the supported containers", async () => {
-		await expect(handleShowVideo([PNG], SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(stderrText()).toContain('Unsupported video type "png"');
-		expect(stderrText()).toContain("mp4, webm");
+		await expect(handleShowMedia([PNG], SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(stderrText()).toContain('Unsupported media file type "png"');
+		expect(stderrText()).toContain("mp4, webm, mp3, m4a, wav, ogg");
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
@@ -177,8 +210,8 @@ describe("show-video", () => {
 		const big = join(DIR, "big.mp4");
 		writeFileSync(big, "");
 		truncateSync(big, 300 * 1024 * 1024 + 1);
-		await expect(handleShowVideo([big], SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(stderrText()).toContain("Video too large");
+		await expect(handleShowMedia([big], SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(stderrText()).toContain("Media file too large");
 		expect(stderrText()).toContain("314,572,801 bytes; max 300 MB = 314,572,800 bytes");
 		expect(mockSend).not.toHaveBeenCalled();
 	});
@@ -190,8 +223,8 @@ describe("show-video", () => {
 			const clip = join(DIR, `edge-${size}.mp4`);
 			writeFileSync(clip, "");
 			truncateSync(clip, size);
-			await handleShowVideo([clip], SOCKET, CTX);
-			expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.show-video", expect.anything(), { timeoutMs: 300_000 });
+			await handleShowMedia([clip], SOCKET, CTX);
+			expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.show-media", expect.anything(), { timeoutMs: 300_000 });
 		}
 	});
 
@@ -203,14 +236,15 @@ describe("show-video", () => {
 		expect(stderrText()).toContain("max 25 MB = 26,214,400 bytes");
 	});
 
-	it("points show-image users at show-video for a clip", async () => {
-		await expect(handleShowImage([MP4], SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(stderrText()).toContain("dev3 show-video");
+	it.each([["video", MP4], ["audio", MP3]])("points show-image users at show-media for %s", async (_kind, path) => {
+		await expect(handleShowImage([path], SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(stderrText()).toContain("dev3 show-media");
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
 	it("names its own command in the orphan-caption error", async () => {
-		await expect(handleShowVideo(["--caption", "x"], SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(stderrText()).toContain("dev3 show-video demo.mp4");
+		await expect(handleShowMedia(["--caption", "x"], SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(stderrText()).toContain("must follow a media file path");
+		expect(stderrText()).toContain("dev3 show-media demo.mp4");
 	});
 });

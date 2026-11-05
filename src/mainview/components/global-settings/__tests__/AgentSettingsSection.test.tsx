@@ -11,6 +11,7 @@ vi.mock("../../../rpc", () => ({
 		request: {
 			checkAgentAvailability: vi.fn(() => Promise.resolve([])),
 			setAgentBinaryPath: vi.fn(() => Promise.resolve()),
+			clearAgentBinaryPath: vi.fn(() => Promise.resolve()),
 			listAgentAccounts: vi.fn(() =>
 				Promise.resolve({
 					claude: { accounts: [], activeId: null, systemConfigDir: "/home/me/.claude", systemIdentity: null },
@@ -62,6 +63,7 @@ function renderSection(claudePatch: Partial<CodingAgent> = {}, onAgentsChange = 
 				onAgentsChange={onAgentsChange}
 				onDefaultAgentChange={vi.fn()}
 				onDefaultConfigChange={vi.fn()}
+				onCoordinatorDefaultChange={vi.fn()}
 				onGlobalSettingsChange={vi.fn()}
 			/>
 		</I18nProvider>,
@@ -185,6 +187,7 @@ describe("AgentSettingsSection — per-agent provider selector", () => {
 					onAgentsChange={vi.fn()}
 					onDefaultAgentChange={vi.fn()}
 					onDefaultConfigChange={vi.fn()}
+					onCoordinatorDefaultChange={vi.fn()}
 					onGlobalSettingsChange={vi.fn()}
 				/>
 			</I18nProvider>,
@@ -335,6 +338,7 @@ describe("AgentSettingsSection — preset library", () => {
 					onAgentsChange={vi.fn()}
 					onDefaultAgentChange={vi.fn()}
 					onDefaultConfigChange={vi.fn()}
+					onCoordinatorDefaultChange={vi.fn()}
 					onGlobalSettingsChange={vi.fn()}
 				/>
 			</I18nProvider>,
@@ -363,6 +367,7 @@ describe("AgentSettingsSection — preset library", () => {
 					onAgentsChange={vi.fn()}
 					onDefaultAgentChange={vi.fn()}
 					onDefaultConfigChange={vi.fn()}
+					onCoordinatorDefaultChange={vi.fn()}
 					onGlobalSettingsChange={vi.fn()}
 				/>
 			</I18nProvider>,
@@ -541,6 +546,7 @@ describe("a deep-link that names one preset", () => {
 					onAgentsChange={vi.fn()}
 					onDefaultAgentChange={vi.fn()}
 					onDefaultConfigChange={vi.fn()}
+					onCoordinatorDefaultChange={vi.fn()}
 					onGlobalSettingsChange={vi.fn()}
 					focusPreset={{ agentId: claude.id, configId: target.id }}
 					onFocusPresetHandled={onHandled}
@@ -570,6 +576,7 @@ describe("a deep-link that names one preset", () => {
 					onAgentsChange={vi.fn()}
 					onDefaultAgentChange={vi.fn()}
 					onDefaultConfigChange={vi.fn()}
+					onCoordinatorDefaultChange={vi.fn()}
 					onGlobalSettingsChange={vi.fn()}
 					focusPreset={{ agentId: claude.id, configId: target.id }}
 					onFocusPresetHandled={onHandled}
@@ -591,6 +598,7 @@ describe("a deep-link that names one preset", () => {
 					onAgentsChange={vi.fn()}
 					onDefaultAgentChange={vi.fn()}
 					onDefaultConfigChange={vi.fn()}
+					onCoordinatorDefaultChange={vi.fn()}
 					onGlobalSettingsChange={vi.fn()}
 					focusPreset={{ agentId: claude.id, configId: "deleted-long-ago" }}
 					onFocusPresetHandled={onHandled}
@@ -598,5 +606,65 @@ describe("a deep-link that names one preset", () => {
 			</I18nProvider>,
 		);
 		expect(onHandled).toHaveBeenCalled();
+	});
+});
+
+describe("AgentSettingsSection — custom executable path", () => {
+	const missingClaude = (extra: object) => [{
+		agentId: "builtin-claude", name: "Claude Code", baseCommand: "claude", installed: false, ...extra,
+	}];
+
+	it("fills the input with the stored path and resets it with the Reset button", async () => {
+		vi.mocked(api.request.checkAgentAvailability).mockResolvedValue(
+			missingClaude({ customPathError: true, customPath: "/gone/claude" }) as never,
+		);
+		const user = userEvent.setup();
+		renderSection();
+		await expandAgent(user, "Claude");
+		expect(((await screen.findByPlaceholderText("/path/to/claude")) as HTMLInputElement).value).toBe("/gone/claude");
+
+		vi.mocked(api.request.checkAgentAvailability).mockClear();
+		await user.click(screen.getByTestId("agent-path-reset"));
+		await waitFor(() => expect(api.request.clearAgentBinaryPath).toHaveBeenCalledWith({ agentId: "builtin-claude" }));
+		await waitFor(() => expect(api.request.checkAgentAvailability).toHaveBeenCalled());
+	});
+
+	it("shows the path row for an installed agent too, and Reset clears and reloads", async () => {
+		vi.mocked(api.request.checkAgentAvailability).mockResolvedValue(
+			missingClaude({ installed: true, resolvedPath: "/opt/w/claude", customPath: "/opt/w/claude" }) as never,
+		);
+		const user = userEvent.setup();
+		renderSection();
+		await expandAgent(user, "Claude");
+		expect(((await screen.findByPlaceholderText("/path/to/claude")) as HTMLInputElement).value).toBe("/opt/w/claude");
+		expect(screen.getByText("settings.agentCustomPath")).toBeTruthy();
+		expect(screen.queryByText("settings.agentPathNotFound")).toBeNull();
+
+		vi.mocked(api.request.checkAgentAvailability).mockClear();
+		await user.click(screen.getByTestId("agent-path-reset"));
+		await waitFor(() => expect(api.request.clearAgentBinaryPath).toHaveBeenCalledWith({ agentId: "builtin-claude" }));
+		await waitFor(() => expect(api.request.checkAgentAvailability).toHaveBeenCalled());
+	});
+
+	it("warns about a stale pre-strict path instead of reporting it broken, with Reset beside it", async () => {
+		vi.mocked(api.request.checkAgentAvailability).mockResolvedValue(
+			missingClaude({ installed: true, resolvedPath: "/usr/local/bin/claude", customPathStale: true, customPath: "/old/nvm/claude" }) as never,
+		);
+		const user = userEvent.setup();
+		renderSection();
+		await expandAgent(user, "Claude");
+		expect(await screen.findByTestId("agent-path-stale")).toBeTruthy();
+		expect(screen.queryByText("settings.agentPathNotFound")).toBeNull();
+		await user.click(screen.getByTestId("agent-path-reset"));
+		await waitFor(() => expect(api.request.clearAgentBinaryPath).toHaveBeenCalledWith({ agentId: "builtin-claude" }));
+	});
+
+	it("offers no Reset when no custom path is stored", async () => {
+		vi.mocked(api.request.checkAgentAvailability).mockResolvedValue(missingClaude({}) as never);
+		const user = userEvent.setup();
+		renderSection();
+		await expandAgent(user, "Claude");
+		await screen.findByPlaceholderText("/path/to/claude");
+		expect(screen.queryByTestId("agent-path-reset")).toBeNull();
 	});
 });

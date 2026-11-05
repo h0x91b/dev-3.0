@@ -55,7 +55,7 @@ const keymap = {
 	"keymap.shortcut.reviewCommentSend": "Send the review comment to the agent",
 	"keymap.shortcut.toggleProjectTerminal": "Toggle Repo (project terminal and files)",
 	"keymap.shortcut.openQuickShell": "Open Quick Shell",
-	"keymap.shortcut.terminalSearch": "Search in the focused terminal (tmux scrollback)",
+	"keymap.shortcut.terminalSearch": "Search in the focused terminal (scrollback)",
 	"keymap.shortcut.quit": "Quit",
 	"keymap.shortcut.hide": "Hide app",
 

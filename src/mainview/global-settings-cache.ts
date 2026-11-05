@@ -21,20 +21,21 @@ export function getCachedGlobalSettings(): GlobalSettings | null {
 }
 
 /**
- * Merge a patch into the last-known settings and persist it. A caller that
- * fires before the first sync (astonishingly early) is a no-op rather than a
- * crash — there is nothing yet to merge into.
+ * Merge a patch into the last-known settings and persist it. Before the first
+ * sync it merges into a fresh read from the host instead — never into a
+ * renderer placeholder, which would overwrite the whole file.
  */
 export async function patchGlobalSettings(patch: Partial<GlobalSettings>): Promise<boolean> {
-	if (!current) return false;
 	const previous = current;
-	const next = { ...current, ...patch };
-	current = next;
+	let next: GlobalSettings | null = null;
 	try {
+		const base = current ?? await api.request.getGlobalSettings();
+		next = { ...base, ...patch };
+		current = next;
 		await api.request.saveGlobalSettings(next);
 		return true;
 	} catch {
-		if (current === next) current = previous;
+		if (next && current === next) current = previous;
 		toast.error(translate("settings.fullInterfaceError"), { source: "settings" });
 		return false;
 	}

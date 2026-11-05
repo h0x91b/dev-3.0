@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback, type Dispatch } from "react";
+import { useEpics } from "../hooks/useEpics";
 import { useTaskSortOrder } from "../hooks/useTaskSortOrder";
 import type { CodingAgent, PortInfo, Project, Task, TaskPriority, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, ALL_PRIORITIES } from "../../shared/types";
@@ -15,7 +16,9 @@ import { getStatusLabel } from "../utils/statusLabel";
 import { isFacetTokenActive, matchesTaskQuery, toggleFacetToken } from "../utils/taskSearch";
 import { buildFilterGroups, taskQueryContext, isAttentionTask, isTaskNotRunning, type FacetResolver, type FilterFunnelOption } from "../utils/taskFacets";
 import { buildFacetResolver } from "../utils/facetResolver";
+import { useTaskLineage } from "../hooks/useTaskLineage";
 import FilterFunnel from "./FilterFunnel";
+import { useRememberedFilter } from "../hooks/useRememberedFilter";
 import TipCard from "./TipCard";
 import { useTipRotation } from "../hooks/useTipRotation";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
@@ -186,7 +189,8 @@ function ActiveTasksSidebar({
 	const preview = useTerminalPreview();
 	// Feature-discovery tips in the task view (terminal context leads the rotation).
 	const { tip: currentTip, tipState, applyTipState } = useTipRotation("terminal");
-	const [searchQuery, setSearchQuery] = useState("");
+	// One filter for the whole sidebar, like its scope: it follows the user across tasks and projects.
+	const [searchQuery, setSearchQuery] = useRememberedFilter("active-tasks");
 	// Re-render once per second so the status-age badges stay live.
 	const [now, setNow] = useState(() => Date.now());
 	useEffect(() => {
@@ -349,9 +353,11 @@ function ActiveTasksSidebar({
 	// Token-DSL facet resolver, shared with the "Go to" palette (the Kanban board
 	// keeps its own board-scoped one). Labels/statuses/spaces resolve per the
 	// task's OWN project, so this cross-project pool filters correctly.
+	const lineage = useTaskLineage();
+	const { byId: epicsById } = useEpics();
 	const resolver: FacetResolver = useMemo(
-		() => buildFacetResolver({ agents, projectById, taskPorts, spaces, t, prNumberFor: (task) => taskPrMap.get(task.id)?.number ?? null }),
-		[agents, projectById, taskPorts, spaces, t, taskPrMap],
+		() => buildFacetResolver({ agents, projectById, taskPorts, spaces, t, prNumberFor: (task) => taskPrMap.get(task.id)?.number ?? null, prStateFor: (task) => taskPrMap.get(task.id)?.mergeState?.state ?? null, lineage, currentProjectId: project?.id ?? null, epicsById }),
+		[agents, projectById, taskPorts, spaces, t, taskPrMap, lineage, project, epicsById],
 	);
 
 	const priorityCandidates = useMemo<FilterFunnelOption[]>(
@@ -897,6 +903,8 @@ function ActiveTasksSidebar({
 						userOverview={hoveredTask?.userOverview ?? null}
 						description={hoveredTask?.description ?? null}
 						attentionReasons={hoveredTask ? bellReasons?.get(hoveredTask.id) : undefined}
+						task={hoveredTask}
+						agents={agents}
 					/>
 				);
 			})()}

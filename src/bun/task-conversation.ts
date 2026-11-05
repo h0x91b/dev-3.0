@@ -53,7 +53,7 @@ interface LoadedConversation {
 }
 
 /** Where this task's files live, whether or not it still has a worktree. */
-function taskWorkingDir(project: Project, task: Task): string {
+export function taskWorkingDir(project: Project, task: Task): string {
 	if (project.kind === "virtual") return task.opsWorkDir?.trim() || virtualWorkDir(project, task);
 	return task.worktreePath ?? `${taskDir(project, task)}/worktree`;
 }

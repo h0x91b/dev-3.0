@@ -1297,6 +1297,37 @@ describe("hibernation", () => {
 		expect(result.effects).toEqual([]);
 	});
 
+	it("defers PR promotion while hibernated and promotes on the first poll after wake", () => {
+		const detected: LifecycleEvent = {
+			type: "prDetected",
+			openNonDraft: true,
+			payload: {
+				projectId: "project-1",
+				taskId: "task-1",
+				prNumber: 42,
+				prUrl: "https://github.com/example/repo/pull/42",
+				autoMergeEnabled: null,
+				ciStatus: null,
+				reviewState: null,
+				reviewDecision: null,
+				unresolvedCount: null,
+				mergeState: null,
+				checks: [],
+				prTitle: null,
+				isDraft: false,
+			},
+		};
+		const asleep = frozen({ column: { status: "review-by-user", customColumnId: null } });
+		const whileAsleep = transition(asleep, detected);
+		expect(whileAsleep.effects.map((e) => e.type)).toEqual(["persistPrStatus", "push"]);
+
+		const woken = transition(asleep, { type: "wakeRequested" }).next;
+		const afterWake = transition(woken, detected);
+		expect(afterWake.effects.find((e) => e.type === "sendEvent")).toMatchObject({
+			event: { type: "moveRequested", cause: "pr-promotion", target: { status: "review-by-colleague" } },
+		});
+	});
+
 	it("keeps merge and PR watching running while hibernated", () => {
 		expect(activitiesFor(frozen())).toContain("mergeWatch");
 	});

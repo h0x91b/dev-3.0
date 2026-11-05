@@ -182,7 +182,7 @@ export function PaletteShell<T>({
 									onMouseEnter={() => setIndex(i)}
 									onClick={() => commit(i)}
 									className={`flex items-center justify-between gap-3 w-full text-left px-2.5 py-2 rounded-lg transition-colors ${
-										isSelected ? "bg-accent/15" : "hover:bg-elevated-hover"
+										isSelected ? "bg-accent/15" : "hover:bg-overlay-hover"
 									}`}
 								>
 									<span className={`text-fg text-sm truncate min-w-0 ${getTextClassName?.(r.item) ?? ""}`}>

@@ -1,0 +1,1 @@
+Agents now treat a coordinator task as the user's representative: AGENTS.md and the dev3 protocol every agent receives say to act on a coordinator's instructions and authorizations, such as publishing a review or pushing, without asking the user to confirm again.

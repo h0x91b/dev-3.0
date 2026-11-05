@@ -1,3 +1,4 @@
+import EpicsSettingsSection from "./global-settings/EpicsSettingsSection";
 import {
 	useCallback,
 	useEffect,
@@ -42,11 +43,13 @@ import { confirm } from "../confirm";
 import type { UpdateChannel } from "../../shared/update-channel";
 import AdvancedExperienceSection from "./global-settings/AdvancedExperienceSection";
 import AgentAccountsSection from "./global-settings/AgentAccountsSection";
+import AgentEnvDefaultsSection from "./global-settings/AgentEnvDefaultsSection";
 import AgentRateLimitSettingsSection from "./global-settings/AgentRateLimitSettingsSection";
 import AgentSettingsSection from "./global-settings/AgentSettingsSection";
 import AppearanceSettingsSection from "./global-settings/AppearanceSettingsSection";
 import BehaviorSettingsSection from "./global-settings/BehaviorSettingsSection";
 import DeveloperToolsSection from "./global-settings/DeveloperToolsSection";
+import ClaudeModsSection from "./global-settings/ClaudeModsSection";
 import KeyboardSettingsSection from "./global-settings/KeyboardSettingsSection";
 import ModelCatalogSection from "./global-settings/ModelCatalogSection";
 import NotificationSettingsSection from "./global-settings/NotificationSettingsSection";
@@ -211,14 +214,36 @@ function GlobalSettings({
 		[setGlobalSettingsState],
 	);
 
+	const hostSettingsLoadedRef = useRef(false);
+	const adoptHostSettings = useCallback((next: GlobalSettingsType) => {
+		hostSettingsLoadedRef.current = true;
+		setGlobalSettingsState(next);
+	}, [setGlobalSettingsState]);
+
+	// Every save sends the WHOLE object. Until the host has answered that object is
+	// DEFAULT_GLOBAL_SETTINGS, and saving it would overwrite the user's settings.json.
+	const whenHostSettingsLoaded = useCallback((run: () => void) => {
+		if (hostSettingsLoadedRef.current) {
+			run();
+			return;
+		}
+		api.request.getGlobalSettings()
+			.then((loaded) => {
+				if (!hostSettingsLoadedRef.current) adoptHostSettings(loaded);
+				run();
+			})
+			.catch(() => {});
+	}, [adoptHostSettings]);
+
 	const persistGlobalSettings = useCallback(
 		(updater: GlobalSettingsUpdater, options: PersistOptions = {}) => {
-			const next = applyGlobalSettingsLocally(updater);
-			options.onLocalUpdate?.(next);
-			api.request.saveGlobalSettings(next).catch(() => {});
-			return next;
+			whenHostSettingsLoaded(() => {
+				const next = applyGlobalSettingsLocally(updater);
+				options.onLocalUpdate?.(next);
+				api.request.saveGlobalSettings(next).catch(() => {});
+			});
 		},
-		[applyGlobalSettingsLocally],
+		[applyGlobalSettingsLocally, whenHostSettingsLoaded],
 	);
 
 	const persistGlobalSettingsPatch = useCallback(
@@ -276,7 +301,7 @@ function GlobalSettings({
 	useEffect(() => {
 		api.request.getAgents().then(setAgents).catch(() => {});
 		api.request.getGlobalSettings().then((settings) => {
-			setGlobalSettingsState(settings);
+			adoptHostSettings(settings);
 			if (settings.taskOpenMode === "fullscreen") {
 				localStorage.setItem("dev3-task-open-mode", "fullscreen");
 			} else {
@@ -288,11 +313,11 @@ function GlobalSettings({
 		// from outside this screen since — `hiddenControls` (a right-click "Hide", the
 		// Simplify View preset) being the field that actually got erased.
 		function onSettingsUpdated(e: Event) {
-			setGlobalSettingsState((e as CustomEvent<GlobalSettingsType>).detail);
+			adoptHostSettings((e as CustomEvent<GlobalSettingsType>).detail);
 		}
 		window.addEventListener("rpc:globalSettingsUpdated", onSettingsUpdated);
 		return () => window.removeEventListener("rpc:globalSettingsUpdated", onSettingsUpdated);
-	}, [setGlobalSettingsState]);
+	}, [adoptHostSettings]);
 
 	useEffect(() => {
 		api.request.getNativeTerminalAvailability()
@@ -708,9 +733,23 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
+	const handleAutoCleanupTaskHistoryToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange({ autoCleanupTaskHistory: enabled ? undefined : false });
+		},
+		[persistSettingChange],
+	);
+
 	const handleFocusModeToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange({ focusMode: enabled });
+		},
+		[persistSettingChange],
+	);
+
+	const handleAgentEnvDefaultsChange = useCallback(
+		(env: Record<string, string> | undefined) => {
+			persistSettingChange({ agentEnvDefaults: env });
 		},
 		[persistSettingChange],
 	);
@@ -837,14 +876,16 @@ function GlobalSettings({
 
 	const saveExternalApps = useCallback(
 		(apps: ExternalApp[]) => {
-			api.request.saveGlobalSettings({
-				...globalSettingsRef.current,
-				externalApps: normalizeExternalApps(apps),
-			}).then(() => {
-				invalidateAvailableApps();
-			}).catch(() => {});
+			whenHostSettingsLoaded(() => {
+				api.request.saveGlobalSettings({
+					...globalSettingsRef.current,
+					externalApps: normalizeExternalApps(apps),
+				}).then(() => {
+					invalidateAvailableApps();
+				}).catch(() => {});
+			});
 		},
-		[],
+		[whenHostSettingsLoaded],
 	);
 
 	const debouncedSaveExternalApps = useDebouncedCallback(saveExternalApps, 500);
@@ -916,6 +957,13 @@ function GlobalSettings({
 		[agents, persistSettingChange],
 	);
 
+	const handleCoordinatorDefaultChange = useCallback(
+		(agentId: string, configId: string | null) => {
+			persistSettingChange({ coordinatorAgentId: agentId, coordinatorConfigId: configId ?? undefined });
+		},
+		[persistSettingChange],
+	);
+
 	const handleDefaultConfigChange = useCallback(
 		(configId: string) => {
 			persistSettingChange({ defaultConfigId: configId });
@@ -983,25 +1031,28 @@ function GlobalSettings({
 				);
 			case "tasks":
 				return (
-					<BehaviorSettingsSection
-						t={t}
-						globalSettings={globalSettings}
-						tipsResetDone={tipsResetDone}
-						onDefaultDiffViewModeChange={handleDefaultDiffViewModeChange}
-						onOpenArtifactsInPopupToggle={handleOpenArtifactsInPopupToggle}
-						onArtifactTemplateChange={handleArtifactTemplateChange}
-						onArtifactTemplatePathChange={handleArtifactTemplatePathChange}
-						onSuggestCompletingTasksAfterMergeToggle={handleSuggestCompletingTasksAfterMergeToggle}
-						onPrOriginTaskLinkToggle={handlePrOriginTaskLinkToggle}
-						onAgentLaunchAutoApproveChange={handleAgentLaunchAutoApproveChange}
-						prOriginTaskLinkSupported={prOriginTaskLinkSupported}
-						onTaskSortOrderChange={handleTaskSortOrderChange}
-						onTaskOpenModeChange={handleTaskOpenModeChange}
-						onTipsDisabledToggle={handleTipsDisabledToggle}
-						onTipsReset={handleTipsReset}
-						onReviewModePromptChange={handleReviewModePromptChange}
-						onCoordinatorPromptChange={handleCoordinatorPromptChange}
-					/>
+					<>
+						<BehaviorSettingsSection
+							t={t}
+							globalSettings={globalSettings}
+							tipsResetDone={tipsResetDone}
+							onDefaultDiffViewModeChange={handleDefaultDiffViewModeChange}
+							onOpenArtifactsInPopupToggle={handleOpenArtifactsInPopupToggle}
+							onArtifactTemplateChange={handleArtifactTemplateChange}
+							onArtifactTemplatePathChange={handleArtifactTemplatePathChange}
+							onSuggestCompletingTasksAfterMergeToggle={handleSuggestCompletingTasksAfterMergeToggle}
+							onPrOriginTaskLinkToggle={handlePrOriginTaskLinkToggle}
+							onAgentLaunchAutoApproveChange={handleAgentLaunchAutoApproveChange}
+							prOriginTaskLinkSupported={prOriginTaskLinkSupported}
+							onTaskSortOrderChange={handleTaskSortOrderChange}
+							onTaskOpenModeChange={handleTaskOpenModeChange}
+							onTipsDisabledToggle={handleTipsDisabledToggle}
+							onTipsReset={handleTipsReset}
+							onReviewModePromptChange={handleReviewModePromptChange}
+							onCoordinatorPromptChange={handleCoordinatorPromptChange}
+						/>
+						<EpicsSettingsSection t={t} />
+					</>
 				);
 			case "notifications":
 				return (
@@ -1058,6 +1109,7 @@ function GlobalSettings({
 							onAgentsChange={persistAgents}
 							onDefaultAgentChange={handleDefaultAgentChange}
 							onDefaultConfigChange={handleDefaultConfigChange}
+							onCoordinatorDefaultChange={handleCoordinatorDefaultChange}
 							onGlobalSettingsChange={setGlobalSettings}
 							focusPreset={focusPreset}
 							onFocusPresetHandled={clearFocusPreset}
@@ -1067,6 +1119,12 @@ function GlobalSettings({
 							globalSettings={globalSettings}
 							onToggle={handleRateLimitTrackingToggle}
 						/>
+						<AgentEnvDefaultsSection
+							t={t}
+							globalSettings={globalSettings}
+							onChange={handleAgentEnvDefaultsChange}
+						/>
+						<ClaudeModsSection t={t} />
 					</>
 				);
 			case "accounts":
@@ -1100,6 +1158,7 @@ function GlobalSettings({
 							onPreventSleepToggle={handlePreventSleepToggle}
 							onResourceLevelsChange={handleResourceLevelsChange}
 							onConfirmBeforeQuitToggle={handleConfirmBeforeQuitToggle}
+							onAutoCleanupTaskHistoryToggle={handleAutoCleanupTaskHistoryToggle}
 						/>
 						<TelemetrySettingsSection
 							t={t}

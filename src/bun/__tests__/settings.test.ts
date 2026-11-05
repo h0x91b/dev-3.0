@@ -283,6 +283,13 @@ describe("saveSettings", () => {
 		expect((await loadSettings()).defaultConfigId).toBe("claude-bypass-opus48-xhigh");
 	});
 
+	it("lands the retired plain Auto/Bypass ids on the default Opus 5.5 Medium tier", async () => {
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ defaultConfigId: "claude-auto" }), null, 2), "utf-8");
+		expect((await loadSettings()).defaultConfigId).toBe("claude-auto-opus55-medium");
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ defaultConfigId: "claude-bypass" }), null, 2), "utf-8");
+		expect((await loadSettings()).defaultConfigId).toBe("claude-bypass-opus55-medium");
+	});
+
 	it("falls back to the current default for a dangling builtin-looking id with no remap entry", async () => {
 		writeFileSync(settingsPath, JSON.stringify(makeSettings({ defaultConfigId: "claude-some-preset-that-never-existed" }), null, 2), "utf-8");
 		expect((await loadSettings()).defaultConfigId).toBe("claude-auto-opus55-medium");
@@ -344,11 +351,13 @@ describe("saveSettings", () => {
 		});
 		const full: Required<GlobalSettings> = {
 			coordinatorPrompt: "Coordinate, do not code.",
+			coordinatorAgentId: "builtin-codex",
+			coordinatorConfigId: "codex-default",
 			staticAccessCode: "correct-horse-battery-staple",
 			remoteTunnel: { provider: "custom", command: "ngrok http {port} --log stdout", urlPattern: "https://\\S+" },
 			remotePort: 41234,
 			agentLaunchAutoApproveMinutes: 2,
-			resourceLevels: { cpuWarnPercent: 80, diskCriticalGb: 10 },
+			resourceLevels: { cpuBusyWarnPercent: 70, diskCriticalGb: 10 },
 			defaultAgentId: "builtin-codex",
 			defaultConfigId: "codex-default",
 			taskSortOrder: "newest-first",
@@ -375,6 +384,7 @@ describe("saveSettings", () => {
 			customBinaryPaths: { git: "/usr/bin/git" },
 			agentBinaryPaths: { "builtin-codex": "/usr/bin/codex" },
 			agentCustomBinaryPaths: { "builtin-codex": "/opt/wrappers/codex-wrapper" },
+			strictAgentCustomBinaryPaths: { "builtin-codex": "/opt/wrappers/codex-wrapper" },
 			keyboardShortcuts: { "go-to-project": { primary: "Mod+KeyJ", alias: null } },
 			experimentalTerminalBidi: true,
 			hiddenControls: ["bug-hunters", "stats-nav"],
@@ -383,6 +393,7 @@ describe("saveSettings", () => {
 			simplifiedModeSource: "existing",
 			experimentalAgentTraffic: true,
 			freezeDiagnosticsEnabled: true,
+			autoCleanupTaskHistory: false,
 			agentTrafficExperiment: "1",
 			lowBatteryEnabled: true,
 			lowBatteryDisabled: true,
@@ -401,9 +412,11 @@ describe("saveSettings", () => {
 			preventSleepWhileRunning: true,
 			skipQuitDialog: true,
 			importShellEnv: false,
+			agentEnvDefaults: { CLAUDE_CONFIG_DIR: "{home}/.claude-projects/{projectName}" },
 			focusMode: true,
 			agentRateLimitTracking: false,
 			autoAccountDefault: { claude: true },
+			autoAccountExclusions: ["system:claude"],
 			watchByDefault: true,
 			suggestCompletingTasksAfterMerge: false,
 			prOriginTaskLink: false,
@@ -434,6 +447,14 @@ describe("saveSettings", () => {
 		}
 	});
 
+	it("drops malformed and multi-line agentEnvDefaults entries, and stores none when nothing is left", async () => {
+		writeFileSync(settingsPath, JSON.stringify({ agentEnvDefaults: { GOOD: "{projectPath}/x", "BAD-KEY": "v", NUM: 1, MULTI: "a\nb" } }));
+		expect((await loadSettings()).agentEnvDefaults).toEqual({ GOOD: "{projectPath}/x" });
+
+		writeFileSync(settingsPath, JSON.stringify({ agentEnvDefaults: { "BAD-KEY": "v" } }));
+		expect((await loadSettings()).agentEnvDefaults).toBeUndefined();
+	});
+
 	it("creates the settings directory before writing the file", async () => {
 		// Remove the directory so saveSettings must create it from scratch
 		rmSync(TEST_HOME, { recursive: true, force: true });
@@ -449,5 +470,54 @@ describe("saveSettings", () => {
 		expect(JSON.parse(readFileSync(settingsPath, "utf-8"))).toEqual(
 			makeSettings({ defaultAgentId: "builtin-codex" }),
 		);
+	});
+});
+
+describe("app-wide Auto exclusions survive an older build's save", () => {
+	const settingsPath = join(TEST_HOME, "settings.json");
+	const sidecarPath = join(TEST_HOME, "auto-account-exclusions.json");
+
+	beforeEach(() => {
+		rmSync(TEST_HOME, { recursive: true, force: true });
+		mkdirSync(TEST_HOME, { recursive: true });
+		vi.spyOn(Bun, "write").mockImplementation(async (target, data) => {
+			writeFileSync(String(target), String(data), "utf-8");
+			return 0;
+		});
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+		rmSync(TEST_HOME, { recursive: true, force: true });
+	});
+
+	it("keeps them when an older build rewrites settings.json without the key", async () => {
+		await saveSettings(makeSettings({ autoAccountExclusions: ["system:claude", "cl-1"] }));
+		expect(JSON.parse(readFileSync(sidecarPath, "utf-8"))).toEqual({ version: 1, keys: ["system:claude", "cl-1"] });
+		// What an older build's whitelist loader writes back on startup.
+		const onDisk = JSON.parse(readFileSync(settingsPath, "utf-8"));
+		delete onDisk.autoAccountExclusions;
+		writeFileSync(settingsPath, JSON.stringify(onDisk));
+		expect((await loadSettings()).autoAccountExclusions).toEqual(["system:claude", "cl-1"]);
+		expect(loadSettingsSync().autoAccountExclusions).toEqual(["system:claude", "cl-1"]);
+	});
+
+	it("a cleared list stays cleared even while settings.json still carries a stale copy", async () => {
+		await saveSettings(makeSettings({ autoAccountExclusions: ["cl-1"] }));
+		await saveSettings(makeSettings({ autoAccountExclusions: undefined }));
+		writeFileSync(settingsPath, JSON.stringify({ ...JSON.parse(readFileSync(settingsPath, "utf-8")), autoAccountExclusions: ["cl-1"] }));
+		expect((await loadSettings()).autoAccountExclusions).toBeUndefined();
+	});
+
+	it("reads the settings.json copy when there is no sidecar yet, or one of an unknown version", async () => {
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ autoAccountExclusions: ["system:codex"] })));
+		expect((await loadSettings()).autoAccountExclusions).toEqual(["system:codex"]);
+		writeFileSync(sidecarPath, JSON.stringify({ version: 2, keys: [] }));
+		expect((await loadSettings()).autoAccountExclusions).toEqual(["system:codex"]);
+	});
+
+	it("keeps the settings.json copy for builds that read it but predate the sidecar", async () => {
+		await saveSettings(makeSettings({ autoAccountExclusions: ["cl-1"] }));
+		expect(JSON.parse(readFileSync(settingsPath, "utf-8")).autoAccountExclusions).toEqual(["cl-1"]);
 	});
 });

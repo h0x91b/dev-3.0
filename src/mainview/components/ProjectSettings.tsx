@@ -433,6 +433,16 @@ function ProjectSettings({
 		}
 	}
 
+	async function handleBoardCopyChange(change: { boardCopy?: boolean; boardCopyMessages?: boolean }) {
+		if (!project) return;
+		try {
+			const updated = await api.request.updateProjectSettings({ projectId, ...change });
+			dispatch({ type: "updateProject", project: updated });
+		} catch (err) {
+			toast.error(t("projectSettings.failedSave", { error: String(err) }), { projectId });
+		}
+	}
+
 	async function handleToggleSensitive(next: boolean) {
 		if (!project) return;
 		try {
@@ -930,6 +940,40 @@ function ProjectSettings({
 
 							{project.kind !== "virtual" && (
 								<SettingsSection
+									title={t("boardCopy.sectionTitle")}
+									description={t("boardCopy.sectionDesc")}
+								>
+								<div className="space-y-4">
+									<div className="flex items-center justify-between gap-4">
+										<div>
+											<span className="block text-fg text-sm font-semibold mb-1">{t("boardCopy.toggle")}</span>
+											<p className="text-fg-3 text-sm">{t("boardCopy.toggleHint")}</p>
+										</div>
+										<ToggleSwitch
+											checked={project.boardCopy === true}
+											ariaLabel={t("boardCopy.toggle")}
+											onToggle={() => void handleBoardCopyChange({ boardCopy: project.boardCopy !== true })}
+										/>
+									</div>
+									{project.boardCopy === true && (
+										<div className="flex items-center justify-between gap-4">
+											<div>
+												<span className="block text-fg text-sm font-semibold mb-1">{t("boardCopy.messages")}</span>
+												<p className="text-fg-3 text-sm">{t("boardCopy.messagesHint")}</p>
+											</div>
+											<ToggleSwitch
+												checked={project.boardCopyMessages === true}
+												ariaLabel={t("boardCopy.messages")}
+												onToggle={() => void handleBoardCopyChange({ boardCopyMessages: project.boardCopyMessages !== true })}
+											/>
+										</div>
+									)}
+								</div>
+								</SettingsSection>
+							)}
+
+							{project.kind !== "virtual" && (
+								<SettingsSection
 									title={t("projectSettings.importConversations")}
 									description={t("projectSettings.importConversationsDesc")}
 								>
@@ -1357,7 +1401,7 @@ function ProjectSettings({
 							<button
 								type="button"
 								onClick={handleDiscardCurrentTab}
-								className="px-4 py-2 text-sm font-medium rounded-xl text-fg-2 outline-none hover:text-fg hover:bg-elevated focus-visible:ring-2 focus-visible:ring-accent/50 transition-[color,background-color,transform] duration-150 ease-out active:scale-[0.96]"
+								className="px-4 py-2 text-sm font-medium rounded-xl text-fg-2 outline-none hover:text-fg hover:bg-overlay-hover focus-visible:ring-2 focus-visible:ring-accent/50 transition-[color,background-color,transform] duration-150 ease-out active:scale-[0.96]"
 							>
 								{t("unsavedChanges.discard")}
 							</button>

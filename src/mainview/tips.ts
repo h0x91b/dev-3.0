@@ -988,6 +988,14 @@ const ALL_TIPS: Tip[] = [
 		score: 4,
 		contexts: ["terminal"],
 	},
+	{
+		id: "rename-terminal-window",
+		titleKey: "tip.renameTerminalWindow.title",
+		bodyKey: "tip.renameTerminalWindow.body",
+		icon: "\u{F0B5B}", // nf-md-pencil
+		score: 3,
+		contexts: ["terminal"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

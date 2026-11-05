@@ -10,7 +10,7 @@ import type { ScheduledMessageAuthor, Task } from "../shared/types";
 import { pinTaskPane } from "./pane-input";
 import { taskTerminalBackendIdentity } from "./task-terminal-backend";
 import { collectProcessInfo } from "./port-scanner";
-import { spawn } from "./spawn";
+import { isSameAgentProcess, readAgentProcessSignature } from "./agent-process-signature";
 import { NATIVE_AGENT_PANE_ID } from "./agent-prompt-native";
 import { nativeTaskPanesState } from "./native-task-panes";
 import { DEFAULT_TMUX_SOCKET, PANE_ID_PID_FORMAT, taskSessionName, tmux } from "./tmux";
@@ -25,24 +25,12 @@ export type AgentIdentity =
 	| { ok: true; author: ScheduledMessageAuthor }
 	| { ok: false; reason: "unsupported" | "no-agent" | "unknown"; detail: string };
 
-/** Why nothing is captured on Windows: the identity is `pid@start`, and only `ps` reads that today. */
+/** Why nothing is captured on Windows: the identity is `pid@start`, and only `ps` or `/proc` read that today. */
 export const AGENT_IDENTITY_UNSUPPORTED_DETAIL = "agent identity cannot be verified on Windows yet";
 
-const SHELLS = new Set(["sh", "bash", "zsh", "fish", "dash", "ksh", "mksh", "tcsh", "csh", "nu", "elvish", "xonsh", "pwsh", "powershell"]);
+const SCRIPT_RUNTIMES = new Set(["node", "bun", "deno", "python", "python3"]);
+const SHELLS = new Set(["sh", "bash", "zsh", "fish", "dash", "ash", "ksh", "mksh", "tcsh", "csh", "nu", "elvish", "xonsh", "pwsh", "powershell"]);
 const MAX_ANCESTRY = 64;
-
-/** `pid@<ps lstart>`: a recycled pid has a different start time, so it never matches. "" when gone. */
-async function readProcessStartSignature(pid: number): Promise<string> {
-	if (!Number.isInteger(pid) || pid <= 0) return "";
-	try {
-		const proc = spawn(["ps", "-p", String(pid), "-o", "lstart="], { stdout: "pipe", stderr: "ignore" });
-		const [raw, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
-		const start = raw.trim().replace(/\s+/g, " ");
-		return exitCode === 0 && start ? `${pid}@${start}` : "";
-	} catch {
-		return "";
-	}
-}
 
 type ProcessTable = { parentOf: Map<number, number>; childrenOf: Map<number, number[]>; cmdlines: Map<number, string> };
 
@@ -103,11 +91,27 @@ function unproven(reason: "unsupported" | "no-agent" | "unknown", detail: string
 	return { ok: false, reason, detail };
 }
 
-async function identityOf(task: Task, paneId: string, root: PaneRoot, agentPid: number): Promise<AgentIdentity> {
-	const agentProcess = await readProcessStartSignature(agentPid);
+/** The recorded entry of `paneId`; a native main agent is recorded without a pane id, as the first entry, unless parked (a woken plain shell). */
+function entryFor(task: Task, paneId: string) {
+	const panes = task.sessionState?.panes ?? [];
+	const exact = panes.find((p) => p.paneId === paneId);
+	if (exact || taskTerminalBackendIdentity(task) !== "native" || paneId !== NATIVE_AGENT_PANE_ID) return exact;
+	return panes[0]?.paneId || panes[0]?.parked ? undefined : panes[0];
+}
+
+/** Start signature of the native main pane's root process: a restart gets a new root, an exit into the handed-over shell keeps it. */
+async function nativeMainGeneration(task: Task, paneId: string, root: PaneRoot): Promise<string> {
+	if (taskTerminalBackendIdentity(task) !== "native" || paneId !== NATIVE_AGENT_PANE_ID) return "";
+	return readAgentProcessSignature(root.rootPid);
+}
+
+/** `withGeneration`: read the native root's start signature too, for callers that store or compare it. */
+async function identityOf(task: Task, paneId: string, root: PaneRoot, agentPid: number, withGeneration: boolean): Promise<AgentIdentity> {
+	const agentProcess = await readAgentProcessSignature(agentPid);
 	if (!agentProcess) return unproven("unknown", "the agent process ended while it was being identified");
-	const sessionId = task.sessionState?.panes.find((p) => p.paneId === paneId)?.sessionId ?? null;
-	return { ok: true, author: { paneId, sessionId, paneToken: root.paneToken, agentProcess } };
+	const sessionId = entryFor(task, paneId)?.sessionId ?? null;
+	const paneGeneration = withGeneration ? await nativeMainGeneration(task, paneId, root) : "";
+	return { ok: true, author: { paneId, sessionId, paneToken: root.paneToken, agentProcess, ...(paneGeneration ? { paneGeneration } : {}) } };
 }
 
 /** The agent that ran a `dev3` command from `paneId` (the CLI's own pid), or why none can be proven. */
@@ -115,6 +119,7 @@ export async function captureSenderAgent(
 	task: Task,
 	paneId: string | null | undefined,
 	cliPid: number | null | undefined,
+	options: { generation?: boolean } = {},
 ): Promise<AgentIdentity> {
 	if (process.platform === "win32") return unproven("unsupported", AGENT_IDENTITY_UNSUPPORTED_DETAIL);
 	const pane = paneId?.trim();
@@ -127,7 +132,7 @@ export async function captureSenderAgent(
 	if (!agentPid) {
 		return unproven("no-agent", "no agent process runs dev3 here (a shell in the pane, or an agent started through a wrapper script)");
 	}
-	return identityOf(task, pane, root, agentPid);
+	return identityOf(task, pane, root, agentPid, options.generation === true);
 }
 
 /** Record the agent that ran `dev3 message` from `paneId`, or null when no agent can be proven. */
@@ -136,36 +141,42 @@ export async function captureScheduledMessageAuthor(
 	paneId: string | null | undefined,
 	cliPid: number | null | undefined,
 ): Promise<ScheduledMessageAuthor | null> {
-	const captured = await captureSenderAgent(task, paneId, cliPid);
+	const captured = await captureSenderAgent(task, paneId, cliPid, { generation: true });
 	return captured.ok ? captured.author : null;
 }
 
 /**
  * The agent running in `paneId` right now: the non-shell child of its launch
- * script. `no-agent` only on proof, the root having become the bare shell the
- * script hands over to; a setup script still running or a failed `ps` is `unknown`.
+ * script, or the same agent started again by hand in the shell it handed over to.
+ * `no-agent` only on proof, that shell running no such agent; a setup script
+ * still running or a failed `ps` is `unknown`.
  */
-export async function readPaneAgentIdentity(task: Task, paneId: string): Promise<AgentIdentity> {
+export async function readPaneAgentIdentity(task: Task, paneId: string, options: { generation?: boolean } = {}): Promise<AgentIdentity> {
 	if (process.platform === "win32") return unproven("unsupported", AGENT_IDENTITY_UNSUPPORTED_DETAIL);
 	const root = await paneRoot(task, paneId);
 	if (!root) return unproven("unknown", `pane ${paneId} could not be read`);
 	const table = await processTable();
 	if (!table.cmdlines.has(root.rootPid)) return unproven("unknown", "the process table could not be read");
-	if (isHandedOverShell(table, root.rootPid)) return unproven("no-agent", `the agent in pane ${paneId} has exited`);
+	if (isHandedOverShell(table, root.rootPid)) {
+		const relaunched = relaunchedAgentPid(task, paneId, table, root.rootPid);
+		if (!relaunched) return unproven("no-agent", `the agent in pane ${paneId} has exited`);
+		return identityOf(task, paneId, root, relaunched, options.generation === true);
+	}
 	const agentPid = (table.childrenOf.get(root.rootPid) ?? []).find((pid) => !isShell(table, pid));
 	if (!agentPid) return unproven("unknown", `no agent process is running in pane ${paneId} yet`);
-	return identityOf(task, paneId, root, agentPid);
+	return identityOf(task, paneId, root, agentPid, options.generation === true);
 }
 
-function signaturePid(signature: string): number {
-	return Number.parseInt(signature.split("@")[0] ?? "", 10);
-}
-
-/** Does `paneId` run an agent right now — a live non-shell child of its launch script? */
+/**
+ * Does `paneId` run an agent right now — a live non-shell child of its launch script?
+ * A bare shell at the root is what an exited agent leaves: whatever runs in it, a dev
+ * server or the agent started again by hand, is not the agent a message may follow.
+ */
 async function paneRunsAgent(task: Task, paneId: string): Promise<PaneRoot | null> {
 	const root = await paneRoot(task, paneId);
 	if (!root) return null;
 	const table = await processTable();
+	if (!table.cmdlines.has(root.rootPid) || isHandedOverShell(table, root.rootPid)) return null;
 	return (table.childrenOf.get(root.rootPid) ?? []).some((pid) => !isShell(table, pid)) ? root : null;
 }
 
@@ -198,9 +209,12 @@ export async function liveAgentPaneIds(task: Task): Promise<string[] | null> {
 		const root = await paneRoot(task, paneId);
 		if (!root) continue;
 		if (!table.cmdlines.has(root.rootPid)) return null; // `ps` failed or raced the pane
-		// A pane whose root is a bare interactive shell is a shell, whatever it runs: an agent pane's
-		// root is its launch script, which only becomes such a shell once the agent has ended.
-		if (isHandedOverShell(table, root.rootPid)) continue;
+		// A pane whose root is a bare interactive shell is a shell once its agent has ended: an agent
+		// pane's root is its launch script. Only the same agent started there again by hand counts.
+		if (isHandedOverShell(table, root.rootPid)) {
+			if (relaunchedAgentPid(task, paneId, table, root.rootPid)) live.push(paneId);
+			continue;
+		}
 		if ((table.childrenOf.get(root.rootPid) ?? []).some((pid) => !isShell(table, pid))) live.push(paneId);
 	}
 	return live;
@@ -215,10 +229,30 @@ function isHandedOverShell(table: ProcessTable, pid: number): boolean {
 	return words.length === 1 && isShell(table, pid);
 }
 
+function binaryName(word: string | undefined): string {
+	return (word?.split(/[\\/]/).pop() ?? "").replace(/\.exe$/i, "").toLowerCase();
+}
+
+/**
+ * The agent the user started again by hand in the shell an exited agent left
+ * behind: a child of that shell running the binary dev3 launched in this pane
+ * (`claude`, or `node …/codex`). Any other program there is not the agent.
+ */
+function relaunchedAgentPid(task: Task, paneId: string, table: ProcessTable, rootPid: number): number | null {
+	const launched = binaryName(task.sessionState?.panes.find((p) => p.paneId === paneId)?.agentCmd?.trim().split(/\s+/)[0]);
+	if (!launched || SHELLS.has(launched)) return null;
+	for (const pid of table.childrenOf.get(rootPid) ?? []) {
+		const [exe, script] = (table.cmdlines.get(pid)?.trim().split(/\s+/) ?? []).map(binaryName);
+		if (exe === launched || (SCRIPT_RUNTIMES.has(exe ?? "") && script === launched)) return pid;
+	}
+	return null;
+}
+
 /**
  * The task's MAIN agent, seen through the shell that outlives it (`keepShell`).
  * `exited` is proof, not absence of evidence: the pane's launch script has been
- * replaced by the interactive shell it hands over to only after the agent ends.
+ * replaced by the interactive shell it hands over to only after the agent ends,
+ * and that shell runs no agent the user started again by hand.
  * Anything a probe cannot establish — no pane id, tmux or `ps` failing, a setup
  * script still running, Windows (no `ps`) — is `unknown`, because the watchdog
  * tears the terminal down on `exited`.
@@ -231,7 +265,7 @@ export async function taskMainAgentLiveness(task: Task): Promise<MainAgentLivene
 	if (!root) return "unknown";
 	const table = await processTable();
 	if (!table.cmdlines.has(root.rootPid)) return "unknown"; // `ps` failed, timed out, or raced the pane
-	if (isHandedOverShell(table, root.rootPid)) return "exited";
+	if (isHandedOverShell(table, root.rootPid)) return relaunchedAgentPid(task, paneId, table, root.rootPid) ? "alive" : "exited";
 	return (table.childrenOf.get(root.rootPid) ?? []).some((pid) => !isShell(table, pid)) ? "alive" : "unknown";
 }
 
@@ -240,22 +274,22 @@ export async function taskMainAgentLiveness(task: Task): Promise<MainAgentLivene
  * running proves it outright. If it is gone, the only other acceptable answer is the
  * same conversation resumed somewhere NEW (another pane or tmux server) and running
  * an agent there; the same pane on the same server means the agent exited and what
- * is left is a shell.
+ * is left is a shell. On native only the main agent can be found again: see
+ * {@link resolveNativeMainAuthor}.
  */
 export async function resolveScheduledMessageAuthorPane(task: Task, author: ScheduledMessageAuthor): Promise<AuthorPaneResolution> {
 	if (process.platform === "win32") return { ok: false, detail: `${AGENT_IDENTITY_UNSUPPORTED_DETAIL}; not sent to another pane` };
 	const who = `the addressed agent (pane ${author.paneId}${author.sessionId ? `, session ${author.sessionId.slice(0, 8)}` : ""})`;
 	const gone: AuthorPaneResolution = { ok: false, detail: `${who} is no longer running in this task; not sent to another pane` };
 
-	const pid = signaturePid(author.agentProcess);
-	const current = await readProcessStartSignature(pid);
-	if (current && current === author.agentProcess) {
+	if (await isSameAgentProcess(author.agentProcess)) {
 		const root = await paneRoot(task, author.paneId);
 		if (root && root.paneToken === author.paneToken) return { ok: true, paneId: author.paneId };
 		return gone;
 	}
 
-	if (!author.sessionId || taskTerminalBackendIdentity(task) !== "tmux") return gone;
+	if (taskTerminalBackendIdentity(task) === "native") return resolveNativeMainAuthor(task, author, gone);
+	if (!author.sessionId) return gone;
 	const matches = (task.sessionState?.panes ?? []).filter((p) => p.sessionId === author.sessionId && p.paneId);
 	if (matches.length > 1) return { ok: false, detail: `${who} matches several panes; not guessing` };
 	const candidate = matches[0]?.paneId;
@@ -265,3 +299,23 @@ export async function resolveScheduledMessageAuthorPane(task: Task, author: Sche
 	const moved = candidate !== author.paneId || live.paneToken !== author.paneToken;
 	return moved ? { ok: true, paneId: candidate } : gone;
 }
+
+/**
+ * A native pane keeps its registry session id across a restart, so the generation
+ * is the start signature of its root process: a resumed main agent runs under a new
+ * root, an agent that exited leaves its shell under the same one. Only the main
+ * agent (pane-1, recorded as the first `sessionState` entry) is rebound, and only
+ * to the same conversation; anything recorded without a generation is dropped.
+ */
+async function resolveNativeMainAuthor(task: Task, author: ScheduledMessageAuthor, gone: AuthorPaneResolution): Promise<AuthorPaneResolution> {
+	if (author.paneId !== NATIVE_AGENT_PANE_ID || !author.sessionId || !author.paneGeneration) return gone;
+	if (entryFor(task, NATIVE_AGENT_PANE_ID)?.sessionId !== author.sessionId) return gone;
+	const root = await paneRunsAgent(task, NATIVE_AGENT_PANE_ID);
+	if (!root) return gone;
+	const current = await readAgentProcessSignature(root.rootPid);
+	// Compared by pid: a signature string alone can differ for the same process (lstart is local time).
+	const was = rootPidOf(author.paneGeneration);
+	return current && Number.isInteger(was) && rootPidOf(current) !== was ? { ok: true, paneId: NATIVE_AGENT_PANE_ID } : gone;
+}
+
+const rootPidOf = (signature: string): number => Number.parseInt(signature.split("@")[0] ?? "", 10);

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { Project, Task, TaskPriority, TaskStatus } from "../../shared/types";
-import { getTaskTitle, isTaskDisconnected } from "../../shared/types";
+import { ACTIVE_STATUSES, getTaskTitle, isTaskDisconnected } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
@@ -37,6 +37,8 @@ interface TaskContextMenuProps {
 	onOpenTask: () => void;
 	/** Surfaces that already own a detail modal pass theirs; otherwise one is rendered here. */
 	onOpenDetails?: () => void;
+	/** Filters the board to the task's lineage batch; the row is shown only when given. */
+	onShowFamily?: () => void;
 	testId?: string;
 }
 
@@ -58,6 +60,7 @@ interface MenuRow {
  * existing picker, modal or RPC the object already had elsewhere.
  */
 export default function TaskContextMenu({
+	onShowFamily,
 	task,
 	project,
 	dispatch,
@@ -79,6 +82,7 @@ export default function TaskContextMenu({
 	const labelIds = task.labelIds ?? [];
 	const disconnected = isTaskDisconnected(task);
 	const hasSession = !!task.worktreePath && !task.hibernated && !task.preparing && !task.shuttingDown && !disconnected;
+	const canRestart = hasSession && ACTIVE_STATUSES.includes(task.status) && !task.draft;
 
 	function openSub(next: SubSurface) {
 		if (pos) setAnchorPos(pos);
@@ -190,6 +194,23 @@ export default function TaskContextMenu({
 		}
 	}
 
+	async function handleRestartSession() {
+		onClose();
+		if (!await confirm({
+			title: t("task.restartSessionTitle"),
+			message: t("task.restartSessionConfirm"),
+			confirmLabel: t("task.restartSessionCta"),
+			danger: true,
+			info: { title: getTaskTitle(task) },
+		})) return;
+		try {
+			await api.request.resumeTask({ taskId: task.id, restart: true });
+			toast.success(t("task.restartedSession"), { taskId: task.id });
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : String(err), { taskId: task.id });
+		}
+	}
+
 	async function handleHibernate() {
 		onClose();
 		const paneCount = task.sessionState?.panes?.length ?? 0;
@@ -238,6 +259,7 @@ export default function TaskContextMenu({
 		[
 			{ id: "open", label: t("taskMenu.open"), onSelect: () => { onClose(); onOpenTask(); } },
 			{ id: "details", label: t("taskMenu.details"), onSelect: () => openDetails(false) },
+			...(onShowFamily ? [{ id: "family", label: t("task.lineage.showFamily"), onSelect: () => { onClose(); onShowFamily(); } }] : []),
 		],
 		[
 			{ id: "labels", label: t("taskMenu.labels"), onSelect: () => openSub("labels"), submenu: true },
@@ -287,6 +309,7 @@ export default function TaskContextMenu({
 				label: task.keepAlive?.enabled ? t("task.keepAliveOff") : t("task.keepAliveOn"),
 				onSelect: handleToggleKeepAlive,
 			},
+			{ id: "restartSession", label: t("task.restartSession"), onSelect: handleRestartSession, disabled: !canRestart },
 			{ id: "hibernate", label: t("task.hibernate"), onSelect: handleHibernate, disabled: !hasSession },
 		],
 		[{ id: "delete", label: t("taskMenu.delete"), onSelect: handleDelete, danger: true }],
@@ -309,7 +332,7 @@ export default function TaskContextMenu({
 					}}
 					className={`flex w-full items-center gap-2 px-3 text-left transition-colors disabled:opacity-40 disabled:pointer-events-none ${
 						narrow ? "py-3 text-sm-plus" : "py-1.5 text-sm"
-					} ${row.danger ? "text-danger hover:bg-danger/10" : "text-fg-2 hover:bg-elevated-hover hover:text-fg"}`}
+					} ${row.danger ? "text-danger hover:bg-danger/10" : "text-fg-2 hover:bg-overlay-hover hover:text-fg"}`}
 				>
 					<span aria-hidden className="w-3 flex-shrink-0 text-center text-xs leading-none text-accent">
 						{row.checked ? "✓" : ""}

@@ -47,7 +47,8 @@ exits: `buildCmdScript` hands the pane over to an interactive shell (`keepShell`
   Gemini `/quit`; the generic adapter returns null and teardown goes straight to the kill.
 - `src/bun/agent-graceful-exit.ts` — `requestGracefulAgentExit(task)` resolves live
   agent panes from `task.sessionState.panes` (tmux: joined with `list-panes` pane pids;
-  native: `pane-1` and its shell pid), types the program through `sendPaneInput`, then
+  native: `pane-1` and its shell pid, plus — since 2026-10-28 — each `+ Agent` and
+  bug-hunter pane found through its launch-script sidecar, with `sessionId: null`), types the program through `sendPaneInput`, then
   polls every 250 ms up to 30 s. It never throws: the whole body is wrapped and every
   failure comes back as an outcome.
 - **Two signals, deliberately not one.** Before typing, the step asks *"is the agent

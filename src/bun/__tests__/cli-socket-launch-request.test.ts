@@ -98,6 +98,10 @@ vi.mock("../cli-agent-spawn", () => ({
 	validateLaunchSuggestion: vi.fn(),
 }));
 
+vi.mock("../agents", async () => {
+	const { DEFAULT_AGENTS } = await import("../../shared/types");
+	return { getAllAgents: vi.fn().mockResolvedValue(DEFAULT_AGENTS) };
+});
 vi.mock("node:fs", () => ({
 	existsSync: vi.fn(() => false),
 	readdirSync: vi.fn(() => []),
@@ -179,6 +183,8 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	_resetAgentRequestsForTests();
 	vi.mocked(deliverLaunchHandoff).mockResolvedValue(true);
+	// The launch answers once the child's preparation settles; by default it started.
+	vi.mocked(data.getTask).mockImplementation(async (_project, id) => makeTask({ id, status: "in-progress", runtimeState: { runtime: "running", updatedAt: 1 } }));
 });
 
 describe("task.move — agent-initiated launch approval", () => {
@@ -285,6 +291,37 @@ describe("task.move — agent-initiated launch approval", () => {
 			// No --handoff-file: the child still gets dev3's own default note.
 			launcherNote: null,
 		}));
+	});
+
+	// 2026-11-01 incident: the launch answered "started" at dispatch, while another
+	// dev3 instance was deleting the child's worktree. The reply must carry how the
+	// preparation actually ended.
+	it("reports a preparation that failed after approval instead of a start", async () => {
+		const target = makeTask();
+		setupBoard(target);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([{ ...target, status: "in-progress" as const }]);
+		const preparing = makeTask({ status: "in-progress", preparing: true, runtimeState: { runtime: "preparing", stage: "creating-worktree", runId: "r1", updatedAt: 1 } });
+		const failed = makeTask({ status: "todo", preparationError: "Preparation interrupted by app restart", runtimeState: { runtime: "idle", updatedAt: 2 } });
+		vi.mocked(data.getTask).mockResolvedValueOnce(preparing).mockResolvedValue(failed);
+
+		const respPromise = handleRequest(moveRequest({
+			taskId: TARGET_ID,
+			newStatus: "in-progress",
+			projectId: "proj-1",
+			sourceTaskId: REQUESTER_ID,
+		}));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		const [, payload] = pushFn.mock.calls[0] as [string, Record<string, unknown>];
+		resolveAgentRequest(payload.requestId as string, { approved: true });
+
+		const resp = await respPromise;
+		expect((resp.data as { launched: Array<{ preparation: unknown }> }).launched[0]!.preparation).toEqual({
+			state: "failed",
+			error: "Preparation interrupted by app restart",
+		});
+		expect(data.getTask).toHaveBeenCalledTimes(2);
 	});
 
 	it("lists the pending launch in approvals.list with the dialog's context and who asked", async () => {
@@ -853,8 +890,8 @@ describe("task.move — agent-initiated launch with variants", () => {
 describe("launch requests with a suggested agent/config (issue #1911)", () => {
 	const SUGGESTED = { agentId: "builtin-codex", configId: "codex-low" };
 
-	async function startMove(params: Record<string, unknown> = {}) {
-		const target = makeTask();
+	async function startMove(params: Record<string, unknown> = {}, taskOverrides: Partial<Task> = {}) {
+		const target = makeTask(taskOverrides);
 		setupBoard(target);
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
@@ -899,6 +936,23 @@ describe("launch requests with a suggested agent/config (issue #1911)", () => {
 			vi.useRealTimers();
 		}
 		expect(launchTaskWithAgentChoice).toHaveBeenCalledWith(expect.objectContaining({ choice: { variants: [SUGGESTED], priority: "P3" } }));
+	});
+
+	it("a coordinator with no flags preselects and auto-launches the coordinator preset", async () => {
+		vi.mocked(loadSettings).mockReturnValue({ agentLaunchAutoApproveMinutes: 1 } as never);
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		const coordinator = { agentId: "builtin-claude", configId: "claude-auto-fable51-medium" };
+		let payload: Record<string, unknown>;
+		try {
+			const started = await startMove({}, { taskType: "coordinator" });
+			payload = started.payload;
+			vi.advanceTimersByTime(60_000);
+			await started.respPromise;
+		} finally {
+			vi.useRealTimers();
+		}
+		expect(payload.suggested).toEqual(coordinator);
+		expect(launchTaskWithAgentChoice).toHaveBeenCalledWith(expect.objectContaining({ choice: { variants: [coordinator], priority: "P3" } }));
 	});
 
 	it("without flags: no suggestion, no validation, and auto-approval keeps the default variant", async () => {
@@ -1032,6 +1086,23 @@ describe("task.moveAsSender — a start an external sender asks for", () => {
 		}));
 		expect(resp).toMatchObject({ ok: false, error: expect.stringContaining("--handoff-file does not apply with --as-sender") });
 		expect(pushFn).not.toHaveBeenCalled();
+	});
+
+	it("refuses moving a task that is already running, so no column agent starts without a dialog", async () => {
+		setupBoard(makeTask({ status: "in-progress" }));
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		const resp = await handleRequest(senderMoveRequest({ taskId: TARGET_ID, newStatus: "review-by-ai", projectId: "proj-1", asSender: "openclaw:home:main" }));
+		expect(resp).toMatchObject({ ok: false, error: "A sender can only start a task that is not running." });
+		expect(moveTask).not.toHaveBeenCalled();
+		expect(pushFn).not.toHaveBeenCalled();
+	});
+
+	it("treats a repeated start of a running task as a no-op", async () => {
+		setupBoard(makeTask({ status: "in-progress" }));
+		const resp = await handleRequest(senderMoveRequest({ taskId: TARGET_ID, newStatus: "in-progress", projectId: "proj-1", asSender: "openclaw:home:main" }));
+		expect(resp).toMatchObject({ ok: true, data: { id: TARGET_ID, status: "in-progress" } });
+		expect(moveTask).not.toHaveBeenCalled();
 	});
 
 	it("refuses an unknown sender before any dialog", async () => {

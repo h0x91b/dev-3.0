@@ -1,0 +1,3 @@
+Short: Per-task token usage and cost in the CLI
+
+`dev3 stats usage --task <id|seq:N> [--json]` reports one task's tokens by type (cache writes with Claude's 5m/1h split), messages and API-equivalent cost per model, from the same Claude and Codex stores as the Stats page (subagents and archived Codex sessions included), so outside agents get a task's cost from dev3 itself, over ssh too; it works for finished tasks whose worktree is gone counts conversations a pane resumed from another folder from the task's launch on, and flags what it could not count. Conversation search, import and resume also now find Claude transcripts of working directories whose path has an underscore, a space or other punctuation, or runs past 200 characters.

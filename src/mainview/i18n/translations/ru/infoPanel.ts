@@ -7,6 +7,10 @@ const infoPanel = {
 	"infoPanel.description": "Описание",
 	"infoPanel.worktree": "Worktree",
 	"infoPanel.created": "Создано",
+	"infoPanel.createdBy": "Кем создана",
+	"infoPanel.createdByDeleted": "задача (удалена)",
+	"infoPanel.createdByAutomation": "автоматизация",
+	"infoPanel.createdByImport": "импорт разговора",
 	"infoPanel.updated": "Обновлено",
 	"infoPanel.collapse": "Свернуть панель",
 	"infoPanel.expand": "Развернуть панель",
@@ -363,6 +367,7 @@ const infoPanel = {
 	"infoPanel.sharedItemsUnread": "Есть новые непросмотренные элементы",
 	"infoPanel.openSharedImage": "Открыть картинку {name}",
 	"infoPanel.openSharedVideo": "Открыть видео {name}",
+	"infoPanel.openSharedAudio": "Открыть аудио {name}",
 	"infoPanel.openSharedArtifact": "Открыть артефакт {name}",
 
 	"infoPanel.restoreHidden": "Показать скрытые элементы",

@@ -364,7 +364,7 @@ function TmuxSessionManager({ navigate, variant = "bar" }: TmuxSessionManagerPro
 			onMouseLeave={scheduleClose}
 			aria-haspopup="dialog"
 			aria-expanded={popoverOpen}
-			className="header-anim w-full px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
+			className="header-anim w-full px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-overlay-hover hover:text-fg transition-colors"
 			aria-label={t("tmuxSessions.title")}
 		>
 			<span className="flex w-[1.125rem] justify-center flex-shrink-0">{glyph}</span>
@@ -424,7 +424,7 @@ function TmuxSessionManager({ navigate, variant = "bar" }: TmuxSessionManagerPro
 								<button
 									onClick={handleRefresh}
 									disabled={refreshing}
-									className={`header-anim text-fg-3 hover:text-fg hover:bg-elevated p-1 rounded transition-colors disabled:opacity-40${refreshing ? " hdr-rescan-busy" : ""}`}
+									className={`header-anim text-fg-3 hover:text-fg hover:bg-overlay-hover p-1 rounded transition-colors disabled:opacity-40${refreshing ? " hdr-rescan-busy" : ""}`}
 									aria-label={t("tmuxSessions.refresh")}
 								>
 									<RescanIcon className="w-3.5 h-3.5" />
@@ -494,7 +494,7 @@ function TmuxSessionManager({ navigate, variant = "bar" }: TmuxSessionManagerPro
 											data-session-name={session.name}
 											role={canNavigate ? "button" : undefined}
 											tabIndex={canNavigate ? 0 : undefined}
-											className={`px-4 py-2.5 hover:bg-elevated-hover transition-colors border-b border-edge/50 last:border-0${canNavigate ? " cursor-pointer" : ""}`}
+											className={`px-4 py-2.5 hover:bg-overlay-hover transition-colors border-b border-edge/50 last:border-0${canNavigate ? " cursor-pointer" : ""}`}
 											onClick={canNavigate ? () => handleSessionClick(session) : undefined}
 											onKeyDown={canNavigate ? (e: React.KeyboardEvent) => {
 												if (e.key === "Enter" || e.key === " ") {

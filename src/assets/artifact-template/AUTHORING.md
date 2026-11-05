@@ -91,4 +91,5 @@ Being new is not a trigger for a small report, and a revision that only changes 
 | Menus and popovers | a dropdown, an export menu, anything that opens over the report |
 | Tables · Dense evidence tables | stacking rules on narrow screens, large generated ledgers |
 | Print and PDF | the report will be printed or saved as PDF |
-| Asking the user something | a form whose answer goes straight back to the agent |
+| Asking the user something | a form whose answer goes to the agent |
+| Live pages | `window.dev3.live` |

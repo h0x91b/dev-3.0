@@ -113,6 +113,7 @@ async function importOne(
 		labelIds: [labelId],
 		overview: overviewFor(conversation, firstUserRequest(parsed) ?? ""),
 		importedSessionId: conversation.sessionId,
+		origin: { kind: "import" },
 		...(recent ? { baseBranch: await baseBranchFor(project, conversation) } : {}),
 	});
 

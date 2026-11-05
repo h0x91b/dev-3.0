@@ -62,7 +62,7 @@ export interface FileExplorerProps {
 	onHide: () => void;
 	/** A file was opened or its path sent to the terminal; an auto-hidden panel slides away. */
 	onHandOff?: () => void;
-	/** The legacy yazi pane, offered from the header menu on tmux-backed tasks. */
+	/** The legacy yazi pane, offered from the header menu. */
 	onOpenYazi?: () => void;
 	/** Bumped by the frame when the tree should take keyboard focus. */
 	focusSignal?: number;
@@ -561,7 +561,7 @@ function ExplorerMenu({ top, left, alignEnd = false, title, sections, onClose }:
 									onClose();
 									item.run();
 								}}
-								className="group flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs text-fg-2 transition-colors hover:bg-elevated-hover hover:text-fg focus-visible:bg-elevated-hover focus-visible:text-fg focus-visible:outline-none"
+								className="group flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs text-fg-2 transition-colors hover:bg-overlay-hover hover:text-fg focus-visible:bg-overlay-hover focus-visible:text-fg focus-visible:outline-none"
 							>
 								<span className="flex w-4 flex-shrink-0 justify-center text-fg-3 transition-colors group-hover:text-accent group-focus-visible:text-accent" aria-hidden="true">
 									{item.icon}

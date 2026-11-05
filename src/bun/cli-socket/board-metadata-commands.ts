@@ -4,6 +4,7 @@ import { formatStatus, getTaskTitle, STATUS_LABELS } from "../../shared/types";
 import { nextKeepAliveState } from "../../shared/keep-alive";
 import { DEFAULT_EVENT_LIMIT, DEFAULT_EVENT_WINDOW_MS, MAX_EVENT_LIMIT, formatMovementText, normalizeEventInstant, resolveEventIdPrefix, selectEvents, type BoardEvent, type BoardEventKind } from "../../shared/board-events";
 import * as data from "../data";
+import { boardCopyEnabled, exportBoardCopy } from "../board-copy";
 import * as taskNotes from "../board-operations/task-notes";
 import * as labelOps from "../board-operations/labels";
 import { updateTaskMetadata } from "../board-operations/task-metadata";
@@ -358,6 +359,16 @@ export const boardMetadataHandlers: Record<string, Handler> = {
 			throw new Error("sessionIds must be an array of session ids");
 		}
 		return (await conversationImport()).importConversations({ projectId, sessionIds: sessionIds as string[] });
+	},
+
+	"board.export": async (params) => {
+		const projectId = params.projectId as string;
+		if (!projectId) throw new Error("projectId is required");
+		const project = await data.getProject(projectId);
+		if (!boardCopyEnabled(project)) {
+			throw new Error("The board copy is off for this project. Turn it on in Project Settings > Board > Board copy.");
+		}
+		return exportBoardCopy(project, { compareWithDisk: true });
 	},
 
 	"label.list": async (params) => {

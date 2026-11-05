@@ -86,13 +86,18 @@ import { agentUsageHandlers } from "./rpc-handlers/agent-usage";
 import { automationsHandlers } from "./rpc-handlers/automations";
 import { modelCatalogHandlers } from "./rpc-handlers/model-catalog";
 import { pxpipeProxyHandlers } from "./rpc-handlers/pxpipe-proxy";
+import { claudeModsHandlers } from "./rpc-handlers/claude-mods";
 import { agentAccountHandlers } from "./rpc-handlers/agent-accounts";
 import { prCommentsHandlers } from "./rpc-handlers/pr-comments";
 import { artifactMessageHandlers } from "./rpc-handlers/artifact-messages";
+import { liveArtifactHandlers } from "./rpc-handlers/live-artifacts";
 import { taskPanesHandlers } from "./rpc-handlers/task-panes";
 import { spacesHandlers } from "./rpc-handlers/spaces";
+import { epicsHandlers } from "./rpc-handlers/epics";
+import { secretHandlers } from "./rpc-handlers/secrets";
 
 export const handlers = {
+	...secretHandlers,
 	...appHandlers,
 	...terminalPathHandlers,
 	...fileExplorerHandlers,
@@ -112,9 +117,12 @@ export const handlers = {
 	...automationsHandlers,
 	...modelCatalogHandlers,
 	...pxpipeProxyHandlers,
+	...claudeModsHandlers,
 	...agentAccountHandlers,
 	...prCommentsHandlers,
 	...artifactMessageHandlers,
+	...liveArtifactHandlers,
 	...taskPanesHandlers,
 	...spacesHandlers,
+	...epicsHandlers,
 };

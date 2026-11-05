@@ -9,6 +9,7 @@ import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import BottomSheet from "./BottomSheet";
 import HeaderFlyoutPanel from "./HeaderFlyoutPanel";
+import { MemoryIcon } from "./HeaderIcons";
 import MemoryBreakdownPanel, { PRESSURE_BAR_CLASS, PRESSURE_TEXT_CLASS } from "./MemoryBreakdownPanel";
 
 /**
@@ -20,11 +21,10 @@ import MemoryBreakdownPanel, { PRESSURE_BAR_CLASS, PRESSURE_TEXT_CLASS } from ".
  * exact ambiguity this widget exists to dissolve, so the accessible name and
  * tooltip both say *free*.
  *
- * There is deliberately no icon. A drawn memory module was tried first and failed
- * at 18 px: board, chips, contact teeth and notch all collapse into one grey
- * smudge that reads as a cassette. The number carries the meaning and a bar the
- * full width of the pill carries the level, which is the one thing that cannot
- * lose detail at this size.
+ * The level lives in a bar the full width of the pill, never in a glyph: a drawn
+ * memory module standing in for the level collapsed into a grey smudge at 18 px.
+ * The small stick before the number is only identity — beside the CPU and disk
+ * pills, two bare "N GB" readouts were mistaken for each other.
  *
  * Colour comes from the operating system's own pressure verdict, never from a
  * percentage threshold of our own, so it stays meaningful on an 8 GB laptop and
@@ -125,12 +125,12 @@ export default function MemoryHeadroomIndicator({ navigate, variant = "bar" }: M
 					role="menuitem"
 					aria-label={accessibleName}
 					data-testid="memory-headroom-indicator"
-					className="header-anim w-full px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
+					className="header-anim w-full px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-overlay-hover hover:text-fg transition-colors"
 					{...flyout.triggerProps}
 				>
-					<span className="flex w-[1.125rem] flex-col justify-center gap-[0.1875rem]">{level}</span>
+					<MemoryIcon className="size-[1.125rem] shrink-0" />
 					<span className="text-sm flex-1 text-left">{t("memory.label")}</span>
-					<span className={`text-micro font-medium tabular-nums ${pressureClass}`}>
+					<span data-testid="memory-headroom-value" className={`text-micro font-medium tabular-nums ${pressureClass}`}>
 						{formatBytesCompact(snapshot.headroom)}
 					</span>
 				</button>
@@ -161,12 +161,10 @@ export default function MemoryHeadroomIndicator({ navigate, variant = "bar" }: M
 				} ${pressureClass}`}
 				{...flyout.triggerProps}
 			>
-				<span className="text-micro font-medium leading-none tabular-nums">
+				<span className="flex items-center gap-1 text-micro font-medium leading-none tabular-nums">
+					<MemoryIcon className="size-3 shrink-0" />
 					{formatBytesCompact(snapshot.headroom)}
 				</span>
-				{/* The level lives in a bar under the number, not in a glyph: at header
-				    size a drawn memory module loses the detail that made it readable,
-				    while a bar the full width of the pill cannot lose anything. */}
 				{level}
 			</button>
 

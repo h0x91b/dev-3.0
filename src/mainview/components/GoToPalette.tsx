@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useEpics } from "../hooks/useEpics";
 import type { Project, Space, Task } from "../../shared/types";
 import { getTaskTitle, isBuiltinOpsProject, projectDisplayName } from "../../shared/types";
 import { useT, type TranslationKey } from "../i18n";
@@ -7,6 +8,7 @@ import { api } from "../rpc";
 import { useProjectPrivacy } from "../sensitive-projects";
 import { useSpaces } from "../useSpaces";
 import { buildFacetResolver } from "../utils/facetResolver";
+import { useTaskLineage } from "../hooks/useTaskLineage";
 import { fuzzyScore } from "../utils/fuzzyMatch";
 import { projectSearchHaystack } from "../utils/projectSearchHaystack";
 import { getRecentTaskIds } from "../utils/recentTasks";
@@ -110,9 +112,11 @@ function GoToPalette({
 		};
 	}, [needsTasks, tasks]);
 
+	const lineage = useTaskLineage();
+	const { byId: epicsById } = useEpics();
 	const resolver = useMemo(
-		() => buildFacetResolver({ agents, projectById, taskPorts, spaces, t }),
-		[agents, projectById, taskPorts, spaces, t],
+		() => buildFacetResolver({ agents, projectById, taskPorts, spaces, t, lineage, epicsById }),
+		[agents, projectById, taskPorts, spaces, t, lineage, epicsById],
 	);
 	const ctxByTask = useMemo(() => {
 		const map = new Map<string, TaskQueryContext>();
@@ -215,7 +219,7 @@ function GoToPalette({
 					role="tab"
 					aria-selected={m === mode}
 					onClick={() => onModeChange(m)}
-					className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${m === mode ? "bg-accent/15 text-accent" : "text-fg-3 hover:bg-elevated-hover"}`}
+					className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${m === mode ? "bg-accent/15 text-accent" : "text-fg-3 hover:bg-overlay-hover"}`}
 					data-testid={`go-to-mode-${m}`}
 				>
 					{t(MODE_LABEL_KEY[m])}

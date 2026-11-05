@@ -7,7 +7,7 @@ import {
 } from "../scheduled-message-author";
 import { requireExternalSender } from "../external-senders";
 import { toScheduledMessageListing } from "../../shared/scheduled-message-listing";
-import { decodeAgentHandle } from "../../shared/agent-handle";
+import { LEGACY_AGENT_HANDLE_PREFIX, decodeAgentHandle } from "../../shared/agent-handle";
 import type { AgentMessageSource, ScheduledMessageAuthor } from "../../shared/types";
 import { type Handler, withSenderVariant } from "./shared";
 import { messageVariantIndex, resolveAgentMessageSource, resolveTaskFromParams, withSenderAgent } from "./task-resolution";
@@ -20,6 +20,9 @@ import { messageVariantIndex, resolveAgentMessageSource, resolveTaskFromParams, 
 function addressedAgent(params: Record<string, unknown>): ScheduledMessageAuthor | null {
 	if (params.agentHandle === undefined || params.agentHandle === null) return null;
 	if (process.platform === "win32") throw new Error(`--agent: ${AGENT_IDENTITY_UNSUPPORTED_DETAIL}. Nothing was sent.`);
+	if (typeof params.agentHandle === "string" && params.agentHandle.trim().startsWith(LEGACY_AGENT_HANDLE_PREFIX)) {
+		throw new Error("--agent: that handle was written by an older dev3 and is no longer accepted. Copy the agent's current handle from `dev3 pane list --task <id>`. Nothing was sent.");
+	}
 	const author = typeof params.agentHandle === "string" ? decodeAgentHandle(params.agentHandle) : null;
 	if (!author) throw new Error("--agent: not an agent handle. Copy one from `dev3 pane list --task <id>`. Nothing was sent.");
 	return author;

@@ -242,6 +242,30 @@ describe("buildRoutableAccounts", () => {
 		expect(autoCandidateCount(list)).toBe(1);
 	});
 
+	it("leaves out a Claude account with no identity, but keeps a signed-in one and an API profile", () => {
+		const claude = (id: string, extra: Partial<AgentAccount> = {}) => account(id, { kind: "claude", ...extra });
+		const st = state([]);
+		st.claude.accounts = [
+			claude("a"),
+			claude("unsigned", { identity: null }),
+			claude("api", { identity: null, auth: "api" }),
+		];
+		expect(buildRoutableAccounts("claude", st, null).map((a) => a.id)).toEqual(["a", "api"]);
+	});
+
+	it("never merges two Claude orgs of one login, even under the same org name", () => {
+		const id = (orgId: string) => ({ email: "me@x", organization: "Org", organizationId: orgId, plan: "max", planLabel: "Max", accountId: "user-1" });
+		const st = state([]);
+		st.claude.accounts = [
+			account("wix", { kind: "claude", identity: id("org-wix") }),
+			account("b44", { kind: "claude", identity: id("org-b44") }),
+		];
+		st.claude.systemIdentity = id("org-b44");
+		const keys = buildRoutableAccounts("claude", st, null).map((a) => a.dedupeKey);
+		expect(keys[0]).not.toBe(keys[1]);
+		expect(keys[2]).toBe(keys[1]);
+	});
+
 	it("counts a system login sharing a managed identity once", () => {
 		expect(autoCandidateCount(buildRoutableAccounts("codex", state([account("a"), account("d")]), null))).toBe(2);
 	});

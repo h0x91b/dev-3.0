@@ -35,6 +35,7 @@ import { loadProjects, loadTasks, loadVirtualProjects } from "./data";
 import { TERMINAL_STATUSES, getTaskTitle } from "../shared/types";
 import type { Project, Task, TaskStatus } from "../shared/types";
 import { listClaudeAccountDirs, listCodexAccountDirs } from "./agent-accounts";
+import { managedClaudeAccountIdForConfigDir } from "../shared/claude-config-dir";
 import { DEV3_HOME } from "./paths";
 import { createLogger } from "./logger";
 import { loadSettings } from "./settings";
@@ -390,6 +391,15 @@ async function trackingEnabled(): Promise<boolean> {
 	}
 }
 
+/** A config-dir dump that names a managed account's own dir is that account's
+ *  quota (an older `dev3 statusline` wrote those as plain pins). */
+export function attributeManagedConfigDir(snapshot: AgentRateLimitSnapshot, dev3Home: string = DEV3_HOME): AgentRateLimitSnapshot {
+	const accountId = snapshot.configDir ? managedClaudeAccountIdForConfigDir(snapshot.configDir, dev3Home) : null;
+	if (!accountId) return snapshot;
+	const { configDir: _configDir, ...rest } = snapshot;
+	return { ...rest, accountId };
+}
+
 export async function getAgentRateLimitsReport(): Promise<AgentRateLimitsReport> {
 	const now = Date.now();
 	if (!(await trackingEnabled())) {
@@ -418,7 +428,7 @@ export async function getAgentRateLimitsReport(): Promise<AgentRateLimitsReport>
 	}
 	for (const name of listJsonFiles(CLAUDE_CONFIG_DIR_RATE_LIMITS_DIR)) {
 		const snapshot = readClaudeSnapshot(join(CLAUDE_CONFIG_DIR_RATE_LIMITS_DIR, name), null);
-		if (snapshot?.configDir) addSnapshot(snapshot);
+		if (snapshot?.configDir) addSnapshot(attributeManagedConfigDir(snapshot));
 	}
 
 	// Codex sessions are naturally partitioned by CODEX_HOME. Enrich only roots

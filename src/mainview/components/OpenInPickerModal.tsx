@@ -158,7 +158,7 @@ export default function OpenInPickerModal({ path, taskId, onClose }: OpenInPicke
 									onClick={() => handleOpen(app)}
 									onMouseMove={() => setActiveIndex(index)}
 									className={`flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-left transition-colors ${
-										index === active ? "bg-accent/12 ring-1 ring-inset ring-accent/40" : "hover:bg-elevated-hover"
+										index === active ? "bg-accent/12 ring-1 ring-inset ring-accent/40" : "hover:bg-overlay-hover"
 									}`}
 								>
 									<span
@@ -194,7 +194,7 @@ export default function OpenInPickerModal({ path, taskId, onClose }: OpenInPicke
 				<div className="border-t border-edge px-3 py-2 flex items-center justify-between gap-3">
 					<button
 						onClick={copyPath}
-						className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-fg-3 hover:text-fg hover:bg-elevated-hover focus:ring-2 focus:ring-accent/50 transition-colors"
+						className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-fg-3 hover:text-fg hover:bg-overlay-hover focus:ring-2 focus:ring-accent/50 transition-colors"
 					>
 						<span className="w-4 text-center leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 							{copied ? "\u{F012C}" : "\u{F0C5}"}

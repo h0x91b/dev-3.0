@@ -13,6 +13,7 @@ import type {
 	ProviderSettings,
 } from "../../../shared/types";
 import { LLM_PROVIDER } from "../../../shared/types";
+import { coordinatorLaunchDefault } from "../../../shared/coordinator-launch";
 import { agentKey, autoAgentFamily, isKnownAgentCommand, SELECTABLE_AGENT_FAMILIES } from "../../../shared/agent-adapters/families";
 import { randomUUID } from "../../uuid";
 import { ListEditor } from "../ListEditor";
@@ -67,6 +68,7 @@ interface AgentSettingsSectionProps {
 	onAgentsChange: (updated: CodingAgent[]) => void | Promise<void>;
 	onDefaultAgentChange: (agentId: string) => void;
 	onDefaultConfigChange: (configId: string) => void;
+	onCoordinatorDefaultChange: (agentId: string, configId: string | null) => void;
 	/** Fresh settings after a favorite toggle, so the stars re-render. */
 	onGlobalSettingsChange: (settings: GlobalSettings) => void;
 	/** A preset a deep-link wants shown: selected, revealed on narrow viewports,
@@ -88,6 +90,7 @@ export default function AgentSettingsSection({
 	onAgentsChange,
 	onDefaultAgentChange,
 	onDefaultConfigChange,
+	onCoordinatorDefaultChange,
 	onGlobalSettingsChange,
 	focusPreset,
 	onFocusPresetHandled,
@@ -113,6 +116,7 @@ export default function AgentSettingsSection({
 		(agent) => agent.id === globalSettings.defaultAgentId,
 	);
 	const defaultAgentConfigs = selectedDefaultAgent?.configurations || [];
+	const coordinatorDefault = coordinatorLaunchDefault(agents, globalSettings);
 
 	const activeAgent = agents.find((agent) => agent.id === activeAgentId) ?? agents[0];
 	const availability = agentAvailability.find((item) => item.agentId === activeAgent?.id);
@@ -130,7 +134,15 @@ export default function AgentSettingsSection({
 	const loadAgentAvailability = useCallback(() => {
 		setAgentCheckLoading(true);
 		api.request.checkAgentAvailability()
-			.then(setAgentAvailability)
+			.then((results) => {
+				setAgentAvailability(results);
+				// Show the stored custom path in its input, without overwriting an edit in progress.
+				setAgentCustomPaths((current) => {
+					const next = { ...current };
+					for (const r of results) if (r.customPath && next[r.agentId] === undefined) next[r.agentId] = r.customPath;
+					return next;
+				});
+			})
 			.catch(() => {})
 			.finally(() => setAgentCheckLoading(false));
 	}, []);
@@ -344,6 +356,27 @@ export default function AgentSettingsSection({
 			</div>
 
 			</SettingsEntry>
+			<SettingsEntry anchor="coordinator-agent">
+			<div>
+				<p className="block text-fg text-sm font-semibold mb-2">
+					{t("settings.coordinatorAgent")}
+				</p>
+				<p className="text-fg-3 text-sm mb-3">
+					{t("settings.coordinatorAgentDesc")}
+				</p>
+				<AgentConfigPicker
+					idPrefix="coordinator-agent"
+					agents={agents}
+					agentId={coordinatorDefault?.agentId ?? null}
+					configId={coordinatorDefault?.configId ?? null}
+					agentAvailability={agentAvailability}
+					pxpipeProxyEnabled={globalSettings.pxpipeProxyEnabled ?? false}
+					onChange={(next) => {
+						if (next.agentId) onCoordinatorDefaultChange(next.agentId, next.configId);
+					}}
+				/>
+			</div>
+			</SettingsEntry>
 			<SettingsEntry anchor="agents-editor">
 			<div className="space-y-3">
 				{/* Toolbar: which agent the library is showing, plus its one primary action. */}
@@ -525,6 +558,20 @@ export default function AgentSettingsSection({
 											loadAgentAvailability();
 										} catch {
 											toast.error(t("settings.agentPathSaveFailed"), { source: "settings" });
+										}
+										setAgentSavingId(null);
+									}}
+									onResetPath={async () => {
+										setAgentSavingId(activeAgent.id);
+										try {
+											await api.request.clearAgentBinaryPath({ agentId: activeAgent.id });
+											setAgentCustomPaths((current) => {
+												const { [activeAgent.id]: _dropped, ...rest } = current;
+												return rest;
+											});
+											loadAgentAvailability();
+										} catch {
+											toast.error(t("settings.agentPathResetFailed"), { source: "settings" });
 										}
 										setAgentSavingId(null);
 									}}
@@ -1008,6 +1055,82 @@ function AgentFamilyField({
 	);
 }
 
+function CustomPathRow({
+	t,
+	agent,
+	availability,
+	customPath,
+	saving,
+	className,
+	onCustomPathChange,
+	onSavePath,
+	onResetPath,
+}: {
+	t: TFunction;
+	agent: CodingAgent;
+	availability: AgentCheckResult;
+	customPath: string;
+	saving: boolean;
+	className: string;
+	onCustomPathChange: (path: string) => void;
+	onSavePath: () => void;
+	onResetPath: () => void;
+}) {
+	return (
+		<div className={className}>
+			<p className="text-fg-3 text-xs mb-1.5">{t("settings.agentCustomPath")}</p>
+			{availability.customPathError ? (
+				<p className="text-danger text-xs mb-1.5">{t("settings.agentPathNotFound")}</p>
+			) : availability.customPathStale ? (
+				<p className="text-warning-strong text-xs mb-1.5 text-pretty" data-testid="agent-path-stale">
+					{t("settings.agentPathStale", { command: agent.baseCommand })}
+				</p>
+			) : null}
+			<div className="flex items-center gap-1.5">
+				<input
+					type="text"
+					value={customPath}
+					onChange={(event) => onCustomPathChange(event.target.value)}
+					placeholder={`/path/to/${agent.baseCommand}`}
+					className={`flex-1 bg-base border rounded px-2 py-1 text-xs font-mono text-fg placeholder:text-fg-muted focus:border-accent ${
+						availability.customPathError && !availability.installed ? "border-danger" : availability.customPathStale ? "border-warning/60" : "border-edge"
+					}`}
+				/>
+				<button
+					type="button"
+					onClick={() => {
+						void openFilePicker({ initialPath: customPath.trim() || null })
+							.then((picked) => { if (picked) onCustomPathChange(picked); });
+					}}
+					aria-label={t("folderPicker.browseAria", { name: agent.baseCommand })}
+					className="px-2.5 py-1 rounded border border-edge text-fg-2 text-xs font-medium hover:bg-elevated hover:text-fg transition-colors shrink-0"
+				>
+					{t("folderPicker.browse")}
+				</button>
+				{availability.customPath ? (
+					<button
+						type="button"
+						onClick={onResetPath}
+						disabled={saving}
+						data-testid="agent-path-reset"
+						className="px-2.5 py-1 rounded border border-edge text-fg-2 text-xs font-medium hover:bg-elevated hover:text-fg transition-colors shrink-0 disabled:opacity-50"
+					>
+						{t("settings.agentPathReset")}
+					</button>
+				) : null}
+				<button
+					type="button"
+					onClick={onSavePath}
+					disabled={!customPath.trim() || saving}
+					className="px-2.5 py-1 rounded bg-accent-fill text-white text-xs font-medium hover:bg-accent-fill-hover disabled:opacity-50 transition-colors shrink-0"
+				>
+					{t("requirements.setPath")}
+				</button>
+			</div>
+		</div>
+	);
+}
+
 function AgentPane({
 	t,
 	agent,
@@ -1018,6 +1141,7 @@ function AgentPane({
 	onCustomPathChange,
 	onCopyInstall,
 	onSavePath,
+	onResetPath,
 	onChange,
 	onDelete,
 }: {
@@ -1030,6 +1154,7 @@ function AgentPane({
 	onCustomPathChange: (path: string) => void;
 	onCopyInstall: (command: string) => void;
 	onSavePath: () => void;
+	onResetPath: () => void;
 	onChange: (patch: Partial<CodingAgent>) => void;
 	onDelete: () => void;
 }) {
@@ -1051,6 +1176,7 @@ function AgentPane({
 					}`}
 				>
 					{availability.installed ? (
+						<>
 						<div className="flex items-center gap-2">
 							<span className="text-success text-sm">&#10003;</span>
 							<span className="text-fg-2 text-xs">{t("settings.agentInstalled")}</span>
@@ -1058,6 +1184,18 @@ function AgentPane({
 								<span className="text-fg-muted text-xs font-mono truncate">{availability.resolvedPath}</span>
 							) : null}
 						</div>
+						<CustomPathRow
+							t={t}
+							agent={agent}
+							availability={availability}
+							customPath={customPath}
+							saving={saving}
+							className="mt-2 pt-2 border-t border-success/20"
+							onCustomPathChange={onCustomPathChange}
+							onSavePath={onSavePath}
+							onResetPath={onResetPath}
+						/>
+						</>
 					) : (
 						<div className="space-y-2">
 							<div className="flex items-center gap-2">
@@ -1081,42 +1219,17 @@ function AgentPane({
 								</div>
 							) : null}
 							<p className="text-fg-muted text-xs">{t("settings.agentLoginReminder")}</p>
-							<div className="pt-2 border-t border-edge/50">
-								<p className="text-fg-3 text-xs mb-1.5">{t("settings.agentCustomPath")}</p>
-								{availability.customPathError ? (
-									<p className="text-danger text-xs mb-1.5">{t("settings.agentPathNotFound")}</p>
-								) : null}
-								<div className="flex items-center gap-1.5">
-									<input
-										type="text"
-										value={customPath}
-										onChange={(event) => onCustomPathChange(event.target.value)}
-										placeholder={`/path/to/${agent.baseCommand}`}
-										className={`flex-1 bg-base border rounded px-2 py-1 text-xs font-mono text-fg placeholder:text-fg-muted focus:border-accent ${
-											availability.customPathError ? "border-danger" : "border-edge"
-										}`}
-									/>
-									<button
-										type="button"
-										onClick={() => {
-											void openFilePicker({ initialPath: customPath.trim() || null })
-												.then((picked) => { if (picked) onCustomPathChange(picked); });
-										}}
-										aria-label={t("folderPicker.browseAria", { name: agent.baseCommand })}
-										className="px-2.5 py-1 rounded border border-edge text-fg-2 text-xs font-medium hover:bg-elevated hover:text-fg transition-colors shrink-0"
-									>
-										{t("folderPicker.browse")}
-									</button>
-									<button
-										type="button"
-										onClick={onSavePath}
-										disabled={!customPath.trim() || saving}
-										className="px-2.5 py-1 rounded bg-accent-fill text-white text-xs font-medium hover:bg-accent-fill-hover disabled:opacity-50 transition-colors shrink-0"
-									>
-										{t("requirements.setPath")}
-									</button>
-								</div>
-							</div>
+							<CustomPathRow
+								t={t}
+								agent={agent}
+								availability={availability}
+								customPath={customPath}
+								saving={saving}
+								className="pt-2 border-t border-edge/50"
+								onCustomPathChange={onCustomPathChange}
+								onSavePath={onSavePath}
+								onResetPath={onResetPath}
+							/>
 						</div>
 					)}
 				</div>

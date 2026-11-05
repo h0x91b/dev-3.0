@@ -309,6 +309,7 @@ export const WINDOW_SWITCHER_FORMAT = tmuxFormat()
 	.flag("bell", "window_bell_flag")
 	.string("hostShort", "host_short")
 	.string("name", "window_name")
+	.string("customName", "@dev3_window_name")
 	.tail("title", "pane_title")
 	.build();
 

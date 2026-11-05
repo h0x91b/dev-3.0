@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, type Dispatch, type SetState
 import type { TipState } from "../../shared/types";
 import { selectTip, type Tip, type TipContext } from "../tips";
 import { api } from "../rpc";
+import { ignoreStartupReadFailure, startupRead } from "../startup-read";
 
 interface UseTipRotation {
 	tip: Tip | null;
@@ -40,7 +41,7 @@ export function useTipRotation(context: TipContext, disabled?: boolean): UseTipR
 
 	const [tipState, setTipState] = useState<TipState | null>(null);
 	const reloadTipState = useCallback(() => {
-		api.request.getTipState().then(setTipState).catch(() => {});
+		startupRead("tip state", () => api.request.getTipState()).then(setTipState).catch(ignoreStartupReadFailure);
 	}, []);
 
 	useEffect(() => {

@@ -149,6 +149,8 @@ export interface TerminalFocusToastPayload {
 	taskId: string | null;
 	projectId: string | null;
 	message: string;
+	/** Renderer translation key for `message`, which stays the English fallback. */
+	messageKey?: "kanban.launchAccountRemoved";
 	level: "info" | "success" | "error";
 	durationMs?: number;
 	taskSeq?: number;
@@ -173,7 +175,7 @@ export interface TerminalFocusImagePayload {
 	images: SharedImage[];
 	newCount: number;
 	/** What the new arrivals are — picks the toast and badge wording. Absent = images. */
-	newKind?: "image" | "video";
+	newKind?: "image" | "video" | "audio" | "media";
 	taskSeq?: number;
 	taskTitle?: string;
 	projectName?: string;

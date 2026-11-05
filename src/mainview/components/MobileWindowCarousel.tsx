@@ -146,7 +146,7 @@ function MobileWindowCarousel({
 											void navigate({ windowId: w.windowId });
 										}}
 										className={`w-full flex items-center gap-2 px-2.5 min-h-[2.75rem] rounded-lg text-left text-sm transition-colors ${
-											w.active ? "bg-accent/10 text-accent" : "text-fg-2 hover:bg-elevated"
+											w.active ? "bg-accent/10 text-accent" : "text-fg-2 hover:bg-overlay-hover"
 										}`}
 									>
 										<span aria-hidden="true" className="text-fg-muted tabular-nums w-4 flex-shrink-0">{w.home ? "✦" : w.index}</span>

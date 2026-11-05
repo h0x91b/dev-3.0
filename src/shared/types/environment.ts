@@ -24,6 +24,20 @@ export interface RequirementCheckResult {
  */
 export type RosettaWarningInfo = { command: string; kind: "brew" | "dmg" } | null;
 
+/**
+ * macOS: dev3 is running from a place it can never update itself — App Translocation,
+ * a mounted installer disk image, or another read-only location. Null when it is fine.
+ * `destination` is where "Move to Applications" will put it; `reason` is the updater's
+ * own explanation, for the log and the failure state.
+ */
+export type LaunchLocationIssue = {
+	kind: "translocated" | "disk-image" | "read-only";
+	bundlePath: string;
+	volumePath: string | null;
+	destination: string;
+	reason: string;
+} | null;
+
 // ---- Agent availability ----
 
 export interface AgentCheckResult {
@@ -37,6 +51,10 @@ export interface AgentCheckResult {
 	alternativeInstallCommand?: string;
 	installUrl?: string;
 	customPathError?: boolean;
+	/** The custom path was saved before custom paths became strict and is gone: launches use PATH. */
+	customPathStale?: boolean;
+	/** The custom executable stored for this agent, if any. */
+	customPath?: string;
 }
 
 /**

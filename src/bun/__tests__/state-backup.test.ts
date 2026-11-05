@@ -59,6 +59,10 @@ function spaces(count: number): unknown {
 	return { version: 1, spaces: ids.map((id) => ({ id, name: id, projectIds: ["p0"] })), order: ids };
 }
 
+function epics(count: number): unknown {
+	return { version: 1, epics: Array.from({ length: count }, (_, i) => ({ id: `ep${i}`, name: `E${i}`, color: "#3b82f6", archived: false, createdAt: 0 })) };
+}
+
 function catalog(providers: number, models: number): unknown {
 	return {
 		providers: Array.from({ length: providers }, (_, i) => ({ id: `pr${i}`, kind: "openrouter" })),
@@ -75,6 +79,7 @@ const FIXTURES = [
 	{ id: "projects", basename: "projects.json", stem: "projects", payload: () => projects(3) },
 	{ id: "virtual-projects", basename: "virtual-projects.json", stem: "virtual-projects", payload: () => projects(2) },
 	{ id: "spaces", basename: "spaces.json", stem: "spaces", payload: () => spaces(4) },
+	{ id: "epics", basename: "epics.json", stem: "epics", payload: () => epics(3) },
 	{ id: "agents", basename: "agents.json", stem: "agents", payload: () => agents(5) },
 	{ id: "model-catalog", basename: "model-catalog.json", stem: "model-catalog", payload: () => catalog(2, 3) },
 	{ id: "settings", basename: "settings.json", stem: "settings", payload: () => settings({ theme: "dark", focusMode: true }) },
@@ -224,6 +229,16 @@ describe("the collapse rule, per file, in both directions", () => {
 		mkdirSync(TEST_HOME, { recursive: true });
 		await twoHours("agents.json", agents(20), agents(16));
 		expect(readGood("agents")).toHaveLength(16);
+	});
+
+	it("epics.json: refuses a wiped file, accepts an ordinary new epic", async () => {
+		await twoHours("epics.json", epics(8), epics(2));
+		expect((readGood("epics") as { epics: unknown[] }).epics).toHaveLength(8);
+
+		rmSync(TEST_HOME, { recursive: true, force: true });
+		mkdirSync(TEST_HOME, { recursive: true });
+		await twoHours("epics.json", epics(8), epics(9));
+		expect((readGood("epics") as { epics: unknown[] }).epics).toHaveLength(9);
 	});
 
 	it("spaces.json: refuses a wiped file, accepts an ordinary new space", async () => {

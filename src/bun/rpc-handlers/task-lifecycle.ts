@@ -1,8 +1,10 @@
-import type { ReviewedPullRequest, AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
+import type { ReviewedPullRequest, AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskOrigin, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
 import { isTaskSoundEnabled } from "../../shared/task-sound-statuses";
 import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, normalizeTaskType, reviewTaskTitle } from "../../shared/types";
 import * as data from "../data";
+import { loadTaskLineage } from "../task-lineage";
+import { epicForNewTask } from "../task-epics";
 import * as git from "../git";
 import * as github from "../github";
 import { pendingAgentLaunchDialogs, holdAgentRequestAutoApprove as holdAutoApprove, listPendingAgentRequests, markAgentRequestShown as markShown, resolveAgentRequest, setAgentRequestLaunchChoice } from "../agent-requests";
@@ -11,7 +13,7 @@ import { emitTaskSound, takeResetBranchOutcome } from "../lifecycle/executor";
 import { getPushMessage, isActive, log, pushCliAttention } from "./shared";
 import { autoLaunchDeferral } from "../account-router";
 import { dispatchLifecycleEvent, removeLifecycleActor } from "../lifecycle/service";
-import { assertKnownLabelIds } from "../board-operations/labels";
+import { assertKnownLabelIds, labelPatch } from "../board-operations/labels";
 import { isScratchPlaceholderDescription, planTitleAndDescription, updateTaskMetadata, withoutUnchanged } from "../board-operations/task-metadata";
 import { nextKeepAliveState } from "../../shared/keep-alive";
 import { boardPorts } from "../board-operations/runtime";
@@ -193,7 +195,7 @@ async function getAllProjectTasks(): Promise<{ projectId: string; tasks: Task[];
  * too — a second creation path is how `foreignCode` came to be set in the GUI
  * and nowhere else.
  */
-export async function createTask(params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType }): Promise<Task> {
+export async function createTask(params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType; origin?: TaskOrigin; epicId?: string }): Promise<Task> {
 	log.info("→ createTask", {
 		projectId: params.projectId,
 		requestedStatus: params.status ?? "todo",
@@ -204,6 +206,8 @@ export async function createTask(params: { projectId: string; description: strin
 		hasOpsWorkDir: Boolean(params.opsWorkDir),
 		priority: params.priority,
 		taskType: params.taskType,
+		origin: params.origin?.kind ?? "user",
+		hasEpic: Boolean(params.epicId),
 	});
 	const project = await data.getProject(params.projectId);
 	const isScratch = params.scratch === true;
@@ -253,6 +257,8 @@ export async function createTask(params: { projectId: string; description: strin
 		...(params.priority ? { priority: params.priority } : {}),
 		...(params.taskType ? { taskType: params.taskType } : {}),
 		...(reviewIdentity?.reviewedPr ? { reviewedPr: reviewIdentity.reviewedPr } : {}),
+		...(params.origin ? { origin: params.origin } : {}),
+		...(params.epicId ? { epicId: params.epicId } : {}),
 	};
 	const initialStatus = isActive(status) ? "todo" : status;
 	const createdTask = await data.addTask(project, description, initialStatus, Object.keys(extras).length ? extras : undefined);
@@ -290,9 +296,9 @@ export async function createTask(params: { projectId: string; description: strin
  * to the agent. A scratch task has no prompt by definition — whoever asked for it
  * drives it with messages afterwards.
  */
-export async function createScratchTask(projectId: string): Promise<Task> {
+export async function createScratchTask(projectId: string, origin?: TaskOrigin, epicId?: string): Promise<Task> {
 	const project = await data.getProject(projectId);
-	const task = await data.addTask(project, scratchPlaceholder(), "todo", { scratch: true });
+	const task = await data.addTask(project, scratchPlaceholder(), "todo", { scratch: true, ...(origin ? { origin } : {}), ...(epicId ? { epicId } : {}) });
 	getPushMessage()?.("taskUpdated", { projectId: project.id, task });
 	log.info("← createScratchTask", { taskId: task.id.slice(0, 8) });
 	return task;
@@ -652,6 +658,7 @@ async function spawnVariants(params: {
 				// Sibling variants share the labels the user picked in the
 				// Create-Task modal (labels belong to the whole variant group).
 				labelIds: sourceTask.labelIds,
+				userLabelIds: sourceTask.userLabelIds,
 				// Copy notes + overview accumulated while the task sat in To Do:
 				// each variant's agent reads its OWN task, so without the copy
 				// variants 2..N would launch blind to that pre-launch context.
@@ -661,6 +668,10 @@ async function spawnVariants(params: {
 				// New variants start at the source's priority — without the copy a
 				// P0 launch would spawn P3 siblings. Each changes independently after.
 				priority: sourceTask.priority,
+				// A variant group is one node in the lineage: siblings share the parent.
+				origin: sourceTask.origin,
+				// Variants start in the original's epic; each one changes independently after.
+				epicId: sourceTask.epicId,
 				// Virtual ("Operations") tasks: carry the chosen working folder onto
 				// each variant so the worktree-less launch path targets it instead
 				// of falling back to a managed dir.
@@ -785,9 +796,13 @@ async function addAttempts(params: {
 				titleEditedByUser: sourceTask.titleEditedByUser,
 				// Attempts share the source task's labels (same group).
 				labelIds: sourceTask.labelIds,
+				userLabelIds: sourceTask.userLabelIds,
 				// Attempts start at the source task's priority, otherwise re-running a
 				// P0 task spawns a P3 sibling. Each changes independently after.
 				priority: sourceTask.priority,
+				// Same parent as the original — an attempt is never a child of it.
+				origin: sourceTask.origin,
+				epicId: sourceTask.epicId,
 				// NOTE: notes/overview are intentionally NOT copied here — addAttempts
 				// keeps the source task (returns it alongside the new attempts), so its
 				// notes are not lost; copying them would duplicate them across siblings.
@@ -897,7 +912,7 @@ async function editTask(params: {
 		const customTitle = params.customTitle === undefined ? current.customTitle : params.customTitle;
 		if (!customTitle && params.title?.trim()) updates.title = params.title.trim();
 		if (params.priority !== undefined) updates.priority = params.priority;
-		if (params.labelIds !== undefined) updates.labelIds = params.labelIds;
+		if (params.labelIds !== undefined) Object.assign(updates, labelPatch(current, params.labelIds, USER_ACTOR));
 		if (params.existingBranch !== undefined) {
 			updates.existingBranch = params.existingBranch;
 			updates.baseBranch = data.deriveTaskBaseBranch(project, params.existingBranch);
@@ -1163,6 +1178,7 @@ export async function createAutomationTask(
 		agentId: automation.agentId,
 		configId: automation.configId,
 		automationId: automation.id,
+		origin: { kind: "automation" },
 		customTitle: `${automation.name} · ${now.toISOString().slice(0, 10)}`,
 	});
 	const task = { ...createdTask, status: "todo" as const };
@@ -1317,8 +1333,16 @@ async function setNewTaskTerminalBackend(params: {
 export const taskLifecycleHandlers = {
 	getTasks,
 	getAllProjectTasks,
+	getTaskLineage: () => loadTaskLineage(),
 	openQuickShell,
-	createTask,
+	// A GUI create is the user's by definition; only the CLI socket records a parent.
+	// A picked epic is re-checked here: the picker may be stale, and an archived epic takes no new work.
+	// The push lets every window's epic counts see the new member; a plain To Do create sends none.
+	createTask: async ({ origin: _origin, epicId, ...params }: Parameters<typeof createTask>[0]) => {
+		const task = await createTask({ ...params, epicId: await epicForNewTask({ epic: epicId, creator: null }) });
+		if (task.epicId) getPushMessage()?.("taskUpdated", { projectId: task.projectId, task });
+		return task;
+	},
 	moveTask,
 	debugEmitTaskSound,
 	cancelTaskPreparation,

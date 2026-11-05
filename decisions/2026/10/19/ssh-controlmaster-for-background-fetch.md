@@ -1,5 +1,7 @@
 # SSH connection reuse and a priority lane for background fetches
 
+> Superseded in part on 2026-10-28 by `decisions/2026/10/28/ssh-control-socket-per-remote-endpoint.md`: the `ssh/%C` socket shared one identity across ssh aliases of github.com; sockets are now keyed by the remote endpoint under `ssh-mux/`. The queue and priority lane below still stand.
+
 ## Context
 The task git bar waited on `git fetch origin` calls that run FIFO per repo in `fetchProjectQueue`. The visible task queued behind background fetches (merge detection, other branches), and an unpushed task branch failed with "couldn't find remote ref" after ~2 s on every try.
 

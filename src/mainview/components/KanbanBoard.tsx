@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import { toast } from "../toast";
-import type { BoardColumnSlot, CustomColumn, DevServerSummary, GlobalSettings, Label, PortInfo, Project, ResourceUsage, Space, Task, TaskStatus } from "../../shared/types";
+import type { BoardColumnSlot, CustomColumn, DevServerSummary, Epic, GlobalSettings, Label, PortInfo, Project, ResourceUsage, Space, Task, TaskStatus } from "../../shared/types";
+import { DEFAULT_GLOBAL_SETTINGS } from "./global-settings/utils";
 import { ALL_STATUSES, ACTIVE_STATUSES, ALL_PRIORITIES, getBoardColumns, laneAcceptsProject, laneColumnIdForProject, laneKey, normalizeLaneName, DEFAULT_PRIORITY } from "../../shared/types";
 import { PRIORITY_NAME_KEYS } from "./priorityStyles";
 
@@ -10,6 +11,7 @@ type ColumnSlot = BoardColumnSlot;
 import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import { useT, statusKey, statusDescKey } from "../i18n";
 import { api } from "../rpc";
+import { ignoreStartupReadFailure, startupRead } from "../startup-read";
 import KanbanColumn from "./KanbanColumn";
 import LaunchVariantsModal from "./LaunchVariantsModal";
 import CreateTaskModal from "./CreateTaskModal";
@@ -17,11 +19,19 @@ import TaskDetailModal from "./TaskDetailModal";
 import { sortTasksForColumn } from "./sortTasks";
 import { partitionTasksByStatus } from "./partitionTasks";
 import LabelFilterBar from "./LabelFilterBar";
+import LineageFilterNotice from "./LineageFilterNotice";
+import EpicFilterNotice from "./EpicFilterNotice";
+import { useEpicMembers, useEpics } from "../hooks/useEpics";
+import { epicFilterToken, epicOf, withEpicToken } from "../utils/taskEpic";
+import { useTaskLineage } from "../hooks/useTaskLineage";
+import { childrenFilterToken, childrenTokenRefs, lineageChildren, lineageParent, parentSeqLabel, withChildrenToken, type CardLineage } from "../utils/taskLineage";
+import { useStreamerMode } from "../streamer-mode";
 import { matchesTaskQuery } from "../utils/taskSearch";
 import { buildFilterGroups, taskQueryContext, taskStatusValues, isAttentionTask, type FacetResolver, type FilterFunnelOption } from "../utils/taskFacets";
 import { useTaskPrBadges } from "../hooks/useTaskPrBadges";
 import { useTipRotation } from "../hooks/useTipRotation";
 import { useColumnCollapse } from "../hooks/useColumnCollapse";
+import { boardFilterKey, rememberFilter, useRememberedFilter } from "../hooks/useRememberedFilter";
 import { moveTaskToStatus, resetTaskToTodoWithConsent } from "../utils/moveTaskToStatus";
 import { confirmCustomColumnDelete } from "../utils/confirmCustomColumnDelete";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
@@ -63,6 +73,8 @@ interface KanbanBoardProps {
 	 */
 	detailTaskId?: string;
 	onCloseTaskDetail?: () => void;
+	/** Every project, so `children:` and lineage markers can name parents and children elsewhere. */
+	allProjects?: Project[];
 }
 
 function KanbanBoard({
@@ -82,6 +94,7 @@ function KanbanBoard({
 	onOpenUnresolvedComments,
 	detailTaskId,
 	onCloseTaskDetail,
+	allProjects,
 }: KanbanBoardProps) {
 	const t = useT();
 	// A space is the subject; without one everything below collapses to the single
@@ -100,12 +113,7 @@ function KanbanBoard({
 	const columnCreationHidden = useIsControlHidden("custom-column-creation");
 	const statusColors = useStatusColors();
 	const agents = useAgents();
-	const [globalSettings, setGlobalSettings] = useState<GlobalSettings>({
-		defaultAgentId: "builtin-claude",
-		defaultConfigId: "claude-auto",
-		taskSortOrder: "oldest-first",
-		updateChannel: "stable",
-	});
+	const [globalSettings, setGlobalSettings] = useState<GlobalSettings>(DEFAULT_GLOBAL_SETTINGS);
 	const [launchModal, setLaunchModal] = useState<{ task: Task; targetStatus: TaskStatus; mode?: "spawn" | "addAttempts" } | null>(null);
 	const [dragFromStatus, setDragFromStatus] = useState<TaskStatus | null>(null);
 	// Draft being edited: reopens the New Task popup prefilled from the card.
@@ -115,7 +123,8 @@ function KanbanBoard({
 	// Whose repository the dragged card belongs to — a merged lane that project has
 	// no column in must refuse it, visibly, before the drop.
 	const [dragFromProjectId, setDragFromProjectId] = useState<string | null>(null);
-	const [searchQuery, setSearchQuery] = useState("");
+	// Keyed like the collapse memory below: a space board keeps its own filter.
+	const [searchQuery, setSearchQuery] = useRememberedFilter(boardFilterKey(project.id, space?.id));
 	const [movingTaskIds, setMovingTaskIds] = useState<Set<string>>(new Set());
 	const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
 	// Ref so drag handlers can check synchronously without waiting for state update
@@ -138,7 +147,7 @@ function KanbanBoard({
 	}, []);
 
 	useEffect(() => {
-		api.request.getGlobalSettings().then(setGlobalSettings).catch(() => {});
+		startupRead("global settings", () => api.request.getGlobalSettings()).then(setGlobalSettings).catch(ignoreStartupReadFailure);
 		// Follow the settings push, like the sidebar's useTaskSortOrder does: a sort
 		// order changed in another window (or the remote browser) has to reorder this
 		// board too, or the two surfaces disagree until the board remounts.
@@ -281,6 +290,41 @@ function KanbanBoard({
 		}
 	}
 
+	// Lineage (Task.origin): a bare `children:<seq>` means this project, which a
+	// space board does not have.
+	const lineage = useTaskLineage();
+	const isStreamerOn = useStreamerMode();
+	const knownProjects = allProjects ?? boardProjects;
+	const lineageProjectId = isSpaceBoard ? null : project.id;
+	const boardProjectIds = useMemo(() => new Set(boardProjects.map((p) => p.id)), [boardProjects]);
+	const applyChildrenFilter = useCallback((parent: { projectId: string; seq: number }) => {
+		setSearchQuery(withChildrenToken(searchQuery, childrenFilterToken(parent, knownProjects, lineageProjectId)));
+	}, [searchQuery, setSearchQuery, knownProjects, lineageProjectId]);
+	// Epics are global: a chip click filters this board, and the notice below the
+	// filter bar points at the epic's tasks on other boards.
+	const { epics, byId: epicsById } = useEpics();
+	const epicMembers = useEpicMembers();
+	const applyEpicFilter = useCallback((epic: Epic) => {
+		setSearchQuery(withEpicToken(searchQuery, epicFilterToken(epic)));
+	}, [searchQuery, setSearchQuery]);
+	const lineageFor = useCallback((task: Task): CardLineage | undefined => {
+		const parent = lineageParent(task, lineage);
+		const childCount = lineageChildren(task, lineage).length;
+		if (parent === null && childCount === 0) return undefined;
+		const parentNode = parent && parent !== "deleted" ? parent : null;
+		const parentProject = parentNode ? knownProjects.find((p) => p.id === parentNode.projectId) : undefined;
+		const shareable = parentNode && !(isStreamerOn && parentProject?.sensitive);
+		return {
+			parentLabel: parent === "deleted" ? "deleted" : parentNode ? parentSeqLabel(parentNode) : null,
+			parentTitle: shareable && parentNode
+				? (parentNode.projectId === task.projectId ? parentNode.title : `${parentProject?.name ?? ""} · ${parentNode.title}`)
+				: null,
+			childCount,
+			onFilterByParent: parentNode ? () => applyChildrenFilter(parentNode) : null,
+			onFilterByChildren: childCount > 0 ? () => applyChildrenFilter(task) : null,
+		};
+	}, [lineage, knownProjects, applyChildrenFilter, isStreamerOn]);
+
 	// Build sibling map: groupId → all tasks with that groupId (from full tasks list, not filtered)
 	const siblingMap = useMemo(() => {
 		const map = new Map<string, Task[]>();
@@ -349,7 +393,10 @@ function KanbanBoard({
 		hasPortFor: (task) => (taskPorts.get(task.id)?.length ?? 0) > 0,
 		isAttentionFor: isAttentionTask,
 		prNumberFor: (task) => taskPrMap.get(task.id)?.number ?? null,
-	}), [agents, projectById, customStatusLabels, taskPorts, taskPrMap, t]);
+		prStateFor: (task) => taskPrMap.get(task.id)?.mergeState?.state ?? null,
+		childrenRefsFor: (task) => childrenTokenRefs(task, lineage, knownProjects, lineageProjectId),
+		epicFor: (task) => epicOf(task, epicsById),
+	}), [agents, projectById, customStatusLabels, taskPorts, taskPrMap, t, lineage, knownProjects, lineageProjectId, epicsById]);
 
 	// Priority leads the funnel; the board offers all five levels (P0…P4).
 	const priorityCandidates = useMemo<FilterFunnelOption[]>(
@@ -633,6 +680,8 @@ function KanbanBoard({
 		activeTaskId,
 		movingTaskIds,
 		siblingMap,
+		lineageFor,
+		onFilterByEpic: applyEpicFilter,
 		onSetMoving: handleSetMoving,
 		taskPrMap,
 		onOpenUnresolvedComments,
@@ -732,6 +781,29 @@ function KanbanBoard({
 				filterGroups={filterGroups}
 				disableGlobalFindShortcut={disableGlobalFindShortcut}
 			/>
+			<LineageFilterNotice
+				searchQuery={searchQuery}
+				lineage={lineage}
+				allProjects={knownProjects}
+				boardProjectIds={boardProjectIds}
+				currentProjectId={lineageProjectId}
+				onPickProject={applyChildrenFilter}
+				onOpenProject={(projectId, parent) => {
+					rememberFilter(boardFilterKey(projectId), childrenFilterToken(parent, knownProjects, projectId));
+					navigate({ screen: "project", projectId });
+				}}
+			/>
+			<EpicFilterNotice
+				searchQuery={searchQuery}
+				epics={epics}
+				members={epicMembers}
+				allProjects={knownProjects}
+				boardProjectIds={boardProjectIds}
+				onOpenProject={(projectId, epic) => {
+					rememberFilter(boardFilterKey(projectId), epicFilterToken(epic));
+					navigate({ screen: "project", projectId });
+				}}
+			/>
 			{isCarousel ? (
 				<MobileBoardCarousel columns={carouselColumns} initialColumnId={initialColumnId} />
 			) : (
@@ -770,6 +842,7 @@ function KanbanBoard({
 					project={projectOfTask(detailTask)}
 					dispatch={dispatch}
 					onClose={() => onCloseTaskDetail?.()}
+					navigate={navigate}
 					onOpenTask={() => {
 						const taskProject = projectOfTask(detailTask);
 						onCloseTaskDetail?.();

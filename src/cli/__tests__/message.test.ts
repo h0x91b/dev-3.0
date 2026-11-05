@@ -172,6 +172,13 @@ describe("message — --agent addresses one agent of the task", () => {
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
+	it("refuses an old a1. handle, saying where the current one is", async () => {
+		await expect(handleMessage(args(["review it"], { task: "seq:42", agent: "a1.WyIlMyJd" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("written by an older dev3");
+		expect(stderrOutput).toContain("dev3 pane list --task <id>");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
 	it("refuses on Windows instead of falling back to the task", async () => {
 		const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
 		Object.defineProperty(process, "platform", { value: "win32" });

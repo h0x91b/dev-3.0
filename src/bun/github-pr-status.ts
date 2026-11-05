@@ -28,6 +28,7 @@ export interface GitHubPullRequestSummary {
 }
 
 type ApiPR = Omit<GitHubPullRequestSummary, "statusCheckRollup" | "unresolvedCount"> & {
+	mergedAt?: string | null;
 	commits?: { nodes: { commit: { oid: string; statusCheckRollup: { contexts: Page<Check> } | null } }[] };
 	reviewThreads?: Page<{ isResolved: boolean }>;
 };
@@ -40,12 +41,31 @@ const repositories = new Map<string, Entry<Repository | null> & { lastResolved?:
 const statuses = new Map<string, Entry<Probe | null>>();
 const snapshots = new Map<string, { at: number; pr: GitHubPullRequestSummary }>();
 const lists = new Map<string, Entry<PRInfo[]>>();
+// A repository GitHub says does not exist (deleted, renamed away, access revoked) is not
+// asked again on every poll: exponential backoff per repository, cleared by any success.
+const MISSING_REPOSITORY_BACKOFF_BASE_MS = 5 * 60_000;
+const MISSING_REPOSITORY_BACKOFF_MAX_MS = 6 * 60 * 60_000;
+const missingRepositories = new Map<string, { at: number; failures: number }>();
+
+function missingRepositoryBackoffMs(failures: number): number {
+	return Math.min(MISSING_REPOSITORY_BACKOFF_BASE_MS * 2 ** (failures - 1), MISSING_REPOSITORY_BACKOFF_MAX_MS);
+}
+
+function isRepositoryInBackoff(repoKey: string, now: number): boolean {
+	const missing = missingRepositories.get(repoKey);
+	return !!missing && now - missing.at < missingRepositoryBackoffMs(missing.failures);
+}
+
+function isMissingRepositoryError(error: unknown): boolean {
+	return error instanceof GitHubGraphQLError
+		&& error.errors.some((item) => item.type === "NOT_FOUND" && item.path?.length === 1 && item.path[0] === "repository");
+}
 
 const CHECK_FIELDS = `nodes {
   ... on CheckRun { name status conclusion detailsUrl }
   ... on StatusContext { context state targetUrl }
 } pageInfo { hasNextPage endCursor }`;
-const PR_METADATA_FIELDS = `number url title state headRefName headRefOid isDraft
+const PR_METADATA_FIELDS = `number url title state mergedAt headRefName headRefOid isDraft
   author { login ... on User { name } }
   autoMergeRequest { enabledAt } mergeable mergeStateStatus reviewDecision`;
 const PR_FIELDS = `${PR_METADATA_FIELDS}
@@ -142,8 +162,9 @@ async function completePR(account: GitHubAccount, repo: Repository, pr: ApiPR, s
 		unresolvedCount = null;
 	}
 	signal.throwIfAborted();
-	const { commits: _, reviewThreads: __, ...summary } = pr;
-	return { ...summary, statusCheckRollup: checks, unresolvedCount };
+	const { commits: _, reviewThreads: __, mergedAt, ...summary } = pr;
+	// `mergedAt` is the merge itself; a merged PR must never read as CLOSED, whatever `state` says.
+	return { ...summary, state: mergedAt ? "MERGED" : summary.state, statusCheckRollup: checks, unresolvedCount };
 }
 
 async function withinDeadline<T>(fn: (signal: AbortSignal, deadline: number) => Promise<T>, timeoutMs: number): Promise<T> {
@@ -158,6 +179,17 @@ async function withinDeadline<T>(fn: (signal: AbortSignal, deadline: number) => 
 	});
 	try { return await Promise.race([fn(controller.signal, Date.now() + timeoutMs), timeout]); }
 	finally { clearTimeout(timer!); }
+}
+
+// A cached in-flight read must not outlive its owner's deadline: a step that ignores the
+// signal (token lookup, a stuck spawn) would otherwise keep every later joiner waiting forever.
+function settleOnAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+	if (signal.aborted) return Promise.reject(signal.reason);
+	return new Promise<T>((resolve, reject) => {
+		const onAbort = () => reject(signal.reason);
+		signal.addEventListener("abort", onAbort, { once: true });
+		promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+	});
 }
 
 async function queryPR(account: GitHubAccount, query: string, variables: Record<string, unknown>, signal: AbortSignal): Promise<PRResponse> {
@@ -206,6 +238,7 @@ export async function readTaskPullRequest(
 			signal.throwIfAborted();
 			if (!repo) return { pr: null, isGitHub: false, checkedAt: Date.now() };
 			const repoKey = identity(account, repo);
+			if (!options?.force && isRepositoryInBackoff(repoKey, Date.now())) return null;
 			if (!branch && prNumber != null && !options?.force) {
 				const cached = snapshots.get(`${repoKey}#${prNumber}`);
 				if (cached && Date.now() - cached.at < STATUS_TTL_MS) return { pr: cached.pr, isGitHub: true, checkedAt: cached.at };
@@ -214,23 +247,29 @@ export async function readTaskPullRequest(
 			const cached = statuses.get(key);
 			// A forced refresh still joins an in-flight read; it only bypasses completed results.
 			if (cached && (cached.at === Infinity || (!options?.force && Date.now() - cached.at < STATUS_TTL_MS))) return await cached.promise;
-			const promise = (async (): Promise<Probe> => {
+			const promise = settleOnAbort((async (): Promise<Probe> => {
 				let data;
 				const variables = { owner: repo.owner, name: repo.name, branch, number: prNumber ?? 0, byBranch: !!branch, known: prNumber != null };
 				try {
 					data = await queryPR(account, PR_QUERY, variables, signal);
 				} catch (error) {
 					if (!(error instanceof GitHubGraphQLError)) throw error;
+					if (isMissingRepositoryError(error)) {
+						const failures = (missingRepositories.get(repoKey)?.failures ?? 0) + 1;
+						missingRepositories.set(repoKey, { at: Date.now(), failures });
+						throw new Error(`${error.message} (next check in ${Math.round(missingRepositoryBackoffMs(failures) / 60_000)} min)`);
+					}
 					signal.throwIfAborted();
 					data = await queryPR(account, PR_METADATA_QUERY, variables, signal);
 				}
 				const raw = data.repository.open?.nodes[0] ?? data.repository.known;
 				if (prNumber != null && !raw) throw new Error("GitHub did not return the saved pull request");
+				missingRepositories.delete(repoKey);
 				const pr = raw ? await completePR(account, repo, raw, signal) : null;
 				const checkedAt = Date.now();
 				if (pr) snapshots.set(`${repoKey}#${pr.number}`, { at: checkedAt, pr });
 				return { pr, isGitHub: true, checkedAt };
-			})();
+			})(), signal);
 			const entry = { at: Infinity, promise };
 			statuses.set(key, entry);
 			try {
@@ -259,11 +298,11 @@ export async function listOpenPullRequests(project: Selection, cwd: string): Pro
 		const key = identity(account, repo);
 		const cached = lists.get(key);
 		if (cached && Date.now() - cached.at < STATUS_TTL_MS) return await cached.promise;
-		const promise = queryGitHub<{ repository: { pullRequests: { nodes: PRInfo[] } } }>(account,
+		const promise = settleOnAbort(queryGitHub<{ repository: { pullRequests: { nodes: PRInfo[] } } }>(account,
 			`query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) {
 			  pullRequests(states: OPEN, first: 100, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { number url headRefName } }
 			} }`, { owner: repo.owner, name: repo.name }, signal,
-		).then((data) => data.repository.pullRequests.nodes);
+		).then((data) => data.repository.pullRequests.nodes), signal);
 		const entry = { at: Date.now(), promise };
 		lists.set(key, entry);
 		try { return await promise; } catch (error) {

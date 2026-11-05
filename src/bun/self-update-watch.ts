@@ -161,9 +161,9 @@ async function inspectTaskUpdateSafety(): Promise<TaskUpdateSafety> {
  *
  * tmux has no per-pane activity variable, so `window_activity` (epoch seconds,
  * per WINDOW) is the freshest honest signal — the same one `dev3 peek` reports and
- * labels as window-level. NULL, NOT INFINITY, is the answer when a session has no
- * tmux socket (the native terminal backend publishes no equivalent) or tmux
- * refuses: a probe that cannot see is not evidence of quiet.
+ * labels as window-level. NULL, NOT INFINITY, is the answer when a native session
+ * is live (the native backend publishes no equivalent) or tmux refuses: a probe
+ * that cannot see is not evidence of quiet.
  *
  * THE TMUX SERVER IS ASKED, NOT THIS PROCESS'S SESSION MAP. `getActiveSessionIds`
  * lists only sessions THIS process attached — none, right after a restart.
@@ -184,9 +184,9 @@ export async function probePtyIdleMs(
 		const { PEEK_PANE_FORMAT } = await import("./tmux/formats");
 		const sockets = new Set<string>([DEFAULT_TMUX_SOCKET]);
 		for (const session of getActiveSessionIds()) {
-			// A session with no tmux socket is on the native backend, which publishes no
-			// activity time at all — so the box as a whole becomes unreadable, not partly readable.
-			if (!session.tmuxSocket) return null;
+			// An empty socket marks a native session. `liveNativeSession` already decides
+			// for those, so they add nothing to the tmux socket set.
+			if (!session.tmuxSocket) continue;
 			sockets.add(session.tmuxSocket);
 		}
 		let newest = 0;

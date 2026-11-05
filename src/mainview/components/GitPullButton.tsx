@@ -44,8 +44,9 @@ function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 	const mountedRef = useRef(true);
 	const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+	// Returns the request so the poller waits for it instead of stacking a new one every tick.
 	const refreshBranch = useCallback(() => {
-		api.request
+		return api.request
 			.getProjectCurrentBranch({ projectId })
 			.then((result) => {
 				if (!mountedRef.current) return;

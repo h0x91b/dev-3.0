@@ -1,3 +1,4 @@
+import type { TaskOrigin } from "./task-origin";
 import type { TerminalBackendIdentity } from "../terminal-backend-identity";
 import type { AccountPickReason } from "../account-routing";
 import type { ReviewComment } from "../review";
@@ -9,7 +10,7 @@ import type { ScheduledLaunch } from "./agent-launch";
 import type { ScheduledMessage } from "./scheduled-messages";
 import type { KeepAliveState } from "./keep-alive";
 import type { PrWatch } from "../pr-watch";
-import type { SharedArtifact, SharedImage } from "./shared-media";
+import type { LiveArtifact, SharedArtifact, SharedImage } from "./shared-media";
 import type { ScriptPlacement } from "./package-scripts";
 import type { MergeCompletionPromptState, PreparingStage, TaskSessionState } from "./task-lifecycle";
 import type { TaskHistoryEntry } from "./task-display";
@@ -52,6 +53,11 @@ export interface TaskRuntimeState {
 	runtime: "idle" | "preparing" | "running" | "tearing-down";
 	stage?: string;
 	runId?: string;
+	/**
+	 * Pid of the dev3 instance running this `preparing`/`tearing-down` run. Several
+	 * instances share `~/.dev3.0`; boot recovery must leave a live peer's run alone.
+	 */
+	ownerPid?: number;
 	updatedAt: number;
 }
 
@@ -175,6 +181,11 @@ export interface Task {
 	 */
 	terminalBackend?: TerminalBackendIdentity;
 	labelIds?: string[];
+	/**
+	 * The subset of `labelIds` the user put there through the app. An agent's
+	 * `dev3 label set` keeps these; only `label remove <id>` naming one drops it.
+	 */
+	userLabelIds?: string[];
 	existingBranch?: string | null;
 	notes?: TaskNote[];
 	/**
@@ -366,23 +377,42 @@ export interface Task {
 	 */
 	sharedImages?: SharedImage[];
 	/**
-	 * Clips the agent surfaced via `dev3 show-video`, oldest→newest. A field of
-	 * their own so older app versions, which read every `sharedImages` entry's
-	 * bytes, never see them; read both lists through {@link taskSharedMedia}.
+	 * Video clips the agent surfaced via `dev3 show-media`, oldest→newest. A field
+	 * of their own so older app versions, which read every `sharedImages` entry's
+	 * bytes, never see them; read every list through {@link taskSharedMedia}.
 	 */
 	sharedVideos?: SharedImage[];
+	/**
+	 * Audio tracks the agent surfaced via `dev3 show-media`, oldest→newest. Not in
+	 * `sharedVideos`: versions that know that field treat any non-`video/*` entry
+	 * as an image and would read a whole track over RPC.
+	 */
+	sharedAudio?: SharedImage[];
 	/**
 	 * HTML artifacts an agent surfaced via `dev3 show-artifact`, oldest→newest.
 	 * Each artifact is stored in its own additive `shared-artifacts/<id>/`
 	 * directory together with any `--assets` files and an optional ZIP bundle.
 	 */
 	sharedArtifacts?: SharedArtifact[];
+	/** The task's one Live Artifact (`dev3 live publish` / `adopt`); see {@link LiveArtifact}. */
+	liveArtifact?: LiveArtifact;
 	/**
 	 * Set when the task was created by a scheduled Automation fire (or its
 	 * "Run now" action). Drives the clock provenance glyph on the task card and
 	 * links the task back to its automation's run history.
 	 */
 	automationId?: string | null;
+	/**
+	 * Who created the task — see {@link TaskOrigin}. Set once at creation and
+	 * never by an update; absent means the user. Read through `taskOrigin()`.
+	 */
+	origin?: TaskOrigin;
+	/**
+	 * The global epic this task belongs to (see `Epic`), absent for none. Kept
+	 * out of `labelIds` on purpose: an older build's label editor saves only the
+	 * project's own labels and would silently drop a foreign id.
+	 */
+	epicId?: string;
 	/**
 	 * Deferred launch ("Start in…"). Set from the Launch modal when the user
 	 * schedules the spawn instead of firing it immediately. Only meaningful on

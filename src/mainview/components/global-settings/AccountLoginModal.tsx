@@ -7,7 +7,7 @@ import TerminalView, { type TerminalHandle } from "../../TerminalView";
 import { DARK_TERMINAL_THEME, LIGHT_TERMINAL_THEME } from "../../terminal-themes";
 import { useFocusTrap } from "../../utils/useFocusTrap";
 
-const AGENT_NAMES = { claude: "Claude Code", codex: "Codex", omp: "Oh My Pi", pi: "Pi" } as const;
+export const AGENT_NAMES = { claude: "Claude Code", codex: "Codex", omp: "Oh My Pi", pi: "Pi" } as const;
 
 const RUNNING_HINTS = {
 	claude: "settings.accountLoginRunningClaude",
@@ -46,12 +46,16 @@ function StatusIcon({ tone }: { tone: Tone }) {
 /** The status headline for a phase; the Settings row reuses it so both say the same thing. */
 export function loginPhaseTitle(login: AccountLoginState, remote: boolean, t: TFunction): string {
 	switch (login.phase) {
+		case "ready":
+			return t("settings.accountLoginReady");
 		case "running":
 			return t("settings.accountLoginRunning");
 		case "verifying":
 			return t("settings.accountLoginVerifying");
 		case "succeeded":
 			return t("settings.accountLoginSucceeded", { label: login.account?.label ?? AGENT_NAMES[login.kind] });
+		case "added-unsigned":
+			return t("settings.accountLoginAddedUnsigned");
 		case "exited":
 			return t("settings.accountLoginExited");
 		case "missing-executable":
@@ -64,14 +68,14 @@ export function loginPhaseTitle(login: AccountLoginState, remote: boolean, t: TF
 }
 
 function toneOf(phase: AccountLoginState["phase"]): Tone {
-	if (phase === "succeeded") return "success";
+	if (phase === "succeeded" || phase === "added-unsigned") return "success";
 	if (phase === "failed") return "danger";
 	if (phase === "exited" || phase === "missing-executable" || phase === "expired") return "warning";
 	return "progress";
 }
 
 /** Copyable fallback for a host where the embedded terminal cannot help. */
-function ManualCommand({ command, t }: { command: string; t: TFunction }) {
+function ManualCommand({ command, hint, t }: { command: string; hint?: string; t: TFunction }) {
 	const [copied, setCopied] = useState(false);
 	useEffect(() => {
 		if (!copied) return;
@@ -80,7 +84,7 @@ function ManualCommand({ command, t }: { command: string; t: TFunction }) {
 	}, [copied]);
 	return (
 		<div className="space-y-1.5" data-testid="account-login-manual">
-			<p className="text-fg-3 text-xs">{t("settings.accountLoginManualHint")}</p>
+			<p className="text-fg-3 text-xs">{hint ?? t("settings.accountLoginManualHint")}</p>
 			<div className="flex items-center gap-1.5">
 				<code data-wheel-x className="streamer-private flex-1 min-w-0 bg-elevated border border-edge rounded-lg px-2.5 py-1.5 text-xs font-mono text-fg overflow-x-auto whitespace-nowrap">
 					{command}
@@ -106,6 +110,9 @@ interface AccountLoginModalProps {
 	onHide: () => void;
 	onCancel: () => void;
 	onRetry: () => void;
+	/** Runs the CLI for a login still waiting in `ready` (e.g. after a reload between start and begin). */
+	onBegin: () => void;
+	onAddUnsigned: () => void;
 	onDone: () => void;
 	t: TFunction;
 }
@@ -115,7 +122,7 @@ interface AccountLoginModalProps {
  * view: hiding it leaves the login running, and its state comes from the host.
  * Escape is NOT bound to close — the CLI inside uses it.
  */
-export default function AccountLoginModal({ login, busy, onHide, onCancel, onRetry, onDone, t }: AccountLoginModalProps) {
+export default function AccountLoginModal({ login, busy, onHide, onCancel, onRetry, onBegin, onAddUnsigned, onDone, t }: AccountLoginModalProps) {
 	const trapRef = useFocusTrap<HTMLDivElement>();
 	const [ptyUrl, setPtyUrl] = useState<string | null>(null);
 	const [handle, setHandle] = useState<TerminalHandle | null>(null);
@@ -165,6 +172,9 @@ export default function AccountLoginModal({ login, busy, onHide, onCancel, onRet
 		case "succeeded":
 			body = t("settings.accountLoginSucceededBody");
 			break;
+		case "added-unsigned":
+			body = t("settings.accountLoginAddedUnsignedBody");
+			break;
 		case "exited":
 			body = t("settings.accountLoginExitedBody");
 			break;
@@ -181,7 +191,9 @@ export default function AccountLoginModal({ login, busy, onHide, onCancel, onRet
 
 	const active = login.phase === "running" || login.phase === "verifying" || login.phase === "exited" || login.phase === "missing-executable";
 	const canRetry = login.phase === "exited" || login.phase === "missing-executable" || login.phase === "failed" || login.phase === "expired";
-	const showManual = login.phase === "missing-executable" || login.phase === "exited";
+	const showManual = login.phase === "missing-executable" || login.phase === "exited" || login.phase === "added-unsigned";
+	const ready = login.phase === "ready";
+	const canAddUnsigned = login.kind === "claude" && (login.phase === "ready" || login.phase === "running" || login.phase === "exited" || login.phase === "missing-executable");
 	const showTerminal = login.sessionKey !== null && login.phase !== "expired";
 
 	return createPortal(
@@ -205,7 +217,7 @@ export default function AccountLoginModal({ login, busy, onHide, onCancel, onRet
 					<button
 						ref={hideRef}
 						type="button"
-						onClick={onHide}
+						onClick={login.phase === "added-unsigned" ? onDone : ready ? onCancel : onHide}
 						title={active ? t("settings.accountLoginHideHint") : undefined}
 						aria-label={active ? t("settings.accountLoginHide") : t("settings.accountLoginClose")}
 						className={`text-fg-muted hover:text-fg p-1.5 -mr-1.5 rounded-lg hover:bg-fg/5 shrink-0 ${PRESS}`}
@@ -266,19 +278,48 @@ export default function AccountLoginModal({ login, busy, onHide, onCancel, onRet
 						</div>
 					) : null}
 
-					{showManual ? <ManualCommand command={login.manualCommand} t={t} /> : null}
+					{showManual ? (
+						<ManualCommand
+							command={login.manualCommand}
+							hint={login.phase === "added-unsigned" ? t("settings.accountLoginSignInWith") : undefined}
+							t={t}
+						/>
+					) : null}
 				</div>
 
 				<div ref={footerRef} className="flex flex-wrap items-center justify-end gap-2 px-6 pt-4 pb-5">
-					{active || canRetry ? (
+					{canAddUnsigned ? (
+						<button
+							type="button"
+							onClick={onAddUnsigned}
+							disabled={busy}
+							data-testid="account-login-add-unsigned"
+							className={`mr-auto px-3.5 py-2 rounded-xl text-sm text-fg-2 hover:text-fg hover:bg-overlay-hover disabled:opacity-50 ${PRESS}`}
+						>
+							{t("settings.accountLoginAddUnsigned")}
+						</button>
+					) : null}
+					{active || canRetry || ready ? (
 						<button
 							type="button"
 							onClick={onCancel}
 							disabled={busy}
 							data-testid="account-login-cancel"
-							className={`px-3.5 py-2 rounded-xl text-sm text-fg-2 hover:text-fg hover:bg-elevated disabled:opacity-50 ${PRESS}`}
+							className={`px-3.5 py-2 rounded-xl text-sm text-fg-2 hover:text-fg hover:bg-overlay-hover disabled:opacity-50 ${PRESS}`}
 						>
-							{t(active ? "settings.accountLoginCancel" : "settings.accountLoginClose")}
+							{t(active || ready ? "settings.accountLoginCancel" : "settings.accountLoginClose")}
+						</button>
+					) : null}
+					{ready ? (
+						<button
+							type="button"
+							onClick={onBegin}
+							disabled={busy}
+							autoFocus
+							data-testid="account-login-begin"
+							className={`px-3.5 py-2 rounded-xl bg-accent-fill text-white text-sm font-medium hover:bg-accent-fill-hover disabled:opacity-50 ${PRESS}`}
+						>
+							{t("settings.accountAddChoiceSignIn")}
 						</button>
 					) : null}
 					{canRetry ? (
@@ -292,7 +333,7 @@ export default function AccountLoginModal({ login, busy, onHide, onCancel, onRet
 							{t("settings.accountLoginRetry")}
 						</button>
 					) : null}
-					{login.phase === "succeeded" ? (
+					{login.phase === "succeeded" || login.phase === "added-unsigned" ? (
 						<button
 							type="button"
 							onClick={onDone}
