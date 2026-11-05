@@ -930,7 +930,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					<Tooltip content={t("task.coordinatorBadge")} detail={t("task.coordinatorHint")}>
 						<span
 							data-testid="task-card-coordinator-badge"
-							className="flex-shrink-0 rounded border border-dashed border-success/60 px-1.5 py-0.5 text-dense font-semibold uppercase tracking-[0.06em] text-success-strong"
+							className="flex-shrink-0 rounded border border-dashed border-coordinator/70 px-1.5 py-0.5 text-dense font-semibold uppercase tracking-[0.06em] text-coordinator-ink"
 						>
 							{t("task.coordinatorBadge")}
 						</span>
@@ -1181,7 +1181,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 
 					{/* SIGNALS + ACTIONS — one segmented bar welded to the bottom edge.
 					    mt-auto is what keeps it there when the rail is the taller column. */}
-					<div className="-mx-3 mt-auto border-t border-edge bg-black/20">
+					<div className="-mx-3 mt-auto border-t border-edge bg-base/50">
 						{signalGroups.length > 0 && (
 							<div
 								data-testid="task-card-signals"
