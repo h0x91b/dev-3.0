@@ -27,12 +27,12 @@ function isPrMerged(task: Task): boolean {
  */
 export function evaluateLaunchAfter(cond: LaunchAfter, prereq: Task | undefined): LaunchAfterVerdict {
 	const ref = `#${cond.seq}`;
-	if (!prereq) return { kind: "abandon", reason: `Did not start: task ${ref} it was waiting for no longer exists` };
-	if (prereq.status === "cancelled") return { kind: "abandon", reason: `Did not start: task ${ref} it was waiting for was cancelled` };
+	if (!prereq) return { kind: "abandon", reason: `Waited for task ${ref}, which no longer exists` };
+	if (prereq.status === "cancelled") return { kind: "abandon", reason: `Waited for task ${ref}, which was cancelled` };
 	if (cond.until === "completed") return prereq.status === "completed" ? { kind: "fire" } : { kind: "wait" };
 	if (isPrMerged(prereq)) return { kind: "fire" };
 	if (prereq.status !== "completed") return { kind: "wait" };
-	if (prereq.prNumber == null) return { kind: "abandon", reason: `Did not start: task ${ref} was completed without a pull request to merge` };
+	if (prereq.prNumber == null) return { kind: "abandon", reason: `Waited for the PR of task ${ref}, which was completed without one` };
 	return { kind: "probe", prNumber: prereq.prNumber };
 }
 
@@ -96,20 +96,21 @@ async function claim(project: Project, task: Task, cond: LaunchAfter, extra: Par
 }
 
 async function abandon(project: Project, task: Task, cond: LaunchAfter, reason: string): Promise<void> {
+	// The card prefixes `preparationError` with "Launch failed:", so it holds the cause alone.
 	if (!await claim(project, task, cond, { preparationError: reason })) return;
 	log.info("Start-after abandoned", { taskId: task.id.slice(0, 8), prerequisite: cond.taskId.slice(0, 8), reason });
-	await lightAttention(task.id, project.id, reason);
+	await lightAttention(task.id, project.id, `Did not start: ${reason}`);
 }
 
 async function recordFailure(project: Project, task: Task, err: unknown): Promise<void> {
-	const reason = `Start-after launch failed: ${err instanceof Error ? err.message : String(err)}`;
+	const reason = err instanceof Error ? err.message : String(err);
 	log.error("Start-after launch failed", { taskId: task.id.slice(0, 8), error: String(err) });
 	try {
 		await pushUpdated(project, await data.updateTask(project, task.id, { preparationError: reason }));
 	} catch {
 		// the task may already be gone; the log row is all that is left to give
 	}
-	await lightAttention(task.id, project.id, reason);
+	await lightAttention(task.id, project.id, `Start-after launch failed: ${reason}`);
 }
 
 /**
@@ -169,7 +170,7 @@ export async function tickLaunchAfter(project: Project, tasks: Task[], now = Dat
 				const { getPullRequestSnapshot } = await import("./github-pr-status");
 				const snapshot = await getPullRequestSnapshot(project, project.path, verdict.prNumber);
 				if (snapshot?.state === "MERGED") await fire(project, task, cond);
-				else if (snapshot?.state === "CLOSED") await abandon(project, task, cond, `Did not start: the pull request of task #${cond.seq} was closed without merging`);
+				else if (snapshot?.state === "CLOSED") await abandon(project, task, cond, `Waited for the PR of task #${cond.seq}, which was closed without merging`);
 				continue;
 			}
 			lastProbe.delete(task.id);

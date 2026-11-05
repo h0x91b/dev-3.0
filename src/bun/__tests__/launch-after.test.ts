@@ -88,9 +88,10 @@ describe("start-after tick", () => {
 		await tick();
 		expect(moveTask).not.toHaveBeenCalled();
 		expect(store[1].launchAfter).toBeNull();
-		expect(store[1].preparationError).toMatch(/#1 .*cancelled/);
+		expect(store[1].preparationError).toBe("Waited for task #1, which was cancelled");
 		expect(pushCliAttention).toHaveBeenCalledTimes(1);
-		expect(pushCliAttention).toHaveBeenCalledWith(expect.objectContaining({ taskId: "b", reason: expect.stringMatching(/cancelled/) }));
+		expect(store[1].preparationError).not.toMatch(/^Did not start/);
+		expect(pushCliAttention).toHaveBeenCalledWith(expect.objectContaining({ taskId: "b", reason: "Did not start: Waited for task #1, which was cancelled" }));
 	});
 
 	it("never launches after a deleted prerequisite", async () => {
@@ -185,7 +186,7 @@ describe("start-after until merged", () => {
 		store = [task({ id: "a", status: "completed" }), task({ id: "b", seq: 2, launchAfter: cond({ until: "merged" }) })];
 		await tick();
 		expect(moveTask).not.toHaveBeenCalled();
-		expect(store[1].preparationError).toMatch(/without a pull request/);
+		expect(store[1].preparationError).toMatch(/completed without one/);
 	});
 });
 
