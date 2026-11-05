@@ -10,7 +10,7 @@ An agent may need a restart while its terminal still exists, including the shell
 
 ## Decision
 
-Add Restart agent session to the existing task context menu, passing `restart: true` to the existing resume RPC. In `src/bun/rpc-handlers/tmux-pty/resume.ts`, verify the saved conversations before teardown, park their entries against pane-exit reconciliation, wait for terminal teardown and reuse the normal resume launch; the keep-alive scheduler shares this operation and rechecks agent exit inside its lock. A `taskTerminalResumed` event clears stale native pane state and remounts visible terminal canvases because a cleanly closed socket does not reconnect just because its unchanged URL names a new process.
+Add Restart agent session to the existing task context menu, passing `restart: true` to the existing resume RPC. In `src/bun/rpc-handlers/tmux-pty/resume.ts`, verify the saved conversations before teardown, park their entries against pane-exit reconciliation, wait for terminal teardown and reuse the normal resume launch; the keep-alive scheduler shares this operation (`restart: "if-exited"`) and rechecks agent exit inside its lock before writing anything. The strict refusals (missing, substituted or fresh conversations; native extra panes) belong to the user restart (`"always"`) only: keep-alive revives an agent that already died, so it keeps reopening it the way a plain resume does, `--continue` included. A `taskTerminalResumed` event clears stale native pane state and remounts visible terminal canvases because a cleanly closed socket does not reconnect just because its unchanged URL names a new process.
 
 ## Risks
 

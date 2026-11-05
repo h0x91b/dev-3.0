@@ -132,6 +132,7 @@ const kanban = {
 	"task.hibernateConfirmCta": "Hibernate",
 	"task.hibernateFailed": "Couldn’t hibernate the task — try again. ({error})",
 	"task.restartSession": "Restart agent session…",
+	"task.restartSessionTitle": "Restart agent session?",
 	"task.restartSessionConfirm": "Stop this task’s terminal and reopen its saved agent conversations with the same accounts. All terminal panes close, stopping commands and dev servers running in them; scrollback is lost. Your files stay intact and hibernation remains available. Native terminals support restart with the main pane only.",
 	"task.restartSessionCta": "Restart and resume",
 	"task.restartedSession": "Agent session restarted.",
