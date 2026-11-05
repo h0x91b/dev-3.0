@@ -63,7 +63,7 @@ async function changeTaskLabels(params: Record<string, unknown>, mode: "replace"
 		);
 	}
 
-	const { task: updated } = await labelOps.changeTaskLabels(boardPorts, project, task.id, { mode, labelIds });
+	const { task: updated } = await labelOps.changeTaskLabels(boardPorts, project, task.id, { mode, labelIds }, AGENT_ACTOR);
 	return updated;
 }
 

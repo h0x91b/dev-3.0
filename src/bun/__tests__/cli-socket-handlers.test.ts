@@ -4667,7 +4667,7 @@ describe("label.delete", () => {
 		// The mutator must recompute labelIds from the CURRENT task, not a stale snapshot
 		const mutator = vi.mocked(data.updateTaskWith).mock.calls[0][2];
 		expect(await mutator({ ...taskWithLabel, labelIds: ["lbl-full-uuid-1234", "lbl-2", "lbl-3"] } as any)).toEqual({
-			updates: { labelIds: ["lbl-2", "lbl-3"] },
+			updates: { labelIds: ["lbl-2", "lbl-3"], userLabelIds: ["lbl-2", "lbl-3"] },
 			result: true,
 		});
 	});
@@ -4761,7 +4761,7 @@ describe("task.setLabels", () => {
 		);
 
 		expect(resp.ok).toBe(true);
-		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { labelIds: ["lbl-1"] });
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { labelIds: ["lbl-1"], userLabelIds: [] });
 	});
 
 	it("resolves a valid task ID prefix before updating labels", async () => {
@@ -4787,7 +4787,7 @@ describe("task.setLabels", () => {
 		);
 
 		expect(resp.ok).toBe(true);
-		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { labelIds: ["lbl-1"] });
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { labelIds: ["lbl-1"], userLabelIds: [] });
 	});
 
 	it("rejects an unknown task selector without mutating a task", async () => {
@@ -4836,7 +4836,7 @@ describe("task.setLabels", () => {
 		);
 		expect(resp.ok).toBe(true);
 		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
-			labelIds: ["lbl-1", "lbl-2"],
+			labelIds: ["lbl-1", "lbl-2"], userLabelIds: [],
 		});
 	});
 
@@ -4891,6 +4891,7 @@ describe("task.setLabels", () => {
 				"aaaa1111-2222-3333-4444-555555555555",
 				"bbbb1111-2222-3333-4444-555555555555",
 			],
+			userLabelIds: [],
 		});
 	});
 
@@ -4915,7 +4916,8 @@ describe("task.setLabels", () => {
 
 	it("clears labels when empty array provided", async () => {
 		const project = makeProject();
-		const task = makeTask({ labelIds: ["lbl-1"] });
+		// An agent-owned label: the user's own would survive an agent's clear.
+		const task = makeTask({ labelIds: ["lbl-1"], userLabelIds: [] });
 		const updated = { ...task, labelIds: [] };
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
@@ -4931,7 +4933,7 @@ describe("task.setLabels", () => {
 			}),
 		);
 		expect(resp.ok).toBe(true);
-		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { labelIds: [] });
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { labelIds: [], userLabelIds: [] });
 	});
 });
 

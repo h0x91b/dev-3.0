@@ -181,6 +181,11 @@ export interface Task {
 	 */
 	terminalBackend?: TerminalBackendIdentity;
 	labelIds?: string[];
+	/**
+	 * The subset of `labelIds` the user put there through the app. An agent's
+	 * `dev3 label set` keeps these; only `label remove <id>` naming one drops it.
+	 */
+	userLabelIds?: string[];
 	existingBranch?: string | null;
 	notes?: TaskNote[];
 	/**

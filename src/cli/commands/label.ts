@@ -76,8 +76,8 @@ const LABEL_CHANGE_METHOD: Record<LabelChange, string> = {
 };
 
 /**
- * `label set` REPLACES the task's whole label set; `label add` / `label remove`
- * change only the named labels and leave the rest alone.
+ * `label set` REPLACES the task's labels (the app keeps the user's own); `label add` /
+ * `label remove` change only the named labels and leave the rest alone.
  */
 async function changeTaskLabels(
 	change: LabelChange,
@@ -101,8 +101,8 @@ async function changeTaskLabels(
 	if (labelIds.length === 0) {
 		exitUsage(
 			change === "set"
-				? 'Usage: dev3 label set <label-id> [<label-id> ...]  (replaces ALL of the task\'s labels)\n' +
-					'Use "dev3 label add" to keep the existing ones, "dev3 label set --clear" to remove all.'
+				? 'Usage: dev3 label set <label-id> [<label-id> ...]  (replaces the task\'s labels; ones the user set stay)\n' +
+					'Use "dev3 label add" to keep the existing ones, "dev3 label set --clear" to remove the rest.'
 				: `Usage: dev3 label ${change} <label-id> [<label-id> ...]`,
 		);
 	}
@@ -116,6 +116,17 @@ async function changeTaskLabels(
 	process.stdout.write(
 		`${verb} label(s) on task ${task.id.slice(0, 8)}; it now has ${now.length}: ` +
 			`${now.length > 0 ? now.map((id) => id.slice(0, 8)).join(", ") : "(none)"}\n`,
+	);
+	if (change === "set") reportKeptUserLabels(now, labelIds);
+}
+
+/** A replace from the CLI keeps the labels the user set in the app; say so instead of implying they are gone. */
+function reportKeptUserLabels(now: string[], requested: string[]): void {
+	const kept = now.filter((id) => !requested.some((raw) => id.startsWith(raw)));
+	if (kept.length === 0) return;
+	process.stdout.write(
+		`Kept ${kept.map((id) => id.slice(0, 8)).join(", ")}: set by the user in the app. ` +
+			'Only "dev3 label remove <id>" naming a label takes it off.\n',
 	);
 }
 
@@ -135,7 +146,9 @@ async function clearTaskLabels(args: ParsedArgs, socketPath: string, context: Cl
 	const resp = await sendRequest(socketPath, "task.setLabels", { taskId, projectId, labelIds: [] });
 	if (!resp.ok) exitError(resp.error || "Failed to clear labels");
 
-	process.stdout.write(`Cleared all labels from task ${taskId.slice(0, 8)}\n`);
+	const now = (resp.data as Task | undefined)?.labelIds ?? [];
+	process.stdout.write(`Cleared labels from task ${taskId.slice(0, 8)}\n`);
+	reportKeptUserLabels(now, []);
 }
 
 export async function handleLabel(
