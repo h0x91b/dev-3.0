@@ -4356,6 +4356,29 @@ describe("App keyboard shortcuts", () => {
 
 			expect(vi.mocked(confirm)).toHaveBeenCalledTimes(1);
 		});
+
+		// The replay lists a request, then waits for the confirm host. If the task
+		// completed by another path in that gap, the backend voided the request and
+		// pushed `agentRequestResolved` — the dialog must never open for it.
+		it("never opens a replayed dialog whose request resolved while it was being listed", async () => {
+			let releaseList!: (value: unknown) => void;
+			vi.mocked(api.request.listPendingCompletionRequests).mockReturnValue(
+				new Promise((resolve) => { releaseList = resolve; }) as never,
+			);
+			vi.mocked(confirm).mockResolvedValue(false);
+
+			await renderApp();
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:agentRequestResolved", {
+					detail: { requestId: "req-done-meanwhile", kind: "complete", taskId: "t1", projectId: "p1" },
+				}));
+				releaseList([{ requestId: "req-done-meanwhile", taskId: "t1", projectId: "p1", taskTitle: "Done task", subject: undefined }]);
+			});
+			await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+
+			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
+			expect(api.request.respondToAgentCompletionRequest).not.toHaveBeenCalled();
+		});
 	});
 
 	// Both agent dialogs are broadcast to every connected client (second window,

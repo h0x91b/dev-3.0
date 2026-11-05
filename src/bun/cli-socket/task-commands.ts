@@ -337,7 +337,12 @@ export const taskHandlers: Record<string, Handler> = {
 		// have something for the dialog to launch. Leaving it would litter To Do
 		// with empty placeholders every time the user says no.
 		if (!outcome.approved) {
-			await deleteTask({ taskId: task.id, projectId: project.id });
+			// A voided request may mean the placeholder is already gone.
+			try {
+				await deleteTask({ taskId: task.id, projectId: project.id });
+			} catch (err) {
+				if (!outcome.stale) throw err;
+			}
 		}
 		return outcome;
 	},

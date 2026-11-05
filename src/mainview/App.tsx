@@ -2316,6 +2316,12 @@ function App() {
 			// The same dialog is up on every connected client; the first answer
 			// closes the rest (see createAgentRequestAbort).
 			const abort = createAgentRequestAbort(requestId);
+			// Already settled (answered elsewhere, or its task finished meanwhile).
+			if (abort.signal.aborted) {
+				abort.cleanup();
+				showing.delete(requestId);
+				return;
+			}
 			try {
 				approved = await confirm({
 					title: t("app.agentCompletionTitle"),
@@ -2429,6 +2435,11 @@ function App() {
 			showing.add(requestId);
 			let approved = false;
 			const abort = createAgentRequestAbort(requestId);
+			if (abort.signal.aborted) {
+				abort.cleanup();
+				showing.delete(requestId);
+				return;
+			}
 			try {
 				const unsaved = api.request.getUnsavedWork({ taskId, projectId });
 				approved = await confirm({

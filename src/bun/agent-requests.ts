@@ -378,6 +378,19 @@ export function voidAgentRequest(kind: AgentRequestKind, taskId: string): boolea
 	return resolveAgentRequest(pendingId, { approved: false, stale: true });
 }
 
+const AGENT_REQUEST_KINDS: readonly AgentRequestKind[] = ["reset", "complete", "cancel", "launch"];
+
+/**
+ * The task reached Completed/Cancelled, was reset, or was deleted — by ANY path:
+ * the board, a merged PR, another agent. Every request still asking about it is
+ * voided, so its dialog closes on every client and the blocked CLI gets an answer
+ * instead of waiting out its timeout. A request this run's own approval already
+ * settled is gone from the map, so voiding it again is a no-op.
+ */
+export function voidAgentRequestsForTask(taskId: string): void {
+	for (const kind of AGENT_REQUEST_KINDS) voidAgentRequest(kind, taskId);
+}
+
 export function _resetAgentRequestsForTests(): void {
 	for (const entry of pendingByRequestId.values()) {
 		if (entry.autoApproveTimer) clearTimeout(entry.autoApproveTimer);
