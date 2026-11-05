@@ -171,7 +171,7 @@ export interface GlobalSettings {
 	playSoundOnTaskComplete?: boolean;
 	/**
 	 * Chime when a task enters Has Questions / Your Review. Each is off unless an
-	 * explicit `true`; a legacy `playSoundOnTaskNeedsYou: true` turns on both.
+	 * explicit `true`; one never stored is seeded by the legacy `playSoundOnTaskNeedsYou`.
 	 */
 	playSoundOnTaskQuestions?: boolean;
 	playSoundOnTaskReview?: boolean;

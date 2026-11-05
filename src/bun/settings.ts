@@ -15,6 +15,7 @@ export function hostPublishesCanary(): boolean {
 	return canaryPublishesFor(hostOsName(process.platform), process.arch);
 }
 import { normalizeSimplifiedInterface, SIMPLIFY_VIEW_PRESET_IDS } from "../shared/simplified-interface";
+import { resolveNeedsYouSoundToggles } from "../shared/task-sound-statuses";
 import { withFileLock } from "./file-lock";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
@@ -181,9 +182,7 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		agentCustomBinaryPaths: d.agentCustomBinaryPaths ?? undefined,
 		strictAgentCustomBinaryPaths: d.strictAgentCustomBinaryPaths ?? undefined,
 		playSoundOnTaskComplete: d.playSoundOnTaskComplete ?? true,
-		// Split from the legacy `playSoundOnTaskNeedsYou`, which seeds both until either is saved.
-		playSoundOnTaskQuestions: (d.playSoundOnTaskQuestions ?? d.playSoundOnTaskNeedsYou) === true ? true : undefined,
-		playSoundOnTaskReview: (d.playSoundOnTaskReview ?? d.playSoundOnTaskNeedsYou) === true ? true : undefined,
+		...resolveNeedsYouSoundToggles(d),
 		externalApps: Array.isArray(d.externalApps) ? d.externalApps : undefined,
 		tipsDisabled: d.tipsDisabled === true ? true : undefined,
 		// Default-off opt-out — only an explicit true silences telemetry.
@@ -378,7 +377,9 @@ export async function saveSettings(settings: GlobalSettings): Promise<void> {
 		renameSync(exclusionsTemp, AUTO_EXCLUSIONS_FILE);
 		// The settings.json copy stays for builds that read it but predate the sidecar.
 		const tempFile = `${SETTINGS_FILE}.tmp`;
-		await Bun.write(tempFile, JSON.stringify(settings, null, 2));
+		// The legacy key keeps an older co-installed build's single toggle on only while both are on.
+		const legacyNeedsYou = settings.playSoundOnTaskQuestions === true && settings.playSoundOnTaskReview === true;
+		await Bun.write(tempFile, JSON.stringify({ ...settings, playSoundOnTaskNeedsYou: legacyNeedsYou }, null, 2));
 		renameSync(tempFile, SETTINGS_FILE);
 	});
 	log.info("Global settings saved");

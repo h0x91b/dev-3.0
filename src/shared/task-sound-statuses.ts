@@ -27,3 +27,17 @@ export function isTaskSoundEnabled(
 	if (status === "review-by-user") return settings.playSoundOnTaskReview === true;
 	return settings.playSoundOnTaskComplete !== false;
 }
+
+/**
+ * The two needs-you toggles split the legacy `playSoundOnTaskNeedsYou`, which seeds
+ * any toggle not yet stored as a boolean. Older builds read only the legacy key.
+ */
+export function resolveNeedsYouSoundToggles(
+	d: Record<string, unknown>,
+): Pick<GlobalSettings, "playSoundOnTaskQuestions" | "playSoundOnTaskReview"> {
+	const legacy = d.playSoundOnTaskNeedsYou === true ? true : undefined;
+	return {
+		playSoundOnTaskQuestions: typeof d.playSoundOnTaskQuestions === "boolean" ? d.playSoundOnTaskQuestions : legacy,
+		playSoundOnTaskReview: typeof d.playSoundOnTaskReview === "boolean" ? d.playSoundOnTaskReview : legacy,
+	};
+}

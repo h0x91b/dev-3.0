@@ -20,6 +20,7 @@ import * as pty from "../pty-server";
 import { tmux } from "../tmux";
 import { setTmuxPaneDimming, setTmuxPaneTitles, writeTmuxConfigs } from "../tmux/config";
 import { loadSettings, saveSettings } from "../settings";
+import { resolveNeedsYouSoundToggles } from "../../shared/task-sound-statuses";
 import { toggleFavorite } from "../../shared/favorites";
 import { DEV3_HOME } from "../paths";
 import { writeDev3SelfShim } from "../cli-self-install";
@@ -315,6 +316,12 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 		}),
 		simplifiedModeSource: stored.simplifiedModeSource,
 		analyticsDistinctId: stored.analyticsDistinctId ?? params.analyticsDistinctId,
+		// A snapshot from a build older than the split carries only the legacy key; choices already stored win.
+		...resolveNeedsYouSoundToggles({
+			playSoundOnTaskQuestions: stored.playSoundOnTaskQuestions,
+			playSoundOnTaskReview: stored.playSoundOnTaskReview,
+			...params,
+		}),
 		// Written only by the account surfaces' Auto controls, after the snapshot was taken.
 		autoAccountDefault: stored.autoAccountDefault,
 		autoAccountExclusions: stored.autoAccountExclusions,

@@ -216,7 +216,7 @@ describe("saveSettings", () => {
 	});
 
 	// Opt-in: an install that never chose must stay silent on every agent turn.
-	it("defaults both needs-you chimes to off and stores only an explicit opt-in", async () => {
+	it("defaults both needs-you chimes to off and keeps an explicit choice", async () => {
 		const loaded = await loadSettings();
 		expect(loaded.playSoundOnTaskQuestions).toBeUndefined();
 		expect(loaded.playSoundOnTaskReview).toBeUndefined();
@@ -224,7 +224,29 @@ describe("saveSettings", () => {
 		writeFileSync(settingsPath, JSON.stringify(makeSettings({ playSoundOnTaskQuestions: true, playSoundOnTaskReview: false }), null, 2), "utf-8");
 		const split = await loadSettings();
 		expect(split.playSoundOnTaskQuestions).toBe(true);
-		expect(split.playSoundOnTaskReview).toBeUndefined();
+		expect(split.playSoundOnTaskReview).toBe(false);
+	});
+
+	// An older co-installed build reads only the legacy key, and must never chime more than the split asks.
+	it("writes the legacy needs-you key as on only while both new toggles are on", async () => {
+		vi.spyOn(Bun, "write").mockImplementation(async (target, data) => {
+			writeFileSync(String(target), String(data), "utf-8");
+			return 0;
+		});
+		const legacyOnDisk = async (s: Partial<GlobalSettings>) => {
+			await saveSettings(makeSettings(s));
+			return JSON.parse(readFileSync(settingsPath, "utf-8")).playSoundOnTaskNeedsYou;
+		};
+
+		expect(await legacyOnDisk({ playSoundOnTaskQuestions: true, playSoundOnTaskReview: true })).toBe(true);
+		expect(await legacyOnDisk({ playSoundOnTaskQuestions: true, playSoundOnTaskReview: false })).toBe(false);
+		expect(await legacyOnDisk({})).toBe(false);
+
+		// The written legacy value never overrides the toggles it was derived from.
+		await saveSettings(makeSettings({ playSoundOnTaskQuestions: true, playSoundOnTaskReview: false }));
+		const loaded = await loadSettings();
+		expect(loaded.playSoundOnTaskQuestions).toBe(true);
+		expect(loaded.playSoundOnTaskReview).toBe(false);
 	});
 
 	it("migrates the legacy needs-you toggle into both new toggles", async () => {
@@ -246,7 +268,7 @@ describe("saveSettings", () => {
 		write({ playSoundOnTaskNeedsYou: true, playSoundOnTaskReview: false });
 		const chosen = await loadSettings();
 		expect(chosen.playSoundOnTaskQuestions).toBe(true);
-		expect(chosen.playSoundOnTaskReview).toBeUndefined();
+		expect(chosen.playSoundOnTaskReview).toBe(false);
 	});
 
 	// The dev3 template is the default, so only the two other modes are stored.
@@ -491,9 +513,10 @@ describe("saveSettings", () => {
 		await saveSettings(makeSettings({ defaultAgentId: "builtin-codex" }));
 
 		expect(existsSync(settingsPath)).toBe(true);
-		expect(JSON.parse(readFileSync(settingsPath, "utf-8"))).toEqual(
-			makeSettings({ defaultAgentId: "builtin-codex" }),
-		);
+		expect(JSON.parse(readFileSync(settingsPath, "utf-8"))).toEqual({
+			...makeSettings({ defaultAgentId: "builtin-codex" }),
+			playSoundOnTaskNeedsYou: false,
+		});
 	});
 });
 
