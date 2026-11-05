@@ -91,6 +91,21 @@ describe("shared GraphQL PR reads", () => {
 		expect(query).toHaveBeenCalledTimes(2);
 	});
 
+	it("reads a PR with mergedAt as MERGED even while GitHub's state still says CLOSED", async () => {
+		const { readTaskPullRequest } = await import("../github-pr-status");
+		query.mockResolvedValue({ repository: { known: pr({ state: "CLOSED", mergedAt: "2026-11-03T10:00:00Z" }) } });
+		const read = (await readTaskPullRequest({}, "/repo", "", 42))?.pr;
+		expect(read?.state).toBe("MERGED");
+		expect(read).not.toHaveProperty("mergedAt");
+		expect(query.mock.calls[0][1]).toContain("mergedAt");
+	});
+
+	it("keeps a closed PR without mergedAt CLOSED", async () => {
+		const { readTaskPullRequest } = await import("../github-pr-status");
+		query.mockResolvedValue({ repository: { known: pr({ state: "CLOSED", mergedAt: null }) } });
+		expect((await readTaskPullRequest({}, "/repo", "", 42))?.pr?.state).toBe("CLOSED");
+	});
+
 	it("prefers a new open PR over the saved merged PR", async () => {
 		const { readTaskPullRequest } = await import("../github-pr-status");
 		query.mockResolvedValue({ repository: { open: { nodes: [pr({ number: 43 })] }, known: pr({ state: "MERGED" }) } });

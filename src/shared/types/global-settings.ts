@@ -117,6 +117,13 @@ export interface GlobalSettings {
 	 */
 	agentCustomBinaryPaths?: Record<string, string>;
 	/**
+	 * agentId → the custom path the user chose in a build that enforces it. Only a
+	 * custom path equal to its entry here is strict (a broken one fails the launch);
+	 * one saved earlier, or rewritten by an older build, keeps the PATH fallback it
+	 * was saved under, with a warning. See decisions/2026/11/04/grandfather-stale-custom-agent-paths.md.
+	 */
+	strictAgentCustomBinaryPaths?: Record<string, string>;
+	/**
 	 * Beta: reorder right-to-left text (Hebrew, Arabic) for display in terminal
 	 * panes. Display-only — copied text keeps its logical order, while mouse
 	 * selection and link hover on those lines stay logical too. On by default —
@@ -294,6 +301,11 @@ export interface GlobalSettings {
 	 * `activeId` stays untouched so older builds keep a valid default.
 	 */
 	autoAccountDefault?: { claude?: true; codex?: true };
+	/**
+	 * Logins Auto never picks, in any project — e.g. a personal account kept out
+	 * of a work pool. Same keys as `Project.autoAccountExclusions`.
+	 */
+	autoAccountExclusions?: string[];
 	/**
 	 * Remembered state of the Watch toggle in the launch/create-variant modal.
 	 * When a task is launched, the toggle's on/off choice is persisted here and

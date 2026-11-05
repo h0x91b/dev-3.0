@@ -2,7 +2,7 @@
 
 Feature compatibility across supported AI coding agents.
 
-Last updated: 2026-10-26
+Last updated: 2026-11-03
 
 > **This matrix is now an interface, not prose.** The per-agent launch/trust/
 > hooks/skill differences live behind one `AgentAdapter` per agent
@@ -33,6 +33,10 @@ Last updated: 2026-10-26
 | Pi | `pi` | `~/.agents/skills/dev3/` and the other dev3 skills under the shared `~/.agents/skills/` alias, which pi reads natively — no pi-specific directory is written |
 | Oh My Pi | `omp` | `~/.omp/agent/skills/dev3/`, `~/.omp/agent/skills/dev3-project-config/`, `~/.omp/agent/skills/dev3-tmux/`, `~/.omp/agent/skills/dev3-bug-hunter/`, `~/.omp/agent/skills/ask-dev3/`, `~/.omp/agent/skills/dev3-artifact/`, `~/.omp/agent/skills/dev3-share-artifact/`, `~/.omp/agent/skills/dev3-coordinator/` |
 
+## Managed restart and hibernation
+
+Codex and Claude Code support task hibernation and resume through their saved conversation IDs; Codex's ID comes from its lifecycle hooks and is resolved in the original account store. Right-click a task → **Restart agent session…** reuses that recovery path while the terminal is still present, preserving managed accounts and future hibernation. It replaces the task terminal, closes its auxiliary panes and discards scrollback; commands and dev servers in those panes stop, while files remain intact. Restart refuses if a saved conversation would be replaced or started fresh. Native terminals currently restore only the main agent, so restart refuses a native task with extra panes before stopping anything. See [`restart-agents-through-managed-resume`](decisions/2026/11/03/restart-agents-through-managed-resume.md).
+
 ## Feature Matrix
 
 | Feature | Claude Code | Cursor Agent | Codex | Gemini CLI | OpenCode | GitHub Copilot CLI | Oh My Pi | Pi |
@@ -47,7 +51,7 @@ Last updated: 2026-10-26
 | **Model selection** | `--model` (omitted on a third-party provider — see below) | `--model` | `--model` | `--model` | `--model` | `--model` (the account's plan decides which names it will accept; `auto` always does). Copilot also persists its own default in `~/.copilot/settings.json` via `/config model`; dev3's flag overrides it per launch | `--model` | `--model` (`provider/id`; no preset pins one — pi picks from what the user signed in to) |
 | **Account model filter** (flag presets the signed-in account can't select) | — | Yes — `--list-models`, matched on the base model family (Cursor bakes effort into the slug) | Yes — `debug models`, `visibility=list` + `supported_in_api`, exact slug | — (open FR gemini-cli#27847) | — (`opencode models` lists configured providers, not the account's license) | — (no list command; a blocked model only fails at launch) | — | — |
 | **LLM provider (backend)** | Anthropic / Amazon Bedrock (per-agent toggle) | — | — | — | — | — | — | — |
-| **Managed accounts** (Settings → Accounts, per-launch pick) | Yes — `CLAUDE_CONFIG_DIR` per account, plus API profiles | — | Yes — `CODEX_HOME` per account | — | — | — | Yes — `PI_CODING_AGENT_DIR` per account (own `agent.db` + sessions, the rest of `~/.omp/agent` symlinked); Add account runs `omp login` in the embedded sign-in terminal, the user picks any provider, dev3 verifies with `omp usage accounts --json`; the launch picker lists that account's signed-in providers' models (`omp models --json`), newest first | Yes — `PI_CODING_AGENT_DIR` per account (own `auth.json`, sessions and model cache, a copied `settings.json`, the rest of `~/.pi/agent` symlinked); Add account runs `pi --no-session` with a dev3 extension that types `/login`, the user adds any OAuth or API-key provider, dev3 reads the provider ids and types in that `auth.json` (never the values); the launch picker lists those providers' models (`pi --list-models`), pi's own default first |
+| **Managed accounts** (Settings → Accounts, per-launch pick) | Yes — `CLAUDE_CONFIG_DIR` per account, plus API profiles; only Claude can add an account without signing in (an identity-less dir Auto skips until a login appears) | — | Yes — `CODEX_HOME` per account | — | — | — | Yes — `PI_CODING_AGENT_DIR` per account (own `agent.db` + sessions, the rest of `~/.omp/agent` symlinked); Add account runs `omp login` in the embedded sign-in terminal, the user picks any provider, dev3 verifies with `omp usage accounts --json`; the launch picker lists that account's signed-in providers' models (`omp models --json`), newest first | Yes — `PI_CODING_AGENT_DIR` per account (own `auth.json`, sessions and model cache, a copied `settings.json`, the rest of `~/.pi/agent` symlinked); Add account runs `pi --no-session` with a dev3 extension that types `/login`, the user adds any OAuth or API-key provider, dev3 reads the provider ids and types in that `auth.json` (never the values); the launch picker lists those providers' models (`pi --list-models`), pi's own default first |
 | **Auto account routing** (usage-balanced `"auto"` pick) | Yes — subscription logins only, by 5h then weekly pace | — | Yes — subscription logins only, windows classified by `window_minutes` | — | — | — | — | — |
 | **Model roles (model catalog)** | Yes — Fable / Opus / Sonnet / Haiku slots, delivered as `ANTHROPIC_DEFAULT_<SLOT>_MODEL` + a rewritten `--model` | — | Yes — main / default-subagent / review, delivered as `-c` overrides (never written to `~/.codex`) | — | — | — | — (omp's 9 roles unbound) | — |
 | **Agent selection** | — | — | — | — | `--agent` | — | — | — |

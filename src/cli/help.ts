@@ -564,10 +564,11 @@ const COMMANDS: CommandHelp[] = [
 			{
 				name: "set",
 				usage: "dev3 label set <id> [<id>...] [--task <id>]",
-				summary: "REPLACE the task's whole label set with exactly these labels.",
+				summary: "REPLACE the task's labels with these, keeping the ones the user set in the app.",
 				details: [
-					"Labels not listed are removed. Use `label add` to keep the existing ones.",
-					"--clear    Remove all labels from the task (dev3 label set --clear).",
+					"Labels not listed are removed, except those the user set in the app:",
+					"only `label remove <id>` naming one takes it off. Prefer `label add`.",
+					"--clear    Remove every label the user did not set (dev3 label set --clear).",
 				],
 			},
 			{

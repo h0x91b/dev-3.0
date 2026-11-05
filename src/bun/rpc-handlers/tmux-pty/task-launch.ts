@@ -99,8 +99,19 @@ async function persistInitialAgentPaneId(
 	log.warn("Could not capture initial agent pane ID", { taskId: task.id.slice(0, 8) });
 }
 
-/** Tell the user a stored Claude account was removed and the launch used the default one. */
-export async function notifyStaleAccountDropped(task: Pick<Task, "id" | "projectId">): Promise<void> {
+const STALE_ACCOUNT_NOTICE_WINDOW_MS = 60_000;
+const staleAccountNoticeAt = new Map<string, number>();
+
+export function resetStaleAccountNoticesForTests(): void {
+	staleAccountNoticeAt.clear();
+}
+
+/** Tell the user a stored Claude account was removed and the launch used the default one.
+ *  Once per task per window: a resume relaunches every pane, and each may carry the same id. */
+export async function notifyStaleAccountDropped(task: Pick<Task, "id" | "projectId">, now = Date.now()): Promise<void> {
+	const last = staleAccountNoticeAt.get(task.id);
+	if (last !== undefined && now - last < STALE_ACCOUNT_NOTICE_WINDOW_MS) return;
+	staleAccountNoticeAt.set(task.id, now);
 	// Loaded on demand: ../shared pulls in the whole desktop shell, which this module must not.
 	const { pushCliToast } = await import("../shared");
 	pushCliToast({
@@ -468,8 +479,9 @@ export async function launchTaskPty(
 			// and legacy-pane resume read a concrete account instead of routing again.
 			const routedPatch: Partial<Task> = accountPick
 				? { accountId: accountPick.accountId, accountPick: { reason: accountPick.reason, at: new Date().toISOString() } }
-				// A removed stored account is replaced on the task too, so the notice does not repeat.
-				: staleAccountDropped && launchAccountId !== undefined ? { accountId: launchAccountId } : {};
+				// A removed stored account is cleared on the task, so the notice does not repeat and the
+				// task follows the default again — `null` would pin it to the system login instead.
+				: staleAccountDropped ? { accountId: undefined } : {};
 			try {
 				await data.updateTask(project, task.id, { sessionState, ...routedPatch });
 				log.info("Persisted sessionState", { taskId: task.id.slice(0, 8), sessionId: paneEntry.sessionId });

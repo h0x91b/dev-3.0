@@ -242,7 +242,7 @@ export default function ActiveTaskRow({
 				if (!task.shuttingDown) onMouseEnter(e);
 			}}
 			onMouseLeave={onMouseLeave}
-			className={`group relative flex w-full items-stretch text-left transition-[color,background-color,opacity,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none cursor-pointer focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60 ${
+			className={`group relative flex w-full items-stretch ${isCoordinatorTask(task) ? `task-row-coordinator ${narrow ? "[--coord-rail-w:2.75rem]" : ""}` : ""} text-left transition-[color,background-color,opacity,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none cursor-pointer focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60 ${
 				task.shuttingDown
 					? "grayscale opacity-40 pointer-events-none"
 					: task.hibernated || disconnected
@@ -400,7 +400,7 @@ export default function ActiveTaskRow({
 							<span
 								data-testid="sidebar-coordinator-badge"
 								title={t("task.coordinatorHint")}
-								className="inline-flex flex-shrink-0 items-center rounded border border-dashed border-success/60 px-1 py-px text-nano font-semibold uppercase tracking-[0.06em] text-success-strong"
+								className="inline-flex flex-shrink-0 items-center rounded border border-dashed border-coordinator/70 px-1 py-px text-nano font-semibold uppercase tracking-[0.06em] text-coordinator-ink"
 							>
 								{t("task.coordinatorBadge")}
 							</span>

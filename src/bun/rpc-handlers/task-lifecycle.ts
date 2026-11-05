@@ -13,7 +13,7 @@ import { emitTaskSound, takeResetBranchOutcome } from "../lifecycle/executor";
 import { getPushMessage, isActive, log, pushCliAttention } from "./shared";
 import { autoLaunchDeferral } from "../account-router";
 import { dispatchLifecycleEvent, removeLifecycleActor } from "../lifecycle/service";
-import { assertKnownLabelIds } from "../board-operations/labels";
+import { assertKnownLabelIds, labelPatch } from "../board-operations/labels";
 import { isScratchPlaceholderDescription, planTitleAndDescription, updateTaskMetadata, withoutUnchanged } from "../board-operations/task-metadata";
 import { nextKeepAliveState } from "../../shared/keep-alive";
 import { boardPorts } from "../board-operations/runtime";
@@ -658,6 +658,7 @@ async function spawnVariants(params: {
 				// Sibling variants share the labels the user picked in the
 				// Create-Task modal (labels belong to the whole variant group).
 				labelIds: sourceTask.labelIds,
+				userLabelIds: sourceTask.userLabelIds,
 				// Copy notes + overview accumulated while the task sat in To Do:
 				// each variant's agent reads its OWN task, so without the copy
 				// variants 2..N would launch blind to that pre-launch context.
@@ -795,6 +796,7 @@ async function addAttempts(params: {
 				titleEditedByUser: sourceTask.titleEditedByUser,
 				// Attempts share the source task's labels (same group).
 				labelIds: sourceTask.labelIds,
+				userLabelIds: sourceTask.userLabelIds,
 				// Attempts start at the source task's priority, otherwise re-running a
 				// P0 task spawns a P3 sibling. Each changes independently after.
 				priority: sourceTask.priority,
@@ -910,7 +912,7 @@ async function editTask(params: {
 		const customTitle = params.customTitle === undefined ? current.customTitle : params.customTitle;
 		if (!customTitle && params.title?.trim()) updates.title = params.title.trim();
 		if (params.priority !== undefined) updates.priority = params.priority;
-		if (params.labelIds !== undefined) updates.labelIds = params.labelIds;
+		if (params.labelIds !== undefined) Object.assign(updates, labelPatch(current, params.labelIds, USER_ACTOR));
 		if (params.existingBranch !== undefined) {
 			updates.existingBranch = params.existingBranch;
 			updates.baseBranch = data.deriveTaskBaseBranch(project, params.existingBranch);

@@ -1094,6 +1094,39 @@ describe("task move --status completed", () => {
 		expect(stdoutOutput).toContain("moved to Completed");
 	});
 
+	// The task reached Completed another way (board, merged PR) while the dialog
+	// was open: the app voids the request and the agent got what it asked for.
+	it("succeeds when the request was voided because the task is already completed", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: false, stale: true, taskStatus: "completed" }));
+
+		await handleTask("move", args(["aaaaaaaa"], { status: "completed" }), SOCKET, null);
+		expect(stdoutOutput).toContain("already Completed");
+		expect(stdoutOutput).toContain("got there another way");
+	});
+
+	it("prints the Codex stop-hook JSON when a voided request finds the task completed", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: false, stale: true, taskStatus: "completed" }));
+
+		await handleTask("move", args(["aaaaaaaa"], { status: "completed", "codex-stop-hook": "true" }), SOCKET, null);
+		expect(stdoutOutput).not.toContain("already Completed");
+		expect(stdoutOutput.trim().startsWith("{")).toBe(true);
+	});
+
+	it("exits with code 6 and the voided wording when the task was cancelled instead", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: false, stale: true, taskStatus: "cancelled" }));
+
+		await expect(handleTask("move", args(["aaaaaaaa"], { status: "completed" }), SOCKET, null)).rejects.toThrow("EXIT_6");
+		expect(stderrOutput).toContain("voided before anyone answered");
+		expect(stderrOutput).not.toContain("User declined");
+	});
+
+	it("exits with code 6 and says the task was deleted when it vanished mid-dialog", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: false, stale: true, taskStatus: null }));
+
+		await expect(handleTask("move", args(["aaaaaaaa"], { status: "completed" }), SOCKET, null)).rejects.toThrow("EXIT_6");
+		expect(stderrOutput).toContain("was deleted");
+	});
+
 	it("exits with code 6 when the user declines", async () => {
 		mockSend.mockResolvedValue(okResp({ approved: false }));
 
@@ -2226,6 +2259,16 @@ describe("task move — agent asking to start another task", () => {
 			handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX),
 		).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_LAUNCH_DECLINED}`);
 		expect(stderrOutput).toContain("declined the launch request");
+	});
+
+	it("says the request was voided, not declined, when the target task went away mid-dialog", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: false, stale: true }));
+
+		await expect(
+			handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX),
+		).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_LAUNCH_DECLINED}`);
+		expect(stderrOutput).toContain("voided before anyone answered");
+		expect(stderrOutput).not.toContain("User declined");
 	});
 
 	it("hands out one address per variant when the user launched a group", async () => {

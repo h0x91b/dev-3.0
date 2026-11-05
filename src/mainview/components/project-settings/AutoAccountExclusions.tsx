@@ -68,6 +68,7 @@ export function AutoAccountExclusions({
 	if (groups.length === 0) return null;
 
 	const excluded = new Set(project.autoAccountExclusions ?? []);
+	const excludedEverywhere = new Set([...(state.claude.autoExcluded ?? []), ...(state.codex.autoExcluded ?? [])]);
 	const toggle = (key: string) => {
 		const next = new Set(excluded);
 		if (next.has(key)) next.delete(key);
@@ -89,11 +90,15 @@ export function AutoAccountExclusions({
 										<span className="block text-fg-3 text-xs truncate streamer-private">{login.sub}</span>
 									) : null}
 								</div>
-								<ToggleSwitch
-									checked={!excluded.has(login.key)}
-									ariaLabel={login.label}
-									onToggle={() => toggle(login.key)}
-								/>
+								{excludedEverywhere.has(login.key) ? (
+									<span className="text-fg-muted text-xs shrink-0">{t("projectSettings.autoAccountsExcludedEverywhere")}</span>
+								) : (
+									<ToggleSwitch
+										checked={!excluded.has(login.key)}
+										ariaLabel={login.label}
+										onToggle={() => toggle(login.key)}
+									/>
+								)}
 							</div>
 						))}
 					</div>

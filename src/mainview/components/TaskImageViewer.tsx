@@ -16,6 +16,8 @@ import { useFocusTrap } from "../utils/useFocusTrap";
 import { registerOverlayLayer } from "../utils/overlay-layers";
 import { downloadDataUrl, downloadUrl } from "../utils/downloadBytes";
 import ImageSaveMenu from "./ImageSaveMenu";
+import VideoFrameThumb from "./VideoFrameThumb";
+import { primeFirstFrame } from "../utils/video-first-frame";
 
 interface TaskImageViewerProps {
 	images: SharedImage[];
@@ -42,6 +44,22 @@ function clipErrorKey(clip: "video" | "audio" | null, loadFailed: boolean) {
 	if (clip === "video") return loadFailed ? "imageViewer.videoLoadError" : "imageViewer.videoUnsupported";
 	return "imageViewer.loadError";
 }
+/** A clip's rail tile: a glyph on black, or a small play badge over the captured first frame. */
+function ClipThumbGlyph({ clip, title, overlay = false }: { clip: "video" | "audio"; title: string; overlay?: boolean }) {
+	return (
+		<span
+			data-testid={`viewer-thumb-${clip}`}
+			title={title}
+			className={overlay
+				? "absolute inset-0 flex items-center justify-center text-white text-sm [text-shadow:0_1px_3px_rgb(0_0_0/0.8)]"
+				: "flex h-full w-full items-center justify-center bg-black/80 text-white text-lg"}
+			style={{ fontFamily: ICON }}
+		>
+			{clip === "audio" ? AUDIO_GLYPH : "\uf04b"}
+		</span>
+	);
+}
+
 // Above this height/width ratio an image is "tall" (e.g. a full-page capture) —
 // object-contain would squash it into a useless sliver, so we default such
 // images to fill-width + vertical scroll instead.
@@ -474,6 +492,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 								controls
 								playsInline
 								preload="metadata"
+								onLoadedMetadata={(e) => primeFirstFrame(e.currentTarget)}
 								aria-label={current.name}
 								data-testid="viewer-main-video"
 								onError={() => setClipError(true)}
@@ -602,15 +621,14 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 										i === index ? "border-accent" : isNew ? "border-success" : "border-edge/50 hover:border-edge-active"
 									} ${isNew ? "ring-2 ring-success/60 ring-offset-1 ring-offset-raised" : ""}`}
 								>
-									{thumbClip ? (
-										<span
-											data-testid={`viewer-thumb-${thumbClip}`}
-											title={t(thumbClip === "audio" ? "imageViewer.audio" : "imageViewer.video")}
-											className="flex h-full w-full items-center justify-center bg-black/80 text-white text-lg"
-											style={{ fontFamily: ICON }}
-										>
-											{thumbClip === "audio" ? AUDIO_GLYPH : "\uf04b"}
-										</span>
+									{thumbClip === "video" ? (
+										<VideoFrameThumb
+											path={img.storedPath}
+											fallback={<ClipThumbGlyph clip="video" title={t("imageViewer.video")} />}
+											badge={<ClipThumbGlyph clip="video" title={t("imageViewer.video")} overlay />}
+										/>
+									) : thumbClip ? (
+										<ClipThumbGlyph clip="audio" title={t("imageViewer.audio")} />
 									) : thumbUrl && thumbUrl !== "__error__" ? (
 										<img src={thumbUrl} alt={img.name} className="h-full w-full object-cover" draggable={false} />
 									) : (

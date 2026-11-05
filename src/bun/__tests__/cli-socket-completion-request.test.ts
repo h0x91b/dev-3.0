@@ -86,7 +86,7 @@ vi.mock("node:fs", () => ({
 
 import * as data from "../data";
 import { moveTask, getPushMessage } from "../rpc-handlers";
-import { listPendingAgentRequests, resolveAgentRequest, _resetAgentRequestsForTests } from "../agent-requests";
+import { listPendingAgentRequests, resolveAgentRequest, voidAgentRequestsForTask, getAgentRequestState, _resetAgentRequestsForTests } from "../agent-requests";
 
 const { handleRequest } = await import("../cli-socket-server");
 
@@ -264,5 +264,83 @@ describe("task.requestCompletion", () => {
 		const [respA, respB] = await Promise.all([first, second]);
 		expect(respA.data).toEqual({ approved: false });
 		expect(respB.data).toEqual({ approved: false });
+	});
+});
+
+// The reported bug: the dialog stayed open (or opened) after the task was
+// already completed by another path — the board, or a merged PR — so the user
+// had to answer a second time for a task that was already done.
+describe("task.requestCompletion when the task ends by another path", () => {
+	const TASK_ID = "task-abc12345-1111-2222-3333-444444444444";
+
+	it("closes the open dialog and answers the CLI as soon as the task completes elsewhere", async () => {
+		setupTask(makeTask());
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		const resp = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalledWith("agentCompletionRequested", expect.anything()));
+		const { requestId } = pushFn.mock.calls[0][1] as { requestId: string };
+
+		// The board/PR-merge move lands: the lifecycle persists the terminal status and voids.
+		vi.mocked(data.loadTasks).mockResolvedValue([makeTask({ status: "completed" })]);
+		voidAgentRequestsForTask(TASK_ID);
+
+		// The resolve broadcasts `agentRequestResolved` (agent-requests.test.ts), which closes every client's copy.
+		expect(getAgentRequestState("complete", TASK_ID)).toMatchObject({ state: "answered", requestId, stale: true });
+		expect((await resp).data).toEqual({ approved: false, stale: true, taskStatus: "completed" });
+		expect(listPendingAgentRequests("complete")).toEqual([]);
+		expect(moveTask).not.toHaveBeenCalled();
+	});
+
+	it("never pushes a dialog when the task completed between the read and the registration", async () => {
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+		// First read (resolving the task) sees it running; the re-read after the
+		// request is registered sees the completion that raced it.
+		vi.mocked(data.loadTasks)
+			.mockResolvedValueOnce([makeTask()])
+			.mockResolvedValue([makeTask({ status: "completed" })]);
+
+		const resp = await handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
+
+		expect(resp.data).toEqual({ approved: false, stale: true, taskStatus: "completed" });
+		expect(pushFn.mock.calls.map(([event]) => event)).not.toContain("agentCompletionRequested");
+		expect(listPendingAgentRequests("complete")).toEqual([]);
+	});
+
+	it("answers with a null status when the task was deleted while the dialog was open", async () => {
+		setupTask(makeTask());
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		const resp = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalledWith("agentCompletionRequested", expect.anything()));
+
+		vi.mocked(data.loadTasks).mockResolvedValue([]);
+		voidAgentRequestsForTask(TASK_ID);
+
+		expect((await resp).data).toEqual({ approved: false, stale: true, taskStatus: null });
+	});
+
+	it("still lets the user's own approval complete the task — voiding after it is a no-op", async () => {
+		const task = makeTask();
+		setupTask(task);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		const completed = { ...task, status: "completed" as const };
+		// The approved move runs the lifecycle, which voids every request for the task.
+		vi.mocked(moveTask).mockImplementation(async () => {
+			voidAgentRequestsForTask(TASK_ID);
+			return completed;
+		});
+
+		const resp = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalledWith("agentCompletionRequested", expect.anything()));
+		const { requestId } = pushFn.mock.calls[0][1] as { requestId: string };
+		resolveAgentRequest(requestId, { approved: true });
+
+		expect((await resp).data).toEqual({ approved: true, task: completed });
 	});
 });

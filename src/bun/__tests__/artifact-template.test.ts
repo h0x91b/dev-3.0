@@ -507,6 +507,21 @@ describe("bundled artifact starter contract", () => {
 		expect(readFileSync(appPath, "utf8")).toContain("pill.title = pill.textContent.trim();");
 	});
 
+	it("keeps stacked card widgets and slider pip labels from overlapping", () => {
+		const css = readFileSync(cssPath, "utf8");
+
+		const widgets = "form, .controls, .option-group, .grid, .stack, .field, .check, .switch, .segmented, .choices, .form-actions, .chart-host, table, input, textarea, select";
+		expect(css).toContain(`.card > :is(${widgets}) + *, .card > * + :is(${widgets}) { margin-top: 14px; }`);
+		expect(css).toContain(".ui-range-control:has(.noUi-pips) { margin-bottom: 2.1em; }");
+		// A crowded group wraps whole buttons instead of breaking words mid-letter.
+		expect(css.match(/\n {4}\.segmented \{([^}]*)\}/)?.[1]).toContain("flex-wrap: wrap;");
+		expect(css).toContain(".segmented button { flex: 1 1 auto; padding: 6px 9px; border: 0; background: transparent; overflow-wrap: normal; }");
+		expect(css.match(/\n {4}\.field output \{([^}]*)\}/)?.[1]).toContain("white-space: nowrap;");
+		// A stacked cell never asks for more than the phone has at enlarged text.
+		expect(css).toContain("minmax(min(13rem, 100%), 1fr)");
+		expect(css).toContain(".section-anchor { scroll-margin-top: max(4.25rem, 60px); }");
+	});
+
 	it("stacks a table into labelled lines instead of scrolling it sideways", () => {
 		const css = readFileSync(cssPath, "utf8");
 		const app = readFileSync(appPath, "utf8");
@@ -700,8 +715,9 @@ describe("bundled artifact starter contract", () => {
 		// responsive-table work, which left no room for any real change. The CSS
 		// cap moved again for the gold/viz palette and the tone classes, and once
 		// more for the full standard-control set (textarea, plain select caret,
-		// file, color, invalid and disabled states).
-		expect(statSync(cssPath).size).toBeLessThan(54_000);
+		// file, color, invalid and disabled states), and again for the overlap fixes
+		// (card widget spacing, wrapping segmented groups, slider pip room).
+		expect(statSync(cssPath).size).toBeLessThan(55_000);
 		expect(statSync(appPath).size).toBeLessThan(34_000);
 		expect(statSync(reportPath).size).toBeLessThan(15_000);
 	});

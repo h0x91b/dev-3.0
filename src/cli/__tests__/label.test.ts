@@ -118,9 +118,22 @@ describe("label add / remove / set semantics", () => {
 		expect(out.join("")).toContain("it now has 2: lbl-1aaa, lbl-2bbb");
 	});
 
-	it("set with no ids warns that it replaces the whole set", async () => {
+	it("says when a set kept labels the user picked in the app", async () => {
+		const out: string[] = [];
+		vi.mocked(process.stdout.write).mockImplementation((chunk: string | Uint8Array) => { out.push(String(chunk)); return true; });
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, labelIds: ["lbl-1aaaaaaa", "lbl-2bbbbbbb"] }));
+		await handleLabel("set", args(["lbl-2"]), SOCKET, CTX);
+		expect(out.join("")).toContain("Kept lbl-1aaa: set by the user in the app");
+
+		out.length = 0;
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, labelIds: ["lbl-2bbbbbbb"] }));
+		await handleLabel("set", args(["lbl-2"]), SOCKET, CTX);
+		expect(out.join("")).not.toContain("Kept");
+	});
+
+	it("set with no ids warns that it replaces the task's labels", async () => {
 		await expect(handleLabel("set", args([]), SOCKET, CTX)).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toMatch(/replaces ALL/);
+		expect(stderrOutput).toMatch(/replaces the task's labels/);
 		expect(stderrOutput).toContain("dev3 label add");
 	});
 });

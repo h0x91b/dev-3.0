@@ -2225,4 +2225,20 @@ describe("ActiveTasksSidebar port badges", () => {
 		expect(within(screen.getByTestId("sidebar-ports-t1")).getAllByRole("button")).toHaveLength(3);
 		expect(screen.queryByTestId("sidebar-ports-t1-toggle")).not.toBeInTheDocument();
 	});
+
+	it("marks a coordinator row with the hazard-tape class and leaves an ordinary row plain", () => {
+		const { container } = render(
+			<I18nProvider>
+				<ActiveTasksSidebar project={project} tasks={[makeTask({ id: "coord", title: "Coordinate", taskType: "coordinator", groupId: null, variantIndex: null }), makeTask({ id: "plain", title: "Plain task", groupId: null, variantIndex: null })]}
+					dispatch={vi.fn()} navigate={vi.fn()} agents={[claudeAgent]}
+					bellCounts={new Map<string, number>()} taskPorts={new Map<string, never[]>()} />
+			</I18nProvider>,
+		);
+
+		const marked = [...container.querySelectorAll(".task-row-coordinator")];
+		expect(marked).toHaveLength(1);
+		expect(marked[0]).toHaveTextContent("Coordinate");
+		expect(marked[0]).not.toHaveTextContent("Plain task");
+		expect(within(marked[0] as HTMLElement).getByTestId("sidebar-coordinator-badge").className).toContain("text-coordinator-ink");
+	});
 });

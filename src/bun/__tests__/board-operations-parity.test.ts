@@ -139,6 +139,19 @@ describe("board operations — GUI and CLI doors agree on labels", () => {
 		expect(pushes.map((p) => p.name)).toEqual(["taskUpdated", "taskUpdated"]);
 	});
 
+	it("a label the user picked in the GUI survives the agent's CLI `label set`, and the GUI can still drop it", async () => {
+		board = await createBoard({ labels: LABELS });
+		await recordProductionPushes();
+		const { gui, cli } = await doors();
+
+		await gui.setTaskLabels({ taskId: "task-1", projectId: "proj-1", labelIds: ["lbl-aaaa-1111"] });
+		const viaCli = await cli("task.setLabels", { taskId: "task-1", projectId: "proj-1", labelIds: ["lbl-bbbb"] });
+		expect((viaCli.data as Task).labelIds).toEqual(["lbl-aaaa-1111", "lbl-bbbb-2222"]);
+
+		const viaGui = await gui.setTaskLabels({ taskId: "task-1", projectId: "proj-1", labelIds: ["lbl-bbbb-2222"] });
+		expect(viaGui.labelIds).toEqual(["lbl-bbbb-2222"]);
+	});
+
 	it("GUI label create and delete now push projectUpdated like the CLI", async () => {
 		board = await createBoard({ labels: LABELS, tasks: [makeTask({ labelIds: ["lbl-aaaa-1111"] })] });
 		const pushes = await recordProductionPushes();
