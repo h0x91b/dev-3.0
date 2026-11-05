@@ -36,6 +36,7 @@ vi.mock("../../rpc", () => ({
 			cancelScheduledLaunch: vi.fn(),
 			startScheduledLaunchNow: vi.fn(),
 			refreshTaskPrStatus: vi.fn().mockResolvedValue(undefined),
+			getAgentRateLimits: vi.fn().mockResolvedValue({ snapshots: [], sessions: [], generatedAt: 0 }),
 		},
 	},
 }));
@@ -84,6 +85,7 @@ import { confirm } from "../../confirm";
 import { toast } from "../../toast";
 import { trackEvent } from "../../analytics";
 import { confirmTaskCompletion } from "../../utils/confirmTaskCompletion";
+import { resetLiveSessionStatsForTests } from "../../hooks/useLiveSessionStats";
 
 vi.mock("../../confirm", () => ({
 	confirm: vi.fn(),
@@ -109,6 +111,7 @@ const claudeAgent: CodingAgent = {
 	configurations: [
 		{ id: "claude-default", name: "Default", model: "sonnet" },
 		{ id: "claude-plan", name: "Plan (Opus 4.7)" },
+		{ id: "claude-opus-medium", name: "Auto (Opus 5.5, Medium)", model: "claude-opus-5-5[1m]", effort: "medium" },
 	],
 	defaultConfigId: "claude-default",
 };
@@ -336,6 +339,45 @@ describe("TaskCard", () => {
 			expect(screen.getByText("#5")).toBeInTheDocument();
 			expect(screen.getByRole("img", { name: "Claude" })).toBeInTheDocument();
 			expect(screen.getByText("Default · sonnet")).toBeInTheDocument();
+		});
+
+		describe("live session config", () => {
+			afterEach(() => resetLiveSessionStatsForTests());
+			const runningTask = (status: TaskStatus = "in-progress") => makeTask({
+				status,
+				worktreePath: "/tmp/wt",
+				branchName: "dev3/test",
+				agentId: "builtin-claude",
+				configId: "claude-opus-medium",
+			});
+			const pushSession = (over: Record<string, unknown>) => act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:agentRateLimitsUpdated", {
+					detail: { snapshots: [], generatedAt: 0, sessions: [{ taskId: "t1", capturedAt: 1, model: "Opus 5.5", modelId: "claude-opus-5-5", effort: "medium", ...over }] },
+				}));
+			});
+
+			it("shows the effort set with /effort next to the launch preset", () => {
+				renderCard(runningTask());
+				pushSession({ effort: "high" });
+				expect(screen.getByTestId("task-card-config")).toHaveTextContent("Auto (Opus 5.5, Medium)");
+				expect(screen.getByTestId("task-card-live-config")).toHaveTextContent("→ high");
+			});
+
+			it("shows a model switched with /model", () => {
+				renderCard(runningTask());
+				pushSession({ model: "Sonnet 5.5", modelId: "claude-sonnet-5-5", effort: "high" });
+				expect(screen.getByTestId("task-card-live-config")).toHaveTextContent("→ Sonnet 5.5, high");
+			});
+
+			it("adds nothing while the session still runs the preset, or once the task is done", () => {
+				const { unmount } = renderCard(runningTask());
+				pushSession({});
+				expect(screen.queryByTestId("task-card-live-config")).toBeNull();
+				unmount();
+				renderCard(runningTask("completed"));
+				pushSession({ effort: "high" });
+				expect(screen.queryByTestId("task-card-live-config")).toBeNull();
+			});
 		});
 
 		it("shows badge with config name without model", () => {

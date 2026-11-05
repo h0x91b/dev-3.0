@@ -5,6 +5,8 @@ import { createPortal } from "react-dom";
 import type { CodingAgent, DevServerSummary, Epic, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, getAllowedTransitions, getPreparingStageProgress, getTaskTitle, isCoordinatorTask, isTaskDisconnected, projectDisplayName } from "../../shared/types";
 import { earlierPullRequests } from "../../shared/task-pull-requests";
+import { launchConfigDrift } from "../../shared/session-stats";
+import { agentKey } from "../../shared/agent-adapters/families";
 import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
@@ -15,6 +17,7 @@ import { trackEvent, agentNameFromId } from "../analytics";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { useTerminalPreview } from "../hooks/useTerminalPreview";
 import { useIsTruncated } from "../hooks/useIsTruncated";
+import { useLiveSessionStats } from "../hooks/useLiveSessionStats";
 import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
 import PriorityBadge from "./PriorityBadge";
@@ -499,6 +502,12 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const configLabel = agentConfig
 		? (agentConfig.model ? `${agentConfig.name} · ${agentConfig.model}` : agentConfig.name)
 		: agent?.name ?? "";
+	// The preset is only what the agent was launched with; `/effort` and `/model`
+	// move a live Claude session off it, and the statusLine dump is where that shows.
+	const liveSession = useLiveSessionStats(task.id);
+	const isClaudeTask = agent ? agentKey(agent.baseCommand, agent.agentFamily) === "claude" : false;
+	const drift = isActive && isClaudeTask && agentConfig ? launchConfigDrift(agentConfig, liveSession) : null;
+	const driftLabel = drift ? [drift.model, drift.effort].filter(Boolean).join(", ") : "";
 	// A lone variant is not a variant — `1/1` says nothing, and the spelled-out
 	// "Variant 1" ate the header room the config string exists for.
 	const variantFraction = task.variantIndex !== null && groupMembers.length > 1
@@ -881,6 +890,19 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							className="min-w-[3rem] flex-1 truncate font-mono text-dense font-medium text-accent/80"
 						>
 							{configLabel}
+						</span>
+					</Tooltip>
+				)}
+				{drift && (
+					<Tooltip
+						content={t("task.liveConfig", { live: driftLabel })}
+						detail={t("task.liveConfigDetail", { launched: configLabel })}
+					>
+						<span
+							data-testid="task-card-live-config"
+							className="max-w-[50%] flex-shrink-0 truncate font-mono text-dense font-medium text-fg-2"
+						>
+							{"→ "}{driftLabel}
 						</span>
 					</Tooltip>
 				)}

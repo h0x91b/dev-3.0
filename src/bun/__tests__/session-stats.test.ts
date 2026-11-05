@@ -4,6 +4,7 @@ import {
 	formatDurationMs,
 	formatTokenCount,
 	isSessionCacheWarm,
+	launchConfigDrift,
 	MAX_ATTENTION_SESSIONS,
 	attentionSessions,
 	parseClaudeSessionStats,
@@ -42,6 +43,7 @@ describe("parseClaudeSessionStats", () => {
 			projectName: null,
 			capturedAt: 1000,
 			model: "Opus 5.5 (1M context)",
+			modelId: "claude-opus-5-5[1m]",
 			effort: "medium",
 			sessionName: "Status view display options",
 			thinking: true,
@@ -176,5 +178,34 @@ describe("formatters", () => {
 		expect(formatDurationMs(45_000)).toBe("45s");
 		expect(formatDurationMs(62_816)).toBe("1m");
 		expect(formatDurationMs(7_500_000)).toBe("2h5m");
+	});
+});
+
+describe("launchConfigDrift", () => {
+	const preset = { model: "claude-opus-5-5[1m]", effort: "medium" };
+	const live = (over: Partial<AgentSessionStats>) =>
+		({ model: "Opus 5.5", modelId: "claude-opus-5-5", effort: "medium", ...over }) as AgentSessionStats;
+
+	it("reports nothing while the session still runs the preset", () => {
+		expect(launchConfigDrift(preset, live({}))).toBeNull();
+		expect(launchConfigDrift(preset, null)).toBeNull();
+	});
+
+	it("reports an effort changed with /effort", () => {
+		expect(launchConfigDrift(preset, live({ effort: "high" }))).toEqual({ effort: "high", model: null });
+	});
+
+	it("reports a model changed with /model by its display name, ignoring the context suffix", () => {
+		expect(launchConfigDrift(preset, live({ model: "Sonnet 5.5", modelId: "claude-sonnet-5-5" }))).toEqual({
+			effort: null,
+			model: "Sonnet 5.5",
+		});
+		expect(launchConfigDrift(preset, live({ modelId: "claude-opus-5-5[1m]" }))).toBeNull();
+	});
+
+	it("never compares what it cannot: an alias, a third-party id, or a preset without effort", () => {
+		expect(launchConfigDrift({ model: "opus", effort: "medium" }, live({ modelId: "claude-sonnet-5-5" }))).toBeNull();
+		expect(launchConfigDrift(preset, live({ modelId: "us.anthropic.claude-sonnet-5-5-v1:0" }))).toBeNull();
+		expect(launchConfigDrift({ model: "claude-opus-5-5" }, live({ effort: "high" }))).toBeNull();
 	});
 });
