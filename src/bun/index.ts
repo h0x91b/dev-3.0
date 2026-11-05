@@ -2,6 +2,7 @@ import { stopAgentMessageLogWatches } from "./agent-message-log-watch";
 import { probeDevServer, resolveMainViewUrl } from "./main-view-url";
 import { startBoardCopy, stopBoardCopy } from "./board-copy";
 import { claudeSessionWatches } from "./claude-session-watch";
+import { codexTurnWatches } from "./codex-turn-watch";
 import Electrobun, {
 	ApplicationMenu,
 	PATHS,
@@ -840,6 +841,7 @@ function runGlobalQuitCleanup(): void {
 	stopAgentMessageLogWatches();
 	stopBoardCopy();
 	claudeSessionWatches.close();
+	codexTurnWatches.close();
 	// Snapshot window geometry so an update restart reopens on the same screen.
 	try { flushWindowState(); } catch (err) { log.warn("flushWindowState failed", { error: String(err) }); }
 	try { stopPortScanPoller(); } catch (err) { log.warn("stopPortScanPoller failed", { error: String(err) }); }

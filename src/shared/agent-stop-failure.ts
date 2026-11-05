@@ -108,3 +108,17 @@ export function parseClaudeStopFailurePayload(rawInput: string): ClaudeStopFailu
 		return null;
 	}
 }
+
+/** Codex records the error text verbatim; its first line is the readable part. */
+export function describeCodexTurnError(message: string): string {
+	return truncate(firstLine(message) || REASON_BY_ERROR.unknown);
+}
+
+/**
+ * A security hook that denies a tool call until the user types `Approved <ref>`
+ * (an org security policy hook, say) leaves Codex no approval prompt to raise, so the agent
+ * relays the reply and ends its turn. Returns that reply, e.g. "Approved 0123456789ab".
+ */
+export function findApprovalHoldReply(lastAssistantMessage: string): string | null {
+	return /\bApproved?\s+[0-9a-f]{12}\b/.exec(lastAssistantMessage)?.[0] ?? null;
+}

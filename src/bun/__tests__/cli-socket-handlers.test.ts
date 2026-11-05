@@ -876,6 +876,19 @@ describe("task.agentHook", () => {
 		},
 	);
 
+	it("parks a Codex Stop that waits on an approval reply in user-questions and names the reply", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress" });
+		mockAtomicHookUpdate(project, task);
+
+		const response = await handleRequest(makeRequest("task.agentHook", {
+			taskId: task.id, projectId: project.id, sessionId: "approval-hold", event: "Stop", approvalHold: "Approved 0123456789ab",
+		}));
+
+		expect((response.data as Task).status).toBe("user-questions");
+		expect(notifyFromCliDesktop).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining("Approved 0123456789ab") }));
+	});
+
 	it.each(["Interrupt", "SessionEnd"])("releases a blocking question on %s", async event => {
 		const project = makeProject();
 		let task = makeTask({ status: "in-progress" });

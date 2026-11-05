@@ -166,10 +166,38 @@ describe("handleCodexHook", () => {
 			sessionId: "session-3",
 			prompt: "rebase and push",
 			turnId: "turn-8",
+			// Only the path travels; the app tails it for an errored turn end.
+			transcriptPath: "/tmp/rollout.jsonl",
 		}, { timeoutMs: 3_000, connectAttempts: 2, retryDelayMs: 50 });
-		// The rollout transcript is never read: that would be conversation capture,
-		// not one submission.
-		expect(JSON.stringify(mockSend.mock.calls[0]![2])).not.toContain("rollout");
+	});
+
+	it("flags a Stop whose final message asks the user to type an approval reply", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
+
+		await handleCodexHook(
+			JSON.stringify({
+				hook_event_name: "Stop",
+				session_id: "s",
+				last_assistant_message: "A security hook blocked the write.\n\nReply **`Approved 0123456789ab`** to allow it.",
+			}),
+			SOCKET,
+			CONTEXT,
+		);
+
+		expect(mockSend.mock.calls[0]![2]).toMatchObject({ event: "Stop", approvalHold: "Approved 0123456789ab" });
+		expect(stdout).toBe("{}");
+	});
+
+	it("sends no approval hold for an ordinary final message", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
+
+		await handleCodexHook(
+			JSON.stringify({ hook_event_name: "Stop", session_id: "s", last_assistant_message: "Done; the change is approved by CI." }),
+			SOCKET,
+			CONTEXT,
+		);
+
+		expect(mockSend.mock.calls[0]![2]).not.toHaveProperty("approvalHold");
 	});
 
 	it("carries no prompt on the other lifecycle events", async () => {
