@@ -17,9 +17,10 @@
  *   locally authenticated `codex app-server`; this is cached and optional.
  */
 
+import type { ProviderUsageSource } from "./model-catalog";
 import type { AgentSessionStats } from "./session-stats";
 
-export type RateLimitSource = "claude" | "codex";
+export type RateLimitSource = "claude" | "codex" | "kimi";
 
 export interface RateLimitWindow {
 	/** Stable window id, e.g. "five_hour", "seven_day", "primary", "secondary". */
@@ -58,6 +59,8 @@ export interface AgentRateLimitSnapshot {
 	/** Claude only: the `CLAUDE_CONFIG_DIR` a project pinned for the session that
 	 *  produced this reading. Absent for `~/.claude` and for managed accounts. */
 	configDir?: string;
+	/** Kimi only: the catalog provider whose key and base URL produced this reading. */
+	providerId?: string;
 	/** When this data was captured locally (epoch ms). */
 	capturedAt: number;
 	/** When the provider session was active. Live Codex enrichment may be read
@@ -78,6 +81,9 @@ export interface AgentRateLimitsReport {
 	snapshots: AgentRateLimitSnapshot[];
 	/** Recent Claude sessions of live tasks, newest first. */
 	sessions?: AgentSessionStats[];
+	/** Catalog providers the user opted into usage tracking, so the panel can
+	 *  show a row before the first reading arrives. */
+	usageProviders?: Array<{ id: string; label: string; source: ProviderUsageSource }>;
 	generatedAt: number;
 }
 
@@ -103,6 +109,7 @@ export function isRateLimitSnapshotRecent(snapshot: AgentRateLimitSnapshot, nowM
 /** Identity of the login behind a snapshot: managed account, pinned dir, or system. */
 export function rateLimitLoginKey(snapshot: AgentRateLimitSnapshot): string {
 	const base = `${snapshot.source}:${snapshot.accountId ?? "system"}`;
+	if (snapshot.providerId) return `${base}:provider:${snapshot.providerId}`;
 	return snapshot.configDir ? `${base}:dir:${snapshot.configDir}` : base;
 }
 
@@ -139,16 +146,19 @@ export function hasReportedLimits(snapshot: AgentRateLimitSnapshot): boolean {
 }
 
 /** The newest account snapshot that reported limits; limit-less readings are skipped
- *  so they cannot blank the header pill another account's limits feed. */
+ *  so they cannot blank the header pill another account's limits feed. Kimi is polled,
+ *  not used, so it feeds the pill only when no Claude or Codex reading exists. */
 export function latestRateLimitSnapshot(report: AgentRateLimitsReport): AgentRateLimitSnapshot | null {
 	let latest: AgentRateLimitSnapshot | null = null;
+	let latestKimi: AgentRateLimitSnapshot | null = null;
 	for (const snapshot of report.snapshots) {
 		if (!hasReportedLimits(snapshot)) continue;
-		if (!latest || rateLimitActivityAt(snapshot) > rateLimitActivityAt(latest)) {
-			latest = snapshot;
-		}
+		const current = snapshot.source === "kimi" ? latestKimi : latest;
+		if (current && rateLimitActivityAt(snapshot) <= rateLimitActivityAt(current)) continue;
+		if (snapshot.source === "kimi") latestKimi = snapshot;
+		else latest = snapshot;
 	}
-	return latest;
+	return latest ?? latestKimi;
 }
 
 /**
@@ -222,6 +232,8 @@ export function windowLabel(w: RateLimitWindow): string {
 			return "monthly credits";
 		case "spend_limit":
 			return "spend";
+		case "monthly":
+			return "1mo";
 	}
 	if (w.windowMinutes != null) {
 		const mins = w.windowMinutes;
@@ -395,6 +407,52 @@ export function parseCodexAppServerRateLimits(rateLimits: unknown, capturedAt: n
 	return { source: "codex", capturedAt, activeAt: capturedAt, windows, creditsBalance, monthlyCredits, planType };
 }
 
+function parseKimiReset(v: unknown): number | null {
+	const ms = typeof v === "string" ? Date.parse(v) : NaN;
+	return Number.isFinite(ms) ? ms : null;
+}
+
+/** One `usages.<key>` entry: `used_ratio` (0–1) and an ISO `reset_time`. */
+function kimiUsageWindow(entry: unknown, id: string, windowMinutes: number | null): RateLimitWindow | null {
+	const record = asRecord(entry);
+	const ratio = asNumeric(record?.used_ratio);
+	if (!record || ratio == null) return null;
+	return { id, usedPercent: ratio * 100, resetsAt: parseKimiReset(record.reset_time), windowMinutes };
+}
+
+/** The 5-hour window from the `limits[]` list, for responses without `usages.limit_5h`. */
+function kimiLimitsFiveHour(limits: unknown): RateLimitWindow | null {
+	if (!Array.isArray(limits)) return null;
+	for (const item of limits) {
+		const entry = asRecord(item);
+		const window = asRecord(entry?.window);
+		if (asNumeric(window?.duration) !== 300 || window?.timeUnit !== "TIME_UNIT_MINUTE") continue;
+		const detail = asRecord(entry?.detail);
+		const limit = asNumeric(detail?.limit);
+		const used = asNumeric(detail?.used);
+		if (limit == null || limit <= 0 || used == null) continue;
+		return { id: "five_hour", usedPercent: (used / limit) * 100, resetsAt: parseKimiReset(detail?.resetTime), windowMinutes: 300 };
+	}
+	return null;
+}
+
+/**
+ * Parse the undocumented Kimi Code `GET /v1/usages` response: a 5-hour window
+ * (`usages.limit_5h`, else the 300-minute `limits[]` entry) and a monthly one
+ * (`usages.limit_month_total`). Null when neither is present.
+ */
+export function parseKimiUsage(payload: unknown, capturedAt: number): AgentRateLimitSnapshot | null {
+	const root = asRecord(payload);
+	if (!root) return null;
+	const usages = asRecord(root.usages);
+	const windows = [
+		kimiUsageWindow(usages?.limit_5h, "five_hour", 300) ?? kimiLimitsFiveHour(root.limits),
+		kimiUsageWindow(usages?.limit_month_total, "monthly", null),
+	].filter((w): w is RateLimitWindow => w != null);
+	if (windows.length === 0) return null;
+	return { source: "kimi", capturedAt, activeAt: capturedAt, windows, creditsBalance: null, monthlyCredits: null, planType: null };
+}
+
 /** Merge a fresh app-server snapshot over the rollout fallback without losing rollout-only windows. */
 export function mergeCodexRateLimitSnapshots(
 	rollout: AgentRateLimitSnapshot | null,
@@ -444,6 +502,7 @@ export function extractCodexSnapshotFromRolloutLines(lines: string[]): AgentRate
 export function worstWindow(report: AgentRateLimitsReport): { source: RateLimitSource; window: RateLimitWindow } | null {
 	let worst: { source: RateLimitSource; window: RateLimitWindow } | null = null;
 	for (const snap of report.snapshots) {
+		if (snap.source === "kimi") continue;
 		for (const win of snap.windows) {
 			if (!worst || win.usedPercent > worst.window.usedPercent) {
 				worst = { source: snap.source, window: win };

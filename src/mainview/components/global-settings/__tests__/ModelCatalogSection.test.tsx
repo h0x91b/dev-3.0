@@ -445,3 +445,47 @@ describe("the live model list", () => {
 		expect(await screen.findByText("catalog.listUnavailable")).toBeTruthy();
 	});
 });
+
+describe("usage limits tracking", () => {
+	const custom = (usageSource?: "kimi-code"): ModelCatalogView => ({
+		providers: [{ id: "p-kimi", kind: "custom", label: "Kimi", baseUrl: "https://api.example.test/coding/", hasKey: true, usageSource }],
+		models: [],
+	});
+
+	async function savedProvider() {
+		await userEvent.click(await screen.findByRole("button", { name: "catalog.save" }));
+		await waitFor(() => expect(api.request.modelCatalogSave).toHaveBeenCalled());
+		return vi.mocked(api.request.modelCatalogSave).mock.calls[0][0].catalog.providers[0];
+	}
+
+	it("opts a custom provider in to Kimi Code limits", async () => {
+		vi.mocked(api.request.modelCatalogGet).mockResolvedValue(custom());
+		renderSection();
+		await userEvent.click(await screen.findByRole("combobox", { name: "catalog.usageSourceLabel" }));
+		await userEvent.click(await screen.findByRole("option", { name: "catalog.usageSource.kimi-code" }));
+		expect((await savedProvider()).usageSource).toBe("kimi-code");
+	});
+
+	it("takes the field away again when set back to not tracked", async () => {
+		vi.mocked(api.request.modelCatalogGet).mockResolvedValue(custom("kimi-code"));
+		renderSection();
+		await userEvent.click(await screen.findByRole("combobox", { name: "catalog.usageSourceLabel" }));
+		await userEvent.click(await screen.findByRole("option", { name: "catalog.usageSource.none" }));
+		expect((await savedProvider()).usageSource).toBeUndefined();
+	});
+
+	it("clears the field when the provider stops being custom", async () => {
+		vi.mocked(api.request.modelCatalogGet).mockResolvedValue(custom("kimi-code"));
+		renderSection();
+		await userEvent.click(await screen.findByRole("combobox", { name: "catalog.providerKind" }));
+		await userEvent.click(await screen.findByRole("option", { name: "catalog.kind.openai" }));
+		expect((await savedProvider()).usageSource).toBeUndefined();
+	});
+
+	it("offers the control on custom providers only", async () => {
+		renderSection();
+		await screen.findByText("OpenRouter");
+		expect(screen.queryByRole("combobox", { name: "catalog.usageSourceLabel" })).toBeNull();
+	});
+});
+

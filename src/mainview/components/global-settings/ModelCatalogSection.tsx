@@ -3,12 +3,14 @@ import type { CodingAgent, ModelCatalogView, ModelSidecarStatus } from "../../..
 import {
 	CATALOG_PROVIDER_KINDS,
 	CUSTOM_API_FORMATS,
+	PROVIDER_USAGE_SOURCES,
 	isValidCatalogModelName,
 	modelUsesExtendedContext,
 	sidecarProviderKey,
 	validateCatalog,
 	type CatalogProviderKind,
 	type CustomApiFormat,
+	type ProviderUsageSource,
 } from "../../../shared/model-catalog";
 import { randomUUID } from "../../uuid";
 import Select, { type SelectOption } from "../Select";
@@ -273,7 +275,9 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 	const changeProviderKind = (id: string, kind: CatalogProviderKind) => {
 		const current = draft.providers.find((p) => p.id === id);
 		const untouched = !current || CATALOG_PROVIDER_KINDS.some((k) => current.label === kindLabel(k));
-		patchProvider(id, untouched ? { kind, label: kindLabel(kind) } : { kind });
+		// Usage tracking reads a custom endpoint's own base URL; no other kind has one.
+		const patch = untouched ? { kind, label: kindLabel(kind) } : { kind };
+		patchProvider(id, kind === "custom" ? patch : { ...patch, usageSource: undefined });
 	};
 
 	const removeProvider = async (id: string) => {
@@ -543,6 +547,25 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 														label: t(`connect.apiFormat.${format}` as Parameters<TFunction>[0]),
 													}))}
 													onChange={(value) => patchProvider(provider.id, { apiFormat: value as CustomApiFormat })}
+												/>
+												</div>
+												<div className="mt-1.5">
+												<Select
+													id={`provider-usage-${provider.id}`}
+													ariaLabel={t("catalog.usageSourceLabel")}
+													value={provider.usageSource ?? "none"}
+													options={[
+														{ value: "none", label: t("catalog.usageSource.none") },
+														...PROVIDER_USAGE_SOURCES.map((source) => ({
+															value: source,
+															label: t(`catalog.usageSource.${source}` as Parameters<TFunction>[0]),
+														})),
+													]}
+													onChange={(value) =>
+														patchProvider(provider.id, {
+															usageSource: value === "none" ? undefined : (value as ProviderUsageSource),
+														})
+													}
 												/>
 												</div>
 											</>
