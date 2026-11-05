@@ -87,10 +87,6 @@ export type ClaudeSlotModels = Partial<Record<ClaudeModelSlot, ClaudeSlotModel>>
  *  launch is not enough, they must be explicitly removed. */
 export const ENV_UNSET = "\u0000dev3:unset\u0000";
 
-/** Internal marker carried into launched Claude sessions so local statusline
- * telemetry can attribute a snapshot to the managed account that produced it. */
-export const DEV3_AGENT_ACCOUNT_ID_ENV = "DEV3_AGENT_ACCOUNT_ID";
-
 /** Every fixed env var the Claude API-profile mechanism can set. When the
  *  active selection does not set one of these, it is actively unset so a value
  *  leaked from a previously active profile (or the ambient shell) cannot hijack
@@ -132,6 +128,9 @@ export interface AgentAccountIdentity {
 	accountId: string | null;
 	/** Codex only: the person's `chatgpt_user_id`, when the id_token carries it. */
 	userId?: string | null;
+	/** Claude only: `organizationUuid`. One person (`accountId`) can sign in to
+	 *  several orgs with one email, and org names are not unique. */
+	organizationId?: string | null;
 }
 
 export interface AgentAccount {
@@ -308,7 +307,16 @@ export function parseClaudeIdentity(claudeJson: unknown): AgentAccountIdentity |
 		plan,
 		planLabel: claudePlanLabel(plan),
 		accountId: asString(oauth.accountUuid),
+		organizationId: asString(oauth.organizationUuid),
 	};
+}
+
+/** Whether two Claude identities are one login: the same person in the same org.
+ *  The org uuid decides when both carry it; the name is only a fallback. */
+export function sameClaudeLogin(a: AgentAccountIdentity | null | undefined, b: AgentAccountIdentity | null | undefined): boolean {
+	if (!a?.accountId || a.accountId !== b?.accountId) return false;
+	if (a.organizationId && b.organizationId) return a.organizationId === b.organizationId;
+	return (a.organization ?? null) === (b.organization ?? null);
 }
 
 /** Decode a JWT payload without verifying the signature (local trust, display only). */

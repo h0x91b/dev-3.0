@@ -6,6 +6,7 @@ import type { Project, Task, TaskStatus } from "../../shared/types";
 import { parseClaudeSessionStats } from "../../shared/session-stats";
 import {
 	attachTaskIdentity,
+	attributeManagedConfigDir,
 	buildClaudeManagedSettings,
 	findLatestCodexRollout,
 	readClaudeSessionDumps,
@@ -243,5 +244,20 @@ describe("attachTaskIdentity", () => {
 			},
 		});
 		expect(out.map((s) => s.taskId)).toEqual(["x"]);
+	});
+});
+
+describe("attributeManagedConfigDir", () => {
+	const dev3Home = "/u/.dev3.0";
+	const base = { source: "claude" as const, capturedAt: 1, windows: [], creditsBalance: null, monthlyCredits: null, planType: null };
+
+	it("turns a config-dir dump of a managed account's own dir into that account's reading", () => {
+		const snap = { ...base, accountId: null, configDir: `${dev3Home}/agent-accounts/claude/acc-1` };
+		expect(attributeManagedConfigDir(snap, dev3Home)).toEqual({ ...base, accountId: "acc-1" });
+	});
+
+	it("leaves a real project pin alone", () => {
+		const snap = { ...base, accountId: null, configDir: "/work/proj/.claude" };
+		expect(attributeManagedConfigDir(snap, dev3Home)).toBe(snap);
 	});
 });

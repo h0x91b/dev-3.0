@@ -67,7 +67,6 @@ import type {
 import {
 	ACCOUNT_LOGIN_ENDED_MESSAGE,
 	CLAUDE_MODEL_SLOTS,
-	DEV3_AGENT_ACCOUNT_ID_ENV,
 	ENV_UNSET,
 	claudeApiProfileEnvKeys,
 	defaultAccountLabel,
@@ -75,6 +74,7 @@ import {
 	AGENT_DIR_ACCOUNT_KINDS,
 	isAgentDirAccountKind,
 	parseClaudeIdentity,
+	sameClaudeLogin,
 	parseCodexIdentity,
 	parseOmpAccounts,
 	parsePiAuthLogins,
@@ -889,10 +889,6 @@ export async function getActiveClaudeSessionEnv(
 			}
 		}
 	}
-	// This is deliberately unset for the system login, so a long-lived tmux
-	// server cannot attribute a later system-login session to the account that
-	// was selected before it.
-	env[DEV3_AGENT_ACCOUNT_ID_ENV] = selected ? selected.entry.id : ENV_UNSET;
 	for (const key of collectClearableEnvKeys(registry, paths)) {
 		if (!(key in env)) env[key] = ENV_UNSET;
 	}
@@ -1170,8 +1166,7 @@ function assertNoDuplicate(
 		const isDuplicate =
 			kind === "codex"
 				? existing?.accountId === identity.accountId
-				: existing?.accountId === identity.accountId &&
-					(existing.organization ?? null) === (identity.organization ?? null);
+				: sameClaudeLogin(existing, identity);
 		if (!isDuplicate) continue;
 		if (kind === "codex") {
 			const workspaceId = shortCodexWorkspaceId(identity);
