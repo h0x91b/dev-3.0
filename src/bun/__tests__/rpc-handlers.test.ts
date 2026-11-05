@@ -8044,7 +8044,7 @@ describe("handlers.setTaskLabels", () => {
 
 		const result = await handlers.setTaskLabels({ taskId: "task-1", projectId: "proj-1", labelIds: ["l1", "l2"] });
 		expect(result.labelIds).toEqual(["l1", "l2"]);
-		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { labelIds: ["l1", "l2"] });
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { labelIds: ["l1", "l2"], userLabelIds: ["l1", "l2"] });
 	});
 });
 

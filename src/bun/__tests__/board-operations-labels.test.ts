@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { Label } from "../../shared/types";
+import { USER_ACTOR, AGENT_ACTOR } from "../board-operations/types";
 import { createBoard, makeTask, recordingPorts, type Board } from "./board-operations-harness";
 
 // Labels through the shared operation, on a real temp board: real data.ts, real
@@ -29,9 +30,9 @@ describe("board operations — task labels", () => {
 		const { labels, data } = await ops();
 		const ports = recordingPorts();
 
-		const set = await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "replace", labelIds: ["lbl-a", "lbl-a"] });
-		const add = await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "add", labelIds: ["lbl-b", "lbl-a"] });
-		const remove = await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "remove", labelIds: ["lbl-a"] });
+		const set = await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "replace", labelIds: ["lbl-a", "lbl-a"] }, USER_ACTOR);
+		const add = await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "add", labelIds: ["lbl-b", "lbl-a"] }, USER_ACTOR);
+		const remove = await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "remove", labelIds: ["lbl-a"] }, USER_ACTOR);
 
 		expect([set, add, remove].map((r) => r.verdict)).toEqual(["applied", "applied", "applied"]);
 		expect(set.task.labelIds).toEqual(["lbl-a"]);
@@ -46,9 +47,9 @@ describe("board operations — task labels", () => {
 		const ports = recordingPorts();
 		const inode = board.tasksInode();
 
-		await expect(labels.changeTaskLabels(ports, board.project, "task-1", { mode: "replace", labelIds: ["lbl-a", "ghost"] }))
+		await expect(labels.changeTaskLabels(ports, board.project, "task-1", { mode: "replace", labelIds: ["lbl-a", "ghost"] }, USER_ACTOR))
 			.rejects.toThrow("Label not found: ghost");
-		await expect(labels.changeTaskLabels(ports, board.project, "task-1", { mode: "add", labelIds: ["ghost"] }))
+		await expect(labels.changeTaskLabels(ports, board.project, "task-1", { mode: "add", labelIds: ["ghost"] }, USER_ACTOR))
 			.rejects.toBeInstanceOf(labels.UnknownLabelError);
 
 		expect(board.tasksInode()).toBe(inode);
@@ -61,7 +62,7 @@ describe("board operations — task labels", () => {
 		const ports = recordingPorts();
 
 		// The GUI sends the whole set minus the chip it removed, dangling id included.
-		const result = await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "replace", labelIds: ["gone"] });
+		const result = await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "replace", labelIds: ["gone"] }, USER_ACTOR);
 
 		expect(result.verdict).toBe("applied");
 		expect(result.task.labelIds).toEqual(["gone"]);
@@ -73,15 +74,78 @@ describe("board operations — task labels", () => {
 		const ports = recordingPorts();
 		const inode = board.tasksInode();
 
-		const same = await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "replace", labelIds: ["lbl-a", "lbl-b"] });
-		const addExisting = await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "add", labelIds: ["lbl-b"] });
+		const same = await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "replace", labelIds: ["lbl-a", "lbl-b"] }, USER_ACTOR);
+		const addExisting = await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "add", labelIds: ["lbl-b"] }, USER_ACTOR);
 		expect([same.verdict, addExisting.verdict]).toEqual(["noop", "noop"]);
 		expect(board.tasksInode()).toBe(inode);
 		expect(ports.pushes).toEqual([]);
 
-		const reordered = await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "replace", labelIds: ["lbl-b", "lbl-a"] });
+		const reordered = await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "replace", labelIds: ["lbl-b", "lbl-a"] }, USER_ACTOR);
 		expect(reordered.verdict).toBe("applied");
 		expect(board.tasksInode()).not.toBe(inode);
+	});
+});
+
+describe("board operations — the user's labels survive an agent", () => {
+	it("an agent's replace (the session-start `label set`) keeps the label the user picked", async () => {
+		board = await createBoard({ labels: LABELS });
+		const { labels, data } = await ops();
+		const ports = recordingPorts();
+
+		await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "replace", labelIds: ["lbl-a"] }, USER_ACTOR);
+		const agent = await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "replace", labelIds: ["lbl-b"] }, AGENT_ACTOR);
+
+		expect(agent.task.labelIds).toEqual(["lbl-a", "lbl-b"]);
+		const stored = await data.getTask(board.project, "task-1");
+		expect(stored.labelIds).toEqual(["lbl-a", "lbl-b"]);
+		expect(stored.userLabelIds).toEqual(["lbl-a"]);
+	});
+
+	it("an agent's clear drops only its own labels; naming the user's label in remove takes it off", async () => {
+		board = await createBoard({ labels: LABELS });
+		const { labels } = await ops();
+		const ports = recordingPorts();
+
+		await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "replace", labelIds: ["lbl-a"] }, USER_ACTOR);
+		await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "add", labelIds: ["lbl-b"] }, AGENT_ACTOR);
+		const cleared = await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "replace", labelIds: [] }, AGENT_ACTOR);
+		expect(cleared.task.labelIds).toEqual(["lbl-a"]);
+
+		const removed = await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "remove", labelIds: ["lbl-a"] }, AGENT_ACTOR);
+		expect(removed.task.labelIds).toEqual([]);
+		expect(removed.task.userLabelIds).toEqual([]);
+	});
+
+	it("a label an agent added stays the agent's when the user re-sends the whole set from a chip toggle", async () => {
+		board = await createBoard({ labels: LABELS });
+		const { labels } = await ops();
+		const ports = recordingPorts();
+
+		await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "add", labelIds: ["lbl-b"] }, AGENT_ACTOR);
+		const user = await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "replace", labelIds: ["lbl-b", "lbl-a"] }, USER_ACTOR);
+		expect(user.task.userLabelIds).toEqual(["lbl-a"]);
+
+		const agent = await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "replace", labelIds: [] }, AGENT_ACTOR);
+		expect(agent.task.labelIds).toEqual(["lbl-a"]);
+	});
+
+	it("a task written before provenance existed treats every label on it as the user's", async () => {
+		board = await createBoard({ labels: LABELS, tasks: [makeTask({ labelIds: ["lbl-a"] })] });
+		const { labels } = await ops();
+		const ports = recordingPorts();
+
+		const agent = await labels.changeTaskLabels(ports, board.project, "task-1", { mode: "replace", labelIds: ["lbl-b"] }, AGENT_ACTOR);
+		expect(agent.task.labelIds).toEqual(["lbl-a", "lbl-b"]);
+	});
+
+	it("deleting a project label also drops it from the task's user-owned set", async () => {
+		board = await createBoard({ labels: LABELS, tasks: [makeTask({ labelIds: ["lbl-a", "lbl-b"], userLabelIds: ["lbl-a"] })] });
+		const { labels, data } = await ops();
+
+		await labels.deleteLabel(recordingPorts(), "proj-1", "lbl-a");
+		const stored = await data.getTask(board.project, "task-1");
+		expect(stored.labelIds).toEqual(["lbl-b"]);
+		expect(stored.userLabelIds).toEqual([]);
 	});
 });
 

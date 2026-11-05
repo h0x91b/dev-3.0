@@ -55,7 +55,7 @@ export const BOARD_COPY_TASK_FIELDS = [
 	"titleEditedByUser", "status", "priority", "baseBranch", "branchName", "existingBranch",
 	"prNumber", "prUrl", "pullRequests", "reviewedPr", "groupId", "variantIndex", "relations",
 	"agentId", "configId", "createdAt", "updatedAt", "movedAt", "lifecycleStartedAt", "labelIds",
-	"notes", "review", "customColumnId", "history", "movements", "movementsDropped", "watched",
+	"userLabelIds", "notes", "review", "customColumnId", "history", "movements", "movementsDropped", "watched",
 	"manualCompletion", "draft", "hidden", "foreignCode", "taskType", "completedDiffStats", "origin",
 	"statusDurations", "statusEnteredAt", "focusMs", "focusByHour",
 ] as const satisfies readonly (keyof Task)[];
