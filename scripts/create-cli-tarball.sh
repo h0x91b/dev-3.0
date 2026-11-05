@@ -11,6 +11,7 @@ set -euo pipefail
 # Inputs:
 #   ./dist/dev3                      — produced by `bun run build:cli`
 #   ./dist/index.html, ./dist/assets — produced by `bunx vite build`
+#   ./dist/workers                   — produced by `bun run build:cli`
 #
 # Output: ./artifacts-<os>-<arch>/dev3-cli-<os>-<arch>.tar.gz
 #
@@ -18,6 +19,7 @@ set -euo pipefail
 #   ./dev3                ← compiled CLI + headless server (one binary)
 #   ./dist/index.html     ← UI entry
 #   ./dist/assets/...     ← UI assets
+#   ./dist/workers/...    ← worker-thread bundles (daily cleanup, handoff, clonefile)
 #   ./artifact-template/  ← canonical dev3 HTML artifact starter
 #   ./tmux/tmux           ← bundled self-contained tmux (macOS only)
 #   ./tmux/licenses/...   ← third-party license notices for the bundled tmux
@@ -42,6 +44,14 @@ if [ ! -f ./dist/index.html ]; then
   exit 1
 fi
 
+# The headless server loads its worker threads from dist/workers; without them the
+# daily task-file cleanup never runs and the handoff falls back to the host thread.
+if [ ! -f ./dist/workers/worktree-cleanup-worker.js ]; then
+  echo "::error::dist/workers missing — run \`bun run build:cli\` first"
+  ls -lh ./dist/workers 2>/dev/null || true
+  exit 1
+fi
+
 mkdir -p "$OUT_DIR" "$STAGE_DIR/dist"
 
 cp ./dist/dev3 "$STAGE_DIR/dev3"
@@ -49,6 +59,7 @@ chmod 0755 "$STAGE_DIR/dev3"
 
 cp ./dist/index.html "$STAGE_DIR/dist/"
 [ -d ./dist/assets ] && cp -r ./dist/assets "$STAGE_DIR/dist/assets"
+cp -r ./dist/workers "$STAGE_DIR/dist/workers"
 cp -r ./src/assets/artifact-template "$STAGE_DIR/artifact-template"
 
 # macOS tarballs MUST carry the bundled tmux (decisions/2026/07/16/bundle-tmux-macos.md) — brew-less and
