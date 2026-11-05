@@ -216,14 +216,37 @@ describe("saveSettings", () => {
 	});
 
 	// Opt-in: an install that never chose must stay silent on every agent turn.
-	it("defaults the needs-you chime to off and stores only an explicit opt-in", async () => {
-		expect((await loadSettings()).playSoundOnTaskNeedsYou).toBeUndefined();
+	it("defaults both needs-you chimes to off and stores only an explicit opt-in", async () => {
+		const loaded = await loadSettings();
+		expect(loaded.playSoundOnTaskQuestions).toBeUndefined();
+		expect(loaded.playSoundOnTaskReview).toBeUndefined();
 
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ playSoundOnTaskNeedsYou: true }), null, 2), "utf-8");
-		expect((await loadSettings()).playSoundOnTaskNeedsYou).toBe(true);
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ playSoundOnTaskQuestions: true, playSoundOnTaskReview: false }), null, 2), "utf-8");
+		const split = await loadSettings();
+		expect(split.playSoundOnTaskQuestions).toBe(true);
+		expect(split.playSoundOnTaskReview).toBeUndefined();
+	});
 
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ playSoundOnTaskNeedsYou: false }), null, 2), "utf-8");
-		expect((await loadSettings()).playSoundOnTaskNeedsYou).toBeUndefined();
+	it("migrates the legacy needs-you toggle into both new toggles", async () => {
+		const write = (s: Record<string, unknown>) =>
+			writeFileSync(settingsPath, JSON.stringify(makeSettings(s as Partial<GlobalSettings>), null, 2), "utf-8");
+
+		write({ playSoundOnTaskNeedsYou: true });
+		const on = await loadSettings();
+		expect(on.playSoundOnTaskQuestions).toBe(true);
+		expect(on.playSoundOnTaskReview).toBe(true);
+		expect(on).not.toHaveProperty("playSoundOnTaskNeedsYou");
+
+		write({ playSoundOnTaskNeedsYou: false });
+		const off = await loadSettings();
+		expect(off.playSoundOnTaskQuestions).toBeUndefined();
+		expect(off.playSoundOnTaskReview).toBeUndefined();
+
+		// A choice made on the new toggles wins over the legacy value.
+		write({ playSoundOnTaskNeedsYou: true, playSoundOnTaskReview: false });
+		const chosen = await loadSettings();
+		expect(chosen.playSoundOnTaskQuestions).toBe(true);
+		expect(chosen.playSoundOnTaskReview).toBeUndefined();
 	});
 
 	// The dev3 template is the default, so only the two other modes are stored.
@@ -399,7 +422,8 @@ describe("saveSettings", () => {
 			lowBatteryDisabled: true,
 			lowBatteryAnnounced: true,
 			playSoundOnTaskComplete: false,
-			playSoundOnTaskNeedsYou: true,
+			playSoundOnTaskQuestions: true,
+			playSoundOnTaskReview: true,
 			externalApps: [{ id: "x", name: "X", macAppName: "X" }],
 			tipsDisabled: true,
 			telemetryDisabled: true,

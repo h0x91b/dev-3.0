@@ -9,14 +9,16 @@ export default function NotificationSettingsSection({
 	t,
 	globalSettings,
 	onSoundToggle,
-	onNeedsYouSoundToggle,
+	onQuestionsSoundToggle,
+	onReviewSoundToggle,
 	onFocusModeToggle,
 	onWatchByDefaultToggle,
 }: {
 	t: TFunction;
 	globalSettings: GlobalSettings;
 	onSoundToggle: (enabled: boolean) => void;
-	onNeedsYouSoundToggle: (enabled: boolean) => void;
+	onQuestionsSoundToggle: (enabled: boolean) => void;
+	onReviewSoundToggle: (enabled: boolean) => void;
 	onFocusModeToggle: (enabled: boolean) => void;
 	onWatchByDefaultToggle: (enabled: boolean) => void;
 }) {
@@ -77,19 +79,37 @@ export default function NotificationSettingsSection({
 				</div>
 			</SettingsEntry>
 
-			<SettingsEntry anchor="task-needs-you-sound">
+			<SettingsEntry anchor="task-questions-sound">
 				<div>
 					<p className="block text-fg text-sm font-semibold mb-2">
-						{t("settings.taskNeedsYouSound")}
+						{t("settings.taskQuestionsSound")}
 					</p>
-					<p className="text-fg-3 text-sm mb-3">{t("settings.taskNeedsYouSoundDesc")}</p>
+					<p className="text-fg-3 text-sm mb-3">{t("settings.taskQuestionsSoundDesc")}</p>
 					<SettingsToggle
-						checked={globalSettings.playSoundOnTaskNeedsYou === true}
-						ariaLabel={t("settings.taskNeedsYouSound")}
+						checked={globalSettings.playSoundOnTaskQuestions === true}
+						ariaLabel={t("settings.taskQuestionsSound")}
 						onLabel={t("settings.on")}
 						offLabel={t("settings.off")}
 						onToggle={() =>
-							onNeedsYouSoundToggle(globalSettings.playSoundOnTaskNeedsYou !== true)
+							onQuestionsSoundToggle(globalSettings.playSoundOnTaskQuestions !== true)
+						}
+					/>
+				</div>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="task-review-sound">
+				<div>
+					<p className="block text-fg text-sm font-semibold mb-2">
+						{t("settings.taskReviewSound")}
+					</p>
+					<p className="text-fg-3 text-sm mb-3">{t("settings.taskReviewSoundDesc")}</p>
+					<SettingsToggle
+						checked={globalSettings.playSoundOnTaskReview === true}
+						ariaLabel={t("settings.taskReviewSound")}
+						onLabel={t("settings.on")}
+						offLabel={t("settings.off")}
+						onToggle={() =>
+							onReviewSoundToggle(globalSettings.playSoundOnTaskReview !== true)
 						}
 					/>
 				</div>

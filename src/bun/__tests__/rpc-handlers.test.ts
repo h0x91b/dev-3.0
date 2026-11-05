@@ -3296,7 +3296,7 @@ describe("handlers.moveTask", () => {
 		emitTaskSound("review-by-user", "task-3");
 		expect(push).not.toHaveBeenCalled();
 
-		vi.mocked(loadSettingsSync).mockReturnValue({ playSoundOnTaskComplete: false, playSoundOnTaskNeedsYou: true } as any);
+		vi.mocked(loadSettingsSync).mockReturnValue({ playSoundOnTaskComplete: false, playSoundOnTaskQuestions: true } as any);
 		emitTaskSound("user-questions", "task-3");
 		emitTaskSound("completed", "task-3");
 		expect(push.mock.calls).toEqual([["taskSound", { status: "user-questions", taskId: "task-3" }]]);

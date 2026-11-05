@@ -181,7 +181,9 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		agentCustomBinaryPaths: d.agentCustomBinaryPaths ?? undefined,
 		strictAgentCustomBinaryPaths: d.strictAgentCustomBinaryPaths ?? undefined,
 		playSoundOnTaskComplete: d.playSoundOnTaskComplete ?? true,
-		playSoundOnTaskNeedsYou: d.playSoundOnTaskNeedsYou === true ? true : undefined,
+		// Split from the legacy `playSoundOnTaskNeedsYou`, which seeds both until either is saved.
+		playSoundOnTaskQuestions: (d.playSoundOnTaskQuestions ?? d.playSoundOnTaskNeedsYou) === true ? true : undefined,
+		playSoundOnTaskReview: (d.playSoundOnTaskReview ?? d.playSoundOnTaskNeedsYou) === true ? true : undefined,
 		externalApps: Array.isArray(d.externalApps) ? d.externalApps : undefined,
 		tipsDisabled: d.tipsDisabled === true ? true : undefined,
 		// Default-off opt-out — only an explicit true silences telemetry.
