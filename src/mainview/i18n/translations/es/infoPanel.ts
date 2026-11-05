@@ -11,6 +11,8 @@ const infoPanel = {
 	"infoPanel.createdByDeleted": "una tarea (eliminada)",
 	"infoPanel.createdByAutomation": "una automatización",
 	"infoPanel.createdByImport": "una importación de conversación",
+	"infoPanel.createdBySender": "el remitente externo {label} ({id})",
+	"infoPanel.createdBySenderViaNetwork": "el remitente externo {label} ({id}) por red, token MCP {token}",
 	"infoPanel.updated": "Actualizado",
 	"infoPanel.collapse": "Contraer panel",
 	"infoPanel.expand": "Expandir panel",

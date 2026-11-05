@@ -471,3 +471,13 @@ describe("getAgentRequestState / joinAgentRequest", () => {
 		expect(joinAgentRequest("cancel", "task-1")).toBeNull();
 	});
 });
+
+describe("joining across auto-approve policies", () => {
+	it("refuses, in both directions, so nobody inherits a countdown or loses one", () => {
+		createAgentRequest("launch", "task-policy-a", "p", { autoApproveAfterMs: 0 });
+		expect(() => createAgentRequest("launch", "task-policy-a", "p", { autoApproveAfterMs: 60_000 })).toThrow(/different auto-approve policy/);
+		createAgentRequest("launch", "task-policy-b", "p", { autoApproveAfterMs: 60_000 });
+		expect(() => createAgentRequest("launch", "task-policy-b", "p", { autoApproveAfterMs: 0 })).toThrow(/different auto-approve policy/);
+		expect(createAgentRequest("launch", "task-policy-b", "p", { autoApproveAfterMs: 60_000 }).requestId).toBeTruthy();
+	});
+});

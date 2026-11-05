@@ -2228,6 +2228,16 @@ describe("task move — agent asking to start another task", () => {
 		expect(stderrOutput).toContain("declined the launch request");
 	});
 
+	it("does not call a voided dialog a decline — the task changed another way", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: false, stale: true }));
+
+		await expect(
+			handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX),
+		).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_LAUNCH_DECLINED}`);
+		expect(stderrOutput).toContain("voided");
+		expect(stderrOutput).not.toContain("declined the launch request");
+	});
+
 	it("hands out one address per variant when the user launched a group", async () => {
 		// The seq is shared by the whole group, so quoting it as THE address would
 		// give the requester a handle the CLI rejects as ambiguous.
@@ -2528,5 +2538,64 @@ describe("epic flags", () => {
 		mockSend.mockResolvedValue(okResp({ ...created, epic: { id: "epicpay1-0000", name: "Payments v2", color: "#3b82f6", archived: true } }));
 		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
 		expect(stdoutOutput).toMatch(/Epic:\s*Payments v2 \(epicpay1\) — archived/);
+	});
+});
+
+// ─── --json on task create / update / move ───────────────────────────────────
+
+describe("task create|update|move --json", () => {
+	const TODO_TASK: Task = { ...FAKE_TASK, status: "todo", priority: "P1" };
+
+	it("create --json prints the mutation projection and nothing else on stdout", async () => {
+		mockSend.mockResolvedValueOnce(okResp(TODO_TASK));
+		await handleTask("create", args([], { title: "Fix the login bug", project: "proj-001", json: "true" }), SOCKET, null);
+		expect(JSON.parse(stdoutOutput)).toEqual({
+			schemaVersion: 1,
+			task: {
+				id: TODO_TASK.id, seq: 42, projectId: "proj-001", title: "Fix the login bug", status: "todo",
+				customColumnId: null, priority: "P1", taskType: null, manualCompletion: false, draft: false,
+			},
+		});
+	});
+
+	it("update --json adds titlePreserved and roleDelivery", async () => {
+		mockSend.mockResolvedValueOnce(okResp({ task: TODO_TASK, titlePreserved: true }));
+		await handleTask("update", args([TODO_TASK.id], { priority: "P1", json: "true" }), SOCKET, null);
+		const out = JSON.parse(stdoutOutput);
+		expect(out.task.priority).toBe("P1");
+		expect(out.titlePreserved).toBe(true);
+		expect(out.roleDelivery).toBeNull();
+	});
+
+	it("move --json prints the moved task", async () => {
+		mockSend.mockResolvedValueOnce(okResp({ ...FAKE_TASK, status: "review-by-user" }));
+		await handleTask("move", args([FAKE_TASK.id], { status: "review-by-user", json: "true" }), SOCKET, null);
+		expect(JSON.parse(stdoutOutput).task.status).toBe("review-by-user");
+	});
+
+	it("move --json prints a declined launch and exits with the decline code", async () => {
+		mockSend.mockImplementation(async (_s, method) => okResp(method === "task.move" ? { approved: false } : {}));
+		await expect(handleTask("move", args(["bbbbbbbb"], { status: "in-progress", json: "true" }), SOCKET, CTX))
+			.rejects.toThrow(`EXIT_${CLI_EXIT_CODE_LAUNCH_DECLINED}`);
+		expect(JSON.parse(stdoutOutput)).toEqual({ schemaVersion: 1, approved: false });
+	});
+
+	it("move --json exits 46 when the approved start failed to prepare, like the plain form", async () => {
+		mockSend.mockImplementation(async (_s, method) => okResp(method === "task.move"
+			? { approved: true, seq: 12, title: "t", launched: [{ variantIndex: null, replyCommand: "c", preparation: { state: "failed", error: "setup failed" } }] }
+			: {}));
+		await expect(handleTask("move", args(["bbbbbbbb"], { status: "in-progress", json: "true" }), SOCKET, CTX))
+			.rejects.toThrow("EXIT_46");
+		expect(JSON.parse(stdoutOutput)).toMatchObject({ schemaVersion: 1, approved: true });
+	});
+
+	it("refuses --json with a value, which would swallow the task ref", async () => {
+		await expect(handleTask("move", args([], { json: "seq:12", status: "in-progress" }), SOCKET, null)).rejects.toThrow(/EXIT_3/);
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("refuses --json on a completion, which has its own reporting", async () => {
+		await expect(handleTask("move", args([FAKE_TASK.id], { status: "completed", json: "true" }), SOCKET, null)).rejects.toThrow(/EXIT_3/);
+		expect(mockSend).not.toHaveBeenCalled();
 	});
 });

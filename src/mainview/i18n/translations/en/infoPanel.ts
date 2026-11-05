@@ -11,6 +11,8 @@ const infoPanel = {
 	"infoPanel.createdByDeleted": "a task (deleted)",
 	"infoPanel.createdByAutomation": "an automation",
 	"infoPanel.createdByImport": "a conversation import",
+	"infoPanel.createdBySender": "external sender {label} ({id})",
+	"infoPanel.createdBySenderViaNetwork": "external sender {label} ({id}) over the network, MCP token {token}",
 	"infoPanel.updated": "Updated",
 	"infoPanel.collapse": "Collapse panel",
 	"infoPanel.expand": "Expand panel",

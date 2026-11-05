@@ -36,6 +36,11 @@ async function renderRow(task: Task, navigate?: (route: Route) => void) {
 }
 
 describe("TaskOriginRow", () => {
+	it("names an external sender, and the network token it came through", async () => {
+		await renderRow(makeTask({ origin: { kind: "sender", senderId: "openclaw:home:main", label: "Main", viaTokenId: "3fa9c0d1" } }));
+		expect(screen.getByText("external sender Main (openclaw:home:main) over the network, MCP token 3fa9c0d1")).toBeTruthy();
+	});
+
 	it("links to the parent with its variant seq and project", async () => {
 		const navigate = vi.fn();
 		await renderRow(makeTask({ origin: { kind: "task", taskId: "parent", projectId: "p2" } }), navigate);

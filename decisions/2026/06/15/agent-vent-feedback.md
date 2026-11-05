@@ -44,4 +44,5 @@ markdown file, and the maintainer reads the folder (or asks users to share their
 - **Reuse task notes** — buries platform feedback per-task and mixes it with work notes; kills
   the cross-run aggregation that is the whole point.
 - **dev3 as an MCP server with a `vent` tool** — cleanest tool semantics, but dev3 has no MCP
-  surface today; disproportionate infrastructure for one tool.
+  surface today; disproportionate infrastructure for one tool. (For clients outside dev3, see
+  `decisions/2026/11/01/mcp-http-listener-for-external-senders.md`.)
