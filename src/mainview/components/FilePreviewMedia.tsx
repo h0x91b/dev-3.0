@@ -4,6 +4,7 @@ import { api } from "../rpc";
 import { errorText } from "../file-open-browser";
 import { formatBytes } from "../utils/formatBytes";
 import { fileLinkExt } from "../../shared/file-link-types";
+import { primeFirstFrame } from "../utils/video-first-frame";
 
 interface FilePreviewMediaProps {
 	path: string;
@@ -111,7 +112,10 @@ export default function FilePreviewMedia({ path, fileName, media, mime, size, ex
 					ref={(node) => { elementRef.current = node; }}
 					playsInline
 					// A file whose video codec the engine lacks still loads and plays its sound track.
-					onLoadedMetadata={(event) => setNoVideoTrack(event.currentTarget.videoWidth === 0)}
+					onLoadedMetadata={(event) => {
+						setNoVideoTrack(event.currentTarget.videoWidth === 0);
+						primeFirstFrame(event.currentTarget);
+					}}
 					className={`block rounded bg-black ring-1 ring-fg/10 ${expanded ? "h-full w-full object-contain" : "max-w-full max-h-[70dvh]"}`}
 				/>
 			) : (
