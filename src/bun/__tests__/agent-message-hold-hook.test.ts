@@ -45,7 +45,7 @@ describe("claimHeldAgentMessagesForHook - the hook mailbox", () => {
 		const { message, delivered } = hookable("one");
 		holdAgentMessage(KEY, message, {});
 
-		await expect(claimHeldAgentMessagesForHook(KEY, 9_000)).resolves.toEqual({ text: "inline:one", messages: 1 });
+		await expect(claimHeldAgentMessagesForHook(KEY, 9_000)).resolves.toEqual({ text: "inline:one", messages: 1, notices: [] });
 		expect(delivered).toHaveBeenCalledTimes(1);
 		expect(pendingAgentMessageHoldCount()).toBe(0);
 
@@ -70,7 +70,7 @@ describe("claimHeldAgentMessagesForHook - the hook mailbox", () => {
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS - 1);
 		const claim = claimHeldAgentMessagesForHook(KEY, 9_000);
 		await vi.advanceTimersByTimeAsync(1);
-		await expect(claim).resolves.toMatchObject({ messages: 1 });
+		await expect(claim).resolves.toMatchObject({ messages: 1, notices: [] });
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
 		expect(message.deliver).not.toHaveBeenCalled();
 		expect(delivered).toHaveBeenCalledTimes(1);
@@ -91,6 +91,7 @@ describe("claimHeldAgentMessagesForHook - the hook mailbox", () => {
 		await expect(claimHeldAgentMessagesForHook(KEY, 9_000)).resolves.toEqual({
 			text: `inline:one${AGENT_MESSAGE_BURST_SEPARATOR}inline:two`,
 			messages: 2,
+			notices: [],
 		});
 	});
 
@@ -102,7 +103,7 @@ describe("claimHeldAgentMessagesForHook - the hook mailbox", () => {
 		holdAgentMessage(KEY, typedOnly.message, {});
 		holdAgentMessage(KEY, third.message, {});
 
-		await expect(claimHeldAgentMessagesForHook(KEY, 9_000)).resolves.toEqual({ text: "inline:one", messages: 1 });
+		await expect(claimHeldAgentMessagesForHook(KEY, 9_000)).resolves.toEqual({ text: "inline:one", messages: 1, notices: [] });
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
 		expect(first.message.deliver).not.toHaveBeenCalled();
 		expect(typedOnly.message.deliver).toHaveBeenCalledTimes(1);
@@ -122,7 +123,7 @@ describe("claimHeldAgentMessagesForHook - the hook mailbox", () => {
 		holdAgentMessage(KEY, first.message, {});
 		holdAgentMessage(KEY, second.message, {});
 		// "inline:aaaa" is 11 characters; the second would need 2 + 11 more.
-		await expect(claimHeldAgentMessagesForHook(KEY, 15)).resolves.toEqual({ text: "inline:aaaa", messages: 1 });
+		await expect(claimHeldAgentMessagesForHook(KEY, 15)).resolves.toEqual({ text: "inline:aaaa", messages: 1, notices: [] });
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
 		expect(first.message.deliver).not.toHaveBeenCalled();
 		expect(second.message.deliver).toHaveBeenCalledTimes(1);
@@ -133,10 +134,11 @@ describe("claimHeldAgentMessagesForHook - the hook mailbox", () => {
 		await expect(claimHeldAgentMessagesForHook(KEY, 9_000)).resolves.toEqual({
 			text: `inline:one${AGENT_MESSAGE_BURST_SEPARATOR}board`,
 			messages: 1,
+			notices: [],
 		});
 
 		holdAgentMessage(KEY, hookable("one", { hook: { text: "inline:one", delivered: vi.fn(), trailer: async () => "b".repeat(100) } }).message, {});
-		await expect(claimHeldAgentMessagesForHook(KEY, 20)).resolves.toEqual({ text: "inline:one", messages: 1 });
+		await expect(claimHeldAgentMessagesForHook(KEY, 20)).resolves.toEqual({ text: "inline:one", messages: 1, notices: [] });
 	});
 
 	it("drops and reports a message whose bound agent is gone, and never types it", async () => {
@@ -162,6 +164,14 @@ describe("claimHeldAgentMessagesForHook - the hook mailbox", () => {
 
 		await expect(claimHeldAgentMessagesForHook(KEY, 9_000)).resolves.toBeNull();
 		expect(later.delivered).not.toHaveBeenCalled();
+	});
+
+	it("returns one notice line per taken message that has one, for the user", async () => {
+		holdAgentMessage(KEY, hookable("one", { hook: { text: "inline:one", delivered: vi.fn(), notice: "dev3 message from #2: first" } }).message, {});
+		holdAgentMessage(KEY, hookable("two").message, {});
+		holdAgentMessage(KEY, hookable("three", { hook: { text: "inline:three", delivered: vi.fn(), notice: "dev3 message from #5: third" } }).message, {});
+		const claim = await claimHeldAgentMessagesForHook(KEY, 9_000);
+		expect(claim?.notices).toEqual(["dev3 message from #2: first", "dev3 message from #5: third"]);
 	});
 
 	it("finds nothing for a pane with no hold", async () => {

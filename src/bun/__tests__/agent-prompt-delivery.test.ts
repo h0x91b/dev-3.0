@@ -236,9 +236,10 @@ describe("deliverAgentPrompt — a held dev3 message", () => {
 		resetTypedPromptClaims();
 		const delivered = vi.fn();
 		const epilogue = vi.fn(async () => "board");
-		await deliverAgentPrompt(task(), "check CI", { kind: "agent" }, { hold: true, epilogue, hook: { text: "inline envelope", delivered } });
+		await deliverAgentPrompt(task(), "check CI", { kind: "agent" }, { hold: true, epilogue, hook: { text: "inline envelope", delivered, notice: "dev3 message from #2: ci" } });
 		const hook = vi.mocked(holdMessageForPane).mock.calls[0]![5]!;
 		expect(hook.text).toBe("inline envelope");
+		expect(hook.notice).toBe("dev3 message from #2: ci");
 		expect(hook.trailer).toBe(epilogue);
 		expect(typedPromptClaimCount(TASK_ID)).toBe(1);
 		hook.delivered();

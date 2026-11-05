@@ -121,15 +121,23 @@ export interface AgentMessageLogRow {
 	status: AgentPromptDeliveryStatus;
 	reason?: string;
 	detail?: string;
-	/**
-	 * Set on a receipt row: the `messageId` of the message this confirms. The reader
-	 * folds a receipt into that message's row and never lists it on its own.
-	 */
-	receiptFor?: string;
-	/** How the message reached the agent, when not by typing: its own tool hook took it. */
+	/** How the message reached the agent, when not by typing. Set by the reader from a receipt. */
 	deliveredVia?: "hook";
-	/** When the receipt said so; set on a folded row. */
+	/** When the receipt was written. Set by the reader from a receipt. */
 	deliveredAt?: string;
+}
+
+/**
+ * A delivery receipt: the agent's own tool hook took message `receiptFor`. It shares
+ * the day-file with the rows but has no recipient, seq or body, so a reader that
+ * predates receipts drops it as an untrusted line instead of listing an empty message.
+ */
+export interface AgentMessageLogReceipt {
+	v: typeof AGENT_MESSAGE_LOG_VERSION;
+	at: string;
+	receiptFor: string;
+	status: "delivered";
+	deliveredVia: "hook";
 }
 
 /** Everything needed to write a row, minus the version and the clock. */
@@ -179,6 +187,22 @@ export function serializeAgentMessageLogRow(input: AgentMessageLogInput): string
 	if (utf8Bytes(line) <= AGENT_MESSAGE_LOG_MAX_ROW_BYTES) return line;
 	const overhead = utf8Bytes(`${JSON.stringify({ ...row, body: "" })}\n`);
 	return `${JSON.stringify({ ...row, body: clampLogBody(row.body, overhead) })}\n`;
+}
+
+export function serializeAgentMessageLogReceipt(input: Omit<AgentMessageLogReceipt, "v">): string {
+	return `${JSON.stringify({ v: AGENT_MESSAGE_LOG_VERSION, ...input })}\n`;
+}
+
+/** A receipt line, or null for anything else (rows included). */
+export function parseAgentMessageLogReceipt(line: string): AgentMessageLogReceipt | null {
+	let parsed: Partial<AgentMessageLogReceipt> | null;
+	try {
+		parsed = JSON.parse(line.trim()) as Partial<AgentMessageLogReceipt> | null;
+	} catch {
+		return null;
+	}
+	if (!parsed || typeof parsed !== "object" || typeof parsed.receiptFor !== "string" || typeof parsed.at !== "string") return null;
+	return parsed.status === "delivered" && parsed.deliveredVia === "hook" ? parsed as AgentMessageLogReceipt : null;
 }
 
 /**

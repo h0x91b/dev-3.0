@@ -17,9 +17,15 @@ function parsePayload(rawInput: string): { subagent: boolean } | null {
 	}
 }
 
-/** The hook output that hands Claude the drained messages next to the tool result. */
-export function postToolUseContextOutput(context: string): string {
-	return JSON.stringify({ hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: context } });
+/**
+ * The hook output that hands Claude the drained messages next to the tool result.
+ * `systemMessage` is the user's view of them: `additionalContext` never shows in the pane.
+ */
+export function postToolUseContextOutput(context: string, notice?: string): string {
+	return JSON.stringify({
+		...(notice ? { systemMessage: notice } : {}),
+		hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: context },
+	});
 }
 
 /**
@@ -42,14 +48,14 @@ export async function handleClaudePostTool(
 			taskId: context.taskId,
 			...(context.projectId ? { projectId: context.projectId } : {}),
 			...(paneId ? { paneId } : {}),
-		}, { timeoutMs: 3_000, connectAttempts: 2, retryDelayMs: 50 });
+		});
 		if (!response.ok) {
 			process.stderr.write(`dev3 Claude tool hook: ${response.error || "request failed"}\n`);
 			return;
 		}
-		const data = (response.data ?? {}) as { context?: unknown; moveError?: unknown };
+		const data = (response.data ?? {}) as { context?: unknown; notice?: unknown; moveError?: unknown };
 		if (typeof data.moveError === "string") process.stderr.write(`dev3 Claude tool hook: ${data.moveError}\n`);
-		if (typeof data.context === "string" && data.context) process.stdout.write(postToolUseContextOutput(data.context));
+		if (typeof data.context === "string" && data.context) process.stdout.write(postToolUseContextOutput(data.context, typeof data.notice === "string" ? data.notice : undefined));
 	} catch (error) {
 		process.stderr.write(`dev3 Claude tool hook: ${error instanceof Error ? error.message : String(error)}\n`);
 	}

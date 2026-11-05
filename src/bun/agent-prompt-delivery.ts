@@ -73,7 +73,7 @@ export async function deliverAgentPrompt(
 		epilogue?: AgentPromptEpilogue;
 		author?: ScheduledMessageAuthor | null;
 		/** Lets the agent's tool hook take a held message instead of the pane (tmux only). */
-		hook?: Pick<HookDeliverable, "text" | "delivered">;
+		hook?: Pick<HookDeliverable, "text" | "delivered" | "notice">;
 	} = {},
 ): Promise<AgentPromptDelivery> {
 	// The prompt about to land will fire UserPromptSubmit, so the hooks have to be
@@ -121,17 +121,18 @@ export async function deliverAgentPrompt(
 /**
  * The hook side of a held message. A drained message is never typed, so the receipt
  * left for its prompt-submit hook is taken back: it would otherwise sit there and
- * swallow the user's own prompt if he ever typed the same text.
+ * swallow the user's own prompt if they ever typed the same text.
  */
 function hookOffer(
 	task: Task,
 	prompt: string,
-	opts: { epilogue?: AgentPromptEpilogue; hook?: Pick<HookDeliverable, "text" | "delivered"> },
+	opts: { epilogue?: AgentPromptEpilogue; hook?: Pick<HookDeliverable, "text" | "delivered" | "notice"> },
 ): HookDeliverable | undefined {
 	const hook = opts.hook;
 	if (!hook) return undefined;
 	return {
 		text: hook.text,
+		...(hook.notice ? { notice: hook.notice } : {}),
 		delivered: () => {
 			retractDev3TypedPrompt(task.id, prompt);
 			hook.delivered();

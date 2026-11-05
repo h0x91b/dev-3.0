@@ -18,7 +18,7 @@ import { coordinatorBoardEpilogue } from "./coordinator-board";
 import { type ExternalSenderStamp, wrapAgentMessage, wrapExternalSenderMessage } from "../shared/agent-message-envelope";
 import type { ExternalSender } from "../shared/external-senders";
 import { spillOversizedAgentMessage } from "./agent-message-spill";
-import { appendAgentMessageLog } from "./agent-message-log";
+import { appendAgentMessageLog, appendAgentMessageLogReceipt } from "./agent-message-log";
 import { AGENT_MESSAGE_HOOK_MAX_CHARS } from "./agent-message-hold";
 import { readFile } from "node:fs/promises";
 import { resolveScheduledMessageAuthorPane } from "./scheduled-message-author";
@@ -137,7 +137,11 @@ async function deliverToTarget(
 	// agent turn, and no text lands in the middle of the user's own line. See
 	// agent-message-hold.ts.
 	const hook = hold && !sender && message.source
-		? { text: await hookText(task, message, message.source, alone, text), delivered: () => recordHookDelivery(task, message) }
+		? {
+			text: await hookText(task, message, message.source, alone, text),
+			notice: hookNotice(message.source, message.subject),
+			delivered: () => recordHookDelivery(task, message),
+		}
 		: undefined;
 	const delivery = await deliverAgentPrompt(task, text, target, { hold, epilogue, author: message.author ?? null, hook });
 	if (message.source) announceAgentMessage(task, message, delivery);
@@ -163,6 +167,12 @@ async function hookText(task: Task, message: ScheduledMessage, source: AgentMess
 	return inline.length <= AGENT_MESSAGE_HOOK_MAX_CHARS ? inline : typed;
 }
 
+/** What the user sees in the pane when the hook hands this message over. */
+function hookNotice(source: AgentMessageSource, subject: string | undefined): string {
+	const from = `dev3 message from #${source.seq}`;
+	return subject ? `${from}: ${subject}` : from;
+}
+
 /**
  * The receipt for a message the agent's own tool hook took: proof it reached the
  * agent, which a typed delivery can never give. The reader folds it into the
@@ -172,17 +182,9 @@ function recordHookDelivery(task: Task, message: ScheduledMessage): void {
 	void (async () => {
 		try {
 			const project = await data.getProject(task.projectId);
-			appendAgentMessageLog(project, {
+			appendAgentMessageLogReceipt(project, {
 				at: new Date().toISOString(),
 				receiptFor: message.id,
-				fromTaskId: message.source?.taskId ?? null,
-				fromSeq: message.source?.seq ?? null,
-				toTaskId: task.id,
-				toSeq: task.seq,
-				toProjectId: task.projectId,
-				kind: message.at ? "scheduled" : "immediate",
-				body: "",
-				bodyKind: "text",
 				status: "delivered",
 				deliveredVia: "hook",
 			});

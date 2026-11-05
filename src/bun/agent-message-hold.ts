@@ -175,6 +175,11 @@ export interface HookDeliverable {
 	/** Called once the hook took it: the delivery receipt. */
 	delivered: () => void;
 	/**
+	 * One line for the user, since hook context never shows in the pane the way typed
+	 * text did: who sent it and its subject.
+	 */
+	notice?: string;
+	/**
 	 * Text added once after the whole drain, like the typed epilogue: the coordinator's
 	 * board snapshot. The newest message's trailer wins; null or too long adds nothing.
 	 */
@@ -440,6 +445,8 @@ export function releaseStrandedAgentMessagesOnSubmission(taskId: string, submitt
 export interface HookClaim {
 	text: string;
 	messages: number;
+	/** One line per message that has a notice, for the user. */
+	notices: string[];
 }
 
 /**
@@ -500,7 +507,8 @@ export async function claimHeldAgentMessagesForHook(key: string, budgetChars: nu
 		trailer: String(Boolean(trailer)),
 		waiting: String(hold.deliveries.length),
 	});
-	return { text: parts.join(AGENT_MESSAGE_BURST_SEPARATOR), messages: kept.length };
+	const notices = kept.flatMap((d) => (d.hook?.notice ? [d.hook.notice] : []));
+	return { text: parts.join(AGENT_MESSAGE_BURST_SEPARATOR), messages: kept.length, notices };
 }
 
 /** The drain's trailer when it fits what is left of the budget; a failure costs only the trailer. */

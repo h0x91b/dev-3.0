@@ -72,14 +72,27 @@ describe("buildClaudeHooks", () => {
 		expect(cmd).not.toContain("review-by-user");
 	});
 
-	it("PostToolUse goes through the post-tool adapter, which moves the status and drains held messages", () => {
+	it("PostToolUse resumes work after AskUserQuestion receives an answer", () => {
 		const hooks = buildClaudeHooks();
 
 		expect(hooks).toHaveProperty("PostToolUse");
-		expect(hooks.PostToolUse).toHaveLength(1);
+		const cmd = hooks.PostToolUse[0].hooks[0].command;
+		expect(cmd).toContain(DEV3_CLI);
+		expect(cmd).toContain("--status in-progress");
+		expect(cmd).toContain("--if-status-not review-by-ai");
+	});
+
+	it("PostToolUse drains held messages first and falls back to the plain move on a CLI that predates it", () => {
+		const hooks = buildClaudeHooks();
 		const entry = hooks.PostToolUse[0].hooks[0];
-		expect(entry.command).toBe(`${DEV3_CLI} hook claude-post-tool`);
-		expect(entry.timeout).toBe(5);
+		expect(entry.command).toBe(`${DEV3_CLI} hook claude-post-tool || ${hooks.PreToolUse[0].hooks[0].command}`);
+		// Same as the plain move it replaced: no hook timeout of its own.
+		expect(entry.timeout).toBeUndefined();
+	});
+
+	it("PostToolUse on Windows keeps the plain move: no tmux mailbox there and no shell for a fallback", () => {
+		const hooks = buildClaudeHooks({ dialect: { cli: '"C:/Users/dev/.dev3.0/bin/dev3.exe"', posixShell: false } });
+		expect(hooks.PostToolUse[0].hooks[0]).toEqual(hooks.PreToolUse[0].hooks[0]);
 	});
 
 	it("uses correct three-level nesting (event → matcher group → hooks)", () => {
@@ -241,8 +254,10 @@ describe("buildClaudeHooks", () => {
 	it("working hooks keep the move guard before the offline fallback", () => {
 		const hooks = buildClaudeHooks();
 
-		const cmd = hooks.PreToolUse[0].hooks[0].command;
-		expect(cmd).toContain("--status in-progress --if-status-not review-by-ai || [ $? -eq 2 ]");
+		for (const event of ["PreToolUse", "PostToolUse"] as const) {
+			const cmd = hooks[event][0].hooks[0].command;
+			expect(cmd).toContain("--status in-progress --if-status-not review-by-ai || [ $? -eq 2 ]");
+		}
 	});
 
 	it("PermissionRequest hook also tolerates app-offline", () => {
@@ -331,7 +346,7 @@ describe("mergeClaudeHooks", () => {
 
 		expect(hooks.PostToolUse).toHaveLength(2);
 		expect(hooks.PostToolUse[0].hooks[0].command).toBe("echo post");
-		expect(hooks.PostToolUse[1].hooks[0].command).toContain("hook claude-post-tool");
+		expect(hooks.PostToolUse[1].hooks[0].command).toContain("--status in-progress");
 		expect(hooks.PreToolUse).toHaveLength(1);
 		expect(hooks.PermissionRequest).toHaveLength(1);
 		expect(hooks.Stop).toHaveLength(2);
@@ -614,7 +629,8 @@ describe("writeClaudeHooks", () => {
 
 		expect(hooks.PreToolUse[0].hooks[0].command).toContain("--if-status-not review-by-ai");
 		expect(hooks.PreToolUse[0].hooks[0].command).not.toContain("review-by-user");
-		expect(hooks.PostToolUse[0].hooks[0].command).toContain("hook claude-post-tool");
+		expect(hooks.PostToolUse[0].hooks[0].command).toContain("--if-status-not review-by-ai");
+		expect(hooks.PostToolUse[0].hooks[0].command).not.toContain("review-by-user");
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).toContain("hook claude-prompt");
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).not.toContain("review-by-user");
 	});
@@ -939,7 +955,7 @@ describe("POSIX hook output (byte-identical contract)", () => {
 
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).toBe(`${DEV3_CLI} hook claude-prompt`);
 		expect(hooks.PreToolUse[0].hooks[0].command).toBe(working);
-		expect(hooks.PostToolUse[0].hooks[0].command).toBe(`${DEV3_CLI} hook claude-post-tool`);
+		expect(hooks.PostToolUse[0].hooks[0].command).toBe(`${DEV3_CLI} hook claude-post-tool || ${working}`);
 		expect(hooks.PermissionRequest[0].hooks[0].command).toBe(
 			`${DEV3_CLI} task move --status user-questions || [ $? -eq 2 ]`,
 		);
@@ -980,7 +996,7 @@ describe("Windows hook output", () => {
 
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).toBe(`${cli} hook claude-prompt`);
 		expect(hooks.PreToolUse[0].hooks[0].command).toBe(working);
-		expect(hooks.PostToolUse[0].hooks[0].command).toBe(`${cli} hook claude-post-tool`);
+		expect(hooks.PostToolUse[0].hooks[0].command).toBe(working);
 		expect(hooks.PermissionRequest[0].hooks[0].command).toBe(
 			`${cli} task move --status user-questions --tolerate-app-offline`,
 		);

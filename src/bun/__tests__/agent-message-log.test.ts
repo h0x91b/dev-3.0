@@ -18,11 +18,13 @@ import {
 	AGENT_MESSAGE_LOG_RETENTION_DAYS,
 	AGENT_MESSAGE_LOG_TRUNCATION_MARK,
 	parseAgentMessageLogRow,
+	serializeAgentMessageLogReceipt,
 	serializeAgentMessageLogRow,
 	type AgentMessageLogInput,
 } from "../../shared/agent-message-log";
 import {
 	appendAgentMessageLog,
+	appendAgentMessageLogReceipt,
 	messageLogDir,
 	pruneAgentMessageLog,
 	readAgentMessageLog,
@@ -186,13 +188,17 @@ describe("append and read", () => {
 });
 
 describe("hook delivery receipts", () => {
-	const receipt = (messageId: string, at: string) =>
-		makeRow({ at, receiptFor: messageId, body: "", status: "delivered", deliveredVia: "hook" });
+	const receipt = (receiptFor: string, at: string) => ({ at, receiptFor, status: "delivered" as const, deliveredVia: "hook" as const });
+
+	it("is a line the row parser older versions ship rejects, so they list no empty message", () => {
+		// parseAgentMessageLogRow is unchanged since receipts were added: it is the old reader.
+		expect(parseAgentMessageLogRow(serializeAgentMessageLogReceipt(receipt("m-1", "2026-08-23T12:00:09.000Z")))).toBeNull();
+	});
 
 	it("folds a receipt into its message's row: one row, delivered through the hook", () => {
 		const day = new Date(2026, 7, 23, 12, 0, 0);
 		appendAgentMessageLog(project, makeRow({ messageId: "m-1", status: "held", body: "report" }), day);
-		appendAgentMessageLog(project, receipt("m-1", "2026-08-23T12:00:09.000Z"), day);
+		appendAgentMessageLogReceipt(project, receipt("m-1", "2026-08-23T12:00:09.000Z"), day);
 		const page = readAgentMessageLog(project);
 		expect(page.rows).toHaveLength(1);
 		expect(page.rows[0]).toMatchObject({ messageId: "m-1", body: "report", status: "delivered", deliveredVia: "hook", deliveredAt: "2026-08-23T12:00:09.000Z" });
@@ -200,7 +206,7 @@ describe("hook delivery receipts", () => {
 
 	it("folds across a day boundary and never counts a receipt against the limit", () => {
 		appendAgentMessageLog(project, makeRow({ messageId: "m-1", status: "held", body: "late night" }), new Date(2026, 7, 22, 23, 59, 50));
-		appendAgentMessageLog(project, receipt("m-1", "2026-08-23T00:00:05.000Z"), new Date(2026, 7, 23, 0, 0, 5));
+		appendAgentMessageLogReceipt(project, receipt("m-1", "2026-08-23T00:00:05.000Z"), new Date(2026, 7, 23, 0, 0, 5));
 		const page = readAgentMessageLog(project, 1);
 		expect(page.rows.map((r) => [r.body, r.status])).toEqual([["late night", "delivered"]]);
 		expect(page.hasMore).toBe(false);
@@ -209,7 +215,7 @@ describe("hook delivery receipts", () => {
 	it("leaves a typed message without a receipt exactly as written", () => {
 		const day = new Date(2026, 7, 23, 12, 0, 0);
 		appendAgentMessageLog(project, makeRow({ messageId: "m-2", status: "held" }), day);
-		appendAgentMessageLog(project, receipt("other", "2026-08-23T12:00:09.000Z"), day);
+		appendAgentMessageLogReceipt(project, receipt("other", "2026-08-23T12:00:09.000Z"), day);
 		const [row] = readAgentMessageLog(project).rows;
 		expect(row?.status).toBe("held");
 		expect(row).not.toHaveProperty("deliveredVia");

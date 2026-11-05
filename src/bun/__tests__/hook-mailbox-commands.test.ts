@@ -78,6 +78,17 @@ describe("task.claudePostToolUse", () => {
 		expect(pendingAgentMessageHoldCount()).toBe(1);
 	});
 
+	it("hands back the notice lines for the user next to the context", async () => {
+		move.mockResolvedValue({ id: "task-full-id", status: "in-progress" });
+		for (const [text, notice] of [["a", "dev3 message from #2: first"], ["b", "dev3 message from #2: second"]]) {
+			holdAgentMessage(agentMessageHoldKey("tmux", "task-full-id", "%3"), {
+				text: text!, bytes: 1, deliver: () => "landed", submit: () => "landed", hook: { text: text!, delivered: vi.fn(), notice },
+			}, {});
+		}
+		const result = await handler({ taskId: "task-1", paneId: "%3" });
+		expect(result).toMatchObject({ messages: 2, notice: "dev3 message from #2: first\ndev3 message from #2: second" });
+	});
+
 	it("never drains another pane's mail", async () => {
 		move.mockResolvedValue({ id: "task-full-id", status: "in-progress" });
 		holdFor("task-full-id", "%4", "mail for the reviewer");

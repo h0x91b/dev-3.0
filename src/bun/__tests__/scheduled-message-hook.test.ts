@@ -35,7 +35,7 @@ vi.mock("../pty-server", () => ({ DEFAULT_TMUX_SOCKET: "dev3" }));
 vi.mock("../scheduled-message-author", () => ({
 	resolveScheduledMessageAuthorPane: vi.fn(),
 }));
-vi.mock("../agent-message-log", () => ({ appendAgentMessageLog: vi.fn() }));
+vi.mock("../agent-message-log", () => ({ appendAgentMessageLog: vi.fn(), appendAgentMessageLogReceipt: vi.fn() }));
 vi.mock("../rpc-handlers", () => ({
 	getPushMessage: vi.fn(() => vi.fn()),
 	pushCliToast: vi.fn(),
@@ -48,7 +48,7 @@ vi.mock("../logger", () => ({
 
 import * as data from "../data";
 import { holdMessageForPane } from "../agent-prompt";
-import { appendAgentMessageLog } from "../agent-message-log";
+import { appendAgentMessageLog, appendAgentMessageLogReceipt } from "../agent-message-log";
 import { AGENT_MESSAGE_HOOK_MAX_CHARS } from "../agent-message-hold";
 import { fireScheduledMessage, sendMessageImmediately } from "../scheduled-message-scheduler";
 import type { Project } from "../../shared/types";
@@ -131,6 +131,11 @@ describe("the hook offer on a held message", () => {
 		expect(lastHookOffer()!.text).toBe(typed);
 	});
 
+	it("names the sender and the subject in the notice the user sees in the pane", async () => {
+		await sendMessageImmediately(makeTask() as never, "short note", null, SOURCE, { subject: "ping" });
+		expect(lastHookOffer()!.notice).toBe("dev3 message from #7: ping");
+	});
+
 	it("offers nothing for an external sender's message: hook context must not lend it authority", async () => {
 		await sendMessageImmediately(makeTask() as never, "hello from outside", null, null, {
 			subject: "ping",
@@ -144,16 +149,17 @@ describe("the hook offer on a held message", () => {
 		expect(lastHookOffer()).toBeUndefined();
 	});
 
-	it("writes one receipt row for the message once the hook took it", async () => {
+	it("writes one receipt for the message once the hook took it, and no extra row", async () => {
 		const result = await sendMessageImmediately(makeTask() as never, "short note", null, SOURCE, { subject: "ping" });
 		vi.mocked(appendAgentMessageLog).mockClear();
 		lastHookOffer()!.delivered();
-		await vi.waitFor(() => expect(appendAgentMessageLog).toHaveBeenCalledTimes(1));
-		expect(vi.mocked(appendAgentMessageLog).mock.calls[0]![1]).toMatchObject({
+		await vi.waitFor(() => expect(appendAgentMessageLogReceipt).toHaveBeenCalledTimes(1));
+		expect(vi.mocked(appendAgentMessageLogReceipt).mock.calls[0]![1]).toEqual({
+			at: expect.any(String),
 			receiptFor: result.messageId,
-			toTaskId: "task-12345678",
 			status: "delivered",
 			deliveredVia: "hook",
 		});
+		expect(appendAgentMessageLog).not.toHaveBeenCalled();
 	});
 });

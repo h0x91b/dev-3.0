@@ -13,6 +13,8 @@ import { resolveTaskFromParams } from "./task-resolution";
 export interface ClaudePostToolUseResult {
 	context?: string;
 	messages?: number;
+	/** Lines for the user: hook context does not show in the pane the way typed text did. */
+	notice?: string;
 	moveError?: string;
 }
 
@@ -50,6 +52,7 @@ export const hookMailboxHandlers: Record<string, Handler> = {
 			if (claim) {
 				out.context = claim.text;
 				out.messages = claim.messages;
+				if (claim.notices.length > 0) out.notice = claim.notices.join("\n");
 			}
 		} catch (err) {
 			log.warn("hook mailbox drain failed", { taskId: String(params.taskId).slice(0, 8), paneId, error: String(err) });

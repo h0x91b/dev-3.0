@@ -62,7 +62,9 @@ describe("handleClaudePostTool", () => {
 			taskId: "task-1",
 			projectId: "project-1",
 			paneId: "%3",
-		}, expect.anything());
+		});
+		// No custom timeout: the default the plain `task move` hook waited on.
+		expect(mockSend.mock.calls[0]).toHaveLength(3);
 		expect(JSON.parse(stdout)).toEqual({
 			hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: "<dev3-ai-message>hi</dev3-ai-message>" },
 		});
@@ -92,7 +94,16 @@ describe("handleClaudePostTool", () => {
 	it("still moves the status when the payload is not readable, without a pane", async () => {
 		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
 		await handleClaudePostTool("not json", SOCKET, CONTEXT, PANE_ENV);
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.claudePostToolUse", { taskId: "task-1", projectId: "project-1" }, expect.anything());
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.claudePostToolUse", { taskId: "task-1", projectId: "project-1" });
+	});
+
+	it("shows the user a notice line, since hook context never appears in the pane", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: { context: "mail", notice: "dev3 message from #2: ping", messages: 1 } });
+		await handleClaudePostTool(JSON.stringify(PAYLOAD), SOCKET, CONTEXT, PANE_ENV);
+		expect(JSON.parse(stdout)).toEqual({
+			systemMessage: "dev3 message from #2: ping",
+			hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: "mail" },
+		});
 	});
 
 	it("says why the move failed on stderr, and still hands over the mail", async () => {
