@@ -910,8 +910,23 @@ function maybeRefreshOriginRef(projectPath: string, branch: string): void {
 	});
 }
 
-async function getProjectCurrentBranch(params: { projectId: string }): Promise<{ branch: string | null; isBaseBranch: boolean; isDirty: boolean; behindOrigin: number }> {
-	const project = await data.getProject(params.projectId);
+type ProjectCurrentBranch = { branch: string | null; isBaseBranch: boolean; isDirty: boolean; behindOrigin: number };
+
+// Every open window and remote browser polls this per project; concurrent calls
+// share one run so a slow repo cannot accumulate git processes (#2153).
+const projectBranchInFlight = new Map<string, Promise<ProjectCurrentBranch>>();
+
+function getProjectCurrentBranch(params: { projectId: string }): Promise<ProjectCurrentBranch> {
+	const existing = projectBranchInFlight.get(params.projectId);
+	if (existing) return existing;
+	const promise = readProjectCurrentBranch(params.projectId)
+		.finally(() => projectBranchInFlight.delete(params.projectId));
+	projectBranchInFlight.set(params.projectId, promise);
+	return promise;
+}
+
+async function readProjectCurrentBranch(projectId: string): Promise<ProjectCurrentBranch> {
+	const project = await data.getProject(projectId);
 	const [branch, isDirty] = await Promise.all([
 		git.getCurrentBranch(project.path),
 		git.isWorktreeDirty(project.path),

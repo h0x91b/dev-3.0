@@ -315,4 +315,18 @@ describe("GitPullButton", () => {
 		expect(btn.getAttribute("data-behind-origin")).toBeNull();
 		expect(screen.queryByTestId("git-pull-behind-dot")).toBeNull();
 	});
+
+	it("does not send another branch poll while the previous one is still unanswered", async () => {
+		vi.useFakeTimers();
+		try {
+			(api.request.getProjectCurrentBranch as any).mockReturnValue(new Promise(() => {}));
+			await renderButton();
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(5 * 60_000);
+			});
+			expect(api.request.getProjectCurrentBranch).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 });

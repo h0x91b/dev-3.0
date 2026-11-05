@@ -215,3 +215,45 @@ describe("TaskPrStatusPopover — refresh outcome", () => {
 		expect(within(popover).queryByTestId("pr-popover-refresh-notice")).not.toBeInTheDocument();
 	});
 });
+
+describe("TaskPrStatusPopover — way into the PR and a compact reason", () => {
+	const blocked = {
+		state: "OPEN",
+		mergeable: "MERGEABLE",
+		status: "BLOCKED",
+	} as TaskPRBadgeInfo["mergeState"];
+	const manyRunning = Array.from({ length: 41 }, (_, i) => ({ name: `Shard ${i + 1}/41`, status: "IN_PROGRESS", conclusion: null }));
+
+	it("links the header and an explicit Open PR action to the PR on GitHub", async () => {
+		renderPopover();
+		await userEvent.hover(screen.getByRole("button", { name: "PR #42" }));
+		const popover = await screen.findByTestId("pr-status-popover");
+		const header = within(popover).getByTestId("pr-popover-header-link");
+		expect(header).toHaveAttribute("href", "https://github.com/acme/widget/pull/42");
+		expect(header).toHaveAttribute("target", "_blank");
+		expect(header).toHaveTextContent("PR #42 status");
+		const open = within(popover).getByTestId("pr-popover-open-pr");
+		expect(open).toHaveAttribute("href", "https://github.com/acme/widget/pull/42");
+		expect(open).toHaveTextContent("Open PR #42");
+	});
+
+	it("summarises running checks as a count instead of listing every name", async () => {
+		renderPopover({ prInfo: makePrInfo({ unresolvedCount: 0, mergeState: blocked, checks: manyRunning as TaskPRBadgeInfo["checks"] }), displayState: "open" });
+		await userEvent.hover(screen.getByRole("button", { name: "PR #42" }));
+		const popover = await screen.findByTestId("pr-status-popover");
+		expect(within(popover).getByText("41 checks still running")).toBeInTheDocument();
+		// Names appear once — in the Checks list — not again inside the reason.
+		expect(within(popover).getAllByText("Shard 1/41")).toHaveLength(1);
+	});
+
+	it("opens beside the badge, not on top of it", async () => {
+		renderPopover();
+		const trigger = screen.getByRole("button", { name: "PR #42" });
+		const wrapper = trigger.parentElement as HTMLElement;
+		wrapper.getBoundingClientRect = () => ({ top: 300, left: 100, right: 160, bottom: 320, width: 60, height: 20, x: 100, y: 300, toJSON: () => ({}) });
+		await userEvent.hover(trigger);
+		const popover = await screen.findByTestId("pr-status-popover");
+		expect(parseFloat(popover.style.left)).toBeGreaterThanOrEqual(160);
+		expect(popover.style.maxHeight).not.toBe("");
+	});
+});

@@ -128,7 +128,9 @@ describe("dev3 skill content", () => {
 		expect(codexSkill).toContain("Labels, same session-start pass:");
 		expect(codexSkill).toContain("dev3 label list");
 		expect(codexSkill).toContain('dev3 label create "name"');
-		expect(codexSkill).toContain("dev3 label set <id> [<id>...]");
+		// `label set` replaces the task's labels; the checklist must attach additively.
+		expect(codexSkill).toContain("dev3 label add <id> [<id>...]");
+		expect(codexSkill).not.toContain("dev3 label set <id>");
 		expect(codexSkill).toContain("creating without attaching does **not** complete this step");
 		expect(codexSkill).not.toContain("## Task labels");
 		expect(codexSkill.indexOf("## Title generation")).toBeLessThan(

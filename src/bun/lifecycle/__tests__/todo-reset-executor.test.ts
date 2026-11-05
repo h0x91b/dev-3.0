@@ -85,12 +85,12 @@ vi.mock("../../rpc-handlers/shared", () => ({
 vi.mock("../../worktree-trust", () => ({ forgetWorktreeTrust: vi.fn(async () => undefined) }));
 vi.mock("../../board-operations/task-notes", () => ({ addNote: vi.fn(async () => undefined) }));
 vi.mock("../../board-operations/runtime", () => ({ boardPorts: { push: vi.fn(), clearMergeNotification: vi.fn(), syncTerminalTitle: vi.fn() } }));
-vi.mock("../../agent-requests", () => ({ voidAgentRequest: vi.fn(() => false) }));
+vi.mock("../../agent-requests", () => ({ voidAgentRequestsForTask: vi.fn() }));
 vi.mock("../../board-operations/types", () => ({ AGENT_ACTOR: { kind: "agent" } }));
 
 import * as data from "../../data";
 import * as git from "../../git";
-import { voidAgentRequest } from "../../agent-requests";
+import { voidAgentRequestsForTask } from "../../agent-requests";
 import { addNote } from "../../board-operations/task-notes";
 import { AGENT_ACTOR } from "../../board-operations/types";
 import { executeLifecycleEffect, type LifecycleExecutionContext } from "../executor";
@@ -155,7 +155,7 @@ describe("persistResetTask — the one compare-and-set write (S2, T11, T12)", ()
 		expect(after.lifecycleStartedAt).toBeUndefined();
 		expect(after.runtimeState?.runtime).toBe("idle");
 		// S7: no approval about the ended run may land on the fresh card.
-		expect(vi.mocked(voidAgentRequest).mock.calls.map(([kind]) => kind).sort()).toEqual(["cancel", "complete", "launch", "reset"]);
+		expect(voidAgentRequestsForTask).toHaveBeenCalledWith(TASK_ID);
 	});
 
 	it("S8: drops messages queued for the stopped agent, keeps the card's own deferred start", async () => {
@@ -250,15 +250,17 @@ describe("resetWorktree — owned branches only, noted first (S1, S4, S7)", () =
 });
 
 describe("episode end voids pending approvals", () => {
-	it.each(["completed", "cancelled"] as const)("%s voids an extra-agent launch for the ended run", async (status) => {
+	// Every kind, completion and cancellation included: a completion dialog left
+	// open after the board or a merged PR completed the task asks a second time.
+	it.each(["completed", "cancelled"] as const)("%s voids every pending approval for the ended run", async (status) => {
 		vi.mocked(data.updateTask).mockResolvedValue(liveTask({ status }));
 		await executeLifecycleEffect({ type: "persistTerminalTask", status, onError: "abort" } as LifecycleEffect, ctx(liveTask()));
-		expect(voidAgentRequest).toHaveBeenCalledWith("launch", TASK_ID);
+		expect(voidAgentRequestsForTask).toHaveBeenCalledWith(TASK_ID);
 	});
-	it("persistTerminalTask voids a reset request for that task", async () => {
-		vi.mocked(data.updateTask).mockResolvedValue(liveTask({ status: "cancelled" }));
-		await executeLifecycleEffect({ type: "persistTerminalTask", status: "cancelled", onError: "abort" } as LifecycleEffect, ctx(liveTask()));
-		expect(voidAgentRequest).toHaveBeenCalledWith("reset", TASK_ID);
+
+	it("deleting the task record voids every pending approval for it", async () => {
+		await executeLifecycleEffect({ type: "deleteTaskRecord", onError: "abort" } as LifecycleEffect, ctx(liveTask()));
+		expect(voidAgentRequestsForTask).toHaveBeenCalledWith(TASK_ID);
 	});
 
 	it("persistTerminalTask writes the Codex scan floor with the terminal status", async () => {

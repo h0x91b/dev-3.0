@@ -4,6 +4,7 @@ import TaskImageViewer from "../TaskImageViewer";
 import { I18nProvider } from "../../i18n";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import type { SharedImage } from "../../../shared/types";
+import { FIRST_FRAME_TIME } from "../../utils/video-first-frame";
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -476,6 +477,16 @@ describe("TaskImageViewer with a shared video", () => {
 		await screen.findByTestId("viewer-main-video");
 		expect(mockedApi.request.getSharedMediaUrl).toHaveBeenCalledWith({ path: "/wt/shared-images/v.mp4" });
 		expect(mockedApi.request.readImageBase64).not.toHaveBeenCalledWith({ path: "/wt/shared-images/v.mp4" });
+	});
+
+	it("seeks a paused clip off zero on metadata so WebKit paints its first frame instead of black", async () => {
+		renderMixed(1);
+		const video = (await screen.findByTestId("viewer-main-video")) as HTMLVideoElement;
+		let time = 0;
+		Object.defineProperty(video, "videoWidth", { configurable: true, get: () => 1280 });
+		Object.defineProperty(video, "currentTime", { configurable: true, get: () => time, set: (v: number) => { time = v; } });
+		fireEvent.loadedMetadata(video);
+		expect(video.currentTime).toBe(FIRST_FRAME_TIME);
 	});
 
 	it("switches back to a picture when stepping off the clip", async () => {

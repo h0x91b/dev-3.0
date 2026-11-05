@@ -445,6 +445,17 @@ describe("TaskTerminal", () => {
 			expect(mockedApi.request.resumeTask).not.toHaveBeenCalled();
 		});
 
+		it("replaces a visible terminal after a restart even when its URL stays the same", async () => {
+			mockedApi.request.getPtyUrl.mockResolvedValue({ url: "ws://localhost:9999?session=t1" });
+			await act(async () => { renderTerminal(); });
+			const before = await screen.findByTestId("terminal-view");
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:taskTerminalResumed", { detail: { taskId: "t1", projectId: "p1" } }));
+			});
+			await waitFor(() => expect(screen.getByTestId("terminal-view")).not.toBe(before));
+			expect(mockedApi.request.resumeTask).not.toHaveBeenCalled();
+		});
+
 		it("shows the exact resume failure instead of hiding it behind session-ended", async () => {
 			const user = userEvent.setup();
 			const message = "Codex conversation was not found in the available account stores.";

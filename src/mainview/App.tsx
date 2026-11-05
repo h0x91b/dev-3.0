@@ -12,7 +12,7 @@ import { statusKey } from "./i18n/status";
 import { columnAgentFailureCopy } from "./utils/columnAgentFailureToast";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
-import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, BoardCopyFailureReason, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, LiveArtifact, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
+import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, BoardCopyFailureReason, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo, LiveArtifact, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
 import { ACTIVE_STATUSES, hasGitWorkflow, orderProjectsForDisplay, getTaskTitle } from "../shared/types";
 import type { DeepLinkNav } from "../shared/deep-link";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
@@ -51,6 +51,7 @@ import NativePaneLayoutLab from "./labs/native-pane/NativePaneLayoutLab";
 import { setToastSuppressed, taskToastContext, ToastHost, toast, type ToastEntry, type ToastOrigin } from "./toast";
 import { toastClearanceRef } from "./toast-clearance";
 import { agentMessageToast, type AgentMessageDetail, type AgentToastEnd } from "./agent-message-toast";
+import { showStaleAgentPathToast, type StaleAgentPathDetail } from "./stale-agent-path-toast";
 import { useSpaces } from "./useSpaces";
 import AgentTrafficScreen from "./components/agent-traffic/AgentTrafficScreen";
 import { noteTrafficArrival } from "./agent-traffic";
@@ -83,6 +84,7 @@ import TerminalPerfOverlay from "./components/TerminalPerfOverlay";
 import FilePreviewModal from "./components/FilePreviewModal";
 import { OPEN_FILE_PREVIEW_EVENT, type OpenFilePreviewDetail } from "./terminal-path-open";
 import RosettaWarningModal from "./components/RosettaWarningModal";
+import LaunchLocationGate from "./components/LaunchLocationGate";
 import { initTaskSoundPlayback, playTaskCompletionSound, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
 import { offerMergeCompletion } from "./utils/offerMergeCompletion";
 import { taskDialogInfoFromSubject } from "./utils/taskDialogInfo";
@@ -756,6 +758,17 @@ function App() {
 			.getRosettaWarning()
 			.then(setRosettaWarning)
 			.catch((err) => console.error("Failed to check Rosetta status:", err));
+	}, []);
+
+	// macOS: running from a DMG / translocated / read-only copy that can never update.
+	// Blocking by design; a remote browser never sees it (the desktop owner has to act).
+	const [launchLocationIssue, setLaunchLocationIssue] = useState<LaunchLocationIssue>(null);
+	useEffect(() => {
+		if (isRemote()) return;
+		api.request
+			.getLaunchLocationIssue()
+			.then(setLaunchLocationIssue)
+			.catch((err) => console.error("Failed to check the launch location:", err));
 	}, []);
 
 	// A tmux server an older dev3 started outside launchd can still lose folder
@@ -1869,6 +1882,12 @@ function App() {
 		return () => window.removeEventListener("rpc:cliAttention", onCliAttention);
 	}, [dispatch]);
 
+	useEffect(() => {
+		const onStaleAgentPath = (e: Event) => showStaleAgentPathToast((e as CustomEvent).detail as StaleAgentPathDetail, t);
+		window.addEventListener("rpc:staleAgentPath", onStaleAgentPath);
+		return () => window.removeEventListener("rpc:staleAgentPath", onStaleAgentPath);
+	}, [t]);
+
 	// CLI-initiated in-app toast (`dev3 notify`). When a task is attached the toast
 	// is clickable and opens that task, honoring the user's task-open-mode.
 	useEffect(() => {
@@ -2316,6 +2335,12 @@ function App() {
 			// The same dialog is up on every connected client; the first answer
 			// closes the rest (see createAgentRequestAbort).
 			const abort = createAgentRequestAbort(requestId);
+			// Already settled (answered elsewhere, or its task finished meanwhile).
+			if (abort.signal.aborted) {
+				abort.cleanup();
+				showing.delete(requestId);
+				return;
+			}
 			try {
 				approved = await confirm({
 					title: t("app.agentCompletionTitle"),
@@ -2431,6 +2456,11 @@ function App() {
 			showing.add(requestId);
 			let approved = false;
 			const abort = createAgentRequestAbort(requestId);
+			if (abort.signal.aborted) {
+				abort.cleanup();
+				showing.delete(requestId);
+				return;
+			}
 			// Without the git workflow nothing is deleted: the folder outlives the task.
 			const copy = keepsTaskFolder(projectId, subject) ? kind.folderCopy : kind.copy;
 			try {
@@ -3879,6 +3909,7 @@ function App() {
 			)}
 			</>
 			)}
+			{launchLocationIssue && <LaunchLocationGate issue={launchLocationIssue} />}
 			{/* File preview opens from Cmd/Ctrl+Click in ANY terminal, including the
 			    immersive fullscreen one, so it lives outside the chrome conditional. */}
 			{filePreview && (

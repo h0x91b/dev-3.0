@@ -12,7 +12,7 @@ import * as data from "./data";
 import { createLogger } from "./logger";
 import { getCachedRateLimitsReport } from "./rate-limit-monitor";
 import { getPushMessage, pushCliAttention, pushCliToast } from "./rpc-handlers";
-import { ResumeUnavailableError, resumeTaskSession, taskTerminalAlive, tearDownTaskTerminal } from "./rpc-handlers/tmux-pty";
+import { ResumeUnavailableError, resumeTaskSession, taskTerminalAlive } from "./rpc-handlers/tmux-pty";
 import { taskMainAgentLiveness } from "./scheduled-message-author";
 
 const log = createLogger("task-keep-alive-scheduler");
@@ -140,14 +140,12 @@ export async function evaluateTask(project: Project, task: Task, now: number): P
 	});
 
 	try {
-		// The exited agent left its shell holding the session; a relaunch would only
-		// reattach to it (`new-session -A`), so it goes first — and `refuseLive` then
-		// proves it is gone before anything new starts.
-		if (terminalAlive) await tearDownTaskTerminal(task);
-		const outcome = await resumeTaskSession(task.id, { refuseLive: true });
+		// Replacement shares the resume lock with user restarts, so the watchdog
+		// cannot tear down a terminal another caller just relaunched.
+		const outcome = await resumeTaskSession(task.id, terminalAlive ? { restart: "if-exited" } : { refuseLive: true });
 		if (outcome.kind === "already-running") {
 			await patchKeepAlive(project, task, { lastVerdict: "error" });
-			log.warn("Keep-alive could not clear the leftover terminal; retrying later", { taskId: task.id.slice(0, 8), attempts });
+			log.warn("Keep-alive left a live or unverified terminal alone", { taskId: task.id.slice(0, 8), attempts });
 			return;
 		}
 		log.info("Keep-alive revived a task", { taskId: task.id.slice(0, 8), attempts });

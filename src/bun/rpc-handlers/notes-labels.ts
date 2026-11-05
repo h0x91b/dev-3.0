@@ -171,7 +171,7 @@ async function reorderLabels(params: { projectId: string; labelOrder: string[] }
 async function setTaskLabels(params: { taskId: string; projectId: string; labelIds: string[] }): Promise<Task> {
 	log.info("→ setTaskLabels", { taskId: params.taskId, labelIds: params.labelIds });
 	const project = await data.getProject(params.projectId);
-	const { task, verdict } = await labels.changeTaskLabels(boardPorts, project, params.taskId, { mode: "replace", labelIds: params.labelIds });
+	const { task, verdict } = await labels.changeTaskLabels(boardPorts, project, params.taskId, { mode: "replace", labelIds: params.labelIds }, USER_ACTOR);
 	log.info("← setTaskLabels done", { taskId: params.taskId, verdict });
 	return task;
 }

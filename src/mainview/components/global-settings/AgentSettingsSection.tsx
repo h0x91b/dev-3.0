@@ -1081,6 +1081,10 @@ function CustomPathRow({
 			<p className="text-fg-3 text-xs mb-1.5">{t("settings.agentCustomPath")}</p>
 			{availability.customPathError ? (
 				<p className="text-danger text-xs mb-1.5">{t("settings.agentPathNotFound")}</p>
+			) : availability.customPathStale ? (
+				<p className="text-warning-strong text-xs mb-1.5 text-pretty" data-testid="agent-path-stale">
+					{t("settings.agentPathStale", { command: agent.baseCommand })}
+				</p>
 			) : null}
 			<div className="flex items-center gap-1.5">
 				<input
@@ -1089,7 +1093,7 @@ function CustomPathRow({
 					onChange={(event) => onCustomPathChange(event.target.value)}
 					placeholder={`/path/to/${agent.baseCommand}`}
 					className={`flex-1 bg-base border rounded px-2 py-1 text-xs font-mono text-fg placeholder:text-fg-muted focus:border-accent ${
-						availability.customPathError && !availability.installed ? "border-danger" : "border-edge"
+						availability.customPathError && !availability.installed ? "border-danger" : availability.customPathStale ? "border-warning/60" : "border-edge"
 					}`}
 				/>
 				<button

@@ -47,7 +47,7 @@ const SKILL_BUG_HUNTER_ISOLATION = `
 If the first user request invokes \`dev3-bug-hunter\` and says you run inside an existing dev3 task, you are a read-only helper in a task the main agent owns. For the whole hunt this overrides the session-start checklist and every lifecycle duty below.
 
 - Do NOT rename the branch, or change the task's title, description, overview, labels, priority, status, assigned agent or configuration.
-- Do NOT run \`dev3 task update\`, \`dev3 overview set\`/\`clear\`, \`dev3 label set\`, \`dev3 task move\`, the completion flow, the session-start checklist, or task notifications.
+- Do NOT run \`dev3 task update\`, \`dev3 overview set\`/\`clear\`, \`dev3 label set\`/\`add\`, \`dev3 task move\`, the completion flow, the session-start checklist, or task notifications.
 - The only allowed write is \`dev3 note add\` for confirmed findings when the Bug Hunter prompt asks for it. Read-only \`dev3\` commands are fine.
 - Finish the report and stop; the main agent owns the lifecycle.
 `;
@@ -82,9 +82,9 @@ The title is auto-generated from the description's first 80 characters. If it en
 
 **Respect user-edited titles.** If \`dev3 current\` marks one \`(user-edited — do NOT rename)\`, skip the rename and never pass \`--force\`.
 
-\`--task <id>\` targets a task other than the auto-detected one (\`task show\`, \`task update\`, \`task move\`, \`note\`, \`overview\`, \`label set\`).
+\`--task <id>\` targets a task other than the auto-detected one (\`task show\`, \`task update\`, \`task move\`, \`note\`, \`overview\`, \`label add\`).
 
-Labels, same session-start pass: \`dev3 label list\` first and reuse existing ones, aiming for **1-2 meaningful labels**; no good fit → create **one short reusable label** (\`dev3 label create "name"\`) and attach it at once. \`dev3 label set <id> [<id>...]\` applies them — creating without attaching does **not** complete this step. Leave sensible existing labels alone: no spam, no near-duplicates, no workflow-state labels (\`in-progress\`, \`review\`, \`blocked\`).
+Labels, same session-start pass: \`dev3 label list\` first and reuse existing ones, aiming for **1-2 meaningful labels**; no good fit → create **one short reusable label** (\`dev3 label create "name"\`) and attach it at once. \`dev3 label add <id> [<id>...]\` attaches them — creating without attaching does **not** complete this step. Keep existing task labels: no spam, no near-duplicates, no workflow-state labels (\`in-progress\`, \`review\`, \`blocked\`).
 
 ## Task priority
 

@@ -1,3 +1,5 @@
+import { accessSync, constants as fsConstants, readdirSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { Updater } from "./electrobun-platform";
 import { createLogger } from "./logger";
 import { isNewerVersion } from "../shared/version";
@@ -195,6 +197,7 @@ export function downloadUpdateForChannel(
 	onProgress?: (status: string, progress?: number) => void,
 ): Promise<{ ok: boolean; error?: string }> {
 	return withUpdaterLock(async () => {
+		attachUpdaterStatusLog();
 		const result = await doDownloadUpdateForChannel(channel, onProgress);
 		// Remember (or forget) the waiting-for-restart version here, so every
 		// caller — auto-check, menu, Settings RPC — feeds the same guard.
@@ -370,12 +373,101 @@ export function applyUpdate(): Promise<void> {
 	return withUpdaterLock(doApplyUpdate);
 }
 
+type UpdaterStatusEntry = { status: string; message: string; details?: { errorMessage?: string; progress?: number } };
+
+let statusLogAttached = false;
+
+/**
+ * Electrobun reports updater failures only through its status feed (and stdout), never by
+ * throwing, so without this the dev3 log of a failed update ends at "Applying update...".
+ */
+export function attachUpdaterStatusLog(): void {
+	if (statusLogAttached || typeof Updater.onStatusChange !== "function") return;
+	statusLogAttached = true;
+	Updater.onStatusChange((entry: UpdaterStatusEntry) => {
+		// Progress fires every ~500 KB; keep only the line that names the URL and the final one.
+		if (entry.status === "download-progress" && entry.details?.progress !== undefined && entry.details.progress < 100)
+			return;
+		const level = entry.status === "error" || entry.status === "patch-failed" ? "error" : "info";
+		log[level](`electrobun: ${entry.status}`, { message: entry.message });
+	});
+}
+
+/** Test seam: forget that the status log was attached. */
+export function resetUpdaterStatusLogForTests(): void {
+	statusLogAttached = false;
+}
+
+/**
+ * Why the running macOS bundle cannot be swapped, or null when it can. Electrobun's swap is
+ * `rmSync(bundle) + renameSync(new, bundle)`: in a read-only App Translocation mount or a
+ * bundle the user cannot write, it fails, logs to stdout, and returns as if it had restarted.
+ * Worse, `rmSync` deletes everything it CAN before hitting the first locked directory.
+ */
+const REINSTALL_HINT =
+	"Quit dev3 and install this version over it with `brew upgrade --cask dev3` or the DMG from the releases page, placing dev-3.0.app in /Applications.";
+
+export function macBundleReplaceBlocker(bundlePath: string): string | null {
+	if (bundlePath.includes("/AppTranslocation/")) {
+		return "macOS is running dev3 from a temporary read-only copy (App Translocation), so it cannot update itself. Quit dev3, move dev-3.0.app into /Applications with Finder, open it from there and update again.";
+	}
+	const notWritable = (dir: string): boolean => {
+		try {
+			accessSync(dir, fsConstants.W_OK);
+			return false;
+		} catch {
+			return true;
+		}
+	};
+	const parent = dirname(bundlePath);
+	if (notWritable(parent)) {
+		return `dev3 cannot replace itself: ${parent} is not writable by this user. ${REINSTALL_HINT}`;
+	}
+	const pending = [bundlePath];
+	while (pending.length > 0) {
+		const dir = pending.pop() as string;
+		if (notWritable(dir)) {
+			return `dev3 cannot replace itself: ${dir} is not writable by this user. ${REINSTALL_HINT}`;
+		}
+		try {
+			for (const entry of readdirSync(dir, { withFileTypes: true })) {
+				if (entry.isDirectory()) pending.push(join(dir, entry.name));
+			}
+		} catch {
+			return `dev3 cannot replace itself: ${dir} cannot be read by this user.`;
+		}
+	}
+	return null;
+}
+
+/** Electrobun's applyUpdate returned instead of quitting — turn its status feed into an error. */
+export function describeReturnedApply(history: UpdaterStatusEntry[]): string {
+	const last = history[history.length - 1];
+	if (!last) return "The updater stopped without reporting why — dev3 was not restarted.";
+	if (last.status === "complete" || last.status === "launching-new-version") {
+		return "The update is installed but dev3 could not restart itself. Quit dev3 and open it again.";
+	}
+	const lastError = [...history].reverse().find((e) => e.status === "error");
+	if (lastError) return lastError.details?.errorMessage ?? lastError.message;
+	return `The updater stopped at "${last.status}" without restarting dev3.`;
+}
+
 async function doApplyUpdate(): Promise<void> {
+	attachUpdaterStatusLog();
 	const info = Updater.updateInfo?.();
 	log.info("Applying update...", {
 		updateReady: info?.updateReady,
 		version: info?.version,
 	});
+
+	if (process.platform === "darwin") {
+		const bundlePath = resolve(dirname(process.execPath), "..", "..");
+		const blocker = macBundleReplaceBlocker(bundlePath);
+		if (blocker) {
+			log.error("applyUpdate: the running bundle cannot be replaced", { bundlePath, blocker });
+			throw new Error(blocker);
+		}
+	}
 
 	// Always re-run downloadUpdate() before applying — it is the ONLY call that
 	// can (re)set Electrobun's in-memory updateReady flag, and it is cheap when
@@ -416,6 +508,10 @@ async function doApplyUpdate(): Promise<void> {
 	}
 
 	await Updater.applyUpdate();
+	// A successful apply ends in quit(), which never returns. Getting here means it failed.
+	const reason = describeReturnedApply(Updater.getStatusHistory?.() ?? []);
+	log.error("applyUpdate: Electrobun returned without restarting", { reason });
+	throw new Error(reason);
 }
 
 export function startAutoCheck(

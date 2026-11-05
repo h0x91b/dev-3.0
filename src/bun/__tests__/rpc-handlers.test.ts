@@ -216,6 +216,7 @@ const mockNativePanes = {
 	nativeTaskPanesState: vi.fn(async () => null as any),
 	nativeTaskPaneLayout: vi.fn(async (..._args: any[]) => null as any),
 	nativeTaskPanesAlive: vi.fn(async () => false),
+	stopNativeTaskPanes: vi.fn(async () => undefined),
 	nativeTaskPaneCommands: vi.fn(async () => [] as any[]),
 	// Serves the same fake pane list as the tolerant read; the undecidable and
 	// unreadable-record cases run against the real discovery path in
@@ -2349,6 +2350,23 @@ describe("handlers.saveGlobalSettings", () => {
 		expect(vi.mocked(saveSettings).mock.lastCall?.[0].autoAccountDefault).toBeUndefined();
 	});
 
+	it("keeps the stored app-wide Auto exclusions whatever the renderer's snapshot says", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({ autoAccountExclusions: ["cl-1"] } as GlobalSettings);
+		await handlers.saveGlobalSettings({ updateChannel: "beta" } as unknown as GlobalSettings);
+		expect(vi.mocked(saveSettings).mock.lastCall?.[0].autoAccountExclusions).toEqual(["cl-1"]);
+	});
+
+	it("adds and removes one login's app-wide Auto exclusion", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({ autoAccountExclusions: ["cl-1"] } as GlobalSettings);
+		await handlers.setAutoAccountExcluded({ kind: "claude", accountId: null, excluded: true });
+		expect(vi.mocked(saveSettings).mock.lastCall?.[0].autoAccountExclusions).toEqual(["cl-1", "system:claude"]);
+
+		await handlers.setAutoAccountExcluded({ kind: "claude", accountId: "cl-1", excluded: false });
+		expect(vi.mocked(saveSettings).mock.lastCall?.[0].autoAccountExclusions).toBeUndefined();
+
+		await expect(handlers.setAutoAccountExcluded({ kind: "omp", accountId: "o-1", excluded: true })).rejects.toThrow();
+	});
+
 	// The switch has to reach the collector in this session: a diagnostic that
 	// only starts at the next launch is useless while the app is misbehaving.
 	it("starts and stops the freeze collector when the stored switch changes", async () => {
@@ -2767,6 +2785,24 @@ describe("handlers.getProjectCurrentBranch", () => {
 
 		expect(result).toEqual({ branch: null, isBaseBranch: true, isDirty: false, behindOrigin: 0 });
 		expect(git.getBehindOriginCount).not.toHaveBeenCalled();
+	});
+
+	it("shares one in-flight read between concurrent pollers, then reads afresh", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+		let answer!: (branch: string) => void;
+		vi.mocked(git.getCurrentBranch).mockReturnValueOnce(new Promise((resolve) => { answer = resolve; }));
+		vi.mocked(git.isWorktreeDirty).mockResolvedValue(false);
+
+		const calls = [1, 2, 3].map(() => handlers.getProjectCurrentBranch({ projectId: "proj-1" }));
+		await vi.waitFor(() => expect(answer).toBeTypeOf("function"));
+		answer("feat/x");
+		const results = await Promise.all(calls);
+
+		expect(results.map((r) => r.branch)).toEqual(["feat/x", "feat/x", "feat/x"]);
+		expect(git.getCurrentBranch).toHaveBeenCalledTimes(1);
+
+		vi.mocked(git.getCurrentBranch).mockResolvedValueOnce("feat/y");
+		expect((await handlers.getProjectCurrentBranch({ projectId: "proj-1" })).branch).toBe("feat/y");
 	});
 });
 
@@ -8263,7 +8299,7 @@ describe("handlers.setTaskLabels", () => {
 
 		const result = await handlers.setTaskLabels({ taskId: "task-1", projectId: "proj-1", labelIds: ["l1", "l2"] });
 		expect(result.labelIds).toEqual(["l1", "l2"]);
-		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { labelIds: ["l1", "l2"] });
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { labelIds: ["l1", "l2"], userLabelIds: ["l1", "l2"] });
 	});
 });
 
@@ -11728,6 +11764,180 @@ describe("resumeTaskSession — the Resume Session path dev3 agent resume reuses
 		expect(click).toContain("session=task-1");
 		expect(agents.resolveCommandForAgent).toHaveBeenCalledTimes(1);
 	});
+
+	it("restarts the saved conversation once and leaves its account and hibernation metadata intact", async () => {
+		const task = arrange([LIVE], [`${LIVE}.jsonl`]);
+		task.sessionState!.panes[0].accountId = "account-1";
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+		(pty.hasSession as any).mockReturnValue(true);
+
+		await Promise.all([
+			handlers.resumeTask({ taskId: task.id, restart: true }),
+			handlers.resumeTask({ taskId: task.id, restart: true }),
+		]);
+
+		expect(pty.destroySession).toHaveBeenCalledTimes(1);
+		expect(agents.resolveCommandForAgent).toHaveBeenCalledTimes(1);
+		expect((agents.resolveCommandForAgent as any).mock.calls[0][3]).toMatchObject({ resume: true, sessionId: LIVE, accountId: "account-1" });
+		const writes = vi.mocked(data.updateTask).mock.calls.map((call) => call[2]);
+		expect(writes.some((patch) => patch.sessionState?.panes[0]?.parked)).toBe(true);
+		expect(writes[writes.length - 1]?.sessionState?.panes[0]).toMatchObject({ sessionId: LIVE, accountId: "account-1" });
+		expect(writes.some((patch) => patch.hibernated !== undefined)).toBe(false);
+	});
+
+	it.each(["alive", "unknown"] as const)("rechecks a watchdog restart inside the resume flight and refuses a %s agent", async (liveness) => {
+		arrange([LIVE], [`${LIVE}.jsonl`]);
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
+		const probe = vi.spyOn(await import("../scheduled-message-author"), "taskMainAgentLiveness").mockResolvedValue(liveness);
+		try {
+			await expect(resumeTaskSession("task-1", { restart: "if-exited" })).resolves.toEqual({ kind: "already-running", backend: "tmux" });
+			expect(probe).toHaveBeenCalledTimes(1);
+			expect(pty.destroySession).not.toHaveBeenCalled();
+			expect(agents.resolveCommandForAgent).not.toHaveBeenCalled();
+		} finally { probe.mockRestore(); }
+	});
+
+	it("restarts an exited agent when the watchdog recheck confirms it", async () => {
+		arrange([LIVE], [`${LIVE}.jsonl`]);
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValueOnce(true).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+		const probe = vi.spyOn(await import("../scheduled-message-author"), "taskMainAgentLiveness").mockResolvedValue("exited");
+		try {
+			await expect(resumeTaskSession("task-1", { restart: "if-exited" })).resolves.toMatchObject({ kind: "resumed" });
+			expect(pty.destroySession).toHaveBeenCalledTimes(1);
+			expect(agents.resolveCommandForAgent).toHaveBeenCalledTimes(1);
+		} finally { probe.mockRestore(); }
+	});
+
+	it("honors an explicit restart that joined a watchdog probe which left the live agent alone", async () => {
+		arrange([LIVE], [`${LIVE}.jsonl`]);
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValueOnce(true).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+		const probe = vi.spyOn(await import("../scheduled-message-author"), "taskMainAgentLiveness").mockResolvedValue("alive");
+		try {
+			const [automatic, explicit] = await Promise.all([
+				resumeTaskSession("task-1", { restart: "if-exited" }),
+				handlers.resumeTask({ taskId: "task-1", restart: true }),
+			]);
+			expect(automatic.kind).toBe("already-running");
+			expect(explicit).toContain("session=task-1");
+			expect(pty.destroySession).toHaveBeenCalledTimes(1);
+			expect(agents.resolveCommandForAgent).toHaveBeenCalledTimes(1);
+		} finally { probe.mockRestore(); }
+	});
+
+	it.each([
+		["missing", [DEAD], []],
+		["substituted", [DEAD], [`${LIVE}.jsonl`]],
+		["fresh extra", [LIVE, DEAD], [`${LIVE}.jsonl`]],
+	] as const)("refuses a %s conversation before stopping the live terminal", async (_name, ids, files) => {
+		arrange([...ids], [...files]);
+		(pty.hasSession as any).mockReturnValue(true);
+		await expect(handlers.resumeTask({ taskId: "task-1", restart: true })).rejects.toThrow("Nothing was stopped");
+		expect(pty.destroySession).not.toHaveBeenCalled();
+		expect(pty.destroySessionAwaited).not.toHaveBeenCalled();
+		expect(agents.resolveCommandForAgent).not.toHaveBeenCalled();
+	});
+
+	it.each([{ status: "todo" }, { hibernated: true }, { preparing: true }, { shuttingDown: true }])("refuses restart when the task cannot run: %j", async (state) => {
+		arrange([LIVE], [`${LIVE}.jsonl`], state as Partial<Task>);
+		await expect(handlers.resumeTask({ taskId: "task-1", restart: true })).rejects.toThrow("task must be active");
+		expect(pty.destroySession).not.toHaveBeenCalled();
+	});
+
+	it.each([["pane-1", "pane-2"], ["pane-2"]])("refuses unsaved native extra panes, including a lone auxiliary pane: %j", async (...paneIds) => {
+		arrange([LIVE], [`${LIVE}.jsonl`], { terminalBackend: "native" });
+		mockNativePanes.nativeTaskPaneCommandsStrict.mockResolvedValueOnce({ kind: "read", panes: paneIds.map((paneId) => ({ paneId })) as any[], unreadable: [] });
+		await expect(handlers.resumeTask({ taskId: "task-1", restart: true })).rejects.toThrow("extra panes");
+		expect(pty.destroySessionAwaited).not.toHaveBeenCalled();
+		expect(mockNativePanes.stopNativeTaskPanes).not.toHaveBeenCalled();
+	});
+
+	it("refuses an unreadable native pane set before teardown", async () => {
+		arrange([LIVE], [`${LIVE}.jsonl`], { terminalBackend: "native" });
+		mockNativePanes.nativeTaskPaneCommandsStrict.mockRejectedValueOnce(new Error("cannot read pane identity"));
+		await expect(handlers.resumeTask({ taskId: "task-1", restart: true })).rejects.toThrow("cannot read pane identity");
+		expect(mockNativePanes.stopNativeTaskPanes).not.toHaveBeenCalled();
+	});
+
+	it("restarts a single native pane on its saved conversation", async () => {
+		arrange([LIVE], [`${LIVE}.jsonl`], { terminalBackend: "native" });
+		mockNativePanes.nativeTaskPaneCommandsStrict.mockResolvedValueOnce({ kind: "read", panes: [{ paneId: "pane-1" }] as any[], unreadable: [] });
+		mockNativePanes.nativeTaskPanesAlive.mockResolvedValueOnce(false);
+		await handlers.resumeTask({ taskId: "task-1", restart: true });
+		expect(mockNativePanes.stopNativeTaskPanes).toHaveBeenCalledWith("task-1");
+		expect((agents.resolveCommandForAgent as any).mock.calls[0][3]).toMatchObject({ resume: true, sessionId: LIVE });
+	});
+
+	// Keep-alive revives an agent that already died the way a plain resume would; the strict user-restart guards do not apply.
+	it.each([
+		["agent-latest", [DEAD], [], (_t: Task) => {}],
+		["substituted", [DEAD], [`${LIVE}.jsonl`], (_t: Task) => {}],
+		["fresh-session", [LIVE, DEAD], [`${LIVE}.jsonl`], (_t: Task) => {}],
+		["fresh", ["generic-1"], [], (t: Task) => { t.sessionState!.panes[0] = { ...t.sessionState!.panes[0], agentCmd: "/opt/tools/my-wrapper", agentFamily: null, agentId: null }; }],
+	] as const)("revives an exited agent in %s mode through the watchdog restart", async (mode, ids, files, tweak) => {
+		const task = arrange([...ids], [...files]);
+		tweak(task);
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValueOnce(true).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+		const probe = vi.spyOn(await import("../scheduled-message-author"), "taskMainAgentLiveness").mockResolvedValue("exited");
+		try {
+			const outcome = await resumeTaskSession("task-1", { restart: "if-exited" });
+			expect(outcome).toMatchObject({ kind: "resumed" });
+			if (outcome.kind === "resumed") expect(outcome.result.panes.map((pane) => pane.mode)).toContain(mode);
+			expect(pty.destroySession).toHaveBeenCalledTimes(1);
+		} finally { probe.mockRestore(); }
+	});
+
+	it("revives the main agent of a native terminal with extra panes through the watchdog restart", async () => {
+		arrange([LIVE, LIVE], [`${LIVE}.jsonl`], { terminalBackend: "native" });
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		mockNativePanes.nativeTaskPanesAlive.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+		const probe = vi.spyOn(await import("../scheduled-message-author"), "taskMainAgentLiveness").mockResolvedValue("exited");
+		try {
+			await expect(resumeTaskSession("task-1", { restart: "if-exited" })).resolves.toMatchObject({ kind: "resumed" });
+			expect(pty.destroySessionAwaited).toHaveBeenCalledTimes(1);
+			expect(agents.resolveCommandForAgent).toHaveBeenCalled();
+		} finally { probe.mockRestore(); }
+	});
+
+	it("writes nothing when the watchdog restart finds the agent still alive", async () => {
+		arrange([LIVE], [`${LIVE}.jsonl`], { hibernated: false });
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
+		const probe = vi.spyOn(await import("../scheduled-message-author"), "taskMainAgentLiveness").mockResolvedValue("alive");
+		try {
+			await expect(resumeTaskSession("task-1", { restart: "if-exited" })).resolves.toMatchObject({ kind: "already-running" });
+			expect(data.updateTask).not.toHaveBeenCalled();
+			expect(agents.getAllAgents).not.toHaveBeenCalled();
+		} finally { probe.mockRestore(); }
+	});
+
+	it("keeps the old pane identity when native teardown fails", async () => {
+		const task = arrange([LIVE], [`${LIVE}.jsonl`], { terminalBackend: "native" });
+		const priorState = task.sessionState;
+		mockNativePanes.stopNativeTaskPanes.mockRejectedValueOnce(new Error("still running"));
+		await expect(handlers.resumeTask({ taskId: task.id, restart: true })).rejects.toThrow("still running");
+		expect(data.updateTask).toHaveBeenLastCalledWith(expect.anything(), task.id, { sessionState: priorState });
+		expect(agents.resolveCommandForAgent).not.toHaveBeenCalled();
+	});
+
+	it("does not launch into a native terminal that survived teardown", async () => {
+		arrange([LIVE], [`${LIVE}.jsonl`], { terminalBackend: "native" });
+		mockNativePanes.nativeTaskPanesAlive.mockResolvedValueOnce(true);
+		await expect(handlers.resumeTask({ taskId: "task-1", restart: true })).rejects.toThrow("previous terminal has not stopped");
+		expect(agents.resolveCommandForAgent).not.toHaveBeenCalled();
+	});
+
+	it("reports an extra pane launch failure and keeps its saved conversation", async () => {
+		const task = arrange([LIVE, DEAD], [`${LIVE}.jsonl`, `${DEAD}.jsonl`]);
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+		vi.mocked(pty.splitAndRunCommand).mockRejectedValueOnce(new Error("split failed"));
+		await expect(handlers.resumeTask({ taskId: task.id, restart: true })).rejects.toThrow("some agent panes could not be restored");
+		expect(vi.mocked(data.updateTask).mock.calls.some((call) => call[2].sessionState?.panes[1]?.sessionId === DEAD)).toBe(true);
+	});
 });
 
 describe("resumeTask gives every Claude pane its own conversation (#1950)", () => {
@@ -11908,7 +12118,10 @@ describe("restartTask (start fresh) floors the Codex scan", () => {
 });
 
 describe("restartTask and resume with a stored account or a refused launch", () => {
-	beforeEach(() => vi.clearAllMocks());
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		(await import("../rpc-handlers/tmux-pty/task-launch")).resetStaleAccountNoticesForTests();
+	});
 	const claudePanes = [{ agentCmd: "claude", agentFamily: "claude", agentId: "builtin-claude", configId: "claude-default", sessionId: "00000000-0000-4000-8000-0000c0de2799", accountId: "removed-account" }];
 	function arrange() {
 		const project = makeProject();
@@ -11944,8 +12157,29 @@ describe("restartTask and resume with a stored account or a refused launch", () 
 			expect(push).toHaveBeenCalledWith("cliToast", expect.objectContaining({ taskId: task.id, level: "info", messageKey: "kanban.launchAccountRemoved" }));
 			const last = vi.mocked(data.updateTask).mock.calls.map((call) => call[2]).filter((u) => u.sessionState).pop()!;
 			expect(last.sessionState!.panes[0].accountId).toBeNull();
-			// The task keeps the account actually used, so Start Fresh does not warn again.
-			expect(vi.mocked(data.updateTask).mock.calls.some((call) => call[2].accountId === null)).toBe(true);
+			// The task drops the removed id and follows the default again (null would pin the system login).
+			const cleared = vi.mocked(data.updateTask).mock.calls.find((call) => "accountId" in call[2])?.[2];
+			expect(cleared).toBeDefined();
+			expect(cleared!.accountId).toBeUndefined();
+			expect(vi.mocked(data.updateTask).mock.calls.some((call) => call[2].accountId === null)).toBe(false);
+		} finally {
+			resolve.mockImplementation(original!);
+		}
+	});
+
+	it("resume shows one removed-account notice per task, however many panes carried that account", async () => {
+		const { project, task } = arrange();
+		await data.updateTask(project, task.id, { sessionState: { panes: [claudePanes[0], { ...claudePanes[0], sessionId: null, paneId: "%5" }, { ...claudePanes[0], sessionId: null, paneId: "%6" }] as any } });
+		const push = vi.fn();
+		setPushMessage(push);
+		const resolve = vi.mocked(agents.resolveCommandForAgent);
+		const original = resolve.getMockImplementation();
+		resolve.mockResolvedValue({ command: "claude", extraEnv: {}, agentFamily: "claude", resolvedAccountId: null, staleAccountDropped: true } as any);
+		try {
+			const { resumeTaskSession } = await import("../rpc-handlers/tmux-pty");
+			await resumeTaskSession(task.id, {});
+			expect(resolve.mock.calls.length).toBeGreaterThanOrEqual(3);
+			expect(push.mock.calls.filter((call) => call[0] === "cliToast" && call[1]?.messageKey === "kanban.launchAccountRemoved")).toHaveLength(1);
 		} finally {
 			resolve.mockImplementation(original!);
 		}
@@ -11986,6 +12220,23 @@ describe("resumeTask resumes the Codex conversations the selection engine chose"
 		try {
 			await handlers.resumeTask({ taskId: task.id });
 			expect(chooseTaskCodexConversations).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: task.id }), [expect.objectContaining({ sessionId })], "explicit-resume", expect.objectContaining({ persist: true }));
+			expect(pty.createSession).toHaveBeenLastCalledWith(task.id, project.id, task.worktreePath, expect.any(String), expect.objectContaining({ CODEX_HOME: home }), expect.any(String));
+			expect((await data.getTask(project, task.id)).sessionState?.panes[0]).toMatchObject({ sessionId, accountId: "account-b" });
+		} finally { accountSpy.mockRestore(); }
+	});
+
+	it("keeps Codex resumable after restart and a later hibernation wake", async () => {
+		const { project, task } = arrange();
+		const accountSpy = vi.spyOn(agentAccounts, "codexAccountIdForHome").mockImplementation((value) => value === home ? "account-b" : undefined);
+		chose([0, sessionId, home]);
+		try {
+			vi.mocked(pty.hasSession).mockReturnValue(true);
+			vi.mocked(pty.tmuxSessionExists).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+			await handlers.resumeTask({ taskId: task.id, restart: true });
+			expect((await data.getTask(project, task.id)).sessionState?.panes[0]).toMatchObject({ sessionId, accountId: "account-b" });
+			await data.updateTask(project, task.id, { hibernated: true });
+			vi.mocked(pty.hasSession).mockReturnValue(false);
+			await handlers.resumeTask({ taskId: task.id });
 			expect(pty.createSession).toHaveBeenLastCalledWith(task.id, project.id, task.worktreePath, expect.any(String), expect.objectContaining({ CODEX_HOME: home }), expect.any(String));
 			expect((await data.getTask(project, task.id)).sessionState?.panes[0]).toMatchObject({ sessionId, accountId: "account-b" });
 		} finally { accountSpy.mockRestore(); }
@@ -13646,6 +13897,22 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		clearIntervalSpy.mockRestore();
 	});
 
+	it("skips a tick while the previous one is still waiting on git", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "review-by-colleague", worktreePath: "/tmp/test-worktree", branchName: "dev3/task-test" });
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
+		vi.mocked(git.isWorktreeDirty).mockReturnValue(new Promise(() => {}));
+		setPushMessage(vi.fn());
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(5 * 60_000);
+
+		expect(git.isWorktreeDirty).toHaveBeenCalledTimes(1);
+	});
+
 	it("does not offer a merged branch while a watching agent handles it, and offers it after the hold", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "review-by-colleague", worktreePath: "/tmp/test-worktree", branchName: "dev3/task-test" });
@@ -14999,6 +15266,7 @@ describe("checkAgentAvailability", () => {
 			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 			agentCustomBinaryPaths: { "builtin-claude": "/opt/wrappers/gone" },
+			strictAgentCustomBinaryPaths: { "builtin-claude": "/opt/wrappers/gone" },
 		});
 		// The system claude exists on PATH; the broken custom path must not fall back to it.
 		vi.mocked(existsSync).mockImplementation((path) => String(path) === "/usr/local/bin/claude");
@@ -15016,6 +15284,30 @@ describe("checkAgentAvailability", () => {
 		expect(claude?.customPathError).toBe(true);
 		expect(claude?.customPath).toBe("/opt/wrappers/gone");
 		expect(saveSettings).not.toHaveBeenCalled();
+	});
+
+	it("reports a gone pre-strict custom path as stale, not broken, and finds the CLI on PATH", async () => {
+		vi.mocked(agents.getAllAgents).mockResolvedValue([
+			{ id: "builtin-claude", name: "Claude", baseCommand: "claude", isDefault: true, configurations: [] },
+		] as any);
+		vi.mocked(loadSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskSortOrder: "oldest-first",
+			updateChannel: "stable",
+			agentCustomBinaryPaths: { "builtin-claude": "/old/nvm/bin/claude" },
+			agentBinaryPaths: { "builtin-claude": "/old/nvm/bin/claude" },
+		});
+		vi.mocked(existsSync).mockImplementation((path) => String(path) === "/usr/local/bin/claude");
+		mockSpawnSync.mockImplementation((args: string[]) => {
+			if (args[0] === "which" && args[1] === "claude") {
+				return { exitCode: 0, stdout: new TextEncoder().encode("/usr/local/bin/claude") };
+			}
+			return { exitCode: 1, stdout: null };
+		});
+
+		const claude = (await handlers.checkAgentAvailability()).find((r) => r.agentId === "builtin-claude");
+		expect(claude).toMatchObject({ installed: true, resolvedPath: "/usr/local/bin/claude", customPathError: false, customPathStale: true, customPath: "/old/nvm/bin/claude" });
 	});
 
 	it("reports customPathError when saved path no longer exists", async () => {
@@ -15057,10 +15349,11 @@ describe("setAgentBinaryPath", () => {
 		}));
 	});
 
-	it("records the path as user-chosen, not only as a cache entry", async () => {
+	it("records the path as user-chosen and strict, not only as a cache entry", async () => {
 		await handlers.setAgentBinaryPath({ agentId: "builtin-claude", path: "/opt/wrappers/claude-wrapper" });
 		expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({
 			agentCustomBinaryPaths: { "builtin-claude": "/opt/wrappers/claude-wrapper" },
+			strictAgentCustomBinaryPaths: { "builtin-claude": "/opt/wrappers/claude-wrapper" },
 		}));
 	});
 
@@ -15087,12 +15380,14 @@ describe("clearAgentBinaryPath", () => {
 			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 			agentCustomBinaryPaths: { "builtin-claude": "/opt/w/claude", "builtin-codex": "/opt/w/codex" },
+			strictAgentCustomBinaryPaths: { "builtin-claude": "/opt/w/claude", "builtin-codex": "/opt/w/codex" },
 			agentBinaryPaths: { "builtin-claude": "/opt/w/claude", "builtin-codex": "/auto/codex" },
 		});
 		vi.mocked(saveSettings).mockClear();
 		await handlers.clearAgentBinaryPath({ agentId: "builtin-claude" });
 		expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({
 			agentCustomBinaryPaths: { "builtin-codex": "/opt/w/codex" },
+			strictAgentCustomBinaryPaths: { "builtin-codex": "/opt/w/codex" },
 			agentBinaryPaths: { "builtin-codex": "/auto/codex" },
 		}));
 	});

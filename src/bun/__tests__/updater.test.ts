@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // Electrobun's real Updater.checkForUpdate() overwrites its in-memory state
 // with the parsed remote update.json, which only contains {version, hash} —
@@ -15,6 +18,8 @@ const { mockUpdater, markQuitConfirmed } = vi.hoisted(() => ({
 		checkForUpdate: vi.fn(),
 		downloadUpdate: vi.fn(),
 		applyUpdate: vi.fn(),
+		getStatusHistory: vi.fn(() => [] as { status: string; message: string; details?: object }[]),
+		onStatusChange: vi.fn(),
 	},
 	markQuitConfirmed: vi.fn(),
 }));
@@ -28,6 +33,10 @@ vi.mock("../quit-manager", () => ({ markQuitConfirmed }));
 
 import {
 	applyUpdate,
+	attachUpdaterStatusLog,
+	describeReturnedApply,
+	macBundleReplaceBlocker,
+	resetUpdaterStatusLogForTests,
 	downloadUpdateForChannel,
 	checkForUpdateWithChannel,
 	startAutoCheck,
@@ -49,15 +58,31 @@ const remoteState = {
 
 // downloadUpdateForChannel records the downloaded version in module state (the
 // #1072 re-download guard) — reset it so tests stay independent.
+// A successful Electrobun apply ends in quit(), which kills the process and never returns.
+// The mock stands in for that with a rejection, so "reached quit" is observable.
+const QUIT = new Error("process exited via quit()");
+
+function setPlatform(platform: NodeJS.Platform, execPath = process.execPath) {
+	Object.defineProperty(process, "platform", { value: platform, configurable: true });
+	Object.defineProperty(process, "execPath", { value: execPath, configurable: true });
+}
+const realPlatform = process.platform;
+const realExecPath = process.execPath;
+
+// The macOS apply pre-flight walks the bundle around process.execPath; tests opt into it.
 beforeEach(() => {
 	clearReadyUpdate();
+	setPlatform("linux");
 });
+afterEach(() => setPlatform(realPlatform, realExecPath));
 
 describe("applyUpdate", () => {
 	let ready: boolean;
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mockUpdater.applyUpdate.mockRejectedValue(QUIT);
+		mockUpdater.getStatusHistory.mockReturnValue([]);
 		ready = false;
 		mockUpdater.updateInfo.mockImplementation(() => ({ ...remoteState, updateReady: ready }));
 		// checkForUpdate can never restore updateReady — update.json has no such field
@@ -74,7 +99,7 @@ describe("applyUpdate", () => {
 	it("recovers when updateReady was wiped by a later checkForUpdate (issue #813)", async () => {
 		ready = false;
 
-		await applyUpdate();
+		await expect(applyUpdate()).rejects.toBe(QUIT);
 
 		expect(mockUpdater.downloadUpdate).toHaveBeenCalled();
 		expect(mockUpdater.applyUpdate).toHaveBeenCalledOnce();
@@ -87,7 +112,7 @@ describe("applyUpdate", () => {
 		// tar. The repair download must always run before applying.
 		ready = true;
 
-		await applyUpdate();
+		await expect(applyUpdate()).rejects.toBe(QUIT);
 
 		expect(mockUpdater.downloadUpdate).toHaveBeenCalledOnce();
 		expect(mockUpdater.applyUpdate).toHaveBeenCalledOnce();
@@ -116,6 +141,95 @@ describe("applyUpdate", () => {
 
 		expect(mockUpdater.applyUpdate).not.toHaveBeenCalled();
 		expect(markQuitConfirmed).not.toHaveBeenCalled();
+	});
+
+	it("reports Electrobun's swallowed swap error instead of resolving into an endless Restarting…", async () => {
+		// Electrobun's macOS applyUpdate catches a failed rmSync/renameSync, emits an
+		// "error" status and RETURNS — the UI used to keep spinning forever.
+		mockUpdater.applyUpdate.mockResolvedValue(undefined);
+		mockUpdater.getStatusHistory.mockReturnValue([
+			{ status: "applying", message: "Starting update installation..." },
+			{ status: "replacing-app", message: "Removing old version..." },
+			{
+				status: "error",
+				message: "Failed to replace app: EACCES: permission denied",
+				details: { errorMessage: "EACCES: permission denied, rmdir '/Applications/dev-3.0.app'" },
+			},
+		]);
+
+		await expect(applyUpdate()).rejects.toThrow("EACCES: permission denied, rmdir '/Applications/dev-3.0.app'");
+	});
+
+	it("refuses before downloading anything when macOS runs the app from App Translocation", async () => {
+		setPlatform("darwin", "/private/var/folders/xy/T/AppTranslocation/0A1B/d/dev-3.0.app/Contents/MacOS/bun");
+
+		await expect(applyUpdate()).rejects.toThrow("App Translocation");
+
+		expect(mockUpdater.downloadUpdate).not.toHaveBeenCalled();
+		expect(mockUpdater.applyUpdate).not.toHaveBeenCalled();
+		expect(markQuitConfirmed).not.toHaveBeenCalled();
+	});
+});
+
+describe("describeReturnedApply", () => {
+	it("names the restart, not a failure, when the swap completed but quit was vetoed", () => {
+		expect(describeReturnedApply([{ status: "complete", message: "Update complete" }])).toContain(
+			"could not restart itself",
+		);
+	});
+
+	it("names the step it stopped at when no error was emitted", () => {
+		expect(describeReturnedApply([{ status: "extracting", message: "Extracting" }])).toContain('"extracting"');
+	});
+
+	it("still explains an empty history", () => {
+		expect(describeReturnedApply([])).toContain("without reporting why");
+	});
+});
+
+describe("macBundleReplaceBlocker", () => {
+	let root: string;
+	// Root ignores permission bits, so the not-writable case cannot be set up there.
+	const isRoot = process.getuid?.() === 0;
+
+	beforeEach(() => {
+		root = mkdtempSync(join(tmpdir(), "dev3-bundle-"));
+		mkdirSync(join(root, "dev-3.0.app", "Contents", "Resources"), { recursive: true });
+	});
+
+	afterEach(() => {
+		chmodSync(join(root, "dev-3.0.app", "Contents"), 0o755);
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it("passes a bundle the user fully owns", () => {
+		expect(macBundleReplaceBlocker(join(root, "dev-3.0.app"))).toBeNull();
+	});
+
+	it.skipIf(isRoot)("names the first directory rmSync would choke on", () => {
+		chmodSync(join(root, "dev-3.0.app", "Contents"), 0o555);
+
+		expect(macBundleReplaceBlocker(join(root, "dev-3.0.app"))).toContain(join(root, "dev-3.0.app", "Contents"));
+	});
+
+	it("flags App Translocation without touching the disk", () => {
+		expect(macBundleReplaceBlocker("/private/var/folders/a/T/AppTranslocation/X/d/dev-3.0.app")).toContain(
+			"/Applications",
+		);
+	});
+});
+
+describe("attachUpdaterStatusLog", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		resetUpdaterStatusLogForTests();
+	});
+
+	it("subscribes once to Electrobun's status feed", () => {
+		attachUpdaterStatusLog();
+		attachUpdaterStatusLog();
+
+		expect(mockUpdater.onStatusChange).toHaveBeenCalledOnce();
 	});
 });
 
@@ -214,6 +328,7 @@ describe("dev channel guard", () => {
 describe("updater single-flight lock", () => {
 	it("applyUpdate waits for an in-flight download instead of racing it", async () => {
 		vi.clearAllMocks();
+		mockUpdater.applyUpdate.mockRejectedValue(QUIT);
 		let ready = false;
 		mockUpdater.updateInfo.mockImplementation(() => ({ ...remoteState, updateReady: ready }));
 		mockUpdater.checkForUpdate.mockImplementation(async () => {
@@ -245,7 +360,7 @@ describe("updater single-flight lock", () => {
 
 		releaseDownload();
 		await downloadPromise;
-		await applyPromise;
+		await expect(applyPromise).rejects.toBe(QUIT);
 
 		expect(mockUpdater.applyUpdate).toHaveBeenCalledOnce();
 	});

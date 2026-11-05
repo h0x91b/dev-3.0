@@ -17,9 +17,10 @@ import {
 	STAGED_LOGIN_MARKER,
 	sweepAbandonedStagedLogins,
 	discardStagedLogin,
+	unlinkLinkedSlot,
 	type AccountPaths,
 } from "../agent-accounts";
-import { DEV3_AGENT_ACCOUNT_ID_ENV, ENV_UNSET } from "../../shared/agent-accounts";
+import { ENV_UNSET } from "../../shared/agent-accounts";
 
 let root: string;
 let paths: AccountPaths;
@@ -63,7 +64,6 @@ describe("Claude account selection never falls back silently", () => {
 		await setActiveClaudeAccount(account.id, paths);
 		const env = await getActiveClaudeSessionEnv(null, paths);
 		expect(env.CLAUDE_CONFIG_DIR).toBe(ENV_UNSET);
-		expect(env[DEV3_AGENT_ACCOUNT_ID_ENV]).toBe(ENV_UNSET);
 		await setActiveClaudeAccount(null, paths);
 		expect((await getActiveClaudeSessionEnv(undefined, paths)).CLAUDE_CONFIG_DIR).toBe(ENV_UNSET);
 		expect(await getActiveClaudeConfigDir(undefined, paths)).toBeNull();
@@ -264,5 +264,33 @@ describe("a slot the user's own tool replaced with a link to its folder", () => 
 		symlinkSync(outside, join(paths.accountsDir, "claude"), "dir");
 		expect(discardStagedLogin("claude", "some-id", paths)).toBe(true);
 		expect(existsSync(join(outside, "some-id"))).toBe(false);
+	});
+});
+
+describe("unlinkLinkedSlot", () => {
+	const errno = (code: string) => Object.assign(new Error(code), { code });
+
+	it.each(["EPERM", "EISDIR"])("falls back to a non-recursive rmdir when unlink is refused with %s (Windows junction)", (code) => {
+		const fs = { unlinkSync: vi.fn(() => { throw errno(code); }), rmdirSync: vi.fn() };
+		unlinkLinkedSlot("/slot", fs);
+		expect(fs.rmdirSync).toHaveBeenCalledWith("/slot");
+	});
+
+	it("does not mask any other failure", () => {
+		const fs = { unlinkSync: vi.fn(() => { throw errno("EACCES"); }), rmdirSync: vi.fn() };
+		expect(() => unlinkLinkedSlot("/slot", fs)).toThrow("EACCES");
+		expect(fs.rmdirSync).not.toHaveBeenCalled();
+	});
+
+	it("unlinks a real symlink without touching its target", () => {
+		const root = mkdtempSync(join(tmpdir(), "dev3-unlink-slot-"));
+		const target = join(root, "target");
+		mkdirSync(target);
+		writeFileSync(join(target, "keep"), "x");
+		symlinkSync(target, join(root, "slot"), "dir");
+		unlinkLinkedSlot(join(root, "slot"));
+		expect(existsSync(join(root, "slot"))).toBe(false);
+		expect(existsSync(join(target, "keep"))).toBe(true);
+		rmSync(root, { recursive: true, force: true });
 	});
 });

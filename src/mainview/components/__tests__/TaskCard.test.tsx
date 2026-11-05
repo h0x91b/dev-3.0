@@ -2262,11 +2262,27 @@ describe("coordinator card", () => {
 		expect(card?.className).toContain("task-card-coordinator");
 	});
 
+	it("colours the badge with the coordinator ink token", () => {
+		renderCard(coordinator());
+
+		expect(screen.getByTestId("task-card-coordinator-badge").className).toContain("text-coordinator-ink");
+	});
+
 	it("leaves an ordinary card unmarked", () => {
 		const { container } = renderCard(makeTask());
 
 		expect(screen.queryByTestId("task-card-coordinator-badge")).toBeNull();
 		expect(container.querySelector("[data-task-id='t1']")?.className).not.toContain("task-card-coordinator");
+	});
+});
+
+describe("card footer bar", () => {
+	it("tints from a theme surface token, not a hard-coded black", () => {
+		renderCard(makeTask());
+		const footer = screen.getByTestId("task-card-action-row").parentElement;
+
+		expect(footer?.className).toContain("bg-base/50");
+		expect(footer?.className).not.toMatch(/bg-black/);
 	});
 });
 

@@ -1,7 +1,7 @@
 import type { Label, Project, Task } from "../../shared/types";
 import { LABEL_COLORS } from "../../shared/types";
 import * as data from "../data";
-import { pushTaskUpdated, type BoardPorts, type ProjectOpResult, type TaskOpResult } from "./types";
+import { pushTaskUpdated, type BoardActor, type BoardPorts, type ProjectOpResult, type TaskOpResult } from "./types";
 
 /**
  * Project labels and the labels on a task, one implementation for every door.
@@ -24,6 +24,37 @@ function sameIds(a: string[], b: string[]): boolean {
 	return a.length === b.length && a.every((id, i) => id === b[i]);
 }
 
+/** A task written before `userLabelIds` existed cannot tell whose labels it has, so all count as the user's. */
+function userOwned(current: Pick<Task, "labelIds" | "userLabelIds">): string[] {
+	return current.userLabelIds ?? current.labelIds ?? [];
+}
+
+/**
+ * The label patch for a task moving from `existing` to `next`. A user edit owns
+ * what it adds and disowns what it drops; an agent edit only disowns what it drops.
+ */
+export function labelPatch(
+	current: Pick<Task, "labelIds" | "userLabelIds">,
+	next: string[],
+	actor: BoardActor,
+): Pick<Task, "labelIds" | "userLabelIds"> {
+	const existing = current.labelIds ?? [];
+	const owned = userOwned(current).filter((id) => next.includes(id));
+	const added = actor.kind === "user" ? next.filter((id) => !existing.includes(id) && !owned.includes(id)) : [];
+	return { labelIds: next, userLabelIds: [...owned, ...added] };
+}
+
+function nextLabelIds(current: Task, change: TaskLabelChange, requested: string[], actor: BoardActor): string[] {
+	const existing = current.labelIds ?? [];
+	if (change.mode === "add") return [...existing, ...requested.filter((id) => !existing.includes(id))];
+	if (change.mode === "remove") return existing.filter((id) => !requested.includes(id));
+	if (actor.kind === "user") return requested;
+	// An agent's replace keeps what the user put there: only naming a label in `remove` drops it.
+	const owned = userOwned(current);
+	const kept = existing.filter((id) => owned.includes(id) && !requested.includes(id));
+	return [...kept, ...requested];
+}
+
 /**
  * Takes full label ids; prefix resolution belongs to the adapter. An id the caller
  * INTRODUCES must name a project label, or the whole change is refused with
@@ -35,20 +66,20 @@ export async function changeTaskLabels(
 	project: Project,
 	taskId: string,
 	change: TaskLabelChange,
+	actor: BoardActor,
 ): Promise<TaskOpResult> {
 	const requested = [...new Set(change.labelIds)];
 	const known = new Set(((await data.getProject(project.id)).labels ?? []).map((label) => label.id));
 	const { task, result: changed } = await data.updateTaskWith(project, taskId, (current) => {
 		const existing = current.labelIds ?? [];
-		const next = change.mode === "replace"
-			? requested
-			: change.mode === "add"
-				? [...existing, ...requested.filter((id) => !existing.includes(id))]
-				: existing.filter((id) => !requested.includes(id));
+		const next = nextLabelIds(current, change, requested, actor);
 		const unknown = next.filter((id) => !known.has(id) && !existing.includes(id));
 		if (unknown.length > 0) throw new UnknownLabelError(unknown);
-		if (sameIds(existing, next)) return { updates: {}, result: false };
-		return { updates: { labelIds: next }, result: true };
+		const patch = labelPatch(current, next, actor);
+		if (sameIds(existing, next) && sameIds(userOwned(current), patch.userLabelIds ?? [])) {
+			return { updates: {}, result: false };
+		}
+		return { updates: patch, result: true };
 	});
 	if (changed) pushTaskUpdated(ports, project, task);
 	return { verdict: changed ? "applied" : "noop", task, rejected: [] };
@@ -133,7 +164,10 @@ export async function deleteLabel(
 		const { result: removed } = await data.updateTaskWith(project, task.id, (current) => {
 			const ids = current.labelIds ?? [];
 			if (!ids.includes(labelId)) return { updates: {}, result: false };
-			return { updates: { labelIds: ids.filter((id) => id !== labelId) }, result: true };
+			return {
+				updates: { labelIds: ids.filter((id) => id !== labelId), userLabelIds: userOwned(current).filter((id) => id !== labelId) },
+				result: true,
+			};
 		});
 		if (removed) removedFromTasks++;
 	}

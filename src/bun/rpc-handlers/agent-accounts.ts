@@ -14,7 +14,7 @@ import type {
 } from "../../shared/agent-accounts";
 import type { ClaudeApiProfileDraft } from "../agent-accounts";
 import { isAgentDirAccountKind, isAutoAccountId, isRoutableAccountKind, parseEnvLines, shortCodexWorkspaceId, type RoutableAccountKind } from "../../shared/agent-accounts";
-import type { AutoAccountPreview } from "../../shared/account-routing";
+import { exclusionKey, systemLoginExclusionKey, type AutoAccountPreview } from "../../shared/account-routing";
 import { previewAutoAccount as previewAutoAccountNow } from "../account-router";
 import { loadSettings, saveSettings } from "../settings";
 import { pinnedClaudeConfigDir } from "../../shared/claude-config-dir";
@@ -41,6 +41,11 @@ async function listAgentAccounts(): Promise<AgentAccountsState> {
 	const autoDefault = (await loadSettings()).autoAccountDefault;
 	if (autoDefault?.claude) state.claude.autoDefault = true;
 	if (autoDefault?.codex) state.codex.autoDefault = true;
+	const excluded = (await loadSettings()).autoAccountExclusions ?? [];
+	for (const kind of ["claude", "codex"] as const) {
+		const keys = excluded.filter((key) => key === systemLoginExclusionKey(kind) || state[kind].accounts.some((a) => a.id === key));
+		if (keys.length) state[kind].autoExcluded = keys;
+	}
 	log.info("← listAgentAccounts", {
 		claude: state.claude.accounts.length,
 		omp: state.omp.accounts.length,
@@ -200,6 +205,17 @@ async function setAutoAccountDefault(kind: RoutableAccountKind, on: boolean): Pr
 	await saveSettings({ ...settings, autoAccountDefault: Object.keys(next).length ? next : undefined });
 }
 
+async function setAutoAccountExcluded(params: { kind: AgentAccountKind; accountId: string | null; excluded: boolean }): Promise<void> {
+	log.info("→ setAutoAccountExcluded", { kind: params.kind, system: params.accountId === null, excluded: params.excluded });
+	if (!isRoutableAccountKind(params.kind)) throw new Error(`${params.kind} logins are not routed by Auto`);
+	const key = exclusionKey(params.kind, params.accountId);
+	const settings = await loadSettings();
+	const current = settings.autoAccountExclusions ?? [];
+	if (current.includes(key) === params.excluded) return;
+	const next = params.excluded ? [...current, key] : current.filter((k) => k !== key);
+	await saveSettings({ ...settings, autoAccountExclusions: next.length ? next : undefined });
+}
+
 /** What Auto would pick for a launch in this project right now. Reserves nothing. */
 async function previewAutoAccount(params: { kind: AgentAccountKind; projectId?: string | null }): Promise<AutoAccountPreview | null> {
 	if (!isRoutableAccountKind(params.kind)) return null;
@@ -268,6 +284,7 @@ export const agentAccountHandlers = {
 	closeAccountLogin,
 	addClaudeAccountWithoutLogin,
 	setActiveAgentAccount,
+	setAutoAccountExcluded,
 	previewAutoAccount,
 	removeAgentAccount,
 	renameAgentAccount,

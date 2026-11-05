@@ -10,7 +10,7 @@ import type {
 	ClaudeSlotModels,
 } from "../../../shared/agent-accounts";
 import type { AccountLoginState } from "../../../shared/agent-accounts";
-import { AUTO_ACCOUNT_ID, CLAUDE_MODEL_SLOTS, isAccountLoginRefusal, isAgentDirAccountKind, managedCodexTwin, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../../shared/agent-accounts";
+import { ACCOUNT_LOGIN_STARTED_MESSAGE, AUTO_ACCOUNT_ID, CLAUDE_MODEL_SLOTS, isAccountLoginRefusal, isAgentDirAccountKind, managedCodexTwin, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../../shared/agent-accounts";
 import { api, isElectrobun } from "../../rpc";
 import AccountLoginModal, { AGENT_NAMES, loginPhaseTitle } from "./AccountLoginModal";
 import { confirm } from "../../confirm";
@@ -18,8 +18,14 @@ import { toast } from "../../toast";
 import type { TFunction } from "../../i18n";
 import { AGENT_ACCOUNTS_CHANGED_EVENT, notifyAgentAccountsChanged, usePinnedClaudeLogins } from "../AgentAccountIndicator";
 import Tooltip from "../Tooltip";
+import { ToggleSwitch } from "../project-settings/fields";
+import { exclusionKey } from "../../../shared/account-routing";
 import SettingsEntry from "./SettingsEntry";
 import SettingsSection from "./SettingsSection";
+
+function isLoginAlreadyStarted(err: unknown): boolean {
+	return (err instanceof Error ? err.message : String(err)).includes(ACCOUNT_LOGIN_STARTED_MESSAGE);
+}
 
 /** Small "(i)" info glyph with a two-tier tooltip (label headline + detail),
  *  matching the Tooltip style used across the app. */
@@ -111,6 +117,22 @@ function ApiProfileBadges({ api }: { api: AgentApiProfileInfo }) {
 	);
 }
 
+/** The per-login "Auto" switch: off keeps Auto from ever picking this login, in any project. */
+function AutoExclusionSwitch({ included, onToggle, label, t }: { included: boolean; onToggle: () => void; label: string; t: TFunction }) {
+	return (
+		// A row may itself be a radio: keep the switch's click and Space from choosing it.
+		<span
+			className="flex items-center gap-1.5 pr-1"
+			onClick={(event) => event.stopPropagation()}
+			onKeyDown={(event) => event.stopPropagation()}
+			title={t("settings.accountsAutoSwitchHint")}
+		>
+			<span className="text-fg-3 text-xs">{t("settings.accountsAutoSwitch")}</span>
+			<ToggleSwitch size="sm" checked={included} ariaLabel={t("settings.accountsAutoSwitchFor", { label })} onToggle={onToggle} />
+		</span>
+	);
+}
+
 function AccountRow({
 	kind,
 	label,
@@ -123,6 +145,7 @@ function AccountRow({
 	onRemove,
 	note,
 	labelPublic,
+	autoSwitch,
 	t,
 }: {
 	kind: AgentAccountKind;
@@ -139,6 +162,8 @@ function AccountRow({
 	note?: string | null;
 	/** The label names no identity ("Auto (balanced)"), so streamer mode shows it. */
 	labelPublic?: boolean;
+	/** Whether Auto may pick this login; absent where Auto has nothing to balance. */
+	autoSwitch?: { included: boolean; onToggle: () => void };
 	t: TFunction;
 }) {
 	const [editing, setEditing] = useState(false);
@@ -214,8 +239,12 @@ function AccountRow({
 					<IdentityBadges identity={identity} hideEmail={label} kind={kind} t={t} />
 				)}
 				{note ? <span className="text-fg-muted text-xs">{note}</span> : null}
+				{autoSwitch && !autoSwitch.included ? (
+					<span className="text-fg-muted text-xs">{t("settings.accountsAutoSkipped")}</span>
+				) : null}
 			</div>
 			<div className="ml-auto flex items-center justify-end gap-1 shrink-0">
+				{autoSwitch ? <AutoExclusionSwitch {...autoSwitch} label={label} t={t} /> : null}
 				{isActive ? (
 					<span className="text-success text-xs px-1.5 py-0.5 bg-success/15 rounded shrink-0">
 						{t("settings.accountsActive")}
@@ -675,6 +704,11 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 			if (created && started?.phase === "ready" && !isAccountLoginRefusal(err)) void api.request.closeAccountLogin({ loginId: started.loginId }).catch(() => {});
 			// The user cancelled meanwhile: nothing left to report.
 			if (started && loginsRef.current[kind]?.loginId !== started.loginId) return;
+			// Joined a sign-in another window is starting right now: it is running, not failed.
+			if (started && isLoginAlreadyStarted(err)) {
+				setShownLogin(kind);
+				return;
+			}
 			toast.error(t("settings.accountLoginStartFailed", { error: err instanceof Error ? err.message : String(err) }), { source: "settings" });
 		} finally {
 			setLoginBusy(false);
@@ -687,6 +721,20 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 			const next = await api.request.restartAccountLogin({ loginId: login.loginId, remoteViewer: !isElectrobun });
 			setLogins((prev) => ({ ...prev, [login.kind]: next }));
 		} catch (err) {
+			toast.error(t("settings.accountLoginStartFailed", { error: err instanceof Error ? err.message : String(err) }), { source: "settings" });
+		} finally {
+			setLoginBusy(false);
+		}
+	}, [t]);
+
+	const handleBeginLogin = useCallback(async (login: AccountLoginState) => {
+		setLoginBusy(true);
+		try {
+			const next = await api.request.beginAccountLogin({ loginId: login.loginId });
+			setLogins((prev) => (prev[login.kind]?.loginId === login.loginId ? { ...prev, [login.kind]: next } : prev));
+		} catch (err) {
+			// Another window began it first; its `accountLoginChanged` push brings the running state.
+			if (isLoginAlreadyStarted(err)) return;
 			toast.error(t("settings.accountLoginStartFailed", { error: err instanceof Error ? err.message : String(err) }), { source: "settings" });
 		} finally {
 			setLoginBusy(false);
@@ -805,6 +853,12 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 		[run, t],
 	);
 
+	const handleAutoExcluded = useCallback(
+		(kind: "claude" | "codex", accountId: string | null, excluded: boolean) =>
+			run(() => api.request.setAutoAccountExcluded({ kind, accountId, excluded })),
+		[run],
+	);
+
 	const handleRename = useCallback(
 		(kind: AgentAccountKind, accountId: string, label: string) =>
 			run(() => api.request.renameAgentAccount({ kind, accountId, label })),
@@ -869,6 +923,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 							onRename={account.auth === "api" ? undefined : (label) => handleRename(kind, account.id, label)}
 							onEditApi={account.auth === "api" ? () => handleStartEditApi(account) : undefined}
 							onRemove={() => handleRemove(kind, account)}
+							autoSwitch={account.auth === "api" ? undefined : autoSwitchFor(kind, account.id)}
 							t={t}
 						/>
 					))}
@@ -946,18 +1001,32 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 		</div>
 	) : null;
 
+	// ~/.codex gets a row whenever Auto could route to it on its own: as the default, or as a
+	// distinct login beside a managed default. A twin of a managed account is that account.
+	const codexTwin = managedCodexTwin(state);
 	const codexUnmanaged =
-		state.codex.currentIdentity && state.codex.activeId === null ? state.codex.currentIdentity : null;
+		state.codex.currentIdentity && (state.codex.activeId === null || !codexTwin) ? state.codex.currentIdentity : null;
 
 	// "Auto (balanced)" sits beside the accounts as one more default: it earns its
 	// row once two subscription logins could be balanced, and keeps it while chosen.
-	const autoRow = (kind: "claude" | "codex") => {
+	const autoBalances = (kind: "claude" | "codex") => {
 		const kindState = state[kind];
 		const systemIdentity = kind === "claude" ? state.claude.systemIdentity : state.codex.currentIdentity;
 		// ~/.codex signed into a managed account's identity is not a second login.
 		const separateSystemLogin = !!systemIdentity && !(kind === "codex" && managedCodexTwin(state));
 		const logins = kindState.accounts.filter((a) => a.auth !== "api").length + (separateSystemLogin ? 1 : 0);
-		if (!kindState.autoDefault && logins < 2) return null;
+		return kindState.autoDefault === true || logins >= 2;
+	};
+	function autoSwitchFor(kind: AgentAccountKind, accountId: string | null) {
+		if (kind !== "claude" && kind !== "codex") return undefined;
+		if (!state || !autoBalances(kind)) return undefined;
+		const excluded = state[kind].autoExcluded?.includes(exclusionKey(kind, accountId)) === true;
+		return { included: !excluded, onToggle: () => handleAutoExcluded(kind, accountId, !excluded) };
+	}
+	const codexSystemSwitch = codexTwin ? undefined : autoSwitchFor("codex", null);
+	const autoRow = (kind: "claude" | "codex") => {
+		const kindState = state[kind];
+		if (!autoBalances(kind)) return null;
 		return (
 			<AccountRow
 				kind={kind}
@@ -993,6 +1062,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 						label={t("settings.accountsDefaultLogin", { dir: state.claude.systemConfigDir })}
 						identity={state.claude.systemIdentity}
 						note={state.claude.systemIdentity ? null : t("settings.accountsNotSignedIn")}
+						autoSwitch={state.claude.systemIdentity ? autoSwitchFor("claude", null) : undefined}
 						isActive={claudeActiveId === null}
 						onActivate={
 							claudeActiveId === null
@@ -1018,6 +1088,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 							<IdentityBadges identity={codexUnmanaged} kind="codex" t={t} />
 						</div>
 						<span className="ml-auto text-fg-muted text-xs">{t("settings.accountsUnmanagedHint")}</span>
+						{codexSystemSwitch ? <AutoExclusionSwitch {...codexSystemSwitch} label={t("settings.accountsUnmanaged")} t={t} /> : null}
 					</div>
 				) : null,
 			)}
@@ -1059,6 +1130,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 					onHide={() => setShownLogin(null)}
 					onCancel={() => void handleCloseLogin(logins[shownLogin]!)}
 					onRetry={() => void handleRetryLogin(logins[shownLogin]!)}
+					onBegin={() => void handleBeginLogin(logins[shownLogin]!)}
 					onAddUnsigned={() => void handleAddUnsigned(logins[shownLogin]!)}
 					onDone={() => void handleCloseLogin(logins[shownLogin]!)}
 					t={t}

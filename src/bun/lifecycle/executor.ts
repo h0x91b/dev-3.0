@@ -25,7 +25,7 @@ import {
 	taskUsesWorktree,
 	taskResetConsentMatches,
 } from "../../shared/types";
-import { voidAgentRequest } from "../agent-requests";
+import { voidAgentRequestsForTask } from "../agent-requests";
 import { assertLaunchAgentsInstalled } from "../agent-launch-availability";
 import { requestGracefulAgentExit } from "../agent-graceful-exit";
 import { clonePaths } from "../cow-clone";
@@ -1229,7 +1229,7 @@ export async function executeLifecycleEffect(
 			ctx.stateTask = ctx.task;
 			// The run is over: no approval asked about it may land on the fresh card —
 			// a late "complete" would otherwise mark it Completed.
-			for (const kind of ["reset", "complete", "cancel", "launch"] as const) voidAgentRequest(kind, ctx.task.id);
+			voidAgentRequestsForTask(ctx.task.id);
 			const outcome = ctx.resetBranchOutcome ?? { deleted: [], kept: [] };
 			resetBranchOutcomes.set(ctx.task.id, outcome);
 			const keptNote = keptBranchesNote(outcome);
@@ -1244,6 +1244,7 @@ export async function executeLifecycleEffect(
 		}
 		case "deleteTaskRecord":
 			await data.deleteTask(ctx.project, ctx.task.id);
+			voidAgentRequestsForTask(ctx.task.id);
 			return {};
 		case "persistColumn": {
 			let updates: Partial<Task>;
@@ -1318,9 +1319,9 @@ export async function executeLifecycleEffect(
 			const persisted = await data.updateTask(ctx.project, ctx.task.id, taskUpdates);
 			ctx.task = taskAfterPersistedUpdate(ctx.task, persisted, taskUpdates);
 			ctx.stateTask = ctx.task;
-			// Pending reset/extra-agent approvals belong to the run that just ended.
-			voidAgentRequest("reset", ctx.task.id);
-			voidAgentRequest("launch", ctx.task.id);
+			// Every pending approval belongs to the run that just ended — a completion
+			// dialog left open here would ask to complete a task that already is.
+			voidAgentRequestsForTask(ctx.task.id);
 			return {};
 		}
 		case "persistPreparationStage": {

@@ -6,7 +6,7 @@ import { api } from "../rpc";
 import { useT } from "../i18n";
 import { toast } from "../toast";
 import { prDisplayState, prStateTone, type PRDisplayState } from "../utils/prStateTone";
-import { computeAnchoredPosition, type RectLike } from "../utils/popoverPosition";
+import { computeBesidePosition, type RectLike } from "../utils/popoverPosition";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import BottomSheet from "./BottomSheet";
@@ -137,11 +137,11 @@ function mergeReasonDetails(
 		add("failed-checks", t("task.prMergeReasonFailedChecks", { checks: [...new Set(failedChecks)].join(", ") }));
 	}
 
-	const pendingChecks = (prInfo.checks ?? [])
-		.filter((check) => checkState(check) === "pending")
-		.map((check) => check.name || t("task.prUnnamedCheck"));
-	if (pendingChecks.length > 0) {
-		add("pending-checks", t("task.prMergeReasonPendingChecks", { checks: [...new Set(pendingChecks)].join(", ") }));
+	// A count, not names: the Checks list below already names every running check,
+	// and on a big CI matrix the names made this one row taller than the window.
+	const pendingCount = (prInfo.checks ?? []).filter((check) => checkState(check) === "pending").length;
+	if (pendingCount > 0) {
+		add("pending-checks", t.plural("task.prMergeReasonPendingChecks", pendingCount));
 	}
 	if (reasons.length === 0 && mergeability.reason) {
 		add(mergeability.reason, mergeReasonLabel(mergeability.reason, t));
@@ -167,7 +167,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [open, setOpen] = useState(false);
 	const [sheetOpen, setSheetOpen] = useState(false);
-	const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+	const [position, setPosition] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
 	const [refreshing, setRefreshing] = useState(false);
 	const [refreshNotice, setRefreshNotice] = useState<RefreshNotice | null>(null);
 	const triggerRef = useRef<HTMLSpanElement>(null);
@@ -284,12 +284,11 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 
 	useLayoutEffect(() => {
 		if (!open || !triggerRef.current || !popoverRef.current) return;
-		const next = computeAnchoredPosition(
-			anchorRect(triggerRef.current),
-			{ width: popoverRef.current.offsetWidth, height: popoverRef.current.offsetHeight },
-			{ placement: "bottom", align: "start" },
-		);
-		setPosition({ top: next.top, left: next.left });
+		const box = popoverRef.current;
+		// scrollHeight, not offsetHeight: once capped, the box must still be sized by its content.
+		const naturalHeight = box.scrollHeight + (box.offsetHeight - box.clientHeight);
+		const next = computeBesidePosition(anchorRect(triggerRef.current), { width: box.offsetWidth, height: naturalHeight });
+		setPosition({ top: next.top, left: next.left, maxHeight: next.maxHeight });
 	}, [open, prInfo]);
 
 	// Narrow (mobile): auto-refresh once shortly after the sheet opens, mirroring
@@ -341,11 +340,39 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 		<>
 			{!sheet && (
 				<div className="flex items-start justify-between gap-3">
-					<div className="min-w-0">
-						<div className="font-semibold text-fg">{t("task.prStatusPopover", { number: String(prInfo.number) })}</div>
-						{prInfo.prTitle && <div className="mt-0.5 truncate text-fg-3" title={prInfo.prTitle}>{prInfo.prTitle}</div>}
+					{prInfo.url ? (
+						<a
+							href={prInfo.url}
+							target="_blank"
+							rel="noreferrer"
+							data-testid="pr-popover-header-link"
+							className="group min-w-0 rounded focus:ring-1 focus:ring-accent"
+							title={t("task.openPR", { number: String(prInfo.number) })}
+						>
+							<div className="font-semibold text-fg group-hover:text-accent-emphasis group-hover:underline">{t("task.prStatusPopover", { number: String(prInfo.number) })}</div>
+							{prInfo.prTitle && <div className="mt-0.5 truncate text-fg-3">{prInfo.prTitle}</div>}
+						</a>
+					) : (
+						<div className="min-w-0">
+							<div className="font-semibold text-fg">{t("task.prStatusPopover", { number: String(prInfo.number) })}</div>
+							{prInfo.prTitle && <div className="mt-0.5 truncate text-fg-3" title={prInfo.prTitle}>{prInfo.prTitle}</div>}
+						</div>
+					)}
+					<div className="flex flex-shrink-0 items-center gap-1.5">
+						{prInfo.isDraft && <span className="rounded bg-fg-3/10 px-1.5 py-0.5 font-medium text-fg-2">{t("task.prDraft")}</span>}
+						{prInfo.url && (
+							<a
+								href={prInfo.url}
+								target="_blank"
+								rel="noreferrer"
+								data-testid="pr-popover-open-pr"
+								className="inline-flex items-center gap-1 whitespace-nowrap rounded bg-accent/10 px-1.5 py-0.5 font-medium text-accent transition-colors hover:bg-accent/20 hover:text-accent-emphasis focus:ring-1 focus:ring-accent"
+							>
+								<span aria-hidden className="leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
+								<span>{t("task.openPR", { number: String(prInfo.number) })}</span>
+							</a>
+						)}
 					</div>
-					{prInfo.isDraft && <span className="flex-shrink-0 rounded bg-fg-3/10 px-1.5 py-0.5 font-medium text-fg-2">{t("task.prDraft")}</span>}
 				</div>
 			)}
 			{sheet && (prInfo.prTitle || prInfo.isDraft) && (
@@ -501,16 +528,18 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 				</div>
 			)}
 
-			<button
-				type="button"
-				onClick={() => void refresh()}
-				disabled={refreshing}
-				aria-label={t(refreshing ? "task.prRefreshing" : "task.prRefresh")}
-				className={`mt-3 inline-flex items-center gap-1.5 rounded text-fg-2 transition-colors hover:bg-overlay-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-50 ${sheet ? "px-2 py-2" : "px-2 py-1"}`}
-			>
-				<span className={refreshing ? "animate-spin" : ""} style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
-				<span>{t(refreshing ? "task.prRefreshing" : "task.prRefresh")}</span>
-			</button>
+			<div className="mt-3 flex flex-wrap items-center gap-1">
+				<button
+					type="button"
+					onClick={() => void refresh()}
+					disabled={refreshing}
+					aria-label={t(refreshing ? "task.prRefreshing" : "task.prRefresh")}
+					className={`inline-flex items-center gap-1.5 rounded text-fg-2 transition-colors hover:bg-overlay-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-50 ${sheet ? "px-2 py-2" : "px-2 py-1"}`}
+				>
+					<span className={refreshing ? "animate-spin" : ""} style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
+					<span>{t(refreshing ? "task.prRefreshing" : "task.prRefresh")}</span>
+				</button>
+			</div>
 		</>
 	);
 
@@ -565,8 +594,8 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 			role="dialog"
 			aria-label={t("task.prStatusPopover", { number: String(prInfo.number) })}
 			data-testid="pr-status-popover"
-			className="fixed z-[1200] w-[min(22rem,calc(100vw-1rem))] rounded-lg border border-edge-active bg-overlay p-3 text-xs shadow-2xl"
-			style={{ top: position?.top ?? 0, left: position?.left ?? 0, visibility: position ? "visible" : "hidden" }}
+			className="fixed z-[1200] w-[min(22rem,calc(100vw-1rem))] overflow-y-auto overscroll-contain rounded-lg border border-edge-active bg-overlay p-3 text-xs shadow-2xl"
+			style={{ top: position?.top ?? 0, left: position?.left ?? 0, maxHeight: position?.maxHeight, visibility: position ? "visible" : "hidden" }}
 			onMouseEnter={handlePointerEnter}
 			onMouseLeave={handlePointerLeave}
 			onBlur={(event) => {

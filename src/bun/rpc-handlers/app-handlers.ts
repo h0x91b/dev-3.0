@@ -2,9 +2,10 @@ import { interfaceOnboarding } from "../interface-onboarding";
 import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
-import { PATHS, Utils } from "../electrobun-platform";
+import { PATHS, Updater, Utils } from "../electrobun-platform";
+import { getLaunchLocationIssue as detectLaunchLocation, installBundleCopy, scheduleRelaunch } from "../launch-location";
 import { readHostClipboardImage } from "../clipboard-image-reader";
-import type { AgentSkillInfo, AutoConfigureResult, BoardCopyOffer, ChangelogEntry, ExternalApp, FolderEntry, FolderListing, GitInitOffer, Project, SharedArtifact, TipState, UpdatePopoverPreview } from "../../shared/types";
+import type { AgentSkillInfo, LaunchLocationIssue, AutoConfigureResult, BoardCopyOffer, ChangelogEntry, ExternalApp, FolderEntry, FolderListing, GitInitOffer, Project, SharedArtifact, TipState, UpdatePopoverPreview } from "../../shared/types";
 import { BUILTIN_OPS_BOARD_NAME, DEFAULT_EXTERNAL_APPS, STUCK_PREPARATION_FETCH_THRESHOLD_MS, extractRepoName } from "../../shared/types";
 import { parseChangelogCredits } from "../../shared/changelog-credits";
 import { buildUpdateChangelog, changedKeysFromPaths, changelogEntryKey, countMergedPrs, resolvePrevTag, selectReleaseWindow } from "../../shared/update-changelog";
@@ -60,6 +61,32 @@ async function quitApp(params?: { dontShowAgain?: boolean }): Promise<void> {
 	const { shutdownCaffeinate } = await import("../caffeinate");
 	shutdownCaffeinate();
 	Utils.quit();
+}
+
+async function getLaunchLocationIssue(): Promise<LaunchLocationIssue> {
+	return detectLaunchLocation(() => Updater.localInfo.channel());
+}
+
+// "Move to Applications" from the launch-location gate. On success the app quits a beat
+// later (so this reply reaches the renderer) and a detached helper reopens the new copy.
+async function moveAppToApplications(): Promise<{ ok: true; destination: string } | { ok: false; error: string }> {
+	const issue = await getLaunchLocationIssue();
+	if (!issue) return { ok: false, error: "dev3 is not running from an installer location." };
+	log.info("→ moveAppToApplications", { from: issue.bundlePath, to: issue.destination });
+	try {
+		const { launch, replaced } = await installBundleCopy(issue.bundlePath, issue.destination);
+		log.info("moveAppToApplications: relaunching", { launch, replaced, eject: issue.volumePath });
+		scheduleRelaunch(launch, issue.volumePath);
+	} catch (err) {
+		const error = err instanceof Error ? err.message : String(err);
+		log.error("moveAppToApplications failed", { error });
+		return { ok: false, error };
+	}
+	setTimeout(() => {
+		markQuitConfirmed();
+		Utils.quit();
+	}, 300);
+	return { ok: true, destination: issue.destination };
 }
 
 // Renderer-initiated quit (Cmd+Q). WKWebView swallows the native menu Cmd+Q
@@ -1109,6 +1136,8 @@ export const appHandlers = {
 	rendererHeartbeatStop: ({ clientId }: { clientId: string }) => forgetRendererClient(clientId),
 	consumeArtifactFreezeNotice: () => consumeArtifactFreezeNotice(),
 	quitApp,
+	getLaunchLocationIssue,
+	moveAppToApplications,
 	requestQuit,
 	consumePendingQuitDialog,
 	consumePendingDeepLinkNav,

@@ -25,8 +25,8 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { claudeConfigLocation, pinnedClaudeConfigDir } from "../../shared/claude-config-dir";
-import { DEV3_AGENT_ACCOUNT_ID_ENV } from "../../shared/agent-accounts";
+import { claudeConfigLocation, managedClaudeAccountIdForConfigDir, pinnedClaudeConfigDir } from "../../shared/claude-config-dir";
+import { resolveDev3Home } from "../../shared/dev3-home";
 import { formatStatusLineSegment, parseClaudeStatusLinePayload } from "../../shared/rate-limits";
 
 export const RATE_LIMITS_DIR = join(homedir(), ".dev3.0", "data", "rate-limits");
@@ -107,15 +107,26 @@ export function sessionDumpFilePath(taskId: string | undefined, baseDir: string 
 	return id && SAFE_ACCOUNT_ID.test(id) ? join(baseDir, "sessions", `${id}.json`) : null;
 }
 
-function managedAccountId(): string | null {
-	const value = process.env[DEV3_AGENT_ACCOUNT_ID_ENV]?.trim();
-	return value && SAFE_ACCOUNT_ID.test(value) ? value : null;
+export interface ClaudeDumpOwner {
+	accountId: string | null;
+	configDir: string | null;
 }
 
-/** The project-pinned `CLAUDE_CONFIG_DIR` this session runs under, or null for
- *  `~/.claude`. A managed account's dir is not a pin; its account id wins. */
-function pinnedConfigDir(): string | null {
-	return pinnedClaudeConfigDir(process.env.CLAUDE_CONFIG_DIR, homedir(), process.cwd());
+/**
+ * Whose quota a statusLine payload reports: the login in the `CLAUDE_CONFIG_DIR`
+ * Claude actually runs on. Any account id inherited through the environment can be
+ * stale (a tmux session outlives the account it was created for), so none is read.
+ */
+export function claudeDumpOwner(
+	env: Record<string, string | undefined>,
+	home: string,
+	cwd: string,
+	dev3Home: string,
+): ClaudeDumpOwner {
+	const dir = pinnedClaudeConfigDir(env.CLAUDE_CONFIG_DIR, home, cwd);
+	if (!dir) return { accountId: null, configDir: null };
+	const accountId = managedClaudeAccountIdForConfigDir(dir, dev3Home);
+	return accountId ? { accountId, configDir: null } : { accountId: null, configDir: dir };
 }
 
 /**
@@ -144,8 +155,7 @@ export function configDirDumpName(configDir: string): string {
 
 function dumpPayload(raw: string): void {
 	try {
-		const accountId = managedAccountId();
-		const configDir = accountId ? null : pinnedConfigDir();
+		const { accountId, configDir } = claudeDumpOwner(process.env, homedir(), process.cwd(), resolveDev3Home());
 		const capturedAt = Date.now();
 		const serialized = JSON.stringify({
 			capturedAt,

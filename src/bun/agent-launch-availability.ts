@@ -11,7 +11,7 @@
 import type { CodingAgent, GlobalSettings } from "../shared/types";
 import { agentAlternativeInstallCommand, agentInstallCommand, agentNotInstalledMessage } from "../shared/agent-install";
 import { findConfig, getAllAgents } from "./agents";
-import { agentBinaryPathOverride, brokenCustomPath, customExecutableMessage, isExecutableFile } from "./executable";
+import { agentBinaryPathOverride, brokenCustomPath, customExecutableMessage, enforcedCustomBinaryPaths, isExecutableFile } from "./executable";
 import { createLogger } from "./logger";
 import { resolveBinaryPath } from "./rpc-handlers/shared-pure";
 import { loadSettings } from "./settings";
@@ -42,12 +42,12 @@ export class AgentNotInstalledError extends Error {
 export function resolveAgentLaunchBinary(
 	agentId: string,
 	baseCmd: string,
-	settings: Pick<GlobalSettings, "agentBinaryPaths" | "agentCustomBinaryPaths">,
+	settings: Pick<GlobalSettings, "agentBinaryPaths" | "agentCustomBinaryPaths" | "strictAgentCustomBinaryPaths">,
 ): { binaryName: string; resolvedPath?: string; customPath?: string } {
 	const binaryName = baseCmd.split("/").pop() ?? baseCmd;
-	const customPath = brokenCustomPath(agentId, settings.agentCustomBinaryPaths);
+	const customPath = brokenCustomPath(agentId, enforcedCustomBinaryPaths(settings));
 	if (customPath) return { binaryName, customPath };
-	const overridePath = agentBinaryPathOverride(agentId, binaryName, settings.agentBinaryPaths, settings.agentCustomBinaryPaths);
+	const overridePath = agentBinaryPathOverride(agentId, binaryName, settings.agentBinaryPaths, enforcedCustomBinaryPaths(settings));
 	// A command given as a path is exec'd as that path: a same-named binary
 	// elsewhere on PATH does not make it launchable.
 	if (baseCmd.includes("/")) {

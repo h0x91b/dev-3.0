@@ -44,13 +44,16 @@ vi.mock("../../rpc", () => ({
 // test can raise "scrolled up" on one pane and assert on another.
 const paneScrollSignals = new Map<string, (scrolledUp: boolean) => void>();
 const paneScrollToBottom = new Map<string, ReturnType<typeof vi.fn>>();
+const paneSessionLost = new Map<string, () => void>();
 
 vi.mock("../../TerminalView", () => ({
-	default: ({ ptyUrl, onReady, onScrolledIntoHistory }: {
+	default: ({ ptyUrl, onReady, onScrolledIntoHistory, onSessionLost }: {
 		ptyUrl: string;
 		onReady?: (handle: unknown) => void;
 		onScrolledIntoHistory?: (scrolledUp: boolean) => void;
+		onSessionLost?: () => void;
 	}) => {
+		if (onSessionLost) paneSessionLost.set(ptyUrl, onSessionLost);
 		if (onScrolledIntoHistory) paneScrollSignals.set(ptyUrl, onScrolledIntoHistory);
 		if (onReady && !paneScrollToBottom.has(ptyUrl)) {
 			const scrollToBottom = vi.fn();
@@ -166,6 +169,7 @@ beforeEach(() => {
 	// for a pty-url an earlier test already used, so the handle never arrives.
 	paneScrollSignals.clear();
 	paneScrollToBottom.clear();
+	paneSessionLost.clear();
 	vi.mocked(api.request.getPtyUrl).mockReset();
 	vi.mocked(api.request.getPanePtyUrl).mockReset();
 	vi.mocked(api.request.taskPaneState).mockReset();
@@ -306,6 +310,23 @@ describe("TaskTerminal (native multi-pane)", () => {
 		await waitFor(() => expect(screen.getByText("Pane exited")).toBeInTheDocument());
 		// Only pane-1 should have a TerminalView; pane-2 shows the exited box.
 		await waitFor(() => expect(screen.queryAllByTestId("terminal-view")).toHaveLength(1));
+	});
+
+	it("reconnects a restarted native pane even when the old socket marked the reused pane id gone", async () => {
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(makeNativePaneState(["pane-1"]));
+		renderTaskTerminal(NATIVE_TASK);
+		const oldTerminal = await screen.findByTestId("terminal-view");
+		const url = oldTerminal.getAttribute("data-pty-url")!;
+		act(() => paneSessionLost.get(url)!());
+		expect(screen.getByText("Pane exited")).toBeInTheDocument();
+
+		act(() => window.dispatchEvent(new CustomEvent("rpc:taskTerminalResumed", { detail: { taskId: TASK_ID } })));
+
+		const newTerminal = await screen.findByTestId("terminal-view");
+		expect(newTerminal).not.toBe(oldTerminal);
+		expect(newTerminal).toHaveAttribute("data-pty-url", url);
+		expect(screen.queryByText("Pane exited")).not.toBeInTheDocument();
+		expect(api.request.getPanePtyUrl).toHaveBeenCalledTimes(2);
 	});
 
 	it("does NOT render MobileWindowCarousel for native tasks on narrow viewport", async () => {

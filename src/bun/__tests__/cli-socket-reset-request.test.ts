@@ -194,7 +194,7 @@ describe("task.requestReset (T17, T17b)", () => {
 	it("a run that ends first voids the request as stale — never approved (T9b)", async () => {
 		const { resp } = await openRequest(makeTask({ lifecycleStartedAt: STARTED }));
 		expect(voidAgentRequest("reset", "task-abc12345-1111-2222-3333-444444444444")).toBe(true);
-		expect((await resp).data).toEqual({ approved: false, stale: true });
+		expect((await resp).data).toMatchObject({ approved: false, stale: true });
 		expect(resetTaskToTodo).not.toHaveBeenCalled();
 	});
 

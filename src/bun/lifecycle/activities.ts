@@ -135,16 +135,23 @@ export async function dismissMergeCompletionPrompt(params: { taskId: string; pro
 }
 
 let mergePollerInterval: ReturnType<typeof setInterval> | null = null;
+let mergeTickRunning = false;
 
 export function startMergeDetectionPoller(): void {
 	stopMergeDetectionPoller();
 	const POLL_INTERVAL = MERGE_POLL_INTERVAL_MS;
 
 	mergePollerInterval = setInterval(async () => {
+		// A tick still waiting on git must not be joined by another: each one would
+		// re-run the same still-due tasks and fork their git again (#2153).
+		if (mergeTickRunning) return;
+		mergeTickRunning = true;
 		try {
 			await checkMergedBranches();
 		} catch (err) {
 			log.error("Merge detection poller error", { error: String(err) });
+		} finally {
+			mergeTickRunning = false;
 		}
 	}, POLL_INTERVAL);
 
@@ -316,6 +323,7 @@ export function _resetMergePollerState(): void {
 		delete runtime.mergeNextDue;
 	});
 	mergeLastTickAt = 0;
+	mergeTickRunning = false;
 	scheduleRandom = Math.random;
 }
 

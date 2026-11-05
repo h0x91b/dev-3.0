@@ -44,7 +44,7 @@ vi.mock("../../rpc-handlers/shared", () => ({
 vi.mock("../../worktree-trust", () => ({ forgetWorktreeTrust: vi.fn() }));
 vi.mock("../../board-operations/task-notes", () => ({ addNote: vi.fn() }));
 vi.mock("../../board-operations/runtime", () => ({ boardPorts: {} }));
-vi.mock("../../agent-requests", () => ({ voidAgentRequest: vi.fn() }));
+vi.mock("../../agent-requests", () => ({ voidAgentRequestsForTask: vi.fn() }));
 vi.mock("../../board-operations/types", () => ({ AGENT_ACTOR: { kind: "agent" } }));
 
 import { launchColumnAgent } from "../../rpc-handlers/tmux-pty";

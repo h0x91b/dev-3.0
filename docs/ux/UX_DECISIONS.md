@@ -10,6 +10,9 @@ reasoning (48 of 50 dates), so the record wins and this file stays an index. Wri
 in full only while no record exists — the case for 84 below, whose reasoning lives nowhere
 else, so never compact them by deleting it.
 
+## 2026-11-04 — A gone pre-strict agent path warns, not fails
+- **Rule:** PATH fallback + toast with Reset path; record `grandfather-stale-custom-agent-paths`.
+
 ## 2026-10-27 — CPU and disk pills, earned by user-set levels
 - **Rule:** yaml `global_header.ambient_resource_readout`.
 - **Why:** user asked for pills; no OS verdict exists, so levels are a setting with defaults, and pills show only at warn/critical so a calm machine keeps a calm header.

@@ -5,6 +5,7 @@ import { useT, type TFunction } from "../i18n";
 import { formatBytes } from "../utils/formatBytes";
 import { useImageDataUrl } from "../utils/useImageDataUrl";
 import { ArtifactsIcon, ImagesIcon } from "./TaskIcons";
+import VideoFrameThumb from "./VideoFrameThumb";
 
 interface SharedOutputsListProps {
 	task: Task;
@@ -36,6 +37,8 @@ const SECTION_HEADING = "flex items-center gap-1.5 text-xs font-semibold upperca
 const CARD = "rounded-xl border border-edge bg-elevated text-left transition-colors hover:bg-elevated-hover hover:border-accent/50 group";
 
 const CLIP_TILE = "flex h-full w-full items-center justify-center bg-black/80 text-lg text-white";
+const CLIP_BADGE = "absolute inset-0 flex items-center justify-center text-lg text-white [text-shadow:0_1px_3px_rgb(0_0_0/0.8)]";
+const CLIP_ICON_FONT = "'JetBrainsMono Nerd Font Mono'";
 
 function SharedImageThumb({ path, t }: { path: string; t: TFunction }) {
 	const { dataUrl, error } = useImageDataUrl(path);
@@ -58,10 +61,14 @@ function SharedImageCard({ image, onOpen, t }: { image: SharedImage; onOpen: () 
 		>
 			<span className="block h-[5.5rem] w-full overflow-hidden rounded bg-base">
 				{isSharedAudio(image)
-					// A clip's bytes load in the viewer, never for a card.
-					? <span data-testid="shared-audio-card" title={t("imageViewer.audio")} className={CLIP_TILE} style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uf001"}</span>
+					// Audio bytes load only in the viewer; a video card streams just enough for its first frame.
+					? <span data-testid="shared-audio-card" title={t("imageViewer.audio")} className={CLIP_TILE} style={{ fontFamily: CLIP_ICON_FONT }}>{"\uf001"}</span>
 					: isSharedClip(image)
-					? <span data-testid="shared-video-card" title={t("imageViewer.video")} className={CLIP_TILE} style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uf04b"}</span>
+					? <VideoFrameThumb
+						path={image.storedPath}
+						fallback={<span data-testid="shared-video-card" title={t("imageViewer.video")} className={CLIP_TILE} style={{ fontFamily: CLIP_ICON_FONT }}>{"\uf04b"}</span>}
+						badge={<span data-testid="shared-video-card" title={t("imageViewer.video")} className={CLIP_BADGE} style={{ fontFamily: CLIP_ICON_FONT }}>{"\uf04b"}</span>}
+					/>
 					: <SharedImageThumb path={image.storedPath} t={t} />}
 			</span>
 			<span className="mt-1.5 block truncate font-mono text-micro text-fg-2 group-hover:text-fg">{image.name}</span>

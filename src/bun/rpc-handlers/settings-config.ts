@@ -33,7 +33,7 @@ import { collectTelemetryProfile } from "../telemetry-profile";
 import { runBoardCopy } from "../board-copy";
 import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath, setFocusMode } from "./shared";
 import { binaryCandidatesOnPath, tmuxSearchPaths } from "./shared-pure";
-import { agentBinaryPathOverride, brokenCustomPath, isExecutableFile } from "../executable";
+import { agentBinaryPathOverride, brokenCustomPath, enforcedCustomBinaryPaths, isExecutableFile, staleCustomPath } from "../executable";
 import { agentAlternativeInstallCommand, agentInstallCommand } from "../../shared/agent-install";
 import { harnessReadinessFrom } from "../harness-readiness";
 import { validateEnvMap } from "../../shared/env-text";
@@ -332,8 +332,9 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 		}),
 		simplifiedModeSource: stored.simplifiedModeSource,
 		analyticsDistinctId: stored.analyticsDistinctId ?? params.analyticsDistinctId,
-		// Written only by the account surfaces' Auto row, after the snapshot was taken.
+		// Written only by the account surfaces' Auto controls, after the snapshot was taken.
 		autoAccountDefault: stored.autoAccountDefault,
+		autoAccountExclusions: stored.autoAccountExclusions,
 	};
 	await saveSettings(next);
 	await noteInterfaceModeChange(stored.simplifiedMode === true, next.simplifiedMode === true, stored.simplifiedModeSource === "fresh");
@@ -722,11 +723,16 @@ async function checkAgentAvailability(): Promise<AgentCheckResult[]> {
 	const results: AgentCheckResult[] = allAgents.map((agent) => {
 		// The user's own path always applies; a path cached for a previous base
 		// command is stale, not an error — drop it.
-		const overridePath = agentBinaryPathOverride(agent.id, agent.baseCommand, settings.agentBinaryPaths, settings.agentCustomBinaryPaths);
+		const overridePath = agentBinaryPathOverride(agent.id, agent.baseCommand, settings.agentBinaryPaths, enforcedCustomBinaryPaths(settings));
 		// A broken custom path is an error, never a reason to report the system binary as this agent.
-		const { resolvedPath, customPathError } = brokenCustomPath(agent.id, settings.agentCustomBinaryPaths)
+		const customPathStale = !!staleCustomPath(agent.id, settings);
+		const resolved = brokenCustomPath(agent.id, enforcedCustomBinaryPaths(settings))
 			? { resolvedPath: undefined, customPathError: true }
 			: resolveBinaryPath(agent.baseCommand, overridePath);
+		const resolvedPath = resolved.resolvedPath;
+		// A stale pre-strict path is a warning, not an error: the launch uses PATH. Its cache copy
+		// can still be the override here, which is the only reason resolveBinaryPath flags it.
+		const customPathError = resolved.customPathError && !customPathStale;
 		log.info(`  agent ${agent.id} (${agent.baseCommand}): ${resolvedPath ? "found" : "NOT found"}`, { path: resolvedPath ?? "none" });
 		return {
 			agentId: agent.id,
@@ -738,6 +744,7 @@ async function checkAgentAvailability(): Promise<AgentCheckResult[]> {
 			alternativeInstallCommand: agentAlternativeInstallCommand(agent, process.platform),
 			installUrl: agent.installUrl,
 			customPathError,
+			customPathStale: customPathStale || undefined,
 			customPath: settings.agentCustomBinaryPaths?.[agent.id],
 		};
 	});
@@ -782,6 +789,8 @@ async function setAgentBinaryPath(params: { agentId: string; path: string }): Pr
 	await saveSettings({
 		...settings,
 		agentCustomBinaryPaths: { ...(settings.agentCustomBinaryPaths ?? {}), [params.agentId]: params.path },
+		// Chosen (and checked) now, so it is strict: once broken it fails instead of falling back.
+		strictAgentCustomBinaryPaths: { ...(settings.strictAgentCustomBinaryPaths ?? {}), [params.agentId]: params.path },
 		agentBinaryPaths: { ...(settings.agentBinaryPaths ?? {}), [params.agentId]: params.path },
 	});
 	log.info("<- setAgentBinaryPath saved");
@@ -795,7 +804,9 @@ async function clearAgentBinaryPath(params: { agentId: string }): Promise<void> 
 	// The cache copy setAgentBinaryPath wrote goes too; a different (auto-found) path stays.
 	if (cached[params.agentId] === custom[params.agentId]) delete cached[params.agentId];
 	delete custom[params.agentId];
-	await saveSettings({ ...settings, agentCustomBinaryPaths: custom, agentBinaryPaths: cached });
+	const strict = { ...(settings.strictAgentCustomBinaryPaths ?? {}) };
+	delete strict[params.agentId];
+	await saveSettings({ ...settings, agentCustomBinaryPaths: custom, strictAgentCustomBinaryPaths: strict, agentBinaryPaths: cached });
 	log.info("<- clearAgentBinaryPath saved");
 }
 
