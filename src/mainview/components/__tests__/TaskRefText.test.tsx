@@ -3,10 +3,16 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { I18nProvider } from "../../i18n";
 import { TaskRefScopeContext, TaskRefText, splitTaskRefs } from "../TaskRefText";
 import { CommentMarkdown } from "../pr-review/markdown";
+import { clearTaskPrRefPreviewCache } from "../../task-ref-preview";
 
 const resolveTaskPrRef = vi.fn();
+const previewTaskPrRef = vi.fn();
 vi.mock("../../rpc", () => ({
-	api: { request: { resolveTaskPrRef: (...args: unknown[]) => resolveTaskPrRef(...args) } },
+	api: { request: {
+		resolveTaskPrRef: (...args: unknown[]) => resolveTaskPrRef(...args),
+		previewTaskPrRef: (...args: unknown[]) => previewTaskPrRef(...args),
+		readImageBase64: () => new Promise(() => {}),
+	} },
 	isElectrobun: false,
 }));
 vi.mock("../../toast", () => ({ toast: { error: vi.fn(), info: vi.fn(), success: vi.fn() } }));
@@ -78,5 +84,57 @@ describe("references inside markdown", () => {
 	it("does not turn a reference scheme into an image source", () => {
 		const { container } = wrap(<CommentMarkdown body={"![x](seq:1)"} />);
 		expect(container.querySelector("img[src^='seq:']")).toBeNull();
+	});
+});
+
+describe("hover previews", () => {
+	beforeEach(() => {
+		previewTaskPrRef.mockReset();
+		clearTaskPrRefPreviewCache();
+	});
+
+	it("previews a task on hover: title, status, overview, notes and artifacts", async () => {
+		previewTaskPrRef.mockResolvedValue({
+			kind: "task",
+			target: { kind: "task", taskId: "t-9", projectId: "p-1", projectName: "x", seq: 9, title: "Fix auth race", status: "in-progress" },
+			overview: "Lock landed, verifying.",
+			notes: [{ id: "n1", content: "Root cause is the token refresh.", createdAt: "" }],
+			images: [],
+			imageCount: 0,
+			artifacts: [{ id: "a1", title: "Race report" }],
+			artifactCount: 3,
+		});
+		wrap(<TaskRefText text="see <seq:9>" contextProjectId="p-1" />);
+		fireEvent.mouseEnter(screen.getByRole("button", { name: /<seq:9>/ }).parentElement!);
+		const card = await screen.findByTestId("task-ref-preview");
+		expect(previewTaskPrRef).toHaveBeenCalledWith({ ref: "seq:9", contextProjectId: "p-1" });
+		expect(card.textContent).toContain("Fix auth race");
+		expect(card.textContent).toContain("Lock landed, verifying.");
+		expect(card.textContent).toContain("Root cause is the token refresh.");
+		expect(card.textContent).toContain("Race report");
+		expect(card.textContent).toContain("+2 more");
+		// Same project as the text: no project line to repeat it.
+		expect(screen.queryByText("x")).toBeNull();
+	});
+
+	it("says so when the reference resolves to nothing", async () => {
+		previewTaskPrRef.mockResolvedValue(null);
+		wrap(<TaskRefText text="<seq:404>" contextProjectId="p-1" />);
+		fireEvent.mouseEnter(screen.getByRole("button", { name: /<seq:404>/ }).parentElement!);
+		expect(await screen.findByText("No such task or PR on that board.")).toBeTruthy();
+	});
+
+	it("opens the PR status popover on hover and loads it lazily", async () => {
+		previewTaskPrRef.mockResolvedValue({
+			kind: "pr",
+			target: { kind: "pr", number: 7, projectId: "p-1", projectName: "x", url: "https://github.com/o/r/pull/7" },
+			badge: { number: 7, url: "https://github.com/o/r/pull/7", prTitle: "Add the lock", ciStatus: "success", mergeState: { mergeable: "MERGEABLE", status: "CLEAN", state: "OPEN" }, checks: [] },
+		});
+		wrap(<TaskRefText text="<pr:7> is up" contextProjectId="p-1" />);
+		expect(previewTaskPrRef).not.toHaveBeenCalled();
+		fireEvent.mouseEnter(screen.getByRole("button", { name: /<pr:7>/ }).closest("span")!);
+		const popover = await screen.findByTestId("pr-status-popover");
+		await waitFor(() => expect(popover.textContent).toContain("Add the lock"));
+		expect(previewTaskPrRef).toHaveBeenCalledWith({ ref: "pr:7", contextProjectId: "p-1" });
 	});
 });

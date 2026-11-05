@@ -12,7 +12,7 @@
 // deliberately NOT recognised: "#115" collides with GitHub numbers.
 // See decisions/2026/11/05/canonical-task-pr-reference-tokens.md.
 
-import type { TaskStatus } from "./types";
+import type { SharedArtifact, SharedImage, TaskPRBadgeInfo, TaskStatus } from "./types";
 
 export type RefKind = "task" | "pr";
 
@@ -55,6 +55,33 @@ export type TaskPrRefResolution =
 		/** The task whose PR this is, when one on the board owns it. */
 		taskId?: string;
 	};
+
+/** Hover-preview payload for a reference: what the popover shows. */
+export type TaskPrRefPreview =
+	| {
+		kind: "task";
+		target: Extract<TaskPrRefResolution, { kind: "task" }>;
+		overview: string | null;
+		/** Newest last, content clipped to {@link PREVIEW_NOTE_CHARS}. */
+		notes: { id: string; content: string; createdAt: string }[];
+		/** Newest shared images first, at most {@link PREVIEW_IMAGE_LIMIT}. */
+		images: SharedImage[];
+		imageCount: number;
+		/** Newest shared artifacts first, at most {@link PREVIEW_ARTIFACT_LIMIT}. */
+		artifacts: SharedArtifact[];
+		artifactCount: number;
+	}
+	| {
+		kind: "pr";
+		target: Extract<TaskPrRefResolution, { kind: "pr" }>;
+		/** Null when neither the board nor GitHub could describe the PR. */
+		badge: TaskPRBadgeInfo | null;
+	};
+
+export const PREVIEW_NOTE_LIMIT = 2;
+export const PREVIEW_NOTE_CHARS = 280;
+export const PREVIEW_IMAGE_LIMIT = 3;
+export const PREVIEW_ARTIFACT_LIMIT = 3;
 
 /** Length of the project-id prefix used as the cross-project qualifier. */
 export const PROJECT_REF_PREFIX_LENGTH = 8;

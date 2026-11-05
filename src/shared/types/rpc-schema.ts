@@ -10,7 +10,7 @@ import type { AccountLoginState, AgentAccount, AgentAccountKind, AgentAccountsSt
 import type { TerminalBackendIdentity } from "../terminal-backend-identity";
 import type { TaskPaneState, TaskPaneAction, TmuxCloseWindowResult } from "../task-panes";
 import type { DeepLinkNav } from "../deep-link";
-import type { TaskPrRefResolution } from "../task-refs";
+import type { TaskPrRefPreview, TaskPrRefResolution } from "../task-refs";
 import type { ReviewComment, ReviewReplyAuthor } from "../review";
 import type { LiveChange } from "../live-artifact";
 import type { TelemetryProfile } from "../telemetry-profile";
@@ -1098,6 +1098,11 @@ export type AppRPCSchema = {
 			resolveTaskPrRef: {
 				params: { ref: string; contextProjectId?: string };
 				response: TaskPrRefResolution | null;
+			};
+			/** Hover preview of a reference; `fresh` re-reads a PR from GitHub. */
+			previewTaskPrRef: {
+				params: { ref: string; contextProjectId?: string; fresh?: boolean };
+				response: TaskPrRefPreview | null;
 			};
 			openNewWindow: {
 				params: void;

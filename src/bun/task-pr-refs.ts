@@ -5,13 +5,18 @@
 
 import { loadProjects, loadTasks, loadVirtualProjects } from "./data";
 import { readTaskPullRequest } from "./github-pr-status";
-import { parseRefUri, projectMatchesQualifier, type TaskPrRef, type TaskPrRefResolution } from "../shared/task-refs";
-import { getTaskTitle, type Project, type Task } from "../shared/types";
+import {
+	parseRefUri, projectMatchesQualifier,
+	PREVIEW_ARTIFACT_LIMIT, PREVIEW_IMAGE_LIMIT, PREVIEW_NOTE_CHARS, PREVIEW_NOTE_LIMIT,
+	type TaskPrRef, type TaskPrRefPreview, type TaskPrRefResolution,
+} from "../shared/task-refs";
+import { getTaskOverview, getTaskTitle, isSharedClip, type Project, type Task, type TaskPRBadgeInfo } from "../shared/types";
+import { prSummaryStatus } from "./rpc-handlers/pr-status";
 import { createLogger } from "./logger";
 
 const log = createLogger("task-pr-refs");
 
-export type { TaskPrRefResolution };
+export type { TaskPrRefPreview, TaskPrRefResolution };
 
 async function allProjects(): Promise<Project[]> {
 	const [gitProjects, virtualProjects] = await Promise.all([loadProjects(), loadVirtualProjects()]);
@@ -43,7 +48,11 @@ function urlFromSiblingPr(tasks: Task[], number: number): string | null {
 	return null;
 }
 
-export async function resolveTaskPrRef(uri: string, contextProjectId?: string): Promise<TaskPrRefResolution | null> {
+type Resolved =
+	| { target: Extract<TaskPrRefResolution, { kind: "task" }>; project: Project; task: Task }
+	| { target: Extract<TaskPrRefResolution, { kind: "pr" }>; project: Project; owner: Task | undefined };
+
+async function resolve(uri: string, contextProjectId: string | undefined): Promise<Resolved | null> {
 	const ref = parseRefUri(uri);
 	if (!ref) return null;
 	const project = pickProject(await allProjects(), ref, contextProjectId);
@@ -57,31 +66,91 @@ export async function resolveTaskPrRef(uri: string, contextProjectId?: string): 
 			.sort((a, b) => (a.variantIndex ?? 0) - (b.variantIndex ?? 0))[0];
 		if (!task) return null;
 		return {
-			kind: "task",
-			taskId: task.id,
-			projectId: project.id,
-			projectName: project.name,
-			seq: ref.number,
-			title: getTaskTitle(task),
-			status: task.status,
+			project,
+			task,
+			target: {
+				kind: "task",
+				taskId: task.id,
+				projectId: project.id,
+				projectName: project.name,
+				seq: ref.number,
+				title: getTaskTitle(task),
+				status: task.status,
+			},
 		};
 	}
 
 	const owner = tasks.find((t) => taskOwnsPr(t, ref.number));
 	let url = (owner && knownPrUrl(owner, ref.number)) ?? urlFromSiblingPr(tasks, ref.number);
 	if (!url && project.kind !== "virtual" && project.path) {
-		try {
-			url = (await readTaskPullRequest(project, project.path, "", ref.number))?.pr?.url ?? null;
-		} catch (error) {
-			log.warn("PR reference lookup failed", { error: String(error) });
-		}
+		url = (await readGitHubPr(project, ref.number))?.url ?? null;
 	}
 	return {
-		kind: "pr",
-		number: ref.number,
-		projectId: project.id,
-		projectName: project.name,
-		url,
-		...(owner ? { taskId: owner.id } : {}),
+		project,
+		owner,
+		target: {
+			kind: "pr",
+			number: ref.number,
+			projectId: project.id,
+			projectName: project.name,
+			url,
+			...(owner ? { taskId: owner.id } : {}),
+		},
 	};
+}
+
+async function readGitHubPr(project: Project, number: number, force = false): Promise<TaskPRBadgeInfo | null> {
+	try {
+		const pr = (await readTaskPullRequest(project, project.path, "", number, force ? { force } : undefined))?.pr;
+		return pr ? { number, url: pr.url, ...prSummaryStatus(pr) } : null;
+	} catch (error) {
+		log.warn("PR reference lookup failed", { error: String(error) });
+		return null;
+	}
+}
+
+export async function resolveTaskPrRef(uri: string, contextProjectId?: string): Promise<TaskPrRefResolution | null> {
+	return (await resolve(uri, contextProjectId))?.target ?? null;
+}
+
+function clip(text: string): string {
+	return text.length > PREVIEW_NOTE_CHARS ? `${text.slice(0, PREVIEW_NOTE_CHARS - 1).trimEnd()}…` : text;
+}
+
+/**
+ * Everything a reference's hover preview shows. A PR's status comes from its
+ * owner task's polled cache when that is the same PR; otherwise — or when the
+ * user asks to refresh — from GitHub through the user's own `gh` account.
+ */
+export async function previewTaskPrRef(uri: string, contextProjectId?: string, fresh = false): Promise<TaskPrRefPreview | null> {
+	const resolved = await resolve(uri, contextProjectId);
+	if (!resolved) return null;
+
+	if ("task" in resolved) {
+		const { task, target } = resolved;
+		const images = (task.sharedImages ?? []).filter((image) => !isSharedClip(image));
+		const artifacts = task.sharedArtifacts ?? [];
+		return {
+			kind: "task",
+			target,
+			overview: getTaskOverview(task),
+			notes: (task.notes ?? []).slice(-PREVIEW_NOTE_LIMIT).map((n) => ({ id: n.id, content: clip(n.content), createdAt: n.createdAt })),
+			images: images.slice(-PREVIEW_IMAGE_LIMIT).reverse(),
+			imageCount: images.length,
+			artifacts: artifacts.slice(-PREVIEW_ARTIFACT_LIMIT).reverse(),
+			artifactCount: artifacts.length,
+		};
+	}
+
+	const { project, owner, target } = resolved;
+	const cache = owner?.prStatusCache?.number === target.number ? owner.prStatusCache : null;
+	let badge: TaskPRBadgeInfo | null = null;
+	if (cache && !fresh) {
+		const { cachedAt: _cachedAt, headRefName: _head, ...rest } = cache;
+		badge = rest;
+	} else if (project.kind !== "virtual" && project.path) {
+		badge = await readGitHubPr(project, target.number, fresh);
+	}
+	if (badge && !badge.url && target.url) badge = { ...badge, url: target.url };
+	return { kind: "pr", target, badge };
 }

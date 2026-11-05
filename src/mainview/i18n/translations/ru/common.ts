@@ -761,6 +761,15 @@ const common = {
 	"taskRef.openFailed": "Не удалось открыть {ref}: {error}",
 	"taskRef.openTask": "Открыть задачу {ref}",
 	"taskRef.openPr": "Открыть PR {ref}",
+	"taskRef.previewLoading": "Загрузка…",
+	"taskRef.previewNotFound": "На этой доске нет такой задачи или PR.",
+	"taskRef.previewNotes": "Последние заметки",
+	"taskRef.previewImages": "Изображения",
+	"taskRef.previewArtifacts": "Артефакты",
+	"taskRef.previewMore_one": "ещё {count}",
+	"taskRef.previewMore_few": "ещё {count}",
+	"taskRef.previewMore_many": "ещё {count}",
+	"taskRef.previewMore_other": "ещё {count}",
 };
 
 export default common;

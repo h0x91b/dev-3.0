@@ -1,7 +1,11 @@
-import { createContext, Fragment, useContext, useMemo, type MouseEvent, type ReactNode } from "react";
+import { createContext, Fragment, useContext, useMemo, type MouseEvent, type ReactElement, type ReactNode } from "react";
 import { useT } from "../i18n";
 import { activateTaskPrRef } from "../task-ref-open";
 import { findRefsInText, formatRef, refUri, type TaskPrRef } from "../../shared/task-refs";
+import type { TaskPRBadgeInfo } from "../../shared/types";
+import { useTaskPrRefPreview } from "../task-ref-preview";
+import { TaskRefHoverCard } from "./TaskRefPreviewCard";
+import TaskPrStatusPopover from "./TaskPrStatusPopover";
 
 interface TaskRefScope {
 	/** Project a bare reference belongs to — the project of the surrounding text. */
@@ -26,7 +30,8 @@ interface TaskRefLinkProps {
 /**
  * One `<seq:N>` / `<pr:N>` reference as an inline link. The label drops the angle
  * brackets (`seq:115`, `pr:2187`) so it reads as a link, not markup, while staying
- * the same token agents write. A task opens in the app, a PR on GitHub.
+ * the same token agents write. A task opens in the app, a PR on GitHub; hovering
+ * previews either one.
  */
 export function TaskRefLink({ taskRef, contextProjectId, taskId, children }: TaskRefLinkProps) {
 	const t = useT();
@@ -34,22 +39,38 @@ export function TaskRefLink({ taskRef, contextProjectId, taskId, children }: Tas
 	const projectId = contextProjectId ?? scope.projectId;
 	const errorTaskId = taskId ?? scope.taskId;
 	const token = formatRef(taskRef);
+	const uri = refUri(taskRef);
 	const onClick = (event: MouseEvent) => {
 		// Refs sit inside clickable rows and cards; the link wins the click.
 		event.preventDefault();
 		event.stopPropagation();
-		void activateTaskPrRef(refUri(taskRef), { t, contextProjectId: projectId, taskId: errorTaskId });
+		void activateTaskPrRef(uri, { t, contextProjectId: projectId, taskId: errorTaskId });
 	};
-	return (
+	const link = (
 		<button
 			type="button"
 			onClick={onClick}
 			className="inline p-0 m-0 bg-transparent border-0 font-mono text-accent hover:text-accent-emphasis hover:underline underline-offset-2 cursor-pointer align-baseline focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent rounded-sm"
 			aria-label={t(taskRef.kind === "task" ? "taskRef.openTask" : "taskRef.openPr", { ref: token })}
-			data-task-ref={refUri(taskRef)}
+			data-task-ref={uri}
 		>
-			{children ?? refUri(taskRef)}
+			{children ?? uri}
 		</button>
+	);
+	return taskRef.kind === "task"
+		? <TaskRefHoverCard refUri={uri} contextProjectId={projectId}>{link}</TaskRefHoverCard>
+		: <PrRefPopover number={taskRef.number} refUri={uri} contextProjectId={projectId}>{link}</PrRefPopover>;
+}
+
+/** A `<pr:N>` gets the same status popover as a card's PR badge, loaded on first open. */
+function PrRefPopover({ number, refUri: uri, contextProjectId, children }: { number: number; refUri: string; contextProjectId?: string; children: ReactElement }) {
+	const { state, load, refresh } = useTaskPrRefPreview(uri, contextProjectId);
+	const preview = state.status === "ready" && state.preview?.kind === "pr" ? state.preview : null;
+	const prInfo: TaskPRBadgeInfo = preview?.badge ?? { number, url: preview?.target.url ?? "" };
+	return (
+		<TaskPrStatusPopover prInfo={prInfo} onOpen={load} onRefresh={refresh}>
+			{children}
+		</TaskPrStatusPopover>
 	);
 }
 
