@@ -535,7 +535,7 @@ startRateLimitMonitor((name, payload) => {
 	pushToBrowserClients(name, payload);
 });
 
-// ── Clock-driven schedulers (automations, "Start in", "Send later", keep-alive, cleanup) ──
+// ── Clock-driven background jobs (automations, "Start in", "Send later", keep-alive, cleanup, focus) ──
 // Same call as index.ts. Without it a headless box never fires any of them.
 const { startBackgroundSchedulers, stopBackgroundSchedulers } = await import("./background-schedulers");
 startBackgroundSchedulers();
