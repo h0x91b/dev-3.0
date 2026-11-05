@@ -20,7 +20,7 @@ import {
 	unlinkLinkedSlot,
 	type AccountPaths,
 } from "../agent-accounts";
-import { DEV3_AGENT_ACCOUNT_ID_ENV, ENV_UNSET } from "../../shared/agent-accounts";
+import { ENV_UNSET } from "../../shared/agent-accounts";
 
 let root: string;
 let paths: AccountPaths;
@@ -64,7 +64,6 @@ describe("Claude account selection never falls back silently", () => {
 		await setActiveClaudeAccount(account.id, paths);
 		const env = await getActiveClaudeSessionEnv(null, paths);
 		expect(env.CLAUDE_CONFIG_DIR).toBe(ENV_UNSET);
-		expect(env[DEV3_AGENT_ACCOUNT_ID_ENV]).toBe(ENV_UNSET);
 		await setActiveClaudeAccount(null, paths);
 		expect((await getActiveClaudeSessionEnv(undefined, paths)).CLAUDE_CONFIG_DIR).toBe(ENV_UNSET);
 		expect(await getActiveClaudeConfigDir(undefined, paths)).toBeNull();

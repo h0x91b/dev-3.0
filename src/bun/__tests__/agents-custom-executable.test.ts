@@ -25,7 +25,6 @@ vi.mock("../agent-accounts", async (importOriginal) => {
 import { claudeAccountDir, prepareClaudeLogin, registerStagedClaudeAccount, importCurrentClaudeAccount, type AccountPaths } from "../agent-accounts";
 import { resolveCommandForAgent, resolveCommandForProject } from "../agents";
 import type { Project } from "../../shared/types";
-import { DEV3_AGENT_ACCOUNT_ID_ENV } from "../../shared/agent-accounts";
 import { DEV3_HOME } from "../paths";
 import { resetStaleAgentPathNoticesForTests } from "../stale-agent-path";
 import { setPushMessage } from "../rpc-handlers/shared-pure";
@@ -81,9 +80,7 @@ describe("launch with a custom executable", () => {
 		expect(first.command).toContain(wrapper);
 		expect(first.agentFamily).toBe("claude");
 		expect(first.extraEnv.CLAUDE_CONFIG_DIR).toBe(claudeAccountDir(a.id, paths));
-		expect(first.extraEnv[DEV3_AGENT_ACCOUNT_ID_ENV]).toBe(a.id);
 		expect(second.extraEnv.CLAUDE_CONFIG_DIR).toBe(claudeAccountDir(b.id, paths));
-		expect(second.extraEnv[DEV3_AGENT_ACCOUNT_ID_ENV]).toBe(b.id);
 	});
 
 	it("fails the launch for an unknown account instead of running on the system login", async () => {

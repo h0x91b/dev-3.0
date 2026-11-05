@@ -66,3 +66,17 @@ export function launchClaudeConfigLocation(
 	const fromLaunch = launchEnv?.CLAUDE_CONFIG_DIR?.trim();
 	return claudeConfigLocation({ CLAUDE_CONFIG_DIR: fromLaunch || processEnv.CLAUDE_CONFIG_DIR }, home, cwd);
 }
+
+/**
+ * The dev3-managed Claude account a config dir belongs to, or null. Every managed
+ * launch points `CLAUDE_CONFIG_DIR` at `<dev3Home>/agent-accounts/claude/<id>`, and
+ * Claude Code forwards it to its teammates, so the dir names whose login is used.
+ */
+export function managedClaudeAccountIdForConfigDir(dir: string, dev3Home: string): string | null {
+	const forward = (p: string) => p.replaceAll("\\", "/").replace(/\/+$/, "");
+	const prefix = `${forward(dev3Home)}/agent-accounts/claude/`;
+	const normalized = forward(dir);
+	if (!normalized.startsWith(prefix)) return null;
+	const id = normalized.slice(prefix.length);
+	return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id) ? id : null;
+}
