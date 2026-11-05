@@ -69,7 +69,8 @@ export function buildLaunchAfter(prereq: Task, until: LaunchAfterUntil, variant:
 	};
 }
 
-const lastProbe = new Map<string, number>();
+/** Last GitHub probe per waiting task, tied to the condition it was made for: a re-arm probes at once. */
+const lastProbe = new Map<string, { armedAt: string; at: number }>();
 
 // Lazy: both reach the Electrobun-backed handler graph, which the scheduler must not load at import.
 async function lightAttention(taskId: string, projectId: string, reason: string): Promise<void> {
@@ -91,8 +92,10 @@ async function claim(project: Project, task: Task, cond: LaunchAfter, extra: Par
 		const same = cur.launchAfter?.taskId === cond.taskId && cur.launchAfter.armedAt === cond.armedAt;
 		return same ? { updates: { launchAfter: null, ...extra }, result: true } : { updates: {}, result: false };
 	});
-	if (result) await pushUpdated(project, updated);
-	return result;
+	if (!result) return false;
+	lastProbe.delete(task.id);
+	await pushUpdated(project, updated);
+	return true;
 }
 
 async function abandon(project: Project, task: Task, cond: LaunchAfter, reason: string): Promise<void> {
@@ -165,15 +168,15 @@ export async function tickLaunchAfter(project: Project, tasks: Task[], now = Dat
 				continue;
 			}
 			if (verdict.kind === "probe") {
-				if (now - (lastProbe.get(task.id) ?? 0) < LAUNCH_AFTER_PROBE_INTERVAL_MS) continue;
-				lastProbe.set(task.id, now);
+				const last = lastProbe.get(task.id);
+				if (last?.armedAt === cond.armedAt && now - last.at < LAUNCH_AFTER_PROBE_INTERVAL_MS) continue;
+				lastProbe.set(task.id, { armedAt: cond.armedAt, at: now });
 				const { getPullRequestSnapshot } = await import("./github-pr-status");
 				const snapshot = await getPullRequestSnapshot(project, project.path, verdict.prNumber);
 				if (snapshot?.state === "MERGED") await fire(project, task, cond);
 				else if (snapshot?.state === "CLOSED") await abandon(project, task, cond, `Waited for the PR of task #${cond.seq}, which was closed without merging`);
 				continue;
 			}
-			lastProbe.delete(task.id);
 			await fire(project, task, cond);
 		} catch (err) {
 			log.error("Start-after tick failed for task", { taskId: task.id.slice(0, 8), error: String(err) });
