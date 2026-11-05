@@ -8,7 +8,7 @@ import { exitCopyModeAllPanes, killTmuxSession, listTmuxSessions, setResourceMon
 
 export { resolveBugHunterCompareRef, buildBugHunterPrompt, nativeHunterColumnRatios } from "./tmux-pty/bug-hunters";
 export { killDevServerSession, runDevServer, stopDevServer, restartDevServer, getDevServerStatus } from "./tmux-pty/dev-servers";
-export { sessionStateOrLostCodexPane, ResumeUnavailableError, taskTerminalAlive, tearDownTaskTerminal, resumeTaskSession, wakeTaskShell } from "./tmux-pty/resume";
+export { sessionStateOrLostCodexPane, ResumeUnavailableError, taskTerminalAlive, resumeTaskSession, wakeTaskShell } from "./tmux-pty/resume";
 export type { ResumeTaskOptions, ResumeTaskSessionOutcome } from "./tmux-pty/resume";
 export { launchTaskPty, addVirtualShellPane, launchColumnAgent, cleanupTaskTmuxState, handlePaneExited } from "./tmux-pty/task-launch";
 export { tmuxAction, tmuxPaneCount, tmuxKillPane, readPaneLayout, tmuxPaneNavigate } from "./tmux-pty/tmux-control";

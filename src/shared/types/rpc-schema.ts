@@ -792,7 +792,7 @@ export type AppRPCSchema = {
 				response: { url: string } | { gone: true };
 			};
 			resumeTask: {
-				params: { taskId: string };
+				params: { taskId: string; restart?: boolean };
 				response: string;
 			};
 			restartTask: {

@@ -1,5 +1,5 @@
 import type { AgentFamily, CodingAgent, PaneSessionEntry, Project, Task } from "../../../shared/types";
-import { getPrimaryStopTarget } from "../../../shared/types";
+import { ACTIVE_STATUSES, getPrimaryStopTarget } from "../../../shared/types";
 import * as data from "../../data";
 import * as pty from "../../pty-server";
 import * as agents from "../../agents";
@@ -12,8 +12,10 @@ import { resolveResumableSessionIds } from "../../agent-transcripts";
 import { DEFAULT_TMUX_SOCKET, taskSessionName, tmux } from "../../tmux";
 import { dev3TaskTempPath } from "../../temp-paths";
 import { taskTerminalBackendIdentity } from "../../task-terminal-backend";
-import { nativeTaskPanesAlive, stopNativeTaskPanes } from "../../native-task-panes";
+import { nativeTaskPaneCommandsStrict, nativeTaskPanesAlive, stopNativeTaskPanes } from "../../native-task-panes";
 import { assertTaskWorkspacePresent } from "../../task-workspace-guard";
+import { taskMainAgentLiveness } from "../../scheduled-message-author";
+import { NATIVE_AGENT_PANE_ID } from "../../agent-prompt-native";
 import type { ResumePaneMode, ResumePaneReport, ResumeUnavailableReason, TaskResumeResult } from "../../../shared/agent-resume";
 import { WAKE_SHELL_NOTICE } from "../../../shared/task-hibernate";
 import { getPushMessage, buildCmdScript, log, writeLaunchScript } from "../shared-pure";
@@ -116,6 +118,8 @@ export class ResumeUnavailableError extends Error {
 }
 
 export interface ResumeTaskOptions {
+	/** Replace the terminal, but only when every saved conversation can be resumed. */
+	restart?: "always" | "if-exited";
 	/** Report a live terminal instead of tearing it down to relaunch. */
 	refuseLive?: boolean;
 	/** Refuse when any pane has no conversation id and would fall back to the harness's own latest. */
@@ -143,9 +147,9 @@ const TEARDOWN_POLL_MS = 100;
 /**
  * End a task's terminal and wait until the backend agrees it is gone. A relaunch
  * racing a fire-and-forget `kill-session` attaches to the dying session
- * (`new-session -A`) instead of starting the agent. Callers confirm with `refuseLive`.
+ * (`new-session -A`) instead of starting the agent.
  */
-export async function tearDownTaskTerminal(task: Task): Promise<void> {
+async function tearDownTaskTerminal(task: Task): Promise<void> {
 	if (taskTerminalBackendIdentity(task) === "native") {
 		if (pty.hasSession(task.id)) await pty.destroySessionAwaited(task.id);
 		else await stopNativeTaskPanes(task.id);
@@ -173,8 +177,15 @@ export function resumeTaskSession(taskId: string, opts: ResumeTaskOptions = {}):
 	return run;
 }
 
-export async function resumeTask(params: { taskId: string }): Promise<string> {
-	const outcome = await resumeTaskSession(params.taskId);
+export async function resumeTask(params: { taskId: string; restart?: boolean }): Promise<string> {
+	let outcome = await resumeTaskSession(params.taskId, params.restart ? { restart: "always" } : {});
+	// A concurrent watchdog probe can refuse a live agent; an explicit restart still applies.
+	if (params.restart && outcome.kind === "already-running") {
+		outcome = await resumeTaskSession(params.taskId, { restart: "always" });
+	}
+	if (params.restart && outcome.kind === "resumed" && outcome.result.panes.some((pane) => pane.status !== "resumed")) {
+		throw new Error("The terminal restarted, but some agent panes could not be restored. Their conversations remain saved.");
+	}
 	return outcome.kind === "resumed" ? outcome.url : `ws://localhost:${pty.getPtyPort()}?session=${params.taskId}`;
 }
 
@@ -184,6 +195,18 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 	const { task, project } = await findTaskAcrossProjects(params.taskId);
 	if (!task || !project || !task.worktreePath) {
 		throw new Error(`Cannot resume: task ${params.taskId} not found or has no worktree`);
+	}
+	if (opts.restart) {
+		if (!ACTIVE_STATUSES.includes(task.status) || task.draft || task.hibernated || task.preparing || task.shuttingDown) {
+			throw new Error("Cannot restart: the task must be active and neither preparing, shutting down nor hibernated.");
+		}
+		assertTaskWorkspacePresent(project, task.worktreePath);
+		if (taskTerminalBackendIdentity(task) === "native") {
+			const live = await nativeTaskPaneCommandsStrict(task.id);
+			if ((task.sessionState?.panes.length ?? 0) > 1 || (live.kind === "read" && live.panes.some((pane) => pane.paneId !== NATIVE_AGENT_PANE_ID))) {
+				throw new Error("Cannot restart a native terminal with extra panes: only its main agent can be restored. Close the extra panes first. Nothing was stopped.");
+			}
+		}
 	}
 	if (opts.refuseLive && await taskTerminalAlive(task)) {
 		return { kind: "already-running", backend: taskTerminalBackendIdentity(task) };
@@ -229,6 +252,12 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 		status: "skipped",
 		paneId: null,
 	}));
+	if (opts.restart && targets.some((target, i) =>
+		!target.sessionId || (target.mode !== "exact" && target.mode !== "unverified")
+		|| (stored[i]?.sessionId && target.sessionId !== stored[i].sessionId),
+	)) {
+		throw new ResumeUnavailableError("session-id-unknown", "Cannot restart: every agent needs its own saved, resumable conversation. Nothing was stopped.", reports);
+	}
 	if (opts.refuseFresh && targets.some((target) => target.mode === "fresh")) {
 		throw new ResumeUnavailableError(
 			"harness-cannot-resume",
@@ -245,8 +274,22 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 	}
 	await wakeIfHibernated(project, task);
 
-	// Destroy any dead session in memory
-	if (pty.hasSession(params.taskId)) {
+	if (opts.restart) {
+		if (opts.restart === "if-exited" && await taskTerminalAlive(task) && await taskMainAgentLiveness(task) !== "exited") {
+			return { kind: "already-running", backend: taskTerminalBackendIdentity(task) };
+		}
+		// Pane-exit reconciliation must not discard the conversations while the old terminal dies.
+		const priorState = task.sessionState;
+		task.sessionState = { panes: panes.map((pane, i) => ({ ...pane, sessionId: targets[i].sessionId, paneId: null, parked: true })) };
+		await data.updateTask(project, task.id, { sessionState: task.sessionState });
+		try {
+			await tearDownTaskTerminal(task);
+			if (await taskTerminalAlive(task)) throw new Error("Cannot restart: the previous terminal has not stopped. Try again once it exits.");
+		} catch (error) {
+			await data.updateTask(project, task.id, { sessionState: priorState });
+			throw error;
+		}
+	} else if (pty.hasSession(params.taskId)) {
 		await pty.destroySessionAwaited(params.taskId);
 	}
 
@@ -343,6 +386,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 					await writeLaunchScript(scriptPath, buildCmdScript(resumeCmd, extraEnv, { keepShell: true }));
 					const wrappedCmd = `bash "${scriptPath}"`;
 					const newPaneId = await pty.splitAndRunCommand(params.taskId, socket, wrappedCmd, task.worktreePath);
+					if (opts.restart && !newPaneId) throw new Error("The restarted agent pane was not created.");
 					if (newPaneId) paneIdUpdates.push({ index: i, paneId: newPaneId, accountId, sessionId: freshSessionId ?? paneResume });
 					reports[i] = { ...reports[i], status: "resumed", paneId: newPaneId ?? null, accountId: accountId ?? null, sessionId: freshSessionId ?? paneResume };
 					log.info("Resumed extra pane", { taskId: params.taskId.slice(0, 8), paneIndex: i, paneId: newPaneId, command: resumeCmd.slice(0, 100) });
