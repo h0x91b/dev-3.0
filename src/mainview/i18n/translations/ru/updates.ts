@@ -64,6 +64,23 @@ const updates = {
 	"updateSim.rawPayload": "Сырой payload",
 	"updateSim.close": "Закрыть",
 
+	// Launch-location gate (macOS: running from a DMG / read-only folder)
+	"launchLocation.titleInstaller": "Перенесите dev-3.0 в Программы",
+	"launchLocation.titleReadOnly": "dev-3.0 не может обновляться из этой папки",
+	"launchLocation.bodyInstaller":
+		"Эта копия запущена прямо с установочного образа диска, а он доступен только для чтения. Обновления будут скачиваться, но никогда не установятся.",
+	"launchLocation.bodyReadOnly":
+		"У вас нет прав на запись в папку с этой копией, поэтому обновления будут скачиваться, но никогда не установятся.",
+	"launchLocation.moveHint": "dev-3.0 скопирует себя сюда и перезапустится оттуда:",
+	"launchLocation.dataSafe": "Ваши проекты, задачи и настройки не пострадают.",
+	"launchLocation.moveBtn": "Перенести в Программы",
+	"launchLocation.movingBtn": "Переносим…",
+	"launchLocation.retryBtn": "Попробовать снова",
+	"launchLocation.quitBtn": "Выйти",
+	"launchLocation.failed": "Не удалось перенести dev-3.0: {error}",
+	"launchLocation.manual":
+		"Закройте dev-3.0, перетащите его в Программы в Finder, извлеките установщик и откройте приложение из Программ.",
+
 	// Rosetta warning (Intel build on Apple Silicon)
 	"rosetta.title": "Intel-сборка на Apple Silicon",
 	"rosetta.body":

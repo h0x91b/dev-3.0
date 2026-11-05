@@ -59,6 +59,23 @@ const updates = {
 	"updateSim.rawPayload": "Raw payload",
 	"updateSim.close": "Close",
 
+	// Launch-location gate (macOS: running from a DMG / read-only folder)
+	"launchLocation.titleInstaller": "Move dev-3.0 to Applications",
+	"launchLocation.titleReadOnly": "dev-3.0 can't update from this folder",
+	"launchLocation.bodyInstaller":
+		"This copy is running straight from the installer disk image, which is read-only. Updates would download and then never install.",
+	"launchLocation.bodyReadOnly":
+		"You can't write to the folder this copy is in, so updates would download and then never install.",
+	"launchLocation.moveHint": "dev-3.0 will copy itself here and reopen from there:",
+	"launchLocation.dataSafe": "Your projects, tasks, and settings are not affected.",
+	"launchLocation.moveBtn": "Move to Applications",
+	"launchLocation.movingBtn": "Moving…",
+	"launchLocation.retryBtn": "Try again",
+	"launchLocation.quitBtn": "Quit",
+	"launchLocation.failed": "Couldn't move dev-3.0: {error}",
+	"launchLocation.manual":
+		"Quit dev-3.0, drag it into Applications in Finder, eject the installer, and open it from Applications.",
+
 	// Rosetta warning (Intel build on Apple Silicon)
 	"rosetta.title": "Intel build on Apple Silicon",
 	"rosetta.body":

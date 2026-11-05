@@ -12,7 +12,7 @@ import { statusKey } from "./i18n/status";
 import { columnAgentFailureCopy } from "./utils/columnAgentFailureToast";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
-import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, BoardCopyFailureReason, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, LiveArtifact, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
+import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, BoardCopyFailureReason, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo, LiveArtifact, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
 import { ACTIVE_STATUSES, orderProjectsForDisplay, getTaskTitle } from "../shared/types";
 import type { DeepLinkNav } from "../shared/deep-link";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
@@ -84,6 +84,7 @@ import TerminalPerfOverlay from "./components/TerminalPerfOverlay";
 import FilePreviewModal from "./components/FilePreviewModal";
 import { OPEN_FILE_PREVIEW_EVENT, type OpenFilePreviewDetail } from "./terminal-path-open";
 import RosettaWarningModal from "./components/RosettaWarningModal";
+import LaunchLocationGate from "./components/LaunchLocationGate";
 import { initTaskSoundPlayback, playTaskCompletionSound, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
 import { offerMergeCompletion } from "./utils/offerMergeCompletion";
 import { taskDialogInfoFromSubject } from "./utils/taskDialogInfo";
@@ -757,6 +758,17 @@ function App() {
 			.getRosettaWarning()
 			.then(setRosettaWarning)
 			.catch((err) => console.error("Failed to check Rosetta status:", err));
+	}, []);
+
+	// macOS: running from a DMG / translocated / read-only copy that can never update.
+	// Blocking by design; a remote browser never sees it (the desktop owner has to act).
+	const [launchLocationIssue, setLaunchLocationIssue] = useState<LaunchLocationIssue>(null);
+	useEffect(() => {
+		if (isRemote()) return;
+		api.request
+			.getLaunchLocationIssue()
+			.then(setLaunchLocationIssue)
+			.catch((err) => console.error("Failed to check the launch location:", err));
 	}, []);
 
 	// A tmux server an older dev3 started outside launchd can still lose folder
@@ -3882,6 +3894,7 @@ function App() {
 			)}
 			</>
 			)}
+			{launchLocationIssue && <LaunchLocationGate issue={launchLocationIssue} />}
 			{/* File preview opens from Cmd/Ctrl+Click in ANY terminal, including the
 			    immersive fullscreen one, so it lives outside the chrome conditional. */}
 			{filePreview && (
