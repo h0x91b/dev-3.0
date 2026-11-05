@@ -394,7 +394,8 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 		process.stderr.write(
 			`Starts on: ${task.existingBranch}${task.foreignCode ? " (someone else's code — the branch's own scripts and MCP config are ignored)" : ""}\n`,
 		);
-	}	const startsAfter = describeLaunchAfter(task);
+	}
+	const startsAfter = describeLaunchAfter(task);
 	if (startsAfter) process.stderr.write(`Starts after: ${startsAfter}. Nothing starts until then.\n`);
 }
 
