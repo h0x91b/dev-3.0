@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { sendRequest } from "../socket-client";
 import { printTable, exitError, exitUsage } from "../output";
@@ -304,7 +304,9 @@ export function configFilesToValidate(context: CliContext | null, cwd: string = 
 		if (owner) roots.push(owner);
 		if (roots.length === 0) roots.push(cwd);
 	}
-	return [...new Set(roots)].flatMap((root) => [join(root, ".dev3", "config.local.json"), join(root, ".dev3", "config.json")]);
+	// Through realpath: the same checkout reached via a symlink (/var vs /private/var) is one root.
+	const real = (p: string) => { try { return realpathSync(p); } catch { return p; } };
+	return [...new Map(roots.map((r) => [real(r), r])).values()].flatMap((root) => [join(root, ".dev3", "config.local.json"), join(root, ".dev3", "config.json")]);
 }
 
 function nearestDev3Root(start: string): string | null {

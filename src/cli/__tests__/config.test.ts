@@ -258,3 +258,18 @@ describe("config schema", () => {
 		expect(JSON.parse(stdoutOutput).$schema).toContain("2020-12");
 	});
 });
+
+describe("config validate file discovery", () => {
+	it("checks a checkout reached through a symlink once", async () => {
+		const { mkdtempSync, mkdirSync, symlinkSync, realpathSync } = await import("node:fs");
+		const { join } = await import("node:path");
+		const { tmpdir } = await import("node:os");
+		const { configFilesToValidate } = await import("../commands/config");
+		const real = realpathSync(mkdtempSync(join(tmpdir(), "cfg-validate-")));
+		mkdirSync(join(real, ".dev3"));
+		const link = `${real}-link`;
+		symlinkSync(real, link);
+		const files = configFilesToValidate({ projectId: "x", taskId: "y", socketPath: "", worktreePath: link }, real);
+		expect(files.filter((f) => f.endsWith("config.json"))).toHaveLength(1);
+	});
+});
