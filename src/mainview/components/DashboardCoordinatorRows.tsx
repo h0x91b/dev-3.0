@@ -3,6 +3,7 @@ import { getTaskTitle } from "../../shared/types";
 import { useT } from "../i18n";
 import type { CoordinatorCandidate } from "../utils/coordinatorFinder";
 import { getStatusLabel } from "../utils/statusLabel";
+import { CoordinatorCrown } from "./CoordinatorCrown";
 
 interface DashboardCoordinatorRowsProps {
 	project: Project;
@@ -62,8 +63,9 @@ function DashboardCoordinatorRows({ project, coordinators, narrow, statusColors,
 						<span className="min-w-0 flex-1 flex flex-col md:flex-row md:items-center gap-0.5 md:gap-3">
 							<span
 								title={getTaskTitle(task)}
-								className={`text-fg text-sm font-medium min-w-0 md:flex-1 select-text ${narrow ? "line-clamp-2" : "truncate"} ${maskClass}`}
+								className={`text-coordinator-ink text-sm font-semibold min-w-0 md:flex-1 select-text ${narrow ? "line-clamp-2" : "truncate"} ${maskClass}`}
 							>
+								<CoordinatorCrown size={14} />
 								{getTaskTitle(task)}
 							</span>
 							<span className="flex items-center gap-2 md:gap-3 flex-shrink-0">

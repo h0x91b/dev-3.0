@@ -1119,6 +1119,10 @@ describe("ActivityOverview — coordinator rows", () => {
 		const badge = within(rows()[0]).getByText("Coordinator");
 		expect(badge.className).toContain("bg-coordinator");
 		expect(badge.className).toContain("text-coordinator-on");
+		const title = within(rows()[0]).getByText("Run the migration");
+		expect(title.className).toContain("text-coordinator-ink");
+		expect(title.className).toContain("font-semibold");
+		expect(within(title).getByTestId("coordinator-crown")).toHaveAttribute("aria-hidden", "true");
 		// Only the ordinary working task is left in the footer.
 		expect(screen.getByText("1 agent working")).toBeInTheDocument();
 	});

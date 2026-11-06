@@ -1,3 +1,5 @@
+> Superseded on 2026-11-06 by `decisions/2026/11/06/pin-live-coordinators-above-tiers.md`: live coordinators leave the tiers and render first, headerless.
+
 # Has Questions leads the sidebar's NEEDS YOU tier
 
 ## Context

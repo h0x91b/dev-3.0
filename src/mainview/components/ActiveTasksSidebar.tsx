@@ -440,9 +440,9 @@ function ActiveTasksSidebar({
 	// A rendered readiness-tier block.
 	interface SidebarGroup {
 		key: string;
-		/** `null` for the pinned coordinators block: no header. */
+		/** `null` label (and no color) for the pinned coordinators block: no header. */
 		label: string | null;
-		color: string;
+		color?: string;
 		tasks: Task[];
 	}
 
@@ -470,7 +470,7 @@ function ActiveTasksSidebar({
 	const tiers = groupTasksIntoTiers(activeTasks, { scope: effectiveScope, orderedCustomColumns, sortOrder });
 	const grouped: SidebarGroup[] = tiers.map((tier) => {
 		if (tier.kind === "coordinators") {
-			return { key: tier.key, label: null, color: statusColors["in-progress"], tasks: tier.tasks };
+			return { key: tier.key, label: null, tasks: tier.tasks };
 		}
 		if (tier.kind === "needs-you") {
 			return {
@@ -815,28 +815,28 @@ function ActiveTasksSidebar({
 							{/* Tier header with count. No spinner: the WAITING tier merges
 							    working + AI-review + PRs, so a tier-wide spinner would mislead;
 							    the per-card rail busy-flow animation remains the cue. */}
-							{groupLabel !== null && (
-							<div data-sidebar-tier-header className="relative px-3 py-1.5 flex items-center gap-2 sticky top-0 bg-base/95 backdrop-blur-sm z-10">
-								{/* Faint zone wash + left bar so the tier reads as one color zone */}
-								<span
-									className="absolute inset-0 pointer-events-none"
-									style={{ background: statusTint(groupColor, 0.1) }}
-								/>
-								<span
-									className="absolute left-0 top-0 bottom-0 w-[3px]"
-									style={{ background: groupColor }}
-								/>
-								<div
-									className="w-2 h-2 rounded-full flex-shrink-0 relative"
-									style={{ background: groupColor }}
-								/>
-								<span className="text-dense font-semibold text-fg-3 uppercase tracking-wider">
-									{groupLabel}
-								</span>
-								<span className="text-dense text-fg-muted" data-testid={`sidebar-tier-count-${groupKey}`}>
-									{groupTasks.length}
-								</span>
-							</div>
+							{groupLabel !== null && groupColor && (
+								<div data-sidebar-tier-header className="relative px-3 py-1.5 flex items-center gap-2 sticky top-0 bg-base/95 backdrop-blur-sm z-10">
+									{/* Faint zone wash + left bar so the tier reads as one color zone */}
+									<span
+										className="absolute inset-0 pointer-events-none"
+										style={{ background: statusTint(groupColor, 0.1) }}
+									/>
+									<span
+										className="absolute left-0 top-0 bottom-0 w-[3px]"
+										style={{ background: groupColor }}
+									/>
+									<div
+										className="w-2 h-2 rounded-full flex-shrink-0 relative"
+										style={{ background: groupColor }}
+									/>
+									<span className="text-dense font-semibold text-fg-3 uppercase tracking-wider">
+										{groupLabel}
+									</span>
+									<span className="text-dense text-fg-muted" data-testid={`sidebar-tier-count-${groupKey}`}>
+										{groupTasks.length}
+									</span>
+								</div>
 							)}
 
 							{/* Tasks in this status */}

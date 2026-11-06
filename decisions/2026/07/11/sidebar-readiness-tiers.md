@@ -1,4 +1,5 @@
-> Partly superseded on 2026-10-12 by `decisions/2026/10/12/has-questions-leads-needs-you.md`: inside NEEDS YOU live coordinators, then `user-questions` tasks, now precede the priority sort.
+> Partly superseded on 2026-10-12 by `decisions/2026/10/12/has-questions-leads-needs-you.md`: inside NEEDS YOU `user-questions` tasks now precede the priority sort.
+> Superseded on 2026-11-06 by `decisions/2026/11/06/pin-live-coordinators-above-tiers.md`: live coordinators leave the tiers and render first, headerless.
 
 # 124 — Active Tasks sidebar: readiness tiers + visible priority
 

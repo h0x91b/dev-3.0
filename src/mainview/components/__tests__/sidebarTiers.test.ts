@@ -374,6 +374,33 @@ describe("groupTasksIntoTiers — user-questions lead NEEDS YOU", () => {
 		expect(ids(tiers[1].tasks)).toEqual(["question", "review", "parked"]);
 	});
 
+	it("leaves a disconnected coordinator in its tier", () => {
+		const tasks = [
+			review("disconnected", { taskType: "coordinator", worktreePath: "/wt/d", runtimeState: { runtime: "idle" } as Task["runtimeState"] }),
+			review("review"),
+		];
+		const tiers = groupTasksIntoTiers(tasks, ctx());
+		expect(kinds(tiers)).toEqual(["needs-you"]);
+		expect(ids(tiers[0].tasks)).toEqual(expect.arrayContaining(["disconnected", "review"]));
+	});
+
+	it("moves a coordinator out of its custom column into the pinned group", () => {
+		const tasks = [
+			makeTask({ id: "coord", status: "in-progress", taskType: "coordinator", customColumnId: "onhold" }),
+			makeTask({ id: "hold", status: "in-progress", customColumnId: "onhold" }),
+		];
+		const tiers = groupTasksIntoTiers(tasks, ctx({ orderedCustomColumns: [{ projectId: "p1", columnId: "onhold" }] }));
+		expect(kinds(tiers)).toEqual(["coordinators", "custom"]);
+		expect(ids(tiers[0].tasks)).toEqual(["coord"]);
+		expect(ids(tiers[1].tasks)).toEqual(["hold"]);
+	});
+
+	it("produces no tier for a custom column that held only coordinators", () => {
+		const tasks = [makeTask({ id: "coord", status: "in-progress", taskType: "coordinator", customColumnId: "onhold" })];
+		const tiers = groupTasksIntoTiers(tasks, ctx({ orderedCustomColumns: [{ projectId: "p1", columnId: "onhold" }] }));
+		expect(kinds(tiers)).toEqual(["coordinators"]);
+	});
+
 	it("keeps several pinned coordinators in their usual band → clock order", () => {
 		const tasks = [
 			question("p2-coord-asking", { taskType: "coordinator", priority: "P2" }),
