@@ -12712,6 +12712,31 @@ describe("handlePaneExited restores the task-level agent from the main pane", ()
 		await handlePaneExited(task.id, "%1");
 		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-opus" });
 	});
+
+	it("does not hand the task to a bug-hunter when the main pane itself exits", async () => {
+		const hunter = { agentCmd: "codex", agentId: "builtin-codex", configId: "codex-x", sessionId: "s-hunter", paneId: "%1" };
+		const { task } = arrange([main, hunter], "claude-opus", ["%1"]);
+		await handlePaneExited(task.id, "%0");
+		const updates = vi.mocked(data.updateTask).mock.calls[0][2];
+		expect(updates).not.toHaveProperty("agentId");
+		expect(updates).not.toHaveProperty("configId");
+	});
+
+	it("keeps the extra pane's agent when main exits and only extra and a hunter remain", async () => {
+		const hunter = { agentCmd: "codex", agentId: "builtin-codex", configId: "codex-x", sessionId: "s-hunter", paneId: "%2" };
+		const { task } = arrange([main, extra, hunter], "claude-kimi", ["%1", "%2"]);
+		await handlePaneExited(task.id, "%0");
+		const updates = vi.mocked(data.updateTask).mock.calls[0][2];
+		expect(updates).not.toHaveProperty("agentId");
+		expect(updates).not.toHaveProperty("configId");
+	});
+
+	it("does not count a parked entry as a live match for the task agent", async () => {
+		const parked = { ...extra, paneId: null, parked: true, sessionId: "s-parked" };
+		const { project, task } = arrange([parked, main, { ...extra, paneId: "%1" }], "claude-kimi", ["%0"]);
+		await handlePaneExited(task.id, "%1");
+		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-opus" });
+	});
 });
 
 // PR #2049 review: the saved panes kept the dead session's paneIds, so closing one

@@ -917,7 +917,9 @@ export async function handlePaneExited(taskId: string, _exitedPaneId: string): P
 		const unmatchedLive = [...livePaneIds].filter(id => !matchedIds.has(id));
 		const nullEntries = surviving.filter(p => !p.paneId && !p.parked);
 
+		let adoptedFrom: (typeof panes)[number] | undefined;
 		if (nullEntries.length === 1 && unmatchedLive.length === 1) {
+			adoptedFrom = nullEntries[0];
 			// High confidence: the one unmatched live pane is the one null entry's agent
 			const adopted = { ...nullEntries[0], paneId: unmatchedLive[0] };
 			surviving = surviving.map(p => p === nullEntries[0] ? adopted : p);
@@ -928,14 +930,18 @@ export async function handlePaneExited(taskId: string, _exitedPaneId: string): P
 		}
 
 		if (surviving.length !== panes.length || surviving.some((p, i) => p.paneId !== panes[i].paneId)) {
-			// spawnAgentInTask writes the task-level agent; restore it from the main pane (the first
-			// non-parked one) once the pane it points at is gone. Extra and hunter panes are secondary.
+			// spawnAgentInTask writes the task-level agent. Restore it from the main pane (first non-parked)
+			// once the pane it points at is gone, but only while main itself survived: extra and hunter
+			// panes are secondary. Parked entries are not live and never count as a match.
 			const sameAgent = (p: { agentId?: string | null; configId?: string | null }) =>
 				(p.agentId ?? null) === (task.agentId ?? null) && (p.configId ?? null) === (task.configId ?? null);
-			const source = surviving.some(sameAgent) ? undefined : surviving.find(p => !p.parked);
+			const mainBefore = panes.find(p => !p.parked);
+			const mainAfter = surviving.find(p => !p.parked);
+			const mainSurvived = !!mainAfter && (mainAfter === mainBefore || adoptedFrom === mainBefore);
+			const restoreAgent = mainSurvived && !surviving.some(p => !p.parked && sameAgent(p)) && !sameAgent(mainAfter);
 			await data.updateTask(project, task.id, {
 				sessionState: { panes: surviving },
-				...(source ? { agentId: source.agentId ?? null, configId: source.configId ?? null } : {}),
+				...(restoreAgent ? { agentId: mainAfter.agentId ?? null, configId: mainAfter.configId ?? null } : {}),
 			});
 			log.info("Reconciled sessionState after pane exit", {
 				taskId: taskId.slice(0, 8),
