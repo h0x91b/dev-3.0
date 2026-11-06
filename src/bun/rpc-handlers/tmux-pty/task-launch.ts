@@ -464,6 +464,7 @@ export async function launchTaskPty(
 			// A resume passes the pane's own agent back in, so the default marker rides along with it.
 			const carriedDefault = resume && !!priorMain?.agentFromDefault && agentId === priorMain.agentId;
 			const paneEntry = {
+				main: true,
 				agentCmd: resolvedBaseCmd,
 				sessionId: effectiveSessionId ?? null,
 				agentId: agentId ?? task.agentId,
@@ -918,12 +919,10 @@ export async function handlePaneExited(taskId: string, _exitedPaneId: string): P
 		const nullEntries = surviving.filter(p => !p.paneId && !p.parked);
 
 		let adoptedFrom: (typeof panes)[number] | undefined;
-		let adoptedCopy: (typeof panes)[number] | undefined;
 		if (nullEntries.length === 1 && unmatchedLive.length === 1) {
 			adoptedFrom = nullEntries[0];
 			// High confidence: the one unmatched live pane is the one null entry's agent
 			const adopted = { ...nullEntries[0], paneId: unmatchedLive[0] };
-			adoptedCopy = adopted;
 			surviving = surviving.map(p => p === nullEntries[0] ? adopted : p);
 			log.info("Reconciled paneId for unmatched entry", { taskId: taskId.slice(0, 8), paneId: unmatchedLive[0] });
 		} else if (unmatchedLive.length === 0 && nullEntries.length > 0) {
@@ -933,18 +932,15 @@ export async function handlePaneExited(taskId: string, _exitedPaneId: string): P
 
 		if (surviving.length !== panes.length || surviving.some((p, i) => p.paneId !== panes[i].paneId)) {
 			// spawnAgentInTask writes the task-level agent. When the pane it points at is gone, restore it
-			// only from the original owner (first non-parked, non-hunter entry) if it survived; untagged
-			// legacy hunters and later panes never take over.
+			// from the surviving main pane (flagged at launch); extra, hunter and legacy unflagged panes never do.
 			const sameAgent = (p: { agentId?: string | null; configId?: string | null }) =>
 				(p.agentId ?? null) === (task.agentId ?? null) && (p.configId ?? null) === (task.configId ?? null);
 			const removed = panes.filter(p => p !== adoptedFrom && !surviving.includes(p));
-			const ownerBefore = panes.find(p => !p.parked && !p.bugHunter);
-			const source = surviving.find(p => !p.parked && !p.bugHunter);
-			const isOwner = !!source && (source === ownerBefore || (!!adoptedCopy && source === adoptedCopy && adoptedFrom === ownerBefore));
-			const restoreAgent = isOwner && removed.some(sameAgent) && !surviving.some(p => !p.parked && sameAgent(p)) && !sameAgent(source);
+			const owner = surviving.find(p => p.main && !p.parked);
+			const restoreAgent = !!owner && removed.some(sameAgent) && !surviving.some(p => !p.parked && sameAgent(p)) && !sameAgent(owner);
 			await data.updateTask(project, task.id, {
 				sessionState: { panes: surviving },
-				...(restoreAgent ? { agentId: source.agentId ?? null, configId: source.configId ?? null } : {}),
+				...(restoreAgent ? { agentId: owner.agentId ?? null, configId: owner.configId ?? null } : {}),
 			});
 			log.info("Reconciled sessionState after pane exit", {
 				taskId: taskId.slice(0, 8),

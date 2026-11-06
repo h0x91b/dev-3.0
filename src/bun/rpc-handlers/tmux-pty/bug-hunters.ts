@@ -186,7 +186,6 @@ async function spawnSingleBugHunterPane(opts: {
 			configId: launchedConfigId,
 			accountId: launchAccountId,
 			agentFamily: resolvedAgentFamily,
-			bugHunter: true,
 		};
 		try {
 			const freshTask = await data.getTask(opts.project, opts.task.id);
