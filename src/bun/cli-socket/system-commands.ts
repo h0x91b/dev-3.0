@@ -1,12 +1,14 @@
 import { DEV3_REPO_CONFIG_KEYS, repoConfigEnabled } from "../../shared/types";
 import * as data from "../data";
 import { loadSpacesFile } from "../spaces-data";
-import { getPushMessageLocal } from "../rpc-handlers";
+import { getPushMessage, getPushMessageLocal } from "../rpc-handlers";
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "../rpc-handlers/tmux-pty";
 import { NATIVE_PROMPT_DELIVERY_METHOD, deliverNativePromptAsOwner } from "../agent-prompt-native";
 import { NATIVE_PANE_INPUT_METHOD, runNativePaneInputAsOwner } from "../pane-input-native";
 import type { PaneInputProgram } from "../../shared/pane-input";
 import * as repoConfig from "../repo-config";
+import { resolveConfigPath } from "../../shared/config-schema";
+import type { Project } from "../../shared/types";
 import { LAUNCH_ACTIVATE_METHOD, handleLaunchActivate } from "../launch-handoff";
 import { log, type Handler } from "./shared";
 import { readEnvParam, readServerParams, resolveTaskFromParams } from "./task-resolution";
@@ -123,34 +125,31 @@ export const systemHandlers: Record<string, Handler> = {
 	},
 
 	"config.show": async (params) => {
-		const projectId = params.projectId as string;
-		if (!projectId) throw new Error("projectId is required");
-		const worktreePath = params.worktreePath as string | undefined;
-		const project = await data.getProject(projectId);
+		const { project, worktreePath, foreignCode } = await configTarget(params);
+		// The same cascade a task launch uses: worktree files, then the main
+		// checkout's, then projects.json, then defaults.
+		const resolved = await repoConfig.resolveOperationalProjectConfig(project, worktreePath, { foreignCode });
+		const layers = repoConfig.listConfigLayers(project, worktreePath, { foreignCode });
+		const { sources, envSources } = repoConfig.resolveLayeredProvenance(resolved, project, layers);
 		const configPath = worktreePath || project.path;
-		const resolved = await repoConfig.resolveProjectConfig(project, configPath);
-		// Full provenance for every key (local/repo/project/default/unset) — the CLI
-		// renders it verbatim, so it never has to guess a blanket "global" fallback
-		// that would hide whether a value is a real default, a project setting, or
-		// genuinely unset. Wider than getConfigSources (repo/local, for the UI badge).
-		const provenance = repoConfig.resolveConfigProvenance(resolved, project, configPath);
-		const hasRepoFile = repoConfig.hasRepoConfig(configPath);
 		return {
-			// Map unset fields (no value at any layer and no default — e.g. portCount)
-			// to `null` rather than leaving them `undefined`: JSON.stringify drops
-			// `undefined` properties, which would silently hide a valid, settable
-			// config key from `dev3 config show` and make it undiscoverable. `null`
-			// survives serialization and the CLI renders it as "(not set)".
+			// `null`, not `undefined`, for unset keys: JSON.stringify drops
+			// `undefined`, which would hide a settable key from `dev3 config show`.
 			settings: Object.fromEntries(
 				DEV3_REPO_CONFIG_KEYS.map((key) => [key, (resolved as any)[key] ?? null]),
 			),
-			sources: provenance,
-			hasRepoConfig: hasRepoFile,
+			sources,
+			envSources,
+			layers: layers.map(({ id, path, exists, trusted }) => ({ id, path, exists, trusted })),
+			hasRepoConfig: repoConfig.hasRepoConfig(configPath),
 			// The file may exist and still be irrelevant — say so rather than
 			// letting "exists" imply its values are in the table above.
 			repoConfigIgnored: !repoConfigEnabled(project),
 		};
 	},
+
+	"config.set": async (params) => editConfigKey(params, "set"),
+	"config.unset": async (params) => editConfigKey(params, "unset"),
 
 	// Mint a fresh access URL (with a one-time QR token) for a running headless
 	// server. The JWT secret lives only in this process, so a detached
@@ -205,3 +204,50 @@ export const systemHandlers: Record<string, Handler> = {
 		return await runSelfUpdate({ channel, restart: true });
 	},
 };
+
+/** Project, worktree and trust of the checkout a `dev3 config` call targets. */
+async function configTarget(params: Record<string, unknown>): Promise<{ project: Project; worktreePath?: string; foreignCode: boolean }> {
+	const projectId = params.projectId as string;
+	if (!projectId) throw new Error("projectId is required");
+	const project = await data.getProject(projectId);
+	if (project.kind === "virtual") throw new Error("Operations boards have no .dev3 config files.");
+	const worktreePath = (params.worktreePath as string | undefined) || undefined;
+	let foreignCode = false;
+	if (typeof params.taskId === "string" && params.taskId) {
+		try {
+			foreignCode = (await data.loadTasks(project)).find((t) => t.id === params.taskId)?.foreignCode === true;
+		} catch {
+			// Unknown task: treat its worktree as the user's own, like a launch would.
+		}
+	}
+	return { project, worktreePath, foreignCode };
+}
+
+/**
+ * `dev3 config set|unset`: one key (or `key.entry`) in one file. `local`
+ * picks config.local.json; `main` picks the project root instead of the task
+ * worktree. The CLI has already parsed the value against the schema; the
+ * whole file is validated again here before anything is written.
+ */
+async function editConfigKey(params: Record<string, unknown>, mode: "set" | "unset") {
+	const { project, worktreePath, foreignCode } = await configTarget(params);
+	if (!repoConfigEnabled(project)) {
+		throw new Error("Repository dev3 configuration is disabled for this project — enable \"Use repository dev3 configuration\" in Project Settings first.");
+	}
+	const { key, sub } = resolveConfigPath(String(params.key ?? ""));
+	const local = params.local === true;
+	const base = params.main === true || !worktreePath ? project.path : worktreePath;
+	const file = repoConfig.configFilePath(base, local);
+	let edit: { previous: unknown; value: unknown };
+	try {
+		edit = repoConfig.editConfigFile(file, key, sub, mode === "set" ? params.value : undefined);
+	} catch (err) {
+		if (err instanceof repoConfig.ConfigEditError) throw new Error(err.message);
+		throw err;
+	}
+	if (local) await repoConfig.ensureGitignore(base);
+	const layers = repoConfig.listConfigLayers(project, worktreePath, { foreignCode });
+	const { shadowedBy, ignoredAsForeign } = repoConfig.describeEditReach(layers, file, key, sub);
+	getPushMessage()?.("projectUpdated", { project: await repoConfig.resolveProjectConfig(project) });
+	return { file, ...edit, shadowedBy, ignoredAsForeign };
+}

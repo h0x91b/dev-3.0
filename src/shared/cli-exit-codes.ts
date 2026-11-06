@@ -45,6 +45,7 @@ export const CLI_EXIT_CODE_PR_WATCH_PR_FINISHED = 43;
 export const CLI_EXIT_CODE_EPIC_REF_INVALID = 44;
 export const CLI_EXIT_CODE_EPIC_CREATE_FORBIDDEN = 45;
 export const CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED = 46;
+export const CLI_EXIT_CODE_CONFIG_INVALID = 47;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -323,5 +324,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED,
 		description:
 			"An agent-initiated launch (`dev3 task move --task <other> --status in-progress`, or `dev3 task create --scratch --run`) was approved, but the launched task's preparation failed (worktree, setup or agent start), so NO agent is running for it: the task is back in To Do and the message carries its preparation error. Read the error before retrying — a refused leftover folder needs the user, not a retry. Distinct from exit 10 (declined) so a launcher can tell \"the user said no\" from \"it broke\".",
+	},
+	{
+		constant: "CLI_EXIT_CODE_CONFIG_INVALID",
+		code: CLI_EXIT_CODE_CONFIG_INVALID,
+		description:
+			"`dev3 config validate` found an error in a `.dev3/config.json` or `.dev3/config.local.json` (invalid JSON, a wrong type, an out-of-range value), or `dev3 config set` was given a value the schema rejects, so **nothing** was written. Unknown keys are warnings and do not cause it. Run `dev3 config schema <key>` for the expected type. Distinct from exit 1 so CI can tell a bad config from a failed command.",
 	},
 ] as const;

@@ -1,3 +1,4 @@
+import { CONFIG_KEYS, describeType, getFieldSpec } from "../../shared/config-schema";
 import { describe, expect, it, vi } from "vitest";
 import { BoardService } from "../../mainview/board-views/board-service";
 import { EXTENSION_API_VERSION, satisfiesRange, validateExtensionManifest } from "../../shared/extensions";
@@ -472,8 +473,16 @@ describe("dev3-project-config skill content", () => {
 
 	it("documents project environment variables and their secret-storage boundary", () => {
 		const skill = getProjectConfigSkillContent();
-		expect(skill).toContain("| `env` | Record<string, string> |");
+		expect(skill).toContain("| `env` | { [name]: string } |");
 		expect(skill).toContain("This field is not for secrets; `.dev3/config.json` is committed.");
+	});
+
+	// The table is generated: a field added to the schema is documented with no other edit.
+	it("documents every schema field, generated from the schema", () => {
+		const skill = getProjectConfigSkillContent();
+		for (const key of CONFIG_KEYS) {
+			expect(skill).toContain(`| \`${key}\` | ${describeType(getFieldSpec(key).type).replaceAll("|", "\\|")} |`);
+		}
 	});
 });
 

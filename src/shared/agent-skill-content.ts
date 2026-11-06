@@ -242,7 +242,7 @@ Focus mode (Settings → Tasks & Board) answers \`notify\`/\`attention\` with "F
 const SKILL_PROJECT_CONFIG_REDIRECT = `
 ## Project configuration (.dev3/config.json)
 
-For ANY question about project configuration — setup/dev/cleanup scripts, clone paths, base branch, sparse checkout, \`.dev3/config.json\` / \`.dev3/config.local.json\` — invoke \`/dev3-project-config\` FIRST; it owns the schema and workflow. Never configure a project without it.
+For ANY question about project configuration — setup/dev/cleanup scripts, clone paths, base branch, sparse checkout, \`.dev3/config.json\` / \`.dev3/config.local.json\` — invoke \`/dev3-project-config\` FIRST. Fields: \`dev3 config schema|show|get|set\`; never hand-edit the JSON.
 `;
 
 const SKILL_PANES = `
