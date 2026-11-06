@@ -12767,6 +12767,24 @@ describe("handlePaneExited restores the task-level agent from the main pane", ()
 		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-kimi" });
 	});
 
+	it("does not hand the task to a legacy hunter entry that has no bugHunter tag", async () => {
+		const legacyHunter = { agentCmd: "codex", agentId: "builtin-codex", configId: "codex-x", sessionId: "s-hunter", paneId: "%2" };
+		const { task } = arrange([main, legacyHunter], "claude-opus", ["%2"]);
+		await handlePaneExited(task.id, "%0");
+		const updates = vi.mocked(data.updateTask).mock.calls[0][2];
+		expect(updates).not.toHaveProperty("agentId");
+		expect(updates).not.toHaveProperty("configId");
+	});
+
+	it("restores from a main pane adopted in the same call", async () => {
+		const unassigned = { ...main, paneId: null };
+		const { project, task } = arrange([unassigned, extra], "claude-kimi", ["%0"]);
+		await handlePaneExited(task.id, "%1");
+		const after = await data.getTask(project, task.id);
+		expect(after.sessionState?.panes).toEqual([expect.objectContaining({ paneId: "%0" })]);
+		expect(after).toMatchObject({ agentId: "builtin-claude", configId: "claude-opus" });
+	});
+
 	it("does not count a parked entry as a live match for the task agent", async () => {
 		const parked = { ...extra, paneId: null, parked: true, sessionId: "s-parked" };
 		const { project, task } = arrange([parked, main, { ...extra, paneId: "%1" }], "claude-kimi", ["%0"]);
