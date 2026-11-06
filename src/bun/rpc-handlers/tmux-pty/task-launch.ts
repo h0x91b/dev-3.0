@@ -933,10 +933,9 @@ export async function handlePaneExited(taskId: string, _exitedPaneId: string): P
 			const sameAgent = (p: { agentId?: string | null; configId?: string | null }) =>
 				(p.agentId ?? null) === (task.agentId ?? null) && (p.configId ?? null) === (task.configId ?? null);
 			const source = surviving.some(sameAgent) ? undefined : surviving.find(p => !p.parked);
-			const restoreAgent = !!source && !sameAgent(source);
 			await data.updateTask(project, task.id, {
 				sessionState: { panes: surviving },
-				...(restoreAgent ? { agentId: source.agentId ?? null, configId: source.configId ?? null } : {}),
+				...(source ? { agentId: source.agentId ?? null, configId: source.configId ?? null } : {}),
 			});
 			log.info("Reconciled sessionState after pane exit", {
 				taskId: taskId.slice(0, 8),
