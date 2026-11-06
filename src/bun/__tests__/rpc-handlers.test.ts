@@ -10897,6 +10897,7 @@ describe("handlers.spawnAgentInTask", () => {
 		expect(write).toBeDefined();
 		expect(write[2].sessionState.panes).toHaveLength(1);
 		expect(write[2].sessionState.panes[0]).toMatchObject({ paneId: "%7", agentId: "builtin-claude", configId: "claude-default" });
+		expect(write[2].sessionState.panes[0]).not.toHaveProperty("main");
 	});
 });
 
@@ -12916,7 +12917,7 @@ describe("wake of a Codex task whose pane record was lost", () => {
 		const { project, task } = arrange();
 		const result = await openTerminal(task.id);
 		expect(result).toMatchObject({ recoverable: true, hibernated: true, sessionState: { panes: [expect.objectContaining({ sessionId, agentId: "builtin-codex" })] } });
-		expect(chooseTaskCodexConversations).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ worktreePath: "/tmp/wt-lost" }), [expect.objectContaining({ sessionId: null })], "explicit-resume", { persist: false });
+		expect(chooseTaskCodexConversations).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ worktreePath: "/tmp/wt-lost" }), [expect.objectContaining({ sessionId: null, main: true })], "explicit-resume", { persist: false });
 		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([]);
 	});
 

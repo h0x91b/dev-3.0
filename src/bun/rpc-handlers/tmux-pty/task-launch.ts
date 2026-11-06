@@ -937,7 +937,7 @@ export async function handlePaneExited(taskId: string, _exitedPaneId: string): P
 				(p.agentId ?? null) === (task.agentId ?? null) && (p.configId ?? null) === (task.configId ?? null);
 			const removed = panes.filter(p => p !== adoptedFrom && !surviving.includes(p));
 			const owner = surviving.find(p => p.main && !p.parked);
-			const restoreAgent = !!owner && removed.some(sameAgent) && !surviving.some(p => !p.parked && sameAgent(p)) && !sameAgent(owner);
+			const restoreAgent = !!owner && removed.some(sameAgent) && !surviving.some(p => !p.parked && sameAgent(p));
 			await data.updateTask(project, task.id, {
 				sessionState: { panes: surviving },
 				...(restoreAgent ? { agentId: owner.agentId ?? null, configId: owner.configId ?? null } : {}),

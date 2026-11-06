@@ -356,7 +356,7 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 
 		const panes = readPanes();
 		expect(panes).toHaveLength(1);
-		expect(panes[0]).toMatchObject({ paneId: "%6", sessionId: "00000000-0000-4000-8000-0000c0de1083", agentId: "builtin-codex", configId: "codex-default", agentCmd: "codex" });
+		expect(panes[0]).toMatchObject({ paneId: "%6", sessionId: "00000000-0000-4000-8000-0000c0de1083", agentId: "builtin-codex", configId: "codex-default", agentCmd: "codex", main: true });
 		// No account is guessed: resume finds the store that holds the conversation.
 		expect(panes[0]?.accountId).toBeUndefined();
 		expect(buildResumeCommand(panes[0]!.agentCmd, panes[0]!.sessionId ?? undefined)).toBe("codex resume 00000000-0000-4000-8000-0000c0de1083 -c check_for_update_on_startup=false");
