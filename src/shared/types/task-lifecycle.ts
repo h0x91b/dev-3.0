@@ -88,6 +88,8 @@ export interface PaneSessionEntry {
 	 *  plain shell. The pane reconciler never adopts or drops a parked entry; a
 	 *  resume of this pane clears the flag. */
 	parked?: boolean;
+	/** Written by a bug-hunter launch. A hunter never owns the task-level agent. */
+	bugHunter?: boolean;
 }
 
 /** Captured session state for agent recovery after tmux death / app restart. */

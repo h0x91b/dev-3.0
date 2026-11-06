@@ -930,18 +930,16 @@ export async function handlePaneExited(taskId: string, _exitedPaneId: string): P
 		}
 
 		if (surviving.length !== panes.length || surviving.some((p, i) => p.paneId !== panes[i].paneId)) {
-			// spawnAgentInTask writes the task-level agent. Restore it from the main pane (first non-parked)
-			// once the pane it points at is gone, but only while main itself survived: extra and hunter
-			// panes are secondary. Parked entries are not live and never count as a match.
+			// spawnAgentInTask writes the task-level agent. When the pane it points at is gone, restore it
+			// from the first surviving non-hunter pane; bug-hunter and parked entries never own it.
 			const sameAgent = (p: { agentId?: string | null; configId?: string | null }) =>
 				(p.agentId ?? null) === (task.agentId ?? null) && (p.configId ?? null) === (task.configId ?? null);
-			const mainBefore = panes.find(p => !p.parked);
-			const mainAfter = surviving.find(p => !p.parked);
-			const mainSurvived = !!mainAfter && (mainAfter === mainBefore || adoptedFrom === mainBefore);
-			const restoreAgent = mainSurvived && !surviving.some(p => !p.parked && sameAgent(p)) && !sameAgent(mainAfter);
+			const removed = panes.filter(p => p !== adoptedFrom && !surviving.includes(p));
+			const source = surviving.find(p => !p.parked && !p.bugHunter);
+			const restoreAgent = !!source && removed.some(sameAgent) && !surviving.some(p => !p.parked && sameAgent(p)) && !sameAgent(source);
 			await data.updateTask(project, task.id, {
 				sessionState: { panes: surviving },
-				...(restoreAgent ? { agentId: mainAfter.agentId ?? null, configId: mainAfter.configId ?? null } : {}),
+				...(restoreAgent ? { agentId: source.agentId ?? null, configId: source.configId ?? null } : {}),
 			});
 			log.info("Reconciled sessionState after pane exit", {
 				taskId: taskId.slice(0, 8),
