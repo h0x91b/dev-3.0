@@ -928,12 +928,14 @@ export async function handlePaneExited(taskId: string, _exitedPaneId: string): P
 		}
 
 		if (surviving.length !== panes.length || surviving.some((p, i) => p.paneId !== panes[i].paneId)) {
-			// spawnAgentInTask writes the task-level agent, so a pane exit must restore it from the last survivor.
-			const last = surviving[surviving.length - 1];
-			const restoreAgent = !!last?.agentId && (last.agentId !== task.agentId || last.configId !== task.configId);
+			// spawnAgentInTask writes the task-level agent; restore it only when its pane is gone.
+			// Bug-hunter panes never write it, so a live match keeps the task as is.
+			const sameAgent = (p: { agentId?: string | null; configId?: string | null }) =>
+				p.agentId === task.agentId && (p.configId ?? null) === (task.configId ?? null);
+			const last = surviving.some(sameAgent) ? undefined : [...surviving].reverse().find(p => !!p.agentId);
 			await data.updateTask(project, task.id, {
 				sessionState: { panes: surviving },
-				...(restoreAgent ? { agentId: last.agentId, configId: last.configId } : {}),
+				...(last ? { agentId: last.agentId, configId: last.configId } : {}),
 			});
 			log.info("Reconciled sessionState after pane exit", {
 				taskId: taskId.slice(0, 8),

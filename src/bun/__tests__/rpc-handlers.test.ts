@@ -12673,6 +12673,29 @@ describe("handlePaneExited restores the task-level agent from the last surviving
 		expect(updates).not.toHaveProperty("agentId");
 		expect(updates).not.toHaveProperty("configId");
 	});
+
+	it("keeps the task agent when a bug-hunter pane exits and the task's own pane is alive", async () => {
+		const hunter = { agentCmd: "codex", agentId: "builtin-codex", configId: "codex-x", sessionId: "s-hunter" };
+		const { task } = arrange([main, { ...hunter, paneId: "%1" }, { ...hunter, paneId: "%2" }], "claude-opus", ["%0", "%1"]);
+		await handlePaneExited(task.id, "%2");
+		const updates = vi.mocked(data.updateTask).mock.calls[0][2];
+		expect(updates).not.toHaveProperty("agentId");
+		expect(updates).not.toHaveProperty("configId");
+	});
+
+	it("leaves the task agent when the only survivors have no agentId", async () => {
+		const { project, task } = arrange([{ ...main, agentId: null, configId: null, paneId: "%0" } as any, extra], "claude-kimi", ["%0"]);
+		await handlePaneExited(task.id, "%1");
+		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-kimi" });
+	});
+
+	it("skips survivors without an agentId and restores from the last one that has it", async () => {
+		const bare = { ...main, agentId: null, configId: null } as any;
+		const other = { ...main, paneId: "%2" };
+		const { project, task } = arrange([bare, other, extra], "claude-kimi", ["%0", "%2"]);
+		await handlePaneExited(task.id, "%1");
+		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-opus" });
+	});
 });
 
 // PR #2049 review: the saved panes kept the dead session's paneIds, so closing one
