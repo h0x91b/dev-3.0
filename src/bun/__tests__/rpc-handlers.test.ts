@@ -12638,7 +12638,7 @@ describe("Codex conversation survives pane-exit reconciliation into a wake", () 
 	});
 });
 
-describe("handlePaneExited restores the task-level agent from the last surviving pane", () => {
+describe("handlePaneExited restores the task-level agent from the main pane", () => {
 	beforeEach(() => vi.clearAllMocks());
 	const main = { agentCmd: "claude", agentId: "builtin-claude", configId: "claude-opus", sessionId: "s-main", paneId: "%0" };
 	const extra = { agentCmd: "claude", agentId: "builtin-claude", configId: "claude-kimi", sessionId: "s-extra", paneId: "%1" };
@@ -12683,16 +12683,32 @@ describe("handlePaneExited restores the task-level agent from the last surviving
 		expect(updates).not.toHaveProperty("configId");
 	});
 
-	it("leaves the task agent when the only survivors have no agentId", async () => {
-		const { project, task } = arrange([{ ...main, agentId: null, configId: null, paneId: "%0" } as any, extra], "claude-kimi", ["%0"]);
+	it("restores the main pane's agent, not a bug-hunter's, when an extra pane exits beside hunters", async () => {
+		const hunter = { agentCmd: "codex", agentId: "builtin-codex", configId: "codex-x", sessionId: "s-hunter" };
+		const panes = [main, { ...extra, paneId: "%1" }, { ...hunter, paneId: "%2" }, { ...hunter, paneId: "%3" }];
+		const { project, task } = arrange(panes, "claude-kimi", ["%0", "%2", "%3"]);
 		await handlePaneExited(task.id, "%1");
-		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-kimi" });
+		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-opus" });
 	});
 
-	it("skips survivors without an agentId and restores from the last one that has it", async () => {
+	it("returns the task to no agent when the main pane has none", async () => {
+		const bare = { ...main, agentId: null, configId: null } as any;
+		const { project, task } = arrange([bare, extra], "claude-kimi", ["%0"]);
+		await handlePaneExited(task.id, "%1");
+		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: null, configId: null });
+	});
+
+	it("takes the main pane even when it has no agent and a later pane does", async () => {
 		const bare = { ...main, agentId: null, configId: null } as any;
 		const other = { ...main, paneId: "%2" };
 		const { project, task } = arrange([bare, other, extra], "claude-kimi", ["%0", "%2"]);
+		await handlePaneExited(task.id, "%1");
+		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: null, configId: null });
+	});
+
+	it("skips a parked entry when picking the main pane", async () => {
+		const parked = { agentCmd: "claude", agentId: "p-agent", configId: "p-config", sessionId: "s-parked", paneId: null, parked: true };
+		const { project, task } = arrange([parked, main, extra], "claude-kimi", ["%0"]);
 		await handlePaneExited(task.id, "%1");
 		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-opus" });
 	});
