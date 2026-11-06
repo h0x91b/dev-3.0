@@ -2226,8 +2226,8 @@ describe("ActiveTasksSidebar port badges", () => {
 		expect(screen.queryByTestId("sidebar-ports-t1-toggle")).not.toBeInTheDocument();
 	});
 
-	it("marks a coordinator row with the hazard-tape class and leaves an ordinary row plain", () => {
-		const { container } = render(
+	it("marks a coordinator row with a filled role chip and names the role, leaving an ordinary row plain", () => {
+		render(
 			<I18nProvider>
 				<ActiveTasksSidebar project={project} tasks={[makeTask({ id: "coord", title: "Coordinate", taskType: "coordinator", groupId: null, variantIndex: null }), makeTask({ id: "plain", title: "Plain task", groupId: null, variantIndex: null })]}
 					dispatch={vi.fn()} navigate={vi.fn()} agents={[claudeAgent]}
@@ -2235,10 +2235,12 @@ describe("ActiveTasksSidebar port badges", () => {
 			</I18nProvider>,
 		);
 
-		const marked = [...container.querySelectorAll(".task-row-coordinator")];
-		expect(marked).toHaveLength(1);
-		expect(marked[0]).toHaveTextContent("Coordinate");
-		expect(marked[0]).not.toHaveTextContent("Plain task");
-		expect(within(marked[0] as HTMLElement).getByTestId("sidebar-coordinator-badge").className).toContain("text-coordinator-ink");
+		const chips = screen.getAllByTestId("sidebar-coordinator-badge");
+		expect(chips).toHaveLength(1);
+		expect(chips[0].className).toContain("bg-accent-fill");
+		expect(chips[0].className).toContain("text-white");
+		expect(screen.getByRole("button", { name: /^Coordinate — Coordinator/ })).toContainElement(chips[0]);
+		expect(screen.getByRole("button", { name: /^Plain task/ }).getAttribute("aria-label")).not.toMatch(/Coordinator/);
 	});
+
 });
