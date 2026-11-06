@@ -201,6 +201,33 @@ describe("focus after spawning an agent into a native task", () => {
 	});
 });
 
+describe("focus request for the current pane of a native task", () => {
+	it("focuses the existing pane at once, without waiting for a fresh one", async () => {
+		mountTerminal();
+		await deliverPanes([AGENT_PANE], AGENT_PANE);
+		await waitFor(() => expect(screen.queryAllByTestId("terminal-view")).toHaveLength(1));
+		focusCalls.length = 0;
+
+		await act(async () => { requestTaskTerminalFocus(TASK_ID, { currentPane: true }); });
+
+		await waitFor(() => expect(focusCalls).toEqual([AGENT_PANE]));
+	});
+
+	it("does not leave a pending request that steals focus for a pane spawned later", async () => {
+		mountTerminal();
+		await deliverPanes([AGENT_PANE], AGENT_PANE);
+		await waitFor(() => expect(screen.queryAllByTestId("terminal-view")).toHaveLength(1));
+		await act(async () => { requestTaskTerminalFocus(TASK_ID, { currentPane: true }); });
+		await waitFor(() => expect(focusCalls).toContain(AGENT_PANE));
+		focusCalls.length = 0;
+
+		await deliverPanes([AGENT_PANE, SPAWNED_PANE], AGENT_PANE);
+		await waitFor(() => expect(screen.queryAllByTestId("terminal-view")).toHaveLength(2));
+
+		expect(focusCalls).not.toContain(SPAWNED_PANE);
+	});
+});
+
 describe("focus after spawning an agent into a tmux task", () => {
 	const TMUX_TASK = { ...NATIVE_TASK, id: TASK_ID, terminalBackend: "tmux" } as unknown as Task;
 
