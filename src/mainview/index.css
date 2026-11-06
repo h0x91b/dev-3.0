@@ -544,9 +544,13 @@ body, #root {
 	-webkit-mask-image: linear-gradient(to bottom, #000 0, #000 18px, transparent 56px);
 	mask-image: linear-gradient(to bottom, #000 0, #000 18px, transparent 56px);
 }
-/* The sidebar rail keeps its own colour; the tape starts after it. */
+/* The sidebar rail keeps its own colour; the tape starts after it. In the dense
+   active-tasks list a full-height band drowns the text, so it is a thin top strip. */
 .task-row-coordinator::before {
 	left: var(--coord-rail-w, 1.25rem);
+	opacity: 0.28;
+	-webkit-mask-image: linear-gradient(to bottom, #000 0, #000 6px, transparent 14px);
+	mask-image: linear-gradient(to bottom, #000 0, #000 6px, transparent 14px);
 }
 .task-card-board-cleanup,
 .task-card-board-cleanup:hover {

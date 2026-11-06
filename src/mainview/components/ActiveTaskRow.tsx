@@ -400,7 +400,7 @@ export default function ActiveTaskRow({
 							<span
 								data-testid="sidebar-coordinator-badge"
 								title={t("task.coordinatorHint")}
-								className="inline-flex flex-shrink-0 items-center rounded border border-dashed border-coordinator/70 px-1 py-px text-nano font-semibold uppercase tracking-[0.06em] text-coordinator-ink"
+								className="inline-flex flex-shrink-0 items-center rounded border border-dashed border-coordinator/55 px-1 py-px text-nano font-semibold uppercase tracking-[0.06em] text-coordinator-ink"
 							>
 								{t("task.coordinatorBadge")}
 							</span>
