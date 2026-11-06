@@ -2226,7 +2226,7 @@ describe("ActiveTasksSidebar port badges", () => {
 		expect(screen.queryByTestId("sidebar-ports-t1-toggle")).not.toBeInTheDocument();
 	});
 
-	it("marks a coordinator row with the hazard-tape class and leaves an ordinary row plain", () => {
+	it("marks a coordinator row with a solid badge and a crown title and leaves an ordinary row plain", () => {
 		const { container } = render(
 			<I18nProvider>
 				<ActiveTasksSidebar project={project} tasks={[makeTask({ id: "coord", title: "Coordinate", taskType: "coordinator", groupId: null, variantIndex: null }), makeTask({ id: "plain", title: "Plain task", groupId: null, variantIndex: null })]}
@@ -2235,10 +2235,32 @@ describe("ActiveTasksSidebar port badges", () => {
 			</I18nProvider>,
 		);
 
-		const marked = [...container.querySelectorAll(".task-row-coordinator")];
-		expect(marked).toHaveLength(1);
-		expect(marked[0]).toHaveTextContent("Coordinate");
-		expect(marked[0]).not.toHaveTextContent("Plain task");
-		expect(within(marked[0] as HTMLElement).getByTestId("sidebar-coordinator-badge").className).toContain("text-coordinator-ink");
+		const crowns = screen.getAllByTestId("coordinator-crown");
+		expect(crowns).toHaveLength(1);
+		const title = crowns[0].parentElement as HTMLElement;
+		expect(title).toHaveTextContent("Coordinate");
+		expect(title.className).toContain("text-coordinator-ink");
+		expect(screen.getByText("Plain task").className).not.toContain("text-coordinator-ink");
+		const badge = screen.getByTestId("sidebar-coordinator-badge");
+		expect(badge.className).toContain("bg-coordinator");
+		expect(badge.className).toContain("text-coordinator-on");
+		expect(container.querySelectorAll("[data-testid='sidebar-coordinator-badge']")).toHaveLength(1);
+	});
+
+	it("pins a live coordinator above the first tier header, with no header of its own", () => {
+		const { container } = render(
+			<I18nProvider>
+				<ActiveTasksSidebar project={project} tasks={[makeTask({ id: "q", title: "Asking", status: "user-questions", groupId: null, variantIndex: null }), makeTask({ id: "coord", title: "Coordinate", taskType: "coordinator", status: "in-progress", groupId: null, variantIndex: null })]}
+					dispatch={vi.fn()} navigate={vi.fn()} agents={[claudeAgent]}
+					bellCounts={new Map<string, number>()} taskPorts={new Map<string, never[]>()} />
+			</I18nProvider>,
+		);
+
+		const blocks = [...container.querySelectorAll("[data-sidebar-tier]")];
+		expect(blocks).toHaveLength(2);
+		expect(blocks[0]).toHaveTextContent("Coordinate");
+		expect(blocks[0].querySelector("[data-sidebar-tier-header]")).toBeNull();
+		expect(blocks[1].querySelector("[data-sidebar-tier-header]")).not.toBeNull();
+		expect(blocks[1]).toHaveTextContent("Asking");
 	});
 });

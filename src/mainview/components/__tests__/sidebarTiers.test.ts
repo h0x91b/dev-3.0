@@ -354,27 +354,32 @@ describe("groupTasksIntoTiers — user-questions lead NEEDS YOU", () => {
 		]);
 	});
 
-	it("ranks below live coordinators, whatever their status, priority or age", () => {
+	it("pins a live coordinator in its own leading group, whatever its status, priority or age", () => {
 		const tasks = [
 			question("p0-question", { priority: "P0", statusEnteredAt: "2025-01-01T00:00:00Z" }),
 			review("p4-coordinator", { taskType: "coordinator", priority: "P4", statusEnteredAt: "2025-03-01T00:00:00Z" }),
+			makeTask({ id: "working-coordinator", status: "in-progress", taskType: "coordinator" }),
 			review("p0-review", { priority: "P0" }),
 		];
-		expect(ids(groupTasksIntoTiers(tasks, ctx())[0].tasks)).toEqual(["p4-coordinator", "p0-question", "p0-review"]);
+		const tiers = groupTasksIntoTiers(tasks, ctx());
+		expect(tiers.map((t) => t.kind)).toEqual(["coordinators", "needs-you"]);
+		expect(ids(tiers[0].tasks)).toEqual(["working-coordinator", "p4-coordinator"]);
+		expect(ids(tiers[1].tasks)).toEqual(["p0-question", "p0-review"]);
 	});
 
-	it("outranks a parked coordinator, which loses its lift", () => {
-		const tasks = [review("parked", { taskType: "coordinator", hibernated: true }), question("question"), review("review")];
-		expect(ids(groupTasksIntoTiers(tasks, ctx())[0].tasks)).toEqual(["question", "review", "parked"]);
+	it("pins an asking coordinator too, and leaves a parked one in its tier", () => {
+		const tasks = [review("parked", { taskType: "coordinator", hibernated: true }), question("question"), review("review"), question("asking-coord", { taskType: "coordinator" })];
+		const tiers = groupTasksIntoTiers(tasks, ctx());
+		expect(ids(tiers[0].tasks)).toEqual(["asking-coord"]);
+		expect(ids(tiers[1].tasks)).toEqual(["question", "review", "parked"]);
 	});
 
-	it("keeps several coordinators in their usual band → clock order", () => {
+	it("keeps several pinned coordinators in their usual band → clock order", () => {
 		const tasks = [
-			question("question"),
 			question("p2-coord-asking", { taskType: "coordinator", priority: "P2" }),
 			review("p1-coord", { taskType: "coordinator", priority: "P1" }),
 		];
-		expect(ids(groupTasksIntoTiers(tasks, ctx())[0].tasks)).toEqual(["p1-coord", "p2-coord-asking", "question"]);
+		expect(ids(groupTasksIntoTiers(tasks, ctx())[0].tasks)).toEqual(["p1-coord", "p2-coord-asking"]);
 	});
 
 	it("keeps the usual band → clock → seq order among several questions", () => {

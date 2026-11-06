@@ -1116,6 +1116,9 @@ describe("ActivityOverview — coordinator rows", () => {
 		await screen.findByText("Run the migration");
 		expect(rows()).toHaveLength(1);
 		expect(rows()[0].textContent).toContain("Agent is Working");
+		const badge = within(rows()[0]).getByText("Coordinator");
+		expect(badge.className).toContain("bg-coordinator");
+		expect(badge.className).toContain("text-coordinator-on");
 		// Only the ordinary working task is left in the footer.
 		expect(screen.getByText("1 agent working")).toBeInTheDocument();
 	});

@@ -54,9 +54,9 @@ function DashboardCoordinatorRows({ project, coordinators, narrow, statusColors,
 					>
 						{/* md:pr-10 = an ordinary row's pr-1 + its w-9 ✓ slot, so the status and
 						    age columns line up with the rows below. */}
-						{/* Identity strip in the coordinator lime the board card's dashed border uses. */}
+						{/* Identity strip in the coordinator lime. */}
 						<span aria-hidden="true" className="absolute left-0 top-0 bottom-0 w-0.5 bg-coordinator/70" />
-						<span className={`inline-flex flex-shrink-0 items-center rounded border border-dashed border-coordinator/70 px-1 py-px text-nano font-semibold uppercase tracking-[0.06em] text-coordinator-ink ${narrow ? "mt-0.5" : ""}`}>
+						<span className={`inline-flex flex-shrink-0 items-center rounded bg-coordinator px-1 py-px text-nano font-semibold uppercase tracking-[0.06em] text-coordinator-on ${narrow ? "mt-0.5" : ""}`}>
 							{t("task.coordinatorBadge")}
 						</span>
 						<span className="min-w-0 flex-1 flex flex-col md:flex-row md:items-center gap-0.5 md:gap-3">

@@ -2254,25 +2254,38 @@ describe("coordinator card", () => {
 		expect(screen.getByTestId("task-card-coordinator-badge")).toHaveTextContent(/coordinator/i);
 	});
 
-	it("outlines the card with a dashed positive border", () => {
+	it("gives the card the border an ordinary card has", () => {
 		const { container } = renderCard(coordinator());
 		const card = container.querySelector("[data-task-id='t1']");
 
-		expect(card?.className).toContain("border-dashed");
-		expect(card?.className).toContain("task-card-coordinator");
+		expect(card?.className).toContain("border-transparent");
+		expect(card?.className).not.toContain("border-dashed");
 	});
 
-	it("colours the badge with the coordinator ink token", () => {
+	it("fills the badge solid with the coordinator tokens", () => {
 		renderCard(coordinator());
+		const badge = screen.getByTestId("task-card-coordinator-badge");
 
-		expect(screen.getByTestId("task-card-coordinator-badge").className).toContain("text-coordinator-ink");
+		expect(badge.className).toContain("bg-coordinator");
+		expect(badge.className).toContain("text-coordinator-on");
+		expect(badge.className).not.toContain("border");
+	});
+
+	it("shows the title in coordinator ink behind a crown", () => {
+		renderCard(coordinator({ title: "Lead the work" }));
+		const title = screen.getByText("Lead the work");
+
+		expect(title.className).toContain("text-coordinator-ink");
+		expect(title.className).toContain("font-semibold");
+		expect(within(title).getByTestId("coordinator-crown")).toHaveAttribute("aria-hidden", "true");
 	});
 
 	it("leaves an ordinary card unmarked", () => {
-		const { container } = renderCard(makeTask());
+		renderCard(makeTask({ title: "Plain work" }));
 
 		expect(screen.queryByTestId("task-card-coordinator-badge")).toBeNull();
-		expect(container.querySelector("[data-task-id='t1']")?.className).not.toContain("task-card-coordinator");
+		expect(screen.queryByTestId("coordinator-crown")).toBeNull();
+		expect(screen.getByText("Plain work").className).not.toContain("text-coordinator-ink");
 	});
 });
 

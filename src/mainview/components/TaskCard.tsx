@@ -49,6 +49,7 @@ import Tooltip from "./Tooltip";
 import TaskShutdownOverlay from "./TaskShutdownOverlay";
 import TaskPrBadges from "./TaskPrBadges";
 import ReviewedPrLink from "./ReviewedPrLink";
+import { CoordinatorCrown } from "./CoordinatorCrown";
 
 /** Deferred-time glyph for the scheduled-launch countdown badge. */
 function ClockIcon({ className }: { className?: string }) {
@@ -769,7 +770,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			onContextMenu={handleContextMenu}
 			onMouseEnter={handleCardMouseEnter}
 			onMouseLeave={handleCardMouseLeave}
-			className={`group relative flex flex-col overflow-hidden glass-card rounded-xl transition-[transform,box-shadow,background-color,border-color,opacity,filter] duration-150 ease-out border ${isDraft ? "border-dashed border-edge-active" : isActiveInSplit ? "border-accent ring-2 ring-accent/70 shadow-lg shadow-accent/20" : isCoordinator ? "border-dashed task-card-coordinator" : task.taskType === "board-cleanup" ? "border-dashed task-card-board-cleanup" : "border-transparent"} ${
+			className={`group relative flex flex-col overflow-hidden glass-card rounded-xl transition-[transform,box-shadow,background-color,border-color,opacity,filter] duration-150 ease-out border ${isDraft ? "border-dashed border-edge-active" : isActiveInSplit ? "border-accent ring-2 ring-accent/70 shadow-lg shadow-accent/20" : task.taskType === "board-cleanup" ? "border-dashed task-card-board-cleanup" : "border-transparent"} ${
 				isActive || isCompleted || isCancelled
 					? "cursor-pointer hover:-translate-y-0.5 hover:shadow-card-hover"
 					: "cursor-grab active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-card-hover"
@@ -930,7 +931,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					<Tooltip content={t("task.coordinatorBadge")} detail={t("task.coordinatorHint")}>
 						<span
 							data-testid="task-card-coordinator-badge"
-							className="flex-shrink-0 rounded border border-dashed border-coordinator/70 px-1.5 py-0.5 text-dense font-semibold uppercase tracking-[0.06em] text-coordinator-ink"
+							className="flex-shrink-0 rounded bg-coordinator px-1.5 py-0.5 text-dense font-semibold uppercase tracking-[0.06em] text-coordinator-on"
 						>
 							{t("task.coordinatorBadge")}
 						</span>
@@ -1047,10 +1048,11 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							</div>
 						)}
 						<div
-							className={`break-words text-sm font-medium leading-relaxed text-fg line-clamp-3 ${isTodo ? "cursor-pointer hover:text-fg-2" : ""}`}
+							className={`break-words text-sm leading-relaxed line-clamp-3 ${isCoordinator ? "font-semibold text-coordinator-ink" : "font-medium text-fg"} ${isTodo ? "cursor-pointer hover:text-fg-2" : ""}`}
 							onClick={handleTitleClick}
 							title={isTodo && hasLongDescription ? task.description : undefined}
 						>
+							{isCoordinator && <CoordinatorCrown size={15} />}
 							{displayTitle}
 						</div>
 						{lineage && <LineageCluster lineage={lineage} />}

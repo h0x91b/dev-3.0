@@ -440,7 +440,8 @@ function ActiveTasksSidebar({
 	// A rendered readiness-tier block.
 	interface SidebarGroup {
 		key: string;
-		label: string;
+		/** `null` for the pinned coordinators block: no header. */
+		label: string | null;
 		color: string;
 		tasks: Task[];
 	}
@@ -468,6 +469,9 @@ function ActiveTasksSidebar({
 	// rendering; here we only map it to header chrome.
 	const tiers = groupTasksIntoTiers(activeTasks, { scope: effectiveScope, orderedCustomColumns, sortOrder });
 	const grouped: SidebarGroup[] = tiers.map((tier) => {
+		if (tier.kind === "coordinators") {
+			return { key: tier.key, label: null, color: statusColors["in-progress"], tasks: tier.tasks };
+		}
 		if (tier.kind === "needs-you") {
 			return {
 				key: tier.key,
@@ -811,6 +815,7 @@ function ActiveTasksSidebar({
 							{/* Tier header with count. No spinner: the WAITING tier merges
 							    working + AI-review + PRs, so a tier-wide spinner would mislead;
 							    the per-card rail busy-flow animation remains the cue. */}
+							{groupLabel !== null && (
 							<div data-sidebar-tier-header className="relative px-3 py-1.5 flex items-center gap-2 sticky top-0 bg-base/95 backdrop-blur-sm z-10">
 								{/* Faint zone wash + left bar so the tier reads as one color zone */}
 								<span
@@ -832,6 +837,7 @@ function ActiveTasksSidebar({
 									{groupTasks.length}
 								</span>
 							</div>
+							)}
 
 							{/* Tasks in this status */}
 							{groupTasks.map((task, idx) => {

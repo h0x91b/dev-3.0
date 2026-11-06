@@ -96,6 +96,7 @@ export default {
 				coordinator: {
 					DEFAULT: "rgb(var(--coordinator) / <alpha-value>)",
 					ink: "rgb(var(--coordinator-ink) / <alpha-value>)",
+					on: "rgb(var(--coordinator-on) / <alpha-value>)",
 				},
 				warning: {
 					DEFAULT: "rgb(var(--warning) / <alpha-value>)",

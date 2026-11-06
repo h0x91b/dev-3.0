@@ -28,6 +28,7 @@ import TaskShutdownOverlay from "./TaskShutdownOverlay";
 import Tooltip from "./Tooltip";
 import { EyeIcon } from "./TaskIcons";
 import VariantDots from "./VariantDots";
+import { CoordinatorCrown } from "./CoordinatorCrown";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 
 /** Maps the single most-significant age unit to its verbose i18n key. */
@@ -242,7 +243,7 @@ export default function ActiveTaskRow({
 				if (!task.shuttingDown) onMouseEnter(e);
 			}}
 			onMouseLeave={onMouseLeave}
-			className={`group relative flex w-full items-stretch ${isCoordinatorTask(task) ? `task-row-coordinator ${narrow ? "[--coord-rail-w:2.75rem]" : ""}` : ""} text-left transition-[color,background-color,opacity,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none cursor-pointer focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60 ${
+			className={`group relative flex w-full items-stretch text-left transition-[color,background-color,opacity,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none cursor-pointer focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60 ${
 				task.shuttingDown
 					? "grayscale opacity-40 pointer-events-none"
 					: task.hibernated || disconnected
@@ -328,7 +329,8 @@ export default function ActiveTaskRow({
 				)}
 
 				{/* CONTENT — the row's only visual focus. */}
-				<div className={`pr-6 text-xs leading-snug break-words ${isActive ? "text-fg font-medium" : "text-fg-2"}`}>
+				<div className={`pr-6 text-xs leading-snug break-words ${isCoordinatorTask(task) ? "text-coordinator-ink font-semibold" : isActive ? "text-fg font-medium" : "text-fg-2"}`}>
+					{isCoordinatorTask(task) && <CoordinatorCrown size={14} />}
 					{displayTitle}
 				</div>
 
@@ -400,7 +402,7 @@ export default function ActiveTaskRow({
 							<span
 								data-testid="sidebar-coordinator-badge"
 								title={t("task.coordinatorHint")}
-								className="inline-flex flex-shrink-0 items-center rounded border border-dashed border-coordinator/55 px-1 py-px text-nano font-semibold uppercase tracking-[0.06em] text-coordinator-ink"
+								className="inline-flex flex-shrink-0 items-center rounded bg-coordinator px-1 py-px text-nano font-semibold uppercase tracking-[0.06em] text-coordinator-on"
 							>
 								{t("task.coordinatorBadge")}
 							</span>
