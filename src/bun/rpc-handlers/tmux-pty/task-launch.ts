@@ -928,7 +928,13 @@ export async function handlePaneExited(taskId: string, _exitedPaneId: string): P
 		}
 
 		if (surviving.length !== panes.length || surviving.some((p, i) => p.paneId !== panes[i].paneId)) {
-			await data.updateTask(project, task.id, { sessionState: { panes: surviving } });
+			// spawnAgentInTask writes the task-level agent, so a pane exit must restore it from the last survivor.
+			const last = surviving[surviving.length - 1];
+			const restoreAgent = !!last?.agentId && (last.agentId !== task.agentId || last.configId !== task.configId);
+			await data.updateTask(project, task.id, {
+				sessionState: { panes: surviving },
+				...(restoreAgent ? { agentId: last.agentId, configId: last.configId } : {}),
+			});
 			log.info("Reconciled sessionState after pane exit", {
 				taskId: taskId.slice(0, 8),
 				before: panes.length,

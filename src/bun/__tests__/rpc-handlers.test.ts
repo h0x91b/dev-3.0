@@ -12638,6 +12638,43 @@ describe("Codex conversation survives pane-exit reconciliation into a wake", () 
 	});
 });
 
+describe("handlePaneExited restores the task-level agent from the last surviving pane", () => {
+	beforeEach(() => vi.clearAllMocks());
+	const main = { agentCmd: "claude", agentId: "builtin-claude", configId: "claude-opus", sessionId: "s-main", paneId: "%0" };
+	const extra = { agentCmd: "claude", agentId: "builtin-claude", configId: "claude-kimi", sessionId: "s-extra", paneId: "%1" };
+
+	function arrange(panes: NonNullable<Task["sessionState"]>["panes"], taskConfigId: string, live: string[]) {
+		const project = makeProject();
+		const task = makeTask({ agentId: "builtin-claude", configId: taskConfigId, sessionState: { panes } });
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.listPaneIds).mockResolvedValue(live);
+		return { project, task };
+	}
+
+	it("puts the surviving pane's agent back on the task when the extra pane dies", async () => {
+		const { project, task } = arrange([main, extra], "claude-kimi", ["%0"]);
+		await handlePaneExited(task.id, "%1");
+		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-opus" });
+	});
+
+	it("leaves the task agent alone when no pane survives", async () => {
+		const { project, task } = arrange([extra], "claude-kimi", []);
+		await handlePaneExited(task.id, "%1");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([]);
+		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-kimi" });
+	});
+
+	it("does not rewrite the agent when the survivor already matches the task", async () => {
+		const { task } = arrange([extra, main], "claude-opus", ["%0"]);
+		await handlePaneExited(task.id, "%1");
+		const updates = vi.mocked(data.updateTask).mock.calls[0][2];
+		expect(updates).not.toHaveProperty("agentId");
+		expect(updates).not.toHaveProperty("configId");
+	});
+});
+
 // PR #2049 review: the saved panes kept the dead session's paneIds, so closing one
 // split in the woken shell dropped every saved conversation (before 2, after 0).
 describe("wakeTaskShell parks the saved panes", () => {
