@@ -390,6 +390,16 @@ let ptyPortGetter: (() => number) | null = null;
 let backpressureProbeRegistrar: StartOptions["registerBackpressureProbe"] | null = null;
 
 /**
+ * The close the browser gets when the PTY server's socket closes. The terminal
+ * reads 1000 as "the session ended", so the upstream's code has to survive this
+ * hop. A code a server may not send (1005, 1006, 1015) becomes a retryable 4003.
+ */
+export function downstreamPtyClose(code: number, reason: string): { code: number; reason: string } {
+	if (code === 1000 || (code >= 3000 && code <= 4999)) return { code, reason };
+	return { code: 4003, reason: `PTY upstream closed (${code})` };
+}
+
+/**
  * Proxy a WebSocket connection to the internal PTY server.
  * Browser connects to us at /pty?session=xxx, we forward to localhost:ptyPort.
  */
@@ -435,8 +445,9 @@ function proxyToPty(clientWs: any, sessionId: string, sinceSeq: number | null): 
 		}
 	});
 
-	upstream.addEventListener("close", () => {
-		try { clientWs.close(); } catch { /* already closed */ }
+	upstream.addEventListener("close", (event) => {
+		const { code, reason } = downstreamPtyClose(event.code, event.reason);
+		try { clientWs.close(code, reason); } catch { /* already closed */ }
 	});
 
 	upstream.addEventListener("error", () => {
