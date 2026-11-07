@@ -734,10 +734,11 @@ const COMMANDS: CommandHelp[] = [
 					+ " the default server (the project's devScript), or the only declared server when there is no default."
 					+ " --wait blocks until it is listening on a port assigned to it (default timeout 120s)."
 					+ " --env passes extra variables to the script (repeatable); it overrides the project's own env but never"
-					+ " DEV3_TASK_ID, DEV3_WORKTREE_ROOT or DEV3_PORT*."
+					+ " PATH, HOME, SHELL, DEV3_TASK_ID, DEV3_WORKTREE_ROOT or DEV3_PORT*; `status` lists its names, never its values."
+					+ " A containerised script must pass them on itself (`docker run -e KEY`, compose `environment:`)."
 					+ " Arguments after -- are appended to the script's last line (ahead of a trailing # comment), each shell-quoted;"
 					+ " a last line ending in &, |, ; or a block keyword is refused. Name one server (not --all)."
-					+ " `status` shows them in full, so pass secrets with --env.",
+					+ " `status` shows script args in full, so pass secrets with --env.",
 			},
 			{
 				name: "stop",
@@ -746,10 +747,10 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "restart",
-				usage: "dev3 dev-server restart [task-id | --task <id>] [server] [--all] [--wait] [--timeout <sec>] [--env KEY=VALUE ...] [-- <script args>...]",
+				usage: "dev3 dev-server restart [task-id | --task <id>] [server] [--all] [--wait] [--timeout <sec>] [--env KEY=VALUE ... | --clear-env] [-- <script args>...]",
 				summary:
 					"Restart one dev server, or --all of them. --wait blocks until the NEW server is listening on a port assigned to it."
-					+ " Without --env it reuses the env of the last start; with --env it replaces it. A stop clears it."
+					+ " Without --env it reuses the env of the last start; with --env it replaces it; --clear-env runs with none. A stop clears it."
 					+ " Script arguments after -- work like on start: omitted reuses the last ones, `restart --` with nothing after it clears them.",
 			},
 			{

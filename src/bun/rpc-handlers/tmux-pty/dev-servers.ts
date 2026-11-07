@@ -850,7 +850,8 @@ async function startOneDevServer(
 		],
 		tmuxDetachCommand,
 	});
-	await writeLaunchScript(devScriptPath, wrappedScript);
+	// Private: the wrapper exports the caller's `--env` values verbatim.
+	await writeLaunchScript(devScriptPath, wrappedScript, { private: true });
 
 	const cwd = server.cwd ? `${worktreePath}/${server.cwd}` : worktreePath;
 	const paneEnv = { DEV3_TASK_ID: task.id, DEV3_WORKTREE_ROOT: worktreePath, DEV3_DEV_SERVER: server.name };

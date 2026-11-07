@@ -184,7 +184,7 @@ const SKILL_DEV_SERVER_CONTROL = `
 
 Need it serving (curl, QA)? \`start --wait\` / \`restart --wait\` blocks until it listens on an assigned \`DEV3_PORT*\` (\`--timeout <sec>\`, default 120), own or published (a containerised \`devScript\` counts). Do NOT probe ports yourself after a plain restart. \`stop\`/\`restart\` verify teardown first; \`status\` reports \`Dev Ports\`, \`Published Ports\`, and a WARNING when a foreign process holds an assigned port.
 
-A project can declare **several dev servers by name**: every subcommand takes one (\`dev3 dev-server start api\`, \`stop api\`, \`restart api\`, \`logs api\`) or \`--all\`. A bare one means the default (\`devScript\`) or the only declared server; several with no default exits ${CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED} naming them. \`status\` prints a block per server, \`--wait\` waits for that server's ports, and every server sees every named port as \`DEV3_PORT_<NAME>\`. Args after \`--\` go to the script, kept for \`restart\`: \`start api -- --verbose\`.
+A project can declare **several dev servers by name**: every subcommand takes one (\`dev3 dev-server start api\`, \`logs api\`) or \`--all\`. A bare one means the default (\`devScript\`) or the only declared server; several with no default exits ${CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED} naming them. \`--wait\` waits for that server's ports, and every server sees every named port as \`DEV3_PORT_<NAME>\`. \`--env K=V\` (repeatable) and args after \`--\` reach the script and are kept for \`restart\`; \`--clear-env\` drops the env.
 
 Each server's output lands in \`<taskDir>/logs/dev-server*.log\`, fresh per start: \`dev3 dev-server logs [--lines N]\` tails it.
 `;

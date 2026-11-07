@@ -9,7 +9,7 @@
  * `~/.dev3.0` — it is per-run scratch, cleared on stop.
  */
 
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { DEFAULT_DEV_SERVER_NAME } from "../shared/dev-servers";
 import { sanitizeDevServerEnv } from "../shared/dev-server-env";
@@ -30,6 +30,11 @@ export function saveDevServerEnv(taskId: string, server: string, env: Record<str
 		return;
 	}
 	mkdirSync(dirname(path), { recursive: true });
+	// Owner-only: a value can be a token, and the temp dir is shared by every user.
+	// `mode` only applies on creation, so a file left by an older run is locked
+	// down before the values are written into it.
+	writeFileSync(path, "", { mode: 0o600 });
+	chmodSync(path, 0o600);
 	writeFileSync(path, JSON.stringify(env, null, "\t"), "utf-8");
 }
 

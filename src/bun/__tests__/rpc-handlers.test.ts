@@ -401,6 +401,7 @@ vi.mock("node:fs", () => ({
 	readdirSync: vi.fn(() => []),
 	statSync: vi.fn(() => ({ isDirectory: () => true, isFile: () => true, mode: 0o755, size: 0 })),
 	mkdirSync: vi.fn(() => undefined),
+	chmodSync: vi.fn(() => undefined),
 	writeFileSync: vi.fn(() => undefined),
 	lstatSync: vi.fn(() => { throw new Error("ENOENT"); }),
 	readlinkSync: vi.fn(() => { throw new Error("EINVAL"); }),
