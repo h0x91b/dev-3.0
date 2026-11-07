@@ -23,11 +23,13 @@ import {
 /** Kinds with limit windows to show; omp and pi report none to dev3. */
 type UsageKind = Exclude<AgentAccountKind, AgentDirAccountKind>;
 const KINDS: UsageKind[] = ["claude", "codex"];
+/** Kimi rows come from opted-in catalog providers, not from agent accounts. */
+type UsageSource = UsageKind | "kimi";
 
 /** One card in the panel: an account (or a leftover reading) plus its usage. */
 interface UsageRow {
 	key: string;
-	kind: UsageKind;
+	kind: UsageSource;
 	accountId: string | null;
 	/** Set on a project-pinned `CLAUDE_CONFIG_DIR` login; such rows are informational. */
 	configDir: string | null;
@@ -41,6 +43,8 @@ interface UsageRow {
 	selectable: boolean;
 	/** The "Auto (balanced)" row: making it default routes launches by usage. */
 	auto?: boolean;
+	/** A Kimi provider opted into tracking with no API key stored. */
+	missingKey?: boolean;
 }
 
 function identityLine(identity: AgentAccountIdentity | null): AccountLine | null {
@@ -211,6 +215,24 @@ function rowsForKind(
 	return rows;
 }
 
+/** One informational row per opted-in Kimi provider, with or without a reading. */
+function kimiRows(report: AgentRateLimitsReport): UsageRow[] {
+	return (report.usageProviders ?? [])
+		.filter((p) => p.source === "kimi-code")
+		.map((p) => ({
+			key: `kimi:${p.id}`,
+			kind: "kimi",
+			accountId: null,
+			configDir: null,
+			account: { name: p.label, email: null, organization: null, planLabel: null, isApi: false },
+			chip: null,
+			snap: report.snapshots.find((s) => s.source === "kimi" && s.providerId === p.id) ?? null,
+			isDefault: false,
+			selectable: false,
+			missingKey: p.missingKey,
+		}));
+}
+
 function UsageRowCard({
 	row,
 	now,
@@ -232,26 +254,8 @@ function UsageRowCard({
 	t: TFunction;
 }) {
 	const name = spokenName(row, SOURCE_NAMES[row.kind] ?? row.kind);
-	return (
-		<button
-			ref={rowRef}
-			type="button"
-			role="radio"
-			aria-checked={row.isDefault}
-			aria-disabled={inert || undefined}
-			tabIndex={focusable ? 0 : -1}
-			// Only an actionable row gets the "make default" name; an informational
-			// one would otherwise promise something the click cannot do.
-			aria-label={inert ? undefined : t("rateLimits.makeDefault", { label: name })}
-			onClick={() => {
-				if (inert) return;
-				onSetDefault();
-			}}
-			onKeyDown={onKeyDown}
-			className={`${ACCOUNT_CARD_CLASS} w-full text-left ${
-				row.isDefault ? "border-accent/50" : ""
-			} ${inert ? "cursor-default" : "cursor-pointer hover:bg-elevated-hover"} transition-colors`}
-		>
+	const body = (
+		<>
 			<div className="flex items-center gap-1.5">
 				<span
 					aria-hidden
@@ -277,7 +281,11 @@ function UsageRowCard({
 				) : null}
 				{/* An account with nothing to plot says so on its headline instead of
 				    spending a whole second line on three muted words. */}
-				{!row.snap && !row.auto ? <span className="text-fg-muted text-micro shrink-0">{t("rateLimits.noRecentData")}</span> : null}
+				{!row.snap && !row.auto ? (
+					<span className="text-fg-muted text-micro shrink-0">
+						{row.missingKey ? t("rateLimits.noApiKey") : t("rateLimits.noRecentData")}
+					</span>
+				) : null}
 				{row.snap && hasReportedLimits(row.snap) && !hasQuotaLines(row.snap) ? (
 					<span className="shrink-0 tabular-nums">
 						<CapturedAgeSuffix capturedAt={row.snap.capturedAt} now={now} />
@@ -290,12 +298,40 @@ function UsageRowCard({
 					{row.chip}
 				</div>
 			) : null}
+			{!row.snap && row.missingKey ? (
+				<div className="pl-[18px] text-fg-3 text-micro">{t("rateLimits.noApiKeyHint")}</div>
+			) : null}
 			{row.snap && hasQuotaLines(row.snap) ? <AccountQuotaLines snap={row.snap} now={now} /> : null}
 			{/* Its own line, not a headline suffix: the sentence is long enough to
 			    squeeze the account's email down to "dev@…". */}
 			{row.snap && !hasReportedLimits(row.snap) ? (
 				<LimitsNotReported capturedAt={row.snap.capturedAt} now={now} className="text-fg-3 tabular-nums" />
 			) : null}
+		</>
+	);
+	// Kimi rows are read-only readings: no radio, no tab stop, nothing to switch.
+	if (row.kind === "kimi") return <div className={`${ACCOUNT_CARD_CLASS} w-full text-left`}>{body}</div>;
+	return (
+		<button
+			ref={rowRef}
+			type="button"
+			role="radio"
+			aria-checked={row.isDefault}
+			aria-disabled={inert || undefined}
+			tabIndex={focusable ? 0 : -1}
+			// Only an actionable row gets the "make default" name; an informational
+			// one would otherwise promise something the click cannot do.
+			aria-label={inert ? undefined : t("rateLimits.makeDefault", { label: name })}
+			onClick={() => {
+				if (inert) return;
+				onSetDefault();
+			}}
+			onKeyDown={onKeyDown}
+			className={`${ACCOUNT_CARD_CLASS} w-full text-left ${
+				row.isDefault ? "border-accent/50" : ""
+			} ${inert ? "cursor-default" : "cursor-pointer hover:bg-elevated-hover"} transition-colors`}
+		>
+			{body}
 		</button>
 	);
 }
@@ -382,9 +418,10 @@ export default function AgentUsagePanel({
 		projectLogin: (dir: string) => t("settings.accountsProjectLogin", { dir }),
 		auto: t("launch.accountAuto"),
 	};
-	const blocks = KINDS.map((kind) => ({ kind, rows: rowsForKind(kind, accounts, report, pinnedLogins, labels, projectPinned) })).filter(
-		(block) => block.rows.length > 0,
-	);
+	const blocks: { kind: UsageSource; rows: UsageRow[] }[] = [
+		...KINDS.map((kind) => ({ kind, rows: rowsForKind(kind, accounts, report, pinnedLogins, labels, projectPinned) })),
+		{ kind: "kimi" as const, rows: kimiRows(report) },
+	].filter((block) => block.rows.length > 0);
 
 	const armed = interactive || dwelled;
 	const isInert = (row: UsageRow) => busy || !armed || !row.selectable || row.isDefault;
@@ -459,7 +496,11 @@ export default function AgentUsagePanel({
 						<div className="px-2 text-fg-muted text-micro font-semibold uppercase tracking-wider">
 							{SOURCE_NAMES[block.kind] ?? block.kind}
 						</div>
-						<div role="radiogroup" aria-label={SOURCE_NAMES[block.kind] ?? block.kind} className="space-y-1">
+						<div
+							role={block.kind === "kimi" ? "group" : "radiogroup"}
+							aria-label={SOURCE_NAMES[block.kind] ?? block.kind}
+							className="space-y-1"
+						>
 							{block.rows.map((row, index) => (
 								<UsageRowCard
 									key={row.key}
@@ -467,9 +508,10 @@ export default function AgentUsagePanel({
 									now={now}
 									inert={isInert(row)}
 									focusable={row.key === stop?.key}
-									onSetDefault={() =>
-										setDefault(row.kind, row.accountId, spokenName(row, SOURCE_NAMES[row.kind] ?? row.kind))
-									}
+									onSetDefault={() => {
+										if (row.kind === "kimi") return;
+										void setDefault(row.kind, row.accountId, spokenName(row, SOURCE_NAMES[row.kind] ?? row.kind));
+									}}
 									onKeyDown={onRowKeyDown(block.rows, index)}
 									rowRef={(el) => {
 										if (el) rowRefs.current.set(row.key, el);

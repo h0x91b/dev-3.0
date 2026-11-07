@@ -10,6 +10,7 @@ import { useStreamerMode } from "./streamer-mode";
 import { isProjectSilencedForDisplay, setSensitiveProjectIds } from "./sensitive-projects";
 import { statusKey } from "./i18n/status";
 import { columnAgentFailureCopy } from "./utils/columnAgentFailureToast";
+import { preparationFailureMessage } from "./utils/preparationFailureMessage";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
 import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, BoardCopyFailureReason, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo, LiveArtifact, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
@@ -117,6 +118,7 @@ import { reconnectRpc } from "./rpc";
 import { DIAGNOSTICS_OPEN_EVENT, RPC_STATUS_EVENT } from "./diagnostics";
 import { getAdjacentAliveVariant } from "./utils/variantGroups";
 import { isTaskTerminalRoute } from "./utils/terminalFullscreen";
+import { restoreFocusAfterViewer } from "./utils/viewer-focus";
 import { sharedArrivalNoun, type SharedArrivalKind } from "./utils/sharedArrivalNoun";
 import PushEnrollmentInvite from "./components/PushEnrollmentInvite";
 import ArtifactFreezeNotice from "./components/ArtifactFreezeNotice";
@@ -539,10 +541,16 @@ function App() {
 		});
 	}, [markSharedItemsRead]);
 	const closeArtifactViewer = useCallback(() => {
+		const taskId = artifactViewerRef.current?.taskId;
 		setArtifactViewer(null);
-		requestAnimationFrame(() => {
-			document.querySelector<HTMLButtonElement>("[data-testid='shared-artifacts-badge']")?.focus();
-		});
+		const focusBadge = () => document.querySelector<HTMLButtonElement>("[data-testid='shared-artifacts-badge']")?.focus();
+		if (taskId) restoreFocusAfterViewer(() => routeRef.current, taskId, focusBadge);
+		else requestAnimationFrame(focusBadge);
+	}, []);
+	const closeImageViewer = useCallback(() => {
+		const taskId = imageViewerRef.current?.taskId;
+		setImageViewer(null);
+		if (taskId) restoreFocusAfterViewer(() => routeRef.current, taskId);
 	}, []);
 	// Live for the app's lifetime: the launch dialog this state feeds outlives
 	// every visit to Settings and every provider connect, so a fetch-once
@@ -2441,8 +2449,9 @@ function App() {
 			projectId: string;
 			taskTitle: string;
 			subject?: TaskDialogSubject;
+			branchKept?: boolean;
 		}) {
-			const { requestId, taskId, projectId, taskTitle, subject } = request;
+			const { requestId, taskId, projectId, taskTitle, subject, branchKept } = request;
 			if (showing.has(requestId)) return;
 			showing.add(requestId);
 			let approved = false;
@@ -2456,7 +2465,7 @@ function App() {
 				const unsaved = api.request.getUnsavedWork({ taskId, projectId });
 				approved = await confirm({
 					title: t(kind.copy.title),
-					message: t(kind.copy.message),
+					message: t(branchKept && kind.toStatus === "todo" ? "app.agentResetMessageBranchKept" : kind.copy.message),
 					info: taskDialogInfoFromSubject(taskTitle, subject),
 					confirmLabel: t(kind.copy.confirm),
 					cancelLabel: t(kind.copy.cancel),
@@ -2808,7 +2817,7 @@ function App() {
 				taskTitle: string;
 				error: string;
 			};
-			toast.error(t("kanban.taskPreparationFailed", { taskTitle, error }), { taskId });
+			toast.error(t("kanban.taskPreparationFailed", { taskTitle, error: preparationFailureMessage(error, t) }), { taskId });
 		}
 		window.addEventListener("rpc:taskPreparationFailed", onTaskPreparationFailed);
 		return () => window.removeEventListener("rpc:taskPreparationFailed", onTaskPreparationFailed);
@@ -3866,7 +3875,7 @@ function App() {
 					images={imageViewer.images}
 					initialIndex={imageViewer.index}
 					newIds={imageViewer.newIds}
-					onClose={() => setImageViewer(null)}
+					onClose={closeImageViewer}
 				/>
 			)}
 			{aboutVersion && (

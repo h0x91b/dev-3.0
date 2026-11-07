@@ -86,7 +86,13 @@ function RateLimitIndicator({
 	const latestSnapshot = scoped ? latestRateLimitSnapshot(scoped) : null;
 	const latestWindow = latestSnapshot ? worstSnapshotWindow(latestSnapshot) : null;
 	const unlimited = latestSnapshot ? isUnlimitedRateLimitSnapshot(latestSnapshot) : false;
-	if (!scoped || !latestSnapshot || (!latestWindow && !unlimited)) return null;
+	// Opted-in Kimi providers with no reading anywhere still need the pill: it is
+	// the only way to the panel that says "no recent data". A keyless one never
+	// gets a reading, so it does not hold an empty pill up; Settings says why.
+	// A credits-only reading has nothing to draw either, so it counts as none.
+	const reading = latestWindow || unlimited ? latestSnapshot : null;
+	const noReading = !reading && (scoped?.usageProviders ?? []).some((p) => !p.missingKey);
+	if (!scoped || (!reading && !noReading)) return null;
 
 	const now = Date.now();
 	const percent = latestWindow && !unlimited ? Math.round(latestWindow.usedPercent) : 0;
@@ -97,10 +103,14 @@ function RateLimitIndicator({
 	const latestLabel = latestWindow ? labelOf(latestWindow) : null;
 	// Every window spelled out: the 5h one tracks the session, the 7d one the week.
 	// The colour still follows the fullest, so a red week cannot hide behind the hour.
-	const pillWindows = headerPillWindows(latestSnapshot);
-	const ariaLabel = unlimited
-		? `${t("rateLimits.panelTitle")}: ${SOURCE_NAMES[latestSnapshot.source] ?? latestSnapshot.source} ${t("rateLimits.unlimited")}`
-		: `${t("rateLimits.panelTitle")}: ${SOURCE_NAMES[latestSnapshot.source] ?? latestSnapshot.source}${latestLabel ? ` ${latestLabel}` : ""} ${t("rateLimits.percentUsed", { percent })}${latestReset ? `, ${t("rateLimits.resetsIn", { time: latestReset })}` : ""}`;
+	const pillWindows = reading
+		? headerPillWindows(reading)
+		: [{ id: "none", usedPercent: 0, resetsAt: null, windowMinutes: null }];
+	const ariaLabel = !reading
+		? `${t("rateLimits.panelTitle")}: ${t("rateLimits.noRecentData")}`
+		: unlimited
+		? `${t("rateLimits.panelTitle")}: ${SOURCE_NAMES[reading.source] ?? reading.source} ${t("rateLimits.unlimited")}`
+		: `${t("rateLimits.panelTitle")}: ${SOURCE_NAMES[reading.source] ?? reading.source}${latestLabel ? ` ${latestLabel}` : ""} ${t("rateLimits.percentUsed", { percent })}${latestReset ? `, ${t("rateLimits.resetsIn", { time: latestReset })}` : ""}`;
 	const interactiveAriaLabel = `${ariaLabel}. ${t("rateLimits.openAccounts")}`;
 
 
@@ -169,7 +179,7 @@ function RateLimitIndicator({
 						);
 					})}
 				</span>
-				{!compact && (
+				{!compact && !noReading && (
 					<span className="text-micro font-medium tabular-nums">
 						{unlimited ? (
 							t("rateLimits.unlimited")

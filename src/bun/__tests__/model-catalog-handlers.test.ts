@@ -66,6 +66,26 @@ describe("saving the catalog", () => {
 	});
 });
 
+describe("usage tracking on a provider", () => {
+	const custom = {
+		id: "c-1",
+		kind: "custom" as const,
+		label: "Kimi",
+		baseUrl: "https://a.example/coding/",
+		usageSource: "kimi-code" as const,
+		hasKey: false,
+	};
+
+	it("survives a save and a read back", async () => {
+		const view: ModelCatalogView = { providers: [custom], models: [] };
+		await modelCatalogSave({ catalog: view });
+		const stored = h.save.mock.calls[0][0] as ModelCatalog;
+		expect(stored.providers[0].usageSource).toBe("kimi-code");
+		h.load.mockReturnValueOnce(stored);
+		expect(modelCatalogHandlers.modelCatalogGet().providers[0].usageSource).toBe("kimi-code");
+	});
+});
+
 describe("revealing a stored key", () => {
 	it("hands back the key of a provider the catalog holds", () => {
 		h.load.mockReturnValue({ providers: [{ id: "p-1", kind: "openrouter", label: "OpenRouter" }], models: [] });

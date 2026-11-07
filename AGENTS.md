@@ -326,7 +326,7 @@ React **`useReducer`**, no external state library. Store in `src/mainview/state.
 
 ### Renderer asset loading (dev-channel Vite fallback)
 
-On the `dev` channel the main process loads from a running Vite server on `localhost:5173` if it responds, otherwise falls back to bundled assets via the `views://` protocol. The mechanism exists in code, but agents must never run a Vite watch/HMR loop themselves — see the HMR ban in [Commands](#commands).
+On the `dev` channel the main process probes a Vite server **only on the task-allocated `$DEV3_PORT1`** (`src/shared/vite-dev-server.ts`, `src/bun/main-view-url.ts`); with no task port there is no probe and the window always loads the bundled `views://` assets. Never hardcode a Vite port — a fixed one is shared by every app on the machine (`decisions/2026/11/05/vite-dev-port-from-task-pool.md`). The mechanism exists in code, but agents must never run a Vite watch/HMR loop themselves — see the HMR ban in [Commands](#commands).
 
 ### Build pipeline
 

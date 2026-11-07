@@ -393,7 +393,12 @@ function moveTransition(
 			);
 			if (state.facts.projectKind === "git") {
 				effects.push(effect({ type: "removeWorktree", allowDerivedPath }, "abort", teardownFailed));
+			} else if (state.facts.opsWorktree) {
+				effects.push(effect({ type: "removeTaskWorkspace", allowDerivedPath: true }, "abort", teardownFailed));
 			}
+		} else if (!skipCleanup && state.facts.opsWorktree) {
+			// After a reset or a failed preparation the path is gone from the record, but the worktree may not be.
+			effects.push(effect({ type: "removeTaskWorkspace", allowDerivedPath: true }, "abort", teardownFailed));
 		}
 		effects.push(
 			effect({ type: "persistTerminalTask", status: terminalStatus }, "abort"),
@@ -481,7 +486,10 @@ function resetTransition(
 			effect({ type: "reapWorktreeProcesses" }),
 			...(state.facts.projectKind === "git"
 				? [effect({ type: "resetWorktree" }, "abort", failed)]
-				: []),
+				// An owned Operations worktree goes like a git one; its branch is kept.
+				: state.facts.opsWorktree
+					? [effect({ type: "removeTaskWorkspace" }, "abort", failed)]
+					: []),
 			effect({ type: "persistResetTask", consent: event.consent }, "abort", failed),
 			effect({ type: "push", message: "taskUpdated", view: "current" }),
 			effect({ type: "notifyStatusChange", from: status, to: "todo" }),
@@ -568,7 +576,9 @@ function bootTransition(
 			effect({ type: "reapWorktreeProcesses", allowDerivedPath: true }),
 			...(state.facts.projectKind === "git"
 				? [effect({ type: "removeWorktree", allowDerivedPath: true }, "abort", teardownFailed)]
-				: []),
+				: state.facts.opsWorktree
+					? [effect({ type: "removeTaskWorkspace", allowDerivedPath: true }, "abort", teardownFailed)]
+					: []),
 			effect({ type: "persistTerminalTask", status: terminalStatus }, "abort"),
 			effect({ type: "push", message: "taskUpdated", view: "current" }),
 		],
@@ -687,9 +697,11 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 					}),
 					effect({
 						type: "removeTaskWorkspace",
-						allowDerivedPath: state.runtime.phase === "preparing",
+						allowDerivedPath: state.runtime.phase === "preparing" || !!state.facts.opsWorktree,
 					}),
 				);
+			} else if (state.facts.opsWorktree) {
+				effects.push(effect({ type: "removeTaskWorkspace", allowDerivedPath: true }));
 			}
 			effects.push(effect({ type: "deleteTaskRecord" }, "abort"));
 			return { next: state, effects };

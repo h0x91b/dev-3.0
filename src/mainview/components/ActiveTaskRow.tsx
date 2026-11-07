@@ -1,4 +1,5 @@
 import { useState, type Dispatch } from "react";
+import { TaskRoleChip } from "./TaskRoleBand";
 import type { CodingAgent, Label, PortInfo, Project, Task, TaskPRBadgeInfo, TaskPriority, TaskStatus } from "../../shared/types";
 import { getAllowedTransitions, getTaskTitle, isCoordinatorTask, isTaskDisconnected } from "../../shared/types";
 import { earlierPullRequests } from "../../shared/task-pull-requests";
@@ -206,10 +207,10 @@ export default function ActiveTaskRow({
 			role="button"
 			tabIndex={task.shuttingDown ? -1 : 0}
 			aria-disabled={task.shuttingDown || undefined}
-			// The row's explicit name overrides its descendants, so the native
-			// marker only reaches assistive tech from here.
+			// The row's explicit name overrides its descendants, so the role and
+			// native marker only reach assistive tech from here.
 			aria-label={
-				[displayTitle, isNativeBackendTask(task) && t("task.nativeBackendMark"), task.hidden && t("task.hiddenFromSidebar")]
+				[displayTitle, isCoordinatorTask(task) && t("task.coordinatorBadge"), isNativeBackendTask(task) && t("task.nativeBackendMark"), task.hidden && t("task.hiddenFromSidebar")]
 					.filter(Boolean)
 					.join(" — ")
 			}
@@ -242,7 +243,7 @@ export default function ActiveTaskRow({
 				if (!task.shuttingDown) onMouseEnter(e);
 			}}
 			onMouseLeave={onMouseLeave}
-			className={`group relative flex w-full items-stretch ${isCoordinatorTask(task) ? `task-row-coordinator ${narrow ? "[--coord-rail-w:2.75rem]" : ""}` : ""} text-left transition-[color,background-color,opacity,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none cursor-pointer focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60 ${
+			className={`group relative flex w-full items-stretch text-left transition-[color,background-color,opacity,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none cursor-pointer focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60 ${
 				task.shuttingDown
 					? "grayscale opacity-40 pointer-events-none"
 					: task.hibernated || disconnected
@@ -395,16 +396,8 @@ export default function ActiveTaskRow({
 				<Tooltip content={agentSummary} disabled={!agentSummary}>
 					<div className="flex min-w-0 flex-1 items-center gap-1.5" data-testid={`sidebar-identity-${task.id}`}>
 						<NativeBackendMark task={task} className="w-3 h-3" testId={`sidebar-native-backend-${task.id}`} />
+						{isCoordinatorTask(task) && <TaskRoleChip role="coordinator" testId="sidebar-coordinator-badge" />}
 						{agent && <AgentLauncherBadge agent={agent} size={12} />}
-						{isCoordinatorTask(task) && (
-							<span
-								data-testid="sidebar-coordinator-badge"
-								title={t("task.coordinatorHint")}
-								className="inline-flex flex-shrink-0 items-center rounded border border-dashed border-coordinator/70 px-1 py-px text-nano font-semibold uppercase tracking-[0.06em] text-coordinator-ink"
-							>
-								{t("task.coordinatorBadge")}
-							</span>
-						)}
 						{task.taskType === "pr-review" && (
 							<span
 								data-testid="sidebar-pr-review-badge"

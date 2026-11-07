@@ -146,4 +146,21 @@ describe("FocusTracker", () => {
 		await tracker.flush(); // buffer cleared → no further writes
 		expect(addFocusMs).toHaveBeenCalledTimes(1);
 	});
+
+	it("stop() settles only after pending attention is written, so a shutdown can wait for it", async () => {
+		let release: () => void = () => {};
+		const addFocusMs = vi.fn(() => new Promise<void>((resolve) => { release = resolve; }));
+		const { tracker, state } = makeTracker({ flushEveryTicks: 100, addFocusMs });
+		await tracker.tick();
+		state.nowMs = 2000;
+		await tracker.tick();
+		let settled = false;
+		const stopped = tracker.stop().then(() => { settled = true; });
+		await Promise.resolve();
+		expect(addFocusMs).toHaveBeenCalledTimes(1);
+		expect(settled).toBe(false);
+		release();
+		await stopped;
+		expect(settled).toBe(true);
+	});
 });

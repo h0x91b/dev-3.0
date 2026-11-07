@@ -32,6 +32,7 @@ vi.mock("../../rpc", () => ({
 			pushTask: vi.fn(),
 			createPullRequest: vi.fn(),
 			openPullRequest: vi.fn(),
+			setTaskAttachedRepo: vi.fn().mockResolvedValue({}),
 			renameTask: vi.fn(),
 			getPortAllocations: vi.fn().mockResolvedValue([]),
 			getGlobalSettings: vi.fn().mockResolvedValue({ defaultAgentId: "builtin-claude", defaultConfigId: "claude-default", taskSortOrder: "oldest-first", updateChannel: "stable" }),
@@ -68,6 +69,11 @@ import { confirm } from "../../confirm";
 import { toast } from "../../toast";
 import { trackEvent } from "../../analytics";
 import { confirmTaskCompletion } from "../../utils/confirmTaskCompletion";
+import { openFolderPicker } from "../../folder-picker";
+
+vi.mock("../../folder-picker", () => ({
+	openFolderPicker: vi.fn(),
+}));
 
 vi.mock("../../confirm", () => ({
 	confirm: vi.fn(),
@@ -4297,14 +4303,76 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 		expect(await screen.findByTestId("branch-chip")).toBeInTheDocument();
 	});
 
-	it("fills the empty git slot with a muted 'Git is not available' note", async () => {
+	it("fills the empty git slot with a muted 'No repository attached' note", async () => {
 		await act(async () => {
 			renderPanel(
 				makeTask({ status: "in-progress", worktreePath: "/tmp/.dev3.0/ops/operations/t1/work" }),
 				{ project: vproject },
 			);
 		});
-		expect(screen.getByText("Git is not available in operations tasks")).toBeInTheDocument();
+		expect(screen.getByText("No repository attached")).toBeInTheDocument();
+	});
+
+	describe("attaching a git repository", () => {
+		const opsTask = (overrides: Partial<Task> = {}) =>
+			makeTask({ status: "in-progress", worktreePath: "/tmp/.dev3.0/ops/operations/t1/work", ...overrides });
+
+		it("offers Attach repository on an active task and attaches the picked folder", async () => {
+			vi.mocked(openFolderPicker).mockResolvedValue("/Users/me/repo");
+			await act(async () => {
+				renderPanel(opsTask(), { project: vproject });
+			});
+			await act(async () => {
+				fireEvent.click(screen.getByRole("button", { name: "Attach repository" }));
+			});
+			expect(openFolderPicker).toHaveBeenCalledWith({ initialPath: "/tmp/.dev3.0/ops/operations/t1/work" });
+			expect(mockedApi.request.setTaskAttachedRepo).toHaveBeenCalledWith({
+				taskId: "t1", projectId: vproject.id, path: "/Users/me/repo",
+			});
+		});
+
+		it("does not offer it on a task that is not active", async () => {
+			await act(async () => {
+				renderPanel(opsTask({ status: "todo" }), { project: vproject });
+			});
+			expect(screen.queryByRole("button", { name: "Attach repository" })).not.toBeInTheDocument();
+		});
+
+		it("shows the changes summary, the repo chip and Detach — and no write actions", async () => {
+			await act(async () => {
+				renderPanel(opsTask({ attachedRepo: "/Users/me/repo" }), { project: vproject, onOpenInlineDiff: vi.fn() });
+			});
+			expect(await screen.findByTestId("changes-summary")).toBeInTheDocument();
+			expect(screen.getByTestId("attached-repo-chip")).toHaveTextContent("repo");
+			expect(screen.queryByRole("button", { name: "Attach repository" })).not.toBeInTheDocument();
+			for (const name of ["Commit", "Rebase", "Push", "Merge", "Create PR"]) {
+				expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+			}
+		});
+
+		it("detaches with a null path", async () => {
+			await act(async () => {
+				renderPanel(opsTask({ attachedRepo: "/Users/me/repo" }), { project: vproject });
+			});
+			await act(async () => {
+				fireEvent.click(screen.getByRole("button", { name: "Detach repository" }));
+			});
+			expect(mockedApi.request.setTaskAttachedRepo).toHaveBeenCalledWith({
+				taskId: "t1", projectId: vproject.id, path: null,
+			});
+		});
+
+		it("toasts the backend error when attaching fails", async () => {
+			vi.mocked(openFolderPicker).mockResolvedValue("/Users/me/plain");
+			mockedApi.request.setTaskAttachedRepo.mockRejectedValueOnce(new Error("Not a git repository: /Users/me/plain"));
+			await act(async () => {
+				renderPanel(opsTask(), { project: vproject });
+			});
+			await act(async () => {
+				fireEvent.click(screen.getByRole("button", { name: "Attach repository" }));
+			});
+			expect(toast.error).toHaveBeenCalledWith("Not a git repository: /Users/me/plain", expect.anything());
+		});
 	});
 
 	it("removes the Dev Server and Scripts controls for a virtual task", async () => {

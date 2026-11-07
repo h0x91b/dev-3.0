@@ -135,11 +135,16 @@ vi.mock("../git", () => ({
 	getCurrentBranch: vi.fn(),
 	getHeadSha: vi.fn(),
 	isWorktreeDirty: vi.fn(),
+	isWorktreeDirtyOrUnknown: vi.fn(),
 	listBranches: vi.fn(),
 	pullOrigin: vi.fn(),
 	saveDiffSnapshot: vi.fn().mockResolvedValue(undefined),
 	taskDir: vi.fn(),
 	virtualWorkDir: vi.fn((p: any, t: any) => `${p.path}/${String(t.id).slice(0, 8)}/work`),
+	getRepoTopLevel: vi.fn().mockResolvedValue(null),
+	createOpsWorktree: vi.fn(),
+	resolveReadOnlyCompareRef: vi.fn(async (_repo: string, base: string) => `origin/${base}`),
+	pruneWorktrees: vi.fn().mockResolvedValue(undefined),
 	run: vi.fn(),
 	getOriginUrl: vi.fn().mockResolvedValue("https://github.com/test/repo.git"),
 	resolveRef: vi.fn().mockResolvedValue("1111111111111111111111111111111111111111"),
@@ -396,6 +401,7 @@ vi.mock("node:fs", () => ({
 	readdirSync: vi.fn(() => []),
 	statSync: vi.fn(() => ({ isDirectory: () => true, isFile: () => true, mode: 0o755, size: 0 })),
 	mkdirSync: vi.fn(() => undefined),
+	chmodSync: vi.fn(() => undefined),
 	writeFileSync: vi.fn(() => undefined),
 	lstatSync: vi.fn(() => { throw new Error("ENOENT"); }),
 	readlinkSync: vi.fn(() => { throw new Error("EINVAL"); }),
@@ -743,6 +749,70 @@ describe("runCleanupScript", () => {
 		const cFlagIndex = cleanupArgs.indexOf("-c");
 		expect(cFlagIndex).toBeGreaterThan(-1);
 		expect(cleanupArgs[cFlagIndex + 1]).toBe("/tmp/test-worktree");
+	});
+
+	it("a worktree-mode Operations task runs the repo's cleanup with the repo as the project root", async () => {
+		const project = makeProject({ id: "vp1", kind: "virtual", path: "/tmp/test-dev3/ops/operations", name: "Ops" });
+		const task = makeTask({ id: "task-123", projectId: "vp1", worktreePath: "/tmp/test-worktree", status: "in-progress", attachedRepo: "/Users/me/repo", opsWorktree: true });
+
+		await runCleanupScript(task, project, { fromStatus: "in-progress", toStatus: "completed" });
+
+		expect(repoConfig.resolveOperationalProjectConfig).toHaveBeenCalledWith(
+			expect.objectContaining({ path: "/Users/me/repo" }), "/tmp/test-worktree", expect.anything(),
+		);
+		const cleanupArgs = mockSpawn.mock.calls[0]?.[0] as string[];
+		expect(cleanupArgs[cleanupArgs.indexOf("DEV3_PROJECT_PATH=/Users/me/repo") - 1]).toBe("-e");
+	});
+
+	it("an Operations task that is not in worktree mode never runs the repo's cleanup script", async () => {
+		const project = makeProject({ id: "vp1", kind: "virtual", path: "/tmp/test-dev3/ops/operations" });
+		// The folder is the user's own checkout; its `.dev3` cleanup (docker down, rm -rf ...) is not this task's to run.
+		const task = makeTask({ id: "task-123", projectId: "vp1", worktreePath: "/tmp/test-worktree", status: "in-progress", attachedRepo: "/tmp/test-worktree", opsWorkDir: "/tmp/test-worktree" });
+
+		await runCleanupScript(task, project, { fromStatus: "in-progress", toStatus: "completed" });
+
+		expect(repoConfig.resolveOperationalProjectConfig).not.toHaveBeenCalled();
+		expect(mockSpawn.mock.calls[0]?.[0]).toEqual(expect.arrayContaining(["DEV3_TASK_TO_STATUS=completed"]));
+	});
+
+	describe("launchColumnAgent", () => {
+		it("substitutes {baseBranch} with the attached repo's read-only compare ref, not the Operations directory", async () => {
+			const project = makeProject({ id: "vp1", kind: "virtual", path: "/tmp/test-dev3/ops/operations" });
+			const task = makeTask({ projectId: "vp1", worktreePath: "/tmp/test-worktree", attachedRepo: "/Users/me/repo", baseBranch: "master" });
+			vi.mocked(agents.resolveCommandForAgent).mockRejectedValueOnce(new Error("stop after prompt"));
+
+			await expect(launchColumnAgent(project, task, { agentId: "builtin-claude", configId: null, prompt: "diff against {baseBranch}" } as never, { paneTitle: "AI Review" }))
+				.rejects.toThrow("stop after prompt");
+
+			expect(git.resolveReadOnlyCompareRef).toHaveBeenCalledWith("/Users/me/repo", "master");
+			expect(git.resolveCompareRef).not.toHaveBeenCalled();
+			expect(vi.mocked(agents.resolveCommandForAgent).mock.calls[0][2].taskDescription).toBe("diff against origin/master");
+		});
+	});
+
+	describe("captureCompletedDiffStats", () => {
+		const vp = () => makeProject({ id: "vp1", kind: "virtual", path: "/tmp/test-dev3/ops/operations" });
+
+		it("measures a worktree-mode task against its stored base in the worktree, without touching the repo's tracking", async () => {
+			const { captureCompletedDiffStats } = await import("../lifecycle/executor");
+			vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 2, insertions: 5, deletions: 1, fileStats: [] } as any);
+			const task = makeTask({ projectId: "vp1", worktreePath: "/tmp/test-worktree", attachedRepo: "/Users/me/repo", opsWorktree: true, baseBranch: "master" });
+
+			const stats = await captureCompletedDiffStats(vp(), task);
+
+			expect(git.resolveReadOnlyCompareRef).toHaveBeenCalledWith("/Users/me/repo", "master");
+			expect(git.resolveCompareRef).not.toHaveBeenCalled();
+			expect(git.getBranchDiffStats).toHaveBeenCalledWith("/tmp/test-worktree", "origin/master");
+			expect(stats).toMatchObject({ files: 2, insertions: 5, deletions: 1 });
+		});
+
+		it("still records nothing for a plain Operations task", async () => {
+			const { captureCompletedDiffStats } = await import("../lifecycle/executor");
+			const task = makeTask({ projectId: "vp1", worktreePath: "/tmp/test-worktree", attachedRepo: "/Users/me/repo" });
+
+			expect(await captureCompletedDiffStats(vp(), task)).toBeUndefined();
+			expect(git.getBranchDiffStats).not.toHaveBeenCalled();
+		});
 	});
 
 	it("reports status 'deleted' when the worktree dies via task deletion", async () => {
@@ -2549,6 +2619,78 @@ describe("handlers.createTask", () => {
 		expect(pty.createSession).toHaveBeenCalled();
 	});
 
+	describe("Operations task with a work folder", () => {
+		const vproject = () => makeProject({ id: "vp1", kind: "virtual", path: "/tmp/test-dev3/ops/operations" });
+
+		it("attaches the repo that contains the folder", async () => {
+			vi.mocked(data.getProject).mockResolvedValue(vproject());
+			vi.mocked(data.addTask).mockResolvedValue(makeTask({ projectId: "vp1", status: "todo" }));
+			vi.mocked(git.getRepoTopLevel).mockResolvedValueOnce("/Users/me/work/repo");
+			vi.mocked(git.getDefaultBranch).mockResolvedValueOnce("trunk");
+
+			await handlers.createTask({ projectId: "vp1", description: "ops", opsWorkDir: "/Users/me/work/repo/sub" });
+
+			expect(git.getRepoTopLevel).toHaveBeenCalledWith("/Users/me/work/repo/sub");
+			expect(vi.mocked(data.addTask).mock.calls[0][3]).toEqual(
+				expect.objectContaining({ opsWorkDir: "/Users/me/work/repo/sub", attachedRepo: "/Users/me/work/repo", baseBranch: "trunk" }),
+			);
+		});
+
+		it("worktree mode stores the repo, its default branch as base, and no opsWorkDir", async () => {
+			vi.mocked(data.getProject).mockResolvedValue(vproject());
+			vi.mocked(data.addTask).mockResolvedValue(makeTask({ projectId: "vp1", status: "todo" }));
+			vi.mocked(git.getRepoTopLevel).mockResolvedValueOnce("/Users/me/work/repo");
+			vi.mocked(git.getDefaultBranch).mockResolvedValueOnce("master");
+
+			await handlers.createTask({ projectId: "vp1", description: "ops", opsWorkDir: "/Users/me/work/repo/sub", opsWorktree: true });
+
+			expect(git.getDefaultBranch).toHaveBeenCalledWith("/Users/me/work/repo", { local: true });
+			expect(vi.mocked(data.addTask).mock.calls[0][3]).toEqual({
+				attachedRepo: "/Users/me/work/repo", opsWorktree: true, baseBranch: "master",
+			});
+		});
+
+		it("worktree mode on a folder that is not a repo changes nothing", async () => {
+			vi.mocked(data.getProject).mockResolvedValue(vproject());
+			vi.mocked(data.addTask).mockResolvedValue(makeTask({ projectId: "vp1", status: "todo" }));
+			vi.mocked(git.getRepoTopLevel).mockResolvedValueOnce(null);
+
+			await handlers.createTask({ projectId: "vp1", description: "ops", opsWorkDir: "/Users/me/Downloads", opsWorktree: true });
+
+			expect(vi.mocked(data.addTask).mock.calls[0][3]).toEqual({ opsWorkDir: "/Users/me/Downloads" });
+		});
+
+		it("attaches nothing for a repo inside another task's managed dir, keeping the folder", async () => {
+			vi.mocked(data.getProject).mockResolvedValue(vproject());
+			vi.mocked(data.addTask).mockResolvedValue(makeTask({ projectId: "vp1", status: "todo" }));
+			vi.mocked(git.getRepoTopLevel).mockResolvedValueOnce("/tmp/test-dev3/ops/operations/other/work/clone");
+
+			await handlers.createTask({ projectId: "vp1", description: "ops", opsWorkDir: "/tmp/test-dev3/ops/operations/other/work/clone", opsWorktree: true });
+
+			expect(vi.mocked(data.addTask).mock.calls[0][3]).toEqual({ opsWorkDir: "/tmp/test-dev3/ops/operations/other/work/clone" });
+		});
+
+		it("attaches nothing when the folder is not inside a repo", async () => {
+			vi.mocked(data.getProject).mockResolvedValue(vproject());
+			vi.mocked(data.addTask).mockResolvedValue(makeTask({ projectId: "vp1", status: "todo" }));
+			vi.mocked(git.getRepoTopLevel).mockResolvedValueOnce(null);
+
+			await handlers.createTask({ projectId: "vp1", description: "ops", opsWorkDir: "/Users/me/Downloads" });
+
+			expect(vi.mocked(data.addTask).mock.calls[0][3]).toEqual({ opsWorkDir: "/Users/me/Downloads" });
+		});
+
+		it("does not look for a repo without a work folder", async () => {
+			vi.mocked(data.getProject).mockResolvedValue(vproject());
+			vi.mocked(data.addTask).mockResolvedValue(makeTask({ projectId: "vp1", status: "todo" }));
+
+			await handlers.createTask({ projectId: "vp1", description: "ops" });
+
+			expect(git.getRepoTopLevel).not.toHaveBeenCalled();
+			expect(vi.mocked(data.addTask).mock.calls[0][3]).toBeUndefined();
+		});
+	});
+
 	it("defaults to 'todo' when status is not provided", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "todo" });
@@ -3668,6 +3810,176 @@ describe("virtual task lifecycle", () => {
 		expect(result.worktreePath).toBe("/Users/me/Downloads");
 	});
 
+	it("worktree mode: creates a worktree of the attached repo in the managed dir and stores the branch", async () => {
+		const project = vproject();
+		const task = makeTask({ projectId: "vp1", status: "todo", worktreePath: null, attachedRepo: "/Users/me/repo", opsWorktree: true, baseBranch: "master" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.createOpsWorktree).mockResolvedValue({ worktreePath: "/tmp/test-dev3/ops/operations/task-1/work", branchName: "dev3/task-task-1" });
+		mockTaskWrites(task);
+
+		const result = await handlers.moveTask({ explicitLaunch: true, taskId: "task-1", projectId: "vp1", newStatus: "in-progress" });
+
+		expect(git.createOpsWorktree).toHaveBeenCalledWith("/Users/me/repo", expect.objectContaining({ id: "task-1" }), "/tmp/test-dev3/ops/operations/task-1/work", "master");
+		expect(mkdir).not.toHaveBeenCalledWith("/tmp/test-dev3/ops/operations/task-1/work", expect.anything());
+		expect(pty.createSession).toHaveBeenCalledWith("task-1", "vp1", "/tmp/test-dev3/ops/operations/task-1/work", expect.anything(), expect.anything(), expect.anything());
+		expect(result.worktreePath).toBe("/tmp/test-dev3/ops/operations/task-1/work");
+		expect(result.branchName).toBe("dev3/task-task-1");
+		// Scripts and the agent see the repo, not the Operations dir, as the project root,
+		// and the branch the worktree was just created on, which is not on the task record yet.
+		expect(vi.mocked(pty.createSession).mock.calls[0][4]).toEqual(expect.objectContaining({
+			DEV3_PROJECT_PATH: "/Users/me/repo", DEV3_BRANCH_NAME: "dev3/task-task-1",
+		}));
+	});
+
+	it("worktree mode: sparse checkout and clonePaths run from the attached repo before the agent launches", async () => {
+		const project = vproject();
+		const task = makeTask({ projectId: "vp1", status: "todo", worktreePath: null, attachedRepo: "/Users/me/repo", opsWorktree: true, baseBranch: "master" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.createOpsWorktree).mockResolvedValue({ worktreePath: "/tmp/test-dev3/ops/operations/task-1/work", branchName: "dev3/task-task-1" });
+		vi.mocked(repoConfig.resolveOperationalProjectConfig).mockResolvedValueOnce({
+			...project, sparseCheckoutEnabled: true, sparseCheckoutPaths: ["src"], clonePaths: [".env"],
+		} as Project);
+		mockTaskWrites(task);
+
+		await handlers.moveTask({ explicitLaunch: true, taskId: "task-1", projectId: "vp1", newStatus: "in-progress" });
+
+		const workDir = "/tmp/test-dev3/ops/operations/task-1/work";
+		expect(git.applySparseCheckout).toHaveBeenCalledWith(workDir, ["src"]);
+		expect(cowClone.clonePaths).toHaveBeenCalledWith("/Users/me/repo", workDir, [".env"]);
+		const cloneOrder = vi.mocked(cowClone.clonePaths).mock.invocationCallOrder[0];
+		expect(cloneOrder).toBeLessThan(vi.mocked(pty.createSession).mock.invocationCallOrder[0]);
+	});
+
+	it("worktree mode: reopening a completed task re-adds the worktree on the kept branch", async () => {
+		const project = vproject();
+		const task = makeTask({ projectId: "vp1", status: "completed", worktreePath: null, branchName: null, attachedRepo: "/Users/me/repo", opsWorktree: true, baseBranch: "master" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.createOpsWorktree).mockResolvedValue({ worktreePath: "/tmp/test-dev3/ops/operations/task-1/work", branchName: "dev3/task-task-1" });
+		mockTaskWrites(task);
+
+		const result = await handlers.moveTask({ explicitLaunch: true, taskId: "task-1", projectId: "vp1", newStatus: "in-progress" });
+
+		expect(git.createOpsWorktree).toHaveBeenCalledWith("/Users/me/repo", expect.objectContaining({ id: "task-1" }), "/tmp/test-dev3/ops/operations/task-1/work", "master");
+		expect(result.branchName).toBe("dev3/task-task-1");
+	});
+
+	it.each(["completed", "cancelled"] as const)("%s: a worktree-mode task loses its worktree dir, the repo is pruned, the branch is untouched", async (target) => {
+		const project = vproject();
+		const task = makeTask({ projectId: "vp1", status: "in-progress", worktreePath: "/tmp/test-dev3/ops/operations/task-1/work", attachedRepo: "/Users/me/repo", opsWorktree: true, branchName: "dev3/task-task-1" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(pty.destroySession).mockImplementation(() => {});
+		mockTaskWrites(task);
+
+		await handlers.moveTask({ taskId: "task-1", projectId: "vp1", newStatus: target });
+
+		expect(rm).toHaveBeenCalledWith("/tmp/test-dev3/ops/operations/task-1/work", { recursive: true, force: true });
+		expect(git.pruneWorktrees).toHaveBeenCalledWith("/Users/me/repo");
+		expect(git.removeWorktree).not.toHaveBeenCalled();
+		const updates = vi.mocked(data.updateTask).mock.calls.find((call) => call[2].status === target)?.[2] as Record<string, unknown>;
+		expect(updates.worktreePath).toBeNull();
+		expect(updates.branchName).toBeNull();
+	});
+
+	it("reset: a worktree-mode task loses its worktree dir like a git task, the repo is pruned and the branch is kept", async () => {
+		const project = vproject();
+		const wt = "/tmp/test-dev3/ops/operations/task-1/work";
+		const task = makeTask({ projectId: "vp1", status: "in-progress", worktreePath: wt, attachedRepo: "/Users/me/repo", opsWorktree: true, branchName: "dev3/task-task-1", lifecycleStartedAt: "S" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(pty.destroySession).mockImplementation(() => {});
+		mockTaskWrites(task);
+
+		const { task: reset } = await handlers.resetTaskToTodo({ taskId: "task-1", projectId: "vp1", consent: { worktreePath: wt, lifecycleStartedAt: "S" } });
+
+		expect(rm).toHaveBeenCalledWith(wt, { recursive: true, force: true });
+		expect(git.pruneWorktrees).toHaveBeenCalledWith("/Users/me/repo");
+		expect(git.removeWorktree).not.toHaveBeenCalled();
+		expect(reset.status).toBe("todo");
+		expect(reset.worktreePath).toBeNull();
+	});
+
+	describe("removing a worktree the record no longer points to", () => {
+		const derived = "/tmp/test-dev3/ops/operations/task-1/work";
+		afterEach(() => { vi.mocked(existsSync).mockImplementation(() => true); });
+		async function deleteUnrecorded(dirty: boolean) {
+			const project = vproject();
+			const task = makeTask({ projectId: "vp1", status: "todo", worktreePath: null, branchName: null, attachedRepo: "/Users/me/repo", opsWorktree: true });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.getTask).mockResolvedValue(task);
+			vi.mocked(pty.destroySession).mockImplementation(() => {});
+			vi.mocked(existsSync).mockImplementation((path) => path === `${derived}/.git`);
+			vi.mocked(git.isWorktreeDirtyOrUnknown).mockResolvedValueOnce(dirty);
+			await handlers.deleteTask({ taskId: "task-1", projectId: "vp1" });
+		}
+
+		it("keeps a dir with uncommitted changes and its registration", async () => {
+			await deleteUnrecorded(true);
+
+			expect(rm).not.toHaveBeenCalled();
+			expect(git.pruneWorktrees).not.toHaveBeenCalled();
+		});
+
+		it("keeps the dir too when its git status cannot be read (unknown counts as dirty)", async () => {
+			await deleteUnrecorded(true);
+
+			expect(vi.mocked(git.isWorktreeDirtyOrUnknown)).toHaveBeenCalledWith(derived);
+			expect(rm).not.toHaveBeenCalled();
+		});
+
+		it("removes a clean dir and prunes", async () => {
+			await deleteUnrecorded(false);
+
+			expect(rm).toHaveBeenCalledWith(derived, { recursive: true, force: true });
+			expect(git.pruneWorktrees).toHaveBeenCalledWith("/Users/me/repo");
+		});
+	});
+
+	it("delete after a reset or failed preparation (no worktreePath on the record): the derived dir is still removed and pruned", async () => {
+		const project = vproject();
+		const task = makeTask({ projectId: "vp1", status: "todo", worktreePath: null, branchName: null, attachedRepo: "/Users/me/repo", opsWorktree: true });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(pty.destroySession).mockImplementation(() => {});
+
+		await handlers.deleteTask({ taskId: "task-1", projectId: "vp1" });
+
+		expect(rm).toHaveBeenCalledTimes(1);
+		expect(rm).toHaveBeenCalledWith("/tmp/test-dev3/ops/operations/task-1/work", { recursive: true, force: true });
+		expect(git.pruneWorktrees).toHaveBeenCalledWith("/Users/me/repo");
+	});
+
+	it("delete: a worktree-mode task's dir is removed and the repo's worktree list pruned, never the repo", async () => {
+		const project = vproject();
+		const task = makeTask({ projectId: "vp1", status: "completed", worktreePath: "/tmp/test-dev3/ops/operations/task-1/work", attachedRepo: "/Users/me/repo", opsWorktree: true, branchName: "dev3/task-task-1" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(pty.destroySession).mockImplementation(() => {});
+
+		await handlers.deleteTask({ taskId: "task-1", projectId: "vp1" });
+
+		expect(rm).toHaveBeenCalledTimes(1);
+		expect(rm).toHaveBeenCalledWith("/tmp/test-dev3/ops/operations/task-1/work", { recursive: true, force: true });
+		expect(git.pruneWorktrees).toHaveBeenCalledWith("/Users/me/repo");
+		expect(git.removeWorktree).not.toHaveBeenCalled();
+	});
+
+	it("delete: a plain attached-repo task never prunes or removes the repo", async () => {
+		const project = vproject();
+		const task = makeTask({ projectId: "vp1", status: "completed", worktreePath: "/Users/me/repo", opsWorkDir: "/Users/me/repo", attachedRepo: "/Users/me/repo" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(pty.destroySession).mockImplementation(() => {});
+
+		await handlers.deleteTask({ taskId: "task-1", projectId: "vp1" });
+
+		expect(rm).not.toHaveBeenCalled();
+		expect(git.pruneWorktrees).not.toHaveBeenCalled();
+	});
+
 	it("in-progress → completed: keeps work dir (no removeWorktree, worktreePath preserved)", async () => {
 		const project = vproject();
 		const task = makeTask({ projectId: "vp1", status: "in-progress", worktreePath: "/tmp/test-dev3/ops/operations/task-1/work" });
@@ -3679,6 +3991,8 @@ describe("virtual task lifecycle", () => {
 		await handlers.moveTask({ taskId: "task-1", projectId: "vp1", newStatus: "completed" });
 
 		expect(git.removeWorktree).not.toHaveBeenCalled();
+		expect(rm).not.toHaveBeenCalled();
+		expect(git.pruneWorktrees).not.toHaveBeenCalled();
 		const updateArgs = vi.mocked(data.updateTask).mock.calls.find((call) => call[2].status === "completed")?.[2] as Record<string, unknown>;
 		expect(updateArgs.status).toBe("completed");
 		expect("worktreePath" in updateArgs).toBe(false);
@@ -3710,6 +4024,70 @@ describe("virtual task lifecycle", () => {
 		expect(rm).not.toHaveBeenCalled();
 		expect(git.removeWorktree).not.toHaveBeenCalled();
 		expect(data.deleteTask).toHaveBeenCalledWith(project, "task-1");
+	});
+});
+
+describe("worktree-mode Operations task: the repo is the project root outside the first launch too", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		(globalThis as any).Bun.write = vi.fn().mockResolvedValue(undefined);
+	});
+
+	const vproject = () => makeProject({ id: "vp1", kind: "virtual", path: "/tmp/test-dev3/ops/operations", devScript: "bun run dev", setupScript: "echo setup" });
+	const wtTask = () => makeTask({
+		id: "abcd1234-full-id", projectId: "vp1", status: "in-progress", worktreePath: "/tmp/wt",
+		attachedRepo: "/Users/me/repo", opsWorktree: true, branchName: "dev3/task-abcd1234",
+	});
+	const repoRoot = expect.objectContaining({ path: "/Users/me/repo" });
+
+	it("dev server status resolves config against the repo", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(vproject());
+		vi.mocked(data.getTask).mockResolvedValue(wtTask());
+		mockSpawn.mockReturnValue({ stderr: new Response(""), stdout: new Response(""), exited: Promise.resolve(0) });
+
+		await handlers.getDevServerStatus({ taskId: "abcd1234-full-id", projectId: "vp1" });
+
+		expect(repoConfig.resolveOperationalProjectConfig).toHaveBeenCalledWith(repoRoot, "/tmp/wt", expect.anything());
+	});
+
+	it("an extra agent gets the repo as projectPath and resolves env against it", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(vproject());
+		vi.mocked(data.getTask).mockResolvedValue(wtTask());
+		vi.mocked(data.updateTask).mockResolvedValueOnce(wtTask());
+		vi.mocked(agents.resolveCommandForAgent).mockResolvedValueOnce({ command: "claude", extraEnv: {} } as never);
+		mockSpawn.mockReturnValue({ stderr: new Response(""), stdout: new Response(""), exited: Promise.resolve(0) });
+
+		await handlers.spawnAgentInTask({ taskId: "abcd1234-full-id", projectId: "vp1", agentId: "builtin-claude", configId: null });
+
+		expect(agents.resolveCommandForAgent).toHaveBeenCalledWith("builtin-claude", null, expect.objectContaining({ projectPath: "/Users/me/repo" }), expect.anything());
+		expect(repoConfig.resolveProjectEnv).toHaveBeenCalledWith(repoRoot, "/tmp/wt", expect.anything());
+	});
+
+	it("re-running setup resolves config and env against the repo", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(vproject());
+		vi.mocked(data.getTask).mockResolvedValue(wtTask());
+		vi.mocked(data.loadProjects).mockResolvedValueOnce([]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValueOnce([vproject()]);
+		vi.mocked(repoConfig.resolveOperationalProjectConfig).mockResolvedValueOnce({ ...vproject(), setupScript: "echo setup" } as never);
+		mockSpawn.mockReturnValue({ stderr: new Response(""), stdout: new Response(""), exited: Promise.resolve(0) });
+
+		await handlers.rerunSetupScript({ taskId: "abcd1234-full-id" }).catch(() => {});
+
+		expect(repoConfig.resolveOperationalProjectConfig).toHaveBeenCalledWith(repoRoot, "/tmp/wt", expect.anything());
+		expect(repoConfig.resolveProjectEnv).toHaveBeenCalledWith(repoRoot, "/tmp/wt", expect.anything());
+	});
+
+	it("a plain Operations task keeps the Operations project as root", async () => {
+		const plain = makeTask({ id: "abcd1234-full-id", projectId: "vp1", status: "in-progress", worktreePath: "/tmp/wt" });
+		vi.mocked(data.getProject).mockResolvedValue(vproject());
+		vi.mocked(data.getTask).mockResolvedValue(plain);
+		mockSpawn.mockReturnValue({ stderr: new Response(""), stdout: new Response(""), exited: Promise.resolve(0) });
+
+		await handlers.getDevServerStatus({ taskId: "abcd1234-full-id", projectId: "vp1" });
+
+		expect(repoConfig.resolveOperationalProjectConfig).toHaveBeenCalledWith(
+			expect.objectContaining({ path: "/tmp/test-dev3/ops/operations" }), "/tmp/wt", expect.anything(),
+		);
 	});
 });
 
@@ -3776,6 +4154,71 @@ describe("handlers.editTask", () => {
 		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", expect.objectContaining({
 			description: "New desc",
 		}));
+	});
+
+	describe("Operations drafts", () => {
+		const vp = () => makeProject({ id: "vp1", kind: "virtual", path: "/tmp/test-dev3/ops/operations" });
+
+		it("saving a worktree-mode draft with no branch keeps the repo base, and the task then starts its worktree from it", async () => {
+			const project = vp();
+			const draft = makeTask({
+				projectId: "vp1", status: "todo", draft: true, worktreePath: null, branchName: null,
+				attachedRepo: "/Users/me/repo", opsWorktree: true, baseBranch: "master",
+			});
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(git.createOpsWorktree).mockResolvedValue({ worktreePath: "/tmp/test-dev3/ops/operations/task-1/work", branchName: "dev3/task-task-1" });
+			mockTaskWrites(draft);
+
+			const saved = await handlers.editTask({ taskId: "task-1", projectId: "vp1", description: "do it", existingBranch: null, draft: false });
+			expect(saved.baseBranch).toBe("master");
+
+			await handlers.moveTask({ explicitLaunch: true, taskId: "task-1", projectId: "vp1", newStatus: "in-progress" });
+			expect(git.createOpsWorktree).toHaveBeenCalledWith("/Users/me/repo", expect.objectContaining({ id: "task-1" }), "/tmp/test-dev3/ops/operations/task-1/work", "master");
+		});
+
+		it("a draft edit that picks a repo folder stores it through the same resolution as createTask", async () => {
+			const project = vp();
+			const draft = makeTask({ projectId: "vp1", status: "todo", draft: true, worktreePath: null });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(git.getRepoTopLevel).mockResolvedValueOnce("/Users/me/repo");
+			vi.mocked(git.getDefaultBranch).mockResolvedValueOnce("master");
+			mockTaskWrites(draft);
+
+			const saved = await handlers.editTask({ taskId: "task-1", projectId: "vp1", opsWorkDir: "/Users/me/repo/sub", opsWorktree: true });
+
+			expect(saved).toMatchObject({ attachedRepo: "/Users/me/repo", opsWorktree: true, baseBranch: "master" });
+			expect(saved.opsWorkDir).toBeFalsy();
+		});
+
+		it("without the worktree choice the folder and the repo are kept, and clearing the folder detaches both", async () => {
+			const project = vp();
+			const draft = makeTask({ projectId: "vp1", status: "todo", draft: true, worktreePath: null });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(git.getRepoTopLevel).mockResolvedValueOnce("/Users/me/repo");
+			vi.mocked(git.getDefaultBranch).mockResolvedValueOnce("master");
+			mockTaskWrites(draft);
+
+			const attached = await handlers.editTask({ taskId: "task-1", projectId: "vp1", opsWorkDir: "/Users/me/repo", opsWorktree: false });
+			expect(attached).toMatchObject({ attachedRepo: "/Users/me/repo", opsWorkDir: "/Users/me/repo", baseBranch: "master" });
+			expect(attached.opsWorktree).toBeFalsy();
+
+			const cleared = await handlers.editTask({ taskId: "task-1", projectId: "vp1", opsWorkDir: null });
+			expect(cleared.attachedRepo).toBeNull();
+			expect(cleared.opsWorkDir).toBeNull();
+			expect(cleared.opsWorktree).toBeFalsy();
+		});
+
+		it("leaves the folder alone when the edit does not mention it", async () => {
+			const project = vp();
+			const draft = makeTask({ projectId: "vp1", status: "todo", draft: true, attachedRepo: "/Users/me/repo", opsWorkDir: "/Users/me/repo", baseBranch: "master" });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			mockTaskWrites(draft);
+
+			const saved = await handlers.editTask({ taskId: "task-1", projectId: "vp1", description: "changed" });
+
+			expect(git.getRepoTopLevel).not.toHaveBeenCalled();
+			expect(saved).toMatchObject({ attachedRepo: "/Users/me/repo", opsWorkDir: "/Users/me/repo", baseBranch: "master" });
+		});
 	});
 
 	it("persists a role-aware automatic title without treating it as a user rename", async () => {
@@ -5076,6 +5519,42 @@ describe("handlers.spawnVariants", () => {
 			}));
 		});
 
+		it("an attached-only master-based source gives its sibling variants the repo and master as base", async () => {
+			const project = makeProject({ id: "vp1", kind: "virtual", path: "/tmp/test-dev3/ops/operations" });
+			const sourceTask = makeTask({ id: "src", projectId: "vp1", status: "todo", seq: 5, opsWorkDir: "/Users/me/repo", attachedRepo: "/Users/me/repo", baseBranch: "master" });
+			const secondVariant = makeTask({ id: "variant-2", projectId: "vp1", status: "todo" });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+			mockTransformSource(sourceTask);
+			vi.mocked(data.addTask).mockResolvedValue(secondVariant);
+			mockTaskWrites(sourceTask, secondVariant);
+
+			await handlers.spawnVariants({
+				taskId: "src", projectId: "vp1", targetStatus: "in-progress",
+				variants: [{ agentId: "agent-1", configId: null }, { agentId: "agent-2", configId: null }],
+			});
+
+			expect(vi.mocked(data.addTask).mock.calls[0][3]).toEqual(expect.objectContaining({
+				attachedRepo: "/Users/me/repo", opsWorkDir: "/Users/me/repo", baseBranch: "master",
+			}));
+		});
+
+		it("a worktree-mode task on a master-based repo is never launched with existingBranch", async () => {
+			const project = makeProject({ id: "vp1", kind: "virtual", path: "/tmp/test-dev3/ops/operations", defaultBaseBranch: "main" });
+			const sourceTask = makeTask({ id: "src", projectId: "vp1", status: "todo", seq: 5, worktreePath: null, attachedRepo: "/Users/me/repo", opsWorktree: true, baseBranch: "master" });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+			vi.mocked(git.createOpsWorktree).mockResolvedValue({ worktreePath: "/tmp/test-dev3/ops/operations/src/work", branchName: "dev3/task-src" });
+			mockTransformSource(sourceTask);
+			mockTaskWrites(sourceTask);
+
+			const [launched] = await handlers.spawnVariants({
+				taskId: "src", projectId: "vp1", targetStatus: "in-progress", variants: [{ agentId: "agent-1", configId: null }],
+			});
+
+			expect(launched.existingBranch).toBeUndefined();
+		});
+
 		it("carries the chosen opsWorkDir from the source task onto each variant", async () => {
 			const project = makeProject({ id: "vp1", kind: "virtual", path: "/tmp/test-dev3/ops/operations" });
 			const sourceTask = makeTask({ id: "src", projectId: "vp1", status: "todo", seq: 5, opsWorkDir: "/Users/me/Downloads" });
@@ -5443,6 +5922,39 @@ describe("handlers.addAttempts", () => {
 			"todo",
 			expect.objectContaining({ customTitle: "User-set title", titleEditedByUser: true }),
 		);
+	});
+
+	describe("Operations source tasks", () => {
+		async function addAttemptTo(sourceOverrides: Partial<Task>) {
+			const project = makeProject({ id: "vp1", kind: "virtual", path: "/tmp/test-dev3/ops/operations" });
+			const sourceTask = makeTask({ projectId: "vp1", status: "in-progress", seq: 5, groupId: "group-1", variantIndex: 1, ...sourceOverrides });
+			const attemptTask = makeTask({ id: "attempt-2", projectId: "vp1", status: "todo", groupId: "group-1", variantIndex: 2 });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+			vi.mocked(data.loadTasks).mockResolvedValue([sourceTask]);
+			vi.mocked(data.addTask).mockResolvedValue(attemptTask);
+			vi.mocked(data.updateTask).mockResolvedValue(attemptTask);
+			vi.mocked(git.createOpsWorktree).mockResolvedValue({ worktreePath: "/tmp/attempt-2", branchName: "dev3/task-attempt-2" });
+
+			await handlers.addAttempts({ taskId: "task-1", projectId: "vp1", variants: [{ agentId: "agent-1", configId: null }] });
+			return vi.mocked(data.addTask).mock.calls[0][3];
+		}
+
+		it("worktree-mode source: the attempt gets the repo, worktree mode and base, and no checkout ref", async () => {
+			const extras = await addAttemptTo({ attachedRepo: "/Users/me/repo", opsWorktree: true, baseBranch: "master" });
+
+			expect(extras).toEqual(expect.objectContaining({ attachedRepo: "/Users/me/repo", opsWorktree: true, baseBranch: "master" }));
+			expect(extras).not.toHaveProperty("opsWorkDir");
+			expect(extras?.existingBranch).toBeUndefined();
+		});
+
+		it("attached-only source: the attempt gets the folder and the repo, not worktree mode", async () => {
+			const extras = await addAttemptTo({ attachedRepo: "/Users/me/repo", opsWorkDir: "/Users/me/repo", baseBranch: "master" });
+
+			expect(extras).toEqual(expect.objectContaining({ attachedRepo: "/Users/me/repo", opsWorkDir: "/Users/me/repo", baseBranch: "master" }));
+			expect(extras).not.toHaveProperty("opsWorktree");
+			expect(extras?.existingBranch).toBeUndefined();
+		});
 	});
 
 	it("reverts attempt to todo and notifies when project config resolution fails before setup starts", async () => {
@@ -11859,6 +12371,24 @@ describe("restartTask (start fresh) floors the Codex scan", () => {
 		const clear = vi.mocked(data.updateTask).mock.calls.find((call) => call[2].sessionState === null)?.[2];
 		expect(Date.parse(clear?.codexScanFloorAt ?? "")).toBeGreaterThanOrEqual(before);
 		expect(clear?.lifecycleStartedAt).toBeUndefined();
+	});
+});
+
+describe("restartTask with a pane that ran the global default", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("resolves the current default instead of pinning the one that ran", async () => {
+		const project = makeProject();
+		const task = makeTask({ sessionState: { panes: [{ agentCmd: "claude", agentId: "builtin-claude", configId: "claude-default", sessionId: null, agentFromDefault: true }] } });
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+
+		await handlers.restartTask({ taskId: task.id });
+
+		expect(agents.resolveCommandForProject).toHaveBeenCalled();
+		expect(agents.resolveCommandForAgent).not.toHaveBeenCalled();
 	});
 });
 

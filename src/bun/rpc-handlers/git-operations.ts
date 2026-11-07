@@ -9,14 +9,17 @@ import {
 	type ScheduledMessageTarget,
 	type UnsavedWork,
 	getTaskTitle,
+	isOpsWorktreeTask,
 	resolveTaskCompareBaseBranch,
 } from "../../shared/types";
+import { existsSync } from "node:fs";
 import * as data from "../data";
 import * as git from "../git";
 import * as github from "../github";
 import { loadSettings } from "../settings";
 import { DEFAULT_TMUX_SOCKET } from "../tmux";
 import { dev3TaskTempPath } from "../temp-paths";
+import { isInsideOpsDir } from "../ops-worktree";
 import { deliverAgentPrompt } from "../agent-prompt-delivery";
 import type { AgentPromptDelivery } from "../../shared/agent-prompt-delivery";
 import { auxPaneAlive, auxPaneTitle, openAuxPane } from "../task-aux-panes";
@@ -27,7 +30,7 @@ import {
 } from "../scheduled-message-scheduler";
 import { Semaphore } from "../concurrency";
 import { syncTaskBranchName } from "../task-branch-sync";
-import { getPushMessage, log } from "./shared";
+import { getPushMessage, isActive, log } from "./shared";
 import { generatedScriptLaunch, generatedScriptName, writeLaunchScript } from "./shared-pure";
 import {
 	buildGitOpScript,
@@ -65,6 +68,37 @@ function assertGitTask(project: Project, task: Task): asserts task is Task & { w
 	if (!task.worktreePath) {
 		throw new Error("Task has no worktree");
 	}
+}
+
+type GitReadContext = { worktree: string; repo: string; baseBranch: string; attached: boolean };
+
+/**
+ * Where READ operations (diff, branch status) look. A git task reads its own
+ * worktree; an Operations task reads the repository attached to it, if any — or,
+ * in worktree mode, its own worktree of that repository.
+ * Write operations never use this — they keep `assertGitTask`.
+ */
+async function resolveGitReadContext(project: Project, task: Task): Promise<GitReadContext | null> {
+	if (project.kind !== "virtual") {
+		if (!task.worktreePath) return null;
+		return { worktree: task.worktreePath, repo: project.path, baseBranch: resolveTaskCompareBaseBranch(task, project), attached: false };
+	}
+	const repo = task.attachedRepo;
+	if (!repo) return null;
+	if (!existsSync(repo) || !await git.isGitRepo(repo)) throw new Error(`Attached repository not found: ${repo}`);
+	if (isOpsWorktreeTask(task)) {
+		if (!task.worktreePath) return null;
+		if (!existsSync(task.worktreePath)) throw new Error(`Task worktree not found: ${task.worktreePath}`);
+		return { worktree: task.worktreePath, repo, baseBranch: task.baseBranch || await git.getDefaultBranch(repo, { local: true }), attached: true };
+	}
+	return { worktree: repo, repo, baseBranch: task.baseBranch || await git.getDefaultBranch(repo, { local: true }), attached: true };
+}
+
+async function requireGitReadContext(project: Project, task: Task): Promise<GitReadContext> {
+	const ctx = await resolveGitReadContext(project, task);
+	if (ctx) return ctx;
+	assertGitTask(project, task);
+	throw new Error("Task has no git context");
 }
 
 /**
@@ -216,6 +250,40 @@ async function healDeadCompareBase(project: Project, task: Task, baseBranch: str
 	return projectBase;
 }
 
+function inertBranchStatus(): BranchStatus {
+	return { ahead: 0, behind: 0, baseUnreachable: false, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, preservedOutsideBranch: false, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileStats: [], prNumber: null, prUrl: null, prState: null, mergeCompletionFingerprint: null, hasRemote: false, remoteIsGitHub: false, remoteAhead: 0 };
+}
+
+/** Local facts only: no fetch, no `gh`, no lifecycle side effects. A missing attached-only repo stays inert so the poll never throws. */
+async function getAttachedRepoStatus(project: Project, task: Task, compareRef?: string): Promise<BranchStatus> {
+	const inert = inertBranchStatus();
+	try {
+		const ctx = await resolveGitReadContext(project, task);
+		if (!ctx) return inert;
+		const ref = await git.resolveReadOnlyCompareRef(ctx.repo, ctx.baseBranch, compareRef);
+		// Only a worktree-mode task owns a branch whose unpushed commits the completion dialog must report.
+		const worktreeMode = isOpsWorktreeTask(task);
+		const branchForPush = worktreeMode ? (await git.getCurrentBranch(ctx.worktree)) ?? task.branchName ?? "" : "";
+		const [status, uncommitted, branchDiff, hasRemote, unpushed, preservedOutsideBranch] = await Promise.all([
+			git.getBranchStatus(ctx.worktree, ref),
+			git.getUncommittedChanges(ctx.worktree),
+			git.getBranchDiffStats(ctx.worktree, ref),
+			git.hasOriginRemote(ctx.repo),
+			worktreeMode ? git.getUnpreservedCount(ctx.worktree, branchForPush) : Promise.resolve(0),
+			worktreeMode ? git.isPreservedOutsideBranch(ctx.worktree, branchForPush) : Promise.resolve(false),
+		]);
+		return {
+			...inert, ...status, ...uncommitted, hasRemote, unpushed, preservedOutsideBranch,
+			diffFiles: branchDiff.files, diffInsertions: branchDiff.insertions, diffDeletions: branchDiff.deletions, diffFileStats: branchDiff.fileStats,
+		};
+	} catch (err) {
+		// A worktree-mode task guards work that completion deletes, so its failure must not read as clean.
+		if (isOpsWorktreeTask(task)) throw err;
+		log.debug("getBranchStatus: attached repo unavailable", { taskId: task.id, error: String(err) });
+		return inert;
+	}
+}
+
 async function getBranchStatusImpl(params: { taskId: string; projectId: string; compareRef?: string; refresh?: boolean }): Promise<BranchStatus> {
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
@@ -223,9 +291,8 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	// Virtual (Operations) tasks have a working dir but no git repo. The renderer
 	// polls this every 15s for any active task with a worktreePath, so return an
 	// inert status instead of spawning a doomed `git` in a non-repo directory.
-	if (project.kind === "virtual" || !task.worktreePath) {
-		return { ahead: 0, behind: 0, baseUnreachable: false, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, preservedOutsideBranch: false, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileStats: [], prNumber: null, prUrl: null, prState: null, mergeCompletionFingerprint: null, hasRemote: false, remoteIsGitHub: false, remoteAhead: 0 };
-	}
+	if (project.kind === "virtual") return getAttachedRepoStatus(project, task, params.compareRef);
+	if (!task.worktreePath) return inertBranchStatus();
 
 	const resolvedBase = resolveTaskCompareBaseBranch(task, project);
 	const liveBranch = await git.getCurrentBranch(task.worktreePath);
@@ -374,18 +441,23 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 async function getUnsavedWork(params: { taskId: string; projectId: string }): Promise<UnsavedWork> {
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
-	if (project.kind === "virtual" || !task.worktreePath) {
-		return { insertions: 0, deletions: 0, unpushed: 0, preservedOutsideBranch: false, ahead: 0, baseUnreachable: false };
-	}
+	const nothingUnsaved = { insertions: 0, deletions: 0, unpushed: 0, preservedOutsideBranch: false, ahead: 0, baseUnreachable: false };
+	// A plain attached repo is never deleted, so only a worktree-mode task has anything to lose.
+	if (project.kind === "virtual" ? !isOpsWorktreeTask(task) : !task.worktreePath) return nothingUnsaved;
+	// An error propagates, as it does for a git task: the dialog then says "unknown", never "clean".
+	const ctx = await resolveGitReadContext(project, task);
+	if (!ctx) return nothingUnsaved;
 
-	const liveBranch = await git.getCurrentBranch(task.worktreePath);
+	const liveBranch = await git.getCurrentBranch(ctx.worktree);
 	const branchForPush = liveBranch ?? task.branchName ?? "";
-	const ref = await resolveCompareRef(project, resolveTaskCompareBaseBranch(task, project));
+	const ref = ctx.attached
+		? await git.resolveReadOnlyCompareRef(ctx.repo, ctx.baseBranch)
+		: await resolveCompareRef(project, ctx.baseBranch);
 	const [uncommitted, unpushed, preservedOutsideBranch, counts] = await Promise.all([
-		git.getUncommittedChanges(task.worktreePath),
-		git.getUnpreservedCount(task.worktreePath, branchForPush),
-		git.isPreservedOutsideBranch(task.worktreePath, branchForPush),
-		git.getBranchStatus(task.worktreePath, ref),
+		git.getUncommittedChanges(ctx.worktree),
+		git.getUnpreservedCount(ctx.worktree, branchForPush),
+		git.isPreservedOutsideBranch(ctx.worktree, branchForPush),
+		git.getBranchStatus(ctx.worktree, ref),
 	]);
 	return { ...uncommitted, unpushed, preservedOutsideBranch, ahead: counts.ahead, baseUnreachable: counts.baseUnreachable };
 }
@@ -425,17 +497,16 @@ async function getTaskDiff(params: {
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 
-	assertGitTask(project, task);
+	const { worktree, repo, baseBranch, attached } = await requireGitReadContext(project, task);
 
-	const baseBranch = resolveTaskCompareBaseBranch(task, project);
 	// `uncommitted` needs no remote ref; `recent` is purely local — it diffs
 	// `HEAD~N..HEAD` and clamps against the already on-disk `origin/<base>`
-	// merge-base — so neither pays for a network fetch.
-	if (params.mode !== "uncommitted" && params.mode !== "recent" && await git.hasOriginRemote(project.path)) {
-		await git.fetchCompareRef(project.path, baseBranch, undefined, { priority: true });
+	// merge-base — so neither pays for a network fetch. An attached repo is never fetched.
+	if (!attached && params.mode !== "uncommitted" && params.mode !== "recent" && await git.hasOriginRemote(repo)) {
+		await git.fetchCompareRef(repo, baseBranch, undefined, { priority: true });
 		const compareRefBranch = params.compareRef?.startsWith("origin/") ? params.compareRef.slice("origin/".length) : null;
 		if (compareRefBranch && compareRefBranch !== baseBranch) {
-			await git.fetchCompareRef(project.path, compareRefBranch, undefined, { priority: true });
+			await git.fetchCompareRef(repo, compareRefBranch, undefined, { priority: true });
 		}
 	}
 
@@ -443,12 +514,15 @@ async function getTaskDiff(params: {
 	// it, so neither pays for resolving one.
 	const compareRef = params.mode === "uncommitted" || params.mode === "recent"
 		? params.compareRef
-		: await resolveCompareRef(project, baseBranch, params.compareRef);
+		: attached
+			? await git.resolveReadOnlyCompareRef(repo, baseBranch, params.compareRef)
+			: await resolveCompareRef(project, baseBranch, params.compareRef);
 
-	const result = await git.getTaskDiff(task.worktreePath, params.mode, {
+	const result = await git.getTaskDiff(worktree, params.mode, {
 		baseBranch,
 		compareRef,
-		compareLabel: params.compareLabel,
+		// The renderer labels the default ref from the project's base; an attached repo has its own.
+		compareLabel: attached && !params.compareRef ? undefined : params.compareLabel,
 		count: params.count,
 	});
 	const skippedBinary = result.skippedFiles.filter((f) => f.reason === "binary").length;
@@ -855,6 +929,46 @@ async function openPullRequest(params: { taskId: string; projectId: string }): P
 	log.info("← openPullRequest (pane opened)", { paneId });
 }
 
+/** What the New Task modal needs to know about a picked folder: is it in a git repo, and which branch would a worktree start from. */
+async function inspectOpsFolder(params: { path: string }): Promise<{ repoRoot: string | null; defaultBranch: string | null }> {
+	const found = await git.getRepoTopLevel(params.path);
+	const repoRoot = found && !isInsideOpsDir(found) ? found : null;
+	const defaultBranch = repoRoot ? await git.getDefaultBranch(repoRoot, { local: true }).catch(() => null) : null;
+	return { repoRoot, defaultBranch };
+}
+
+/**
+ * Attach (or detach, with `path: null`) a local git repo to an Operations task so
+ * its diff can be read and reviewed. Attaching a subfolder stores the repo root.
+ */
+async function setTaskAttachedRepo(params: { taskId: string; projectId: string; path: string | null }): Promise<Task> {
+	log.info("→ setTaskAttachedRepo", params);
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+	if (project.kind !== "virtual") throw new Error("A repository can only be attached to an Operations task");
+	if (isOpsWorktreeTask(task)) throw new Error("The repository of a worktree task cannot be changed");
+
+	let root: string | null = null;
+	if (params.path !== null) {
+		root = await git.getRepoTopLevel(params.path);
+		if (!root) throw new Error(`Not a git repository: ${params.path}`);
+		if (isInsideOpsDir(root)) throw new Error(`A repository inside an Operations task folder cannot be attached: ${root}`);
+	}
+	// Detected once here, not on every status poll: a repo without origin/HEAD makes detection hit the network.
+	const defaultBranch = root ? await git.getDefaultBranch(root, { local: true }).catch(() => null) : null;
+	const updated = await data.updateTask(project, task.id, { attachedRepo: root, ...(defaultBranch ? { baseBranch: defaultBranch } : {}) });
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+
+	if (root && isActive(updated.status)) {
+		try {
+			await deliverAgentPrompt(updated, `A git repository is attached to this task: ${root}. The user reviews its changes (diff) in dev3. Do your git work there.`);
+		} catch (err) {
+			log.warn("setTaskAttachedRepo: agent prompt not delivered (non-fatal)", { taskId: task.id.slice(0, 8), error: String(err) });
+		}
+	}
+	return updated;
+}
+
 async function listBranches(params: { projectId: string }): Promise<Array<{ name: string; isRemote: boolean }>> {
 	const project = await data.getProject(params.projectId);
 	return git.listBranches(project.path);
@@ -1020,6 +1134,8 @@ export const gitOperationHandlers = {
 	pushTask,
 	createPullRequest,
 	openPullRequest,
+	setTaskAttachedRepo,
+	inspectOpsFolder,
 	listBranches,
 	fetchBranches,
 	resolvePrUrl,

@@ -89,7 +89,8 @@ export const prWatchHandlers: Record<string, Handler> = {
 		}
 		const explicit = params.prNumber === undefined ? null : Number(params.prNumber);
 		if (explicit !== null && !(Number.isInteger(explicit) && explicit > 0)) throw new Error("--pr takes a pull request number.");
-		if (project.kind === "virtual") throw new Error("A task without a repository cannot watch a pull request.");
+		// The PR poller only walks git projects, so a watch on an Operations task would be stored and never fire.
+		if (project.kind === "virtual") throw new Error("PR watch is not available for Operations tasks yet — check the PR with gh.");
 		const pr: ResolvedPr = explicit === null
 			? { ...(await resolveBranchPr(project, task, worktree)), pinned: false }
 			: await resolveNamedPr(project, task, worktree, explicit);

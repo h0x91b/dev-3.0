@@ -66,6 +66,9 @@ export interface PaneSessionEntry {
 	agentId: string | null;
 	/** Agent config ID used at launch time. */
 	configId: string | null;
+	/** The task picked no agent, so `agentId`/`configId` name the global default that
+	 *  ran. A resume keeps them; Start Fresh resolves the default again. */
+	agentFromDefault?: boolean;
 	/** Managed agent account used at launch time — re-injected on resume so a
 	 *  recovered session keeps running under the same account (absent → default). */
 	accountId?: string | null;

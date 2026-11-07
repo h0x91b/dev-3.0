@@ -210,9 +210,6 @@ html {
 	   filled buttons. These deeper values give white Lc ≥ 75. */
 	--success-fill: 15 118 54;
 	--success-fill-hover: 11 91 42;
-	/* Coordinator identity: hi-vis lime, like a safety vest. Tape, border, badge. */
-	--coordinator: 163 230 53;
-	--coordinator-ink: 163 230 53;
 	--warning: 240 210 78;
 	--warning-strong: 240 210 78; /* the ink; on dark paper it is the same yellow */
 	/* Solid fills under white ink — --warning is a light yellow, unsuitable for
@@ -359,8 +356,6 @@ html {
 	--success: 14 138 71;
 	--success-hover: 10 114 57;
 	--success-strong: 11 105 54; /* --success on a success/10 fill is only 4.36:1 */
-	--coordinator: 101 163 13;
-	--coordinator-ink: 63 98 18; /* darker, so badge text clears AA on the accent row */
 	/* Solid fills under white ink. */
 	--success-fill: 10 114 57;
 	--success-fill-hover: 8 88 44;
@@ -511,47 +506,6 @@ body, #root {
 .glass-card:hover {
 	background: rgb(var(--glass-card-rgb) / var(--glass-card-hover-alpha));
 	border-color: rgb(var(--glass-border-rgb) / var(--glass-border-card-hover-alpha));
-}
-/* A coordinator's identity border, hover included. Needed as a class rule because
-   .glass-card sets border-color and outranks a Tailwind border utility. 2px, because
-   a dashed hairline reads as noise rather than as a deliberate marker. */
-.task-card-coordinator,
-.task-card-coordinator:hover {
-	border-color: rgb(var(--coordinator) / 0.7);
-	border-width: 2px;
-}
-/* Hazard-tape band across the top of a coordinator card / sidebar row, fading out
-   by 56px so the text below sits on the plain surface. Painted under the content:
-   z-index -1 inside the element's own stacking context (isolation). */
-.task-card-coordinator,
-.task-row-coordinator {
-	isolation: isolate;
-}
-.task-card-coordinator::before,
-.task-row-coordinator::before {
-	content: "";
-	position: absolute;
-	inset: 0;
-	z-index: -1;
-	pointer-events: none;
-	border-radius: inherit;
-	opacity: 0.22;
-	background-image: repeating-linear-gradient(
-		135deg,
-		rgb(var(--coordinator)) 0 8px,
-		transparent 8px 16px
-	);
-	-webkit-mask-image: linear-gradient(to bottom, #000 0, #000 18px, transparent 56px);
-	mask-image: linear-gradient(to bottom, #000 0, #000 18px, transparent 56px);
-}
-/* The sidebar rail keeps its own colour; the tape starts after it. */
-.task-row-coordinator::before {
-	left: var(--coord-rail-w, 1.25rem);
-}
-.task-card-board-cleanup,
-.task-card-board-cleanup:hover {
-	border-color: rgb(var(--danger) / 0.6);
-	border-width: 2px;
 }
 
 .glass-header {
@@ -964,6 +918,66 @@ button {
 @media (prefers-reduced-motion: reduce) {
 	.dev3-marching-ants {
 		animation: none;
+	}
+}
+
+/* ---- Overflow scroll (OverflowScroll.tsx) ----------------------------------
+   A one-line label too wide for its box fades at the right edge; while its row
+   (a button or listbox option) is hovered or keyboard-active, the hidden tail
+   scrolls into view and back. Shift and duration come from the component. */
+@keyframes dev3-overflow-scroll {
+	0%, 15% { transform: translateX(0); }
+	85%, 100% { transform: translateX(var(--dev3-overflow-shift, 0)); }
+}
+
+.dev3-overflow-scroll {
+	display: block;
+	overflow: hidden;
+	white-space: nowrap;
+}
+
+.dev3-overflow-scroll-track {
+	display: inline-block;
+	width: max-content;
+}
+
+.dev3-overflow-scroll[data-overflowing] {
+	-webkit-mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
+	mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
+}
+
+:is(button:hover, [role="option"][data-active]) .dev3-overflow-scroll[data-overflowing] {
+	-webkit-mask-image: none;
+	mask-image: none;
+}
+
+/* Focus stays on a trigger after a pick or Escape, so keyboard focus plays the
+   scroll once (out and back) instead of looping until focus moves elsewhere;
+   the fade lifts only while it plays, so the resting label keeps its edge. */
+@keyframes dev3-overflow-unmask {
+	from, to { -webkit-mask-image: none; mask-image: none; }
+}
+
+button:focus-visible .dev3-overflow-scroll[data-overflowing] {
+	animation: dev3-overflow-unmask calc(var(--dev3-overflow-duration, 3s) * 2) linear;
+}
+
+button:focus-visible .dev3-overflow-scroll[data-overflowing] > .dev3-overflow-scroll-track {
+	animation: dev3-overflow-scroll var(--dev3-overflow-duration, 3s) ease-in-out 2 alternate;
+}
+
+:is(button:hover, [role="option"][data-active]) .dev3-overflow-scroll[data-overflowing] > .dev3-overflow-scroll-track {
+	animation: dev3-overflow-scroll var(--dev3-overflow-duration, 3s) ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	:is(button:hover, button:focus-visible, [role="option"][data-active]) .dev3-overflow-scroll[data-overflowing] > .dev3-overflow-scroll-track {
+		animation: none;
+	}
+	:is(button:hover, button:focus-visible, [role="option"][data-active]) .dev3-overflow-scroll[data-overflowing] {
+		animation: none;
+		-webkit-mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
+		mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
 	}
 }
 
