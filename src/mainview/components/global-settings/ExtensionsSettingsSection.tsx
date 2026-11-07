@@ -20,6 +20,8 @@ import SettingsEntry from "./SettingsEntry";
 import SettingsSection from "./SettingsSection";
 import SettingsToggle from "./SettingsToggle";
 
+const PRESS = "transition-[color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]";
+
 type ChipTone = "accent" | "muted" | "warning" | "danger";
 
 const CHIP_CLASSES: Record<ChipTone, string> = {
@@ -154,17 +156,15 @@ export default function ExtensionsSettingsSection({ t }: { t: TFunction }) {
 							const isKanban = view.id === KANBAN_VIEW_ID;
 							const enabled = isKanban || !(overview?.disabledBuiltins ?? []).includes(view.id);
 							return (
-								<li key={view.id} className="flex items-center justify-between gap-4 px-4 py-3">
+								<li key={view.id} className="flex min-h-12 items-center justify-between gap-4 px-4 py-2.5">
 									<span className="text-fg text-sm">{label}</span>
 									{isKanban ? (
-										<span className="text-fg-muted text-xs">{t("extensions.alwaysOn")}</span>
+										<span className="text-fg-3 text-xs text-right">{t("extensions.alwaysOn")}</span>
 									) : (
 										<SettingsToggle
 											checked={enabled}
 											disabled={busy || remote || !overview}
 											ariaLabel={label}
-											onLabel={t("settings.on")}
-											offLabel={t("settings.off")}
 											onToggle={() => void run(() => api.request.setBuiltinBoardViewEnabled({ viewId: view.id, enabled: !enabled }))}
 										/>
 									)}
@@ -216,7 +216,7 @@ export default function ExtensionsSettingsSection({ t }: { t: TFunction }) {
 								disabled={busy}
 								onClick={() => void install()}
 								data-testid="extensions-install"
-								className="px-3 py-1.5 text-sm rounded-lg border border-edge text-fg hover:bg-raised-hover disabled:opacity-50 transition-colors"
+								className={`px-3 py-1.5 text-sm rounded-lg border border-edge text-fg hover:bg-raised-hover disabled:opacity-50 ${PRESS}`}
 							>
 								{t("extensions.install")}
 							</button>
@@ -258,17 +258,17 @@ function ExtensionRow({ t, ext, load, extensionsOn, readOnly, onToggle, onTrust,
 		?? (ext.status === "untrusted" ? t("extensions.untrustedHint") : undefined)
 		?? (load?.state === "failed" && extensionsOn && ext.status === "active" ? load.error : undefined);
 	return (
-		<li className="px-4 py-3 space-y-1.5" data-testid={`extension-row-${ext.id}`}>
+		<li className="px-4 py-2.5 space-y-1.5" data-testid={`extension-row-${ext.id}`}>
 			<div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
 				<div className="min-w-0">
-					<div className="flex items-center gap-2">
+					<div className="flex items-center gap-2 min-w-0">
 						<span className="text-fg text-sm font-semibold truncate">{name}</span>
-						<span className={`px-1.5 py-0.5 rounded text-xs font-medium ${CHIP_CLASSES[chip.tone]}`} data-testid="extension-status">
+						<span className={`shrink-0 px-1.5 py-0.5 rounded text-xs font-medium ${CHIP_CLASSES[chip.tone]}`} data-testid="extension-status">
 							{t(chip.key)}
 						</span>
 					</div>
 					{manifest && (
-						<p className="text-fg-3 text-xs truncate">
+						<p className="text-fg-3 text-xs truncate mt-0.5">
 							{t("extensions.byPublisher", { publisher: manifest.publisher, version: manifest.version })}
 							{" · "}
 							{t("extensions.views", { views: manifest.contributes.boardViews.map((v) => v.label).join(", ") })}
@@ -280,7 +280,7 @@ function ExtensionRow({ t, ext, load, extensionsOn, readOnly, onToggle, onTrust,
 						<button
 							type="button"
 							onClick={onTrust}
-							className="px-3 py-1.5 text-sm rounded-lg border border-edge text-fg hover:bg-raised-hover transition-colors"
+							className={`px-3 py-1.5 text-sm rounded-lg border border-edge text-fg hover:bg-raised-hover ${PRESS}`}
 						>
 							{t("extensions.trust")}
 						</button>
@@ -290,8 +290,6 @@ function ExtensionRow({ t, ext, load, extensionsOn, readOnly, onToggle, onTrust,
 							checked={ext.status === "active"}
 							disabled={readOnly}
 							ariaLabel={t("extensions.enableAria", { name })}
-							onLabel={t("settings.on")}
-							offLabel={t("settings.off")}
 							onToggle={() => onToggle(ext.status !== "active")}
 						/>
 					)}
@@ -299,7 +297,7 @@ function ExtensionRow({ t, ext, load, extensionsOn, readOnly, onToggle, onTrust,
 						<button
 							type="button"
 							onClick={onRemove}
-							className="px-2.5 py-1.5 text-sm rounded-lg text-danger hover:bg-danger/10 transition-colors"
+							className={`px-2.5 py-1.5 text-sm rounded-lg text-fg-3 hover:text-danger hover:bg-danger/10 focus-visible:text-danger ${PRESS}`}
 						>
 							{t("extensions.remove")}
 						</button>

@@ -55,7 +55,14 @@ describe("ExtensionsSettingsSection", () => {
 		expect(switches[0]).toHaveAccessibleName("extensions.killSwitch");
 		const builtins = screen.getByTestId("builtin-board-views");
 		expect(within(builtins).getByText("extensions.alwaysOn")).toBeInTheDocument();
-		expect(within(builtins).getAllByRole("switch")).toHaveLength(3); // Table, Tree, Attention; Kanban has none
+		const rowSwitches = within(builtins).getAllByRole("switch");
+		expect(rowSwitches).toHaveLength(3); // Table, Tree, Attention; Kanban has none
+		// The row already names the view, so no On/Off text, but each switch keeps a name and state.
+		expect(within(builtins).queryByText("settings.on")).not.toBeInTheDocument();
+		for (const sw of rowSwitches) {
+			expect(sw.getAttribute("aria-label")).toBeTruthy();
+			expect(sw).toHaveAttribute("aria-checked", "true");
+		}
 		expect(screen.getByTestId("extensions-install")).toBeInTheDocument();
 	});
 

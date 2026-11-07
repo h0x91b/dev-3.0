@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { Fragment, useEffect, useRef } from "react";
 import type { ExtensionManifest } from "../../../shared/extensions";
 import { useT } from "../../i18n";
 import { useFocusTrap } from "../../utils/useFocusTrap";
@@ -13,10 +13,19 @@ export interface ExtensionConsentRequest {
 	mode: "install" | "trust";
 }
 
+const PRESS = "transition-[color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]";
+
+/** Lets a long path wrap after a slash instead of mid-segment. */
+function breakablePath(path: string) {
+	return path.split("/").map((part, i) => (
+		<Fragment key={i}>{i > 0 && <>/<wbr /></>}{part}</Fragment>
+	));
+}
+
 /**
  * The one-time consent for third-party code (D10). Extensions run unsandboxed, so
- * the confirm is a danger action and Cancel holds the initial focus: the dialog
- * must not be answerable on muscle memory.
+ * the risk is spelled out in a warning callout and Cancel holds the initial focus:
+ * the dialog must not be answerable on muscle memory.
  */
 export default function ExtensionConsentModal({
 	request,
@@ -57,12 +66,12 @@ export default function ExtensionConsentModal({
 						onCancel();
 					}
 				}}
-				className="bg-overlay border border-danger/40 rounded-2xl shadow-2xl w-[30rem] max-w-full max-h-[calc(100vh-2rem)] overflow-y-auto p-6 space-y-4 outline-none"
+				className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[30rem] max-w-full max-h-[calc(100vh-2rem)] overflow-y-auto p-6 space-y-4 outline-none"
 			>
 				<h2 id="extension-consent-title" className="text-fg text-lg font-semibold">
 					{t("extensions.consent.title")}
 				</h2>
-				<div className="rounded-xl bg-elevated border border-edge px-3 py-2.5 space-y-1">
+				<div className="rounded-xl bg-elevated px-3.5 py-3 space-y-1">
 					<p className="text-fg text-sm font-semibold break-words">{manifest.name}</p>
 					<p className="text-fg-3 text-xs break-words">
 						{t("extensions.byPublisher", { publisher: manifest.publisher, version: manifest.version })}
@@ -71,12 +80,15 @@ export default function ExtensionConsentModal({
 						{t("extensions.consent.views", { views: manifest.contributes.boardViews.map((v) => v.label).join(", ") })}
 					</p>
 					{request.sourcePath && (
-						<p className="text-fg-muted text-xs font-mono break-all">
-							{t("extensions.consent.folder")}: <span className="streamer-private">{request.sourcePath}</span>
-						</p>
+						<div className="pt-1.5">
+							<p className="text-fg-3 text-xs">{t("extensions.consent.folder")}</p>
+							<p className="text-fg-2 text-xs font-mono break-words">
+								<span className="streamer-private">{breakablePath(request.sourcePath)}</span>
+							</p>
+						</div>
 					)}
 				</div>
-				<p id="extension-consent-intro" className="text-fg-2 text-sm">
+				<p id="extension-consent-intro" className="rounded-xl bg-warning/10 px-3.5 py-2.5 text-warning-strong text-sm">
 					{t("extensions.consent.intro", { name: manifest.name, publisher: manifest.publisher })}
 				</p>
 				<div>
@@ -98,7 +110,7 @@ export default function ExtensionConsentModal({
 						type="button"
 						onClick={onCancel}
 						data-testid="extension-consent-cancel"
-						className="px-4 py-2 text-sm rounded-lg text-fg-2 border border-edge hover:text-fg hover:bg-elevated-hover transition-colors"
+						className={`px-4 py-2 text-sm rounded-lg text-fg-2 border border-edge hover:text-fg hover:bg-elevated-hover ${PRESS}`}
 					>
 						{t("extensions.consent.cancel")}
 					</button>
@@ -106,7 +118,7 @@ export default function ExtensionConsentModal({
 						type="button"
 						onClick={onConfirm}
 						data-testid="extension-consent-confirm"
-						className="px-4 py-2 text-sm rounded-lg bg-danger-fill text-white hover:bg-danger-fill-hover transition-colors"
+						className={`px-4 py-2 text-sm font-medium rounded-lg bg-accent-fill text-white hover:bg-accent-fill-hover ${PRESS}`}
 					>
 						{request.mode === "install" ? t("extensions.consent.confirm") : t("extensions.consent.confirmTrust")}
 					</button>
