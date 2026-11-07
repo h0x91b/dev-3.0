@@ -24,8 +24,8 @@ export const COORDINATOR_CARD_HALO =
 /** A coordinator's title in one-line rows (dashboard, switcher); board cleanup stays neutral like its band. */
 export const COORDINATOR_TITLE = "text-accent-emphasis";
 
-/** The sidebar row's title sits inside a filled bar, the row-sized echo of the card's role band. */
-export const COORDINATOR_TITLE_BAR = "rounded-md bg-accent-fill px-1.5 py-1 font-medium text-white";
+/** The sidebar row's title sits inside a full-bleed filled bar, the row-sized echo of the card's role band. */
+export const COORDINATOR_TITLE_BAR = "-mx-2.5 bg-accent-fill py-2 pl-2.5 pr-10 font-medium text-white";
 
 const FILL: Record<TaskRole, string> = {
 	coordinator: "bg-accent-fill text-white",

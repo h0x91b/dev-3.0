@@ -6,11 +6,11 @@
 
 ## Decision
 
-`TaskRoleBand` (`src/mainview/components/TaskRoleBand.tsx`) sits flush under the status strip, full width, square. Status stays readable from the left rail, which carries it on every card. In the Active Tasks sidebar (`ActiveTaskRow`) the coordinator's title sits inside a filled `accent-fill` bar with white ink (`COORDINATOR_TITLE_BAR`), the row-sized echo of the band; an accent-coloured title alone was too quiet there. `COORDINATOR_TITLE` (`text-accent-emphasis`) paints it in the dashboard coordinator rows and the task switcher. Board cleanup keeps a neutral title, matching its neutral band. `accent-emphasis`, not `accent`, because `accent` text measures only Lc 46 on dark surfaces; the pins are in `src/mainview/__tests__/contrast-check.test.ts`.
+`TaskRoleBand` (`src/mainview/components/TaskRoleBand.tsx`) sits flush under the status strip, full width, square. Status stays readable from the left rail, which carries it on every card. In the Active Tasks sidebar (`ActiveTaskRow`) the coordinator's title sits inside a full-bleed, square `accent-fill` bar with white ink (`COORDINATOR_TITLE_BAR`) flush with the row's top edge, the row-sized echo of the band; an accent-coloured title alone was too quiet there. `COORDINATOR_TITLE` (`text-accent-emphasis`) paints it in the dashboard coordinator rows and the task switcher. Board cleanup keeps a neutral title, matching its neutral band. `accent-emphasis`, not `accent`, because `accent` text measures only Lc 46 on dark surfaces; the pins are in `src/mainview/__tests__/contrast-check.test.ts`.
 
 ## Risks
 
-A coordinator in In Progress in light theme shows strip and band as one blue block; the rail still names the status. `accent-emphasis` on the selected switcher row measures Lc 58–68, partly under the 60 non-body floor; the selected state is already marked by its tint. The sidebar's hide toggle overlaps the bar's right end on hover.
+A coordinator in In Progress in light theme shows strip and band as one blue block; the rail still names the status. `accent-emphasis` on the selected switcher row measures Lc 58–68, partly under the 60 non-body floor; the selected state is already marked by its tint. The sidebar's hide toggle lands inside the bar on hover; with the project badge shown (global scope) the bar starts below the badge instead of at the row's top.
 
 ## Alternatives considered
 
