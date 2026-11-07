@@ -1,6 +1,7 @@
 import type { Task } from "../../shared/types";
 import {
 	AGENT_MESSAGE_HOOK_MAX_CHARS,
+	acknowledgeHookClaim,
 	agentMessageHoldKey,
 	claimHeldAgentMessagesForHook,
 	pendingAgentMessageHoldCount,
@@ -15,6 +16,8 @@ export interface ClaudePostToolUseResult {
 	messages?: number;
 	/** Lines for the user: hook context does not show in the pane the way typed text did. */
 	notice?: string;
+	/** The hook acknowledges it once printed (`task.claudePostToolUseAck`); unacknowledged mail is held again. */
+	claimId?: string;
 	moveError?: string;
 }
 
@@ -42,6 +45,7 @@ export const hookMailboxHandlers: Record<string, Handler> = {
 			}, ctx));
 		} catch (err) {
 			out.moveError = err instanceof Error ? err.message : String(err);
+			log.warn("Claude PostToolUse status move failed", { taskId: String(params.taskId).slice(0, 8), error: out.moveError });
 		}
 		const paneId = typeof params.paneId === "string" ? params.paneId : "";
 		// Nothing held anywhere is the common case, and it costs no task lookup.
@@ -52,11 +56,17 @@ export const hookMailboxHandlers: Record<string, Handler> = {
 			if (claim) {
 				out.context = claim.text;
 				out.messages = claim.messages;
+				out.claimId = claim.claimId;
 				if (claim.notices.length > 0) out.notice = claim.notices.join("\n");
 			}
 		} catch (err) {
 			log.warn("hook mailbox drain failed", { taskId: String(params.taskId).slice(0, 8), paneId, error: String(err) });
 		}
 		return out;
+	},
+	/** The hook printed the drained mail: only now is it delivered. */
+	"task.claudePostToolUseAck": async (params) => {
+		const claimId = typeof params.claimId === "string" ? params.claimId : "";
+		return { acknowledged: claimId !== "" && acknowledgeHookClaim(claimId) };
 	},
 };

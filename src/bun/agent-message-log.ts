@@ -165,7 +165,8 @@ export function readAgentMessageLog(project: Project, limit = 500): AgentMessage
 	}
 	const oldestDay = days[0] ? days[0].slice(0, -".jsonl".length) : null;
 	const rows: AgentMessageLogRow[] = [];
-	// Newest first, so a receipt is always met before the message it confirms.
+	// A receipt is written the same day as its message or later, so collecting each
+	// day's receipts before its rows sees every one, whatever order the lines landed in.
 	const receipts = new Map<string, AgentMessageLogReceipt>();
 	let hasMore = false;
 	for (const name of [...days].reverse()) {
@@ -185,11 +186,9 @@ export function readAgentMessageLog(project: Project, limit = 500): AgentMessage
 			if (row) dayRows.push(row);
 		}
 		dayRows.reverse();
+		for (const row of dayRows) if ("receiptFor" in row) receipts.set(row.receiptFor, row);
 		for (const row of dayRows) {
-			if ("receiptFor" in row) {
-				receipts.set(row.receiptFor, row);
-				continue;
-			}
+			if ("receiptFor" in row) continue;
 			if (rows.length >= limit) {
 				hasMore = true;
 				break;

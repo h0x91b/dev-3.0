@@ -212,6 +212,15 @@ describe("hook delivery receipts", () => {
 		expect(page.hasMore).toBe(false);
 	});
 
+	it("folds a receipt written before its row: the hook can claim while the row is still being logged", () => {
+		const day = new Date(2026, 7, 23, 12, 0, 0);
+		appendAgentMessageLogReceipt(project, receipt("m-1", "2026-08-23T12:00:01.000Z"), day);
+		appendAgentMessageLog(project, makeRow({ messageId: "m-1", status: "held", body: "raced" }), day);
+		const page = readAgentMessageLog(project);
+		expect(page.rows).toHaveLength(1);
+		expect(page.rows[0]).toMatchObject({ messageId: "m-1", status: "delivered", deliveredVia: "hook" });
+	});
+
 	it("leaves a typed message without a receipt exactly as written", () => {
 		const day = new Date(2026, 7, 23, 12, 0, 0);
 		appendAgentMessageLog(project, makeRow({ messageId: "m-2", status: "held" }), day);

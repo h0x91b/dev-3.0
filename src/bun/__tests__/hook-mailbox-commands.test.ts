@@ -49,11 +49,16 @@ describe("task.claudePostToolUse", () => {
 	it("drains the pane's held message, keyed by the task the move returned", async () => {
 		move.mockResolvedValue({ id: "task-full-id", status: "in-progress" });
 		const delivered = holdFor("task-full-id", "%3", "<dev3-ai-message>hi</dev3-ai-message>");
-		await expect(handler({ taskId: "task-1", paneId: "%3" })).resolves.toEqual({
+		const out = (await handler({ taskId: "task-1", paneId: "%3" })) as { claimId?: string };
+		expect(out).toEqual({
 			context: "<dev3-ai-message>hi</dev3-ai-message>",
 			messages: 1,
+			claimId: expect.any(String),
 		});
+		expect(delivered).not.toHaveBeenCalled();
+		await expect(hookMailboxHandlers["task.claudePostToolUseAck"]!({ claimId: out.claimId })).resolves.toEqual({ acknowledged: true });
 		expect(delivered).toHaveBeenCalledTimes(1);
+		await expect(hookMailboxHandlers["task.claudePostToolUseAck"]!({ claimId: out.claimId })).resolves.toEqual({ acknowledged: false });
 		expect(pendingAgentMessageHoldCount()).toBe(0);
 		expect(resolveTaskFromParams).not.toHaveBeenCalled();
 	});
@@ -67,7 +72,7 @@ describe("task.claudePostToolUse", () => {
 	it("still drains when the move failed, resolving the task itself", async () => {
 		move.mockRejectedValue(new Error("status guard"));
 		holdFor("task-full-id", "%3", "mail");
-		await expect(handler({ taskId: "task-1", paneId: "%3" })).resolves.toEqual({ moveError: "status guard", context: "mail", messages: 1 });
+		await expect(handler({ taskId: "task-1", paneId: "%3" })).resolves.toEqual({ moveError: "status guard", context: "mail", messages: 1, claimId: expect.any(String) });
 	});
 
 	it("drains nothing without a pane (a subagent's tool call) and leaves the hold to the pane", async () => {

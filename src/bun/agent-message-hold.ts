@@ -51,8 +51,10 @@
  *    ({@link claimHeldAgentMessagesForHook}). Each message goes out exactly once: the
  *    claim and the release both take messages out of the hold synchronously, so
  *    whichever runs first wins and the other finds nothing. Only leading messages that
- *    opted in are claimed, so arrival order survives, and a stranded turn is never
- *    claimed around.
+ *    opted in are claimed, and a stranded turn is never claimed around. Order can still
+ *    invert while a release is typing: its leftovers rejoin the hold only afterwards.
+ *    A claim counts as delivered only once the hook acknowledges it; otherwise it is
+ *    held again ({@link AGENT_MESSAGE_HOOK_ACK_TIMEOUT_MS}).
  *  - In-memory and deliberately not persisted. If the app dies inside the window the
  *    message is LOST, and nothing is left in the input box either. Accepted; see
  *    `decisions/2026/08/23/hold-the-agent-message-not-just-its-enter.md`.
@@ -441,13 +443,31 @@ export function releaseStrandedAgentMessagesOnSubmission(taskId: string, submitt
 	return released;
 }
 
+/**
+ * How long a hook claim waits for the hook to confirm it printed the messages. Past
+ * it they go back in front of the pane's hold: a hook killed mid-turn or a socket
+ * that timed out must cost a duplicate at worst, never a silent loss.
+ */
+export const AGENT_MESSAGE_HOOK_ACK_TIMEOUT_MS = 45_000;
+
 /** What a hook drain hands the agent: the envelopes, burst-separated, and how many. */
 export interface HookClaim {
 	text: string;
 	messages: number;
 	/** One line per message that has a notice, for the user. */
 	notices: string[];
+	/** Pass to {@link acknowledgeHookClaim} once the hook printed the text. */
+	claimId: string;
 }
+
+interface PendingHookClaim {
+	key: string;
+	hold: Hold;
+	deliveries: HeldDelivery[];
+	timer: ReturnType<typeof setTimeout>;
+}
+
+const pendingHookClaims = new Map<string, PendingHookClaim>();
 
 /**
  * The agent in this pane just finished a tool call, so it is mid-turn and will read
@@ -490,17 +510,17 @@ export async function claimHeldAgentMessagesForHook(key: string, budgetChars: nu
 		report(hold, { kind: "dropped", messages: 1, why: refusal });
 	}
 	if (kept.length === 0) return null;
-	for (const delivery of kept) {
-		try {
-			delivery.hook?.delivered();
-		} catch (err) {
-			log.warn("hook delivery receipt failed", { ...hold.context, error: String(err) });
-		}
-	}
+	const claimId = crypto.randomUUID();
+	pendingHookClaims.set(claimId, {
+		key,
+		hold,
+		deliveries: kept,
+		timer: setTimeout(() => restoreUnacknowledgedClaim(claimId), AGENT_MESSAGE_HOOK_ACK_TIMEOUT_MS),
+	});
 	const parts = kept.map((d) => d.hook?.text ?? "");
 	const trailer = await hookTrailer(hold, kept[kept.length - 1], budgetChars - used - AGENT_MESSAGE_BURST_SEPARATOR.length);
 	if (trailer) parts.push(trailer);
-	log.info("held agent messages delivered through the agent's tool hook", {
+	log.info("held agent messages handed to the agent's tool hook", {
 		...hold.context,
 		messages: String(kept.length),
 		chars: String(used),
@@ -508,7 +528,47 @@ export async function claimHeldAgentMessagesForHook(key: string, budgetChars: nu
 		waiting: String(hold.deliveries.length),
 	});
 	const notices = kept.flatMap((d) => (d.hook?.notice ? [d.hook.notice] : []));
-	return { text: parts.join(AGENT_MESSAGE_BURST_SEPARATOR), messages: kept.length, notices };
+	return { text: parts.join(AGENT_MESSAGE_BURST_SEPARATOR), messages: kept.length, notices, claimId };
+}
+
+/**
+ * The hook printed a claim's text: only now is it delivered, so only now its
+ * receipts are written. Returns false for an unknown or already-restored claim.
+ */
+export function acknowledgeHookClaim(claimId: string): boolean {
+	const pending = pendingHookClaims.get(claimId);
+	if (!pending) return false;
+	clearTimeout(pending.timer);
+	pendingHookClaims.delete(claimId);
+	for (const delivery of pending.deliveries) {
+		try {
+			delivery.hook?.delivered();
+		} catch (err) {
+			log.warn("hook delivery receipt failed", { ...pending.hold.context, error: String(err) });
+		}
+	}
+	return true;
+}
+
+/** No ack arrived: the claimed messages go back in front of the pane's hold, older than anything held since. */
+function restoreUnacknowledgedClaim(claimId: string): void {
+	const pending = pendingHookClaims.get(claimId);
+	if (!pending) return;
+	pendingHookClaims.delete(claimId);
+	log.warn("hook-claimed agent messages were never confirmed; holding them again", {
+		...pending.hold.context,
+		messages: String(pending.deliveries.length),
+	});
+	const now = Date.now();
+	const current = holds.get(pending.key);
+	if (current) {
+		current.deliveries.unshift(...pending.deliveries);
+		if (!current.stranded) rearm(pending.key, current, now);
+		return;
+	}
+	const restored: Hold = { ...pending.hold, timer: null, firstAt: now, deliveries: pending.deliveries, stranded: null, modeDeferred: false };
+	holds.set(pending.key, restored);
+	rearm(pending.key, restored, now);
 }
 
 /** The drain's trailer when it fits what is left of the budget; a failure costs only the trailer. */
@@ -767,5 +827,7 @@ export function pendingAgentMessageHoldCount(): number {
 export function resetAgentMessageHolds(): void {
 	for (const hold of holds.values()) if (hold.timer) clearTimeout(hold.timer);
 	holds.clear();
+	for (const pending of pendingHookClaims.values()) clearTimeout(pending.timer);
+	pendingHookClaims.clear();
 	lastHumanInputAt.clear();
 }

@@ -35,10 +35,11 @@ let stderrSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
 	stdout = "";
 	stderr = "";
-	stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk: string | Uint8Array) => {
+	stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(((chunk: string | Uint8Array, cb?: unknown) => {
 		stdout += String(chunk);
+		if (typeof cb === "function") cb();
 		return true;
-	});
+	}) as typeof process.stdout.write);
 	stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => {
 		stderr += String(chunk);
 		return true;
@@ -68,6 +69,15 @@ describe("handleClaudePostTool", () => {
 		expect(JSON.parse(stdout)).toEqual({
 			hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: "<dev3-ai-message>hi</dev3-ai-message>" },
 		});
+	});
+
+	it("acknowledges the claim only after printing it, so the app stops holding it", async () => {
+		mockSend
+			.mockResolvedValueOnce({ id: "1", ok: true, data: { context: "mail", messages: 1, claimId: "claim-1" } })
+			.mockResolvedValueOnce({ id: "2", ok: true, data: { acknowledged: true } });
+		await handleClaudePostTool(JSON.stringify(PAYLOAD), SOCKET, CONTEXT, PANE_ENV);
+		expect(JSON.parse(stdout).hookSpecificOutput.additionalContext).toBe("mail");
+		expect(mockSend).toHaveBeenNthCalledWith(2, SOCKET, "task.claudePostToolUseAck", { claimId: "claim-1" });
 	});
 
 	it("prints nothing when nothing was held", async () => {

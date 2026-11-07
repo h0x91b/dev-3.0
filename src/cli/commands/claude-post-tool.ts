@@ -28,6 +28,12 @@ export function postToolUseContextOutput(context: string, notice?: string): stri
 	});
 }
 
+function writeStdout(text: string): Promise<void> {
+	return new Promise((resolve, reject) => {
+		process.stdout.write(text, (err) => (err ? reject(err) : resolve()));
+	});
+}
+
 /**
  * `dev3 hook claude-post-tool`: Claude's PostToolUse hook. One request does the
  * status move the hook always made and drains any `dev3 message` held for this
@@ -53,9 +59,13 @@ export async function handleClaudePostTool(
 			process.stderr.write(`dev3 Claude tool hook: ${response.error || "request failed"}\n`);
 			return;
 		}
-		const data = (response.data ?? {}) as { context?: unknown; notice?: unknown; moveError?: unknown };
+		const data = (response.data ?? {}) as { context?: unknown; notice?: unknown; claimId?: unknown; moveError?: unknown };
 		if (typeof data.moveError === "string") process.stderr.write(`dev3 Claude tool hook: ${data.moveError}\n`);
-		if (typeof data.context === "string" && data.context) process.stdout.write(postToolUseContextOutput(data.context, typeof data.notice === "string" ? data.notice : undefined));
+		if (typeof data.context !== "string" || !data.context) return;
+		await writeStdout(postToolUseContextOutput(data.context, typeof data.notice === "string" ? data.notice : undefined));
+		// Unacknowledged mail is held again by the app, so a hook that dies before this
+		// line costs a duplicate, never a lost message.
+		if (typeof data.claimId === "string") await sendRequest(socketPath, "task.claudePostToolUseAck", { claimId: data.claimId });
 	} catch (error) {
 		process.stderr.write(`dev3 Claude tool hook: ${error instanceof Error ? error.message : String(error)}\n`);
 	}
