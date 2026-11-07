@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	kimiUsageUrl,
 	extractCodexSnapshotFromRolloutLines,
 	findRateLimitSnapshot,
 	rateLimitLoginKey,
@@ -13,6 +14,7 @@ import {
 	parseClaudeStatusLinePayload,
 	parseCodexAppServerRateLimits,
 	parseCodexRateLimits,
+	parseKimiUsage,
 	RATE_LIMIT_ACTIVITY_WINDOW_MS,
 	rateLimitActivityAt,
 	scopeRateLimitSnapshots,
@@ -401,5 +403,81 @@ describe("headerPillWindows", () => {
 	it("leaves monthly credits out beside timed windows, and keeps them when they are all there is", () => {
 		expect(headerPillWindows(snap([w("monthly_credits", 40, null), w("primary", 10, 300)])).map((x) => x.id)).toEqual(["primary"]);
 		expect(headerPillWindows(snap([w("monthly_credits", 40, null)])).map((x) => x.id)).toEqual(["monthly_credits"]);
+	});
+});
+
+describe("kimiUsageUrl", () => {
+	it.each([
+		["https://api.example.test/coding/", "https://api.example.test/coding/v1/usages"],
+		["https://api.example.test/coding", "https://api.example.test/coding/v1/usages"],
+		["https://api.example.test/coding/v1/", "https://api.example.test/coding/v1/usages"],
+	])("maps %s to %s", (base, expected) => {
+		expect(kimiUsageUrl(base)?.href).toBe(expected);
+	});
+
+	it("gives nothing for a base URL that does not parse", () => {
+		expect(kimiUsageUrl("not a url")).toBeNull();
+	});
+});
+
+describe("parseKimiUsage", () => {
+	const real = {
+		limits: [{ window: { duration: 300, timeUnit: "TIME_UNIT_MINUTE" }, detail: { limit: "100", used: "100", resetTime: "2026-11-05T11:34:45.366762Z" } }],
+		usages: {
+			limit_5h: { used_ratio: 1, reset_time: "2026-11-05T11:34:44Z" },
+			limit_month_total: { used_ratio: 0.0691, reset_time: "2026-12-05T00:00:00Z" },
+			limit_month_code: { used_ratio: 0.0691, reset_time: "2026-12-05T00:00:00Z" },
+		},
+	};
+
+	it("reads the 5-hour and monthly windows of a real response", () => {
+		const snap = parseKimiUsage(real, NOW)!;
+		expect(snap.source).toBe("kimi");
+		expect(snap.capturedAt).toBe(NOW);
+		const [five, month] = snap.windows;
+		expect(five).toMatchObject({ id: "five_hour", windowMinutes: 300, resetsAt: Date.parse("2026-11-05T11:34:44Z") });
+		expect(five.usedPercent).toBe(100);
+		expect(month).toMatchObject({ id: "monthly", windowMinutes: null, resetsAt: Date.parse("2026-12-05T00:00:00Z") });
+		expect(month.usedPercent).toBeCloseTo(6.91, 5);
+	});
+
+	it("falls back to the 300-minute limits[] entry when limit_5h is missing", () => {
+		const snap = parseKimiUsage({ limits: real.limits, usages: { limit_month_total: real.usages.limit_month_total } }, NOW)!;
+		expect(snap.windows[0]).toMatchObject({ id: "five_hour", usedPercent: 100, resetsAt: Date.parse("2026-11-05T11:34:45.366762Z") });
+		expect(snap.windows).toHaveLength(2);
+	});
+
+	it("keeps only the monthly window when that is all there is", () => {
+		const snap = parseKimiUsage({ usages: { limit_month_total: real.usages.limit_month_total } }, NOW)!;
+		expect(snap.windows.map((w) => w.id)).toEqual(["monthly"]);
+	});
+
+	it("accepts numbers sent as strings", () => {
+		const snap = parseKimiUsage({ usages: { limit_5h: { used_ratio: "0.25", reset_time: "2026-11-05T11:34:44Z" } } }, NOW)!;
+		expect(snap.windows[0].usedPercent).toBe(25);
+	});
+
+	it("returns null for anything without a window", () => {
+		for (const bad of [null, undefined, "x", 3, [], {}, { usages: {} }, { usages: { limit_5h: { reset_time: "x" } } }]) {
+			expect(parseKimiUsage(bad, NOW)).toBeNull();
+		}
+	});
+
+	it("feeds the header pill only without Claude or Codex, and keeps two providers apart", () => {
+		const kimi = { ...parseKimiUsage(real, NOW + 5_000)!, providerId: "p1" };
+		const claude = parseClaudeStatusLinePayload({ rate_limits: { five_hour: { used_percentage: 3 } } }, NOW)!;
+		expect(latestRateLimitSnapshot({ generatedAt: NOW, snapshots: [claude, kimi] })).toBe(claude);
+		expect(latestRateLimitSnapshot({ generatedAt: NOW, snapshots: [kimi] })).toBe(kimi);
+		expect(worstWindow({ generatedAt: NOW, snapshots: [claude, kimi] })!.source).toBe("claude");
+		expect(rateLimitLoginKey(kimi)).not.toBe(rateLimitLoginKey({ ...kimi, providerId: "p2" }));
+		expect(windowLabel(kimi.windows[1])).toBe("1mo");
+	});
+
+	it("keeps the pill on Claude or Codex when the Kimi reading is the freshest", () => {
+		const claude = parseClaudeStatusLinePayload({ rate_limits: { five_hour: { used_percentage: 3 } } }, NOW)!;
+		const codex = parseCodexRateLimits({ primary: { used_percent: 20 } }, NOW + 1_000)!;
+		const kimi = { ...parseKimiUsage(real, NOW + 60_000)!, providerId: "p1" };
+		expect(latestRateLimitSnapshot({ generatedAt: NOW, snapshots: [kimi, claude] })).toBe(claude);
+		expect(latestRateLimitSnapshot({ generatedAt: NOW, snapshots: [kimi, claude, codex] })).toBe(codex);
 	});
 });

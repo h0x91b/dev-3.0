@@ -74,10 +74,11 @@ export default function TaskGitActionsSheet({
 		statusLoading,
 	} = git;
 
-	// Git mutations only make sense on a real, active worktree. Virtual boards have
-	// no git domain at all (Bible §3) — the caller already gates on kind, but keep
-	// the component self-contained.
-	if (!hasGitWorkflow(project) || !isTaskActive || !task.worktreePath) {
+	// Git mutations only make sense on a real, active worktree. An Operations task
+	// has no git domain of its own (Bible §3); with an attached repo it gets the
+	// read-only diff row and nothing else. A project with the git workflow off has none.
+	const readOnly = project.kind === "virtual";
+	if ((readOnly ? !task.attachedRepo : !hasGitWorkflow(project)) || !isTaskActive || !task.worktreePath) {
 		return null;
 	}
 
@@ -256,7 +257,7 @@ export default function TaskGitActionsSheet({
 				)}
 			</h3>
 			<div className="touch-actions flex flex-col gap-2">
-				{rows.map((row) => (
+				{(readOnly ? rows.filter((row) => row.key === "diff") : rows).map((row) => (
 					<button
 						key={row.key}
 						type="button"

@@ -9,8 +9,9 @@ export default function SettingsToggle({
 	checked: boolean;
 	disabled?: boolean;
 	ariaLabel?: string;
-	onLabel: string;
-	offLabel: string;
+	/** Omit both where the row already names the setting; then ariaLabel is required for a name. */
+	onLabel?: string;
+	offLabel?: string;
 	onToggle: () => void;
 }) {
 	return (
@@ -43,7 +44,9 @@ export default function SettingsToggle({
 					}`}
 				/>
 			</div>
-			<span className="text-fg text-sm">{checked ? onLabel : offLabel}</span>
+			{onLabel !== undefined && offLabel !== undefined && (
+				<span className="text-fg text-sm">{checked ? onLabel : offLabel}</span>
+			)}
 		</label>
 	);
 }

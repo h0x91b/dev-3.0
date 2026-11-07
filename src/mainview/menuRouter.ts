@@ -10,6 +10,7 @@ import type { TFunction } from "./i18n";
 import type { AppState, AppAction, Route } from "./state";
 import type { Locale } from "./i18n/types";
 import type { TaskStatus } from "../shared/types";
+import { isBoardMounted, parseBoardViewAction, runBoardViewCommand } from "./board-views/view-commands";
 
 /**
  * Universal dispatch for `application-menu-clicked` events that the bun side
@@ -81,8 +82,29 @@ function applyTheme(preference: "light" | "dark" | "system"): void {
 	api.request.setTmuxTheme({ theme: resolved, preference }).catch(() => {});
 }
 
+/** The board the current route belongs to, the space board included; null off a project. */
+function boardRouteFor(state: AppState): Route | null {
+	const r = state.route;
+	const projectId = currentProjectId(state);
+	if (!projectId) return null;
+	const spaceId = r.screen === "project" || r.screen === "task" ? r.spaceId : undefined;
+	return spaceId ? { screen: "project", projectId, spaceId } : { screen: "project", projectId };
+}
+
 export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<void> {
 	const { state } = ctx;
+
+	const boardViewId = parseBoardViewAction(action);
+	if (boardViewId) {
+		// On a board this only switches the view; anywhere else it opens the board first.
+		if (!isBoardMounted()) {
+			const board = boardRouteFor(state);
+			if (!board) return;
+			navigate(ctx, board);
+		}
+		runBoardViewCommand({ kind: "pick", viewId: boardViewId });
+		return;
+	}
 
 	switch (action) {
 		// ── App: theme / locale ──
@@ -188,12 +210,9 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 		case "view-dashboard":
 			navigate(ctx, { screen: "dashboard" });
 			return;
-		case "view-kanban": {
-			const projectId = currentProjectId(state);
-			if (projectId) navigate(ctx, { screen: "project", projectId });
-			else navigate(ctx, { screen: "dashboard" });
+		case "view-board":
+			navigate(ctx, boardRouteFor(state) ?? { screen: "dashboard" });
 			return;
-		}
 		case "view-changelog":
 			navigate(ctx, { screen: "changelog" });
 			break;
@@ -505,7 +524,9 @@ export const BROWSER_HANDLED_ACTIONS: ReadonlySet<string> = new Set<string>([
 	"toggle-streamer-mode",
 	"about", "hard-refresh",
 	// View / navigation
-	"view-dashboard", "view-kanban", "view-changelog", "view-stats", "view-sessions", "open-settings",
+	"view-dashboard", "view-board",
+	"view-board:builtin:kanban", "view-board:builtin:table", "view-board:builtin:tree", "view-board:builtin:attention",
+	"view-changelog", "view-stats", "view-sessions", "open-settings",
 	// The traffic log is a renderer overlay, so it works in a browser tab too — it
 	// was only ever missing here, which left remote users on ⇧⌘M and the palette.
 	"view-agent-traffic-log",

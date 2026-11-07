@@ -1,6 +1,7 @@
 import { stopAgentMessageLogWatches } from "./agent-message-log-watch";
 import { startBoardCopy, stopBoardCopy } from "./board-copy";
 import { claudeSessionWatches } from "./claude-session-watch";
+import { codexTurnWatches } from "./codex-turn-watch";
 /**
  * Headless entry point for `dev3 remote`.
  *
@@ -24,7 +25,7 @@ import { claudeSessionWatches } from "./claude-session-watch";
 import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
-import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, setFocusMode, pushTerminalBell } from "./rpc-handlers";
+import { handlers, setPushMessage, getPushMessage, setAppForeground, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, setFocusMode, pushTerminalBell } from "./rpc-handlers";
 import { createLogger, getLogPath } from "./logger";
 import { applySavedTmuxPanePreferences } from "./tmux/config";
 import { DEV3_HOME } from "./paths";
@@ -43,6 +44,7 @@ import { VIEWS_DIR_AUTO_ENV } from "./self-update";
 import { configureHandoffWorker } from "./conversation-handoff-runner";
 import { configureClonefileWorker } from "./cow-clone";
 import { configureWorktreeCleanupWorker } from "./worktree-cleanup-scheduler";
+import { startBackgroundSchedulers, stopBackgroundSchedulers } from "./background-schedulers";
 
 const log = createLogger("headless");
 
@@ -329,6 +331,9 @@ try {
 		onQrTokenConsumed: () => {
 			getPushMessage()?.("qrTokenConsumed", {});
 		},
+		// A tab killed or a phone locked while focused never reports blur; without
+		// this the focus tracker would credit the last viewed task indefinitely.
+		onLastRpcClientGone: () => setAppForeground(false),
 	});
 } catch (err) {
 	// The free-port probe above is several awaits old by now, so somebody can still
@@ -531,6 +536,11 @@ startRateLimitMonitor((name, payload) => {
 	pushToBrowserClients(name, payload);
 });
 
+// ── Background jobs (automations, "Start in", "Send later", keep-alive, cleanup, focus) ──
+// Same call as index.ts. The clock-driven ones step aside while a desktop app (or any
+// other dev3 process) shares this ~/.dev3.0, so nothing fires twice.
+startBackgroundSchedulers({ yieldToPeers: true });
+
 // ── PTY event wiring (no mainWindow.webview.rpc — just push to browser) ──
 setOnPtyDied((sessionKey) => {
 	try {
@@ -592,22 +602,33 @@ setOnPaneExited((taskId, paneId) => {
 });
 
 // ── Graceful shutdown ──
+const SHUTDOWN_FLUSH_TIMEOUT_MS = 2_000;
+
+let shuttingDown = false;
+
 function shutdown(signal: string): void {
+	// A second Ctrl-C while the last write is pending means "now".
+	if (shuttingDown) process.exit(0);
+	shuttingDown = true;
 	log.info(`Received ${signal}, shutting down`);
 	stopAgentMessageLogWatches();
 	stopBoardCopy();
 	claudeSessionWatches.close();
+	codexTurnWatches.close();
 	stopQrAutoRefresh();
 	stopPortScanPoller();
 	stopResourceMonitor();
 	stopRateLimitMonitor();
+	const focusFlushed = stopBackgroundSchedulers();
 	stopSelfUpdateWatch();
 	stopSocketServer();
 	clearRemoteStateIfOwnedBy(process.pid);
 	cleanupAllTunnels();
 	accountLogins.closeAll();
 	stopTunnel();
-	process.exit(0);
+	// Give the focus tracker's last write a moment; never let a stuck disk hold the exit.
+	void Promise.race([focusFlushed, new Promise((resolve) => setTimeout(resolve, SHUTDOWN_FLUSH_TIMEOUT_MS))])
+		.finally(() => process.exit(0));
 }
 
 process.on("SIGINT", () => shutdown("SIGINT"));

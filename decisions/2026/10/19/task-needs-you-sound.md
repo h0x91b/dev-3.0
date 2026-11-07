@@ -1,5 +1,7 @@
 # A separate, opt-in chime for tasks that need the user
 
+> Partly superseded on 2026-11-07 by `decisions/2026/11/05/split-needs-you-sound-per-column.md`: `playSoundOnTaskNeedsYou` is now split into one opt-in toggle per column; the rest still holds.
+
 ## Context
 
 Only `completed` and `cancelled` played a sound. Issue #2005 asks for one when a

@@ -7,6 +7,7 @@ import * as agents from "./agents";
 import * as data from "./data";
 import * as git from "./git";
 import * as repoConfig from "./repo-config";
+import { rootProjectFor } from "./ops-worktree";
 import { codexAccountIdForHome } from "./agent-accounts";
 import { selectCodexConversations, type CodexSelectionIntent } from "./codex-resume-home";
 
@@ -23,7 +24,7 @@ export function isCodexPane(pane: PaneSessionEntry, allAgents: CodingAgent[]): b
 /** Where resume looks for a Codex conversation, besides the managed account stores. */
 export async function configuredCodexHomes(project: Project, task: Task, agent: CodingAgent | undefined, configId: string | null | undefined): Promise<string[]> {
 	const config = agent ? agents.findConfig(agent, configId) : undefined;
-	const projectEnv = await repoConfig.resolveProjectEnv(project, task.worktreePath!, { foreignCode: task.foreignCode });
+	const projectEnv = await repoConfig.resolveProjectEnv(rootProjectFor(project, task), task.worktreePath!, { foreignCode: task.foreignCode });
 	return [config?.envVars?.CODEX_HOME, projectEnv.CODEX_HOME, process.env.CODEX_HOME]
 		.filter((value): value is string => !!value)
 		.map((value) => resolve(task.worktreePath!, value));

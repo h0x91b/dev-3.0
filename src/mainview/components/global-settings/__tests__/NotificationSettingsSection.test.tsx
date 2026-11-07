@@ -15,7 +15,8 @@ const t = Object.assign((key: string) => key, {
 
 function renderSection(settings: Partial<GlobalSettings> = {}) {
 	const onSoundToggle = vi.fn();
-	const onNeedsYouSoundToggle = vi.fn();
+	const onQuestionsSoundToggle = vi.fn();
+	const onReviewSoundToggle = vi.fn();
 	const onFocusModeToggle = vi.fn();
 	const onWatchByDefaultToggle = vi.fn();
 	render(
@@ -24,13 +25,14 @@ function renderSection(settings: Partial<GlobalSettings> = {}) {
 				t={t}
 				globalSettings={{ taskSortOrder: "oldest-first", ...settings } as GlobalSettings}
 				onSoundToggle={onSoundToggle}
-				onNeedsYouSoundToggle={onNeedsYouSoundToggle}
+				onQuestionsSoundToggle={onQuestionsSoundToggle}
+				onReviewSoundToggle={onReviewSoundToggle}
 				onFocusModeToggle={onFocusModeToggle}
 				onWatchByDefaultToggle={onWatchByDefaultToggle}
 			/>
 		</I18nProvider>,
 	);
-	return { onSoundToggle, onNeedsYouSoundToggle, onFocusModeToggle, onWatchByDefaultToggle };
+	return { onSoundToggle, onQuestionsSoundToggle, onReviewSoundToggle, onFocusModeToggle, onWatchByDefaultToggle };
 }
 
 describe("NotificationSettingsSection", () => {
@@ -39,7 +41,8 @@ describe("NotificationSettingsSection", () => {
 
 		expect(screen.getByText("settings.categoryNotifications")).toBeInTheDocument();
 		expect(document.querySelector('[data-settings-entry="task-complete-sound"]')).not.toBeNull();
-		expect(document.querySelector('[data-settings-entry="task-needs-you-sound"]')).not.toBeNull();
+		expect(document.querySelector('[data-settings-entry="task-questions-sound"]')).not.toBeNull();
+		expect(document.querySelector('[data-settings-entry="task-review-sound"]')).not.toBeNull();
 		expect(document.querySelector('[data-settings-entry="focus-mode"]')).not.toBeNull();
 		expect(document.querySelector('[data-settings-entry="watch-by-default"]')).not.toBeNull();
 		expect(screen.getByTestId("browser-notification-settings")).toBeInTheDocument();
@@ -61,14 +64,28 @@ describe("NotificationSettingsSection", () => {
 		expect(callbacks.onWatchByDefaultToggle).toHaveBeenCalledWith(false);
 	});
 
-	it("shows the needs-you chime off by default and turns it on", async () => {
+	it("shows both needs-you chimes off by default and turns each on separately", async () => {
 		const callbacks = renderSection();
-		const toggle = screen.getByRole("switch", { name: "settings.taskNeedsYouSound" });
+		const questions = screen.getByRole("switch", { name: "settings.taskQuestionsSound" });
+		const review = screen.getByRole("switch", { name: "settings.taskReviewSound" });
 
-		expect(toggle).toHaveAttribute("aria-checked", "false");
-		await userEvent.click(toggle);
+		expect(questions).toHaveAttribute("aria-checked", "false");
+		expect(review).toHaveAttribute("aria-checked", "false");
+		await userEvent.click(questions);
 
-		expect(callbacks.onNeedsYouSoundToggle).toHaveBeenCalledWith(true);
+		expect(callbacks.onQuestionsSoundToggle).toHaveBeenCalledWith(true);
+		expect(callbacks.onReviewSoundToggle).not.toHaveBeenCalled();
 		expect(callbacks.onSoundToggle).not.toHaveBeenCalled();
+	});
+
+	it("turns a stored Your Review chime off without touching Has Questions", async () => {
+		const callbacks = renderSection({ playSoundOnTaskReview: true });
+		const review = screen.getByRole("switch", { name: "settings.taskReviewSound" });
+
+		expect(review).toHaveAttribute("aria-checked", "true");
+		await userEvent.click(review);
+
+		expect(callbacks.onReviewSoundToggle).toHaveBeenCalledWith(false);
+		expect(callbacks.onQuestionsSoundToggle).not.toHaveBeenCalled();
 	});
 });

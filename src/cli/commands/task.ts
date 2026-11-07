@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { formatPrRef, formatTaskRef, formatTaskRefFor } from "../../shared/task-refs";
 import { resolve } from "node:path";
 import type { CliResponse, Task, TaskStatus, TaskType, TaskHistoryEntry, TaskNote } from "../../shared/types";
 import { STATUS_LABELS, ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DRAFT_TASK_ACTIVATION_ERROR, TASK_REF_UNRESOLVED_PREFIX, TASK_TYPES, getTaskTitle, getTaskOverview, hasGitWorkflow, normalizePriority, normalizeTaskType, taskAgentSessionLooksLive, taskCompletesManually } from "../../shared/types";
@@ -166,7 +167,7 @@ function printTask(task: ShownTask, opts: ShowTaskOptions = {}): void {
 		fields.push(["Pull requests:", pullRequests.map((pr) => {
 			const state = pr.state ? ` ${pr.state.toLowerCase()}` : "";
 			const current = pr.number === task.prNumber ? " (current)" : "";
-			return `#${pr.number}${state}${current}`;
+			return `${formatPrRef(pr.number)}${state}${current}`;
 		}).join(", ")]);
 	}
 
@@ -345,7 +346,7 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 	}
 
 	const task = resp.data as Task;
-	process.stdout.write(`Created task ${task.id.slice(0, 8)} (seq ${task.seq}): ${getTaskTitle(task)}\n`);
+	process.stdout.write(`Created task ${task.id.slice(0, 8)} (${formatTaskRefFor(task.seq, task.projectId, context?.projectId)}): ${getTaskTitle(task)}\n`);
 	if (task.epicId) process.stderr.write(`Epic: ${task.epicId.slice(0, 8)}${epic.epic ? "" : " (inherited from the creating task)"}\n`);
 	// The type is only real once the role brief is in the description the agent
 	// will read, so name it rather than leaving the caller to check the card.
@@ -974,8 +975,8 @@ function reportLaunchOutcome(outcome: LaunchApprovalOutcome, codexStopHook: bool
 			.map((entry, i) => `  variant #${entry.variantIndex ?? i + 1}  ${entry.replyCommand}`)
 			.join("\n");
 		process.stdout.write(
-			`User approved — seq:${outcome.seq} is starting as ${launched.length} variants: ${outcome.title ?? ""}\n` +
-			`They all share seq:${outcome.seq}, so address each one by its own id:\n` +
+			`User approved — ${formatTaskRef(outcome.seq!)} is starting as ${launched.length} variants: ${outcome.title ?? ""}\n` +
+			`They all share ${formatTaskRef(outcome.seq!)}, so address each one by its own id:\n` +
 			`${rows}\n` +
 			"They are independent agents on the same prompt. Each knows you started it and reports back to this task.\n" +
 			stillPreparingNote(outcome, launched),
@@ -983,7 +984,7 @@ function reportLaunchOutcome(outcome: LaunchApprovalOutcome, codexStopHook: bool
 		return;
 	}
 	process.stdout.write(
-		`User approved — task seq:${outcome.seq} is starting: ${outcome.title ?? ""}\n` +
+		`User approved — task ${formatTaskRef(outcome.seq!)} is starting: ${outcome.title ?? ""}\n` +
 		`Talk to it with: ${launched[0]?.replyCommand ?? fallback}\n` +
 		(bySender
 			? "It does not know who started it yet — your first --as-sender message tells it how to reply.\n"
@@ -1010,7 +1011,7 @@ function exitOnFailedPreparation(outcome: LaunchApprovalOutcome, launched: NonNu
 		return launched.length > 1 ? `variant #${entry.variantIndex ?? "?"}: ${error}` : error;
 	});
 	exitError(
-		`User approved, but task seq:${outcome.seq} failed to prepare — no agent is running for it`,
+		`User approved, but task ${formatTaskRef(outcome.seq!)} failed to prepare — no agent is running for it`,
 		`${lines.join("\n")}\nThe task is back in To Do. Read the error before asking to start it again.`,
 		CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED,
 	);
@@ -1280,10 +1281,10 @@ async function hibernateTaskCommand(args: ParsedArgs, socketPath: string, contex
 	if (json) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 	switch (result.outcome) {
 		case "hibernated":
-			if (!json) process.stdout.write(`Hibernated task #${result.seq}${formatFreed(result.freedRssBytes)} — agent, terminal and dev server stopped; worktree kept. Wake it with dev3 task wake.\n`);
+			if (!json) process.stdout.write(`Hibernated task ${formatTaskRef(result.seq)}${formatFreed(result.freedRssBytes)} — agent, terminal and dev server stopped; worktree kept. Wake it with dev3 task wake.\n`);
 			return;
 		case "nothing-to-free":
-			return exitError(`Nothing to hibernate in task #${result.seq}: ${result.message}`, undefined, CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE);
+			return exitError(`Nothing to hibernate in task ${formatTaskRef(result.seq)}: ${result.message}`, undefined, CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE);
 		case "declined":
 			return exitError(result.stale ? "The target task's run ended before approval" : "User declined the hibernation", "Nothing was stopped.", CLI_EXIT_CODE_HIBERNATE_DECLINED);
 	}
@@ -1309,10 +1310,10 @@ async function wakeTaskCommand(args: ParsedArgs, socketPath: string, context: Cl
 	if (json) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 	switch (result.outcome) {
 		case "woke-shell":
-			if (!json) process.stdout.write(`Woke task #${result.seq} with a plain shell (${result.backend}); the agent was not started and its saved conversation is kept.\n`);
+			if (!json) process.stdout.write(`Woke task ${formatTaskRef(result.seq)} with a plain shell (${result.backend}); the agent was not started and its saved conversation is kept.\n`);
 			return;
 		case "not-hibernated":
-			return exitError(`Task #${result.seq} is not hibernated — nothing to wake`, "A task whose terminal died without hibernating is brought back with dev3 agent resume.", CLI_EXIT_CODE_TASK_NOT_HIBERNATED);
+			return exitError(`Task ${formatTaskRef(result.seq)} is not hibernated — nothing to wake`, "A task whose terminal died without hibernating is brought back with dev3 agent resume.", CLI_EXIT_CODE_TASK_NOT_HIBERNATED);
 		case "declined":
 			return exitError(result.stale ? "The target task's run ended before approval" : "User declined the wake request", "Nothing was woken.", CLI_EXIT_CODE_LAUNCH_DECLINED);
 	}

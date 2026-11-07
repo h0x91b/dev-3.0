@@ -1,4 +1,5 @@
 import type { Project, Task, TaskStatus } from "../../shared/types";
+import { TaskRoleChip } from "./TaskRoleBand";
 import { getTaskTitle } from "../../shared/types";
 import { useT } from "../i18n";
 import type { CoordinatorCandidate } from "../utils/coordinatorFinder";
@@ -50,15 +51,13 @@ function DashboardCoordinatorRows({ project, coordinators, narrow, statusColors,
 						data-coordinator-state={state}
 						data-hint-id={`task:${task.id}`}
 						onClick={() => onOpen(task)}
-						className={`relative w-full flex items-start md:items-center gap-3 pl-3 md:pl-5 pr-3 md:pr-10 py-3 md:py-2.5 min-h-[44px] text-left bg-coordinator/[0.05] hover:bg-raised-hover transition-colors border-b border-edge last:border-b-0 ${parked ? "grayscale" : ""}`}
+						className={`relative w-full flex items-start md:items-center gap-3 pl-3 md:pl-5 pr-3 md:pr-10 py-3 md:py-2.5 min-h-[44px] text-left hover:bg-raised-hover transition-colors border-b border-edge last:border-b-0 ${parked ? "grayscale" : ""}`}
 					>
 						{/* md:pr-10 = an ordinary row's pr-1 + its w-9 ✓ slot, so the status and
 						    age columns line up with the rows below. */}
-						{/* Identity strip in the coordinator lime the board card's dashed border uses. */}
-						<span aria-hidden="true" className="absolute left-0 top-0 bottom-0 w-0.5 bg-coordinator/70" />
-						<span className={`inline-flex flex-shrink-0 items-center rounded border border-dashed border-coordinator/70 px-1 py-px text-nano font-semibold uppercase tracking-[0.06em] text-coordinator-ink ${narrow ? "mt-0.5" : ""}`}>
-							{t("task.coordinatorBadge")}
-						</span>
+						{/* Identity strip in the accent fill of the board card's role band. */}
+						<span aria-hidden="true" className="absolute left-0 top-0 bottom-0 w-1 bg-accent-fill" />
+						<TaskRoleChip role="coordinator" className={narrow ? "mt-0.5" : ""} />
 						<span className="min-w-0 flex-1 flex flex-col md:flex-row md:items-center gap-0.5 md:gap-3">
 							<span
 								title={getTaskTitle(task)}

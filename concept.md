@@ -9,6 +9,9 @@ still be rough — it ships with every release, unsigned at this time.
 
 Legend: `[x]` done, `[-]` in progress, `[ ]` not started
 
+Extensions platform (Cordis plugins, board views first, then dev3 itself): plan and status in
+[`docs/extensions-platform.md`](docs/extensions-platform.md).
+
 ### Infrastructure
 
 - [x] Electrobun app shell (main process, window, menu)

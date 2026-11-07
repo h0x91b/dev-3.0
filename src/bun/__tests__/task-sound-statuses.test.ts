@@ -11,11 +11,23 @@ describe("task sound statuses", () => {
 		expect(all.filter(isTaskSoundStatus)).toEqual(["user-questions", "review-by-user", "completed", "cancelled"]);
 	});
 
-	it("keeps the completion chime opt-out and the needs-you chime opt-in", () => {
+	it("keeps the completion chime opt-out and each needs-you chime opt-in", () => {
 		expect(isTaskSoundEnabled({}, "completed")).toBe(true);
 		expect(isTaskSoundEnabled({}, "review-by-user")).toBe(false);
+		expect(isTaskSoundEnabled({}, "user-questions")).toBe(false);
 		expect(isTaskSoundEnabled({ playSoundOnTaskComplete: false }, "cancelled")).toBe(false);
-		expect(isTaskSoundEnabled({ playSoundOnTaskComplete: false, playSoundOnTaskNeedsYou: true }, "user-questions")).toBe(true);
-		expect(isTaskSoundEnabled({ playSoundOnTaskNeedsYou: true }, "completed")).toBe(true);
+		expect(isTaskSoundEnabled({ playSoundOnTaskComplete: false, playSoundOnTaskQuestions: true }, "user-questions")).toBe(true);
+		expect(isTaskSoundEnabled({ playSoundOnTaskQuestions: true, playSoundOnTaskReview: true }, "completed")).toBe(true);
+	});
+
+	// The point of the split: chime only when an agent is blocked on the user.
+	it("gates Has Questions and Your Review independently", () => {
+		const blockedOnly = { playSoundOnTaskQuestions: true };
+		expect(isTaskSoundEnabled(blockedOnly, "user-questions")).toBe(true);
+		expect(isTaskSoundEnabled(blockedOnly, "review-by-user")).toBe(false);
+
+		const reviewOnly = { playSoundOnTaskReview: true };
+		expect(isTaskSoundEnabled(reviewOnly, "review-by-user")).toBe(true);
+		expect(isTaskSoundEnabled(reviewOnly, "user-questions")).toBe(false);
 	});
 });

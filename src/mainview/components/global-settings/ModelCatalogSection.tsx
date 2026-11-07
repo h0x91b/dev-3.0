@@ -3,13 +3,16 @@ import type { CodingAgent, ModelCatalogView, ModelSidecarStatus } from "../../..
 import {
 	CATALOG_PROVIDER_KINDS,
 	CUSTOM_API_FORMATS,
+	PROVIDER_USAGE_SOURCES,
 	isValidCatalogModelName,
 	modelUsesExtendedContext,
 	sidecarProviderKey,
 	validateCatalog,
 	type CatalogProviderKind,
 	type CustomApiFormat,
+	type ProviderUsageSource,
 } from "../../../shared/model-catalog";
+import { kimiUsageUrl } from "../../../shared/rate-limits";
 import { randomUUID } from "../../uuid";
 import Select, { type SelectOption } from "../Select";
 import { confirm } from "../../confirm";
@@ -108,7 +111,9 @@ function ProviderKeyField({
 					? t("catalog.providerKeyRemoving")
 					: provider.hasKey
 						? t("catalog.providerKeyStored")
-						: t("catalog.providerKeyMissing")}
+						: provider.usageSource
+							? t("catalog.providerKeyMissingLimits")
+							: t("catalog.providerKeyMissing")}
 			</span>
 		</>
 	);
@@ -273,7 +278,9 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 	const changeProviderKind = (id: string, kind: CatalogProviderKind) => {
 		const current = draft.providers.find((p) => p.id === id);
 		const untouched = !current || CATALOG_PROVIDER_KINDS.some((k) => current.label === kindLabel(k));
-		patchProvider(id, untouched ? { kind, label: kindLabel(kind) } : { kind });
+		// Usage tracking reads a custom endpoint's own base URL; no other kind has one.
+		const patch = untouched ? { kind, label: kindLabel(kind) } : { kind };
+		patchProvider(id, kind === "custom" ? patch : { ...patch, usageSource: undefined });
 	};
 
 	const removeProvider = async (id: string) => {
@@ -500,7 +507,12 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 							columns={[t("catalog.providerKind"), t("catalog.providerLabel"), t("catalog.providerKey")]}
 							actionsLabel={t("catalog.colActions")}
 						>
-							{draft.providers.map((provider) => (
+							{draft.providers.map((provider) => {
+								// Where the key goes, spelled out: the same URL the monitor requests.
+								const usageUrl = provider.kind === "custom" && provider.usageSource && provider.baseUrl?.trim()
+									? kimiUsageUrl(provider.baseUrl)?.href ?? null
+									: null;
+								return (
 								<tr key={provider.id} className="border-b border-edge/50 last:border-b-0">
 									<td className={`${CELL_CLASS} w-48`}>
 										<Select
@@ -545,6 +557,31 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 													onChange={(value) => patchProvider(provider.id, { apiFormat: value as CustomApiFormat })}
 												/>
 												</div>
+												<div className="mt-1.5">
+												<Select
+													id={`provider-usage-${provider.id}`}
+													ariaLabel={t("catalog.usageSourceLabel")}
+													ariaDescribedBy={usageUrl ? `provider-usage-hint-${provider.id}` : undefined}
+													value={provider.usageSource ?? "none"}
+													options={[
+														{ value: "none", label: t("catalog.usageSource.none") },
+														...PROVIDER_USAGE_SOURCES.map((source) => ({
+															value: source,
+															label: t(`catalog.usageSource.${source}` as Parameters<TFunction>[0]),
+														})),
+													]}
+													onChange={(value) =>
+														patchProvider(provider.id, {
+															usageSource: value === "none" ? undefined : (value as ProviderUsageSource),
+														})
+													}
+												/>
+												{usageUrl ? (
+													<span id={`provider-usage-hint-${provider.id}`} className="block text-fg-3 text-xs mt-1 break-words">
+														{t("catalog.usageSourceHint", { url: usageUrl })}
+													</span>
+												) : null}
+												</div>
 											</>
 										) : null}
 										<span className="block text-fg-muted text-xs font-mono mt-1 truncate">
@@ -571,7 +608,8 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 										</button>
 									</td>
 								</tr>
-							))}
+							);
+							})}
 						</EditTable>
 					)}
 					<button type="button" onClick={addProvider} className={BUTTON_CLASS}>

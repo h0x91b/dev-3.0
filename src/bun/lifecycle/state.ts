@@ -1,5 +1,5 @@
 import type { PreparingStage, Project, Task } from "../../shared/types";
-import { hasGitWorkflow, taskCompletesManually } from "../../shared/types";
+import { hasGitWorkflow, isOpsWorktreeTask, taskCompletesManually } from "../../shared/types";
 import type { LifecycleRuntime, LifecycleState } from "./events";
 
 const PREPARING_STAGES = new Set<PreparingStage>([
@@ -68,6 +68,7 @@ export function lifecycleStateFromTask(project: Project, task: Task): LifecycleS
 			worktreePath: task.worktreePath ?? null,
 			lifecycleStartedAt: task.lifecycleStartedAt ?? null,
 			usesWorktrees: hasGitWorkflow(project),
+			...(isOpsWorktreeTask(task) ? { opsWorktree: true } : {}),
 			hasPrIdentity: task.prNumber != null,
 			draft: task.draft === true,
 			hibernated: task.hibernated === true,

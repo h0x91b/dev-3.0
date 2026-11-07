@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { TaskRefText } from "../TaskRefText";
 import { ACTIVE_STATUSES, getTaskOverview } from "../../../shared/types";
 import { markTrafficSeen } from "../../agent-traffic";
 import { useLocale, useT, type TranslationKey } from "../../i18n";
@@ -1269,7 +1270,9 @@ function TrafficView({ projectId, focus, onOpenTask }: Props) {
 									{senderLabel(record.row, t("traffic.node.you"))} → #{record.row.toSeq}
 								</b>
 								<h3 className="streamer-private">
-									{record.row.subject || t("traffic.orbit.noSubject")}
+									{record.row.subject
+										? <TaskRefText text={record.row.subject} contextProjectId={record.row.fromProjectId ?? record.row.toProjectId} />
+										: t("traffic.orbit.noSubject")}
 								</h3>
 								<p className="streamer-private">
 									{[record.row.fromTitle, record.row.toTitle]
@@ -1310,8 +1313,9 @@ function TrafficView({ projectId, focus, onOpenTask }: Props) {
 								{record.row.bodyKind === "spill-pointer" && (
 									<p>{t("traffic.spilled")}</p>
 								)}
+								{/* A bare ref is the sender's: the agent who wrote it names tasks on its own board. */}
 								<pre className="traffic-body streamer-private">
-									{record.row.body}
+									<TaskRefText text={record.row.body} contextProjectId={record.row.fromProjectId ?? record.row.toProjectId} />
 								</pre>
 								{record.row.spillPath && (
 									<code className="streamer-private">

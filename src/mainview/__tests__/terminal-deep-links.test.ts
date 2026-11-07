@@ -30,6 +30,27 @@ function linksOn(provider: ReturnType<typeof createDeepLinkProvider>, y: number)
 const TASK_URL = "dev3://task/a21540d6-4890-426f-81c1-41cfc460715e";
 
 describe("createDeepLinkProvider", () => {
+	it("linkifies <seq:N> and <pr:N> references, and the bare seq:N markdown leaves behind", () => {
+		const provider = createDeepLinkProvider({
+			term: makeTerm([{ spec: "ask <seq:12> about <pr:7>, then seq:9", cols: 80 }]),
+			onActivate: vi.fn(),
+		});
+		const links = linksOn(provider, 0)!;
+		expect(links.map((l) => [l.text, l.range.start.x, l.range.end.x])).toEqual([
+			["<seq:12>", 4, 11],
+			["<pr:7>", 19, 24],
+			["seq:9", 32, 36],
+		]);
+	});
+
+	it("leaves the legacy #N form alone", () => {
+		const provider = createDeepLinkProvider({
+			term: makeTerm([{ spec: "see #115 and task 115", cols: 80 }]),
+			onActivate: vi.fn(),
+		});
+		expect(linksOn(provider, 0)).toBeUndefined();
+	});
+
 	it("linkifies a bare task link and covers exactly its columns", () => {
 		const provider = createDeepLinkProvider({
 			term: makeTerm([{ spec: `see ${TASK_URL} now`, cols: 80 }]),

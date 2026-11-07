@@ -78,6 +78,9 @@ import { paneHighlightRect, type PaneRectPct } from "./utils/paneHighlight";
 import TerminalSearchBar, { type TerminalSearchBarHandle } from "./components/TerminalSearchBar";
 import { isFinalPtyCloseCode } from "../shared/pty-ws-close-codes";
 import { DARK_TERMINAL_THEME, LIGHT_TERMINAL_THEME } from "./terminal-themes";
+import { installTerminalRefHover, type TerminalRefHover } from "./terminal-ref-hover";
+import { TaskRefFloatingPreview } from "./components/TaskRefPreviewCard";
+import { parseRefUri } from "../shared/task-refs";
 
 /**
  * What ghostty is told: the user's size, narrowed to the reference font's cell if
@@ -322,6 +325,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 	const searchOwnsSelectionRef = useRef(false);
 	// The link a touch user tapped — rendered as the Open / Copy sheet.
 	const [touchLink, setTouchLink] = useState<TouchLink | null>(null);
+	const [refHover, setRefHover] = useState<TerminalRefHover | null>(null);
 	// The pane the search resolved to, and its %-rect over the terminal canvas —
 	// drawn as a frame so a multi-pane layout shows WHICH pane is being searched.
 	const [searchPaneId, setSearchPaneId] = useState<string | null>(null);
@@ -979,6 +983,18 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 				container: containerRef.current,
 				linkAt: osc8Provider.linkAt,
 			});
+			// `<seq:N>` / `<pr:N>` under the mouse feed the floating preview card.
+			termSubs.push(installTerminalRefHover({
+				term,
+				container: containerRef.current,
+				refAt: (y, x) => {
+					const plain = deepLinks?.linkAt(y, x);
+					if (plain && parseRefUri(plain)) return plain;
+					const osc8 = osc8Provider.linkAt(y, x)?.uri;
+					return osc8 && parseRefUri(osc8) ? osc8 : undefined;
+				},
+				onChange: setRefHover,
+			}));
 			linkUnderlines = installFilePathUnderlines({
 				term,
 				container: containerRef.current,
@@ -2884,6 +2900,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 				/>
 			)}
 			<TerminalLinkSheet link={touchLink} onClose={() => setTouchLink(null)} taskId={taskId} />
+			<TaskRefFloatingPreview hover={refHover} contextProjectId={projectId} />
 			{searchOpen && (
 				<TerminalSearchBar
 					ref={searchBarRef}

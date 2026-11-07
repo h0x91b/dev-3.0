@@ -12,6 +12,7 @@ import { getPushMessage, buildSetupRerunScript, buildScriptRunnerCommand, buildT
 import { launchDialect } from "../../../shared/platform-launch";
 import { resolveOperationalProjectConfig } from "../settings-config";
 import * as repoConfig from "../../repo-config";
+import { rootProjectFor } from "../../ops-worktree";
 import { findTaskAcrossProjects } from "./task-state";
 
 /** Forget a setup verdict and tell every viewer, so the notice cannot come back. */
@@ -44,7 +45,8 @@ export async function rerunSetupScript(params: { taskId: string }): Promise<void
 	if (!task.worktreePath) throw new Error("Task has no worktree");
 	assertTaskWorkspacePresent(project, task.worktreePath);
 
-	const resolved = await resolveOperationalProjectConfig(project, task.worktreePath, { foreignCode: task.foreignCode });
+	const rootProject = rootProjectFor(project, task);
+	const resolved = await resolveOperationalProjectConfig(rootProject, task.worktreePath, { foreignCode: task.foreignCode });
 	if (!resolved.setupScript.trim()) throw new Error("No setup script configured");
 
 	const prefix = dev3TaskTempPath(task.id);
@@ -63,8 +65,8 @@ export async function rerunSetupScript(params: { taskId: string }): Promise<void
 	// Project env with the global agent defaults, as on launch, where the setup
 	// script runs inside the agent session's env.
 	const env = {
-		...(await repoConfig.resolveProjectEnv(project, task.worktreePath, { foreignCode: task.foreignCode })),
-		...buildTaskLifecycleEnv(project, task, task.worktreePath),
+		...(await repoConfig.resolveProjectEnv(rootProject, task.worktreePath, { foreignCode: task.foreignCode })),
+		...buildTaskLifecycleEnv(rootProject, task, task.worktreePath),
 	};
 	const ports = portPool.getPortAssignments(task.id);
 	if (ports.length > 0) Object.assign(env, portPool.buildPortEnv(ports));

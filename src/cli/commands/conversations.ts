@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { formatTaskRef } from "../../shared/task-refs";
 import type { Task, TaskHistoryEntry, TaskStatus } from "../../shared/types";
 import { ALL_STATUSES } from "../../shared/types";
 import { projectSlug } from "../../shared/conversation-search-core";
@@ -453,7 +454,7 @@ export async function handleImportCurrentSession(
 	if (!match) {
 		const alreadyImported = tasks.find((task) => task.importedSessionId === sessionId);
 		if (alreadyImported) {
-			process.stdout.write(`This conversation is already on the board as seq ${alreadyImported.seq}.\n`);
+			process.stdout.write(`This conversation is already on the board as ${formatTaskRef(alreadyImported.seq)}.\n`);
 			return;
 		}
 		// Every other miss is the same answer: the transcript is not yet in a shape
@@ -479,7 +480,7 @@ export async function handleImportCurrentSession(
 		process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 	} else {
 		for (const task of result.tasks) {
-			process.stdout.write(`Imported as seq ${task.seq} (${task.status}): ${task.title}\n`);
+			process.stdout.write(`Imported as ${formatTaskRef(task.seq)} (${task.status}): ${task.title}\n`);
 		}
 	}
 	// Checked in BOTH modes: an import that could not build its worktree must not

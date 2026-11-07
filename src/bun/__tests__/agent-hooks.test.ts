@@ -83,6 +83,19 @@ describe("buildClaudeHooks", () => {
 		expect(cmd).toContain("--if-status-not review-by-ai");
 	});
 
+	it("PostToolUse drains held messages first and falls back to the plain move on a CLI that predates it", () => {
+		const hooks = buildClaudeHooks();
+		const entry = hooks.PostToolUse[0].hooks[0];
+		expect(entry.command).toBe(`${DEV3_CLI} hook claude-post-tool || ${hooks.PreToolUse[0].hooks[0].command}`);
+		// Same as the plain move it replaced: no hook timeout of its own.
+		expect(entry.timeout).toBeUndefined();
+	});
+
+	it("PostToolUse on Windows keeps the plain move: no tmux mailbox there and no shell for a fallback", () => {
+		const hooks = buildClaudeHooks({ dialect: { cli: '"C:/Users/dev/.dev3.0/bin/dev3.exe"', posixShell: false } });
+		expect(hooks.PostToolUse[0].hooks[0]).toEqual(hooks.PreToolUse[0].hooks[0]);
+	});
+
 	it("uses correct three-level nesting (event → matcher group → hooks)", () => {
 		const hooks = buildClaudeHooks();
 
@@ -200,7 +213,7 @@ describe("buildClaudeHooks", () => {
 				for (const entry of group.hooks) {
 					// Either "dev3 task move --status X" or a "dev3 hook <name>" adapter
 					// that reads the event from stdin — never a UUID either way.
-					expect(entry.command).toMatch(/task move --status|hook claude-stop-failure|hook claude-prompt|hook claude-session-start|hook claude-turn-ended/);
+					expect(entry.command).toMatch(/task move --status|hook claude-stop-failure|hook claude-prompt|hook claude-session-start|hook claude-turn-ended|hook claude-post-tool/);
 					expect(entry.command).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
 				}
 			}
@@ -943,7 +956,7 @@ describe("POSIX hook output (byte-identical contract)", () => {
 
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).toBe(`${DEV3_CLI} hook claude-prompt`);
 		expect(hooks.PreToolUse[0].hooks[0].command).toBe(working);
-		expect(hooks.PostToolUse[0].hooks[0].command).toBe(working);
+		expect(hooks.PostToolUse[0].hooks[0].command).toBe(`${DEV3_CLI} hook claude-post-tool || ${working}`);
 		expect(hooks.PermissionRequest[0].hooks[0].command).toBe(
 			`${DEV3_CLI} task move --status user-questions || [ $? -eq 2 ]`,
 		);

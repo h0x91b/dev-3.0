@@ -24,3 +24,6 @@ verify-*.png
 
 scratch-shots/
 docs/changelog/
+
+# Local output of the a5c babysitter plugin
+.a5c/

@@ -9,6 +9,7 @@ import { automationHandlers } from "./cli-socket/automation-commands";
 import { boardMetadataHandlers } from "./cli-socket/board-metadata-commands";
 import { epicHandlers } from "./cli-socket/epic-commands";
 import { externalSenderHandlers } from "./cli-socket/external-sender-commands";
+import { hookMailboxHandlers } from "./cli-socket/hook-mailbox-commands";
 import { liveHandlers } from "./cli-socket/live-commands";
 import { messageHandlers } from "./cli-socket/message-commands";
 import { paneHandlers } from "./cli-socket/pane-commands";
@@ -58,6 +59,7 @@ function cleanupStaleSockets(): void {
 const handlers: Record<string, Handler> = {
 	...secretCliHandlers,
 	...agentHandlers,
+	...hookMailboxHandlers,
 	...paneHandlers,
 	...boardMetadataHandlers,
 	...automationHandlers,

@@ -1,3 +1,4 @@
+import { formatTaskRef } from "./task-refs";
 import type { NoteSource, TaskMovementKind, TaskStatus } from "./types";
 
 /**
@@ -183,7 +184,7 @@ export function resolveEventIdPrefix(all: BoardEvent[], prefix: string): string 
 			+ "Use the instant form from a previous run's `Cursor:` line, or run `dev3 events` with no --from.",
 		);
 	}
-	const sample = hits.slice(0, 5).map((e) => `${e.id.slice(0, 8)} (seq ${e.seq ?? "-"})`).join(", ");
+	const sample = hits.slice(0, 5).map((e) => `${e.id.slice(0, 8)} (${e.seq != null ? formatTaskRef(e.seq) : "-"})`).join(", ");
 	throw new Error(
 		`${EVENT_CURSOR_UNRESOLVED_PREFIX}"${prefix}" matches ${hits.length} events: ${sample}`
 		+ `${hits.length > 5 ? ", …" : ""}\nGive more characters of the id.`,

@@ -143,7 +143,7 @@ describe("scheduled-message scheduler — tick", () => {
 		startScheduledMessageScheduler();
 		await flush();
 		expect(holdMessageForPane).toHaveBeenCalledTimes(1);
-		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "%1", "check CI and continue", expect.any(Function), undefined);
+		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "%1", "check CI and continue", expect.any(Function), undefined, undefined);
 		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
 		// removed via updateTaskWith
 		expect(data.updateTaskWith).toHaveBeenCalledWith(project, task.id, expect.any(Function));
@@ -173,7 +173,7 @@ describe("scheduled-message scheduler — tick", () => {
 		vi.mocked(data.loadTasks).mockResolvedValue([task] as never);
 		startScheduledMessageScheduler();
 		await flush();
-		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "%3", "check CI and continue", expect.any(Function), undefined);
+		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "%3", "check CI and continue", expect.any(Function), undefined, undefined);
 	});
 
 	it("start is idempotent (double start = one tick)", async () => {
@@ -334,7 +334,7 @@ describe("cancel / send-now / immediate", () => {
 	it("sendMessageImmediately delivers to the agent", async () => {
 		const task = makeTask();
 		await sendMessageImmediately(task as never, "hello now");
-		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "%1", "hello now", expect.any(Function), undefined);
+		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "%1", "hello now", expect.any(Function), undefined, undefined);
 	});
 
 	// The click paths (a review comment's "Send to agent", the launch handoff) opt out
@@ -359,7 +359,7 @@ describe("cancel / send-now / immediate", () => {
 		await sendMessageImmediately(task as never, "hello now", null, { taskId: "other", seq: 7, title: "Sender" });
 		const text = vi.mocked(holdMessageForPane).mock.calls[0]![2];
 		expect(text).toContain("<dev3-ai-message>");
-		expect(text).toContain("<from-task>seq:7</from-task>");
+		expect(text).toContain("<from-task><seq:7></from-task>");
 		expect(text).toContain("hello now");
 	});
 
@@ -416,7 +416,7 @@ describe("cancel / send-now / immediate", () => {
 		mockUpdateTaskWith(task);
 		await fireScheduledMessage(project, task as never, message as never, { late: false });
 		const text = vi.mocked(holdMessageForPane).mock.calls[0]![2];
-		expect(text).toContain("<from-task>seq:7</from-task>");
+		expect(text).toContain("<from-task><seq:7></from-task>");
 		expect(message.text).toBe("check CI and continue");
 	});
 
@@ -554,7 +554,7 @@ describe("scheduled-message scheduler — native-backend tasks", () => {
 		vi.mocked(resolveMainAgentTarget).mockResolvedValue({ ok: true, paneId: "pane-1", author: null });
 		await sendMessageImmediately(task as never, "hello now", null, { taskId: "other", seq: 7, title: "Sender" });
 		const text = vi.mocked(sendPromptToNativePane).mock.calls[0]![2];
-		expect(text).toContain("<from-task>seq:7</from-task>");
+		expect(text).toContain("<from-task><seq:7></from-task>");
 		expect(text).toContain("hello now");
 	});
 });
@@ -574,7 +574,7 @@ describe("scheduled-message scheduler — self-reminders in a multi-agent task",
 		mockUpdateTaskWith(task);
 		const { delivery } = await fireScheduledMessage(project, task as never, message, { late: false });
 		expect(delivery.status).toBe("held");
-		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: task.id }), "%2", "check CI and continue", expect.any(Function), expect.any(Function));
+		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: task.id }), "%2", "check CI and continue", expect.any(Function), expect.any(Function), undefined);
 		expect(resolveMainAgentTarget).not.toHaveBeenCalled();
 	});
 
@@ -624,7 +624,7 @@ describe("scheduled-message scheduler — self-reminders in a multi-agent task",
 		expect(message).toMatchObject({ target: { kind: "agent" }, author: authorB });
 		mockUpdateTaskWith(reloaded);
 		await fireScheduledMessage(project, reloaded as never, message, { late: true });
-		expect(holdMessageForPane).toHaveBeenCalledWith(expect.anything(), "%2", "wake up", expect.any(Function), expect.any(Function));
+		expect(holdMessageForPane).toHaveBeenCalledWith(expect.anything(), "%2", "wake up", expect.any(Function), expect.any(Function), undefined);
 	});
 
 	it("leaves a message without an author on the task-level route", async () => {
@@ -635,14 +635,14 @@ describe("scheduled-message scheduler — self-reminders in a multi-agent task",
 		expect(queued.scheduledMessages?.[queued.scheduledMessages.length - 1]).not.toHaveProperty("author");
 		await fireScheduledMessage(project, task as never, message, { late: false });
 		expect(resolveMainAgentTarget).toHaveBeenCalledTimes(1);
-		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: task.id }), "%1", "check CI and continue", expect.any(Function), undefined);
+		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: task.id }), "%1", "check CI and continue", expect.any(Function), undefined, undefined);
 	});
 
 	it("holds an immediate message addressed to one agent for that agent, bound for the release check", async () => {
 		const task = makeTask({ sessionState: twoAgents });
 		await sendMessageImmediately(task as never, "review the diff", null, { taskId: "other", seq: 7 }, { author: authorB });
 		expect(resolveScheduledMessageAuthorPane).toHaveBeenCalledWith(expect.objectContaining({ id: task.id }), authorB);
-		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: task.id }), "%2", expect.stringContaining("review the diff"), expect.any(Function), expect.any(Function));
+		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: task.id }), "%2", expect.stringContaining("review the diff"), expect.any(Function), expect.any(Function), expect.objectContaining({ text: expect.stringContaining("review the diff"), delivered: expect.any(Function) }));
 		expect(resolveMainAgentTarget).not.toHaveBeenCalled();
 	});
 

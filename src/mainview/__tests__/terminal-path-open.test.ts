@@ -9,6 +9,7 @@ vi.mock("../rpc", () => ({
 		request: {
 			resolveTerminalPaths: vi.fn(),
 			resolveDeepLinkNav: vi.fn(),
+			resolveTaskPrRef: vi.fn(),
 			getGlobalSettings: vi.fn(),
 			openTerminalPath: vi.fn(),
 		},
@@ -32,6 +33,29 @@ function previewed(): Promise<OpenFilePreviewDetail> {
 		);
 	});
 }
+
+describe("task and PR references", () => {
+	const resolveTaskPrRef = api.request.resolveTaskPrRef as unknown as ReturnType<typeof vi.fn>;
+
+	it("resolves a printed <seq:N> on the terminal's own project and opens the task", async () => {
+		resolveTaskPrRef.mockResolvedValueOnce({ kind: "task", taskId: "t-3", projectId: "proj-1", projectName: "p", seq: 3, title: "x", status: "todo" });
+		const opened = new Promise<unknown>((resolve) =>
+			window.addEventListener("rpc:openDeepLink", (e) => resolve((e as CustomEvent).detail), { once: true }));
+		await activateDeepLinkUri("<seq:3>", { t, taskId: "task-1", projectId: "proj-1" });
+		expect(resolveTaskPrRef).toHaveBeenCalledWith({ ref: "<seq:3>", contextProjectId: "proj-1" });
+		expect(await opened).toEqual({ kind: "task", taskId: "t-3", projectId: "proj-1" });
+	});
+
+	it("routes an OSC 8 seq: target (a markdown autolink) in-app instead of window.open", async () => {
+		resolveTaskPrRef.mockResolvedValueOnce(null);
+		const open = vi.spyOn(window, "open").mockReturnValue(null);
+		await activateOsc8Uri("seq:4", { t, taskId: "task-1", projectId: "proj-1" });
+		expect(resolveTaskPrRef).toHaveBeenCalledWith({ ref: "seq:4", contextProjectId: "proj-1" });
+		expect(open).not.toHaveBeenCalled();
+		expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("taskRef.notFound"), expect.anything());
+		open.mockRestore();
+	});
+});
 
 describe("activateOsc8Uri", () => {
 	beforeEach(() => {

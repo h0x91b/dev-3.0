@@ -4,6 +4,7 @@ import {
 	CODEX_STOP_HOOK_SUCCESS_JSON,
 	type AgentStatusHookEvent,
 } from "../../shared/agent-hooks";
+import { findApprovalHoldReply } from "../../shared/agent-stop-failure";
 import type { CliContext } from "../context";
 import { sendRequest } from "../socket-client";
 import { loadRecentNotesBlock, sessionStartContextOutput } from "./recent-notes";
@@ -21,6 +22,10 @@ interface CodexHookPayload {
 	turnId?: string;
 	/** `SessionStart` only: startup, resume, clear, compact or fork. */
 	source?: string;
+	/** The rollout file, tailed app-side for an errored turn end that fires no hook. */
+	transcriptPath?: string;
+	/** `Stop` only: the `Approved <ref>` reply the agent asked the user to type. */
+	approvalHold?: string;
 }
 
 function questionFingerprint(title: string): string {
@@ -47,6 +52,8 @@ function parsePayload(rawInput: string): CodexHookPayload | null {
 			prompt?: unknown;
 			turn_id?: unknown;
 			source?: unknown;
+			transcript_path?: unknown;
+			last_assistant_message?: unknown;
 		};
 		if (typeof parsed.hook_event_name !== "string") return null;
 		if (!AGENT_STATUS_HOOK_EVENTS.includes(parsed.hook_event_name as AgentStatusHookEvent)) {
@@ -60,6 +67,8 @@ function parsePayload(rawInput: string): CodexHookPayload | null {
 			: [];
 		// Codex's AnsweredQuestion framing is a bounded blockquote, followed by
 		// the answer. Match it to queued titles without retaining question text.
+		const approvalHold = parsed.hook_event_name === "Stop" && typeof parsed.last_assistant_message === "string"
+			? findApprovalHoldReply(parsed.last_assistant_message) : null;
 		const answeredTitle = parsed.hook_event_name === "UserPromptSubmit" && typeof parsed.prompt === "string"
 			? /^> ([^\n]*)\n\n/.exec(parsed.prompt)?.[1] : undefined;
 		return {
@@ -72,6 +81,8 @@ function parsePayload(rawInput: string): CodexHookPayload | null {
 			...(typeof parsed.prompt === "string" && parsed.prompt.trim() ? { prompt: parsed.prompt } : {}),
 			...(typeof parsed.turn_id === "string" ? { turnId: parsed.turn_id } : {}),
 			...(typeof parsed.source === "string" ? { source: parsed.source } : {}),
+			...(typeof parsed.transcript_path === "string" && parsed.transcript_path ? { transcriptPath: parsed.transcript_path } : {}),
+			...(approvalHold ? { approvalHold } : {}),
 		};
 	} catch {
 		return null;
@@ -119,6 +130,8 @@ export async function handleCodexHook(
 				// second dev3 process; what happens to it is decided app-side.
 				...(payload.event === "UserPromptSubmit" && payload.prompt ? { prompt: payload.prompt } : {}),
 				...(payload.turnId ? { turnId: payload.turnId } : {}),
+				...(payload.transcriptPath ? { transcriptPath: payload.transcriptPath } : {}),
+				...(payload.approvalHold ? { approvalHold: payload.approvalHold } : {}),
 			}, { timeoutMs: 3_000, connectAttempts: 2, retryDelayMs: 50 });
 			if (!response.ok) {
 				process.stderr.write(`dev3 Codex hook: ${response.error || "status update failed"}\n`);

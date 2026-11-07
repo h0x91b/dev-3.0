@@ -43,6 +43,7 @@ const common = {
 	"app.agentCancellationCancel": "Mantener la tarea",
 	"app.agentResetTitle": "Se pidió restablecer a Por hacer",
 	"app.agentResetMessage": "Un comando de dev3 —normalmente un agente de IA— pide devolver esta tarea en curso a Por hacer. Si lo apruebas, se detiene su agente y se elimina el worktree con todo lo no confirmado, y su rama si dev3 la creó. Una nota de la tarea guarda cómo recuperar los commits eliminados.\n\nLa tarjeta queda en Por hacer con su título, descripción, notas, etiquetas y ajustes, y la próxima vez empieza de cero.",
+	"app.agentResetMessageBranchKept": "Un comando de dev3 —normalmente un agente de IA— pide devolver esta tarea en curso a Por hacer. Si lo apruebas, se detiene su agente y se elimina el worktree con todo lo no confirmado. La rama de la tarea se conserva.\n\nLa tarjeta queda en Por hacer con su título, descripción, notas, etiquetas y ajustes, y la próxima vez empieza de cero.",
 	"app.agentResetConfirm": "Restablecer tarea",
 	"app.agentResetCancel": "Dejarla como está",
 
@@ -465,7 +466,8 @@ const common = {
 	"command.findCoordinator": "Buscar coordinador…",
 	"command.goToTask": "Ir a Tarea…",
 	"command.goToCombined": "Ir a Cualquier cosa…",
-	"command.viewKanban": "Ir al tablero",
+	"command.viewBoard": "Ir al tablero",
+	"command.boardView": "Vista del tablero: {name}",
 	"command.viewChangelog": "Abrir changelog",
 	"command.openSettings": "Abrir ajustes",
 	"command.projectSettings": "Abrir ajustes del proyecto",
@@ -700,6 +702,19 @@ const common = {
 	"mobile.backExitToast": "Pulsa Atrás de nuevo para salir",
 	"streamer.privateTitle": "Proyecto privado",
 	"streamer.projectLocked": "Proyecto sensible — bloqueado mientras el modo streamer está activo",
+	"taskRef.notFound": "No hay nada que abrir en {ref}: no existe esa tarea o PR en ese tablero.",
+	"taskRef.prUnknownRepo": "No se encontró el repositorio de GitHub para {ref}.",
+	"taskRef.openFailed": "No se pudo abrir {ref}: {error}",
+	"taskRef.openTask": "Abrir tarea {ref}",
+	"taskRef.openPr": "Abrir PR {ref}",
+	"taskRef.previewOpen": "Abrir tarea",
+	"taskRef.previewLoading": "Cargando…",
+	"taskRef.previewNotFound": "No existe esa tarea o PR en ese tablero.",
+	"taskRef.previewNotes": "Últimas notas",
+	"taskRef.previewImages": "Imágenes",
+	"taskRef.previewArtifacts": "Artefactos",
+	"taskRef.previewMore_one": "{count} más",
+	"taskRef.previewMore_other": "{count} más",
 };
 
 export default common;

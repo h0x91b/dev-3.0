@@ -1,4 +1,5 @@
 import { sendRequest } from "../socket-client";
+import { formatTaskRef } from "../../shared/task-refs";
 import { exitError, exitUsage, printTable } from "../output";
 import type { ParsedArgs } from "../args";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
@@ -63,7 +64,7 @@ export async function handleScheduledQueue(
 		return;
 	}
 	if (data.messages.length === 0) {
-		process.stdout.write(`No scheduled messages pending on task ${data.taskId.slice(0, 8)} (seq ${data.seq}).\n`);
+		process.stdout.write(`No scheduled messages pending on task ${data.taskId.slice(0, 8)} (${formatTaskRef(data.seq)}).\n`);
 		return;
 	}
 	printTable(

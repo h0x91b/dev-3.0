@@ -486,6 +486,67 @@ describe("task lifecycle transition table", () => {
 		expect(result.effects.some((effect) => effect.type === "launchColumnAgent")).toBe(false);
 	});
 
+	describe.each(["completed", "cancelled"] as const)("Operations tasks moved to %s", (target) => {
+		const opsState = (opsWorktree: boolean) => state("in-progress", {
+			facts: { hasWorktree: true, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, ...(opsWorktree ? { opsWorktree } : {}) },
+		});
+		const teardown = (current: LifecycleState) => transition(current, {
+			type: "moveRequested",
+			target: { status: target, customColumnId: null },
+			runId: "run",
+		}).effects.map((effect) => effect.type);
+
+		it("removes the workspace of a worktree-mode task, after the reap and before it is persisted", () => {
+			const types = teardown(opsState(true));
+			expect(types).toContain("removeTaskWorkspace");
+			expect(types.indexOf("reapWorktreeProcesses")).toBeLessThan(types.indexOf("removeTaskWorkspace"));
+			expect(types.indexOf("removeTaskWorkspace")).toBeLessThan(types.indexOf("persistTerminalTask"));
+			expect(types).not.toContain("removeWorktree");
+		});
+
+		it("still removes a worktree-mode task's workspace from To Do, where the record has no path (reset or failed preparation)", () => {
+			const todo = state("todo", {
+				facts: { hasWorktree: false, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, opsWorktree: true },
+			});
+			const result = transition(todo, { type: "moveRequested", target: { status: target, customColumnId: null }, runId: "run" });
+
+			expect(result.effects.find((e) => e.type === "removeTaskWorkspace")).toMatchObject({ allowDerivedPath: true });
+			const types = result.effects.map((e) => e.type);
+			expect(types.indexOf("removeTaskWorkspace")).toBeLessThan(types.indexOf("persistTerminalTask"));
+		});
+
+		it("keeps the folder of a plain Operations task", () => {
+			const types = teardown(opsState(false));
+			expect(types).not.toContain("removeTaskWorkspace");
+			expect(types).not.toContain("removeWorktree");
+		});
+	});
+
+	it("reset removes the workspace of a worktree-mode Operations task and not of a plain one", () => {
+		const consent = { worktreePath: "/w", lifecycleStartedAt: "S" };
+		const make = (opsWorktree: boolean) => state("in-progress", {
+			facts: { hasWorktree: true, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, worktreePath: "/w", lifecycleStartedAt: "S", ...(opsWorktree ? { opsWorktree } : {}) },
+		});
+		const types = (opsWorktree: boolean) => transition(make(opsWorktree), { type: "resetRequested", consent }).effects.map((e) => e.type);
+
+		const owned = types(true);
+		expect(owned).toContain("removeTaskWorkspace");
+		expect(owned.indexOf("removeTaskWorkspace")).toBeLessThan(owned.indexOf("persistResetTask"));
+		expect(owned).not.toContain("resetWorktree");
+		expect(types(false)).not.toContain("removeTaskWorkspace");
+	});
+
+	it("deleting a worktree-mode Operations task from To Do still removes its derived workspace", () => {
+		const todo = state("todo", {
+			facts: { hasWorktree: false, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, opsWorktree: true },
+		});
+		const { effects } = transition(todo, { type: "deleteRequested" });
+
+		expect(effects.find((e) => e.type === "removeTaskWorkspace")).toMatchObject({ allowDerivedPath: true });
+		const plain = transition(state("todo", { facts: { hasWorktree: false, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true } }), { type: "deleteRequested" });
+		expect(plain.effects.some((e) => e.type === "removeTaskWorkspace")).toBe(false);
+	});
+
 	it("declares teardown effects in the load-bearing order", () => {
 		const result = transition(state("in-progress"), {
 			type: "moveRequested",

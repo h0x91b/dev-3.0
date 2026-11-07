@@ -14,7 +14,7 @@ Cordis 4 (cordiverse/cordis) was evaluated as the plugin engine. The core is ~2k
 
 - A board view owns its layout (grouping, sort, columns); the **board query** (the `taskSearch.ts` token filter) is shared by every view of a board. A view is not a destination: no `Route` field, no history entry.
 - Views are Cordis plugins in the renderer. dev3 provides `ctx.board` (board scope ∩ query, all statuses, plus every task action including launch and delete, routed through the existing confirm/approval flows) and `ctx.boardViews.register()`. Built-in views use only that contract; Kanban is rewritten on it and is the undisableable fallback.
-- Plugin authors get the **raw Cordis Context**, so Cordis is pinned at exactly `4.0.0-rc.12` and not upgraded before 4.0 stable.
+- Plugin authors get the **raw Cordis Context**, so Cordis is pinned at exactly `4.0.0-rc.11` (the Wix npm mirror never received rc.12; see `board-host-cordis-provision`) and not upgraded before 4.0 stable except as a deliberate one-line bump.
 - Extensions are folders under `~/.dev3.0/extensions/<id>/` (manifest + one prebuilt ESM bundle, host-provided `react`/`cordis`), trusted VS Code-style: consent once at first install, desktop-only install, a kill switch with an env override and a crash-screen escape. Telemetry names only `builtin:<id>` or `third_party`.
 - The selected view and its layouts persist per board, in a wide and a narrow slot, in a new `board-views.json` stored as a list of saved views (one, implicit, in v1).
 

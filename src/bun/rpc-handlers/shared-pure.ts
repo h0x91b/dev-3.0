@@ -17,7 +17,7 @@ import { createLogger } from "../logger";
 import { DEV3_HOME } from "../paths";
 import { hookCliFilePath } from "../hook-cli-capability";
 import { broadcastToOtherInstances } from "../instance-broadcast";
-import { realpathSync } from "node:fs";
+import { chmodSync, realpathSync, writeFileSync } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { whichSync } from "../which";
 import { isExecutableFile } from "../executable";
@@ -67,7 +67,13 @@ export function portableReadKey(options?: { timeoutSeconds?: number }): string {
  * dialect decides whether the file needs a byte-order mark, and a `.ps1` without
  * one is read as ANSI by Windows PowerShell 5.1 (see `scriptByteOrderMark`).
  */
-export async function writeLaunchScript(scriptPath: string, body: string): Promise<void> {
+export async function writeLaunchScript(scriptPath: string, body: string, options?: { private?: boolean }): Promise<void> {
+	// A private script can carry caller secrets and lives in a world-readable
+	// temp dir: lock the file down BEFORE the body lands, including a stale one.
+	if (options?.private) {
+		writeFileSync(scriptPath, "", { mode: 0o600 });
+		chmodSync(scriptPath, 0o600);
+	}
 	await Bun.write(scriptPath, launchDialect().scriptByteOrderMark + body);
 }
 
@@ -104,8 +110,9 @@ export function generatedScriptName(base: string): string {
 /**
  * How a launch wrapper tells the app its agent process ended — `dev3 hook
  * agent-exited`, with the exit code appended by `buildCmdScript`. The same CLI
- * file the hooks run, whose support the launch checked. The session id is the one
- * this spawn pre-assigned, so the report names exactly one agent.
+ * file the hooks run, whose support the launch checked. The id is the one this
+ * spawn minted (Claude's pre-assigned session id, or a bare launch id), so the
+ * report names exactly one agent.
  */
 export function agentExitReportArgv(taskId: string, sessionId: string): string[] {
 	return [hookCliFilePath(), "hook", "agent-exited", "--task", taskId, "--session", sessionId];

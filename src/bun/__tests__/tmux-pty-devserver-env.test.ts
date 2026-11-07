@@ -213,7 +213,7 @@ import * as data from "../data";
 import { buildDevServerScript } from "../dev-server-script";
 import { clearDevServerArgs, clearDevServerEnv, readDevServerArgs, readDevServerEnv, saveDevServerEnv } from "../dev-server-env-store";
 import * as portPool from "../port-pool";
-import { buildTaskLifecycleEnv } from "../rpc-handlers/shared-pure";
+import { buildTaskLifecycleEnv, writeLaunchScript } from "../rpc-handlers/shared-pure";
 import { resolveOperationalProjectConfig } from "../rpc-handlers/settings-config";
 
 const { runDevServer, restartDevServer, stopDevServer } = await import("../rpc-handlers/tmux-pty");
@@ -322,6 +322,11 @@ describe("dev-server --env precedence", () => {
 		expect(effectiveEnv().DEV3_PORT0).toBe("50001");
 		// Dropped outright rather than merely outranked — it never reaches a group.
 		expect(callerEnvGroup()).toEqual({});
+	});
+
+	it("writes the wrapper script private, since it exports the caller's values", async () => {
+		await runDevServer({ taskId: TASK_ID, projectId: "proj-1", env: { SECRET_TOKEN: "abc" } });
+		expect(vi.mocked(writeLaunchScript)).toHaveBeenCalledWith(expect.any(String), expect.any(String), { private: true });
 	});
 
 	it("passes an empty caller group for an ordinary start", async () => {

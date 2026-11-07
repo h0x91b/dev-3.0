@@ -895,6 +895,8 @@ export async function addTask(
 		labelIds?: string[];
 		userLabelIds?: string[];
 		opsWorkDir?: string | null;
+		attachedRepo?: string | null;
+		opsWorktree?: boolean;
 		notes?: Task["notes"];
 		overview?: string | null;
 		userOverview?: string | null;
@@ -972,6 +974,8 @@ export async function addTask(
 			...(extras?.customTitle ? { customTitle: extras.customTitle } : {}),
 			...(extras?.titleEditedByUser ? { titleEditedByUser: true } : {}),
 			...(extras?.opsWorkDir ? { opsWorkDir: extras.opsWorkDir } : {}),
+			...(extras?.attachedRepo ? { attachedRepo: extras.attachedRepo } : {}),
+			...(extras?.opsWorktree ? { opsWorktree: true } : {}),
 			...(extras?.notes && extras.notes.length > 0 ? { notes: extras.notes } : {}),
 			...(extras?.overview ? { overview: extras.overview } : {}),
 			...(extras?.userOverview ? { userOverview: extras.userOverview } : {}),
@@ -1193,7 +1197,7 @@ export async function getTask(
  * re-derived: `projectId` → target, `seq` → next free target seq, `baseBranch`
  * → the target project's default. Labels match by NAME (attach the target
  * project's same-name label, else drop — never auto-create). `customColumnId`,
- * `opsWorkDir`, and `scheduledLaunch` are cleared (target has different columns;
+ * `opsWorkDir`, `attachedRepo`, `opsWorktree`, and `scheduledLaunch` are cleared (target has different columns;
  * a deferred launch carries the old project's agent/branch config).
  *
  * Guards: only `status === "todo"` is movable; the target must be a different,
@@ -1257,6 +1261,8 @@ export async function moveTaskToProject(
 				labelIds: remappedLabelIds,
 				customColumnId: null,
 				opsWorkDir: null,
+				attachedRepo: null,
+				opsWorktree: undefined,
 				scheduledLaunch: null,
 				updatedAt: now,
 			};

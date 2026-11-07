@@ -177,7 +177,7 @@ describe("task show (human)", () => {
 
 		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
 
-		expect(stdout).toMatch(/Pull requests:\s+#12 open \(current\), #9 merged/);
+		expect(stdout).toMatch(/Pull requests:\s+<pr:12> open \(current\), <pr:9> merged/);
 	});
 
 	it("prints no PR line for a task without one", async () => {

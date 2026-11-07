@@ -1,4 +1,5 @@
 import type { PRCIStatus, PRMergeState, PRReviewDecision, Task, TaskEpicRef, TaskHistoryEntry, TaskNote, TaskOriginParent } from "../shared/types";
+import { formatTaskRefFor } from "../shared/task-refs";
 import { DEFAULT_PRIORITY, STATUS_LABELS, getTaskOverview, getTaskTitle, taskCompletesManually, taskOrigin } from "../shared/types";
 import { allPullRequests } from "../shared/task-pull-requests";
 
@@ -106,8 +107,9 @@ export function describeTaskOrigin(task: ShownTask): string | null {
 	if (origin.kind === "import") return "a conversation import";
 	const parent = task.originParent;
 	if (!parent) return `a task (deleted) — ${origin.taskId.slice(0, 8)}`;
-	const seq = parent.variantIndex !== null ? `${parent.seq}-${parent.variantIndex}` : String(parent.seq);
-	return `#${seq} · ${parent.projectName} — ${parent.title} (seq:${parent.seq}, ${parent.id.slice(0, 8)})`;
+	const variant = parent.variantIndex !== null ? ` v${parent.variantIndex}` : "";
+	const ref = formatTaskRefFor(parent.seq, parent.projectId, task.projectId);
+	return `${ref}${variant} · ${parent.projectName} — ${parent.title} (${parent.id.slice(0, 8)})`;
 }
 
 function prStatusJson(task: Task): TaskShowJson["prStatus"] {

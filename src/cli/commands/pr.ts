@@ -182,7 +182,12 @@ async function createPr(args: ParsedArgs, context: CliContext | null, deps: PrDe
 		process.stdout.write(`Auto-merge   enabled (${mergeMethod})\n`);
 	}
 	if (context?.taskId) {
-		process.stdout.write("Waiting on CI or merge? `dev3 pr watch [--until merged]` — dev3 messages you; do not poll gh.\n");
+		const virtual = readProjectDirect(context.projectId)?.kind === "virtual";
+		process.stdout.write(
+			virtual
+				? "PR watch is not available for Operations tasks yet — check the pull request with gh.\n"
+				: "Waiting on CI or merge? `dev3 pr watch [--until merged]` — dev3 messages you; do not poll gh.\n",
+		);
 	}
 }
 

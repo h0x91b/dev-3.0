@@ -106,6 +106,8 @@ describe("moveTaskToProject", () => {
 				automationId: "auto-1",
 				customColumnId: "col-x",
 				opsWorkDir: "/some/dir",
+				attachedRepo: "/some/repo",
+				opsWorktree: true,
 				scheduledLaunch,
 				labelIds: [bugSrc.id, onlySrc.id],
 			}),
@@ -124,6 +126,8 @@ describe("moveTaskToProject", () => {
 		expect(moved.automationId).toBe("auto-1");
 		expect(moved.customColumnId).toBeNull();
 		expect(moved.opsWorkDir).toBeNull();
+		expect(moved.attachedRepo).toBeNull();
+		expect(moved.opsWorktree).toBeUndefined();
 		expect(moved.scheduledLaunch).toBeNull();
 
 		const targetTasks = await loadTasks(target);

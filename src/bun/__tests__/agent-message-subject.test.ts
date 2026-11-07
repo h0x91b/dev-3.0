@@ -99,8 +99,8 @@ describe("messageSubjectError", () => {
 		const { message, detail } = messageSubjectError({ problem: "missing", body: "ping", flags: "--task seq:7" });
 		expect(message).toContain("needs --subject");
 		expect(detail).toContain("Write about 6 words, 80 characters at most.");
-		expect(detail).toContain('good:  --subject "PR 1577 merged, main green"');
-		expect(detail).toContain('bad:   --subject "Seq 1722 -> Coordinator: PR 1577 merged"');
+		expect(detail).toContain('good:  --subject "<pr:1577> merged, main green"');
+		expect(detail).toContain('bad:   --subject "<seq:1722> -> Coordinator: <pr:1577> merged"');
 		expect(detail).toContain("Do NOT repeat who is talking");
 		expect(detail).toContain("dev3 message --task seq:7 --subject");
 	});

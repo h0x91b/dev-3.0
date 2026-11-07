@@ -1,6 +1,7 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "../App";
+import { registerBoardViewCommandHandler, resetBoardViewCommandsForTests } from "../board-views/view-commands";
 import { I18nProvider } from "../i18n";
 import type { SecretRequest } from "../../shared/secret-request";
 
@@ -614,6 +615,34 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
 			await userEvent.keyboard("{Escape}");
 			expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
+		});
+	});
+
+	describe("board view chord (v 1..9 / v v)", () => {
+		afterEach(() => resetBoardViewCommandsForTests());
+
+		it("v then a digit picks the Nth view, v then v the previous one", async () => {
+			await renderApp();
+			const handler = vi.fn(() => true);
+			registerBoardViewCommandHandler(handler);
+			await userEvent.keyboard("v2");
+			expect(handler).toHaveBeenLastCalledWith({ kind: "nth", n: 2 }, false);
+			await userEvent.keyboard("vv");
+			expect(handler).toHaveBeenLastCalledWith({ kind: "previous" }, false);
+			expect(handler).toHaveBeenCalledTimes(2);
+		});
+
+		it("is inert off a board, and while typing in a field", async () => {
+			await renderApp();
+			await userEvent.keyboard("v2");
+			const handler = vi.fn(() => true);
+			registerBoardViewCommandHandler(handler);
+			const input = document.createElement("input");
+			document.body.appendChild(input);
+			input.focus();
+			await userEvent.keyboard("v2");
+			input.remove();
+			expect(handler).not.toHaveBeenCalled();
 		});
 	});
 
@@ -4319,6 +4348,20 @@ describe("App keyboard shortcuts", () => {
 			const opts = vi.mocked(confirm).mock.calls[0][0];
 			expect(opts).toMatchObject({ agentInitiated: true, danger: true, tone: "danger", title: "Reset to To Do requested" });
 			expect(opts.deferred?.gateConfirm).toBe(true);
+		});
+
+		it("says the branch is kept when the task's branch survives the reset", async () => {
+			vi.mocked(confirm).mockResolvedValue(false);
+			await renderApp();
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:agentResetRequested", {
+					detail: { requestId: "req-r2", taskId: "t1", projectId: "p1", taskTitle: "Ops task", branchKept: true },
+				}));
+			});
+			await waitFor(() => expect(confirm).toHaveBeenCalled());
+			const message = vi.mocked(confirm).mock.calls[0][0].message as string;
+			expect(message).toContain("branch is kept");
+			expect(message).not.toContain("plus its branch");
 		});
 
 		it("replays a pending reset request on connect", async () => {

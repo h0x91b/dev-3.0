@@ -26,7 +26,7 @@ import { api } from "../../../rpc";
 import { confirm } from "../../../confirm";
 
 /** Stub translator: keys make assertions stable and locale-agnostic. */
-const t = Object.assign((key: string) => key, {
+const t = Object.assign((key: string, params?: Record<string, unknown>) => (params?.url ? `${key}|${params.url}` : key), {
 	plural: (key: string, count: number) => `${key}|${count}`,
 }) as unknown as TFunction;
 
@@ -40,7 +40,7 @@ function status(over: Partial<ModelSidecarStatus> = {}): ModelSidecarStatus {
 }
 
 function renderSection() {
-	render(
+	return render(
 		<I18nProvider>
 			<ModelCatalogSection t={t} />
 		</I18nProvider>,
@@ -445,3 +445,68 @@ describe("the live model list", () => {
 		expect(await screen.findByText("catalog.listUnavailable")).toBeTruthy();
 	});
 });
+
+describe("usage limits tracking", () => {
+	const custom = (usageSource?: "kimi-code", hasKey = true): ModelCatalogView => ({
+		providers: [{ id: "p-kimi", kind: "custom", label: "Kimi", baseUrl: "https://api.example.test/coding/", hasKey, usageSource }],
+		models: [],
+	});
+
+	async function savedProvider() {
+		await userEvent.click(await screen.findByRole("button", { name: "catalog.save" }));
+		await waitFor(() => expect(api.request.modelCatalogSave).toHaveBeenCalled());
+		return vi.mocked(api.request.modelCatalogSave).mock.calls[0][0].catalog.providers[0];
+	}
+
+	it("opts a custom provider in to Kimi Code limits", async () => {
+		vi.mocked(api.request.modelCatalogGet).mockResolvedValue(custom());
+		renderSection();
+		await userEvent.click(await screen.findByRole("combobox", { name: "catalog.usageSourceLabel" }));
+		await userEvent.click(await screen.findByRole("option", { name: "catalog.usageSource.kimi-code" }));
+		expect((await savedProvider()).usageSource).toBe("kimi-code");
+	});
+
+	it("takes the field away again when set back to not tracked", async () => {
+		vi.mocked(api.request.modelCatalogGet).mockResolvedValue(custom("kimi-code"));
+		renderSection();
+		await userEvent.click(await screen.findByRole("combobox", { name: "catalog.usageSourceLabel" }));
+		await userEvent.click(await screen.findByRole("option", { name: "catalog.usageSource.none" }));
+		expect((await savedProvider()).usageSource).toBeUndefined();
+	});
+
+	it("clears the field when the provider stops being custom", async () => {
+		vi.mocked(api.request.modelCatalogGet).mockResolvedValue(custom("kimi-code"));
+		renderSection();
+		await userEvent.click(await screen.findByRole("combobox", { name: "catalog.providerKind" }));
+		await userEvent.click(await screen.findByRole("option", { name: "catalog.kind.openai" }));
+		expect((await savedProvider()).usageSource).toBeUndefined();
+	});
+
+	it("names the exact usage URL the key goes to, tied to the Limits select", async () => {
+		vi.mocked(api.request.modelCatalogGet).mockResolvedValue(custom("kimi-code"));
+		renderSection();
+		const hint = await screen.findByText("catalog.usageSourceHint|https://api.example.test/coding/v1/usages");
+		expect(screen.getByRole("combobox", { name: "catalog.usageSourceLabel" })).toHaveAttribute("aria-describedby", hint.id);
+	});
+
+	it("says in the key column that a keyless tracked provider cannot read its limits", async () => {
+		vi.mocked(api.request.modelCatalogGet).mockResolvedValue(custom("kimi-code", false));
+		renderSection();
+		expect(await screen.findByText("catalog.providerKeyMissingLimits")).toBeTruthy();
+		expect(screen.queryByText("catalog.providerKeyMissing")).toBeNull();
+	});
+
+	it("shows no usage hint while tracking is off", async () => {
+		vi.mocked(api.request.modelCatalogGet).mockResolvedValue(custom());
+		renderSection();
+		expect(await screen.findByText("catalog.providerKeyStored")).toBeTruthy();
+		expect(screen.queryByText(/catalog\.usageSourceHint/)).toBeNull();
+	});
+
+	it("offers the control on custom providers only", async () => {
+		renderSection();
+		await screen.findByText("OpenRouter");
+		expect(screen.queryByRole("combobox", { name: "catalog.usageSourceLabel" })).toBeNull();
+	});
+});
+

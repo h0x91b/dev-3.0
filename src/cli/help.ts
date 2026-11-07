@@ -405,7 +405,7 @@ const COMMANDS: CommandHelp[] = [
 			"With no --from it shows the last 24 hours and says, as a number, how many events are OLDER than that window.",
 			"The cursor is never guessed: an unparseable --from exits 19 and reads nothing, rather than falling back to a window.",
 			"Cursor precision is milliseconds on purpose — 73 individual seconds on this board carry more than one note, so a second-precision cursor would skip or repeat them.",
-			"One line per event — `dev3 note show <id> --task <seq>` prints the full body.",
+			"One line per event — `dev3 note show <id> --task seq:<N>` prints the full body.",
 		],
 	},
 	{
@@ -734,10 +734,11 @@ const COMMANDS: CommandHelp[] = [
 					+ " the default server (the project's devScript), or the only declared server when there is no default."
 					+ " --wait blocks until it is listening on a port assigned to it (default timeout 120s)."
 					+ " --env passes extra variables to the script (repeatable); it overrides the project's own env but never"
-					+ " DEV3_TASK_ID, DEV3_WORKTREE_ROOT or DEV3_PORT*."
+					+ " PATH, HOME, SHELL, DEV3_TASK_ID, DEV3_WORKTREE_ROOT or DEV3_PORT*; `status` lists its names, never its values."
+					+ " A containerised script must pass them on itself (`docker run -e KEY`, compose `environment:`)."
 					+ " Arguments after -- are appended to the script's last line (ahead of a trailing # comment), each shell-quoted;"
 					+ " a last line ending in &, |, ; or a block keyword is refused. Name one server (not --all)."
-					+ " `status` shows them in full, so pass secrets with --env.",
+					+ " `status` shows script args in full, so pass secrets with --env.",
 			},
 			{
 				name: "stop",
@@ -746,10 +747,10 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "restart",
-				usage: "dev3 dev-server restart [task-id | --task <id>] [server] [--all] [--wait] [--timeout <sec>] [--env KEY=VALUE ...] [-- <script args>...]",
+				usage: "dev3 dev-server restart [task-id | --task <id>] [server] [--all] [--wait] [--timeout <sec>] [--env KEY=VALUE ... | --clear-env] [-- <script args>...]",
 				summary:
 					"Restart one dev server, or --all of them. --wait blocks until the NEW server is listening on a port assigned to it."
-					+ " Without --env it reuses the env of the last start; with --env it replaces it. A stop clears it."
+					+ " Without --env it reuses the env of the last start; with --env it replaces it; --clear-env runs with none. A stop clears it."
 					+ " Script arguments after -- work like on start: omitted reuses the last ones, `restart --` with nothing after it clears them.",
 			},
 			{
@@ -1005,8 +1006,8 @@ const COMMANDS: CommandHelp[] = [
 			"                  subject is rejected, never shortened for you). It is stored with",
 			"                  the message and it is the line the agent-traffic view shows, so",
 			"                  do NOT repeat who is talking — that view already shows the pair.",
-			'                    good:  --subject "PR 1577 merged, main green"',
-			'                    bad:   --subject "Seq 1722 -> Coordinator: PR 1577 merged"',
+			'                    good:  --subject "<pr:1577> merged, main green"',
+			'                    bad:   --subject "<seq:1722> -> Coordinator: <pr:1577> merged"',
 			"                  Omitting it exits 17 with the corrected command.",
 			"Bare form delivers the text into the live agent immediately (types it + Enter).",
 			"--in <dur>    Schedule after a delay, e.g. 30m, 2h, 1h30m (Send later).",
@@ -1016,7 +1017,7 @@ const COMMANDS: CommandHelp[] = [
 			"--list        Pending scheduled messages on the target task (id, due time, sender); --json.",
 			"--cancel <id> Drop one pending message (8-char prefix works). One already firing cannot be recalled.",
 			"--variant <i> Pick one member of a variant group; needs --task seq:<N>, since a group",
-			"              shares its seq. The index is the card's <seq>-<i> suffix.",
+			"              shares its seq. The index is the card's N-i suffix.",
 			"--agent <h>   One agent of the target task, by the handle `dev3 pane list --task <id>` prints.",
 			"              Refused if that agent has exited or been replaced, never sent to another one.",
 			"Without --agent it goes to the task's main agent, whichever pane is focused.",

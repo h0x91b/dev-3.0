@@ -424,6 +424,63 @@ describe("coordinator default agent", () => {
 	});
 });
 
+describe("no picked agent — the default that ran is recorded on the pane", () => {
+	function resolveAsDefault() {
+		vi.mocked(agents.resolveCommandForProject).mockResolvedValue({
+			command: "claude",
+			extraEnv: {},
+			agent: { id: "builtin-claude", baseCommand: "claude" },
+			config: { id: "claude-bypass" },
+			agentFamily: "claude",
+			launchModel: undefined,
+		} as never);
+	}
+	afterEach(() => {
+		vi.mocked(agents.resolveCommandForProject).mockResolvedValue({ command: "claude", extraEnv: {} } as never);
+	});
+
+	it("names the default agent and preset on the main pane", async () => {
+		resolveAsDefault();
+
+		await launchTaskPty(makeProject(), makeTask({ agentId: null, configId: null }), WORKTREE);
+
+		expect(vi.mocked(data.updateTask)).toHaveBeenCalledWith(
+			expect.anything(),
+			TASK_ID,
+			expect.objectContaining({
+				sessionState: { panes: [expect.objectContaining({ agentId: "builtin-claude", configId: "claude-bypass", agentFromDefault: true })] },
+			}),
+		);
+	});
+
+	it("does not mark a picked agent as the default", async () => {
+		await launchTaskPty(makeProject(), makeTask({ agentId: "builtin-claude", configId: "claude-default" }), WORKTREE, "builtin-claude", "claude-default");
+
+		const pane = vi.mocked(data.updateTask).mock.calls[0]?.[2].sessionState?.panes[0];
+		expect(pane?.agentFromDefault).toBeUndefined();
+	});
+
+	it("keeps the default marker when the pane is resumed with its own agent", async () => {
+		const priorMain = { agentCmd: "claude", sessionId: "s-1", agentId: "builtin-claude", configId: "claude-bypass", agentFromDefault: true };
+		const task = makeTask({ agentId: null, configId: null, sessionState: { panes: [priorMain] } });
+
+		await launchTaskPty(makeProject(), task, WORKTREE, "builtin-claude", "claude-bypass", false, true, { sessionId: "s-1" });
+
+		const pane = vi.mocked(data.updateTask).mock.calls[0]?.[2].sessionState?.panes[0];
+		expect(pane).toMatchObject({ agentId: "builtin-claude", agentFromDefault: true });
+	});
+
+	it("leaves the task itself following the default, so a relaunch picks up a changed one", async () => {
+		resolveAsDefault();
+
+		await launchTaskPty(makeProject(), makeTask({ agentId: null, configId: null }), WORKTREE);
+
+		const patch = vi.mocked(data.updateTask).mock.calls[0]?.[2];
+		expect(patch).not.toHaveProperty("agentId");
+		expect(patch).not.toHaveProperty("configId");
+	});
+});
+
 describe("unmarked task — the legacy tmux path is untouched", () => {
 	it("creates a tmux PTY session and never a native one", async () => {
 		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
@@ -873,36 +930,75 @@ describe("launch registration of a fresh Claude session", () => {
 		expect(withReport[0]![0]).toBe("claude");
 	});
 
-	it.each([
-		["reattaching to a surviving tmux session", { skipSessionPersist: true }, false],
-		["resuming a conversation", { sessionId: "old-session" }, true],
-	])("registers nothing when %s — the agent there keeps its own session", async (_label, opts, resume) => {
-		await launchTaskPty(makeProject(), makeTask(), WORKTREE, null, null, false, resume, opts);
+	function launchReport(): { launchId: string; startReceipts: boolean } {
+		const reports = exitReports() as string[][];
+		expect(reports).toHaveLength(1);
+		const launchId = reports[0]![reports[0]!.length - 1]!;
+		expect(reports[0]).toEqual(["dev3", "hook", "agent-exited", "--task", TASK_ID, "--session", launchId]);
+		return { launchId, startReceipts: agentSessionRecord(TASK_ID, launchId)!.startReceipts };
+	}
 
+	it("registers nothing when reattaching to a surviving tmux session — no new agent runs", async () => {
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE, null, null, false, false, { skipSessionPersist: true });
 		expect(exitReports()).toEqual([]);
+	});
+
+	it("reports a resumed conversation's exit under a launch id of its own, never the old session id", async () => {
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE, null, null, false, true, { sessionId: "old-session" });
+		const { launchId, startReceipts } = launchReport();
+		expect(launchId).not.toBe("old-session");
+		expect(startReceipts).toBe(false);
 		expect(agentSessionRecord(TASK_ID, "old-session")).toBeNull();
 	});
 
-	it("registers nothing when the worktree's settings lack dev3's SessionStart hook — no receipt could ever come", async () => {
+	it("falls back to an exit-only report when the worktree's settings lack dev3's SessionStart hook", async () => {
 		vi.mocked(claudeSessionStartHookInstalled).mockReturnValue(false);
 		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
-		expect(exitReports()).toEqual([]);
+		expect(launchReport().startReceipts).toBe(false);
 	});
 
-	it("registers nothing when the shared hook CLI predates the receipts — today's handoff, no unknown-command exit line", async () => {
+	it("falls back to an exit-only report when the shared hook CLI predates the start receipt", async () => {
 		vi.mocked(hookCliSupports).mockImplementation(async (method) => method !== "agent.sessionStarted");
 		try {
 			await launchTaskPty(makeProject(), makeTask(), WORKTREE);
 		} finally {
 			vi.mocked(hookCliSupports).mockImplementation(async () => true);
 		}
-		expect(exitReports()).toEqual([]);
+		expect(launchReport().startReceipts).toBe(false);
 		expect(agentSessionRecord(TASK_ID, persistedSessionId())).toBeNull();
 	});
 
-	it("registers nothing for a harness without Claude's hooks", async () => {
+	it("reports nothing when the shared hook CLI predates agent-exited — no unknown-command exit line", async () => {
+		vi.mocked(hookCliSupports).mockImplementation(async () => false);
+		try {
+			await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+		} finally {
+			vi.mocked(hookCliSupports).mockImplementation(async () => true);
+		}
+		expect(exitReports()).toEqual([]);
+	});
+
+	it.each(["codex", "gemini", "cursor-agent"])("bakes an exit-only report into a %s launch", async (baseCommand) => {
+		vi.mocked(agents.resolveCommandForProject).mockResolvedValue({
+			command: baseCommand, extraEnv: {}, agent: { baseCommand }, config: undefined, agentFamily: baseCommand,
+		} as never);
+		vi.mocked(agents.supportsPreAssignedSessionId).mockReturnValue(false);
 		vi.mocked(getAgentAdapter).mockReturnValue({ trustKinds: [], hooksSpec: () => ({ kind: "codex" }) } as never);
 		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+		expect(launchReport().startReceipts).toBe(false);
+	});
+
+	it("bakes the same report into a native-backend launch", async () => {
+		vi.mocked(agents.resolveCommandForProject).mockResolvedValue({
+			command: "codex", extraEnv: {}, agent: { baseCommand: "codex" }, config: undefined, agentFamily: "codex",
+		} as never);
+		vi.mocked(getAgentAdapter).mockReturnValue({ trustKinds: [], hooksSpec: () => ({ kind: "codex" }) } as never);
+		await launchTaskPty(makeProject(), makeTask({ terminalBackend: "native" }), WORKTREE);
+		expect(launchReport().startReceipts).toBe(false);
+	});
+
+	it("reports nothing for a plain-shell launch", async () => {
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE, null, null, false, false, { shellNotice: "parked" });
 		expect(exitReports()).toEqual([]);
 	});
 

@@ -1,4 +1,5 @@
-import type { PRCheckInfo, PRCIStatus, PRReviewDecision, PRReviewState } from "../../shared/types";
+import type { PRCheckInfo, PRCIStatus, PRMergeState, PRReviewDecision, PRReviewState } from "../../shared/types";
+import type { GitHubPullRequestSummary } from "../github-pr-status";
 export { summarizeMergeability } from "../../shared/pr-status";
 export type { PRMergeability, PRMergeabilityReason, PRMergeabilitySummary } from "../../shared/pr-status";
 
@@ -159,4 +160,24 @@ export function reasonForSignal(ciStatus: PRCIStatus | null, reviewState: PRRevi
 	if (ciStatus === "success" || ciStatus === "failure") parts.push(CI_REASON[ciStatus]);
 	if (reviewState) parts.push(REVIEW_REASON[reviewState]);
 	return parts.join(" · ");
+}
+
+/** A GitHub PR summary as the badge/popover fields every PR surface shows. */
+export function prSummaryStatus(pr: GitHubPullRequestSummary) {
+	const mergeState: PRMergeState = {
+		mergeable: typeof pr.mergeable === "string" ? pr.mergeable.toUpperCase() : null,
+		status: typeof pr.mergeStateStatus === "string" ? pr.mergeStateStatus.toUpperCase() : null,
+		state: typeof pr.state === "string" ? pr.state.toUpperCase() : null,
+	};
+	return {
+		autoMergeEnabled: parseAutoMergeEnabled(pr.autoMergeRequest),
+		ciStatus: rollupCiStatus(pr.statusCheckRollup),
+		reviewState: mapReviewDecision(pr.reviewDecision),
+		reviewDecision: parseReviewDecision(pr.reviewDecision),
+		unresolvedCount: pr.unresolvedCount,
+		mergeState,
+		checks: normalizeChecks(pr.statusCheckRollup),
+		prTitle: typeof pr.title === "string" ? pr.title : null,
+		isDraft: typeof pr.isDraft === "boolean" ? pr.isDraft : null,
+	};
 }

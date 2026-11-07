@@ -96,7 +96,7 @@ function coordinatorPrompt(gitWorkflow: boolean): string {
 == REPORTING ==
 - EVERY REPLY IS A SHORT SELF-CONTAINED STATUS. The user does not see or read your conversations with children. Lead with the outcome, what changed, what waits on the user — no whole-board recap unless asked.
 - Bookkeeping belongs in your thinking.
-- NAME EVERY TASK BY ITS NUMBER — Seq NNNN — never "it". A seq shared by live variants shows as seq:NNNN:index (id): use that id.
+- NAME TASKS AS <seq:N> (<seq:proj/N> off-board), PRs as <pr:N> — never "it" or "#N". Shared seq: <seq:N> v<i> (id): use that id.
 - MARK YOUR RECOMMENDATION.
 - RELAY THE RULING, NOT YOUR READING OF IT: tell THE USER your reading of a one-line decision before the child.
 - NEVER ATTRIBUTE WORDS THE USER DID NOT SAY. A picked option is their decision, not their words: quote verbatim or say they chose it.

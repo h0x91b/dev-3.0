@@ -656,6 +656,33 @@ describe("dev-server --env", () => {
 		}, { retryEmptyResponse: true });
 	});
 
+	// Without it, dropping a remembered variable took a stop and a fresh start.
+	it("--clear-env sends an empty env, so a restart runs with none", async () => {
+		mockSend.mockResolvedValue(okResp(STATUS));
+
+		await handleDevServer("restart", parseArgs(["--clear-env"]), SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.restart", {
+			taskId: CTX.taskId,
+			projectId: CTX.projectId,
+			env: {},
+		}, { retryEmptyResponse: true });
+	});
+
+	it("refuses --clear-env together with --env, which already replaces", async () => {
+		await expect(
+			handleDevServer("restart", parseArgs(["--clear-env", "--env", "A=1"]), SOCKET, CTX),
+		).rejects.toThrow("EXIT_3");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("rejects --clear-env on stop", async () => {
+		await expect(
+			handleDevServer("stop", parseArgs(["--clear-env"]), SOCKET, CTX),
+		).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("--clear-env");
+	});
+
 	// The one thing the CLI must never be able to do: move the server off the
 	// port `--wait` is about to poll.
 	it("refuses to override an assigned port and starts nothing", async () => {
@@ -1013,5 +1040,29 @@ describe("dev-server script args after --", () => {
 
 		const statusCall = mockSend.mock.calls.find(([, method]) => method === "devServer.status");
 		expect(statusCall?.[2]).toEqual(startParams);
+	});
+});
+
+// The generic parser gives the next bare word to any flag as its value.
+describe("dev-server value-less flags", () => {
+	it("start --wait api starts api, not the default server", async () => {
+		mockSend.mockResolvedValue(okResp(withServer({ name: "api", devPorts: [{ port: 50001, pid: 81298, processName: "bun" }] })));
+
+		await handleDevServer("start", parseArgs(["--wait", "api"]), SOCKET, CTX);
+
+		expect(mockSend.mock.calls[0]?.[2]).toMatchObject({ server: "api" });
+	});
+
+	it("restart --clear-env api restarts api with no env", async () => {
+		mockSend.mockResolvedValue(okResp(STATUS));
+
+		await handleDevServer("restart", parseArgs(["--clear-env", "api"]), SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.restart", {
+			taskId: CTX.taskId,
+			projectId: CTX.projectId,
+			server: "api",
+			env: {},
+		}, { retryEmptyResponse: true });
 	});
 });

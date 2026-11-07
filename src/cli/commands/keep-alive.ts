@@ -1,4 +1,5 @@
 import type { Task } from "../../shared/types";
+import { formatTaskRef } from "../../shared/task-refs";
 import type { KeepAliveState } from "../../shared/types/keep-alive";
 import { sendRequest } from "../socket-client";
 import { exitError, exitUsage } from "../output";
@@ -47,7 +48,7 @@ async function showStatus(args: ParsedArgs, socketPath: string, context: CliCont
 	if (!resp.ok) exitError(resp.error || "Failed to read keep alive");
 
 	const data = resp.data as { seq: number; title: string; keepAlive: KeepAliveState | null };
-	process.stdout.write(`#${data.seq} ${data.title}\n  keep alive: ${describeState(data.keepAlive)}\n`);
+	process.stdout.write(`${formatTaskRef(data.seq)} ${data.title}\n  keep alive: ${describeState(data.keepAlive)}\n`);
 }
 
 async function listKeptAlive(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {

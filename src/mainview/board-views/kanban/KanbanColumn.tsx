@@ -1,0 +1,665 @@
+import { useState, useRef, useEffect, type ComponentType } from "react";
+import type { Task, TaskStatus, TipState } from "../../../shared/types";
+import { hexToRgb, getAllowedTransitions } from "../../../shared/types";
+import { useT } from "../../i18n";
+import { useStatusColors, useStatusColorsInk } from "../../hooks/useStatusColors";
+import { useNarrowViewport } from "../../hooks/useNarrowViewport";
+import TipCard from "../../components/TipCard";
+import HelpSpot from "../../components/HelpSpot";
+import { statusHelpTopicId } from "../../help";
+import type { Tip } from "../../tips";
+import type { BoardTaskCardProps } from "../board-service";
+
+const COLUMN_TASK_LIMIT = 15;
+
+// Empty-column compact mode: kicks in below this viewport width
+const COMPACT_VIEWPORT_PX = 1400;
+// Hover dwell before an empty compact column expands to full width
+const COMPACT_DWELL_MS = 300;
+
+// Module-level variable: set synchronously on dragstart, cleared on dragend.
+// Avoids relying on dataTransfer.types which may not include custom MIME types in WKWebView.
+let _activeDragColumnId: string | null = null;
+
+interface KanbanColumnProps {
+	status: TaskStatus;
+	label: string;
+	description?: string;
+	tasks: Task[];
+	onAddTask: () => void;
+	onTaskDrop: (taskId: string, targetStatus: TaskStatus) => void;
+	onTaskDropToCustomColumn?: (taskId: string, customColumnId: string) => void;
+	dragFromStatus: TaskStatus | null;
+	dragFromCustomColumnId?: string | null;
+	/** The card being dragged is an unfinished draft: only To Do may accept it. */
+	dragFromDraft?: boolean;
+	/**
+	 * This lane holds no column of the dragged card's project, so it cannot accept
+	 * it. Set by the board from the shared `laneAcceptsProject` rule; the lane is
+	 * dimmed for the whole drag, which is how the user learns the refusal BEFORE
+	 * letting go instead of from a toast afterwards.
+	 */
+	laneRefusesDrag?: boolean;
+	/** `ctx.board.TaskCard` — the host binds everything a card needs beyond these props. */
+	TaskCard: ComponentType<BoardTaskCardProps>;
+	/** How many projects a merged custom lane covers. Undefined = not a merge. */
+	mergedProjectCount?: number;
+	onDragStart: (taskId: string) => void;
+	movingTaskIds: Set<string>;
+	onSetMoving: (taskId: string, isMoving: boolean) => void;
+	// Custom column support
+	isCustomColumn?: boolean;
+	customColumnId?: string;
+	colorOverride?: string;
+	isDraggedColumn?: boolean;
+	onColumnDragStart?: () => void;
+	onColumnDragEnd?: () => void;
+	// Column reorder drop target (left half = "before", right half = "after")
+	onColumnDrop?: (side: "before" | "after") => void;
+	// Feature discovery tip
+	tip?: Tip | null;
+	tipState?: TipState;
+	onTipChanged?: (next: TipState) => void;
+	// Collapse support
+	collapsed?: boolean;
+	onCollapseToggle?: () => void;
+	collapseDragHandlers?: { onDragEnter: () => void; onDragLeave: () => void; onDragEnd: () => void };
+	// Rename support for built-in columns
+	onRenameColumn?: (newName: string | null) => void;
+	// Delete support for custom columns (the caller confirms first)
+	onDeleteColumn?: () => void;
+	// Freshly created board columns open directly in rename mode so the user can
+	// name them without leaving the board (issue #222).
+	autoStartEditing?: boolean;
+	onAutoEditConsumed?: () => void;
+	// Mobile carousel: stretch the column to fill the carousel track (one column per screen)
+	fullWidth?: boolean;
+	/** No task anywhere on this board — the To Do column then explains the first one. */
+	boardEmpty?: boolean;
+}
+
+function KanbanColumn({
+	status,
+	label,
+	description,
+	tasks,
+	onAddTask,
+	TaskCard,
+	onTaskDrop,
+	onTaskDropToCustomColumn,
+	dragFromStatus,
+	dragFromCustomColumnId,
+	dragFromDraft = false,
+	laneRefusesDrag = false,
+	mergedProjectCount,
+	onDragStart,
+	movingTaskIds,
+	onSetMoving,
+	isCustomColumn,
+	customColumnId,
+	colorOverride,
+	isDraggedColumn,
+	onColumnDragStart,
+	onColumnDragEnd,
+	onColumnDrop,
+	tip,
+	tipState,
+	onTipChanged,
+	collapsed,
+	onCollapseToggle,
+	collapseDragHandlers,
+	onRenameColumn,
+	onDeleteColumn,
+	autoStartEditing,
+	onAutoEditConsumed,
+	fullWidth,
+	boardEmpty,
+}: KanbanColumnProps) {
+	const t = useT();
+	const statusColors = useStatusColors();
+	// The New Task button below the list is To Do's alone (see its two render
+	// sites) — the empty-state copy has to agree with that.
+	const ownsAddTask = !isCustomColumn && status === "todo";
+	// ink = text-safe variant of the status colour (lighter themes need a
+	// darker shade to clear APCA |Lc| ≥ 60 on the glass column header).
+	const statusColorsInk = useStatusColorsInk();
+	const color = colorOverride ?? statusColors[status];
+	const inkColor = colorOverride ?? statusColorsInk[status];
+	const [dragOver, setDragOver] = useState(false);
+	const [columnDragSide, setColumnDragSide] = useState<"before" | "after" | null>(null);
+	const [expanded, setExpanded] = useState(false);
+	const [editing, setEditing] = useState(false);
+	const [editValue, setEditValue] = useState("");
+	const [compactExpanded, setCompactExpanded] = useState(false);
+	// A card clipped by the scroll edge sits flush against the pinned footer (tip
+	// card / + New Task) and reads as the footer lying on top of it.
+	const [listClipped, setListClipped] = useState(false);
+	const renameInputRef = useRef<HTMLInputElement>(null);
+	const taskListRef = useRef<HTMLDivElement>(null);
+	const compactDwellTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	const isNarrowViewport = useNarrowViewport(COMPACT_VIEWPORT_PX);
+	const isAnyDragActive =
+		dragFromStatus !== null || (dragFromCustomColumnId ?? null) !== null;
+	// Compact = narrow viewport, empty column, not the Todo column (it always shows + New Task),
+	// not in the explicitly-collapsed vertical state.
+	const isCompact =
+		!fullWidth && isNarrowViewport && tasks.length === 0 && !collapsed && status !== "todo";
+	const isCompactNarrow = isCompact && !compactExpanded;
+
+	// Auto-collapse when column identity changes (e.g. project switch)
+	const columnKey = `${status}:${customColumnId ?? ""}`;
+	useEffect(() => {
+		setExpanded(false);
+	}, [columnKey]);
+
+	// Cleanup compact dwell timer on unmount
+	useEffect(() => {
+		return () => { if (compactDwellTimer.current) clearTimeout(compactDwellTimer.current); };
+	}, []);
+
+	// Cancel compact-expand mid-flight when a drag starts, and force-collapse
+	// any already-expanded compact column so the board doesn't shift during DnD.
+	useEffect(() => {
+		if (isAnyDragActive) {
+			if (compactDwellTimer.current) {
+				clearTimeout(compactDwellTimer.current);
+				compactDwellTimer.current = null;
+			}
+			setCompactExpanded(false);
+		}
+	}, [isAnyDragActive]);
+
+	// Leaving compact mode entirely (task added / viewport widened) resets the latch
+	useEffect(() => {
+		if (!isCompact) setCompactExpanded(false);
+	}, [isCompact]);
+
+	function syncListClipped() {
+		const el = taskListRef.current;
+		if (!el) return;
+		setListClipped(el.scrollHeight - el.scrollTop - el.clientHeight > 1);
+	}
+
+	function handleCompactPointerEnter() {
+		if (!isCompact || isAnyDragActive) return;
+		if (compactDwellTimer.current) clearTimeout(compactDwellTimer.current);
+		compactDwellTimer.current = setTimeout(() => {
+			setCompactExpanded(true);
+			compactDwellTimer.current = null;
+		}, COMPACT_DWELL_MS);
+	}
+
+	function handleCompactPointerLeave() {
+		if (compactDwellTimer.current) {
+			clearTimeout(compactDwellTimer.current);
+			compactDwellTimer.current = null;
+		}
+		if (compactExpanded) setCompactExpanded(false);
+	}
+
+	function startEditing() {
+		if (!onRenameColumn) return;
+		setEditValue(label);
+		setEditing(true);
+		// Focus input on next tick
+		setTimeout(() => renameInputRef.current?.select(), 0);
+	}
+
+	function commitRename() {
+		setEditing(false);
+		if (!onRenameColumn) return;
+		const trimmed = editValue.trim();
+		// If empty or unchanged from the current label, reset (pass null to clear custom name)
+		if (!trimmed || trimmed === label) {
+			return;
+		}
+		onRenameColumn(trimmed);
+	}
+
+	// A board-created custom column opens in rename mode (issue #222) — on mount, or
+	// when the trigger arrives after the column already mounted (the project push
+	// can draw it first). The parent clears the trigger via onAutoEditConsumed.
+	useEffect(() => {
+		if (!autoStartEditing) return;
+		startEditing();
+		onAutoEditConsumed?.();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [autoStartEditing]);
+
+	// A draft may only ever be dropped back into To Do — the mouse must not become
+	// a loophole around the non-runnable guarantee.
+	const draftBlocksDrop = dragFromDraft && !(!isCustomColumn && status === "todo");
+
+	// Can this column accept a cross-column drop?
+	const isCrossColumnTarget = !draftBlocksDrop && !laneRefusesDrag && (isCustomColumn
+		// Custom columns accept drops from any column except themselves
+		? (dragFromStatus !== null || dragFromCustomColumnId !== null) && dragFromCustomColumnId !== customColumnId
+		// Built-in columns use transition logic; also accept from custom columns (underlying status governs)
+		: dragFromStatus !== null && getAllowedTransitions(dragFromStatus).includes(status));
+
+	useEffect(() => {
+		function handleDragEnd() {
+			setColumnDragSide(null);
+		}
+		window.addEventListener("dragend", handleDragEnd);
+		return () => window.removeEventListener("dragend", handleDragEnd);
+	}, []);
+
+	function handleDragOver(e: React.DragEvent) {
+		// Self-ID for drag: custom columns use customColumnId, built-in columns use status
+		const myDragId = customColumnId ?? status;
+		// Column reorder: use module-level variable set synchronously on dragstart.
+		// dataTransfer.types is NOT used because WKWebView may reject custom MIME types.
+		// Any column (built-in or custom) with onColumnDrop accepts a column reorder drop.
+		if (onColumnDrop && _activeDragColumnId !== null && _activeDragColumnId !== myDragId) {
+			e.preventDefault();
+			e.dataTransfer.dropEffect = "move";
+			const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+			const side = e.clientX < rect.left + rect.width / 2 ? "before" : "after";
+			setColumnDragSide(side);
+			return;
+		}
+		// Task drag
+		if (!isCrossColumnTarget) return;
+		e.preventDefault();
+		e.dataTransfer.dropEffect = "move";
+	}
+
+	function handleDragEnter(e: React.DragEvent) {
+		const myDragId = customColumnId ?? status;
+		// Column reorder: must also preventDefault on dragenter for drop to fire
+		if (onColumnDrop && _activeDragColumnId !== null && _activeDragColumnId !== myDragId) {
+			e.preventDefault();
+			return;
+		}
+		if (!isCrossColumnTarget) return;
+		e.preventDefault();
+		setDragOver(true);
+	}
+
+	function handleDragLeave(e: React.DragEvent) {
+		if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+		setDragOver(false);
+		setColumnDragSide(null);
+	}
+
+	function handleDrop(e: React.DragEvent) {
+		e.preventDefault();
+		setDragOver(false);
+
+		// Column reorder drop (use module var; dataTransfer.getData won't have "dev3/column" in WKWebView)
+		const myDragId = customColumnId ?? status;
+		if (_activeDragColumnId && _activeDragColumnId !== myDragId && onColumnDrop && columnDragSide) {
+			setColumnDragSide(null);
+			onColumnDrop(columnDragSide);
+			return;
+		}
+		setColumnDragSide(null);
+
+		const taskId = e.dataTransfer.getData("text/plain");
+		// Ignore col: prefixed data (column drags that fell through without a side set)
+		if (!taskId || taskId.startsWith("col:")) return;
+
+		if (isCustomColumn && customColumnId) {
+			// Drop into a custom column
+			onTaskDropToCustomColumn?.(taskId, customColumnId);
+		} else if (isCrossColumnTarget) {
+			onTaskDrop(taskId, status);
+		}
+	}
+
+	const showDropHighlight = dragOver && isCrossColumnTarget;
+
+	const visibleTasks = expanded ? tasks : tasks.slice(0, COLUMN_TASK_LIMIT);
+	const hiddenCount = tasks.length - visibleTasks.length;
+
+	// Re-measure the scroll edge whenever the rendered task set changes, plus on
+	// any resize of the list itself (window height, sibling panes).
+	useEffect(syncListClipped, [visibleTasks.length, expanded, tip, isCompactNarrow]);
+	useEffect(() => {
+		const el = taskListRef.current;
+		if (!el) return;
+		const observer = new ResizeObserver(syncListClipped);
+		observer.observe(el);
+		return () => observer.disconnect();
+	}, []);
+
+	// Pinned footers (tip card, + New Task) sit directly under the scroll area;
+	// the hairline only appears while a card is actually clipped beneath them.
+	const footerSeam = `border-t pt-2.5 transition-colors duration-150 ${listClipped ? "border-edge" : "border-transparent"}`;
+
+	// Collapsed column rendering
+	if (collapsed) {
+		return (
+			<>
+			<div
+				className={`group/col relative flex flex-col flex-shrink-0 w-12 glass-column column-glow rounded-2xl border cursor-pointer select-none transition-[background-color,border-color,box-shadow,opacity] duration-150 ease-out ${
+					showDropHighlight
+						? "border-accent bg-accent/5 shadow-lg shadow-accent/10"
+						: isCrossColumnTarget && (dragFromStatus || dragFromCustomColumnId)
+							? "border-edge-active"
+							: "border-transparent"
+				} ${isDraggedColumn ? "opacity-40" : ""} ${laneRefusesDrag ? "opacity-40 saturate-50" : ""}`}
+				style={{
+					"--col-rgb": hexToRgb(color),
+					...(columnDragSide === "before" && { boxShadow: "-4px 0 0 0 rgb(var(--accent))" }),
+					...(columnDragSide === "after" && { boxShadow: "4px 0 0 0 rgb(var(--accent))" }),
+				} as React.CSSProperties}
+				onClick={onCollapseToggle}
+				onDragOver={handleDragOver}
+				onDragEnter={(e) => {
+					handleDragEnter(e);
+					collapseDragHandlers?.onDragEnter();
+				}}
+				onDragLeave={(e) => {
+					handleDragLeave(e);
+					collapseDragHandlers?.onDragLeave();
+				}}
+				onDrop={(e) => {
+					handleDrop(e);
+					collapseDragHandlers?.onDragEnd();
+				}}
+				data-collapsed-column
+			>
+				{/* Color dot */}
+				<div className="flex justify-center pt-4 pb-2">
+					<div
+						className="w-3 h-3 rounded-full flex-shrink-0"
+						style={{ background: color }}
+					/>
+				</div>
+
+				{/* Task count badge — uses ink colour for text contrast */}
+				{tasks.length > 0 && (
+					<div className="flex justify-center pb-2">
+						<span
+							className="text-xs font-bold px-1.5 py-0.5 rounded-full"
+							style={{ color: inkColor, background: `${color}18` }}
+						>
+							{tasks.length}
+						</span>
+					</div>
+				)}
+
+				{/* Vertical label */}
+				<div className="flex-1 flex justify-center items-start pt-1 overflow-hidden">
+					<span
+						className="kanban-col-vertical-label text-fg-3 text-xs font-semibold whitespace-nowrap"
+					>
+						{label}
+					</span>
+				</div>
+
+				{/* New Task button (Todo column only) */}
+				{ownsAddTask && (
+					<div className="flex justify-center pb-3">
+						<button
+							data-tour-anchor="board.new-task"
+							onClick={(e) => { e.stopPropagation(); onAddTask(); }}
+							className="text-fg-3 hover:text-accent transition-[color,background-color,border-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] w-7 h-7 flex items-center justify-center rounded-lg hover:bg-accent/10 border border-dashed border-edge hover:border-accent/30 text-base leading-none"
+							aria-label={t("kanban.newTask")}
+							title={t("kanban.newTask")}
+						>
+							+
+						</button>
+					</div>
+				)}
+			</div>
+			</>
+		);
+	}
+
+	return (
+		<>
+		<div
+			className={`group/col relative flex flex-col flex-shrink-0 glass-column column-glow rounded-2xl border transition-[background-color,border-color,box-shadow,opacity,width] duration-150 ease-out ${
+				fullWidth ? "w-full" : isCompactNarrow ? "w-[6.125rem]" : "w-[19rem]"
+			} ${
+				showDropHighlight
+					? "border-accent bg-accent/5 shadow-lg shadow-accent/10"
+					: isCrossColumnTarget && (dragFromStatus || dragFromCustomColumnId)
+						? "border-edge-active"
+						: "border-transparent"
+			} ${isDraggedColumn ? "opacity-40" : ""} ${laneRefusesDrag ? "opacity-40 saturate-50" : ""}`}
+			style={{
+				"--col-rgb": hexToRgb(color),
+				// Column reorder indicator via box-shadow avoids dragleave false-fires
+				// from pointer-events:none children extending outside element bounds.
+				...(columnDragSide === "before" && { boxShadow: "-4px 0 0 0 rgb(var(--accent))" }),
+				...(columnDragSide === "after" && { boxShadow: "4px 0 0 0 rgb(var(--accent))" }),
+			} as React.CSSProperties}
+			onPointerEnter={handleCompactPointerEnter}
+			onPointerLeave={handleCompactPointerLeave}
+			onDragOver={handleDragOver}
+			onDragEnter={(e) => {
+				handleDragEnter(e);
+				collapseDragHandlers?.onDragEnter();
+			}}
+			onDragLeave={(e) => {
+				handleDragLeave(e);
+				collapseDragHandlers?.onDragLeave();
+			}}
+			onDrop={(e) => {
+				handleDrop(e);
+				collapseDragHandlers?.onDragEnd();
+			}}
+		>
+			{/* Column header */}
+			<div
+				className="px-3 py-2.5 flex-shrink-0"
+				style={{ borderBottom: `2px solid ${color}30` }}
+			>
+				<div className="flex items-center gap-1.5">
+					{isCustomColumn && !isCompactNarrow && (
+						<div
+							className="cursor-grab active:cursor-grabbing text-fg-muted hover:text-fg-3 flex-shrink-0 select-none"
+							draggable
+							onDragStart={(e) => {
+								e.stopPropagation();
+								_activeDragColumnId = customColumnId ?? null;
+								e.dataTransfer.setData("text/plain", `col:${customColumnId ?? ""}`);
+								e.dataTransfer.effectAllowed = "move";
+								onColumnDragStart?.();
+							}}
+							onDragEnd={(e) => {
+								e.stopPropagation();
+								_activeDragColumnId = null;
+								onColumnDragEnd?.();
+							}}
+							title="Drag to reorder"
+						>
+							<svg width="10" height="10" viewBox="0 0 12 12" fill="currentColor">
+								<circle cx="4" cy="3" r="1.2" />
+								<circle cx="8" cy="3" r="1.2" />
+								<circle cx="4" cy="6" r="1.2" />
+								<circle cx="8" cy="6" r="1.2" />
+								<circle cx="4" cy="9" r="1.2" />
+								<circle cx="8" cy="9" r="1.2" />
+							</svg>
+						</div>
+					)}
+					<div
+						className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+						style={{ background: color }}
+					/>
+					{editing ? (
+						<input
+							ref={renameInputRef}
+							type="text"
+							value={editValue}
+							onChange={(e) => setEditValue(e.target.value)}
+							onBlur={commitRename}
+							onKeyDown={(e) => {
+								if (e.key === "Enter") e.currentTarget.blur();
+								if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setEditing(false); }
+							}}
+							className="text-fg text-sm font-semibold bg-transparent outline-none border-b border-accent flex-1 min-w-0 select-text"
+							autoFocus
+						/>
+					) : (
+						<span className="text-fg text-sm font-semibold truncate flex-1 min-w-0">
+							{label}
+						</span>
+					)}
+					{!editing && onRenameColumn && !isCompactNarrow && (
+						<button
+							onClick={startEditing}
+							className="text-fg-muted hover:text-fg-3 transition-[color,opacity] duration-150 ease-out w-4 h-4 flex items-center justify-center text-xs leading-none flex-shrink-0 opacity-0 group-hover/col:opacity-100 focus:opacity-100"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+							aria-label={t("kanban.renameColumn")}
+							title={t("kanban.renameColumn")}
+						>
+							{"\u{F11E7}"}
+						</button>
+					)}
+					{!editing && onDeleteColumn && !isCompactNarrow && (
+						<button
+							onClick={(e) => { e.stopPropagation(); onDeleteColumn(); }}
+							className="text-fg-muted hover:text-danger transition-[color,opacity] duration-150 ease-out w-4 h-4 flex items-center justify-center text-xs leading-none flex-shrink-0 opacity-0 group-hover/col:opacity-100 focus:opacity-100"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+							aria-label={t("customColumns.deleteColumn")}
+							title={t("customColumns.deleteColumn")}
+						>
+							{"\u{F0A7A}"}
+						</button>
+					)}
+					{!editing && !isCompactNarrow && (
+						isCustomColumn ? (
+							description ? (
+								<HelpSpot
+									content={{ title: label, body: description }}
+									className="opacity-0 group-hover/col:opacity-100 focus:opacity-100"
+								/>
+							) : null
+						) : (
+							<HelpSpot
+								topicId={statusHelpTopicId(status)}
+								className="opacity-0 group-hover/col:opacity-100 focus:opacity-100"
+							/>
+						)
+					)}
+					{mergedProjectCount !== undefined && !isCompactNarrow && (
+						<span
+							className="text-nano text-fg-3 px-1.5 py-px rounded-full bg-raised flex-shrink-0"
+							title={t.plural("kanban.mergedLaneProjects", mergedProjectCount)}
+						>
+							{t.plural("kanban.mergedLaneProjects", mergedProjectCount)}
+						</span>
+					)}
+					{tasks.length > 0 && (
+						<span
+							className="text-dense font-bold px-1.5 py-px rounded-full flex-shrink-0"
+							style={{
+								color: inkColor,
+								background: `${color}18`,
+							}}
+						>
+							{tasks.length}
+						</span>
+					)}
+					{onCollapseToggle && !isCompactNarrow && (
+						<button
+							onClick={(e) => { e.stopPropagation(); onCollapseToggle(); }}
+							className="text-fg-muted hover:text-fg-3 transition-[color,opacity] duration-150 ease-out w-4 h-4 flex items-center justify-center text-sm leading-none flex-shrink-0 opacity-0 group-hover/col:opacity-100 focus:opacity-100"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+							aria-label={t("kanban.collapseColumn")}
+							title={t("kanban.collapseColumn")}
+						>
+							{"\u{F0403}"}
+						</button>
+					)}
+				</div>
+			</div>
+
+			{/* Tasks */}
+			<div
+				ref={taskListRef}
+				className="flex-1 overflow-y-auto px-3 py-3 space-y-2"
+				onScroll={syncListClipped}
+				onDoubleClick={(e) => {
+					// Only trigger when clicking empty space, not on a task card.
+					// Every column opens the same New Task form — the task still lands
+					// in To Do, exactly like Cmd+N.
+					if ((e.target as HTMLElement).closest("[data-task-id]")) return;
+					onAddTask();
+				}}
+			>
+				{visibleTasks.map((task) => (
+					<div key={task.id} data-task-id={task.id}>
+						<TaskCard
+							task={task}
+							onDragStart={onDragStart}
+							isMoving={movingTaskIds.has(task.id)}
+							onSetMoving={onSetMoving}
+						/>
+					</div>
+				))}
+				{hiddenCount > 0 && (
+					<button
+						onClick={() => setExpanded(true)}
+						className="w-full text-fg-muted hover:text-fg-2 text-xs text-center py-2 mt-1 rounded-lg hover:bg-raised-hover transition-[color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]"
+					>
+						{t("kanban.showMore", { count: String(hiddenCount) })}
+					</button>
+				)}
+				{expanded && tasks.length > COLUMN_TASK_LIMIT && (
+					<button
+						onClick={() => {
+							setExpanded(false);
+							taskListRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+						}}
+						className="w-full text-fg-muted hover:text-fg-2 text-xs text-center py-2 mt-1 rounded-lg hover:bg-raised-hover transition-colors"
+					>
+						{t("kanban.showLess")}
+					</button>
+				)}
+
+				{tasks.length === 0 && !tip && !isCompactNarrow && (
+					<div className="text-fg-muted text-sm text-center py-8 px-3">
+						{ownsAddTask && boardEmpty ? (
+							<>
+								<p className="text-fg-2">{t("kanban.firstTaskTitle")}</p>
+								<p className="text-xs mt-1 text-pretty">{t("kanban.firstTaskHint")}</p>
+							</>
+						) : (
+							<>
+								<p>{t("kanban.noTasks")}</p>
+								{/* Only the To Do column has a New Task button, so only it may
+								    point at one. The generic hint used to promise a button that
+								    was not there in every other column. */}
+								<p className="text-xs mt-1 text-pretty">
+									{t(ownsAddTask ? "kanban.noTasksHint" : "kanban.noTasksHintAgentMoves")}
+								</p>
+							</>
+						)}
+					</div>
+				)}
+
+				</div>
+
+			{/* Tip card — pinned to bottom, above the add-task button */}
+			{tip && tipState && onTipChanged && (
+				<div className={`px-3 pb-3 flex-shrink-0 ${footerSeam}`} data-help-id="tips.card">
+					<TipCard tip={tip} tipState={tipState} onChanged={onTipChanged} />
+				</div>
+			)}
+
+			{/* Add task button (only in To Do column, not custom columns) */}
+			{ownsAddTask && (
+				<div className={`px-3 pb-3 flex-shrink-0 ${tip ? "" : footerSeam}`}>
+					<button
+						data-tour-anchor="board.new-task"
+						onClick={onAddTask}
+						className="w-full text-fg-3 hover:text-accent text-sm font-medium text-center py-2.5 rounded-lg hover:bg-accent/10 border border-dashed border-edge hover:border-accent/30 transition-[color,background-color,border-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]"
+					>
+						{t("kanban.newTask")}
+					</button>
+				</div>
+			)}
+		</div>
+		</>
+	);
+}
+
+export default KanbanColumn;

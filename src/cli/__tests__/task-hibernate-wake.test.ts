@@ -65,7 +65,7 @@ describe("task hibernate", () => {
 		mockSend.mockResolvedValue(ok({ outcome: "hibernated", taskId: OTHER_ID, seq: 12, freedRssBytes: 300 * 1024 * 1024 }));
 		await handleTask("hibernate", args([OTHER_ID]), SOCKET, null);
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.hibernate", { taskId: OTHER_ID }, { timeoutMs: 600_000 });
-		expect(stdoutOutput).toContain("Hibernated task #12, about 300 MB freed");
+		expect(stdoutOutput).toContain("Hibernated task <seq:12>, about 300 MB freed");
 	});
 
 	it("names the asking task from a worktree, and warns when it is this session", async () => {
@@ -121,7 +121,7 @@ describe("task wake", () => {
 		mockSend.mockResolvedValue(ok({ outcome: "woke-shell", taskId: OTHER_ID, seq: 12, backend: "tmux" }));
 		await handleTask("wake", args([OTHER_ID], { shell: "true" }), SOCKET, CTX);
 		expect(mockSend.mock.calls[0][2]).toEqual({ taskId: OTHER_ID, projectId: "proj-001", sourceTaskId: OWN_ID, mode: "shell" });
-		expect(stdoutOutput).toContain("Woke task #12 with a plain shell");
+		expect(stdoutOutput).toContain("Woke task <seq:12> with a plain shell");
 	});
 
 	it("reports --resume exactly like dev3 agent resume", async () => {

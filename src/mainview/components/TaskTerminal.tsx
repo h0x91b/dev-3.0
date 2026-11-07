@@ -381,8 +381,10 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 
 	// ── Someone asked for the keyboard ────────────────────────────────────────
 	useEffect(() => {
-		return subscribeTaskTerminalFocus(taskId, () => {
-			pendingFocusRef.current = { until: Date.now() + FOCUS_REQUEST_TTL_MS, awaitFreshPane: isNative };
+		return subscribeTaskTerminalFocus(taskId, ({ currentPane }) => {
+			// Handing the keyboard back after a viewer must not pop the on-screen keyboard.
+			if (currentPane && touchInput) return;
+			pendingFocusRef.current = { until: Date.now() + FOCUS_REQUEST_TTL_MS, awaitFreshPane: isNative && !currentPane };
 			setFocusRequestSeq((n) => n + 1);
 			// Do not wait out the poll interval for a pane that already exists on the
 			// server — ask now so the keystrokes have somewhere to land.

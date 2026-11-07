@@ -266,6 +266,10 @@ vi.mock("../cloudflare-tunnel", () => ({
 	},
 }));
 
+vi.mock("../codex-turn-watch", () => ({
+	codexTurnWatches: { observe: vi.fn(), endTurn: vi.fn(), forgetTask: vi.fn(), close: vi.fn(), check: vi.fn() },
+}));
+
 vi.mock("node:fs", () => ({
 	existsSync: vi.fn(() => false),
 	readdirSync: vi.fn(() => []),
@@ -295,6 +299,9 @@ import { cancelScheduledMessageByRef, scheduleMessage, sendMessageImmediately } 
 import { captureScheduledMessageAuthor, resolveScheduledMessageAuthorPane } from "../scheduled-message-author";
 import { withAgentPanes } from "../agent-message-target";
 import { encodeAgentHandle } from "../../shared/agent-handle";
+import { codexTurnWatches } from "../codex-turn-watch";
+import { isInteractiveCodexConversation } from "../codex-resume-home";
+
 
 // `task.open` imports the window layer lazily; mocking it keeps electrobun out.
 vi.mock("../window-manager", () => ({
@@ -878,6 +885,107 @@ describe("task.agentHook", () => {
 			expect(storedTask.status).toBe(initialStatus === "review-by-ai" ? "review-by-user" : "review-by-ai");
 		},
 	);
+
+	it("parks a Codex Stop that waits on an approval reply in user-questions and names the reply", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress" });
+		mockAtomicHookUpdate(project, task);
+
+		const response = await handleRequest(makeRequest("task.agentHook", {
+			taskId: task.id, projectId: project.id, sessionId: "approval-hold", event: "Stop", approvalHold: "Approved 0123456789ab",
+		}));
+
+		expect((response.data as Task).status).toBe("user-questions");
+		expect(notifyFromCliDesktop).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining("Approved 0123456789ab") }));
+	});
+
+	it("never reopens a finished task for a late approval-hold Stop", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "completed" });
+		mockAtomicHookUpdate(project, task);
+
+		const response = await handleRequest(makeRequest("task.agentHook", {
+			taskId: task.id, projectId: project.id, sessionId: "late-hold", event: "Stop", approvalHold: "Approved 0123456789ab",
+		}));
+
+		expect((response.data as Task).status).toBe("completed");
+		expect(notifyFromCliDesktop).not.toHaveBeenCalled();
+	});
+
+	it("still badges an approval hold when the task already waits in user-questions", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "user-questions" });
+		mockAtomicHookUpdate(project, task);
+
+		await handleRequest(makeRequest("task.agentHook", {
+			taskId: task.id, projectId: project.id, sessionId: "parked-hold", event: "Stop", approvalHold: "Approved 0123456789ab",
+		}));
+
+		expect(notifyFromCliDesktop).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining("Approved 0123456789ab") }));
+	});
+
+	it("returns a reviewer parked on an approval hold to review-by-ai on its next prompt", async () => {
+		const project = makeProject({ autoReviewEnabled: true });
+		let task = makeTask({ status: "review-by-ai" });
+		mockAtomicHookUpdate(project, task);
+		const params = { taskId: task.id, projectId: project.id, sessionId: "review-hold" };
+
+		task = (await handleRequest(makeRequest("task.agentHook", { ...params, event: "Stop", approvalHold: "Approved 0123456789ab" }))).data as Task;
+		expect(task.status).toBe("user-questions");
+		mockAtomicHookUpdate(project, task);
+		task = (await handleRequest(makeRequest("task.agentHook", { ...params, event: "UserPromptSubmit" }))).data as Task;
+		expect(task.status).toBe("review-by-ai");
+	});
+
+	describe("a Codex turn that ends on an API error", () => {
+		const ERROR = "unexpected status 403 Forbidden: This reasoning level isn't available for the selected model.";
+
+		async function armAndFail(sessionId: string, interactive = true): Promise<Task> {
+			const project = makeProject();
+			const task = makeTask({ status: "in-progress" });
+			mockAtomicHookUpdate(project, task);
+			await handleRequest(makeRequest("task.agentHook", {
+				taskId: task.id, projectId: project.id, sessionId, event: "UserPromptSubmit", transcriptPath: `/tmp/rollout-${sessionId}.jsonl`,
+			}));
+			const calls = vi.mocked(codexTurnWatches.observe).mock.calls;
+			const [input, onFailure] = calls[calls.length - 1]!;
+			expect(input).toMatchObject({ taskId: task.id, sessionId, transcriptPath: `/tmp/rollout-${sessionId}.jsonl` });
+			vi.mocked(isInteractiveCodexConversation).mockResolvedValueOnce(interactive);
+			await onFailure({ ...input, message: ERROR });
+			return task;
+		}
+
+		it("does not watch a transcript that is not the session's own rollout", async () => {
+			const project = makeProject();
+			const task = makeTask({ status: "in-progress" });
+			mockAtomicHookUpdate(project, task);
+			vi.mocked(codexTurnWatches.observe).mockClear();
+			await handleRequest(makeRequest("task.agentHook", {
+				taskId: task.id, projectId: project.id, sessionId: "own-session", event: "UserPromptSubmit", transcriptPath: "/etc/hosts",
+			}));
+			expect(codexTurnWatches.observe).not.toHaveBeenCalled();
+		});
+
+		it("parks the task in user-questions and names the error", async () => {
+			const task = await armAndFail("errored-turn");
+			expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ taskId: task.id, newStatus: "user-questions" }));
+			expect(notifyFromCliDesktop).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining("403 Forbidden") }));
+		});
+
+		it("ignores a failed turn from a subagent or codex exec session", async () => {
+			await armAndFail("subagent-turn", false);
+			expect(moveTask).not.toHaveBeenCalledWith(expect.objectContaining({ newStatus: "user-questions" }));
+			expect(notifyFromCliDesktop).not.toHaveBeenCalled();
+		});
+
+		it("ends the watch when the turn stops normally", async () => {
+			const project = makeProject();
+			const task = makeTask({ status: "in-progress" });
+			mockAtomicHookUpdate(project, task);
+			await handleRequest(makeRequest("task.agentHook", { taskId: task.id, projectId: project.id, sessionId: "clean-turn", event: "Stop" }));
+			expect(codexTurnWatches.endTurn).toHaveBeenCalledWith(task.id, "clean-turn");
+		});
+	});
 
 	it.each(["Interrupt", "SessionEnd"])("releases a blocking question on %s", async event => {
 		const project = makeProject();

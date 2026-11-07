@@ -5,6 +5,7 @@ import { DEFAULT_PRIORITY, hasGitWorkflow, orderProjectsForDisplay, projectDispl
 import type { AppAction } from "../state";
 import { api, isElectrobun } from "../rpc";
 import { useT } from "../i18n";
+import { createProjectLabel } from "../utils/createProjectLabel";
 import { useProjectPrivacy } from "../sensitive-projects";
 import { trackEvent } from "../analytics";
 import posthog from "../posthog";
@@ -114,8 +115,18 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 	// No branch, PR or review choice: the task runs in a folder, not a worktree.
 	const gitless = !hasGitWorkflow(project);
 	// Virtual ops only: chosen fixed working folder (null = managed temp dir).
-	const [opsFolder, setOpsFolder] = useState<string | null>(null);
+	// A draft starts from the folder it already saved (a worktree-mode draft has the repo only).
+	const initialOpsFolder = draftTask?.opsWorkDir ?? draftTask?.attachedRepo ?? null;
+	const initialOpsWorktree = draftTask?.opsWorktree === true;
+	const [opsFolder, setOpsFolder] = useState<string | null>(initialOpsFolder);
 	const [opsFolderConflict, setOpsFolderConflict] = useState(false);
+	// Set while the chosen folder is inside a git repo: offers a worktree of it.
+	const [opsRepo, setOpsRepo] = useState<{ defaultBranch: string } | null>(
+		draftTask?.attachedRepo ? { defaultBranch: draftTask.baseBranch ?? "" } : null,
+	);
+	const [opsWorktree, setOpsWorktree] = useState(initialOpsWorktree);
+	const opsInspectRef = useRef(0);
+	const [opsInspecting, setOpsInspecting] = useState(false);
 	const projectBranchRequestRef = useRef(0);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const prLinkInputRef = useRef<HTMLInputElement>(null);
@@ -164,6 +175,10 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 		setDismissedPrUrl(null);
 		setOpsFolder(null);
 		setOpsFolderConflict(false);
+		setOpsRepo(null);
+		setOpsWorktree(false);
+		setOpsInspecting(false);
+		opsInspectRef.current++;
 		// Preset prompts can be overridden per project, so the injected text belongs
 		// to the project we are leaving — strip it while that override still resolves.
 		if (taskType !== "standard") void handleTaskTypeChange("standard");
@@ -348,6 +363,20 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 		}
 		if (!folder) return;
 		setOpsFolder(folder);
+		const inspectId = ++opsInspectRef.current;
+		setOpsRepo(null);
+		setOpsWorktree(false);
+		setOpsInspecting(true);
+		api.request.inspectOpsFolder({ path: folder })
+			.then(({ repoRoot, defaultBranch }) => {
+				if (opsInspectRef.current === inspectId && repoRoot && defaultBranch) setOpsRepo({ defaultBranch });
+			})
+			.catch((err) => {
+				if (opsInspectRef.current === inspectId) toast.error(err instanceof Error ? err.message : String(err), { projectId: project.id });
+			})
+			.finally(() => {
+				if (opsInspectRef.current === inspectId) setOpsInspecting(false);
+			});
 		// Non-blocking warning: another ACTIVE op already using this folder.
 		try {
 			const all = await api.request.getAllProjectTasks();
@@ -370,8 +399,11 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 		|| priority !== DEFAULT_PRIORITY
 		|| branchTouched;
 
+	// The folder choice of a draft changed: only then is it re-resolved on save.
+	const opsDirty = isDraftEdit && isVirtual && (opsFolder !== initialOpsFolder || (!!opsRepo && opsWorktree !== initialOpsWorktree));
 	const draftDirty = !!draftTask && (
-		description !== (draftTask.description ?? "")
+		opsDirty
+		|| description !== (draftTask.description ?? "")
 		|| taskType !== (draftTask.taskType ?? "standard")
 		|| (customTitle ?? null) !== (draftTask.customTitle ?? null)
 		|| priority !== (draftTask.priority ?? DEFAULT_PRIORITY)
@@ -434,6 +466,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				labelIds: selectedLabelIds,
 				existingBranch: branch,
 				draft: keepDraft,
+				...(opsDirty ? { opsWorkDir: opsFolder, opsWorktree: !!opsRepo && opsWorktree } : {}),
 				...((taskType === "standard" ? null : taskType) !== (draftTask.taskType ?? null)
 					? { taskType: taskType === "standard" ? null : taskType } : {}),
 			});
@@ -474,6 +507,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				...(mode === "draft" ? { draft: true } : {}),
 				...(branch ? { existingBranch: branch } : {}),
 				...(isVirtual && opsFolder ? { opsWorkDir: opsFolder } : {}),
+				...(isVirtual && opsFolder && opsRepo && opsWorktree ? { opsWorktree: true } : {}),
 				...(priority !== DEFAULT_PRIORITY ? { priority } : {}),
 				// Persist the role alongside its standing brief.
 				...(mode !== "scratch" && taskType !== "standard" ? { taskType } : {}),
@@ -545,7 +579,8 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 
 	async function handleSubmit(mode: SubmitMode) {
 		const trimmed = description.trim();
-		if (creating) return;
+		// The worktree checkbox is decided by the folder check; submitting before it answers would silently drop it.
+		if (creating || opsInspecting) return;
 		if (mode !== "scratch" && mode !== "draft" && !trimmed) return;
 		if (mode === "draft" && !(isDraftEdit ? true : hasAnyInput)) return;
 		if (mode === "run" && !onCreateAndRun) return;
@@ -934,7 +969,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 						{labelPickerOpen && labelAnchorRef.current && (
 							<LabelPicker
 								project={project}
-								dispatch={dispatch}
+								onCreateLabel={(name) => createProjectLabel({ project, name, dispatch, t })}
 								onClose={() => setLabelPickerOpen(false)}
 								anchorEl={labelAnchorRef.current}
 								selectedIds={selectedLabelIds}
@@ -969,7 +1004,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 							{opsFolder && (
 								<button
 									type="button"
-									onClick={() => { setOpsFolder(null); setOpsFolderConflict(false); }}
+									onClick={() => { setOpsFolder(null); setOpsFolderConflict(false); setOpsRepo(null); opsInspectRef.current++; setOpsInspecting(false); }}
 									className="px-3 py-2 bg-raised border border-edge rounded-xl text-fg-2 text-sm hover:border-edge-active transition-colors flex-shrink-0"
 								>
 									{t("ops.create.workDirReset")}
@@ -983,7 +1018,19 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 								{t("ops.create.workDirPick")}
 							</button>
 						</div>
-						{opsFolderConflict && (
+						{opsRepo && opsFolder && (
+							<label className="flex items-center gap-2 cursor-pointer select-none text-sm text-fg-2">
+								<input
+									type="checkbox"
+									checked={opsWorktree}
+									onChange={(e) => setOpsWorktree(e.target.checked)}
+									className="w-4 h-4 rounded accent-accent shrink-0"
+									data-testid="create-task-ops-worktree"
+								/>
+								<span>{opsRepo.defaultBranch ? t("ops.create.worktreeToggle", { base: opsRepo.defaultBranch }) : t("ops.create.worktreeToggleNoBase")}</span>
+							</label>
+						)}
+						{opsFolderConflict && !(opsRepo && opsWorktree) && (
 							<p className="text-xs text-amber-500">{t("ops.create.workDirConflict")}</p>
 						)}
 					</div>
@@ -1028,7 +1075,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 								    likely intent here, so it leads over the destructive exit. */}
 								<button
 									onClick={handleSaveAsDraft}
-									disabled={creating || !(isDraftEdit || hasAnyInput)}
+									disabled={creating || opsInspecting || !(isDraftEdit || hasAnyInput)}
 									data-testid="discard-save-draft"
 									className="px-3 py-1 bg-accent-fill text-white text-sm font-medium rounded-lg hover:bg-accent-fill-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 								>
@@ -1051,7 +1098,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 									<div className="mr-auto flex flex-col items-start gap-0.5">
 										<button
 											onClick={handleCreateScratch}
-											disabled={creating}
+											disabled={creating || opsInspecting}
 											title={t("createTask.scratchHint")}
 											className="px-3 py-1.5 bg-elevated border border-edge-active text-fg-2 text-xs font-medium rounded-lg hover:bg-elevated-hover hover:text-fg transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
 										>
@@ -1073,7 +1120,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 								    branch, priority or label set is not lost. */}
 								<button
 									onClick={handleSaveAsDraft}
-									disabled={creating || !(isDraftEdit || hasAnyInput)}
+									disabled={creating || opsInspecting || !(isDraftEdit || hasAnyInput)}
 									title={t("createTask.saveAsDraftHint")}
 									data-testid="create-task-save-draft"
 									className={`px-3 py-1.5 text-fg-3 text-xs font-medium rounded-lg border border-dashed border-edge-active hover:text-fg hover:bg-fg/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${isDraftEdit ? "mr-auto" : ""}`}
@@ -1084,7 +1131,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 									<button
 										data-tour-anchor="create-task.run"
 										onClick={handleCreateAndRun}
-										disabled={!description.trim() || creating}
+										disabled={!description.trim() || creating || opsInspecting}
 										className="task-anim px-3.5 py-1.5 bg-green-600/90 text-white text-xs font-medium rounded-lg hover:bg-green-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
 									>
 										<PlayIcon className="w-3 h-3" />
@@ -1093,7 +1140,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 								)}
 								<button
 									onClick={handleCreate}
-									disabled={!description.trim() || creating}
+									disabled={!description.trim() || creating || opsInspecting}
 									className="px-4 py-1.5 bg-accent-fill text-white text-sm font-semibold rounded-lg hover:bg-accent-fill-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 								>
 									{creating ? t("createTask.creating") : t("createTask.create")}

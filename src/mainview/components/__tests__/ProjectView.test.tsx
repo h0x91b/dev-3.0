@@ -29,7 +29,7 @@ vi.mock("../../rpc", () => ({
 }));
 
 // Heavy children — stub so the test focuses on ProjectView's own layout logic.
-vi.mock("../KanbanBoard", () => ({
+vi.mock("../../board-views/BoardHost", () => ({
 	default: ({ onOpenUnresolvedComments, detailTaskId }: { onOpenUnresolvedComments?: (task: Task) => void; detailTaskId?: string }) => (
 		<div data-testid="kanban" data-detail-task-id={detailTaskId ?? ""}>
 			<button type="button" data-testid="open-unresolved-from-board" onClick={() => onOpenUnresolvedComments?.({ id: "t1" } as Task)} />

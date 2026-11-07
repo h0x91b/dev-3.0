@@ -121,3 +121,23 @@ describe("TaskCard — seq display", () => {
 		expect(screen.getByText("#8")).toBeInTheDocument();
 	});
 });
+
+describe("TaskCard — agent of a task launched on the default", () => {
+	const defaultPane = { agentCmd: "claude", sessionId: null, agentId: "builtin-claude", configId: "claude-default" };
+
+	it("a running task with no pick shows the agent its main pane got", () => {
+		renderCard(makeTask({
+			status: "in-progress",
+			worktreePath: "/tmp/wt",
+			branchName: "dev3/test",
+			sessionState: { panes: [defaultPane] },
+		}));
+		expect(screen.getByRole("img", { name: "Claude" })).toBeInTheDocument();
+		expect(screen.getByText("Default · sonnet")).toBeInTheDocument();
+	});
+
+	it("a task back in To Do shows no stale pane agent", () => {
+		renderCard(makeTask({ status: "todo", sessionState: { panes: [defaultPane] } }));
+		expect(screen.queryByRole("img", { name: "Claude" })).not.toBeInTheDocument();
+	});
+});

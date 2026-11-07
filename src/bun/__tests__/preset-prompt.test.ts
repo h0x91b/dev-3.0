@@ -123,10 +123,9 @@ describe("COORDINATOR_PROMPT", () => {
 	// The seq alone is the name, because the board block now supplies it on every
 	// turn. Only a task whose seq a live variant sibling still shares needs the id
 	// — that is the one case where `--task seq:N` does not resolve.
-	it("requires a task to be named by its number, and a shared seq by its id too", () => {
-		expect(COORDINATOR_PROMPT).toContain("NAME EVERY TASK BY ITS NUMBER");
-		expect(COORDINATOR_PROMPT).toContain("Seq NNNN");
-		expect(COORDINATOR_PROMPT).toContain("seq:NNNN:index (id)");
+	it("requires the canonical task and PR tokens, and a shared seq by its id too", () => {
+		expect(COORDINATOR_PROMPT).toContain("NAME TASKS AS <seq:N> (<seq:proj/N> off-board), PRs as <pr:N>");
+		expect(COORDINATOR_PROMPT).toContain("Shared seq: <seq:N> v<i> (id): use that id.");
 	});
 
 	// Anthropic's safeguards refuse this prompt outright (`[reasoning_extraction]`)

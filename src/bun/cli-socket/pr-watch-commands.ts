@@ -7,6 +7,7 @@ import {
 	type PrWatch,
 	type PrWatchUntil,
 } from "../../shared/pr-watch";
+import { formatPrRef } from "../../shared/task-refs";
 import type { Project, Task } from "../../shared/types";
 import * as git from "../git";
 import * as github from "../github";
@@ -48,11 +49,11 @@ async function resolveNamedPr(project: Project, task: Task, worktree: string, pr
 	const result = await github.readTaskPullRequest(project, worktree, "", prNumber, { timeoutMs: PR_WATCH_GH_TIMEOUT_MS, force: true });
 	const pr = result?.pr;
 	if (!pr || pr.number !== prNumber) {
-		throw noPr(`No pull request #${prNumber} in this project's repository (or GitHub did not answer in time).`);
+		throw noPr(`No pull request ${formatPrRef(prNumber)} in this project's repository (or GitHub did not answer in time).`);
 	}
 	const state = typeof pr.state === "string" ? pr.state.toUpperCase() : "";
 	if (state !== "OPEN") {
-		throw new Error(`${PR_WATCH_PR_FINISHED_PREFIX}Pull request #${prNumber} is already ${state === "MERGED" ? "merged" : "closed"}; there is nothing left to watch.`);
+		throw new Error(`${PR_WATCH_PR_FINISHED_PREFIX}Pull request ${formatPrRef(prNumber)} is already ${state === "MERGED" ? "merged" : "closed"}; there is nothing left to watch.`);
 	}
 	const branch = await git.getCurrentBranch(worktree);
 	// A review task's branch carries somebody else's head: its PR is followed, never adopted as the task's own.
@@ -61,7 +62,7 @@ async function resolveNamedPr(project: Project, task: Task, worktree: string, pr
 		const own = await resolveBranchPr(project, task, worktree).catch(() => null);
 		if (own?.number === prNumber) return { ...own, pinned: false };
 	}
-	if (typeof pr.headRefOid !== "string" || !pr.headRefOid) throw new Error(`GitHub returned no head commit for pull request #${prNumber}.`);
+	if (typeof pr.headRefOid !== "string" || !pr.headRefOid) throw new Error(`GitHub returned no head commit for pull request ${formatPrRef(prNumber)}.`);
 	return { number: prNumber, url: pr.url, pinned: true, headSha: pr.headRefOid };
 }
 
@@ -89,7 +90,8 @@ export const prWatchHandlers: Record<string, Handler> = {
 		}
 		const explicit = params.prNumber === undefined ? null : Number(params.prNumber);
 		if (explicit !== null && !(Number.isInteger(explicit) && explicit > 0)) throw new Error("--pr takes a pull request number.");
-		if (project.kind === "virtual") throw new Error("A task without a repository cannot watch a pull request.");
+		// The PR poller only walks git projects, so a watch on an Operations task would be stored and never fire.
+		if (project.kind === "virtual") throw new Error("PR watch is not available for Operations tasks yet — check the PR with gh.");
 		const pr: ResolvedPr = explicit === null
 			? { ...(await resolveBranchPr(project, task, worktree)), pinned: false }
 			: await resolveNamedPr(project, task, worktree, explicit);
