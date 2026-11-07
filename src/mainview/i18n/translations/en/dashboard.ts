@@ -231,6 +231,8 @@ const dashboard = {
 	"sessions.noMatch": "No sessions match this search.",
 	"command.openSessions": "Open Agent Sessions",
 	"rateLimits.noRecentData": "no recent data",
+	"rateLimits.noApiKey": "no API key",
+	"rateLimits.noApiKeyHint": "Add this provider's API key in Settings → API models to see its limits.",
 	"rateLimits.spendLabel": "spend",
 	"rateLimits.spendUsage": "~{used} of {limit} limit",
 	"rateLimits.spendUsageDaily": "~{used} of {limit} daily limit",

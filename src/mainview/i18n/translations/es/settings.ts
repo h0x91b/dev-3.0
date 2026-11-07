@@ -929,6 +929,8 @@ const settings = {
 	"catalog.usageSourceLabel": "Límites de uso",
 	"catalog.usageSource.none": "Límites: sin seguimiento",
 	"catalog.usageSource.kimi-code": "Límites: Kimi Code",
+	"catalog.usageSourceHint": "dev3 envía esta clave al endpoint /v1/usages del proveedor cada 5 minutos para leer los límites.",
+	"catalog.usageSourceNoKey": "Añade una clave de API para leer los límites: sin ella este proveedor no muestra ninguno.",
 	"catalog.providerKey": "Clave de API",
 	"catalog.providerKeyStored": "Hay una clave guardada — muéstrala para editarla o reemplazarla.",
 	"catalog.providerKeyShow": "Mostrar la clave",

@@ -567,6 +567,11 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 														})
 													}
 												/>
+												{provider.usageSource ? (
+													<span className={`block text-xs mt-1 ${provider.hasKey ? "text-fg-muted" : "text-warning-strong"}`}>
+														{t(provider.hasKey ? "catalog.usageSourceHint" : "catalog.usageSourceNoKey")}
+													</span>
+												) : null}
 												</div>
 											</>
 										) : null}

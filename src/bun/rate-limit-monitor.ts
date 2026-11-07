@@ -437,7 +437,9 @@ async function requestKimiUsage(provider: CatalogProvider, apiKey: string, now: 
 			warnKimiOnce(provider.id, "http", { status: res.status });
 			return null;
 		}
-		const snapshot = parseKimiUsage(await res.json(), now);
+		// A 200 that is not JSON is a parse failure, not a failed request.
+		const body: unknown = await res.json().catch(() => null);
+		const snapshot = body === null ? null : parseKimiUsage(body, now);
 		if (!snapshot) {
 			warnKimiOnce(provider.id, "parse");
 			return null;
@@ -567,7 +569,12 @@ export async function getAgentRateLimitsReport(): Promise<AgentRateLimitsReport>
 	const report: AgentRateLimitsReport = {
 		snapshots,
 		sessions,
-		usageProviders: usageProviders.map((p) => ({ id: p.id, label: p.label, source: "kimi-code" })),
+		usageProviders: usageProviders.map((p) => ({
+			id: p.id,
+			label: p.label,
+			source: "kimi-code",
+			...(keys[p.id]?.trim() ? {} : { missingKey: true }),
+		})),
 		generatedAt: now,
 	};
 	cachedReport = report;
@@ -584,7 +591,7 @@ function reportKey(report: AgentRateLimitsReport): string {
 		.join("|")
 		.concat(
 			"@",
-			(report.usageProviders ?? []).map((p) => `${p.id}:${p.label}`).join("|"),
+			(report.usageProviders ?? []).map((p) => `${p.id}:${p.label}:${p.missingKey ?? ""}`).join("|"),
 			"#",
 			(report.sessions ?? [])
 				.map((s) => `${s.taskId}:${s.projectId}:${s.capturedAt}:${s.taskTitle}:${s.awaitingUser}:${s.cache?.warm}:${s.cache?.expiresAt}`)

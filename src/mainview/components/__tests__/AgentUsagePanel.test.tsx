@@ -635,6 +635,14 @@ describe("AgentUsagePanel Kimi group", () => {
 		expect(screen.getByText("Kimi B").closest(".rounded-md")!.textContent).toContain("no recent data");
 	});
 
+	it("tells a keyless provider's row to add a key instead of waiting for data", () => {
+		renderKimi({ usageProviders: [{ id: "k1", label: "Kimi A", source: "kimi-code", missingKey: true }] });
+		const row = screen.getByText("Kimi A").closest(".rounded-md")!;
+		expect(row.textContent).toContain("no API key");
+		expect(row.textContent).toContain("Settings → API models");
+		expect(row.textContent).not.toContain("no recent data");
+	});
+
 	it("leaves a reading of a provider that is no longer tracked without a row", () => {
 		const base = report();
 		renderKimi({ usageProviders: [], snapshots: [...base.snapshots, kimiSnap("gone", 90)] });

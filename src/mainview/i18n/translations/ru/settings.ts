@@ -950,6 +950,8 @@ const settings = {
 	"catalog.usageSourceLabel": "Лимиты",
 	"catalog.usageSource.none": "Лимиты: не отслеживаются",
 	"catalog.usageSource.kimi-code": "Лимиты: Kimi Code",
+	"catalog.usageSourceHint": "dev3 раз в 5 минут отправляет этот ключ на эндпоинт /v1/usages провайдера, чтобы прочитать лимиты.",
+	"catalog.usageSourceNoKey": "Добавьте API-ключ, чтобы читать лимиты — без него у провайдера их не будет видно.",
 	"catalog.providerKey": "API-ключ",
 	"catalog.providerKeyStored": "Ключ сохранён — покажи его, чтобы изменить или заменить.",
 	"catalog.providerKeyShow": "Показать ключ",

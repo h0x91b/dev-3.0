@@ -4,6 +4,7 @@ import TaskCard from "../TaskCard";
 import { I18nProvider } from "../../i18n";
 import type { CodingAgent, DevServerSummary, Label, PortInfo, Project, Task, TaskPRBadgeInfo, TaskStatus } from "../../../shared/types";
 import { getPreparingStageProgress } from "../../../shared/types";
+import { startBranchMissingMessage } from "../../../shared/preparation-failure";
 import type { AppAction, Route } from "../../state";
 
 /**
@@ -217,6 +218,19 @@ describe("TaskCard", () => {
 		renderCard(makeTask({ preparationError: "tmux failed to spawn" }));
 
 		expect(screen.getByRole("alert")).toHaveTextContent("Launch failed: tmux failed to spawn");
+	});
+
+	it("shows a deleted start branch in full, with the advice, and clamps a raw error", () => {
+		const { unmount } = renderCard(makeTask({ preparationError: startBranchMissingMessage("feat/merged-away") }));
+		const advice = within(screen.getByRole("alert")).getByText(/Start a new task from another branch instead\./);
+		expect(advice).not.toHaveClass("line-clamp-2");
+		expect(advice).toHaveAttribute("title", advice.textContent);
+		unmount();
+
+		renderCard(makeTask({ preparationError: "fatal: something long from git" }));
+		const raw = within(screen.getByRole("alert")).getByText(/fatal: something long/);
+		expect(raw).toHaveClass("line-clamp-2");
+		expect(raw).toHaveAttribute("title", "Launch failed: fatal: something long from git");
 	});
 
 	beforeEach(() => {

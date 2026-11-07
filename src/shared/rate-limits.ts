@@ -82,8 +82,9 @@ export interface AgentRateLimitsReport {
 	/** Recent Claude sessions of live tasks, newest first. */
 	sessions?: AgentSessionStats[];
 	/** Catalog providers the user opted into usage tracking, so the panel can
-	 *  show a row before the first reading arrives. */
-	usageProviders?: Array<{ id: string; label: string; source: ProviderUsageSource }>;
+	 *  show a row before the first reading arrives. `missingKey`: opted in, but no
+	 *  API key is stored, so no reading will ever come. */
+	usageProviders?: Array<{ id: string; label: string; source: ProviderUsageSource; missingKey?: boolean }>;
 	generatedAt: number;
 }
 

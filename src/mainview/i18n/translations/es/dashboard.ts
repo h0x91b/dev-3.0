@@ -229,6 +229,8 @@ const dashboard = {
 	"sessions.noMatch": "Ninguna sesión coincide con la búsqueda.",
 	"command.openSessions": "Abrir sesiones de agentes",
 	"rateLimits.noRecentData": "sin datos recientes",
+	"rateLimits.noApiKey": "sin clave de API",
+	"rateLimits.noApiKeyHint": "Añade la clave de API de este proveedor en Configuración → Modelos por API para ver sus límites.",
 	"rateLimits.spendLabel": "gasto",
 	"rateLimits.spendUsage": "~{used} de {limit} de límite",
 	"rateLimits.spendUsageDaily": "~{used} de {limit} de límite diario",

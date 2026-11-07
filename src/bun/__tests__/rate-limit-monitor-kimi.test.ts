@@ -91,7 +91,7 @@ describe("Kimi usage in the rate-limit report", () => {
 		mocks.keys = {};
 		const report = await poll();
 		expect(mocks.fetch).not.toHaveBeenCalled();
-		expect(report.usageProviders).toEqual([{ id: "kimi-1", label: "Kimi Code", source: "kimi-code" }]);
+		expect(report.usageProviders).toEqual([{ id: "kimi-1", label: "Kimi Code", source: "kimi-code", missingKey: true }]);
 		expect(kimiSnapshots(report)).toHaveLength(0);
 	});
 
@@ -104,6 +104,11 @@ describe("Kimi usage in the rate-limit report", () => {
 		const [snap] = kimiSnapshots(report);
 		expect(snap.providerId).toBe("kimi-1");
 		expect(snap.windows.map((w) => w.id)).toEqual(["five_hour", "monthly"]);
+	});
+
+	it("does not flag a provider with a stored key as missing one", async () => {
+		const report = await poll();
+		expect(report.usageProviders).toEqual([{ id: "kimi-1", label: "Kimi Code", source: "kimi-code" }]);
 	});
 
 	it("does not wait for the request: the first report has no reading, the next one does", async () => {
@@ -187,6 +192,13 @@ describe("Kimi usage in the rate-limit report", () => {
 		const report = await poll();
 		expect(kimiSnapshots(report)).toHaveLength(0);
 		expect(report.usageProviders).toHaveLength(1);
+	});
+
+	it("logs a 200 that is not JSON as a parse failure, not a failed request", async () => {
+		respond(200, "<html>maintenance</html>");
+		const report = await poll();
+		expect(kimiSnapshots(report)).toHaveLength(0);
+		await vi.waitFor(() => expect(mocks.warn).toHaveBeenCalledWith("Kimi usage read failed", { providerId: "kimi-1", kind: "parse" }));
 	});
 
 	it.each([

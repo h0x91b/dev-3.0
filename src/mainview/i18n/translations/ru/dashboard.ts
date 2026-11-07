@@ -255,6 +255,8 @@ const dashboard = {
 	"sessions.noMatch": "Ни одна сессия не подходит под поиск.",
 	"command.openSessions": "Открыть сессии агентов",
 	"rateLimits.noRecentData": "нет свежих данных",
+	"rateLimits.noApiKey": "нет API-ключа",
+	"rateLimits.noApiKeyHint": "Добавьте API-ключ этого провайдера в Настройки → Модели по API, чтобы видеть его лимиты.",
 	"rateLimits.spendLabel": "траты",
 	"rateLimits.spendUsage": "~{used} из {limit} лимита",
 	"rateLimits.spendUsageDaily": "~{used} из {limit} дневного лимита",

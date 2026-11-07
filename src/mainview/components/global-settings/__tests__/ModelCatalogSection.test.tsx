@@ -40,7 +40,7 @@ function status(over: Partial<ModelSidecarStatus> = {}): ModelSidecarStatus {
 }
 
 function renderSection() {
-	render(
+	return render(
 		<I18nProvider>
 			<ModelCatalogSection t={t} />
 		</I18nProvider>,
@@ -447,8 +447,8 @@ describe("the live model list", () => {
 });
 
 describe("usage limits tracking", () => {
-	const custom = (usageSource?: "kimi-code"): ModelCatalogView => ({
-		providers: [{ id: "p-kimi", kind: "custom", label: "Kimi", baseUrl: "https://api.example.test/coding/", hasKey: true, usageSource }],
+	const custom = (usageSource?: "kimi-code", hasKey = true): ModelCatalogView => ({
+		providers: [{ id: "p-kimi", kind: "custom", label: "Kimi", baseUrl: "https://api.example.test/coding/", hasKey, usageSource }],
 		models: [],
 	});
 
@@ -480,6 +480,18 @@ describe("usage limits tracking", () => {
 		await userEvent.click(await screen.findByRole("combobox", { name: "catalog.providerKind" }));
 		await userEvent.click(await screen.findByRole("option", { name: "catalog.kind.openai" }));
 		expect((await savedProvider()).usageSource).toBeUndefined();
+	});
+
+	it("says where the key goes once tracking is on, and asks for one when it is missing", async () => {
+		vi.mocked(api.request.modelCatalogGet).mockResolvedValue(custom("kimi-code"));
+		const { unmount } = renderSection();
+		expect(await screen.findByText("catalog.usageSourceHint")).toBeTruthy();
+		unmount();
+
+		vi.mocked(api.request.modelCatalogGet).mockResolvedValue(custom("kimi-code", false));
+		renderSection();
+		expect(await screen.findByText("catalog.usageSourceNoKey")).toBeTruthy();
+		expect(screen.queryByText("catalog.usageSourceHint")).toBeNull();
 	});
 
 	it("offers the control on custom providers only", async () => {
