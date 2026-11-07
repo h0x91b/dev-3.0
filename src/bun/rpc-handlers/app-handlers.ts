@@ -17,6 +17,7 @@ import { consumeQuitDialogPending, markQuitConfirmed } from "../quit-manager";
 import { consumePendingDeepLinkNav as consumeDeepLinkNavPending } from "../deep-link-nav";
 import { parseDeepLink, type DeepLinkNav } from "../../shared/deep-link";
 import { resolveDeepLink as resolveDeepLinkTarget } from "../deep-link";
+import { previewTaskPrRef as previewTaskPrRefTarget, resolveTaskPrRef as resolveTaskPrRefTarget, type TaskPrRefPreview, type TaskPrRefResolution } from "../task-pr-refs";
 import { BUNDLED_CHANGELOG } from "../changelog-bundled";
 import * as repoConfig from "../repo-config";
 import { autoConfigureProject } from "../project-autoconfig";
@@ -123,6 +124,16 @@ async function resolveDeepLinkNav(params: { url: string }): Promise<DeepLinkNav 
 		return null;
 	}
 	return resolveDeepLinkTarget(target);
+}
+
+// A `<seq:N>` / `<pr:N>` reference clicked or hovered in agent-written text.
+// A bare reference resolves on `contextProjectId`, the project of the text.
+async function resolveTaskPrRef(params: { ref: string; contextProjectId?: string }): Promise<TaskPrRefResolution | null> {
+	return resolveTaskPrRefTarget(params.ref ?? "", params.contextProjectId);
+}
+
+async function previewTaskPrRef(params: { ref: string; contextProjectId?: string; fresh?: boolean }): Promise<TaskPrRefPreview | null> {
+	return previewTaskPrRefTarget(params.ref ?? "", params.contextProjectId, params.fresh === true);
 }
 
 // Renderer-initiated new window (Cmd+Shift+N). Electrobun's native menu
@@ -1131,6 +1142,8 @@ export const appHandlers = {
 	consumePendingQuitDialog,
 	consumePendingDeepLinkNav,
 	resolveDeepLinkNav,
+	resolveTaskPrRef,
+	previewTaskPrRef,
 	openNewWindow,
 	hideApp,
 	setWindowForeground,

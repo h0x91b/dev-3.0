@@ -37,6 +37,7 @@
  * `decisions/2026/08/25/ride-the-board-in-on-messages-to-a-coordinator.md`.
  */
 
+import { formatTaskRef } from "./task-refs";
 import { formatAge } from "./task-peek";
 
 /** How far back a finished task still shows up in the snapshot. */
@@ -86,21 +87,21 @@ const MAX_TITLE = 64;
 const INSTRUCTION =
 	"Board state as of this message — read it instead of running `dev3 task list`. "
 	+ "It does NOT arrive when the user types to you directly, so re-read the board before answering him after a silence. "
-	+ "Address a task by its `seq:N`; a variant shows `:index (id)` and is addressed by that id. "
+	+ "Name a task by its `<seq:N>` token; a variant shows `v<index> (id)` and is addressed by that id. "
 	+ "The `P0`…`P4` cell is the task's priority, and the rows are sorted by it — highest first, exactly as the board ranks them. "
 	+ "The last column is when the task landed in the column it is in — not how busy its agent is.";
 
 /**
  * How a coordinator must name and address this task. A plain task travels as
- * the readable `seq:N`. A task whose seq is still shared by a live sibling
+ * the readable `<seq:N>`. A task whose seq is still shared by a live sibling
  * cannot: `dev3 message --task seq:N` is ambiguous there, and the id in
  * parentheses is the only address that works (see `agentReplyRef`). The variant
  * index rides along because that is what the user calls it in conversation.
  */
 export function boardRef(row: BoardRow): string {
-	if (!row.seqShared) return `seq:${row.seq}`;
-	const variant = row.variantIndex != null ? `:${row.variantIndex}` : "";
-	return `seq:${row.seq}${variant} (${row.taskId.slice(0, 8)})`;
+	if (!row.seqShared) return formatTaskRef(row.seq);
+	const variant = row.variantIndex != null ? ` v${row.variantIndex}` : "";
+	return `${formatTaskRef(row.seq)}${variant} (${row.taskId.slice(0, 8)})`;
 }
 
 function truncate(text: string, max: number): string {

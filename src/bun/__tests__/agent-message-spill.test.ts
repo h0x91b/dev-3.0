@@ -150,7 +150,7 @@ describe("spillHeldMessageBatch — a held backlog as one file", () => {
 		expect(await readFile(batch!.path, "utf8")).toBe(envelopes.join(AGENT_MESSAGE_BURST_SEPARATOR));
 		expect(isDev3EnvelopeText(batch!.pointer)).toBe(true);
 		expect(batch!.pointer).toContain(batch!.path);
-		expect(batch!.pointer).toContain("3 messages from seq:901, seq:902, seq:903");
+		expect(batch!.pointer).toContain("3 messages from <seq:901>, <seq:902>, <seq:903>");
 		expect(utf8Length(batch!.pointer)).toBeLessThanOrEqual(AGENT_MESSAGE_SPILL_THRESHOLD_BYTES);
 	});
 

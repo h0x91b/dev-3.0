@@ -464,6 +464,7 @@ export async function launchTaskPty(
 			// A resume passes the pane's own agent back in, so the default marker rides along with it.
 			const carriedDefault = resume && !!priorMain?.agentFromDefault && agentId === priorMain.agentId;
 			const paneEntry = {
+				main: true,
 				agentCmd: resolvedBaseCmd,
 				sessionId: effectiveSessionId ?? null,
 				agentId: agentId ?? task.agentId,
@@ -569,8 +570,15 @@ export async function launchTaskPty(
 		// An older shared CLI sends neither receipt: gating on it would drop the
 		// handoff and print "Unknown command" at every exit, so keep today's path.
 		&& await hookCliSupports(AGENT_SESSION_STARTED_METHOD) && await hookCliSupports(AGENT_EXITED_METHOD)) {
-		noteAgentLaunched(task.id, trackedSessionId);
+		noteAgentLaunched(task.id, trackedSessionId, { startReceipts: true });
 		exitReport = agentExitReportArgv(task.id, trackedSessionId);
+	} else if (!opts?.shellNotice && !skipSessionPersist && resolvedBaseCmd && resolvedBaseCmd !== "bash"
+		&& await hookCliSupports(AGENT_EXITED_METHOD)) {
+		// No start receipts here (Codex, Gemini, a Claude resume…): a bare launch id
+		// still ties the exit to this spawn, and only a non-zero code moves the card.
+		const launchId = crypto.randomUUID();
+		noteAgentLaunched(task.id, launchId, { startReceipts: false });
+		exitReport = agentExitReportArgv(task.id, launchId);
 	}
 
 	if (resolvedBaseCmd && resolvedBaseCmd !== "bash") {
@@ -897,6 +905,8 @@ export function cleanupTaskTmuxState(taskId: string): void {
  * 2. If exactly one entry has paneId=null and exactly one live pane is
  *    unmatched, assign it (the setup pane exited, leaving the real agent).
  * 3. If no live panes remain and null-paneId entries exist, remove them too.
+ * 4. If the task-level agent belonged to a removed pane, put the surviving main
+ *    pane's agent back on the task and push the update to the renderer.
  */
 export async function handlePaneExited(taskId: string, _exitedPaneId: string): Promise<void> {
 	try {
@@ -917,7 +927,9 @@ export async function handlePaneExited(taskId: string, _exitedPaneId: string): P
 		const unmatchedLive = [...livePaneIds].filter(id => !matchedIds.has(id));
 		const nullEntries = surviving.filter(p => !p.paneId && !p.parked);
 
+		let adoptedFrom: (typeof panes)[number] | undefined;
 		if (nullEntries.length === 1 && unmatchedLive.length === 1) {
+			adoptedFrom = nullEntries[0];
 			// High confidence: the one unmatched live pane is the one null entry's agent
 			const adopted = { ...nullEntries[0], paneId: unmatchedLive[0] };
 			surviving = surviving.map(p => p === nullEntries[0] ? adopted : p);
@@ -928,7 +940,18 @@ export async function handlePaneExited(taskId: string, _exitedPaneId: string): P
 		}
 
 		if (surviving.length !== panes.length || surviving.some((p, i) => p.paneId !== panes[i].paneId)) {
-			await data.updateTask(project, task.id, { sessionState: { panes: surviving } });
+			// spawnAgentInTask writes the task-level agent. When the pane it points at is gone, restore it
+			// from the surviving main pane (flagged at launch); extra, hunter and legacy unflagged panes never do.
+			const sameAgent = (p: { agentId?: string | null; configId?: string | null }) =>
+				(p.agentId ?? null) === (task.agentId ?? null) && (p.configId ?? null) === (task.configId ?? null);
+			const removed = panes.filter(p => p !== adoptedFrom && !surviving.includes(p));
+			const owner = surviving.find(p => p.main && !p.parked);
+			const restoreAgent = !!owner && removed.some(sameAgent) && !surviving.some(p => !p.parked && sameAgent(p));
+			const updated = await data.updateTask(project, task.id, {
+				sessionState: { panes: surviving },
+				...(restoreAgent ? { agentId: owner.agentId ?? null, configId: owner.configId ?? null } : {}),
+			});
+			if (restoreAgent) getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 			log.info("Reconciled sessionState after pane exit", {
 				taskId: taskId.slice(0, 8),
 				before: panes.length,

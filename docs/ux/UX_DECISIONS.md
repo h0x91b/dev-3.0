@@ -165,31 +165,19 @@ One round floating button over the canvas, only while that pane is scrolled up, 
 - **Rule:** One `…` per space on both surfaces (rail row + group header) holding `Edit projects…` (two-way membership), move, rename, delete, hide-on-camera; no add-only `+` — bible §10.
 - **Why:** `decisions/2026/08/21/one-menu-per-space-on-every-surface.md`, `decisions/2026/08/21/rail-gated-on-container-width.md`, `decisions/2026/08/21/space-filter-survives-the-rail.md`.
 
-## 2026-08-17 — A stored secret is read-only until the user reveals it
+2026-08-17 — A stored secret is read-only until revealed — rule lives in yaml `stored-secret-revealed-before-edit`.
 
-- **Rule:** A settings field holding a saved credential renders a mask and is READ-ONLY; a resting-visible eye icon (`icon`/ghost, labelled + `aria-pressed`) fetches that one secret on click via its own RPC, and only then is the field editable — where emptying it means "remove the key". The revealed value carries `streamer-private`.
-- **Why:** editing a secret you cannot see half-overwrites working keys and makes "clear to remove" impossible to offer, so the reveal is the edit gate; rejected alternative — send every key with the catalog and mask it client-side (a credential would cross to the renderer, including over a remote tunnel, because a screen loaded).
-- **Status:** Implemented. Evidence: `docs/ux/ux-architecture.yaml` `stored-secret-revealed-before-edit`, `src/mainview/components/global-settings/ModelCatalogSection.tsx` (`ProviderKeyField`), `src/bun/rpc-handlers/model-catalog.ts` (`modelCatalogRevealKey`).
 
 2026-08-14 — Agent toast: two-task line, own violet. Why: `decisions/2026/08/14/agent-message-toast-two-identities.md`.
 
-## 2026-08-14 — An agent-written log gets a capped preview, not a whole screen
+2026-08-14 — Agent-written logs get a capped preview — rule lives in bible §5.8 + §10.
 
-- **Rule:** Object-scoped content an agent appends to without a ceiling (task notes) shows the newest 3 entries on the object's surface, each body clamped to 6 lines with an overflow-gated Show more, plus a count and one `Show all N` row into its own overlay (BottomSheet narrow / dialog wide).
-- **Why:** 2 999 of 3 030 notes are agent-written and the tail is 143 notes / 313 321 chars — 45 900 px of scroll in the mobile actions sheet — but the median task holds exactly one 790-char note, so the rejected alternative (move the whole section behind a row + count badge) taxed >75% of tasks with a tap to fix 5%.
-- **Status:** Implemented. Evidence: `docs/ux/PRODUCT_UX_BIBLE.md` §5.8 + §10, `src/mainview/components/TaskNotesOverlay.tsx`, `src/mainview/components/task-info-panel/TaskNotes.tsx`.
 
-## 2026-08-10 — Settings → Agents is a preset library, not nested accordions
+2026-08-10 — Settings → Agents is a preset library — rule lives in bible §8.
 
-- **Rule:** A Settings entry owning dozens of same-shaped records renders a filterable list plus exactly one detail editor inside the category pane, grouped by the labels the consuming surface already shows (Agents: the launch picker's Model → Mode); narrow shows the list first, then the editor with a back affordance.
-- **Why:** 98 shipped presets behind three accordion levels with no search made finding or editing one a scroll hunt, and opening an editor pushed the other 39 rows off-screen; the rejected alternative — a dense sortable table with a drawer — buys bulk actions nobody asked for at the price of a data-grid pattern Settings has no precedent for.
-- **Status:** Implemented. Evidence: `docs/ux/PRODUCT_UX_BIBLE.md` §8, `src/mainview/components/global-settings/AgentSettingsSection.tsx`.
 
-## 2026-08-10 — One dropdown, optionally searchable and creatable
+2026-08-10 — One dropdown (`Select.tsx`), optionally searchable/creatable — rule lives in bible §7.
 
-- **Rule:** `Select.tsx` stays the app's only dropdown; `searchable` adds an in-panel filter input and `allowCustom` commits typed text as the value, so a shipped enum can never block a value the agent CLI already accepts.
-- **Why:** Model ids, permission modes and effort levels change faster than dev3 ships, and a fixed list silently caps the user at yesterday's options; a separate Combobox component was rejected because the app would then own two dropdowns with two keyboard contracts.
-- **Status:** Implemented. Evidence: `docs/ux/PRODUCT_UX_BIBLE.md` §7, `src/mainview/components/Select.tsx`, `src/mainview/components/__tests__/Select.test.tsx`.
 
 ## 2026-08-10 — Whose-code identity is accent on the board, warning only on the diff
 - **Rule:** `Task.foreignCode` renders as an accent eye glyph (§5.6, second identity marker) on the card and inspector, while the `warning`-toned RUNS badge sits on changed executable-config files in the diff viewer.
@@ -746,3 +734,7 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 ## 2026-10-31 — Epics: a global object with no destination of its own
 - **Rule:** chip above the card title (click filters `epic:`), an Epic row in the detail metadata grid, optional New Task field, management in Settings → Tasks & Board → Epics; a cross-board footnote reuses the lineage notice. Bible §3.
 - **Why:** a nav item or board header button would spend a budget for an occasional job. `decisions/2026/10/31/global-epics.md`.
+
+## 2026-11-05 — Task/PR references render inline where agent text appears
+- **Rule:** `<seq:N>` / `<pr:N>` become inline links in description, notes, overview, traffic detail, transcripts and the terminal; toasts and clickable list rows stay plain. Bible §10.
+- **Why:** one token beats four prose forms and `#N` collides with GitHub. Rejected chips under the text (loses the sentence). `decisions/2026/11/05/canonical-task-pr-reference-tokens.md`.

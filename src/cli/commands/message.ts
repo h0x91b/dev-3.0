@@ -1,4 +1,5 @@
 import { sendRequest } from "../socket-client";
+import { normalizeTaskArg } from "../../shared/task-refs";
 import { exitError, exitUsage } from "../output";
 import { checkMessageSubject, messageSubjectError } from "../../shared/agent-message-subject";
 import type { ParsedArgs } from "../args";
@@ -171,7 +172,7 @@ export async function handleMessage(
 	// A UUID already names one member, and the worktree's own task is not a group
 	// address at all — either one plus `--variant` is a confused command, not a
 	// filter to apply silently.
-	if (variantIndex !== undefined && !/^seq:\d+$/.test(String(rawTaskId))) exitUsage(VARIANT_NEEDS_SEQ);
+	if (variantIndex !== undefined && !/^seq:\d+$/.test(normalizeTaskArg(String(rawTaskId)))) exitUsage(VARIANT_NEEDS_SEQ);
 
 	const agentHandle = parseAgentFlag(args.flags.agent);
 

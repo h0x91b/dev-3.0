@@ -1,4 +1,5 @@
 import type { AgentConfiguration, CodingAgent } from "../../shared/types";
+import { formatTaskRef } from "../../shared/task-refs";
 import type { SpawnAgentResult } from "../../shared/conversation-handoff-model";
 import type { CliResumeOutcome, ResumePaneReport } from "../../shared/agent-resume";
 import { CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_RESUME_ALREADY_RUNNING, CLI_EXIT_CODE_RESUME_UNAVAILABLE } from "../../shared/cli-exit-codes";
@@ -116,19 +117,19 @@ export function reportResumeOutcome(result: CliResumeOutcome, json: boolean): vo
 			const { resume } = result;
 			if (!json) {
 				const session = resume.tmux ? ` (tmux session ${resume.tmux.session})` : "";
-				process.stdout.write(`Resumed task #${resume.seq} on ${resume.backend}${session}${resume.woke ? ", woken from hibernation" : ""}:\n`);
+				process.stdout.write(`Resumed task ${formatTaskRef(resume.seq)} on ${resume.backend}${session}${resume.woke ? ", woken from hibernation" : ""}:\n`);
 				for (const pane of resume.panes) process.stdout.write(describePane(pane));
 			}
 			return;
 		}
 		case "already-running":
-			return exitError(`Task #${result.seq} already has a running terminal (${result.backend}) — nothing was resumed`, "Use dev3 peek to look at it, or dev3 agent spawn to add an agent.", CLI_EXIT_CODE_RESUME_ALREADY_RUNNING);
+			return exitError(`Task ${formatTaskRef(result.seq)} already has a running terminal (${result.backend}) — nothing was resumed`, "Use dev3 peek to look at it, or dev3 agent spawn to add an agent.", CLI_EXIT_CODE_RESUME_ALREADY_RUNNING);
 		case "unavailable": {
 			const panes = (result.panes ?? []).map((pane) => describePane(pane).trim());
 			const hint = result.reason === "session-id-unknown"
 				? [...panes, "Pass --allow-agent-latest to resume each harness's own latest conversation anyway."].join("\n")
 				: panes.length ? panes.join("\n") : undefined;
-			return exitError(`Cannot resume task #${result.seq}: ${result.message}`, hint, CLI_EXIT_CODE_RESUME_UNAVAILABLE);
+			return exitError(`Cannot resume task ${formatTaskRef(result.seq)}: ${result.message}`, hint, CLI_EXIT_CODE_RESUME_UNAVAILABLE);
 		}
 		case "declined":
 			return exitError(result.stale ? "The target task's run ended before approval" : "User declined the resume request", "Nothing was resumed.", CLI_EXIT_CODE_LAUNCH_DECLINED);

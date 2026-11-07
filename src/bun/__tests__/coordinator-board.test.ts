@@ -39,30 +39,30 @@ function snapshot(overrides: Partial<BoardSnapshot> = {}): BoardSnapshot {
 
 describe("boardRef", () => {
 	it("addresses an ordinary task by its seq alone", () => {
-		expect(boardRef(row())).toBe("seq:1620");
+		expect(boardRef(row())).toBe("<seq:1620>");
 	});
 
 	// A live variant group is the one case where `--task seq:N` is ambiguous, so
 	// the id is not decoration — it is the only address that resolves.
 	it("carries the variant index and the id when the seq is still shared", () => {
-		expect(boardRef(row({ seqShared: true, variantIndex: 2 }))).toBe("seq:1620:2 (b21e9f30)");
+		expect(boardRef(row({ seqShared: true, variantIndex: 2 }))).toBe("<seq:1620> v2 (b21e9f30)");
 	});
 
 	it("keeps the id but drops the index for a shared seq with no variant index", () => {
-		expect(boardRef(row({ seqShared: true }))).toBe("seq:1620 (b21e9f30)");
+		expect(boardRef(row({ seqShared: true }))).toBe("<seq:1620> (b21e9f30)");
 	});
 
 	// The survivor of a variant group keeps variantIndex forever while its seq
 	// becomes unambiguous; spending bytes on its id every turn buys nothing.
 	it("drops the id once the task is the last of its variant group", () => {
-		expect(boardRef(row({ seqShared: false, variantIndex: 3 }))).toBe("seq:1620");
+		expect(boardRef(row({ seqShared: false, variantIndex: 3 }))).toBe("<seq:1620>");
 	});
 });
 
 describe("renderCoordinatorBoard", () => {
 	it("renders a live row with its column, title and how long it has sat there", () => {
 		const text = renderCoordinatorBoard(snapshot(), NOW);
-		expect(text).toContain("seq:1620");
+		expect(text).toContain("<seq:1620>");
 		expect(text).toContain("In Progress");
 		expect(text).toContain("Fix auth race in login flow");
 		expect(text).toContain("moved 41m ago");
@@ -146,7 +146,7 @@ describe("renderCoordinatorBoard", () => {
 		const text = renderCoordinatorBoard(snapshot({
 			live: [row({ seq: 1620 }), row({ seq: 1631, title: "Windows packaging step" })],
 		}), NOW);
-		const rows = text.split("\n").filter((l) => l.startsWith("seq:"));
+		const rows = text.split("\n").filter((l) => l.startsWith("<seq:"));
 		expect(rows).toHaveLength(2);
 	});
 
@@ -161,7 +161,7 @@ describe("renderCoordinatorBoard", () => {
 describe("priority cell", () => {
 	it("prints the priority between the ref and the column", () => {
 		const text = renderCoordinatorBoard(snapshot({ live: [row({ priority: "P0" })] }), NOW);
-		expect(text).toMatch(/seq:1620\s+P0\s+In Progress\s+Fix auth race/);
+		expect(text).toMatch(/<seq:1620>\s+P0\s+In Progress\s+Fix auth race/);
 	});
 
 	// The cell sits between two padded columns, so a wider ref on one row must not

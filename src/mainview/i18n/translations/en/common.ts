@@ -698,6 +698,19 @@ const common = {
 	"mobile.backExitToast": "Press Back again to exit",
 	"streamer.privateTitle": "Private project",
 	"streamer.projectLocked": "Sensitive project — locked while streamer mode is on",
+	"taskRef.notFound": "Nothing to open for {ref} — no such task or PR on that board.",
+	"taskRef.prUnknownRepo": "Couldn't find the GitHub repo for {ref}.",
+	"taskRef.openFailed": "Couldn't open {ref}: {error}",
+	"taskRef.openTask": "Open task {ref}",
+	"taskRef.openPr": "Open PR {ref}",
+	"taskRef.previewOpen": "Open task",
+	"taskRef.previewLoading": "Loading…",
+	"taskRef.previewNotFound": "No such task or PR on that board.",
+	"taskRef.previewNotes": "Latest notes",
+	"taskRef.previewImages": "Images",
+	"taskRef.previewArtifacts": "Artifacts",
+	"taskRef.previewMore_one": "+{count} more",
+	"taskRef.previewMore_other": "+{count} more",
 } as const;
 
 export default common;

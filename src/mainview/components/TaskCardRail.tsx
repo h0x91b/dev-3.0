@@ -71,7 +71,7 @@ function RailWord({ label, color, className = "" }: { label: string; color: stri
 
 interface TaskCardRailProps {
 	status: TaskStatus;
-	project: Project;
+	project?: Pick<Project, "customStatusLabels"> | null;
 	/** Set when the task sits in a custom column: its own name and dot colour win. */
 	customColumn?: { name: string; color: string } | null;
 	/** STATUS_COLORS[status], or the custom column's colour. Inline-styled — the
@@ -82,15 +82,15 @@ interface TaskCardRailProps {
 	bellCount?: number;
 	/** Rail is inert while the task is preparing, moving, hibernated or tearing down. */
 	disabled?: boolean;
-	canComplete: boolean;
-	completing: boolean;
-	onOpenMenu: (e: React.MouseEvent) => void;
-	onComplete: (e: React.MouseEvent) => void;
+	canComplete?: boolean;
+	completing?: boolean;
+	onOpenMenu?: (e: React.MouseEvent) => void;
+	onComplete?: (e: React.MouseEvent) => void;
 	/** Hibernated only, in the ✓'s place: a parked task is one the user walked away from. */
 	canCancel?: boolean;
 	cancelling?: boolean;
 	onCancel?: (e: React.MouseEvent) => void;
-	menuTriggerRef: Ref<HTMLButtonElement>;
+	menuTriggerRef?: Ref<HTMLButtonElement>;
 	/** Narrow viewport: widen so both halves clear the 44px touch minimum. */
 	touch?: boolean;
 	/**
@@ -101,6 +101,8 @@ interface TaskCardRailProps {
 	 * so it leaves this off and always shows the word.
 	 */
 	autoLabel?: boolean;
+	/** A picture of the rail (reference previews): no menu, no moves, nothing focusable. */
+	readOnly?: boolean;
 }
 
 /**
@@ -115,8 +117,8 @@ export default function TaskCardRail({
 	color,
 	bellCount = 0,
 	disabled = false,
-	canComplete,
-	completing,
+	canComplete = false,
+	completing = false,
 	onOpenMenu,
 	onComplete,
 	canCancel = false,
@@ -125,6 +127,7 @@ export default function TaskCardRail({
 	menuTriggerRef,
 	touch = false,
 	autoLabel = false,
+	readOnly = false,
 }: TaskCardRailProps) {
 	const t = useT();
 	const stage = getPipelineIndex(status) + 1;
@@ -151,7 +154,40 @@ export default function TaskCardRail({
 		return () => observer.disconnect();
 	}, [autoLabel, neededForLabel]);
 
-	const showCancel = canCancel && !!onCancel;
+	const showCancel = !readOnly && canCancel && !!onCancel;
+	const face = (
+		<>
+			{customColumn ? (
+				<span
+					className={`flex-shrink-0 rounded-full ${touch ? "h-[0.9375rem] w-[0.9375rem]" : "h-2.5 w-2.5"}`}
+					style={{ background: color, boxShadow: `0 0 6px ${color}60` }}
+				/>
+			) : (
+				<PipelineRing status={status} size={touch ? "default" : "compact"} tooltip={false} />
+			)}
+
+			{bellCount > 0 && (
+				<span
+					data-testid="task-card-rail-bell"
+					className={`flex flex-shrink-0 items-center justify-center rounded-full bg-red-500 font-bold leading-none text-white shadow-[0_2px_6px_rgb(239_68_68_/_0.45)] ${touch ? "h-4 min-w-4 px-1 text-dense" : "h-3.5 min-w-3.5 px-0.5 text-nano"}`}
+				>
+					{bellCount > 9 ? "9+" : bellCount}
+				</span>
+			)}
+
+			{/* Upright stacked letters — read straight down, never rotated. */}
+			{labelFits &&
+				(autoLabel ? (
+					// Out of flow: the word must never add to the height that decides
+					// whether it fits, or a row that once had room keeps it forever.
+					<span className="relative flex min-h-0 w-full flex-1 justify-center overflow-hidden">
+						<RailWord label={railLabel} color={color} className="absolute top-0" />
+					</span>
+				) : (
+					<RailWord label={railLabel} color={color} />
+				))}
+		</>
+	);
 
 	return (
 		<div
@@ -160,48 +196,30 @@ export default function TaskCardRail({
 			className={`flex flex-shrink-0 flex-col items-stretch self-stretch rounded-bl-[0.6875rem] ${touch ? "w-11" : "w-5"}`}
 			style={{ background: `${color}22` }}
 		>
-			<Tooltip content={fullLabel} detail={`${stageLabel} · ${t("task.moveTo")}`}>
-				<button
-					ref={menuTriggerRef}
-					type="button"
-					onClick={onOpenMenu}
-					disabled={disabled}
-					aria-label={`${fullLabel} — ${stageLabel}. ${t("task.moveTo")}`}
-					className={`flex w-full flex-1 flex-col items-center rounded-tl-none rounded-bl-none pb-1.5 transition-[filter] duration-150 ease-out hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-60 motion-safe:active:scale-[0.97] ${touch ? "gap-1.5 pt-2" : "gap-1 pt-1.5"}`}
+			{readOnly ? (
+				<div
+					role="img"
+					aria-label={`${fullLabel} — ${stageLabel}`}
+					className={`flex w-full flex-1 flex-col items-center pb-1.5 ${touch ? "gap-1.5 pt-2" : "gap-1 pt-1.5"}`}
 				>
-					{customColumn ? (
-						<span
-							className={`flex-shrink-0 rounded-full ${touch ? "h-[0.9375rem] w-[0.9375rem]" : "h-2.5 w-2.5"}`}
-							style={{ background: color, boxShadow: `0 0 6px ${color}60` }}
-						/>
-					) : (
-						<PipelineRing status={status} size={touch ? "default" : "compact"} tooltip={false} />
-					)}
+					{face}
+				</div>
+			) : (
+				<Tooltip content={fullLabel} detail={`${stageLabel} · ${t("task.moveTo")}`}>
+					<button
+						ref={menuTriggerRef}
+						type="button"
+						onClick={onOpenMenu}
+						disabled={disabled}
+						aria-label={`${fullLabel} — ${stageLabel}. ${t("task.moveTo")}`}
+						className={`flex w-full flex-1 flex-col items-center rounded-tl-none rounded-bl-none pb-1.5 transition-[filter] duration-150 ease-out hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-60 motion-safe:active:scale-[0.97] ${touch ? "gap-1.5 pt-2" : "gap-1 pt-1.5"}`}
+					>
+						{face}
+					</button>
+				</Tooltip>
+			)}
 
-					{bellCount > 0 && (
-						<span
-							data-testid="task-card-rail-bell"
-							className={`flex flex-shrink-0 items-center justify-center rounded-full bg-red-500 font-bold leading-none text-white shadow-[0_2px_6px_rgb(239_68_68_/_0.45)] ${touch ? "h-4 min-w-4 px-1 text-dense" : "h-3.5 min-w-3.5 px-0.5 text-nano"}`}
-						>
-							{bellCount > 9 ? "9+" : bellCount}
-						</span>
-					)}
-
-					{/* Upright stacked letters — read straight down, never rotated. */}
-					{labelFits &&
-						(autoLabel ? (
-							// Out of flow: the word must never add to the height that decides
-							// whether it fits, or a row that once had room keeps it forever.
-							<span className="relative flex min-h-0 w-full flex-1 justify-center overflow-hidden">
-								<RailWord label={railLabel} color={color} className="absolute top-0" />
-							</span>
-						) : (
-							<RailWord label={railLabel} color={color} />
-						))}
-				</button>
-			</Tooltip>
-
-			{canComplete && (
+			{!readOnly && canComplete && (
 				<RailMoveButton
 					testId="task-card-quick-complete"
 					label={t("pipeline.completeTooltip")}

@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { I18nProvider } from "../../i18n";
-import { TaskRoleBand, TaskRoleChip, taskRole } from "../TaskRoleBand";
+import { COORDINATOR_CARD_HALO, TaskRoleBand, TaskRoleChip, taskRole } from "../TaskRoleBand";
 
 describe("taskRole", () => {
 	it.each([
@@ -43,5 +43,11 @@ describe("TaskRoleChip", () => {
 		expect(chip.className).toContain("bg-accent-fill");
 		expect(chip.querySelector("svg")).not.toBeNull();
 		expect(chip).toHaveTextContent(/coordinator/i);
+	});
+});
+
+describe("COORDINATOR_CARD_HALO", () => {
+	it("lifts on hover with the shared card-hover shadow, typed so Tailwind emits a box-shadow and not a colour", () => {
+		expect(COORDINATOR_CARD_HALO).toMatch(/\bhover:shadow-\[shadow:[^\]]*var\(--shadow-card-hover\)\]/);
 	});
 });

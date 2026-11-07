@@ -53,7 +53,7 @@ describe("renderTaskPeek", () => {
 	it("opens with the task header so the reader knows whose terminal this is", () => {
 		const out = renderTaskPeek(snapshot(), NOW);
 
-		expect(out.split("\n")[0]).toBe("Task 42 · Fix auth race · in-progress · backend=native · 1 pane");
+		expect(out.split("\n")[0]).toBe("<seq:42> · Fix auth race · in-progress · backend=native · 1 pane");
 	});
 
 	it("prints one line per pane with liveness, command and output age", () => {

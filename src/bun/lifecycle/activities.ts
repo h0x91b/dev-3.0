@@ -2,7 +2,6 @@ import { isDeepStrictEqual } from "node:util";
 import type {
 	PRCIStatus,
 	PRInfo,
-	PRMergeState,
 	Project,
 	RefreshTaskPrStatusResult,
 	Task,
@@ -38,12 +37,9 @@ import {
 import { getMergeCompletionFingerprint } from "./merge-fingerprint";
 import {
 	computeSignalKey,
-	mapReviewDecision,
 	normalizeChecks,
-	parseAutoMergeEnabled,
-	parseReviewDecision,
+	prSummaryStatus,
 	reasonForSignal,
-	rollupCiStatus,
 } from "../rpc-handlers/pr-status";
 import {
 	dispatchLifecycleEvent,
@@ -605,19 +601,7 @@ export async function reportTaskPrStatus(
 	const prUrl = typeof pr.url === "string" ? pr.url : task.prUrl ?? null;
 	if (prNumber === null) throw new Error("PR status is missing its number");
 
-	const ciStatus = rollupCiStatus(pr.statusCheckRollup);
-	const reviewDecision = parseReviewDecision(pr.reviewDecision);
-	const reviewState = mapReviewDecision(pr.reviewDecision);
-	const checks = normalizeChecks(pr.statusCheckRollup);
-	const unresolvedCount = pr.unresolvedCount;
-	const mergeState: PRMergeState = {
-		mergeable: typeof pr.mergeable === "string" ? pr.mergeable.toUpperCase() : null,
-		status: typeof pr.mergeStateStatus === "string" ? pr.mergeStateStatus.toUpperCase() : null,
-		state: typeof pr.state === "string" ? pr.state.toUpperCase() : null,
-	};
-	const prTitle = typeof pr.title === "string" ? pr.title : null;
-	const isDraft = typeof pr.isDraft === "boolean" ? pr.isDraft : null;
-	const autoMergeEnabled = parseAutoMergeEnabled(pr.autoMergeRequest);
+	const { ciStatus, reviewDecision, reviewState, checks, unresolvedCount, mergeState, prTitle, isDraft, autoMergeEnabled } = prSummaryStatus(pr);
 
 	const freshStatus: FreshPRStatus = {
 		number: prNumber,

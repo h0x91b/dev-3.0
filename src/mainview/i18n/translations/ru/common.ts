@@ -757,6 +757,21 @@ const common = {
 	"mobile.backExitToast": "Нажмите «Назад» ещё раз для выхода",
 	"streamer.privateTitle": "Приватный проект",
 	"streamer.projectLocked": "Чувствительный проект — заблокирован, пока включён режим стримера",
+	"taskRef.notFound": "Нечего открывать по {ref} — такой задачи или PR на этой доске нет.",
+	"taskRef.prUnknownRepo": "Не удалось найти GitHub-репозиторий для {ref}.",
+	"taskRef.openFailed": "Не удалось открыть {ref}: {error}",
+	"taskRef.openTask": "Открыть задачу {ref}",
+	"taskRef.openPr": "Открыть PR {ref}",
+	"taskRef.previewOpen": "Открыть задачу",
+	"taskRef.previewLoading": "Загрузка…",
+	"taskRef.previewNotFound": "На этой доске нет такой задачи или PR.",
+	"taskRef.previewNotes": "Последние заметки",
+	"taskRef.previewImages": "Изображения",
+	"taskRef.previewArtifacts": "Артефакты",
+	"taskRef.previewMore_one": "ещё {count}",
+	"taskRef.previewMore_few": "ещё {count}",
+	"taskRef.previewMore_many": "ещё {count}",
+	"taskRef.previewMore_other": "ещё {count}",
 };
 
 export default common;

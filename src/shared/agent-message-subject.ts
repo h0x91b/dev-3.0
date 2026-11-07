@@ -56,13 +56,13 @@ export function checkMessageSubject(raw: unknown): MessageSubjectCheck {
 }
 
 /**
- * A leading address the sender wrote in front of its own message: `Seq 1722 ->`,
- * `#1141`, `Coordinator Seq 1141 (47205843) -`. This is exactly what made the
+ * A leading address the sender wrote in front of its own message: `<seq:1722> ->`,
+ * `Seq 1722 ->`, `#1141`, `Coordinator Seq 1141 (47205843) -`. This is exactly what made the
  * old body-derived rows useless, so a suggestion strips it before quoting the
  * caller's own words back at them.
  */
 const ADDRESS_PREFIX_RE =
-	/^[\s*_#>]*(?:coordinator|agent|task|seq)?[\s:]*(?:#|seq[:\s]*)?\d+(?:-\d+)?[\s]*(?:\([0-9a-f]{6,}\))?[\s]*(?:->|→|:|-|—|»|\|)\s*/i;
+	/^[\s*_#>]*(?:coordinator|agent|task|seq)?[\s:]*(?:<seq:(?:[\w.-]+\/)?\d+>|(?:#|seq[:\s]*)?\d+(?:-\d+)?)[\s]*(?:\([0-9a-f]{6,}\))?[\s]*(?:->|→|:|-|—|»|\|)\s*/i;
 
 /** A bare label with no number: `Coordinator:`, `ACT:`. Stripped once, after the address. */
 const LABEL_PREFIX_RE = /^(?:coordinator|agent|update|status|report)\s*(?:->|→|:|-|—)\s*/i;
@@ -161,9 +161,9 @@ export function messageSubjectError(opts: {
 	lines.push(
 		"",
 		`Write about ${MESSAGE_SUBJECT_WORD_GUIDANCE} words, ${MAX_MESSAGE_SUBJECT_LENGTH} characters at most.`,
-		"Do NOT repeat who is talking — the row already shows the pair, e.g. #1722 → #1141.",
-		'  good:  --subject "PR 1577 merged, main green"',
-		'  bad:   --subject "Seq 1722 -> Coordinator: PR 1577 merged"',
+		"Do NOT repeat who is talking — the row already shows both tasks.",
+		'  good:  --subject "<pr:1577> merged, main green"',
+		'  bad:   --subject "<seq:1722> -> Coordinator: <pr:1577> merged"',
 	);
 
 	if (opts.problem === "missing" && suggestion) {

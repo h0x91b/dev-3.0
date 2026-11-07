@@ -1,6 +1,7 @@
 import { stopAgentMessageLogWatches } from "./agent-message-log-watch";
 import { startBoardCopy, stopBoardCopy } from "./board-copy";
 import { claudeSessionWatches } from "./claude-session-watch";
+import { codexTurnWatches } from "./codex-turn-watch";
 /**
  * Headless entry point for `dev3 remote`.
  *
@@ -613,6 +614,7 @@ function shutdown(signal: string): void {
 	stopAgentMessageLogWatches();
 	stopBoardCopy();
 	claudeSessionWatches.close();
+	codexTurnWatches.close();
 	stopQrAutoRefresh();
 	stopPortScanPoller();
 	stopResourceMonitor();

@@ -22,7 +22,7 @@ const REVIEW_BADGE: Record<NonNullable<TaskPRBadgeInfo["reviewState"]>, { glyph:
 interface TaskPrBadgesProps {
 	prInfo: TaskPRBadgeInfo;
 	projectId: string;
-	taskId: string;
+	taskId?: string;
 	/** Makes the popover's unresolved-comments row a deep link into the diff. */
 	onShowUnresolved?: () => void;
 	/** Finished PRs listed in the popover under the current one. */

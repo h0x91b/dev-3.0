@@ -1,5 +1,4 @@
 import { Fragment, useState, useRef, useEffect, useLayoutEffect, type Dispatch } from "react";
-import { findAgentConfig } from "../../shared/agent-live-models";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import type { CodingAgent, DevServerSummary, Epic, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
@@ -46,7 +45,8 @@ import { useMobile } from "../hooks/useMobile";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import ScheduleMessageModal from "./ScheduleMessageModal";
 import ScheduledMessagesChip from "./ScheduledMessagesChip";
-import AgentLauncherBadge, { resolveAgentLauncherIcon } from "./AgentLauncherBadge";
+import AgentLauncherBadge from "./AgentLauncherBadge";
+import { taskCardAgent } from "../utils/taskCardAgent";
 import { PREPARING_STAGE_LABELS } from "./TaskPreparingView";
 import Tooltip from "./Tooltip";
 import TaskShutdownOverlay from "./TaskShutdownOverlay";
@@ -499,23 +499,12 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const railColor = isCompleting || isShuttingDown ? "#888" : activeCol ? activeCol.color : color;
 
 	// ---- IDENTITY zone inputs -----------------------------------------------
-	// No pick follows the global default; a running task shows the one its main pane got.
-	const runningPane = !task.agentId && task.worktreePath ? task.sessionState?.panes?.[0] : undefined;
-	const agentId = task.agentId ?? runningPane?.agentId;
-	const configId = task.agentId ? task.configId : runningPane?.configId;
-	const agent = agentId ? agents.find((a) => a.id === agentId) : null;
-	const agentConfig = agent && configId
-		? findAgentConfig(agent, configId)
-		: agent?.configurations.find((c) => c.id === agent.defaultConfigId) ?? agent?.configurations[0];
-	const configLabel = agentConfig
-		? (agentConfig.model ? `${agentConfig.name} · ${agentConfig.model}` : agentConfig.name)
-		: agent?.name ?? "";
+	const { agent, configLabel, hasLauncherIcon } = taskCardAgent(task, agents);
 	// A lone variant is not a variant — `1/1` says nothing, and the spelled-out
 	// "Variant 1" ate the header room the config string exists for.
 	const variantFraction = task.variantIndex !== null && groupMembers.length > 1
 		? `${task.variantIndex}/${groupMembers.length}`
 		: null;
-	const hasLauncherIcon = agent ? resolveAgentLauncherIcon(agent) !== null : false;
 	const [configRef, configTruncated] = useIsTruncated<HTMLSpanElement>(configLabel);
 
 	// ---- SIGNALS zone: read-only facts, grouped git / run / time -------------

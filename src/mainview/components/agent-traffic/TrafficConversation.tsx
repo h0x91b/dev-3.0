@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { TaskRefScopeContext } from "../TaskRefText";
 import { CONVERSATION_SOURCE_LABELS } from "../../../shared/conversation-import-model";
 import {
 	TASK_CONVERSATION_TEXT_LIMIT,
@@ -72,6 +73,7 @@ function TrafficConversation({ projectId, taskId, taskGone, format }: TrafficCon
 	const [failed, setFailed] = useState(false);
 	/** What the user is looking at right now — the test every response must pass. */
 	const showing = useRef<string>("");
+	const refScope = useMemo(() => ({ projectId: projectId ?? undefined, taskId: taskId ?? undefined }), [projectId, taskId]);
 	showing.current = `${projectId}/${taskId}`;
 
 	// Selecting another task drops whatever was on screen: a stale transcript under
@@ -139,6 +141,7 @@ function TrafficConversation({ projectId, taskId, taskGone, format }: TrafficCon
 	const session = view.sessions.find((candidate) => candidate.key === view.sessionKey) ?? view.sessions[0];
 
 	return (
+		<TaskRefScopeContext.Provider value={refScope}>
 		<div className="traffic-conversation">
 			<div className="traffic-conversation-head">
 				{view.sessions.length > 1 ? (
@@ -208,6 +211,7 @@ function TrafficConversation({ projectId, taskId, taskGone, format }: TrafficCon
 				</article>
 			))}
 		</div>
+		</TaskRefScopeContext.Provider>
 	);
 }
 
