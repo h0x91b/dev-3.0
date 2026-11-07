@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { Project, Task, TaskPriority, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, getTaskTitle, isTaskDisconnected } from "../../shared/types";
+import { ACTIVE_STATUSES, ALL_PRIORITIES, DEFAULT_PRIORITY, getTaskTitle, isTaskDisconnected } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
@@ -14,17 +14,18 @@ import { useOverlayLayer } from "../utils/useOverlayLayer";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import { buildTaskDeepLink } from "../../shared/deep-link";
 import { formatBytes } from "../utils/formatBytes";
+import { computeMenuFlyoutPosition, MENU_FLYOUT_HOVER_MS } from "../utils/menuFlyout";
 import BottomSheet from "./BottomSheet";
-import LabelPicker from "./LabelPicker";
-import MoveToProjectPicker from "./MoveToProjectPicker";
-import OpenInMenu from "./OpenInMenu";
+import LabelPicker, { LabelPickerPanel } from "./LabelPicker";
+import MoveToProjectPicker, { MoveToProjectPanel } from "./MoveToProjectPicker";
+import OpenInMenu, { OpenInAppList } from "./OpenInMenu";
 import PipelineDropdown from "./PipelineDropdown";
-import PriorityPicker from "./PriorityPicker";
+import { PRIORITY_NAME_KEYS, PRIORITY_STYLES } from "./priorityStyles";
 import TaskDetailModal from "./TaskDetailModal";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 
-/** Which nested picker the menu handed off to, if any. */
-type SubSurface = "labels" | "priority" | "status" | "project" | "openIn";
+/** Which nested picker the phone menu handed off to, if any. */
+type SubSurface = "labels" | "status" | "project" | "openIn";
 
 interface TaskContextMenuProps {
 	task: Task;
@@ -47,8 +48,10 @@ interface MenuRow {
 	id: string;
 	label: string;
 	onSelect: () => void;
-	/** Opens a nested picker — gets the ▸ affordance. */
-	submenu?: boolean;
+	/** Desktop flyout content, built only while shown beside the row; gets the ▸ affordance. */
+	flyout?: () => ReactNode;
+	/** Flyout panel width; content without a fixed width sizes itself. */
+	flyoutWidth?: number;
 	danger?: boolean;
 	disabled?: boolean;
 	/** Toggle state marker for Watch / Hidden. */
@@ -74,6 +77,37 @@ export default function TaskContextMenu({
 	const t = useT();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [sub, setSub] = useState<SubSurface | null>(null);
+	const [flyout, setFlyout] = useState<string | null>(null);
+	// A flyout opened from the keyboard takes focus; one opened by hover leaves it be.
+	const [flyoutByKey, setFlyoutByKey] = useState(false);
+	const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	useEffect(() => () => clearHoverTimer(), []);
+
+	function clearHoverTimer() {
+		if (hoverTimer.current !== null) clearTimeout(hoverTimer.current);
+		hoverTimer.current = null;
+	}
+
+	/**
+	 * Entering a row decides the open flyout after a dwell, so a pointer crossing
+	 * other rows on its way into a tall flyout does not swap it. Entering the open
+	 * flyout counts as entering its own row and cancels a pending swap.
+	 */
+	function hoverRow(id: string | null) {
+		clearHoverTimer();
+		hoverTimer.current = setTimeout(() => {
+			hoverTimer.current = null;
+			setFlyoutByKey(false);
+			setFlyout(id);
+		}, MENU_FLYOUT_HOVER_MS);
+	}
+
+	function openFlyoutNow(id: string, byKey: boolean) {
+		clearHoverTimer();
+		setFlyoutByKey(byKey);
+		setFlyout(id);
+	}
 	// Pickers anchor to an element, so the cursor point becomes a 0×0 one.
 	const [anchorPos, setAnchorPos] = useState({ x: 0, y: 0 });
 	const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null);
@@ -95,6 +129,13 @@ export default function TaskContextMenu({
 	function closeSub() {
 		setSub(null);
 		setAnchorEl(null);
+	}
+
+	/** Ends a pick made from either the phone sheet or a desktop flyout. */
+	function finishPick() {
+		closeSub();
+		setFlyout(null);
+		onClose();
 	}
 
 	function openDetails(rename: boolean) {
@@ -124,7 +165,7 @@ export default function TaskContextMenu({
 	}
 
 	async function handlePriority(priority: TaskPriority) {
-		closeSub();
+		finishPick();
 		try {
 			const changed = await api.request.setTaskPriority({ taskId: task.id, projectId: project.id, priority });
 			for (const changedTask of changed) dispatch({ type: "updateTask", task: changedTask });
@@ -134,12 +175,12 @@ export default function TaskContextMenu({
 	}
 
 	async function handleMove(newStatus: TaskStatus) {
-		closeSub();
+		finishPick();
 		await moveTaskToStatus({ task, project, newStatus, dispatch, t, onOpenTask });
 	}
 
 	async function handleMoveToCustomColumn(customColumnId: string) {
-		closeSub();
+		finishPick();
 		try {
 			const updated = await api.request.moveTaskToCustomColumn({ taskId: task.id, projectId: project.id, customColumnId });
 			dispatch({ type: "updateTask", task: updated });
@@ -154,7 +195,7 @@ export default function TaskContextMenu({
 	}
 
 	async function handleMoveToProject(target: Project) {
-		closeSub();
+		finishPick();
 		try {
 			await api.request.moveTaskToProject({ taskId: task.id, fromProjectId: project.id, toProjectId: target.id });
 			dispatch({ type: "removeTask", taskId: task.id });
@@ -263,10 +304,44 @@ export default function TaskContextMenu({
 			...(onShowFamily ? [{ id: "family", label: t("task.lineage.showFamily"), onSelect: () => { onClose(); onShowFamily(); } }] : []),
 		],
 		[
-			{ id: "labels", label: t("taskMenu.labels"), onSelect: () => openSub("labels"), submenu: true },
-			{ id: "priority", label: t("taskMenu.priority"), onSelect: () => openSub("priority"), submenu: true },
-			{ id: "status", label: t("task.moveTo"), onSelect: () => openSub("status"), submenu: true },
-			{ id: "project", label: t("task.moveToProject"), onSelect: () => openSub("project") },
+			{
+				id: "labels",
+				label: t("taskMenu.labels"),
+				onSelect: () => openSub("labels"),
+				flyoutWidth: 220,
+				flyout: () => (
+					<LabelPickerPanel
+						project={project}
+						onCreateLabel={(name) => createProjectLabel({ project, name, dispatch, t, taskId: task.id })}
+						selectedIds={labelIds}
+						onToggle={handleToggleLabel}
+					/>
+				),
+			},
+			{
+				id: "status",
+				label: t("task.moveTo"),
+				onSelect: () => openSub("status"),
+				flyout: () => (
+					<div className="min-w-[11.25rem] py-1.5">
+						<PipelineDropdown
+							currentStatus={task.status}
+							onMove={handleMove}
+							onMoveToCustomColumn={handleMoveToCustomColumn}
+							customColumns={project.customColumns}
+							currentCustomColumnId={task.customColumnId}
+							project={project}
+						/>
+					</div>
+				),
+			},
+			{
+				id: "project",
+				label: t("task.moveToProject"),
+				onSelect: () => openSub("project"),
+				flyoutWidth: 260,
+				flyout: () => <MoveToProjectPanel currentProjectId={project.id} onSelect={handleMoveToProject} />,
+			},
 			{ id: "rename", label: t("taskMenu.rename"), onSelect: () => openDetails(true) },
 		],
 		[
@@ -274,8 +349,12 @@ export default function TaskContextMenu({
 				id: "openIn",
 				label: t("openIn.menuTitle"),
 				onSelect: () => openSub("openIn"),
-				submenu: true,
 				disabled: !task.worktreePath,
+				flyout: () => (
+					<div className="min-w-[11.25rem] py-1.5">
+						<OpenInAppList path={task.worktreePath ?? ""} taskId={task.id} onOpened={finishPick} />
+					</div>
+				),
 			},
 			{ id: "copyLink", label: t("taskMenu.copyLink"), onSelect: () => copy(buildTaskDeepLink(task.id)) },
 			{
@@ -316,36 +395,127 @@ export default function TaskContextMenu({
 		[{ id: "delete", label: t("taskMenu.delete"), onSelect: handleDelete, danger: true }],
 	];
 
+	function renderRow(row: MenuRow) {
+		const hasFlyout = !!row.flyout && !narrow;
+		const open = hasFlyout && flyout === row.id;
+		const button = (
+			<button
+				key={row.id}
+				type="button"
+				role="menuitem"
+				disabled={row.disabled}
+				data-menu-row=""
+				data-testid={`task-menu-${row.id}`}
+				aria-haspopup={row.flyout ? "menu" : undefined}
+				aria-expanded={hasFlyout ? open : undefined}
+				onClick={(e) => {
+					e.stopPropagation();
+					// Hover has often opened it already; a click must not toggle it shut.
+					if (hasFlyout) openFlyoutNow(row.id, false);
+					else row.onSelect();
+				}}
+				onKeyDown={(e) => {
+					if (hasFlyout && (e.key === "ArrowRight" || e.key === "Enter")) {
+						e.preventDefault();
+						openFlyoutNow(row.id, true);
+					}
+				}}
+				className={`flex w-full items-center gap-2 px-3 text-left transition-colors disabled:opacity-40 disabled:pointer-events-none ${
+					narrow ? "py-3 text-sm-plus" : "py-1.5 text-sm"
+				} ${
+					row.danger
+						? "text-danger hover:bg-danger/10"
+						: `text-fg-2 hover:bg-overlay-hover hover:text-fg ${open ? "bg-overlay-hover text-fg" : ""}`
+				}`}
+			>
+				<span aria-hidden className="w-3 flex-shrink-0 text-center text-xs leading-none text-accent">
+					{row.checked ? "✓" : ""}
+				</span>
+				<span className="min-w-0 flex-1 truncate">{row.label}</span>
+				{row.flyout && (
+					<span aria-hidden className="flex-shrink-0 text-xs leading-none text-fg-muted">
+						{"▸"}
+					</span>
+				)}
+			</button>
+		);
+		if (narrow) return button;
+		return (
+			<div key={row.id} onMouseEnter={() => hoverRow(hasFlyout && !row.disabled ? row.id : null)}>
+				{button}
+				{open && (
+					<Flyout
+						width={row.flyoutWidth}
+						testId={`task-menu-flyout-${row.id}`}
+						label={row.label}
+						autoFocus={flyoutByKey}
+						onBack={(rowEl) => {
+							clearHoverTimer();
+							setFlyout(null);
+							rowEl.querySelector<HTMLButtonElement>("[data-menu-row]")?.focus();
+						}}
+					>
+						{row.flyout?.()}
+					</Flyout>
+				)}
+			</div>
+		);
+	}
+
+	const current = task.priority ?? DEFAULT_PRIORITY;
+	const priorityRow = (
+		<div
+			key="priority"
+			role="group"
+			aria-label={t("priority.pickerTitle")}
+			data-testid="task-menu-priority"
+			className={`flex items-center gap-2 px-3 ${narrow ? "py-2.5" : "py-1"}`}
+			onMouseEnter={() => hoverRow(null)}
+			onKeyDown={(e) => {
+				if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+				e.preventDefault();
+				const chips = [...e.currentTarget.querySelectorAll<HTMLButtonElement>("button")];
+				const at = chips.indexOf(document.activeElement as HTMLButtonElement);
+				chips[(at + (e.key === "ArrowRight" ? 1 : -1) + chips.length) % chips.length]?.focus();
+			}}
+		>
+			<span aria-hidden className="w-3 flex-shrink-0" />
+			<span className={`min-w-0 flex-1 truncate text-fg-2 ${narrow ? "text-sm-plus" : "text-sm"}`}>{t("taskMenu.priority")}</span>
+			{ALL_PRIORITIES.map((level) => {
+				const isOn = level === current;
+				const style = PRIORITY_STYLES[level];
+				return (
+					<button
+						key={level}
+						type="button"
+						role="menuitemradio"
+						aria-checked={isOn}
+						title={t(PRIORITY_NAME_KEYS[level])}
+						data-testid={`task-menu-priority-${level}`}
+						// Only the current level joins the up/down walk; left/right moves within the group.
+						data-menu-row={isOn ? "" : undefined}
+						onClick={(e) => {
+							e.stopPropagation();
+							if (isOn) onClose();
+							else void handlePriority(level);
+						}}
+						className={`flex-shrink-0 rounded font-mono font-semibold transition-colors ${
+							narrow ? "px-2 py-1 text-xs" : "px-1.5 py-0.5 text-micro"
+						} ${isOn ? style.chipActive : style.chipIdle}`}
+					>
+						{level}
+					</button>
+				);
+			})}
+		</div>
+	);
+
 	const rows: ReactNode[] = [];
 	groups.forEach((group, groupIndex) => {
 		if (groupIndex > 0) rows.push(<div key={`sep-${groupIndex}`} className="my-1 border-t border-edge" />);
 		for (const row of group) {
-			rows.push(
-				<button
-					key={row.id}
-					type="button"
-					role="menuitem"
-					disabled={row.disabled}
-					data-testid={`task-menu-${row.id}`}
-					onClick={(e) => {
-						e.stopPropagation();
-						row.onSelect();
-					}}
-					className={`flex w-full items-center gap-2 px-3 text-left transition-colors disabled:opacity-40 disabled:pointer-events-none ${
-						narrow ? "py-3 text-sm-plus" : "py-1.5 text-sm"
-					} ${row.danger ? "text-danger hover:bg-danger/10" : "text-fg-2 hover:bg-overlay-hover hover:text-fg"}`}
-				>
-					<span aria-hidden className="w-3 flex-shrink-0 text-center text-xs leading-none text-accent">
-						{row.checked ? "✓" : ""}
-					</span>
-					<span className="min-w-0 flex-1 truncate">{row.label}</span>
-					{row.submenu && (
-						<span aria-hidden className="flex-shrink-0 text-xs leading-none text-fg-muted">
-							{"▸"}
-						</span>
-					)}
-				</button>,
-			);
+			rows.push(renderRow(row));
+			if (row.id === "labels") rows.push(priorityRow);
 		}
 	});
 
@@ -381,9 +551,6 @@ export default function TaskContextMenu({
 					onClose={closeSub}
 				/>
 			)}
-			{sub === "priority" && anchorEl && (
-				<PriorityPicker selected={task.priority} anchorEl={anchorEl} onSelect={handlePriority} onClose={closeSub} />
-			)}
 			{sub === "project" && anchorEl && (
 				<MoveToProjectPicker
 					currentProjectId={project.id}
@@ -400,42 +567,20 @@ export default function TaskContextMenu({
 					onClose={closeSub}
 				/>
 			)}
-			{sub === "status" &&
-				(narrow ? (
-					<BottomSheet open onClose={closeSub} title={t("task.moveTo")} testId={`task-menu-status-sheet-${task.id}`}>
-						<PipelineDropdown
-							currentStatus={task.status}
-							onMove={handleMove}
-							onMoveToCustomColumn={handleMoveToCustomColumn}
-							customColumns={project.customColumns}
-							currentCustomColumnId={task.customColumnId}
-							project={project}
-							size="touch"
-							hideHeader
-						/>
-					</BottomSheet>
-				) : (
-					createPortal(
-						<div
-							data-menu-surface
-							className="fixed z-[10000] min-w-[11.25rem] rounded-xl border border-edge-active bg-overlay py-1.5 shadow-2xl shadow-black/40"
-							style={clampToViewport(anchorPos)}
-							onClick={(e) => e.stopPropagation()}
-						>
-							<PipelineDropdown
-								currentStatus={task.status}
-								onMove={handleMove}
-								onMoveToCustomColumn={handleMoveToCustomColumn}
-								customColumns={project.customColumns}
-								currentCustomColumnId={task.customColumnId}
-								project={project}
-							/>
-							{/* Click-outside for a panel with no anchor of its own. */}
-							<div className="fixed inset-0 -z-10" onClick={closeSub} onContextMenu={closeSub} />
-						</div>,
-						document.body,
-					)
-				))}
+			{sub === "status" && (
+				<BottomSheet open onClose={closeSub} title={t("task.moveTo")} testId={`task-menu-status-sheet-${task.id}`}>
+					<PipelineDropdown
+						currentStatus={task.status}
+						onMove={handleMove}
+						onMoveToCustomColumn={handleMoveToCustomColumn}
+						customColumns={project.customColumns}
+						currentCustomColumnId={task.customColumnId}
+						project={project}
+						size="touch"
+						hideHeader
+					/>
+				</BottomSheet>
+			)}
 			{/* Portalled: the sidebar column clips a modal rendered in place. */}
 			{detailOpen &&
 				createPortal(
@@ -487,11 +632,13 @@ function MenuPanel({
 	}, [measured]);
 
 	function items(): HTMLButtonElement[] {
-		return [...(panelRef.current?.querySelectorAll<HTMLButtonElement>("button:not([disabled])") ?? [])];
+		return [...(panelRef.current?.querySelectorAll<HTMLButtonElement>("[data-menu-row]:not([disabled])") ?? [])];
 	}
 
 	function onKeyDown(e: React.KeyboardEvent) {
 		if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+		// Keys typed inside a flyout (a search field, its own list) are the flyout's.
+		if (!(e.target as HTMLElement).hasAttribute?.("data-menu-row")) return;
 		e.preventDefault();
 		const all = items();
 		const at = all.indexOf(document.activeElement as HTMLButtonElement);
@@ -539,10 +686,63 @@ function MenuPanel({
 	);
 }
 
-/** Keeps a cursor-positioned panel inside the window; measured panels clamp again themselves. */
-function clampToViewport(pos: { x: number; y: number }): { top: number; left: number } {
-	const pad = 8;
-	const maxLeft = Math.max(pad, window.innerWidth - 240 - pad);
-	const maxTop = Math.max(pad, window.innerHeight - 360 - pad);
-	return { top: Math.min(pos.y, maxTop), left: Math.min(pos.x, maxLeft) };
+/**
+ * A submenu panel beside its row, placed by the shared menu-flyout geometry
+ * (right of the menu, flipping left near the window edge). It stays inside the
+ * menu's DOM, so the menu's click-outside and focus-out treat it as inside.
+ */
+function Flyout({
+	width,
+	testId,
+	label,
+	autoFocus,
+	onBack,
+	children,
+}: {
+	width?: number;
+	testId: string;
+	label: string;
+	autoFocus: boolean;
+	onBack: (rowEl: HTMLElement) => void;
+	children: ReactNode;
+}) {
+	const ref = useRef<HTMLDivElement>(null);
+	const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+	useLayoutEffect(() => {
+		const el = ref.current;
+		const row = el?.parentElement;
+		if (!el || !row) return;
+		const place = () => setPos(computeMenuFlyoutPosition(row, { width: el.offsetWidth, height: el.offsetHeight }, "right"));
+		place();
+		// The label search and the async project list change the height after mount.
+		if (typeof ResizeObserver === "undefined") return;
+		const observer = new ResizeObserver(place);
+		observer.observe(el);
+		return () => observer.disconnect();
+	}, []);
+
+	useEffect(() => {
+		const el = ref.current;
+		if (!autoFocus || !el || el.contains(document.activeElement)) return;
+		el.querySelector<HTMLElement>("input, button:not([disabled])")?.focus();
+	}, [autoFocus]);
+
+	return (
+		<div
+			ref={ref}
+			role="menu"
+			aria-label={label}
+			data-testid={testId}
+			className="fixed z-10 overflow-hidden rounded-xl border border-edge-active bg-overlay shadow-2xl shadow-black/40"
+			style={pos ? { top: pos.top, left: pos.left, width } : { top: 0, left: 0, width, visibility: "hidden" }}
+			onKeyDown={(e) => {
+				if (e.key !== "ArrowLeft" || (e.target as HTMLElement).tagName === "INPUT") return;
+				e.preventDefault();
+				if (ref.current?.parentElement) onBack(ref.current.parentElement);
+			}}
+		>
+			{children}
+		</div>
+	);
 }

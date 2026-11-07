@@ -30,9 +30,14 @@ vi.mock("../TaskDetailModal", () => ({
 		<div data-testid="task-detail-modal">{autoRename ? "renaming" : "details"}</div>
 	),
 }));
-vi.mock("../LabelPicker", () => ({ default: () => <div data-testid="label-picker" /> }));
-vi.mock("../PriorityPicker", () => ({ default: () => <div data-testid="priority-picker" /> }));
-vi.mock("../MoveToProjectPicker", () => ({ default: () => <div data-testid="move-project-picker" /> }));
+vi.mock("../LabelPicker", () => ({
+	default: () => <div data-testid="label-picker" />,
+	LabelPickerPanel: () => <input data-testid="label-picker-panel" />,
+}));
+vi.mock("../MoveToProjectPicker", () => ({
+	default: () => <div data-testid="move-project-picker" />,
+	MoveToProjectPanel: () => <div data-testid="move-project-panel" />,
+}));
 
 import { api } from "../../rpc";
 import { confirm } from "../../confirm";
@@ -126,10 +131,83 @@ describe("TaskContextMenu", () => {
 		expect(onOpenTask).toHaveBeenCalled();
 	});
 
-	it("hands labels to the label picker", async () => {
+	it("shows labels beside the row on hover and keeps the menu open", async () => {
+		const { onClose } = renderMenu();
+		await userEvent.hover(screen.getByTestId("task-menu-labels"));
+		const flyout = await screen.findByTestId("task-menu-flyout-labels");
+		expect(flyout).toContainElement(screen.getByTestId("label-picker-panel"));
+		expect(screen.getByTestId("task-menu")).toContainElement(flyout);
+		expect(onClose).not.toHaveBeenCalled();
+	});
+
+	it("keeps the flyout open when its row is clicked after the hover", async () => {
 		renderMenu();
-		await userEvent.click(screen.getByTestId("task-menu-labels"));
-		expect(await screen.findByTestId("label-picker")).toBeInTheDocument();
+		await userEvent.click(screen.getByTestId("task-menu-status"));
+		expect(await screen.findByTestId("task-menu-flyout-status")).toBeInTheDocument();
+	});
+
+	it("closes the flyout when the pointer moves to a plain row", async () => {
+		renderMenu();
+		await userEvent.hover(screen.getByTestId("task-menu-project"));
+		expect(await screen.findByTestId("move-project-panel")).toBeInTheDocument();
+		await userEvent.hover(screen.getByTestId("task-menu-rename"));
+		await waitFor(() => expect(screen.queryByTestId("task-menu-flyout-project")).not.toBeInTheDocument());
+	});
+
+	it("keeps the open flyout when the pointer only crosses another row", async () => {
+		renderMenu();
+		await userEvent.hover(screen.getByTestId("task-menu-status"));
+		await screen.findByTestId("task-menu-flyout-status");
+		// On the way down into a tall flyout the pointer passes over the next row.
+		await userEvent.hover(screen.getByTestId("task-menu-project"));
+		await userEvent.hover(screen.getByTestId("task-menu-flyout-status"));
+		await new Promise((r) => setTimeout(r, 300));
+		expect(screen.getByTestId("task-menu-flyout-status")).toBeInTheDocument();
+		expect(screen.queryByTestId("task-menu-flyout-project")).not.toBeInTheDocument();
+	});
+
+	it("does not close the menu on a click inside a flyout", async () => {
+		const { onClose } = renderMenu();
+		await userEvent.hover(screen.getByTestId("task-menu-labels"));
+		fireEvent.mouseDown(await screen.findByTestId("label-picker-panel"));
+		expect(onClose).not.toHaveBeenCalled();
+	});
+
+	it("opens a flyout from the keyboard and moves focus into it", async () => {
+		renderMenu();
+		const row = screen.getByTestId("task-menu-status");
+		row.focus();
+		fireEvent.keyDown(row, { key: "ArrowRight" });
+		const flyout = await screen.findByTestId("task-menu-flyout-status");
+		await waitFor(() => expect(flyout).toContainElement(document.activeElement as HTMLElement));
+		fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
+		expect(screen.queryByTestId("task-menu-flyout-status")).not.toBeInTheDocument();
+		expect(document.activeElement).toBe(row);
+	});
+
+	it("sets priority in one click from the inline levels", async () => {
+		const { onClose } = renderMenu(makeTask({ priority: "P3" }));
+		expect(screen.getByTestId("task-menu-priority-P3")).toHaveAttribute("aria-checked", "true");
+		await userEvent.click(screen.getByTestId("task-menu-priority-P0"));
+		await waitFor(() => {
+			expect(mockedApi.request.setTaskPriority).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", priority: "P0" });
+		});
+		expect(onClose).toHaveBeenCalled();
+	});
+
+	it("sends nothing when the current priority is clicked again", async () => {
+		const { onClose } = renderMenu(makeTask({ priority: "P2" }));
+		await userEvent.click(screen.getByTestId("task-menu-priority-P2"));
+		expect(mockedApi.request.setTaskPriority).not.toHaveBeenCalled();
+		expect(onClose).toHaveBeenCalled();
+	});
+
+	it("walks the priority levels with left and right", async () => {
+		renderMenu(makeTask({ priority: "P3" }));
+		const currentLevel = screen.getByTestId("task-menu-priority-P3");
+		currentLevel.focus();
+		fireEvent.keyDown(currentLevel, { key: "ArrowRight" });
+		expect(document.activeElement).toBe(screen.getByTestId("task-menu-priority-P4"));
 	});
 
 	it("opens the detail modal in rename mode", async () => {
@@ -230,7 +308,7 @@ describe("TaskContextMenu → start a To Do card", () => {
 		window.addEventListener(LAUNCH_REQUESTED_EVENT, listener);
 		try {
 			renderMenu(makeTask({ status: "todo", worktreePath: null }));
-			await userEvent.click(screen.getByText("Move to"));
+			await userEvent.hover(screen.getByText("Move to"));
 			await userEvent.click(await screen.findByText("Agent is Working"));
 			await waitFor(() => expect(listener).toHaveBeenCalledTimes(1));
 			expect((listener.mock.calls[0]![0] as CustomEvent).detail.targetStatus).toBe("in-progress");
@@ -238,5 +316,34 @@ describe("TaskContextMenu → start a To Do card", () => {
 		} finally {
 			window.removeEventListener(LAUNCH_REQUESTED_EVENT, listener);
 		}
+	});
+});
+
+describe("TaskContextMenu on a phone", () => {
+	const width = window.innerWidth;
+	const matchMedia = window.matchMedia;
+	beforeEach(() => {
+		vi.clearAllMocks();
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: 400 });
+		window.matchMedia = ((query: string) => ({
+			...matchMedia(query),
+			matches: query.includes("max-width"),
+		})) as typeof window.matchMedia;
+	});
+	afterEach(() => {
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+		window.matchMedia = matchMedia;
+	});
+
+	it("taps through to the label sheet instead of a hover flyout", async () => {
+		renderMenu();
+		await userEvent.click(screen.getByTestId("task-menu-labels"));
+		expect(await screen.findByTestId("label-picker")).toBeInTheDocument();
+		expect(screen.queryByTestId("task-menu-flyout-labels")).not.toBeInTheDocument();
+	});
+
+	it("keeps the inline priority levels", () => {
+		renderMenu();
+		expect(screen.getByTestId("task-menu-priority-P0")).toBeInTheDocument();
 	});
 });
