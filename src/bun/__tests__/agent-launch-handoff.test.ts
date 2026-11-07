@@ -161,7 +161,7 @@ describe("deliverLaunchHandoff — a launched Claude session", () => {
 
 	beforeEach(() => {
 		getTask.mockResolvedValue(claudeTask());
-		noteAgentLaunched("child-1234", SESSION);
+		noteAgentLaunched("child-1234", SESSION, { startReceipts: true });
 	});
 
 	it("types nothing while the session has not started — badges the card, then gives up with a toast", async () => {
@@ -217,7 +217,7 @@ describe("deliverLaunchHandoff — a launched Claude session", () => {
 		const result = await runWithClock((elapsed) => {
 			if (elapsed === 10_000) {
 				getTask.mockResolvedValue(liveTask({ sessionState: { panes: [{ paneId: "%2", sessionId: "relaunch", agentCmd: "claude" }] } }));
-				noteAgentLaunched("child-1234", "relaunch");
+				noteAgentLaunched("child-1234", "relaunch", { startReceipts: true });
 				noteAgentSessionStarted("child-1234", "relaunch", "%2");
 			}
 		});

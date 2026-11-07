@@ -86,6 +86,22 @@ describe("buildApplicationMenu", () => {
 		});
 	});
 
+	it("has Show Board and a Board View submenu of the built-ins, enabled only with a project", () => {
+		const find = (hasProject: boolean) => {
+			const view = findLabeledMenu(buildApplicationMenu({ hasTask: false, hasProject, hasTerminal: false }) as AnyMenuItem[], "View")?.submenu ?? [];
+			return { view, boardView: findLabeledMenu(view, "Board View")?.submenu ?? [] };
+		};
+		const { view, boardView } = find(true);
+		expect(findItemByAction(view, MENU_ACTIONS.viewBoard)).toMatchObject({ label: "Show Board", action: "view-board" });
+		expect(boardView.map((item) => [item.label, item.action, item.enabled])).toEqual([
+			["Kanban", "view-board:builtin:kanban", true],
+			["Table", "view-board:builtin:table", true],
+			["Tree", "view-board:builtin:tree", true],
+			["Attention", "view-board:builtin:attention", true],
+		]);
+		expect(find(false).boardView.every((item) => item.enabled === false)).toBe(true);
+	});
+
 	it("leaves Ctrl+- available for route history instead of native zoom-out", () => {
 		const menu = buildApplicationMenu() as AnyMenuItem[];
 		const zoomOut = findItemByAction(menu, MENU_ACTIONS.zoomOut);

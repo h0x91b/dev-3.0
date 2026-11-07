@@ -5,6 +5,7 @@ import * as data from "../../data";
 import * as pty from "../../pty-server";
 import * as portPool from "../../port-pool";
 import * as repoConfig from "../../repo-config";
+import { resolveLaunchProject } from "../../ops-worktree";
 import { getPortsForTask } from "../../port-scanner";
 import { throughputSnapshot } from "../../pty-throughput";
 import { getUserShell } from "../../shell-env";
@@ -164,10 +165,7 @@ export async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 				// Tmux session exists — just reconnect (no resume needed).
 				// Skip session persist so we don't overwrite the real session ID.
 				try {
-					// Virtual boards have no git repo config to resolve — pass through.
-					const resolvedProject = foundProject.kind === "virtual"
-						? foundProject
-						: await repoConfig.resolveProjectConfig(foundProject, foundTask.worktreePath);
+					const resolvedProject = await resolveLaunchProject(foundProject, foundTask, foundTask.worktreePath);
 					await launchTaskPty(resolvedProject, foundTask, foundTask.worktreePath, foundTask.agentId, foundTask.configId, false, false, { skipSessionPersist: true });
 					log.info("Reconnected to existing tmux session", { taskId: params.taskId.slice(0, 8) });
 					await markTerminalAttached(foundProject, foundTask);
@@ -192,9 +190,7 @@ export async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 				}
 				// No tmux, no session state — launch fresh
 				try {
-					const resolvedProject = foundProject.kind === "virtual"
-						? foundProject
-						: await repoConfig.resolveProjectConfig(foundProject, foundTask.worktreePath);
+					const resolvedProject = await resolveLaunchProject(foundProject, foundTask, foundTask.worktreePath);
 					await launchTaskPty(resolvedProject, foundTask, foundTask.worktreePath, foundTask.agentId, foundTask.configId, false, false);
 					log.info("Launched fresh PTY session", { taskId: params.taskId.slice(0, 8) });
 					await markTerminalAttached(foundProject, foundTask);

@@ -16,6 +16,7 @@ import { spawn } from "./spawn";
 import { DEV3_HOME } from "./paths";
 import { listDiffSnapshots, readDiffSnapshot, writeDiffSnapshot } from "./diff-snapshots";
 import { projectStorageKey } from "../shared/project-storage-key";
+import { startBranchMissingMessage } from "../shared/preparation-failure";
 import * as github from "./github";
 
 const log = createLogger("git");
@@ -836,7 +837,15 @@ export async function isGitRepo(path: string): Promise<boolean> {
 	return isRepo;
 }
 
-export async function getDefaultBranch(path: string): Promise<string> {
+/** Top level of the repository containing `path`, or null when it is not inside one. */
+export async function getRepoTopLevel(path: string): Promise<string | null> {
+	if (!existsSync(path)) return null;
+	const result = await run(["git", "rev-parse", "--show-toplevel"], path);
+	return result.ok && result.stdout ? result.stdout : null;
+}
+
+/** `local` reads only what the repo already has: no `remote set-head`, so no network and no write into it. */
+export async function getDefaultBranch(path: string, opts: { local?: boolean } = {}): Promise<string> {
 	log.info("Detecting default branch", { path });
 
 	// Strategy 1: symbolic-ref (works after clone when origin/HEAD is set)
@@ -851,11 +860,11 @@ export async function getDefaultBranch(path: string): Promise<string> {
 	}
 
 	// Strategy 2: auto-set origin/HEAD from the remote (requires network)
-	const setHead = await run(
+	const setHead = opts.local ? null : await run(
 		["git", "remote", "set-head", "origin", "--auto"],
 		path,
 	);
-	if (setHead.ok) {
+	if (setHead?.ok) {
 		const retry = await run(
 			["git", "symbolic-ref", "refs/remotes/origin/HEAD"],
 			path,
@@ -1506,6 +1515,9 @@ export async function createWorktree(
 			}
 
 			log.error("Failed to create worktree from existing branch", { stderr: result.stderr, taskId: task.id });
+			if (!await resolveRef(project.path, existingBranch)) {
+				throw new Error(startBranchMissingMessage(existingBranch));
+			}
 			throw new Error(`Failed to create worktree: ${result.stderr}`);
 		}
 
@@ -1607,6 +1619,50 @@ export async function createWorktree(
 	});
 
 	return { worktreePath: wtPath, branchName: branch };
+}
+
+/**
+ * Worktree of a user's own repo for an Operations task, at `wtPath` (under the ops
+ * dir) on `dev3/task-<shortId>`. Idempotent for a reopen: an existing worktree is
+ * kept. A leftover branch of this task (same derived name) is adopted, never reset.
+ * shortcut: no lock-contention retry or stale-dir reclaim like createWorktree, add when it bites.
+ */
+export async function createOpsWorktree(
+	repo: string,
+	task: Task,
+	wtPath: string,
+	baseBranch: string,
+): Promise<{ worktreePath: string; branchName: string }> {
+	const branch = branchName(task);
+	if (existsSync(`${wtPath}/.git`)) return { worktreePath: wtPath, branchName: branch };
+	await reportCurrentPreparationStage("creating-worktree");
+	mkdirSync(dirnamePath(wtPath), { recursive: true });
+	// A registration left by a failed prune would make `add` refuse this very path.
+	await pruneWorktrees(repo);
+	const fetched = await fetchOrigin(repo, baseBranch);
+	const remoteBase = `origin/${baseBranch}`;
+	const base = fetched && (await run(["git", "rev-parse", "--verify", "--quiet", remoteBase], repo)).ok ? remoteBase : baseBranch;
+	const args = await localBranchExists(repo, branch)
+		? ["git", "worktree", "add", wtPath, branch]
+		: ["git", "worktree", "add", "-b", branch, wtPath, base];
+	const result = await run(args, repo);
+	if (!result.ok) {
+		const elsewhere = /already (?:checked out|used by worktree) at '([^']+)'/.exec(result.stderr)?.[1];
+		if (elsewhere) throw new Error(`Branch ${branch} is checked out at ${elsewhere}; switch it away and retry`);
+		throw new Error(`Failed to create worktree: ${result.stderr}`);
+	}
+	log.info("Operations worktree created", { wtPath, branch, base, taskId: task.id });
+	return { worktreePath: wtPath, branchName: branch };
+}
+
+/** Drop registrations of worktrees whose directory is gone. Never throws. */
+export async function pruneWorktrees(repo: string): Promise<void> {
+	try {
+		const result = await run(["git", "worktree", "prune"], repo);
+		if (!result.ok) log.warn("git worktree prune failed", { repo, stderr: result.stderr });
+	} catch (err) {
+		log.warn("git worktree prune failed", { repo, error: String(err) });
+	}
 }
 
 export interface BranchInfo {
@@ -1781,6 +1837,15 @@ async function detectDefaultCompareRefUncached(
 	return baseBranch;
 }
 
+/**
+ * Compare ref for a repo that is not ours to modify (an attached Operations repo).
+ * `resolveCompareRef` may rewrite branch tracking; this only reads.
+ */
+export async function resolveReadOnlyCompareRef(repo: string, baseBranch: string, explicit?: string): Promise<string> {
+	if (explicit) return explicit;
+	return await refExists(repo, `origin/${baseBranch}`) ? `origin/${baseBranch}` : baseBranch;
+}
+
 export async function getCurrentBranch(worktreePath: string): Promise<string | null> {
 	const result = await run(["git", "rev-parse", "--abbrev-ref", "HEAD"], worktreePath);
 	if (!result.ok || result.stdout === "HEAD") return null; // detached HEAD
@@ -1852,6 +1917,13 @@ export async function isWorktreeDirty(worktreePath: string): Promise<boolean> {
 	if (result.timedOut) return true;
 	if (!result.ok) return false;
 	return result.stdout.trim().length > 0;
+}
+
+/** Like isWorktreeDirty, but a failed `git status` counts as dirty: for callers about to delete. */
+export async function isWorktreeDirtyOrUnknown(worktreePath: string): Promise<boolean> {
+	// Explicit flags: user config (showUntrackedFiles=no, submodule ignore=all) must not hide work from a delete guard.
+	const result = await run(["git", "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=none"], worktreePath);
+	return !result.ok || result.stdout.trim().length > 0;
 }
 
 // Per-project fetch deduplication: reuse in-flight fetch promises and enforce

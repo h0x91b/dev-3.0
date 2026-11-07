@@ -1,0 +1,1092 @@
+import { act, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+// The board renders through its host, which owns the shared filter row.
+import BoardHost from "../../BoardHost";
+import { I18nProvider } from "../../../i18n";
+import { api } from "../../../rpc";
+import { toast } from "../../../toast";
+import type { CustomColumn, PRInfo, Project, Task, TipState } from "../../../../shared/types";
+
+vi.mock("../../../rpc", () => ({
+	api: {
+		request: {
+			getAgents: vi.fn().mockResolvedValue([]),
+			getGlobalSettings: vi.fn().mockResolvedValue({
+				defaultAgentId: "builtin-claude",
+				defaultConfigId: "claude-default",
+				taskSortOrder: "oldest-first",
+				updateChannel: "stable",
+			}),
+			reorderColumns: vi.fn().mockResolvedValue(undefined),
+			createCustomColumn: vi.fn(),
+			updateCustomColumn: vi.fn(),
+			getTipState: vi.fn().mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 }),
+			updateTipState: vi.fn().mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 }),
+			resetTipState: vi.fn().mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 }),
+			getProjectCurrentBranch: vi.fn().mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false }),
+			getProjectPRs: vi.fn().mockResolvedValue([]),
+			moveTaskToCustomColumn: vi.fn(async ({ taskId }: { taskId: string }) => ({ id: taskId })),
+		},
+	},
+}));
+
+vi.mock("../../../analytics", () => ({ trackEvent: vi.fn(), agentNameFromId: vi.fn(() => "unknown") }));
+
+vi.mock("../../../toast", () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
+
+const project: Project = {
+	id: "p1",
+	name: "Test Project",
+	path: "/tmp/test",
+	setupScript: "",
+	devScript: "",
+	cleanupScript: "",
+	defaultBaseBranch: "main",
+	createdAt: "2025-01-01T00:00:00Z",
+};
+
+const customColA: CustomColumn = { id: "col-a", name: "Alpha", color: "#ff0000", llmInstruction: "" };
+const customColB: CustomColumn = { id: "col-b", name: "Beta", color: "#00ff00", llmInstruction: "" };
+
+function makeTask(overrides: Partial<Task> = {}): Task {
+	return {
+		id: "task-1",
+		seq: 1,
+		projectId: "p1",
+		title: "Test Task",
+		description: "Test Task",
+		status: "in-progress",
+		baseBranch: "main",
+		worktreePath: null,
+		branchName: null,
+		groupId: null,
+		variantIndex: null,
+		agentId: null,
+		configId: null,
+		createdAt: "2025-01-01T00:00:00Z",
+		updatedAt: "2025-01-01T00:00:00Z",
+		customColumnId: null,
+		labelIds: [],
+		notes: [],
+		history: [],
+		...overrides,
+	};
+}
+
+function makeDt(data: Record<string, string> = {}): DataTransfer {
+	return {
+		types: Object.keys(data),
+		getData: (key: string) => data[key] ?? "",
+		setData: vi.fn((k: string, v: string) => { data[k] = v; }),
+		effectAllowed: "move" as const,
+		dropEffect: "move" as const,
+	} as unknown as DataTransfer;
+}
+
+function dispatchDrag(el: Element, type: string, opts: { clientX?: number; dataTransfer?: DataTransfer } = {}): boolean {
+	const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: opts.clientX ?? 0 });
+	Object.defineProperty(event, "dataTransfer", { value: opts.dataTransfer ?? makeDt() });
+	let prevented = false;
+	act(() => { prevented = !el.dispatchEvent(event); });
+	return prevented;
+}
+
+function getColumnEl(name: string) {
+	return screen.getByText(name).closest("[class*='glass-column']") as HTMLElement;
+}
+
+function getHandle(name: string) {
+	// The drag handle is inside the column with the given label text
+	const col = getColumnEl(name);
+	return col.querySelector("[title='Drag to reorder']") as Element;
+}
+
+function startColumnDrag(handle: Element) {
+	const dt = makeDt();
+	dispatchDrag(handle, "dragstart", { dataTransfer: dt });
+}
+
+async function renderBoardWith(props: Partial<React.ComponentProps<typeof BoardHost>> = {}) {
+	let result: ReturnType<typeof render>;
+	await act(async () => {
+		result = render(
+			<I18nProvider>
+				<BoardHost
+					project={props.project ?? project}
+					space={props.space}
+					memberProjects={props.memberProjects}
+					tasks={props.tasks ?? []}
+					dispatch={props.dispatch ?? vi.fn()}
+					navigate={props.navigate ?? vi.fn()}
+					bellCounts={props.bellCounts ?? new Map()}
+					taskPorts={props.taskPorts ?? new Map()}
+					taskDevServers={props.taskDevServers ?? new Map()}
+					onOpenUnresolvedComments={props.onOpenUnresolvedComments}
+					detailTaskId={props.detailTaskId}
+					onCloseTaskDetail={props.onCloseTaskDetail}
+				/>
+			</I18nProvider>,
+		);
+	});
+	return result!;
+}
+
+function getColumnLabels() {
+	const columns = document.querySelectorAll("[class*='glass-column']");
+	return Array.from(columns).map((c) => {
+		// Expanded column: normal header label
+		const expanded = c.querySelector(".text-fg.text-sm.font-semibold");
+		if (expanded) return expanded.textContent ?? "";
+		// Collapsed column: vertical label
+		const collapsed = c.querySelector(".kanban-col-vertical-label");
+		if (collapsed) return collapsed.textContent ?? "";
+		return "";
+	});
+}
+
+describe("column ordering", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		localStorage.clear();
+	});
+
+	it("review-by-colleague appears before completed in default order", async () => {
+		await renderBoardWith();
+		const labels = getColumnLabels();
+		const colleagueIdx = labels.findIndex((l) => l === "PR Review");
+		const completedIdx = labels.findIndex((l) => l === "Completed");
+		expect(colleagueIdx).toBeGreaterThan(0);
+		expect(colleagueIdx).toBeLessThan(completedIdx);
+	});
+
+	it("review-by-colleague is hidden when peerReviewEnabled is false", async () => {
+		await renderBoardWith({ project: { ...project, peerReviewEnabled: false } });
+		const labels = getColumnLabels();
+		expect(labels).not.toContain("PR Review");
+	});
+
+	it("virtual board hides AI/PR review but keeps Your Review (finished ops tasks land there)", async () => {
+		await renderBoardWith({ project: { ...project, kind: "virtual" } });
+		const labels = getColumnLabels();
+		expect(labels).not.toContain("AI Review");
+		expect(labels).not.toContain("PR Review");
+		expect(labels).toContain("Your Review");
+		expect(labels).toContain("To Do");
+		expect(labels).toContain("Agent is Working");
+		expect(labels).toContain("Completed");
+	});
+
+	it("does not poll getProjectPRs for a virtual board (no git, no PRs)", async () => {
+		await renderBoardWith({ project: { ...project, kind: "virtual" } });
+		await Promise.resolve();
+		expect(api.request.getProjectPRs).not.toHaveBeenCalled();
+	});
+
+	it("polls getProjectPRs for a git board", async () => {
+		await renderBoardWith();
+		await waitFor(() => expect(api.request.getProjectPRs).toHaveBeenCalled());
+	});
+
+	it("shows the persisted PR status cache before the live PR lookup resolves", async () => {
+		vi.mocked(api.request.getProjectPRs).mockImplementation(() => new Promise<PRInfo[]>(() => {}));
+		const task = makeTask({
+			prStatusCache: {
+				number: 42,
+				url: "https://github.com/test/repo/pull/42",
+				ciStatus: "success",
+				reviewState: "commented",
+				unresolvedCount: 2,
+				mergeState: { mergeable: "MERGEABLE", status: "CLEAN", state: "OPEN" },
+				checks: [{ name: "cached-build", status: "COMPLETED", conclusion: "SUCCESS", detailsUrl: null }],
+				prTitle: "Cached PR",
+				isDraft: false,
+				cachedAt: "2026-07-15T12:00:00.000Z",
+			},
+		});
+		const result = await renderBoardWith({ tasks: [task] });
+		try {
+			const badge = screen.getByLabelText("Open PR #42 — Open");
+			expect(badge).toBeInTheDocument();
+			await userEvent.hover(badge);
+			const popover = await screen.findByTestId("pr-status-popover");
+			expect(popover).toHaveTextContent("Cached PR");
+			expect(popover).toHaveTextContent("2 unresolved comments");
+			expect(popover).toHaveTextContent("cached-build");
+		} finally {
+			result.unmount();
+			vi.mocked(api.request.getProjectPRs).mockResolvedValue([]);
+		}
+	});
+
+	it("wires unresolved comments from a card to the board deep-link handler", async () => {
+		const onOpenUnresolvedComments = vi.fn();
+		const task = makeTask({
+			status: "review-by-colleague",
+			worktreePath: "/tmp/wt",
+			prStatusCache: {
+				number: 42,
+				url: "https://github.com/test/repo/pull/42",
+				autoMergeEnabled: null,
+				ciStatus: null,
+				reviewState: null,
+				reviewDecision: null,
+				unresolvedCount: 2,
+				mergeState: null,
+				checks: [],
+				prTitle: null,
+				isDraft: false,
+				cachedAt: "2026-07-15T12:00:00.000Z",
+			},
+		});
+		const result = await renderBoardWith({ tasks: [task], onOpenUnresolvedComments });
+		try {
+			await userEvent.hover(screen.getByLabelText("2 unresolved comments"));
+			await userEvent.click(await screen.findByTestId("pr-popover-unresolved"));
+			expect(onOpenUnresolvedComments).toHaveBeenCalledWith(expect.objectContaining({ id: "task-1" }));
+		} finally {
+			result.unmount();
+		}
+	});
+
+	it("review-by-colleague is inserted before completed when missing from stored columnOrder", async () => {
+		await renderBoardWith({
+			project: {
+				...project,
+				columnOrder: ["todo", "in-progress", "user-questions", "review-by-user", "completed", "cancelled", "review-by-ai"],
+			},
+		});
+		const labels = getColumnLabels();
+		const colleagueIdx = labels.findIndex((l) => l === "PR Review");
+		const completedIdx = labels.findIndex((l) => l === "Completed");
+		expect(colleagueIdx).toBeGreaterThan(0);
+		expect(colleagueIdx).toBeLessThan(completedIdx);
+	});
+
+	it("review-by-colleague stays in stored position when already in columnOrder", async () => {
+		await renderBoardWith({
+			project: {
+				...project,
+				columnOrder: ["review-by-colleague", "todo", "in-progress", "user-questions", "review-by-user", "completed", "cancelled", "review-by-ai"],
+			},
+		});
+		const labels = getColumnLabels();
+		expect(labels[0]).toBe("PR Review");
+	});
+
+	it("review-by-colleague is hidden when peerReviewEnabled is false and NOT in stored columnOrder", async () => {
+		await renderBoardWith({
+			project: {
+				...project,
+				peerReviewEnabled: false,
+				columnOrder: ["todo", "in-progress", "user-questions", "review-by-user", "completed", "cancelled", "review-by-ai"],
+			},
+		});
+		expect(getColumnLabels()).not.toContain("PR Review");
+	});
+
+	it("review-by-colleague is hidden when peerReviewEnabled is false, even if in stored columnOrder", async () => {
+		await renderBoardWith({
+			project: {
+				...project,
+				peerReviewEnabled: false,
+				columnOrder: ["todo", "review-by-colleague", "in-progress", "completed", "cancelled", "review-by-ai", "review-by-user", "user-questions"],
+			},
+		});
+		expect(getColumnLabels()).not.toContain("PR Review");
+	});
+
+	it("getOrderedColumns returns default order when columnOrder is absent", async () => {
+		await renderBoardWith({ project: { ...project, customColumns: [customColA] } });
+		// Default order: built-ins before custom, then completed/cancelled
+		// The custom column "Alpha" should appear between review-by-user and completed
+		const labels = getColumnLabels();
+		// First column is To Do (collapsed, but label still present)
+		expect(labels[0]).toMatch(/To Do/i);
+		// Custom column appears after review-by-user and before completed
+		const alphaIndex = labels.findIndex((l) => l === "Alpha");
+		const completedIndex = labels.findIndex((l) => l === "Completed");
+		const cancelledIndex = labels.findIndex((l) => l === "Cancelled");
+		expect(alphaIndex).toBeGreaterThan(0);
+		expect(alphaIndex).toBeLessThan(completedIndex);
+		expect(alphaIndex).toBeLessThan(cancelledIndex);
+	});
+
+	it("getOrderedColumns respects stored columnOrder mixing built-ins and custom cols", async () => {
+		await renderBoardWith({
+			project: {
+				...project,
+				customColumns: [customColA, customColB],
+				columnOrder: ["col-a", "todo", "in-progress", "col-b", "user-questions", "review-by-ai", "review-by-user", "completed", "cancelled"],
+			},
+		});
+		const labels = getColumnLabels();
+		const alphaIdx = labels.findIndex((l) => l === "Alpha");
+		const todoIdx = labels.findIndex((l) => l === "To Do");
+		const betaIdx = labels.findIndex((l) => l === "Beta");
+		const inProgressIdx = labels.findIndex((l) => l === "Agent is Working");
+		expect(alphaIdx).toBeLessThan(todoIdx);
+		expect(betaIdx).toBeGreaterThan(inProgressIdx);
+	});
+
+	it("getOrderedColumns appends unknown/missing statuses at end", async () => {
+		await renderBoardWith({
+			project: {
+				...project,
+				customColumns: [customColA],
+				columnOrder: ["todo", "in-progress", "col-a"],
+			},
+		});
+		const labels = getColumnLabels();
+		const todoIdx = labels.findIndex((l) => l === "To Do");
+		const inProgressIdx = labels.findIndex((l) => l === "Agent is Working");
+		const alphaIdx = labels.findIndex((l) => l === "Alpha");
+		// Listed items appear in order
+		expect(todoIdx).toBeLessThan(inProgressIdx);
+		expect(inProgressIdx).toBeLessThan(alphaIdx);
+		// Missing statuses are appended — they should all exist somewhere after alphaIdx
+		const completedIdx = labels.findIndex((l) => l === "Completed");
+		const cancelledIdx = labels.findIndex((l) => l === "Cancelled");
+		expect(completedIdx).toBeGreaterThan(alphaIdx);
+		expect(cancelledIdx).toBeGreaterThan(alphaIdx);
+	});
+
+	it("handleColumnDrop moves custom column before a built-in column", async () => {
+		const dispatch = vi.fn();
+		await renderBoardWith({
+			project: { ...project, customColumns: [customColA] },
+			dispatch,
+		});
+		// Drag "Alpha" (custom col) and drop it BEFORE "To Do" (built-in)
+		const handle = getHandle("Alpha");
+		startColumnDrag(handle);
+		const todoCol = getColumnEl("To Do");
+		// clientX < 0 → "before" (happy-dom rect center is 0)
+		dispatchDrag(todoCol, "dragover", { clientX: -1 });
+		dispatchDrag(todoCol, "drop");
+
+		// dispatch should have been called with updateProject containing the new columnOrder
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const updateProjectCalls = dispatch.mock.calls.filter((call: any[]) => call[0]?.type === "updateProject");
+		expect(updateProjectCalls.length).toBeGreaterThan(0);
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const newOrder = (updateProjectCalls[updateProjectCalls.length - 1] as any[])[0].project.columnOrder as string[];
+		const alphaIdx = newOrder.indexOf("col-a");
+		const todoIdx = newOrder.indexOf("todo");
+		expect(alphaIdx).toBeLessThan(todoIdx);
+	});
+
+	it("handleColumnDrop moves custom column after another custom column", async () => {
+		const dispatch = vi.fn();
+		await renderBoardWith({
+			project: {
+				...project,
+				customColumns: [customColA, customColB],
+				columnOrder: ["todo", "col-a", "col-b", "in-progress", "user-questions", "review-by-ai", "review-by-user", "completed", "cancelled"],
+			},
+			dispatch,
+		});
+		// Drag "Beta" and drop AFTER "Alpha"
+		const betaHandle = getHandle("Beta");
+		startColumnDrag(betaHandle);
+		// Wait — "Beta" is already after "Alpha". Let's drag "Alpha" to AFTER "Beta" instead.
+		// Reset: drag Alpha handle over Beta column (clientX > 0 → "after")
+		const alphaHandle = getHandle("Alpha");
+		startColumnDrag(alphaHandle);
+		const betaCol = getColumnEl("Beta");
+		dispatchDrag(betaCol, "dragover", { clientX: 1 });
+		dispatchDrag(betaCol, "drop");
+
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const updateProjectCalls = dispatch.mock.calls.filter((call: any[]) => call[0]?.type === "updateProject");
+		expect(updateProjectCalls.length).toBeGreaterThan(0);
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const newOrder = (updateProjectCalls[updateProjectCalls.length - 1] as any[])[0].project.columnOrder as string[];
+		const alphaIdx = newOrder.indexOf("col-a");
+		const betaIdx = newOrder.indexOf("col-b");
+		// Alpha moved after Beta
+		expect(alphaIdx).toBeGreaterThan(betaIdx);
+	});
+});
+
+describe("label filter ordering", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		localStorage.clear();
+	});
+
+	it("keeps the project settings order instead of sorting by task usage", async () => {
+		const labels = [
+			{ id: "feature", name: "Feature", color: "#22c55e" },
+			{ id: "bug", name: "Bug", color: "#ef4444" },
+		];
+		const tasks = [
+			makeTask({ id: "bug-1", labelIds: ["bug"] }),
+			makeTask({ id: "bug-2", labelIds: ["bug"] }),
+		];
+
+		await renderBoardWith({ project: { ...project, labels }, tasks });
+
+		const helpButton = screen.getAllByRole("button", { name: "About this section" })[1];
+		const labelGroup = helpButton.parentElement?.parentElement;
+		expect(labelGroup).not.toBeNull();
+		const chipOrder = Array.from(labelGroup!.querySelectorAll("button[title]"))
+			.map((button) => button.getAttribute("title"));
+
+		expect(chipOrder).toEqual(["Feature", "Bug"]);
+	});
+});
+
+describe("tip rotation", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		localStorage.clear();
+	});
+
+	async function renderForRotation() {
+		await act(async () => {
+			render(
+				<I18nProvider>
+					<BoardHost
+						project={project}
+						// One task, deliberately: a board with none at all belongs to a user
+						// who has not started, and its To Do column explains the first task
+						// instead of carrying a tip.
+						tasks={[makeTask({ id: "tip-host" })]}
+						dispatch={vi.fn()}
+						navigate={vi.fn()}
+						bellCounts={new Map()}
+						taskPorts={new Map()}
+						taskDevServers={new Map()}
+					/>
+				</I18nProvider>,
+			);
+		});
+		// The progress bar drives rotation; return it so tests can fire its animationend.
+		return await screen.findByTestId("tip-progress");
+	}
+
+	it("shows no tip at all on a board with zero tasks", async () => {
+		vi.mocked(api.request.getTipState).mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 });
+		await act(async () => {
+			render(
+				<I18nProvider>
+					<BoardHost
+						project={project}
+						tasks={[]}
+						dispatch={vi.fn()}
+						navigate={vi.fn()}
+						bellCounts={new Map()}
+						taskPorts={new Map()}
+						taskDevServers={new Map()}
+					/>
+				</I18nProvider>,
+			);
+		});
+		// Observed on a real first run: the first tips a newcomer met were about
+		// hovering a task card and spawning bug hunters, in the To Do column, with
+		// zero cards on the board.
+		expect(screen.queryByTestId("tip-progress")).toBeNull();
+	});
+
+	it("rotates the tip when the progress-bar animation ends, advancing rotationIndex", async () => {
+		const getTipState = vi.mocked(api.request.getTipState);
+		const updateTipState = vi.mocked(api.request.updateTipState);
+		getTipState.mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 });
+		// Echo params back so the applied TipState advances the persisted rotationIndex.
+		updateTipState.mockImplementation((params: Partial<TipState>) =>
+			Promise.resolve({ snoozedUntil: 0, seen: {}, rotationIndex: 0, ...params } as TipState),
+		);
+
+		const bar = await renderForRotation();
+		// Stepped, not a per-frame scaleX — and it still ends, which is what rotates (issue #1949).
+		expect(bar.style.animationTimingFunction).toMatch(/^steps\(/);
+
+		// First rotation: the progress animation completes.
+		await act(async () => { fireEvent.animationEnd(bar, { animationName: "tip-progress" }); });
+		await waitFor(() => expect(updateTipState).toHaveBeenCalledTimes(1));
+		expect(updateTipState.mock.calls[0][0].rotationIndex).toBe(1);
+
+		// Second rotation: the bar remounts (new key) and its animation ends again.
+		const bar2 = await screen.findByTestId("tip-progress");
+		await act(async () => { fireEvent.animationEnd(bar2, { animationName: "tip-progress" }); });
+		await waitFor(() => expect(updateTipState).toHaveBeenCalledTimes(2));
+		expect(updateTipState.mock.calls[1][0].rotationIndex).toBe(2);
+	});
+
+	it("persists TipState with the unchanged shape (seen[tipId]=timestamp, advancing rotationIndex)", async () => {
+		const getTipState = vi.mocked(api.request.getTipState);
+		const updateTipState = vi.mocked(api.request.updateTipState);
+		getTipState.mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 });
+		updateTipState.mockImplementation((params: Partial<TipState>) =>
+			Promise.resolve({ snoozedUntil: 0, seen: {}, rotationIndex: 0, ...params } as TipState),
+		);
+
+		const bar = await renderForRotation();
+		await act(async () => { fireEvent.animationEnd(bar, { animationName: "tip-progress" }); });
+		await waitFor(() => expect(updateTipState).toHaveBeenCalledTimes(1));
+
+		const payload = updateTipState.mock.calls[0][0];
+		// Only the two writable keys are sent — no new/renamed fields that an older version can't read.
+		expect(Object.keys(payload).sort()).toEqual(["rotationIndex", "seen"]);
+		expect(payload.rotationIndex).toBe(1);
+		// seen maps a tip id → a numeric timestamp.
+		const seenEntries = Object.entries(payload.seen ?? {});
+		expect(seenEntries.length).toBe(1);
+		const [tipId, ts] = seenEntries[0];
+		expect(typeof tipId).toBe("string");
+		expect(typeof ts).toBe("number");
+	});
+});
+
+describe("collapsible columns", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		localStorage.clear();
+	});
+
+	it("renders completed, cancelled as collapsed by default", async () => {
+		await renderBoardWith();
+		const collapsedCols = document.querySelectorAll("[data-collapsed-column]");
+		expect(collapsedCols.length).toBe(2);
+	});
+
+	it("active columns are always expanded", async () => {
+		await renderBoardWith();
+		// "Agent is Working" (in-progress) should not be collapsed
+		const labels = getColumnLabels();
+		expect(labels).toContain("Agent is Working");
+	});
+
+	it("collapsed columns are excluded from tip placement", async () => {
+		// Tip should not be placed in collapsed todo column
+		await renderBoardWith();
+		const collapsedCols = document.querySelectorAll("[data-collapsed-column]");
+		for (const col of collapsedCols) {
+			// Collapsed columns should not contain TipCard content
+			expect(col.querySelector("[class*='tip']")).toBeNull();
+		}
+	});
+});
+
+describe("dangling customColumnId render fallback", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		localStorage.clear();
+	});
+
+	// Returns the header label of the column that currently renders the given task,
+	// or null if the task is not rendered in any column. Scoped to the card's own
+	// column so it never trips over duplicate label text elsewhere on the board.
+	function columnLabelOf(taskId: string): string | null {
+		const card = document.querySelector(`[data-task-id="${taskId}"]`);
+		const col = card?.closest("[class*='glass-column']");
+		return col?.querySelector(".text-fg.text-sm.font-semibold")?.textContent ?? null;
+	}
+
+	it("renders a task whose customColumnId points to a deleted column in its underlying status column", async () => {
+		// "col-deleted" is NOT in project.customColumns — simulates a column that
+		// was deleted (or a multi-instance write referencing a column this instance
+		// never had). The task must NOT vanish from the board.
+		const danglingTask = makeTask({
+			id: "task-dangling",
+			status: "in-progress",
+			customColumnId: "col-deleted",
+		});
+		await renderBoardWith({
+			project: { ...project, customColumns: [customColA] },
+			tasks: [danglingTask],
+		});
+		// Invariant: every non-deleted task renders in SOME column.
+		expect(document.querySelector('[data-task-id="task-dangling"]')).not.toBeNull();
+		// Specifically, in its underlying status column ("Agent is Working").
+		expect(columnLabelOf("task-dangling")).toBe("Agent is Working");
+	});
+
+	it("keeps the AI Review column visible for a dangling-custom-column task in review-by-ai", async () => {
+		// AI review disabled + no other review-by-ai items: the column is normally
+		// hidden. A dangling-custom-column task in review-by-ai must still surface.
+		const danglingReview = makeTask({
+			id: "task-dangling-review",
+			status: "review-by-ai",
+			customColumnId: "col-deleted",
+		});
+		await renderBoardWith({
+			project: {
+				...project,
+				customColumns: [customColA],
+				builtinColumnAgents: {},
+			},
+			tasks: [danglingReview],
+		});
+		expect(document.querySelector('[data-task-id="task-dangling-review"]')).not.toBeNull();
+	});
+
+	it("still renders a task with a valid customColumnId in its custom column", async () => {
+		// Regression guard: the fallback must not pull a valid custom-column task
+		// into its status column.
+		const validTask = makeTask({
+			id: "task-valid",
+			status: "in-progress",
+			customColumnId: "col-a",
+		});
+		await renderBoardWith({
+			project: { ...project, customColumns: [customColA] },
+			tasks: [validTask],
+		});
+		expect(columnLabelOf("task-valid")).toBe("Alpha");
+	});
+});
+
+describe("status filter with a custom column (issue #1804)", () => {
+	const waitingCol: CustomColumn = { id: "col-wait", name: "Waiting on Others", color: "#abcdef", llmInstruction: "" };
+	const statusTasks = [
+		makeTask({ id: "plain", seq: 1, status: "review-by-user" }),
+		makeTask({ id: "working", seq: 2, status: "in-progress" }),
+		makeTask({ id: "parked", seq: 3, status: "review-by-user", customColumnId: "col-wait" }),
+		makeTask({ id: "orphan", seq: 4, status: "review-by-user", customColumnId: "col-gone" }),
+	];
+
+	async function filterBoard(query: string) {
+		await renderBoardWith({ project: { ...project, customColumns: [waitingCol] }, tasks: statusTasks });
+		fireEvent.change(screen.getByPlaceholderText("Search tasks..."), { target: { value: query } });
+	}
+
+	function visibleTaskIds(): string[] {
+		const ids = document.querySelectorAll("[data-task-id]");
+		return [...new Set(Array.from(ids, (el) => el.getAttribute("data-task-id")!))].sort();
+	}
+
+	it("hides a custom-column task when only built-in statuses are selected", async () => {
+		await filterBoard("status:review-by-user status:in-progress");
+		// The deleted-column task falls back to its built-in status and still matches.
+		expect(visibleTaskIds()).toEqual(["orphan", "plain", "working"]);
+	});
+
+	it("shows a custom-column task only when its column is selected", async () => {
+		await filterBoard('status:review-by-user status:"Waiting on Others"');
+		expect(visibleTaskIds()).toEqual(["orphan", "parked", "plain"]);
+	});
+
+	it("shows every task when no status filter is set", async () => {
+		await filterBoard("");
+		expect(visibleTaskIds()).toEqual(["orphan", "parked", "plain", "working"]);
+	});
+});
+
+describe("mobile carousel mode", () => {
+	const originalInnerWidth = window.innerWidth;
+	const originalMatchMedia = window.matchMedia;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		localStorage.clear();
+		Element.prototype.scrollTo = vi.fn() as unknown as typeof Element.prototype.scrollTo;
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+		// Narrow: useNarrowViewport(768) matches; widescreen compact query (1400) also matches harmlessly
+		Object.defineProperty(window, "matchMedia", {
+			configurable: true,
+			value: (query: string) => ({
+				matches: true,
+				media: query,
+				onchange: null,
+				addEventListener: vi.fn(),
+				removeEventListener: vi.fn(),
+				addListener: vi.fn(),
+				removeListener: vi.fn(),
+				dispatchEvent: vi.fn(),
+			}),
+		});
+	});
+
+	afterEach(() => {
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: originalInnerWidth });
+		Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
+	});
+
+	it("renders the carousel pager instead of the multi-column scroll board", async () => {
+		await renderBoardWith();
+		// Pager chevrons exist (carousel), the always-scroll desktop container does not
+		expect(screen.getByLabelText("Next column")).toBeTruthy();
+		expect(screen.getByLabelText("Previous column")).toBeTruthy();
+		expect(document.querySelector(".kanban-scroll")).toBeNull();
+		expect(document.querySelector(".kanban-carousel-track")).not.toBeNull();
+	});
+
+	it("shows a single column position indicator", async () => {
+		await renderBoardWith();
+		// Position text "n / N" is present
+		expect(screen.getByText(/^\d+ \/ \d+$/)).toBeTruthy();
+	});
+
+	it("starts on Has Questions when it contains tasks", async () => {
+		await renderBoardWith({ tasks: [makeTask({ status: "user-questions" })] });
+		// Has Questions is the first mobile attention queue when it has work.
+		expect(screen.getByText("3 / 8")).toBeTruthy();
+	});
+
+	it("falls back to Your Review when Has Questions is empty", async () => {
+		await renderBoardWith({ tasks: [makeTask({ status: "review-by-user" })] });
+		// With no questions waiting, show the next human-action queue instead.
+		expect(screen.getByText("5 / 8")).toBeTruthy();
+	});
+
+	it("keeps completed and cancelled columns in the mobile carousel", async () => {
+		await renderBoardWith();
+
+		expect(screen.getByText("Completed")).toBeTruthy();
+		expect(screen.getByText("Cancelled")).toBeTruthy();
+	});
+});
+
+describe("create custom column from board (issue #222)", () => {
+	const originalInnerWidth = window.innerWidth;
+	const originalMatchMedia = window.matchMedia;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		localStorage.clear();
+		// Desktop width: the "+" affordance only renders on the multi-column board,
+		// not the mobile carousel.
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: 1920 });
+		Object.defineProperty(window, "matchMedia", {
+			configurable: true,
+			value: (query: string) => ({
+				matches: false,
+				media: query,
+				onchange: null,
+				addEventListener: vi.fn(),
+				removeEventListener: vi.fn(),
+				addListener: vi.fn(),
+				removeListener: vi.fn(),
+				dispatchEvent: vi.fn(),
+			}),
+		});
+	});
+
+	afterEach(() => {
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: originalInnerWidth });
+		Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
+	});
+
+	it("clicking the add-column button creates a column immediately before Completed", async () => {
+		const created: CustomColumn = { id: "col-new", name: "New Column", color: "#123456", llmInstruction: "" };
+		(api.request.createCustomColumn as ReturnType<typeof vi.fn>).mockResolvedValue(created);
+		const dispatch = vi.fn();
+		await renderBoardWith({ dispatch });
+
+		const addBtn = screen.getByLabelText("Add column");
+		await userEvent.click(addBtn);
+
+		await waitFor(() => expect(api.request.createCustomColumn).toHaveBeenCalledWith({ projectId: "p1", name: "New Column" }));
+		await waitFor(() =>
+			expect(dispatch).toHaveBeenCalledWith(
+				expect.objectContaining({
+					type: "updateProject",
+					project: expect.objectContaining({
+						customColumns: expect.arrayContaining([created]),
+						columnOrder: expect.any(Array),
+					}),
+				}),
+			),
+		);
+		await waitFor(() => expect(api.request.reorderColumns).toHaveBeenCalledWith({
+			projectId: "p1",
+			columnOrder: expect.arrayContaining(["col-new", "completed"]),
+		}));
+		const { columnOrder } = (api.request.reorderColumns as ReturnType<typeof vi.fn>).mock.calls[0][0] as { columnOrder: string[] };
+		expect(columnOrder[columnOrder.indexOf("completed") - 1]).toBe("col-new");
+	});
+
+	it("inserts a new column before Completed in an existing stored order", async () => {
+		const created: CustomColumn = { id: "col-new", name: "New Column", color: "#123456", llmInstruction: "" };
+		(api.request.createCustomColumn as ReturnType<typeof vi.fn>).mockResolvedValue(created);
+		const dispatch = vi.fn();
+		await renderBoardWith({
+			project: {
+				...project,
+				customColumns: [customColA],
+				columnOrder: ["todo", "in-progress", "user-questions", "review-by-ai", "review-by-user", "col-a", "review-by-colleague", "completed", "cancelled"],
+			},
+			dispatch,
+		});
+
+		await userEvent.click(screen.getByLabelText("Add column"));
+
+		await waitFor(() => expect(api.request.reorderColumns).toHaveBeenCalled());
+		const { columnOrder } = (api.request.reorderColumns as ReturnType<typeof vi.fn>).mock.calls[0][0] as { columnOrder: string[] };
+		expect(columnOrder[columnOrder.indexOf("completed") - 1]).toBe("col-new");
+		expect(columnOrder[columnOrder.indexOf("cancelled") - 1]).not.toBe("col-new");
+	});
+
+	it("places the add-column button immediately before the Completed column", async () => {
+		await renderBoardWith();
+		// The button's next sibling must be the Completed column (empty trailing
+		// columns render as a compact vertical label, so match on text content, not
+		// the expanded header span).
+		const addBtn = screen.getByLabelText("Add column");
+		const next = addBtn.nextElementSibling as HTMLElement | null;
+		expect(next?.textContent?.trim().startsWith("Completed")).toBe(true);
+	});
+
+	it("shows an error toast when column creation fails", async () => {
+		(api.request.createCustomColumn as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("boom"));
+		await renderBoardWith();
+
+		await userEvent.click(screen.getByLabelText("Add column"));
+
+		await waitFor(() => expect(toast.error).toHaveBeenCalled());
+	});
+
+	it("renaming a board custom column inline calls updateCustomColumn", async () => {
+		const updated: CustomColumn = { ...customColA, name: "Renamed" };
+		(api.request.updateCustomColumn as ReturnType<typeof vi.fn>).mockResolvedValue(updated);
+		const dispatch = vi.fn();
+		await renderBoardWith({ project: { ...project, customColumns: [customColA] }, dispatch });
+
+		// Capture the column element once — after clicking rename, its "Alpha" text
+		// span is swapped for an <input>, so a later getByText("Alpha") would fail.
+		const colEl = getColumnEl("Alpha");
+		const renameBtn = within(colEl).getByLabelText("Rename column");
+		await userEvent.click(renameBtn);
+
+		const input = colEl.querySelector("input") as HTMLInputElement;
+		await userEvent.clear(input);
+		await userEvent.type(input, "Renamed");
+		fireEvent.blur(input);
+
+		await waitFor(() =>
+			expect(api.request.updateCustomColumn).toHaveBeenCalledWith({ projectId: "p1", columnId: "col-a", name: "Renamed" }),
+		);
+	});
+});
+
+describe("task sort order follows the settings push", () => {
+	function renderedTaskIds(): string[] {
+		const seen: string[] = [];
+		for (const el of document.querySelectorAll("[data-task-id]")) {
+			const id = el.getAttribute("data-task-id")!;
+			if (!seen.includes(id)) seen.push(id);
+		}
+		return seen;
+	}
+
+	it("reorders the board when another window changes taskSortOrder", async () => {
+		const tasks = [
+			makeTask({ id: "fresh", seq: 1, title: "Fresh", statusEnteredAt: "2025-02-09T00:00:00Z" }),
+			makeTask({ id: "stale", seq: 2, title: "Stale", statusEnteredAt: "2025-02-01T00:00:00Z" }),
+		];
+		await renderBoardWith({ tasks });
+		expect(renderedTaskIds()).toEqual(["stale", "fresh"]);
+
+		await act(async () => {
+			window.dispatchEvent(
+				new CustomEvent("rpc:globalSettingsUpdated", { detail: { taskSortOrder: "newest-first" } }),
+			);
+		});
+		expect(renderedTaskIds()).toEqual(["fresh", "stale"]);
+	});
+});
+
+
+// ---- The board's subject is a space (the unified cross-project board) ----
+
+describe("KanbanBoard — space as the subject", () => {
+	const web: Project = { ...project, id: "p2", name: "web", customColumns: [{ id: "w-hold", name: "  ON   HOLD ", color: "#00f", llmInstruction: "" }] };
+	// The FIRST project names the merged lane; the second one's stray capitals and
+	// double spaces must not split it into a second lane.
+	const api2: Project = { ...project, id: "p1", name: "api", customColumns: [{ id: "a-hold", name: "On hold", color: "#f00", llmInstruction: "" }] };
+	const space = { id: "sp_1", name: "Client X", parentId: null, projectIds: ["p1", "p2"], createdAt: 1 };
+
+	const apiTask = makeTask({ id: "t-api", seq: 1, projectId: "p1", title: "api work", description: "api work" });
+	const webTask = makeTask({ id: "t-web", seq: 2, projectId: "p2", title: "web work", description: "web work" });
+
+	async function renderSpaceBoard(tasks: Task[]) {
+		return renderBoardWith({ project: api2, space, memberProjects: [api2, web], tasks });
+	}
+
+	it("shows cards from every member project on one set of lanes", async () => {
+		await renderSpaceBoard([apiTask, webTask]);
+		expect(screen.getByText("api work")).toBeTruthy();
+		expect(screen.getByText("web work")).toBeTruthy();
+	});
+
+	it("merges two projects' same-named custom columns into ONE lane, however they were capitalised", async () => {
+		await renderSpaceBoard([apiTask, webTask]);
+		const holdLanes = getColumnLabels().filter((label) => label.toLowerCase().trim().replace(/\s+/g, " ") === "on hold");
+		expect(holdLanes).toHaveLength(1);
+	});
+
+	it("says how many projects a merged lane covers", async () => {
+		await renderSpaceBoard([apiTask, webTask]);
+		expect(screen.getAllByTitle("2 projects").length).toBeGreaterThan(0);
+	});
+
+	it("names each card's own project", async () => {
+		await renderSpaceBoard([apiTask, webTask]);
+		const marks = screen.getAllByTestId("task-card-project-mark").map((el) => el.textContent);
+		expect(marks).toContain("api");
+		expect(marks).toContain("web");
+	});
+
+	it("a card in a custom column renders in that merged lane and nowhere else", async () => {
+		const held = makeTask({ id: "t-held", seq: 3, projectId: "p2", title: "held", description: "held", customColumnId: "w-hold" });
+		await renderSpaceBoard([held]);
+		const lane = getColumnEl("On hold");
+		expect(within(lane).getByText("held")).toBeTruthy();
+		// Exactly one card on the whole board — it did not also land in a status column.
+		expect(screen.getAllByText("held")).toHaveLength(1);
+	});
+
+	it("a drop on a merged lane writes the dropped card's OWN project's column id", async () => {
+		await renderSpaceBoard([webTask]);
+		const card = screen.getByText("web work").closest("[data-task-id]")!;
+		dispatchDrag(card, "dragstart", { dataTransfer: makeDt() });
+		const lane = getColumnEl("On hold");
+		dispatchDrag(lane, "drop", { dataTransfer: makeDt({ "text/plain": "t-web" }) });
+		await waitFor(() =>
+			expect(api.request.moveTaskToCustomColumn).toHaveBeenCalledWith({
+				taskId: "t-web",
+				projectId: "p2",
+				customColumnId: "w-hold",
+			}),
+		);
+	});
+
+	it("dims a lane the dragged card's project has no column in, and refuses the drop", async () => {
+		vi.mocked(api.request.moveTaskToCustomColumn).mockClear();
+		const deployer: Project = { ...project, id: "p2", name: "web", customColumns: [{ id: "w-deploy", name: "Deploy", color: "#00f", llmInstruction: "" }] };
+		await renderBoardWith({ project: api2, space, memberProjects: [api2, deployer], tasks: [apiTask, webTask] });
+
+		const card = screen.getByText("api work").closest("[data-task-id]")!;
+		dispatchDrag(card, "dragstart", { dataTransfer: makeDt() });
+
+		// "Deploy" belongs to web only, so an api card cannot enter it...
+		const deploy = getColumnEl("Deploy");
+		expect(deploy.className).toContain("opacity-40");
+		// ...while "On hold", which api does have, stays fully lit.
+		expect(getColumnEl("On hold").className).not.toContain("opacity-40");
+
+		dispatchDrag(deploy, "drop", { dataTransfer: makeDt({ "text/plain": "t-api" }) });
+		await act(async () => {});
+		expect(api.request.moveTaskToCustomColumn).not.toHaveBeenCalled();
+	});
+
+	it("no card carries a project mark on a project's own board", async () => {
+		await renderBoardWith({ tasks: [apiTask] });
+		expect(screen.queryByTestId("task-card-project-mark")).toBeNull();
+	});
+});
+
+// Agent traffic (and any other off-board caller) opens a finished task by id.
+// The card itself may not be on screen at all — a column renders only its first
+// 15 cards until expanded — so the modal must come from the task list, not the
+// rendered card.
+describe("detail modal requested by id", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		localStorage.clear();
+	});
+
+	const buried = Array.from({ length: 20 }, (_, i) =>
+		makeTask({
+			id: `done-${i}`,
+			seq: 100 + i,
+			status: "completed",
+			title: `Finished ${i}`,
+			description: `Finished ${i}`,
+		}),
+	);
+
+	it("opens a completed task that no rendered card holds", async () => {
+		await renderBoardWith({ tasks: buried, detailTaskId: "done-19" });
+		const dialog = await screen.findByRole("dialog");
+		expect(within(dialog).getByText("Finished 19")).toBeTruthy();
+		// Proof the card is genuinely off-screen: the column stops at 15.
+		expect(screen.getAllByText("Finished 19")).toHaveLength(1);
+	});
+
+	it("stays closed without a request and reports the close back to the route", async () => {
+		const onCloseTaskDetail = vi.fn();
+		const { rerender } = await renderBoardWith({ tasks: buried });
+		expect(screen.queryByRole("dialog")).toBeNull();
+		await act(async () => {
+			rerender(
+				<I18nProvider>
+					<BoardHost
+						project={project}
+						tasks={buried}
+						dispatch={vi.fn()}
+						navigate={vi.fn()}
+						bellCounts={new Map()}
+						taskPorts={new Map()}
+						taskDevServers={new Map()}
+						detailTaskId="done-3"
+						onCloseTaskDetail={onCloseTaskDetail}
+					/>
+				</I18nProvider>,
+			);
+		});
+		const dialog = await screen.findByRole("dialog");
+		await userEvent.click(within(dialog).getByRole("button", { name: /close/i }));
+		expect(onCloseTaskDetail).toHaveBeenCalled();
+	});
+
+	it("ignores an id the board does not hold", async () => {
+		await renderBoardWith({ tasks: buried, detailTaskId: "gone-forever" });
+		expect(screen.queryByRole("dialog")).toBeNull();
+	});
+});
+
+describe("KanbanBoard filter memory", () => {
+	const projectB: Project = { ...project, id: "proj-b", name: "Other" };
+	const searchInput = () => screen.getByPlaceholderText("Search tasks...") as HTMLInputElement;
+
+	function boardFor(p: Project) {
+		return (
+			<I18nProvider>
+				<BoardHost
+					project={p}
+					tasks={[]}
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+					taskDevServers={new Map()}
+				/>
+			</I18nProvider>
+		);
+	}
+
+	it("restores the board's filter after navigating away and back", async () => {
+		const { unmount } = await renderBoardWith();
+		fireEvent.change(searchInput(), { target: { value: "priority:P1 auth" } });
+		unmount();
+
+		await renderBoardWith();
+		expect(searchInput().value).toBe("priority:P1 auth");
+	});
+
+	it("keeps a separate filter per board when switching projects", async () => {
+		const { rerender } = await renderBoardWith();
+		fireEvent.change(searchInput(), { target: { value: "label:Bug" } });
+
+		await act(async () => rerender(boardFor(projectB)));
+		expect(searchInput().value).toBe("");
+		fireEvent.change(searchInput(), { target: { value: "is:attention" } });
+
+		await act(async () => rerender(boardFor(project)));
+		expect(searchInput().value).toBe("label:Bug");
+		await act(async () => rerender(boardFor(projectB)));
+		expect(searchInput().value).toBe("is:attention");
+	});
+
+	it("forgets the filter once the clear control empties it", async () => {
+		const { unmount } = await renderBoardWith();
+		fireEvent.change(searchInput(), { target: { value: "label:Bug" } });
+		fireEvent.click(screen.getByRole("button", { name: "×" }));
+		unmount();
+
+		await renderBoardWith();
+		expect(searchInput().value).toBe("");
+	});
+});

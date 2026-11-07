@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type Dispatch } from "react";
+import { TaskRefText } from "./TaskRefText";
 import { toast } from "../toast";
 import TaskOriginRow from "./TaskOriginRow";
 import TaskEpicRow from "./TaskEpicRow";
@@ -21,6 +22,7 @@ import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { useT } from "../i18n";
+import { createProjectLabel } from "../utils/createProjectLabel";
 import HelpSpot from "./HelpSpot";
 import { getStatusLabel } from "../utils/statusLabel";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
@@ -604,7 +606,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 							</div>
 						) : (
 							<div className="text-fg-2 text-sm leading-relaxed whitespace-pre-wrap break-words">
-								{task.description}
+								<TaskRefText text={task.description} contextProjectId={task.projectId} taskId={task.id} />
 							</div>
 						)}
 					</div>
@@ -639,8 +641,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 							{pickerOpen && pickerAnchorRef.current && (
 								<LabelPicker
 									project={project}
-									dispatch={dispatch}
-									taskId={task.id}
+									onCreateLabel={(name) => createProjectLabel({ project, name, dispatch, t, taskId: task.id })}
 									onClose={() => setPickerOpen(false)}
 									anchorEl={pickerAnchorRef.current}
 									selectedIds={task.labelIds ?? []}
@@ -873,7 +874,7 @@ function ArchivedView({
 										{t("task.descriptionLabel")}
 									</span>
 									<div className="text-fg-2 text-sm leading-relaxed whitespace-pre-wrap break-words">
-										{task.description}
+										<TaskRefText text={task.description} contextProjectId={task.projectId} taskId={task.id} />
 									</div>
 								</div>
 							)}

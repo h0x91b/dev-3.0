@@ -20,7 +20,7 @@ import type { AgentAccountsState } from "../../shared/agent-accounts";
 /** Data older than this gets a staleness note in the tooltip. */
 export const STALE_AFTER_MS = 10 * 60 * 1000;
 
-export const SOURCE_NAMES: Record<string, string> = { claude: "Claude", codex: "Codex" };
+export const SOURCE_NAMES: Record<string, string> = { claude: "Claude", codex: "Codex", kimi: "Kimi" };
 
 /** Which account the rate-limit windows for a source are drawn from. */
 export interface AccountLine {
@@ -45,7 +45,7 @@ export interface AccountLine {
  * so surfacing it answers "whose limit is this?" at a glance.
  */
 export function resolveAccount(
-	source: RateLimitSource,
+	source: Exclude<RateLimitSource, "kimi">,
 	state: AgentAccountsState | null,
 	accountId?: string | null,
 ): AccountLine | null {
@@ -227,6 +227,8 @@ export function AccountCardHeader({
 		!!account?.organization &&
 		account.organization !== displayName &&
 		!(displayName ?? "").endsWith(`(${account.organization})`);
+	// A Kimi row is named by its catalog provider; the group header already says "Kimi".
+	if (source === "kimi") return <span className="block min-w-0 truncate text-fg-2 font-medium">{displayName}</span>;
 	return (
 		<div className="flex items-center gap-1.5">
 			<span className="text-fg-2 font-medium shrink-0">{SOURCE_NAMES[source] ?? source}</span>

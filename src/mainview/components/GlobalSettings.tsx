@@ -51,6 +51,7 @@ import BehaviorSettingsSection from "./global-settings/BehaviorSettingsSection";
 import DeveloperToolsSection from "./global-settings/DeveloperToolsSection";
 import ClaudeModsSection from "./global-settings/ClaudeModsSection";
 import KeyboardSettingsSection from "./global-settings/KeyboardSettingsSection";
+import ExtensionsSettingsSection from "./global-settings/ExtensionsSettingsSection";
 import ModelCatalogSection from "./global-settings/ModelCatalogSection";
 import NotificationSettingsSection from "./global-settings/NotificationSettingsSection";
 import PxpipeProxySettingsSection from "./global-settings/PxpipeProxySettingsSection";
@@ -308,7 +309,7 @@ function GlobalSettings({
 				localStorage.removeItem("dev3-task-open-mode");
 			}
 		}).catch(() => {});
-		// Follow the settings push, like KanbanBoard does. Every save here sends the
+		// Follow the settings push, like the board host does. Every save here sends the
 		// WHOLE object, so a snapshot taken at mount silently reverts anything written
 		// from outside this screen since — `hiddenControls` (a right-click "Hide", the
 		// Simplify View preset) being the field that actually got erased.
@@ -442,9 +443,16 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
-	const handleNeedsYouSoundToggle = useCallback(
+	const handleQuestionsSoundToggle = useCallback(
 		(enabled: boolean) => {
-			persistSettingChange({ playSoundOnTaskNeedsYou: enabled });
+			persistSettingChange({ playSoundOnTaskQuestions: enabled });
+		},
+		[persistSettingChange],
+	);
+
+	const handleReviewSoundToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange({ playSoundOnTaskReview: enabled });
 		},
 		[persistSettingChange],
 	);
@@ -1060,7 +1068,8 @@ function GlobalSettings({
 						t={t}
 						globalSettings={globalSettings}
 						onSoundToggle={handleSoundToggle}
-						onNeedsYouSoundToggle={handleNeedsYouSoundToggle}
+						onQuestionsSoundToggle={handleQuestionsSoundToggle}
+						onReviewSoundToggle={handleReviewSoundToggle}
 						onFocusModeToggle={handleFocusModeToggle}
 						onWatchByDefaultToggle={handleWatchByDefaultToggle}
 					/>
@@ -1131,6 +1140,8 @@ function GlobalSettings({
 				return <AgentAccountsSection t={t} />;
 			case "models":
 				return <ModelCatalogSection t={t} />;
+			case "extensions":
+				return <ExtensionsSettingsSection t={t} />;
 			case "workspace":
 				return (
 					<WorkspaceSettingsSection

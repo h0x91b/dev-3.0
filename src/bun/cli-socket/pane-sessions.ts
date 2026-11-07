@@ -88,7 +88,7 @@ export async function capturePaneSession(
 }
 
 /** The Codex stores the task's own agent may write to, besides the managed accounts. */
-async function taskCodexHomes(project: Project, task: Task): Promise<string[]> {
+export async function taskCodexHomes(project: Project, task: Task): Promise<string[]> {
 	if (!task.worktreePath) return [];
 	const agent = task.agentId ? (await agents.getAllAgents()).find((entry) => entry.id === task.agentId) : undefined;
 	try {
@@ -113,6 +113,7 @@ async function ownAgentPaneEntry(task: Task, harness: PromptSubmitHarness): Prom
 	const baseCommand = config?.baseCommandOverride || agent.baseCommand;
 	if (agentKey(baseCommand, agent.agentFamily) !== harness) return null;
 	return {
+		main: true,
 		agentCmd: baseCommand,
 		sessionId: null,
 		agentId: task.agentId,

@@ -57,6 +57,8 @@ function requestBranchStatus(
 }
 
 function getDefaultTaskCompareRef(taskBaseBranch: string, project: Project): string {
+	// An Operations task's base is its own repo's, stored on the task; the backend resolves the ref.
+	if (project.kind === "virtual") return "";
 	const projectBaseBranch = project.defaultBaseBranch || "main";
 	const projectDefaultCompareRef = project.defaultCompareRef;
 

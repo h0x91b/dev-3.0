@@ -326,6 +326,11 @@ export const CLAUDE_PROMPT_HOOK_SUBCOMMAND = "hook claude-prompt";
  * tool hooks, and a fresh session that only opened is not working yet.
  */
 export const CLAUDE_SESSION_START_HOOK_SUBCOMMAND = "hook claude-session-start";
+/**
+ * Claude's PostToolUse: the working-status move plus the hook mailbox, which hands a
+ * busy agent its held `dev3 message`s at its next tool call. Always exits 0.
+ */
+export const CLAUDE_POST_TOOL_HOOK_SUBCOMMAND = "hook claude-post-tool";
 /** `resume` is left out: the resumed transcript already holds the block it was given. */
 export const CLAUDE_SESSION_START_MATCHER = "startup|clear|compact";
 /**
@@ -516,6 +521,16 @@ function withTaskEnvGuard(command: string, dialect: HookCliDialect): string {
 	return `[ -z "$${CODEX_HOOK_SESSION_ENV}" ] || ${command}`;
 }
 
+/**
+ * The adapter exits 0 on every runtime failure, so `||` reaches the plain move only
+ * when the installed CLI predates the subcommand and rejects it as unknown. Windows
+ * has no tmux, so no mailbox to drain, and no shell for `||`: it keeps the plain move.
+ */
+function claudePostToolCommand(workingCmd: string, dialect: HookCliDialect): string {
+	if (!dialect.posixShell) return workingCmd;
+	return `${dialect.cli} ${CLAUDE_POST_TOOL_HOOK_SUBCOMMAND} || ${workingCmd}`;
+}
+
 export function buildClaudeHooks(
 	options?: { stopTarget?: TaskStatus; dialect?: HookCliDialect; requireTaskEnv?: boolean; fileLeases?: boolean },
 ): HookMap {
@@ -577,7 +592,7 @@ function buildUnguardedClaudeHooks(
 				: []),
 		],
 		PostToolUse: [
-			{ hooks: [{ type: "command", command: workingCmd }] },
+			{ hooks: [{ type: "command", command: claudePostToolCommand(workingCmd, dialect) }] },
 		],
 		PermissionRequest: [
 			{ hooks: [{ type: "command", command: move("user-questions") }] },

@@ -13,8 +13,13 @@ import BottomSheet from "./BottomSheet";
 
 interface TaskPrStatusPopoverProps {
 	prInfo: TaskPRBadgeInfo;
-	projectId: string;
-	taskId: string;
+	/** The task whose polled PR status this is; with `projectId` it powers Refresh. */
+	projectId?: string;
+	taskId?: string;
+	/** Replaces the task-cache refresh, for a PR no task polls (a `<pr:N>` reference); resolves false when GitHub had nothing. */
+	onRefresh?: () => Promise<boolean>;
+	/** Called each time the popover or sheet opens, so a lazy owner can load `prInfo`. */
+	onOpen?: () => void;
 	/** When provided, the "N unresolved comments" row becomes a deep link that
 	 * opens the diff review at the first unresolved GitHub thread. */
 	onShowUnresolved?: () => void;
@@ -162,7 +167,7 @@ function anchorRect(element: HTMLElement): RectLike {
 	};
 }
 
-export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowUnresolved, earlierPullRequests, displayState, children }: TaskPrStatusPopoverProps) {
+export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onRefresh, onOpen, onShowUnresolved, earlierPullRequests, displayState, children }: TaskPrStatusPopoverProps) {
 	const t = useT();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [open, setOpen] = useState(false);
@@ -178,6 +183,9 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 	const pointerInsideRef = useRef(false);
 	const openRef = useRef(false);
 	const refreshingRef = useRef(false);
+	const onOpenRef = useRef(onOpen);
+	onOpenRef.current = onOpen;
+	const canRefresh = !!onRefresh || !!(taskId && projectId);
 
 	const cancelHide = useCallback(() => {
 		if (hideTimerRef.current !== null) {
@@ -207,6 +215,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 
 	const show = useCallback(() => {
 		cancelHide();
+		if (!openRef.current) onOpenRef.current?.();
 		openRef.current = true;
 		setOpen(true);
 	}, [cancelHide]);
@@ -220,23 +229,27 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 	}, [cancelHide, hide]);
 
 	const refresh = useCallback(async () => {
-		if (refreshingRef.current) return;
+		if (refreshingRef.current || !canRefresh) return;
 		autoRefreshAttemptedRef.current = true;
 		cancelAutoRefresh();
 		refreshingRef.current = true;
 		setRefreshing(true);
 		try {
-			const result = await api.request.refreshTaskPrStatus({ taskId, projectId });
-			const outcome = result?.outcome;
-			setRefreshNotice(outcome === "unavailable" || outcome === "not-found" ? outcome : null);
+			if (onRefresh) {
+				setRefreshNotice((await onRefresh()) ? null : "unavailable");
+			} else if (taskId && projectId) {
+				const result = await api.request.refreshTaskPrStatus({ taskId, projectId });
+				const outcome = result?.outcome;
+				setRefreshNotice(outcome === "unavailable" || outcome === "not-found" ? outcome : null);
+			}
 		} catch (error) {
 			setRefreshNotice(null);
-			toast.error(t("task.prRefreshFailed", { error: String(error) }), { taskId });
+			toast.error(t("task.prRefreshFailed", { error: String(error) }), taskId ? { taskId } : undefined);
 		} finally {
 			refreshingRef.current = false;
 			setRefreshing(false);
 		}
-	}, [cancelAutoRefresh, projectId, t, taskId]);
+	}, [canRefresh, cancelAutoRefresh, onRefresh, projectId, t, taskId]);
 
 	const scheduleAutoRefresh = useCallback(() => {
 		if (autoRefreshAttemptedRef.current || autoRefreshTimerRef.current !== null) return;
@@ -528,7 +541,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 				</div>
 			)}
 
-			<div className="mt-3 flex flex-wrap items-center gap-1">
+			{canRefresh && <div className="mt-3 flex flex-wrap items-center gap-1">
 				<button
 					type="button"
 					onClick={() => void refresh()}
@@ -539,7 +552,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 					<span className={refreshing ? "animate-spin" : ""} style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
 					<span>{t(refreshing ? "task.prRefreshing" : "task.prRefresh")}</span>
 				</button>
-			</div>
+			</div>}
 		</>
 	);
 
@@ -557,6 +570,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 					if (!(event.target instanceof Node) || !triggerRef.current?.contains(event.target)) return;
 					event.preventDefault();
 					event.stopPropagation();
+					if (!sheetOpen) onOpenRef.current?.();
 					setSheetOpen(true);
 				}}
 				onClick={(event) => event.stopPropagation()}
@@ -573,7 +587,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 				>
 					<div className="text-sm">
 						{statusBody(true)}
-						<a
+						{prInfo.url && <a
 							href={prInfo.url}
 							target="_blank"
 							rel="noreferrer"
@@ -581,7 +595,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 						>
 							<span aria-hidden className="leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
 							<span>{t("task.openPR", { number: String(prInfo.number) })}</span>
-						</a>
+						</a>}
 					</div>
 				</BottomSheet>
 			</span>

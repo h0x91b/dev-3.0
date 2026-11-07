@@ -2,6 +2,7 @@ import type { PrStatusNotice, PrWatchUntil } from "./pr-watch";
 import { parseGitHubPullRequestUrl } from "./pr-status";
 import { ID_PREFIX_MIN_LENGTH, type AgentMessageSource } from "./types";
 import { encodeAgentHandle } from "./agent-handle";
+import { formatPrRef, formatTaskRefFor } from "./task-refs";
 
 /**
  * What stands in for the subject in a printed reply command. Obviously a slot to
@@ -59,7 +60,7 @@ export function wrapAgentMessage(
 	const seqShared = source.seqShared ?? source.variantIndex != null;
 	// `<from-task>` is an address, not a command, so it cannot carry the
 	// `--variant` flag — it keeps the id whenever the seq alone is ambiguous.
-	const ref = agentReplyRef({ id: source.taskId, seq: source.seq }, seqShared);
+	const ref = seqShared ? source.taskId : formatTaskRefFor(source.seq, source.projectId ?? receiverProjectId, receiverProjectId);
 	const lines = [
 		"<dev3-ai-message>",
 		`<from-task>${ref}</from-task>`,
@@ -160,10 +161,10 @@ export function wrapArtifactMessage(
 export type PrMergedCompletion = "offered" | "not-offered" | "after-local-work" | "pinned";
 
 const PR_MERGED_SENTENCE: Record<PrMergedCompletion, (prNumber: number) => string> = {
-	offered: (n) => `PR #${n} merged. Wrap up now (final report, notes, report to whoever started you); dev3 offers the user task completion after your turn ends, so do not request it yourself.`,
-	"not-offered": (n) => `PR #${n} merged. dev3 does not offer completion for this task; continue per your task rules.`,
-	"after-local-work": (n) => `PR #${n} merged, but this worktree has uncommitted changes or commits the PR does not include; dev3 offers completion only once they are merged or dropped.`,
-	pinned: (n) => `PR #${n} merged. It is not this task's own PR, so dev3 offers no completion for it.`,
+	offered: (n) => `${formatPrRef(n)} merged. Wrap up now (final report, notes, report to whoever started you); dev3 offers the user task completion after your turn ends, so do not request it yourself.`,
+	"not-offered": (n) => `${formatPrRef(n)} merged. dev3 does not offer completion for this task; continue per your task rules.`,
+	"after-local-work": (n) => `${formatPrRef(n)} merged, but this worktree has uncommitted changes or commits the PR does not include; dev3 offers completion only once they are merged or dropped.`,
+	pinned: (n) => `${formatPrRef(n)} merged. It is not this task's own PR, so dev3 offers no completion for it.`,
 };
 
 function prNoticeSentence(prNumber: number, notice: PrStatusNotice, completion: PrMergedCompletion): string {
@@ -171,14 +172,14 @@ function prNoticeSentence(prNumber: number, notice: PrStatusNotice, completion: 
 		case "merged":
 			return PR_MERGED_SENTENCE[completion](prNumber);
 		case "replaced":
-			return `PR #${notice.oldNumber} is no longer this branch's open PR; watch ended. Run \`dev3 pr watch\` again if you still need it.`;
+			return `${formatPrRef(notice.oldNumber)} is no longer this branch's open PR; watch ended. Run \`dev3 pr watch\` again if you still need it.`;
 		case "closed":
-			return `PR #${prNumber} closed without merge.`;
+			return `${formatPrRef(prNumber)} closed without merge.`;
 		case "ci-passed":
-			return `PR #${prNumber}: CI finished on ${notice.sha.slice(0, 7)}: all ${notice.totalChecks} checks GitHub listed passed.`;
+			return `${formatPrRef(prNumber)}: CI finished on ${notice.sha.slice(0, 7)}: all ${notice.totalChecks} checks GitHub listed passed.`;
 		case "ci-failed":
 			// No check names: they are written by whoever owns the workflow file, and this text lands in the agent's prompt.
-			return `PR #${prNumber}: CI finished on ${notice.sha.slice(0, 7)}: ${notice.failedCount} of ${notice.totalChecks} checks GitHub listed failed; see \`gh pr checks ${prNumber}\`.`;
+			return `${formatPrRef(prNumber)}: CI finished on ${notice.sha.slice(0, 7)}: ${notice.failedCount} of ${notice.totalChecks} checks GitHub listed failed; see \`gh pr checks ${prNumber}\`.`;
 	}
 }
 
@@ -199,8 +200,8 @@ function isPlainPullRequestUrl(url: string, prNumber: number): boolean {
 /** The agent-traffic-log subject for a PR status message. */
 export function prStatusSubject(prNumber: number, notices: readonly PrStatusNotice[]): string {
 	const first = notices[0];
-	if (first?.kind === "replaced") return `PR #${first.oldNumber}: ${PR_NOTICE_SUBJECT.replaced}`;
-	return `PR #${prNumber}: ${first ? PR_NOTICE_SUBJECT[first.kind] : "status"}`;
+	if (first?.kind === "replaced") return `${formatPrRef(first.oldNumber)}: ${PR_NOTICE_SUBJECT.replaced}`;
+	return `${formatPrRef(prNumber)}: ${first ? PR_NOTICE_SUBJECT[first.kind] : "status"}`;
 }
 
 /**
@@ -292,7 +293,7 @@ export function seqIsShared(task: { id: string; seq: number }, boardTasks: Array
 	return boardTasks.some((t) => t.seq === task.seq && t.id !== task.id);
 }
 
-const SENDER_REF_RE = /<from-task>([^<]+)<\/from-task>|<from-sender id="([^"]+)">/;
+const SENDER_REF_RE = /<from-task>(<seq:[^>]+>|[^<]+)<\/from-task>|<from-sender id="([^"]+)">/;
 
 /** The sender address of each envelope, first-seen order, duplicates dropped; non-envelopes add nothing. */
 export function heldBatchSenders(texts: readonly string[]): string[] {

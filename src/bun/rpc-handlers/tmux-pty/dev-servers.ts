@@ -24,6 +24,7 @@ import { resetDevServerLog } from "../../dev-server-log";
 import { devServerLogPath, DEV_SERVER_LOG_SINK_VERB } from "../../../shared/dev-server-log";
 import { dev3CliExecutable } from "../../task-pane-runs";
 import { resolveOperationalProjectConfig } from "../settings-config";
+import { rootProjectFor } from "../../ops-worktree";
 
 export const devViewerPaneIds = new Map<string, string>();
 
@@ -64,7 +65,7 @@ interface DevServerContext {
 async function loadDevServerContext(projectId: string, taskId: string): Promise<DevServerContext> {
 	const project = await data.getProject(projectId);
 	const task = await data.getTask(project, taskId);
-	const resolved = await resolveOperationalProjectConfig(project, task.worktreePath ?? undefined, {
+	const resolved = await resolveOperationalProjectConfig(rootProjectFor(project, task), task.worktreePath ?? undefined, {
 		foreignCode: task.foreignCode,
 	});
 	return {
@@ -840,7 +841,7 @@ async function startOneDevServer(
 			callerEnv,
 			// Same workspace env the setup/cleanup hooks get, so a devScript can
 			// reference root-resolved hooks ("$DEV3_PROJECT_PATH/...") too.
-			buildTaskLifecycleEnv(project, task, worktreePath),
+			buildTaskLifecycleEnv(rootProjectFor(project, task), task, worktreePath),
 			positional.length > 0 ? portPool.buildPortEnv(positional) : {},
 			// EVERY server gets EVERY named port of the task: that is what lets the
 			// back office call the API without anyone wiring ports by hand.
@@ -849,7 +850,8 @@ async function startOneDevServer(
 		],
 		tmuxDetachCommand,
 	});
-	await writeLaunchScript(devScriptPath, wrappedScript);
+	// Private: the wrapper exports the caller's `--env` values verbatim.
+	await writeLaunchScript(devScriptPath, wrappedScript, { private: true });
 
 	const cwd = server.cwd ? `${worktreePath}/${server.cwd}` : worktreePath;
 	const paneEnv = { DEV3_TASK_ID: task.id, DEV3_WORKTREE_ROOT: worktreePath, DEV3_DEV_SERVER: server.name };

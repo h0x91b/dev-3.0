@@ -327,8 +327,8 @@ describe("message — --subject is mandatory", () => {
 		).rejects.toThrow("EXIT_17");
 		expect(stderrOutput).toContain("about 6 words");
 		expect(stderrOutput).toContain("80 characters at most");
-		expect(stderrOutput).toContain('good:  --subject "PR 1577 merged, main green"');
-		expect(stderrOutput).toContain('bad:   --subject "Seq 1722 -> Coordinator: PR 1577 merged"');
+		expect(stderrOutput).toContain('good:  --subject "<pr:1577> merged, main green"');
+		expect(stderrOutput).toContain('bad:   --subject "<seq:1722> -> Coordinator: <pr:1577> merged"');
 		// The corrected command keeps the caller's own target flags and their text.
 		expect(stderrOutput).toContain('dev3 message --task seq:490 --subject');
 		expect(stderrOutput).toContain('"CI is green on all four shards"');

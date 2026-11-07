@@ -1,3 +1,5 @@
+import { parseRefUri } from "../../../shared/task-refs";
+
 /**
  * Repo-relative URLs (`docs/guide.md`, `shots/board.png`) are not fetchable from
  * the webview, so Streamdown's URL hardener drops them before our component
@@ -15,18 +17,34 @@ const NONCE = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
 	byte.toString(16).padStart(2, "0"),
 ).join("");
 const TOKEN_PREFIX = `https://dev3.invalid/${NONCE}/`;
+// `<seq:N>` / `<pr:N>` autolinks: rehype-sanitize strips their unknown scheme,
+// so they ride the same nonce trick and can only unwrap to a valid reference.
+const REF_TOKEN_PREFIX = `https://dev3.invalid/${NONCE}-ref/`;
 
 /** True for a markdown URL naming a path in the checkout rather than a location the webview can fetch. */
 export function isRelativeUrl(url: string): boolean {
 	return Boolean(url) && !url.startsWith("//") && !/^[a-z][a-z0-9+.-]*:/i.test(url);
 }
 
+function safeDecode(value: string): string | undefined {
+	try {
+		return decodeURIComponent(value);
+	} catch {
+		return undefined;
+	}
+}
+
 function protect(url: string): string {
+	if (parseRefUri(url)) return `${REF_TOKEN_PREFIX}${encodeURIComponent(url)}`;
 	return `${TOKEN_PREFIX}${encodeURIComponent(url)}`;
 }
 
 /** The relative URL behind a token; any other URL passes through as Streamdown hardened it. */
 export function unprotect(url: string | undefined): string | undefined {
+	if (url?.startsWith(REF_TOKEN_PREFIX)) {
+		const ref = safeDecode(url.slice(REF_TOKEN_PREFIX.length));
+		return ref && parseRefUri(ref) ? ref : undefined;
+	}
 	if (url === undefined || !url.startsWith(TOKEN_PREFIX)) return url;
 	let relative: string;
 	try {
@@ -70,14 +88,14 @@ export function remarkProtectRelativeUrls() {
 			if ((node.type === "imageReference" || node.type === "linkReference") && node.identifier) {
 				references.add(node.identifier.toLowerCase());
 			}
-			if ((node.type === "image" || node.type === "link") && node.url && isProtectable(node.url)) {
+			if ((node.type === "image" || node.type === "link") && node.url && isProtectable(node.url, node.type === "link")) {
 				node.url = protect(node.url);
 			}
 			if (node.type === "definition") definitions.push(node);
 			if (node.children) nodes.push(...node.children);
 		}
 		for (const definition of definitions) {
-			if (!definition.identifier || !definition.url || !isProtectable(definition.url)) continue;
+			if (!definition.identifier || !definition.url || !isProtectable(definition.url, false)) continue;
 			if (references.has(definition.identifier.toLowerCase())) {
 				definition.url = protect(definition.url);
 			}
@@ -86,6 +104,6 @@ export function remarkProtectRelativeUrls() {
 }
 
 /** In-page anchors survive hardening as they are, so they need no token. */
-function isProtectable(url: string): boolean {
-	return !url.startsWith("#") && isRelativeUrl(url);
+function isProtectable(url: string, isLink: boolean): boolean {
+	return (!url.startsWith("#") && isRelativeUrl(url)) || (isLink && parseRefUri(url) !== null);
 }

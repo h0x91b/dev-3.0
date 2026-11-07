@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { getDiagnostics, formatDiagnosticsForCopy, recordDiagnostic } from "../diagnostics";
 import { api } from "../rpc";
+import { hasLoadedExtensions, restartWithExtensionsOff } from "../board-views/plugins";
 
 interface Props {
 	children: ReactNode;
@@ -163,6 +164,16 @@ export class RootErrorBoundary extends Component<Props, State> {
 					)}
 
 					<div className="flex flex-wrap justify-end gap-2 pt-1">
+						{hasLoadedExtensions() && (
+							<button
+								type="button"
+								onClick={() => void restartWithExtensionsOff()}
+								data-testid="restart-without-extensions"
+								className="px-4 py-2 text-sm rounded-lg text-fg-2 border border-edge hover:text-fg hover:bg-elevated transition-colors"
+							>
+								Restart with extensions off
+							</button>
+						)}
 						<button
 							type="button"
 							onClick={this.handleCopy}

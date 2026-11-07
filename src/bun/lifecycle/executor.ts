@@ -22,6 +22,7 @@ import {
 	getPreparingStageProgress,
 	getTaskTitle,
 	hasGitWorkflow,
+	isOpsWorktreeTask,
 	taskUsesWorktree,
 	taskResetConsentMatches,
 } from "../../shared/types";
@@ -29,6 +30,7 @@ import { voidAgentRequestsForTask } from "../agent-requests";
 import { assertLaunchAgentsInstalled } from "../agent-launch-availability";
 import { requestGracefulAgentExit } from "../agent-graceful-exit";
 import { clonePaths } from "../cow-clone";
+import { resolveLaunchProject, rootProjectFor } from "../ops-worktree";
 import { chooseTaskCodexConversations } from "../codex-task-selection";
 import { dumpTerminalTaskConversations } from "../conversation-archive";
 import * as data from "../data";
@@ -363,9 +365,9 @@ function derivedPreparationPath(project: Project, task: Task): string {
  * agent starts — by the time anyone reads the log, the agent has already run
  * without the file (issue #1728).
  */
-async function runCowClones(project: Project, task: Task, worktreePath: string): Promise<void> {
+async function runCowClones(project: Project, task: Task, worktreePath: string, sourceRoot = project.path): Promise<void> {
 	const results = project.clonePaths?.length
-		? await clonePaths(project.path, worktreePath, project.clonePaths)
+		? await clonePaths(sourceRoot, worktreePath, project.clonePaths)
 		: [];
 	const failures: CloneFailure[] = results
 		.filter((r) => r.error)
@@ -441,18 +443,32 @@ async function prepareTask(
 				assertLaunchAgentsInstalled([{ agentId: launch.agentId, configId: launch.configId }])
 			));
 		}
+		// Operations tasks and git projects with the workflow off run in a folder, not a fresh worktree.
 		const workDir = folderWorkDir(project, task);
 		if (workDir) {
-			// A project folder carries its own .dev3 config (env, agent accounts); an
-			// Operations folder has none to resolve.
-			const launchProject = project.kind === "virtual"
-				? project
-				: await preparationStep(task, effect.runId, "resolving-config", "resolveProjectConfig", () => (
-					repoConfig.resolveProjectConfig(project, workDir)
+			const opsWorktree = project.kind === "virtual" && isOpsWorktreeTask(task)
+				? await preparationStep(task, effect.runId, "creating-worktree", "createOpsWorktree", () => (
+					git.createOpsWorktree(task.attachedRepo!, task, workDir, task.baseBranch)
+				))
+				: null;
+			if (!opsWorktree) {
+				await preparationStep(task, effect.runId, "creating-worktree", "createOpsWorkDir", () => (
+					mkdir(workDir, { recursive: true })
 				));
-			await preparationStep(task, effect.runId, "creating-worktree", "createOpsWorkDir", () => (
-				mkdir(workDir, { recursive: true })
+			}
+			const launchProject = await preparationStep(task, effect.runId, "resolving-config", "resolveLaunchProject", () => (
+				resolveLaunchProject(project, task, workDir)
 			));
+			if (opsWorktree) {
+				if (launchProject.sparseCheckoutEnabled && launchProject.sparseCheckoutPaths?.length) {
+					await preparationStep(task, effect.runId, "applying-sparse-checkout", "applySparseCheckout", () => (
+						git.applySparseCheckout(workDir, launchProject.sparseCheckoutPaths!)
+					));
+				}
+				await preparationStep(task, effect.runId, "cloning-shared-paths", "runCowClones", () => (
+					runCowClones(launchProject, task, workDir, task.attachedRepo!)
+				));
+			}
 			await preparationStep(task, effect.runId, "launching-pty", "launchTaskPty", async () => {
 				const reopen = effect.isReopen ? await reopenCodexLaunch(launchProject, task, workDir, launch) : {};
 				await launchTaskPty(
@@ -463,10 +479,10 @@ async function prepareTask(
 					launch.configId,
 					true,
 					effect.isReopen && !reopen.shellNotice,
-					reopen,
+					{ ...(opsWorktree ? { branchName: opsWorktree.branchName } : {}), ...reopen },
 				);
 			});
-			return { worktreePath: workDir, branchName: null };
+			return { worktreePath: workDir, branchName: opsWorktree?.branchName ?? null };
 		}
 
 		const resolvedProject = await preparationStep(
@@ -642,13 +658,18 @@ export async function runCleanupScript(
 	// With the git workflow off the task ran in the user's own folder, which a
 	// cleanup script written for a throwaway worktree must never touch.
 	if (project.kind !== "virtual" && !taskUsesWorktree(project, task)) return;
-	const resolved = await resolveOperationalProjectConfig(project, task.worktreePath, { foreignCode: task.foreignCode });
+	// Only a worktree-mode task runs the repo's cleanup script (its setup ran). Any other Operations task
+	// may sit in the user's own checkout, where the repo's teardown is not ours to run.
+	const rootProject = rootProjectFor(project, task);
+	const resolved = project.kind === "virtual" && !isOpsWorktreeTask(task)
+		? project
+		: await resolveOperationalProjectConfig(rootProject, task.worktreePath, { foreignCode: task.foreignCode });
 	const script = resolved.cleanupScript?.trim() || 'echo "Task finished"';
 	const dialect = launchDialect();
 	const scriptPath = dev3TaskTempPath(task.id, `cleanup${dialect.scriptExtension}`);
 	const cleanupEnv = {
 		...(resolved.env ?? {}),
-		...buildCleanupScriptEnv(task, project, transition),
+		...buildCleanupScriptEnv(task, rootProject, transition),
 	};
 	await Bun.write(scriptPath, `${[...dialect.header(), script].join("\n")}\n`);
 	// The cleanup script is shown in a throwaway tmux session — POSIX-only.
@@ -675,10 +696,13 @@ export async function captureCompletedDiffStats(
 	project: Project,
 	task: Task,
 ): Promise<CompletedDiffStats | undefined> {
-	if (!taskUsesWorktree(project, task) || !task.worktreePath) return undefined;
+	const opsWorktree = isOpsWorktreeTask(task);
+	if ((!taskUsesWorktree(project, task) && !opsWorktree) || !task.worktreePath) return undefined;
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 	try {
-		const ref = await git.resolveCompareRef(project.path, baseBranch);
+		const ref = opsWorktree
+			? await git.resolveReadOnlyCompareRef(task.attachedRepo!, baseBranch)
+			: await git.resolveCompareRef(project.path, baseBranch);
 		let stats = await git.getBranchDiffStats(task.worktreePath, ref);
 		if (ref !== baseBranch && stats.files === 0 && stats.insertions === 0 && stats.deletions === 0) {
 			const local = await git.getBranchDiffStats(task.worktreePath, baseBranch);
@@ -710,7 +734,7 @@ async function columnAgentConfig(
 	if (column.status === "review-by-ai" && column.customColumnId === null) {
 		// Project Settings saves this into the main checkout's .dev3 files, so a
 		// worktree-only read would launch a stale config (#1940).
-		const resolved = await resolveOperationalProjectConfig(project, task.worktreePath, { foreignCode: task.foreignCode });
+		const resolved = await resolveOperationalProjectConfig(rootProjectFor(project, task), task.worktreePath, { foreignCode: task.foreignCode });
 		if (resolved.builtinColumnAgents && !resolved.builtinColumnAgents["review-by-ai"]) return null;
 		const configured = resolved.builtinColumnAgents?.["review-by-ai"];
 		return {
@@ -1190,7 +1214,14 @@ export async function executeLifecycleEffect(
 					// Only a managed Operations folder is ever deleted; a chosen folder or
 					// the project folder itself belongs to the user.
 					if (worktreePath?.startsWith(`${OPS_DIR}/`)) {
-						await rm(worktreePath, { recursive: true, force: true });
+						// No recorded path: the dir may hold work from before a reset or a failed launch.
+						const unrecorded = isOpsWorktreeTask(ctx.sourceTask) && !ctx.sourceTask.worktreePath;
+						if (unrecorded && existsSync(`${worktreePath}/.git`) && await git.isWorktreeDirtyOrUnknown(worktreePath)) {
+							log.warn("Kept a worktree with uncommitted or unreadable state and no recorded path", { taskId: ctx.sourceTask.id.slice(0, 8), worktreePath });
+						} else {
+							await rm(worktreePath, { recursive: true, force: true });
+							if (isOpsWorktreeTask(ctx.sourceTask)) await git.pruneWorktrees(ctx.sourceTask.attachedRepo!);
+						}
 					}
 				} else {
 					const target = worktreePath ? { ...ctx.sourceTask, worktreePath } : ctx.sourceTask;
@@ -1306,7 +1337,7 @@ export async function executeLifecycleEffect(
 				status: effect.status,
 				customColumnId: null,
 				// An Operations task keeps its folder path; nothing else of a finished task does.
-				...(ctx.project.kind === "virtual" ? {} : { worktreePath: null, branchName: null }),
+				...(ctx.project.kind === "virtual" && !isOpsWorktreeTask(ctx.task) ? {} : { worktreePath: null, branchName: null }),
 				...(ctx.completedDiffStats ? { completedDiffStats: ctx.completedDiffStats } : {}),
 				runtimeState: runtimeState({ phase: "idle" }),
 				// A finished task has nothing left to freeze; a leftover flag would

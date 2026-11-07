@@ -37,6 +37,8 @@ interface TaskGitActionsProps {
 	compact?: boolean;
 	onBranchStatusChange?: (meta: TaskBranchStatusMeta) => void;
 	onOpenInlineDiff?: (request: TaskInlineDiffRequest) => void;
+	/** Branch status and the changes summary only: no write actions, no PR badge. */
+	readOnly?: boolean;
 }
 
 type GitActionButton = ReactElement<{
@@ -113,6 +115,7 @@ export default function TaskGitActions({
 	compact = false,
 	onBranchStatusChange,
 	onOpenInlineDiff,
+	readOnly = false,
 }: TaskGitActionsProps) {
 	const t = useT();
 	const reducedMotion = useReducedMotion();
@@ -262,10 +265,10 @@ export default function TaskGitActions({
 		: undefined;
 
 	const prState = prInfo ? prBadgeDisplayState(prInfo, branchStatus, trustedPrStatusCache(task)) : null;
-	const reviewedPr = reviewedPrLink(task, prInfo);
+	const reviewedPr = readOnly ? null : reviewedPrLink(task, prInfo);
 	useReviewedPrBackfill(useMemo(() => [task], [task]));
 	const prTone = prState ? prStateTone(prState) : null;
-	const prBadge = prInfo && prTone && prState ? (
+	const prBadge = !readOnly && prInfo && prTone && prState ? (
 		<TaskPrStatusPopover prInfo={prInfo} projectId={project.id} taskId={task.id} onShowUnresolved={openUnresolvedInDiff} earlierPullRequests={earlierPullRequests(task)} displayState={prState}>
 			<button
 				type="button"
@@ -517,7 +520,7 @@ export default function TaskGitActions({
 			</span>
 		);
 
-	const gitActionButtons = isTaskActive && task.worktreePath ? (
+	const gitActionButtons = !readOnly && isTaskActive && task.worktreePath ? (
 		<span className="flex items-center gap-1 text-micro flex-shrink-0">
 			<GitActionTooltip content={commitTooltip} detail={t("ttip.git.commit")} disabled={commitDisabled}>
 					<button

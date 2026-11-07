@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { normalizeTaskArg } from "../shared/task-refs";
 import { dirname } from "node:path";
 import { ID_PREFIX_MIN_LENGTH } from "../shared/types";
 import type { Project } from "../shared/types";
@@ -666,7 +667,8 @@ export function socketDiagnostics(cwd: string = process.cwd()): string {
  * Without this, a typo'd `--task` prefix would be resolved to a full UUID and the
  * server's exact match would then mutate an arbitrary, wrong task. See decision 102.
  */
-export function expandShortId(id: string, context: CliContext | null): string {
+export function expandShortId(rawId: string, context: CliContext | null): string {
+	const id = normalizeTaskArg(rawId);
 	// Stable `seq:<N>` reference — resolved server-side (seq survives launches,
 	// ids of tasks launched by older versions did not). Pass through verbatim.
 	if (/^seq:\d+$/.test(id)) return id;

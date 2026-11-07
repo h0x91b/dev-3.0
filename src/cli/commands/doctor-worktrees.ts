@@ -307,7 +307,7 @@ function readRepoFacts(deps: WorktreeScanDeps, project: RawProject | null): Repo
 function recommend(entry: Omit<WorktreeEntry, "recommendation">): string {
 	switch (entry.category) {
 		case "live-open":
-			return `keep — task ${entry.seq ? `seq:${entry.seq}` : entry.shortId} is ${entry.taskStatus ?? "open"}`;
+			return `keep — task ${entry.seq ? `<seq:${entry.seq}>` : entry.shortId} is ${entry.taskStatus ?? "open"}`;
 		case "orphaned":
 			if (entry.needsForce) return `orphan; branch ${entry.branch} NOT merged — needs --force-unmerged`;
 			return "orphan, no task record — --prune-orphans, or --prune-older-than once old enough";

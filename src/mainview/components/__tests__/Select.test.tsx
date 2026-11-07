@@ -260,6 +260,40 @@ describe("section headings", () => {
 	});
 });
 
+describe("dividers and the active row", () => {
+	const divided: SelectOption[] = [
+		{ value: "a", label: "Alpha" },
+		{ value: "b", label: "Beta" },
+		{ value: "manage", label: "Manage", divider: true },
+	];
+
+	function DividerHarness() {
+		const [value, setValue] = useState("a");
+		return <Select id="divided" value={value} options={divided} onChange={setValue} />;
+	}
+
+	it("draws a separator that is not an option, so arrow keys step straight over it", async () => {
+		const user = userEvent.setup();
+		render(<DividerHarness />);
+		await user.click(trigger());
+		expect(screen.getAllByRole("separator")).toHaveLength(1);
+		expect(screen.getAllByRole("option")).toHaveLength(3);
+		await user.keyboard("{ArrowDown}{ArrowDown}");
+		expect(activeOptionLabel()).toBe("Manage");
+	});
+
+	it("marks the active row with a fill, never a ring, and keeps it apart from the selected row", async () => {
+		const user = userEvent.setup();
+		render(<DividerHarness />);
+		await user.click(trigger());
+		await user.keyboard("{ArrowDown}");
+		const active = screen.getByRole("option", { name: "Beta" });
+		expect(active.className).not.toContain("ring-");
+		expect(active.className).toContain("bg-overlay-hover");
+		expect(screen.getByRole("option", { name: "Alpha" }).className).toContain("bg-accent/15");
+	});
+});
+
 describe("growList", () => {
 	function widthOf(): { width: string; minWidth: string } {
 		const panel = document.querySelector("[role=listbox]") as HTMLElement;

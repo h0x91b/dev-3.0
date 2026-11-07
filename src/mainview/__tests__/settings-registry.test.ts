@@ -24,6 +24,7 @@ describe("settings registry", () => {
 			"agents",
 			"accounts",
 			"models",
+			"extensions",
 			"workspace",
 			"system",
 		]);

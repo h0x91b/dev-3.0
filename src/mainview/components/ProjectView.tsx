@@ -5,7 +5,7 @@ import { toast } from "../toast";
 import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import type { NavigationGuard } from "../navigation-guard";
 import { api } from "../rpc";
-import KanbanBoard from "./KanbanBoard";
+import BoardHost from "../board-views/BoardHost";
 import KanbanBoardSkeleton from "./KanbanBoardSkeleton";
 import BoardLoadFailed from "./BoardLoadFailed";
 import { useRpcStatus } from "../hooks/useDiagnostics";
@@ -389,7 +389,7 @@ function ProjectView({
 
 	return (
 		<div className="flex-1 min-h-0 w-full overflow-hidden flex flex-col">
-			<KanbanBoard
+			<BoardHost
 				project={project}
 				space={space}
 				memberProjects={memberProjects}

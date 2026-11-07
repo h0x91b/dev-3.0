@@ -1,4 +1,5 @@
 import type { Epic, EpicMember, Task, TaskPriority, TaskStatus } from "../../shared/types";
+import { formatTaskRef } from "../../shared/task-refs";
 import { exitEpicRequestFailed } from "./epic";
 import {
 	STATUS_LABELS,
@@ -91,7 +92,7 @@ async function listChildren(args: ParsedArgs, socketPath: string, context: CliCo
 		process.stdout.write(`${JSON.stringify({ schemaVersion: 1, parent, children: rows }, null, 2)}\n`);
 		return;
 	}
-	process.stdout.write(`Children of #${parent.seq} · ${parent.projectName} — ${parent.title}\n\n`);
+	process.stdout.write(`Children of ${formatTaskRef(parent.seq)} · ${parent.projectName} — ${parent.title}\n\n`);
 	if (rows.length === 0) {
 		process.stdout.write("No children.\n");
 		return;

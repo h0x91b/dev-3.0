@@ -1,6 +1,7 @@
 import { assertTaskWorkspacePresent } from "../../task-workspace-guard";
 import type { AgentFamily, ColumnAgentConfig, PermissionMode, Project, Task } from "../../../shared/types";
 import { getPrimaryStopTarget, isCoordinatorTask } from "../../../shared/types";
+import { rootProjectFor } from "../../ops-worktree";
 import { coordinatorLaunchDefault } from "../../../shared/coordinator-launch";
 import * as data from "../../data";
 import * as git from "../../git";
@@ -324,6 +325,8 @@ export async function launchTaskPty(
 ): Promise<string | null | undefined> {
 	// First, before any trust/hook/config write: tmux would start a missing cwd in $HOME.
 	assertTaskWorkspacePresent(project, worktreePath, task);
+	// Scripts and agent env see the repo as the project root; `project` itself keeps keying the task file.
+	const rootProject = rootProjectFor(project, task);
 	// Only a fresh coordinator launch with no picked agent; every other task keeps the global default.
 	if (!agentId && !resume && !opts?.shellNotice && isCoordinatorTask(task)) {
 		const coordinator = coordinatorLaunchDefault(await agents.getAllAgents(), await loadSettings());
@@ -362,7 +365,7 @@ export async function launchTaskPty(
 		taskTitle: task.title,
 		taskDescription: resumeFresh ? "" : task.description,
 		projectName: project.name,
-		projectPath: project.path,
+		projectPath: rootProject.path,
 		worktreePath,
 	};
 	// The brief reaches the agent as a launch argument, and Claude Code fires
@@ -378,13 +381,14 @@ export async function launchTaskPty(
 	let resolvedAgentFamily: AgentFamily | undefined;
 	let resolvedLaunchModel: string | undefined;
 	let mainPaneEntry: NonNullable<Task["sessionState"]>["panes"][number] | null = null;
-	const projectEnv = await repoConfig.resolveProjectEnv(project, worktreePath, { foreignCode: task.foreignCode });
+	const projectEnv = await repoConfig.resolveProjectEnv(rootProject, worktreePath, { foreignCode: task.foreignCode });
 	const reservationKey = `${task.id}:${crypto.randomUUID()}`;
 	// The account the session really runs on: the default applied, or Auto's pick.
 	let launchAccountId = accountId;
 	let accountPick: agents.ResolvedAgentCommand["accountPick"];
 	let staleAccountDropped = false;
 	let freshLaunchSessionId: string | null = null;
+	let agentFromDefault = false;
 
 	try {
 		// Recovery carries the pane's account alongside its session id. Older pane
@@ -429,7 +433,7 @@ export async function launchTaskPty(
 		} else {
 			log.info("Resolving command for project", { projectName: project.name });
 			const resolved = await agents.resolveCommandForProject(
-				project,
+				rootProject,
 				task.title,
 				ctx.taskDescription,
 				worktreePath,
@@ -445,6 +449,13 @@ export async function launchTaskPty(
 			if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
 			accountPick = resolved.accountPick;
 			staleAccountDropped = !!resolved.staleAccountDropped;
+			// No pick runs the global default. Name it on the pane only: the task keeps
+			// following the default on its next launch.
+			if (resolved.agent) {
+				agentId = resolved.agent.id;
+				configId = resolved.config?.id ?? null;
+				agentFromDefault = true;
+			}
 		}
 		if (staleAccountDropped) await notifyStaleAccountDropped(task);
 
@@ -463,7 +474,10 @@ export async function launchTaskPty(
 			const carriedOriginCwd = resume && effectiveSessionId && effectiveSessionId === priorMain?.sessionId
 				? priorMain.sessionOriginCwd ?? undefined
 				: undefined;
+			// A resume passes the pane's own agent back in, so the default marker rides along with it.
+			const carriedDefault = resume && !!priorMain?.agentFromDefault && agentId === priorMain.agentId;
 			const paneEntry = {
+				main: true,
 				agentCmd: resolvedBaseCmd,
 				sessionId: effectiveSessionId ?? null,
 				agentId: agentId ?? task.agentId,
@@ -472,6 +486,7 @@ export async function launchTaskPty(
 					? codexAccountIdForHome(extraEnv.CODEX_HOME) : undefined) ?? launchAccountId,
 				agentFamily: resolvedAgentFamily,
 				sessionOriginCwd: carriedOriginCwd,
+				agentFromDefault: agentFromDefault || carriedDefault || undefined,
 			};
 			mainPaneEntry = paneEntry;
 			const sessionState = { panes: [paneEntry, ...(resume ? task.sessionState?.panes.slice(1).map((pane) => ({ ...pane, paneId: null })) ?? [] : [])] };
@@ -516,7 +531,7 @@ export async function launchTaskPty(
 	const env = {
 		...AGENT_ENV_DEFAULTS,
 		...projectEnv,
-		...buildTaskLifecycleEnv(project, task, worktreePath, opts?.branchName),
+		...buildTaskLifecycleEnv(rootProject, task, worktreePath, opts?.branchName),
 		...buildAgentEnv(extraEnv, task.id),
 		...artifactTemplateEnv,
 	};
@@ -540,7 +555,7 @@ export async function launchTaskPty(
 
 	// A plain shell runs no agent, so there is nothing to trust — and nothing to write into ~/.claude.json.
 	if (!opts?.shellNotice) {
-		await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, launchAccountId, task.foreignCode, resolvedAgentFamily, env);
+		await ensureAgentTrust(worktreePath, rootProject.path, resolvedBaseCmd, launchAccountId, task.foreignCode, resolvedAgentFamily, env);
 	}
 
 	// Hooks splice a flag after the command's FIRST token, so they must land on the
@@ -568,8 +583,15 @@ export async function launchTaskPty(
 		// An older shared CLI sends neither receipt: gating on it would drop the
 		// handoff and print "Unknown command" at every exit, so keep today's path.
 		&& await hookCliSupports(AGENT_SESSION_STARTED_METHOD) && await hookCliSupports(AGENT_EXITED_METHOD)) {
-		noteAgentLaunched(task.id, trackedSessionId);
+		noteAgentLaunched(task.id, trackedSessionId, { startReceipts: true });
 		exitReport = agentExitReportArgv(task.id, trackedSessionId);
+	} else if (!opts?.shellNotice && !skipSessionPersist && resolvedBaseCmd && resolvedBaseCmd !== "bash"
+		&& await hookCliSupports(AGENT_EXITED_METHOD)) {
+		// No start receipts here (Codex, Gemini, a Claude resume…): a bare launch id
+		// still ties the exit to this spawn, and only a non-zero code moves the card.
+		const launchId = crypto.randomUUID();
+		noteAgentLaunched(task.id, launchId, { startReceipts: false });
+		exitReport = agentExitReportArgv(task.id, launchId);
 	}
 
 	if (resolvedBaseCmd && resolvedBaseCmd !== "bash") {
@@ -774,11 +796,15 @@ export async function launchColumnAgent(
 	assertTaskWorkspacePresent(project, worktreePath, task);
 
 	const { agentId, configId, prompt: rawPrompt } = agentConfig;
+	const rootProject = rootProjectFor(project, task);
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 	// `{baseBranch}` becomes the ref this task is actually compared against — a
 	// column agent told to diff against `origin/<base>` in a repo with no remote
 	// reviews nothing at all.
-	const prompt = rawPrompt.replace(/\{baseBranch\}/g, await git.resolveCompareRef(project.path, baseBranch));
+	const compareRef = project.kind === "virtual" && task.attachedRepo
+		? await git.resolveReadOnlyCompareRef(task.attachedRepo, baseBranch)
+		: await git.resolveCompareRef(project.path, baseBranch);
+	const prompt = rawPrompt.replace(/\{baseBranch\}/g, compareRef);
 
 	log.info("launchColumnAgent START", {
 		taskId: task.id.slice(0, 8),
@@ -794,7 +820,7 @@ export async function launchColumnAgent(
 		taskTitle: `${options.paneTitle}: ${task.title}`,
 		taskDescription: prompt,
 		projectName: project.name,
-		projectPath: project.path,
+		projectPath: rootProject.path,
 		worktreePath,
 	};
 	// A column agent runs in the same worktree, so its own launch prompt reaches
@@ -807,7 +833,7 @@ export async function launchColumnAgent(
 	let resolvedPermissionMode: PermissionMode | undefined;
 	let resolvedAgentFamily: AgentFamily | undefined;
 	let launchAccountId: string | null | undefined;
-	const projectEnv = await repoConfig.resolveProjectEnv(project, worktreePath, { foreignCode: task.foreignCode });
+	const projectEnv = await repoConfig.resolveProjectEnv(rootProject, worktreePath, { foreignCode: task.foreignCode });
 	const reservationKey = `${task.id}:column:${crypto.randomUUID()}`;
 
 	try {
@@ -834,7 +860,7 @@ export async function launchColumnAgent(
 		...buildAgentEnv(extraEnv, task.id),
 		...ensureArtifactTemplateEnv(project, task, worktreePath),
 	};
-	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, launchAccountId, task.foreignCode, resolvedAgentFamily, env);
+	await ensureAgentTrust(worktreePath, rootProject.path, resolvedBaseCmd, launchAccountId, task.foreignCode, resolvedAgentFamily, env);
 	tmuxCmd = await applyAgentHooksToCommand(worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget: getPrimaryStopTarget(project.autoReviewEnabled, task.taskType),
 		permissionMode: resolvedPermissionMode,
@@ -892,6 +918,8 @@ export function cleanupTaskTmuxState(taskId: string): void {
  * 2. If exactly one entry has paneId=null and exactly one live pane is
  *    unmatched, assign it (the setup pane exited, leaving the real agent).
  * 3. If no live panes remain and null-paneId entries exist, remove them too.
+ * 4. If the task-level agent belonged to a removed pane, put the surviving main
+ *    pane's agent back on the task and push the update to the renderer.
  */
 export async function handlePaneExited(taskId: string, _exitedPaneId: string): Promise<void> {
 	try {
@@ -912,7 +940,9 @@ export async function handlePaneExited(taskId: string, _exitedPaneId: string): P
 		const unmatchedLive = [...livePaneIds].filter(id => !matchedIds.has(id));
 		const nullEntries = surviving.filter(p => !p.paneId && !p.parked);
 
+		let adoptedFrom: (typeof panes)[number] | undefined;
 		if (nullEntries.length === 1 && unmatchedLive.length === 1) {
+			adoptedFrom = nullEntries[0];
 			// High confidence: the one unmatched live pane is the one null entry's agent
 			const adopted = { ...nullEntries[0], paneId: unmatchedLive[0] };
 			surviving = surviving.map(p => p === nullEntries[0] ? adopted : p);
@@ -923,7 +953,18 @@ export async function handlePaneExited(taskId: string, _exitedPaneId: string): P
 		}
 
 		if (surviving.length !== panes.length || surviving.some((p, i) => p.paneId !== panes[i].paneId)) {
-			await data.updateTask(project, task.id, { sessionState: { panes: surviving } });
+			// spawnAgentInTask writes the task-level agent. When the pane it points at is gone, restore it
+			// from the surviving main pane (flagged at launch); extra, hunter and legacy unflagged panes never do.
+			const sameAgent = (p: { agentId?: string | null; configId?: string | null }) =>
+				(p.agentId ?? null) === (task.agentId ?? null) && (p.configId ?? null) === (task.configId ?? null);
+			const removed = panes.filter(p => p !== adoptedFrom && !surviving.includes(p));
+			const owner = surviving.find(p => p.main && !p.parked);
+			const restoreAgent = !!owner && removed.some(sameAgent) && !surviving.some(p => !p.parked && sameAgent(p));
+			const updated = await data.updateTask(project, task.id, {
+				sessionState: { panes: surviving },
+				...(restoreAgent ? { agentId: owner.agentId ?? null, configId: owner.configId ?? null } : {}),
+			});
+			if (restoreAgent) getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 			log.info("Reconciled sessionState after pane exit", {
 				taskId: taskId.slice(0, 8),
 				before: panes.length,

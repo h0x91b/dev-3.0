@@ -79,7 +79,7 @@ describe("dev3 peek", () => {
 		await handlePeek(args(), SOCKET, CTX);
 
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.peek", expect.objectContaining({ taskId: TASK_ID }));
-		expect(stdoutOutput).toContain("Task 42 · Fix auth race");
+		expect(stdoutOutput).toContain("<seq:42> · Fix auth race");
 		expect(stdoutOutput).toContain("waiting for approval");
 	});
 
@@ -273,7 +273,7 @@ describe("dev3 peek --follow", () => {
 
 		await followFor({ follow: "true", interval: "1" }, 3, 1000);
 
-		expect(stdoutOutput.match(/^Task 42 · /gm)).toHaveLength(2);
+		expect(stdoutOutput.match(/^<seq:42> · /gm)).toHaveLength(2);
 		expect(stdoutOutput).toContain("first screen");
 		expect(stdoutOutput).toContain("second screen");
 	});

@@ -1,4 +1,5 @@
 import type { AgentUsageDay, AgentUsageReport, ProductivityStatEvent, ProductivityStats, SystemMemorySnapshot, TaskUsageReport } from "../../shared/types";
+import { formatTaskRef } from "../../shared/task-refs";
 import type { AgentRateLimitsReport } from "../../shared/rate-limits";
 import type { PendingApprovalSummary } from "../../shared/agent-approval";
 import type { ModelRate } from "../../shared/agent-pricing";
@@ -210,7 +211,7 @@ async function taskUsage(args: ParsedArgs, socketPath: string, context: CliConte
 		return;
 	}
 	const { totals, coverage } = report;
-	process.stdout.write(`Task #${report.seq} ${truncate(report.title, 60)} (${report.status})\n`);
+	process.stdout.write(`Task ${formatTaskRef(report.seq)} ${truncate(report.title, 60)} (${report.status})\n`);
 	process.stdout.write(`Working dir: ${report.workingDir}${report.worktreeExists ? "" : " (removed)"}\n\n`);
 	if (report.models.length === 0) {
 		process.stdout.write(`No agent usage found in this task's Claude or Codex transcripts${report.coverage.uncoveredArchivedSessions ? ` (${report.coverage.uncoveredArchivedSessions} archived session(s) have no transcript left)` : ""}.\n`);
@@ -254,7 +255,10 @@ async function limits(args: ParsedArgs, socketPath: string): Promise<void> {
 		return;
 	}
 	const rows = report.snapshots.flatMap((s) => {
-		const account = s.accountId ?? "system";
+		const account =
+			s.source === "kimi" && s.providerId
+				? (report.usageProviders?.find((p) => p.id === s.providerId)?.label ?? s.providerId)
+				: (s.accountId ?? "system");
 		if (s.windows.length === 0) return [[s.source, account, "-", "no limits reported", "-", formatWhen(s.capturedAt)]];
 		return s.windows.map((w) => [
 			s.source, account, w.id, `${Math.round(w.usedPercent)}%`, formatWhen(w.resetsAt), formatWhen(s.capturedAt),

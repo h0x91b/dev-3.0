@@ -32,6 +32,7 @@ const keymap = {
 	"keymap.shortcut.taskSwitcherGlobal": "Cycle active tasks (all projects)",
 	"keymap.shortcut.taskHints": "Jump to a task or project by hint",
 	"keymap.shortcut.goTo": "Go to… (D dashboard · P project · T tasks · S settings · digit = project N; P/T + digit = project N board/tasks)",
+	"keymap.shortcut.boardView": "Board view (digit = Nth view · V = previous view)",
 	"keymap.shortcut.zoomOutToSpace": "Zoom out to the space board",
 	"keymap.shortcut.focusSearch": "Focus search",
 	"keymap.shortcut.escape": "Close dialog / step back (not inside a task — the agent gets it)",

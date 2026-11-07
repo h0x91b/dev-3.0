@@ -17,6 +17,7 @@ import {
 	type HeldAgentMessageReport,
 	type HeldDeliveryResult,
 	type HeldMessageBatch,
+	type HookDeliverable,
 } from "./agent-message-hold";
 import { noteDev3TypedPrompt, retractDev3TypedPrompt } from "./agent-typed-prompt-claims";
 import { AGENT_MESSAGE_BURST_SEPARATOR } from "../shared/agent-message-envelope";
@@ -331,6 +332,7 @@ function holdAgentMessageForPane(
 	prompt: string,
 	epilogue?: AgentPromptEpilogue,
 	verify?: () => Promise<string | null>,
+	hook?: HookDeliverable,
 ): AgentPromptDelivery {
 	const context = { taskId: task.id.slice(0, 8), paneId };
 	const holdKey = agentMessageHoldKey("tmux", task.id, paneId);
@@ -349,6 +351,7 @@ function holdAgentMessageForPane(
 			},
 			bytes: utf8Length(prompt),
 			...(verify ? { verify } : {}),
+			...(hook ? { hook } : {}),
 			...(epilogue
 				? {
 					epilogue: async (budgetBytes) => {
@@ -443,13 +446,14 @@ export async function holdMessageForPane(
 	prompt: string,
 	epilogue?: AgentPromptEpilogue,
 	verify?: () => Promise<string | null>,
+	hook?: HookDeliverable,
 ): Promise<AgentPromptDelivery> {
 	const { tmuxSession, socket } = tmuxRouting(task);
 	const live = await listLivePaneIds(tmuxSession, socket);
 	if (!live.includes(paneId)) {
 		return { status: "not-delivered", reason: "pane-absent", detail: `pane ${paneId} is not live in ${tmuxSession}` };
 	}
-	return holdAgentMessageForPane(task, paneId, prompt, epilogue, verify);
+	return holdAgentMessageForPane(task, paneId, prompt, epilogue, verify, hook);
 }
 
 /**

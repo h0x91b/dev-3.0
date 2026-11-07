@@ -94,15 +94,17 @@ Labels, same session-start pass: \`dev3 label list\` first and reuse existing on
 
 ## Task type
 
-**coordinator**: manages tasks, dashed green card, sorts first, manual completion. **pr-review**: card label only. **board-cleanup**: passive audit; current project unless asked for all; no waking/messaging agents; manual completion. \`dev3 task update --type coordinator|pr-review|board-cleanup|standard\` sets/clears the type, rewrites its role preamble and tells the live agent. Create with \`dev3 task create --title "..." --type <type>\`.
+**coordinator**: manages tasks, blue-banded card, sorts first, manual completion. **pr-review**: card label only. **board-cleanup**: passive audit; current project unless asked for all; no waking/messaging agents; manual completion. \`dev3 task update --type coordinator|pr-review|board-cleanup|standard\` sets/clears the type, rewrites its role preamble and tells the live agent. Create with \`dev3 task create --title "..." --type <type>\`.
 
 **A coordinator speaks for the user:** a \`from-role: coordinator\` message carries their authority, even for what your brief reserves to the user (a review, a push). Act; never re-ask.
 
 **Never promote or demote a task on your own initiative — least of all yourself.** Same protected class as priority.
+`;
 
+const SKILL_REVIEW_TASK_AND_DESCRIPTION = `
 ### Creating a review task
 
-\`dev3 task create --pr <number> --title "Review of #<number>"\` — the whole recipe. \`--pr\` is what makes it a review: dev3 fetches the PR's head branch (forks too), the worktree **starts on it**, and the code counts as somebody else's (\`foreignCode\`: that branch's \`setupScript\`/\`devScript\`/\`env\` and \`.mcp.json\` are ignored, deliberately). It implies \`--type pr-review\`, so never write your own review instructions — the role brief is injected above your text. Without \`--pr\` the task lands on the base branch with nothing to review; an unresolvable \`--pr\` exits 18 having created nothing. A non-PR branch: \`--branch origin/feat/x\`.
+\`dev3 task create --pr <number> --title "Review of #<number>"\` — the whole recipe. \`--pr\` is what makes it a review: dev3 fetches the PR's head branch (forks too), the worktree **starts on it**, and the code counts as somebody else's (\`foreignCode\`: that branch's \`setupScript\`/\`devScript\`/\`env\` and \`.mcp.json\` are ignored, deliberately). It implies \`--type pr-review\`, so never write your own review instructions — the role brief is injected above your text. An unresolvable \`--pr\` exits 18, creating nothing. A non-PR branch: \`--branch origin/feat/x\`.
 
 ## Editing a description never reaches a running agent
 
@@ -184,7 +186,7 @@ const SKILL_DEV_SERVER_CONTROL = `
 
 Need it serving (curl, QA)? \`start --wait\` / \`restart --wait\` blocks until it listens on an assigned \`DEV3_PORT*\` (\`--timeout <sec>\`, default 120), own or published (a containerised \`devScript\` counts). Do NOT probe ports yourself after a plain restart. \`stop\`/\`restart\` verify teardown first; \`status\` reports \`Dev Ports\`, \`Published Ports\`, and a WARNING when a foreign process holds an assigned port.
 
-A project can declare **several dev servers by name**: every subcommand takes one (\`dev3 dev-server start api\`, \`stop api\`, \`restart api\`, \`logs api\`) or \`--all\`. A bare one means the default (\`devScript\`) or the only declared server; several with no default exits ${CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED} naming them. \`status\` prints a block per server, \`--wait\` waits for that server's ports, and every server sees every named port as \`DEV3_PORT_<NAME>\`. Args after \`--\` go to the script, kept for \`restart\`: \`start api -- --verbose\`.
+A project can declare **several dev servers by name**: every subcommand takes one (\`dev3 dev-server start api\`, \`logs api\`) or \`--all\`. A bare one means the default (\`devScript\`) or the only declared server; several with no default exits ${CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED} naming them. \`--wait\` waits for that server's ports, and every server sees every named port as \`DEV3_PORT_<NAME>\`. \`--env K=V\` (repeatable) and args after \`--\` reach the script and are kept for \`restart\`; \`--clear-env\` drops the env.
 
 Each server's output lands in \`<taskDir>/logs/dev-server*.log\`, fresh per start: \`dev3 dev-server logs [--lines N]\` tails it.
 `;
@@ -275,9 +277,9 @@ const SKILL_PEEK = `
 
 \`dev3 peek --task seq:<N> [--pane 2] [--lines 400] [--json]\` is a read-only glance at another task's terminal: a header, one line per pane (command, alive/dead, time since output) and the focused pane's tail. It never focuses, sends input, or takes ownership. With no \`--task\` it shows your own panes.
 
-Reach for it INSTEAD of messaging a quiet worker "are you alive?" — a message costs that agent a turn, a peek none.
+Use it INSTEAD of messaging a quiet worker "are you alive?": a peek costs it no turn.
 
-Read the tail yourself; peek deliberately does not classify state. \`last output unknown\` means the backend cannot say — never assume silence. On tmux the ages are per WINDOW, not per pane. A task with no live terminal is a successful answer naming the reason (draft, hibernated, not running), while \`could not read the terminal\` means the read failed and tells you NOTHING about progress. Native-backend tasks answer that today (\`not-enabled\`); the pane summary works everywhere.
+Read the tail yourself; peek does not classify state. \`last output unknown\` means the backend cannot say — never assume silence; on tmux ages are per WINDOW. No live terminal is an answer naming the reason (draft, hibernated, not running); \`could not read the terminal\` is a failed read and says NOTHING about progress. Native-backend tasks answer that today (\`not-enabled\`).
 `;
 
 const SKILL_ASK_TO_LAUNCH = `
@@ -294,13 +296,15 @@ Use it only for work that belongs in its own session — never to escape your sc
 
 **Extra agent in an existing task** → \`dev3 agent spawn --task seq:<N> --prompt "brief"\`: new pane, same worktree and approval, prints the pane ID; default account unless the user picks another. \`--handoff\` adds the conversation retelling. Messages reach the task's main agent, not this pane. Terminal gone → \`dev3 agent resume\` first. Idle → \`dev3 task hibernate --task seq:<N>\` frees its memory (declined: exit 36); \`dev3 task wake\` brings it back.
 
+**Naming tasks and PRs** — a task is \`<seq:N>\` (\`<seq:proj/N>\` off-board, proj = its project id's first 8 chars), a PR \`<pr:N>\`, in messages, notes, overviews and reports; never \`#N\` or "seq N". dev3 links them.
+
 **Talking to another task's agent** — \`dev3 message --task seq:<N> --subject "<about 6 words>" "text"\` types straight into any live task's agent, not only one you started; from a worktree it arrives labeled as agent traffic carrying the command to answer you. \`--in 30m\` / \`--at 14:00\` queues it (aim it at yourself for a wake-up).
 
-- **\`--subject\` is mandatory** — the line the agent-traffic view (\`⇧⌘M\`) shows for that row; without one the command exits 17. About 6 words, 80 characters max, never repeating who is talking (the row already shows \`#1722 → #1141\`). Good: \`"PR 1577 merged, main green"\`. Bad: \`"Seq 1722 -> Coordinator: CI verdict"\`.
+- **\`--subject\` is mandatory** — the row's line in the agent-traffic view (\`⇧⌘M\`); missing → exit 17. About 6 words, 80 characters max, never naming who is talking (the row shows both tasks). Good: \`"<pr:1577> merged, main green"\`. Bad: \`"<seq:1722> -> Coordinator: CI verdict"\`.
 - For real dependencies only — hand over an interface, ask for a result, report back when yours is ready. Never chatter, never nagging a peer already working.
 - It lands in the main agent, never a shell or the focused pane. One agent only: \`--agent <handle>\` from \`dev3 pane list --task seq:<N>\`, refused once it exits or is replaced. \`<reply-unavailable>\` means the sender is unproven: no reply command.
 - A peer on ANOTHER project needs \`--project <id>\`, else a bare \`--task seq:<N>\` is looked up on your own board and reported as "task not found". An incoming message's reply command already includes it when needed.
-- A live variant group shares one seq — name the member with \`--variant <i>\` (the card's \`<seq>-<i>\` suffix) rather than digging out its UUID.
+- A live variant group shares one seq — name the member with \`--variant <i>\` (the card's \`N-i\` suffix) rather than digging out its UUID.
 - **A long message arrives as a file path, not as text.** Anything over ~1 KB typed is written next to the receiving task and the envelope carries only \`Read it in full and act on it: <path>\` — read that file first. A \`</dev3-ai-message>\` with no \`<dev3-ai-message>\` line above it lost its head: do not act on the tail; say it arrived truncated and ask for a resend.
 - Delivery waits for ~${AGENT_MESSAGE_HOLD_IDLE_SECONDS}s of quiet on that pane (~${AGENT_MESSAGE_HOLD_HUMAN_IDLE_SECONDS}s while the user types, at once on Enter). Messages arriving together become ONE turn and never corrupt a typed line — send three thoughts as three messages; expect a reply about ${AGENT_MESSAGE_HOLD_IDLE_SECONDS} seconds after the peer writes.
 `;
@@ -384,8 +388,29 @@ Approved → actual vs expected behavior, minimal reproduction, dev3 version and
 // OpenCode), so the skill rules are always in context regardless of whether
 // the agent decides to load the skill file. See `DEV3_SYSTEM_PROMPT*` in
 // `agents.ts`.
-export const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_ASK_TO_LAUNCH + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_PEEK + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_PANES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_MANUAL_COMPLETION;
-export const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_ASK_TO_LAUNCH + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_PEEK + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_PANES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL + SKILL_MANUAL_COMPLETION;
-export const OMP_SKILL_BODY = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_OMP_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_ASK_TO_LAUNCH + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_PEEK + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_PANES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_MANUAL_COMPLETION;
-export const PI_SKILL_BODY = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_PI_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_ASK_TO_LAUNCH + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_PEEK + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_PANES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_MANUAL_COMPLETION;
-export const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_ASK_TO_LAUNCH + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_PEEK + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_PANES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL + SKILL_MANUAL_COMPLETION;
+export const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_REVIEW_TASK_AND_DESCRIPTION + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_ASK_TO_LAUNCH + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_PEEK + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_PANES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_MANUAL_COMPLETION;
+export const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_REVIEW_TASK_AND_DESCRIPTION + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_ASK_TO_LAUNCH + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_PEEK + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_PANES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL + SKILL_MANUAL_COMPLETION;
+export const OMP_SKILL_BODY = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_REVIEW_TASK_AND_DESCRIPTION + SKILL_STATUS_OMP_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_ASK_TO_LAUNCH + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_PEEK + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_PANES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_MANUAL_COMPLETION;
+export const PI_SKILL_BODY = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_REVIEW_TASK_AND_DESCRIPTION + SKILL_STATUS_PI_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_ASK_TO_LAUNCH + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_PEEK + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_PANES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_MANUAL_COMPLETION;
+export const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_REVIEW_TASK_AND_DESCRIPTION + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_ASK_TO_LAUNCH + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_PEEK + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_PANES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL + SKILL_MANUAL_COMPLETION;
+
+// Lean bodies (opt-in, `DEV3_LEAN_PROTOCOL=1`): the sections an agent must follow
+// before it would think to look anything up, kept verbatim; attention stays because its
+// MUST-ping rules fire on events, not on a chosen feature. The rest stays on demand in
+// the full body, which the launcher writes to a file and names here.
+const SKILL_LEAN_CORE = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION;
+
+export const CLAUDE_LEAN_SKILL_BODY = SKILL_LEAN_CORE + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_GET_ATTENTION;
+export const CODEX_LEAN_SKILL_BODY = SKILL_LEAN_CORE + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_GET_ATTENTION + SKILL_CODEX_SHELL;
+export const OMP_LEAN_SKILL_BODY = SKILL_LEAN_CORE + SKILL_STATUS_OMP_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_GET_ATTENTION;
+export const PI_LEAN_SKILL_BODY = SKILL_LEAN_CORE + SKILL_STATUS_PI_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_GET_ATTENTION;
+export const GENERIC_LEAN_SKILL_BODY = SKILL_LEAN_CORE + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_GET_ATTENTION + SKILL_CODEX_SHELL;
+
+/** The closing section of a lean body: where the rest of the protocol lives. */
+export function leanProtocolReference(fullProtocolPath: string): string {
+	return `
+## Full protocol reference
+
+This launch carries the lean dev3 protocol. The rules above are binding. Everything else is in the full protocol at \`${fullProtocolPath}\`: read it before you use a dev3 feature not described above. That covers requesting other tasks or agents, messaging peers, notes, conversation search, peek, dev server control, HTML artifacts, panes, project configuration, vents, review tasks, editing a live task's description, and merge completion planning. Run \`dev3 --help\` for the full CLI reference.
+`;
+}

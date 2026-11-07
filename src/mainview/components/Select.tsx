@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { AgentCheckResult } from "../../shared/types";
 import { useOverlayLayer } from "../utils/useOverlayLayer";
 import { useReducedMotion } from "../utils/useReducedMotion";
+import { OverflowScroll } from "./OverflowScroll";
 
 export interface SelectOption {
 	value: string;
@@ -18,6 +19,9 @@ export interface SelectOption {
 	 *  listbox's option indices stay untouched. Options carrying the same section
 	 *  must be adjacent — the caller owns the order. */
 	section?: string;
+	/** Draws a separator above this option (e.g. before a trailing action). Like
+	 *  `section`, it is not a row: keyboard navigation and indices skip it. */
+	divider?: boolean;
 }
 
 /** Substring match that ignores case and separators, so "xhigh" finds "X-High". */
@@ -196,6 +200,7 @@ function SelectListbox({
 					) : null;
 				return (
 					<Fragment key={opt.value}>
+					{opt.divider && index > 0 && <div role="separator" className="my-1 h-px bg-edge" />}
 					{heading}
 					<button
 						type="button"
@@ -205,22 +210,25 @@ function SelectListbox({
 						tabIndex={-1}
 						aria-selected={isSelected}
 						aria-disabled={opt.disabled || undefined}
+						data-active={isActive || undefined}
 						onMouseDown={(e) => e.preventDefault()}
 						onMouseEnter={() => onHover(index)}
 						onClick={() => onPick(index)}
+						// The active row (keyboard or pointer) is a fill, not a ring: a ring that
+						// follows the mouse reads as a stray focus box. Selected stays accent-tinted.
 						className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-center gap-2 ${
-							isActive ? "ring-1 ring-inset ring-accent" : ""
-						} ${
 							opt.disabled
-								? "text-fg-muted hover:bg-overlay-hover"
+								? `text-fg-muted ${isActive ? "bg-overlay-hover" : "hover:bg-overlay-hover"}`
 								: isSelected
-									? "bg-accent/15 text-fg font-medium"
-									: "text-fg-2 hover:bg-overlay-hover hover:text-fg"
+									? `${isActive ? "bg-accent/25" : "bg-accent/15"} text-fg font-medium`
+									: isActive
+										? "bg-overlay-hover text-fg"
+										: "text-fg-2 hover:bg-overlay-hover hover:text-fg"
 						}`}
 					>
 						{/* The lock is the option's state, not its content, so it survives a
 						    caller's renderOption — a custom row must not silently drop it. */}
-						<span className="flex-1 min-w-0 truncate">
+						<OverflowScroll className="flex-1" fullText={opt.label}>
 							{renderOption && !opt.custom ? (
 								opt.disabled ? (
 									<span className="flex items-center gap-1.5 opacity-70">
@@ -238,7 +246,7 @@ function SelectListbox({
 							) : (
 								opt.label
 							)}
-						</span>
+						</OverflowScroll>
 						{isSelected && <CheckIcon />}
 					</button>
 					</Fragment>
@@ -312,6 +320,7 @@ function Select({
 	searchPlaceholder,
 	searchLabel,
 	ariaLabel,
+	ariaDescribedBy,
 	customOptionLabel,
 	emptyLabel = "Nothing matches",
 	inputMode,
@@ -340,6 +349,8 @@ function Select({
 	/** Accessible name for the trigger, for a select with no visible <label>
 	 *  (a table cell, where the column header names it only visually). */
 	ariaLabel?: string;
+	/** Id of a hint under the trigger, read out after its name. */
+	ariaDescribedBy?: string;
 	/** Label of the row that commits the typed text; defaults to the text itself. */
 	customOptionLabel?: (query: string) => string;
 	emptyLabel?: string;
@@ -488,6 +499,7 @@ function Select({
 				// is then only the thing that opens it.
 				role={withSearch ? undefined : "combobox"}
 				aria-label={ariaLabel}
+				aria-describedby={ariaDescribedBy}
 				aria-haspopup="listbox"
 				aria-expanded={open}
 				aria-controls={listboxId}
@@ -498,11 +510,11 @@ function Select({
 					open ? "border-accent" : "border-edge hover:border-edge-active"
 				}`}
 			>
-				<span className={`truncate ${selected ? "" : "text-fg-muted"}`}>
+				<OverflowScroll className={selected ? "" : "text-fg-muted"} fullText={selected?.label ?? placeholder}>
 					{selected
 						? (renderOption && !selected.custom ? renderOption(selected) : selected.label)
 						: (placeholder ?? "")}
-				</span>
+				</OverflowScroll>
 				<svg
 					className={`w-3.5 h-3.5 text-fg-3 flex-shrink-0 transition-transform duration-150 ${open ? "rotate-180" : ""}`}
 					viewBox="0 0 12 12"

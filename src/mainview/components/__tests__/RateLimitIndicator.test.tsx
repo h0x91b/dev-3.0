@@ -5,6 +5,7 @@ import { I18nProvider } from "../../i18n";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../../state";
 import RateLimitIndicator from "../RateLimitIndicator";
 import type { AgentRateLimitsReport } from "../../../shared/rate-limits";
+import { parseCodexRateLimits } from "../../../shared/rate-limits";
 import type { AgentAccountsState } from "../../../shared/agent-accounts";
 
 vi.mock("../../rpc", () => ({
@@ -80,6 +81,49 @@ describe("RateLimitIndicator", () => {
 		const { container } = renderIndicator();
 		await act(async () => {});
 		expect(container.querySelector("button")).toBeNull();
+	});
+
+	it("keeps a neutral pill as the panel's way in while opted-in Kimi providers have no reading", async () => {
+		mockedGet.mockResolvedValue({
+			generatedAt: Date.now(),
+			snapshots: [],
+			usageProviders: [{ id: "k1", label: "Kimi A", source: "kimi-code" }],
+		});
+		renderIndicator();
+		await act(async () => {});
+		const pill = screen.getByRole("button", { name: "Agent rate limits: no recent data. Open agent usage and accounts" });
+		expect(pill.className).toContain("text-fg-3");
+		expect(pill.textContent).toBe("");
+		await userEvent.click(pill);
+		const panel = await screen.findByTestId("agent-usage-panel");
+		expect(within(panel).getByText("Kimi A")).toBeTruthy();
+		expect(within(panel).getByText("no recent data")).toBeTruthy();
+	});
+
+	it("holds no empty pill up for a Kimi provider that has no API key", async () => {
+		mockedGet.mockResolvedValue({
+			generatedAt: Date.now(),
+			snapshots: [],
+			usageProviders: [{ id: "k1", label: "Kimi A", source: "kimi-code", missingKey: true }],
+		});
+		const { container } = renderIndicator();
+		await act(async () => {});
+		expect(container.querySelector("button")).toBeNull();
+	});
+
+	it("keeps the neutral pill when the only other reading is credits-only Codex", async () => {
+		const credits = parseCodexRateLimits(
+			{ primary: null, secondary: null, credits: { has_credits: true, unlimited: false, balance: "42.5" } },
+			Date.now(),
+		)!;
+		mockedGet.mockResolvedValue({
+			generatedAt: Date.now(),
+			snapshots: [credits],
+			usageProviders: [{ id: "k1", label: "Kimi A", source: "kimi-code" }],
+		});
+		renderIndicator();
+		await act(async () => {});
+		expect(screen.getByRole("button", { name: "Agent rate limits: no recent data. Open agent usage and accounts" })).toBeTruthy();
 	});
 
 	it("shows the worst window percentage from the latest active account", async () => {

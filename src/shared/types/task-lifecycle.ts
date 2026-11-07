@@ -66,6 +66,9 @@ export interface PaneSessionEntry {
 	agentId: string | null;
 	/** Agent config ID used at launch time. */
 	configId: string | null;
+	/** The task picked no agent, so `agentId`/`configId` name the global default that
+	 *  ran. A resume keeps them; Start Fresh resolves the default again. */
+	agentFromDefault?: boolean;
 	/** Managed agent account used at launch time — re-injected on resume so a
 	 *  recovered session keeps running under the same account (absent → default). */
 	accountId?: string | null;
@@ -85,6 +88,9 @@ export interface PaneSessionEntry {
 	 *  plain shell. The pane reconciler never adopts or drops a parked entry; a
 	 *  resume of this pane clears the flag. */
 	parked?: boolean;
+	/** The task's own agent pane, written by its launch. Only this pane may restore the
+	 *  task-level agent after another pane exits; entries saved before it lack the flag. */
+	main?: boolean;
 }
 
 /** Captured session state for agent recovery after tmux death / app restart. */

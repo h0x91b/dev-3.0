@@ -71,6 +71,8 @@ export interface ModelCatalogView {
 		baseUrl?: string;
 		/** Wire protocol of a `custom` endpoint; absent means OpenAI-shaped. */
 		apiFormat?: "openai" | "anthropic";
+		/** Opt-in usage endpoint of a `custom` provider; absent means not tracked. */
+		usageSource?: "kimi-code";
 		hasKey: boolean;
 	}[];
 	models: { id: string; providerId: string; name: string; modelId: string; extendedContext?: boolean }[];

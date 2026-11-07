@@ -43,6 +43,7 @@ const common = {
 	"app.agentCancellationCancel": "Keep the task",
 	"app.agentResetTitle": "Reset to To Do requested",
 	"app.agentResetMessage": "A dev3 command — usually an AI agent — asks to move this running task back to To Do. Approving stops its agent and deletes the worktree with everything uncommitted in it, plus its branch if dev3 created it. A task note records how to recover deleted commits.\n\nThe card stays in To Do with its title, description, notes, labels and settings, and starts fresh next time.",
+	"app.agentResetMessageBranchKept": "A dev3 command — usually an AI agent — asks to move this running task back to To Do. Approving stops its agent and deletes the worktree with everything uncommitted in it. The task's branch is kept.\n\nThe card stays in To Do with its title, description, notes, labels and settings, and starts fresh next time.",
 	"app.agentResetConfirm": "Reset task",
 	"app.agentResetCancel": "Keep as is",
 
@@ -464,7 +465,8 @@ const common = {
 	"command.findCoordinator": "Find coordinator…",
 	"command.goToTask": "Go to Task…",
 	"command.goToCombined": "Go to Anything…",
-	"command.viewKanban": "Go to board",
+	"command.viewBoard": "Go to board",
+	"command.boardView": "Board view: {name}",
 	"command.viewChangelog": "Open changelog",
 	"command.openSettings": "Open settings",
 	"command.projectSettings": "Open project settings",
@@ -699,6 +701,19 @@ const common = {
 	"mobile.backExitToast": "Press Back again to exit",
 	"streamer.privateTitle": "Private project",
 	"streamer.projectLocked": "Sensitive project — locked while streamer mode is on",
+	"taskRef.notFound": "Nothing to open for {ref} — no such task or PR on that board.",
+	"taskRef.prUnknownRepo": "Couldn't find the GitHub repo for {ref}.",
+	"taskRef.openFailed": "Couldn't open {ref}: {error}",
+	"taskRef.openTask": "Open task {ref}",
+	"taskRef.openPr": "Open PR {ref}",
+	"taskRef.previewOpen": "Open task",
+	"taskRef.previewLoading": "Loading…",
+	"taskRef.previewNotFound": "No such task or PR on that board.",
+	"taskRef.previewNotes": "Latest notes",
+	"taskRef.previewImages": "Images",
+	"taskRef.previewArtifacts": "Artifacts",
+	"taskRef.previewMore_one": "+{count} more",
+	"taskRef.previewMore_other": "+{count} more",
 } as const;
 
 export default common;

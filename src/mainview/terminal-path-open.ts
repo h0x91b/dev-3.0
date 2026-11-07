@@ -3,6 +3,8 @@ import { api, isElectrobun } from "./rpc";
 import { toast } from "./toast";
 import { fileUriToLocalPath, safeDeepLinkUri, safeFileUri } from "./terminal-osc8-links";
 import { parseDeepLink } from "../shared/deep-link";
+import { parseRefUri } from "../shared/task-refs";
+import { activateTaskPrRef } from "./task-ref-open";
 import type { ResolvedTerminalPath, TerminalPathOpenMode } from "../shared/types";
 
 /** App.tsx hosts the FilePreviewModal and listens for this event. */
@@ -68,6 +70,11 @@ export async function activateTerminalPath(resolved: ResolvedTerminalPath, t: TF
  */
 export async function activateDeepLinkUri(uri: string, ctx: Osc8ActivateContext): Promise<void> {
 	const { t, taskId } = ctx;
+	// `<seq:N>` / `<pr:N>` share the provider; a bare one resolves on this task's project.
+	if (parseRefUri(uri)) {
+		await activateTaskPrRef(uri, { t, taskId, contextProjectId: ctx.projectId });
+		return;
+	}
 	if (!parseDeepLink(uri)) {
 		toast.error(t("terminal.deepLinkBad", { uri }), { taskId, source: "terminal" });
 		return;
@@ -103,8 +110,9 @@ export interface Osc8ActivateContext {
 export async function activateOsc8Uri(uri: string, ctx: Osc8ActivateContext): Promise<void> {
 	const { t, taskId, projectId } = ctx;
 	// A dev3 deep link is in-app navigation, not an external open — the OSC 8
-	// target and the plain-text link take the same path from here.
-	if (safeDeepLinkUri(uri)) {
+	// target and the plain-text link take the same path from here. A markdown
+	// autolink of `<seq:N>` reaches us as the OSC 8 target `seq:N`.
+	if (safeDeepLinkUri(uri) || parseRefUri(uri)) {
 		await activateDeepLinkUri(uri, ctx);
 		return;
 	}

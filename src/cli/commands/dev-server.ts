@@ -1,4 +1,5 @@
 import type { CliResponse, DevServerEntry, DevServerStatus } from "../../shared/types";
+import { normalizeTaskArg } from "../../shared/task-refs";
 import { DEV_SERVER_LOG_DEFAULT_LINES, DEV_SERVER_LOG_MAX_LINES } from "../../shared/dev-server-log";
 import { readDevServerLogTail } from "../../bun/dev-server-log";
 import { CLI_EXIT_CODE_DEV_SERVER_ENV_INVALID, CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED } from "../../shared/cli-exit-codes";
@@ -136,7 +137,7 @@ function collectEnvFlag(args: ParsedArgs, action: string): Record<string, string
 
 /** A positional that can only be a task: `seq:<N>`, a UUID, or a hex id prefix. */
 function looksLikeTaskRef(raw: string): boolean {
-	return /^seq:\d+$/.test(raw) || /^[0-9a-f-]{6,}$/i.test(raw);
+	return /^seq:\d+$/.test(normalizeTaskArg(raw)) || /^[0-9a-f-]{6,}$/i.test(raw);
 }
 
 /**
@@ -397,12 +398,28 @@ function parseWaitTimeout(args: ParsedArgs): number {
 	return parsed;
 }
 
+const BOOLEAN_FLAGS = ["all", "wait", "clear-env"] as const;
+
+/**
+ * The generic parser hands the next bare word to any flag as its value, so
+ * `start --wait api` would read as `wait=api` and start the DEFAULT server.
+ * These flags take no value: give such a word back to the positionals.
+ */
+function reclaimBooleanFlagValues(args: ParsedArgs): ParsedArgs {
+	const reclaimed = BOOLEAN_FLAGS
+		.flatMap((flag) => args.repeated?.[flag] ?? (args.flags[flag] !== undefined ? [args.flags[flag]] : []))
+		.filter((value) => value !== "true");
+	if (reclaimed.length === 0) return args;
+	return { ...args, positional: [...args.positional, ...reclaimed] };
+}
+
 async function runAction(
 	action: "start" | "stop" | "restart" | "status",
-	args: ParsedArgs,
+	rawArgs: ParsedArgs,
 	socketPath: string,
 	context: CliContext | null,
 ): Promise<void> {
+	const args = reclaimBooleanFlagValues(rawArgs);
 	const { taskId, server } = resolveTarget(args, context);
 	if (!taskId) {
 		exitUsage(`Usage: dev3 dev-server ${action} [task-id] [server-name]`);
@@ -427,12 +444,17 @@ async function runAction(
 	if (server) params.server = server;
 	if (all && action !== "status") params.all = true;
 
+	const clearEnv = args.flags["clear-env"] !== undefined;
 	if (action === "start" || action === "restart") {
 		const env = collectEnvFlag(args, action);
-		if (env) params.env = env;
+		if (env && clearEnv) {
+			exitUsage(`--env already replaces the remembered env; drop --clear-env, or drop --env to run with none`);
+		}
+		// An explicit empty map is what tells a restart "none", unlike an omitted one.
+		if (env || clearEnv) params.env = env ?? {};
 		if (scriptArgs !== undefined) params.args = scriptArgs;
-	} else if (args.repeated?.env) {
-		exitUsage(`dev-server ${action} takes no --env (only start and restart do)`);
+	} else if (args.repeated?.env || clearEnv) {
+		exitUsage(`dev-server ${action} takes no --env or --clear-env (only start and restart do)`);
 	}
 
 	// stop/restart tear the dev tmux session down; the app can drop this in-flight

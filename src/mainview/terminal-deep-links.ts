@@ -1,9 +1,12 @@
 import type { ILink, ILinkProvider } from "ghostty-web";
 import { findDeepLinksInText } from "../shared/deep-link";
+import { findRefsInText } from "../shared/task-refs";
 import { covers, createRowScan, getLogicalLines, mapRangeToBuffer, type BufferRange, type RowScan, type ScanTerminal } from "./terminal-file-links";
 
 /**
- * Turns a bare `dev3://…` link in terminal output into a Cmd/Ctrl+Click link.
+ * Turns a bare `dev3://…` link — and a `<seq:N>` / `<pr:N>` reference — in
+ * terminal output into a Cmd/Ctrl+Click link. Both are in-app targets the
+ * caller tells apart with `parseRefUri`.
  *
  * ghostty-web's built-in URL provider only knows http(s), mailto, ftp, ssh,
  * git, tel, magnet, gemini, gopher and news — a custom scheme is invisible to
@@ -36,6 +39,10 @@ export function createDeepLinkProvider(options: DeepLinkProviderOptions): DeepLi
 		for (const logical of getLogicalLines(scan.getLine, y, scan.cache)) {
 			for (const match of findDeepLinksInText(logical.text)) {
 				const segments = mapRangeToBuffer(logical.rows, match.start, match.end);
+				if (segments.length > 0) links.push({ uri: match.raw, segments });
+			}
+			for (const match of findRefsInText(logical.text)) {
+				const segments = mapRangeToBuffer(logical.rows, match.start, match.end - 1);
 				if (segments.length > 0) links.push({ uri: match.raw, segments });
 			}
 		}

@@ -84,7 +84,7 @@ describe("agent resume", () => {
 		respond(resumed);
 		await resume({ task: "seq:8" });
 		expect(sendRequest).toHaveBeenLastCalledWith("/tmp/agent.sock", "agent.resume", { taskId: "seq:8", projectId: context.projectId, sourceTaskId: context.taskId, allowAgentLatest: false }, { timeoutMs: 600000 });
-		expect(output).toContain("Resumed task #8 on tmux (tmux session dev3-task-8)");
+		expect(output).toContain("Resumed task <seq:8> on tmux (tmux session dev3-task-8)");
 		expect(output).toContain("conversation s1 (exact)  pane %3");
 		expect(output).toContain("failed: split failed");
 	});

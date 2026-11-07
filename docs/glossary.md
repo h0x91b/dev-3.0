@@ -52,6 +52,7 @@ Vocabulary for running an agent CLI against arbitrary LLM providers through dev3
 ## Board views
 
 - **Board** — a project board or a space board: a scope (a set of projects) plus one *board query*. Not the Kanban: the Kanban is one way of showing a board.
+- **Cordis** — the open-source plugin runtime (npm `cordis`, pinned `4.0.0-rc.11`) that board views and extensions run on. A plugin receives a *context* (`ctx`), registers what it contributes (a view, later a slot item) and consumes *services* the host provides (`ctx.board`); when the plugin is unloaded, everything it registered is removed automatically. It is not a UI framework — React still renders; Cordis only manages who contributed what and its lifetime. See [pluggable-board-views-on-cordis](../decisions/2026/10/31/pluggable-board-views-on-cordis.md).
 - **Board view** — a way of showing a board (Kanban, Table, Tree, Attention): a type, implemented as a Cordis plugin, built-in or from an *extension*. Not a destination — switching it changes no route and adds no history. Bare "view" stays reserved for task view, diff view and the like. See [pluggable-board-views-on-cordis](../decisions/2026/10/31/pluggable-board-views-on-cordis.md).
 - **Board query** — the board's token filter string. One per board, shared by every board view, so switching view keeps the filter.
 - **View layout** — what a board view owns: grouping, sort, columns, buckets, collapsed state. Kept per board, per view and per form factor (wide / narrow).

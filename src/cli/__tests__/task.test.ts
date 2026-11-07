@@ -132,7 +132,7 @@ describe("task show", () => {
 			originParent: { id: "pppppppp-0000", projectId: "proj-002", projectName: "homebrew", seq: 1801, variantIndex: 2, title: "Coordinate" },
 		}));
 		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
-		expect(stdoutOutput).toMatch(/Created by:\s*#1801-2 · homebrew — Coordinate/);
+		expect(stdoutOutput).toMatch(/Created by:\s*<seq:proj-002\/1801> v2 · homebrew — Coordinate \(pppppppp\)/);
 
 		stdoutOutput = "";
 		mockSend.mockResolvedValue(okResp({ ...child, originParent: null }));
@@ -582,7 +582,7 @@ describe("task create", () => {
 
 		await handleTask("create", args([], { project: "proj-001", title: "New task" }), SOCKET, null);
 
-		expect(stdoutOutput).toContain("seq 43");
+		expect(stdoutOutput).toContain("(<seq:proj-001/43>)");
 		expect(stdoutOutput).toContain("aaaaaaaa"); // first 8 chars
 	});
 });
