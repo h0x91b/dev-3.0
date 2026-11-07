@@ -29,6 +29,7 @@ import {
 	isRateLimitSnapshotRecent,
 	mergeCodexRateLimitSnapshots,
 	parseClaudeStatusLinePayload,
+	kimiUsageUrl,
 	parseKimiUsage,
 	rateLimitActivityAt,
 	rateLimitLoginKey,
@@ -422,9 +423,8 @@ function forgetKimiProvider(id: string): void {
 
 async function requestKimiUsage(provider: CatalogProvider, apiKey: string, now: number): Promise<AgentRateLimitSnapshot | null> {
 	try {
-		const url = new URL(provider.baseUrl!.trim());
-		const path = url.pathname.replace(/\/+$/, "");
-		url.pathname = `${path}${path.endsWith("/v1") ? "" : "/v1"}/usages`;
+		const url = kimiUsageUrl(provider.baseUrl!);
+		if (!url) throw new TypeError("invalid base URL");
 		const res = await fetch(url, {
 			headers: { Authorization: `Bearer ${apiKey}` },
 			redirect: "error",

@@ -314,6 +314,7 @@ function Select({
 	searchPlaceholder,
 	searchLabel,
 	ariaLabel,
+	ariaDescribedBy,
 	customOptionLabel,
 	emptyLabel = "Nothing matches",
 	inputMode,
@@ -342,6 +343,8 @@ function Select({
 	/** Accessible name for the trigger, for a select with no visible <label>
 	 *  (a table cell, where the column header names it only visually). */
 	ariaLabel?: string;
+	/** Id of a hint under the trigger, read out after its name. */
+	ariaDescribedBy?: string;
 	/** Label of the row that commits the typed text; defaults to the text itself. */
 	customOptionLabel?: (query: string) => string;
 	emptyLabel?: string;
@@ -490,6 +493,7 @@ function Select({
 				// is then only the thing that opens it.
 				role={withSearch ? undefined : "combobox"}
 				aria-label={ariaLabel}
+				aria-describedby={ariaDescribedBy}
 				aria-haspopup="listbox"
 				aria-expanded={open}
 				aria-controls={listboxId}

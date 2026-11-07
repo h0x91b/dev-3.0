@@ -12,6 +12,7 @@ import {
 	type CustomApiFormat,
 	type ProviderUsageSource,
 } from "../../../shared/model-catalog";
+import { kimiUsageUrl } from "../../../shared/rate-limits";
 import { randomUUID } from "../../uuid";
 import Select, { type SelectOption } from "../Select";
 import { confirm } from "../../confirm";
@@ -110,7 +111,9 @@ function ProviderKeyField({
 					? t("catalog.providerKeyRemoving")
 					: provider.hasKey
 						? t("catalog.providerKeyStored")
-						: t("catalog.providerKeyMissing")}
+						: provider.usageSource
+							? t("catalog.providerKeyMissingLimits")
+							: t("catalog.providerKeyMissing")}
 			</span>
 		</>
 	);
@@ -504,7 +507,12 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 							columns={[t("catalog.providerKind"), t("catalog.providerLabel"), t("catalog.providerKey")]}
 							actionsLabel={t("catalog.colActions")}
 						>
-							{draft.providers.map((provider) => (
+							{draft.providers.map((provider) => {
+								// Where the key goes, spelled out: the same URL the monitor requests.
+								const usageUrl = provider.kind === "custom" && provider.usageSource && provider.baseUrl?.trim()
+									? kimiUsageUrl(provider.baseUrl)?.href ?? null
+									: null;
+								return (
 								<tr key={provider.id} className="border-b border-edge/50 last:border-b-0">
 									<td className={`${CELL_CLASS} w-48`}>
 										<Select
@@ -553,6 +561,7 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 												<Select
 													id={`provider-usage-${provider.id}`}
 													ariaLabel={t("catalog.usageSourceLabel")}
+													ariaDescribedBy={usageUrl ? `provider-usage-hint-${provider.id}` : undefined}
 													value={provider.usageSource ?? "none"}
 													options={[
 														{ value: "none", label: t("catalog.usageSource.none") },
@@ -567,9 +576,9 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 														})
 													}
 												/>
-												{provider.usageSource ? (
-													<span className={`block text-xs mt-1 ${provider.hasKey ? "text-fg-muted" : "text-warning-strong"}`}>
-														{t(provider.hasKey ? "catalog.usageSourceHint" : "catalog.usageSourceNoKey")}
+												{usageUrl ? (
+													<span id={`provider-usage-hint-${provider.id}`} className="block text-fg-3 text-xs mt-1 break-words">
+														{t("catalog.usageSourceHint", { url: usageUrl })}
 													</span>
 												) : null}
 												</div>
@@ -599,7 +608,8 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 										</button>
 									</td>
 								</tr>
-							))}
+							);
+							})}
 						</EditTable>
 					)}
 					<button type="button" onClick={addProvider} className={BUTTON_CLASS}>

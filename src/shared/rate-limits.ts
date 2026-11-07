@@ -437,6 +437,18 @@ function kimiLimitsFiveHour(limits: unknown): RateLimitWindow | null {
 	return null;
 }
 
+/** The usage endpoint under a Kimi Code base URL (one `/v1`, never doubled); null for an invalid URL. */
+export function kimiUsageUrl(baseUrl: string): URL | null {
+	try {
+		const url = new URL(baseUrl.trim());
+		const path = url.pathname.replace(/\/+$/, "");
+		url.pathname = `${path}${path.endsWith("/v1") ? "" : "/v1"}/usages`;
+		return url;
+	} catch {
+		return null;
+	}
+}
+
 /**
  * Parse the undocumented Kimi Code `GET /v1/usages` response: a 5-hour window
  * (`usages.limit_5h`, else the 300-minute `limits[]` entry) and a monthly one
