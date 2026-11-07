@@ -229,7 +229,9 @@ export const agentHandlers: Record<string, Handler> = {
 		}
 
 		if (harness === "codex" && sessionId) {
-			if ((event === "SessionStart" || event === "UserPromptSubmit") && typeof params.transcriptPath === "string") {
+			// Codex names the rollout after its session, so a path that is not that session's file is ignored.
+			if ((event === "SessionStart" || event === "UserPromptSubmit") && typeof params.transcriptPath === "string"
+				&& params.transcriptPath.endsWith(`${sessionId}.jsonl`)) {
 				codexTurnWatches.observe({ projectId: project.id, taskId: task.id, sessionId, transcriptPath: params.transcriptPath }, codexTurnFailed);
 			} else if (event === "Stop" || event === "SessionEnd" || event === "Interrupt") {
 				codexTurnWatches.endTurn(task.id, sessionId);

@@ -118,7 +118,10 @@ export function describeCodexTurnError(message: string): string {
  * A security hook that denies a tool call until the user types `Approved <ref>`
  * (an org security policy hook, say) leaves Codex no approval prompt to raise, so the agent
  * relays the reply and ends its turn. Returns that reply, e.g. "Approved 0123456789ab".
+ * Only an instruction to type it counts — a summary quoting an approval already given does not.
  */
 export function findApprovalHoldReply(lastAssistantMessage: string): string | null {
-	return /\bApproved?\s+[0-9a-f]{12}\b/.exec(lastAssistantMessage)?.[0] ?? null;
+	return APPROVAL_HOLD_REQUEST.exec(lastAssistantMessage)?.[1] ?? null;
 }
+
+const APPROVAL_HOLD_REQUEST = /\b(?:[Rr]eply|[Tt]ype|[Ss]end|[Ee]nter|[Rr]espond)(?:\s+(?:with|back))?[\s*_`"':]*(Approved?\s+[0-9a-f]{12})\b/;

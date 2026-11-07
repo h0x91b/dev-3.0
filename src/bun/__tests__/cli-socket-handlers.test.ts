@@ -942,15 +942,26 @@ describe("task.agentHook", () => {
 			const task = makeTask({ status: "in-progress" });
 			mockAtomicHookUpdate(project, task);
 			await handleRequest(makeRequest("task.agentHook", {
-				taskId: task.id, projectId: project.id, sessionId, event: "UserPromptSubmit", transcriptPath: "/tmp/rollout.jsonl",
+				taskId: task.id, projectId: project.id, sessionId, event: "UserPromptSubmit", transcriptPath: `/tmp/rollout-${sessionId}.jsonl`,
 			}));
 			const calls = vi.mocked(codexTurnWatches.observe).mock.calls;
 			const [input, onFailure] = calls[calls.length - 1]!;
-			expect(input).toMatchObject({ taskId: task.id, sessionId, transcriptPath: "/tmp/rollout.jsonl" });
+			expect(input).toMatchObject({ taskId: task.id, sessionId, transcriptPath: `/tmp/rollout-${sessionId}.jsonl` });
 			vi.mocked(isInteractiveCodexConversation).mockResolvedValueOnce(interactive);
 			await onFailure({ ...input, message: ERROR });
 			return task;
 		}
+
+		it("does not watch a transcript that is not the session's own rollout", async () => {
+			const project = makeProject();
+			const task = makeTask({ status: "in-progress" });
+			mockAtomicHookUpdate(project, task);
+			vi.mocked(codexTurnWatches.observe).mockClear();
+			await handleRequest(makeRequest("task.agentHook", {
+				taskId: task.id, projectId: project.id, sessionId: "own-session", event: "UserPromptSubmit", transcriptPath: "/etc/hosts",
+			}));
+			expect(codexTurnWatches.observe).not.toHaveBeenCalled();
+		});
 
 		it("parks the task in user-questions and names the error", async () => {
 			const task = await armAndFail("errored-turn");

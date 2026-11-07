@@ -200,6 +200,33 @@ describe("handleCodexHook", () => {
 		expect(mockSend.mock.calls[0]![2]).not.toHaveProperty("approvalHold");
 	});
 
+	it.each([
+		"Done — the write went through after you replied `Approved 0123456789ab`.",
+		"I'll send the summary next; your `Approved 0123456789ab` unblocked the write.",
+	])("sends no approval hold for a summary quoting an approval already given: %s", async (message) => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
+
+		await handleCodexHook(
+			JSON.stringify({ hook_event_name: "Stop", session_id: "s", last_assistant_message: message }),
+			SOCKET,
+			CONTEXT,
+		);
+
+		expect(mockSend.mock.calls[0]![2]).not.toHaveProperty("approvalHold");
+	});
+
+	it("flags an approval request phrased as 'reply with'", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
+
+		await handleCodexHook(
+			JSON.stringify({ hook_event_name: "Stop", session_id: "s", last_assistant_message: "Blocked. Please reply with: Approved 0123456789ab" }),
+			SOCKET,
+			CONTEXT,
+		);
+
+		expect(mockSend.mock.calls[0]![2]).toMatchObject({ approvalHold: "Approved 0123456789ab" });
+	});
+
 	it("carries no prompt on the other lifecycle events", async () => {
 		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
 
