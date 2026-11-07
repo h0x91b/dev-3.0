@@ -1141,6 +1141,17 @@ describe("LaunchVariantsModal — Launch later → After task", () => {
 		expect(onClose).not.toHaveBeenCalled();
 	});
 
+	it("opens straight on After task when the context menu asked for it", async () => {
+		mockedApi.request.getTasks.mockResolvedValue([baseTask, prereq]);
+		render(
+			<I18nProvider>
+				<LaunchVariantsModal task={baseTask} project={makeProject()} targetStatus="in-progress" agents={agents} globalSettings={makeGlobalSettings()} dispatch={vi.fn()} onClose={vi.fn()} initialStartAfter />
+			</I18nProvider>,
+		);
+		expect(screen.getByRole("button", { name: "After task" })).toHaveAttribute("aria-pressed", "true");
+		expect(screen.getByRole("button", { name: "Task to wait for" })).toBeInTheDocument();
+	});
+
 	it("is not offered when the launch targets another column", async () => {
 		const user = userEvent.setup();
 		renderModal(makeProject(), { targetStatus: "review-by-user" });

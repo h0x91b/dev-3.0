@@ -740,5 +740,5 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 - **Why:** one token beats four prose forms and `#N` collides with GitHub. Rejected chips under the text (loses the sentence). `decisions/2026/11/05/canonical-task-pr-reference-tokens.md`.
 
 ## 2026-11-07 — Start after lives in Launch later, shown in the timer slot
-- **Rule:** "After task" is a third mode of the launch modal's Launch later panel (task picker + completed/merged, agent from the variant row); the card chip shares the deferred-timer slot with a Start now / Remove popover. Yaml `deferred_timer_chip`.
-- **Why:** it is a deferred launch like Start in. Rejected a context-menu item and an × on the chip (a second entry point, and the card strip is full). `decisions/2026/11/05/start-after-conditional-launch.md`.
+- **Rule:** "After task" is a third mode of the launch modal's Launch later panel (task picker + completed/merged, agent from the variant row); the card chip shares the deferred-timer slot with a Start now / Remove popover, and the To Do context menu opens that panel ("Start after…") or removes it. Yaml `deferred_timer_chip`.
+- **Why:** it is a deferred launch like Start in. The context menu only opens the same panel, never a second picker; rejected an × on the chip (the card strip is full). `decisions/2026/11/05/start-after-conditional-launch.md`.

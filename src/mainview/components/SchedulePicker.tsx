@@ -102,7 +102,7 @@ interface SchedulePickerProps {
 	 * A third mode beside in/at that is not a time (the launch modal's "After task").
 	 * Its content replaces the time fields and the hint; `onActiveChange` reports when it is picked.
 	 */
-	extraMode?: { label: string; content: ReactNode; onActiveChange: (active: boolean) => void };
+	extraMode?: { label: string; content: ReactNode; onActiveChange: (active: boolean) => void; initiallyActive?: boolean };
 }
 
 /**
@@ -114,7 +114,7 @@ interface SchedulePickerProps {
  */
 function SchedulePicker({ disabled = false, onTargetChange, onSubmit, initialDelayMinutes = 60, hintKey = "launch.scheduleHint", extraMode }: SchedulePickerProps) {
 	const t = useT();
-	const [mode, setMode] = useState<ScheduleMode | "extra">("in");
+	const [mode, setMode] = useState<ScheduleMode | "extra">(extraMode?.initiallyActive ? "extra" : "in");
 	const [delayHours, setDelayHours] = useState(Math.floor(initialDelayMinutes / 60));
 	const [delayMinutes, setDelayMinutes] = useState(initialDelayMinutes % 60);
 	const [atTime, setAtTime] = useState(() => toTimeInputValue(new Date(Date.now() + initialDelayMinutes * 60_000)));

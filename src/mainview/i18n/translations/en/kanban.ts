@@ -341,6 +341,7 @@ const kanban = {
 	"taskMenu.labels": "Labels",
 	"taskMenu.priority": "Priority",
 	"taskMenu.rename": "Rename…",
+	"taskMenu.startAfter": "Start after…",
 	"taskMenu.copyBranch": "Copy branch name",
 	"taskMenu.copyLink": "Copy deep link",
 	"taskMenu.copyPath": "Copy worktree path",

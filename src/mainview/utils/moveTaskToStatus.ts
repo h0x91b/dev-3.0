@@ -21,6 +21,8 @@ export interface LaunchRequestedDetail {
 	targetStatus: TaskStatus;
 	/** `addAttempts` adds variants to a running task instead of starting one. */
 	mode?: "spawn" | "addAttempts";
+	/** Open with Launch later → After task already picked (the context menu's "Start after…"). */
+	startAfter?: boolean;
 }
 import type { AppAction } from "../state";
 import type { TFunction } from "../i18n";

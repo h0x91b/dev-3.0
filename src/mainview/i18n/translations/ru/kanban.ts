@@ -366,6 +366,7 @@ const kanban = {
 	"taskMenu.labels": "Лейблы",
 	"taskMenu.priority": "Приоритет",
 	"taskMenu.rename": "Переименовать…",
+	"taskMenu.startAfter": "Запустить после…",
 	"taskMenu.copyBranch": "Скопировать имя ветки",
 	"taskMenu.copyLink": "Скопировать ссылку на задачу",
 	"taskMenu.copyPath": "Скопировать путь к worktree",

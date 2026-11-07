@@ -340,6 +340,7 @@ const kanban = {
 	"taskMenu.labels": "Etiquetas",
 	"taskMenu.priority": "Prioridad",
 	"taskMenu.rename": "Renombrar…",
+	"taskMenu.startAfter": "Iniciar tras…",
 	"taskMenu.copyBranch": "Copiar nombre de la rama",
 	"taskMenu.copyLink": "Copiar enlace a la tarea",
 	"taskMenu.copyPath": "Copiar ruta del worktree",

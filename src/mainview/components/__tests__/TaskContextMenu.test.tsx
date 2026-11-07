@@ -19,6 +19,7 @@ vi.mock("../../rpc", () => ({
 			moveTask: vi.fn(),
 			getAvailableApps: vi.fn().mockResolvedValue([{ id: "finder", name: "Finder", macAppName: "Finder" }]),
 			openInApp: vi.fn().mockResolvedValue(undefined),
+			clearTaskLaunchAfter: vi.fn().mockResolvedValue({ id: "t1" }),
 		},
 	},
 }));
@@ -238,5 +239,41 @@ describe("TaskContextMenu → start a To Do card", () => {
 		} finally {
 			window.removeEventListener(LAUNCH_REQUESTED_EVENT, listener);
 		}
+	});
+});
+
+describe("TaskContextMenu → start after", () => {
+	const todo = { status: "todo" as const, worktreePath: null, branchName: null };
+
+	it("opens the launch dialog on After task", async () => {
+		const { LAUNCH_REQUESTED_EVENT } = await import("../../utils/moveTaskToStatus");
+		const listener = vi.fn();
+		window.addEventListener(LAUNCH_REQUESTED_EVENT, listener);
+		try {
+			const { onClose } = renderMenu(makeTask(todo));
+			await userEvent.click(screen.getByTestId("task-menu-startAfter"));
+			expect(listener).toHaveBeenCalledTimes(1);
+			expect((listener.mock.calls[0]![0] as CustomEvent).detail).toMatchObject({ targetStatus: "in-progress", startAfter: true });
+			expect(onClose).toHaveBeenCalled();
+		} finally {
+			window.removeEventListener(LAUNCH_REQUESTED_EVENT, listener);
+		}
+	});
+
+	it("offers Remove start condition instead when one is set", async () => {
+		renderMenu(makeTask({ ...todo, launchAfter: { taskId: "t9", seq: 9, until: "completed", armedAt: "x" } }));
+		expect(screen.queryByTestId("task-menu-startAfter")).toBeNull();
+		await userEvent.click(screen.getByTestId("task-menu-removeStartAfter"));
+		expect(mockedApi.request.clearTaskLaunchAfter).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+	});
+
+	it("is absent on a running task", () => {
+		renderMenu(makeTask());
+		expect(screen.queryByTestId("task-menu-startAfter")).toBeNull();
+	});
+
+	it("is absent on a draft", () => {
+		renderMenu(makeTask({ ...todo, draft: true }));
+		expect(screen.queryByTestId("task-menu-startAfter")).toBeNull();
 	});
 });

@@ -54,6 +54,8 @@ interface LaunchVariantsModalProps {
 	 * adding or removing a favorite agent configuration.
 	 */
 	onGlobalSettingsChange?: (settings: GlobalSettings) => void;
+	/** Open with Launch later → After task already picked. */
+	initialStartAfter?: boolean;
 }
 
 function LaunchVariantsModal({
@@ -66,6 +68,7 @@ function LaunchVariantsModal({
 	onClose,
 	mode = "spawn",
 	onGlobalSettingsChange,
+	initialStartAfter = false,
 }: LaunchVariantsModalProps) {
 	const t = useT();
 
@@ -124,11 +127,11 @@ function LaunchVariantsModal({
 	// remembered preference; an existing task with an explicit value keeps it.
 	const [watched, setWatched] = useState(task.watched ?? globalSettings.watchByDefault ?? false);
 	// "Start in…" — a deferred launch instead of spawning now (see handleSchedule).
-	const [scheduleOpen, setScheduleOpen] = useState(false);
+	const [scheduleOpen, setScheduleOpen] = useState(initialStartAfter);
 	const [scheduleTarget, setScheduleTarget] = useState<Date | null>(null);
 	const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("in");
 	// "After task" — the Launch later panel's third mode: arm a start-after condition instead of a time.
-	const [afterMode, setAfterMode] = useState(false);
+	const [afterMode, setAfterMode] = useState(initialStartAfter);
 	const [afterChoice, setAfterChoice] = useState<StartAfterChoice>({ prerequisiteId: null, until: "completed" });
 	// A start-after condition always starts the task in progress, with one agent.
 	const offersAfter = mode === "spawn" && targetStatus === "in-progress";
@@ -555,6 +558,7 @@ function LaunchVariantsModal({
 							extraMode={offersAfter ? {
 								label: t("launch.modeAfter"),
 								onActiveChange: setAfterMode,
+								initiallyActive: initialStartAfter,
 								content: (
 									<>
 										<StartAfterPicker task={task} project={project} value={afterChoice} disabled={launching} onChange={setAfterChoice} />

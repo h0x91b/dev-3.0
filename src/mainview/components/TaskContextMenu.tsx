@@ -11,7 +11,7 @@ import { createProjectLabel } from "../utils/createProjectLabel";
 import { trackEvent, agentNameFromId } from "../analytics";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useOverlayLayer } from "../utils/useOverlayLayer";
-import { moveTaskToStatus } from "../utils/moveTaskToStatus";
+import { LAUNCH_REQUESTED_EVENT, moveTaskToStatus, type LaunchRequestedDetail } from "../utils/moveTaskToStatus";
 import { buildTaskDeepLink } from "../../shared/deep-link";
 import { formatBytes } from "../utils/formatBytes";
 import BottomSheet from "./BottomSheet";
@@ -185,6 +185,30 @@ export default function TaskContextMenu({
 		}
 	}
 
+	// "Start after…" opens the launch modal on Launch later → After task; the modal owns the picker.
+	function handleStartAfter() {
+		onClose();
+		window.dispatchEvent(new CustomEvent<LaunchRequestedDetail>(LAUNCH_REQUESTED_EVENT, {
+			detail: { task, project, targetStatus: "in-progress", startAfter: true },
+		}));
+	}
+
+	async function handleRemoveStartAfter() {
+		onClose();
+		try {
+			dispatch({ type: "updateTask", task: await api.request.clearTaskLaunchAfter({ taskId: task.id, projectId: project.id }) });
+		} catch (err) {
+			toast.error(t("task.startAfterRemoveFailed", { error: String(err) }), { taskId: task.id });
+		}
+	}
+	// Only a To Do task (not a draft, not one already set to "Start in") can wait to start.
+	const canWaitToStart = task.status === "todo" && task.draft !== true && !task.scheduledLaunch && !task.worktreePath;
+	const startAfterRows: MenuRow[] = task.status !== "todo"
+		? []
+		: task.launchAfter
+			? [{ id: "removeStartAfter", label: t("task.removeStartAfter"), onSelect: handleRemoveStartAfter }]
+			: canWaitToStart ? [{ id: "startAfter", label: t("taskMenu.startAfter"), onSelect: handleStartAfter }] : [];
+
 	async function handleToggleKeepAlive() {
 		onClose();
 		try {
@@ -266,6 +290,7 @@ export default function TaskContextMenu({
 			{ id: "labels", label: t("taskMenu.labels"), onSelect: () => openSub("labels"), submenu: true },
 			{ id: "priority", label: t("taskMenu.priority"), onSelect: () => openSub("priority"), submenu: true },
 			{ id: "status", label: t("task.moveTo"), onSelect: () => openSub("status"), submenu: true },
+			...startAfterRows,
 			{ id: "project", label: t("task.moveToProject"), onSelect: () => openSub("project") },
 			{ id: "rename", label: t("taskMenu.rename"), onSelect: () => openDetails(true) },
 		],
