@@ -12678,6 +12678,25 @@ describe("handlePaneExited restores the task-level agent from the main pane", ()
 		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-opus" });
 	});
 
+	it("pushes the restored agent to the renderer", async () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		const { project, task } = arrange([main, extra], "claude-kimi", ["%0"]);
+		await handlePaneExited(task.id, "%1");
+		expect(push).toHaveBeenCalledWith("taskUpdated", {
+			projectId: project.id,
+			task: expect.objectContaining({ id: task.id, agentId: "builtin-claude", configId: "claude-opus" }),
+		});
+	});
+
+	it("does not push when the task agent is left alone", async () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		const { task } = arrange([extra, main], "claude-opus", ["%0"]);
+		await handlePaneExited(task.id, "%1");
+		expect(push).not.toHaveBeenCalledWith("taskUpdated", expect.anything());
+	});
+
 	it("leaves the task agent alone when no pane survives", async () => {
 		const { project, task } = arrange([extra], "claude-kimi", []);
 		await handlePaneExited(task.id, "%1");

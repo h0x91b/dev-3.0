@@ -898,6 +898,8 @@ export function cleanupTaskTmuxState(taskId: string): void {
  * 2. If exactly one entry has paneId=null and exactly one live pane is
  *    unmatched, assign it (the setup pane exited, leaving the real agent).
  * 3. If no live panes remain and null-paneId entries exist, remove them too.
+ * 4. If the task-level agent belonged to a removed pane, put the surviving main
+ *    pane's agent back on the task and push the update to the renderer.
  */
 export async function handlePaneExited(taskId: string, _exitedPaneId: string): Promise<void> {
 	try {
@@ -938,10 +940,11 @@ export async function handlePaneExited(taskId: string, _exitedPaneId: string): P
 			const removed = panes.filter(p => p !== adoptedFrom && !surviving.includes(p));
 			const owner = surviving.find(p => p.main && !p.parked);
 			const restoreAgent = !!owner && removed.some(sameAgent) && !surviving.some(p => !p.parked && sameAgent(p));
-			await data.updateTask(project, task.id, {
+			const updated = await data.updateTask(project, task.id, {
 				sessionState: { panes: surviving },
 				...(restoreAgent ? { agentId: owner.agentId ?? null, configId: owner.configId ?? null } : {}),
 			});
+			if (restoreAgent) getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 			log.info("Reconciled sessionState after pane exit", {
 				taskId: taskId.slice(0, 8),
 				before: panes.length,
