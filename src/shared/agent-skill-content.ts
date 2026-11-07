@@ -122,7 +122,7 @@ const SKILL_CUSTOM_COLUMNS = `
 const SKILL_COMPLETION_REQUEST = `
 ### Completing a task (user approval required)
 
-\`dev3 task move --status completed\` does NOT complete anything directly — it opens an approval dialog and **blocks for up to 10 minutes**:
+\`dev3 task move --status completed\` does NOT complete anything directly — it asks the user to approve and **blocks for up to 10 minutes**:
 
 - **Approved** → your CLI is asked to quit first, so its exit hooks run (30 s bound), then this worktree and terminal session are destroyed.
 - **Declined** → exit code 6, session alive: keep working or ask what to change.

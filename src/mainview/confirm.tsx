@@ -10,15 +10,6 @@ export interface ConfirmAlternativeAction {
 	value: string;
 }
 
-export interface ConfirmOutcomeCards {
-	kicker: string;
-	statusLabel: string;
-	statusValue: string;
-	confirmDescription: string;
-	cancelDescription: string;
-	alternativeDescription: string;
-}
-
 export interface ConfirmOptions {
 	title: string;
 	message: string;
@@ -92,8 +83,6 @@ export interface ConfirmOptions {
 	};
 	/** Optional neutral action that resolves with a string value. */
 	alternativeAction?: ConfirmAlternativeAction;
-	/** Render the three actions as consequence-explaining cards. */
-	outcomeCards?: ConfirmOutcomeCards;
 	/**
 	 * Defaults to true, except for `agentInitiated` dialogs where it defaults to
 	 * false: an agent's CLI is blocked on the answer, so a stray click on empty
@@ -331,7 +320,7 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 				tabIndex={-1}
 				data-tour-anchor="confirm.dialog"
 				className={`bg-overlay border rounded-2xl shadow-2xl max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] overflow-y-auto p-6 space-y-4 outline-none ${
-					pending.outcomeCards ? "w-[34rem]" : pending.alternativeAction ? "w-[30rem]" : "w-[26.25rem]"
+					pending.alternativeAction ? "w-[30rem]" : "w-[26.25rem]"
 				} ${
 					dangerTone
 						? "border-danger ring-2 ring-danger/30"
@@ -351,20 +340,9 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 						{t("confirmDialog.agentBadge")}
 					</div>
 				)}
-				{pending.outcomeCards && (
-					<div className="inline-flex items-center gap-2 text-success text-xs font-semibold uppercase tracking-[0.08em]">
-						<span className="grid h-5 w-5 place-items-center rounded-full bg-success/15 text-sm leading-none" aria-hidden>
-							✓
-						</span>
-						{pending.outcomeCards.kicker}
-					</div>
-				)}
-				<h2 id="confirm-dialog-title" className={`font-semibold ${dangerTone ? "text-danger" : "text-fg"} ${pending.outcomeCards ? "text-xl tracking-[-0.015em]" : "text-lg"}`}>
+				<h2 id="confirm-dialog-title" className={`font-semibold ${dangerTone ? "text-danger" : "text-fg"} text-lg`}>
 					{pending.title}
 				</h2>
-				{pending.outcomeCards && (
-					<p className="text-fg-2 text-sm leading-relaxed whitespace-pre-line">{pending.message}</p>
-				)}
 				{pending.info && (
 					<TaskDialogSubjectCard
 						title={pending.info.title}
@@ -373,7 +351,7 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 						projectName={pending.info.projectName}
 						priority={pending.info.priority}
 						labels={pending.info.labels}
-						tone={dangerTone ? "danger" : pending.outcomeCards ? "neutral" : "accent"}
+						tone={dangerTone ? "danger" : "accent"}
 						{...(pending.info.onClick ? {
 							onTitleClick: () => {
 								close(false);
@@ -382,14 +360,7 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 						} : {})}
 					/>
 				)}
-				{pending.outcomeCards && (
-					<div className="flex min-w-0 items-center gap-2 rounded-lg border border-success/25 bg-success/10 px-3 py-2 text-xs">
-						<span className="text-success" aria-hidden>✓</span>
-						<span className="font-medium text-fg-2">{pending.outcomeCards.statusLabel}</span>
-						<span className="min-w-0 truncate font-mono text-fg-3">{pending.outcomeCards.statusValue}</span>
-					</div>
-				)}
-				{!pending.outcomeCards && <p className="text-fg-2 text-sm leading-relaxed whitespace-pre-line">{pending.message}</p>}
+				<p className="text-fg-2 text-sm leading-relaxed whitespace-pre-line">{pending.message}</p>
 				{deferredState.text !== null && (
 					<p
 						data-testid="confirm-deferred"
@@ -403,69 +374,42 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 						{deferredState.text}
 					</p>
 				)}
-				{pending.outcomeCards && pending.alternativeAction ? (
-					<div className="grid gap-2 pt-1">
-						<OutcomeAction
-							id={`confirm-${pending.id}-complete`}
-							icon="✓"
-							label={confirmLabel}
-							description={pending.outcomeCards.confirmDescription}
-							primary
-							onClick={() => close(true)}
-						/>
-						<OutcomeAction
-							id={`confirm-${pending.id}-later`}
-							icon="↻"
-							label={cancelLabel}
-							description={pending.outcomeCards.cancelDescription}
-							onClick={() => close(false)}
-						/>
-						<OutcomeAction
-							id={`confirm-${pending.id}-manual`}
-							icon="◎"
-							label={pending.alternativeAction.label}
-							description={pending.outcomeCards.alternativeDescription}
+				<div className="flex flex-wrap justify-end gap-2 pt-1">
+					<button
+						type="button"
+						autoFocus={pending.agentInitiated}
+						onClick={() => close(false)}
+						className="px-4 py-2 text-sm whitespace-nowrap rounded-lg text-fg-2 hover:text-fg hover:bg-overlay-hover transition-colors"
+					>
+						{cancelLabel}
+						{pending.keyboardChoice && <KeyHint keys="Esc" />}
+					</button>
+					{pending.alternativeAction && (
+						<button
+							type="button"
 							onClick={() => close(pending.alternativeAction!.value)}
-						/>
-					</div>
-				) : (
-					<div className="flex flex-wrap justify-end gap-2 pt-1">
-						<button
-							type="button"
-							autoFocus={pending.agentInitiated}
-							onClick={() => close(false)}
-							className="px-4 py-2 text-sm whitespace-nowrap rounded-lg text-fg-2 hover:text-fg hover:bg-overlay-hover transition-colors"
+							className="px-4 py-2 text-sm whitespace-nowrap rounded-lg border border-edge text-fg-2 hover:text-fg hover:bg-overlay-hover transition-colors"
 						>
-							{cancelLabel}
-							{pending.keyboardChoice && <KeyHint keys="Esc" />}
+							{pending.alternativeAction.label}
 						</button>
-						{pending.alternativeAction && (
-							<button
-								type="button"
-								onClick={() => close(pending.alternativeAction!.value)}
-								className="px-4 py-2 text-sm whitespace-nowrap rounded-lg border border-edge text-fg-2 hover:text-fg hover:bg-overlay-hover transition-colors"
-							>
-								{pending.alternativeAction.label}
-							</button>
-						)}
-						<button
-							type="button"
-							data-testid="confirm-accept"
-							disabled={gateActive}
-							onClick={() => close(true)}
-							className={`px-4 py-2 text-sm whitespace-nowrap rounded-lg text-white transition-colors ${
-								gateActive
-									? "bg-fg-muted/40 cursor-not-allowed"
-									: pending.danger
-										? "bg-danger hover:bg-danger/80"
-										: "bg-accent hover:bg-accent-hover"
-							}`}
-						>
-							{confirmLabel}
-							{pending.keyboardChoice && <KeyHint keys="↵" />}
-						</button>
-					</div>
-				)}
+					)}
+					<button
+						type="button"
+						data-testid="confirm-accept"
+						disabled={gateActive}
+						onClick={() => close(true)}
+						className={`px-4 py-2 text-sm whitespace-nowrap rounded-lg text-white transition-colors ${
+							gateActive
+								? "bg-fg-muted/40 cursor-not-allowed"
+								: pending.danger
+									? "bg-danger hover:bg-danger/80"
+									: "bg-accent hover:bg-accent-hover"
+						}`}
+					>
+						{confirmLabel}
+						{pending.keyboardChoice && <KeyHint keys="↵" />}
+					</button>
+				</div>
 			</div>
 		</div>
 	);
@@ -477,49 +421,5 @@ function KeyHint({ keys }: { keys: string }) {
 		<kbd className="ml-2 px-1.5 py-0.5 rounded border border-[color-mix(in_srgb,currentColor_30%,transparent)] text-xs font-sans opacity-80" aria-hidden>
 			{keys}
 		</kbd>
-	);
-}
-
-function OutcomeAction({
-	id,
-	icon,
-	label,
-	description,
-	primary = false,
-	onClick,
-}: {
-	id: string;
-	icon: string;
-	label: string;
-	description: string;
-	primary?: boolean;
-	onClick: () => void;
-}) {
-	return (
-		<button
-			type="button"
-			onClick={onClick}
-			aria-labelledby={`${id}-label`}
-			aria-describedby={`${id}-description`}
-			className={`group flex w-full items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors ${
-				primary
-					? "border-accent/60 bg-accent/10 hover:border-accent hover:bg-accent/15"
-					: "border-edge bg-elevated/55 hover:border-edge-active hover:bg-elevated-hover"
-			}`}
-		>
-			<span
-				className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-sm font-semibold transition-colors ${
-					primary ? "bg-accent-fill text-white" : "bg-raised text-fg-2 group-hover:text-fg"
-				}`}
-				aria-hidden
-			>
-				{icon}
-			</span>
-			<span className="min-w-0 flex-1">
-				<span id={`${id}-label`} className="block text-sm font-semibold text-fg">{label}</span>
-				<span id={`${id}-description`} className="mt-0.5 block text-xs leading-relaxed text-fg-3">{description}</span>
-			</span>
-			<span className="text-lg leading-none text-fg-muted transition-transform group-hover:translate-x-0.5 group-hover:text-fg-2" aria-hidden>›</span>
-		</button>
 	);
 }

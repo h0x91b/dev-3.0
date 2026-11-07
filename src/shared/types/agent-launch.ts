@@ -67,6 +67,19 @@ export interface TaskDialogSubject {
  * of the `agentCompletionRequested` push, and of `listPendingCompletionRequests`
  * for a renderer that connected after the push went out.
  */
+/**
+ * A merge completion offer the user has not answered, as `listPendingMergeOffers`
+ * returns it to a renderer that connected after the one-shot `branchMerged` push.
+ */
+export interface PendingMergeOffer {
+	taskId: string;
+	projectId: string;
+	taskTitle: string;
+	branchName: string;
+	fingerprint: string;
+	subject: TaskDialogSubject;
+}
+
 export interface AgentCompletionRequest {
 	requestId: string;
 	taskId: string;

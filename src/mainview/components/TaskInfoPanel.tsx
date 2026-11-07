@@ -1,3 +1,4 @@
+import TaskCompletionStrip from "./task-info-panel/TaskCompletionStrip";
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, type Dispatch, type MouseEvent as ReactMouseEvent } from "react";
 import { TaskRefText } from "./TaskRefText";
 import { toast } from "../toast";
@@ -1842,4 +1843,14 @@ function TaskInfoPanel({
 	);
 }
 
-export default TaskInfoPanel;
+/** The inspector plus the task's pending completion offer, which sits right under it. */
+function TaskInfoPanelWithOffer(props: Parameters<typeof TaskInfoPanel>[0]) {
+	return (
+		<>
+			<TaskInfoPanel {...props} />
+			<TaskCompletionStrip task={props.task} project={props.project} />
+		</>
+	);
+}
+
+export default TaskInfoPanelWithOffer;
