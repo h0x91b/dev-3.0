@@ -4335,7 +4335,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 							<TaskDiffFileSection
 								key={file.id}
 								file={file}
-								worktreePath={task.worktreePath}
+								worktreePath={task.opsWorktree ? task.worktreePath : task.attachedRepo ?? task.worktreePath}
 								diffLib={diffLib}
 								resolvedTheme={resolvedTheme}
 								viewMode={viewMode}

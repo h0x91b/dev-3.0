@@ -358,6 +358,16 @@ export interface Task {
 	 * removed but a fixed folder is never auto-removed. Ignored for git projects.
 	 */
 	opsWorkDir?: string | null;
+	/**
+	 * Virtual ("Operations") tasks only: absolute top level of a local git repo the
+	 * user attached to read its diff here. Read-only — never written to or removed.
+	 */
+	attachedRepo?: string | null;
+	/**
+	 * Set with `attachedRepo` at creation: the task works in its own git worktree
+	 * (new branch from `baseBranch`) of that repo instead of a plain folder.
+	 */
+	opsWorktree?: boolean;
 	/** Last-launch timestamps (ISO) per package.json script — used to sort the Scripts dropdown. */
 	scriptLastRunAt?: Record<string, string>;
 	/** Last-used placement per package.json script — pre-selects it in the placement picker. */
@@ -503,6 +513,11 @@ export function splitIntervalByHour(startMs: number, endMs: number): Record<stri
 export const AGENT_TIME_STATUSES: readonly TaskStatus[] = ["in-progress", "review-by-ai"];
 
 export const TERMINAL_STATUSES: readonly TaskStatus[] = ["completed", "cancelled"];
+
+/** An Operations task whose work dir is a worktree of its attached repo. */
+export function isOpsWorktreeTask(task: Pick<Task, "opsWorktree" | "attachedRepo">): boolean {
+	return task.opsWorktree === true && !!task.attachedRepo;
+}
 
 /**
  * The branch a task's changes should be *compared against* — the base for the

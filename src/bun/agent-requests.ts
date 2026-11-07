@@ -27,6 +27,8 @@ export interface AgentRequestDecision {
 export interface AgentRequestDialog {
 	taskTitle: string;
 	subject: TaskDialogSubject;
+	/** `reset` only: the task's branch survives the reset. */
+	branchKept?: boolean;
 	/** `launch` only: who asked, for `dev3 approvals list`. */
 	requester?: AgentRequestRequester;
 }

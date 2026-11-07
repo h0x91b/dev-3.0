@@ -2442,8 +2442,9 @@ function App() {
 			projectId: string;
 			taskTitle: string;
 			subject?: TaskDialogSubject;
+			branchKept?: boolean;
 		}) {
-			const { requestId, taskId, projectId, taskTitle, subject } = request;
+			const { requestId, taskId, projectId, taskTitle, subject, branchKept } = request;
 			if (showing.has(requestId)) return;
 			showing.add(requestId);
 			let approved = false;
@@ -2457,7 +2458,7 @@ function App() {
 				const unsaved = api.request.getUnsavedWork({ taskId, projectId });
 				approved = await confirm({
 					title: t(kind.copy.title),
-					message: t(kind.copy.message),
+					message: t(branchKept && kind.toStatus === "todo" ? "app.agentResetMessageBranchKept" : kind.copy.message),
 					info: taskDialogInfoFromSubject(taskTitle, subject),
 					confirmLabel: t(kind.copy.confirm),
 					cancelLabel: t(kind.copy.cancel),

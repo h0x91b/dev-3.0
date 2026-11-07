@@ -1,5 +1,7 @@
 # 079 — Virtual "Operations" board: identity, storage, and worktreePath reuse
 
+> Partly superseded on 2026-11-03 by `decisions/2026/11/03/operations-attached-repo-read-only-git.md`: a task with an attached repo gets read-only git (diff + review); write operations stay rejected.
+
 ## Context
 
 The virtual "Operations" board (`Project.kind: "virtual"`) is a non-git Kanban whose

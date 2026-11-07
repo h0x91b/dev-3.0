@@ -1,6 +1,7 @@
 import { assertTaskWorkspacePresent } from "../../task-workspace-guard";
 import type { AgentFamily, ColumnAgentConfig, PermissionMode, Project, Task } from "../../../shared/types";
 import { getPrimaryStopTarget, isCoordinatorTask } from "../../../shared/types";
+import { rootProjectFor } from "../../ops-worktree";
 import { coordinatorLaunchDefault } from "../../../shared/coordinator-launch";
 import * as data from "../../data";
 import * as git from "../../git";
@@ -311,6 +312,8 @@ export async function launchTaskPty(
 ): Promise<string | null | undefined> {
 	// First, before any trust/hook/config write: tmux would start a missing cwd in $HOME.
 	assertTaskWorkspacePresent(project, worktreePath);
+	// Scripts and agent env see the repo as the project root; `project` itself keeps keying the task file.
+	const rootProject = rootProjectFor(project, task);
 	// Only a fresh coordinator launch with no picked agent; every other task keeps the global default.
 	if (!agentId && !resume && !opts?.shellNotice && isCoordinatorTask(task)) {
 		const coordinator = coordinatorLaunchDefault(await agents.getAllAgents(), await loadSettings());
@@ -349,7 +352,7 @@ export async function launchTaskPty(
 		taskTitle: task.title,
 		taskDescription: resumeFresh ? "" : task.description,
 		projectName: project.name,
-		projectPath: project.path,
+		projectPath: rootProject.path,
 		worktreePath,
 	};
 	// The brief reaches the agent as a launch argument, and Claude Code fires
@@ -365,7 +368,7 @@ export async function launchTaskPty(
 	let resolvedAgentFamily: AgentFamily | undefined;
 	let resolvedLaunchModel: string | undefined;
 	let mainPaneEntry: NonNullable<Task["sessionState"]>["panes"][number] | null = null;
-	const projectEnv = await repoConfig.resolveProjectEnv(project, worktreePath, { foreignCode: task.foreignCode });
+	const projectEnv = await repoConfig.resolveProjectEnv(rootProject, worktreePath, { foreignCode: task.foreignCode });
 	const reservationKey = `${task.id}:${crypto.randomUUID()}`;
 	// The account the session really runs on: the default applied, or Auto's pick.
 	let launchAccountId = accountId;
@@ -417,7 +420,7 @@ export async function launchTaskPty(
 		} else {
 			log.info("Resolving command for project", { projectName: project.name });
 			const resolved = await agents.resolveCommandForProject(
-				project,
+				rootProject,
 				task.title,
 				ctx.taskDescription,
 				worktreePath,
@@ -514,7 +517,7 @@ export async function launchTaskPty(
 	const env = {
 		...AGENT_ENV_DEFAULTS,
 		...projectEnv,
-		...buildTaskLifecycleEnv(project, task, worktreePath, opts?.branchName),
+		...buildTaskLifecycleEnv(rootProject, task, worktreePath, opts?.branchName),
 		...buildAgentEnv(extraEnv, task.id),
 		...artifactTemplateEnv,
 	};
@@ -538,7 +541,7 @@ export async function launchTaskPty(
 
 	// A plain shell runs no agent, so there is nothing to trust — and nothing to write into ~/.claude.json.
 	if (!opts?.shellNotice) {
-		await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, launchAccountId, task.foreignCode, resolvedAgentFamily, env);
+		await ensureAgentTrust(worktreePath, rootProject.path, resolvedBaseCmd, launchAccountId, task.foreignCode, resolvedAgentFamily, env);
 	}
 
 	// Hooks splice a flag after the command's FIRST token, so they must land on the
@@ -772,11 +775,15 @@ export async function launchColumnAgent(
 	assertTaskWorkspacePresent(project, worktreePath);
 
 	const { agentId, configId, prompt: rawPrompt } = agentConfig;
+	const rootProject = rootProjectFor(project, task);
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 	// `{baseBranch}` becomes the ref this task is actually compared against — a
 	// column agent told to diff against `origin/<base>` in a repo with no remote
 	// reviews nothing at all.
-	const prompt = rawPrompt.replace(/\{baseBranch\}/g, await git.resolveCompareRef(project.path, baseBranch));
+	const compareRef = project.kind === "virtual" && task.attachedRepo
+		? await git.resolveReadOnlyCompareRef(task.attachedRepo, baseBranch)
+		: await git.resolveCompareRef(project.path, baseBranch);
+	const prompt = rawPrompt.replace(/\{baseBranch\}/g, compareRef);
 
 	log.info("launchColumnAgent START", {
 		taskId: task.id.slice(0, 8),
@@ -792,7 +799,7 @@ export async function launchColumnAgent(
 		taskTitle: `${options.paneTitle}: ${task.title}`,
 		taskDescription: prompt,
 		projectName: project.name,
-		projectPath: project.path,
+		projectPath: rootProject.path,
 		worktreePath,
 	};
 	// A column agent runs in the same worktree, so its own launch prompt reaches
@@ -805,7 +812,7 @@ export async function launchColumnAgent(
 	let resolvedPermissionMode: PermissionMode | undefined;
 	let resolvedAgentFamily: AgentFamily | undefined;
 	let launchAccountId: string | null | undefined;
-	const projectEnv = await repoConfig.resolveProjectEnv(project, worktreePath, { foreignCode: task.foreignCode });
+	const projectEnv = await repoConfig.resolveProjectEnv(rootProject, worktreePath, { foreignCode: task.foreignCode });
 	const reservationKey = `${task.id}:column:${crypto.randomUUID()}`;
 
 	try {
@@ -832,7 +839,7 @@ export async function launchColumnAgent(
 		...buildAgentEnv(extraEnv, task.id),
 		...ensureArtifactTemplateEnv(project, task, worktreePath),
 	};
-	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, launchAccountId, task.foreignCode, resolvedAgentFamily, env);
+	await ensureAgentTrust(worktreePath, rootProject.path, resolvedBaseCmd, launchAccountId, task.foreignCode, resolvedAgentFamily, env);
 	tmuxCmd = await applyAgentHooksToCommand(worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget: getPrimaryStopTarget(project.autoReviewEnabled, task.taskType),
 		permissionMode: resolvedPermissionMode,

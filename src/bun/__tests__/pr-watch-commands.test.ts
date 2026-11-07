@@ -57,6 +57,14 @@ describe("pr.watch.add", () => {
 		expect(res).toMatchObject({ prNumber: 7, until: "ci" });
 	});
 
+	it("rejects every Operations task, worktree mode included, instead of storing a watch that never fires", async () => {
+		vi.mocked(data.getProject).mockResolvedValue({ id: "p1", kind: "virtual" } as Project);
+		task = { ...task, attachedRepo: "/repo", opsWorktree: true } as Task;
+
+		await expect(add()).rejects.toThrow("PR watch is not available for Operations tasks yet — check the PR with gh.");
+		expect(addPrWatch).not.toHaveBeenCalled();
+	});
+
 	it("records the branch's authoritative remote tip at subscribe time", async () => {
 		vi.mocked(git.getRemoteBranchTips).mockResolvedValue({ tips: ["9".repeat(40)], ambiguous: false });
 		await add();

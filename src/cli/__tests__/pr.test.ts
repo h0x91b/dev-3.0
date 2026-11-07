@@ -132,6 +132,18 @@ describe("dev3 pr create — happy path", () => {
 		expect(stdoutOutput).not.toContain("dev3 pr watch");
 	});
 
+	it("on an Operations task succeeds and prints a short info line instead of the watch hint", async () => {
+		mockReadProject.mockReturnValue({ id: "proj-1", name: "Operations", path: "", kind: "virtual" } as never);
+		const { deps: d } = deps();
+
+		await handlePr("create", args({ title: "T" }), ctx(), d);
+
+		expect(stdoutOutput).toContain(PR_URL);
+		expect(stdoutOutput).toContain("PR watch is not available for Operations tasks");
+		expect(stdoutOutput).not.toContain("dev3 pr watch");
+		expect(exitSpy).not.toHaveBeenCalled();
+	});
+
 	it("finds the URL even when gh prints chatter around it", async () => {
 		const { deps: d } = deps({
 			"gh pr create": ok(`Creating pull request for feat/thing into main\n\n${PR_URL}\n`),

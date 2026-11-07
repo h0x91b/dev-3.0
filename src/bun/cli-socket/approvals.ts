@@ -1,7 +1,7 @@
 import type { AgentMessageSource, Project, ResetKeptBranch, Task, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus } from "../../shared/types";
 import { agentReplyCommand, seqIsShared } from "../../shared/agent-message-envelope";
 import { type ExternalSenderRequester, isExternalSenderRequester } from "../../shared/external-senders";
-import { DEFAULT_PRIORITY, agentLaunchAutoApproveMs, buildTaskDialogSubject, getTaskTitle, isCoordinatorTask, taskNeedsReset, taskResetConsent } from "../../shared/types";
+import { DEFAULT_PRIORITY, agentLaunchAutoApproveMs, buildTaskDialogSubject, getTaskTitle, isCoordinatorTask, isOpsWorktreeTask, taskNeedsReset, taskResetConsent } from "../../shared/types";
 import { coordinatorLaunchDefault } from "../../shared/coordinator-launch";
 import { getAllAgents } from "../agents";
 import { createAgentRequest, getAgentRequestState, joinAgentRequest, setAgentRequestLaunchChoice, voidAgentRequest } from "../agent-requests";
@@ -104,6 +104,8 @@ export async function requestDestructiveApproval(
 		// Full read-only context (project, seq, priority, labels, overview)
 		// so the user recognizes which task the prompt destroys.
 		subject: buildTaskDialogSubject(task, project),
+		// An owned Operations worktree is removed on reset, but its branch is kept.
+		...(kind === "reset" && isOpsWorktreeTask(task) ? { branchKept: true } : {}),
 	};
 
 	let request: { requestId: string; decision: Promise<{ approved: boolean; stale?: boolean }> };
