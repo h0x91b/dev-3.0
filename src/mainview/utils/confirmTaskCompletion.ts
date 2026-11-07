@@ -1,6 +1,7 @@
 import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { taskDialogInfo } from "./taskDialogInfo";
+import { isCompletionStripMounted, offerCompletion } from "../completion-offers";
 import type { Task, Project, TaskStatus, BranchStatus, UnsavedWork } from "../../shared/types";
 import { isOpsWorktreeTask } from "../../shared/types";
 import type { TFunction } from "../i18n";
@@ -96,7 +97,7 @@ export async function confirmTaskCompletion(
 	newStatus: TaskStatus,
 	t: TFunction,
 	onOpenTask?: () => void,
-	options?: { alwaysConfirm?: boolean },
+	options?: { alwaysConfirm?: boolean; anchor?: HTMLElement | null },
 ): Promise<boolean> {
 	if (newStatus !== "completed" && newStatus !== "cancelled") return true;
 	const alwaysConfirm = options?.alwaysConfirm ?? false;
@@ -108,7 +109,13 @@ export async function confirmTaskCompletion(
 		: t(newStatus === "completed" ? "task.confirmCompleteFooter" : "task.confirmCancelFooter");
 	const info = taskDialogInfo(task, project, onOpenTask);
 
-	// One-click path: on screen now, local git check streamed in.
+	// One-click path. Asked where the user clicked: a popover at the clicked
+	// control, else the completion card on the open task, else a modal.
+	const anchor = options?.anchor?.isConnected ? options.anchor : null;
+	if (alwaysConfirm && !anchor && isCompletionStripMounted(task.id)) {
+		const answer = await offerCompletion({ taskId: task.id, projectId: project.id, kind: "user", status: newStatus });
+		return answer === true;
+	}
 	if (alwaysConfirm) {
 		const unsaved = skipGitCheck
 			? null
@@ -117,6 +124,7 @@ export async function confirmTaskCompletion(
 			title: t(newStatus === "completed" ? "task.confirmCompleteTitle" : "task.confirmCancelTitle"),
 			confirmLabel: t(newStatus === "completed" ? "task.confirmCompleteLabel" : "task.confirmCancelLabel"),
 			info,
+			anchor,
 			message: tail,
 			deferred: unsaved
 				? {

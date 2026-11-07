@@ -1,7 +1,7 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
-import { ConfirmHost, confirm, whenConfirmHostMounted } from "../confirm";
+import { ConfirmHost, confirm, placeBesideAnchor, whenConfirmHostMounted } from "../confirm";
 import { I18nProvider } from "../i18n";
 
 function renderHost() {
@@ -609,5 +609,50 @@ describe("confirm service — keyboardChoice", () => {
 		press("y");
 		expect(screen.getByText("Close pane 2?")).toBeInTheDocument();
 		expect(screen.getByRole("button", { name: "Close pane" })).not.toHaveTextContent("↵");
+	});
+});
+
+describe("confirm anchored to the clicked control", () => {
+	it("opens as a popover with no dimmed backdrop and keeps the subject card", async () => {
+		const anchor = document.createElement("button");
+		document.body.appendChild(anchor);
+		renderHost();
+		let result: Promise<boolean>;
+		act(() => {
+			result = confirm({
+				title: "Complete task?",
+				message: "The worktree and branch will be deleted.",
+				confirmLabel: "Complete task",
+				anchor,
+				info: { title: "Fix the thing", body: "Overview line", seqLabel: "68", projectName: "dev-3.0" },
+			});
+		});
+		const dialog = await screen.findByRole("dialog");
+		expect(dialog).toHaveAttribute("data-anchored", "true");
+		expect(dialog.parentElement?.className).not.toContain("bg-black");
+		expect(screen.getByText("Overview line")).toBeInTheDocument();
+		expect(document.activeElement).toHaveTextContent("Cancel");
+		await userEvent.setup().click(dialog.parentElement!);
+		await expect(result!).resolves.toBe(false);
+		anchor.remove();
+	});
+
+	it("is a centred modal when the anchor has left the page", async () => {
+		renderHost();
+		act(() => { void confirm({ title: "Complete task?", message: "m", confirmLabel: "Go", anchor: document.createElement("button") }); });
+		expect(await screen.findByRole("dialog")).not.toHaveAttribute("data-anchored");
+	});
+
+	it("sits below the anchor, else above, else beside it, and stays on screen", () => {
+		const panel = { width: 300, height: 200 } as DOMRect;
+		Object.defineProperty(window, "innerWidth", { value: 1000, configurable: true });
+		Object.defineProperty(window, "innerHeight", { value: 800, configurable: true });
+		const at = (left: number, top: number) => ({ left, top, right: left + 20, bottom: top + 20, height: 20 }) as DOMRect;
+		expect(placeBesideAnchor(at(100, 100), panel)).toEqual({ top: 126, left: 100 });
+		expect(placeBesideAnchor(at(100, 700), panel)).toEqual({ top: 494, left: 100 });
+		expect(placeBesideAnchor(at(900, 100), panel).left).toBe(692);
+		const short = { width: 300, height: 700 } as DOMRect;
+		expect(placeBesideAnchor(at(100, 380), short)).toEqual({ top: 40, left: 126 });
+		expect(placeBesideAnchor(at(900, 380), short).left).toBe(594);
 	});
 });

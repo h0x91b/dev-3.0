@@ -7,6 +7,8 @@ import { registerCompletionOverlayHost, registerCompletionStrip, useCompletionOf
 import { WorktreeSettingsIcon } from "../TaskIcons";
 import { toastClearanceRef } from "../../toast-clearance";
 import { completionSkipsGitCheck, unsavedWorkWarning } from "../../utils/confirmTaskCompletion";
+import { taskDialogInfo } from "../../utils/taskDialogInfo";
+import TaskDialogSubjectCard from "../TaskDialogSubjectCard";
 
 /** Pointer clicks count only after this long, so a click aimed at what was there before cannot answer. */
 export const COMPLETION_STRIP_ARM_MS = 600;
@@ -14,9 +16,9 @@ export const COMPLETION_STRIP_ARM_MS = 600;
 type GitCheck = { state: "skipped" } | { state: "checking" } | { state: "done"; warning: string | null } | { state: "unknown" };
 
 /**
- * The task's pending completion offer. It never takes focus or keys, so an offer
- * that lands while the user types cannot steal a keystroke, and it never covers
- * the board. `overlay` floats it over the top-right of a live terminal viewport,
+ * The task's pending completion offer. An unsolicited one never takes focus or
+ * keys, so an offer that lands while the user types cannot steal a keystroke; the
+ * user's own Complete/Cancel focuses Keep open instead. It never covers the board. `overlay` floats it over the top-right of a live terminal viewport,
  * so the terminal keeps its size; `inline` is the row under the inspector, used
  * only where no terminal viewport hosts the overlay (a session-ended screen).
  */
@@ -35,11 +37,16 @@ export default function TaskCompletionStrip({ task, project, variant = "inline",
 
 function Strip({ offer, task, project, overlay, belowZoomBadge }: { offer: CompletionOffer; task: Task; project: Project; overlay: boolean; belowZoomBadge: boolean }) {
 	const t = useT();
-	const armedRef = useRef(false);
+	// The user's own click asked for this one, so it answers at once and owns focus.
+	const isUser = offer.kind === "user";
+	const armedRef = useRef(isUser);
+	const keepOpenRef = useRef<HTMLButtonElement>(null);
+	useEffect(() => { if (isUser) keepOpenRef.current?.focus(); }, [isUser]);
 	const skipGit = completionSkipsGitCheck(task, project);
 	const [git, setGit] = useState<GitCheck>(skipGit ? { state: "skipped" } : { state: "checking" });
 
 	useEffect(() => {
+		if (isUser) return;
 		const timer = setTimeout(() => { armedRef.current = true; }, COMPLETION_STRIP_ARM_MS);
 		return () => clearTimeout(timer);
 	}, []);
@@ -76,23 +83,32 @@ function Strip({ offer, task, project, overlay, belowZoomBadge }: { offer: Compl
 		offer.answer(true);
 	};
 	const isAgent = offer.kind === "agent";
+	const isCancel = isUser && offer.status === "cancelled";
 	const checking = git.state === "checking";
+	const title = isUser
+		? t(isCancel ? "task.confirmCancelTitle" : "task.confirmCompleteTitle")
+		: t(isAgent ? "completionStrip.agentTitle" : "completionStrip.mergedTitle");
+	// The user's own ask keeps the exact footer of the dialog it replaces.
+	const note = isUser
+		? t(task.worktreePath ? "task.warnCompletionFooter" : isCancel ? "task.confirmCancelFooter" : "task.confirmCompleteFooter")
+		: t(task.worktreePath ? "completionStrip.worktreeNote" : "completionStrip.sessionNote");
 
 	return (
 		<div
 			ref={toastClearanceRef}
 			role="region"
-			aria-label={t(isAgent ? "completionStrip.agentTitle" : "completionStrip.mergedTitle")}
+			aria-label={title}
+			onKeyDown={isUser ? (e) => { if (e.key === "Escape") { e.stopPropagation(); answer(false); } } : undefined}
 			data-testid="task-completion-strip"
 			data-help-id="task.completion-strip"
 			className={`flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 text-sm ${
 				overlay
 					? `absolute ${belowZoomBadge ? "top-11" : "top-2"} right-3 z-20 w-[min(40rem,calc(100%-1.5rem))] rounded-xl border bg-overlay shadow-lg`
 					: "flex-shrink-0 border-b bg-raised"
-			} ${isAgent ? "border-accent/40" : "border-success/30"}`}
+			} ${isAgent ? "border-accent/40" : isUser ? "border-edge" : "border-success/30"}`}
 		>
 			<div className={`flex items-center gap-2 min-w-0 flex-1 ${overlay ? "basis-full" : "basis-full md:basis-[18rem]"}`}>
-				{isAgent ? (
+				{isUser ? null : isAgent ? (
 					<span className="inline-flex shrink-0 items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-accent/15 text-accent">
 						<span aria-hidden className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F06A9}"}</span>
 						{t("confirmDialog.agentBadge")}
@@ -101,10 +117,9 @@ function Strip({ offer, task, project, overlay, belowZoomBadge }: { offer: Compl
 					<span aria-hidden className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-success/15 text-success text-xs">✓</span>
 				)}
 				<div className="min-w-0">
-					<div className="font-medium text-fg">{t(isAgent ? "completionStrip.agentTitle" : "completionStrip.mergedTitle")}</div>
-					<div className="text-xs text-fg-3">
-						{t(task.worktreePath ? "completionStrip.worktreeNote" : "completionStrip.sessionNote")}
-					</div>
+					<div className="font-medium text-fg">{title}</div>
+					{isUser && <UserAskSubject task={task} project={project} />}
+					<div className="text-xs text-fg-3">{note}</div>
 					{checking && <div className="text-xs text-fg-3" role="status">{t("task.checkingBranchState")}</div>}
 					{git.state === "unknown" && <div className="text-xs text-warning-strong">{t("task.branchStateUnknown")}</div>}
 					{git.state === "done" && git.warning && (
@@ -113,7 +128,7 @@ function Strip({ offer, task, project, overlay, belowZoomBadge }: { offer: Compl
 				</div>
 			</div>
 			<div className={`flex flex-wrap items-center gap-2 shrink-0 ${overlay ? "ml-auto" : "max-md:ml-auto"}`}>
-				{!isAgent && (
+				{offer.kind === "merge" && (
 					<>
 						<button
 							type="button"
@@ -137,8 +152,9 @@ function Strip({ offer, task, project, overlay, belowZoomBadge }: { offer: Compl
 					</>
 				)}
 				<button
+					ref={keepOpenRef}
 					type="button"
-					title={t(isAgent ? "completionStrip.keepOpenAgentHint" : "completionStrip.keepOpenMergeHint")}
+					title={isUser ? undefined : t(isAgent ? "completionStrip.keepOpenAgentHint" : "completionStrip.keepOpenMergeHint")}
 					onClick={() => answer(false)}
 					className="px-3 py-1.5 max-md:min-h-11 text-xs whitespace-nowrap rounded-lg border border-edge text-fg-2 hover:text-fg hover:bg-raised-hover transition-colors"
 				>
@@ -153,9 +169,14 @@ function Strip({ offer, task, project, overlay, belowZoomBadge }: { offer: Compl
 						checking ? "bg-fg-muted/40 cursor-not-allowed" : "bg-danger hover:bg-danger/80"
 					}`}
 				>
-					{t("app.branchMergedComplete")}
+					{isUser ? t(isCancel ? "task.confirmCancelLabel" : "task.confirmCompleteLabel") : t("app.branchMergedComplete")}
 				</button>
 			</div>
 		</div>
 	);
+}
+
+/** The same subject card the completion dialog showed: which task, its overview, priority and labels. */
+function UserAskSubject({ task, project }: { task: Task; project: Project }) {
+	return <div className="my-1.5"><TaskDialogSubjectCard {...taskDialogInfo(task, project)} tone="accent" /></div>;
 }

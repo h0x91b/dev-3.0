@@ -124,7 +124,7 @@ export default function ActiveTaskRow({
 	// ring reports the stage, not that an agent is moving right now.
 	const isBusy = (task.status === "in-progress" || task.status === "review-by-ai") && !disconnected;
 
-	async function handleMove(newStatus: TaskStatus, opts?: { alwaysConfirm?: boolean }) {
+	async function handleMove(newStatus: TaskStatus, opts?: { alwaysConfirm?: boolean; anchor?: HTMLElement }) {
 		statusMenu.setOpen(false);
 		await moveTaskToStatus({
 			task,
@@ -134,6 +134,7 @@ export default function ActiveTaskRow({
 			t,
 			onOpenTask: onOpen,
 			alwaysConfirm: opts?.alwaysConfirm,
+			anchor: opts?.anchor,
 			onMovingChange: setMoving,
 		});
 	}
@@ -160,7 +161,7 @@ export default function ActiveTaskRow({
 		e.stopPropagation();
 		setCompleting(true);
 		try {
-			await handleMove("completed", { alwaysConfirm: true });
+			await handleMove("completed", { alwaysConfirm: true, anchor: e.currentTarget as HTMLElement });
 		} finally {
 			setCompleting(false);
 		}
@@ -170,7 +171,7 @@ export default function ActiveTaskRow({
 		e.stopPropagation();
 		setCancelling(true);
 		try {
-			await handleMove("cancelled", { alwaysConfirm: true });
+			await handleMove("cancelled", { alwaysConfirm: true, anchor: e.currentTarget as HTMLElement });
 		} finally {
 			setCancelling(false);
 		}

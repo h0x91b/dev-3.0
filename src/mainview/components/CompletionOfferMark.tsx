@@ -7,7 +7,7 @@ import { MergeIcon } from "./task-info-panel/GitIcons";
 /** Passive card marker: a completion offer waits in this task's view. Never a ✓, which is the quick-complete action. */
 export default function CompletionOfferMark({ task, testId }: { task: Pick<Task, "id">; testId?: string }) {
 	const t = useT();
-	const offer = useCompletionOffer(task.id);
+	const offer = useCompletionOffer(task.id, true);
 	if (!offer) return null;
 	const label = t(offer.kind === "agent" ? "completionStrip.agentTitle" : "completionStrip.mergedTitle");
 	return (
