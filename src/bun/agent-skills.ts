@@ -60,7 +60,7 @@ user-invocable: true
 
 # dev3 — Task Lifecycle Protocol
 
-The full protocol is already in your system prompt (the "dev3 — Task Lifecycle Protocol" section, injected by the dev3 launcher) — follow it; this skill only refreshes live state. If that section is NOT in your context (session started outside the dev3 app), read PROTOCOL.md in this skill's directory before continuing. Run \`${dialect.cli} --help\` when you need the full CLI reference.
+The full protocol is already in your system prompt (the "dev3 — Task Lifecycle Protocol" section, injected by the dev3 launcher) — follow it; this skill only refreshes live state. If that section is NOT in your context (session started outside the dev3 app), read PROTOCOL.md in this skill's directory before continuing. If that section ends with "Full protocol reference", it is the lean protocol: read the file it names before using a dev3 feature it does not cover. Run \`${dialect.cli} --help\` when you need the full CLI reference.
 
 ## Status (auto-set on skill load)
 
@@ -92,6 +92,8 @@ user-invocable: true
 # dev3 protocol reference
 
 If your context already includes the full "dev3 — Task Lifecycle Protocol" from your launch, follow that protocol, including its agent-specific status rules. No additional skill read or startup command is needed just to load the same instructions again.
+
+If that protocol ends with "Full protocol reference", it is the lean protocol: read the file it names before using a dev3 feature it does not cover.
 
 Otherwise, read PROTOCOL.md in this skill's directory before working in a dev3 managed worktree. That file is the complete fallback, including startup instructions, and remains available whenever you need to inspect the full reference. Run \`${dialect.cli} --help\` when you need the CLI reference.
 

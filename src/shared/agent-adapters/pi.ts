@@ -1,5 +1,5 @@
 /** Plain pi adapter (`pi`, earendil-works/pi — the upstream omp forked from). */
-import { PI_SKILL_BODY } from "../agent-skill-content";
+import { PI_SKILL_BODY, PI_LEAN_SKILL_BODY } from "../agent-skill-content";
 import { modelArgs, providerArgs, slashExitProgram } from "./common";
 import { shellEscape, quoteIfUnsafe } from "./shell";
 import { buildTaskPrompt } from "./template";
@@ -12,6 +12,7 @@ export const piAdapter: AgentAdapter = {
 	// missing — so a fresh launch can pin the id recovery will resume.
 	supportsPreAssignedSessionId: true,
 	skillBody: PI_SKILL_BODY,
+	leanSkillBody: PI_LEAN_SKILL_BODY,
 	trustKinds: ["claude"],
 
 	launchArgs(baseCmd, config, ctx, options) {
@@ -36,7 +37,7 @@ export const piAdapter: AgentAdapter = {
 			if (options?.systemPromptFile) {
 				args.push("--append-system-prompt", quoteIfUnsafe(options.systemPromptFile));
 			} else {
-				args.push("--append-system-prompt", shellEscape(PI_SKILL_BODY));
+				args.push("--append-system-prompt", shellEscape(options?.protocolBody ?? PI_SKILL_BODY));
 			}
 		}
 

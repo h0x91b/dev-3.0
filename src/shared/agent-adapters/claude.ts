@@ -1,5 +1,5 @@
 /** Claude Code adapter. */
-import { CLAUDE_SKILL_BODY } from "../agent-skill-content";
+import { CLAUDE_SKILL_BODY, CLAUDE_LEAN_SKILL_BODY } from "../agent-skill-content";
 import { claudeTranscriptDir } from "../conversation-search-core";
 import { modelArgs, providerArgs, slashExitProgram } from "./common";
 import { shellEscape, quoteIfUnsafe } from "./shell";
@@ -11,6 +11,7 @@ export const claudeAdapter: AgentAdapter = {
 	supportsResume: true,
 	supportsPreAssignedSessionId: true,
 	skillBody: CLAUDE_SKILL_BODY,
+	leanSkillBody: CLAUDE_LEAN_SKILL_BODY,
 	trustKinds: ["claude"],
 
 	launchArgs(baseCmd, config, ctx, options) {
@@ -57,7 +58,7 @@ export const claudeAdapter: AgentAdapter = {
 			if (options?.systemPromptFile) {
 				args.push("--append-system-prompt-file", quoteIfUnsafe(options.systemPromptFile));
 			} else {
-				args.push("--append-system-prompt", shellEscape(CLAUDE_SKILL_BODY));
+				args.push("--append-system-prompt", shellEscape(options?.protocolBody ?? CLAUDE_SKILL_BODY));
 			}
 		}
 
