@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ExtensionInspection, ExtensionsOverview, InstalledExtension } from "../../../../shared/extensions";
+import { EXTENSION_AUTHOR_GUIDE_URL } from "../../../../shared/extensions";
 import { api } from "../../../rpc";
 import { openFolderPicker } from "../../../folder-picker";
 import { isRemote } from "../../../utils/platform";
@@ -64,6 +65,17 @@ describe("ExtensionsSettingsSection", () => {
 			expect(sw).toHaveAttribute("aria-checked", "true");
 		}
 		expect(screen.getByTestId("extensions-install")).toBeInTheDocument();
+	});
+
+	// Authors without a dev3 clone land here first; the guide tells them where the agent skill comes from.
+	it("links to the extension author guide, in a remote session too", async () => {
+		vi.mocked(isRemote).mockReturnValue(true);
+		render(<ExtensionsSettingsSection t={t} />);
+		const hint = await screen.findByTestId("extensions-write-own");
+		expect(hint).toHaveTextContent("extensions.writeOwn");
+		const link = within(hint).getByRole("link", { name: "extensions.guide" });
+		expect(link).toHaveAttribute("href", EXTENSION_AUTHOR_GUIDE_URL);
+		expect(link).toHaveAttribute("target", "_blank");
 	});
 
 	it("asks for consent with Cancel focused, and installs only after Trust and install", async () => {

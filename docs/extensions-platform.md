@@ -17,7 +17,7 @@ developer experience is a first-class part of the goal, not an afterthought.
 | # | Phase | Status |
 |---|---|---|
 | 1 | Board views on Cordis: the first real proof | Done; merged to `main` via #2143 (2026-11-07) |
-| 2 | Agent DX for writing extensions | Started: `dev3-extensions` skill task (2026-11-07) |
+| 2 | Agent DX for writing extensions | Skill shipped (`dev3-extensions`, 2026-11-07); `dev3 extension` CLI not started |
 | 3 | Reliability bar: what "works well and reliably" means before migrating more | Partly covered by phase 1 |
 | 4 | Migrate dev3 surfaces to plugins, one at a time | Not started; order not decided |
 
@@ -51,14 +51,30 @@ Design records: `decisions/2026/10/31/pluggable-board-views-on-cordis.md`,
 
 ### Phase 2: Agent DX for extensions
 
-The gaps today, found while verifying phase 1:
+Done:
 
-1. An agent cannot install an extension: install and trust exist only in the desktop UI, and the remote or
-   headless session (where agents run QA) may not install or trust at all.
-2. There is no edit → reload loop; a changed bundle needs a reinstall.
-3. Load failures and renderer errors are visible only in the UI (status "Failed to load", `console.error`).
-4. Outside a dev3 clone there are no types for `ctx.board`; only the prose in `docs/extensions.md`.
-5. No recipe for screenshotting one's own view; `/debug-ui` is written for dev3 itself.
+- `dev3-extensions` agent skill, installed into every agent's skill dirs on startup (`src/bun/agent-skills.ts`).
+  It carries the contract itself, so it works without a dev3 clone: manifest, a working template, `ctx.board`,
+  Cordis traps, install and trust, a scoped-QA screenshot recipe, and a symptom → cause table. Tests pin it to
+  `BoardService` and the manifest validator so it cannot drift. Verified by a blind run (a fresh agent with only
+  the skill wrote, installed, screenshotted and broke an extension on a scoped instance).
+- Settings → Extensions links to `docs/extensions.md`, which tells authors without a clone where the skill comes
+  from.
+
+The gaps today (status after the skill):
+
+1. An agent cannot install an extension on a real dev3: install and trust exist only in the desktop UI, and the
+   remote/headless session refuses both. Workaround in the skill: a scoped QA home, where the agent writes the
+   trust record itself. Never on the real `~/.dev3.0`.
+2. Edit → reload works only on a scoped instance (copy `index.js`, reload the page); a real install needs a
+   reinstall per change.
+3. Load failures are visible only in the UI and the console, and not uniformly: an undeclared view id unloads
+   the extension with no console line (`enforceDeclaredViews` in `plugins.ts`), and the board shows no notice for
+   it. `agent-browser errors` misses the console lines; `agent-browser console` has them.
+4. Outside a dev3 clone there are no types for `ctx.board`; the skill and `docs/extensions.md` carry the prose.
+5. Screenshot recipe: closed for the in-clone case (scoped QA, in the skill). The no-clone case has no way to run
+   a throwaway instance yet, and no released build with extensions existed to try it against on 2026-11-07.
+6. A reload drops the browser on the dashboard (no board in the URL), so every QA loop costs a click back.
 
 Options:
 
@@ -97,6 +113,6 @@ identical and land behind the same reliability bar as phase 1.
 
 ## Open decisions
 
-- Phase 2 scope (A / B / C) and when it starts.
+- Whether the `dev3 extension` CLI (option B) starts next, and in which order (`dev` + `status`/`logs` first).
 - The reliability criteria that gate phase 4.
 - Which dev3 surface migrates first.

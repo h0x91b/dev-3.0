@@ -66,6 +66,11 @@ describe("installAgentSkills", () => {
 		expect(existsSync(join(tempHome, ".agents/skills/dev3-tmux/SKILL.md"))).toBe(true);
 		expect(existsSync(join(tempHome, ".claude/skills/dev3-tmux/SKILL.md"))).toBe(true);
 		expect(existsSync(join(tempHome, ".codex/skills/dev3-tmux/SKILL.md"))).toBe(true);
+		expect(existsSync(join(tempHome, ".agents/skills/dev3-extensions/SKILL.md"))).toBe(true);
+		expect(existsSync(join(tempHome, ".claude/skills/dev3-extensions/SKILL.md"))).toBe(true);
+		expect(existsSync(join(tempHome, ".codex/skills/dev3-extensions/SKILL.md"))).toBe(true);
+		expect(existsSync(join(tempHome, ".omp/agent/skills/dev3-extensions/SKILL.md"))).toBe(true);
+		expect(existsSync(join(tempHome, ".agents/skills/dev3-extensions/agents/openai.yaml"))).toBe(true);
 		expect(existsSync(join(tempHome, ".agents/skills/dev3-bug-hunter/SKILL.md"))).toBe(true);
 		expect(existsSync(join(tempHome, ".claude/skills/dev3-bug-hunter/SKILL.md"))).toBe(true);
 		expect(existsSync(join(tempHome, ".codex/skills/dev3-bug-hunter/SKILL.md"))).toBe(true);
