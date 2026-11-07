@@ -7,6 +7,14 @@ import { useTaskPrRefPreview } from "../task-ref-preview";
 import { TaskRefHoverCard } from "./TaskRefPreviewCard";
 import TaskPrStatusPopover from "./TaskPrStatusPopover";
 
+/**
+ * A reference reads as the board's own chip (the card's `#seq` ink on an accent
+ * tint), so it is visibly a task or PR and not just a coloured word. Inline, not
+ * inline-flex: the chip has to sit on the text's baseline and wrap with it. A PR
+ * also gets the card's PR glyph, painted by `.task-ref-pr` so copying skips it.
+ */
+const REF_CHIP_CLASS = "inline cursor-pointer rounded-[0.3125rem] border-0 bg-accent/10 px-1 py-px align-baseline font-mono font-semibold text-accent [box-decoration-break:clone] transition-[color,background-color] duration-150 ease-out hover:bg-accent/20 hover:text-accent-emphasis focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent";
+
 interface TaskRefScope {
 	/** Project a bare reference belongs to — the project of the surrounding text. */
 	projectId?: string;
@@ -52,7 +60,7 @@ export function TaskRefLink({ taskRef, contextProjectId, taskId, children, previ
 		<button
 			type="button"
 			onClick={onClick}
-			className="inline p-0 m-0 bg-transparent border-0 font-mono text-accent hover:text-accent-emphasis hover:underline underline-offset-2 cursor-pointer align-baseline focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent rounded-sm"
+			className={`${REF_CHIP_CLASS} ${taskRef.kind === "pr" ? "task-ref-pr" : ""}`}
 			aria-label={t(taskRef.kind === "task" ? "taskRef.openTask" : "taskRef.openPr", { ref: token })}
 			data-task-ref={uri}
 		>

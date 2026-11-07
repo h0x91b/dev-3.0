@@ -12,7 +12,7 @@
 // deliberately NOT recognised: "#115" collides with GitHub numbers.
 // See decisions/2026/11/05/canonical-task-pr-reference-tokens.md.
 
-import type { SharedArtifact, SharedImage, TaskPRBadgeInfo, TaskPriority, TaskStatus } from "./types";
+import type { Label, Project, SharedArtifact, SharedImage, Task, TaskPRBadgeInfo, TaskStatus } from "./types";
 
 export type RefKind = "task" | "pr";
 
@@ -61,7 +61,13 @@ export type TaskPrRefPreview =
 	| {
 		kind: "task";
 		target: Extract<TaskPrRefResolution, { kind: "task" }>;
-		priority?: TaskPriority;
+		/** The task as the board holds it, so the card reuses the board's own pieces. */
+		task: Task;
+		/** The task's labels, resolved against its project. */
+		labels: Label[];
+		/** Set when the task sits in a custom column: its name and colour win. */
+		customColumn: { name: string; color: string } | null;
+		customStatusLabels?: Project["customStatusLabels"];
 		overview: string | null;
 		/** Newest last, content clipped to {@link PREVIEW_NOTE_CHARS}. */
 		notes: { id: string; content: string; createdAt: string }[];

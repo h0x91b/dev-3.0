@@ -26,9 +26,10 @@ Agents and coordinators named other tasks as "seq 115", "#115", "seq:115", "task
   - task description, AI notes, overview (hover preview and active row), traffic detail subject and body, task transcript markdown, and the terminal (plain text and OSC 8)
   - toasts and clickable list rows stay plain, because a link inside a click target fights the target
 - **Step 2 (popovers)**: a hover preview on the same links, loaded lazily through the `previewTaskPrRef` RPC with a 15 s renderer cache (`task-ref-preview.ts`).
-  - Task (`TaskRefPreviewCard.tsx`): title, status, overview, the last 2 notes, up to 3 image thumbnails and 3 artifacts, each opening its viewer. Hover-only; on touch the tap opens the task.
+  - Task (`TaskRefPreviewCard.tsx`): the task's kanban card, read-only and built from the board's own pieces: status strip, identity row (priority, `#seq`, agent and config via `taskCardAgent`), `TaskCardRail` in its new `readOnly` mode, labels, `TaskPrBadges`, and the card's action strip with "Open task". Under the title: overview, the last 2 notes, up to 3 images and 3 artifacts. The preview RPC therefore ships the task itself plus its resolved labels and custom column. Hover-only; on touch the tap opens the task.
+  - Inline links are chips in the card's `#seq` ink on an accent tint; a PR chip leads with the card's PR glyph, drawn by a CSS pseudo-element so copied text keeps the plain token.
   - PR: the card badge's own `TaskPrStatusPopover`, whose `taskId` became optional and which gained `onOpen` (lazy load) and `onRefresh` (re-read GitHub instead of a task cache). The status comes from the owner task's polled cache when it is the same PR, otherwise from GitHub through the user's own `gh` account.
-  - Terminal: links are canvas pixels, so `terminal-ref-hover.ts` reports the hovered cell and `TaskRefFloatingPreview` follows it. The PR side there is a compact summary (title, lifecycle, CI), because the full popover needs a React trigger.
+  - Terminal: links are canvas pixels, so `terminal-ref-hover.ts` reports the hovered cell and `TaskRefFloatingPreview` follows it. The PR side there is a compact card (the board's PR badges, title, CI, "Open PR"), because the full popover needs a React trigger. The canvas cannot style a link, so the hovered one gets the same chip tint as an overlay over its cells.
   - No popover: toasts, HTML artifacts, OS notifications (see Risks).
 
 ## 4. Risks

@@ -32,7 +32,7 @@ describe("installTerminalRefHover", () => {
 		move(4, 1);
 		move(5, 1);
 		expect(onChange).toHaveBeenCalledTimes(1);
-		expect(onChange.mock.calls[0][0]).toEqual({ uri: "<seq:115>", anchor: { top: 70, left: 140, right: 150, bottom: 90, width: 10, height: 20 } });
+		expect(onChange.mock.calls[0][0]).toEqual({ uri: "<seq:115>", anchor: { top: 70, left: 130, right: 220, bottom: 90, width: 90, height: 20 } });
 		move(20, 1);
 		expect(onChange).toHaveBeenLastCalledWith(null);
 		move(4, 1);

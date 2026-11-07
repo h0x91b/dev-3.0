@@ -97,6 +97,9 @@ describe("hover previews", () => {
 		previewTaskPrRef.mockResolvedValue({
 			kind: "task",
 			target: { kind: "task", taskId: "t-9", projectId: "p-1", projectName: "x", seq: 9, title: "Fix auth race", status: "in-progress" },
+			task: { id: "t-9", seq: 9, status: "in-progress", priority: "P1", agentId: null, prNumber: 31, prUrl: "https://github.com/o/r/pull/31" },
+			labels: [{ id: "l1", name: "frontend", color: "#ef4444" }],
+			customColumn: null,
 			overview: "Lock landed, verifying.",
 			notes: [{ id: "n1", content: "Root cause is the token refresh, see <seq:5>.", createdAt: "" }],
 			images: [],
@@ -109,6 +112,12 @@ describe("hover previews", () => {
 		const card = await screen.findByTestId("task-ref-preview");
 		expect(previewTaskPrRef).toHaveBeenCalledWith({ ref: "seq:9", contextProjectId: "p-1" });
 		expect(card.textContent).toContain("Fix auth race");
+		// Dressed as its kanban card: priority, #seq, the read-only rail, labels, PR badge.
+		expect(card.textContent).toContain("P1");
+		expect(card.textContent).toContain("#9");
+		expect(card.querySelector("[data-testid='task-card-rail'] button")).toBeNull();
+		expect(card.textContent).toContain("frontend");
+		expect(card.textContent).toContain("#31");
 		expect(card.textContent).toContain("Lock landed, verifying.");
 		expect(card.textContent).toContain("Root cause is the token refresh, see seq:5.");
 		// A ref inside the card is a plain link: a nested card would close this one on the way in.
@@ -124,6 +133,19 @@ describe("hover previews", () => {
 		fireEvent.click(screen.getByTestId("task-ref-preview-open"));
 		expect((opened.mock.calls[0][0] as CustomEvent).detail).toEqual({ kind: "task", taskId: "t-9", projectId: "p-1" });
 		window.removeEventListener("rpc:openDeepLink", opened as EventListener);
+	});
+
+	it("gives a coordinator's preview the board's role band", async () => {
+		previewTaskPrRef.mockResolvedValue({
+			kind: "task",
+			target: { kind: "task", taskId: "t-c", projectId: "p-1", projectName: "x", seq: 12, title: "Coordinate", status: "in-progress" },
+			task: { id: "t-c", seq: 12, status: "in-progress", taskType: "coordinator", agentId: null },
+			labels: [], customColumn: null, overview: null, notes: [], images: [], imageCount: 0, artifacts: [], artifactCount: 0,
+		});
+		wrap(<TaskRefText text="ask <seq:12>" contextProjectId="p-1" />);
+		fireEvent.mouseEnter(screen.getByRole("button", { name: /<seq:12>/ }).parentElement!);
+		const card = await screen.findByTestId("task-ref-preview");
+		expect(card.querySelector("[data-testid='task-role-band'][data-role='coordinator']")).not.toBeNull();
 	});
 
 	it("says so when the reference resolves to nothing", async () => {

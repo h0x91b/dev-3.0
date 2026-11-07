@@ -4,7 +4,7 @@ import type { RectLike } from "./utils/popoverPosition";
 
 export interface TerminalRefHover {
 	uri: string;
-	/** The hovered cell in client coordinates — where the preview card anchors. */
+	/** The whole link on the hovered row, in client coordinates — where the chip and the card sit. */
 	anchor: RectLike;
 }
 
@@ -38,10 +38,15 @@ export function installTerminalRefHover(opts: {
 		if (!renderer || !canvas || !cell) return set(null);
 		const uri = refAt(cell.y, cell.x);
 		if (!uri) return set(null);
+		let first = cell.x;
+		let last = cell.x;
+		while (first > 0 && refAt(cell.y, first - 1) === uri) first--;
+		while (last < term.cols - 1 && refAt(cell.y, last + 1) === uri) last++;
 		const box = canvas.getBoundingClientRect();
-		const left = box.left + cell.x * renderer.charWidth;
+		const left = box.left + first * renderer.charWidth;
+		const width = (last - first + 1) * renderer.charWidth;
 		const top = box.top + cell.viewportRow * renderer.charHeight;
-		set({ uri, anchor: { top, left, right: left + renderer.charWidth, bottom: top + renderer.charHeight, width: renderer.charWidth, height: renderer.charHeight } });
+		set({ uri, anchor: { top, left, right: left + width, bottom: top + renderer.charHeight, width, height: renderer.charHeight } });
 	}
 
 	function onMouseMove(e: MouseEvent): void {

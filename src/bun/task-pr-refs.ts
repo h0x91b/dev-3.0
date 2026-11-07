@@ -127,13 +127,18 @@ export async function previewTaskPrRef(uri: string, contextProjectId?: string, f
 	if (!resolved) return null;
 
 	if ("task" in resolved) {
-		const { task, target } = resolved;
+		const { task, target, project } = resolved;
+		const labels = (task.labelIds ?? []).flatMap((id) => project.labels?.find((label) => label.id === id) ?? []);
+		const column = task.customColumnId ? project.customColumns?.find((c) => c.id === task.customColumnId) : undefined;
 		const images = (task.sharedImages ?? []).filter((image) => !isSharedClip(image));
 		const artifacts = task.sharedArtifacts ?? [];
 		return {
 			kind: "task",
 			target,
-			...(task.priority ? { priority: task.priority } : {}),
+			task,
+			labels,
+			customColumn: column ? { name: column.name, color: column.color } : null,
+			...(project.customStatusLabels ? { customStatusLabels: project.customStatusLabels } : {}),
 			overview: getTaskOverview(task),
 			notes: (task.notes ?? []).slice(-PREVIEW_NOTE_LIMIT).map((n) => ({ id: n.id, content: clip(n.content), createdAt: n.createdAt })),
 			images: images.slice(-PREVIEW_IMAGE_LIMIT).reverse(),

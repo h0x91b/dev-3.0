@@ -499,6 +499,15 @@ body, #root {
 	box-shadow: var(--shadow-column);
 }
 
+/* A <pr:N> reference chip leads with the card's PR glyph; a pseudo-element, so a
+   copied sentence carries the token and not a private-use character. */
+.task-ref-pr::before {
+	content: "\F0401";
+	margin-right: 0.25em;
+	font-family: "JetBrainsMono Nerd Font Mono";
+	font-size: 0.85em;
+	font-weight: 400;
+}
 .glass-card {
 	background: rgb(var(--glass-card-rgb) / var(--glass-card-alpha));
 	border-color: rgb(var(--glass-border-rgb) / var(--glass-border-card-alpha));
