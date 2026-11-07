@@ -1,4 +1,5 @@
 import type { ParsedArgs } from "../args";
+import { formatPrRef } from "../../shared/task-refs";
 import { exitError, exitUsage } from "../output";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
@@ -53,7 +54,7 @@ export async function handlePrWatch(args: ParsedArgs, socketPath: string, contex
 		if (!resp.ok) exitError(resp.error || "Failed to reach the app");
 		if (off) {
 			const { removed } = resp.data as { removed: number };
-			const scope = prNumber === undefined ? "" : ` on PR #${prNumber}`;
+			const scope = prNumber === undefined ? "" : ` on ${formatPrRef(prNumber)}`;
 			process.stdout.write(removed > 0 ? `Removed ${removed} PR watch${removed === 1 ? "" : "es"}${scope}.\n` : `No PR watches${scope} on this task.\n`);
 			return;
 		}
@@ -61,7 +62,7 @@ export async function handlePrWatch(args: ParsedArgs, socketPath: string, contex
 		if (watches.length === 0) process.stdout.write("No PR watches on this task.\n");
 		for (const watch of watches) {
 			const followed = watch.pinned ? "  (followed, not this task's PR)" : "";
-			process.stdout.write(`PR #${watch.prNumber}  until ${watch.until}  head ${watch.headSha}  since ${watch.createdAt}${followed}\n`);
+			process.stdout.write(`${formatPrRef(watch.prNumber)}  until ${watch.until}  head ${watch.headSha}  since ${watch.createdAt}${followed}\n`);
 		}
 		return;
 	}
@@ -89,5 +90,5 @@ export async function handlePrWatch(args: ParsedArgs, socketPath: string, contex
 	}
 	const data = resp.data as { prNumber: number; pinned?: boolean };
 	const whose = data.pinned ? " (not this task's own PR)" : "";
-	process.stdout.write(`Watching PR #${data.prNumber}${whose} until ${WATCH_SUMMARY[until]} — dev3 will message this agent. No need to poll gh.\n`);
+	process.stdout.write(`Watching ${formatPrRef(data.prNumber)}${whose} until ${WATCH_SUMMARY[until]} — dev3 will message this agent. No need to poll gh.\n`);
 }

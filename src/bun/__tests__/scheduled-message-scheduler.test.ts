@@ -359,7 +359,7 @@ describe("cancel / send-now / immediate", () => {
 		await sendMessageImmediately(task as never, "hello now", null, { taskId: "other", seq: 7, title: "Sender" });
 		const text = vi.mocked(holdMessageForPane).mock.calls[0]![2];
 		expect(text).toContain("<dev3-ai-message>");
-		expect(text).toContain("<from-task>seq:7</from-task>");
+		expect(text).toContain("<from-task><seq:7></from-task>");
 		expect(text).toContain("hello now");
 	});
 
@@ -416,7 +416,7 @@ describe("cancel / send-now / immediate", () => {
 		mockUpdateTaskWith(task);
 		await fireScheduledMessage(project, task as never, message as never, { late: false });
 		const text = vi.mocked(holdMessageForPane).mock.calls[0]![2];
-		expect(text).toContain("<from-task>seq:7</from-task>");
+		expect(text).toContain("<from-task><seq:7></from-task>");
 		expect(message.text).toBe("check CI and continue");
 	});
 
@@ -554,7 +554,7 @@ describe("scheduled-message scheduler — native-backend tasks", () => {
 		vi.mocked(resolveMainAgentTarget).mockResolvedValue({ ok: true, paneId: "pane-1", author: null });
 		await sendMessageImmediately(task as never, "hello now", null, { taskId: "other", seq: 7, title: "Sender" });
 		const text = vi.mocked(sendPromptToNativePane).mock.calls[0]![2];
-		expect(text).toContain("<from-task>seq:7</from-task>");
+		expect(text).toContain("<from-task><seq:7></from-task>");
 		expect(text).toContain("hello now");
 	});
 });

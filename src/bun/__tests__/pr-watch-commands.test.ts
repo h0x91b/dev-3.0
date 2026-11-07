@@ -144,7 +144,7 @@ describe("pr.watch.add", () => {
 		it(`refuses --pr of a PR that is already ${state.toLowerCase()}, and stores nothing`, async () => {
 			vi.mocked(github.readTaskPullRequest).mockResolvedValue(prByNumber(2111, { state }));
 
-			await expect(add({ prNumber: 2111 })).rejects.toThrow(`${PR_WATCH_PR_FINISHED_PREFIX}Pull request #2111 is already ${state === "MERGED" ? "merged" : "closed"}`);
+			await expect(add({ prNumber: 2111 })).rejects.toThrow(`${PR_WATCH_PR_FINISHED_PREFIX}Pull request <pr:2111> is already ${state === "MERGED" ? "merged" : "closed"}`);
 
 			expect(addPrWatch).not.toHaveBeenCalled();
 			expect(persistTaskPrIdentity).not.toHaveBeenCalled();
@@ -153,7 +153,7 @@ describe("pr.watch.add", () => {
 
 	it("refuses --pr of a PR the repository does not have (or GitHub did not answer) with the no-PR prefix", async () => {
 		vi.mocked(github.readTaskPullRequest).mockResolvedValue(null);
-		await expect(add({ prNumber: 99999 })).rejects.toThrow(`${PR_WATCH_NO_PR_PREFIX}No pull request #99999`);
+		await expect(add({ prNumber: 99999 })).rejects.toThrow(`${PR_WATCH_NO_PR_PREFIX}No pull request <pr:99999>`);
 		expect(addPrWatch).not.toHaveBeenCalled();
 	});
 

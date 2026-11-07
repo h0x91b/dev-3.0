@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, type Dispatch, type MouseEvent as ReactMouseEvent } from "react";
+import { TaskRefText } from "./TaskRefText";
 import { toast } from "../toast";
 import { toastClearanceRef } from "../toast-clearance";
 import { confirm } from "../confirm";
@@ -1246,7 +1247,7 @@ function TaskInfoPanel({
 								<>
 									<span className="text-fg-3">{t("infoPanel.description")}</span>
 									<div>
-										<span className="text-fg-2 whitespace-pre-wrap">{task.description}</span>
+										<span className="text-fg-2 whitespace-pre-wrap"><TaskRefText text={task.description} contextProjectId={task.projectId} taskId={task.id} /></span>
 										<ImageAttachmentsStrip text={task.description} />
 									</div>
 								</>

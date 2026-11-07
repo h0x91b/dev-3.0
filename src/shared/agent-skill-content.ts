@@ -102,7 +102,7 @@ Labels, same session-start pass: \`dev3 label list\` first and reuse existing on
 
 ### Creating a review task
 
-\`dev3 task create --pr <number> --title "Review of #<number>"\` — the whole recipe. \`--pr\` is what makes it a review: dev3 fetches the PR's head branch (forks too), the worktree **starts on it**, and the code counts as somebody else's (\`foreignCode\`: that branch's \`setupScript\`/\`devScript\`/\`env\` and \`.mcp.json\` are ignored, deliberately). It implies \`--type pr-review\`, so never write your own review instructions — the role brief is injected above your text. Without \`--pr\` the task lands on the base branch with nothing to review; an unresolvable \`--pr\` exits 18 having created nothing. A non-PR branch: \`--branch origin/feat/x\`.
+\`dev3 task create --pr <number> --title "Review of #<number>"\` — the whole recipe. \`--pr\` is what makes it a review: dev3 fetches the PR's head branch (forks too), the worktree **starts on it**, and the code counts as somebody else's (\`foreignCode\`: that branch's \`setupScript\`/\`devScript\`/\`env\` and \`.mcp.json\` are ignored, deliberately). It implies \`--type pr-review\`, so never write your own review instructions — the role brief is injected above your text. An unresolvable \`--pr\` exits 18, creating nothing. A non-PR branch: \`--branch origin/feat/x\`.
 
 ## Editing a description never reaches a running agent
 
@@ -275,9 +275,9 @@ const SKILL_PEEK = `
 
 \`dev3 peek --task seq:<N> [--pane 2] [--lines 400] [--json]\` is a read-only glance at another task's terminal: a header, one line per pane (command, alive/dead, time since output) and the focused pane's tail. It never focuses, sends input, or takes ownership. With no \`--task\` it shows your own panes.
 
-Reach for it INSTEAD of messaging a quiet worker "are you alive?" — a message costs that agent a turn, a peek none.
+Use it INSTEAD of messaging a quiet worker "are you alive?": a peek costs it no turn.
 
-Read the tail yourself; peek deliberately does not classify state. \`last output unknown\` means the backend cannot say — never assume silence. On tmux the ages are per WINDOW, not per pane. A task with no live terminal is a successful answer naming the reason (draft, hibernated, not running), while \`could not read the terminal\` means the read failed and tells you NOTHING about progress. Native-backend tasks answer that today (\`not-enabled\`); the pane summary works everywhere.
+Read the tail yourself; peek does not classify state. \`last output unknown\` means the backend cannot say — never assume silence; on tmux ages are per WINDOW. No live terminal is an answer naming the reason (draft, hibernated, not running); \`could not read the terminal\` is a failed read and says NOTHING about progress. Native-backend tasks answer that today (\`not-enabled\`).
 `;
 
 const SKILL_ASK_TO_LAUNCH = `
@@ -294,13 +294,15 @@ Use it only for work that belongs in its own session — never to escape your sc
 
 **Extra agent in an existing task** → \`dev3 agent spawn --task seq:<N> --prompt "brief"\`: new pane, same worktree and approval, prints the pane ID; default account unless the user picks another. \`--handoff\` adds the conversation retelling. Messages reach the task's main agent, not this pane. Terminal gone → \`dev3 agent resume\` first. Idle → \`dev3 task hibernate --task seq:<N>\` frees its memory (declined: exit 36); \`dev3 task wake\` brings it back.
 
+**Naming tasks and PRs** — a task is \`<seq:N>\` (\`<seq:proj/N>\` off-board, proj = its project id's first 8 chars), a PR \`<pr:N>\`, in messages, notes, overviews and reports; never \`#N\` or "seq N". dev3 links them.
+
 **Talking to another task's agent** — \`dev3 message --task seq:<N> --subject "<about 6 words>" "text"\` types straight into any live task's agent, not only one you started; from a worktree it arrives labeled as agent traffic carrying the command to answer you. \`--in 30m\` / \`--at 14:00\` queues it (aim it at yourself for a wake-up).
 
-- **\`--subject\` is mandatory** — the line the agent-traffic view (\`⇧⌘M\`) shows for that row; without one the command exits 17. About 6 words, 80 characters max, never repeating who is talking (the row already shows \`#1722 → #1141\`). Good: \`"PR 1577 merged, main green"\`. Bad: \`"Seq 1722 -> Coordinator: CI verdict"\`.
+- **\`--subject\` is mandatory** — the row's line in the agent-traffic view (\`⇧⌘M\`); missing → exit 17. About 6 words, 80 characters max, never naming who is talking (the row shows both tasks). Good: \`"<pr:1577> merged, main green"\`. Bad: \`"<seq:1722> -> Coordinator: CI verdict"\`.
 - For real dependencies only — hand over an interface, ask for a result, report back when yours is ready. Never chatter, never nagging a peer already working.
 - It lands in the main agent, never a shell or the focused pane. One agent only: \`--agent <handle>\` from \`dev3 pane list --task seq:<N>\`, refused once it exits or is replaced. \`<reply-unavailable>\` means the sender is unproven: no reply command.
 - A peer on ANOTHER project needs \`--project <id>\`, else a bare \`--task seq:<N>\` is looked up on your own board and reported as "task not found". An incoming message's reply command already includes it when needed.
-- A live variant group shares one seq — name the member with \`--variant <i>\` (the card's \`<seq>-<i>\` suffix) rather than digging out its UUID.
+- A live variant group shares one seq — name the member with \`--variant <i>\` (the card's \`N-i\` suffix) rather than digging out its UUID.
 - **A long message arrives as a file path, not as text.** Anything over ~1 KB typed is written next to the receiving task and the envelope carries only \`Read it in full and act on it: <path>\` — read that file first. A \`</dev3-ai-message>\` with no \`<dev3-ai-message>\` line above it lost its head: do not act on the tail; say it arrived truncated and ask for a resend.
 - Delivery waits for ~${AGENT_MESSAGE_HOLD_IDLE_SECONDS}s of quiet on that pane (~${AGENT_MESSAGE_HOLD_HUMAN_IDLE_SECONDS}s while the user types, at once on Enter). Messages arriving together become ONE turn and never corrupt a typed line — send three thoughts as three messages; expect a reply about ${AGENT_MESSAGE_HOLD_IDLE_SECONDS} seconds after the peer writes.
 `;

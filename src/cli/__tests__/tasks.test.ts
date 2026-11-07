@@ -734,7 +734,7 @@ describe("tasks list --children-of", () => {
 		await handleTasks("list", { positional: [], flags: { "children-of": "seq:1801" } }, SOCKET, CTX);
 
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.children", { taskId: "seq:1801", projectId: "proj-001" });
-		expect(stdoutOutput).toContain("Children of #1801 · dev-3.0");
+		expect(stdoutOutput).toContain("Children of <seq:1801> · dev-3.0");
 		expect(stdoutOutput).toContain("homebrew");
 		expect(stdoutOutput).toContain("1802-2");
 		expect(stdoutOutput).toContain("Agent is Working");

@@ -12,6 +12,7 @@
  * Types and rendering live here (shared, pure) so the socket payload and the
  * CLI output can never drift apart.
  */
+import { formatTaskRef } from "./task-refs";
 
 /**
  * Precision of a pane's `lastOutputAt`. `native` gives per-pane times (each
@@ -303,12 +304,12 @@ function paneLine(pane: PeekPane, nowMs: number): string {
  */
 export function renderTaskPeek(snapshot: TaskPeekSnapshot, now: Date): string {
 	const nowMs = now.getTime();
-	const seq = snapshot.seq === null ? snapshot.taskId.slice(0, 8) : String(snapshot.seq);
+	const seq = snapshot.seq === null ? `Task ${snapshot.taskId.slice(0, 8)}` : formatTaskRef(snapshot.seq);
 	const out: string[] = [];
 
 	const paneCount = snapshot.panes.length === 1 ? "1 pane" : `${snapshot.panes.length} panes`;
 	out.push(
-		`Task ${seq} · ${snapshot.title} · ${snapshot.status} · backend=${snapshot.backend} · ${paneCount}`,
+		`${seq} · ${snapshot.title} · ${snapshot.status} · backend=${snapshot.backend} · ${paneCount}`,
 	);
 	out.push(`observed ${formatAge(nowMs - Date.parse(snapshot.observedAt))}`);
 
