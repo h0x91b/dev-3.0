@@ -11,6 +11,7 @@ import StatusMenuPortal from "../../components/StatusMenuPortal";
 import { useStatusMenu } from "../../hooks/useStatusMenu";
 import { useStatusColors } from "../../hooks/useStatusColors";
 import { getStatusLabel } from "../../utils/statusLabel";
+import { prStateTone } from "../../utils/prStateTone";
 import { compactAge } from "../../utils/statusAge";
 import { taskLastActivityMs } from "../../utils/projectActivity";
 import type { BoardService } from "../board-service";
@@ -84,10 +85,10 @@ export function StatusCell({ task, ctx }: { task: Task; ctx: TableRowContext }) 
 				aria-haspopup="menu"
 				aria-expanded={menu.open}
 				aria-label={t("boardTable.changeStatus", { status: label })}
-				className="flex max-w-full items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs text-fg-2 hover:bg-fg/8 hover:text-fg focus-visible:ring-1 focus-visible:ring-accent/60"
+				className="-mx-1.5 flex max-w-[calc(100%+0.75rem)] items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs text-fg-2 transition-colors duration-150 hover:bg-fg/8 hover:text-fg focus-visible:ring-1 focus-visible:ring-accent/60"
 			>
 				<span aria-hidden className="h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: color }} />
-				<span className="truncate">{label}</span>
+				<span className="truncate" title={label}>{label}</span>
 			</button>
 			<StatusMenuPortal menu={menu} narrow={ctx.narrow} title={t("task.moveTo")}>
 				<PipelineDropdown
@@ -114,7 +115,7 @@ export function StatusCell({ task, ctx }: { task: Task; ctx: TableRowContext }) 
 export function PriorityCell({ task, ctx }: { task: Task; ctx: TableRowContext }) {
 	return (
 		<CellControl>
-			<PriorityBadge priority={task.priority} onChange={(priority) => void ctx.board.setPriority(task.id, priority)} />
+			<PriorityBadge size="sm" priority={task.priority} onChange={(priority) => void ctx.board.setPriority(task.id, priority)} />
 		</CellControl>
 	);
 }
@@ -139,7 +140,7 @@ export function LabelsCell({ task, ctx }: { task: Task; ctx: TableRowContext }) 
 				aria-haspopup="dialog"
 				aria-expanded={open}
 				aria-label={t("boardTable.editLabels")}
-				className="flex min-w-0 items-center gap-1 overflow-hidden rounded-md px-1 py-0.5 hover:bg-fg/8 focus-visible:ring-1 focus-visible:ring-accent/60"
+				className="-mx-1 flex min-w-0 items-center gap-1 overflow-hidden rounded-md px-1 py-0.5 transition-colors duration-150 hover:bg-fg/8 focus-visible:ring-1 focus-visible:ring-accent/60"
 			>
 				{assigned.length === 0 ? (
 					<Muted />
@@ -165,22 +166,23 @@ export function LabelsCell({ task, ctx }: { task: Task; ctx: TableRowContext }) 
 export function PrCell({ task, ctx }: { task: Task; ctx: TableRowContext }) {
 	const t = useT();
 	const number = taskPrNumber(task);
-	if (number === null) return <Muted />;
+	if (number === null) return null;
 	const state = (["merged", "closed", "open"] as const).find((s) => ctx.board.matches(task, `pr:${s}`));
 	return (
-		<span className="truncate text-xs tabular-nums text-fg-2">
+		<span className="block truncate text-xs tabular-nums text-fg-2">
 			#{number}
-			{state && <span className="ml-1 text-fg-3">{t(`boardTable.prState.${state}`)}</span>}
+			{state && <span className={`ml-1.5 font-medium ${prStateTone(state).text}`}>{t(`boardTable.prState.${state}`)}</span>}
 		</span>
 	);
 }
 
+/** Only the editable Labels cell marks "none": an empty read-only cell is quieter left blank. */
 function Muted() {
 	return <span className="text-xs text-fg-muted">—</span>;
 }
 
-function Text({ children, mono = false, title }: { children: ReactNode; mono?: boolean; title?: string }) {
-	return <span title={title} className={`block truncate text-xs text-fg-2 ${mono ? "font-mono" : ""}`}>{children}</span>;
+function Text({ children, mono = false, numeric = false, title }: { children: ReactNode; mono?: boolean; numeric?: boolean; title?: string }) {
+	return <span title={title} className={`block truncate text-xs text-fg-2 ${mono ? "font-mono" : ""} ${numeric ? "tabular-nums" : ""}`}>{children}</span>;
 }
 
 /** One cell's content. The interactive ones own their pickers; the rest are plain text. */
@@ -201,27 +203,27 @@ export function TableCell({ column, task, ctx }: { column: TableColumnId; task: 
 			return <LabelsCell task={task} ctx={ctx} />;
 		case "agent": {
 			const name = task.agentId ? ctx.agentNameById.get(task.agentId) : undefined;
-			return name ? <Text>{name}</Text> : <Muted />;
+			return name ? <Text>{name}</Text> : null;
 		}
 		case "pr":
 			return <PrCell task={task} ctx={ctx} />;
 		case "activity": {
 			const ms = taskLastActivityMs(task);
-			if (!ms) return <Muted />;
+			if (!ms) return null;
 			const iso = new Date(ms).toISOString();
-			return <Text title={new Date(ms).toLocaleString()}>{compactAge(iso)}</Text>;
+			return <Text numeric title={new Date(ms).toLocaleString()}>{compactAge(iso)}</Text>;
 		}
 		case "parent": {
 			const parentId = parentTaskIdOf(task);
-			if (!parentId) return <Muted />;
+			if (!parentId) return null;
 			const parent = ctx.taskById.get(parentId);
-			return parent ? <Text title={getTaskTitle(parent)}>{rowSeqLabel(parent, ctx)}</Text> : <Text>{t("boardTable.parentElsewhere")}</Text>;
+			return parent ? <Text numeric title={getTaskTitle(parent)}>{rowSeqLabel(parent, ctx)}</Text> : <Text>{t("boardTable.parentElsewhere")}</Text>;
 		}
 		case "created":
-			return <Text title={new Date(task.createdAt).toLocaleString()}>{new Date(task.createdAt).toLocaleDateString()}</Text>;
+			return <Text numeric title={new Date(task.createdAt).toLocaleString()}>{new Date(task.createdAt).toLocaleDateString()}</Text>;
 		case "branch":
-			return task.branchName ? <Text mono title={task.branchName}>{task.branchName}</Text> : <Muted />;
+			return task.branchName ? <Text mono title={task.branchName}>{task.branchName}</Text> : null;
 		case "type":
-			return task.taskType ? <Text>{t(TASK_TYPE_KEYS[task.taskType])}</Text> : <Muted />;
+			return task.taskType ? <Text>{t(TASK_TYPE_KEYS[task.taskType])}</Text> : null;
 	}
 }

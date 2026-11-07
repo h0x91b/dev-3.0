@@ -21,7 +21,7 @@ export function TableOptions(_props: { ctx: Context }) {
 
 	return (
 		<fieldset data-testid="board-table-options">
-			<legend className="mb-2 text-xs font-medium text-fg-3">{t(narrow ? "boardTable.sortHeading" : "boardTable.columns")}</legend>
+			<legend className="mb-1.5 px-1.5 text-xs font-medium text-fg-3">{t(narrow ? "boardTable.sortHeading" : "boardTable.columns")}</legend>
 			<div className="flex flex-col">
 				{available.map((column) => {
 					const label = t(columnLabelKey(column));
@@ -52,7 +52,7 @@ export function TableOptions(_props: { ctx: Context }) {
 								aria-pressed={active}
 								title={sortLabel}
 								data-testid={`board-table-option-sort-${column}`}
-								className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md hover:text-fg focus-visible:ring-1 focus-visible:ring-accent/60 motion-safe:active:scale-[0.96] ${active ? "text-accent" : "text-fg-muted"}`}
+								className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md transition-[color,transform] duration-150 hover:text-fg focus-visible:ring-1 focus-visible:ring-accent/60 motion-safe:active:scale-[0.96] ${active ? "text-accent" : "text-fg-muted"}`}
 							>
 								<svg aria-hidden className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
 									{active ? <path d={direction === "asc" ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"} /> : <path d="M8 9l4-4 4 4M8 15l4 4 4-4" />}

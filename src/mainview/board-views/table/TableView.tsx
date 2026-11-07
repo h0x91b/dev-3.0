@@ -14,6 +14,7 @@ import {
 	type TableColumnId,
 	type TableLayout,
 } from "./table-model";
+import { ZEBRA_ROW } from "../zebra";
 
 export const TABLE_VIEW_ID = "builtin:table";
 const ROW_HEIGHT = 36;
@@ -25,8 +26,8 @@ const COLUMN_WIDTH: Record<TableColumnId, string> = {
 	seq: "4.5rem",
 	title: "minmax(14rem, 1fr)",
 	project: "9rem",
-	status: "9.5rem",
-	priority: "3.5rem",
+	status: "8rem",
+	priority: "4.75rem",
 	labels: "minmax(8rem, 14rem)",
 	agent: "7rem",
 	pr: "6.5rem",
@@ -36,6 +37,9 @@ const COLUMN_WIDTH: Record<TableColumnId, string> = {
 	branch: "minmax(8rem, 13rem)",
 	type: "7rem",
 };
+
+/** Times and dates read as quantities, so they hug the end edge and line up digit by digit. */
+const END_ALIGNED: ReadonlySet<TableColumnId> = new Set(["activity", "created"]);
 
 const COLUMN_LABEL_KEYS = {
 	seq: "boardTable.col.seq",
@@ -215,24 +219,31 @@ export function TableView(_props: { ctx: Context }) {
 						{layout.columns.map((column) => {
 							const sorted = layout.sort[0] === column;
 							const direction = sorted ? layout.sort[1] : null;
+							const end = END_ALIGNED.has(column);
+							const label = t(columnLabelKey(column));
 							return (
 								<div
 									key={column}
 									role="columnheader"
 									aria-sort={direction === "asc" ? "ascending" : direction === "desc" ? "descending" : "none"}
+									className={`flex min-w-0 ${end ? "justify-end" : ""}`}
 								>
+									{/* -mx-1 cancels the hit-area padding so the label lines up with the cells below. */}
 									<button
 										type="button"
 										onClick={() => setLayout(toggleTableSort(layout, column))}
 										data-testid={`board-table-sort-${column}`}
-										className={`flex items-center gap-1 rounded px-1 py-0.5 text-xs font-medium hover:text-fg focus-visible:ring-1 focus-visible:ring-accent/60 ${sorted ? "text-fg" : "text-fg-3"}`}
+										title={label}
+										className={`group -mx-1 flex min-w-0 items-center gap-1 rounded px-1 py-0.5 text-xs font-medium transition-colors duration-150 hover:text-fg focus-visible:ring-1 focus-visible:ring-accent/60 ${end ? "flex-row-reverse" : ""} ${sorted ? "text-fg" : "text-fg-3"}`}
 									>
-										{t(columnLabelKey(column))}
-										{direction && (
-											<svg aria-hidden className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-												<path d={direction === "asc" ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"} />
-											</svg>
-										)}
+										<span className="truncate">{label}</span>
+										<svg
+											aria-hidden
+											className={`h-3 w-3 flex-shrink-0 transition-opacity duration-150 ${direction ? "" : "opacity-0 group-hover:opacity-60 group-focus-visible:opacity-60"}`}
+											viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+										>
+											<path d={direction === "asc" ? "M6 15l6-6 6 6" : direction === "desc" ? "M6 9l6 6 6-6" : "M8 9l4-4 4 4M8 15l4 4 4-4"} />
+										</svg>
 									</button>
 								</div>
 							);
@@ -253,11 +264,11 @@ export function TableView(_props: { ctx: Context }) {
 								onClick={() => board.openTask(task.id)}
 								onContextMenu={(e) => openMenu(task, e)}
 								onKeyDown={(e) => onRowKeyDown(task, item.index, e)}
-								className="absolute left-0 top-0 grid w-full cursor-pointer items-center gap-x-3 border-b border-edge/50 px-2 outline-none hover:bg-raised-hover focus-visible:bg-raised-hover focus-visible:shadow-[inset_2px_0_0_rgb(var(--accent))]"
+								className={`absolute left-0 top-0 grid w-full cursor-pointer items-center gap-x-3 border-b border-edge/40 px-2 outline-none ${item.index % 2 === 1 ? ZEBRA_ROW : ""} hover:bg-raised-hover focus-visible:bg-raised-hover focus-visible:shadow-[inset_2px_0_0_rgb(var(--accent))]`}
 								style={{ gridTemplateColumns, height: ROW_HEIGHT, transform: `translateY(${item.start}px)` }}
 							>
 								{layout.columns.map((column) => (
-									<div key={column} role="cell" className="min-w-0">
+									<div key={column} role="cell" className={`min-w-0 ${END_ALIGNED.has(column) ? "text-end" : ""}`}>
 										<TableCell column={column} task={task} ctx={rowCtx} />
 									</div>
 								))}

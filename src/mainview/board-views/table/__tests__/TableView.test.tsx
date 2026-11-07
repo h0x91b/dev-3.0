@@ -241,6 +241,19 @@ describe("Table board view", () => {
 		expect(within(screen.getByTestId("board-table-row-t1")).getByText("#42")).toHaveTextContent("#42merged");
 	});
 
+	it("tints the PR state word with the shared PR tone", async () => {
+		await renderTable({
+			tasks: [task("t1", 1, { prNumber: 42 })],
+			matches: (_task, query) => query === "pr:merged",
+		});
+		expect(within(screen.getByTestId("board-table-row-t1")).getByText("merged")).toHaveClass("text-pr-merged");
+	});
+
+	it("leaves empty read-only cells blank and marks only empty labels", async () => {
+		await renderTable({ tasks: [task("t1", 1)] });
+		expect(within(screen.getByTestId("board-table-row-t1")).getAllByText("—")).toHaveLength(1);
+	});
+
 	it("renders a card list on narrow", async () => {
 		await renderTable({ formFactor: "narrow", tasks: [task("t1", 1), task("t2", 2)] });
 		expect(screen.getByRole("list")).toBeInTheDocument();
