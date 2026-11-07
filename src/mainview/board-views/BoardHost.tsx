@@ -8,6 +8,7 @@ import { trackEvent } from "../analytics";
 import { boardViewTelemetryId } from "../../shared/extensions";
 import { ignoreStartupReadFailure, startupRead } from "../startup-read";
 import { useT } from "../i18n";
+import { failedExtensionForView, getBoardPluginsSnapshot, subscribeBoardPlugins } from "./plugins";
 import LabelFilterBar from "../components/LabelFilterBar";
 import LineageFilterNotice from "../components/LineageFilterNotice";
 import EpicFilterNotice from "../components/EpicFilterNotice";
@@ -309,6 +310,8 @@ function BoardHost(props: BoardHostProps) {
 	const active = offered.find((view) => view.def.id === viewState.viewType)
 		?? offered.find((view) => view.def.id === KANBAN_VIEW_ID);
 	const kanbanFallback = <BoardViewSlot ctx={root} component={KanbanView} />;
+	const plugins = useSyncExternalStore(subscribeBoardPlugins, getBoardPluginsSnapshot);
+	const failedExtension = active?.def.id === viewState.viewType ? null : failedExtensionForView(plugins, viewState.viewType);
 
 	const { setViewType } = viewState;
 	const pickView = useCallback((viewId: string) => {
@@ -360,6 +363,14 @@ function BoardHost(props: BoardHostProps) {
 					navigate({ screen: "project", projectId });
 				}}
 			/>
+			{provided && failedExtension && (
+				<div role="alert" className="mx-6 mt-2 px-3 py-2 rounded-lg bg-danger/10 text-danger text-xs flex items-center gap-3">
+					<span>{t("boardView.extensionFailed", { name: failedExtension })}</span>
+					<button type="button" onClick={manageViews} className="ml-auto shrink-0 underline underline-offset-2 hover:text-fg">
+						{t("boardView.manage")}
+					</button>
+				</div>
+			)}
 			{provided && (
 				<BoardViewErrorBoundary
 					viewId={active?.def.id ?? KANBAN_VIEW_ID}

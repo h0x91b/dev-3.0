@@ -137,7 +137,9 @@ function enforceDeclaredViews(): void {
 		if (!owner) continue;
 		const entry = extensionFibers.get(owner);
 		if (entry && !entry.declared.has(view.def.id)) {
-			unloadExtension(owner, { state: "failed", error: `registered an undeclared board view "${view.def.id}"` });
+			const error = `registered an undeclared board view "${view.def.id}"`;
+			console.error(`[extensions] ${owner} failed to load: ${error}`);
+			unloadExtension(owner, { state: "failed", error });
 		}
 	}
 }
@@ -234,6 +236,18 @@ export function syncBoardPlugins(): Promise<ExtensionsOverview | null> {
 	return run;
 }
 
+/**
+ * The display name of the extension behind `viewId` when that extension failed to
+ * load, so a board showing Kanban instead can say why. Null for a built-in or a healthy one.
+ */
+export function failedExtensionForView(state: RuntimeSnapshot, viewId: string): string | null {
+	const sep = viewId.indexOf(":");
+	if (sep <= 0 || viewId.startsWith("builtin:")) return null;
+	const id = viewId.slice(0, sep);
+	if (state.loads[id]?.state !== "failed") return null;
+	return state.overview?.extensions.find((ext) => ext.id === id)?.manifest?.name ?? id;
+}
+
 /** Forget a failure so the next sync retries it (after the user reinstalls or re-enables it). */
 export function clearExtensionFailure(id: string): void {
 	if (!snapshot.loads[id]) return;
@@ -271,6 +285,10 @@ export async function restartWithExtensionsOff(): Promise<void> {
 		new Promise((resolve) => setTimeout(resolve, 3000)),
 	]);
 	window.location.reload();
+}
+
+export function setExtensionLoadForTests(id: string, load: ExtensionLoadState): void {
+	publish({ loads: { ...snapshot.loads, [id]: load } });
 }
 
 export function resetBoardPluginsForTests(): void {

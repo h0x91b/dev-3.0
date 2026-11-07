@@ -1118,6 +1118,8 @@ const settings = {
 	"extensions.empty": "No hay extensiones instaladas.",
 	"extensions.emptyHint": "Para crear una, consulta docs/extensions.md en el repositorio de dev3.",
 	"extensions.install": "Instalar desde carpeta…",
+	"extensions.writeOwn": "¿Escribes tu propia extensión? Los agentes que inicia dev3 ya tienen la skill /dev3-extensions.",
+	"extensions.guide": "Guía de extensiones",
 	"extensions.pickTitle": "Elige la carpeta de la extensión",
 	"extensions.remoteReadOnly": "Instala, confía y activa extensiones en la app de escritorio.",
 	"extensions.status.active": "Activa",

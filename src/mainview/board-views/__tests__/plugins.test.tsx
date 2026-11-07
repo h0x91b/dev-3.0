@@ -5,6 +5,7 @@ import { api } from "../../rpc";
 import { getBoardRoot, getBoardViewRegistry, resetBoardRootForTests } from "../root";
 import {
 	applyBuiltinBoardViews,
+	failedExtensionForView,
 	getBoardPluginsSnapshot,
 	resetBoardPluginsForTests,
 	setExtensionImporterForTests,
@@ -131,13 +132,26 @@ describe("extension loader", () => {
 		errors.mockRestore();
 	});
 
-	it("unloads an extension that registers a view its manifest does not declare", async () => {
-		vi.spyOn(console, "error").mockImplementation(() => {});
+	it("unloads an extension that registers a view its manifest does not declare, and says so in the console", async () => {
+		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
 		modules["sneaky"] = viewPlugin("sneaky", ["sneaky:declared", "sneaky:extra"]);
 		vi.mocked(api.request.listExtensions).mockResolvedValue(overview([extension("sneaky", ["declared"])]));
 		await syncBoardPlugins();
 		await waitFor(() => expect(getBoardPluginsSnapshot().loads["sneaky"]?.state).toBe("failed"));
 		await waitFor(() => expect(ids().filter((id) => id.startsWith("sneaky:"))).toEqual([]));
+		expect(errors.mock.calls.some((call) => String(call[0]).includes("[extensions] sneaky failed to load") && String(call[0]).includes("sneaky:extra"))).toBe(true);
+		expect(failedExtensionForView(getBoardPluginsSnapshot(), "sneaky:declared")).toBe("sneaky");
+	});
+
+	it("names a failed extension behind a view, and nothing for built-ins or healthy ones", () => {
+		const state = {
+			overview: overview([extension("focus-list", ["focus"])]),
+			loads: { "focus-list": { state: "failed" as const, error: "x" }, ok: { state: "loaded" as const } },
+		};
+		expect(failedExtensionForView(state, "focus-list:focus")).toBe("focus-list");
+		expect(failedExtensionForView(state, "ok:main")).toBeNull();
+		expect(failedExtensionForView(state, "builtin:table")).toBeNull();
+		expect(failedExtensionForView(state, "nocolon")).toBeNull();
 	});
 
 	it("marks a bundle without a plugin default export as failed", async () => {
