@@ -109,7 +109,7 @@ Only in `project-settings` (`global | project | worktree | automations`). Budget
 
 ### Command palette (⇧⌘K nav · ⇧⌘P actions) — `Observed`
 
-A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShell`). **⇧⌘K** = navigation: fuzzy-jump to a project, Enter navigates (complements `Cmd+1..9` and the breadcrumb dropdown). **Cmd+Shift+P** = actions: fuzzy-match a command label, Enter runs it via `handleMenuAction` — a DOM mirror of the native menu, not a second command runner; only context-applicable commands show. Both fuzzy via `utils/fuzzyMatch.ts`. A command may open a scoped picker on the shell: `Find coordinator…` lists active coordinators (by `taskType`, all projects, state-labelled). See Surface model below.
+Keyboard-only, one `PaletteShell`; modes, hotkeys and rules: the palette note under the §5 table. Nav complements `Cmd+1..9` and the breadcrumb dropdown. `Find coordinator…` opens a scoped picker of active coordinators (by `taskType`, all projects, state-labelled).
 
 ## 5. Surface model — `Observed` unless noted
 
@@ -334,11 +334,11 @@ One shared, non-interactive glyph (`NativeBackendMark`) — a bolt in a rounded 
 
 **Second member — foreign code (`ForeignCodeMark`, 2026-08-10).** An eye glyph marks a task about commits the user did not write (`Task.foreignCode`): on the Kanban card next to the backend mark, and in the inspector metadata beside the branch it qualifies. Same contract as above — non-interactive, no action slot, no budget, accent-toned, localized name + tooltip.
 
-- **Accent, never warning, on an identity surface.** It answers *whose code*, not a fault. The loud signal sits where the user must act: the `warning` RUNS badge on a changed executable-config file in the diff viewer (`shared/executable-config-files.ts`).
+- **Accent, never warning, on an identity surface.** The glyph answers *whose code*, which is not a fault; most review tasks are ordinary work. The loud signal belongs where the user must act: the `warning`-toned RUNS badge on a changed executable-config file in the diff viewer (`.dev3/config.json`, `.mcp.json`, `.claude/settings.json` — `shared/executable-config-files.ts`). Amber on the board would spend the warning token on the happy path, and `danger` is already "deleted" one badge to its left in that same diff row.
 - **A marker states a property; it never enforces one.** `foreignCode` blocks no transition and makes nothing read-only. The one consequence — this branch's `.dev3` commands and agent trust are not used — is stated in the tooltip and in the inspector row, which also carries the single control that hands trust back (confirm-gated, `TaskInfoPanel`).
-- **Task-level only.** A branch-level card marker was rejected: the card shows no branch, so it would qualify nothing (§11).
+- **The board carries the glyph only because the property belongs to the task.** A branch-level marker was rejected for the card: the card never shows a branch name, so a glyph about the branch has no object there to qualify (board noise is the project's top anti-pattern, §11).
 
-**Third member — role band (`TaskRoleBand`, 2026-11-06).** A role (coordinator, board cleanup) is an opaque 22px band, not a hue: found by silhouette, survives grayscale. Coordinator = `accent-fill`, white ink, accent halo; cleanup = neutral `fg/30`. Rows carry the filled chip. Dashed is draft-only; never warning/danger (§6). Measurements: `decisions/2026/11/06/coordinator-role-band-not-a-hue.md`.
+**Third member — role band (`TaskRoleBand`, 2026-11-07).** A role (coordinator, board cleanup) is an opaque band under the status strip, not a hue: found by silhouette. **Not action-free:** the coordinator band hosts the lineage "N created" filter, moved out of the card body (no new slot). Only coordinator rows carry a filled chip. Dashed is draft-only; never warning/danger (§6). Fills, halo, APCA: `decisions/2026/11/06/coordinator-role-band-not-a-hue.md`.
 
 Evidence: `NativeBackendMark.tsx`, `ForeignCodeMark.tsx`, `TaskRoleBand.tsx`, `TaskCard.tsx`, `TaskInfoPanel.tsx`, `TaskDiffViewer.tsx`, `ActiveTasksSidebar.tsx`, `GlobalHeader.tsx`.
 
@@ -628,7 +628,7 @@ Owner: `better-layout`. dev3-specific:
 ## 11. Known anti-patterns in this project
 
 - **Toolbar button creep** — the changelog shows repeated additions of always-visible git/tmux/dev-server buttons (`always-visible-git-buttons`, `tmux-action-buttons`, `push-button`, `create-pr-button`, …). `TaskInfoPanel` (34K) and `TaskCard` (33K) are the pressure points. For `TaskInfoPanel`, follow the §5.1 bar model: assign each new control to one domain bar; do not pile everything into row-1-right. Group or overflow before adding.
-- **Dangling or orphan help** — a `data-help-id`/`topicId` no registry topic backs (a silent no-op: HelpSpot renders nothing, help mode skips the zone — the 2026-07 settings re-org silently lost help for three categories this way), or a registry topic no component mounts (dead copy). One registry, help mode is the master surface; `help.test.ts` guards both directions. See §5.4.
+- **Dangling or orphan help** — a `data-help-id`/`topicId` no registry topic backs (a silent no-op, §5.4), or a registry topic no component mounts (dead copy). One registry, help mode is the master surface; `help.test.ts` guards both directions.
 - **Hardcoded colors** — raw hex/rgb instead of semantic tokens (forbidden except `STATUS_COLORS`).
 - **Colour token that shadows a font-size rung** — a key in `theme.extend.colors` whose name matches a `fontSize` rung makes Tailwind emit `.text-<name>` twice, as a size *and* as a colour; the colour wins and repaints everything that only meant to set the size. `base` did this and left 107 icon glyphs drawn in the page background colour. Guarded by `tailwind-token-collisions.test.ts`; see [decision 206](../../decisions/2026/08/06/base-color-token-shadowed-text-base.md).
 - **Untranslated strings** — UI strings must use `t()` and exist in en/ru/es.
