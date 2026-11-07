@@ -11862,6 +11862,24 @@ describe("restartTask (start fresh) floors the Codex scan", () => {
 	});
 });
 
+describe("restartTask with a pane that ran the global default", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("resolves the current default instead of pinning the one that ran", async () => {
+		const project = makeProject();
+		const task = makeTask({ sessionState: { panes: [{ agentCmd: "claude", agentId: "builtin-claude", configId: "claude-default", sessionId: null, agentFromDefault: true }] } });
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+
+		await handlers.restartTask({ taskId: task.id });
+
+		expect(agents.resolveCommandForProject).toHaveBeenCalled();
+		expect(agents.resolveCommandForAgent).not.toHaveBeenCalled();
+	});
+});
+
 describe("restartTask and resume with a stored account or a refused launch", () => {
 	beforeEach(async () => {
 		vi.clearAllMocks();
