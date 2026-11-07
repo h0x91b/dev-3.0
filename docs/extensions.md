@@ -7,6 +7,26 @@ An extension is a folder with two files and no build tooling required. A complet
 > **Extensions are not sandboxed.** They run in the dev3 window with the same rights as dev3 itself. dev3 asks for
 > consent once, when an extension is first installed, and every extension can be switched off at once (see below).
 
+## Writing one with a coding agent
+
+You do not need a clone of dev3 to write an extension. dev3 ships a **`dev3-extensions` agent skill** that carries
+the whole contract below, a working template, the install steps and a troubleshooting table, so an agent can
+write and debug a view without reading dev3's source.
+
+- **Where it comes from.** dev3 writes the skill into every supported agent's skill folder each time the app
+  starts: `~/.claude/skills/dev3-extensions/` (Claude Code), `~/.codex/skills/`, `~/.cursor/skills/`,
+  `~/.agents/skills/` (Gemini CLI, Copilot CLI), `~/.opencode/skills/` and `~/.config/opencode/skills/`,
+  `~/.omp/agent/skills/` — each as `dev3-extensions/SKILL.md`. Running `dev3 install-skills` writes them again
+  on demand.
+- **How to use it.** In Claude Code type `/dev3-extensions`; in other agents ask it to "use the dev3-extensions
+  skill". Any agent dev3 starts already has it.
+- **An agent dev3 does not know about.** Copy `~/.claude/skills/dev3-extensions/SKILL.md` into that agent's own
+  skill or rules folder, or point it at this page.
+
+What the agent cannot do for you today: install and trust the extension on your dev3. That stays a click of
+yours in the desktop app (see [Installing](#installing)). Where agent tooling for extensions is heading:
+[`docs/extensions-platform.md`](extensions-platform.md).
+
 ## The folder
 
 ```
@@ -31,10 +51,10 @@ my-extension/
 
 | Field | Rule |
 |---|---|
-| `id` | 2–64 chars of `a-z`, `0-9`, `-`. Becomes the install folder name. `builtin` and `dev3` are reserved |
+| `id` | 2–64 chars of `a-z`, `0-9`, `-`, starting with a letter or digit. Becomes the install folder name. `builtin`, `dev3`, `third-party` and `third_party` are reserved |
 | `name`, `publisher` | Shown in Settings and in the consent dialog (max 80 chars) |
 | `version` | Semver, e.g. `1.2.0` |
-| `engines.dev3` | A semver range over the **dev3 extension API version** (currently `1.0.0`, shown in Settings → Extensions). It tracks the board contract below, not the app version. A range this app does not satisfy keeps the extension installed but **incompatible** and off |
+| `engines.dev3` | A semver range over the **dev3 extension API version** (currently `1.0.0`; the consent dialog of an incompatible extension names it). It tracks the board contract below, not the app version. A range this app does not satisfy keeps the extension installed but **incompatible** and off |
 | `contributes.boardViews` | 1–16 views, each `{ id, label }`. The registered id must be `<extension id>:<view id>` |
 | `main` | Must be `index.js` |
 
@@ -92,7 +112,7 @@ Bundling JSX or TypeScript is fine — emit one ESM file with `react`, `react-do
   dev3's own confirmations.
 - **`ctx.on("board/changed", fn)`** fires after every change to the board's data.
 
-The source of truth for the types is `src/mainview/board-views/board-service.ts` and `registry.ts` in this repository.
+The source of truth for the types is [`src/mainview/board-views/board-service.ts`](https://github.com/h0x91b/dev-3.0/blob/main/src/mainview/board-views/board-service.ts) and [`registry.ts`](https://github.com/h0x91b/dev-3.0/blob/main/src/mainview/board-views/registry.ts) in the dev3 repository.
 
 ## Installing
 
