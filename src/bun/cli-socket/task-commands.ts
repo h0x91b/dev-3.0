@@ -18,7 +18,7 @@ import { loadTaskChildren } from "../task-lineage";
 import { assertEpicAttachable, epicForNewTask, setTaskEpic } from "../task-epics";
 import { findEpic } from "../epics-data";
 import { readTaskTerminalBackendState, switchTaskTerminalBackend } from "../task-terminal-backend-switch";
-import { buildLaunchAfter, launchAfterRefusal, prerequisiteRefusal } from "../launch-after";
+import { armLaunchAfter, clearLaunchAfter, prerequisiteRefusal, writeLaunchAfter } from "../launch-after";
 import { approvalStatusOf, launchSuggestionRequested, launcherHandoffNote, requestAgentLaunchApproval, requestDestructiveApproval, resolveLaunchSuggestion } from "./approvals";
 import { log, type Handler, withSenderVariant } from "./shared";
 import { findByIdPrefix, findTaskByRef, parseSeqRef, resolveAgentMessageSource, resolveRequesterTask, resolveTaskAcrossProjects, resolveTaskFromParams, scopedTaskNotFoundError, senderRequester, taskNotFoundError, withArchivedHistory, withEpic, withOriginParent, withSenderAgent } from "./task-resolution";
@@ -111,19 +111,11 @@ async function readStartAfter(params: Record<string, unknown>, project: Project)
 
 /** Arm the condition on `task`. Inside a task's context the arming agent is recorded, which routes the launch through its approval dialog. */
 async function armStartAfter(project: Project, task: Task, req: StartAfterRequest, params: Record<string, unknown>): Promise<Task> {
-	const refusal = launchAfterRefusal(task, req.prereq, req.until, await data.loadTasks(project));
-	if (refusal) throw new Error(refusal);
-	return writeStartAfter(project, task, req, params);
+	return armLaunchAfter(project, task, req.prereq, req.until, req.variant, await resolveAgentMessageSource(params, task.id));
 }
 
 async function writeStartAfter(project: Project, task: Task, req: StartAfterRequest, params: Record<string, unknown>): Promise<Task> {
-	const armedBy = await resolveAgentMessageSource(params, task.id);
-	const updated = await data.updateTask(project, task.id, {
-		launchAfter: buildLaunchAfter(req.prereq, req.until, req.variant, armedBy),
-		preparationError: null,
-	});
-	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-	return updated;
+	return writeLaunchAfter(project, task, req.prereq, req.until, req.variant, await resolveAgentMessageSource(params, task.id));
 }
 
 function assertEpicFlagsExclusive(params: Record<string, unknown>): void {
@@ -523,9 +515,8 @@ export const taskHandlers: Record<string, Handler> = {
 		}
 		if (startAfter) {
 			updated = await armStartAfter(project, updated, startAfter, params);
-		} else if (clearStartAfter && updated.launchAfter) {
-			updated = await data.updateTask(project, task.id, { launchAfter: null });
-			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+		} else if (clearStartAfter) {
+			updated = await clearLaunchAfter(project, updated);
 		}
 		// Tell the agent that has to honour the new role. A task with no worktree has
 		// no session to tell — it reads the rewritten description at launch instead,

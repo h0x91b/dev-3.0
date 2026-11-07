@@ -1,7 +1,8 @@
-import type { ReviewedPullRequest, AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskOrigin, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
+import type { ReviewedPullRequest, AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchAfterUntil, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskOrigin, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
 import { isTaskSoundEnabled } from "../../shared/task-sound-statuses";
-import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, normalizeTaskType, reviewTaskTitle } from "../../shared/types";
+import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, LAUNCH_AFTER_UNTIL, normalizeTaskType, reviewTaskTitle } from "../../shared/types";
+import { armLaunchAfter, clearLaunchAfter, startLaunchAfterNow } from "../launch-after";
 import * as data from "../data";
 import { loadTaskLineage } from "../task-lineage";
 import { epicForNewTask } from "../task-epics";
@@ -1332,6 +1333,37 @@ async function startScheduledLaunchNow(params: { taskId: string; projectId: stri
 	return fireScheduledLaunch(project, task);
 }
 
+/** Arm a "start after" condition from the board's launch modal. A person at the board: no requester is recorded. */
+async function setTaskLaunchAfter(params: {
+	taskId: string;
+	projectId: string;
+	prerequisiteTaskId: string;
+	until: LaunchAfterUntil;
+	variant: LaunchVariant | null;
+}): Promise<Task> {
+	log.info("→ setTaskLaunchAfter", { taskId: params.taskId, prerequisite: params.prerequisiteTaskId, until: params.until });
+	if (!LAUNCH_AFTER_UNTIL.includes(params.until)) throw new Error(`Unknown start condition "${String(params.until)}"`);
+	const project = await data.getProject(params.projectId);
+	const tasks = await data.loadTasks(project);
+	const task = tasks.find((t) => t.id === params.taskId);
+	const prereq = tasks.find((t) => t.id === params.prerequisiteTaskId);
+	if (!task) throw new Error("Task not found");
+	if (!prereq) throw new Error("The task to wait for no longer exists");
+	return armLaunchAfter(project, task, prereq, params.until, params.variant, null);
+}
+
+async function clearTaskLaunchAfter(params: { taskId: string; projectId: string }): Promise<Task> {
+	log.info("→ clearTaskLaunchAfter", { taskId: params.taskId });
+	const project = await data.getProject(params.projectId);
+	return clearLaunchAfter(project, await data.getTask(project, params.taskId));
+}
+
+async function startTaskLaunchAfterNow(params: { taskId: string; projectId: string }): Promise<void> {
+	log.info("→ startTaskLaunchAfterNow", { taskId: params.taskId });
+	const project = await data.getProject(params.projectId);
+	await startLaunchAfterNow(project, await data.getTask(project, params.taskId));
+}
+
 /**
  * The GUI half of the terminal-backend override (the CLI half is
  * `dev3 task terminal-backend`). Both go through the same gate module, so the
@@ -1413,6 +1445,9 @@ export const taskLifecycleHandlers = {
 	scheduleTaskLaunch,
 	cancelScheduledLaunch,
 	startScheduledLaunchNow,
+	setTaskLaunchAfter,
+	clearTaskLaunchAfter,
+	startTaskLaunchAfterNow,
 	listPendingCompletionRequests,
 	respondToAgentCompletionRequest,
 	listPendingCancellationRequests,

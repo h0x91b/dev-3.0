@@ -23,6 +23,7 @@ import AgentConfigPicker, {
 	pickerLabelsHeaderClass,
 } from "./AgentConfigPicker";
 import SchedulePicker from "./SchedulePicker";
+import StartAfterPicker, { type StartAfterChoice } from "./StartAfterPicker";
 import MemoryPressureBanner from "./MemoryPressureBanner";
 import { SendLaterIcon, WatchIcon, WatchingIcon } from "./TaskIcons";
 import AgentInstallNotice, { findMissingVariantAgent, type AgentCheckState } from "./AgentInstallNotice";
@@ -126,6 +127,12 @@ function LaunchVariantsModal({
 	const [scheduleOpen, setScheduleOpen] = useState(false);
 	const [scheduleTarget, setScheduleTarget] = useState<Date | null>(null);
 	const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("in");
+	// "After task" — the Launch later panel's third mode: arm a start-after condition instead of a time.
+	const [afterMode, setAfterMode] = useState(false);
+	const [afterChoice, setAfterChoice] = useState<StartAfterChoice>({ prerequisiteId: null, until: "completed" });
+	// A start-after condition always starts the task in progress, with one agent.
+	const offersAfter = mode === "spawn" && targetStatus === "in-progress";
+	const scheduleAfter = scheduleOpen && offersAfter && afterMode;
 	const reducedMotion = useReducedMotion();
 	const errorRef = useRef<HTMLDivElement>(null);
 
@@ -177,6 +184,10 @@ function LaunchVariantsModal({
 				const tag = el?.tagName;
 				if (tag === "INPUT" || tag === "TEXTAREA" || tag === "BUTTON" || tag === "SELECT" || tag === "A" || el?.isContentEditable) return;
 				if (launching || variants.length === 0) return;
+				if (scheduleAfter) {
+					if (afterChoice.prerequisiteId && variants.length === 1) handleScheduleAfter();
+					return;
+				}
 				if (scheduleOpen) {
 					if (scheduleTarget) handleSchedule();
 					return;
@@ -188,7 +199,7 @@ function LaunchVariantsModal({
 		return () => window.removeEventListener("keydown", handleKey);
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	// agentAvailability: the handler's missing-harness guard must see the probe's answer.
-	}, [launching, variants, scheduleOpen, scheduleTarget, agentAvailability]);
+	}, [launching, variants, scheduleOpen, scheduleTarget, agentAvailability, scheduleAfter, afterChoice]);
 
 	function addVariant() {
 		setVariants((prev) => [...prev, makeDefaultVariant()]);
@@ -309,6 +320,31 @@ function LaunchVariantsModal({
 		setLaunching(false);
 	}
 
+	// "After task" — persist a start-after condition. The task stays in To Do with a
+	// "Starts after #N" chip; the scheduler starts it with this one variant once the
+	// prerequisite completes or its PR merges.
+	async function handleScheduleAfter() {
+		if (!afterChoice.prerequisiteId || variants.length !== 1 || missingAgent) return;
+		setLaunching(true);
+		setError(null);
+		try {
+			await applyWatchPreference();
+			const updated = await api.request.setTaskLaunchAfter({
+				taskId: task.id,
+				projectId: project.id,
+				prerequisiteTaskId: afterChoice.prerequisiteId,
+				until: afterChoice.until,
+				variant: variants[0]!,
+			});
+			dispatch({ type: "updateTask", task: updated });
+			onClose();
+		} catch (err) {
+			setError(String(err));
+			if (isAgentNotInstalledError(String(err))) recheckAgents();
+		}
+		setLaunching(false);
+	}
+
 	// A failed launch must not be silent for screen readers: role="alert" announces
 	// it, and focus moves to the message so keyboard users land on the reason.
 	useEffect(() => {
@@ -325,7 +361,9 @@ function LaunchVariantsModal({
 	const pressClass = reducedMotion ? "transition-colors" : "transition active:scale-[0.96]";
 	// The two disabled meanings must not look the same: "nothing to launch yet"
 	// greys the button out, while an in-flight launch keeps full colour + spinner.
-	const notReady = !!missingAgent || (scheduleOpen ? !scheduleTarget || variants.length === 0 : variants.length === 0);
+	const notReady = !!missingAgent || (scheduleAfter
+		? !afterChoice.prerequisiteId || variants.length !== 1
+		: scheduleOpen ? !scheduleTarget || variants.length === 0 : variants.length === 0);
 	// Missing harness keeps the button focusable (aria-disabled) so the reason is announced.
 	const blockedProps = missingAgent
 		? { "aria-disabled": true as const, "aria-describedby": AGENT_NOTICE_ID }
@@ -514,6 +552,16 @@ function LaunchVariantsModal({
 							disabled={launching}
 							onSubmit={() => { if (scheduleTarget && !launching) handleSchedule(); }}
 							onTargetChange={(target, m) => { setScheduleTarget(target); setScheduleMode(m); }}
+							extraMode={offersAfter ? {
+								label: t("launch.modeAfter"),
+								onActiveChange: setAfterMode,
+								content: (
+									<>
+										<StartAfterPicker task={task} project={project} value={afterChoice} disabled={launching} onChange={setAfterChoice} />
+										{variants.length > 1 && <p className="text-sm mt-1 text-danger">{t("launch.afterOneVariant")}</p>}
+									</>
+								),
+							} : undefined}
 						/>
 					</div>
 				)}
@@ -556,7 +604,7 @@ function LaunchVariantsModal({
 						)}
 						{scheduleOpen ? (
 							<button
-								onClick={handleSchedule}
+								onClick={scheduleAfter ? handleScheduleAfter : handleSchedule}
 								disabled={launching || (notReady && !missingAgent)}
 								{...blockedProps}
 								className={primaryClass}

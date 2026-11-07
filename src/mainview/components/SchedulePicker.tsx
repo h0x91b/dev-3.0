@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { formatCountdown } from "../../shared/duration";
 import {
 	type ScheduleMode,
@@ -98,6 +98,11 @@ interface SchedulePickerProps {
 	 * ("Will launch…" vs "Will send…"). Defaults to the launch phrasing.
 	 */
 	hintKey?: TranslationKey;
+	/**
+	 * A third mode beside in/at that is not a time (the launch modal's "After task").
+	 * Its content replaces the time fields and the hint; `onActiveChange` reports when it is picked.
+	 */
+	extraMode?: { label: string; content: ReactNode; onActiveChange: (active: boolean) => void };
 }
 
 /**
@@ -107,9 +112,9 @@ interface SchedulePickerProps {
  * messages ("Send later") agree on the grammar and range (`in` ≤ 99h, `at`
  * today/tomorrow). Pure time resolution lives in `src/shared/schedule.ts`.
  */
-function SchedulePicker({ disabled = false, onTargetChange, onSubmit, initialDelayMinutes = 60, hintKey = "launch.scheduleHint" }: SchedulePickerProps) {
+function SchedulePicker({ disabled = false, onTargetChange, onSubmit, initialDelayMinutes = 60, hintKey = "launch.scheduleHint", extraMode }: SchedulePickerProps) {
 	const t = useT();
-	const [mode, setMode] = useState<ScheduleMode>("in");
+	const [mode, setMode] = useState<ScheduleMode | "extra">("in");
 	const [delayHours, setDelayHours] = useState(Math.floor(initialDelayMinutes / 60));
 	const [delayMinutes, setDelayMinutes] = useState(initialDelayMinutes % 60);
 	const [atTime, setAtTime] = useState(() => toTimeInputValue(new Date(Date.now() + initialDelayMinutes * 60_000)));
@@ -120,14 +125,21 @@ function SchedulePicker({ disabled = false, onTargetChange, onSubmit, initialDel
 		return () => clearInterval(timer);
 	}, []);
 
-	const draft = { mode, delayHours, delayMinutes, atTime };
+	const timeMode: ScheduleMode = mode === "extra" ? "in" : mode;
+	const draft = { mode: timeMode, delayHours, delayMinutes, atTime };
 	const target = resolveScheduleTarget(draft, nowTick);
 
 	// Report the resolved target to the parent on every change / tick.
 	useEffect(() => {
-		onTargetChange(resolveScheduleTarget(draft, Date.now()), mode);
+		if (mode !== "extra") onTargetChange(resolveScheduleTarget(draft, Date.now()), timeMode);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [mode, delayHours, delayMinutes, atTime, nowTick]);
+	useEffect(() => {
+		extraMode?.onActiveChange(mode === "extra");
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [mode]);
+	const modes: Array<ScheduleMode | "extra"> = extraMode ? ["in", "at", "extra"] : ["in", "at"];
+	const modeLabel = (m: ScheduleMode | "extra") => (m === "in" ? t("launch.modeIn") : m === "at" ? t("launch.modeAt") : extraMode!.label);
 
 	const hint = (() => {
 		if (!target) return t("launch.scheduleInvalid");
@@ -141,20 +153,22 @@ function SchedulePicker({ disabled = false, onTargetChange, onSubmit, initialDel
 		<div>
 			<div className="flex flex-wrap items-center gap-4">
 				<div className="inline-flex h-8 flex-shrink-0 items-center rounded-lg border border-edge p-0.5">
-					{(["in", "at"] as const).map((m) => (
+					{modes.map((m) => (
 						<button
 							key={m}
+							type="button"
+							aria-pressed={mode === m}
 							onClick={() => setMode(m)}
 							className={`text-sm px-2.5 py-1 rounded-md whitespace-nowrap transition-colors ${
 								mode === m ? "bg-overlay-hover text-fg font-medium" : "text-fg-3 hover:text-fg"
 							}`}
 						>
-							{m === "in" ? t("launch.modeIn") : t("launch.modeAt")}
+							{modeLabel(m)}
 						</button>
 					))}
 				</div>
 
-				{mode === "in" ? (
+				{mode === "extra" ? null : mode === "in" ? (
 					<div className="flex items-center gap-4">
 						<NumberStepper
 							label={t("launch.hours")}
@@ -189,12 +203,13 @@ function SchedulePicker({ disabled = false, onTargetChange, onSubmit, initialDel
 				)}
 			</div>
 
-			<p className={`text-sm mt-2 ${target ? "text-fg-3" : "text-danger"}`}>
+			{mode === "extra" && <div className="mt-3">{extraMode!.content}</div>}
+			{mode !== "extra" && <p className={`text-sm mt-2 ${target ? "text-fg-3" : "text-danger"}`}>
 				{hint}
 				{mode === "at" && target && (
 					<span className="text-fg-3"> · {t("launch.atTimeLabel").toLowerCase()}</span>
 				)}
-			</p>
+			</p>}
 		</div>
 	);
 }

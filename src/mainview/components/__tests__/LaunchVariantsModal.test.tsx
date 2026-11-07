@@ -11,6 +11,8 @@ vi.mock("../../rpc", () => ({
 			getSystemMemory: vi.fn().mockResolvedValue(null),
 			spawnVariants: vi.fn(),
 			scheduleTaskLaunch: vi.fn(),
+			setTaskLaunchAfter: vi.fn(),
+			getTasks: vi.fn().mockResolvedValue([]),
 			addAttempts: vi.fn(),
 			toggleTaskWatch: vi.fn(),
 			getProjectClaudeLogin: vi.fn().mockResolvedValue({ configDir: null, identity: null }),
@@ -1064,5 +1066,85 @@ describe("LaunchVariantsModal — harness availability gate", () => {
 		await user.click(screen.getByTestId("agent-install-recheck"));
 		await screen.findByText(/Claude is installed\. Ready to launch\./);
 		expect(screen.queryByRole("alert")).toBeNull();
+	});
+});
+
+describe("LaunchVariantsModal — Launch later → After task", () => {
+	const prereq: Task = { ...baseTask, id: "t2", seq: 2, title: "Part one", status: "in-progress" };
+	const cancelled: Task = { ...baseTask, id: "t3", seq: 3, title: "Dropped", status: "cancelled" };
+
+	beforeEach(() => vi.clearAllMocks());
+
+	async function openAfterMode(user: ReturnType<typeof userEvent.setup>) {
+		await user.click(screen.getByRole("button", { name: /Launch later/ }));
+		await user.click(screen.getByRole("button", { name: "After task" }));
+	}
+
+	it("arms the condition with the picked task, the merge switch and the row's agent", async () => {
+		const user = userEvent.setup();
+		const dispatch = vi.fn();
+		const onClose = vi.fn();
+		mockedApi.request.getTasks.mockResolvedValue([baseTask, prereq, cancelled]);
+		const armed = { ...baseTask, launchAfter: { taskId: "t2", seq: 2, until: "merged" as const, armedAt: "x" } };
+		mockedApi.request.setTaskLaunchAfter.mockResolvedValue(armed);
+		renderModal(makeProject(), { dispatch, onClose });
+
+		await openAfterMode(user);
+		const schedule = screen.getByRole("button", { name: "Schedule" });
+		expect(schedule).toBeDisabled();
+
+		await user.click(screen.getByRole("button", { name: "Task to wait for" }));
+		// Itself and cancelled tasks are never offered.
+		expect(screen.queryByRole("option", { name: /Dropped/ })).toBeNull();
+		expect(screen.queryByRole("option", { name: /Test task title/ })).toBeNull();
+		await user.click(await screen.findByRole("option", { name: "#2 Part one" }));
+		await user.click(screen.getByRole("button", { name: "PR merges" }));
+		expect(screen.getByText("Will launch when the pull request of task #2 merges.")).toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: "Schedule" }));
+		await waitFor(() => expect(mockedApi.request.setTaskLaunchAfter).toHaveBeenCalledWith({
+			taskId: "t1",
+			projectId: "p1",
+			prerequisiteTaskId: "t2",
+			until: "merged",
+			variant: expect.objectContaining({ agentId: "builtin-claude" }),
+		}));
+		expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
+		expect(mockedApi.request.scheduleTaskLaunch).not.toHaveBeenCalled();
+		expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: armed });
+		expect(onClose).toHaveBeenCalled();
+	});
+
+	it("refuses to schedule a start after with more than one variant", async () => {
+		const user = userEvent.setup();
+		mockedApi.request.getTasks.mockResolvedValue([baseTask, prereq]);
+		renderModal(makeProject());
+		await openAfterMode(user);
+		await user.click(screen.getByRole("button", { name: "Task to wait for" }));
+		await user.click(await screen.findByRole("option", { name: "#2 Part one" }));
+		await user.click(screen.getByRole("button", { name: /Add variant/ }));
+		expect(screen.getByText(/launches one agent/)).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Schedule" })).toBeDisabled();
+	});
+
+	it("shows the server's refusal and keeps the dialog open", async () => {
+		const user = userEvent.setup();
+		const onClose = vi.fn();
+		mockedApi.request.getTasks.mockResolvedValue([baseTask, prereq]);
+		mockedApi.request.setTaskLaunchAfter.mockRejectedValue(new Error("Task #2 already waits, directly or through other tasks, for this one. That would never start."));
+		renderModal(makeProject(), { onClose });
+		await openAfterMode(user);
+		await user.click(screen.getByRole("button", { name: "Task to wait for" }));
+		await user.click(await screen.findByRole("option", { name: "#2 Part one" }));
+		await user.click(screen.getByRole("button", { name: "Schedule" }));
+		expect(await screen.findByRole("alert")).toHaveTextContent(/never start/);
+		expect(onClose).not.toHaveBeenCalled();
+	});
+
+	it("is not offered when the launch targets another column", async () => {
+		const user = userEvent.setup();
+		renderModal(makeProject(), { targetStatus: "review-by-user" });
+		await user.click(screen.getByRole("button", { name: /Launch later/ }));
+		expect(screen.queryByRole("button", { name: "After task" })).toBeNull();
 	});
 });

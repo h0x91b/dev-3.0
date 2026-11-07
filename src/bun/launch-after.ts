@@ -107,6 +107,46 @@ export function buildLaunchAfter(prereq: Task, until: LaunchAfterUntil, variant:
 	};
 }
 
+/** Write the condition and clear any earlier "Did not start" reason. No refusal check: callers ran it. */
+export async function writeLaunchAfter(project: Project, task: Task, prereq: Task, until: LaunchAfterUntil, variant: LaunchVariant | null, armedBy: AgentMessageSource | null): Promise<Task> {
+	const updated = await data.updateTask(project, task.id, {
+		launchAfter: buildLaunchAfter(prereq, until, variant, armedBy),
+		preparationError: null,
+	});
+	await pushUpdated(project, updated);
+	return updated;
+}
+
+/** Arm `task` to start after `prereq`, refusing what could never start. Shared by the CLI and the board. */
+export async function armLaunchAfter(project: Project, task: Task, prereq: Task, until: LaunchAfterUntil, variant: LaunchVariant | null, armedBy: AgentMessageSource | null): Promise<Task> {
+	const refusal = launchAfterRefusal(task, prereq, until, await data.loadTasks(project));
+	if (refusal) throw new Error(refusal);
+	return writeLaunchAfter(project, task, prereq, until, variant, armedBy);
+}
+
+export async function clearLaunchAfter(project: Project, task: Task): Promise<Task> {
+	if (!task.launchAfter) return task;
+	const updated = await data.updateTask(project, task.id, { launchAfter: null });
+	await pushUpdated(project, updated);
+	return updated;
+}
+
+/**
+ * The card's "Start now": a person at the board starts the task at once with the
+ * condition's agent, so it never goes through the approval dialog. Errors reach the caller.
+ */
+export async function startLaunchAfterNow(project: Project, task: Task): Promise<void> {
+	const cond = task.launchAfter;
+	if (!cond) throw new Error("This task has no start condition.");
+	if (!await claim(project, task, cond)) throw new Error("This task is no longer waiting to start.");
+	const { launchTaskWithAgentChoice, moveTask } = await loadLifecycle();
+	if (cond.variant) {
+		await launchTaskWithAgentChoice({ taskId: task.id, projectId: project.id, targetStatus: "in-progress", choice: { variants: [cond.variant] } });
+	} else {
+		await moveTask({ taskId: task.id, projectId: project.id, newStatus: "in-progress", enforceAllowedTransition: true, explicitLaunch: true });
+	}
+}
+
 /** Last GitHub probe per waiting task, tied to the condition it was made for: a re-arm probes at once. */
 const lastProbe = new Map<string, { armedAt: string; at: number }>();
 /** Probes still running, by waiting task id. The tick never awaits them. */

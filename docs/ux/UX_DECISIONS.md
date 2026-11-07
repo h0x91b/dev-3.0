@@ -738,3 +738,7 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 ## 2026-11-05 — Task/PR references render inline where agent text appears
 - **Rule:** `<seq:N>` / `<pr:N>` become inline links in description, notes, overview, traffic detail, transcripts and the terminal; toasts and clickable list rows stay plain. Bible §10.
 - **Why:** one token beats four prose forms and `#N` collides with GitHub. Rejected chips under the text (loses the sentence). `decisions/2026/11/05/canonical-task-pr-reference-tokens.md`.
+
+## 2026-11-07 — Start after lives in Launch later, shown in the timer slot
+- **Rule:** "After task" is a third mode of the launch modal's Launch later panel (task picker + completed/merged, agent from the variant row); the card chip shares the deferred-timer slot with a Start now / Remove popover. Yaml `deferred_timer_chip`.
+- **Why:** it is a deferred launch like Start in. Rejected a context-menu item and an × on the chip (a second entry point, and the card strip is full). `decisions/2026/11/05/start-after-conditional-launch.md`.

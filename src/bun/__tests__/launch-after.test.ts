@@ -17,6 +17,7 @@ vi.mock("../data", () => ({
 		return store[i];
 	}),
 	getTask: vi.fn(async (_project: unknown, taskId: string) => store.find((t) => t.id === taskId)),
+	loadTasks: vi.fn(async () => store.map((t) => ({ ...t }))),
 }));
 const { moveTask, launchTaskWithAgentChoice, requestAgentLaunchApproval, pushMessage, pushCliAttention, getPullRequestSnapshot, resolveTaskAcrossProjects } = vi.hoisted(() => ({
 	moveTask: vi.fn(async (_params: unknown): Promise<unknown> => undefined),
@@ -37,7 +38,7 @@ vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
-import { _resetLaunchAfterState, _settleLaunchAfterProbes, evaluateLaunchAfter, LAUNCH_AFTER_PROBE_CONCURRENCY, LAUNCH_AFTER_PROBE_INTERVAL_MS, launchAfterRefusal, prerequisiteMembers, prerequisiteRefusal, tickLaunchAfter } from "../launch-after";
+import { _resetLaunchAfterState, _settleLaunchAfterProbes, armLaunchAfter, clearLaunchAfter, startLaunchAfterNow, evaluateLaunchAfter, LAUNCH_AFTER_PROBE_CONCURRENCY, LAUNCH_AFTER_PROBE_INTERVAL_MS, launchAfterRefusal, prerequisiteMembers, prerequisiteRefusal, tickLaunchAfter } from "../launch-after";
 
 const project = { id: "proj-1", path: "/repo" } as never;
 
@@ -388,5 +389,43 @@ describe("start-after with variants", () => {
 		const board = [v1({ status: "cancelled" }), v2({ status: "in-progress" })];
 		expect(prerequisiteRefusal(board[0]!, "completed", board)).toBeNull();
 		expect(prerequisiteRefusal(board[0]!, "completed", [v1({ status: "cancelled" }), v2({ status: "cancelled" })])).toMatch(/cancelled/);
+	});
+});
+
+describe("board actions", () => {
+	it("arms a condition as a person, clearing an earlier abandon reason", async () => {
+		store = [task({ id: "a", status: "in-progress" }), task({ id: "b", seq: 2, preparationError: "Did not start: x" })];
+		const variant = { agentId: "codex", configId: null };
+		const updated = await armLaunchAfter(project, store[1]!, store[0]!, "merged", variant, null);
+		expect(updated.launchAfter).toMatchObject({ taskId: "a", seq: 1, until: "merged", variant });
+		expect(updated.launchAfter?.armedBy).toBeUndefined();
+		expect(updated.preparationError).toBeNull();
+		expect(pushMessage).toHaveBeenCalledWith("taskUpdated", expect.objectContaining({ task: updated }));
+	});
+
+	it("refuses an arm that could never start, writing nothing", async () => {
+		store = [task({ id: "a", status: "cancelled" }), task({ id: "b", seq: 2 })];
+		await expect(armLaunchAfter(project, store[1]!, store[0]!, "completed", null, null)).rejects.toThrow(/cancelled/);
+		expect(store[1]!.launchAfter).toBeUndefined();
+	});
+
+	it("removes a condition", async () => {
+		store = [task({ id: "b", seq: 2, launchAfter: cond() })];
+		expect((await clearLaunchAfter(project, store[0]!)).launchAfter).toBeNull();
+	});
+
+	it("starts now with the condition's agent, without the approval dialog even when an agent armed it", async () => {
+		const variant = { agentId: "codex", configId: null };
+		store = [task({ id: "a", status: "in-progress" }), task({ id: "b", seq: 2, launchAfter: cond({ variant, armedBy: { taskId: "c", seq: 9 } }) })];
+		await startLaunchAfterNow(project, store[1]!);
+		expect(requestAgentLaunchApproval).not.toHaveBeenCalled();
+		expect(launchTaskWithAgentChoice).toHaveBeenCalledWith(expect.objectContaining({ taskId: "b", choice: { variants: [variant] } }));
+		expect(store[1]!.launchAfter).toBeNull();
+	});
+
+	it("refuses start now on a task that already left To Do", async () => {
+		store = [task({ id: "b", seq: 2, status: "in-progress", launchAfter: cond() })];
+		await expect(startLaunchAfterNow(project, { ...store[0]!, status: "todo" })).rejects.toThrow(/no longer waiting/);
+		expect(moveTask).not.toHaveBeenCalled();
 	});
 });
