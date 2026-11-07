@@ -1,5 +1,7 @@
 # Coordinator role band, not a hue
 
+Superseded in part on 2026-11-07 by `decisions/2026/11/07/coordinator-band-flush-under-status-strip.md`: the band is flush under the status strip again, no longer inset.
+
 ## Context
 
 #2186 marked coordinators with lime hazard tape, a 2px lime dashed border and a lime badge; #2156 gave board-cleanup cards a red dashed border. Stripes are the caution idiom, dashed meant draft, coordinator and cleanup at once, and identity surfaces are accent, never warning or danger (UX bible §5.6, §6). The maintainer chose this role band on 2026-11-07 after a side-by-side with the #2186 stripes and the #2203 crown.

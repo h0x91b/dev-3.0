@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "../../i18n";
 import ActiveTasksSidebar from "../ActiveTasksSidebar";
+import { COORDINATOR_TITLE } from "../TaskRoleBand";
 import type { CodingAgent, Project, Task } from "../../../shared/types";
 
 const terminalPreview = vi.hoisted(() => ({
@@ -2241,6 +2242,25 @@ describe("ActiveTasksSidebar port badges", () => {
 		expect(chips[0].className).toContain("text-white");
 		expect(screen.getByRole("button", { name: /^Coordinate — Coordinator/ })).toContainElement(chips[0]);
 		expect(screen.getByRole("button", { name: /^Plain task/ }).getAttribute("aria-label")).not.toMatch(/Coordinator/);
+	});
+
+	it("paints only a coordinator's title in the accent ink; board cleanup and ordinary rows stay neutral", () => {
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar project={project} tasks={[
+					makeTask({ id: "coord", title: "Coordinate", taskType: "coordinator", groupId: null, variantIndex: null }),
+					makeTask({ id: "cleanup", title: "Tidy board", taskType: "board-cleanup", groupId: null, variantIndex: null }),
+					makeTask({ id: "plain", title: "Plain task", groupId: null, variantIndex: null }),
+				]}
+					dispatch={vi.fn()} navigate={vi.fn()} agents={[claudeAgent]}
+					bellCounts={new Map<string, number>()} taskPorts={new Map<string, never[]>()} />
+			</I18nProvider>,
+		);
+
+		expect(screen.getByTestId("sidebar-task-title-coord").className).toContain(COORDINATOR_TITLE);
+		for (const id of ["cleanup", "plain"]) {
+			expect(screen.getByTestId(`sidebar-task-title-${id}`).className).not.toContain(COORDINATOR_TITLE);
+		}
 	});
 
 });

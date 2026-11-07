@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Project, Task } from "../../shared/types";
-import { getTaskTitle } from "../../shared/types";
+import { getTaskTitle, isCoordinatorTask } from "../../shared/types";
+import { COORDINATOR_TITLE } from "./TaskRoleBand";
 import { useStatusColors } from "../hooks/useStatusColors";
 import type { SwitcherSession } from "../hooks/useTaskSwitcher";
 import { api } from "../rpc";
@@ -129,7 +130,7 @@ function TaskSwitcherOverlay({
 											className="w-2 h-2 rounded-full flex-shrink-0"
 											style={{ background: statusColors[task.status] }}
 										/>
-										<span className={`text-fg text-sm font-medium truncate ${privacy.maskClass(project)}`}>
+										<span className={`${isCoordinatorTask(task) ? COORDINATOR_TITLE : "text-fg"} text-sm font-medium truncate ${privacy.maskClass(project)}`}>
 											{getTaskTitle(task)}
 										</span>
 										{scope === "global" && project && (
