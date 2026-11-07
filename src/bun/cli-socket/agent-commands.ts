@@ -1,16 +1,19 @@
 import { getPrimaryStopTarget } from "../../shared/types";
 import { AGENT_STATUS_HOOK_EVENTS, getAgentHookTargetStatus, type AgentStatusHookEvent } from "../../shared/agent-hooks";
-import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopFailureError } from "../../shared/agent-stop-failure";
+import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, describeCodexTurnError, type ClaudeStopFailureError } from "../../shared/agent-stop-failure";
+import type { Project, Task } from "../../shared/types";
 import { getPushMessage, moveTask, notifyFromCliDesktop, isNotificationSuppressed, pushCliAttention, setFocusMode } from "../rpc-handlers";
 import { recordTerminalPromptSubmission } from "../agent-terminal-prompt-log";
 import type { PromptSubmitHarness } from "../../shared/agent-terminal-prompt";
 import { loadSettings } from "../settings";
 import { CodexQuestionState } from "../codex-question-state";
-import { capturePaneSession } from "./pane-sessions";
+import { capturePaneSession, taskCodexHomes } from "./pane-sessions";
+import { isInteractiveCodexConversation } from "../codex-resume-home";
 import { noteAgentExited, noteAgentSessionActive, noteAgentSessionStarted } from "../agent-session-receipts";
 import { log, type Handler, withSenderVariant } from "./shared";
 import { requirePaneTask, resolveRequesterTask, resolveTaskFromParams, senderRequester } from "./task-resolution";
 import { claudeSessionWatches, type ClaudeIdleEvent } from "../claude-session-watch";
+import { codexTurnWatches, type CodexTurnFailure } from "../codex-turn-watch";
 
 const codexQuestions = new CodexQuestionState();
 
@@ -28,6 +31,39 @@ async function claudeReturnedToInput(event: ClaudeIdleEvent): Promise<void> {
 	});
 }
 
+/** A turn that stopped on the user: badge it and tell the OS, since they have likely walked away. */
+async function raiseTurnAttention(project: Project, task: Task, reason: string): Promise<void> {
+	if ((await loadSettings()).focusMode) setFocusMode(true);
+	if (isNotificationSuppressed()) {
+		pushCliAttention({ taskId: task.id, projectId: task.projectId, reason });
+	} else {
+		getPushMessage()?.("cliAttention", { taskId: task.id, reason });
+	}
+	notifyFromCliDesktop({ task, body: reason, projectName: project.name });
+}
+
+async function parkFailedTurn(project: Project, task: Task, reason: string): Promise<Task> {
+	let updated = task;
+	if (task.status !== "user-questions" || task.customColumnId != null) {
+		updated = await moveTask({ taskId: task.id, projectId: project.id, newStatus: "user-questions", ifStatus: task.status });
+	}
+	await raiseTurnAttention(project, updated, reason);
+	return updated;
+}
+
+async function codexTurnFailed(failure: CodexTurnFailure): Promise<void> {
+	await codexQuestions.run(failure.taskId, async () => {
+		const { project, task } = await resolveTaskFromParams({ projectId: failure.projectId, taskId: failure.taskId });
+		if (task.status !== "in-progress" && task.status !== "review-by-ai") return;
+		if (task.hibernated) return;
+		// A subagent's or `codex exec`'s failed turn says nothing about the user's own conversation.
+		if (!(await isInteractiveCodexConversation(failure.sessionId, await taskCodexHomes(project, task)))) return;
+		log.info("Codex turn ended on an error", { taskId: task.id.slice(0, 8), sessionId: failure.sessionId });
+		const updated = await parkFailedTurn(project, task, describeCodexTurnError(failure.message));
+		if (updated.status === "user-questions") rememberResumeStatus(`${task.id}:${failure.sessionId}`, task.status);
+	});
+}
+
 // An approval temporarily moves a task to user-questions. Remember which
 // active lane that Codex/omp session came from so PostToolUse can restore a
 // review agent to review-by-ai instead of misclassifying it as the primary agent.
@@ -37,6 +73,10 @@ const approvalResumeStatuses = new Map<
 	string,
 	{ status: "in-progress" | "review-by-ai"; expiresAt: number }
 >();
+
+function rememberResumeStatus(key: string, status: "in-progress" | "review-by-ai"): void {
+	approvalResumeStatuses.set(key, { status, expiresAt: Date.now() + APPROVAL_RESUME_TTL_MS });
+}
 
 function getApprovalResumeStatus(
 	key: string | null,
@@ -149,13 +189,16 @@ export const agentHandlers: Record<string, Handler> = {
 		const currentStatus = questionState.resumeStatus && task.status === "user-questions"
 			? questionState.resumeStatus : task.status;
 		let target = getAgentHookTargetStatus(event, currentStatus, getPrimaryStopTarget(project.autoReviewEnabled, task.taskType), rememberedResumeStatus);
-		if (questionState.pending) target = "user-questions";
+		// Only a Stop that would have moved the card may park it; a finished task stays finished.
+		const approvalHold = event === "Stop" && harness === "codex" && typeof params.approvalHold === "string"
+			&& (target !== null || task.status === "user-questions") ? params.approvalHold : null;
+		if (questionState.pending || approvalHold) target = "user-questions";
 		else if (questionState.resumeStatus && task.status === "user-questions" && event !== "Stop") {
 			target = event === "Interrupt" || event === "SessionEnd" ? "review-by-user" : questionState.resumeStatus;
 		}
 		// A To Do card has no run to report on — not even a pending question.
 		if (task.status === "todo") target = null;
-		const resumeStatus = event === "PermissionRequest"
+		const resumeStatus = (event === "PermissionRequest" || approvalHold)
 			&& (task.status === "in-progress" || task.status === "review-by-ai")
 			? task.status
 			: null;
@@ -176,12 +219,23 @@ export const agentHandlers: Record<string, Handler> = {
 			moveAccepted = updated.status === target && updated.customColumnId == null;
 		}
 		if (resumeKey && resumeStatus && moveAccepted) {
-			approvalResumeStatuses.set(resumeKey, {
-				status: resumeStatus,
-				expiresAt: Date.now() + APPROVAL_RESUME_TTL_MS,
-			});
+			rememberResumeStatus(resumeKey, resumeStatus);
 		} else if (resumeKey && clearResumeStatus && moveAccepted) {
 			approvalResumeStatuses.delete(resumeKey);
+		}
+
+		if (approvalHold && updated.status === "user-questions") {
+			await raiseTurnAttention(project, updated, `Security hold — reply "${approvalHold}" in the terminal`);
+		}
+
+		if (harness === "codex" && sessionId) {
+			// Codex names the rollout after its session, so a path that is not that session's file is ignored.
+			if ((event === "SessionStart" || event === "UserPromptSubmit") && typeof params.transcriptPath === "string"
+				&& params.transcriptPath.endsWith(`${sessionId}.jsonl`)) {
+				codexTurnWatches.observe({ projectId: project.id, taskId: task.id, sessionId, transcriptPath: params.transcriptPath }, codexTurnFailed);
+			} else if (event === "Stop" || event === "SessionEnd" || event === "Interrupt") {
+				codexTurnWatches.endTurn(task.id, sessionId);
+			}
 		}
 
 		// Record the session id for this pane (targeted per-pane recovery).
@@ -293,26 +347,7 @@ export const agentHandlers: Record<string, Handler> = {
 			return { task, moved: false, reason };
 		}
 
-		let updated = task;
-		if (task.status !== "user-questions" || task.customColumnId != null) {
-			updated = await moveTask({
-				taskId: task.id,
-				projectId: project.id,
-				newStatus: "user-questions",
-				ifStatus: task.status,
-			});
-		}
-
-		if ((await loadSettings()).focusMode) setFocusMode(true);
-		if (isNotificationSuppressed()) {
-			pushCliAttention({ taskId: task.id, projectId: task.projectId, reason });
-		} else {
-			getPushMessage()?.("cliAttention", { taskId: task.id, reason });
-		}
-		// A dead turn is precisely the case where the user has walked away, so this
-		// goes to the OS rather than an in-app toast nobody is looking at.
-		notifyFromCliDesktop({ task: updated, body: reason, projectName: project.name });
-
+		const updated = await parkFailedTurn(project, task, reason);
 		return { task: updated, moved: updated.status === "user-questions", reason };
 	},
 };

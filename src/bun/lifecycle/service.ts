@@ -13,6 +13,7 @@ import type { LifecycleEvent } from "./events";
 import { activitiesFor, transition, type LifecycleActivity } from "./machine";
 import { lifecycleStateFromTask } from "./state";
 import { claudeSessionWatches } from "../claude-session-watch";
+import { codexTurnWatches } from "../codex-turn-watch";
 
 type LifecycleEnvelope = {
 	projectId: string;
@@ -103,6 +104,7 @@ class LifecycleService {
 
 	delete(taskId: string): void {
 		claudeSessionWatches.forgetTask(taskId);
+		codexTurnWatches.forgetTask(taskId);
 		const runtime = this.actors.peekRuntime(taskId);
 		if (runtime) runtime.removed = true;
 		this.actors.delete(taskId);
@@ -110,6 +112,7 @@ class LifecycleService {
 
 	async resetForTests(): Promise<void> {
 		claudeSessionWatches.close();
+		codexTurnWatches.close();
 		this.generation += 1;
 		const taskIds: string[] = [];
 		this.actors.forEachRuntime((runtime, taskId) => {
@@ -241,6 +244,7 @@ class LifecycleService {
 				},
 				clearTaskRuntime: (id) => {
 					claudeSessionWatches.forgetTask(id);
+					codexTurnWatches.forgetTask(id);
 					const runtime = this.actors.runtime(id);
 					delete runtime.mergePromptReservation;
 					runtime.branchChecks?.clear();

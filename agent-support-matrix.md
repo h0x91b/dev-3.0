@@ -101,7 +101,7 @@ Injected into `.claude/settings.local.json`, together with dev3's Bash allowlist
 | `Stop` | → `review-by-user` | Agent finished its turn |
 | `StopFailure` | → `user-questions` | An API error (usage limit, auth, billing, server) ended the turn. Fires **instead of** `Stop`, so without it the task would keep claiming the agent is working. Routed through `dev3 hook claude-stop-failure`, which also raises the attention badge and a desktop notification naming the reset time |
 
-Codex has no equivalent event — a Codex session that runs out of quota is still only visible in the rate-limit indicator.
+Codex has no equivalent event, so dev3 tails the turn's rollout instead — see the Codex section below.
 
 ### Codex
 
@@ -117,6 +117,8 @@ Generated in each task's `.codex/hooks.json` and **declared in `~/.codex/config.
 | `PermissionRequest` | → `user-questions` | Codex is waiting for a tool or network approval |
 | `PostToolUse` | → `in-progress` | Clears the waiting state after an approved tool finishes |
 | `Stop` | → `review-by-ai` / `review-by-user` | One atomic server-side transition selects the correct review target and returns valid JSON to Codex |
+
+Codex fires **no hook at all** when an API error (403, usage limit, auth) ends a turn, so `SessionStart`/`UserPromptSubmit` also forward the payload's `transcript_path` and the app tails that rollout (`src/bun/codex-turn-watch.ts`) until the turn's `task_complete` lands. One carrying an `error` parks the task in `user-questions` with an attention badge and desktop notification, exactly like Claude's `StopFailure`; `Stop`, `Interrupt` and `SessionEnd` end the watch. A `Stop` whose `last_assistant_message` asks the user to type `Approved <12-hex ref>` — a security policy hook denying a tool until the user replies in chat, which Codex cannot raise as a `PermissionRequest` — also lands in `user-questions`, with a badge naming the reply. See [`codex-turn-errors-from-rollout`](decisions/2026/11/05/codex-turn-errors-from-rollout.md).
 
 The `UserPromptSubmit` payload also carries the submitted `prompt` and a `turn_id`, both forwarded on the existing `task.agentHook` request so a human's terminal prompt reaches Agent traffic without a second dev3 process per prompt. Whether a submission was the human is decided app-side against the receipts dev3 leaves for everything it types itself (`decisions/2026/09/10/prove-a-terminal-prompt-is-the-user.md`).
 
