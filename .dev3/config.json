@@ -1,7 +1,7 @@
 {
   "setupScript": "echo setup\nbun scripts/generate-build-info.ts\nbun scripts/generate-changelog.ts\nbun install",
   "devScript": "bun run dev",
-  "portCount": 1,
+  "portCount": 2,
   "clonePaths": [
     ".npmrc",
     "node_modules",
