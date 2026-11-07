@@ -21,6 +21,7 @@ import LabelPicker from "./LabelPicker";
 import PriorityBadge from "./PriorityBadge";
 import VariantDots from "./VariantDots";
 import LineageCluster from "./LineageCluster";
+import { COORDINATOR_CARD_HALO, TaskRoleBand, taskRole } from "./TaskRoleBand";
 import EpicChip from "./EpicChip";
 import { useEpics } from "../hooks/useEpics";
 import type { CardLineage } from "../utils/taskLineage";
@@ -154,6 +155,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	// nothing is running either — the card must not pass for live work.
 	const isDisconnected = isTaskDisconnected(task);
 	const isCoordinator = isCoordinatorTask(task);
+	const role = taskRole(task);
 	const isCancelled = task.status === "cancelled";
 	const isActive = ACTIVE_STATUSES.includes(task.status);
 	const isCompleting = (moving || isMovingProp) && (task.status === "completed" || task.status === "cancelled");
@@ -774,11 +776,9 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			onContextMenu={handleContextMenu}
 			onMouseEnter={handleCardMouseEnter}
 			onMouseLeave={handleCardMouseLeave}
-			className={`group relative flex flex-col overflow-hidden glass-card rounded-xl transition-[transform,box-shadow,background-color,border-color,opacity,filter] duration-150 ease-out border ${isDraft ? "border-dashed border-edge-active" : isActiveInSplit ? "border-accent ring-2 ring-accent/70 shadow-lg shadow-accent/20" : isCoordinator ? "border-dashed task-card-coordinator" : task.taskType === "board-cleanup" ? "border-dashed task-card-board-cleanup" : "border-transparent"} ${
-				isActive || isCompleted || isCancelled
-					? "cursor-pointer hover:-translate-y-0.5 hover:shadow-card-hover"
-					: "cursor-grab active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-card-hover"
-			} ${isCompleting || isShuttingDown ? "grayscale opacity-40 pointer-events-none" : isPreparing ? "opacity-60" : isDisabled ? "opacity-50 pointer-events-none" : isHibernated || isDisconnected ? "grayscale opacity-60" : ""}`}
+			className={`group relative flex flex-col overflow-hidden glass-card rounded-xl transition-[transform,box-shadow,background-color,border-color,opacity,filter] duration-150 ease-out border ${isDraft ? "border-dashed border-edge-active" : isActiveInSplit ? "border-accent ring-2 ring-accent/70 shadow-lg shadow-accent/20" : "border-transparent"} ${
+				isActive || isCompleted || isCancelled ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"
+			} hover:-translate-y-0.5 ${isCoordinator && !isActiveInSplit ? COORDINATOR_CARD_HALO : "hover:shadow-card-hover"} ${isCompleting || isShuttingDown ? "grayscale opacity-40 pointer-events-none" : isPreparing ? "opacity-60" : isDisabled ? "opacity-50 pointer-events-none" : isHibernated || isDisconnected ? "grayscale opacity-60" : ""}`}
 			onClick={handleClick}
 		>
 			{/* Moving spinner overlay */}
@@ -852,6 +852,11 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				className="h-[3px] w-full flex-shrink-0"
 				style={{ background: railColor }}
 			/>
+
+			{/* ROLE — an opaque band names a coordinator / board-cleanup task by silhouette. */}
+			{role && (
+				<TaskRoleBand role={role} childCount={lineage?.childCount} onFilterByChildren={lineage?.onFilterByChildren ?? undefined} />
+			)}
 
 			{/* IDENTITY — one line, full card width: which task is this and who runs it.
 			    Full width is the point: the rail starts a row lower so the agent and
@@ -931,18 +936,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				)}
 				<NativeBackendMark task={task} className="w-3.5 h-3.5 flex-shrink-0" testId="task-card-native-backend" />
 				<ForeignCodeMark task={task} className="w-3.5 h-3.5 flex-shrink-0" testId="task-card-foreign-code" />
-				{isCoordinator && (
-					<Tooltip content={t("task.coordinatorBadge")} detail={t("task.coordinatorHint")}>
-						<span
-							data-testid="task-card-coordinator-badge"
-							className="flex-shrink-0 rounded border border-dashed border-coordinator/70 px-1.5 py-0.5 text-dense font-semibold uppercase tracking-[0.06em] text-coordinator-ink"
-						>
-							{t("task.coordinatorBadge")}
-						</span>
-					</Tooltip>
-				)}
 				{/* A PR review is an ordinary task with a job, so it is named and not
-				    boxed — no border, nothing that competes with the coordinator's. */}
+				    boxed — no band, nothing that competes with a role. */}
 				{task.taskType === "pr-review" && (
 					<Tooltip content={t("task.prReviewBadge")} detail={t("task.prReviewHint")}>
 						<span
@@ -950,13 +945,6 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							className="flex-shrink-0 text-dense font-semibold uppercase tracking-[0.06em] text-fg-3"
 						>
 							{t("task.prReviewBadge")}
-						</span>
-					</Tooltip>
-				)}
-				{task.taskType === "board-cleanup" && (
-					<Tooltip content={t("task.boardCleanupBadge")} detail={t("task.boardCleanupHint")}>
-						<span data-testid="task-card-board-cleanup-badge" className="flex-shrink-0 rounded border border-dashed border-danger/60 px-1.5 py-0.5 text-dense font-semibold uppercase tracking-[0.06em] text-danger-strong">
-							{t("task.boardCleanupBadge")}
 						</span>
 					</Tooltip>
 				)}
@@ -1058,7 +1046,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						>
 							{displayTitle}
 						</div>
-						{lineage && <LineageCluster lineage={lineage} />}
+						{/* A coordinator's created count lives in its role band, so it is stated once. */}
+						{lineage && <LineageCluster lineage={isCoordinator ? { ...lineage, childCount: 0 } : lineage} />}
 						{isTodo && task.preparationError && (
 							<div
 								role="alert"

@@ -94,7 +94,7 @@ Labels, same session-start pass: \`dev3 label list\` first and reuse existing on
 
 ## Task type
 
-**coordinator**: manages tasks, dashed green card, sorts first, manual completion. **pr-review**: card label only. **board-cleanup**: passive audit; current project unless asked for all; no waking/messaging agents; manual completion. \`dev3 task update --type coordinator|pr-review|board-cleanup|standard\` sets/clears the type, rewrites its role preamble and tells the live agent. Create with \`dev3 task create --title "..." --type <type>\`.
+**coordinator**: manages tasks, blue-banded card, sorts first, manual completion. **pr-review**: card label only. **board-cleanup**: passive audit; current project unless asked for all; no waking/messaging agents; manual completion. \`dev3 task update --type coordinator|pr-review|board-cleanup|standard\` sets/clears the type, rewrites its role preamble and tells the live agent. Create with \`dev3 task create --title "..." --type <type>\`.
 
 **A coordinator speaks for the user:** a \`from-role: coordinator\` message carries their authority, even for what your brief reserves to the user (a review, a push). Act; never re-ask.
 

@@ -84,6 +84,7 @@ import { confirm } from "../../confirm";
 import { toast } from "../../toast";
 import { trackEvent } from "../../analytics";
 import { confirmTaskCompletion } from "../../utils/confirmTaskCompletion";
+import type { CardLineage } from "../../utils/taskLineage";
 
 vi.mock("../../confirm", () => ({
 	confirm: vi.fn(),
@@ -182,6 +183,7 @@ function renderCard(
 		onEditDraft?: (task: Task) => void;
 		devServer?: DevServerSummary;
 		ports?: PortInfo[];
+		lineage?: CardLineage;
 	},
 ) {
 	return render(
@@ -204,6 +206,7 @@ function renderCard(
 				onEditDraft={opts?.onEditDraft}
 				devServer={opts?.devServer}
 				ports={opts?.ports}
+				lineage={opts?.lineage}
 			/>
 		</I18nProvider>,
 	);
@@ -2247,32 +2250,44 @@ describe("TaskCard — drafts", () => {
 describe("coordinator card", () => {
 	const coordinator = (overrides?: Partial<Task>) =>
 		makeTask({ taskType: "coordinator", ...overrides });
+	const lineage = (childCount: number, onFilterByChildren: (() => void) | null = null): CardLineage =>
+		({ parentLabel: null, parentTitle: null, childCount, onFilterByParent: null, onFilterByChildren });
 
-	it("names the role on the card, so colour alone need not carry it", () => {
+	it("names the role in an accent band, so colour alone need not carry it", () => {
 		renderCard(coordinator());
+		const band = screen.getByTestId("task-role-band");
 
-		expect(screen.getByTestId("task-card-coordinator-badge")).toHaveTextContent(/coordinator/i);
+		expect(band).toHaveTextContent(/coordinator/i);
+		expect(band.className).toContain("bg-accent-fill");
+		expect(band.className).toContain("text-white");
 	});
 
-	it("outlines the card with a dashed positive border", () => {
+	it("carries identity in an accent halo, not a dashed second border", () => {
 		const { container } = renderCard(coordinator());
 		const card = container.querySelector("[data-task-id='t1']");
 
-		expect(card?.className).toContain("border-dashed");
-		expect(card?.className).toContain("task-card-coordinator");
+		expect(card?.className).not.toContain("border-dashed");
+		expect(card?.className).toContain("border-transparent");
+		expect(card?.className).toContain("rgb(var(--accent)/0.5)");
+		expect(screen.queryByTestId("task-card-coordinator-badge")).toBeNull();
 	});
 
-	it("colours the badge with the coordinator ink token", () => {
-		renderCard(coordinator());
+	it("states the created count once, in the band, and filters by it", async () => {
+		const onFilter = vi.fn();
+		renderCard(coordinator(), { lineage: lineage(4, onFilter) });
 
-		expect(screen.getByTestId("task-card-coordinator-badge").className).toContain("text-coordinator-ink");
+		expect(screen.getByTestId("task-role-band-count")).toHaveTextContent("4");
+		expect(screen.queryByTestId("task-card-lineage-children")).toBeNull();
+		await userEvent.click(screen.getByTestId("task-role-band-count"));
+		expect(onFilter).toHaveBeenCalledOnce();
 	});
 
 	it("leaves an ordinary card unmarked", () => {
-		const { container } = renderCard(makeTask());
+		const { container } = renderCard(makeTask(), { lineage: lineage(2) });
 
-		expect(screen.queryByTestId("task-card-coordinator-badge")).toBeNull();
-		expect(container.querySelector("[data-task-id='t1']")?.className).not.toContain("task-card-coordinator");
+		expect(screen.queryByTestId("task-role-band")).toBeNull();
+		expect(screen.getByTestId("task-card-lineage-children")).toHaveTextContent("2");
+		expect(container.querySelector("[data-task-id='t1']")?.className).not.toContain("--accent");
 	});
 });
 
@@ -2287,12 +2302,16 @@ describe("card footer bar", () => {
 });
 
 describe("board-cleanup card", () => {
-	it("outlines the card with a dashed danger border", () => {
+	it("names the role in a neutral band; dashed and danger stay off the card", () => {
 		const { container } = renderCard(makeTask({ taskType: "board-cleanup" }));
+		const band = screen.getByTestId("task-role-band");
 		const card = container.querySelector("[data-task-id='t1']");
 
-		expect(card?.className).toContain("border-dashed");
-		expect(card?.className).toContain("task-card-board-cleanup");
+		expect(band).toHaveAttribute("data-role", "board-cleanup");
+		expect(band.className).toContain("bg-fg/30");
+		expect(band.className).not.toMatch(/danger|accent/);
+		expect(card?.className).not.toContain("border-dashed");
+		expect(screen.queryByTestId("task-card-board-cleanup-badge")).toBeNull();
 	});
 });
 

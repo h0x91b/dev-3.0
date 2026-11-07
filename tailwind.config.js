@@ -93,10 +93,6 @@ export default {
 				},
 				"danger-strong": "rgb(var(--danger-strong) / <alpha-value>)",
 				"success-strong": "rgb(var(--success-strong) / <alpha-value>)",
-				coordinator: {
-					DEFAULT: "rgb(var(--coordinator) / <alpha-value>)",
-					ink: "rgb(var(--coordinator-ink) / <alpha-value>)",
-				},
 				warning: {
 					DEFAULT: "rgb(var(--warning) / <alpha-value>)",
 					strong: "rgb(var(--warning-strong) / <alpha-value>)",
