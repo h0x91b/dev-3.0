@@ -442,9 +442,16 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
-	const handleNeedsYouSoundToggle = useCallback(
+	const handleQuestionsSoundToggle = useCallback(
 		(enabled: boolean) => {
-			persistSettingChange({ playSoundOnTaskNeedsYou: enabled });
+			persistSettingChange({ playSoundOnTaskQuestions: enabled });
+		},
+		[persistSettingChange],
+	);
+
+	const handleReviewSoundToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange({ playSoundOnTaskReview: enabled });
 		},
 		[persistSettingChange],
 	);
@@ -1060,7 +1067,8 @@ function GlobalSettings({
 						t={t}
 						globalSettings={globalSettings}
 						onSoundToggle={handleSoundToggle}
-						onNeedsYouSoundToggle={handleNeedsYouSoundToggle}
+						onQuestionsSoundToggle={handleQuestionsSoundToggle}
+						onReviewSoundToggle={handleReviewSoundToggle}
 						onFocusModeToggle={handleFocusModeToggle}
 						onWatchByDefaultToggle={handleWatchByDefaultToggle}
 					/>

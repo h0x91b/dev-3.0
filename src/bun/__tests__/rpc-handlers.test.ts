@@ -2341,6 +2341,16 @@ describe("handlers.saveGlobalSettings", () => {
 		expect(push).toHaveBeenCalledWith("globalSettingsUpdated", expected);
 	});
 
+	// A remote tab left open across the update still sends the pre-split key.
+	it("resolves the needs-you chimes from a pre-split snapshot without overriding stored choices", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({ playSoundOnTaskReview: false } as unknown as GlobalSettings);
+		await handlers.saveGlobalSettings({ playSoundOnTaskNeedsYou: true } as unknown as GlobalSettings);
+
+		const saved = vi.mocked(saveSettings).mock.calls[0][0];
+		expect(saved).toMatchObject({ playSoundOnTaskQuestions: true, playSoundOnTaskReview: false });
+		expect(push).toHaveBeenCalledWith("globalSettingsUpdated", saved);
+	});
+
 	// Starring a preset in Settings has to reach the launch dialog, which keeps
 	// its own copy of the settings: without the push the favorite was saved and
 	// invisible everywhere but the screen it was starred on.
@@ -3298,7 +3308,7 @@ describe("handlers.moveTask", () => {
 		emitTaskSound("review-by-user", "task-3");
 		expect(push).not.toHaveBeenCalled();
 
-		vi.mocked(loadSettingsSync).mockReturnValue({ playSoundOnTaskComplete: false, playSoundOnTaskNeedsYou: true } as any);
+		vi.mocked(loadSettingsSync).mockReturnValue({ playSoundOnTaskComplete: false, playSoundOnTaskQuestions: true } as any);
 		emitTaskSound("user-questions", "task-3");
 		emitTaskSound("completed", "task-3");
 		expect(push.mock.calls).toEqual([["taskSound", { status: "user-questions", taskId: "task-3" }]]);
