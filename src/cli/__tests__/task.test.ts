@@ -11,6 +11,11 @@ import { CLI_EXIT_CODE_EPIC_CREATE_FORBIDDEN, CLI_EXIT_CODE_EPIC_REF_INVALID, CL
 import { LAUNCH_PREPARATION_REPORT_BUDGET_MS } from "../../shared/launch-preparation";
 import { handleEpic } from "../commands/epic";
 
+vi.mock("../context", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../context")>();
+	return { ...actual, readProjectDirect: vi.fn(actual.readProjectDirect) };
+});
+
 vi.mock("../stdin", () => ({
 	readStdin: vi.fn(),
 }));
@@ -22,6 +27,7 @@ vi.mock("../socket-client", () => ({
 
 import { sendRequest } from "../socket-client";
 import { readStdin } from "../stdin";
+import { readProjectDirect } from "../context";
 const mockSend = vi.mocked(sendRequest);
 const mockReadStdin = vi.mocked(readStdin);
 
@@ -488,6 +494,38 @@ describe("task create", () => {
 			});
 			expect(stderrOutput).toContain("Starts on: origin/feat/x");
 			expect(stderrOutput).not.toContain("someone else's code");
+		});
+
+		it("sends --worktree with --branch and says the task gets its own worktree", async () => {
+			mockSend.mockResolvedValue(okResp({ ...createdTask, existingBranch: "linux-build", ownWorktree: true }));
+
+			await handleTask("create", args([], { project: "proj-001", title: "Linux build", branch: "linux-build", worktree: "true" }), SOCKET, null);
+
+			expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", {
+				projectId: "proj-001",
+				title: "Linux build",
+				branch: "linux-build",
+				ownWorktree: true,
+			});
+			expect(stderrOutput).toContain("Runs in its own worktree");
+		});
+
+		it("does not claim an Operations board's tasks get their own worktree", async () => {
+			vi.mocked(readProjectDirect).mockReturnValueOnce({ id: "proj-001", name: "Ops", path: "/ops", kind: "virtual" });
+			mockSend.mockResolvedValue(okResp(createdTask));
+
+			await handleTask("create", args([], { project: "proj-001", title: "Notes", worktree: "true" }), SOCKET, null);
+
+			expect(stderrOutput).toContain("--worktree ignored");
+			expect(stderrOutput).not.toContain("already get their own worktree");
+		});
+
+		it("rejects a value after --worktree before contacting the app", async () => {
+			await expect(
+				handleTask("create", args([], { project: "proj-001", title: "X", worktree: "Linux build" }), SOCKET, null),
+			).rejects.toThrow("EXIT_");
+			expect(stderrOutput).toContain("--worktree takes no value");
+			expect(mockSend).not.toHaveBeenCalled();
 		});
 
 		it("rejects --pr together with --branch before contacting the app", async () => {

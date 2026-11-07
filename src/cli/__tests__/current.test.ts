@@ -125,6 +125,34 @@ describe("handleCurrent", () => {
 			expect(stdoutOutput).toContain("dev3/task-aaaaaaaa");
 		});
 
+		it("tells the agent of a gitless task there is no branch or PR, names its folder, and warns it is shared", async () => {
+			mockDetect.mockReturnValue({ projectId: "proj-001", taskId: FAKE_TASK.id, socketPath: SOCKET });
+			mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, branchName: null, worktreePath: "/work/customer-x" }));
+			mockReadProject.mockReturnValue({ id: "proj-001", name: "Customer X", path: "/work/customer-x", gitWorkflow: false });
+
+			await handleCurrent(SOCKET);
+
+			expect(stdoutOutput).toContain("Git workflow:");
+			expect(stdoutOutput).toContain("no worktree, branch or PR");
+			expect(stdoutOutput).toContain("Folder:");
+			expect(stdoutOutput).toContain("never git stash, git add -A");
+			expect(stdoutOutput).not.toContain("Worktree:");
+		});
+
+		it("gives an own-worktree task of a gitless project its branch and worktree, not the shared-folder rule", async () => {
+			mockDetect.mockReturnValue({ projectId: "proj-001", taskId: FAKE_TASK.id, socketPath: SOCKET });
+			mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, ownWorktree: true, branchName: "linux-build", worktreePath: "/wt/own" }));
+			mockReadProject.mockReturnValue({ id: "proj-001", name: "Customer X", path: "/work/customer-x", gitWorkflow: false });
+
+			await handleCurrent(SOCKET);
+
+			expect(stdoutOutput).toContain("Branch:");
+			expect(stdoutOutput).toContain("linux-build");
+			expect(stdoutOutput).toContain("Worktree:");
+			expect(stdoutOutput).toContain("this task alone has a worktree");
+			expect(stdoutOutput).not.toContain("Shared folder:");
+		});
+
 		it("shows custom title from live task data when present", async () => {
 			mockDetect.mockReturnValue({
 				projectId: "proj-001",

@@ -118,6 +118,17 @@ describe("offline ID resolution — virtual (Operations) projects", () => {
 		expect(task?.id).toBe(TASK_ID);
 	});
 
+	it("readTaskDirect resolves a seq:N reference within the project", () => {
+		writeFileSync(`${TASK_DATA_DIR}/tasks.json`, JSON.stringify([{ id: TASK_ID, seq: 7 }, { id: "other", seq: 8 }]));
+		expect(readTaskDirect(PROJECT_ID, "seq:7")?.id).toBe(TASK_ID);
+		expect(readTaskDirect(PROJECT_ID, "seq:9")).toBeNull();
+	});
+
+	it("readTaskDirect reads a seq:N shared by variants as unknown", () => {
+		writeFileSync(`${TASK_DATA_DIR}/tasks.json`, JSON.stringify([{ id: TASK_ID, seq: 7 }, { id: "variant", seq: 7 }]));
+		expect(readTaskDirect(PROJECT_ID, "seq:7")).toBeNull();
+	});
+
 	it("expandShortId expands a short task id belonging to a virtual project", () => {
 		expect(expandShortId(SHORT_ID, null)).toBe(TASK_ID);
 	});

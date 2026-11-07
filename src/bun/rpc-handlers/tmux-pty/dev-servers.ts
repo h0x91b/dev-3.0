@@ -765,7 +765,7 @@ async function startOneDevServer(
 	opId?: string,
 ): Promise<void> {
 	const { task, project, native, socket } = ctx;
-	const worktreePath = assertTaskWorkspacePresent(project, task.worktreePath);
+	const worktreePath = assertTaskWorkspacePresent(project, task.worktreePath, task);
 	// Never trust the caller: `devServer.start` is reachable from the CLI, the
 	// renderer, and any other socket client, and only the CLI validates.
 	const callerEnv = sanitizeDevServerEnv(env);

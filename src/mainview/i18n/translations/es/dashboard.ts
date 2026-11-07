@@ -65,7 +65,7 @@ const dashboard = {
 	"ops.badgeSystem": "Sistema",
 	"ops.gitUnavailable": "Git no está disponible en las tareas de operaciones",
 	"ops.tileSubtitle": "Tareas con código · sin git",
-	"ops.create.typeGit": "Repositorio Git",
+	"ops.create.typeGit": "Carpeta",
 	"ops.create.typeOps": "Operaciones",
 	"ops.create.nameLabel": "Nombre del tablero",
 	"ops.create.namePlaceholder": "Operaciones",

@@ -123,6 +123,7 @@ function makeTask(overrides?: Partial<Task>): Task {
 function renderTerminal(
 	opts?: {
 		tasks?: Task[];
+		projects?: Project[];
 		dispatch?: React.Dispatch<AppAction>;
 		navigate?: (route: Route) => void;
 	},
@@ -136,7 +137,7 @@ function renderTerminal(
 				projectId="p1"
 				taskId="t1"
 				tasks={tasks}
-				projects={[project]}
+				projects={opts?.projects ?? [project]}
 				navigate={navigate}
 				dispatch={dispatch}
 			/>
@@ -220,6 +221,24 @@ describe("TaskTerminal", () => {
 
 			expect(screen.getByTestId("terminal-task-closed-screen")).toBeInTheDocument();
 			expect(screen.queryByTestId("terminal-view")).not.toBeInTheDocument();
+		});
+	});
+
+	describe("worktree check after a lost session", () => {
+		it.each([
+			[true, true],
+			[false, false],
+		])("asks for .git when a gitless project's task has ownWorktree=%s: %s", async (ownWorktree, requireGit) => {
+			mockedApi.request.getPtyUrl.mockRejectedValue(new Error("no pty"));
+			mockedApi.request.checkWorktreeState.mockResolvedValue("present");
+
+			await act(async () => {
+				renderTerminal({ tasks: [makeTask({ ownWorktree })], projects: [{ ...project, gitWorkflow: false }] });
+			});
+
+			await waitFor(() => {
+				expect(mockedApi.request.checkWorktreeState).toHaveBeenCalledWith(expect.objectContaining({ requireGit }));
+			});
 		});
 	});
 

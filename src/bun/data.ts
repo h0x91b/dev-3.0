@@ -31,7 +31,7 @@ const TASK_BACKUPS_DIR = "tasks-backups";
 const TASK_BACKUP_RETENTION_HOURS = 72;
 // `name` is display-only: `path` is deliberately absent, so a rename never moves
 // a data dir, worktree dir or slug (AGENTS.md on-disk invariants).
-type ProjectUpdates = Partial<Pick<Project, "name" | "setupScript" | "setupScriptLaunchMode" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "githubAuthHost" | "githubAuthLogin" | "clonePaths" | "labels" | "customColumns" | "columnOrder" | "autoReviewEnabled" | "peerReviewEnabled" | "sparseCheckoutEnabled" | "sparseCheckoutPaths" | "builtinColumnAgents" | "customStatusLabels" | "sensitive" | "autoAccountExclusions" | "reviewModePrompt" | "coordinatorPrompt" | "artifactTemplate" | "artifactTemplatePath" | "env" | "conversationImportOfferedAt" | "boardCopy" | "boardCopyMessages">>;
+type ProjectUpdates = Partial<Pick<Project, "name" | "setupScript" | "setupScriptLaunchMode" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "githubAuthHost" | "githubAuthLogin" | "clonePaths" | "labels" | "customColumns" | "columnOrder" | "autoReviewEnabled" | "peerReviewEnabled" | "sparseCheckoutEnabled" | "sparseCheckoutPaths" | "builtinColumnAgents" | "customStatusLabels" | "sensitive" | "autoAccountExclusions" | "gitWorkflow" | "reviewModePrompt" | "coordinatorPrompt" | "artifactTemplate" | "artifactTemplatePath" | "env" | "conversationImportOfferedAt" | "boardCopy" | "boardCopyMessages">>;
 
 type BoardChangeListener = (projectId: string | null) => void;
 const boardChangeListeners = new Set<BoardChangeListener>();
@@ -895,6 +895,8 @@ export async function addTask(
 		labelIds?: string[];
 		userLabelIds?: string[];
 		opsWorkDir?: string | null;
+		/** Own worktree in a project with the git workflow off - see Task.ownWorktree. */
+		ownWorktree?: boolean;
 		notes?: Task["notes"];
 		overview?: string | null;
 		userOverview?: string | null;
@@ -972,6 +974,7 @@ export async function addTask(
 			...(extras?.customTitle ? { customTitle: extras.customTitle } : {}),
 			...(extras?.titleEditedByUser ? { titleEditedByUser: true } : {}),
 			...(extras?.opsWorkDir ? { opsWorkDir: extras.opsWorkDir } : {}),
+			...(extras?.ownWorktree ? { ownWorktree: true } : {}),
 			...(extras?.notes && extras.notes.length > 0 ? { notes: extras.notes } : {}),
 			...(extras?.overview ? { overview: extras.overview } : {}),
 			...(extras?.userOverview ? { userOverview: extras.userOverview } : {}),

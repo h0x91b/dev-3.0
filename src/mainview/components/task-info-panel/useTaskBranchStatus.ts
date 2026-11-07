@@ -7,6 +7,7 @@ import {
 	type Project,
 	type Task,
 	type TaskPRBadgeInfo,
+	hasGitWorkflow,
 	resolveTaskCompareBaseBranch,
 } from "../../../shared/types";
 import { isLivePullRequest } from "../../utils/taskPrBadge";
@@ -515,6 +516,9 @@ export function useTaskBranchStatus({
 		branchStatus && { number: branchStatus.prNumber, state: branchStatus.prState },
 		task.prStatusCache && { number: task.prStatusCache.number, state: task.prStatusCache.mergeState?.state },
 	]) ? "pull-request" : "local-squash";
+	// The local squash commits in the project folder, which a gitless project's
+	// other tasks share; only a pull request may land an own-worktree task there.
+	const localMergeBlocked = mergeRoute === "local-squash" && !hasGitWorkflow(project);
 
 	/**
 	 * Two routes, two confirmations. Merging the PR is not destructive — GitHub
@@ -631,6 +635,7 @@ export function useTaskBranchStatus({
 		handlePush,
 		handleRebase,
 		handleRefreshStatus,
+		localMergeBlocked,
 		merging,
 		mergeRoute,
 		pushing,

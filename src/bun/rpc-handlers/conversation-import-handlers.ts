@@ -1,4 +1,5 @@
 import type { Label, Project, Task } from "../../shared/types";
+import { hasGitWorkflow } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
 import * as repoConfig from "../repo-config";
@@ -37,9 +38,9 @@ function toView(conversation: ImportableConversation): ImportableConversationVie
 }
 
 async function importableConversationsFor(project: Project): Promise<ImportableConversation[]> {
-	// A virtual ("Operations") board has no repository, so no conversation can be
-	// contained by it.
-	if (project.kind === "virtual") return [];
+	// Import lands a conversation in a fresh worktree, which a project without the
+	// git workflow never has.
+	if (!hasGitWorkflow(project)) return [];
 	const tasks = await data.loadTasks(project);
 	const importedSessionIds = tasks
 		.map((task) => task.importedSessionId)
