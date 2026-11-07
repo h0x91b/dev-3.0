@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Context } from "cordis";
 import type { Project, Task } from "../../../shared/types";
@@ -23,13 +23,16 @@ import {
 	type TreeNode,
 	type TreeRow,
 } from "./tree-model";
+import { ZEBRA_ROW } from "../zebra";
 
 export const TREE_VIEW_ID = "builtin:tree";
 const ROW_HEIGHT = 36;
 const NARROW_ROW_HEIGHT = 48;
 const OVERSCAN = 12;
 const EMPTY_KEYS: ReadonlySet<string> = new Set();
-const INDENT_REM = 1.25;
+/** Wide indent equals the chevron column, so a child's chevron sits under its parent's id. */
+const WIDE_INDENT_REM = 1.5;
+const NARROW_INDENT_REM = 1.25;
 /** The narrow outline stops indenting here; deeper rows show their level instead. */
 export const NARROW_MAX_INDENT = 3;
 /** Wide rows stop indenting here so a pathological chain never pushes titles off screen. */
@@ -76,7 +79,7 @@ function rowLabel(node: TreeNode, hiddenTitle: string, groupName: (node: Extract
 
 function Chevron({ open }: { open: boolean }) {
 	return (
-		<svg aria-hidden className={`h-3.5 w-3.5 transition-transform duration-150 ${open ? "rotate-90" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+		<svg aria-hidden className={`h-3.5 w-3.5 motion-safe:transition-transform motion-safe:duration-150 motion-safe:ease-[cubic-bezier(0.2,0,0,1)] ${open ? "rotate-90" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
 			<path d="M9 6l6 6-6 6" />
 		</svg>
 	);
@@ -109,6 +112,43 @@ function VariantDots({ tasks }: { tasks: readonly Task[] }) {
 	);
 }
 
+/** Fixed-width id so titles line up; a variant's `-N` suffix is quieter than the seq. */
+function SeqLabel({ seq, label }: { seq: number; label: string }) {
+	const suffix = label.slice(String(seq).length);
+	return (
+		<span className="min-w-[2.75rem] flex-shrink-0 text-xs tabular-nums text-fg-3">
+			#{seq}
+			{suffix && <span className="text-fg-muted">{suffix}</span>}
+		</span>
+	);
+}
+
+/** "+N inside" on a collapsed node — kept beside the title so the meta columns stay aligned. */
+function NestedCount({ count }: { count: number }) {
+	const t = useT();
+	return (
+		<span className="flex-shrink-0 rounded bg-elevated px-1.5 py-px text-dense tabular-nums text-fg-3">
+			{t.plural("boardTree.nested", count)}
+		</span>
+	);
+}
+
+/** One vertical guide per ancestor level, centred on that ancestor's chevron. */
+function IndentGuides({ levels, indentRem, toggleRem }: { levels: number; indentRem: number; toggleRem: number }) {
+	return (
+		<>
+			{Array.from({ length: levels }, (_, level) => (
+				<span
+					key={level}
+					aria-hidden
+					className="pointer-events-none absolute inset-y-0 w-px bg-edge"
+					style={{ insetInlineStart: `${level * indentRem + toggleRem / 2}rem` }}
+				/>
+			))}
+		</>
+	);
+}
+
 interface RowProps {
 	row: TreeRow;
 	narrow: boolean;
@@ -123,6 +163,7 @@ function RowBody({ row, narrow, projectById, showProject, projectName, onToggle 
 	const { node } = row;
 	const hasChildren = node.children.length > 0;
 	const indentLevel = Math.min(row.depth, narrow ? NARROW_MAX_INDENT : WIDE_MAX_INDENT);
+	const indentRem = narrow ? NARROW_INDENT_REM : WIDE_INDENT_REM;
 	const toggleLabel = t(row.expanded ? "boardTree.collapse" : "boardTree.expand");
 
 	const toggle = hasChildren ? (
@@ -149,35 +190,34 @@ function RowBody({ row, narrow, projectById, showProject, projectName, onToggle 
 			L{row.depth + 1}
 		</span>
 	) : null;
-	const nested = hasChildren && !row.expanded && node.kind !== "group" ? (
-		<span className="flex-shrink-0 text-xs tabular-nums text-fg-3">{t.plural("boardTree.nested", row.descendantCount)}</span>
-	) : null;
+	const nested = hasChildren && !row.expanded && node.kind !== "group" ? <NestedCount count={row.descendantCount} /> : null;
 
 	const content = node.kind === "group" ? (
 		<EpicGroupContent node={node} />
 	) : node.kind === "ghost" ? (
 		<>
-			<span className="flex-shrink-0 text-xs tabular-nums text-fg-3">#{node.ref.seq}</span>
-			<span className="min-w-0 flex-1 truncate text-sm italic text-fg-3">
-				{node.ref.title ?? t("boardTree.hiddenTitle")}
+			<SeqLabel seq={node.ref.seq} label={String(node.ref.seq)} />
+			<span className="flex min-w-0 flex-1 items-center gap-2">
+				<span className="min-w-0 truncate text-sm italic text-fg-3">{node.ref.title ?? t("boardTree.hiddenTitle")}</span>
+				{nested}
 			</span>
 			<span className="flex-shrink-0 truncate rounded border border-dashed border-edge px-1.5 text-xs text-fg-3" title={t("boardTree.otherProject")}>
 				{node.ref.projectName}
 			</span>
 		</>
 	) : (
-		<TaskContent node={node} narrow={narrow} project={projectById.get(node.tasks[0].projectId)} showProject={showProject} projectName={projectName} />
+		<TaskContent node={node} narrow={narrow} nested={nested} project={projectById.get(node.tasks[0].projectId)} showProject={showProject} projectName={projectName} />
 	);
 
 	return (
 		<div
-			className={`flex h-full min-w-0 items-center gap-2 ${node.kind === "task" && !node.matches ? "opacity-60" : ""}`}
-			style={{ paddingInlineStart: `${indentLevel * INDENT_REM}rem` }}
+			className={`relative flex h-full min-w-0 items-center gap-2 ${node.kind === "task" && !node.matches ? "opacity-60" : ""}`}
+			style={{ paddingInlineStart: `${indentLevel * indentRem}rem` }}
 		>
+			<IndentGuides levels={indentLevel} indentRem={indentRem} toggleRem={narrow ? 2.25 : 1.5} />
 			{toggle}
 			{depthMark}
 			{content}
-			{nested}
 		</div>
 	);
 }
@@ -200,9 +240,10 @@ function EpicGroupContent({ node }: { node: Extract<TreeNode, { kind: "group" }>
 	);
 }
 
-function TaskContent({ node, narrow, project, showProject, projectName }: {
+function TaskContent({ node, narrow, nested, project, showProject, projectName }: {
 	node: Extract<TreeNode, { kind: "task" }>;
 	narrow: boolean;
+	nested: ReactNode;
 	project: Project | undefined;
 	showProject: boolean;
 	projectName(id: string): string;
@@ -212,9 +253,12 @@ function TaskContent({ node, narrow, project, showProject, projectName }: {
 	const activity = taskLastActivityMs(lead);
 	return (
 		<>
-			<span className="flex-shrink-0 text-xs tabular-nums text-fg-3">#{variants ? lead.seq : taskSeqLabel(lead)}</span>
-			<span className="min-w-0 flex-1 truncate text-sm text-fg">{getTaskTitle(lead)}</span>
-			{variants && <VariantDots tasks={node.tasks} />}
+			<SeqLabel seq={lead.seq} label={variants ? String(lead.seq) : taskSeqLabel(lead)} />
+			<span className="flex min-w-0 flex-1 items-center gap-2">
+				<span className="min-w-0 truncate text-sm text-fg">{getTaskTitle(lead)}</span>
+				{variants && <VariantDots tasks={node.tasks} />}
+				{nested}
+			</span>
 			{showProject && !narrow && (
 				<span className="max-w-[9rem] flex-shrink-0 truncate text-xs text-fg-3">{projectName(lead.projectId)}</span>
 			)}
@@ -379,7 +423,7 @@ export function TreeView(_props: { ctx: Context }) {
 							onClick={() => open(row)}
 							onContextMenu={(e) => openMenu(row, e)}
 							onKeyDown={(e) => onRowKeyDown(row, item.index, e)}
-							className={`absolute left-0 top-0 w-full cursor-pointer rounded-md px-1 outline-none hover:bg-raised-hover focus-visible:bg-raised-hover focus-visible:shadow-[inset_2px_0_0_rgb(var(--accent))] ${narrow ? "border-b border-edge/50" : ""}`}
+							className={`absolute left-0 top-0 w-full cursor-pointer rounded-md px-2 outline-none ${item.index % 2 === 1 ? ZEBRA_ROW : ""} hover:bg-raised-hover focus-visible:bg-raised-hover focus-visible:shadow-[inset_2px_0_0_rgb(var(--accent))] ${narrow ? "border-b border-edge/50" : ""}`}
 							style={{ height: rowHeight, transform: `translateY(${item.start}px)` }}
 						>
 							<RowBody row={row} narrow={narrow} projectById={projectById} showProject={showProject} projectName={projectName} onToggle={onToggle} />

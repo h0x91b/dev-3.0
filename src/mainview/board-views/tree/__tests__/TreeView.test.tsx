@@ -143,6 +143,22 @@ describe("Tree board view", () => {
 		expect(actions.openContextMenu).toHaveBeenCalledWith("solo", { x: 5, y: 6 });
 	});
 
+	it("keeps the nested count beside the title so status, priority and age stay in columns", async () => {
+		await renderTree({ tasks: family });
+		const root = screen.getByTestId("board-tree-row-p1#1");
+		const nested = within(root).getByText("+2 inside");
+		expect(nested.parentElement).toContainElement(within(root).getByText("Coordinate"));
+		expect(root.firstElementChild?.lastElementChild).not.toContainElement(nested);
+	});
+
+	it("draws one indent guide per ancestor level", async () => {
+		const chain = [task("t0", 1), task("t1", 2, childOf("t0")), task("t2", 3, childOf("t1"))];
+		await renderTree({ tasks: chain, layout: { expanded: ["p1#1", "p1#2"] } });
+		const deepest = screen.getByTestId("board-tree-row-p1#3").firstElementChild as HTMLElement;
+		expect(deepest.style.paddingInlineStart).toBe("3rem");
+		expect(deepest.querySelectorAll(":scope > span.bg-edge")).toHaveLength(2);
+	});
+
 	it("drives expand and collapse from the keyboard like a tree", async () => {
 		const { layouts, rerender } = await renderTree({ tasks: family });
 		fireEvent.keyDown(screen.getByTestId("board-tree-row-p1#1"), { key: "ArrowRight" });
