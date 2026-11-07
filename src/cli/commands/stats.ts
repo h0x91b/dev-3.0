@@ -254,7 +254,10 @@ async function limits(args: ParsedArgs, socketPath: string): Promise<void> {
 		return;
 	}
 	const rows = report.snapshots.flatMap((s) => {
-		const account = s.accountId ?? "system";
+		const account =
+			s.source === "kimi" && s.providerId
+				? (report.usageProviders?.find((p) => p.id === s.providerId)?.label ?? s.providerId)
+				: (s.accountId ?? "system");
 		if (s.windows.length === 0) return [[s.source, account, "-", "no limits reported", "-", formatWhen(s.capturedAt)]];
 		return s.windows.map((w) => [
 			s.source, account, w.id, `${Math.round(w.usedPercent)}%`, formatWhen(w.resetsAt), formatWhen(s.capturedAt),
