@@ -10,7 +10,7 @@ import { confirm } from "../confirm";
 import { useT } from "../i18n";
 import { createProjectLabel } from "../utils/createProjectLabel";
 import { formatBytes } from "../utils/formatBytes";
-import { isKnownPreparationFailure, preparationFailureMessage } from "../utils/preparationFailureMessage";
+import { isKnownPreparationFailure, preparationBannerText } from "../utils/preparationFailureMessage";
 import { formatCountdown } from "../../shared/duration";
 import { trackEvent, agentNameFromId } from "../analytics";
 import { useStatusColors } from "../hooks/useStatusColors";
@@ -460,7 +460,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const displayTitle = getTaskTitle(task);
 	const hasLongDescription = task.description !== displayTitle;
 	const launchFailedText = isTodo && task.preparationError
-		? t("task.launchFailed", { error: preparationFailureMessage(task.preparationError, t) })
+		? preparationBannerText(task.preparationError, t)
 		: null;
 	const openUnresolvedInDiff = onOpenUnresolvedComments
 		? () => onOpenUnresolvedComments(task)

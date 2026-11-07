@@ -18,24 +18,26 @@ vi.mock("../data", () => ({
 	}),
 	getTask: vi.fn(async (_project: unknown, taskId: string) => store.find((t) => t.id === taskId)),
 }));
-const { moveTask, launchTaskWithAgentChoice, requestAgentLaunchApproval, pushMessage, pushCliAttention, getPullRequestSnapshot } = vi.hoisted(() => ({
+const { moveTask, launchTaskWithAgentChoice, requestAgentLaunchApproval, pushMessage, pushCliAttention, getPullRequestSnapshot, resolveTaskAcrossProjects } = vi.hoisted(() => ({
 	moveTask: vi.fn(async (_params: unknown): Promise<unknown> => undefined),
 	launchTaskWithAgentChoice: vi.fn(async (_params: unknown): Promise<unknown> => []),
 	requestAgentLaunchApproval: vi.fn(async (_params: unknown): Promise<unknown> => ({ approved: true })),
 	pushMessage: vi.fn(),
 	pushCliAttention: vi.fn(),
 	getPullRequestSnapshot: vi.fn(),
+	resolveTaskAcrossProjects: vi.fn(async (_id: string): Promise<unknown> => null),
 }));
 vi.mock("../rpc-handlers/task-lifecycle", () => ({ moveTask, launchTaskWithAgentChoice }));
 vi.mock("../cli-socket/approvals", () => ({ requestAgentLaunchApproval }));
 vi.mock("../rpc-handlers/shared-pure", () => ({ getPushMessage: () => pushMessage }));
 vi.mock("../rpc-handlers/shared", () => ({ pushCliAttention }));
 vi.mock("../github-pr-status", () => ({ getPullRequestSnapshot }));
+vi.mock("../cli-socket/task-resolution", () => ({ resolveTaskAcrossProjects }));
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
-import { _resetLaunchAfterState, evaluateLaunchAfter, LAUNCH_AFTER_PROBE_INTERVAL_MS, launchAfterRefusal, tickLaunchAfter } from "../launch-after";
+import { _resetLaunchAfterState, _settleLaunchAfterProbes, evaluateLaunchAfter, LAUNCH_AFTER_PROBE_CONCURRENCY, LAUNCH_AFTER_PROBE_INTERVAL_MS, launchAfterRefusal, prerequisiteMembers, prerequisiteRefusal, tickLaunchAfter } from "../launch-after";
 
 const project = { id: "proj-1", path: "/repo" } as never;
 
@@ -49,6 +51,7 @@ function cond(overrides: Partial<LaunchAfter> = {}): LaunchAfter {
 
 async function tick(now = Date.now()) {
 	await tickLaunchAfter(project, store.map((t) => ({ ...t })), now);
+	await _settleLaunchAfterProbes();
 	for (let i = 0; i < 5; i++) await Promise.resolve();
 }
 
@@ -88,10 +91,9 @@ describe("start-after tick", () => {
 		await tick();
 		expect(moveTask).not.toHaveBeenCalled();
 		expect(store[1].launchAfter).toBeNull();
-		expect(store[1].preparationError).toBe("Waited for task #1, which was cancelled");
+		expect(store[1].preparationError).toBe("Did not start: task #1, which this task waited for, was cancelled.");
 		expect(pushCliAttention).toHaveBeenCalledTimes(1);
-		expect(store[1].preparationError).not.toMatch(/^Did not start/);
-		expect(pushCliAttention).toHaveBeenCalledWith(expect.objectContaining({ taskId: "b", reason: "Did not start: Waited for task #1, which was cancelled" }));
+		expect(pushCliAttention).toHaveBeenCalledWith(expect.objectContaining({ taskId: "b", reason: store[1].preparationError }));
 	});
 
 	it("never launches after a deleted prerequisite", async () => {
@@ -178,7 +180,7 @@ describe("start-after until merged", () => {
 	});
 
 	it("does not fire on completion alone", async () => {
-		expect(evaluateLaunchAfter(cond({ until: "merged" }), task({ id: "a", status: "in-progress", prNumber: 7 }))).toEqual({ kind: "wait" });
+		expect(evaluateLaunchAfter(cond({ until: "merged" }), [task({ id: "a", status: "in-progress", prNumber: 7 })])).toEqual({ kind: "wait" });
 	});
 
 	it("asks GitHub at most once per interval for a completed task whose merge was never seen", async () => {
@@ -233,14 +235,14 @@ describe("start-after until merged", () => {
 		store = [task({ id: "a", status: "completed", prNumber: 7 }), task({ id: "b", seq: 2, launchAfter: cond({ until: "merged" }) })];
 		await tick();
 		expect(moveTask).not.toHaveBeenCalled();
-		expect(store[1].preparationError).toMatch(/closed without merging/);
+		expect(store[1].preparationError).toBe("Did not start: the pull request of task #1 was closed without merging.");
 	});
 
 	it("gives up when the task completed without any PR", async () => {
 		store = [task({ id: "a", status: "completed" }), task({ id: "b", seq: 2, launchAfter: cond({ until: "merged" }) })];
 		await tick();
 		expect(moveTask).not.toHaveBeenCalled();
-		expect(store[1].preparationError).toMatch(/completed without one/);
+		expect(store[1].preparationError).toMatch(/completed without a pull request/);
 	});
 });
 
@@ -277,5 +279,114 @@ describe("launchAfterRefusal", () => {
 	it("refuses waiting for a merge that a completed, PR-less task can never produce", () => {
 		expect(launchAfterRefusal(b, task({ id: "a", status: "completed" }), "merged", [])).toMatch(/without a pull request/);
 		expect(launchAfterRefusal(b, task({ id: "a", status: "completed" }), "completed", [])).toBeNull();
+	});
+});
+
+describe("start-after review fixes", () => {
+	it("does not start a task the user started by hand between the tick's read and the claim", async () => {
+		store = [task({ id: "a", status: "completed" }), task({ id: "b", seq: 2, launchAfter: cond() })];
+		const snapshot = store.map((t) => ({ ...t }));
+		store[1] = { ...store[1], status: "in-progress" };
+		await tickLaunchAfter(project, snapshot);
+		expect(moveTask).not.toHaveBeenCalled();
+		expect(pushCliAttention).not.toHaveBeenCalled();
+		expect(store[1].preparationError).toBeUndefined();
+		expect(store[1].launchAfter).toBeNull();
+	});
+
+	it("tells the new agent to report back only while the arming task is still running", async () => {
+		const armedBy = { taskId: "c", seq: 9 };
+		resolveTaskAcrossProjects.mockResolvedValueOnce({ task: task({ id: "c", status: "completed" }) });
+		store = [task({ id: "a", status: "completed" }), task({ id: "b", seq: 2, launchAfter: cond({ armedBy }) })];
+		await tick();
+		expect(requestAgentLaunchApproval).toHaveBeenLastCalledWith(expect.objectContaining({ requester: armedBy, handoff: false }));
+
+		resolveTaskAcrossProjects.mockResolvedValueOnce({ task: task({ id: "c", status: "in-progress" }) });
+		store = [task({ id: "a", status: "completed" }), task({ id: "d", seq: 3, launchAfter: cond({ armedBy }) })];
+		await tick();
+		expect(requestAgentLaunchApproval).toHaveBeenLastCalledWith(expect.objectContaining({ requester: armedBy, handoff: true }));
+	});
+
+	it("does not wait on GitHub probes, and runs them in parallel with a bound", async () => {
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => { release = resolve; });
+		let running = 0;
+		let peak = 0;
+		getPullRequestSnapshot.mockImplementation(async () => {
+			running++;
+			peak = Math.max(peak, running);
+			await gate;
+			running--;
+			return { state: "MERGED" };
+		});
+		const waiting = Array.from({ length: LAUNCH_AFTER_PROBE_CONCURRENCY + 3 }, (_, i) =>
+			task({ id: `w${i}`, seq: 10 + i, launchAfter: cond({ until: "merged" }) }));
+		store = [task({ id: "a", status: "completed", prNumber: 7 }), ...waiting];
+		// The tick returns while every probe is still blocked on GitHub.
+		await tickLaunchAfter(project, store.map((t) => ({ ...t })));
+		await vi.waitFor(() => expect(peak).toBe(LAUNCH_AFTER_PROBE_CONCURRENCY));
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(peak).toBe(LAUNCH_AFTER_PROBE_CONCURRENCY);
+		expect(moveTask).not.toHaveBeenCalled();
+		// A tick while they run does not start a second probe for the same task.
+		await tickLaunchAfter(project, store.map((t) => ({ ...t })), Date.now() + LAUNCH_AFTER_PROBE_INTERVAL_MS);
+		release();
+		await _settleLaunchAfterProbes();
+		expect(getPullRequestSnapshot).toHaveBeenCalledTimes(waiting.length);
+		expect(moveTask).toHaveBeenCalledTimes(waiting.length);
+		getPullRequestSnapshot.mockReset();
+	});
+
+	it("waits on an open PR whose number is not recorded yet, then probes it once the task completes", async () => {
+		const openRecord = { pullRequests: [{ number: 7, url: "u", state: "OPEN", firstSeenAt: "x" }] } as Partial<Task>;
+		store = [task({ id: "a", status: "review-by-user", ...openRecord }), task({ id: "b", seq: 2, launchAfter: cond({ until: "merged" }) })];
+		await tick();
+		expect(getPullRequestSnapshot).not.toHaveBeenCalled();
+		expect(store[1].launchAfter).not.toBeNull();
+
+		getPullRequestSnapshot.mockResolvedValue({ state: "MERGED" });
+		store[0] = { ...store[0], status: "completed" };
+		await tick();
+		expect(getPullRequestSnapshot).toHaveBeenCalledWith(project, "/repo", 7);
+		expect(moveTask).toHaveBeenCalledTimes(1);
+		getPullRequestSnapshot.mockReset();
+	});
+});
+
+describe("start-after with variants", () => {
+	const v1 = (o: Partial<Task> = {}) => task({ id: "a", seq: 1, groupId: "g", variantIndex: 1, ...o });
+	const v2 = (o: Partial<Task> = {}) => task({ id: "a2", seq: 1, groupId: "g", variantIndex: 2, ...o });
+
+	it("fires when v2's PR merged although v1 was cancelled", async () => {
+		store = [v1({ status: "cancelled" }), v2({ status: "completed", prNumber: 8, prStatusCache: { number: 8, mergeState: { state: "MERGED" } } as never }), task({ id: "b", seq: 2, launchAfter: cond({ until: "merged" }) })];
+		await tick();
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ taskId: "b" }));
+	});
+
+	it("keeps waiting while another variant still runs", () => {
+		const members = [v1({ status: "cancelled" }), v2({ status: "in-progress" })];
+		expect(evaluateLaunchAfter(cond(), members)).toEqual({ kind: "wait" });
+		expect(evaluateLaunchAfter(cond({ until: "merged" }), members)).toEqual({ kind: "wait" });
+	});
+
+	it("fires on completion of any variant, and abandons only when every one is cancelled", () => {
+		expect(evaluateLaunchAfter(cond(), [v1({ status: "cancelled" }), v2({ status: "completed" })])).toEqual({ kind: "fire" });
+		expect(evaluateLaunchAfter(cond(), [v1({ status: "cancelled" }), v2({ status: "cancelled" })])).toEqual({ kind: "abandon", reason: "cancelled" });
+	});
+
+	it("probes every completed variant's PR", () => {
+		expect(evaluateLaunchAfter(cond({ until: "merged" }), [v1({ status: "completed", prNumber: 7 }), v2({ status: "completed", prNumber: 8 })]))
+			.toEqual({ kind: "probe", prNumbers: [7, 8] });
+	});
+
+	it("finds the siblings by seq when the source variant was deleted", () => {
+		const others = [v2({ status: "completed" }), task({ id: "z", seq: 1 })];
+		expect(prerequisiteMembers(cond(), others).map((t) => t.id)).toEqual(["a2"]);
+	});
+
+	it("does not refuse waiting on a cancelled v1 while v2 still runs", () => {
+		const board = [v1({ status: "cancelled" }), v2({ status: "in-progress" })];
+		expect(prerequisiteRefusal(board[0]!, "completed", board)).toBeNull();
+		expect(prerequisiteRefusal(board[0]!, "completed", [v1({ status: "cancelled" }), v2({ status: "cancelled" })])).toMatch(/cancelled/);
 	});
 });

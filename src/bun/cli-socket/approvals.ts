@@ -258,6 +258,8 @@ export async function requestAgentLaunchApproval(opts: {
 	launcherNote?: string | null;
 	/** Validated `--agent`/`--config` suggestion; only preselects the dialog. */
 	suggested?: LaunchVariant | null;
+	/** False when the requester can no longer take a report, so the launched agent gets no handoff note. */
+	handoff?: boolean;
 }): Promise<LaunchApprovalOutcome> {
 	const { project, task, targetStatus, requester } = opts;
 	// A coordinator's own preset preselects the dialog and is what an unwatched auto-approval launches.
@@ -337,7 +339,7 @@ export async function requestAgentLaunchApproval(opts: {
 	// who started it.
 	// A sender gets no handoff note: it has no task to report back to, and its own
 	// first `--as-sender` message carries the reply command.
-	const taskRequester = isExternalSenderRequester(requester) ? null : requester;
+	const taskRequester = isExternalSenderRequester(requester) || opts.handoff === false ? null : requester;
 	for (const child of taskRequester ? launched : []) {
 		if (!taskRequester) break;
 		void deliverLaunchHandoff({
