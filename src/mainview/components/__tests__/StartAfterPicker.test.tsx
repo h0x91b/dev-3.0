@@ -24,10 +24,10 @@ describe("startAfterCandidates", () => {
 		expect(startAfterCandidates(mine, [mine, sibling, waiter, gone, ok]).map((t) => t.id)).toEqual(["ok"]);
 	});
 
-	it("lists open tasks first, newest first, and completed ones last", () => {
+	it("lists only open tasks, newest first, leaving out completed ones", () => {
 		const done = task({ id: "d", seq: 9, status: "completed" });
 		const older = task({ id: "o", seq: 2, status: "in-progress" });
 		const newer = task({ id: "n", seq: 4 });
-		expect(startAfterCandidates(self, [done, older, newer]).map((t) => t.id)).toEqual(["n", "o", "d"]);
+		expect(startAfterCandidates(self, [done, older, newer]).map((t) => t.id)).toEqual(["n", "o"]);
 	});
 });

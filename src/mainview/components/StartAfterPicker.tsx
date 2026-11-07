@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { LaunchAfterUntil, Project, Task } from "../../shared/types";
-import { getTaskTitle } from "../../shared/types";
+import { getTaskTitle, TERMINAL_STATUSES } from "../../shared/types";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import Select, { type SelectOption } from "./Select";
@@ -11,8 +11,8 @@ export interface StartAfterChoice {
 }
 
 /**
- * Tasks this one may wait for: same board, not itself or its own variants, not
- * cancelled, not already waiting on it. A variant group is offered once, by its
+ * Tasks this one may wait for: same board, still open (not completed or
+ * cancelled), not itself or its own variants, not already waiting on it. A variant group is offered once, by its
  * lowest variant, because the whole group counts as the prerequisite.
  */
 export function startAfterCandidates(task: Task, tasks: Task[]): Task[] {
@@ -20,7 +20,7 @@ export function startAfterCandidates(task: Task, tasks: Task[]): Task[] {
 	return tasks
 		.filter((t) => t.id !== task.id
 			&& !(task.groupId != null && t.groupId === task.groupId)
-			&& t.status !== "cancelled"
+			&& !TERMINAL_STATUSES.includes(t.status)
 			&& t.launchAfter?.taskId !== task.id)
 		.sort((a, b) => (a.variantIndex ?? 0) - (b.variantIndex ?? 0))
 		.filter((t) => {
@@ -29,7 +29,7 @@ export function startAfterCandidates(task: Task, tasks: Task[]): Task[] {
 			seenGroups.add(t.groupId);
 			return true;
 		})
-		.sort((a, b) => Number(a.status === "completed") - Number(b.status === "completed") || b.seq - a.seq);
+		.sort((a, b) => b.seq - a.seq);
 }
 
 /** The "After task" mode of the launch modal's Launch later panel. */
