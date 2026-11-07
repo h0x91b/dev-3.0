@@ -149,6 +149,14 @@ describe("Attention board view", () => {
 		renderAttentionBoard(vi.fn(), state);
 		expect(await screen.findByRole("heading", { name: "Done pile" })).toBeInTheDocument();
 		expect(bucketSeqs("x").sort()).toEqual([7, 8]);
+		// The query lives in View options and a tooltip, not as visible header text.
+		expect(screen.queryByText("status:completed status:cancelled")).not.toBeInTheDocument();
+	});
+
+	it("says how to add a bucket when the layout has none", async () => {
+		const state = withLayout(withViewType(defaultBoardViewState(), "wide", ATTENTION_VIEW_ID), "wide", ATTENTION_VIEW_ID, { buckets: [] });
+		renderAttentionBoard(vi.fn(), state);
+		expect(await screen.findByText("No buckets yet. Add one in View options.")).toBeInTheDocument();
 	});
 
 	it("edits buckets from View options and saves them in the view's layout", async () => {

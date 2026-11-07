@@ -574,6 +574,7 @@ const kanban = {
 	"boardView.attention.bucket.waitingPr": "Ждут PR",
 	"boardView.attention.unnamed": "Корзина без имени",
 	"boardView.attention.empty": "Пусто",
+	"boardView.attention.noBuckets": "Корзин пока нет. Добавьте их в настройках вида.",
 	"boardView.attention.showLess": "Свернуть",
 	"boardView.attention.showMore_one": "Показать ещё {count}",
 	"boardView.attention.showMore_few": "Показать ещё {count}",

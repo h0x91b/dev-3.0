@@ -545,6 +545,7 @@ const kanban = {
 	"boardView.attention.bucket.waitingPr": "Waiting on PR",
 	"boardView.attention.unnamed": "Untitled bucket",
 	"boardView.attention.empty": "Nothing here",
+	"boardView.attention.noBuckets": "No buckets yet. Add one in View options.",
 	"boardView.attention.showLess": "Show less",
 	"boardView.attention.showMore_one": "Show {count} more",
 	"boardView.attention.showMore_other": "Show {count} more",

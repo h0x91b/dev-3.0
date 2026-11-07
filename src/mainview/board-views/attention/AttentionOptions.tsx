@@ -94,7 +94,7 @@ export function AttentionOptions(_props: { ctx: Context }) {
 			</div>
 			<ol className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto -mx-1 px-1 py-0.5">
 				{buckets.map((bucket, index) => (
-					<li key={bucket.id} data-testid="attention-options-bucket" className="flex flex-col gap-1.5 p-2 rounded-lg bg-elevated/60">
+					<li key={bucket.id} data-testid="attention-options-bucket" className="flex flex-col gap-1.5 p-2 rounded-xl bg-elevated/60">
 						<div className="flex items-center gap-1.5">
 							<div className="flex-1 min-w-0">
 								<CommitField
@@ -145,7 +145,7 @@ export function AttentionOptions(_props: { ctx: Context }) {
 				<button
 					type="button"
 					onClick={() => write([...DEFAULT_ATTENTION_BUCKETS])}
-					className="ml-auto min-h-8 px-3 rounded-md text-xs text-fg-3 hover:text-fg hover:bg-overlay-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+					className="ml-auto min-h-8 px-3 rounded-md text-xs text-fg-3 hover:text-fg hover:bg-overlay-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent motion-safe:active:scale-[0.96] transition-[color,background-color,transform] duration-150 ease-out"
 				>
 					{t("boardView.attention.options.reset")}
 				</button>

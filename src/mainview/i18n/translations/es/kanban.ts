@@ -544,6 +544,7 @@ const kanban = {
 	"boardView.attention.bucket.waitingPr": "Esperando PR",
 	"boardView.attention.unnamed": "Grupo sin nombre",
 	"boardView.attention.empty": "Nada por aquí",
+	"boardView.attention.noBuckets": "Aún no hay grupos. Añade uno en Opciones de vista.",
 	"boardView.attention.showLess": "Mostrar menos",
 	"boardView.attention.showMore_one": "Mostrar {count} más",
 	"boardView.attention.showMore_other": "Mostrar {count} más",
