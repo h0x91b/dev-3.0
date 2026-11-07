@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -107,6 +107,16 @@ describe("dev-server env store", () => {
 		saveDevServerEnv("task-3", "dev", { A: "1" });
 		clearDevServerEnv("task-3", "dev");
 		expect(readDevServerEnv("task-3", "dev")).toEqual({});
+	});
+
+	// The temp dir is shared by every user of the machine, and a value can be a token.
+	it.skipIf(process.platform === "win32")("writes the store owner-only, even over a world-readable leftover", async () => {
+		const { saveDevServerEnv } = await store();
+		const path = join(root, "dev3-task-6-dev-server-env.json");
+		writeFileSync(path, "{}", "utf-8");
+		chmodSync(path, 0o644);
+		saveDevServerEnv("task-6", "dev", { SECRET_TOKEN: "abc" });
+		expect(statSync(path).mode & 0o777).toBe(0o600);
 	});
 
 	// A scratch file is not a reason to refuse a restart.
