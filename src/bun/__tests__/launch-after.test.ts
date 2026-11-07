@@ -277,9 +277,17 @@ describe("launchAfterRefusal", () => {
 		expect(launchAfterRefusal(task({ id: "b", scheduledLaunch: { at: "x" } as never }), a, "completed", [])).toMatch(/Start in/);
 	});
 
-	it("refuses waiting for a merge that a completed, PR-less task can never produce", () => {
-		expect(launchAfterRefusal(b, task({ id: "a", status: "completed" }), "merged", [])).toMatch(/without a pull request/);
-		expect(launchAfterRefusal(b, task({ id: "a", status: "completed" }), "completed", [])).toBeNull();
+	it("refuses a prerequisite that is already completed, with or without a PR", () => {
+		for (const until of ["completed", "merged"] as const) {
+			expect(launchAfterRefusal(b, task({ id: "a", status: "completed" }), until, [])).toMatch(/already completed/);
+			expect(launchAfterRefusal(b, task({ id: "a", status: "completed", prNumber: 7 }), until, [])).toMatch(/already completed/);
+		}
+	});
+
+	it("refuses waiting for a merge that has already happened, even on an open task", () => {
+		const merged = task({ id: "a", status: "review-by-user", prNumber: 7, prStatusCache: { number: 7, mergeState: { state: "MERGED" } } as never });
+		expect(launchAfterRefusal(b, merged, "merged", [])).toMatch(/already merged/);
+		expect(launchAfterRefusal(b, merged, "completed", [])).toBeNull();
 	});
 });
 
@@ -389,6 +397,14 @@ describe("start-after with variants", () => {
 		const board = [v1({ status: "cancelled" }), v2({ status: "in-progress" })];
 		expect(prerequisiteRefusal(board[0]!, "completed", board)).toBeNull();
 		expect(prerequisiteRefusal(board[0]!, "completed", [v1({ status: "cancelled" }), v2({ status: "cancelled" })])).toMatch(/cancelled/);
+	});
+
+	it("judges an already-finished prerequisite by the whole variant group", () => {
+		const oneDone = [v1({ status: "completed", prNumber: 7 }), v2({ status: "in-progress" })];
+		expect(prerequisiteRefusal(oneDone[1]!, "completed", oneDone)).toMatch(/already completed/);
+		expect(prerequisiteRefusal(oneDone[1]!, "merged", oneDone)).toBeNull();
+		const allDone = [v1({ status: "completed", prNumber: 7 }), v2({ status: "cancelled" })];
+		expect(prerequisiteRefusal(allDone[0]!, "merged", allDone)).toMatch(/already completed/);
 	});
 });
 

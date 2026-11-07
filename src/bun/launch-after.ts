@@ -65,13 +65,14 @@ export function evaluateLaunchAfter(cond: LaunchAfter, members: Task[]): LaunchA
 	return prNumbers.length ? { kind: "probe", prNumbers } : { kind: "abandon", reason: "no-pr" };
 }
 
-/** Why nothing could ever wait on `prereq`, or null. Needs no waiting task, so `task create` asks it before creating one. */
+/** Why nothing could ever wait on `prereq` (it is already finished), or null. Needs no waiting task, so `task create` asks it before creating one. */
 export function prerequisiteRefusal(prereq: Task, until: LaunchAfterUntil, tasks: Task[]): string | null {
 	const group = prereq.groupId != null ? tasks.filter((t) => t.groupId === prereq.groupId) : [];
 	const members = group.length ? group : [prereq];
 	if (members.every((t) => t.status === "cancelled")) return `Task #${prereq.seq} is cancelled, so it will never finish.`;
-	if (until === "merged" && members.every(isDone) && !members.some((t) => prNumberOf(t) != null || isPrMerged(t))) {
-		return `Task #${prereq.seq} was completed without a pull request, so there is no merge to wait for.`;
+	if (until === "merged" && members.some(isPrMerged)) return `Task #${prereq.seq}'s pull request is already merged: start this task now instead.`;
+	if (until === "completed" ? members.some((t) => t.status === "completed") : members.every(isDone)) {
+		return `Task #${prereq.seq} is already completed: start this task now instead.`;
 	}
 	return null;
 }
