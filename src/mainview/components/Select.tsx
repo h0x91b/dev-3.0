@@ -19,6 +19,9 @@ export interface SelectOption {
 	 *  listbox's option indices stay untouched. Options carrying the same section
 	 *  must be adjacent — the caller owns the order. */
 	section?: string;
+	/** Draws a separator above this option (e.g. before a trailing action). Like
+	 *  `section`, it is not a row: keyboard navigation and indices skip it. */
+	divider?: boolean;
 }
 
 /** Substring match that ignores case and separators, so "xhigh" finds "X-High". */
@@ -197,6 +200,7 @@ function SelectListbox({
 					) : null;
 				return (
 					<Fragment key={opt.value}>
+					{opt.divider && index > 0 && <div role="separator" className="my-1 h-px bg-edge" />}
 					{heading}
 					<button
 						type="button"
@@ -210,14 +214,16 @@ function SelectListbox({
 						onMouseDown={(e) => e.preventDefault()}
 						onMouseEnter={() => onHover(index)}
 						onClick={() => onPick(index)}
+						// The active row (keyboard or pointer) is a fill, not a ring: a ring that
+						// follows the mouse reads as a stray focus box. Selected stays accent-tinted.
 						className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-center gap-2 ${
-							isActive ? "ring-1 ring-inset ring-accent" : ""
-						} ${
 							opt.disabled
-								? "text-fg-muted hover:bg-overlay-hover"
+								? `text-fg-muted ${isActive ? "bg-overlay-hover" : "hover:bg-overlay-hover"}`
 								: isSelected
-									? "bg-accent/15 text-fg font-medium"
-									: "text-fg-2 hover:bg-overlay-hover hover:text-fg"
+									? `${isActive ? "bg-accent/25" : "bg-accent/15"} text-fg font-medium`
+									: isActive
+										? "bg-overlay-hover text-fg"
+										: "text-fg-2 hover:bg-overlay-hover hover:text-fg"
 						}`}
 					>
 						{/* The lock is the option's state, not its content, so it survives a
