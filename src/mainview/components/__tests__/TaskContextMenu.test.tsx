@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TaskContextMenu from "../TaskContextMenu";
 import { I18nProvider } from "../../i18n";
@@ -185,29 +185,25 @@ describe("TaskContextMenu", () => {
 		expect(document.activeElement).toBe(row);
 	});
 
-	it("sets priority in one click from the inline levels", async () => {
+	it("drops the priority levels down beside the Priority row", async () => {
 		const { onClose } = renderMenu(makeTask({ priority: "P3" }));
-		expect(screen.getByTestId("task-menu-priority-P3")).toHaveAttribute("aria-checked", "true");
-		await userEvent.click(screen.getByTestId("task-menu-priority-P0"));
+		await userEvent.hover(screen.getByTestId("task-menu-priority"));
+		const flyout = await screen.findByTestId("task-menu-flyout-priority");
+		expect(within(flyout).getByRole("menuitemradio", { name: /P3/ })).toHaveAttribute("aria-checked", "true");
+		await userEvent.click(within(flyout).getByRole("menuitemradio", { name: /P0/ }));
 		await waitFor(() => {
 			expect(mockedApi.request.setTaskPriority).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", priority: "P0" });
 		});
 		expect(onClose).toHaveBeenCalled();
 	});
 
-	it("sends nothing when the current priority is clicked again", async () => {
-		const { onClose } = renderMenu(makeTask({ priority: "P2" }));
-		await userEvent.click(screen.getByTestId("task-menu-priority-P2"));
-		expect(mockedApi.request.setTaskPriority).not.toHaveBeenCalled();
-		expect(onClose).toHaveBeenCalled();
-	});
-
-	it("walks the priority levels with left and right", async () => {
-		renderMenu(makeTask({ priority: "P3" }));
-		const currentLevel = screen.getByTestId("task-menu-priority-P3");
-		currentLevel.focus();
-		fireEvent.keyDown(currentLevel, { key: "ArrowRight" });
-		expect(document.activeElement).toBe(screen.getByTestId("task-menu-priority-P4"));
+	it("lands keyboard focus on the current priority level", async () => {
+		renderMenu(makeTask({ priority: "P2" }));
+		const row = screen.getByTestId("task-menu-priority");
+		row.focus();
+		fireEvent.keyDown(row, { key: "ArrowRight" });
+		const flyout = await screen.findByTestId("task-menu-flyout-priority");
+		await waitFor(() => expect(document.activeElement).toBe(within(flyout).getByRole("menuitemradio", { name: /P2/ })));
 	});
 
 	it("opens the detail modal in rename mode", async () => {
@@ -342,8 +338,10 @@ describe("TaskContextMenu on a phone", () => {
 		expect(screen.queryByTestId("task-menu-flyout-labels")).not.toBeInTheDocument();
 	});
 
-	it("keeps the inline priority levels", () => {
+	it("taps through to the priority picker", async () => {
 		renderMenu();
-		expect(screen.getByTestId("task-menu-priority-P0")).toBeInTheDocument();
+		await userEvent.click(screen.getByTestId("task-menu-priority"));
+		expect(await screen.findByRole("menuitemradio", { name: /P0/ })).toBeInTheDocument();
+		expect(screen.queryByTestId("task-menu-flyout-priority")).not.toBeInTheDocument();
 	});
 });

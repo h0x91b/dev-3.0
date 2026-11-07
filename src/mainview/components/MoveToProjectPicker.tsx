@@ -36,10 +36,12 @@ interface MoveToProjectPanelProps {
 	variant?: "popover" | "sheet";
 	/** Fires after the list's height can have changed, so a positioned host can re-measure. */
 	onLayoutChange?: () => void;
+	/** Focus the search field on mount. */
+	autoFocus?: boolean;
 }
 
 /** Search field and destination list, without a surface: the popover, the sheet and the task menu flyout host it. */
-export function MoveToProjectPanel({ currentProjectId, onSelect, variant = "popover", onLayoutChange }: MoveToProjectPanelProps) {
+export function MoveToProjectPanel({ currentProjectId, onSelect, variant = "popover", onLayoutChange, autoFocus = true }: MoveToProjectPanelProps) {
 	const t = useT();
 	const privacy = useProjectPrivacy();
 	const [projects, setProjects] = useState<Project[] | null>(null);
@@ -75,9 +77,10 @@ export function MoveToProjectPanel({ currentProjectId, onSelect, variant = "popo
 
 	// Auto-focus the search field once mounted.
 	useEffect(() => {
+		if (!autoFocus) return;
 		const id = requestAnimationFrame(() => inputRef.current?.focus());
 		return () => cancelAnimationFrame(id);
-	}, []);
+	}, [autoFocus]);
 
 	return (
 		<>

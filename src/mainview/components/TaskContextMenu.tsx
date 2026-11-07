@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { Project, Task, TaskPriority, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, ALL_PRIORITIES, DEFAULT_PRIORITY, getTaskTitle, isTaskDisconnected } from "../../shared/types";
+import { ACTIVE_STATUSES, getTaskTitle, isTaskDisconnected } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
@@ -20,12 +20,12 @@ import LabelPicker, { LabelPickerPanel } from "./LabelPicker";
 import MoveToProjectPicker, { MoveToProjectPanel } from "./MoveToProjectPicker";
 import OpenInMenu, { OpenInAppList } from "./OpenInMenu";
 import PipelineDropdown from "./PipelineDropdown";
-import { PRIORITY_NAME_KEYS, PRIORITY_STYLES } from "./priorityStyles";
+import PriorityPicker, { PriorityList } from "./PriorityPicker";
 import TaskDetailModal from "./TaskDetailModal";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 
 /** Which nested picker the phone menu handed off to, if any. */
-type SubSurface = "labels" | "status" | "project" | "openIn";
+type SubSurface = "labels" | "priority" | "status" | "project" | "openIn";
 
 interface TaskContextMenuProps {
 	task: Task;
@@ -315,7 +315,19 @@ export default function TaskContextMenu({
 						onCreateLabel={(name) => createProjectLabel({ project, name, dispatch, t, taskId: task.id })}
 						selectedIds={labelIds}
 						onToggle={handleToggleLabel}
+						autoFocus={false}
 					/>
+				),
+			},
+			{
+				id: "priority",
+				label: t("taskMenu.priority"),
+				onSelect: () => openSub("priority"),
+				flyoutWidth: 200,
+				flyout: () => (
+					<div className="py-1">
+						<PriorityList selected={task.priority} onSelect={handlePriority} />
+					</div>
 				),
 			},
 			{
@@ -340,7 +352,7 @@ export default function TaskContextMenu({
 				label: t("task.moveToProject"),
 				onSelect: () => openSub("project"),
 				flyoutWidth: 260,
-				flyout: () => <MoveToProjectPanel currentProjectId={project.id} onSelect={handleMoveToProject} />,
+				flyout: () => <MoveToProjectPanel currentProjectId={project.id} onSelect={handleMoveToProject} autoFocus={false} />,
 			},
 			{ id: "rename", label: t("taskMenu.rename"), onSelect: () => openDetails(true) },
 		],
@@ -462,60 +474,11 @@ export default function TaskContextMenu({
 		);
 	}
 
-	const current = task.priority ?? DEFAULT_PRIORITY;
-	const priorityRow = (
-		<div
-			key="priority"
-			role="group"
-			aria-label={t("priority.pickerTitle")}
-			data-testid="task-menu-priority"
-			className={`flex items-center gap-2 px-3 ${narrow ? "py-2.5" : "py-1"}`}
-			onMouseEnter={() => hoverRow(null)}
-			onKeyDown={(e) => {
-				if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-				e.preventDefault();
-				const chips = [...e.currentTarget.querySelectorAll<HTMLButtonElement>("button")];
-				const at = chips.indexOf(document.activeElement as HTMLButtonElement);
-				chips[(at + (e.key === "ArrowRight" ? 1 : -1) + chips.length) % chips.length]?.focus();
-			}}
-		>
-			<span aria-hidden className="w-3 flex-shrink-0" />
-			<span className={`min-w-0 flex-1 truncate text-fg-2 ${narrow ? "text-sm-plus" : "text-sm"}`}>{t("taskMenu.priority")}</span>
-			{ALL_PRIORITIES.map((level) => {
-				const isOn = level === current;
-				const style = PRIORITY_STYLES[level];
-				return (
-					<button
-						key={level}
-						type="button"
-						role="menuitemradio"
-						aria-checked={isOn}
-						title={t(PRIORITY_NAME_KEYS[level])}
-						data-testid={`task-menu-priority-${level}`}
-						// Only the current level joins the up/down walk; left/right moves within the group.
-						data-menu-row={isOn ? "" : undefined}
-						onClick={(e) => {
-							e.stopPropagation();
-							if (isOn) onClose();
-							else void handlePriority(level);
-						}}
-						className={`flex-shrink-0 rounded font-mono font-semibold transition-colors ${
-							narrow ? "px-2 py-1 text-xs" : "px-1.5 py-0.5 text-micro"
-						} ${isOn ? style.chipActive : style.chipIdle}`}
-					>
-						{level}
-					</button>
-				);
-			})}
-		</div>
-	);
-
 	const rows: ReactNode[] = [];
 	groups.forEach((group, groupIndex) => {
 		if (groupIndex > 0) rows.push(<div key={`sep-${groupIndex}`} className="my-1 border-t border-edge" />);
 		for (const row of group) {
 			rows.push(renderRow(row));
-			if (row.id === "labels") rows.push(priorityRow);
 		}
 	});
 
@@ -550,6 +513,9 @@ export default function TaskContextMenu({
 					onToggle={handleToggleLabel}
 					onClose={closeSub}
 				/>
+			)}
+			{sub === "priority" && anchorEl && (
+				<PriorityPicker selected={task.priority} anchorEl={anchorEl} onSelect={handlePriority} onClose={closeSub} />
 			)}
 			{sub === "project" && anchorEl && (
 				<MoveToProjectPicker
@@ -722,11 +688,14 @@ function Flyout({
 		return () => observer.disconnect();
 	}, []);
 
+	// Waits for the measured position: a browser ignores focus() inside the hidden first frame.
+	const placed = pos !== null;
 	useEffect(() => {
 		const el = ref.current;
-		if (!autoFocus || !el || el.contains(document.activeElement)) return;
-		el.querySelector<HTMLElement>("input, button:not([disabled])")?.focus();
-	}, [autoFocus]);
+		if (!autoFocus || !placed || !el || el.contains(document.activeElement)) return;
+		const start = el.querySelector<HTMLElement>('[aria-checked="true"]') ?? el.querySelector<HTMLElement>("input, button:not([disabled])");
+		start?.focus();
+	}, [autoFocus, placed]);
 
 	return (
 		<div
