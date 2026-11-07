@@ -81,6 +81,7 @@ async function lostCodexMainPane(project: Project, task: Task): Promise<PaneSess
 	const baseCommand = config?.baseCommandOverride || agent.baseCommand;
 	if (agentKey(baseCommand, agent.agentFamily) !== "codex") return null;
 	const pane: PaneSessionEntry = {
+		main: true,
 		agentCmd: baseCommand,
 		sessionId: null,
 		agentId: task.agentId,

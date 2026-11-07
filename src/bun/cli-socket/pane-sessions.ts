@@ -113,6 +113,7 @@ async function ownAgentPaneEntry(task: Task, harness: PromptSubmitHarness): Prom
 	const baseCommand = config?.baseCommandOverride || agent.baseCommand;
 	if (agentKey(baseCommand, agent.agentFamily) !== harness) return null;
 	return {
+		main: true,
 		agentCmd: baseCommand,
 		sessionId: null,
 		agentId: task.agentId,

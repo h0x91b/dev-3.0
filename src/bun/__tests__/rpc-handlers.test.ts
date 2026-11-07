@@ -10899,6 +10899,7 @@ describe("handlers.spawnAgentInTask", () => {
 		expect(write).toBeDefined();
 		expect(write[2].sessionState.panes).toHaveLength(1);
 		expect(write[2].sessionState.panes[0]).toMatchObject({ paneId: "%7", agentId: "builtin-claude", configId: "claude-default" });
+		expect(write[2].sessionState.panes[0]).not.toHaveProperty("main");
 	});
 });
 
@@ -11478,6 +11479,24 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		// kill-pane fires no pane-exited hook, so the entry this launch appended has to
 		// be gone by hand — otherwise the next prompt can be aimed at a dead pane.
 		expect(persistedTask.sessionState?.panes ?? []).toEqual([]);
+	});
+
+	it("does not flag the hunter pane entry as the task's main pane", async () => {
+		const project = makeProject();
+		let persistedTask = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockImplementation(async () => persistedTask);
+		(data.updateTask as any).mockImplementation(async (_project: Project, _taskId: string, patch: Partial<Task>) => {
+			persistedTask = { ...persistedTask, ...patch };
+			return persistedTask;
+		});
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude", extraEnv: {} });
+		makeSplitMock(["%10"]);
+
+		await launchTmuxHunters(1);
+
+		expect(persistedTask.sessionState?.panes).toEqual([expect.objectContaining({ paneId: "%10" })]);
+		expect(persistedTask.sessionState?.panes?.[0]).not.toHaveProperty("main");
 	});
 
 	it("throws when task has no worktree", async () => {
@@ -12640,6 +12659,187 @@ describe("Codex conversation survives pane-exit reconciliation into a wake", () 
 	});
 });
 
+describe("handlePaneExited restores the task-level agent from the main pane", () => {
+	beforeEach(() => vi.clearAllMocks());
+	const main = { main: true, agentCmd: "claude", agentId: "builtin-claude", configId: "claude-opus", sessionId: "s-main", paneId: "%0" };
+	const extra = { agentCmd: "claude", agentId: "builtin-claude", configId: "claude-kimi", sessionId: "s-extra", paneId: "%1" };
+
+	function arrange(panes: NonNullable<Task["sessionState"]>["panes"], taskConfigId: string, live: string[]) {
+		const project = makeProject();
+		const task = makeTask({ agentId: "builtin-claude", configId: taskConfigId, sessionState: { panes } });
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.listPaneIds).mockResolvedValue(live);
+		return { project, task };
+	}
+
+	it("puts the surviving pane's agent back on the task when the extra pane dies", async () => {
+		const { project, task } = arrange([main, extra], "claude-kimi", ["%0"]);
+		await handlePaneExited(task.id, "%1");
+		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-opus" });
+	});
+
+	it("pushes the restored agent to the renderer", async () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		const { project, task } = arrange([main, extra], "claude-kimi", ["%0"]);
+		await handlePaneExited(task.id, "%1");
+		expect(push).toHaveBeenCalledWith("taskUpdated", {
+			projectId: project.id,
+			task: expect.objectContaining({ id: task.id, agentId: "builtin-claude", configId: "claude-opus" }),
+		});
+	});
+
+	it("does not push when the task agent is left alone", async () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		const { task } = arrange([extra, main], "claude-opus", ["%0"]);
+		await handlePaneExited(task.id, "%1");
+		expect(push).not.toHaveBeenCalledWith("taskUpdated", expect.anything());
+	});
+
+	it("leaves the task agent alone when no pane survives", async () => {
+		const { project, task } = arrange([extra], "claude-kimi", []);
+		await handlePaneExited(task.id, "%1");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([]);
+		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-kimi" });
+	});
+
+	it("does not rewrite the agent when the survivor already matches the task", async () => {
+		const { task } = arrange([extra, main], "claude-opus", ["%0"]);
+		await handlePaneExited(task.id, "%1");
+		const updates = vi.mocked(data.updateTask).mock.calls[0][2];
+		expect(updates).not.toHaveProperty("agentId");
+		expect(updates).not.toHaveProperty("configId");
+	});
+
+	it("keeps the task agent when a bug-hunter pane exits and the task's own pane is alive", async () => {
+		const hunter = { agentCmd: "codex", agentId: "builtin-codex", configId: "codex-x", sessionId: "s-hunter" };
+		const { task } = arrange([main, { ...hunter, paneId: "%1" }, { ...hunter, paneId: "%2" }], "claude-opus", ["%0", "%1"]);
+		await handlePaneExited(task.id, "%2");
+		const updates = vi.mocked(data.updateTask).mock.calls[0][2];
+		expect(updates).not.toHaveProperty("agentId");
+		expect(updates).not.toHaveProperty("configId");
+	});
+
+	it("restores the main pane's agent, not a bug-hunter's, when an extra pane exits beside hunters", async () => {
+		const hunter = { agentCmd: "codex", agentId: "builtin-codex", configId: "codex-x", sessionId: "s-hunter" };
+		const panes = [main, { ...extra, paneId: "%1" }, { ...hunter, paneId: "%2" }, { ...hunter, paneId: "%3" }];
+		const { project, task } = arrange(panes, "claude-kimi", ["%0", "%2", "%3"]);
+		await handlePaneExited(task.id, "%1");
+		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-opus" });
+	});
+
+	it("returns the task to no agent when the main pane has none", async () => {
+		const bare = { ...main, agentId: null, configId: null } as any;
+		const { project, task } = arrange([bare, extra], "claude-kimi", ["%0"]);
+		await handlePaneExited(task.id, "%1");
+		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: null, configId: null });
+	});
+
+	it("takes the main pane even when it has no agent and a later pane does", async () => {
+		const bare = { ...main, agentId: null, configId: null } as any;
+		const other = { ...main, main: undefined, paneId: "%2" };
+		const { project, task } = arrange([bare, other, extra], "claude-kimi", ["%0", "%2"]);
+		await handlePaneExited(task.id, "%1");
+		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: null, configId: null });
+	});
+
+	it("skips a parked entry when picking the main pane", async () => {
+		const parked = { agentCmd: "claude", agentId: "p-agent", configId: "p-config", sessionId: "s-parked", paneId: null, parked: true };
+		const { project, task } = arrange([parked, main, extra], "claude-kimi", ["%0"]);
+		await handlePaneExited(task.id, "%1");
+		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-opus" });
+	});
+
+	it("does not hand the task to a bug-hunter when the main pane itself exits", async () => {
+		const hunter = { agentCmd: "codex", agentId: "builtin-codex", configId: "codex-x", sessionId: "s-hunter", paneId: "%1" };
+		const { task } = arrange([main, hunter], "claude-opus", ["%1"]);
+		await handlePaneExited(task.id, "%0");
+		const updates = vi.mocked(data.updateTask).mock.calls[0][2];
+		expect(updates).not.toHaveProperty("agentId");
+		expect(updates).not.toHaveProperty("configId");
+	});
+
+	it("keeps the extra pane's agent when main exits and only extra and a hunter remain", async () => {
+		const hunter = { agentCmd: "codex", agentId: "builtin-codex", configId: "codex-x", sessionId: "s-hunter", paneId: "%2" };
+		const { task } = arrange([main, extra, hunter], "claude-kimi", ["%1", "%2"]);
+		await handlePaneExited(task.id, "%0");
+		const updates = vi.mocked(data.updateTask).mock.calls[0][2];
+		expect(updates).not.toHaveProperty("agentId");
+		expect(updates).not.toHaveProperty("configId");
+	});
+
+	it("keeps the task agent through a second exit once main is gone (hunters only)", async () => {
+		const hunter = { agentCmd: "codex", agentId: "builtin-codex", configId: "codex-x", sessionId: "s-hunter" };
+		const { project, task } = arrange([main, { ...hunter, paneId: "%2" }, { ...hunter, paneId: "%3" }], "claude-opus", ["%2", "%3"]);
+		await handlePaneExited(task.id, "%0");
+		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-opus" });
+		vi.mocked(pty.listPaneIds).mockResolvedValue(["%2"]);
+		await handlePaneExited(task.id, "%3");
+		const after = await data.getTask(project, task.id);
+		expect(after.sessionState?.panes).toHaveLength(1);
+		expect(after).toMatchObject({ agentId: "builtin-claude", configId: "claude-opus" });
+	});
+
+	it("leaves the task agent when the extra pane exits and only hunters remain", async () => {
+		const hunter = { agentCmd: "codex", agentId: "builtin-codex", configId: "codex-x", sessionId: "s-hunter", paneId: "%2" };
+		const { project, task } = arrange([extra, hunter], "claude-kimi", ["%2"]);
+		await handlePaneExited(task.id, "%1");
+		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-kimi" });
+	});
+
+	it("does not hand the task to a legacy hunter entry without any flag", async () => {
+		const legacyHunter = { agentCmd: "codex", agentId: "builtin-codex", configId: "codex-x", sessionId: "s-hunter", paneId: "%2" };
+		const { task } = arrange([main, legacyHunter], "claude-opus", ["%2"]);
+		await handlePaneExited(task.id, "%0");
+		const updates = vi.mocked(data.updateTask).mock.calls[0][2];
+		expect(updates).not.toHaveProperty("agentId");
+		expect(updates).not.toHaveProperty("configId");
+	});
+
+	it("restores from a main pane adopted in the same call", async () => {
+		const unassigned = { ...main, paneId: null };
+		const { project, task } = arrange([unassigned, extra], "claude-kimi", ["%0"]);
+		await handlePaneExited(task.id, "%1");
+		const after = await data.getTask(project, task.id);
+		expect(after.sessionState?.panes).toEqual([expect.objectContaining({ paneId: "%0" })]);
+		expect(after).toMatchObject({ agentId: "builtin-claude", configId: "claude-opus" });
+	});
+
+	it("does not hand the task to a legacy hunter after main exits, an extra is spawned and then exits", async () => {
+		const legacyHunter = { agentCmd: "codex", agentId: "builtin-codex", configId: "codex-x", sessionId: "s-hunter", paneId: "%2" };
+		const { project, task } = arrange([main, legacyHunter], "claude-opus", ["%2"]);
+		await handlePaneExited(task.id, "%0");
+		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-opus" });
+
+		// spawnAgentInTask: the new pane's agent becomes the task's agent.
+		const panes = (await data.getTask(project, task.id)).sessionState!.panes;
+		await data.updateTask(project, task.id, { agentId: "builtin-claude", configId: "claude-kimi", sessionState: { panes: [...panes, { ...extra, paneId: "%5" }] } });
+		vi.mocked(pty.listPaneIds).mockResolvedValue(["%2"]);
+		await handlePaneExited(task.id, "%5");
+
+		const after = await data.getTask(project, task.id);
+		expect(after.sessionState?.panes).toEqual([legacyHunter]);
+		expect(after).toMatchObject({ agentId: "builtin-claude", configId: "claude-kimi" });
+	});
+
+	it("leaves the task agent when the main entry predates the main flag", async () => {
+		const legacyMain = { ...main, main: undefined };
+		const { project, task } = arrange([legacyMain, extra], "claude-kimi", ["%0"]);
+		await handlePaneExited(task.id, "%1");
+		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-kimi" });
+	});
+
+	it("does not count a parked entry as a live match for the task agent", async () => {
+		const parked = { ...extra, paneId: null, parked: true, sessionId: "s-parked" };
+		const { project, task } = arrange([parked, main, { ...extra, paneId: "%1" }], "claude-kimi", ["%0"]);
+		await handlePaneExited(task.id, "%1");
+		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-opus" });
+	});
+});
+
 // PR #2049 review: the saved panes kept the dead session's paneIds, so closing one
 // split in the woken shell dropped every saved conversation (before 2, after 0).
 describe("wakeTaskShell parks the saved panes", () => {
@@ -12738,7 +12938,7 @@ describe("wake of a Codex task whose pane record was lost", () => {
 		const { project, task } = arrange();
 		const result = await openTerminal(task.id);
 		expect(result).toMatchObject({ recoverable: true, hibernated: true, sessionState: { panes: [expect.objectContaining({ sessionId, agentId: "builtin-codex" })] } });
-		expect(chooseTaskCodexConversations).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ worktreePath: "/tmp/wt-lost" }), [expect.objectContaining({ sessionId: null })], "explicit-resume", { persist: false });
+		expect(chooseTaskCodexConversations).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ worktreePath: "/tmp/wt-lost" }), [expect.objectContaining({ sessionId: null, main: true })], "explicit-resume", { persist: false });
 		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([]);
 	});
 
@@ -13039,6 +13239,7 @@ describe("launchTaskPty", () => {
 		expect(data.updateTask).toHaveBeenLastCalledWith(project, task.id, {
 			sessionState: {
 				panes: [{
+					main: true,
 					paneId: "%42",
 					agentCmd: "codex",
 					sessionId: null,
