@@ -942,22 +942,41 @@ button {
 }
 
 .dev3-overflow-scroll[data-overflowing] {
+	-webkit-mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
 	mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
 }
 
-:is(button:hover, button:focus-visible, [data-active]) .dev3-overflow-scroll[data-overflowing] {
+:is(button:hover, [role="option"][data-active]) .dev3-overflow-scroll[data-overflowing] {
+	-webkit-mask-image: none;
 	mask-image: none;
 }
 
-:is(button:hover, button:focus-visible, [data-active]) .dev3-overflow-scroll[data-overflowing] > .dev3-overflow-scroll-track {
+/* Focus stays on a trigger after a pick or Escape, so keyboard focus plays the
+   scroll once (out and back) instead of looping until focus moves elsewhere;
+   the fade lifts only while it plays, so the resting label keeps its edge. */
+@keyframes dev3-overflow-unmask {
+	from, to { -webkit-mask-image: none; mask-image: none; }
+}
+
+button:focus-visible .dev3-overflow-scroll[data-overflowing] {
+	animation: dev3-overflow-unmask calc(var(--dev3-overflow-duration, 3s) * 2) linear;
+}
+
+button:focus-visible .dev3-overflow-scroll[data-overflowing] > .dev3-overflow-scroll-track {
+	animation: dev3-overflow-scroll var(--dev3-overflow-duration, 3s) ease-in-out 2 alternate;
+}
+
+:is(button:hover, [role="option"][data-active]) .dev3-overflow-scroll[data-overflowing] > .dev3-overflow-scroll-track {
 	animation: dev3-overflow-scroll var(--dev3-overflow-duration, 3s) ease-in-out infinite alternate;
 }
 
 @media (prefers-reduced-motion: reduce) {
-	:is(button:hover, button:focus-visible, [data-active]) .dev3-overflow-scroll[data-overflowing] > .dev3-overflow-scroll-track {
+	:is(button:hover, button:focus-visible, [role="option"][data-active]) .dev3-overflow-scroll[data-overflowing] > .dev3-overflow-scroll-track {
 		animation: none;
 	}
-	:is(button:hover, button:focus-visible, [data-active]) .dev3-overflow-scroll[data-overflowing] {
+	:is(button:hover, button:focus-visible, [role="option"][data-active]) .dev3-overflow-scroll[data-overflowing] {
+		animation: none;
+		-webkit-mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
 		mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
 	}
 }

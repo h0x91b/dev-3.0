@@ -82,8 +82,9 @@ export interface AgentRateLimitsReport {
 	/** Recent Claude sessions of live tasks, newest first. */
 	sessions?: AgentSessionStats[];
 	/** Catalog providers the user opted into usage tracking, so the panel can
-	 *  show a row before the first reading arrives. */
-	usageProviders?: Array<{ id: string; label: string; source: ProviderUsageSource }>;
+	 *  show a row before the first reading arrives. `missingKey`: opted in, but no
+	 *  API key is stored, so no reading will ever come. */
+	usageProviders?: Array<{ id: string; label: string; source: ProviderUsageSource; missingKey?: boolean }>;
 	generatedAt: number;
 }
 
@@ -434,6 +435,18 @@ function kimiLimitsFiveHour(limits: unknown): RateLimitWindow | null {
 		return { id: "five_hour", usedPercent: (used / limit) * 100, resetsAt: parseKimiReset(detail?.resetTime), windowMinutes: 300 };
 	}
 	return null;
+}
+
+/** The usage endpoint under a Kimi Code base URL (one `/v1`, never doubled); null for an invalid URL. */
+export function kimiUsageUrl(baseUrl: string): URL | null {
+	try {
+		const url = new URL(baseUrl.trim());
+		const path = url.pathname.replace(/\/+$/, "");
+		url.pathname = `${path}${path.endsWith("/v1") ? "" : "/v1"}/usages`;
+		return url;
+	} catch {
+		return null;
+	}
 }
 
 /**

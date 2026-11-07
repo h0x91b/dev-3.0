@@ -43,6 +43,8 @@ interface UsageRow {
 	selectable: boolean;
 	/** The "Auto (balanced)" row: making it default routes launches by usage. */
 	auto?: boolean;
+	/** A Kimi provider opted into tracking with no API key stored. */
+	missingKey?: boolean;
 }
 
 function identityLine(identity: AgentAccountIdentity | null): AccountLine | null {
@@ -227,6 +229,7 @@ function kimiRows(report: AgentRateLimitsReport): UsageRow[] {
 			snap: report.snapshots.find((s) => s.source === "kimi" && s.providerId === p.id) ?? null,
 			isDefault: false,
 			selectable: false,
+			missingKey: p.missingKey,
 		}));
 }
 
@@ -278,7 +281,11 @@ function UsageRowCard({
 				) : null}
 				{/* An account with nothing to plot says so on its headline instead of
 				    spending a whole second line on three muted words. */}
-				{!row.snap && !row.auto ? <span className="text-fg-muted text-micro shrink-0">{t("rateLimits.noRecentData")}</span> : null}
+				{!row.snap && !row.auto ? (
+					<span className="text-fg-muted text-micro shrink-0">
+						{row.missingKey ? t("rateLimits.noApiKey") : t("rateLimits.noRecentData")}
+					</span>
+				) : null}
 				{row.snap && hasReportedLimits(row.snap) && !hasQuotaLines(row.snap) ? (
 					<span className="shrink-0 tabular-nums">
 						<CapturedAgeSuffix capturedAt={row.snap.capturedAt} now={now} />
@@ -290,6 +297,9 @@ function UsageRowCard({
 				<div className="pl-[18px] text-fg-3 text-micro truncate streamer-private" title={row.configDir}>
 					{row.chip}
 				</div>
+			) : null}
+			{!row.snap && row.missingKey ? (
+				<div className="pl-[18px] text-fg-3 text-micro">{t("rateLimits.noApiKeyHint")}</div>
 			) : null}
 			{row.snap && hasQuotaLines(row.snap) ? <AccountQuotaLines snap={row.snap} now={now} /> : null}
 			{/* Its own line, not a headline suffix: the sentence is long enough to

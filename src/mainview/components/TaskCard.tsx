@@ -10,7 +10,7 @@ import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { useT } from "../i18n";
 import { formatBytes } from "../utils/formatBytes";
-import { preparationFailureMessage } from "../utils/preparationFailureMessage";
+import { isKnownPreparationFailure, preparationFailureMessage } from "../utils/preparationFailureMessage";
 import { formatCountdown } from "../../shared/duration";
 import { trackEvent, agentNameFromId } from "../analytics";
 import { useStatusColors } from "../hooks/useStatusColors";
@@ -458,6 +458,9 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 
 	const displayTitle = getTaskTitle(task);
 	const hasLongDescription = task.description !== displayTitle;
+	const launchFailedText = isTodo && task.preparationError
+		? t("task.launchFailed", { error: preparationFailureMessage(task.preparationError, t) })
+		: null;
 	const openUnresolvedInDiff = onOpenUnresolvedComments
 		? () => onOpenUnresolvedComments(task)
 		: undefined;
@@ -1048,7 +1051,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						</div>
 						{/* A coordinator's created count lives in its role band, so it is stated once. */}
 						{lineage && <LineageCluster lineage={isCoordinator ? { ...lineage, childCount: 0 } : lineage} />}
-						{isTodo && task.preparationError && (
+						{launchFailedText && (
 							<div
 								role="alert"
 								className="mt-2 flex items-start gap-1.5 rounded-lg border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger"
@@ -1059,8 +1062,13 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 								>
 									{""}
 								</span>
-								<span className="line-clamp-2 break-words">
-									{t("task.launchFailed", { error: preparationFailureMessage(task.preparationError, t) })}
+								{/* A recognized failure is short and ends in the advice to act on, so it is
+								    never clamped; a raw error can be pages of git output. */}
+								<span
+									className={`break-words ${isKnownPreparationFailure(task.preparationError) ? "whitespace-pre-line" : "line-clamp-2"}`}
+									title={launchFailedText}
+								>
+									{launchFailedText}
 								</span>
 							</div>
 						)}

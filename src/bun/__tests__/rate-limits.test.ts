@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	kimiUsageUrl,
 	extractCodexSnapshotFromRolloutLines,
 	findRateLimitSnapshot,
 	rateLimitLoginKey,
@@ -402,6 +403,20 @@ describe("headerPillWindows", () => {
 	it("leaves monthly credits out beside timed windows, and keeps them when they are all there is", () => {
 		expect(headerPillWindows(snap([w("monthly_credits", 40, null), w("primary", 10, 300)])).map((x) => x.id)).toEqual(["primary"]);
 		expect(headerPillWindows(snap([w("monthly_credits", 40, null)])).map((x) => x.id)).toEqual(["monthly_credits"]);
+	});
+});
+
+describe("kimiUsageUrl", () => {
+	it.each([
+		["https://api.example.test/coding/", "https://api.example.test/coding/v1/usages"],
+		["https://api.example.test/coding", "https://api.example.test/coding/v1/usages"],
+		["https://api.example.test/coding/v1/", "https://api.example.test/coding/v1/usages"],
+	])("maps %s to %s", (base, expected) => {
+		expect(kimiUsageUrl(base)?.href).toBe(expected);
+	});
+
+	it("gives nothing for a base URL that does not parse", () => {
+		expect(kimiUsageUrl("not a url")).toBeNull();
 	});
 });
 

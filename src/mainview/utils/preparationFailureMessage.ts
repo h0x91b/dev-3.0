@@ -8,3 +8,8 @@ export function preparationFailureMessage(errorText: string, t: TFunction): stri
 	const message = t("task.startBranchMissing", { branch: failure.branch });
 	return failure.rest ? `${message}\n${failure.rest}` : message;
 }
+
+/** True when the error is a kind the renderer explains, so its full text is worth showing unclipped. */
+export function isKnownPreparationFailure(errorText: string | null | undefined): boolean {
+	return classifyPreparationFailure(errorText).kind !== "unknown";
+}

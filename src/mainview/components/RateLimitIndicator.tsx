@@ -87,10 +87,11 @@ function RateLimitIndicator({
 	const latestWindow = latestSnapshot ? worstSnapshotWindow(latestSnapshot) : null;
 	const unlimited = latestSnapshot ? isUnlimitedRateLimitSnapshot(latestSnapshot) : false;
 	// Opted-in Kimi providers with no reading anywhere still need the pill: it is
-	// the only way to the panel that says "no recent data".
+	// the only way to the panel that says "no recent data". A keyless one never
+	// gets a reading, so it does not hold an empty pill up; Settings says why.
 	// A credits-only reading has nothing to draw either, so it counts as none.
 	const reading = latestWindow || unlimited ? latestSnapshot : null;
-	const noReading = !reading && (scoped?.usageProviders?.length ?? 0) > 0;
+	const noReading = !reading && (scoped?.usageProviders ?? []).some((p) => !p.missingKey);
 	if (!scoped || (!reading && !noReading)) return null;
 
 	const now = Date.now();

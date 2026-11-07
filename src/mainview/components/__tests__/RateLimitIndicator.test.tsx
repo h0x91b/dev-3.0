@@ -100,6 +100,17 @@ describe("RateLimitIndicator", () => {
 		expect(within(panel).getByText("no recent data")).toBeTruthy();
 	});
 
+	it("holds no empty pill up for a Kimi provider that has no API key", async () => {
+		mockedGet.mockResolvedValue({
+			generatedAt: Date.now(),
+			snapshots: [],
+			usageProviders: [{ id: "k1", label: "Kimi A", source: "kimi-code", missingKey: true }],
+		});
+		const { container } = renderIndicator();
+		await act(async () => {});
+		expect(container.querySelector("button")).toBeNull();
+	});
+
 	it("keeps the neutral pill when the only other reading is credits-only Codex", async () => {
 		const credits = parseCodexRateLimits(
 			{ primary: null, secondary: null, credits: { has_credits: true, unlimited: false, balance: "42.5" } },
