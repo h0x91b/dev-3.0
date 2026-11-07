@@ -80,9 +80,18 @@ describe("task show --json", () => {
 		expect(Object.keys(buildTaskShowJson(TASK)).sort()).toEqual([
 			"baseBranch", "branch", "createdAt", "customColumnId", "description", "draft", "epic", "groupId", "hibernated", "id",
 			"keepAlive", "labelIds", "manualCompletion", "movedAt", "noteCount", "origin", "overview", "prNumber", "prStatus", "prUrl", "priority",
-			"projectId", "pullRequests", "schemaVersion", "seq", "status", "statusLabel", "taskType", "title", "titleEditedByUser",
+			"projectId", "pullRequests", "schemaVersion", "seq", "startAfter", "status", "statusLabel", "taskType", "title", "titleEditedByUser",
 			"updatedAt", "variantIndex", "worktree",
 		]);
+	});
+
+	it("carries a To Do task's start-after condition, and null once the task left To Do", () => {
+		const launchAfter = { taskId: "pre-1", seq: 12, until: "merged" as const, armedBy: { taskId: "coord-1", seq: 5 }, armedAt: "2026-11-04T10:00:00Z" };
+		expect(buildTaskShowJson({ ...TASK, status: "todo", launchAfter }).startAfter).toEqual({
+			taskId: "pre-1", seq: 12, until: "merged", armedByTaskId: "coord-1", armedAt: "2026-11-04T10:00:00Z",
+		});
+		expect(buildTaskShowJson({ ...TASK, status: "in-progress", launchAfter }).startAfter).toBeNull();
+		expect(buildTaskShowJson(TASK).startAfter).toBeNull();
 	});
 
 	it("names the task's epic, and null when it has none", () => {

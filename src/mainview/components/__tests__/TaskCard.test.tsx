@@ -240,6 +240,22 @@ describe("TaskCard", () => {
 		expect(screen.getByRole("dialog", { name: "Siblings" })).toBeInTheDocument();
 	});
 
+	describe("start-after chip", () => {
+		const launchAfter = { taskId: "t9", seq: 9, until: "completed" as const, armedAt: "2026-11-04T10:00:00Z" };
+
+		it("shows a read-only chip naming the task it waits for", () => {
+			renderCard(makeTask({ status: "todo", launchAfter }));
+			const chip = screen.getByTestId("task-card-starts-after-chip");
+			expect(chip).toHaveTextContent("Starts after #9");
+			expect(chip.tagName).not.toBe("BUTTON");
+		});
+
+		it("is not shown once the task left To Do", () => {
+			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", launchAfter }));
+			expect(screen.queryByTestId("task-card-starts-after-chip")).toBeNull();
+		});
+	});
+
 	describe("scheduled-message chip", () => {
 		function taskWithMessage() {
 			return makeTask({
