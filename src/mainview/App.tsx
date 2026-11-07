@@ -118,6 +118,7 @@ import { reconnectRpc } from "./rpc";
 import { DIAGNOSTICS_OPEN_EVENT, RPC_STATUS_EVENT } from "./diagnostics";
 import { getAdjacentAliveVariant } from "./utils/variantGroups";
 import { isTaskTerminalRoute } from "./utils/terminalFullscreen";
+import { restoreFocusAfterViewer } from "./utils/viewer-focus";
 import { sharedArrivalNoun, type SharedArrivalKind } from "./utils/sharedArrivalNoun";
 import PushEnrollmentInvite from "./components/PushEnrollmentInvite";
 import ArtifactFreezeNotice from "./components/ArtifactFreezeNotice";
@@ -540,10 +541,16 @@ function App() {
 		});
 	}, [markSharedItemsRead]);
 	const closeArtifactViewer = useCallback(() => {
+		const taskId = artifactViewerRef.current?.taskId;
 		setArtifactViewer(null);
-		requestAnimationFrame(() => {
-			document.querySelector<HTMLButtonElement>("[data-testid='shared-artifacts-badge']")?.focus();
-		});
+		const focusBadge = () => document.querySelector<HTMLButtonElement>("[data-testid='shared-artifacts-badge']")?.focus();
+		if (taskId) restoreFocusAfterViewer(() => routeRef.current, taskId, focusBadge);
+		else requestAnimationFrame(focusBadge);
+	}, []);
+	const closeImageViewer = useCallback(() => {
+		const taskId = imageViewerRef.current?.taskId;
+		setImageViewer(null);
+		if (taskId) restoreFocusAfterViewer(() => routeRef.current, taskId);
 	}, []);
 	// Live for the app's lifetime: the launch dialog this state feeds outlives
 	// every visit to Settings and every provider connect, so a fetch-once
@@ -3868,7 +3875,7 @@ function App() {
 					images={imageViewer.images}
 					initialIndex={imageViewer.index}
 					newIds={imageViewer.newIds}
-					onClose={() => setImageViewer(null)}
+					onClose={closeImageViewer}
 				/>
 			)}
 			{aboutVersion && (
