@@ -294,7 +294,8 @@ export default function ActiveTaskRow({
 			{task.shuttingDown && <TaskShutdownOverlay />}
 
 			<div className="min-w-0 flex-1 px-2.5 py-2">
-				<Tooltip content={task.hidden ? t("task.showInSidebar") : t("task.hideFromSidebar")}>
+				{/* A coordinator row carries no hide toggle: its title bar fills the corner the eye would sit in. */}
+				{!isCoordinatorTask(task) && <Tooltip content={task.hidden ? t("task.showInSidebar") : t("task.hideFromSidebar")}>
 					<button
 						type="button"
 						onClick={handleSetHidden}
@@ -309,7 +310,7 @@ export default function ActiveTaskRow({
 					>
 						<EyeIcon off={!task.hidden} className="h-3.5 w-3.5" />
 					</button>
-				</Tooltip>
+				</Tooltip>}
 				{/* Project badge (global/attention scope only) */}
 				{projectBadgeName && (
 					<Tooltip content={projectBadgeName}>
@@ -332,7 +333,7 @@ export default function ActiveTaskRow({
 				{/* CONTENT — the row's only visual focus. */}
 				<div
 					data-testid={`sidebar-task-title-${task.id}`}
-					// Flush with the row's top edge unless the project badge sits above it; the hide toggle then lands inside the bar.
+					// Flush with the row's top edge unless the project badge sits above it.
 					className={`text-xs leading-snug break-words ${isCoordinatorTask(task) ? `${COORDINATOR_TITLE_BAR} ${projectBadgeName ? "" : "-mt-2"}` : `pr-6 ${isActive ? "text-fg font-medium" : "text-fg-2"}`}`}
 				>
 					{displayTitle}
