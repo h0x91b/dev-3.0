@@ -1,7 +1,10 @@
-import { useMemo } from "react";
 import { useT } from "../i18n";
 import { availableCommands, COMMAND_CATEGORY_KEY, type CommandContext, type PaletteCommand } from "../commands";
 import { PaletteShell } from "./PaletteShell";
+import { useRegisteredBoardViews } from "../board-views/react";
+import { useViewLabel } from "../board-views/BoardViewChrome";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 
 interface CommandPaletteModalProps {
 	/** Which scopes are runnable in the current route. */
@@ -19,13 +22,19 @@ interface CommandPaletteModalProps {
  */
 function CommandPaletteModal({ context, onRun, onClose }: CommandPaletteModalProps) {
 	const t = useT();
-	const commands = useMemo(() => availableCommands(context), [context]);
+	const registeredViews = useRegisteredBoardViews();
+	const labelOf = useViewLabel();
+	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
+	// One command per offered view, only when there is a choice to make (same rule as the switcher).
+	const offered = registeredViews.filter((view) => !narrow || view.def.supportsNarrow);
+	const boardViews = offered.length > 1 ? offered.map((view) => ({ id: view.def.id, name: labelOf(view) })) : [];
+	const commands = availableCommands({ ...context, boardViews });
 
 	return (
 		<PaletteShell<PaletteCommand>
 			items={commands}
 			getKey={(c) => c.id}
-			getText={(c) => t(c.labelKey)}
+			getText={(c) => t(c.labelKey, c.labelVars)}
 			onSelect={(c) => onRun(c.id)}
 			onClose={onClose}
 			placeholder={t("commandPalette.placeholder")}

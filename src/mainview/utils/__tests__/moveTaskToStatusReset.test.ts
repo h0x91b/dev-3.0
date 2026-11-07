@@ -11,7 +11,7 @@ vi.mock("../confirmTaskCompletion", () => ({ confirmTaskCompletion: vi.fn().mock
 vi.mock("../confirmTaskReset", () => ({ confirmTaskReset: vi.fn() }));
 vi.mock("../../task-sounds", () => ({ playTaskCompletionSound: vi.fn(() => true) }));
 
-import { LAUNCH_REQUESTED_EVENT, moveTaskToStatus } from "../moveTaskToStatus";
+import { LAUNCH_REQUESTED_EVENT, moveTaskToStatus, requestTaskLaunch } from "../moveTaskToStatus";
 import { api } from "../../rpc";
 import { toast } from "../../toast";
 import { confirmTaskReset } from "../confirmTaskReset";
@@ -101,6 +101,13 @@ describe("moveTaskToStatus → an active column on a To Do card (R1)", () => {
 		await moveTaskToStatus({ task: legacy, project, newStatus: "in-progress", dispatch: vi.fn(), t });
 		expect(api.request.resetTaskToTodo).toHaveBeenCalledTimes(1);
 		expect((listener.mock.calls[0]![0] as CustomEvent).detail.task).toMatchObject({ id: "t3", worktreePath: null, branchName: null });
+	});
+
+	it("adding attempts to a running task opens the dialog in that mode, with no reset", async () => {
+		const listener = captureLaunch();
+		expect(await requestTaskLaunch({ task: running, project, targetStatus: running.status, dispatch: vi.fn(), t, mode: "addAttempts" })).toBe(true);
+		expect(confirmTaskReset).not.toHaveBeenCalled();
+		expect((listener.mock.calls[0]![0] as CustomEvent).detail).toEqual({ task: running, project, targetStatus: "review-by-user", mode: "addAttempts" });
 	});
 
 	it("declining that reset opens nothing", async () => {

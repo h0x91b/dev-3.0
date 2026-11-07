@@ -10,7 +10,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import ActivityOverview from "../ActivityOverview";
 import GlobalHeader from "../GlobalHeader";
-import KanbanColumn from "../KanbanColumn";
+import KanbanColumn from "../../board-views/kanban/KanbanColumn";
 import { I18nProvider } from "../../i18n";
 import { api } from "../../rpc";
 import type { HarnessReadinessReport, Project } from "../../../shared/types";
@@ -255,23 +255,14 @@ function renderColumn(overrides: { status?: "todo" | "in-progress"; boardEmpty?:
 				status={status}
 				label={status === "todo" ? "To Do" : "Agent is Working"}
 				tasks={[]}
-				project={gitProject}
-				dispatch={vi.fn()}
-				navigate={vi.fn()}
+				TaskCard={() => null}
 				onAddTask={vi.fn()}
-				agents={[]}
-				onLaunchVariants={vi.fn()}
-				onAddAttempts={vi.fn()}
 				onTaskDrop={vi.fn()}
 				dragFromStatus={null}
 				dragFromCustomColumnId={null}
 				onDragStart={vi.fn()}
-				bellCounts={new Map()}
-				taskPorts={new Map()}
-				taskDevServers={new Map()}
 				movingTaskIds={new Set()}
 				onSetMoving={vi.fn()}
-				siblingMap={new Map()}
 				boardEmpty={overrides.boardEmpty}
 			/>
 		</I18nProvider>,

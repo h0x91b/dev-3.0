@@ -16,20 +16,26 @@
 import { act } from "@testing-library/react";
 import { render, screen } from "@testing-library/react";
 import KanbanColumn from "../KanbanColumn";
-import { I18nProvider } from "../../i18n";
+import { I18nProvider } from "../../../i18n";
 import userEvent from "@testing-library/user-event";
-import type { Project, Task } from "../../../shared/types";
+import type { Task } from "../../../../shared/types";
+import type { BoardTaskCardProps } from "../../board-service";
 
-vi.mock("../../rpc", () => ({
+/** The column only places cards; the real card is `ctx.board.TaskCard`, covered with the host. */
+function StubCard({ task }: BoardTaskCardProps) {
+	return <div data-testid="stub-card">{task.title}</div>;
+}
+
+vi.mock("../../../rpc", () => ({
 	api: { request: { moveTask: vi.fn(), deleteTask: vi.fn() } },
 }));
-vi.mock("../../analytics", () => ({ trackEvent: vi.fn(), agentNameFromId: vi.fn(() => "unknown") }));
-vi.mock("../../utils/confirmTaskCompletion", () => ({
+vi.mock("../../../analytics", () => ({ trackEvent: vi.fn(), agentNameFromId: vi.fn(() => "unknown") }));
+vi.mock("../../../utils/confirmTaskCompletion", () => ({
 	confirmTaskCompletion: vi.fn().mockResolvedValue(true),
 }));
-vi.mock("../../utils/ansi-to-html", () => ({ ansiToHtml: vi.fn((s: string) => s) }));
-vi.mock("../TaskDetailModal", () => ({ default: () => null }));
-vi.mock("../LabelPicker", () => ({ default: () => null }));
+vi.mock("../../../utils/ansi-to-html", () => ({ ansiToHtml: vi.fn((s: string) => s) }));
+vi.mock("../../../components/TaskDetailModal", () => ({ default: () => null }));
+vi.mock("../../../components/LabelPicker", () => ({ default: () => null }));
 
 // Default viewport in happy-dom is 1024px which would trigger the compact-empty
 // column mode and hide chrome these tests assert against. Force a desktop width.
@@ -50,16 +56,6 @@ beforeAll(() => {
 	});
 });
 
-const project: Project = {
-	id: "p1",
-	name: "Test",
-	path: "/tmp",
-	setupScript: "",
-	devScript: "",
-	cleanupScript: "",
-	defaultBaseBranch: "main",
-	createdAt: "2025-01-01T00:00:00Z",
-};
 
 function makeDt(data: Record<string, string> = {}): DataTransfer {
 	return {
@@ -116,23 +112,14 @@ function renderColumn(overrides: {
 				status="todo"
 				label={overrides.label ?? "My Column"}
 				tasks={[]}
-				project={project}
-				dispatch={vi.fn()}
-				navigate={vi.fn()}
+				TaskCard={StubCard}
 				onAddTask={vi.fn()}
-				agents={[]}
-				onLaunchVariants={vi.fn()}
-				onAddAttempts={vi.fn()}
 				onTaskDrop={vi.fn()}
 				dragFromStatus={null}
 				dragFromCustomColumnId={null}
 				onDragStart={vi.fn()}
-				bellCounts={new Map()}
-				taskPorts={new Map()}
-				taskDevServers={new Map()}
 				movingTaskIds={new Set()}
 				onSetMoving={vi.fn()}
-				siblingMap={new Map()}
 				isCustomColumn
 				customColumnId={overrides.customColumnId ?? "col-aaa"}
 				colorOverride="#ff0000"
@@ -167,24 +154,15 @@ function renderBuiltinColumn(overrides: {
 				status={overrides.status ?? "todo"}
 				label={overrides.label ?? "To Do"}
 				tasks={overrides.tasks ?? []}
-				project={project}
-				dispatch={vi.fn()}
-				navigate={vi.fn()}
+				TaskCard={StubCard}
 				onAddTask={overrides.onAddTask ?? vi.fn()}
-				agents={[]}
-				onLaunchVariants={vi.fn()}
-				onAddAttempts={vi.fn()}
 				onTaskDrop={overrides.onTaskDrop ?? vi.fn()}
 				dragFromStatus={overrides.dragFromStatus ?? null}
 				dragFromCustomColumnId={null}
 				dragFromDraft={overrides.dragFromDraft}
 				onDragStart={vi.fn()}
-				bellCounts={new Map()}
-				taskPorts={new Map()}
-				taskDevServers={new Map()}
 				movingTaskIds={new Set()}
 				onSetMoving={vi.fn()}
-				siblingMap={new Map()}
 				onColumnDrop={overrides.onColumnDrop}
 				isCustomColumn={overrides.isCustomColumn}
 				customColumnId={overrides.customColumnId}
@@ -424,23 +402,14 @@ describe("KanbanColumn — collapsed state", () => {
 					status="todo"
 					label="To Do"
 					tasks={tasks}
-					project={project}
-					dispatch={vi.fn()}
-					navigate={vi.fn()}
+					TaskCard={StubCard}
 					onAddTask={vi.fn()}
-					agents={[]}
-					onLaunchVariants={vi.fn()}
-					onAddAttempts={vi.fn()}
 					onTaskDrop={vi.fn()}
 					dragFromStatus={null}
 					dragFromCustomColumnId={null}
 					onDragStart={vi.fn()}
-					bellCounts={new Map()}
-					taskPorts={new Map()}
-					taskDevServers={new Map()}
 					movingTaskIds={new Set()}
 					onSetMoving={vi.fn()}
-					siblingMap={new Map()}
 					collapsed={true}
 					onCollapseToggle={overrides.onCollapseToggle ?? vi.fn()}
 				/>
@@ -484,23 +453,14 @@ describe("KanbanColumn — collapsed state", () => {
 					status="todo"
 					label="To Do"
 					tasks={[]}
-					project={project}
-					dispatch={vi.fn()}
-					navigate={vi.fn()}
+					TaskCard={StubCard}
 					onAddTask={onAddTask}
-					agents={[]}
-					onLaunchVariants={vi.fn()}
-					onAddAttempts={vi.fn()}
 					onTaskDrop={vi.fn()}
 					dragFromStatus={null}
 					dragFromCustomColumnId={null}
 					onDragStart={vi.fn()}
-					bellCounts={new Map()}
-					taskPorts={new Map()}
-					taskDevServers={new Map()}
 					movingTaskIds={new Set()}
 					onSetMoving={vi.fn()}
-					siblingMap={new Map()}
 					collapsed={true}
 					onCollapseToggle={vi.fn()}
 				/>
@@ -662,23 +622,14 @@ describe("KanbanColumn — same-column drop is inert", () => {
 					status="in-progress"
 					label="In Progress"
 					tasks={makeTasks(3)}
-					project={project}
-					dispatch={vi.fn()}
-					navigate={vi.fn()}
+					TaskCard={StubCard}
 					onAddTask={vi.fn()}
-					agents={[]}
-					onLaunchVariants={vi.fn()}
-					onAddAttempts={vi.fn()}
 					onTaskDrop={onTaskDrop}
 					dragFromStatus="in-progress"
 					dragFromCustomColumnId={null}
 					onDragStart={vi.fn()}
-					bellCounts={new Map()}
-					taskPorts={new Map()}
-					taskDevServers={new Map()}
 					movingTaskIds={new Set()}
 					onSetMoving={vi.fn()}
-					siblingMap={new Map()}
 				/>
 			</I18nProvider>,
 		);
@@ -694,6 +645,36 @@ describe("custom column inline rename (issue #222)", () => {
 	it("renders a rename affordance when onRenameColumn is provided", () => {
 		renderColumn({ onRenameColumn: vi.fn() });
 		expect(screen.getByLabelText("Rename column")).toBeTruthy();
+	});
+
+	it("opens rename mode when the trigger arrives after the column mounted", () => {
+		const onAutoEditConsumed = vi.fn();
+		const { container, rerender } = renderColumn({ label: "New Column", onRenameColumn: vi.fn(), onAutoEditConsumed });
+		expect(container.querySelector("input")).toBeNull();
+		rerender(
+			<I18nProvider>
+				<KanbanColumn
+					status="todo"
+					label="New Column"
+					tasks={[]}
+					TaskCard={StubCard}
+					onAddTask={vi.fn()}
+					onTaskDrop={vi.fn()}
+					dragFromStatus={null}
+					dragFromCustomColumnId={null}
+					onDragStart={vi.fn()}
+					movingTaskIds={new Set()}
+					onSetMoving={vi.fn()}
+					isCustomColumn
+					customColumnId="col-aaa"
+					onRenameColumn={vi.fn()}
+					autoStartEditing
+					onAutoEditConsumed={onAutoEditConsumed}
+				/>
+			</I18nProvider>,
+		);
+		expect((container.querySelector("input") as HTMLInputElement).value).toBe("New Column");
+		expect(onAutoEditConsumed).toHaveBeenCalledTimes(1);
 	});
 
 	it("opens directly in rename mode when autoStartEditing is set", () => {

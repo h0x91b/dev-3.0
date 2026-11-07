@@ -1,14 +1,14 @@
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import KanbanBoard from "../KanbanBoard";
-import { I18nProvider } from "../../i18n";
-import type { Epic, EpicMember, Project, Task } from "../../../shared/types";
-import { resetRememberedFiltersForTests } from "../../hooks/useRememberedFilter";
-import { _resetEpicStoresForTest } from "../../hooks/useEpics";
+import BoardHost from "../../BoardHost";
+import { I18nProvider } from "../../../i18n";
+import type { Epic, EpicMember, Project, Task } from "../../../../shared/types";
+import { resetRememberedFiltersForTests } from "../../../hooks/useRememberedFilter";
+import { _resetEpicStoresForTest } from "../../../hooks/useEpics";
 
 const registry = vi.hoisted(() => ({ epics: [] as Epic[], members: [] as EpicMember[] }));
 
-vi.mock("../../rpc", () => ({
+vi.mock("../../../rpc", () => ({
 	api: {
 		request: {
 			getAgents: vi.fn().mockResolvedValue([]),
@@ -23,8 +23,8 @@ vi.mock("../../rpc", () => ({
 		},
 	},
 }));
-vi.mock("../../analytics", () => ({ trackEvent: vi.fn(), agentNameFromId: vi.fn(() => "unknown") }));
-vi.mock("../../toast", () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
+vi.mock("../../../analytics", () => ({ trackEvent: vi.fn(), agentNameFromId: vi.fn(() => "unknown") }));
+vi.mock("../../../toast", () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
 
 function makeProject(id: string, name: string): Project {
 	return { id, name, path: `/tmp/${id}`, setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "2025-01-01T00:00:00Z" };
@@ -50,7 +50,7 @@ async function renderBoard(navigate = vi.fn(), project = HOME, tasks = [inEpic, 
 	await act(async () => {
 		render(
 			<I18nProvider>
-				<KanbanBoard project={project} allProjects={[HOME, BACKEND]} tasks={tasks} dispatch={vi.fn()} navigate={navigate} bellCounts={new Map()} taskPorts={new Map()} taskDevServers={new Map()} />
+				<BoardHost project={project} allProjects={[HOME, BACKEND]} tasks={tasks} dispatch={vi.fn()} navigate={navigate} bellCounts={new Map()} taskPorts={new Map()} taskDevServers={new Map()} />
 			</I18nProvider>,
 		);
 	});
@@ -59,7 +59,7 @@ async function renderBoard(navigate = vi.fn(), project = HOME, tasks = [inEpic, 
 const card = (title: string) => (screen.queryByText(title)?.closest("[data-task-id]") ?? null) as HTMLElement | null;
 const search = () => screen.getByPlaceholderText("Search tasks...") as HTMLInputElement;
 
-describe("KanbanBoard epics", () => {
+describe("Kanban view epics", () => {
 	beforeEach(() => {
 		localStorage.clear();
 		resetRememberedFiltersForTests();

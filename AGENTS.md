@@ -324,6 +324,16 @@ Renderer ↔ main communicate via **Electrobun's built-in RPC** (IPC bridge); sc
 
 React **`useReducer`**, no external state library. Store in `src/mainview/state.ts`: `useAppState()` wraps `useReducer(reducer, initialState)` — routing, project/task lists, UI flags. Components call `api.request.*` to fetch/mutate, then `dispatch()` reducer actions; push messages trigger listeners that dispatch to keep the UI in sync.
 
+### Board views and extensions (Cordis plugins)
+
+**Cordis** (npm `cordis`) is the small plugin runtime underneath: a plugin gets a context `ctx`, registers what it contributes and uses host services such as `ctx.board`; unloading the plugin removes everything it registered. React still renders — Cordis only tracks who contributed what and for how long (glossary: [`docs/glossary.md`](docs/glossary.md)).
+
+The project board is not one component: `BoardHost` (`src/mainview/board-views/`) owns the board's data, filter and actions and renders whichever **board view** is selected. Every view — `builtin:kanban`, Table, Tree, Attention, and third-party extensions — registers the same `BoardViewDef` into the Cordis `BoardViewRegistry` and reads the board only through `ctx.board` (`BoardService`).
+
+- **Kanban is the fallback view**: always on, cannot be disabled, and the board falls back to it when another view fails. The old `KanbanBoard` is gone; a change to how cards behave goes through `BoardCardBindings` (`BoardTaskCard.tsx`) and the filter through `useBoardFilter`, never through props threaded into `KanbanColumn`.
+- **`ctx.board` is a public API.** Third-party extensions are written against it, so a breaking change to `BoardService` or `BoardViewDef` must bump `EXTENSION_API_VERSION` (`src/shared/extensions.ts`) and update `docs/extensions.md` plus `examples/board-view-extension/` in the same commit.
+- Extensions load through `getExtensionSource` → blob module → the import map in `index.html` (`src/mainview/board-views/plugins.ts`); install and trust are desktop-only. Author guide: [`docs/extensions.md`](docs/extensions.md). Where the platform effort stands and what comes next (agent tooling, slots, migrating dev3 surfaces): [`docs/extensions-platform.md`](docs/extensions-platform.md) — update it when a phase moves.
+
 ### Renderer asset loading (dev-channel Vite fallback)
 
 On the `dev` channel the main process probes a Vite server **only on the task-allocated `$DEV3_PORT1`** (`src/shared/vite-dev-server.ts`, `src/bun/main-view-url.ts`); with no task port there is no probe and the window always loads the bundled `views://` assets. Never hardcode a Vite port — a fixed one is shared by every app on the machine (`decisions/2026/11/05/vite-dev-port-from-task-pool.md`). The mechanism exists in code, but agents must never run a Vite watch/HMR loop themselves — see the HMR ban in [Commands](#commands).

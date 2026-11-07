@@ -36,6 +36,16 @@ describe("availableCommands", () => {
 		expect(ids).not.toContain("task-delete");
 	});
 
+	it("lists one Board view command per offered view right after Go to board, project scope only", () => {
+		const boardViews = [{ id: "builtin:kanban", name: "Kanban" }, { id: "acme:gantt", name: "Gantt" }];
+		const ids = availableCommands({ hasProject: true, hasTask: false, boardViews }).map((c) => c.id);
+		const at = ids.indexOf("view-board");
+		expect(ids.slice(at, at + 3)).toEqual(["view-board", "view-board:builtin:kanban", "view-board:acme:gantt"]);
+		const gantt = availableCommands({ hasProject: true, hasTask: false, boardViews }).find((c) => c.id === "view-board:acme:gantt");
+		expect(gantt).toMatchObject({ labelKey: "command.boardView", labelVars: { name: "Gantt" } });
+		expect(availableCommands({ hasProject: false, hasTask: false, boardViews }).some((c) => c.id.startsWith("view-board:"))).toBe(false);
+	});
+
 	it("gives every command a unique id", () => {
 		const ids = ALL_COMMANDS.map((c) => c.id);
 		expect(new Set(ids).size).toBe(ids.length);

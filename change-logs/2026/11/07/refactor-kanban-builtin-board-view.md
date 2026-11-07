@@ -1,0 +1,1 @@
+The Kanban board is now the built-in `builtin:kanban` board view, drawn entirely from the board service: cards, column management, sorting and launches go through `ctx.board`, which gained the shared task card, column actions and board preferences that other views and extensions can use too. Launching from a space board now opens the launch dialog with the task's own project.

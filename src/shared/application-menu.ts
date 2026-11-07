@@ -78,7 +78,12 @@ export const MENU_ACTIONS = {
 	openCombinedSwitch: "open-combined-switch",
 	openCommandPalette: "open-command-palette",
 	viewDashboard: "view-dashboard",
-	viewKanban: "view-kanban",
+	viewBoard: "view-board",
+	// `view-board:<viewId>` — the renderer's board-view command format (board-views/view-commands.ts).
+	viewBoardKanban: "view-board:builtin:kanban",
+	viewBoardTable: "view-board:builtin:table",
+	viewBoardTree: "view-board:builtin:tree",
+	viewBoardAttention: "view-board:builtin:attention",
 	viewChangelog: "view-changelog",
 	viewStats: "view-stats",
 	viewSessions: "view-sessions",
@@ -410,6 +415,10 @@ const REQUIRES_PROJECT: ReadonlySet<MenuAction> = new Set<MenuAction>([
 	MENU_ACTIONS.projectCustomColumns,
 	MENU_ACTIONS.projectCustomLabels,
 	MENU_ACTIONS.termToggleProjectTerminal,
+	MENU_ACTIONS.viewBoardKanban,
+	MENU_ACTIONS.viewBoardTable,
+	MENU_ACTIONS.viewBoardTree,
+	MENU_ACTIONS.viewBoardAttention,
 ]);
 
 const REQUIRES_TERMINAL: ReadonlySet<MenuAction> = new Set<MenuAction>([
@@ -684,7 +693,17 @@ function viewMenu(): ApplicationMenuItemConfig {
 			item({ label: "Command Palette… (⇧⌘P)", action: MENU_ACTIONS.openCommandPalette }),
 			SEP,
 			item({ label: "Show Dashboard", action: MENU_ACTIONS.viewDashboard }),
-			item({ label: "Show Kanban", action: MENU_ACTIONS.viewKanban }),
+			item({ label: "Show Board", action: MENU_ACTIONS.viewBoard }),
+			// Built-ins only: the native menu is static, extension views reach the palette.
+			{
+				label: "Board View",
+				submenu: [
+					item({ label: "Kanban", action: MENU_ACTIONS.viewBoardKanban }),
+					item({ label: "Table", action: MENU_ACTIONS.viewBoardTable }),
+					item({ label: "Tree", action: MENU_ACTIONS.viewBoardTree }),
+					item({ label: "Attention", action: MENU_ACTIONS.viewBoardAttention }),
+				],
+			},
 			...statsMenuItems(),
 			item({ label: "Show Agent Sessions", action: MENU_ACTIONS.viewSessions }),
 			item({ label: "Show Changelog", action: MENU_ACTIONS.viewChangelog }),

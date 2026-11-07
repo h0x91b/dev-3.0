@@ -46,6 +46,15 @@ export function lineageParent(task: Task, lineage: TaskLineage): TaskLineageNode
 	return lineage.nodeById.get(origin.taskId) ?? "deleted";
 }
 
+/**
+ * Any lineage node by id: null while the index is still loading (nothing is known
+ * yet), `"deleted"` once loaded and the id is absent.
+ */
+export function lineageNodeOf(id: string, lineage: TaskLineage): TaskLineageNode | "deleted" | null {
+	if (!lineage.loaded) return null;
+	return lineage.nodeById.get(id) ?? "deleted";
+}
+
 /** Direct children of the task's variant group, from every project. */
 export function lineageChildren(task: Pick<Task, "projectId" | "seq">, lineage: TaskLineage): readonly TaskLineageNode[] {
 	return lineage.childrenByGroup.get(groupKey(task)) ?? [];

@@ -13,6 +13,10 @@ else, so never compact them by deleting it.
 ## 2026-11-04 — A gone pre-strict agent path warns, not fails
 - **Rule:** PATH fallback + toast with Reset path; record `grandfather-stale-custom-agent-paths`.
 
+## 2026-11-01 — Board views: one board, many views
+- **Rule:** a view is never a destination, switched from the filter-row Select, `V 1–9`/`V V`, ⇧⌘P and View → Board View (bible §5.11, yaml `board-view-is-not-a-destination`).
+- **Why:** decisions/2026/10/31/board-host-cordis-provision.md.
+
 ## 2026-10-27 — CPU and disk pills, earned by user-set levels
 - **Rule:** yaml `global_header.ambient_resource_readout`.
 - **Why:** user asked for pills; no OS verdict exists, so levels are a setting with defaults, and pills show only at warn/critical so a calm machine keeps a calm header.
