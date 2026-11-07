@@ -1117,6 +1117,8 @@ const settings = {
 	"extensions.empty": "No extensions installed.",
 	"extensions.emptyHint": "To build one, see docs/extensions.md in the dev3 repository.",
 	"extensions.install": "Install from folder…",
+	"extensions.writeOwn": "Writing your own? Coding agents started by dev3 already have the /dev3-extensions skill.",
+	"extensions.guide": "Read the extension guide",
 	"extensions.pickTitle": "Choose an extension folder",
 	"extensions.remoteReadOnly": "Install, trust and enable extensions in the desktop app.",
 	"extensions.status.active": "Active",
