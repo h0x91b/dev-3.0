@@ -804,10 +804,11 @@ Where errors surface today — check all three, they do not overlap:
 
 - **Settings → Extensions** — the status chip and, for **Failed to load**, the error text under the row. The
   only place that always has a load failure.
-- **Browser console** (\`agent-browser console\`, not \`errors\`) — \`[extensions] <id> failed to load: …\` for most
-  load failures, and \`[board-views] view <id> crashed: …\` with a stack for a render crash. An undeclared view id
-  logs nothing.
-- **The board** — a red notice only for a render crash.
+- **Browser console** (\`agent-browser console\`, not \`errors\`) — \`[extensions] <id> failed to load: …\` for a
+  load failure, and \`[board-views] view <id> crashed: …\` with a stack for a render crash.
+- **The board** — a red notice when it shows Kanban instead of the picked view: "This board view failed to
+  load…" for a render crash, "The <name> extension failed to load…" (with a **Manage views…** button) for a load
+  failure.
 
 There is no log file and no CLI for it yet.
 
@@ -819,7 +820,7 @@ There is no log file and no CLI for it yet.
 | **Not trusted** | Copied in by hand, or the publisher changed | User: "Review and trust…" in Settings → Extensions (scoped QA: fix the trust record's publisher) |
 | **Failed to load**, "index.js must default-export a Cordis plugin" | No \`export default\`, or it is not an object with \`apply\` / a function | Default-export the plugin |
 | **Failed to load**, a syntax or \`Failed to resolve module specifier\` error | Not a valid ES module, or an import other than \`react\` / \`react-dom\` / \`react/jsx-runtime\` / \`cordis\` | Bundle into one ESM file with those four external |
-| **Failed to load**, "registered an undeclared board view …"; the view vanished from the switcher, Kanban with no notice, nothing in the console | Registered id ≠ \`<id>:<view id>\` from the manifest | Make them match; the saved view choice comes back once it loads |
+| **Failed to load**, "registered an undeclared board view …"; the view vanished from the switcher, Kanban with "The <name> extension failed to load…" | Registered id ≠ \`<id>:<view id>\` from the manifest | Make them match; the saved view choice comes back once it loads |
 | **Failed to load**, "tried to register board view …, which another view already owns" | Id collides with a built-in or another extension | Use your own prefix |
 | **Failed to load**, "its plugin failed to start (see the console)" | \`apply\` threw | Read the console error above it |
 | Board shows Kanban with a red "This board view failed to load…" notice; Settings still says **Active** | The component threw while rendering; the choice of view is kept | \`[board-views] view … crashed:\` in the console has the stack |

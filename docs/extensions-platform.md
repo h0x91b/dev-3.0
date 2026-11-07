@@ -68,9 +68,10 @@ The gaps today (status after the skill):
    trust record itself. Never on the real `~/.dev3.0`.
 2. Edit → reload works only on a scoped instance (copy `index.js`, reload the page); a real install needs a
    reinstall per change.
-3. Load failures are visible only in the UI and the console, and not uniformly: an undeclared view id unloads
-   the extension with no console line (`enforceDeclaredViews` in `plugins.ts`), and the board shows no notice for
-   it. `agent-browser errors` misses the console lines; `agent-browser console` has them.
+3. Load failures are visible only in the UI and the console. Every load failure now logs
+   `[extensions] <id> failed to load`, and a board whose picked view belongs to a failed extension says so with a
+   notice instead of silently showing Kanban. `agent-browser errors` misses the console lines; `agent-browser
+   console` has them.
 4. Outside a dev3 clone there are no types for `ctx.board`; the skill and `docs/extensions.md` carry the prose.
 5. Screenshot recipe: closed for the in-clone case (scoped QA, in the skill). The no-clone case has no way to run
    a throwaway instance yet, and no released build with extensions existed to try it against on 2026-11-07.

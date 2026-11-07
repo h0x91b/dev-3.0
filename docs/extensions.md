@@ -130,6 +130,8 @@ enable them.
 - The crash screen and the "board failed to load" screen offer **Restart with extensions off**.
 - Launching dev3 with `DEV3_EXTENSIONS=off` in the environment keeps them off for that launch.
 - A view that throws while rendering falls back to Kanban on its own; your view choice is kept.
+- A view whose extension failed to load also falls back to Kanban, with a notice naming the extension; the reason
+  is under its row in Settings → Extensions and in the console as `[extensions] <id> failed to load: …`.
 
 ## Privacy
 
