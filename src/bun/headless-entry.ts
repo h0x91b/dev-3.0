@@ -24,7 +24,7 @@ import { claudeSessionWatches } from "./claude-session-watch";
 import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
-import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, setFocusMode, pushTerminalBell } from "./rpc-handlers";
+import { handlers, setPushMessage, getPushMessage, setAppForeground, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, setFocusMode, pushTerminalBell } from "./rpc-handlers";
 import { createLogger, getLogPath } from "./logger";
 import { applySavedTmuxPanePreferences } from "./tmux/config";
 import { DEV3_HOME } from "./paths";
@@ -42,7 +42,8 @@ import { startSelfUpdateWatch, stopSelfUpdateWatch } from "./self-update-watch";
 import { VIEWS_DIR_AUTO_ENV } from "./self-update";
 import { configureHandoffWorker } from "./conversation-handoff-runner";
 import { configureClonefileWorker } from "./cow-clone";
-import { configureWorktreeCleanupWorker, startWorktreeCleanupScheduler, stopWorktreeCleanupScheduler } from "./worktree-cleanup-scheduler";
+import { configureWorktreeCleanupWorker } from "./worktree-cleanup-scheduler";
+import { startBackgroundSchedulers, stopBackgroundSchedulers } from "./background-schedulers";
 
 const log = createLogger("headless");
 
@@ -329,6 +330,9 @@ try {
 		onQrTokenConsumed: () => {
 			getPushMessage()?.("qrTokenConsumed", {});
 		},
+		// A tab killed or a phone locked while focused never reports blur; without
+		// this the focus tracker would credit the last viewed task indefinitely.
+		onLastRpcClientGone: () => setAppForeground(false),
 	});
 } catch (err) {
 	// The free-port probe above is several awaits old by now, so somebody can still
@@ -518,10 +522,6 @@ startResourceMonitor((name, payload) => {
 	pushToBrowserClients(name, payload);
 });
 
-// Daily `doctor --worktrees --prune-older-than 14d`, same as the GUI entry. A desktop
-// app running beside this server is safe: the shared state file claims the day.
-startWorktreeCleanupScheduler();
-
 // ── Self-update watch ──
 // A headless box is the one place where "there is an update, press restart" never
 // gets pressed — nobody opens a terminal on it. This checks on the same 30-minute
@@ -534,6 +534,11 @@ startSelfUpdateWatch((name, payload) => {
 startRateLimitMonitor((name, payload) => {
 	pushToBrowserClients(name, payload);
 });
+
+// ── Background jobs (automations, "Start in", "Send later", keep-alive, cleanup, focus) ──
+// Same call as index.ts. The clock-driven ones step aside while a desktop app (or any
+// other dev3 process) shares this ~/.dev3.0, so nothing fires twice.
+startBackgroundSchedulers({ yieldToPeers: true });
 
 // ── PTY event wiring (no mainWindow.webview.rpc — just push to browser) ──
 setOnPtyDied((sessionKey) => {
@@ -596,7 +601,14 @@ setOnPaneExited((taskId, paneId) => {
 });
 
 // ── Graceful shutdown ──
+const SHUTDOWN_FLUSH_TIMEOUT_MS = 2_000;
+
+let shuttingDown = false;
+
 function shutdown(signal: string): void {
+	// A second Ctrl-C while the last write is pending means "now".
+	if (shuttingDown) process.exit(0);
+	shuttingDown = true;
 	log.info(`Received ${signal}, shutting down`);
 	stopAgentMessageLogWatches();
 	stopBoardCopy();
@@ -604,15 +616,17 @@ function shutdown(signal: string): void {
 	stopQrAutoRefresh();
 	stopPortScanPoller();
 	stopResourceMonitor();
-	stopWorktreeCleanupScheduler();
 	stopRateLimitMonitor();
+	const focusFlushed = stopBackgroundSchedulers();
 	stopSelfUpdateWatch();
 	stopSocketServer();
 	clearRemoteStateIfOwnedBy(process.pid);
 	cleanupAllTunnels();
 	accountLogins.closeAll();
 	stopTunnel();
-	process.exit(0);
+	// Give the focus tracker's last write a moment; never let a stuck disk hold the exit.
+	void Promise.race([focusFlushed, new Promise((resolve) => setTimeout(resolve, SHUTDOWN_FLUSH_TIMEOUT_MS))])
+		.finally(() => process.exit(0));
 }
 
 process.on("SIGINT", () => shutdown("SIGINT"));

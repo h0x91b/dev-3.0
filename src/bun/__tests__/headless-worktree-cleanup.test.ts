@@ -7,14 +7,18 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const TARBALL_SCRIPT = fileURLToPath(new URL("../../../scripts/create-cli-tarball.sh", import.meta.url));
 const HEADLESS_ENTRY = fileURLToPath(new URL("../headless-entry.ts", import.meta.url));
+const BACKGROUND_SCHEDULERS = fileURLToPath(new URL("../background-schedulers.ts", import.meta.url));
 
 // h0x91b/dev-3.0#2183: a `dev3 remote` install never ran the daily task-file cleanup.
 describe("daily worktree cleanup on a headless install", () => {
 	it("is started by the headless entry, and stopped on shutdown", () => {
 		const source = readFileSync(HEADLESS_ENTRY, "utf-8");
-		expect(source, "headless-entry must start the scheduler like index.ts does").toMatch(/^startWorktreeCleanupScheduler\(\);$/m);
+		expect(source, "headless-entry must start the schedulers like index.ts does").toMatch(/^startBackgroundSchedulers\(/m);
 		const shutdown = source.slice(source.indexOf("function shutdown("));
-		expect(shutdown).toContain("stopWorktreeCleanupScheduler();");
+		expect(shutdown).toContain("stopBackgroundSchedulers();");
+		const shared = readFileSync(BACKGROUND_SCHEDULERS, "utf-8");
+		expect(shared).toMatch(/^\tstartWorktreeCleanupScheduler\(\);$/m);
+		expect(shared).toMatch(/^\t\tstopWorktreeCleanupScheduler,$/m);
 	});
 });
 
