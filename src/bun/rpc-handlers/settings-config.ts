@@ -316,7 +316,8 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 		}),
 		simplifiedModeSource: stored.simplifiedModeSource,
 		analyticsDistinctId: stored.analyticsDistinctId ?? params.analyticsDistinctId,
-		// A snapshot from a build older than the split carries only the legacy key; choices already stored win.
+		// The payload's own toggles win; a snapshot from before the split carries only the
+		// legacy key, so the stored toggles stand in for it rather than being reseeded.
 		...resolveNeedsYouSoundToggles({
 			playSoundOnTaskQuestions: stored.playSoundOnTaskQuestions,
 			playSoundOnTaskReview: stored.playSoundOnTaskReview,
