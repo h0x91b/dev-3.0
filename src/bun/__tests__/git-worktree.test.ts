@@ -39,6 +39,7 @@ import {
 	run,
 } from "../git";
 import { createTestRepo, cleanup, makeTaskCommits, g, spawnedCommands, type TestRepo } from "./git-test-helpers";
+import { startBranchMissingMessage } from "../../shared/preparation-failure";
 
 // ─── Shared factories ────────────────────────────────────────────────────────
 
@@ -495,6 +496,24 @@ describe("createWorktree", () => {
 		g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
 	});
 
+	it.each([
+		["local name", "feature/merged-away"],
+		["remote ref", "origin/feature/merged-away"],
+	])("names the start branch when it was deleted after its PR merged (%s)", async (_label, startRef) => {
+		g("git checkout -b feature/merged-away", repo.local);
+		makeTaskCommits(repo.local);
+		g("git push origin feature/merged-away", repo.local);
+		g("git checkout main", repo.local);
+		g("git branch -D feature/merged-away", repo.local);
+		g("git push origin --delete feature/merged-away", repo.local);
+		g("git fetch --prune origin", repo.local);
+
+		const project = makeProject(repo.local);
+		const task = makeTask({ existingBranch: startRef });
+
+		await expect(createWorktree(project, task, startRef)).rejects.toThrow(startBranchMissingMessage(startRef));
+	});
+
 	it("re-runs a task on a remote branch whose worktree and local branch survived", async () => {
 		// Regression: a task launched on origin/<branch> that is moved back to To Do
 		// keeps its worktree and local branch. Re-running it hit "'<path>' already
@@ -803,7 +822,7 @@ describe("createWorktree", () => {
 			const task = makeTask({ id: "efefefef-cdcd-efef-0101-232323232323" });
 			const before = spawnedCommands.length;
 
-			await expect(createWorktree(project, task, "no-such-branch")).rejects.toThrow(/invalid reference|not a valid/);
+			await expect(createWorktree(project, task, "no-such-branch")).rejects.toThrow(startBranchMissingMessage("no-such-branch"));
 			expect(addsSince(before)).toHaveLength(1);
 		});
 

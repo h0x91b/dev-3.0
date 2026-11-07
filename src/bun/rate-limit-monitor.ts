@@ -11,10 +11,14 @@
  * - Codex monthly credits: a cached read-only request through the locally
  *   authenticated `codex app-server`, with rollout-only fallback.
  *
+ * - Kimi Code: an opt-in, cached request to the user's own provider base URL
+ *   (`/v1/usages`) with that provider's catalog key.
+ *
  * Also owns the static `--settings` file injected into Claude launches, which
  * routes the session's statusLine through `dev3 statusline`.
  */
 
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, openSync, readSync, closeSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
@@ -25,16 +29,21 @@ import {
 	isRateLimitSnapshotRecent,
 	mergeCodexRateLimitSnapshots,
 	parseClaudeStatusLinePayload,
+	kimiUsageUrl,
+	parseKimiUsage,
 	rateLimitActivityAt,
 	rateLimitLoginKey,
 } from "../shared/rate-limits";
 import type { AgentSessionStats } from "../shared/session-stats";
 import { SESSION_STATS_RECENT_MS, parseClaudeSessionStats } from "../shared/session-stats";
 import { fetchCodexRateLimitSnapshot } from "./codex-rate-limits";
+import type { CatalogProvider } from "../shared/model-catalog";
+import { loadModelCatalog, loadProviderKeys } from "./model-catalog-store";
 import { loadProjects, loadTasks, loadVirtualProjects } from "./data";
 import { TERMINAL_STATUSES, getTaskTitle } from "../shared/types";
 import type { Project, Task, TaskStatus } from "../shared/types";
 import { listClaudeAccountDirs, listCodexAccountDirs } from "./agent-accounts";
+import { managedClaudeAccountIdForConfigDir } from "../shared/claude-config-dir";
 import { DEV3_HOME } from "./paths";
 import { createLogger } from "./logger";
 import { loadSettings } from "./settings";
@@ -43,6 +52,9 @@ const log = createLogger("rate-limit-monitor");
 const POLL_INTERVAL_MS = 30_000;
 /** Avoid spawning app-server and hitting the account endpoint every poll. */
 const CODEX_LIVE_REFRESH_MS = 5 * 60_000;
+/** One usage request per Kimi provider per interval, success or not. */
+const KIMI_USAGE_REFRESH_MS = 5 * 60_000;
+const KIMI_USAGE_TIMEOUT_MS = 10_000;
 /** How much of a rollout file tail to scan for the last rate_limits event. */
 const CODEX_TAIL_BYTES = 256 * 1024;
 /** How many most-recent day directories to consider when locating the live rollout. */
@@ -72,6 +84,13 @@ let cachedReport: AgentRateLimitsReport | null = null;
 const cachedCodexLiveSnapshots = new Map<string, AgentRateLimitSnapshot>();
 const codexLiveAttemptedAt = new Map<string, number>();
 const codexLiveRequests = new Map<string, Promise<AgentRateLimitSnapshot | null>>();
+const cachedKimiSnapshots = new Map<string, AgentRateLimitSnapshot>();
+const kimiAttemptedAt = new Map<string, number>();
+const kimiRequests = new Map<string, Promise<void>>();
+/** Hash of a provider's base URL + key: a change drops its cached reading. */
+const kimiConfigStamps = new Map<string, string>();
+/** `<providerId>:<failure kind>` pairs already logged, so a dead endpoint warns once. */
+const kimiWarned = new Set<string>();
 
 /**
  * Build the dev3-managed Claude settings object injected via `claude --settings`.
@@ -381,6 +400,81 @@ async function readCodexLiveSnapshot(root: CodexSessionRoot, now: number): Promi
 	return request;
 }
 
+function warnKimiOnce(providerId: string, kind: string, extra: Record<string, unknown> = {}): void {
+	const marker = `${providerId}:${kind}`;
+	if (kimiWarned.has(marker)) return;
+	kimiWarned.add(marker);
+	log.warn("Kimi usage read failed", { providerId, kind, ...extra });
+}
+
+const KIMI_FAILURE_KINDS = ["http", "parse", "request"];
+
+function kimiConfigStamp(provider: CatalogProvider, apiKey: string): string {
+	return createHash("sha256").update(`${provider.baseUrl?.trim()}\n${apiKey}`).digest("hex");
+}
+
+function forgetKimiProvider(id: string): void {
+	cachedKimiSnapshots.delete(id);
+	kimiAttemptedAt.delete(id);
+	kimiRequests.delete(id);
+	kimiConfigStamps.delete(id);
+	for (const kind of KIMI_FAILURE_KINDS) kimiWarned.delete(`${id}:${kind}`);
+}
+
+async function requestKimiUsage(provider: CatalogProvider, apiKey: string, now: number): Promise<AgentRateLimitSnapshot | null> {
+	try {
+		const url = kimiUsageUrl(provider.baseUrl!);
+		if (!url) throw new TypeError("invalid base URL");
+		const res = await fetch(url, {
+			headers: { Authorization: `Bearer ${apiKey}` },
+			redirect: "error",
+			signal: AbortSignal.timeout(KIMI_USAGE_TIMEOUT_MS),
+		});
+		if (!res.ok) {
+			// A revoked key must not keep showing an old reading; other failures keep the last good one.
+			const sameConfig = kimiConfigStamps.get(provider.id) === kimiConfigStamp(provider, apiKey);
+			if ((res.status === 401 || res.status === 403) && sameConfig) cachedKimiSnapshots.delete(provider.id);
+			warnKimiOnce(provider.id, "http", { status: res.status });
+			return null;
+		}
+		// A 200 that is not JSON is a parse failure, not a failed request.
+		const body: unknown = await res.json().catch(() => null);
+		const snapshot = body === null ? null : parseKimiUsage(body, now);
+		if (!snapshot) {
+			warnKimiOnce(provider.id, "parse");
+			return null;
+		}
+		for (const kind of KIMI_FAILURE_KINDS) kimiWarned.delete(`${provider.id}:${kind}`);
+		return { ...snapshot, providerId: provider.id };
+	} catch (err) {
+		// Only the error's name: its message can carry the request URL.
+		warnKimiOnce(provider.id, "request", { error: err instanceof Error ? err.name : "unknown" });
+		return null;
+	}
+}
+
+/** Starts a refresh when one is due; never waits for it — the fresh reading
+ *  lands in the cache and reaches the next poll's report. */
+function refreshKimiUsage(provider: CatalogProvider, apiKey: string, now: number): void {
+	const id = provider.id;
+	const stamp = kimiConfigStamp(provider, apiKey);
+	if (kimiConfigStamps.get(id) !== stamp) {
+		forgetKimiProvider(id);
+		kimiConfigStamps.set(id, stamp);
+	}
+	if (now - (kimiAttemptedAt.get(id) ?? 0) < KIMI_USAGE_REFRESH_MS || kimiRequests.has(id)) return;
+	kimiAttemptedAt.set(id, now);
+	const request = requestKimiUsage(provider, apiKey, now)
+		.then((snapshot) => {
+			// A config change while this was in flight made the result stale.
+			if (snapshot && kimiConfigStamps.get(id) === stamp) cachedKimiSnapshots.set(id, snapshot);
+		})
+		.finally(() => {
+			if (kimiRequests.get(id) === request) kimiRequests.delete(id);
+		});
+	kimiRequests.set(id, request);
+}
+
 async function trackingEnabled(): Promise<boolean> {
 	try {
 		const settings = await loadSettings();
@@ -389,6 +483,17 @@ async function trackingEnabled(): Promise<boolean> {
 		return true;
 	}
 }
+
+/** A config-dir dump that names a managed account's own dir is that account's
+ *  quota (an older `dev3 statusline` wrote those as plain pins). */
+export function attributeManagedConfigDir(snapshot: AgentRateLimitSnapshot, dev3Home: string = DEV3_HOME): AgentRateLimitSnapshot {
+	const accountId = snapshot.configDir ? managedClaudeAccountIdForConfigDir(snapshot.configDir, dev3Home) : null;
+	if (!accountId) return snapshot;
+	const { configDir: _configDir, ...rest } = snapshot;
+	return { ...rest, accountId };
+}
+
+const SOURCE_ORDER: Record<AgentRateLimitSnapshot["source"], number> = { claude: 0, codex: 1, kimi: 2 };
 
 export async function getAgentRateLimitsReport(): Promise<AgentRateLimitsReport> {
 	const now = Date.now();
@@ -418,7 +523,7 @@ export async function getAgentRateLimitsReport(): Promise<AgentRateLimitsReport>
 	}
 	for (const name of listJsonFiles(CLAUDE_CONFIG_DIR_RATE_LIMITS_DIR)) {
 		const snapshot = readClaudeSnapshot(join(CLAUDE_CONFIG_DIR_RATE_LIMITS_DIR, name), null);
-		if (snapshot?.configDir) addSnapshot(snapshot);
+		if (snapshot?.configDir) addSnapshot(attributeManagedConfigDir(snapshot));
 	}
 
 	// Codex sessions are naturally partitioned by CODEX_HOME. Enrich only roots
@@ -444,11 +549,34 @@ export async function getAgentRateLimitsReport(): Promise<AgentRateLimitsReport>
 		}
 	}
 
+	const usageProviders = loadModelCatalog().providers.filter(
+		(p) => p.kind === "custom" && p.usageSource === "kimi-code" && p.baseUrl?.trim(),
+	);
+	const keys = usageProviders.length > 0 ? loadProviderKeys() : {};
+	const tracked = usageProviders.filter((p) => keys[p.id]?.trim());
+	for (const id of kimiConfigStamps.keys()) {
+		if (!tracked.some((p) => p.id === id)) forgetKimiProvider(id);
+	}
+	for (const p of tracked) {
+		refreshKimiUsage(p, keys[p.id].trim(), now);
+		addSnapshot(cachedKimiSnapshots.get(p.id) ?? null);
+	}
+
 	const snapshots = [...byAccount.values()].sort(
-		(a, b) => (a.source === b.source ? 0 : a.source === "claude" ? -1 : 1) || rateLimitActivityAt(b) - rateLimitActivityAt(a),
+		(a, b) => SOURCE_ORDER[a.source] - SOURCE_ORDER[b.source] || rateLimitActivityAt(b) - rateLimitActivityAt(a),
 	);
 	const sessions = await attachTaskIdentity(readClaudeSessionDumps(CLAUDE_SESSION_STATS_DIR, now));
-	const report: AgentRateLimitsReport = { snapshots, sessions, generatedAt: now };
+	const report: AgentRateLimitsReport = {
+		snapshots,
+		sessions,
+		usageProviders: usageProviders.map((p) => ({
+			id: p.id,
+			label: p.label,
+			source: "kimi-code",
+			...(keys[p.id]?.trim() ? {} : { missingKey: true }),
+		})),
+		generatedAt: now,
+	};
 	cachedReport = report;
 	return report;
 }
@@ -462,6 +590,8 @@ function reportKey(report: AgentRateLimitsReport): string {
 		)
 		.join("|")
 		.concat(
+			"@",
+			(report.usageProviders ?? []).map((p) => `${p.id}:${p.label}:${p.missingKey ?? ""}`).join("|"),
 			"#",
 			(report.sessions ?? [])
 				.map((s) => `${s.taskId}:${s.projectId}:${s.capturedAt}:${s.taskTitle}:${s.awaitingUser}:${s.cache?.warm}:${s.cache?.expiresAt}`)
@@ -502,6 +632,11 @@ export function stopRateLimitMonitor(): void {
 	cachedCodexLiveSnapshots.clear();
 	codexLiveAttemptedAt.clear();
 	codexLiveRequests.clear();
+	cachedKimiSnapshots.clear();
+	kimiAttemptedAt.clear();
+	kimiRequests.clear();
+	kimiConfigStamps.clear();
+	kimiWarned.clear();
 }
 
 /** Last computed report (may be null before the first poll/RPC). */

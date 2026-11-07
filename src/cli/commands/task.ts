@@ -689,7 +689,7 @@ function reportApprovalStatus(
 ): void {
 	const target = DESTRUCTIVE_APPROVAL_TARGET[spec.kind];
 	if (status.state === "answered" && !status.approved) {
-		if (status.stale) exitError(STALE_APPROVAL, staleApprovalHint(spec), spec.declinedCode);
+		if (status.stale) return reportVoidedApproval(spec, status.taskStatus, codexStopHook);
 		exitError(spec.declined, spec.declinedHint, spec.declinedCode);
 	}
 	// A legacy To Do card that owns a worktree is already `todo`, so for a reset the
@@ -769,9 +769,9 @@ async function requestDestructiveApproval(
 
 	const resp = wait.resp;
 	if (!resp.ok) exitError(resp.error || spec.failed);
-	const result = resp.data as { approved: boolean; task?: Task; plainMove?: boolean; stale?: boolean; keptBranches?: Array<{ name: string; reason: string }> };
+	const result = resp.data as { approved: boolean; task?: Task; plainMove?: boolean; stale?: boolean; taskStatus?: TaskStatus | null; keptBranches?: Array<{ name: string; reason: string }> };
 	if (!result.approved) {
-		if (result.stale) exitError(STALE_APPROVAL, staleApprovalHint(spec), spec.declinedCode);
+		if (result.stale) return reportVoidedApproval(spec, result.taskStatus, codexStopHook);
 		exitError(spec.declined, spec.declinedHint, spec.declinedCode);
 	}
 	if (result.plainMove) {
@@ -796,6 +796,34 @@ const KEPT_BRANCH_REASON: Record<string, string> = {
 };
 
 const STALE_APPROVAL = "The request was voided before anyone answered it";
+
+/**
+ * The app voided the request because the task finished or vanished by another
+ * path. Already in the status the agent asked for (the board, a merged PR) is
+ * success, exit 0 — the outcome it wanted, reached without a second click.
+ * Anything else is the kind's decline code with the voided wording.
+ */
+function reportVoidedApproval(
+	spec: DestructiveApprovalSpec,
+	taskStatus: TaskStatus | null | undefined,
+	codexStopHook: boolean,
+): void {
+	// A voided reset never counts: its target `todo` is where every reset lands.
+	if (spec.kind !== "reset" && taskStatus === DESTRUCTIVE_APPROVAL_TARGET[spec.kind]) {
+		if (codexStopHook) {
+			process.stdout.write(CODEX_STOP_HOOK_SUCCESS_JSON);
+			return;
+		}
+		process.stdout.write(
+			`The task is already ${spec.label} — it got there another way (the board, a merged PR) before anyone answered, so the dialog closed itself.\n`,
+		);
+		return;
+	}
+	if (taskStatus === null) {
+		exitError(STALE_APPROVAL, `The task was deleted before the ${spec.label} request was answered, so this request did nothing.`, spec.declinedCode);
+	}
+	exitError(STALE_APPROVAL, staleApprovalHint(spec), spec.declinedCode);
+}
 
 /**
  * Voided = the run the request was about ended first (completed, cancelled or
@@ -851,6 +879,8 @@ async function createScratchAndRun(
 /** What the app returns once an agent-initiated launch went through the dialog. */
 interface LaunchApprovalOutcome {
 	approved: boolean;
+	/** Voided: the target task was deleted or finished before anyone answered. */
+	stale?: boolean;
 	seq?: number;
 	title?: string;
 	/** One entry per task that started, in variant order; length 1 for a plain launch. */
@@ -881,6 +911,13 @@ function movesForeignTaskIntoActiveColumn(
 /** Print the result of an approved/declined launch, or exit with the decline code. */
 function reportLaunchOutcome(outcome: LaunchApprovalOutcome, codexStopHook: boolean, bySender = false): void {
 	if (!outcome.approved) {
+		if (outcome.stale) {
+			exitError(
+				"The launch request was voided before anyone answered it",
+				"The target task was deleted, completed or cancelled by another path, so its dialog closed and no agent was started.\nCheck `dev3 task show` before asking again.",
+				CLI_EXIT_CODE_LAUNCH_DECLINED,
+			);
+		}
 		exitError(
 			"User declined the launch request",
 			"The task stays where it was and no agent was started.\nAsk the user what they want to change before requesting it again.",

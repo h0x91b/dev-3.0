@@ -90,12 +90,13 @@ export class FocusTracker {
 		log.info("Focus tracker started", { tickMs: this.tickMs });
 	}
 
-	stop(): void {
+	/** Stops sampling; the returned promise settles once pending attention is on disk. */
+	stop(): Promise<void> {
 		if (this.timer) {
 			clearInterval(this.timer);
 			this.timer = null;
 		}
-		void this.flush();
+		return this.flush();
 	}
 
 	/** One sampling step. Public for tests — normally driven by the interval timer. */
@@ -184,7 +185,8 @@ export function startFocusTracker(): void {
 }
 
 /** Stop the process-wide focus tracker and flush any pending attention. */
-export function stopFocusTracker(): void {
-	singleton?.stop();
+export function stopFocusTracker(): Promise<void> {
+	const flushed = singleton?.stop() ?? Promise.resolve();
 	singleton = null;
+	return flushed;
 }

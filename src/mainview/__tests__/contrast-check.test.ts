@@ -295,3 +295,45 @@ describe("accent-fill — white text contrast (|Lc| ≥ 75) — regression", () 
 		expect(Math.abs(lc), `light/accent-fill white: Lc ${lc.toFixed(1)}`).toBeGreaterThanOrEqual(75);
 	});
 });
+
+// ─── 7. Task role band (decisions/2026/11/06/coordinator-role-band-not-a-hue.md) ──
+
+describe("role band — discernible from the card and the sidebar row (|Lc| ≥ 15)", () => {
+	const white: RGB = [255, 255, 255];
+	const themes = [
+		["dark", darkRgb, darkCard],
+		["light", lightRgb, lightCard],
+	] as const;
+
+	for (const [theme, rgb, card] of themes) {
+		const raised = rgb("surface-raised");
+		const cleanupOn = (bg: RGB) => compositeOver(rgb("text-primary"), 0.3, bg);
+
+		it(`${theme}: white on accent-fill clears the non-body floor (|Lc| ≥ 60)`, () => {
+			const lc = apcaContrast(white, rgb("accent-fill"));
+			expect(Math.abs(lc), lcLabel(white, rgb("accent-fill"), `${theme}/band ink`)).toBeGreaterThanOrEqual(60);
+		});
+
+		it(`${theme}: coordinator band vs card and vs raised`, () => {
+			for (const bg of [card, raised]) {
+				expect(Math.abs(apcaContrast(rgb("accent-fill"), bg)), lcLabel(rgb("accent-fill"), bg, `${theme}/band`)).toBeGreaterThanOrEqual(15);
+			}
+		});
+
+		it(`${theme}: coordinator halo ring (accent/.5 over card) vs card`, () => {
+			const ring = compositeOver(rgb("accent"), 0.5, card);
+			expect(Math.abs(apcaContrast(ring, card)), lcLabel(ring, card, `${theme}/halo`)).toBeGreaterThanOrEqual(15);
+		});
+
+		it(`${theme}: board-cleanup band (fg/30) vs card and vs raised`, () => {
+			for (const bg of [card, raised]) {
+				expect(Math.abs(apcaContrast(cleanupOn(bg), bg)), lcLabel(cleanupOn(bg), bg, `${theme}/cleanup band`)).toBeGreaterThanOrEqual(15);
+			}
+		});
+
+		it(`${theme}: board-cleanup ink (text-fg) on its band clears the non-body floor (|Lc| ≥ 60)`, () => {
+			const band = cleanupOn(card);
+			expect(Math.abs(apcaContrast(rgb("text-primary"), band)), lcLabel(rgb("text-primary"), band, `${theme}/cleanup ink`)).toBeGreaterThanOrEqual(60);
+		});
+	}
+});

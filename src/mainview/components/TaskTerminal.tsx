@@ -103,6 +103,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 
 	// ── Tmux path state (unchanged) ────────────────────────────────────────────
 	const [ptyUrl, setPtyUrl] = useState<string | null>(null);
+	const [terminalGeneration, setTerminalGeneration] = useState(0);
 	const [nativeRole, setNativeRole] = useState<NativeStreamRole>("writer");
 	const [refusedAt, setRefusedAt] = useState(0);
 	const [refusedReason, setRefusedReason] = useState<NativeViewerStatus["refusedReason"]>(undefined);
@@ -348,10 +349,12 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	// ── Fetch per-pane URLs when new panes appear ─────────────────────────────
 	useEffect(() => {
 		if (!nativePaneState) return;
+		let cancelled = false;
 		for (const pane of nativePaneState.panes) {
 			if (!paneUrls.has(pane.paneId)) {
 				api.request.getPanePtyUrl({ taskId, paneId: pane.paneId })
 					.then((result) => {
+						if (cancelled) return;
 						if ("gone" in result) {
 							markPaneGone(pane.paneId);
 							return;
@@ -363,10 +366,11 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 							return next;
 						});
 					})
-					.catch(() => markPaneGone(pane.paneId));
+					.catch(() => { if (!cancelled) markPaneGone(pane.paneId); });
 			}
 		}
-	}, [nativePaneState?.panes.map((p) => p.paneId).join(",")]);
+		return () => { cancelled = true; };
+	}, [nativePaneState?.panes.map((p) => p.paneId).join(","), terminalGeneration]);
 
 	// Which native pane this viewer types into. Computed here, above the native
 	// branch, because the focus effects below need it too.
@@ -377,8 +381,10 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 
 	// ── Someone asked for the keyboard ────────────────────────────────────────
 	useEffect(() => {
-		return subscribeTaskTerminalFocus(taskId, () => {
-			pendingFocusRef.current = { until: Date.now() + FOCUS_REQUEST_TTL_MS, awaitFreshPane: isNative };
+		return subscribeTaskTerminalFocus(taskId, ({ currentPane }) => {
+			// Handing the keyboard back after a viewer must not pop the on-screen keyboard.
+			if (currentPane && touchInput) return;
+			pendingFocusRef.current = { until: Date.now() + FOCUS_REQUEST_TTL_MS, awaitFreshPane: isNative && !currentPane };
 			setFocusRequestSeq((n) => n + 1);
 			// Do not wait out the poll interval for a pane that already exists on the
 			// server — ask now so the keystrokes have somewhere to land.
@@ -420,18 +426,20 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		setHibernated(true);
 	}, [task?.hibernated, task?.sessionState]);
 
-	// `dev3 agent resume` brings the session back behind a recovery screen still on
-	// display; offering Resume again there would tear the fresh session down.
+	// A restart keeps the URL but replaces its terminal. Remount even a still-visible
+	// canvas: its old socket may have closed cleanly and will never reconnect itself.
 	useEffect(() => {
-		if (!recoverable && error?.kind !== "session-ended") return;
 		if (restarting) return;
 		function onResumed(e: Event) {
 			if ((e as CustomEvent<{ taskId: string }>).detail?.taskId !== taskId) return;
 			setRecoverable(null);
 			setHibernated(false);
 			setError(null);
+			setTerminalGeneration((generation) => generation + 1);
 			if (isNative) {
-				void fetchPaneState(taskId);
+				setGonePaneIds(new Set());
+				setPaneUrls(new Map());
+				void fetchPaneState(taskId).catch(() => { void classifyAndSetError(); });
 				return;
 			}
 			api.request.getPtyUrl({ taskId })
@@ -440,7 +448,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		}
 		window.addEventListener("rpc:taskTerminalResumed", onResumed);
 		return () => window.removeEventListener("rpc:taskTerminalResumed", onResumed);
-	}, [taskId, recoverable, error?.kind, restarting, isNative]);
+	}, [taskId, restarting, isNative]);
 
 	// For getPtyUrl success + broken session: listen for ptyDied.
 	useEffect(() => {
@@ -980,6 +988,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				<div className="h-full w-full flex flex-col overflow-hidden">
 					{url ? (
 						<TerminalView
+							key={terminalGeneration}
 							ptyUrl={url}
 							taskId={taskId}
 							projectId={projectId}
@@ -1015,7 +1024,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			const activePaneUrl = focusPaneId ? paneUrls.get(focusPaneId) : undefined;
 			const nativeTerminalArea = activePaneUrl ? (
 				<TerminalView
-					key={focusPaneId}
+					key={`${focusPaneId}:${terminalGeneration}`}
 					ptyUrl={activePaneUrl}
 					taskId={taskId}
 					projectId={projectId}
@@ -1197,6 +1206,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 
 	const terminalArea = ptyUrl ? (
 		<TerminalView
+			key={terminalGeneration}
 			ptyUrl={ptyUrl}
 			taskId={taskId}
 			projectId={projectId}

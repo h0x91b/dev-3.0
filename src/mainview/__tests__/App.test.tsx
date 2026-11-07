@@ -21,6 +21,7 @@ vi.mock("../rpc", () => ({
 			getSystemLoad: vi.fn().mockResolvedValue(null),
 			checkSystemRequirements: vi.fn().mockResolvedValue([]),
 			getRosettaWarning: vi.fn().mockResolvedValue(null),
+			getLaunchLocationIssue: vi.fn().mockResolvedValue(null),
 			getTmuxServerNotice: vi.fn().mockResolvedValue({ predatesLaunchd: false }),
 			checkGhAvailable: vi.fn().mockResolvedValue({ available: true, notInstalled: false }),
 			getProjects: vi.fn().mockResolvedValue([]),
@@ -312,6 +313,35 @@ describe("App keyboard shortcuts", () => {
 
 	afterEach(() => {
 		Object.defineProperty(globalThis, "navigator", { value: realNavigator, writable: true, configurable: true });
+	});
+
+	describe("launch-location gate", () => {
+		const issue = {
+			kind: "disk-image" as const,
+			bundlePath: "/Volumes/dev-3.0/dev-3.0.app",
+			volumePath: "/Volumes/dev-3.0",
+			destination: "/Applications/dev-3.0.app",
+			reason: "read-only",
+		};
+
+		afterEach(() => {
+			vi.mocked(api.request.getLaunchLocationIssue).mockResolvedValue(null);
+			(window as Window & { __electrobunWebviewId?: number }).__electrobunWebviewId = 1;
+		});
+
+		it("blocks the desktop app when it runs from a read-only installer", async () => {
+			vi.mocked(api.request.getLaunchLocationIssue).mockResolvedValue(issue);
+			await renderApp();
+			expect(await screen.findByTestId("launch-location-gate")).toBeInTheDocument();
+		});
+
+		it("never asks, or shows it, in a remote browser", async () => {
+			delete (window as unknown as Record<string, unknown>).__electrobunWebviewId;
+			vi.mocked(api.request.getLaunchLocationIssue).mockResolvedValue(issue);
+			await renderApp();
+			expect(api.request.getLaunchLocationIssue).not.toHaveBeenCalled();
+			expect(screen.queryByTestId("launch-location-gate")).toBeNull();
+		});
 	});
 
 	it("opens the native pane layout lab from the debug menu action", async () => {
@@ -4303,6 +4333,20 @@ describe("App keyboard shortcuts", () => {
 			expect(opts.deferred?.gateConfirm).toBe(true);
 		});
 
+		it("says the branch is kept when the task's branch survives the reset", async () => {
+			vi.mocked(confirm).mockResolvedValue(false);
+			await renderApp();
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:agentResetRequested", {
+					detail: { requestId: "req-r2", taskId: "t1", projectId: "p1", taskTitle: "Ops task", branchKept: true },
+				}));
+			});
+			await waitFor(() => expect(confirm).toHaveBeenCalled());
+			const message = vi.mocked(confirm).mock.calls[0][0].message as string;
+			expect(message).toContain("branch is kept");
+			expect(message).not.toContain("plus its branch");
+		});
+
 		it("replays a pending reset request on connect", async () => {
 			vi.mocked(api.request.listPendingResetRequests).mockResolvedValue([
 				{ requestId: "req-r-orphan", taskId: "t1", projectId: "p1", taskTitle: "Stranded", subject: undefined },
@@ -4384,6 +4428,29 @@ describe("App keyboard shortcuts", () => {
 			});
 
 			expect(vi.mocked(confirm)).toHaveBeenCalledTimes(1);
+		});
+
+		// The replay lists a request, then waits for the confirm host. If the task
+		// completed by another path in that gap, the backend voided the request and
+		// pushed `agentRequestResolved` — the dialog must never open for it.
+		it("never opens a replayed dialog whose request resolved while it was being listed", async () => {
+			let releaseList!: (value: unknown) => void;
+			vi.mocked(api.request.listPendingCompletionRequests).mockReturnValue(
+				new Promise((resolve) => { releaseList = resolve; }) as never,
+			);
+			vi.mocked(confirm).mockResolvedValue(false);
+
+			await renderApp();
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:agentRequestResolved", {
+					detail: { requestId: "req-done-meanwhile", kind: "complete", taskId: "t1", projectId: "p1" },
+				}));
+				releaseList([{ requestId: "req-done-meanwhile", taskId: "t1", projectId: "p1", taskTitle: "Done task", subject: undefined }]);
+			});
+			await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+
+			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
+			expect(api.request.respondToAgentCompletionRequest).not.toHaveBeenCalled();
 		});
 	});
 

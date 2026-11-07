@@ -12,6 +12,7 @@ vi.mock("../../rpc", () => ({
 			setTaskHidden: vi.fn().mockResolvedValue([]),
 			toggleTaskWatch: vi.fn().mockResolvedValue({ id: "t1" }),
 			hibernateTask: vi.fn().mockResolvedValue({ task: { id: "t1" }, freedRssBytes: 0 }),
+			resumeTask: vi.fn().mockResolvedValue("ws://localhost:9999?session=t1"),
 			deleteTask: vi.fn().mockResolvedValue(undefined),
 			moveTaskToProject: vi.fn().mockResolvedValue(undefined),
 			moveTaskToCustomColumn: vi.fn(),
@@ -35,6 +36,7 @@ vi.mock("../MoveToProjectPicker", () => ({ default: () => <div data-testid="move
 
 import { api } from "../../rpc";
 import { confirm } from "../../confirm";
+import { toast } from "../../toast";
 
 const mockedApi = vi.mocked(api);
 
@@ -178,6 +180,44 @@ describe("TaskContextMenu", () => {
 	it("keeps session-only actions disabled on a hibernated task", () => {
 		renderMenu(makeTask({ hibernated: true }));
 		expect(screen.getByTestId("task-menu-hibernate")).toBeDisabled();
+		expect(screen.getByTestId("task-menu-restartSession")).toBeDisabled();
+	});
+
+	it("confirms the terminal replacement and restarts through managed resume", async () => {
+		const { onClose } = renderMenu();
+		await userEvent.click(screen.getByRole("menuitem", { name: "Restart agent session…" }));
+		expect(confirm).toHaveBeenCalledWith(expect.objectContaining({
+			title: "Restart agent session?",
+			message: expect.stringContaining("All terminal panes close"),
+			confirmLabel: "Restart and resume",
+		}));
+		await waitFor(() => expect(mockedApi.request.resumeTask).toHaveBeenCalledWith({ taskId: "t1", restart: true }));
+		expect(onClose).toHaveBeenCalled();
+		expect(mockedApi.request.hibernateTask).not.toHaveBeenCalled();
+	});
+
+	it("leaves the session alone when restart is cancelled", async () => {
+		vi.mocked(confirm).mockResolvedValueOnce(false);
+		renderMenu();
+		await userEvent.click(screen.getByTestId("task-menu-restartSession"));
+		expect(mockedApi.request.resumeTask).not.toHaveBeenCalled();
+	});
+
+	it("shows the refusal instead of claiming restart succeeded", async () => {
+		const errorToast = vi.spyOn(toast, "error").mockImplementation(() => {});
+		vi.mocked(api.request.resumeTask).mockRejectedValueOnce(new Error("No saved conversation. Nothing was stopped."));
+		try {
+			renderMenu();
+			await userEvent.click(screen.getByTestId("task-menu-restartSession"));
+			await waitFor(() => expect(errorToast).toHaveBeenCalledWith("No saved conversation. Nothing was stopped.", { taskId: "t1" }));
+		} finally {
+			errorToast.mockRestore();
+		}
+	});
+
+	it.each([{ status: "todo" }, { preparing: true }, { shuttingDown: true }, { draft: true }, { worktreePath: null }, { runtimeState: { runtime: "idle" } }])("disables restart for %j", (state) => {
+		renderMenu(makeTask(state as Partial<Task>));
+		expect(screen.getByTestId("task-menu-restartSession")).toBeDisabled();
 	});
 });
 

@@ -10,9 +10,10 @@ import { useStreamerMode } from "./streamer-mode";
 import { isProjectSilencedForDisplay, setSensitiveProjectIds } from "./sensitive-projects";
 import { statusKey } from "./i18n/status";
 import { columnAgentFailureCopy } from "./utils/columnAgentFailureToast";
+import { preparationFailureMessage } from "./utils/preparationFailureMessage";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
-import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, BoardCopyFailureReason, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, LiveArtifact, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
+import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, BoardCopyFailureReason, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo, LiveArtifact, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
 import { ACTIVE_STATUSES, orderProjectsForDisplay, getTaskTitle } from "../shared/types";
 import type { DeepLinkNav } from "../shared/deep-link";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
@@ -84,6 +85,7 @@ import TerminalPerfOverlay from "./components/TerminalPerfOverlay";
 import FilePreviewModal from "./components/FilePreviewModal";
 import { OPEN_FILE_PREVIEW_EVENT, type OpenFilePreviewDetail } from "./terminal-path-open";
 import RosettaWarningModal from "./components/RosettaWarningModal";
+import LaunchLocationGate from "./components/LaunchLocationGate";
 import { initTaskSoundPlayback, playTaskCompletionSound, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
 import { offerMergeCompletion } from "./utils/offerMergeCompletion";
 import { taskDialogInfoFromSubject } from "./utils/taskDialogInfo";
@@ -117,6 +119,7 @@ import { reconnectRpc } from "./rpc";
 import { DIAGNOSTICS_OPEN_EVENT, RPC_STATUS_EVENT } from "./diagnostics";
 import { getAdjacentAliveVariant } from "./utils/variantGroups";
 import { isTaskTerminalRoute } from "./utils/terminalFullscreen";
+import { restoreFocusAfterViewer } from "./utils/viewer-focus";
 import { sharedArrivalNoun, type SharedArrivalKind } from "./utils/sharedArrivalNoun";
 import PushEnrollmentInvite from "./components/PushEnrollmentInvite";
 import ArtifactFreezeNotice from "./components/ArtifactFreezeNotice";
@@ -538,10 +541,16 @@ function App() {
 		});
 	}, [markSharedItemsRead]);
 	const closeArtifactViewer = useCallback(() => {
+		const taskId = artifactViewerRef.current?.taskId;
 		setArtifactViewer(null);
-		requestAnimationFrame(() => {
-			document.querySelector<HTMLButtonElement>("[data-testid='shared-artifacts-badge']")?.focus();
-		});
+		const focusBadge = () => document.querySelector<HTMLButtonElement>("[data-testid='shared-artifacts-badge']")?.focus();
+		if (taskId) restoreFocusAfterViewer(() => routeRef.current, taskId, focusBadge);
+		else requestAnimationFrame(focusBadge);
+	}, []);
+	const closeImageViewer = useCallback(() => {
+		const taskId = imageViewerRef.current?.taskId;
+		setImageViewer(null);
+		if (taskId) restoreFocusAfterViewer(() => routeRef.current, taskId);
 	}, []);
 	// Live for the app's lifetime: the launch dialog this state feeds outlives
 	// every visit to Settings and every provider connect, so a fetch-once
@@ -757,6 +766,17 @@ function App() {
 			.getRosettaWarning()
 			.then(setRosettaWarning)
 			.catch((err) => console.error("Failed to check Rosetta status:", err));
+	}, []);
+
+	// macOS: running from a DMG / translocated / read-only copy that can never update.
+	// Blocking by design; a remote browser never sees it (the desktop owner has to act).
+	const [launchLocationIssue, setLaunchLocationIssue] = useState<LaunchLocationIssue>(null);
+	useEffect(() => {
+		if (isRemote()) return;
+		api.request
+			.getLaunchLocationIssue()
+			.then(setLaunchLocationIssue)
+			.catch((err) => console.error("Failed to check the launch location:", err));
 	}, []);
 
 	// A tmux server an older dev3 started outside launchd can still lose folder
@@ -2346,6 +2366,12 @@ function App() {
 			// The same dialog is up on every connected client; the first answer
 			// closes the rest (see createAgentRequestAbort).
 			const abort = createAgentRequestAbort(requestId);
+			// Already settled (answered elsewhere, or its task finished meanwhile).
+			if (abort.signal.aborted) {
+				abort.cleanup();
+				showing.delete(requestId);
+				return;
+			}
 			try {
 				approved = await confirm({
 					title: t("app.agentCompletionTitle"),
@@ -2453,17 +2479,23 @@ function App() {
 			projectId: string;
 			taskTitle: string;
 			subject?: TaskDialogSubject;
+			branchKept?: boolean;
 		}) {
-			const { requestId, taskId, projectId, taskTitle, subject } = request;
+			const { requestId, taskId, projectId, taskTitle, subject, branchKept } = request;
 			if (showing.has(requestId)) return;
 			showing.add(requestId);
 			let approved = false;
 			const abort = createAgentRequestAbort(requestId);
+			if (abort.signal.aborted) {
+				abort.cleanup();
+				showing.delete(requestId);
+				return;
+			}
 			try {
 				const unsaved = api.request.getUnsavedWork({ taskId, projectId });
 				approved = await confirm({
 					title: t(kind.copy.title),
-					message: t(kind.copy.message),
+					message: t(branchKept && kind.toStatus === "todo" ? "app.agentResetMessageBranchKept" : kind.copy.message),
 					info: taskDialogInfoFromSubject(taskTitle, subject),
 					confirmLabel: t(kind.copy.confirm),
 					cancelLabel: t(kind.copy.cancel),
@@ -2815,7 +2847,7 @@ function App() {
 				taskTitle: string;
 				error: string;
 			};
-			toast.error(t("kanban.taskPreparationFailed", { taskTitle, error }), { taskId });
+			toast.error(t("kanban.taskPreparationFailed", { taskTitle, error: preparationFailureMessage(error, t) }), { taskId });
 		}
 		window.addEventListener("rpc:taskPreparationFailed", onTaskPreparationFailed);
 		return () => window.removeEventListener("rpc:taskPreparationFailed", onTaskPreparationFailed);
@@ -3874,7 +3906,7 @@ function App() {
 					images={imageViewer.images}
 					initialIndex={imageViewer.index}
 					newIds={imageViewer.newIds}
-					onClose={() => setImageViewer(null)}
+					onClose={closeImageViewer}
 				/>
 			)}
 			{aboutVersion && (
@@ -3902,6 +3934,7 @@ function App() {
 			)}
 			</>
 			)}
+			{launchLocationIssue && <LaunchLocationGate issue={launchLocationIssue} />}
 			{/* File preview opens from Cmd/Ctrl+Click in ANY terminal, including the
 			    immersive fullscreen one, so it lives outside the chrome conditional. */}
 			{filePreview && (

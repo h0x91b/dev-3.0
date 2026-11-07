@@ -5,6 +5,7 @@ import { splitBranchWords, matchesBranchQuery } from "../BranchSelector";
 import { I18nProvider } from "../../i18n";
 import { BOARD_CLEANUP_PROMPT, COORDINATOR_PROMPT, type GlobalSettings, type Project, type Task, type SystemMemorySnapshot } from "../../../shared/types";
 import type { AppAction } from "../../state";
+import { toast } from "../../toast";
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -25,9 +26,15 @@ vi.mock("../../rpc", () => ({
 			openImageFile: vi.fn(),
 			listAgentSkills: vi.fn(),
 			getGlobalSettings: vi.fn().mockResolvedValue({}),
+			inspectOpsFolder: vi.fn(),
+			getAllProjectTasks: vi.fn().mockResolvedValue([]),
 		},
 	},
 	isElectrobun: false,
+}));
+
+vi.mock("../../folder-picker", () => ({
+	openFolderPicker: vi.fn(),
 }));
 
 vi.mock("../../analytics", () => ({
@@ -35,6 +42,7 @@ vi.mock("../../analytics", () => ({
 }));
 
 import { api } from "../../rpc";
+import { openFolderPicker } from "../../folder-picker";
 
 const mockedApi = vi.mocked(api, true);
 
@@ -1533,6 +1541,171 @@ describe("CreateTaskModal — virtual (Operations) project", () => {
 		await userEvent.click(screen.getByText("Save"));
 		await waitFor(() => {
 			expect(mockedApi.request.createTask).toHaveBeenCalledWith({ projectId: "p1", description: "Backup prod" });
+		});
+	});
+});
+
+describe("CreateTaskModal — Operations worktree toggle", () => {
+	const vproject: Project = { ...mockProject, kind: "virtual", path: "/home/user/.dev3.0/ops/operations" };
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.createTask.mockResolvedValue(mockTask);
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([]);
+		vi.mocked(openFolderPicker).mockResolvedValue("/Users/me/repo/sub");
+	});
+
+	async function pickFolderAndSave() {
+		await userEvent.type(screen.getByPlaceholderText("Describe what needs to be done..."), "Fix it");
+		await userEvent.click(screen.getByText("Choose folder…"));
+	}
+
+	it("a repo folder shows the checkbox, unchecked, naming the base branch; checking it passes opsWorktree", async () => {
+		mockedApi.request.inspectOpsFolder.mockResolvedValue({ repoRoot: "/Users/me/repo", defaultBranch: "master" });
+		renderModal({ project: vproject });
+		await pickFolderAndSave();
+
+		const box = await screen.findByTestId("create-task-ops-worktree");
+		expect(box).not.toBeChecked();
+		expect(screen.getByText("Work in a separate worktree (new branch from master)")).toBeInTheDocument();
+		await userEvent.click(box);
+
+		await userEvent.click(screen.getByText("Save"));
+		await waitFor(() => {
+			expect(mockedApi.request.createTask).toHaveBeenCalledWith(expect.objectContaining({
+				opsWorkDir: "/Users/me/repo/sub", opsWorktree: true,
+			}));
+		});
+	});
+
+	it("left unchecked, it sends the folder only, so the agent works in the picked folder", async () => {
+		mockedApi.request.inspectOpsFolder.mockResolvedValue({ repoRoot: "/Users/me/repo", defaultBranch: "main" });
+		renderModal({ project: vproject });
+		await pickFolderAndSave();
+		await screen.findByTestId("create-task-ops-worktree");
+
+		await userEvent.click(screen.getByText("Save"));
+		await waitFor(() => expect(mockedApi.request.createTask).toHaveBeenCalled());
+		const params = mockedApi.request.createTask.mock.calls[0][0];
+		expect(params).toMatchObject({ opsWorkDir: "/Users/me/repo/sub" });
+		expect(params).not.toHaveProperty("opsWorktree");
+	});
+
+	it("blocks submit until the folder check answers, so the worktree choice cannot be dropped", async () => {
+		let answer!: (value: { repoRoot: string | null; defaultBranch: string | null }) => void;
+		mockedApi.request.inspectOpsFolder.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+		renderModal({ project: vproject });
+		await pickFolderAndSave();
+
+		expect(screen.getByText("Save").closest("button")).toBeDisabled();
+		await act(async () => { answer({ repoRoot: "/Users/me/repo", defaultBranch: "main" }); });
+
+		await waitFor(() => expect(screen.getByText("Save").closest("button")).toBeEnabled());
+		expect(screen.getByTestId("create-task-ops-worktree")).not.toBeChecked();
+	});
+
+	it("a folder outside any repo shows no checkbox", async () => {
+		mockedApi.request.inspectOpsFolder.mockResolvedValue({ repoRoot: null, defaultBranch: null });
+		renderModal({ project: vproject });
+		await pickFolderAndSave();
+
+		await waitFor(() => expect(mockedApi.request.inspectOpsFolder).toHaveBeenCalledWith({ path: "/Users/me/repo/sub" }));
+		expect(screen.queryByTestId("create-task-ops-worktree")).not.toBeInTheDocument();
+	});
+
+	it("Use managed while the folder check is pending clears the block, and the late answer is ignored", async () => {
+		let answer!: (value: { repoRoot: string | null; defaultBranch: string | null }) => void;
+		mockedApi.request.inspectOpsFolder.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+		renderModal({ project: vproject });
+		await pickFolderAndSave();
+		expect(screen.getByText("Save").closest("button")).toBeDisabled();
+
+		await userEvent.click(screen.getByText("Use managed"));
+		await act(async () => { answer({ repoRoot: "/Users/me/repo", defaultBranch: "main" }); });
+
+		expect(screen.getByText("Save").closest("button")).toBeEnabled();
+		expect(screen.queryByTestId("create-task-ops-worktree")).not.toBeInTheDocument();
+	});
+
+	it("tells the user when the folder check fails", async () => {
+		const toastError = vi.spyOn(toast, "error").mockImplementation(() => "");
+		mockedApi.request.inspectOpsFolder.mockRejectedValue(new Error("probe exploded"));
+		renderModal({ project: vproject });
+		await pickFolderAndSave();
+
+		await waitFor(() => expect(toastError).toHaveBeenCalledWith("probe exploded", expect.anything()));
+		expect(screen.getByText("Save").closest("button")).toBeEnabled();
+		toastError.mockRestore();
+	});
+
+	describe("editing an Operations draft", () => {
+		const opsDraft: Task = {
+			...mockTask, id: "draft-ops", projectId: "p1", draft: true, description: "do it", existingBranch: undefined,
+			attachedRepo: "/Users/me/repo", opsWorktree: true, baseBranch: "master",
+		};
+
+		beforeEach(() => {
+			mockedApi.request.editTask.mockResolvedValue(opsDraft);
+		});
+
+		it("opens with the saved repo and worktree choice, and an untouched save does not resend the folder", async () => {
+			renderModal({ project: vproject, draftTask: opsDraft });
+
+			expect(screen.getByTestId("create-task-ops-worktree")).toBeChecked();
+			expect(screen.getByText("Work in a separate worktree (new branch from master)")).toBeInTheDocument();
+			await userEvent.click(screen.getByText("Save"));
+
+			await waitFor(() => expect(mockedApi.request.editTask).toHaveBeenCalled());
+			const params = mockedApi.request.editTask.mock.calls[0][0];
+			expect(params).not.toHaveProperty("opsWorkDir");
+			expect(params).not.toHaveProperty("opsWorktree");
+		});
+
+		it("a changed worktree choice is saved with the folder", async () => {
+			renderModal({ project: vproject, draftTask: opsDraft });
+			await userEvent.click(screen.getByTestId("create-task-ops-worktree"));
+			await userEvent.click(screen.getByText("Save"));
+
+			await waitFor(() => expect(mockedApi.request.editTask).toHaveBeenCalledWith(
+				expect.objectContaining({ opsWorkDir: "/Users/me/repo", opsWorktree: false }),
+			));
+		});
+
+		it("Use managed clears the folder: the save sends a null opsWorkDir and no worktree", async () => {
+			renderModal({ project: vproject, draftTask: opsDraft });
+			await userEvent.click(screen.getByText("Use managed"));
+			await userEvent.click(screen.getByText("Save"));
+
+			await waitFor(() => expect(mockedApi.request.editTask).toHaveBeenCalledWith(
+				expect.objectContaining({ opsWorkDir: null, opsWorktree: false }),
+			));
+		});
+
+		it("names no base in the checkbox when the draft has none stored", () => {
+			renderModal({ project: vproject, draftTask: { ...opsDraft, baseBranch: "" } });
+
+			expect(screen.getByText("Work in a separate worktree (new branch)")).toBeInTheDocument();
+		});
+
+		it("the save buttons wait for a pending folder check", async () => {
+			mockedApi.request.inspectOpsFolder.mockReturnValue(new Promise(() => {}));
+			renderModal({ project: vproject, draftTask: opsDraft });
+			await userEvent.click(screen.getByText("Choose folder…"));
+
+			expect(screen.getByText("Save").closest("button")).toBeDisabled();
+			expect(screen.getByTestId("create-task-save-draft")).toBeDisabled();
+		});
+
+		it("a newly picked repo folder is saved with the worktree flag once it is checked", async () => {
+			mockedApi.request.inspectOpsFolder.mockResolvedValue({ repoRoot: "/Users/me/other", defaultBranch: "trunk" });
+			renderModal({ project: vproject, draftTask: { ...opsDraft, attachedRepo: undefined, opsWorktree: undefined, baseBranch: "" } });
+			await userEvent.click(screen.getByText("Choose folder…"));
+			await userEvent.click(await screen.findByTestId("create-task-ops-worktree"));
+			await userEvent.click(screen.getByText("Save"));
+
+			await waitFor(() => expect(mockedApi.request.editTask).toHaveBeenCalledWith(
+				expect.objectContaining({ opsWorkDir: "/Users/me/repo/sub", opsWorktree: true }),
+			));
 		});
 	});
 });

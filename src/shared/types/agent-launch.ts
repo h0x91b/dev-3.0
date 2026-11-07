@@ -91,6 +91,8 @@ export interface AgentCancellationRequest {
 	projectId: string;
 	taskTitle: string;
 	subject: TaskDialogSubject;
+	/** Reset only: the branch survives, so the dialog must not say it is deleted. */
+	branchKept?: boolean;
 }
 
 /**

@@ -50,7 +50,7 @@ import type { ExposedPort, PortInfo, ResourceUsage, SystemLoadSnapshot, SystemMe
 import type { PtyThroughputStats, TmuxLayout, TmuxSessionInfo, TmuxWindowEntry } from "./tmux";
 import type { DevServerStatus, DevServerSummary } from "./dev-server";
 import type { RemoteAccessStatus, RemoteNetInterface } from "./remote";
-import type { AgentCheckResult, AgentSkillInfo, HarnessReadinessReport, RequirementCheckResult, RosettaWarningInfo } from "./environment";
+import type { AgentCheckResult, AgentSkillInfo, HarnessReadinessReport, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo } from "./environment";
 import type { ExplorerListing, FolderListing } from "./file-explorer";
 import type { AgentUsageReport, ProductivityStats } from "./usage-stats";
 
@@ -670,7 +670,7 @@ export type AppRPCSchema = {
 				 * `renameTask`'s customTitle: this does NOT mark the title user-edited,
 				 * so an agent may still rename it.
 				 */
-				params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType; epicId?: string };
+				params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; opsWorktree?: boolean; priority?: TaskPriority; taskType?: TaskType; epicId?: string };
 				response: Task;
 			};
 			/** Stored PR a review task reviews; looks it up once for tasks created before it was stored. */
@@ -789,6 +789,9 @@ export type AppRPCSchema = {
 					existingBranch?: string | null;
 					draft?: boolean;
 					taskType?: TaskType | null;
+					/** Operations only: the folder choice, resolved like createTask; null clears it. */
+					opsWorkDir?: string | null;
+					opsWorktree?: boolean;
 				};
 				response: Task;
 			};
@@ -844,7 +847,7 @@ export type AppRPCSchema = {
 				response: { url: string } | { gone: true };
 			};
 			resumeTask: {
-				params: { taskId: string };
+				params: { taskId: string; restart?: boolean };
 				response: string;
 			};
 			restartTask: {
@@ -980,6 +983,14 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string };
 				response: { delivery: AgentPromptDelivery };
 			};
+			inspectOpsFolder: {
+				params: { path: string };
+				response: { repoRoot: string | null; defaultBranch: string | null };
+			};
+			setTaskAttachedRepo: {
+				params: { taskId: string; projectId: string; path: string | null };
+				response: Task;
+			};
 			mergeTask: {
 				params: { taskId: string; projectId: string; expectRoute?: MergeRoute; compareRef?: string };
 				response: void;
@@ -1054,6 +1065,16 @@ export type AppRPCSchema = {
 			getRosettaWarning: {
 				params: void;
 				response: RosettaWarningInfo;
+			};
+			/** macOS: the running bundle sits where it cannot update itself (DMG, translocation). */
+			getLaunchLocationIssue: {
+				params: void;
+				response: LaunchLocationIssue;
+			};
+			/** Copy the bundle into Applications, then quit and relaunch from there; `ok: true` arrives just before the quit. */
+			moveAppToApplications: {
+				params: void;
+				response: { ok: true; destination: string } | { ok: false; error: string };
 			};
 			/** macOS: task terminals still run on a tmux server started outside launchd. */
 			getTmuxServerNotice: {

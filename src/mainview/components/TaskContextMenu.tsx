@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { Project, Task, TaskPriority, TaskStatus } from "../../shared/types";
-import { getTaskTitle, isTaskDisconnected } from "../../shared/types";
+import { ACTIVE_STATUSES, getTaskTitle, isTaskDisconnected } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
@@ -83,6 +83,7 @@ export default function TaskContextMenu({
 	const labelIds = task.labelIds ?? [];
 	const disconnected = isTaskDisconnected(task);
 	const hasSession = !!task.worktreePath && !task.hibernated && !task.preparing && !task.shuttingDown && !disconnected;
+	const canRestart = hasSession && ACTIVE_STATUSES.includes(task.status) && !task.draft;
 
 	function openSub(next: SubSurface) {
 		if (pos) setAnchorPos(pos);
@@ -194,6 +195,23 @@ export default function TaskContextMenu({
 		}
 	}
 
+	async function handleRestartSession() {
+		onClose();
+		if (!await confirm({
+			title: t("task.restartSessionTitle"),
+			message: t("task.restartSessionConfirm"),
+			confirmLabel: t("task.restartSessionCta"),
+			danger: true,
+			info: { title: getTaskTitle(task) },
+		})) return;
+		try {
+			await api.request.resumeTask({ taskId: task.id, restart: true });
+			toast.success(t("task.restartedSession"), { taskId: task.id });
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : String(err), { taskId: task.id });
+		}
+	}
+
 	async function handleHibernate() {
 		onClose();
 		const paneCount = task.sessionState?.panes?.length ?? 0;
@@ -292,6 +310,7 @@ export default function TaskContextMenu({
 				label: task.keepAlive?.enabled ? t("task.keepAliveOff") : t("task.keepAliveOn"),
 				onSelect: handleToggleKeepAlive,
 			},
+			{ id: "restartSession", label: t("task.restartSession"), onSelect: handleRestartSession, disabled: !canRestart },
 			{ id: "hibernate", label: t("task.hibernate"), onSelect: handleHibernate, disabled: !hasSession },
 		],
 		[{ id: "delete", label: t("taskMenu.delete"), onSelect: handleDelete, danger: true }],

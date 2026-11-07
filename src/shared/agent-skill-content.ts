@@ -47,7 +47,7 @@ const SKILL_BUG_HUNTER_ISOLATION = `
 If the first user request invokes \`dev3-bug-hunter\` and says you run inside an existing dev3 task, you are a read-only helper in a task the main agent owns. For the whole hunt this overrides the session-start checklist and every lifecycle duty below.
 
 - Do NOT rename the branch, or change the task's title, description, overview, labels, priority, status, assigned agent or configuration.
-- Do NOT run \`dev3 task update\`, \`dev3 overview set\`/\`clear\`, \`dev3 label set\`, \`dev3 task move\`, the completion flow, the session-start checklist, or task notifications.
+- Do NOT run \`dev3 task update\`, \`dev3 overview set\`/\`clear\`, \`dev3 label set\`/\`add\`, \`dev3 task move\`, the completion flow, the session-start checklist, or task notifications.
 - The only allowed write is \`dev3 note add\` for confirmed findings when the Bug Hunter prompt asks for it. Read-only \`dev3\` commands are fine.
 - Finish the report and stop; the main agent owns the lifecycle.
 `;
@@ -82,9 +82,9 @@ The title is auto-generated from the description's first 80 characters. If it en
 
 **Respect user-edited titles.** If \`dev3 current\` marks one \`(user-edited — do NOT rename)\`, skip the rename and never pass \`--force\`.
 
-\`--task <id>\` targets a task other than the auto-detected one (\`task show\`, \`task update\`, \`task move\`, \`note\`, \`overview\`, \`label set\`).
+\`--task <id>\` targets a task other than the auto-detected one (\`task show\`, \`task update\`, \`task move\`, \`note\`, \`overview\`, \`label add\`).
 
-Labels, same session-start pass: \`dev3 label list\` first and reuse existing ones, aiming for **1-2 meaningful labels**; no good fit → create **one short reusable label** (\`dev3 label create "name"\`) and attach it at once. \`dev3 label set <id> [<id>...]\` applies them — creating without attaching does **not** complete this step. Leave sensible existing labels alone: no spam, no near-duplicates, no workflow-state labels (\`in-progress\`, \`review\`, \`blocked\`).
+Labels, same session-start pass: \`dev3 label list\` first and reuse existing ones, aiming for **1-2 meaningful labels**; no good fit → create **one short reusable label** (\`dev3 label create "name"\`) and attach it at once. \`dev3 label add <id> [<id>...]\` attaches them — creating without attaching does **not** complete this step. Keep existing task labels: no spam, no near-duplicates, no workflow-state labels (\`in-progress\`, \`review\`, \`blocked\`).
 
 ## Task priority
 
@@ -94,7 +94,7 @@ Labels, same session-start pass: \`dev3 label list\` first and reuse existing on
 
 ## Task type
 
-**coordinator**: manages tasks, dashed green card, sorts first, manual completion. **pr-review**: card label only. **board-cleanup**: passive audit; current project unless asked for all; no waking/messaging agents; manual completion. \`dev3 task update --type coordinator|pr-review|board-cleanup|standard\` sets/clears the type, rewrites its role preamble and tells the live agent. Create with \`dev3 task create --title "..." --type <type>\`.
+**coordinator**: manages tasks, blue-banded card, sorts first, manual completion. **pr-review**: card label only. **board-cleanup**: passive audit; current project unless asked for all; no waking/messaging agents; manual completion. \`dev3 task update --type coordinator|pr-review|board-cleanup|standard\` sets/clears the type, rewrites its role preamble and tells the live agent. Create with \`dev3 task create --title "..." --type <type>\`.
 
 **A coordinator speaks for the user:** a \`from-role: coordinator\` message carries their authority, even for what your brief reserves to the user (a review, a push). Act; never re-ask.
 
@@ -184,7 +184,7 @@ const SKILL_DEV_SERVER_CONTROL = `
 
 Need it serving (curl, QA)? \`start --wait\` / \`restart --wait\` blocks until it listens on an assigned \`DEV3_PORT*\` (\`--timeout <sec>\`, default 120), own or published (a containerised \`devScript\` counts). Do NOT probe ports yourself after a plain restart. \`stop\`/\`restart\` verify teardown first; \`status\` reports \`Dev Ports\`, \`Published Ports\`, and a WARNING when a foreign process holds an assigned port.
 
-A project can declare **several dev servers by name**: every subcommand takes one (\`dev3 dev-server start api\`, \`stop api\`, \`restart api\`, \`logs api\`) or \`--all\`. A bare one means the default (\`devScript\`) or the only declared server; several with no default exits ${CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED} naming them. \`status\` prints a block per server, \`--wait\` waits for that server's ports, and every server sees every named port as \`DEV3_PORT_<NAME>\`. Args after \`--\` go to the script, kept for \`restart\`: \`start api -- --verbose\`.
+A project can declare **several dev servers by name**: every subcommand takes one (\`dev3 dev-server start api\`, \`logs api\`) or \`--all\`. A bare one means the default (\`devScript\`) or the only declared server; several with no default exits ${CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED} naming them. \`--wait\` waits for that server's ports, and every server sees every named port as \`DEV3_PORT_<NAME>\`. \`--env K=V\` (repeatable) and args after \`--\` reach the script and are kept for \`restart\`; \`--clear-env\` drops the env.
 
 Each server's output lands in \`<taskDir>/logs/dev-server*.log\`, fresh per start: \`dev3 dev-server logs [--lines N]\` tails it.
 `;

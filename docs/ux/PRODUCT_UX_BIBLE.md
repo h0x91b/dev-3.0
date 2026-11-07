@@ -78,7 +78,7 @@ Evidence: `concept.md`, `AGENTS.md`, `src/mainview/state.ts`, `src/shared/types.
 
 Task lifecycle states (`ALL_STATUSES`): `todo`, `in-progress`, `user-questions`, `review-by-ai`, `review-by-user`, `review-by-colleague`, `completed`, `cancelled`. Most transitions are hook-driven, not manual.
 
-**Project kind (`Observed`, 2026-06-23):** `Project.kind` is `git` (default) or `virtual`. A **virtual "Operations" board** is the same Project object class — it reuses the dashboard, board, cards, sidebar, labels, and notes — but its tasks run an agent + a split-right shell in a managed temp folder (or a chosen one) with **no git worktree**; the entire git domain (branch/diff/PR/push/merge/rebase, the inspector Git bar, and all three review columns) is hidden, leaving `todo → in-progress → user-questions → completed/cancelled`. One built-in board ships by default and hosts the **Quick-shell** operation (⇧⌘`), which replaced the former single home terminal.
+**Project kind (`Observed`, 2026-06-23):** `Project.kind` is `git` (default) or `virtual`. A **virtual "Operations" board** is the same Project object class — it reuses the dashboard, board, cards, sidebar, labels, and notes — but its tasks run an agent + a split-right shell in a managed temp folder (or a chosen one) with **no git worktree**; the git domain (branch/PR/push/merge/rebase, all three review columns) is hidden, leaving `todo → in-progress → user-questions → completed/cancelled`. An attached repo (`Task.attachedRepo`, Git-bar **Attach repository**) adds read-only diff + review. One built-in board hosts the **Quick-shell** operation (⇧⌘`).
 
 **Keep alive (`Observed`, 2026-10-20):** `Task.keepAlive` is a **property of the task**, same class as `Task.draft`/`hibernated`/`sensitive` — never a column, a kind, or an action. Inert but for the bun watchdog that auto-revives a task whose agent process exited, via `resumeTaskSession`. Surfaced NOT as a column (the task keeps its status) but a passive card marker + an `is:keepalive` filter; toggled from the context menu / `dev3 keep-alive`. Why: [keep-alive-is-a-task-property-not-a-column](../../decisions/2026/10/20/keep-alive-is-a-task-property-not-a-column.md).
 
@@ -335,11 +335,13 @@ One shared, non-interactive glyph (`NativeBackendMark`) — a bolt in a rounded 
 
 **Second member — foreign code (`ForeignCodeMark`, 2026-08-10).** An eye glyph marks a task about commits the user did not write (`Task.foreignCode`): on the Kanban card next to the backend mark, and in the inspector metadata beside the branch it qualifies. Same contract as above — non-interactive, no action slot, no budget, accent-toned, localized name + tooltip.
 
-- **Accent, never warning, on an identity surface.** The glyph answers *whose code*, which is not a fault; most review tasks are ordinary work. The loud signal belongs where the user must act: the `warning`-toned RUNS badge on a changed executable-config file in the diff viewer (`.dev3/config.json`, `.mcp.json`, `.claude/settings.json` — `shared/executable-config-files.ts`). Amber on the board would spend the warning token on the happy path, and `danger` is already "deleted" one badge to its left in that same diff row.
+- **Accent, never warning, on an identity surface.** It answers *whose code*, not a fault. The loud signal sits where the user must act: the `warning` RUNS badge on a changed executable-config file in the diff viewer (`shared/executable-config-files.ts`).
 - **A marker states a property; it never enforces one.** `foreignCode` blocks no transition and makes nothing read-only. The one consequence — this branch's `.dev3` commands and agent trust are not used — is stated in the tooltip and in the inspector row, which also carries the single control that hands trust back (confirm-gated, `TaskInfoPanel`).
-- **The board carries the glyph only because the property belongs to the task.** A branch-level marker was rejected for the card: the card never shows a branch name, so a glyph about the branch has no object there to qualify (board noise is the project's top anti-pattern, §11).
+- **Task-level only.** A branch-level card marker was rejected: the card shows no branch, so it would qualify nothing (§11).
 
-Evidence: `NativeBackendMark.tsx`, `ForeignCodeMark.tsx`, `TaskCard.tsx`, `TaskInfoPanel.tsx`, `TaskDiffViewer.tsx`, `ActiveTasksSidebar.tsx`, `GlobalHeader.tsx`.
+**Third member — role band (`TaskRoleBand`, 2026-11-06).** A role (coordinator, board cleanup) is an opaque 22px band, not a hue: found by silhouette, survives grayscale. Coordinator = `accent-fill`, white ink, accent halo; cleanup = neutral `fg/30`. Rows carry the filled chip. Dashed is draft-only; never warning/danger (§6). Measurements: `decisions/2026/11/06/coordinator-role-band-not-a-hue.md`.
+
+Evidence: `NativeBackendMark.tsx`, `ForeignCodeMark.tsx`, `TaskRoleBand.tsx`, `TaskCard.tsx`, `TaskInfoPanel.tsx`, `TaskDiffViewer.tsx`, `ActiveTasksSidebar.tsx`, `GlobalHeader.tsx`.
 
 ### 5.9 Agent traffic — `Observed`
 

@@ -2,7 +2,7 @@
 
 Feature compatibility across supported AI coding agents.
 
-Last updated: 2026-10-26
+Last updated: 2026-11-03
 
 > **This matrix is now an interface, not prose.** The per-agent launch/trust/
 > hooks/skill differences live behind one `AgentAdapter` per agent
@@ -33,6 +33,10 @@ Last updated: 2026-10-26
 | Pi | `pi` | `~/.agents/skills/dev3/` and the other dev3 skills under the shared `~/.agents/skills/` alias, which pi reads natively — no pi-specific directory is written |
 | Oh My Pi | `omp` | `~/.omp/agent/skills/dev3/`, `~/.omp/agent/skills/dev3-project-config/`, `~/.omp/agent/skills/dev3-tmux/`, `~/.omp/agent/skills/dev3-bug-hunter/`, `~/.omp/agent/skills/ask-dev3/`, `~/.omp/agent/skills/dev3-artifact/`, `~/.omp/agent/skills/dev3-share-artifact/`, `~/.omp/agent/skills/dev3-coordinator/` |
 
+## Managed restart and hibernation
+
+Codex and Claude Code support task hibernation and resume through their saved conversation IDs; Codex's ID comes from its lifecycle hooks and is resolved in the original account store. Right-click a task → **Restart agent session…** reuses that recovery path while the terminal is still present, preserving managed accounts and future hibernation. It replaces the task terminal, closes its auxiliary panes and discards scrollback; commands and dev servers in those panes stop, while files remain intact. Restart refuses if a saved conversation would be replaced or started fresh. Native terminals currently restore only the main agent, so restart refuses a native task with extra panes before stopping anything. See [`restart-agents-through-managed-resume`](decisions/2026/11/03/restart-agents-through-managed-resume.md).
+
 ## Feature Matrix
 
 | Feature | Claude Code | Cursor Agent | Codex | Gemini CLI | OpenCode | GitHub Copilot CLI | Oh My Pi | Pi |
@@ -58,6 +62,7 @@ Last updated: 2026-10-26
 | **Rate-limit tracking** | Yes (statusLine wrapper injected via `--settings`, `dev3 statusline`) | — | Yes (rollout files + cached live monthly credits via `codex app-server`) | — | — | — | — (`omp usage` unread) | — |
 | **Graceful exit before teardown** (`exitProgram`) — runs only where launch readiness can be PROVED, see below | Ctrl-C, `/exit`, Enter — command verified against 2.1.273; SessionEnd hooks run | Ctrl-C, `/exit`, Enter — command not validated | Ctrl-C, `/quit`, Enter — command not validated | Ctrl-C, `/quit`, Enter — command verified against gemini-cli 0.46.0 | Ctrl-C, `/exit`, Enter — command not validated | Ctrl-C, `/exit`, Enter — command not validated | — (no quit command observed) | Ctrl-C, `/quit`, Enter — command verified against pi 0.99.2 |
 | **Recent task notes at session start** (5 newest, ≤6000 chars, `dev3 note recent`) | Automatic — `SessionStart` hook on `startup`/`clear`/`compact` + `!` injection on every `/dev3` load | — | Automatic on `startup` only (existing `SessionStart` hook answers `additionalContext`); after `/clear` or resume the skill only *instructs* `dev3 note recent` | — | — | — (follow-up: its `sessionStart` already returns `additionalContext`) | — | — |
+| **Held `dev3 message` at the next tool call** (hook mailbox) | Yes, tmux backend: `PostToolUse` drains it as `additionalContext` | No | No (follow-up if its `PostToolUse` accepts `additionalContext`) | No | No | No | No (follow-up through the status extension) | No (follow-up through the extension) |
 | **dev3 artifact starter** | Yes (`DEV3_ARTIFACT_TEMPLATE_DIR`, restored by `dev3 artifact-template`) | Yes | Yes | Yes | Yes | Yes | Yes |
 
 ### Graceful exit — two separate conditions, and the row above answers only one
@@ -90,7 +95,7 @@ Injected into `.claude/settings.local.json`, together with dev3's Bash allowlist
 | `SessionStart` (`startup\|clear\|compact`) | none | `dev3 hook claude-session-start` answers with the task's 5 newest notes as `hookSpecificOutput.additionalContext` (bounded, see `src/shared/recent-notes-context.ts`). `resume`/`fork` are skipped: that transcript already holds a block. It also sends `agent.sessionStarted` (session id + pane): Claude does not fire this event while its trust or onboarding dialog is up, so a peer-launch handoff waits for that receipt before typing (`src/bun/agent-session-receipts.ts`). Quiet and exit 0 when offline or there are no notes |
 | `UserPromptSubmit` | → `in-progress` | User sent a message, agent starts working. A **second** entry on the same event, `dev3 hook claude-prompt`, reads the payload's `prompt` and `prompt_id` and reports the submission for Agent traffic; the status-move entry above is untouched, so recording can never cost a task its board position |
 | `PreToolUse` | → `in-progress` | Agent is about to call a tool (also catches post-permission resume) |
-| `PostToolUse` | → `in-progress` | A tool finished, including answers submitted to `AskUserQuestion` |
+| `PostToolUse` | → `in-progress` | A tool finished, including answers submitted to `AskUserQuestion`. Routed through `dev3 hook claude-post-tool`: the same request also drains the pane's held `dev3 message`s (agent-to-agent only, tmux backend only) and answers them as `hookSpecificOutput.additionalContext`, plus a one-line `systemMessage` per message so the user still sees mail arrive in the pane, so a busy agent reads its mail at its next tool call instead of after the 15 s hold. A subagent's call (payload carries `agent_id`) only moves the status. Always exits 0, so the `||` fallback to the plain move runs only when the installed CLI predates the subcommand. Windows keeps the plain move. See `decisions/2026/11/05/hook-mailbox-for-busy-claude-agents.md` |
 | `PermissionRequest` | → `user-questions` | Agent needs user approval for a tool call |
 | `Stop` | → `review-by-user` | Agent finished its turn |
 | `StopFailure` | → `user-questions` | An API error (usage limit, auth, billing, server) ended the turn. Fires **instead of** `Stop`, so without it the task would keep claiming the agent is working. Routed through `dev3 hook claude-stop-failure`, which also raises the attention badge and a desktop notification naming the reset time |

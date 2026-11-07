@@ -267,7 +267,7 @@ describe("ActivityOverview", () => {
 		expect(await screen.findByText("[ Operations ]")).toBeInTheDocument();
 		expect(screen.getByText("System")).toBeInTheDocument();
 		expect(screen.getByText("⌘0")).toBeInTheDocument();
-		expect(screen.getByText("Code-driven tasks · no git")).toBeInTheDocument();
+		expect(screen.getByText("Code-driven tasks · repo optional")).toBeInTheDocument();
 		// The synthetic on-disk path must never be shown to the user.
 		expect(screen.queryByText("/home/user/.dev3.0/ops/operations")).not.toBeInTheDocument();
 	});

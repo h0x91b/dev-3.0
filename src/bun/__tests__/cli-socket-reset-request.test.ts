@@ -175,6 +175,18 @@ describe("task.requestReset (T17, T17b)", () => {
 		expect(moveTask).not.toHaveBeenCalled();
 	});
 
+	it("flags the dialog when the task's branch survives the reset (owned Operations worktree)", async () => {
+		const plain = await openRequest(makeTask({ status: "in-progress", lifecycleStartedAt: STARTED }));
+		expect(listPendingAgentRequests("reset")[0].dialog.branchKept).toBeUndefined();
+		resolveAgentRequest(plain.requestId, { approved: false });
+		await plain.resp;
+
+		const owned = await openRequest(makeTask({ status: "in-progress", lifecycleStartedAt: STARTED, attachedRepo: "/repo", opsWorktree: true }));
+		expect(listPendingAgentRequests("reset")[0].dialog.branchKept).toBe(true);
+		resolveAgentRequest(owned.requestId, { approved: false });
+		await owned.resp;
+	});
+
 	it("an out-of-task caller (no sourceTaskId) still needs the dialog — origin grants no consent", async () => {
 		const { resp, event, requestId } = await openRequest(makeTask());
 		expect(event).toBe("agentResetRequested");
@@ -194,7 +206,7 @@ describe("task.requestReset (T17, T17b)", () => {
 	it("a run that ends first voids the request as stale — never approved (T9b)", async () => {
 		const { resp } = await openRequest(makeTask({ lifecycleStartedAt: STARTED }));
 		expect(voidAgentRequest("reset", "task-abc12345-1111-2222-3333-444444444444")).toBe(true);
-		expect((await resp).data).toEqual({ approved: false, stale: true });
+		expect((await resp).data).toMatchObject({ approved: false, stale: true });
 		expect(resetTaskToTodo).not.toHaveBeenCalled();
 	});
 

@@ -27,6 +27,8 @@ export interface AgentRequestDecision {
 export interface AgentRequestDialog {
 	taskTitle: string;
 	subject: TaskDialogSubject;
+	/** `reset` only: the task's branch survives the reset. */
+	branchKept?: boolean;
 	/** `launch` only: who asked, for `dev3 approvals list`. */
 	requester?: AgentRequestRequester;
 }
@@ -376,6 +378,19 @@ export function voidAgentRequest(kind: AgentRequestKind, taskId: string): boolea
 	if (!pendingId) return false;
 	log.info("Voiding agent request — its run ended", { kind, taskId: taskId.slice(0, 8), requestId: pendingId });
 	return resolveAgentRequest(pendingId, { approved: false, stale: true });
+}
+
+const AGENT_REQUEST_KINDS: readonly AgentRequestKind[] = ["reset", "complete", "cancel", "launch"];
+
+/**
+ * The task reached Completed/Cancelled, was reset, or was deleted — by ANY path:
+ * the board, a merged PR, another agent. Every request still asking about it is
+ * voided, so its dialog closes on every client and the blocked CLI gets an answer
+ * instead of waiting out its timeout. A request this run's own approval already
+ * settled is gone from the map, so voiding it again is a no-op.
+ */
+export function voidAgentRequestsForTask(taskId: string): void {
+	for (const kind of AGENT_REQUEST_KINDS) voidAgentRequest(kind, taskId);
 }
 
 export function _resetAgentRequestsForTests(): void {

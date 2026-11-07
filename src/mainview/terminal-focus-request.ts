@@ -11,14 +11,19 @@
 
 const EVENT = "dev3:requestTerminalFocus";
 
-export function requestTaskTerminalFocus(taskId: string): void {
-	window.dispatchEvent(new CustomEvent(EVENT, { detail: { taskId } }));
+export interface TerminalFocusOptions {
+	/** Focus the pane already on screen instead of waiting for a freshly spawned one. */
+	currentPane?: boolean;
 }
 
-export function subscribeTaskTerminalFocus(taskId: string, onRequest: () => void): () => void {
+export function requestTaskTerminalFocus(taskId: string, options: TerminalFocusOptions = {}): void {
+	window.dispatchEvent(new CustomEvent(EVENT, { detail: { taskId, ...options } }));
+}
+
+export function subscribeTaskTerminalFocus(taskId: string, onRequest: (options: TerminalFocusOptions) => void): () => void {
 	const listener = (event: Event) => {
-		const detail = (event as CustomEvent<{ taskId: string }>).detail;
-		if (detail?.taskId === taskId) onRequest();
+		const detail = (event as CustomEvent<{ taskId: string } & TerminalFocusOptions>).detail;
+		if (detail?.taskId === taskId) onRequest({ currentPane: detail.currentPane === true });
 	};
 	window.addEventListener(EVENT, listener);
 	return () => window.removeEventListener(EVENT, listener);

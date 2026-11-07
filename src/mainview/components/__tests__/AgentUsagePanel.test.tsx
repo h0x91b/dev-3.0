@@ -599,3 +599,68 @@ describe("AgentUsagePanel — ~/.codex beside a managed Codex account (#1964)", 
 		expect(unmanaged?.textContent).toContain("37% used");
 	});
 });
+
+describe("AgentUsagePanel Kimi group", () => {
+	const kimiSnap = (providerId: string, usedPercent: number) => ({
+		source: "kimi" as const,
+		providerId,
+		capturedAt: Date.now(),
+		windows: [
+			{ id: "five_hour", usedPercent, resetsAt: Date.now() + 3_600_000, windowMinutes: 300 },
+			{ id: "monthly", usedPercent: 7, resetsAt: Date.now() + 86_400_000, windowMinutes: null },
+		],
+		creditsBalance: null,
+		monthlyCredits: null,
+		planType: null,
+	});
+	const renderKimi = (over: Partial<AgentRateLimitsReport>) =>
+		render(
+			<I18nProvider>
+				<AgentUsagePanel report={{ ...report(), ...over }} accounts={accounts()} interactive onOpenSettings={() => {}} />
+			</I18nProvider>,
+		);
+
+	it("shows one row per opted-in provider, with its limits", () => {
+		const base = report();
+		renderKimi({
+			usageProviders: [
+				{ id: "k1", label: "Kimi A", source: "kimi-code" },
+				{ id: "k2", label: "Kimi B", source: "kimi-code" },
+			],
+			snapshots: [...base.snapshots, kimiSnap("k1", 64)],
+		});
+		const a = screen.getByText("Kimi A").closest(".rounded-md")!;
+		expect(a.textContent).toContain("64% used");
+		expect(a.textContent).toContain("1mo");
+		expect(screen.getByText("Kimi B").closest(".rounded-md")!.textContent).toContain("no recent data");
+	});
+
+	it("tells a keyless provider's row to add a key instead of waiting for data", () => {
+		renderKimi({ usageProviders: [{ id: "k1", label: "Kimi A", source: "kimi-code", missingKey: true }] });
+		const row = screen.getByText("Kimi A").closest(".rounded-md")!;
+		expect(row.textContent).toContain("no API key");
+		expect(row.textContent).toContain("Settings → API models");
+		expect(row.textContent).not.toContain("no recent data");
+	});
+
+	it("leaves a reading of a provider that is no longer tracked without a row", () => {
+		const base = report();
+		renderKimi({ usageProviders: [], snapshots: [...base.snapshots, kimiSnap("gone", 90)] });
+		expect(screen.queryByText("Kimi")).toBeNull();
+	});
+
+	it("never offers to make a Kimi row the default", async () => {
+		renderKimi({ usageProviders: [{ id: "k1", label: "Kimi A", source: "kimi-code" }] });
+		await userEvent.click(screen.getByText("Kimi A"));
+		expect(setActive).not.toHaveBeenCalled();
+	});
+
+	it("is a plain group of readings, not a radio group", () => {
+		renderKimi({ usageProviders: [{ id: "k1", label: "Kimi A", source: "kimi-code" }] });
+		const group = screen.getByRole("group", { name: "Kimi" });
+		expect(group.querySelector('[role="radio"], button, [aria-checked]')).toBeNull();
+		expect(group.querySelector('[aria-label*="default account"]')).toBeNull();
+		expect(screen.getAllByRole("radiogroup").map((g) => g.getAttribute("aria-label"))).not.toContain("Kimi");
+	});
+});
+

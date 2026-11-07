@@ -631,9 +631,12 @@ interface StartOptions {
 	/** pty-server's `registerBackpressureProbe`; injected like `getPtyPort`. */
 	registerBackpressureProbe: (sessionKey: string, probe: () => number) => () => void;
 	onQrTokenConsumed?: () => void;
+	/** Called when the last browser RPC client disconnects. */
+	onLastRpcClientGone?: () => void;
 }
 
 let qrConsumedCallback: (() => void) | null = null;
+let lastRpcClientGoneCallback: (() => void) | null = null;
 
 /**
  * Resolve the listen port from DEV3_REMOTE_PORT env, else the `remotePort`
@@ -679,6 +682,7 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 	ptyPortGetter = options.getPtyPort;
 	backpressureProbeRegistrar = options.registerBackpressureProbe;
 	qrConsumedCallback = options.onQrTokenConsumed ?? null;
+	lastRpcClientGoneCallback = options.onLastRpcClientGone ?? null;
 
 	const requestedPort = resolveListenPort();
 	const server = Bun.serve<WsData>({
@@ -895,6 +899,7 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 				if (wsData.type === "rpc") {
 					rpcClients.delete(ws);
 					log.info("Remote RPC client disconnected", { total: rpcClients.size });
+					if (rpcClients.size === 0) lastRpcClientGoneCallback?.();
 				} else if (wsData.type === "pty") {
 					((ws as any)._ptyBackpressureProbeOff as (() => void) | undefined)?.();
 					closeUpstreamSocket((ws as any)._ptyUpstream as WebSocket | undefined);

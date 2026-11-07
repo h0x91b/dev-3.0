@@ -1,10 +1,11 @@
 import type { AgentMessageSource, Project, ResetKeptBranch, Task, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus } from "../../shared/types";
 import { agentReplyCommand, seqIsShared } from "../../shared/agent-message-envelope";
 import { type ExternalSenderRequester, isExternalSenderRequester } from "../../shared/external-senders";
-import { DEFAULT_PRIORITY, agentLaunchAutoApproveMs, buildTaskDialogSubject, getTaskTitle, isCoordinatorTask, taskNeedsReset, taskResetConsent } from "../../shared/types";
+import { DEFAULT_PRIORITY, agentLaunchAutoApproveMs, buildTaskDialogSubject, getTaskTitle, isCoordinatorTask, isOpsWorktreeTask, taskNeedsReset, taskResetConsent } from "../../shared/types";
 import { coordinatorLaunchDefault } from "../../shared/coordinator-launch";
 import { getAllAgents } from "../agents";
-import { createAgentRequest, getAgentRequestState, joinAgentRequest, setAgentRequestLaunchChoice } from "../agent-requests";
+import { createAgentRequest, getAgentRequestState, joinAgentRequest, setAgentRequestLaunchChoice, voidAgentRequest } from "../agent-requests";
+import * as data from "../data";
 import { DESTRUCTIVE_APPROVAL_TARGET, type AgentApprovalNotAttached, type AgentApprovalStatus, type DestructiveApprovalKind } from "../../shared/agent-approval";
 import type { AgentLaunchChoice, LaunchVariant } from "../../shared/types";
 import { deliverLaunchHandoff } from "../agent-launch-handoff";
@@ -25,6 +26,45 @@ export function approvalStatusOf(kind: DestructiveApprovalKind, task: Task): Age
 		// says whether the reset actually happened.
 		...(kind === "reset" ? { resetNeeded: taskNeedsReset(task) } : {}),
 	};
+}
+
+/**
+ * The task's status straight from disk: `null` when the task no longer exists,
+ * `undefined` when the board could not be read (then nothing is concluded).
+ */
+async function liveTaskStatus(project: Project, taskId: string): Promise<TaskStatus | null | undefined> {
+	try {
+		return (await data.loadTasks(project)).find((t) => t.id === taskId)?.status ?? null;
+	} catch {
+		return undefined;
+	}
+}
+
+function runEnded(status: TaskStatus | null | undefined): boolean {
+	return status === null || status === "completed" || status === "cancelled";
+}
+
+/**
+ * Closes the gap between reading the task and registering its request: a move
+ * that lands in between already voided whatever was pending, so it could not
+ * void this one. Re-read AFTER registering and void it here instead — before
+ * any dialog is pushed for a task that is already done or gone.
+ */
+async function voidIfRunEndedMeanwhile(
+	kind: "complete" | "cancel" | "reset" | "launch",
+	project: Project,
+	task: Task,
+): Promise<void> {
+	const status = await liveTaskStatus(project, task.id);
+	// A launch may restart a finished task, so for it only a CHANGE into a
+	// terminal status (or a deletion) ends what the dialog asked about.
+	const ended = kind === "launch" ? status === null || (status !== task.status && runEnded(status)) : runEnded(status);
+	if (ended) voidAgentRequest(kind, task.id);
+}
+
+function isPendingRequest(kind: "complete" | "cancel" | "reset" | "launch", taskId: string, requestId: string): boolean {
+	const state = getAgentRequestState(kind, taskId);
+	return state.state === "pending" && state.requestId === requestId;
 }
 
 /**
@@ -49,7 +89,7 @@ const resetRunByRequestId = new Map<string, Promise<TaskResetResult>>();
 export async function requestDestructiveApproval(
 	kind: DestructiveApprovalKind,
 	params: Record<string, unknown>,
-): Promise<{ approved: boolean; task?: Task; stale?: boolean; plainMove?: boolean; keptBranches?: ResetKeptBranch[] } | AgentApprovalNotAttached> {
+): Promise<{ approved: boolean; task?: Task; stale?: boolean; taskStatus?: TaskStatus | null; plainMove?: boolean; keptBranches?: ResetKeptBranch[] } | AgentApprovalNotAttached> {
 	const { project, task } = await resolveTaskFromParams(params);
 	// A clean To Do card, a draft, a completed/cancelled task: moving it to To Do
 	// destroys nothing, so it stays the ordinary move it always was — no dialog.
@@ -64,6 +104,8 @@ export async function requestDestructiveApproval(
 		// Full read-only context (project, seq, priority, labels, overview)
 		// so the user recognizes which task the prompt destroys.
 		subject: buildTaskDialogSubject(task, project),
+		// An owned Operations worktree is removed on reset, but its branch is kept.
+		...(kind === "reset" && isOpsWorktreeTask(task) ? { branchKept: true } : {}),
 	};
 
 	let request: { requestId: string; decision: Promise<{ approved: boolean; stale?: boolean }> };
@@ -84,20 +126,28 @@ export async function requestDestructiveApproval(
 		if (kind === "reset" && !resetConsentByRequestId.has(request.requestId)) {
 			resetConsentByRequestId.set(request.requestId, taskResetConsent(task));
 		}
+		await voidIfRunEndedMeanwhile(kind, project, task);
 	}
+	const stillAsking = isPendingRequest(kind, task.id, request.requestId);
 
 	// Pushed on EVERY attempt, joined retries and re-attaches included. A retry
 	// used to push nothing, so once a client lost the original dialog the request
 	// became unreachable from the CLI side (h0x91b/dev-3.0#1669). Clients dedup by
 	// `requestId`, so a dialog already on screen is untouched.
-	push?.(kind === "complete" ? "agentCompletionRequested" : kind === "reset" ? "agentResetRequested" : "agentCancellationRequested", {
-		requestId: request.requestId, taskId: task.id, projectId: project.id, ...dialog,
-	});
+	if (stillAsking) {
+		push?.(kind === "complete" ? "agentCompletionRequested" : kind === "reset" ? "agentResetRequested" : "agentCancellationRequested", {
+			requestId: request.requestId, taskId: task.id, projectId: project.id, ...dialog,
+		});
+	}
 
 	const { approved, stale } = await request.decision;
 	if (!approved) {
 		resetConsentByRequestId.delete(request.requestId);
-		return { approved: false, ...(stale ? { stale: true } : {}) };
+		if (!stale) return { approved: false };
+		// Voided: the task finished or vanished by another path. Its live status lets
+		// the CLI tell "already where you asked" apart from "ended some other way".
+		const taskStatus = await liveTaskStatus(project, task.id);
+		return { approved: false, stale: true, ...(taskStatus !== undefined ? { taskStatus } : {}) };
 	}
 	if (kind === "reset") {
 		const { requestId } = request;
@@ -163,7 +213,7 @@ export async function resolveLaunchSuggestion(params: Record<string, unknown>): 
  * `address-a-peer-by-seq-unless-the-seq-is-shared` record).
  */
 type LaunchApprovalOutcome =
-	| { approved: false }
+	| { approved: false; stale?: true }
 	| {
 		approved: true;
 		seq: number;
@@ -241,10 +291,11 @@ export async function requestAgentLaunchApproval(opts: {
 	// Seeds what an unwatched auto-approval launches. A joined retry must not
 	// overwrite a pick the user may already have made in the open dialog.
 	if (suggested && !joining) setAgentRequestLaunchChoice(requestId, { variants: [suggested] });
+	await voidIfRunEndedMeanwhile("launch", project, task);
 	// Pushed on EVERY attempt, joined retries included — see the note on
 	// `task.requestCancellation`. Clients dedup by `requestId`, so a dialog that
 	// is already on screen is untouched and nothing here re-arms the countdown.
-	push("agentLaunchRequested", {
+	if (isPendingRequest("launch", task.id, requestId)) push("agentLaunchRequested", {
 		requestId,
 		taskId: task.id,
 		projectId: project.id,
@@ -264,7 +315,7 @@ export async function requestAgentLaunchApproval(opts: {
 	});
 
 	const answer = await decision;
-	if (!answer.approved) return { approved: false };
+	if (!answer.approved) return answer.stale ? { approved: false, stale: true } : { approved: false };
 
 	// An auto-approval with no client watching carries no launch choice at all —
 	// one default variant, and the inherited priority must still apply, so it is

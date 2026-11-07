@@ -350,7 +350,9 @@ export function isMeteredPlan(plan: string | null | undefined): boolean {
 function dedupeKeyFor(kind: RoutableAccountKind, identity: AgentAccountIdentity | null): string | null {
 	if (kind === "codex") return codexLoginKey(identity);
 	if (!identity?.accountId) return null;
-	return `${identity.accountId}|${identity.organization ?? ""}`;
+	return identity.organizationId
+		? `${identity.accountId}|org:${identity.organizationId}`
+		: `${identity.accountId}|${identity.organization ?? ""}`;
 }
 
 /**

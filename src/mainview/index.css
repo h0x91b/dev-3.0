@@ -507,19 +507,6 @@ body, #root {
 	background: rgb(var(--glass-card-rgb) / var(--glass-card-hover-alpha));
 	border-color: rgb(var(--glass-border-rgb) / var(--glass-border-card-hover-alpha));
 }
-/* A coordinator's identity border, hover included. Needed as a class rule because
-   .glass-card sets border-color and outranks a Tailwind border utility. 2px, because
-   a dashed hairline reads as noise rather than as a deliberate marker. */
-.task-card-coordinator,
-.task-card-coordinator:hover {
-	border-color: rgb(var(--success) / 0.6);
-	border-width: 2px;
-}
-.task-card-board-cleanup,
-.task-card-board-cleanup:hover {
-	border-color: rgb(var(--danger) / 0.6);
-	border-width: 2px;
-}
 
 .glass-header {
 	background: rgb(var(--glass-header-rgb) / var(--glass-header-alpha));
@@ -931,6 +918,66 @@ button {
 @media (prefers-reduced-motion: reduce) {
 	.dev3-marching-ants {
 		animation: none;
+	}
+}
+
+/* ---- Overflow scroll (OverflowScroll.tsx) ----------------------------------
+   A one-line label too wide for its box fades at the right edge; while its row
+   (a button or listbox option) is hovered or keyboard-active, the hidden tail
+   scrolls into view and back. Shift and duration come from the component. */
+@keyframes dev3-overflow-scroll {
+	0%, 15% { transform: translateX(0); }
+	85%, 100% { transform: translateX(var(--dev3-overflow-shift, 0)); }
+}
+
+.dev3-overflow-scroll {
+	display: block;
+	overflow: hidden;
+	white-space: nowrap;
+}
+
+.dev3-overflow-scroll-track {
+	display: inline-block;
+	width: max-content;
+}
+
+.dev3-overflow-scroll[data-overflowing] {
+	-webkit-mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
+	mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
+}
+
+:is(button:hover, [role="option"][data-active]) .dev3-overflow-scroll[data-overflowing] {
+	-webkit-mask-image: none;
+	mask-image: none;
+}
+
+/* Focus stays on a trigger after a pick or Escape, so keyboard focus plays the
+   scroll once (out and back) instead of looping until focus moves elsewhere;
+   the fade lifts only while it plays, so the resting label keeps its edge. */
+@keyframes dev3-overflow-unmask {
+	from, to { -webkit-mask-image: none; mask-image: none; }
+}
+
+button:focus-visible .dev3-overflow-scroll[data-overflowing] {
+	animation: dev3-overflow-unmask calc(var(--dev3-overflow-duration, 3s) * 2) linear;
+}
+
+button:focus-visible .dev3-overflow-scroll[data-overflowing] > .dev3-overflow-scroll-track {
+	animation: dev3-overflow-scroll var(--dev3-overflow-duration, 3s) ease-in-out 2 alternate;
+}
+
+:is(button:hover, [role="option"][data-active]) .dev3-overflow-scroll[data-overflowing] > .dev3-overflow-scroll-track {
+	animation: dev3-overflow-scroll var(--dev3-overflow-duration, 3s) ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	:is(button:hover, button:focus-visible, [role="option"][data-active]) .dev3-overflow-scroll[data-overflowing] > .dev3-overflow-scroll-track {
+		animation: none;
+	}
+	:is(button:hover, button:focus-visible, [role="option"][data-active]) .dev3-overflow-scroll[data-overflowing] {
+		animation: none;
+		-webkit-mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
+		mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
 	}
 }
 

@@ -40,6 +40,7 @@ const common = {
 	"app.agentCancellationCancel": "Mantener la tarea",
 	"app.agentResetTitle": "Se pidió restablecer a Por hacer",
 	"app.agentResetMessage": "Un comando de dev3 —normalmente un agente de IA— pide devolver esta tarea en curso a Por hacer. Si lo apruebas, se detiene su agente y se elimina el worktree con todo lo no confirmado, y su rama si dev3 la creó. Una nota de la tarea guarda cómo recuperar los commits eliminados.\n\nLa tarjeta queda en Por hacer con su título, descripción, notas, etiquetas y ajustes, y la próxima vez empieza de cero.",
+	"app.agentResetMessageBranchKept": "Un comando de dev3 —normalmente un agente de IA— pide devolver esta tarea en curso a Por hacer. Si lo apruebas, se detiene su agente y se elimina el worktree con todo lo no confirmado. La rama de la tarea se conserva.\n\nLa tarjeta queda en Por hacer con su título, descripción, notas, etiquetas y ajustes, y la próxima vez empieza de cero.",
 	"app.agentResetConfirm": "Restablecer tarea",
 	"app.agentResetCancel": "Dejarla como está",
 

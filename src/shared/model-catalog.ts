@@ -40,7 +40,18 @@ export interface CatalogProvider {
 	 * keep meaning exactly what it meant on disk.
 	 */
 	apiFormat?: CustomApiFormat;
+	/**
+	 * Opt-in: which subscription-usage endpoint dev3 may poll on this `custom`
+	 * provider's own base URL. Absent means not tracked — and keeps meaning that
+	 * for every provider saved before this field existed.
+	 */
+	usageSource?: ProviderUsageSource;
 }
+
+/** Usage endpoints dev3 can read from a provider's base URL. */
+export type ProviderUsageSource = "kimi-code";
+
+export const PROVIDER_USAGE_SOURCES: ProviderUsageSource[] = ["kimi-code"];
 
 /** The request shapes dev3 can put in front of a custom endpoint. Both are
  *  proxied by the sidecar; the agent still only ever talks to the proxy. */

@@ -31,6 +31,17 @@ describe("confirmTaskReset", () => {
 		expect(await confirmTaskReset(task, project, t)).toBeNull();
 	});
 
+	it("an Operations worktree task gets the git-style warning and the unsaved-work check, and says its branch is kept", async () => {
+		vi.mocked(confirm).mockResolvedValue(true);
+		const wt = { ...task, attachedRepo: "/repo", opsWorktree: true } as Task;
+		await confirmTaskReset(wt, { ...project, kind: "virtual" } as Project, t);
+		const options = vi.mocked(confirm).mock.calls[0]![0];
+		expect(options.message).toContain("task.confirmResetMessageOpsWorktree");
+		expect(options.message).toContain("feat/dev3-x");
+		expect(options.deferred?.gateConfirm).toBe(true);
+		expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+	});
+
 	it("an Operations task says its folder is kept and runs no git check", async () => {
 		vi.mocked(confirm).mockResolvedValue(true);
 		await confirmTaskReset(task, { ...project, kind: "virtual" } as Project, t);
