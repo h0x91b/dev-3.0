@@ -74,7 +74,7 @@ ux_architecture:
       common_actions: ["add", "clone", "open_settings", "reorder", "remove", "pull_main"]
       kind:   # observed: Project.kind discriminator
         git: "Repo-backed project; tasks get a git worktree + branch (default when kind absent)."
-        virtual: "An 'Operations' board: tasks run an agent + shell in a managed temp dir or a chosen folder; no worktree/branch/PR, review columns hidden; an attached repo (Task.attachedRepo) adds read-only diff+review. Stored in ~/.dev3.0/virtual-projects.json. One built-in board hosts the Quick-shell operation (⇧⌘`)."
+        virtual: "An 'Operations' board: tasks run agent + shell in a managed or chosen folder; no worktree/branch/PR, review columns hidden; an attached repo (Task.attachedRepo) adds read-only diff+review. Stored in ~/.dev3.0/virtual-projects.json. One built-in board hosts the Quick-shell operation (⇧⌘`)."
       evidence: ["src/shared/types.ts (Project.kind)", "src/mainview/components/ActivityOverview.tsx", "src/mainview/components/AddProjectModal.tsx", "src/bun/data.ts (addVirtualProject)", "decisions/2026/06/24/virtual-operations-board-identity.md"]
     space:
       label: "Space"

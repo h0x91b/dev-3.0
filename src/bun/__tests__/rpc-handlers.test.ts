@@ -2659,6 +2659,16 @@ describe("handlers.createTask", () => {
 			expect(vi.mocked(data.addTask).mock.calls[0][3]).toEqual({ opsWorkDir: "/Users/me/Downloads" });
 		});
 
+		it("attaches nothing for a repo inside another task's managed dir, keeping the folder", async () => {
+			vi.mocked(data.getProject).mockResolvedValue(vproject());
+			vi.mocked(data.addTask).mockResolvedValue(makeTask({ projectId: "vp1", status: "todo" }));
+			vi.mocked(git.getRepoTopLevel).mockResolvedValueOnce("/tmp/test-dev3/ops/operations/other/work/clone");
+
+			await handlers.createTask({ projectId: "vp1", description: "ops", opsWorkDir: "/tmp/test-dev3/ops/operations/other/work/clone", opsWorktree: true });
+
+			expect(vi.mocked(data.addTask).mock.calls[0][3]).toEqual({ opsWorkDir: "/tmp/test-dev3/ops/operations/other/work/clone" });
+		});
+
 		it("attaches nothing when the folder is not inside a repo", async () => {
 			vi.mocked(data.getProject).mockResolvedValue(vproject());
 			vi.mocked(data.addTask).mockResolvedValue(makeTask({ projectId: "vp1", status: "todo" }));

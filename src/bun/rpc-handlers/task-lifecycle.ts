@@ -19,6 +19,7 @@ import { nextKeepAliveState } from "../../shared/keep-alive";
 import { boardPorts } from "../board-operations/runtime";
 import { USER_ACTOR } from "../board-operations/types";
 import { getResourceUsage } from "../resource-monitor";
+import { isInsideOpsDir } from "../ops-worktree";
 import { assertLaunchAgentsInstalled, routableLaunchKind } from "../agent-launch-availability";
 import {
 	nativeTerminalAvailability,
@@ -199,7 +200,9 @@ async function resolveOpsRepo(project: Project, opsWorkDir?: string | null, want
 	opsWorktree: boolean;
 	baseBranch: string | null;
 }> {
-	const attachedRepo = project.kind === "virtual" && opsWorkDir ? await git.getRepoTopLevel(opsWorkDir) : null;
+	const found = project.kind === "virtual" && opsWorkDir ? await git.getRepoTopLevel(opsWorkDir) : null;
+	// A repo inside another task's managed dir goes with that task: keep the folder, attach nothing.
+	const attachedRepo = found && !isInsideOpsDir(found) ? found : null;
 	const opsWorktree = !!attachedRepo && wantWorktree === true;
 	const baseBranch = attachedRepo
 		? opsWorktree ? await git.getDefaultBranch(attachedRepo, { local: true }) : await git.getDefaultBranch(attachedRepo, { local: true }).catch(() => null)

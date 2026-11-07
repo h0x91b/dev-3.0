@@ -19,7 +19,7 @@ import * as github from "../github";
 import { loadSettings } from "../settings";
 import { DEFAULT_TMUX_SOCKET } from "../tmux";
 import { dev3TaskTempPath } from "../temp-paths";
-import { OPS_DIR } from "../paths";
+import { isInsideOpsDir } from "../ops-worktree";
 import { deliverAgentPrompt } from "../agent-prompt-delivery";
 import type { AgentPromptDelivery } from "../../shared/agent-prompt-delivery";
 import { auxPaneAlive, auxPaneTitle, openAuxPane } from "../task-aux-panes";
@@ -931,7 +931,8 @@ async function openPullRequest(params: { taskId: string; projectId: string }): P
 
 /** What the New Task modal needs to know about a picked folder: is it in a git repo, and which branch would a worktree start from. */
 async function inspectOpsFolder(params: { path: string }): Promise<{ repoRoot: string | null; defaultBranch: string | null }> {
-	const repoRoot = await git.getRepoTopLevel(params.path);
+	const found = await git.getRepoTopLevel(params.path);
+	const repoRoot = found && !isInsideOpsDir(found) ? found : null;
 	const defaultBranch = repoRoot ? await git.getDefaultBranch(repoRoot, { local: true }).catch(() => null) : null;
 	return { repoRoot, defaultBranch };
 }
@@ -951,8 +952,7 @@ async function setTaskAttachedRepo(params: { taskId: string; projectId: string; 
 	if (params.path !== null) {
 		root = await git.getRepoTopLevel(params.path);
 		if (!root) throw new Error(`Not a git repository: ${params.path}`);
-		// Task work dirs under OPS_DIR are deleted with the task; a repo inside one would go with it.
-		if (root.startsWith(`${OPS_DIR}/`)) throw new Error(`A repository inside an Operations task folder cannot be attached: ${root}`);
+		if (isInsideOpsDir(root)) throw new Error(`A repository inside an Operations task folder cannot be attached: ${root}`);
 	}
 	// Detected once here, not on every status poll: a repo without origin/HEAD makes detection hit the network.
 	const defaultBranch = root ? await git.getDefaultBranch(root, { local: true }).catch(() => null) : null;

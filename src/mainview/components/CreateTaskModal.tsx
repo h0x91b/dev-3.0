@@ -114,7 +114,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 	// Virtual ops only: chosen fixed working folder (null = managed temp dir).
 	// A draft starts from the folder it already saved (a worktree-mode draft has the repo only).
 	const initialOpsFolder = draftTask?.opsWorkDir ?? draftTask?.attachedRepo ?? null;
-	const initialOpsWorktree = draftTask ? draftTask.opsWorktree === true : true;
+	const initialOpsWorktree = draftTask?.opsWorktree === true;
 	const [opsFolder, setOpsFolder] = useState<string | null>(initialOpsFolder);
 	const [opsFolderConflict, setOpsFolderConflict] = useState(false);
 	// Set while the chosen folder is inside a git repo: offers a worktree of it.
@@ -173,7 +173,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 		setOpsFolder(null);
 		setOpsFolderConflict(false);
 		setOpsRepo(null);
-		setOpsWorktree(true);
+		setOpsWorktree(false);
 		setOpsInspecting(false);
 		opsInspectRef.current++;
 		// Preset prompts can be overridden per project, so the injected text belongs
@@ -348,7 +348,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 		setOpsFolder(folder);
 		const inspectId = ++opsInspectRef.current;
 		setOpsRepo(null);
-		setOpsWorktree(true);
+		setOpsWorktree(false);
 		setOpsInspecting(true);
 		api.request.inspectOpsFolder({ path: folder })
 			.then(({ repoRoot, defaultBranch }) => {

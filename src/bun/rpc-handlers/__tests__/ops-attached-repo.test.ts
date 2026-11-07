@@ -17,10 +17,13 @@ vi.mock("../../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 vi.mock("../../paths", async (importOriginal) => {
-	const { realpathSync, mkdirSync } = await import("node:fs");
+	const { existsSync, mkdirSync, realpathSync, symlinkSync } = await import("node:fs");
 	const { tmpdir } = await import("node:os");
-	const opsDir = `${realpathSync(tmpdir())}/dev3-ops-dir-test`;
-	mkdirSync(opsDir, { recursive: true });
+	// OPS_DIR behind a symlink, as when ~/.dev3.0 is one: git reports repo roots resolved.
+	const real = `${realpathSync(tmpdir())}/dev3-ops-dir-test`;
+	const opsDir = `${realpathSync(tmpdir())}/dev3-ops-dir-test-link`;
+	mkdirSync(real, { recursive: true });
+	if (!existsSync(opsDir)) symlinkSync(real, opsDir);
 	return { ...(await importOriginal<typeof import("../../paths")>()), DEV3_HOME: "/tmp/dev3-test", OPS_DIR: opsDir };
 });
 vi.mock("../../spawn", async () => {
@@ -317,6 +320,15 @@ describe("inspectOpsFolder", () => {
 		const sub = join(root, "src");
 		mkdirSync(sub, { recursive: true });
 		expect(await handlers.inspectOpsFolder({ path: sub })).toEqual({ repoRoot: root, defaultBranch: "main" });
+	});
+
+	it("returns nulls for a repo inside an Operations task folder", async () => {
+		const { OPS_DIR } = await import("../../paths");
+		const inside = `${OPS_DIR}/slug/abcdef12/work/clone`;
+		mkdirSync(inside, { recursive: true });
+		g("git init -q", inside);
+		expect(await handlers.inspectOpsFolder({ path: inside })).toEqual({ repoRoot: null, defaultBranch: null });
+		rmSync(`${OPS_DIR}/slug`, { recursive: true, force: true });
 	});
 
 	it("returns nulls for a folder outside any repo", async () => {

@@ -1560,14 +1560,15 @@ describe("CreateTaskModal — Operations worktree toggle", () => {
 		await userEvent.click(screen.getByText("Choose folder…"));
 	}
 
-	it("a repo folder shows the checkbox, checked, naming the base branch, and submit passes opsWorktree", async () => {
+	it("a repo folder shows the checkbox, unchecked, naming the base branch; checking it passes opsWorktree", async () => {
 		mockedApi.request.inspectOpsFolder.mockResolvedValue({ repoRoot: "/Users/me/repo", defaultBranch: "master" });
 		renderModal({ project: vproject });
 		await pickFolderAndSave();
 
 		const box = await screen.findByTestId("create-task-ops-worktree");
-		expect(box).toBeChecked();
+		expect(box).not.toBeChecked();
 		expect(screen.getByText("Work in a separate worktree (new branch from master)")).toBeInTheDocument();
+		await userEvent.click(box);
 
 		await userEvent.click(screen.getByText("Save"));
 		await waitFor(() => {
@@ -1577,11 +1578,11 @@ describe("CreateTaskModal — Operations worktree toggle", () => {
 		});
 	});
 
-	it("unchecking it sends the folder only", async () => {
+	it("left unchecked, it sends the folder only, so the agent works in the picked folder", async () => {
 		mockedApi.request.inspectOpsFolder.mockResolvedValue({ repoRoot: "/Users/me/repo", defaultBranch: "main" });
 		renderModal({ project: vproject });
 		await pickFolderAndSave();
-		await userEvent.click(await screen.findByTestId("create-task-ops-worktree"));
+		await screen.findByTestId("create-task-ops-worktree");
 
 		await userEvent.click(screen.getByText("Save"));
 		await waitFor(() => expect(mockedApi.request.createTask).toHaveBeenCalled());
@@ -1600,7 +1601,7 @@ describe("CreateTaskModal — Operations worktree toggle", () => {
 		await act(async () => { answer({ repoRoot: "/Users/me/repo", defaultBranch: "main" }); });
 
 		await waitFor(() => expect(screen.getByText("Save").closest("button")).toBeEnabled());
-		expect(screen.getByTestId("create-task-ops-worktree")).toBeChecked();
+		expect(screen.getByTestId("create-task-ops-worktree")).not.toBeChecked();
 	});
 
 	it("a folder outside any repo shows no checkbox", async () => {
@@ -1695,11 +1696,11 @@ describe("CreateTaskModal — Operations worktree toggle", () => {
 			expect(screen.getByTestId("create-task-save-draft")).toBeDisabled();
 		});
 
-		it("a newly picked repo folder is saved with the worktree flag", async () => {
+		it("a newly picked repo folder is saved with the worktree flag once it is checked", async () => {
 			mockedApi.request.inspectOpsFolder.mockResolvedValue({ repoRoot: "/Users/me/other", defaultBranch: "trunk" });
 			renderModal({ project: vproject, draftTask: { ...opsDraft, attachedRepo: undefined, opsWorktree: undefined, baseBranch: "" } });
 			await userEvent.click(screen.getByText("Choose folder…"));
-			await screen.findByTestId("create-task-ops-worktree");
+			await userEvent.click(await screen.findByTestId("create-task-ops-worktree"));
 			await userEvent.click(screen.getByText("Save"));
 
 			await waitFor(() => expect(mockedApi.request.editTask).toHaveBeenCalledWith(
