@@ -285,14 +285,15 @@ Read the tail yourself; peek does not classify state. \`last output unknown\` me
 const SKILL_ASK_TO_LAUNCH = `
 ## Asking to start another task (user approval required)
 
-You may ask the user to set another task running; you never launch anything yourself. Both commands **block for up to 10 minutes** while they pick an agent and approve or decline:
+You may ask the user to start another task; you never launch anything yourself. A move or \`--run\` **blocks up to 10 minutes** while they pick an agent and approve or decline:
 
-- **An existing To Do task** → \`dev3 task move --task seq:<N> --status in-progress\`. Not your task, so the ordinary board move becomes an approval request.
-- **A throwaway peer agent** → \`dev3 task create --scratch --run\`. A scratch task has **no prompt by design** — it starts idle and you drive it with messages.
+- **An existing To Do task** → \`dev3 task move --task seq:<N> --status in-progress\`. Not yours, so it becomes an approval request.
+- **After another task finishes** → \`dev3 task update --task seq:<N> --start-after seq:<M> [--until merged]\` (or on \`task create\`); it asks when it fires. Never poll.
+- **A throwaway peer agent** → \`dev3 task create --scratch --run\`. It starts idle, with **no prompt by design**: drive it with messages.
 
-It **inherits your priority** unless it has its own; only the user may change that band. Approval returns its \`seq\` and reply command. Its first prompt already names you, treats its description as the brief, and asks for file reports sent back as paths. Add standing instructions with \`--handoff-file <path>\`; \`--agent <id> --config <id>\` (from \`dev3 agent list\`) preselects the picker. **Declined** → exit 10, nothing launched: ask what to change. **Timeout** → approval may still arrive later. An unanswered dialog **approves itself after a few minutes** (5 by default, configurable, switchable off); a retry joins it without restarting its clock.
+It **inherits your priority** unless it has its own. Approval returns its \`seq\` and reply command. Its first prompt names you, takes its description as the brief and asks for reports as file paths. Add standing instructions with \`--handoff-file <path>\`; \`--agent <id> --config <id>\` (from \`dev3 agent list\`) preselects the picker. **Declined** → exit 10, nothing launched: ask what to change. **Timeout** → approval may still arrive later. An unanswered dialog **approves itself** (5 min by default, configurable); a retry joins it without restarting its clock.
 
-Use it only for work that belongs in its own session — never to escape your scope, never several at once: each interrupts the user.
+Use it only for work that needs its own session — never to escape your scope, never several at once: each interrupts the user.
 
 **Extra agent in an existing task** → \`dev3 agent spawn --task seq:<N> --prompt "brief"\`: new pane, same worktree and approval, prints the pane ID; default account unless the user picks another. \`--handoff\` adds the conversation retelling. Messages reach the task's main agent, not this pane. Terminal gone → \`dev3 agent resume\` first. Idle → \`dev3 task hibernate --task seq:<N>\` frees its memory (declined: exit 36); \`dev3 task wake\` brings it back.
 
