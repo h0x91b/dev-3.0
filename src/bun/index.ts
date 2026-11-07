@@ -843,7 +843,7 @@ function runGlobalQuitCleanup(): void {
 	// Snapshot window geometry so an update restart reopens on the same screen.
 	try { flushWindowState(); } catch (err) { log.warn("flushWindowState failed", { error: String(err) }); }
 	try { stopPortScanPoller(); } catch (err) { log.warn("stopPortScanPoller failed", { error: String(err) }); }
-	try { stopBackgroundSchedulers(); } catch (err) { log.warn("stopBackgroundSchedulers failed", { error: String(err) }); }
+	try { void stopBackgroundSchedulers(); } catch (err) { log.warn("stopBackgroundSchedulers failed", { error: String(err) }); }
 	try { stopResourceMonitor(); } catch (err) { log.warn("stopResourceMonitor failed", { error: String(err) }); }
 	try { stopRateLimitMonitor(); } catch (err) { log.warn("stopRateLimitMonitor failed", { error: String(err) }); }
 	try { stopSocketServer(); } catch (err) { log.warn("stopSocketServer failed", { error: String(err) }); }

@@ -1,10 +1,10 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { calls, record } = vi.hoisted(() => {
 	const calls: string[] = [];
-	return { calls, record: (name: string) => () => { calls.push(name); } };
+	return { calls, record: (name: string) => () => { calls.push(name); return Promise.resolve(); } };
 });
 
 vi.mock("../focus-tracker", () => ({
@@ -45,9 +45,11 @@ const OTHER_JOBS = { start: ["startFocusTracker"], stop: ["stopFocusTracker"] };
 function expectedJobs(prefix: "start" | "stop"): string[] {
 	const schedulers = readdirSync(BUN_DIR)
 		.filter((file) => file.endsWith("-scheduler.ts"))
-		.flatMap((file) => [...source(file).matchAll(new RegExp(`^export function (${prefix}\\w+Scheduler)\\(`, "gm"))].map((m) => m[1]));
+		.flatMap((file) => [...source(file).matchAll(new RegExp(`^export (?:async function |function |const )(${prefix}\\w+Scheduler)\\b`, "gm"))].map((m) => m[1]));
 	return [...schedulers, ...OTHER_JOBS[prefix]].sort();
 }
+
+const CLOCK_STARTS = () => expectedJobs("start").filter((name) => !OTHER_JOBS.start.includes(name));
 
 // Top-level `startX(` statements of an entry. Both entries boot the whole app, so
 // they cannot be imported in a test; their source is the cheapest evidence.
@@ -66,15 +68,60 @@ const DESKTOP_ONLY: Record<string, string> = {
 
 describe("background schedulers", () => {
 	beforeEach(() => { calls.length = 0; });
+	afterEach(async () => {
+		await stopBackgroundSchedulers();
+		vi.useRealTimers();
+	});
 
 	it("starts every scheduler module in src/bun and the focus tracker", () => {
 		startBackgroundSchedulers();
 		expect([...calls].sort()).toEqual(expectedJobs("start"));
 	});
 
-	it("stops every scheduler module in src/bun and the focus tracker", () => {
-		stopBackgroundSchedulers();
+	it("stops every scheduler module in src/bun and the focus tracker", async () => {
+		await stopBackgroundSchedulers();
 		expect([...calls].sort()).toEqual(expectedJobs("stop"));
+	});
+
+	it("keeps stopping the rest, and flushes focus time, when one stop throws", async () => {
+		const automations = await import("../automations-scheduler");
+		vi.spyOn(automations, "stopAutomationsScheduler").mockImplementationOnce(() => { throw new Error("boom"); });
+		await stopBackgroundSchedulers();
+		expect([...calls].sort()).toEqual(expectedJobs("stop").filter((name) => name !== "stopAutomationsScheduler"));
+	});
+
+	describe("yielding to another dev3 process", () => {
+		it("runs only the focus tracker while a peer is alive", () => {
+			startBackgroundSchedulers({ yieldToPeers: true, hasPeers: () => true });
+			expect(calls).toEqual(["startFocusTracker"]);
+		});
+
+		it("takes the schedulers over when the peer exits, and hands them back when one appears", () => {
+			vi.useFakeTimers();
+			let peers = true;
+			startBackgroundSchedulers({ yieldToPeers: true, hasPeers: () => peers });
+			calls.length = 0;
+			peers = false;
+			vi.advanceTimersByTime(10_000);
+			expect([...calls].sort()).toEqual(CLOCK_STARTS());
+			calls.length = 0;
+			vi.advanceTimersByTime(10_000);
+			expect(calls, "a steady state starts nothing twice").toEqual([]);
+			peers = true;
+			vi.advanceTimersByTime(10_000);
+			expect(calls.every((name) => name.startsWith("stop") && name !== "stopFocusTracker")).toBe(true);
+			expect(calls).toHaveLength(CLOCK_STARTS().length);
+		});
+
+		it("treats a failing peer probe as a peer, so nothing can fire twice", () => {
+			startBackgroundSchedulers({ yieldToPeers: true, hasPeers: () => { throw new Error("EACCES"); } });
+			expect(calls).toEqual(["startFocusTracker"]);
+		});
+
+		it("is what headless asks for, and the desktop does not", () => {
+			expect(source("headless-entry.ts")).toMatch(/^startBackgroundSchedulers\(\{ yieldToPeers: true \}\);$/m);
+			expect(source("index.ts")).toMatch(/^startBackgroundSchedulers\(\);$/m);
+		});
 	});
 
 	it.each(["index.ts", "headless-entry.ts"])("%s starts them through the shared call only", (file) => {
@@ -90,7 +137,11 @@ describe("background schedulers", () => {
 		expect(missing).toEqual([]);
 	});
 
+	it("headless drops the foreground flag when its last browser leaves", () => {
+		expect(source("headless-entry.ts")).toMatch(/onLastRpcClientGone: \(\) => setAppForeground\(false\)/);
+	});
+
 	it("headless stops the schedulers on shutdown", () => {
-		expect(source("headless-entry.ts")).toMatch(/^\tstopBackgroundSchedulers\(\);$/m);
+		expect(source("headless-entry.ts")).toMatch(/^\tconst focusFlushed = stopBackgroundSchedulers\(\);$/m);
 	});
 });

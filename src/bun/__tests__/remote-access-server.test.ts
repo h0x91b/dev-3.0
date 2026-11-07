@@ -135,6 +135,36 @@ describe("PTY proxy initial geometry", () => {
 	});
 });
 
+describe("last RPC client leaving", () => {
+	it("is reported once the final browser disconnects, not before", async () => {
+		const originalServe = Bun.serve;
+		let handlers: any;
+		const onLastRpcClientGone = vi.fn();
+		try {
+			(Bun as any).serve = (options: any) => {
+				handlers = options.websocket;
+				return { port: 12345 };
+			};
+			await startRemoteAccessServer({
+				rpcHandler: async () => ({}), getPtyPort: () => 12346,
+				registerBackpressureProbe: () => () => {},
+				onLastRpcClientGone,
+			});
+			const phone = { data: { type: "rpc" } };
+			const laptop = { data: { type: "rpc" } };
+			handlers.open(phone);
+			handlers.open(laptop);
+			handlers.close(phone);
+			expect(onLastRpcClientGone).not.toHaveBeenCalled();
+			handlers.close(laptop);
+			expect(onLastRpcClientGone).toHaveBeenCalledTimes(1);
+		} finally {
+			Bun.serve = originalServe;
+			resetRemoteAccessStartState();
+		}
+	});
+});
+
 // Exercises the REAL boundary check the server uses, not a copy of it.
 function resolveSafePath(staticRoot: string, pathname: string): string | null {
 	const filePath = resolve(staticRoot, "." + pathname);

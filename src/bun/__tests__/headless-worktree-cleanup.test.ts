@@ -13,12 +13,12 @@ const BACKGROUND_SCHEDULERS = fileURLToPath(new URL("../background-schedulers.ts
 describe("daily worktree cleanup on a headless install", () => {
 	it("is started by the headless entry, and stopped on shutdown", () => {
 		const source = readFileSync(HEADLESS_ENTRY, "utf-8");
-		expect(source, "headless-entry must start the schedulers like index.ts does").toMatch(/^startBackgroundSchedulers\(\);$/m);
+		expect(source, "headless-entry must start the schedulers like index.ts does").toMatch(/^startBackgroundSchedulers\(/m);
 		const shutdown = source.slice(source.indexOf("function shutdown("));
 		expect(shutdown).toContain("stopBackgroundSchedulers();");
 		const shared = readFileSync(BACKGROUND_SCHEDULERS, "utf-8");
 		expect(shared).toMatch(/^\tstartWorktreeCleanupScheduler\(\);$/m);
-		expect(shared).toMatch(/^\tstopWorktreeCleanupScheduler\(\);$/m);
+		expect(shared).toMatch(/^\t\tstopWorktreeCleanupScheduler,$/m);
 	});
 });
 
