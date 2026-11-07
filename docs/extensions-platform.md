@@ -10,12 +10,14 @@ dev3's own surfaces on that runtime, so almost any part of the app can be shippe
 extension. This only works if agents can write, debug, see and install extensions on their own, so agent
 developer experience is a first-class part of the goal, not an afterthought.
 
+**Cordis** (npm `cordis`) is the plugin runtime this rests on: each plugin gets a context `ctx`, registers what it contributes and uses services the host provides (`ctx.board`), and unloading a plugin removes all of it automatically. React still renders; Cordis tracks who contributed what and for how long. Glossary entry: `docs/glossary.md`.
+
 ## Phases
 
 | # | Phase | Status |
 |---|---|---|
-| 1 | Board views on Cordis: the first real proof | Done technically; UX polish and merge pending |
-| 2 | Agent DX for writing extensions | Proposed, not started |
+| 1 | Board views on Cordis: the first real proof | Done; merged to `main` via #2143 (2026-11-07) |
+| 2 | Agent DX for writing extensions | Started: `dev3-extensions` skill task (2026-11-07) |
 | 3 | Reliability bar: what "works well and reliably" means before migrating more | Partly covered by phase 1 |
 | 4 | Migrate dev3 surfaces to plugins, one at a time | Not started; order not decided |
 
@@ -35,12 +37,12 @@ Done:
 - CI green on the umbrella head. The extension path was verified in Chromium, Playwright WebKit 26, and on
   2026-11-07 by Arseny in the desktop app (WKWebView on `views://`).
 
-Remaining before the merge to `main`:
+Closing checklist:
 
-- [-] UX polish of every new screen (better-interface / better-ui pass, 2026-11-07).
-- [ ] Remove `feat/dev3-cordis-board-host` from `on.pull_request.branches` in `.github/workflows/build.yml`.
-- [ ] Move the changelog entries to the actual merge date.
-- [ ] Merge #2143 (Arseny's go).
+- [x] UX polish of every new screen (better-interface / better-ui pass, zebra rows, 2026-11-07).
+- [x] Remove `feat/dev3-cordis-board-host` from `on.pull_request.branches` in `.github/workflows/build.yml`.
+- [x] Move the changelog entries to the actual merge date.
+- [x] Merge #2143 (Arseny's go, auto-merge on green CI).
 
 Design records: `decisions/2026/10/31/pluggable-board-views-on-cordis.md`,
 `decisions/2026/10/31/board-host-cordis-provision.md`,
