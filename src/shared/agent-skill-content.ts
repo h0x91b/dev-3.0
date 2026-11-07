@@ -393,21 +393,22 @@ export const PI_SKILL_BODY = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_S
 export const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_REVIEW_TASK_AND_DESCRIPTION + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_ASK_TO_LAUNCH + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_PEEK + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_PANES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL + SKILL_MANUAL_COMPLETION;
 
 // Lean bodies (opt-in, `DEV3_LEAN_PROTOCOL=1`): the sections an agent must follow
-// before it would think to look anything up, kept verbatim. The rest stays on
-// demand in the full body, which the launcher writes to a file and names here.
+// before it would think to look anything up, kept verbatim; attention stays because its
+// MUST-ping rules fire on events, not on a chosen feature. The rest stays on demand in
+// the full body, which the launcher writes to a file and names here.
 const SKILL_LEAN_CORE = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION;
 
-export const CLAUDE_LEAN_SKILL_BODY = SKILL_LEAN_CORE + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK;
-export const CODEX_LEAN_SKILL_BODY = SKILL_LEAN_CORE + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_CODEX_SHELL;
-export const OMP_LEAN_SKILL_BODY = SKILL_LEAN_CORE + SKILL_STATUS_OMP_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK;
-export const PI_LEAN_SKILL_BODY = SKILL_LEAN_CORE + SKILL_STATUS_PI_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK;
-export const GENERIC_LEAN_SKILL_BODY = SKILL_LEAN_CORE + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_CODEX_SHELL;
+export const CLAUDE_LEAN_SKILL_BODY = SKILL_LEAN_CORE + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_GET_ATTENTION;
+export const CODEX_LEAN_SKILL_BODY = SKILL_LEAN_CORE + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_GET_ATTENTION + SKILL_CODEX_SHELL;
+export const OMP_LEAN_SKILL_BODY = SKILL_LEAN_CORE + SKILL_STATUS_OMP_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_GET_ATTENTION;
+export const PI_LEAN_SKILL_BODY = SKILL_LEAN_CORE + SKILL_STATUS_PI_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_GET_ATTENTION;
+export const GENERIC_LEAN_SKILL_BODY = SKILL_LEAN_CORE + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_GET_ATTENTION + SKILL_CODEX_SHELL;
 
 /** The closing section of a lean body: where the rest of the protocol lives. */
 export function leanProtocolReference(fullProtocolPath: string): string {
 	return `
 ## Full protocol reference
 
-This launch carries the lean dev3 protocol. The rules above are binding. Everything else is in the full protocol at \`${fullProtocolPath}\`: read it before you use a dev3 feature not described above. That covers requesting other tasks or agents, messaging peers, notes, conversation search, peek, dev server control, HTML artifacts, getting the user's attention, panes, project configuration, vents, review tasks, editing a live task's description, and merge completion planning. Run \`dev3 --help\` for the full CLI reference.
+This launch carries the lean dev3 protocol. The rules above are binding. Everything else is in the full protocol at \`${fullProtocolPath}\`: read it before you use a dev3 feature not described above. That covers requesting other tasks or agents, messaging peers, notes, conversation search, peek, dev server control, HTML artifacts, panes, project configuration, vents, review tasks, editing a live task's description, and merge completion planning. Run \`dev3 --help\` for the full CLI reference.
 `;
 }

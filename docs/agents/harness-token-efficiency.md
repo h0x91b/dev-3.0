@@ -100,15 +100,15 @@ To try it after building this branch's CLI, run `DEV3_COMPACT_AGENT_SKILLS=1 dev
 
 ## Lean protocol experiment
 
-`DEV3_LEAN_PROTOCOL=1` on the server process changes what each launch injects, which `DEV3_COMPACT_AGENT_SKILLS` leaves byte-identical. The launcher writes the full family body to `~/.dev3.0/data/agent-prompts/<command>.md`, then injects the lean body plus a closing section that names that file and `dev3 --help`. The lean body keeps existing sections verbatim: header, Bug Hunter isolation, session start, branch naming, title/labels/priority/type, status with the completion gate, overview, scratch tasks and the Codex shell note. Claude, omp, pi, Codex, Cursor and OpenCode are affected. Gemini and custom agents inject no protocol either way. Copilot still gets the full body: its `sessionStart` hook answers from the `dev3` CLI process (`src/cli/commands/copilot-hook.ts`), which does not read the server flag.
+`DEV3_LEAN_PROTOCOL=1` on the server process changes what each launch injects, which `DEV3_COMPACT_AGENT_SKILLS` leaves byte-identical. The launcher writes the full family body to `~/.dev3.0/data/agent-prompts/<command>.md`, then injects the lean body plus a closing section that names that file and `dev3 --help`. The lean body keeps existing sections verbatim: header, Bug Hunter isolation, session start, branch naming, title/labels/priority/type, status with the completion gate, overview, scratch tasks, getting the user's attention (its MUST-ping rules fire on events) and the Codex shell note. Claude, omp, pi, Codex, Cursor and OpenCode are affected. Gemini and custom agents inject no protocol either way. Copilot still gets the full body: its `sessionStart` hook answers from the `dev3` CLI process (`src/cli/commands/copilot-hook.ts`), which does not read the server flag.
 
 | Family | Full bytes | Lean bytes, with reference | Removed |
 | --- | ---: | ---: | ---: |
-| Claude | 27,222 | 9,211 | 66% |
-| Codex | 27,989 | 9,978 | 64% |
-| omp | 27,747 | 9,736 | 65% |
-| pi | 27,745 | 9,734 | 65% |
-| Generic (Cursor, OpenCode) | 27,791 | 9,780 | 65% |
+| Claude | 27,178 | 11,714 | 57% |
+| Codex | 27,945 | 12,481 | 55% |
+| omp | 27,703 | 12,239 | 56% |
+| pi | 27,701 | 12,237 | 56% |
+| Generic (Cursor, OpenCode) | 27,747 | 12,283 | 56% |
 
 Lean byte counts use a 44-byte example path; the real path changes them by a few bytes. The flag is read per launch, so restart the server with it set and start fresh sessions; unset it to roll back. The evaluation plan below applies unchanged: lean text is not proof of equal task quality. Rationale: `decisions/2026/10/02/lean-protocol-opt-in.md`.
 

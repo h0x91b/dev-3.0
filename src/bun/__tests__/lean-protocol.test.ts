@@ -53,9 +53,10 @@ function onPosix(): void {
 }
 
 function promptFileOf(cmd: string): string {
-	const match = cmd.match(/--append-system-prompt-file '?([^' ]+)'?/);
-	if (!match?.[1]) throw new Error(`no prompt file in: ${cmd.slice(0, 300)}`);
-	return match[1];
+	const match = cmd.match(/--append-system-prompt-file (?:'([^']+)'|(\S+))/);
+	const file = match?.[1] ?? match?.[2];
+	if (!file) throw new Error(`no prompt file in: ${cmd.slice(0, 300)}`);
+	return file;
 }
 
 const LEAN_PAIRS: Array<[name: string, lean: string, full: string]> = [
@@ -87,13 +88,14 @@ describe("lean protocol bodies", () => {
 				"**Preservation gate (mandatory):**",
 				"## Overview (MANDATORY)",
 				"## Scratch tasks",
+				"MUST ping, one per logical event",
 			]) {
 				expect(lean, rule).toContain(rule);
 			}
 		});
 
-		it(`${name}: is under 40% of the full body`, () => {
-			expect(lean.length).toBeLessThan(full.length * 0.4);
+		it(`${name}: is under 45% of the full body`, () => {
+			expect(lean.length).toBeLessThan(full.length * 0.45);
 		});
 	}
 
