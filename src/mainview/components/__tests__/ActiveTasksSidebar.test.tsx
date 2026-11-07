@@ -963,14 +963,15 @@ function makeTask(overrides?: Partial<Task>): Task {
 		expect(screen.queryByTestId("sidebar-hide")).not.toBeInTheDocument();
 	});
 
-	it("shows a compact status-age badge with a descriptive tooltip", async () => {
+	it("shows the creation and last-status-change stamps with descriptive tooltips", async () => {
 		const user = userEvent.setup();
+		const createdAt = new Date(Date.now() - 3 * 86_400_000).toISOString();
 		const movedAt = new Date(Date.now() - 5 * 60_000).toISOString();
 		render(
 			<I18nProvider>
 				<ActiveTasksSidebar
 					project={project}
-					tasks={[makeTask({ movedAt })]}
+					tasks={[makeTask({ createdAt, movedAt })]}
 					activeTaskId="t1"
 					dispatch={vi.fn()}
 					navigate={vi.fn()}
@@ -981,20 +982,23 @@ function makeTask(overrides?: Partial<Task>): Task {
 			</I18nProvider>,
 		);
 
-		const badge = screen.getByTestId("sidebar-status-age-t1");
-		expect(badge).toHaveTextContent("5m");
-		await user.hover(badge);
+		expect(screen.getByTestId("sidebar-age-t1-created")).toHaveTextContent("3d");
+		const activity = screen.getByTestId("sidebar-age-t1-activity");
+		expect(activity).toHaveTextContent("5m");
+		expect(activity).toHaveAttribute("data-freshness", "live");
+		await user.hover(activity);
 		const tooltip = await screen.findByRole("tooltip");
 		expect(tooltip).toHaveTextContent("Status changed");
 		expect(tooltip).toHaveTextContent("5m ago");
 	});
 
-	it("omits the status-age badge when movedAt is absent", () => {
+	it("falls back to the creation time when the task never changed status", () => {
+		const createdAt = new Date(Date.now() - 3 * 86_400_000).toISOString();
 		render(
 			<I18nProvider>
 				<ActiveTasksSidebar
 					project={project}
-					tasks={[makeTask({ movedAt: undefined })]}
+					tasks={[makeTask({ createdAt, movedAt: undefined })]}
 					activeTaskId="t1"
 					dispatch={vi.fn()}
 					navigate={vi.fn()}
@@ -1005,7 +1009,10 @@ function makeTask(overrides?: Partial<Task>): Task {
 			</I18nProvider>,
 		);
 
-		expect(screen.queryByTestId("sidebar-status-age-t1")).not.toBeInTheDocument();
+		const activity = screen.getByTestId("sidebar-age-t1-activity");
+		expect(activity).toHaveTextContent("3d");
+		expect(activity).toHaveAttribute("data-freshness", "stale");
+		expect(activity).toHaveTextContent("In this column since it was created");
 	});
 
 	it("groups custom-column tasks under their own column, not their underlying status", () => {

@@ -10,6 +10,8 @@ reasoning (48 of 50 dates), so the record wins and this file stays an index. Wri
 in full only while no record exists — the case for 84 below, whose reasoning lives nowhere
 else, so never compact them by deleting it.
 
+2026-11-07 — Cards and sidebar rows show created + freshness-tinted last-activity stamps (yaml `task_card.age_stamps`). Why: decisions/2026/11/07/task-age-stamps-freshness.md.
+
 ## 2026-11-04 — A gone pre-strict agent path warns, not fails
 - **Rule:** PATH fallback + toast with Reset path; record `grandfather-stale-custom-agent-paths`.
 
@@ -39,9 +41,7 @@ Bible §5.7: card → sender (inert without one), traffic only via its action; a
 
 2026-10-02 — Agent toast names every destination (card → traffic, superseded 2026-10-08). Why: decisions/2026/10/02/agent-message-toast-names-every-destination.md.
 
-## 2026-09-25 — Clips play inside the image viewer
-
-Bible §3 `Task image viewer` / yaml `task_image_viewer`: `dev3 show-media` clips (videos in `sharedVideos`, audio in `sharedAudio`, merged by `taskSharedMedia`) join the same history and stage as images; no second viewer or panel. Why: decisions/2026/09/25/show-video-additive-shared-videos-field.md, decisions/2026/10/27/show-media-replaces-show-video.md.
+2026-09-25 — Clips play inside the image viewer (yaml `task_image_viewer`). Why: decisions/2026/09/25/show-video-additive-shared-videos-field.md, decisions/2026/10/27/show-media-replaces-show-video.md.
 
 2026-09-22 — One task context menu for card and sidebar row; yaml `context_menu.task_menu`. Why: decisions/2026/09/22/one-task-context-menu-for-card-and-sidebar-row.md.
 
