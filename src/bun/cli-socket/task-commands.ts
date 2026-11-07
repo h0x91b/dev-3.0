@@ -18,7 +18,7 @@ import { loadTaskChildren } from "../task-lineage";
 import { assertEpicAttachable, epicForNewTask, setTaskEpic } from "../task-epics";
 import { findEpic } from "../epics-data";
 import { readTaskTerminalBackendState, switchTaskTerminalBackend } from "../task-terminal-backend-switch";
-import { buildLaunchAfter, launchAfterRefusal } from "../launch-after";
+import { buildLaunchAfter, launchAfterRefusal, prerequisiteRefusal } from "../launch-after";
 import { approvalStatusOf, launchSuggestionRequested, launcherHandoffNote, requestAgentLaunchApproval, requestDestructiveApproval, resolveLaunchSuggestion } from "./approvals";
 import { log, type Handler, withSenderVariant } from "./shared";
 import { findByIdPrefix, findTaskByRef, parseSeqRef, resolveAgentMessageSource, resolveRequesterTask, resolveTaskAcrossProjects, resolveTaskFromParams, scopedTaskNotFoundError, senderRequester, taskNotFoundError, withArchivedHistory, withEpic, withOriginParent, withSenderAgent } from "./task-resolution";
@@ -113,6 +113,10 @@ async function readStartAfter(params: Record<string, unknown>, project: Project)
 async function armStartAfter(project: Project, task: Task, req: StartAfterRequest, params: Record<string, unknown>): Promise<Task> {
 	const refusal = launchAfterRefusal(task, req.prereq, req.until, await data.loadTasks(project));
 	if (refusal) throw new Error(refusal);
+	return writeStartAfter(project, task, req, params);
+}
+
+async function writeStartAfter(project: Project, task: Task, req: StartAfterRequest, params: Record<string, unknown>): Promise<Task> {
 	const armedBy = await resolveAgentMessageSource(params, task.id);
 	const updated = await data.updateTask(project, task.id, {
 		launchAfter: buildLaunchAfter(req.prereq, req.until, req.variant, armedBy),
@@ -304,6 +308,9 @@ export const taskHandlers: Record<string, Handler> = {
 		// Before the task exists, so an unknown prerequisite or agent id leaves nothing behind.
 		const startAfter = await readStartAfter(params, project);
 		if (!startAfter && launchSuggestionRequested(params)) throw new Error("--agent/--config on task create only apply together with --start-after.");
+		// A new To Do task can only be refused for its prerequisite, so this is the whole check.
+		const startAfterRefusal = startAfter && prerequisiteRefusal(startAfter.prereq, startAfter.until, await data.loadTasks(project));
+		if (startAfterRefusal) throw new Error(startAfterRefusal);
 		// Use description as the task body if provided, otherwise fall back to title.
 		// A type puts its role brief above that text at creation, through the same
 		// function `task update --type` uses, so a card never claims a role its
@@ -334,14 +341,7 @@ export const taskHandlers: Record<string, Handler> = {
 			created = await data.updateTask(project, task.id, { customTitle: title });
 		}
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: created });
-		if (!startAfter) return created;
-		try {
-			return await armStartAfter(project, created, startAfter, params);
-		} catch (err) {
-			// A task that cannot wait as asked would start nowhere: do not leave it behind.
-			await deleteTask({ taskId: created.id, projectId: project.id });
-			throw err;
-		}
+		return startAfter ? writeStartAfter(project, created, startAfter, params) : created;
 	},
 
 	// `dev3 task create --scratch --run`: an agent asking for a throwaway peer.

@@ -1658,14 +1658,24 @@ describe("task.update / task.create: start after", () => {
 		expect(createTask).not.toHaveBeenCalled();
 	});
 
-	it("task.create deletes the new task when the condition is refused", async () => {
+	it("task.create refuses a condition before the task exists", async () => {
 		const cancelled = { ...prereq, status: "cancelled" as const };
 		vi.mocked(data.loadTasks).mockResolvedValue([cancelled, waiting]);
 		vi.mocked(createTask).mockResolvedValue(waiting);
 		const resp = await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Next", startAfter: "seq:12" }));
 		expect(resp.ok).toBe(false);
 		expect(resp.error).toContain("cancelled");
-		expect(deleteTask).toHaveBeenCalledWith({ taskId: waiting.id, projectId: "proj-1" });
+		expect(createTask).not.toHaveBeenCalled();
+		expect(deleteTask).not.toHaveBeenCalled();
+	});
+
+	it("task.create arms the condition on the new task", async () => {
+		vi.mocked(data.loadTasks).mockResolvedValue([prereq]);
+		vi.mocked(createTask).mockResolvedValue(waiting);
+		const resp = await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Next", startAfter: "seq:12", until: "merged" }));
+		expect(resp.ok).toBe(true);
+		const patch = vi.mocked(data.updateTask).mock.lastCall![2] as Partial<Task>;
+		expect(patch.launchAfter).toMatchObject({ taskId: prereq.id, seq: 12, until: "merged" });
 	});
 });
 
