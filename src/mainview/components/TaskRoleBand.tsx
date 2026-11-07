@@ -17,9 +17,9 @@ export function taskRole(task: Pick<Task, "taskType">): TaskRole | null {
 	return task.taskType === "board-cleanup" ? "board-cleanup" : null;
 }
 
-/** Layered accent halo for a coordinator card; replaces a second identity border. */
+/** Layered accent halo for a coordinator card; replaces a second identity border. Hover deepens it like any card's lift. */
 export const COORDINATOR_CARD_HALO =
-	"shadow-[0_0_0_1px_rgb(var(--accent)/0.5),0_6px_18px_-6px_rgb(var(--accent)/0.45)]";
+	"shadow-[0_0_0_1px_rgb(var(--accent)/0.5),0_6px_18px_-6px_rgb(var(--accent)/0.45)] hover:shadow-[shadow:0_0_0_1px_rgb(var(--accent)/0.6),0_10px_24px_-6px_rgb(var(--accent)/0.55),var(--shadow-card-hover)]";
 
 const FILL: Record<TaskRole, string> = {
 	coordinator: "bg-accent-fill text-white",
@@ -71,8 +71,8 @@ export function TaskRoleBand({ role, childCount = 0, onFilterByChildren }: { rol
 		<div
 			data-testid="task-role-band"
 			data-role={role}
-			// mt-1 leaves a sliver of card between the status strip and the band: in light theme accent vs In Progress measures Lc 0.
-			className={`mt-1 flex h-[22px] flex-shrink-0 items-center gap-1.5 pl-[9px] pr-2.5 text-dense font-semibold uppercase tracking-[0.08em] ${FILL[role]}`}
+			// Inset and rounded so the full-bleed status strip above reads as a separate object: in light theme accent vs In Progress measures Lc 0.
+			className={`mx-1 mt-1 flex h-[22px] flex-shrink-0 items-center gap-1.5 rounded-lg pl-[5px] pr-1.5 text-dense font-semibold uppercase tracking-[0.08em] ${FILL[role]}`}
 		>
 			<Tooltip content={t(LABEL_KEY[role])} detail={t(HINT_KEY[role])}>
 				<span className="inline-flex min-w-0 items-center gap-1.5">
