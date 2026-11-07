@@ -569,8 +569,15 @@ export async function launchTaskPty(
 		// An older shared CLI sends neither receipt: gating on it would drop the
 		// handoff and print "Unknown command" at every exit, so keep today's path.
 		&& await hookCliSupports(AGENT_SESSION_STARTED_METHOD) && await hookCliSupports(AGENT_EXITED_METHOD)) {
-		noteAgentLaunched(task.id, trackedSessionId);
+		noteAgentLaunched(task.id, trackedSessionId, { startReceipts: true });
 		exitReport = agentExitReportArgv(task.id, trackedSessionId);
+	} else if (!opts?.shellNotice && !skipSessionPersist && resolvedBaseCmd && resolvedBaseCmd !== "bash"
+		&& await hookCliSupports(AGENT_EXITED_METHOD)) {
+		// No start receipts here (Codex, Gemini, a Claude resume…): a bare launch id
+		// still ties the exit to this spawn, and only a non-zero code moves the card.
+		const launchId = crypto.randomUUID();
+		noteAgentLaunched(task.id, launchId, { startReceipts: false });
+		exitReport = agentExitReportArgv(task.id, launchId);
 	}
 
 	if (resolvedBaseCmd && resolvedBaseCmd !== "bash") {

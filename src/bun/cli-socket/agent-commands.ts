@@ -70,23 +70,27 @@ export const agentHandlers: Record<string, Handler> = {
 		noteAgentSessionStarted(task.id, sessionId, paneId);
 		return { ok: true };
 	},
-	// The launch wrapper saw its agent exit. Only an agent this app launched that
-	// never reached SessionStart (declined trust, a crash at boot) moves the card:
-	// no hook fires for it, so it would otherwise read "Agent is Working" forever.
+	// The launch wrapper saw its agent exit. An agent that died — before Claude's
+	// SessionStart, or with a non-zero code under any harness — fires no hook that
+	// moves the card, so it would otherwise read "Agent is Working" forever.
+	// `sessionId` is the launch id the wrapper was minted with.
 	"agent.exited": (params) => codexQuestions.run(String(params.taskId), async () => {
 		const { project, task } = await resolveTaskFromParams(params);
 		const sessionId = typeof params.sessionId === "string" ? params.sessionId.trim() : "";
 		if (!sessionId) throw new Error("sessionId is required");
 		const exitCode = typeof params.exitCode === "number" ? params.exitCode : null;
-		if (!noteAgentExited(task.id, sessionId, exitCode)) return { moved: false };
-		log.info("Agent exited before its session started", { taskId: task.id.slice(0, 8), exitCode });
+		const verdict = noteAgentExited(task.id, sessionId, exitCode);
+		if (!verdict) return { moved: false };
+		log.info("Launched agent exited", { taskId: task.id.slice(0, 8), verdict, exitCode });
 		if (task.status !== "in-progress" || task.hibernated) return { moved: false };
 		await moveTask({ projectId: project.id, taskId: task.id, newStatus: "user-questions", ifStatus: "in-progress" });
 		const code = exitCode === null ? "" : ` (exit code ${exitCode})`;
 		pushCliAttention({
 			taskId: task.id,
 			projectId: task.projectId,
-			reason: `The agent exited before it started${code}. Its terminal shows why.`,
+			reason: verdict === "early"
+				? `The agent exited before it started${code}. Its terminal shows why.`
+				: `The agent exited${code}. Its terminal shows why.`,
 		});
 		return { moved: true };
 	}),
