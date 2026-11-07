@@ -448,9 +448,26 @@ describe("no picked agent — the default that ran is recorded on the pane", () 
 			expect.anything(),
 			TASK_ID,
 			expect.objectContaining({
-				sessionState: { panes: [expect.objectContaining({ agentId: "builtin-claude", configId: "claude-bypass" })] },
+				sessionState: { panes: [expect.objectContaining({ agentId: "builtin-claude", configId: "claude-bypass", agentFromDefault: true })] },
 			}),
 		);
+	});
+
+	it("does not mark a picked agent as the default", async () => {
+		await launchTaskPty(makeProject(), makeTask({ agentId: "builtin-claude", configId: "claude-default" }), WORKTREE, "builtin-claude", "claude-default");
+
+		const pane = vi.mocked(data.updateTask).mock.calls[0]?.[2].sessionState?.panes[0];
+		expect(pane?.agentFromDefault).toBeUndefined();
+	});
+
+	it("keeps the default marker when the pane is resumed with its own agent", async () => {
+		const priorMain = { agentCmd: "claude", sessionId: "s-1", agentId: "builtin-claude", configId: "claude-bypass", agentFromDefault: true };
+		const task = makeTask({ agentId: null, configId: null, sessionState: { panes: [priorMain] } });
+
+		await launchTaskPty(makeProject(), task, WORKTREE, "builtin-claude", "claude-bypass", false, true, { sessionId: "s-1" });
+
+		const pane = vi.mocked(data.updateTask).mock.calls[0]?.[2].sessionState?.panes[0];
+		expect(pane).toMatchObject({ agentId: "builtin-claude", agentFromDefault: true });
 	});
 
 	it("leaves the task itself following the default, so a relaunch picks up a changed one", async () => {

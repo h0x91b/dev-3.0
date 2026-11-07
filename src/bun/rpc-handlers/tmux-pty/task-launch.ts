@@ -372,6 +372,7 @@ export async function launchTaskPty(
 	let accountPick: agents.ResolvedAgentCommand["accountPick"];
 	let staleAccountDropped = false;
 	let freshLaunchSessionId: string | null = null;
+	let agentFromDefault = false;
 
 	try {
 		// Recovery carries the pane's account alongside its session id. Older pane
@@ -437,6 +438,7 @@ export async function launchTaskPty(
 			if (resolved.agent) {
 				agentId = resolved.agent.id;
 				configId = resolved.config?.id ?? null;
+				agentFromDefault = true;
 			}
 		}
 		if (staleAccountDropped) await notifyStaleAccountDropped(task);
@@ -456,6 +458,8 @@ export async function launchTaskPty(
 			const carriedOriginCwd = resume && effectiveSessionId && effectiveSessionId === priorMain?.sessionId
 				? priorMain.sessionOriginCwd ?? undefined
 				: undefined;
+			// A resume passes the pane's own agent back in, so the default marker rides along with it.
+			const carriedDefault = resume && !!priorMain?.agentFromDefault && agentId === priorMain.agentId;
 			const paneEntry = {
 				agentCmd: resolvedBaseCmd,
 				sessionId: effectiveSessionId ?? null,
@@ -465,6 +469,7 @@ export async function launchTaskPty(
 					? codexAccountIdForHome(extraEnv.CODEX_HOME) : undefined) ?? launchAccountId,
 				agentFamily: resolvedAgentFamily,
 				sessionOriginCwd: carriedOriginCwd,
+				agentFromDefault: agentFromDefault || carriedDefault || undefined,
 			};
 			mainPaneEntry = paneEntry;
 			const sessionState = { panes: [paneEntry, ...(resume ? task.sessionState?.panes.slice(1).map((pane) => ({ ...pane, paneId: null })) ?? [] : [])] };
