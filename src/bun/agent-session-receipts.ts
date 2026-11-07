@@ -1,9 +1,11 @@
 /**
- * What dev3 knows about one agent session it spawned, keyed by the session id
- * it pre-assigned with `--session-id`. That id is minted per spawn, so a
+ * What dev3 knows about one agent it spawned, keyed by a launch id minted per
+ * spawn: the session id Claude gets with `--session-id`, or a bare launch id for
+ * every other harness. Only the task's latest launch may move its card, so a
  * replaced or previous agent can never answer for this one.
  *
- * - launched: this app process spawned it fresh (a `startup` session).
+ * - launched: this app process spawned it. `startReceipts` says whether the
+ *   harness reports SessionStart (Claude) — without it, `started` never fills.
  * - started:  Claude's `SessionStart` hook fired from it. Claude does not fire it
  *   while the trust or onboarding dialog is on screen (measured on 2.1.273 and
  *   2.1.310), so it is the evidence that typing into the pane is safe.
@@ -20,6 +22,7 @@ export const AGENT_EXITED_METHOD = "agent.exited";
 
 export interface AgentSessionRecord {
 	launchedAt: number | null;
+	startReceipts: boolean;
 	startedAt: number | null;
 	/** `TMUX_PANE` / `DEV3_PANE_ID` the started hook ran in. */
 	paneId: string | null;
@@ -29,6 +32,7 @@ export interface AgentSessionRecord {
 
 const MAX_RECORDS = 500;
 const records = new Map<string, AgentSessionRecord>();
+const latestLaunch = new Map<string, string>();
 
 function keyOf(taskId: string, sessionId: string): string {
 	return `${taskId}:${sessionId}`;
@@ -38,6 +42,7 @@ function update(taskId: string, sessionId: string, change: Partial<AgentSessionR
 	const key = keyOf(taskId, sessionId);
 	const next: AgentSessionRecord = {
 		launchedAt: null,
+		startReceipts: false,
 		startedAt: null,
 		paneId: null,
 		exitedAt: null,
@@ -51,8 +56,11 @@ function update(taskId: string, sessionId: string, change: Partial<AgentSessionR
 	return next;
 }
 
-export function noteAgentLaunched(taskId: string, sessionId: string, at = Date.now()): void {
-	update(taskId, sessionId, { launchedAt: at, startedAt: null, paneId: null, exitedAt: null, exitCode: null });
+export function noteAgentLaunched(taskId: string, sessionId: string, opts: { startReceipts: boolean }, at = Date.now()): void {
+	update(taskId, sessionId, { launchedAt: at, startReceipts: opts.startReceipts, startedAt: null, paneId: null, exitedAt: null, exitCode: null });
+	latestLaunch.delete(taskId);
+	latestLaunch.set(taskId, sessionId);
+	while (latestLaunch.size > MAX_RECORDS) latestLaunch.delete(latestLaunch.keys().next().value!);
 }
 
 export function noteAgentSessionStarted(taskId: string, sessionId: string, paneId: string | null, at = Date.now()): void {
@@ -71,12 +79,21 @@ export function noteAgentSessionActive(taskId: string, sessionId: string, paneId
 }
 
 /**
- * Record the exit and say whether it ended a session this process launched
- * that never got past its startup dialogs.
+ * Why an exit should take the card off Agent is Working, if it should:
+ * - early:   a session with start receipts ended before SessionStart (any code);
+ * - crashed: the agent ended with a non-zero code, whatever the harness.
  */
-export function noteAgentExited(taskId: string, sessionId: string, exitCode: number | null, at = Date.now()): boolean {
+export type AgentExitVerdict = "early" | "crashed" | null;
+
+/**
+ * Record the exit and judge it. Only the task's latest launch from this app
+ * process counts: a stale wrapper from a replaced agent never moves the card.
+ */
+export function noteAgentExited(taskId: string, sessionId: string, exitCode: number | null, at = Date.now()): AgentExitVerdict {
 	const record = update(taskId, sessionId, { exitedAt: at, exitCode });
-	return record.launchedAt !== null && record.startedAt === null;
+	if (record.launchedAt === null || latestLaunch.get(taskId) !== sessionId) return null;
+	if (record.startReceipts && record.startedAt === null) return "early";
+	return exitCode !== null && exitCode !== 0 ? "crashed" : null;
 }
 
 export function agentSessionRecord(taskId: string, sessionId: string): AgentSessionRecord | null {
@@ -85,4 +102,5 @@ export function agentSessionRecord(taskId: string, sessionId: string): AgentSess
 
 export function resetAgentSessionRecordsForTests(): void {
 	records.clear();
+	latestLaunch.clear();
 }

@@ -110,8 +110,9 @@ export function generatedScriptName(base: string): string {
 /**
  * How a launch wrapper tells the app its agent process ended — `dev3 hook
  * agent-exited`, with the exit code appended by `buildCmdScript`. The same CLI
- * file the hooks run, whose support the launch checked. The session id is the one
- * this spawn pre-assigned, so the report names exactly one agent.
+ * file the hooks run, whose support the launch checked. The id is the one this
+ * spawn minted (Claude's pre-assigned session id, or a bare launch id), so the
+ * report names exactly one agent.
  */
 export function agentExitReportArgv(taskId: string, sessionId: string): string[] {
 	return [hookCliFilePath(), "hook", "agent-exited", "--task", taskId, "--session", sessionId];

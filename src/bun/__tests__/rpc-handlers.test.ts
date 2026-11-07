@@ -52,6 +52,8 @@ vi.mock("electrobun/bun", () => ({
 }));
 
 const mockBundledChangelog: any[] = [];
+// launchTaskPty would otherwise scan the real ~/.dev3.0/bin/dev3 for the exit-report method.
+vi.mock("../hook-cli-capability", () => ({ hookCliSupports: vi.fn(async () => false), hookCliFilePath: () => "/tmp/dev3" }));
 vi.mock("../changelog-bundled", () => ({
 	get BUNDLED_CHANGELOG() { return mockBundledChangelog; },
 }));
