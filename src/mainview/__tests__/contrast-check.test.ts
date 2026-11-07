@@ -330,10 +330,9 @@ describe("role band — discernible from the card and the sidebar row (|Lc| ≥ 
 			for (const bg of [rgb("surface-base"), raised, rgb("surface-overlay")]) {
 				expect(Math.abs(apcaContrast(ink, bg)), lcLabel(ink, bg, `${theme}/coordinator title`)).toBeGreaterThanOrEqual(60);
 			}
-			// Selected sidebar row (accent/20 over base) and switcher row (accent/15 over overlay) measure 57-62.
-			for (const bg of [compositeOver(rgb("accent"), 0.2, rgb("surface-base")), compositeOver(rgb("accent"), 0.15, rgb("surface-overlay"))]) {
-				expect(Math.abs(apcaContrast(ink, bg)), lcLabel(ink, bg, `${theme}/coordinator title, selected`)).toBeGreaterThanOrEqual(55);
-			}
+			// The selected switcher row (accent/15 over overlay) measures 58-68.
+			const selected = compositeOver(rgb("accent"), 0.15, rgb("surface-overlay"));
+			expect(Math.abs(apcaContrast(ink, selected)), lcLabel(ink, selected, `${theme}/coordinator title, selected`)).toBeGreaterThanOrEqual(55);
 		});
 
 		it(`${theme}: board-cleanup band (fg/30) vs card and vs raised`, () => {

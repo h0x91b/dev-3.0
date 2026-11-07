@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "../../i18n";
 import ActiveTasksSidebar from "../ActiveTasksSidebar";
-import { COORDINATOR_TITLE } from "../TaskRoleBand";
+import { COORDINATOR_TITLE_BAR } from "../TaskRoleBand";
 import type { CodingAgent, Project, Task } from "../../../shared/types";
 
 const terminalPreview = vi.hoisted(() => ({
@@ -2244,7 +2244,7 @@ describe("ActiveTasksSidebar port badges", () => {
 		expect(screen.getByRole("button", { name: /^Plain task/ }).getAttribute("aria-label")).not.toMatch(/Coordinator/);
 	});
 
-	it("paints only a coordinator's title in the accent ink; board cleanup and ordinary rows stay neutral", () => {
+	it("puts only a coordinator's title inside the accent bar; board cleanup and ordinary rows stay neutral", () => {
 		render(
 			<I18nProvider>
 				<ActiveTasksSidebar project={project} tasks={[
@@ -2257,9 +2257,9 @@ describe("ActiveTasksSidebar port badges", () => {
 			</I18nProvider>,
 		);
 
-		expect(screen.getByTestId("sidebar-task-title-coord").className).toContain(COORDINATOR_TITLE);
+		expect(screen.getByTestId("sidebar-task-title-coord").className).toContain(COORDINATOR_TITLE_BAR);
 		for (const id of ["cleanup", "plain"]) {
-			expect(screen.getByTestId(`sidebar-task-title-${id}`).className).not.toContain(COORDINATOR_TITLE);
+			expect(screen.getByTestId(`sidebar-task-title-${id}`).className).not.toContain("bg-accent-fill");
 		}
 	});
 
