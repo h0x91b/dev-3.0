@@ -1,5 +1,5 @@
 import type { Project, Task, TaskStatus } from "../../shared/types";
-import { TaskRoleChip } from "./TaskRoleBand";
+import { COORDINATOR_TITLE, TaskRoleChip } from "./TaskRoleBand";
 import { getTaskTitle } from "../../shared/types";
 import { useT } from "../i18n";
 import type { CoordinatorCandidate } from "../utils/coordinatorFinder";
@@ -61,7 +61,7 @@ function DashboardCoordinatorRows({ project, coordinators, narrow, statusColors,
 						<span className="min-w-0 flex-1 flex flex-col md:flex-row md:items-center gap-0.5 md:gap-3">
 							<span
 								title={getTaskTitle(task)}
-								className={`text-fg text-sm font-medium min-w-0 md:flex-1 select-text ${narrow ? "line-clamp-2" : "truncate"} ${maskClass}`}
+								className={`${COORDINATOR_TITLE} text-sm font-medium min-w-0 md:flex-1 select-text ${narrow ? "line-clamp-2" : "truncate"} ${maskClass}`}
 							>
 								{getTaskTitle(task)}
 							</span>

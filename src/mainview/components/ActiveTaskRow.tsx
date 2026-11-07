@@ -1,5 +1,5 @@
 import { useState, type Dispatch } from "react";
-import { TaskRoleChip } from "./TaskRoleBand";
+import { COORDINATOR_TITLE_BAR, TaskRoleChip } from "./TaskRoleBand";
 import { TaskRefText } from "./TaskRefText";
 import type { CodingAgent, Label, PortInfo, Project, Task, TaskPRBadgeInfo, TaskPriority, TaskStatus } from "../../shared/types";
 import { getAllowedTransitions, getTaskTitle, isCoordinatorTask, isTaskDisconnected } from "../../shared/types";
@@ -330,7 +330,10 @@ export default function ActiveTaskRow({
 				)}
 
 				{/* CONTENT — the row's only visual focus. */}
-				<div className={`pr-6 text-xs leading-snug break-words ${isActive ? "text-fg font-medium" : "text-fg-2"}`}>
+				<div
+					data-testid={`sidebar-task-title-${task.id}`}
+					className={`pr-6 text-xs leading-snug break-words ${isCoordinatorTask(task) ? COORDINATOR_TITLE_BAR : isActive ? "text-fg font-medium" : "text-fg-2"}`}
+				>
 					{displayTitle}
 				</div>
 
