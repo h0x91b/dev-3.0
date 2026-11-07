@@ -2,7 +2,7 @@ import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { taskDialogInfo } from "./taskDialogInfo";
 import { unsavedWorkWarning } from "./confirmTaskCompletion";
-import { taskResetConsent, type Project, type Task, type TaskResetConsent } from "../../shared/types";
+import { hasGitWorkflow, taskResetConsent, type Project, type Task, type TaskResetConsent } from "../../shared/types";
 import type { TFunction } from "../i18n";
 
 /**
@@ -18,14 +18,14 @@ export async function confirmTaskReset(
 	onOpenTask?: () => void,
 ): Promise<TaskResetConsent | null> {
 	const consent = taskResetConsent(task);
-	const virtual = project.kind === "virtual";
+	const keepsFolder = !hasGitWorkflow(project);
 	const branch = task.branchName;
-	const unsaved = task.worktreePath && !virtual && !task.existingBranch
+	const unsaved = task.worktreePath && !keepsFolder && !task.existingBranch
 		? api.request.getUnsavedWork({ taskId: task.id, projectId: project.id })
 		: null;
 	const approved = await confirm({
 		title: t("task.confirmResetTitle"),
-		message: virtual
+		message: keepsFolder
 			? t("task.confirmResetMessageVirtual")
 			: branch
 				? t("task.confirmResetMessage", { branch })

@@ -80,6 +80,7 @@ Replaces the single `home-terminal`. Full spec: `docs/ux/UX_DECISIONS.md` (2026-
 - [x] Quick-shell hotkey (former home-terminal) creates/opens a shell operation in `~`
 - [x] Remove `home-terminal` route/component
 - [ ] Forward-compatible model for future recurring/loop operations (not built now)
+- [x] Per-project git workflow switch (`Project.gitWorkflow: false`): a real project folder whose tasks run in place, git domain hidden, same as a virtual board
 
 ---
 

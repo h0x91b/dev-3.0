@@ -1,6 +1,7 @@
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { CodingAgent, PaneSessionEntry, Project, Task } from "../shared/types";
+import { hasGitWorkflow } from "../shared/types";
 import { agentKey } from "../shared/agent-adapters/families";
 import * as agents from "./agents";
 import * as data from "./data";
@@ -30,11 +31,11 @@ export async function configuredCodexHomes(project: Project, task: Task, agent: 
 
 /**
  * The folder whose conversations may be scanned: only a git task's managed
- * worktree, whose path carries the task id. An Operations folder can be shared
- * by several tasks, so matching its cwd proves nothing.
+ * worktree, whose path carries the task id. An Operations folder or a project
+ * folder can be shared by several tasks, so matching its cwd proves nothing.
  */
 function scanWorktree(project: Project, task: Task): string | null {
-	if (project.kind === "virtual" || !task.worktreePath) return null;
+	if (!hasGitWorkflow(project) || !task.worktreePath) return null;
 	return task.worktreePath === `${git.taskDir(project, task)}/worktree` ? task.worktreePath : null;
 }
 

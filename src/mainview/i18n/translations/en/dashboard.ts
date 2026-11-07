@@ -67,7 +67,7 @@ const dashboard = {
 	"ops.badgeSystem": "System",
 	"ops.gitUnavailable": "Git is not available in operations tasks",
 	"ops.tileSubtitle": "Code-driven tasks · no git",
-	"ops.create.typeGit": "Git repository",
+	"ops.create.typeGit": "Folder",
 	"ops.create.typeOps": "Operations",
 	"ops.create.nameLabel": "Board name",
 	"ops.create.namePlaceholder": "Operations",
