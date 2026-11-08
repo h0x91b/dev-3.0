@@ -1,5 +1,5 @@
 import { useState, type Dispatch } from "react";
-import { COORDINATOR_TITLE_BAR, TaskRoleChip } from "./TaskRoleBand";
+import { COORDINATOR_TITLE, TaskRoleChip } from "./TaskRoleBand";
 import { TaskRefText } from "./TaskRefText";
 import type { CodingAgent, Label, PortInfo, Project, Task, TaskPRBadgeInfo, TaskPriority, TaskStatus } from "../../shared/types";
 import { getAllowedTransitions, getTaskTitle, isCoordinatorTask, isTaskDisconnected } from "../../shared/types";
@@ -281,7 +281,7 @@ export default function ActiveTaskRow({
 			{task.shuttingDown && <TaskShutdownOverlay />}
 
 			<div className="min-w-0 flex-1 px-2.5 py-2">
-				{/* A coordinator row carries no hide toggle: its title bar fills the corner the eye would sit in. */}
+				{/* A coordinator row carries no hide toggle (#2214). */}
 				{!isCoordinatorTask(task) && <Tooltip content={task.hidden ? t("task.showInSidebar") : t("task.hideFromSidebar")}>
 					<button
 						type="button"
@@ -320,9 +320,10 @@ export default function ActiveTaskRow({
 				{/* CONTENT — the row's only visual focus. */}
 				<div
 					data-testid={`sidebar-task-title-${task.id}`}
-					// Flush with the row's top edge unless the project badge sits above it.
-					className={`text-xs leading-snug break-words ${isCoordinatorTask(task) ? `${COORDINATOR_TITLE_BAR} ${projectBadgeName ? "" : "-mt-2"}` : `pr-6 ${isActive ? "text-fg font-medium" : "text-fg-2"}`}`}
+					className={`text-xs leading-snug break-words ${isCoordinatorTask(task) ? `${COORDINATOR_TITLE} font-medium` : `pr-6 ${isActive ? "text-fg font-medium" : "text-fg-2"}`}`}
 				>
+					{/* Chip leads the title, as on the dashboard coordinator rows. */}
+					{isCoordinatorTask(task) && <TaskRoleChip role="coordinator" testId="sidebar-coordinator-badge" className="mr-1.5 align-[1px]" />}
 					{displayTitle}
 				</div>
 
@@ -389,7 +390,6 @@ export default function ActiveTaskRow({
 				<Tooltip content={agentSummary} disabled={!agentSummary}>
 					<div className="flex min-w-0 flex-1 items-center gap-1.5" data-testid={`sidebar-identity-${task.id}`}>
 						<NativeBackendMark task={task} className="w-3 h-3" testId={`sidebar-native-backend-${task.id}`} />
-						{isCoordinatorTask(task) && <TaskRoleChip role="coordinator" testId="sidebar-coordinator-badge" />}
 						{agent && <AgentLauncherBadge agent={agent} size={12} />}
 						{task.taskType === "pr-review" && (
 							<span
