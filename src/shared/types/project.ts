@@ -339,11 +339,8 @@ export function taskUsesWorktree(
 /** Which lifecycle protocol a task's agent gets: its own worktree, or a project folder other tasks share. */
 export type ProtocolMode = "worktree" | "shared-folder";
 
-/**
- * The one answer to "does this task share its project folder", read by the
- * launch (protocol text), `dev3 current` and the approval wording alike. A
- * virtual board's tasks keep the worktree protocol.
- */
+/** Whether this task shares its project folder: picks the launch protocol, the
+ *  `dev3 current` Protocol line and the approval wording. Virtual boards keep worktree. */
 export function taskProtocolMode(
 	project: Pick<Project, "kind" | "gitWorkflow">,
 	task: Pick<Task, "ownWorktree">,

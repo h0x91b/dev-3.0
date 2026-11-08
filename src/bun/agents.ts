@@ -622,13 +622,9 @@ export async function resolveAgentCommand(
  */
 const SYSTEM_PROMPT_FILE_COMMANDS = new Set(["claude", "omp", "pi"]);
 
-/**
- * The protocol this launch injects and the file name it is written under, or
- * undefined for an adapter that injects none. Each variant gets its own file
- * (`claude`, `claude-lean`, `claude-shared-folder`, …) so two never share one.
- * The lean protocol (`DEV3_LEAN_PROTOCOL=1`, read at launch like
- * DEV3_COMPACT_AGENT_SKILLS) names the full body of the same mode, written first.
- */
+/** The protocol this launch injects and its own file name (`claude`, `claude-shared-folder-lean`, …),
+ *  or undefined for an adapter that injects none. Lean (`DEV3_LEAN_PROTOCOL=1`)
+ *  names the full body of the same mode, written first. */
 function launchProtocol(
 	adapter: { command: string; skillFamily?: SkillFamily },
 	mode: ProtocolMode,
