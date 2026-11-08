@@ -320,6 +320,20 @@ export function buildProviderEnv(
 	return env;
 }
 
+/** A preset that sets ANTHROPIC_MODEL itself also owns its launch slot: the slot var
+ *  outranks ANTHROPIC_MODEL for the `--model` rewrite, so a derived one would hide it. */
+export function presetModelSlotEnv(
+	provider: LlmProvider | undefined,
+	configModel: string | undefined,
+	presetEnv: Record<string, string> | undefined,
+): Record<string, string> {
+	const model = presetEnv?.ANTHROPIC_MODEL;
+	const slot = configModel ? claudeModelFamily(configModel) : null;
+	if (!getProviderDefinition(provider)?.pinsAliasSlots || !model || !slot) return {};
+	const key = `ANTHROPIC_DEFAULT_${slot.toUpperCase()}_MODEL`;
+	return key in presetEnv ? {} : { [key]: model };
+}
+
 /** The newest built-in Claude preset model per alias slot that the geo serves,
  *  ranked by `MODEL_RELEASE_DATES`; DEFAULT_AGENTS order breaks a tie. */
 function newestClaudeModelPerSlot(provider: LlmProvider, geo: BedrockGeo): Partial<Record<ClaudeModelSlot, string>> {
@@ -346,7 +360,8 @@ function aliasSlotEnv(
 	const launchSlot = configModel ? claudeModelFamily(configModel) : null;
 	const env: Record<string, string> = {};
 	for (const slot of CLAUDE_MODEL_SLOTS) {
-		const model = slot === launchSlot ? configModel : newest[slot];
+		// A slot the geo serves no model for stands in with the launching model.
+		const model = slot === launchSlot ? configModel : (newest[slot] ?? configModel);
 		const id = providerPinnedModel(provider, providerConfig, model);
 		if (id) env[`ANTHROPIC_DEFAULT_${slot.toUpperCase()}_MODEL`] = id;
 	}

@@ -284,9 +284,9 @@ describe("buildProviderEnv", () => {
 		expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("us.anthropic.claude-sonnet-5-5");
 	});
 
-	it("bedrock: a slot whose models the geo does not serve stays unpinned", () => {
+	it("bedrock: a slot whose models the geo does not serve stands in with the launching model", () => {
 		const env = buildProviderEnv(LLM_PROVIDER.BedrockClaude, { bedrock: { geo: "eu" } }, "claude-opus-5-5[1m]");
-		expect(env.ANTHROPIC_DEFAULT_FABLE_MODEL).toBeUndefined();
+		expect(env.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("eu.anthropic.claude-opus-5-5[1m]");
 		expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("eu.anthropic.claude-haiku-5-5");
 	});
 
