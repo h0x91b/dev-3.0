@@ -433,7 +433,6 @@ const common = {
 	"sidebar.scopeToggleTitle": "Переключить область задач (этот проект / все проекты)",
 	"sidebar.globalLoading": "Загрузка задач изо всех проектов…",
 	"sidebar.unknownProject": "Неизвестный проект",
-	"sidebar.statusChanged": "Статус изменён {ago} · {date}",
 	// Readiness-tier headers (built-in tiers; custom columns keep their own name)
 	"sidebar.tier.needsYou": "Нужны вы",
 	"sidebar.tier.waiting": "Ожидание",

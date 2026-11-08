@@ -299,6 +299,12 @@ const PANE_FOCUS_SHORTCUTS: [string, SplitDirection][] = [
 const COPY_MODE_POLL_MS = 1500;
 
 /**
+ * How long after its press a plain click waits before it leaves tmux history. tmux turns a second
+ * press inside 300 ms (KEYC_CLICK_TIMEOUT) into a double-click; the rest is slack for the wire.
+ */
+const TMUX_MULTI_CLICK_MS = 350;
+
+/**
  * ghostty-web's `scrollback` is a byte cap (default 10 KB ≈ 600 rows); tmux keeps its own
  * history, a native pane has only this one. 50 MB ≈ 33k rows at 120 cols, allocated as output arrives.
  */
@@ -483,6 +489,15 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 		else send();
 	}, [copyModePending, exitCopyModeIfNeeded, followLiveOutput]);
 	const mouseGestureDraggedRef = useRef(false);
+	// A double- or triple-click selects in tmux history, so none of its clicks may leave it.
+	const lastPressAtRef = useRef(Number.NEGATIVE_INFINITY);
+	const pressContinuesMultiClickRef = useRef(false);
+	const clickExitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const cancelClickExit = useCallback(() => {
+		if (clickExitTimerRef.current) clearTimeout(clickExitTimerRef.current);
+		clickExitTimerRef.current = null;
+	}, []);
+	useEffect(() => cancelClickExit, [cancelClickExit]);
 	const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">(
 		() => (document.documentElement.dataset.theme as "dark" | "light") || "dark",
 	);
@@ -2840,6 +2855,15 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
+	/** Capture phase: the canvas mouse reporter stops this press before it would bubble here. */
+	function handleTerminalPress(event: React.MouseEvent<HTMLDivElement>) {
+		if (event.button !== 0) return;
+		const now = Date.now();
+		pressContinuesMultiClickRef.current = now - lastPressAtRef.current <= TMUX_MULTI_CLICK_MS;
+		lastPressAtRef.current = now;
+		cancelClickExit();
+	}
+
 	function handleTerminalClick(event: React.MouseEvent<HTMLDivElement>) {
 		try { termRef.current?.focus(); } catch { /* disposed */ }
 		if (touchComposeModeRef.current) return;
@@ -2851,7 +2875,18 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 			mouseGestureDraggedRef.current = false;
 			return;
 		}
-		void exitCopyModeIfNeeded();
+		// tmux may still turn this press into a double- or triple-click selection, which has
+		// to find the pane in history: only a click that stays single resumes live input.
+		if (pressContinuesMultiClickRef.current || !copyModePending()) return;
+		const wait = lastPressAtRef.current + TMUX_MULTI_CLICK_MS - Date.now();
+		if (wait <= 0) {
+			void exitCopyModeIfNeeded();
+			return;
+		}
+		clickExitTimerRef.current = setTimeout(() => {
+			clickExitTimerRef.current = null;
+			void exitCopyModeIfNeeded();
+		}, wait);
 	}
 
 	return (
@@ -2867,6 +2902,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 				// ghostty-web makes this element contenteditable; WebKit then paints its native
 				// caret beside the canvas — a full-height blinking accent line (#2124).
 				style={{ backgroundColor: termBg, caretColor: "transparent" }}
+				onMouseDownCapture={handleTerminalPress}
 				onClick={handleTerminalClick}
 				onContextMenu={(e) => e.preventDefault()}
 				onDragOver={handleDragOver}

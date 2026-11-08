@@ -402,7 +402,6 @@ const common = {
 	"sidebar.scopeToggleTitle": "Alternar alcance (este proyecto / todos los proyectos)",
 	"sidebar.globalLoading": "Cargando tareas de todos los proyectos…",
 	"sidebar.unknownProject": "Proyecto desconocido",
-	"sidebar.statusChanged": "Estado cambiado {ago} · {date}",
 	// Readiness-tier headers (built-in tiers; custom columns keep their own name)
 	"sidebar.tier.needsYou": "Te necesitan",
 	"sidebar.tier.waiting": "Esperando",

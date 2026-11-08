@@ -321,8 +321,8 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 				return result.stdout.trim();
 			};
 			const bindings = readFileSync(resolve("src/bun/tmux/config.ts"), "utf8").split("\n")
-				.filter((line) => /^bind -T copy-mode(?:-vi)? MouseDragEnd1Pane /.test(line));
-			expect(bindings).toHaveLength(2);
+				.filter((line) => /^bind -T copy-mode(?:-vi)? (?:MouseDragEnd|DoubleClick|TripleClick)1Pane /.test(line));
+			expect(bindings).toHaveLength(6);
 			const config = join(tmpDir, "mouse-copy.conf");
 			writeFileSync(config, ["set -s set-clipboard on", ...bindings].join("\n"));
 			tmux("source-file", config);
@@ -341,6 +341,10 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 			].join("\n"));
 			tmux("respawn-pane", "-t", `${tmuxSession}:1.1`, "-k", `python3 -u ${worker}`);
 			await expect.poll(() => tmux("capture-pane", "-p", "-t", tmuxSession)).toContain("READY-COPY-200");
+			const copiedSince = (offset: number) => {
+				const match = /\x1b\]52;[^;]*;([A-Za-z0-9+/=]+)(?:\x07|\x1b\\)/.exec(bridgeStderr.slice(offset));
+				return match ? Buffer.from(match[1], "base64").toString("utf8") : null;
+			};
 			try {
 				let row = 2;
 				tmux("set-window-option", "-t", tmuxSession, "mode-keys", "emacs");
@@ -366,10 +370,22 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 					const end = start + 7;
 					const offset = bridgeStderr.length;
 					bridge!.stdin!.write(`\x1b[<0;${start};${row}M\x1b[<32;${end};${row}M\x1b[<0;${end};${row}m`, "utf8");
-					await expect.poll(() => {
-						const match = /\x1b\]52;[^;]*;([A-Za-z0-9+/=]+)(?:\x07|\x1b\\)/.exec(bridgeStderr.slice(offset));
-						return match ? Buffer.from(match[1], "base64").toString("utf8") : null;
-					}).toBe("copy-history-line-".slice(start - 1, end - 1));
+					await expect.poll(() => copiedSince(offset)).toBe("copy-history-line-".slice(start - 1, end - 1));
+					expect(tmux("display-message", "-p", "-t", tmuxSession, "#{pane_in_mode}")).toBe("1");
+					expect(tmux("display-message", "-p", "-t", tmuxSession, "#{scroll_position}")).toBe(position);
+				}
+				// A double-click copies the word and a triple-click the line of that same history
+				// row, not of the live screen behind it (capture-pane reads the live screen).
+				const liveTop = Number(/copy-history-line-(\d+)/.exec(tmux("capture-pane", "-p", "-t", tmuxSession))![1]);
+				for (const clicks of [2, 3]) {
+					await new Promise((resolve) => setTimeout(resolve, 350));
+					row += 3;
+					const line = `copy-history-line-${liveTop - Number(position) + row - 1}`;
+					const offset = bridgeStderr.length;
+					bridge!.stdin!.write(`\x1b[<0;19;${row}M\x1b[<0;19;${row}m`.repeat(clicks), "utf8");
+					// tmux waits out its double-click window, then holds the highlight, before it copies.
+					await expect.poll(() => copiedSince(offset)?.trimEnd(), { timeout: 3_000 })
+						.toBe(clicks === 2 ? line.slice("copy-history-line-".length) : line);
 					expect(tmux("display-message", "-p", "-t", tmuxSession, "#{pane_in_mode}")).toBe("1");
 					expect(tmux("display-message", "-p", "-t", tmuxSession, "#{scroll_position}")).toBe(position);
 				}
@@ -380,7 +396,7 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 			} finally {
 				cpSpawnSync("tmux", ["-L", tmuxSocket, "send-keys", "-t", tmuxSession, "-X", "cancel"], { env: isolatedTmuxEnv() });
 			}
-		}, 10_000);
+		}, 15_000);
 
 		it("an intact Terminal still pastes through ghostty, wrapped exactly once", async () => {
 			const { term, sent, write } = openTerminal();

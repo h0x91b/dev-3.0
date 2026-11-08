@@ -21,11 +21,8 @@ export function taskRole(task: Pick<Task, "taskType">): TaskRole | null {
 export const COORDINATOR_CARD_HALO =
 	"shadow-[0_0_0_1px_rgb(var(--accent)/0.5),0_6px_18px_-6px_rgb(var(--accent)/0.45)] hover:shadow-[shadow:0_0_0_1px_rgb(var(--accent)/0.6),0_10px_24px_-6px_rgb(var(--accent)/0.55),var(--shadow-card-hover)]";
 
-/** A coordinator's title in one-line rows (dashboard, switcher); board cleanup stays neutral like its band. */
+/** A coordinator's title in rows (dashboard, switcher, sidebar); board cleanup stays neutral like its band. */
 export const COORDINATOR_TITLE = "text-accent-emphasis";
-
-/** The sidebar row's title sits inside a full-bleed filled bar, the row-sized echo of the card's role band. */
-export const COORDINATOR_TITLE_BAR = "-mx-2.5 bg-accent-fill py-2 pl-2.5 pr-10 font-medium text-white";
 
 const FILL: Record<TaskRole, string> = {
 	coordinator: "bg-accent-fill text-white",

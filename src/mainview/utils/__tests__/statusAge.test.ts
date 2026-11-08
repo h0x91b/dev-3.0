@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ageParts, compactAge } from "../statusAge";
+import { ageParts, compactAge, freshness } from "../statusAge";
 
 const NOW = new Date("2026-06-15T12:00:00.000Z").getTime();
 const ago = (ms: number) => new Date(NOW - ms).toISOString();
@@ -76,7 +76,28 @@ describe("compactAge", () => {
 		expect(compactAge(ago(5 * MIN), NOW)).toBe("5m");
 		expect(compactAge(ago(7 * HOUR), NOW)).toBe("7h");
 		expect(compactAge(ago(13 * DAY), NOW)).toBe("13d");
-		expect(compactAge(ago(7 * 30 * DAY), NOW)).toBe("7M");
+		expect(compactAge(ago(7 * 30 * DAY), NOW)).toBe("7mo");
 		expect(compactAge(ago(3 * 365 * DAY), NOW)).toBe("3y");
+	});
+});
+
+describe("freshness", () => {
+	it("returns null without a usable timestamp", () => {
+		expect(freshness(undefined, NOW)).toBeNull();
+		expect(freshness("not-a-date", NOW)).toBeNull();
+	});
+
+	it("splits elapsed time into live / recent / today / stale at 15m, 2h and 24h", () => {
+		expect(freshness(ago(0), NOW)).toBe("live");
+		expect(freshness(ago(15 * MIN - SEC), NOW)).toBe("live");
+		expect(freshness(ago(15 * MIN), NOW)).toBe("recent");
+		expect(freshness(ago(2 * HOUR - SEC), NOW)).toBe("recent");
+		expect(freshness(ago(2 * HOUR), NOW)).toBe("today");
+		expect(freshness(ago(DAY - SEC), NOW)).toBe("today");
+		expect(freshness(ago(DAY), NOW)).toBe("stale");
+	});
+
+	it("treats a future timestamp as live", () => {
+		expect(freshness(ago(-5 * MIN), NOW)).toBe("live");
 	});
 });
