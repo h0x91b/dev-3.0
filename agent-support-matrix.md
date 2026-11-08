@@ -294,9 +294,13 @@ and model table all read the registry. The toggle only appears on agents that
 have ≥1 registered backend.
 
 dev3 injects only the provider's enable flag + the pinned model (merged into the
-launch env; a config's own `envVars` still win). **Credentials, AWS
-region/profile are NOT set by dev3** — the customer configures those in their own
-global agent setup (shell env / `~/.claude/settings.json`).
+launch env; a config's own `envVars` still win). **Credentials are NOT set by
+dev3**. The customer configures those in their own global agent setup (shell env /
+`~/.claude/settings.json`). One exception: a Bedrock agent may list named **AWS
+profiles** (Settings → Coding Agents → the Bedrock section, or `dev3 agent
+aws-profiles set`). The launch dialog then shows an AWS profile dropdown, and the
+picked entry sets `AWS_PROFILE`/`AWS_REGION` over the preset `envVars` and the
+project env. See `decisions/2026/11/05/bedrock-per-launch-aws-profile.md`.
 
 | Provider | Injected env | Model id source |
 |----------|--------------|-----------------|

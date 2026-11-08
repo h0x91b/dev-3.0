@@ -1,5 +1,7 @@
 # 089 — Per-agent LLM provider toggle (native / third-party registry)
 
+Superseded in part on 2026-11-05 by `decisions/2026/11/05/bedrock-per-launch-aws-profile.md`: a Bedrock agent may now list named AWS profiles, and the picked one sets AWS_PROFILE/AWS_REGION. Credentials stay out of dev3.
+
 ## Context
 
 Claude Code can run against the Anthropic API directly or via a third-party
