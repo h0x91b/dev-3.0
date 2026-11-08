@@ -755,6 +755,8 @@ export const SETTINGS_GLOBAL_FIELD_EXCLUSIONS = [
 	"shellPromptCustom",
 	// The Add Project dialog's auto-configure switch, remembered where it is flipped.
 	"autoConfigureNewProjects",
+	// The Add Project dialog's in-project storage switch, remembered where it is flipped.
+	"newProjectsStoreInProject",
 	// Edited inside the artifact-template entry, which is registered by `artifactTemplate`.
 	"artifactTemplatePath",
 ] as const satisfies readonly (keyof GlobalSettings)[];
@@ -771,6 +773,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"staticAccessCode",
 	"cloneBaseDirectory",
 	"autoConfigureNewProjects",
+	"newProjectsStoreInProject",
 	"customBinaryPaths",
 	"agentBinaryPaths",
 	"agentCustomBinaryPaths",

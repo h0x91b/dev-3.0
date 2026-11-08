@@ -290,6 +290,11 @@ vi.mock("../updater", () => ({
 	getLocalVersion: vi.fn(),
 }));
 
+vi.mock("../rpc-handlers/settings-config", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../rpc-handlers/settings-config")>()),
+	storeNewProjectInProject: vi.fn(async (project: Project) => ({ ...project, storageRoot: "project" })),
+}));
+
 vi.mock("../settings", () => ({
 	loadSettings: vi.fn(() => ({ updateChannel: "stable", taskSortOrder: "oldest-first" })),
 	loadSettingsSync: vi.fn(() => ({ playSoundOnTaskComplete: false })),
@@ -1892,6 +1897,26 @@ describe("handlers.addProject", () => {
 		const result = await handlers.addProject({ path: "/tmp/test-project", name: "Test", autoConfigure: true });
 		expect(autoConfigureProject).toHaveBeenCalledWith(project);
 		expect(result).toMatchObject({ ok: true, autoConfigured: { written: ["devScript"] } });
+	});
+
+	it("keeps a newly created project's data in its folder when the switch is on, and never moves a known one", async () => {
+		const { storeNewProjectInProject } = await import("../rpc-handlers/settings-config");
+		vi.mocked(git.isGitRepo).mockResolvedValue(true);
+		vi.mocked(git.getDefaultBranch).mockResolvedValue("main");
+		vi.mocked(loadSettings).mockResolvedValue({ newProjectsStoreInProject: true } as any);
+
+		const known = makeProject({ createdAt: "2026-01-01T00:00:00.000Z" });
+		vi.mocked(data.addProject).mockResolvedValueOnce(known);
+		vi.mocked(data.updateProject).mockResolvedValue(known);
+		await handlers.addProject({ path: "/tmp/test-project", name: "Test" });
+		expect(storeNewProjectInProject).not.toHaveBeenCalled();
+
+		const fresh = makeProject({ createdAt: new Date(Date.now() + 60_000).toISOString() });
+		vi.mocked(data.addProject).mockResolvedValueOnce(fresh);
+		vi.mocked(data.updateProject).mockResolvedValue(fresh);
+		const result = await handlers.addProject({ path: "/tmp/test-project", name: "Test" });
+		expect(storeNewProjectInProject).toHaveBeenCalledTimes(1);
+		expect(result).toMatchObject({ ok: true, project: { storageRoot: "project" } });
 	});
 
 	it("still adds the project when auto-configure fails", async () => {

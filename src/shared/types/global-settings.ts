@@ -107,6 +107,8 @@ export interface GlobalSettings {
 	cloneBaseDirectory?: string;
 	/** Last position of the Add Project dialog's auto-configure switch. Absent = off. */
 	autoConfigureNewProjects?: boolean;
+	/** Last position of the Add Project dialog's "keep dev3 data in the project folder" switch. Absent = off. */
+	newProjectsStoreInProject?: boolean;
 	customBinaryPaths?: Record<string, string>; // requirementId → custom binary path
 	agentBinaryPaths?: Record<string, string>; // agentId → resolved binary path
 	/**

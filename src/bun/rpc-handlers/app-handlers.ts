@@ -21,6 +21,7 @@ import { previewTaskPrRef as previewTaskPrRefTarget, resolveTaskPrRef as resolve
 import { BUNDLED_CHANGELOG } from "../changelog-bundled";
 import * as repoConfig from "../repo-config";
 import { autoConfigureProject } from "../project-autoconfig";
+import { storeNewProjectInProject } from "./settings-config";
 import { boardCopyOfferForNewProject, restoreBoardCopy } from "../board-copy";
 import { DEV3_HOME } from "../paths";
 import { createSandboxProject } from "../sandbox-project";
@@ -387,6 +388,7 @@ async function addProjectImpl(
 		// A renderer cannot name a project from its path: in remote mode the browser
 		// may be macOS while the repo lives on a Windows drive.
 		const name = params.name?.trim() || pathBasename(params.path);
+		const addStartedAt = Date.now();
 		const added = await data.addProject(params.path, name);
 		// Read before the copy is switched on: its first write must not become the offer.
 		const boardCopyOffer = await boardCopyOfferForNewProject(added).catch((err) => {
@@ -400,6 +402,15 @@ async function addProjectImpl(
 			project.defaultBaseBranch = defaultBranch;
 		} catch (err) {
 			log.warn("Could not detect default branch, keeping 'main'", { error: String(err) });
+		}
+		// Only a record created by this call: re-adding a known project never moves its data.
+		const createdNow = Date.parse(added.createdAt) >= addStartedAt;
+		if (createdNow && !storesInProject(project) && (await loadSettings()).newProjectsStoreInProject === true) {
+			try {
+				Object.assign(project, await storeNewProjectInProject(project));
+			} catch (err) {
+				log.warn("Kept the new project's data in ~/.dev3.0", { id: project.id, error: String(err) });
+			}
 		}
 		// Written before resolveProjectConfig so the returned project already carries it.
 		const autoConfigured = params.autoConfigure

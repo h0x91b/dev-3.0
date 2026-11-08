@@ -1,3 +1,3 @@
-Short: Each project keeps its own Claude folder
+Short: Projects keep their own Claude folder
 
-Settings → Agents has a new "Each project uses its own Claude folder" switch: task agents then run with CLAUDE_CONFIG_DIR set to the project's .claude, so its own rules, agents, skills and memory load instead of ~/.claude. dev3 keeps Claude's runtime files and its own skills out of git status, puts its settings entries into the task's local settings instead of a committed settings.json, and conversation search and resume now look in these folders too.
+Settings → Agents has a new "Each project uses its own Claude folder" switch: task agents then run with CLAUDE_CONFIG_DIR set to the project's .claude, so its own rules, agents, skills and memory load instead of ~/.claude. dev3 keeps Claude's runtime files and its own skills out of git status, puts its settings entries into the task's local settings instead of a committed settings.json, and conversation search and resume now look in these folders too. The Add Project dialog also gains a remembered "Keep dev3 data in the project folder" switch, so new projects keep their board and worktrees in .dev3/ instead of ~/.dev3.0.

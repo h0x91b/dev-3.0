@@ -43,6 +43,9 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 	const [autoConfigure, setAutoConfigure] = useState(false);
 	// A click before the stored value arrives wins over it.
 	const autoConfigureTouched = useRef(false);
+	// Remembered like auto-configure; the backend applies it to every project it creates.
+	const [storeInProject, setStoreInProject] = useState(false);
+	const storeInProjectTouched = useRef(false);
 	// Off every time: it writes into the project folder, so each project opts in on its own.
 	const [boardCopy, setBoardCopy] = useState(false);
 	const [gitUrl, setGitUrl] = useState("");
@@ -87,6 +90,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 				setCloneBaseDir(settings.cloneBaseDirectory);
 			}
 			if (!autoConfigureTouched.current) setAutoConfigure(settings.autoConfigureNewProjects === true);
+			if (!storeInProjectTouched.current) setStoreInProject(settings.newProjectsStoreInProject === true);
 		}).catch(() => {});
 	}, []);
 
@@ -155,6 +159,18 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 		try {
 			const settings = await api.request.getGlobalSettings();
 			await api.request.saveGlobalSettings({ ...settings, autoConfigureNewProjects: next || undefined });
+		} catch {
+			// Remembering the choice is best-effort
+		}
+	}
+
+	async function toggleStoreInProject() {
+		storeInProjectTouched.current = true;
+		const next = !storeInProject;
+		setStoreInProject(next);
+		try {
+			const settings = await api.request.getGlobalSettings();
+			await api.request.saveGlobalSettings({ ...settings, newProjectsStoreInProject: next || undefined });
 		} catch {
 			// Remembering the choice is best-effort
 		}
@@ -235,6 +251,16 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 				<span className="block text-fg-3 text-xs leading-5">{t("boardCopy.addSwitchHint")}</span>
 			</div>
 			<ToggleSwitch checked={boardCopy} ariaLabel={t("boardCopy.addSwitch")} onToggle={() => setBoardCopy((on) => !on)} />
+		</div>
+	);
+
+	const storeInProjectSwitch = (
+		<div className="flex items-center justify-between gap-4">
+			<div className="space-y-0.5">
+				<span className="block text-fg-2 text-sm font-medium">{t("addProject.storeInProject")}</span>
+				<span className="block text-fg-3 text-xs leading-5">{t("addProject.storeInProjectHint")}</span>
+			</div>
+			<ToggleSwitch checked={storeInProject} ariaLabel={t("addProject.storeInProject")} onToggle={() => void toggleStoreInProject()} />
 		</div>
 	);
 
@@ -490,7 +516,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 				    Two lines, deliberately. Longer copy is its own way of scaring people off. */}
 				<div className="bg-raised border border-edge rounded-xl px-3 py-2.5 space-y-1.5 text-fg-3 text-xs leading-5">
 					<p>{t("addProject.safetyBase")}</p>
-					<p>{t("addProject.safetyBranch")}</p>
+					<p>{t(storeInProject ? "addProject.safetyBranchInProject" : "addProject.safetyBranch")}</p>
 				</div>
 
 				{/* Tabs */}
@@ -534,6 +560,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 							{t("addProject.browseHint")}
 						</p>
 						{autoConfigureSwitch}
+						{storeInProjectSwitch}
 						{boardCopySwitch}
 						<button
 							onClick={handleBrowseLocal}
@@ -548,6 +575,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 						<p className="text-fg-3 text-sm">
 							{t("addProject.initHint")}
 						</p>
+						{storeInProjectSwitch}
 						{boardCopySwitch}
 						<button
 							onClick={handleInitNew}
@@ -625,6 +653,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 						)}
 
 						{autoConfigureSwitch}
+						{storeInProjectSwitch}
 						{boardCopySwitch}
 
 						{/* Live clone output (last lines of `git clone --progress`) */}

@@ -153,6 +153,12 @@ async function switchProjectStorage(project: Project, next: "project" | "home"):
 	return next === "project" ? "project" : undefined;
 }
 
+/** Keep a just-added project's board and task dirs inside its folder. Throws when the folder cannot take them. */
+export async function storeNewProjectInProject(project: Project): Promise<Project> {
+	const storageRoot = await switchProjectStorage(project, "project");
+	return data.updateProject(project.id, { storageRoot });
+}
+
 async function updateProjectSettings(params: { projectId: string } & ProjectSettingsUpdate): Promise<Project> {
 	log.info("→ updateProjectSettings", { projectId: params.projectId });
 	assertValidEnvParam(params.env);

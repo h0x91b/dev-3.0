@@ -426,6 +426,7 @@ describe("saveSettings", () => {
 			resolvedTheme: "light",
 			cloneBaseDirectory: "/tmp/clones",
 			autoConfigureNewProjects: true,
+			newProjectsStoreInProject: true,
 			customBinaryPaths: { git: "/usr/bin/git" },
 			agentBinaryPaths: { "builtin-codex": "/usr/bin/codex" },
 			agentCustomBinaryPaths: { "builtin-codex": "/opt/wrappers/codex-wrapper" },
