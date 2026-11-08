@@ -15,7 +15,7 @@ import { ImageRegionOverlay, regionLabel, type Region } from "../review/ImageReg
 import { useReviewSend } from "../review/useReviewSend";
 import { useTaskReview } from "../review/useTaskReview";
 import { MarkdownDocument } from "./pr-review/markdown";
-import FilePreviewMedia from "./FilePreviewMedia";
+import FilePreviewMedia, { enginePlays } from "./FilePreviewMedia";
 import { isRenderableDocPath, toRenderableMarkdown } from "./pr-review/markdown-files";
 import { useResolvedTheme } from "../hooks/useResolvedTheme";
 import { useSyntaxLines, type SyntaxToken } from "./file-preview-syntax";
@@ -481,7 +481,9 @@ export default function FilePreviewModal({ path, line, taskId, projectId, task, 
 	// A one-line notice (binary, missing, too large) — or an audio player — stays a
 	// small dialog. Content hugs its own height up to the screen, or fills the screen
 	// once expanded — the size changes only when the user asks, never while they read.
-	const showsContent = !preview || preview.kind === "text" || preview.kind === "image" || (preview.kind === "media" && preview.media === "video" && !mediaUnplayable);
+	// A refused codec is known on this render, so the first commit is already a notice.
+	const engineRefuses = useMemo(() => preview?.kind === "media" && !enginePlays(preview.media, preview.mime), [preview]);
+	const showsContent = !preview || preview.kind === "text" || preview.kind === "image" || (preview.kind === "media" && preview.media === "video" && !mediaUnplayable && !engineRefuses);
 	const size = !showsContent ? "notice" : expanded ? "expanded" : "fit";
 	const fitHeight = useFitHeightFloor(trapRef, size === "fit", `${path}:${size}`);
 	const sizeClass = {

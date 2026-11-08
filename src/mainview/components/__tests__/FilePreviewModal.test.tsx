@@ -697,8 +697,17 @@ describe("FilePreviewModal audio and video", () => {
 	it("does not promise a codec the engine refuses — no stream, the external-open fallbacks stay", async () => {
 		canPlay.mockReturnValue("");
 		readFilePreview.mockResolvedValue({ kind: "media", media: "video", mime: "video/quicktime", size: 40 * MB });
+		// Every DOM state the message is part of, so a browser could never paint it in a screen-wide dialog.
+		const sizesWithMessage = new Set<string | null>();
+		const observer = new MutationObserver(() => {
+			if (screen.queryByTestId("file-preview-media-error")) sizesWithMessage.add(screen.getByRole("dialog").getAttribute("data-size"));
+		});
+		observer.observe(document.body, { subtree: true, childList: true, attributes: true });
 		renderModal("/cache/take.mov");
 		expect(await screen.findByText("This app can't play MOV files. Open it in another app instead.")).toBeInTheDocument();
+		await waitFor(() => expect(sizesWithMessage.size).toBeGreaterThan(0));
+		observer.disconnect();
+		expect([...sizesWithMessage]).toEqual(["notice"]);
 		expect(getFileMediaUrl).not.toHaveBeenCalled();
 		expect(screen.queryByTestId("file-preview-video")).not.toBeInTheDocument();
 		// One line of text is a notice, not a stage: no screen-wide dialog, no Expand.
