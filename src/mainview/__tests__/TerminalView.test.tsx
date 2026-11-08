@@ -1382,6 +1382,71 @@ describe("TerminalView – tmux copy-mode focus recovery", () => {
 
 	afterEach(() => {
 		mockTermInstance.hasMouseTracking.mockReturnValue(false);
+		vi.useRealTimers();
+	});
+
+	/** Mounted, scrolled into tmux history, with the clock faked from here on. */
+	async function scrolledIntoHistory() {
+		mockTermInstance.hasMouseTracking.mockReturnValue(true);
+		const { container } = await renderAndSetup();
+		const terminal = container.querySelector('[data-terminal="true"]') as HTMLElement;
+		act(() => { lastWebSocket!.onmessage!({ data: "$ " } as MessageEvent); });
+		const wheel = mockTermInstance.attachCustomWheelEventHandler.mock.lastCall![0] as (e: WheelEvent) => boolean;
+		vi.useFakeTimers();
+		act(() => { wheel({ deltaY: -100, clientX: 20, clientY: 20 } as WheelEvent); });
+		mockedExitCopyModeAllPanes.mockClear();
+		const press = () => { fireEvent.mouseDown(terminal); fireEvent.click(terminal); };
+		const wait = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+		return { press, wait };
+	}
+
+	it("lets a plain click leave history only once tmux can no longer make it a double-click", async () => {
+		const { press, wait } = await scrolledIntoHistory();
+
+		press();
+		await wait(349);
+		expect(mockedExitCopyModeAllPanes).not.toHaveBeenCalled();
+
+		await wait(1);
+		expect(mockedExitCopyModeAllPanes).toHaveBeenCalledTimes(1);
+		expect(mockedExitCopyModeAllPanes).toHaveBeenCalledWith({ taskId: "t1" });
+	});
+
+	// The first click of a double-click used to leave history, so tmux selected the word
+	// under the pointer on the LIVE screen and copied that instead (h0x91b/dev-3.0#978).
+	it("keeps history through a double- and a triple-click, and leaves it on the next plain click", async () => {
+		const { press, wait } = await scrolledIntoHistory();
+
+		press();
+		await wait(120);
+		press();
+		await wait(2000);
+		expect(mockedExitCopyModeAllPanes).not.toHaveBeenCalled();
+
+		press();
+		await wait(120);
+		press();
+		await wait(120);
+		press();
+		await wait(2000);
+		expect(mockedExitCopyModeAllPanes).not.toHaveBeenCalled();
+
+		press();
+		await wait(350);
+		expect(mockedExitCopyModeAllPanes).toHaveBeenCalledTimes(1);
+	});
+
+	it("typing inside the click's wait leaves history at once, and the wait then adds nothing", async () => {
+		const { press, wait } = await scrolledIntoHistory();
+		const key = mockTermInstance.attachCustomKeyEventHandler.mock.lastCall![0] as (e: KeyboardEvent) => boolean;
+
+		press();
+		act(() => { key(new KeyboardEvent("keydown", { key: "a", code: "KeyA" })); });
+		expect(mockedExitCopyModeAllPanes).toHaveBeenCalledTimes(1);
+		expect(mockedExitCopyModeAllPanes).toHaveBeenCalledWith({ taskId: "t1", typedKey: true });
+
+		await wait(2000);
+		expect(mockedExitCopyModeAllPanes).toHaveBeenCalledTimes(1);
 	});
 
 	it("exits retained copy mode when the user next clicks the terminal", async () => {

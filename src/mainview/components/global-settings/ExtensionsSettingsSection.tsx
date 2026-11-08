@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { KANBAN_VIEW_ID } from "../../../shared/board-view-state";
-import type { ExtensionsOverview, InstalledExtension } from "../../../shared/extensions";
+import { EXTENSION_AUTHOR_GUIDE_URL, type ExtensionsOverview, type InstalledExtension } from "../../../shared/extensions";
 import type { TFunction, TranslationKey } from "../../i18n";
 import { api } from "../../rpc";
 import { confirm } from "../../confirm";
@@ -221,6 +221,17 @@ export default function ExtensionsSettingsSection({ t }: { t: TFunction }) {
 								{t("extensions.install")}
 							</button>
 						)}
+						<p className="text-fg-3 text-xs" data-testid="extensions-write-own">
+							{t("extensions.writeOwn")}{" "}
+							<a
+								href={EXTENSION_AUTHOR_GUIDE_URL}
+								target="_blank"
+								rel="noopener noreferrer"
+								className="text-accent hover:text-accent-emphasis underline underline-offset-2"
+							>
+								{t("extensions.guide")}
+							</a>
+						</p>
 					</div>
 				</SettingsEntry>
 			</SettingsSection>

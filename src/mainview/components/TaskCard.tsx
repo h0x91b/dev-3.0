@@ -7,7 +7,7 @@ import { earlierPullRequests } from "../../shared/task-pull-requests";
 import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
-import { useT } from "../i18n";
+import { useLocale, useT } from "../i18n";
 import { createProjectLabel } from "../utils/createProjectLabel";
 import { formatBytes } from "../utils/formatBytes";
 import { isKnownPreparationFailure, preparationBannerText } from "../utils/preparationFailureMessage";
@@ -16,6 +16,7 @@ import { trackEvent, agentNameFromId } from "../analytics";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { useTerminalPreview } from "../hooks/useTerminalPreview";
 import { useIsTruncated } from "../hooks/useIsTruncated";
+import { useShedOnOverflow } from "../hooks/useShedOnOverflow";
 import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
 import PriorityBadge from "./PriorityBadge";
@@ -36,6 +37,7 @@ import TaskDetailModal from "./TaskDetailModal";
 import PipelineDropdown, { PipelineMenuAction } from "./PipelineDropdown";
 import { OpenInIcon, PlayIcon, SendLaterIcon, WatchIcon, WatchingIcon } from "./TaskIcons";
 import TaskCardRail from "./TaskCardRail";
+import { LiveTaskAgeStamps, type AgeStampsFit } from "./TaskAgeStamps";
 import StatusMenuPortal from "./StatusMenuPortal";
 import { useStatusMenu } from "../hooks/useStatusMenu";
 import { useContextMenu } from "../hooks/useContextMenu";
@@ -532,6 +534,13 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		? `${task.variantIndex}/${groupMembers.length}`
 		: null;
 	const [configRef, configTruncated] = useIsTruncated<HTMLSpanElement>(configLabel);
+	// The header never wraps: on a crowded one the age stamps step aside, the
+	// creation date first, before anything that names the task or its agent.
+	const [locale] = useLocale();
+	const identityRef = useRef<HTMLDivElement>(null);
+	const identityKey = [configLabel, locale, isCoordinator, isDraft, isHibernated, isDisconnected, task.taskType, task.scratch, task.automationId, task.keepAlive?.enabled].join("|");
+	const ageLevel = useShedOnOverflow(identityRef, 2, identityKey);
+	const ageFit: AgeStampsFit = ageLevel === 2 ? "both" : ageLevel === 1 ? "activity" : "none";
 
 	// ---- SIGNALS zone: read-only facts, grouped git / run / time -------------
 	// Keyed here rather than on each badge: they are built as standalone nodes above
@@ -925,6 +934,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			    Full width is the point: the rail starts a row lower so the agent and
 			    config string get the whole card instead of 182px next to a rail. */}
 			<div
+				ref={identityRef}
 				data-testid="task-card-identity"
 				className="flex min-w-0 items-center gap-1.5 border-b border-edge py-1.5 pl-1.5 pr-2.5"
 			>
@@ -1055,6 +1065,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						</button>
 					</Tooltip>
 				)}
+				<LiveTaskAgeStamps task={task} fit={ageFit} testId={`task-card-age-${task.id}`} />
 			</div>
 
 			{/* Rail + body */}

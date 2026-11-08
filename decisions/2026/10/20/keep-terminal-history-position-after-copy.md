@@ -1,5 +1,7 @@
 # Keep terminal history position after copying
 
+Extended on 2026-11-08 by `decisions/2026/11/08/keep-history-position-after-multi-click-copy.md`: double- and triple-click selections follow the same rule, and a plain click waits out tmux's double-click window before it leaves history.
+
 ## Context
 
 `MouseDragEnd1Pane` used `copy-pipe-and-cancel`, so selecting older output copied text and immediately returned to live output. PR #991 previously tried retaining copy-mode and was reverted in #1013 because subsequent input remained trapped in history; see `decisions/2026/07/20/revert-tmux-copy-mode-after-copy.md`.

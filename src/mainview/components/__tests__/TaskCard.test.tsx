@@ -2626,3 +2626,25 @@ describe("TaskCard ports popover", () => {
 		open.mockRestore();
 	});
 });
+
+describe("task age stamps", () => {
+	it("puts the creation and last-activity stamps in the identity row", () => {
+		const createdAt = new Date(Date.now() - 6 * 86_400_000).toISOString();
+		const movedAt = new Date(Date.now() - 3 * 60_000).toISOString();
+		renderCard(makeTask({ status: "in-progress", createdAt, movedAt }));
+		const identity = screen.getByTestId("task-card-identity");
+
+		expect(within(identity).getByTestId("task-card-age-t1-created")).toHaveTextContent("6d");
+		const activity = within(identity).getByTestId("task-card-age-t1-activity");
+		expect(activity).toHaveTextContent("3m");
+		expect(activity).toHaveAttribute("data-freshness", "live");
+	});
+
+	it("shows a never-moved To Do task's age on both stamps", () => {
+		const createdAt = new Date(Date.now() - 2 * 86_400_000).toISOString();
+		renderCard(makeTask({ createdAt, movedAt: undefined }));
+
+		expect(screen.getByTestId("task-card-age-t1-created")).toHaveTextContent("2d");
+		expect(screen.getByTestId("task-card-age-t1-activity")).toHaveTextContent("2d");
+	});
+});

@@ -188,6 +188,11 @@ set -s set-clipboard on
 # Explicit bindings also replace old copy-and-cancel on running servers.
 bind -T copy-mode MouseDragEnd1Pane if-shell -F '#{>:#{scroll_position},0}' 'send-keys -X copy-pipe' 'send-keys -X copy-pipe-and-cancel'
 bind -T copy-mode-vi MouseDragEnd1Pane if-shell -F '#{>:#{scroll_position},0}' 'send-keys -X copy-pipe' 'send-keys -X copy-pipe-and-cancel'
+# Double- and triple-click selections (a word, a line) copy under the same rule.
+bind -T copy-mode DoubleClick1Pane select-pane \; send-keys -X select-word \; run-shell -d 0.3 \; if-shell -F '#{>:#{scroll_position},0}' 'send-keys -X copy-pipe' 'send-keys -X copy-pipe-and-cancel'
+bind -T copy-mode-vi DoubleClick1Pane select-pane \; send-keys -X select-word \; run-shell -d 0.3 \; if-shell -F '#{>:#{scroll_position},0}' 'send-keys -X copy-pipe' 'send-keys -X copy-pipe-and-cancel'
+bind -T copy-mode TripleClick1Pane select-pane \; send-keys -X select-line \; run-shell -d 0.3 \; if-shell -F '#{>:#{scroll_position},0}' 'send-keys -X copy-pipe' 'send-keys -X copy-pipe-and-cancel'
+bind -T copy-mode-vi TripleClick1Pane select-pane \; send-keys -X select-line \; run-shell -d 0.3 \; if-shell -F '#{>:#{scroll_position},0}' 'send-keys -X copy-pipe' 'send-keys -X copy-pipe-and-cancel'
 
 # Bell pass-through
 set -g visual-bell off

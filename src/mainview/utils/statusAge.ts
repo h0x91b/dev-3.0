@@ -31,9 +31,25 @@ export function ageParts(iso: string | null | undefined, now: number = Date.now(
 	return { value: Math.floor(months / 12), unit: "y" };
 }
 
-/** Compact "digit(s)+letter" form, e.g. `25s`, `5m`, `7h`, `13d`, `7M`, `3y`. */
+/** Compact form, e.g. `25s`, `5m`, `7h`, `13d`, `7mo`, `3y`. Months spell `mo`: a small `M` reads as minutes. */
 export function compactAge(iso: string | null | undefined, now: number = Date.now()): string {
 	const part = ageParts(iso, now);
 	if (!part) return "";
-	return `${part.value}${part.unit}`;
+	return `${part.value}${part.unit === "M" ? "mo" : part.unit}`;
+}
+
+export type Freshness = "live" | "recent" | "today" | "stale";
+
+const MINUTE_MS = 60_000;
+
+/** How recently something happened, in the four tiers the age stamps colour by. */
+export function freshness(iso: string | null | undefined, now: number = Date.now()): Freshness | null {
+	if (!iso) return null;
+	const then = new Date(iso).getTime();
+	if (Number.isNaN(then)) return null;
+	const elapsed = Math.max(0, now - then);
+	if (elapsed < 15 * MINUTE_MS) return "live";
+	if (elapsed < 120 * MINUTE_MS) return "recent";
+	if (elapsed < 24 * 60 * MINUTE_MS) return "today";
+	return "stale";
 }
