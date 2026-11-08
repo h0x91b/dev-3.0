@@ -833,20 +833,38 @@ export function writeClaudeHooks(
 		updated = ensureDefaultMode(updated, options.permissionMode);
 	}
 	const inProject = parseInProjectTaskPath(worktreePath);
-	if (inProject?.inWorktree) updated = ensureParentClaudeMdExcluded(updated, inProject.projectPath);
+	if (inProject?.inWorktree) {
+		const parentIsClaudeHome = isClaudeConfigDir(join(inProject.projectPath, ".claude"));
+		updated = ensureParentClaudeMdExcluded(updated, inProject.projectPath, { parentIsClaudeHome });
+	}
 	return { written: writeIfChanged(hooksPath, updated, previous), skippedSymlink: null };
+}
+
+/** Claude Code keeps its global state file inside the dir `CLAUDE_CONFIG_DIR` names; a repo's own `.claude/` never has one. */
+function isClaudeConfigDir(dir: string): boolean {
+	return existsSync(join(dir, ".claude.json"));
 }
 
 /**
  * A worktree nested in `<project>/.dev3/worktrees/` would make Claude Code also
  * load the main checkout's memory files as a parent directory's, duplicating the
- * worktree's own copy. `claudeMdExcludes` drops exactly those.
+ * worktree's own copy. `claudeMdExcludes` drops exactly those - except the
+ * parent `.claude/CLAUDE.md` when that folder is the session's `CLAUDE_CONFIG_DIR`:
+ * it is then the user-level memory file, which the worktree has no copy of.
  */
-export function ensureParentClaudeMdExcluded(settings: Record<string, unknown>, projectPath: string): Record<string, unknown> {
-	const wanted = ["CLAUDE.md", "CLAUDE.local.md", ".claude/CLAUDE.md"].map((name) => `${projectPath}/${name}`);
+export function ensureParentClaudeMdExcluded(
+	settings: Record<string, unknown>,
+	projectPath: string,
+	opts?: { parentIsClaudeHome?: boolean },
+): Record<string, unknown> {
+	const userMemory = `${projectPath}/.claude/CLAUDE.md`;
+	const wanted = [`${projectPath}/CLAUDE.md`, `${projectPath}/CLAUDE.local.md`];
+	if (!opts?.parentIsClaudeHome) wanted.push(userMemory);
 	const current = Array.isArray(settings.claudeMdExcludes) ? settings.claudeMdExcludes.filter((v): v is string => typeof v === "string") : [];
-	const missing = wanted.filter((path) => !current.includes(path));
-	return missing.length === 0 ? settings : { ...settings, claudeMdExcludes: [...current, ...missing] };
+	const kept = opts?.parentIsClaudeHome ? current.filter((path) => path !== userMemory) : current;
+	const missing = wanted.filter((path) => !kept.includes(path));
+	if (missing.length === 0 && kept.length === current.length) return settings;
+	return { ...settings, claudeMdExcludes: [...kept, ...missing] };
 }
 
 /**

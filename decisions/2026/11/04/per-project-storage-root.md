@@ -12,7 +12,7 @@ Switching follows AGENTS.md rule 5: turning it on COPIES `data/<slug>/` into the
 
 ## Risks
 
-There is no mirror write to the legacy path, because the user asked that no project data stay in `~/.dev3.0`. An older app version opening the shared home therefore shows the board as it was at the switch, and edits it makes there are not merged back. That is accepted, since the switch is opt-in per project. Ignored files are wiped by `git clean -fdx`, so running it in the main checkout deletes the board and task dirs. Nested worktrees inherit from parent folders. Claude Code would also load the main checkout's `CLAUDE.md`, so `writeClaudeHooks` adds those files to `claudeMdExcludes`. Node resolution can still fall back to `<project>/node_modules`.
+There is no mirror write to the legacy path, because the user asked that no project data stay in `~/.dev3.0`. An older app version opening the shared home therefore shows the board as it was at the switch, and edits it makes there are not merged back. That is accepted, since the switch is opt-in per project. Ignored files are wiped by `git clean -fdx`, so running it in the main checkout deletes the board and task dirs. Nested worktrees inherit from parent folders. Claude Code would also load the main checkout's `CLAUDE.md`, so `writeClaudeHooks` adds those files to `claudeMdExcludes`. The parent `.claude/CLAUDE.md` is left out when that folder holds a `.claude.json`: it is then the session's `CLAUDE_CONFIG_DIR` and the file is the user-level memory, which the worktree has no copy of. The `.claude.json` test relies on where Claude Code keeps its state file, which its docs do not promise. Node resolution can still fall back to `<project>/node_modules`.
 
 ## Alternatives considered
 

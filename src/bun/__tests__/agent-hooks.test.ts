@@ -1584,6 +1584,39 @@ describe("ensureParentClaudeMdExcluded", () => {
 		]);
 		expect(ensureParentClaudeMdExcluded(first, "/home/u/acme")).toBe(first);
 	});
+
+	it("keeps the parent .claude/CLAUDE.md loadable when that folder is the Claude config dir", () => {
+		const stale = { claudeMdExcludes: ["/home/u/acme/CLAUDE.md", "/home/u/acme/CLAUDE.local.md", "/home/u/acme/.claude/CLAUDE.md"] };
+		const fixed = ensureParentClaudeMdExcluded(stale, "/home/u/acme", { parentIsClaudeHome: true });
+		expect(fixed.claudeMdExcludes).toEqual(["/home/u/acme/CLAUDE.md", "/home/u/acme/CLAUDE.local.md"]);
+		expect(ensureParentClaudeMdExcluded(fixed, "/home/u/acme", { parentIsClaudeHome: true })).toBe(fixed);
+	});
+});
+
+describe("writeClaudeHooks in an in-project worktree", () => {
+	let project: string;
+	let worktree: string;
+	const excludes = () => JSON.parse(readFileSync(join(worktree, ".claude", "settings.local.json"), "utf-8")).claudeMdExcludes;
+
+	beforeEach(() => {
+		project = mkdtempSync(join(tmpdir(), "agent-hooks-inproject-"));
+		worktree = join(project, ".dev3", "worktrees", "abcd1234", "worktree");
+		mkdirSync(worktree, { recursive: true });
+		mkdirSync(join(project, ".claude"), { recursive: true });
+	});
+	afterEach(() => rmSync(project, { recursive: true, force: true }));
+
+	it("excludes the parent .claude/CLAUDE.md when the parent .claude is a plain project folder", () => {
+		writeClaudeHooks(worktree);
+		expect(excludes()).toContain(`${project}/.claude/CLAUDE.md`);
+	});
+
+	it("lets the parent .claude/CLAUDE.md load once that folder is Claude's config dir", () => {
+		writeClaudeHooks(worktree);
+		writeFileSync(join(project, ".claude", ".claude.json"), "{}");
+		writeClaudeHooks(worktree);
+		expect(excludes()).toEqual([`${project}/CLAUDE.md`, `${project}/CLAUDE.local.md`]);
+	});
 });
 
 describe("isDev3OwnedFolder", () => {
