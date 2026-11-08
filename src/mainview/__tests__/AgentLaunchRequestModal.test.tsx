@@ -53,6 +53,15 @@ vi.mock("../components/AgentConfigPicker", () => ({
 	default: () => <div data-testid="agent-config-picker" />,
 }));
 
+// The account pill has its own suite; this stub shows the value and offers one pick.
+vi.mock("../components/AgentAccountIndicator", () => ({
+	default: ({ value, onSelect, allowAuto }: { value?: string | null; onSelect?: (id: string | null) => void; allowAuto?: boolean }) => (
+		<button type="button" data-testid="account-pill" data-allow-auto={String(allowAuto)} onClick={() => onSelect?.("acct-2")}>
+			{value === undefined ? "default" : value === null ? "system" : value}
+		</button>
+	),
+}));
+
 import AgentLaunchRequestModal from "../components/AgentLaunchRequestModal";
 import { api } from "../rpc";
 import { setDialogKeyboardGuardClock } from "../utils/dialog-keyboard-guard";
@@ -109,8 +118,8 @@ describe("AgentLaunchRequestModal", () => {
 		const { onRespond } = renderModal(makeRequest({
 			canAddVariants: false,
 			resume: { panes: [
-				{ agentId: "builtin-claude", configId: "claude-plan", sessionId: "1160218f-85f5-4a45-8032-ced3af5a532b" },
-				{ agentId: "builtin-claude", configId: "claude-auto", sessionId: null },
+				{ agentId: "builtin-claude", configId: "claude-plan", sessionId: "1160218f-85f5-4a45-8032-ced3af5a532b", agentCmd: "claude", accountId: "acct-1" },
+				{ agentId: "builtin-claude", configId: "claude-auto", sessionId: null, agentCmd: "claude" },
 			] },
 		}));
 		expect(await screen.findByRole("heading", { name: "Agent wants to resume this task's saved session" })).toBeInTheDocument();
@@ -125,6 +134,44 @@ describe("AgentLaunchRequestModal", () => {
 		await user.click(accept);
 		expect(onRespond).toHaveBeenCalledWith(true, undefined);
 		expect(api.request.updateAgentLaunchChoice).not.toHaveBeenCalled();
+	});
+
+	const claudeResume = (extra: Partial<NonNullable<AgentLaunchRequest["resume"]>> = {}) => makeRequest({
+		canAddVariants: false,
+		resume: { panes: [{ agentId: "builtin-claude", configId: "claude-plan", sessionId: "s1", agentCmd: "claude", accountId: "acct-1" }], ...extra },
+	});
+
+	it("offers the Claude account of a resume, without Auto, preselected to the saved one", async () => {
+		const user = userEvent.setup();
+		const { onRespond } = renderModal(claudeResume());
+		const pill = await screen.findByTestId("account-pill");
+		expect(pill).toHaveTextContent("acct-1");
+		expect(pill).toHaveAttribute("data-allow-auto", "false");
+		await user.click(pill);
+		expect(pill).toHaveTextContent("acct-2");
+		const accept = screen.getByTestId("agent-launch-accept");
+		await waitFor(() => expect(accept).toBeEnabled());
+		await user.click(accept);
+		expect(onRespond).toHaveBeenCalledWith(true, { variants: [], resumeAccountId: "acct-2" });
+	});
+
+	it("preselects the account the asking agent requested and answers with it", async () => {
+		const user = userEvent.setup();
+		const { onRespond } = renderModal(claudeResume({ accountId: null }));
+		expect(await screen.findByTestId("account-pill")).toHaveTextContent("system");
+		const accept = screen.getByTestId("agent-launch-accept");
+		await waitFor(() => expect(accept).toBeEnabled());
+		await user.click(accept);
+		expect(onRespond).toHaveBeenCalledWith(true, { variants: [], resumeAccountId: null });
+	});
+
+	it("offers no account for a resume with no Claude pane", async () => {
+		renderModal(makeRequest({
+			canAddVariants: false,
+			resume: { panes: [{ agentId: "builtin-claude", configId: "claude-plan", sessionId: "s1", agentCmd: "codex" }] },
+		}));
+		expect(await screen.findByRole("heading", { name: "Agent wants to resume this task's saved session" })).toBeInTheDocument();
+		expect(screen.queryByTestId("account-pill")).not.toBeInTheDocument();
 	});
 
 	it("shows a hibernate request with what survives, no agent choice, and its own countdown", async () => {

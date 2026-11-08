@@ -14,7 +14,7 @@ import { resumeCliAgent } from "../cli-agent-resume";
 import { getTask } from "../data";
 import { getPushMessage } from "../rpc-handlers/shared-pure";
 import { ResumeUnavailableError, resumeTaskSession, sessionStateOrLostCodexPane, taskTerminalAlive } from "../rpc-handlers/tmux-pty";
-import { _resetAgentRequestsForTests, createAgentRequest, resolveAgentRequest, voidAgentRequest } from "../agent-requests";
+import { _resetAgentRequestsForTests, createAgentRequest, pendingAgentLaunchDialogs, resolveAgentRequest, setAgentRequestLaunchChoice, voidAgentRequest } from "../agent-requests";
 
 const project = { id: "project-1", name: "Fixture", path: "/repo" } as Project;
 const panes = [
@@ -152,6 +152,59 @@ describe("dev3 agent resume", () => {
 		vi.mocked(getPushMessage).mockReturnValue(null as any);
 		await expect(resumeCliAgent({ project, task, requester, allowAgentLatest: false })).rejects.toThrow("No app window is connected");
 		expect(resumeTaskSession).not.toHaveBeenCalled();
+	});
+});
+
+describe("dev3 agent resume --account", () => {
+	it("resumes a person's request directly on the requested account", async () => {
+		await resumeCliAgent({ project, task, requester: null, allowAgentLatest: false, accountId: "acct-2" });
+		expect(push).not.toHaveBeenCalled();
+		expect(resumeTaskSession).toHaveBeenCalledWith(task.id, { refuseLive: true, refuseFresh: true, requireSessionIds: true, accountId: "acct-2" });
+	});
+
+	it("shows each pane's saved account and command, and preselects the requested one", async () => {
+		const legacyMain = { ...panes[0], accountId: undefined };
+		vi.mocked(sessionStateOrLostCodexPane).mockResolvedValue({ panes: [legacyMain, panes[1]] } as any);
+		const pending = resumeCliAgent({ project, task: { ...task, accountId: "acct-task" }, requester, allowAgentLatest: false, accountId: null });
+		await answer(true);
+		await pending;
+		expect(push.mock.calls[0][1].resume).toEqual({
+			accountId: null,
+			panes: [
+				// An old snapshot's main pane launches on the task's account, so that is what it shows.
+				{ agentId: "agent-1", configId: "config-1", sessionId: "s-main", accountId: "acct-task", agentCmd: "claude", agentFamily: undefined },
+				{ agentId: "agent-2", configId: "config-2", sessionId: "s-extra", accountId: undefined, agentCmd: "codex", agentFamily: undefined },
+			],
+		});
+		expect(resumeTaskSession).toHaveBeenCalledWith(task.id, expect.objectContaining({ accountId: null }));
+	});
+
+	it("resumes on the account picked in the dialog over the requested one", async () => {
+		const pending = resumeCliAgent({ project, task, requester, allowAgentLatest: false, accountId: "acct-2" });
+		await answer(true, { variants: [], resumeAccountId: "acct-3" });
+		await pending;
+		expect(resumeTaskSession).toHaveBeenCalledWith(task.id, expect.objectContaining({ accountId: "acct-3" }));
+	});
+
+	it("keeps the saved accounts when nobody asked for another", async () => {
+		const pending = resumeCliAgent({ project, task, requester, allowAgentLatest: false });
+		await answer(true, { variants: [] });
+		await pending;
+		expect(vi.mocked(resumeTaskSession).mock.calls[0][1]?.accountId).toBeUndefined();
+	});
+
+	it("replays the dialog's current account pick to a client that connects late", async () => {
+		const pending = resumeCliAgent({ project, task, requester, allowAgentLatest: false });
+		await vi.waitFor(() => expect(push).toHaveBeenCalled());
+		setAgentRequestLaunchChoice(push.mock.calls[0][1].requestId, { variants: [], resumeAccountId: "acct-3" });
+		expect(pendingAgentLaunchDialogs()[0].resume?.accountId).toBe("acct-3");
+		await answer(false); await pending;
+	});
+
+	it("does not join a retry that asks for a different account", async () => {
+		const first = resumeCliAgent({ project, task, requester, allowAgentLatest: false, accountId: "acct-2" });
+		await expect(resumeCliAgent({ project, task, requester, allowAgentLatest: false, accountId: "acct-3" })).rejects.toThrow("Another resume request is pending");
+		await answer(false); await first;
 	});
 });
 

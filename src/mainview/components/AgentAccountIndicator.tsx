@@ -552,6 +552,7 @@ export default function AgentAccountIndicator({
 	onSelect,
 	onAddAccount,
 	projectId,
+	allowAuto = true,
 }: {
 	agent: CodingAgent | undefined | null;
 	/** Per-launch selection: `undefined` → the registry default (the preselect);
@@ -568,6 +569,8 @@ export default function AgentAccountIndicator({
 	 *  system-login row names that directory and shows its account instead of
 	 *  `~/.claude`'s, because that is the login the session will really use. */
 	projectId?: string;
+	/** False drops the Auto row: a resume reopens an existing conversation, and Auto only routes new ones. */
+	allowAuto?: boolean;
 }) {
 	const t = useT();
 	const kind = agent ? agentAccountKindForCommand(agent.baseCommand) : null;
@@ -579,12 +582,12 @@ export default function AgentAccountIndicator({
 	const report = useAgentRateLimits(anchor !== null);
 	const buttonRef = useRef<HTMLButtonElement>(null);
 	const isLocal = !!onSelect;
-	const routable = isRoutableAccountKind(kind);
+	const routable = allowAuto && isRoutableAccountKind(kind);
 	const autoDefault = routable && !!state && state[kind].autoDefault === true;
 	const autoSelected = routable && (isLocal ? isAutoAccountId(value) || (value === undefined && autoDefault) : autoDefault);
 	// Fetched while the popover is open (to decide whether Auto is worth a row)
 	// and whenever Auto is the choice (the pill names the account it would use).
-	const preview = useAutoAccountPreview(kind, projectId, anchor !== null || autoSelected);
+	const preview = useAutoAccountPreview(kind, projectId, routable && (anchor !== null || autoSelected));
 
 	// Closing the popover hands focus back to the pill that opened it — the panel
 	// unmounts, and without this a keyboard user lands on <body>, outside the

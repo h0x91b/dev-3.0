@@ -3,13 +3,14 @@ import { ACTIVE_STATUSES, getPrimaryStopTarget } from "../../../shared/types";
 import * as data from "../../data";
 import * as pty from "../../pty-server";
 import * as agents from "../../agents";
-import { codexAccountIdForHome } from "../../agent-accounts";
+import { codexAccountIdForHome, defaultAccountPaths, getActiveClaudeConfigDir } from "../../agent-accounts";
+import { isAutoAccountId } from "../../../shared/agent-accounts";
 import { chooseTaskCodexConversations } from "../../codex-task-selection";
 import { getAgentAdapter } from "../../../shared/agent-adapters/registry";
 import { agentKey } from "../../../shared/agent-adapters/families";
 import * as repoConfig from "../../repo-config";
 import { resolveLaunchProject, rootProjectFor } from "../../ops-worktree";
-import { resolveResumableSessionIds } from "../../agent-transcripts";
+import { claudeConfigDirHasSession, resolveResumableSessionIds } from "../../agent-transcripts";
 import { DEFAULT_TMUX_SOCKET, taskSessionName, tmux } from "../../tmux";
 import { dev3TaskTempPath } from "../../temp-paths";
 import { taskTerminalBackendIdentity } from "../../task-terminal-backend";
@@ -129,6 +130,8 @@ export interface ResumeTaskOptions {
 	requireSessionIds?: boolean;
 	/** Refuse when any pane runs a harness that cannot resume and would start over from the description. */
 	refuseFresh?: boolean;
+	/** Resume every Claude pane on this account instead of its saved one; null is the system login. */
+	accountId?: string | null;
 }
 
 export type ResumeTaskSessionOutcome =
@@ -180,8 +183,8 @@ export function resumeTaskSession(taskId: string, opts: ResumeTaskOptions = {}):
 	return run;
 }
 
-export async function resumeTask(params: { taskId: string; restart?: boolean }): Promise<string> {
-	let outcome = await resumeTaskSession(params.taskId, params.restart ? { restart: "always" } : {});
+export async function resumeTask(params: { taskId: string; restart?: boolean; accountId?: string | null }): Promise<string> {
+	let outcome = await resumeTaskSession(params.taskId, params.restart ? { restart: "always" } : { accountId: params.accountId });
 	// A concurrent watchdog probe can refuse a live agent; an explicit restart still applies.
 	if (params.restart && outcome.kind === "already-running") {
 		outcome = await resumeTaskSession(params.taskId, { restart: "always" });
@@ -190,6 +193,42 @@ export async function resumeTask(params: { taskId: string; restart?: boolean }):
 		throw new Error("The terminal restarted, but some agent panes could not be restored. Their conversations remain saved.");
 	}
 	return outcome.kind === "resumed" ? outcome.url : `ws://localhost:${pty.getPtyPort()}?session=${params.taskId}`;
+}
+
+/** Only Claude panes take an account choice: a Codex conversation lives in its own account's home. */
+export function paneTakesAccountChoice(pane: Pick<PaneSessionEntry, "agentCmd" | "agentFamily">): boolean {
+	return agents.isClaudeCommand(pane.agentCmd, pane.agentFamily ?? undefined);
+}
+
+/** Refuses an account choice that would fail or silently start over, before anything is woken. */
+async function assertAccountReachesPanes(
+	accountId: string | null,
+	panes: readonly PaneSessionEntry[],
+	targets: readonly { sessionId: string | null; mode: ResumePaneMode }[],
+	reports: ResumePaneReport[],
+): Promise<void> {
+	if (isAutoAccountId(accountId)) {
+		throw new ResumeUnavailableError("account-invalid", "Auto picks an account for a new conversation; resume on a named account or the system login.", reports);
+	}
+	const claudePanes = panes.flatMap((pane, i) => (paneTakesAccountChoice(pane) ? [i] : []));
+	if (!claudePanes.length) {
+		throw new ResumeUnavailableError("account-invalid", "No saved pane runs Claude, so there is no account to switch. A Codex conversation stays on the account it started on.", reports);
+	}
+	let configDir: string;
+	try {
+		configDir = (await getActiveClaudeConfigDir(accountId)) ?? defaultAccountPaths().claudeHome;
+	} catch (err) {
+		throw new ResumeUnavailableError("account-invalid", err instanceof Error ? err.message : String(err), reports);
+	}
+	for (const i of claudePanes) {
+		const sessionId = targets[i].sessionId;
+		if (!sessionId || targets[i].mode === "fresh" || claudeConfigDirHasSession(configDir, sessionId)) continue;
+		throw new ResumeUnavailableError(
+			"account-cannot-see-conversation",
+			`The chosen account cannot see conversation ${sessionId.slice(0, 8)}: ${configDir} keeps its own conversation history. Nothing was resumed; keep the saved account or pick another.`,
+			reports,
+		);
+	}
 }
 
 async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promise<ResumeTaskSessionOutcome> {
@@ -246,11 +285,13 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 		// The selection engine chose a Codex id from the transcripts it read.
 		return codexChoices.has(i) && target.sessionId ? { ...target, mode: "exact" as const } : target;
 	});
+	const accountOverride = opts.accountId;
+	const switchesAccount = (pane: PaneSessionEntry, i: number) => accountOverride !== undefined && !codexHomes.has(i) && paneTakesAccountChoice(pane);
 	const reports: ResumePaneReport[] = panes.map((pane, i) => ({
 		index: i,
 		agentId: pane.agentId,
 		configId: pane.configId,
-		accountId: pane.accountId ?? null,
+		accountId: (switchesAccount(pane, i) ? accountOverride : pane.accountId) ?? null,
 		agentFamily: pane.agentFamily ?? null,
 		storedSessionId: stored[i]?.sessionId ?? null,
 		sessionId: targets[i].mode === "fresh" ? null : targets[i].sessionId,
@@ -278,6 +319,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 			reports,
 		);
 	}
+	if (accountOverride !== undefined) await assertAccountReachesPanes(accountOverride, panes, targets, reports);
 	await wakeIfHibernated(project, task);
 
 	if (opts.restart) {
@@ -308,9 +350,11 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 		main.configId,
 		false,
 		true,
-		{ sessionId: mainResume ?? undefined, accountId: main.accountId, codexHome: codexHomes.get(0), freshSessionId: mainFreshSessionId },
+		{ sessionId: mainResume ?? undefined, accountId: switchesAccount(main, 0) ? accountOverride : main.accountId, codexHome: codexHomes.get(0), freshSessionId: mainFreshSessionId },
 	);
 	if (mainAccountId !== undefined) reports[0].accountId = mainAccountId;
+	// Start Fresh and reconnect read the task's account, so a switch must not revert there.
+	if (switchesAccount(main, 0)) await data.updateTask(project, task.id, { accountId: accountOverride });
 	reports[0].status = "resumed";
 	if (mainFreshSessionId) reports[0].sessionId = mainFreshSessionId;
 	const backend = taskTerminalBackendIdentity(task);
@@ -346,7 +390,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 				try {
 					const paneResume = targets[i].sessionId;
 					const codexHome = codexHomes.get(i);
-					let accountId = codexHome ? codexAccountIdForHome(codexHome) ?? null : pane.accountId;
+					let accountId = codexHome ? codexAccountIdForHome(codexHome) ?? null : switchesAccount(pane, i) ? accountOverride : pane.accountId;
 					// Every conversation of this worktree belongs to another pane, so
 					// `--continue` would open one of theirs: start this pane over instead.
 					const freshSessionId = targets[i].mode === "fresh-session" ? crypto.randomUUID() : null;
