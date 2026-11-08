@@ -126,7 +126,7 @@ Use it only for work that belongs in its own session — never to escape your sc
 
 ## Notes (per-task scratchpad) — your gift to future agents
 
-\`dev3 note add "..."\` records durable findings, decisions and hard-won context. Completing or cancelling a task destroys the worktree, but **notes survive** and reach future agents through \`dev3 conversations search\`, weighted above raw transcript chatter.
+\`dev3 note add "..."\` records durable findings, decisions and hard-won context. Completing or cancelling a task ends its session, but **notes survive** and reach future agents through \`dev3 conversations search\`, weighted above raw transcript chatter.
 
 Write one when you **dug up something non-obvious** (root cause, how subsystems really talk, why a thing is built that way), **learned an undocumented invariant or dependency gotcha**, **burned time on a wrong assumption** (spell out the correct path), or **made a real decision** (what you rejected and why). Lean toward writing when in doubt; never log trivia derivable from the diff or git history. The bar: *"would this save a future agent real time?"* One insight per note, self-contained, readable months later.
 
@@ -385,7 +385,7 @@ Use it only for work that belongs in its own session — never to escape your sc
 
 ## Notes (per-task scratchpad) — your gift to future agents
 
-\`dev3 note add "..."\` records durable findings, decisions and hard-won context. Completing or cancelling a task destroys the worktree, but **notes survive** and reach future agents through \`dev3 conversations search\`, weighted above raw transcript chatter.
+\`dev3 note add "..."\` records durable findings, decisions and hard-won context. Completing or cancelling a task ends its session, but **notes survive** and reach future agents through \`dev3 conversations search\`, weighted above raw transcript chatter.
 
 Write one when you **dug up something non-obvious** (root cause, how subsystems really talk, why a thing is built that way), **learned an undocumented invariant or dependency gotcha**, **burned time on a wrong assumption** (spell out the correct path), or **made a real decision** (what you rejected and why). Lean toward writing when in doubt; never log trivia derivable from the diff or git history. The bar: *"would this save a future agent real time?"* One insight per note, self-contained, readable months later.
 
