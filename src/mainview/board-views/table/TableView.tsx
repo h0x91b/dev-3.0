@@ -10,6 +10,7 @@ import { TableCell, LabelsCell, PriorityCell, StatusCell, rowSeqLabel, type Tabl
 import {
 	normalizeTableLayout,
 	sortTableTasks,
+	tableGrid,
 	toggleTableSort,
 	type TableColumnId,
 	type TableLayout,
@@ -21,22 +22,6 @@ const ROW_HEIGHT = 36;
 const CARD_HEIGHT = 84;
 /** Rows rendered beyond the viewport, so a quick scroll does not show blank space. */
 const OVERSCAN = 12;
-
-const COLUMN_WIDTH: Record<TableColumnId, string> = {
-	seq: "4.5rem",
-	title: "minmax(14rem, 1fr)",
-	project: "9rem",
-	status: "8rem",
-	priority: "4.75rem",
-	labels: "minmax(8rem, 14rem)",
-	agent: "7rem",
-	pr: "6.5rem",
-	activity: "4.5rem",
-	parent: "5rem",
-	created: "6.5rem",
-	branch: "minmax(8rem, 13rem)",
-	type: "7rem",
-};
 
 /** Times and dates read as quantities, so they hug the end edge and line up digit by digit. */
 const END_ALIGNED: ReadonlySet<TableColumnId> = new Set(["activity", "created"]);
@@ -170,7 +155,7 @@ export function TableView(_props: { ctx: Context }) {
 	}
 
 	const items = virtualizer.getVirtualItems();
-	const gridTemplateColumns = layout.columns.map((c) => COLUMN_WIDTH[c]).join(" ");
+	const grid = tableGrid(layout.columns);
 
 	if (narrow) {
 		return (
@@ -213,9 +198,9 @@ export function TableView(_props: { ctx: Context }) {
 
 	return (
 		<div ref={scrollRef} className="min-h-0 flex-1 overflow-auto px-6 pb-6" data-testid="board-table">
-			<div role="table" aria-label={t("boardView.table")} aria-rowcount={sorted.length + 1} className="min-w-max">
+			<div role="table" aria-label={t("boardView.table")} aria-rowcount={sorted.length + 1} className="min-w-max" style={{ maxWidth: grid.maxWidth }}>
 				<div role="rowgroup" className="sticky top-0 z-10 bg-base">
-					<div role="row" aria-rowindex={1} className="grid items-center gap-x-3 border-b border-edge px-2" style={{ gridTemplateColumns, height: ROW_HEIGHT }}>
+					<div role="row" aria-rowindex={1} className="grid items-center border-b border-edge" style={{ ...grid.rowStyle, height: ROW_HEIGHT }}>
 						{layout.columns.map((column) => {
 							const sorted = layout.sort[0] === column;
 							const direction = sorted ? layout.sort[1] : null;
@@ -264,8 +249,8 @@ export function TableView(_props: { ctx: Context }) {
 								onClick={() => board.openTask(task.id)}
 								onContextMenu={(e) => openMenu(task, e)}
 								onKeyDown={(e) => onRowKeyDown(task, item.index, e)}
-								className={`absolute left-0 top-0 grid w-full cursor-pointer items-center gap-x-3 border-b border-edge/40 px-2 outline-none ${item.index % 2 === 1 ? ZEBRA_ROW : ""} hover:bg-raised-hover focus-visible:bg-raised-hover focus-visible:shadow-[inset_2px_0_0_rgb(var(--accent))]`}
-								style={{ gridTemplateColumns, height: ROW_HEIGHT, transform: `translateY(${item.start}px)` }}
+								className={`absolute left-0 top-0 grid w-full cursor-pointer items-center border-b border-edge/40 outline-none ${item.index % 2 === 1 ? ZEBRA_ROW : ""} hover:bg-raised-hover focus-visible:bg-raised-hover focus-visible:shadow-[inset_2px_0_0_rgb(var(--accent))]`}
+								style={{ ...grid.rowStyle, height: ROW_HEIGHT, transform: `translateY(${item.start}px)` }}
 							>
 								{layout.columns.map((column) => (
 									<div key={column} role="cell" className={`min-w-0 ${END_ALIGNED.has(column) ? "text-end" : ""}`}>

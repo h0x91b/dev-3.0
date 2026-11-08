@@ -76,6 +76,54 @@ export function toggleTableColumn(layout: TableLayout, column: TableColumnId, ki
 	return { ...layout, columns };
 }
 
+/** A column's width in rem: one fixed number, or elastic between a floor and a cap. */
+type TableColumnSize = number | { min: number; max: number };
+
+/** Elastic columns keep one min:max ratio, so the narrowest table is exactly the sum of the floors. */
+const COLUMN_SIZE: Record<TableColumnId, TableColumnSize> = {
+	seq: 4.5,
+	title: { min: 14, max: 40 },
+	project: 9,
+	status: 8,
+	priority: 4.75,
+	labels: { min: 7, max: 20 },
+	agent: 7,
+	pr: 6.5,
+	activity: 4.5,
+	parent: 5,
+	created: 6.5,
+	branch: { min: 7, max: 20 },
+	type: 7,
+};
+
+const COLUMN_GAP_REM = 0.75;
+const ROW_PADDING_REM = 0.5;
+
+export interface TableGrid {
+	/** Shared by the header row and every body row, so their columns line up. */
+	rowStyle: { gridTemplateColumns: string; columnGap: string; paddingInline: string };
+	/** The width at which every elastic column sits at its cap. */
+	maxWidth: string;
+}
+
+const rem = (value: number) => `${+value.toFixed(3)}rem`;
+
+/**
+ * The row grid for the shown columns. Elastic columns share spare room in proportion
+ * to their caps and the table stops growing once they reach them: past that, a wider
+ * screen would only pull the title away from the columns that describe it.
+ */
+export function tableGrid(columns: readonly TableColumnId[]): TableGrid {
+	const sizes = columns.map((column) => COLUMN_SIZE[column]);
+	const tracks = sizes.map((size) => (typeof size === "number" ? rem(size) : `minmax(${rem(size.min)}, ${size.max}fr)`));
+	const widest = sizes.reduce<number>((sum, size) => sum + (typeof size === "number" ? size : size.max), 0);
+	const gaps = Math.max(0, columns.length - 1) * COLUMN_GAP_REM;
+	return {
+		rowStyle: { gridTemplateColumns: tracks.join(" "), columnGap: rem(COLUMN_GAP_REM), paddingInline: rem(ROW_PADDING_REM) },
+		maxWidth: rem(widest + gaps + ROW_PADDING_REM * 2),
+	};
+}
+
 /** Index of the board lane a task sits in; -1 when the board does not show that lane. */
 export function laneOfTask(task: Task, columns: readonly BoardColumnSlot[]): number {
 	if (task.customColumnId) {

@@ -6,6 +6,8 @@ import {
 	laneOfTask,
 	normalizeTableLayout,
 	sortTableTasks,
+	TABLE_COLUMNS,
+	tableGrid,
 	toggleTableColumn,
 	toggleTableSort,
 	type TableSortContext,
@@ -96,6 +98,32 @@ describe("toggleTableColumn", () => {
 	it("never removes the title", () => {
 		const base = defaultTableLayout("project");
 		expect(toggleTableColumn(base, "title", "project")).toEqual(base);
+	});
+});
+
+describe("tableGrid", () => {
+	it("gives fixed columns one width and lets the elastic ones flex between a floor and a cap", () => {
+		expect(tableGrid(["seq", "title", "status", "labels"]).rowStyle.gridTemplateColumns)
+			.toBe("4.5rem minmax(14rem, 40fr) 8rem minmax(7rem, 20fr)");
+	});
+
+	it("stops the table where every elastic column reaches its cap", () => {
+		// seq 4.5 + title 40 + status 8 + labels 20, three 0.75 gaps, 0.5 of padding on each side.
+		expect(tableGrid(["seq", "title", "status", "labels"]).maxWidth).toBe("75.75rem");
+		expect(tableGrid(DEFAULT_TABLE_COLUMNS).maxWidth).toBe("101.5rem");
+	});
+
+	it("grows the cap with every column shown, so extra columns are never squeezed into it", () => {
+		const width = (columns: readonly (typeof TABLE_COLUMNS)[number][]) => parseFloat(tableGrid(columns).maxWidth);
+		expect(width([...DEFAULT_TABLE_COLUMNS, "branch"])).toBe(width(DEFAULT_TABLE_COLUMNS) + 20 + 0.75);
+		expect(width(["title"])).toBe(41);
+	});
+
+	it("keeps one floor-to-cap ratio across elastic columns, or the narrowest table outgrows its floors", () => {
+		const ratios = [...tableGrid(TABLE_COLUMNS).rowStyle.gridTemplateColumns.matchAll(/minmax\(([\d.]+)rem, ([\d.]+)fr\)/g)]
+			.map(([, min, max]) => Number(min) / Number(max));
+		expect(ratios.length).toBeGreaterThan(1);
+		expect(new Set(ratios).size).toBe(1);
 	});
 });
 

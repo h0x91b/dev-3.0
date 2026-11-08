@@ -254,6 +254,16 @@ describe("Table board view", () => {
 		expect(within(screen.getByTestId("board-table-row-t1")).getAllByText("—")).toHaveLength(1);
 	});
 
+	it("caps its width and gives the header and the rows one grid", async () => {
+		await renderTable({ tasks: [task("t1", 1)] });
+		expect(screen.getByRole("table").style.maxWidth).toBe("101.5rem");
+		const [header, row] = screen.getAllByRole("row");
+		expect(header.style.gridTemplateColumns).toContain("minmax(14rem, 40fr)");
+		expect(row.style.gridTemplateColumns).toBe(header.style.gridTemplateColumns);
+		expect([row.style.columnGap, row.style.paddingInline]).toEqual(["0.75rem", "0.5rem"]);
+		expect([header.style.columnGap, header.style.paddingInline]).toEqual(["0.75rem", "0.5rem"]);
+	});
+
 	it("renders a card list on narrow", async () => {
 		await renderTable({ formFactor: "narrow", tasks: [task("t1", 1), task("t2", 2)] });
 		expect(screen.getByRole("list")).toBeInTheDocument();
