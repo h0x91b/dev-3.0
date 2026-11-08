@@ -136,7 +136,7 @@ describe("Table board view", () => {
 	it("shows the default columns and every task, finished ones included, newest activity first", async () => {
 		await renderTable({ tasks: [task("t1", 1), task("t3", 3, { status: "completed" }), task("t2", 2, { status: "cancelled" })] });
 		const headers = screen.getAllByRole("columnheader").map((h) => h.textContent);
-		expect(headers).toEqual(["#", "Title", "Status", "Priority", "Labels", "Agent", "PR", "Activity"]);
+		expect(headers).toEqual(["#", "Title", "Status", "Priority", "Labels", "Agent", "PR", "Activity", "Overview"]);
 		expect(rowIds()).toEqual(["t3", "t2", "t1"]);
 		expect(within(screen.getByTestId("board-table-row-t2")).getByText("Cancelled")).toBeInTheDocument();
 	});
@@ -176,7 +176,7 @@ describe("Table board view", () => {
 
 	it("restores a saved layout and ignores what it does not understand", async () => {
 		await renderTable({ tasks: [task("t1", 1, { branchName: "feat/x" })], layout: { columns: ["seq", "branch", "nonsense"], sort: ["seq", "asc"] } });
-		expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["#", "Title", "Branch"]);
+		expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["#", "Title", "Branch", "Overview"]);
 		expect(screen.getByText("feat/x")).toBeInTheDocument();
 	});
 
@@ -254,14 +254,41 @@ describe("Table board view", () => {
 		expect(within(screen.getByTestId("board-table-row-t1")).getAllByText("—")).toHaveLength(1);
 	});
 
-	it("caps its width and gives the header and the rows one grid", async () => {
+	it("fills the board's width and gives the header and the rows one grid", async () => {
 		await renderTable({ tasks: [task("t1", 1)] });
-		expect(screen.getByRole("table").style.maxWidth).toBe("101.5rem");
+		const table = screen.getByRole("table");
+		expect([table.style.minWidth, table.style.maxWidth]).toEqual(["65rem", ""]);
 		const [header, row] = screen.getAllByRole("row");
-		expect(header.style.gridTemplateColumns).toContain("minmax(14rem, 40fr)");
+		expect(header.style.gridTemplateColumns).toContain("minmax(14rem, 36rem)");
 		expect(row.style.gridTemplateColumns).toBe(header.style.gridTemplateColumns);
 		expect([row.style.columnGap, row.style.paddingInline]).toEqual(["0.75rem", "0.5rem"]);
 		expect([header.style.columnGap, header.style.paddingInline]).toEqual(["0.75rem", "0.5rem"]);
+	});
+
+	it("shows each task's overview in the row's spare room, the user's own edit first", async () => {
+		await renderTable({
+			tasks: [task("t1", 1, { overview: "Agent wrote this", userOverview: "User wrote this" }), task("t2", 2, { overview: "Half done" }), task("t3", 3)],
+		});
+		expect(screen.getAllByRole("columnheader").pop()).toHaveTextContent("Overview");
+		const spare = (id: string) => within(screen.getByTestId(`board-table-row-${id}`)).getAllByRole("cell").pop()!;
+		expect(spare("t1")).toHaveTextContent("User wrote this");
+		expect(spare("t1")).not.toHaveTextContent("Agent wrote this");
+		expect(within(spare("t2")).getByText("Half done")).toHaveAttribute("title", "Half done");
+		expect(spare("t3")).toBeEmptyDOMElement();
+	});
+
+	it("turns a reference in an overview into a link instead of raw markup", async () => {
+		await renderTable({ tasks: [task("t1", 1, { overview: "Blocked on <seq:7>" })] });
+		const row = within(screen.getByTestId("board-table-row-t1"));
+		expect(row.getByRole("button", { name: /seq:7/ })).toHaveTextContent("seq:7");
+		expect(row.queryByText(/<seq:7>/)).not.toBeInTheDocument();
+	});
+
+	it("lets every cell control answer across the row's full height", async () => {
+		await renderTable({ tasks: [task("t1", 1, { priority: "P1" })] });
+		const row = within(screen.getByTestId("board-table-row-t1"));
+		const controls = [row.getByRole("button", { name: /Change status/ }), row.getByRole("button", { name: "Edit labels" }), row.getByText("P1").closest("button")!];
+		for (const control of controls) expect(control.className).toContain("after:-inset-y-2");
 	});
 
 	it("renders a card list on narrow", async () => {

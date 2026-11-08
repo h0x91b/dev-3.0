@@ -6,8 +6,9 @@ import { getTaskTitle, projectDisplayName } from "../../../shared/types";
 import { useT, type TranslationKey } from "../../i18n";
 import { useBoard } from "../react";
 import type { BoardService } from "../board-service";
-import { TableCell, LabelsCell, PriorityCell, StatusCell, rowSeqLabel, type TableRowContext } from "./TableCells";
+import { TableCell, LabelsCell, OverviewCell, PriorityCell, StatusCell, rowSeqLabel, type TableRowContext } from "./TableCells";
 import {
+	END_ALIGNED_COLUMNS,
 	normalizeTableLayout,
 	sortTableTasks,
 	tableGrid,
@@ -23,8 +24,9 @@ const CARD_HEIGHT = 84;
 /** Rows rendered beyond the viewport, so a quick scroll does not show blank space. */
 const OVERSCAN = 12;
 
-/** Times and dates read as quantities, so they hug the end edge and line up digit by digit. */
-const END_ALIGNED: ReadonlySet<TableColumnId> = new Set(["activity", "created"]);
+/** The row's spare room. Its text appears only once the cell is wide enough to say something. */
+const SPARE_CELL = "min-w-0 ps-3 [container-type:inline-size]";
+const SPARE_TEXT = "hidden truncate [@container(min-width:12rem)]:block";
 
 const COLUMN_LABEL_KEYS = {
 	seq: "boardTable.col.seq",
@@ -198,20 +200,20 @@ export function TableView(_props: { ctx: Context }) {
 
 	return (
 		<div ref={scrollRef} className="min-h-0 flex-1 overflow-auto px-6 pb-6" data-testid="board-table">
-			<div role="table" aria-label={t("boardView.table")} aria-rowcount={sorted.length + 1} className="min-w-max" style={{ maxWidth: grid.maxWidth }}>
+			<div role="table" aria-label={t("boardView.table")} aria-rowcount={sorted.length + 1} style={{ minWidth: grid.minWidth }}>
 				<div role="rowgroup" className="sticky top-0 z-10 bg-base">
 					<div role="row" aria-rowindex={1} className="grid items-center border-b border-edge" style={{ ...grid.rowStyle, height: ROW_HEIGHT }}>
 						{layout.columns.map((column) => {
 							const sorted = layout.sort[0] === column;
 							const direction = sorted ? layout.sort[1] : null;
-							const end = END_ALIGNED.has(column);
+							const end = END_ALIGNED_COLUMNS.has(column);
 							const label = t(columnLabelKey(column));
 							return (
 								<div
 									key={column}
 									role="columnheader"
 									aria-sort={direction === "asc" ? "ascending" : direction === "desc" ? "descending" : "none"}
-									className={`flex min-w-0 ${end ? "justify-end" : ""}`}
+									className={`flex min-w-0 ${end ? "justify-end pe-3" : ""}`}
 								>
 									{/* -mx-1 cancels the hit-area padding so the label lines up with the cells below. */}
 									<button
@@ -219,7 +221,7 @@ export function TableView(_props: { ctx: Context }) {
 										onClick={() => setLayout(toggleTableSort(layout, column))}
 										data-testid={`board-table-sort-${column}`}
 										title={label}
-										className={`group -mx-1 flex min-w-0 items-center gap-1 rounded px-1 py-0.5 text-xs font-medium transition-colors duration-150 hover:text-fg focus-visible:ring-1 focus-visible:ring-accent/60 ${end ? "flex-row-reverse" : ""} ${sorted ? "text-fg" : "text-fg-3"}`}
+										className={`group -mx-1 flex min-w-0 items-center gap-1 rounded px-1 py-0.5 text-xs font-medium transition-[color,transform] duration-150 hover:text-fg focus-visible:ring-1 focus-visible:ring-accent/60 motion-safe:active:scale-[0.96] ${end ? "flex-row-reverse" : ""} ${sorted ? "text-fg" : "text-fg-3"}`}
 									>
 										<span className="truncate">{label}</span>
 										<svg
@@ -233,6 +235,9 @@ export function TableView(_props: { ctx: Context }) {
 								</div>
 							);
 						})}
+						<div role="columnheader" className={SPARE_CELL}>
+							<span className={`${SPARE_TEXT} text-xs font-medium text-fg-3`}>{t("overview.label")}</span>
+						</div>
 					</div>
 				</div>
 				<div role="rowgroup" className="relative" style={{ height: virtualizer.getTotalSize() }}>
@@ -253,10 +258,13 @@ export function TableView(_props: { ctx: Context }) {
 								style={{ ...grid.rowStyle, height: ROW_HEIGHT, transform: `translateY(${item.start}px)` }}
 							>
 								{layout.columns.map((column) => (
-									<div key={column} role="cell" className={`min-w-0 ${END_ALIGNED.has(column) ? "text-end" : ""}`}>
+									<div key={column} role="cell" className={`min-w-0 ${END_ALIGNED_COLUMNS.has(column) ? "pe-3 text-end" : ""}`}>
 										<TableCell column={column} task={task} ctx={rowCtx} />
 									</div>
 								))}
+								<div role="cell" className={SPARE_CELL}>
+									<OverviewCell task={task} className={SPARE_TEXT} />
+								</div>
 							</div>
 						);
 					})}
