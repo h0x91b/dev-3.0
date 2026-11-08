@@ -1,0 +1,3 @@
+Short: Pick the AWS profile per launch
+
+A Bedrock agent can list named AWS profiles (Settings → Coding Agents, or `dev3 agent aws-profiles set`), and the launch, spawn and column-agent dialogs then offer an AWS profile dropdown whose pick sets AWS_PROFILE and AWS_REGION over the project env, remembered per project and reused on resume. Claude · Bedrock launches also pin `ANTHROPIC_DEFAULT_{FABLE,OPUS,SONNET,HAIKU}_MODEL` from the same alias map as the main model, so `/model haiku` and subagent aliases stop falling back to `us.anthropic.*` ids an account limited to `global.` profiles rejects. With a picked profile, an expired SSO session now opens `aws sso login` in the browser instead of stopping at "Could not load AWS credentials".
