@@ -1,0 +1,1 @@
+Fixed a load-dependent flake in the FilePreviewModal test for a codec the engine refuses. The dialog shrinks to a notice one commit after the "can't play" message appears, because the media child reports it from a passive effect, so the test now waits for the resize instead of asserting it synchronously.
