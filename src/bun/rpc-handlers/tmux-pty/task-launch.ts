@@ -589,8 +589,8 @@ export async function launchTaskPty(
 			?? allAgents.find((agent) => agent.baseCommand === resolvedBaseCmd);
 		// A path cached for a previous base command must not vouch for the new
 		// one; a path the user set is theirs and always counts.
-		const { binaryName, resolvedPath: binaryPath } = resolveAgentLaunchBinary(matchedAgent?.id ?? launchedAgentId, resolvedBaseCmd, settings);
-		if (!binaryPath) {
+		const { binaryName, resolvedPath: binaryPath, unverifiable } = resolveAgentLaunchBinary(matchedAgent?.id ?? launchedAgentId, resolvedBaseCmd, settings);
+		if (!binaryPath && !unverifiable) {
 			// Only reachable past the launch-boundary check (a resume, or a binary
 			// removed mid-preparation): the pane waits for the install instead.
 			const installCmd = (matchedAgent && agentInstallCommand(matchedAgent, process.platform))
@@ -609,7 +609,7 @@ export async function launchTaskPty(
 			await writeLaunchScript(retryScriptPath, retryScript);
 			tmuxCmd = buildScriptRunnerCommand(retryScriptPath, { shellPath: userShell });
 			log.info("Replaced tmuxCmd with agent-check retry wrapper");
-		} else if (binaryName === "codex") {
+		} else if (binaryPath && binaryName === "codex") {
 			const launched = withResolvedCodexBinary(tmuxCmd, binaryName, binaryPath);
 			if (launched !== tmuxCmd) log.info("Codex launched by its resolved path", { binaryPath });
 			tmuxCmd = launched;
