@@ -335,6 +335,15 @@ describe("role band — discernible from the card and the sidebar row (|Lc| ≥ 
 			expect(Math.abs(apcaContrast(ink, selected)), lcLabel(ink, selected, `${theme}/coordinator title, selected`)).toBeGreaterThanOrEqual(55);
 		});
 
+		it(`${theme}: coordinator title ink on the Active Tasks row, hovered and selected`, () => {
+			const ink = rgb("accent-emphasis");
+			const hovered = rgb("surface-elevated-hover");
+			expect(Math.abs(apcaContrast(ink, hovered)), lcLabel(ink, hovered, `${theme}/sidebar title, hover`)).toBeGreaterThanOrEqual(60);
+			// Selected row (bg-accent/20 over the sidebar's base) measures 62 dark, 58 light.
+			const selected = compositeOver(rgb("accent"), 0.2, rgb("surface-base"));
+			expect(Math.abs(apcaContrast(ink, selected)), lcLabel(ink, selected, `${theme}/sidebar title, selected`)).toBeGreaterThanOrEqual(55);
+		});
+
 		it(`${theme}: board-cleanup band (fg/30) vs card and vs raised`, () => {
 			for (const bg of [card, raised]) {
 				expect(Math.abs(apcaContrast(cleanupOn(bg), bg)), lcLabel(cleanupOn(bg), bg, `${theme}/cleanup band`)).toBeGreaterThanOrEqual(15);
