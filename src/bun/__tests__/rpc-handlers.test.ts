@@ -12351,6 +12351,27 @@ describe("resumeTask gives every Claude pane its own conversation (#1950)", () =
 		expect([MAIN, NEWEST]).not.toContain(options[2].sessionId);
 	});
 
+	it("exports the project env in a resumed split pane, which would otherwise inherit the main pane's", async () => {
+		seedStore([NEWEST, MAIN]);
+		(data.loadProjects as any).mockResolvedValue([makeProject({ env: { ANTHROPIC_BASE_URL: "https://project.example" } } as never)]);
+		(data.getTask as any).mockResolvedValue(makeTask({
+			worktreePath: WORKTREE,
+			sessionState: { panes: [claudePane(MAIN), claudePane(NEWEST), claudePane("never-prompted")] },
+		}));
+
+		const realWrite = (globalThis as any).Bun.write;
+		const write = vi.fn().mockResolvedValue(undefined);
+		(globalThis as any).Bun.write = write;
+		try {
+			await handlers.resumeTask({ taskId: "task-1" });
+		} finally {
+			(globalThis as any).Bun.write = realWrite;
+		}
+
+		const pane = write.mock.calls.find(([path]) => String(path) === dev3TaskTempPath("task-1", "resume-pane-1.sh"));
+		expect(String(pane?.[1])).toContain("https://project.example");
+	});
+
 	it("reports a pane that started over as `fresh-session`, and resumes it for the CLI too", async () => {
 		// `dev3 agent resume` refuses `agent-latest` because the harness would pick
 		// somebody's conversation; this pane is handed one dev3 minted, so it is safe.

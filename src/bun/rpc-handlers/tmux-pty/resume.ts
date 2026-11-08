@@ -385,7 +385,8 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 						family: resumeAgentFamily,
 					});
 					const scriptPath = dev3TaskTempPath(params.taskId, `resume-pane-${i}.sh`);
-					await writeLaunchScript(scriptPath, buildCmdScript(resumeCmd, extraEnv, { keepShell: true }));
+					// Export the project env too, like a fresh spawn: a split pane otherwise inherits the main pane's.
+					await writeLaunchScript(scriptPath, buildCmdScript(resumeCmd, paneEnv, { keepShell: true }));
 					const wrappedCmd = `bash "${scriptPath}"`;
 					const newPaneId = await pty.splitAndRunCommand(params.taskId, socket, wrappedCmd, task.worktreePath);
 					if (opts.restart && !newPaneId) throw new Error("The restarted agent pane was not created.");
