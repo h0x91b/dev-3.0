@@ -15,7 +15,7 @@ import {
 	type TableLayout,
 } from "./table-model";
 import { ZEBRA_ROW } from "../zebra";
-import { READABLE_WIDTH } from "../readable-width";
+import { READABLE_SCROLL, READABLE_WIDTH } from "../readable-width";
 
 export const TABLE_VIEW_ID = "builtin:table";
 const ROW_HEIGHT = 36;
@@ -213,7 +213,7 @@ export function TableView(_props: { ctx: Context }) {
 	}
 
 	return (
-		<div ref={scrollRef} className="min-h-0 flex-1 overflow-auto px-6 pb-6" data-testid="board-table">
+		<div ref={scrollRef} className={`min-h-0 flex-1 overflow-auto px-6 pb-6 ${READABLE_SCROLL}`} data-testid="board-table">
 			<div role="table" aria-label={t("boardView.table")} aria-rowcount={sorted.length + 1} className={`${READABLE_WIDTH} min-w-max`}>
 				<div role="rowgroup" className="sticky top-0 z-10 bg-base">
 					<div role="row" aria-rowindex={1} className="grid items-center gap-x-3 border-b border-edge px-2" style={{ gridTemplateColumns, height: ROW_HEIGHT }}>
