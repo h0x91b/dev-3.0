@@ -2263,4 +2263,23 @@ describe("ActiveTasksSidebar port badges", () => {
 		}
 	});
 
+	it("drops the hide-from-sidebar eye from a coordinator row; board cleanup and ordinary rows keep it", () => {
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar project={project} tasks={[
+					makeTask({ id: "coord", title: "Coordinate", taskType: "coordinator", groupId: null, variantIndex: null }),
+					makeTask({ id: "cleanup", title: "Tidy board", taskType: "board-cleanup", groupId: null, variantIndex: null }),
+					makeTask({ id: "plain", title: "Plain task", groupId: null, variantIndex: null }),
+				]}
+					dispatch={vi.fn()} navigate={vi.fn()} agents={[claudeAgent]}
+					bellCounts={new Map<string, number>()} taskPorts={new Map<string, never[]>()} />
+			</I18nProvider>,
+		);
+
+		expect(screen.queryByTestId("sidebar-task-hidden-toggle-coord")).not.toBeInTheDocument();
+		for (const id of ["cleanup", "plain"]) {
+			expect(screen.getByTestId(`sidebar-task-hidden-toggle-${id}`)).toBeInTheDocument();
+		}
+	});
+
 });
