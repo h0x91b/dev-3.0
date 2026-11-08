@@ -1479,6 +1479,14 @@ describe("noteHumanTerminalInput", () => {
 		expect(item.deliver).not.toHaveBeenCalled();
 	});
 
+	it("does not push a held message back for a mouse click", async () => {
+		const item = heldMessage();
+		noteHumanTerminalInput(session, {}, "\x1b[<0;12;5M");
+		noteHumanTerminalInput(session, {}, "\x1b[<0;12;5m");
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+		expect(item.deliver).toHaveBeenCalledTimes(1);
+	});
+
 	it("reads a CR inside a paste split across frames as content, not a submit", async () => {
 		const item = heldMessage();
 		const ws: any = {};
