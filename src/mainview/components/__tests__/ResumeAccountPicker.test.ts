@@ -25,4 +25,8 @@ describe("isClaudePane", () => {
 		expect(isClaudePane({ agentId: null, agentCmd: "/opt/wrapper", agentFamily: "claude" })).toBe(true);
 		expect(isClaudePane({ agentId: null, agentCmd: "claude", agentFamily: "codex" })).toBe(false);
 	});
+
+	it("answers no for a saved pane with no command instead of throwing", () => {
+		expect(isClaudePane({ agentId: null } as never)).toBe(false);
+	});
 });

@@ -13,7 +13,12 @@ export interface ResumablePane {
 
 /** Only Claude panes take an account choice: a Codex conversation lives in its own account's home. */
 export function isClaudePane(pane: ResumablePane): boolean {
-	return agentKey(pane.agentCmd, pane.agentFamily ?? undefined) === "claude";
+	return paneKey(pane) === "claude";
+}
+
+/** A snapshot read off disk may lack its command; it must not take the recovery screen down with it. */
+function paneKey(pane: ResumablePane): string {
+	return agentKey(pane.agentCmd ?? "", pane.agentFamily ?? undefined);
 }
 
 /** The account a resume runs the first Claude pane on today; an old snapshot without one follows the task. */
@@ -46,7 +51,7 @@ export default function ResumeAccountPicker({
 	const claudePane = panes.find(isClaudePane);
 	const agent = claudePane ? agents.find((a) => a.id === claudePane.agentId) : undefined;
 	if (!agent) return null;
-	const keepsCodexAccount = panes.some((pane) => agentKey(pane.agentCmd, pane.agentFamily ?? undefined) === "codex");
+	const keepsCodexAccount = panes.some((pane) => paneKey(pane) === "codex");
 	return (
 		<div data-testid="resume-account-picker" className="space-y-1">
 			<div className="flex items-baseline gap-2 min-w-0 text-xs text-fg-3">
