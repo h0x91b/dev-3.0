@@ -4164,6 +4164,10 @@ describe("task lifecycle with the git workflow off", () => {
 
 	const gproject = () => makeProject({ id: "gp1", path: "/tmp/customer-migration", gitWorkflow: false });
 	const spawnedLsof = () => mockSpawn.mock.calls.some((call) => (call[0] as string[])[0] === "lsof");
+	const launchProtocolModes = () => [
+		...vi.mocked(agents.resolveCommandForAgent).mock.calls.map((call) => call[3]?.protocolMode),
+		...vi.mocked(agents.resolveCommandForProject).mock.calls.map((call) => call[5]?.protocolMode),
+	];
 
 	it("todo → in-progress: runs in the project folder with its own config, no worktree", async () => {
 		const project = gproject();
@@ -4179,6 +4183,7 @@ describe("task lifecycle with the git workflow off", () => {
 		expect(pty.createSession).toHaveBeenCalledWith("task-1", "gp1", "/tmp/customer-migration", expect.anything(), expect.anything(), expect.anything());
 		expect(result.worktreePath).toBe("/tmp/customer-migration");
 		expect(result.branchName).toBeNull();
+		expect(launchProtocolModes()).toEqual(["shared-folder"]);
 	});
 
 	it("in-progress → completed: keeps the folder, kills nothing in it, runs no cleanup script", async () => {
@@ -4267,6 +4272,7 @@ describe("task lifecycle with the git workflow off", () => {
 			expect(git.createWorktree).toHaveBeenCalled();
 			expect(result.worktreePath).toBe("/tmp/wt-own");
 			expect(result.branchName).toBe("dev3/task-1");
+			expect(launchProtocolModes()).toEqual(["worktree"]);
 		});
 
 		it("in-progress → completed: removes the worktree but keeps a branch with unique commits", async () => {
@@ -4841,7 +4847,7 @@ describe("activateTask", () => {
 			"",
 			"/tmp/wt",
 			undefined,
-			{ resume: true },
+			{ resume: true, protocolMode: "worktree" },
 		);
 	});
 
@@ -4912,7 +4918,7 @@ describe("activateTask", () => {
 			"builtin-claude",
 			null,
 			expect.objectContaining({ worktreePath: "/tmp/wt" }),
-			{ resume: true },
+			{ resume: true, protocolMode: "worktree" },
 		);
 		expect(agents.resolveCommandForProject).not.toHaveBeenCalled();
 	});

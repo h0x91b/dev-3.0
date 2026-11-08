@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve as resolvePath } from "node:path";
-import type { AgentConfiguration, AgentFamily, CodingAgent, LlmProvider, Project } from "../shared/types";
+import type { AgentConfiguration, AgentFamily, CodingAgent, LlmProvider, Project, ProtocolMode } from "../shared/types";
 import { DEFAULT_AGENTS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
 export { skillInvocationPrefix } from "../shared/types";
 import { buildProviderEnv, getProviderDefinition, providerOmitsModelFlag, providerPinnedModel } from "../shared/llm-provider";
@@ -25,7 +25,7 @@ import { loadSettings, saveSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from "./theme-state";
 import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
 import { ensureAgentSystemPromptFile } from "./agent-system-prompt-file";
-import { leanProtocolReference } from "../shared/agent-skill-content";
+import { leanProtocolReference, leanSkillBodyFor, skillBodyFor, type SkillFamily } from "../shared/agent-skill-content";
 import { claudeAccountRegistered, effectiveAccountId, getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveAgentDirSessionEnv, getActiveCodexSessionEnv, listClaudeAccountDirs, isLinkedClaudeSlot } from "./agent-accounts";
 import { ENV_UNSET, claudeModelFamily, isAutoAccountId, isRoutableAccountKind, type AgentAccountKind } from "../shared/agent-accounts";
 import { isAutoAccountDefault, pickAutoAccount, type AutoAccountPick, type AutoRoutingContext } from "./account-router";
@@ -528,6 +528,8 @@ export interface CommandOptions {
 	 *  overrides). Appended after the provider's own routing args; the adapter
 	 *  shell-escapes them. */
 	modelRoleArgs?: string[];
+	/** Where the task runs, which picks the protocol variant. Absent → the worktree one. */
+	protocolMode?: ProtocolMode;
 }
 
 /**
@@ -568,7 +570,7 @@ export async function resolveAgentCommand(
 	const baseCmd = config?.baseCommandOverride || agent.baseCommand;
 	const adapter = getAgentAdapter(baseCmd, agent.agentFamily);
 
-	const leanBody = options?.skipSystemPrompt ? undefined : leanProtocolBody(adapter);
+	const protocol = options?.skipSystemPrompt ? undefined : launchProtocol(adapter, options?.protocolMode ?? "worktree");
 	const adapterOptions: AdapterLaunchOptions = {
 		resume: options?.resume,
 		sessionId: options?.sessionId,
@@ -586,8 +588,10 @@ export async function resolveAgentCommand(
 		// The protocol reaches Claude as a file on every platform: Windows cannot
 		// carry it on the command line, and POSIX argv is what `pkill -f` matches
 		// against. Resolved here because writing one is impure and adapters are not.
-		systemPromptFile: options?.skipSystemPrompt ? undefined : systemPromptFileFor(adapter, leanBody),
-		protocolBody: leanBody,
+		systemPromptFile: protocol && SYSTEM_PROMPT_FILE_COMMANDS.has(adapter.command)
+			? ensureAgentSystemPromptFile(protocol.fileName, protocol.body)
+			: undefined,
+		protocolBody: protocol?.body,
 	};
 
 	// The adapter returns argv with the binary first; only the boundary knows the
@@ -618,22 +622,23 @@ export async function resolveAgentCommand(
  */
 const SYSTEM_PROMPT_FILE_COMMANDS = new Set(["claude", "omp", "pi"]);
 
-function systemPromptFileFor(adapter: { command: string; skillBody?: string }, leanBody?: string): string | undefined {
-	if (!SYSTEM_PROMPT_FILE_COMMANDS.has(adapter.command) || !adapter.skillBody) return undefined;
-	if (leanBody) return ensureAgentSystemPromptFile(`${adapter.command}-lean`, leanBody);
-	// Named per agent so two bodies never share a file. Claude keeps its own name.
-	return ensureAgentSystemPromptFile(adapter.command, adapter.skillBody);
-}
-
 /**
- * The lean protocol for this launch, or undefined for the full one (the default).
- * An installation-wide experiment read at launch, like DEV3_COMPACT_AGENT_SKILLS:
- * the full body is written to its own file first, so the lean one can name it.
+ * The protocol this launch injects and the file name it is written under, or
+ * undefined for an adapter that injects none. Each variant gets its own file
+ * (`claude`, `claude-lean`, `claude-shared-folder`, …) so two never share one.
+ * The lean protocol (`DEV3_LEAN_PROTOCOL=1`, read at launch like
+ * DEV3_COMPACT_AGENT_SKILLS) names the full body of the same mode, written first.
  */
-function leanProtocolBody(adapter: { command: string; skillBody: string; leanSkillBody?: string }): string | undefined {
-	if (process.env.DEV3_LEAN_PROTOCOL !== "1" || !adapter.leanSkillBody) return undefined;
-	const fullProtocolPath = ensureAgentSystemPromptFile(adapter.command, adapter.skillBody);
-	return adapter.leanSkillBody + leanProtocolReference(fullProtocolPath);
+function launchProtocol(
+	adapter: { command: string; skillFamily?: SkillFamily },
+	mode: ProtocolMode,
+): { body: string; fileName: string } | undefined {
+	if (!adapter.skillFamily) return undefined;
+	const base = mode === "worktree" ? adapter.command : `${adapter.command}-${mode}`;
+	const full = skillBodyFor(adapter.skillFamily, mode);
+	if (process.env.DEV3_LEAN_PROTOCOL !== "1") return { body: full, fileName: base };
+	const fullProtocolPath = ensureAgentSystemPromptFile(base, full);
+	return { body: leanSkillBodyFor(adapter.skillFamily, mode) + leanProtocolReference(fullProtocolPath), fileName: `${base}-lean` };
 }
 
 /** Every raw arg a launch adds beyond the preset's own: the selected backend's

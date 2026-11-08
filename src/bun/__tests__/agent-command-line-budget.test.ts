@@ -5,7 +5,7 @@ import {
 	COORDINATOR_PROMPT_LIMIT,
 	WINDOWS_COMMAND_LINE_LIMIT,
 } from "../../shared/agent-command-line-budget";
-import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, OMP_SKILL_BODY, PI_SKILL_BODY } from "../../shared/agent-skill-content";
+import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, OMP_SKILL_BODY, PI_SKILL_BODY, type SkillFamily } from "../../shared/agent-skill-content";
 import { BOARD_CLEANUP_PROMPT, COORDINATOR_PROMPT } from "../../shared/types";
 import { __setCodexProfileV2Override, resolveAgentCommand, type TemplateContext } from "../agents";
 import type { CodingAgent } from "../../shared/types";
@@ -92,6 +92,14 @@ describe("the protocol body fits the budget", () => {
 				expect(body.length).toBeGreaterThan(0);
 				expect(body.length).toBeLessThanOrEqual(AGENT_SKILL_BODY_LIMIT);
 			});
+			it(`${name} shared-folder on ${platform}`, async () => {
+				asPlatform(platform);
+				vi.resetModules();
+				const mod = await import("../../shared/agent-skill-content");
+				const body = mod.skillBodyFor(name as SkillFamily, "shared-folder");
+				expect(body.length).toBeGreaterThan(0);
+				expect(body.length).toBeLessThanOrEqual(AGENT_SKILL_BODY_LIMIT);
+			});
 		}
 	}
 });
@@ -108,16 +116,18 @@ vi.mock("../agent-system-prompt-file", async () => {
 
 describe("the whole Windows command line fits", () => {
 	for (const command of AGENT_COMMANDS) {
-		it(`${command} launches inside the ceiling with a full-size task`, async () => {
-			asPlatform("win32");
-			__setCodexProfileV2Override(false);
-			try {
-				const cmd = await resolveAgentCommand(agent(command), undefined, fullSizeContext());
-				expect(cmd.length).toBeLessThan(WINDOWS_COMMAND_LINE_LIMIT);
-			} finally {
-				__setCodexProfileV2Override(null);
-			}
-		});
+		for (const protocolMode of ["worktree", "shared-folder"] as const) {
+			it(`${command} launches inside the ceiling with a full-size ${protocolMode} task`, async () => {
+				asPlatform("win32");
+				__setCodexProfileV2Override(false);
+				try {
+					const cmd = await resolveAgentCommand(agent(command), undefined, fullSizeContext(), { protocolMode });
+					expect(cmd.length).toBeLessThan(WINDOWS_COMMAND_LINE_LIMIT);
+				} finally {
+					__setCodexProfileV2Override(null);
+				}
+			});
+		}
 	}
 
 	it.each(["codex", "agent", "opencode"])("cleanup leaves room for a user brief on Windows: %s", async (command) => {

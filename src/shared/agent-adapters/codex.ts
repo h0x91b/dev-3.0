@@ -1,6 +1,6 @@
 /** Codex adapter. Owns Codex's quirks: the `resume` subcommand, the theme
  *  profile rewrite, and the developer-instructions delivery channel. */
-import { CODEX_SKILL_BODY, CODEX_LEAN_SKILL_BODY } from "../agent-skill-content";
+import { CODEX_SKILL_BODY } from "../agent-skill-content";
 import { modelArgs, providerArgs, slashExitProgram } from "./common";
 import { shellEscape } from "./shell";
 import { buildTaskPrompt } from "./template";
@@ -130,7 +130,7 @@ export const codexAdapter: AgentAdapter = {
 	// from the lifecycle hook.
 	supportsPreAssignedSessionId: false,
 	skillBody: CODEX_SKILL_BODY,
-	leanSkillBody: CODEX_LEAN_SKILL_BODY,
+	skillFamily: "codex",
 	trustKinds: ["claude", "codex"],
 	// Codex's effort is a separate `-c model_reasoning_effort` arg, so a preset's
 	// `model` is already the bare slug — exact match, no normalize.

@@ -1,6 +1,6 @@
 import { assertTaskWorkspacePresent } from "../../task-workspace-guard";
 import type { AgentFamily } from "../../../shared/types";
-import { getPrimaryStopTarget } from "../../../shared/types";
+import { getPrimaryStopTarget, taskProtocolMode } from "../../../shared/types";
 import * as data from "../../data";
 import * as git from "../../git";
 import { folderWorkDir } from "../../task-folder";
@@ -90,6 +90,7 @@ export async function spawnAgentInTask(params: {
 		sessionId: freshSessionId,
 		accountId: params.accountId,
 		autoRouting: await autoRoutingContext(project, reservationKey, projectEnv),
+		protocolMode: taskProtocolMode(project, task),
 	};
 	let launchAccountId = params.accountId;
 

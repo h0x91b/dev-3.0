@@ -1,6 +1,6 @@
 import { assertTaskWorkspacePresent } from "../../task-workspace-guard";
 import type { AgentFamily, ColumnAgentConfig, PermissionMode, Project, Task } from "../../../shared/types";
-import { getPrimaryStopTarget, isCoordinatorTask } from "../../../shared/types";
+import { getPrimaryStopTarget, isCoordinatorTask, taskProtocolMode } from "../../../shared/types";
 import { rootProjectFor } from "../../ops-worktree";
 import { coordinatorLaunchDefault } from "../../../shared/coordinator-launch";
 import * as data from "../../data";
@@ -393,7 +393,11 @@ export async function launchTaskPty(
 	try {
 		// Recovery carries the pane's account alongside its session id. Older pane
 		// snapshots fall back to the task selection; undefined uses the default.
-		const cmdOptions: agents.CommandOptions = { accountId, accountFromStore: typeof accountId === "string" ? true : undefined };
+		const cmdOptions: agents.CommandOptions = {
+			accountId,
+			accountFromStore: typeof accountId === "string" ? true : undefined,
+			protocolMode: taskProtocolMode(project, task),
+		};
 		let freshSessionId: string | null = null;
 		if (!resume && !skipSessionPersist && !opts?.shellNotice) {
 			cmdOptions.autoRouting = await autoRoutingContext(project, reservationKey, projectEnv);

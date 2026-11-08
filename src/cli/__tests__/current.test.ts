@@ -123,6 +123,7 @@ describe("handleCurrent", () => {
 			expect(stdoutOutput).toContain("Implement auth");
 			expect(stdoutOutput).toContain("Agent is Working");
 			expect(stdoutOutput).toContain("dev3/task-aaaaaaaa");
+			expect(stdoutOutput).toMatch(/Protocol:\s+worktree/);
 		});
 
 		it("tells the agent of a gitless task there is no branch or PR, names its folder, and warns it is shared", async () => {
@@ -137,6 +138,7 @@ describe("handleCurrent", () => {
 			expect(stdoutOutput).toContain("Folder:");
 			expect(stdoutOutput).toContain("never git stash, git add -A");
 			expect(stdoutOutput).not.toContain("Worktree:");
+			expect(stdoutOutput).toMatch(/Protocol:\s+shared-folder/);
 		});
 
 		it("gives an own-worktree task of a gitless project its branch and worktree, not the shared-folder rule", async () => {
@@ -151,6 +153,7 @@ describe("handleCurrent", () => {
 			expect(stdoutOutput).toContain("Worktree:");
 			expect(stdoutOutput).toContain("this task alone has a worktree");
 			expect(stdoutOutput).not.toContain("Shared folder:");
+			expect(stdoutOutput).toMatch(/Protocol:\s+worktree/);
 		});
 
 		it("shows custom title from live task data when present", async () => {

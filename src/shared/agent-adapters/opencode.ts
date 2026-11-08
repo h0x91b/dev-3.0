@@ -1,5 +1,5 @@
 /** OpenCode adapter. */
-import { GENERIC_SKILL_BODY, GENERIC_LEAN_SKILL_BODY } from "../agent-skill-content";
+import { GENERIC_SKILL_BODY } from "../agent-skill-content";
 import { modelArgs, providerArgs, slashExitProgram } from "./common";
 import { shellEscape } from "./shell";
 import { buildTaskPrompt } from "./template";
@@ -11,7 +11,7 @@ export const opencodeAdapter: AgentAdapter = {
 	// Resume-only --session; no launch-time pre-assignment.
 	supportsPreAssignedSessionId: false,
 	skillBody: GENERIC_SKILL_BODY,
-	leanSkillBody: GENERIC_LEAN_SKILL_BODY,
+	skillFamily: "generic",
 	trustKinds: ["claude"],
 
 	launchArgs(baseCmd, config, ctx, options) {

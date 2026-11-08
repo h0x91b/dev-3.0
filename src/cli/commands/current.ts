@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import type { Task } from "../../shared/types";
-import { STATUS_LABELS, getTaskTitle, hasGitWorkflow, taskUsesWorktree } from "../../shared/types";
+import { STATUS_LABELS, getTaskTitle, hasGitWorkflow, taskProtocolMode } from "../../shared/types";
 import { detectContext, detectContextDiagnostics, readProjectDirect, readTaskDirect, type ProjectDirect } from "../context";
 import { sendRequest } from "../socket-client";
 import { spaceFields } from "../spaces";
@@ -201,7 +201,7 @@ export async function handleCurrent(socketPath: string | null, opts: { brief?: b
 
 /** A task running in the project folder of a gitless git project. Operations boards say so on their own. */
 function sharesProjectFolder(project: ProjectDirect | null, task: Pick<Task, "ownWorktree">): boolean {
-	return !!project && project.kind !== "virtual" && !taskUsesWorktree(project, task);
+	return !!project && taskProtocolMode(project, task) === "shared-folder";
 }
 
 /**
@@ -219,6 +219,7 @@ function workspaceFields(
 		const fields: Array<[string, string]> = [["Git workflow:", "off - no worktree, branch or PR; completion keeps every file"]];
 		if (worktreePath) fields.push(["Folder:", worktreePath]);
 		fields.push(["Shared folder:", "other tasks edit here too - stage by explicit path; never git stash, git add -A, git checkout --, git reset or git clean"]);
+		fields.push(["Protocol:", "shared-folder"]);
 		return fields;
 	}
 	const fields: Array<[string, string]> = [];
@@ -227,5 +228,6 @@ function workspaceFields(
 	if (project && project.kind !== "virtual" && !hasGitWorkflow(project)) {
 		fields.push(["Git workflow:", "off for the project - this task alone has a worktree; commit on its branch, no PR unless asked"]);
 	}
+	if (project) fields.push(["Protocol:", "worktree"]);
 	return fields;
 }

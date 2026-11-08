@@ -1,5 +1,5 @@
 /** Cursor Agent adapter (base command `agent`). */
-import { GENERIC_SKILL_BODY, GENERIC_LEAN_SKILL_BODY } from "../agent-skill-content";
+import { GENERIC_SKILL_BODY } from "../agent-skill-content";
 import { modelArgs, providerArgs, slashExitProgram } from "./common";
 import { shellEscape } from "./shell";
 import { buildTaskPrompt } from "./template";
@@ -48,7 +48,7 @@ export const cursorAdapter: AgentAdapter = {
 	// --resume <uuid> creates the thread if missing, so a pre-assigned id works.
 	supportsPreAssignedSessionId: true,
 	skillBody: GENERIC_SKILL_BODY,
-	leanSkillBody: GENERIC_LEAN_SKILL_BODY,
+	skillFamily: "generic",
 	trustKinds: ["claude"],
 	// Cursor bakes effort into the slug and `--list-models` lists only some tiers,
 	// so compare on the base family (see cursorModelBase) rather than exact slug.
