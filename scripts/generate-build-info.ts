@@ -60,6 +60,7 @@ export const BUILD_TIME = ${JSON.stringify(buildTime)};
 export const BUILD_COMMIT = ${JSON.stringify(buildCommit)};
 export const BUILD_VERSION = ${JSON.stringify(buildVersion)};
 export const BUILD_ORDER = ${JSON.stringify(buildOrder)};
+export const UPDATES_DISABLED = ${JSON.stringify(process.env.DEV3_DISABLE_UPDATES === "1")};
 `;
 
 await Bun.write(outPath, content);

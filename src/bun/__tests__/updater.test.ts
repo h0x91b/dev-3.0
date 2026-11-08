@@ -45,6 +45,7 @@ import {
 	isUpdateAlreadyReady,
 	shouldRemindAboutReadyUpdate,
 	READY_REMINDER_INTERVAL_MS,
+	updatesDisabled,
 } from "../updater";
 
 /** Remote state as Electrobun's checkForUpdate() returns it: no updateReady. */
@@ -499,5 +500,14 @@ describe("startAutoCheck", () => {
 		await vi.advanceTimersByTimeAsync(STARTUP_DELAY_MS);
 
 		expect(onUpdate).toHaveBeenCalledWith("1.31.0", undefined);
+	});
+});
+
+describe("updatesDisabled", () => {
+	it("disables updates on the dev channel and on builds made with DEV3_DISABLE_UPDATES=1", () => {
+		expect(updatesDisabled("dev", false)).toBe(true);
+		expect(updatesDisabled("prod", true)).toBe(true);
+		expect(updatesDisabled("prod", false)).toBe(false);
+		expect(updatesDisabled("stable", false)).toBe(false);
 	});
 });
