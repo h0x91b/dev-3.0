@@ -24,6 +24,7 @@ import {
 	type TreeRow,
 } from "./tree-model";
 import { ZEBRA_ROW } from "../zebra";
+import { READABLE_WIDTH } from "../readable-width";
 
 export const TREE_VIEW_ID = "builtin:tree";
 const ROW_HEIGHT = 36;
@@ -402,7 +403,7 @@ export function TreeView(_props: { ctx: Context }) {
 	};
 	return (
 		<div ref={scrollRef} className={`min-h-0 flex-1 overflow-y-auto pb-6 ${narrow ? "px-3 pt-2" : "px-6"}`} data-testid="board-tree">
-			<div role="tree" aria-label={t("boardView.tree")} className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+			<div role="tree" aria-label={t("boardView.tree")} className={`relative ${READABLE_WIDTH}`} style={{ height: virtualizer.getTotalSize() }}>
 				{virtualizer.getVirtualItems().map((item) => {
 					const row = rows[item.index];
 					const { node } = row;
