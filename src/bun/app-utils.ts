@@ -35,8 +35,18 @@ export const formatDateTime = (d: Date) => {
 };
 
 /** Builds the window title string, marking non-stable channels (see above). */
-export const makeTitle = (version: string, dt: string, buildChannel?: string) =>
-	`${buildChannelTitlePrefix(buildChannel)}dev-3.0 v${version} [${dt}]`;
+export const makeTitle = (version: string, dt: string, buildChannel?: string, source?: string) =>
+	`${buildChannelTitlePrefix(buildChannel)}dev-3.0 v${version}${source ? ` · ${source}` : ""} [${dt}]`;
+
+/**
+ * `branch@commit` for a build made from a checkout rather than shipped by a
+ * release (updates disabled at build time, or the dev channel), so the title
+ * says which source it runs. Empty for released builds.
+ */
+export const buildSourceLabel = (branch: string, commit: string, selfBuilt: boolean): string => {
+	if (!selfBuilt || !commit || commit === "unknown") return "";
+	return branch ? `${branch}@${commit}` : commit;
+};
 
 /**
  * Prefixes a window's base title with the route context the renderer reports
