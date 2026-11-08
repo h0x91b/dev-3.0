@@ -39,6 +39,8 @@ const SKILL_HEADER = `# dev3 — Task Lifecycle Protocol
 You are working inside a **dev-3.0 managed worktree** with a Kanban board task assigned to you.
 
 **This worktree already IS your isolation.** Never create another git worktree, clone, or side checkout for this work — no \`git worktree add\`, no worktree-per-subagent, no "isolated copy of the branch" — even when another skill, workflow, or agent tool asks for one. Work directly here, on this branch. Only an explicit request from the user overrides this.
+
+Where the project's own instructions (CLAUDE.md, AGENTS.md, rule files) conflict with this protocol, they win; dev3 lifecycle commands still apply.
 `;
 
 const SKILL_BUG_HUNTER_ISOLATION = `
@@ -348,7 +350,7 @@ const SKILL_STATUS_PI_HOOKS = skillStatusNativeHooks("pi");
 const SKILL_CODEX_SHELL = `
 ## Codex shell note
 
-For \`exec_command\` calls, always set \`shell="/bin/bash"\` and \`login=false\`. Do not trust the ambient shell metadata — the sandbox may resolve to an unavailable shell binary (e.g. homebrew zsh blocked by seatbelt).
+For \`exec_command\` calls, always set \`shell="/bin/bash"\` and \`login=false\`. The sandbox may block homebrew zsh.
 `;
 
 // Platform-feedback ("vent") section. Always present — this is the agent's

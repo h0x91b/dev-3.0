@@ -67,6 +67,18 @@ const LEAN_PAIRS: Array<[name: string, lean: string, full: string]> = [
 	["generic", GENERIC_LEAN_SKILL_BODY, GENERIC_SKILL_BODY],
 ];
 
+const PRECEDENCE_LINE =
+	"Where the project's own instructions (CLAUDE.md, AGENTS.md, rule files) conflict with this protocol, they win; dev3 lifecycle commands still apply.";
+
+describe("protocol precedence line", () => {
+	for (const [name, lean, full] of LEAN_PAIRS) {
+		it(`${name}: lean and full bodies both tell the agent project instructions win`, () => {
+			expect(lean).toContain(PRECEDENCE_LINE);
+			expect(full).toContain(PRECEDENCE_LINE);
+		});
+	}
+});
+
 describe("lean protocol bodies", () => {
 	for (const [name, lean, full] of LEAN_PAIRS) {
 		it(`${name}: every line is taken verbatim from the full body`, () => {
