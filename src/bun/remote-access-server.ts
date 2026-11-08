@@ -18,7 +18,7 @@ import { isAbsolute, join, extname, relative, resolve } from "node:path";
 import { networkInterfaces } from "node:os";
 import QRCode from "qrcode";
 import type { RemoteAccessStartFailure, RemoteAccessStatus, RemoteNetInterface } from "../shared/types";
-import { NATIVE_STREAM_SINCE_PARAM, parseSinceParam } from "../shared/native-terminal-stream";
+import { NATIVE_STREAM_SINCE_PARAM, parseSinceParam, ptyUrlWithSince } from "../shared/native-terminal-stream";
 import { remoteStaticCodeError } from "../shared/remote-static-code";
 import { encodeResizeSequence, isResizeSequence, parseResizeSequence } from "../shared/resize-protocol";
 import { authAttemptRetryAfterS, recordAuthFailure, clearAuthFailures } from "./remote-auth-rate-limit";
@@ -32,6 +32,7 @@ import { getCurrentUiTheme } from "./theme-state";
 import { telemetryBootstrapScript } from "./analytics-identity";
 import { buildSignInLink } from "../shared/remote-sign-in-link";
 import { isLoopbackListen, resolveListenHost } from "./remote-listen-host";
+import { ptyWsUrl } from "./pty-server-access";
 import { SHARED_MEDIA_ROUTE, serveSharedMedia } from "./shared-media-stream";
 import { FILE_LINK_ROUTE, serveFileLink } from "./file-links";
 import { runAsRemoteRpc } from "./rpc-origin";
@@ -391,7 +392,7 @@ let backpressureProbeRegistrar: StartOptions["registerBackpressureProbe"] | null
 
 /**
  * Proxy a WebSocket connection to the internal PTY server.
- * Browser connects to us at /pty?session=xxx, we forward to localhost:ptyPort.
+ * Browser connects to us at /pty?session=xxx, we forward to the loopback PTY server.
  */
 function proxyToPty(clientWs: any, sessionId: string, sinceSeq: number | null): void {
 	const ptyPort = ptyPortGetter?.() ?? 0;
@@ -402,10 +403,8 @@ function proxyToPty(clientWs: any, sessionId: string, sinceSeq: number | null): 
 
 	// `since` is the native viewer's resume watermark; it has to survive this hop
 	// or every browser reconnect would rebuild the whole screen. Absent for tmux.
-	const targetUrl = `ws://localhost:${ptyPort}?session=${sessionId}${
-		sinceSeq === null ? "" : `&${NATIVE_STREAM_SINCE_PARAM}=${sinceSeq}`
-	}`;
-	const upstream = new WebSocket(targetUrl);
+	// The browser was authenticated by its cookie; this hop adds the PTY token itself.
+	const upstream = new WebSocket(ptyUrlWithSince(ptyWsUrl(ptyPort, sessionId), sinceSeq));
 
 	// This socket is the only one in the chain that faces the tunnel, so it is the
 	// only one whose backlog means anything. The PTY server widens its batch

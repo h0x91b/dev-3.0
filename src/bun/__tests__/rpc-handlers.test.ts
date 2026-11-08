@@ -3,6 +3,7 @@ import { mkdir, rm } from "node:fs/promises";
 import type { GlobalSettings, Project, Task, TaskDiffResponse } from "../../shared/types";
 import { MAX_TASK_NOTES_KEPT, buildTaskDialogSubject, getPreparingStageProgress, resolveTaskCompareBaseBranch } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
+import { ptyWsUrl } from "../pty-server-access";
 import * as agentAccounts from "../agent-accounts";
 import { chooseTaskCodexConversations } from "../codex-task-selection";
 import {
@@ -7462,7 +7463,7 @@ describe("handlers.getPtyUrl", () => {
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
 
 		const result = await handlers.getPtyUrl({ taskId: "task-1" });
-		expect(result).toEqual({ url: "ws://localhost:9999?session=task-1" });
+		expect(result).toEqual({ url: ptyWsUrl(9999, "task-1") });
 	});
 
 	it("leaves a settling native session alone instead of probing and tearing it down", async () => {
@@ -7474,7 +7475,7 @@ describe("handlers.getPtyUrl", () => {
 
 		const result = await handlers.getPtyUrl({ taskId: "task-1" });
 
-		expect(result).toEqual({ url: "ws://localhost:9999?session=task-1" });
+		expect(result).toEqual({ url: ptyWsUrl(9999, "task-1") });
 		expect(pty.destroySessionAwaited).not.toHaveBeenCalled();
 		expect(pty.tmuxSessionExists).not.toHaveBeenCalled();
 		expect(pty.createSession).not.toHaveBeenCalled();
@@ -7687,7 +7688,7 @@ describe("handlers.getPtyUrl", () => {
 		const result = await handlers.getPtyUrl({ taskId: "task-1", resume: true });
 
 		expect(pty.destroySession).not.toHaveBeenCalled();
-		expect(result).toEqual({ url: "ws://localhost:9999?session=task-1" });
+		expect(result).toEqual({ url: ptyWsUrl(9999, "task-1") });
 	});
 
 	it("destroys dead sessions when tmux is gone (stale check)", async () => {
@@ -10624,7 +10625,7 @@ describe("handlers.getProjectPtyUrl", () => {
 			"dev3",
 			"project",
 		);
-		expect(url).toBe(`ws://localhost:9999?session=project-${project.id}`);
+		expect(url).toBe(ptyWsUrl(9999, `project-${project.id}`));
 	});
 
 	it("reuses existing session without creating a new one", async () => {

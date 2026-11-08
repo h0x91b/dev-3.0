@@ -25,6 +25,7 @@ import { randomUUID } from "node:crypto";
 import { createLogger } from "./logger";
 import { SHARED_MEDIA_ROUTE, serveSharedMedia } from "./shared-media-stream";
 import { FILE_LINK_ROUTE, serveFileLink } from "./file-links";
+import { PTY_SERVER_HOST, hasPtyAccessToken, isLoopbackAddress, ptyHttpUrl } from "./pty-server-access";
 import { spawn } from "./spawn";
 import { getUserShell } from "./shell-env";
 import {
@@ -1974,7 +1975,7 @@ async function configureTmux(tmuxSessionName: string, socket: string): Promise<v
 	// || true prevents errors if the app isn't running (e.g. during shutdown).
 	try {
 		await tmux.setWindowHook(tmuxSessionName, "pane-exited",
-			`run-shell "curl -s 'http://localhost:${ptyWsPort}/pane-exited?session=${tmuxSessionName}&pane=#{hook_pane}' || true"`,
+			`run-shell "curl -s '${ptyHttpUrl(ptyWsPort, `/pane-exited?session=${tmuxSessionName}&pane=#{hook_pane}`)}' || true"`,
 			{ socket, bestEffort: true },
 		);
 	} catch (err) {
@@ -2276,15 +2277,15 @@ function findTaskIdByTmuxSession(tmuxSessionName: string): string | null {
 	return null;
 }
 
-function isLoopbackAddress(address: string | undefined): boolean {
-	return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
-}
-
 const ptyServer = Bun.serve({
+	hostname: PTY_SERVER_HOST,
 	port: 0,
 	fetch(req, server) {
 		try {
 			const url = new URL(req.url, "http://localhost");
+
+			// The bind is already loopback; this holds the line if that ever changes.
+			if (!isLoopbackAddress(server.requestIP(req)?.address)) return new Response("Forbidden", { status: 403 });
 
 			// Handle pane-exited notifications from tmux hook
 			if (url.pathname === "/pane-exited") {
@@ -2303,8 +2304,6 @@ const ptyServer = Bun.serve({
 			}
 
 			if (url.pathname.startsWith(SHARED_MEDIA_ROUTE)) {
-				// Loopback only: the server listens on every interface, the token is not the only guard.
-				if (!isLoopbackAddress(server.requestIP(req)?.address)) return new Response("Forbidden", { status: 403 });
 				// The desktop page is a different origin (views://); CORS lets its download fetch read the bytes.
 				return serveSharedMedia(req, url.pathname, { "Access-Control-Allow-Origin": "*" }).catch((err) => {
 					log.error("Shared media stream failed", { error: String(err) });
@@ -2313,17 +2312,23 @@ const ptyServer = Bun.serve({
 			}
 
 			if (url.pathname.startsWith(FILE_LINK_ROUTE)) {
-				// The desktop preview's audio/video: loopback only, media only (never a page on this origin).
-				if (!isLoopbackAddress(server.requestIP(req)?.address)) return new Response("Forbidden", { status: 403 });
+				// The desktop preview's audio/video: media only (never a page on this origin).
 				return serveFileLink(req, url, { mediaOnly: true });
 			}
 
-			log.debug("PTY server fetch", { url: req.url });
+			// A tunnel or local proxy makes any caller look like loopback, and a task id is
+			// no secret (PR footers carry it): the terminal itself needs this launch's token.
+			if (!hasPtyAccessToken(url)) {
+				log.warn("PTY upgrade refused: missing or wrong access token", { path: url.pathname });
+				return new Response("Unauthorized", { status: 401 });
+			}
+
+			log.debug("PTY server fetch", { session: url.searchParams.get("session")?.slice(0, 8) ?? "none" });
 			if (server.upgrade(req, { data: { url } } as any)) return;
 			return new Response("PTY WebSocket server", { status: 200 });
 		} catch (err) {
 			log.error("PTY server fetch handler error", {
-				url: req.url,
+				url: req.url.split("?")[0], // the query carries the access token
 				error: String(err),
 				stack: (err as Error)?.stack ?? "no stack",
 			});
@@ -2567,4 +2572,4 @@ const ptyServer = Bun.serve({
 });
 
 ptyWsPort = ptyServer.port ?? 0;
-log.info(`PTY WebSocket server running on ws://localhost:${ptyWsPort}`);
+log.info(`PTY WebSocket server running on ws://${PTY_SERVER_HOST}:${ptyWsPort}`);

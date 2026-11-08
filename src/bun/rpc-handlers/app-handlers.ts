@@ -12,6 +12,7 @@ import { buildUpdateChangelog, changedKeysFromPaths, changelogEntryKey, countMer
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
+import { ptyHttpUrl } from "../pty-server-access";
 import { loadSettings, saveSettings } from "../settings";
 import { consumeQuitDialogPending, markQuitConfirmed } from "../quit-manager";
 import { consumePendingDeepLinkNav as consumeDeepLinkNavPending } from "../deep-link-nav";
@@ -908,12 +909,12 @@ async function getSharedMediaUrl(params: { path: string }): Promise<{ url: strin
 		log.warn("← getSharedMediaUrl: not a stored clip, rejected");
 		return null;
 	}
-	return { url: `http://127.0.0.1:${pty.getPtyPort()}${path}`, path };
+	return { url: ptyHttpUrl(pty.getPtyPort(), path), path };
 }
 
 async function getFileMediaUrl(params: { path: string }): Promise<{ url: string; path: string }> {
 	const path = await mintPreviewMediaLink(params.path);
-	return { url: `http://127.0.0.1:${pty.getPtyPort()}${path}`, path };
+	return { url: ptyHttpUrl(pty.getPtyPort(), path), path };
 }
 
 async function readArtifactContent(params: { artifact: SharedArtifact }) {

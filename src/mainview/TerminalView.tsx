@@ -26,6 +26,7 @@ import {
 	type NativeStreamRole,
 	type NativeViewerStatus,
 } from "../shared/native-terminal-stream";
+import { redactPtyUrl } from "../shared/pty-url";
 // TEMP DIAGNOSTIC: remove these imports after the terminal copy bug is fixed.
 import type { TerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
 import { installTerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
@@ -812,7 +813,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 			log: logCopyEvent,
 		});
 
-		debugLog("terminal", "[TerminalView] useEffect fired", { ptyUrl, taskId: taskId.slice(0, 8) });
+		const diagnosticPtyUrl = redactPtyUrl(ptyUrl);
+		debugLog("terminal", "[TerminalView] useEffect fired", { ptyUrl: diagnosticPtyUrl, taskId: taskId.slice(0, 8) });
 
 		// Preload bundled font before creating the terminal.
 		// Canvas rendering doesn't trigger CSS @font-face loading, so the
@@ -2068,7 +2070,6 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 				screenResetForThisTerminal = true;
 				writeToTerminal("\x1bc", false);
 			}
-			const diagnosticPtyUrl = ptyUrl.replace(/([?&]token=)[^&]+/, "$1***");
 			debugLog("terminal", "[TerminalView] Creating WebSocket connection to", diagnosticPtyUrl);
 			let socket: WebSocket;
 			try {
