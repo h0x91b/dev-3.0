@@ -37,6 +37,11 @@ describe("buildClaudeManagedSettings", () => {
 		expect(s.skipDangerousModePermissionPrompt).toBe(true);
 		expect(s.statusLine).toEqual({ type: "command", command: '"/bin/dev3" statusline' });
 	});
+
+	it("adds the AWS SSO refresh only when asked", () => {
+		expect(buildClaudeManagedSettings("/bin/dev3", true)).not.toHaveProperty("awsAuthRefresh");
+		expect(buildClaudeManagedSettings("/bin/dev3", true, true).awsAuthRefresh).toBe("aws sso login");
+	});
 });
 
 describe("readClaudeSnapshot", () => {

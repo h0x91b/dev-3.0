@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { beforeAll, beforeEach, afterAll, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ settings: {} as Record<string, unknown> }));
@@ -13,6 +13,7 @@ vi.mock("../settings", () => ({
 
 import { resolveCommandForAgent } from "../agents";
 import { DEV3_HOME } from "../paths";
+import { CLAUDE_BEDROCK_SSO_SETTINGS_PATH, CLAUDE_STATUSLINE_SETTINGS_PATH } from "../rate-limit-monitor";
 import type { CodingAgent } from "../../shared/types";
 
 const ctx = { taskTitle: "t", taskDescription: "d", projectName: "p", projectPath: "/p", worktreePath: "/w" };
@@ -70,6 +71,16 @@ describe("resolveCommandForAgent — AWS profile through the real launch path", 
 		expect(r.extraEnv.ANTHROPIC_MODEL).toBe(arn);
 		expect(r.extraEnv.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe(arn);
 		expect(r.command).not.toContain("global.anthropic.claude-opus-5");
+	});
+
+	it("a picked profile launches with the settings file that refreshes an expired SSO session", async () => {
+		const picked = await resolveCommandForAgent("claude-bedrock", "auto", ctx, { bedrockProfile: "og" });
+		expect(picked.command).toContain(`--settings ${CLAUDE_BEDROCK_SSO_SETTINGS_PATH}`);
+		expect(JSON.parse(readFileSync(CLAUDE_BEDROCK_SSO_SETTINGS_PATH, "utf-8")).awsAuthRefresh).toBe("aws sso login");
+		const none = await resolveCommandForAgent("claude-bedrock", "auto", ctx, { bedrockProfile: null });
+		expect(none.command).toContain(`--settings ${CLAUDE_STATUSLINE_SETTINGS_PATH}`);
+		const missing = await resolveCommandForAgent("claude-bedrock", "auto", ctx, { bedrockProfile: "gone" });
+		expect(missing.command).toContain(`--settings ${CLAUDE_STATUSLINE_SETTINGS_PATH}`);
 	});
 
 	it("the picked profile wins over the preset's own envVars", async () => {

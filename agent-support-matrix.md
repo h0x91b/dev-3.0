@@ -300,7 +300,10 @@ dev3**. The customer configures those in their own global agent setup (shell env
 profiles** (Settings → Coding Agents → the Bedrock section, or `dev3 agent
 aws-profiles set`). The launch dialog then shows an AWS profile dropdown, and the
 picked entry sets `AWS_PROFILE`/`AWS_REGION` over the preset `envVars` and the
-project env. See `decisions/2026/11/05/bedrock-per-launch-aws-profile.md`.
+project env. See `decisions/2026/11/05/bedrock-per-launch-aws-profile.md`. A Claude
+launch with a picked profile also gets `awsAuthRefresh: "aws sso login"` in its dev3
+`--settings` file, so an expired SSO session opens the browser login
+(`decisions/2026/11/08/bedrock-sso-refresh-managed-settings.md`).
 
 | Provider | Injected env | Model id source |
 |----------|--------------|-----------------|
