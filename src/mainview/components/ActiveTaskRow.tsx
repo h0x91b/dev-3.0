@@ -322,8 +322,6 @@ export default function ActiveTaskRow({
 					data-testid={`sidebar-task-title-${task.id}`}
 					className={`text-xs leading-snug break-words ${isCoordinatorTask(task) ? `${COORDINATOR_TITLE} font-medium` : `pr-6 ${isActive ? "text-fg font-medium" : "text-fg-2"}`}`}
 				>
-					{/* Chip leads the title, as on the dashboard coordinator rows. */}
-					{isCoordinatorTask(task) && <TaskRoleChip role="coordinator" testId="sidebar-coordinator-badge" className="mr-1.5 align-[1px]" />}
 					{displayTitle}
 				</div>
 
@@ -390,6 +388,7 @@ export default function ActiveTaskRow({
 				<Tooltip content={agentSummary} disabled={!agentSummary}>
 					<div className="flex min-w-0 flex-1 items-center gap-1.5" data-testid={`sidebar-identity-${task.id}`}>
 						<NativeBackendMark task={task} className="w-3 h-3" testId={`sidebar-native-backend-${task.id}`} />
+						{isCoordinatorTask(task) && <TaskRoleChip role="coordinator" testId="sidebar-coordinator-badge" />}
 						{agent && <AgentLauncherBadge agent={agent} size={12} />}
 						{task.taskType === "pr-review" && (
 							<span

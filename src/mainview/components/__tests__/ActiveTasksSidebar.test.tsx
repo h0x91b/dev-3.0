@@ -2267,7 +2267,7 @@ describe("ActiveTasksSidebar port badges", () => {
 		const coordTitle = screen.getByTestId("sidebar-task-title-coord");
 		expect(coordTitle.className).toContain(COORDINATOR_TITLE);
 		expect(coordTitle.className).not.toContain("bg-accent-fill");
-		expect(coordTitle.querySelector("[data-testid='sidebar-coordinator-badge']")).not.toBeNull();
+		expect(coordTitle.querySelector("[data-testid='sidebar-coordinator-badge']")).toBeNull();
 		for (const id of ["cleanup", "plain"]) {
 			expect(screen.getByTestId(`sidebar-task-title-${id}`).className).not.toContain(COORDINATOR_TITLE);
 		}

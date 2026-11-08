@@ -1,6 +1,6 @@
 # Coordinator band flush under the status strip
 
-Amended on 2026-11-08: the Active Tasks sidebar's filled title bar (`COORDINATOR_TITLE_BAR`) was removed at the maintainer's request; the sidebar now uses the same accent title and leading chip as the dashboard.
+Amended on 2026-11-08: the Active Tasks sidebar's filled title bar (`COORDINATOR_TITLE_BAR`) was removed at the maintainer's request; the sidebar title is now plain accent text, with the role chip staying on the identity line.
 
 ## Context
 
@@ -8,7 +8,7 @@ Amended on 2026-11-08: the Active Tasks sidebar's filled title bar (`COORDINATOR
 
 ## Decision
 
-`TaskRoleBand` (`src/mainview/components/TaskRoleBand.tsx`) sits flush under the status strip, full width, square. Status stays readable from the left rail, which carries it on every card. `COORDINATOR_TITLE` (`text-accent-emphasis`) paints a coordinator's title in the dashboard coordinator rows, the task switcher and the Active Tasks sidebar (`ActiveTaskRow`), where the role chip leads the title as on the dashboard. A full-bleed filled bar was tried in the sidebar and rejected as too heavy. Board cleanup keeps a neutral title, matching its neutral band. `accent-emphasis`, not `accent`, because `accent` text measures only Lc 46 on dark surfaces; the pins are in `src/mainview/__tests__/contrast-check.test.ts`.
+`TaskRoleBand` (`src/mainview/components/TaskRoleBand.tsx`) sits flush under the status strip, full width, square. Status stays readable from the left rail, which carries it on every card. `COORDINATOR_TITLE` (`text-accent-emphasis`) paints a coordinator's title in the dashboard coordinator rows, the task switcher and the Active Tasks sidebar (`ActiveTaskRow`), where the role chip stays on the identity line below. A full-bleed filled bar was tried in the sidebar and rejected as too heavy. Board cleanup keeps a neutral title, matching its neutral band. `accent-emphasis`, not `accent`, because `accent` text measures only Lc 46 on dark surfaces; the pins are in `src/mainview/__tests__/contrast-check.test.ts`.
 
 ## Risks
 
