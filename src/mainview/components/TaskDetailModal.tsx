@@ -477,7 +477,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 								disabled={renameSaving}
 							/>
 							<div className="flex items-center justify-between">
-								<span className="text-xs text-fg-muted">Enter to save · Esc to cancel</span>
+								<span className="text-xs text-fg-muted">{t("task.renameHint")}</span>
 								<div className="flex gap-1.5">
 									{task.customTitle && (
 										<button

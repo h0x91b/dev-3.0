@@ -160,6 +160,7 @@ describe("TaskDetailModal", () => {
 			const renameInput = screen.getByRole("textbox");
 			expect(renameInput).toBeInTheDocument();
 			expect(renameInput).toHaveValue("Auto-generated title");
+			expect(screen.getByText("Enter to save · Esc to cancel")).toBeInTheDocument();
 		});
 
 		it("saves renamed title on Enter", async () => {
