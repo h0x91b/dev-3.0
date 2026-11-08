@@ -320,7 +320,7 @@ export default function ActiveTaskRow({
 				{/* CONTENT — the row's only visual focus. */}
 				<div
 					data-testid={`sidebar-task-title-${task.id}`}
-					className={`text-xs leading-snug break-words ${isCoordinatorTask(task) ? `${COORDINATOR_TITLE} font-medium` : `pr-6 ${isActive ? "text-fg font-medium" : "text-fg-2"}`}`}
+					className={`text-xs leading-snug break-words ${isCoordinatorTask(task) ? `${COORDINATOR_TITLE} font-bold` : `pr-6 ${isActive ? "text-fg font-medium" : "text-fg-2"}`}`}
 				>
 					{displayTitle}
 				</div>
