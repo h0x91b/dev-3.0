@@ -789,7 +789,8 @@ function App() {
 				if (staleBinary) {
 					toast.warning(t(staleBinary === "deleted" ? "terminal.staleTmuxServerDeleted" : "terminal.staleTmuxServerElsewhere"), {
 						source: "terminal",
-						durationMs: 30_000,
+						// A timed toast went unseen at launch while the user looked elsewhere; this one waits for them.
+						durationMs: Infinity,
 						actions: [{ label: t("terminal.restartTerminals"), emphasis: true, onClick: () => void restartTmuxServer() }],
 					});
 				} else if (predatesLaunchd) {

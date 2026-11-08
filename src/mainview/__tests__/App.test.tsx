@@ -402,6 +402,20 @@ describe("App keyboard shortcuts", () => {
 			await renderApp();
 			expect(await screen.findByText(/from another dev-3.0 copy/)).toBeInTheDocument();
 		});
+
+		it("keeps the restart offer on screen until the user acts on it", async () => {
+			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: false, staleBinary: "elsewhere" });
+			vi.useFakeTimers({ shouldAdvanceTime: true });
+			try {
+				await renderApp();
+				expect(await screen.findByText(/from another dev-3.0 copy/)).toBeInTheDocument();
+				act(() => vi.advanceTimersByTime(10 * 60_000));
+				expect(screen.getByText(/from another dev-3.0 copy/)).toBeInTheDocument();
+				expect(screen.getByRole("button", { name: "Restart terminals" })).toBeInTheDocument();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
 	});
 
 	describe("quit confirmation dialog", () => {
