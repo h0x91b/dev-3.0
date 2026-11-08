@@ -228,7 +228,10 @@ function AgentConfigPicker({
 	}
 
 	const storedAgent = agents.find((a) => a.id === agentId);
-	const awsProfiles = onBedrockProfileChange ? agentBedrockProfiles(storedAgent) : [];
+	// Same guard as the launcher: a preset's baseCommandOverride decides the CLI.
+	const awsProfiles = onBedrockProfileChange
+		? agentBedrockProfiles(storedAgent, storedAgent && configId ? findAgentConfig(storedAgent, configId)?.baseCommandOverride : undefined)
+		: [];
 	const awsDefault = storedAgent?.llmProvider ? storedAgent.providerConfig?.[storedAgent.llmProvider]?.defaultProfile : undefined;
 	// undefined until read; `{ profile: undefined }` = the project never picked.
 	const [rememberedAws, setRememberedAws] = useState<{ profile: string | null | undefined } | null>(null);

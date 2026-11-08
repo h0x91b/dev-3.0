@@ -387,9 +387,10 @@ export function bedrockProfileEnv(profile: BedrockProfile | null): Record<string
  *  belong to this agent's command" guard the launcher applies. */
 export function agentBedrockProfiles(
 	agent: { baseCommand: string; agentFamily?: AgentFamily; llmProvider?: LlmProvider; providerConfig?: ProviderConfig } | undefined,
+	baseCommandOverride?: string,
 ): BedrockProfile[] {
 	const def = getProviderDefinition(agent?.llmProvider);
-	if (!agent || !def || def.agentCommand !== agentKey(agent.baseCommand, agent.agentFamily)) return [];
+	if (!agent || !def || def.agentCommand !== agentKey(baseCommandOverride || agent.baseCommand, agent.agentFamily)) return [];
 	return bedrockProfilesFor(def.id, agent.providerConfig);
 }
 
