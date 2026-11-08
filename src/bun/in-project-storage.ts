@@ -18,5 +18,6 @@ export async function ensureInProjectStorageDirs(projectPath: string): Promise<v
 	ensureSelfIgnoringDir(inProjectDataDir(projectPath));
 	const worktrees = projectWorktreesRoot(DEV3_HOME, projectPath, "project");
 	ensureSelfIgnoringDir(worktrees);
-	await excludeFromBackups(worktrees);
+	// `tmutil` can take seconds; it is best-effort and never throws, so nothing waits on it.
+	void excludeFromBackups(worktrees);
 }
