@@ -1,1 +1,0 @@
-Task worktrees inside a project folder now load the project's `.claude/CLAUDE.md` when that folder is Claude's config dir (`CLAUDE_CONFIG_DIR`), instead of excluding it as a duplicate. Existing worktrees pick up the fix on their next agent launch.

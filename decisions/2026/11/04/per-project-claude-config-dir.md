@@ -13,7 +13,7 @@ Some users run every project with `CLAUDE_CONFIG_DIR=<project>/.claude` and neve
 
 ## Risks
 - `isGitTracked` and the exclude helper spawn git at launch. That is two short calls, and the exclude call runs once per dir per process.
-- A pinned dir in a non-dev3-owned folder (git workflow off) whose settings are tracked gets no dev3 settings patch: no auto-allow rule for the dev3 CLI and no sandbox socket.
+- A pinned dir in a folder dev3 does not own (an Operations task's chosen folder, for example) whose settings are tracked gets no dev3 settings patch: no auto-allow rule for the dev3 CLI and no sandbox socket.
 - An explicitly picked managed Claude account still overrides the project dir; the default account no longer does (`decisions/2026/11/05/project-claude-pin-beats-default-account.md`).
 
 ## Alternatives considered
