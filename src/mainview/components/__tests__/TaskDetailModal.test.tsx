@@ -213,6 +213,30 @@ describe("TaskDetailModal", () => {
 			expect(screen.queryByText("Edit")).not.toBeInTheDocument();
 		});
 
+		it("keeps the saved custom title in the heading while the description editor is open", async () => {
+			const task = makeTodoTask({ customTitle: "My custom title", description: "original" });
+			const { container } = renderModal(task);
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			await user.type(screen.getByRole("textbox"), " changed");
+
+			expect(container.querySelector("#task-detail-title")).toHaveTextContent("My custom title");
+		});
+
+		it("previews the generated title while editing a task without a custom title", async () => {
+			const task = makeTodoTask({ description: "original" });
+			const { container } = renderModal(task);
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			const textarea = screen.getByRole("textbox");
+			await user.clear(textarea);
+			await user.type(textarea, "Fresh description");
+
+			expect(container.querySelector("#task-detail-title")).toHaveTextContent("Fresh description");
+		});
+
 		it("uploads an image dropped into the edit textarea and appends the saved path", async () => {
 			mockedApi.request.uploadFileBase64.mockResolvedValue({ path: "/tmp/uploaded-drop.png" });
 			mockedApi.request.readImageBase64.mockResolvedValue({ dataUrl: "data:image/png;base64,AAAA" });

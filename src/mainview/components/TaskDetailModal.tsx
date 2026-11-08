@@ -518,7 +518,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 								className={`text-fg text-base font-semibold leading-relaxed flex-1 ${!isEditing ? "cursor-pointer hover:text-fg-2" : ""}`}
 								onClick={!isEditing ? handleStartRename : undefined}
 							>
-								{isEditing ? (generatedTitle || getTaskTitle(task)) : getTaskTitle(task)}
+								{isEditing && !task.customTitle ? (generatedTitle || task.title) : getTaskTitle(task)}
 							</div>
 							{!isEditing && (
 								<button
