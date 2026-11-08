@@ -48,4 +48,28 @@ describe("AgentEnvDefaultsSection", () => {
 		fireEvent.blur(textarea);
 		expect(onChange).toHaveBeenCalledExactlyOnceWith({ A: "1", B: "2" });
 	});
+
+	it("turns the per-project Claude folder on and off without touching other keys", () => {
+		const { onChange } = renderSection({ agentEnvDefaults: { A: "1" } });
+		const toggle = screen.getByRole("switch", { name: "settings.projectClaudeFolder" });
+		expect(toggle.getAttribute("aria-checked")).toBe("false");
+		fireEvent.click(toggle);
+		expect(onChange).toHaveBeenLastCalledWith({ A: "1", CLAUDE_CONFIG_DIR: "{projectPath}/.claude" });
+	});
+
+	it("shows the switch on when the default is set, and clears the setting when it was the only key", () => {
+		const { onChange } = renderSection({ agentEnvDefaults: { CLAUDE_CONFIG_DIR: "{projectPath}/.claude" } });
+		const toggle = screen.getByRole("switch", { name: "settings.projectClaudeFolder" });
+		expect(toggle.getAttribute("aria-checked")).toBe("true");
+		fireEvent.click(toggle);
+		expect(onChange).toHaveBeenLastCalledWith(undefined);
+	});
+
+	it("keeps a just-saved text edit when the switch is clicked right after", () => {
+		const { onChange, textarea } = renderSection();
+		fireEvent.change(textarea, { target: { value: "B=2" } });
+		fireEvent.blur(textarea);
+		fireEvent.click(screen.getByRole("switch", { name: "settings.projectClaudeFolder" }));
+		expect(onChange).toHaveBeenLastCalledWith({ B: "2", CLAUDE_CONFIG_DIR: "{projectPath}/.claude" });
+	});
 });

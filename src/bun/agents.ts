@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -17,6 +17,7 @@ import { GEMINI_TRUSTED_FOLDERS } from "./worktree-trust";
 import {
 	ensureCopilotCommandApproval,
 	ensureCopilotTrustedFolder,
+	isDev3OwnedFolder,
 	updateCopilotConfig,
 	updateCopilotPermissions,
 } from "../shared/agent-hooks";
@@ -37,7 +38,8 @@ import { codexModelCatalogArgs, modelRolesForAgent, orphanedRoleBindings, resolv
 import { writeCodexModelCatalog } from "./codex-model-catalog";
 import { loadModelCatalog } from "./model-catalog-store";
 import { ensureModelSidecar, preflightModelRoles } from "./model-sidecar";
-import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, installClaudeConfigDir } from "./agent-skills";
+import { CLAUDE_SKILL_BODY, CLAUDE_SKILL_NAMES, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, installClaudeConfigDir } from "./agent-skills";
+import { excludeClaudeRuntimeState, isGitTracked } from "./claude-config-git";
 import { launchClaudeConfigLocation } from "../shared/claude-config-dir";
 import { rememberPinnedClaudeConfigDir } from "./claude-config-dirs";
 import { updateClaudeJson } from "./claude-json-update";
@@ -1434,10 +1436,26 @@ export function ensureClaudeConfigDir(launchEnv: Record<string, string> | undefi
 		// A linked slot (the user's own folder) gets no startup install, so only real managed dirs are skipped here.
 		const managed = listClaudeAccountDirs().includes(location.dir) && !isLinkedClaudeSlot(location.dir);
 		if (!location.pinned || managed) return;
-		installClaudeConfigDir(location.dir);
+		// A committed settings.json stays untouched: the dev3 entries go to the task's own local settings.
+		const tracked = isGitTracked(join(location.dir, "settings.json"));
+		installClaudeConfigDir(location.dir, homedir(), tracked ? taskLocalClaudeSettings(cwd) : undefined);
+		excludeClaudeRuntimeState(location.dir, CLAUDE_SKILL_NAMES);
 	} catch (err) {
 		log.warn("Failed to provision pinned Claude config dir (non-fatal)", { error: String(err) });
 	}
+}
+
+/** The task folder's untracked `.claude/settings.local.json`, or null where dev3 must not write. */
+function taskLocalClaudeSettings(cwd: string): string | null {
+	if (!isDev3OwnedFolder(cwd)) return null;
+	const path = join(cwd, ".claude", "settings.local.json");
+	if (isGitTracked(path)) return null;
+	try {
+		if (lstatSync(path).isSymbolicLink()) return null;
+	} catch {
+		// missing: ensureClaudeSettings creates it
+	}
+	return path;
 }
 
 /**

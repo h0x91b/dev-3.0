@@ -386,6 +386,8 @@ const settings = {
 	"settings.agentEnvDefaultsDesc": "KEY=value на строку, # для комментариев. Экспортируется в каждую сессию агента проекта, который сам не задаёт этот ключ в конфиге .dev3 или настройках проекта. {home} подставляется как домашняя папка, {projectPath} и {projectName} — из проекта. Применяется при следующем запуске.",
 	"settings.agentEnvDefaultsNotice": "Хранится в глобальных настройках dev3. Значения проекта всегда важнее, в репозиторий ничего не записывается.",
 	"settings.agentEnvDefaultsPlaceholder": "CLAUDE_CONFIG_DIR={home}/.claude-projects/{projectName}",
+	"settings.projectClaudeFolder": "Своя папка Claude у каждого проекта",
+	"settings.projectClaudeFolderDesc": "Claude Code читает папку .claude самого проекта (правила, агенты, навыки, память, сессии) вместо ~/.claude — как при запуске с CLAUDE_CONFIG_DIR=<проект>/.claude. Значение CLAUDE_CONFIG_DIR в самом проекте или управляемый аккаунт Claude по-прежнему важнее. Действует со следующего запуска.",
 	"settings.claudeMods": "Моды Claude Code",
 	"settings.claudeModsDesc": "Моды — это плагины Claude Code от сторонних авторов. Пока мод включён, его код выполняется в каждой сессии Claude. dev3 ставит проверенную версию, переходит на новую только со своими обновлениями и настраивает мод для всех аккаунтов Claude.",
 	"settings.claudeMod.prismantis.title": "prismantis",

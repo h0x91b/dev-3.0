@@ -452,6 +452,14 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "project-claude-folder",
+		category: "agents",
+		titleKey: "settings.projectClaudeFolder",
+		descriptionKey: "settings.projectClaudeFolderDesc",
+		anchor: "project-claude-folder",
+		storage: "global",
+	},
+	{
 		id: "agent-env-defaults",
 		category: "agents",
 		titleKey: "settings.agentEnvDefaults",

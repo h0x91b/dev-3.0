@@ -2,7 +2,8 @@
  * Hook-building logic shared between the backend (bun/) and CLI.
  */
 
-import { parseInProjectTaskPath } from "./project-storage";
+import { isInProjectTaskPath, parseInProjectTaskPath } from "./project-storage";
+import { resolveDev3Home } from "./dev3-home";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { PermissionMode, TaskStatus } from "./types";
@@ -499,6 +500,17 @@ function mergeHookMaps(
 function claudePostToolCommand(workingCmd: string, dialect: HookCliDialect): string {
 	if (!dialect.posixShell) return workingCmd;
 	return `${dialect.cli} ${CLAUDE_POST_TOOL_HOOK_SUBCOMMAND} || ${workingCmd}`;
+}
+
+/**
+ * True when `folder` is a working directory dev3 created and removes with the
+ * task: a worktree or ops folder under the dev3 home, or an in-project task dir.
+ */
+export function isDev3OwnedFolder(folder: string, env: Record<string, string | undefined> = process.env): boolean {
+	const normalize = (path: string) => path.replaceAll("\\", "/").replace(/\/+$/, "").toLowerCase();
+	const target = normalize(folder);
+	const home = normalize(resolveDev3Home(env));
+	return [`${home}/worktrees/`, `${home}/ops/`].some((root) => target.startsWith(root)) || isInProjectTaskPath(target);
 }
 
 export function buildClaudeHooks(

@@ -378,6 +378,8 @@ const settings = {
 	"settings.agentEnvDefaultsDesc": "KEY=value per line, # for comments. Exported into every agent session of a project that does not set the key itself in its .dev3 config or Project Settings. {home} expands to your home directory, {projectPath} and {projectName} to the project. Applies on next launch.",
 	"settings.agentEnvDefaultsNotice": "Stored in dev3's global settings. Project values always win, and nothing is written to any repository.",
 	"settings.agentEnvDefaultsPlaceholder": "CLAUDE_CONFIG_DIR={home}/.claude-projects/{projectName}",
+	"settings.projectClaudeFolder": "Each project uses its own Claude folder",
+	"settings.projectClaudeFolderDesc": "Claude Code reads each project's own .claude folder (rules, agents, skills, memory, sessions) instead of ~/.claude, like launching it with CLAUDE_CONFIG_DIR=<project>/.claude. A project that sets CLAUDE_CONFIG_DIR itself, or a managed Claude account, still wins. Applies on next launch.",
 	"settings.claudeMods": "Claude Code mods",
 	"settings.claudeModsDesc": "Mods are Claude Code plugins made by other people. While a mod is on, its code runs inside every Claude session. dev3 installs a version it has checked, moves to a newer one only in its own updates, and sets it up for every Claude account.",
 	"settings.claudeMod.prismantis.title": "prismantis",

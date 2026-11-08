@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync as spawnSyncNode } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -96,6 +97,7 @@ describe("ensureClaudeTrust / ensureClaudeConfigDir with a pinned dir", () => {
 		vi.restoreAllMocks();
 		vi.unstubAllEnvs();
 		vi.doUnmock("node:os");
+		vi.doUnmock("../spawn");
 		rmSync(home, { recursive: true, force: true });
 	});
 
@@ -158,5 +160,39 @@ describe("ensureClaudeTrust / ensureClaudeConfigDir with a pinned dir", () => {
 		expect(existsSync(join(pinned, "skills/dev3-project-config/SKILL.md"))).toBe(true);
 		expect(existsSync(join(pinned, "settings.json"))).toBe(true);
 		expect(existsSync(join(home, ".claude"))).toBe(false);
+	});
+
+	it("leaves a committed settings.json alone, patches the task's local settings and hides runtime state from git", async () => {
+		const project = join(home, "project");
+		const pinned = join(project, ".claude");
+		mkdirSync(pinned, { recursive: true });
+		const committed = `${JSON.stringify({ permissions: { allow: ["Bash(ls *)"] } }, null, 2)}\n`;
+		writeFileSync(join(pinned, "settings.json"), committed);
+		const git = (...args: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], { cwd: project });
+		git("init", "-q");
+		git("add", ".claude/settings.json");
+		git("commit", "-qm", "init");
+		vi.stubEnv("DEV3_HOME", join(home, ".dev3.0"));
+		const taskDir = join(home, ".dev3.0", "worktrees", "p", "wt");
+		mkdirSync(taskDir, { recursive: true });
+
+		// The suite stubs Bun.spawnSync; this test needs real git answers.
+		vi.doMock("../spawn", async (importOriginal) => ({
+			...(await importOriginal<typeof import("../spawn")>()),
+			spawnSync: (cmd: string[], opts: { cwd: string }) => {
+				const res = spawnSyncNode(cmd[0], cmd.slice(1), { cwd: opts.cwd });
+				return { exitCode: res.status, stdout: res.stdout };
+			},
+		}));
+
+		const { ensureClaudeConfigDir } = await import("../agents");
+		ensureClaudeConfigDir({ CLAUDE_CONFIG_DIR: pinned }, taskDir);
+
+		expect(readFileSync(join(pinned, "settings.json"), "utf-8")).toBe(committed);
+		const local = JSON.parse(readFileSync(join(taskDir, ".claude/settings.local.json"), "utf-8"));
+		expect(local.sandbox.network.allowUnixSockets).toContain(`${home}/.dev3.0/sockets`);
+		expect(existsSync(join(pinned, "skills/dev3/SKILL.md"))).toBe(true);
+		writeFileSync(join(pinned, ".claude.json"), "{}");
+		expect(git("status", "--porcelain").toString()).toBe("");
 	});
 });
