@@ -83,7 +83,7 @@ export default function AwsProfilesEditor({
 								className={INPUT_CLASS}
 								value={row.region ?? ""}
 								aria-label="AWS_REGION"
-								placeholder="us-west-2"
+								placeholder={t("settings.awsProfileRegionOptional")}
 								onChange={(e) => updateRow(index, { region: e.target.value || undefined })}
 							/>
 							<button
