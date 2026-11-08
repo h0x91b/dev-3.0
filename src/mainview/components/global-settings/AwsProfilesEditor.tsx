@@ -21,13 +21,31 @@ export default function AwsProfilesEditor({
 	onChange: (patch: { profiles?: BedrockProfile[]; defaultProfile?: string }) => void;
 }) {
 	const rows = profiles ?? [];
+	const defaultIndex = defaultProfile ? rows.findIndex((row) => row.name === defaultProfile) : -1;
+	const nameCount = new Map<string, number>();
+	for (const row of rows) nameCount.set(row.name.trim(), (nameCount.get(row.name.trim()) ?? 0) + 1);
+	// What the launch dialog will refuse to offer, said at the row instead of dropped silently.
+	const rowProblem = (row: BedrockProfile) =>
+		row.name.trim() && (nameCount.get(row.name.trim()) ?? 0) > 1
+			? t("settings.awsProfileDuplicate")
+			: row.name.trim() && !row.awsProfile.trim()
+				? t("settings.awsProfileNeedsValue")
+				: null;
 
 	function updateRow(index: number, patch: Partial<BedrockProfile>) {
-		const prev = rows[index];
 		const next = rows.map((row, i) => (i === index ? { ...row, ...patch } : row));
-		// A renamed default stays the default.
-		const renamedDefault = patch.name !== undefined && prev.name === defaultProfile;
-		onChange({ profiles: next, ...(renamedDefault ? { defaultProfile: patch.name } : {}) });
+		// A renamed default stays the default; a blank name is no default at all.
+		const renamedDefault = patch.name !== undefined && index === defaultIndex;
+		onChange({ profiles: next, ...(renamedDefault ? { defaultProfile: patch.name?.trim() ? patch.name : undefined } : {}) });
+	}
+
+	/** Names and values are matched exactly at launch, so stray spaces go on blur. */
+	function trimRow(index: number) {
+		const row = rows[index];
+		const trimmed = { ...row, name: row.name.trim(), awsProfile: row.awsProfile.trim(), region: row.region?.trim() || undefined };
+		if (trimmed.name === row.name && trimmed.awsProfile === row.awsProfile && trimmed.region === row.region) return;
+		const next = rows.map((r, i) => (i === index ? trimmed : r));
+		onChange({ profiles: next, ...(index === defaultIndex ? { defaultProfile: trimmed.name || undefined } : {}) });
 	}
 
 	function removeRow(index: number) {
@@ -51,13 +69,15 @@ export default function AwsProfilesEditor({
 						<span className="font-mono">AWS_REGION</span>
 						<span />
 					</div>
-					{rows.map((row, index) => (
-						<div key={index} className="grid grid-cols-[3.5rem_1fr_1.4fr_1fr_1.5rem] gap-2 items-center px-3 py-2 bg-base">
+					{rows.map((row, index) => {
+						const problem = rowProblem(row);
+						return (
+						<div key={index} onBlur={() => trimRow(index)} className="grid grid-cols-[3.5rem_1fr_1.4fr_1fr_1.5rem] gap-2 items-center px-3 py-2 bg-base">
 							<input
 								type="radio"
 								name="aws-profile-default"
 								aria-label={t("settings.awsProfileDefaultFor", { name: row.name || "-" })}
-								checked={!!row.name && row.name === defaultProfile}
+								checked={index === defaultIndex}
 								disabled={!row.name.trim()}
 								onChange={() => onChange({ defaultProfile: row.name })}
 								onClick={() => {
@@ -95,8 +115,12 @@ export default function AwsProfilesEditor({
 							>
 								&times;
 							</button>
+							{problem && (
+								<p role="alert" className="col-span-full text-warning text-micro">{problem}</p>
+							)}
 						</div>
-					))}
+						);
+					})}
 				</div>
 			) : (
 				<p className="text-fg-muted text-xs">{t("settings.awsProfilesEmpty")}</p>

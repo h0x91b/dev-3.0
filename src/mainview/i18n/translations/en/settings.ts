@@ -172,6 +172,8 @@ const settings = {
 	"settings.awsProfileDefaultFor": "Use {name} by default",
 	"settings.awsProfileAdd": "Add profile",
 	"settings.awsProfileRemove": "Remove profile",
+	"settings.awsProfileDuplicate": "Another profile has this name; the launch dialog offers only the first.",
+	"settings.awsProfileNeedsValue": "Not offered at launch until AWS_PROFILE is set.",
 	"settings.awsProfileRegionOptional": "optional",
 	"settings.providerModelManual": "Manual",
 	"settings.providerModelDefault": "Default",
