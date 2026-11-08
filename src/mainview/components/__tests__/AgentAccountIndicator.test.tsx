@@ -819,6 +819,17 @@ describe("project-pinned CLAUDE_CONFIG_DIR", () => {
 		expect(screen.getByText("Default login (/home/me/.claude)")).toBeTruthy();
 	});
 
+	it("hides Auto on a pinned project, since Auto never overrides the pin", async () => {
+		mockedApi.request.getProjectClaudeLogin.mockResolvedValue(projectLogin);
+		mockedApi.request.previewAutoAccount.mockResolvedValue(preview());
+		renderIndicator(claudeAgent, { projectId: "p1", onSelect: vi.fn(), value: "auto" });
+		const trigger = await screen.findByTestId("agent-account-trigger");
+		await waitFor(() => expect(trigger.textContent).toContain("project@example.com"));
+		await userEvent.click(trigger);
+		await screen.findByText("Project login (…/thumbs/.claude)");
+		expect(screen.queryByRole("menuitemradio", { name: /^Auto/ })).toBeNull();
+	});
+
 	it("an account picked for the task replaces the pin, and the project row brings it back", async () => {
 		mockedApi.request.getProjectClaudeLogin.mockResolvedValue(projectLogin);
 		const onSelect = vi.fn();

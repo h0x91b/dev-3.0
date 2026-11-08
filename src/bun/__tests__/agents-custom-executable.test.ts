@@ -188,11 +188,19 @@ describe("a project that pins its own Claude folder", () => {
 		expect(resolved.resolvedAccountId).toBeUndefined();
 	});
 
-	it("lets the project's own ANTHROPIC_* values through instead of the account's ENV_UNSET", async () => {
+	it("does not clear the project's own ANTHROPIC_* under a kept pin, nor let them steer --model", async () => {
+		await defaultAccount();
+		const kept = await resolveCommandForAgent("builtin-claude", null, ctx, { projectEnv });
+		expect(kept.extraEnv.ANTHROPIC_MODEL).toBeUndefined();
+		expect(kept.command).not.toContain("project-model");
+	});
+
+	it("keeps every sentinel under an explicit pick, so no project credential joins that login", async () => {
 		const { account } = await defaultAccount();
-		expect((await resolveCommandForAgent("builtin-claude", null, ctx, { projectEnv })).extraEnv.ANTHROPIC_MODEL).toBe("project-model");
-		const picked = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, projectEnv });
-		expect(picked.extraEnv.ANTHROPIC_MODEL).toBe("project-model");
+		const env = { ...projectEnv, ANTHROPIC_AUTH_TOKEN: "gateway-token" };
+		const picked = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, projectEnv: env });
+		expect(picked.extraEnv.ANTHROPIC_MODEL).toBe(ENV_UNSET);
+		expect(picked.extraEnv.ANTHROPIC_AUTH_TOKEN).not.toBe("gateway-token");
 	});
 
 	it("keeps the project folder when Auto would route, on a fresh launch", async () => {

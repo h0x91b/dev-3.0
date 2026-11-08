@@ -697,7 +697,9 @@ export default function AgentAccountIndicator({
 	const rows: PopoverRow[] = [];
 	// Auto earns its row once there are two logins to balance — or while it is the
 	// choice, so a selected state never vanishes from the list.
-	if (routable && (autoSelected || autoCandidateTotal(preview) >= 2)) {
+	// Auto never overrides a project's own folder, so a pinned launch has nothing to route.
+	const projectPinHolds = isLocal && kind === "claude" && !!projectLogin?.configDir && state.claude.accounts.length > 0;
+	if (routable && !projectPinHolds && (autoSelected || autoCandidateTotal(preview) >= 2)) {
 		rows.push({
 			key: "auto",
 			label: t("launch.accountAuto"),

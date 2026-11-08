@@ -525,7 +525,7 @@ export interface CommandOptions {
 	 *  account removed since then falls back to the default instead of failing the launch. */
 	accountFromStore?: boolean;
 	/** The project env the launch runs under. A CLAUDE_CONFIG_DIR it pins beats the
-	 *  default account, and its values replace the account env's ENV_UNSET sentinels. */
+	 *  default account, and then the account env does not clear the project's own keys. */
 	projectEnv?: Record<string, string>;
 	/** Fresh-launch routing context. Present → an `"auto"` account (or a default
 	 *  set to Auto) is resolved by the usage-balanced router. Resume paths never
@@ -871,19 +871,15 @@ async function applyClaudeAccountEnv(
 	}
 }
 
-/** Let the project env through where the account env only cleared a key: ENV_UNSET hides
- *  tmux-server leftovers, not the project's own values. An explicit system-login pick clears
- *  CLAUDE_CONFIG_DIR on purpose, so the project's passes only when the launch kept it. */
-export function applyProjectEnvUnderAccount(
-	extraEnv: Record<string, string>,
-	projectEnv: Record<string, string>,
-	keepsProjectClaudeConfig: boolean | undefined,
-): void {
-	for (const [key, value] of Object.entries(projectEnv)) {
-		if (key === "CLAUDE_CONFIG_DIR" ? keepsProjectClaudeConfig && !(key in extraEnv) : extraEnv[key] === ENV_UNSET) {
-			extraEnv[key] = value;
-		}
+/** A launch that kept the project's Claude folder runs on the project's env: drop the
+ *  account env's ENV_UNSET for keys the project sets (they reach the session through the
+ *  project env, never the `--model` rewrite), and name the folder for panes that export only
+ *  this env. An explicit pick keeps every sentinel, so no project credential joins its login. */
+export function keepProjectClaudeEnv(extraEnv: Record<string, string>, projectEnv: Record<string, string>): void {
+	for (const key of Object.keys(projectEnv)) {
+		if (extraEnv[key] === ENV_UNSET) delete extraEnv[key];
 	}
+	if (projectEnv.CLAUDE_CONFIG_DIR && !("CLAUDE_CONFIG_DIR" in extraEnv)) extraEnv.CLAUDE_CONFIG_DIR = projectEnv.CLAUDE_CONFIG_DIR;
 }
 
 /** Inject the selected Codex account's CODEX_HOME into a Codex launch. Mirrors
@@ -1064,7 +1060,7 @@ export async function resolveCommandForAgent(
 	}
 	const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options, ctx.projectPath);
 	await applyClaudeAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily, account.keepsProjectClaudeConfig);
-	if (options?.projectEnv) applyProjectEnvUnderAccount(extraEnv, options.projectEnv, account.keepsProjectClaudeConfig);
+	if (options?.projectEnv && account.keepsProjectClaudeConfig) keepProjectClaudeEnv(extraEnv, options.projectEnv);
 	await applyCodexAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 	await applyAgentDirAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 	const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts, agentWithPath.agentFamily);
@@ -1208,7 +1204,7 @@ export async function resolveCommandForProject(
 		};
 		const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options, project.path);
 		await applyClaudeAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily, account.keepsProjectClaudeConfig);
-		if (options?.projectEnv) applyProjectEnvUnderAccount(extraEnv, options.projectEnv, account.keepsProjectClaudeConfig);
+		if (options?.projectEnv && account.keepsProjectClaudeConfig) keepProjectClaudeEnv(extraEnv, options.projectEnv);
 		await applyCodexAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 		await applyAgentDirAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 		const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts, agentWithPath.agentFamily);
