@@ -11426,6 +11426,22 @@ describe("handlers.spawnBugHuntersInTask", () => {
 			.then(() => started);
 	}
 
+	it("launches a hunter in a shared-folder task with the shared-folder protocol", async () => {
+		const project = makeProject({ path: "/tmp/wt", gitWorkflow: false });
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude", extraEnv: {} });
+		makeSplitMock(["%10"]);
+
+		await runLaunch(
+			handlers.spawnBugHuntersInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default", count: 1 }),
+			1,
+		);
+
+		expect(vi.mocked(agents.resolveCommandForAgent).mock.calls.map((call) => call[3]?.protocolMode)).toEqual(["shared-folder"]);
+	});
+
 	it("creates N panes: first horizontal 50% off the session, rest vertical off the previous right pane", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });

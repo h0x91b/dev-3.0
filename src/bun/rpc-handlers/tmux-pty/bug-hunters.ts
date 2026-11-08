@@ -1,6 +1,6 @@
 import { assertTaskWorkspacePresent } from "../../task-workspace-guard";
 import type { AgentFamily, Project, Task } from "../../../shared/types";
-import { getPrimaryStopTarget } from "../../../shared/types";
+import { getPrimaryStopTarget, taskProtocolMode } from "../../../shared/types";
 import * as data from "../../data";
 import * as git from "../../git";
 import * as pty from "../../pty-server";
@@ -100,6 +100,7 @@ async function spawnSingleBugHunterPane(opts: {
 		sessionId: freshSessionId,
 		accountId: opts.accountId,
 		autoRouting: await autoRoutingContext(opts.project, `${opts.task.id}:hunter:${freshSessionId}`, projectEnv),
+		protocolMode: taskProtocolMode(opts.project, opts.task),
 	};
 	let launchAccountId = opts.accountId;
 
