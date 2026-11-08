@@ -104,12 +104,17 @@ describe("buildThemeConfig", () => {
 
 	it("retains scrolled history selections but cancels live-screen copies", () => {
 		const config = buildThemeConfig("mocha");
-		expect(config).toContain(
-			"bind -T copy-mode MouseDragEnd1Pane if-shell -F '#{>:#{scroll_position},0}' 'send-keys -X copy-pipe' 'send-keys -X copy-pipe-and-cancel'",
-		);
-		expect(config).toContain(
-			"bind -T copy-mode-vi MouseDragEnd1Pane if-shell -F '#{>:#{scroll_position},0}' 'send-keys -X copy-pipe' 'send-keys -X copy-pipe-and-cancel'",
-		);
+		const copy = "if-shell -F '#{>:#{scroll_position},0}' 'send-keys -X copy-pipe' 'send-keys -X copy-pipe-and-cancel'";
+		for (const table of ["copy-mode", "copy-mode-vi"]) {
+			expect(config).toContain(`bind -T ${table} MouseDragEnd1Pane ${copy}`);
+			// A double- or triple-click is a selection too: a word, a line.
+			expect(config).toContain(
+				String.raw`bind -T ${table} DoubleClick1Pane select-pane \; send-keys -X select-word \; run-shell -d 0.3 \; ${copy}`,
+			);
+			expect(config).toContain(
+				String.raw`bind -T ${table} TripleClick1Pane select-pane \; send-keys -X select-line \; run-shell -d 0.3 \; ${copy}`,
+			);
+		}
 	});
 
 	it("puts prefix-free pane navigation on Alt+Shift+arrow and frees plain Alt+arrow", () => {
