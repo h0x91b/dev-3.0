@@ -26,6 +26,12 @@ function hoverPreviewEnabled(): boolean {
 	return !coarse && !narrow;
 }
 
+// An open menu can cover neighbouring cards or rows (the sidebar is narrower than a
+// context menu), so pointing at one of them must not slide a preview under the menu.
+function anyMenuOpen(): boolean {
+	return typeof document !== "undefined" && document.querySelector('[role="menu"]') !== null;
+}
+
 function clampPosition(anchorRect: DOMRect) {
 	const vw = window.innerWidth;
 	const vh = window.innerHeight;
@@ -135,6 +141,7 @@ export function useTerminalPreview() {
 		if (target instanceof Node && !anchorEl.contains(target)) return;
 		// No hover preview on touch / narrow (mobile carousel) viewports.
 		if (!hoverPreviewEnabled()) return;
+		if (anyMenuOpen()) return;
 		// Already opening or open for this task: just keep it, never restart the poll.
 		if (activeTaskIdRef.current === taskId && activeAnchorRef.current === anchorEl) {
 			cancelClose();
@@ -148,7 +155,7 @@ export function useTerminalPreview() {
 		activeAnchorRef.current = anchorEl;
 
 		openTimerRef.current = setTimeout(() => {
-			if (!anchorEl.isConnected) {
+			if (!anchorEl.isConnected || anyMenuOpen()) {
 				activeTaskIdRef.current = null;
 				activeAnchorRef.current = null;
 				return;

@@ -301,4 +301,29 @@ describe("useTerminalPreview - portaled children", () => {
 		});
 		expect(result.current.state.open).toBe(true);
 	});
+
+	it("does not open while a menu is open elsewhere (menu covering a neighbouring row)", async () => {
+		const { result } = renderHook(() => useTerminalPreview());
+		const menu = makeAnchor();
+		menu.setAttribute("role", "menu");
+		const anchor = makeAnchor();
+		act(() => result.current.handlers.onMouseEnter("task-2", anchor, anchor));
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(500);
+		});
+		expect(result.current.state.open).toBe(false);
+		expect(mockedApi.request.getTerminalPreview).not.toHaveBeenCalled();
+	});
+
+	it("drops a pending open when a menu appears during the open delay", async () => {
+		const { result } = renderHook(() => useTerminalPreview());
+		const anchor = makeAnchor();
+		act(() => result.current.handlers.onMouseEnter("task-1", anchor, anchor));
+		makeAnchor().setAttribute("role", "menu");
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(500);
+		});
+		expect(result.current.state.open).toBe(false);
+		expect(mockedApi.request.getTerminalPreview).not.toHaveBeenCalled();
+	});
 });
