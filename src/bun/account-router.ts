@@ -60,8 +60,8 @@ export interface AutoRoutingContext {
 }
 
 /** The project's env pins its own Claude folder through CLAUDE_CONFIG_DIR. */
-export function projectPinsClaudeConfig(project: Project, projectEnv: Record<string, string>): boolean {
-	return pinnedClaudeConfigDir(projectEnv.CLAUDE_CONFIG_DIR, homedir(), project.path) != null;
+export function projectPinsClaudeConfig(projectPath: string, projectEnv: Record<string, string>): boolean {
+	return pinnedClaudeConfigDir(projectEnv.CLAUDE_CONFIG_DIR, homedir(), projectPath) != null;
 }
 
 export async function autoRoutingContext(
@@ -72,7 +72,7 @@ export async function autoRoutingContext(
 	const env = projectEnv ?? (await resolveProjectEnv(project));
 	return {
 		exclusions: project.autoAccountExclusions ?? [],
-		claudeConfigPinned: projectPinsClaudeConfig(project, env),
+		claudeConfigPinned: projectPinsClaudeConfig(project.path, env),
 		reservationKey,
 	};
 }

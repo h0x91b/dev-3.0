@@ -75,8 +75,10 @@ describe("ensureClaudeTrust / ensureClaudeConfigDir with a pinned dir", () => {
 	let home = "";
 	let worktree = "";
 	const remember = vi.fn();
+	let accountDirs: string[] = [];
 
 	beforeEach(() => {
+		accountDirs = [];
 		home = mkdtempSync(join(tmpdir(), "dev3-claude-dir-"));
 		worktree = join(home, "wt");
 		mkdirSync(worktree);
@@ -89,7 +91,7 @@ describe("ensureClaudeTrust / ensureClaudeConfigDir with a pinned dir", () => {
 		vi.doMock("../agent-accounts", async (importOriginal) => ({
 			...(await importOriginal<typeof import("../agent-accounts")>()),
 			getActiveClaudeConfigDir: vi.fn(async () => null),
-			listClaudeAccountDirs: vi.fn(() => []),
+			listClaudeAccountDirs: vi.fn(() => accountDirs),
 		}));
 	});
 
@@ -138,10 +140,8 @@ describe("ensureClaudeTrust / ensureClaudeConfigDir with a pinned dir", () => {
 		mkdirSync(target);
 		mkdirSync(managed);
 		symlinkSync(target, external, "dir");
-		vi.doMock("../agent-accounts", async (importOriginal) => ({
-			...(await importOriginal<typeof import("../agent-accounts")>()),
-			listClaudeAccountDirs: vi.fn(() => [external, managed]),
-		}));
+		// One mock per module: a second doMock of the same path races the first one's async factory.
+		accountDirs = [external, managed];
 		const { ensureClaudeConfigDir } = await import("../agents");
 		ensureClaudeConfigDir({ CLAUDE_CONFIG_DIR: external }, worktree);
 		ensureClaudeConfigDir({ CLAUDE_CONFIG_DIR: managed }, worktree);

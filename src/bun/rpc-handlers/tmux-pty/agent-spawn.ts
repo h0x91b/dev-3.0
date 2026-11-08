@@ -81,6 +81,7 @@ export async function spawnAgentInTask(params: {
 	const cmdOptions: agents.CommandOptions = {
 		sessionId: freshSessionId,
 		accountId: params.accountId,
+		projectEnv,
 		autoRouting: await autoRoutingContext(project, reservationKey, projectEnv),
 	};
 	let launchAccountId = params.accountId;

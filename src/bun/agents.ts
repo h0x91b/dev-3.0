@@ -40,7 +40,7 @@ import { loadModelCatalog } from "./model-catalog-store";
 import { ensureModelSidecar, preflightModelRoles } from "./model-sidecar";
 import { CLAUDE_SKILL_BODY, CLAUDE_SKILL_NAMES, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, installClaudeConfigDir } from "./agent-skills";
 import { excludeClaudeRuntimeState, isGitTracked } from "./claude-config-git";
-import { launchClaudeConfigLocation } from "../shared/claude-config-dir";
+import { launchClaudeConfigLocation, pinnedClaudeConfigDir } from "../shared/claude-config-dir";
 import { rememberPinnedClaudeConfigDir } from "./claude-config-dirs";
 import { updateClaudeJson } from "./claude-json-update";
 import { getAgentAdapter, agentKey } from "../shared/agent-adapters/registry";
@@ -524,9 +524,9 @@ export interface CommandOptions {
 	/** `accountId` was read from stored task/pane state, not picked for this launch: a Claude
 	 *  account removed since then falls back to the default instead of failing the launch. */
 	accountFromStore?: boolean;
-	/** The project env pins CLAUDE_CONFIG_DIR. With no explicit account pick, the
-	 *  default managed account then yields to the project's folder. */
-	claudeConfigPinned?: boolean;
+	/** The project env the launch runs under. A CLAUDE_CONFIG_DIR it pins beats the
+	 *  default account, and its values replace the account env's ENV_UNSET sentinels. */
+	projectEnv?: Record<string, string>;
 	/** Fresh-launch routing context. Present → an `"auto"` account (or a default
 	 *  set to Auto) is resolved by the usage-balanced router. Resume paths never
 	 *  pass it, so a resumed conversation is never re-routed. */
@@ -813,6 +813,7 @@ async function resolveLaunchAccount(
 	family: AgentFamily | undefined,
 	extraEnv: Record<string, string>,
 	options: CommandOptions | undefined,
+	projectPath: string,
 ): Promise<{ accountId: string | null | undefined; resolvedAccountId: string | null | undefined; pick?: AutoAccountPick; staleAccountDropped?: true; keepsProjectClaudeConfig?: true }> {
 	const kind: AgentAccountKind | null = isClaudeCommand(baseCmd, family)
 		? "claude"
@@ -831,7 +832,7 @@ async function resolveLaunchAccount(
 		explicit = undefined;
 		staleAccountDropped = true;
 	}
-	if (kind === "claude" && explicit === undefined && (options?.claudeConfigPinned || options?.autoRouting?.claudeConfigPinned)) {
+	if (kind === "claude" && explicit === undefined && (options?.autoRouting?.claudeConfigPinned || (options?.projectEnv && pinnedClaudeConfigDir(options.projectEnv.CLAUDE_CONFIG_DIR, homedir(), projectPath) != null))) {
 		return { accountId: undefined, resolvedAccountId: undefined, keepsProjectClaudeConfig: true, ...(staleAccountDropped ? { staleAccountDropped } : {}) };
 	}
 	const settle = (accountId: string | null | undefined) => ({
@@ -867,6 +868,21 @@ async function applyClaudeAccountEnv(
 	if (keepsProjectClaudeConfig) delete accountEnv.CLAUDE_CONFIG_DIR;
 	for (const [key, value] of Object.entries(accountEnv)) {
 		if (!(key in extraEnv)) extraEnv[key] = value;
+	}
+}
+
+/** Let the project env through where the account env only cleared a key: ENV_UNSET hides
+ *  tmux-server leftovers, not the project's own values. An explicit system-login pick clears
+ *  CLAUDE_CONFIG_DIR on purpose, so the project's passes only when the launch kept it. */
+export function applyProjectEnvUnderAccount(
+	extraEnv: Record<string, string>,
+	projectEnv: Record<string, string>,
+	keepsProjectClaudeConfig: boolean | undefined,
+): void {
+	for (const [key, value] of Object.entries(projectEnv)) {
+		if (key === "CLAUDE_CONFIG_DIR" ? keepsProjectClaudeConfig && !(key in extraEnv) : extraEnv[key] === ENV_UNSET) {
+			extraEnv[key] = value;
+		}
 	}
 }
 
@@ -1046,8 +1062,9 @@ export async function resolveCommandForAgent(
 	if (config?.envVars) {
 		Object.assign(extraEnv, config.envVars);
 	}
-	const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options);
+	const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options, ctx.projectPath);
 	await applyClaudeAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily, account.keepsProjectClaudeConfig);
+	if (options?.projectEnv) applyProjectEnvUnderAccount(extraEnv, options.projectEnv, account.keepsProjectClaudeConfig);
 	await applyCodexAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 	await applyAgentDirAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 	const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts, agentWithPath.agentFamily);
@@ -1189,8 +1206,9 @@ export async function resolveCommandForProject(
 			...providerEnvForAgent(agentWithPath, config),
 			...buildTaskEnv(project, taskTitle, "", worktreePath, config),
 		};
-		const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options);
+		const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options, project.path);
 		await applyClaudeAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily, account.keepsProjectClaudeConfig);
+		if (options?.projectEnv) applyProjectEnvUnderAccount(extraEnv, options.projectEnv, account.keepsProjectClaudeConfig);
 		await applyCodexAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 		await applyAgentDirAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 		const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts, agentWithPath.agentFamily);

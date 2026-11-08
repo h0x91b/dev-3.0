@@ -8,7 +8,7 @@ import * as git from "../../git";
 import * as pty from "../../pty-server";
 import * as agents from "../../agents";
 import { codexAccountIdForHome } from "../../agent-accounts";
-import { autoRoutingContext, projectPinsClaudeConfig, releaseAccountReservation } from "../../account-router";
+import { autoRoutingContext, releaseAccountReservation } from "../../account-router";
 import { getAgentAdapter } from "../../../shared/agent-adapters/registry";
 import { agentKey } from "../../../shared/agent-adapters/families";
 import { evaluateCodexModelSupport } from "../../../shared/agent-model-cli-requirements";
@@ -383,7 +383,7 @@ export async function launchTaskPty(
 		const cmdOptions: agents.CommandOptions = {
 			accountId,
 			accountFromStore: typeof accountId === "string" ? true : undefined,
-			claudeConfigPinned: projectPinsClaudeConfig(project, projectEnv) || undefined,
+			projectEnv,
 		};
 		let freshSessionId: string | null = null;
 		if (!resume && !skipSessionPersist && !opts?.shellNotice) {
@@ -421,6 +421,8 @@ export async function launchTaskPty(
 			if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
 			accountPick = resolved.accountPick;
 			staleAccountDropped = !!resolved.staleAccountDropped;
+			// A removed account the pin replaced must not be stored again.
+			if (staleAccountDropped && resolved.resolvedAccountId === undefined) launchAccountId = undefined;
 		} else {
 			log.info("Resolving command for project", { projectName: project.name });
 			const resolved = await agents.resolveCommandForProject(
@@ -832,6 +834,7 @@ export async function launchColumnAgent(
 		// the default, which routes when the default is Auto.
 		const resolved = await agents.resolveCommandForAgent(agentId, configId, ctx, {
 			skipSystemPrompt: true,
+			projectEnv,
 			autoRouting: await autoRoutingContext(project, reservationKey, projectEnv),
 		});
 		tmuxCmd = resolved.command;

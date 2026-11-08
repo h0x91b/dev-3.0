@@ -99,6 +99,7 @@ async function spawnSingleBugHunterPane(opts: {
 	const cmdOptions: agents.CommandOptions = {
 		sessionId: freshSessionId,
 		accountId: opts.accountId,
+		projectEnv,
 		autoRouting: await autoRoutingContext(opts.project, `${opts.task.id}:hunter:${freshSessionId}`, projectEnv),
 	};
 	let launchAccountId = opts.accountId;
