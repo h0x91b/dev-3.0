@@ -30,7 +30,8 @@ export async function handleAgent(subcommand: string | undefined, args: ParsedAr
 		return;
 	}
 	if (subcommand === "resume") return handleResume(args, socketPath, context);
-	if (subcommand !== "spawn") return exitUsage("Usage: dev3 agent list [--json] | dev3 agent spawn [--task <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--json] | dev3 agent resume [--task <id>] [--allow-agent-latest] [--as-sender <id>] [--json]");
+	if (subcommand === "aws-profiles") return handleAwsProfiles(args, socketPath);
+	if (subcommand !== "spawn") return exitUsage("Usage: dev3 agent list [--json] | dev3 agent aws-profiles list|set ... | dev3 agent spawn [--task <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--json] | dev3 agent resume [--task <id>] [--allow-agent-latest] [--as-sender <id>] [--json]");
 	rejectUnknownFlags(args, ["task", "task-id", "project", "agent", "config", "prompt", "handoff", "json"]);
 	if (args.positional.length) return exitUsage("agent spawn takes flags, not positional arguments");
 	const rawTask = args.flags.task || args.flags["task-id"] || context?.taskId;
@@ -134,4 +135,67 @@ export function reportResumeOutcome(result: CliResumeOutcome, json: boolean): vo
 		case "declined":
 			return exitError(result.stale ? "The target task's run ended before approval" : "User declined the resume request", "Nothing was resumed.", CLI_EXIT_CODE_LAUNCH_DECLINED);
 	}
+}
+
+interface AwsProfilesView {
+	agentId: string;
+	name: string;
+	profiles: Array<{ name: string; awsProfile: string; region?: string }>;
+	defaultProfile: string | null;
+}
+
+/** `<name>=<AWS_PROFILE>[,<AWS_REGION>]` → one profile entry. */
+export function parseAwsProfileSpec(spec: string): { name: string; awsProfile: string; region?: string } {
+	const eq = spec.indexOf("=");
+	if (eq <= 0) throw new Error(`--profile "${spec}" must look like <name>=<AWS_PROFILE>[,<AWS_REGION>].`);
+	const name = spec.slice(0, eq).trim();
+	const [awsProfile = "", region = "", ...extra] = spec.slice(eq + 1).split(",").map((part) => part.trim());
+	if (!name || !awsProfile || extra.length) throw new Error(`--profile "${spec}" must look like <name>=<AWS_PROFILE>[,<AWS_REGION>].`);
+	return { name, awsProfile, ...(region ? { region } : {}) };
+}
+
+function printAwsProfiles(view: AwsProfilesView): void {
+	process.stdout.write(`${view.agentId}  ${view.name}\n`);
+	if (view.profiles.length === 0) process.stdout.write("  (no profiles: the project env decides)\n");
+	for (const p of view.profiles) {
+		const mark = p.name === view.defaultProfile ? "*" : " ";
+		process.stdout.write(`  ${mark} ${p.name}  AWS_PROFILE=${p.awsProfile}${p.region ? `  AWS_REGION=${p.region}` : ""}\n`);
+	}
+}
+
+/** List or replace the AWS profiles a Bedrock agent offers in the launch dialog. */
+async function handleAwsProfiles(args: ParsedArgs, socketPath: string): Promise<void> {
+	const action = args.positional[0];
+	const json = "json" in args.flags;
+	if (action === "list") {
+		rejectUnknownFlags(args, ["agent", "json"]);
+		const resp = await sendRequest(socketPath, "agent.awsProfiles.list", args.flags.agent ? { agentId: args.flags.agent } : {});
+		if (!resp.ok) return exitError(resp.error || "Failed to list AWS profiles");
+		const views = resp.data as AwsProfilesView[];
+		if (json) process.stdout.write(`${JSON.stringify(views, null, 2)}\n`);
+		else if (views.length === 0) process.stdout.write("No agent is on an Amazon Bedrock backend.\n");
+		else views.forEach(printAwsProfiles);
+		return;
+	}
+	if (action !== "set") return exitUsage("Usage: dev3 agent aws-profiles list [--agent <id>] [--json] | dev3 agent aws-profiles set --agent <id> (--profile <name>=<AWS_PROFILE>[,<AWS_REGION>]... | --clear) [--default <name>] [--json]");
+	rejectUnknownFlags(args, ["agent", "profile", "default", "clear", "json"]);
+	if (!args.flags.agent) return exitUsage("--agent is required (see dev3 agent aws-profiles list).");
+	const specs = args.repeated?.profile ?? (args.flags.profile ? [args.flags.profile] : []);
+	const clear = "clear" in args.flags;
+	if (clear === specs.length > 0) return exitUsage("Pass the full list as --profile flags, or --clear to remove every profile.");
+	let profiles;
+	try {
+		profiles = specs.map(parseAwsProfileSpec);
+	} catch (err) {
+		return exitUsage(err instanceof Error ? err.message : String(err));
+	}
+	const resp = await sendRequest(socketPath, "agent.awsProfiles.set", {
+		agentId: args.flags.agent,
+		profiles,
+		...(args.flags.default ? { defaultProfile: args.flags.default } : {}),
+	});
+	if (!resp.ok) return exitError(resp.error || "Failed to set AWS profiles");
+	const view = resp.data as AwsProfilesView;
+	if (json) process.stdout.write(`${JSON.stringify(view, null, 2)}\n`);
+	else printAwsProfiles(view);
 }
