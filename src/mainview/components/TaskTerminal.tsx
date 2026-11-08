@@ -535,9 +535,24 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		}
 	}
 
+	async function showRecoveryIfOffered(): Promise<boolean> {
+		try {
+			const result = await api.request.getPtyUrl({ taskId });
+			if ("url" in result) {
+				if (isNative) await fetchPaneState(taskId);
+				else setPtyUrl(result.url);
+				return true;
+			}
+			setRecoverable(result.sessionState);
+			setHibernated(result.hibernated === true);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
 	async function handleResumeSession() {
 		const accountId = resumeAccount;
-		const prior = { recoverable, hibernated };
 		setRestarting(true);
 		setRecoverable(null);
 		setHibernated(false);
@@ -550,13 +565,10 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		} catch (err) {
 			console.error("[TaskTerminal] Resume session failed:", err);
 			toast.error(err instanceof Error ? err.message : String(err));
-			// A refused account choice launched nothing: keep the screen so another can be picked.
-			if (accountId !== undefined) {
-				setRecoverable(prior.recoverable);
-				setHibernated(prior.hibernated);
-			} else {
-				await classifyAndSetError();
-			}
+			// A refused account choice launched nothing, so the server still offers the same
+			// screen; any later failure is classified like a resume without one.
+			if (accountId !== undefined && await showRecoveryIfOffered()) return;
+			await classifyAndSetError();
 		} finally {
 			setRestarting(false);
 		}

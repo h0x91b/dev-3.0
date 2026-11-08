@@ -177,6 +177,10 @@ async function tearDownTaskTerminal(task: Task): Promise<void> {
  */
 export function resumeTaskSession(taskId: string, opts: ResumeTaskOptions = {}): Promise<ResumeTaskSessionOutcome> {
 	const inFlight = resumeFlights.get(taskId);
+	// Joining would drop the account pick and still report success.
+	if (inFlight && opts.accountId !== undefined) {
+		return Promise.reject(new Error("A resume of this task is already running on its saved accounts. Try the account switch again once it finishes."));
+	}
 	if (inFlight) return inFlight;
 	const run = performTaskResume(taskId, opts).finally(() => resumeFlights.delete(taskId));
 	resumeFlights.set(taskId, run);
@@ -206,11 +210,13 @@ async function assertAccountReachesPanes(
 	panes: readonly PaneSessionEntry[],
 	targets: readonly { sessionId: string | null; mode: ResumePaneMode }[],
 	reports: ResumePaneReport[],
+	mainOnly: boolean,
 ): Promise<void> {
 	if (isAutoAccountId(accountId)) {
 		throw new ResumeUnavailableError("account-invalid", "Auto picks an account for a new conversation; resume on a named account or the system login.", reports);
 	}
-	const claudePanes = panes.flatMap((pane, i) => (paneTakesAccountChoice(pane) ? [i] : []));
+	// The native backend relaunches only the main pane; the rest stay saved and are not judged.
+	const claudePanes = panes.flatMap((pane, i) => (paneTakesAccountChoice(pane) && (!mainOnly || i === 0) ? [i] : []));
 	if (!claudePanes.length) {
 		throw new ResumeUnavailableError("account-invalid", "No saved pane runs Claude, so there is no account to switch. A Codex conversation stays on the account it started on.", reports);
 	}
@@ -221,8 +227,16 @@ async function assertAccountReachesPanes(
 		throw new ResumeUnavailableError("account-invalid", err instanceof Error ? err.message : String(err), reports);
 	}
 	for (const i of claudePanes) {
-		const sessionId = targets[i].sessionId;
-		if (!sessionId || targets[i].mode === "fresh" || claudeConfigDirHasSession(configDir, sessionId)) continue;
+		const { sessionId, mode } = targets[i];
+		// `--continue` under another account opens that account's latest, not this pane's conversation.
+		if (mode === "agent-latest") {
+			throw new ResumeUnavailableError(
+				"account-cannot-see-conversation",
+				"A saved Claude pane has no conversation id, so on another account it would open that account's latest conversation instead of this one. Nothing was resumed; keep the saved account.",
+				reports,
+			);
+		}
+		if (!sessionId || mode === "fresh" || mode === "fresh-session" || claudeConfigDirHasSession(configDir, sessionId)) continue;
 		throw new ResumeUnavailableError(
 			"account-cannot-see-conversation",
 			`The chosen account cannot see conversation ${sessionId.slice(0, 8)}: ${configDir} keeps its own conversation history. Nothing was resumed; keep the saved account or pick another.`,
@@ -319,7 +333,9 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 			reports,
 		);
 	}
-	if (accountOverride !== undefined) await assertAccountReachesPanes(accountOverride, panes, targets, reports);
+	if (accountOverride !== undefined) {
+		await assertAccountReachesPanes(accountOverride, panes, targets, reports, taskTerminalBackendIdentity(task) !== "tmux");
+	}
 	await wakeIfHibernated(project, task);
 
 	if (opts.restart) {

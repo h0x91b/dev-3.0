@@ -31,7 +31,7 @@ vi.mock("../repo-config", () => ({ resolveProjectEnv: vi.fn(async () => ({})) })
 vi.mock("../ops-worktree", () => ({ resolveLaunchProject: vi.fn(async (p: Project) => p), rootProjectFor: vi.fn((p: Project) => p) }));
 vi.mock("../tmux", () => ({ DEFAULT_TMUX_SOCKET: "dev3", taskSessionName: (id: string) => `dev3-${id}`, tmux: {} }));
 vi.mock("../temp-paths", () => ({ dev3TaskTempPath: (_id: string, name: string) => `/tmp/${name}` }));
-vi.mock("../task-terminal-backend", () => ({ taskTerminalBackendIdentity: () => "tmux" }));
+vi.mock("../task-terminal-backend", () => ({ taskTerminalBackendIdentity: vi.fn(() => "tmux") }));
 vi.mock("../native-task-panes", () => ({ nativeTaskPaneCommandsStrict: vi.fn(), nativeTaskPanesAlive: vi.fn(), stopNativeTaskPanes: vi.fn() }));
 vi.mock("../task-workspace-guard", () => ({ assertTaskWorkspacePresent: vi.fn() }));
 vi.mock("../scheduled-message-author", () => ({ taskMainAgentLiveness: vi.fn() }));
@@ -62,6 +62,8 @@ import { chooseTaskCodexConversations } from "../codex-task-selection";
 import { launchTaskPty } from "../rpc-handlers/tmux-pty/task-launch";
 import { findTaskAcrossProjects, wakeIfHibernated } from "../rpc-handlers/tmux-pty/task-state";
 import { resumeTaskSession } from "../rpc-handlers/tmux-pty/resume";
+import { resolveResumableSessionIds } from "../agent-transcripts";
+import { taskTerminalBackendIdentity } from "../task-terminal-backend";
 
 const project = { id: "p1", name: "P", path: "/repo" } as Project;
 const claudePane: PaneSessionEntry = { main: true, agentCmd: "claude", agentId: "builtin-claude", configId: "c", sessionId: "s-claude", accountId: "acct-old" };
@@ -78,6 +80,7 @@ const launchedAccount = () => (vi.mocked(launchTaskPty).mock.calls[0][7] as { ac
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	vi.mocked(taskTerminalBackendIdentity).mockReturnValue("tmux");
 	vi.mocked(claudeConfigDirHasSession).mockReturnValue(true);
 	vi.mocked(chooseTaskCodexConversations).mockResolvedValue(new Map());
 });
@@ -140,5 +143,31 @@ describe("resume with an account override", () => {
 		vi.mocked(getActiveClaudeConfigDir).mockRejectedValueOnce(new Error("Unknown Claude account: nope"));
 		await expect(resumeTaskSession("t1", { accountId: "nope" })).rejects.toMatchObject({ reason: "account-invalid", message: "Unknown Claude account: nope" });
 		expect(wakeIfHibernated).not.toHaveBeenCalled();
+	});
+
+	it("refuses a Claude pane with no conversation id: --continue would open the other account's latest", async () => {
+		arrange([{ ...claudePane, sessionId: null }]);
+		vi.mocked(resolveResumableSessionIds).mockReturnValueOnce([{ sessionId: null, substituted: false, startFresh: false, verified: false }]);
+		await expect(resumeTaskSession("t1", { accountId: "acct-new" })).rejects.toMatchObject({ reason: "account-cannot-see-conversation" });
+		expect(launchTaskPty).not.toHaveBeenCalled();
+	});
+
+	it("judges only the main pane on the native backend, which relaunches nothing else", async () => {
+		vi.mocked(taskTerminalBackendIdentity).mockReturnValue("native");
+		arrange([claudePane, { ...claudePane, main: false, sessionId: "s-parked" }]);
+		vi.mocked(claudeConfigDirHasSession).mockImplementation((_dir, id) => id === "s-claude");
+		await resumeTaskSession("t1", { accountId: "acct-new" });
+		expect(launchedAccount()).toBe("acct-new");
+	});
+
+	it("refuses to join a resume already running instead of dropping the account pick", async () => {
+		arrange([claudePane]);
+		let release!: () => void;
+		vi.mocked(launchTaskPty).mockImplementationOnce(() => new Promise((resolve) => { release = () => resolve(undefined); }));
+		const first = resumeTaskSession("t1");
+		await vi.waitFor(() => expect(launchTaskPty).toHaveBeenCalled());
+		await expect(resumeTaskSession("t1", { accountId: "acct-new" })).rejects.toThrow("already running");
+		release();
+		await first;
 	});
 });
