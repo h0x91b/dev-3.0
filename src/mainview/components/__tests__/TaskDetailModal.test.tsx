@@ -213,6 +213,37 @@ describe("TaskDetailModal", () => {
 			expect(screen.queryByText("Edit")).not.toBeInTheDocument();
 		});
 
+		it("keeps one editor open at a time: no description Edit while the title editor is open", async () => {
+			renderModal(makeTodoTask());
+			const user = userEvent.setup();
+
+			await user.click(screen.getByTitle("Edit title"));
+			expect(screen.queryByText("Edit")).not.toBeInTheDocument();
+			expect(screen.getAllByText("Save")).toHaveLength(1);
+
+			await user.keyboard("{Escape}");
+			expect(screen.getByText("Edit")).toBeInTheDocument();
+		});
+
+		it("keeps one editor open at a time: no title rename while the description editor is open", async () => {
+			renderModal(makeTodoTask());
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			expect(screen.queryByTitle("Edit title")).not.toBeInTheDocument();
+			await user.click(document.getElementById("task-detail-title")!);
+			expect(screen.getAllByRole("textbox")).toHaveLength(1);
+			expect(screen.getAllByText("Save")).toHaveLength(1);
+		});
+
+		it("pins the description editor's Save row to the bottom of the scroll area", async () => {
+			renderModal(makeTodoTask());
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			expect(screen.getByText("Save").closest(".sticky")).toHaveClass("bottom-0");
+		});
+
 		it("uploads an image dropped into the edit textarea and appends the saved path", async () => {
 			mockedApi.request.uploadFileBase64.mockResolvedValue({ path: "/tmp/uploaded-drop.png" });
 			mockedApi.request.readImageBase64.mockResolvedValue({ dataUrl: "data:image/png;base64,AAAA" });

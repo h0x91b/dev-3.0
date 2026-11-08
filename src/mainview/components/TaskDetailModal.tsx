@@ -459,7 +459,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 				</div>
 
 				{/* Content */}
-				<div className="px-6 pb-5 overflow-y-auto flex-1">
+				<div className={`px-6 overflow-y-auto flex-1 ${isEditing ? "" : "pb-5"}`}>
 					<div className="mb-3 grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1.5 text-xs">
 						{taskOrigin(task).kind !== "user" && <TaskOriginRow task={task} testId="task-detail-origin" navigate={navigateAway} />}
 						<TaskEpicRow task={task} testId="task-detail-epic" />
@@ -534,7 +534,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 							<span className="text-fg-3 text-xs font-medium uppercase tracking-wider">
 								{t("task.descriptionLabel")}
 							</span>
-							{isTodo && !isEditing && (
+							{isTodo && !isEditing && !isRenaming && (
 								<button
 									onClick={handleStartEdit}
 									className="text-xs text-accent hover:text-accent-emphasis transition-colors font-medium"
@@ -584,7 +584,8 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 										<span className="text-fg-2 font-medium">{generatedTitle}</span>
 									</div>
 								)}
-								<div className="flex items-center justify-between">
+								{/* Pinned to the scroll area's bottom edge so Save is never below the fold. */}
+								<div className="sticky bottom-0 pb-5 pt-2 bg-overlay flex items-center justify-between">
 									<span className="text-xs text-fg-muted">{t("task.editHint")}</span>
 									<div className="flex gap-1.5">
 										<button
