@@ -12573,6 +12573,20 @@ describe("resumeTask gives every Claude pane its own conversation (#1950)", () =
 		expect([MAIN, NEWEST]).not.toContain(options[2].sessionId);
 	});
 
+	it("resumes every pane of a shared-folder task with the shared-folder protocol", async () => {
+		seedStore([NEWEST, MAIN]);
+		(data.loadProjects as any).mockResolvedValue([makeProject({ gitWorkflow: false })]);
+		(data.getTask as any).mockResolvedValue(makeTask({
+			worktreePath: WORKTREE,
+			sessionState: { panes: [claudePane(MAIN), claudePane(NEWEST), claudePane("never-prompted")] },
+		}));
+
+		await handlers.resumeTask({ taskId: "task-1" });
+
+		const modes = (agents.resolveCommandForAgent as any).mock.calls.map((call: any[]) => call[3]?.protocolMode);
+		expect(modes).toEqual(["shared-folder", "shared-folder", "shared-folder"]);
+	});
+
 	it("reports a pane that started over as `fresh-session`, and resumes it for the CLI too", async () => {
 		// `dev3 agent resume` refuses `agent-latest` because the harness would pick
 		// somebody's conversation; this pane is handed one dev3 minted, so it is safe.
