@@ -382,3 +382,28 @@ export function bedrockProfileEnv(profile: BedrockProfile | null): Record<string
 	if (region) env.AWS_REGION = region;
 	return env;
 }
+
+/** The AWS profiles an agent record offers, honouring the same "provider must
+ *  belong to this agent's command" guard the launcher applies. */
+export function agentBedrockProfiles(
+	agent: { baseCommand: string; agentFamily?: AgentFamily; llmProvider?: LlmProvider; providerConfig?: ProviderConfig } | undefined,
+): BedrockProfile[] {
+	const def = getProviderDefinition(agent?.llmProvider);
+	if (!agent || !def || def.agentCommand !== agentKey(agent.baseCommand, agent.agentFamily)) return [];
+	return bedrockProfilesFor(def.id, agent.providerConfig);
+}
+
+/**
+ * The pick a launch dialog preselects: the project's remembered pick while it
+ * still names a listed entry (or None), else the agent's default, else None.
+ * `remembered` undefined = the project never picked.
+ */
+export function preselectBedrockProfile(
+	profiles: BedrockProfile[],
+	defaultProfile: string | undefined,
+	remembered: string | null | undefined,
+): string | null {
+	if (remembered === null) return null;
+	if (remembered !== undefined && profiles.some((p) => p.name === remembered)) return remembered;
+	return defaultProfile && profiles.some((p) => p.name === defaultProfile) ? defaultProfile : null;
+}

@@ -393,6 +393,8 @@ const kanban = {
 	"launch.modelUnavailable": "Недоступно в тарифе",
 	"launch.modelUnavailableToast": "Текущий аккаунт не может использовать эту модель. Выберите другую или смените аккаунт.",
 	"launch.mode": "Режим",
+	"launch.awsProfile": "Профиль AWS",
+	"launch.awsProfileNone": "Нет (окружение проекта)",
 	"launch.variantGroup": "Вариант {n}",
 	"launch.fieldsetLegend": "Конфигурация агента",
 	"launch.favorites": "Избранное",

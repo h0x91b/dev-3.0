@@ -367,6 +367,8 @@ const kanban = {
 	"launch.modelUnavailable": "No en tu plan",
 	"launch.modelUnavailableToast": "Tu cuenta actual no puede usar este modelo. Elige otro o cambia de cuenta.",
 	"launch.mode": "Modo",
+	"launch.awsProfile": "Perfil de AWS",
+	"launch.awsProfileNone": "Ninguno (entorno del proyecto)",
 	"launch.variantGroup": "Variante {n}",
 	"launch.fieldsetLegend": "Configuración del agente",
 	"launch.favorites": "Favoritos",

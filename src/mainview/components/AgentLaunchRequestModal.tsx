@@ -359,6 +359,10 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 										onAccountChange={(accountId) => updateVariants(
 											variants.map((v, i) => (i === index ? { ...v, accountId } : v)),
 										)}
+										bedrockProfile={variant.bedrockProfile}
+										onBedrockProfileChange={(bedrockProfile) => updateVariants(
+											variants.map((v, i) => (i === index ? { ...v, bedrockProfile } : v)),
+										)}
 										// Labels once, above the first row only — repeating them per
 										// variant is the vertical bloat the Launch modal already rejected.
 										showLabels={index === 0}
