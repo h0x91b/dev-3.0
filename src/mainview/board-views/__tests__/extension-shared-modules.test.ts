@@ -23,8 +23,12 @@ function shimExports(file: string): string[] {
 // An extension imports these by bare name; the import map in index.html sends each to a shim
 // that re-exports the host's copy. A dependency bump that adds or drops an export must regenerate it.
 describe("extension shared-module shims", () => {
+	// Node 23+ adds a "module.exports" key to every CommonJS namespace. It is not an identifier,
+	// so a shim cannot re-export it, and older Node versions do not have it.
 	it.each(SHIMS)("%s re-exports exactly the host module's named exports", (specifier, file, mod) => {
-		const expected = Object.keys(mod).filter((key) => key !== "default").sort();
+		const expected = Object.keys(mod)
+			.filter((key) => key !== "default" && key !== "module.exports")
+			.sort();
 		expect(shimExports(file)).toEqual(expected);
 		expect(readFileSync(resolve(PUBLIC, file), "utf8")).toContain(`__dev3SharedModules["${specifier}"]`);
 	});
