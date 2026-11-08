@@ -152,8 +152,8 @@ export interface FilterFunnelCandidates {
 }
 
 /**
- * Build the funnel's grouped options from the visible task pool: only values
- * actually present (STATUS lists every candidate), empty groups dropped. PRIORITY leads (it is the most
+ * Build the funnel's grouped options from the visible task pool: values present
+ * among the tasks, except STATUS, which lists every candidate. Empty groups dropped. PRIORITY leads (it is the most
  * important quick filter), then STATUS, TYPES, SPACES, LABELS, AGENTS, FLAGS.
  * TYPES appears only when some task is not standard — a lone "Standard" option
  * filters nothing. Candidate
@@ -211,7 +211,8 @@ export function buildFilterGroups(
 	}
 
 	const priorityOptions = priorityCandidates.filter((c) => presentPriority.has(c.value.toLowerCase()));
-	// Every candidate status, present or not: a status-only filter must not hide a task the moment one lands in a status nobody had yet.
+	// Every candidate, present or not: a status filter must not hide a task that
+	// lands in a status no task had when the filter was set.
 	const statusOptions = statusCandidates;
 	const typeOptions: FilterFunnelOption[] = [...presentType].some((v) => v !== "standard")
 		? (["standard", ...TASK_TYPES] as const)
