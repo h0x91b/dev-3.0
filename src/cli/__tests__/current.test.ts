@@ -134,7 +134,7 @@ describe("handleCurrent", () => {
 			await handleCurrent(SOCKET);
 
 			expect(stdoutOutput).toContain("Git workflow:");
-			expect(stdoutOutput).toContain("no worktree, branch or PR");
+			expect(stdoutOutput).toContain("no task worktree or branch; PRs only when asked");
 			expect(stdoutOutput).toContain("Folder:");
 			expect(stdoutOutput).toContain("never git stash, git add -A");
 			expect(stdoutOutput).not.toContain("Worktree:");
