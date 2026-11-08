@@ -9,6 +9,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -58,24 +59,15 @@ function references(doc: string): string[] {
 }
 
 /**
- * Not repo content: build output, and gitignored per-machine state that is present on a developer's
- * box but absent on a fresh checkout. Walking them would make the result depend on the machine.
+ * Every tracked file by basename, so a token written without its directory still resolves. Build
+ * output and per-machine state (`node_modules`, a board kept in `.dev3/data`) are untracked, so the
+ * machine cannot change the result.
  */
-const NOT_REPO_CONTENT = new Set([
-	"node_modules",
-	"dist",
-	".git",
-	"settings.local.json",
-]);
-
-/** Every file in the repo by basename, so a token written without its directory still resolves. */
-function basenames(dir = ROOT, seen = new Set<string>()): Set<string> {
-	for (const entry of readdirSync(dir, { withFileTypes: true })) {
-		if (NOT_REPO_CONTENT.has(entry.name)) continue;
-		if (entry.isDirectory()) basenames(`${dir}/${entry.name}`, seen);
-		else seen.add(entry.name);
-	}
-	return seen;
+function basenames(): Set<string> {
+	const ls = spawnSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "utf8" });
+	if (ls.status !== 0) throw new Error(`git ls-files failed: ${ls.stderr}`);
+	const paths = ls.stdout.split("\0").filter(Boolean);
+	return new Set(paths.map((path) => path.slice(path.lastIndexOf("/") + 1)));
 }
 
 const ALL_BASENAMES = basenames();
