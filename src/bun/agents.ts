@@ -1002,6 +1002,9 @@ export interface ResolvedAgentCommand<A extends CodingAgent | null = CodingAgent
 	/** The AWS profile entry this launch injected (null = none). Absent when the
 	 *  agent takes no AWS profile. What a pane records so resume reuses it. */
 	resolvedBedrockProfile?: string | null;
+	/** The picked AWS profile is no longer listed on the agent: nothing was injected,
+	 *  and `resolvedBedrockProfile` keeps the name so restoring it switches back. */
+	bedrockProfileMissing?: string;
 }
 
 export async function resolveCommandForAgent(
@@ -1136,11 +1139,16 @@ export function applyBedrockProfileEnv(
 	config: AgentConfiguration | undefined,
 	extraEnv: Record<string, string>,
 	options: CommandOptions | undefined,
-): { resolvedBedrockProfile?: string | null } {
+): { resolvedBedrockProfile?: string | null; bedrockProfileMissing?: string } {
 	const provider = agentProvider(agent, config);
 	if (bedrockProfilesFor(provider, agent.providerConfig).length === 0) return {};
 	const { profile, missing } = resolveBedrockProfile(provider, agent.providerConfig, options?.bedrockProfile);
-	if (missing) log.warn("AWS profile no longer configured on the agent; using the project env", { agentId: agent.id, profile: missing });
+	if (missing) {
+		// Keep the name: persisting null would pin the task to the project env's
+		// account for good, even after the profile is renamed back.
+		log.warn("AWS profile no longer configured on the agent; using the project env", { agentId: agent.id, profile: missing });
+		return { resolvedBedrockProfile: missing, bedrockProfileMissing: missing };
+	}
 	Object.assign(extraEnv, bedrockProfileEnv(profile));
 	return { resolvedBedrockProfile: profile?.name ?? null };
 }

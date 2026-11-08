@@ -19,7 +19,7 @@ import { handoffPrompt, prepareTaskHandoff, previewTaskHandoff } from "../../con
 import type { HandoffPreview, SpawnAgentResult } from "../../../shared/conversation-handoff-model";
 import { splitTaskPane, AuxPaneUnavailableError, type AuxPaneHandle } from "../../task-aux-panes";
 import { getPushMessage, AGENT_ENV_DEFAULTS, buildAgentEnv, buildCmdScript, generatedScriptLaunch, generatedScriptName, log, writeLaunchScript } from "../shared-pure";
-import { applyAgentHooksToCommand, applyModelVersionNotice, ensureAgentTrust } from "./task-launch";
+import { applyAgentHooksToCommand, applyModelVersionNotice, ensureAgentTrust, notifyBedrockProfileMissing } from "./task-launch";
 import { rootProjectFor } from "../../ops-worktree";
 import { rememberVariantBedrockProfile } from "../../bedrock-profile-pref";
 
@@ -100,6 +100,7 @@ export async function spawnAgentInTask(params: {
 		resolvedLaunchModel = resolved.launchModel;
 		if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
 		launchBedrockProfile = resolved.resolvedBedrockProfile;
+		if (resolved.bedrockProfileMissing) await notifyBedrockProfileMissing(task);
 		launchedAgentId = resolved.agent?.id ?? params.agentId;
 		launchedConfigId = resolved.config?.id ?? params.configId;
 	} else {
@@ -120,6 +121,7 @@ export async function spawnAgentInTask(params: {
 		resolvedLaunchModel = resolved.launchModel;
 		if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
 		launchBedrockProfile = resolved.resolvedBedrockProfile;
+		if (resolved.bedrockProfileMissing) await notifyBedrockProfileMissing(task);
 		launchedAgentId = resolved.agent?.id ?? null;
 		launchedConfigId = resolved.config?.id ?? null;
 	}

@@ -20,7 +20,7 @@ import { NATIVE_AGENT_PANE_ID } from "../../agent-prompt-native";
 import type { ResumePaneMode, ResumePaneReport, ResumeUnavailableReason, TaskResumeResult } from "../../../shared/agent-resume";
 import { WAKE_SHELL_NOTICE } from "../../../shared/task-hibernate";
 import { getPushMessage, buildCmdScript, log, writeLaunchScript } from "../shared-pure";
-import { applyAgentHooksToCommand, ensureAgentTrust, launchTaskPty, notifyStaleAccountDropped } from "./task-launch";
+import { applyAgentHooksToCommand, ensureAgentTrust, launchTaskPty, notifyBedrockProfileMissing, notifyStaleAccountDropped } from "./task-launch";
 import { findTaskAcrossProjects, markTerminalAttached, wakeIfHibernated } from "./task-state";
 
 /**
@@ -368,6 +368,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 						extraEnv = resolved.extraEnv;
 						resumeBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || pane.agentCmd;
 						resumeAgentFamily = resolved.agentFamily ?? resumeAgentFamily;
+						if (resolved.bedrockProfileMissing) await notifyBedrockProfileMissing(task);
 						if (resolved.staleAccountDropped) {
 							accountId = resolved.resolvedAccountId;
 							await notifyStaleAccountDropped(task);

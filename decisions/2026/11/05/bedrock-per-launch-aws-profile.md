@@ -12,7 +12,7 @@ The resolved name is stored on the task and on every `PaneSessionEntry`. Resume,
 
 ## Risks
 
-A profile renamed or removed after launch resolves to none on resume, with a log warning. The project env then decides, which is the behaviour from before this change. `dev3 agent aws-profiles set` lets any CLI caller, an agent included, rewrite the list.
+A profile renamed or removed after launch injects nothing on the next launch, so the project env decides, and a toast (`kanban.launchAwsProfileMissing`) tells the user. The task and pane keep the name, so restoring it in Settings switches the task back. Persisting null instead would pin the task to the project env's account for good. `dev3 agent aws-profiles set` lets any CLI caller, an agent included, rewrite the list.
 
 ## Alternatives considered
 

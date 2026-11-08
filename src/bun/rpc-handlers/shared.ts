@@ -150,7 +150,7 @@ export interface TerminalFocusToastPayload {
 	projectId: string | null;
 	message: string;
 	/** Renderer translation key for `message`, which stays the English fallback. */
-	messageKey?: "kanban.launchAccountRemoved";
+	messageKey?: "kanban.launchAccountRemoved" | "kanban.launchAwsProfileMissing";
 	level: "info" | "success" | "error";
 	durationMs?: number;
 	taskSeq?: number;
