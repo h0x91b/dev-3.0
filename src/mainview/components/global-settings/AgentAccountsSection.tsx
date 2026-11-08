@@ -991,10 +991,9 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 					</span>
 				</div>
 			))}
-			{/* A managed account makes every launch set CLAUDE_CONFIG_DIR itself,
-			    which overrides these pins - say so rather than list dead rows silently. */}
+			{/* Only a per-task account pick overrides a pin; the default account does not. */}
 			{state.claude.accounts.length > 0 ? (
-				<p className="text-warning-strong text-xs">{t("settings.accountsPinnedOverridden")}</p>
+				<p className="text-fg-muted text-xs">{t("settings.accountsPinnedKept")}</p>
 			) : (
 				<p className="text-fg-muted text-xs">{t("settings.accountsPinnedHint")}</p>
 			)}

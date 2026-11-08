@@ -22,7 +22,7 @@ vi.mock("../agent-accounts", async (importOriginal) => {
 	};
 });
 
-import { claudeAccountDir, prepareClaudeLogin, registerStagedClaudeAccount, importCurrentClaudeAccount, type AccountPaths } from "../agent-accounts";
+import { claudeAccountDir, prepareClaudeLogin, registerStagedClaudeAccount, importCurrentClaudeAccount, setActiveClaudeAccount, type AccountPaths } from "../agent-accounts";
 import { resolveCommandForAgent, resolveCommandForProject } from "../agents";
 import type { Project } from "../../shared/types";
 import { DEV3_HOME } from "../paths";
@@ -165,5 +165,44 @@ describe("a stored account that was removed", () => {
 		const account = registerStagedClaudeAccount(accountId, paths);
 		rmSync(claudeAccountDir(account.id, paths), { recursive: true });
 		await expect(resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, accountFromStore: true })).rejects.toThrow(/config folder not found/);
+	});
+});
+
+describe("a project that pins its own Claude folder", () => {
+	async function defaultAccount() {
+		const paths = state.paths as AccountPaths;
+		mkdirSync(paths.claudeHome, { recursive: true });
+		const account = registerStagedClaudeAccount((await prepareClaudeLogin(paths)).accountId, paths);
+		writeFileSync(join(claudeAccountDir(account.id, paths), ".claude.json"), "{}");
+		await setActiveClaudeAccount(account.id, paths);
+		state.pickId = account.id;
+		return { account, dir: claudeAccountDir(account.id, paths) };
+	}
+
+	it("keeps the project folder over the default account", async () => {
+		await defaultAccount();
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { claudeConfigPinned: true });
+		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBeUndefined();
+		expect(resolved.resolvedAccountId).toBeUndefined();
+	});
+
+	it("keeps the project folder when Auto would route, on a fresh launch", async () => {
+		await defaultAccount();
+		const routing = { exclusions: [], reservationKey: "k", claudeConfigPinned: true };
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: "auto", autoRouting: routing as never });
+		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBeUndefined();
+		expect(resolved.accountPick).toBeUndefined();
+	});
+
+	it("still uses an account picked for the task", async () => {
+		const { account, dir } = await defaultAccount();
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, claudeConfigPinned: true });
+		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(dir);
+	});
+
+	it("an unpinned project still gets the default account", async () => {
+		const { dir } = await defaultAccount();
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx);
+		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(dir);
 	});
 });

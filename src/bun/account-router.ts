@@ -54,9 +54,14 @@ interface TaggedReservation extends AccountReservation {
 /** What a fresh launch hands the command resolver so Auto can route it. */
 export interface AutoRoutingContext {
 	exclusions: readonly string[];
-	/** The project's env pins CLAUDE_CONFIG_DIR: Auto then defers to the default. */
+	/** The project's env pins CLAUDE_CONFIG_DIR: Auto and the default account then keep that folder. */
 	claudeConfigPinned: boolean;
 	reservationKey: string;
+}
+
+/** The project's env pins its own Claude folder through CLAUDE_CONFIG_DIR. */
+export function projectPinsClaudeConfig(project: Project, projectEnv: Record<string, string>): boolean {
+	return pinnedClaudeConfigDir(projectEnv.CLAUDE_CONFIG_DIR, homedir(), project.path) != null;
 }
 
 export async function autoRoutingContext(
@@ -67,7 +72,7 @@ export async function autoRoutingContext(
 	const env = projectEnv ?? (await resolveProjectEnv(project));
 	return {
 		exclusions: project.autoAccountExclusions ?? [],
-		claudeConfigPinned: pinnedClaudeConfigDir(env.CLAUDE_CONFIG_DIR, homedir(), project.path) != null,
+		claudeConfigPinned: projectPinsClaudeConfig(project, env),
 		reservationKey,
 	};
 }

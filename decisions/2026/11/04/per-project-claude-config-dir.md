@@ -1,3 +1,5 @@
+> Superseded in part on 2026-11-05 by `decisions/2026/11/05/project-claude-pin-beats-default-account.md`: the default managed account no longer overrides a project pin.
+
 # Per-project Claude config dir: switch, git hygiene, task-local settings
 
 ## Context
@@ -12,7 +14,7 @@ Some users run every project with `CLAUDE_CONFIG_DIR=<project>/.claude` and neve
 ## Risks
 - `isGitTracked` and the exclude helper spawn git at launch. That is two short calls, and the exclude call runs once per dir per process.
 - A pinned dir in a non-dev3-owned folder (git workflow off) whose settings are tracked gets no dev3 settings patch: no auto-allow rule for the dev3 CLI and no sandbox socket.
-- Managed Claude accounts still override the project dir (`getActiveClaudeSessionEnv`); the switch copy says so.
+- An explicitly picked managed Claude account still overrides the project dir; the default account no longer does (`decisions/2026/11/05/project-claude-pin-beats-default-account.md`).
 
 ## Alternatives considered
 - A dedicated boolean setting. Rejected: it would duplicate state that the env map already expresses, and the two could disagree.
