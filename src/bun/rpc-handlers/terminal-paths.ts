@@ -8,6 +8,7 @@ import { DOWNLOAD_TTL_MS, mintFileLink, mintFolderLink } from "../file-links";
 import { DEV3_HOME } from "../paths";
 import { isWslHost, openOnWindowsHost } from "../wsl-host";
 import { FILE_LINK_CONTENT_TYPES, FILE_LINK_PAGE_EXTS, WINDOWS_OPEN_SAFE_EXTS, fileLinkExt, previewMediaKind } from "../../shared/file-link-types";
+import { allProjectWorktreesRoots } from "../../shared/project-storage";
 import type { FilePreviewResult, ResolvedTerminalPath } from "../../shared/types";
 import * as data from "../data";
 import { run as runGit } from "../git";
@@ -53,6 +54,15 @@ async function statPathKind(absPath: string, roots: string[]): Promise<ResolvedT
 		// ENOENT / EACCES → not linkable
 	}
 	return null;
+}
+
+/** dev3's own storage: the home worktrees dir plus every project's in-project one. */
+async function dev3StorageRoots(): Promise<string[]> {
+	const roots = new Set<string>([realOr(join(DEV3_HOME, "worktrees"))]);
+	for (const projectPath of await projectRoots()) {
+		for (const root of allProjectWorktreesRoots(DEV3_HOME, projectPath)) roots.add(realOr(root));
+	}
+	return [...roots];
 }
 
 async function projectRoots(): Promise<string[]> {
@@ -323,9 +333,9 @@ async function readFilePreview(params: { path: string }): Promise<FilePreviewRes
 }
 
 /** The previewable file at `path` (or one under `alsoUnder`), or an Error naming why it cannot be handed over. */
-async function assertPreviewableFile(path: string, alsoUnder?: string): Promise<void> {
+async function assertPreviewableFile(path: string, alsoUnder?: string[]): Promise<void> {
 	if (!isAbsolute(path) || path.includes("\0")) throw new Error("Invalid file path");
-	const allowed = (alsoUnder !== undefined && isUnder(realOr(path), alsoUnder)) || (await isTerminalPathAllowed(path));
+	const allowed = (alsoUnder !== undefined && alsoUnder.some((root) => isUnder(realOr(path), root))) || (await isTerminalPathAllowed(path));
 	if (!allowed) throw new Error("Path is outside the allowed directories");
 	let st: Stats;
 	try {
@@ -388,7 +398,7 @@ async function createFileLink(params: { path: string; download?: boolean }): Pro
 	log.info("→ createFileLink", { path: params.path, download: !!params.download });
 	const path = absolutePath(params.path);
 	// dev3's own media and uploads live under DEV3_HOME, which need not sit inside the home directory.
-	await assertPreviewableFile(path, realOr(join(DEV3_HOME, "worktrees")));
+	await assertPreviewableFile(path, await dev3StorageRoots());
 	// Resolved once: the folder decision and the pinned scope must be the same path.
 	const realFile = realpathSync.native(path);
 	if (params.download) return { url: `${mintFileLink({ kind: "file", path: realFile }, { ttlMs: DOWNLOAD_TTL_MS, resolved: true })}?download=1` };
@@ -404,7 +414,7 @@ async function createFileLink(params: { path: string; download?: boolean }): Pro
  */
 export async function mintPreviewMediaLink(rawPath: string): Promise<string> {
 	const path = absolutePath(rawPath);
-	await assertPreviewableFile(path, realOr(join(DEV3_HOME, "worktrees")));
+	await assertPreviewableFile(path, await dev3StorageRoots());
 	const realFile = realpathSync.native(path);
 	if (!previewMediaKind(path) || !previewMediaKind(realFile)) throw new Error("Not an audio or video file");
 	return mintFileLink({ kind: "file", path: realFile }, { resolved: true });

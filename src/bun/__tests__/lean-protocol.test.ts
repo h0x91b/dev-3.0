@@ -116,6 +116,27 @@ describe("launching with DEV3_LEAN_PROTOCOL", () => {
 		expect(readFileSync(file, "utf-8")).toBe(CLAUDE_SKILL_BODY);
 	});
 
+	it("the leanProtocol launch option selects the lean body without the env flag", async () => {
+		onPosix();
+		delete process.env.DEV3_LEAN_PROTOCOL;
+		const cmd = await resolveAgentCommand(agent("claude"), undefined, CTX, { leanProtocol: true });
+		expect(promptFileOf(cmd)).toBe(join(AGENT_PROMPTS_DIR, "claude-lean.md"));
+	});
+
+	it("leanProtocol false and no env flag keeps the full body", async () => {
+		onPosix();
+		delete process.env.DEV3_LEAN_PROTOCOL;
+		const cmd = await resolveAgentCommand(agent("claude"), undefined, CTX, { leanProtocol: false });
+		expect(promptFileOf(cmd)).toBe(join(AGENT_PROMPTS_DIR, "claude.md"));
+	});
+
+	it("the env flag still wins when the setting is off", async () => {
+		onPosix();
+		process.env.DEV3_LEAN_PROTOCOL = "1";
+		const cmd = await resolveAgentCommand(agent("claude"), undefined, CTX, { leanProtocol: false });
+		expect(promptFileOf(cmd)).toBe(join(AGENT_PROMPTS_DIR, "claude-lean.md"));
+	});
+
 	it("a value other than 1 leaves the full body in place", async () => {
 		onPosix();
 		process.env.DEV3_LEAN_PROTOCOL = "true";

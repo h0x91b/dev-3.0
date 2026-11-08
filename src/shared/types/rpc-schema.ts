@@ -1052,7 +1052,7 @@ export type AppRPCSchema = {
 			};
 			getAppVersion: {
 				params: void;
-				response: { version: string; channel: string; buildChannel: string };
+				response: { version: string; channel: string; buildChannel: string; leanProtocolForcedByEnv: boolean };
 			};
 			/** Coarse, bucketed install facts for analytics — never names, paths or titles. */
 			getTelemetryProfile: {

@@ -30,6 +30,7 @@ import PresetModelRoles from "./PresetModelRoles";
 import { useModelCatalog } from "../../hooks/useModelCatalog";
 import SettingsEntry from "./SettingsEntry";
 import SettingsSection from "./SettingsSection";
+import SettingsToggle from "./SettingsToggle";
 import {
 	BEDROCK_GEOS,
 	bedrockModelServedInGeo,
@@ -71,6 +72,7 @@ interface AgentSettingsSectionProps {
 	onCoordinatorDefaultChange: (agentId: string, configId: string | null) => void;
 	/** Fresh settings after a favorite toggle, so the stars re-render. */
 	onGlobalSettingsChange: (settings: GlobalSettings) => void;
+	onLeanProtocolToggle: (enabled: boolean) => void;
 	/** A preset a deep-link wants shown: selected, revealed on narrow viewports,
 	 *  and scrolled into view inside the list's own scroll box. */
 	focusPreset?: SettingsPresetTarget | null;
@@ -92,10 +94,18 @@ export default function AgentSettingsSection({
 	onDefaultConfigChange,
 	onCoordinatorDefaultChange,
 	onGlobalSettingsChange,
+	onLeanProtocolToggle,
 	focusPreset,
 	onFocusPresetHandled,
 }: AgentSettingsSectionProps) {
 	const toggleFavorite = useToggleFavorite(onGlobalSettingsChange);
+	const [leanForcedByEnv, setLeanForcedByEnv] = useState(false);
+	useEffect(() => {
+		api.request
+			.getAppVersion()
+			.then((info) => setLeanForcedByEnv(info?.leanProtocolForcedByEnv === true))
+			.catch(() => {});
+	}, []);
 	const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
 	const [selection, setSelection] = useState<LibrarySelection>({ kind: "agent" });
 	const [presetQuery, setPresetQuery] = useState("");
@@ -606,6 +616,23 @@ export default function AgentSettingsSection({
 					</button>
 				</div>
 			</div>
+			</SettingsEntry>
+			<SettingsEntry anchor="lean-agent-protocol">
+				<div>
+					<p className="block text-fg text-sm font-semibold mb-2">{t("settings.leanAgentProtocol")}</p>
+					<p className="text-fg-3 text-sm mb-3">{t("settings.leanAgentProtocolDesc")}</p>
+					<SettingsToggle
+						checked={leanForcedByEnv || globalSettings.leanAgentProtocol === true}
+						disabled={leanForcedByEnv}
+						ariaLabel={t("settings.leanAgentProtocol")}
+						onLabel={t("settings.on")}
+						offLabel={t("settings.off")}
+						onToggle={() => onLeanProtocolToggle(globalSettings.leanAgentProtocol !== true)}
+					/>
+					{leanForcedByEnv ? (
+						<p className="text-fg-muted text-xs mt-2">{t("settings.leanAgentProtocolEnvHint")}</p>
+					) : null}
+				</div>
 			</SettingsEntry>
 		</SettingsSection>
 	);

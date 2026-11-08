@@ -575,6 +575,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "lean-agent-protocol",
+		category: "agents",
+		titleKey: "settings.leanAgentProtocol",
+		descriptionKey: "settings.leanAgentProtocolDesc",
+		anchor: "lean-agent-protocol",
+		globalField: "leanAgentProtocol",
+		storage: "global",
+	},
+	{
 		id: "auto-cleanup-task-history",
 		category: "system",
 		titleKey: "settings.autoCleanupTaskHistory",
@@ -784,6 +793,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"preventSleepWhileRunning",
 	"skipQuitDialog",
 	"autoCleanupTaskHistory",
+	"leanAgentProtocol",
 	"importShellEnv",
 	"agentEnvDefaults",
 	"terminalShell",

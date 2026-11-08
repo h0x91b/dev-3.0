@@ -53,13 +53,13 @@ export async function runLiveOp(
 	sendToAgent: LiveAgentSender,
 ): Promise<unknown> {
 	try {
-		if (op === "state") return await readLiveState(project.path, task.id);
+		if (op === "state") return await readLiveState(project, task.id);
 		if (TERMINAL_STATUSES.includes(task.status)) {
 			throw new LiveOpError(`task is ${task.status}; its live artifact is read-only`, "read-only");
 		}
 		const now = Date.now();
 		if (op === "emit") {
-			return await mutateLiveState(project.path, task.id, (draft) => ({
+			return await mutateLiveState(project, task.id, (draft) => ({
 				result: liveEmit(draft, { name: String(args.name ?? ""), payload: args.payload, now }),
 				changes: [],
 				dirty: true,
@@ -81,7 +81,7 @@ export async function runLiveOp(
 			now,
 			ifRev: optionalRev(args.ifRev),
 		};
-		return await mutateLiveState(project.path, task.id, (draft) => {
+		return await mutateLiveState(project, task.id, (draft) => {
 			let change: LiveChange | null;
 			if (op === "set") change = liveSetDoc(draft, { ...write, data: args.data });
 			else if (op === "patch") change = livePatchDoc(draft, { ...write, patch: args.patch });

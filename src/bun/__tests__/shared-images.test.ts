@@ -37,13 +37,13 @@ describe("imageExt / isSupportedImage", () => {
 
 describe("saveSharedImage", () => {
 	beforeEach(() => {
-		rmSync(sharedImagesDir("/my/project"), { recursive: true, force: true });
+		rmSync(sharedImagesDir({ path: "/my/project" }), { recursive: true, force: true });
 	});
 
 	it("copies the file into the project worktree shared-images dir", () => {
 		const src = join(SRC_DIR, "screenshot.png");
 		writeFileSync(src, "PNGDATA");
-		const rec = saveSharedImage("/my/project", src);
+		const rec = saveSharedImage({ path: "/my/project" }, src);
 
 		expect(rec.storedPath.startsWith(`${TEST_HOME}/worktrees/my-project/shared-images/`)).toBe(true);
 		expect(rec.storedPath.endsWith(".png")).toBe(true);
@@ -59,42 +59,50 @@ describe("saveSharedImage", () => {
 	it("stores a trimmed per-image caption when given, omits it otherwise", () => {
 		const src = join(SRC_DIR, "caption.png");
 		writeFileSync(src, "PNGDATA");
-		expect(saveSharedImage("/my/project", src, "  look here  ").caption).toBe("look here");
-		expect(saveSharedImage("/my/project", src, "   ").caption).toBeUndefined();
-		expect(saveSharedImage("/my/project", src).caption).toBeUndefined();
+		expect(saveSharedImage({ path: "/my/project" }, src, "  look here  ").caption).toBe("look here");
+		expect(saveSharedImage({ path: "/my/project" }, src, "   ").caption).toBeUndefined();
+		expect(saveSharedImage({ path: "/my/project" }, src).caption).toBeUndefined();
 	});
 
 	it("rejects a relative path", () => {
-		expect(() => saveSharedImage("/my/project", "rel/a.png")).toThrow(SharedImageError);
+		expect(() => saveSharedImage({ path: "/my/project" }, "rel/a.png")).toThrow(SharedImageError);
 	});
 
 	it("rejects a path containing ..", () => {
-		expect(() => saveSharedImage("/my/project", "/a/../b.png")).toThrow(SharedImageError);
+		expect(() => saveSharedImage({ path: "/my/project" }, "/a/../b.png")).toThrow(SharedImageError);
 	});
 
 	it("rejects a missing file", () => {
-		expect(() => saveSharedImage("/my/project", join(SRC_DIR, "nope.png"))).toThrow(/File not found/);
+		expect(() => saveSharedImage({ path: "/my/project" }, join(SRC_DIR, "nope.png"))).toThrow(/File not found/);
 	});
 
 	it("rejects an unsupported type", () => {
 		const src = join(SRC_DIR, "notes.txt");
 		writeFileSync(src, "hi");
-		expect(() => saveSharedImage("/my/project", src)).toThrow(/Unsupported image type/);
+		expect(() => saveSharedImage({ path: "/my/project" }, src)).toThrow(/Unsupported image type/);
 	});
 });
 
 const MP4_HEAD = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypisom"), Buffer.alloc(16)]);
 const WEBM_HEAD = Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), Buffer.alloc(16)]);
 
+describe("in-project storage", () => {
+	it("keeps shared images under <project>/.dev3/worktrees when the project stores in-project", () => {
+		expect(sharedImagesDir({ path: "/my/project", storageRoot: "project" })).toBe("/my/project/.dev3/worktrees/shared-images");
+		expect(sharedImagesDir({ path: "/my/project", kind: "virtual", storageRoot: "project" })).toBe(`${TEST_HOME}/worktrees/my-project/shared-images`);
+		expect(sharedImagesDir({ path: "/my/project" })).toBe(`${TEST_HOME}/worktrees/my-project/shared-images`);
+	});
+});
+
 describe("saveSharedClip", () => {
 	beforeEach(() => {
-		rmSync(sharedImagesDir("/my/project"), { recursive: true, force: true });
+		rmSync(sharedImagesDir({ path: "/my/project" }), { recursive: true, force: true });
 	});
 
 	it("copies an MP4 into the same store as images, marked by a video mime", async () => {
 		const src = join(SRC_DIR, "demo.mp4");
 		writeFileSync(src, MP4_HEAD);
-		const rec = await saveSharedClip("/my/project", src, " watch the spinner ");
+		const rec = await saveSharedClip({ path: "/my/project" }, src, " watch the spinner ");
 
 		expect(rec.storedPath.startsWith(`${TEST_HOME}/worktrees/my-project/shared-images/`)).toBe(true);
 		expect(rec.storedPath.endsWith(".mp4")).toBe(true);
@@ -102,29 +110,29 @@ describe("saveSharedClip", () => {
 		expect(rec.caption).toBe("watch the spinner");
 		expect(rec.isUnread).toBe(true);
 		expect(readFileSync(rec.storedPath).equals(MP4_HEAD)).toBe(true);
-		expect(readdirSync(sharedImagesDir("/my/project")).some((f) => f.endsWith(".partial"))).toBe(false);
+		expect(readdirSync(sharedImagesDir({ path: "/my/project" })).some((f) => f.endsWith(".partial"))).toBe(false);
 	});
 
 	it("accepts a WebM by its EBML signature", async () => {
 		const src = join(SRC_DIR, "qa.webm");
 		writeFileSync(src, WEBM_HEAD);
-		expect((await saveSharedClip("/my/project", src)).mime).toBe("video/webm");
+		expect((await saveSharedClip({ path: "/my/project" }, src)).mime).toBe("video/webm");
 	});
 
 	it("rejects a renamed file whose container signature is missing", async () => {
 		const src = join(SRC_DIR, "fake.mp4");
 		writeFileSync(src, "definitely not a movie");
-		await expect(saveSharedClip("/my/project", src)).rejects.toThrow(/Not a real MP4 file/);
+		await expect(saveSharedClip({ path: "/my/project" }, src)).rejects.toThrow(/Not a real MP4 file/);
 		const webm = join(SRC_DIR, "fake.webm");
 		writeFileSync(webm, MP4_HEAD);
-		await expect(saveSharedClip("/my/project", webm)).rejects.toThrow(/Not a real WEBM file/);
+		await expect(saveSharedClip({ path: "/my/project" }, webm)).rejects.toThrow(/Not a real WEBM file/);
 	});
 
 	it("rejects other containers, unsupported audio and images", async () => {
 		for (const name of ["clip.mov", "clip.mkv", "track.flac", "track.opus", "track.aac", "shot.png"]) {
 			const src = join(SRC_DIR, name);
 			writeFileSync(src, MP4_HEAD);
-			await expect(saveSharedClip("/my/project", src)).rejects.toThrow(/Unsupported media type/);
+			await expect(saveSharedClip({ path: "/my/project" }, src)).rejects.toThrow(/Unsupported media type/);
 		}
 	});
 
@@ -137,7 +145,7 @@ describe("saveSharedClip", () => {
 	])("accepts audio %s by its container signature, marked %s", async (name, head, mime) => {
 		const src = join(SRC_DIR, name);
 		writeFileSync(src, head);
-		const rec = await saveSharedClip("/my/project", src, "listen");
+		const rec = await saveSharedClip({ path: "/my/project" }, src, "listen");
 		expect(rec.mime).toBe(mime);
 		expect(rec.storedPath.endsWith(`.${name.split(".").pop()}`)).toBe(true);
 		expect(rec.caption).toBe("listen");
@@ -152,7 +160,7 @@ describe("saveSharedClip", () => {
 	])("rejects a renamed %s", async (name, body, error) => {
 		const src = join(SRC_DIR, name);
 		writeFileSync(src, body);
-		await expect(saveSharedClip("/my/project", src)).rejects.toThrow(error);
+		await expect(saveSharedClip({ path: "/my/project" }, src)).rejects.toThrow(error);
 	});
 
 	it("caps clips at exactly 300 MB: one byte below and at the cap copy, one byte over is refused with exact sizes", async () => {
@@ -161,16 +169,16 @@ describe("saveSharedClip", () => {
 		for (const size of [MAX_SHARED_MEDIA_BYTES - 1, MAX_SHARED_MEDIA_BYTES]) {
 			writeFileSync(src, MP4_HEAD);
 			truncateSync(src, size);
-			const rec = await saveSharedClip("/my/project", src);
+			const rec = await saveSharedClip({ path: "/my/project" }, src);
 			expect(rec.bytes).toBe(size);
 			rmSync(rec.storedPath);
 		}
 		writeFileSync(src, MP4_HEAD);
 		truncateSync(src, MAX_SHARED_MEDIA_BYTES + 1);
-		await expect(saveSharedClip("/my/project", src)).rejects.toThrow(
+		await expect(saveSharedClip({ path: "/my/project" }, src)).rejects.toThrow(
 			"Media file too large (314,572,801 bytes; max 300 MB = 314,572,800 bytes)",
 		);
-		await expect(saveSharedClip("/my/project", src)).rejects.toThrow(/Trim or re-encode/);
+		await expect(saveSharedClip({ path: "/my/project" }, src)).rejects.toThrow(/Trim or re-encode/);
 		rmSync(src);
 	});
 
@@ -179,15 +187,15 @@ describe("saveSharedClip", () => {
 		const src = join(SRC_DIR, "huge.png");
 		writeFileSync(src, "");
 		truncateSync(src, MAX_SHARED_IMAGE_BYTES + 1);
-		expect(() => saveSharedImage("/my/project", src)).toThrow("Image too large (26,214,401 bytes; max 25 MB = 26,214,400 bytes)");
+		expect(() => saveSharedImage({ path: "/my/project" }, src)).toThrow("Image too large (26,214,401 bytes; max 25 MB = 26,214,400 bytes)");
 		rmSync(src);
 	});
 
 	it("keeps the path protections of show-image", async () => {
-		await expect(saveSharedClip("/my/project", "rel/a.mp4")).rejects.toThrow(SharedImageError);
-		await expect(saveSharedClip("/my/project", "/a/../b.mp4")).rejects.toThrow(SharedImageError);
-		await expect(saveSharedClip("/my/project", join(SRC_DIR, "missing.mp4"))).rejects.toThrow(/File not found/);
-		await expect(saveSharedClip("/my/project", SRC_DIR)).rejects.toThrow(/Not a file/);
+		await expect(saveSharedClip({ path: "/my/project" }, "rel/a.mp4")).rejects.toThrow(SharedImageError);
+		await expect(saveSharedClip({ path: "/my/project" }, "/a/../b.mp4")).rejects.toThrow(SharedImageError);
+		await expect(saveSharedClip({ path: "/my/project" }, join(SRC_DIR, "missing.mp4"))).rejects.toThrow(/File not found/);
+		await expect(saveSharedClip({ path: "/my/project" }, SRC_DIR)).rejects.toThrow(/Not a file/);
 	});
 
 	it("validates a whole batch before copying any clip", async () => {
@@ -195,15 +203,15 @@ describe("saveSharedClip", () => {
 		writeFileSync(good, MP4_HEAD);
 		const bad = join(SRC_DIR, "bad.mp4");
 		writeFileSync(bad, "nope");
-		await expect(saveSharedClips("/my/project", [{ path: good }, { path: bad }])).rejects.toThrow(/Not a real MP4 file/);
-		expect(existsSync(sharedImagesDir("/my/project")) ? readdirSync(sharedImagesDir("/my/project")) : []).toEqual([]);
+		await expect(saveSharedClips({ path: "/my/project" }, [{ path: good }, { path: bad }])).rejects.toThrow(/Not a real MP4 file/);
+		expect(existsSync(sharedImagesDir({ path: "/my/project" })) ? readdirSync(sharedImagesDir({ path: "/my/project" })) : []).toEqual([]);
 	});
 
 	it("does not let show-image take a clip", () => {
 		for (const name of ["sneaky.mp4", "sneaky.mp3"]) {
 			const src = join(SRC_DIR, name);
 			writeFileSync(src, MP4_HEAD);
-			expect(() => saveSharedImage("/my/project", src)).toThrow(/Unsupported image type/);
+			expect(() => saveSharedImage({ path: "/my/project" }, src)).toThrow(/Unsupported image type/);
 		}
 	});
 });

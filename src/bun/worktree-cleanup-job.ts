@@ -27,7 +27,7 @@ export interface WorktreeCleanupResult {
 
 export interface WorktreeCleanupSteps {
 	/** Runs on what the prune kept: the worker gzips the remaining diff snapshots here. */
-	afterPrune?: (worktreesRoot: string) => unknown;
+	afterPrune?: (taskDirs: string[]) => unknown;
 }
 
 export function runWorktreeCleanup(deps: WorktreeScanDeps, steps: WorktreeCleanupSteps = {}): WorktreeCleanupResult {
@@ -37,7 +37,7 @@ export function runWorktreeCleanup(deps: WorktreeScanDeps, steps: WorktreeCleanu
 		{ orphans: false, olderThanDays: DAILY_PRUNE_OLDER_THAN_DAYS, forceUnmerged: false },
 		deps,
 	);
-	const afterPrune = steps.afterPrune ? steps.afterPrune(report.worktreesRoot) : undefined;
+	const afterPrune = steps.afterPrune ? steps.afterPrune(report.entries.map((e) => e.dir)) : undefined;
 	return {
 		afterPrune,
 		scannedDirs: report.entries.length,

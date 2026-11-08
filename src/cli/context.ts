@@ -8,6 +8,7 @@ import type { InstanceSelector } from "../shared/cli-instance";
 import { projectStorageKey, toPosixSeparators } from "../shared/project-storage-key";
 import { resolveUserHome } from "../shared/user-home";
 import { resolveDev3Home } from "../shared/dev3-home";
+import { parseInProjectTaskPath, projectTasksFile } from "../shared/project-storage";
 import {
 	isCliEndpointHandle,
 	parseCliEndpointRecord,
@@ -69,7 +70,15 @@ const OPS_MARKER = "/.dev3.0/ops/";
  * sandbox rewrites HOME=/tmp while cwd still uses the real home), falls back
  * to searching for the `/.dev3.0/worktrees/` marker anywhere in the path.
  */
-export function detectFromWorktreePath(rawCwd: string): { projectSlug: string; taskShortId: string; realDev3Home: string } | null {
+export interface WorktreePathInfo {
+	projectSlug: string;
+	taskShortId: string;
+	realDev3Home: string;
+	/** Set for `<project>/.dev3/worktrees/<id>/worktree`: the task dir is not under `realDev3Home`. */
+	inProjectTaskDir?: string;
+}
+
+export function detectFromWorktreePath(rawCwd: string): WorktreePathInfo | null {
 	// Windows hands back `C:\Users\...\worktree` while every dev3 path is built
 	// with `/`, so the prefix match below would never fire without this.
 	const cwd = toPosixSeparators(rawCwd);
@@ -87,6 +96,17 @@ export function detectFromWorktreePath(rawCwd: string): { projectSlug: string; t
 			const realDev3Home = cwd.slice(0, markerIdx) + "/.dev3.0";
 			return { ...fallbackResult, realDev3Home };
 		}
+	}
+
+	// Strategy 3: a task dir inside the project folder (storageRoot "project")
+	const inProject = parseInProjectTaskPath(cwd);
+	if (inProject?.inWorktree) {
+		return {
+			projectSlug: projectStorageKey(inProject.projectPath),
+			taskShortId: inProject.shortId,
+			realDev3Home: DEV3_HOME,
+			inProjectTaskDir: inProject.taskDir,
+		};
 	}
 
 	return null;
@@ -124,13 +144,12 @@ function resolveFromWorktreePath(cwd: string): CliContext | null {
 
 	// Find the project by slug match
 	try {
-		const projects = JSON.parse(readFileSync(projectsFile, "utf-8")) as Array<{ id: string; path: string }>;
+		const projects = JSON.parse(readFileSync(projectsFile, "utf-8")) as Array<{ id: string; path: string; storageRoot?: "project" }>;
 		const project = projects.find((p) => projectStorageKey(p.path) === pathInfo.projectSlug);
 		if (!project) return null;
 
 		// Find the task by short ID prefix
-		const taskDataDir = `${effectiveHome}/data/${pathInfo.projectSlug}`;
-		const tasksFile = `${taskDataDir}/tasks.json`;
+		const tasksFile = projectTasksFile(effectiveHome, project);
 		if (!existsSync(tasksFile)) return null;
 
 		const tasks = JSON.parse(readFileSync(tasksFile, "utf-8")) as Array<{ id: string }>;
@@ -141,7 +160,8 @@ function resolveFromWorktreePath(cwd: string): CliContext | null {
 		const socketPath = discoverSocketIn(socketsDir) || discoverSocket() || "";
 
 		// Derive worktree root path from the parsed info
-		const worktreeBase = `${effectiveHome}/worktrees/${pathInfo.projectSlug}/${pathInfo.taskShortId}/worktree`;
+		const taskDir = pathInfo.inProjectTaskDir ?? `${effectiveHome}/worktrees/${pathInfo.projectSlug}/${pathInfo.taskShortId}`;
+		const worktreeBase = `${taskDir}/worktree`;
 
 		return {
 			projectId: project.id,
@@ -189,13 +209,12 @@ function resolveFromVirtualPath(cwd: string): CliContext | null {
 	const socketsDir = `${effectiveHome}/sockets`;
 
 	try {
-		const projects = JSON.parse(readFileSync(virtualFile, "utf-8")) as Array<{ id: string; path: string }>;
+		const projects = JSON.parse(readFileSync(virtualFile, "utf-8")) as Array<{ id: string; path: string; kind?: "virtual" }>;
 		const project = projects.find((p) => (p.path.split("/").pop() || "") === pathInfo.readableSlug);
 		if (!project) return null;
 
 		// Tasks live at data/<projectSlug(path)>/tasks.json — same formula as git.
-		const slug = projectStorageKey(project.path);
-		const tasksFile = `${effectiveHome}/data/${slug}/tasks.json`;
+		const tasksFile = projectTasksFile(effectiveHome, project);
 		if (!existsSync(tasksFile)) return null;
 
 		const tasks = JSON.parse(readFileSync(tasksFile, "utf-8")) as Array<{ id: string }>;
@@ -230,8 +249,7 @@ function resolveFromEnv(): CliContext | null {
 	if (!taskId) return null;
 	try {
 		for (const project of readAllProjectsRaw()) {
-			const slug = projectStorageKey(project.path);
-			const tasksFile = `${DEV3_HOME}/data/${slug}/tasks.json`;
+			const tasksFile = projectTasksFile(DEV3_HOME, project);
 			if (!existsSync(tasksFile)) continue;
 			const tasks = JSON.parse(readFileSync(tasksFile, "utf-8")) as Array<{ id: string }>;
 			if (tasks.some((t) => t.id === taskId)) {
@@ -283,9 +301,12 @@ export function detectContextDiagnostics(cwd: string = process.cwd()): string {
 				lines.push(`  projects.json read error: ${e}`);
 			}
 		}
-		const taskDataDir = `${pathInfo.realDev3Home}/data/${pathInfo.projectSlug}`;
-		const tasksFile = `${taskDataDir}/tasks.json`;
-		lines.push(`  tasks.json (${tasksFile}): ${existsSync(tasksFile) ? "exists" : "NOT FOUND"}`);
+		const legacyTasksFile = `${pathInfo.realDev3Home}/data/${pathInfo.projectSlug}/tasks.json`;
+		lines.push(`  tasks.json (home, ${legacyTasksFile}): ${existsSync(legacyTasksFile) ? "exists" : "NOT FOUND"}`);
+		if (pathInfo.inProjectTaskDir) {
+			const projectTasks = `${pathInfo.inProjectTaskDir.replace(/\/\.dev3\/worktrees\/[^/]+$/, "")}/.dev3/data/tasks.json`;
+			lines.push(`  tasks.json (in-project, ${projectTasks}): ${existsSync(projectTasks) ? "exists" : "NOT FOUND"}`);
+		}
 	}
 	return lines.join("\n");
 }
@@ -470,7 +491,7 @@ function isProbablyAlive(pid: number): boolean {
 function taskIdsWithSeq(seq: number): string[] {
 	const ids: string[] = [];
 	for (const project of readAllProjectsRaw()) {
-		const tasksFile = `${DEV3_HOME}/data/${projectStorageKey(project.path)}/tasks.json`;
+		const tasksFile = projectTasksFile(DEV3_HOME, project);
 		if (!existsSync(tasksFile)) continue;
 		try {
 			const tasks = JSON.parse(readFileSync(tasksFile, "utf-8")) as Array<{ id: string; seq?: number }>;
@@ -683,8 +704,7 @@ export function expandShortId(rawId: string, context: CliContext | null): string
 	try {
 		const matches: string[] = [];
 		for (const project of readAllProjectsRaw()) {
-			const slug = projectStorageKey(project.path);
-			const tasksFile = `${DEV3_HOME}/data/${slug}/tasks.json`;
+			const tasksFile = projectTasksFile(DEV3_HOME, project);
 			if (!existsSync(tasksFile)) continue;
 			const tasks = JSON.parse(readFileSync(tasksFile, "utf-8")) as Array<{ id: string }>;
 			for (const t of tasks) {
@@ -837,8 +857,7 @@ export function readTaskDirect(projectId: string, taskId: string): Record<string
 		const project = readAllProjectsRaw().find((p) => p.id === projectId);
 		if (!project) return null;
 
-		const slug = projectStorageKey(project.path);
-		const tasksFile = `${DEV3_HOME}/data/${slug}/tasks.json`;
+		const tasksFile = projectTasksFile(DEV3_HOME, project);
 		if (!existsSync(tasksFile)) return null;
 
 		const tasks = JSON.parse(readFileSync(tasksFile, "utf-8")) as Array<Record<string, unknown>>;

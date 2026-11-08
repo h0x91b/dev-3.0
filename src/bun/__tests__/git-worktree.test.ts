@@ -19,6 +19,10 @@ vi.mock("../paths", () => ({
 	DEV3_HOME: TEST_HOME,
 }));
 
+vi.mock("../backup-exclusion", () => ({
+	excludeFromBackups: vi.fn(async () => {}),
+}));
+
 vi.mock("../spawn", async () => {
 	const { createSpawnMock } = await import("./git-test-helpers");
 	return createSpawnMock();
@@ -367,6 +371,48 @@ describe("recoverStaleInitializingWorktrees", () => {
 		const registrations = g("git worktree list --porcelain", repo.local);
 		expect(registrations).not.toContain(`worktree ${registeredStalePath}`);
 		expect(registrations).toContain(`worktree ${registeredActivePath}`);
+	});
+});
+
+describe("in-project task dirs", () => {
+	let repo: TestRepo;
+
+	beforeEach(() => {
+		repo = createTestRepo();
+	});
+
+	afterEach(() => {
+		cleanup(repo);
+	});
+
+	it("puts a stamped task's dir under <project>/.dev3/worktrees and keeps it out of git", async () => {
+		const project = { ...makeProject(repo.local), storageRoot: "project" as const };
+		const task = makeTask({ taskDirLocation: "project" });
+
+		const { worktreePath } = await createWorktree(project, task);
+
+		expect(worktreePath).toBe(`${repo.local}/.dev3/worktrees/aaaaaaaa/worktree`);
+		expect(existsSync(worktreePath)).toBe(true);
+		expect(readFileSync(`${repo.local}/.dev3/worktrees/.gitignore`, "utf-8")).toBe("*\n");
+		expect(readFileSync(`${repo.local}/.dev3/data/.gitignore`, "utf-8")).toBe("*\n");
+		expect(g("git status --porcelain", repo.local)).toBe("");
+	});
+
+	it("keeps an unstamped task in the home root even when the project stores in its folder", () => {
+		const project = { ...makeProject(repo.local), storageRoot: "project" as const };
+		expect(taskDir(project, makeTask())).toBe(`${TEST_HOME}/worktrees/${repo.local.replace(/^\//, "").replaceAll("/", "-")}/aaaaaaaa`);
+	});
+
+	it("recovers a stale initializing worktree under the in-project root", async () => {
+		const project = makeProject(repo.local);
+		const staleTask = makeTask({ id: "bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee", taskDirLocation: "project" });
+		const stalePath = join(taskDir(project, staleTask), "worktree");
+		mkdirSync(join(stalePath, ".."), { recursive: true });
+		g(`git worktree add --lock --reason initializing -b dev3/task-bbbbbbbb "${stalePath}" main`, repo.local);
+		const registered = realpathSync(stalePath);
+		rmSync(stalePath, { recursive: true, force: true });
+
+		expect(await recoverStaleInitializingWorktrees(project, new Set())).toEqual([registered]);
 	});
 });
 

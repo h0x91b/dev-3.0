@@ -25,7 +25,8 @@ import { boardCopyOfferForNewProject, restoreBoardCopy } from "../board-copy";
 import { DEV3_HOME } from "../paths";
 import { createSandboxProject } from "../sandbox-project";
 import { IGNORED_FOLDER_JUNK, initGitInPlace, probeGitInit } from "../git-init-in-place";
-import { pathBasename, projectStorageKey } from "../../shared/project-storage-key";
+import { pathBasename } from "../../shared/project-storage-key";
+import { projectWorktreesRoot, storesInProject } from "../../shared/project-storage";
 import { listFilesystemRoots } from "../../shared/filesystem-roots";
 import { listAgentSkills as scanAgentSkills } from "../skills-catalog";
 import { spawn, spawnSync } from "../spawn";
@@ -814,7 +815,7 @@ async function saveUploadedFile(
 	opts?: { filename?: string; mimeType?: string },
 ): Promise<{ path: string }> {
 	const project = await data.getProject(projectId);
-	const uploadsDir = `${DEV3_HOME}/worktrees/${projectStorageKey(project.path)}/uploads`;
+	const uploadsDir = `${projectWorktreesRoot(DEV3_HOME, project.path, storesInProject(project) ? "project" : undefined)}/uploads`;
 	mkdirSync(uploadsDir, { recursive: true });
 	const filename = buildUploadedFilename(opts);
 	const fullPath = `${uploadsDir}/${filename}`;

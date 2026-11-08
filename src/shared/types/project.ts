@@ -4,6 +4,7 @@ import type { ColumnAgentConfig } from "./column-agents";
 import { BOARD_CLEANUP_PROMPT, COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT } from "./prompts";
 import type { GlobalSettings } from "./global-settings";
 import type { CustomColumn, Label } from "./labels-columns";
+import type { Task } from "./task";
 
 /** Extract repository name from a git URL (HTTPS or SSH). */
 export function extractRepoName(url: string): string {
@@ -165,6 +166,8 @@ export interface ProjectSettingsUpdate extends Dev3RepoConfig {
 	autoAccountExclusions?: string[];
 	/** Turns reading of this project's `.dev3/` config files on or off. */
 	useRepoConfig?: boolean;
+	/** `"project"` moves board data into the project folder, `"home"` back to `~/.dev3.0` (copies, never deletes). */
+	storageRoot?: "project" | "home";
 	/** Blank string clears the project override and falls back to global. */
 	reviewModePrompt?: string;
 	/** Blank string clears the project override and falls back to global. */
@@ -303,6 +306,29 @@ export interface Project {
 	boardCopy?: boolean;
 	/** Also copy the messages this board's agents received. Off unless set; only read while {@link boardCopy} is on. */
 	boardCopyMessages?: boolean;
+	/**
+	 * `"project"` keeps this project's board data and NEW task dirs under
+	 * `<path>/.dev3/` instead of `~/.dev3.0` (see `src/shared/project-storage.ts`).
+	 * Absent means `~/.dev3.0`. Machine-local; never set on a virtual board.
+	 */
+	storageRoot?: "project";
+}
+
+/** The refusal `updateProjectSettings` throws when the project's `.dev3/data` or `.dev3/worktrees` holds git-tracked files. */
+export const STORAGE_TRACKED_CONFLICT_ERROR = "The project already tracks files under .dev3/data or .dev3/worktrees in git, so dev3 data cannot be kept there";
+
+/**
+ * Why per-project storage cannot be switched right now, or null when it can. A
+ * task that is preparing or has a live runtime is reading and writing the board
+ * and its task dir, so the switch waits until it is idle.
+ */
+export function storageSwitchBlocker(
+	project: Pick<Project, "kind">,
+	tasks: ReadonlyArray<Pick<Task, "preparing" | "runtimeState">>,
+): { reason: "virtual" } | { reason: "live-tasks"; count: number } | null {
+	if (project.kind === "virtual") return { reason: "virtual" };
+	const count = tasks.filter((task) => task.preparing === true || (!!task.runtimeState && task.runtimeState.runtime !== "idle")).length;
+	return count > 0 ? { reason: "live-tasks", count } : null;
 }
 
 /** Why a board-copy write failed, for the one warning a failure streak shows. */

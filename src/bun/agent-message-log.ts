@@ -1,7 +1,7 @@
 /**
  * Append-only, per-project log of every message delivered into a task's agent.
  *
- * Layout: `~/.dev3.0/data/<projectSlug>/messages/YYYY-MM-DD.jsonl` — a NEW
+ * Layout: `<project data dir>/messages/YYYY-MM-DD.jsonl` — a NEW
  * directory beside the existing `tasks.json`, which is the only shape the on-disk
  * invariants in AGENTS.md allow. Nothing existing is renamed, nothing is migrated,
  * and an older app version simply never opens this directory.
@@ -24,6 +24,7 @@
  * the question it exists for.
  */
 
+import { projectDataDir } from "../shared/project-storage";
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, unlinkSync } from "node:fs";
 import type { Project } from "../shared/types";
 import {
@@ -38,7 +39,6 @@ import {
 	serializeAgentMessageLogRow,
 } from "../shared/agent-message-log";
 import { DEV3_HOME } from "./paths";
-import { projectSlug } from "./git";
 import { createLogger } from "./logger";
 import { getPushMessage } from "./rpc-handlers/shared-pure";
 import { noteLocalMessageLogAppend } from "./agent-message-log-watch";
@@ -55,7 +55,7 @@ function dayStamp(at: Date): string {
 
 /** The per-project directory holding the day-files. */
 export function messageLogDir(project: Project): string {
-	return `${DEV3_HOME}/data/${projectSlug(project.path)}/messages`;
+	return `${projectDataDir(DEV3_HOME, project)}/messages`;
 }
 
 function dayFile(project: Project, at: Date): string {

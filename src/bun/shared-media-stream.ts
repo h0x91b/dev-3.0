@@ -23,14 +23,19 @@ const MAX_TOKENS = 256;
 const pathByToken = new Map<string, string>();
 const tokenByPath = new Map<string, string>();
 
+// A clip may sit under the home root or the in-project `<project>/.dev3/worktrees/` one.
+const IN_PROJECT_SHARED_IMAGE_RE = /\/\.dev3\/worktrees\/shared-images\/[^/]+$/;
+
 /** Only a clip `dev3 show-media` stored — never an arbitrary file the renderer names. */
 export function isStoredSharedMediaPath(path: string): boolean {
 	if (!isFullyQualifiedPath(path, process.platform)) return false;
 	const normalized = path.replaceAll("\\", "/");
+	if (!SHARED_MEDIA_EXTS.includes(imageExt(normalized))) return false;
+	if (IN_PROJECT_SHARED_IMAGE_RE.test(normalized)) return true;
 	const root = `${DEV3_HOME.replaceAll("\\", "/")}/worktrees/`;
 	if (!normalized.startsWith(root)) return false;
 	const parts = normalized.slice(root.length).split("/");
-	return parts.length === 3 && parts[1] === "shared-images" && SHARED_MEDIA_EXTS.includes(imageExt(normalized));
+	return parts.length === 3 && parts[1] === "shared-images";
 }
 
 /** The URL path (`/shared-media/<token>`) that streams `storedPath`, or null when it is not a stored clip. */

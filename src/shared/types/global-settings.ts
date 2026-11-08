@@ -193,6 +193,8 @@ export interface GlobalSettings {
 	 * false opts out.
 	 */
 	autoCleanupTaskHistory?: boolean;
+	/** Inject the short agent protocol at launch instead of the full one. Off unless true; `DEV3_LEAN_PROTOCOL=1` also turns it on. */
+	leanAgentProtocol?: boolean;
 	/**
 	 * Set the first time the user opens help mode. Until then the header's `?`
 	 * rests highlighted on the main screens — help mode is the product's only

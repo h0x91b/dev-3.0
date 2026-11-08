@@ -18,6 +18,7 @@ import { readdirSync, readFileSync, rmSync, statSync, type Dirent } from "node:f
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { projectStorageKey } from "../../shared/project-storage-key";
+import { legacyProjectDataDir, projectTasksFile, projectWorktreesRoot } from "../../shared/project-storage";
 import { DEV3_HOME } from "../../bun/paths";
 
 /** How a task directory relates to the task records dev3 still has. */
@@ -89,8 +90,9 @@ export interface WorktreeReport {
 	totalReclaimableBytes: number;
 	/** Part of `totalReclaimableBytes` locked behind `--force-unmerged`. */
 	unmergedBytes: number;
-	/** Set when `~/.dev3.0/worktrees` does not exist at all. */
-	worktreesRoot: string;
+	/** Every task-dir root that exists: `~/.dev3.0/worktrees` and any `<project>/.dev3/worktrees`. */
+	roots: string[];
+	/** True when none of the candidate roots exists; `roots` then names the home one. */
 	rootMissing: boolean;
 }
 
@@ -205,7 +207,8 @@ interface RawProject {
 	name: string;
 	path: string;
 	defaultBaseBranch?: string;
-	kind?: string;
+	kind?: "git" | "virtual";
+	storageRoot?: "project";
 	deleted?: boolean;
 }
 
@@ -236,13 +239,22 @@ function readProjects(deps: WorktreeScanDeps): RawProject[] {
 	return out;
 }
 
-function readTasks(deps: WorktreeScanDeps, slug: string): RawTask[] {
+function readTasksFile(deps: WorktreeScanDeps, file: string): RawTask[] {
 	try {
-		const parsed = JSON.parse(deps.readFile(`${deps.dev3Home}/data/${slug}/tasks.json`)) as RawTask[];
+		const parsed = JSON.parse(deps.readFile(file)) as RawTask[];
 		return Array.isArray(parsed) ? parsed : [];
 	} catch {
 		return [];
 	}
+}
+
+/** Both layouts are read: a task in either file means its dir is not an orphan. */
+function readTasks(deps: WorktreeScanDeps, project: RawProject): RawTask[] {
+	const files = new Set([
+		projectTasksFile(deps.dev3Home, project),
+		`${legacyProjectDataDir(deps.dev3Home, project.path)}/tasks.json`,
+	]);
+	return [...files].flatMap((file) => readTasksFile(deps, file));
 }
 
 /** Newest of the task's own timestamps — the closest thing to "last activity". */
@@ -323,20 +335,25 @@ function recommend(entry: Omit<WorktreeEntry, "recommendation">): string {
 
 /** Scan every project's worktree root and classify every task directory. */
 export function collectWorktreeReport(deps: WorktreeScanDeps): WorktreeReport {
-	const worktreesRoot = `${deps.dev3Home}/worktrees`;
-	if (!deps.exists(worktreesRoot)) {
+	const homeRoot = `${deps.dev3Home}/worktrees`;
+	const projects = readProjects(deps);
+	const inProjectRoots = projects
+		.filter((p) => p.kind !== "virtual")
+		.map((p) => ({ slug: projectStorageKey(p.path), root: projectWorktreesRoot(deps.dev3Home, p.path, "project") }))
+		.filter(({ root }) => deps.exists(root));
+	const homeExists = deps.exists(homeRoot);
+	if (!homeExists && inProjectRoots.length === 0) {
 		return {
 			projects: [],
 			entries: [],
 			totalBytes: 0,
 			totalReclaimableBytes: 0,
 			unmergedBytes: 0,
-			worktreesRoot,
+			roots: [homeRoot],
 			rootMissing: true,
 		};
 	}
-
-	const projects = readProjects(deps);
+	const roots = [...(homeExists ? [homeRoot] : []), ...inProjectRoots.map(({ root }) => root)];
 	const projectBySlug = new Map<string, RawProject>();
 	for (const project of projects) projectBySlug.set(projectStorageKey(project.path), project);
 
@@ -345,29 +362,35 @@ export function collectWorktreeReport(deps: WorktreeScanDeps): WorktreeReport {
 	const tasksByShortId = new Map<string, RawTask>();
 	const slugsWithData = new Set<string>([...projectBySlug.keys()]);
 	for (const slug of slugsWithData) {
-		for (const task of readTasks(deps, slug)) {
+		for (const task of readTasks(deps, projectBySlug.get(slug)!)) {
 			if (typeof task.id === "string") tasksByShortId.set(task.id.slice(0, 8).toLowerCase(), task);
 		}
 	}
 
-	let slugs: string[];
-	try {
-		slugs = deps.listDirs(worktreesRoot).sort();
-	} catch {
-		slugs = [];
+	// Each location is a directory holding `<shortId>/` task dirs for one slug.
+	const locations: Array<{ slug: string; parent: string }> = [];
+	if (homeExists) {
+		let slugs: string[];
+		try {
+			slugs = deps.listDirs(homeRoot).sort();
+		} catch {
+			slugs = [];
+		}
+		for (const slug of slugs) locations.push({ slug, parent: join(homeRoot, slug) });
 	}
+	for (const { slug, root } of inProjectRoots) locations.push({ slug, parent: root });
 
 	// Enumerate first, measure once: one batched size pass beats a spawn per dir.
 	const pending: Array<{ slug: string; shortId: string; dir: string; hasWorktree: boolean }> = [];
-	for (const slug of slugs) {
+	for (const { slug, parent } of locations) {
 		let shortIds: string[];
 		try {
-			shortIds = deps.listDirs(join(worktreesRoot, slug)).filter((name) => /^[0-9a-f]{8}$/i.test(name));
+			shortIds = deps.listDirs(parent).filter((name) => /^[0-9a-f]{8}$/i.test(name));
 		} catch {
 			continue;
 		}
 		for (const shortId of shortIds.sort()) {
-			const dir = join(worktreesRoot, slug, shortId);
+			const dir = join(parent, shortId);
 			pending.push({ slug, shortId, dir, hasWorktree: deps.exists(join(dir, "worktree")) });
 		}
 	}
@@ -462,7 +485,7 @@ export function collectWorktreeReport(deps: WorktreeScanDeps): WorktreeReport {
 		totalBytes: entries.reduce((sum, e) => sum + e.bytes, 0),
 		totalReclaimableBytes: entries.reduce((sum, e) => sum + e.reclaimableBytes, 0),
 		unmergedBytes: entries.filter((e) => e.needsForce).reduce((sum, e) => sum + e.reclaimableBytes, 0),
-		worktreesRoot,
+		roots,
 		rootMissing: false,
 	};
 }
@@ -504,8 +527,9 @@ function projectLabel(project: ProjectWorktreeTotals): string {
 }
 
 export function renderWorktreeReport(report: WorktreeReport): string {
-	if (report.rootMissing) return `No worktree root at ${report.worktreesRoot} — nothing on disk yet.\n`;
-	if (report.entries.length === 0) return `No task directories under ${report.worktreesRoot}.\n`;
+	const rootsLabel = report.roots.join(", ");
+	if (report.rootMissing) return `No worktree root at ${rootsLabel} — nothing on disk yet.\n`;
+	if (report.entries.length === 0) return `No task directories under ${rootsLabel}.\n`;
 
 	const lines: string[] = [];
 	const shownProjects = report.projects.slice(0, TOP_PROJECTS);
@@ -556,7 +580,7 @@ export function renderWorktreeReport(report: WorktreeReport): string {
 	}
 
 	lines.push("");
-	lines.push(`${formatBytes(report.totalBytes)} on disk under ${report.worktreesRoot}.`);
+	lines.push(`${formatBytes(report.totalBytes)} on disk under ${rootsLabel}.`);
 	if (report.totalReclaimableBytes === 0) {
 		lines.push("Nothing reclaimable — every directory belongs to an open task or is still recent.");
 	} else {

@@ -10,7 +10,7 @@ import {
 	writeClaudeHooks,
 	writeCodexHooks,
 } from "../agent-hooks";
-import type { MatcherGroup } from "../../shared/agent-hooks";
+import { ensureParentClaudeMdExcluded, type MatcherGroup } from "../../shared/agent-hooks";
 import { getPrimaryStopTarget, isStatusGuardBlocked, type TaskStatus } from "../../shared/types";
 import {
 	CODEX_DEV3_HOOK_COMMAND,
@@ -1570,5 +1570,18 @@ describe("claudeSessionStartHookInstalled", () => {
 			hooks: { SessionStart: [{ hooks: [{ type: "command", command: "echo hi" }] }] },
 		}));
 		expect(claudeSessionStartHookInstalled(tmp)).toBe(false);
+	});
+});
+
+describe("ensureParentClaudeMdExcluded", () => {
+	it("adds the main checkout's memory files once and keeps the user's own entries", () => {
+		const first = ensureParentClaudeMdExcluded({ claudeMdExcludes: ["/x/CLAUDE.md"] }, "/home/u/acme");
+		expect(first.claudeMdExcludes).toEqual([
+			"/x/CLAUDE.md",
+			"/home/u/acme/CLAUDE.md",
+			"/home/u/acme/CLAUDE.local.md",
+			"/home/u/acme/.claude/CLAUDE.md",
+		]);
+		expect(ensureParentClaudeMdExcluded(first, "/home/u/acme")).toBe(first);
 	});
 });

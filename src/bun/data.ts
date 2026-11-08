@@ -1,4 +1,5 @@
 import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
+import { projectDataDir, storesInProject } from "../shared/project-storage";
 import type { Project, Task, TaskHistoryChange, TaskHistoryEntry, TaskMovement, TaskOrigin, TaskPriority, TaskStatus, TaskType, TipState } from "../shared/types";
 import { appendTaskMovement, DEFAULT_PRIORITY, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, getTaskOverview, getTaskTitle, isStatusGuardBlocked, remapColumnAgents, titleFromDescription } from "../shared/types";
 import {
@@ -31,7 +32,7 @@ const TASK_BACKUPS_DIR = "tasks-backups";
 const TASK_BACKUP_RETENTION_HOURS = 72;
 // `name` is display-only: `path` is deliberately absent, so a rename never moves
 // a data dir, worktree dir or slug (AGENTS.md on-disk invariants).
-type ProjectUpdates = Partial<Pick<Project, "name" | "setupScript" | "setupScriptLaunchMode" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "githubAuthHost" | "githubAuthLogin" | "clonePaths" | "labels" | "customColumns" | "columnOrder" | "autoReviewEnabled" | "peerReviewEnabled" | "sparseCheckoutEnabled" | "sparseCheckoutPaths" | "builtinColumnAgents" | "customStatusLabels" | "sensitive" | "autoAccountExclusions" | "reviewModePrompt" | "coordinatorPrompt" | "artifactTemplate" | "artifactTemplatePath" | "env" | "conversationImportOfferedAt" | "boardCopy" | "boardCopyMessages">>;
+type ProjectUpdates = Partial<Pick<Project, "name" | "setupScript" | "setupScriptLaunchMode" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "githubAuthHost" | "githubAuthLogin" | "clonePaths" | "labels" | "customColumns" | "columnOrder" | "autoReviewEnabled" | "peerReviewEnabled" | "sparseCheckoutEnabled" | "sparseCheckoutPaths" | "builtinColumnAgents" | "customStatusLabels" | "sensitive" | "autoAccountExclusions" | "reviewModePrompt" | "coordinatorPrompt" | "artifactTemplate" | "artifactTemplatePath" | "env" | "conversationImportOfferedAt" | "boardCopy" | "boardCopyMessages" | "storageRoot">>;
 
 type BoardChangeListener = (projectId: string | null) => void;
 const boardChangeListeners = new Set<BoardChangeListener>();
@@ -70,11 +71,11 @@ export class DataFileReadError extends Error {
 }
 
 function tasksFile(project: Project): string {
-	return `${DEV3_HOME}/data/${projectSlug(project.path)}/tasks.json`;
+	return `${projectDataDir(DEV3_HOME, project)}/tasks.json`;
 }
 
 function tasksBackupDir(project: Project): string {
-	return `${DEV3_HOME}/data/${projectSlug(project.path)}/${TASK_BACKUPS_DIR}`;
+	return `${projectDataDir(DEV3_HOME, project)}/${TASK_BACKUPS_DIR}`;
 }
 
 export function deriveTaskBaseBranch(project: Project, existingBranch?: string | null): string {
@@ -976,6 +977,7 @@ export async function addTask(
 			...(extras?.opsWorkDir ? { opsWorkDir: extras.opsWorkDir } : {}),
 			...(extras?.attachedRepo ? { attachedRepo: extras.attachedRepo } : {}),
 			...(extras?.opsWorktree ? { opsWorktree: true } : {}),
+			...(storesInProject(project) ? { taskDirLocation: "project" as const } : {}),
 			...(extras?.notes && extras.notes.length > 0 ? { notes: extras.notes } : {}),
 			...(extras?.overview ? { overview: extras.overview } : {}),
 			...(extras?.userOverview ? { userOverview: extras.userOverview } : {}),
@@ -1264,6 +1266,7 @@ export async function moveTaskToProject(
 				attachedRepo: null,
 				opsWorktree: undefined,
 				scheduledLaunch: null,
+				taskDirLocation: storesInProject(targetProject) ? "project" : undefined,
 				updatedAt: now,
 			};
 

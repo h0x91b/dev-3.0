@@ -2,6 +2,7 @@
  * Hook-building logic shared between the backend (bun/) and CLI.
  */
 
+import { parseInProjectTaskPath } from "./project-storage";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { PermissionMode, TaskStatus } from "./types";
@@ -819,7 +820,21 @@ export function writeClaudeHooks(
 	if (options?.permissionMode && options.permissionMode !== "default") {
 		updated = ensureDefaultMode(updated, options.permissionMode);
 	}
+	const inProject = parseInProjectTaskPath(worktreePath);
+	if (inProject?.inWorktree) updated = ensureParentClaudeMdExcluded(updated, inProject.projectPath);
 	return { written: writeIfChanged(hooksPath, updated, previous), skippedSymlink: null };
+}
+
+/**
+ * A worktree nested in `<project>/.dev3/worktrees/` would make Claude Code also
+ * load the main checkout's memory files as a parent directory's, duplicating the
+ * worktree's own copy. `claudeMdExcludes` drops exactly those.
+ */
+export function ensureParentClaudeMdExcluded(settings: Record<string, unknown>, projectPath: string): Record<string, unknown> {
+	const wanted = ["CLAUDE.md", "CLAUDE.local.md", ".claude/CLAUDE.md"].map((name) => `${projectPath}/${name}`);
+	const current = Array.isArray(settings.claudeMdExcludes) ? settings.claudeMdExcludes.filter((v): v is string => typeof v === "string") : [];
+	const missing = wanted.filter((path) => !current.includes(path));
+	return missing.length === 0 ? settings : { ...settings, claudeMdExcludes: [...current, ...missing] };
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -207,6 +207,44 @@ describe("collectWorktreeReport — classification", () => {
 		expect(empty.entries).toEqual([]);
 	});
 
+	describe("in-project storage root", () => {
+		const REPO_B = "/src/repoB";
+		const ROOT_B = `${REPO_B}/.dev3/worktrees`;
+		const base = fixtureDeps();
+		const inProject = fixtureDeps({
+			listDirs: (dir) => (dir === ROOT_B ? ["11111111", "22222222"] : base.listDirs(dir)),
+			exists: (path) =>
+				[ROOT_B, `${ROOT_B}/11111111`, `${ROOT_B}/11111111/worktree`, `${ROOT_B}/22222222`, `${ROOT_B}/22222222/worktree`].includes(path) ||
+				base.exists(path),
+			readFile: (path) => {
+				if (path === `${HOME}/projects.json`) {
+					return JSON.stringify([
+						{ id: "p1", name: "repoA", path: REPO, defaultBaseBranch: "main" },
+						{ id: "p2", name: "repoB", path: REPO_B, storageRoot: "project" },
+					]);
+				}
+				if (path === `${REPO_B}/.dev3/data/tasks.json`) {
+					return JSON.stringify([{ id: "11111111-0000-0000-0000-000000000000", seq: 1, status: "in-progress", createdAt: daysAgo(1) }]);
+				}
+				return base.readFile(path);
+			},
+		});
+
+		it("enumerates task dirs under both roots and reads tasks from the project", () => {
+			const r = collectWorktreeReport(inProject);
+			expect(r.roots).toEqual([`${HOME}/worktrees`, ROOT_B]);
+			expect(entry(r.entries, "11111111")).toMatchObject({ dir: `${ROOT_B}/11111111`, category: "live-open", projectName: "repoB" });
+			expect(entry(r.entries, "22222222")).toMatchObject({ dir: `${ROOT_B}/22222222`, category: "orphaned" });
+			expect(entry(r.entries, "aaaaaaaa").category).toBe("live-open");
+		});
+
+		it("is not missing when only an in-project root exists", () => {
+			const r = collectWorktreeReport({ ...inProject, exists: (path) => path === ROOT_B || path === `${ROOT_B}/11111111` });
+			expect(r.rootMissing).toBe(false);
+			expect(r.roots).toEqual([ROOT_B]);
+		});
+	});
+
 	it("falls back to directory mtime when there is no task record", () => {
 		const e = entry(report.entries, "cccccccc");
 		expect(e.ageDays).toBe(200);
@@ -276,7 +314,7 @@ describe("renderWorktreeReport", () => {
 			totalBytes: 20 * MB,
 			totalReclaimableBytes: 20 * MB,
 			unmergedBytes: 0,
-			worktreesRoot: `${HOME}/worktrees`,
+			roots: [`${HOME}/worktrees`],
 			rootMissing: false,
 		});
 		expect(out).toContain("5 more not shown");
@@ -508,6 +546,11 @@ describe("dev3 doctor --worktrees", () => {
 	});
 
 	describe("diff snapshots", () => {
+		const realDisk = (dev3Home: string): Partial<WorktreeScanDeps> => ({
+			dev3Home,
+			exists: existsSync,
+			listDirs: (dir) => readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name),
+		});
 		let home: string;
 		let diffsDir: string;
 
@@ -525,7 +568,7 @@ describe("dev3 doctor --worktrees", () => {
 
 		it("only counts plain snapshots without --gzip-diffs", async () => {
 			await expect(
-				handleDoctor({ flags: { worktrees: "true" }, positional: [] }, unusedDoctorDeps, fixtureDeps({ dev3Home: home })),
+				handleDoctor({ flags: { worktrees: "true" }, positional: [] }, unusedDoctorDeps, fixtureDeps(realDisk(home))),
 			).rejects.toThrow("exit");
 			expect(stdout()).toContain("Uncompressed diff snapshots: 1 file in 1 task dirs");
 			expect(stdout()).toContain("--gzip-diffs");
@@ -537,7 +580,7 @@ describe("dev3 doctor --worktrees", () => {
 				handleDoctor(
 					{ flags: { worktrees: "true", "gzip-diffs": "true", json: "true" }, positional: [] },
 					unusedDoctorDeps,
-					fixtureDeps({ dev3Home: home }),
+					fixtureDeps(realDisk(home)),
 				),
 			).rejects.toThrow("exit");
 			const parsed = JSON.parse(stdout()) as { diffs: { gzipped: { compressed: number; bytesBefore: number; bytesAfter: number } } };

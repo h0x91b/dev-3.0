@@ -500,6 +500,8 @@ export interface CommandOptions {
 	 *  --append-system-prompt; Codex: `-c developer_instructions=...`).
 	 *  Used for review agents that rely on hooks instead of system-prompt instructions. */
 	skipSystemPrompt?: boolean;
+	/** Global `leanAgentProtocol` setting, read by the async launch path. The env flag still applies on top. */
+	leanProtocol?: boolean;
 	/** Path to the generated settings file that routes the Claude statusLine
 	 *  through `dev3 statusline` (rate-limit capture + delegation to the user's
 	 *  original statusLine). Injected as `--settings <path>` for Claude-based
@@ -568,7 +570,7 @@ export async function resolveAgentCommand(
 	const baseCmd = config?.baseCommandOverride || agent.baseCommand;
 	const adapter = getAgentAdapter(baseCmd, agent.agentFamily);
 
-	const leanBody = options?.skipSystemPrompt ? undefined : leanProtocolBody(adapter);
+	const leanBody = options?.skipSystemPrompt ? undefined : leanProtocolBody(adapter, options?.leanProtocol);
 	const adapterOptions: AdapterLaunchOptions = {
 		resume: options?.resume,
 		sessionId: options?.sessionId,
@@ -630,8 +632,12 @@ function systemPromptFileFor(adapter: { command: string; skillBody?: string }, l
  * An installation-wide experiment read at launch, like DEV3_COMPACT_AGENT_SKILLS:
  * the full body is written to its own file first, so the lean one can name it.
  */
-function leanProtocolBody(adapter: { command: string; skillBody: string; leanSkillBody?: string }): string | undefined {
-	if (process.env.DEV3_LEAN_PROTOCOL !== "1" || !adapter.leanSkillBody) return undefined;
+function leanProtocolBody(
+	adapter: { command: string; skillBody: string; leanSkillBody?: string },
+	enabledBySetting?: boolean,
+): string | undefined {
+	const enabled = enabledBySetting === true || process.env.DEV3_LEAN_PROTOCOL === "1";
+	if (!enabled || !adapter.leanSkillBody) return undefined;
 	const fullProtocolPath = ensureAgentSystemPromptFile(adapter.command, adapter.skillBody);
 	return adapter.leanSkillBody + leanProtocolReference(fullProtocolPath);
 }
@@ -1038,7 +1044,10 @@ export async function resolveCommandForAgent(
 		resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel),
 		baseCmd, extraEnv, ctx.worktreePath, agentWithPath.agentFamily,
 	);
-	const command = await resolveAgentCommand(agentWithPath, launchConfig, ctx, routed.options);
+	const command = await resolveAgentCommand(agentWithPath, launchConfig, ctx, {
+		...routed.options,
+		leanProtocol: settings.leanAgentProtocol === true,
+	});
 	// `agent` stays the stored record — callers derive the base command from it,
 	// and swapping in the override path there would change what they persist.
 	// The family rides alongside instead: a path override can pin one the stored
@@ -1178,7 +1187,10 @@ export async function resolveCommandForProject(
 			resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel),
 			baseCmd, extraEnv, ctx.worktreePath, agentWithPath.agentFamily,
 		);
-		const command = await resolveAgentCommand(agentWithPath, launchConfig, ctx, routed.options);
+		const command = await resolveAgentCommand(agentWithPath, launchConfig, ctx, {
+		...routed.options,
+		leanProtocol: settings.leanAgentProtocol === true,
+	});
 		return {
 			command,
 			agent,
