@@ -45,6 +45,15 @@ describe("copyHomeDataIntoProject", () => {
 		expect(readFileSync(join(inProjectDataDir(project), "tasks.json"), "utf8")).toBe("\"newer\"");
 	});
 
+	it("never copies a held tasks-file lock into the project", async () => {
+		const dir = seedHome();
+		mkdirSync(join(dir, "tasks.json.lock"));
+		await copyHomeDataIntoProject(home, project);
+		expect(existsSync(join(inProjectDataDir(project), "tasks.json"))).toBe(true);
+		expect(existsSync(join(inProjectDataDir(project), "tasks.json.lock"))).toBe(false);
+		expect(existsSync(join(dir, "tasks.json.lock"))).toBe(true);
+	});
+
 	it("copes with a project that has no home data yet", async () => {
 		expect(await copyHomeDataIntoProject(home, project)).toBe(0);
 		expect(existsSync(inProjectDataDir(project))).toBe(false);

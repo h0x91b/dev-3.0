@@ -16,7 +16,8 @@ async function copyFileAtomic(source: string, target: string): Promise<void> {
 
 /**
  * Copy `from` into `to` file by file. Each target is written atomically; a
- * destination that is newer than its source is kept. The source is never touched.
+ * destination that is newer than its source is kept, and lock dirs are skipped.
+ * The source is never touched.
  */
 export async function copyDataTree(from: string, to: string): Promise<number> {
 	let entries;
@@ -31,6 +32,8 @@ export async function copyDataTree(from: string, to: string): Promise<number> {
 	for (const entry of entries) {
 		const source = join(from, entry.name);
 		const target = join(to, entry.name);
+		// `*.lock` dirs are `withFileLock` locks, the switch's own included: a copy would be a stale lock.
+		if (entry.isDirectory() && entry.name.endsWith(".lock")) continue;
 		if (entry.isDirectory()) {
 			copied += await copyDataTree(source, target);
 		} else if (entry.isFile() && !entry.name.includes(".tmp-")) {
