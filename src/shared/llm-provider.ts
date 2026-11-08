@@ -34,7 +34,9 @@
  */
 
 import { agentKey } from "./agent-adapters/families";
-import { LLM_PROVIDER, type AgentFamily, type BedrockGeo, type BedrockProfile, type LlmProvider, type ProviderConfig } from "./types";
+import { CLAUDE_MODEL_SLOTS, claudeModelFamily, type ClaudeModelSlot } from "./agent-accounts";
+import { MODEL_RELEASE_DATES } from "./model-release-dates";
+import { DEFAULT_AGENTS, LLM_PROVIDER, type AgentFamily, type BedrockGeo, type BedrockProfile, type LlmProvider, type ProviderConfig } from "./types";
 
 /** Strip dev3's `[1m]` 1M-context marker and any `@`-dated snapshot suffix to
  *  get the canonical Anthropic model family key (e.g. `claude-opus-4-8`). */
@@ -137,6 +139,10 @@ export interface ProviderDefinition {
 	 * when absent, the `--model` value is rewritten to the mapped id instead.
 	 */
 	modelEnv?: string;
+	/** Also pin Claude Code's own aliases (`/model haiku`, a subagent's `model: sonnet`)
+	 *  through `ANTHROPIC_DEFAULT_<SLOT>_MODEL`. Unpinned, they fall back to built-in
+	 *  ids the backend may not serve or allow. */
+	pinsAliasSlots?: boolean;
 	/** Raw (unescaped) CLI args appended to launches to route the agent at this
 	 *  backend (e.g. Codex's `-c model_provider="amazon-bedrock"`). */
 	enableArgs?: string[];
@@ -163,6 +169,7 @@ export const PROVIDER_REGISTRY: Partial<Record<LlmProvider, ProviderDefinition>>
 		hintKey: "settings.providerBedrockHint",
 		enableEnv: "CLAUDE_CODE_USE_BEDROCK",
 		modelEnv: "ANTHROPIC_MODEL",
+		pinsAliasSlots: true,
 		usesGeo: true,
 		usesAwsProfiles: true,
 		// `<geo>.anthropic.<family>` inference profiles, derived from the alias —
@@ -300,7 +307,7 @@ export function buildProviderEnv(
 
 	const env: Record<string, string> = {};
 
-	// dev3 injects only the provider flag + the pinned model. Region, AWS profile,
+	// dev3 injects only the provider flag + the pinned models. Region, AWS profile,
 	// and GCP project come from the customer's own global agent config — dev3
 	// does not manage credentials.
 	if (def.enableEnv) env[def.enableEnv] = "1";
@@ -308,6 +315,40 @@ export function buildProviderEnv(
 	if (def.modelEnv) {
 		const model = providerPinnedModel(provider, providerConfig, configModel);
 		if (model) env[def.modelEnv] = model;
+	}
+	if (def.pinsAliasSlots) Object.assign(env, aliasSlotEnv(def.id, providerConfig, configModel));
+	return env;
+}
+
+/** The newest built-in Claude preset model per alias slot that the geo serves,
+ *  ranked by `MODEL_RELEASE_DATES`; DEFAULT_AGENTS order breaks a tie. */
+function newestClaudeModelPerSlot(provider: LlmProvider, geo: BedrockGeo): Partial<Record<ClaudeModelSlot, string>> {
+	const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude");
+	const newest: Partial<Record<ClaudeModelSlot, string>> = {};
+	for (const { model } of claude?.configurations ?? []) {
+		const slot = model ? claudeModelFamily(model) : null;
+		if (!model || !slot || !bedrockModelServedInGeo(provider, model, geo)) continue;
+		const current = newest[slot];
+		if (!current || (MODEL_RELEASE_DATES[model] ?? "") > (MODEL_RELEASE_DATES[current] ?? "")) newest[slot] = model;
+	}
+	return newest;
+}
+
+/** `ANTHROPIC_DEFAULT_<SLOT>_MODEL` for every alias slot: the launching model for its
+ *  own slot, the newest built-in model for the rest, mapped like the main model. */
+function aliasSlotEnv(
+	provider: LlmProvider,
+	providerConfig: ProviderConfig | undefined,
+	configModel: string | undefined,
+): Record<string, string> {
+	const geo = normalizeBedrockGeo(providerConfig?.[provider]?.geo);
+	const newest = newestClaudeModelPerSlot(provider, geo);
+	const launchSlot = configModel ? claudeModelFamily(configModel) : null;
+	const env: Record<string, string> = {};
+	for (const slot of CLAUDE_MODEL_SLOTS) {
+		const model = slot === launchSlot ? configModel : newest[slot];
+		const id = providerPinnedModel(provider, providerConfig, model);
+		if (id) env[`ANTHROPIC_DEFAULT_${slot.toUpperCase()}_MODEL`] = id;
 	}
 	return env;
 }

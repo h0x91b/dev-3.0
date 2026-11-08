@@ -305,7 +305,7 @@ project env. See `decisions/2026/11/05/bedrock-per-launch-aws-profile.md`.
 | Provider | Injected env | Model id source |
 |----------|--------------|-----------------|
 | Anthropic | _(none)_ | `--model <alias>` as usual |
-| Bedrock (Claude) | `CLAUDE_CODE_USE_BEDROCK=1`, `ANTHROPIC_MODEL` | alias→`<geo>.anthropic.*` map (geo = `global`/`us`/`eu`/`jp` toggle), or the per-model override |
+| Bedrock (Claude) | `CLAUDE_CODE_USE_BEDROCK=1`, `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_{FABLE,OPUS,SONNET,HAIKU}_MODEL` | alias→`<geo>.anthropic.*` map (geo = `global`/`us`/`eu`/`jp` toggle), or the per-model override. Each alias slot gets the launching model for its own slot and the newest built-in model the geo serves for the rest, so `/model haiku` and subagent `model:` aliases never fall back to Claude Code's built-in `us.*` ids; a preset `envVars` value still wins |
 | Bedrock (Codex) | _(none — `--model <geo>.openai.<family>` + `-c model_provider="amazon-bedrock-runtime"`)_ | same geo toggle; per-model override |
 
 Known model aliases map to provider-native ids automatically
