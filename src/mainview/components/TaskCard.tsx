@@ -478,10 +478,10 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		setDetailOpen(true);
 	}
 
-	function handleCardMouseEnter() {
+	function handleCardMouseEnter(e: React.MouseEvent) {
 		if (!isActive || menuOpen || isShuttingDown) return;
 		if (!cardRef.current) return;
-		preview.handlers.onMouseEnter(task.id, cardRef.current);
+		preview.handlers.onMouseEnter(task.id, cardRef.current, e.target);
 	}
 
 	function handleCardMouseLeave() {

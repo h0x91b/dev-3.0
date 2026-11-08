@@ -266,3 +266,39 @@ describe("useTerminalPreview — poll lifecycle", () => {
 		expect(get).toHaveBeenCalledTimes(2);
 	});
 });
+
+describe("useTerminalPreview - portaled children", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.useFakeTimers();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		document.body.innerHTML = "";
+	});
+
+	it("ignores a mouseenter whose target sits outside the anchor (context menu portal)", async () => {
+		const { result } = renderHook(() => useTerminalPreview());
+		const anchor = makeAnchor();
+		const menuItem = makeAnchor();
+		act(() => result.current.handlers.onMouseEnter("task-1", anchor, menuItem));
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(500);
+		});
+		expect(result.current.state.open).toBe(false);
+		expect(mockedApi.request.getTerminalPreview).not.toHaveBeenCalled();
+	});
+
+	it("opens when the target is inside the anchor", async () => {
+		const { result } = renderHook(() => useTerminalPreview());
+		const anchor = makeAnchor();
+		const child = document.createElement("span");
+		anchor.appendChild(child);
+		act(() => result.current.handlers.onMouseEnter("task-1", anchor, child));
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(500);
+		});
+		expect(result.current.state.open).toBe(true);
+	});
+});

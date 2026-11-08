@@ -128,8 +128,11 @@ export function useTerminalPreview() {
 	 * Call on mouseenter. Pass the anchor element for positioning
 	 * (either a ref.current or e.currentTarget).
 	 */
-	function onMouseEnter(taskId: string, anchorEl: HTMLElement) {
+	function onMouseEnter(taskId: string, anchorEl: HTMLElement, target?: EventTarget | null) {
 		if (isDraggingRef.current) return;
+		// React fires mouseenter along the component tree, so pointing at a portaled
+		// child (context menu, submenu, popover) counts as entering the anchor. Ignore it.
+		if (target instanceof Node && !anchorEl.contains(target)) return;
 		// No hover preview on touch / narrow (mobile carousel) viewports.
 		if (!hoverPreviewEnabled()) return;
 		// Already opening or open for this task: just keep it, never restart the poll.
