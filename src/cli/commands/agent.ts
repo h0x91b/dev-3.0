@@ -177,8 +177,8 @@ async function handleAwsProfiles(args: ParsedArgs, socketPath: string): Promise<
 		else views.forEach(printAwsProfiles);
 		return;
 	}
-	if (action !== "set") return exitUsage("Usage: dev3 agent aws-profiles list [--agent <id>] [--json] | dev3 agent aws-profiles set --agent <id> (--profile <name>=<AWS_PROFILE>[,<AWS_REGION>]... | --clear) [--default <name>] [--json]");
-	rejectUnknownFlags(args, ["agent", "profile", "default", "clear", "json"]);
+	if (action !== "set") return exitUsage("Usage: dev3 agent aws-profiles list [--agent <id>] [--json] | dev3 agent aws-profiles set --agent <id> (--profile <name>=<AWS_PROFILE>[,<AWS_REGION>]... | --clear) [--default <name> | --no-default] [--json]");
+	rejectUnknownFlags(args, ["agent", "profile", "default", "no-default", "clear", "json"]);
 	if (!args.flags.agent) return exitUsage("--agent is required (see dev3 agent aws-profiles list).");
 	const specs = args.repeated?.profile ?? (args.flags.profile ? [args.flags.profile] : []);
 	const clear = "clear" in args.flags;
@@ -192,7 +192,7 @@ async function handleAwsProfiles(args: ParsedArgs, socketPath: string): Promise<
 	const resp = await sendRequest(socketPath, "agent.awsProfiles.set", {
 		agentId: args.flags.agent,
 		profiles,
-		...(args.flags.default ? { defaultProfile: args.flags.default } : {}),
+		...(args.flags.default ? { defaultProfile: args.flags.default } : "no-default" in args.flags ? { defaultProfile: null } : {}),
 	});
 	if (!resp.ok) return exitError(resp.error || "Failed to set AWS profiles");
 	const view = resp.data as AwsProfilesView;

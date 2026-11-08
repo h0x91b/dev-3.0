@@ -63,7 +63,8 @@ export function validateAwsProfiles(profiles: unknown, defaultProfile: unknown):
 	return { profiles: clean, defaultProfile: def };
 }
 
-/** Replace an agent's whole AWS profile list (and its default). */
+/** Replace an agent's whole AWS profile list. `defaultProfile` undefined keeps the
+ *  current default while still listed; null clears it. */
 export async function setAgentAwsProfiles(agentId: string, profiles: unknown, defaultProfile: unknown): Promise<AgentAwsProfiles> {
 	const valid = validateAwsProfiles(profiles, defaultProfile);
 	const agents = await getAllAgents();
@@ -71,7 +72,9 @@ export async function setAgentAwsProfiles(agentId: string, profiles: unknown, de
 	if (!agent) throw new Error(`Unknown agent "${agentId}" — see dev3 agent list.`);
 	const provider = awsProfileProvider(agent);
 	if (!provider) throw new Error(`Agent "${agentId}" is not on an Amazon Bedrock backend — set its LLM provider in Settings → Agents first.`);
-	const { defaultProfile: _old, ...rest } = agent.providerConfig?.[provider] ?? {};
+	const { defaultProfile: oldDefault, ...rest } = agent.providerConfig?.[provider] ?? {};
+	// No default given: keep the current one while it is still listed. `null` clears it.
+	if (defaultProfile === undefined && oldDefault && valid.profiles.some((p) => p.name === oldDefault)) valid.defaultProfile = oldDefault;
 	const updated: CodingAgent = {
 		...agent,
 		providerConfig: {
