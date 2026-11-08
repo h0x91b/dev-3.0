@@ -12,9 +12,10 @@
  *     mapped id and `enableArgs` (e.g. `-c model_provider="amazon-bedrock"`)
  *     are appended to the launch command.
  *
- * dev3 does NOT manage credentials, region, AWS profile, or GCP project — the
- * customer configures those in their own global agent setup (shell env,
- * ~/.claude/settings.json, ~/.codex/config.toml).
+ * dev3 does NOT manage credentials or GCP project — the customer configures
+ * those in their own global agent setup (shell env, ~/.claude/settings.json,
+ * ~/.codex/config.toml). The one exception is the optional per-launch AWS
+ * profile pick (`resolveBedrockProfile`), which only names a profile.
  *
  * The model id is DERIVED from the config's alias by each provider's
  * `mapFamily` — there is no per-model table to maintain, so adding a model to
@@ -33,7 +34,7 @@
  */
 
 import { agentKey } from "./agent-adapters/families";
-import { LLM_PROVIDER, type AgentFamily, type BedrockGeo, type LlmProvider, type ProviderConfig } from "./types";
+import { LLM_PROVIDER, type AgentFamily, type BedrockGeo, type BedrockProfile, type LlmProvider, type ProviderConfig } from "./types";
 
 /** Strip dev3's `[1m]` 1M-context marker and any `@`-dated snapshot suffix to
  *  get the canonical Anthropic model family key (e.g. `claude-opus-4-8`). */
@@ -141,6 +142,8 @@ export interface ProviderDefinition {
 	enableArgs?: string[];
 	/** Whether this provider exposes the Bedrock-style geo (inference-profile) selector. */
 	usesGeo: boolean;
+	/** Whether launches can pick a named AWS profile (`ProviderSettings.profiles`). */
+	usesAwsProfiles?: boolean;
 	/**
 	 * Map a canonical model family key to this provider's native model id.
 	 * `geo` is supplied for geo-aware providers; ignore it otherwise.
@@ -161,6 +164,7 @@ export const PROVIDER_REGISTRY: Partial<Record<LlmProvider, ProviderDefinition>>
 		enableEnv: "CLAUDE_CODE_USE_BEDROCK",
 		modelEnv: "ANTHROPIC_MODEL",
 		usesGeo: true,
+		usesAwsProfiles: true,
 		// `<geo>.anthropic.<family>` inference profiles, derived from the alias —
 		// a new model needs no registry edit unless Bedrock dates its id.
 		mapFamily: (family, geo) => `${geo}.anthropic.${BEDROCK_ANTHROPIC_IDS[family] ?? family}`,
@@ -179,6 +183,7 @@ export const PROVIDER_REGISTRY: Partial<Record<LlmProvider, ProviderDefinition>>
 		// (decisions/2026/09/09/codex-bedrock-runtime-provider-geo-prefix.md).
 		enableArgs: ["-c", 'model_provider="amazon-bedrock-runtime"'],
 		usesGeo: true,
+		usesAwsProfiles: true,
 		// Runtime rejects the bare `openai.<family>` id; it wants the
 		// `<geo>.openai.<family>` inference profile, same shape as Anthropic's.
 		mapFamily: (family, geo) => `${geo}.openai.${family}`,
@@ -337,4 +342,43 @@ export function defaultModelMap(
 		if (defaultId) rows.push({ model, defaultId });
 	}
 	return rows;
+}
+
+/** The AWS profiles a launch of this provider can pick from; empty when the
+ *  provider does not take one or none are configured. */
+export function bedrockProfilesFor(
+	provider: LlmProvider | undefined,
+	providerConfig: ProviderConfig | undefined,
+): BedrockProfile[] {
+	const def = getProviderDefinition(provider);
+	if (!def?.usesAwsProfiles) return [];
+	return (providerConfig?.[def.id]?.profiles ?? []).filter((p) => p.name.trim() && p.awsProfile.trim());
+}
+
+/**
+ * Resolve a launch's AWS profile pick. `undefined` → the provider's
+ * `defaultProfile`; `null` → none (the project env decides); a name → that
+ * entry. A name no longer in the list resolves to none, flagged `missing`.
+ */
+export function resolveBedrockProfile(
+	provider: LlmProvider | undefined,
+	providerConfig: ProviderConfig | undefined,
+	selection: string | null | undefined,
+): { profile: BedrockProfile | null; missing?: string } {
+	const profiles = bedrockProfilesFor(provider, providerConfig);
+	if (profiles.length === 0 || selection === null) return { profile: null };
+	const def = getProviderDefinition(provider);
+	const name = selection ?? (def ? providerConfig?.[def.id]?.defaultProfile : undefined);
+	if (!name) return { profile: null };
+	const profile = profiles.find((p) => p.name === name) ?? null;
+	return profile ? { profile } : { profile: null, missing: name };
+}
+
+/** The env a picked AWS profile injects. AWS_REGION only when the entry sets one. */
+export function bedrockProfileEnv(profile: BedrockProfile | null): Record<string, string> {
+	if (!profile) return {};
+	const env: Record<string, string> = { AWS_PROFILE: profile.awsProfile.trim() };
+	const region = profile.region?.trim();
+	if (region) env.AWS_REGION = region;
+	return env;
 }

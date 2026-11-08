@@ -308,7 +308,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 		main.configId,
 		false,
 		true,
-		{ sessionId: mainResume ?? undefined, accountId: main.accountId, codexHome: codexHomes.get(0), freshSessionId: mainFreshSessionId },
+		{ sessionId: mainResume ?? undefined, accountId: main.accountId, bedrockProfile: main.bedrockProfile, codexHome: codexHomes.get(0), freshSessionId: mainFreshSessionId },
 	);
 	if (mainAccountId !== undefined) reports[0].accountId = mainAccountId;
 	reports[0].status = "resumed";
@@ -353,6 +353,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 					const cmdOpts: agents.CommandOptions = freshSessionId
 						? { sessionId: freshSessionId, accountId, accountFromStore: true }
 						: { resume: true, accountId, accountFromStore: true };
+					cmdOpts.bedrockProfile = pane.bedrockProfile !== undefined ? pane.bedrockProfile : task.bedrockProfile;
 					if (paneResume) cmdOpts.sessionId = paneResume;
 					let resumeCmd: string;
 					let resumeBaseCmd = pane.agentCmd;

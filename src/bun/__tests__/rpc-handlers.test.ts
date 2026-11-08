@@ -12423,6 +12423,54 @@ describe("restartTask with a pane that ran the global default", () => {
 	});
 });
 
+describe("resume reuses the AWS profile a pane launched with", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("passes the stored pane profile to the resumed launch and keeps it on the pane", async () => {
+		const project = makeProject();
+		const panes = [{ agentCmd: "claude", agentFamily: "claude", agentId: "claude-bedrock", configId: "claude-default", sessionId: "00000000-0000-4000-8000-00000000b3d1", bedrockProfile: "og" }];
+		const task = makeTask({ bedrockProfile: "sandbox", sessionState: { panes: panes as any } });
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		const resolve = vi.mocked(agents.resolveCommandForAgent);
+		const original = resolve.getMockImplementation();
+		resolve.mockResolvedValue({ command: "claude", extraEnv: { AWS_PROFILE: "og-aws-claude-code" }, agentFamily: "claude", resolvedBedrockProfile: "og" } as any);
+		try {
+			const { resumeTaskSession } = await import("../rpc-handlers/tmux-pty");
+			await resumeTaskSession(task.id, {});
+			expect(resolve).toHaveBeenCalledWith("claude-bedrock", "claude-default", expect.anything(), expect.objectContaining({ resume: true, bedrockProfile: "og" }));
+			const last = vi.mocked(data.updateTask).mock.calls.map((call) => call[2]).filter((u) => u.sessionState).pop()!;
+			expect(last.sessionState!.panes[0].bedrockProfile).toBe("og");
+			// The task is pinned too, so a later relaunch does not drift onto a changed default.
+			expect(vi.mocked(data.updateTask).mock.calls.some((call) => call[2].bedrockProfile === "og")).toBe(true);
+		} finally {
+			resolve.mockImplementation(original!);
+		}
+	});
+
+	it("an older pane with no profile falls back to the task's pick", async () => {
+		const project = makeProject();
+		const panes = [{ agentCmd: "claude", agentFamily: "claude", agentId: "claude-bedrock", configId: "claude-default", sessionId: "00000000-0000-4000-8000-00000000b3d2" }];
+		const task = makeTask({ bedrockProfile: "kort", sessionState: { panes: panes as any } });
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		const resolve = vi.mocked(agents.resolveCommandForAgent);
+		const original = resolve.getMockImplementation();
+		resolve.mockResolvedValue({ command: "claude", extraEnv: {}, agentFamily: "claude", resolvedBedrockProfile: "kort" } as any);
+		try {
+			const { resumeTaskSession } = await import("../rpc-handlers/tmux-pty");
+			await resumeTaskSession(task.id, {});
+			expect(resolve).toHaveBeenCalledWith("claude-bedrock", "claude-default", expect.anything(), expect.objectContaining({ bedrockProfile: "kort" }));
+		} finally {
+			resolve.mockImplementation(original!);
+		}
+	});
+});
+
 describe("restartTask and resume with a stored account or a refused launch", () => {
 	beforeEach(async () => {
 		vi.clearAllMocks();

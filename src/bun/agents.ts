@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import type { AgentConfiguration, AgentFamily, CodingAgent, LlmProvider, Project } from "../shared/types";
 import { DEFAULT_AGENTS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
 export { skillInvocationPrefix } from "../shared/types";
-import { buildProviderEnv, getProviderDefinition, providerOmitsModelFlag, providerPinnedModel } from "../shared/llm-provider";
+import { bedrockProfileEnv, bedrockProfilesFor, buildProviderEnv, getProviderDefinition, providerOmitsModelFlag, providerPinnedModel, resolveBedrockProfile } from "../shared/llm-provider";
 import { createLogger } from "./logger";
 import { backupUnparsableCodexConfig, joinLike as joinLikeHome, detectCodexProfileLaunchFlag, detectCodexVersion, resetCodexVersionProbe, resetCodexHelpProbe, ensureCodexConfig, ensureCodexProfileFiles, getCodexSyntaxForVersion, resolveCodexInstallRoots, type CodexProfileLaunchFlag } from "./codex-config";
 import { agentBinaryPathOverride, brokenCustomPath, customExecutableMessage, enforcedCustomBinaryPaths } from "./executable";
@@ -517,6 +517,9 @@ export interface CommandOptions {
 	 *  Threaded into the account env resolution so each spawned session locks to
 	 *  its chosen account instead of a single global active one. */
 	accountId?: string | null;
+	/** Per-launch AWS profile pick for a Bedrock agent (`ProviderSettings.profiles`):
+	 *  `undefined` → the agent's default profile; `null` → none; a name → that entry. */
+	bedrockProfile?: string | null;
 	/** `accountId` was read from stored task/pane state, not picked for this launch: a Claude
 	 *  account removed since then falls back to the default instead of failing the launch. */
 	accountFromStore?: boolean;
@@ -996,6 +999,9 @@ export interface ResolvedAgentCommand<A extends CodingAgent | null = CodingAgent
 	accountPick?: AutoAccountPick;
 	/** The stored Claude account no longer exists; the default was used instead. */
 	staleAccountDropped?: true;
+	/** The AWS profile entry this launch injected (null = none). Absent when the
+	 *  agent takes no AWS profile. What a pane records so resume reuses it. */
+	resolvedBedrockProfile?: string | null;
 }
 
 export async function resolveCommandForAgent(
@@ -1029,6 +1035,7 @@ export async function resolveCommandForAgent(
 	if (config?.envVars) {
 		Object.assign(extraEnv, config.envVars);
 	}
+	const bedrockProfile = applyBedrockProfileEnv(agentWithPath, config, extraEnv, options);
 	const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options);
 	await applyClaudeAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 	await applyCodexAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
@@ -1054,6 +1061,7 @@ export async function resolveCommandForAgent(
 		resolvedAccountId: account.resolvedAccountId,
 		...(account.pick ? { accountPick: account.pick } : {}),
 		...(account.staleAccountDropped ? { staleAccountDropped: true as const } : {}),
+		...bedrockProfile,
 	};
 }
 
@@ -1120,6 +1128,23 @@ function providerEnvForAgent(
 	return buildProviderEnv(agentProvider(agent, config), agent.providerConfig, config?.model);
 }
 
+/** Inject the picked AWS profile's env over the preset envVars (and so over the
+ *  project env, which launches merge underneath). Returns the resolved entry name
+ *  to persist, or nothing when this agent takes no AWS profile. */
+export function applyBedrockProfileEnv(
+	agent: CodingAgent,
+	config: AgentConfiguration | undefined,
+	extraEnv: Record<string, string>,
+	options: CommandOptions | undefined,
+): { resolvedBedrockProfile?: string | null } {
+	const provider = agentProvider(agent, config);
+	if (bedrockProfilesFor(provider, agent.providerConfig).length === 0) return {};
+	const { profile, missing } = resolveBedrockProfile(provider, agent.providerConfig, options?.bedrockProfile);
+	if (missing) log.warn("AWS profile no longer configured on the agent; using the project env", { agentId: agent.id, profile: missing });
+	Object.assign(extraEnv, bedrockProfileEnv(profile));
+	return { resolvedBedrockProfile: profile?.name ?? null };
+}
+
 /** Attach the agent's selected provider to CommandOptions, so
  *  resolveAgentCommand omits the --model alias under a third-party backend. */
 function withProviderOptions(
@@ -1169,6 +1194,7 @@ export async function resolveCommandForProject(
 			...providerEnvForAgent(agentWithPath, config),
 			...buildTaskEnv(project, taskTitle, "", worktreePath, config),
 		};
+		const bedrockProfile = applyBedrockProfileEnv(agentWithPath, config, extraEnv, options);
 		const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options);
 		await applyClaudeAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 		await applyCodexAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
@@ -1189,6 +1215,7 @@ export async function resolveCommandForProject(
 			resolvedAccountId: account.resolvedAccountId,
 			...(account.pick ? { accountPick: account.pick } : {}),
 			...(account.staleAccountDropped ? { staleAccountDropped: true as const } : {}),
+			...bedrockProfile,
 		};
 	}
 
