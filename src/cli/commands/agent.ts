@@ -30,7 +30,7 @@ export async function handleAgent(subcommand: string | undefined, args: ParsedAr
 		return;
 	}
 	if (subcommand === "resume") return handleResume(args, socketPath, context);
-	if (subcommand !== "spawn") return exitUsage("Usage: dev3 agent list [--json] | dev3 agent spawn [--task <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--json] | dev3 agent resume [--task <id>] [--allow-agent-latest] [--as-sender <id>] [--json]");
+	if (subcommand !== "spawn") return exitUsage("Usage: dev3 agent list [--json] | dev3 agent spawn [--task <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--json] | dev3 agent resume [--task <id>] [--allow-agent-latest] [--account <id|system>] [--as-sender <id>] [--json]");
 	rejectUnknownFlags(args, ["task", "task-id", "project", "agent", "config", "prompt", "handoff", "json"]);
 	if (args.positional.length) return exitUsage("agent spawn takes flags, not positional arguments");
 	const rawTask = args.flags.task || args.flags["task-id"] || context?.taskId;
@@ -78,8 +78,9 @@ function describePane(pane: ResumePaneReport): string {
 
 /** Same managed path as the terminal's Resume Session button — never a reset or a new worktree, and never the task brief again. */
 async function handleResume(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["task", "task-id", "project", "allow-agent-latest", "as-sender", "json"]);
+	rejectUnknownFlags(args, ["task", "task-id", "project", "allow-agent-latest", "account", "as-sender", "json"]);
 	if (args.positional.length) return exitUsage("agent resume takes flags, not positional arguments");
+	const accountId = parseResumeAccountFlag(args);
 	// A sender's resume goes through the same approval dialog an agent's does.
 	const asSender = readSenderFlag(args, "as-sender", context);
 	const rawTask = args.flags.task || args.flags["task-id"] || context?.taskId;
@@ -92,6 +93,7 @@ async function handleResume(args: ParsedArgs, socketPath: string, context: CliCo
 		...(context?.taskId ? { sourceTaskId: context.taskId } : {}),
 		...(asSender ? { asSender } : {}),
 		allowAgentLatest: "allow-agent-latest" in args.flags,
+		...(accountId !== undefined ? { accountId } : {}),
 	};
 	let resp;
 	try {
@@ -107,6 +109,14 @@ async function handleResume(args: ParsedArgs, socketPath: string, context: CliCo
 		return exitError(resp.error || "Failed to resume the task");
 	}
 	reportResumeOutcome(resp.data as CliResumeOutcome, json);
+}
+
+/** `--account <id|system>` on a resume: undefined keeps each pane's saved account, null is the system login. */
+export function parseResumeAccountFlag(args: ParsedArgs): string | null | undefined {
+	if (!("account" in args.flags)) return undefined;
+	const value = args.flags.account.trim();
+	if (!value || value === "true") return exitUsage("--account needs a Claude account id (see Settings → Accounts), or `system` for the default ~/.claude login.");
+	return value === "system" ? null : value;
 }
 
 /** Shared with `dev3 task wake --resume`, which reports the same outcome with the same exit codes. */

@@ -130,6 +130,15 @@ describe("task wake", () => {
 		expect(mockSend.mock.calls[0][2]).toEqual({ taskId: OTHER_ID, mode: "resume", allowAgentLatest: false });
 	});
 
+	it("passes --account through on a resume, and refuses it on a shell wake", async () => {
+		mockSend.mockResolvedValue(ok({ outcome: "resume", resume: { outcome: "already-running", taskId: OTHER_ID, seq: 12, backend: "tmux" } }));
+		await exitCode(handleTask("wake", args([OTHER_ID], { resume: "true", account: "system" }), SOCKET, null));
+		expect(mockSend.mock.calls[0][2]).toEqual({ taskId: OTHER_ID, mode: "resume", allowAgentLatest: false, accountId: null });
+		mockSend.mockClear();
+		expect(await exitCode(handleTask("wake", args([OTHER_ID], { shell: "true", account: "acct-2" }), SOCKET, null))).toBe(`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`);
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
 	it("exits with its own code for a task that is not hibernated", async () => {
 		mockSend.mockResolvedValue(ok({ outcome: "not-hibernated", taskId: OTHER_ID, seq: 12 }));
 		expect(await exitCode(handleTask("wake", args([OTHER_ID], { shell: "true" }), SOCKET, null))).toBe(`EXIT_${CLI_EXIT_CODE_TASK_NOT_HIBERNATED}`);
