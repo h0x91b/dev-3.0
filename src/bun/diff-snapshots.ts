@@ -93,22 +93,15 @@ export function compressDiffSnapshots(dir: string, now: number = Date.now()): Co
 	return result;
 }
 
-/** Every existing `<root>/<slug>/<shortId>/diffs` directory. */
-function allDiffDirs(worktreesRoot: string): string[] {
-	const dirs: string[] = [];
-	for (const slug of safeListDirs(worktreesRoot)) {
-		for (const shortId of safeListDirs(join(worktreesRoot, slug))) {
-			const dir = join(worktreesRoot, slug, shortId, "diffs");
-			if (existsSync(dir)) dirs.push(dir);
-		}
-	}
-	return dirs;
+/** Every existing `<taskDir>/diffs` directory, for task dirs under either storage root. */
+function allDiffDirs(taskDirs: string[]): string[] {
+	return taskDirs.map((taskDir) => join(taskDir, "diffs")).filter((dir) => existsSync(dir));
 }
 
-/** Plain `.patch` snapshots still on disk under `worktreesRoot` — what `--gzip-diffs` would compress. */
-export function measurePlainDiffSnapshots(worktreesRoot: string): { dirs: number; files: number; bytes: number } {
+/** Plain `.patch` snapshots still on disk across `taskDirs` — what `--gzip-diffs` would compress. */
+export function measurePlainDiffSnapshots(taskDirs: string[]): { dirs: number; files: number; bytes: number } {
 	const total = { dirs: 0, files: 0, bytes: 0 };
-	for (const dir of allDiffDirs(worktreesRoot)) {
+	for (const dir of allDiffDirs(taskDirs)) {
 		const plain = listDiffSnapshots(dir).filter((name) => name.endsWith(PLAIN_SNAPSHOT_EXT));
 		if (plain.length === 0) continue;
 		total.dirs++;
@@ -122,10 +115,10 @@ export function measurePlainDiffSnapshots(worktreesRoot: string): { dirs: number
 	return total;
 }
 
-/** {@link compressDiffSnapshots} over every task's `diffs/` under `worktreesRoot`. */
-export function compressAllDiffSnapshots(worktreesRoot: string, now: number = Date.now()): CompressDiffsResult & { dirs: number } {
+/** {@link compressDiffSnapshots} over every task's `diffs/` across `taskDirs`. */
+export function compressAllDiffSnapshots(taskDirs: string[], now: number = Date.now()): CompressDiffsResult & { dirs: number } {
 	const total = { dirs: 0, compressed: 0, skipped: 0, bytesBefore: 0, bytesAfter: 0 };
-	for (const dir of allDiffDirs(worktreesRoot)) {
+	for (const dir of allDiffDirs(taskDirs)) {
 		const r = compressDiffSnapshots(dir, now);
 		if (r.compressed === 0 && r.skipped === 0) continue;
 		total.dirs++;
@@ -137,10 +130,4 @@ export function compressAllDiffSnapshots(worktreesRoot: string, now: number = Da
 	return total;
 }
 
-function safeListDirs(dir: string): string[] {
-	try {
-		return readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
-	} catch {
-		return [];
-	}
-}
+

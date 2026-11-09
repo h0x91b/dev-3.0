@@ -1,6 +1,7 @@
 import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import type { TaskStatus } from "../shared/types";
+import type { StorageProject } from "../shared/project-storage";
 import { claudeConfigDirs, codexSessionRoots } from "./agent-store-roots";
 import {
 	bm25Score,
@@ -440,14 +441,17 @@ export interface EngineTask {
 	status: TaskStatus;
 	groupId: string | null;
 	agentId: string | null;
+	/** Where the task dir was created; absent means `~/.dev3.0`. */
+	taskDirLocation?: "project";
+	worktreePath?: string | null;
 }
 
 export interface SearchConversationsParams {
 	query: string;
 	/** All tasks of the project being searched (used for ranking + exclusion). */
 	tasks: EngineTask[];
-	/** Project slug (frozen algorithm) used to reconstruct worktree paths. */
-	projectSlug: string;
+	/** The project being searched; its storage root decides where task dirs sit. */
+	project: StorageProject;
 	/** Current task id — always excluded from results. */
 	currentTaskId: string | null;
 	/** Current task's groupId — all siblings sharing it are excluded. */
@@ -546,7 +550,7 @@ export function searchConversations(params: SearchConversationsParams): Conversa
 		const metaHasMatch = metaTfs.some((c) => c > 0);
 		const metaSnippet = metaHasMatch ? buildSnippet(metaText, tokens) : null;
 
-		const worktreePath = reconstructWorktreePath(dev3Home, params.projectSlug, task.id);
+		const worktreePath = reconstructWorktreePath(dev3Home, params.project, task);
 		const bodyTfs = new Array(tokens.length).fill(0);
 		let bodyLen = 0;
 		const lines = new Map<string, MatchedLine>();

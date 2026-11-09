@@ -23,7 +23,7 @@ describe("loadArchivedHistory", () => {
 		writeFileSync(`${DIR}/a.json`, JSON.stringify({ taskId: "a", history: [entry] }));
 		writeFileSync(`${DIR}/b.json`, JSON.stringify({ taskId: "b", history: [entry, entry] }));
 
-		const got = loadArchivedHistory(HOME, "slug");
+		const got = loadArchivedHistory(`${HOME}/data/slug`);
 
 		expect(got.get("a")).toEqual([entry]);
 		expect(got.get("b")).toHaveLength(2);
@@ -31,7 +31,7 @@ describe("loadArchivedHistory", () => {
 
 	it("is empty when the store has no task-blobs directory", () => {
 		rmSync(DIR, { recursive: true, force: true });
-		expect(loadArchivedHistory(HOME, "slug").size).toBe(0);
+		expect(loadArchivedHistory(`${HOME}/data/slug`).size).toBe(0);
 	});
 
 	it("skips a half-written blob and non-json files instead of failing", () => {
@@ -39,7 +39,7 @@ describe("loadArchivedHistory", () => {
 		writeFileSync(`${DIR}/notes.txt`, JSON.stringify({ taskId: "txt", history: [entry] }));
 		writeFileSync(`${DIR}/good.json`, JSON.stringify({ taskId: "good", history: [entry] }));
 
-		const got = loadArchivedHistory(HOME, "slug");
+		const got = loadArchivedHistory(`${HOME}/data/slug`);
 
 		expect([...got.keys()]).toEqual(["good"]);
 	});
@@ -49,7 +49,7 @@ describe("loadArchivedHistory", () => {
 			`${DIR}/stats.json`,
 			JSON.stringify({ taskId: "stats", completedDiffFileStats: [{ path: "a.ts", insertions: 1, deletions: 0 }] }),
 		);
-		expect(loadArchivedHistory(HOME, "slug").size).toBe(0);
+		expect(loadArchivedHistory(`${HOME}/data/slug`).size).toBe(0);
 	});
 });
 

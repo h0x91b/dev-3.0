@@ -1,4 +1,4 @@
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import AddProjectModal from "../AddProjectModal";
 import { I18nProvider } from "../../i18n";
@@ -776,6 +776,26 @@ describe("AddProjectModal", () => {
 			renderModal();
 
 			expect(await screen.findByRole("switch", { name: "Auto-configure", checked: true })).toBeInTheDocument();
+		});
+
+		it("remembers the keep-data-in-the-project switch and starts on next time", async () => {
+			const user = userEvent.setup();
+			renderModal();
+			const toggle = screen.getByRole("switch", { name: "Keep dev3 data in the project folder" });
+			expect(toggle).toHaveAttribute("aria-checked", "false");
+			await user.click(toggle);
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(expect.objectContaining({ newProjectsStoreInProject: true }));
+			cleanup();
+
+			mockedApi.request.getGlobalSettings.mockResolvedValueOnce({
+				defaultAgentId: "builtin-claude",
+				defaultConfigId: "claude-default",
+				taskSortOrder: "oldest-first",
+				updateChannel: "stable",
+				newProjectsStoreInProject: true,
+			} as Awaited<ReturnType<typeof api.request.getGlobalSettings>>);
+			renderModal();
+			expect(await screen.findByRole("switch", { name: "Keep dev3 data in the project folder", checked: true })).toBeInTheDocument();
 		});
 
 		it("keeps a click made before the stored setting arrives", async () => {
