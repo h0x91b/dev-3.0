@@ -10,6 +10,10 @@ reasoning (48 of 50 dates), so the record wins and this file stays an index. Wri
 in full only while no record exists — the case for 84 below, whose reasoning lives nowhere
 else, so never compact them by deleting it.
 
+## 2026-11-09 — Waiting completion asks are listed on the dashboard
+- **Rule:** bible §10 "completion ask", yaml `task_info_panel.completion_strip`.
+- **Why:** decisions/2026/11/09/ready-to-complete-dashboard-section.md.
+
 ## 2026-11-09 — Completion offers: dialog by default, bottom bar on request
 - **Rule:** bible §10 "completion ask", yaml `task_info_panel.completion_strip`, `surfaces.modal.agent_request`.
 - **Why:** decisions/2026/11/09/completion-offer-style-setting.md.

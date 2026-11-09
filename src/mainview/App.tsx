@@ -51,7 +51,7 @@ import ViewportLab from "./components/ViewportLab";
 import NativePaneLayoutLab from "./labs/native-pane/NativePaneLayoutLab";
 import { setToastSuppressed, taskToastContext, ToastHost, toast, type ToastEntry, type ToastOrigin } from "./toast";
 import { toastClearanceRef } from "./toast-clearance";
-import { getCompletionOfferStyle, hasCompletionOffer, isCompletionStripMounted, offerCompletion, setCompletionOfferStyle } from "./completion-offers";
+import { getCompletionOfferStyle, hasCompletionOffer, isCompletionOfferOnScreen, offerCompletion, setCompletionOfferStyle } from "./completion-offers";
 import CompletionOfferDialogHost from "./components/CompletionOfferDialogHost";
 import { agentMessageToast, type AgentMessageDetail, type AgentToastEnd } from "./agent-message-toast";
 import { showStaleAgentPathToast, type StaleAgentPathDetail } from "./stale-agent-path-toast";
@@ -808,8 +808,8 @@ function App() {
 		routeRef.current = state.route;
 	}, [state.route]);
 
-	// A completion offer asks in the dialog, or waits on its task's strip. Where no
-	// strip is on screen (another task, the board, immersive fullscreen) the bell and a toast carry it.
+	// A completion offer asks in the dialog, or waits on its task's strip and the
+	// dashboard list. Where neither is on screen the bell and a toast carry it.
 	// The toast carries its own source line and click: the resolver only knows the open project's tasks.
 	// Returns the bell's withdrawal, for once the offer settles — possibly on another client.
 	const announceCompletionOffer = (offer: {
@@ -818,7 +818,7 @@ function App() {
 		const { taskId, projectId, taskTitle, subject, reason } = offer;
 		dispatch({ type: "addBell", taskId, reason });
 		const withdrawBell = () => dispatch({ type: "removeBellReason", taskId, reason });
-		if (getCompletionOfferStyle() === "dialog" || isCompletionStripMounted(taskId)) return withdrawBell;
+		if (getCompletionOfferStyle() === "dialog" || isCompletionOfferOnScreen(taskId)) return withdrawBell;
 		const context = subject ? [`#${subject.seqLabel}`, subject.projectName, taskTitle].filter(Boolean).join(" · ") : taskTitle;
 		toast.info(offer.toastText, { taskId, context, onClick: () => openTaskFromNotification(taskId, projectId) });
 		return withdrawBell;
@@ -4050,6 +4050,7 @@ function App() {
 						dispatch={dispatch}
 						navigate={navigate}
 						bellCounts={state.bellCounts}
+						resourceUsage={state.taskResourceUsage}
 						onOpenAddProject={(spaceIds) => {
 							setAddProjectSpaceIds(spaceIds ?? []);
 							setShowAddProjectModal(true);

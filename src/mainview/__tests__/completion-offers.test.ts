@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { _resetCompletionOffersForTests, offerCompletion, pickCompletionOffer, registerCompletionStrip, useCompletionOffers } from "../completion-offers";
+import { _resetCompletionOffersForTests, isCompletionOfferOnScreen, offerCompletion, pickCompletionOffer, registerCompletionStrip, registerWaitingOffersList, useCompletionOffers } from "../completion-offers";
 import { renderHook, act } from "@testing-library/react";
 
 afterEach(() => _resetCompletionOffersForTests());
@@ -80,5 +80,18 @@ describe("completion offers", () => {
 		act(() => second());
 		await expect(user).resolves.toBe(false);
 		expect(result.current.map((o) => o.kind)).toEqual(["merge"]);
+	});
+});
+
+describe("isCompletionOfferOnScreen", () => {
+	it("is true while the task's strip or the dashboard's waiting list is mounted", () => {
+		expect(isCompletionOfferOnScreen("t1")).toBe(false);
+		const unregisterStrip = registerCompletionStrip("t1");
+		expect(isCompletionOfferOnScreen("t1")).toBe(true);
+		unregisterStrip();
+		const unregisterList = registerWaitingOffersList();
+		expect(isCompletionOfferOnScreen("t2")).toBe(true);
+		unregisterList();
+		expect(isCompletionOfferOnScreen("t2")).toBe(false);
 	});
 });

@@ -25,6 +25,8 @@ export interface CompletionOffer {
 	status?: "completed" | "cancelled";
 	/** User offers only: what had focus when the user asked, to hand it back after. */
 	returnFocus?: HTMLElement | null;
+	/** When this client raised it (epoch ms), so a waiting list can show how long it has waited. */
+	offeredAt: number;
 	answer: (answer: CompletionOfferAnswer) => void;
 }
 
@@ -87,6 +89,7 @@ export function offerCompletion(params: OfferCompletionParams): Promise<Completi
 			branchName: params.branchName,
 			status: params.status,
 			returnFocus: params.returnFocus,
+			offeredAt: Date.now(),
 			answer: settle,
 		}];
 		emit();
@@ -198,9 +201,23 @@ export function isCompletionStripMounted(taskId: string): boolean {
 	return mountedStrips.has(taskId);
 }
 
+let waitingLists = 0;
+
+/** Counts mounted lists of every waiting ask (the dashboard section). */
+export function registerWaitingOffersList(): () => void {
+	waitingLists += 1;
+	return () => { waitingLists -= 1; };
+}
+
+/** Whether an unsolicited ask on this task is already on screen, so no toast needs to tell about it. */
+export function isCompletionOfferOnScreen(taskId: string): boolean {
+	return mountedStrips.has(taskId) || waitingLists > 0;
+}
+
 export function _resetCompletionOffersForTests(): void {
 	offers = [];
 	style = DEFAULT_COMPLETION_OFFER_STYLE;
+	waitingLists = 0;
 	mountedStrips.clear();
 	overlayHosts.clear();
 	emit();

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch } from "react";
 import { toast } from "../toast";
-import type { Project, Space } from "../../shared/types";
+import type { Project, ResourceUsage, Space } from "../../shared/types";
 import { isBuiltinOpsProject, isSpaceSensitive, orderProjectsForDisplay } from "../../shared/types";
 import { HOME_GROUP_ID } from "../utils/spaceGroups";
 import type { AppAction, Route } from "../state";
@@ -22,6 +22,7 @@ interface DashboardProps {
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
 	bellCounts: Map<string, number>;
+	resourceUsage?: Map<string, ResourceUsage>;
 	onOpenAddProject: (spaceIds?: string[]) => void;
 }
 
@@ -30,6 +31,7 @@ function Dashboard({
 	dispatch,
 	navigate,
 	bellCounts,
+	resourceUsage,
 	onOpenAddProject,
 }: DashboardProps) {
 	const t = useT();
@@ -163,6 +165,7 @@ function Dashboard({
 						dispatch={dispatch}
 						navigate={navigate}
 						bellCounts={bellCounts}
+						resourceUsage={resourceUsage}
 						onRemoveProject={handleRemoveProject}
 						onOpenAddProject={onOpenAddProject}
 						onReorderProjects={handleReorderProjects}

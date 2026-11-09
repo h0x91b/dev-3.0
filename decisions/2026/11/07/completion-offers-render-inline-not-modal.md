@@ -1,6 +1,6 @@
 # Completion offers render inline on the task, not as a modal
 
-> Superseded on 2026-11-09 by `decisions/2026/11/09/completion-offer-style-setting.md`: merge and agent offers ask in a dialog by default, and the inline style is a bar at the terminal's bottom-right, not a card at the top-right.
+> Superseded on 2026-11-09 by `decisions/2026/11/09/completion-offer-style-setting.md`: merge and agent offers ask in a dialog by default, and the inline style is a bar at the terminal's bottom-right, not a card at the top-right. The rejected "global pending-approvals tray" is now a section on the dashboard: `decisions/2026/11/09/ready-to-complete-dashboard-section.md`.
 
 ## Context
 

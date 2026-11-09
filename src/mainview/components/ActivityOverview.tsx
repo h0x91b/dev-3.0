@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import type { Dispatch } from "react";
-import type { HarnessReadinessReport, Project, Space, Task, TaskStatus } from "../../shared/types";
+import type { HarnessReadinessReport, Project, ResourceUsage, Space, Task, TaskStatus } from "../../shared/types";
 import { compareTaskSortRank, getTaskTitle, isBuiltinOpsProject, isCoordinatorTask, isTaskDisconnected, orderProjectsForDisplay, projectDisplayName } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
@@ -29,9 +29,11 @@ import Tooltip from "./Tooltip";
 import { CompleteCheckIcon } from "./PipelineRing";
 import { StatsIcon } from "./HeaderIcons";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { timeAgo } from "../utils/timeAgo";
 import { useIsControlHidden } from "../hooks/useIsControlHidden";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import DashboardCoordinatorRows from "./DashboardCoordinatorRows";
+import ReadyToCompleteSection from "./ReadyToCompleteSection";
 import { coordinatorCandidates } from "../utils/coordinatorFinder";
 
 interface ActivityOverviewProps {
@@ -39,6 +41,8 @@ interface ActivityOverviewProps {
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
 	bellCounts: Map<string, number>;
+	/** Live CPU/RSS per task, so the ready-to-complete list can show what each waiting task holds. */
+	resourceUsage?: Map<string, ResourceUsage>;
 	onRemoveProject?: (projectId: string) => void | Promise<void>;
 	onOpenAddProject?: (spaceIds?: string[]) => void;
 	onReorderProjects?: (projectIds: string[]) => void | Promise<void>;
@@ -56,6 +60,8 @@ interface ActivityOverviewProps {
 /** Statuses worth their own row — they're waiting on a human (questions, your
  * review, or an open PR review). Tasks parked in a custom column always get a
  * row too, regardless of status (see columnOf below). */
+const EMPTY_USAGE = new Map<string, ResourceUsage>();
+
 const ATTENTION_STATUSES: TaskStatus[] = ["user-questions", "review-by-user", "review-by-colleague"];
 
 /** Statuses that are "background work" — collapsed into a summary line. */
@@ -77,18 +83,6 @@ const ATTENTION_RANK: Partial<Record<TaskStatus, number>> = {
 const NARROW_ROW_CAP = 3;
 
 type DropSide = "before" | "after";
-
-function timeAgo(isoDate: string | undefined, t: (key: any, vars?: any) => string): string {
-	if (!isoDate) return "";
-	const diff = Date.now() - new Date(isoDate).getTime();
-	const mins = Math.floor(diff / 60_000);
-	if (mins < 1) return t("activity.justNow");
-	if (mins < 60) return t("activity.minutesAgo", { count: String(mins) });
-	const hours = Math.floor(mins / 60);
-	if (hours < 24) return t("activity.hoursAgo", { count: String(hours) });
-	const days = Math.floor(hours / 24);
-	return t("activity.daysAgo", { count: String(days) });
-}
 
 /** A full-width, touch-sized (≥44px) row inside the per-project action sheet —
  * the narrow-viewport replacement for the inline icon-button cluster. */
@@ -124,7 +118,7 @@ function ActionSheetButton({
 	);
 }
 
-function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemoveProject, onOpenAddProject, onReorderProjects, selectedSpaceId = null, onNewSpace, onEditSpaceProjects, spaceFilter }: ActivityOverviewProps) {
+function ActivityOverview({ projects, dispatch, navigate, bellCounts, resourceUsage, onRemoveProject, onOpenAddProject, onReorderProjects, selectedSpaceId = null, onNewSpace, onEditSpaceProjects, spaceFilter }: ActivityOverviewProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
@@ -921,6 +915,12 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 					</svg>
 				</button>
 				)}
+				<ReadyToCompleteSection
+					projects={projects}
+					tasksByProject={tasksByProject}
+					usage={resourceUsage ?? EMPTY_USAGE}
+					onOpenTask={(task, project) => navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })}
+				/>
 				{/* Stacks below `md`: the count plus both actions do not fit one phone
 				    row, and letting them overflow pushed `Add project` off-screen. */}
 				<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-4">
