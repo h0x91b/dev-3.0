@@ -1349,7 +1349,8 @@ function effectiveNativeRole(session: PtySession, ws: any): NativeStreamRole {
  * A plain Enter means he submitted his own line: the input box is his no longer, so the
  * held messages land right away and he watches them arrive instead of wondering where
  * they went. Anything else — including Shift+Enter, which is a newline he is still
- * writing — only pushes the hold back, so nothing is ever typed mid-word.
+ * writing — only pushes the hold back, so nothing is ever typed mid-word. Mouse and
+ * focus reports alone do neither: a click into the pane starts no draft.
  *
  * The bracketed-paste flag rides on the client, because a paste large enough to be
  * split across frames would otherwise have its content read as keypresses.
@@ -1358,7 +1359,7 @@ export function noteHumanTerminalInput(session: PtySession, ws: any, data: strin
 	const scan = scanHumanTerminalInput(data, ws.inBracketedPaste === true);
 	ws.inBracketedPaste = scan.inPaste;
 	if (scan.submitted) flushHeldAgentMessagesForTask(session.taskId);
-	else deferHeldAgentMessagesForTask(session.taskId);
+	else if (scan.typed) deferHeldAgentMessagesForTask(session.taskId);
 }
 
 /**
