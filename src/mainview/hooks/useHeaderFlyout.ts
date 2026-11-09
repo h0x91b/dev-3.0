@@ -133,9 +133,17 @@ export function useHeaderFlyout({ variant, isNarrow, repositionKey }: HeaderFlyo
 			setPos(computeMenuFlyoutPosition(anchorRef.current, size));
 			return;
 		}
-		const { top, left } = computeAnchoredPosition(anchorRef.current.getBoundingClientRect(), size, {
+		const anchorRect = anchorRef.current.getBoundingClientRect();
+		// The panel's CSS maxHeight ends at the viewport edge, so cap the measured height to the
+		// room below the anchor; otherwise the clamp would slide the panel up over the pill.
+		const gap = 6;
+		const pad = 8;
+		const room = Math.max(0, window.innerHeight - anchorRect.bottom - gap - pad);
+		const { top, left } = computeAnchoredPosition(anchorRect, { width: size.width, height: Math.min(size.height, room) }, {
 			placement: "bottom",
 			align: "end",
+			gap,
+			pad,
 		});
 		setPos({ top, left });
 	}, [open, isNarrow, variant, repositionKey]);

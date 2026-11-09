@@ -543,6 +543,17 @@ describe("AgentUsagePanel — ~/.codex beside a managed Codex account (#1964)", 
 		);
 	}
 
+	it("formats a raw Codex credits balance as a number", () => {
+		const base = defaultLoginReport();
+		const withCredits = { ...base, snapshots: [{ ...base.snapshots[0], creditsBalance: "38357.4391350000" }] };
+		render(
+			<I18nProvider>
+				<AgentUsagePanel report={withCredits} accounts={codexState({ ...dana })} interactive onOpenSettings={() => {}} />
+			</I18nProvider>,
+		);
+		expect(screen.getByText(/credits: 38\s357\.44/)).toBeTruthy();
+	});
+
 	it("folds the same person's default-login reading into the managed row", () => {
 		renderCodex(codexState({ ...dana, organization: null }));
 		const radios = screen.getAllByRole("radio");
