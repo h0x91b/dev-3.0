@@ -444,6 +444,43 @@ describe("GlobalSettings", () => {
 		});
 	});
 
+	describe("feature tips switch", () => {
+		function getTipsSwitch() {
+			return screen.getByRole("switch", { name: "Show feature tips" });
+		}
+
+		it("reads as on, with the accent track, while tips are shown", async () => {
+			setupMocks();
+			renderGlobalSettings("tasks");
+			await waitForLoad();
+
+			await waitFor(() => expect(getTipsSwitch()).toHaveAttribute("aria-checked", "true"));
+			expect(getTipsSwitch()).toHaveClass("bg-accent");
+		});
+
+		it("reads as off, with a neutral track, once tips are disabled", async () => {
+			setupMocks(mockAgents, { ...mockGlobalSettings, tipsDisabled: true });
+			renderGlobalSettings("tasks");
+			await waitForLoad();
+
+			await waitFor(() => expect(getTipsSwitch()).toHaveAttribute("aria-checked", "false"));
+			expect(getTipsSwitch()).not.toHaveClass("bg-accent");
+		});
+
+		it("turns tips off when clicked while they are shown", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings("tasks");
+			await waitForLoad();
+
+			await user.click(getTipsSwitch());
+
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
+				expect.objectContaining({ tipsDisabled: true }),
+			);
+		});
+	});
+
 	describe("watch default", () => {
 		function getWatchDefaultSwitch() {
 			return screen.getByRole("switch", { name: "Watch tasks by default" });
