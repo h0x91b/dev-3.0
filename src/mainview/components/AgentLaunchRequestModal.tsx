@@ -9,6 +9,7 @@ import { UNSOLICITED_DIALOG_QUIET_MS, useDialogKeyboardGuard } from "../utils/di
 import { useFocusTrap } from "../utils/useFocusTrap";
 import { useReducedMotion } from "../utils/useReducedMotion";
 import AgentConfigPicker from "./AgentConfigPicker";
+import ResumeAccountPicker, { isClaudePane, savedResumeAccount } from "./ResumeAccountPicker";
 import AgentPickerSkeleton from "./AgentPickerSkeleton";
 import MemoryPressureBanner from "./MemoryPressureBanner";
 import TaskDialogSubjectCard from "./TaskDialogSubjectCard";
@@ -178,6 +179,13 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 		api.request.updateAgentLaunchChoice({ requestId: request.requestId, launch: next }).catch(() => {});
 	}
 
+	// A resume offers one choice: the Claude account. undefined keeps each pane's saved one.
+	const [resumeAccount, setResumeAccount] = useState<string | null | undefined>(request.resume?.accountId);
+	function updateResumeAccount(accountId: string | null) {
+		setResumeAccount(accountId);
+		reportChoice({ variants: [], resumeAccountId: accountId });
+	}
+
 	function updateVariants(next: LaunchVariant[]) {
 		setVariants(next);
 		reportChoice({ variants: next, ...(request.spawn ? {} : { priority }) });
@@ -210,7 +218,8 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 	function handleLaunch() {
 		if (agentNotInstalled) return;
 		setLaunching(true);
-		onRespond(true, noAgentChoice ? undefined : { variants, ...(request.spawn ? {} : { priority }) });
+		const resumeChoice = request.resume && resumeAccount !== undefined ? { variants: [], resumeAccountId: resumeAccount } : undefined;
+		onRespond(true, noAgentChoice ? resumeChoice : { variants, ...(request.spawn ? {} : { priority }) });
 	}
 
 	// The backdrop deliberately does not dismiss: a CLI is blocked on this answer,
@@ -306,7 +315,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 						</p>
 					) : request.resume ? (
 						<div className="space-y-2" data-testid="agent-launch-resume-panes">
-							<p className="text-fg-3 text-xs">{t("agentLaunch.resumeNote")}</p>
+							<p className="text-fg-3 text-xs">{t(request.resume.panes.some(isClaudePane) ? "agentLaunch.resumeNoteAccount" : "agentLaunch.resumeNote")}</p>
 							<ul className="space-y-1.5">
 								{request.resume.panes.map((pane, index) => {
 									const agent = agents.find((a) => a.id === pane.agentId);
@@ -324,6 +333,13 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 									);
 								})}
 							</ul>
+							<ResumeAccountPicker
+								panes={request.resume.panes}
+								agents={agents}
+								value={resumeAccount !== undefined ? resumeAccount : savedResumeAccount(request.resume.panes, undefined)}
+								onChange={updateResumeAccount}
+								projectId={request.projectId}
+							/>
 						</div>
 					) : globalSettings ? (
 						<div className="space-y-2">
