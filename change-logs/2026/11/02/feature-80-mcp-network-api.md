@@ -1,6 +1,6 @@
 Short: MCP network API for outside agents
 
-`dev3 mcp` serves MCP over HTTP on a loopback listener (off by default) so an agent on another machine, reached through `tailscale serve` or `ssh -L`, can read the board, message tasks, create and start tasks through the approval dialog, and (opt-in) peek and search transcripts, each with a scoped, expiring per-sender token from `dev3 mcp token issue`. `dev3 task create`, `task update` and `task move` also gain `--json`.
+`dev3 mcp` serves MCP over HTTP on a loopback listener (off by default) so an agent on another machine, reached through `tailscale serve` or `ssh -L`, can read the board, message tasks, create and start tasks through the approval dialog, and (opt-in) peek and search transcripts, each with a scoped, expiring per-sender token from `dev3 mcp token issue`. `dev3 task create`, `task update` and `task move` also gain `--json`. A sender gets one live `send` token at a time, since its inbox has a single reader.
 
 Suggested by @mcaldas (h0x91b/dev-3.0#2066)
 Contributed by @mcaldas (h0x91b/dev-3.0#2162)

@@ -14,6 +14,7 @@ import {
 	readMcpConfig,
 	tokenIsLive,
 	updateMcpConfig,
+	type McpConfig,
 	type McpScope,
 	type McpTokenRecord,
 } from "../../bun/mcp/token-store";
@@ -48,11 +49,23 @@ function parseScopes(raw: string | undefined): McpScope[] {
 	return [...new Set(scopes)] as McpScope[];
 }
 
+const MAX_EXPIRY_DAYS = 3650;
+
 function parseExpiry(raw: string | undefined, now: number): string | null {
 	if (raw === "never") return null;
 	const match = /^(\d+)d$/.exec(raw ?? `${MCP_DEFAULT_EXPIRY_DAYS}d`);
-	if (!match || Number(match[1]) < 1) exitUsage(`Invalid --expires "${raw}". Use a number of days (90d) or never.`);
+	if (!match || Number(match[1]) < 1 || Number(match[1]) > MAX_EXPIRY_DAYS) {
+		exitUsage(`Invalid --expires "${raw}". Use a number of days from 1 to ${MAX_EXPIRY_DAYS} (90d), or never.`);
+	}
 	return new Date(now + Number(match[1]) * 86_400_000).toISOString();
+}
+
+/**
+ * The inbox lease is per sender and `inbox_wait` filters by the token's projects after
+ * the cursor moves, so a second reader would skip the other's replies for good.
+ */
+function liveSendToken(config: { tokens: McpTokenRecord[] }, sender: string): McpTokenRecord | undefined {
+	return config.tokens.find((t) => t.sender === sender && t.scopes.includes("send") && tokenIsLive(t));
 }
 
 function parseProjects(raw: string | undefined, context: CliContext | null): string[] {
@@ -96,10 +109,19 @@ async function issue(args: ParsedArgs, context: CliContext | null): Promise<void
 		expiresAt,
 		revokedAt: null,
 	};
-	const config = await updateMcpConfig((c) => {
+	const outcome = await updateMcpConfig((c): { config: McpConfig; clash?: undefined } | { clash: McpTokenRecord } => {
+		const clash = scopes.includes("send") ? liveSendToken(c, sender) : undefined;
+		if (clash) return { clash };
 		c.tokens.push(record);
-		return c;
+		return { config: c };
 	});
+	if (outcome.clash) {
+		exitError(
+			`Sender ${sender} already has a live token with the send scope (${outcome.clash.id}).`,
+			`One send token per sender: its inbox has a single reader. Revoke it first (dev3 mcp token revoke ${outcome.clash.id}), or issue this one without send.`,
+		);
+	}
+	const { config } = outcome;
 
 	if (args.flags.json === "true") {
 		process.stdout.write(`${JSON.stringify({ token, id, sender, scopes, projects, expiresAt, autoApprove })}\n`);
@@ -213,6 +235,9 @@ async function status(args: ParsedArgs, socketPath: string | null): Promise<void
 	else {
 		out(`Listening: ${app.listening ? `yes, 127.0.0.1:${app.port}` : "no"}${app.bindError ? ` — bind error: ${app.bindError}` : ""}${app.guest ? " (guest instance: never binds)" : ""}`);
 		if (app.storeError) out(`Store error: ${app.storeError} — every token is refused until it is fixed.`);
+		if (typeof app.storePath === "string" && app.storePath !== payload.storePath) {
+			out(`Warning:   the app reads ${app.storePath}, not this store — tokens issued here will be refused. Align XDG_CONFIG_HOME (APPDATA on Windows).`);
+		}
 	}
 	out(`Tokens:    ${Object.entries(perSender).map(([s, n]) => `${s} ×${n}`).join(", ") || "none live"}`);
 	const calls = (app?.recentCalls as Array<Record<string, unknown>> | undefined) ?? [];

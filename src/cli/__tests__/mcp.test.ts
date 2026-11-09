@@ -69,6 +69,24 @@ describe("dev3 mcp token", () => {
 		await expect(handleMcp("enable", { positional: [], flags: {} }, null, null)).rejects.toThrow("EXIT_3");
 	});
 
+	it("allows one live send token per sender, again once the first is revoked", async () => {
+		await handleMcp("token", issueArgs({ scope: "send", json: "true" }), null, null);
+		const { id } = JSON.parse(stdout);
+		await expect(handleMcp("token", issueArgs({ scope: "read,send" }), null, null)).rejects.toThrow("EXIT_1");
+		expect(stderr).toContain(`dev3 mcp token revoke ${id}`);
+		await handleMcp("token", issueArgs({ scope: "read" }), null, null);
+		await handleMcp("token", { positional: ["revoke", id], flags: {} }, null, null);
+		await handleMcp("token", issueArgs({ scope: "send" }), null, null);
+		const tokens = JSON.parse(readFileSync(STORE, "utf8")).tokens;
+		expect(tokens.filter((t: { scopes: string[]; revokedAt: string | null }) => t.scopes.includes("send") && !t.revokedAt)).toHaveLength(1);
+		expect(tokens).toHaveLength(3);
+	});
+
+	it("refuses an expiry too far out to represent, before writing anything", async () => {
+		await expect(handleMcp("token", issueArgs({ expires: "999999999d" }), null, null)).rejects.toThrow("EXIT_3");
+		expect(() => readFileSync(STORE)).toThrow();
+	});
+
 	it("list never shows a hash; revoke stamps revokedAt", async () => {
 		await handleMcp("token", issueArgs({ json: "true" }), null, null);
 		const { id } = JSON.parse(stdout);

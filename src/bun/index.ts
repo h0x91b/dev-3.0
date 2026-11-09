@@ -889,7 +889,7 @@ function runGlobalQuitCleanup(): void {
 	try { stopResourceMonitor(); } catch (err) { log.warn("stopResourceMonitor failed", { error: String(err) }); }
 	try { stopRateLimitMonitor(); } catch (err) { log.warn("stopRateLimitMonitor failed", { error: String(err) }); }
 	try { stopSocketServer(); } catch (err) { log.warn("stopSocketServer failed", { error: String(err) }); }
-	stopMcpListener();
+	try { stopMcpListener(); } catch (err) { log.warn("stopMcpListener failed", { error: String(err) }); }
 	// Tear down every per-task cloudflared process spawned by the GUI's
 	// `Expose port` button or by `--expose-ports`. Leaving them running
 	// would orphan tunnels (and trycloudflare quotas) on app exit.
