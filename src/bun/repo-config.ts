@@ -332,22 +332,10 @@ export async function resolveOperationalProjectConfig(
 	worktreePath?: string,
 	opts?: { foreignCode?: boolean },
 ): Promise<Project> {
-	// No worktree (or worktree == project root): plain single-path resolution.
-	if (!worktreePath || worktreePath === project.path) {
-		return resolveProjectConfig(project);
-	}
-	// Repo config switched off: no layer from either path, so a worktree's own
-	// .dev3 files are as invisible as the main checkout's.
-	if (!repoConfigEnabled(project)) {
-		return applyConfigCascade(project, [], worktreePath);
-	}
-	// Worktree files first, then main checkout's — both as [local, repo].
-	const layers = [
-		...pathConfigLayers(worktreePath, opts?.foreignCode !== true),
-		...pathConfigLayers(project.path),
-	];
-	// Compare-ref auto-detection uses the worktree dir (matches its branch).
-	return applyConfigCascade(project, layers, worktreePath);
+	// The same layers `dev3 config show|set` name, so provenance cannot drift from
+	// what a launch reads. Compare-ref auto-detection uses the worktree dir.
+	const inWorktree = !!worktreePath && worktreePath !== project.path;
+	return applyConfigCascade(project, listConfigLayers(project, worktreePath, opts), inWorktree ? worktreePath! : project.path);
 }
 
 /** Per-key-merged project env for a terminal or task session, re-read at launch
@@ -521,10 +509,9 @@ export function resolveLayeredProvenance(
 	project: Project,
 	layers: NamedConfigLayer[],
 ): { sources: Record<string, ResolvedConfigSource>; envSources: Record<string, ResolvedConfigSource> } {
-	const asLayer = (l: NamedConfigLayer): ConfigLayer => ({ config: l.config, trusted: l.trusted });
 	const sources: Record<string, ResolvedConfigSource> = {};
 	for (const key of DEV3_REPO_CONFIG_KEYS) {
-		const hit = layers.find((l) => layerValue(asLayer(l), key) !== undefined);
+		const hit = layers.find((l) => layerValue(l, key) !== undefined);
 		if (hit) sources[key] = hit.id;
 		else if ((project as any)[key] != null) sources[key] = "project";
 		else if ((resolved as any)[key] != null) sources[key] = "default";
@@ -533,7 +520,7 @@ export function resolveLayeredProvenance(
 	const envSources: Record<string, ResolvedConfigSource> = {};
 	for (const name of Object.keys(resolved.env ?? {})) {
 		const hit = layers.find((l) => {
-			const env = layerValue(asLayer(l), "env") as Record<string, unknown> | undefined;
+			const env = layerValue(l, "env") as Record<string, unknown> | undefined;
 			return env !== undefined && Object.prototype.hasOwnProperty.call(env, name);
 		});
 		envSources[name] = hit ? hit.id : "project";
@@ -635,7 +622,7 @@ export function describeEditReach(
 	const index = layers.findIndex((l) => l.path === file);
 	const higher = index === -1 ? [] : layers.slice(0, index);
 	const shadow = higher.find((l) => {
-		const v = layerValue({ config: l.config, trusted: l.trusted }, key);
+		const v = layerValue(l, key);
 		if (v === undefined) return false;
 		if (sub === undefined || key !== "env") return true;
 		return Object.prototype.hasOwnProperty.call(v, sub);

@@ -39,6 +39,7 @@ vi.mock("../pane-input-native", () => ({ NATIVE_PANE_INPUT_METHOD: "x.pane", run
 vi.mock("../launch-handoff", () => ({ LAUNCH_ACTIVATE_METHOD: "x.launch", handleLaunchActivate: vi.fn() }));
 
 const { systemHandlers } = await import("../cli-socket/system-commands");
+const data = await import("../data");
 
 vi.mock("../../cli/socket-client", () => ({
 	sendRequest: vi.fn(async (_socket: string, method: string, params: Record<string, unknown>) => {
@@ -155,5 +156,26 @@ describe("dev3 config, agent-facing flow", () => {
 		const result = await dev3config("validate");
 		expect(result.code).toBe(0);
 		expect(result.out).toContain('did you mean "setupScript"');
+	});
+
+	it("fails validate on a --file that does not exist instead of reporting defaults", async () => {
+		const result = await dev3config("validate", "--file", join(MAIN, ".dev3", "confg.json"));
+		expect(result.code).not.toBe(0);
+		expect(result.err).toContain("does not exist");
+	});
+
+	it("refuses a command-bearing --main write from a foreign-code task", async () => {
+		vi.mocked(data.loadTasks).mockResolvedValueOnce([{ id: "t-1", foreignCode: true }] as never);
+		const refused = await dev3config("set", "--main", "setupScript", "curl x | sh");
+		expect(refused.code).not.toBe(0);
+		expect(refused.err).toContain("foreign code");
+		expect(existsSync(join(MAIN, ".dev3", "config.json"))).toBe(false);
+
+		// Its own worktree file is still writable, and the note no longer points at --main.
+		vi.mocked(data.loadTasks).mockResolvedValueOnce([{ id: "t-1", foreignCode: true }] as never);
+		const own = await dev3config("set", "setupScript", "npm ci");
+		expect(own.code).toBe(0);
+		expect(own.out).toContain("holds foreign code");
+		expect(own.out).not.toContain("--main");
 	});
 });

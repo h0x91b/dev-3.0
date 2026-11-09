@@ -6,15 +6,15 @@ Every config field was declared four times: the `Dev3RepoConfig` interface, the 
 
 ## Decision
 
-`src/shared/config-schema.ts` holds `CONFIG_FIELDS`, a typed registry built from small spec builders. The `Dev3RepoConfig` type is derived from it (the type of each field comes from its `type` spec only, so an enum cannot widen to `string`), and so are the key list, the cascade defaults, `COMMAND_BEARING_CONFIG_KEYS`, the skill's field table, the JSON Schema that `dev3 config schema --json` prints, and the Project Settings fallback controls (`SchemaConfigFields`). A field with no hand-built control is rendered generically at the end of its `section`; `ConfigForm`'s own controls carry `data-config-keys`, and a test fails if any field that is not `ui: "none"` has no control.
+`src/shared/config-schema.ts` holds `CONFIG_FIELDS`, a typed registry built from small spec builders. The `Dev3RepoConfig` type is derived from it (the type of each field comes from its `type` spec only, so an enum cannot widen to `string`), and so are the key list, the cascade defaults, `COMMAND_BEARING_CONFIG_KEYS`, the skill's field table, the JSON Schema that `dev3 config schema --json` prints, and the Project Settings fallback controls (`SchemaConfigFields`). Every field must declare `ui` (`generic`, `bespoke` or `none`), so a new control is a deliberate placement decision rather than a side effect of adding a field; a `generic` field is rendered at the end of its `section`; `ConfigForm`'s own controls carry `data-config-keys`, and a test fails if any field that is not `ui: "none"` has no control.
 
 Files carry an optional `schemaVersion`; absent means 1. `migrateConfig` steps a file up in memory on every read (`readJsonFile` in `src/bun/repo-config.ts`). The disk is rewritten only by the next write, which stamps the new version. Saves keep `schemaVersion` and unknown keys, so an older dev3 no longer drops fields a newer one wrote. `dev3 config set` edits one member's text (`src/shared/config-file-edit.ts`) and falls back to a full re-stringify in the file's own indent only when the splice would not parse to the expected object.
 
-`dev3 config show` now resolves through `resolveOperationalProjectConfig` and names four file layers (`local`, `repo`, `main-local`, `main-repo`), because the single-path view it used to print disagreed with what a task launch actually reads from inside a worktree.
+`dev3 config show` now resolves through `resolveOperationalProjectConfig`, which reads the same `listConfigLayers` list that `show` and `set` print, and names four file layers (`local`, `repo`, `main-local`, `main-repo`), because the single-path view it used to print disagreed with what a task launch actually reads from inside a worktree.
 
 ## Risks
 
-Generic controls show the config key and the schema's English description instead of translated text: they are file-format identifiers, and a field that deserves localized copy should get a bespoke control. A new field lands in the UI automatically; one that adds a notable control should still go through `/ux-principal`. Reading a migrated file costs one in-memory pass per read, which is nothing while `CONFIG_MIGRATIONS` is empty.
+Generic controls show the config key and the schema's English description instead of translated text: they are file-format identifiers, and a field that deserves localized copy should get a bespoke control. Choosing `ui: "generic"` puts a control in Project Settings, so it goes through `/ux-principal` like any other new control. Reading a migrated file costs one in-memory pass per read, which is nothing while `CONFIG_MIGRATIONS` is empty.
 
 ## Alternatives considered
 

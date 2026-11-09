@@ -163,7 +163,7 @@ export async function handleConfig(
 			process.stdout.write(`Note: the ${result.shadowedBy} layer also sets ${target.key} and wins, so the effective value is unchanged. \`dev3 config show\` lists the layers.\n`);
 		}
 		if (result.ignoredAsForeign) {
-			process.stdout.write(`Note: this worktree holds foreign code, so dev3 ignores its ${target.key}. Use --main to set it for the project.\n`);
+			process.stdout.write(`Note: this worktree holds foreign code, so dev3 ignores its ${target.key}; only the project's own checkout can supply it.\n`);
 		}
 		return;
 	}
@@ -334,6 +334,8 @@ export function validateConfigPath(path: string): FileReport {
 function handleValidate(args: ParsedArgs, context: CliContext | null): void {
 	rejectUnknownFlags(args, ["json", "file"]);
 	const reports = configFilesToValidate(context, process.cwd(), args.flags.file).map(validateConfigPath);
+	// A named file that is missing is a wrong path, not a repo that uses the defaults.
+	if (args.flags.file && !reports[0].exists) exitError(`${reports[0].path} does not exist`);
 	const errorCount = reports.reduce((n, r) => n + r.errors.length, 0);
 	if (args.flags.json === "true") {
 		process.stdout.write(JSON.stringify({ ok: errorCount === 0, schemaVersion: CONFIG_SCHEMA_VERSION, files: reports }, null, 2) + "\n");

@@ -40,8 +40,9 @@ const object = <T>(props: Record<string, ValueSpec>, required: string[] = []): V
 export type ConfigSection = "scripts" | "worktree" | "git";
 
 /**
- * How Project Settings shows the field:
- * - `generic` (the default): rendered from the schema by `SchemaConfigFields`.
+ * How Project Settings shows the field. Required, so a new field is a deliberate
+ * UI decision (`/ux-principal` first), never an automatic control:
+ * - `generic`: rendered from the schema by `SchemaConfigFields`.
  * - `bespoke`: `ConfigForm` has a hand-built control carrying `data-config-key`.
  * - `none`: no control on this form; `uiNote` says why.
  */
@@ -59,7 +60,7 @@ export interface ConfigFieldSpec<T = unknown> {
 	readonly defaultNote?: string;
 	readonly example: T;
 	readonly section: ConfigSection;
-	readonly ui?: ConfigFieldUi;
+	readonly ui: ConfigFieldUi;
 	readonly uiNote?: string;
 	/** The value becomes a command dev3 runs. A foreign-code worktree may not supply it. */
 	readonly executes?: boolean;
@@ -262,7 +263,7 @@ export function getFieldSpec(key: ConfigKey): ConfigFieldSpec {
 }
 
 export function fieldUi(key: ConfigKey): ConfigFieldUi {
-	return getFieldSpec(key).ui ?? "generic";
+	return getFieldSpec(key).ui;
 }
 
 /** Cascade defaults: every field that declares a literal `default`. */

@@ -7,7 +7,7 @@ import { NATIVE_PROMPT_DELIVERY_METHOD, deliverNativePromptAsOwner } from "../ag
 import { NATIVE_PANE_INPUT_METHOD, runNativePaneInputAsOwner } from "../pane-input-native";
 import type { PaneInputProgram } from "../../shared/pane-input";
 import * as repoConfig from "../repo-config";
-import { resolveConfigPath } from "../../shared/config-schema";
+import { COMMAND_BEARING_CONFIG_KEYS, resolveConfigPath } from "../../shared/config-schema";
 import type { Project } from "../../shared/types";
 import { LAUNCH_ACTIVATE_METHOD, handleLaunchActivate } from "../launch-handoff";
 import { log, type Handler } from "./shared";
@@ -237,6 +237,10 @@ async function editConfigKey(params: Record<string, unknown>, mode: "set" | "uns
 	const { key, sub } = resolveConfigPath(String(params.key ?? ""));
 	const local = params.local === true;
 	const base = params.main === true || !worktreePath ? project.path : worktreePath;
+	// A reviewed branch must not reach the trusted checkout's commands through its agent.
+	if (foreignCode && base !== worktreePath && COMMAND_BEARING_CONFIG_KEYS.has(key)) {
+		throw new Error(`${key} can run code, and this task holds foreign code: set it from the project's own checkout or Project Settings, not from this worktree.`);
+	}
 	const file = repoConfig.configFilePath(base, local);
 	let edit: { previous: unknown; value: unknown };
 	try {

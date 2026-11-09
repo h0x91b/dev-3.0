@@ -1,3 +1,5 @@
 Short: Validated dev3 config get/set CLI
 
 Project settings in `.dev3/config.json` and `.dev3/config.local.json` now come from one versioned schema, and `dev3 config` gains `schema`, `get`, `set`, `unset` and `validate` next to `show`, so agents and people can read and change any field without hand-editing JSON. `set` validates the value, keeps the file's own formatting and says when a higher layer still wins; `show` now reports the full worktree-plus-project cascade with the layer each value came from; `schema` and `validate` work without the app, so CI can check a committed config (exit 47 on errors, unknown keys only warn).
+
+Contributed by @fallenfuzz (h0x91b/dev-3.0#2231)
