@@ -978,7 +978,9 @@ function devServerPaneTitle(server: ResolvedDevServer): string {
 }
 
 export async function checkDevServer(params: { taskId: string; projectId: string; opId?: string; server?: string }): Promise<{ running: boolean }> {
-	log.info("→ checkDevServer", params);
+	// The board polls this for every visible task; only an operation's own check is worth INFO.
+	const trace = params.opId ? log.info : log.debug;
+	trace("→ checkDevServer", params);
 	try {
 		const ctx = await loadDevServerContext(params.projectId, params.taskId);
 		// Without a name this answers for the TASK: any server up is "running",
@@ -993,7 +995,7 @@ export async function checkDevServer(params: { taskId: string; projectId: string
 		for (const name of names) {
 			if (await isDevServerRunning(ctx.task, ctx.socket, name)) { running = true; break; }
 		}
-		log.info("← checkDevServer", { taskId: params.taskId, ...(params.opId ? { opId: params.opId } : {}), running });
+		trace("← checkDevServer", { taskId: params.taskId, ...(params.opId ? { opId: params.opId } : {}), running });
 		return { running };
 	} catch {
 		return { running: false };
@@ -1124,10 +1126,10 @@ export async function restartDevServer(params: { taskId: string; projectId: stri
 }
 
 export async function getDevServerStatus(params: { taskId: string; projectId: string }): Promise<DevServerStatus> {
-	log.info("→ getDevServerStatus", params);
+	log.debug("→ getDevServerStatus", params);
 	const ctx = await loadDevServerContext(params.projectId, params.taskId);
 	const status = await buildDevServerStatus(ctx);
-	log.info("← getDevServerStatus", {
+	log.debug("← getDevServerStatus", {
 		running: status.running,
 		servers: status.servers.map((entry) => `${entry.name}:${entry.running ? "up" : "down"}`),
 	});

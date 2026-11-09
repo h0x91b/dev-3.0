@@ -769,7 +769,7 @@ async function rawLoadTasks(project: Project, options?: { strict?: boolean; pers
 			}
 		}
 
-		log.info(`Loaded ${tasks.length} task(s)`, { projectId: project.id });
+		log.debug(`Loaded ${tasks.length} task(s)`, { projectId: project.id });
 		if (useCache && preReadStat) {
 			tasksCache.set(file, { ...preReadStat, value: tasks.map((t) => ({ ...t })) });
 		}
@@ -1032,6 +1032,18 @@ export async function addTask(
 	});
 }
 
+/**
+ * Field names plus the status, never the values: a `prStatusCache` refresh alone
+ * carried every CI check URL and was ~80% of each day's log.
+ */
+export function summarizeTaskUpdate(taskId: string, updates: Partial<Task>): Record<string, unknown> {
+	return {
+		taskId,
+		fields: Object.keys(updates),
+		...(updates.status !== undefined ? { status: updates.status } : {}),
+	};
+}
+
 export async function updateTask(
 	project: Project,
 	taskId: string,
@@ -1042,7 +1054,7 @@ export async function updateTask(
 	},
 ): Promise<Task> {
 	return withTasksLock(project, async () => {
-		log.info("Updating task", { taskId, updates });
+		log.info("Updating task", summarizeTaskUpdate(taskId, updates));
 		const tasks = await rawLoadTasks(project, { strict: true, persistMigrations: true });
 		const idx = tasks.findIndex((t) => t.id === taskId);
 		if (idx === -1) throw new Error(`Task not found: ${taskId}`);

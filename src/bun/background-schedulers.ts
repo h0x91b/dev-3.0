@@ -5,6 +5,7 @@ import { startScheduledMessageScheduler, stopScheduledMessageScheduler } from ".
 import { startTaskKeepAliveScheduler, stopTaskKeepAliveScheduler } from "./task-keep-alive-scheduler";
 import { startWorktreeCleanupScheduler, stopWorktreeCleanupScheduler } from "./worktree-cleanup-scheduler";
 import { discoverPeerSockets } from "./instance-broadcast";
+import { startLogArchiveScheduler, stopLogArchiveScheduler } from "./log-archive-scheduler";
 import { createLogger } from "./logger";
 
 const log = createLogger("background-schedulers");
@@ -39,6 +40,8 @@ function startClockJobs(): void {
 	startTaskKeepAliveScheduler();
 	// Daily `doctor --worktrees --prune-older-than 14d`. First check an hour after boot.
 	startWorktreeCleanupScheduler();
+	// Packs day logs older than three days into `.tgz`. First pass five minutes after boot.
+	startLogArchiveScheduler();
 }
 
 function stopClockJobs(): void {
@@ -49,6 +52,7 @@ function stopClockJobs(): void {
 		stopScheduledMessageScheduler,
 		stopTaskKeepAliveScheduler,
 		stopWorktreeCleanupScheduler,
+		stopLogArchiveScheduler,
 	];
 	for (const stop of stops) {
 		try { stop(); } catch (err) { log.warn(`${stop.name} failed`, { error: String(err) }); }
