@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { act } from "react";
 import type { AccountLoginState, AgentAccountsState } from "../../../../shared/agent-accounts";
 import { I18nProvider, useT } from "../../../i18n";
-import AgentAccountsSection from "../AgentAccountsSection";
+import AgentAccountsSection, { codexEmailsNeedingWorkspaceId } from "../AgentAccountsSection";
 
 vi.mock("../../../rpc", () => ({
 	isElectrobun: false,
@@ -840,7 +840,31 @@ describe("AgentAccountsSection", () => {
 		renderSection();
 		expect(await screen.findByText("Unmanaged login")).toBeTruthy();
 		expect(screen.getByText("codex@example.com")).toBeTruthy();
-		expect(screen.getByText("Workspace acc-1")).toBeTruthy();
+		expect(screen.queryByText(/ChatGPT workspace/)).toBeNull();
+	});
+
+	it("shows the workspace id when two Codex logins share an email", async () => {
+		const identity = { email: "same@example.com", organization: null, plan: "plus", planLabel: "Plus" };
+		mockedApi.request.listAgentAccounts.mockResolvedValue(
+			makeState({
+				codex: {
+					accounts: [
+						{ id: "codex-1", kind: "codex", label: "Work", identity: { ...identity, accountId: "acc-1" }, auth: "oauth", api: null, createdAt: 1 },
+						{ id: "codex-2", kind: "codex", label: "Home", identity: { ...identity, accountId: "acc-2" }, auth: "oauth", api: null, createdAt: 2 },
+					],
+					activeId: "codex-1",
+					currentIdentity: null,
+				},
+			}),
+		);
+		renderSection();
+		expect(await screen.findByText("ChatGPT workspace acc-1")).toBeTruthy();
+		expect(screen.getByText("ChatGPT workspace acc-2")).toBeTruthy();
+	});
+
+	it("finds emails shared by more than one Codex identity", () => {
+		const id = (email: string | null) => ({ email, organization: null, plan: null, planLabel: null, accountId: null });
+		expect([...codexEmailsNeedingWorkspaceId([id("a@x"), id("b@x"), id("a@x"), null, id(null), id(null)])]).toEqual(["a@x"]);
 	});
 
 	it("shows a readable name for a resolved Codex workspace", async () => {
@@ -871,8 +895,8 @@ describe("AgentAccountsSection", () => {
 		);
 
 		renderSection();
-		expect(await screen.findByText("Workspace Globex ChatGPT Enterprise")).toBeTruthy();
-		expect(screen.queryByText("Workspace b8e0e9ae")).toBeNull();
+		expect(await screen.findByText("ChatGPT workspace Globex ChatGPT Enterprise")).toBeTruthy();
+		expect(screen.queryByText("ChatGPT workspace b8e0e9ae")).toBeNull();
 	});
 
 	it("lists each project-pinned Claude login beside ~/.claude, with the projects that pin it", async () => {

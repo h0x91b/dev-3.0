@@ -55,19 +55,34 @@ function HintLabel({ text, body }: { text: string; body: string }) {
 	);
 }
 
+/** Emails that more than one Codex login shares: only there the workspace id tells them apart. */
+export function codexEmailsNeedingWorkspaceId(identities: (AgentAccountIdentity | null)[]): Set<string> {
+	const seen = new Set<string>();
+	const repeated = new Set<string>();
+	for (const email of identities.map((identity) => identity?.email)) {
+		if (!email) continue;
+		if (seen.has(email)) repeated.add(email);
+		seen.add(email);
+	}
+	return repeated;
+}
+
 function IdentityBadges({
 	identity,
 	hideEmail,
 	kind,
+	showWorkspaceId,
 	t,
 }: {
 	identity: AgentAccountIdentity | null;
 	hideEmail?: string;
 	kind: AgentAccountKind;
+	/** A Codex workspace without a name shows its id only when this is true. */
+	showWorkspaceId?: boolean;
 	t: TFunction;
 }) {
 	if (!identity) return null;
-	const workspaceId = kind === "codex" ? shortCodexWorkspaceId(identity) : null;
+	const workspaceId = kind === "codex" && showWorkspaceId ? shortCodexWorkspaceId(identity) : null;
 	const workspace = kind === "codex" ? identity.organization ?? workspaceId : null;
 	return (
 		<>
@@ -79,6 +94,7 @@ function IdentityBadges({
 			) : null}
 			{workspace ? (
 				<span
+					title={t("settings.accountsWorkspaceHint")}
 					className={`text-fg-3 text-micro px-1.5 py-0.5 bg-raised rounded max-w-full truncate streamer-private ${
 						identity.organization ? "" : "font-mono"
 					}`}
@@ -146,6 +162,7 @@ function AccountRow({
 	note,
 	labelPublic,
 	autoSwitch,
+	showWorkspaceId,
 	t,
 }: {
 	kind: AgentAccountKind;
@@ -164,6 +181,8 @@ function AccountRow({
 	labelPublic?: boolean;
 	/** Whether Auto may pick this login; absent where Auto has nothing to balance. */
 	autoSwitch?: { included: boolean; onToggle: () => void };
+	/** Codex: another login shares this email, so show the workspace id. */
+	showWorkspaceId?: boolean;
 	t: TFunction;
 }) {
 	const [editing, setEditing] = useState(false);
@@ -233,10 +252,28 @@ function AccountRow({
 				) : (
 					<span className={`text-fg text-sm font-medium truncate ${labelPublic ? "" : "streamer-private"}`}>{label}</span>
 				)}
+				{onRename && !editing && !onEditApi ? (
+					<button
+						type="button"
+						onClick={(event) => {
+							event.stopPropagation();
+							setDraft(label);
+							setEditing(true);
+						}}
+						className="p-1 rounded text-fg-3 hover:text-fg hover:bg-elevated-hover transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] shrink-0"
+						title={t("settings.accountsRename")}
+						aria-label={t("settings.accountsRenameFor", { label })}
+					>
+						<svg aria-hidden className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+							<path d="M12 20h9" />
+							<path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+						</svg>
+					</button>
+				) : null}
 				{api ? (
 					<ApiProfileBadges api={api} />
 				) : (
-					<IdentityBadges identity={identity} hideEmail={label} kind={kind} t={t} />
+					<IdentityBadges identity={identity} hideEmail={label} kind={kind} showWorkspaceId={showWorkspaceId} t={t} />
 				)}
 				{note ? <span className="text-fg-muted text-xs">{note}</span> : null}
 				{autoSwitch && !autoSwitch.included ? (
@@ -257,29 +294,11 @@ function AccountRow({
 							event.stopPropagation();
 							onEditApi();
 						}}
-						className="p-1 rounded text-fg-muted hover:text-fg hover:bg-elevated-hover transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] shrink-0"
+						className="text-fg-2 text-xs hover:bg-elevated-hover px-1.5 py-0.5 rounded transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] shrink-0"
 						title={t("settings.accountsEditApi")}
 						aria-label={t("settings.accountsEditApiFor", { label })}
 					>
-						<span className="text-xs leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-							{"\uf044"}
-						</span>
-					</button>
-				) : onRename && !editing ? (
-					<button
-						type="button"
-						onClick={(event) => {
-							event.stopPropagation();
-							setDraft(label);
-							setEditing(true);
-						}}
-						className="p-1 rounded text-fg-muted hover:text-fg hover:bg-elevated-hover transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] shrink-0"
-						title={t("settings.accountsRename")}
-						aria-label={t("settings.accountsRenameFor", { label })}
-					>
-						<span className="text-xs leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-							{"\uf044"}
-						</span>
+						{t("settings.accountsEditApiShort")}
 					</button>
 				) : null}
 				{onRemove ? (
@@ -924,6 +943,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 							onEditApi={account.auth === "api" ? () => handleStartEditApi(account) : undefined}
 							onRemove={() => handleRemove(kind, account)}
 							autoSwitch={account.auth === "api" ? undefined : autoSwitchFor(kind, account.id)}
+							showWorkspaceId={kind === "codex" && repeatedCodexEmails.has(account.identity?.email ?? "")}
 							t={t}
 						/>
 					))}
@@ -1006,6 +1026,12 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 	const codexUnmanaged =
 		state.codex.currentIdentity && (state.codex.activeId === null || !codexTwin) ? state.codex.currentIdentity : null;
 
+	const repeatedCodexEmails = codexEmailsNeedingWorkspaceId([
+		...state.codex.accounts.map((a) => a.identity),
+		// The twin row is the same login, not a second one sharing the email.
+		codexTwin ? null : codexUnmanaged,
+	]);
+
 	// "Auto (balanced)" sits beside the accounts as one more default: it earns its
 	// row once two subscription logins could be balanced, and keeps it while chosen.
 	const autoBalances = (kind: "claude" | "codex") => {
@@ -1084,7 +1110,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 						<span aria-hidden className="w-3.5 h-3.5 rounded-full border-2 border-warning/60 shrink-0" />
 						<div className="basis-40 min-w-0 flex-1 flex flex-wrap items-center gap-2">
 							<span className="text-fg-2 text-sm whitespace-nowrap">{t("settings.accountsUnmanaged")}</span>
-							<IdentityBadges identity={codexUnmanaged} kind="codex" t={t} />
+							<IdentityBadges identity={codexUnmanaged} kind="codex" showWorkspaceId={repeatedCodexEmails.has(codexUnmanaged.email ?? "")} t={t} />
 						</div>
 						<span className="ml-auto text-fg-muted text-xs">{t("settings.accountsUnmanagedHint")}</span>
 						{codexSystemSwitch ? <AutoExclusionSwitch {...codexSystemSwitch} label={t("settings.accountsUnmanaged")} t={t} /> : null}

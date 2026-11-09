@@ -753,7 +753,7 @@ describe("AgentAccountIndicator", () => {
 		renderIndicator(codexAgent);
 
 		await user.click(await screen.findByTestId("agent-account-trigger"));
-		expect(screen.getByText("Workspace Acme")).toBeTruthy();
+		expect(screen.getByText("ChatGPT workspace Acme")).toBeTruthy();
 	});
 });
 
