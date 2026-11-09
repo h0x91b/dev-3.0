@@ -3472,6 +3472,7 @@ function App() {
 					dispatch={dispatch}
 					onClose={() => setLaunchModal(null)}
 					mode={launchModal.mode}
+					initialStartAfter={launchModal.startAfter}
 					onGlobalSettingsChange={setGlobalSettings}
 				/>
 			)}

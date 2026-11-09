@@ -10,7 +10,7 @@ import { confirm } from "../confirm";
 import { useLocale, useT } from "../i18n";
 import { createProjectLabel } from "../utils/createProjectLabel";
 import { formatBytes } from "../utils/formatBytes";
-import { isKnownPreparationFailure, preparationFailureMessage } from "../utils/preparationFailureMessage";
+import { isKnownPreparationFailure, preparationBannerText } from "../utils/preparationFailureMessage";
 import { formatCountdown } from "../../shared/duration";
 import { trackEvent, agentNameFromId } from "../analytics";
 import { useStatusColors } from "../hooks/useStatusColors";
@@ -25,6 +25,7 @@ import LabelPicker from "./LabelPicker";
 import PriorityBadge from "./PriorityBadge";
 import VariantDots from "./VariantDots";
 import LineageCluster from "./LineageCluster";
+import { StartAfterCompletedIcon, StartAfterMergedIcon } from "./LineageIcons";
 import { COORDINATOR_CARD_HALO, TaskRoleBand, taskRole } from "./TaskRoleBand";
 import EpicChip from "./EpicChip";
 import { useEpics } from "../hooks/useEpics";
@@ -188,6 +189,31 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			dispatch({ type: "updateTask", task: updated });
 		} catch (err) {
 			toast.error(t("task.scheduleCancelFailed", { error: String(err) }), { taskId: task.id });
+		}
+	}
+
+	// "Start after" — a todo task waiting on another one; same slot, same popover as "Start in".
+	const launchAfter = isTodo ? task.launchAfter : null;
+	const [afterPopoverOpen, setAfterPopoverOpen] = useState(false);
+
+	async function handleStartAfterNow(e: React.MouseEvent) {
+		e.stopPropagation();
+		setAfterPopoverOpen(false);
+		try {
+			await api.request.startTaskLaunchAfterNow({ taskId: task.id, projectId: project.id });
+		} catch (err) {
+			toast.error(t("launch.failedLaunch", { error: String(err) }), { taskId: task.id });
+		}
+	}
+
+	async function handleRemoveStartAfter(e: React.MouseEvent) {
+		e.stopPropagation();
+		setAfterPopoverOpen(false);
+		try {
+			const updated = await api.request.clearTaskLaunchAfter({ taskId: task.id, projectId: project.id });
+			dispatch({ type: "updateTask", task: updated });
+		} catch (err) {
+			toast.error(t("task.startAfterRemoveFailed", { error: String(err) }), { taskId: task.id });
 		}
 	}
 
@@ -467,7 +493,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const displayTitle = getTaskTitle(task);
 	const hasLongDescription = task.description !== displayTitle;
 	const launchFailedText = isTodo && task.preparationError
-		? t("task.launchFailed", { error: preparationFailureMessage(task.preparationError, t) })
+		? preparationBannerText(task.preparationError, t)
 		: null;
 	const openUnresolvedInDiff = onOpenUnresolvedComments
 		? () => onOpenUnresolvedComments(task)
@@ -615,6 +641,50 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							className="w-full text-left px-3 py-1.5 text-xs text-danger hover:bg-fg/5 transition-colors"
 						>
 							{t("task.cancelSchedule")}
+						</button>
+					</div>
+				)}
+			</div>,
+		);
+	}
+	if (launchAfter) {
+		const merged = launchAfter.until === "merged";
+		const AfterIcon = merged ? StartAfterMergedIcon : StartAfterCompletedIcon;
+		timeSignals.push(
+			<div key="after" className="relative flex-shrink-0">
+				<Tooltip content={t(merged ? "task.startsAfterMergedTooltip" : "task.startsAfterCompletedTooltip", { seq: String(launchAfter.seq) })}>
+					<button
+						type="button"
+						data-testid="task-card-starts-after-chip"
+						data-until={launchAfter.until}
+						aria-haspopup="menu"
+						aria-expanded={afterPopoverOpen}
+						onClick={(e) => { e.stopPropagation(); setAfterPopoverOpen(!afterPopoverOpen); }}
+						className="flex h-5 items-center gap-1 rounded px-1.5 text-micro text-accent transition-colors hover:bg-fg/5"
+					>
+						<AfterIcon className="w-3 h-3" />
+						{t(merged ? "task.startsAfterMerge" : "task.startsAfter", { seq: String(launchAfter.seq) })}
+					</button>
+				</Tooltip>
+				{afterPopoverOpen && (
+					<div
+						role="menu"
+						className="absolute bottom-full left-0 mb-1 z-30 min-w-[10rem] rounded-lg border border-edge bg-elevated shadow-lg py-1"
+						onClick={(e) => e.stopPropagation()}
+					>
+						<button
+							role="menuitem"
+							onClick={handleStartAfterNow}
+							className="w-full text-left px-3 py-1.5 text-xs text-fg hover:bg-fg/5 transition-colors"
+						>
+							{t("task.startNow")}
+						</button>
+						<button
+							role="menuitem"
+							onClick={handleRemoveStartAfter}
+							className="w-full text-left px-3 py-1.5 text-xs text-danger hover:bg-fg/5 transition-colors"
+						>
+							{t("task.removeStartAfter")}
 						</button>
 					</div>
 				)}

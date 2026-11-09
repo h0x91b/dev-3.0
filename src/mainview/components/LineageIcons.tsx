@@ -39,3 +39,28 @@ export function ChildTasksIcon({ className }: { className?: string }) {
 		</svg>
 	);
 }
+
+/** Start after another task completes: a finished node, then a start arrow. */
+export function StartAfterCompletedIcon({ className }: { className?: string }) {
+	return (
+		<svg {...svgBase(className)}>
+			<circle cx="7" cy="12" r="4.5" />
+			<path d="M5 12.2l1.4 1.4L9 11" />
+			<path d="M13.5 12h2.5" />
+			<path d="M17.5 8.5l4 3.5-4 3.5z" fill="currentColor" fillOpacity="0.25" />
+		</svg>
+	);
+}
+
+/** Start after another task's pull request merges: a merge branch. */
+export function StartAfterMergedIcon({ className }: { className?: string }) {
+	return (
+		<svg {...svgBase(className)}>
+			<circle cx="6" cy="5" r="2.2" />
+			<circle cx="6" cy="19" r="2.2" />
+			<circle cx="18" cy="15" r="2.2" fill="currentColor" fillOpacity="0.25" />
+			<path d="M6 7.2v9.6" />
+			<path d="M6 7.2c0 4.5 3.5 7.8 9.8 7.8" />
+		</svg>
+	);
+}

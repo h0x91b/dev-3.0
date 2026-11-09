@@ -38,7 +38,7 @@ import type { Space, SpacesFile } from "./spaces";
 import type { BoardRef, BoardViewState } from "../board-view-state";
 import type { ExtensionInspection, ExtensionsOverview, InstalledExtension } from "../extensions";
 import type { Epic, EpicMember, EpicsFile } from "./epics";
-import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, AgentLaunchRequest, LaunchVariant, PendingMergeOffer, TaskDialogSubject } from "./agent-launch";
+import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, AgentLaunchRequest, LaunchAfterUntil, LaunchVariant, PendingMergeOffer, TaskDialogSubject } from "./agent-launch";
 import type { ScheduledMessageTarget } from "./scheduled-messages";
 import type { LiveArtifact, SharedArtifact, SharedImage } from "./shared-media";
 import type { ScriptPlacement, ScriptRunner, ScriptSource, WorktreeScripts } from "./package-scripts";
@@ -1274,6 +1274,27 @@ export type AppRPCSchema = {
 			startScheduledLaunchNow: {
 				params: { taskId: string; projectId: string };
 				response: Task[];
+			};
+			/** Arm a "start after" condition on a todo task from the launch modal. */
+			setTaskLaunchAfter: {
+				params: {
+					taskId: string;
+					projectId: string;
+					prerequisiteTaskId: string;
+					until: LaunchAfterUntil;
+					variant: LaunchVariant | null;
+				};
+				response: Task;
+			};
+			/** Remove a "start after" condition without starting the task. */
+			clearTaskLaunchAfter: {
+				params: { taskId: string; projectId: string };
+				response: Task;
+			};
+			/** Start a waiting task now with its condition's agent (chip → "Start now"). */
+			startTaskLaunchAfterNow: {
+				params: { taskId: string; projectId: string };
+				response: void;
 			};
 			/** Queue a scheduled message ("Send later") on a task with a live agent. */
 			scheduleMessage: {

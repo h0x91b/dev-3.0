@@ -4677,6 +4677,25 @@ describe("draft tasks", () => {
 		).rejects.toThrow(/draft/i);
 		expect(data.updateTask).not.toHaveBeenCalled();
 	});
+
+	it("refuses a \"Start in\" time on a task that already waits for another task", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+		vi.mocked(data.getTask).mockResolvedValue(makeTask({
+			status: "todo",
+			launchAfter: { taskId: "task-5", seq: 5, until: "completed", armedAt: "2026-11-09T10:00:00Z" },
+		}));
+
+		await expect(
+			handlers.scheduleTaskLaunch({
+				taskId: "task-1",
+				projectId: "proj-1",
+				at: new Date(Date.now() + 60_000).toISOString(),
+				targetStatus: "in-progress",
+				variants: [{ agentId: "builtin-claude", configId: "claude-auto" }],
+			}),
+		).rejects.toThrow(/already starts after task #5/);
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
 });
 
 // ================================================================

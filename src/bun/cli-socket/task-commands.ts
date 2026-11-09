@@ -1,5 +1,5 @@
-import type { AgentMessageSource, CustomColumn, PresetPromptSource, Project, Task, TaskOrigin, TaskStatus, TaskType } from "../../shared/types";
-import { ACTIVE_STATUSES, ALL_STATUSES, TASK_TYPES, getTaskTitle, agentLaunchAutoApproveMs, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, presetPromptSourceForTaskType, withPresetPrompt, withoutPresetPrompt } from "../../shared/types";
+import type { AgentMessageSource, CustomColumn, LaunchAfterUntil, LaunchVariant, PresetPromptSource, Project, Task, TaskOrigin, TaskStatus, TaskType } from "../../shared/types";
+import { ACTIVE_STATUSES, ALL_STATUSES, LAUNCH_AFTER_UNTIL, TASK_TYPES, getTaskTitle, agentLaunchAutoApproveMs, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, presetPromptSourceForTaskType, withPresetPrompt, withoutPresetPrompt } from "../../shared/types";
 import type { DeepLinkNav } from "../../shared/deep-link";
 import { markPendingDeepLinkNav } from "../deep-link-nav";
 import * as data from "../data";
@@ -18,6 +18,7 @@ import { loadTaskChildren } from "../task-lineage";
 import { assertEpicAttachable, epicForNewTask, setTaskEpic } from "../task-epics";
 import { findEpic } from "../epics-data";
 import { readTaskTerminalBackendState, switchTaskTerminalBackend } from "../task-terminal-backend-switch";
+import { armLaunchAfter, clearLaunchAfter, prerequisiteRefusal, writeLaunchAfter } from "../launch-after";
 import { approvalStatusOf, launchSuggestionRequested, launcherHandoffNote, requestAgentLaunchApproval, requestDestructiveApproval, resolveLaunchSuggestion } from "./approvals";
 import { log, type Handler, withSenderVariant } from "./shared";
 import { findByIdPrefix, findTaskByRef, parseSeqRef, resolveAgentMessageSource, resolveRequesterTask, resolveTaskAcrossProjects, resolveTaskFromParams, resumeAccountParam, scopedTaskNotFoundError, senderRequester, taskNotFoundError, withArchivedHistory, withEpic, withOriginParent, withSenderAgent } from "./task-resolution";
@@ -84,6 +85,37 @@ async function resolveCreator(params: Record<string, unknown>): Promise<{ origin
 	}
 	log.warn("Creator task not found; recording the user as origin", { sourceId });
 	return { creator: null };
+}
+
+/** `--start-after` as validated input, resolved before anything is written. */
+interface StartAfterRequest {
+	prereq: Task;
+	until: LaunchAfterUntil;
+	variant: LaunchVariant | null;
+}
+
+async function readStartAfter(params: Record<string, unknown>, project: Project): Promise<StartAfterRequest | null> {
+	if (params.startAfter === undefined) {
+		if (params.until !== undefined) throw new Error("--until only applies together with --start-after.");
+		return null;
+	}
+	if (params.noStartAfter === true) throw new Error("--start-after and --no-start-after cannot be combined.");
+	const ref = String(params.startAfter).trim();
+	if (!ref) throw new Error("--start-after needs the task to wait for: --start-after seq:<N>");
+	const until = (params.until ?? "completed") as LaunchAfterUntil;
+	if (!LAUNCH_AFTER_UNTIL.includes(until)) throw new Error(`--until must be one of ${LAUNCH_AFTER_UNTIL.join(", ")} (got "${String(params.until)}").`);
+	const prereq = findTaskByRef(await data.loadTasks(project), ref);
+	if (!prereq) throw await scopedTaskNotFoundError(ref, project);
+	return { prereq, until, variant: await resolveLaunchSuggestion(params) };
+}
+
+/** Arm the condition on `task`. Inside a task's context the arming agent is recorded, which routes the launch through its approval dialog. */
+async function armStartAfter(project: Project, task: Task, req: StartAfterRequest, params: Record<string, unknown>): Promise<Task> {
+	return armLaunchAfter(project, task, req.prereq, req.until, req.variant, await resolveAgentMessageSource(params, task.id));
+}
+
+async function writeStartAfter(project: Project, task: Task, req: StartAfterRequest, params: Record<string, unknown>): Promise<Task> {
+	return writeLaunchAfter(project, task, req.prereq, req.until, req.variant, await resolveAgentMessageSource(params, task.id));
 }
 
 function assertEpicFlagsExclusive(params: Record<string, unknown>): void {
@@ -265,6 +297,12 @@ export const taskHandlers: Record<string, Handler> = {
 		// foreignCode from this ref, and a ref set afterwards would leave the trust
 		// decision already made on the base branch (see task-start-ref.ts).
 		const existingBranch = await resolveTaskStartRef({ project, pr: prRef, branch: branchRef });
+		// Before the task exists, so an unknown prerequisite or agent id leaves nothing behind.
+		const startAfter = await readStartAfter(params, project);
+		if (!startAfter && launchSuggestionRequested(params)) throw new Error("--agent/--config on task create only apply together with --start-after.");
+		// A new To Do task can only be refused for its prerequisite, so this is the whole check.
+		const startAfterRefusal = startAfter && prerequisiteRefusal(startAfter.prereq, startAfter.until, await data.loadTasks(project));
+		if (startAfterRefusal) throw new Error(startAfterRefusal);
 		// Use description as the task body if provided, otherwise fall back to title.
 		// A type puts its role brief above that text at creation, through the same
 		// function `task update --type` uses, so a card never claims a role its
@@ -290,13 +328,12 @@ export const taskHandlers: Record<string, Handler> = {
 		// If a separate title was given alongside a description, store it as customTitle.
 		// A role brief counts as a body too: without this the card would be named
 		// after the first 80 characters of the preamble, so every one would read alike.
+		let created = task;
 		if ((description || taskType) && title) {
-			const updated = await data.updateTask(project, task.id, { customTitle: title });
-			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-			return updated;
+			created = await data.updateTask(project, task.id, { customTitle: title });
 		}
-		getPushMessage()?.("taskUpdated", { projectId: project.id, task });
-		return task;
+		getPushMessage()?.("taskUpdated", { projectId: project.id, task: created });
+		return startAfter ? writeStartAfter(project, created, startAfter, params) : created;
 	},
 
 	// `dev3 task create --scratch --run`: an agent asking for a throwaway peer.
@@ -435,6 +472,9 @@ export const taskHandlers: Record<string, Handler> = {
 			assertEpicAttachable(epic, task);
 			epicChange = { epicId: epic.id };
 		}
+		const startAfter = await readStartAfter(params, project);
+		const clearStartAfter = params.noStartAfter === true;
+		if (!startAfter && launchSuggestionRequested(params)) throw new Error("--agent/--config on task update only apply together with --start-after.");
 		if (params.manualCompletion !== undefined) {
 			if (typeof params.manualCompletion !== "boolean") {
 				throw new Error("manualCompletion must be a boolean");
@@ -451,8 +491,10 @@ export const taskHandlers: Record<string, Handler> = {
 			&& params.manualCompletion === undefined
 			&& params.taskType === undefined
 			&& epicChange === undefined
+			&& !startAfter
+			&& !clearStartAfter
 		) {
-			throw new Error("Nothing to update. Provide --title, --description, --priority, --manual-completion, --type, --epic or --no-epic.");
+			throw new Error("Nothing to update. Provide --title, --description, --priority, --manual-completion, --type, --epic, --no-epic, --start-after or --no-start-after.");
 		}
 
 		let updated = task;
@@ -470,6 +512,11 @@ export const taskHandlers: Record<string, Handler> = {
 			const changed = await data.setTaskPriority(project, task.id, priority);
 			for (const t of changed) getPushMessage()?.("taskUpdated", { projectId: project.id, task: t });
 			updated = { ...updated, priority };
+		}
+		if (startAfter) {
+			updated = await armStartAfter(project, updated, startAfter, params);
+		} else if (clearStartAfter) {
+			updated = await clearLaunchAfter(project, updated);
 		}
 		// Tell the agent that has to honour the new role. A task with no worktree has
 		// no session to tell — it reads the rewritten description at launch instead,
