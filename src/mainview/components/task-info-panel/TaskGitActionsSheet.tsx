@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { Project, Task } from "../../../shared/types";
+import { hasGitWorkflow } from "../../../shared/types";
 import { useT } from "../../i18n";
 import type { TaskBranchStatusController } from "./useTaskBranchStatus";
 import { AutoMergeIcon, CommitIcon, CreatePRIcon, MergeIcon, PushIcon, RebaseIcon, ShowDiffIcon } from "./GitIcons";
@@ -75,9 +76,9 @@ export default function TaskGitActionsSheet({
 
 	// Git mutations only make sense on a real, active worktree. An Operations task
 	// has no git domain of its own (Bible §3); with an attached repo it gets the
-	// read-only diff row and nothing else.
+	// read-only diff row and nothing else. A project with the git workflow off has none.
 	const readOnly = project.kind === "virtual";
-	if ((readOnly && !task.attachedRepo) || !isTaskActive || !task.worktreePath) {
+	if ((readOnly ? !task.attachedRepo : !hasGitWorkflow(project)) || !isTaskActive || !task.worktreePath) {
 		return null;
 	}
 

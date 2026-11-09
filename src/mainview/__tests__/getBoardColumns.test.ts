@@ -122,6 +122,11 @@ describe("getBoardColumns", () => {
 		expect(result).toEqual(["todo", "in-progress", "user-questions", "review-by-user", "completed", "cancelled"]);
 	});
 
+	it("a project with the git workflow off hides both AI Review and PR Review", () => {
+		const result = tokens(one(project({ gitWorkflow: false })));
+		expect(result).toEqual(["todo", "in-progress", "user-questions", "review-by-user", "completed", "cancelled"]);
+	});
+
 	it("respects an explicit columnOrder, placing custom columns where listed", () => {
 		const cols = [customCol("deploy")];
 		// columnOrder holds raw ids: built-in status strings + custom column ids.

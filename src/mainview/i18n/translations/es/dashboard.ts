@@ -68,7 +68,7 @@ const dashboard = {
 	"ops.detachRepo": "Desvincular repositorio",
 	"ops.attachRepoTooltip": "Elige un repositorio git local para ver su diff y revisarlo aquí",
 	"ops.tileSubtitle": "Tareas con código · repo opcional",
-	"ops.create.typeGit": "Repositorio Git",
+	"ops.create.typeGit": "Carpeta",
 	"ops.create.typeOps": "Operaciones",
 	"ops.create.nameLabel": "Nombre del tablero",
 	"ops.create.namePlaceholder": "Operaciones",

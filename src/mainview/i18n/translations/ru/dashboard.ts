@@ -84,7 +84,7 @@ const dashboard = {
 	"ops.detachRepo": "Отвязать репозиторий",
 	"ops.attachRepoTooltip": "Выберите локальный git-репозиторий, чтобы видеть его дифф и ревьюить здесь",
 	"ops.tileSubtitle": "Задачи с кодом · репозиторий по желанию",
-	"ops.create.typeGit": "Git-репозиторий",
+	"ops.create.typeGit": "Папка",
 	"ops.create.typeOps": "Операции",
 	"ops.create.nameLabel": "Название доски",
 	"ops.create.namePlaceholder": "Операции",

@@ -25,7 +25,8 @@ export interface LifecycleFacts {
 	/** The two fields a reset consent is bound to (see `TaskResetConsent`). */
 	worktreePath?: string | null;
 	lifecycleStartedAt?: string | null;
-	projectKind: "git" | "virtual";
+	/** False on virtual boards and on projects with the git workflow off. */
+	usesWorktrees: boolean;
 	/** An Operations task working in a worktree of its attached repo: completion removes it like a git task's. */
 	opsWorktree?: boolean;
 	hasPrIdentity: boolean;

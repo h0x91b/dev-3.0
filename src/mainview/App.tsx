@@ -14,7 +14,7 @@ import { preparationFailureMessage } from "./utils/preparationFailureMessage";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
 import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, BoardCopyFailureReason, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo, LiveArtifact, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
-import { ACTIVE_STATUSES, orderProjectsForDisplay, getTaskTitle } from "../shared/types";
+import { ACTIVE_STATUSES, hasGitWorkflow, orderProjectsForDisplay, getTaskTitle } from "../shared/types";
 import type { DeepLinkNav } from "../shared/deep-link";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { useAgents } from "./hooks/useAgents";
@@ -961,6 +961,11 @@ function App() {
 
 	const projectsRef = useRef(state.projects);
 	projectsRef.current = state.projects;
+	/** True when finishing this project's task keeps its folder: no git workflow, no worktree to destroy. */
+	const keepsTaskFolder = useCallback((projectId: string | undefined) => {
+		const project = projectId ? projectsRef.current.find((p) => p.id === projectId) : undefined;
+		return !!project && !hasGitWorkflow(project);
+	}, []);
 
 	// One end of an agent-message toast, looked up at click time: the toast can
 	// outlive the task. A task that is gone says so instead of opening an empty
@@ -1372,7 +1377,7 @@ function App() {
 		const projectId = projectIdForRoute(state.route);
 		if (!projectId || offeredThisSession.current.has(projectId)) return;
 		const project = state.projects.find((p) => p.id === projectId);
-		if (!project || project.kind === "virtual" || project.conversationImportOfferedAt) return;
+		if (!project || !hasGitWorkflow(project) || project.conversationImportOfferedAt) return;
 		offeredThisSession.current.add(projectId);
 		enqueueImportOffer(project, true);
 	}, [state.route, state.projects, enqueueImportOffer]);
@@ -2479,7 +2484,7 @@ function App() {
 			window.removeEventListener("rpc:agentCompletionRequested", onAgentCompletionRequested);
 			window.removeEventListener(RPC_STATUS_EVENT, onRpcStatus);
 		};
-	}, [dispatch, navigate, t]);
+	}, [dispatch, navigate, t, keepsTaskFolder]);
 
 	// Agent-initiated CANCELLATION and RESET requests. Same blocked-CLI contract as the
 	// completion effect above, deliberately its own dialog: cancelling throws the
@@ -2496,6 +2501,7 @@ function App() {
 				event: "rpc:agentCancellationRequested",
 				toStatus: "cancelled" as const,
 				copy: { title: "app.agentCancellationTitle", message: "app.agentCancellationMessage", confirm: "app.agentCancellationConfirm", cancel: "app.agentCancellationCancel" } as const,
+				folderCopy: { title: "app.agentCancellationTitle", message: "app.agentCancellationMessageFolder", confirm: "app.agentCancellationConfirmFolder", cancel: "app.agentCancellationCancel" } as const,
 				listPending: () => api.request.listPendingCancellationRequests({}),
 				respond: (params: { requestId: string; approved: boolean }) => api.request.respondToAgentCancellationRequest(params),
 			},
@@ -2503,6 +2509,7 @@ function App() {
 				event: "rpc:agentResetRequested",
 				toStatus: "todo" as const,
 				copy: { title: "app.agentResetTitle", message: "app.agentResetMessage", confirm: "app.agentResetConfirm", cancel: "app.agentResetCancel" } as const,
+				folderCopy: { title: "app.agentResetTitle", message: "task.confirmResetMessageVirtual", confirm: "app.agentResetConfirm", cancel: "app.agentResetCancel" } as const,
 				listPending: () => api.request.listPendingResetRequests({}),
 				respond: (params: { requestId: string; approved: boolean }) => api.request.respondToAgentResetRequest(params),
 			},
@@ -2527,14 +2534,16 @@ function App() {
 				showing.delete(requestId);
 				return;
 			}
+			// Without the git workflow nothing is deleted: the folder outlives the task.
+			const copy = keepsTaskFolder(projectId) ? kind.folderCopy : kind.copy;
 			try {
 				const unsaved = api.request.getUnsavedWork({ taskId, projectId });
 				approved = await confirm({
-					title: t(kind.copy.title),
-					message: t(branchKept && kind.toStatus === "todo" ? "app.agentResetMessageBranchKept" : kind.copy.message),
+					title: t(copy.title),
+					message: t(branchKept && copy === kind.copy && kind.toStatus === "todo" ? "app.agentResetMessageBranchKept" : copy.message),
 					info: taskDialogInfoFromSubject(taskTitle, subject),
-					confirmLabel: t(kind.copy.confirm),
-					cancelLabel: t(kind.copy.cancel),
+					confirmLabel: t(copy.confirm),
+					cancelLabel: t(copy.cancel),
 					danger: true,
 					tone: "danger",
 					agentInitiated: true,
@@ -2598,7 +2607,7 @@ function App() {
 			for (const { kind, onRequested } of listeners) window.removeEventListener(kind.event, onRequested);
 			window.removeEventListener(RPC_STATUS_EVENT, onRpcStatus);
 		};
-	}, [dispatch, navigate, t]);
+	}, [dispatch, navigate, t, keepsTaskFolder]);
 
 	// An agent wants to set another task running. Queued, never stacked: two
 	// agents can ask at once, and overlapping dialogs would make the user answer
@@ -3387,6 +3396,10 @@ function App() {
 						hasProject: Boolean(getProjectIdForRoute(state.route)),
 						hasTask: Boolean(routeTaskId(state.route)),
 						isVirtual: state.projects.find((p) => p.id === getProjectIdForRoute(state.route))?.kind === "virtual",
+						gitless: (() => {
+							const project = state.projects.find((p) => p.id === getProjectIdForRoute(state.route));
+							return !!project && !hasGitWorkflow(project);
+						})(),
 						remote: isRemote(),
 					}}
 					onRun={runCommand}

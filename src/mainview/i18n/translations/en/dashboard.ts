@@ -70,7 +70,7 @@ const dashboard = {
 	"ops.detachRepo": "Detach repository",
 	"ops.attachRepoTooltip": "Pick a local git repository to see its diff and review it here",
 	"ops.tileSubtitle": "Code-driven tasks · repo optional",
-	"ops.create.typeGit": "Git repository",
+	"ops.create.typeGit": "Folder",
 	"ops.create.typeOps": "Operations",
 	"ops.create.nameLabel": "Board name",
 	"ops.create.namePlaceholder": "Operations",
