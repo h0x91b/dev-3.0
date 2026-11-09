@@ -518,7 +518,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 								className={`text-fg text-base font-semibold leading-relaxed flex-1 ${!isEditing ? "cursor-pointer hover:text-fg-2" : ""}`}
 								onClick={!isEditing ? handleStartRename : undefined}
 							>
-								{isEditing ? (generatedTitle || getTaskTitle(task)) : getTaskTitle(task)}
+								{isEditing && !task.customTitle ? (generatedTitle || task.title) : getTaskTitle(task)}
 							</div>
 							{!isEditing && (
 								<button
@@ -584,7 +584,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 									<span className="text-micro text-accent animate-pulse">{t(pasteKind === "text" ? "paste.savingText" : "images.pasting")}</span>
 								)}
 								<ImageAttachmentsStrip text={editValue} onRemovePath={handleRemovePath} />
-								{generatedTitle && generatedTitle !== editValue.trim() && (
+								{!task.customTitle && generatedTitle && generatedTitle !== editValue.trim() && (
 									<div className="text-fg-3 text-xs">
 										{t("createTask.generatedTitle")}{" "}
 										<span className="text-fg-2 font-medium">{generatedTitle}</span>

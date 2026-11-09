@@ -214,6 +214,31 @@ describe("TaskDetailModal", () => {
 			expect(screen.queryByText("Edit")).not.toBeInTheDocument();
 		});
 
+		it("keeps the saved custom title in the heading while the description editor is open", async () => {
+			const task = makeTodoTask({ customTitle: "My custom title", description: "original" });
+			const { container } = renderModal(task);
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			await user.type(screen.getByRole("textbox"), " changed{Enter}second line");
+
+			expect(container.querySelector("#task-detail-title")).toHaveTextContent("My custom title");
+			expect(screen.queryByText("original changed second line", { selector: "span" })).not.toBeInTheDocument();
+		});
+
+		it("previews the generated title while editing a task without a custom title", async () => {
+			const task = makeTodoTask({ description: "original" });
+			const { container } = renderModal(task);
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			const textarea = screen.getByRole("textbox");
+			await user.clear(textarea);
+			await user.type(textarea, "Fresh description");
+
+			expect(container.querySelector("#task-detail-title")).toHaveTextContent("Fresh description");
+		});
+
 		it("keeps one editor open at a time: no description Edit while the title editor is open", async () => {
 			renderModal(makeTodoTask());
 			const user = userEvent.setup();
