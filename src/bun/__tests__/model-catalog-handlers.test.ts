@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { buildSidecarConfig, catalogModelWireName, providerDisplayName, sidecarProviderKey, type ModelCatalog } from "../../shared/model-catalog";
+import { buildSidecarConfig, catalogModelWireName, providerDisplayName, type ModelCatalog } from "../../shared/model-catalog";
 import type { ModelCatalogView } from "../../shared/types";
 
 const h = vi.hoisted(() => ({
@@ -125,7 +125,8 @@ describe("renaming a custom provider", () => {
 			})),
 		};
 		// What an older reader derives from the label alone.
-		expect(`${sidecarProviderKey(oldSaved.providers[0])}/${model.name}`).toBe(heldByAgent);
+		expect(`custom-${oldSaved.providers[0].label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}/${model.name}`).toBe("custom-custom-endpoint/kimi");
+		expect(heldByAgent).toBe("custom-custom-endpoint/kimi");
 		expect(catalogModelWireName(oldSaved, "m-1")).toBe(heldByAgent);
 		// Documented trade-off: the rename is lost, the routing is not.
 		expect(providerDisplayName(oldSaved.providers[0])).toBe("Custom endpoint");
