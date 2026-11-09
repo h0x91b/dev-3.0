@@ -38,7 +38,7 @@ import type { Space, SpacesFile } from "./spaces";
 import type { BoardRef, BoardViewState } from "../board-view-state";
 import type { ExtensionInspection, ExtensionsOverview, InstalledExtension } from "../extensions";
 import type { Epic, EpicMember, EpicsFile } from "./epics";
-import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, AgentLaunchRequest, LaunchVariant, TaskDialogSubject } from "./agent-launch";
+import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, AgentLaunchRequest, LaunchVariant, PendingMergeOffer, TaskDialogSubject } from "./agent-launch";
 import type { ScheduledMessageTarget } from "./scheduled-messages";
 import type { LiveArtifact, SharedArtifact, SharedImage } from "./shared-media";
 import type { ScriptPlacement, ScriptRunner, ScriptSource, WorktreeScripts } from "./package-scripts";
@@ -833,6 +833,11 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; fingerprint: string | null };
 				response: Task;
 			};
+			/** Unanswered merge offers, replayed on connect like `listPendingCompletionRequests`. */
+			listPendingMergeOffers: {
+				params: Record<string, never>;
+				response: PendingMergeOffer[];
+			};
 			getPtyUrl: {
 				params: { taskId: string; resume?: boolean };
 				// `hibernated` marks a recovery offer the user must accept explicitly:
@@ -1241,6 +1246,11 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; foreignCode: boolean };
 				response: Task;
 			};
+			/** The project's last explicit AWS profile pick; null when it never made one. */
+			getRememberedBedrockProfile: {
+				params: { projectId: string };
+				response: { profile: string | null } | null;
+			};
 			/** Persist a deferred launch on a todo task ("Start in…"). */
 			scheduleTaskLaunch: {
 				params: {
@@ -1448,6 +1458,7 @@ export type AppRPCSchema = {
 					agentId: string | null;
 					configId: string | null;
 					accountId?: string | null;
+					bedrockProfile?: string | null;
 					handoff?: boolean;
 				};
 				response: SpawnAgentResult;

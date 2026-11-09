@@ -208,3 +208,68 @@ describe("config export", () => {
 		);
 	});
 });
+
+describe("config arg parsing", () => {
+	it("never lets a bare boolean flag swallow the key", async () => {
+		const { parseConfigArgs } = await import("../commands/config");
+		expect(parseConfigArgs(["--local", "clonePaths", "node_modules"])).toMatchObject({
+			flags: { local: "true" },
+			positional: ["clonePaths", "node_modules"],
+		});
+		expect(parseConfigArgs(["portCount", "--main", "2", "--project", "p1"])).toMatchObject({
+			flags: { main: "true", project: "p1" },
+			positional: ["portCount", "2"],
+		});
+	});
+});
+
+describe("config set", () => {
+	it("sends the value parsed against the schema", async () => {
+		mockSend.mockResolvedValue(okResp({ file: "/w/.dev3/config.json", previous: undefined, value: ["a", "b"] }));
+		await handleConfig("set", EMPTY_ARGS, SOCKET, CTX_WITH_WT, ["clonePaths", "a,b", "--local"]);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "config.set", expect.objectContaining({
+			key: "clonePaths", value: ["a", "b"], local: true, main: false,
+		}));
+		expect(stdoutOutput).toContain('Set clonePaths = ["a","b"]');
+	});
+
+	it("rejects an invalid value with exit 47 and never calls the app", async () => {
+		await expect(handleConfig("set", EMPTY_ARGS, SOCKET, CTX, ["peerReviewEnabled", "maybe"])).rejects.toThrow("process.exit");
+		expect(exitSpy).toHaveBeenCalledWith(47);
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("names the closest key for a typo", async () => {
+		await expect(handleConfig("set", EMPTY_ARGS, SOCKET, CTX, ["portcont", "2"])).rejects.toThrow("process.exit");
+		expect(stderrOutput).toContain('Did you mean "portCount"');
+	});
+});
+
+describe("config schema", () => {
+	it("lists every schema field without the app", async () => {
+		const { CONFIG_KEYS } = await import("../../shared/config-schema");
+		await handleConfig("schema", EMPTY_ARGS, null, null, []);
+		for (const key of CONFIG_KEYS) expect(stdoutOutput).toContain(`${key}  `);
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("prints a JSON Schema with --json", async () => {
+		await handleConfig("schema", EMPTY_ARGS, null, null, ["--json"]);
+		expect(JSON.parse(stdoutOutput).$schema).toContain("2020-12");
+	});
+});
+
+describe("config validate file discovery", () => {
+	it("checks a checkout reached through a symlink once", async () => {
+		const { mkdtempSync, mkdirSync, symlinkSync, realpathSync } = await import("node:fs");
+		const { join } = await import("node:path");
+		const { tmpdir } = await import("node:os");
+		const { configFilesToValidate } = await import("../commands/config");
+		const real = realpathSync(mkdtempSync(join(tmpdir(), "cfg-validate-")));
+		mkdirSync(join(real, ".dev3"));
+		const link = `${real}-link`;
+		symlinkSync(real, link);
+		const files = configFilesToValidate({ projectId: "x", taskId: "y", socketPath: "", worktreePath: link }, real);
+		expect(files.filter((f) => f.endsWith("config.json"))).toHaveLength(1);
+	});
+});

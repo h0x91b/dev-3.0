@@ -23,7 +23,7 @@ interface FilterFunnelProps {
 	query: string;
 	/** Emits the edited query string when a value is checked/unchecked. */
 	onChange: (next: string) => void;
-	/** Grouped, present-values-only options (built by the host surface). */
+	/** Grouped options (built by the host surface; see `buildFilterGroups`). */
 	groups: FilterFunnelGroup[];
 	/** Compact (board bar) vs tiny (sidebar) button sizing. */
 	size?: "sm" | "xs";

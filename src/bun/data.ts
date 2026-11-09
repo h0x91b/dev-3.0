@@ -885,6 +885,7 @@ export async function addTask(
 		agentId?: string | null;
 		configId?: string | null;
 		accountId?: string | null;
+		bedrockProfile?: string | null;
 		seq?: number;
 		/** Overrides the title derived from the description (blank-description drafts). */
 		title?: string;
@@ -961,6 +962,7 @@ export async function addTask(
 			agentId: extras?.agentId ?? null,
 			configId: extras?.configId ?? null,
 			...(extras?.accountId !== undefined ? { accountId: extras.accountId } : {}),
+			...(extras?.bedrockProfile !== undefined ? { bedrockProfile: extras.bedrockProfile } : {}),
 			createdAt: now,
 			updatedAt: now,
 			...(status === "in-progress" ? { lifecycleStartedAt: now } : {}),
@@ -1476,6 +1478,8 @@ const PREFERENCES_FILE = `${DEV3_HOME}/preferences.json`;
 
 interface Preferences {
 	lastPickedFolder?: string;
+	/** Last AWS profile picked in a launch dialog, per project id (null = none). */
+	bedrockProfileByProject?: Record<string, string | null>;
 }
 
 async function rawLoadPreferences(): Promise<Preferences> {
@@ -1501,6 +1505,27 @@ export async function setLastPickedFolder(folder: string): Promise<void> {
 	return withFileLock(PREFERENCES_FILE, async () => {
 		const prefs = await rawLoadPreferences();
 		prefs.lastPickedFolder = folder;
+		await rawSavePreferences(prefs);
+	});
+}
+
+/** The AWS profile the launch dialogs preselect for this project; undefined
+ *  when the project never launched with an explicit pick. */
+export async function getRememberedBedrockProfile(projectId: string): Promise<string | null | undefined> {
+	const prefs = await rawLoadPreferences();
+	const byProject = prefs.bedrockProfileByProject ?? {};
+	return projectId in byProject ? byProject[projectId] : undefined;
+}
+
+/** Remember the last explicit AWS profile pick among `picks` (undefined = no pick). */
+export async function rememberBedrockProfile(projectId: string, picks: Array<string | null | undefined>): Promise<void> {
+	const explicit = picks.filter((pick): pick is string | null => pick !== undefined);
+	if (explicit.length === 0) return;
+	const pick = explicit[explicit.length - 1];
+	return withFileLock(PREFERENCES_FILE, async () => {
+		const prefs = await rawLoadPreferences();
+		if (prefs.bedrockProfileByProject?.[projectId] === pick) return;
+		prefs.bedrockProfileByProject = { ...prefs.bedrockProfileByProject, [projectId]: pick };
 		await rawSavePreferences(prefs);
 	});
 }

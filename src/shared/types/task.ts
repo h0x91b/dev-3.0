@@ -146,6 +146,9 @@ export interface Task {
 	 * account the usage-balanced router picked.
 	 */
 	accountId?: string | null;
+	/** AWS profile entry picked for a Bedrock agent (see LaunchVariant). Persisted so
+	 *  Retry, respawn and recovery launch on the same AWS account. */
+	bedrockProfile?: string | null;
 	/** Why Auto chose `accountId`, recorded at the launch that routed it. */
 	accountPick?: { reason: AccountPickReason; at: string } | null;
 	createdAt: string;

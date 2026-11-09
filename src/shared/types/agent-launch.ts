@@ -17,6 +17,9 @@ export interface LaunchVariant {
 	agentId: string | null;
 	configId: string | null;
 	accountId?: string | null;
+	/** Per-launch AWS profile pick for a Bedrock agent: `undefined` → the agent's
+	 *  default; `null` → none; a name → that `ProviderSettings.profiles` entry. */
+	bedrockProfile?: string | null;
 }
 
 /**
@@ -62,6 +65,19 @@ export interface TaskDialogSubject {
 	labels: Label[];
 	/** Effective overview (user override → agent), or null when neither is set. */
 	overview: string | null;
+}
+
+/**
+ * A merge completion offer the user has not answered, as `listPendingMergeOffers`
+ * returns it to a renderer that connected after the one-shot `branchMerged` push.
+ */
+export interface PendingMergeOffer {
+	taskId: string;
+	projectId: string;
+	taskTitle: string;
+	branchName: string;
+	fingerprint: string;
+	subject: TaskDialogSubject;
 }
 
 /**

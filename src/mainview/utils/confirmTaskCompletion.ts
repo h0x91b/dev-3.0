@@ -1,6 +1,7 @@
 import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { taskDialogInfo } from "./taskDialogInfo";
+import { isCompletionStripMounted, offerCompletion } from "../completion-offers";
 import type { Task, Project, TaskStatus, BranchStatus, UnsavedWork } from "../../shared/types";
 import { isOpsWorktreeTask } from "../../shared/types";
 import type { TFunction } from "../i18n";
@@ -69,6 +70,16 @@ function gitWarnings(status: BranchStatus | UnsavedWork, task: Task, project: Pr
 }
 
 /**
+ * Whether completing this task can lose nothing in git. PR-review tasks check
+ * out someone else's branch, so its state is not the user's work; an Operations
+ * task has nothing to lose unless it works in its own worktree.
+ */
+export function completionSkipsGitCheck(task: Task, project: Project): boolean {
+	return !task.worktreePath || (Boolean(task.existingBranch) && !isOpsWorktreeTask(task))
+		|| (project.kind === "virtual" && !isOpsWorktreeTask(task));
+}
+
+/**
  * Checks git state before allowing a task to move to completed/cancelled.
  * Returns true if the move should proceed, false if the user cancelled.
  *
@@ -86,16 +97,11 @@ export async function confirmTaskCompletion(
 	newStatus: TaskStatus,
 	t: TFunction,
 	onOpenTask?: () => void,
-	options?: { alwaysConfirm?: boolean },
+	options?: { alwaysConfirm?: boolean; anchor?: HTMLElement | null },
 ): Promise<boolean> {
 	if (newStatus !== "completed" && newStatus !== "cancelled") return true;
 	const alwaysConfirm = options?.alwaysConfirm ?? false;
-	// PR-review tasks check out someone else's existing branch — the commits,
-	// unpushed and unmerged state aren't the user's work, so completing them
-	// must not warn about uncommitted/unpushed/unmerged changes.
-	// An Operations task has nothing to lose in git, unless it works in its own worktree.
-	const skipGitCheck = !task.worktreePath || (Boolean(task.existingBranch) && !isOpsWorktreeTask(task))
-		|| (project.kind === "virtual" && !isOpsWorktreeTask(task));
+	const skipGitCheck = completionSkipsGitCheck(task, project);
 	if (skipGitCheck && !alwaysConfirm) return true;
 
 	const tail = task.worktreePath
@@ -103,7 +109,15 @@ export async function confirmTaskCompletion(
 		: t(newStatus === "completed" ? "task.confirmCompleteFooter" : "task.confirmCancelFooter");
 	const info = taskDialogInfo(task, project, onOpenTask);
 
-	// One-click path: on screen now, local git check streamed in.
+	// One-click path. Asked where the user clicked: a popover at the clicked
+	// control, else the completion card on the open task, else a modal.
+	const anchor = options?.anchor?.isConnected ? options.anchor : null;
+	if (alwaysConfirm && !anchor && isCompletionStripMounted(task.id)) {
+		// Captured now: by the time the card mounts, the clicked ✓ is disabled and has lost focus.
+		const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		const answer = await offerCompletion({ taskId: task.id, projectId: project.id, kind: "user", status: newStatus, returnFocus });
+		return answer === true;
+	}
 	if (alwaysConfirm) {
 		const unsaved = skipGitCheck
 			? null
@@ -112,6 +126,7 @@ export async function confirmTaskCompletion(
 			title: t(newStatus === "completed" ? "task.confirmCompleteTitle" : "task.confirmCancelTitle"),
 			confirmLabel: t(newStatus === "completed" ? "task.confirmCompleteLabel" : "task.confirmCancelLabel"),
 			info,
+			anchor,
 			message: tail,
 			deferred: unsaved
 				? {

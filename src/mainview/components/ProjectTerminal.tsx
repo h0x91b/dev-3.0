@@ -97,6 +97,12 @@ function ProjectTerminal({ projectId, projectPath, projectName, onBack }: Projec
 		return () => window.removeEventListener("rpc:projectPtyDied", onProjectPtyDied);
 	}, [projectId]);
 
+	/** A restarted app has forgotten the session; ask for it again so the open view reconnects. */
+	async function reregisterSession(): Promise<boolean> {
+		await api.request.getProjectPtyUrl({ projectId });
+		return true;
+	}
+
 	async function handleRestart() {
 		setRestarting(true);
 		try {
@@ -163,6 +169,7 @@ function ProjectTerminal({ projectId, projectPath, projectName, onBack }: Projec
 						taskId={sessionKey}
 						projectId={projectId}
 						onReady={setTermHandle}
+						onSessionUnknown={reregisterSession}
 						touchComposeMode={touchInput && !rawMode}
 						onScrolledIntoHistory={scrollSignal}
 					/>

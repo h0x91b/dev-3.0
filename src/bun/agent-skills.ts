@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { createLogger } from "./logger";
+import { renderConfigFieldTable } from "../shared/config-schema";
 import { ensureCodexConfigFile } from "./codex-config";
 import {
 	AGENT_MESSAGE_HOLD_HUMAN_IDLE_SECONDS,
@@ -267,47 +268,31 @@ is genuinely ambiguous (e.g., multiple possible dev servers, unclear base branch
 
 4. **Ask where to save.** Stop and ask clearly: "Repo config (shared, git) or Local config (personal, git-ignored)?" — wait for answer before writing anything.
 
+   Write each field with \`dev3 config set\` (add \`--local\` for config.local.json). It validates the value against the schema, keeps the file's formatting and says when a higher layer still wins. Do not hand-edit the JSON.
+
 \`\`\`bash
-mkdir -p .dev3
-cat > .dev3/config.json << 'EOF'
-{
-  "setupScript": "bun install",
-  "devScript": "VITE_PORT=\${DEV3_PORT0:-5173} API_PORT=\${DEV3_PORT1:-3001} bun run dev",
-  "cleanupScript": "rm -rf dist node_modules/.cache",
-  "clonePaths": ["node_modules"],
-  "defaultBaseBranch": "main",
-  "defaultCompareRefMode": "remote",
-  "portCount": 2
-}
-EOF
+dev3 config set setupScript "npm install"
+dev3 config set devScript 'PORT=\${DEV3_PORT0:-3000} npm run dev'
+dev3 config set clonePaths node_modules,.env
+dev3 config set portCount 1
+dev3 config set env.NODE_ENV development
 \`\`\`
 
 5. **Run the setupScript once.** Execute it right now in your shell to install dependencies / generate files. This validates the script works and also produces the heavy directories (node_modules, .venv, etc.) needed for the next step.
 
 6. **Update clonePaths after setup.** After the setupScript finishes, check which heavy directories now exist (node_modules, .venv, target, build, dist, .next, etc.) and are NOT tracked (\`git ls-files -- <dir>\` prints nothing), and add any missing ones to \`clonePaths\` in the config. Re-write the config if needed.
 
-7. **Verify** by running \`dev3 config show\` and confirm all fields show the correct source. If \`portCount > 0\`, also smoke-test the mapping: run the dev command briefly with explicit \`DEV3_PORT0\` (and others if needed) and confirm the project uses the forwarded port. If a smoke test is impractical, say so explicitly.
+7. **Verify** by running \`dev3 config validate\` (no errors) and \`dev3 config show\`, and confirm all fields show the correct source. If \`portCount > 0\`, also smoke-test the mapping: run the dev command briefly with explicit \`DEV3_PORT0\` (and others if needed) and confirm the project uses the forwarded port. If a smoke test is impractical, say so explicitly.
 
 8. **Commit** the config file: \`git add .dev3/config.json && git commit -m "chore: add dev3 project config"\`
 
 ## Schema reference
 
-| Field | Type | Description |
-|-------|------|-------------|
-| \`setupScript\` | string | Runs after a new worktree is created (install deps, generate code, etc.). Gets the workspace env vars from step 3b |
-| \`devScript\` | string | Dev server command (powers the "Dev Server" button in the UI) |
-| \`devServers\` | object | Dev servers beyond \`devScript\`, keyed by name: \`{ script, ports?, env?, cwd?, title? }\`. Each starts, stops and restarts on its own; every \`ports\` entry becomes one of the task's pool ports and reaches EVERY server of that task as \`DEV3_PORT_<NAME>\` |
-| \`cleanupScript\` | string | Runs before the task worktree is removed (\`completed\` / \`cancelled\` / task deleted / preparation cancelled) |
-| \`clonePaths\` | string[] | Files and dirs (globs allowed) CoW-cloned into every worktree. Runs BEFORE the agent launches — unlike \`setupScript\`, which in the default \`parallel\` mode starts alongside the already-running agent — so this is the only hook that can put a git-ignored file in place before the agent reads it. Missing sources are skipped; tracked paths are refused; \`[]\` overrides lower layers |
-| \`defaultBaseBranch\` | string | Base branch for new task branches (default: \`main\`) |
-| \`defaultCompareRefMode\` | \`"remote" \| "local"\` | Default diff comparison target (\`origin/<baseBranch>\` vs local base branch) |
-| \`peerReviewEnabled\` | boolean | Whether peer review is required (default: \`true\`) |
-| \`sparseCheckoutEnabled\` | boolean | Enable sparse checkout for worktrees (default: \`false\`) |
-| \`sparseCheckoutPaths\` | string[] | Paths to include in sparse checkout |
-| \`portCount\` | number | Ports to allocate per task (injected as \`DEV3_PORT0\`..N env vars). Default: \`0\`. **You must map these to the project's own port env vars in \`devScript\` — see step 3a.** |
-| \`env\` | Record<string, string> | Environment variables exported into task sessions. This field is not for secrets; \`.dev3/config.json\` is committed. |
+Generated from the config schema: \`dev3 config schema\` prints the same list, \`dev3 config schema <key>\` the details of one field.
 
-**Only include these fields.** Unknown keys are silently ignored. Do NOT include project metadata (id, name, path).
+${renderConfigFieldTable()}
+
+**Only include these fields.** Unknown keys are ignored with a warning from \`dev3 config validate\`. Do NOT include project metadata (id, name, path).
 
 ## Files
 
@@ -322,7 +307,12 @@ EOF
 
 ## CLI commands
 
-- \`dev3 config show\` — display effective config with source per field
+- \`dev3 config schema [<key>] [--json]\` — what can be configured: type, default, example (no app needed)
+- \`dev3 config show [--json]\` — effective value of every field and the layer it came from
+- \`dev3 config get <key>[.<name>]\` — one effective value
+- \`dev3 config set <key>[.<name>] <value> [--local] [--main]\` — validated write; \`--main\` targets the project root from a task worktree
+- \`dev3 config unset <key>[.<name>] [--local] [--main]\` — remove a key so lower layers apply
+- \`dev3 config validate [--json]\` — check the files (exit 47 on errors; unknown keys only warn)
 - \`dev3 config export\` — migrate legacy settings from projects.json
 `;
 
@@ -1943,7 +1933,7 @@ export function claudeBashPermissions(dialect: HookCliDialect = hookCliDialect()
  * an older wording of the same entry is recognised and replaced.
  */
 export const DEV3_AUTO_MODE_ALLOW_ENTRY =
-	"dev3 task lifecycle: the `dev3` CLI is the dev3 app's own control plane, and `dev3 task move` — `--status completed` and `--status cancelled` included — is a request to the running app, not local destruction. The app answers it with its own approval dialog that the user clicks, and the worktree it then removes is disposable task scratch space whose work is preserved elsewhere before the move is ever requested. Applies to `dev3` however it is spelled (`~/.dev3.0/bin/dev3`, an absolute `dev3.exe`), and only to `dev3` subcommands — nothing else on the command line is cleared by this entry. Commands that execute something are not control-plane requests: `dev3 pane run \"<command>\"` runs `<command>`, and `dev3 dev-server start|restart` runs the project's dev script (which the agent can edit in `.dev3/config.json`). Judge that command exactly as if the agent ran it directly; this entry clears none of it.";
+	"dev3 task lifecycle: the `dev3` CLI is the dev3 app's own control plane, and `dev3 task move` — `--status completed` and `--status cancelled` included — is a request to the running app, not local destruction. The app answers it with its own approval that the user gives in the app, and the worktree it then removes is disposable task scratch space whose work is preserved elsewhere before the move is ever requested. Applies to `dev3` however it is spelled (`~/.dev3.0/bin/dev3`, an absolute `dev3.exe`), and only to `dev3` subcommands — nothing else on the command line is cleared by this entry. Commands that execute something are not control-plane requests: `dev3 pane run \"<command>\"` runs `<command>`, and `dev3 dev-server start|restart` runs the project's dev script (which the agent can edit in `.dev3/config.json`). Judge that command exactly as if the agent ran it directly; this entry clears none of it.";
 
 /**
  * Git and PR management a dev3 task does when the user asks for it. The defaults

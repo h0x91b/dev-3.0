@@ -4,7 +4,7 @@ import { Updater } from "./electrobun-platform";
 import { createLogger } from "./logger";
 import { isNewerVersion } from "../shared/version";
 import { markQuitConfirmed } from "./quit-manager";
-import { BUILD_ORDER } from "../shared/build-info.generated";
+import { BUILD_ORDER, UPDATES_DISABLED } from "../shared/build-info.generated";
 import { decideUpdate, type UpdateChannel, type UpdateManifest } from "../shared/update-channel";
 import type { UpdateChangelog } from "../shared/types";
 import { RELEASE_BASE_URL } from "../shared/release-feed";
@@ -118,13 +118,18 @@ export async function getLocalVersion(): Promise<{ version: string; hash: string
 	return { version, hash, channel, buildOrder: BUILD_ORDER };
 }
 
+/** Source builds and builds made with `DEV3_DISABLE_UPDATES=1` never check, download or apply updates. */
+export function updatesDisabled(channel: string, disabledAtBuild: boolean = UPDATES_DISABLED): boolean {
+	return channel === "dev" || disabledAtBuild === true;
+}
+
 export async function checkForUpdateWithChannel(channel: UpdateChannel): Promise<UpdateCheckResult> {
 	const local = await getLocalVersion();
 
 	// Dev/source builds have updates disabled in Electrobun's updater; a download
 	// there dereferences its uninitialized state and throws (see
 	// doDownloadUpdateForChannel). Report the dev build instead of checking.
-	if (local.channel === "dev") {
+	if (updatesDisabled(local.channel)) {
 		log.info("Skipping update check on dev channel");
 		return { updateAvailable: false, version: local.version, devBuild: true };
 	}
@@ -221,7 +226,7 @@ async function doDownloadUpdateForChannel(
 	// early-returns on the "dev" channel without initializing its module-level
 	// updateInfo, so the subsequent downloadUpdate() writes `updateInfo.error`
 	// on undefined and throws a TypeError. Never reach that call on dev.
-	if (local.channel === "dev") {
+	if (updatesDisabled(local.channel)) {
 		const msg = "Updates are disabled on dev builds (running from source)";
 		log.info(msg);
 		return { ok: false, error: msg };
@@ -524,7 +529,7 @@ export function startAutoCheck(
 		try {
 			const local = await getLocalVersion();
 			// Skip auto-check in dev channel
-			if (local.channel === "dev") {
+			if (updatesDisabled(local.channel)) {
 				log.info("Skipping auto-check in dev channel");
 				return;
 			}

@@ -5,6 +5,7 @@ import { BOARD_CLEANUP_PROMPT, COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT } fr
 import type { GlobalSettings } from "./global-settings";
 import type { CustomColumn, Label } from "./labels-columns";
 import type { Task } from "./task";
+import { CONFIG_KEYS, type ConfigFieldValues } from "../config-schema";
 
 /** Extract repository name from a git URL (HTTPS or SSH). */
 export function extractRepoName(url: string): string {
@@ -78,53 +79,14 @@ export interface DevServerConfig {
 	title?: string;
 }
 
-/** Fields that can be stored in .dev3/config.json (repo-level, shareable). */
-export interface Dev3RepoConfig {
-	setupScript?: string;
-	setupScriptLaunchMode?: SetupScriptLaunchMode;
-	devScript?: string;
-	/**
-	 * Additional dev servers, by name. Independent of `devScript`, which keeps
-	 * declaring the server named `dev` — declaring `dev` here while `devScript`
-	 * is set is a config error, not a merge.
-	 */
-	devServers?: Record<string, DevServerConfig>;
-	cleanupScript?: string;
-	clonePaths?: string[];
-	defaultBaseBranch?: string;
-	defaultCompareRef?: string;
-	defaultCompareRefMode?: CompareRefMode;
-	autoReviewEnabled?: boolean;
-	peerReviewEnabled?: boolean;
-	sparseCheckoutEnabled?: boolean;
-	sparseCheckoutPaths?: string[];
-	builtinColumnAgents?: Record<string, ColumnAgentConfig>;
-	/** Number of ports to allocate per task/worktree (injected as DEV3_PORT0..N). Default: 0. */
-	portCount?: number;
-	/** Env vars exported into every task session (agent terminals, setup/dev/cleanup
-	 *  scripts, column agents). Merged PER KEY across config layers (decision 179). */
-	env?: Record<string, string>;
-}
+/**
+ * Fields that can be stored in `.dev3/config.json` / `.dev3/config.local.json`.
+ * Derived from the schema in `src/shared/config-schema.ts`: add a field there.
+ */
+export type Dev3RepoConfig = ConfigFieldValues;
 
-/** Keys of Dev3RepoConfig — used for merge logic. */
-export const DEV3_REPO_CONFIG_KEYS: (keyof Dev3RepoConfig)[] = [
-	"setupScript",
-	"setupScriptLaunchMode",
-	"devScript",
-	"devServers",
-	"cleanupScript",
-	"clonePaths",
-	"defaultBaseBranch",
-	"defaultCompareRef",
-	"defaultCompareRefMode",
-	"autoReviewEnabled",
-	"peerReviewEnabled",
-	"sparseCheckoutEnabled",
-	"sparseCheckoutPaths",
-	"builtinColumnAgents",
-	"portCount",
-	"env",
-];
+/** Keys of Dev3RepoConfig, in schema order — used for merge logic. */
+export const DEV3_REPO_CONFIG_KEYS: readonly (keyof Dev3RepoConfig)[] = CONFIG_KEYS;
 
 /** The `.dev3` keys Add Project's auto-configure can write. */
 export type AutoConfigureKey = "setupScript" | "devScript";
@@ -148,13 +110,15 @@ export interface ConfigSourceEntry {
  * Wider than ConfigSource (repo/local, used for the UI badge): it attributes
  * EVERY key to exactly one origin so the CLI never falls back to a blanket
  * label that hides where a value actually came from.
- *   local   → .dev3/config.local.json
- *   repo    → .dev3/config.json
- *   project → projects.json Project object (Project Settings → Project tab)
+ *   local      → .dev3/config.local.json of the checkout being resolved
+ *   repo       → .dev3/config.json of the checkout being resolved
+ *   main-local → the project root's .dev3/config.local.json, seen from a worktree
+ *   main-repo  → the project root's .dev3/config.json, seen from a worktree
+ *   project    → projects.json Project object (Project Settings → Project tab)
  *   default → built-in DEFAULTS or a derived value (e.g. defaultCompareRef)
  *   unset   → no value at any layer (rendered "(not set)")
  */
-export type ResolvedConfigSource = "local" | "repo" | "project" | "default" | "unset";
+export type ResolvedConfigSource = "local" | "repo" | "main-local" | "main-repo" | "project" | "default" | "unset";
 
 export interface ProjectSettingsUpdate extends Dev3RepoConfig {
 	/** Display name only — the project's path (and every slug derived from it) never moves. */

@@ -160,6 +160,7 @@ describe("TaskDetailModal", () => {
 			const renameInput = screen.getByRole("textbox");
 			expect(renameInput).toBeInTheDocument();
 			expect(renameInput).toHaveValue("Auto-generated title");
+			expect(screen.getByText("Enter to save · Esc to cancel")).toBeInTheDocument();
 		});
 
 		it("saves renamed title on Enter", async () => {
@@ -211,6 +212,62 @@ describe("TaskDetailModal", () => {
 			renderModal(task);
 
 			expect(screen.queryByText("Edit")).not.toBeInTheDocument();
+		});
+
+		it("keeps the saved custom title in the heading while the description editor is open", async () => {
+			const task = makeTodoTask({ customTitle: "My custom title", description: "original" });
+			const { container } = renderModal(task);
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			await user.type(screen.getByRole("textbox"), " changed{Enter}second line");
+
+			expect(container.querySelector("#task-detail-title")).toHaveTextContent("My custom title");
+			expect(screen.queryByText("original changed second line", { selector: "span" })).not.toBeInTheDocument();
+		});
+
+		it("previews the generated title while editing a task without a custom title", async () => {
+			const task = makeTodoTask({ description: "original" });
+			const { container } = renderModal(task);
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			const textarea = screen.getByRole("textbox");
+			await user.clear(textarea);
+			await user.type(textarea, "Fresh description");
+
+			expect(container.querySelector("#task-detail-title")).toHaveTextContent("Fresh description");
+		});
+
+		it("keeps one editor open at a time: no description Edit while the title editor is open", async () => {
+			renderModal(makeTodoTask());
+			const user = userEvent.setup();
+
+			await user.click(screen.getByTitle("Edit title"));
+			expect(screen.queryByText("Edit")).not.toBeInTheDocument();
+			expect(screen.getAllByText("Save")).toHaveLength(1);
+
+			await user.keyboard("{Escape}");
+			expect(screen.getByText("Edit")).toBeInTheDocument();
+		});
+
+		it("keeps one editor open at a time: no title rename while the description editor is open", async () => {
+			renderModal(makeTodoTask());
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			expect(screen.queryByTitle("Edit title")).not.toBeInTheDocument();
+			await user.click(document.getElementById("task-detail-title")!);
+			expect(screen.getAllByRole("textbox")).toHaveLength(1);
+			expect(screen.getAllByText("Save")).toHaveLength(1);
+		});
+
+		it("pins the description editor's Save row to the bottom of the scroll area", async () => {
+			renderModal(makeTodoTask());
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			expect(screen.getByText("Save").closest(".sticky")).toHaveClass("bottom-0", "-mx-6");
 		});
 
 		it("uploads an image dropped into the edit textarea and appends the saved path", async () => {

@@ -268,7 +268,7 @@ ux_architecture:
       forbidden: ["durable_global_configuration"]
       evidence: ["board-views/kanban/KanbanView.tsx", "board-views/kanban/KanbanColumn.tsx"]
     board_view_table:
-      purpose: "builtin:table — every board task as sortable virtualised rows."
+      purpose: "builtin:table — every board task as sortable virtualised rows; spare width at the row end shows the task overview (read-only, not a column)."
       allowed: ["header_sort", "inline_status_priority_labels", "context_menu", "open_task", "column_toggles_in_view_options"]
       forbidden: ["bulk_actions", "durable_global_configuration"]
       evidence: ["board-views/table/"]
@@ -327,6 +327,10 @@ ux_architecture:
       forbidden: ["global_destination", "cross_project_action", "uncapped_note_list"]
       note: "This panel is the densest surface (34K). It is the main complexity-budget risk in the app."
       evidence: ["src/mainview/components/TaskInfoPanel.tsx", "src/mainview/components/task-info-panel/*"]
+      completion_strip:
+        rule: "A completion ask (merge, agent, or the user's own Complete on the open task) floats as one card over the top-right of the live terminal (row under the inspector if none); never a modal or a toast with an action, never resizes the terminal. Unsolicited: no focus, 600 ms click arming; Complete gated on the unsaved-work check. Elsewhere: bell, a toast that opens the task, card and sidebar marker."
+        actions: { complete: "destructive", keep_open: "secondary", manual_completion: "ghost (merge)", settings: "icon (merge)" }
+        evidence: ["src/mainview/completion-offers.ts", "src/mainview/components/task-info-panel/TaskCompletionStrip.tsx"]
       bar_model:
         layout: "2x2"  # two rows; each row split into left|right by a flex-1 spacer
         rationale: "Wide desktop width is used instead of stacking more rows; the panel has a hard height budget (MAX_RATIO=0.33). One bar = one action domain. Panel chrome is not a bar."
@@ -437,14 +441,14 @@ ux_architecture:
       forbidden: ["primary_navigation", "persistent_dashboard"]
       observed: ["CreateTaskModal", "AddProjectModal", "TaskDetailModal", "LaunchVariantsModal", "SpawnAgentModal", "AgentLaunchRequestModal", "SecretRequestModal", "GitPullErrorModal", "FolderPickerModal", "AccountLoginModal"]
       agent_request:
-        rule: "Agent requests share an accent border, AI badge and autofocused decline. Severity follows the action: destructive only for destroying state. Input beyond yes/no uses its own modal; confirm() stays boolean. Requests queue, one dialog at a time."
-        identity: ["accent border", "AI agent request badge", "autofocused decline"]
+        rule: "Agent requests share an accent border, AI badge and autofocused decline. Severity follows the action: destructive only for destroying state. Input beyond yes/no uses its own modal; confirm() stays boolean. Requests queue, one dialog at a time. Completion requests are the exception: they render inline on their task (task_info_panel.completion_strip), never as a modal."
+        identity: ["accent border", "AI agent request badge", "autofocused decline (modal only)"]
         severity_by_action: { destroys_state: "destructive", creates_state: "primary" }
-        observed: ["agentCompletionRequested → confirm() (destructive)", "agentLaunchRequested → AgentLaunchRequestModal (primary)", "secretRequested → SecretRequestModal (primary; explicit approval only, masked input, no output)"]
+        observed: ["agentLaunchRequested → AgentLaunchRequestModal (primary)", "secretRequested → SecretRequestModal (primary; explicit approval only, masked input, no output)"]
       evidence: ["src/mainview/components/*Modal.tsx", "src/mainview/confirm.tsx"]
     popover:
       purpose: "Lightweight contextual preview/hint anchored to an element."
-      allowed: ["preview", "hint", "quick_action", "remediation"]
+      allowed: ["preview", "hint", "quick_action", "remediation", "own_click_confirm"]
       forbidden: ["multi_step_flow", "primary_destination"]
       observed: ["SiblingPopover", "TerminalPreviewPopover", "StuckPreparationPopover"]
       evidence: ["src/mainview/components/*Popover.tsx"]
@@ -452,7 +456,7 @@ ux_architecture:
       purpose: "Object-scoped actions on right-click / long-press (task card, sidebar row, terminal)."
       allowed: ["object_action", "open_in", "destructive"]
       forbidden: ["global_destination"]
-      task_menu: "ONE menu for the task object (TaskContextMenu), mounted by card AND sidebar row; routes to the existing picker/modal/RPC, owns no action. MAY repeat a control the surface shows — a context menu is reached blind. Narrow: BottomSheet. Shift+F10 opens it."
+      task_menu: "ONE menu for the task object (TaskContextMenu), mounted by card AND sidebar row; routes to the existing picker/modal/RPC, owns no action. MAY repeat a control the surface shows — a context menu is reached blind. Pickers: hover flyout. Narrow: BottomSheet, picker rows tap through. Shift+F10 opens it."
       evidence: ["src/mainview/components/TaskContextMenu.tsx", "src/mainview/components/OpenInMenu.tsx"]
     settings:
       purpose: "Durable configuration. GlobalSettings (app-wide) and ProjectSettings (per-project scripts, columns, labels, gh account)."

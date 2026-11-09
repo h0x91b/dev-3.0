@@ -87,6 +87,8 @@ async function performSpawn(opts: SpawnOptions): Promise<SpawnOutcome> {
 	await assertRunning(task);
 	// Account overrides belong to the human approval response, never the caller.
 	let choice = await validateChoice({ agentId: opts.choice.agentId, configId: opts.choice.configId });
+	// The new pane starts on the task's AWS account; the dialog seeds from this.
+	if (task.bedrockProfile !== undefined) choice = { ...choice, bedrockProfile: task.bedrockProfile };
 	if (requester) {
 		const push = getPushMessage();
 		if (!push) throw new Error("No app window is connected — cannot ask the user for approval");
