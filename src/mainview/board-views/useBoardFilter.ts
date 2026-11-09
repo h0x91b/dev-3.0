@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
 import type { CodingAgent, CustomColumn, Epic, EpicMember, Label, PortInfo, Project, Space, Task, TaskPRBadgeInfo } from "../../shared/types";
-import { ALL_PRIORITIES, ALL_STATUSES, DEFAULT_PRIORITY, normalizeLaneName } from "../../shared/types";
+import { ALL_PRIORITIES, ALL_STATUSES, DEFAULT_PRIORITY, hasGitWorkflow, normalizeLaneName } from "../../shared/types";
 import { statusKey, useT } from "../i18n";
 import { PRIORITY_NAME_KEYS } from "../components/priorityStyles";
 import { useTaskLineage } from "../hooks/useTaskLineage";
@@ -69,10 +69,10 @@ export function useBoardFilter({ project, space, memberProjects, tasks, agents, 
 
 	// PR badge data: what each task already carries (sticky prNumber/prUrl +
 	// prStatusCache), refreshed by the `taskPrStatus` push, plus a per-project
-	// branch->PR lookup. Virtual (Operations) boards have no git repo, so they get
+	// branch->PR lookup. Boards without the git workflow (Operations included) get
 	// no lookup instead of a doomed RPC every 60s.
 	const gitProjectIds = useMemo(
-		() => boardProjects.filter((p) => p.kind !== "virtual").map((p) => p.id),
+		() => boardProjects.filter(hasGitWorkflow).map((p) => p.id),
 		[boardProjects],
 	);
 	const knowsProject = useCallback((projectId: string) => projectById.has(projectId), [projectById]);

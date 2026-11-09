@@ -85,6 +85,13 @@ describe("TaskCompletionStrip", () => {
 		expect(screen.getByTestId("task-completion-strip-complete")).toBeEnabled();
 	});
 
+	it("says the folder is kept when the project's git workflow is off", async () => {
+		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={{ ...project, gitWorkflow: false } as Project} /></I18nProvider>);
+		await offer("agent");
+		expect(screen.getByText("Completing ends the terminal session. The working folder and its files are kept.")).toBeInTheDocument();
+		expect(screen.queryByText("Completing removes the worktree and ends the terminal session.")).toBeNull();
+	});
+
 	it("lets Complete through when the check fails, with a warning", async () => {
 		vi.mocked(api.request.getUnsavedWork).mockRejectedValue(new Error("git gone"));
 		renderStrip();
