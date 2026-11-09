@@ -13461,6 +13461,18 @@ describe("the last agent's conversation survives its pane exit", () => {
 		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([{ ...agentA, paneId: null, parked: true }]);
 	});
 
+	it("main exits while a hunter lives, then the hunter exits: main ends parked, the hunter is dropped", async () => {
+		const hunter = { ...agentB, hunter: true };
+		const { project, task } = arrange([agentA, hunter]);
+		vi.mocked(pty.listPaneIds).mockResolvedValue(["%1"]);
+		await handlePaneExited(task.id, "%0");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([{ ...agentA, paneId: null, parked: true }, hunter]);
+
+		vi.mocked(pty.listPaneIds).mockResolvedValue([]);
+		await handlePaneExited(task.id, "%1");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([{ ...agentA, paneId: null, parked: true }]);
+	});
+
 	it("a plain shell keeps the tmux session alive: the main entry's dead pane is parked, not adopted onto the shell", async () => {
 		const { project, task } = arrange([agentA]);
 		vi.mocked(pty.listPaneIds).mockResolvedValue(["%7"]);

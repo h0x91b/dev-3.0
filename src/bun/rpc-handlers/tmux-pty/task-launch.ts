@@ -959,7 +959,7 @@ export function cleanupTaskTmuxState(taskId: string): void {
  * 2. If exactly one entry has paneId=null and exactly one live pane is
  *    unmatched, assign it (the setup pane exited, leaving the real agent).
  * 3. If no live panes remain and null-paneId entries exist, remove them too.
- * 4. If no non-parked entry is left, park the entries removed above (paneId null,
+ * 4. If no non-parked, non-hunter entry is left, park the entries removed above (paneId null,
  *    keeping sessionId) so Resume continues the last agents' conversations.
  *    Bug-hunter entries are one-shot and are always dropped.
  * 5. If the task-level agent belonged to a removed pane, put the surviving main
@@ -997,7 +997,7 @@ export async function handlePaneExited(taskId: string, _exitedPaneId: string): P
 		}
 
 		// The last agent pane is gone: keep its conversation id by parking instead of dropping.
-		if (!surviving.some(p => !p.parked)) {
+		if (!surviving.some(p => !p.parked && !p.hunter)) {
 			const kept = new Set(surviving);
 			surviving = panes.flatMap(p => kept.has(p) ? [p] : p.hunter ? [] : [{ ...p, paneId: null, parked: true }]);
 		}
