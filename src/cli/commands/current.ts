@@ -218,7 +218,7 @@ function workspaceFields(
 	if (sharesProjectFolder(project, task)) {
 		const fields: Array<[string, string]> = [["Git workflow:", "off - no task worktree or branch; PRs only when asked; completion keeps every file"]];
 		if (worktreePath) fields.push(["Folder:", worktreePath]);
-		fields.push(["Shared folder:", "other tasks edit here too - stage by explicit path; never git stash, git add -A, git checkout --, git reset or git clean"]);
+		fields.push(["Shared folder:", "other tasks edit here too - stage by explicit path; never git stash, git add -A, git checkout --, git reset or git clean; never switch, rebase, pull or amend the shared branch"]);
 		fields.push(["Protocol:", "shared-folder"]);
 		return fields;
 	}

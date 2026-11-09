@@ -144,4 +144,27 @@ describe("launching a shared-folder task", () => {
 		expect(cmd).toContain("**PRs are optional here.**");
 		expect(cmd).not.toContain("This worktree already IS your isolation.");
 	});
+
+	it.each(["gemini", "copilot"])("%s, which injects no protocol, gets the folder rules in its prompt", async (command) => {
+		onPosix();
+		const cmd = await resolveAgentCommand(agent(command), undefined, CTX, { protocolMode: "shared-folder" });
+		expect(cmd).toContain("dev3: this task shares its folder");
+		expect(cmd).toContain("never switch, rebase, pull or amend");
+		expect(await resolveAgentCommand(agent(command), undefined, CTX)).not.toContain("dev3: this task shares its folder");
+	});
+
+	it("an agent that injects the protocol gets no duplicate notice in its prompt", async () => {
+		onPosix();
+		delete process.env.DEV3_LEAN_PROTOCOL;
+		const cmd = await resolveAgentCommand(agent("codex"), undefined, CTX, { protocolMode: "shared-folder" });
+		expect(cmd).not.toContain("dev3: this task shares its folder");
+	});
+});
+
+describe("shared-folder safety rules", () => {
+	it.each(FAMILIES)("%s: forbids moving the folder's shared branch", (family) => {
+		const body = skillBodyFor(family, "shared-folder");
+		for (const cmd of ["git switch", "git checkout <branch>", "git rebase", "git pull", "git commit --amend"]) expect(body).toContain(cmd);
+		expect(body).toContain("never a branch you create or switch to here");
+	});
 });

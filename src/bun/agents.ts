@@ -25,7 +25,7 @@ import { loadSettings, saveSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from "./theme-state";
 import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
 import { ensureAgentSystemPromptFile } from "./agent-system-prompt-file";
-import { leanProtocolReference, leanSkillBodyFor, skillBodyFor, type SkillFamily } from "../shared/agent-skill-content";
+import { leanProtocolReference, leanSkillBodyFor, skillBodyFor, withSharedFolderNotice, type SkillFamily } from "../shared/agent-skill-content";
 import { claudeAccountRegistered, effectiveAccountId, getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveAgentDirSessionEnv, getActiveCodexSessionEnv, listClaudeAccountDirs, isLinkedClaudeSlot } from "./agent-accounts";
 import { ENV_UNSET, claudeModelFamily, isAutoAccountId, isRoutableAccountKind, type AgentAccountKind } from "../shared/agent-accounts";
 import { isAutoAccountDefault, pickAutoAccount, type AutoAccountPick, type AutoRoutingContext } from "./account-router";
@@ -571,6 +571,9 @@ export async function resolveAgentCommand(
 	const adapter = getAgentAdapter(baseCmd, agent.agentFamily);
 
 	const protocol = options?.skipSystemPrompt ? undefined : launchProtocol(adapter, options?.protocolMode ?? "worktree");
+	const launchCtx = !options?.skipSystemPrompt && !adapter.skillFamily && options?.protocolMode === "shared-folder"
+		? { ...ctx, taskDescription: withSharedFolderNotice(ctx.taskDescription) }
+		: ctx;
 	const adapterOptions: AdapterLaunchOptions = {
 		resume: options?.resume,
 		sessionId: options?.sessionId,
@@ -597,7 +600,7 @@ export async function resolveAgentCommand(
 	// The adapter returns argv with the binary first; only the boundary knows the
 	// command line is about to be re-parsed by a wrapper script, so the binary is
 	// spelled as a command here rather than in six adapters.
-	const [binary, ...args] = adapter.launchArgs(baseCmd, config, ctx, adapterOptions);
+	const [binary, ...args] = adapter.launchArgs(baseCmd, config, launchCtx, adapterOptions);
 	return [commandToken(binary ?? baseCmd), ...args].join(" ");
 }
 

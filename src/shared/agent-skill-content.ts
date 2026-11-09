@@ -49,11 +49,22 @@ You are working inside a **dev-3.0 managed worktree** with a Kanban board task a
 	"shared-folder": `
 You are working in a **project folder other dev3 tasks share**, with a Kanban board task assigned to you. The project's git workflow is off: this task has no branch or worktree of its own.
 
-**Other tasks edit this tree at the same time.** Stage and commit by explicit path only. Never \`git stash\`, \`git add -A\`, \`git checkout --\`, \`git reset\` or \`git clean\`: they hit the other tasks' work too. Work in another repository needs its own isolation; create a worktree there when the project's rules ask for one.
+**Other tasks edit this tree at the same time.** Stage and commit by explicit path only. Never \`git stash\`, \`git add -A\`, \`git checkout --\`, \`git reset\` or \`git clean\`: they hit the other tasks' work too. HEAD is shared too: never switch, rebase, pull or amend the folder's branch (\`git switch\`, \`git checkout <branch>\`, \`git rebase\`, \`git pull\`, \`git commit --amend\`). Work in another repository needs its own isolation; create a worktree there when the project's rules ask for one.
 `,
 };
 
 const skillHeader = (mode: ProtocolMode): string => SKILL_TITLE + SKILL_WORKSPACE[mode];
+
+// Agents that inject no protocol at launch read only the installed SKILL.md, which is
+// the worktree text, so a shared-folder task's prompt carries the folder rules itself.
+const SHARED_FOLDER_PROMPT_NOTICE = `## dev3: this task shares its folder
+${SKILL_WORKSPACE["shared-folder"].trim()}
+
+Where your installed dev3 skill speaks of a worktree, a branch to rename or a required PR, these rules win: approval keeps every file, and PRs are optional.`;
+
+/** The task prompt with the shared-folder rules appended; an empty prompt stays empty. */
+export const withSharedFolderNotice = (prompt: string): string =>
+	prompt.trim() ? `${prompt}\n\n${SHARED_FOLDER_PROMPT_NOTICE}` : prompt;
 
 const skillBugHunterIsolation = (mode: ProtocolMode): string => `
 ## In-task Bug Hunter isolation
@@ -154,7 +165,7 @@ ${skillPrLinkInstruction()}`,
 		approved: "then the terminal session closes. The folder keeps every file.",
 		rest: () => `**Preservation gate (mandatory):** request approval only when the result is where the task requires it (a commit, a file, a task note, a shared artifact, a PR in whichever repository the work belongs to) or when the user explicitly asks to complete it. The project's own closeout steps come first. Unclear destination → keep the task open and ask. \`cancelled\` asks the same way.
 
-**PRs are optional here.** This task has none of its own unless the user or the project's rules ask for one, and its PRs may live in other repositories. \`dev3 pr create\` (opens one from this folder's current branch) and \`dev3 pr watch --pr <N>\` are helpers, not requirements.`,
+**PRs are optional here.** This task has none of its own unless the user or the project's rules ask for one, and its PRs may live in other repositories. \`dev3 pr create\` (opens one from this folder's current branch, never a branch you create or switch to here) and \`dev3 pr watch --pr <N>\` are helpers, not requirements. A PR that needs a new branch needs its own worktree, or ask the user.`,
 	},
 };
 
