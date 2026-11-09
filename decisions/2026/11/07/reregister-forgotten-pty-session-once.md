@@ -10,7 +10,7 @@ After a server restart (`systemctl restart dev3-remote`, a reinstall) the new PT
 
 ## Risks
 
-`4001` stays final for a session that never streamed, so the Windows retry loop that `src/shared/pty-ws-close-codes.ts` exists to stop cannot come back. Native panes and the account-login terminal do not pass the callback and keep their old behavior.
+`4001` stays final for a session that never streamed, so the Windows retry loop that `src/shared/pty-ws-close-codes.ts` exists to stop cannot come back. Native panes and the account-login terminal do not pass the callback and keep their old behavior. Re-registering goes through the same RPC as opening the view, so when tmux died with the server it starts a fresh project shell, or a fresh agent for a task with no saved panes, without the user asking.
 
 ## Alternatives considered
 
