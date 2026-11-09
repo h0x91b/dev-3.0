@@ -387,7 +387,7 @@ function makeTask(overrides?: Partial<Task>): Task {
 			await user.click(rail("sleep").getByRole("button", { name: "Cancel task" }));
 
 			expect(vi.mocked(confirmTaskCompletion)).toHaveBeenCalledWith(
-				expect.objectContaining({ id: "sleep" }), expect.anything(), "cancelled", expect.anything(), expect.anything(), { alwaysConfirm: true, anchor: expect.any(HTMLElement) },
+				expect.objectContaining({ id: "sleep" }), expect.anything(), "cancelled", expect.anything(), expect.anything(), { alwaysConfirm: true },
 			);
 			expect(vi.mocked(api.request.moveTask)).not.toHaveBeenCalled();
 			expect(view.container.querySelector('[data-task-id="sleep"]')).not.toBeNull();

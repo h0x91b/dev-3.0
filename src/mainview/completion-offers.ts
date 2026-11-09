@@ -1,13 +1,12 @@
 import { useSyncExternalStore } from "react";
 
 /**
- * Completion offers the user has not answered yet: "the branch merged", "the
- * agent asks to complete" and the user's own Complete/Cancel on the open task.
- * They render inline on the task (strip in the task view, marker on its card)
- * instead of a modal, so an offer never blocks the board.
+ * Completion offers the user has not answered yet: "the branch merged" and "the
+ * agent asks to complete". They render inline on the task (strip in the task view,
+ * marker on its card) instead of a modal, so an offer never blocks the board.
  * See `decisions/2026/11/07/completion-offers-render-inline-not-modal.md`.
  */
-export type CompletionOfferKind = "merge" | "agent" | "user";
+export type CompletionOfferKind = "merge" | "agent";
 
 /** `true` completes, `false` keeps the task open, `"manual"` keeps it open and stops merge offers. */
 export type CompletionOfferAnswer = boolean | "manual";
@@ -19,10 +18,6 @@ export interface CompletionOffer {
 	kind: CompletionOfferKind;
 	/** Merge offers only: the branch that landed. */
 	branchName?: string;
-	/** User offers only: the move the user asked for. */
-	status?: "completed" | "cancelled";
-	/** User offers only: what had focus when the user asked, to hand it back after. */
-	returnFocus?: HTMLElement | null;
 	answer: (answer: CompletionOfferAnswer) => void;
 }
 
@@ -31,8 +26,6 @@ export interface OfferCompletionParams {
 	projectId: string;
 	kind: CompletionOfferKind;
 	branchName?: string;
-	status?: "completed" | "cancelled";
-	returnFocus?: HTMLElement | null;
 	/** Aborting withdraws the offer and resolves `false` (answered on another client). */
 	signal?: AbortSignal;
 }
@@ -82,8 +75,6 @@ export function offerCompletion(params: OfferCompletionParams): Promise<Completi
 			projectId: params.projectId,
 			kind: params.kind,
 			branchName: params.branchName,
-			status: params.status,
-			returnFocus: params.returnFocus,
 			answer: settle,
 		}];
 		emit();
@@ -103,18 +94,14 @@ function snapshot() {
 	return offers;
 }
 
-/**
- * The offer to show for a task: the user's own click first, then an agent's
- * request, then a merge. `unsolicitedOnly` skips the user's own, for markers
- * that tell someone elsewhere that a task is waiting on them.
- */
-export function pickCompletionOffer(all: readonly CompletionOffer[], taskId: string, unsolicitedOnly = false): CompletionOffer | null {
-	const mine = all.filter((o) => o.taskId === taskId && !(unsolicitedOnly && o.kind === "user"));
-	return mine.find((o) => o.kind === "user") ?? mine.find((o) => o.kind === "agent") ?? mine[0] ?? null;
+/** The offer to show for a task. An agent's own request outranks a merge offer. */
+export function pickCompletionOffer(all: readonly CompletionOffer[], taskId: string): CompletionOffer | null {
+	const mine = all.filter((o) => o.taskId === taskId);
+	return mine.find((o) => o.kind === "agent") ?? mine[0] ?? null;
 }
 
-export function useCompletionOffer(taskId: string, unsolicitedOnly = false): CompletionOffer | null {
-	return pickCompletionOffer(useSyncExternalStore(subscribe, snapshot, snapshot), taskId, unsolicitedOnly);
+export function useCompletionOffer(taskId: string): CompletionOffer | null {
+	return pickCompletionOffer(useSyncExternalStore(subscribe, snapshot, snapshot), taskId);
 }
 
 export function useCompletionOffers(): readonly CompletionOffer[] {
@@ -135,15 +122,9 @@ function counted(map: Map<string, number>, taskId: string, onChange?: () => void
 	};
 }
 
-/**
- * Counts the task's mounted strip hosts, so a caller can tell whether an offer is
- * actually on screen. The user's own ask lives only while its task view does.
- */
+/** Counts the task's mounted strip hosts, so a caller can tell whether an offer is actually on screen. */
 export function registerCompletionStrip(taskId: string): () => void {
-	return counted(mountedStrips, taskId, () => {
-		if (mountedStrips.has(taskId)) return;
-		for (const offer of offers) if (offer.taskId === taskId && offer.kind === "user") offer.answer(false);
-	});
+	return counted(mountedStrips, taskId);
 }
 
 /**

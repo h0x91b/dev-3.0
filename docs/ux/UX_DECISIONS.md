@@ -10,10 +10,6 @@ reasoning (48 of 50 dates), so the record wins and this file stays an index. Wri
 in full only while no record exists — the case for 84 below, whose reasoning lives nowhere
 else, so never compact them by deleting it.
 
-## 2026-11-07 — The user's own Complete/Cancel confirms where they clicked
-- **Rule:** bible §10 "completion ask", yaml `task_info_panel.completion_strip`, `popover.allowed: own_click_confirm`.
-- **Why:** decisions/2026/11/07/user-completion-confirm-anchored-not-modal.md.
-
 ## 2026-11-07 — Completion offers render inline, not as a modal
 - **Rule:** bible §10 "completion offer", yaml `task_info_panel.completion_strip`.
 - **Why:** decisions/2026/11/07/completion-offers-render-inline-not-modal.md.

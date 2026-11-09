@@ -329,7 +329,7 @@ ux_architecture:
       note: "This panel is the densest surface (34K). It is the main complexity-budget risk in the app."
       evidence: ["src/mainview/components/TaskInfoPanel.tsx", "src/mainview/components/task-info-panel/*"]
       completion_strip:
-        rule: "A completion ask (merge, agent, or the user's own Complete on the open task) floats as one card over the top-right of the live terminal (row under the inspector if none); never a modal or a toast with an action, never resizes the terminal. Unsolicited: no focus, 600 ms click arming; Complete gated on the unsaved-work check. Elsewhere: bell, a toast that opens the task, card and sidebar marker."
+        rule: "A completion offer (merge, or an agent asks) floats as one card over the top-right of the live terminal (row under the inspector if none); never a modal or a toast with an action, never resizes the terminal. No focus, 600 ms click arming, Complete gated on the unsaved-work check. Elsewhere: bell, a toast that opens the task, card and sidebar marker."
         actions: { complete: "destructive", keep_open: "secondary", manual_completion: "ghost (merge)", settings: "icon (merge)" }
         evidence: ["src/mainview/completion-offers.ts", "src/mainview/components/task-info-panel/TaskCompletionStrip.tsx"]
       bar_model:
@@ -449,7 +449,7 @@ ux_architecture:
       evidence: ["src/mainview/components/*Modal.tsx", "src/mainview/confirm.tsx"]
     popover:
       purpose: "Lightweight contextual preview/hint anchored to an element."
-      allowed: ["preview", "hint", "quick_action", "remediation", "own_click_confirm"]
+      allowed: ["preview", "hint", "quick_action", "remediation"]
       forbidden: ["multi_step_flow", "primary_destination"]
       observed: ["SiblingPopover", "TerminalPreviewPopover", "StuckPreparationPopover"]
       evidence: ["src/mainview/components/*Popover.tsx"]
