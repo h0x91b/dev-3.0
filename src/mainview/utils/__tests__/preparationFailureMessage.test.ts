@@ -3,8 +3,8 @@ import en from "../../i18n/translations/en";
 import ru from "../../i18n/translations/ru";
 import { interpolate } from "../../i18n/interpolate";
 import type { TFunction } from "../../i18n";
-import { preparationFailureMessage } from "../preparationFailureMessage";
-import { classifyPreparationFailure, startBranchMissingMessage } from "../../../shared/preparation-failure";
+import { preparationBannerText, preparationFailureMessage } from "../preparationFailureMessage";
+import { classifyPreparationFailure, startAfterAbandonedMessage, startBranchMissingMessage, type StartAfterAbandonReason } from "../../../shared/preparation-failure";
 
 function tFor(table: Readonly<Record<string, string>>): TFunction {
 	const t = ((key: string, vars?: Record<string, string | number>) => interpolate(table[key], vars ?? {})) as TFunction;
@@ -41,5 +41,30 @@ describe("preparationFailureMessage", () => {
 	it("passes any other error through unchanged", () => {
 		const raw = "Failed to create worktree: fatal: could not lock config file";
 		expect(preparationFailureMessage(raw, tFor(en))).toBe(raw);
+	});
+});
+
+describe("an abandoned start-after wait", () => {
+	const reasons: StartAfterAbandonReason[] = ["gone", "cancelled", "no-pr", "pr-closed"];
+
+	it.each(reasons)("recognises the %s message the scheduler stores", (reason) => {
+		expect(classifyPreparationFailure(startAfterAbandonedMessage(reason, 12))).toEqual({ kind: "start-after-abandoned", reason, seq: 12 });
+	});
+
+	it("reads 'Did not start' in English, matching the stored text, never 'Launch failed'", () => {
+		for (const reason of reasons) {
+			const stored = startAfterAbandonedMessage(reason, 12);
+			expect(preparationBannerText(stored, tFor(en))).toBe(stored);
+		}
+	});
+
+	it("is translated, naming the task", () => {
+		const banner = preparationBannerText(startAfterAbandonedMessage("pr-closed", 12), tFor(ru));
+		expect(banner).toBe(interpolate(ru["task.startAfterPrClosed"], { seq: "12" }));
+		expect(banner).toContain("#12");
+	});
+
+	it("keeps the 'Launch failed' prefix for a real launch failure", () => {
+		expect(preparationBannerText("agent missing", tFor(en))).toBe("Launch failed: agent missing");
 	});
 });

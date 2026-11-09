@@ -110,6 +110,7 @@ vi.mock("../rpc-handlers", () => {
 		isActive: vi.fn((status: string) => ACTIVE.includes(status)),
 		activateTask: vi.fn(),
 		createTask: vi.fn(),
+		deleteTask: vi.fn(),
 		moveTask: vi.fn(),
 		runCleanupScript: vi.fn(),
 		emitTaskSound: vi.fn(),
@@ -282,7 +283,7 @@ import * as data from "../data";
 import * as git from "../git";
 import { rememberTaskSession } from "../task-sessions";
 import * as pty from "../pty-server";
-import { activateTask, createTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, activeNotificationSuppression, isProjectSilenced, pushCliAttention, dropQueuedAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "../rpc-handlers";
+import { activateTask, createTask, deleteTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, activeNotificationSuppression, isProjectSilenced, pushCliAttention, dropQueuedAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "../rpc-handlers";
 import { appendNotificationLog } from "../notification-log";
 import { loadSettings } from "../settings";
 import { deliverAgentPrompt } from "../agent-prompt-delivery";
@@ -1620,6 +1621,88 @@ describe("task.update — priority", () => {
 		);
 		expect(resp.ok).toBe(false);
 		expect(resp.error).toContain("Nothing to update");
+	});
+});
+
+describe("task.update / task.create: start after", () => {
+	const project = makeProject();
+	const prereq = makeTask({ id: "prereq-11111111", seq: 12, status: "in-progress" });
+	const waiting = makeTask({ id: "waiting-22222222", seq: 13, status: "todo", worktreePath: null, branchName: null });
+
+	beforeEach(() => {
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...waiting, ...updates }) as Task);
+		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+	});
+
+	it("arms the condition from a person at a terminal, with no agent recorded", async () => {
+		vi.mocked(data.loadTasks).mockResolvedValue([prereq, waiting]);
+		const resp = await handleRequest(makeRequest("task.update", { taskId: "seq:13", projectId: "proj-1", startAfter: "seq:12", until: "merged" }));
+		expect(resp.ok).toBe(true);
+		const patch = vi.mocked(data.updateTask).mock.calls[0]![2] as Partial<Task>;
+		expect(patch.launchAfter).toMatchObject({ taskId: prereq.id, seq: 12, until: "merged" });
+		expect(patch.launchAfter?.armedBy).toBeUndefined();
+	});
+
+	it("records the arming agent when run from inside another task", async () => {
+		const coordinator = makeTask({ id: "coord-33333333", seq: 5, status: "in-progress" });
+		vi.mocked(data.loadTasks).mockResolvedValue([prereq, waiting, coordinator]);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		const resp = await handleRequest(makeRequest("task.update", { taskId: "seq:13", projectId: "proj-1", startAfter: "seq:12", sourceTaskId: coordinator.id }));
+		expect(resp.ok).toBe(true);
+		const patch = vi.mocked(data.updateTask).mock.calls[0]![2] as Partial<Task>;
+		expect(patch.launchAfter).toMatchObject({ until: "completed", armedBy: { taskId: coordinator.id, seq: 5 } });
+	});
+
+	it("refuses a cycle and writes nothing", async () => {
+		const prereqWaits = { ...prereq, status: "todo" as const, launchAfter: { taskId: waiting.id, seq: 13, until: "completed" as const, armedAt: "x" } };
+		vi.mocked(data.loadTasks).mockResolvedValue([prereqWaits, waiting]);
+		const resp = await handleRequest(makeRequest("task.update", { taskId: "seq:13", projectId: "proj-1", startAfter: "seq:12" }));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("never start");
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("rejects an unknown --until", async () => {
+		vi.mocked(data.loadTasks).mockResolvedValue([prereq, waiting]);
+		const resp = await handleRequest(makeRequest("task.update", { taskId: "seq:13", projectId: "proj-1", startAfter: "seq:12", until: "soon" }));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("--until must be one of completed, merged");
+	});
+
+	it("clears it with noStartAfter", async () => {
+		const armed = { ...waiting, launchAfter: { taskId: prereq.id, seq: 12, until: "completed" as const, armedAt: "x" } };
+		vi.mocked(data.loadTasks).mockResolvedValue([prereq, armed]);
+		const resp = await handleRequest(makeRequest("task.update", { taskId: "seq:13", projectId: "proj-1", noStartAfter: true }));
+		expect(resp.ok).toBe(true);
+		expect(data.updateTask).toHaveBeenCalledWith(project, armed.id, { launchAfter: null });
+	});
+
+	it("task.create with a missing prerequisite creates nothing", async () => {
+		vi.mocked(data.loadTasks).mockResolvedValue([waiting]);
+		const resp = await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Next", startAfter: "seq:99" }));
+		expect(resp.ok).toBe(false);
+		expect(createTask).not.toHaveBeenCalled();
+	});
+
+	it("task.create refuses a condition before the task exists", async () => {
+		const cancelled = { ...prereq, status: "cancelled" as const };
+		vi.mocked(data.loadTasks).mockResolvedValue([cancelled, waiting]);
+		vi.mocked(createTask).mockResolvedValue(waiting);
+		const resp = await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Next", startAfter: "seq:12" }));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("cancelled");
+		expect(createTask).not.toHaveBeenCalled();
+		expect(deleteTask).not.toHaveBeenCalled();
+	});
+
+	it("task.create arms the condition on the new task", async () => {
+		vi.mocked(data.loadTasks).mockResolvedValue([prereq]);
+		vi.mocked(createTask).mockResolvedValue(waiting);
+		const resp = await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Next", startAfter: "seq:12", until: "merged" }));
+		expect(resp.ok).toBe(true);
+		const patch = vi.mocked(data.updateTask).mock.lastCall![2] as Partial<Task>;
+		expect(patch.launchAfter).toMatchObject({ taskId: prereq.id, seq: 12, until: "merged" });
 	});
 });
 

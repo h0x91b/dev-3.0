@@ -5,6 +5,7 @@ import { createLogger } from "./logger";
 import { AgentNotInstalledError } from "./agent-launch-availability";
 import { NoEligibleAccountError } from "./account-router";
 import { getPushMessage } from "./rpc-handlers/shared-pure";
+import { tickLaunchAfter } from "./launch-after";
 
 const log = createLogger("scheduled-launch-scheduler");
 
@@ -15,7 +16,8 @@ let timer: ReturnType<typeof setInterval> | null = null;
 let tickInFlight = false;
 
 /**
- * Fires "Start in…" deferred launches (see {@link Task.scheduledLaunch}).
+ * Fires "Start in…" deferred launches (see {@link Task.scheduledLaunch}) and
+ * "start after" conditional launches (see {@link Task.launchAfter}).
  *
  * Unlike Automations these are one-shot, so there is no missed/catch-up
  * taxonomy: an occurrence that passed while the app was offline simply fires
@@ -61,6 +63,12 @@ async function tick(): Promise<void> {
 async function tickProject(project: Project): Promise<void> {
 	const tasks = await data.loadTasks(project);
 	const now = Date.now();
+	// "Start after" conditions ride the same tick and the same task read; a fault there must not cost "Start in".
+	try {
+		await tickLaunchAfter(project, tasks, now);
+	} catch (err) {
+		log.error("Start-after pass failed", { projectId: project.id.slice(0, 8), error: String(err) });
+	}
 	for (const task of tasks) {
 		const sched = task.scheduledLaunch;
 		if (!sched) continue;

@@ -36,6 +36,8 @@ vi.mock("../../rpc", () => ({
 			stopDevServer: vi.fn().mockResolvedValue({}),
 			cancelScheduledLaunch: vi.fn(),
 			startScheduledLaunchNow: vi.fn(),
+			startTaskLaunchAfterNow: vi.fn(),
+			clearTaskLaunchAfter: vi.fn(),
 			refreshTaskPrStatus: vi.fn().mockResolvedValue(undefined),
 			getAgentRateLimits: vi.fn().mockResolvedValue({ snapshots: [], sessions: [], generatedAt: 0 }),
 		},
@@ -259,6 +261,56 @@ describe("TaskCard", () => {
 		expect(screen.getByTestId("variant-indicator-t5-dot-t5")).toHaveClass("ring-1");
 		await userEvent.click(screen.getByTestId("variant-indicator-t5"));
 		expect(screen.getByRole("dialog", { name: "Siblings" })).toBeInTheDocument();
+	});
+
+	describe("start-after chip", () => {
+		const launchAfter = { taskId: "t9", seq: 9, until: "completed" as const, armedAt: "2026-11-04T10:00:00Z" };
+
+		it("is a focusable button naming the task it waits for", () => {
+			renderCard(makeTask({ status: "todo", launchAfter }));
+			const chip = screen.getByTestId("task-card-starts-after-chip");
+			expect(chip).toHaveTextContent("Starts after #9");
+			expect(chip.tagName).toBe("BUTTON");
+			chip.focus();
+			expect(chip).toHaveFocus();
+		});
+
+		it("says when it waits for a merge rather than a completion", () => {
+			renderCard(makeTask({ status: "todo", launchAfter: { ...launchAfter, until: "merged" } }));
+			const chip = screen.getByTestId("task-card-starts-after-chip");
+			expect(chip).toHaveTextContent("Starts after #9 merges");
+			expect(chip).toHaveAttribute("data-until", "merged");
+		});
+
+		it("removes the condition from its popover", async () => {
+			const dispatch = vi.fn();
+			const cleared = makeTask({ status: "todo", launchAfter: null });
+			mockedApi.request.clearTaskLaunchAfter.mockResolvedValueOnce(cleared);
+			renderCard(makeTask({ status: "todo", launchAfter }), { dispatch });
+			await userEvent.click(screen.getByTestId("task-card-starts-after-chip"));
+			await userEvent.click(screen.getByRole("menuitem", { name: "Remove start condition" }));
+			expect(mockedApi.request.clearTaskLaunchAfter).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: cleared });
+		});
+
+		it("starts the task now from its popover", async () => {
+			renderCard(makeTask({ status: "todo", launchAfter }));
+			await userEvent.click(screen.getByTestId("task-card-starts-after-chip"));
+			await userEvent.click(screen.getByRole("menuitem", { name: "Start now" }));
+			expect(mockedApi.request.startTaskLaunchAfterNow).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+		});
+
+		it("reads 'Did not start', not 'Launch failed', when the wait was abandoned", () => {
+			renderCard(makeTask({ status: "todo", preparationError: "Did not start: task #9, which this task waited for, was cancelled." }));
+			const banner = screen.getByRole("alert");
+			expect(banner).toHaveTextContent("Did not start: task #9, which this task waited for, was cancelled.");
+			expect(banner).not.toHaveTextContent("Launch failed");
+		});
+
+		it("is not shown once the task left To Do", () => {
+			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", launchAfter }));
+			expect(screen.queryByTestId("task-card-starts-after-chip")).toBeNull();
+		});
 	});
 
 	describe("scheduled-message chip", () => {

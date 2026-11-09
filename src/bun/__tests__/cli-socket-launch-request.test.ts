@@ -125,6 +125,7 @@ import { loadSettings } from "../settings";
 import { validateLaunchSuggestion } from "../cli-agent-spawn";
 
 const { handleRequest } = await import("../cli-socket-server");
+const { requestAgentLaunchApproval } = await import("../cli-socket/approvals");
 
 // ---- Helpers ----
 
@@ -291,6 +292,30 @@ describe("task.move — agent-initiated launch approval", () => {
 			// No --handoff-file: the child still gets dev3's own default note.
 			launcherNote: null,
 		}));
+	});
+
+	it("gives the child no handoff note when the caller says the requester cannot take a report", async () => {
+		// A start-after condition fires long after the task that armed it finished.
+		const target = makeTask();
+		setupBoard(target);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([{ ...target, status: "in-progress" as const }]);
+
+		const outcome = requestAgentLaunchApproval({
+			project: makeProject(),
+			task: target,
+			targetStatus: "in-progress",
+			requester: { taskId: REQUESTER_ID, seq: 3, title: "Asking task", projectId: "proj-1" },
+			handoff: false,
+		});
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		const [, payload] = pushFn.mock.calls[0] as [string, Record<string, unknown>];
+		expect(payload.requesterSeq).toBe(3);
+		resolveAgentRequest(payload.requestId as string, { approved: true });
+		await expect(outcome).resolves.toMatchObject({ approved: true });
+		expect(launchTaskWithAgentChoice).toHaveBeenCalled();
+		expect(deliverLaunchHandoff).not.toHaveBeenCalled();
 	});
 
 	// 2026-11-01 incident: the launch answered "started" at dispatch, while another
