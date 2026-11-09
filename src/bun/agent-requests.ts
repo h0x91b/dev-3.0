@@ -294,6 +294,8 @@ export function pendingAgentLaunchDialogs(): AgentLaunchRequest[] {
 		if (!entry.launchDialog) return [];
 		const request = { ...entry.launchDialog, autoApproveAt: entry.autoApproveAt };
 		if (request.spawn && entry.launchChoice?.variants[0]) request.spawn = { ...request.spawn, choice: entry.launchChoice.variants[0] };
+		const resumeAccountId = entry.launchChoice?.resumeAccountId;
+		if (request.resume && resumeAccountId !== undefined) request.resume = { ...request.resume, accountId: resumeAccountId };
 		return [request];
 	});
 }

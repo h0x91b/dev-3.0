@@ -279,6 +279,12 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 		onLaunchVariants(launchTask, "in-progress");
 	}
 
+	/** The close button saves an open description edit first; a failed save keeps the modal open. */
+	async function handleCloseButton() {
+		if (isEditing && !(await handleSave())) return;
+		onClose();
+	}
+
 	async function handleDelete() {
 		const confirmed = await confirm({
 			title: t("task.delete"),
@@ -448,7 +454,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 						<HelpSpot topicId="modal.task-detail" />
 					</div>
 					<button
-						onClick={onClose}
+						onClick={handleCloseButton}
 						className="w-7 h-7 flex items-center justify-center rounded-lg text-fg-3 hover:text-fg hover:bg-fg/8 transition-colors"
 						title={t("task.close")}
 					>
