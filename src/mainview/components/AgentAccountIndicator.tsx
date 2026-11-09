@@ -552,6 +552,8 @@ export default function AgentAccountIndicator({
 	onSelect,
 	onAddAccount,
 	projectId,
+	allowAuto = true,
+	subtitle,
 }: {
 	agent: CodingAgent | undefined | null;
 	/** Per-launch selection: `undefined` → the registry default (the preselect);
@@ -568,6 +570,10 @@ export default function AgentAccountIndicator({
 	 *  system-login row names that directory and shows its account instead of
 	 *  `~/.claude`'s, because that is the login the session will really use. */
 	projectId?: string;
+	/** False drops the Auto row: a resume reopens an existing conversation, and Auto only routes new ones. */
+	allowAuto?: boolean;
+	/** Replaces the per-launch popover subtitle, for a surface whose pick outlives one launch. */
+	subtitle?: string;
 }) {
 	const t = useT();
 	const kind = agent ? agentAccountKindForCommand(agent.baseCommand) : null;
@@ -579,14 +585,14 @@ export default function AgentAccountIndicator({
 	const report = useAgentRateLimits(anchor !== null);
 	const buttonRef = useRef<HTMLButtonElement>(null);
 	const isLocal = !!onSelect;
-	const routable = isRoutableAccountKind(kind);
+	const routable = allowAuto && isRoutableAccountKind(kind);
 	const autoDefault = routable && !!state && state[kind].autoDefault === true;
 	// A per-launch choice that is no explicit pick (none or Auto) keeps the project's own folder.
 	const keepsProjectLogin = isLocal && kind === "claude" && !!projectLogin?.configDir && (value === undefined || isAutoAccountId(value));
 	const autoSelected = routable && !keepsProjectLogin && (isLocal ? isAutoAccountId(value) || (value === undefined && autoDefault) : autoDefault);
 	// Fetched while the popover is open (to decide whether Auto is worth a row)
 	// and whenever Auto is the choice (the pill names the account it would use).
-	const preview = useAutoAccountPreview(kind, projectId, anchor !== null || autoSelected);
+	const preview = useAutoAccountPreview(kind, projectId, routable && (anchor !== null || autoSelected));
 
 	// Closing the popover hands focus back to the pill that opened it — the panel
 	// unmounts, and without this a keyboard user lands on <body>, outside the
@@ -829,7 +835,7 @@ export default function AgentAccountIndicator({
 					busy={busy}
 					hint={isLocal ? t("launch.accountForLaunchHint") : t("settings.accountsNewSessionsHint")}
 					title={isLocal ? t("launch.accountForLaunchTitle") : t("launch.accountActiveTitle")}
-					subtitle={isLocal ? t("launch.accountForLaunchSubtitle") : t("launch.accountGlobalSubtitle")}
+					subtitle={subtitle ?? (isLocal ? t("launch.accountForLaunchSubtitle") : t("launch.accountGlobalSubtitle"))}
 					// In the settings surfaces (global mode) the link costs nothing — the
 					// user is already in Settings, so it just scrolls them to Accounts.
 					onAddAccount={onAddAccount ?? (isLocal ? null : openAgentAccountSettings)}

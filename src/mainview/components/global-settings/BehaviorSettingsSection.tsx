@@ -493,8 +493,8 @@ export default function BehaviorSettingsSection({
 							tabIndex={0}
 							className={`relative w-11 h-6 rounded-full transition-colors ${
 								globalSettings.tipsDisabled
-									? "bg-accent"
-									: "bg-raised border border-edge"
+									? "bg-raised border border-edge"
+									: "bg-accent"
 							}`}
 							onClick={() =>
 								onTipsDisabledToggle(!globalSettings.tipsDisabled)

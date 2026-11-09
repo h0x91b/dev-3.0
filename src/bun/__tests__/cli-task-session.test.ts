@@ -135,6 +135,12 @@ describe("dev3 task wake", () => {
 		expect(resumeCliAgent).toHaveBeenCalledWith({ project, task: hibernated, requester, allowAgentLatest: true });
 	});
 
+	it("--resume --account carries the account into the resume", async () => {
+		vi.mocked(resumeCliAgent).mockResolvedValue({ outcome: "declined", taskId: task.id, seq: 7 });
+		await wakeCliTask({ project, task: hibernated, requester: null, mode: "resume", allowAgentLatest: false, accountId: null });
+		expect(resumeCliAgent).toHaveBeenCalledWith(expect.objectContaining({ accountId: null }));
+	});
+
 	it("--shell wakes directly when a person runs it", async () => {
 		await expect(wakeCliTask({ project, task: hibernated, requester: null, mode: "shell", allowAgentLatest: false })).resolves.toEqual({
 			outcome: "woke-shell", taskId: task.id, seq: 7, backend: "tmux",

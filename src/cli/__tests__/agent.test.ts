@@ -124,11 +124,20 @@ describe("agent resume", () => {
 		expect(stderr).toContain("#0 main   custom  cannot resume — would start over  not resumed");
 		expect(stderr).not.toContain("--allow-agent-latest");
 	});
-	it.each<Record<string, string>>([{ agent: "builtin-codex" }, { config: "x" }, { account: "slot" }, { prompt: "go" }, { fresh: "true" }])("refuses %j: a resume restores what was saved", async (flags) => {
+	it.each<Record<string, string>>([{ agent: "builtin-codex" }, { config: "x" }, { prompt: "go" }, { fresh: "true" }])("refuses %j: a resume restores what was saved", async (flags) => {
 		await expect(resume({ task: "seq:8", ...flags })).rejects.toThrow("EXIT_3");
 		expect(sendRequest).not.toHaveBeenCalled();
 	});
 	it("requires a task", async () => {
 		await expect(resume({}, null)).rejects.toThrow("EXIT_3");
+	});
+	it.each([["acct-2", "acct-2"], ["system", null]] as const)("sends --account %s as the resume account", async (flag, accountId) => {
+		respond(resumed);
+		await resume({ task: "seq:8", account: flag }, null);
+		expect(sendRequest).toHaveBeenLastCalledWith(expect.anything(), "agent.resume", { taskId: "seq:8", allowAgentLatest: false, accountId }, expect.anything());
+	});
+	it.each(["", "true"])("refuses --account with no account named (%j)", async (value) => {
+		await expect(resume({ task: "seq:8", account: value })).rejects.toThrow("EXIT_3");
+		expect(sendRequest).not.toHaveBeenCalled();
 	});
 });
