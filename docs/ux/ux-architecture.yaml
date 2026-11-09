@@ -75,7 +75,7 @@ ux_architecture:
       kind:   # observed: Project.kind discriminator
         git: "Repo-backed; tasks get a worktree + branch (default)."
         virtual: "Operations board: agent + shell in a managed/chosen folder; no worktree/branch/PR or review columns; Task.attachedRepo adds read-only diff+review. Stored in ~/.dev3.0/virtual-projects.json; the built-in board hosts Quick-shell (⇧⌘`)."
-        git_workflow_off: "Not a kind: gitWorkflow=false. Tasks share the folder unless Task.ownWorktree (CreateTask); review columns, variants off."
+        git_workflow_off: "Not a kind: gitWorkflow=false. Tasks share the folder unless Task.ownWorktree; no review columns or variants."
       evidence: ["src/shared/types.ts", "src/mainview/components/ActivityOverview.tsx", "src/mainview/components/AddProjectModal.tsx", "src/bun/data.ts (addVirtualProject)", "decisions/2026/06/24/virtual-operations-board-identity.md"]
     extension:
       label: "Extension"
@@ -510,7 +510,7 @@ ux_architecture:
       anatomy:
         source_line: "WHERE IT CAME FROM, single line, truncate, text-micro font-mono text-fg-muted. Fallback order task -> project -> app area, first match wins: `#seq · project · task title`, else the project name, else a localized area label (Settings/Update/Dashboard/Terminal/Menu). `#seq` leads so the ellipsis eats the title, not the identifier. `contextDetail` appends one more segment (`dev-3.0 · Nightly digest`). Never fabricated from the app's own name — a line that carries nothing is fabrication by another route."
         message: "The sentence. break-words, never truncated."
-        two_identity_exception: "`dev3 message` is the one toast with a sender AND a receiver: its source line is `#from -> #to`, each an underlined link to its task (seq/variant never truncates; project names only across boards), plus ONE never-wrapping action row: paper-plane `#N` (sender) / `Agent traffic` (only it truncates) / inbox `#N` (recipient); role names in aria-label + title. Card click -> SENDER (inert without one); traffic only via its action. Burst: the slot keeps its place and shows what it covered as a <=2-layer deck in the stack gap + exact `+N earlier` tab (never unread; all stay in traffic); X/timeout/acting ends it. Links/actions are siblings above the card button, never nested; acting dismisses. A gone end says so, a finished one opens as its board card, nothing resumes. One delivery seam; dropped if EITHER side is sensitive in streamer mode; silent for human-sent and undelivered. Why: decisions/2026/10/02/agent-message-toast-names-every-destination.md, decisions/2026/10/14/agent-toast-burst-deck.md."
+        two_identity_exception: "`dev3 message` is the one toast with a sender AND a receiver: source line `#from -> #to` (task links), one never-wrapping action row (sender / Agent traffic / recipient). Card click -> SENDER; traffic only via its action. A burst stacks as a <=2-layer deck + `+N earlier`. Dropped if either side is streamer-sensitive. Detail: bible §5.7. Why: decisions/2026/10/02/agent-message-toast-names-every-destination.md, decisions/2026/10/14/agent-toast-burst-deck.md."
         click_target: "The MOST SPECIFIC surface the toast is about (image viewer, diff, settings section). The owning task is the fallback, never an override. Task navigation honours the user's task-open-mode via openTaskFromNotification."
         dismiss: "swipe right (pointer+touch) AND the X button AND auto-timeout — swipe is never the only way (mobile_doctrine.gesture law)."
         stack_dismiss: "ONE ghost `Clear all (n)` under the stack, only at 2+ visible toasts (n counts cards; a burst is one) — a stack-level dismiss that arrives and leaves with the pile. Hover/focus pauses every timer. The sweep skips onTaskOverflow: badges for toasts just swept would defeat the button."
@@ -1053,5 +1053,5 @@ ux_architecture:
     - "Status colors are hardcoded hex by design; should they migrate to named tokens for theme consistency, or stay as the documented exception?"
 
   resolved_questions:
-    - "[2026-06-19] Where do keyboard shortcuts live / how are they shown? RESOLVED: single source of truth = src/mainview/keymap.ts (data; documents, does not dispatch — guarded by a test). One KeyboardShortcutsModal with App + Terminal(tmux) tabs, reached via Help menu + Cmd+/ + ⇧⌘P palette; same data feeds README + website. See surfaces.keyboard_shortcuts_reference + UX_DECISIONS 2026-06-19."
-    - "[2026-06-18] command_palette navigation-vs-action split: RESOLVED as two-surfaces-one-shell. Cmd+K = navigation, Cmd+Shift+P = actions; both render on the shared PaletteShell. Action mode runs commands via handleMenuAction (DOM mirror of the native menu), destructive/modal flows excluded by policy. See UX_DECISIONS 2026-06-18 + surfaces.command_palette.modes."
+    - "[2026-06-19] Keyboard shortcuts: keymap.ts is the single source; see surfaces.keyboard_shortcuts_reference + UX_DECISIONS 2026-06-19."
+    - "[2026-06-18] command_palette: navigation vs action is two surfaces on one shell; see surfaces.command_palette.modes + UX_DECISIONS 2026-06-18."
