@@ -268,7 +268,7 @@ ux_architecture:
       forbidden: ["durable_global_configuration"]
       evidence: ["board-views/kanban/KanbanView.tsx", "board-views/kanban/KanbanColumn.tsx"]
     board_view_table:
-      purpose: "builtin:table — every board task as sortable virtualised rows."
+      purpose: "builtin:table — every board task as sortable virtualised rows; spare width at the row end shows the task overview (read-only, not a column)."
       allowed: ["header_sort", "inline_status_priority_labels", "context_menu", "open_task", "column_toggles_in_view_options"]
       forbidden: ["bulk_actions", "durable_global_configuration"]
       evidence: ["board-views/table/"]
