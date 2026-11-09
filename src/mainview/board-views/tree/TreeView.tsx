@@ -71,12 +71,13 @@ function countTasks(node: TreeNode): number {
 	return count;
 }
 
-/** The row's accessible name: its seq and title, never the chevron's "Expand". */
-function rowLabel(node: TreeNode, hiddenTitle: string, groupName: (node: Extract<TreeNode, { kind: "group" }>) => string): string {
+/** The row's accessible name: its seq, role and title, never the chevron's "Expand". */
+function rowLabel(node: TreeNode, hiddenTitle: string, coordinatorLabel: string, groupName: (node: Extract<TreeNode, { kind: "group" }>) => string): string {
 	if (node.kind === "group") return groupName(node);
 	if (node.kind === "ghost") return `#${node.ref.seq} ${node.ref.title ?? hiddenTitle} · ${node.ref.projectName}`;
 	const lead = node.tasks[0];
-	return `#${node.tasks.length > 1 ? lead.seq : taskSeqLabel(lead)} ${getTaskTitle(lead)}`;
+	const role = isCoordinatorTask(lead) ? `${coordinatorLabel} ` : "";
+	return `#${node.tasks.length > 1 ? lead.seq : taskSeqLabel(lead)} ${role}${getTaskTitle(lead)}`;
 }
 
 function Chevron({ open }: { open: boolean }) {
@@ -415,7 +416,7 @@ export function TreeView(_props: { ctx: Context }) {
 							key={item.key}
 							role="treeitem"
 							aria-level={row.depth + 1}
-							aria-label={rowLabel(node, t("boardTree.hiddenTitle"), groupName)}
+							aria-label={rowLabel(node, t("boardTree.hiddenTitle"), t("task.coordinatorBadge"), groupName)}
 							aria-expanded={hasChildren ? row.expanded : undefined}
 							aria-selected={false}
 							tabIndex={0}

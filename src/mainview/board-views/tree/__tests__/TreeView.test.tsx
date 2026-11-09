@@ -133,6 +133,12 @@ describe("Tree board view", () => {
 		expect(within(screen.getByTestId("board-tree-row-p1#2")).queryByTestId("board-tree-coordinator-chip")).toBeNull();
 	});
 
+	it("names the coordinator role in the row's accessible name, and only there", async () => {
+		await renderTree({ tasks: [task("coord", 1, { title: "Release plan", taskType: "coordinator", status: "in-progress" }), task("plain", 2, { title: "Fix bug" })] });
+		expect(screen.getByRole("treeitem", { name: /Coordinator Release plan/ })).toBeInTheDocument();
+		expect(screen.getByRole("treeitem", { name: /Fix bug/ }).getAttribute("aria-label")).not.toMatch(/Coordinator/);
+	});
+
 	it("expands from the chevron and persists the open node in the view layout", async () => {
 		const { layouts, rerender, actions } = await renderTree({ tasks: family });
 		fireEvent.click(screen.getByTestId("board-tree-toggle-p1#1"));
