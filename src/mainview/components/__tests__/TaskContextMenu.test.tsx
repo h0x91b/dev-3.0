@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TaskContextMenu from "../TaskContextMenu";
 import { I18nProvider } from "../../i18n";
@@ -30,9 +30,14 @@ vi.mock("../TaskDetailModal", () => ({
 		<div data-testid="task-detail-modal">{autoRename ? "renaming" : "details"}</div>
 	),
 }));
-vi.mock("../LabelPicker", () => ({ default: () => <div data-testid="label-picker" /> }));
-vi.mock("../PriorityPicker", () => ({ default: () => <div data-testid="priority-picker" /> }));
-vi.mock("../MoveToProjectPicker", () => ({ default: () => <div data-testid="move-project-picker" /> }));
+vi.mock("../LabelPicker", () => ({
+	default: () => <div data-testid="label-picker" />,
+	LabelPickerPanel: () => <input data-testid="label-picker-panel" />,
+}));
+vi.mock("../MoveToProjectPicker", () => ({
+	default: () => <div data-testid="move-project-picker" />,
+	MoveToProjectPanel: () => <div data-testid="move-project-panel" />,
+}));
 
 import { api } from "../../rpc";
 import { confirm } from "../../confirm";
@@ -126,10 +131,127 @@ describe("TaskContextMenu", () => {
 		expect(onOpenTask).toHaveBeenCalled();
 	});
 
-	it("hands labels to the label picker", async () => {
+	it("shows labels beside the row on hover and keeps the menu open", async () => {
+		const { onClose } = renderMenu();
+		await userEvent.hover(screen.getByTestId("task-menu-labels"));
+		const flyout = await screen.findByTestId("task-menu-flyout-labels");
+		expect(flyout).toContainElement(screen.getByTestId("label-picker-panel"));
+		expect(screen.getByTestId("task-menu")).toContainElement(flyout);
+		expect(onClose).not.toHaveBeenCalled();
+	});
+
+	it("keeps the flyout open when its row is clicked after the hover", async () => {
 		renderMenu();
-		await userEvent.click(screen.getByTestId("task-menu-labels"));
-		expect(await screen.findByTestId("label-picker")).toBeInTheDocument();
+		await userEvent.click(screen.getByTestId("task-menu-status"));
+		expect(await screen.findByTestId("task-menu-flyout-status")).toBeInTheDocument();
+	});
+
+	it("closes the flyout when the pointer moves to a plain row", async () => {
+		renderMenu();
+		await userEvent.hover(screen.getByTestId("task-menu-project"));
+		expect(await screen.findByTestId("move-project-panel")).toBeInTheDocument();
+		await userEvent.hover(screen.getByTestId("task-menu-rename"));
+		await waitFor(() => expect(screen.queryByTestId("task-menu-flyout-project")).not.toBeInTheDocument());
+	});
+
+	it("keeps the open flyout when the pointer only crosses another row", async () => {
+		renderMenu();
+		await userEvent.hover(screen.getByTestId("task-menu-status"));
+		await screen.findByTestId("task-menu-flyout-status");
+		// On the way down into a tall flyout the pointer passes over the next row.
+		await userEvent.hover(screen.getByTestId("task-menu-project"));
+		await userEvent.hover(screen.getByTestId("task-menu-flyout-status"));
+		await new Promise((r) => setTimeout(r, 300));
+		expect(screen.getByTestId("task-menu-flyout-status")).toBeInTheDocument();
+		expect(screen.queryByTestId("task-menu-flyout-project")).not.toBeInTheDocument();
+	});
+
+	it("does not close the menu on a click inside a flyout", async () => {
+		const { onClose } = renderMenu();
+		await userEvent.hover(screen.getByTestId("task-menu-labels"));
+		fireEvent.mouseDown(await screen.findByTestId("label-picker-panel"));
+		expect(onClose).not.toHaveBeenCalled();
+	});
+
+	it("opens a flyout from the keyboard and moves focus into it", async () => {
+		renderMenu();
+		const row = screen.getByTestId("task-menu-status");
+		row.focus();
+		fireEvent.keyDown(row, { key: "ArrowRight" });
+		const flyout = await screen.findByTestId("task-menu-flyout-status");
+		await waitFor(() => expect(flyout).toContainElement(document.activeElement as HTMLElement));
+		fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
+		expect(screen.queryByTestId("task-menu-flyout-status")).not.toBeInTheDocument();
+		expect(document.activeElement).toBe(row);
+	});
+
+	it("drops the priority levels down beside the Priority row", async () => {
+		const { onClose } = renderMenu(makeTask({ priority: "P3" }));
+		await userEvent.hover(screen.getByTestId("task-menu-priority"));
+		const flyout = await screen.findByTestId("task-menu-flyout-priority");
+		expect(within(flyout).getByRole("menuitemradio", { name: /P3/ })).toHaveAttribute("aria-checked", "true");
+		await userEvent.click(within(flyout).getByRole("menuitemradio", { name: /P0/ }));
+		await waitFor(() => {
+			expect(mockedApi.request.setTaskPriority).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", priority: "P0" });
+		});
+		expect(onClose).toHaveBeenCalled();
+	});
+
+	it("lands keyboard focus on the current priority level", async () => {
+		renderMenu(makeTask({ priority: "P2" }));
+		const row = screen.getByTestId("task-menu-priority");
+		row.focus();
+		fireEvent.keyDown(row, { key: "ArrowRight" });
+		const flyout = await screen.findByTestId("task-menu-flyout-priority");
+		await waitFor(() => expect(document.activeElement).toBe(within(flyout).getByRole("menuitemradio", { name: /P2/ })));
+	});
+
+	it("closes only the flyout on Escape and returns focus to its row", async () => {
+		const { onClose } = renderMenu();
+		const row = screen.getByTestId("task-menu-labels");
+		row.focus();
+		fireEvent.keyDown(row, { key: "ArrowRight" });
+		const flyout = await screen.findByTestId("task-menu-flyout-labels");
+		await waitFor(() => expect(flyout).toContainElement(document.activeElement as HTMLElement));
+		fireEvent.keyDown(window, { key: "Escape" });
+		expect(screen.queryByTestId("task-menu-flyout-labels")).not.toBeInTheDocument();
+		expect(document.activeElement).toBe(row);
+		expect(onClose).not.toHaveBeenCalled();
+		fireEvent.keyDown(window, { key: "Escape" });
+		expect(onClose).toHaveBeenCalled();
+	});
+
+	it("opens a flyout with Space and moves focus into it", async () => {
+		renderMenu();
+		const row = screen.getByTestId("task-menu-status");
+		row.focus();
+		fireEvent.keyDown(row, { key: " " });
+		const flyout = await screen.findByTestId("task-menu-flyout-status");
+		await waitFor(() => expect(flyout).toContainElement(document.activeElement as HTMLElement));
+	});
+
+	// Cards keep the menu mounted between openings.
+	it("reopens without the flyout that was open when it closed", async () => {
+		const props = { task: makeTask(), project, dispatch: vi.fn(), onClose: vi.fn(), onOpenTask: vi.fn(), testId: "task-menu" };
+		const { rerender } = render(
+			<I18nProvider>
+				<TaskContextMenu {...props} pos={{ x: 40, y: 60 }} />
+			</I18nProvider>,
+		);
+		await userEvent.hover(screen.getByTestId("task-menu-labels"));
+		await screen.findByTestId("task-menu-flyout-labels");
+		rerender(
+			<I18nProvider>
+				<TaskContextMenu {...props} pos={null} />
+			</I18nProvider>,
+		);
+		rerender(
+			<I18nProvider>
+				<TaskContextMenu {...props} pos={{ x: 40, y: 60 }} />
+			</I18nProvider>,
+		);
+		expect(screen.getByTestId("task-menu")).toBeInTheDocument();
+		expect(screen.queryByTestId("task-menu-flyout-labels")).not.toBeInTheDocument();
 	});
 
 	it("opens the detail modal in rename mode", async () => {
@@ -230,7 +352,7 @@ describe("TaskContextMenu → start a To Do card", () => {
 		window.addEventListener(LAUNCH_REQUESTED_EVENT, listener);
 		try {
 			renderMenu(makeTask({ status: "todo", worktreePath: null }));
-			await userEvent.click(screen.getByText("Move to"));
+			await userEvent.hover(screen.getByText("Move to"));
 			await userEvent.click(await screen.findByText("Agent is Working"));
 			await waitFor(() => expect(listener).toHaveBeenCalledTimes(1));
 			expect((listener.mock.calls[0]![0] as CustomEvent).detail.targetStatus).toBe("in-progress");
@@ -238,5 +360,36 @@ describe("TaskContextMenu → start a To Do card", () => {
 		} finally {
 			window.removeEventListener(LAUNCH_REQUESTED_EVENT, listener);
 		}
+	});
+});
+
+describe("TaskContextMenu on a phone", () => {
+	const width = window.innerWidth;
+	const matchMedia = window.matchMedia;
+	beforeEach(() => {
+		vi.clearAllMocks();
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: 400 });
+		window.matchMedia = ((query: string) => ({
+			...matchMedia(query),
+			matches: query.includes("max-width"),
+		})) as typeof window.matchMedia;
+	});
+	afterEach(() => {
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+		window.matchMedia = matchMedia;
+	});
+
+	it("taps through to the label sheet instead of a hover flyout", async () => {
+		renderMenu();
+		await userEvent.click(screen.getByTestId("task-menu-labels"));
+		expect(await screen.findByTestId("label-picker")).toBeInTheDocument();
+		expect(screen.queryByTestId("task-menu-flyout-labels")).not.toBeInTheDocument();
+	});
+
+	it("taps through to the priority picker", async () => {
+		renderMenu();
+		await userEvent.click(screen.getByTestId("task-menu-priority"));
+		expect(await screen.findByRole("menuitemradio", { name: /P0/ })).toBeInTheDocument();
+		expect(screen.queryByTestId("task-menu-flyout-priority")).not.toBeInTheDocument();
 	});
 });

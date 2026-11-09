@@ -25,6 +25,7 @@ import {
 	type NativeStreamRole,
 } from "../../shared/native-terminal-stream";
 import { encodeResizeSequence } from "../../shared/resize-protocol";
+import { ptyWsUrl } from "../pty-server-access";
 
 const JSON_SENTINEL = "__NATIVE_TAKEOVER_JSON__";
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -63,7 +64,7 @@ async function main(): Promise<void> {
 	const hostRoleBefore = terminal?.hostRole() ?? "none";
 
 	const port = pty.getPtyPort();
-	const ws = new WebSocket(`ws://localhost:${port}?session=${encodeURIComponent(taskId)}`);
+	const ws = new WebSocket(ptyWsUrl(port, taskId));
 	const headers: NativeStreamHeader[] = [];
 	let attach: NativeStreamAttachHeader | null = null as NativeStreamAttachHeader | null;
 	let role: NativeStreamRole = "observer";

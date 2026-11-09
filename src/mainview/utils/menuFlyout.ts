@@ -1,8 +1,9 @@
-import { computeAnchoredPosition, type RectLike, type SizeLike } from "./popoverPosition";
+import { computeAnchoredPosition, type PopoverPlacement, type RectLike, type SizeLike } from "./popoverPosition";
 
 /**
- * Positioning for a detail panel opened from a row of the header overflow menu
- * (memory breakdown, tmux session list).
+ * Positioning for a panel opened from a menu row: the header overflow menu's
+ * detail panels (memory breakdown, tmux session list) and the task context
+ * menu's pickers (labels, status, project, open in).
  *
  * Two rules make such a panel usable. It hangs off the **menu's** outboard edge,
  * not the row's, so it never lands on top of the menu the pointer is still
@@ -32,13 +33,20 @@ export function menuFlyoutAnchorRect(row: RectLike, menu: RectLike | null): Rect
 	};
 }
 
-/** Place `pop` beside the menu that owns `rowEl`, level with the row. */
-export function computeMenuFlyoutPosition(rowEl: HTMLElement, pop: SizeLike): { top: number; left: number } {
+/**
+ * Place `pop` beside the menu that owns `rowEl`, level with the row. `placement`
+ * is the preferred side; it flips when the window edge is too close.
+ */
+export function computeMenuFlyoutPosition(
+	rowEl: HTMLElement,
+	pop: SizeLike,
+	placement: Extract<PopoverPlacement, "left" | "right"> = "left",
+): { top: number; left: number } {
 	const menuEl = rowEl.closest('[role="menu"]');
 	const anchor = menuFlyoutAnchorRect(
 		rowEl.getBoundingClientRect(),
 		menuEl ? menuEl.getBoundingClientRect() : null,
 	);
-	const { top, left } = computeAnchoredPosition(anchor, pop, { placement: "left", align: "start" });
+	const { top, left } = computeAnchoredPosition(anchor, pop, { placement, align: "start" });
 	return { top, left };
 }

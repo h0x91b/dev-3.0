@@ -322,6 +322,9 @@ turning it off in Settings removes only the device you are on.
 ## Security notes
 
 - The rotating token is the only credential; treat a live tunnel URL as a live session.
+- Terminal streams come from an internal server that listens on `127.0.0.1` only and requires a
+  per-launch token. A browser never talks to it: LAN, tunnel and SSH sessions reach terminals
+  through the signed-in `/pty` route of the remote server.
 - Diagnostic logs are kept for 14 days locally and redact prompt-bearing payloads and command
   arguments — see [Local diagnostic logs](diagnostic-logs.md).
 - SSH port-forwarding exposes nothing publicly and reuses your existing SSH credentials. It is

@@ -108,6 +108,47 @@ describe("findMissingLaunchAgent", () => {
 		expect(missing?.binaryName).toBe("claude");
 	});
 
+	// GitHub issue #2218: the executable is `opencode`, never `opencode mini`.
+	describe.skipIf(process.platform === "win32")("a base command with more than the executable", () => {
+		const withOverride = (baseCommandOverride: string) => {
+			getAllAgentsSpy.mockResolvedValueOnce([{
+				...claudeAgent,
+				configurations: [{ id: "claude-default", name: "Default", baseCommandOverride }],
+			}]);
+			return findMissingLaunchAgent([{ agentId: "builtin-claude", configId: "claude-default" }]);
+		};
+
+		it("launches `env <absolute path> <subcommand>` when that path is executable", async () => {
+			expect(await withOverride(`env '${process.execPath}' mini`)).toBeNull();
+		});
+
+		it("names only the executable when that path is missing", async () => {
+			expect((await withOverride("env /nowhere/dev3-test/opencode mini"))?.binaryName).toBe("opencode");
+		});
+
+		it("looks a wrapped name up on PATH without its subcommand", async () => {
+			installedBinaries.add("opencode");
+			expect(await withOverride("env FOO=1 opencode mini")).toBeNull();
+			expect((await withOverride("FOO=1 not-installed-cli mini"))?.binaryName).toBe("not-installed-cli");
+		});
+
+		it("judges a multi-word command by its first program", async () => {
+			installedBinaries.add("npx");
+			expect(await withOverride("npx my-claude --flag")).toBeNull();
+		});
+
+		it("never blocks a command only the shell can resolve", async () => {
+			expect(await withOverride("$HOME/bin/opencode mini")).toBeNull();
+			expect(await withOverride("exec opencode mini")).toBeNull();
+			expect(await withOverride("./bin/opencode mini")).toBeNull();
+		});
+
+		it("still reports a broken custom path for a command it cannot resolve", async () => {
+			vi.mocked(loadSettings).mockResolvedValueOnce({ agentCustomBinaryPaths: { "builtin-claude": "/gone/claude" }, strictAgentCustomBinaryPaths: { "builtin-claude": "/gone/claude" } } as never);
+			expect((await withOverride("exec opencode mini"))?.customPath).toBe("/gone/claude");
+		});
+	});
+
 	it("never blocks when the PATH lookup throws", async () => {
 		const { resolveBinaryPath } = await import("../rpc-handlers/shared-pure");
 		vi.mocked(resolveBinaryPath).mockImplementationOnce(() => { throw new Error("which crashed"); });

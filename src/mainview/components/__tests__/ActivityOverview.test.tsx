@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ActivityOverview from "../ActivityOverview";
+import { COORDINATOR_TITLE } from "../TaskRoleBand";
 import { I18nProvider } from "../../i18n";
 import type { Project, Task } from "../../../shared/types";
 import { getTaskTitle } from "../../../shared/types";
@@ -1118,6 +1119,13 @@ describe("ActivityOverview — coordinator rows", () => {
 		expect(rows()[0].textContent).toContain("Agent is Working");
 		// Only the ordinary working task is left in the footer.
 		expect(screen.getByText("1 agent working")).toBeInTheDocument();
+	});
+
+	it("paints the coordinator row's title in the accent ink", async () => {
+		mockTasks([coordinator("c1", 10, "Run the migration", { status: "in-progress" })]);
+		renderActivityOverview();
+
+		expect((await screen.findByText("Run the migration")).className).toContain(COORDINATOR_TITLE);
 	});
 
 	it("lists a waiting coordinator once, above the ordinary attention rows, with no Complete check", async () => {

@@ -1,4 +1,5 @@
 import type { ReviewedPullRequest, AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskOrigin, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
+import { rememberVariantBedrockProfile } from "../bedrock-profile-pref";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
 import { isTaskSoundEnabled } from "../../shared/task-sound-statuses";
 import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, hasGitWorkflow, normalizeTaskType, OWN_WORKTREE_NOT_A_REPO_ERROR, reviewTaskTitle, taskUsesWorktree } from "../../shared/types";
@@ -436,7 +437,8 @@ export async function launchTaskWithAgentChoice(params: {
 	const first = variants[0];
 	if (!first) throw new Error("At least one variant is required");
 	if (isActive(params.targetStatus)) await assertLaunchAgentsInstalled(variants);
-	const { agentId, configId, accountId } = first;
+	const { agentId, configId, accountId, bedrockProfile } = first;
+	rememberVariantBedrockProfile(params.projectId, variants);
 
 	// Priority lands before the move so the card never appears in the wrong sort
 	// band, and goes through the dedicated setter rather than `taskPatch`.
@@ -472,6 +474,7 @@ export async function launchTaskWithAgentChoice(params: {
 			agentId,
 			configId,
 			accountId,
+			bedrockProfile,
 			existingBranch,
 			worktreePath: null,
 			branchName: null,
@@ -600,6 +603,7 @@ async function spawnVariants(params: {
 	variants: LaunchVariant[];
 }): Promise<Task[]> {
 	log.info("→ spawnVariants", { taskId: params.taskId, count: params.variants.length });
+	rememberVariantBedrockProfile(params.projectId, params.variants);
 	const project = await data.getProject(params.projectId);
 	const sourceTask = await data.getTask(project, params.taskId);
 
@@ -643,6 +647,7 @@ async function spawnVariants(params: {
 			agentId: firstVariant.agentId,
 			configId: firstVariant.configId,
 			accountId: firstVariant.accountId,
+			bedrockProfile: firstVariant.bedrockProfile,
 			existingBranch: srcBranch,
 			worktreePath: null,
 			branchName: null,
@@ -683,6 +688,7 @@ async function spawnVariants(params: {
 				agentId: variant.agentId,
 				configId: variant.configId,
 				accountId: variant.accountId,
+				bedrockProfile: variant.bedrockProfile,
 				seq: sharedSeq,
 				existingBranch: srcBranch,
 				// Whose code the group is about is a property of the branch, so every
@@ -747,6 +753,7 @@ async function spawnVariants(params: {
 				agentId: variant.agentId,
 				configId: variant.configId,
 				accountId: variant.accountId,
+				bedrockProfile: variant.bedrockProfile,
 				existingBranch: srcBranch,
 				scheduledLaunch: null,
 				preparationError: null,
@@ -782,6 +789,7 @@ async function addAttempts(params: {
 	variants: LaunchVariant[];
 }): Promise<Task[]> {
 	log.info("→ addAttempts", { taskId: params.taskId, count: params.variants.length });
+	rememberVariantBedrockProfile(params.projectId, params.variants);
 	const project = await data.getProject(params.projectId);
 	const sourceTask = await data.getTask(project, params.taskId);
 	await assertLaunchAgentsInstalled(params.variants);
@@ -824,6 +832,7 @@ async function addAttempts(params: {
 				agentId: variant.agentId,
 				configId: variant.configId,
 				accountId: variant.accountId,
+				bedrockProfile: variant.bedrockProfile,
 				seq: sharedSeq,
 				existingBranch: srcBranch,
 				// Whose code the group is about is a property of the branch, so every
@@ -893,6 +902,7 @@ async function addAttempts(params: {
 				agentId: variant.agentId,
 				configId: variant.configId,
 				accountId: variant.accountId,
+				bedrockProfile: variant.bedrockProfile,
 				existingBranch: task.existingBranch ?? srcBranch,
 				preparationError: null,
 			},
@@ -1455,4 +1465,8 @@ export const taskLifecycleHandlers = {
 	getNativeTerminalAvailability,
 	getNewTaskTerminalBackend,
 	setNewTaskTerminalBackend,
+	getRememberedBedrockProfile: async (params: { projectId: string }) => {
+		const profile = await data.getRememberedBedrockProfile(params.projectId);
+		return profile === undefined ? null : { profile };
+	},
 };

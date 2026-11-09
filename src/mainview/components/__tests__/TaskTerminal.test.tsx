@@ -34,10 +34,12 @@ vi.mock("../../analytics", () => ({
 
 const terminalViewMockHandle = { sendInput: vi.fn(), paste: vi.fn(), submit: vi.fn(), focus: vi.fn(), blur: vi.fn(), claimWriter: vi.fn(), scrollToBottom: vi.fn() };
 let terminalViewOnScrolledIntoHistory: ((scrolledUp: boolean) => void) | undefined;
+let terminalViewOnSessionUnknown: (() => Promise<boolean>) | undefined;
 
 vi.mock("../../TerminalView", () => ({
-	default: ({ ptyUrl, onReady, onScrolledIntoHistory }: { ptyUrl: string; onReady?: (h: unknown) => void; onScrolledIntoHistory?: (v: boolean) => void }) => {
+	default: ({ ptyUrl, onReady, onScrolledIntoHistory, onSessionUnknown }: { ptyUrl: string; onReady?: (h: unknown) => void; onScrolledIntoHistory?: (v: boolean) => void; onSessionUnknown?: () => Promise<boolean> }) => {
 		terminalViewOnScrolledIntoHistory = onScrolledIntoHistory;
+		terminalViewOnSessionUnknown = onSessionUnknown;
 		if (onReady) {
 			setTimeout(() => onReady(terminalViewMockHandle), 0);
 		}
@@ -51,6 +53,19 @@ vi.mock("../TaskInfoPanel", () => ({
 
 vi.mock("../ExtraKeyBar", () => ({
 	default: () => <div data-testid="extra-key-bar" />,
+}));
+
+vi.mock("../../hooks/useAgents", () => ({
+	useAgents: () => [{ id: "builtin-claude", baseCommand: "claude", configurations: [] }],
+}));
+
+// The account pill has its own suite; this stub shows the value and offers one pick.
+vi.mock("../AgentAccountIndicator", () => ({
+	default: ({ value, onSelect }: { value?: string | null; onSelect?: (id: string | null) => void }) => (
+		<button type="button" data-testid="account-pill" onClick={() => onSelect?.("acct-2")}>
+			{value === undefined ? "default" : value === null ? "system" : value}
+		</button>
+	),
 }));
 
 // Mock navigator.maxTouchPoints for ExtraKeyBar visibility tests
@@ -490,6 +505,62 @@ describe("TaskTerminal", () => {
 			expect(screen.queryByText("Previous agent session found")).toBeNull();
 		});
 
+		describe("resume account", () => {
+			const hibernatedClaude = (accountId?: string | null) => ({
+				recoverable: true as const,
+				hibernated: true as const,
+				sessionState: { panes: [{ agentCmd: "claude", sessionId: "sid-1", agentId: "builtin-claude", configId: "cfg-1", ...(accountId !== undefined ? { accountId } : {}) }] },
+			});
+
+			it("keeps the saved account unless another is picked", async () => {
+				const user = userEvent.setup();
+				mockedApi.request.getPtyUrl.mockResolvedValue(hibernatedClaude("acct-1"));
+				mockedApi.request.resumeTask.mockResolvedValue("ws://localhost:9999?session=t1");
+				await act(async () => { renderTerminal(); });
+				expect(await screen.findByTestId("account-pill")).toHaveTextContent("acct-1");
+				await act(async () => { await user.click(screen.getByText("Wake and resume agent")); });
+				expect(mockedApi.request.resumeTask).toHaveBeenCalledWith({ taskId: "t1" });
+			});
+
+			it("wakes on the picked account", async () => {
+				const user = userEvent.setup();
+				mockedApi.request.getPtyUrl.mockResolvedValue(hibernatedClaude("acct-1"));
+				mockedApi.request.resumeTask.mockResolvedValue("ws://localhost:9999?session=t1");
+				await act(async () => { renderTerminal(); });
+				await user.click(await screen.findByTestId("account-pill"));
+				expect(screen.getByTestId("account-pill")).toHaveTextContent("acct-2");
+				await act(async () => { await user.click(screen.getByText("Wake and resume agent")); });
+				expect(mockedApi.request.resumeTask).toHaveBeenCalledWith({ taskId: "t1", accountId: "acct-2" });
+			});
+
+			it("stays on the wake screen when the picked account is refused", async () => {
+				const user = userEvent.setup();
+				const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "test-toast");
+				mockedApi.request.getPtyUrl.mockResolvedValue(hibernatedClaude("acct-1"));
+				mockedApi.request.resumeTask.mockRejectedValue(new Error("The chosen account cannot see conversation sid-1"));
+				try {
+					await act(async () => { renderTerminal(); });
+					await user.click(await screen.findByTestId("account-pill"));
+					await act(async () => { await user.click(screen.getByText("Wake and resume agent")); });
+					await waitFor(() => expect(errorToast).toHaveBeenCalledWith("The chosen account cannot see conversation sid-1"));
+					expect(screen.getByTestId("terminal-wake-screen")).toBeInTheDocument();
+					expect(screen.getByTestId("account-pill")).toHaveTextContent("acct-2");
+					expect(mockedApi.request.checkWorktreeState).not.toHaveBeenCalled();
+				} finally { errorToast.mockRestore(); }
+			});
+
+			it("offers no account when no saved pane runs Claude", async () => {
+				mockedApi.request.getPtyUrl.mockResolvedValue({
+					recoverable: true,
+					hibernated: true,
+					sessionState: { panes: [{ agentCmd: "codex", sessionId: "sid-1", agentId: "builtin-codex", configId: "cfg-1" }] },
+				});
+				await act(async () => { renderTerminal(); });
+				await screen.findByText("Wake and resume agent");
+				expect(screen.queryByTestId("account-pill")).toBeNull();
+			});
+		});
+
 		it("offers only the plain shell when a hibernated task has no stored panes", async () => {
 			mockedApi.request.getPtyUrl.mockResolvedValue({
 				recoverable: true,
@@ -603,6 +674,55 @@ describe("TaskTerminal", () => {
 			await waitFor(() => {
 				expect(screen.getByTestId("terminal-view")).toBeInTheDocument();
 			});
+		});
+	});
+
+	// A restarted server forgets a session the open view was streaming; TerminalView
+	// asks the owner to register it again before reconnecting.
+	describe("Forgotten session after a server restart", () => {
+		const panes = [{ agentCmd: "claude", sessionId: "sid-1", agentId: "builtin-claude", configId: "cfg-1" }];
+
+		async function renderStreamingTerminal() {
+			mockedApi.request.getPtyUrl.mockResolvedValueOnce({ url: "ws://localhost:9999?session=t1" });
+			await act(async () => { renderTerminal(); });
+			await screen.findByTestId("terminal-view");
+			expect(terminalViewOnSessionUnknown).toBeDefined();
+		}
+
+		it("re-registers the session and keeps the terminal when it is still alive", async () => {
+			await renderStreamingTerminal();
+			mockedApi.request.getPtyUrl.mockResolvedValueOnce({ url: "ws://localhost:9999?session=t1" });
+
+			let reconnect: boolean | undefined;
+			await act(async () => { reconnect = await terminalViewOnSessionUnknown!(); });
+
+			expect(reconnect).toBe(true);
+			expect(mockedApi.request.getPtyUrl).toHaveBeenLastCalledWith({ taskId: "t1" });
+			expect(screen.getByTestId("terminal-view")).toBeInTheDocument();
+		});
+
+		it("drops to the recovery prompt when the session is gone", async () => {
+			await renderStreamingTerminal();
+			mockedApi.request.getPtyUrl.mockResolvedValueOnce({ recoverable: true, sessionState: { panes } });
+
+			let reconnect: boolean | undefined;
+			await act(async () => { reconnect = await terminalViewOnSessionUnknown!(); });
+
+			expect(reconnect).toBe(false);
+			expect(screen.queryByTestId("terminal-view")).toBeNull();
+			expect(screen.getByText("Previous agent session found")).toBeInTheDocument();
+		});
+
+		it("drops to the wake screen when the task was hibernated meanwhile", async () => {
+			await renderStreamingTerminal();
+			mockedApi.request.getPtyUrl.mockResolvedValueOnce({ recoverable: true, hibernated: true, sessionState: { panes } });
+
+			let reconnect: boolean | undefined;
+			await act(async () => { reconnect = await terminalViewOnSessionUnknown!(); });
+
+			expect(reconnect).toBe(false);
+			expect(screen.queryByTestId("terminal-view")).toBeNull();
+			expect(screen.getByTestId("terminal-wake-screen")).toBeInTheDocument();
 		});
 	});
 

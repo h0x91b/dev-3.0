@@ -27,6 +27,7 @@ import type { TFunction, TranslationKey } from "../../i18n";
 import { buildPickerGroups, getModeLeafLabel, getModelGroupLabel, type PickerGroup } from "../../utils/agentPicker";
 import { useToggleFavorite } from "../../hooks/useToggleFavorite";
 import PresetModelRoles from "./PresetModelRoles";
+import AwsProfilesEditor from "./AwsProfilesEditor";
 import { useModelCatalog } from "../../hooks/useModelCatalog";
 import SettingsEntry from "./SettingsEntry";
 import SettingsSection from "./SettingsSection";
@@ -1476,6 +1477,14 @@ function ProviderSelector({
 								})}
 							</div>
 						</div>
+					) : null}
+					{activeDef.usesAwsProfiles ? (
+						<AwsProfilesEditor
+							t={t}
+							profiles={settings?.profiles}
+							defaultProfile={settings?.defaultProfile}
+							onChange={patchProvider}
+						/>
 					) : null}
 					<ModelOverrideTable
 						t={t}

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { createLogger } from "./logger";
+import { renderConfigFieldTable } from "../shared/config-schema";
 import { ensureCodexConfigFile } from "./codex-config";
 import {
 	AGENT_MESSAGE_HOLD_HUMAN_IDLE_SECONDS,
@@ -267,47 +268,31 @@ is genuinely ambiguous (e.g., multiple possible dev servers, unclear base branch
 
 4. **Ask where to save.** Stop and ask clearly: "Repo config (shared, git) or Local config (personal, git-ignored)?" — wait for answer before writing anything.
 
+   Write each field with \`dev3 config set\` (add \`--local\` for config.local.json). It validates the value against the schema, keeps the file's formatting and says when a higher layer still wins. Do not hand-edit the JSON.
+
 \`\`\`bash
-mkdir -p .dev3
-cat > .dev3/config.json << 'EOF'
-{
-  "setupScript": "bun install",
-  "devScript": "VITE_PORT=\${DEV3_PORT0:-5173} API_PORT=\${DEV3_PORT1:-3001} bun run dev",
-  "cleanupScript": "rm -rf dist node_modules/.cache",
-  "clonePaths": ["node_modules"],
-  "defaultBaseBranch": "main",
-  "defaultCompareRefMode": "remote",
-  "portCount": 2
-}
-EOF
+dev3 config set setupScript "npm install"
+dev3 config set devScript 'PORT=\${DEV3_PORT0:-3000} npm run dev'
+dev3 config set clonePaths node_modules,.env
+dev3 config set portCount 1
+dev3 config set env.NODE_ENV development
 \`\`\`
 
 5. **Run the setupScript once.** Execute it right now in your shell to install dependencies / generate files. This validates the script works and also produces the heavy directories (node_modules, .venv, etc.) needed for the next step.
 
 6. **Update clonePaths after setup.** After the setupScript finishes, check which heavy directories now exist (node_modules, .venv, target, build, dist, .next, etc.) and are NOT tracked (\`git ls-files -- <dir>\` prints nothing), and add any missing ones to \`clonePaths\` in the config. Re-write the config if needed.
 
-7. **Verify** by running \`dev3 config show\` and confirm all fields show the correct source. If \`portCount > 0\`, also smoke-test the mapping: run the dev command briefly with explicit \`DEV3_PORT0\` (and others if needed) and confirm the project uses the forwarded port. If a smoke test is impractical, say so explicitly.
+7. **Verify** by running \`dev3 config validate\` (no errors) and \`dev3 config show\`, and confirm all fields show the correct source. If \`portCount > 0\`, also smoke-test the mapping: run the dev command briefly with explicit \`DEV3_PORT0\` (and others if needed) and confirm the project uses the forwarded port. If a smoke test is impractical, say so explicitly.
 
 8. **Commit** the config file: \`git add .dev3/config.json && git commit -m "chore: add dev3 project config"\`
 
 ## Schema reference
 
-| Field | Type | Description |
-|-------|------|-------------|
-| \`setupScript\` | string | Runs after a new worktree is created (install deps, generate code, etc.). Gets the workspace env vars from step 3b |
-| \`devScript\` | string | Dev server command (powers the "Dev Server" button in the UI) |
-| \`devServers\` | object | Dev servers beyond \`devScript\`, keyed by name: \`{ script, ports?, env?, cwd?, title? }\`. Each starts, stops and restarts on its own; every \`ports\` entry becomes one of the task's pool ports and reaches EVERY server of that task as \`DEV3_PORT_<NAME>\` |
-| \`cleanupScript\` | string | Runs before the task worktree is removed (\`completed\` / \`cancelled\` / task deleted / preparation cancelled) |
-| \`clonePaths\` | string[] | Files and dirs (globs allowed) CoW-cloned into every worktree. Runs BEFORE the agent launches — unlike \`setupScript\`, which in the default \`parallel\` mode starts alongside the already-running agent — so this is the only hook that can put a git-ignored file in place before the agent reads it. Missing sources are skipped; tracked paths are refused; \`[]\` overrides lower layers |
-| \`defaultBaseBranch\` | string | Base branch for new task branches (default: \`main\`) |
-| \`defaultCompareRefMode\` | \`"remote" \| "local"\` | Default diff comparison target (\`origin/<baseBranch>\` vs local base branch) |
-| \`peerReviewEnabled\` | boolean | Whether peer review is required (default: \`true\`) |
-| \`sparseCheckoutEnabled\` | boolean | Enable sparse checkout for worktrees (default: \`false\`) |
-| \`sparseCheckoutPaths\` | string[] | Paths to include in sparse checkout |
-| \`portCount\` | number | Ports to allocate per task (injected as \`DEV3_PORT0\`..N env vars). Default: \`0\`. **You must map these to the project's own port env vars in \`devScript\` — see step 3a.** |
-| \`env\` | Record<string, string> | Environment variables exported into task sessions. This field is not for secrets; \`.dev3/config.json\` is committed. |
+Generated from the config schema: \`dev3 config schema\` prints the same list, \`dev3 config schema <key>\` the details of one field.
 
-**Only include these fields.** Unknown keys are silently ignored. Do NOT include project metadata (id, name, path).
+${renderConfigFieldTable()}
+
+**Only include these fields.** Unknown keys are ignored with a warning from \`dev3 config validate\`. Do NOT include project metadata (id, name, path).
 
 ## Files
 
@@ -322,7 +307,12 @@ EOF
 
 ## CLI commands
 
-- \`dev3 config show\` — display effective config with source per field
+- \`dev3 config schema [<key>] [--json]\` — what can be configured: type, default, example (no app needed)
+- \`dev3 config show [--json]\` — effective value of every field and the layer it came from
+- \`dev3 config get <key>[.<name>]\` — one effective value
+- \`dev3 config set <key>[.<name>] <value> [--local] [--main]\` — validated write; \`--main\` targets the project root from a task worktree
+- \`dev3 config unset <key>[.<name>] [--local] [--main]\` — remove a key so lower layers apply
+- \`dev3 config validate [--json]\` — check the files (exit 47 on errors; unknown keys only warn)
 - \`dev3 config export\` — migrate legacy settings from projects.json
 `;
 
@@ -526,6 +516,338 @@ const TMUX_OPENAI_YAML = `interface:
   display_name: "dev3 tmux"
   short_description: "Full tmux reference for organizing tabs and reading panes — tmux-backed tasks only; check \`dev3 pane list\` first"
   default_prompt: "Use \$dev3-tmux for the full tmux command reference, but only after \`dev3 pane list\` confirms this task runs on the tmux backend."
+`;
+
+// ---- dev3-extensions skill (write a board-view extension) ----
+
+const EXTENSIONS_SKILL_DESCRIPTION =
+	"Write, install, screenshot and debug a dev3 board-view extension (a Cordis plugin that adds a view to the project board via ctx.board). Use when the user wants a custom board view, a dev3 extension or plugin, asks how to extend the dev3 board, or an extension shows Failed to load, Not trusted, Incompatible or falls back to Kanban.";
+
+const EXTENSIONS_SKILL_BODY = `# dev3-extensions — write, install, see and debug a board-view extension
+
+A dev3 **extension** adds **board views**: new ways to show a project or space board next to Kanban, Table,
+Tree and Attention. It is a folder with two files and no build step. This skill carries the whole contract,
+so it works whether or not dev3's source is on this machine.
+
+> **Extensions are not sandboxed.** They run inside the dev3 window with the same rights as dev3 itself. Never
+> install or trust code on the user's behalf without telling them what it does; installing is the user's call.
+
+## The loop
+
+1. **Scaffold** the folder (below).
+2. **Code** against \`ctx.board\` only.
+3. **Install and trust** it: on the user's real dev3 this is a desktop click the user makes; on a throwaway
+   QA instance you can do it yourself (see "See it render").
+4. **See it render** and screenshot it in streamer mode.
+5. **Debug** with the symptom table when it does not show up.
+
+First decide which situation you are in, because steps 3–4 differ:
+
+- **In a dev3 clone**: the repo has \`src/mainview/board-views/board-service.ts\`. You can read the real types and
+  run a scoped QA instance. The source of truth there: \`board-service.ts\` and \`registry.ts\` in that folder,
+  \`src/shared/extensions.ts\` (manifest validation, \`EXTENSION_API_VERSION\`), \`docs/extensions.md\`, and the
+  reference extension \`examples/board-view-extension/\`.
+- **Only the installed app**: everything you need is in this file; the public author guide is
+  https://github.com/h0x91b/dev-3.0/blob/main/docs/extensions.md (Settings → Extensions links to it). Ask the user to install and trust the folder
+  from their desktop app, and verify by asking them to look or by screenshotting a scoped instance if you can run one.
+
+## 1. Scaffold
+
+\`\`\`
+<extension-id>/
+├── dev3-extension.json   manifest, read without running any code
+└── index.js              one prebuilt ES module, the default export is a Cordis plugin
+\`\`\`
+
+Name the folder exactly like the \`id\`: once installed it lives in \`~/.dev3.0/extensions/<id>/\`, and a folder
+name that differs from the id is rejected.
+
+\`dev3-extension.json\`:
+
+\`\`\`json
+{
+  "id": "my-view",
+  "name": "My view",
+  "version": "1.0.0",
+  "publisher": "Your name",
+  "engines": { "dev3": "^1.0.0" },
+  "contributes": { "boardViews": [{ "id": "main", "label": "My view" }] },
+  "main": "index.js"
+}
+\`\`\`
+
+| Field | Rule |
+|---|---|
+| \`id\` | 2–64 chars of \`a-z\`, \`0-9\`, \`-\`, starting with a letter or digit. \`builtin\`, \`dev3\`, \`third-party\`, \`third_party\` are reserved |
+| \`name\`, \`publisher\` | Required, max 80 chars. Shown in Settings and the consent dialog. Trust is bound to \`id\` + \`publisher\`: change the publisher and the user must consent again |
+| \`version\` | Semver, e.g. \`1.2.0\` |
+| \`engines.dev3\` | Semver range over the **extension API version** (\`1.0.0\` today; dev3 names it only in the consent dialog of an incompatible extension), not over the app version. Use \`^1.0.0\`. A range the app does not satisfy leaves it installed but **Incompatible** and off |
+| \`contributes.boardViews\` | 1–16 views, each \`{ id, label }\`; view id \`a-z0-9-\`, label max 40 chars. The id you register at runtime is \`<extension id>:<view id>\` |
+| \`main\` | Must be \`"index.js"\` |
+
+\`index.js\` — a complete, working starting point:
+
+\`\`\`js
+import { createElement as h, useEffect, useReducer } from "react";
+
+const VIEW_ID = "my-view:main"; // "<manifest id>:<boardViews[].id>"
+
+const CSS = \`
+.my-view { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 24px 24px; color: rgb(var(--text-primary)); }
+.my-view-row { display: block; width: 100%; padding: 8px 12px; border: 0; border-radius: 6px; background: transparent;
+  font: inherit; font-size: 13px; text-align: left; color: rgb(var(--text-secondary)); cursor: pointer; }
+.my-view-row:hover { background: rgb(var(--surface-raised)); color: rgb(var(--text-primary)); }
+.my-view-row:focus-visible { outline: 2px solid rgb(var(--accent) / 0.6); outline-offset: -2px; }
+\`;
+
+/** Re-render on every board change and hand back ctx.board. */
+function useBoard(ctx) {
+  const [, bump] = useReducer((n) => n + 1, 0);
+  useEffect(() => ctx.on("board/changed", bump), [ctx]);
+  return ctx.board;
+}
+
+function MyView({ ctx }) {
+  const board = useBoard(ctx);
+  const tasks = board.tasks().filter((t) => t.status !== "completed" && t.status !== "cancelled");
+  return h("div", { className: "my-view" },
+    h("style", null, CSS),
+    tasks.map((t) => h("button", {
+      key: t.id,
+      type: "button",
+      className: "my-view-row",
+      onClick: () => board.openTask(t.id),
+      onContextMenu: (e) => { e.preventDefault(); board.openContextMenu(t.id, { x: e.clientX, y: e.clientY }); },
+    }, \`#\${t.seq} \${t.title}\`)),
+  );
+}
+
+export default {
+  name: "my-view",
+  inject: ["board", "boardViews"],
+  apply(ctx) {
+    ctx.boardViews.register({ id: VIEW_ID, label: "My view", component: MyView, supportsNarrow: true });
+  },
+};
+\`\`\`
+
+**Imports.** \`react\`, \`react/jsx-runtime\`, \`react-dom\` and \`cordis\` are provided by dev3 through an import map:
+import them by bare name and never bundle your own copy (two Reacts break hooks). Nothing else resolves — no
+relative imports, no other packages. Need more? Bundle everything else into one file:
+\`esbuild src/index.jsx --bundle --format=esm --jsx=automatic --external:react --external:react-dom --external:cordis --outfile=index.js\`.
+Bundles over 5 MB are refused.
+
+**Styling.** dev3's Tailwind classes are not guaranteed to exist for your markup. Ship your own CSS scoped under
+one class (a \`<style>\` element in the view is fine) and take colours from dev3's theme variables, so light and
+dark themes both work. Each holds an \`r g b\` triple, so wrap it: \`rgb(var(--text-primary))\`,
+\`rgb(var(--accent) / 0.14)\`. Useful ones: \`--text-primary\`, \`--text-secondary\`, \`--text-tertiary\`,
+\`--text-muted\`, \`--surface-base\`, \`--surface-raised\`, \`--surface-elevated\`, \`--surface-overlay\`,
+\`--border-default\`, \`--border-active\`, \`--accent\`, \`--danger\`, \`--warning\`, \`--success\`. Never hard-code a hex
+colour. The view fills the board area: make the root \`flex: 1; min-height: 0; overflow-y: auto\`.
+
+## 2. The contract
+
+**Runtime.** The default export is a [Cordis 4](https://github.com/cordiverse/cordis) plugin (dev3 pins
+\`cordis@4.0.0-rc.11\`): an object \`{ name, inject, apply(ctx) }\` or a function \`(ctx) => void\`.
+\`inject: ["board", "boardViews"]\` makes the plugin start once a board is on screen and stop when it leaves.
+Everything you register is undone automatically when the plugin stops, so there is no cleanup code to write.
+
+**\`ctx.boardViews.register(def)\`** — call it in \`apply\`. \`def\`:
+
+| Field | Meaning |
+|---|---|
+| \`id\` | \`<extension id>:<view id>\`, exactly as declared in the manifest |
+| \`label\` | Plain string shown in the view switcher |
+| \`component\` | React component, receives \`{ ctx }\` |
+| \`supportsNarrow\` | \`true\` if it works on a phone-width board; otherwise the narrow board falls back to Kanban |
+| \`Options\` | Optional React component \`{ ctx }\` for the board's "View options" popover; no icon without it |
+| \`defaultLayout\` | Optional initial value for \`ctx.board.layout(viewId)\` |
+| \`icon\` | Optional |
+
+Registering an id the manifest does not declare, or one that another live view already owns (a \`builtin:\` id,
+another extension's id), makes dev3 unload the whole extension and mark it **Failed to load**.
+
+**\`ctx.board\`** — the board on screen. Read and act **only** through it; never reach into dev3's DOM or globals.
+
+- Shape: \`scope\` (\`{ kind: "project" | "space", id, projectIds }\`), \`formFactor\` (\`"wide"\` / \`"narrow"\`),
+  \`query\` and \`setQuery(q)\`.
+- Data: \`tasks()\` (scope ∩ board query, every status), \`scopeTasks()\` (scope, unfiltered — for counts),
+  \`matches(task, query)\`, \`columns({ includeOccupied? })\`, \`labels()\`, \`agents()\`, \`projects()\`, \`epics()\`,
+  \`preferences()\` (\`{ taskSortOrder, tipsDisabled }\`), \`lineageNode(id)\`.
+- Per-view persisted state: \`layout(viewId)\` / \`setLayout(viewId, value)\` — stored per board and form factor.
+- The real dev3 card: \`ctx.board.TaskCard\` — render it as \`h(board.TaskCard, { task })\`.
+- Actions (destructive ones still go through dev3's own confirmations): \`openTask(id)\`,
+  \`openContextMenu(id, { x, y })\`, \`moveTask(id, { status } | { customColumnId })\`, \`setPriority(id, "P0".."P4")\`,
+  \`setLabels(id, labelIds)\`, \`createLabel(projectId, name)\`, \`createTask({ status? })\`, \`launch(id)\`,
+  \`remove(id, "cancel" | "delete")\`. Column management works on project boards only and rejects on a space
+  board: \`renameColumn(status, name | null)\`, \`createColumn()\`, \`renameCustomColumn(id, name)\`,
+  \`deleteCustomColumn(id)\`, \`reorderColumns(order)\`.
+
+**Task fields you will use:** \`id\`, \`seq\`, \`projectId\`, \`title\`, \`status\` (\`todo\`, \`in-progress\`,
+\`user-questions\`, \`review-by-ai\`, \`review-by-user\`, \`review-by-colleague\`, \`completed\`, \`cancelled\`), \`priority\`
+(\`P0\`–\`P4\`, absent means \`P3\`), \`labelIds\`, \`customColumnId\`, \`epicId\`, \`prNumber\`, \`createdAt\`, \`updatedAt\`.
+Treat anything else as internal.
+
+**Events.** \`ctx.on("board/changed", fn)\` fires after every change to the board's data; it returns a disposer,
+which is why \`useEffect(() => ctx.on(...), [ctx])\` in \`useBoard\` is all the wiring a view needs. Read
+\`ctx.board\` during render, never cache its arrays across renders.
+
+**Cordis traps:**
+- \`ctx.plugin(...)\` returns a thenable wrapper, not the fiber; \`await\` it if you need the fiber.
+- \`register()\` is a \`ctx.effect\`: it belongs to whichever context called it. Call it from your plugin's \`ctx\`,
+  not from a stored global context.
+- The duplicate-id refusal fires only while the other owner is live, so it may not reproduce on a fresh load
+  and then hit the user later. Use your own prefix and you never meet it.
+
+## 3. Install and trust
+
+**On the user's real dev3 (today: a desktop click, not something you can do).**
+Tell the user: Settings → Extensions → **Install from folder…** → pick the folder → read the consent dialog →
+**Trust and install**. dev3 validates the manifest, copies \`dev3-extension.json\` and \`index.js\` into
+\`~/.dev3.0/extensions/<id>/\`, and records trust in \`~/.dev3.0/extensions-state.json\`. Then switch the board to
+the view: the view switcher in the board's filter row, \`V\` then \`1\`–\`9\`, or View → Board View.
+
+- Installing works only in the **desktop app**. A remote/browser session (\`dev3 remote\`) runs views that are
+  already trusted but cannot install, trust or enable anything; that is enforced on the host, not by a hidden
+  button.
+- **Never write trust into the user's real \`~/.dev3.0/extensions-state.json\` yourself**, and never copy a folder
+  into their \`~/.dev3.0/extensions/\` to get around consent: a hand-copied folder shows as **Not trusted**
+  anyway, and forging the consent record defeats the one safety gate extensions have.
+- **Updating.** A changed \`index.js\` must be installed again (same flow). The same \`id\` + \`publisher\` skips the
+  consent dialog; a different publisher asks again. After reinstalling, reload the window.
+
+## 4. See it render
+
+### In a dev3 clone — a scoped QA instance (you do everything)
+
+A scoped instance has its own throwaway \`DEV3_HOME\`; the user's real \`~/.dev3.0\` is untouched. Here, and only
+here, you install and trust by hand, because the browser UI is a remote session and refuses to.
+
+\`\`\`bash
+bun install                                              # after a pull: new deps (e.g. cordis) otherwise break the build
+dev3 dev-server start --wait --env DEV3_QA_SCOPE=seeded  # prints the scoped DEV3_HOME in its log
+# 5000 lines (the cap): the DEV3_HOME line scrolls out of a shorter tail once the server has been busy.
+SCOPED=$(dev3 dev-server logs --lines 5000 | grep -oE 'DEV3_HOME=[^ ]+' | tail -1 | cut -d= -f2)
+[ -n "$SCOPED" ] || echo "no scoped DEV3_HOME found: is the dev server running with DEV3_QA_SCOPE?" 
+PORT=$(dev3 dev-server status | grep -oE 'DEV3_PORT0=[0-9]+' | cut -d= -f2)
+CODE=$(cat ~/.dev3.0/dev-web-access-code)
+\`\`\`
+
+Install and trust into the scoped home. Neither \`extensions/\` nor \`extensions-state.json\` exists there yet; this creates both, and the copy is all a later edit needs:
+
+\`\`\`bash
+EXT=my-view                                   # = manifest id = folder name
+mkdir -p "$SCOPED/extensions/$EXT"
+cp path/to/$EXT/dev3-extension.json path/to/$EXT/index.js "$SCOPED/extensions/$EXT/"
+# Trust record, scoped home ONLY. publisher must equal the manifest's publisher.
+cat > "$SCOPED/extensions-state.json" <<JSON
+{ "version": 1, "disabledBuiltins": [], "disabledExtensions": [],
+  "trust": { "$EXT": { "publisher": "Your name", "consentedAt": "2026-01-01T00:00:00.000Z" } } }
+JSON
+\`\`\`
+
+Seed a few tasks so the view has something to draw. Run the CLI from **outside** any worktree, because the
+current directory decides which dev3 the CLI talks to before \`DEV3_HOME\` does, and unset \`DEV3_TASK_ID\`, or the
+new task records yours as its parent:
+
+\`\`\`bash
+q() { (cd "$TMPDIR" && unset DEV3_TASK_ID && DEV3_HOME="$SCOPED" dev3 "$@"); }
+q projects list                                             # the seeded fixture project ("QA Fixture")
+q task create --project <project-id> --title "Sample task one"   # prints the new task id
+q task update --task <task-id> --priority P0                # create has no --priority flag
+\`\`\`
+
+Screenshot it. **Streamer mode (\`&streamer=on\`) is mandatory** for every screenshot; it blurs accounts and paths.
+One \`agent-browser\` session per task, closed when done:
+
+\`\`\`bash
+export AGENT_BROWSER_SESSION="dev3-\${DEV3_TASK_ID%%-*}"
+agent-browser set viewport 1440 900
+agent-browser open "http://localhost:$PORT/?token=$CODE&streamer=on"
+agent-browser wait --load networkidle
+agent-browser snapshot -i -d 6          # the app opens on the dashboard: click "Open board" on the project,
+                                        # then pick your view in the combobox "Board view"
+agent-browser screenshot "$TMPDIR/my-view.png"   # Read it back and look
+agent-browser console | grep -E '\\[extensions\\]|\\[board-views\\]'   # NOT \`errors\`: these are console lines
+agent-browser close
+dev3 dev-server stop                    # only if you started it; leave someone else's running
+\`\`\`
+
+**Edit → see loop:** edit, copy \`index.js\` into \`$SCOPED/extensions/$EXT/\` again, \`agent-browser reload\`. No
+reinstall, no restart: dev3 reads the bundle from disk on every load. A failed extension stays failed until the
+page reloads. The reload lands on the dashboard again (the URL carries no board), so reopen the board; the board
+remembers your view choice.
+
+Desktop (\`views://\` in WKWebView), Chromium and Playwright WebKit all load extensions the same way, so a
+Chromium screenshot is representative.
+
+### Only the installed app
+
+You cannot install for the user. Hand them the folder path and the three clicks from section 3, ask them to pick
+the view and tell you what they see (or share a screenshot with \`dev3 show-image\`), and debug from what they
+report with the table below. Before handing over, check the manifest against the field table yourself — a bad
+manifest is the most common reason "Install from folder…" refuses.
+
+## 5. Debug
+
+Where errors surface today — check all three, they do not overlap:
+
+- **Settings → Extensions** — the status chip and, for **Failed to load**, the error text under the row. The
+  only place that always has a load failure.
+- **Browser console** (\`agent-browser console\`, not \`errors\`) — \`[extensions] <id> failed to load: …\` for a
+  load failure, and \`[board-views] view <id> crashed: …\` with a stack for a render crash.
+- **The board** — a red notice when it shows Kanban instead of the picked view: "This board view failed to
+  load…" for a render crash, "The <name> extension failed to load…" (with a **Manage views…** button) for a load
+  failure.
+
+There is no log file and no CLI for it yet.
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| "This folder is not a dev3 extension: …" on install | Manifest invalid; the message names the field | Fix it against the field table |
+| **Invalid**, "folder name … does not match id" | Folder under \`extensions/\` is named differently from \`id\` | Rename the folder to the id |
+| **Incompatible** | \`engines.dev3\` does not admit API \`1.0.0\` | Use \`^1.0.0\` |
+| **Not trusted** | Copied in by hand, or the publisher changed | User: "Review and trust…" in Settings → Extensions (scoped QA: fix the trust record's publisher) |
+| **Failed to load**, "index.js must default-export a Cordis plugin" | No \`export default\`, or it is not an object with \`apply\` / a function | Default-export the plugin |
+| **Failed to load**, a syntax or \`Failed to resolve module specifier\` error | Not a valid ES module, or an import other than \`react\` / \`react-dom\` / \`react/jsx-runtime\` / \`cordis\` | Bundle into one ESM file with those four external |
+| **Failed to load**, "registered an undeclared board view …"; the view vanished from the switcher, Kanban with "The <name> extension failed to load…" | Registered id ≠ \`<id>:<view id>\` from the manifest | Make them match; the saved view choice comes back once it loads |
+| **Failed to load**, "tried to register board view …, which another view already owns" | Id collides with a built-in or another extension | Use your own prefix |
+| **Failed to load**, "its plugin failed to start (see the console)" | \`apply\` threw | Read the console error above it |
+| Board shows Kanban with a red "This board view failed to load…" notice; Settings still says **Active** | The component threw while rendering; the choice of view is kept | \`[board-views] view … crashed:\` in the console has the stack |
+| View missing from the switcher, status **Active** | Board is narrow and \`supportsNarrow\` is false, or the view is on another board type | Check \`formFactor\`, widen the window |
+| Status **Extensions off** | Kill switch off, or the app was launched with \`DEV3_EXTENSIONS=off\` | Turn on Settings → Extensions → "Third-party extensions" (desktop only) |
+| Rendered once, never updates | Not subscribed to \`board/changed\`, or cached \`tasks()\` | Use \`useBoard(ctx)\` and read in render |
+| Colours wrong in one theme | Hard-coded colours, or \`var(--token)\` without \`rgb(...)\` | \`rgb(var(--token))\` |
+
+To break it on purpose and confirm your reading of the table, throw inside the component: the board should drop
+to Kanban with the red notice and the console should name your view.
+
+**Safety switches.** If an extension breaks dev3: Settings → Extensions → "Third-party extensions" off; the crash
+screen's "Restart with extensions off"; or launch with \`DEV3_EXTENSIONS=off\`. Kanban is always on and is the
+fallback for any failing view.
+
+## What is not there yet (be honest with the user)
+
+Today there is no agent-driven install on a real dev3, no edit → reload loop outside a scoped instance, no
+error log outside the UI, no published types package, and no \`dev3\` command for any of this. A
+\`dev3 extension\` CLI (\`new\`, \`validate\`, \`dev <path>\`, \`status\`, \`logs\`, \`types\`) is planned; when it exists it
+replaces the workarounds in sections 3 and 4. Until then, say plainly which step needs the user.
+
+Privacy: dev3's anonymous telemetry records an extension view only as \`third_party\` — never its id or name.
+`;
+
+const EXTENSIONS_SKILL_CONTENT = `---
+name: dev3-extensions
+description: "${EXTENSIONS_SKILL_DESCRIPTION}"
+user-invocable: true
+---
+
+${EXTENSIONS_SKILL_BODY}`;
+
+const EXTENSIONS_OPENAI_YAML = `interface:
+  display_name: "dev3 Extensions"
+  short_description: "Write, install, screenshot and debug a dev3 board-view extension"
+  default_prompt: "Use \$dev3-extensions to write a dev3 board-view extension and verify it renders."
 `;
 
 // ---- dev3 Bug Hunter skill ----
@@ -982,11 +1304,12 @@ Off the main flow entirely.
 - **Run project scripts and Makefile targets** — the ƒ Scripts button lists them; pick one and it runs in a live pane.
 - **Don't want a repo's dev3 config running on your machine → switch it off.** Project Settings → Project Config has **Use repository dev3 configuration**, on by default. Off, dev3 stops reading \`.dev3/config.json\` and \`.dev3/config.local.json\` for that project — in the checkout and in every task worktree — so its setup, dev, cleanup, env and agent settings never run; settings come from dev3 and saves land in dev3. The choice is stored only in dev3: no file appears in the repo and \`.gitignore\` is untouched. Nothing already running is restarted, and switching back on restores every value at once.
 - **Huge monorepo → check out less.** Toggle off "Include All Files" in Project Settings so every worktree checks out only the directories you actually need.
-- **Machine running out of RAM → hibernate a task.** The header shows how many gigabytes are still free; hover it for the breakdown of who ate the rest, dev3's own tasks included. **Hibernate**, on the open task's session bar, stops that task's agent, terminal, and dev server and frees its ports, while the worktree, your uncommitted changes, notes, and PR state stay untouched. It asks for confirmation first, and spells out the one thing that does not survive: the terminal scrollback. The card greys out and sinks below the live tasks; waking is explicit — open its terminal and pick a plain shell or a resume of the agent's conversation. Agents do the same with \`dev3 task hibernate\` and \`dev3 task wake --resume|--shell\`; when an agent asks, you approve it in the same countdown dialog as an agent-started launch.
+- **Machine running out of RAM → hibernate a task.** The header shows how many gigabytes are still free; hover it for the breakdown of who ate the rest, dev3's own tasks included. **Hibernate**, on the open task's session bar, stops that task's agent, terminal, and dev server and frees its ports, while the worktree, your uncommitted changes, notes, and PR state stay untouched. It asks for confirmation first, and spells out the one thing that does not survive: the terminal scrollback. The card greys out and sinks below the live tasks; waking is explicit — open its terminal and pick a plain shell or a resume of the agent's conversation, optionally on another Claude account (the **Resume on** line above the buttons). Agents do the same with \`dev3 task hibernate\` and \`dev3 task wake --resume|--shell\`; when an agent asks, you approve it in the same countdown dialog as an agent-started launch.
 - **Rate limit closing in → hot-swap the account.** The header carries live Claude/Codex rate-limit usage and yellows near the cap; click it to land in **Settings → Agent Accounts**, where several logins per agent CLI sit side by side and the active one switches without a re-login (add one with **Add account**: the provider's own sign-in runs in a terminal inside dev3, on the host, and the account appears once its login is verified — the provider's browser step still applies; or import the login you already have). The switch applies to every *new* agent session dev3 launches — new tasks, spawned agents, bug hunters, auto-review — while running sessions keep theirs, and each launch can pick a non-default account. An **API profile** replaces the subscription login entirely: the Anthropic API, an Anthropic-compatible gateway (OpenRouter, a LiteLLM proxy), or Bedrock, with per-model overrides. With two or more Claude Code or Codex subscription logins, pick **Auto (balanced)** instead of one account — per launch in the account pill, or as the default from the usage flyout / Settings → Accounts: each fresh launch takes the login with the least-used 5h window (then the weekly quota that would expire unused), a batch spreads across logins, API profiles are never used, and a project can exclude logins in **Project Settings → Board → Accounts for Auto**.
 - **Too many projects to scan → group them into Spaces.** Once the project list stops being scannable, a **Space** groups projects: a rail on the dashboard lists every space with its project count, and picking one filters the overview to it — it never navigates away, so nothing gains a second board. Membership is **many-to-many** (a shared service can sit in both \`infra\` and \`client-x\`), and a project that belongs to several renders under each of them, carrying a chip for its other spaces. Create one from **+ New space**, the last entry of the rail's space list — the overview header offers the same button only while the rail is off screen (a narrow window, or your very first space, when there is no rail yet); edit which projects belong from **Edit projects…** in a space's **…** menu — every project is listed with the members ticked, so one dialog both adds and removes (it searches, and can start a brand-new project already linked); change one project's memberships from the row's **Spaces…** action or Project Settings → Spaces. From a shell: \`dev3 spaces list\` shows every space with its members' ids, \`dev3 spaces create "<name>" --project <id>\` makes one, and \`dev3 spaces set|add|remove <space> --project <id>\` changes one project's memberships (\`set\` replaces them all, \`set --no-space\` leaves every space). Rename, delete and reorder live in the same **…** menu, which every space carries twice over: on its rail row and on its dashboard group header — deleting only removes the grouping, never a project. Projects in no space collect under a computed **Home** group; **Home is not a real space** — it is not stored, cannot be renamed, and never appears in a membership picker. The rail appears when the dashboard's own column is at least 1024px wide — not the window, so app chrome and a browser tab count against it; below that width the same filter opens as a sheet from the control beside the dashboard's search field, and whatever you had filtered stays filtered. The overview row above the spaces is **Everything** — it covers the whole list, spaces included. A space can also be marked **Hide on camera** from its **…** menu: in streamer mode its name blurs everywhere it appears (rail, filter sheet, group header, row chips, pickers) — independent of whether any member project is marked sensitive. **Space order:** drag a row in the rail, or use **Move up** / **Move down** in the space header's **…** menu (the path that works by touch and keyboard, where drag does not). Projects reorder by drag within their space — while you drag, every row in that space collapses to its name so the whole list fits on one screen. Neither ever changes membership. With zero spaces the dashboard is exactly the screen it always was.
 - **Work a whole space on ONE kanban.** A space can be the SUBJECT of the board itself, not just a dashboard filter. On a project's board, the button right of the project switcher (⇧⌘U) zooms out to that project's space — one click when it belongs to one space, a two-row menu when it belongs to several, and no button at all when it belongs to none. ⇧⌘K lists spaces alongside projects, and \`dev3://space/<id>\` (https twin: \`https://dev3.h0x91b.com/open.html?space=<id>\`) opens it directly. The space board shows every member project's tasks on one set of columns and is a board you WORK in: drag moves a card, and the move only ever changes status in that card's own repository; **+ New task** leads with a project field limited to the space's members and remembering the last one you used there; the label bar and every search token work as usual. Columns are the union across member projects — same-named custom columns merge into one lane (case- and spacing-insensitive) that says how many projects it covers, and a lane your card's project has no column in is dimmed while you drag rather than refusing you after the drop. Each card names its own project. Two deliberate limits: per-project column renames are ignored there (dev3's canonical status names are used, because two projects' renames cannot be reconciled), and adding, renaming or reordering a column stays on a project's own board. **A project's own board is untouched** — this is an additional view, never a replacement.
 - **Kanban is not the only way to see a board → switch the board view.** The dropdown at the left end of the board's filter row picks **Kanban**, **Table** (every task as sortable rows — finished ones too — with inline status, priority and labels), **Tree** (parent → child lineage, variants folded into one node) or **Attention** (buckets of named search queries — Needs you, Ready to start, Stalled, Waiting on PR — editable under the view-options icon at the right end of the row). The search query stays when you switch, and each board remembers its own view separately for wide and phone-width screens. From the keyboard: \`V\` then \`1\`–\`9\` picks the Nth view, \`V V\` flips back to the previous one; also ⇧⌘P → "Board view: …" and View → Board View. The choice is never a navigation step, so Back/Forward skip it.
+- **None of the views fits → write your own board view as an extension.** An extension is a folder with a manifest and one ES module that registers a view through \`ctx.board\`; the user installs it from Settings → Extensions → **Install from folder…** (desktop app only). \`/dev3-extensions\` walks an agent through writing, installing, screenshotting and debugging one.
 - **Filter and search by space.** ⇧⌘K matches space names as well as project names, the dashboard has its own field over projects + spaces, and the task funnel grows a **Spaces** group — \`space:"Client X"\` filters tasks anywhere task search runs, and \`is:home\` catches the projects in no space. The active-tasks sidebar gains a **space** scope (every project sharing a space with the current one). It lives in the task workspace, not on the dashboard — the dashboard's project rows already list every task waiting on you, so a panel beside them was showing the same rows twice; for cross-project task search, open any project and switch that sidebar to the globe scope.
 - **Terminals start in the wrong shell, or not at all → Settings → Terminal → Shell.** dev3 follows your login shell by default and falls back to whichever of zsh, bash or sh is installed, which is what makes a minimal Linux box (no zsh, sometimes no bash) work at all. Pin it to \`zsh\`, \`bash\` or \`sh\` when the detected one is not the one you want; a shell that is not installed says so under the picker and names the one actually running. Windows runs PowerShell and ignores the setting.
 - **Stats** — productivity and token-cost dashboards across projects.
@@ -998,6 +1321,7 @@ Off the main flow entirely.
 - **\`/dev3\`** — the task lifecycle protocol every managed agent follows (loaded automatically in worktrees).
 - **\`/dev3-project-config\`** — analyze a repo and write its \`.dev3/config.json\`.
 - **\`/dev3-tmux\`** — full tmux reference: panes, windows, capturing output.
+- **\`/dev3-extensions\`** — write, install, screenshot and debug a board-view extension.
 - **\`/dev3-bug-hunter\`** — seeded, review-only bug hunting; shines in multi-variant swarms.
 - **\`/dev3-artifact\`** — make, publish and revise an HTML report inside dev3 (the task's artifact starter + \`dev3 show-artifact\`).
 - **\`/dev3-share-artifact\`** — publish an HTML report as a gist and hand back a verified preview URL.
@@ -1301,6 +1625,10 @@ export function getTmuxSkillContent(): string {
 	return TMUX_SKILL_BODY;
 }
 
+export function getExtensionsSkillContent(): string {
+	return EXTENSIONS_SKILL_CONTENT;
+}
+
 export function getBugHunterSkillContent(): string {
 	return BUG_HUNTER_SKILL_CONTENT;
 }
@@ -1347,6 +1675,15 @@ const GENERIC_TMUX_DIRS = [
 	".opencode/skills/dev3-tmux",
 	".config/opencode/skills/dev3-tmux",
 	".omp/agent/skills/dev3-tmux",
+];
+
+const EXTENSIONS_SKILL_DIRS = [
+	".cursor/skills/dev3-extensions",
+	".agents/skills/dev3-extensions",
+	".codex/skills/dev3-extensions",
+	".opencode/skills/dev3-extensions",
+	".config/opencode/skills/dev3-extensions",
+	".omp/agent/skills/dev3-extensions",
 ];
 
 const BUG_HUNTER_SKILL_DIRS = [
@@ -1399,6 +1736,7 @@ const CLAUDE_SKILL_NAMES = [
 	"dev3",
 	"dev3-project-config",
 	"dev3-tmux",
+	"dev3-extensions",
 	"dev3-bug-hunter",
 	"ask-dev3",
 	"dev3-artifact",
@@ -1416,6 +1754,7 @@ function claudeSkillFiles(): Record<(typeof CLAUDE_SKILL_NAMES)[number], Record<
 		dev3: { "SKILL.md": getClaudeSkillContent(), "PROTOCOL.md": CLAUDE_SKILL_BODY },
 		"dev3-project-config": { "SKILL.md": CLAUDE_PROJECT_CONFIG_SKILL },
 		"dev3-tmux": { "SKILL.md": CLAUDE_TMUX_SKILL },
+		"dev3-extensions": { "SKILL.md": EXTENSIONS_SKILL_CONTENT },
 		"dev3-bug-hunter": { "SKILL.md": BUG_HUNTER_SKILL_CONTENT },
 		"ask-dev3": { "SKILL.md": ASK_DEV3_SKILL_CONTENT },
 		"dev3-artifact": { "SKILL.md": ARTIFACT_SKILL_CONTENT },
@@ -1436,6 +1775,7 @@ export const MANAGED_SKILL_FILES = [
 	...GENERIC_SKILL_DIRS,
 	...GENERIC_PROJECT_CONFIG_DIRS,
 	...GENERIC_TMUX_DIRS,
+	...EXTENSIONS_SKILL_DIRS,
 	...BUG_HUNTER_SKILL_DIRS,
 	...ASK_DEV3_SKILL_DIRS,
 	...ARTIFACT_SKILL_DIRS,
@@ -1455,6 +1795,10 @@ const SHARED_SKILL_OPENAI_CONFIGS = [
 	{
 		dir: ".agents/skills/dev3-tmux",
 		content: TMUX_OPENAI_YAML,
+	},
+	{
+		dir: ".agents/skills/dev3-extensions",
+		content: EXTENSIONS_OPENAI_YAML,
 	},
 	{
 		dir: ".agents/skills/dev3-bug-hunter",
@@ -1589,7 +1933,7 @@ export function claudeBashPermissions(dialect: HookCliDialect = hookCliDialect()
  * an older wording of the same entry is recognised and replaced.
  */
 export const DEV3_AUTO_MODE_ALLOW_ENTRY =
-	"dev3 task lifecycle: the `dev3` CLI is the dev3 app's own control plane, and `dev3 task move` — `--status completed` and `--status cancelled` included — is a request to the running app, not local destruction. The app answers it with its own approval dialog that the user clicks, and the worktree it then removes is disposable task scratch space whose work is preserved elsewhere before the move is ever requested. Applies to `dev3` however it is spelled (`~/.dev3.0/bin/dev3`, an absolute `dev3.exe`), and only to `dev3` subcommands — nothing else on the command line is cleared by this entry. Commands that execute something are not control-plane requests: `dev3 pane run \"<command>\"` runs `<command>`, and `dev3 dev-server start|restart` runs the project's dev script (which the agent can edit in `.dev3/config.json`). Judge that command exactly as if the agent ran it directly; this entry clears none of it.";
+	"dev3 task lifecycle: the `dev3` CLI is the dev3 app's own control plane, and `dev3 task move` — `--status completed` and `--status cancelled` included — is a request to the running app, not local destruction. The app answers it with its own approval that the user gives in the app, and the worktree it then removes is disposable task scratch space whose work is preserved elsewhere before the move is ever requested. Applies to `dev3` however it is spelled (`~/.dev3.0/bin/dev3`, an absolute `dev3.exe`), and only to `dev3` subcommands — nothing else on the command line is cleared by this entry. Commands that execute something are not control-plane requests: `dev3 pane run \"<command>\"` runs `<command>`, and `dev3 dev-server start|restart` runs the project's dev script (which the agent can edit in `.dev3/config.json`). Judge that command exactly as if the agent ran it directly; this entry clears none of it.";
 
 /**
  * Git and PR management a dev3 task does when the user asks for it. The defaults
@@ -1910,6 +2254,21 @@ export async function installAgentSkills(options: InstallAgentSkillsOptions = {}
 			log.info("Agent tmux skill installed", { path: skillFile });
 		} catch (err) {
 			log.warn("Failed to install agent tmux skill (non-fatal)", {
+				path: skillFile,
+				error: String(err),
+			});
+		}
+	}
+
+	for (const dir of EXTENSIONS_SKILL_DIRS) {
+		const skillDir = `${home}/${dir}`;
+		const skillFile = `${skillDir}/SKILL.md`;
+		try {
+			mkdirSync(skillDir, { recursive: true });
+			writeFileSync(skillFile, EXTENSIONS_SKILL_CONTENT, "utf-8");
+			log.info("extensions skill installed", { path: skillFile });
+		} catch (err) {
+			log.warn("Failed to install extensions skill (non-fatal)", {
 				path: skillFile,
 				error: String(err),
 			});

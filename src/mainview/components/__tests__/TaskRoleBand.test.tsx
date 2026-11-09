@@ -28,6 +28,12 @@ describe("TaskRoleBand", () => {
 		expect(screen.queryByTestId("task-role-band-count")).toBeNull();
 	});
 
+	it("sits flush under the status strip, with no inset or gap that shows the card between them", () => {
+		render(<I18nProvider><TaskRoleBand role="coordinator" /></I18nProvider>);
+
+		expect(screen.getByTestId("task-role-band").className).not.toMatch(/(^|\s)(m[txy]?-\S+|rounded\S*)/);
+	});
+
 	it("disables the count when there is nothing to filter by", () => {
 		render(<I18nProvider><TaskRoleBand role="coordinator" childCount={2} /></I18nProvider>);
 

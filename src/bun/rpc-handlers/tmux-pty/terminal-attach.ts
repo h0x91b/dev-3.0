@@ -3,6 +3,7 @@ import { assertTaskWorkspacePresent, worktreeAccessState } from "../../task-work
 import type { PortInfo, PtyThroughputStats, WorktreeAccessState } from "../../../shared/types";
 import * as data from "../../data";
 import * as pty from "../../pty-server";
+import { ptyWsUrl } from "../../pty-server-access";
 import * as portPool from "../../port-pool";
 import * as repoConfig from "../../repo-config";
 import { resolveLaunchProject } from "../../ops-worktree";
@@ -210,9 +211,8 @@ export async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 		}
 	}
 
-	const url = `ws://localhost:${pty.getPtyPort()}?session=${params.taskId}`;
-	log.info("← getPtyUrl", { url, sessionExists: pty.hasSession(params.taskId) });
-	return { url };
+	log.info("← getPtyUrl", { sessionExists: pty.hasSession(params.taskId) });
+	return { url: ptyWsUrl(pty.getPtyPort(), params.taskId) };
 }
 
 export async function getProjectPtyUrl(params: { projectId: string }): Promise<string> {
@@ -246,9 +246,8 @@ export async function getProjectPtyUrl(params: { projectId: string }): Promise<s
 		pty.createSession(sessionKey, params.projectId, project.path, getUserShell(), env, DEFAULT_TMUX_SOCKET, "project");
 	}
 
-	const url = `ws://localhost:${pty.getPtyPort()}?session=${sessionKey}`;
-	log.info("← getProjectPtyUrl", { url });
-	return url;
+	log.info("← getProjectPtyUrl", { sessionKey });
+	return ptyWsUrl(pty.getPtyPort(), sessionKey);
 }
 
 export async function destroyProjectTerminal(params: { projectId: string }): Promise<void> {

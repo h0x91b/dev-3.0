@@ -9,6 +9,7 @@ import {
 	attributeManagedConfigDir,
 	buildClaudeManagedSettings,
 	findLatestCodexRollout,
+	forgetClaudeSessionDump,
 	readClaudeSessionDumps,
 	readClaudeSnapshot,
 	readCodexSnapshot,
@@ -36,6 +37,11 @@ describe("buildClaudeManagedSettings", () => {
 		const s = buildClaudeManagedSettings("/bin/dev3", true);
 		expect(s.skipDangerousModePermissionPrompt).toBe(true);
 		expect(s.statusLine).toEqual({ type: "command", command: '"/bin/dev3" statusline' });
+	});
+
+	it("adds the AWS SSO refresh only when asked", () => {
+		expect(buildClaudeManagedSettings("/bin/dev3", true)).not.toHaveProperty("awsAuthRefresh");
+		expect(buildClaudeManagedSettings("/bin/dev3", true, true).awsAuthRefresh).toBe("aws sso login");
 	});
 });
 
@@ -200,6 +206,17 @@ describe("readClaudeSessionDumps", () => {
 
 	it("returns nothing when the directory does not exist", () => {
 		expect(readClaudeSessionDumps(join(tmp, "missing"))).toEqual([]);
+	});
+
+	it("forgets one task's dump and leaves the others", () => {
+		const now = Date.now();
+		for (const id of ["task-a", "task-b"]) {
+			writeFileSync(join(tmp, `${id}.json`), JSON.stringify({ capturedAt: now, payload: payload(10) }));
+		}
+		forgetClaudeSessionDump("task-a", tmp);
+		forgetClaudeSessionDump("task-a", tmp);
+		forgetClaudeSessionDump("../task-b", tmp);
+		expect(readClaudeSessionDumps(tmp, now).map((s) => s.taskId)).toEqual(["task-b"]);
 	});
 
 	it("takes the billing login from the dump envelope", () => {

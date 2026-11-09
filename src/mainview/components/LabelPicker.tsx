@@ -34,13 +34,20 @@ function fuzzyMatch(text: string, query: string): boolean {
 	return qi === q.length;
 }
 
-function LabelPicker({ project, onCreateLabel, onClose, anchorEl, selectedIds, onToggle }: LabelPickerProps) {
+interface LabelPickerPanelProps {
+	project: Project;
+	onCreateLabel: (name: string) => Promise<Label>;
+	selectedIds: string[];
+	onToggle: (labelId: string) => void;
+	/** Focus the search field on mount. */
+	autoFocus?: boolean;
+}
+
+/** Search, toggle and create rows, without a surface: the popover and the task menu flyout both host it. */
+export function LabelPickerPanel({ project, onCreateLabel, selectedIds, onToggle, autoFocus = true }: LabelPickerPanelProps) {
 	const t = useT();
 	const [query, setQuery] = useState("");
-	const [pos, setPos] = useState({ top: 0, left: 0 });
-	const [visible, setVisible] = useState(false);
 	const [saving, setSaving] = useState(false);
-	const pickerRef = useRef<HTMLDivElement>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
 
 	// The "label-creation" control (§5.10) hides only creation; applying an existing label stays.
@@ -56,49 +63,9 @@ function LabelPicker({ project, onCreateLabel, onClose, anchorEl, selectedIds, o
 		query.trim().length > 0 &&
 		!labels.some((l) => l.name.toLowerCase() === query.trim().toLowerCase());
 
-	// Position the picker relative to anchor, clamped to viewport
-	useLayoutEffect(() => {
-		if (!pickerRef.current) return;
-		const anchor = anchorEl.getBoundingClientRect();
-		const picker = pickerRef.current.getBoundingClientRect();
-		const vw = window.innerWidth;
-		const vh = window.innerHeight;
-		const pad = 8;
-
-		let top = anchor.bottom + 4;
-		let left = anchor.left;
-
-		if (top + picker.height > vh - pad) {
-			top = anchor.top - picker.height - 4;
-		}
-		if (left + picker.width > vw - pad) {
-			left = vw - picker.width - pad;
-		}
-		if (left < pad) left = pad;
-		if (top < pad) top = pad;
-
-		setPos({ top, left });
-		setVisible(true);
-		inputRef.current?.focus();
-	}, [anchorEl]);
-
-	useEscapeKey(onClose);
-	// Close on click outside
 	useEffect(() => {
-		function handleClick(e: MouseEvent) {
-			if (
-				pickerRef.current &&
-				!pickerRef.current.contains(e.target as Node) &&
-				!anchorEl.contains(e.target as Node)
-			) {
-				onClose();
-			}
-		}
-		document.addEventListener("mousedown", handleClick);
-		return () => {
-			document.removeEventListener("mousedown", handleClick);
-		};
-	}, [anchorEl, onClose]);
+		if (autoFocus) inputRef.current?.focus();
+	}, [autoFocus]);
 
 	function toggleLabel(label: Label) {
 		onToggle(label.id);
@@ -130,18 +97,8 @@ function LabelPicker({ project, onCreateLabel, onClose, anchorEl, selectedIds, o
 		}
 	}
 
-	return createPortal(
-		<div
-			ref={pickerRef}
-			className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active overflow-hidden"
-			style={{
-				top: pos.top,
-				left: pos.left,
-				width: 220,
-				visibility: visible ? "visible" : "hidden",
-			}}
-			onClick={(e) => e.stopPropagation()}
-		>
+	return (
+		<>
 			{/* Search input */}
 			<div className="p-2 border-b border-edge/50">
 				<input
@@ -219,6 +176,77 @@ function LabelPicker({ project, onCreateLabel, onClose, anchorEl, selectedIds, o
 					</button>
 				)}
 			</div>
+		</>
+	);
+}
+
+function LabelPicker({ project, onCreateLabel, onClose, anchorEl, selectedIds, onToggle }: LabelPickerProps) {
+	const [pos, setPos] = useState({ top: 0, left: 0 });
+	const [visible, setVisible] = useState(false);
+	const pickerRef = useRef<HTMLDivElement>(null);
+
+	// Position the picker relative to anchor, clamped to viewport
+	useLayoutEffect(() => {
+		if (!pickerRef.current) return;
+		const anchor = anchorEl.getBoundingClientRect();
+		const picker = pickerRef.current.getBoundingClientRect();
+		const vw = window.innerWidth;
+		const vh = window.innerHeight;
+		const pad = 8;
+
+		let top = anchor.bottom + 4;
+		let left = anchor.left;
+
+		if (top + picker.height > vh - pad) {
+			top = anchor.top - picker.height - 4;
+		}
+		if (left + picker.width > vw - pad) {
+			left = vw - picker.width - pad;
+		}
+		if (left < pad) left = pad;
+		if (top < pad) top = pad;
+
+		setPos({ top, left });
+		setVisible(true);
+	}, [anchorEl]);
+
+	useEscapeKey(onClose);
+	// Close on click outside
+	useEffect(() => {
+		function handleClick(e: MouseEvent) {
+			if (
+				pickerRef.current &&
+				!pickerRef.current.contains(e.target as Node) &&
+				!anchorEl.contains(e.target as Node)
+			) {
+				onClose();
+			}
+		}
+		document.addEventListener("mousedown", handleClick);
+		return () => {
+			document.removeEventListener("mousedown", handleClick);
+		};
+	}, [anchorEl, onClose]);
+
+	return createPortal(
+		<div
+			ref={pickerRef}
+			data-menu-surface
+			className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active overflow-hidden"
+			style={{
+				top: pos.top,
+				left: pos.left,
+				width: 220,
+				visibility: visible ? "visible" : "hidden",
+			}}
+			onClick={(e) => e.stopPropagation()}
+		>
+			<LabelPickerPanel
+				project={project}
+				onCreateLabel={onCreateLabel}
+				selectedIds={selectedIds}
+				onToggle={onToggle}
+			/>
 		</div>,
 		document.body,
 	);

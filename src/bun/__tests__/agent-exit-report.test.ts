@@ -14,9 +14,11 @@ vi.mock("../rpc-handlers", () => ({
 }));
 vi.mock("../cli-socket/pane-sessions", () => ({ capturePaneSession: vi.fn(async () => {}) }));
 vi.mock("../agent-terminal-prompt-log", () => ({ recordTerminalPromptSubmission: vi.fn(() => "suppressed") }));
+vi.mock("../rate-limit-monitor", () => ({ forgetClaudeSessionDump: vi.fn() }));
 
 import { agentHandlers } from "../cli-socket/agent-commands";
 import { moveTask, pushCliAttention } from "../rpc-handlers";
+import { forgetClaudeSessionDump } from "../rate-limit-monitor";
 import { agentSessionRecord, noteAgentLaunched, resetAgentSessionRecordsForTests } from "../agent-session-receipts";
 
 const SESSION = "11111111-2222-4333-8444-555555555555";
@@ -54,6 +56,11 @@ describe("the launch wrapper's exit report (#2034)", () => {
 		await expect(exited(0)).resolves.toEqual({ moved: false });
 		expect(moveTask).not.toHaveBeenCalled();
 		expect(fixtures.task.status).toBe("in-progress");
+	});
+
+	it("forgets the task's statusLine dump on any exit, so the card stops reporting the gone session", async () => {
+		await exited(0);
+		expect(forgetClaudeSessionDump).toHaveBeenCalledWith("task");
 	});
 
 	it("counts a prompt as proof of start when the SessionStart receipt itself was lost", async () => {

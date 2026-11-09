@@ -45,6 +45,7 @@ export const CLI_EXIT_CODE_PR_WATCH_PR_FINISHED = 43;
 export const CLI_EXIT_CODE_EPIC_REF_INVALID = 44;
 export const CLI_EXIT_CODE_EPIC_CREATE_FORBIDDEN = 45;
 export const CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED = 46;
+export const CLI_EXIT_CODE_CONFIG_INVALID = 47;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -238,7 +239,7 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		constant: "CLI_EXIT_CODE_RESUME_UNAVAILABLE",
 		code: CLI_EXIT_CODE_RESUME_UNAVAILABLE,
 		description:
-			"`dev3 agent resume` found nothing it can safely resume, and NOTHING was launched: the task is a draft or not active, it has no worktree, it has no saved agent session, a saved pane runs an agent CLI dev3 cannot resume (it would start over from the task description; `--allow-agent-latest` does not change that), or (without `--allow-agent-latest`) a saved pane has no conversation id, so its harness would pick its own latest conversation and might start a new one. With `--json` the result carries a `reason` (`draft`, `not-active`, `no-worktree`, `no-saved-session`, `harness-cannot-resume`, `session-id-unknown`). It never re-runs the task description; Start Fresh stays an explicit choice in the app. The one pane that does open a new, empty conversation is reported as `fresh-session`: nothing of its own survives and every transcript belongs to another pane, so reopening any of them would duplicate it. Distinct from exit 1, which means a resume was attempted and failed.",
+			"`dev3 agent resume` found nothing it can safely resume, and NOTHING was launched: the task is a draft or not active, it has no worktree, it has no saved agent session, a saved pane runs an agent CLI dev3 cannot resume (it would start over from the task description; `--allow-agent-latest` does not change that), or (without `--allow-agent-latest`) a saved pane has no conversation id, so its harness would pick its own latest conversation and might start a new one. With `--account`, it also refuses an account that cannot apply (`account-invalid`: unknown, not signed in, or no saved pane runs Claude) or whose config folder cannot see a saved Claude conversation (`account-cannot-see-conversation`). With `--json` the result carries a `reason` (`draft`, `not-active`, `no-worktree`, `no-saved-session`, `harness-cannot-resume`, `session-id-unknown`, `account-invalid`, `account-cannot-see-conversation`). It never re-runs the task description; Start Fresh stays an explicit choice in the app. The one pane that does open a new, empty conversation is reported as `fresh-session`: nothing of its own survives and every transcript belongs to another pane, so reopening any of them would duplicate it. Distinct from exit 1, which means a resume was attempted and failed.",
 	},
 	{
 		constant: "CLI_EXIT_CODE_PROJECT_ALREADY_REGISTERED",
@@ -323,5 +324,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED,
 		description:
 			"An agent-initiated launch (`dev3 task move --task <other> --status in-progress`, or `dev3 task create --scratch --run`) was approved, but the launched task's preparation failed (worktree, setup or agent start), so NO agent is running for it: the task is back in To Do and the message carries its preparation error. Read the error before retrying — a refused leftover folder needs the user, not a retry. Distinct from exit 10 (declined) so a launcher can tell \"the user said no\" from \"it broke\".",
+	},
+	{
+		constant: "CLI_EXIT_CODE_CONFIG_INVALID",
+		code: CLI_EXIT_CODE_CONFIG_INVALID,
+		description:
+			"`dev3 config validate` found an error in a `.dev3/config.json` or `.dev3/config.local.json` (invalid JSON, a wrong type, an out-of-range value), or `dev3 config set` was given a value the schema rejects, so **nothing** was written. Unknown keys are warnings and do not cause it. Run `dev3 config schema <key>` for the expected type. Distinct from exit 1 so CI can tell a bad config from a failed command.",
 	},
 ] as const;

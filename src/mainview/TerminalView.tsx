@@ -26,6 +26,7 @@ import {
 	type NativeStreamRole,
 	type NativeViewerStatus,
 } from "../shared/native-terminal-stream";
+import { redactPtyUrl } from "../shared/pty-url";
 // TEMP DIAGNOSTIC: remove these imports after the terminal copy bug is fixed.
 import type { TerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
 import { installTerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
@@ -76,7 +77,7 @@ import TerminalLinkSheet from "./components/TerminalLinkSheet";
 import { isRemote } from "./utils/platform";
 import { paneHighlightRect, type PaneRectPct } from "./utils/paneHighlight";
 import TerminalSearchBar, { type TerminalSearchBarHandle } from "./components/TerminalSearchBar";
-import { isFinalPtyCloseCode } from "../shared/pty-ws-close-codes";
+import { isFinalPtyCloseCode, PTY_WS_CLOSE } from "../shared/pty-ws-close-codes";
 import { DARK_TERMINAL_THEME, LIGHT_TERMINAL_THEME } from "./terminal-themes";
 import { installTerminalRefHover, type TerminalRefHover } from "./terminal-ref-hover";
 import { TaskRefFloatingPreview } from "./components/TaskRefPreviewCard";
@@ -264,6 +265,12 @@ interface TerminalViewProps {
 	 */
 	onSessionLost?: (reason: string) => void;
 	/**
+	 * The app forgot a session this view was streaming (a server restart). Re-register
+	 * it with the app and resolve true to reconnect once; false falls through to the
+	 * refusal handling above.
+	 */
+	onSessionUnknown?: () => Promise<boolean>;
+	/**
 	 * Touch compose mode (mobile/tablet in browser mode): the terminal must NOT
 	 * summon the on-screen keyboard — taps neither focus the hidden textarea nor
 	 * forward touch→mouse to the canvas. Text entry goes through TerminalComposer;
@@ -299,12 +306,18 @@ const PANE_FOCUS_SHORTCUTS: [string, SplitDirection][] = [
 const COPY_MODE_POLL_MS = 1500;
 
 /**
+ * How long after its press a plain click waits before it leaves tmux history. tmux turns a second
+ * press inside 300 ms (KEYC_CLICK_TIMEOUT) into a double-click; the rest is slack for the wire.
+ */
+const TMUX_MULTI_CLICK_MS = 350;
+
+/**
  * ghostty-web's `scrollback` is a byte cap (default 10 KB ≈ 600 rows); tmux keeps its own
  * history, a native pane has only this one. 50 MB ≈ 33k rows at 120 cols, allocated as output arrives.
  */
 const NATIVE_SCROLLBACK_BYTES = 50_000_000;
 
-function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, native, onSessionLost, touchComposeMode, onScrolledIntoHistory, onFocusDirection }: TerminalViewProps) {
+function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, native, onSessionLost, onSessionUnknown, touchComposeMode, onScrolledIntoHistory, onFocusDirection }: TerminalViewProps) {
 	const t = useT();
 	// Rebuild budget for a dead ghostty renderer (see recoverFromRendererCrash).
 	const [terminalGeneration, setTerminalGeneration] = useState(0);
@@ -377,6 +390,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 	onNativeStatusRef.current = onNativeStatus;
 	const onSessionLostRef = useRef(onSessionLost);
 	onSessionLostRef.current = onSessionLost;
+	const onSessionUnknownRef = useRef(onSessionUnknown);
+	onSessionUnknownRef.current = onSessionUnknown;
 	// Mouse-copy keeps tmux copy mode alive so the scrollback viewport does not
 	// jump to live output. Remember when that mode may be active so the next
 	// plain click can return to live input without requiring Escape.
@@ -483,6 +498,15 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 		else send();
 	}, [copyModePending, exitCopyModeIfNeeded, followLiveOutput]);
 	const mouseGestureDraggedRef = useRef(false);
+	// A double- or triple-click selects in tmux history, so none of its clicks may leave it.
+	const lastPressAtRef = useRef(Number.NEGATIVE_INFINITY);
+	const pressContinuesMultiClickRef = useRef(false);
+	const clickExitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const cancelClickExit = useCallback(() => {
+		if (clickExitTimerRef.current) clearTimeout(clickExitTimerRef.current);
+		clickExitTimerRef.current = null;
+	}, []);
+	useEffect(() => cancelClickExit, [cancelClickExit]);
 	const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">(
 		() => (document.documentElement.dataset.theme as "dark" | "light") || "dark",
 	);
@@ -744,6 +768,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 		let ws: WebSocket | null = null;
 		let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 		let reconnectAttempt = 0;
+		// Output arrived since the last re-registration, so an UNKNOWN_SESSION now
+		// means the app forgot a live session, not that it never existed.
+		let streamedSinceReregister = false;
 		let terminalInputBound = false;
 		let wasHidden = document.visibilityState === "hidden";
 		let layoutObserver: ResizeObserver | null = null;
@@ -797,7 +824,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 			log: logCopyEvent,
 		});
 
-		debugLog("terminal", "[TerminalView] useEffect fired", { ptyUrl, taskId: taskId.slice(0, 8) });
+		const diagnosticPtyUrl = redactPtyUrl(ptyUrl);
+		debugLog("terminal", "[TerminalView] useEffect fired", { ptyUrl: diagnosticPtyUrl, taskId: taskId.slice(0, 8) });
 
 		// Preload bundled font before creating the terminal.
 		// Canvas rendering doesn't trigger CSS @font-face loading, so the
@@ -2053,7 +2081,6 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 				screenResetForThisTerminal = true;
 				writeToTerminal("\x1bc", false);
 			}
-			const diagnosticPtyUrl = ptyUrl.replace(/([?&]token=)[^&]+/, "$1***");
 			debugLog("terminal", "[TerminalView] Creating WebSocket connection to", diagnosticPtyUrl);
 			let socket: WebSocket;
 			try {
@@ -2087,6 +2114,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 			socket.onmessage = (event) => {
 				if (socket !== ws) return;
 				if (disposed) return;
+				streamedSinceReregister = true;
 				try {
 					latency.noteOutput();
 					if (typeof event.data === "string") {
@@ -2151,14 +2179,18 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 					try { term.writeln("\r\n\x1b[2m[session ended]\x1b[0m"); } catch { /* disposed */ }
 					return;
 				}
+				const reregister = onSessionUnknownRef.current;
+				if (event.code === PTY_WS_CLOSE.UNKNOWN_SESSION && streamedSinceReregister && reregister) {
+					streamedSinceReregister = false;
+					const refused = () => { if (!disposed) refuseSession(term, event.reason); };
+					void reregister().then((ok) => {
+						if (!ok) refused();
+						else if (!disposed) connectPty(term, fit);
+					}, refused);
+					return;
+				}
 				if (isFinalPtyCloseCode(event.code)) {
-					const reason = event.reason || "rejected by the app";
-					const owner = onSessionLostRef.current;
-					if (owner) {
-						owner(reason);
-						return;
-					}
-					try { term.writeln(`\r\n\x1b[2m[no terminal session — ${reason}]\x1b[0m`); } catch { /* disposed */ }
+					refuseSession(term, event.reason);
 					return;
 				}
 				schedulePtyReconnect(term, fit);
@@ -2192,6 +2224,16 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 				}),
 			);
 			terminalInputBound = true;
+		}
+
+		function refuseSession(term: Terminal, closeReason: string): void {
+			const reason = closeReason || "rejected by the app";
+			const owner = onSessionLostRef.current;
+			if (owner) {
+				owner(reason);
+				return;
+			}
+			try { term.writeln(`\r\n\x1b[2m[no terminal session — ${reason}]\x1b[0m`); } catch { /* disposed */ }
 		}
 
 		function schedulePtyReconnect(term: Terminal, fit: FitAddon): void {
@@ -2840,6 +2882,15 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
+	/** Capture phase: the canvas mouse reporter stops this press before it would bubble here. */
+	function handleTerminalPress(event: React.MouseEvent<HTMLDivElement>) {
+		if (event.button !== 0) return;
+		const now = Date.now();
+		pressContinuesMultiClickRef.current = now - lastPressAtRef.current <= TMUX_MULTI_CLICK_MS;
+		lastPressAtRef.current = now;
+		cancelClickExit();
+	}
+
 	function handleTerminalClick(event: React.MouseEvent<HTMLDivElement>) {
 		try { termRef.current?.focus(); } catch { /* disposed */ }
 		if (touchComposeModeRef.current) return;
@@ -2851,7 +2902,18 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 			mouseGestureDraggedRef.current = false;
 			return;
 		}
-		void exitCopyModeIfNeeded();
+		// tmux may still turn this press into a double- or triple-click selection, which has
+		// to find the pane in history: only a click that stays single resumes live input.
+		if (pressContinuesMultiClickRef.current || !copyModePending()) return;
+		const wait = lastPressAtRef.current + TMUX_MULTI_CLICK_MS - Date.now();
+		if (wait <= 0) {
+			void exitCopyModeIfNeeded();
+			return;
+		}
+		clickExitTimerRef.current = setTimeout(() => {
+			clickExitTimerRef.current = null;
+			void exitCopyModeIfNeeded();
+		}, wait);
 	}
 
 	return (
@@ -2867,6 +2929,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 				// ghostty-web makes this element contenteditable; WebKit then paints its native
 				// caret beside the canvas — a full-height blinking accent line (#2124).
 				style={{ backgroundColor: termBg, caretColor: "transparent" }}
+				onMouseDownCapture={handleTerminalPress}
 				onClick={handleTerminalClick}
 				onContextMenu={(e) => e.preventDefault()}
 				onDragOver={handleDragOver}

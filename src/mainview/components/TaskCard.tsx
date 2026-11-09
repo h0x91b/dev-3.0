@@ -7,7 +7,7 @@ import { earlierPullRequests } from "../../shared/task-pull-requests";
 import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
-import { useT } from "../i18n";
+import { useLocale, useT } from "../i18n";
 import { createProjectLabel } from "../utils/createProjectLabel";
 import { formatBytes } from "../utils/formatBytes";
 import { isKnownPreparationFailure, preparationFailureMessage } from "../utils/preparationFailureMessage";
@@ -16,6 +16,10 @@ import { trackEvent, agentNameFromId } from "../analytics";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { useTerminalPreview } from "../hooks/useTerminalPreview";
 import { useIsTruncated } from "../hooks/useIsTruncated";
+import { useShedOnOverflow } from "../hooks/useShedOnOverflow";
+import { useLiveSessionStats } from "../hooks/useLiveSessionStats";
+import { launchConfigDrift } from "../../shared/session-stats";
+import { agentKey } from "../../shared/agent-adapters/families";
 import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
 import PriorityBadge from "./PriorityBadge";
@@ -27,6 +31,7 @@ import { useEpics } from "../hooks/useEpics";
 import type { CardLineage } from "../utils/taskLineage";
 import NativeBackendMark from "./NativeBackendMark";
 import ForeignCodeMark from "./ForeignCodeMark";
+import CompletionOfferMark from "./CompletionOfferMark";
 import OpenInMenu from "./OpenInMenu";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
@@ -35,6 +40,7 @@ import TaskDetailModal from "./TaskDetailModal";
 import PipelineDropdown, { PipelineMenuAction } from "./PipelineDropdown";
 import { OpenInIcon, PlayIcon, SendLaterIcon, WatchIcon, WatchingIcon } from "./TaskIcons";
 import TaskCardRail from "./TaskCardRail";
+import { LiveTaskAgeStamps, type AgeStampsFit } from "./TaskAgeStamps";
 import StatusMenuPortal from "./StatusMenuPortal";
 import { useStatusMenu } from "../hooks/useStatusMenu";
 import { useContextMenu } from "../hooks/useContextMenu";
@@ -255,7 +261,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		e.stopPropagation();
 		setQuickCompleting(true);
 		try {
-			await handleMove("completed", { alwaysConfirm: true });
+			await handleMove("completed", { alwaysConfirm: true, anchor: e.currentTarget as HTMLElement });
 		} finally {
 			setQuickCompleting(false);
 		}
@@ -266,13 +272,13 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		e.stopPropagation();
 		setQuickCancelling(true);
 		try {
-			await handleMove("cancelled", { alwaysConfirm: true });
+			await handleMove("cancelled", { alwaysConfirm: true, anchor: e.currentTarget as HTMLElement });
 		} finally {
 			setQuickCancelling(false);
 		}
 	}
 
-	async function handleMove(newStatus: TaskStatus, opts?: { alwaysConfirm?: boolean }) {
+	async function handleMove(newStatus: TaskStatus, opts?: { alwaysConfirm?: boolean; anchor?: HTMLElement }) {
 		// Intercept: todo → active status opens the LaunchVariantsModal
 		if (task.status === "todo" && ACTIVE_STATUSES.includes(newStatus)) {
 			setMenuOpen(false);
@@ -297,6 +303,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			t,
 			onOpenTask: openTaskFromDialog,
 			alwaysConfirm: opts?.alwaysConfirm,
+			anchor: opts?.anchor,
 			onMovingChange: (moving) =>
 				isTerminal ? onSetMoving?.(task.id, moving) : setMoving(moving),
 		});
@@ -476,10 +483,10 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		setDetailOpen(true);
 	}
 
-	function handleCardMouseEnter() {
+	function handleCardMouseEnter(e: React.MouseEvent) {
 		if (!isActive || menuOpen || isShuttingDown) return;
 		if (!cardRef.current) return;
-		preview.handlers.onMouseEnter(task.id, cardRef.current);
+		preview.handlers.onMouseEnter(task.id, cardRef.current, e.target);
 	}
 
 	function handleCardMouseLeave() {
@@ -499,13 +506,28 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const railColor = isCompleting || isShuttingDown ? "#888" : activeCol ? activeCol.color : color;
 
 	// ---- IDENTITY zone inputs -----------------------------------------------
-	const { agent, configLabel, hasLauncherIcon } = taskCardAgent(task, agents);
+	const { agent, agentConfig, configLabel, hasLauncherIcon } = taskCardAgent(task, agents);
+	// The preset is only what the agent was launched with; `/effort` and `/model`
+	// move a live Claude session off it, and the statusLine dump is where that shows.
+	const liveSession = useLiveSessionStats(task.id);
+	const isClaudeAgent = agent ? agentKey(agent.baseCommand, agent.agentFamily) === "claude" : false;
+	// A sleeping task runs nothing, and its resume relaunches with the preset again.
+	const hasLiveSession = isActive && !isHibernated && !isDisconnected;
+	const drift = hasLiveSession && isClaudeAgent && agentConfig ? launchConfigDrift(agentConfig, liveSession) : null;
+	const driftLabel = drift ? [drift.model, drift.effort].filter(Boolean).join(", ") : "";
 	// A lone variant is not a variant — `1/1` says nothing, and the spelled-out
 	// "Variant 1" ate the header room the config string exists for.
 	const variantFraction = task.variantIndex !== null && groupMembers.length > 1
 		? `${task.variantIndex}/${groupMembers.length}`
 		: null;
 	const [configRef, configTruncated] = useIsTruncated<HTMLSpanElement>(configLabel);
+	// The header never wraps: on a crowded one the age stamps step aside, the
+	// creation date first, before anything that names the task or its agent.
+	const [locale] = useLocale();
+	const identityRef = useRef<HTMLDivElement>(null);
+	const identityKey = [configLabel, driftLabel, locale, isCoordinator, isDraft, isHibernated, isDisconnected, task.taskType, task.scratch, task.automationId, task.keepAlive?.enabled].join("|");
+	const ageLevel = useShedOnOverflow(identityRef, 2, identityKey);
+	const ageFit: AgeStampsFit = ageLevel === 2 ? "both" : ageLevel === 1 ? "activity" : "none";
 
 	// ---- SIGNALS zone: read-only facts, grouped git / run / time -------------
 	// Keyed here rather than on each badge: they are built as standalone nodes above
@@ -855,6 +877,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			    Full width is the point: the rail starts a row lower so the agent and
 			    config string get the whole card instead of 182px next to a rail. */}
 			<div
+				ref={identityRef}
 				data-testid="task-card-identity"
 				className="flex min-w-0 items-center gap-1.5 border-b border-edge py-1.5 pl-1.5 pr-2.5"
 			>
@@ -884,6 +907,19 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							className="min-w-[3rem] flex-1 truncate font-mono text-dense font-medium text-accent/80"
 						>
 							{configLabel}
+						</span>
+					</Tooltip>
+				)}
+				{drift && (
+					<Tooltip
+						content={t("task.liveConfig", { live: driftLabel })}
+						detail={t("task.liveConfigDetail", { launched: configLabel })}
+					>
+						<span
+							data-testid="task-card-live-config"
+							className="max-w-[50%] flex-shrink-0 truncate font-mono text-dense font-medium text-fg-2"
+						>
+							<span aria-hidden="true">{"→ "}</span>{driftLabel}
 						</span>
 					</Tooltip>
 				)}
@@ -929,6 +965,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				)}
 				<NativeBackendMark task={task} className="w-3.5 h-3.5 flex-shrink-0" testId="task-card-native-backend" />
 				<ForeignCodeMark task={task} className="w-3.5 h-3.5 flex-shrink-0" testId="task-card-foreign-code" />
+				<CompletionOfferMark task={task} testId="task-card-completion-offer" />
 				{/* A PR review is an ordinary task with a job, so it is named and not
 				    boxed — no band, nothing that competes with a role. */}
 				{task.taskType === "pr-review" && (
@@ -985,6 +1022,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						</button>
 					</Tooltip>
 				)}
+				<LiveTaskAgeStamps task={task} fit={ageFit} testId={`task-card-age-${task.id}`} />
 			</div>
 
 			{/* Rail + body */}
