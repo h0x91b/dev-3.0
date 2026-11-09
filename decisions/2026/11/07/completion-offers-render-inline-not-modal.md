@@ -1,5 +1,7 @@
 # Completion offers render inline on the task, not as a modal
 
+> Superseded on 2026-11-09 by `decisions/2026/11/09/completion-offer-style-setting.md`: merge and agent offers ask in a dialog by default, and the inline style is a bar at the terminal's bottom-right, not a card at the top-right.
+
 ## Context
 
 Two things asked the user to complete a task: merge detection ("the branch is in the base branch") and an agent running `dev3 task move --status completed`. Both opened the global `confirm()` modal: a full-screen backdrop, no backdrop dismiss, autofocused decline, queued one at a time. Users reported that it fires too early, while follow-up work remains (review comments, a deploy check, a second PR), and that it blocks the board and every other task until answered. "Not now" only held until the next merge, so every later merge or rebuild of an integration branch asked again. The agent dialog also never ran the unsaved-work check that the user's own ✓ and the agent cancellation dialog run, so the only guard was the "preservation gate" sentence in the agent protocol.

@@ -51,19 +51,6 @@ describe("PaneZoomBadge", () => {
 		expect(vi.mocked(api.request.taskPaneAction)).not.toHaveBeenCalled();
 	});
 
-	it("reports its visibility so the completion card can step out of its corner", async () => {
-		vi.mocked(api.request.taskPaneState).mockResolvedValue(makeState(true, 2));
-		const onVisibleChange = vi.fn();
-		const { unmount } = render(
-			<I18nProvider>
-				<PaneZoomBadge taskId="task-1" onVisibleChange={onVisibleChange} />
-			</I18nProvider>,
-		);
-		await waitFor(() => expect(onVisibleChange).toHaveBeenLastCalledWith(true));
-		unmount();
-		expect(onVisibleChange).toHaveBeenLastCalledWith(false);
-	});
-
 	it("shows no badge when the window is not zoomed", async () => {
 		vi.mocked(api.request.taskPaneState).mockResolvedValue(makeState(false, 2));
 		renderBadge();

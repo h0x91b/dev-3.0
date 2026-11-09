@@ -6,7 +6,7 @@ import { I18nProvider } from "../../../i18n";
 vi.mock("../../../rpc", () => ({ api: { request: { getUnsavedWork: vi.fn() } } }));
 
 import { api } from "../../../rpc";
-import { _resetCompletionOffersForTests, isCompletionStripMounted, offerCompletion, type CompletionOfferAnswer } from "../../../completion-offers";
+import { _resetCompletionOffersForTests, isCompletionStripMounted, offerCompletion, setCompletionOfferStyle, type CompletionOfferAnswer } from "../../../completion-offers";
 import TaskCompletionStrip, { COMPLETION_STRIP_ARM_MS } from "../TaskCompletionStrip";
 import { clearanceNodes } from "../../../toast-clearance";
 
@@ -31,6 +31,7 @@ async function arm() {
 
 beforeEach(() => {
 	vi.useFakeTimers();
+	setCompletionOfferStyle("inline");
 	vi.mocked(api.request.getUnsavedWork).mockResolvedValue(clean);
 });
 afterEach(() => {
@@ -153,16 +154,33 @@ describe("TaskCompletionStrip", () => {
 		expect(strips[0]!.className).toContain("absolute");
 	});
 
-	it("drops below the tmux ZOOMED badge, which holds the same corner", async () => {
+	it("sits at the terminal's bottom-right as a one-line bar, next to the agent's prompt", async () => {
 		render(
 			<I18nProvider>
-				<TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" belowZoomBadge />
+				<TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" />
 			</I18nProvider>,
 		);
-		await offer("merge");
+		await offer("agent");
 		const strip = screen.getByTestId("task-completion-strip");
-		expect(strip.className).toContain("top-11");
+		expect(strip.className).toContain("bottom-2");
 		expect(strip.className).not.toContain("top-2");
+		// The note opens on hover or focus, so the bar covers only the bottom rows.
+		expect(screen.getByTestId("task-completion-strip-note").className).toContain("hidden");
+		// A bottom bar never collides with the toast stack at the top.
+		expect(clearanceNodes.has(strip)).toBe(false);
+	});
+
+	it("shows nothing while the dialog style asks for merge and agent offers", async () => {
+		setCompletionOfferStyle("dialog");
+		render(
+			<I18nProvider>
+				<TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" />
+			</I18nProvider>,
+		);
+		await offer("agent");
+		expect(screen.queryByTestId("task-completion-strip")).not.toBeInTheDocument();
+		act(() => setCompletionOfferStyle("inline"));
+		expect(screen.getByTestId("task-completion-strip")).toBeInTheDocument();
 	});
 
 	it("keeps toasts below it, so a toast never covers its buttons", async () => {

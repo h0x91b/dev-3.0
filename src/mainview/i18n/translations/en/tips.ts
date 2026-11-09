@@ -160,7 +160,7 @@ const tips = {
 	"tip.projectsDailyBackup.title": "Project list is backed up daily",
 	"tip.projectsDailyBackup.body": "Lost your projects? Restore from ~/.dev3.0/projects-YYYY-MM-DD.json.bak — snapshots are kept for 7 days.",
 	"tip.agentCompletionRequest.title": "Agents can request completion",
-	"tip.agentCompletionRequest.body": "When an agent runs `dev3 task move --status completed`, a Complete task strip appears on that task; nothing blocks the board.",
+	"tip.agentCompletionRequest.body": "When an agent runs `dev3 task move --status completed`, you are asked to approve; a setting picks a dialog or a bar on the task.",
 	"tip.taskSwitcher.title": "Option+Tab between tasks",
 	"tip.taskSwitcher.body": "Hold Option and tap Tab to flip through active tasks; release to jump. Arrows ↑↓ move both ways. (Ctrl+Tab on Linux.) Tap Shift to toggle across all projects.",
 	"tip.pasteLargeText.title": "Paste big logs as files",

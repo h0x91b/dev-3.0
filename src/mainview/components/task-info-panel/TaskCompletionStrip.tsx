@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { taskUsesWorktree, type Project, type Task } from "../../../shared/types";
-import { useT } from "../../i18n";
+import { useT, type TFunction } from "../../i18n";
 import { api } from "../../rpc";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../../state";
-import { registerCompletionOverlayHost, registerCompletionStrip, useCompletionOffer, useCompletionOverlayHosted, type CompletionOffer, type CompletionOfferAnswer } from "../../completion-offers";
+import { registerCompletionOverlayHost, registerCompletionStrip, useCompletionOverlayHosted, useTaskStripOffer, type CompletionOffer, type CompletionOfferAnswer } from "../../completion-offers";
 import { WorktreeSettingsIcon } from "../TaskIcons";
 import { toastClearanceRef } from "../../toast-clearance";
 import { completionSkipsGitCheck, unsavedWorkWarning } from "../../utils/confirmTaskCompletion";
@@ -19,16 +19,16 @@ type GitCheck = { state: "skipped" } | { state: "checking" } | { state: "done"; 
  * The task's pending completion offer. An unsolicited one never takes focus or
  * keys, so an offer that lands while the user types cannot steal a keystroke; the
  * user's own Complete/Cancel focuses Keep open instead. It never covers the board.
- * `overlay` floats it over the top-right of a live terminal viewport, so the
- * terminal keeps its size; `inline` is the row under the inspector, used only
- * where no terminal viewport hosts the overlay (a session-ended screen).
+ * `overlay` floats it at the bottom-right of a live terminal viewport, next to the
+ * agent's latest output and prompt, so the terminal keeps its size; an unsolicited
+ * offer there is a one-line bar. `inline` is the row under the inspector, used
+ * only where no terminal viewport hosts the overlay (a session-ended screen).
+ * Offers asking in the dialog (`completionOfferStyle`) do not show here.
  */
-export default function TaskCompletionStrip({ task, project, variant = "inline", belowZoomBadge = false }: {
+export default function TaskCompletionStrip({ task, project, variant = "inline" }: {
 	task: Task; project: Project; variant?: "inline" | "overlay";
-	/** The tmux ZOOMED badge holds the same corner; the overlay drops below it while it shows. */
-	belowZoomBadge?: boolean;
 }) {
-	const offer = useCompletionOffer(task.id);
+	const offer = useTaskStripOffer(task.id);
 	const hosted = useCompletionOverlayHosted(task.id);
 	useEffect(() => registerCompletionStrip(task.id), [task.id]);
 	useEffect(() => (variant === "overlay" ? registerCompletionOverlayHost(task.id) : undefined), [task.id, variant]);
@@ -38,14 +38,22 @@ export default function TaskCompletionStrip({ task, project, variant = "inline",
 	if (variant === "inline" && offer.kind === "user") {
 		return (
 			<div className="relative z-30 h-0" data-testid="task-completion-strip-float">
-				<Strip key={offer.id} offer={offer} task={task} project={project} overlay belowZoomBadge={false} />
+				<Strip key={offer.id} offer={offer} task={task} project={project} layout="below-inspector" />
 			</div>
 		);
 	}
-	return <Strip key={offer.id} offer={offer} task={task} project={project} overlay={variant === "overlay"} belowZoomBadge={belowZoomBadge} />;
+	return <Strip key={offer.id} offer={offer} task={task} project={project} layout={variant === "overlay" ? "terminal" : "row"} />;
 }
 
-function Strip({ offer, task, project, overlay, belowZoomBadge }: { offer: CompletionOffer; task: Task; project: Project; overlay: boolean; belowZoomBadge: boolean }) {
+/** What completing removes, for an unsolicited offer: the worktree, the session, or only the session. */
+export function completionOfferNote(task: Task, project: Project, t: TFunction): string {
+	return t(!taskUsesWorktree(project, task) ? "completionStrip.folderNote" : task.worktreePath ? "completionStrip.worktreeNote" : "completionStrip.sessionNote");
+}
+
+type StripLayout = "row" | "below-inspector" | "terminal";
+
+function Strip({ offer, task, project, layout }: { offer: CompletionOffer; task: Task; project: Project; layout: StripLayout }) {
+	const overlay = layout !== "row";
 	const t = useT();
 	// The user's own click asked for this one, so it answers at once and owns focus.
 	const isUser = offer.kind === "user";
@@ -115,23 +123,26 @@ function Strip({ offer, task, project, overlay, belowZoomBadge }: { offer: Compl
 	// The user's own ask keeps the exact footer of the dialog it replaces.
 	const note = isUser
 		? t(task.worktreePath ? "task.warnCompletionFooter" : isCancel ? "task.confirmCancelFooter" : "task.confirmCompleteFooter")
-		: t(!taskUsesWorktree(project, task) ? "completionStrip.folderNote" : task.worktreePath ? "completionStrip.worktreeNote" : "completionStrip.sessionNote");
+		: completionOfferNote(task, project, t);
+	// An unsolicited offer on the terminal is one line; its note opens on hover or focus.
+	const bar = layout === "terminal" && !isUser;
 
 	return (
 		<div
-			ref={toastClearanceRef}
+			ref={layout === "terminal" ? undefined : toastClearanceRef}
 			role="region"
 			aria-label={title}
 			onKeyDown={isUser ? (e) => { if (e.key === "Escape") { e.stopPropagation(); answer(false); } } : undefined}
 			data-testid="task-completion-strip"
 			data-help-id="task.completion-strip"
-			className={`flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 text-sm ${
-				overlay
-					? `absolute ${belowZoomBadge ? "top-11" : "top-2"} right-3 z-20 w-[min(40rem,calc(100%-1.5rem))] rounded-xl border bg-overlay shadow-lg`
-					: "flex-shrink-0 border-b bg-raised"
+			data-layout={layout}
+			className={`group flex flex-wrap items-center gap-x-3 gap-y-2 text-sm ${bar ? "px-2.5 py-1.5" : "px-3 py-2"} ${
+				layout === "row"
+					? "flex-shrink-0 border-b bg-raised"
+					: `absolute ${layout === "terminal" ? "bottom-2" : "top-2"} right-3 z-20 ${bar ? "max-w-[min(40rem,calc(100%-1.5rem))]" : "w-[min(40rem,calc(100%-1.5rem))]"} rounded-xl border bg-overlay shadow-lg`
 			} ${isAgent ? "border-accent/40" : isUser ? "border-edge" : "border-success/30"}`}
 		>
-			<div className={`flex items-center gap-2 min-w-0 flex-1 ${overlay ? "basis-full" : "basis-full md:basis-[18rem]"}`}>
+			<div className={`flex items-center gap-2 min-w-0 flex-1 ${bar ? "basis-[14rem]" : overlay ? "basis-full" : "basis-full md:basis-[18rem]"}`}>
 				{isUser ? null : isAgent ? (
 					<span className="inline-flex shrink-0 items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-accent/15 text-accent">
 						<span aria-hidden className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F06A9}"}</span>
@@ -141,10 +152,10 @@ function Strip({ offer, task, project, overlay, belowZoomBadge }: { offer: Compl
 					<span aria-hidden className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-success/15 text-success text-xs">✓</span>
 				)}
 				<div className="min-w-0">
-					<div className="font-medium text-fg">{title}</div>
+					<div className={`font-medium text-fg ${bar ? "truncate" : ""}`} title={bar ? title : undefined}>{title}</div>
 					{isUser && <UserAskSubject task={task} project={project} />}
-					<div className="text-xs text-fg-3">{note}</div>
-					{checking && <div className="text-xs text-fg-3" role="status">{t("task.checkingBranchState")}</div>}
+					<div className={`text-xs text-fg-3 ${bar ? "hidden group-hover:block group-focus-within:block" : ""}`} data-testid="task-completion-strip-note">{note}</div>
+					{checking && !bar && <div className="text-xs text-fg-3" role="status">{t("task.checkingBranchState")}</div>}
 					{git.state === "unknown" && <div className="text-xs text-warning-strong">{t("task.branchStateUnknown")}</div>}
 					{git.state === "done" && git.warning && (
 						<div className="text-xs text-danger whitespace-pre-line" data-testid="task-completion-strip-warning">{git.warning}</div>

@@ -14,7 +14,7 @@ import { preparationFailureMessage } from "./utils/preparationFailureMessage";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
 import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, BoardCopyFailureReason, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo, LiveArtifact, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
-import { ACTIVE_STATUSES, hasGitWorkflow, orderProjectsForDisplay, getTaskTitle } from "../shared/types";
+import { ACTIVE_STATUSES, DEFAULT_COMPLETION_OFFER_STYLE, hasGitWorkflow, orderProjectsForDisplay, getTaskTitle } from "../shared/types";
 import type { DeepLinkNav } from "../shared/deep-link";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { useAgents } from "./hooks/useAgents";
@@ -51,7 +51,8 @@ import ViewportLab from "./components/ViewportLab";
 import NativePaneLayoutLab from "./labs/native-pane/NativePaneLayoutLab";
 import { setToastSuppressed, taskToastContext, ToastHost, toast, type ToastEntry, type ToastOrigin } from "./toast";
 import { toastClearanceRef } from "./toast-clearance";
-import { hasCompletionOffer, isCompletionStripMounted, offerCompletion } from "./completion-offers";
+import { getCompletionOfferStyle, hasCompletionOffer, isCompletionStripMounted, offerCompletion, setCompletionOfferStyle } from "./completion-offers";
+import CompletionOfferDialogHost from "./components/CompletionOfferDialogHost";
 import { agentMessageToast, type AgentMessageDetail, type AgentToastEnd } from "./agent-message-toast";
 import { showStaleAgentPathToast, type StaleAgentPathDetail } from "./stale-agent-path-toast";
 import { useSpaces } from "./useSpaces";
@@ -807,8 +808,8 @@ function App() {
 		routeRef.current = state.route;
 	}, [state.route]);
 
-	// A completion offer waits on its task's strip. Where no strip is on screen
-	// (another task, the board, immersive fullscreen) the bell and a toast carry it.
+	// A completion offer asks in the dialog, or waits on its task's strip. Where no
+	// strip is on screen (another task, the board, immersive fullscreen) the bell and a toast carry it.
 	// The toast carries its own source line and click: the resolver only knows the open project's tasks.
 	// Returns the bell's withdrawal, for once the offer settles — possibly on another client.
 	const announceCompletionOffer = (offer: {
@@ -817,7 +818,7 @@ function App() {
 		const { taskId, projectId, taskTitle, subject, reason } = offer;
 		dispatch({ type: "addBell", taskId, reason });
 		const withdrawBell = () => dispatch({ type: "removeBellReason", taskId, reason });
-		if (isCompletionStripMounted(taskId)) return withdrawBell;
+		if (getCompletionOfferStyle() === "dialog" || isCompletionStripMounted(taskId)) return withdrawBell;
 		const context = subject ? [`#${subject.seqLabel}`, subject.projectName, taskTitle].filter(Boolean).join(" · ") : taskTitle;
 		toast.info(offer.toastText, { taskId, context, onClick: () => openTaskFromNotification(taskId, projectId) });
 		return withdrawBell;
@@ -1849,6 +1850,10 @@ function App() {
 		window.addEventListener("rpc:taskRemoved", onTaskRemoved);
 		return () => window.removeEventListener("rpc:taskRemoved", onTaskRemoved);
 	}, [dispatch]);
+
+	useEffect(() => {
+		setCompletionOfferStyle(globalSettings.completionOfferStyle ?? DEFAULT_COMPLETION_OFFER_STYLE);
+	}, [globalSettings.completionOfferStyle]);
 
 	useEffect(() => {
 		function onGlobalSettingsUpdated(e: Event) {
@@ -3978,6 +3983,7 @@ function App() {
 			{/* Agents block on these answers, and confirm() declines when no host is
 			    mounted — so the hosts stay up in immersive fullscreen too. */}
 			<ConfirmHost onBusyChange={setConfirmBusy} />
+			<CompletionOfferDialogHost ready={settingsLoaded} projects={state.projects} onOpenTask={openTaskFromNotification} />
 			{!confirmBusy && pendingAgentRequest && ("env" in pendingAgentRequest ? (
 				<SecretRequestModal key={pendingAgentRequest.requestId} request={pendingAgentRequest}
 					onDone={() => setAgentRequests((queue) => queue.filter((request) => request.requestId !== pendingAgentRequest.requestId))} />

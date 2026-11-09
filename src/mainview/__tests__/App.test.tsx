@@ -3835,6 +3835,17 @@ describe("App keyboard shortcuts", () => {
 		});
 	});
 
+	/** Runs `body` with the given completion offer style in the settings App loads on mount. */
+	async function withCompletionOfferStyle(style: "dialog" | "inline", body: () => Promise<void>) {
+		const base = { defaultAgentId: "builtin-claude", defaultConfigId: "claude-default", taskSortOrder: "oldest-first", updateChannel: "stable" } as const;
+		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({ ...base, completionOfferStyle: style });
+		try {
+			await body();
+		} finally {
+			vi.mocked(api.request.getGlobalSettings).mockResolvedValue(base);
+		}
+	}
+
 	describe("branch-merged completion popup", () => {
 		const fireBranchMerged = (taskId: string, projectId: string, fingerprint: string) =>
 			act(async () => {
@@ -3926,13 +3937,24 @@ describe("App keyboard shortcuts", () => {
 			}));
 		});
 
-		it("tells a user who is looking elsewhere with a toast, never a modal", async () => {
+		it("tells a user who is looking elsewhere with a toast, never a modal, on the inline style", async () => {
+			await withCompletionOfferStyle("inline", async () => {
+				await renderApp();
+
+				await fireBranchMerged("t1", "p1", "fp-toast-1");
+
+				expect(await screen.findByText("Branch merged. The task is ready to complete.")).toBeInTheDocument();
+				expect(confirm).not.toHaveBeenCalled();
+			});
+		});
+
+		it("sends no toast on the default dialog style: the dialog is the notice", async () => {
 			await renderApp();
 
-			await fireBranchMerged("t1", "p1", "fp-toast-1");
+			await fireBranchMerged("t1", "p1", "fp-toast-2");
 
-			expect(await screen.findByText("Branch merged. The task is ready to complete.")).toBeInTheDocument();
-			expect(confirm).not.toHaveBeenCalled();
+			await waitFor(() => expect(offerCompletion).toHaveBeenCalledWith(expect.objectContaining({ kind: "merge" })));
+			expect(screen.queryByText("Branch merged. The task is ready to complete.")).not.toBeInTheDocument();
 		});
 
 		it("replays an unanswered merge offer after a reload", async () => {
@@ -4114,13 +4136,15 @@ describe("App keyboard shortcuts", () => {
 			expect(api.request.moveTask).not.toHaveBeenCalled();
 		});
 
-		it("toasts when the user is not looking at the asking task", async () => {
-			await renderApp();
+		it("toasts when the user is not looking at the asking task, on the inline style", async () => {
+			await withCompletionOfferStyle("inline", async () => {
+				await renderApp();
 
-			await fireAgentCompletionRequested("req-3", "t1", "p1");
+				await fireAgentCompletionRequested("req-3", "t1", "p1");
 
-			expect(await screen.findByText("The agent asks to complete this task.")).toBeInTheDocument();
-			expect(confirm).not.toHaveBeenCalled();
+				expect(await screen.findByText("The agent asks to complete this task.")).toBeInTheDocument();
+				expect(confirm).not.toHaveBeenCalled();
+			});
 		});
 	});
 

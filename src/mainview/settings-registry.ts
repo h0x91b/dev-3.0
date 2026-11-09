@@ -207,6 +207,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "completion-offer-style",
+		category: "tasks",
+		titleKey: "settings.completionOfferStyle",
+		descriptionKey: "settings.completionOfferStyleDesc",
+		anchor: "completion-offer-style",
+		globalField: "completionOfferStyle",
+		storage: "global",
+	},
+	{
 		id: "agent-launch-auto-approve",
 		category: "tasks",
 		titleKey: "settings.agentLaunchAutoApprove",
@@ -819,6 +828,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"autoAccountExclusions",
 	"watchByDefault",
 	"suggestCompletingTasksAfterMerge",
+	"completionOfferStyle",
 	"prOriginTaskLink",
 	"agentLaunchAutoApproveMinutes",
 	"resourceLevels",
