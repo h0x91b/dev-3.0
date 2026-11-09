@@ -414,7 +414,12 @@ export async function launchTaskPty(
 	try {
 		// Recovery carries the pane's account alongside its session id. Older pane
 		// snapshots fall back to the task selection; undefined uses the default.
-		const cmdOptions: agents.CommandOptions = { accountId, accountFromStore: typeof accountId === "string" ? true : undefined, bedrockProfile };
+		const cmdOptions: agents.CommandOptions = {
+			accountId,
+			accountFromStore: typeof accountId === "string" ? true : undefined,
+			projectEnv,
+			bedrockProfile,
+		};
 		let freshSessionId: string | null = null;
 		if (!resume && !skipSessionPersist && !opts?.shellNotice) {
 			cmdOptions.autoRouting = await autoRoutingContext(project, reservationKey, projectEnv);
@@ -482,6 +487,8 @@ export async function launchTaskPty(
 			launchBedrockProfile = resolved.resolvedBedrockProfile;
 			if (resolved.bedrockProfileMissing) await notifyBedrockProfileMissing(task);
 		}
+		// A removed account the pin replaced must not be stored again.
+		if (staleAccountDropped && launchAccountId === accountId) launchAccountId = undefined;
 		if (staleAccountDropped) await notifyStaleAccountDropped(task);
 
 		if (opts?.codexHome) extraEnv.CODEX_HOME = opts.codexHome;
@@ -870,6 +877,7 @@ export async function launchColumnAgent(
 		// the default, which routes when the default is Auto.
 		const resolved = await agents.resolveCommandForAgent(agentId, configId, ctx, {
 			skipSystemPrompt: true,
+			projectEnv,
 			autoRouting: await autoRoutingContext(project, reservationKey, projectEnv),
 			// The column's own pick, else the AWS account the task itself runs on.
 			bedrockProfile: agentConfig.bedrockProfile !== undefined ? agentConfig.bedrockProfile : task.bedrockProfile,

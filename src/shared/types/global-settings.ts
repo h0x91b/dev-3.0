@@ -107,6 +107,8 @@ export interface GlobalSettings {
 	cloneBaseDirectory?: string;
 	/** Last position of the Add Project dialog's auto-configure switch. Absent = off. */
 	autoConfigureNewProjects?: boolean;
+	/** Last position of the Add Project dialog's "keep dev3 data in the project folder" switch. Absent = off. */
+	newProjectsStoreInProject?: boolean;
 	customBinaryPaths?: Record<string, string>; // requirementId → custom binary path
 	agentBinaryPaths?: Record<string, string>; // agentId → resolved binary path
 	/**
@@ -193,6 +195,8 @@ export interface GlobalSettings {
 	 * false opts out.
 	 */
 	autoCleanupTaskHistory?: boolean;
+	/** Inject the short agent protocol at launch instead of the full one. Off unless true; `DEV3_LEAN_PROTOCOL=1` also turns it on. */
+	leanAgentProtocol?: boolean;
 	/**
 	 * Set the first time the user opens help mode. Until then the header's `?`
 	 * rests highlighted on the main screens — help mode is the product's only

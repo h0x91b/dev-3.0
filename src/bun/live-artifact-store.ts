@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { atomicWriteFile } from "./atomic-write";
-import { projectSlug } from "./git";
+import { projectWorktreesRoot, storesInProject, type StorageProject } from "../shared/project-storage";
 import { DEV3_HOME } from "./paths";
 import {
 	emptyLiveState,
@@ -24,13 +24,13 @@ const queues = new Map<string, Promise<unknown>>();
 const listeners = new Set<(event: { taskId: string; changes: LiveChange[] }) => void>();
 const pageListeners = new Set<(event: { taskId: string; pageRev: number }) => void>();
 
-export function liveStoreDir(projectPath: string, taskId: string): string {
+export function liveStoreDir(project: StorageProject, taskId: string): string {
 	if (!TASK_ID_RE.test(taskId)) throw new LiveStoreError(`Invalid task id: ${taskId}`);
-	return `${DEV3_HOME}/worktrees/${projectSlug(projectPath)}/live-artifacts/${taskId}`;
+	return `${projectWorktreesRoot(DEV3_HOME, project.path, storesInProject(project) ? "project" : undefined)}/live-artifacts/${taskId}`;
 }
 
-function storeFile(projectPath: string, taskId: string): string {
-	return `${liveStoreDir(projectPath, taskId)}/state.json`;
+function storeFile(project: StorageProject, taskId: string): string {
+	return `${liveStoreDir(project, taskId)}/state.json`;
 }
 
 function load(file: string): LiveState {
@@ -64,8 +64,8 @@ export function emitLivePageChange(taskId: string, pageRev: number): void {
 	for (const listener of pageListeners) listener({ taskId, pageRev });
 }
 
-export function readLiveState(projectPath: string, taskId: string): Promise<LiveState> {
-	const file = storeFile(projectPath, taskId);
+export function readLiveState(project: StorageProject, taskId: string): Promise<LiveState> {
+	const file = storeFile(project, taskId);
 	return serialized(file, async () => load(file));
 }
 
@@ -75,11 +75,11 @@ export function readLiveState(projectPath: string, taskId: string): Promise<Live
  * changes to broadcast.
  */
 export function mutateLiveState<T>(
-	projectPath: string,
+	project: StorageProject,
 	taskId: string,
 	mutate: (draft: LiveState) => { result: T; changes: LiveChange[]; dirty?: boolean },
 ): Promise<T> {
-	const file = storeFile(projectPath, taskId);
+	const file = storeFile(project, taskId);
 	return serialized(file, async () => {
 		const draft = structuredClone(load(file));
 		const { result, changes, dirty } = mutate(draft);
@@ -88,7 +88,7 @@ export function mutateLiveState<T>(
 		if (Buffer.byteLength(text) > LIVE_LIMITS.storeBytes) {
 			throw new LiveStoreError(`Live store would grow past ${LIVE_LIMITS.storeBytes / 1024 / 1024} MB; delete documents first`);
 		}
-		mkdirSync(liveStoreDir(projectPath, taskId), { recursive: true });
+		mkdirSync(liveStoreDir(project, taskId), { recursive: true });
 		await atomicWriteFile(file, text);
 		cache.set(file, draft);
 		if (changes.length > 0) for (const listener of listeners) listener({ taskId, changes });
@@ -96,14 +96,14 @@ export function mutateLiveState<T>(
 	});
 }
 
-export function liveStoreBytes(projectPath: string, taskId: string): number {
-	const file = storeFile(projectPath, taskId);
+export function liveStoreBytes(project: StorageProject, taskId: string): number {
+	const file = storeFile(project, taskId);
 	return existsSync(file) ? statSync(file).size : 0;
 }
 
 /** Remove the task's store: only on an explicit `dev3 live clear --data`. */
-export function wipeLiveStore(projectPath: string, taskId: string): Promise<void> {
-	const file = storeFile(projectPath, taskId);
+export function wipeLiveStore(project: StorageProject, taskId: string): Promise<void> {
+	const file = storeFile(project, taskId);
 	return serialized(file, async () => {
 		rmSync(file, { force: true });
 		cache.delete(file);

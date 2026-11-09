@@ -1,5 +1,7 @@
 # Claude usage is recorded per pinned CLAUDE_CONFIG_DIR
 
+> Partly superseded on 2026-11-05 by `decisions/2026/11/05/project-claude-pin-beats-default-account.md`: a managed account no longer overrides the pin unless it is picked for the task, and the launch pill shows the project login with accounts present.
+
 > Partly superseded on 2026-10-01 by `decisions/2026/10/01/usage-pill-scoped-to-project.md`: inside a project the header pill now shows only that project's login; the global listing below still applies with no project in scope.
 
 ## Context
@@ -15,7 +17,7 @@ The statusline subprocess inherits the session env, so `CLAUDE_CONFIG_DIR` is vi
 - **Statusline dumps.** `dev3 statusline` (`claudeDumpFilePaths`, `dumpPayload`) writes a pinned session's dump to `rate-limits/claude-config-dirs/<sha256(dir)[:16]>.json` and stores the dir inside it. A managed account id still wins, and `~/.claude` alone keeps `claude.json`.
 - **Monitor.** `rate-limit-monitor.ts` reads that directory and tags each snapshot with `configDir`. `findRateLimitSnapshot` / `rateLimitLoginKey` in `src/shared/rate-limits.ts` keep pinned readings off the system row.
 - **Listing pinned logins.** `listPinnedClaudeLogins` groups every project's pin, normalized by `pinnedClaudeConfigDir` in `src/shared/claude-config-dir.ts` (the same resolution launches use). The usage panel and Settings list each pin as an informational row. A pin cannot be made the default, because the project's config chooses it.
-- **Pill honesty.** The launch pill uses the pin only when no managed Claude account exists, because a managed account overrides it. Settings says so when both are present.
+- **Pill honesty.** The launch pill uses the pin only when no managed Claude account exists, because a managed account overrides it. Settings says so when both are present. (Superseded: see `decisions/2026/11/05/project-claude-pin-beats-default-account.md`.)
 
 ## Risks
 

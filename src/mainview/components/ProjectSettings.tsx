@@ -3,7 +3,7 @@ import { toast } from "../toast";
 import { confirm } from "../confirm";
 import { confirmCustomColumnDelete } from "../utils/confirmCustomColumnDelete";
 import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, GitHubCliStatus, Label, Project, Task } from "../../shared/types";
-import { ACTIVE_STATUSES, GIT_WORKFLOW_NOT_A_REPO_ERROR, getTaskTitle, gitWorkflowSwitchBlocker, hasGitWorkflow, repoConfigEnabled } from "../../shared/types";
+import { ACTIVE_STATUSES, GIT_WORKFLOW_NOT_A_REPO_ERROR, getTaskTitle, gitWorkflowSwitchBlocker, hasGitWorkflow, repoConfigEnabled, STORAGE_TRACKED_CONFLICT_ERROR, storageSwitchBlocker } from "../../shared/types";
 import { builtinCoordinatorPrompt, COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, DEFAULT_REVIEW_PROMPT, resolveArtifactTemplate, resolvePresetPrompt, type ArtifactTemplateMode, type ProjectSettingsUpdate, type ResolvedArtifactTemplate } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
@@ -460,6 +460,23 @@ function ProjectSettings({
 			toast.error(String(err).includes(GIT_WORKFLOW_NOT_A_REPO_ERROR)
 				? t("projectSettings.gitWorkflowNotRepo")
 				: t("projectSettings.failedSave", { error: String(err) }), { projectId });
+		}
+	}
+
+	async function handleToggleStorage(next: "project" | "home") {
+		if (!project) return;
+		const blocker = storageSwitchBlocker(project, tasks);
+		if (blocker?.reason === "live-tasks") {
+			toast.error(t.plural("projectStorage.blocked", blocker.count), { projectId });
+			return;
+		}
+		try {
+			const updated = await api.request.updateProjectSettings({ projectId, storageRoot: next });
+			dispatch({ type: "updateProject", project: updated });
+		} catch (err) {
+			toast.error(String(err).includes(STORAGE_TRACKED_CONFLICT_ERROR)
+				? t("projectStorage.trackedConflict")
+				: t("projectStorage.copyFailed", { error: String(err) }), { projectId });
 		}
 	}
 
@@ -990,6 +1007,25 @@ function ProjectSettings({
 										</div>
 									)}
 								</div>
+								</SettingsSection>
+							)}
+
+							{project.kind !== "virtual" && (
+								<SettingsSection
+									title={t("projectStorage.sectionTitle")}
+									description={t("projectStorage.sectionDesc")}
+								>
+									<div className="flex items-center justify-between gap-4">
+										<div>
+											<span className="block text-fg text-sm font-semibold mb-1">{t("projectStorage.toggle")}</span>
+											<p className="text-fg-3 text-sm">{t("projectStorage.toggleHint")}</p>
+										</div>
+										<ToggleSwitch
+											checked={project.storageRoot === "project"}
+											ariaLabel={t("projectStorage.toggle")}
+											onToggle={() => void handleToggleStorage(project.storageRoot === "project" ? "home" : "project")}
+										/>
+									</div>
 								</SettingsSection>
 							)}
 

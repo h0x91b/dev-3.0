@@ -8,7 +8,7 @@ vi.mock("../paths", () => ({ DEV3_HOME: TEST_HOME, OPS_DIR: `${TEST_HOME}/ops` }
 
 import { liveStoreDir, mutateLiveState, onLiveStoreChange, readLiveState, wipeLiveStore } from "../live-artifact-store";
 
-const PROJECT = "/tmp/proj";
+const PROJECT = { path: "/tmp/proj" };
 let seq = 0;
 const newTaskId = () => `00000000-0000-4000-8000-${String(++seq).padStart(12, "0")}`;
 
@@ -21,6 +21,11 @@ const set = (taskId: string, data: unknown, extra: Record<string, unknown> = {})
 	});
 
 describe("live artifact store", () => {
+	it("resolves to <project>/.dev3/worktrees/live-artifacts for an in-project store", () => {
+		const taskId = newTaskId();
+		expect(liveStoreDir({ path: "/tmp/proj", storageRoot: "project" }, taskId)).toBe(`/tmp/proj/.dev3/worktrees/live-artifacts/${taskId}`);
+	});
+
 	it("persists under worktrees/<slug>/live-artifacts/<taskId>/state.json", async () => {
 		const taskId = newTaskId();
 		await set(taskId, { title: "hello" });

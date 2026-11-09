@@ -7,6 +7,7 @@
  * Paths run in parallel, bounded by MAX_CONCURRENT_CLONES across all tasks.
  */
 
+import { IN_PROJECT_DIR } from "../shared/project-storage";
 import { existsSync } from "node:fs";
 import { cp, mkdir, realpath, rm } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
@@ -73,6 +74,12 @@ function validatePath(p: string): void {
 	}
 }
 
+/** In-project board data and task dirs must never be cloned into a task's worktree. */
+function isInProjectStatePath(relative: string): boolean {
+	const path = relative.replaceAll("\\", "/");
+	return [`${IN_PROJECT_DIR}/worktrees`, `${IN_PROJECT_DIR}/data`].some((dir) => path === dir || path.startsWith(`${dir}/`));
+}
+
 /**
  * Expand a glob pattern relative to a root directory.
  * Returns matched paths relative to the root.
@@ -83,6 +90,7 @@ async function expandGlob(root: string, pattern: string): Promise<string[]> {
 		const glob = new Bun.Glob(pattern);
 		const matches: string[] = [];
 		for await (const match of glob.scan({ cwd: root, onlyFiles: false })) {
+			if (isInProjectStatePath(match)) continue;
 			// Check if it's a directory or file
 			const fullPath = `${root}/${match}`;
 			if (await pathExists(fullPath)) {

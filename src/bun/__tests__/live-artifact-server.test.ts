@@ -105,7 +105,7 @@ describe("live server operations", () => {
 	it("writes as the user and logs the event for the agent", async () => {
 		const response = await post(`/${TOKEN}/api/set`, { collection: "cards", id: "c1", data: { answer: "approve" } });
 		expect(response.status).toBe(200);
-		const state = await readLiveState(project.path, task.id);
+		const state = await readLiveState(project, task.id);
 		expect(state.collections.cards.c1.updatedBy).toBe("user");
 		expect(state.events).toHaveLength(1);
 	});
@@ -144,5 +144,16 @@ describe("tokens", () => {
 		expect(token).toMatch(/^[A-Za-z0-9_-]{24}$/);
 		expect(findTokenOnDisk(token, [project])).toEqual({ projectId: "p1", taskId: task.id });
 		expect(findTokenOnDisk("zzzzzzzzzzzzzzzzzzzzzzzz", [project])).toBeNull();
+	});
+
+	it("finds a token stored under the project's in-project root, and still the home one", () => {
+		const inProject = { id: "p2", path: `${TEST_HOME}/in-project-repo`, storageRoot: "project" } as Project;
+		const token = "inprojecttokenabcdefghij";
+		const dir = `${inProject.path}/.dev3/worktrees/live-artifacts/${task.id}`;
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(`${dir}/token`, token);
+		expect(findTokenOnDisk(token, [project, inProject])).toEqual({ projectId: "p2", taskId: task.id });
+		const minted = liveTokenFor(inProject, task.id);
+		expect(minted).toBe(token);
 	});
 });
