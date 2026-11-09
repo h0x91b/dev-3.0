@@ -92,6 +92,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	const composerApiRef = useRef<TerminalComposerApi | null>(null);
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [windowEpoch, setWindowEpoch] = useState(0);
+	const [zoomBadgeShown, setZoomBadgeShown] = useState(false);
 
 	const task = tasks.find((t) => t.id === taskId);
 	const project = projects.find((p) => p.id === projectId);
@@ -763,7 +764,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	}
 
 	// The completion offer floats over the live viewport, so the terminal keeps its size.
-	const completionOverlay = task && project ? <TaskCompletionStrip task={task} project={project} variant="overlay" /> : null;
+	const completionOverlay = task && project ? <TaskCompletionStrip task={task} project={project} variant="overlay" belowZoomBadge={zoomBadgeShown} /> : null;
 
 	if (isPreparing && task && project) {
 		return (
@@ -1312,7 +1313,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 					<div className="relative isolate flex-1 min-h-0 overflow-hidden">
 						{completionOverlay}
 						{terminalArea}
-						{ptyUrl && <PaneZoomBadge taskId={taskId} />}
+						{ptyUrl && <PaneZoomBadge taskId={taskId} onVisibleChange={setZoomBadgeShown} />}
 						{ptyUrl && <ClosePanePicker taskId={taskId} />}
 						{scrollToLatestFor(TMUX_VIEW, termHandle)}
 						{setupFailedNotice}

@@ -10,11 +10,11 @@ On a 145×38 Claude Code pane, a footprint of 80 columns × 6 rows covered 13% t
 
 ## Decision
 
-A global setting `completionOfferStyle` (`"dialog"` default, `"inline"`) picks the surface. `src/mainview/completion-offers.ts` holds it and every surface reads it live, so a switch moves waiting offers. In dialog mode `CompletionOfferDialogHost` asks each store offer through `confirm()`, with the agent-request identity, the manual-completion action for merges and the gated `getUnsavedWork` check; the store entry stays, so card markers keep showing and an answer from anywhere closes the modal. In inline mode `TaskCompletionStrip` floats at the terminal's bottom-right; an unsolicited offer is a one-line bar whose note opens on hover or focus, and warnings always show. The user's own Complete/Cancel stays where they clicked in both modes.
+A global setting `completionOfferStyle` (`"dialog"` default, `"inline"`) picks the surface. `src/mainview/completion-offers.ts` holds it and every surface reads it live, so a switch moves waiting offers. In dialog mode `CompletionOfferDialogHost` asks each store offer through `confirm()`, with the agent-request identity, the manual-completion action for merges and the gated `getUnsavedWork` check; the store entry stays, so card markers keep showing and an answer from anywhere closes the modal. In inline mode an unsolicited offer is a one-line bar at the bottom-right of the agent's pane (`agentPaneInsets`: the first pane by index; the whole terminal for one pane or a zoomed one), no taller than the two hint rows under an agent's input box and capped within 72rem of the pane's left edge. Its note opens upward on hover or focus while the title and buttons stay on the bottom line, and warnings always show. The user's own Complete/Cancel stays where they clicked: a card at the top-right under the inspector ✓, or the anchored popover.
 
 ## Risks
 
-The dialog interrupts at detection time, which the inline design removed; users who prefer that pick "On the task". The bar covers the right end of the bottom rows, which on some harnesses is a hint line. No dialog is asked before the host's settings load, so a stored "inline" choice never flashes a modal.
+A task whose agent is not in its first pane gets the bar over the wrong pane; dev3 launches the agent first, so this needs a user rearranging panes. The dialog interrupts at detection time, which the inline design removed; users who prefer that pick "On the task". The bar covers the right end of the bottom rows, which on some harnesses is a hint line. No dialog is asked before the host's settings load, so a stored "inline" choice never flashes a modal.
 
 ## Alternatives considered
 

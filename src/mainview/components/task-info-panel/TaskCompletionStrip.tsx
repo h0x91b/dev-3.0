@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { taskUsesWorktree, type Project, type Task } from "../../../shared/types";
 import { useT, type TFunction } from "../../i18n";
 import { api } from "../../rpc";
@@ -9,6 +9,8 @@ import { toastClearanceRef } from "../../toast-clearance";
 import { completionSkipsGitCheck, unsavedWorkWarning } from "../../utils/confirmTaskCompletion";
 import { taskDialogInfo } from "../../utils/taskDialogInfo";
 import TaskDialogSubjectCard from "../TaskDialogSubjectCard";
+import { useTaskPaneState } from "../../hooks/useTaskPaneState";
+import type { TaskPaneState } from "../../../shared/task-panes";
 
 /** Pointer clicks count only after this long, so a click aimed at what was there before cannot answer. */
 export const COMPLETION_STRIP_ARM_MS = 600;
@@ -19,14 +21,17 @@ type GitCheck = { state: "skipped" } | { state: "checking" } | { state: "done"; 
  * The task's pending completion offer. An unsolicited one never takes focus or
  * keys, so an offer that lands while the user types cannot steal a keystroke; the
  * user's own Complete/Cancel focuses Keep open instead. It never covers the board.
- * `overlay` floats it at the bottom-right of a live terminal viewport, next to the
- * agent's latest output and prompt, so the terminal keeps its size; an unsolicited
- * offer there is a one-line bar. `inline` is the row under the inspector, used
- * only where no terminal viewport hosts the overlay (a session-ended screen).
+ * `overlay` floats it over a live terminal viewport, so the terminal keeps its size:
+ * an unsolicited offer is a one-line bar at the bottom-right, next to the agent's
+ * latest output and prompt; the user's own ask is a card at the top-right, under
+ * the inspector ✓ they clicked. `inline` is the row under the inspector, used only
+ * where no terminal viewport hosts the overlay (a session-ended screen).
  * Offers asking in the dialog (`completionOfferStyle`) do not show here.
  */
-export default function TaskCompletionStrip({ task, project, variant = "inline" }: {
+export default function TaskCompletionStrip({ task, project, variant = "inline", belowZoomBadge = false }: {
 	task: Task; project: Project; variant?: "inline" | "overlay";
+	/** The tmux ZOOMED badge holds the top-right corner; the user's card drops below it while it shows. */
+	belowZoomBadge?: boolean;
 }) {
 	const offer = useTaskStripOffer(task.id);
 	const hosted = useCompletionOverlayHosted(task.id);
@@ -42,7 +47,32 @@ export default function TaskCompletionStrip({ task, project, variant = "inline" 
 			</div>
 		);
 	}
-	return <Strip key={offer.id} offer={offer} task={task} project={project} layout={variant === "overlay" ? "terminal" : "row"} />;
+	const strip = <Strip key={offer.id} offer={offer} task={task} project={project} layout={variant === "overlay" ? "terminal" : "row"} belowZoomBadge={belowZoomBadge} />;
+	return variant === "overlay" && offer.kind !== "user" ? <AgentPaneFrame taskId={task.id}>{strip}</AgentPaneFrame> : strip;
+}
+
+/**
+ * The agent's pane as insets of the terminal area, so the bar sits beside the prompt
+ * the agent is waiting at, not over a shell pane. The agent runs in the first pane;
+ * one pane, a zoomed pane or no state yet means the whole terminal.
+ */
+export function agentPaneInsets(state: TaskPaneState | null): CSSProperties | null {
+	if (!state || state.zoomedPaneId || state.panes.length < 2) return null;
+	const agent = [...state.panes].sort((a, b) => a.index - b.index)[0]!;
+	const pct = (value: number) => `${Math.max(0, Math.min(1, value)) * 100}%`;
+	return {
+		left: pct(agent.rect.x),
+		right: pct(1 - agent.rect.x - agent.rect.width),
+		top: pct(agent.rect.y),
+		bottom: pct(1 - agent.rect.y - agent.rect.height),
+	};
+}
+
+/** Confines the bar to the agent's pane; it lets clicks through everywhere but the bar. */
+function AgentPaneFrame({ taskId, children }: { taskId: string; children: ReactNode }) {
+	const insets = agentPaneInsets(useTaskPaneState(taskId));
+	if (!insets) return <>{children}</>;
+	return <div className="pointer-events-none absolute z-20 [&>*]:pointer-events-auto" style={insets} data-testid="task-completion-strip-pane">{children}</div>;
 }
 
 /** What completing removes, for an unsolicited offer: the worktree, the session, or only the session. */
@@ -52,7 +82,7 @@ export function completionOfferNote(task: Task, project: Project, t: TFunction):
 
 type StripLayout = "row" | "below-inspector" | "terminal";
 
-function Strip({ offer, task, project, layout }: { offer: CompletionOffer; task: Task; project: Project; layout: StripLayout }) {
+function Strip({ offer, task, project, layout, belowZoomBadge = false }: { offer: CompletionOffer; task: Task; project: Project; layout: StripLayout; belowZoomBadge?: boolean }) {
 	const overlay = layout !== "row";
 	const t = useT();
 	// The user's own click asked for this one, so it answers at once and owns focus.
@@ -124,36 +154,42 @@ function Strip({ offer, task, project, layout }: { offer: CompletionOffer; task:
 	const note = isUser
 		? t(task.worktreePath ? "task.warnCompletionFooter" : isCancel ? "task.confirmCancelFooter" : "task.confirmCompleteFooter")
 		: completionOfferNote(task, project, t);
-	// An unsolicited offer on the terminal is one line; its note opens on hover or focus.
+	// An unsolicited offer on the terminal is a bar no taller than the two hint rows
+	// under an agent's input box; its note opens on hover or focus.
 	const bar = layout === "terminal" && !isUser;
-	// On a wide terminal the corner is far from the prompt, so the card stops within 72rem of its left edge.
-	const terminalRight = "right-[max(0.75rem,calc(100%-72rem))]";
+	// On a wide terminal the corner is far from the prompt, so the bar stops within 72rem of its left edge.
+	const position = bar
+		? "bottom-1 right-[max(0.75rem,calc(100%-72rem))]"
+		: `${layout === "terminal" && belowZoomBadge ? "top-11" : "top-2"} right-3`;
+	const buttonPad = bar ? "py-1" : "py-1.5";
 
 	return (
 		<div
-			ref={layout === "terminal" ? undefined : toastClearanceRef}
+			ref={bar ? undefined : toastClearanceRef}
 			role="region"
 			aria-label={title}
 			onKeyDown={isUser ? (e) => { if (e.key === "Escape") { e.stopPropagation(); answer(false); } } : undefined}
 			data-testid="task-completion-strip"
 			data-help-id="task.completion-strip"
 			data-layout={layout}
-			className={`group flex flex-wrap items-center gap-x-3 gap-y-2 text-sm ${bar ? "px-2.5 py-1.5" : "px-3 py-2"} ${
+			className={`group flex flex-wrap ${bar ? "items-end" : "items-center"} gap-x-3 gap-y-2 text-sm ${bar ? "px-2 py-1" : "px-3 py-2"} ${
 				layout === "row"
 					? "flex-shrink-0 border-b bg-raised"
-					: `absolute ${layout === "terminal" ? `bottom-2 ${terminalRight}` : "top-2 right-3"} z-20 ${bar ? "max-w-[min(40rem,calc(100%-1.5rem))]" : "w-[min(40rem,calc(100%-1.5rem))]"} rounded-xl border bg-overlay shadow-lg`
+					: `absolute ${position} z-20 ${bar ? "max-w-[min(40rem,calc(100%-1.5rem))]" : "w-[min(40rem,calc(100%-1.5rem))]"} rounded-xl border bg-overlay shadow-lg`
 			} ${isAgent ? "border-accent/40" : isUser ? "border-edge" : "border-success/30"}`}
 		>
-			<div className={`flex items-center gap-2 min-w-0 flex-1 ${bar ? "basis-[14rem]" : overlay ? "basis-full" : "basis-full md:basis-[18rem]"}`}>
+			<div className={`flex ${bar ? "items-end" : "items-center"} gap-2 min-w-0 flex-1 ${bar ? "basis-[14rem]" : overlay ? "basis-full" : "basis-full md:basis-[18rem]"}`}>
 				{isUser ? null : isAgent ? (
-					<span className="inline-flex shrink-0 items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-accent/15 text-accent">
+					// The bar keeps the badge's glyph and colour; its label moves to the tooltip.
+					<span className="inline-flex shrink-0 items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-accent/15 text-accent" title={bar ? t("confirmDialog.agentBadge") : undefined}>
 						<span aria-hidden className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F06A9}"}</span>
-						{t("confirmDialog.agentBadge")}
+						{bar ? <span className="sr-only">{t("confirmDialog.agentBadge")}</span> : t("confirmDialog.agentBadge")}
 					</span>
 				) : (
 					<span aria-hidden className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-success/15 text-success text-xs">✓</span>
 				)}
-				<div className="min-w-0">
+				{/* The bar grows upward on hover: the title and buttons stay on its bottom line, so nothing moves under the pointer. */}
+				<div className={bar ? "min-w-0 flex flex-col-reverse" : "min-w-0"}>
 					<div className={`font-medium text-fg ${bar ? "truncate" : ""}`} title={bar ? title : undefined}>{title}</div>
 					{isUser && <UserAskSubject task={task} project={project} />}
 					<div className={`text-xs text-fg-3 ${bar ? "hidden group-hover:block group-focus-within:block" : ""}`} data-testid="task-completion-strip-note">{note}</div>
@@ -174,7 +210,7 @@ function Strip({ offer, task, project, layout }: { offer: CompletionOffer; task:
 							}))}
 							aria-label={t("completionStrip.settings")}
 							title={t("completionStrip.settings")}
-							className="grid h-8 w-8 max-md:h-11 max-md:w-11 place-items-center rounded-lg text-fg-3 hover:text-fg hover:bg-raised-hover transition-colors"
+							className={`grid ${bar ? "h-6 w-6" : "h-8 w-8"} max-md:h-11 max-md:w-11 place-items-center rounded-lg text-fg-3 hover:text-fg hover:bg-raised-hover transition-colors`}
 						>
 							<WorktreeSettingsIcon className="w-4 h-4" />
 						</button>
@@ -182,7 +218,7 @@ function Strip({ offer, task, project, layout }: { offer: CompletionOffer; task:
 							type="button"
 							title={t("completionStrip.manualHint")}
 							onClick={() => answer("manual")}
-							className="px-3 py-1.5 max-md:min-h-11 text-xs whitespace-nowrap rounded-lg text-fg-2 hover:text-fg hover:bg-raised-hover transition-colors"
+							className={`px-3 ${buttonPad} max-md:min-h-11 text-xs whitespace-nowrap rounded-lg text-fg-2 hover:text-fg hover:bg-raised-hover transition-colors`}
 						>
 							{t("app.branchMergedManualCompletion")}
 						</button>
@@ -193,7 +229,7 @@ function Strip({ offer, task, project, layout }: { offer: CompletionOffer; task:
 					type="button"
 					title={isUser ? undefined : t(isAgent ? "completionStrip.keepOpenAgentHint" : "completionStrip.keepOpenMergeHint")}
 					onClick={() => answer(false)}
-					className="px-3 py-1.5 max-md:min-h-11 text-xs whitespace-nowrap rounded-lg border border-edge text-fg-2 hover:text-fg hover:bg-raised-hover transition-colors"
+					className={`px-3 ${buttonPad} max-md:min-h-11 text-xs whitespace-nowrap rounded-lg border border-edge text-fg-2 hover:text-fg hover:bg-raised-hover transition-colors`}
 				>
 					{t("completionStrip.keepOpen")}
 				</button>
@@ -202,7 +238,7 @@ function Strip({ offer, task, project, layout }: { offer: CompletionOffer; task:
 					data-testid="task-completion-strip-complete"
 					disabled={checking}
 					onClick={() => void complete()}
-					className={`px-3 py-1.5 max-md:min-h-11 text-xs whitespace-nowrap rounded-lg text-white transition-colors ${
+					className={`px-3 ${buttonPad} max-md:min-h-11 text-xs whitespace-nowrap rounded-lg text-white transition-colors ${
 						checking ? "bg-fg-muted/40 cursor-not-allowed" : "bg-danger hover:bg-danger/80"
 					}`}
 				>
