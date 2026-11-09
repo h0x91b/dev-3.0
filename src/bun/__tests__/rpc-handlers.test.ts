@@ -15698,6 +15698,80 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 	});
 });
 
+describe("listPendingMergeOffers (replay after a reload)", () => {
+	const FINGERPRINT = "v1:dev3/task-test:abc123";
+	let project: Project;
+
+	function offeredTask(overrides: Partial<Task> = {}): Task {
+		return makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/test-worktree",
+			branchName: "dev3/task-test",
+			mergeCompletionPrompt: { fingerprint: FINGERPRINT, promptedAt: "2026-06-01T08:00:00.000Z", dismissedAt: null, precise: true },
+			...overrides,
+		});
+	}
+
+	async function reserve(task: Task) {
+		vi.mocked(data.getTask).mockResolvedValue({ ...task, mergeCompletionPrompt: undefined });
+		await handlers.prepareMergeCompletionPrompt({ taskId: task.id, projectId: project.id, fingerprint: FINGERPRINT });
+	}
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		_resetMergePollerState();
+		project = makeProject();
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskSortOrder: "oldest-first" } as any);
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.updateTask).mockImplementation(async (_p: Project, _id: string, patch: Partial<Task>) => makeTask(patch));
+		vi.mocked(git.getHeadSha).mockResolvedValue("abc123");
+		vi.mocked(mergeOfferHeld).mockReset().mockReturnValue(false);
+	});
+
+	afterEach(() => {
+		_resetMergePollerState();
+	});
+
+	it("returns an unanswered offer whose head is still the merged one", async () => {
+		const task = offeredTask();
+		await reserve(task);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		const offers = await handlers.listPendingMergeOffers();
+		expect(offers).toEqual([expect.objectContaining({ taskId: task.id, projectId: project.id, branchName: "dev3/task-test", fingerprint: FINGERPRINT })]);
+	});
+
+	it("drops the offer once new commits move the head", async () => {
+		const task = offeredTask();
+		await reserve(task);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.getHeadSha).mockResolvedValue("def456");
+		expect(await handlers.listPendingMergeOffers()).toEqual([]);
+	});
+
+	it("drops a dismissed offer and one the poller never reserved in this run", async () => {
+		const dismissed = offeredTask({ mergeCompletionPrompt: { fingerprint: FINGERPRINT, promptedAt: "2026-06-01T08:00:00.000Z", dismissedAt: "2026-06-01T08:01:00.000Z", precise: true } });
+		await reserve(dismissed);
+		vi.mocked(data.loadTasks).mockResolvedValue([dismissed]);
+		expect(await handlers.listPendingMergeOffers()).toEqual([]);
+
+		_resetMergePollerState();
+		vi.mocked(data.loadTasks).mockResolvedValue([offeredTask()]);
+		expect(await handlers.listPendingMergeOffers()).toEqual([]);
+	});
+
+	it("returns nothing for a manually completed task or with merge offers turned off", async () => {
+		const manual = offeredTask({ manualCompletion: true });
+		await reserve(manual);
+		vi.mocked(data.loadTasks).mockResolvedValue([manual]);
+		expect(await handlers.listPendingMergeOffers()).toEqual([]);
+
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskSortOrder: "oldest-first", suggestCompletingTasksAfterMerge: false } as any);
+		vi.mocked(data.loadTasks).mockResolvedValue([offeredTask()]);
+		expect(await handlers.listPendingMergeOffers()).toEqual([]);
+	});
+});
+
 describe("prepareMergeCompletionPrompt (force re-check)", () => {
 	const FINGERPRINT = "v1:dev3/task-test:abc123";
 	let project: Project;

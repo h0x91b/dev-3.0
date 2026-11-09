@@ -160,7 +160,7 @@ const tips = {
 	"tip.projectsDailyBackup.title": "Copia diaria de tus proyectos",
 	"tip.projectsDailyBackup.body": "¿Perdiste tus proyectos? Restáuralos desde ~/.dev3.0/projects-YYYY-MM-DD.json.bak — las copias se guardan 7 días.",
 	"tip.agentCompletionRequest.title": "Los agentes pueden pedir completar",
-	"tip.agentCompletionRequest.body": "Cuando un agente ejecuta `dev3 task move --status completed`, recibes un diálogo de aprobación: aprueba para completar o mantén la sesión viva.",
+	"tip.agentCompletionRequest.body": "Cuando un agente ejecuta `dev3 task move --status completed`, se te pide aprobar; un ajuste elige un diálogo o una barra en la tarea.",
 	"tip.taskSwitcher.title": "Option+Tab entre tareas",
 	"tip.taskSwitcher.body": "Mantén Option y pulsa Tab para recorrer las tareas activas; suelta para saltar. Las flechas ↑↓ mueven en ambos sentidos. (Ctrl+Tab en Linux.) Pulsa Shift para alternar entre todos los proyectos.",
 	"tip.pasteLargeText.title": "Pega registros grandes como archivos",

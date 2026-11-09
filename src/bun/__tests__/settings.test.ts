@@ -467,6 +467,7 @@ describe("saveSettings", () => {
 			autoAccountExclusions: ["system:claude"],
 			watchByDefault: true,
 			suggestCompletingTasksAfterMerge: false,
+			completionOfferStyle: "inline",
 			prOriginTaskLink: false,
 			agentsLayoutRevision: 1,
 			pxpipeProxyEnabled: true,
