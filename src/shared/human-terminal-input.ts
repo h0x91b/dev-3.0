@@ -1,6 +1,6 @@
 /**
  * Reading the user's own keystrokes out of the raw bytes a terminal client sends,
- * to answer one question: did he just submit his own line?
+ * to answer two questions: did he just submit his own line, and did he type at all?
  *
  * Only that. It never tries to reconstruct what he typed — it decides whether a
  * message held for that pane may land now (his box is free) or must keep waiting.
