@@ -2,6 +2,7 @@
 
 Superseded in part on 2026-10-04 by `decisions/2026/10/04/gitless-claude-hooks-via-settings-flag.md`: a gitless Claude task now gets its hooks, Bash rules and mode through `--settings`, and nothing is left in the folder.
 Superseded in part on 2026-10-04 by `decisions/2026/10/04/shared-folder-transcripts-scoped-by-session.md`: the handoff, the Conversation tab and the archive keep only the task's own sessions in a shared folder.
+Superseded in part on 2026-10-22 by `decisions/2026/10/22/own-worktree-in-a-gitless-project.md`: one task may take its own worktree; task-level checks use `taskUsesWorktree`, board-level ones keep `hasGitWorkflow`.
 Superseded in part on 2026-10-04 by `decisions/2026/10/04/advisory-file-leases-in-shared-folders.md`: a Claude edit to a file another live task in the folder is editing is refused with the holder's name.
 
 ## Context

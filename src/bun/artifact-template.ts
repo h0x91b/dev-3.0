@@ -12,7 +12,7 @@ import {
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { ARTIFACT_TEMPLATE_FILES, artifactTemplateDirName } from "../shared/artifact-template";
-import { hasGitWorkflow, resolveArtifactTemplate, type ArtifactTemplateMode, type GlobalSettings, type Project, type Task } from "../shared/types";
+import { taskUsesWorktree, resolveArtifactTemplate, type ArtifactTemplateMode, type GlobalSettings, type Project, type Task } from "../shared/types";
 import { taskDir } from "./git";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
@@ -49,7 +49,7 @@ function bundledArtifactTemplateDir(): string {
 function taskContainerDir(project: Project, task: Task, worktreePath?: string): string {
 	if (project.kind === "virtual") return join(project.path, task.id.slice(0, 8));
 	// A project folder is shared by every task, so its parent is nobody's container.
-	if (!hasGitWorkflow(project)) return taskDir(project, task);
+	if (!taskUsesWorktree(project, task)) return taskDir(project, task);
 	const activeWorktreePath = worktreePath ?? task.worktreePath;
 	if (!activeWorktreePath) throw new Error("Cannot provision a dev3 artifact template before the worktree path is known");
 	return dirname(activeWorktreePath);

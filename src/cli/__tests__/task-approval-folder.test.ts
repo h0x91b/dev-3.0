@@ -5,14 +5,16 @@ vi.mock("../socket-client", () => ({ sendRequest: vi.fn() }));
 vi.mock("../context", async (importOriginal) => ({
 	...(await importOriginal<typeof import("../context")>()),
 	readProjectDirect: vi.fn(),
+	readTaskDirect: vi.fn(),
 }));
 
 import { handleTask } from "../commands/task";
-import { readProjectDirect, type CliContext } from "../context";
+import { readProjectDirect, readTaskDirect, type CliContext } from "../context";
 import { sendRequest } from "../socket-client";
 
 const mockSend = vi.mocked(sendRequest);
 const mockProject = vi.mocked(readProjectDirect);
+const mockTask = vi.mocked(readTaskDirect);
 const SOCKET = "/tmp/test.sock";
 const TASK_ID = "aaaaaaaa-1111-2222-3333-444444444444";
 const CTX: CliContext = { projectId: "proj-001", taskId: TASK_ID, socketPath: SOCKET };
@@ -40,6 +42,7 @@ beforeEach(() => {
 afterEach(() => {
 	vi.restoreAllMocks();
 	mockSend.mockReset();
+	mockTask.mockReset();
 });
 
 const move = (status: string) => handleTask("move", { positional: [TASK_ID], flags: { status } }, SOCKET, CTX);
@@ -47,12 +50,34 @@ const move = (status: string) => handleTask("move", { positional: [TASK_ID], fla
 describe("approval wording for a task in its project folder", () => {
 	it.each(["completed", "cancelled"])("never says %s destroys a worktree when the git workflow is off", async (status) => {
 		mockProject.mockReturnValue({ id: "proj-001", name: "Notes", path: "/home/me/notes", gitWorkflow: false });
+		mockTask.mockReturnValue({ id: TASK_ID });
 
 		await move(status);
 
 		expect(stderr).toContain("keeps every file");
 		expect(stderr + stdout).not.toMatch(/worktree/i);
 		expect(stdout).toContain("The project folder keeps every file");
+	});
+
+	it("keeps the worktree wording for an own-worktree task of a gitless project", async () => {
+		mockProject.mockReturnValue({ id: "proj-001", name: "Notes", path: "/home/me/notes", gitWorkflow: false });
+		mockTask.mockReturnValue({ id: TASK_ID, ownWorktree: true });
+
+		await move("completed");
+
+		expect(stderr).toContain("destroys its worktree");
+		expect(stderr).not.toContain("keeps every file");
+	});
+
+	it.each(["completed", "cancelled", "todo"])("keeps the worktree wording when a seq:N move of %s cannot read the task", async (status) => {
+		mockProject.mockReturnValue({ id: "proj-001", name: "Notes", path: "/home/me/notes", gitWorkflow: false });
+		mockTask.mockImplementation((_projectId, taskId) => (taskId === TASK_ID ? { id: TASK_ID, ownWorktree: true } : null));
+
+		await handleTask("move", { positional: [], flags: { task: "seq:12", status } }, SOCKET, CTX);
+
+		expect(mockTask).toHaveBeenCalledWith("proj-001", "seq:12");
+		expect(stderr).toMatch(/worktree/i);
+		expect(stderr + stdout).not.toContain("keeps every file");
 	});
 
 	it("keeps the worktree wording for a git project", async () => {

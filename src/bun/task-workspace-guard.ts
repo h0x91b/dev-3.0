@@ -1,7 +1,7 @@
 import { lstatSync, statSync } from "node:fs";
 import { join } from "node:path";
-import type { Project, WorktreeAccessState } from "../shared/types";
-import { hasGitWorkflow } from "../shared/types";
+import type { Project, Task, WorktreeAccessState } from "../shared/types";
+import { taskUsesWorktree } from "../shared/types";
 
 /**
  * Why this exists: tmux `new-session`/`split-window -c <missing dir>` exits 0 and
@@ -49,9 +49,13 @@ export function worktreeAccessState(path: string, opts: { requireGit?: boolean }
 	}
 }
 
-export function assertTaskWorkspacePresent(project: Pick<Project, "kind">, worktreePath: string | null | undefined): string {
+export function assertTaskWorkspacePresent(
+	project: Pick<Project, "kind" | "gitWorkflow">,
+	worktreePath: string | null | undefined,
+	task: Pick<Task, "ownWorktree">,
+): string {
 	if (!worktreePath) throw new TaskWorkspaceUnavailableError("missing", "(no worktree recorded)");
-	const state = worktreeAccessState(worktreePath, { requireGit: hasGitWorkflow(project) });
+	const state = worktreeAccessState(worktreePath, { requireGit: taskUsesWorktree(project, task) });
 	if (state !== "present") throw new TaskWorkspaceUnavailableError(state, worktreePath);
 	return worktreePath;
 }

@@ -1717,6 +1717,7 @@ describe("CreateTaskModal — project with the git workflow off", () => {
 		vi.clearAllMocks();
 		mockedApi.request.createTask.mockResolvedValue(mockTask);
 		mockedApi.request.getAllProjectTasks.mockResolvedValue([]);
+		mockedApi.request.listBranches.mockResolvedValue([]);
 	});
 
 	it("shows the project folder instead of a branch choice, and no PR review", async () => {
@@ -1743,6 +1744,34 @@ describe("CreateTaskModal — project with the git workflow off", () => {
 		await userEvent.click(screen.getByText("Save"));
 		await waitFor(() => {
 			expect(mockedApi.request.createTask).toHaveBeenCalledWith({ projectId: "p1", description: "Map the Azure estate" });
+		});
+	});
+
+	it("offers no own worktree when the folder has no branches", async () => {
+		renderModal({ project: gproject });
+		await waitFor(() => expect(mockedApi.request.listBranches).toHaveBeenCalled());
+		expect(screen.queryByTestId("workspace-own-worktree")).not.toBeInTheDocument();
+	});
+
+	it("does not count a task in its own worktree as sharing the folder", async () => {
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([
+			{ projectId: "p1", tasks: [{ ...mockTask, status: "in-progress", worktreePath: "/wt/own" }] },
+		] as never);
+		renderModal({ project: gproject });
+		await waitFor(() => expect(mockedApi.request.getAllProjectTasks).toHaveBeenCalled());
+		expect(screen.queryByText(/Another task is already running in this folder/)).not.toBeInTheDocument();
+	});
+
+	it("creates a task with its own worktree when the user picks one", async () => {
+		mockedApi.request.listBranches.mockResolvedValue([{ name: "main", isRemote: false }]);
+		renderModal({ project: gproject });
+		await userEvent.click(await screen.findByTestId("workspace-own-worktree"));
+		expect(screen.queryByText("/home/user/test-project")).not.toBeInTheDocument();
+		expect(screen.getByText(/Gets its own worktree and branch/)).toBeInTheDocument();
+		await userEvent.type(screen.getByPlaceholderText("Describe what needs to be done..."), "Linux build");
+		await userEvent.click(screen.getByText("Save"));
+		await waitFor(() => {
+			expect(mockedApi.request.createTask).toHaveBeenCalledWith({ projectId: "p1", description: "Linux build", ownWorktree: true });
 		});
 	});
 });

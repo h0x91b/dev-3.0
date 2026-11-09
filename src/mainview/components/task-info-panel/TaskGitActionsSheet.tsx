@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { Project, Task } from "../../../shared/types";
-import { hasGitWorkflow } from "../../../shared/types";
+import { taskUsesWorktree } from "../../../shared/types";
 import { useT } from "../../i18n";
 import type { TaskBranchStatusController } from "./useTaskBranchStatus";
 import { AutoMergeIcon, CommitIcon, CreatePRIcon, MergeIcon, PushIcon, RebaseIcon, ShowDiffIcon } from "./GitIcons";
@@ -61,6 +61,7 @@ export default function TaskGitActionsSheet({
 		branchStatus,
 		compareRef,
 		displayRef,
+		localMergeBlocked,
 		mergeRoute,
 		handleCommit,
 		handleCreatePR,
@@ -78,7 +79,7 @@ export default function TaskGitActionsSheet({
 	// has no git domain of its own (Bible §3); with an attached repo it gets the
 	// read-only diff row and nothing else. A project with the git workflow off has none.
 	const readOnly = project.kind === "virtual";
-	if ((readOnly ? !task.attachedRepo : !hasGitWorkflow(project)) || !isTaskActive || !task.worktreePath) {
+	if ((readOnly ? !task.attachedRepo : !taskUsesWorktree(project, task)) || !isTaskActive || !task.worktreePath) {
 		return null;
 	}
 
@@ -216,7 +217,7 @@ export default function TaskGitActionsSheet({
 		// Same two routes as the desktop bar: an open PR means gh merges the PR, so
 		// "behind the base" is GitHub's judgement, not a local rebase requirement.
 		const mergeIsPr = mergeRoute === "pull-request";
-		const mergeRowDisabled = !branchStatus || ahead === 0 || (!mergeIsPr && behind > 0);
+		const mergeRowDisabled = !branchStatus || ahead === 0 || (!mergeIsPr && behind > 0) || localMergeBlocked;
 		rows.push({
 			key: "merge",
 			icon: <MergeIcon className={`h-5 w-5 shrink-0 ${mergeRowDisabled ? "text-fg-muted" : "text-success"}`} />,
@@ -226,6 +227,8 @@ export default function TaskGitActionsSheet({
 				? t("infoPanel.statusLoading")
 				: ahead === 0
 					? t("infoPanel.mergeDisabledNoCommits")
+					: localMergeBlocked
+						? t("infoPanel.mergeDisabledSharedFolder")
 					: mergeIsPr
 						? t("infoPanel.mergePrTooltip", { pr: String(branchStatus.prNumber), branch: baseBranch })
 						: behind > 0

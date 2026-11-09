@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 import { mkdir, rm } from "node:fs/promises";
 import type { GlobalSettings, Project, Task, TaskDiffResponse } from "../../shared/types";
-import { MAX_TASK_NOTES_KEPT, buildTaskDialogSubject, getPreparingStageProgress, resolveTaskCompareBaseBranch } from "../../shared/types";
+import { LOCAL_MERGE_SHARED_FOLDER_ERROR, MAX_TASK_NOTES_KEPT, OWN_WORKTREE_NOT_A_REPO_ERROR, buildTaskDialogSubject, getPreparingStageProgress, resolveTaskCompareBaseBranch } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
 import { ptyWsUrl } from "../pty-server-access";
 import * as agentAccounts from "../agent-accounts";
@@ -4256,6 +4256,87 @@ describe("task lifecycle with the git workflow off", () => {
 		const status = await handlers.getBranchStatus({ taskId: "task-1", projectId: "gp1" });
 		expect(status.ahead).toBe(0);
 		expect(git.getCurrentBranch).not.toHaveBeenCalled();
+	});
+
+	describe("a task with its own worktree", () => {
+		const ownTask = (overrides: Partial<Task> = {}) => makeTask({ projectId: "gp1", ownWorktree: true, ...overrides });
+
+		it("createTask stores the flag when the folder is a repository", async () => {
+			vi.mocked(data.getProject).mockResolvedValue(gproject());
+			vi.mocked(git.isGitRepo).mockResolvedValue(true);
+			vi.mocked(data.addTask).mockResolvedValue(ownTask({ status: "todo" }));
+
+			await handlers.createTask({ projectId: "gp1", description: "Linux build", ownWorktree: true });
+
+			expect(data.addTask).toHaveBeenCalledWith(expect.objectContaining({ id: "gp1" }), "Linux build", "todo", expect.objectContaining({ ownWorktree: true }));
+		});
+
+		it("createTask refuses it for a folder that is not a repository", async () => {
+			vi.mocked(data.getProject).mockResolvedValue(gproject());
+			vi.mocked(git.isGitRepo).mockResolvedValue(false);
+
+			await expect(handlers.createTask({ projectId: "gp1", description: "x", ownWorktree: true }))
+				.rejects.toThrow(OWN_WORKTREE_NOT_A_REPO_ERROR);
+			expect(data.addTask).not.toHaveBeenCalled();
+		});
+
+		it("createTask ignores it where every task already gets a worktree", async () => {
+			vi.mocked(data.getProject).mockResolvedValue(makeProject());
+			vi.mocked(data.addTask).mockResolvedValue(makeTask({ status: "todo" }));
+
+			await handlers.createTask({ projectId: "proj-1", description: "x", ownWorktree: true });
+
+			expect(data.addTask).toHaveBeenCalledWith(expect.anything(), "x", "todo", undefined);
+		});
+
+		it("todo → in-progress: creates a worktree instead of using the project folder", async () => {
+			const task = ownTask({ status: "todo", worktreePath: null });
+			vi.mocked(data.getProject).mockResolvedValue(gproject());
+			vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt-own", branchName: "dev3/task-1" });
+			mockTaskWrites(task);
+
+			const result = await handlers.moveTask({ explicitLaunch: true, taskId: "task-1", projectId: "gp1", newStatus: "in-progress" });
+
+			expect(git.createWorktree).toHaveBeenCalled();
+			expect(result.worktreePath).toBe("/tmp/wt-own");
+			expect(result.branchName).toBe("dev3/task-1");
+		});
+
+		it("in-progress → completed: removes the worktree but keeps a branch with unique commits", async () => {
+			const task = ownTask({ status: "in-progress", worktreePath: "/tmp/wt-own", branchName: "dev3/task-1" });
+			vi.mocked(data.getProject).mockResolvedValue(gproject());
+			vi.mocked(data.getTask).mockResolvedValue(task);
+			vi.mocked(pty.destroySession).mockImplementation(() => {});
+			vi.mocked(existsSync).mockReturnValue(true);
+			mockTaskWrites(task);
+
+			await handlers.moveTask({ taskId: "task-1", projectId: "gp1", newStatus: "completed" });
+
+			expect(git.removeWorktree).toHaveBeenCalledWith(expect.objectContaining({ id: "gp1" }), expect.objectContaining({ worktreePath: "/tmp/wt-own" }), { branchPolicy: "unique-kept" });
+			expect(spawnedLsof()).toBe(true);
+		});
+
+		it("delete: removes its worktree, never the project folder", async () => {
+			vi.mocked(data.getProject).mockResolvedValue(gproject());
+			vi.mocked(data.getTask).mockResolvedValue(ownTask({ status: "in-progress", worktreePath: "/tmp/wt-own" }));
+			vi.mocked(pty.destroySession).mockImplementation(() => {});
+
+			await handlers.deleteTask({ taskId: "task-1", projectId: "gp1" });
+
+			expect(git.removeWorktree).toHaveBeenCalledWith(expect.objectContaining({ id: "gp1" }), expect.objectContaining({ worktreePath: "/tmp/wt-own" }), { branchPolicy: "unique-kept" });
+			expect(rm).not.toHaveBeenCalled();
+		});
+
+		it("git operations run, but a local merge into the shared folder is refused", async () => {
+			vi.mocked(data.getProject).mockResolvedValue(gproject());
+			vi.mocked(data.getTask).mockResolvedValue(ownTask({ status: "in-progress", worktreePath: "/tmp/wt-own", branchName: "dev3/task-1" }));
+			vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-1");
+			vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: null } as never);
+
+			await expect(handlers.mergeTask({ taskId: "task-1", projectId: "gp1" })).rejects.toThrow(LOCAL_MERGE_SHARED_FOLDER_ERROR);
+			expect(git.getCurrentBranch).toHaveBeenCalledWith("/tmp/wt-own");
+			expect(git.getCurrentBranch).not.toHaveBeenCalledWith("/tmp/customer-migration");
+		});
 	});
 });
 
@@ -12345,6 +12426,16 @@ describe("resumeTaskSession — the Resume Session path dev3 agent resume reuses
 		expect(writes.some((patch) => patch.sessionState?.panes[0]?.parked)).toBe(true);
 		expect(writes[writes.length - 1]?.sessionState?.panes[0]).toMatchObject({ sessionId: LIVE, accountId: "account-1" });
 		expect(writes.some((patch) => patch.hibernated !== undefined)).toBe(false);
+	});
+
+	it("checks the task's own workspace before a restart, so an own worktree gets its .git link checked", async () => {
+		const task = arrange([LIVE], [`${LIVE}.jsonl`], { ownWorktree: true });
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+		(pty.hasSession as any).mockReturnValue(true);
+
+		await handlers.resumeTask({ taskId: task.id, restart: true });
+
+		expect(workspaceGuard.assertTaskWorkspacePresent).toHaveBeenNthCalledWith(1, expect.anything(), WORKTREE, expect.objectContaining({ ownWorktree: true }));
 	});
 
 	it.each(["alive", "unknown"] as const)("rechecks a watchdog restart inside the resume flight and refuses a %s agent", async (liveness) => {

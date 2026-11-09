@@ -92,6 +92,12 @@ describe("TaskCompletionStrip", () => {
 		expect(screen.queryByText("Completing removes the worktree and ends the terminal session.")).toBeNull();
 	});
 
+	it("says the worktree goes for an own-worktree task in a workflow-off project", async () => {
+		render(<I18nProvider><TaskCompletionStrip task={{ ...worktreeTask, ownWorktree: true } as Task} project={{ ...project, gitWorkflow: false } as Project} /></I18nProvider>);
+		await offer("agent");
+		expect(screen.getByText("Completing removes the worktree and ends the terminal session.")).toBeInTheDocument();
+	});
+
 	it("lets Complete through when the check fails, with a warning", async () => {
 		vi.mocked(api.request.getUnsavedWork).mockRejectedValue(new Error("git gone"));
 		renderStrip();

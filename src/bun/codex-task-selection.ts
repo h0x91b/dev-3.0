@@ -1,7 +1,7 @@
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { CodingAgent, PaneSessionEntry, Project, Task } from "../shared/types";
-import { hasGitWorkflow } from "../shared/types";
+import { taskUsesWorktree } from "../shared/types";
 import { agentKey } from "../shared/agent-adapters/families";
 import * as agents from "./agents";
 import * as data from "./data";
@@ -36,7 +36,7 @@ export async function configuredCodexHomes(project: Project, task: Task, agent: 
  * folder can be shared by several tasks, so matching its cwd proves nothing.
  */
 function scanWorktree(project: Project, task: Task): string | null {
-	if (!hasGitWorkflow(project) || !task.worktreePath) return null;
+	if (!taskUsesWorktree(project, task) || !task.worktreePath) return null;
 	return task.worktreePath === `${git.taskDir(project, task)}/worktree` ? task.worktreePath : null;
 }
 

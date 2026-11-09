@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { hasGitWorkflow, type Project, type Task } from "../../../shared/types";
+import { taskUsesWorktree, type Project, type Task } from "../../../shared/types";
 import { useT } from "../../i18n";
 import { api } from "../../rpc";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../../state";
@@ -115,7 +115,7 @@ function Strip({ offer, task, project, overlay, belowZoomBadge }: { offer: Compl
 	// The user's own ask keeps the exact footer of the dialog it replaces.
 	const note = isUser
 		? t(task.worktreePath ? "task.warnCompletionFooter" : isCancel ? "task.confirmCancelFooter" : "task.confirmCompleteFooter")
-		: t(!hasGitWorkflow(project) ? "completionStrip.folderNote" : task.worktreePath ? "completionStrip.worktreeNote" : "completionStrip.sessionNote");
+		: t(!taskUsesWorktree(project, task) ? "completionStrip.folderNote" : task.worktreePath ? "completionStrip.worktreeNote" : "completionStrip.sessionNote");
 
 	return (
 		<div

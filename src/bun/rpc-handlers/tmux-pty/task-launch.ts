@@ -343,7 +343,7 @@ export async function launchTaskPty(
 	},
 ): Promise<string | null | undefined> {
 	// First, before any trust/hook/config write: tmux would start a missing cwd in $HOME.
-	assertTaskWorkspacePresent(project, worktreePath);
+	assertTaskWorkspacePresent(project, worktreePath, task);
 	// Scripts and agent env see the repo as the project root; `project` itself keeps keying the task file.
 	const rootProject = rootProjectFor(project, task);
 	// Only a fresh coordinator launch with no picked agent; every other task keeps the global default.
@@ -829,7 +829,7 @@ export async function launchColumnAgent(
 		log.warn("launchColumnAgent: no worktreePath, skipping", { taskId: task.id.slice(0, 8) });
 		return;
 	}
-	assertTaskWorkspacePresent(project, worktreePath);
+	assertTaskWorkspacePresent(project, worktreePath, task);
 
 	const { agentId, configId, prompt: rawPrompt } = agentConfig;
 	const rootProject = rootProjectFor(project, task);

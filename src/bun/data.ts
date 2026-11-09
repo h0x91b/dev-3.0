@@ -908,6 +908,8 @@ export async function addTask(
 		labelIds?: string[];
 		userLabelIds?: string[];
 		opsWorkDir?: string | null;
+		/** Own worktree in a project with the git workflow off - see Task.ownWorktree. */
+		ownWorktree?: boolean;
 		attachedRepo?: string | null;
 		opsWorktree?: boolean;
 		notes?: Task["notes"];
@@ -987,6 +989,7 @@ export async function addTask(
 			...(extras?.customTitle ? { customTitle: extras.customTitle } : {}),
 			...(extras?.titleEditedByUser ? { titleEditedByUser: true } : {}),
 			...(extras?.opsWorkDir ? { opsWorkDir: extras.opsWorkDir } : {}),
+			...(extras?.ownWorktree ? { ownWorktree: true } : {}),
 			...(extras?.attachedRepo ? { attachedRepo: extras.attachedRepo } : {}),
 			...(extras?.opsWorktree ? { opsWorktree: true } : {}),
 			...(storesInProject(liveStorage(project)) ? { taskDirLocation: "project" as const } : {}),

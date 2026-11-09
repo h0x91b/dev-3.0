@@ -736,8 +736,8 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 - **Rule/why:** a parked task is one the user walked away from; complete stays in Move to. Rejected ✓+✕ (weak) and the hover-only header ✕. yaml `lifecycle`.
 
 ## 2026-10-02 - Git workflow is a project property, switched on the Board tab
-- **Rule:** `Project.gitWorkflow=false` hides the git domain like a virtual board but keeps the real folder and its config. The switch is a Board-tab ToggleSwitch beside Privacy, refused while a task is live. AddProject's folder pane carries the same switch (off: Local only, shared-folder copy); a non-git folder picked with it on gets an inline offer; no dashboard badge.
-- **Why:** project-record state like `sensitive`, not git-committed config. Rejected: a per-task toggle (columns and teardown are board-level), a third AddProject kind segment, a "No git" badge. Evidence: `ProjectSettings.tsx`, `AddProjectModal.tsx`, `decisions/2026/10/02/per-project-git-workflow-switch.md`.
+- **Rule:** `Project.gitWorkflow=false` hides the git domain but keeps the real folder and config. Board-tab ToggleSwitch beside Privacy, refused while a task is live; AddProject's folder pane has the same switch (a non-git folder with it on gets an inline offer); no dashboard badge. 2026-10-22: CreateTask's Working folder radiogroup (Project folder / Own worktree, To Do only) gives one task `ownWorktree`: its own Git bar, no local merge, columns unchanged.
+- **Why:** project-record state like `sensitive`. Rejected: a per-task coding toggle (columns are board-level), an inspector worktree toggle, a third AddProject kind, a "No git" badge. Records: `per-project-git-workflow-switch`, `own-worktree-in-a-gitless-project`.
 
 ## 2026-10-31 — Epics: a global object with no destination of its own
 - **Rule:** chip above the card title (click filters `epic:`), an Epic row in the detail metadata grid, optional New Task field, management in Settings → Tasks & Board → Epics; a cross-board footnote reuses the lineage notice. Bible §3.

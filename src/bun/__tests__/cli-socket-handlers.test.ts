@@ -2479,7 +2479,7 @@ describe("task.create", () => {
 			}));
 
 			expect(resp.ok).toBe(true);
-			expect(resolveTaskStartRef).toHaveBeenCalledWith({ project, pr: "1512", branch: undefined });
+			expect(resolveTaskStartRef).toHaveBeenCalledWith({ project, pr: "1512", branch: undefined, ownWorktree: false });
 			expect(vi.mocked(createTask).mock.calls[0]![0]).toMatchObject({
 				existingBranch: "arditti/fix/ctrl-o",
 				taskType: "pr-review",

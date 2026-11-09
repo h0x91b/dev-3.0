@@ -46,7 +46,7 @@ export async function spawnAgentInTask(params: {
 	if (!task.worktreePath) {
 		throw new Error("Task has no worktree — cannot spawn agent");
 	}
-	assertTaskWorkspacePresent(project, task.worktreePath);
+	assertTaskWorkspacePresent(project, task.worktreePath, task);
 	await assertLaunchAgentsInstalled([{ agentId: params.agentId, configId: params.configId }]);
 
 	// Written BEFORE the split on purpose: a conversation that cannot be retold

@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { hasGitWorkflow, type Project, type Task } from "../../shared/types";
+import { taskUsesWorktree, type Project, type Task } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
 import { folderWorkDir } from "../task-folder";
@@ -56,7 +56,7 @@ async function rehydrateTask(project: Project, task: Task): Promise<void> {
 	const worktreeExists = worktreePath ? existsSync(worktreePath) : false;
 	const terminalAlive = await terminalStillAlive(task);
 	let branchName = task.branchName ?? null;
-	if (hasGitWorkflow(project) && worktreeExists && worktreePath && !branchName) {
+	if (taskUsesWorktree(project, task) && worktreeExists && worktreePath && !branchName) {
 		try {
 			branchName = await git.getCurrentBranch(worktreePath);
 		} catch (error) {
@@ -95,7 +95,7 @@ export async function rehydrateTaskLifecycles(): Promise<void> {
 	const work: Promise<void>[] = [];
 	for (const project of projects) {
 		const tasks = await data.loadTasks(project);
-		if (hasGitWorkflow(project)) {
+		if (tasks.some((task) => taskUsesWorktree(project, task))) {
 			try {
 				await git.recoverStaleInitializingWorktrees(
 					project,

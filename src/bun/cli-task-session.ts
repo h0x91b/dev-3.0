@@ -58,7 +58,7 @@ async function performHibernate({ project, task, requester }: SessionActionOptio
 async function performWakeShell({ project, task, requester }: SessionActionOptions): Promise<CliWakeOutcome> {
 	if (!task.hibernated) return { outcome: "not-hibernated", taskId: task.id, seq: task.seq };
 	// Refused before the dialog: an approval that ends in "worktree is missing" asked for nothing.
-	assertTaskWorkspacePresent(project, task.worktreePath);
+	assertTaskWorkspacePresent(project, task.worktreePath, task);
 	let current = task;
 	if (requester) {
 		const answer = await askUser(project, task, requester, { kind: "wake-shell" });

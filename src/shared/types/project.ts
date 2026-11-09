@@ -295,6 +295,25 @@ export function hasGitWorkflow(project: Pick<Project, "kind" | "gitWorkflow">): 
 	return project.kind !== "virtual" && project.gitWorkflow !== false;
 }
 
+/**
+ * Whether this task runs in a git worktree of its own. Every task of a project
+ * with the git workflow does; in a git project with the workflow off, only a
+ * task created with {@link Task.ownWorktree}. Board-level surfaces (columns,
+ * review, variants) keep asking {@link hasGitWorkflow}.
+ */
+export function taskUsesWorktree(
+	project: Pick<Project, "kind" | "gitWorkflow">,
+	task: Pick<Task, "ownWorktree">,
+): boolean {
+	return hasGitWorkflow(project) || (project.kind !== "virtual" && task.ownWorktree === true);
+}
+
+/** The refusal task creation throws when an own worktree is asked of a folder that is not a repository. */
+export const OWN_WORKTREE_NOT_A_REPO_ERROR = "The project folder is not a git repository, so a task cannot get its own worktree";
+
+/** The refusal `mergeTask` throws for a local squash in a project with the git workflow off. */
+export const LOCAL_MERGE_SHARED_FOLDER_ERROR = "Merge would commit in the project folder, which other tasks share - merge through a pull request instead";
+
 /** The refusal `updateProjectSettings` throws when the folder cannot take the git workflow. */
 export const GIT_WORKFLOW_NOT_A_REPO_ERROR = "The project folder is not a git repository, so the git workflow cannot be switched on";
 

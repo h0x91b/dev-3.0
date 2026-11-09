@@ -362,6 +362,13 @@ export interface Task {
 	 */
 	opsWorkDir?: string | null;
 	/**
+	 * For a git project with the git workflow off: this task gets its own worktree
+	 * and branch instead of sharing the project folder, and keeps the task-level
+	 * git tooling (diff, Git bar). Columns and review stay board-level. Chosen
+	 * while the task is in To Do; ignored on every other project kind.
+	 */
+	ownWorktree?: boolean;
+	/**
 	 * Virtual ("Operations") tasks only: absolute top level of a local git repo the
 	 * user attached to read its diff here. Read-only — never written to or removed.
 	 */

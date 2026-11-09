@@ -9,7 +9,7 @@ import LabelChip from "./LabelChip";
 import PriorityBadge from "./PriorityBadge";
 import OpenInMenu from "./OpenInMenu";
 import { formatDate } from "./NoteItem";
-import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle, hasGitWorkflow, isCoordinatorTask, isSharedClip, resolveTaskCompareBaseBranch, taskCompletesManually, taskSharedMedia } from "../../shared/types";
+import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle, isCoordinatorTask, isSharedClip, resolveTaskCompareBaseBranch, taskCompletesManually, taskSharedMedia, taskUsesWorktree } from "../../shared/types";
 import { earlierPullRequests, trustedPrStatusCache } from "../../shared/task-pull-requests";
 import InlineRename from "./InlineRename";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
@@ -278,7 +278,7 @@ function TaskInfoPanel({
 	const isTaskActive = ACTIVE_STATUSES.includes(task.status);
 	// An Operations task gets the diff (never the write actions) once a repo is attached;
 	// a project with the git workflow off gets none. Scripts and the dev server need neither.
-	const hasGit = hasGitWorkflow(project) || (project.kind === "virtual" && !!task.attachedRepo);
+	const hasGit = taskUsesWorktree(project, task) || (project.kind === "virtual" && !!task.attachedRepo);
 	// Narrow viewport renders no TaskGitActions (the desktop git bar), which is
 	// what feeds `metadataBranchState` on desktop. Own one branch-status
 	// instance here instead: it drives the summary-bar diff badge, the merge
@@ -1117,7 +1117,7 @@ function TaskInfoPanel({
 		<ScheduledMessagesChip task={task} project={project} dispatch={dispatch} placement="down" />
 	) : null;
 
-	const bugHuntersButton = hasGitWorkflow(project) && isTaskActive && task.worktreePath && !bugHuntersHidden ? (
+	const bugHuntersButton = taskUsesWorktree(project, task) && isTaskActive && task.worktreePath && !bugHuntersHidden ? (
 		<HideableControl id="bug-hunters">
 			<Tooltip content={t("bugHunters.buttonTooltip")} detail={t("ttip.infoPanel.bugHunters")}>
 				<button
@@ -1539,7 +1539,7 @@ function TaskInfoPanel({
 								</div>
 							)}
 
-							{hasGitWorkflow(project) && isTaskActive && task.worktreePath && !bugHuntersHidden && (
+							{taskUsesWorktree(project, task) && isTaskActive && task.worktreePath && !bugHuntersHidden && (
 								<div className={`${SHEET_ROW_CLASS} !pr-2`}>
 									<button type="button" onClick={() => setBugHuntersOpen(true)} className="flex flex-1 min-w-0 items-center gap-3">
 										<FindBugsIcon className="h-5 w-5 shrink-0 text-danger" />
@@ -1687,7 +1687,7 @@ function TaskInfoPanel({
 									onBranchStatusChange={setMetadataBranchState}
 									onOpenInlineDiff={onOpenInlineDiff}
 								/>
-							) : !hasGitWorkflow(project) ? (
+							) : !taskUsesWorktree(project, task) ? (
 								<span className="text-fg-muted text-micro italic flex-shrink-0 truncate">{t("task.gitWorkflowOff")}</span>
 							) : (
 								<TaskGitActions
@@ -1775,7 +1775,7 @@ function TaskInfoPanel({
 										onBranchStatusChange={setMetadataBranchState}
 										onOpenInlineDiff={onOpenInlineDiff}
 									/>
-								) : !hasGitWorkflow(project) ? (
+								) : !taskUsesWorktree(project, task) ? (
 									<span className="text-fg-muted text-micro italic flex-shrink-0 truncate">{t("task.gitWorkflowOff")}</span>
 								) : (
 									<TaskGitActions

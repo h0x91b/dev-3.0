@@ -2,7 +2,7 @@ import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { taskDialogInfo } from "./taskDialogInfo";
 import { unsavedWorkWarning } from "./confirmTaskCompletion";
-import { hasGitWorkflow, isOpsWorktreeTask, taskResetConsent, type Project, type Task, type TaskResetConsent } from "../../shared/types";
+import { isOpsWorktreeTask, taskResetConsent, taskUsesWorktree, type Project, type Task, type TaskResetConsent } from "../../shared/types";
 import type { TFunction } from "../i18n";
 
 /**
@@ -18,7 +18,7 @@ export async function confirmTaskReset(
 	onOpenTask?: () => void,
 ): Promise<TaskResetConsent | null> {
 	const consent = taskResetConsent(task);
-	const keepsFolder = !hasGitWorkflow(project);
+	const keepsFolder = !taskUsesWorktree(project, task);
 	const branch = task.branchName;
 	const opsWorktree = isOpsWorktreeTask(task);
 	const unsaved = task.worktreePath && ((!keepsFolder && !task.existingBranch) || opsWorktree)

@@ -28,7 +28,7 @@ async function preflight(project: Project, task: Task, accountId: string | null 
 		return { refused: unavailable(task, "not-active", `The task is ${task.status}; only an active task has a session to resume. Starting it is \`dev3 task move\`.`) };
 	}
 	if (!task.worktreePath) return { refused: unavailable(task, "no-worktree", "The task has no worktree, so there is nothing to resume.") };
-	assertTaskWorkspacePresent(project, task.worktreePath);
+	assertTaskWorkspacePresent(project, task.worktreePath, task);
 	if (await taskTerminalAlive(task)) {
 		return { refused: { outcome: "already-running", taskId: task.id, seq: task.seq, backend: taskTerminalBackendIdentity(task) } };
 	}

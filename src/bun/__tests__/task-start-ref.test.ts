@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Project } from "../../shared/types";
-import { TASK_REF_UNRESOLVED_PREFIX } from "../../shared/types";
+import { OWN_WORKTREE_NOT_A_REPO_ERROR, TASK_REF_UNRESOLVED_PREFIX } from "../../shared/types";
 
 vi.mock("../data", () => ({
 	getProject: vi.fn(),
@@ -16,6 +16,7 @@ vi.mock("../github", async () => {
 
 vi.mock("../git", () => ({
 	refExists: vi.fn(),
+	isGitRepo: vi.fn(async () => true),
 	fetchFork: vi.fn(async () => true),
 	fetchOrigin: vi.fn(async () => true),
 	lastOriginFetchError: vi.fn(() => null),
@@ -51,6 +52,7 @@ beforeEach(() => {
 	vi.mocked(git.fetchFork).mockResolvedValue(true);
 	vi.mocked(git.fetchOrigin).mockResolvedValue(true);
 	vi.mocked(git.refExists).mockResolvedValue(true);
+	vi.mocked(git.isGitRepo).mockResolvedValue(true);
 	vi.mocked(git.lastOriginFetchError).mockReturnValue(null);
 });
 
@@ -166,6 +168,26 @@ describe("resolveTaskStartRef", () => {
 
 			await expect(resolveTaskStartRef({ project: PROJECT, branch: "origin/typo" }))
 				.rejects.toThrow(/no ref "origin\/typo" in \/repo/);
+		});
+
+		it("does not tell an Operations board to pass --worktree it already passed", async () => {
+			const ops = { ...PROJECT, kind: "virtual" } as Project;
+
+			for (const ownWorktree of [true, false]) {
+				const err = await resolveTaskStartRef({ project: ops, branch: "x", ownWorktree }).catch((e: Error) => e);
+				expect(String(err)).toMatch(/Operations board/);
+				expect(String(err)).not.toMatch(/Pass --worktree/);
+			}
+		});
+
+		it("names a gitless folder that is not a repository before looking up the ref", async () => {
+			const gitless = { ...PROJECT, gitWorkflow: false } as Project;
+			vi.mocked(git.isGitRepo).mockResolvedValue(false);
+			vi.mocked(git.refExists).mockResolvedValue(false);
+
+			await expect(resolveTaskStartRef({ project: gitless, branch: "x", ownWorktree: true }))
+				.rejects.toThrow(OWN_WORKTREE_NOT_A_REPO_ERROR);
+			expect(git.refExists).not.toHaveBeenCalled();
 		});
 
 		// A tag or a bare sha would resolve under neither refs/remotes nor refs/heads,

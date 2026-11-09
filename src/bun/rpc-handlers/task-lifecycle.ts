@@ -2,7 +2,7 @@ import type { ReviewedPullRequest, AgentCancellationRequest, AgentCompletionRequ
 import { rememberVariantBedrockProfile } from "../bedrock-profile-pref";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
 import { isTaskSoundEnabled } from "../../shared/task-sound-statuses";
-import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, LAUNCH_AFTER_UNTIL, hasGitWorkflow, normalizeTaskType, reviewTaskTitle } from "../../shared/types";
+import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, LAUNCH_AFTER_UNTIL, hasGitWorkflow, normalizeTaskType, OWN_WORKTREE_NOT_A_REPO_ERROR, reviewTaskTitle, taskUsesWorktree } from "../../shared/types";
 import { armLaunchAfter, clearLaunchAfter, startLaunchAfterNow } from "../launch-after";
 import * as data from "../data";
 import { loadTaskLineage } from "../task-lineage";
@@ -217,7 +217,18 @@ async function resolveOpsRepo(project: Project, opsWorkDir?: string | null, want
  * too — a second creation path is how `foreignCode` came to be set in the GUI
  * and nowhere else.
  */
-export async function createTask(params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; opsWorktree?: boolean; priority?: TaskPriority; taskType?: TaskType; origin?: TaskOrigin; epicId?: string }): Promise<Task> {
+/**
+ * Whether a task of this project may take {@link Task.ownWorktree}: only a git
+ * project with the git workflow off, and only when its folder is a repository.
+ * Throws when the caller asked for one the folder cannot give.
+ */
+async function resolveOwnWorktree(project: Project, requested: boolean | undefined): Promise<boolean> {
+	if (requested !== true || project.kind === "virtual" || hasGitWorkflow(project)) return false;
+	if (!(await git.isGitRepo(project.path))) throw new Error(OWN_WORKTREE_NOT_A_REPO_ERROR);
+	return true;
+}
+
+export async function createTask(params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; opsWorktree?: boolean; priority?: TaskPriority; taskType?: TaskType; origin?: TaskOrigin; epicId?: string; ownWorktree?: boolean }): Promise<Task> {
 	log.info("→ createTask", {
 		projectId: params.projectId,
 		requestedStatus: params.status ?? "todo",
@@ -226,6 +237,7 @@ export async function createTask(params: { projectId: string; description: strin
 		descriptionLength: params.description.length,
 		hasExistingBranch: Boolean(params.existingBranch),
 		hasOpsWorkDir: Boolean(params.opsWorkDir),
+		ownWorktree: params.ownWorktree === true,
 		priority: params.priority,
 		taskType: params.taskType,
 		origin: params.origin?.kind ?? "user",
@@ -252,14 +264,16 @@ export async function createTask(params: { projectId: string; description: strin
 	// not run that branch's own config (see Task.foreignCode). Asked now rather than at
 	// each launch because a merged pull request's branch disappears upstream, and a
 	// later check would silently promote the task back to "my own work".
-	const foreignCode = !hasGitWorkflow(project)
+	const ownWorktree = await resolveOwnWorktree(project, params.ownWorktree);
+	const usesWorktree = taskUsesWorktree(project, { ownWorktree });
+	const foreignCode = !usesWorktree
 		? false
 		: await git.isForeignBranchRef(project.path, params.existingBranch);
 	// A review task's draft identity beats a title derived from the description: the
 	// description leads with the review preamble, so every review card otherwise
 	// reads the same. A title the USER typed still wins — the modal sends that as
 	// `customTitle` after creation, which getTaskTitle prefers over this one.
-	const reviewIdentity = params.taskType === "pr-review" && params.existingBranch && hasGitWorkflow(project) && !isScratch
+	const reviewIdentity = params.taskType === "pr-review" && params.existingBranch && usesWorktree && !isScratch
 		? await reviewIdentityForBranch(project, params.existingBranch)
 		: null;
 	const reviewTitle = reviewIdentity?.title ?? "";
@@ -277,6 +291,7 @@ export async function createTask(params: { projectId: string; description: strin
 			? { title: reviewTitle }
 			: !isScratch && params.title?.trim() ? { title: params.title.trim() } : {}),
 		...(params.opsWorkDir && !opsWorktree ? { opsWorkDir: params.opsWorkDir } : {}),
+		...(ownWorktree ? { ownWorktree: true } : {}),
 		...(attachedRepo ? { attachedRepo } : {}),
 		// The work dir of a worktree-mode task is managed, and its branch starts from the repo's default.
 		...(opsWorktree ? { opsWorktree: true } : {}),
@@ -926,10 +941,11 @@ async function editTask(params: {
 	existingBranch?: string | null;
 	draft?: boolean;
 	taskType?: TaskType | null;
+	ownWorktree?: boolean;
 	opsWorkDir?: string | null;
 	opsWorktree?: boolean;
 }): Promise<Task> {
-	log.info("→ editTask", { taskId: params.taskId, draft: params.draft });
+	log.info("→ editTask", { taskId: params.taskId, draft: params.draft, ownWorktree: params.ownWorktree });
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 	if (task.status !== "todo") {
@@ -947,6 +963,7 @@ async function editTask(params: {
 	if (params.taskType != null && normalizeTaskType(params.taskType) !== params.taskType) {
 		throw new Error(`Invalid task type "${params.taskType}"`);
 	}
+	const ownWorktree = params.ownWorktree === undefined ? undefined : await resolveOwnWorktree(project, params.ownWorktree);
 
 	// An Operations folder choice is resolved exactly as createTask does it.
 	const opsRepo = project.kind === "virtual" && params.opsWorkDir !== undefined
@@ -977,6 +994,14 @@ async function editTask(params: {
 		}
 		if (params.draft !== undefined) updates.draft = params.draft;
 		if (params.taskType !== undefined) updates.taskType = params.taskType;
+		if (ownWorktree !== undefined) {
+			updates.ownWorktree = ownWorktree || undefined;
+			// A shared-folder task has no branch to start on.
+			if (!ownWorktree && !hasGitWorkflow(project)) {
+				updates.existingBranch = null;
+				updates.baseBranch = data.deriveTaskBaseBranch(project, null);
+			}
+		}
 		const changed = withoutUnchanged(current, updates);
 		return { updates: changed, result: Object.keys(changed).length > 0 };
 	});
