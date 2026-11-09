@@ -66,14 +66,28 @@ async function askInDialog(
 		console.error("[CompletionOfferDialogHost] ConfirmHost never mounted; the offer stays on its task marker");
 		return;
 	}
-	const known = task && project ? { task, project } : null;
+	await askOfferInModal(offer, task && project ? { task, project } : null, t, { signal, onOpenTask });
+}
+
+/**
+ * Asks one merge or agent offer in the shared `confirm()` modal and hands the answer
+ * to the offer: the agent-request identity, the manual-completion action for merges
+ * and the gated unsaved-work check. The Ready to complete screen asks a row the same way.
+ */
+export async function askOfferInModal(
+	offer: CompletionOffer,
+	known: { task: Task; project: Project } | null,
+	t: TFunction,
+	{ signal, onOpenTask }: { signal?: AbortSignal; onOpenTask?: (taskId: string, projectId: string) => void } = {},
+): Promise<void> {
 	const isAgent = offer.kind === "agent";
 	const skipGit = known ? completionSkipsGitCheck(known.task, known.project) : false;
+	const openTask = !isAgent && onOpenTask ? () => onOpenTask(offer.taskId, offer.projectId) : undefined;
 	const options: ConfirmOptions = {
 		title: t(isAgent ? "completionStrip.agentTitle" : "completionStrip.mergedTitle"),
 		message: known ? completionOfferNote(known.task, known.project, t) : t("completionStrip.worktreeNote"),
 		// Opening the task answers "Keep open": right for a merge, a refusal for the agent.
-		info: known ? taskDialogInfo(known.task, known.project, isAgent ? undefined : () => onOpenTask(offer.taskId, offer.projectId)) : undefined,
+		info: known ? taskDialogInfo(known.task, known.project, openTask) : undefined,
 		confirmLabel: t("app.branchMergedComplete"),
 		cancelLabel: t("completionStrip.keepOpen"),
 		danger: true,
@@ -90,6 +104,6 @@ async function askInDialog(
 	};
 	const { alternativeAction } = options;
 	const result = alternativeAction ? await confirm({ ...options, alternativeAction }) : await confirm(options);
-	if (signal.aborted) return;
+	if (signal?.aborted) return;
 	offer.answer(result === "manual" ? "manual" : result === true);
 }

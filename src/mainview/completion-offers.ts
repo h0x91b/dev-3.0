@@ -104,6 +104,19 @@ export function offerAsksInDialog(current: CompletionOfferStyle = style): boolea
 	return current === "dialog";
 }
 
+/** Aborts once the offer is answered or withdrawn anywhere, so a modal asking it can close. */
+export function offerSettledSignal(offerId: string): AbortSignal {
+	const controller = new AbortController();
+	const check = () => {
+		if (offers.some((o) => o.id === offerId)) return;
+		listeners.delete(check);
+		controller.abort();
+	};
+	listeners.add(check);
+	check();
+	return controller.signal;
+}
+
 export function hasCompletionOffer(taskId: string, kind: CompletionOfferKind): boolean {
 	return offers.some((o) => o.taskId === taskId && o.kind === kind);
 }

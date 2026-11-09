@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { _resetCompletionOffersForTests, offerCompletion, pickCompletionOffer, useCompletionOffers } from "../completion-offers";
+import { _resetCompletionOffersForTests, offerCompletion, offerSettledSignal, pickCompletionOffer, useCompletionOffers } from "../completion-offers";
 import { renderHook, act } from "@testing-library/react";
 
 afterEach(() => _resetCompletionOffersForTests());
@@ -59,5 +59,19 @@ describe("completion offers", () => {
 		expect(pickCompletionOffer(result.current, "t1")?.kind).toBe("agent");
 		expect(pickCompletionOffer(result.current, "t2")?.kind).toBe("merge");
 		expect(pickCompletionOffer(result.current, "t3")).toBeNull();
+	});
+});
+
+describe("offerSettledSignal", () => {
+	it("aborts once the offer is answered, so a modal asking it can close", async () => {
+		let answer!: Promise<unknown>;
+		act(() => { answer = offerCompletion({ taskId: "t1", projectId: "p1", kind: "agent" }); });
+		const { result } = renderHook(() => useCompletionOffers());
+		const signal = offerSettledSignal(result.current[0]!.id);
+		expect(signal.aborted).toBe(false);
+		act(() => result.current[0]!.answer(true));
+		await answer;
+		expect(signal.aborted).toBe(true);
+		expect(offerSettledSignal("gone").aborted).toBe(true);
 	});
 });
