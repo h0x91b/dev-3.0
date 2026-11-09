@@ -29,10 +29,13 @@ export const CATALOG_PROVIDER_KINDS: CatalogProviderKind[] = ["openai", "anthrop
 export interface CatalogProvider {
 	id: string;
 	kind: CatalogProviderKind;
-	/** User-facing name only; renaming it never changes the wire prefix. */
+	/** For a `custom` endpoint this is the routing identity: older app versions
+	 *  derive the wire key from it, so it never changes after the first save. */
 	label: string;
-	/** Frozen sidecar key of a `custom` provider. Absent on providers saved before
-	 *  this field existed, which keep the key derived from their label. */
+	/** The name shown after a custom endpoint was renamed; `label` stays as saved. */
+	displayName?: string;
+	/** Transient: the real proxy key the server hands the renderer in the view.
+	 *  Never written to disk, where the key is derived from `label`. */
 	wireKey?: string;
 	/** Required for `custom`; ignored for the known kinds. */
 	baseUrl?: string;
@@ -128,27 +131,36 @@ function slugify(label: string): string {
 /**
  * The provider's key inside the sidecar's config, and the prefix of every wire
  * name it serves. A known kind uses its canonical provider name (so at most one
- * provider per kind — enforced by `validateCatalog`); a custom endpoint keeps its
- * frozen `wireKey`, or `custom-<slug>` of its label when it has none yet.
+ * provider per kind — enforced by `validateCatalog`); a custom endpoint gets
+ * `custom-<slug of label>`, or the view's `wireKey` when the renderer holds one.
  */
 export function sidecarProviderKey(provider: CatalogProvider): string {
 	if (provider.kind !== "custom") return provider.kind;
 	return provider.wireKey ?? `custom-${slugify(provider.label)}`;
 }
 
+/** What the user sees for a provider: its rename if it has one, else its label. */
+export function providerDisplayName(provider: CatalogProvider): string {
+	return provider.displayName ?? provider.label;
+}
+
 /**
- * Pins every custom provider's wire key at save time: agents persist wire names,
- * so a key must never follow a later rename. The stored catalog is the authority;
- * a `wireKey` sent by the caller is never trusted.
+ * Turns a catalog coming from the view (where `label` is the shown name) into the
+ * one to store. A custom endpoint's stored `label` is its routing identity — older
+ * app versions share the file and derive the wire key from it — so a rename goes
+ * into `displayName`. Anything the caller sends as `wireKey` is dropped.
  */
-export function freezeProviderWireKeys(stored: ModelCatalog, next: ModelCatalog): ModelCatalog {
+export function keepProviderRoutingLabels(stored: ModelCatalog, next: ModelCatalog): ModelCatalog {
 	return {
 		...next,
-		providers: next.providers.map(({ wireKey: _ignored, ...provider }) => {
-			if (provider.kind !== "custom") return provider;
-			const found = stored.providers.find((p) => p.id === provider.id);
-			const before = found?.kind === "custom" ? found : undefined;
-			return { ...provider, wireKey: sidecarProviderKey(before ?? provider) };
+		providers: next.providers.map(({ wireKey: _wireKey, displayName: _displayName, ...incoming }) => {
+			const before = stored.providers.find((p) => p.id === incoming.id);
+			if (incoming.kind !== "custom" || before?.kind !== "custom") return incoming;
+			return {
+				...incoming,
+				label: before.label,
+				...(incoming.label === before.label ? {} : { displayName: incoming.label }),
+			};
 		}),
 	};
 }
@@ -502,7 +514,7 @@ function catalogDisplay(catalog: ModelCatalog, bindings: ModelRoleBindings): Rec
 		const model = catalog.models.find((m) => m.id === catalogModelId);
 		const provider = catalog.providers.find((p) => p.id === model?.providerId);
 		if (!model || !provider) continue;
-		display[roleId] = { name: model.name, description: `${provider.label} · ${model.modelId}` };
+		display[roleId] = { name: model.name, description: `${providerDisplayName(provider)} · ${model.modelId}` };
 	}
 	return display;
 }
@@ -651,7 +663,7 @@ export function buildCodexModelCatalog(builtin: CodexModelCatalog, catalog: Mode
 				...template,
 				slug,
 				display_name: model.name,
-				description: `Served by ${provider.label} through the dev3 model catalog.`,
+				description: `Served by ${providerDisplayName(provider)} through the dev3 model catalog.`,
 				// Ours first: in a routed session every built-in is unreachable.
 				priority: 0,
 				visibility: "list",

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { buildSidecarConfig, catalogModelWireName, type ModelCatalog } from "../../shared/model-catalog";
+import { buildSidecarConfig, catalogModelWireName, providerDisplayName, sidecarProviderKey, type ModelCatalog } from "../../shared/model-catalog";
 import type { ModelCatalogView } from "../../shared/types";
 
 const h = vi.hoisted(() => ({
@@ -70,30 +70,65 @@ describe("renaming a custom provider", () => {
 	const model = { id: "m-1", providerId: "c-1", name: "kimi", modelId: "kimi-k3" };
 	const custom = { id: "c-1", kind: "custom" as const, label: "Custom endpoint", baseUrl: "https://a.example", hasKey: false };
 
-	it("keeps the wire name an agent already holds", async () => {
+	/** Saves the provider, then a rename of it; returns what an agent holds and what was persisted. */
+	async function saveThenRename() {
 		await modelCatalogSave({ catalog: { providers: [custom], models: [model] } });
 		const first = h.save.mock.calls[0][0] as ModelCatalog;
+		h.load.mockReturnValueOnce(first);
+		const view = await modelCatalogSave({ catalog: { providers: [{ ...custom, label: "Kimi code" }], models: [model] } });
+		return { first, view, renamed: h.save.mock.calls[1][0] as ModelCatalog };
+	}
+
+	it("keeps the wire name an agent already holds, and shows the new name under the old prefix", async () => {
+		const { first, view, renamed } = await saveThenRename();
 		const heldByAgent = catalogModelWireName(first, "m-1");
 		expect(heldByAgent).toBe("custom-custom-endpoint/kimi");
-
-		h.load.mockReturnValueOnce(first);
-		await modelCatalogSave({ catalog: { providers: [{ ...custom, label: "Kimi code" }], models: [model] } });
-		const renamed = h.save.mock.calls[1][0] as ModelCatalog;
-		expect(renamed.providers[0].label).toBe("Kimi code");
 		expect(catalogModelWireName(renamed, "m-1")).toBe(heldByAgent);
 		expect(Object.keys(buildSidecarConfig(renamed).providers)).toEqual(["custom-custom-endpoint"]);
+		expect(view.providers[0]).toMatchObject({ label: "Kimi code", wireKey: "custom-custom-endpoint" });
 	});
 
-	it("keeps the old-label key of a provider saved before wire keys existed", async () => {
-		h.load.mockReturnValueOnce({ providers: [{ id: "c-1", kind: "custom", label: "Custom endpoint", baseUrl: "https://a.example" }], models: [model] });
-		await modelCatalogSave({ catalog: { providers: [{ ...custom, label: "Kimi code" }], models: [model] } });
-		const renamed = h.save.mock.calls[0][0] as ModelCatalog;
-		expect(catalogModelWireName(renamed, "m-1")).toBe("custom-custom-endpoint/kimi");
+	it("never writes a wire key to disk, and stores the rename beside the routing label", async () => {
+		const { renamed } = await saveThenRename();
+		expect(renamed.providers[0]).toMatchObject({ label: "Custom endpoint", displayName: "Kimi code" });
+		expect(renamed.providers[0]).not.toHaveProperty("wireKey");
 	});
 
-	it("does not trust a wire key sent by the renderer", async () => {
+	it("keeps the stored label's key for a provider saved before display names existed", async () => {
+		h.load.mockReturnValueOnce({ providers: [{ id: "c-1", kind: "custom", label: "Kimi code", baseUrl: "https://a.example" }], models: [model] });
+		const view = await modelCatalogSave({ catalog: { providers: [{ ...custom, label: "Moonshot" }], models: [model] } });
+		const saved = h.save.mock.calls[0][0] as ModelCatalog;
+		expect(catalogModelWireName(saved, "m-1")).toBe("custom-kimi-code/kimi");
+		expect(view.providers[0]).toMatchObject({ label: "Moonshot", wireKey: "custom-kimi-code" });
+	});
+
+	it("does not trust a wire key or display name sent by the renderer", async () => {
 		await modelCatalogSave({ catalog: { providers: [{ ...custom, wireKey: "custom-evil" }], models: [] } });
-		expect((h.save.mock.calls[0][0] as ModelCatalog).providers[0].wireKey).toBe("custom-custom-endpoint");
+		expect(h.save.mock.calls[0][0].providers[0]).not.toHaveProperty("wireKey");
+		expect(h.save.mock.calls[0][0].providers[0].label).toBe("Custom endpoint");
+	});
+
+	// An older app version shares model-catalog.json: it reads and re-saves only
+	// id/kind/label/baseUrl/apiFormat/usageSource, so `displayName` is dropped.
+	it("keeps routing intact when an older app version re-saves the file, at the cost of the shown name", async () => {
+		const { first, renamed } = await saveThenRename();
+		const heldByAgent = catalogModelWireName(first, "m-1")!;
+		const oldSaved: ModelCatalog = {
+			models: renamed.models,
+			providers: renamed.providers.map((p) => ({
+				id: p.id,
+				kind: p.kind,
+				label: p.label,
+				baseUrl: p.baseUrl,
+				apiFormat: p.apiFormat,
+				usageSource: p.usageSource,
+			})),
+		};
+		// What an older reader derives from the label alone.
+		expect(`${sidecarProviderKey(oldSaved.providers[0])}/${model.name}`).toBe(heldByAgent);
+		expect(catalogModelWireName(oldSaved, "m-1")).toBe(heldByAgent);
+		// Documented trade-off: the rename is lost, the routing is not.
+		expect(providerDisplayName(oldSaved.providers[0])).toBe("Custom endpoint");
 	});
 });
 

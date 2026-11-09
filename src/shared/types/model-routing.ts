@@ -68,7 +68,7 @@ export interface ModelCatalogView {
 		id: string;
 		kind: "openai" | "anthropic" | "openrouter" | "custom";
 		label: string;
-		/** Frozen proxy key of a `custom` provider; the server assigns it on save. */
+		/** Server-computed proxy key of a custom provider; view only. */
 		wireKey?: string;
 		baseUrl?: string;
 		/** Wire protocol of a `custom` endpoint; absent means OpenAI-shaped. */

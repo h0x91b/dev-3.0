@@ -5,11 +5,12 @@ import {
 	buildCodexModelCatalog,
 	buildSidecarConfig,
 	catalogModelWireName,
-	freezeProviderWireKeys,
+	keepProviderRoutingLabels,
 	isValidCatalogModelName,
 	modelRolesForAgent,
 	nativeModelIdForWireName,
 	orphanedRoleBindings,
+	providerDisplayName,
 	providerKeyEnvName,
 	resolveModelRoleLaunch,
 	sidecarProviderKey,
@@ -46,7 +47,7 @@ describe("provider keys", () => {
 		expect(sidecarProviderKey({ id: "p1", kind: "custom", label: "My Box 2" })).toBe("custom-my-box-2");
 	});
 
-	it("lets a frozen wire key win over the label", () => {
+	it("lets the view's wire key win over the label", () => {
 		expect(sidecarProviderKey({ id: "p1", kind: "custom", label: "Kimi code", wireKey: "custom-custom-endpoint" })).toBe(
 			"custom-custom-endpoint",
 		);
@@ -109,43 +110,51 @@ describe("uniqueCustomProviderLabel", () => {
 	});
 });
 
-describe("freezeProviderWireKeys", () => {
-	const stored = (...providers: ModelCatalog["providers"]): ModelCatalog => ({ providers, models: [] });
+describe("keepProviderRoutingLabels", () => {
+	const cat = (...providers: ModelCatalog["providers"]): ModelCatalog => ({ providers, models: [] });
+	const box = (label: string, extra: object = {}) => ({ id: "c1", kind: "custom" as const, label, ...extra });
 
-	it("derives a new custom provider's key from its own label", () => {
-		const out = freezeProviderWireKeys(stored(), stored({ id: "c1", kind: "custom", label: "Custom endpoint" }));
-		expect(out.providers[0].wireKey).toBe("custom-custom-endpoint");
+	it("stores a new custom provider under its own label", () => {
+		const out = keepProviderRoutingLabels(cat(), cat(box("Custom endpoint")));
+		expect(out.providers[0]).toEqual(box("Custom endpoint"));
 	});
 
-	it("keeps a legacy provider's old-label key when it is renamed", () => {
-		const before = stored({ id: "c1", kind: "custom", label: "Custom endpoint" });
-		const out = freezeProviderWireKeys(before, stored({ id: "c1", kind: "custom", label: "Kimi code" }));
-		expect(out.providers[0].wireKey).toBe("custom-custom-endpoint");
+	it("keeps the stored label of a renamed custom provider and records the new name", () => {
+		const out = keepProviderRoutingLabels(cat(box("Custom endpoint")), cat(box("Kimi code")));
+		expect(out.providers[0]).toEqual(box("Custom endpoint", { displayName: "Kimi code" }));
+		expect(providerDisplayName(out.providers[0])).toBe("Kimi code");
+		expect(sidecarProviderKey(out.providers[0])).toBe("custom-custom-endpoint");
 	});
 
-	it("keeps an already frozen key when it is renamed", () => {
-		const before = stored({ id: "c1", kind: "custom", label: "Kimi code", wireKey: "custom-custom-endpoint" });
-		const out = freezeProviderWireKeys(before, stored({ id: "c1", kind: "custom", label: "Other" }));
-		expect(out.providers[0].wireKey).toBe("custom-custom-endpoint");
+	it("keeps routing on the first label through several renames, and clears the name on rename back", () => {
+		const renamed = cat(box("Custom endpoint", { displayName: "Kimi code" }));
+		const again = keepProviderRoutingLabels(renamed, cat(box("Other")));
+		expect(again.providers[0]).toEqual(box("Custom endpoint", { displayName: "Other" }));
+		const back = keepProviderRoutingLabels(renamed, cat(box("Custom endpoint")));
+		expect(back.providers[0]).not.toHaveProperty("displayName");
 	});
 
-	it("ignores a wire key supplied by the caller", () => {
-		const before = stored({ id: "c1", kind: "custom", label: "Box" });
-		const out = freezeProviderWireKeys(before, stored({ id: "c1", kind: "custom", label: "Box", wireKey: "custom-evil" }));
-		expect(out.providers[0].wireKey).toBe("custom-box");
-		const fresh = freezeProviderWireKeys(stored(), stored({ id: "c2", kind: "custom", label: "New", wireKey: "custom-evil" }));
-		expect(fresh.providers[0].wireKey).toBe("custom-new");
+	it("ignores a wire key or display name supplied by the caller", () => {
+		const out = keepProviderRoutingLabels(cat(box("Box")), cat(box("Box", { wireKey: "custom-evil", displayName: "x" })));
+		expect(out.providers[0]).toEqual(box("Box"));
+		const fresh = keepProviderRoutingLabels(cat(), cat(box("New", { wireKey: "custom-evil" })));
+		expect(fresh.providers[0]).toEqual(box("New"));
 	});
 
-	it("derives from the new label when a known-kind provider is switched to custom", () => {
-		const before = stored({ id: "p1", kind: "openrouter", label: "OpenRouter" });
-		const out = freezeProviderWireKeys(before, stored({ id: "p1", kind: "custom", label: "My Box" }));
-		expect(out.providers[0].wireKey).toBe("custom-my-box");
+	it("treats a known kind switched to custom as new", () => {
+		const before = cat({ id: "c1", kind: "openrouter", label: "OpenRouter" });
+		const out = keepProviderRoutingLabels(before, cat(box("My Box")));
+		expect(out.providers[0]).toEqual(box("My Box"));
+		expect(sidecarProviderKey(out.providers[0])).toBe("custom-my-box");
 	});
 
-	it("gives a known kind no wire key", () => {
-		const out = freezeProviderWireKeys(stored(), stored({ id: "p1", kind: "openai", label: "OpenAI", wireKey: "x" }));
-		expect(out.providers[0]).not.toHaveProperty("wireKey");
+	it("takes the label of a custom provider switched to a known kind", () => {
+		const out = keepProviderRoutingLabels(cat(box("Custom endpoint")), cat({ id: "c1", kind: "openai", label: "OpenAI" }));
+		expect(out.providers[0]).toEqual({ id: "c1", kind: "openai", label: "OpenAI" });
+	});
+
+	it("shows the label when there is no display name", () => {
+		expect(providerDisplayName(box("Box"))).toBe("Box");
 	});
 });
 
