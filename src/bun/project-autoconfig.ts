@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
-import { repoConfigEnabled, type AutoConfigureKey, type AutoConfigureResult, type Dev3RepoConfig, type Project } from "../shared/types";
+import { hasGitWorkflow, repoConfigEnabled, type AutoConfigureKey, type AutoConfigureResult, type Dev3RepoConfig, type Project } from "../shared/types";
 import * as git from "./git";
 import { parsePackageScripts, resolveRunnerCommand } from "./package-scripts";
 import * as repoConfig from "./repo-config";
@@ -30,21 +30,26 @@ const AUTO_CONFIGURE_KEYS: AutoConfigureKey[] = ["setupScript", "devScript"];
 /**
  * Read what a project folder already says about itself: the install command its
  * lockfiles imply, and the dev server its package.json declares. File reads and
- * PATH lookups only, nothing is run.
+ * PATH lookups only, nothing is run. `withSetup: false` leaves the setup script out.
  */
-export function detectProjectConfig(projectPath: string): Pick<Dev3RepoConfig, AutoConfigureKey> {
+export function detectProjectConfig(
+	projectPath: string,
+	opts: { withSetup: boolean } = { withSetup: true },
+): Pick<Dev3RepoConfig, AutoConfigureKey> {
 	const config: Pick<Dev3RepoConfig, AutoConfigureKey> = {};
 	const pkg = parsePackageScripts(projectPath);
 
-	const installs: string[] = [];
-	if (pkg.exists) installs.push(`${pkg.runner} install`);
-	for (const rule of INSTALL_RULES) {
-		if (!existsSync(join(projectPath, rule.file))) continue;
-		// The installs are chained with &&, so one missing toolchain would fail setup for every task.
-		if (whichSync(rule.command.split(" ")[0])) installs.push(rule.command);
-		else log.info("Skipping install, toolchain not on PATH", { file: rule.file, command: rule.command });
+	if (opts.withSetup) {
+		const installs: string[] = [];
+		if (pkg.exists) installs.push(`${pkg.runner} install`);
+		for (const rule of INSTALL_RULES) {
+			if (!existsSync(join(projectPath, rule.file))) continue;
+			// The installs are chained with &&, so one missing toolchain would fail setup for every task.
+			if (whichSync(rule.command.split(" ")[0])) installs.push(rule.command);
+			else log.info("Skipping install, toolchain not on PATH", { file: rule.file, command: rule.command });
+		}
+		if (installs.length > 0) config.setupScript = installs.join(" && ");
 	}
-	if (installs.length > 0) config.setupScript = installs.join(" && ");
 
 	const devName = DEV_SCRIPT_NAMES.find((name) => pkg.scripts.some((s) => s.name === name));
 	if (devName) config.devScript = resolveRunnerCommand(pkg.runner, devName);
@@ -89,11 +94,13 @@ export async function autoConfigureProject(project: Project): Promise<AutoConfig
 		log.info("Skipping auto-configure, project is already configured", { path: projectPath });
 		return { written: [], existingConfig: true };
 	}
-	const config = detectProjectConfig(projectPath);
+	// A task with the git workflow off skips the setup script, so writing one would be noise.
+	const config = detectProjectConfig(projectPath, { withSetup: hasGitWorkflow(project) });
 	const keys = AUTO_CONFIGURE_KEYS.filter((key) => config[key] !== undefined);
 	if (keys.length === 0) return { written: [] };
 	// Excluded first, so a failed exclude never leaves an unignored file behind.
-	await excludeLocally(projectPath, LOCAL_CONFIG_PATH);
+	// A plain folder added with the git workflow off has no git to ignore it from.
+	if (await git.isGitRepo(projectPath)) await excludeLocally(projectPath, LOCAL_CONFIG_PATH);
 	mkdirSync(join(projectPath, ".dev3"), { recursive: true });
 	writeFileSync(join(projectPath, LOCAL_CONFIG_PATH), JSON.stringify(config, null, 2) + "\n");
 	log.info("Auto-configured project", { path: projectPath, fields: keys });

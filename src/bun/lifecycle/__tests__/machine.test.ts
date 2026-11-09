@@ -12,7 +12,7 @@ function state(
 		runtime: { phase: status === "todo" || status === "completed" || status === "cancelled" ? "idle" : "running" },
 		facts: {
 			hasWorktree: status !== "todo" && status !== "completed" && status !== "cancelled",
-			projectKind: "git",
+			usesWorktrees: true,
 			hasPrIdentity: false,
 			peerReviewEnabled: true,
 		},
@@ -69,7 +69,7 @@ describe("task lifecycle transition table", () => {
 		const current = state("review-by-user", {
 			facts: {
 				hasWorktree: true,
-				projectKind: "git",
+				usesWorktrees: true,
 				hasPrIdentity: false,
 				peerReviewEnabled: true,
 				mergePromptReservation: {
@@ -94,7 +94,7 @@ describe("task lifecycle transition table", () => {
 		const current = state("review-by-user", {
 			facts: {
 				hasWorktree: true,
-				projectKind: "git",
+				usesWorktrees: true,
 				hasPrIdentity: false,
 				peerReviewEnabled: true,
 				manualCompletion: true,
@@ -199,7 +199,7 @@ describe("task lifecycle transition table", () => {
 			},
 			facts: {
 				hasWorktree: true,
-				projectKind: "git",
+				usesWorktrees: true,
 				hasPrIdentity: false,
 				peerReviewEnabled: true,
 			},
@@ -454,7 +454,7 @@ describe("task lifecycle transition table", () => {
 			},
 			facts: {
 				hasWorktree: true,
-				projectKind: "virtual",
+				usesWorktrees: false,
 				hasPrIdentity: false,
 				peerReviewEnabled: true,
 			},
@@ -488,7 +488,7 @@ describe("task lifecycle transition table", () => {
 
 	describe.each(["completed", "cancelled"] as const)("Operations tasks moved to %s", (target) => {
 		const opsState = (opsWorktree: boolean) => state("in-progress", {
-			facts: { hasWorktree: true, projectKind: "virtual", hasPrIdentity: false, peerReviewEnabled: true, ...(opsWorktree ? { opsWorktree } : {}) },
+			facts: { hasWorktree: true, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, ...(opsWorktree ? { opsWorktree } : {}) },
 		});
 		const teardown = (current: LifecycleState) => transition(current, {
 			type: "moveRequested",
@@ -506,7 +506,7 @@ describe("task lifecycle transition table", () => {
 
 		it("still removes a worktree-mode task's workspace from To Do, where the record has no path (reset or failed preparation)", () => {
 			const todo = state("todo", {
-				facts: { hasWorktree: false, projectKind: "virtual", hasPrIdentity: false, peerReviewEnabled: true, opsWorktree: true },
+				facts: { hasWorktree: false, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, opsWorktree: true },
 			});
 			const result = transition(todo, { type: "moveRequested", target: { status: target, customColumnId: null }, runId: "run" });
 
@@ -525,7 +525,7 @@ describe("task lifecycle transition table", () => {
 	it("reset removes the workspace of a worktree-mode Operations task and not of a plain one", () => {
 		const consent = { worktreePath: "/w", lifecycleStartedAt: "S" };
 		const make = (opsWorktree: boolean) => state("in-progress", {
-			facts: { hasWorktree: true, projectKind: "virtual", hasPrIdentity: false, peerReviewEnabled: true, worktreePath: "/w", lifecycleStartedAt: "S", ...(opsWorktree ? { opsWorktree } : {}) },
+			facts: { hasWorktree: true, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, worktreePath: "/w", lifecycleStartedAt: "S", ...(opsWorktree ? { opsWorktree } : {}) },
 		});
 		const types = (opsWorktree: boolean) => transition(make(opsWorktree), { type: "resetRequested", consent }).effects.map((e) => e.type);
 
@@ -538,12 +538,12 @@ describe("task lifecycle transition table", () => {
 
 	it("deleting a worktree-mode Operations task from To Do still removes its derived workspace", () => {
 		const todo = state("todo", {
-			facts: { hasWorktree: false, projectKind: "virtual", hasPrIdentity: false, peerReviewEnabled: true, opsWorktree: true },
+			facts: { hasWorktree: false, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, opsWorktree: true },
 		});
 		const { effects } = transition(todo, { type: "deleteRequested" });
 
 		expect(effects.find((e) => e.type === "removeTaskWorkspace")).toMatchObject({ allowDerivedPath: true });
-		const plain = transition(state("todo", { facts: { hasWorktree: false, projectKind: "virtual", hasPrIdentity: false, peerReviewEnabled: true } }), { type: "deleteRequested" });
+		const plain = transition(state("todo", { facts: { hasWorktree: false, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true } }), { type: "deleteRequested" });
 		expect(plain.effects.some((e) => e.type === "removeTaskWorkspace")).toBe(false);
 	});
 
@@ -958,7 +958,7 @@ describe("boot runtime reconciliation", () => {
 				runtime: { phase: runtime },
 				facts: {
 					hasWorktree: worktreeExists,
-					projectKind: "git",
+					usesWorktrees: true,
 					hasPrIdentity: false,
 					peerReviewEnabled: true,
 				},
@@ -990,7 +990,7 @@ describe("boot runtime reconciliation", () => {
 				},
 				facts: {
 					hasWorktree: worktreeExists,
-					projectKind: "git",
+					usesWorktrees: true,
 					hasPrIdentity: false,
 					peerReviewEnabled: true,
 				},
@@ -1021,7 +1021,7 @@ describe("boot runtime reconciliation", () => {
 				},
 				facts: {
 					hasWorktree: worktreeExists,
-					projectKind: "git",
+					usesWorktrees: true,
 					hasPrIdentity: false,
 					peerReviewEnabled: true,
 				},
@@ -1061,7 +1061,7 @@ describe("boot runtime reconciliation", () => {
 	it("ignores an attaching terminal on a hibernated, parked or worktree-less task", () => {
 		const hibernated = state("in-progress", {
 			runtime: { phase: "idle" },
-			facts: { hasWorktree: true, projectKind: "git", hasPrIdentity: false, peerReviewEnabled: true, hibernated: true },
+			facts: { hasWorktree: true, usesWorktrees: true, hasPrIdentity: false, peerReviewEnabled: true, hibernated: true },
 		});
 		expect(transition(hibernated, { type: "terminalAttached" }).effects).toEqual([]);
 
@@ -1070,7 +1070,7 @@ describe("boot runtime reconciliation", () => {
 
 		const noWorktree = state("in-progress", {
 			runtime: { phase: "idle" },
-			facts: { hasWorktree: false, projectKind: "git", hasPrIdentity: false, peerReviewEnabled: true },
+			facts: { hasWorktree: false, usesWorktrees: true, hasPrIdentity: false, peerReviewEnabled: true },
 		});
 		expect(transition(noWorktree, { type: "terminalAttached" }).effects).toEqual([]);
 	});
@@ -1104,7 +1104,7 @@ describe("boot runtime reconciliation", () => {
 			},
 			facts: {
 				hasWorktree: false,
-				projectKind: "git",
+				usesWorktrees: true,
 				hasPrIdentity: false,
 				peerReviewEnabled: true,
 			},
@@ -1178,7 +1178,7 @@ describe("draft tasks cannot be activated", () => {
 	const draft = () => state("todo", {
 		facts: {
 			hasWorktree: false,
-			projectKind: "git",
+			usesWorktrees: true,
 			hasPrIdentity: false,
 			peerReviewEnabled: true,
 			draft: true,

@@ -8,7 +8,7 @@ import type {
 	Task,
 	TaskPRStatusCache,
 } from "../../shared/types";
-import { buildTaskDialogSubject, getTaskTitle, resolveTaskCompareBaseBranch, taskCompletesManually } from "../../shared/types";
+import { buildTaskDialogSubject, getTaskTitle, hasGitWorkflow, resolveTaskCompareBaseBranch, taskCompletesManually } from "../../shared/types";
 import { savedPrMergedFromBranch } from "../../shared/task-pull-requests";
 import * as data from "../data";
 import * as git from "../git";
@@ -859,7 +859,7 @@ export async function refreshTaskPrStatus(params: { taskId: string; projectId: s
 	if (!getPushMessage()) return { outcome: "skipped" };
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
-	if (project.kind === "virtual" || !task.worktreePath || TERMINAL_TASK_STATUSES.has(task.status)) return { outcome: "skipped" };
+	if (!hasGitWorkflow(project) || !task.worktreePath || TERMINAL_TASK_STATUSES.has(task.status)) return { outcome: "skipped" };
 	const settings = await loadSettings();
 	const suggestCompletion = settings.suggestCompletingTasksAfterMerge !== false;
 	const result = await pollTaskPrStatus(project, task, suggestCompletion, params.force !== false);

@@ -45,7 +45,7 @@ import { agentBinaryPathOverride, brokenCustomPath, enforcedCustomBinaryPaths, i
 import { agentAlternativeInstallCommand, agentInstallCommand } from "../../shared/agent-install";
 import { harnessReadinessFrom } from "../harness-readiness";
 import { validateEnvMap } from "../../shared/env-text";
-import { normalizeProjectName, PROJECT_NAME_MAX_LENGTH, repoConfigEnabled, STORAGE_TRACKED_CONFLICT_ERROR, storageSwitchBlocker } from "../../shared/types";
+import { GIT_WORKFLOW_NOT_A_REPO_ERROR, gitWorkflowSwitchBlocker, hasGitWorkflow, normalizeProjectName, PROJECT_NAME_MAX_LENGTH, repoConfigEnabled, STORAGE_TRACKED_CONFLICT_ERROR, storageSwitchBlocker } from "../../shared/types";
 
 import { writeShellInit } from "../shell-init";
 import { previewShellPrompt } from "../shell-prompt-preview";
@@ -123,6 +123,17 @@ async function getProjectConfigFiles(params: { projectId: string }): Promise<{ h
 	};
 }
 
+async function assertGitWorkflowSwitchAllowed(project: Project, next: boolean): Promise<void> {
+	const blocker = gitWorkflowSwitchBlocker(project, await data.loadTasks(project));
+	if (blocker?.reason === "virtual") throw new Error("Operations boards have no git workflow to switch on");
+	if (blocker?.reason === "live-tasks") {
+		throw new Error(`Finish ${blocker.count} running task(s) or move them back to To Do before switching the git workflow`);
+	}
+	if (next && !(await git.isGitRepo(project.path))) {
+		throw new Error(GIT_WORKFLOW_NOT_A_REPO_ERROR);
+	}
+}
+
 async function hasTrackedInProjectData(projectPath: string): Promise<boolean> {
 	if (!(await git.isGitRepo(projectPath))) return false;
 	const proc = spawn(["git", "-C", projectPath, "ls-files", ".dev3/data", ".dev3/worktrees"], { stdout: "pipe", stderr: "pipe" });
@@ -174,6 +185,9 @@ async function updateProjectSettings(params: { projectId: string } & ProjectSett
 	log.info("→ updateProjectSettings", { projectId: params.projectId });
 	assertValidEnvParam(params.env);
 	const project = await data.getProject(params.projectId);
+	if (params.gitWorkflow !== undefined && params.gitWorkflow !== hasGitWorkflow(project)) {
+		await assertGitWorkflowSwitchAllowed(project, params.gitWorkflow);
+	}
 	const storageRoot = params.storageRoot !== undefined && params.storageRoot !== (storesInProject(project) ? "project" : "home")
 		? { storageRoot: await switchProjectStorage(project, params.storageRoot) }
 		: {};
@@ -201,6 +215,8 @@ async function updateProjectSettings(params: { projectId: string } & ProjectSett
 		...(params.autoAccountExclusions !== undefined
 			? { autoAccountExclusions: normalizeAccountExclusions(params.autoAccountExclusions) }
 			: {}),
+		// Absent means on, so switching back on drops the key instead of storing true.
+		...(params.gitWorkflow !== undefined ? { gitWorkflow: params.gitWorkflow ? undefined : false } : {}),
 		// A blank prompt is how the UI clears the override: dropped from the
 		// record so the global setting takes over again.
 		...(params.reviewModePrompt !== undefined

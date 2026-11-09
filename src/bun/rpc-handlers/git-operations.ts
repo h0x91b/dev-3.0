@@ -9,6 +9,7 @@ import {
 	type ScheduledMessageTarget,
 	type UnsavedWork,
 	getTaskTitle,
+	hasGitWorkflow,
 	isOpsWorktreeTask,
 	resolveTaskCompareBaseBranch,
 } from "../../shared/types";
@@ -57,14 +58,17 @@ import { getMergeCompletionFingerprint } from "../lifecycle/merge-fingerprint";
 import { resolvePrUrl } from "../task-start-ref";
 
 /**
- * Reject git-only RPCs for virtual (Operations) tasks. They have a working dir
- * but no git repo, so any git command would fail with a cryptic "not a git
- * repository". The UI already hides these affordances for virtual tasks; this is
- * defense-in-depth for CLI/programmatic callers and yields a clear error.
+ * Reject git-only RPCs for tasks without the git workflow. An Operations task has
+ * no repo, and a task with the workflow off runs in the project folder itself, so
+ * a git command would either fail cryptically or act on the user's own checkout.
+ * The UI already hides these affordances; this is the backstop for CLI callers.
  */
 function assertGitTask(project: Project, task: Task): asserts task is Task & { worktreePath: string } {
 	if (project.kind === "virtual") {
 		throw new Error("Git operations are not available for Operations tasks");
+	}
+	if (!hasGitWorkflow(project)) {
+		throw new Error("Git operations are not available: this project's git workflow is off");
 	}
 	if (!task.worktreePath) {
 		throw new Error("Task has no worktree");
@@ -81,7 +85,7 @@ type GitReadContext = { worktree: string; repo: string; baseBranch: string; atta
  */
 async function resolveGitReadContext(project: Project, task: Task): Promise<GitReadContext | null> {
 	if (project.kind !== "virtual") {
-		if (!task.worktreePath) return null;
+		if (!hasGitWorkflow(project) || !task.worktreePath) return null;
 		return { worktree: task.worktreePath, repo: project.path, baseBranch: resolveTaskCompareBaseBranch(task, project), attached: false };
 	}
 	const repo = task.attachedRepo;
@@ -289,11 +293,11 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 
-	// Virtual (Operations) tasks have a working dir but no git repo. The renderer
+	// Tasks without the git workflow have a working dir but no worktree. The renderer
 	// polls this every 15s for any active task with a worktreePath, so return an
-	// inert status instead of spawning a doomed `git` in a non-repo directory.
+	// inert status instead of spawning `git` in a folder that is not the task's own.
 	if (project.kind === "virtual") return getAttachedRepoStatus(project, task, params.compareRef);
-	if (!task.worktreePath) return inertBranchStatus();
+	if (!hasGitWorkflow(project) || !task.worktreePath) return inertBranchStatus();
 
 	const resolvedBase = resolveTaskCompareBaseBranch(task, project);
 	const liveBranch = await git.getCurrentBranch(task.worktreePath);
@@ -444,7 +448,7 @@ async function getUnsavedWork(params: { taskId: string; projectId: string }): Pr
 	const task = await data.getTask(project, params.taskId);
 	const nothingUnsaved = { insertions: 0, deletions: 0, unpushed: 0, preservedOutsideBranch: false, ahead: 0, baseUnreachable: false };
 	// A plain attached repo is never deleted, so only a worktree-mode task has anything to lose.
-	if (project.kind === "virtual" ? !isOpsWorktreeTask(task) : !task.worktreePath) return nothingUnsaved;
+	if (project.kind === "virtual" ? !isOpsWorktreeTask(task) : (!hasGitWorkflow(project) || !task.worktreePath)) return nothingUnsaved;
 	// An error propagates, as it does for a git task: the dialog then says "unknown", never "clean".
 	const ctx = await resolveGitReadContext(project, task);
 	if (!ctx) return nothingUnsaved;

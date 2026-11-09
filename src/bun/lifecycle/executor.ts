@@ -21,6 +21,7 @@ import {
 	DEFAULT_REVIEW_PROMPT,
 	getPreparingStageProgress,
 	getTaskTitle,
+	hasGitWorkflow,
 	isOpsWorktreeTask,
 	taskResetConsentMatches,
 } from "../../shared/types";
@@ -34,6 +35,7 @@ import { dumpTerminalTaskConversations } from "../conversation-archive";
 import * as data from "../data";
 import { recordPullRequestSighting } from "../../shared/task-pull-requests";
 import * as git from "../git";
+import { folderWorkDir } from "../task-folder";
 import { DEV3_HOME, OPS_DIR } from "../paths";
 import * as portPool from "../port-pool";
 import {
@@ -332,11 +334,19 @@ async function reopenCodexLaunch(project: Project, task: Task, worktreePath: str
 	}
 }
 
+/**
+ * The folder whose every process may be killed with the task, or null. A chosen
+ * Operations folder or a gitless project folder is shared with the user and with
+ * other tasks, so only a worktree or a managed Operations folder qualifies.
+ */
+function taskOwnedFolder(project: Project, folder: string | null): string | null {
+	if (!folder) return null;
+	if (hasGitWorkflow(project)) return folder;
+	return folder.startsWith(`${OPS_DIR}/`) ? folder : null;
+}
+
 function derivedPreparationPath(project: Project, task: Task): string {
-	if (project.kind === "virtual") {
-		return task.opsWorkDir?.trim() || git.virtualWorkDir(project, task);
-	}
-	return `${git.taskDir(project, task)}/worktree`;
+	return folderWorkDir(project, task) ?? `${git.taskDir(project, task)}/worktree`;
 }
 
 /**
@@ -424,9 +434,10 @@ async function prepareTask(
 				assertLaunchAgentsInstalled([{ agentId: launch.agentId, configId: launch.configId }])
 			));
 		}
-		if (project.kind === "virtual") {
-			const workDir = task.opsWorkDir?.trim() || git.virtualWorkDir(project, task);
-			const opsWorktree = isOpsWorktreeTask(task)
+		// Operations tasks and git projects with the workflow off run in a folder, not a fresh worktree.
+		const workDir = folderWorkDir(project, task);
+		if (workDir) {
+			const opsWorktree = project.kind === "virtual" && isOpsWorktreeTask(task)
 				? await preparationStep(task, effect.runId, "creating-worktree", "createOpsWorktree", () => (
 					git.createOpsWorktree(task.attachedRepo!, task, workDir, task.baseBranch)
 				))
@@ -635,6 +646,9 @@ export async function runCleanupScript(
 	transition: CleanupTransition,
 ): Promise<void> {
 	if (!task.worktreePath || !existsSync(task.worktreePath)) return;
+	// With the git workflow off the task ran in the user's own folder, which a
+	// cleanup script written for a throwaway worktree must never touch.
+	if (project.kind !== "virtual" && !hasGitWorkflow(project)) return;
 	// Only a worktree-mode task runs the repo's cleanup script (its setup ran). Any other Operations task
 	// may sit in the user's own checkout, where the repo's teardown is not ours to run.
 	const rootProject = rootProjectFor(project, task);
@@ -674,7 +688,7 @@ export async function captureCompletedDiffStats(
 	task: Task,
 ): Promise<CompletedDiffStats | undefined> {
 	const opsWorktree = isOpsWorktreeTask(task);
-	if ((project.kind === "virtual" && !opsWorktree) || !task.worktreePath) return undefined;
+	if ((!hasGitWorkflow(project) && !opsWorktree) || !task.worktreePath) return undefined;
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 	try {
 		const ref = opsWorktree
@@ -1163,8 +1177,11 @@ export async function executeLifecycleEffect(
 			// Best-effort on purpose (no "abort" policy): a stubborn foreign process
 			// must not block a completion. Survivors are logged by the reaper.
 			await reapWorktreeProcesses(
-				ctx.sourceTask.worktreePath
-					?? (effect.allowDerivedPath ? derivedPreparationPath(ctx.project, ctx.sourceTask) : null),
+				taskOwnedFolder(
+					ctx.project,
+					ctx.sourceTask.worktreePath
+						?? (effect.allowDerivedPath ? derivedPreparationPath(ctx.project, ctx.sourceTask) : null),
+				),
 				ctx.sourceTask.id.slice(0, 8),
 			);
 			return {};
@@ -1183,7 +1200,9 @@ export async function executeLifecycleEffect(
 			{
 				const worktreePath = ctx.sourceTask.worktreePath
 					?? (effect.allowDerivedPath ? derivedPreparationPath(ctx.project, ctx.sourceTask) : null);
-				if (ctx.project.kind === "virtual") {
+				if (!hasGitWorkflow(ctx.project)) {
+					// Only a managed Operations folder is ever deleted; a chosen folder or
+					// the project folder itself belongs to the user.
 					if (worktreePath?.startsWith(`${OPS_DIR}/`)) {
 						// No recorded path: the dir may hold work from before a reset or a failed launch.
 						const unrecorded = isOpsWorktreeTask(ctx.sourceTask) && !ctx.sourceTask.worktreePath;
@@ -1307,6 +1326,7 @@ export async function executeLifecycleEffect(
 			const taskUpdates: Partial<Task> = {
 				status: effect.status,
 				customColumnId: null,
+				// An Operations task keeps its folder path; nothing else of a finished task does.
 				...(ctx.project.kind === "virtual" && !isOpsWorktreeTask(ctx.task) ? {} : { worktreePath: null, branchName: null }),
 				...(ctx.completedDiffStats ? { completedDiffStats: ctx.completedDiffStats } : {}),
 				runtimeState: runtimeState({ phase: "idle" }),
