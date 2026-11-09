@@ -7,6 +7,7 @@
  * matching removal the file accumulates one dead entry per task, permanently.
  */
 
+import { isInProjectTaskPath } from "../shared/project-storage";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -38,7 +39,7 @@ function normalize(path: string): string {
 
 function isDev3ManagedPath(path: string): boolean {
 	const target = normalize(path);
-	return DEV3_MANAGED_ROOTS.some((root) => target.startsWith(`${normalize(root)}/`));
+	return DEV3_MANAGED_ROOTS.some((root) => target.startsWith(`${normalize(root)}/`)) || isInProjectTaskPath(target);
 }
 
 /**

@@ -177,6 +177,8 @@ describe("isDev3TrustPath", () => {
 		expect(isDev3TrustPath(`${WORKTREES_PATH}/proj/aaaa/worktree`, DEV3_HOME)).toBe(true);
 		expect(isDev3TrustPath(`${DEV3_HOME}/ops/something`, DEV3_HOME)).toBe(true);
 		expect(isDev3TrustPath(WORKTREES_PATH, DEV3_HOME)).toBe(false);
+		expect(isDev3TrustPath("/Users/u/acme/.dev3/worktrees/abcd1234/worktree", DEV3_HOME)).toBe(true);
+		expect(isDev3TrustPath("/Users/u/acme/.dev3/worktrees", DEV3_HOME)).toBe(false);
 		expect(isDev3TrustPath(`${HOME}/my-project`, DEV3_HOME)).toBe(false);
 		expect(isDev3TrustPath(`${HOME}/.dev3.0-elsewhere/worktrees/x`, DEV3_HOME)).toBe(false);
 	});

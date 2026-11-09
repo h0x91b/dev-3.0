@@ -98,6 +98,72 @@ describe("detectContext", () => {
 	});
 });
 
+describe("in-project storage root", () => {
+	const REPO = `${HOME}/.dev3.0/cli-context-inproject-repo`;
+	const SHORT = "ccddeeff";
+	const TASK_ID = `${SHORT}-1111-2222-3333-444444444444`;
+	const TASK_DIR = `${REPO}/.dev3/worktrees/${SHORT}`;
+	const IN_PROJECT_ID = "proj-inproject-1";
+
+	beforeEach(() => {
+		mkdirSync(`${TASK_DIR}/worktree`, { recursive: true });
+		mkdirSync(`${REPO}/.dev3/data`, { recursive: true });
+		writeFileSync(`${REPO}/.dev3/data/tasks.json`, JSON.stringify([{ id: TASK_ID, taskDirLocation: "project" }]));
+		const { readFileSync } = require("node:fs");
+		const projects = JSON.parse(readFileSync(PROJECTS_FILE, "utf-8"));
+		projects.push({ id: IN_PROJECT_ID, name: "In Project", path: REPO, storageRoot: "project" });
+		writeFileSync(PROJECTS_FILE, JSON.stringify(projects));
+	});
+
+	afterEach(() => {
+		rmSync(REPO, { recursive: true, force: true });
+	});
+
+	it("detects the task from an in-project worktree path and reads the project's tasks.json", async () => {
+		const { detectContext } = await import("../context");
+		const nested = `${TASK_DIR}/worktree/src`;
+		mkdirSync(nested, { recursive: true });
+		const ctx = detectContext(nested);
+		expect(ctx).toMatchObject({ projectId: IN_PROJECT_ID, taskId: TASK_ID, worktreePath: `${TASK_DIR}/worktree` });
+	});
+
+	it("does not treat a task logs dir as a worktree", async () => {
+		const { detectFromWorktreePath } = await import("../context");
+		expect(detectFromWorktreePath(`${TASK_DIR}/logs`)).toBeNull();
+		expect(detectFromWorktreePath(`${TASK_DIR}/worktree`)).toMatchObject({ inProjectTaskDir: TASK_DIR, taskShortId: SHORT });
+	});
+
+	it("matches a project registered through a symlinked folder", async () => {
+		const { readFileSync, symlinkSync } = require("node:fs");
+		const link = `${HOME}/.dev3.0/cli-context-inproject-link`;
+		rmSync(link, { force: true });
+		symlinkSync(REPO, link);
+		try {
+			const projects = JSON.parse(readFileSync(PROJECTS_FILE, "utf-8"));
+			for (const p of projects) if (p.id === IN_PROJECT_ID) p.path = link;
+			writeFileSync(PROJECTS_FILE, JSON.stringify(projects));
+			const { detectContext } = await import("../context");
+			expect(detectContext(`${TASK_DIR}/worktree`)).toMatchObject({ projectId: IN_PROJECT_ID, taskId: TASK_ID });
+		} finally {
+			rmSync(link, { force: true });
+		}
+	});
+
+	it("finds projects.json through the account home when a sandbox rewrote HOME", async () => {
+		const { inProjectDev3Home } = await import("../context");
+		const realHome = `${HOME}/.dev3.0/..`;
+		expect(inProjectDev3Home("/nonexistent-sandbox/.dev3.0", () => realHome)).toBe(`${realHome}/.dev3.0`);
+		expect(inProjectDev3Home("/nonexistent-sandbox/.dev3.0", () => "/nonexistent-account")).toBe("/nonexistent-sandbox/.dev3.0");
+	});
+
+	it("diagnostics name both tasks.json roots", async () => {
+		const { detectContextDiagnostics } = await import("../context");
+		const diag = detectContextDiagnostics(`${TASK_DIR}/worktree`);
+		expect(diag).toContain("tasks.json (home,");
+		expect(diag).toContain(`tasks.json (in-project, ${REPO}/.dev3/data/tasks.json): exists`);
+	});
+});
+
 describe("detectContext with sandbox HOME mismatch", () => {
 	const REAL_HOME = process.env.HOME || "/tmp";
 	const SANDBOX_HOME = "/tmp";

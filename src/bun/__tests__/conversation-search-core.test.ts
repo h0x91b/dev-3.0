@@ -55,8 +55,18 @@ describe("findClaudeStoreName", () => {
 
 describe("reconstructWorktreePath", () => {
 	it("builds the deterministic worktree path from short id", () => {
-		expect(reconstructWorktreePath("/home/.dev3.0", "my-proj", "abcd1234-rest-of-uuid")).toBe(
+		expect(reconstructWorktreePath("/home/.dev3.0", { path: "/my-proj" }, { id: "abcd1234-rest-of-uuid" })).toBe(
 			"/home/.dev3.0/worktrees/my-proj/abcd1234/worktree",
+		);
+	});
+
+	it("follows the task's in-project stamp, not the project's current setting", () => {
+		const task = { id: "abcd1234-rest-of-uuid", taskDirLocation: "project" as const };
+		expect(reconstructWorktreePath("/home/.dev3.0", { path: "/r/my-proj" }, task)).toBe(
+			"/r/my-proj/.dev3/worktrees/abcd1234/worktree",
+		);
+		expect(reconstructWorktreePath("/home/.dev3.0", { path: "/r/my-proj", storageRoot: "project" }, { id: task.id })).toBe(
+			"/home/.dev3.0/worktrees/r-my-proj/abcd1234/worktree",
 		);
 	});
 });

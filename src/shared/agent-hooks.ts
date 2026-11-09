@@ -2,6 +2,8 @@
  * Hook-building logic shared between the backend (bun/) and CLI.
  */
 
+import { isInProjectTaskPath, parseInProjectTaskPath } from "./project-storage";
+import { resolveDev3Home } from "./dev3-home";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { PermissionMode, TaskStatus } from "./types";
@@ -500,6 +502,17 @@ function claudePostToolCommand(workingCmd: string, dialect: HookCliDialect): str
 	return `${dialect.cli} ${CLAUDE_POST_TOOL_HOOK_SUBCOMMAND} || ${workingCmd}`;
 }
 
+/**
+ * True when `folder` is a working directory dev3 created and removes with the
+ * task: a worktree or ops folder under the dev3 home, or an in-project task dir.
+ */
+export function isDev3OwnedFolder(folder: string, env: Record<string, string | undefined> = process.env): boolean {
+	const normalize = (path: string) => path.replaceAll("\\", "/").replace(/\/+$/, "").toLowerCase();
+	const target = normalize(folder);
+	const home = normalize(resolveDev3Home(env));
+	return [`${home}/worktrees/`, `${home}/ops/`].some((root) => target.startsWith(root)) || isInProjectTaskPath(target);
+}
+
 export function buildClaudeHooks(
 	options?: { stopTarget?: TaskStatus; dialect?: HookCliDialect },
 ): HookMap {
@@ -819,7 +832,39 @@ export function writeClaudeHooks(
 	if (options?.permissionMode && options.permissionMode !== "default") {
 		updated = ensureDefaultMode(updated, options.permissionMode);
 	}
+	const inProject = parseInProjectTaskPath(worktreePath);
+	if (inProject?.inWorktree) {
+		const parentIsClaudeHome = isClaudeConfigDir(join(inProject.projectPath, ".claude"));
+		updated = ensureParentClaudeMdExcluded(updated, inProject.projectPath, { parentIsClaudeHome });
+	}
 	return { written: writeIfChanged(hooksPath, updated, previous), skippedSymlink: null };
+}
+
+/** Claude Code keeps its global state file inside the dir `CLAUDE_CONFIG_DIR` names; a repo's own `.claude/` never has one. */
+function isClaudeConfigDir(dir: string): boolean {
+	return existsSync(join(dir, ".claude.json"));
+}
+
+/**
+ * A worktree nested in `<project>/.dev3/worktrees/` would make Claude Code also
+ * load the main checkout's memory files as a parent directory's, duplicating the
+ * worktree's own copy. `claudeMdExcludes` drops exactly those - except the
+ * parent `.claude/CLAUDE.md` when that folder is the session's `CLAUDE_CONFIG_DIR`:
+ * it is then the user-level memory file, which the worktree has no copy of.
+ */
+export function ensureParentClaudeMdExcluded(
+	settings: Record<string, unknown>,
+	projectPath: string,
+	opts?: { parentIsClaudeHome?: boolean },
+): Record<string, unknown> {
+	const userMemory = `${projectPath}/.claude/CLAUDE.md`;
+	const wanted = [`${projectPath}/CLAUDE.md`, `${projectPath}/CLAUDE.local.md`];
+	if (!opts?.parentIsClaudeHome) wanted.push(userMemory);
+	const current = Array.isArray(settings.claudeMdExcludes) ? settings.claudeMdExcludes.filter((v): v is string => typeof v === "string") : [];
+	const kept = opts?.parentIsClaudeHome ? current.filter((path) => path !== userMemory) : current;
+	const missing = wanted.filter((path) => !kept.includes(path));
+	if (missing.length === 0 && kept.length === current.length) return settings;
+	return { ...settings, claudeMdExcludes: [...kept, ...missing] };
 }
 
 /**

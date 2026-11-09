@@ -34,9 +34,9 @@ const log = createLogger("agent-skills");
  * the protocol in its system prompt and the SessionStart hook has set the status,
  * so telling it to invoke the skill anyway costs a tool call that buys nothing.
  */
-const CLAUDE_SKILL_DESCRIPTION = "Refreshes live dev3 task state (status, current task). Trigger: PWD is inside ~/.dev3.0/worktrees/ (the dev-3.0 managed path; other worktrees do NOT qualify). If your system prompt already has the 'dev3 — Task Lifecycle Protocol' section, dev3 launched you and you do NOT need to invoke this — follow that section. Invoke only when that section is missing.";
+const CLAUDE_SKILL_DESCRIPTION = "Refreshes live dev3 task state (status, current task). Trigger: PWD is inside ~/.dev3.0/worktrees/ or <project>/.dev3/worktrees/ (the dev-3.0 managed paths; other worktrees do NOT qualify). If your system prompt already has the 'dev3 — Task Lifecycle Protocol' section, dev3 launched you and you do NOT need to invoke this — follow that section. Invoke only when that section is missing.";
 
-const SKILL_DESCRIPTION = "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/). Regular git worktrees or other worktree paths do NOT qualify — only the dev-3.0 managed path. Step 1: invoke this skill (for Codex exec_command calls, always set shell=\\\"/bin/bash\\\" and login=false). Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command.";
+const SKILL_DESCRIPTION = "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/) or <project>/.dev3/worktrees/. Regular git worktrees or other worktree paths do NOT qualify — only the dev-3.0 managed path. Step 1: invoke this skill (for Codex exec_command calls, always set shell=\\\"/bin/bash\\\" and login=false). Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command.";
 
 // ---- Claude Code skill (uses !`command` injection for zero tool calls at startup) ----
 //
@@ -81,7 +81,7 @@ The full protocol is already in your system prompt (the "dev3 — Task Lifecycle
 
 // ---- Codex and generic skills (no command injection support) ----
 
-const COMPACT_SKILL_DESCRIPTION = "Dev3 task lifecycle in ~/.dev3.0/worktrees/. Follow the injected dev3 Task Lifecycle Protocol when present; otherwise load this skill for the full reference.";
+const COMPACT_SKILL_DESCRIPTION = "Dev3 task lifecycle in ~/.dev3.0/worktrees/ or <project>/.dev3/worktrees/. Follow the injected dev3 Task Lifecycle Protocol when present; otherwise load this skill for the full reference.";
 
 function buildCompactSkillContent(dialect: HookCliDialect): string {
 	return `---
@@ -884,7 +884,7 @@ When launched inside an existing dev3 task, that task belongs to the main agent:
 
 ## Prerequisite
 
-If your working directory is inside \`~/.dev3.0/worktrees/\`, invoke the \`/dev3\` skill before doing anything else unless it is already active in the session. Its in-task Bug Hunter isolation rule overrides its normal session-start checklist and lifecycle duties. For Codex shell commands, use \`shell="/bin/bash"\` and \`login=false\`.
+If your working directory is inside \`~/.dev3.0/worktrees/\` or \`<project>/.dev3/worktrees/\`, invoke the \`/dev3\` skill before doing anything else unless it is already active in the session. Its in-task Bug Hunter isolation rule overrides its normal session-start checklist and lifecycle duties. For Codex shell commands, use \`shell="/bin/bash"\` and \`login=false\`.
 
 ## Step 1: Generate your seed
 
@@ -1219,6 +1219,7 @@ A starting situation that generates work, then merges onto the main flow.
 - **"Continue what we did in that other task"** → past conversations are searchable: the agent runs \`dev3 conversations search\` and reads the old task's notes and transcript. This is *why* notes matter — they are weighted highest in that search.
 - **"What did every task record since I last looked?"** → \`dev3 events\`. One feed of the notes written by EVERY task on the board AND of every board movement — created, a status change (completed and cancelled included), a custom-column move — finished tasks included — a live task can still message you, a completed one cannot, and its notes are all that outlived its worktree. It is addressed by a **position, not a time window**: each run ends with a \`Cursor:\` line — one compact instant such as \`2026-08-28T20:22:22.303\` — plus the exact next command, and passing it back returns only what happened since. \`--from\` also takes an event id straight from the ID column (\`8eb2da3d\`) — the shortest form to carry, though a deleted or evicted note makes it exit 19 rather than pretend the board was quiet — or a plain date (\`2026-08-01\`) or a duration (\`2h\`, \`3d\`) when you deliberately want a window. Keep the cursor yourself; the app remembers nothing per caller, so the same cursor always gives the same answer. A bare \`dev3 events\` shows the last 24 hours and tells you, as a number, how many events are older than that window — so a lost cursor is visible instead of silent. \`--kind note\` or \`--kind move\` narrows it, and a cursor from a filtered run covers that kind only — the run says so. Movements are recorded from the version that shipped them onward; nothing older exists and none is invented. One line per event; \`dev3 note show <id> --task <seq>\` prints a note's full body.
 - **A new codebase** → add the project from a folder or clone it from a URL, then run \`/dev3-project-config\` to auto-detect its setup / dev / cleanup scripts, ports, and clone paths. An agent does the same from a shell, no app UI needed: \`dev3 projects add <path> --space "<name>"\` registers a local repo (\`--init\` for a folder with no git history yet), \`dev3 projects clone <url>\` clones into the app's clone folder first (\`--dir\` overrides), and \`--new-space "<name>"\` creates the space with it. A folder that already is a project changes nothing and exits 33; a space that does not exist adds nothing and exits 34.
+- **"Every project has its own Claude setup"** → Settings → Agents → **Each project uses its own Claude folder**. Task agents then run with \`CLAUDE_CONFIG_DIR=<project>/.claude\`, so the project's own rules, agents, skills and memory load instead of \`~/.claude\`, the same as launching Claude there by hand with that variable. dev3 keeps Claude's runtime files out of \`git status\` and never edits a committed \`settings.json\`. A project that needs other env (a Bedrock profile, say) sets it in its \`.dev3/config.local.json\` \`env\`; a managed Claude account wins over the folder only when it is picked for that task; the default account does not.
 - **"I don't want to try this on my own repo yet"** → **Try a sandbox repo** on the dashboard's first-run strip. dev3 creates a tiny throwaway repository of its own under \`~/.dev3.0/sandbox\` and opens its board, so the branch / worktree / diff loop is visible on something nobody cares about. Its README suggests three first prompts. Remove it like any project when done — nothing on disk is deleted.
 
 ## Away from the keyboard
@@ -1276,7 +1277,7 @@ Reach for these when the *word*, not the process, is the confusion.
 
 - **Task** — a Kanban card that is simultaneously the issue, the agent's prompt, and (once started) a worktree + terminal session.
 - **Variant** — one of N parallel attempts at the same task; each has its own agent, branch, and worktree; you keep one and discard the rest.
-- **Worktree** — the task's isolated git checkout under \`~/.dev3.0/worktrees/\`; created on launch, destroyed when the task completes or is cancelled.
+- **Worktree** — the task's isolated git checkout under \`~/.dev3.0/worktrees/\` (or \`<project>/.dev3/worktrees/\` when the project keeps its data in its folder); created on launch, destroyed when the task completes or is cancelled.
 - **Description vs overview vs notes** — the classic mix-up. *Description* = the original brief you wrote: the agent's prompt, fixed. *Overview* = the agent-maintained sticky note: the current state in one glance. *Notes* = durable findings that outlive the task and feed future agents.
 - **Space** — a named, many-to-many grouping of projects; a global tag, not a container. It owns nothing: every project keeps its own board, git never moves, and a space carries a name and its membership, nothing else. **Home** is the computed group of projects with no space — never stored on disk.
 - **Statuses & columns** — Todo → In progress → User questions → AI review → User review → Completed. Hooks move tasks automatically as the agent works; you normally drag a card by hand only to start, review, or complete it. Built-in columns can be renamed, custom columns added — and a custom column can even run its own agent when a task lands in it.
@@ -1286,7 +1287,7 @@ Reach for these when the *word*, not the process, is the confusion.
 Point, don't dig. Name where to look and stop — deep diagnosis is \`/diagnosing-bugs\`, not this skill.
 
 - Environment or setup acting up → \`dev3 doctor\` first.
-- Disk filling up → \`dev3 doctor --worktrees\`. Per project it shows what \`~/.dev3.0/worktrees\` holds and how much is reclaimable: orphaned folders whose task record is gone, worktrees whose teardown never finished, old diffs/logs. Report-only; \`--prune-orphans\` / \`--prune-older-than 30d\` delete. An unmerged \`dev3/task-*\` branch's folder is skipped by \`--prune-orphans\` and waits 60 days under \`--prune-older-than\` unless \`--force-unmerged\`. dev3 itself runs \`--prune-older-than 14d\` once a day (off: Settings → System → "Clean up old task files"). \`--gzip-diffs\` compresses old plain diff snapshots in place; the daily run does that too.
+- Disk filling up → \`dev3 doctor --worktrees\`. Per project it shows what its worktree roots (\`~/.dev3.0/worktrees\`, \`<project>/.dev3/worktrees\`) hold and how much is reclaimable: orphaned folders whose task record is gone, worktrees whose teardown never finished, old diffs/logs. Report-only; \`--prune-orphans\` / \`--prune-older-than 30d\` delete. An unmerged \`dev3/task-*\` branch's folder is skipped by \`--prune-orphans\` and waits 60 days under \`--prune-older-than\` unless \`--force-unmerged\`. dev3 itself runs \`--prune-older-than 14d\` once a day (off: Settings → System → "Clean up old task files"). \`--gzip-diffs\` compresses old plain diff snapshots in place; the daily run does that too.
 - The task's terminal died → **Resume Agent Session** restarts the agent with its conversation intact (\`--continue\`), picking up right where it stopped.
 - Spaces, settings, agent presets, projects or the model catalog came back empty → dev3 keeps hourly copies of each, plus a last-known-good copy that rotation never evicts. Restoring is manual and always starts with quitting the app: \`docs/state-backups.md\` has the exact steps and the table of what is and is not copied (credentials deliberately are not).
 - "Why does dev3 behave this way?" → the relevant record in \`decisions/\` usually explains it.
@@ -1732,7 +1733,7 @@ const SHARE_ARTIFACT_SKILL_DIRS = [
 ];
 
 /** Claude Code skills by name, installed under `<claude config dir>/skills/`. */
-const CLAUDE_SKILL_NAMES = [
+export const CLAUDE_SKILL_NAMES = [
 	"dev3",
 	"dev3-project-config",
 	"dev3-tmux",
@@ -1846,14 +1847,14 @@ function agentsMdBlock(compact = false): string {
 	if (compact) return `${AGENTS_MD_MARKER_START}
 ## dev-3.0 Managed Worktree
 
-Inside \`~/.dev3.0/worktrees/\`, follow the full "dev3 — Task Lifecycle Protocol" already injected by your launch. If it is absent, load the \`/dev3\` skill (or \`~/.agents/skills/dev3/SKILL.md\`) before working. Use that protocol's agent-specific status rules; hook-owned lifecycle transitions need no manual status commands.
+Inside \`~/.dev3.0/worktrees/\` or \`<project>/.dev3/worktrees/\`, follow the full "dev3 — Task Lifecycle Protocol" already injected by your launch. If it is absent, load the \`/dev3\` skill (or \`~/.agents/skills/dev3/SKILL.md\`) before working. Use that protocol's agent-specific status rules; hook-owned lifecycle transitions need no manual status commands.
 
 **Codex shell note:** For \`exec_command\` calls, always set \`shell="/bin/bash"\` and \`login=false\`. The sandbox may block homebrew zsh.
 ${AGENTS_MD_MARKER_END}`;
 	return `${AGENTS_MD_MARKER_START}
 ## dev-3.0 Managed Worktree
 
-If your working directory (PWD) is inside \`~/.dev3.0/worktrees/\` (i.e. \`$HOME/.dev3.0/worktrees/\`), you are a **dev-3.0 managed AI agent** with a Kanban task assigned. Regular git worktrees or other paths containing "worktrees" do **NOT** qualify — only the dev-3.0 managed directory under the user's home.
+If your working directory (PWD) is inside \`~/.dev3.0/worktrees/\` (i.e. \`$HOME/.dev3.0/worktrees/\`) or \`<project>/.dev3/worktrees/\`, you are a **dev-3.0 managed AI agent** with a Kanban task assigned. Regular git worktrees or other paths containing "worktrees" do **NOT** qualify — only the dev-3.0 managed directory under the user's home.
 
 **MANDATORY — do this BEFORE any other work:**
 
@@ -1942,7 +1943,7 @@ export const DEV3_AUTO_MODE_ALLOW_ENTRY =
  * whose commits pre-date a resumed session's transcript.
  */
 export const DEV3_AUTO_MODE_GIT_ENTRY =
-	"dev3 git management: inside a dev3 task worktree (a path under `~/.dev3.0/worktrees/`), the task's branch and its pull request belong to that task, even when the commits pre-date this transcript — dev3 resumes and relaunches agent sessions on the same branch. When the user asks for git or PR management — in their own message, in the task description dev3 delivered as the first prompt, or through a dev3 coordinator (see the dev3 coordinator relay entry) — this is routine, user-directed work: rebasing, amending, squashing and otherwise rewriting the task branch's history; force-pushing the task branch (`--force-with-lease` preferred); merging the task's own PR, squash included, with no separate human approval, because the user's request is the review — `gh pr merge --squash`, `gh pr merge --auto --squash` and `dev3 pr auto-merge` alike, branch protection or not; deleting the task's branch after its PR merged. A coordinator task the user asked to land work may do the same for the PRs of the tasks it manages. A merge the user orders in their own turn — in any language and however short (\"merge\", \"мёржи\", \"смёрджи\") — of the PR under discussion is not Merge Without Review: that order is the human approval, it lifts any earlier \"merge only with separate authorization\" in the brief, and it covers a pr-review task merging the PR it reviewed (pinning the reviewed head with `--match-head-commit` is the careful form). Publication the user asked for in the session's repository is an ordinary push under Git Push Destination, not Modify Shared Resources: creating a new branch or ref at an exact SHA (`git push origin <sha>:refs/heads/<new>`), `--force-with-lease=<ref>:` with an empty expected value (it only creates a ref that must not exist yet and cannot overwrite one), and landing the requested commits on the default branch with a non-force push (merge, cherry-pick, fast-forward). This covers the session's own repository only — never an upstream, fork or third-party repo — and force-pushing, resetting or deleting the repository's default branch still needs the user's words naming that branch. Switching the worktree to a branch, commit or detached HEAD with `git switch`/`git checkout <ref>` and no `-f`, `--force` or `--discard-changes` is not Irreversible Local Destruction: git refuses to overwrite uncommitted changes there. It clears no content rule (secrets, credentials, PII, exfiltration) and nothing in hard_deny.";
+	"dev3 git management: inside a dev3 task worktree (a path under `~/.dev3.0/worktrees/` or `<project>/.dev3/worktrees/`), the task's branch and its pull request belong to that task, even when the commits pre-date this transcript — dev3 resumes and relaunches agent sessions on the same branch. When the user asks for git or PR management — in their own message, in the task description dev3 delivered as the first prompt, or through a dev3 coordinator (see the dev3 coordinator relay entry) — this is routine, user-directed work: rebasing, amending, squashing and otherwise rewriting the task branch's history; force-pushing the task branch (`--force-with-lease` preferred); merging the task's own PR, squash included, with no separate human approval, because the user's request is the review — `gh pr merge --squash`, `gh pr merge --auto --squash` and `dev3 pr auto-merge` alike, branch protection or not; deleting the task's branch after its PR merged. A coordinator task the user asked to land work may do the same for the PRs of the tasks it manages. A merge the user orders in their own turn — in any language and however short (\"merge\", \"мёржи\", \"смёрджи\") — of the PR under discussion is not Merge Without Review: that order is the human approval, it lifts any earlier \"merge only with separate authorization\" in the brief, and it covers a pr-review task merging the PR it reviewed (pinning the reviewed head with `--match-head-commit` is the careful form). Publication the user asked for in the session's repository is an ordinary push under Git Push Destination, not Modify Shared Resources: creating a new branch or ref at an exact SHA (`git push origin <sha>:refs/heads/<new>`), `--force-with-lease=<ref>:` with an empty expected value (it only creates a ref that must not exist yet and cannot overwrite one), and landing the requested commits on the default branch with a non-force push (merge, cherry-pick, fast-forward). This covers the session's own repository only — never an upstream, fork or third-party repo — and force-pushing, resetting or deleting the repository's default branch still needs the user's words naming that branch. Switching the worktree to a branch, commit or detached HEAD with `git switch`/`git checkout <ref>` and no `-f`, `--force` or `--discard-changes` is not Irreversible Local Destruction: git refuses to overwrite uncommitted changes there. It clears no content rule (secrets, credentials, PII, exfiltration) and nothing in hard_deny.";
 
 /**
  * A coordinator relays the user's will to the tasks it manages, so its orders must
@@ -2098,9 +2099,13 @@ function writeIfChanged(path: string, content: string): boolean {
 /**
  * Install dev3's Claude skills and settings into one Claude Code config dir:
  * ~/.claude by default, or whatever `CLAUDE_CONFIG_DIR` names for a launch.
- * Idempotent and non-fatal per file.
+ * `settingsPath` redirects the settings patch (null skips it). Idempotent and non-fatal per file.
  */
-export function installClaudeConfigDir(configDir: string, home: string = homedir()): void {
+export function installClaudeConfigDir(
+	configDir: string,
+	home: string = homedir(),
+	settingsPath: string | null = join(configDir, "settings.json"),
+): void {
 	for (const [name, files] of Object.entries(claudeSkillFiles())) {
 		for (const [file, content] of Object.entries(files)) {
 			const path = join(configDir, "skills", name, file);
@@ -2111,7 +2116,7 @@ export function installClaudeConfigDir(configDir: string, home: string = homedir
 			}
 		}
 	}
-	ensureClaudeSettings(join(configDir, "settings.json"), `${home}/.dev3.0/sockets`);
+	if (settingsPath) ensureClaudeSettings(settingsPath, `${home}/.dev3.0/sockets`);
 }
 
 function cleanupLegacyGeminiSkillDuplicates(home: string): void {

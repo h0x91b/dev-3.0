@@ -6,6 +6,7 @@ import { openFolderPicker, openFolderPickerMulti } from "../../folder-picker";
 import { I18nProvider } from "../../i18n";
 import type { Project, Task } from "../../../shared/types";
 import type { AppAction, Route } from "../../state";
+import { toast } from "../../toast";
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -1366,5 +1367,40 @@ describe("board copy section", () => {
 
 		await user.click(screen.getByRole("switch", { name: "Include agent messages" }));
 		expect(mockSave).toHaveBeenCalledWith({ projectId: "proj-1", boardCopyMessages: true });
+	});
+});
+
+describe("project storage section", () => {
+	const label = "Keep this project's dev3 data in the project folder";
+
+	it("switches storage to the project folder and back", async () => {
+		const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+		mockSave.mockClear();
+		const user = userEvent.setup();
+		await renderProjectSettings();
+		expect(screen.getByRole("switch", { name: label })).toHaveAttribute("aria-checked", "false");
+		await user.click(screen.getByRole("switch", { name: label }));
+		expect(mockSave).toHaveBeenCalledWith({ projectId: "proj-1", storageRoot: "project" });
+	});
+
+	it("offers the way back when storage is already in the project", async () => {
+		const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+		mockSave.mockClear();
+		const user = userEvent.setup();
+		await renderProjectSettings(mockProject, { storageRoot: "project" });
+		expect(screen.getByRole("switch", { name: label })).toHaveAttribute("aria-checked", "true");
+		await user.click(screen.getByRole("switch", { name: label }));
+		expect(mockSave).toHaveBeenCalledWith({ projectId: "proj-1", storageRoot: "home" });
+	});
+
+	it("explains a live task instead of calling the backend", async () => {
+		const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+		mockSave.mockClear();
+		const errorSpy = vi.spyOn(toast, "error").mockImplementation(() => "" as never);
+		const user = userEvent.setup();
+		await renderProjectSettings(mockProject, {}, [{ ...mockTasks[0], preparing: true } as Task]);
+		await user.click(screen.getByRole("switch", { name: label }));
+		expect(mockSave).not.toHaveBeenCalled();
+		expect(errorSpy).toHaveBeenCalledWith("1 task is still running. Finish it, then try again.", { projectId: "proj-1" });
 	});
 });

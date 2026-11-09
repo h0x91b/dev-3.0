@@ -514,10 +514,11 @@ function handleWorktrees(args: ParsedArgs, scanDeps: WorktreeScanDeps): never {
 	const pruning = options.orphans || options.olderThanDays !== null;
 	const outcomes = pruning ? prune(report, options, scanDeps) : [];
 	// After the prune, so nothing is compressed just to be deleted.
+	const taskDirs = report.entries.map((e) => e.dir);
 	const gzipping = args.flags?.["gzip-diffs"] === "true";
 	const diffs = gzipping
-		? { gzipped: compressAllDiffSnapshots(report.worktreesRoot, scanDeps.now) }
-		: { uncompressed: measurePlainDiffSnapshots(report.worktreesRoot) };
+		? { gzipped: compressAllDiffSnapshots(taskDirs, scanDeps.now) }
+		: { uncompressed: measurePlainDiffSnapshots(taskDirs) };
 
 	if (args.flags?.json) {
 		process.stdout.write(`${JSON.stringify({ worktrees: report, pruned: outcomes, diffs }, null, 2)}\n`);

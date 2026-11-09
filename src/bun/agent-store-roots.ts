@@ -1,4 +1,5 @@
 import { existsSync, lstatSync, readdirSync, realpathSync } from "node:fs";
+import { listPinnedClaudeConfigDirs } from "./claude-config-dirs";
 
 /**
  * Where an agent CLI keeps its state on this machine — the home store PLUS every
@@ -37,12 +38,20 @@ function accountDirs(home: string, kind: "claude" | "codex"): string[] {
  * creates that shape for the "use my own login" account, and following it would
  * report every home transcript a second time.
  */
-export function claudeConfigDirs(home: string): string[] {
+export function claudeConfigDirs(home: string, pinnedDirs: string[] = listPinnedClaudeConfigDirs()): string[] {
 	const homeStore = `${home}/.claude`;
 	const dirs = [homeStore];
 	const homeReal = realpathOf(homeStore);
 	for (const dir of accountDirs(home, "claude")) {
 		if (isSymlink(dir) && homeReal && realpathOf(dir) === homeReal) continue;
+		dirs.push(dir);
+	}
+	// Dirs a launch pinned through CLAUDE_CONFIG_DIR (e.g. each project's own .claude) hold transcripts too.
+	const seen = new Set(dirs.map((dir) => realpathOf(dir) ?? dir));
+	for (const dir of pinnedDirs) {
+		const real = realpathOf(dir);
+		if (!real || seen.has(real)) continue;
+		seen.add(real);
 		dirs.push(dir);
 	}
 	return dirs;

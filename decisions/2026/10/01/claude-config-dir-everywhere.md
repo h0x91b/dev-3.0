@@ -1,5 +1,7 @@
 # Follow CLAUDE_CONFIG_DIR wherever dev3 writes for Claude
 
+> Superseded in part on 2026-11-04 by `decisions/2026/11/04/per-project-claude-config-dir.md`: a git-tracked `settings.json` in a pinned dir is no longer patched (the entries go to the task's local settings), runtime state is excluded from git, and transcript discovery includes pinned dirs.
+
 ## Context
 
 Claude Code reads its user config from `$CLAUDE_CONFIG_DIR` when set: `settings.json`, `skills/` and its own `.claude.json` all live inside it, and `~/.claude` plus `~/.claude.json` are only the fallback. A user can pin the variable per project (`.dev3/config.local.json` `env`), per agent config, or on the server's own environment. dev3 wrote its skills, its `settings.json` entries (dev3 CLI allow rule, sandbox socket, `autoMode.allow`) and worktree trust to `~/.claude` regardless, and `dev3 statusline` read the user's statusLine from there. A pinned agent never saw any of it: no `/dev3-project-config` and friends, a classifier free to block `dev3 task move --status completed`, a trust prompt, and its custom statusLine silently replaced. Managed accounts escaped only because their dir symlinks `~/.claude` entries.

@@ -893,7 +893,7 @@ describe("AgentAccountsSection", () => {
 		expect(screen.getByText("pin@example.com")).toBeTruthy();
 		expect(screen.getByText("Pinned by app, app-docs")).toBeTruthy();
 		expect(screen.getByText("Default login (/home/me/.claude)")).toBeTruthy();
-		expect(screen.queryByText(/override these pins/)).toBeNull();
+		expect(screen.queryByText(/only when you pick that account/)).toBeNull();
 		expect(screen.getByText(/the default login only applies to projects without one/)).toBeTruthy();
 		// Informational rows carry no radio circle that would read as "not selected".
 		expect(screen.getByTestId("pinned-claude-logins").querySelector(".rounded-full")).toBeNull();
@@ -923,13 +923,13 @@ describe("AgentAccountsSection", () => {
 		expect(screen.queryByText("work@example.com")).toBeNull();
 	});
 
-	it("warns that managed accounts override the pins", async () => {
+	it("says managed accounts replace a pin only when picked for a task", async () => {
 		mockedApi.request.listAgentAccounts.mockResolvedValue(makeState());
 		mockedApi.request.listPinnedClaudeLogins.mockResolvedValueOnce([
 			{ configDir: "/p/app/.claude", identity: null, projectNames: ["app"] },
 		]);
 		renderSection();
-		expect(await screen.findByText(/override these pins/)).toBeTruthy();
+		expect(await screen.findByText(/only when you pick that account for a task/)).toBeTruthy();
 	});
 
 	describe("Auto row beside a Codex account that ~/.codex is also signed into (#1964)", () => {

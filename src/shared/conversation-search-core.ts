@@ -1,5 +1,6 @@
 import type { TaskStatus } from "./types";
 import { projectStorageKey } from "./project-storage-key";
+import { taskDirFor, type StorageProject, type StorageTask } from "./project-storage";
 
 /**
  * Pure (I/O-free) core for conversation search across past task transcripts.
@@ -83,15 +84,12 @@ export function claudeProjectsDir(configDir: string): string {
 }
 
 /**
- * Reconstruct a task's worktree path deterministically from project slug and
- * the task's short id. dev3 nulls `task.worktreePath` once a task is completed
- * or cancelled (see task-lifecycle moveTask), so the stored field cannot be
- * relied on — but the path is always
- * `<dev3Home>/worktrees/<projectSlug>/<shortId>/worktree`.
+ * Reconstruct a task's worktree path deterministically. dev3 nulls
+ * `task.worktreePath` once a task is completed or cancelled, so the stored field
+ * cannot be relied on; the task's `taskDirLocation` stamp picks the root.
  */
-export function reconstructWorktreePath(dev3Home: string, projectSlug: string, taskId: string): string {
-	const shortId = taskId.slice(0, 8);
-	return `${dev3Home}/worktrees/${projectSlug}/${shortId}/worktree`;
+export function reconstructWorktreePath(dev3Home: string, project: StorageProject, task: StorageTask): string {
+	return `${taskDirFor(dev3Home, project, task)}/worktree`;
 }
 
 /** Re-exported so search callers derive the key from the one shared formula. */
