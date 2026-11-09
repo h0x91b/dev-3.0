@@ -14,7 +14,7 @@ A global setting `completionOfferStyle` (`"dialog"` default, `"inline"`) picks t
 
 ## Risks
 
-The dialog interrupts at detection time; users who prefer that it does not pick "On the task". A task whose agent is not in its first pane gets the bar over the wrong pane; dev3 launches the agent first, so this needs a user rearranging panes. No dialog is asked before the host's settings load, so a stored "On the task" never flashes a modal.
+The dialog interrupts at detection time; users who prefer that it does not pick "On the task". A task whose agent is not in its first pane gets the bar over the wrong pane; dev3 launches the agent first, so this needs a user rearranging panes. No dialog is asked before the host's settings load, so a stored "On the task" never flashes a modal. An ask on the task can wait longer than an agent's own shell timeout: opencode gives up on `dev3 task move` after 120 s and runs it again. The retried request replaces the first, and an answer then still completes the task (checked live).
 
 ## Alternatives considered
 
