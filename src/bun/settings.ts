@@ -177,6 +177,7 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 			: undefined,
 		cloneBaseDirectory: d.cloneBaseDirectory ?? undefined,
 		autoConfigureNewProjects: d.autoConfigureNewProjects === true ? true : undefined,
+		newProjectsStoreInProject: d.newProjectsStoreInProject === true ? true : undefined,
 		customBinaryPaths: d.customBinaryPaths ?? undefined,
 		agentBinaryPaths: d.agentBinaryPaths ?? undefined,
 		agentCustomBinaryPaths: d.agentCustomBinaryPaths ?? undefined,
@@ -283,6 +284,7 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 			typeof d.experimentalAgentTraffic === "boolean" ? d.experimentalAgentTraffic : undefined,
 		// Default-on: only an explicit false is the user opting out of the daily cleanup.
 		autoCleanupTaskHistory: d.autoCleanupTaskHistory === false ? false : undefined,
+		leanAgentProtocol: d.leanAgentProtocol === true ? true : undefined,
 		// Default-off local diagnostics — only an explicit true is a stored opt-in.
 		freezeDiagnosticsEnabled: d.freezeDiagnosticsEnabled === true ? true : undefined,
 		// Only a recorded pick survives; anything else falls back to the default view.

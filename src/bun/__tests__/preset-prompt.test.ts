@@ -102,7 +102,7 @@ describe("COORDINATOR_PROMPT", () => {
 		expect(COORDINATOR_PROMPT).toMatch(/read status from the board, `dev3 events`, `dev3 peek`/);
 		expect(COORDINATOR_PROMPT).toMatch(/never to a sibling/);
 		expect(COORDINATOR_PROMPT).toMatch(/only when the receiver needs it for its own work — never status/);
-		expect(COORDINATOR_PROMPT).toMatch(/Same-file overlap needs no traffic: the second to land rebases/);
+		expect(COORDINATOR_PROMPT).toMatch(/Same-file overlap needs no traffic: the second to land syncs/);
 		// The old rules that produced exactly that traffic.
 		expect(COORDINATOR_PROMPT).not.toMatch(/which tasks work nearby/);
 		expect(COORDINATOR_PROMPT).not.toMatch(/file contention/);
@@ -110,7 +110,19 @@ describe("COORDINATOR_PROMPT", () => {
 
 	// A description is the first prompt only; terminology spreads through the source.
 	it("never treats a description edit or a message as the way to align wording", () => {
-		expect(COORDINATOR_PROMPT).toMatch(/A description edit never reaches a running child; shared wording lands in source, picked up by rebase/);
+		expect(COORDINATOR_PROMPT).toMatch(/A description edit never reaches a running child; shared wording lands in source, picked up on sync/);
+	});
+
+	// The brief ships to every install: gitflow, MRs, merge commits, no CI. The repo's own flow decides.
+	it("defers to the repo's own git flow instead of assuming GitHub, main, rebase or CI", () => {
+		expect(COORDINATOR_PROMPT).toContain("FOLLOW THE REPO'S FLOW (its docs or the user)");
+		expect(COORDINATOR_PROMPT).toContain("Never assume main, GitHub or CI");
+		expect(COORDINATOR_PROMPT).toContain("Other target: `dev3 pr create --base <ref>`");
+		// `task create --branch` checks out that ref itself; it is not a base-branch flag.
+		expect(COORDINATOR_PROMPT).not.toContain("--branch");
+		expect(COORDINATOR_PROMPT).toMatch(/done as an artefact; target branch;/);
+		expect(COORDINATOR_PROMPT).toMatch(/merged to its target, required checks green on its SHA/);
+		expect(COORDINATOR_PROMPT).not.toMatch(/rebase|merged PR|CI green/);
 	});
 
 	it("requires every reply to be a self-contained status, without a whole-board recap", () => {
@@ -287,7 +299,7 @@ describe("COORDINATOR_PROMPT", () => {
 	//
 	// COORDINATOR_PROMPT_LIMIT is a ratchet, not an OS ceiling: raising it shrinks every coordinator
 	// task's description room by the same amount, and the Windows launch-room test is re-baselined with
-	// it (decisions/2026/10/16/coordinator-prompt-cap-6500.md). Headroom, not an invitation to pad.
+	// it (decisions/2026/11/08/coordinator-prompt-cap-6700-for-any-git-flow.md). Headroom, not an invitation to pad.
 	it("stays within the coordinator prompt cap", () => {
 		expect(COORDINATOR_PROMPT.length).toBeLessThanOrEqual(COORDINATOR_PROMPT_LIMIT);
 		expect(GITLESS_COORDINATOR_PROMPT.length).toBeLessThanOrEqual(COORDINATOR_PROMPT_LIMIT);

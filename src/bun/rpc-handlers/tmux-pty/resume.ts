@@ -2,6 +2,7 @@ import type { AgentFamily, CodingAgent, PaneSessionEntry, Project, Task } from "
 import { ACTIVE_STATUSES, getPrimaryStopTarget, taskProtocolMode } from "../../../shared/types";
 import * as data from "../../data";
 import * as pty from "../../pty-server";
+import { ptyWsUrl } from "../../pty-server-access";
 import * as agents from "../../agents";
 import { codexAccountIdForHome, defaultAccountPaths, getActiveClaudeConfigDir } from "../../agent-accounts";
 import { isAutoAccountId } from "../../../shared/agent-accounts";
@@ -21,7 +22,7 @@ import { NATIVE_AGENT_PANE_ID } from "../../agent-prompt-native";
 import type { ResumePaneMode, ResumePaneReport, ResumeUnavailableReason, TaskResumeResult } from "../../../shared/agent-resume";
 import { WAKE_SHELL_NOTICE } from "../../../shared/task-hibernate";
 import { getPushMessage, buildCmdScript, log, writeLaunchScript } from "../shared-pure";
-import { applyAgentHooksToCommand, ensureAgentTrust, launchTaskPty, notifyStaleAccountDropped } from "./task-launch";
+import { applyAgentHooksToCommand, ensureAgentTrust, launchTaskPty, notifyBedrockProfileMissing, notifyStaleAccountDropped } from "./task-launch";
 import { findTaskAcrossProjects, markTerminalAttached, wakeIfHibernated } from "./task-state";
 
 /**
@@ -196,7 +197,7 @@ export async function resumeTask(params: { taskId: string; restart?: boolean; ac
 	if (params.restart && outcome.kind === "resumed" && outcome.result.panes.some((pane) => pane.status !== "resumed")) {
 		throw new Error("The terminal restarted, but some agent panes could not be restored. Their conversations remain saved.");
 	}
-	return outcome.kind === "resumed" ? outcome.url : `ws://localhost:${pty.getPtyPort()}?session=${params.taskId}`;
+	return outcome.kind === "resumed" ? outcome.url : ptyWsUrl(pty.getPtyPort(), params.taskId);
 }
 
 /** Only Claude panes take an account choice: a Codex conversation lives in its own account's home. */
@@ -383,7 +384,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 		main.configId,
 		false,
 		true,
-		{ sessionId: mainResume ?? undefined, accountId: switchesAccount(main, 0) ? accountOverride : main.accountId, codexHome: codexHomes.get(0), freshSessionId: mainFreshSessionId },
+		{ sessionId: mainResume ?? undefined, accountId: switchesAccount(main, 0) ? accountOverride : main.accountId, bedrockProfile: main.bedrockProfile, codexHome: codexHomes.get(0), freshSessionId: mainFreshSessionId },
 	);
 	if (mainAccountId !== undefined) reports[0].accountId = mainAccountId;
 	// Start Fresh and reconnect read the task's account, so a switch must not revert there.
@@ -417,6 +418,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 				projectPath: rootProjectFor(project, task).path,
 				worktreePath: task.worktreePath,
 			};
+			const projectEnv = await repoConfig.resolveProjectEnv(resolvedProject, task.worktreePath, { foreignCode: task.foreignCode });
 			const paneIdUpdates: Array<{ index: number; paneId: string; accountId: string | null | undefined; sessionId: string | null }> = [];
 			for (let i = 1; i < panes.length; i++) {
 				const pane = panes[i];
@@ -431,6 +433,8 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 					const cmdOpts: agents.CommandOptions = freshSessionId
 						? { sessionId: freshSessionId, accountId, accountFromStore: true, protocolMode }
 						: { resume: true, accountId, accountFromStore: true, protocolMode };
+					cmdOpts.projectEnv = projectEnv;
+					cmdOpts.bedrockProfile = pane.bedrockProfile !== undefined ? pane.bedrockProfile : task.bedrockProfile;
 					if (paneResume) cmdOpts.sessionId = paneResume;
 					let resumeCmd: string;
 					let resumeBaseCmd = pane.agentCmd;
@@ -445,6 +449,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 						extraEnv = resolved.extraEnv;
 						resumeBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || pane.agentCmd;
 						resumeAgentFamily = resolved.agentFamily ?? resumeAgentFamily;
+						if (resolved.bedrockProfileMissing) await notifyBedrockProfileMissing(task);
 						if (resolved.staleAccountDropped) {
 							accountId = resolved.resolvedAccountId;
 							await notifyStaleAccountDropped(task);
@@ -454,17 +459,15 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 					}
 					if (codexHome) extraEnv.CODEX_HOME = codexHome;
 					// The pane inherits the session's project env, so trust follows its CLAUDE_CONFIG_DIR too.
-					const paneEnv = {
-						...(await repoConfig.resolveProjectEnv(resolvedProject, task.worktreePath, { foreignCode: task.foreignCode })),
-						...extraEnv,
-					};
+					const paneEnv = { ...projectEnv, ...extraEnv };
 					await ensureAgentTrust(task.worktreePath, rootProjectFor(project, task).path, resumeBaseCmd, accountId, task.foreignCode, resumeAgentFamily, paneEnv);
 					resumeCmd = await applyAgentHooksToCommand(task.worktreePath, resumeBaseCmd, resumeCmd, {
 						stopTarget: getPrimaryStopTarget(project.autoReviewEnabled, task.taskType),
 						family: resumeAgentFamily,
 					});
 					const scriptPath = dev3TaskTempPath(params.taskId, `resume-pane-${i}.sh`);
-					await writeLaunchScript(scriptPath, buildCmdScript(resumeCmd, extraEnv, { keepShell: true }));
+					// Export the project env too, like a fresh spawn: a split pane otherwise inherits the main pane's.
+					await writeLaunchScript(scriptPath, buildCmdScript(resumeCmd, paneEnv, { keepShell: true }));
 					const wrappedCmd = `bash "${scriptPath}"`;
 					const newPaneId = await pty.splitAndRunCommand(params.taskId, socket, wrappedCmd, task.worktreePath);
 					if (opts.restart && !newPaneId) throw new Error("The restarted agent pane was not created.");
@@ -508,8 +511,8 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 	}
 	getPushMessage()?.("taskTerminalResumed", { taskId: params.taskId, projectId: project.id });
 
-	const url = `ws://localhost:${pty.getPtyPort()}?session=${params.taskId}`;
-	log.info("← resumeTask", { url });
+	const url = ptyWsUrl(pty.getPtyPort(), params.taskId);
+	log.info("← resumeTask", { taskId: params.taskId.slice(0, 8) });
 	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 	return {
 		kind: "resumed",
@@ -570,8 +573,8 @@ export async function restartTask(params: { taskId: string }): Promise<string> {
 
 	await markTerminalAttached(project, task);
 
-	const url = `ws://localhost:${pty.getPtyPort()}?session=${params.taskId}`;
-	log.info("← restartTask", { url });
+	const url = ptyWsUrl(pty.getPtyPort(), params.taskId);
+	log.info("← restartTask", { taskId: params.taskId.slice(0, 8) });
 	return url;
 }
 
@@ -597,7 +600,7 @@ export async function wakeTaskShell(params: { taskId: string }): Promise<string>
 	await launchTaskPty(resolvedProject, task, task.worktreePath, null, null, false, false, { shellNotice: WAKE_SHELL_NOTICE });
 	await markTerminalAttached(project, task);
 	getPushMessage()?.("taskTerminalResumed", { taskId: params.taskId, projectId: project.id });
-	const url = `ws://localhost:${pty.getPtyPort()}?session=${params.taskId}`;
-	log.info("← wakeTaskShell", { url });
+	const url = ptyWsUrl(pty.getPtyPort(), params.taskId);
+	log.info("← wakeTaskShell", { taskId: params.taskId.slice(0, 8) });
 	return url;
 }

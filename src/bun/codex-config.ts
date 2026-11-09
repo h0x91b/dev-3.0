@@ -1,4 +1,5 @@
 import { copyFileSync, existsSync, lstatSync, readFileSync, readlinkSync, realpathSync, writeFileSync } from "node:fs";
+import { isInProjectTaskPath } from "../shared/project-storage";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { load } from "js-toml";
@@ -679,7 +680,7 @@ export function isDev3TrustPath(projectPath: string, dev3Home: string): boolean 
 	const normalize = (value: string) => value.replaceAll("\\", "/").replace(/\/+$/, "");
 	const root = normalize(dev3Home);
 	const target = normalize(projectPath);
-	return [`${root}/worktrees/`, `${root}/ops/`].some((prefix) => target.startsWith(prefix));
+	return [`${root}/worktrees/`, `${root}/ops/`].some((prefix) => target.startsWith(prefix)) || isInProjectTaskPath(target);
 }
 
 /**

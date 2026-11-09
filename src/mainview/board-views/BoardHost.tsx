@@ -32,9 +32,12 @@ import { useBoardViewState } from "./useBoardViewState";
 import { useBoardActions } from "./useBoardActions";
 import { BoardViewErrorBoundary, BoardViewOptionsButton, BoardViewSlot, BoardViewSwitcher } from "./BoardViewChrome";
 import { KanbanView } from "./kanban";
+import { TREE_VIEW_ID } from "./tree/TreeView";
+import { READABLE_GUTTER } from "./readable-width";
 import { flushPendingBoardViewCommand, registerBoardViewCommandHandler, type BoardViewCommand } from "./view-commands";
 import type { RegisteredBoardView } from "./registry";
 import { toast } from "../toast";
+
 
 export interface BoardHostProps {
 	/** The board's anchor project: the subject of a project board, the zoom-out origin of a space board. */
@@ -339,6 +342,7 @@ function BoardHost(props: BoardHostProps) {
 				disableGlobalFindShortcut={disableGlobalFindShortcut}
 				leading={switcher}
 				trailing={options}
+				gutterClassName={active?.def.id === TREE_VIEW_ID ? READABLE_GUTTER : undefined}
 			/>
 			<LineageFilterNotice
 				searchQuery={filter.query}

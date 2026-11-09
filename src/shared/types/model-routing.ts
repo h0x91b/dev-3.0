@@ -109,10 +109,9 @@ export type BedrockGeo = "global" | "us" | "eu" | "jp";
 /**
  * Per-provider connection settings. Generic across providers so a new backend
  * reuses the same shape — not every field applies to every provider (e.g. `geo`
- * is Bedrock-only). dev3 only owns the provider selection and the model-id
- * mapping. Credentials, region, and AWS profile are NOT configured here — the
- * customer sets those in their own global Claude Code setup (shell env or
- * ~/.claude/settings.json).
+ * is Bedrock-only). dev3 owns the provider selection, the model-id mapping and,
+ * for Bedrock, an optional list of named AWS profiles picked per launch.
+ * Credentials themselves stay in the customer's own AWS config.
  */
 export interface ProviderSettings {
 	/**
@@ -131,6 +130,23 @@ export interface ProviderSettings {
 	 * "manual" override; deleting it reverts the row to the mapped default.
 	 */
 	modelOverrides?: Record<string, string>;
+	/**
+	 * Named AWS profiles offered in the launch dialog (Bedrock-only). The picked
+	 * entry injects AWS_PROFILE (and AWS_REGION when set) over the project env.
+	 */
+	profiles?: BedrockProfile[];
+	/** `name` of the entry a launch uses when nothing else picked one. */
+	defaultProfile?: string;
+}
+
+/** One selectable AWS account for a Bedrock agent. */
+export interface BedrockProfile {
+	/** Label shown in the picker and stored on the task (unique per agent). */
+	name: string;
+	/** Value injected as AWS_PROFILE. */
+	awsProfile: string;
+	/** Value injected as AWS_REGION; omitted → the project env decides. */
+	region?: string;
 }
 
 /**

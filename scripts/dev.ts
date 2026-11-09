@@ -12,7 +12,9 @@
 
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
+import electrobunConfig from "../electrobun.config";
 import { WORKER_ENTRIES } from "./build-cli";
+import { binaryCacheLayout, restoreElectrobunBinaries, storeElectrobunBinaries } from "./electrobun-binary-cache";
 import { type QaScopeMode, qaScopeRoot, seedQaScope } from "./qa-scope";
 
 /** Lazy: `import.meta.dir` is a Bun-runtime value, absent when tests import this. */
@@ -268,7 +270,18 @@ function main(): void {
 	const mode: DevMode = process.argv.includes("--start") ? "start" : "dev";
 	const { shell, reason } = devShell(process.argv, process.env, process.platform, linuxHasWebkit);
 	if (reason) console.log(`[dev] headless (${reason}): serving the UI through dev3 remote, not a desktop window`);
+	// Only the desktop shell runs electrobun; a fresh worktree has none of its binaries.
+	const binaryCache = shell === "desktop" ? binaryCacheLayout(repoRoot()) : null;
+	if (binaryCache) {
+		const restored = restoreElectrobunBinaries(binaryCache, electrobunConfig.build.bunVersion);
+		if (restored.length > 0) console.log(`[dev] electrobun binaries restored from ${binaryCache.cacheRoot}: ${restored.join(", ")}`);
+	}
 	for (const step of devPlan(mode, process.execPath, shell)) runOrExit(step);
+	if (binaryCache) {
+		// After the build on purpose: only binaries that just worked are worth keeping.
+		const stored = storeElectrobunBinaries(binaryCache);
+		if (stored.length > 0) console.log(`[dev] electrobun binaries saved to ${binaryCache.cacheRoot}: ${stored.join(", ")}`);
+	}
 
 	let qaScope: Record<string, string> | undefined;
 	// Headless defaults to a throwaway board: the real one usually belongs to an

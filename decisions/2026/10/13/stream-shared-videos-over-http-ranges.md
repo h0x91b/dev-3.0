@@ -2,6 +2,8 @@
 
 > Superseded on 2026-10-27 by `decisions/2026/10/27/show-media-replaces-show-video.md`: the route is now `/shared-media/` (`src/bun/shared-media-stream.ts`, RPC `getSharedMediaUrl`) and also streams `dev3 show-media` audio. The Range design below is unchanged.
 
+> Superseded in part on 2026-11-08 by `decisions/2026/11/08/pty-server-loopback-and-token.md`: the PTY server no longer listens on all interfaces. It binds `127.0.0.1`, and the loopback check now sits in front of every route instead of inside this one.
+
 ## Context
 The video cap was held at the 25 MB image cap because a clip reached the viewer as one base64 `readImageBase64` RPC answer (~1.34× its size), decoded into a `blob:` URL — in the desktop bridge and over the remote tunnel alike. A 300 MB cap on that road means a ~400 MB string per open plus a second full copy in the renderer.
 

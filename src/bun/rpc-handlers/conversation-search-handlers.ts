@@ -2,7 +2,6 @@ import type { TaskStatus } from "../../shared/types";
 import { ALL_STATUSES } from "../../shared/types";
 import type { ConversationMatch } from "../../shared/conversation-search-core";
 import * as data from "../data";
-import { projectSlug } from "../git";
 import { searchConversations, type EngineTask } from "../conversation-search";
 import { readAllTaskBlobs } from "../task-blobs";
 import { readTaskConversation } from "../task-conversation";
@@ -41,6 +40,8 @@ async function searchConversationsHandler(params: {
 		status: t.status,
 		groupId: t.groupId,
 		agentId: t.agentId,
+		taskDirLocation: t.taskDirLocation,
+		worktreePath: t.worktreePath,
 	}));
 
 	const statuses: TaskStatus[] | undefined = params.allStatuses ? [...ALL_STATUSES] : undefined;
@@ -48,7 +49,7 @@ async function searchConversationsHandler(params: {
 	const results = searchConversations({
 		query: params.query,
 		tasks: engineTasks,
-		projectSlug: projectSlug(project.path),
+		project,
 		currentTaskId,
 		currentGroupId,
 		statuses,

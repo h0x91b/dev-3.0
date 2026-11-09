@@ -387,7 +387,7 @@ function makeTask(overrides?: Partial<Task>): Task {
 			await user.click(rail("sleep").getByRole("button", { name: "Cancel task" }));
 
 			expect(vi.mocked(confirmTaskCompletion)).toHaveBeenCalledWith(
-				expect.objectContaining({ id: "sleep" }), expect.anything(), "cancelled", expect.anything(), expect.anything(), { alwaysConfirm: true },
+				expect.objectContaining({ id: "sleep" }), expect.anything(), "cancelled", expect.anything(), expect.anything(), { alwaysConfirm: true, anchor: expect.any(HTMLElement) },
 			);
 			expect(vi.mocked(api.request.moveTask)).not.toHaveBeenCalled();
 			expect(view.container.querySelector('[data-task-id="sleep"]')).not.toBeNull();
@@ -1239,6 +1239,35 @@ function makeTask(overrides?: Partial<Task>): Task {
 		// The Your Review token now filters the list to the review task only.
 		expect(screen.getByText("Beta task")).toBeInTheDocument();
 		expect(screen.queryByText("Alpha task")).not.toBeInTheDocument();
+	});
+
+	it("offers statuses with no tasks, and only the custom columns of projects in scope", async () => {
+		const user = userEvent.setup();
+		const other: Project = {
+			...project,
+			id: "other-project",
+			name: "Other",
+			customColumns: [{ id: "col-else", name: "Elsewhere", color: "#abcdef", llmInstruction: "" }],
+		};
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					allProjects={[project, other]}
+					tasks={[makeTask({ id: "a", title: "Alpha task", description: "Alpha", status: "in-progress", groupId: null as unknown as string, variantIndex: null })]}
+					activeTaskId="none"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+
+		await user.click(screen.getByTestId("filter-funnel-button"));
+		expect(screen.getByRole("checkbox", { name: "Has Questions" })).toBeInTheDocument();
+		expect(screen.queryByRole("checkbox", { name: "Elsewhere" })).not.toBeInTheDocument();
 	});
 
 	it("keeps an unchecked custom column's tasks out of a built-in status selection (#1804)", async () => {

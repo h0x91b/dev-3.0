@@ -54,6 +54,11 @@ export interface TaskShowJson {
 		unresolvedCount: number | null;
 		cachedAt: string;
 	} | null;
+	/**
+	 * A To Do task's "start after" condition, or null. `armedByTaskId` is null when
+	 * a person armed it (direct start) and set when an agent did (start asks first).
+	 */
+	startAfter: { taskId: string; seq: number; until: string; armedByTaskId: string | null; armedAt: string } | null;
 	/** The agent, terminal and dev server are stopped until the task is woken. */
 	hibernated: boolean;
 	/** `status` is the watchdog state: watching, reviving or gave-up. */
@@ -156,6 +161,15 @@ export function buildTaskShowJson(task: ShownTask, opts: { notes?: boolean; hist
 			number, url, title: title ?? null, state: state ?? null,
 		})),
 		prStatus: prStatusJson(task),
+		startAfter: task.launchAfter && task.status === "todo"
+			? {
+				taskId: task.launchAfter.taskId,
+				seq: task.launchAfter.seq,
+				until: task.launchAfter.until,
+				armedByTaskId: task.launchAfter.armedBy?.taskId ?? null,
+				armedAt: task.launchAfter.armedAt,
+			}
+			: null,
 		hibernated: task.hibernated === true,
 		keepAlive: task.keepAlive ? { enabled: task.keepAlive.enabled, status: task.keepAlive.status ?? "watching" } : null,
 		createdAt: task.createdAt,

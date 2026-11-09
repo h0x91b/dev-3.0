@@ -7,7 +7,7 @@ import { runWorktreeCleanup } from "../worktree-cleanup-job";
 // blocks only this thread. Bundled to dist/workers by scripts/build-cli.ts.
 try {
 	parentPort?.postMessage({ ok: true, result: runWorktreeCleanup(realWorktreeScanDeps(workerData.dev3Home), {
-		afterPrune: (root) => compressAllDiffSnapshots(root),
+		afterPrune: (taskDirs) => compressAllDiffSnapshots(taskDirs),
 	}) });
 } catch (error) {
 	parentPort?.postMessage({ ok: false, error: String(error) });

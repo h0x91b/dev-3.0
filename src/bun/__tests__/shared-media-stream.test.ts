@@ -37,6 +37,13 @@ describe("isStoredSharedMediaPath", () => {
 		expect(isStoredSharedMediaPath("relative/shared-images/x.mp4")).toBe(false);
 	});
 
+	it("accepts a clip under a project's in-project root, and only directly inside shared-images", () => {
+		expect(isStoredSharedMediaPath("/work/repo/.dev3/worktrees/shared-images/shared-1-abcd.mp4")).toBe(true);
+		expect(isStoredSharedMediaPath("/work/repo/.dev3/worktrees/shared-images/nested/x.mp4")).toBe(false);
+		expect(isStoredSharedMediaPath("/work/repo/.dev3/worktrees/uploads/x.mp4")).toBe(false);
+		expect(isStoredSharedMediaPath("/work/repo/.dev3/worktrees/shared-images/x.png")).toBe(false);
+	});
+
 	it("accepts every show-media container, audio included, and nothing outside the list", () => {
 		for (const ext of ["mp4", "webm", "mp3", "m4a", "wav", "ogg"]) expect(isStoredSharedMediaPath(`${STORE}/shared-1-abcd.${ext}`)).toBe(true);
 		for (const ext of ["flac", "mov", "html", "png"]) expect(isStoredSharedMediaPath(`${STORE}/shared-1-abcd.${ext}`)).toBe(false);

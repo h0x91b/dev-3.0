@@ -239,7 +239,7 @@ describe("runWorktreeCleanup (the real prune, 14 days)", () => {
 	it("hands the kept tree to the after-prune step", () => {
 		const afterPrune = vi.fn(() => "compressed");
 		const result = runWorktreeCleanup(deps([], []), { afterPrune });
-		expect(afterPrune).toHaveBeenCalledWith(`${HOME}/worktrees`);
+		expect(afterPrune).toHaveBeenCalledWith(expect.arrayContaining([`${root}/0ccccccc`]));
 		expect(result.afterPrune).toBe("compressed");
 	});
 });

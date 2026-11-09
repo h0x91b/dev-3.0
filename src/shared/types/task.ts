@@ -6,7 +6,7 @@ import type { TaskStatus } from "./task-status";
 import type { TaskPriority } from "./task-priority";
 import type { TaskType } from "./task-type";
 import type { Project } from "./project";
-import type { ScheduledLaunch } from "./agent-launch";
+import type { LaunchAfter, ScheduledLaunch } from "./agent-launch";
 import type { ScheduledMessage } from "./scheduled-messages";
 import type { KeepAliveState } from "./keep-alive";
 import type { PrWatch } from "../pr-watch";
@@ -146,6 +146,9 @@ export interface Task {
 	 * account the usage-balanced router picked.
 	 */
 	accountId?: string | null;
+	/** AWS profile entry picked for a Bedrock agent (see LaunchVariant). Persisted so
+	 *  Retry, respawn and recovery launch on the same AWS account. */
+	bedrockProfile?: string | null;
 	/** Why Auto chose `accountId`, recorded at the launch that routed it. */
 	accountPick?: { reason: AccountPickReason; at: string } | null;
 	createdAt: string;
@@ -375,6 +378,12 @@ export interface Task {
 	 * (new branch from `baseBranch`) of that repo instead of a plain folder.
 	 */
 	opsWorktree?: boolean;
+	/**
+	 * `"project"` when this task's dir was created under `<project>/.dev3/worktrees/`.
+	 * Stamped once at creation from the project's `storageRoot`, never recomputed,
+	 * so flipping that setting cannot move a live task. Absent means `~/.dev3.0`.
+	 */
+	taskDirLocation?: "project";
 	/** Last-launch timestamps (ISO) per package.json script — used to sort the Scripts dropdown. */
 	scriptLastRunAt?: Record<string, string>;
 	/** Last-used placement per package.json script — pre-selects it in the placement picker. */
@@ -439,6 +448,13 @@ export interface Task {
 	 * by setting it back to null.
 	 */
 	scheduledLaunch?: ScheduledLaunch | null;
+	/**
+	 * Conditional launch ("start after"): fires when the prerequisite task
+	 * completes or its PR merges, checked on the scheduled-launch tick. Only
+	 * meaningful on a `todo` task; cleared when it fires, when the task leaves
+	 * To Do, or when the prerequisite can no longer satisfy it.
+	 */
+	launchAfter?: LaunchAfter | null;
 	/**
 	 * Pending scheduled messages ("Send later") — one-shot texts queued to this
 	 * task's live agent/pane, delivered by the bun scheduled-message scheduler

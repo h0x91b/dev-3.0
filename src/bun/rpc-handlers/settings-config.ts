@@ -1,12 +1,14 @@
 import { normalizeSimplifiedInterface } from "../../shared/simplified-interface";
 import { noteInterfaceModeChange } from "../interface-onboarding";
 import { chmodSync, existsSync, mkdirSync, symlinkSync, unlinkSync } from "node:fs";
-import { join } from "node:path";
+import { mkdir } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { PATHS } from "../electrobun-platform";
 import type { AgentCheckResult, AgentModelAvailability, CodingAgent, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GlobalSettings, HarnessReadinessReport, Project, ProjectSettingsUpdate, RequirementCheckResult, RosettaWarningInfo, ShellAvailability, TelemetryProfile } from "../../shared/types";
 import { SHELL_FALLBACK_ORDER, type ShellFlavor, shellCandidatePaths } from "../../shared/posix-shell";
 import { getUserShell, resolveUserShell, setShellPreference } from "../shell-env";
 import * as data from "../data";
+import * as git from "../git";
 import * as agents from "../agents";
 import { resolveModelAvailability } from "../agent-available-models";
 import { getAgentDirLiveModels } from "../agent-dir-live-models";
@@ -16,7 +18,6 @@ import * as github from "../github";
 import * as updater from "../updater";
 import * as rosetta from "../rosetta";
 import * as repoConfig from "../repo-config";
-import * as git from "../git";
 import * as pty from "../pty-server";
 import { tmux } from "../tmux";
 import { setTmuxPaneDimming, setTmuxPaneTitles, writeTmuxConfigs } from "../tmux/config";
@@ -32,13 +33,19 @@ import { getAllFeatureFlags, setFeatureFlags as cacheFeatureFlags } from "../fea
 import { resolveAnalyticsDistinctId as resolveDistinctId } from "../analytics-identity";
 import { collectTelemetryProfile } from "../telemetry-profile";
 import { runBoardCopy } from "../board-copy";
+import { ensureInProjectStorageDirs } from "../in-project-storage";
+import { copyHomeDataIntoProject, copyProjectDataToHome } from "../project-storage-switch";
+import { projectTasksFile, storesInProject } from "../../shared/project-storage";
+import { withFileLock } from "../file-lock";
+import { recordStorageSwitch } from "../project-storage-live";
+import { projectClaudeFolderSupported } from "../../shared/agent-env-defaults";
 import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath, setFocusMode } from "./shared";
 import { binaryCandidatesOnPath, tmuxSearchPaths } from "./shared-pure";
 import { agentBinaryPathOverride, brokenCustomPath, enforcedCustomBinaryPaths, isExecutableFile, staleCustomPath } from "../executable";
 import { agentAlternativeInstallCommand, agentInstallCommand } from "../../shared/agent-install";
 import { harnessReadinessFrom } from "../harness-readiness";
 import { validateEnvMap } from "../../shared/env-text";
-import { GIT_WORKFLOW_NOT_A_REPO_ERROR, gitWorkflowSwitchBlocker, hasGitWorkflow, normalizeProjectName, PROJECT_NAME_MAX_LENGTH, repoConfigEnabled } from "../../shared/types";
+import { GIT_WORKFLOW_NOT_A_REPO_ERROR, gitWorkflowSwitchBlocker, hasGitWorkflow, normalizeProjectName, PROJECT_NAME_MAX_LENGTH, repoConfigEnabled, STORAGE_TRACKED_CONFLICT_ERROR, storageSwitchBlocker } from "../../shared/types";
 
 import { writeShellInit } from "../shell-init";
 import { previewShellPrompt } from "../shell-prompt-preview";
@@ -127,6 +134,53 @@ async function assertGitWorkflowSwitchAllowed(project: Project, next: boolean): 
 	}
 }
 
+async function hasTrackedInProjectData(projectPath: string): Promise<boolean> {
+	if (!(await git.isGitRepo(projectPath))) return false;
+	const proc = spawn(["git", "-C", projectPath, "ls-files", ".dev3/data", ".dev3/worktrees"], { stdout: "pipe", stderr: "pipe" });
+	const out = await new Response(proc.stdout).text();
+	await proc.exited;
+	return out.trim().length > 0;
+}
+
+async function assertStorageSwitchAllowed(project: Project, next: "project" | "home"): Promise<void> {
+	const blocker = storageSwitchBlocker(project, await data.loadTasks(project));
+	if (blocker?.reason === "virtual") throw new Error("Operations boards have no project folder to keep data in");
+	if (blocker?.reason === "live-tasks") {
+		throw new Error(`Finish ${blocker.count} running task(s) before switching where dev3 keeps this project's data`);
+	}
+	if (next === "project" && (await hasTrackedInProjectData(project.path))) throw new Error(STORAGE_TRACKED_CONFLICT_ERROR);
+}
+
+/**
+ * Copies the board across and records the new root while holding the tasks-file
+ * locks at both locations, so no board write can land in the copy left behind.
+ * Returns the `storageRoot` now stored.
+ */
+async function switchProjectStorage(project: Project, next: "project" | "home"): Promise<"project" | undefined> {
+	await assertStorageSwitchAllowed(project, next);
+	const storageRoot = next === "project" ? "project" as const : undefined;
+	const [from, to] = [projectTasksFile(DEV3_HOME, project), projectTasksFile(DEV3_HOME, { ...project, storageRoot })];
+	await Promise.all([from, to].map((file) => mkdir(dirname(file), { recursive: true })));
+	// Sorted like moveTaskToProject's locks, so the two can never deadlock.
+	const [first, second] = [from, to].sort();
+	await withFileLock(first, () => withFileLock(second, async () => {
+		if (next === "project") {
+			await ensureInProjectStorageDirs(project.path);
+			await copyHomeDataIntoProject(DEV3_HOME, project.path);
+		}
+		else await copyProjectDataToHome(DEV3_HOME, project.path);
+		await data.updateProject(project.id, { storageRoot });
+		recordStorageSwitch(project.id, storageRoot);
+	}));
+	return storageRoot;
+}
+
+/** Keep a just-added project's board and task dirs inside its folder. Throws when the folder cannot take them. */
+export async function storeNewProjectInProject(project: Project): Promise<Project> {
+	await switchProjectStorage(project, "project");
+	return data.getProject(project.id);
+}
+
 async function updateProjectSettings(params: { projectId: string } & ProjectSettingsUpdate): Promise<Project> {
 	log.info("→ updateProjectSettings", { projectId: params.projectId });
 	assertValidEnvParam(params.env);
@@ -134,6 +188,9 @@ async function updateProjectSettings(params: { projectId: string } & ProjectSett
 	if (params.gitWorkflow !== undefined && params.gitWorkflow !== hasGitWorkflow(project)) {
 		await assertGitWorkflowSwitchAllowed(project, params.gitWorkflow);
 	}
+	const storageRoot = params.storageRoot !== undefined && params.storageRoot !== (storesInProject(project) ? "project" : "home")
+		? { storageRoot: await switchProjectStorage(project, params.storageRoot) }
+		: {};
 	// A save may only reach a repo file while the project reads repo files both
 	// before and after this request: a save that is itself switching them off must
 	// not write one on its way out.
@@ -147,6 +204,7 @@ async function updateProjectSettings(params: { projectId: string } & ProjectSett
 		: extractConfigFromParams(params);
 	const updates = {
 		...configUpdates,
+		...storageRoot,
 		...(params.useRepoConfig !== undefined ? { useRepoConfig: params.useRepoConfig } : {}),
 		...(params.name !== undefined ? { name: requireProjectName(params.name) } : {}),
 		...(params.githubAuthHost !== undefined ? { githubAuthHost: params.githubAuthHost } : {}),
@@ -592,7 +650,7 @@ async function getLastRoute(): Promise<{ route: string | null }> {
 	return { route };
 }
 
-async function getAppVersion(): Promise<{ version: string; channel: string; buildChannel: string }> {
+async function getAppVersion(): Promise<{ version: string; channel: string; buildChannel: string; leanProtocolForcedByEnv: boolean; projectClaudeFolderSupported: boolean }> {
 	log.info("-> getAppVersion");
 	const local = await updater.getLocalVersion();
 	const settings = await loadSettings();
@@ -600,6 +658,8 @@ async function getAppVersion(): Promise<{ version: string; channel: string; buil
 		version: local.version,
 		channel: settings.updateChannel,
 		buildChannel: local.channel,
+		leanProtocolForcedByEnv: process.env.DEV3_LEAN_PROTOCOL === "1",
+		projectClaudeFolderSupported: projectClaudeFolderSupported(process.platform),
 	};
 	log.info("<- getAppVersion", result);
 	return result;

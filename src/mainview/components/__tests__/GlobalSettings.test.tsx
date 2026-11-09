@@ -43,6 +43,7 @@ vi.mock("../../rpc", () => ({
 				.fn()
 				.mockResolvedValue({ available: true, tmuxSupported: true, diagnostics: [] }),
 			getNewTaskTerminalBackend: vi.fn().mockResolvedValue({ backend: null }),
+			getAppVersion: vi.fn().mockResolvedValue({ version: "0.0.0", channel: "stable", leanProtocolForcedByEnv: false }),
 			getShellAvailability: vi.fn().mockResolvedValue({
 				resolved: { path: "/bin/zsh", flavor: "zsh", requested: "auto", fellBack: false },
 				installed: { zsh: "/bin/zsh", bash: "/bin/bash", sh: "/bin/sh" },
@@ -511,7 +512,7 @@ describe("GlobalSettings", () => {
 
 	describe("merge completion suggestions", () => {
 		function getMergeSuggestionSwitch() {
-			return screen.getByRole("switch", { name: "Suggest completing tasks after merge" });
+			return screen.getByRole("switch", { name: "Offer to complete tasks after a merge" });
 		}
 
 		it("is on by default", async () => {

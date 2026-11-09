@@ -22,6 +22,7 @@ vi.mock("../../../rpc", () => ({
 			toggleFavoriteAgent: vi.fn(() => Promise.resolve({})),
 			// The preset editor asks for the model catalog; an empty one keeps the
 			// roles block hidden, which is this suite's subject.
+			getAppVersion: vi.fn(() => Promise.resolve({ version: "1", channel: "stable", buildChannel: "dev", leanProtocolForcedByEnv: false })),
 			modelCatalogGet: vi.fn(() => Promise.resolve({ providers: [], models: [] })),
 		},
 	},
@@ -65,6 +66,7 @@ function renderSection(claudePatch: Partial<CodingAgent> = {}, onAgentsChange = 
 				onDefaultConfigChange={vi.fn()}
 				onCoordinatorDefaultChange={vi.fn()}
 				onGlobalSettingsChange={vi.fn()}
+				onLeanProtocolToggle={vi.fn()}
 			/>
 		</I18nProvider>,
 	);
@@ -189,6 +191,7 @@ describe("AgentSettingsSection — per-agent provider selector", () => {
 					onDefaultConfigChange={vi.fn()}
 					onCoordinatorDefaultChange={vi.fn()}
 					onGlobalSettingsChange={vi.fn()}
+					onLeanProtocolToggle={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -340,6 +343,7 @@ describe("AgentSettingsSection — preset library", () => {
 					onDefaultConfigChange={vi.fn()}
 					onCoordinatorDefaultChange={vi.fn()}
 					onGlobalSettingsChange={vi.fn()}
+					onLeanProtocolToggle={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -369,6 +373,7 @@ describe("AgentSettingsSection — preset library", () => {
 					onDefaultConfigChange={vi.fn()}
 					onCoordinatorDefaultChange={vi.fn()}
 					onGlobalSettingsChange={vi.fn()}
+					onLeanProtocolToggle={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -548,6 +553,7 @@ describe("a deep-link that names one preset", () => {
 					onDefaultConfigChange={vi.fn()}
 					onCoordinatorDefaultChange={vi.fn()}
 					onGlobalSettingsChange={vi.fn()}
+					onLeanProtocolToggle={vi.fn()}
 					focusPreset={{ agentId: claude.id, configId: target.id }}
 					onFocusPresetHandled={onHandled}
 				/>
@@ -578,6 +584,7 @@ describe("a deep-link that names one preset", () => {
 					onDefaultConfigChange={vi.fn()}
 					onCoordinatorDefaultChange={vi.fn()}
 					onGlobalSettingsChange={vi.fn()}
+					onLeanProtocolToggle={vi.fn()}
 					focusPreset={{ agentId: claude.id, configId: target.id }}
 					onFocusPresetHandled={onHandled}
 				/>
@@ -600,6 +607,7 @@ describe("a deep-link that names one preset", () => {
 					onDefaultConfigChange={vi.fn()}
 					onCoordinatorDefaultChange={vi.fn()}
 					onGlobalSettingsChange={vi.fn()}
+					onLeanProtocolToggle={vi.fn()}
 					focusPreset={{ agentId: claude.id, configId: "deleted-long-ago" }}
 					onFocusPresetHandled={onHandled}
 				/>
@@ -666,5 +674,50 @@ describe("AgentSettingsSection — custom executable path", () => {
 		await expandAgent(user, "Claude");
 		await screen.findByPlaceholderText("/path/to/claude");
 		expect(screen.queryByTestId("agent-path-reset")).toBeNull();
+	});
+});
+
+describe("AgentSettingsSection - lean protocol toggle", () => {
+	function renderLean(settings: Partial<GlobalSettings>, onToggle = vi.fn()) {
+		render(
+			<I18nProvider>
+				<AgentSettingsSection
+					t={identityT as never}
+					agents={DEFAULT_AGENTS}
+					globalSettings={{ ...baseSettings, ...settings }}
+					onAgentsChange={vi.fn()}
+					onDefaultAgentChange={vi.fn()}
+					onDefaultConfigChange={vi.fn()}
+					onCoordinatorDefaultChange={vi.fn()}
+					onGlobalSettingsChange={vi.fn()}
+					onLeanProtocolToggle={onToggle}
+				/>
+			</I18nProvider>,
+		);
+		return onToggle;
+	}
+
+	it("is off by default and turns on through the callback", async () => {
+		const onToggle = renderLean({});
+		const toggle = screen.getByRole("switch", { name: "settings.leanAgentProtocol" });
+		expect(toggle.getAttribute("aria-checked")).toBe("false");
+		await userEvent.setup().click(toggle);
+		expect(onToggle).toHaveBeenCalledWith(true);
+	});
+
+	it("shows on when the setting is true", () => {
+		renderLean({ leanAgentProtocol: true });
+		expect(screen.getByRole("switch", { name: "settings.leanAgentProtocol" }).getAttribute("aria-checked")).toBe("true");
+	});
+
+	it("locks on with a hint when the environment forces it", async () => {
+		vi.mocked(api.request.getAppVersion).mockResolvedValueOnce({
+			version: "1", channel: "stable", buildChannel: "dev", leanProtocolForcedByEnv: true,
+		} as never);
+		renderLean({});
+		await screen.findByText("settings.leanAgentProtocolEnvHint");
+		const toggle = screen.getByRole("switch", { name: "settings.leanAgentProtocol" }) as HTMLElement;
+		expect(toggle.getAttribute("aria-checked")).toBe("true");
+		expect(toggle.tabIndex).toBe(-1);
 	});
 });

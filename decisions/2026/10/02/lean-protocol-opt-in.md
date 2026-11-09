@@ -1,3 +1,5 @@
+> Superseded on 2026-11-04 by `decisions/2026/11/04/lean-protocol-settings-toggle.md`: the lean protocol can now also be switched on from global Settings; the env flag still works.
+
 # Opt-in lean protocol at launch
 
 ## Context

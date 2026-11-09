@@ -36,7 +36,10 @@ vi.mock("../../rpc", () => ({
 			stopDevServer: vi.fn().mockResolvedValue({}),
 			cancelScheduledLaunch: vi.fn(),
 			startScheduledLaunchNow: vi.fn(),
+			startTaskLaunchAfterNow: vi.fn(),
+			clearTaskLaunchAfter: vi.fn(),
 			refreshTaskPrStatus: vi.fn().mockResolvedValue(undefined),
+			getAgentRateLimits: vi.fn().mockResolvedValue({ snapshots: [], sessions: [], generatedAt: 0 }),
 		},
 	},
 }));
@@ -78,6 +81,7 @@ vi.mock("../LabelPicker", () => ({
 			<button onClick={onClose}>Close picker</button>
 		</div>
 	),
+	LabelPickerPanel: () => <div data-testid="label-picker-panel" />,
 }));
 
 import { api } from "../../rpc";
@@ -86,6 +90,7 @@ import { toast } from "../../toast";
 import { trackEvent } from "../../analytics";
 import { confirmTaskCompletion } from "../../utils/confirmTaskCompletion";
 import type { CardLineage } from "../../utils/taskLineage";
+import { resetLiveSessionStatsForTests } from "../../hooks/useLiveSessionStats";
 
 vi.mock("../../confirm", () => ({
 	confirm: vi.fn(),
@@ -111,6 +116,7 @@ const claudeAgent: CodingAgent = {
 	configurations: [
 		{ id: "claude-default", name: "Default", model: "sonnet" },
 		{ id: "claude-plan", name: "Plan (Opus 4.7)" },
+		{ id: "claude-opus-medium", name: "Auto (Opus 5.5, Medium)", model: "claude-opus-5-5[1m]", effort: "medium" },
 	],
 	defaultConfigId: "claude-default",
 };
@@ -120,7 +126,7 @@ const codexAgent: CodingAgent = {
 	name: "Codex",
 	baseCommand: "codex",
 	isDefault: true,
-	configurations: [{ id: "codex-default", name: "Default" }],
+	configurations: [{ id: "codex-default", name: "Default" }, { id: "codex-medium", name: "Medium", effort: "medium" }],
 	defaultConfigId: "codex-default",
 };
 
@@ -257,6 +263,56 @@ describe("TaskCard", () => {
 		expect(screen.getByRole("dialog", { name: "Siblings" })).toBeInTheDocument();
 	});
 
+	describe("start-after chip", () => {
+		const launchAfter = { taskId: "t9", seq: 9, until: "completed" as const, armedAt: "2026-11-04T10:00:00Z" };
+
+		it("is a focusable button naming the task it waits for", () => {
+			renderCard(makeTask({ status: "todo", launchAfter }));
+			const chip = screen.getByTestId("task-card-starts-after-chip");
+			expect(chip).toHaveTextContent("Starts after #9");
+			expect(chip.tagName).toBe("BUTTON");
+			chip.focus();
+			expect(chip).toHaveFocus();
+		});
+
+		it("says when it waits for a merge rather than a completion", () => {
+			renderCard(makeTask({ status: "todo", launchAfter: { ...launchAfter, until: "merged" } }));
+			const chip = screen.getByTestId("task-card-starts-after-chip");
+			expect(chip).toHaveTextContent("Starts after #9 merges");
+			expect(chip).toHaveAttribute("data-until", "merged");
+		});
+
+		it("removes the condition from its popover", async () => {
+			const dispatch = vi.fn();
+			const cleared = makeTask({ status: "todo", launchAfter: null });
+			mockedApi.request.clearTaskLaunchAfter.mockResolvedValueOnce(cleared);
+			renderCard(makeTask({ status: "todo", launchAfter }), { dispatch });
+			await userEvent.click(screen.getByTestId("task-card-starts-after-chip"));
+			await userEvent.click(screen.getByRole("menuitem", { name: "Remove start condition" }));
+			expect(mockedApi.request.clearTaskLaunchAfter).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: cleared });
+		});
+
+		it("starts the task now from its popover", async () => {
+			renderCard(makeTask({ status: "todo", launchAfter }));
+			await userEvent.click(screen.getByTestId("task-card-starts-after-chip"));
+			await userEvent.click(screen.getByRole("menuitem", { name: "Start now" }));
+			expect(mockedApi.request.startTaskLaunchAfterNow).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+		});
+
+		it("reads 'Did not start', not 'Launch failed', when the wait was abandoned", () => {
+			renderCard(makeTask({ status: "todo", preparationError: "Did not start: task #9, which this task waited for, was cancelled." }));
+			const banner = screen.getByRole("alert");
+			expect(banner).toHaveTextContent("Did not start: task #9, which this task waited for, was cancelled.");
+			expect(banner).not.toHaveTextContent("Launch failed");
+		});
+
+		it("is not shown once the task left To Do", () => {
+			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", launchAfter }));
+			expect(screen.queryByTestId("task-card-starts-after-chip")).toBeNull();
+		});
+	});
+
 	describe("scheduled-message chip", () => {
 		function taskWithMessage() {
 			return makeTask({
@@ -312,6 +368,90 @@ describe("TaskCard", () => {
 		it("shows no scratch indicator for a normal task", () => {
 			renderCard(makeTask({ scratch: false }));
 			expect(screen.queryByText("\u{F018D}")).not.toBeInTheDocument();
+		});
+	});
+
+	describe("live session config", () => {
+		beforeEach(() => resetLiveSessionStatsForTests());
+		afterEach(() => resetLiveSessionStatsForTests());
+
+		const runningTask = (overrides: Partial<Task> = {}) => makeTask({
+			status: "in-progress",
+			worktreePath: "/tmp/wt",
+			branchName: "dev3/test",
+			agentId: "builtin-claude",
+			configId: "claude-opus-medium",
+			...overrides,
+		});
+		const report = (session: Record<string, unknown>, generatedAt = 1) => ({
+			snapshots: [],
+			generatedAt,
+			sessions: [{ taskId: "t1", capturedAt: 1, model: "Opus 5.5", modelId: "claude-opus-5-5[1m]", effort: "medium", ...session }],
+		});
+		const pushReport = (detail: ReturnType<typeof report>) => act(() => {
+			window.dispatchEvent(new CustomEvent("rpc:agentRateLimitsUpdated", { detail }));
+		});
+
+		it("shows the effort set with /effort next to the unchanged launch preset", () => {
+			renderCard(runningTask());
+			pushReport(report({ effort: "high" }));
+			expect(screen.getByTestId("task-card-config")).toHaveTextContent("Auto (Opus 5.5, Medium)");
+			expect(screen.getByTestId("task-card-live-config")).toHaveTextContent("→ high");
+		});
+
+		it("shows a model switched with /model, followed by the effort when that moved too", () => {
+			renderCard(runningTask());
+			pushReport(report({ model: "Sonnet 5.5", modelId: "claude-sonnet-5-5" }));
+			expect(screen.getByTestId("task-card-live-config")).toHaveTextContent(/^→ Sonnet 5\.5$/);
+			pushReport(report({ model: "Sonnet 5.5", modelId: "claude-sonnet-5-5", effort: "high" }, 2));
+			expect(screen.getByTestId("task-card-live-config")).toHaveTextContent("→ Sonnet 5.5, high");
+		});
+
+		it("drops the marker once the session is back on the preset", () => {
+			renderCard(runningTask());
+			pushReport(report({ effort: "high" }));
+			expect(screen.getByTestId("task-card-live-config")).toBeInTheDocument();
+			pushReport(report({}, 2));
+			expect(screen.queryByTestId("task-card-live-config")).toBeNull();
+		});
+
+		it("adds nothing for another task's session, a finished task, or a non-Claude agent", () => {
+			const { unmount } = renderCard(runningTask());
+			pushReport(report({ taskId: "other", effort: "high" }));
+			expect(screen.queryByTestId("task-card-live-config")).toBeNull();
+			unmount();
+
+			const done = renderCard(runningTask({ status: "completed" }));
+			pushReport(report({ effort: "high" }, 2));
+			expect(screen.queryByTestId("task-card-live-config")).toBeNull();
+			done.unmount();
+
+			renderCard(runningTask({ agentId: "builtin-codex", configId: "codex-medium" }));
+			pushReport(report({ effort: "high" }, 3));
+			expect(screen.queryByTestId("task-card-live-config")).toBeNull();
+		});
+
+		it("adds nothing on a hibernated task, whose resume relaunches with the preset", () => {
+			renderCard(runningTask({ hibernated: true }));
+			pushReport(report({ effort: "high" }));
+			expect(screen.queryByTestId("task-card-live-config")).toBeNull();
+		});
+
+		it("reads the drift from the first fetch, before any push", async () => {
+			mockedApi.request.getAgentRateLimits.mockResolvedValueOnce(report({ effort: "high" }) as never);
+			renderCard(runningTask());
+			expect(await screen.findByTestId("task-card-live-config")).toHaveTextContent("→ high");
+		});
+
+		it("does not let a first fetch that resolves late roll back a newer push", async () => {
+			let resolveFetch!: (r: unknown) => void;
+			mockedApi.request.getAgentRateLimits.mockReturnValueOnce(new Promise((r) => { resolveFetch = r; }) as never);
+			renderCard(runningTask());
+			pushReport(report({ effort: "high" }, 5));
+			await act(async () => {
+				resolveFetch(report({}, 4));
+			});
+			expect(screen.getByTestId("task-card-live-config")).toHaveTextContent("→ high");
 		});
 	});
 
@@ -522,7 +662,7 @@ describe("TaskCard", () => {
 				"completed",
 				expect.anything(),
 				expect.anything(),
-				{ alwaysConfirm: true },
+				{ alwaysConfirm: true, anchor: expect.any(HTMLElement) },
 			);
 			await waitFor(() => {
 				expect(mockedApi.request.moveTask).toHaveBeenCalledWith(
@@ -615,7 +755,7 @@ describe("TaskCard", () => {
 				"cancelled",
 				expect.anything(),
 				expect.anything(),
-				{ alwaysConfirm: true },
+				{ alwaysConfirm: true, anchor: expect.any(HTMLElement) },
 			);
 			await waitFor(() => {
 				expect(mockedApi.request.moveTask).toHaveBeenCalledWith(
@@ -648,7 +788,7 @@ describe("TaskCard", () => {
 			await user.keyboard("{Enter}");
 
 			expect(mockedConfirmTaskCompletion).toHaveBeenCalledWith(
-				expect.anything(), expect.anything(), "cancelled", expect.anything(), expect.anything(), { alwaysConfirm: true },
+				expect.anything(), expect.anything(), "cancelled", expect.anything(), expect.anything(), { alwaysConfirm: true, anchor: expect.any(HTMLElement) },
 			);
 			expect(navigate).not.toHaveBeenCalled();
 		});

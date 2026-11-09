@@ -1024,7 +1024,7 @@ describe("task move", () => {
 	});
 
 	// `cancelled` is never a direct move either — it detours through the same
-	// approval dialog as `completed` (covered in its own describe below).
+	// user approval as `completed` (covered in its own describe below).
 	it("does not send a plain task.move for cancelled", async () => {
 		mockSend.mockResolvedValue(okResp({ approved: false }));
 
@@ -2609,5 +2609,65 @@ describe("epic flags", () => {
 		mockSend.mockResolvedValue(okResp({ ...created, epic: { id: "epicpay1-0000", name: "Payments v2", color: "#3b82f6", archived: true } }));
 		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
 		expect(stdoutOutput).toMatch(/Epic:\s*Payments v2 \(epicpay1\) — archived/);
+	});
+});
+
+describe("--start-after", () => {
+	const waiting: Task = {
+		...FAKE_TASK,
+		status: "todo",
+		seq: 44,
+		launchAfter: { taskId: "bbbbbbbb", seq: 12, until: "merged", armedAt: "2026-11-04T10:00:00Z" },
+	};
+
+	it("task create sends the prerequisite, --until and a launch agent, and says what it waits for", async () => {
+		mockSend.mockResolvedValue(okResp(waiting));
+		await handleTask("create", args([], { project: "proj-001", title: "Next", "start-after": "seq:12", until: "merged", agent: "claude" }), SOCKET, null);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", expect.objectContaining({
+			startAfter: "seq:12",
+			until: "merged",
+			agentId: "claude",
+			configId: null,
+		}));
+		expect(stderrOutput).toContain("Starts after: #12, when its PR merges");
+	});
+
+	it("task create still refuses --agent without --start-after", async () => {
+		await expect(handleTask("create", args([], { project: "proj-001", title: "Next", agent: "claude" }), SOCKET, null)).rejects.toThrow("EXIT_3");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("rejects --until without --start-after, and an unknown --until", async () => {
+		await expect(handleTask("create", args([], { project: "proj-001", title: "Next", until: "merged" }), SOCKET, null)).rejects.toThrow("EXIT_3");
+		await expect(handleTask("create", args([], { project: "proj-001", title: "Next", "start-after": "seq:12", until: "done" }), SOCKET, null)).rejects.toThrow("EXIT_3");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("task update arms it from inside a task and records that task as the one asking", async () => {
+		mockSend.mockResolvedValue(okResp({ task: waiting, titlePreserved: false }));
+		await handleTask("update", args([], { task: "seq:44", "start-after": "seq:12", until: "merged" }), SOCKET, CTX);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", expect.objectContaining({
+			taskId: "seq:44",
+			startAfter: "seq:12",
+			until: "merged",
+			sourceTaskId: CTX.taskId,
+		}));
+	});
+
+	it("task update --no-start-after is a standalone update", async () => {
+		mockSend.mockResolvedValue(okResp({ task: { ...waiting, launchAfter: null }, titlePreserved: false }));
+		await handleTask("update", args(["aaaaaaaa"], { "no-start-after": "true" }), SOCKET, null);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", { taskId: "aaaaaaaa", noStartAfter: true });
+		expect(stderrOutput).toContain("Start-after cleared");
+	});
+
+	it("refuses --start-after with --no-start-after", async () => {
+		await expect(handleTask("update", args(["aaaaaaaa"], { "start-after": "seq:12", "no-start-after": "true" }), SOCKET, null)).rejects.toThrow("EXIT_3");
+	});
+
+	it("task show prints the condition", async () => {
+		mockSend.mockResolvedValue(okResp(waiting));
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).toMatch(/Starts after:\s+#12, when its PR merges/);
 	});
 });

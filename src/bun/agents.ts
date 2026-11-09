@@ -1,11 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve as resolvePath } from "node:path";
 import type { AgentConfiguration, AgentFamily, CodingAgent, LlmProvider, Project, ProtocolMode } from "../shared/types";
 import { DEFAULT_AGENTS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
 export { skillInvocationPrefix } from "../shared/types";
-import { buildProviderEnv, getProviderDefinition, providerOmitsModelFlag, providerPinnedModel } from "../shared/llm-provider";
+import { bedrockProfileEnv, bedrockProfilesFor, buildProviderEnv, getProviderDefinition, presetModelSlotEnv, providerOmitsModelFlag, providerPinnedModel, resolveBedrockProfile } from "../shared/llm-provider";
 import { createLogger } from "./logger";
 import { backupUnparsableCodexConfig, joinLike as joinLikeHome, detectCodexProfileLaunchFlag, detectCodexVersion, resetCodexVersionProbe, resetCodexHelpProbe, ensureCodexConfig, ensureCodexProfileFiles, getCodexSyntaxForVersion, resolveCodexInstallRoots, type CodexProfileLaunchFlag } from "./codex-config";
 import { agentBinaryPathOverride, brokenCustomPath, customExecutableMessage, enforcedCustomBinaryPaths } from "./executable";
@@ -17,6 +17,7 @@ import { GEMINI_TRUSTED_FOLDERS } from "./worktree-trust";
 import {
 	ensureCopilotCommandApproval,
 	ensureCopilotTrustedFolder,
+	isDev3OwnedFolder,
 	updateCopilotConfig,
 	updateCopilotPermissions,
 } from "../shared/agent-hooks";
@@ -37,8 +38,9 @@ import { codexModelCatalogArgs, modelRolesForAgent, orphanedRoleBindings, resolv
 import { writeCodexModelCatalog } from "./codex-model-catalog";
 import { loadModelCatalog } from "./model-catalog-store";
 import { ensureModelSidecar, preflightModelRoles } from "./model-sidecar";
-import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, installClaudeConfigDir } from "./agent-skills";
-import { launchClaudeConfigLocation } from "../shared/claude-config-dir";
+import { CLAUDE_SKILL_BODY, CLAUDE_SKILL_NAMES, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, installClaudeConfigDir } from "./agent-skills";
+import { excludeClaudeRuntimeState, isGitTracked } from "./claude-config-git";
+import { launchClaudeConfigLocation, pinnedClaudeConfigDir } from "../shared/claude-config-dir";
 import { rememberPinnedClaudeConfigDir } from "./claude-config-dirs";
 import { updateClaudeJson } from "./claude-json-update";
 import { getAgentAdapter, agentKey } from "../shared/agent-adapters/registry";
@@ -500,6 +502,8 @@ export interface CommandOptions {
 	 *  --append-system-prompt; Codex: `-c developer_instructions=...`).
 	 *  Used for review agents that rely on hooks instead of system-prompt instructions. */
 	skipSystemPrompt?: boolean;
+	/** Global `leanAgentProtocol` setting, read by the async launch path. The env flag still applies on top. */
+	leanProtocol?: boolean;
 	/** Path to the generated settings file that routes the Claude statusLine
 	 *  through `dev3 statusline` (rate-limit capture + delegation to the user's
 	 *  original statusLine). Injected as `--settings <path>` for Claude-based
@@ -517,9 +521,15 @@ export interface CommandOptions {
 	 *  Threaded into the account env resolution so each spawned session locks to
 	 *  its chosen account instead of a single global active one. */
 	accountId?: string | null;
+	/** Per-launch AWS profile pick for a Bedrock agent (`ProviderSettings.profiles`):
+	 *  `undefined` → the agent's default profile; `null` → none; a name → that entry. */
+	bedrockProfile?: string | null;
 	/** `accountId` was read from stored task/pane state, not picked for this launch: a Claude
 	 *  account removed since then falls back to the default instead of failing the launch. */
 	accountFromStore?: boolean;
+	/** The project env the launch runs under. A CLAUDE_CONFIG_DIR it pins beats the
+	 *  default account, and then the account env does not clear the project's own keys. */
+	projectEnv?: Record<string, string>;
 	/** Fresh-launch routing context. Present → an `"auto"` account (or a default
 	 *  set to Auto) is resolved by the usage-balanced router. Resume paths never
 	 *  pass it, so a resumed conversation is never re-routed. */
@@ -570,7 +580,7 @@ export async function resolveAgentCommand(
 	const baseCmd = config?.baseCommandOverride || agent.baseCommand;
 	const adapter = getAgentAdapter(baseCmd, agent.agentFamily);
 
-	const protocol = options?.skipSystemPrompt ? undefined : launchProtocol(adapter, options?.protocolMode ?? "worktree");
+	const protocol = options?.skipSystemPrompt ? undefined : launchProtocol(adapter, options?.protocolMode ?? "worktree", options?.leanProtocol);
 	const launchCtx = !options?.skipSystemPrompt && !adapter.skillFamily && options?.protocolMode === "shared-folder"
 		? { ...ctx, taskDescription: withSharedFolderNotice(ctx.taskDescription) }
 		: ctx;
@@ -626,16 +636,17 @@ export async function resolveAgentCommand(
 const SYSTEM_PROMPT_FILE_COMMANDS = new Set(["claude", "omp", "pi"]);
 
 /** The protocol this launch injects and its own file name (`claude`, `claude-shared-folder-lean`, …),
- *  or undefined for an adapter that injects none. Lean (`DEV3_LEAN_PROTOCOL=1`)
+ *  or undefined for an adapter that injects none. Lean (the setting or `DEV3_LEAN_PROTOCOL=1`)
  *  names the full body of the same mode, written first. */
 function launchProtocol(
 	adapter: { command: string; skillFamily?: SkillFamily },
 	mode: ProtocolMode,
+	leanBySetting?: boolean,
 ): { body: string; fileName: string } | undefined {
 	if (!adapter.skillFamily) return undefined;
 	const base = mode === "worktree" ? adapter.command : `${adapter.command}-${mode}`;
 	const full = skillBodyFor(adapter.skillFamily, mode);
-	if (process.env.DEV3_LEAN_PROTOCOL !== "1") return { body: full, fileName: base };
+	if (leanBySetting !== true && process.env.DEV3_LEAN_PROTOCOL !== "1") return { body: full, fileName: base };
 	const fullProtocolPath = ensureAgentSystemPromptFile(base, full);
 	return { body: leanSkillBodyFor(adapter.skillFamily, mode) + leanProtocolReference(fullProtocolPath), fileName: `${base}-lean` };
 }
@@ -788,25 +799,47 @@ export function getDefaultEnvForAgent(agent: CodingAgent, config?: AgentConfigur
 function applyStatusLineOption(
 	options: CommandOptions | undefined,
 	settings: { agentRateLimitTracking?: boolean },
+	bedrockProfile: { resolvedBedrockProfile?: string | null; bedrockProfileMissing?: string },
+	launchEnv: Record<string, string>,
+	worktreePath: string | undefined,
 ): CommandOptions | undefined {
 	const includeStatusLine = settings.agentRateLimitTracking !== false;
-	const settingsFile = ensureClaudeStatusLineSettings(includeStatusLine);
+	// Only a profile dev3 injected gets dev3's SSO refresh, and never over the user's own
+	// awsAuthRefresh: flag settings outrank every settings file, so ours would shadow it.
+	const awsSsoRefresh = !!bedrockProfile.resolvedBedrockProfile && !bedrockProfile.bedrockProfileMissing
+		&& !claudeSettingsSetAwsAuthRefresh(launchEnv, worktreePath);
+	const settingsFile = ensureClaudeStatusLineSettings(includeStatusLine, awsSsoRefresh);
 	if (!settingsFile) return options;
 	return { ...options, statuslineSettingsFile: settingsFile };
+}
+
+/** Whether the launch's Claude user settings, or the worktree's project settings, already set `awsAuthRefresh`. */
+export function claudeSettingsSetAwsAuthRefresh(launchEnv: Record<string, string>, worktreePath: string | undefined): boolean {
+	const configDir = launchEnv.CLAUDE_CONFIG_DIR || process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
+	const files = [join(configDir, "settings.json")];
+	if (worktreePath) files.push(join(worktreePath, ".claude", "settings.json"), join(worktreePath, ".claude", "settings.local.json"));
+	return files.some((file) => {
+		try {
+			return typeof JSON.parse(readFileSync(file, "utf-8"))?.awsAuthRefresh === "string";
+		} catch {
+			return false;
+		}
+	});
 }
 
 /** Which account a launch uses, before any env is built. `"auto"` (or a
  *  default set to Auto, on a fresh launch) goes to the usage-balanced router;
  *  everything explicit passes through untouched. A preset that pins its own
  *  config dir/home bypasses accounts entirely, so it is never routed. Auto with
- *  a project-pinned Claude login falls back to the default: Auto never adds an
- *  override on top of a pin. */
+ *  a project-pinned Claude folder, or no pick at all, keeps that folder: only an
+ *  explicit account (or the system login) overrides a project pin. */
 async function resolveLaunchAccount(
 	baseCmd: string,
 	family: AgentFamily | undefined,
 	extraEnv: Record<string, string>,
 	options: CommandOptions | undefined,
-): Promise<{ accountId: string | null | undefined; resolvedAccountId: string | null | undefined; pick?: AutoAccountPick; staleAccountDropped?: true }> {
+	projectPath: string,
+): Promise<{ accountId: string | null | undefined; resolvedAccountId: string | null | undefined; pick?: AutoAccountPick; staleAccountDropped?: true; keepsProjectClaudeConfig?: true }> {
 	const kind: AgentAccountKind | null = isClaudeCommand(baseCmd, family)
 		? "claude"
 		: agentKey(baseCmd, family) === "codex"
@@ -824,6 +857,9 @@ async function resolveLaunchAccount(
 		explicit = undefined;
 		staleAccountDropped = true;
 	}
+	if (kind === "claude" && explicit === undefined && (options?.autoRouting?.claudeConfigPinned || (options?.projectEnv && pinnedClaudeConfigDir(options.projectEnv.CLAUDE_CONFIG_DIR, homedir(), projectPath) != null))) {
+		return { accountId: undefined, resolvedAccountId: undefined, keepsProjectClaudeConfig: true, ...(staleAccountDropped ? { staleAccountDropped } : {}) };
+	}
 	const settle = (accountId: string | null | undefined) => ({
 		accountId,
 		resolvedAccountId: effectiveAccountId(kind, accountId),
@@ -832,7 +868,7 @@ async function resolveLaunchAccount(
 	const routing = options?.autoRouting;
 	if (!routing || !isRoutableAccountKind(kind)) return settle(explicit);
 	const wantsAuto = isAutoAccountId(requested) || ((requested === undefined || staleAccountDropped) && (await isAutoAccountDefault(kind)));
-	if (!wantsAuto || (kind === "claude" && routing.claudeConfigPinned)) return settle(explicit);
+	if (!wantsAuto) return settle(explicit);
 	const pick = await pickAutoAccount({ kind, exclusions: routing.exclusions, reservationKey: routing.reservationKey });
 	return { accountId: pick.accountId, resolvedAccountId: pick.accountId, pick, ...(staleAccountDropped ? { staleAccountDropped } : {}) };
 }
@@ -848,13 +884,27 @@ async function applyClaudeAccountEnv(
 	extraEnv: Record<string, string>,
 	accountId?: string | null,
 	family?: AgentFamily,
+	keepsProjectClaudeConfig?: boolean,
 ): Promise<void> {
 	if (!isClaudeCommand(baseCmd, family) || extraEnv.CLAUDE_CONFIG_DIR) return;
 	// Not caught: an account that cannot launch must fail the launch, not fall back to the system login.
-	const accountEnv = await getActiveClaudeSessionEnv(accountId);
+	const accountEnv = await getActiveClaudeSessionEnv(keepsProjectClaudeConfig ? null : accountId);
+	// Clear a previous API profile's leftovers, but let the project env's folder through.
+	if (keepsProjectClaudeConfig) delete accountEnv.CLAUDE_CONFIG_DIR;
 	for (const [key, value] of Object.entries(accountEnv)) {
 		if (!(key in extraEnv)) extraEnv[key] = value;
 	}
+}
+
+/** A launch that kept the project's Claude folder runs on the project's env: drop the
+ *  account env's ENV_UNSET for keys the project sets (they reach the session through the
+ *  project env, never the `--model` rewrite), and name the folder for panes that export only
+ *  this env. An explicit pick keeps every sentinel, so no project credential joins its login. */
+export function keepProjectClaudeEnv(extraEnv: Record<string, string>, projectEnv: Record<string, string>): void {
+	for (const key of Object.keys(projectEnv)) {
+		if (extraEnv[key] === ENV_UNSET) delete extraEnv[key];
+	}
+	if (projectEnv.CLAUDE_CONFIG_DIR && !("CLAUDE_CONFIG_DIR" in extraEnv)) extraEnv.CLAUDE_CONFIG_DIR = projectEnv.CLAUDE_CONFIG_DIR;
 }
 
 /** Inject the selected Codex account's CODEX_HOME into a Codex launch. Mirrors
@@ -1000,6 +1050,12 @@ export interface ResolvedAgentCommand<A extends CodingAgent | null = CodingAgent
 	accountPick?: AutoAccountPick;
 	/** The stored Claude account no longer exists; the default was used instead. */
 	staleAccountDropped?: true;
+	/** The AWS profile entry this launch injected (null = none). Absent when the
+	 *  agent takes no AWS profile. What a pane records so resume reuses it. */
+	resolvedBedrockProfile?: string | null;
+	/** The picked AWS profile is no longer listed on the agent: nothing was injected,
+	 *  and `resolvedBedrockProfile` keeps the name so restoring it switches back. */
+	bedrockProfileMissing?: string;
 }
 
 export async function resolveCommandForAgent(
@@ -1022,7 +1078,6 @@ export async function resolveCommandForAgent(
 	// Resolve the session env BEFORE building the command: an active API
 	// profile's model override must rewrite the preset's --model flag.
 	const baseCmd = config?.baseCommandOverride || agentWithPath.baseCommand;
-	const providerOpts = withProviderOptions(applyStatusLineOption(options, settings), agentWithPath, config);
 	// Order: agent-type defaults → provider env (Bedrock) → config envVars
 	// (wins last, so an explicit envVars override still applies) → managed
 	// account env (fills only keys not already set, so all of the above win).
@@ -1031,18 +1086,25 @@ export async function resolveCommandForAgent(
 		...providerEnvForAgent(agentWithPath, config),
 	};
 	if (config?.envVars) {
-		Object.assign(extraEnv, config.envVars);
+		Object.assign(extraEnv, config.envVars, presetModelSlotEnv(agentProvider(agentWithPath, config), config.model, config.envVars));
 	}
-	const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options);
-	await applyClaudeAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
+	const bedrockProfile = applyBedrockProfileEnv(agentWithPath, config, extraEnv, options);
+	const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options, ctx.projectPath);
+	await applyClaudeAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily, account.keepsProjectClaudeConfig);
+	if (options?.projectEnv && account.keepsProjectClaudeConfig) keepProjectClaudeEnv(extraEnv, options.projectEnv);
 	await applyCodexAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 	await applyAgentDirAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
+	// After the account env: its CLAUDE_CONFIG_DIR names the user settings to check.
+	const providerOpts = withProviderOptions(applyStatusLineOption(options, settings, bedrockProfile, extraEnv, ctx.worktreePath), agentWithPath, config);
 	const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts, agentWithPath.agentFamily);
 	const launchConfig = withOmpLaunchDefaults(
 		resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel),
 		baseCmd, extraEnv, ctx.worktreePath, agentWithPath.agentFamily,
 	);
-	const command = await resolveAgentCommand(agentWithPath, launchConfig, ctx, routed.options);
+	const command = await resolveAgentCommand(agentWithPath, launchConfig, ctx, {
+		...routed.options,
+		leanProtocol: settings.leanAgentProtocol === true,
+	});
 	// `agent` stays the stored record — callers derive the base command from it,
 	// and swapping in the override path there would change what they persist.
 	// The family rides alongside instead: a path override can pin one the stored
@@ -1058,6 +1120,7 @@ export async function resolveCommandForAgent(
 		resolvedAccountId: account.resolvedAccountId,
 		...(account.pick ? { accountPick: account.pick } : {}),
 		...(account.staleAccountDropped ? { staleAccountDropped: true as const } : {}),
+		...bedrockProfile,
 	};
 }
 
@@ -1124,6 +1187,28 @@ function providerEnvForAgent(
 	return buildProviderEnv(agentProvider(agent, config), agent.providerConfig, config?.model);
 }
 
+/** Inject the picked AWS profile's env over the preset envVars (and so over the
+ *  project env, which launches merge underneath). Returns the resolved entry name
+ *  to persist, or nothing when this agent takes no AWS profile. */
+export function applyBedrockProfileEnv(
+	agent: CodingAgent,
+	config: AgentConfiguration | undefined,
+	extraEnv: Record<string, string>,
+	options: CommandOptions | undefined,
+): { resolvedBedrockProfile?: string | null; bedrockProfileMissing?: string } {
+	const provider = agentProvider(agent, config);
+	if (bedrockProfilesFor(provider, agent.providerConfig).length === 0) return {};
+	const { profile, missing } = resolveBedrockProfile(provider, agent.providerConfig, options?.bedrockProfile);
+	if (missing) {
+		// Keep the name: persisting null would pin the task to the project env's
+		// account for good, even after the profile is renamed back.
+		log.warn("AWS profile no longer configured on the agent; using the project env", { agentId: agent.id, profile: missing });
+		return { resolvedBedrockProfile: missing, bedrockProfileMissing: missing };
+	}
+	Object.assign(extraEnv, bedrockProfileEnv(profile));
+	return { resolvedBedrockProfile: profile?.name ?? null };
+}
+
 /** Attach the agent's selected provider to CommandOptions, so
  *  resolveAgentCommand omits the --model alias under a third-party backend. */
 function withProviderOptions(
@@ -1163,7 +1248,6 @@ export async function resolveCommandForProject(
 		const config = findConfig(agent, resolvedConfigId);
 		// Env before command — see resolveCommandForAgent (API profile model override).
 		const baseCmd = config?.baseCommandOverride || agentWithPath.baseCommand;
-		const providerOpts = withProviderOptions(applyStatusLineOption(options, settings), agentWithPath, config);
 		// Order: agent-type defaults → provider env (Bedrock) → config envVars
 		// (via buildTaskEnv, wins last) → managed account env (fills only keys
 		// not already set, so all of the above win).
@@ -1172,17 +1256,24 @@ export async function resolveCommandForProject(
 			...agentDefaults,
 			...providerEnvForAgent(agentWithPath, config),
 			...buildTaskEnv(project, taskTitle, "", worktreePath, config),
+			...presetModelSlotEnv(agentProvider(agentWithPath, config), config?.model, config?.envVars),
 		};
-		const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options);
-		await applyClaudeAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
+		const bedrockProfile = applyBedrockProfileEnv(agentWithPath, config, extraEnv, options);
+		const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options, project.path);
+		await applyClaudeAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily, account.keepsProjectClaudeConfig);
+		if (options?.projectEnv && account.keepsProjectClaudeConfig) keepProjectClaudeEnv(extraEnv, options.projectEnv);
 		await applyCodexAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 		await applyAgentDirAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
+		const providerOpts = withProviderOptions(applyStatusLineOption(options, settings, bedrockProfile, extraEnv, ctx.worktreePath), agentWithPath, config);
 		const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts, agentWithPath.agentFamily);
 		const launchConfig = withOmpLaunchDefaults(
 			resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel),
 			baseCmd, extraEnv, ctx.worktreePath, agentWithPath.agentFamily,
 		);
-		const command = await resolveAgentCommand(agentWithPath, launchConfig, ctx, routed.options);
+		const command = await resolveAgentCommand(agentWithPath, launchConfig, ctx, {
+		...routed.options,
+		leanProtocol: settings.leanAgentProtocol === true,
+	});
 		return {
 			command,
 			agent,
@@ -1193,6 +1284,7 @@ export async function resolveCommandForProject(
 			resolvedAccountId: account.resolvedAccountId,
 			...(account.pick ? { accountPick: account.pick } : {}),
 			...(account.staleAccountDropped ? { staleAccountDropped: true as const } : {}),
+			...bedrockProfile,
 		};
 	}
 
@@ -1430,10 +1522,26 @@ export function ensureClaudeConfigDir(launchEnv: Record<string, string> | undefi
 		// A linked slot (the user's own folder) gets no startup install, so only real managed dirs are skipped here.
 		const managed = listClaudeAccountDirs().includes(location.dir) && !isLinkedClaudeSlot(location.dir);
 		if (!location.pinned || managed) return;
-		installClaudeConfigDir(location.dir);
+		// A committed settings.json stays untouched: the dev3 entries go to the task's own local settings.
+		const tracked = isGitTracked(join(location.dir, "settings.json"));
+		installClaudeConfigDir(location.dir, homedir(), tracked ? taskLocalClaudeSettings(cwd) : undefined);
+		excludeClaudeRuntimeState(location.dir, CLAUDE_SKILL_NAMES);
 	} catch (err) {
 		log.warn("Failed to provision pinned Claude config dir (non-fatal)", { error: String(err) });
 	}
+}
+
+/** The task folder's untracked `.claude/settings.local.json`, or null where dev3 must not write. */
+function taskLocalClaudeSettings(cwd: string): string | null {
+	if (!isDev3OwnedFolder(cwd)) return null;
+	const path = join(cwd, ".claude", "settings.local.json");
+	if (isGitTracked(path)) return null;
+	try {
+		if (lstatSync(path).isSymbolicLink()) return null;
+	} catch {
+		// missing: ensureClaudeSettings creates it
+	}
+	return path;
 }
 
 /**

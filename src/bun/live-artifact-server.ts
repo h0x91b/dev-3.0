@@ -5,7 +5,7 @@ import type { Project, Task } from "../shared/types";
 import { LIVE_CLIENT_GESTURE_MS, LIVE_CLIENT_TIMEOUT_MS, liveArtifactClientScript } from "../shared/live-artifact-client";
 import type { LiveChange } from "../shared/live-artifact";
 import { DEV3_HOME } from "./paths";
-import { projectSlug } from "./git";
+import { allProjectWorktreesRoots } from "../shared/project-storage";
 import { liveStoreDir, onLivePageChange, onLiveStoreChange, readLiveState } from "./live-artifact-store";
 import { LiveOpError, runLiveOp, type LiveAgentSender } from "./live-artifact-ops";
 import { createLogger } from "./logger";
@@ -95,7 +95,7 @@ function eventStream(project: Project, task: Task): Response {
 			cleanup = () => { stopChanges(); stopPages(); clearInterval(ping); };
 			// A tab that missed a publish while disconnected learns it here and reloads.
 			send("page", { pageRev: task.liveArtifact?.pageRev ?? 0 });
-			send("snapshot", await readLiveState(project.path, task.id));
+			send("snapshot", await readLiveState(project, task.id));
 		},
 		cancel() { cleanup(); },
 	});
@@ -171,7 +171,7 @@ export function createLiveFetch(deps: LiveServerDeps): (request: Request) => Pro
 const tokenIndex = new Map<string, { projectId: string; taskId: string }>();
 
 function tokenFile(project: Project, taskId: string): string {
-	return `${liveStoreDir(project.path, taskId)}/token`;
+	return `${liveStoreDir(project, taskId)}/token`;
 }
 
 /** The task's browser token, minted once and kept beside its store so URLs survive restarts. */
@@ -180,7 +180,7 @@ export function liveTokenFor(project: Project, taskId: string): string {
 	let token = existsSync(file) ? readFileSync(file, "utf8").trim() : "";
 	if (!TOKEN_RE.test(token)) {
 		token = randomBytes(18).toString("base64url");
-		mkdirSync(liveStoreDir(project.path, taskId), { recursive: true });
+		mkdirSync(liveStoreDir(project, taskId), { recursive: true });
 		writeFileSync(file, token, { mode: 0o600 });
 	}
 	tokenIndex.set(token, { projectId: project.id, taskId });
@@ -192,14 +192,16 @@ export function findTokenOnDisk(token: string, projects: Project[]): { projectId
 	const cached = tokenIndex.get(token);
 	if (cached) return cached;
 	for (const project of projects) {
-		const root = `${DEV3_HOME}/worktrees/${projectSlug(project.path)}/live-artifacts`;
-		if (!existsSync(root)) continue;
-		for (const taskId of readdirSync(root)) {
-			const file = `${root}/${taskId}/token`;
-			if (existsSync(file) && readFileSync(file, "utf8").trim() === token) {
-				const entry = { projectId: project.id, taskId };
-				tokenIndex.set(token, entry);
-				return entry;
+		for (const worktreesRoot of allProjectWorktreesRoots(DEV3_HOME, project.path)) {
+			const root = `${worktreesRoot}/live-artifacts`;
+			if (!existsSync(root)) continue;
+			for (const taskId of readdirSync(root)) {
+				const file = `${root}/${taskId}/token`;
+				if (existsSync(file) && readFileSync(file, "utf8").trim() === token) {
+					const entry = { projectId: project.id, taskId };
+					tokenIndex.set(token, entry);
+					return entry;
+				}
 			}
 		}
 	}

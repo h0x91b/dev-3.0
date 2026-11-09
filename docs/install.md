@@ -195,10 +195,9 @@ drive (`/mnt/...`) its file permissions are not enforced either.
 
 Two things break this:
 
-- **A dev3 managed account.** Once any account exists in dev3's account switcher, dev3 sets
-  `CLAUDE_CONFIG_DIR` for every Claude session it launches, to the active account's dir, or unsets
-  it when the system login is selected. Either way the project's pin is lost. Pin per project, or
-  use managed accounts, not both.
+- **A dev3 account picked for the task.** The default managed account and Auto leave the project's
+  pin in place. Picking an account (or the system login) for one task in the launch dialog
+  replaces the pin for that task only. The project login row in the same picker brings it back.
 - **`CLAUDE_PROJECT_DIR` inside a task is the worktree**, not the project's main checkout. A
   settings file that references `$CLAUDE_PROJECT_DIR/.claude/...` (hooks, a status line) points
   into the worktree in a task, which has only what git tracks. Keep such files tracked, or
@@ -232,7 +231,9 @@ Settings priority for one launch, highest first:
 
 1. `baseCommandOverride` in an agent preset wins over a working custom executable. A broken custom path still fails every preset of that agent, because the path belongs to the agent.
 2. `envVars.CLAUDE_CONFIG_DIR` in the agent preset disables account injection entirely.
-3. Otherwise the selected account's config dir is injected as `CLAUDE_CONFIG_DIR`.
+3. An account (or the system login) picked for this launch is injected as `CLAUDE_CONFIG_DIR`.
+4. Otherwise a project that pins `CLAUDE_CONFIG_DIR` keeps it.
+5. Otherwise the default account's config dir is injected.
 
 ## Linux
 
@@ -378,5 +379,7 @@ bun build src/cli/main.ts --compile --outfile dist/dev3
 
 ./dist/dev3 remote
 ```
+
+A desktop app you build yourself still checks the release feed and will replace itself with the next upstream release. To keep your build, set `DEV3_DISABLE_UPDATES=1` when generating build info — `DEV3_DISABLE_UPDATES=1 bun run build:prod` does it in one step. The flag is baked in by `scripts/generate-build-info.ts`, so re-run that script (or the full build) after changing it. Such builds show `branch@commit` in the window title.
 
 For day-to-day development on the repo, see [AGENTS.md](../AGENTS.md).

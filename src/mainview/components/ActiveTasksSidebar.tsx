@@ -364,21 +364,29 @@ function ActiveTasksSidebar({
 		() => ALL_PRIORITIES.map((p) => ({ facet: "priority" as const, value: p, label: `${p} — ${t(PRIORITY_NAME_KEYS[p])}` })),
 		[t],
 	);
+	// Projects whose custom columns the sidebar renders and filters: all in global
+	// scope, the space's members in space scope, just the current one otherwise.
+	const scopeProjects = useMemo(() => {
+		if (effectiveScope === "global") return Array.from(projectById.values());
+		if (effectiveScope === "space" && siblingIds) return Array.from(projectById.values()).filter((p) => siblingIds.has(p.id));
+		return project ? [project] : [];
+	}, [effectiveScope, siblingIds, projectById, project]);
+
 	// The sidebar offers only the active statuses it displays (STATUS_ORDER),
-	// plus any custom columns present across the projects in scope.
+	// plus the custom columns of the projects in scope.
 	const statusCandidates = useMemo<FilterFunnelOption[]>(() => {
 		const byValue = new Map<string, FilterFunnelOption>();
 		for (const status of STATUS_ORDER) {
 			byValue.set(status.toLowerCase(), { facet: "status", value: status, label: getStatusLabel(status, t, project) });
 		}
-		for (const proj of projectById.values()) {
+		for (const proj of scopeProjects) {
 			for (const col of proj.customColumns ?? []) {
 				const key = col.name.toLowerCase();
 				if (!byValue.has(key)) byValue.set(key, { facet: "status", value: col.name, label: col.name, color: col.color });
 			}
 		}
 		return [...byValue.values()];
-	}, [projectById, project, t]);
+	}, [scopeProjects, project, t]);
 
 	const filterGroups = useMemo(
 		() => buildFilterGroups(scopedTasks, resolver, {
@@ -447,21 +455,14 @@ function ActiveTasksSidebar({
 
 	const sortOrder = useTaskSortOrder();
 
-	// Custom columns in render order (project order). Scan all projects in global
-	// scope, just the current one otherwise — mirrors the kanban's column order.
+	// Custom columns in render order (project order) — mirrors the kanban's column order.
 	const orderedCustomColumns = useMemo(() => {
 		const cols: { projectId: string; columnId: string }[] = [];
-		const projectsToScan =
-			effectiveScope === "global"
-				? Array.from(projectById.values())
-				: effectiveScope === "space" && siblingIds
-					? Array.from(projectById.values()).filter((p) => siblingIds.has(p.id))
-					: project ? [project] : [];
-		for (const p of projectsToScan) {
+		for (const p of scopeProjects) {
 			for (const col of p.customColumns ?? []) cols.push({ projectId: p.id, columnId: col.id });
 		}
 		return cols;
-	}, [effectiveScope, siblingIds, projectById, project]);
+	}, [scopeProjects]);
 
 	// Readiness tiers: NEEDS YOU → custom columns → WAITING. Grouping +
 	// within-tier ordering is a pure function so it is unit-tested without
@@ -878,7 +879,7 @@ function ActiveTasksSidebar({
 											onSetPriority={(p) => handleSetPriority(task, p)}
 											onSetHidden={() => handleSetHidden(task)}
 											animateOut={!task.hidden && !revealHidden}
-											onMouseEnter={(e) => preview.handlers.onMouseEnter(task.id, e.currentTarget)}
+											onMouseEnter={(e) => preview.handlers.onMouseEnter(task.id, e.currentTarget, e.target)}
 											onMouseLeave={preview.handlers.onMouseLeave}
 											closePreview={preview.close}
 										/>

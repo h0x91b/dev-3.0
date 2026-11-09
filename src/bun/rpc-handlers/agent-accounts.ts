@@ -21,6 +21,7 @@ import { pinnedClaudeConfigDir } from "../../shared/claude-config-dir";
 import * as accounts from "../agent-accounts";
 import { ACCOUNT_LOGIN_SESSION_PREFIX, accountLogins } from "../account-login-terminal";
 import { getPtyPort } from "../pty-server";
+import { ptyWsUrl } from "../pty-server-access";
 import * as data from "../data";
 import { resolveProjectEnv } from "../repo-config";
 import { homedir } from "node:os";
@@ -155,7 +156,7 @@ async function restartAccountLogin(params: { loginId: string; remoteViewer: bool
 /** Loopback URL of a sign-in terminal; the browser transport swaps in its proxied `/pty`. */
 async function getAccountLoginPtyUrl(params: { sessionKey: string }): Promise<string> {
 	if (!params.sessionKey.startsWith(ACCOUNT_LOGIN_SESSION_PREFIX)) throw new Error("Not a sign-in terminal");
-	return `ws://localhost:${getPtyPort()}?session=${encodeURIComponent(params.sessionKey)}`;
+	return ptyWsUrl(getPtyPort(), params.sessionKey);
 }
 
 /** Keep a Claude sign-in's folder as an account without waiting for the login. */

@@ -394,6 +394,41 @@ describe("missing agent binary — hooks belong to the agent, not the retry wrap
 	});
 });
 
+// GitHub issue #2218: `env <path> <subcommand>` was looked up as a binary named
+// "opencode mini", so a working command got the "Agent not found" pane.
+describe.skipIf(process.platform === "win32")("missing agent binary — a base command with a subcommand", () => {
+	const launchWithOverride = async (baseCommandOverride: string) => {
+		vi.mocked(agents.resolveCommandForProject).mockResolvedValue({
+			command: `${baseCommandOverride} --flag`,
+			extraEnv: {},
+			agent: { id: "builtin-opencode", baseCommand: "opencode" },
+			config: { id: "opencode-mini", name: "Mini", baseCommandOverride },
+			agentFamily: "opencode",
+			launchModel: undefined,
+		} as never);
+		vi.mocked(sharedPure.buildAgentRetryWrapper).mockClear();
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+		return vi.mocked(sharedPure.buildAgentRetryWrapper).mock.calls;
+	};
+
+	// `node:fs` is mocked here, so no path is executable: the wrapped absolute
+	// path is covered against the real filesystem in agent-launch-availability.test.ts.
+	it("runs the agent when the wrapped executable is installed", async () => {
+		expect(await launchWithOverride("env FOO=1 opencode mini")).toEqual([]);
+		expect(vi.mocked(sharedPure.resolveBinaryPath)).toHaveBeenLastCalledWith("opencode", undefined);
+	});
+
+	it("names only the executable in the retry pane when the wrapped path is missing", async () => {
+		const calls = await launchWithOverride("env /nowhere/dev3-test/opencode mini");
+		expect(calls).toHaveLength(1);
+		expect(calls[0]![0].binaryName).toBe("opencode");
+	});
+
+	it("runs a command only the shell can resolve instead of parking it on the retry pane", async () => {
+		expect(await launchWithOverride("exec opencode mini")).toEqual([]);
+	});
+});
+
 describe("coordinator default agent", () => {
 	beforeEach(async () => {
 		const { DEFAULT_AGENTS } = await import("../../shared/types");

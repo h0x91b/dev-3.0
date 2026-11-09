@@ -19,7 +19,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, openSync, readSync, closeSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, openSync, readSync, closeSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import type { AgentRateLimitSnapshot, AgentRateLimitsReport } from "../shared/rate-limits";
@@ -74,6 +74,12 @@ export const CLAUDE_SESSION_STATS_DIR = join(RATE_LIMITS_DIR, "sessions");
  * always suppresses the one-time bypass-permission confirmation and optionally
  * routes statusLine through `dev3 statusline` (see buildClaudeManagedSettings). */
 export const CLAUDE_STATUSLINE_SETTINGS_PATH = join(RATE_LIMITS_DIR, "claude-statusline-settings.json");
+/** The same file plus `awsAuthRefresh`, for launches that inject a picked AWS
+ *  profile. A separate path, so the shared file never flips between launches. */
+export const CLAUDE_BEDROCK_SSO_SETTINGS_PATH = join(RATE_LIMITS_DIR, "claude-bedrock-sso-settings.json");
+/** Claude runs this when Bedrock credentials fail. It reads the AWS_PROFILE the
+ *  launch injected, so one command serves every profile. */
+export const AWS_SSO_REFRESH_COMMAND = "aws sso login";
 
 type PushMessageFn = (name: string, payload: unknown) => void;
 
@@ -98,35 +104,39 @@ const kimiWarned = new Set<string>();
  * Claude session with a dangerous-bypass flag available (`--allow-dangerously-
  * skip-permissions` or a preset's `--dangerously-skip-permissions`), which would
  * otherwise trigger a one-time confirmation prompt on startup. When rate-limit
- * tracking is on, statusLine is also routed through `dev3 statusline`.
+ * tracking is on, statusLine is also routed through `dev3 statusline`. With
+ * `awsSsoRefresh`, an expired AWS SSO session opens the browser login itself.
  */
-export function buildClaudeManagedSettings(dev3Bin: string, includeStatusLine: boolean): Record<string, unknown> {
+export function buildClaudeManagedSettings(dev3Bin: string, includeStatusLine: boolean, awsSsoRefresh = false): Record<string, unknown> {
 	const settings: Record<string, unknown> = { skipDangerousModePermissionPrompt: true };
 	if (includeStatusLine) {
 		settings.statusLine = { type: "command", command: `"${dev3Bin}" statusline` };
 	}
+	if (awsSsoRefresh) settings.awsAuthRefresh = AWS_SSO_REFRESH_COMMAND;
 	return settings;
 }
 
 /**
  * Write (once) the dev3-managed Claude settings file and return its path. Always
  * carries skipDangerousModePermissionPrompt; includes the statusLine wrapper only
- * when rate-limit tracking is on. Returns null when writing fails — callers then
- * simply skip `--settings` injection.
+ * when rate-limit tracking is on, and `awsAuthRefresh` (in its own file) when
+ * `awsSsoRefresh`. Returns null when writing fails — callers then simply skip
+ * `--settings` injection.
  */
-export function ensureClaudeStatusLineSettings(includeStatusLine = true): string | null {
+export function ensureClaudeStatusLineSettings(includeStatusLine = true, awsSsoRefresh = false): string | null {
+	const path = awsSsoRefresh ? CLAUDE_BEDROCK_SSO_SETTINGS_PATH : CLAUDE_STATUSLINE_SETTINGS_PATH;
 	try {
 		mkdirSync(RATE_LIMITS_DIR, { recursive: true });
 		const dev3Bin = join(homedir(), ".dev3.0", "bin", "dev3");
-		const desired = JSON.stringify(buildClaudeManagedSettings(dev3Bin, includeStatusLine));
+		const desired = JSON.stringify(buildClaudeManagedSettings(dev3Bin, includeStatusLine, awsSsoRefresh));
 		let current = "";
 		try {
-			current = readFileSync(CLAUDE_STATUSLINE_SETTINGS_PATH, "utf-8");
+			current = readFileSync(path, "utf-8");
 		} catch {
 			// missing — will write below
 		}
-		if (current !== desired) writeFileSync(CLAUDE_STATUSLINE_SETTINGS_PATH, desired);
-		return CLAUDE_STATUSLINE_SETTINGS_PATH;
+		if (current !== desired) writeFileSync(path, desired);
+		return path;
 	} catch (err) {
 		log.warn("Failed to write claude managed settings file", { error: String(err) });
 		return null;
@@ -162,6 +172,17 @@ export function readClaudeSnapshot(dumpPath: string = CLAUDE_RATE_LIMIT_DUMP_PAT
 		return configDir && !resolvedAccountId ? { ...attributed, configDir } : attributed;
 	} catch {
 		return null; // torn write or corrupt file — keep whatever we knew before
+	}
+}
+
+/** Drop a task's session dump once its agent exits: the file outlives the process by
+ *  up to SESSION_STATS_RECENT_MS, and the card would keep reporting a session that is gone. */
+export function forgetClaudeSessionDump(taskId: string, dir: string = CLAUDE_SESSION_STATS_DIR): void {
+	if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(taskId)) return;
+	try {
+		rmSync(join(dir, `${taskId}.json`), { force: true });
+	} catch {
+		// the next statusLine render rewrites it anyway
 	}
 }
 

@@ -1,7 +1,9 @@
-import type { ReviewedPullRequest, AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskOrigin, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
+import type { ReviewedPullRequest, AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchAfterUntil, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskOrigin, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
+import { rememberVariantBedrockProfile } from "../bedrock-profile-pref";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
 import { isTaskSoundEnabled } from "../../shared/task-sound-statuses";
-import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, hasGitWorkflow, normalizeTaskType, OWN_WORKTREE_NOT_A_REPO_ERROR, reviewTaskTitle, taskUsesWorktree } from "../../shared/types";
+import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, LAUNCH_AFTER_UNTIL, hasGitWorkflow, normalizeTaskType, OWN_WORKTREE_NOT_A_REPO_ERROR, reviewTaskTitle, taskUsesWorktree } from "../../shared/types";
+import { armLaunchAfter, clearLaunchAfter, startLaunchAfterNow } from "../launch-after";
 import * as data from "../data";
 import { loadTaskLineage } from "../task-lineage";
 import { epicForNewTask } from "../task-epics";
@@ -436,7 +438,8 @@ export async function launchTaskWithAgentChoice(params: {
 	const first = variants[0];
 	if (!first) throw new Error("At least one variant is required");
 	if (isActive(params.targetStatus)) await assertLaunchAgentsInstalled(variants);
-	const { agentId, configId, accountId } = first;
+	const { agentId, configId, accountId, bedrockProfile } = first;
+	rememberVariantBedrockProfile(params.projectId, variants);
 
 	// Priority lands before the move so the card never appears in the wrong sort
 	// band, and goes through the dedicated setter rather than `taskPatch`.
@@ -472,6 +475,7 @@ export async function launchTaskWithAgentChoice(params: {
 			agentId,
 			configId,
 			accountId,
+			bedrockProfile,
 			existingBranch,
 			worktreePath: null,
 			branchName: null,
@@ -600,6 +604,7 @@ async function spawnVariants(params: {
 	variants: LaunchVariant[];
 }): Promise<Task[]> {
 	log.info("→ spawnVariants", { taskId: params.taskId, count: params.variants.length });
+	rememberVariantBedrockProfile(params.projectId, params.variants);
 	const project = await data.getProject(params.projectId);
 	const sourceTask = await data.getTask(project, params.taskId);
 
@@ -643,6 +648,7 @@ async function spawnVariants(params: {
 			agentId: firstVariant.agentId,
 			configId: firstVariant.configId,
 			accountId: firstVariant.accountId,
+			bedrockProfile: firstVariant.bedrockProfile,
 			existingBranch: srcBranch,
 			worktreePath: null,
 			branchName: null,
@@ -683,6 +689,7 @@ async function spawnVariants(params: {
 				agentId: variant.agentId,
 				configId: variant.configId,
 				accountId: variant.accountId,
+				bedrockProfile: variant.bedrockProfile,
 				seq: sharedSeq,
 				existingBranch: srcBranch,
 				// Whose code the group is about is a property of the branch, so every
@@ -747,6 +754,7 @@ async function spawnVariants(params: {
 				agentId: variant.agentId,
 				configId: variant.configId,
 				accountId: variant.accountId,
+				bedrockProfile: variant.bedrockProfile,
 				existingBranch: srcBranch,
 				scheduledLaunch: null,
 				preparationError: null,
@@ -782,6 +790,7 @@ async function addAttempts(params: {
 	variants: LaunchVariant[];
 }): Promise<Task[]> {
 	log.info("→ addAttempts", { taskId: params.taskId, count: params.variants.length });
+	rememberVariantBedrockProfile(params.projectId, params.variants);
 	const project = await data.getProject(params.projectId);
 	const sourceTask = await data.getTask(project, params.taskId);
 	await assertLaunchAgentsInstalled(params.variants);
@@ -824,6 +833,7 @@ async function addAttempts(params: {
 				agentId: variant.agentId,
 				configId: variant.configId,
 				accountId: variant.accountId,
+				bedrockProfile: variant.bedrockProfile,
 				seq: sharedSeq,
 				existingBranch: srcBranch,
 				// Whose code the group is about is a property of the branch, so every
@@ -893,6 +903,7 @@ async function addAttempts(params: {
 				agentId: variant.agentId,
 				configId: variant.configId,
 				accountId: variant.accountId,
+				bedrockProfile: variant.bedrockProfile,
 				existingBranch: task.existingBranch ?? srcBranch,
 				preparationError: null,
 			},
@@ -1297,6 +1308,10 @@ async function scheduleTaskLaunch(params: {
 	// Refused here as well as in the lifecycle machine: a draft must never carry a
 	// pending scheduledLaunch that would fire while the user is away.
 	if (task.draft === true) throw new Error(DRAFT_TASK_ACTIVATION_ERROR);
+	// The mirror of launchAfterRefusal's "Start in" check: a task waits on one condition, never two.
+	if (task.launchAfter) {
+		throw new Error(`This task already starts after task #${task.launchAfter.seq}. Remove that start condition first.`);
+	}
 	if (params.variants.length === 0) {
 		throw new Error("Scheduled launch needs at least one variant");
 	}
@@ -1355,6 +1370,37 @@ async function startScheduledLaunchNow(params: { taskId: string; projectId: stri
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 	return fireScheduledLaunch(project, task);
+}
+
+/** Arm a "start after" condition from the board's launch modal. A person at the board: no requester is recorded. */
+async function setTaskLaunchAfter(params: {
+	taskId: string;
+	projectId: string;
+	prerequisiteTaskId: string;
+	until: LaunchAfterUntil;
+	variant: LaunchVariant | null;
+}): Promise<Task> {
+	log.info("→ setTaskLaunchAfter", { taskId: params.taskId, prerequisite: params.prerequisiteTaskId, until: params.until });
+	if (!LAUNCH_AFTER_UNTIL.includes(params.until)) throw new Error(`Unknown start condition "${String(params.until)}"`);
+	const project = await data.getProject(params.projectId);
+	const tasks = await data.loadTasks(project);
+	const task = tasks.find((t) => t.id === params.taskId);
+	const prereq = tasks.find((t) => t.id === params.prerequisiteTaskId);
+	if (!task) throw new Error("Task not found");
+	if (!prereq) throw new Error("The task to wait for no longer exists");
+	return armLaunchAfter(project, task, prereq, params.until, params.variant, null);
+}
+
+async function clearTaskLaunchAfter(params: { taskId: string; projectId: string }): Promise<Task> {
+	log.info("→ clearTaskLaunchAfter", { taskId: params.taskId });
+	const project = await data.getProject(params.projectId);
+	return clearLaunchAfter(project, await data.getTask(project, params.taskId));
+}
+
+async function startTaskLaunchAfterNow(params: { taskId: string; projectId: string }): Promise<void> {
+	log.info("→ startTaskLaunchAfterNow", { taskId: params.taskId });
+	const project = await data.getProject(params.projectId);
+	await startLaunchAfterNow(project, await data.getTask(project, params.taskId));
 }
 
 /**
@@ -1438,6 +1484,9 @@ export const taskLifecycleHandlers = {
 	scheduleTaskLaunch,
 	cancelScheduledLaunch,
 	startScheduledLaunchNow,
+	setTaskLaunchAfter,
+	clearTaskLaunchAfter,
+	startTaskLaunchAfterNow,
 	listPendingCompletionRequests,
 	respondToAgentCompletionRequest,
 	listPendingCancellationRequests,
@@ -1455,4 +1504,8 @@ export const taskLifecycleHandlers = {
 	getNativeTerminalAvailability,
 	getNewTaskTerminalBackend,
 	setNewTaskTerminalBackend,
+	getRememberedBedrockProfile: async (params: { projectId: string }) => {
+		const profile = await data.getRememberedBedrockProfile(params.projectId);
+		return profile === undefined ? null : { profile };
+	},
 };
