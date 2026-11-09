@@ -662,7 +662,7 @@ describe("TaskCard", () => {
 				"completed",
 				expect.anything(),
 				expect.anything(),
-				{ alwaysConfirm: true, anchor: expect.any(HTMLElement) },
+				{ alwaysConfirm: true },
 			);
 			await waitFor(() => {
 				expect(mockedApi.request.moveTask).toHaveBeenCalledWith(
@@ -755,7 +755,7 @@ describe("TaskCard", () => {
 				"cancelled",
 				expect.anything(),
 				expect.anything(),
-				{ alwaysConfirm: true, anchor: expect.any(HTMLElement) },
+				{ alwaysConfirm: true },
 			);
 			await waitFor(() => {
 				expect(mockedApi.request.moveTask).toHaveBeenCalledWith(
@@ -788,7 +788,7 @@ describe("TaskCard", () => {
 			await user.keyboard("{Enter}");
 
 			expect(mockedConfirmTaskCompletion).toHaveBeenCalledWith(
-				expect.anything(), expect.anything(), "cancelled", expect.anything(), expect.anything(), { alwaysConfirm: true, anchor: expect.any(HTMLElement) },
+				expect.anything(), expect.anything(), "cancelled", expect.anything(), expect.anything(), { alwaysConfirm: true },
 			);
 			expect(navigate).not.toHaveBeenCalled();
 		});

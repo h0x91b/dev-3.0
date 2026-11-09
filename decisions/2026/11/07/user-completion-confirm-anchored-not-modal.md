@@ -1,4 +1,4 @@
-> Revised on 2026-11-09: `decisions/2026/11/09/revert-inline-completion-offers-to-modal.md` reverted this together with the inline completion offers, then only the anchored popover for the user's own click was restored. The open-task path through `TaskCompletionStrip` described in the original is gone; that case uses the modal.
+> Revised on 2026-11-09: `decisions/2026/11/09/revert-inline-completion-offers-to-modal.md` reverted this together with the inline completion offers, then only the anchored popover for the user's own click was restored, and later the same day narrowed to the Active Tasks sidebar: the maintainer wants the modal everywhere else. The open-task path through `TaskCompletionStrip` described in the original is gone; that case uses the modal.
 
 # The user's own Complete/Cancel confirms where they clicked
 
@@ -8,7 +8,7 @@ After `completion-offers-render-inline-not-modal`, merge and agent completion of
 
 ## Decision
 
-`confirmTaskCompletion` picks the surface for the one-click path (`alwaysConfirm`). With a connected `anchor` (the clicked ✓ or Cancel on a board card, an Active Tasks row or an Activity row, passed through `moveTaskToStatus`) it calls `confirm({ anchor })`, which renders the same dialog as a popover beside the anchor with no dim layer (`placeBesideAnchor` in `confirm.tsx`). The popover re-places itself when it resizes, because the deferred unsaved-work check lands after first layout. The clicked control is disabled while the ask is open, so the focus trap has no trigger to restore; `returnFocusWhenEnabled` hands focus back to it once it is enabled again. The panel also mounts hidden until placed, and a hidden button ignores `autoFocus`, so Cancel is focused once the popover is visible. Every other ask (no anchor, merge, agent) keeps the modal. The popover keeps the full subject card, the deletion footer and the gated unsaved-work check.
+`confirmTaskCompletion` picks the surface for the one-click path (`alwaysConfirm`). With a connected `anchor` (the clicked ✓ or Cancel on an Active Tasks sidebar row, passed through `moveTaskToStatus`; board cards and Activity rows pass none) it calls `confirm({ anchor })`, which renders the same dialog as a popover beside the anchor with no dim layer (`placeBesideAnchor` in `confirm.tsx`). The popover re-places itself when it resizes, because the deferred unsaved-work check lands after first layout. The clicked control is disabled while the ask is open, so the focus trap has no trigger to restore; `returnFocusWhenEnabled` hands focus back to it once it is enabled again. The panel also mounts hidden until placed, and a hidden button ignores `autoFocus`, so Cancel is focused once the popover is visible. Every other ask (no anchor, merge, agent) keeps the modal. The popover keeps the full subject card, the deletion footer and the gated unsaved-work check.
 
 ## Risks
 
