@@ -959,7 +959,10 @@ export function cleanupTaskTmuxState(taskId: string): void {
  * 2. If exactly one entry has paneId=null and exactly one live pane is
  *    unmatched, assign it (the setup pane exited, leaving the real agent).
  * 3. If no live panes remain and null-paneId entries exist, remove them too.
- * 4. If the task-level agent belonged to a removed pane, put the surviving main
+ * 4. If no non-parked entry is left, park the entries removed above (paneId null,
+ *    keeping sessionId) so Resume continues the last agents' conversations.
+ *    Bug-hunter entries are one-shot and are always dropped.
+ * 5. If the task-level agent belonged to a removed pane, put the surviving main
  *    pane's agent back on the task and push the update to the renderer.
  */
 export async function handlePaneExited(taskId: string, _exitedPaneId: string): Promise<void> {
@@ -972,7 +975,7 @@ export async function handlePaneExited(taskId: string, _exitedPaneId: string): P
 		const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 		const livePaneIds = new Set(await pty.listPaneIds(taskId, socket));
 
-		// Parked entries belong to no live pane (a plain-shell wake): never adopted, never dropped.
+		// Parked entries belong to no live pane (a saved conversation): never adopted, never dropped.
 		// Step 1: remove entries with a known paneId that is no longer alive
 		let surviving = panes.filter(p => p.parked || !p.paneId || livePaneIds.has(p.paneId));
 
@@ -993,7 +996,13 @@ export async function handlePaneExited(taskId: string, _exitedPaneId: string): P
 			surviving = surviving.filter(p => p.parked || !!p.paneId);
 		}
 
-		if (surviving.length !== panes.length || surviving.some((p, i) => p.paneId !== panes[i].paneId)) {
+		// The last agent pane is gone: keep its conversation id by parking instead of dropping.
+		if (!surviving.some(p => !p.parked)) {
+			const kept = new Set(surviving);
+			surviving = panes.flatMap(p => kept.has(p) ? [p] : p.hunter ? [] : [{ ...p, paneId: null, parked: true }]);
+		}
+
+		if (surviving.length !== panes.length || surviving.some((p, i) => p.paneId !== panes[i].paneId || p.parked !== panes[i].parked)) {
 			// spawnAgentInTask writes the task-level agent. When the pane it points at is gone, restore it
 			// from the surviving main pane (flagged at launch); extra, hunter and legacy unflagged panes never do.
 			const sameAgent = (p: { agentId?: string | null; configId?: string | null }) =>
