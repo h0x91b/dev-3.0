@@ -1,3 +1,5 @@
+> Superseded on 2026-11-08 by `decisions/2026/11/08/coordinator-prompt-cap-6700-for-any-git-flow.md`: the cap is 6 700 and the floors 26 000 / 25 990.
+
 # Coordinator prompt cap raised from 6 210 to 6 500
 
 ## Context
