@@ -10,7 +10,7 @@ import type {
 	ClaudeSlotModels,
 } from "../../../shared/agent-accounts";
 import type { AccountLoginState } from "../../../shared/agent-accounts";
-import { ACCOUNT_LOGIN_STARTED_MESSAGE, AUTO_ACCOUNT_ID, CLAUDE_MODEL_SLOTS, isAccountLoginRefusal, isAgentDirAccountKind, managedCodexTwin, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../../shared/agent-accounts";
+import { ACCOUNT_LOGIN_STARTED_MESSAGE, AUTO_ACCOUNT_ID, CLAUDE_MODEL_SLOTS, isAccountLoginRefusal, codexEmailsNeedingWorkspaceId, isAgentDirAccountKind, managedCodexTwin, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../../shared/agent-accounts";
 import { api, isElectrobun } from "../../rpc";
 import AccountLoginModal, { AGENT_NAMES, loginPhaseTitle } from "./AccountLoginModal";
 import { confirm } from "../../confirm";
@@ -53,18 +53,6 @@ function HintLabel({ text, body }: { text: string; body: string }) {
 			<FieldHint label={text} body={body} />
 		</span>
 	);
-}
-
-/** Emails that more than one Codex login shares: only there the workspace id tells them apart. */
-export function codexEmailsNeedingWorkspaceId(identities: (AgentAccountIdentity | null)[]): Set<string> {
-	const seen = new Set<string>();
-	const repeated = new Set<string>();
-	for (const email of identities.map((identity) => identity?.email)) {
-		if (!email) continue;
-		if (seen.has(email)) repeated.add(email);
-		seen.add(email);
-	}
-	return repeated;
 }
 
 function IdentityBadges({
@@ -206,6 +194,8 @@ function AccountRow({
 			tabIndex={isActive ? 0 : -1}
 			onClick={onActivate}
 			onKeyDown={(event) => {
+				// Keys from the row's own buttons (rename, Edit, Remove) are theirs, not the radio's.
+				if (event.target !== event.currentTarget) return;
 				if (event.key === "Enter" || event.key === " ") {
 					if (onActivate) {
 						event.preventDefault();
@@ -1028,8 +1018,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 
 	const repeatedCodexEmails = codexEmailsNeedingWorkspaceId([
 		...state.codex.accounts.map((a) => a.identity),
-		// The twin row is the same login, not a second one sharing the email.
-		codexTwin ? null : codexUnmanaged,
+		codexUnmanaged,
 	]);
 
 	// "Auto (balanced)" sits beside the accounts as one more default: it earns its

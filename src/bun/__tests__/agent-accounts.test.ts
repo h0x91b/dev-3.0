@@ -41,7 +41,7 @@ import {
 	type AccountPaths,
 	type ClaudeAuthStatusProbe,
 } from "../agent-accounts";
-import { claudeApiProfileEnvKeys, ENV_UNSET, type ProviderLogin } from "../../shared/agent-accounts";
+import { claudeApiProfileEnvKeys, codexEmailsNeedingWorkspaceId, ENV_UNSET, type ProviderLogin } from "../../shared/agent-accounts";
 
 let root: string;
 let paths: AccountPaths;
@@ -1283,5 +1283,14 @@ describe("pi accounts", () => {
 		expect(existsSync(agentDirAccountDir("pi", account.id, paths))).toBe(false);
 		expect(readFileSync(join(paths.piAgentHome!, "auth.json"), "utf-8")).toContain("user-own-token");
 		expect(existsSync(join(paths.piAgentHome!, "skills", "dev3"))).toBe(true);
+	});
+});
+
+describe("codexEmailsNeedingWorkspaceId", () => {
+	const id = (email: string | null, accountId: string | null) => ({ email, organization: null, plan: null, planLabel: null, accountId });
+
+	it("lists an email only when it appears with two different workspace ids", () => {
+		const identities = [id("a@x", "w1"), id("a@x", "w2"), id("b@x", "w1"), id("b@x", "w1"), id("c@x", null), id("c@x", "w1"), id(null, "w1"), null];
+		expect([...codexEmailsNeedingWorkspaceId(identities)]).toEqual(["a@x"]);
 	});
 });

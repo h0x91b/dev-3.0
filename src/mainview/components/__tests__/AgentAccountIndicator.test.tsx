@@ -755,6 +755,37 @@ describe("AgentAccountIndicator", () => {
 		await user.click(await screen.findByTestId("agent-account-trigger"));
 		expect(screen.getByText("ChatGPT workspace Acme")).toBeTruthy();
 	});
+
+	describe("unnamed Codex workspace id", () => {
+		const codexAccount = (id: string, accountId: string, email = "shared@example.com") => ({
+			id,
+			kind: "codex" as const,
+			label: id,
+			identity: { email, organization: null, plan: "plus", planLabel: "Plus", accountId },
+			auth: "oauth" as const,
+			api: null,
+			createdAt: 1,
+		});
+		const open = async (accounts: ReturnType<typeof codexAccount>[]) => {
+			mockedApi.request.listAgentAccounts.mockResolvedValue(
+				makeState({ codex: { accounts, activeId: accounts[0].id, currentIdentity: null } }),
+			);
+			const user = userEvent.setup();
+			renderIndicator(codexAgent);
+			await user.click(await screen.findByTestId("agent-account-trigger"));
+		};
+
+		it("is hidden when the email is unique", async () => {
+			await open([codexAccount("codex-1", "ws-1")]);
+			expect(screen.queryByText(/ChatGPT workspace/)).toBeNull();
+		});
+
+		it("is shown when two accounts share the email in different workspaces", async () => {
+			await open([codexAccount("codex-1", "ws-1"), codexAccount("codex-2", "ws-2")]);
+			expect(screen.getByText("ChatGPT workspace ws-1")).toBeTruthy();
+			expect(screen.getByText("ChatGPT workspace ws-2")).toBeTruthy();
+		});
+	});
 });
 
 describe("project-pinned CLAUDE_CONFIG_DIR", () => {

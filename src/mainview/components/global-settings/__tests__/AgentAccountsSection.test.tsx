@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { act } from "react";
 import type { AccountLoginState, AgentAccountsState } from "../../../../shared/agent-accounts";
 import { I18nProvider, useT } from "../../../i18n";
-import AgentAccountsSection, { codexEmailsNeedingWorkspaceId } from "../AgentAccountsSection";
+import AgentAccountsSection from "../AgentAccountsSection";
 
 vi.mock("../../../rpc", () => ({
 	isElectrobun: false,
@@ -862,11 +862,6 @@ describe("AgentAccountsSection", () => {
 		expect(screen.getByText("ChatGPT workspace acc-2")).toBeTruthy();
 	});
 
-	it("finds emails shared by more than one Codex identity", () => {
-		const id = (email: string | null) => ({ email, organization: null, plan: null, planLabel: null, accountId: null });
-		expect([...codexEmailsNeedingWorkspaceId([id("a@x"), id("b@x"), id("a@x"), null, id(null), id(null)])]).toEqual(["a@x"]);
-	});
-
 	it("shows a readable name for a resolved Codex workspace", async () => {
 		mockedApi.request.listAgentAccounts.mockResolvedValue(
 			makeState({
@@ -1008,6 +1003,100 @@ describe("AgentAccountsSection", () => {
 			renderSection();
 			const toggle = await screen.findByRole("switch", { name: "Let Auto use Unmanaged login" });
 			expect(toggle.getAttribute("aria-checked")).toBe("false");
+		});
+	});
+
+	describe("rename and edit buttons on a row", () => {
+		const apiAccount = {
+			id: "api-1",
+			kind: "claude" as const,
+			label: "OpenRouter",
+			identity: null,
+			auth: "api" as const,
+			api: { baseUrl: "https://openrouter.ai/api", model: "", slotModels: {}, hasApiKey: true, envKeys: [] },
+			createdAt: 2,
+		};
+		const withApiProfile = () => {
+			const base = makeState();
+			return makeState({ claude: { ...base.claude, accounts: [...base.claude.accounts, apiAccount] } });
+		};
+
+		it("gives an OAuth row a rename pencil and an API profile row an Edit button instead", async () => {
+			mockedApi.request.listAgentAccounts.mockResolvedValue(withApiProfile());
+			renderSection();
+			expect(await screen.findByRole("button", { name: "Rename work@example.com" })).toBeTruthy();
+			expect(screen.queryByRole("button", { name: "Rename OpenRouter" })).toBeNull();
+			expect(screen.getByText("Edit")).toBeTruthy();
+		});
+
+		it("renames on Enter", async () => {
+			const user = userEvent.setup();
+			renderSection();
+			await user.click(await screen.findByRole("button", { name: "Rename work@example.com" }));
+			const input = screen.getByDisplayValue("work@example.com");
+			await user.clear(input);
+			await user.type(input, "Office{Enter}");
+			await waitFor(() => expect(mockedApi.request.renameAgentAccount).toHaveBeenCalledWith({ kind: "claude", accountId: "cl-1", label: "Office" }));
+		});
+
+		it("drops the draft on Escape", async () => {
+			const user = userEvent.setup();
+			renderSection();
+			await user.click(await screen.findByRole("button", { name: "Rename work@example.com" }));
+			await user.type(screen.getByDisplayValue("work@example.com"), "x{Escape}");
+			expect(screen.queryByRole("textbox")).toBeNull();
+			expect(mockedApi.request.renameAgentAccount).not.toHaveBeenCalled();
+		});
+
+		it("opens the rename field on Enter from the pencil without choosing the row", async () => {
+			const user = userEvent.setup();
+			renderSection();
+			const pencil = await screen.findByRole("button", { name: "Rename work@example.com" });
+			pencil.focus();
+			await user.keyboard("{Enter}");
+			expect(await screen.findByDisplayValue("work@example.com")).toBeTruthy();
+			expect(mockedApi.request.setActiveAgentAccount).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("Codex workspace chip beside a shared email", () => {
+		const seat = { email: "dana@example.test", organization: null, plan: "team", planLabel: "Team", accountId: "ws-1", userId: "user-dana" };
+		const codexState = (currentIdentity: typeof seat | null, identity: typeof seat = seat) =>
+			makeState({
+				codex: {
+					accounts: [{ id: "cx-1", kind: "codex", label: "Dana", identity, auth: "oauth", api: null, createdAt: 1 }],
+					activeId: "cx-1",
+					currentIdentity,
+				},
+			});
+
+		it("shows no chip when ~/.codex is the managed account's twin", async () => {
+			mockedApi.request.listAgentAccounts.mockResolvedValue(codexState(seat));
+			renderSection();
+			expect(await screen.findByText("Dana")).toBeTruthy();
+			expect(screen.queryByText(/ChatGPT workspace/)).toBeNull();
+		});
+
+		it("shows the chip on both rows when an unmanaged login in another workspace shares the email", async () => {
+			mockedApi.request.listAgentAccounts.mockResolvedValue(codexState({ ...seat, accountId: "ws-2", userId: "user-other" }));
+			renderSection();
+			expect(await screen.findByText("Unmanaged login")).toBeTruthy();
+			expect(screen.getByText("ChatGPT workspace ws-1")).toBeTruthy();
+			expect(screen.getByText("ChatGPT workspace ws-2")).toBeTruthy();
+		});
+
+		it("shows no chip when an unmanaged login shares the email and the workspace", async () => {
+			mockedApi.request.listAgentAccounts.mockResolvedValue(codexState({ ...seat, userId: "user-other" }));
+			renderSection();
+			expect(await screen.findByText("Unmanaged login")).toBeTruthy();
+			expect(screen.queryByText(/ChatGPT workspace/)).toBeNull();
+		});
+
+		it("shows no chip for an unnamed workspace with a unique email", async () => {
+			mockedApi.request.listAgentAccounts.mockResolvedValue(codexState(null));
+			renderSection();
+			expect(await screen.findByText("Dana")).toBeTruthy();
+			expect(screen.queryByText(/ChatGPT workspace/)).toBeNull();
 		});
 	});
 
