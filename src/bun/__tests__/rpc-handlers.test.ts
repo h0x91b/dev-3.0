@@ -10819,6 +10819,20 @@ describe("handlers.spawnAgentInTask", () => {
 		expect(push).toHaveBeenCalledWith("taskUpdated", { projectId: project.id, task: updatedTask });
 	});
 
+	it("a spawn with no AWS profile pick runs on the task's own; an explicit None stays None", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt", bedrockProfile: "og" });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(data.updateTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude", extraEnv: {} });
+		mockSpawn.mockReturnValue({ stderr: new Response(""), stdout: new Response(""), exited: Promise.resolve(0) });
+		await handlers.spawnAgentInTask({ taskId: task.id, projectId: "proj-1", agentId: "claude-bedrock", configId: "c" });
+		expect(agents.resolveCommandForAgent).toHaveBeenLastCalledWith("claude-bedrock", "c", expect.anything(), expect.objectContaining({ bedrockProfile: "og" }));
+		await handlers.spawnAgentInTask({ taskId: task.id, projectId: "proj-1", agentId: "claude-bedrock", configId: "c", bedrockProfile: null });
+		expect(agents.resolveCommandForAgent).toHaveBeenLastCalledWith("claude-bedrock", "c", expect.anything(), expect.objectContaining({ bedrockProfile: null }));
+	});
+
 	it("uses resolveCommandForProject when agentId is null", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
@@ -12421,6 +12435,96 @@ describe("restartTask with a pane that ran the global default", () => {
 
 		expect(agents.resolveCommandForProject).toHaveBeenCalled();
 		expect(agents.resolveCommandForAgent).not.toHaveBeenCalled();
+	});
+});
+
+describe("column agents and the AWS profile", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it.each([
+		["inherits the task's pick when the column sets none", undefined, "og"],
+		["uses the column's own pick", "sandbox", "sandbox"],
+		["keeps the column's explicit None", null, null],
+	])("launchColumnAgent %s", async (_name, columnPick, expected) => {
+		const task = makeTask({ status: "review-by-ai", worktreePath: "/tmp", bedrockProfile: "og" });
+		const project = makeProject();
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude", extraEnv: {} });
+		const config = { agentId: "claude-bedrock", configId: "c", prompt: "review", ...(columnPick !== undefined ? { bedrockProfile: columnPick } : {}) };
+		await launchColumnAgent(project, task, config as never, { paneTitle: "AI Review" }).catch(() => undefined);
+		expect(agents.resolveCommandForAgent).toHaveBeenCalledWith("claude-bedrock", "c", expect.anything(), expect.objectContaining({ bedrockProfile: expected }));
+	});
+});
+
+describe("resume reuses the AWS profile a pane launched with", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("passes the stored pane profile to the resumed launch and keeps it on the pane", async () => {
+		const project = makeProject();
+		const panes = [{ agentCmd: "claude", agentFamily: "claude", agentId: "claude-bedrock", configId: "claude-default", sessionId: "00000000-0000-4000-8000-00000000b3d1", bedrockProfile: "og" }];
+		const task = makeTask({ bedrockProfile: "sandbox", sessionState: { panes: panes as any } });
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		const resolve = vi.mocked(agents.resolveCommandForAgent);
+		const original = resolve.getMockImplementation();
+		resolve.mockResolvedValue({ command: "claude", extraEnv: { AWS_PROFILE: "og-aws-claude-code" }, agentFamily: "claude", resolvedBedrockProfile: "og" } as any);
+		try {
+			const { resumeTaskSession } = await import("../rpc-handlers/tmux-pty");
+			await resumeTaskSession(task.id, {});
+			expect(resolve).toHaveBeenCalledWith("claude-bedrock", "claude-default", expect.anything(), expect.objectContaining({ resume: true, bedrockProfile: "og" }));
+			const last = vi.mocked(data.updateTask).mock.calls.map((call) => call[2]).filter((u) => u.sessionState).pop()!;
+			expect(last.sessionState!.panes[0].bedrockProfile).toBe("og");
+			// The task is pinned too, so a later relaunch does not drift onto a changed default.
+			expect(vi.mocked(data.updateTask).mock.calls.some((call) => call[2].bedrockProfile === "og")).toBe(true);
+		} finally {
+			resolve.mockImplementation(original!);
+		}
+	});
+
+	it("a profile removed from the agent keeps its name on the pane and tells the user", async () => {
+		const project = makeProject();
+		const panes = [{ agentCmd: "claude", agentFamily: "claude", agentId: "claude-bedrock", configId: "claude-default", sessionId: "00000000-0000-4000-8000-00000000b3d3", bedrockProfile: "kort" }];
+		const task = makeTask({ bedrockProfile: "kort", sessionState: { panes: panes as any } });
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		const push = vi.fn();
+		setPushMessage(push);
+		const resolve = vi.mocked(agents.resolveCommandForAgent);
+		const original = resolve.getMockImplementation();
+		resolve.mockResolvedValue({ command: "claude", extraEnv: {}, agentFamily: "claude", resolvedBedrockProfile: "kort", bedrockProfileMissing: "kort" } as any);
+		try {
+			const { resumeTaskSession } = await import("../rpc-handlers/tmux-pty");
+			await resumeTaskSession(task.id, {});
+			const writes = vi.mocked(data.updateTask).mock.calls.map((call) => call[2]);
+			expect(writes.some((u) => u.bedrockProfile === null)).toBe(false);
+			expect(writes.filter((u) => u.sessionState).pop()!.sessionState!.panes[0].bedrockProfile).toBe("kort");
+			expect(push).toHaveBeenCalledWith("cliToast", expect.objectContaining({ taskId: task.id, messageKey: "kanban.launchAwsProfileMissing" }));
+		} finally {
+			resolve.mockImplementation(original!);
+		}
+	});
+
+	it("an older pane with no profile falls back to the task's pick", async () => {
+		const project = makeProject();
+		const panes = [{ agentCmd: "claude", agentFamily: "claude", agentId: "claude-bedrock", configId: "claude-default", sessionId: "00000000-0000-4000-8000-00000000b3d2" }];
+		const task = makeTask({ bedrockProfile: "kort", sessionState: { panes: panes as any } });
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		const resolve = vi.mocked(agents.resolveCommandForAgent);
+		const original = resolve.getMockImplementation();
+		resolve.mockResolvedValue({ command: "claude", extraEnv: {}, agentFamily: "claude", resolvedBedrockProfile: "kort" } as any);
+		try {
+			const { resumeTaskSession } = await import("../rpc-handlers/tmux-pty");
+			await resumeTaskSession(task.id, {});
+			expect(resolve).toHaveBeenCalledWith("claude-bedrock", "claude-default", expect.anything(), expect.objectContaining({ bedrockProfile: "kort" }));
+		} finally {
+			resolve.mockImplementation(original!);
+		}
 	});
 });
 
@@ -15154,6 +15258,80 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		// so only the in-memory reservation suppresses re-prompts here.
 		await vi.advanceTimersByTimeAsync(62 * 60_000);
 		expect(push).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe("listPendingMergeOffers (replay after a reload)", () => {
+	const FINGERPRINT = "v1:dev3/task-test:abc123";
+	let project: Project;
+
+	function offeredTask(overrides: Partial<Task> = {}): Task {
+		return makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/test-worktree",
+			branchName: "dev3/task-test",
+			mergeCompletionPrompt: { fingerprint: FINGERPRINT, promptedAt: "2026-06-01T08:00:00.000Z", dismissedAt: null, precise: true },
+			...overrides,
+		});
+	}
+
+	async function reserve(task: Task) {
+		vi.mocked(data.getTask).mockResolvedValue({ ...task, mergeCompletionPrompt: undefined });
+		await handlers.prepareMergeCompletionPrompt({ taskId: task.id, projectId: project.id, fingerprint: FINGERPRINT });
+	}
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		_resetMergePollerState();
+		project = makeProject();
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskSortOrder: "oldest-first" } as any);
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.updateTask).mockImplementation(async (_p: Project, _id: string, patch: Partial<Task>) => makeTask(patch));
+		vi.mocked(git.getHeadSha).mockResolvedValue("abc123");
+		vi.mocked(mergeOfferHeld).mockReset().mockReturnValue(false);
+	});
+
+	afterEach(() => {
+		_resetMergePollerState();
+	});
+
+	it("returns an unanswered offer whose head is still the merged one", async () => {
+		const task = offeredTask();
+		await reserve(task);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		const offers = await handlers.listPendingMergeOffers();
+		expect(offers).toEqual([expect.objectContaining({ taskId: task.id, projectId: project.id, branchName: "dev3/task-test", fingerprint: FINGERPRINT })]);
+	});
+
+	it("drops the offer once new commits move the head", async () => {
+		const task = offeredTask();
+		await reserve(task);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.getHeadSha).mockResolvedValue("def456");
+		expect(await handlers.listPendingMergeOffers()).toEqual([]);
+	});
+
+	it("drops a dismissed offer and one the poller never reserved in this run", async () => {
+		const dismissed = offeredTask({ mergeCompletionPrompt: { fingerprint: FINGERPRINT, promptedAt: "2026-06-01T08:00:00.000Z", dismissedAt: "2026-06-01T08:01:00.000Z", precise: true } });
+		await reserve(dismissed);
+		vi.mocked(data.loadTasks).mockResolvedValue([dismissed]);
+		expect(await handlers.listPendingMergeOffers()).toEqual([]);
+
+		_resetMergePollerState();
+		vi.mocked(data.loadTasks).mockResolvedValue([offeredTask()]);
+		expect(await handlers.listPendingMergeOffers()).toEqual([]);
+	});
+
+	it("returns nothing for a manually completed task or with merge offers turned off", async () => {
+		const manual = offeredTask({ manualCompletion: true });
+		await reserve(manual);
+		vi.mocked(data.loadTasks).mockResolvedValue([manual]);
+		expect(await handlers.listPendingMergeOffers()).toEqual([]);
+
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskSortOrder: "oldest-first", suggestCompletingTasksAfterMerge: false } as any);
+		vi.mocked(data.loadTasks).mockResolvedValue([offeredTask()]);
+		expect(await handlers.listPendingMergeOffers()).toEqual([]);
 	});
 });
 

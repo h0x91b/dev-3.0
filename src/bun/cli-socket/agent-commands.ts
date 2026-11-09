@@ -137,6 +137,24 @@ export const agentHandlers: Record<string, Handler> = {
 		return { moved: true };
 	}),
 	"agent.list": async () => (await import("../cli-agent-spawn")).listCliAgents(),
+	"agent.awsProfiles.list": async (params) => {
+		if (params.agentId !== undefined && typeof params.agentId !== "string") throw new Error("agentId must be a string.");
+		return (await import("../agent-aws-profiles")).listAgentAwsProfiles(params.agentId as string | undefined);
+	},
+	"agent.awsProfiles.set": async (params) => {
+		if (typeof params.agentId !== "string" || !params.agentId) throw new Error("agentId is required.");
+		const result = await (await import("../agent-aws-profiles")).setAgentAwsProfiles(params.agentId, params.profiles, params.defaultProfile);
+		getPushMessage()?.("agentsUpdated", await (await import("../agents")).getAllAgents());
+		// Any agent can call this, and it moves every later launch to another AWS account: say so on screen.
+		(await import("../rpc-handlers/shared")).pushCliToast({
+			taskId: null,
+			projectId: null,
+			level: "info",
+			message: "The dev3 CLI changed an agent's AWS profiles, which decide the AWS account its launches use. Check them in Settings → Agents.",
+			messageKey: "kanban.awsProfilesChangedFromCli",
+		});
+		return result;
+	},
 	"agent.spawn": async (params) => {
 		if ("accountId" in params) throw new Error("Account selection is not supported by agent.spawn — the default account is used unless the user changes it in the approval dialog.");
 		const { project, task } = await requirePaneTask(params);

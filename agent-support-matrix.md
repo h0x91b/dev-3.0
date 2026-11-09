@@ -294,14 +294,21 @@ and model table all read the registry. The toggle only appears on agents that
 have ≥1 registered backend.
 
 dev3 injects only the provider's enable flag + the pinned model (merged into the
-launch env; a config's own `envVars` still win). **Credentials, AWS
-region/profile are NOT set by dev3** — the customer configures those in their own
-global agent setup (shell env / `~/.claude/settings.json`).
+launch env; a config's own `envVars` still win). **Credentials are NOT set by
+dev3**. The customer configures those in their own global agent setup (shell env /
+`~/.claude/settings.json`). One exception: a Bedrock agent may list named **AWS
+profiles** (Settings → Coding Agents → the Bedrock section, or `dev3 agent
+aws-profiles set`). The launch dialog then shows an AWS profile dropdown, and the
+picked entry sets `AWS_PROFILE`/`AWS_REGION` over the preset `envVars` and the
+project env. See `decisions/2026/11/05/bedrock-per-launch-aws-profile.md`. A Claude
+launch with a picked profile also gets `awsAuthRefresh: "aws sso login"` in its dev3
+`--settings` file, so an expired SSO session opens the browser login
+(`decisions/2026/11/08/bedrock-sso-refresh-managed-settings.md`).
 
 | Provider | Injected env | Model id source |
 |----------|--------------|-----------------|
 | Anthropic | _(none)_ | `--model <alias>` as usual |
-| Bedrock (Claude) | `CLAUDE_CODE_USE_BEDROCK=1`, `ANTHROPIC_MODEL` | alias→`<geo>.anthropic.*` map (geo = `global`/`us`/`eu`/`jp` toggle), or the per-model override |
+| Bedrock (Claude) | `CLAUDE_CODE_USE_BEDROCK=1`, `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_{FABLE,OPUS,SONNET,HAIKU}_MODEL` | alias→`<geo>.anthropic.*` map (geo = `global`/`us`/`eu`/`jp` toggle), or the per-model override. Each alias slot gets the launching model for its own slot and the newest built-in model the geo serves for the rest, so `/model haiku` and subagent `model:` aliases never fall back to Claude Code's built-in `us.*` ids; a preset `envVars` value still wins |
 | Bedrock (Codex) | _(none — `--model <geo>.openai.<family>` + `-c model_provider="amazon-bedrock-runtime"`)_ | same geo toggle; per-model override |
 
 Known model aliases map to provider-native ids automatically

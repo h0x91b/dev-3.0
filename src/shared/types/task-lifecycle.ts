@@ -72,6 +72,8 @@ export interface PaneSessionEntry {
 	/** Managed agent account used at launch time — re-injected on resume so a
 	 *  recovered session keeps running under the same account (absent → default). */
 	accountId?: string | null;
+	/** AWS profile entry the pane launched with (null = none); resume re-injects it. */
+	bedrockProfile?: string | null;
 	/** The agent CLI this pane runs, snapshotted at launch. Resume paths hold only
 	 *  a pane, and `agentCmd` alone cannot identify a differently named binary —
 	 *  without this a wrapper resumed as an unknown CLI, i.e. as a fresh launch

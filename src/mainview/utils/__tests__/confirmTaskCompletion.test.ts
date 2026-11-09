@@ -11,6 +11,7 @@ vi.mock("../../confirm", () => ({
 import { confirmTaskCompletion } from "../confirmTaskCompletion";
 import { api } from "../../rpc";
 import { confirm } from "../../confirm";
+import { _resetCompletionOffersForTests, hasCompletionOffer, registerCompletionStrip } from "../../completion-offers";
 
 const mockedBranchStatus = vi.mocked(api.request.getBranchStatus);
 const mockedUnsavedWork = vi.mocked(api.request.getUnsavedWork);
@@ -363,6 +364,37 @@ describe("confirmTaskCompletion", () => {
 
 			await confirmTaskCompletion(wtTask, ops, "completed", t, undefined, { alwaysConfirm: true });
 			expect(mockedUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+		});
+	});
+
+	describe("where the one-click ask appears", () => {
+		afterEach(() => _resetCompletionOffersForTests());
+
+		it("opens beside the clicked control, with the full subject card", async () => {
+			const button = document.createElement("button");
+			document.body.appendChild(button);
+			registerCompletionStrip(baseTask.id);
+			await confirmTaskCompletion(baseTask, project, "completed", t, undefined, { alwaysConfirm: true, anchor: button });
+			const opts = mockedConfirm.mock.calls[0]![0];
+			expect(opts.anchor).toBe(button);
+			expect(opts.info?.body).toBe("Agent overview line");
+			button.remove();
+		});
+
+		it("asks on the open task's completion card when there is no anchor", async () => {
+			const unmount = registerCompletionStrip(baseTask.id);
+			const pending = confirmTaskCompletion(baseTask, project, "cancelled", t, undefined, { alwaysConfirm: true });
+			await Promise.resolve();
+			expect(mockedConfirm).not.toHaveBeenCalled();
+			expect(hasCompletionOffer(baseTask.id, "user")).toBe(true);
+			unmount();
+			await expect(pending).resolves.toBe(false);
+		});
+
+		it("falls back to the modal with no anchor and no task view", async () => {
+			const detached = document.createElement("button");
+			await confirmTaskCompletion(baseTask, project, "completed", t, undefined, { alwaysConfirm: true, anchor: detached });
+			expect(mockedConfirm.mock.calls[0]![0].anchor).toBeNull();
 		});
 	});
 });

@@ -45,6 +45,8 @@ export interface MoveTaskToStatusOptions {
 	 * a mis-click must not silently complete a task.
 	 */
 	alwaysConfirm?: boolean;
+	/** The control the user clicked: the confirmation opens as a popover beside it. */
+	anchor?: HTMLElement | null;
 	/** Toggle a per-card "moving" spinner while the background RPC is in flight. */
 	onMovingChange?: (moving: boolean) => void;
 	/** Run right after the optimistic update commits (e.g. navigate away from the task screen). */
@@ -174,6 +176,7 @@ export async function moveTaskToStatus({
 	onOpenTask,
 	confirm = true,
 	alwaysConfirm = false,
+	anchor,
 	onMovingChange,
 	afterOptimistic,
 	onSuccess,
@@ -194,7 +197,7 @@ export async function moveTaskToStatus({
 	}
 
 	if (confirm && terminal && (task.worktreePath || alwaysConfirm)) {
-		const proceed = await confirmTaskCompletion(task, project, newStatus, t, onOpenTask, { alwaysConfirm });
+		const proceed = await confirmTaskCompletion(task, project, newStatus, t, onOpenTask, { alwaysConfirm, anchor });
 		if (!proceed) return false;
 	}
 
