@@ -265,7 +265,7 @@ const posixDialect: LaunchDialect = {
 	header: () => ["#!/bin/bash"],
 	quote: posixShellQuote,
 	nativeArg: posixShellQuote,
-	commandToken: (value) => (value.startsWith("/") && !isBareToken(value) ? posixShellQuote(value) : value),
+	commandToken: (value) => (isAbsoluteCommandPath(value, "linux") && !isBareToken(value) ? posixShellQuote(value) : value),
 	paneTitle: (title) => `printf '\\033]2;${title}\\033\\\\'`,
 	envLines: (env) =>
 		Object.entries(env).map(([key, value]) =>
@@ -387,6 +387,13 @@ export function powerShellNativeArg(value: string): string {
 /** `C:\dir\claude.exe`, `\\host\share\claude.exe` — a resolved binary, not shell text. */
 const WINDOWS_ABSOLUTE_PATH = /^(?:[A-Za-z]:[\\/]|\\\\)/;
 
+/** Whether a command is ONE absolute path rather than shell text. `commandToken`
+ *  quotes such a value whole, spaces included — anything asking "which binary
+ *  runs" must split on this same rule. */
+export function isAbsoluteCommandPath(value: string, platform: NodeJS.Platform = process.platform): boolean {
+	return launchDialectId(platform) === "windows-powershell" ? WINDOWS_ABSOLUTE_PATH.test(value) : value.startsWith("/");
+}
+
 /** Escape for a PowerShell double-quoted (interpolating) string. */
 function powerShellEscapeDoubleQuoted(value: string): string {
 	return value.replace(/[`"$]/g, "`$&");
@@ -424,7 +431,7 @@ const windowsDialect: LaunchDialect = {
 	// would just print back. Anything else is left alone — a bare name resolves on
 	// PATH, and a multi-word `baseCommand` is shell text the user wrote.
 	commandToken: (value) =>
-		WINDOWS_ABSOLUTE_PATH.test(value) && !isBareToken(value) ? `& ${powerShellQuote(value)}` : value,
+		isAbsoluteCommandPath(value, "win32") && !isBareToken(value) ? `& ${powerShellQuote(value)}` : value,
 	paneTitle: (title) => `Write-Host -NoNewline "$([char]27)]2;${powerShellEscapeDoubleQuoted(title)}$([char]27)\\"`,
 	envLines: (env) =>
 		Object.entries(env).map(([key, value]) =>
