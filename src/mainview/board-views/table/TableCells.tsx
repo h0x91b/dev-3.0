@@ -1,12 +1,13 @@
 import { useRef, useState, type ReactNode } from "react";
 import type { BoardColumnSlot, Label, Project, Task } from "../../../shared/types";
-import { getTaskOverview, getTaskTitle, taskSeqLabel } from "../../../shared/types";
+import { getTaskOverview, getTaskTitle, isCoordinatorTask, taskSeqLabel } from "../../../shared/types";
 import { parentTaskIdOf } from "../../../shared/types/task-origin";
 import { useT, type TranslationKey } from "../../i18n";
 import LabelChip from "../../components/LabelChip";
 import LabelPicker from "../../components/LabelPicker";
 import PipelineDropdown from "../../components/PipelineDropdown";
 import PriorityBadge from "../../components/PriorityBadge";
+import { COORDINATOR_TITLE, TaskRoleChip } from "../../components/TaskRoleBand";
 import StatusMenuPortal from "../../components/StatusMenuPortal";
 import { TaskRefText } from "../../components/TaskRefText";
 import { useStatusMenu } from "../../hooks/useStatusMenu";
@@ -210,7 +211,12 @@ export function TableCell({ column, task, ctx }: { column: TableColumnId; task: 
 		case "seq":
 			return <span className="text-xs tabular-nums text-fg-3">{rowSeqLabel(task, ctx)}</span>;
 		case "title":
-			return <span className="block truncate text-sm text-fg" title={getTaskTitle(task)}>{getTaskTitle(task)}</span>;
+			return isCoordinatorTask(task) ? (
+				<span className="flex min-w-0 items-center gap-1.5">
+					<TaskRoleChip role="coordinator" testId="board-table-coordinator-chip" />
+					<span className={`block truncate text-sm font-semibold ${COORDINATOR_TITLE}`} title={getTaskTitle(task)}>{getTaskTitle(task)}</span>
+				</span>
+			) : <span className="block truncate text-sm text-fg" title={getTaskTitle(task)}>{getTaskTitle(task)}</span>;
 		case "project":
 			return <Text title={ctx.projectName(task.projectId)}>{ctx.projectName(task.projectId)}</Text>;
 		case "status":

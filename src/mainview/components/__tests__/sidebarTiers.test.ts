@@ -354,27 +354,15 @@ describe("groupTasksIntoTiers — user-questions lead NEEDS YOU", () => {
 		]);
 	});
 
-	it("ranks below live coordinators, whatever their status, priority or age", () => {
+	it("ignores a coordinator: it sits in its own tier above, never between questions and reviews", () => {
 		const tasks = [
-			question("p0-question", { priority: "P0", statusEnteredAt: "2025-01-01T00:00:00Z" }),
-			review("p4-coordinator", { taskType: "coordinator", priority: "P4", statusEnteredAt: "2025-03-01T00:00:00Z" }),
+			question("p0-question", { priority: "P0" }),
+			review("p4-coordinator", { taskType: "coordinator", priority: "P4" }),
 			review("p0-review", { priority: "P0" }),
 		];
-		expect(ids(groupTasksIntoTiers(tasks, ctx())[0].tasks)).toEqual(["p4-coordinator", "p0-question", "p0-review"]);
-	});
-
-	it("outranks a parked coordinator, which loses its lift", () => {
-		const tasks = [review("parked", { taskType: "coordinator", hibernated: true }), question("question"), review("review")];
-		expect(ids(groupTasksIntoTiers(tasks, ctx())[0].tasks)).toEqual(["question", "review", "parked"]);
-	});
-
-	it("keeps several coordinators in their usual band → clock order", () => {
-		const tasks = [
-			question("question"),
-			question("p2-coord-asking", { taskType: "coordinator", priority: "P2" }),
-			review("p1-coord", { taskType: "coordinator", priority: "P1" }),
-		];
-		expect(ids(groupTasksIntoTiers(tasks, ctx())[0].tasks)).toEqual(["p1-coord", "p2-coord-asking", "question"]);
+		const tiers = groupTasksIntoTiers(tasks, ctx());
+		expect(kinds(tiers)).toEqual(["coordinators", "needs-you"]);
+		expect(ids(tiers[1].tasks)).toEqual(["p0-question", "p0-review"]);
 	});
 
 	it("keeps the usual band → clock → seq order among several questions", () => {
@@ -426,5 +414,45 @@ describe("groupTasksIntoTiers — user-questions lead NEEDS YOU", () => {
 		expect(kinds(tiers)).toEqual(["needs-you", "custom"]);
 		expect(ids(tiers[0].tasks)).toEqual(["review"]);
 		expect(ids(tiers[1].tasks)).toEqual(["held"]);
+	});
+});
+
+describe("groupTasksIntoTiers — coordinators tier", () => {
+	const coord = (id: string, overrides: Partial<Task> = {}) => makeTask({ id, taskType: "coordinator", ...overrides });
+
+	it("holds a live coordinator in progress, not waiting", () => {
+		const tiers = groupTasksIntoTiers([coord("c"), makeTask({ id: "w" })], ctx());
+		expect(kinds(tiers)).toEqual(["coordinators", "waiting"]);
+		expect(ids(tiers[0].tasks)).toEqual(["c"]);
+	});
+
+	it("holds a coordinator in user-questions or review-by-user, not needs-you", () => {
+		const tiers = groupTasksIntoTiers([coord("q", { status: "user-questions" }), coord("r", { status: "review-by-user" })], ctx());
+		expect(kinds(tiers)).toEqual(["coordinators"]);
+		expect(ids(tiers[0].tasks).sort()).toEqual(["q", "r"]);
+	});
+
+	it("holds a coordinator placed in a custom column", () => {
+		const tiers = groupTasksIntoTiers(
+			[coord("c", { customColumnId: "onhold" })],
+			ctx({ orderedCustomColumns: [{ projectId: "p1", columnId: "onhold" }] }),
+		);
+		expect(kinds(tiers)).toEqual(["coordinators"]);
+	});
+
+	it("holds a disconnected coordinator", () => {
+		const dead = coord("dead", { worktreePath: "/w", runtimeState: { runtime: "idle", updatedAt: 0 } });
+		expect(kinds(groupTasksIntoTiers([dead], ctx()))).toEqual(["coordinators"]);
+	});
+
+	it("sends a hibernated coordinator through the normal rules", () => {
+		const tiers = groupTasksIntoTiers([coord("parked", { hibernated: true, status: "review-by-user" })], ctx());
+		expect(kinds(tiers)).toEqual(["needs-you"]);
+	});
+
+	it("orders coordinators by band then clock, and omits the tier when there are none", () => {
+		const tiers = groupTasksIntoTiers([coord("p2", { priority: "P2" }), coord("p1", { priority: "P1" })], ctx());
+		expect(ids(tiers[0].tasks)).toEqual(["p1", "p2"]);
+		expect(kinds(groupTasksIntoTiers([makeTask({ id: "w" })], ctx()))).toEqual(["waiting"]);
 	});
 });

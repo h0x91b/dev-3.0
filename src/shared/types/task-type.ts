@@ -101,6 +101,16 @@ export function taskAgentSessionLooksLive(task: TaskSortFields): boolean {
 	return !isTaskDisconnected(task);
 }
 
+/** A coordinator that earns the lift: live, not parked and not disconnected. */
+export function isLiftedCoordinator(task: TaskSortFields): boolean {
+	return isCoordinatorTask(task) && !task.hibernated && !isTaskDisconnected(task);
+}
+
+/** A lifted coordinator whose task is still in an active column; board lists pin only these. */
+export function isPinnedCoordinator(task: TaskSortFields): boolean {
+	return isLiftedCoordinator(task) && !!task.status && ACTIVE_STATUSES.includes(task.status);
+}
+
 /**
  * Sort rank of a task: its {@link priorityRank}, plus {@link HIBERNATED_SORT_OFFSET}
  * when hibernated, {@link DISCONNECTED_SORT_OFFSET} when its session died, or
@@ -115,7 +125,7 @@ export function taskSortRank(task: TaskSortFields): number {
 	const rank = priorityRank(task.priority);
 	if (task.hibernated) return rank + HIBERNATED_SORT_OFFSET;
 	if (isTaskDisconnected(task)) return rank + DISCONNECTED_SORT_OFFSET;
-	if (isCoordinatorTask(task)) return rank + COORDINATOR_SORT_OFFSET;
+	if (isLiftedCoordinator(task)) return rank + COORDINATOR_SORT_OFFSET;
 	return rank;
 }
 

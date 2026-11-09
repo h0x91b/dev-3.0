@@ -1,4 +1,5 @@
 import type { Epic, Task } from "../../../shared/types";
+import { isPinnedCoordinator } from "../../../shared/types";
 import { parentTaskIdOf } from "../../../shared/types/task-origin";
 import type { BoardLineageNode } from "../board-service";
 
@@ -90,7 +91,7 @@ function byAttempt(a: Task, b: Task): number {
  * The lineage forest of a board (spec D19). A task's parent is its lineage
  * origin; variants of a task are one node; a parent on another board becomes a
  * ghost root. Tasks that do not match the query appear only as ancestors of
- * ones that do. Roots and children are newest first.
+ * ones that do. Roots and children: live coordinators first, then newest first.
  */
 export function buildTaskTree({ tasks, scopeTasks, lineageNode }: TreeInput): TreeNode[] {
 	const unitsByKey = new Map<string, Task[]>();
@@ -157,7 +158,8 @@ export function buildTaskTree({ tasks, scopeTasks, lineageNode }: TreeInput): Tr
 
 	for (const key of matching) if (unitsByKey.has(key)) ensure(key);
 
-	const newestFirst = (a: TreeNode, b: TreeNode) => nodeSeq(b) - nodeSeq(a);
+	const pinned = (n: TreeNode) => n.kind === "task" && n.tasks.some(isPinnedCoordinator);
+	const newestFirst = (a: TreeNode, b: TreeNode) => Number(pinned(b)) - Number(pinned(a)) || nodeSeq(b) - nodeSeq(a);
 	const sortDeep = (list: TreeNode[]) => {
 		list.sort(newestFirst);
 		for (const node of list) sortDeep(node.children);

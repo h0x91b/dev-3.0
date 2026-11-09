@@ -69,6 +69,32 @@ describe("buildTaskTree", () => {
 		expect(shape(roots)).toEqual([["~p1#1", ["p1#2"]]]);
 	});
 
+	it("puts a live coordinator root above newer roots, but not a hibernated one", () => {
+		const live = [task("coord", 1, { taskType: "coordinator", status: "in-progress" }), task("new", 2)];
+		expect(shape(buildTaskTree({ tasks: live, scopeTasks: live, lineageNode: () => null }))).toEqual(["p1#1", "p1#2"]);
+		const parked = [task("coord", 1, { taskType: "coordinator", status: "in-progress", hibernated: true }), task("new", 2)];
+		expect(shape(buildTaskTree({ tasks: parked, scopeTasks: parked, lineageNode: () => null }))).toEqual(["p1#2", "p1#1"]);
+	});
+
+	it("sorts a live coordinator child before a newer sibling", () => {
+		const tasks = [
+			task("p", 1),
+			task("coord", 2, { taskType: "coordinator", status: "in-progress", ...childOf("p") }),
+			task("new", 3, childOf("p")),
+		];
+		expect(shape(buildTaskTree({ tasks, scopeTasks: tasks, lineageNode: () => null }))).toEqual([["p1#1", ["p1#2", "p1#3"]]]);
+	});
+
+	it("does not pin a completed or disconnected coordinator", () => {
+		const done = [task("coord", 1, { taskType: "coordinator", status: "completed" }), task("new", 2)];
+		expect(shape(buildTaskTree({ tasks: done, scopeTasks: done, lineageNode: () => null }))).toEqual(["p1#2", "p1#1"]);
+		const dead = [
+			task("coord", 1, { taskType: "coordinator", status: "in-progress", worktreePath: "/w", runtimeState: { runtime: "idle", updatedAt: 0 } }),
+			task("new", 2),
+		];
+		expect(shape(buildTaskTree({ tasks: dead, scopeTasks: dead, lineageNode: () => null }))).toEqual(["p1#2", "p1#1"]);
+	});
+
 	it("survives an origin cycle", () => {
 		const tasks = [task("a", 1, childOf("b")), task("b", 2, childOf("a"))];
 		const roots = buildTaskTree({ tasks, scopeTasks: tasks, lineageNode: () => null });

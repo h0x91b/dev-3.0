@@ -148,6 +148,13 @@ describe("Table board view", () => {
 		expect(within(screen.getByTestId("board-table-row-t2")).getByText("Cancelled")).toBeInTheDocument();
 	});
 
+	it("pins a live coordinator on top and marks it with the role chip", async () => {
+		await renderTable({ tasks: [task("t3", 3), task("c1", 1, { taskType: "coordinator", status: "in-progress" })] });
+		expect(rowIds()).toEqual(["c1", "t3"]);
+		expect(within(screen.getByTestId("board-table-row-c1")).getByTestId("board-table-coordinator-chip")).toBeInTheDocument();
+		expect(within(screen.getByTestId("board-table-row-t3")).queryByTestId("board-table-coordinator-chip")).toBeNull();
+	});
+
 	it("labels variants with their attempt suffix, like the card", async () => {
 		await renderTable({ tasks: [task("v1", 7, { variantIndex: 1, groupId: "g" }), task("v2", 7, { variantIndex: 2, groupId: "g" })] });
 		expect(within(screen.getByTestId("board-table-row-v2")).getByText("#7-2")).toBeInTheDocument();

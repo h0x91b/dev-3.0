@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, 
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Context } from "cordis";
 import type { Project, Task } from "../../../shared/types";
-import { getTaskTitle, taskSeqLabel } from "../../../shared/types";
+import { getTaskTitle, isCoordinatorTask, taskSeqLabel } from "../../../shared/types";
 import { useT } from "../../i18n";
 import PriorityBadge from "../../components/PriorityBadge";
+import { COORDINATOR_TITLE, TaskRoleChip } from "../../components/TaskRoleBand";
 import { useStatusColors } from "../../hooks/useStatusColors";
 import { getStatusLabel } from "../../utils/statusLabel";
 import { compactAge } from "../../utils/statusAge";
@@ -23,7 +24,7 @@ import {
 	type TreeNode,
 	type TreeRow,
 } from "./tree-model";
-import { ZEBRA_ROW } from "../zebra";
+import { COORDINATOR_ROW, ZEBRA_ROW } from "../zebra";
 import { READABLE_SCROLL, READABLE_WIDTH } from "../readable-width";
 
 export const TREE_VIEW_ID = "builtin:tree";
@@ -256,7 +257,8 @@ function TaskContent({ node, narrow, nested, project, showProject, projectName }
 		<>
 			<SeqLabel seq={lead.seq} label={variants ? String(lead.seq) : taskSeqLabel(lead)} />
 			<span className="flex min-w-0 flex-1 items-center gap-2">
-				<span className="min-w-0 truncate text-sm text-fg">{getTaskTitle(lead)}</span>
+				{isCoordinatorTask(lead) && <TaskRoleChip role="coordinator" testId="board-tree-coordinator-chip" />}
+				<span className={`min-w-0 truncate text-sm ${isCoordinatorTask(lead) ? `font-semibold ${COORDINATOR_TITLE}` : "text-fg"}`}>{getTaskTitle(lead)}</span>
 				{variants && <VariantDots tasks={node.tasks} />}
 				{nested}
 			</span>
@@ -424,7 +426,7 @@ export function TreeView(_props: { ctx: Context }) {
 							onClick={() => open(row)}
 							onContextMenu={(e) => openMenu(row, e)}
 							onKeyDown={(e) => onRowKeyDown(row, item.index, e)}
-							className={`absolute left-0 top-0 w-full cursor-pointer rounded-md px-2 outline-none ${item.index % 2 === 1 ? ZEBRA_ROW : ""} hover:bg-raised-hover focus-visible:bg-raised-hover focus-visible:shadow-[inset_2px_0_0_rgb(var(--accent))] ${narrow ? "border-b border-edge/50" : ""}`}
+							className={`absolute left-0 top-0 w-full cursor-pointer rounded-md px-2 outline-none ${node.kind === "task" && isCoordinatorTask(node.tasks[0]) ? COORDINATOR_ROW : item.index % 2 === 1 ? ZEBRA_ROW : ""} hover:bg-raised-hover focus-visible:bg-raised-hover focus-visible:shadow-[inset_2px_0_0_rgb(var(--accent))] ${narrow ? "border-b border-edge/50" : ""}`}
 							style={{ height: rowHeight, transform: `translateY(${item.start}px)` }}
 						>
 							<RowBody row={row} narrow={narrow} projectById={projectById} showProject={showProject} projectName={projectName} onToggle={onToggle} />

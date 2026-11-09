@@ -1,5 +1,5 @@
 import type { BoardColumnSlot, Task } from "../../../shared/types";
-import { getTaskTitle, priorityRank } from "../../../shared/types";
+import { getTaskTitle, isPinnedCoordinator, priorityRank } from "../../../shared/types";
 import { parentTaskIdOf } from "../../../shared/types/task-origin";
 import { taskLastActivityMs } from "../../utils/projectActivity";
 import { taskRunningAgentIds } from "../../../shared/task-running-agent";
@@ -185,11 +185,13 @@ function compareKeys(a: SortKey, b: SortKey): number {
 	return String(a).localeCompare(String(b));
 }
 
-/** A sorted copy. Empty values go last in both directions; ties fall back to newest seq first. */
+/** A sorted copy. Live coordinators come first; empty values go last in both directions; ties fall back to newest seq first. */
 export function sortTableTasks(tasks: readonly Task[], [column, direction]: TableSort, ctx: TableSortContext): Task[] {
 	const sign = direction === "asc" ? 1 : -1;
 	const keyed = tasks.map((task) => ({ task, key: sortKey(task, column, ctx) }));
 	keyed.sort((x, y) => {
+		const byPin = Number(isPinnedCoordinator(y.task)) - Number(isPinnedCoordinator(x.task));
+		if (byPin) return byPin;
 		const xEmpty = x.key === null;
 		const yEmpty = y.key === null;
 		if (xEmpty !== yEmpty) return xEmpty ? 1 : -1;
