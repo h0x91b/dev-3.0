@@ -365,4 +365,27 @@ describe("confirmTaskCompletion", () => {
 			expect(mockedUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
 		});
 	});
+
+	describe("where the one-click ask appears", () => {
+		it("opens beside the clicked control, with the full subject card", async () => {
+			const button = document.createElement("button");
+			document.body.appendChild(button);
+			await confirmTaskCompletion(baseTask, project, "completed", t, undefined, { alwaysConfirm: true, anchor: button });
+			const opts = mockedConfirm.mock.calls[0]![0];
+			expect(opts.anchor).toBe(button);
+			expect(opts.info?.body).toBe("Agent overview line");
+			button.remove();
+		});
+
+		it("falls back to the modal when the clicked control is gone", async () => {
+			const detached = document.createElement("button");
+			await confirmTaskCompletion(baseTask, project, "completed", t, undefined, { alwaysConfirm: true, anchor: detached });
+			expect(mockedConfirm.mock.calls[0]![0].anchor).toBeNull();
+		});
+
+		it("uses the modal when no control is given", async () => {
+			await confirmTaskCompletion(baseTask, project, "cancelled", t, undefined, { alwaysConfirm: true });
+			expect(mockedConfirm.mock.calls[0]![0].anchor).toBeNull();
+		});
+	});
 });
