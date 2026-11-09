@@ -32,6 +32,8 @@ import {
 	type ViewerSnapshot,
 } from "../../shared/native-terminal-stream";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { useAgents } from "../hooks/useAgents";
+import ResumeAccountPicker, { savedResumeAccount } from "./ResumeAccountPicker";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { isElectrobun } from "../rpc";
 import { isTouchPrimary } from "../utils/platform";
@@ -118,6 +120,9 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	const [termHandle, setTermHandle] = useState<TerminalHandle | null>(null);
 	const [error, setError] = useState<{ kind: ErrorKind; path: string } | null>(null);
 	const [recoverable, setRecoverable] = useState<TaskSessionState | null>(null);
+	// A per-resume account pick on the wake/recovery screen; undefined keeps the saved one.
+	const [resumeAccount, setResumeAccount] = useState<string | null | undefined>(undefined);
+	const agents = useAgents();
 	// The recovery offer came from hibernation, not from a session that died on
 	// its own: same two buttons, different wording, and waking is the explicit
 	// act that clears the flag.
@@ -530,18 +535,39 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		}
 	}
 
+	async function showRecoveryIfOffered(): Promise<boolean> {
+		try {
+			const result = await api.request.getPtyUrl({ taskId });
+			if ("url" in result) {
+				if (isNative) await fetchPaneState(taskId);
+				else setPtyUrl(result.url);
+				return true;
+			}
+			setRecoverable(result.sessionState);
+			setHibernated(result.hibernated === true);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
 	async function handleResumeSession() {
+		const accountId = resumeAccount;
 		setRestarting(true);
 		setRecoverable(null);
 		setHibernated(false);
 		try {
-			const url = await api.request.resumeTask({ taskId });
+			const url = await api.request.resumeTask({ taskId, ...(accountId !== undefined ? { accountId } : {}) });
+			setResumeAccount(undefined);
 			if (isNative) await fetchPaneState(taskId);
 			else setPtyUrl(url);
 			trackEvent("session_recovered", { action: "resume" });
 		} catch (err) {
 			console.error("[TaskTerminal] Resume session failed:", err);
 			toast.error(err instanceof Error ? err.message : String(err));
+			// A refused account choice launched nothing, so the server still offers the same
+			// screen; any later failure is classified like a resume without one.
+			if (accountId !== undefined && await showRecoveryIfOffered()) return;
 			await classifyAndSetError();
 		} finally {
 			setRestarting(false);
@@ -760,6 +786,15 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 					<p className="text-fg-3 text-sm">
 						{hibernated ? t("terminal.hibernatedDesc") : t("terminal.recoveryDesc")}
 					</p>
+					{canResume && (
+						<ResumeAccountPicker
+							panes={recoverable.panes}
+							agents={agents}
+							value={resumeAccount !== undefined ? resumeAccount : savedResumeAccount(recoverable.panes, task?.accountId)}
+							onChange={setResumeAccount}
+							projectId={project?.id}
+						/>
+					)}
 					<div className="space-y-3 pt-2">
 						<div className="flex gap-3">
 							{canResume && (

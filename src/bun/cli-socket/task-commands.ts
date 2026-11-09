@@ -20,7 +20,7 @@ import { findEpic } from "../epics-data";
 import { readTaskTerminalBackendState, switchTaskTerminalBackend } from "../task-terminal-backend-switch";
 import { approvalStatusOf, launchSuggestionRequested, launcherHandoffNote, requestAgentLaunchApproval, requestDestructiveApproval, resolveLaunchSuggestion } from "./approvals";
 import { log, type Handler, withSenderVariant } from "./shared";
-import { findByIdPrefix, findTaskByRef, parseSeqRef, resolveAgentMessageSource, resolveRequesterTask, resolveTaskAcrossProjects, resolveTaskFromParams, scopedTaskNotFoundError, senderRequester, taskNotFoundError, withArchivedHistory, withEpic, withOriginParent, withSenderAgent } from "./task-resolution";
+import { findByIdPrefix, findTaskByRef, parseSeqRef, resolveAgentMessageSource, resolveRequesterTask, resolveTaskAcrossProjects, resolveTaskFromParams, resumeAccountParam, scopedTaskNotFoundError, senderRequester, taskNotFoundError, withArchivedHistory, withEpic, withOriginParent, withSenderAgent } from "./task-resolution";
 
 // Lazy like `conversationImport` (shared.ts): it reaches the app and spaces handler domains.
 async function projectRegistration() {
@@ -669,7 +669,9 @@ export const taskHandlers: Record<string, Handler> = {
 		const { project, task } = await resolveTaskFromParams(params);
 		const requester = await resolveRequesterTask(params);
 		const { wakeCliTask } = await import("../cli-task-session");
-		return wakeCliTask({ project, task, requester, mode, allowAgentLatest: params.allowAgentLatest === true });
+		const accountId = resumeAccountParam(params);
+		if (accountId !== undefined && mode !== "resume") throw new Error("accountId only applies to a resume.");
+		return wakeCliTask({ project, task, requester, mode, allowAgentLatest: params.allowAgentLatest === true, ...(accountId !== undefined ? { accountId } : {}) });
 	},
 
 	// Agent-initiated request to complete a task. Blocks until the user
