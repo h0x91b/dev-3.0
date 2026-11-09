@@ -273,9 +273,20 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 	const anchored = anchorRect !== null;
 	const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
 
+	// Re-placed whenever the panel resizes: the deferred check lands after the
+	// first layout and can grow it onto the anchor or past the viewport edge.
 	useLayoutEffect(() => {
-		if (!anchorRect || !trapRef.current) return;
-		setPopoverPos(placeBesideAnchor(anchorRect, trapRef.current.getBoundingClientRect()));
+		const panel = trapRef.current;
+		if (!anchorRect || !panel) return;
+		const place = () => setPopoverPos(placeBesideAnchor(anchorRect, panel.getBoundingClientRect()));
+		place();
+		const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(place) : null;
+		observer?.observe(panel);
+		window.addEventListener("resize", place);
+		return () => {
+			observer?.disconnect();
+			window.removeEventListener("resize", place);
+		};
 	}, [anchorRect, trapRef]);
 
 	// Repeats, keys held from before the dialog opened, IME and the quiet window
@@ -435,7 +446,7 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 
 /**
  * Below the anchor, else above it, else to its side; starting at its left edge
- * and kept on screen. The panel never covers the control the user clicked.
+ * and kept on screen. Only a screen too narrow for any side lets it overlap the anchor.
  */
 export function placeBesideAnchor(anchor: DOMRect, panel: DOMRect, pad = 8, gap = 6): { top: number; left: number } {
 	const vw = window.innerWidth;

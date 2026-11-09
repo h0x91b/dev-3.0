@@ -2,8 +2,9 @@ import { useSyncExternalStore } from "react";
 
 /**
  * Completion offers the user has not answered yet: "the branch merged", "the
- * agent asks to complete" and the user's own Complete/Cancel on the open task. They render inline on the task (strip in the task view,
- * marker on its card) instead of a modal, so an offer never blocks the board.
+ * agent asks to complete" and the user's own Complete/Cancel on the open task.
+ * They render inline on the task (strip in the task view, marker on its card)
+ * instead of a modal, so an offer never blocks the board.
  * See `decisions/2026/11/07/completion-offers-render-inline-not-modal.md`.
  */
 export type CompletionOfferKind = "merge" | "agent" | "user";
@@ -20,6 +21,8 @@ export interface CompletionOffer {
 	branchName?: string;
 	/** User offers only: the move the user asked for. */
 	status?: "completed" | "cancelled";
+	/** User offers only: what had focus when the user asked, to hand it back after. */
+	returnFocus?: HTMLElement | null;
 	answer: (answer: CompletionOfferAnswer) => void;
 }
 
@@ -29,6 +32,7 @@ export interface OfferCompletionParams {
 	kind: CompletionOfferKind;
 	branchName?: string;
 	status?: "completed" | "cancelled";
+	returnFocus?: HTMLElement | null;
 	/** Aborting withdraws the offer and resolves `false` (answered on another client). */
 	signal?: AbortSignal;
 }
@@ -79,6 +83,7 @@ export function offerCompletion(params: OfferCompletionParams): Promise<Completi
 			kind: params.kind,
 			branchName: params.branchName,
 			status: params.status,
+			returnFocus: params.returnFocus,
 			answer: settle,
 		}];
 		emit();

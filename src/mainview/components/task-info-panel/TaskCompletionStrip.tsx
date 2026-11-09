@@ -18,9 +18,10 @@ type GitCheck = { state: "skipped" } | { state: "checking" } | { state: "done"; 
 /**
  * The task's pending completion offer. An unsolicited one never takes focus or
  * keys, so an offer that lands while the user types cannot steal a keystroke; the
- * user's own Complete/Cancel focuses Keep open instead. It never covers the board. `overlay` floats it over the top-right of a live terminal viewport,
- * so the terminal keeps its size; `inline` is the row under the inspector, used
- * only where no terminal viewport hosts the overlay (a session-ended screen).
+ * user's own Complete/Cancel focuses Keep open instead. It never covers the board.
+ * `overlay` floats it over the top-right of a live terminal viewport, so the
+ * terminal keeps its size; `inline` is the row under the inspector, used only
+ * where no terminal viewport hosts the overlay (a session-ended screen).
  */
 export default function TaskCompletionStrip({ task, project, variant = "inline", belowZoomBadge = false }: {
 	task: Task; project: Project; variant?: "inline" | "overlay";
@@ -32,6 +33,15 @@ export default function TaskCompletionStrip({ task, project, variant = "inline",
 	useEffect(() => registerCompletionStrip(task.id), [task.id]);
 	useEffect(() => (variant === "overlay" ? registerCompletionOverlayHost(task.id) : undefined), [task.id, variant]);
 	if (!offer || (variant === "inline" && hosted)) return null;
+	// The user's ask carries a full subject card: inline it would push the whole
+	// task view down, so it floats from a zero-height anchor instead.
+	if (variant === "inline" && offer.kind === "user") {
+		return (
+			<div className="relative z-30 h-0" data-testid="task-completion-strip-float">
+				<Strip key={offer.id} offer={offer} task={task} project={project} overlay belowZoomBadge={false} />
+			</div>
+		);
+	}
 	return <Strip key={offer.id} offer={offer} task={task} project={project} overlay={variant === "overlay"} belowZoomBadge={belowZoomBadge} />;
 }
 
@@ -41,7 +51,21 @@ function Strip({ offer, task, project, overlay, belowZoomBadge }: { offer: Compl
 	const isUser = offer.kind === "user";
 	const armedRef = useRef(isUser);
 	const keepOpenRef = useRef<HTMLButtonElement>(null);
-	useEffect(() => { if (isUser) keepOpenRef.current?.focus(); }, [isUser]);
+	useEffect(() => {
+		if (!isUser) return;
+		const mounted = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		keepOpenRef.current?.focus();
+		// Hand focus back once the answer settles (the ✓ re-enables a frame later),
+		// as the modal's focus trap does — unless the user already moved it.
+		return () => {
+			requestAnimationFrame(() => {
+				const active = document.activeElement;
+				if (active && active !== document.body) return;
+				const target = [offer.returnFocus, mounted].find((el) => el?.isConnected && el !== document.body);
+				target?.focus();
+			});
+		};
+	}, [isUser, offer.returnFocus]);
 	const skipGit = completionSkipsGitCheck(task, project);
 	const [git, setGit] = useState<GitCheck>(skipGit ? { state: "skipped" } : { state: "checking" });
 

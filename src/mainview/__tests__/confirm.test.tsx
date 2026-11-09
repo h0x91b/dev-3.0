@@ -1,6 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { vi } from "vitest";
+import { afterEach, vi } from "vitest";
 import { ConfirmHost, confirm, placeBesideAnchor, whenConfirmHostMounted } from "../confirm";
 import { I18nProvider } from "../i18n";
 
@@ -643,10 +643,33 @@ describe("confirm anchored to the clicked control", () => {
 		expect(await screen.findByRole("dialog")).not.toHaveAttribute("data-anchored");
 	});
 
+	const viewport = { width: window.innerWidth, height: window.innerHeight };
+	function setViewport(width: number, height: number) {
+		Object.defineProperty(window, "innerWidth", { value: width, configurable: true });
+		Object.defineProperty(window, "innerHeight", { value: height, configurable: true });
+	}
+	afterEach(() => setViewport(viewport.width, viewport.height));
+
+	it("re-places itself when the window resizes", async () => {
+		setViewport(1000, 800);
+		const anchor = document.createElement("button");
+		anchor.getBoundingClientRect = () => ({ left: 100, top: 770, right: 120, bottom: 790, width: 20, height: 20 }) as DOMRect;
+		document.body.appendChild(anchor);
+		renderHost();
+		act(() => { void confirm({ title: "Complete task?", message: "m", confirmLabel: "Go", anchor }); });
+		const dialog = await screen.findByRole("dialog");
+		expect(dialog.style.top).toBe("764px");
+		act(() => {
+			setViewport(1000, 1000);
+			window.dispatchEvent(new Event("resize"));
+		});
+		expect(dialog.style.top).toBe("796px");
+		anchor.remove();
+	});
+
 	it("sits below the anchor, else above, else beside it, and stays on screen", () => {
 		const panel = { width: 300, height: 200 } as DOMRect;
-		Object.defineProperty(window, "innerWidth", { value: 1000, configurable: true });
-		Object.defineProperty(window, "innerHeight", { value: 800, configurable: true });
+		setViewport(1000, 800);
 		const at = (left: number, top: number) => ({ left, top, right: left + 20, bottom: top + 20, height: 20 }) as DOMRect;
 		expect(placeBesideAnchor(at(100, 100), panel)).toEqual({ top: 126, left: 100 });
 		expect(placeBesideAnchor(at(100, 700), panel)).toEqual({ top: 494, left: 100 });

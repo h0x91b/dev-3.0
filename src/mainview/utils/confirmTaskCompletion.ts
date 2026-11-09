@@ -113,7 +113,9 @@ export async function confirmTaskCompletion(
 	// control, else the completion card on the open task, else a modal.
 	const anchor = options?.anchor?.isConnected ? options.anchor : null;
 	if (alwaysConfirm && !anchor && isCompletionStripMounted(task.id)) {
-		const answer = await offerCompletion({ taskId: task.id, projectId: project.id, kind: "user", status: newStatus });
+		// Captured now: by the time the card mounts, the clicked ✓ is disabled and has lost focus.
+		const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		const answer = await offerCompletion({ taskId: task.id, projectId: project.id, kind: "user", status: newStatus, returnFocus });
 		return answer === true;
 	}
 	if (alwaysConfirm) {

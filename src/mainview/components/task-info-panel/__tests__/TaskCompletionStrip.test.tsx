@@ -211,5 +211,41 @@ describe("TaskCompletionStrip", () => {
 			await act(async () => {});
 			expect(screen.getByTestId("task-completion-strip-warning")).toBeInTheDocument();
 		});
+
+		it("hands focus back to where it was once answered", async () => {
+			const trigger = document.createElement("button");
+			document.body.appendChild(trigger);
+			trigger.focus();
+			renderStrip();
+			await userAsk("completed");
+			await act(async () => {});
+			expect(document.activeElement).toHaveTextContent("Keep open");
+			fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+			await act(async () => { vi.advanceTimersByTime(50); });
+			expect(document.activeElement).toBe(trigger);
+			trigger.remove();
+		});
+
+		it("hands focus back to the control that asked, even if it lost focus before the card mounted", async () => {
+			const trigger = document.createElement("button");
+			document.body.appendChild(trigger);
+			renderStrip();
+			let answer!: Promise<CompletionOfferAnswer | null>;
+			await act(async () => { answer = offerCompletion({ taskId: "t1", projectId: "p1", kind: "user", status: "completed", returnFocus: trigger }); });
+			await act(async () => {});
+			fireEvent.click(screen.getByRole("button", { name: "Keep open" }));
+			await expect(answer).resolves.toBe(false);
+			await act(async () => { vi.advanceTimersByTime(50); });
+			expect(document.activeElement).toBe(trigger);
+			trigger.remove();
+		});
+
+		it("floats under the inspector instead of pushing the task view down", async () => {
+			renderStrip();
+			await userAsk("completed");
+			const float = screen.getByTestId("task-completion-strip-float");
+			expect(float.className).toContain("h-0");
+			expect(float).toContainElement(screen.getByTestId("task-completion-strip"));
+		});
 	});
 });
