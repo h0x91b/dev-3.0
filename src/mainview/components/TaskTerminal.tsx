@@ -491,6 +491,16 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		});
 	}
 
+	/** A restarted app has forgotten the session; ask for it again so the open view reconnects. */
+	async function reregisterTmuxSession(): Promise<boolean> {
+		const result = await api.request.getPtyUrl({ taskId });
+		if ("url" in result) return true;
+		setPtyUrl(null);
+		setRecoverable(result.sessionState);
+		setHibernated(result.hibernated === true);
+		return false;
+	}
+
 	async function handleRestart() {
 		setRestarting(true);
 		try {
@@ -1250,6 +1260,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				consumePendingFocus(handle);
 			}}
 			onNativeStatus={handleNativeStatus}
+			onSessionUnknown={reregisterTmuxSession}
 			touchComposeMode={touchInput && !rawMode}
 			onScrolledIntoHistory={scrollSignalFor(TMUX_VIEW)}
 		/>
