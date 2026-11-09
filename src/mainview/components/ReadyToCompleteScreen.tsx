@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { getTaskTitle, projectDisplayName, type Project, type ResourceUsage, type Task } from "../../shared/types";
+import { getTaskTitle, projectDisplayName, taskSeqLabel, type Project, type ResourceUsage, type Task } from "../../shared/types";
 import { useT, type TFunction } from "../i18n";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
@@ -146,7 +146,7 @@ export default function ReadyToCompleteScreen({ projects, usage, navigate }: {
 	};
 
 	const completeMany = async (targets: WaitingOffer[]) => {
-		const names = targets.slice(0, 12).map((row) => `• ${getTaskTitle(row.task)}`);
+		const names = targets.slice(0, 12).map((row) => `• #${taskSeqLabel(row.task)} ${getTaskTitle(row.task)}`);
 		if (targets.length > names.length) names.push(t.plural("completions.andMore", targets.length - names.length));
 		const ok = await confirm({
 			title: t.plural("completions.completeManyTitle", targets.length),
@@ -286,8 +286,11 @@ export default function ReadyToCompleteScreen({ projects, usage, navigate }: {
 														onClick={() => navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })}
 														className="min-w-0 flex-1 text-left group"
 													>
-														<span className={`block truncate text-fg-2 text-sm group-hover:text-accent ${privacy.maskClass(project)}`} title={locked ? undefined : getTaskTitle(task)}>
-															{getTaskTitle(task)}
+														<span className="flex min-w-0 items-baseline gap-1.5">
+															<span className="shrink-0 font-mono text-xs text-fg-3 tabular-nums">#{taskSeqLabel(task)}</span>
+															<span className={`truncate text-fg-2 text-sm group-hover:text-accent ${privacy.maskClass(project)}`} title={locked ? undefined : getTaskTitle(task)}>
+																{getTaskTitle(task)}
+															</span>
 														</span>
 														<span className="block truncate text-fg-3 text-xs">
 															<span className={privacy.maskClass(project)}>{projectDisplayName(project, t("ops.boardName"))}</span>
@@ -299,7 +302,7 @@ export default function ReadyToCompleteScreen({ projects, usage, navigate }: {
 														</span>
 													</button>
 													{!locked && (
-														<div className="flex items-center gap-2 shrink-0 ml-auto">
+														<div className="flex items-center justify-end gap-2 shrink-0 ml-auto max-md:w-full">
 															<button
 																type="button"
 																onClick={() => offer.answer(false)}
