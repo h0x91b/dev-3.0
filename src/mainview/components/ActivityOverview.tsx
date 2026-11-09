@@ -146,6 +146,9 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 	const [actionSheetProjectId, setActionSheetProjectId] = useState<string | null>(null);
 	// The space whose block the sheet's row sat in, if any: its Move up / down steps there.
 	const [actionSheetSpaceId, setActionSheetSpaceId] = useState<string | null>(null);
+	// The order the sheet just sent for a space, while that request is out: taps
+	// step from it, and Move is off until the host answers.
+	const [sheetSpaceWrite, setSheetSpaceWrite] = useState<{ spaceId: string; ids: string[] } | null>(null);
 	// Narrow viewport: per-project task lists are capped to NARROW_ROW_CAP rows;
 	// these are the projects the user has explicitly expanded past the cap.
 	const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
@@ -406,9 +409,12 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 		? mixedOrder.entries.findIndex((e) => e.kind === "project" && e.project.id === sheetProject.id)
 		: -1;
 	const sheetInMixed = sheetMixedIndex !== -1;
-	// A project inside a space block steps within that block (setting on).
-	const sheetSpaceMembers = digitsFollowSpaces && actionSheetSpaceId && sheetProject
-		? allSpaceGroups?.find((g) => g.space?.id === actionSheetSpaceId)?.projects.map((p) => p.id) ?? []
+	// A project inside a space block steps within that block (setting on). Not under
+	// search: a hidden neighbour would swap off screen.
+	const sheetSpaceMembers = digitsFollowSpaces && actionSheetSpaceId && sheetProject && projectQuery.trim() === ""
+		? sheetSpaceWrite?.spaceId === actionSheetSpaceId
+			? sheetSpaceWrite.ids
+			: allSpaceGroups?.find((g) => g.space?.id === actionSheetSpaceId)?.projects.map((p) => p.id) ?? []
 		: [];
 	const sheetSpaceIndex = sheetProject ? sheetSpaceMembers.indexOf(sheetProject.id) : -1;
 	const sheetInSpace = sheetSpaceIndex !== -1;
@@ -444,11 +450,14 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 	function stepSheetProject(projectId: string, step: -1 | 1) {
 		if (sheetInSpace && actionSheetSpaceId) {
 			const ids = steppedIds(sheetSpaceMembers, projectId, step);
-			if (ids) {
-				api.request.reorderSpaceProjects({ spaceId: actionSheetSpaceId, projectIds: ids }).catch((err) => {
+			if (!ids || sheetSpaceWrite) return;
+			const spaceId = actionSheetSpaceId;
+			setSheetSpaceWrite({ spaceId, ids });
+			api.request.reorderSpaceProjects({ spaceId, projectIds: ids })
+				.catch((err) => {
 					toast.error(t("spaces.failedUpdate", { error: String(err) }));
-				});
-			}
+				})
+				.finally(() => setSheetSpaceWrite(null));
 		} else if (sheetInMixed) mixedOrder.step(projectId, step);
 		else moveProjectByStep(projectId, step);
 	}
@@ -660,7 +669,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 						    link emphasis on row hover. Without it the only cue was the
 						    background lifting one step, which reads as "row", not "link". */}
 						<span className={`truncate select-text ${locked || compact ? "" : "group-hover:text-accent group-hover:underline decoration-accent/50 underline-offset-2"} ${privacy.maskClass(project)}`} title={locked || isBuiltinOps ? undefined : project.name}>{projectDisplayName(project, t("ops.boardName"))}</span>
-{reorder?.digitHint && !compact && <DigitHint digit={reorder.digitHint} />}
+									{reorder?.digitHint && !compact && <DigitHint digit={reorder.digitHint} />}
 									{!isBuiltinOps && !compact && (
 										<ProjectSpaceChips
 											spaces={spacesFile.spaces}
@@ -1177,13 +1186,13 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 									<ActionSheetButton
 										glyph={"\u{F062}"}
 										label={t("dashboard.moveProjectUp")}
-										disabled={sheetCannotMoveUp}
+										disabled={sheetCannotMoveUp || (sheetInSpace && sheetSpaceWrite !== null)}
 										onClick={() => stepSheetProject(sheetProject.id, -1)}
 									/>
 									<ActionSheetButton
 										glyph={"\u{F063}"}
 										label={t("dashboard.moveProjectDown")}
-										disabled={sheetCannotMoveDown}
+										disabled={sheetCannotMoveDown || (sheetInSpace && sheetSpaceWrite !== null)}
 										onClick={() => stepSheetProject(sheetProject.id, 1)}
 									/>
 								</>

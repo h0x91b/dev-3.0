@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ActivityOverview from "../ActivityOverview";
 import { COORDINATOR_TITLE } from "../TaskRoleBand";
@@ -1421,6 +1421,28 @@ describe("ActivityOverview — mixed order on a narrow viewport", () => {
 		await user.click(within(sheet).getByText("Move project down"));
 		expect(mockedApi.request.reorderSpaceProjects).toHaveBeenCalledWith({ spaceId: "sp_hands", projectIds: ["pollex", "bus"] });
 		expect(mockedApi.request.reorderMixedOrder).not.toHaveBeenCalled();
+	});
+
+	it("sends one space step at a time: Move is off while the request is out, and the next tap steps from the answer", async () => {
+		const third: Project = { ...mockProject, id: "third", name: "third", path: "/tmp/third" };
+		board.push(third);
+		hands.projectIds = ["bus", "pollex", "third"];
+		let settle!: (value: never) => void;
+		mockedApi.request.reorderSpaceProjects.mockReturnValueOnce(new Promise<never>((resolve) => { settle = resolve; }));
+		try {
+			const { user, sheet } = await openSheetOf("bus");
+			const down = within(sheet).getByText("Move project down").closest("button")!;
+			await user.click(down);
+			await user.click(down);
+			expect(mockedApi.request.reorderSpaceProjects).toHaveBeenCalledTimes(1);
+			expect(mockedApi.request.reorderSpaceProjects).toHaveBeenLastCalledWith({ spaceId: "sp_hands", projectIds: ["pollex", "bus", "third"] });
+			expect(down).toBeDisabled();
+			await act(async () => settle({} as never));
+			await waitFor(() => expect(down).not.toBeDisabled());
+		} finally {
+			board.pop();
+			hands.projectIds = ["bus", "pollex"];
+		}
 	});
 
 	it("offers no Move actions for a row outside the mixed list and outside a space", async () => {
