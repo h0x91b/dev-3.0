@@ -126,6 +126,8 @@ function Strip({ offer, task, project, layout }: { offer: CompletionOffer; task:
 		: completionOfferNote(task, project, t);
 	// An unsolicited offer on the terminal is one line; its note opens on hover or focus.
 	const bar = layout === "terminal" && !isUser;
+	// On a wide terminal the corner is far from the prompt, so the card stops within 72rem of its left edge.
+	const terminalRight = "right-[max(0.75rem,calc(100%-72rem))]";
 
 	return (
 		<div
@@ -139,7 +141,7 @@ function Strip({ offer, task, project, layout }: { offer: CompletionOffer; task:
 			className={`group flex flex-wrap items-center gap-x-3 gap-y-2 text-sm ${bar ? "px-2.5 py-1.5" : "px-3 py-2"} ${
 				layout === "row"
 					? "flex-shrink-0 border-b bg-raised"
-					: `absolute ${layout === "terminal" ? "bottom-2" : "top-2"} right-3 z-20 ${bar ? "max-w-[min(40rem,calc(100%-1.5rem))]" : "w-[min(40rem,calc(100%-1.5rem))]"} rounded-xl border bg-overlay shadow-lg`
+					: `absolute ${layout === "terminal" ? `bottom-2 ${terminalRight}` : "top-2 right-3"} z-20 ${bar ? "max-w-[min(40rem,calc(100%-1.5rem))]" : "w-[min(40rem,calc(100%-1.5rem))]"} rounded-xl border bg-overlay shadow-lg`
 			} ${isAgent ? "border-accent/40" : isUser ? "border-edge" : "border-success/30"}`}
 		>
 			<div className={`flex items-center gap-2 min-w-0 flex-1 ${bar ? "basis-[14rem]" : overlay ? "basis-full" : "basis-full md:basis-[18rem]"}`}>

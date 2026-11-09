@@ -164,6 +164,8 @@ describe("TaskCompletionStrip", () => {
 		const strip = screen.getByTestId("task-completion-strip");
 		expect(strip.className).toContain("bottom-2");
 		expect(strip.className).not.toContain("top-2");
+		// On a wide terminal it stays near the prompt instead of the far corner.
+		expect(strip.className).toContain("right-[max(0.75rem,calc(100%-72rem))]");
 		// The note opens on hover or focus, so the bar covers only the bottom rows.
 		expect(screen.getByTestId("task-completion-strip-note").className).toContain("hidden");
 		// A bottom bar never collides with the toast stack at the top.
