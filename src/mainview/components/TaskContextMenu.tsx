@@ -11,6 +11,7 @@ import { createProjectLabel } from "../utils/createProjectLabel";
 import { trackEvent, agentNameFromId } from "../analytics";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useOverlayLayer } from "../utils/useOverlayLayer";
+import { registerOverlayLayer } from "../utils/overlay-layers";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import { buildTaskDeepLink } from "../../shared/deep-link";
 import { formatBytes } from "../utils/formatBytes";
@@ -83,6 +84,15 @@ export default function TaskContextMenu({
 	const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	useEffect(() => () => clearHoverTimer(), []);
+
+	// Cards keep this component mounted between openings, so a closed menu must
+	// not leave its flyout (or a pending hover swap) behind for the next one.
+	useEffect(() => {
+		if (pos) return;
+		clearHoverTimer();
+		setFlyout(null);
+		setFlyoutByKey(false);
+	}, [pos]);
 
 	function clearHoverTimer() {
 		if (hoverTimer.current !== null) clearTimeout(hoverTimer.current);
@@ -418,7 +428,7 @@ export default function TaskContextMenu({
 				disabled={row.disabled}
 				data-menu-row=""
 				data-testid={`task-menu-${row.id}`}
-				aria-haspopup={row.flyout ? "menu" : undefined}
+				aria-haspopup={hasFlyout ? "menu" : undefined}
 				aria-expanded={hasFlyout ? open : undefined}
 				onClick={(e) => {
 					e.stopPropagation();
@@ -427,7 +437,7 @@ export default function TaskContextMenu({
 					else row.onSelect();
 				}}
 				onKeyDown={(e) => {
-					if (hasFlyout && (e.key === "ArrowRight" || e.key === "Enter")) {
+					if (hasFlyout && (e.key === "ArrowRight" || e.key === "Enter" || e.key === " ")) {
 						e.preventDefault();
 						openFlyoutNow(row.id, true);
 					}
@@ -461,10 +471,10 @@ export default function TaskContextMenu({
 						testId={`task-menu-flyout-${row.id}`}
 						label={row.label}
 						autoFocus={flyoutByKey}
-						onBack={(rowEl) => {
+						onBack={(rowEl, refocus) => {
 							clearHoverTimer();
 							setFlyout(null);
-							rowEl.querySelector<HTMLButtonElement>("[data-menu-row]")?.focus();
+							if (refocus) rowEl.querySelector<HTMLButtonElement>("[data-menu-row]")?.focus();
 						}}
 					>
 						{row.flyout?.()}
@@ -669,11 +679,23 @@ function Flyout({
 	testId: string;
 	label: string;
 	autoFocus: boolean;
-	onBack: (rowEl: HTMLElement) => void;
+	/** Close the flyout; `refocus` moves focus back to its row. */
+	onBack: (rowEl: HTMLElement, refocus: boolean) => void;
 	children: ReactNode;
 }) {
 	const ref = useRef<HTMLDivElement>(null);
 	const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+	const onBackRef = useRef(onBack);
+	onBackRef.current = onBack;
+
+	// An overlay layer of its own, so Escape closes the flyout before the menu.
+	useEffect(() => {
+		const el = ref.current;
+		if (!el) return;
+		return registerOverlayLayer(el, () => {
+			if (el.parentElement) onBackRef.current(el.parentElement, el.contains(document.activeElement));
+		});
+	}, []);
 
 	useLayoutEffect(() => {
 		const el = ref.current;
@@ -708,7 +730,7 @@ function Flyout({
 			onKeyDown={(e) => {
 				if (e.key !== "ArrowLeft" || (e.target as HTMLElement).tagName === "INPUT") return;
 				e.preventDefault();
-				if (ref.current?.parentElement) onBack(ref.current.parentElement);
+				if (ref.current?.parentElement) onBack(ref.current.parentElement, true);
 			}}
 		>
 			{children}

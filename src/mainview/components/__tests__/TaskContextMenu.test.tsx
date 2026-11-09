@@ -206,6 +206,54 @@ describe("TaskContextMenu", () => {
 		await waitFor(() => expect(document.activeElement).toBe(within(flyout).getByRole("menuitemradio", { name: /P2/ })));
 	});
 
+	it("closes only the flyout on Escape and returns focus to its row", async () => {
+		const { onClose } = renderMenu();
+		const row = screen.getByTestId("task-menu-labels");
+		row.focus();
+		fireEvent.keyDown(row, { key: "ArrowRight" });
+		const flyout = await screen.findByTestId("task-menu-flyout-labels");
+		await waitFor(() => expect(flyout).toContainElement(document.activeElement as HTMLElement));
+		fireEvent.keyDown(window, { key: "Escape" });
+		expect(screen.queryByTestId("task-menu-flyout-labels")).not.toBeInTheDocument();
+		expect(document.activeElement).toBe(row);
+		expect(onClose).not.toHaveBeenCalled();
+		fireEvent.keyDown(window, { key: "Escape" });
+		expect(onClose).toHaveBeenCalled();
+	});
+
+	it("opens a flyout with Space and moves focus into it", async () => {
+		renderMenu();
+		const row = screen.getByTestId("task-menu-status");
+		row.focus();
+		fireEvent.keyDown(row, { key: " " });
+		const flyout = await screen.findByTestId("task-menu-flyout-status");
+		await waitFor(() => expect(flyout).toContainElement(document.activeElement as HTMLElement));
+	});
+
+	// Cards keep the menu mounted between openings.
+	it("reopens without the flyout that was open when it closed", async () => {
+		const props = { task: makeTask(), project, dispatch: vi.fn(), onClose: vi.fn(), onOpenTask: vi.fn(), testId: "task-menu" };
+		const { rerender } = render(
+			<I18nProvider>
+				<TaskContextMenu {...props} pos={{ x: 40, y: 60 }} />
+			</I18nProvider>,
+		);
+		await userEvent.hover(screen.getByTestId("task-menu-labels"));
+		await screen.findByTestId("task-menu-flyout-labels");
+		rerender(
+			<I18nProvider>
+				<TaskContextMenu {...props} pos={null} />
+			</I18nProvider>,
+		);
+		rerender(
+			<I18nProvider>
+				<TaskContextMenu {...props} pos={{ x: 40, y: 60 }} />
+			</I18nProvider>,
+		);
+		expect(screen.getByTestId("task-menu")).toBeInTheDocument();
+		expect(screen.queryByTestId("task-menu-flyout-labels")).not.toBeInTheDocument();
+	});
+
 	it("opens the detail modal in rename mode", async () => {
 		renderMenu();
 		await userEvent.click(screen.getByTestId("task-menu-rename"));
