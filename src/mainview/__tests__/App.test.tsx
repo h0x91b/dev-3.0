@@ -72,7 +72,6 @@ vi.mock("../rpc", () => ({
 			listAgentSkills: vi.fn().mockResolvedValue([]),
 			respondToAgentCompletionRequest: vi.fn().mockResolvedValue(undefined),
 			listPendingCompletionRequests: vi.fn().mockResolvedValue([]),
-			listPendingMergeOffers: vi.fn().mockResolvedValue([]),
 			respondToAgentCancellationRequest: vi.fn().mockResolvedValue(undefined),
 			listPendingCancellationRequests: vi.fn().mockResolvedValue([]),
 			respondToAgentResetRequest: vi.fn().mockResolvedValue(undefined),
@@ -223,12 +222,6 @@ vi.mock("../components/TaskImageViewer", () => ({
 
 import { api } from "../rpc";
 import { confirm } from "../confirm";
-import { offerCompletion, registerCompletionStrip } from "../completion-offers";
-
-vi.mock("../completion-offers", async (importOriginal) => ({
-	...(await importOriginal<typeof import("../completion-offers")>()),
-	offerCompletion: vi.fn().mockResolvedValue(false),
-}));
 
 vi.mock("../confirm", () => ({
 	confirm: vi.fn().mockResolvedValue(false),
@@ -3858,7 +3851,7 @@ describe("App keyboard shortcuts", () => {
 			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
 			});
-			vi.mocked(offerCompletion).mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 			vi.mocked(api.request.moveTask).mockResolvedValue({} as never);
 
 			await renderApp();
@@ -3888,7 +3881,7 @@ describe("App keyboard shortcuts", () => {
 			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
 			});
-			vi.mocked(offerCompletion).mockResolvedValue(false);
+			vi.mocked(confirm).mockResolvedValue(false);
 
 			await renderApp();
 			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
@@ -3905,7 +3898,7 @@ describe("App keyboard shortcuts", () => {
 		});
 
 		it("offers manual completion and persists it without completing the task", async () => {
-			vi.mocked(offerCompletion).mockResolvedValue("manual" as never);
+			vi.mocked(confirm).mockResolvedValue("manual" as never);
 			await renderApp();
 
 			await fireBranchMerged("t1", "p1", "fp-manual-1");
@@ -3918,38 +3911,60 @@ describe("App keyboard shortcuts", () => {
 				});
 			});
 			expect(api.request.moveTask).not.toHaveBeenCalled();
-			expect(offerCompletion).toHaveBeenCalledWith(expect.objectContaining({
-				taskId: "t1",
-				projectId: "p1",
-				kind: "merge",
-				branchName: "feat/whatever",
+			expect(confirm).toHaveBeenCalledWith(expect.objectContaining({
+				title: "The branch is in the base branch",
+				message: "The merge is complete. Is the task complete too?",
+				confirmLabel: "Complete task",
+				cancelLabel: "Not now",
+				alternativeAction: { label: "I’ll complete it myself", value: "manual" },
+				outcomeCards: {
+					kicker: "Branch merged",
+					statusLabel: "Merged",
+					statusValue: "feat/whatever",
+					confirmDescription: "Move the task to Completed now.",
+					cancelDescription: "Keep it open and ask again after the next merge.",
+					alternativeDescription: "Keep it open and stop asking after merges.",
+				},
+				dismissOnBackdrop: false,
 			}));
 		});
 
-		it("tells a user who is looking elsewhere with a toast, never a modal", async () => {
+		it("passes the full task context to the merge popup", async () => {
 			await renderApp();
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:branchMerged", {
+					detail: {
+						taskId: "t1",
+						projectId: "p1",
+						taskTitle: "Some task",
+						branchName: "feat/whatever",
+						fingerprint: "fp-rich-context-1",
+						subject: {
+							seqLabel: "1004",
+							projectName: "Alpha",
+							priority: "P2",
+							labels: [],
+							overview: "Branch merged; waiting for rollout verification.",
+						},
+					},
+				}));
+			});
 
-			await fireBranchMerged("t1", "p1", "fp-toast-1");
-
-			expect(await screen.findByText("Branch merged. The task is ready to complete.")).toBeInTheDocument();
-			expect(confirm).not.toHaveBeenCalled();
-		});
-
-		it("replays an unanswered merge offer after a reload", async () => {
-			vi.mocked(api.request.listPendingMergeOffers).mockResolvedValueOnce([{
-				taskId: "t1", projectId: "p1", taskTitle: "Some task", branchName: "feat/replayed", fingerprint: "fp-replay-1",
-				subject: { seqLabel: "1", projectName: "Alpha", priority: "P3", labels: [], overview: null },
-			}] as never);
-
-			await renderApp();
-
-			await waitFor(() => expect(offerCompletion).toHaveBeenCalledWith(expect.objectContaining({
-				taskId: "t1", kind: "merge", branchName: "feat/replayed",
+			await waitFor(() => expect(confirm).toHaveBeenCalledWith(expect.objectContaining({
+				info: {
+					title: "Some task",
+					body: "Branch merged; waiting for rollout verification.",
+					seqLabel: "1004",
+					projectName: "Alpha",
+					priority: "P2",
+					labels: [],
+					onClick: expect.any(Function),
+				},
 			})));
 		});
 
 		it("re-asks on the next merge after Not now", async () => {
-			vi.mocked(offerCompletion).mockResolvedValue(false);
+			vi.mocked(confirm).mockResolvedValue(false);
 			await renderApp();
 
 			await fireBranchMerged("t1", "p1", "fp-not-now-1");
@@ -3957,7 +3972,7 @@ describe("App keyboard shortcuts", () => {
 
 			await fireBranchMerged("t1", "p1", "fp-not-now-2");
 			await waitFor(() => expect(api.request.dismissMergeCompletionPrompt).toHaveBeenCalledTimes(2));
-			expect(offerCompletion).toHaveBeenCalledTimes(2);
+			expect(confirm).toHaveBeenCalledTimes(2);
 		});
 
 		it("shows a notice instead of a popup when merge prompting is disabled", async () => {
@@ -3976,7 +3991,7 @@ describe("App keyboard shortcuts", () => {
 				}));
 			});
 
-			expect(offerCompletion).not.toHaveBeenCalled();
+			expect(confirm).not.toHaveBeenCalled();
 			expect(await screen.findByText('Branch of task "Some task" was merged.')).toBeInTheDocument();
 		});
 
@@ -4006,7 +4021,7 @@ describe("App keyboard shortcuts", () => {
 			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t2" }),
 			});
-			vi.mocked(offerCompletion).mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 			vi.mocked(api.request.moveTask).mockResolvedValue({} as never);
 
 			await renderApp();
@@ -4064,15 +4079,12 @@ describe("App keyboard shortcuts", () => {
 			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
 			});
-			vi.mocked(offerCompletion).mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 
 			await renderApp();
 			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
 
-			// The task screen is a stub here, so stand in for its mounted strip.
-			const unregister = registerCompletionStrip("t1");
 			await fireAgentCompletionRequested("req-1", "t1", "p1");
-			unregister();
 
 			await waitFor(() => {
 				expect(api.request.respondToAgentCompletionRequest).toHaveBeenCalledWith({
@@ -4084,10 +4096,7 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.queryByTestId("task-screen")).not.toBeInTheDocument();
 			// The move itself happens in the bun process, not the renderer.
 			expect(api.request.moveTask).not.toHaveBeenCalled();
-			expect(vi.mocked(offerCompletion).mock.calls[0][0]).toMatchObject({ kind: "agent", taskId: "t1", projectId: "p1" });
-			expect(confirm).not.toHaveBeenCalled();
-			// The strip was on screen, so no toast.
-			expect(screen.queryByText("The agent asks to complete this task.")).not.toBeInTheDocument();
+			expect(vi.mocked(confirm).mock.calls[0][0]).toMatchObject({ agentInitiated: true, danger: true });
 		});
 
 		it("responds with approved:false and stays in place when declined", async () => {
@@ -4097,7 +4106,7 @@ describe("App keyboard shortcuts", () => {
 			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
 			});
-			vi.mocked(offerCompletion).mockResolvedValue(false);
+			vi.mocked(confirm).mockResolvedValue(false);
 
 			await renderApp();
 			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
@@ -4114,13 +4123,43 @@ describe("App keyboard shortcuts", () => {
 			expect(api.request.moveTask).not.toHaveBeenCalled();
 		});
 
-		it("toasts when the user is not looking at the asking task", async () => {
+		it("passes the task subject (project, seq, priority, labels, overview) into the confirm dialog", async () => {
+			vi.mocked(confirm).mockResolvedValue(false);
 			await renderApp();
 
-			await fireAgentCompletionRequested("req-3", "t1", "p1");
+			await act(async () => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:agentCompletionRequested", {
+						detail: {
+							requestId: "req-3",
+							taskId: "t1",
+							projectId: "p1",
+							taskTitle: "Ship the thing",
+							subject: {
+								seqLabel: "1159-1",
+								projectName: "dev-3.0",
+								priority: "P0",
+								labels: [{ id: "l1", name: "Feature", color: "#84cc16" }],
+								overview: "Almost done, wiring the dialog.",
+							},
+						},
+					}),
+				);
+			});
 
-			expect(await screen.findByText("The agent asks to complete this task.")).toBeInTheDocument();
-			expect(confirm).not.toHaveBeenCalled();
+			await waitFor(() => {
+				expect(api.request.respondToAgentCompletionRequest).toHaveBeenCalled();
+			});
+			const calls = vi.mocked(confirm).mock.calls;
+			const info = calls[calls.length - 1][0].info;
+			expect(info).toEqual({
+				title: "Ship the thing",
+				body: "Almost done, wiring the dialog.",
+				seqLabel: "1159-1",
+				projectName: "dev-3.0",
+				priority: "P0",
+				labels: [{ id: "l1", name: "Feature", color: "#84cc16" }],
+			});
 		});
 	});
 
@@ -4405,11 +4444,11 @@ describe("App keyboard shortcuts", () => {
 	});
 
 	describe("pending completion requests on connect", () => {
-		it("offers a request that was pushed before this window existed", async () => {
+		it("draws a dialog for a request that was pushed before this window existed", async () => {
 			vi.mocked(api.request.listPendingCompletionRequests).mockResolvedValue([
 				{ requestId: "req-orphan", taskId: "t1", projectId: "p1", taskTitle: "Stranded task", subject: undefined },
 			] as never);
-			vi.mocked(offerCompletion).mockResolvedValue(false);
+			vi.mocked(confirm).mockResolvedValue(false);
 
 			await renderApp();
 
@@ -4421,15 +4460,15 @@ describe("App keyboard shortcuts", () => {
 			});
 		});
 
-		it("does not offer twice when the push and the replay name the same request", async () => {
+		it("does not stack two dialogs when the push and the replay name the same request", async () => {
 			vi.mocked(api.request.listPendingCompletionRequests).mockResolvedValue([
 				{ requestId: "req-dup", taskId: "t1", projectId: "p1", taskTitle: "Same task", subject: undefined },
 			] as never);
 			// Never settles, so the first dialog is still open when the push arrives.
-			vi.mocked(offerCompletion).mockImplementation((() => new Promise<boolean>(() => {})) as never);
+			vi.mocked(confirm).mockImplementation((() => new Promise<boolean>(() => {})) as never);
 
 			await renderApp();
-			await waitFor(() => expect(vi.mocked(offerCompletion)).toHaveBeenCalledTimes(1));
+			await waitFor(() => expect(vi.mocked(confirm)).toHaveBeenCalledTimes(1));
 
 			await act(async () => {
 				window.dispatchEvent(new CustomEvent("rpc:agentCompletionRequested", {
@@ -4437,7 +4476,7 @@ describe("App keyboard shortcuts", () => {
 				}));
 			});
 
-			expect(vi.mocked(offerCompletion)).toHaveBeenCalledTimes(1);
+			expect(vi.mocked(confirm)).toHaveBeenCalledTimes(1);
 		});
 
 		// The replay lists a request, then waits for the confirm host. If the task
@@ -4448,7 +4487,7 @@ describe("App keyboard shortcuts", () => {
 			vi.mocked(api.request.listPendingCompletionRequests).mockReturnValue(
 				new Promise((resolve) => { releaseList = resolve; }) as never,
 			);
-			vi.mocked(offerCompletion).mockResolvedValue(false);
+			vi.mocked(confirm).mockResolvedValue(false);
 
 			await renderApp();
 			await act(async () => {
@@ -4459,7 +4498,7 @@ describe("App keyboard shortcuts", () => {
 			});
 			await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 
-			expect(vi.mocked(offerCompletion)).not.toHaveBeenCalled();
+			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
 			expect(api.request.respondToAgentCompletionRequest).not.toHaveBeenCalled();
 		});
 	});
@@ -4479,8 +4518,8 @@ describe("App keyboard shortcuts", () => {
 			expect(await screen.findByRole("dialog", { name: /Agent wants to add an agent/i })).toBeInTheDocument();
 		});
 
-		it("withdraws the completion offer and skips this client's side effects", async () => {
-			vi.mocked(offerCompletion).mockImplementation(((opts: { signal?: AbortSignal }) =>
+		it("closes the completion dialog and skips this client's side effects", async () => {
+			vi.mocked(confirm).mockImplementation(((opts: { signal?: AbortSignal }) =>
 				new Promise<boolean>((resolve) => {
 					opts.signal?.addEventListener("abort", () => resolve(false));
 				})) as never);
@@ -4492,7 +4531,7 @@ describe("App keyboard shortcuts", () => {
 					detail: { requestId: "req-elsewhere", taskId: "t1", projectId: "p1", taskTitle: "Some task" },
 				}));
 			});
-			expect(vi.mocked(offerCompletion)).toHaveBeenCalled();
+			expect(vi.mocked(confirm)).toHaveBeenCalled();
 			expect(api.request.respondToAgentCompletionRequest).not.toHaveBeenCalled();
 
 			await act(async () => {
@@ -4504,34 +4543,6 @@ describe("App keyboard shortcuts", () => {
 			// The winning client already answered the blocked CLI; this one must not
 			// send a second (declining) answer.
 			expect(api.request.respondToAgentCompletionRequest).not.toHaveBeenCalled();
-		});
-
-		it("withdraws the offer's bell once another client answers it", async () => {
-			vi.mocked(api.request.getProjects).mockResolvedValue([
-				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
-			]);
-			vi.mocked(api.request.getLastRoute).mockResolvedValue({
-				route: JSON.stringify({ screen: "project", projectId: "p1" }),
-			});
-			vi.mocked(offerCompletion).mockImplementation(((opts: { signal?: AbortSignal }) =>
-				new Promise<boolean>((resolve) => {
-					opts.signal?.addEventListener("abort", () => resolve(false));
-				})) as never);
-
-			await renderApp();
-			await act(async () => {
-				window.dispatchEvent(new CustomEvent("rpc:agentCompletionRequested", {
-					detail: { requestId: "req-bell", taskId: "t-overflow", projectId: "p1", taskTitle: "Some task" },
-				}));
-			});
-			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-bell-count", "1"));
-
-			await act(async () => {
-				window.dispatchEvent(new CustomEvent("rpc:agentRequestResolved", {
-					detail: { requestId: "req-bell", kind: "complete", taskId: "t-overflow", projectId: "p1" },
-				}));
-			});
-			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-bell-count", "0"));
 		});
 
 		it("closes the launch dialog without answering", async () => {

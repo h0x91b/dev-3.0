@@ -32,7 +32,6 @@ import { useEpics } from "../hooks/useEpics";
 import type { CardLineage } from "../utils/taskLineage";
 import NativeBackendMark from "./NativeBackendMark";
 import ForeignCodeMark from "./ForeignCodeMark";
-import CompletionOfferMark from "./CompletionOfferMark";
 import OpenInMenu from "./OpenInMenu";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
@@ -1034,7 +1033,6 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				)}
 				<NativeBackendMark task={task} className="w-3.5 h-3.5 flex-shrink-0" testId="task-card-native-backend" />
 				<ForeignCodeMark task={task} className="w-3.5 h-3.5 flex-shrink-0" testId="task-card-foreign-code" />
-				<CompletionOfferMark task={task} testId="task-card-completion-offer" />
 				{/* A PR review is an ordinary task with a job, so it is named and not
 				    boxed — no band, nothing that competes with a role. */}
 				{task.taskType === "pr-review" && (

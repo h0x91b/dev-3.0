@@ -183,7 +183,7 @@ function skillCompletionRequest(mode: ProtocolMode): string {
 	return `
 ### Completing a task (user approval required)
 
-\`dev3 task move --status completed\` does NOT complete anything directly — it asks the user to approve and **blocks for up to 10 minutes**:
+\`dev3 task move --status completed\` does NOT complete anything directly — it opens an approval dialog and **blocks for up to 10 minutes**:
 
 - **Approved** → your CLI is asked to quit first, so its exit hooks run (30 s bound), ${approved}
 - **Declined** → exit code 6, session alive: keep working or ask what to change.

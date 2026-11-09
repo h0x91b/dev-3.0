@@ -87,8 +87,6 @@ const help = {
 	"help.inspector.sessionBar.title": "Session & agents",
 	"help.inspector.sessionBar.body":
 		"Drive who works on the task: drop a second agent into the same session, unleash a swarm of bug hunters, and split, zoom or rearrange tmux panes.",
-	"help.task.completionStrip.title": "Ready to complete",
-	"help.task.completionStrip.body": "The branch merged, or the agent says the work is done. Complete when nothing is left; until then the strip waits here and blocks nothing. The gear opens the setting that stops merge offers.",
 	"help.inspector.gitBar.title": "Git & PR",
 	"help.inspector.gitBar.body":
 		"Everything branch-related: view the diff, rebase onto the base branch, push, open a pull request, merge. Git operations run in a visible terminal so you always see what happens.",

@@ -69,16 +69,6 @@ function gitWarnings(status: BranchStatus | UnsavedWork, task: Task, project: Pr
 }
 
 /**
- * Whether completing this task can lose nothing in git. PR-review tasks check
- * out someone else's branch, so its state is not the user's work; an Operations
- * task has nothing to lose unless it works in its own worktree.
- */
-export function completionSkipsGitCheck(task: Task, project: Project): boolean {
-	return !task.worktreePath || (Boolean(task.existingBranch) && !isOpsWorktreeTask(task))
-		|| (project.kind === "virtual" && !isOpsWorktreeTask(task));
-}
-
-/**
  * Checks git state before allowing a task to move to completed/cancelled.
  * Returns true if the move should proceed, false if the user cancelled.
  *
@@ -100,7 +90,12 @@ export async function confirmTaskCompletion(
 ): Promise<boolean> {
 	if (newStatus !== "completed" && newStatus !== "cancelled") return true;
 	const alwaysConfirm = options?.alwaysConfirm ?? false;
-	const skipGitCheck = completionSkipsGitCheck(task, project);
+	// PR-review tasks check out someone else's existing branch — the commits,
+	// unpushed and unmerged state aren't the user's work, so completing them
+	// must not warn about uncommitted/unpushed/unmerged changes.
+	// An Operations task has nothing to lose in git, unless it works in its own worktree.
+	const skipGitCheck = !task.worktreePath || (Boolean(task.existingBranch) && !isOpsWorktreeTask(task))
+		|| (project.kind === "virtual" && !isOpsWorktreeTask(task));
 	if (skipGitCheck && !alwaysConfirm) return true;
 
 	const tail = task.worktreePath

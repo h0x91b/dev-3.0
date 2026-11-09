@@ -11,7 +11,6 @@ import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import TerminalView from "../TerminalView";
 import type { TerminalHandle } from "../TerminalView";
 import TaskInfoPanel from "./TaskInfoPanel";
-import TaskCompletionStrip from "./task-info-panel/TaskCompletionStrip";
 import TaskPreparingView from "./TaskPreparingView";
 import BackToKanbanEmptyState from "./BackToKanbanEmptyState";
 import ExtraKeyBar from "./ExtraKeyBar";
@@ -92,7 +91,6 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	const composerApiRef = useRef<TerminalComposerApi | null>(null);
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [windowEpoch, setWindowEpoch] = useState(0);
-	const [zoomBadgeShown, setZoomBadgeShown] = useState(false);
 
 	const task = tasks.find((t) => t.id === taskId);
 	const project = projects.find((p) => p.id === projectId);
@@ -763,9 +761,6 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		);
 	}
 
-	// The completion offer floats over the live viewport, so the terminal keeps its size.
-	const completionOverlay = task && project ? <TaskCompletionStrip task={task} project={project} variant="overlay" belowZoomBadge={zoomBadgeShown} /> : null;
-
 	if (isPreparing && task && project) {
 		return (
 			<div className="h-full w-full flex flex-col overflow-hidden">
@@ -1116,7 +1111,6 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 						/>
 					)}
 					<div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
-						{completionOverlay}
 						<MobilePaneCarousel taskId={taskId}>{nativeTerminalArea}</MobilePaneCarousel>
 						{scrollToLatestFor(focusPaneId ?? "", focusedPaneHandle)}
 					</div>
@@ -1166,7 +1160,6 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				{zoomedPane ? (
 					// Zoom mode: render only the focused pane.
 					<div className="relative isolate flex-1 min-h-0 overflow-hidden">
-						{completionOverlay}
 						<div
 							key={zoomedPane}
 							data-pane-id={zoomedPane}
@@ -1191,7 +1184,6 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				) : panes.length > 0 ? (
 					// Tiled mode: render all panes by rect.
 					<div className="relative isolate flex-1 min-h-0 overflow-hidden">
-						{completionOverlay}
 						{panes.map((pane) => {
 							const rect = rects.get(pane.paneId) ?? { x: 0, y: 0, width: 1, height: 1 };
 							const isFocused = pane.paneId === focusPaneId;
@@ -1301,7 +1293,6 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			{narrow && ptyUrl ? (
 				// Narrow: a window switcher (outer) wraps the pane carousel (inner).
 				<div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
-					{completionOverlay}
 					<MobileWindowCarousel taskId={taskId} taskTitle={task ? getTaskTitle(task) : undefined} onSwitch={() => setWindowEpoch((e) => e + 1)}>
 						<MobilePaneCarousel taskId={taskId} refreshKey={windowEpoch}>{terminalArea}</MobilePaneCarousel>
 					</MobileWindowCarousel>
@@ -1311,9 +1302,8 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			) : (
 				<TerminalWindowNav taskId={taskId} taskStatus={task?.status} taskTitle={task ? getTaskTitle(task) : undefined} enabled={!!ptyUrl}>
 					<div className="relative isolate flex-1 min-h-0 overflow-hidden">
-						{completionOverlay}
 						{terminalArea}
-						{ptyUrl && <PaneZoomBadge taskId={taskId} onVisibleChange={setZoomBadgeShown} />}
+						{ptyUrl && <PaneZoomBadge taskId={taskId} />}
 						{ptyUrl && <ClosePanePicker taskId={taskId} />}
 						{scrollToLatestFor(TMUX_VIEW, termHandle)}
 						{setupFailedNotice}

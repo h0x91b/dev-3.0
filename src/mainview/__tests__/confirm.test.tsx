@@ -81,19 +81,41 @@ describe("confirm service", () => {
 		await expect(result!).resolves.toBe("keep");
 	});
 
-	it("ignores backdrop clicks when dismissal is disabled", async () => {
+	it("renders outcome cards and ignores backdrop clicks when dismissal is disabled", async () => {
 		const user = userEvent.setup();
 		renderHost();
 		let result: Promise<boolean | string>;
 		act(() => {
-			result = confirm({ title: "T", message: "M", confirmLabel: "Yes", cancelLabel: "No", dismissOnBackdrop: false });
+			result = confirm({
+				title: "The branch is in the base branch",
+				message: "The merge is complete. Is the task complete too?",
+				confirmLabel: "Complete task",
+				cancelLabel: "Not now",
+				alternativeAction: { label: "I’ll complete it myself", value: "manual" },
+				outcomeCards: {
+					kicker: "Branch merged",
+					statusLabel: "Merged",
+					statusValue: "feat/manual-completion",
+					confirmDescription: "Move the task to Completed now.",
+					cancelDescription: "Keep it open and ask again after the next merge.",
+					alternativeDescription: "Keep it open and stop asking after merges.",
+				},
+				dismissOnBackdrop: false,
+			});
 		});
 
-		const dialog = await screen.findByRole("dialog");
+		expect(await screen.findByText("Branch merged")).toBeInTheDocument();
+		expect(screen.getByText("Merged")).toBeInTheDocument();
+		expect(screen.getByText("feat/manual-completion")).toBeInTheDocument();
+		expect(screen.getByText("Move the task to Completed now.")).toBeInTheDocument();
+		expect(screen.getByText("Keep it open and ask again after the next merge.")).toBeInTheDocument();
+		expect(screen.getByText("Keep it open and stop asking after merges.")).toBeInTheDocument();
+
+		const dialog = screen.getByRole("dialog");
 		await user.click(dialog.parentElement!);
 		expect(screen.getByRole("dialog")).toBeInTheDocument();
 
-		await user.click(screen.getByRole("button", { name: "No" }));
+		await user.click(screen.getByRole("button", { name: "Not now" }));
 		await expect(result!).resolves.toBe(false);
 	});
 

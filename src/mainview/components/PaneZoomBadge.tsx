@@ -19,19 +19,11 @@ import Tooltip from "./Tooltip";
  */
 const ZOOM_POLL_MS = 3000;
 
-/** `onVisibleChange` lets a sibling in the same corner (the completion card) step out of its way. */
-function PaneZoomBadge({ taskId, onVisibleChange }: { taskId: string; onVisibleChange?: (visible: boolean) => void }) {
+function PaneZoomBadge({ taskId }: { taskId: string }) {
 	const t = useT();
 	const [zoomed, setZoomed] = useState(false);
 	const [multi, setMulti] = useState(false);
 	const busyRef = useRef(false);
-	const visible = zoomed && multi;
-
-	useEffect(() => {
-		onVisibleChange?.(visible);
-	}, [onVisibleChange, visible]);
-
-	useEffect(() => () => onVisibleChange?.(false), [onVisibleChange]);
 
 	const read = useCallback(
 		async (zoom?: boolean) => {
@@ -70,7 +62,7 @@ function PaneZoomBadge({ taskId, onVisibleChange }: { taskId: string; onVisibleC
 	}, [read]);
 
 	// A single-pane window is always "full" — zoom is meaningless, show nothing.
-	if (!visible) return null;
+	if (!zoomed || !multi) return null;
 
 	return (
 		<Tooltip content={t("paneZoom.restore")} placement="bottom">
