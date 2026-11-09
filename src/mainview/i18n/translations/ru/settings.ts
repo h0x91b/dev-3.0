@@ -1175,6 +1175,8 @@ const settings = {
 	"extensions.empty": "Расширения не установлены.",
 	"extensions.emptyHint": "Как написать своё — см. docs/extensions.md в репозитории dev3.",
 	"extensions.install": "Установить из папки…",
+	"extensions.writeOwn": "Пишете своё расширение? У агентов, запущенных из dev3, уже есть скилл /dev3-extensions.",
+	"extensions.guide": "Руководство по расширениям",
 	"extensions.pickTitle": "Выберите папку расширения",
 	"extensions.remoteReadOnly": "Устанавливать, доверять и включать расширения можно в десктопном приложении.",
 	"extensions.status.active": "Работает",

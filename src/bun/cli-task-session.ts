@@ -79,8 +79,8 @@ export function hibernateCliTask(opts: SessionActionOptions): Promise<CliHiberna
 }
 
 /** `dev3 task wake --shell|--resume`: the wake screen's two buttons. */
-export async function wakeCliTask(opts: SessionActionOptions & { mode: "shell" | "resume"; allowAgentLatest: boolean }): Promise<CliWakeOutcome> {
+export async function wakeCliTask(opts: SessionActionOptions & { mode: "shell" | "resume"; allowAgentLatest: boolean; accountId?: string | null }): Promise<CliWakeOutcome> {
 	if (opts.mode === "shell") return joinOrRun(opts.task.id, `wake-shell:${opts.requester?.id ?? ""}`, () => performWakeShell(opts));
 	if (!opts.task.hibernated) return { outcome: "not-hibernated", taskId: opts.task.id, seq: opts.task.seq };
-	return { outcome: "resume", resume: await resumeCliAgent({ project: opts.project, task: opts.task, requester: opts.requester, allowAgentLatest: opts.allowAgentLatest }) };
+	return { outcome: "resume", resume: await resumeCliAgent({ project: opts.project, task: opts.task, requester: opts.requester, allowAgentLatest: opts.allowAgentLatest, accountId: opts.accountId }) };
 }

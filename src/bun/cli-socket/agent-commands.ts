@@ -11,7 +11,7 @@ import { capturePaneSession, taskCodexHomes } from "./pane-sessions";
 import { isInteractiveCodexConversation } from "../codex-resume-home";
 import { noteAgentExited, noteAgentSessionActive, noteAgentSessionStarted } from "../agent-session-receipts";
 import { log, type Handler, withSenderVariant } from "./shared";
-import { requirePaneTask, resolveRequesterTask, resolveTaskFromParams, senderRequester } from "./task-resolution";
+import { requirePaneTask, resolveRequesterTask, resolveTaskFromParams, resumeAccountParam, senderRequester } from "./task-resolution";
 import { claudeSessionWatches, type ClaudeIdleEvent } from "../claude-session-watch";
 import { rememberTaskSession } from "../task-sessions";
 import { claimFileForTask } from "../file-leases";
@@ -154,13 +154,14 @@ export const agentHandlers: Record<string, Handler> = {
 		});
 	},
 	...withSenderVariant("agent.resume", async (params) => {
-		for (const key of ["agentId", "configId", "accountId", "prompt"]) {
-			if (key in params) throw new Error(`agent.resume takes no ${key} — it restores the saved harness, config and account.`);
+		for (const key of ["agentId", "configId", "prompt"]) {
+			if (key in params) throw new Error(`agent.resume takes no ${key} — it restores the saved harness and config.`);
 		}
+		const accountId = resumeAccountParam(params);
 		const { project, task } = await requirePaneTask(params);
 		const requester = senderRequester(params) ?? await resolveRequesterTask(params, "resume request");
 		const { resumeCliAgent } = await import("../cli-agent-resume");
-		return resumeCliAgent({ project, task, requester, allowAgentLatest: params.allowAgentLatest === true });
+		return resumeCliAgent({ project, task, requester, allowAgentLatest: params.allowAgentLatest === true, ...(accountId !== undefined ? { accountId } : {}) });
 	}),
 
 	"task.agentHook": (params) => codexQuestions.run(String(params.taskId), async () => {

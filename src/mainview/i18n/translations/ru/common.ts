@@ -51,6 +51,7 @@ const common = {
 	"agentLaunch.titleSpawn": "Агент хочет добавить агента в эту задачу",
 	"agentLaunch.titleResume": "Агент хочет возобновить сохранённую сессию задачи",
 	"agentLaunch.resumeNote": "Откроет сохранённые разговоры, каждый со своим агентом, пресетом и аккаунтом.",
+	"agentLaunch.resumeNoteAccount": "Откроет сохранённые разговоры, каждый со своим агентом и пресетом. Панели Claude можно перенести на другой аккаунт ниже.",
 	"agentLaunch.resumeConversation": "Разговор {id}",
 	"agentLaunch.resumeLatest": "Нет сохранённого id разговора — агент откроет свой последний",
 	"agentLaunch.resume": "Возобновить",
@@ -437,7 +438,6 @@ const common = {
 	"sidebar.scopeToggleTitle": "Переключить область задач (этот проект / все проекты)",
 	"sidebar.globalLoading": "Загрузка задач изо всех проектов…",
 	"sidebar.unknownProject": "Неизвестный проект",
-	"sidebar.statusChanged": "Статус изменён {ago} · {date}",
 	// Readiness-tier headers (built-in tiers; custom columns keep their own name)
 	"sidebar.tier.needsYou": "Нужны вы",
 	"sidebar.tier.waiting": "Ожидание",

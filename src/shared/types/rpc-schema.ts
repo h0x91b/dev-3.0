@@ -851,7 +851,8 @@ export type AppRPCSchema = {
 				response: { url: string } | { gone: true };
 			};
 			resumeTask: {
-				params: { taskId: string; restart?: boolean };
+				/** `accountId` resumes every Claude pane on that account (null: system login); ignored with `restart`. */
+				params: { taskId: string; restart?: boolean; accountId?: string | null };
 				response: string;
 			};
 			restartTask: {

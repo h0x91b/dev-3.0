@@ -102,7 +102,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "resume",
-				usage: "dev3 agent resume [--task <id>] [--project <id>] [--allow-agent-latest] [--as-sender <id>] [--json]",
+				usage: "dev3 agent resume [--task <id>] [--project <id>] [--allow-agent-latest] [--account <id|system>] [--as-sender <id>] [--json]",
 				summary: "Resume a task's saved agent session when its terminal is gone — the app's Resume Session.",
 				details: [
 					"Same path as the Resume Session button: same worktree, branch, files and conversations,",
@@ -116,6 +116,9 @@ const COMMANDS: CommandHelp[] = [
 					"A hibernated task is woken, same as Wake & resume.",
 					`--allow-agent-latest  Resume a pane with no saved conversation id anyway: its harness picks`,
 					`                      its own latest and may start a new conversation. Otherwise exits ${CLI_EXIT_CODE_RESUME_UNAVAILABLE}.`,
+					"--account <id|system> Resume every Claude pane on this account (system = ~/.claude) instead of",
+					"                      its saved one; Codex panes keep theirs. The approval dialog preselects it.",
+					`                      An account that cannot see the conversation exits ${CLI_EXIT_CODE_RESUME_UNAVAILABLE}; nothing launches.`,
 					"--as-sender <id>      From OUTSIDE dev3: ask as a registered external sender; the user approves it in the app.",
 					"--json          Print the outcome: backend, tmux session, and per pane its ids and status.",
 					`Already running exits ${CLI_EXIT_CODE_RESUME_ALREADY_RUNNING} and touches nothing; nothing to resume exits ${CLI_EXIT_CODE_RESUME_UNAVAILABLE}.`,
@@ -281,11 +284,12 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "wake",
-				usage: "dev3 task wake [<id>] [--task <id>] --resume [--allow-agent-latest] | --shell [--json]",
+				usage: "dev3 task wake [<id>] [--task <id>] --resume [--allow-agent-latest] [--account <id|system>] | --shell [--json]",
 				summary: "Wake a hibernated task — the wake screen's two buttons.",
 				details: [
 					"--resume        Wake and resume the agent's saved conversation; same outcome, output",
 					`                and exit codes as dev3 agent resume (${CLI_EXIT_CODE_RESUME_ALREADY_RUNNING} / ${CLI_EXIT_CODE_RESUME_UNAVAILABLE}).`,
+					"--account       With --resume: run Claude panes on another account, as in dev3 agent resume.",
 					"--shell         Wake with a plain shell: no agent starts, and the saved conversation",
 					"                stays for a later Resume Session / dev3 agent resume.",
 					"The dev server stays down either way; start it with dev3 dev-server start.",

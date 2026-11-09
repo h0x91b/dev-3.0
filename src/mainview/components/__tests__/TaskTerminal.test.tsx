@@ -53,6 +53,19 @@ vi.mock("../ExtraKeyBar", () => ({
 	default: () => <div data-testid="extra-key-bar" />,
 }));
 
+vi.mock("../../hooks/useAgents", () => ({
+	useAgents: () => [{ id: "builtin-claude", baseCommand: "claude", configurations: [] }],
+}));
+
+// The account pill has its own suite; this stub shows the value and offers one pick.
+vi.mock("../AgentAccountIndicator", () => ({
+	default: ({ value, onSelect }: { value?: string | null; onSelect?: (id: string | null) => void }) => (
+		<button type="button" data-testid="account-pill" onClick={() => onSelect?.("acct-2")}>
+			{value === undefined ? "default" : value === null ? "system" : value}
+		</button>
+	),
+}));
+
 // Mock navigator.maxTouchPoints for ExtraKeyBar visibility tests
 const originalMaxTouchPoints = Object.getOwnPropertyDescriptor(Navigator.prototype, "maxTouchPoints");
 const originalMatchMedia = window.matchMedia;
@@ -488,6 +501,62 @@ describe("TaskTerminal", () => {
 				expect(screen.getByText("Wake with a plain shell")).toBeInTheDocument();
 			});
 			expect(screen.queryByText("Previous agent session found")).toBeNull();
+		});
+
+		describe("resume account", () => {
+			const hibernatedClaude = (accountId?: string | null) => ({
+				recoverable: true as const,
+				hibernated: true as const,
+				sessionState: { panes: [{ agentCmd: "claude", sessionId: "sid-1", agentId: "builtin-claude", configId: "cfg-1", ...(accountId !== undefined ? { accountId } : {}) }] },
+			});
+
+			it("keeps the saved account unless another is picked", async () => {
+				const user = userEvent.setup();
+				mockedApi.request.getPtyUrl.mockResolvedValue(hibernatedClaude("acct-1"));
+				mockedApi.request.resumeTask.mockResolvedValue("ws://localhost:9999?session=t1");
+				await act(async () => { renderTerminal(); });
+				expect(await screen.findByTestId("account-pill")).toHaveTextContent("acct-1");
+				await act(async () => { await user.click(screen.getByText("Wake and resume agent")); });
+				expect(mockedApi.request.resumeTask).toHaveBeenCalledWith({ taskId: "t1" });
+			});
+
+			it("wakes on the picked account", async () => {
+				const user = userEvent.setup();
+				mockedApi.request.getPtyUrl.mockResolvedValue(hibernatedClaude("acct-1"));
+				mockedApi.request.resumeTask.mockResolvedValue("ws://localhost:9999?session=t1");
+				await act(async () => { renderTerminal(); });
+				await user.click(await screen.findByTestId("account-pill"));
+				expect(screen.getByTestId("account-pill")).toHaveTextContent("acct-2");
+				await act(async () => { await user.click(screen.getByText("Wake and resume agent")); });
+				expect(mockedApi.request.resumeTask).toHaveBeenCalledWith({ taskId: "t1", accountId: "acct-2" });
+			});
+
+			it("stays on the wake screen when the picked account is refused", async () => {
+				const user = userEvent.setup();
+				const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "test-toast");
+				mockedApi.request.getPtyUrl.mockResolvedValue(hibernatedClaude("acct-1"));
+				mockedApi.request.resumeTask.mockRejectedValue(new Error("The chosen account cannot see conversation sid-1"));
+				try {
+					await act(async () => { renderTerminal(); });
+					await user.click(await screen.findByTestId("account-pill"));
+					await act(async () => { await user.click(screen.getByText("Wake and resume agent")); });
+					await waitFor(() => expect(errorToast).toHaveBeenCalledWith("The chosen account cannot see conversation sid-1"));
+					expect(screen.getByTestId("terminal-wake-screen")).toBeInTheDocument();
+					expect(screen.getByTestId("account-pill")).toHaveTextContent("acct-2");
+					expect(mockedApi.request.checkWorktreeState).not.toHaveBeenCalled();
+				} finally { errorToast.mockRestore(); }
+			});
+
+			it("offers no account when no saved pane runs Claude", async () => {
+				mockedApi.request.getPtyUrl.mockResolvedValue({
+					recoverable: true,
+					hibernated: true,
+					sessionState: { panes: [{ agentCmd: "codex", sessionId: "sid-1", agentId: "builtin-codex", configId: "cfg-1" }] },
+				});
+				await act(async () => { renderTerminal(); });
+				await screen.findByText("Wake and resume agent");
+				expect(screen.queryByTestId("account-pill")).toBeNull();
+			});
 		});
 
 		it("offers only the plain shell when a hibernated task has no stored panes", async () => {

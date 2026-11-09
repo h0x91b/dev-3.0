@@ -51,6 +51,7 @@ const common = {
 	"agentLaunch.titleSpawn": "Agent wants to add an agent to this task",
 	"agentLaunch.titleResume": "Agent wants to resume this task's saved session",
 	"agentLaunch.resumeNote": "Reopens the saved conversations, each with its own agent, preset and account.",
+	"agentLaunch.resumeNoteAccount": "Reopens the saved conversations, each with its own agent and preset. Claude panes can move to another account below.",
 	"agentLaunch.resumeConversation": "Conversation {id}",
 	"agentLaunch.resumeLatest": "No saved conversation id — the agent opens its latest",
 	"agentLaunch.resume": "Resume",
@@ -405,7 +406,6 @@ const common = {
 	"sidebar.scopeToggleTitle": "Toggle task scope (this project / all projects)",
 	"sidebar.globalLoading": "Loading tasks from all projects…",
 	"sidebar.unknownProject": "Unknown project",
-	"sidebar.statusChanged": "Status changed {ago} · {date}",
 	// Readiness-tier headers (built-in tiers; custom columns keep their own name)
 	"sidebar.tier.needsYou": "Needs you",
 	"sidebar.tier.waiting": "Waiting",

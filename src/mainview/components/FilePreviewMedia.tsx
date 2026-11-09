@@ -36,7 +36,7 @@ export function enginePlays(media: "audio" | "video", mime: string): boolean {
  */
 export default function FilePreviewMedia({ path, fileName, media, mime, size, expanded, onUnplayable }: FilePreviewMediaProps) {
 	const t = useT();
-	const [playback, setPlayback] = useState<Playback>({ phase: "loading" });
+	const [playback, setPlayback] = useState<Playback>(() => (enginePlays(media, mime) ? { phase: "loading" } : { phase: "unsupported" }));
 	const [noVideoTrack, setNoVideoTrack] = useState(false);
 	const elementRef = useRef<HTMLMediaElement | null>(null);
 	const src = playback.phase === "ready" ? playback.src : null;

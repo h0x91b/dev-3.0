@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { BoardService } from "../../mainview/board-views/board-service";
+import { EXTENSION_API_VERSION, satisfiesRange, validateExtensionManifest } from "../../shared/extensions";
 import {
 	applyClaudeSettings,
 	buildClaudeSkillContent,
@@ -13,6 +15,7 @@ import {
 	DEV3_AUTO_MODE_GIT_ENTRY,
 	getAskDev3SkillContent,
 	getBugHunterSkillContent,
+	getExtensionsSkillContent,
 	getClaudeSkillContent,
 	getCoordinatorSkillContent,
 	getCodexSkillContent,
@@ -956,6 +959,58 @@ describe("dev3-share-artifact skill content", () => {
 	});
 });
 
+describe("dev3-extensions skill content", () => {
+	// The skill ships to agents with no dev3 clone, so it carries the contract itself.
+	// These pin it to the code so a contract change cannot leave it quietly stale.
+	it("documents every public ctx.board member", () => {
+		const skill = getExtensionsSkillContent();
+		const members = Object.getOwnPropertyNames(BoardService.prototype).filter((name) => name !== "constructor" && name !== "model");
+		const missing = members.filter((name) => !new RegExp(`\\b${name}\\b`).test(skill));
+
+		expect(members.length).toBeGreaterThan(20);
+		expect(missing).toEqual([]);
+	});
+
+	it("ships a manifest example the real validator accepts, under the current API version", () => {
+		const skill = getExtensionsSkillContent();
+		const json = /```json\n([\s\S]*?)\n```/.exec(skill)?.[1];
+		const result = validateExtensionManifest(JSON.parse(json ?? "null"), "my-view");
+
+		expect(result.ok).toBe(true);
+		expect(result.ok && satisfiesRange(EXTENSION_API_VERSION, result.manifest.engines.dev3)).toBe(true);
+		expect(skill).toContain(`\`${EXTENSION_API_VERSION}\` today`);
+	});
+
+	it("registers the view id its own manifest declares", () => {
+		const skill = getExtensionsSkillContent();
+
+		expect(skill).toContain('const VIEW_ID = "my-view:main"');
+		expect(skill).toContain('"boardViews": [{ "id": "main", "label": "My view" }]');
+		expect(skill).toContain('inject: ["board", "boardViews"]');
+	});
+
+	it("never teaches forging consent on the user's real dev3", () => {
+		const skill = getExtensionsSkillContent();
+
+		expect(skill).toContain("**Never write trust into the user's real `~/.dev3.0/extensions-state.json` yourself**");
+		expect(skill).toContain("scoped home ONLY");
+		expect(skill).toContain("**Streamer mode (`&streamer=on`) is mandatory**");
+	});
+
+	it("names the missing tooling plainly, in one replaceable section", () => {
+		const skill = getExtensionsSkillContent();
+
+		expect(skill).toContain("## What is not there yet (be honest with the user)");
+		expect(skill).toContain("`dev3 extension` CLI");
+	});
+
+	// The protocol body is capped by the Windows command line; this skill must stay out of it.
+	it("stays out of the capped dev3 protocol body", () => {
+		expect(getClaudeSkillContent()).not.toContain("ctx.boardViews");
+		expect(getGenericSkillContent()).not.toContain("ctx.boardViews");
+	});
+});
+
 describe("dev3-coordinator skill content", () => {
 	it("is user-invocable and named for the slash command", () => {
 		const skill = getCoordinatorSkillContent();
@@ -1032,6 +1087,7 @@ describe("managed skill frontmatter survives the parser that reads it", () => {
 		["dev3-artifact", getArtifactSkillContent()],
 		["dev3-share-artifact", getShareArtifactSkillContent()],
 		["dev3-bug-hunter", getBugHunterSkillContent()],
+		["dev3-extensions", getExtensionsSkillContent()],
 		["ask-dev3", getAskDev3SkillContent()],
 		["dev3", getClaudeSkillContent()],
 	];
@@ -1060,6 +1116,12 @@ describe("managed skill installation surface", () => {
 		}
 	});
 
+	it("installs the extensions skill for every supported agent", () => {
+		for (const dir of [".claude", ".cursor", ".agents", ".codex", ".opencode", ".config/opencode", ".omp/agent"]) {
+			expect(MANAGED_SKILL_FILES).toContain(`${dir}/skills/dev3-extensions/SKILL.md`);
+		}
+	});
+
 	it("installs the share-artifact skill for every supported agent", () => {
 		for (const dir of [".claude", ".cursor", ".agents", ".codex", ".opencode", ".config/opencode"]) {
 			expect(MANAGED_SKILL_FILES).toContain(`${dir}/skills/dev3-share-artifact/SKILL.md`);
@@ -1068,7 +1130,7 @@ describe("managed skill installation surface", () => {
 
 	it("lists every managed skill exactly once so `dev3 install-skills` cannot drift", () => {
 		expect(new Set(MANAGED_SKILL_FILES).size).toBe(MANAGED_SKILL_FILES.length);
-		for (const name of ["dev3", "dev3-project-config", "dev3-tmux", "dev3-bug-hunter", "ask-dev3", "dev3-artifact", "dev3-share-artifact", "dev3-coordinator"]) {
+		for (const name of ["dev3", "dev3-project-config", "dev3-tmux", "dev3-extensions", "dev3-bug-hunter", "ask-dev3", "dev3-artifact", "dev3-share-artifact", "dev3-coordinator"]) {
 			expect(MANAGED_SKILL_FILES.some((file) => file.includes(`/skills/${name}/`))).toBe(true);
 		}
 	});
@@ -1081,6 +1143,13 @@ describe("ask-dev3 skill routing", () => {
 		expect(skill).toContain("Send a report to someone outside dev3 → ask for a link.");
 		expect(skill).toContain("`/dev3-share-artifact`** — publish an HTML report as a gist");
 		expect(skill).toContain("`/dev3-artifact`** — make, publish and revise an HTML report inside dev3");
+	});
+
+	it("routes writing a custom board view to the extensions skill", () => {
+		const skill = getAskDev3SkillContent();
+
+		expect(skill).toContain("**None of the views fits → write your own board view as an extension.**");
+		expect(skill).toContain("`/dev3-extensions`** — write, install, screenshot and debug a board-view extension.");
 	});
 });
 

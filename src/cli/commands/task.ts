@@ -19,7 +19,7 @@ import { singleTextInput } from "../text-input";
 import { launchAndPrepareTimeoutMs, launchApprovalTimeoutMs } from "../launch-approval";
 import type { LaunchPreparationOutcome } from "../../shared/launch-preparation";
 import { handleTasks } from "./tasks";
-import { reportResumeOutcome } from "./agent";
+import { parseResumeAccountFlag, reportResumeOutcome } from "./agent";
 import type { CliHibernateOutcome, CliWakeOutcome } from "../../shared/task-hibernate";
 import { buildTaskShowJson, describeTaskEpic, describeTaskOrigin, type ShownTask } from "../task-json";
 import { exitEpicRequestFailed } from "./epic";
@@ -1305,17 +1305,20 @@ async function hibernateTaskCommand(args: ParsedArgs, socketPath: string, contex
 
 /** `dev3 task wake --resume|--shell` — the wake screen's two buttons. */
 async function wakeTaskCommand(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "resume", "shell", "allow-agent-latest", "json"]);
-	const usage = "Usage: dev3 task wake [<id>|--task <id>] --resume [--allow-agent-latest] | --shell [--json]";
+	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "resume", "shell", "allow-agent-latest", "account", "json"]);
+	const usage = "Usage: dev3 task wake [<id>|--task <id>] --resume [--allow-agent-latest] [--account <id|system>] | --shell [--json]";
 	rejectFlagValues(args, ["resume", "shell", "allow-agent-latest", "json"], usage);
 	const resume = "resume" in args.flags;
 	const shell = "shell" in args.flags;
 	if (resume === shell) exitUsage(`Pass exactly one of --resume or --shell.\n${usage}`);
 	if (shell && "allow-agent-latest" in args.flags) exitUsage("--allow-agent-latest only applies to --resume.");
+	if (shell && "account" in args.flags) exitUsage("--account only applies to --resume.");
 	const json = "json" in args.flags;
 	const params = sessionActionParams(args, context, usage);
 	params.mode = resume ? "resume" : "shell";
 	if (resume) params.allowAgentLatest = "allow-agent-latest" in args.flags;
+	const accountId = resume ? parseResumeAccountFlag(args) : undefined;
+	if (accountId !== undefined) params.accountId = accountId;
 	const resp = await sendSessionAction(socketPath, "task.wake", params, "wake");
 	if (!resp.ok) exitError(resp.error || "Failed to wake the task");
 	const result = resp.data as CliWakeOutcome;

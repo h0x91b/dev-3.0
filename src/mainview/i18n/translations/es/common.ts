@@ -51,6 +51,7 @@ const common = {
 	"agentLaunch.titleSpawn": "El agente quiere añadir un agente a esta tarea",
 	"agentLaunch.titleResume": "El agente quiere reanudar la sesión guardada de esta tarea",
 	"agentLaunch.resumeNote": "Reabre las conversaciones guardadas, cada una con su propio agente, preset y cuenta.",
+	"agentLaunch.resumeNoteAccount": "Reabre las conversaciones guardadas, cada una con su propio agente y preset. Los paneles de Claude pueden pasar a otra cuenta abajo.",
 	"agentLaunch.resumeConversation": "Conversación {id}",
 	"agentLaunch.resumeLatest": "Sin id de conversación guardado: el agente abre la última",
 	"agentLaunch.resume": "Reanudar",
@@ -406,7 +407,6 @@ const common = {
 	"sidebar.scopeToggleTitle": "Alternar alcance (este proyecto / todos los proyectos)",
 	"sidebar.globalLoading": "Cargando tareas de todos los proyectos…",
 	"sidebar.unknownProject": "Proyecto desconocido",
-	"sidebar.statusChanged": "Estado cambiado {ago} · {date}",
 	// Readiness-tier headers (built-in tiers; custom columns keep their own name)
 	"sidebar.tier.needsYou": "Te necesitan",
 	"sidebar.tier.waiting": "Esperando",
