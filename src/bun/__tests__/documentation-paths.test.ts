@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
@@ -59,21 +59,21 @@ function references(doc: string): string[] {
 }
 
 /**
- * Every tracked file by basename, so a token written without its directory still resolves. Build
- * output and per-machine state (`node_modules`, a board kept in `.dev3/data`) are untracked, so the
- * machine cannot change the result.
+ * Every tracked file, by full path and by basename so a token written without its directory still
+ * resolves. Build output and per-machine state (`node_modules`, a board kept in `.dev3/data`) are
+ * untracked, so the machine cannot change the result.
  */
-function basenames(): Set<string> {
+function trackedFiles(): string[] {
 	const ls = spawnSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "utf8" });
 	if (ls.status !== 0) throw new Error(`git ls-files failed: ${ls.stderr}`);
-	const paths = ls.stdout.split("\0").filter(Boolean);
-	return new Set(paths.map((path) => path.slice(path.lastIndexOf("/") + 1)));
+	return ls.stdout.split("\0").filter(Boolean);
 }
 
-const ALL_BASENAMES = basenames();
+const TRACKED = new Set(trackedFiles());
+const ALL_BASENAMES = new Set([...TRACKED].map((path) => path.slice(path.lastIndexOf("/") + 1)));
 
 const resolves = (token: string) =>
-	token.includes("/") ? existsSync(`${ROOT}/${token}`) : ALL_BASENAMES.has(token);
+	token.includes("/") ? TRACKED.has(token) : ALL_BASENAMES.has(token);
 
 describe("documentation paths", () => {
 	for (const doc of DOCS) {
