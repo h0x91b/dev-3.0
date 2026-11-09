@@ -366,6 +366,19 @@ describe("dev3 pr create — the base branch", () => {
 
 		expect(ran(calls, "git", ["push"])).toBeUndefined();
 		expect(stderrOutput).toContain("base branch");
+		expect(stderrOutput).toContain("Create a branch");
+	});
+
+	it("in a shared folder, does not tell the agent to create a branch there", async () => {
+		mockReadTask.mockReturnValue({ baseBranch: "main" });
+		mockReadProject.mockReturnValue({ id: "p", name: "P", path: "/p", gitWorkflow: false });
+		const { deps: d, calls } = deps({ "git rev-parse": ok("main\n") });
+
+		await expect(handlePr("create", args({ title: "T" }), ctx(), d)).rejects.toThrow("EXIT_1");
+
+		expect(ran(calls, "git", ["push"])).toBeUndefined();
+		expect(stderrOutput).toContain("do not create or switch a branch here");
+		expect(stderrOutput).not.toContain("Create a branch");
 	});
 });
 

@@ -6,6 +6,7 @@ import { readProjectDirect, readTaskDirect, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 import { DEV3_HOME } from "../../bun/paths";
 import { buildTaskPrDeepLinkSection, deepLinkSchemeRegistered } from "../../shared/deep-link";
+import { taskProtocolMode } from "../../shared/types";
 import { CLI_EXIT_CODE_GH_TLS_UNVERIFIED, CLI_EXIT_CODE_GH_UNAVAILABLE } from "../../shared/cli-exit-codes";
 
 const USAGE = `Usage: dev3 pr create --title "..." [--description "..."] [--base <branch>] [--draft] [--auto-merge[=squash|merge|rebase]]
@@ -142,7 +143,9 @@ async function createPr(args: ParsedArgs, context: CliContext | null, deps: PrDe
 	if (base && base === branch) {
 		exitError(
 			`The current branch IS the base branch (${branch}) — there is nothing to open a pull request from.`,
-			"Create a branch, commit the work, and run this again.",
+			inSharedFolder(context)
+				? "This folder is shared with other tasks, so do not create or switch a branch here: open the PR from a worktree of this repository, or ask the user."
+				: "Create a branch, commit the work, and run this again.",
 		);
 	}
 
@@ -335,6 +338,14 @@ function currentBranch(cwd: string, deps: PrDeps): string {
 		exitError("HEAD is detached — check out a branch before opening a pull request");
 	}
 	return branch;
+}
+
+/** Whether this task runs in a project folder other tasks share, where moving HEAD moves it for all of them. */
+function inSharedFolder(context: CliContext | null): boolean {
+	if (!context?.taskId) return false;
+	const project = readProjectDirect(context.projectId);
+	const task = readTaskDirect(context.projectId, context.taskId);
+	return !!project && !!task && taskProtocolMode(project, task) === "shared-folder";
 }
 
 /**

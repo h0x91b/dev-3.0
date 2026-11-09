@@ -13,6 +13,7 @@
 import type { PaneInputStage } from "../pane-input";
 import type { AgentConfiguration, PermissionMode, TaskStatus } from "../types";
 import type { TemplateContext } from "./template";
+import type { SkillFamily } from "../agent-skill-content";
 
 export type { TemplateContext } from "./template";
 
@@ -61,8 +62,9 @@ export interface AdapterLaunchOptions {
 	 *  is ~34 000). Set by the backend; adapters that have a file-taking flag use
 	 *  it instead of the inline argument. */
 	systemPromptFile?: string;
-	/** The protocol text to inject instead of `skillBody` (the lean protocol).
-	 *  Set by the backend; adapters that inject inline use it when present. */
+	/** The protocol text to inject instead of `skillBody`: the lean protocol, or
+	 *  the body rendered for the task's mode. Set by the backend; adapters that
+	 *  inject inline use it when present. */
 	protocolBody?: string;
 	/** True when a third-party backend delivers the model via env → omit --model. */
 	skipModelForProvider?: boolean;
@@ -108,8 +110,9 @@ export interface AgentAdapter {
 	readonly supportsPreAssignedSessionId: boolean;
 	/** The dev3 skill / system-prompt body this agent delivers (data). */
 	readonly skillBody: string;
-	/** The lean protocol body, or omitted when this agent injects no protocol. */
-	readonly leanSkillBody?: string;
+	/** Which protocol family this agent injects at launch (full or lean, per task
+	 *  mode), or omitted when it injects none. */
+	readonly skillFamily?: SkillFamily;
 	/** Agent-native trust routines to run, in order. Empty when none. */
 	readonly trustKinds: readonly TrustKind[];
 	/** How to list the account's selectable models, or omitted when the CLI has no

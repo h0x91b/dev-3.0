@@ -1,6 +1,6 @@
 import { assertTaskWorkspacePresent } from "../../task-workspace-guard";
 import type { AgentFamily, ColumnAgentConfig, PermissionMode, Project, Task } from "../../../shared/types";
-import { getPrimaryStopTarget, isCoordinatorTask } from "../../../shared/types";
+import { getPrimaryStopTarget, isCoordinatorTask, taskProtocolMode } from "../../../shared/types";
 import { rootProjectFor } from "../../ops-worktree";
 import { coordinatorLaunchDefault } from "../../../shared/coordinator-launch";
 import * as data from "../../data";
@@ -419,6 +419,7 @@ export async function launchTaskPty(
 			accountFromStore: typeof accountId === "string" ? true : undefined,
 			projectEnv,
 			bedrockProfile,
+			protocolMode: taskProtocolMode(project, task),
 		};
 		let freshSessionId: string | null = null;
 		if (!resume && !skipSessionPersist && !opts?.shellNotice) {

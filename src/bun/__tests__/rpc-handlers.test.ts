@@ -4197,6 +4197,10 @@ describe("task lifecycle with the git workflow off", () => {
 
 	const gproject = () => makeProject({ id: "gp1", path: "/tmp/customer-migration", gitWorkflow: false });
 	const spawnedLsof = () => mockSpawn.mock.calls.some((call) => (call[0] as string[])[0] === "lsof");
+	const launchProtocolModes = () => [
+		...vi.mocked(agents.resolveCommandForAgent).mock.calls.map((call) => call[3]?.protocolMode),
+		...vi.mocked(agents.resolveCommandForProject).mock.calls.map((call) => call[5]?.protocolMode),
+	];
 
 	it("todo → in-progress: runs in the project folder with its own config, no worktree", async () => {
 		const project = gproject();
@@ -4212,6 +4216,7 @@ describe("task lifecycle with the git workflow off", () => {
 		expect(pty.createSession).toHaveBeenCalledWith("task-1", "gp1", "/tmp/customer-migration", expect.anything(), expect.anything(), expect.anything());
 		expect(result.worktreePath).toBe("/tmp/customer-migration");
 		expect(result.branchName).toBeNull();
+		expect(launchProtocolModes()).toEqual(["shared-folder"]);
 	});
 
 	it("in-progress → completed: keeps the folder, kills nothing in it, runs no cleanup script", async () => {
@@ -4300,6 +4305,7 @@ describe("task lifecycle with the git workflow off", () => {
 			expect(git.createWorktree).toHaveBeenCalled();
 			expect(result.worktreePath).toBe("/tmp/wt-own");
 			expect(result.branchName).toBe("dev3/task-1");
+			expect(launchProtocolModes()).toEqual(["worktree"]);
 		});
 
 		it("in-progress → completed: removes the worktree but keeps a branch with unique commits", async () => {
@@ -4925,7 +4931,7 @@ describe("activateTask", () => {
 			"",
 			"/tmp/wt",
 			undefined,
-			{ resume: true, projectEnv: {} },
+			{ resume: true, projectEnv: {}, protocolMode: "worktree" },
 		);
 	});
 
@@ -4996,7 +5002,7 @@ describe("activateTask", () => {
 			"builtin-claude",
 			null,
 			expect.objectContaining({ worktreePath: "/tmp/wt" }),
-			{ resume: true, projectEnv: {} },
+			{ resume: true, projectEnv: {}, protocolMode: "worktree" },
 		);
 		expect(agents.resolveCommandForProject).not.toHaveBeenCalled();
 	});
@@ -11520,6 +11526,22 @@ describe("handlers.spawnBugHuntersInTask", () => {
 			.then(() => started);
 	}
 
+	it("launches a hunter in a shared-folder task with the shared-folder protocol", async () => {
+		const project = makeProject({ path: "/tmp/wt", gitWorkflow: false });
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude", extraEnv: {} });
+		makeSplitMock(["%10"]);
+
+		await runLaunch(
+			handlers.spawnBugHuntersInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default", count: 1 }),
+			1,
+		);
+
+		expect(vi.mocked(agents.resolveCommandForAgent).mock.calls.map((call) => call[3]?.protocolMode)).toEqual(["shared-folder"]);
+	});
+
 	it("creates N panes: first horizontal 50% off the session, rest vertical off the previous right pane", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
@@ -12670,6 +12692,20 @@ describe("resumeTask gives every Claude pane its own conversation (#1950)", () =
 
 		const pane = write.mock.calls.find(([path]) => String(path) === dev3TaskTempPath("task-1", "resume-pane-1.sh"));
 		expect(String(pane?.[1])).toContain("https://project.example");
+	});
+
+	it("resumes every pane of a shared-folder task with the shared-folder protocol", async () => {
+		seedStore([NEWEST, MAIN]);
+		(data.loadProjects as any).mockResolvedValue([makeProject({ gitWorkflow: false })]);
+		(data.getTask as any).mockResolvedValue(makeTask({
+			worktreePath: WORKTREE,
+			sessionState: { panes: [claudePane(MAIN), claudePane(NEWEST), claudePane("never-prompted")] },
+		}));
+
+		await handlers.resumeTask({ taskId: "task-1" });
+
+		const modes = (agents.resolveCommandForAgent as any).mock.calls.map((call: any[]) => call[3]?.protocolMode);
+		expect(modes).toEqual(["shared-folder", "shared-folder", "shared-folder"]);
 	});
 
 	it("reports a pane that started over as `fresh-session`, and resumes it for the CLI too", async () => {

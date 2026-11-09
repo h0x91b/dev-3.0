@@ -1,5 +1,5 @@
 import type { AgentFamily, CodingAgent, PaneSessionEntry, Project, Task } from "../../../shared/types";
-import { ACTIVE_STATUSES, getPrimaryStopTarget } from "../../../shared/types";
+import { ACTIVE_STATUSES, getPrimaryStopTarget, taskProtocolMode } from "../../../shared/types";
 import * as data from "../../data";
 import * as pty from "../../pty-server";
 import { ptyWsUrl } from "../../pty-server-access";
@@ -429,9 +429,10 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 					// Every conversation of this worktree belongs to another pane, so
 					// `--continue` would open one of theirs: start this pane over instead.
 					const freshSessionId = targets[i].mode === "fresh-session" ? crypto.randomUUID() : null;
+					const protocolMode = taskProtocolMode(project, task);
 					const cmdOpts: agents.CommandOptions = freshSessionId
-						? { sessionId: freshSessionId, accountId, accountFromStore: true }
-						: { resume: true, accountId, accountFromStore: true };
+						? { sessionId: freshSessionId, accountId, accountFromStore: true, protocolMode }
+						: { resume: true, accountId, accountFromStore: true, protocolMode };
 					cmdOpts.projectEnv = projectEnv;
 					cmdOpts.bedrockProfile = pane.bedrockProfile !== undefined ? pane.bedrockProfile : task.bedrockProfile;
 					if (paneResume) cmdOpts.sessionId = paneResume;

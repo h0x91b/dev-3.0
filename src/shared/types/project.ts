@@ -308,6 +308,18 @@ export function taskUsesWorktree(
 	return hasGitWorkflow(project) || (project.kind !== "virtual" && task.ownWorktree === true);
 }
 
+/** Which lifecycle protocol a task's agent gets: its own worktree, or a project folder other tasks share. */
+export type ProtocolMode = "worktree" | "shared-folder";
+
+/** Whether this task shares its project folder: picks the launch protocol, the
+ *  `dev3 current` Protocol line and the approval wording. Virtual boards keep worktree. */
+export function taskProtocolMode(
+	project: Pick<Project, "kind" | "gitWorkflow">,
+	task: Pick<Task, "ownWorktree">,
+): ProtocolMode {
+	return project.kind !== "virtual" && !taskUsesWorktree(project, task) ? "shared-folder" : "worktree";
+}
+
 /** The refusal task creation throws when an own worktree is asked of a folder that is not a repository. */
 export const OWN_WORKTREE_NOT_A_REPO_ERROR = "The project folder is not a git repository, so a task cannot get its own worktree";
 
