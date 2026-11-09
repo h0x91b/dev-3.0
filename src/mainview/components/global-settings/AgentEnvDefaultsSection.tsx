@@ -1,9 +1,12 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api } from "../../rpc";
 import type { GlobalSettings } from "../../../shared/types";
 import type { TFunction } from "../../i18n";
+import { usesProjectClaudeConfigDir, withProjectClaudeConfigDir } from "../../../shared/agent-env-defaults";
 import { EnvVarsEditor } from "../project-settings/EnvVarsEditor";
 import SettingsEntry from "./SettingsEntry";
 import SettingsSection from "./SettingsSection";
+import SettingsToggle from "./SettingsToggle";
 
 export default function AgentEnvDefaultsSection({
 	t,
@@ -18,6 +21,10 @@ export default function AgentEnvDefaultsSection({
 	// The draft is the last VALID parse, so text with an invalid line is never saved.
 	const draft = useRef<Record<string, string> | undefined>(undefined);
 	const hasError = useRef(false);
+	// The last value sent up: a switch click right after a text edit must build on it,
+	// not on props that have not caught up with that save yet.
+	const saved = useRef(globalSettings.agentEnvDefaults);
+	saved.current = globalSettings.agentEnvDefaults;
 	const handleErrorChange = useCallback((error: boolean) => {
 		hasError.current = error;
 	}, []);
@@ -25,10 +32,45 @@ export default function AgentEnvDefaultsSection({
 		if (!draft.current || hasError.current) return;
 		const next = Object.keys(draft.current).length > 0 ? draft.current : undefined;
 		draft.current = undefined;
-		if (JSON.stringify(next) !== JSON.stringify(globalSettings.agentEnvDefaults)) onChange(next);
+		if (JSON.stringify(next) === JSON.stringify(saved.current)) return;
+		saved.current = next;
+		onChange(next);
+	}
+	const projectFolder = usesProjectClaudeConfigDir(globalSettings.agentEnvDefaults);
+	// Asked of the host: in remote mode the browser's OS is not the one agents run on.
+	const [folderSupported, setFolderSupported] = useState<boolean | null>(null);
+	useEffect(() => {
+		api.request
+			.getAppVersion()
+			.then((info) => setFolderSupported(info?.projectClaudeFolderSupported !== false))
+			.catch(() => {});
+	}, []);
+	function toggleProjectFolder() {
+		const next = withProjectClaudeConfigDir(saved.current, !projectFolder);
+		saved.current = next;
+		onChange(next);
 	}
 
 	return (
+		<>
+		<SettingsSection title={t("settings.projectClaudeFolder")}>
+			<SettingsEntry anchor="project-claude-folder">
+				<div>
+					<p className="text-fg-3 text-sm mb-3">{t("settings.projectClaudeFolderDesc")}</p>
+					{folderSupported === false && !projectFolder ? (
+						<p className="text-fg-3 text-sm">{t("settings.projectClaudeFolderMacOnly")}</p>
+					) : (
+						<SettingsToggle
+							checked={projectFolder}
+							ariaLabel={t("settings.projectClaudeFolder")}
+							onLabel={t("settings.on")}
+							offLabel={t("settings.off")}
+							onToggle={toggleProjectFolder}
+						/>
+					)}
+				</div>
+			</SettingsEntry>
+		</SettingsSection>
 		<SettingsSection title={t("settings.agentEnvDefaults")}>
 			<SettingsEntry anchor="agent-env-defaults">
 				<div onBlur={commit}>
@@ -43,5 +85,6 @@ export default function AgentEnvDefaultsSection({
 				</div>
 			</SettingsEntry>
 		</SettingsSection>
+		</>
 	);
 }

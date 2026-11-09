@@ -98,7 +98,7 @@ function renderIndicator(
 	agent: CodingAgent | null = claudeAgent,
 	opts?: {
 		value?: string | null;
-		onSelect?: (accountId: string | null) => void;
+		onSelect?: (accountId: string | null | undefined) => void;
 		onAddAccount?: () => void;
 		projectId?: string;
 	},
@@ -763,8 +763,6 @@ describe("project-pinned CLAUDE_CONFIG_DIR", () => {
 		identity: { email: "project@example.com", organization: null, plan: null, planLabel: null, accountId: "uuid-p" },
 	};
 
-	// The pin only holds with no managed Claude account: any registered one makes
-	// every launch set (or unset) CLAUDE_CONFIG_DIR itself.
 	function withNoManagedDefault() {
 		const base = makeState();
 		mockedApi.request.listAgentAccounts.mockResolvedValue(
@@ -808,16 +806,42 @@ describe("project-pinned CLAUDE_CONFIG_DIR", () => {
 		expect(screen.queryByText("11% used")).toBeNull();
 	});
 
-	it("does not claim the pin while a managed account overrides it", async () => {
-		const base = makeState();
-		mockedApi.request.listAgentAccounts.mockResolvedValue(makeState({ claude: { ...base.claude, activeId: null } }));
+	it("keeps the pin over the default managed account, and offers it beside ~/.claude", async () => {
 		mockedApi.request.getProjectClaudeLogin.mockResolvedValue(projectLogin);
-		renderIndicator(claudeAgent, { projectId: "p1", onSelect: vi.fn() });
+		const onSelect = vi.fn();
+		renderIndicator(claudeAgent, { projectId: "p1", onSelect });
+		const trigger = await screen.findByTestId("agent-account-trigger");
+		await waitFor(() => expect(trigger.textContent).toContain("project@example.com"));
+		expect(trigger.textContent).not.toContain("work@example.com");
+		await userEvent.click(trigger);
+		const projectRow = (await screen.findByText("Project login (…/thumbs/.claude)")).closest("[role='menuitemradio']");
+		expect(projectRow?.getAttribute("aria-checked")).toBe("true");
+		expect(screen.getByText("Default login (/home/me/.claude)")).toBeTruthy();
+	});
+
+	it("hides Auto on a pinned project, since Auto never overrides the pin", async () => {
+		mockedApi.request.getProjectClaudeLogin.mockResolvedValue(projectLogin);
+		mockedApi.request.previewAutoAccount.mockResolvedValue(preview());
+		renderIndicator(claudeAgent, { projectId: "p1", onSelect: vi.fn(), value: "auto" });
+		const trigger = await screen.findByTestId("agent-account-trigger");
+		await waitFor(() => expect(trigger.textContent).toContain("project@example.com"));
+		await userEvent.click(trigger);
+		await screen.findByText("Project login (…/thumbs/.claude)");
+		expect(screen.queryByRole("menuitemradio", { name: /^Auto/ })).toBeNull();
+	});
+
+	it("an account picked for the task replaces the pin, and the project row brings it back", async () => {
+		mockedApi.request.getProjectClaudeLogin.mockResolvedValue(projectLogin);
+		const onSelect = vi.fn();
+		renderIndicator(claudeAgent, { projectId: "p1", onSelect, value: "cl-1" });
 		const trigger = await screen.findByTestId("agent-account-trigger");
 		await waitFor(() => expect(mockedApi.request.getProjectClaudeLogin).toHaveBeenCalled());
-		expect(trigger.textContent).not.toContain("project@example.com");
+		expect(trigger.textContent).toContain("work@example.com");
 		await userEvent.click(trigger);
-		expect(await screen.findByText("Default login (/home/me/.claude)")).toBeTruthy();
+		const projectRow = (await screen.findByText("Project login (…/thumbs/.claude)")).closest("[role='menuitemradio']") as HTMLElement;
+		expect(projectRow.getAttribute("aria-checked")).toBe("false");
+		await userEvent.click(projectRow);
+		expect(onSelect).toHaveBeenCalledWith(undefined);
 	});
 
 	it("keeps the system login when the project pins nothing", async () => {

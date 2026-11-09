@@ -4,7 +4,7 @@ import { basename, extname } from "node:path";
 import type { SharedImage } from "../shared/types";
 import { MAX_SHARED_IMAGE_BYTES, MAX_SHARED_MEDIA_BYTES, SHARED_AUDIO_EXTS, SHARED_IMAGE_EXTS, SHARED_MEDIA_EXTS, mediaTooLargeDetail } from "../shared/types";
 import { DEV3_HOME } from "./paths";
-import { projectStorageKey } from "../shared/project-storage-key";
+import { projectWorktreesRoot, storesInProject, type StorageProject } from "../shared/project-storage";
 import { isFullyQualifiedPath } from "../shared/absolute-path";
 
 const SUPPORTED_EXTS = new Set(SHARED_IMAGE_EXTS);
@@ -31,14 +31,10 @@ export function sharedMediaMime(ext: string): string {
 	return MIME_BY_EXT[ext] ?? "application/octet-stream";
 }
 
-function projectSlug(projectPath: string): string {
-	return projectStorageKey(projectPath);
-}
-
-export function sharedImagesDir(projectPath: string): string {
+export function sharedImagesDir(project: StorageProject): string {
 	// Sibling of the per-project `uploads/` dir (decision 036), kept in the
 	// worktree tree so it shares the worktree's lifecycle, per the storage choice.
-	return `${DEV3_HOME}/worktrees/${projectSlug(projectPath)}/shared-images`;
+	return `${projectWorktreesRoot(DEV3_HOME, project.path, storesInProject(project) ? "project" : undefined)}/shared-images`;
 }
 
 /** Lowercase extension without the dot, or "" if none. */
@@ -66,7 +62,7 @@ export class SharedImageError extends Error {}
  * on any validation failure so the caller can report it verbatim. An optional
  * per-image `caption` is the agent's note about what to look at in this shot.
  */
-export function saveSharedImage(projectPath: string, sourcePath: string, caption?: string): SharedImage {
+export function saveSharedImage(project: StorageProject, sourcePath: string, caption?: string): SharedImage {
 	const { ext, size } = checkSource(sourcePath);
 	if (!SUPPORTED_EXTS.has(ext)) {
 		throw new SharedImageError(`Unsupported image type "${ext || "(none)"}" (use png/jpg/gif/webp/bmp): ${sourcePath}`);
@@ -74,7 +70,7 @@ export function saveSharedImage(projectPath: string, sourcePath: string, caption
 	if (size > MAX_SHARED_IMAGE_BYTES) {
 		throw new SharedImageError(`Image too large (${mediaTooLargeDetail(size, MAX_SHARED_IMAGE_BYTES)}): ${sourcePath}`);
 	}
-	const storedPath = newStoredPath(projectPath, ext);
+	const storedPath = newStoredPath(project, ext);
 	copyFileSync(sourcePath, storedPath);
 	return sharedRecord(sourcePath, storedPath, ext, size, caption);
 }
@@ -103,9 +99,9 @@ export function checkSharedClip(sourcePath: string): { ext: string; size: number
  * process. Copies to a `.partial` sibling and renames only once the byte count
  * matches, so a failed or short copy never lands under a real name.
  */
-export async function saveSharedClip(projectPath: string, sourcePath: string, caption?: string): Promise<SharedImage> {
+export async function saveSharedClip(project: StorageProject, sourcePath: string, caption?: string): Promise<SharedImage> {
 	const { ext, size } = checkSharedClip(sourcePath);
-	const storedPath = newStoredPath(projectPath, ext);
+	const storedPath = newStoredPath(project, ext);
 	const partialPath = `${storedPath}.partial`;
 	try {
 		await copyFile(sourcePath, partialPath);
@@ -120,11 +116,11 @@ export async function saveSharedClip(projectPath: string, sourcePath: string, ca
 }
 
 /** Validates every clip before copying any, and removes the earlier copies if a later one fails. */
-export async function saveSharedClips(projectPath: string, items: { path: string; caption?: string }[]): Promise<SharedImage[]> {
+export async function saveSharedClips(project: StorageProject, items: { path: string; caption?: string }[]): Promise<SharedImage[]> {
 	for (const it of items) checkSharedClip(it.path);
 	const saved: SharedImage[] = [];
 	try {
-		for (const it of items) saved.push(await saveSharedClip(projectPath, it.path, it.caption));
+		for (const it of items) saved.push(await saveSharedClip(project, it.path, it.caption));
 	} catch (err) {
 		await Promise.all(saved.map((rec) => unlink(rec.storedPath).catch(() => {})));
 		throw err;
@@ -178,8 +174,8 @@ function checkSource(sourcePath: string): { ext: string; size: number } {
 	return { ext: imageExt(sourcePath), size: stat.size };
 }
 
-function newStoredPath(projectPath: string, ext: string): string {
-	const dir = sharedImagesDir(projectPath);
+function newStoredPath(project: StorageProject, ext: string): string {
+	const dir = sharedImagesDir(project);
 	mkdirSync(dir, { recursive: true });
 	const hex = Math.floor(Math.random() * 0xffff).toString(16).padStart(4, "0");
 	return `${dir}/shared-${Date.now()}-${hex}.${ext}`;

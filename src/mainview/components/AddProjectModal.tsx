@@ -43,6 +43,9 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 	const [autoConfigure, setAutoConfigure] = useState(false);
 	// A click before the stored value arrives wins over it.
 	const autoConfigureTouched = useRef(false);
+	// Remembered like auto-configure; the backend applies it to every project it creates.
+	const [storeInProject, setStoreInProject] = useState(false);
+	const storeInProjectTouched = useRef(false);
 	// Off every time: it writes into the project folder, so each project opts in on its own.
 	const [boardCopy, setBoardCopy] = useState(false);
 	const [gitUrl, setGitUrl] = useState("");
@@ -87,6 +90,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 				setCloneBaseDir(settings.cloneBaseDirectory);
 			}
 			if (!autoConfigureTouched.current) setAutoConfigure(settings.autoConfigureNewProjects === true);
+			if (!storeInProjectTouched.current) setStoreInProject(settings.newProjectsStoreInProject === true);
 		}).catch(() => {});
 	}, []);
 
@@ -132,7 +136,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 	 * initialize in place. `null` means the user declined and nothing changed.
 	 */
 	async function initAfterConfirm(offer: GitInitOffer, withAutoConfigure: boolean): Promise<
-		{ ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer } | { ok: false; error: string } | null
+		{ ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true } | { ok: false; error: string } | null
 	> {
 		if (!(await confirmGitInit(offer))) return null;
 		const result = await api.request.initAndAddProject({
@@ -158,6 +162,23 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 		} catch {
 			// Remembering the choice is best-effort
 		}
+	}
+
+	async function toggleStoreInProject() {
+		storeInProjectTouched.current = true;
+		const next = !storeInProject;
+		setStoreInProject(next);
+		try {
+			const settings = await api.request.getGlobalSettings();
+			await api.request.saveGlobalSettings({ ...settings, newProjectsStoreInProject: next || undefined });
+		} catch {
+			// Remembering the choice is best-effort
+		}
+	}
+
+	// The switch asked for in-project storage; the user must hear when the folder refused it.
+	function reportStorageKeptHome(project: Project, keptHome: true | undefined) {
+		if (keptHome) toast.error(t("addProject.storeInProjectFailed", { name: project.name }), { source: "dashboard" });
 	}
 
 	// Says what auto-configure wrote, so a new .dev3 file never appears unannounced.
@@ -238,6 +259,16 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 		</div>
 	);
 
+	const storeInProjectSwitch = (
+		<div className="flex items-center justify-between gap-4">
+			<div className="space-y-0.5">
+				<span className="block text-fg-2 text-sm font-medium">{t("addProject.storeInProject")}</span>
+				<span className="block text-fg-3 text-xs leading-5">{t("addProject.storeInProjectHint")}</span>
+			</div>
+			<ToggleSwitch checked={storeInProject} ariaLabel={t("addProject.storeInProject")} onToggle={() => void toggleStoreInProject()} />
+		</div>
+	);
+
 	// Lives inside the Local and Clone panes, so the tab strip stays put on New, which has nothing to detect.
 	const autoConfigureSwitch = (
 		<div className="flex items-center justify-between gap-4">
@@ -275,6 +306,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 					if (result.ok) {
 						dispatch({ type: "addProject", project: result.project });
 						reportAutoConfigured(result.project, result.autoConfigured);
+						reportStorageKeptHome(result.project, result.storageKeptHome);
 						await offerBoardCopyRestore(result.project, result.boardCopyOffer);
 						added.push(result.project);
 						void applyPendingSpaces(result.project.id);
@@ -328,6 +360,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 				: first;
 			if (result.ok) {
 				dispatch({ type: "addProject", project: result.project });
+				reportStorageKeptHome(result.project, result.storageKeptHome);
 				await offerBoardCopyRestore(result.project, result.boardCopyOffer);
 				void applyPendingSpaces(result.project.id);
 				trackEvent("project_added", { source: "init" });
@@ -384,6 +417,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 			if (result.ok) {
 				dispatch({ type: "addProject", project: result.project });
 				reportAutoConfigured(result.project, result.autoConfigured);
+				reportStorageKeptHome(result.project, result.storageKeptHome);
 				await offerBoardCopyRestore(result.project, result.boardCopyOffer);
 				void applyPendingSpaces(result.project.id);
 				trackEvent("project_added", { source: "clone" });
@@ -490,7 +524,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 				    Two lines, deliberately. Longer copy is its own way of scaring people off. */}
 				<div className="bg-raised border border-edge rounded-xl px-3 py-2.5 space-y-1.5 text-fg-3 text-xs leading-5">
 					<p>{t("addProject.safetyBase")}</p>
-					<p>{t("addProject.safetyBranch")}</p>
+					<p>{t(storeInProject ? "addProject.safetyBranchInProject" : "addProject.safetyBranch")}</p>
 				</div>
 
 				{/* Tabs */}
@@ -534,6 +568,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 							{t("addProject.browseHint")}
 						</p>
 						{autoConfigureSwitch}
+						{storeInProjectSwitch}
 						{boardCopySwitch}
 						<button
 							onClick={handleBrowseLocal}
@@ -548,6 +583,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 						<p className="text-fg-3 text-sm">
 							{t("addProject.initHint")}
 						</p>
+						{storeInProjectSwitch}
 						{boardCopySwitch}
 						<button
 							onClick={handleInitNew}
@@ -625,6 +661,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 						)}
 
 						{autoConfigureSwitch}
+						{storeInProjectSwitch}
 						{boardCopySwitch}
 
 						{/* Live clone output (last lines of `git clone --progress`) */}

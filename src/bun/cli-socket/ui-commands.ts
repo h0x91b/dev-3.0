@@ -47,7 +47,7 @@ async function showSharedMedia(params: Record<string, unknown>, kind: "image" | 
 	// path is invalid, so the agent gets a clear signal and nothing half-lands.
 	let incoming: SharedImage[];
 	try {
-		incoming = kind === "media" ? await saveSharedClips(project.path, items) : items.map((it) => saveSharedImage(project.path, it.path, it.caption));
+		incoming = kind === "media" ? await saveSharedClips(project, items) : items.map((it) => saveSharedImage(project, it.path, it.caption));
 	} catch (err) {
 		if (err instanceof SharedImageError) throw err;
 		throw new Error(`Failed to store ${kind}: ${err instanceof Error ? err.message : String(err)}`);
@@ -226,7 +226,7 @@ export const uiHandlers: Record<string, Handler> = {
 
 		let incoming: SharedArtifact;
 		try {
-			incoming = saveSharedArtifact(project.path, htmlPath, assetPaths, title, { artifactId, forceNew });
+			incoming = saveSharedArtifact(project, htmlPath, assetPaths, title, { artifactId, forceNew });
 		} catch (error) {
 			if (error instanceof SharedArtifactError) throw error;
 			throw new Error(`Failed to store artifact: ${error instanceof Error ? error.message : String(error)}`);

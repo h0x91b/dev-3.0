@@ -264,6 +264,7 @@ vi.mock("../agent-launch-availability", () => ({
 vi.mock("../account-router", () => ({
 	autoLaunchDeferral: vi.fn(async () => null),
 	autoRoutingContext: vi.fn(async () => ({ exclusions: [], claudeConfigPinned: false, reservationKey: "k" })),
+	projectPinsClaudeConfig: vi.fn(() => false),
 	releaseAccountReservation: vi.fn(),
 	previewAutoAccount: vi.fn(async () => null),
 }));
@@ -289,6 +290,11 @@ vi.mock("../updater", () => ({
 	downloadUpdateForChannel: vi.fn(),
 	applyUpdate: vi.fn(),
 	getLocalVersion: vi.fn(),
+}));
+
+vi.mock("../rpc-handlers/settings-config", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../rpc-handlers/settings-config")>()),
+	storeNewProjectInProject: vi.fn(async (project: Project) => ({ ...project, storageRoot: "project" })),
 }));
 
 vi.mock("../settings", () => ({
@@ -977,6 +983,12 @@ describe("uploadFileBase64", () => {
 			exited: Promise.resolve(0),
 		});
 		(globalThis as any).Bun.write = vi.fn().mockResolvedValue(undefined);
+	});
+
+	it("stores uploads under <project>/.dev3/worktrees when the project keeps its storage in-project", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(makeProject({ path: "/tmp/project-root", storageRoot: "project" }));
+		await handlers.uploadFileBase64({ projectId: "proj-1", base64: "bm90ZXM=", filename: "notes.txt", mimeType: "text/plain" });
+		expect(mkdirSync).toHaveBeenCalledWith("/tmp/project-root/.dev3/worktrees/uploads", { recursive: true });
 	});
 
 	it("stores dropped files inside the worktree uploads directory", async () => {
@@ -1887,6 +1899,26 @@ describe("handlers.addProject", () => {
 		const result = await handlers.addProject({ path: "/tmp/test-project", name: "Test", autoConfigure: true });
 		expect(autoConfigureProject).toHaveBeenCalledWith(project);
 		expect(result).toMatchObject({ ok: true, autoConfigured: { written: ["devScript"] } });
+	});
+
+	it("keeps a newly created project's data in its folder when the switch is on, and never moves a known one", async () => {
+		const { storeNewProjectInProject } = await import("../rpc-handlers/settings-config");
+		vi.mocked(git.isGitRepo).mockResolvedValue(true);
+		vi.mocked(git.getDefaultBranch).mockResolvedValue("main");
+		vi.mocked(loadSettings).mockResolvedValue({ newProjectsStoreInProject: true } as any);
+
+		const known = makeProject({ createdAt: "2026-01-01T00:00:00.000Z" });
+		vi.mocked(data.addProject).mockResolvedValueOnce(known);
+		vi.mocked(data.updateProject).mockResolvedValue(known);
+		await handlers.addProject({ path: "/tmp/test-project", name: "Test" });
+		expect(storeNewProjectInProject).not.toHaveBeenCalled();
+
+		const fresh = makeProject({ createdAt: new Date(Date.now() + 60_000).toISOString() });
+		vi.mocked(data.addProject).mockResolvedValueOnce(fresh);
+		vi.mocked(data.updateProject).mockResolvedValue(fresh);
+		const result = await handlers.addProject({ path: "/tmp/test-project", name: "Test" });
+		expect(storeNewProjectInProject).toHaveBeenCalledTimes(1);
+		expect(result).toMatchObject({ ok: true, project: { storageRoot: "project" } });
 	});
 
 	it("still adds the project when auto-configure fails", async () => {
@@ -4104,6 +4136,38 @@ describe("worktree-mode Operations task: the repo is the project root outside th
 	});
 });
 
+describe("updateProjectSettings — storage root switch refusals", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("refuses on an Operations board", async () => {
+		const project = makeProject({ kind: "virtual" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([]);
+		await expect(handlers.updateProjectSettings({ projectId: project.id, storageRoot: "project" })).rejects.toThrow(/Operations boards/);
+		expect(data.updateProject).not.toHaveBeenCalled();
+	});
+
+	it("refuses while a task is preparing or running", async () => {
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([makeTask({ preparing: true })]);
+		await expect(handlers.updateProjectSettings({ projectId: project.id, storageRoot: "project" })).rejects.toThrow(/running task/);
+		expect(data.updateProject).not.toHaveBeenCalled();
+	});
+
+	it("refuses when git already tracks files under .dev3/data", async () => {
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([]);
+		vi.mocked(git.isGitRepo).mockResolvedValue(true);
+		mockSpawn.mockReturnValue({ stdout: new Response(".dev3/data/tasks.json\n").body, stderr: null, exited: Promise.resolve(0) });
+		await expect(handlers.updateProjectSettings({ projectId: project.id, storageRoot: "project" })).rejects.toThrow(/tracks files under .dev3\/data/);
+		expect(data.updateProject).not.toHaveBeenCalled();
+	});
+});
+
 describe("git-operations guards — virtual (Operations) tasks", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -4587,7 +4651,7 @@ describe("activateTask", () => {
 			"",
 			"/tmp/wt",
 			undefined,
-			{ resume: true },
+			{ resume: true, projectEnv: {} },
 		);
 	});
 
@@ -4658,7 +4722,7 @@ describe("activateTask", () => {
 			"builtin-claude",
 			null,
 			expect.objectContaining({ worktreePath: "/tmp/wt" }),
-			{ resume: true },
+			{ resume: true, projectEnv: {} },
 		);
 		expect(agents.resolveCommandForProject).not.toHaveBeenCalled();
 	});
@@ -8418,6 +8482,8 @@ describe("handlers.getAppVersion", () => {
 			version: "0.3.0",
 			channel: "beta",
 			buildChannel: "dev",
+			leanProtocolForcedByEnv: process.env.DEV3_LEAN_PROTOCOL === "1",
+			projectClaudeFolderSupported: process.platform === "darwin",
 		});
 	});
 });
@@ -12299,6 +12365,27 @@ describe("resumeTask gives every Claude pane its own conversation (#1950)", () =
 		expect(options[2].resume).toBeUndefined();
 		expect(options[2].sessionId).toMatch(/^[0-9a-f-]{36}$/);
 		expect([MAIN, NEWEST]).not.toContain(options[2].sessionId);
+	});
+
+	it("exports the project env in a resumed split pane, which would otherwise inherit the main pane's", async () => {
+		seedStore([NEWEST, MAIN]);
+		(data.loadProjects as any).mockResolvedValue([makeProject({ env: { ANTHROPIC_BASE_URL: "https://project.example" } } as never)]);
+		(data.getTask as any).mockResolvedValue(makeTask({
+			worktreePath: WORKTREE,
+			sessionState: { panes: [claudePane(MAIN), claudePane(NEWEST), claudePane("never-prompted")] },
+		}));
+
+		const realWrite = (globalThis as any).Bun.write;
+		const write = vi.fn().mockResolvedValue(undefined);
+		(globalThis as any).Bun.write = write;
+		try {
+			await handlers.resumeTask({ taskId: "task-1" });
+		} finally {
+			(globalThis as any).Bun.write = realWrite;
+		}
+
+		const pane = write.mock.calls.find(([path]) => String(path) === dev3TaskTempPath("task-1", "resume-pane-1.sh"));
+		expect(String(pane?.[1])).toContain("https://project.example");
 	});
 
 	it("reports a pane that started over as `fresh-session`, and resumes it for the CLI too", async () => {

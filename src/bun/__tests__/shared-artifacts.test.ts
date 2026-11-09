@@ -84,11 +84,11 @@ describe("saveSharedArtifact", () => {
 		const html = join(SRC_DIR, "keyed.html");
 		writeFileSync(html, "<!doctype html><h1>Keyed</h1>");
 
-		expect(saveSharedArtifact("/my/project", html, [], "  Weekly   Report ").groupKey).toBe("title:weekly report");
+		expect(saveSharedArtifact({ path: "/my/project" }, html, [], "  Weekly   Report ").groupKey).toBe("title:weekly report");
 		// No --title: the key falls back to the HTML basename, exactly like the title.
-		expect(saveSharedArtifact("/my/project", html, []).groupKey).toBe("title:keyed");
-		expect(saveSharedArtifact("/my/project", html, [], "Anything", { artifactId: "Weekly" }).groupKey).toBe("id:weekly");
-		const forced = saveSharedArtifact("/my/project", html, [], "Weekly Report", { forceNew: true });
+		expect(saveSharedArtifact({ path: "/my/project" }, html, []).groupKey).toBe("title:keyed");
+		expect(saveSharedArtifact({ path: "/my/project" }, html, [], "Anything", { artifactId: "Weekly" }).groupKey).toBe("id:weekly");
+		const forced = saveSharedArtifact({ path: "/my/project" }, html, [], "Weekly Report", { forceNew: true });
 		expect(forced.groupKey).toBe(`new:${forced.id}`);
 		expect(forced.version).toBe(1);
 	});
@@ -96,8 +96,8 @@ describe("saveSharedArtifact", () => {
 	it("keeps one directory per publish, so versioning never reshapes storage", () => {
 		const html = join(SRC_DIR, "twice.html");
 		writeFileSync(html, "<!doctype html><h1>Twice</h1>");
-		const first = saveSharedArtifact("/my/project", html, [], "Same title");
-		const second = saveSharedArtifact("/my/project", html, [], "Same title");
+		const first = saveSharedArtifact({ path: "/my/project" }, html, [], "Same title");
+		const second = saveSharedArtifact({ path: "/my/project" }, html, [], "Same title");
 		expect(first.groupKey).toBe(second.groupKey);
 		expect(dirname(first.storedPath)).not.toBe(dirname(second.storedPath));
 		expect(existsSync(first.storedPath)).toBe(true);
@@ -114,7 +114,7 @@ describe("saveSharedArtifact", () => {
 		writeFileSync(css, "body { color: red; }");
 		writeFileSync(script, "document.body.dataset.ready = 'true';");
 
-		const saved = saveSharedArtifact("/my/project", html, [css, script, image], "Quarterly report");
+		const saved = saveSharedArtifact({ path: "/my/project" }, html, [css, script, image], "Quarterly report");
 
 		expect(saved.title).toBe("Quarterly report");
 		expect(saved.isUnread).toBe(true);
@@ -137,7 +137,7 @@ describe("saveSharedArtifact", () => {
 	it("keeps a no-image artifact as directly downloadable HTML", () => {
 		const html = join(SRC_DIR, "standalone.html");
 		writeFileSync(html, "<!doctype html><p>Standalone</p>");
-		const saved = saveSharedArtifact("/my/project", html, []);
+		const saved = saveSharedArtifact({ path: "/my/project" }, html, []);
 		expect(saved.assets).toEqual([]);
 		expect(saved.bundlePath).toBeUndefined();
 		expect(existsSync(saved.storedPath)).toBe(true);
@@ -154,7 +154,7 @@ describe("saveSharedArtifact", () => {
 		const image = join(SRC_DIR, "pic.png");
 		writeFileSync(html, '<!doctype html><img src="pic.png">');
 		writeFileSync(image, "PNGDATA");
-		const saved = saveSharedArtifact("/my/project", html, [image], 'Q4 Revenue / "Draft"');
+		const saved = saveSharedArtifact({ path: "/my/project" }, html, [image], 'Q4 Revenue / "Draft"');
 		expect(basename(saved.bundlePath!)).toBe("index.zip");
 		expect(loadSharedArtifactDownload(saved).fileName).toBe("Q4 Revenue Draft.html");
 	});
@@ -162,7 +162,7 @@ describe("saveSharedArtifact", () => {
 	it("falls back to the HTML basename when the title yields no usable stem", () => {
 		const html = join(SRC_DIR, "index.html");
 		writeFileSync(html, "<!doctype html><p>Hi</p>");
-		const saved = { ...saveSharedArtifact("/my/project", html, []), title: "///" };
+		const saved = { ...saveSharedArtifact({ path: "/my/project" }, html, []), title: "///" };
 		expect(loadSharedArtifactDownload(saved).fileName).toBe("index.html");
 	});
 
@@ -171,7 +171,7 @@ describe("saveSharedArtifact", () => {
 		const image = join(SRC_DIR, "bundle.png");
 		writeFileSync(html, '<!doctype html><img src="bundle.png">');
 		writeFileSync(image, "PNGDATA");
-		const saved = saveSharedArtifact("/my/project", html, [image]);
+		const saved = saveSharedArtifact({ path: "/my/project" }, html, [image]);
 		const content = loadSharedArtifactContent(saved);
 		expect(content.assets).toEqual([
 			expect.objectContaining({ name: "bundle.png", dataUrl: expect.stringMatching(/^data:image\/png;base64,/) }),
@@ -190,7 +190,7 @@ describe("saveSharedArtifact", () => {
 		writeFileSync(css, '.label::before { content: "Hello ✓ 🌍"; }');
 		writeFileSync(script, 'document.body.textContent = "Hello ✓ 🌍";');
 
-		const payload = loadSharedArtifactContent(saveSharedArtifact("/my/project", html, [css, script]));
+		const payload = loadSharedArtifactContent(saveSharedArtifact({ path: "/my/project" }, html, [css, script]));
 		const stylesheet = payload.assets.find((asset) => asset.name === "localized.css");
 		const javascript = payload.assets.find((asset) => asset.name === "localized.js");
 
@@ -209,7 +209,7 @@ describe("saveSharedArtifact", () => {
 		writeFileSync(html, "<!doctype html>");
 		writeFileSync(join(aDir, "same.png"), "A");
 		writeFileSync(join(bDir, "same.png"), "B");
-		const saved = saveSharedArtifact("/my/project", html, [join(aDir, "same.png"), join(bDir, "same.png")]);
+		const saved = saveSharedArtifact({ path: "/my/project" }, html, [join(aDir, "same.png"), join(bDir, "same.png")]);
 		expect(saved.assets.map((asset) => asset.name)).toEqual(["a/same.png", "b/same.png"]);
 		expect(saved.assets.every((asset) => existsSync(asset.storedPath))).toBe(true);
 		const zip = readFileSync(saved.bundlePath!);
@@ -230,7 +230,7 @@ describe("saveSharedArtifact", () => {
 		writeFileSync(css, '.hero { background-image: url("../images/background.png"); }');
 		writeFileSync(image, "PNGDATA");
 
-		const saved = saveSharedArtifact("/my/project", html, [css, image]);
+		const saved = saveSharedArtifact({ path: "/my/project" }, html, [css, image]);
 		const payload = loadSharedArtifactContent(saved);
 		const stylesheet = payload.assets.find((asset) => asset.name === "styles/app.css");
 		const encoded = stylesheet?.dataUrl.split(",", 2)[1] ?? "";
@@ -255,7 +255,7 @@ describe("saveSharedArtifact", () => {
 		writeFileSync(themeCss, '.card { background: url("../images/texture.png"); }');
 		writeFileSync(image, "PNGDATA");
 
-		const saved = saveSharedArtifact("/my/project", html, [appCss, themeCss, image]);
+		const saved = saveSharedArtifact({ path: "/my/project" }, html, [appCss, themeCss, image]);
 		const payload = loadSharedArtifactContent(saved);
 		const stylesheet = payload.assets.find((asset) => asset.name === "styles/app.css");
 		const renderedCss = Buffer.from(stylesheet?.dataUrl.split(",", 2)[1] ?? "", "base64").toString("utf8");
@@ -281,7 +281,7 @@ describe("saveSharedArtifact", () => {
 			"[docs](https://dev3.h0x91b.com) [bad](javascript:alert(1)) ![shot](shots/a.png)",
 		].join("\n"));
 
-		const saved = saveSharedArtifact("/my/project", md, []);
+		const saved = saveSharedArtifact({ path: "/my/project" }, md, []);
 		const stored = readFileSync(saved.storedPath, "utf8");
 
 		expect(saved).toMatchObject({ kind: "html", name: "daily.html", title: "daily", originalPath: md, isUnread: true, assets: [] });
@@ -312,7 +312,7 @@ describe("saveSharedArtifact", () => {
 			"```",
 		].join("\n"));
 
-		const stored = readFileSync(saveSharedArtifact("/my/project", md, []).storedPath, "utf8");
+		const stored = readFileSync(saveSharedArtifact({ path: "/my/project" }, md, []).storedPath, "utf8");
 
 		expect(stored).toContain("<style data-dev3-artifact-shell>");
 		expect(stored).toContain("<style data-dev3-text-artifact>");
@@ -325,7 +325,7 @@ describe("saveSharedArtifact", () => {
 		const md = join(SRC_DIR, "anchors.md");
 		writeFileSync(md, ["[Jump](#plan--risks)", "", "## Plan & **risks**", "", "## Plan & risks", "", "## Шаг 1: план"].join("\n"));
 
-		const stored = readFileSync(saveSharedArtifact("/my/project", md, []).storedPath, "utf8");
+		const stored = readFileSync(saveSharedArtifact({ path: "/my/project" }, md, []).storedPath, "utf8");
 
 		expect(stored).toContain('<a href="#plan--risks">Jump</a>');
 		expect(stored).toContain('<h2 id="plan--risks">Plan &amp; <strong>risks</strong></h2>');
@@ -336,7 +336,7 @@ describe("saveSharedArtifact", () => {
 	it("keeps a plain-text file verbatim and escaped, titled by --title", () => {
 		const txt = join(SRC_DIR, "notes.txt");
 		writeFileSync(txt, "Line 1\n  indented <b>not bold</b> & more\n");
-		const saved = saveSharedArtifact("/my/project", txt, [], "Night notes");
+		const saved = saveSharedArtifact({ path: "/my/project" }, txt, [], "Night notes");
 		const stored = readFileSync(saved.storedPath, "utf8");
 		expect(saved.title).toBe("Night notes");
 		expect(saved.name).toBe("notes.html");
@@ -351,8 +351,8 @@ describe("saveSharedArtifact", () => {
 		writeFileSync(md, "# Hi");
 		writeFileSync(image, "PNGDATA");
 		writeFileSync(pdf, "%PDF");
-		expect(() => saveSharedArtifact("/my/project", md, [image])).toThrow(/takes no --assets/);
-		expect(() => saveSharedArtifact("/my/project", pdf, [])).toThrow(/\.html, \.md or \.txt/);
+		expect(() => saveSharedArtifact({ path: "/my/project" }, md, [image])).toThrow(/takes no --assets/);
+		expect(() => saveSharedArtifact({ path: "/my/project" }, pdf, [])).toThrow(/\.html, \.md or \.txt/);
 	});
 
 	it("rejects assets outside the HTML directory instead of creating a broken bundle", () => {
@@ -362,7 +362,7 @@ describe("saveSharedArtifact", () => {
 		const image = join(SRC_DIR, "outside.png");
 		writeFileSync(html, '<!doctype html><img src="../outside.png">');
 		writeFileSync(image, "PNGDATA");
-		expect(() => saveSharedArtifact("/my/project", html, [image])).toThrow(/inside the HTML directory/);
+		expect(() => saveSharedArtifact({ path: "/my/project" }, html, [image])).toThrow(/inside the HTML directory/);
 	});
 });
 
@@ -380,10 +380,32 @@ describe("stored artifact read boundary", () => {
 	it("returns the stored HTML path for the OS browser, and refuses a vanished file", () => {
 		const html = join(SRC_DIR, "browser.html");
 		writeFileSync(html, "<!doctype html><html><body>Hi</body></html>", "utf8");
-		const saved = saveSharedArtifact("/tmp/proj", html, []);
+		const saved = saveSharedArtifact({ path: "/tmp/proj" }, html, []);
 		expect(sharedArtifactHtmlPath(saved)).toBe(saved.storedPath);
 		rmSync(saved.storedPath, { force: true });
 		expect(() => sharedArtifactHtmlPath(saved)).toThrow(SharedArtifactError);
+	});
+});
+
+describe("in-project artifact root", () => {
+	it("stores under <project>/.dev3/worktrees/shared-artifacts and its validators accept both roots", () => {
+		const projectDir = join(SRC_DIR, "inproj");
+		mkdirSync(projectDir, { recursive: true });
+		const html = join(projectDir, "r.html");
+		writeFileSync(html, "<!doctype html><p>hi</p>");
+		const saved = saveSharedArtifact({ path: projectDir, storageRoot: "project" }, html, []);
+		expect(saved.storedPath.startsWith(`${projectDir}/.dev3/worktrees/shared-artifacts/`)).toBe(true);
+		expect(sharedArtifactHtmlPath(saved)).toBe(saved.storedPath);
+		expect(loadSharedArtifactContent(saved).html).toContain("hi");
+		expect(sharedArtifactLinkScope(saved).kind).toBe("dir");
+		const home = saveSharedArtifact({ path: projectDir }, html, []);
+		expect(home.storedPath.startsWith(`${TEST_HOME}/worktrees/`)).toBe(true);
+		expect(sharedArtifactHtmlPath(home)).toBe(home.storedPath);
+	});
+
+	it("still rejects a stored path outside both roots", () => {
+		const saved = saveSharedArtifact({ path: "/tmp/proj" }, (() => { const p = join(SRC_DIR, "x.html"); writeFileSync(p, "<p>x</p>"); return p; })(), []);
+		expect(() => sharedArtifactHtmlPath({ ...saved, storedPath: join(SRC_DIR, "worktrees", "shared-artifacts", "x.html") })).toThrow(SharedArtifactError);
 	});
 });
 
@@ -393,7 +415,7 @@ describe("sharedArtifactLinkScope", () => {
 		mkdirSync(join(dir, "img"), { recursive: true });
 		writeFileSync(join(dir, "index.html"), '<!doctype html><img src="img/chart.png">');
 		writeFileSync(join(dir, "img", "chart.png"), "PNGDATA");
-		return saveSharedArtifact("/tmp/proj", join(dir, "index.html"), [join(dir, "img", "chart.png")]);
+		return saveSharedArtifact({ path: "/tmp/proj" }, join(dir, "index.html"), [join(dir, "img", "chart.png")]);
 	}
 
 	it("covers the stored folder, so the page's relative asset references resolve", () => {
@@ -476,7 +498,7 @@ describe("bundled video assets", () => {
 
 	it("stores real MP4/WebM clips byte-exact, with their own MIME types and a nested name", () => {
 		const { html, mp4, webm, poster } = clipDir("video-store");
-		const saved = saveSharedArtifact("/my/project", html, [mp4, webm, poster], "Video report");
+		const saved = saveSharedArtifact({ path: "/my/project" }, html, [mp4, webm, poster], "Video report");
 
 		expect(saved.assets.map((asset) => [asset.name, asset.mime])).toEqual([
 			["clips and posters/tour take 1.mp4", "video/mp4"],
@@ -490,7 +512,7 @@ describe("bundled video assets", () => {
 
 	it("hands clips to the viewer as playable data URLs and keeps them in the ZIP", () => {
 		const { html, mp4, webm, poster } = clipDir("video-load");
-		const saved = saveSharedArtifact("/my/project", html, [mp4, webm, poster], "Video report");
+		const saved = saveSharedArtifact({ path: "/my/project" }, html, [mp4, webm, poster], "Video report");
 		const content = loadSharedArtifactContent(saved);
 
 		const clip = content.assets.find((asset) => asset.name.endsWith(".mp4"))!;
@@ -514,8 +536,8 @@ describe("bundled video assets", () => {
 
 		const huge = join(root, "huge.mp4");
 		writeFileSync(huge, Buffer.alloc(MAX_SHARED_ARTIFACT_MEDIA_BYTES + 1));
-		expect(() => saveSharedArtifact("/my/project", html, [huge])).toThrow(/huge\.mp4 is 16 MB \(max 16 MB per clip\)/);
-		expect(() => saveSharedArtifact("/my/project", html, [huge])).toThrow(/re-encode it at a lower bitrate/);
+		expect(() => saveSharedArtifact({ path: "/my/project" }, html, [huge])).toThrow(/huge\.mp4 is 16 MB \(max 16 MB per clip\)/);
+		expect(() => saveSharedArtifact({ path: "/my/project" }, html, [huge])).toThrow(/re-encode it at a lower bitrate/);
 
 		// A clip stays under the per-file cap while the set blows the combined one.
 		const each = Buffer.alloc(MAX_SHARED_ARTIFACT_MEDIA_BYTES - 1);
@@ -524,7 +546,7 @@ describe("bundled video assets", () => {
 			writeFileSync(path, each);
 			return path;
 		});
-		expect(() => saveSharedArtifact("/my/project", html, paths)).toThrow(/max 48 MB combined/);
+		expect(() => saveSharedArtifact({ path: "/my/project" }, html, paths)).toThrow(/max 48 MB combined/);
 	});
 
 	it("rejects a container the viewer cannot play instead of storing it", () => {
@@ -534,7 +556,7 @@ describe("bundled video assets", () => {
 		const mov = join(root, "clip.mov");
 		writeFileSync(html, "<!doctype html>");
 		writeFileSync(mov, TINY_MP4);
-		expect(() => saveSharedArtifact("/my/project", html, [mov])).toThrow(/Unsupported artifact asset type "mov"/);
+		expect(() => saveSharedArtifact({ path: "/my/project" }, html, [mov])).toThrow(/Unsupported artifact asset type "mov"/);
 	});
 });
 
@@ -565,7 +587,7 @@ describe("bundled audio assets", () => {
 		writeFileSync(wav, TINY_WAV);
 		writeFileSync(m4a, "M4A");
 		writeFileSync(ogg, "OGG");
-		const saved = saveSharedArtifact("/my/project", html, [mp3, wav, m4a, ogg], "Audio report");
+		const saved = saveSharedArtifact({ path: "/my/project" }, html, [mp3, wav, m4a, ogg], "Audio report");
 
 		expect(saved.assets.map((asset) => [asset.name, asset.mime])).toEqual([
 			["audio/A.mp3", "audio/mpeg"],
@@ -586,7 +608,7 @@ describe("bundled audio assets", () => {
 		const { root, html } = audioDir("audio-limits", "");
 		const huge = join(root, "audio", "long.wav");
 		writeFileSync(huge, Buffer.alloc(MAX_SHARED_ARTIFACT_MEDIA_BYTES + 1));
-		expect(() => saveSharedArtifact("/my/project", html, [huge])).toThrow(/long\.wav is 16 MB \(max 16 MB per clip\)/);
+		expect(() => saveSharedArtifact({ path: "/my/project" }, html, [huge])).toThrow(/long\.wav is 16 MB \(max 16 MB per clip\)/);
 
 		const each = Buffer.alloc(MAX_SHARED_ARTIFACT_MEDIA_BYTES - 1);
 		const paths = ["a.mp3", "b.mp3", "c.wav", "d.webm"].map((name) => {
@@ -594,19 +616,19 @@ describe("bundled audio assets", () => {
 			writeFileSync(path, each);
 			return path;
 		});
-		expect(() => saveSharedArtifact("/my/project", html, paths)).toThrow(/video and audio total .* \(max 48 MB combined\)/);
+		expect(() => saveSharedArtifact({ path: "/my/project" }, html, paths)).toThrow(/video and audio total .* \(max 48 MB combined\)/);
 	});
 
 	it("refuses a report whose player points at a track that was not bundled, and stores nothing", () => {
 		const { html } = audioDir("audio-missing", PLAYER);
-		expect(() => saveSharedArtifact("/my/project", html, [])).toThrow(/audio\/A\.mp3: not bundled — .*publish the directory, or pass it after --assets/);
+		expect(() => saveSharedArtifact({ path: "/my/project" }, html, [])).toThrow(/audio\/A\.mp3: not bundled — .*publish the directory, or pass it after --assets/);
 		expect(existsSync(`${TEST_HOME}/worktrees`)).toBe(false);
 	});
 
 	it("names the conversion for an unsupported format instead of publishing a dead player", () => {
 		const { root, html } = audioDir("audio-flac", '<audio controls src="audio/take.flac"></audio>');
 		writeFileSync(join(root, "audio", "take.flac"), "FLAC");
-		expect(() => saveSharedArtifact("/my/project", html, [])).toThrow(/\.flac is not a supported artifact media type .* ffmpeg -i "audio\/take\.flac" "audio\/take\.mp3"/);
+		expect(() => saveSharedArtifact({ path: "/my/project" }, html, [])).toThrow(/\.flac is not a supported artifact media type .* ffmpeg -i "audio\/take\.flac" "audio\/take\.mp3"/);
 	});
 
 	it("leaves data:, http(s) and blob media alone and does not check Markdown", () => {
@@ -617,11 +639,11 @@ describe("bundled audio assets", () => {
 			"<script>const a = '<audio src=\"audio/built-at-runtime.mp3\">';</script>",
 			'<!-- <audio src="audio/commented.mp3"> -->',
 		].join(""));
-		expect(() => saveSharedArtifact("/my/project", html, [])).not.toThrow();
+		expect(() => saveSharedArtifact({ path: "/my/project" }, html, [])).not.toThrow();
 
 		const md = join(SRC_DIR, "audio-remote", "notes.md");
 		writeFileSync(md, '<audio src="audio/A.mp3"></audio>');
-		expect(() => saveSharedArtifact("/my/project", md, [])).not.toThrow();
+		expect(() => saveSharedArtifact({ path: "/my/project" }, md, [])).not.toThrow();
 	});
 });
 
@@ -650,7 +672,7 @@ describe("artifact download format", () => {
 	it("downloads an unmodified template report as one HTML with its shell folded in", () => {
 		const files = Object.fromEntries(TEMPLATE_FILES.map((name) => [name, readFileSync(join(TEMPLATE_DIR, name))]));
 		const { html, assets } = reportDir("template", files);
-		const saved = saveSharedArtifact("/my/project", html, assets, "Weekly report");
+		const saved = saveSharedArtifact({ path: "/my/project" }, html, assets, "Weekly report");
 
 		// The template's own files are assets, so a ZIP is still kept on disk...
 		expect(saved.bundlePath).toBeTruthy();
@@ -678,7 +700,7 @@ describe("artifact download format", () => {
 			"img/a b.png": "AB",
 			"js/run.js": "window.ran = true;",
 		});
-		const { mime, text } = download(saveSharedArtifact("/my/project", html, assets, "Inlined"));
+		const { mime, text } = download(saveSharedArtifact({ path: "/my/project" }, html, assets, "Inlined"));
 		expect(mime).toBe("text/html");
 		expect(text).toContain(`@import "data:text/css;charset=utf-8;base64,${Buffer.from(":root { --accent: blue; }").toString("base64")}"`);
 		expect(text).toContain(`url("data:image/png;base64,${Buffer.from("BG").toString("base64")}")`);
@@ -691,7 +713,7 @@ describe("artifact download format", () => {
 			"index.html": '<!doctype html><img src="chart.png"><a href="chart.png" download>Get the chart</a>',
 			"chart.png": "PNG",
 		});
-		const saved = saveSharedArtifact("/my/project", html, assets, "Linked");
+		const saved = saveSharedArtifact({ path: "/my/project" }, html, assets, "Linked");
 		expect(download(saved).mime).toBe("application/zip");
 		expect(download(saved).fileName).toBe("Linked.zip");
 	});
@@ -702,7 +724,7 @@ describe("artifact download format", () => {
 			"report.js": 'document.getElementById("g").innerHTML = "<img src=shots/" + 1 + ".png>";',
 			"shots/1.png": "PNG",
 		});
-		const saved = saveSharedArtifact("/my/project", html, assets, "Runtime");
+		const saved = saveSharedArtifact({ path: "/my/project" }, html, assets, "Runtime");
 		expect(sharedArtifactDownloadKind(saved)).toBe("zip");
 		expect(download(saved).mime).toBe("application/zip");
 	});
@@ -712,7 +734,7 @@ describe("artifact download format", () => {
 			"index.html": '<!doctype html><video src="clip.mp4" controls></video>',
 			"clip.mp4": TINY_MP4,
 		});
-		const saved = saveSharedArtifact("/my/project", html, assets, "Clip");
+		const saved = saveSharedArtifact({ path: "/my/project" }, html, assets, "Clip");
 		expect(sharedArtifactDownloadKind(saved)).toBe("zip");
 		const entries = unzipEntries(Buffer.from(loadSharedArtifactDownload(saved).base64, "base64"));
 		expect(entries.get("clip.mp4")!.equals(TINY_MP4)).toBe(true);
@@ -725,7 +747,7 @@ describe("artifact download format", () => {
 			"index.html": '<!doctype html><img src="pic.png"><img src="../../../../outside-secret.png">',
 			"pic.png": "PNG",
 		});
-		const { mime, text } = download(saveSharedArtifact("/my/project", html, assets, "Escape"));
+		const { mime, text } = download(saveSharedArtifact({ path: "/my/project" }, html, assets, "Escape"));
 		expect(mime).toBe("text/html");
 		expect(text).not.toContain(Buffer.from("SECRET").toString("base64"));
 	});

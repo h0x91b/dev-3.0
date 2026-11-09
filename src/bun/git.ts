@@ -17,6 +17,8 @@ import { DEV3_HOME } from "./paths";
 import { listDiffSnapshots, readDiffSnapshot, writeDiffSnapshot } from "./diff-snapshots";
 import { projectStorageKey } from "../shared/project-storage-key";
 import { startBranchMissingMessage } from "../shared/preparation-failure";
+import { allProjectWorktreesRoots, taskDirFor } from "../shared/project-storage";
+import { ensureInProjectStorageDirs } from "./in-project-storage";
 import * as github from "./github";
 
 const log = createLogger("git");
@@ -946,8 +948,9 @@ export function projectSlug(projectPath: string): string {
 	return projectStorageKey(projectPath);
 }
 
+/** `…/<shortId>` holding `worktree/` and `logs/`, in home or the project folder — see `taskDirFor`. */
 export function taskDir(project: Project, task: Task): string {
-	return `${DEV3_HOME}/worktrees/${projectSlug(project.path)}/${shortId(task.id)}`;
+	return taskDirFor(DEV3_HOME, project, task);
 }
 
 /**
@@ -1014,9 +1017,10 @@ function canonicalWorktreePath(candidate: string): string {
 }
 
 function isManagedTaskWorktreePath(project: Project, candidate: string): boolean {
-	const root = canonicalWorktreePath(`${DEV3_HOME}/worktrees/${projectSlug(project.path)}`);
-	const relative = relativePath(root, canonicalWorktreePath(candidate));
-	return /^[0-9a-f]{8}[\\/]worktree$/i.test(relative);
+	const target = canonicalWorktreePath(candidate);
+	return allProjectWorktreesRoots(DEV3_HOME, project.path).some((root) =>
+		/^[0-9a-f]{8}[\\/]worktree$/i.test(relativePath(canonicalWorktreePath(root), target)),
+	);
 }
 
 export async function recoverStaleInitializingWorktrees(
@@ -1367,6 +1371,7 @@ export async function createWorktree(
 	const wtPath = worktreePath(project, task);
 	const tDir = taskDir(project, task);
 
+	if (task.taskDirLocation === "project") await ensureInProjectStorageDirs(project.path);
 	// Create the task container directory (with logs/ subfolder). `mkdir -p` is
 	// not a Windows binary, and this runs before any worktree exists.
 	mkdirSync(`${tDir}/logs`, { recursive: true });

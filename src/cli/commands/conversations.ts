@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { formatTaskRef } from "../../shared/task-refs";
 import type { Task, TaskHistoryEntry, TaskStatus } from "../../shared/types";
 import { ALL_STATUSES } from "../../shared/types";
-import { projectSlug } from "../../shared/conversation-search-core";
+import { projectDataDir } from "../../shared/project-storage";
 import { toPosixSeparators } from "../../shared/project-storage-key";
 import { searchConversations, type EngineTask } from "../../bun/conversation-search";
 import {
@@ -62,8 +62,13 @@ export function resolveHomes(cwd: string = process.cwd()): { home: string; dev3H
 	return { home: homeFromWorktree || resolveUserHome(), dev3Home: info?.realDev3Home ?? resolveDev3Home() };
 }
 
-function loadProjectTasks(dev3Home: string, slug: string): Task[] {
-	const tasksFile = `${dev3Home}/data/${slug}/tasks.json`;
+/** The task dir a detected worktree cwd belongs to, in either layout. */
+function taskContainerOf(info: NonNullable<ReturnType<typeof detectFromWorktreePath>>): string {
+	return info.inProjectTaskDir ?? taskContainerDir(info.realDev3Home, info.projectSlug, info.taskShortId);
+}
+
+function loadProjectTasks(dataDir: string): Task[] {
+	const tasksFile = `${dataDir}/tasks.json`;
 	if (!existsSync(tasksFile)) return [];
 	try {
 		return JSON.parse(readFileSync(tasksFile, "utf-8")) as Task[];
@@ -78,9 +83,9 @@ function loadProjectTasks(dev3Home: string, slug: string): Task[] {
  * blob directory once keeps the search's history signal intact; a missing or
  * unparseable sidecar just contributes nothing.
  */
-export function loadArchivedHistory(dev3Home: string, slug: string): Map<string, TaskHistoryEntry[]> {
+export function loadArchivedHistory(dataDir: string): Map<string, TaskHistoryEntry[]> {
 	const byTask = new Map<string, TaskHistoryEntry[]>();
-	const dir = `${dev3Home}/data/${slug}/task-blobs`;
+	const dir = `${dataDir}/task-blobs`;
 	if (!existsSync(dir)) return byTask;
 	for (const entry of readdirSync(dir)) {
 		if (!entry.endsWith(".json")) continue;
@@ -112,8 +117,8 @@ async function searchCmd(args: ParsedArgs, context: CliContext | null): Promise<
 	}
 
 	const { home, dev3Home } = resolveHomes();
-	const slug = projectSlug(project.path);
-	const tasks = loadProjectTasks(dev3Home, slug);
+	const dataDir = projectDataDir(dev3Home, project);
+	const tasks = loadProjectTasks(dataDir);
 
 	const currentTaskId = (args.flags.task || args.flags["task-id"] || context?.taskId) ?? null;
 	const currentTask = currentTaskId ? tasks.find((t) => t.id === currentTaskId || t.id.startsWith(currentTaskId)) : null;
@@ -124,7 +129,7 @@ async function searchCmd(args: ParsedArgs, context: CliContext | null): Promise<
 	const allStatuses = args.flags["all-statuses"] === "true";
 	const statuses: TaskStatus[] | undefined = allStatuses ? [...ALL_STATUSES] : undefined;
 
-	const archivedHistory = loadArchivedHistory(dev3Home, slug);
+	const archivedHistory = loadArchivedHistory(dataDir);
 
 	const engineTasks: EngineTask[] = tasks.map((t) => ({
 		id: t.id,
@@ -139,12 +144,14 @@ async function searchCmd(args: ParsedArgs, context: CliContext | null): Promise<
 		status: t.status,
 		groupId: t.groupId,
 		agentId: t.agentId,
+		taskDirLocation: t.taskDirLocation,
+		worktreePath: t.worktreePath,
 	}));
 
 	const results = searchConversations({
 		query,
 		tasks: engineTasks,
-		projectSlug: slug,
+		project,
 		currentTaskId: resolvedCurrentId,
 		currentGroupId,
 		statuses,
@@ -203,7 +210,7 @@ async function dumpCmd(args: ParsedArgs, _context: CliContext | null): Promise<v
 	// Build the worktree path from the detected parts, not from cwd: transcript
 	// stores are keyed on the worktree root, so running from a subdirectory would
 	// otherwise find nothing.
-	const taskContainer = taskContainerDir(info.realDev3Home, info.projectSlug, info.taskShortId);
+	const taskContainer = taskContainerOf(info);
 	const worktreePath = `${taskContainer}/worktree`;
 	const includeRaw = args.flags.raw === "true";
 	const parsed = parseWorktreeConversations(worktreePath, { home, includeRaw });
@@ -266,7 +273,7 @@ async function handoffCmd(args: ParsedArgs): Promise<void> {
 	}
 
 	const { home } = resolveHomes();
-	const taskContainer = taskContainerDir(info.realDev3Home, info.projectSlug, info.taskShortId);
+	const taskContainer = taskContainerOf(info);
 	const parsed = parseWorktreeConversations(`${taskContainer}/worktree`, { home });
 	if (parsed.length === 0) {
 		exitError("No parseable transcripts found for this worktree.");
@@ -322,7 +329,7 @@ async function importCmd(args: ParsedArgs, context: CliContext | null, socketPat
 	const requested = (args.flags.sessions ?? "").split(",").map((id) => id.trim()).filter(Boolean);
 
 	const { home, dev3Home } = resolveHomes();
-	const tasks = loadProjectTasks(dev3Home, projectSlug(project.path));
+	const tasks = loadProjectTasks(projectDataDir(dev3Home, project));
 	const found = scanImportableConversations({
 		projectPath: project.path,
 		importedSessionIds: tasks
@@ -440,7 +447,7 @@ export async function handleImportCurrentSession(
 	const { sessionId, project } = target;
 
 	const { home, dev3Home } = resolveHomes();
-	const tasks = loadProjectTasks(dev3Home, projectSlug(project.path));
+	const tasks = loadProjectTasks(projectDataDir(dev3Home, project));
 	const found = scanImportableConversations({
 		projectPath: project.path,
 		importedSessionIds: tasks

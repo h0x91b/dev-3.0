@@ -25,7 +25,8 @@ import { artifactGroupKey } from "../shared/artifact-versions";
 import { DEV3_HOME } from "./paths";
 import { createZip } from "./zip";
 import { inlineHtmlSource } from "../shared/html-inline";
-import { projectSlug } from "./git";
+import { projectWorktreesRoot, storesInProject, type StorageProject } from "../shared/project-storage";
+import { toPosixSeparators } from "../shared/project-storage-key";
 import { TEXT_ARTIFACT_EXTS, textArtifactHtml } from "./text-artifact";
 import type { FileLinkScope } from "./file-links";
 import { FILE_LINK_PAGE_EXTS, fileLinkExt } from "../shared/file-link-types";
@@ -68,8 +69,8 @@ const ARTIFACT_THEME_CONTRACT = `<style data-dev3-artifact-shell>
 /** Validation failure surfaced verbatim by the CLI socket handler. */
 export class SharedArtifactError extends Error {}
 
-function artifactRoot(projectPath: string): string {
-	return `${DEV3_HOME}/worktrees/${projectSlug(projectPath)}/shared-artifacts`;
+function artifactRoot(project: StorageProject): string {
+	return `${projectWorktreesRoot(DEV3_HOME, project.path, storesInProject(project) ? "project" : undefined)}/shared-artifacts`;
 }
 
 function safeBasename(path: string): string {
@@ -119,7 +120,7 @@ export function injectArtifactThemeContract(source: string): string {
  * grouping happens in the task record, never by reshaping the directory.
  */
 export function saveSharedArtifact(
-	projectPath: string,
+	project: StorageProject,
 	htmlPath: string,
 	assetPaths: string[],
 	title?: string,
@@ -183,7 +184,7 @@ export function saveSharedArtifact(
 	}
 
 	const id = crypto.randomUUID();
-	const dir = `${artifactRoot(projectPath)}/${id}`;
+	const dir = `${artifactRoot(project)}/${id}`;
 	const sourceName = safeBasename(htmlPath);
 	const htmlName = isText ? `${sourceName.slice(0, -sourceExt.length) || "artifact"}.html` : sourceName;
 	const storedPath = `${dir}/${htmlName}`;
@@ -236,10 +237,18 @@ export function saveSharedArtifact(
 	}
 }
 
+const IN_PROJECT_ARTIFACT_RE = /\/\.dev3\/worktrees\/shared-artifacts\/[^/]+(?:\/|$)/;
+
+/** A stored path may sit under the home root or a project's in-project root, whichever created it. */
+function inProjectArtifactPath(path: string): boolean {
+	return IN_PROJECT_ARTIFACT_RE.test(toPosixSeparators(path));
+}
+
 function assertStoredArtifactRecord(artifact: SharedArtifact): string {
 	const worktreesRoot = `${resolvePath(DEV3_HOME, "worktrees")}${sep}`;
 	const storedPath = resolvePath(artifact.storedPath);
-	if (!isAbsolute(artifact.storedPath) || !storedPath.startsWith(worktreesRoot) || !storedPath.includes(`${sep}shared-artifacts${sep}`)) {
+	const homeStored = storedPath.startsWith(worktreesRoot) && storedPath.includes(`${sep}shared-artifacts${sep}`);
+	if (!isAbsolute(artifact.storedPath) || !(homeStored || inProjectArtifactPath(storedPath))) {
 		throw new SharedArtifactError("Invalid stored artifact path");
 	}
 	const dir = dirname(storedPath);
@@ -272,6 +281,8 @@ const ARTIFACT_DIR_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
 export function sharedArtifactLinkScope(artifact: SharedArtifact): FileLinkScope {
 	// The record comes from the renderer, so only a real `<slug>/shared-artifacts/<uuid>/` folder of dev3's own qualifies.
 	const page = realpathSync.native(resolvePath(sharedArtifactHtmlPath(artifact)));
+	const inProjectFolder = IN_PROJECT_ARTIFACT_RE.test(toPosixSeparators(dirname(page)) + "/") && ARTIFACT_DIR_ID.test(basename(dirname(page)));
+	if (inProjectFolder && FILE_LINK_PAGE_EXTS.has(fileLinkExt(page))) return { kind: "dir", root: dirname(page), entry: basename(page) };
 	const parts = relative(realpathSync.native(resolvePath(DEV3_HOME, "worktrees")), dirname(page)).split(sep);
 	const ownFolder = parts.length === 3 && !parts[0].startsWith(".") && !isAbsolute(parts[0]) && parts[1] === "shared-artifacts" && ARTIFACT_DIR_ID.test(parts[2]);
 	if (!ownFolder || !FILE_LINK_PAGE_EXTS.has(fileLinkExt(page))) throw new SharedArtifactError("Invalid stored artifact path");

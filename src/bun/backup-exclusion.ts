@@ -20,45 +20,44 @@ const log = createLogger("backup-exclusion");
 /** The directory we exclude from backups. */
 export const WORKTREES_ROOT = `${DEV3_HOME}/worktrees`;
 
-/**
- * Cleared once the exclusion has been applied (or definitively skipped) in this
- * process, so we only spawn `tmutil` once per app session.
- */
-let ensured = false;
+/** Roots already excluded in this process, so `tmutil` runs once per root per app session. */
+const ensured = new Set<string>();
 
 /** Reset the in-memory guard. Test-only. */
 export function _resetBackupExclusionGuard(): void {
-	ensured = false;
+	ensured.clear();
+}
+
+/** Ensure the home worktrees root exists and is excluded from OS backups. */
+export async function ensureWorktreesBackupExclusion(): Promise<void> {
+	await excludeFromBackups(WORKTREES_ROOT);
 }
 
 /**
- * Ensure the worktrees root exists and is excluded from OS backups.
- *
- * Cheap and idempotent: returns immediately after the first successful run in a
- * process. Never throws — backup exclusion is best-effort and must not block
- * worktree creation.
+ * Ensure `root` exists and is excluded from Time Machine. Cheap and idempotent;
+ * never throws — backup exclusion is best-effort and must not block worktree creation.
  */
-export async function ensureWorktreesBackupExclusion(): Promise<void> {
-	if (ensured) return;
+export async function excludeFromBackups(root: string): Promise<void> {
+	if (ensured.has(root)) return;
 
 	// Time Machine is macOS-only; nothing portable to do elsewhere.
 	if (process.platform !== "darwin") {
-		ensured = true;
+		ensured.add(root);
 		return;
 	}
 
 	try {
 		// Ensure the root exists so tmutil has a target.
-		await spawn(["mkdir", "-p", WORKTREES_ROOT]).exited;
+		await spawn(["mkdir", "-p", root]).exited;
 
-		const proc = spawn(["tmutil", "addexclusion", WORKTREES_ROOT]);
+		const proc = spawn(["tmutil", "addexclusion", root]);
 		const code = await proc.exited;
 		if (code === 0) {
-			log.info("Excluded worktrees root from Time Machine", { path: WORKTREES_ROOT });
-			ensured = true;
+			log.info("Excluded worktrees root from Time Machine", { path: root });
+			ensured.add(root);
 		} else {
-			// Leave `ensured` false so a later worktree creation retries.
-			log.warn("tmutil addexclusion failed", { path: WORKTREES_ROOT, code });
+			// Leave it unmarked so a later worktree creation retries.
+			log.warn("tmutil addexclusion failed", { path: root, code });
 		}
 	} catch (err) {
 		log.warn("Failed to apply backup exclusion", { error: String(err) });
