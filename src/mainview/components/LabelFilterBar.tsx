@@ -29,6 +29,8 @@ interface LabelFilterBarProps {
 	leading?: ReactNode;
 	/** Board-host slot at the row's right end (the active view's options). */
 	trailing?: ReactNode;
+	/** Side padding of the wide row; `px-6` when absent. Lets a capped-width view line the bar up with its content. */
+	gutterClassName?: string;
 }
 
 /**
@@ -133,6 +135,7 @@ function LabelFilterBar({
 	disableGlobalFindShortcut = false,
 	leading,
 	trailing,
+	gutterClassName,
 }: LabelFilterBarProps) {
 	const t = useT();
 	const inputRef = useRef<HTMLInputElement>(null);
@@ -226,7 +229,7 @@ function LabelFilterBar({
 	}
 
 	return (
-		<div ref={toastClearanceRef} className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-6 pt-2 pb-1.5 border-b border-edge/50" data-help-id="board.filter-bar">
+		<div ref={toastClearanceRef} className={`flex flex-wrap items-center gap-x-2 gap-y-1.5 pt-2 pb-1.5 border-b border-edge/50 ${gutterClassName ?? "px-6"}`} data-help-id="board.filter-bar">
 			{leading}
 			{/* Search + funnel: the funnel sits snug against the search's right edge. */}
 			<div className="flex items-center gap-1 flex-shrink-0">
@@ -296,7 +299,7 @@ function LabelFilterBar({
 					</span>
 					<div ref={chipRowRef} className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
 						{shownLabels.map((label) => (
-							<span key={label.id} data-label-chip={label.id} className="flex-shrink-0">
+							<span key={label.id} data-label-chip={label.id} className="flex flex-shrink-0">
 								<LabelChip
 									label={label}
 									size="sm"
