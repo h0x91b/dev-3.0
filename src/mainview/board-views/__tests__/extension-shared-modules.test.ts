@@ -24,7 +24,8 @@ function shimExports(file: string): string[] {
 // that re-exports the host's copy. A dependency bump that adds or drops an export must regenerate it.
 describe("extension shared-module shims", () => {
 	it.each(SHIMS)("%s re-exports exactly the host module's named exports", (specifier, file, mod) => {
-		const expected = Object.keys(mod).filter((key) => key !== "default").sort();
+		// Newer Node adds a synthetic "module.exports" key to a CommonJS namespace; it is no ESM export.
+		const expected = Object.keys(mod).filter((key) => key !== "default" && key !== "module.exports").sort();
 		expect(shimExports(file)).toEqual(expected);
 		expect(readFileSync(resolve(PUBLIC, file), "utf8")).toContain(`__dev3SharedModules["${specifier}"]`);
 	});
