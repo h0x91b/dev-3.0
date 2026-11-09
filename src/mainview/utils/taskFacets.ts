@@ -153,12 +153,12 @@ export interface FilterFunnelCandidates {
 
 /**
  * Build the funnel's grouped options from the visible task pool: values present
- * among the tasks, except STATUS, which lists every candidate. Empty groups dropped. PRIORITY leads (it is the most
- * important quick filter), then STATUS, TYPES, SPACES, LABELS, AGENTS, FLAGS.
- * TYPES appears only when some task is not standard — a lone "Standard" option
- * filters nothing. Candidate
- * vocabularies (priority, status) keep their given order; LABELS/AGENTS sort
- * alphabetically for stable display.
+ * among the tasks, except STATUS, which lists every candidate. Empty groups
+ * dropped. PRIORITY leads (it is the most important quick filter), then STATUS,
+ * TYPES, SPACES, LABELS, AGENTS, FLAGS. TYPES appears only when some task is not
+ * standard — a lone "Standard" option filters nothing. Candidate vocabularies
+ * (priority, status) keep their given order; LABELS/AGENTS sort alphabetically
+ * for stable display.
  */
 export function buildFilterGroups(
 	tasks: Task[],
