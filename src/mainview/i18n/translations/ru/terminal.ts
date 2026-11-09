@@ -37,6 +37,7 @@ const terminal = {
 	"terminal.wakeShell": "Разбудить с чистым шеллом",
 	"terminal.wakeShellDesc": "Чистый шелл поднимается мгновенно; продолжение перечитывает переписку агента.",
 	"terminal.resumeAccount": "Продолжить на",
+	"terminal.resumeAccountSubtitle": "Переносит Claude-панели этой задачи на выбранный аккаунт. Аккаунт по умолчанию не меняется.",
 	"terminal.resumeAccountCodexNote": "Панели Codex остаются на аккаунте, где началась их переписка.",
 	"terminal.setupFailedTitle": "Setup упал (код {code})",
 	"terminal.setupFailedDesc": "Скрипт настройки проекта не доработал, поэтому агент не был запущен. Его можно запустить всё равно — промпт задачи сохранён.",

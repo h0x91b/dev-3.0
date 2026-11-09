@@ -9,7 +9,7 @@ import { UNSOLICITED_DIALOG_QUIET_MS, useDialogKeyboardGuard } from "../utils/di
 import { useFocusTrap } from "../utils/useFocusTrap";
 import { useReducedMotion } from "../utils/useReducedMotion";
 import AgentConfigPicker from "./AgentConfigPicker";
-import ResumeAccountPicker, { savedResumeAccount } from "./ResumeAccountPicker";
+import ResumeAccountPicker, { isClaudePane, savedResumeAccount } from "./ResumeAccountPicker";
 import AgentPickerSkeleton from "./AgentPickerSkeleton";
 import MemoryPressureBanner from "./MemoryPressureBanner";
 import TaskDialogSubjectCard from "./TaskDialogSubjectCard";
@@ -315,7 +315,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 						</p>
 					) : request.resume ? (
 						<div className="space-y-2" data-testid="agent-launch-resume-panes">
-							<p className="text-fg-3 text-xs">{t("agentLaunch.resumeNote")}</p>
+							<p className="text-fg-3 text-xs">{t(request.resume.panes.some(isClaudePane) ? "agentLaunch.resumeNoteAccount" : "agentLaunch.resumeNote")}</p>
 							<ul className="space-y-1.5">
 								{request.resume.panes.map((pane, index) => {
 									const agent = agents.find((a) => a.id === pane.agentId);

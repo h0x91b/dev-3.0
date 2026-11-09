@@ -8,12 +8,12 @@ vi.mock("../rpc-handlers/tmux-pty", () => {
 	class ResumeUnavailableError extends Error {
 		constructor(readonly reason: string, message: string, readonly panes?: unknown[]) { super(message); }
 	}
-	return { ResumeUnavailableError, resumeTaskSession: vi.fn(), sessionStateOrLostCodexPane: vi.fn(), taskTerminalAlive: vi.fn() };
+	return { ResumeUnavailableError, assertResumeAccountUsable: vi.fn(), resumeTaskSession: vi.fn(), sessionStateOrLostCodexPane: vi.fn(), taskTerminalAlive: vi.fn() };
 });
 import { resumeCliAgent } from "../cli-agent-resume";
 import { getTask } from "../data";
 import { getPushMessage } from "../rpc-handlers/shared-pure";
-import { ResumeUnavailableError, resumeTaskSession, sessionStateOrLostCodexPane, taskTerminalAlive } from "../rpc-handlers/tmux-pty";
+import { assertResumeAccountUsable, ResumeUnavailableError, resumeTaskSession, sessionStateOrLostCodexPane, taskTerminalAlive } from "../rpc-handlers/tmux-pty";
 import { _resetAgentRequestsForTests, createAgentRequest, pendingAgentLaunchDialogs, resolveAgentRequest, setAgentRequestLaunchChoice, voidAgentRequest } from "../agent-requests";
 
 const project = { id: "project-1", name: "Fixture", path: "/repo" } as Project;
@@ -31,6 +31,7 @@ beforeEach(() => {
 	vi.mocked(getPushMessage).mockReturnValue(push);
 	vi.mocked(getTask).mockResolvedValue(task);
 	vi.mocked(taskTerminalAlive).mockResolvedValue(false);
+	vi.mocked(assertResumeAccountUsable).mockResolvedValue("/claude-config");
 	vi.mocked(sessionStateOrLostCodexPane).mockResolvedValue({ panes } as any);
 	vi.mocked(resumeTaskSession).mockResolvedValue({ kind: "resumed", url: "ws://x", result: resumed });
 });
@@ -199,6 +200,25 @@ describe("dev3 agent resume --account", () => {
 		setAgentRequestLaunchChoice(push.mock.calls[0][1].requestId, { variants: [], resumeAccountId: "acct-3" });
 		expect(pendingAgentLaunchDialogs()[0].resume?.accountId).toBe("acct-3");
 		await answer(false); await pending;
+	});
+
+	it("refuses an unusable account before asking anybody", async () => {
+		vi.mocked(assertResumeAccountUsable).mockRejectedValue(new ResumeUnavailableError("account-invalid", "Auto picks an account for a new conversation"));
+		const outcome = await resumeCliAgent({ project, task, requester, allowAgentLatest: false, accountId: "auto" });
+		expect(outcome).toMatchObject({ outcome: "unavailable", reason: "account-invalid" });
+		expect(push).not.toHaveBeenCalled();
+		expect(resumeTaskSession).not.toHaveBeenCalled();
+	});
+
+	it("checks the account picked in the dialog before resuming", async () => {
+		vi.mocked(assertResumeAccountUsable).mockImplementation(async (accountId) => {
+			if (accountId === "acct-gone") throw new ResumeUnavailableError("account-invalid", "Unknown Claude account: acct-gone");
+			return "/dir";
+		});
+		const pending = resumeCliAgent({ project, task, requester, allowAgentLatest: false, accountId: "acct-2" });
+		await answer(true, { variants: [], resumeAccountId: "acct-gone" });
+		await expect(pending).resolves.toMatchObject({ outcome: "unavailable", reason: "account-invalid" });
+		expect(resumeTaskSession).not.toHaveBeenCalled();
 	});
 
 	it("does not join a retry that asks for a different account", async () => {

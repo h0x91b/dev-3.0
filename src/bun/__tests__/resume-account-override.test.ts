@@ -129,6 +129,21 @@ describe("resume with an account override", () => {
 		expect(launchTaskPty).not.toHaveBeenCalled();
 	});
 
+	it("keeps the account's folder out of the refusal, which reaches toasts and other agents", async () => {
+		arrange([claudePane]);
+		vi.mocked(claudeConfigDirHasSession).mockReturnValue(false);
+		const err = await resumeTaskSession("t1", { accountId: "acct-split" }).catch((e: Error) => e);
+		expect((err as Error).message).not.toContain("/accounts/acct-split");
+	});
+
+	it("treats a re-pick of the pane's own account as no switch", async () => {
+		const task = arrange([{ ...claudePane, sessionId: null }]);
+		vi.mocked(resolveResumableSessionIds).mockReturnValueOnce([{ sessionId: null, substituted: false, startFresh: false, verified: false }]);
+		await resumeTaskSession("t1", { accountId: "acct-old" });
+		expect(launchedAccount()).toBe("acct-old");
+		expect(data.updateTask).not.toHaveBeenCalledWith(project, task.id, { accountId: "acct-old" });
+	});
+
 	it.each([
 		["Auto", "auto", [claudePane]],
 		["a Codex-only task", "acct-new", [codexPane]],

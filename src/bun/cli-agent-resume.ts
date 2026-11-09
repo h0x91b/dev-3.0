@@ -2,7 +2,7 @@ import type { Project, Task } from "../shared/types";
 import { ACTIVE_STATUSES } from "../shared/types";
 import type { CliResumeOutcome, ResumeDialogPane, ResumeUnavailableReason, ResumePaneReport } from "../shared/agent-resume";
 import { askSessionApproval, type LaunchRequester, launchRequesterKey, perTaskJoiner, sameRunAfterApproval } from "./cli-session-approval";
-import { ResumeUnavailableError, resumeTaskSession, sessionStateOrLostCodexPane, taskTerminalAlive } from "./rpc-handlers/tmux-pty";
+import { assertResumeAccountUsable, ResumeUnavailableError, resumeTaskSession, sessionStateOrLostCodexPane, taskTerminalAlive } from "./rpc-handlers/tmux-pty";
 import { taskTerminalBackendIdentity } from "./task-terminal-backend";
 import { assertTaskWorkspacePresent } from "./task-workspace-guard";
 
@@ -22,7 +22,7 @@ function unavailable(task: Task, reason: ResumeUnavailableReason, message: strin
 }
 
 /** Everything that refuses without asking anybody: a resume the user would approve only to watch fail. */
-async function preflight(project: Project, task: Task): Promise<{ refused: CliResumeOutcome } | { panes: ResumeDialogPane[] }> {
+async function preflight(project: Project, task: Task, accountId: string | null | undefined): Promise<{ refused: CliResumeOutcome } | { panes: ResumeDialogPane[] }> {
 	if (task.draft) return { refused: unavailable(task, "draft", "The task is a draft; it has never run, so there is no session to resume.") };
 	if (!ACTIVE_STATUSES.includes(task.status)) {
 		return { refused: unavailable(task, "not-active", `The task is ${task.status}; only an active task has a session to resume. Starting it is \`dev3 task move\`.`) };
@@ -35,6 +35,14 @@ async function preflight(project: Project, task: Task): Promise<{ refused: CliRe
 	const saved = await sessionStateOrLostCodexPane(project, task);
 	if (!saved?.panes.length) {
 		return { refused: unavailable(task, "no-saved-session", "The task has no saved agent session. Start Fresh in the app or `dev3 task move` are the ways to begin a new one.") };
+	}
+	if (accountId !== undefined) {
+		try {
+			await assertResumeAccountUsable(accountId, saved.panes, taskTerminalBackendIdentity(task) !== "tmux");
+		} catch (err) {
+			if (err instanceof ResumeUnavailableError) return { refused: unavailable(task, err.reason, err.message) };
+			throw err;
+		}
 	}
 	// The main pane of an old snapshot launches on the task's account, so the dialog shows that one.
 	return { panes: saved.panes.map(({ agentId, configId, sessionId, accountId, agentCmd, agentFamily }, i) => ({
@@ -54,17 +62,17 @@ function askUser(project: Project, task: Task, requester: LaunchRequester, panes
 
 async function performResume(opts: ResumeOptions): Promise<CliResumeOutcome> {
 	const { project, task, requester } = opts;
-	const checked = await preflight(project, task);
+	let accountId = opts.accountId;
+	const checked = await preflight(project, task, accountId);
 	if ("refused" in checked) return checked.refused;
 	let current = task;
-	let accountId = opts.accountId;
 	if (requester) {
 		const answer = await askUser(project, task, requester, checked.panes, accountId);
 		if (!answer.approved) return { outcome: "declined", taskId: task.id, seq: task.seq, ...(answer.stale ? { stale: true } : {}) };
 		if (answer.resumeAccountId !== undefined) accountId = answer.resumeAccountId;
 		current = await sameRunAfterApproval(project, task, "The target task's run changed while waiting — nothing was resumed.");
-		// Somebody may have clicked Resume Session while the dialog was open.
-		const again = await preflight(project, current);
+		// Somebody may have clicked Resume Session while the dialog was open, or the pick changed.
+		const again = await preflight(project, current, accountId);
 		if ("refused" in again) return again.refused;
 	}
 	try {

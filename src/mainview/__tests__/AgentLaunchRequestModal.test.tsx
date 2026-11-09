@@ -146,6 +146,7 @@ describe("AgentLaunchRequestModal", () => {
 		const { onRespond } = renderModal(claudeResume());
 		const pill = await screen.findByTestId("account-pill");
 		expect(pill).toHaveTextContent("acct-1");
+		expect(screen.getByText(/Claude panes can move to another account below/)).toBeInTheDocument();
 		expect(pill).toHaveAttribute("data-allow-auto", "false");
 		await user.click(pill);
 		expect(pill).toHaveTextContent("acct-2");
@@ -172,6 +173,7 @@ describe("AgentLaunchRequestModal", () => {
 		}));
 		expect(await screen.findByRole("heading", { name: "Agent wants to resume this task's saved session" })).toBeInTheDocument();
 		expect(screen.queryByTestId("account-pill")).not.toBeInTheDocument();
+		expect(screen.getByText("Reopens the saved conversations, each with its own agent, preset and account.")).toBeInTheDocument();
 	});
 
 	it("shows a hibernate request with what survives, no agent choice, and its own countdown", async () => {

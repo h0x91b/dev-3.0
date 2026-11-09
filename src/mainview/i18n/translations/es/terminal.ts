@@ -37,6 +37,7 @@ const terminal = {
 	"terminal.wakeShell": "Despertar con una shell simple",
 	"terminal.wakeShellDesc": "Una shell simple arranca al instante; reanudar vuelve a leer la conversación del agente.",
 	"terminal.resumeAccount": "Reanudar con",
+	"terminal.resumeAccountSubtitle": "Mueve los paneles de Claude de esta tarea a la cuenta elegida. Tu cuenta predeterminada no cambia.",
 	"terminal.resumeAccountCodexNote": "Los paneles de Codex siguen en la cuenta donde empezó su conversación.",
 	"terminal.setupFailedTitle": "El setup falló (código {code})",
 	"terminal.setupFailedDesc": "El script de configuración del proyecto no terminó, así que el agente no se inició. Puedes iniciarlo igualmente — el prompt de la tarea se conserva.",

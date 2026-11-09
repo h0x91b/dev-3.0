@@ -553,6 +553,7 @@ export default function AgentAccountIndicator({
 	onAddAccount,
 	projectId,
 	allowAuto = true,
+	subtitle,
 }: {
 	agent: CodingAgent | undefined | null;
 	/** Per-launch selection: `undefined` → the registry default (the preselect);
@@ -571,6 +572,8 @@ export default function AgentAccountIndicator({
 	projectId?: string;
 	/** False drops the Auto row: a resume reopens an existing conversation, and Auto only routes new ones. */
 	allowAuto?: boolean;
+	/** Replaces the per-launch popover subtitle, for a surface whose pick outlives one launch. */
+	subtitle?: string;
 }) {
 	const t = useT();
 	const kind = agent ? agentAccountKindForCommand(agent.baseCommand) : null;
@@ -809,7 +812,7 @@ export default function AgentAccountIndicator({
 					busy={busy}
 					hint={isLocal ? t("launch.accountForLaunchHint") : t("settings.accountsNewSessionsHint")}
 					title={isLocal ? t("launch.accountForLaunchTitle") : t("launch.accountActiveTitle")}
-					subtitle={isLocal ? t("launch.accountForLaunchSubtitle") : t("launch.accountGlobalSubtitle")}
+					subtitle={subtitle ?? (isLocal ? t("launch.accountForLaunchSubtitle") : t("launch.accountGlobalSubtitle"))}
 					// In the settings surfaces (global mode) the link costs nothing — the
 					// user is already in Settings, so it just scrolls them to Accounts.
 					onAddAccount={onAddAccount ?? (isLocal ? null : openAgentAccountSettings)}

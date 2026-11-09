@@ -57,7 +57,7 @@ export default function ResumeAccountPicker({
 			<div className="flex items-baseline gap-2 min-w-0 text-xs text-fg-3">
 				<span className="shrink-0">{t("terminal.resumeAccount")}</span>
 				<div className="min-w-0">
-					<AgentAccountIndicator agent={agent} value={value} onSelect={onChange} allowAuto={false} projectId={projectId} />
+					<AgentAccountIndicator agent={agent} value={value} onSelect={onChange} allowAuto={false} subtitle={t("terminal.resumeAccountSubtitle")} projectId={projectId} />
 				</div>
 			</div>
 			{keepsCodexAccount ? <p className="text-fg-muted text-xs">{t("terminal.resumeAccountCodexNote")}</p> : null}
