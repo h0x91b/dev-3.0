@@ -10,6 +10,7 @@ import { CodexQuestionState } from "../codex-question-state";
 import { capturePaneSession, taskCodexHomes } from "./pane-sessions";
 import { isInteractiveCodexConversation } from "../codex-resume-home";
 import { noteAgentExited, noteAgentSessionActive, noteAgentSessionStarted } from "../agent-session-receipts";
+import { forgetClaudeSessionDump } from "../rate-limit-monitor";
 import { log, type Handler, withSenderVariant } from "./shared";
 import { requirePaneTask, resolveRequesterTask, resolveTaskFromParams, resumeAccountParam, senderRequester } from "./task-resolution";
 import { claudeSessionWatches, type ClaudeIdleEvent } from "../claude-session-watch";
@@ -119,6 +120,7 @@ export const agentHandlers: Record<string, Handler> = {
 		const sessionId = typeof params.sessionId === "string" ? params.sessionId.trim() : "";
 		if (!sessionId) throw new Error("sessionId is required");
 		const exitCode = typeof params.exitCode === "number" ? params.exitCode : null;
+		forgetClaudeSessionDump(task.id);
 		const verdict = noteAgentExited(task.id, sessionId, exitCode);
 		if (!verdict) return { moved: false };
 		log.info("Launched agent exited", { taskId: task.id.slice(0, 8), verdict, exitCode });

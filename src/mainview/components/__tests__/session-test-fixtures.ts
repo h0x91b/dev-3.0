@@ -15,6 +15,7 @@ export function session(taskId: string, overrides: Partial<AgentSessionStats> = 
 		awaitingUser: false,
 		capturedAt: NOW - 30_000,
 		model: "Opus 5.5",
+		modelId: "claude-opus-5-5",
 		effort: "high",
 		sessionName: null,
 		thinking: true,

@@ -9,6 +9,7 @@ import {
 	attributeManagedConfigDir,
 	buildClaudeManagedSettings,
 	findLatestCodexRollout,
+	forgetClaudeSessionDump,
 	readClaudeSessionDumps,
 	readClaudeSnapshot,
 	readCodexSnapshot,
@@ -200,6 +201,17 @@ describe("readClaudeSessionDumps", () => {
 
 	it("returns nothing when the directory does not exist", () => {
 		expect(readClaudeSessionDumps(join(tmp, "missing"))).toEqual([]);
+	});
+
+	it("forgets one task's dump and leaves the others", () => {
+		const now = Date.now();
+		for (const id of ["task-a", "task-b"]) {
+			writeFileSync(join(tmp, `${id}.json`), JSON.stringify({ capturedAt: now, payload: payload(10) }));
+		}
+		forgetClaudeSessionDump("task-a", tmp);
+		forgetClaudeSessionDump("task-a", tmp);
+		forgetClaudeSessionDump("../task-b", tmp);
+		expect(readClaudeSessionDumps(tmp, now).map((s) => s.taskId)).toEqual(["task-b"]);
 	});
 
 	it("takes the billing login from the dump envelope", () => {

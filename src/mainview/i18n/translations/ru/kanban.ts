@@ -167,6 +167,8 @@ const kanban = {
 	"task.variant": "#{n}",
 	"task.attempt": "Вариант {n}",
 	"task.scratchSession": "Живая shell-сессия",
+	"task.liveConfig": "Сейчас работает: {live}",
+	"task.liveConfigDetail": "Изменено внутри сессии. Запущено с {launched}.",
 	"task.editSave": "Сохранить",
 	"task.editCancel": "Отмена",
 	"task.failedEdit": "Не удалось обновить задачу: {error}",
