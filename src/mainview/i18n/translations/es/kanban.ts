@@ -171,6 +171,7 @@ const kanban = {
 	"task.editCancel": "Cancelar",
 	"task.failedEdit": "Error al actualizar tarea: {error}",
 	"task.editHint": "⌘Enter para guardar",
+	"task.renameHint": "Enter para guardar · Esc para cancelar",
 	"task.detailTitle": "Detalles de la tarea",
 	"task.descriptionLabel": "Descripción",
 	"task.edit": "Editar",

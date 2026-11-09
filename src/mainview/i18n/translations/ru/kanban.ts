@@ -173,6 +173,7 @@ const kanban = {
 	"task.editCancel": "Отмена",
 	"task.failedEdit": "Не удалось обновить задачу: {error}",
 	"task.editHint": "⌘Enter для сохранения",
+	"task.renameHint": "Enter для сохранения · Esc для отмены",
 	"task.detailTitle": "Детали задачи",
 	"task.descriptionLabel": "Описание",
 	"task.edit": "Редактировать",
