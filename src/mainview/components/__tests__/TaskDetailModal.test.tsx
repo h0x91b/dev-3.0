@@ -242,7 +242,7 @@ describe("TaskDetailModal", () => {
 			const user = userEvent.setup();
 
 			await user.click(screen.getByText("Edit"));
-			expect(screen.getByText("Save").closest(".sticky")).toHaveClass("bottom-0");
+			expect(screen.getByText("Save").closest(".sticky")).toHaveClass("bottom-0", "-mx-6");
 		});
 
 		it("uploads an image dropped into the edit textarea and appends the saved path", async () => {

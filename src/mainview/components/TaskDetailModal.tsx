@@ -590,8 +590,9 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 										<span className="text-fg-2 font-medium">{generatedTitle}</span>
 									</div>
 								)}
-								{/* Pinned to the scroll area's bottom edge so Save is never below the fold. */}
-								<div className="sticky bottom-0 pb-5 pt-2 bg-overlay flex items-center justify-between">
+								{/* Pinned to the scroll area's bottom edge so Save is never below the fold. Spans the
+								    full scroll width so it covers the textarea's focus outline, and owns the area's pb-5. */}
+								<div className="sticky bottom-0 -mx-6 px-6 pb-5 pt-2 bg-overlay flex items-center justify-between">
 									<span className="text-xs text-fg-muted">{t("task.editHint")}</span>
 									<div className="flex gap-1.5">
 										<button
