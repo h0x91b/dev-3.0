@@ -242,7 +242,7 @@ function AccountRow({
 				) : (
 					<span className={`text-fg text-sm font-medium truncate ${labelPublic ? "" : "streamer-private"}`}>{label}</span>
 				)}
-				{onRename && !editing && !onEditApi ? (
+				{onRename && !editing ? (
 					<button
 						type="button"
 						onClick={(event) => {
