@@ -117,7 +117,9 @@ describe("COORDINATOR_PROMPT", () => {
 	it("defers to the repo's own git flow instead of assuming GitHub, main, rebase or CI", () => {
 		expect(COORDINATOR_PROMPT).toContain("FOLLOW THE REPO'S FLOW (its docs or the user)");
 		expect(COORDINATOR_PROMPT).toContain("Never assume main, GitHub or CI");
-		expect(COORDINATOR_PROMPT).toContain("Another base: `--branch <ref>`");
+		expect(COORDINATOR_PROMPT).toContain("Other target: `dev3 pr create --base <ref>`");
+		// `task create --branch` checks out that ref itself; it is not a base-branch flag.
+		expect(COORDINATOR_PROMPT).not.toContain("--branch");
 		expect(COORDINATOR_PROMPT).toMatch(/done as an artefact; target branch;/);
 		expect(COORDINATOR_PROMPT).toMatch(/merged to its target, required checks green on its SHA/);
 		expect(COORDINATOR_PROMPT).not.toMatch(/rebase|merged PR|CI green/);
