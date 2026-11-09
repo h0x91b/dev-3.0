@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ModelCatalog } from "../../shared/model-catalog";
+import { buildSidecarConfig, catalogModelWireName, type ModelCatalog } from "../../shared/model-catalog";
 import type { ModelCatalogView } from "../../shared/types";
 
 const h = vi.hoisted(() => ({
@@ -63,6 +63,37 @@ describe("saving the catalog", () => {
 			models: [],
 		};
 		await expect(modelCatalogSave({ catalog: view })).rejects.toThrow(/already serves "custom-my-box"/);
+	});
+});
+
+describe("renaming a custom provider", () => {
+	const model = { id: "m-1", providerId: "c-1", name: "kimi", modelId: "kimi-k3" };
+	const custom = { id: "c-1", kind: "custom" as const, label: "Custom endpoint", baseUrl: "https://a.example", hasKey: false };
+
+	it("keeps the wire name an agent already holds", async () => {
+		await modelCatalogSave({ catalog: { providers: [custom], models: [model] } });
+		const first = h.save.mock.calls[0][0] as ModelCatalog;
+		const heldByAgent = catalogModelWireName(first, "m-1");
+		expect(heldByAgent).toBe("custom-custom-endpoint/kimi");
+
+		h.load.mockReturnValueOnce(first);
+		await modelCatalogSave({ catalog: { providers: [{ ...custom, label: "Kimi code" }], models: [model] } });
+		const renamed = h.save.mock.calls[1][0] as ModelCatalog;
+		expect(renamed.providers[0].label).toBe("Kimi code");
+		expect(catalogModelWireName(renamed, "m-1")).toBe(heldByAgent);
+		expect(Object.keys(buildSidecarConfig(renamed).providers)).toEqual(["custom-custom-endpoint"]);
+	});
+
+	it("keeps the old-label key of a provider saved before wire keys existed", async () => {
+		h.load.mockReturnValueOnce({ providers: [{ id: "c-1", kind: "custom", label: "Custom endpoint", baseUrl: "https://a.example" }], models: [model] });
+		await modelCatalogSave({ catalog: { providers: [{ ...custom, label: "Kimi code" }], models: [model] } });
+		const renamed = h.save.mock.calls[0][0] as ModelCatalog;
+		expect(catalogModelWireName(renamed, "m-1")).toBe("custom-custom-endpoint/kimi");
+	});
+
+	it("does not trust a wire key sent by the renderer", async () => {
+		await modelCatalogSave({ catalog: { providers: [{ ...custom, wireKey: "custom-evil" }], models: [] } });
+		expect((h.save.mock.calls[0][0] as ModelCatalog).providers[0].wireKey).toBe("custom-custom-endpoint");
 	});
 });
 

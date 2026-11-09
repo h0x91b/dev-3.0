@@ -6,7 +6,7 @@
  */
 
 import type { ModelCatalogView, ModelSidecarStatus } from "../../shared/types";
-import { sidecarProviderKey, validateCatalog, type ModelCatalog } from "../../shared/model-catalog";
+import { freezeProviderWireKeys, sidecarProviderKey, validateCatalog, type ModelCatalog } from "../../shared/model-catalog";
 import { createLogger } from "../logger";
 import {
 	forgetProviderKeys,
@@ -31,6 +31,8 @@ function toView(catalog: ModelCatalog, keys: Record<string, string>): ModelCatal
 			id: p.id,
 			kind: p.kind,
 			label: p.label,
+			// Derived for a legacy provider too, so renaming it in the draft keeps the prefix shown.
+			wireKey: p.kind === "custom" ? sidecarProviderKey(p) : undefined,
 			baseUrl: p.baseUrl,
 			apiFormat: p.apiFormat,
 			usageSource: p.usageSource,
@@ -46,6 +48,7 @@ function fromView(view: ModelCatalogView): ModelCatalog {
 			id: p.id,
 			kind: p.kind,
 			label: p.label,
+			wireKey: p.wireKey,
 			baseUrl: p.baseUrl,
 			apiFormat: p.apiFormat,
 			usageSource: p.usageSource,
@@ -58,7 +61,7 @@ export async function modelCatalogSave(params: {
 	catalog: ModelCatalogView;
 	providerKeys?: Record<string, string>;
 }): Promise<ModelCatalogView> {
-	const catalog = fromView(params.catalog);
+	const catalog = freezeProviderWireKeys(loadModelCatalog(), fromView(params.catalog));
 	// The settings table blocks every one of these before its Save button lights
 	// up, but the connect flow and the recommended-models prompt both write a
 	// catalog without ever seeing that table. A bad one reaches the generated

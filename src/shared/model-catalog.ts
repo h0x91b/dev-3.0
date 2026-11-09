@@ -29,8 +29,11 @@ export const CATALOG_PROVIDER_KINDS: CatalogProviderKind[] = ["openai", "anthrop
 export interface CatalogProvider {
 	id: string;
 	kind: CatalogProviderKind;
-	/** User-facing name. For a custom endpoint it also seeds the wire prefix. */
+	/** User-facing name only; renaming it never changes the wire prefix. */
 	label: string;
+	/** Frozen sidecar key of a `custom` provider. Absent on providers saved before
+	 *  this field existed, which keep the key derived from their label. */
+	wireKey?: string;
 	/** Required for `custom`; ignored for the known kinds. */
 	baseUrl?: string;
 	/**
@@ -125,25 +128,44 @@ function slugify(label: string): string {
 /**
  * The provider's key inside the sidecar's config, and the prefix of every wire
  * name it serves. A known kind uses its canonical provider name (so at most one
- * provider per kind — enforced by `validateCatalog`); a custom endpoint gets a
- * `custom-<slug>` name declared as an OpenAI-compatible custom provider.
+ * provider per kind — enforced by `validateCatalog`); a custom endpoint keeps its
+ * frozen `wireKey`, or `custom-<slug>` of its label when it has none yet.
  */
 export function sidecarProviderKey(provider: CatalogProvider): string {
-	return provider.kind === "custom" ? `custom-${slugify(provider.label)}` : provider.kind;
+	if (provider.kind !== "custom") return provider.kind;
+	return provider.wireKey ?? `custom-${slugify(provider.label)}`;
+}
+
+/**
+ * Pins every custom provider's wire key at save time: agents persist wire names,
+ * so a key must never follow a later rename. The stored catalog is the authority;
+ * a `wireKey` sent by the caller is never trusted.
+ */
+export function freezeProviderWireKeys(stored: ModelCatalog, next: ModelCatalog): ModelCatalog {
+	return {
+		...next,
+		providers: next.providers.map(({ wireKey: _ignored, ...provider }) => {
+			if (provider.kind !== "custom") return provider;
+			const found = stored.providers.find((p) => p.id === provider.id);
+			const before = found?.kind === "custom" ? found : undefined;
+			return { ...provider, wireKey: sidecarProviderKey(before ?? provider) };
+		}),
+	};
 }
 
 /**
  * A label no existing custom provider already resolves to.
  *
- * The label IS the identity of a custom endpoint — `sidecarProviderKey` slugifies
- * it — so two endpoints offered the same fixed label (both "Custom", both
- * "Ollama") collide and the second one cannot be saved at all. The host of the
- * endpoint is tried first because it says which box this is; a counter is the
+ * Two endpoints offered the same fixed label (both "Custom", both "Ollama")
+ * resolve to one wire key and the second cannot be saved. A renamed provider
+ * still owns its old key, so candidates are compared against existing keys.
+ * The host is tried first because it says which box this is; a counter is the
  * fallback for two paths on one host.
  */
 export function uniqueCustomProviderLabel(existing: CatalogProvider[], desired: string, baseUrl?: string): string {
-	const taken = new Set(existing.filter((p) => p.kind === "custom").map((p) => slugify(p.label)));
-	if (!taken.has(slugify(desired))) return desired;
+	const taken = new Set(existing.filter((p) => p.kind === "custom").map(sidecarProviderKey));
+	const key = (label: string) => `custom-${slugify(label)}`;
+	if (!taken.has(key(desired))) return desired;
 
 	let host = "";
 	try {
@@ -151,11 +173,11 @@ export function uniqueCustomProviderLabel(existing: CatalogProvider[], desired: 
 	} catch {
 		/* not a URL we can read a host out of */
 	}
-	if (host && !taken.has(slugify(`${desired} ${host}`))) return `${desired} (${host})`;
+	if (host && !taken.has(key(`${desired} ${host}`))) return `${desired} (${host})`;
 
 	for (let n = 2; ; n += 1) {
 		const candidate = `${desired} ${n}`;
-		if (!taken.has(slugify(candidate))) return candidate;
+		if (!taken.has(key(candidate))) return candidate;
 	}
 }
 
