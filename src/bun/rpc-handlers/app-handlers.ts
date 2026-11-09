@@ -365,7 +365,7 @@ function isInsideDev3Home(path: string): boolean {
 async function addProjectImpl(
 	params: { path: string; name?: string; autoConfigure?: boolean; boardCopy?: boolean },
 	opts: { offerGitInit?: boolean } = {},
-): Promise<{ ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer } | { ok: false; error: string; gitInit?: GitInitOffer }> {
+): Promise<{ ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true } | { ok: false; error: string; gitInit?: GitInitOffer }> {
 	log.info("→ addProject", params);
 	try {
 		// Protect the synthetic virtual-project namespace: a real git repo must
@@ -405,11 +405,13 @@ async function addProjectImpl(
 		}
 		// Only a record created by this call: re-adding a known project never moves its data.
 		const createdNow = Date.parse(added.createdAt) >= addStartedAt;
+		let storageKeptHome = false;
 		if (createdNow && !storesInProject(project) && (await loadSettings()).newProjectsStoreInProject === true) {
 			try {
 				Object.assign(project, await storeNewProjectInProject(project));
 			} catch (err) {
 				log.warn("Kept the new project's data in ~/.dev3.0", { id: project.id, error: String(err) });
+				storageKeptHome = true;
 			}
 		}
 		// Written before resolveProjectConfig so the returned project already carries it.
@@ -432,6 +434,7 @@ async function addProjectImpl(
 			project: resolved,
 			...(autoConfigured ? { autoConfigured } : {}),
 			...(boardCopyOffer ? { boardCopyOffer } : {}),
+			...(storageKeptHome ? { storageKeptHome: true as const } : {}),
 		};
 	} catch (err) {
 		log.error("addProject failed", { error: String(err), params });
@@ -455,7 +458,7 @@ async function addVirtualProject(params: { name: string }): Promise<{ ok: true; 
 /** How often clone output updates are pushed to the renderer. */
 const CLONE_PROGRESS_PUSH_INTERVAL_MS = 150;
 
-async function cloneAndAddProject(params: { url: string; baseDir: string; repoName?: string; progressId?: string; autoConfigure?: boolean; boardCopy?: boolean }): Promise<{ ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer } | { ok: false; error: string }> {
+async function cloneAndAddProject(params: { url: string; baseDir: string; repoName?: string; progressId?: string; autoConfigure?: boolean; boardCopy?: boolean }): Promise<{ ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true } | { ok: false; error: string }> {
 	log.info("→ cloneAndAddProject", params);
 	try {
 		const name = params.repoName || extractRepoName(params.url);
@@ -567,7 +570,7 @@ function isEffectivelyEmpty(path: string): boolean {
  *   `gitInit` describing what would happen. The user's files are never committed.
  */
 async function initAndAddProject(params: { path: string; name?: string; initNonEmpty?: boolean; autoConfigure?: boolean; boardCopy?: boolean }): Promise<
-	{ ok: true; project: Project; gitInit?: GitInitOffer; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer } | { ok: false; error: string; gitInit?: GitInitOffer }
+	{ ok: true; project: Project; gitInit?: GitInitOffer; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true } | { ok: false; error: string; gitInit?: GitInitOffer }
 > {
 	log.info("→ initAndAddProject", params);
 	try {

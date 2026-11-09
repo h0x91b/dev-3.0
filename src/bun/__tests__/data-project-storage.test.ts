@@ -13,11 +13,20 @@ vi.mock("../paths", () => ({
 	OPS_DIR: `${TEST_HOME}/home/ops`,
 }));
 
+const lockHooks = vi.hoisted(() => ({ beforeRun: null as null | (() => void), locked: [] as string[] }));
+
 vi.mock("../file-lock", () => ({
-	withFileLock: async <T>(_filePath: string, fn: () => Promise<T>): Promise<T> => fn(),
+	withFileLock: async <T>(filePath: string, fn: () => Promise<T>): Promise<T> => {
+		lockHooks.locked.push(filePath);
+		const hook = lockHooks.beforeRun;
+		lockHooks.beforeRun = null;
+		hook?.();
+		return fn();
+	},
 }));
 
 import { addTask, loadTasks, moveTaskToProject } from "../data";
+import { _resetStorageSwitches, recordStorageSwitch } from "../project-storage-live";
 import { projectSlug } from "../git";
 
 function project(id: string, name: string, storageRoot?: "project"): Project {
@@ -38,11 +47,38 @@ const homeTasksFile = (p: Project) => `${TEST_HOME}/home/data/${projectSlug(p.pa
 const inProjectTasksFile = (p: Project) => `${p.path}/.dev3/data/tasks.json`;
 
 beforeEach(() => {
+	_resetStorageSwitches();
+	lockHooks.beforeRun = null;
+	lockHooks.locked = [];
 	rmSync(TEST_HOME, { recursive: true, force: true });
 	mkdirSync(`${TEST_HOME}/home`, { recursive: true });
 });
 
 describe("per-project storage root", () => {
+	it("sends a write from a Project loaded before the switch to the new location", async () => {
+		const stale = project("p-stale", "stale");
+		mkdirSync(stale.path, { recursive: true });
+		recordStorageSwitch(stale.id, "project");
+
+		const task = await addTask(stale, "Written after the switch");
+
+		expect(task.taskDirLocation).toBe("project");
+		expect(existsSync(inProjectTasksFile(stale))).toBe(true);
+		expect(existsSync(homeTasksFile(stale))).toBe(false);
+	});
+
+	it("retries on the new lock when the board moves while a writer waits on the old one", async () => {
+		const moving = project("p-moving", "moving");
+		mkdirSync(moving.path, { recursive: true });
+		lockHooks.beforeRun = () => recordStorageSwitch(moving.id, "project");
+
+		await addTask(moving, "Queued behind the switch");
+
+		expect(lockHooks.locked).toEqual([homeTasksFile(moving), inProjectTasksFile(moving)]);
+		expect(existsSync(inProjectTasksFile(moving))).toBe(true);
+		expect(existsSync(homeTasksFile(moving))).toBe(false);
+	});
+
 	it("writes the board into the project folder and stamps new tasks", async () => {
 		const acme = project("p-acme", "acme", "project");
 		mkdirSync(acme.path, { recursive: true });

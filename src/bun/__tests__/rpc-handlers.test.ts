@@ -8482,6 +8482,7 @@ describe("handlers.getAppVersion", () => {
 			channel: "beta",
 			buildChannel: "dev",
 			leanProtocolForcedByEnv: process.env.DEV3_LEAN_PROTOCOL === "1",
+			projectClaudeFolderSupported: process.platform === "darwin",
 		});
 	});
 });

@@ -238,6 +238,18 @@ describe("collectWorktreeReport — classification", () => {
 			expect(entry(r.entries, "aaaaaaaa").category).toBe("live-open");
 		});
 
+		it("trusts the live in-project record over the stale home copy a switch left", () => {
+			const legacyFile = `${HOME}/data/${projectStorageKey(REPO_B)}/tasks.json`;
+			const r = collectWorktreeReport({
+				...inProject,
+				readFile: (path) =>
+					path === legacyFile
+						? JSON.stringify([{ id: "11111111-0000-0000-0000-000000000000", seq: 1, status: "cancelled", createdAt: daysAgo(30) }])
+						: inProject.readFile(path),
+			});
+			expect(entry(r.entries, "11111111")).toMatchObject({ category: "live-open", taskStatus: "in-progress" });
+		});
+
 		it("is not missing when only an in-project root exists", () => {
 			const r = collectWorktreeReport({ ...inProject, exists: (path) => path === ROOT_B || path === `${ROOT_B}/11111111` });
 			expect(r.rootMissing).toBe(false);

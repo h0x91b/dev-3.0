@@ -1,12 +1,11 @@
 import { mkdir, readFile } from "node:fs/promises";
-import { projectDataDir } from "../shared/project-storage";
+import { liveProjectDataDir } from "./project-storage-live";
 import type { Automation, AutomationDraft, AutomationRun, Project } from "../shared/types";
 import { MAX_AUTOMATION_RUNS_KEPT } from "../shared/types";
 import { RRuleParseError, isValidTimezone, nextOccurrence, parseRRule } from "../shared/rrule";
 import { atomicWriteFile } from "./atomic-write";
 import { withFileLock } from "./file-lock";
 import { createLogger } from "./logger";
-import { DEV3_HOME } from "./paths";
 
 const log = createLogger("automations-data");
 
@@ -16,7 +15,7 @@ const log = createLogger("automations-data");
  * older app versions never read the file, nothing existing is moved or renamed.
  */
 export function automationsFile(project: Project): string {
-	return `${projectDataDir(DEV3_HOME, project)}/automations.json`;
+	return `${liveProjectDataDir(project)}/automations.json`;
 }
 
 export class AutomationValidationError extends Error {

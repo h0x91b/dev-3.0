@@ -133,6 +133,29 @@ describe("in-project storage root", () => {
 		expect(detectFromWorktreePath(`${TASK_DIR}/worktree`)).toMatchObject({ inProjectTaskDir: TASK_DIR, taskShortId: SHORT });
 	});
 
+	it("matches a project registered through a symlinked folder", async () => {
+		const { readFileSync, symlinkSync } = require("node:fs");
+		const link = `${HOME}/.dev3.0/cli-context-inproject-link`;
+		rmSync(link, { force: true });
+		symlinkSync(REPO, link);
+		try {
+			const projects = JSON.parse(readFileSync(PROJECTS_FILE, "utf-8"));
+			for (const p of projects) if (p.id === IN_PROJECT_ID) p.path = link;
+			writeFileSync(PROJECTS_FILE, JSON.stringify(projects));
+			const { detectContext } = await import("../context");
+			expect(detectContext(`${TASK_DIR}/worktree`)).toMatchObject({ projectId: IN_PROJECT_ID, taskId: TASK_ID });
+		} finally {
+			rmSync(link, { force: true });
+		}
+	});
+
+	it("finds projects.json through the account home when a sandbox rewrote HOME", async () => {
+		const { inProjectDev3Home } = await import("../context");
+		const realHome = `${HOME}/.dev3.0/..`;
+		expect(inProjectDev3Home("/nonexistent-sandbox/.dev3.0", () => realHome)).toBe(`${realHome}/.dev3.0`);
+		expect(inProjectDev3Home("/nonexistent-sandbox/.dev3.0", () => "/nonexistent-account")).toBe("/nonexistent-sandbox/.dev3.0");
+	});
+
 	it("diagnostics name both tasks.json roots", async () => {
 		const { detectContextDiagnostics } = await import("../context");
 		const diag = detectContextDiagnostics(`${TASK_DIR}/worktree`);

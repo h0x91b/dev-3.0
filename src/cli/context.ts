@@ -8,7 +8,8 @@ import type { InstanceSelector } from "../shared/cli-instance";
 import { projectStorageKey, toPosixSeparators } from "../shared/project-storage-key";
 import { resolveUserHome } from "../shared/user-home";
 import { resolveDev3Home } from "../shared/dev3-home";
-import { parseInProjectTaskPath, projectTasksFile } from "../shared/project-storage";
+import { inProjectDataDir, parseInProjectTaskPath, projectTasksFile } from "../shared/project-storage";
+import { userInfo } from "node:os";
 import {
 	isCliEndpointHandle,
 	parseCliEndpointRecord,
@@ -76,6 +77,32 @@ export interface WorktreePathInfo {
 	realDev3Home: string;
 	/** Set for `<project>/.dev3/worktrees/<id>/worktree`: the task dir is not under `realDev3Home`. */
 	inProjectTaskDir?: string;
+	/** The project folder that `inProjectTaskDir` sits in, as the cwd spells it. */
+	inProjectPath?: string;
+}
+
+/**
+ * The dev3 home holding `projects.json` for an in-project task. Its path carries
+ * no `/.dev3.0/` marker, so a sandbox that rewrote HOME is recovered through the
+ * account's own home directory instead.
+ */
+export function inProjectDev3Home(dev3Home: string = DEV3_HOME, accountHome: () => string = () => userInfo().homedir): string {
+	if (existsSync(`${dev3Home}/projects.json`)) return dev3Home;
+	try {
+		const real = resolveDev3Home({ ...process.env, HOME: accountHome() });
+		if (existsSync(`${real}/projects.json`)) return real;
+	} catch {
+		// no account database entry: keep the HOME-based answer
+	}
+	return dev3Home;
+}
+
+function realpathOrSelf(path: string): string {
+	try {
+		return toPosixSeparators(realpathSync(path));
+	} catch {
+		return path;
+	}
 }
 
 export function detectFromWorktreePath(rawCwd: string): WorktreePathInfo | null {
@@ -104,8 +131,9 @@ export function detectFromWorktreePath(rawCwd: string): WorktreePathInfo | null 
 		return {
 			projectSlug: projectStorageKey(inProject.projectPath),
 			taskShortId: inProject.shortId,
-			realDev3Home: DEV3_HOME,
+			realDev3Home: inProjectDev3Home(),
 			inProjectTaskDir: inProject.taskDir,
+			inProjectPath: inProject.projectPath,
 		};
 	}
 
@@ -130,6 +158,13 @@ function matchWorktreePrefix(cwd: string, prefix: string): { projectSlug: string
 	return null;
 }
 
+/** cwd is a realpath, so a project registered through a symlinked folder only matches by realpath. */
+function findInProjectBySymlink<P extends { path: string }>(projects: P[], pathInfo: WorktreePathInfo): P | undefined {
+	if (!pathInfo.inProjectPath) return undefined;
+	const target = realpathOrSelf(pathInfo.inProjectPath);
+	return projects.find((p) => realpathOrSelf(p.path) === target);
+}
+
 /**
  * Resolve project and task IDs from worktree path by reading data files directly.
  */
@@ -145,7 +180,7 @@ function resolveFromWorktreePath(cwd: string): CliContext | null {
 	// Find the project by slug match
 	try {
 		const projects = JSON.parse(readFileSync(projectsFile, "utf-8")) as Array<{ id: string; path: string; storageRoot?: "project" }>;
-		const project = projects.find((p) => projectStorageKey(p.path) === pathInfo.projectSlug);
+		const project = projects.find((p) => projectStorageKey(p.path) === pathInfo.projectSlug) ?? findInProjectBySymlink(projects, pathInfo);
 		if (!project) return null;
 
 		// Find the task by short ID prefix
@@ -304,7 +339,7 @@ export function detectContextDiagnostics(cwd: string = process.cwd()): string {
 		const legacyTasksFile = `${pathInfo.realDev3Home}/data/${pathInfo.projectSlug}/tasks.json`;
 		lines.push(`  tasks.json (home, ${legacyTasksFile}): ${existsSync(legacyTasksFile) ? "exists" : "NOT FOUND"}`);
 		if (pathInfo.inProjectTaskDir) {
-			const projectTasks = `${pathInfo.inProjectTaskDir.replace(/\/\.dev3\/worktrees\/[^/]+$/, "")}/.dev3/data/tasks.json`;
+			const projectTasks = `${inProjectDataDir(pathInfo.inProjectPath ?? "")}/tasks.json`;
 			lines.push(`  tasks.json (in-project, ${projectTasks}): ${existsSync(projectTasks) ? "exists" : "NOT FOUND"}`);
 		}
 	}

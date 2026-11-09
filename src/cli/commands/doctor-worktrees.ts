@@ -248,11 +248,14 @@ function readTasksFile(deps: WorktreeScanDeps, file: string): RawTask[] {
 	}
 }
 
-/** Both layouts are read: a task in either file means its dir is not an orphan. */
+/**
+ * Both layouts are read: a task in either file means its dir is not an orphan.
+ * The live file comes last so its records win over the copy a switch left behind.
+ */
 function readTasks(deps: WorktreeScanDeps, project: RawProject): RawTask[] {
 	const files = new Set([
-		projectTasksFile(deps.dev3Home, project),
 		`${legacyProjectDataDir(deps.dev3Home, project.path)}/tasks.json`,
+		projectTasksFile(deps.dev3Home, project),
 	]);
 	return [...files].flatMap((file) => readTasksFile(deps, file));
 }

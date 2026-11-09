@@ -15,13 +15,23 @@ export function applyAgentEnvDefaults(
 	defaults: Record<string, string> | undefined,
 	project: { path: string; name: string },
 	home: string,
+	platform: string = process.platform,
 ): Record<string, string> {
 	if (!defaults) return projectEnv;
 	const filled: Record<string, string> = {};
 	for (const [key, value] of Object.entries(defaults)) {
+		if (key === "CLAUDE_CONFIG_DIR" && value === PROJECT_CLAUDE_CONFIG_DIR_DEFAULT && !projectClaudeFolderSupported(platform)) continue;
 		if (!(key in projectEnv)) filled[key] = expandAgentEnvDefault(value, project, home);
 	}
 	return Object.keys(filled).length > 0 ? { ...filled, ...projectEnv } : projectEnv;
+}
+
+/**
+ * Only macOS keeps Claude Code's login in the Keychain. Elsewhere it writes
+ * `.credentials.json` into the config dir, which would put a secret inside the repo folder.
+ */
+export function projectClaudeFolderSupported(platform: string): boolean {
+	return platform === "darwin";
 }
 
 /** The default that points Claude Code at each project's own `.claude` instead of `~/.claude`. */

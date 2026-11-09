@@ -14,12 +14,20 @@ async function copyFileAtomic(source: string, target: string): Promise<void> {
 	}
 }
 
+/** Where a switch keeps the destination files it replaced, under the destination data dir. */
+export const STORAGE_SWITCH_BACKUPS_DIR = "storage-switch-backups";
+
+async function sameContent(a: string, b: string): Promise<boolean> {
+	const [left, right] = await Promise.all([readFile(a), readFile(b)]);
+	return left.equals(right);
+}
+
 /**
- * Copy `from` into `to` file by file. Each target is written atomically; a
- * destination that is newer than its source is kept, and lock dirs are skipped.
- * The source is never touched.
+ * Copy `from` into `to` file by file; the source is authoritative and never touched.
+ * A destination file that differs is first saved under `backupDir`, so edits made on
+ * the inactive side (an older app version) are kept, never silently dropped.
  */
-export async function copyDataTree(from: string, to: string): Promise<number> {
+export async function copyDataTree(from: string, to: string, backupDir: string = join(to, STORAGE_SWITCH_BACKUPS_DIR, String(Date.now()))): Promise<number> {
 	let entries;
 	try {
 		entries = await readdir(from, { withFileTypes: true });
@@ -33,12 +41,16 @@ export async function copyDataTree(from: string, to: string): Promise<number> {
 		const source = join(from, entry.name);
 		const target = join(to, entry.name);
 		// `*.lock` dirs are `withFileLock` locks, the switch's own included: a copy would be a stale lock.
-		if (entry.isDirectory() && entry.name.endsWith(".lock")) continue;
+		if (entry.isDirectory() && (entry.name.endsWith(".lock") || entry.name === STORAGE_SWITCH_BACKUPS_DIR)) continue;
 		if (entry.isDirectory()) {
-			copied += await copyDataTree(source, target);
+			copied += await copyDataTree(source, target, join(backupDir, entry.name));
 		} else if (entry.isFile() && !entry.name.includes(".tmp-")) {
-			const [src, dst] = [await stat(source), await stat(target).catch(() => null)];
-			if (dst && dst.mtimeMs > src.mtimeMs) continue;
+			const existing = await stat(target).catch(() => null);
+			if (existing?.isFile()) {
+				if (await sameContent(source, target)) continue;
+				await mkdir(backupDir, { recursive: true });
+				await copyFile(target, join(backupDir, entry.name));
+			}
 			await copyFileAtomic(source, target);
 			copied++;
 		}

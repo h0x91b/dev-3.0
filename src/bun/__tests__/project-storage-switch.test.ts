@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { copyHomeDataIntoProject, copyProjectDataToHome } from "../project-storage-switch";
+import { copyHomeDataIntoProject, copyProjectDataToHome, STORAGE_SWITCH_BACKUPS_DIR } from "../project-storage-switch";
 import { inProjectDataDir, legacyProjectDataDir } from "../../shared/project-storage";
 import { storageSwitchBlocker } from "../../shared/types";
 
@@ -36,13 +36,27 @@ describe("copyHomeDataIntoProject", () => {
 		expect(readFileSync(join(src, "tasks.json"), "utf8")).toBe("[1]");
 	});
 
-	it("keeps a destination file that is newer than its source", async () => {
+	it("copies the source over a differing destination and backs the destination up first", async () => {
 		const src = seedHome();
 		utimesSync(join(src, "tasks.json"), 1000, 1000);
-		mkdirSync(inProjectDataDir(project), { recursive: true });
+		mkdirSync(join(inProjectDataDir(project), "task-blobs"), { recursive: true });
 		writeFileSync(join(inProjectDataDir(project), "tasks.json"), "\"newer\"");
+		writeFileSync(join(inProjectDataDir(project), "task-blobs", "a.json"), "{}");
+		expect(await copyHomeDataIntoProject(home, project)).toBe(1);
+		expect(readFileSync(join(inProjectDataDir(project), "tasks.json"), "utf8")).not.toBe("\"newer\"");
+		const backups = join(inProjectDataDir(project), STORAGE_SWITCH_BACKUPS_DIR);
+		const [stamp] = readdirSync(backups);
+		expect(readFileSync(join(backups, stamp, "tasks.json"), "utf8")).toBe("\"newer\"");
+		// An identical file is neither rewritten nor backed up.
+		expect(existsSync(join(backups, stamp, "task-blobs"))).toBe(false);
+	});
+
+	it("never carries one side's switch backups to the other", async () => {
+		const dir = seedHome();
+		mkdirSync(join(dir, STORAGE_SWITCH_BACKUPS_DIR, "1"), { recursive: true });
+		writeFileSync(join(dir, STORAGE_SWITCH_BACKUPS_DIR, "1", "tasks.json"), "[0]");
 		await copyHomeDataIntoProject(home, project);
-		expect(readFileSync(join(inProjectDataDir(project), "tasks.json"), "utf8")).toBe("\"newer\"");
+		expect(existsSync(join(inProjectDataDir(project), STORAGE_SWITCH_BACKUPS_DIR))).toBe(false);
 	});
 
 	it("never copies a held tasks-file lock into the project", async () => {

@@ -24,7 +24,7 @@
  * the question it exists for.
  */
 
-import { projectDataDir } from "../shared/project-storage";
+import { liveProjectDataDir } from "./project-storage-live";
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, unlinkSync } from "node:fs";
 import type { Project } from "../shared/types";
 import {
@@ -38,7 +38,6 @@ import {
 	serializeAgentMessageLogReceipt,
 	serializeAgentMessageLogRow,
 } from "../shared/agent-message-log";
-import { DEV3_HOME } from "./paths";
 import { createLogger } from "./logger";
 import { getPushMessage } from "./rpc-handlers/shared-pure";
 import { noteLocalMessageLogAppend } from "./agent-message-log-watch";
@@ -55,7 +54,7 @@ function dayStamp(at: Date): string {
 
 /** The per-project directory holding the day-files. */
 export function messageLogDir(project: Project): string {
-	return `${projectDataDir(DEV3_HOME, project)}/messages`;
+	return `${liveProjectDataDir(project)}/messages`;
 }
 
 function dayFile(project: Project, at: Date): string {

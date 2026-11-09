@@ -1,5 +1,6 @@
 import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
-import { projectDataDir, storesInProject } from "../shared/project-storage";
+import { storesInProject } from "../shared/project-storage";
+import { liveProjectDataDir, liveStorage } from "./project-storage-live";
 import type { Project, Task, TaskHistoryChange, TaskHistoryEntry, TaskMovement, TaskOrigin, TaskPriority, TaskStatus, TaskType, TipState } from "../shared/types";
 import { appendTaskMovement, DEFAULT_PRIORITY, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, getTaskOverview, getTaskTitle, isStatusGuardBlocked, remapColumnAgents, titleFromDescription } from "../shared/types";
 import {
@@ -71,11 +72,23 @@ export class DataFileReadError extends Error {
 }
 
 function tasksFile(project: Project): string {
-	return `${projectDataDir(DEV3_HOME, project)}/tasks.json`;
+	return `${liveProjectDataDir(project)}/tasks.json`;
 }
 
 function tasksBackupDir(project: Project): string {
-	return `${projectDataDir(DEV3_HOME, project)}/${TASK_BACKUPS_DIR}`;
+	return `${liveProjectDataDir(project)}/${TASK_BACKUPS_DIR}`;
+}
+
+/**
+ * Lock the project's tasks file and run `fn`. A storage switch can move the file
+ * while a caller waits on the old lock; it then retries on the new one.
+ */
+export async function withTasksLock<T>(project: Project, fn: () => Promise<T>): Promise<T> {
+	for (;;) {
+		const file = tasksFile(project);
+		const outcome = await withFileLock(file, async () => (tasksFile(project) === file ? { value: await fn() } : null));
+		if (outcome) return outcome.value;
+	}
 }
 
 export function deriveTaskBaseBranch(project: Project, existingBranch?: string | null): string {
@@ -813,8 +826,7 @@ export async function saveTasks(
 	project: Project,
 	tasks: Task[],
 ): Promise<void> {
-	const file = tasksFile(project);
-	await withFileLock(file, () => rawSaveTasks(project, tasks));
+	await withTasksLock(project, () => rawSaveTasks(project, tasks));
 }
 
 /**
@@ -823,8 +835,7 @@ export async function saveTasks(
  * return false instead of being overwritten. Used by the board-copy restore.
  */
 export async function restoreTasksIntoEmptyBoard(project: Project, tasks: Task[]): Promise<boolean> {
-	const file = tasksFile(project);
-	return withFileLock(file, async () => {
+	return withTasksLock(project, async () => {
 		const existing = await rawLoadTasks(project, { strict: true });
 		if (existing.length > 0) return false;
 		await rawSaveTasks(project, tasks);
@@ -914,8 +925,7 @@ export async function addTask(
 		epicId?: string;
 	},
 ): Promise<Task> {
-	const file = tasksFile(project);
-	return withFileLock(file, async () => {
+	return withTasksLock(project, async () => {
 		const title = extras?.title?.trim() || titleFromDescription(description);
 		log.info("Creating task", { projectId: project.id, title, status });
 		const tasks = await rawLoadTasks(project, { strict: true, persistMigrations: true });
@@ -977,7 +987,7 @@ export async function addTask(
 			...(extras?.opsWorkDir ? { opsWorkDir: extras.opsWorkDir } : {}),
 			...(extras?.attachedRepo ? { attachedRepo: extras.attachedRepo } : {}),
 			...(extras?.opsWorktree ? { opsWorktree: true } : {}),
-			...(storesInProject(project) ? { taskDirLocation: "project" as const } : {}),
+			...(storesInProject(liveStorage(project)) ? { taskDirLocation: "project" as const } : {}),
 			...(extras?.notes && extras.notes.length > 0 ? { notes: extras.notes } : {}),
 			...(extras?.overview ? { overview: extras.overview } : {}),
 			...(extras?.userOverview ? { userOverview: extras.userOverview } : {}),
@@ -1029,8 +1039,7 @@ export async function updateTask(
 		ifStatusNot?: string;
 	},
 ): Promise<Task> {
-	const file = tasksFile(project);
-	return withFileLock(file, async () => {
+	return withTasksLock(project, async () => {
 		log.info("Updating task", { taskId, updates });
 		const tasks = await rawLoadTasks(project, { strict: true, persistMigrations: true });
 		const idx = tasks.findIndex((t) => t.id === taskId);
@@ -1050,8 +1059,7 @@ export async function updateTaskWith<T>(
 		ifStatusNot?: string;
 	},
 ): Promise<{ task: Task; result: T }> {
-	const file = tasksFile(project);
-	return withFileLock(file, async () => {
+	return withTasksLock(project, async () => {
 		log.info("Updating task with mutator", { projectId: project.id, taskId });
 		const tasks = await rawLoadTasks(project, { strict: true, persistMigrations: true });
 		const idx = tasks.findIndex((t) => t.id === taskId);
@@ -1075,8 +1083,7 @@ async function updateTasks(
 	apply: (task: Task) => Task | null,
 	wholeGroup: boolean,
 ): Promise<Task[]> {
-	const file = tasksFile(project);
-	return withFileLock(file, async () => {
+	return withTasksLock(project, async () => {
 		log.info(`Setting task ${op}`, { taskId, projectId: project.id });
 		const tasks = await rawLoadTasks(project, { strict: true, persistMigrations: true });
 		const target = tasks.find((task) => task.id === taskId);
@@ -1153,8 +1160,7 @@ export async function setTaskTerminalBackend(
 	if (!isTerminalBackendIdentity(backend)) {
 		throw new Error(`Unsupported terminal backend identity: ${String(backend)}`);
 	}
-	const file = tasksFile(project);
-	return withFileLock(file, async () => {
+	return withTasksLock(project, async () => {
 		log.info("Setting task terminal backend", { taskId, backend, projectId: project.id });
 		const tasks = await rawLoadTasks(project, { strict: true, persistMigrations: true });
 		const idx = tasks.findIndex((t) => t.id === taskId);
@@ -1170,8 +1176,7 @@ export async function deleteTask(
 	project: Project,
 	taskId: string,
 ): Promise<void> {
-	const file = tasksFile(project);
-	return withFileLock(file, async () => {
+	return withTasksLock(project, async () => {
 		log.info("Deleting task", { taskId, projectId: project.id });
 		const tasks = await rawLoadTasks(project, { strict: true, persistMigrations: true });
 		const filtered = tasks.filter((t) => t.id !== taskId);
@@ -1266,7 +1271,7 @@ export async function moveTaskToProject(
 				attachedRepo: null,
 				opsWorktree: undefined,
 				scheduledLaunch: null,
-				taskDirLocation: storesInProject(targetProject) ? "project" : undefined,
+				taskDirLocation: storesInProject(liveStorage(targetProject)) ? "project" : undefined,
 				updatedAt: now,
 			};
 
@@ -1448,8 +1453,7 @@ export async function addTaskFocusMs(
 	byHour: Record<string, number> = {},
 ): Promise<void> {
 	if (!(ms > 0)) return;
-	const file = tasksFile(project);
-	return withFileLock(file, async () => {
+	return withTasksLock(project, async () => {
 		const tasks = await rawLoadTasks(project, { strict: true, persistMigrations: true });
 		const idx = tasks.findIndex((t) => t.id === taskId);
 		if (idx === -1) return;

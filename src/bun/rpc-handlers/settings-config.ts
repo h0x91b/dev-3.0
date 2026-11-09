@@ -37,6 +37,8 @@ import { ensureInProjectStorageDirs } from "../in-project-storage";
 import { copyHomeDataIntoProject, copyProjectDataToHome } from "../project-storage-switch";
 import { projectTasksFile, storesInProject } from "../../shared/project-storage";
 import { withFileLock } from "../file-lock";
+import { recordStorageSwitch } from "../project-storage-live";
+import { projectClaudeFolderSupported } from "../../shared/agent-env-defaults";
 import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath, setFocusMode } from "./shared";
 import { binaryCandidatesOnPath, tmuxSearchPaths } from "./shared-pure";
 import { agentBinaryPathOverride, brokenCustomPath, enforcedCustomBinaryPaths, isExecutableFile, staleCustomPath } from "../executable";
@@ -138,25 +140,34 @@ async function assertStorageSwitchAllowed(project: Project, next: "project" | "h
 	if (next === "project" && (await hasTrackedInProjectData(project.path))) throw new Error(STORAGE_TRACKED_CONFLICT_ERROR);
 }
 
-/** Copies the board across under the live tasks-file lock; returns the `storageRoot` to store. */
+/**
+ * Copies the board across and records the new root while holding the tasks-file
+ * locks at both locations, so no board write can land in the copy left behind.
+ * Returns the `storageRoot` now stored.
+ */
 async function switchProjectStorage(project: Project, next: "project" | "home"): Promise<"project" | undefined> {
 	await assertStorageSwitchAllowed(project, next);
-	const lockedFile = projectTasksFile(DEV3_HOME, project);
-	await mkdir(dirname(lockedFile), { recursive: true });
-	await withFileLock(lockedFile, async () => {
+	const storageRoot = next === "project" ? "project" as const : undefined;
+	const [from, to] = [projectTasksFile(DEV3_HOME, project), projectTasksFile(DEV3_HOME, { ...project, storageRoot })];
+	await Promise.all([from, to].map((file) => mkdir(dirname(file), { recursive: true })));
+	// Sorted like moveTaskToProject's locks, so the two can never deadlock.
+	const [first, second] = [from, to].sort();
+	await withFileLock(first, () => withFileLock(second, async () => {
 		if (next === "project") {
 			await ensureInProjectStorageDirs(project.path);
 			await copyHomeDataIntoProject(DEV3_HOME, project.path);
 		}
 		else await copyProjectDataToHome(DEV3_HOME, project.path);
-	});
-	return next === "project" ? "project" : undefined;
+		await data.updateProject(project.id, { storageRoot });
+		recordStorageSwitch(project.id, storageRoot);
+	}));
+	return storageRoot;
 }
 
 /** Keep a just-added project's board and task dirs inside its folder. Throws when the folder cannot take them. */
 export async function storeNewProjectInProject(project: Project): Promise<Project> {
-	const storageRoot = await switchProjectStorage(project, "project");
-	return data.updateProject(project.id, { storageRoot });
+	await switchProjectStorage(project, "project");
+	return data.getProject(project.id);
 }
 
 async function updateProjectSettings(params: { projectId: string } & ProjectSettingsUpdate): Promise<Project> {
@@ -623,7 +634,7 @@ async function getLastRoute(): Promise<{ route: string | null }> {
 	return { route };
 }
 
-async function getAppVersion(): Promise<{ version: string; channel: string; buildChannel: string; leanProtocolForcedByEnv: boolean }> {
+async function getAppVersion(): Promise<{ version: string; channel: string; buildChannel: string; leanProtocolForcedByEnv: boolean; projectClaudeFolderSupported: boolean }> {
 	log.info("-> getAppVersion");
 	const local = await updater.getLocalVersion();
 	const settings = await loadSettings();
@@ -632,6 +643,7 @@ async function getAppVersion(): Promise<{ version: string; channel: string; buil
 		channel: settings.updateChannel,
 		buildChannel: local.channel,
 		leanProtocolForcedByEnv: process.env.DEV3_LEAN_PROTOCOL === "1",
+		projectClaudeFolderSupported: projectClaudeFolderSupported(process.platform),
 	};
 	log.info("<- getAppVersion", result);
 	return result;

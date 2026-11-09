@@ -1,4 +1,5 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api } from "../../rpc";
 import type { GlobalSettings } from "../../../shared/types";
 import type { TFunction } from "../../i18n";
 import { usesProjectClaudeConfigDir, withProjectClaudeConfigDir } from "../../../shared/agent-env-defaults";
@@ -36,6 +37,14 @@ export default function AgentEnvDefaultsSection({
 		onChange(next);
 	}
 	const projectFolder = usesProjectClaudeConfigDir(globalSettings.agentEnvDefaults);
+	// Asked of the host: in remote mode the browser's OS is not the one agents run on.
+	const [folderSupported, setFolderSupported] = useState<boolean | null>(null);
+	useEffect(() => {
+		api.request
+			.getAppVersion()
+			.then((info) => setFolderSupported(info?.projectClaudeFolderSupported !== false))
+			.catch(() => {});
+	}, []);
 	function toggleProjectFolder() {
 		const next = withProjectClaudeConfigDir(saved.current, !projectFolder);
 		saved.current = next;
@@ -43,19 +52,26 @@ export default function AgentEnvDefaultsSection({
 	}
 
 	return (
-		<SettingsSection title={t("settings.agentEnvDefaults")}>
+		<>
+		<SettingsSection title={t("settings.projectClaudeFolder")}>
 			<SettingsEntry anchor="project-claude-folder">
 				<div>
 					<p className="text-fg-3 text-sm mb-3">{t("settings.projectClaudeFolderDesc")}</p>
-					<SettingsToggle
-						checked={projectFolder}
-						ariaLabel={t("settings.projectClaudeFolder")}
-						onLabel={t("settings.projectClaudeFolder")}
-						offLabel={t("settings.projectClaudeFolder")}
-						onToggle={toggleProjectFolder}
-					/>
+					{folderSupported === false && !projectFolder ? (
+						<p className="text-fg-3 text-sm">{t("settings.projectClaudeFolderMacOnly")}</p>
+					) : (
+						<SettingsToggle
+							checked={projectFolder}
+							ariaLabel={t("settings.projectClaudeFolder")}
+							onLabel={t("settings.on")}
+							offLabel={t("settings.off")}
+							onToggle={toggleProjectFolder}
+						/>
+					)}
 				</div>
 			</SettingsEntry>
+		</SettingsSection>
+		<SettingsSection title={t("settings.agentEnvDefaults")}>
 			<SettingsEntry anchor="agent-env-defaults">
 				<div onBlur={commit}>
 					<EnvVarsEditor
@@ -69,5 +85,6 @@ export default function AgentEnvDefaultsSection({
 				</div>
 			</SettingsEntry>
 		</SettingsSection>
+		</>
 	);
 }
