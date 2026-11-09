@@ -140,6 +140,18 @@ describe("TaskCompletionStrip", () => {
 		expect(strips[0]!.className).toContain("absolute");
 	});
 
+	it("drops below the tmux ZOOMED badge, which holds the same corner", async () => {
+		render(
+			<I18nProvider>
+				<TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" belowZoomBadge />
+			</I18nProvider>,
+		);
+		await offer("merge");
+		const strip = screen.getByTestId("task-completion-strip");
+		expect(strip.className).toContain("top-11");
+		expect(strip.className).not.toContain("top-2");
+	});
+
 	it("keeps toasts below it, so a toast never covers its buttons", async () => {
 		renderStrip();
 		await offer("merge");

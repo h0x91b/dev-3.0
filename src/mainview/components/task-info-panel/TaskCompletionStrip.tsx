@@ -20,16 +20,20 @@ type GitCheck = { state: "skipped" } | { state: "checking" } | { state: "done"; 
  * so the terminal keeps its size; `inline` is the row under the inspector, used
  * only where no terminal viewport hosts the overlay (a session-ended screen).
  */
-export default function TaskCompletionStrip({ task, project, variant = "inline" }: { task: Task; project: Project; variant?: "inline" | "overlay" }) {
+export default function TaskCompletionStrip({ task, project, variant = "inline", belowZoomBadge = false }: {
+	task: Task; project: Project; variant?: "inline" | "overlay";
+	/** The tmux ZOOMED badge holds the same corner; the overlay drops below it while it shows. */
+	belowZoomBadge?: boolean;
+}) {
 	const offer = useCompletionOffer(task.id);
 	const hosted = useCompletionOverlayHosted(task.id);
 	useEffect(() => registerCompletionStrip(task.id), [task.id]);
 	useEffect(() => (variant === "overlay" ? registerCompletionOverlayHost(task.id) : undefined), [task.id, variant]);
 	if (!offer || (variant === "inline" && hosted)) return null;
-	return <Strip key={offer.id} offer={offer} task={task} project={project} overlay={variant === "overlay"} />;
+	return <Strip key={offer.id} offer={offer} task={task} project={project} overlay={variant === "overlay"} belowZoomBadge={belowZoomBadge} />;
 }
 
-function Strip({ offer, task, project, overlay }: { offer: CompletionOffer; task: Task; project: Project; overlay: boolean }) {
+function Strip({ offer, task, project, overlay, belowZoomBadge }: { offer: CompletionOffer; task: Task; project: Project; overlay: boolean; belowZoomBadge: boolean }) {
 	const t = useT();
 	const armedRef = useRef(false);
 	const skipGit = completionSkipsGitCheck(task, project);
@@ -83,7 +87,7 @@ function Strip({ offer, task, project, overlay }: { offer: CompletionOffer; task
 			data-help-id="task.completion-strip"
 			className={`flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 text-sm ${
 				overlay
-					? "absolute top-2 right-3 z-20 w-[min(40rem,calc(100%-1.5rem))] rounded-xl border bg-overlay shadow-lg"
+					? `absolute ${belowZoomBadge ? "top-11" : "top-2"} right-3 z-20 w-[min(40rem,calc(100%-1.5rem))] rounded-xl border bg-overlay shadow-lg`
 					: "flex-shrink-0 border-b bg-raised"
 			} ${isAgent ? "border-accent/40" : "border-success/30"}`}
 		>

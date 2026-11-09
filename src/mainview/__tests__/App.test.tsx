@@ -4489,6 +4489,34 @@ describe("App keyboard shortcuts", () => {
 			expect(api.request.respondToAgentCompletionRequest).not.toHaveBeenCalled();
 		});
 
+		it("withdraws the offer's bell once another client answers it", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1" }),
+			});
+			vi.mocked(offerCompletion).mockImplementation(((opts: { signal?: AbortSignal }) =>
+				new Promise<boolean>((resolve) => {
+					opts.signal?.addEventListener("abort", () => resolve(false));
+				})) as never);
+
+			await renderApp();
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:agentCompletionRequested", {
+					detail: { requestId: "req-bell", taskId: "t-overflow", projectId: "p1", taskTitle: "Some task" },
+				}));
+			});
+			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-bell-count", "1"));
+
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:agentRequestResolved", {
+					detail: { requestId: "req-bell", kind: "complete", taskId: "t-overflow", projectId: "p1" },
+				}));
+			});
+			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-bell-count", "0"));
+		});
+
 		it("closes the launch dialog without answering", async () => {
 			await renderApp();
 

@@ -1,4 +1,3 @@
-import TaskCompletionStrip from "./task-info-panel/TaskCompletionStrip";
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, type Dispatch, type MouseEvent as ReactMouseEvent } from "react";
 import { TaskRefText } from "./TaskRefText";
 import { toast } from "../toast";
@@ -79,6 +78,7 @@ import HelpSpot from "./HelpSpot";
 import Tooltip from "./Tooltip";
 import ForeignCodeMark from "./ForeignCodeMark";
 import TaskOriginRow from "./TaskOriginRow";
+import TaskCompletionStrip from "./task-info-panel/TaskCompletionStrip";
 import TaskEpicRow from "./TaskEpicRow";
 import VariantSwitcher from "./VariantSwitcher";
 import { isMac } from "../utils/platform";
