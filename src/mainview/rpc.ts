@@ -700,9 +700,9 @@ function initBrowserApi(): ApiShape {
 
 		async getProjectPtyUrl(params: { projectId: string }): Promise<string> {
 			// Server-side: ensure the tmux session exists.
-			// We discard the URL it returns (`ws://localhost:<ptyPort>`) because
-			// `localhost` resolves on the laptop in browser mode, not on the
-			// server. Build the proxied `/pty` URL relative to window.location.
+			// We discard the URL it returns: it names the host's own loopback PTY
+			// server, which this device cannot reach and must not. Build the
+			// proxied `/pty` URL relative to window.location.
 			await rpcRequest("getProjectPtyUrl", params);
 			return `${wsProtocol}//${window.location.host}/pty?session=project-${params.projectId}`;
 		},

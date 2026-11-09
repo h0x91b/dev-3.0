@@ -2,6 +2,7 @@ import type { AgentFamily, CodingAgent, PaneSessionEntry, Project, Task } from "
 import { ACTIVE_STATUSES, getPrimaryStopTarget } from "../../../shared/types";
 import * as data from "../../data";
 import * as pty from "../../pty-server";
+import { ptyWsUrl } from "../../pty-server-access";
 import * as agents from "../../agents";
 import { codexAccountIdForHome, defaultAccountPaths, getActiveClaudeConfigDir } from "../../agent-accounts";
 import { isAutoAccountId } from "../../../shared/agent-accounts";
@@ -196,7 +197,7 @@ export async function resumeTask(params: { taskId: string; restart?: boolean; ac
 	if (params.restart && outcome.kind === "resumed" && outcome.result.panes.some((pane) => pane.status !== "resumed")) {
 		throw new Error("The terminal restarted, but some agent panes could not be restored. Their conversations remain saved.");
 	}
-	return outcome.kind === "resumed" ? outcome.url : `ws://localhost:${pty.getPtyPort()}?session=${params.taskId}`;
+	return outcome.kind === "resumed" ? outcome.url : ptyWsUrl(pty.getPtyPort(), params.taskId);
 }
 
 /** Only Claude panes take an account choice: a Codex conversation lives in its own account's home. */
@@ -507,8 +508,8 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 	}
 	getPushMessage()?.("taskTerminalResumed", { taskId: params.taskId, projectId: project.id });
 
-	const url = `ws://localhost:${pty.getPtyPort()}?session=${params.taskId}`;
-	log.info("← resumeTask", { url });
+	const url = ptyWsUrl(pty.getPtyPort(), params.taskId);
+	log.info("← resumeTask", { taskId: params.taskId.slice(0, 8) });
 	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 	return {
 		kind: "resumed",
@@ -569,8 +570,8 @@ export async function restartTask(params: { taskId: string }): Promise<string> {
 
 	await markTerminalAttached(project, task);
 
-	const url = `ws://localhost:${pty.getPtyPort()}?session=${params.taskId}`;
-	log.info("← restartTask", { url });
+	const url = ptyWsUrl(pty.getPtyPort(), params.taskId);
+	log.info("← restartTask", { taskId: params.taskId.slice(0, 8) });
 	return url;
 }
 
@@ -596,7 +597,7 @@ export async function wakeTaskShell(params: { taskId: string }): Promise<string>
 	await launchTaskPty(resolvedProject, task, task.worktreePath, null, null, false, false, { shellNotice: WAKE_SHELL_NOTICE });
 	await markTerminalAttached(project, task);
 	getPushMessage()?.("taskTerminalResumed", { taskId: params.taskId, projectId: project.id });
-	const url = `ws://localhost:${pty.getPtyPort()}?session=${params.taskId}`;
-	log.info("← wakeTaskShell", { url });
+	const url = ptyWsUrl(pty.getPtyPort(), params.taskId);
+	log.info("← wakeTaskShell", { taskId: params.taskId.slice(0, 8) });
 	return url;
 }
