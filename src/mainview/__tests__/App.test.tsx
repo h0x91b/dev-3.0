@@ -153,6 +153,7 @@ vi.mock("../components/Changelog", () => ({
 vi.mock("../components/ProjectView", () => ({
 	default: (props: {
 		projectId: string;
+		spaceId?: string;
 		activeTaskId?: string;
 		taskDetailId?: string;
 		taskView?: boolean;
@@ -164,6 +165,7 @@ vi.mock("../components/ProjectView", () => ({
 		<div
 			data-testid="project-screen"
 			data-project-id={props.projectId}
+			data-space-id={props.spaceId ?? ""}
 			data-active-task-id={props.activeTaskId ?? ""}
 			data-task-detail-id={props.taskDetailId ?? ""}
 			data-task-view={props.taskView ? "true" : "false"}
@@ -758,6 +760,136 @@ describe("App keyboard shortcuts", () => {
 			});
 			act(() => window.dispatchEvent(wrapped));
 			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "v1");
+		});
+	});
+
+	describe("number keys follow spaces", () => {
+		const base = { path: "/x", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" };
+		const projects = [
+			{ ...base, id: "ops", name: "Operations", kind: "virtual" as const, builtin: true },
+			{ ...base, id: "p1", name: "Alpha" },
+			{ ...base, id: "p2", name: "Beta" },
+			{ ...base, id: "p3", name: "Gamma" },
+			{ ...base, id: "p4", name: "Delta" },
+		];
+		// Mixed order: Alpha, the space (slot of Beta), Delta.
+		const spacesFile = {
+			version: 1,
+			spaces: [{ id: "sp_a", name: "Client", parentId: null, projectIds: ["p2", "p3"], createdAt: 1 }],
+			order: ["sp_a"],
+		};
+
+		async function renderWith(follow: boolean) {
+			vi.mocked(api.request.getProjects).mockResolvedValue(projects);
+			vi.mocked(api.request.getSpaces).mockResolvedValue(spacesFile as never);
+			vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+				defaultAgentId: "builtin-claude",
+				defaultConfigId: "claude-default",
+				taskSortOrder: "oldest-first",
+				updateChannel: "stable",
+				...(follow ? { digitsFollowSpaces: true } : {}),
+			} as never);
+			await renderApp();
+			// Settings and spaces load after the first screen; let them land.
+			await act(async () => {
+				await new Promise((resolve) => setTimeout(resolve, 0));
+			});
+		}
+
+		function press(init: KeyboardEventInit) {
+			act(() => {
+				window.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
+			});
+		}
+
+		const project = () => screen.getByTestId("project-screen");
+
+		afterEach(() => {
+			localStorage.removeItem("dev3-space-last-project-sp_a");
+			vi.mocked(api.request.getSpaces).mockResolvedValue({ version: 1, spaces: [], order: [] });
+			vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+				defaultAgentId: "builtin-claude",
+				defaultConfigId: "claude-default",
+				taskSortOrder: "oldest-first",
+				updateChannel: "stable",
+			} as never);
+		});
+
+		it("⌘2 opens the space board anchored on its first member", async () => {
+			await renderWith(true);
+			press({ key: "2", code: "Digit2", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p2");
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
+		});
+
+		it("⌘2 anchors on the member last used on that board while it is still a member", async () => {
+			localStorage.setItem("dev3-space-last-project-sp_a", "p3");
+			await renderWith(true);
+			press({ key: "2", code: "Digit2", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p3");
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
+		});
+
+		it("⌘2 falls back to the first member when the remembered one left the space", async () => {
+			localStorage.setItem("dev3-space-last-project-sp_a", "p4");
+			await renderWith(true);
+			press({ key: "2", code: "Digit2", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p2");
+		});
+
+		it("⌘3 opens the standalone project, with no space", async () => {
+			await renderWith(true);
+			press({ key: "3", code: "Digit3", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p4");
+			expect(project()).toHaveAttribute("data-space-id", "");
+		});
+
+		it("⇧⌘2 opens the space board in the task view", async () => {
+			await renderWith(true);
+			press({ key: "@", code: "Digit2", metaKey: true, shiftKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p2");
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
+			expect(project()).toHaveAttribute("data-task-view", "true");
+		});
+
+		it.each([true, false])("⌘1 from a space board's split view lands on the project alone (follow=%s)", async (follow) => {
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p2", spaceId: "sp_a", taskView: true }),
+			});
+			await renderWith(follow);
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
+			press({ key: "1", code: "Digit1", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p1");
+			expect(project()).toHaveAttribute("data-space-id", "");
+			expect(project()).toHaveAttribute("data-task-view", "true");
+		});
+
+		it("⌘0 still opens Operations", async () => {
+			await renderWith(true);
+			press({ key: "0", code: "Digit0", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "ops");
+		});
+
+		it("g then 2 opens the space board too", async () => {
+			await renderWith(true);
+			press({ key: "g", code: "KeyG" });
+			press({ key: "2", code: "Digit2" });
+			expect(project()).toHaveAttribute("data-project-id", "p2");
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
+		});
+
+		it("g then 1 skips Operations in both modes", async () => {
+			await renderWith(false);
+			press({ key: "g", code: "KeyG" });
+			press({ key: "1", code: "Digit1" });
+			expect(project()).toHaveAttribute("data-project-id", "p1");
+		});
+
+		it("with the setting off, ⌘2 is the second project, never a space", async () => {
+			await renderWith(false);
+			press({ key: "2", code: "Digit2", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p2");
+			expect(project()).toHaveAttribute("data-space-id", "");
 		});
 	});
 

@@ -9,6 +9,7 @@ import { parseDisplayVersion } from "../../shared/update-channel";
 import { MASK_CLASS, useProjectPrivacy } from "../sensitive-projects";
 import { useSpaces } from "../useSpaces";
 import { groupProjectsForSwitcher } from "../utils/spaceGroups";
+import { digitBadgeById, digitTargets } from "../utils/digitOrder";
 import { projectLastActivityMs } from "../utils/projectActivity";
 import { fuzzyScore } from "../utils/fuzzyMatch";
 import { projectSearchHaystack } from "../utils/projectSearchHaystack";
@@ -96,6 +97,8 @@ interface GlobalHeaderProps {
 	 * already teaching, and bible §10 allows exactly one callout per screen.
 	 */
 	tourRunning?: boolean;
+	/** "Number keys follow spaces" is on: ⌘1–⌘9 badges sit on spaces and standalone projects. */
+	digitsFollowSpaces?: boolean;
 }
 
 /**
@@ -135,7 +138,7 @@ const COUNTS_CACHE_TTL = 30_000;
 /** How often the update toast re-reads remote/headless state while it is on screen. */
 const RESTART_CONTEXT_POLL_MS = 5_000;
 
-function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForward, canGoBack, canGoForward, updateVersion, updateAnnouncement, updateChangelog, updateDownloadStatus, remoteAccessActive, helpDiscovered, tourRunning, suppressHelpCallout }: GlobalHeaderProps) {
+function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForward, canGoBack, canGoForward, updateVersion, updateAnnouncement, updateChangelog, updateDownloadStatus, remoteAccessActive, helpDiscovered, tourRunning, suppressHelpCallout, digitsFollowSpaces = false }: GlobalHeaderProps) {
 	const t = useT();
 	const highlightHelp = !helpDiscovered && !tourRunning && !suppressHelpCallout && HELP_ATTRACTOR_SCREENS.has(route.screen);
 	const privacy = useProjectPrivacy();
@@ -584,18 +587,10 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 		setShowProjectDropdown(false);
 		navigate({ screen: "project", projectId: remembered && members.includes(remembered) ? remembered : members[0], spaceId: space.id });
 	}, [availableProjects, navigate]);
-	const switcherHasPinnedBuiltin = availableProjects.length > 0 && isBuiltinOpsProject(availableProjects[0]);
-	// ⌘N stays keyed to BOARD order, so the badge keeps matching the shortcut once
-	// spaces regroup the rows (same split as the ⇧⌘K palette's shortcutIndexById).
-	const switcherShortcutById: Record<string, string> = {};
-	availableProjects.forEach((p, idx) => {
-		if (isBuiltinOpsProject(p)) {
-			switcherShortcutById[p.id] = "0";
-			return;
-		}
-		const nonBuiltinIdx = switcherHasPinnedBuiltin ? idx - 1 : idx;
-		if (nonBuiltinIdx < 9) switcherShortcutById[p.id] = String(nonBuiltinIdx + 1);
-	});
+	// ⌘N badges come from the shared digit list, so they keep matching the shortcut
+	// once spaces regroup the rows (same source as the ⇧⌘K palette's badges).
+	const switcherShortcutById: Record<string, string> = digitBadgeById(digitTargets(projects, spacesFile, digitsFollowSpaces));
+	for (const p of availableProjects) if (isBuiltinOpsProject(p)) switcherShortcutById[p.id] = "0";
 	// Spaces group the switcher exactly as they group the dashboard, except the
 	// current project's own space is hoisted first. null = no space holds a
 	// visible project, and the flat list below stays byte-identical to today's.
@@ -1034,6 +1029,11 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 																	<span className="text-nano text-fg-muted opacity-0 transition-opacity group-hover/space:opacity-100 flex-shrink-0">
 																		{t("spaces.openBoard")}
 																	</span>
+																	{switcherShortcutById[group.space.id] && (
+																		<kbd className="flex-shrink-0 inline-flex items-center gap-0.5 text-dense text-fg-muted/60 font-mono">
+																			<span className="text-micro">{"⌘"}</span>{switcherShortcutById[group.space.id]}
+																		</kbd>
+																	)}
 																</button>
 															) : (
 																<div className="px-3 pb-1 flex items-center gap-2">

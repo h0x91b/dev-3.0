@@ -1391,6 +1391,16 @@ describe("reducer — the space a task was opened through", () => {
 			.toEqual({ screen: "project", projectId: "p2" });
 	});
 
+	// A project switch (⌘1..9, the palette, a notification) is a destination, not
+	// a task opened through the board: it must not drag the space along.
+	it("a navigation flagged as a project switch inherits no space, split view included", () => {
+		const route: Route = { screen: "project", projectId: "p9", taskView: true };
+		expect(reducer(onSpaceBoard, { type: "navigate", route, inheritSpace: false }).route).toEqual(route);
+		expect(reducer(onSpaceBoard, { type: "navigate", route, inheritSpace: true }).route)
+			.toEqual({ ...route, spaceId: "sp_1" });
+		expect(navigateFrom(onSpaceBoard, route)).toEqual({ ...route, spaceId: "sp_1" });
+	});
+
 	it("an explicitly named space wins over the one being left", () => {
 		expect(navigateFrom(onSpaceBoard, { screen: "task", projectId: "p1", spaceId: "sp_2", taskId: "t1" }))
 			.toEqual({ screen: "task", projectId: "p1", spaceId: "sp_2", taskId: "t1" });

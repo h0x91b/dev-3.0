@@ -16,6 +16,7 @@ vi.mock("../../rpc", () => ({
 			getSpaces: vi.fn(() => Promise.resolve({ version: 1, spaces: [], order: [] })),
 			reorderSpaces: vi.fn(),
 			reorderSpaceProjects: vi.fn(),
+			reorderMixedOrder: vi.fn(),
 			createSandboxProject: vi.fn(),
 			checkHarnessReadiness: vi.fn(() => Promise.resolve({ harnesses: [], usable: ["builtin-claude"], noneInstalled: false })),
 		},
@@ -1170,5 +1171,166 @@ describe("ActivityOverview — coordinator rows", () => {
 		await userEvent.setup().click(await screen.findByText("Infra lead"));
 		expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1", activeTaskId: "c-hib" });
 		expect(mockedMove).not.toHaveBeenCalled();
+	});
+});
+
+// With "Number keys follow spaces" on, the dashboard is ONE list in digit order:
+// spaces and standalone projects interleaved, instead of space groups plus Home.
+describe("ActivityOverview — mixed top-level order", () => {
+	const names = ["chisim", "polymarket", "bus", "pollex", "Nerd-Dictum", "voxscript", "ds_api", "dev-3.0", "aux"];
+	const board: Project[] = names.map((n) => ({ ...mockProject, id: n, name: n, path: `/tmp/${n}` }));
+	const hands = { id: "sp_hands", name: "hands.ru", parentId: null, projectIds: ["bus", "pollex", "voxscript", "ds_api", "aux"], createdAt: 1 };
+
+	function mockSpaces(extra: Record<string, unknown> = {}) {
+		(mockedApi.request.getSpaces as ReturnType<typeof vi.fn>).mockResolvedValue({
+			version: 1,
+			spaces: [hands],
+			order: ["sp_hands"],
+			...extra,
+		});
+	}
+
+	function renderMixed(on = true, selectedSpaceId: string | null = null) {
+		return render(
+			<I18nProvider>
+				<ActivityOverview
+					projects={board}
+					navigate={vi.fn()}
+					dispatch={vi.fn()}
+					bellCounts={new Map()}
+					onRemoveProject={vi.fn()}
+					onOpenAddProject={vi.fn()}
+					digitsFollowSpaces={on}
+					selectedSpaceId={selectedSpaceId}
+				/>
+			</I18nProvider>,
+		);
+	}
+
+	/** Top-level blocks in document order: a space group's testid or a standalone project's id. */
+	function topLevel(): string[] {
+		const all = document.querySelectorAll<HTMLElement>('[data-testid^="space-group-"], [data-help-id="dashboard.project-row"]');
+		return Array.from(all)
+			.filter((el) => !el.parentElement?.closest('[data-testid^="space-group-"]'))
+			.map((el) => el.getAttribute("data-testid") ?? el.querySelector('[data-hint-id^="project:"]')!.getAttribute("data-hint-id")!.slice(8));
+	}
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		localStorage.clear();
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([]);
+		mockedApi.request.reorderMixedOrder.mockResolvedValue({} as never);
+		mockSpaces();
+	});
+
+	afterEach(() => {
+		Reflect.deleteProperty(window, "__electrobunWebviewId");
+	});
+
+	it("off: keeps the grouped dashboard with its Home block and no space grip", async () => {
+		renderMixed(false);
+		await screen.findByTestId("space-group-sp_hands");
+		expect(screen.getByTestId("space-group-rest")).toHaveTextContent("Home");
+		expect(screen.getByTestId("space-header-sp_hands").parentElement!.querySelector("[data-reorder-grip]")).toBeNull();
+	});
+
+	it("on: one interleaved list with no Home heading, standalone rows not indented", async () => {
+		renderMixed();
+		await screen.findByTestId("space-group-sp_hands");
+		expect(screen.queryByTestId("space-group-rest")).toBeNull();
+		expect(topLevel()).toEqual(["chisim", "polymarket", "space-group-sp_hands", "Nerd-Dictum", "dev-3.0"]);
+		const standalone = screen.getByText("chisim").closest('[data-help-id="dashboard.project-row"]')!;
+		expect(standalone.closest(".border-l")).toBeNull();
+		expect(within(screen.getByTestId("space-group-sp_hands")).getAllByText(/^(bus|pollex|voxscript|ds_api|aux)$/)).toHaveLength(5);
+	});
+
+	it("on with no spaces at all: a flat, draggable list in the stored order", async () => {
+		(mockedApi.request.getSpaces as ReturnType<typeof vi.fn>).mockResolvedValue({
+			version: 1,
+			spaces: [],
+			order: [],
+			mixedOrder: ["aux", "chisim"],
+		});
+		renderMixed();
+		await screen.findByText("aux");
+		expect(topLevel().slice(0, 3)).toEqual(["aux", "chisim", "polymarket"]);
+		expect(document.querySelector("[data-reorder-grip]")).not.toBeNull();
+	});
+
+	it("on: follows the stored mixedOrder", async () => {
+		mockSpaces({ mixedOrder: ["dev-3.0", "sp_hands"] });
+		renderMixed();
+		await screen.findByTestId("space-group-sp_hands");
+		// Projects the saved order never named follow in board order.
+		expect(topLevel()).toEqual(["dev-3.0", "space-group-sp_hands", "chisim", "polymarket", "Nerd-Dictum"]);
+	});
+
+	it("on: puts a ⌘N hint on the first nine entries (desktop only)", async () => {
+		(window as Window & { __electrobunWebviewId?: number }).__electrobunWebviewId = 1;
+		renderMixed();
+		await screen.findByTestId("space-group-sp_hands");
+		const hintOf = (el: Element | null) => el?.querySelector("kbd")?.textContent;
+		expect(hintOf(screen.getByText("chisim").closest("button"))).toBe("⌘1");
+		expect(hintOf(screen.getByTestId("space-header-sp_hands"))).toBe("⌘3");
+		expect(hintOf(screen.getByText("dev-3.0").closest("button"))).toBe("⌘5");
+	});
+
+	it("on: shows no ⌘N hints in remote mode", async () => {
+		renderMixed();
+		await screen.findByTestId("space-group-sp_hands");
+		expect(document.querySelector("kbd")).toBeNull();
+	});
+
+	it("on: puts a drag grip on the space header", async () => {
+		renderMixed();
+		const header = (await screen.findByTestId("space-header-sp_hands")).parentElement!;
+		const grip = header.querySelector("[data-reorder-grip]");
+		expect(grip).not.toBeNull();
+		expect(grip).toHaveAttribute("title", "Drag space");
+	});
+
+	it("on: Move up on a space steps within the mixed order, not the space order", async () => {
+		const user = userEvent.setup();
+		renderMixed();
+		await user.click(await screen.findByTestId("space-menu-sp_hands"));
+		await user.click(screen.getByTestId("space-move-up-sp_hands"));
+		expect(mockedApi.request.reorderMixedOrder).toHaveBeenCalledWith({
+			ids: ["chisim", "sp_hands", "polymarket", "Nerd-Dictum", "dev-3.0"],
+		});
+		expect(mockedApi.request.reorderSpaces).not.toHaveBeenCalled();
+		// The new order shows at once, before the push confirms it.
+		await waitFor(() => expect(topLevel()).toEqual(["chisim", "space-group-sp_hands", "polymarket", "Nerd-Dictum", "dev-3.0"]));
+	});
+
+	it("on: a standalone row's down button steps within the mixed order", async () => {
+		const user = userEvent.setup();
+		renderMixed();
+		const row = (await screen.findByText("polymarket")).closest<HTMLElement>('[data-help-id="dashboard.project-row"]')!;
+		await user.click(within(row).getByTitle("Move project down"));
+		expect(mockedApi.request.reorderMixedOrder).toHaveBeenCalledWith({
+			ids: ["chisim", "sp_hands", "polymarket", "Nerd-Dictum", "dev-3.0"],
+		});
+	});
+
+	it("on: puts the old order back and toasts when the write fails", async () => {
+		const user = userEvent.setup();
+		mockedApi.request.reorderMixedOrder.mockRejectedValue(new Error("boom"));
+		renderMixed();
+		await user.click(await screen.findByTestId("space-menu-sp_hands"));
+		await user.click(screen.getByTestId("space-move-up-sp_hands"));
+		await waitFor(() => expect(topLevel()).toEqual(["chisim", "polymarket", "space-group-sp_hands", "Nerd-Dictum", "dev-3.0"]));
+	});
+
+	it("on, but filtered to Home: falls back to the grouped path with no space grip", async () => {
+		renderMixed(true, "home");
+		await screen.findByTestId("space-group-rest");
+		expect(screen.getByTestId("space-group-rest")).toHaveTextContent("Home");
+		expect(screen.queryByTestId("space-group-sp_hands")).toBeNull();
+	});
+
+	it("on, but filtered to one space: renders the grouped path with no space grip", async () => {
+		renderMixed(true, "sp_hands");
+		const header = (await screen.findByTestId("space-header-sp_hands")).parentElement!;
+		expect(header.querySelector("[data-reorder-grip]")).toBeNull();
 	});
 });

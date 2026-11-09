@@ -23,6 +23,8 @@ interface DashboardProps {
 	navigate: (route: Route) => void;
 	bellCounts: Map<string, number>;
 	onOpenAddProject: (spaceIds?: string[]) => void;
+	/** The dashboard then shows the mixed order, so the rail's own space order is not what is on screen. */
+	digitsFollowSpaces?: boolean;
 }
 
 function Dashboard({
@@ -31,6 +33,7 @@ function Dashboard({
 	navigate,
 	bellCounts,
 	onOpenAddProject,
+	digitsFollowSpaces = false,
 }: DashboardProps) {
 	const t = useT();
 	const { spaces } = useSpaces();
@@ -148,10 +151,10 @@ function Dashboard({
 						selectedSpaceId={selectedSpaceId}
 						onSelect={setSelectedSpaceId}
 						onNewSpace={() => setShowNewSpace(true)}
-						onReorder={handleReorderSpaces}
+						onReorder={digitsFollowSpaces ? undefined : handleReorderSpaces}
 						onRenameSpace={(space, name) => void renameSpace(space, name, t)}
 						onDeleteSpace={(space) => void deleteSpaceWithConfirm(space, t)}
-						onMoveSpace={(space, delta) => void moveSpace(space, delta, spaces, t)}
+						onMoveSpace={digitsFollowSpaces ? undefined : (space, delta) => void moveSpace(space, delta, spaces, t)}
 						onEditProjects={setEditSpace}
 						onToggleSensitive={(space, next) => void toggleSpaceSensitive(space, next, t)}
 					/>
@@ -167,6 +170,7 @@ function Dashboard({
 						onOpenAddProject={onOpenAddProject}
 						onReorderProjects={handleReorderProjects}
 						selectedSpaceId={selectedSpaceId}
+						digitsFollowSpaces={digitsFollowSpaces}
 						onNewSpace={railOnScreen ? undefined : () => setShowNewSpace(true)}
 						onEditSpaceProjects={setEditSpace}
 						spaceFilter={
