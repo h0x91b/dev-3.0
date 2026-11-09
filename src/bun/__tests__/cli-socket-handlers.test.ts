@@ -537,6 +537,11 @@ describe("message.send / message.sendAsSender — the sender guards", () => {
 		expect(resp).toMatchObject({ ok: false, error: expect.stringContaining("agent.resumeAsSender") });
 	});
 
+	it("refuses a resume account that names nothing before resolving anything", async () => {
+		const resp = await handleRequest(makeRequest("agent.resume", { taskId: makeTask().id, accountId: 42 }));
+		expect(resp).toMatchObject({ ok: false, error: expect.stringContaining("accountId must be") });
+	});
+
 	it("never queues a sender's message into tasks.json", async () => {
 		const at = new Date(Date.now() + 60_000).toISOString();
 		const resp = await handleRequest(makeRequest("message.schedule", { ...base(), at, asSender: "cli" }));

@@ -10,8 +10,9 @@ import { CodexQuestionState } from "../codex-question-state";
 import { capturePaneSession, taskCodexHomes } from "./pane-sessions";
 import { isInteractiveCodexConversation } from "../codex-resume-home";
 import { noteAgentExited, noteAgentSessionActive, noteAgentSessionStarted } from "../agent-session-receipts";
+import { forgetClaudeSessionDump } from "../rate-limit-monitor";
 import { log, type Handler, withSenderVariant } from "./shared";
-import { requirePaneTask, resolveRequesterTask, resolveTaskFromParams, senderRequester } from "./task-resolution";
+import { requirePaneTask, resolveRequesterTask, resolveTaskFromParams, resumeAccountParam, senderRequester } from "./task-resolution";
 import { claudeSessionWatches, type ClaudeIdleEvent } from "../claude-session-watch";
 import { codexTurnWatches, type CodexTurnFailure } from "../codex-turn-watch";
 
@@ -119,6 +120,7 @@ export const agentHandlers: Record<string, Handler> = {
 		const sessionId = typeof params.sessionId === "string" ? params.sessionId.trim() : "";
 		if (!sessionId) throw new Error("sessionId is required");
 		const exitCode = typeof params.exitCode === "number" ? params.exitCode : null;
+		forgetClaudeSessionDump(task.id);
 		const verdict = noteAgentExited(task.id, sessionId, exitCode);
 		if (!verdict) return { moved: false };
 		log.info("Launched agent exited", { taskId: task.id.slice(0, 8), verdict, exitCode });
@@ -135,6 +137,24 @@ export const agentHandlers: Record<string, Handler> = {
 		return { moved: true };
 	}),
 	"agent.list": async () => (await import("../cli-agent-spawn")).listCliAgents(),
+	"agent.awsProfiles.list": async (params) => {
+		if (params.agentId !== undefined && typeof params.agentId !== "string") throw new Error("agentId must be a string.");
+		return (await import("../agent-aws-profiles")).listAgentAwsProfiles(params.agentId as string | undefined);
+	},
+	"agent.awsProfiles.set": async (params) => {
+		if (typeof params.agentId !== "string" || !params.agentId) throw new Error("agentId is required.");
+		const result = await (await import("../agent-aws-profiles")).setAgentAwsProfiles(params.agentId, params.profiles, params.defaultProfile);
+		getPushMessage()?.("agentsUpdated", await (await import("../agents")).getAllAgents());
+		// Any agent can call this, and it moves every later launch to another AWS account: say so on screen.
+		(await import("../rpc-handlers/shared")).pushCliToast({
+			taskId: null,
+			projectId: null,
+			level: "info",
+			message: "The dev3 CLI changed an agent's AWS profiles, which decide the AWS account its launches use. Check them in Settings → Agents.",
+			messageKey: "kanban.awsProfilesChangedFromCli",
+		});
+		return result;
+	},
 	"agent.spawn": async (params) => {
 		if ("accountId" in params) throw new Error("Account selection is not supported by agent.spawn — the default account is used unless the user changes it in the approval dialog.");
 		const { project, task } = await requirePaneTask(params);
@@ -152,13 +172,14 @@ export const agentHandlers: Record<string, Handler> = {
 		});
 	},
 	...withSenderVariant("agent.resume", async (params) => {
-		for (const key of ["agentId", "configId", "accountId", "prompt"]) {
-			if (key in params) throw new Error(`agent.resume takes no ${key} — it restores the saved harness, config and account.`);
+		for (const key of ["agentId", "configId", "prompt"]) {
+			if (key in params) throw new Error(`agent.resume takes no ${key} — it restores the saved harness and config.`);
 		}
+		const accountId = resumeAccountParam(params);
 		const { project, task } = await requirePaneTask(params);
 		const requester = senderRequester(params) ?? await resolveRequesterTask(params, "resume request");
 		const { resumeCliAgent } = await import("../cli-agent-resume");
-		return resumeCliAgent({ project, task, requester, allowAgentLatest: params.allowAgentLatest === true });
+		return resumeCliAgent({ project, task, requester, allowAgentLatest: params.allowAgentLatest === true, ...(accountId !== undefined ? { accountId } : {}) });
 	}),
 
 	"task.agentHook": (params) => codexQuestions.run(String(params.taskId), async () => {

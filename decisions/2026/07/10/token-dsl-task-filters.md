@@ -32,7 +32,8 @@ the label row never clips. Values with spaces are quoted
   `label:bug` is not, though both filter). The old `matchesSearchQuery` is fully
   replaced (no shim), its behavior kept as the internal free-text step.
 - `src/mainview/utils/taskFacets.ts` builds the per-task `TaskQueryContext` (matching)
-  and the present-values-only grouped funnel pool (empty groups dropped). `isAttentionTask`
+  and the grouped funnel pool (empty groups dropped): present values only, except STATUS,
+  which since 2026-11-08 lists every candidate so a status filter keeps new statuses in view. `isAttentionTask`
   is the shared attention predicate (also the sidebar attention scope).
 - `FilterFunnel.tsx` (shared): a ghost funnel button + accent count badge opening a
   grouped checkable dropdown (bottom sheet on narrow), plus a `filters.dsl` HelpSpot.

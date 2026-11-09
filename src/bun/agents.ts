@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import type { AgentConfiguration, AgentFamily, CodingAgent, LlmProvider, Project } from "../shared/types";
 import { DEFAULT_AGENTS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
 export { skillInvocationPrefix } from "../shared/types";
-import { buildProviderEnv, getProviderDefinition, providerOmitsModelFlag, providerPinnedModel } from "../shared/llm-provider";
+import { bedrockProfileEnv, bedrockProfilesFor, buildProviderEnv, getProviderDefinition, presetModelSlotEnv, providerOmitsModelFlag, providerPinnedModel, resolveBedrockProfile } from "../shared/llm-provider";
 import { createLogger } from "./logger";
 import { backupUnparsableCodexConfig, joinLike as joinLikeHome, detectCodexProfileLaunchFlag, detectCodexVersion, resetCodexVersionProbe, resetCodexHelpProbe, ensureCodexConfig, ensureCodexProfileFiles, getCodexSyntaxForVersion, resolveCodexInstallRoots, type CodexProfileLaunchFlag } from "./codex-config";
 import { agentBinaryPathOverride, brokenCustomPath, customExecutableMessage, enforcedCustomBinaryPaths } from "./executable";
@@ -517,6 +517,9 @@ export interface CommandOptions {
 	 *  Threaded into the account env resolution so each spawned session locks to
 	 *  its chosen account instead of a single global active one. */
 	accountId?: string | null;
+	/** Per-launch AWS profile pick for a Bedrock agent (`ProviderSettings.profiles`):
+	 *  `undefined` → the agent's default profile; `null` → none; a name → that entry. */
+	bedrockProfile?: string | null;
 	/** `accountId` was read from stored task/pane state, not picked for this launch: a Claude
 	 *  account removed since then falls back to the default instead of failing the launch. */
 	accountFromStore?: boolean;
@@ -784,11 +787,32 @@ export function getDefaultEnvForAgent(agent: CodingAgent, config?: AgentConfigur
 function applyStatusLineOption(
 	options: CommandOptions | undefined,
 	settings: { agentRateLimitTracking?: boolean },
+	bedrockProfile: { resolvedBedrockProfile?: string | null; bedrockProfileMissing?: string },
+	launchEnv: Record<string, string>,
+	worktreePath: string | undefined,
 ): CommandOptions | undefined {
 	const includeStatusLine = settings.agentRateLimitTracking !== false;
-	const settingsFile = ensureClaudeStatusLineSettings(includeStatusLine);
+	// Only a profile dev3 injected gets dev3's SSO refresh, and never over the user's own
+	// awsAuthRefresh: flag settings outrank every settings file, so ours would shadow it.
+	const awsSsoRefresh = !!bedrockProfile.resolvedBedrockProfile && !bedrockProfile.bedrockProfileMissing
+		&& !claudeSettingsSetAwsAuthRefresh(launchEnv, worktreePath);
+	const settingsFile = ensureClaudeStatusLineSettings(includeStatusLine, awsSsoRefresh);
 	if (!settingsFile) return options;
 	return { ...options, statuslineSettingsFile: settingsFile };
+}
+
+/** Whether the launch's Claude user settings, or the worktree's project settings, already set `awsAuthRefresh`. */
+export function claudeSettingsSetAwsAuthRefresh(launchEnv: Record<string, string>, worktreePath: string | undefined): boolean {
+	const configDir = launchEnv.CLAUDE_CONFIG_DIR || process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
+	const files = [join(configDir, "settings.json")];
+	if (worktreePath) files.push(join(worktreePath, ".claude", "settings.json"), join(worktreePath, ".claude", "settings.local.json"));
+	return files.some((file) => {
+		try {
+			return typeof JSON.parse(readFileSync(file, "utf-8"))?.awsAuthRefresh === "string";
+		} catch {
+			return false;
+		}
+	});
 }
 
 /** Which account a launch uses, before any env is built. `"auto"` (or a
@@ -996,6 +1020,12 @@ export interface ResolvedAgentCommand<A extends CodingAgent | null = CodingAgent
 	accountPick?: AutoAccountPick;
 	/** The stored Claude account no longer exists; the default was used instead. */
 	staleAccountDropped?: true;
+	/** The AWS profile entry this launch injected (null = none). Absent when the
+	 *  agent takes no AWS profile. What a pane records so resume reuses it. */
+	resolvedBedrockProfile?: string | null;
+	/** The picked AWS profile is no longer listed on the agent: nothing was injected,
+	 *  and `resolvedBedrockProfile` keeps the name so restoring it switches back. */
+	bedrockProfileMissing?: string;
 }
 
 export async function resolveCommandForAgent(
@@ -1018,7 +1048,6 @@ export async function resolveCommandForAgent(
 	// Resolve the session env BEFORE building the command: an active API
 	// profile's model override must rewrite the preset's --model flag.
 	const baseCmd = config?.baseCommandOverride || agentWithPath.baseCommand;
-	const providerOpts = withProviderOptions(applyStatusLineOption(options, settings), agentWithPath, config);
 	// Order: agent-type defaults → provider env (Bedrock) → config envVars
 	// (wins last, so an explicit envVars override still applies) → managed
 	// account env (fills only keys not already set, so all of the above win).
@@ -1027,12 +1056,15 @@ export async function resolveCommandForAgent(
 		...providerEnvForAgent(agentWithPath, config),
 	};
 	if (config?.envVars) {
-		Object.assign(extraEnv, config.envVars);
+		Object.assign(extraEnv, config.envVars, presetModelSlotEnv(agentProvider(agentWithPath, config), config.model, config.envVars));
 	}
+	const bedrockProfile = applyBedrockProfileEnv(agentWithPath, config, extraEnv, options);
 	const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options);
 	await applyClaudeAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 	await applyCodexAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 	await applyAgentDirAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
+	// After the account env: its CLAUDE_CONFIG_DIR names the user settings to check.
+	const providerOpts = withProviderOptions(applyStatusLineOption(options, settings, bedrockProfile, extraEnv, ctx.worktreePath), agentWithPath, config);
 	const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts, agentWithPath.agentFamily);
 	const launchConfig = withOmpLaunchDefaults(
 		resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel),
@@ -1054,6 +1086,7 @@ export async function resolveCommandForAgent(
 		resolvedAccountId: account.resolvedAccountId,
 		...(account.pick ? { accountPick: account.pick } : {}),
 		...(account.staleAccountDropped ? { staleAccountDropped: true as const } : {}),
+		...bedrockProfile,
 	};
 }
 
@@ -1120,6 +1153,28 @@ function providerEnvForAgent(
 	return buildProviderEnv(agentProvider(agent, config), agent.providerConfig, config?.model);
 }
 
+/** Inject the picked AWS profile's env over the preset envVars (and so over the
+ *  project env, which launches merge underneath). Returns the resolved entry name
+ *  to persist, or nothing when this agent takes no AWS profile. */
+export function applyBedrockProfileEnv(
+	agent: CodingAgent,
+	config: AgentConfiguration | undefined,
+	extraEnv: Record<string, string>,
+	options: CommandOptions | undefined,
+): { resolvedBedrockProfile?: string | null; bedrockProfileMissing?: string } {
+	const provider = agentProvider(agent, config);
+	if (bedrockProfilesFor(provider, agent.providerConfig).length === 0) return {};
+	const { profile, missing } = resolveBedrockProfile(provider, agent.providerConfig, options?.bedrockProfile);
+	if (missing) {
+		// Keep the name: persisting null would pin the task to the project env's
+		// account for good, even after the profile is renamed back.
+		log.warn("AWS profile no longer configured on the agent; using the project env", { agentId: agent.id, profile: missing });
+		return { resolvedBedrockProfile: missing, bedrockProfileMissing: missing };
+	}
+	Object.assign(extraEnv, bedrockProfileEnv(profile));
+	return { resolvedBedrockProfile: profile?.name ?? null };
+}
+
 /** Attach the agent's selected provider to CommandOptions, so
  *  resolveAgentCommand omits the --model alias under a third-party backend. */
 function withProviderOptions(
@@ -1159,7 +1214,6 @@ export async function resolveCommandForProject(
 		const config = findConfig(agent, resolvedConfigId);
 		// Env before command — see resolveCommandForAgent (API profile model override).
 		const baseCmd = config?.baseCommandOverride || agentWithPath.baseCommand;
-		const providerOpts = withProviderOptions(applyStatusLineOption(options, settings), agentWithPath, config);
 		// Order: agent-type defaults → provider env (Bedrock) → config envVars
 		// (via buildTaskEnv, wins last) → managed account env (fills only keys
 		// not already set, so all of the above win).
@@ -1168,11 +1222,14 @@ export async function resolveCommandForProject(
 			...agentDefaults,
 			...providerEnvForAgent(agentWithPath, config),
 			...buildTaskEnv(project, taskTitle, "", worktreePath, config),
+			...presetModelSlotEnv(agentProvider(agentWithPath, config), config?.model, config?.envVars),
 		};
+		const bedrockProfile = applyBedrockProfileEnv(agentWithPath, config, extraEnv, options);
 		const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options);
 		await applyClaudeAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 		await applyCodexAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 		await applyAgentDirAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
+		const providerOpts = withProviderOptions(applyStatusLineOption(options, settings, bedrockProfile, extraEnv, ctx.worktreePath), agentWithPath, config);
 		const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts, agentWithPath.agentFamily);
 		const launchConfig = withOmpLaunchDefaults(
 			resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel),
@@ -1189,6 +1246,7 @@ export async function resolveCommandForProject(
 			resolvedAccountId: account.resolvedAccountId,
 			...(account.pick ? { accountPick: account.pick } : {}),
 			...(account.staleAccountDropped ? { staleAccountDropped: true as const } : {}),
+			...bedrockProfile,
 		};
 	}
 

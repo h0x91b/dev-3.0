@@ -13,6 +13,7 @@
  * All native internals go through native-task-panes.ts.
  */
 import * as pty from "../pty-server";
+import { ptyWsUrl } from "../pty-server-access";
 import { assertTaskWorkspacePresent } from "../task-workspace-guard";
 import * as data from "../data";
 import {
@@ -700,9 +701,8 @@ async function getPanePtyUrl(params: { taskId: string; paneId: string }): Promis
 		}
 	}
 
-	const url = `ws://localhost:${pty.getPtyPort()}?session=${sessionKey}`;
-	log.info("← getPanePtyUrl", { url, paneId: params.paneId, isFirstPane });
-	return { url };
+	log.info("← getPanePtyUrl", { paneId: params.paneId, isFirstPane });
+	return { url: ptyWsUrl(pty.getPtyPort(), sessionKey) };
 }
 
 /**

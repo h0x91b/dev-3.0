@@ -35,7 +35,7 @@ Last updated: 2026-11-03
 
 ## Managed restart and hibernation
 
-Codex and Claude Code support task hibernation and resume through their saved conversation IDs; Codex's ID comes from its lifecycle hooks and is resolved in the original account store. Right-click a task → **Restart agent session…** reuses that recovery path while the terminal is still present, preserving managed accounts and future hibernation. It replaces the task terminal, closes its auxiliary panes and discards scrollback; commands and dev servers in those panes stop, while files remain intact. Restart refuses if a saved conversation would be replaced or started fresh. Native terminals currently restore only the main agent, so restart refuses a native task with extra panes before stopping anything. See [`restart-agents-through-managed-resume`](decisions/2026/11/03/restart-agents-through-managed-resume.md).
+Codex and Claude Code support task hibernation and resume through their saved conversation IDs; Codex's ID comes from its lifecycle hooks and is resolved in the original account store. Right-click a task → **Restart agent session…** reuses that recovery path while the terminal is still present, preserving managed accounts and future hibernation. It replaces the task terminal, closes its auxiliary panes and discards scrollback; commands and dev servers in those panes stop, while files remain intact. Restart refuses if a saved conversation would be replaced or started fresh. A resume can move Claude panes to another managed account (wake/recovery screen, the resume approval dialog, or `--account`); Codex panes keep the account their conversation lives in. See [`resume-on-another-claude-account`](decisions/2026/11/08/resume-on-another-claude-account.md). Native terminals currently restore only the main agent, so restart refuses a native task with extra panes before stopping anything. See [`restart-agents-through-managed-resume`](decisions/2026/11/03/restart-agents-through-managed-resume.md).
 
 ## Feature Matrix
 
@@ -294,14 +294,21 @@ and model table all read the registry. The toggle only appears on agents that
 have ≥1 registered backend.
 
 dev3 injects only the provider's enable flag + the pinned model (merged into the
-launch env; a config's own `envVars` still win). **Credentials, AWS
-region/profile are NOT set by dev3** — the customer configures those in their own
-global agent setup (shell env / `~/.claude/settings.json`).
+launch env; a config's own `envVars` still win). **Credentials are NOT set by
+dev3**. The customer configures those in their own global agent setup (shell env /
+`~/.claude/settings.json`). One exception: a Bedrock agent may list named **AWS
+profiles** (Settings → Coding Agents → the Bedrock section, or `dev3 agent
+aws-profiles set`). The launch dialog then shows an AWS profile dropdown, and the
+picked entry sets `AWS_PROFILE`/`AWS_REGION` over the preset `envVars` and the
+project env. See `decisions/2026/11/05/bedrock-per-launch-aws-profile.md`. A Claude
+launch with a picked profile also gets `awsAuthRefresh: "aws sso login"` in its dev3
+`--settings` file, so an expired SSO session opens the browser login
+(`decisions/2026/11/08/bedrock-sso-refresh-managed-settings.md`).
 
 | Provider | Injected env | Model id source |
 |----------|--------------|-----------------|
 | Anthropic | _(none)_ | `--model <alias>` as usual |
-| Bedrock (Claude) | `CLAUDE_CODE_USE_BEDROCK=1`, `ANTHROPIC_MODEL` | alias→`<geo>.anthropic.*` map (geo = `global`/`us`/`eu`/`jp` toggle), or the per-model override |
+| Bedrock (Claude) | `CLAUDE_CODE_USE_BEDROCK=1`, `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_{FABLE,OPUS,SONNET,HAIKU}_MODEL` | alias→`<geo>.anthropic.*` map (geo = `global`/`us`/`eu`/`jp` toggle), or the per-model override. Each alias slot gets the launching model for its own slot and the newest built-in model the geo serves for the rest, so `/model haiku` and subagent `model:` aliases never fall back to Claude Code's built-in `us.*` ids; a preset `envVars` value still wins |
 | Bedrock (Codex) | _(none — `--model <geo>.openai.<family>` + `-c model_provider="amazon-bedrock-runtime"`)_ | same geo toggle; per-model override |
 
 Known model aliases map to provider-native ids automatically

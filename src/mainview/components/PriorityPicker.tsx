@@ -24,7 +24,6 @@ function PriorityPicker({ selected, onSelect, onClose, anchorEl }: PriorityPicke
 	const [pos, setPos] = useState({ top: 0, left: 0 });
 	const [visible, setVisible] = useState(false);
 	const pickerRef = useRef<HTMLDivElement>(null);
-	const rowRefs = useRef<Array<HTMLButtonElement | null>>([]);
 	const current = selected ?? DEFAULT_PRIORITY;
 
 	useLayoutEffect(() => {
@@ -45,8 +44,7 @@ function PriorityPicker({ selected, onSelect, onClose, anchorEl }: PriorityPicke
 		setPos({ top, left });
 		setVisible(true);
 		// Land focus on the current level so keyboard users start where they are.
-		const idx = ALL_PRIORITIES.indexOf(current);
-		rowRefs.current[idx >= 0 ? idx : 0]?.focus();
+		pickerRef.current.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus();
 	}, [anchorEl, current]);
 
 	// Registered as an overlay layer, not a plain Esc listener: inside a dialog the
@@ -70,16 +68,6 @@ function PriorityPicker({ selected, onSelect, onClose, anchorEl }: PriorityPicke
 		return () => document.removeEventListener("mousedown", handleClick);
 	}, [anchorEl, onClose]);
 
-	function handleKeyDown(e: React.KeyboardEvent, index: number) {
-		if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-			e.preventDefault();
-			const next = e.key === "ArrowDown"
-				? (index + 1) % ALL_PRIORITIES.length
-				: (index - 1 + ALL_PRIORITIES.length) % ALL_PRIORITIES.length;
-			rowRefs.current[next]?.focus();
-		}
-	}
-
 	return createPortal(
 		<div
 			ref={pickerRef}
@@ -91,6 +79,30 @@ function PriorityPicker({ selected, onSelect, onClose, anchorEl }: PriorityPicke
 			style={{ top: pos.top, left: pos.left, width: 200, visibility: visible ? "visible" : "hidden" }}
 			onClick={(e) => e.stopPropagation()}
 		>
+			<PriorityList selected={selected} onSelect={onSelect} />
+		</div>,
+		document.body,
+	);
+}
+
+/** The five level rows, without a surface: the popover and the task menu flyout both host it. */
+export function PriorityList({ selected, onSelect }: { selected: TaskPriority | undefined; onSelect: (priority: TaskPriority) => void }) {
+	const t = useT();
+	const rowRefs = useRef<Array<HTMLButtonElement | null>>([]);
+	const current = selected ?? DEFAULT_PRIORITY;
+
+	function handleKeyDown(e: React.KeyboardEvent, index: number) {
+		if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+			e.preventDefault();
+			const next = e.key === "ArrowDown"
+				? (index + 1) % ALL_PRIORITIES.length
+				: (index - 1 + ALL_PRIORITIES.length) % ALL_PRIORITIES.length;
+			rowRefs.current[next]?.focus();
+		}
+	}
+
+	return (
+		<>
 			{ALL_PRIORITIES.map((level, index) => {
 				const style = PRIORITY_STYLES[level];
 				const isOn = level === current;
@@ -117,8 +129,7 @@ function PriorityPicker({ selected, onSelect, onClose, anchorEl }: PriorityPicke
 					</button>
 				);
 			})}
-		</div>,
-		document.body,
+		</>
 	);
 }
 

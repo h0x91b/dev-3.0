@@ -165,7 +165,7 @@ describe("buildFilterGroups", () => {
 		};
 	}
 
-	it("leads with PRIORITY, lists only present values, hides empty groups, sorts labels/agents", () => {
+	it("leads with PRIORITY, lists present values, hides empty groups, sorts labels/agents", () => {
 		const tasks = [
 			makeTask({ id: "working", status: "in-progress", priority: "P0", agentId: "builtin-codex", configId: "x1" }),
 			makeTask({ id: "parked", status: "review-by-user", customColumnId: "col", agentId: "builtin-claude", configId: "c1" }),
@@ -177,9 +177,8 @@ describe("buildFilterGroups", () => {
 
 		// PRIORITY: only present levels (P0 explicit, P2 default), candidate order.
 		expect(byId.priority.map((o) => o.value)).toEqual(["P0", "P2"]);
-		// STATUS: only present canonical values, in candidate order. The parked
-		// task reports "On Hold" (its column) as canonical, NOT "review-by-user".
-		expect(byId.status.map((o) => o.value)).toEqual(["in-progress", "On Hold"]);
+		// STATUS: every candidate, in candidate order, present or not.
+		expect(byId.status.map((o) => o.value)).toEqual(["in-progress", "review-by-user", "On Hold"]);
 		// LABELS + AGENTS sorted alphabetically.
 		expect(byId.labels.map((o) => o.label)).toEqual(["Bug", "Feature"]);
 		expect(byId.agents.map((o) => o.label)).toEqual(["Claude", "Codex"]);
@@ -191,7 +190,7 @@ describe("buildFilterGroups", () => {
 		const tasks = [makeTask({ id: "working", status: "in-progress" })];
 		const groups = buildFilterGroups(tasks, resolverFor(), candidates);
 		expect(groups.find((g) => g.id === "flags")).toBeUndefined();
-		expect(groups.find((g) => g.id === "status")?.options.map((o) => o.value)).toEqual(["in-progress"]);
+		expect(groups.find((g) => g.id === "status")?.options.map((o) => o.value)).toEqual(["in-progress", "review-by-user", "On Hold"]);
 	});
 
 	it("offers is:hibernated only while a hibernated task is in the pool", () => {
@@ -240,8 +239,9 @@ describe("buildFilterGroups", () => {
 		expect(matchesTaskQuery(coord, "type:standard", taskQueryContext(coord, resolverFor()))).toBe(false);
 	});
 
-	it("returns no groups for an empty task list", () => {
-		expect(buildFilterGroups([], resolverFor(), candidates)).toEqual([]);
+	it("returns only the STATUS group for an empty task list", () => {
+		// A status filter set on an empty board must still be editable.
+		expect(buildFilterGroups([], resolverFor(), candidates).map((g) => g.id)).toEqual(["status"]);
 	});
 });
 

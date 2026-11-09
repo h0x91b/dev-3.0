@@ -16,6 +16,7 @@ import { createLogger } from "./logger";
 import { resolveBinaryPath } from "./rpc-handlers/shared-pure";
 import { loadSettings } from "./settings";
 import { agentKey } from "../shared/agent-adapters/families";
+import { agentCommandExecutable } from "../shared/agent-command-executable";
 import type { RoutableAccountKind } from "../shared/agent-accounts";
 
 const log = createLogger("agent-launch-availability");
@@ -37,24 +38,44 @@ export class AgentNotInstalledError extends Error {
 	}
 }
 
+export interface AgentLaunchBinary {
+	/** The executable's own name, without wrapper, env assignments or arguments. */
+	binaryName: string;
+	resolvedPath?: string;
+	customPath?: string;
+	/** Only the launch shell can tell what this command runs: there is no path, and
+	 *  no proof of absence either — never treat it as a missing binary. */
+	unverifiable?: true;
+}
+
 /** Same resolution `launchTaskPty` uses to decide a binary is missing, keyed by
  *  the agent actually launched (its custom path is stored under its own id). */
 export function resolveAgentLaunchBinary(
 	agentId: string,
 	baseCmd: string,
 	settings: Pick<GlobalSettings, "agentBinaryPaths" | "agentCustomBinaryPaths" | "strictAgentCustomBinaryPaths">,
-): { binaryName: string; resolvedPath?: string; customPath?: string } {
-	const binaryName = baseCmd.split("/").pop() ?? baseCmd;
+): AgentLaunchBinary {
+	const executable = agentCommandExecutable(baseCmd);
+	const binaryName = executable.kind === "unknown"
+		? baseCmd.trim()
+		: lastPathSegment(executable.kind === "path" ? executable.path : executable.name);
 	const customPath = brokenCustomPath(agentId, enforcedCustomBinaryPaths(settings));
 	if (customPath) return { binaryName, customPath };
+	if (executable.kind === "unknown") return { binaryName, unverifiable: true };
 	const overridePath = agentBinaryPathOverride(agentId, binaryName, settings.agentBinaryPaths, enforcedCustomBinaryPaths(settings));
 	// A command given as a path is exec'd as that path: a same-named binary
 	// elsewhere on PATH does not make it launchable.
-	if (baseCmd.includes("/")) {
-		const resolvedPath = [overridePath, baseCmd].find((p): p is string => !!p && isExecutableFile(p));
+	if (executable.kind === "path") {
+		const resolvedPath = [overridePath, executable.path].find((p): p is string => !!p && isExecutableFile(p))
+			// Windows runs `C:\tools\claude` as claude.exe; only the PATH lookup knows PATHEXT.
+			?? (process.platform === "win32" ? resolveBinaryPath(executable.path).resolvedPath : undefined);
 		return { binaryName, resolvedPath };
 	}
-	return { binaryName, resolvedPath: resolveBinaryPath(binaryName, overridePath).resolvedPath };
+	return { binaryName, resolvedPath: resolveBinaryPath(executable.name, overridePath).resolvedPath };
+}
+
+function lastPathSegment(path: string): string {
+	return path.split(/[\\/]/).pop() || path;
 }
 
 function launchedAgent(
@@ -101,8 +122,8 @@ export async function findMissingLaunchAgent(
 			log.warn("Agent binary probe failed — launch not blocked", { agentId: target.agent.id, error: String(err) });
 			continue;
 		}
-		const { binaryName, resolvedPath, customPath } = probe;
-		if (resolvedPath) continue;
+		const { binaryName, resolvedPath, customPath, unverifiable } = probe;
+		if (resolvedPath || unverifiable) continue;
 		log.warn("Launch refused: agent binary missing", { agentId: target.agent.id, binaryName });
 		return {
 			agentId: target.agent.id,

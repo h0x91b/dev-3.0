@@ -81,6 +81,19 @@ const COMMANDS: CommandHelp[] = [
 				details: ["Use these exact IDs with agent spawn; --json adds each preset's model and effort."],
 			},
 			{
+				name: "aws-profiles",
+				usage: "dev3 agent aws-profiles list [--agent <id>] [--json] | dev3 agent aws-profiles set --agent <id> (--profile <name>=<AWS_PROFILE>[,<AWS_REGION>]... | --clear) [--default <name> | --no-default] [--json]",
+				summary: "List or replace the AWS profiles a Bedrock agent offers in the launch dialog.",
+				details: [
+					"list            Every agent on an Amazon Bedrock backend, or just --agent; * marks the default.",
+					"set             Replaces the whole list; repeat --profile once per entry, or pass --clear.",
+					"--profile       <name>=<AWS_PROFILE>[,<AWS_REGION>], e.g. dev=my-bedrock-profile,us-west-2.",
+					"--default       Entry a launch uses when nobody picks one; omitted keeps the current default if still listed.",
+					"--no-default    Drop the default: an unpicked launch uses None (the project env decides).",
+					"The picked entry sets AWS_PROFILE/AWS_REGION over the project env and the preset envVars.",
+				],
+			},
+			{
 				name: "spawn",
 				usage: "dev3 agent spawn [--task <id>] [--project <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--json]",
 				summary: "Add one agent pane to a running task, sharing its existing worktree.",
@@ -102,7 +115,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "resume",
-				usage: "dev3 agent resume [--task <id>] [--project <id>] [--allow-agent-latest] [--as-sender <id>] [--json]",
+				usage: "dev3 agent resume [--task <id>] [--project <id>] [--allow-agent-latest] [--account <id|system>] [--as-sender <id>] [--json]",
 				summary: "Resume a task's saved agent session when its terminal is gone — the app's Resume Session.",
 				details: [
 					"Same path as the Resume Session button: same worktree, branch, files and conversations,",
@@ -116,6 +129,9 @@ const COMMANDS: CommandHelp[] = [
 					"A hibernated task is woken, same as Wake & resume.",
 					`--allow-agent-latest  Resume a pane with no saved conversation id anyway: its harness picks`,
 					`                      its own latest and may start a new conversation. Otherwise exits ${CLI_EXIT_CODE_RESUME_UNAVAILABLE}.`,
+					"--account <id|system> Resume every Claude pane on this account (system = ~/.claude) instead of",
+					"                      its saved one; Codex panes keep theirs. The approval dialog preselects it.",
+					`                      An account that cannot see the conversation exits ${CLI_EXIT_CODE_RESUME_UNAVAILABLE}; nothing launches.`,
 					"--as-sender <id>      From OUTSIDE dev3: ask as a registered external sender; the user approves it in the app.",
 					"--json          Print the outcome: backend, tmux session, and per pane its ids and status.",
 					`Already running exits ${CLI_EXIT_CODE_RESUME_ALREADY_RUNNING} and touches nothing; nothing to resume exits ${CLI_EXIT_CODE_RESUME_UNAVAILABLE}.`,
@@ -290,11 +306,12 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "wake",
-				usage: "dev3 task wake [<id>] [--task <id>] --resume [--allow-agent-latest] | --shell [--json]",
+				usage: "dev3 task wake [<id>] [--task <id>] --resume [--allow-agent-latest] [--account <id|system>] | --shell [--json]",
 				summary: "Wake a hibernated task — the wake screen's two buttons.",
 				details: [
 					"--resume        Wake and resume the agent's saved conversation; same outcome, output",
 					`                and exit codes as dev3 agent resume (${CLI_EXIT_CODE_RESUME_ALREADY_RUNNING} / ${CLI_EXIT_CODE_RESUME_UNAVAILABLE}).`,
+					"--account       With --resume: run Claude panes on another account, as in dev3 agent resume.",
 					"--shell         Wake with a plain shell: no agent starts, and the saved conversation",
 					"                stays for a later Resume Session / dev3 agent resume.",
 					"The dev server stays down either way; start it with dev3 dev-server start.",
@@ -782,12 +799,58 @@ const COMMANDS: CommandHelp[] = [
 	},
 	{
 		name: "config",
-		summary: "Inspect and export effective project settings.",
+		summary: "Read, set and validate project settings (.dev3/config.json, .dev3/config.local.json).",
 		subcommands: [
 			{
 				name: "show",
-				usage: "dev3 config show",
-				summary: "Show effective (merged) project settings (default subcommand).",
+				usage: "dev3 config show [--effective] [--json] [--project <id>]",
+				summary: "Effective settings with the layer each value came from (default subcommand).",
+				details: [
+					"Sources: local / repo = this checkout's config.local.json / config.json;",
+					"main-local / main-repo = the project root's files, seen from a task worktree;",
+					"project = Project Settings; default = built-in; unset = nothing sets it.",
+					"--effective is the default view and is accepted for clarity.",
+					"--json adds the per-variable env sources and the layer file paths.",
+				],
+			},
+			{
+				name: "get",
+				usage: "dev3 config get <key>[.<name>] [--json]",
+				summary: "Print one effective value (strings raw, others as JSON); exits 1 when unset.",
+			},
+			{
+				name: "set",
+				usage: "dev3 config set <key>[.<name>] <value> [--local] [--main] [--json]",
+				summary: "Validate and write one key, keeping the file's formatting.",
+				details: [
+					"Writes .dev3/config.json, or .dev3/config.local.json with --local, in this",
+					"checkout: the task worktree inside a task, else the project root. --main",
+					"targets the project root from a worktree. <name> addresses one entry of a",
+					"map field: `dev3 config set env.NODE_ENV development`.",
+					"Values: strings verbatim; booleans true/false; lists as JSON or a,b,c;",
+					"maps as JSON. `-` reads the value from stdin. A rejected value exits 47.",
+					"Says so when a higher layer still decides the effective value.",
+				],
+			},
+			{
+				name: "unset",
+				usage: "dev3 config unset <key>[.<name>] [--local] [--main]",
+				summary: "Remove one key (or one map entry) from that file; lower layers apply again.",
+			},
+			{
+				name: "validate",
+				usage: "dev3 config validate [--file <path>] [--json]",
+				summary: "Check every .dev3 config file of this checkout (and the project root) against the schema.",
+				details: [
+					"Works without the app, so CI can run it. Wrong types and invalid JSON are",
+					"errors (exit 47); unknown keys are warnings (exit 0).",
+				],
+			},
+			{
+				name: "schema",
+				usage: "dev3 config schema [<key>] [--json]",
+				summary: "Every configurable field with type, default and description; <key> adds details and an example.",
+				details: ["Works without the app. --json prints a JSON Schema (draft 2020-12)."],
 			},
 			{
 				name: "export",

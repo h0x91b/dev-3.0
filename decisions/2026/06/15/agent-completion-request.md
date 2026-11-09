@@ -1,3 +1,5 @@
+> Superseded in part on 2026-11-07 by `decisions/2026/11/07/completion-offers-render-inline-not-modal.md`: the CLI still blocks, but the renderer now shows the request inline on its task instead of a `confirm()` modal.
+
 # 067 — Agent-initiated task completion via blocking CLI approval
 
 ## Context

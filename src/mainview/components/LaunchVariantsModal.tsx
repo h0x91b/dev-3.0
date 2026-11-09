@@ -36,6 +36,8 @@ interface VariantRow {
 	/** Per-launch managed account: `undefined` → default; `null` → system login;
 	 *  string → that account. Seeded from the source task on retry. */
 	accountId?: string | null;
+	/** AWS profile pick for a Bedrock agent; seeded from the source task on retry. */
+	bedrockProfile?: string | null;
 }
 
 type LaunchMode = "spawn" | "addAttempts";
@@ -114,7 +116,7 @@ function LaunchVariantsModal({
 		const configId = sandboxBypass?.id ?? normalConfigId;
 		// On retry (addAttempts) seed the source task's account so the attempt
 		// re-runs under the same one; a fresh todo has none → the default preselect.
-		return { agentId, configId, accountId: task.accountId };
+		return { agentId, configId, accountId: task.accountId, bedrockProfile: task.bedrockProfile };
 	}
 
 	const [variants, setVariants] = useState<VariantRow[]>(() => [makeDefaultVariant()]);
@@ -486,6 +488,8 @@ function LaunchVariantsModal({
 									onChange={(next) => updateVariant(index, next)}
 									accountId={variant.accountId}
 									onAccountChange={(accountId) => updateVariant(index, { accountId })}
+									bedrockProfile={variant.bedrockProfile}
+									onBedrockProfileChange={(bedrockProfile) => updateVariant(index, { bedrockProfile })}
 								onAddAccount={() => leaveLaunchForAccountSettings(onClose, t("launch.accountAddLeaving"))}
 									showLabels={false}
 									pxpipeProxyEnabled={globalSettings.pxpipeProxyEnabled ?? false}

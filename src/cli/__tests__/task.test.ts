@@ -986,7 +986,7 @@ describe("task move", () => {
 	});
 
 	// `cancelled` is never a direct move either — it detours through the same
-	// approval dialog as `completed` (covered in its own describe below).
+	// user approval as `completed` (covered in its own describe below).
 	it("does not send a plain task.move for cancelled", async () => {
 		mockSend.mockResolvedValue(okResp({ approved: false }));
 
