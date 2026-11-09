@@ -7,6 +7,7 @@ import {
 	isValidCatalogModelName,
 	modelUsesExtendedContext,
 	sidecarProviderKey,
+	uniqueCustomProviderLabel,
 	validateCatalog,
 	type CatalogProviderKind,
 	type CustomApiFormat,
@@ -262,13 +263,17 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 
 	const kindLabel = (kind: CatalogProviderKind) => t(`catalog.kind.${kind}` as Parameters<TFunction>[0]);
 
+	/** A custom endpoint's default label must not resolve to a key another row owns. */
+	const defaultLabel = (kind: CatalogProviderKind, others: ModelCatalogView["providers"]) =>
+		kind === "custom" ? uniqueCustomProviderLabel(others, kindLabel(kind)) : kindLabel(kind);
+
 	const addProvider = () => {
 		const kind: CatalogProviderKind = CATALOG_PROVIDER_KINDS.find(
 			(k) => k !== "custom" && !draft.providers.some((p) => p.kind === k),
 		) ?? "custom";
 		setDraft({
 			...draft,
-			providers: [...draft.providers, { id: randomUUID(), kind, label: kindLabel(kind), hasKey: false }],
+			providers: [...draft.providers, { id: randomUUID(), kind, label: defaultLabel(kind, draft.providers), hasKey: false }],
 		});
 	};
 
@@ -279,7 +284,8 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 		const current = draft.providers.find((p) => p.id === id);
 		const untouched = !current || CATALOG_PROVIDER_KINDS.some((k) => current.label === kindLabel(k));
 		// Usage tracking reads a custom endpoint's own base URL; no other kind has one.
-		const patch = untouched ? { kind, label: kindLabel(kind) } : { kind };
+		const others = draft.providers.filter((p) => p.id !== id);
+		const patch = untouched ? { kind, label: defaultLabel(kind, others) } : { kind };
 		patchProvider(id, kind === "custom" ? patch : { ...patch, usageSource: undefined });
 	};
 
