@@ -1,5 +1,6 @@
 # 079 — Virtual "Operations" board: identity, storage, and worktreePath reuse
 
+> Partly superseded on 2026-10-02 by `decisions/2026/10/02/per-project-git-workflow-switch.md`: the git domain is now hidden through `hasGitWorkflow(project)`, which a git project can also switch off; point 5's `kind !== "virtual"` guards remain only for board identity.
 > Partly superseded on 2026-11-03 by `decisions/2026/11/03/operations-attached-repo-read-only-git.md`: a task with an attached repo gets read-only git (diff + review); write operations stay rejected.
 
 ## Context

@@ -1,7 +1,7 @@
 import type { PosixShellResolution, ShellFlavor } from "../posix-shell";
 import type { TaskType } from "./task-type";
 import type { ColumnAgentConfig } from "./column-agents";
-import { BOARD_CLEANUP_PROMPT, COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT } from "./prompts";
+import { BOARD_CLEANUP_PROMPT, COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT, GITLESS_COORDINATOR_PROMPT } from "./prompts";
 import type { GlobalSettings } from "./global-settings";
 import type { CustomColumn, Label } from "./labels-columns";
 import type { Task } from "./task";
@@ -130,6 +130,8 @@ export interface ProjectSettingsUpdate extends Dev3RepoConfig {
 	autoAccountExclusions?: string[];
 	/** Turns reading of this project's `.dev3/` config files on or off. */
 	useRepoConfig?: boolean;
+	/** Turns worktrees, branches, diffs, PRs and review columns on or off. */
+	gitWorkflow?: boolean;
 	/** `"project"` moves board data into the project folder, `"home"` back to `~/.dev3.0` (copies, never deletes). */
 	storageRoot?: "project" | "home";
 	/** Blank string clears the project override and falls back to global. */
@@ -271,11 +273,47 @@ export interface Project {
 	/** Also copy the messages this board's agents received. Off unless set; only read while {@link boardCopy} is on. */
 	boardCopyMessages?: boolean;
 	/**
+	 * `false` runs every task of this project directly in its folder: no worktree,
+	 * branch, diff, PR or review columns, no setup or cleanup script. The folder
+	 * need not be a git repository. Absent means ON. See {@link hasGitWorkflow}.
+	 */
+	gitWorkflow?: boolean;
+	/**
 	 * `"project"` keeps this project's board data and NEW task dirs under
 	 * `<path>/.dev3/` instead of `~/.dev3.0` (see `src/shared/project-storage.ts`).
 	 * Absent means `~/.dev3.0`. Machine-local; never set on a virtual board.
 	 */
 	storageRoot?: "project";
+}
+
+/**
+ * Whether this project's tasks get the git workflow: a worktree, a branch, the
+ * diff and PR tooling, and the review columns. Off for every virtual board, and
+ * for a project whose user turned it off.
+ */
+export function hasGitWorkflow(project: Pick<Project, "kind" | "gitWorkflow">): boolean {
+	return project.kind !== "virtual" && project.gitWorkflow !== false;
+}
+
+/** The refusal `updateProjectSettings` throws when the folder cannot take the git workflow. */
+export const GIT_WORKFLOW_NOT_A_REPO_ERROR = "The project folder is not a git repository, so the git workflow cannot be switched on";
+
+/**
+ * Why the git workflow cannot be switched right now, or null when it can. A task
+ * holding a worktree or the project folder would be torn down by the other mode's
+ * rules, so the switch waits until every such task is finished or back in To Do.
+ */
+export function gitWorkflowSwitchBlocker(
+	project: Pick<Project, "kind">,
+	tasks: ReadonlyArray<Pick<Task, "status" | "worktreePath" | "preparing" | "runtimeState">>,
+): { reason: "virtual" } | { reason: "live-tasks"; count: number } | null {
+	if (project.kind === "virtual") return { reason: "virtual" };
+	const count = tasks.filter((task) => (
+		task.preparing === true
+		|| (!!task.runtimeState && task.runtimeState.runtime !== "idle")
+		|| (!!task.worktreePath && task.status !== "completed" && task.status !== "cancelled")
+	)).length;
+	return count > 0 ? { reason: "live-tasks", count } : null;
 }
 
 /** The refusal `updateProjectSettings` throws when the project's `.dev3/data` or `.dev3/worktrees` holds git-tracked files. */
@@ -365,13 +403,18 @@ export function resolvePresetPrompt(
  */
 export function presetPromptForTaskType(
 	type: TaskType,
-	project: Pick<Project, "coordinatorPrompt" | "reviewModePrompt">,
+	project: Pick<Project, "coordinatorPrompt" | "reviewModePrompt" | "kind" | "gitWorkflow">,
 	settings: Pick<GlobalSettings, "coordinatorPrompt" | "reviewModePrompt"> | null | undefined,
 ): string {
 	if (type === "board-cleanup") return BOARD_CLEANUP_PROMPT;
 	return type === "coordinator"
-		? resolvePresetPrompt(project.coordinatorPrompt, settings?.coordinatorPrompt, COORDINATOR_PROMPT)
+		? resolvePresetPrompt(project.coordinatorPrompt, settings?.coordinatorPrompt, builtinCoordinatorPrompt(project))
 		: resolvePresetPrompt(project.reviewModePrompt, settings?.reviewModePrompt, DEFAULT_PR_REVIEW_PROMPT);
+}
+
+/** The built-in coordinator brief for this project: the gitless one when it has no git workflow. */
+export function builtinCoordinatorPrompt(project: Pick<Project, "kind" | "gitWorkflow">): string {
+	return hasGitWorkflow(project) ? COORDINATOR_PROMPT : GITLESS_COORDINATOR_PROMPT;
 }
 
 /** Where {@link presetPromptForTaskType} took its text from, so a reader can tell an override from the default. */
