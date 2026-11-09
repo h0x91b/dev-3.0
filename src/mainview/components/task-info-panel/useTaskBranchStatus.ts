@@ -190,6 +190,14 @@ export function useTaskBranchStatus({
 		setErrorEntry(null);
 	}, []);
 
+	// A merge offer can be answered after this task view is gone (from the dialog or
+	// another surface); only a view still on screen sends the user home.
+	const viewMountedRef = useRef(true);
+	useEffect(() => {
+		viewMountedRef.current = true;
+		return () => { viewMountedRef.current = false; };
+	}, []);
+
 	const completeTask = useCallback(() => {
 		void moveTaskToStatus({
 			task,
@@ -201,7 +209,7 @@ export function useTaskBranchStatus({
 			revertOnFailure: false,
 			// Land on the user's home surface: fullscreen open-mode → the board,
 			// split open-mode → the split task view with nothing selected.
-			afterOptimistic: () => navigate(taskClosedHomeRoute(project.id, getTaskOpenMode())),
+			afterOptimistic: () => { if (viewMountedRef.current) navigate(taskClosedHomeRoute(project.id, getTaskOpenMode())); },
 		});
 	}, [dispatch, navigate, project, task, t]);
 
