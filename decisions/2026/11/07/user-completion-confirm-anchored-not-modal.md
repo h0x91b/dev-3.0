@@ -1,4 +1,4 @@
-> Superseded on 2026-11-09 by `decisions/2026/11/09/revert-inline-completion-offers-to-modal.md`: reverted, completion asks through the blocking modal again.
+> Revised on 2026-11-09: `decisions/2026/11/09/revert-inline-completion-offers-to-modal.md` reverted this together with the inline completion offers, then only the anchored popover for the user's own click was restored. The open-task path through `TaskCompletionStrip` described in the original is gone; that case uses the modal.
 
 # The user's own Complete/Cancel confirms where they clicked
 
@@ -8,12 +8,12 @@ After `completion-offers-render-inline-not-modal`, merge and agent completion of
 
 ## Decision
 
-`confirmTaskCompletion` picks the surface for the one-click path (`alwaysConfirm`). With a connected `anchor` (the clicked button, passed through `moveTaskToStatus`) it calls `confirm({ anchor })`, which renders the same dialog as a popover beside the anchor, with no dim layer (`placeBesideAnchor` in `confirm.tsx`). With no anchor and the task's view mounted (`isCompletionStripMounted`), it raises a `user` completion offer on `TaskCompletionStrip`: Keep open is focused, Esc keeps the task open, there is no click arming, and the offer is withdrawn when the last task view unmounts. Otherwise it keeps the modal. The popover re-places itself when it resizes (the deferred check lands after first layout). Where no terminal hosts the card, the user's ask floats from a zero-height anchor under the inspector instead of pushing the task view down, and focus goes back where it was once answered. Both new surfaces keep the full subject card, the deletion footer and the gated unsaved-work check. The user asked for this explicitly: the overview and labels are not on every surface that has a ✓.
+`confirmTaskCompletion` picks the surface for the one-click path (`alwaysConfirm`). With a connected `anchor` (the clicked ✓ or Cancel on a board card, an Active Tasks row or an Activity row, passed through `moveTaskToStatus`) it calls `confirm({ anchor })`, which renders the same dialog as a popover beside the anchor with no dim layer (`placeBesideAnchor` in `confirm.tsx`). The popover re-places itself when it resizes, because the deferred unsaved-work check lands after first layout. The clicked control is disabled while the ask is open, so the focus trap has no trigger to restore; `returnFocusWhenEnabled` hands focus back to it once it is enabled again. The panel also mounts hidden until placed, and a hidden button ignores `autoFocus`, so Cancel is focused once the popover is visible. Every other ask (no anchor, merge, agent) keeps the modal. The popover keeps the full subject card, the deletion footer and the gated unsaved-work check.
 
 ## Risks
 
-The popover still holds an invisible full-screen layer, so the first outside click only dismisses it. That is deliberate: a destructive ask must not be answered by a click meant for something else. Card and sidebar markers skip `user` offers (`pickCompletionOffer(..., unsolicitedOnly)`), so they still mean "something is waiting for you".
+The popover still holds an invisible full-screen layer, so the first outside click only dismisses it. That is deliberate: a destructive ask must not be answered by a click meant for something else.
 
 ## Alternatives considered
 
-A compact modal with a one-line subject removed context that the sidebar and Activity rows do not show. Using the strip for every surface fails off the task, because the strip is not mounted there. A new popover component would duplicate the queue, abort, deferred-check and focus logic that `confirm()` already owns.
+A compact modal with a one-line subject removed context that the sidebar and Activity rows do not show. A new popover component would duplicate the queue, abort, deferred-check and focus logic that `confirm()` already owns.

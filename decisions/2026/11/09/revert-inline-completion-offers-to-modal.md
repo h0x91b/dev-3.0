@@ -1,3 +1,5 @@
+> Superseded in part on 2026-11-09 by `decisions/2026/11/07/user-completion-confirm-anchored-not-modal.md` (revised): the user's own ✓/Cancel on a card, sidebar row or Activity row asks in a popover beside the button again; everything else stays the modal.
+
 # Completion offers go back to the blocking modal
 
 ## Context

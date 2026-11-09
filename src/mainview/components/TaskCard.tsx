@@ -286,7 +286,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		e.stopPropagation();
 		setQuickCompleting(true);
 		try {
-			await handleMove("completed", { alwaysConfirm: true });
+			await handleMove("completed", { alwaysConfirm: true, anchor: e.currentTarget as HTMLElement });
 		} finally {
 			setQuickCompleting(false);
 		}
@@ -297,13 +297,13 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		e.stopPropagation();
 		setQuickCancelling(true);
 		try {
-			await handleMove("cancelled", { alwaysConfirm: true });
+			await handleMove("cancelled", { alwaysConfirm: true, anchor: e.currentTarget as HTMLElement });
 		} finally {
 			setQuickCancelling(false);
 		}
 	}
 
-	async function handleMove(newStatus: TaskStatus, opts?: { alwaysConfirm?: boolean }) {
+	async function handleMove(newStatus: TaskStatus, opts?: { alwaysConfirm?: boolean; anchor?: HTMLElement }) {
 		// Intercept: todo → active status opens the LaunchVariantsModal
 		if (task.status === "todo" && ACTIVE_STATUSES.includes(newStatus)) {
 			setMenuOpen(false);
@@ -328,6 +328,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			t,
 			onOpenTask: openTaskFromDialog,
 			alwaysConfirm: opts?.alwaysConfirm,
+			anchor: opts?.anchor,
 			onMovingChange: (moving) =>
 				isTerminal ? onSetMoving?.(task.id, moving) : setMoving(moving),
 		});

@@ -86,7 +86,7 @@ export async function confirmTaskCompletion(
 	newStatus: TaskStatus,
 	t: TFunction,
 	onOpenTask?: () => void,
-	options?: { alwaysConfirm?: boolean },
+	options?: { alwaysConfirm?: boolean; anchor?: HTMLElement | null },
 ): Promise<boolean> {
 	if (newStatus !== "completed" && newStatus !== "cancelled") return true;
 	const alwaysConfirm = options?.alwaysConfirm ?? false;
@@ -103,7 +103,8 @@ export async function confirmTaskCompletion(
 		: t(newStatus === "completed" ? "task.confirmCompleteFooter" : "task.confirmCancelFooter");
 	const info = taskDialogInfo(task, project, onOpenTask);
 
-	// One-click path: on screen now, local git check streamed in.
+	// One-click path: a popover beside the clicked control, else the modal.
+	const anchor = options?.anchor?.isConnected ? options.anchor : null;
 	if (alwaysConfirm) {
 		const unsaved = skipGitCheck
 			? null
@@ -112,6 +113,7 @@ export async function confirmTaskCompletion(
 			title: t(newStatus === "completed" ? "task.confirmCompleteTitle" : "task.confirmCancelTitle"),
 			confirmLabel: t(newStatus === "completed" ? "task.confirmCompleteLabel" : "task.confirmCancelLabel"),
 			info,
+			anchor,
 			message: tail,
 			deferred: unsaved
 				? {
