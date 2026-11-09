@@ -146,17 +146,26 @@ function inOriginStore(pane: ResumeCandidate, stored: string, home: string): boo
  * beside the worktree's own, so look for that exact id there.
  */
 function inSiblingStore(store: { dirs: string[]; ext: string }, stored: string): boolean {
-	if (basename(stored) !== stored || stored.startsWith(".")) return false;
 	for (const projectsDir of new Set(store.dirs.map((dir) => dirname(dir)))) {
-		let entries: string[];
-		try {
-			entries = readdirSync(projectsDir);
-		} catch {
-			continue;
-		}
-		if (entries.some((entry) => existsSync(`${projectsDir}/${entry}/${stored}${store.ext}`))) return true;
+		if (inAnyStoreUnder(projectsDir, stored, store.ext)) return true;
 	}
 	return false;
+}
+
+/** Whether one Claude config dir holds this conversation in any of its project stores. */
+export function claudeConfigDirHasSession(configDir: string, sessionId: string): boolean {
+	return inAnyStoreUnder(`${configDir}/projects`, sessionId, ".jsonl");
+}
+
+function inAnyStoreUnder(projectsDir: string, id: string, ext: string): boolean {
+	if (basename(id) !== id || id.startsWith(".")) return false;
+	let entries: string[];
+	try {
+		entries = readdirSync(projectsDir);
+	} catch {
+		return false;
+	}
+	return entries.some((entry) => existsSync(`${projectsDir}/${entry}/${id}${ext}`));
 }
 
 /** Session ids across all store dirs, newest transcript first. */
