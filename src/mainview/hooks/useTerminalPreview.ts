@@ -28,8 +28,9 @@ function hoverPreviewEnabled(): boolean {
 
 // An open menu can cover neighbouring cards or rows (the sidebar is narrower than a
 // context menu), so pointing at one of them must not slide a preview under the menu.
+// Pickers that are not ARIA menus (labels, move-to, open-in) opt in with data-menu-surface.
 function anyMenuOpen(): boolean {
-	return typeof document !== "undefined" && document.querySelector('[role="menu"]') !== null;
+	return typeof document !== "undefined" && document.querySelector('[role="menu"], [data-menu-surface]') !== null;
 }
 
 function clampPosition(anchorRect: DOMRect) {
@@ -66,8 +67,8 @@ export interface TerminalPreviewState {
  * Hook that manages terminal preview hover logic.
  * Works for both single-task (TaskCard) and multi-task (sidebar) scenarios.
  *
- * For single-task: call `handlers.onMouseEnter(taskId)` with the same taskId.
- * For multi-task: call `handlers.onMouseEnter(taskId)` with different taskIds;
+ * For single-task: call `handlers.onMouseEnter(taskId, anchorEl, e.target)` with the same taskId.
+ * For multi-task: call it with different taskIds;
  * the hook handles switching between them.
  *
  * Attach `anchorRef` to the element used for positioning.
@@ -132,7 +133,8 @@ export function useTerminalPreview() {
 
 	/**
 	 * Call on mouseenter. Pass the anchor element for positioning
-	 * (either a ref.current or e.currentTarget).
+	 * (either a ref.current or e.currentTarget) and `e.target`, so an enter
+	 * from a portaled child (context menu, picker) is ignored.
 	 */
 	function onMouseEnter(taskId: string, anchorEl: HTMLElement, target?: EventTarget | null) {
 		if (isDraggingRef.current) return;

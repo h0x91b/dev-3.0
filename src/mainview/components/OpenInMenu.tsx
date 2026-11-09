@@ -79,6 +79,7 @@ export default function OpenInMenu({ position, path, taskId, onClose }: OpenInMe
 	return createPortal(
 		<div
 			ref={menuRef}
+			data-menu-surface
 			className="fixed z-[10000] bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1.5 min-w-[11.25rem]"
 			style={{
 				top: menuPos.top,

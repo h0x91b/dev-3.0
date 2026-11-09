@@ -267,7 +267,7 @@ describe("useTerminalPreview — poll lifecycle", () => {
 	});
 });
 
-describe("useTerminalPreview - portaled children", () => {
+describe("useTerminalPreview — portaled children", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.useFakeTimers();
@@ -306,6 +306,18 @@ describe("useTerminalPreview - portaled children", () => {
 		const { result } = renderHook(() => useTerminalPreview());
 		const menu = makeAnchor();
 		menu.setAttribute("role", "menu");
+		const anchor = makeAnchor();
+		act(() => result.current.handlers.onMouseEnter("task-2", anchor, anchor));
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(500);
+		});
+		expect(result.current.state.open).toBe(false);
+		expect(mockedApi.request.getTerminalPreview).not.toHaveBeenCalled();
+	});
+
+	it("does not open while a non-ARIA picker (data-menu-surface) is open", async () => {
+		const { result } = renderHook(() => useTerminalPreview());
+		makeAnchor().setAttribute("data-menu-surface", "");
 		const anchor = makeAnchor();
 		act(() => result.current.handlers.onMouseEnter("task-2", anchor, anchor));
 		await act(async () => {
