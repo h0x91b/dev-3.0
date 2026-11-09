@@ -427,3 +427,12 @@ export async function loadBoardTasks(project: Project): Promise<Task[] | null> {
 		return null;
 	}
 }
+
+/** A resume's `accountId`: absent keeps each pane's saved account, null is the system login. */
+export function resumeAccountParam(params: Record<string, unknown>): string | null | undefined {
+	if (!("accountId" in params) || params.accountId === undefined) return undefined;
+	if (params.accountId !== null && (typeof params.accountId !== "string" || !params.accountId.trim())) {
+		throw new Error("accountId must be an account id, or null for the system login.");
+	}
+	return params.accountId as string | null;
+}
