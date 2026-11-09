@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import type { Label, TaskPriority } from "../shared/types";
 import TaskDialogSubjectCard from "./components/TaskDialogSubjectCard";
 import { useT } from "./i18n";
@@ -96,6 +96,12 @@ export interface ConfirmOptions {
 	 * is the user's own quick ask. Letters never answer: typing must not confirm.
 	 */
 	keyboardChoice?: boolean;
+	/**
+	 * The control the user just clicked. The dialog becomes a compact popover
+	 * beside it with no dimmed backdrop, so the rest of the app stays visible.
+	 * Ignored when the element is no longer on screen.
+	 */
+	anchor?: HTMLElement | null;
 }
 
 interface PendingConfirm extends ConfirmOptions {
@@ -263,6 +269,25 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 	// An agent request holds a blocked CLI, so an outside click is far more likely
 	// to be a misclick than an answer — opt those out of backdrop dismissal.
 	const dismissOnBackdrop = pending.dismissOnBackdrop ?? !pending.agentInitiated;
+	const [anchorRect] = useState(() => (pending.anchor?.isConnected ? pending.anchor.getBoundingClientRect() : null));
+	const anchored = anchorRect !== null;
+	const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
+
+	// Re-placed whenever the panel resizes: the deferred check lands after the
+	// first layout and can grow it onto the anchor or past the viewport edge.
+	useLayoutEffect(() => {
+		const panel = trapRef.current;
+		if (!anchorRect || !panel) return;
+		const place = () => setPopoverPos(placeBesideAnchor(anchorRect, panel.getBoundingClientRect()));
+		place();
+		const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(place) : null;
+		observer?.observe(panel);
+		window.addEventListener("resize", place);
+		return () => {
+			observer?.disconnect();
+			window.removeEventListener("resize", place);
+		};
+	}, [anchorRect, trapRef]);
 
 	// Repeats, keys held from before the dialog opened, IME and the quiet window
 	// for agent requests are all handled here, ahead of every handler below.
@@ -303,7 +328,7 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 		// Above the artifact popup (z-70) and the help overlay (z-80): a confirmation
 		// raised from either must not open hidden behind the surface that asked for it.
 		<div
-			className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50"
+			className={`fixed inset-0 z-[90] ${anchored ? "" : "flex items-center justify-center bg-black/50"}`}
 			onMouseDown={(e) => {
 				if (e.target !== e.currentTarget) return;
 				if (dismissOnBackdrop) close(false);
@@ -319,8 +344,12 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 				aria-labelledby="confirm-dialog-title"
 				tabIndex={-1}
 				data-tour-anchor="confirm.dialog"
-				className={`bg-overlay border rounded-2xl shadow-2xl max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] overflow-y-auto p-6 space-y-4 outline-none ${
-					pending.alternativeAction ? "w-[30rem]" : "w-[26.25rem]"
+				data-anchored={anchored || undefined}
+				style={anchored ? { top: popoverPos?.top ?? 0, left: popoverPos?.left ?? 0, visibility: popoverPos ? undefined : "hidden" } : undefined}
+				className={`bg-overlay border shadow-2xl max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] overflow-y-auto outline-none ${
+					anchored
+						? "fixed w-[24rem] rounded-xl p-4 space-y-3"
+						: `rounded-2xl p-6 space-y-4 ${pending.alternativeAction ? "w-[30rem]" : "w-[26.25rem]"}`
 				} ${
 					dangerTone
 						? "border-danger ring-2 ring-danger/30"
@@ -340,7 +369,7 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 						{t("confirmDialog.agentBadge")}
 					</div>
 				)}
-				<h2 id="confirm-dialog-title" className={`font-semibold ${dangerTone ? "text-danger" : "text-fg"} text-lg`}>
+				<h2 id="confirm-dialog-title" className={`font-semibold ${dangerTone ? "text-danger" : "text-fg"} ${anchored ? "text-sm" : "text-lg"}`}>
 					{pending.title}
 				</h2>
 				{pending.info && (
@@ -360,11 +389,11 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 						} : {})}
 					/>
 				)}
-				<p className="text-fg-2 text-sm leading-relaxed whitespace-pre-line">{pending.message}</p>
+				<p className={`text-fg-2 leading-relaxed whitespace-pre-line ${anchored ? "text-xs" : "text-sm"}`}>{pending.message}</p>
 				{deferredState.text !== null && (
 					<p
 						data-testid="confirm-deferred"
-						className={`flex items-start gap-2 text-sm leading-relaxed whitespace-pre-line ${
+						className={`flex items-start gap-2 leading-relaxed whitespace-pre-line ${anchored ? "text-xs" : "text-sm"} ${
 							deferredState.muted ? "text-fg-3" : "text-warning-strong"
 						}`}
 					>
@@ -377,9 +406,9 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 				<div className="flex flex-wrap justify-end gap-2 pt-1">
 					<button
 						type="button"
-						autoFocus={pending.agentInitiated}
+						autoFocus={pending.agentInitiated || anchored}
 						onClick={() => close(false)}
-						className="px-4 py-2 text-sm whitespace-nowrap rounded-lg text-fg-2 hover:text-fg hover:bg-overlay-hover transition-colors"
+						className={`${anchored ? "px-3 py-1.5 text-xs" : "px-4 py-2 text-sm"} whitespace-nowrap rounded-lg text-fg-2 hover:text-fg hover:bg-overlay-hover transition-colors`}
 					>
 						{cancelLabel}
 						{pending.keyboardChoice && <KeyHint keys="Esc" />}
@@ -398,7 +427,7 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 						data-testid="confirm-accept"
 						disabled={gateActive}
 						onClick={() => close(true)}
-						className={`px-4 py-2 text-sm whitespace-nowrap rounded-lg text-white transition-colors ${
+						className={`${anchored ? "px-3 py-1.5 text-xs" : "px-4 py-2 text-sm"} whitespace-nowrap rounded-lg text-white transition-colors ${
 							gateActive
 								? "bg-fg-muted/40 cursor-not-allowed"
 								: pending.danger
@@ -413,6 +442,24 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 			</div>
 		</div>
 	);
+}
+
+/**
+ * Below the anchor, else above it, else to its side; starting at its left edge
+ * and kept on screen. Only a screen too narrow for any side lets it overlap the anchor.
+ */
+export function placeBesideAnchor(anchor: DOMRect, panel: DOMRect, pad = 8, gap = 6): { top: number; left: number } {
+	const vw = window.innerWidth;
+	const vh = window.innerHeight;
+	const clamp = (v: number, max: number) => Math.max(pad, Math.min(v, max - pad));
+	const left = clamp(anchor.left, vw - panel.width);
+	if (anchor.bottom + gap + panel.height <= vh - pad) return { top: anchor.bottom + gap, left };
+	if (anchor.top - gap - panel.height >= pad) return { top: anchor.top - gap - panel.height, left };
+	const right = anchor.right + gap + panel.width <= vw - pad;
+	return {
+		top: clamp(anchor.top + anchor.height / 2 - panel.height / 2, vh - panel.height),
+		left: right ? anchor.right + gap : clamp(anchor.left - gap - panel.width, vw - panel.width),
+	};
 }
 
 /** The key that answers a `keyboardChoice` dialog, inside its button. */
