@@ -9,8 +9,8 @@ import { taskActivityTime } from "../components/sortTasks";
  * Facet-pool builders shared by the Kanban filter bar and the Active Tasks
  * sidebar. Each surface supplies a `FacetResolver` (built from data it already
  * holds) and its own status-option candidates; this module turns that into the
- * per-task `TaskQueryContext` for matching and the grouped, present-values-only
- * option list the funnel renders. See `taskSearch.ts` for the DSL semantics.
+ * per-task `TaskQueryContext` for matching and the grouped option list the
+ * funnel renders. See `taskSearch.ts` for the DSL semantics.
  */
 
 /** The funnel groups. FLAGS bundles the boolean `is:`/`has:` facets. */
@@ -152,13 +152,13 @@ export interface FilterFunnelCandidates {
 }
 
 /**
- * Build the funnel's grouped options from the visible task pool: only values
- * actually present, empty groups dropped. PRIORITY leads (it is the most
- * important quick filter), then STATUS, TYPES, SPACES, LABELS, AGENTS, FLAGS.
- * TYPES appears only when some task is not standard — a lone "Standard" option
- * filters nothing. Candidate
- * vocabularies (priority, status) keep their given order; LABELS/AGENTS sort
- * alphabetically for stable display.
+ * Build the funnel's grouped options from the visible task pool: values present
+ * among the tasks, except STATUS, which lists every candidate. Empty groups
+ * dropped. PRIORITY leads (it is the most important quick filter), then STATUS,
+ * TYPES, SPACES, LABELS, AGENTS, FLAGS. TYPES appears only when some task is not
+ * standard — a lone "Standard" option filters nothing. Candidate vocabularies
+ * (priority, status) keep their given order; LABELS/AGENTS sort alphabetically
+ * for stable display.
  */
 export function buildFilterGroups(
 	tasks: Task[],
@@ -168,7 +168,6 @@ export function buildFilterGroups(
 	const labelByValue = new Map<string, FilterFunnelOption>();
 	const spaceByValue = new Map<string, FilterFunnelOption>();
 	const agentByValue = new Map<string, FilterFunnelOption>();
-	const presentStatus = new Set<string>();
 	const presentPriority = new Set<string>();
 	const presentType = new Set<string>();
 	let anyAttention = false;
@@ -202,8 +201,6 @@ export function buildFilterGroups(
 				agentByValue.set(key, { facet: "agent", value: agentName, label: agentName });
 			}
 		}
-		const canonicalStatus = resolver.statusValuesFor(task)[0];
-		if (canonicalStatus) presentStatus.add(canonicalStatus.toLowerCase());
 		presentPriority.add(resolver.priorityFor(task).toLowerCase());
 		presentType.add(taskTypeValue(task));
 		if (resolver.isAttentionFor(task)) anyAttention = true;
@@ -214,7 +211,9 @@ export function buildFilterGroups(
 	}
 
 	const priorityOptions = priorityCandidates.filter((c) => presentPriority.has(c.value.toLowerCase()));
-	const statusOptions = statusCandidates.filter((c) => presentStatus.has(c.value.toLowerCase()));
+	// Every candidate, present or not: a status filter must not hide a task that
+	// lands in a status no task had when the filter was set.
+	const statusOptions = statusCandidates;
 	const typeOptions: FilterFunnelOption[] = [...presentType].some((v) => v !== "standard")
 		? (["standard", ...TASK_TYPES] as const)
 			.filter((v) => presentType.has(v))

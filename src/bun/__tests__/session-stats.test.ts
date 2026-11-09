@@ -4,6 +4,7 @@ import {
 	formatDurationMs,
 	formatTokenCount,
 	isSessionCacheWarm,
+	launchConfigDrift,
 	MAX_ATTENTION_SESSIONS,
 	attentionSessions,
 	parseClaudeSessionStats,
@@ -42,6 +43,7 @@ describe("parseClaudeSessionStats", () => {
 			projectName: null,
 			capturedAt: 1000,
 			model: "Opus 5.5 (1M context)",
+			modelId: "claude-opus-5-5[1m]",
 			effort: "medium",
 			sessionName: "Status view display options",
 			thinking: true,
@@ -73,6 +75,7 @@ describe("parseClaudeSessionStats", () => {
 		expect(stats?.costUsd).toBeNull();
 		expect(stats?.thinking).toBeNull();
 		expect(stats?.sessionName).toBeNull();
+		expect(stats?.modelId).toBeNull();
 	});
 });
 
@@ -176,5 +179,58 @@ describe("formatters", () => {
 		expect(formatDurationMs(45_000)).toBe("45s");
 		expect(formatDurationMs(62_816)).toBe("1m");
 		expect(formatDurationMs(7_500_000)).toBe("2h5m");
+	});
+});
+
+describe("launchConfigDrift", () => {
+	const preset = { model: "claude-opus-5-5[1m]", effort: "medium" };
+	const live = (over: Partial<{ model: string | null; modelId: string | null; effort: string | null }> = {}) => ({
+		model: "Opus 5.5 (1M context)",
+		modelId: "claude-opus-5-5[1m]",
+		effort: "medium",
+		...over,
+	});
+
+	it("reports nothing while the session still runs the preset, or when there is no session", () => {
+		expect(launchConfigDrift(preset, live())).toBeNull();
+		expect(launchConfigDrift(preset, live({ effort: "MEDIUM" }))).toBeNull();
+		expect(launchConfigDrift(preset, null)).toBeNull();
+		expect(launchConfigDrift(preset, undefined)).toBeNull();
+	});
+
+	it("reports an effort changed with /effort", () => {
+		expect(launchConfigDrift(preset, live({ effort: "high" }))).toEqual({ effort: "high", model: null });
+	});
+
+	it("reports a model changed with /model by its display name", () => {
+		expect(launchConfigDrift(preset, live({ model: "Sonnet 5.5", modelId: "claude-sonnet-5-5" }))).toEqual({
+			effort: null,
+			model: "Sonnet 5.5",
+		});
+		expect(launchConfigDrift(preset, live({ model: null, modelId: "claude-sonnet-5-5" }))).toEqual({
+			effort: null,
+			model: "claude-sonnet-5-5",
+		});
+	});
+
+	it("reports both when /model and /effort both moved", () => {
+		expect(launchConfigDrift(preset, live({ model: "Sonnet 5.5", modelId: "claude-sonnet-5-5", effort: "low" }))).toEqual({
+			effort: "low",
+			model: "Sonnet 5.5",
+		});
+	});
+
+	it("ignores the context-window suffix on either side", () => {
+		expect(launchConfigDrift(preset, live({ modelId: "claude-opus-5-5" }))).toBeNull();
+		expect(launchConfigDrift({ model: "claude-opus-5-5", effort: "medium" }, live())).toBeNull();
+	});
+
+	it("never compares what it cannot: an alias, a provider id, or a side with no value", () => {
+		expect(launchConfigDrift({ model: "opus", effort: "medium" }, live({ modelId: "claude-sonnet-5-5" }))).toBeNull();
+		expect(launchConfigDrift(preset, live({ modelId: "us.anthropic.claude-sonnet-5-5-v1:0" }))).toBeNull();
+		expect(launchConfigDrift(preset, live({ modelId: null }))).toBeNull();
+		expect(launchConfigDrift({ effort: "medium" }, live({ modelId: "claude-sonnet-5-5" }))).toBeNull();
+		expect(launchConfigDrift({ model: "claude-opus-5-5" }, live({ effort: "high" }))).toBeNull();
+		expect(launchConfigDrift(preset, live({ effort: null }))).toBeNull();
 	});
 });

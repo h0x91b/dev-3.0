@@ -64,3 +64,32 @@ describe("a flyout placed from a menu row", () => {
 		expect(top + tall.height).toBeLessThanOrEqual(900 - 8);
 	});
 });
+
+describe("a flyout preferring the right side (task context menu)", () => {
+	/** A 224px menu opened at the cursor near the left of a 1600px viewport. */
+	const LEFT_MENU = { top: 100, bottom: 600, height: 500, left: 100, right: 324, width: 224 };
+	const LEFT_ROW = { top: 200, bottom: 232, height: 32, left: 100, right: 324, width: 224 };
+	const pop = { width: 220, height: 240 };
+	const viewport = { width: 1600, height: 900 };
+
+	it("opens to the right of the menu, level with the row", () => {
+		const { top, left, placement } = computeAnchoredPosition(menuFlyoutAnchorRect(LEFT_ROW, LEFT_MENU), pop, {
+			placement: "right",
+			align: "start",
+			viewport,
+		});
+		expect(placement).toBe("right");
+		expect(left).toBeGreaterThanOrEqual(LEFT_MENU.right);
+		expect(top).toBe(LEFT_ROW.top);
+	});
+
+	it("flips left of the menu when the window's right edge is too close", () => {
+		const { left, placement } = computeAnchoredPosition(menuFlyoutAnchorRect(ROW, MENU), pop, {
+			placement: "right",
+			align: "start",
+			viewport,
+		});
+		expect(placement).toBe("left");
+		expect(left + pop.width).toBeLessThanOrEqual(MENU.left);
+	});
+});

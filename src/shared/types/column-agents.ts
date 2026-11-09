@@ -7,6 +7,8 @@ export interface ColumnAgentConfig {
 	agentId: string; // e.g. "builtin-claude"
 	configId: string; // e.g. "claude-auto-opus5-xhigh"
 	prompt: string; // prompt sent to the agent
+	/** AWS profile entry for a Bedrock agent; absent → the agent's default, null → none. */
+	bedrockProfile?: string | null;
 }
 
 /** Agent + preset the "AI Review" column runs when a project never configured one. */

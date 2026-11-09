@@ -17,6 +17,9 @@ export interface LaunchVariant {
 	agentId: string | null;
 	configId: string | null;
 	accountId?: string | null;
+	/** Per-launch AWS profile pick for a Bedrock agent: `undefined` → the agent's
+	 *  default; `null` → none; a name → that `ProviderSettings.profiles` entry. */
+	bedrockProfile?: string | null;
 }
 
 /**

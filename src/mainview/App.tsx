@@ -1945,7 +1945,7 @@ function App() {
 				taskId: string | null;
 				projectId: string | null;
 				message: string;
-				messageKey?: "kanban.launchAccountRemoved";
+				messageKey?: "kanban.launchAccountRemoved" | "kanban.launchAwsProfileMissing" | "kanban.awsProfilesChangedFromCli";
 				level: "info" | "success" | "error";
 				durationMs?: number;
 				taskSeq?: number;

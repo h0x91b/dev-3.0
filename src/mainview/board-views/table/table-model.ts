@@ -76,6 +76,59 @@ export function toggleTableColumn(layout: TableLayout, column: TableColumnId, ki
 	return { ...layout, columns };
 }
 
+/** A column's width in rem: one fixed number, or elastic between a floor and a cap. */
+type TableColumnSize = number | { min: number; max: number };
+
+const COLUMN_SIZE: Record<TableColumnId, TableColumnSize> = {
+	seq: 4.5,
+	title: { min: 14, max: 36 },
+	project: 9,
+	status: 8,
+	priority: 4.75,
+	labels: { min: 8, max: 16 },
+	agent: 7,
+	pr: 6.5,
+	activity: 5.25,
+	parent: 5,
+	created: 7.25,
+	branch: { min: 8, max: 16 },
+	type: 7,
+};
+
+/** Times and dates read as quantities, so they hug the end edge and line up digit by digit. */
+export const END_ALIGNED_COLUMNS: ReadonlySet<TableColumnId> = new Set(["activity", "created"]);
+
+const COLUMN_GAP_REM = 0.75;
+const ROW_PADDING_REM = 0.5;
+
+export interface TableGrid {
+	/** Shared by the header row and every body row, so their columns line up. */
+	rowStyle: { gridTemplateColumns: string; columnGap: string; paddingInline: string };
+	/** The narrowest the table gets before it scrolls sideways: every elastic column at its floor. */
+	minWidth: string;
+}
+
+const rem = (value: number) => `${+value.toFixed(3)}rem`;
+
+/**
+ * The row grid: the shown columns, then one trailing track for the row's spare room.
+ * Elastic columns grow to their caps first and the trailing track takes the rest, so a
+ * wide screen never pulls the title away from the columns that describe it.
+ */
+export function tableGrid(columns: readonly TableColumnId[]): TableGrid {
+	const sizes = columns.map((column) => COLUMN_SIZE[column]);
+	const tracks = sizes.map((size) => (typeof size === "number" ? rem(size) : `minmax(${rem(size.min)}, ${rem(size.max)})`));
+	const narrowest = sizes.reduce<number>((sum, size) => sum + (typeof size === "number" ? size : size.min), 0);
+	return {
+		rowStyle: {
+			gridTemplateColumns: [...tracks, "minmax(0, 1fr)"].join(" "),
+			columnGap: rem(COLUMN_GAP_REM),
+			paddingInline: rem(ROW_PADDING_REM),
+		},
+		minWidth: rem(narrowest + columns.length * COLUMN_GAP_REM + ROW_PADDING_REM * 2),
+	};
+}
+
 /** Index of the board lane a task sits in; -1 when the board does not show that lane. */
 export function laneOfTask(task: Task, columns: readonly BoardColumnSlot[]): number {
 	if (task.customColumnId) {

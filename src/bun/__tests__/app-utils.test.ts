@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getISOWeek, formatDateTime, makeTitle, composeWindowTitle } from "../app-utils";
+import { getISOWeek, formatDateTime, makeTitle, composeWindowTitle, buildSourceLabel } from "../app-utils";
 
 describe("getISOWeek", () => {
 	it("returns week 1 for Jan 1 2024 (Monday)", () => {
@@ -71,6 +71,10 @@ describe("formatDateTime", () => {
 });
 
 describe("makeTitle", () => {
+	it("puts the build source between the version and the build time", () => {
+		expect(makeTitle("1.63.0", "now", "stable", "local@be3c8cea")).toBe("dev-3.0 v1.63.0 · local@be3c8cea [now]");
+	});
+
 	it("builds window title with version and build time", () => {
 		expect(makeTitle("1.2.3", "Mon, 4 Mar 2024")).toBe(
 			"dev-3.0 v1.2.3 [Mon, 4 Mar 2024]",
@@ -115,5 +119,20 @@ describe("composeWindowTitle", () => {
 
 	it("trims a padded context", () => {
 		expect(composeWindowTitle("dev-3.0", "  My Project  ")).toBe("My Project · dev-3.0");
+	});
+});
+
+describe("buildSourceLabel", () => {
+	it("names branch and commit for a self-built install", () => {
+		expect(buildSourceLabel("local", "be3c8cea", true)).toBe("local@be3c8cea");
+	});
+
+	it("falls back to the commit alone for a detached HEAD", () => {
+		expect(buildSourceLabel("", "be3c8cea", true)).toBe("be3c8cea");
+	});
+
+	it("stays empty for a released build or an unknown commit", () => {
+		expect(buildSourceLabel("main", "be3c8cea", false)).toBe("");
+		expect(buildSourceLabel("local", "unknown", true)).toBe("");
 	});
 });

@@ -34,10 +34,12 @@ vi.mock("../../analytics", () => ({
 
 const terminalViewMockHandle = { sendInput: vi.fn(), paste: vi.fn(), submit: vi.fn(), focus: vi.fn(), blur: vi.fn(), claimWriter: vi.fn(), scrollToBottom: vi.fn() };
 let terminalViewOnScrolledIntoHistory: ((scrolledUp: boolean) => void) | undefined;
+let terminalViewOnSessionUnknown: (() => Promise<boolean>) | undefined;
 
 vi.mock("../../TerminalView", () => ({
-	default: ({ ptyUrl, onReady, onScrolledIntoHistory }: { ptyUrl: string; onReady?: (h: unknown) => void; onScrolledIntoHistory?: (v: boolean) => void }) => {
+	default: ({ ptyUrl, onReady, onScrolledIntoHistory, onSessionUnknown }: { ptyUrl: string; onReady?: (h: unknown) => void; onScrolledIntoHistory?: (v: boolean) => void; onSessionUnknown?: () => Promise<boolean> }) => {
 		terminalViewOnScrolledIntoHistory = onScrolledIntoHistory;
+		terminalViewOnSessionUnknown = onSessionUnknown;
 		if (onReady) {
 			setTimeout(() => onReady(terminalViewMockHandle), 0);
 		}
@@ -653,6 +655,55 @@ describe("TaskTerminal", () => {
 			await waitFor(() => {
 				expect(screen.getByTestId("terminal-view")).toBeInTheDocument();
 			});
+		});
+	});
+
+	// A restarted server forgets a session the open view was streaming; TerminalView
+	// asks the owner to register it again before reconnecting.
+	describe("Forgotten session after a server restart", () => {
+		const panes = [{ agentCmd: "claude", sessionId: "sid-1", agentId: "builtin-claude", configId: "cfg-1" }];
+
+		async function renderStreamingTerminal() {
+			mockedApi.request.getPtyUrl.mockResolvedValueOnce({ url: "ws://localhost:9999?session=t1" });
+			await act(async () => { renderTerminal(); });
+			await screen.findByTestId("terminal-view");
+			expect(terminalViewOnSessionUnknown).toBeDefined();
+		}
+
+		it("re-registers the session and keeps the terminal when it is still alive", async () => {
+			await renderStreamingTerminal();
+			mockedApi.request.getPtyUrl.mockResolvedValueOnce({ url: "ws://localhost:9999?session=t1" });
+
+			let reconnect: boolean | undefined;
+			await act(async () => { reconnect = await terminalViewOnSessionUnknown!(); });
+
+			expect(reconnect).toBe(true);
+			expect(mockedApi.request.getPtyUrl).toHaveBeenLastCalledWith({ taskId: "t1" });
+			expect(screen.getByTestId("terminal-view")).toBeInTheDocument();
+		});
+
+		it("drops to the recovery prompt when the session is gone", async () => {
+			await renderStreamingTerminal();
+			mockedApi.request.getPtyUrl.mockResolvedValueOnce({ recoverable: true, sessionState: { panes } });
+
+			let reconnect: boolean | undefined;
+			await act(async () => { reconnect = await terminalViewOnSessionUnknown!(); });
+
+			expect(reconnect).toBe(false);
+			expect(screen.queryByTestId("terminal-view")).toBeNull();
+			expect(screen.getByText("Previous agent session found")).toBeInTheDocument();
+		});
+
+		it("drops to the wake screen when the task was hibernated meanwhile", async () => {
+			await renderStreamingTerminal();
+			mockedApi.request.getPtyUrl.mockResolvedValueOnce({ recoverable: true, hibernated: true, sessionState: { panes } });
+
+			let reconnect: boolean | undefined;
+			await act(async () => { reconnect = await terminalViewOnSessionUnknown!(); });
+
+			expect(reconnect).toBe(false);
+			expect(screen.queryByTestId("terminal-view")).toBeNull();
+			expect(screen.getByTestId("terminal-wake-screen")).toBeInTheDocument();
 		});
 	});
 

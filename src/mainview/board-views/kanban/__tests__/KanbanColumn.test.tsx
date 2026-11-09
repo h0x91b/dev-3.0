@@ -35,7 +35,7 @@ vi.mock("../../../utils/confirmTaskCompletion", () => ({
 }));
 vi.mock("../../../utils/ansi-to-html", () => ({ ansiToHtml: vi.fn((s: string) => s) }));
 vi.mock("../../../components/TaskDetailModal", () => ({ default: () => null }));
-vi.mock("../../../components/LabelPicker", () => ({ default: () => null }));
+vi.mock("../../../components/LabelPicker", () => ({ default: () => null, LabelPickerPanel: () => null }));
 
 // Default viewport in happy-dom is 1024px which would trigger the compact-empty
 // column mode and hide chrome these tests assert against. Force a desktop width.

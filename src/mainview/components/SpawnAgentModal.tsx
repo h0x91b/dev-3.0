@@ -45,6 +45,8 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 	const [configId, setConfigId] = useState<string | null>(null);
 	// Per-launch account (undefined → the registry default preselect).
 	const [accountId, setAccountId] = useState<string | null | undefined>(undefined);
+	// A new agent in the task starts on the task's own AWS account.
+	const [bedrockProfile, setBedrockProfile] = useState<string | null | undefined>(task.bedrockProfile);
 	const [spawning, setSpawning] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [agentAvailability, setAgentAvailability] = useState<AgentCheckResult[]>([]);
@@ -108,7 +110,7 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 		window.addEventListener("keydown", handleKey);
 		return () => window.removeEventListener("keydown", handleKey);
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [spawning, globalSettings, agentId, configId, accountId, handoff, instruction]);
+	}, [spawning, globalSettings, agentId, configId, accountId, bedrockProfile, handoff, instruction]);
 
 	const handleToggleFavorite = useToggleFavorite(setGlobalSettings);
 
@@ -130,6 +132,7 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 				agentId,
 				configId,
 				accountId,
+				bedrockProfile,
 				handoff,
 				...(nextInstruction ? { prompt: nextInstruction } : {}),
 			});
@@ -208,6 +211,8 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 							}}
 							accountId={accountId}
 							onAccountChange={setAccountId}
+							bedrockProfile={bedrockProfile}
+							onBedrockProfileChange={setBedrockProfile}
 							onAddAccount={() => leaveLaunchForAccountSettings(onClose, t("launch.accountAddLeaving"))}
 							pxpipeProxyEnabled={globalSettings.pxpipeProxyEnabled ?? false}
 							showFavorites

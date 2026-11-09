@@ -22,7 +22,6 @@ interface OpenInMenuProps {
 
 export default function OpenInMenu({ position, path, taskId, onClose }: OpenInMenuProps) {
 	const t = useT();
-	const apps = useAvailableApps();
 	const menuRef = useRef<HTMLDivElement>(null);
 	const [menuPos, setMenuPos] = useState(position);
 	const [visible, setVisible] = useState(false);
@@ -67,18 +66,10 @@ export default function OpenInMenu({ position, path, taskId, onClose }: OpenInMe
 		setVisible(true);
 	}, [position]);
 
-	async function handleOpen(app: ExternalApp) {
-		onClose();
-		try {
-			await api.request.openInApp({ appName: app.macAppName, path });
-		} catch (err) {
-			toast.error(t("openIn.failedOpen", { app: app.name, error: String(err) }), { taskId });
-		}
-	}
-
 	return createPortal(
 		<div
 			ref={menuRef}
+			data-menu-surface
 			className="fixed z-[10000] bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1.5 min-w-[11.25rem]"
 			style={{
 				top: menuPos.top,
@@ -90,27 +81,7 @@ export default function OpenInMenu({ position, path, taskId, onClose }: OpenInMe
 			<div className="px-3 py-2 text-xs text-fg-3 uppercase tracking-wider font-semibold">
 				{t("openIn.menuTitle")}
 			</div>
-			{apps.length === 0 ? (
-				<div className="px-3 py-2 text-sm text-fg-muted">
-					{t("openIn.noAppsFound")}
-				</div>
-			) : (
-				apps.map((app) => (
-					<button
-						key={app.id}
-						onClick={() => handleOpen(app)}
-						className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-overlay-hover hover:text-fg flex items-center gap-2.5 transition-colors"
-					>
-						<span
-							className="w-4 text-center text-sm leading-none flex-shrink-0"
-							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-						>
-							{OPEN_IN_APP_ICONS[app.id] ?? OPEN_IN_APP_ICON_FALLBACK}
-						</span>
-						{app.name}
-					</button>
-				))
-			)}
+			<OpenInAppList path={path} taskId={taskId} onOpened={onClose} />
 			<div className="border-t border-edge my-1" />
 			<button
 				onClick={() => {
@@ -148,5 +119,46 @@ export default function OpenInMenu({ position, path, taskId, onClose }: OpenInMe
 			)}
 		</div>,
 		document.body,
+	);
+}
+
+/** The detected editor/app rows, without a surface: this menu and the task menu flyout both host it. */
+export function OpenInAppList({ path, taskId, onOpened }: { path: string; taskId?: string; onOpened: () => void }) {
+	const t = useT();
+	const apps = useAvailableApps();
+
+	async function handleOpen(app: ExternalApp) {
+		onOpened();
+		try {
+			await api.request.openInApp({ appName: app.macAppName, path });
+		} catch (err) {
+			toast.error(t("openIn.failedOpen", { app: app.name, error: String(err) }), { taskId });
+		}
+	}
+
+	return (
+		<>
+			{apps.length === 0 ? (
+				<div className="px-3 py-2 text-sm text-fg-muted">
+					{t("openIn.noAppsFound")}
+				</div>
+			) : (
+				apps.map((app) => (
+					<button
+						key={app.id}
+						onClick={() => handleOpen(app)}
+						className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-overlay-hover hover:text-fg flex items-center gap-2.5 transition-colors"
+					>
+						<span
+							className="w-4 text-center text-sm leading-none flex-shrink-0"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						>
+							{OPEN_IN_APP_ICONS[app.id] ?? OPEN_IN_APP_ICON_FALLBACK}
+						</span>
+						{app.name}
+					</button>
+				))
+			)}
+		</>
 	);
 }

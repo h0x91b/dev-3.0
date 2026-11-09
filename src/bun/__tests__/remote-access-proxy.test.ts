@@ -19,7 +19,7 @@ vi.mock("../jwt", () => ({
 vi.mock("../settings", () => ({ loadSettingsSync: () => ({}) }));
 vi.mock("../theme-state", () => ({ getCurrentUiTheme: () => "dark" }));
 
-import { parseSharedProxyPath } from "../remote-access-server";
+import { downstreamPtyClose, parseSharedProxyPath } from "../remote-access-server";
 
 describe("parseSharedProxyPath", () => {
 	it("parses /p/<subtoken>/<port>/<rest>", () => {
@@ -54,5 +54,19 @@ describe("parseSharedProxyPath", () => {
 
 	it("rejects ports with trailing garbage (would silently parse as int otherwise)", () => {
 		expect(parseSharedProxyPath("/p/abc/3000abc/foo")).toBeNull();
+	});
+});
+
+describe("downstreamPtyClose", () => {
+	// Flattening every upstream close to 1000 made the browser print [session ended]
+	// when a restarted server refused a session it had not re-registered yet.
+	it("keeps the PTY server's own close codes", () => {
+		expect(downstreamPtyClose(4001, "Unknown session")).toEqual({ code: 4001, reason: "Unknown session" });
+		expect(downstreamPtyClose(1000, "")).toEqual({ code: 1000, reason: "" });
+	});
+
+	it("turns a code a server may not send into a retryable one", () => {
+		expect(downstreamPtyClose(1006, "").code).toBe(4003);
+		expect(downstreamPtyClose(1001, "").code).toBe(4003);
 	});
 });

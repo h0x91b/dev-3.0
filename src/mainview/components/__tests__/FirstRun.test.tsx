@@ -54,7 +54,7 @@ vi.mock("../../utils/moveTaskToStatus", () => ({ moveTaskToStatus: vi.fn(async (
 vi.mock("../../utils/confirmTaskCompletion", () => ({ confirmTaskCompletion: vi.fn().mockResolvedValue(true) }));
 vi.mock("../../utils/ansi-to-html", () => ({ ansiToHtml: vi.fn((s: string) => s) }));
 vi.mock("../TaskDetailModal", () => ({ default: () => null }));
-vi.mock("../LabelPicker", () => ({ default: () => null }));
+vi.mock("../LabelPicker", () => ({ default: () => null, LabelPickerPanel: () => null }));
 
 // happy-dom defaults to 1024px, which trips both the compact-column mode and the
 // header's compact breakpoint and hides the chrome these tests assert on.
