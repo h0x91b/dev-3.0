@@ -44,7 +44,12 @@ export interface TaskResumeResult {
 }
 
 /** Why a resume was refused before anything was launched. */
-export type ResumeUnavailableReason = "not-active" | "draft" | "no-worktree" | "no-saved-session" | "session-id-unknown" | "harness-cannot-resume";
+export type ResumeUnavailableReason =
+	| "not-active" | "draft" | "no-worktree" | "no-saved-session" | "session-id-unknown" | "harness-cannot-resume"
+	/** A requested account cannot apply: unknown, "auto", or no saved pane runs Claude. */
+	| "account-invalid"
+	/** The requested account's config dir has no transcript for a saved Claude conversation. */
+	| "account-cannot-see-conversation";
 
 export type CliResumeOutcome =
 	| { outcome: "resumed"; resume: TaskResumeResult }
@@ -52,10 +57,15 @@ export type CliResumeOutcome =
 	| { outcome: "unavailable"; taskId: string; seq: number; reason: ResumeUnavailableReason; message: string; panes?: ResumePaneReport[] }
 	| { outcome: "declined"; taskId: string; seq: number; stale?: boolean };
 
-/** The saved panes an approval dialog shows for a resume request: what will be restored, never changed. */
+/** The saved panes an approval dialog shows for a resume request: what will be restored, with only the Claude account changeable. */
 export interface ResumeDialogPane {
 	agentId: string | null;
 	configId: string | null;
 	/** The saved id; the resume itself may heal it to the newest surviving transcript. */
 	sessionId: string | null;
+	/** The saved account: undefined follows the default, null is the system login. */
+	accountId?: string | null;
+	/** The saved command, so the dialog knows which panes an account choice reaches. */
+	agentCmd: string;
+	agentFamily?: AgentFamily | null;
 }

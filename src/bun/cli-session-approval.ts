@@ -35,6 +35,8 @@ export type SessionApprovalSubject = Pick<AgentLaunchRequest, "resume"> | Pick<A
 export interface SessionApprovalAnswer {
 	approved: boolean;
 	stale?: boolean;
+	/** A resume dialog's account pick, when the user changed it. */
+	resumeAccountId?: string | null;
 }
 
 /**
@@ -47,7 +49,8 @@ export interface SessionApprovalAnswer {
  * with it, and a resume can never be pending alongside a hibernate.
  *
  * Any agent pick a dialog reports back is ignored — none of these commands
- * offers an agent choice.
+ * offers an agent choice. A resume dialog's Claude account pick is the one
+ * exception, handed back as `resumeAccountId`.
  */
 export async function askSessionApproval(opts: {
 	project: Project;
@@ -77,7 +80,12 @@ export async function askSessionApproval(opts: {
 	setAgentLaunchDialog(request);
 	push("agentLaunchRequested", request);
 	const answer = await decision;
-	return { approved: answer.approved, ...(answer.stale ? { stale: true } : {}) };
+	const resumeAccountId = answer.launch?.resumeAccountId;
+	return {
+		approved: answer.approved,
+		...(answer.stale ? { stale: true } : {}),
+		...(answer.approved && resumeAccountId !== undefined ? { resumeAccountId } : {}),
+	};
 }
 
 /** The approved request must still be about the run the dialog showed. */
