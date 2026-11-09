@@ -879,7 +879,7 @@ function ActiveTasksSidebar({
 											onSetPriority={(p) => handleSetPriority(task, p)}
 											onSetHidden={() => handleSetHidden(task)}
 											animateOut={!task.hidden && !revealHidden}
-											onMouseEnter={(e) => preview.handlers.onMouseEnter(task.id, e.currentTarget)}
+											onMouseEnter={(e) => preview.handlers.onMouseEnter(task.id, e.currentTarget, e.target)}
 											onMouseLeave={preview.handlers.onMouseLeave}
 											closePreview={preview.close}
 										/>

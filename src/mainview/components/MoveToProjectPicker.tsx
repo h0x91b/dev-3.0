@@ -152,6 +152,7 @@ export default function MoveToProjectPicker({ currentProjectId, anchorEl, onSele
 		<div
 			ref={popoverRef}
 			role="dialog"
+			data-menu-surface
 			aria-label={t("task.moveToProjectTitle")}
 			data-testid="move-to-project-popover"
 			className="fixed z-[60] overflow-hidden rounded-xl border border-edge-active bg-overlay shadow-2xl shadow-black/40"
