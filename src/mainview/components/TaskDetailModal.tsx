@@ -584,7 +584,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 									<span className="text-micro text-accent animate-pulse">{t(pasteKind === "text" ? "paste.savingText" : "images.pasting")}</span>
 								)}
 								<ImageAttachmentsStrip text={editValue} onRemovePath={handleRemovePath} />
-								{generatedTitle && generatedTitle !== editValue.trim() && (
+								{!task.customTitle && generatedTitle && generatedTitle !== editValue.trim() && (
 									<div className="text-fg-3 text-xs">
 										{t("createTask.generatedTitle")}{" "}
 										<span className="text-fg-2 font-medium">{generatedTitle}</span>
