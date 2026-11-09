@@ -1283,6 +1283,10 @@ async function scheduleTaskLaunch(params: {
 	// Refused here as well as in the lifecycle machine: a draft must never carry a
 	// pending scheduledLaunch that would fire while the user is away.
 	if (task.draft === true) throw new Error(DRAFT_TASK_ACTIVATION_ERROR);
+	// The mirror of launchAfterRefusal's "Start in" check: a task waits on one condition, never two.
+	if (task.launchAfter) {
+		throw new Error(`This task already starts after task #${task.launchAfter.seq}. Remove that start condition first.`);
+	}
 	if (params.variants.length === 0) {
 		throw new Error("Scheduled launch needs at least one variant");
 	}
