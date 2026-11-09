@@ -16,6 +16,7 @@ const kanban = {
 	"kanban.columnAgentNoTerminalMoved": "No se puede iniciar el agente de \"{columnName}\": la terminal de esta tarea no está en marcha, así que la tarea se movió a {status}. Abre la tarea, inicia su terminal y vuelve a moverla.",
 	"kanban.launchAccountRemoved": "La cuenta que usaba esta tarea fue eliminada: se inició con la cuenta predeterminada.",
 	"kanban.launchAwsProfileMissing": "El perfil de AWS de esta tarea ya no figura en su agente, así que se inició con el entorno del proyecto. Restaura el nombre del perfil en Ajustes para volver a él.",
+	"kanban.awsProfilesChangedFromCli": "La CLI de dev3 cambió los perfiles de AWS de un agente, que deciden la cuenta de AWS de sus lanzamientos. Revísalos en Ajustes → Agentes.",
 	"kanban.taskPreparationFailed": "No se pudo preparar \"{taskTitle}\" — devuelta a Por hacer: {error}",
 	"task.launchFailed": "Error de inicio: {error}",
 	"task.startBranchMissing": "La rama \"{branch}\" de la que parte esta tarea ya no existe. Probablemente se eliminó al fusionar su pull request. Crea una nueva tarea a partir de otra rama.",

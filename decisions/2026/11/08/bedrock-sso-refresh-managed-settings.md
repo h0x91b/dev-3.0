@@ -10,11 +10,11 @@ Claude Code 2.1.319 runs `awsAuthRefresh` when Bedrock credentials fail, and the
 
 ## Decision
 
-`ensureClaudeStatusLineSettings` (`src/bun/rate-limit-monitor.ts`) writes a second managed file, `claude-bedrock-sso-settings.json`, which adds `awsAuthRefresh: "aws sso login"`. `applyStatusLineOption` (`src/bun/agents.ts`) picks it only when `applyBedrockProfileEnv` injected a profile. The command takes no `--profile` because `AWS_PROFILE` already names it. The Claude adapter passes whichever file it gets as the launch's single `--settings`; hooks live in the worktree's own settings file, so nothing else competes for the flag.
+`ensureClaudeStatusLineSettings` (`src/bun/rate-limit-monitor.ts`) writes a second managed file, `claude-bedrock-sso-settings.json`, which adds `awsAuthRefresh: "aws sso login"`. `applyStatusLineOption` (`src/bun/agents.ts`) picks it only when `applyBedrockProfileEnv` injected a profile and `claudeSettingsSetAwsAuthRefresh` finds no `awsAuthRefresh` in the launch's Claude user settings (`CLAUDE_CONFIG_DIR`, else `~/.claude`) or the worktree's `.claude/settings{,.local}.json`. The command takes no `--profile` because `AWS_PROFILE` already names it. The Claude adapter passes whichever file it gets as the launch's single `--settings`; hooks live in the worktree's own settings file, so nothing else competes for the flag.
 
 ## Risks
 
-Flag settings outrank user settings, so a user's own `awsAuthRefresh` is shadowed on launches with a picked profile. A picked profile that is not SSO-based makes the refresh fail with Claude's "awsAuthRefresh failed" message, which only adds to an error that already happens.
+Flag settings outrank user settings, so dev3 steps aside whenever it finds the user's own `awsAuthRefresh`; one set only through a project-env `CLAUDE_CONFIG_DIR` (merged after resolution) is not seen and would still be shadowed. A picked profile that is not SSO-based makes the refresh fail with Claude's "awsAuthRefresh failed" message, which only adds to an error that already happens.
 
 ## Alternatives considered
 

@@ -408,7 +408,14 @@ export function bedrockProfilesFor(
 ): BedrockProfile[] {
 	const def = getProviderDefinition(provider);
 	if (!def?.usesAwsProfiles) return [];
-	return (providerConfig?.[def.id]?.profiles ?? []).filter((p) => p.name.trim() && p.awsProfile.trim());
+	// The name is the pick's identity, so only the first entry per name is offered:
+	// a second one would show in the picker yet resolve to the first.
+	const seen = new Set<string>();
+	return (providerConfig?.[def.id]?.profiles ?? []).filter((p) => {
+		if (!p.name.trim() || !p.awsProfile.trim() || seen.has(p.name)) return false;
+		seen.add(p.name);
+		return true;
+	});
 }
 
 /**

@@ -788,13 +788,31 @@ function applyStatusLineOption(
 	options: CommandOptions | undefined,
 	settings: { agentRateLimitTracking?: boolean },
 	bedrockProfile: { resolvedBedrockProfile?: string | null; bedrockProfileMissing?: string },
+	launchEnv: Record<string, string>,
+	worktreePath: string | undefined,
 ): CommandOptions | undefined {
 	const includeStatusLine = settings.agentRateLimitTracking !== false;
-	// Only a profile dev3 injected gets dev3's SSO refresh; otherwise the user's own awsAuthRefresh stays in charge.
-	const awsSsoRefresh = !!bedrockProfile.resolvedBedrockProfile && !bedrockProfile.bedrockProfileMissing;
+	// Only a profile dev3 injected gets dev3's SSO refresh, and never over the user's own
+	// awsAuthRefresh: flag settings outrank every settings file, so ours would shadow it.
+	const awsSsoRefresh = !!bedrockProfile.resolvedBedrockProfile && !bedrockProfile.bedrockProfileMissing
+		&& !claudeSettingsSetAwsAuthRefresh(launchEnv, worktreePath);
 	const settingsFile = ensureClaudeStatusLineSettings(includeStatusLine, awsSsoRefresh);
 	if (!settingsFile) return options;
 	return { ...options, statuslineSettingsFile: settingsFile };
+}
+
+/** Whether the launch's Claude user settings, or the worktree's project settings, already set `awsAuthRefresh`. */
+export function claudeSettingsSetAwsAuthRefresh(launchEnv: Record<string, string>, worktreePath: string | undefined): boolean {
+	const configDir = launchEnv.CLAUDE_CONFIG_DIR || process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
+	const files = [join(configDir, "settings.json")];
+	if (worktreePath) files.push(join(worktreePath, ".claude", "settings.json"), join(worktreePath, ".claude", "settings.local.json"));
+	return files.some((file) => {
+		try {
+			return typeof JSON.parse(readFileSync(file, "utf-8"))?.awsAuthRefresh === "string";
+		} catch {
+			return false;
+		}
+	});
 }
 
 /** Which account a launch uses, before any env is built. `"auto"` (or a
@@ -1041,11 +1059,12 @@ export async function resolveCommandForAgent(
 		Object.assign(extraEnv, config.envVars, presetModelSlotEnv(agentProvider(agentWithPath, config), config.model, config.envVars));
 	}
 	const bedrockProfile = applyBedrockProfileEnv(agentWithPath, config, extraEnv, options);
-	const providerOpts = withProviderOptions(applyStatusLineOption(options, settings, bedrockProfile), agentWithPath, config);
 	const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options);
 	await applyClaudeAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 	await applyCodexAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 	await applyAgentDirAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
+	// After the account env: its CLAUDE_CONFIG_DIR names the user settings to check.
+	const providerOpts = withProviderOptions(applyStatusLineOption(options, settings, bedrockProfile, extraEnv, ctx.worktreePath), agentWithPath, config);
 	const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts, agentWithPath.agentFamily);
 	const launchConfig = withOmpLaunchDefaults(
 		resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel),
@@ -1206,11 +1225,11 @@ export async function resolveCommandForProject(
 			...presetModelSlotEnv(agentProvider(agentWithPath, config), config?.model, config?.envVars),
 		};
 		const bedrockProfile = applyBedrockProfileEnv(agentWithPath, config, extraEnv, options);
-		const providerOpts = withProviderOptions(applyStatusLineOption(options, settings, bedrockProfile), agentWithPath, config);
 		const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options);
 		await applyClaudeAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 		await applyCodexAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 		await applyAgentDirAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
+		const providerOpts = withProviderOptions(applyStatusLineOption(options, settings, bedrockProfile, extraEnv, ctx.worktreePath), agentWithPath, config);
 		const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts, agentWithPath.agentFamily);
 		const launchConfig = withOmpLaunchDefaults(
 			resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel),

@@ -87,7 +87,7 @@ const COMMANDS: CommandHelp[] = [
 				details: [
 					"list            Every agent on an Amazon Bedrock backend, or just --agent; * marks the default.",
 					"set             Replaces the whole list; repeat --profile once per entry, or pass --clear.",
-					"--profile       <name>=<AWS_PROFILE>[,<AWS_REGION>], e.g. og=og-aws-claude-code,us-west-2.",
+					"--profile       <name>=<AWS_PROFILE>[,<AWS_REGION>], e.g. dev=my-bedrock-profile,us-west-2.",
 					"--default       Entry a launch uses when nobody picks one; omitted keeps the current default if still listed.",
 					"--no-default    Drop the default: an unpicked launch uses None (the project env decides).",
 					"The picked entry sets AWS_PROFILE/AWS_REGION over the project env and the preset envVars.",

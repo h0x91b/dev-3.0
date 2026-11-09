@@ -41,6 +41,12 @@ describe("AwsProfilesEditor", () => {
 		expect(radios.filter((r) => r.checked)).toHaveLength(1);
 	});
 
+	it("clicking the radio of a same-named row keeps the default instead of clearing it", () => {
+		const onState = renderEditor({ profiles: [{ name: "og", awsProfile: "a" }, { name: "og", awsProfile: "b" }], defaultProfile: "og" });
+		fireEvent.click(screen.getAllByRole("radio")[1]);
+		expect(onState.mock.calls.every(([state]) => state.defaultProfile === "og")).toBe(true);
+	});
+
 	it("blanking the default's name drops the default, so a blank row cannot inherit it", () => {
 		const onState = renderEditor({ profiles: [{ name: "og", awsProfile: "a" }, { name: "", awsProfile: "" }], defaultProfile: "og" });
 		const names = screen.getAllByLabelText("Name") as HTMLInputElement[];

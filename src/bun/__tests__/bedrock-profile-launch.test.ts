@@ -45,6 +45,11 @@ describe("resolveBedrockProfile", () => {
 	it("drops entries with no AWS profile value", () => {
 		expect(bedrockProfilesFor("bedrock", { bedrock: { profiles: [{ name: "x", awsProfile: " " }] } })).toEqual([]);
 	});
+	it("offers only the first entry per name, so a pick never resolves to another account", () => {
+		const dup: ProviderConfig = { bedrock: { profiles: [{ name: "prod", awsProfile: "a" }, { name: "prod", awsProfile: "b" }] } };
+		expect(bedrockProfilesFor("bedrock", dup).map((p) => p.awsProfile)).toEqual(["a"]);
+		expect(resolveBedrockProfile("bedrock", dup, "prod").profile?.awsProfile).toBe("a");
+	});
 });
 
 describe("bedrockProfileEnv", () => {

@@ -42,12 +42,27 @@ const bedrockAgent: CodingAgent = {
 	defaultConfigId: "auto",
 };
 
+// The user's own Claude settings are read to decide the SSO refresh, so point them at a scratch dir.
+const CLAUDE_DIR = `${DEV3_HOME}/claude-config-test`;
+const WORKTREE = `${DEV3_HOME}/worktree-test`;
+const savedConfigDir = process.env.CLAUDE_CONFIG_DIR;
+
 beforeAll(() => mkdirSync(DEV3_HOME, { recursive: true }));
 beforeEach(() => {
 	state.settings = { agentsLayoutRevision: 999, defaultAgentId: "builtin-claude", agentBinaryPaths: {} };
 	writeFileSync(AGENTS_FILE, JSON.stringify([bedrockAgent]));
+	rmSync(CLAUDE_DIR, { recursive: true, force: true });
+	rmSync(WORKTREE, { recursive: true, force: true });
+	mkdirSync(CLAUDE_DIR, { recursive: true });
+	process.env.CLAUDE_CONFIG_DIR = CLAUDE_DIR;
 });
-afterAll(() => rmSync(AGENTS_FILE, { force: true }));
+afterAll(() => {
+	rmSync(AGENTS_FILE, { force: true });
+	rmSync(CLAUDE_DIR, { recursive: true, force: true });
+	rmSync(WORKTREE, { recursive: true, force: true });
+	if (savedConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+	else process.env.CLAUDE_CONFIG_DIR = savedConfigDir;
+});
 
 describe("resolveCommandForAgent — AWS profile through the real launch path", () => {
 	it("injects the picked profile with the Bedrock env and reports it", async () => {
@@ -81,6 +96,17 @@ describe("resolveCommandForAgent — AWS profile through the real launch path", 
 		expect(none.command).toContain(`--settings ${CLAUDE_STATUSLINE_SETTINGS_PATH}`);
 		const missing = await resolveCommandForAgent("claude-bedrock", "auto", ctx, { bedrockProfile: "gone" });
 		expect(missing.command).toContain(`--settings ${CLAUDE_STATUSLINE_SETTINGS_PATH}`);
+	});
+
+	it("a user's own awsAuthRefresh keeps the shared settings file, so dev3 never shadows it", async () => {
+		writeFileSync(`${CLAUDE_DIR}/settings.json`, JSON.stringify({ awsAuthRefresh: "granted sso" }));
+		const user = await resolveCommandForAgent("claude-bedrock", "auto", ctx, { bedrockProfile: "og" });
+		expect(user.command).toContain(`--settings ${CLAUDE_STATUSLINE_SETTINGS_PATH}`);
+		rmSync(`${CLAUDE_DIR}/settings.json`);
+		mkdirSync(`${WORKTREE}/.claude`, { recursive: true });
+		writeFileSync(`${WORKTREE}/.claude/settings.local.json`, JSON.stringify({ awsAuthRefresh: "aws-vault login" }));
+		const project = await resolveCommandForAgent("claude-bedrock", "auto", { ...ctx, worktreePath: WORKTREE }, { bedrockProfile: "og" });
+		expect(project.command).toContain(`--settings ${CLAUDE_STATUSLINE_SETTINGS_PATH}`);
 	});
 
 	it("the picked profile wins over the preset's own envVars", async () => {

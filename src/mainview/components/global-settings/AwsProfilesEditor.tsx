@@ -81,7 +81,7 @@ export default function AwsProfilesEditor({
 								disabled={!row.name.trim()}
 								onChange={() => onChange({ defaultProfile: row.name })}
 								onClick={() => {
-									if (row.name === defaultProfile) onChange({ defaultProfile: undefined });
+									if (index === defaultIndex) onChange({ defaultProfile: undefined });
 								}}
 								className="accent-accent justify-self-start"
 							/>
@@ -89,14 +89,14 @@ export default function AwsProfilesEditor({
 								className={INPUT_CLASS}
 								value={row.name}
 								aria-label={t("settings.awsProfileName")}
-								placeholder="og"
+								placeholder="dev"
 								onChange={(e) => updateRow(index, { name: e.target.value })}
 							/>
 							<input
 								className={INPUT_CLASS}
 								value={row.awsProfile}
 								aria-label="AWS_PROFILE"
-								placeholder="og-aws-claude-code"
+								placeholder="my-bedrock-profile"
 								onChange={(e) => updateRow(index, { awsProfile: e.target.value })}
 							/>
 							<input

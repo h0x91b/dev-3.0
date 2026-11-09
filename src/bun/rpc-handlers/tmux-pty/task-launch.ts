@@ -100,14 +100,12 @@ async function persistInitialAgentPaneId(
 
 const STALE_ACCOUNT_NOTICE_WINDOW_MS = 60_000;
 const staleAccountNoticeAt = new Map<string, number>();
+const awsProfileNoticeAt = new Map<string, number>();
 
 export function resetStaleAccountNoticesForTests(): void {
 	staleAccountNoticeAt.clear();
+	awsProfileNoticeAt.clear();
 }
-
-/** Tell the user a stored Claude account was removed and the launch used the default one.
- *  Once per task per window: a resume relaunches every pane, and each may carry the same id. */
-const awsProfileNoticeAt = new Map<string, number>();
 
 /** Tell the user a launch ran without its picked AWS profile (once per window per task). */
 export async function notifyBedrockProfileMissing(task: Pick<Task, "id" | "projectId">, now = Date.now()): Promise<void> {
@@ -124,6 +122,8 @@ export async function notifyBedrockProfileMissing(task: Pick<Task, "id" | "proje
 	});
 }
 
+/** Tell the user a stored Claude account was removed and the launch used the default one.
+ *  Once per task per window: a resume relaunches every pane, and each may carry the same id. */
 export async function notifyStaleAccountDropped(task: Pick<Task, "id" | "projectId">, now = Date.now()): Promise<void> {
 	const last = staleAccountNoticeAt.get(task.id);
 	if (last !== undefined && now - last < STALE_ACCOUNT_NOTICE_WINDOW_MS) return;
