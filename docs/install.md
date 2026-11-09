@@ -379,4 +379,6 @@ bun build src/cli/main.ts --compile --outfile dist/dev3
 ./dist/dev3 remote
 ```
 
+A desktop app you build yourself still checks the release feed and will replace itself with the next upstream release. To keep your build, set `DEV3_DISABLE_UPDATES=1` when generating build info — `DEV3_DISABLE_UPDATES=1 bun run build:prod` does it in one step. The flag is baked in by `scripts/generate-build-info.ts`, so re-run that script (or the full build) after changing it. Such builds show `branch@commit` in the window title.
+
 For day-to-day development on the repo, see [AGENTS.md](../AGENTS.md).
