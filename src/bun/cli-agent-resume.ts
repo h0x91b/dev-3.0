@@ -2,7 +2,7 @@ import type { Project, Task } from "../shared/types";
 import { ACTIVE_STATUSES } from "../shared/types";
 import type { CliResumeOutcome, ResumeDialogPane, ResumeUnavailableReason, ResumePaneReport } from "../shared/agent-resume";
 import { askSessionApproval, type LaunchRequester, launchRequesterKey, perTaskJoiner, sameRunAfterApproval } from "./cli-session-approval";
-import { ResumeUnavailableError, resumeTaskSession, sessionStateOrLostCodexPane, taskTerminalAlive } from "./rpc-handlers/tmux-pty";
+import { assertResumeAccountUsable, ResumeUnavailableError, resumeTaskSession, sessionStateOrLostCodexPane, taskTerminalAlive } from "./rpc-handlers/tmux-pty";
 import { taskTerminalBackendIdentity } from "./task-terminal-backend";
 import { assertTaskWorkspacePresent } from "./task-workspace-guard";
 
@@ -13,6 +13,8 @@ interface ResumeOptions {
 	requester: LaunchRequester | null;
 	/** Let a pane with no saved id resume the harness's own latest conversation. */
 	allowAgentLatest: boolean;
+	/** `--account`: resume Claude panes on this account (null: system login). The dialog preselects it. */
+	accountId?: string | null;
 }
 
 function unavailable(task: Task, reason: ResumeUnavailableReason, message: string, panes?: ResumePaneReport[]): CliResumeOutcome {
@@ -20,7 +22,7 @@ function unavailable(task: Task, reason: ResumeUnavailableReason, message: strin
 }
 
 /** Everything that refuses without asking anybody: a resume the user would approve only to watch fail. */
-async function preflight(project: Project, task: Task): Promise<{ refused: CliResumeOutcome } | { panes: ResumeDialogPane[] }> {
+async function preflight(project: Project, task: Task, accountId: string | null | undefined): Promise<{ refused: CliResumeOutcome } | { panes: ResumeDialogPane[] }> {
 	if (task.draft) return { refused: unavailable(task, "draft", "The task is a draft; it has never run, so there is no session to resume.") };
 	if (!ACTIVE_STATUSES.includes(task.status)) {
 		return { refused: unavailable(task, "not-active", `The task is ${task.status}; only an active task has a session to resume. Starting it is \`dev3 task move\`.`) };
@@ -34,33 +36,47 @@ async function preflight(project: Project, task: Task): Promise<{ refused: CliRe
 	if (!saved?.panes.length) {
 		return { refused: unavailable(task, "no-saved-session", "The task has no saved agent session. Start Fresh in the app or `dev3 task move` are the ways to begin a new one.") };
 	}
-	return { panes: saved.panes.map(({ agentId, configId, sessionId }) => ({ agentId, configId, sessionId })) };
+	if (accountId !== undefined) {
+		try {
+			await assertResumeAccountUsable(accountId, saved.panes, taskTerminalBackendIdentity(task) !== "tmux");
+		} catch (err) {
+			if (err instanceof ResumeUnavailableError) return { refused: unavailable(task, err.reason, err.message) };
+			throw err;
+		}
+	}
+	// The main pane of an old snapshot launches on the task's account, so the dialog shows that one.
+	return { panes: saved.panes.map(({ agentId, configId, sessionId, accountId, agentCmd, agentFamily }, i) => ({
+		agentId, configId, sessionId, agentCmd, agentFamily,
+		accountId: i === 0 && accountId === undefined ? task.accountId : accountId,
+	})) };
 }
 
-/** A resume restores the saved harness, config and account, so the dialog offers no agent choice. */
-function askUser(project: Project, task: Task, requester: LaunchRequester, panes: ResumeDialogPane[]) {
+/** A resume restores the saved harness and config, so the dialog offers no agent choice — only the Claude account. */
+function askUser(project: Project, task: Task, requester: LaunchRequester, panes: ResumeDialogPane[], accountId: string | null | undefined) {
 	return askSessionApproval({
 		project, task, requester,
-		subject: { resume: { panes } },
+		subject: { resume: { panes, ...(accountId !== undefined ? { accountId } : {}) } },
 		alreadyPending: "Another launch approval is pending for this task — answer it before resuming.",
 	});
 }
 
 async function performResume(opts: ResumeOptions): Promise<CliResumeOutcome> {
 	const { project, task, requester } = opts;
-	const checked = await preflight(project, task);
+	let accountId = opts.accountId;
+	const checked = await preflight(project, task, accountId);
 	if ("refused" in checked) return checked.refused;
 	let current = task;
 	if (requester) {
-		const answer = await askUser(project, task, requester, checked.panes);
+		const answer = await askUser(project, task, requester, checked.panes, accountId);
 		if (!answer.approved) return { outcome: "declined", taskId: task.id, seq: task.seq, ...(answer.stale ? { stale: true } : {}) };
+		if (answer.resumeAccountId !== undefined) accountId = answer.resumeAccountId;
 		current = await sameRunAfterApproval(project, task, "The target task's run changed while waiting — nothing was resumed.");
-		// Somebody may have clicked Resume Session while the dialog was open.
-		const again = await preflight(project, current);
+		// Somebody may have clicked Resume Session while the dialog was open, or the pick changed.
+		const again = await preflight(project, current, accountId);
 		if ("refused" in again) return again.refused;
 	}
 	try {
-		const outcome = await resumeTaskSession(current.id, { refuseLive: true, refuseFresh: true, requireSessionIds: !opts.allowAgentLatest });
+		const outcome = await resumeTaskSession(current.id, { refuseLive: true, refuseFresh: true, requireSessionIds: !opts.allowAgentLatest, accountId });
 		if (outcome.kind === "already-running") return { outcome: "already-running", taskId: current.id, seq: current.seq, backend: outcome.backend };
 		return { outcome: "resumed", resume: outcome.result };
 	} catch (err) {
@@ -73,6 +89,6 @@ const joinOrRun = perTaskJoiner("Another resume request is pending for this task
 
 /** Retries join the whole operation, approval included: one answer resumes once. */
 export function resumeCliAgent(opts: ResumeOptions): Promise<CliResumeOutcome> {
-	const signature = JSON.stringify({ requester: launchRequesterKey(opts.requester), allowAgentLatest: opts.allowAgentLatest });
+	const signature = JSON.stringify({ requester: launchRequesterKey(opts.requester), allowAgentLatest: opts.allowAgentLatest, accountId: opts.accountId });
 	return joinOrRun(opts.task.id, signature, () => performResume(opts));
 }

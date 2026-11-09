@@ -4,10 +4,11 @@ import type {
 	PRInfo,
 	Project,
 	RefreshTaskPrStatusResult,
+	PendingMergeOffer,
 	Task,
 	TaskPRStatusCache,
 } from "../../shared/types";
-import { hasGitWorkflow, resolveTaskCompareBaseBranch, taskCompletesManually } from "../../shared/types";
+import { buildTaskDialogSubject, getTaskTitle, hasGitWorkflow, resolveTaskCompareBaseBranch, taskCompletesManually } from "../../shared/types";
 import { savedPrMergedFromBranch } from "../../shared/task-pull-requests";
 import * as data from "../data";
 import * as git from "../git";
@@ -128,6 +129,49 @@ export async function dismissMergeCompletionPrompt(params: { taskId: string; pro
 		precise: fingerprint.precise,
 		dismissedAt: new Date().toISOString(),
 	});
+}
+
+/**
+ * Merge offers still waiting for an answer, for a renderer that just connected.
+ * `branchMerged` is one-shot and the reservation stops the poller re-sending it,
+ * so a reload would hide the offer until the reservation lapsed. An offer counts
+ * only while the branch head is still the one that merged.
+ */
+export async function listPendingMergeOffers(): Promise<PendingMergeOffer[]> {
+	const settings = await loadSettings();
+	if (settings.suggestCompletingTasksAfterMerge === false) return [];
+	const nowMs = Date.now();
+	const offers: PendingMergeOffer[] = [];
+	for (const project of await data.loadProjects()) {
+		let tasks: Task[];
+		try {
+			tasks = await data.loadTasks(project);
+		} catch {
+			continue;
+		}
+		for (const task of tasks) {
+			const prompt = task.mergeCompletionPrompt;
+			if (!prompt || prompt.dismissedAt != null || !task.branchName) continue;
+			if (taskCompletesManually(task) || mergeOfferHeld(task)) continue;
+			if (!activitiesFor(lifecycleStateFromTask(project, task)).includes("mergeWatch")) continue;
+			if (!isPromptReserved(task.id, prompt.fingerprint, nowMs)) continue;
+			try {
+				const current = await getMergeCompletionFingerprint(task, task.branchName);
+				if (current.fingerprint !== prompt.fingerprint) continue;
+			} catch {
+				continue;
+			}
+			offers.push({
+				taskId: task.id,
+				projectId: project.id,
+				taskTitle: getTaskTitle(task),
+				branchName: task.branchName,
+				fingerprint: prompt.fingerprint,
+				subject: buildTaskDialogSubject(task, project),
+			});
+		}
+	}
+	return offers;
 }
 
 let mergePollerInterval: ReturnType<typeof setInterval> | null = null;

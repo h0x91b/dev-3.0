@@ -1,7 +1,17 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
+import { dirname } from "node:path";
 import type { Project, Dev3RepoConfig, ConfigSourceEntry, ResolvedConfigSource } from "../shared/types";
 import { DEV3_REPO_CONFIG_KEYS, hasGitWorkflow, remapColumnAgents, repoConfigEnabled } from "../shared/types";
+import {
+	COMMAND_BEARING_CONFIG_KEYS,
+	EXPLICIT_EMPTY_ARRAY_CONFIG_KEYS,
+	configDefaults,
+	isConfigKey,
+	migrateConfig,
+	validateConfigFile,
+} from "../shared/config-schema";
+import { editJsonMember } from "../shared/config-file-edit";
 import { sanitizeEnvMap } from "../shared/env-text";
 import { applyAgentEnvDefaults } from "../shared/agent-env-defaults";
 import { loadSettings } from "./settings";
@@ -18,7 +28,7 @@ const LOCAL_CONFIG_FILE = `${CONFIG_DIR}/config.local.json`;
  * Keys whose empty array is an explicit value, not "not configured": `clonePaths: []`
  * in a config file is the only way that file can turn cloning off (#2026).
  */
-const EXPLICIT_EMPTY_ARRAY_KEYS: ReadonlySet<keyof Dev3RepoConfig> = new Set(["clonePaths"]);
+const EXPLICIT_EMPTY_ARRAY_KEYS: ReadonlySet<keyof Dev3RepoConfig> = EXPLICIT_EMPTY_ARRAY_CONFIG_KEYS;
 
 /**
  * Treat empty arrays as "not configured" so they fall through the cascade — a
@@ -31,30 +41,32 @@ function effective<T>(val: T, key: keyof Dev3RepoConfig): T | undefined {
 	return val;
 }
 
-/** Default values for settings fields when nothing is configured. */
-const DEFAULTS: Dev3RepoConfig = {
-	setupScript: "",
-	setupScriptLaunchMode: "parallel",
-	devScript: "",
-	cleanupScript: "",
-	clonePaths: [],
-	defaultBaseBranch: "main",
-	autoReviewEnabled: false,
-	peerReviewEnabled: true,
-	sparseCheckoutEnabled: false,
-	sparseCheckoutPaths: [],
-};
+/** Default values for settings fields when nothing is configured: the schema's `default`s. */
+const DEFAULTS: Dev3RepoConfig = configDefaults();
 
 /** Read and parse a JSON file, returning null if missing or corrupt. */
 function readJsonFile<T>(path: string): T | null {
 	try {
 		if (!existsSync(path)) return null;
 		const content = readFileSync(path, "utf-8");
-		return JSON.parse(content) as T;
+		const parsed = JSON.parse(content) as unknown;
+		if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return parsed as T;
+		// Files from an older schema are migrated in memory only; the next write persists it.
+		return migrateConfig(parsed as Record<string, unknown>).config as T;
 	} catch (err) {
 		log.warn("Failed to read config file", { path, error: String(err) });
 		return null;
 	}
+}
+
+/**
+ * Keys a save must carry over from the file it replaces: `schemaVersion` and
+ * any key this version does not know, which a newer dev3 may have written.
+ */
+function foreignKeys(path: string): Record<string, unknown> {
+	const existing = readJsonFile<Record<string, unknown>>(path);
+	if (!existing || typeof existing !== "object" || Array.isArray(existing)) return {};
+	return Object.fromEntries(Object.entries(existing).filter(([key]) => !isConfigKey(key)));
 }
 
 /** Load raw .dev3/config.json content. Returns {} if missing. */
@@ -94,7 +106,7 @@ export async function loadRepoConfig(projectPath: string): Promise<Dev3RepoConfi
 export async function saveRepoConfig(projectPath: string, config: Dev3RepoConfig): Promise<void> {
 	mkdirSync(`${projectPath}/${CONFIG_DIR}`, { recursive: true });
 	const filePath = `${projectPath}/${CONFIG_FILE}`;
-	writeFileSync(filePath, JSON.stringify(config, null, 2) + "\n");
+	writeFileSync(filePath, JSON.stringify({ ...foreignKeys(filePath), ...config }, null, 2) + "\n");
 	log.info("Saved repo config", { path: filePath });
 	await ensureGitignore(projectPath);
 }
@@ -103,7 +115,7 @@ export async function saveRepoConfig(projectPath: string, config: Dev3RepoConfig
 export async function saveRepoLocalConfig(projectPath: string, config: Dev3RepoConfig): Promise<void> {
 	mkdirSync(`${projectPath}/${CONFIG_DIR}`, { recursive: true });
 	const filePath = `${projectPath}/${LOCAL_CONFIG_FILE}`;
-	writeFileSync(filePath, JSON.stringify(config, null, 2) + "\n");
+	writeFileSync(filePath, JSON.stringify({ ...foreignKeys(filePath), ...config }, null, 2) + "\n");
 	log.info("Saved local repo config", { path: filePath });
 	await ensureGitignore(projectPath);
 }
@@ -149,68 +161,26 @@ export async function getConfigSources(projectPath: string): Promise<ConfigSourc
 }
 
 /**
- * Full per-field provenance for the resolved config cascade — used by
- * `dev3 config show` so every key shows exactly where its value came from,
- * never a blanket fallback that hides project/default/unset behind one label.
- *
- * Unlike getConfigSources (repo/local only, for the UI badge), this attributes
- * EVERY key in DEV3_REPO_CONFIG_KEYS to one origin, mirroring applyConfigCascade
- * so the label always matches the value the cascade actually resolved:
- *   local   → effective value in .dev3/config.local.json
- *   repo    → effective value in .dev3/config.json
- *   project → value on the Project object (projects.json), no file value
- *   default → value from DEFAULTS or a derived field (e.g. defaultCompareRef)
- *   unset   → no value at any layer (the CLI renders this "(not set)")
- *
- * `resolved` is the output of resolveProjectConfig for the same project+path;
- * `project` is the raw Project object. Empty arrays count as "not configured"
- * for file layers (matches effective()), so a phantom `[]` can't claim a key —
- * except an explicit `clonePaths: []`, which wins and is attributed to its file.
+ * Per-key provenance for `dev3 config show`, over the same layers
+ * {@link resolveOperationalProjectConfig} reads for `worktreePath`. Every key
+ * gets exactly one origin: a layer id, `project`, `default` or `unset`.
+ * `resolved` is that function's output for the same project and path.
  */
 export function resolveConfigProvenance(
 	resolved: Project,
 	project: Project,
-	configPath?: string,
+	worktreePath?: string,
+	opts?: { foreignCode?: boolean },
 ): Record<string, ResolvedConfigSource> {
-	const basePath = configPath ?? project.path;
-	// With repo config off there are no file layers to attribute to, so every key
-	// resolves to project/default/unset — matching what the cascade actually did.
-	const enabled = repoConfigEnabled(project);
-	const localConfig = enabled ? readJsonFile<Dev3RepoConfig>(`${basePath}/${LOCAL_CONFIG_FILE}`) : null;
-	const repoConfig = enabled ? readJsonFile<Dev3RepoConfig>(`${basePath}/${CONFIG_FILE}`) : null;
-	const provenance: Record<string, ResolvedConfigSource> = {};
-	for (const key of DEV3_REPO_CONFIG_KEYS) {
-		if (effective(localConfig?.[key], key) !== undefined) {
-			provenance[key] = "local";
-		} else if (effective(repoConfig?.[key], key) !== undefined) {
-			provenance[key] = "repo";
-		} else if ((project as any)[key] != null) {
-			provenance[key] = "project";
-		} else if ((resolved as any)[key] != null) {
-			provenance[key] = "default";
-		} else {
-			provenance[key] = "unset";
-		}
-	}
-	return provenance;
+	return resolveLayeredProvenance(resolved, project, listConfigLayers(project, worktreePath, opts)).sources;
 }
 
 /**
- * Fields a repo file can turn into a running command: a shell script, the
- * environment every session inherits, or an agent dev3 launches by itself.
- * Everything else (paths, branch names, port counts, booleans) shapes behaviour
- * but never executes, so it is read from any layer regardless of provenance.
+ * Fields a repo file can turn into a running command (schema `executes`): a
+ * shell script, the environment every session inherits, or an agent dev3
+ * launches by itself. Everything else is read from any layer.
  */
-const COMMAND_BEARING_KEYS: ReadonlySet<keyof Dev3RepoConfig> = new Set([
-	"setupScript",
-	"setupScriptLaunchMode",
-	"devScript",
-	// Every entry carries a `script`, so the whole map is a command.
-	"devServers",
-	"cleanupScript",
-	"env",
-	"builtinColumnAgents",
-]);
+const COMMAND_BEARING_KEYS: ReadonlySet<keyof Dev3RepoConfig> = COMMAND_BEARING_CONFIG_KEYS;
 
 /**
  * One config file plus whether its content is trusted to carry commands.
@@ -363,22 +333,10 @@ export async function resolveOperationalProjectConfig(
 	worktreePath?: string,
 	opts?: { foreignCode?: boolean },
 ): Promise<Project> {
-	// No worktree (or worktree == project root): plain single-path resolution.
-	if (!worktreePath || worktreePath === project.path) {
-		return resolveProjectConfig(project);
-	}
-	// Repo config switched off: no layer from either path, so a worktree's own
-	// .dev3 files are as invisible as the main checkout's.
-	if (!repoConfigEnabled(project)) {
-		return applyConfigCascade(project, [], worktreePath);
-	}
-	// Worktree files first, then main checkout's — both as [local, repo].
-	const layers = [
-		...pathConfigLayers(worktreePath, opts?.foreignCode !== true),
-		...pathConfigLayers(project.path),
-	];
-	// Compare-ref auto-detection uses the worktree dir (matches its branch).
-	return applyConfigCascade(project, layers, worktreePath);
+	// The same layers `dev3 config show|set` name, so provenance cannot drift from
+	// what a launch reads. Compare-ref auto-detection uses the worktree dir.
+	const inWorktree = !!worktreePath && worktreePath !== project.path;
+	return applyConfigCascade(project, listConfigLayers(project, worktreePath, opts), inWorktree ? worktreePath! : project.path);
 }
 
 /** Per-key-merged project env for a terminal or task session, re-read at launch
@@ -498,4 +456,180 @@ export function hasRepoConfig(projectPath: string): boolean {
 /** Check if a .dev3/config.local.json file exists in the project. */
 export function hasLocalConfig(projectPath: string): boolean {
 	return existsSync(`${projectPath}/${LOCAL_CONFIG_FILE}`);
+}
+
+// ---- `dev3 config` support: named layers, provenance, validated edits ----
+
+/**
+ * A config file in the cascade, named the way `dev3 config` prints it:
+ * `local` / `repo` are the files of the checkout being resolved (the task
+ * worktree, or the project root outside one); `main-local` / `main-repo` are
+ * the project root's files as seen from a worktree.
+ */
+export type ConfigLayerId = "local" | "repo" | "main-local" | "main-repo";
+
+export interface NamedConfigLayer {
+	id: ConfigLayerId;
+	path: string;
+	exists: boolean;
+	/** False for a foreign-code worktree: its command-bearing keys never apply. */
+	trusted: boolean;
+	config: Dev3RepoConfig | null;
+}
+
+/** The layers {@link resolveOperationalProjectConfig} reads, highest first. Empty when repo config is off. */
+export function listConfigLayers(project: Project, worktreePath?: string, opts?: { foreignCode?: boolean }): NamedConfigLayer[] {
+	if (!repoConfigEnabled(project)) return [];
+	const layer = (id: ConfigLayerId, path: string, trusted: boolean): NamedConfigLayer => ({
+		id, path, exists: existsSync(path), trusted, config: readJsonFile<Dev3RepoConfig>(path),
+	});
+	const inWorktree = !!worktreePath && worktreePath !== project.path;
+	const base = inWorktree ? worktreePath! : project.path;
+	const trusted = !(inWorktree && opts?.foreignCode === true);
+	const layers = [
+		layer("local", `${base}/${LOCAL_CONFIG_FILE}`, trusted),
+		layer("repo", `${base}/${CONFIG_FILE}`, trusted),
+	];
+	if (inWorktree) {
+		layers.push(
+			layer("main-local", `${project.path}/${LOCAL_CONFIG_FILE}`, true),
+			layer("main-repo", `${project.path}/${CONFIG_FILE}`, true),
+		);
+	}
+	return layers;
+}
+
+/**
+ * Where each key's effective value came from, mirroring applyConfigCascade:
+ * the first layer allowed to supply it, then `project` (projects.json), then
+ * `default`, then `unset`. `env` reports its highest contributing layer; the
+ * per-variable origin is in `envSources`.
+ */
+export function resolveLayeredProvenance(
+	resolved: Project,
+	project: Project,
+	layers: NamedConfigLayer[],
+): { sources: Record<string, ResolvedConfigSource>; envSources: Record<string, ResolvedConfigSource> } {
+	const sources: Record<string, ResolvedConfigSource> = {};
+	for (const key of DEV3_REPO_CONFIG_KEYS) {
+		const hit = layers.find((l) => layerValue(l, key) !== undefined);
+		if (hit) sources[key] = hit.id;
+		else if ((project as any)[key] != null) sources[key] = "project";
+		else if ((resolved as any)[key] != null) sources[key] = "default";
+		else sources[key] = "unset";
+	}
+	const envSources: Record<string, ResolvedConfigSource> = {};
+	for (const name of Object.keys(resolved.env ?? {})) {
+		const hit = layers.find((l) => {
+			const env = layerValue(l, "env") as Record<string, unknown> | undefined;
+			return env !== undefined && Object.prototype.hasOwnProperty.call(env, name);
+		});
+		envSources[name] = hit ? hit.id : "project";
+	}
+	return { sources, envSources };
+}
+
+export interface ConfigEditResult {
+	file: string;
+	previous: unknown;
+	value: unknown;
+	/** A higher layer that still decides the effective value, if any. */
+	shadowedBy?: ConfigLayerId;
+	/** True when the target is a foreign-code worktree and the key carries a command. */
+	ignoredAsForeign?: boolean;
+}
+
+export class ConfigEditError extends Error {}
+
+/**
+ * Set (or with `value === undefined`, remove) one key, or one entry of a record
+ * key, in a single config file. The whole resulting file is validated first and
+ * nothing is written when it has errors; the file keeps its own formatting.
+ */
+export function editConfigFile(
+	filePath: string,
+	key: keyof Dev3RepoConfig,
+	sub: string | undefined,
+	value: unknown,
+): { previous: unknown; value: unknown } {
+	let text = "";
+	let current: Record<string, unknown> = {};
+	if (existsSync(filePath)) {
+		text = readFileSync(filePath, "utf-8");
+		if (text.trim()) {
+			try {
+				current = JSON.parse(text);
+			} catch (err) {
+				throw new ConfigEditError(`${filePath} is not valid JSON (${(err as Error).message}). Fix it by hand first; dev3 will not overwrite it.`);
+			}
+			if (current === null || typeof current !== "object" || Array.isArray(current)) {
+				throw new ConfigEditError(`${filePath} must hold a JSON object.`);
+			}
+		}
+	}
+	const migrated = migrateConfig(current);
+	const next = { ...migrated.config };
+	const previousField = next[key];
+	const previous = sub === undefined
+		? previousField
+		: (previousField && typeof previousField === "object" ? (previousField as Record<string, unknown>)[sub] : undefined);
+
+	let fieldValue: unknown;
+	if (sub === undefined) {
+		fieldValue = value;
+	} else {
+		const entries = previousField && typeof previousField === "object" && !Array.isArray(previousField)
+			? { ...(previousField as Record<string, unknown>) }
+			: {};
+		if (value === undefined) delete entries[sub];
+		else entries[sub] = value;
+		fieldValue = Object.keys(entries).length > 0 ? entries : undefined;
+	}
+	if (fieldValue === undefined) delete next[key];
+	else next[key] = fieldValue;
+
+	const { errors } = validateConfigFile(next);
+	if (errors.length > 0) {
+		const lines = errors.map((e) => `  ${e.path || "(file)"}: ${e.message}`).join("\n");
+		throw new ConfigEditError(`Not written: ${filePath} would be invalid:\n${lines}`);
+	}
+	// A migrated file is rewritten whole (every migrated key changed); otherwise
+	// only the edited member's text moves.
+	const out = migrated.migrated || !text.trim()
+		? editJsonMember("", key, fieldValue, next)
+		: editJsonMember(text, key, fieldValue, next);
+	mkdirSync(dirname(filePath), { recursive: true });
+	writeFileSync(filePath, out);
+	log.info("Edited config file", { path: filePath, key, sub });
+	return { previous, value };
+}
+
+/** Config file path for a checkout: `.dev3/config.local.json` when `local`, else `.dev3/config.json`. */
+export function configFilePath(basePath: string, local: boolean): string {
+	return `${basePath}/${local ? LOCAL_CONFIG_FILE : CONFIG_FILE}`;
+}
+
+/**
+ * Whether a value just written to `file` decides the effective config: the
+ * first higher layer that still sets the key (or the record entry) shadows it,
+ * and a foreign-code worktree's command-bearing keys never apply.
+ */
+export function describeEditReach(
+	layers: NamedConfigLayer[],
+	file: string,
+	key: keyof Dev3RepoConfig,
+	sub?: string,
+): { shadowedBy?: ConfigLayerId; ignoredAsForeign: boolean } {
+	const index = layers.findIndex((l) => l.path === file);
+	const higher = index === -1 ? [] : layers.slice(0, index);
+	const shadow = higher.find((l) => {
+		const v = layerValue(l, key);
+		if (v === undefined) return false;
+		if (sub === undefined || key !== "env") return true;
+		return Object.prototype.hasOwnProperty.call(v, sub);
+	});
+	return {
+		shadowedBy: shadow?.id,
+		ignoredAsForeign: index !== -1 && !layers[index].trusted && COMMAND_BEARING_KEYS.has(key),
+	};
 }

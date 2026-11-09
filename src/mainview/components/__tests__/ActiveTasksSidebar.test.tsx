@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "../../i18n";
 import ActiveTasksSidebar from "../ActiveTasksSidebar";
+import { COORDINATOR_TITLE } from "../TaskRoleBand";
 import type { CodingAgent, Project, Task } from "../../../shared/types";
 
 const terminalPreview = vi.hoisted(() => ({
@@ -386,7 +387,7 @@ function makeTask(overrides?: Partial<Task>): Task {
 			await user.click(rail("sleep").getByRole("button", { name: "Cancel task" }));
 
 			expect(vi.mocked(confirmTaskCompletion)).toHaveBeenCalledWith(
-				expect.objectContaining({ id: "sleep" }), expect.anything(), "cancelled", expect.anything(), expect.anything(), { alwaysConfirm: true },
+				expect.objectContaining({ id: "sleep" }), expect.anything(), "cancelled", expect.anything(), expect.anything(), { alwaysConfirm: true, anchor: expect.any(HTMLElement) },
 			);
 			expect(vi.mocked(api.request.moveTask)).not.toHaveBeenCalled();
 			expect(view.container.querySelector('[data-task-id="sleep"]')).not.toBeNull();
@@ -962,14 +963,15 @@ function makeTask(overrides?: Partial<Task>): Task {
 		expect(screen.queryByTestId("sidebar-hide")).not.toBeInTheDocument();
 	});
 
-	it("shows a compact status-age badge with a descriptive tooltip", async () => {
+	it("shows the creation and last-status-change stamps with descriptive tooltips", async () => {
 		const user = userEvent.setup();
+		const createdAt = new Date(Date.now() - 3 * 86_400_000).toISOString();
 		const movedAt = new Date(Date.now() - 5 * 60_000).toISOString();
 		render(
 			<I18nProvider>
 				<ActiveTasksSidebar
 					project={project}
-					tasks={[makeTask({ movedAt })]}
+					tasks={[makeTask({ createdAt, movedAt })]}
 					activeTaskId="t1"
 					dispatch={vi.fn()}
 					navigate={vi.fn()}
@@ -980,20 +982,23 @@ function makeTask(overrides?: Partial<Task>): Task {
 			</I18nProvider>,
 		);
 
-		const badge = screen.getByTestId("sidebar-status-age-t1");
-		expect(badge).toHaveTextContent("5m");
-		await user.hover(badge);
+		expect(screen.getByTestId("sidebar-age-t1-created")).toHaveTextContent("3d");
+		const activity = screen.getByTestId("sidebar-age-t1-activity");
+		expect(activity).toHaveTextContent("5m");
+		expect(activity).toHaveAttribute("data-freshness", "live");
+		await user.hover(activity);
 		const tooltip = await screen.findByRole("tooltip");
 		expect(tooltip).toHaveTextContent("Status changed");
 		expect(tooltip).toHaveTextContent("5m ago");
 	});
 
-	it("omits the status-age badge when movedAt is absent", () => {
+	it("falls back to the creation time when the task never changed status", () => {
+		const createdAt = new Date(Date.now() - 3 * 86_400_000).toISOString();
 		render(
 			<I18nProvider>
 				<ActiveTasksSidebar
 					project={project}
-					tasks={[makeTask({ movedAt: undefined })]}
+					tasks={[makeTask({ createdAt, movedAt: undefined })]}
 					activeTaskId="t1"
 					dispatch={vi.fn()}
 					navigate={vi.fn()}
@@ -1004,7 +1009,10 @@ function makeTask(overrides?: Partial<Task>): Task {
 			</I18nProvider>,
 		);
 
-		expect(screen.queryByTestId("sidebar-status-age-t1")).not.toBeInTheDocument();
+		const activity = screen.getByTestId("sidebar-age-t1-activity");
+		expect(activity).toHaveTextContent("3d");
+		expect(activity).toHaveAttribute("data-freshness", "stale");
+		expect(activity).toHaveTextContent("In this column since it was created");
 	});
 
 	it("groups custom-column tasks under their own column, not their underlying status", () => {
@@ -1231,6 +1239,35 @@ function makeTask(overrides?: Partial<Task>): Task {
 		// The Your Review token now filters the list to the review task only.
 		expect(screen.getByText("Beta task")).toBeInTheDocument();
 		expect(screen.queryByText("Alpha task")).not.toBeInTheDocument();
+	});
+
+	it("offers statuses with no tasks, and only the custom columns of projects in scope", async () => {
+		const user = userEvent.setup();
+		const other: Project = {
+			...project,
+			id: "other-project",
+			name: "Other",
+			customColumns: [{ id: "col-else", name: "Elsewhere", color: "#abcdef", llmInstruction: "" }],
+		};
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					allProjects={[project, other]}
+					tasks={[makeTask({ id: "a", title: "Alpha task", description: "Alpha", status: "in-progress", groupId: null as unknown as string, variantIndex: null })]}
+					activeTaskId="none"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+
+		await user.click(screen.getByTestId("filter-funnel-button"));
+		expect(screen.getByRole("checkbox", { name: "Has Questions" })).toBeInTheDocument();
+		expect(screen.queryByRole("checkbox", { name: "Elsewhere" })).not.toBeInTheDocument();
 	});
 
 	it("keeps an unchecked custom column's tasks out of a built-in status selection (#1804)", async () => {
@@ -2241,6 +2278,47 @@ describe("ActiveTasksSidebar port badges", () => {
 		expect(chips[0].className).toContain("text-white");
 		expect(screen.getByRole("button", { name: /^Coordinate — Coordinator/ })).toContainElement(chips[0]);
 		expect(screen.getByRole("button", { name: /^Plain task/ }).getAttribute("aria-label")).not.toMatch(/Coordinator/);
+	});
+
+	it("paints only a coordinator's title in the accent ink, with no filled bar; board cleanup and ordinary rows stay neutral", () => {
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar project={project} tasks={[
+					makeTask({ id: "coord", title: "Coordinate", taskType: "coordinator", groupId: null, variantIndex: null }),
+					makeTask({ id: "cleanup", title: "Tidy board", taskType: "board-cleanup", groupId: null, variantIndex: null }),
+					makeTask({ id: "plain", title: "Plain task", groupId: null, variantIndex: null }),
+				]}
+					dispatch={vi.fn()} navigate={vi.fn()} agents={[claudeAgent]}
+					bellCounts={new Map<string, number>()} taskPorts={new Map<string, never[]>()} />
+			</I18nProvider>,
+		);
+
+		const coordTitle = screen.getByTestId("sidebar-task-title-coord");
+		expect(coordTitle.className).toContain(COORDINATOR_TITLE);
+		expect(coordTitle.className).not.toContain("bg-accent-fill");
+		expect(coordTitle.querySelector("[data-testid='sidebar-coordinator-badge']")).toBeNull();
+		for (const id of ["cleanup", "plain"]) {
+			expect(screen.getByTestId(`sidebar-task-title-${id}`).className).not.toContain(COORDINATOR_TITLE);
+		}
+	});
+
+	it("drops the hide-from-sidebar eye from a coordinator row; board cleanup and ordinary rows keep it", () => {
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar project={project} tasks={[
+					makeTask({ id: "coord", title: "Coordinate", taskType: "coordinator", groupId: null, variantIndex: null }),
+					makeTask({ id: "cleanup", title: "Tidy board", taskType: "board-cleanup", groupId: null, variantIndex: null }),
+					makeTask({ id: "plain", title: "Plain task", groupId: null, variantIndex: null }),
+				]}
+					dispatch={vi.fn()} navigate={vi.fn()} agents={[claudeAgent]}
+					bellCounts={new Map<string, number>()} taskPorts={new Map<string, never[]>()} />
+			</I18nProvider>,
+		);
+
+		expect(screen.queryByTestId("sidebar-task-hidden-toggle-coord")).not.toBeInTheDocument();
+		for (const id of ["cleanup", "plain"]) {
+			expect(screen.getByTestId(`sidebar-task-hidden-toggle-${id}`)).toBeInTheDocument();
+		}
 	});
 
 });

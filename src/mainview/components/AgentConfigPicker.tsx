@@ -32,6 +32,13 @@ import {
 } from "../../shared/recommended-models";
 import { resolveModelRate } from "../../shared/agent-pricing";
 import { randomUUID } from "../uuid";
+import { api } from "../rpc";
+import { agentBedrockProfiles, preselectBedrockProfile } from "../../shared/llm-provider";
+
+/** Select value for the "None" row: Select needs a string, and no profile name is empty. */
+const NO_AWS_PROFILE = "";
+/** Select value for the inherit row (`bedrockProfileInheritLabel`): stored as undefined. */
+const INHERIT_AWS_PROFILE = "\u0000inherit";
 import ConnectProviderModal from "./ConnectProviderModal";
 import RecommendedUpdateModal from "./RecommendedUpdateModal";
 
@@ -138,6 +145,14 @@ interface AgentConfigPickerProps {
 	/** The project being launched into, so the account pill can show the login
 	 *  the project pins via `CLAUDE_CONFIG_DIR`. Omitted on Settings surfaces. */
 	projectId?: string;
+	/** Per-launch AWS profile pick for a Bedrock agent (see LaunchVariant). The
+	 *  row appears only with `onBedrockProfileChange` and an agent that lists
+	 *  profiles; the picker seeds it with the project's remembered pick. */
+	bedrockProfile?: string | null;
+	onBedrockProfileChange?: (profile: string | null | undefined) => void;
+	/** Offer an "inherit" row meaning undefined (a column agent follows the task's
+	 *  pick). Set → the picker never seeds a remembered value. */
+	bedrockProfileInheritLabel?: string;
 }
 
 /**
@@ -166,6 +181,9 @@ function AgentConfigPicker({
 	onAccountChange,
 	onAddAccount,
 	projectId,
+	bedrockProfile,
+	onBedrockProfileChange,
+	bedrockProfileInheritLabel,
 }: AgentConfigPickerProps) {
 	const t = useT();
 	const renderAgentOption = useAgentRenderOption(agentAvailability, t("settings.agentNotInstalled"));
@@ -210,6 +228,51 @@ function AgentConfigPicker({
 	}
 
 	const storedAgent = agents.find((a) => a.id === agentId);
+	// Same guard as the launcher: a preset's baseCommandOverride decides the CLI.
+	const awsProfiles = onBedrockProfileChange
+		? agentBedrockProfiles(storedAgent, storedAgent && configId ? findAgentConfig(storedAgent, configId)?.baseCommandOverride : undefined)
+		: [];
+	const awsDefault = storedAgent?.llmProvider ? storedAgent.providerConfig?.[storedAgent.llmProvider]?.defaultProfile : undefined;
+	// undefined until read; `{ profile: undefined }` = the project never picked.
+	const [rememberedAws, setRememberedAws] = useState<{ profile: string | null | undefined } | null>(null);
+	const wantsAwsPick = awsProfiles.length > 0;
+	const inheritAws = bedrockProfileInheritLabel !== undefined;
+	useEffect(() => {
+		if (!wantsAwsPick || rememberedAws || inheritAws) return;
+		if (!projectId) {
+			setRememberedAws({ profile: undefined });
+			return;
+		}
+		let alive = true;
+		api.request.getRememberedBedrockProfile({ projectId })
+			.then((res) => alive && setRememberedAws({ profile: res ? res.profile : undefined }))
+			.catch(() => alive && setRememberedAws({ profile: undefined }));
+		return () => {
+			alive = false;
+		};
+	}, [wantsAwsPick, projectId, rememberedAws, inheritAws]);
+	// Keep the variant's pick valid for the selected agent: cleared for an agent
+	// with no profiles, seeded (remembered → default → None) when unset or stale.
+	const awsPickValid =
+		bedrockProfile === null ||
+		(bedrockProfile === undefined && inheritAws) ||
+		(!!bedrockProfile && awsProfiles.some((p) => p.name === bedrockProfile));
+	const awsPickTarget = !onBedrockProfileChange
+		? undefined
+		: !wantsAwsPick
+			? (bedrockProfile !== undefined ? "clear" : undefined)
+			: awsPickValid
+				? undefined
+				: inheritAws
+					? "clear"
+					: rememberedAws
+						? "seed"
+						: undefined;
+	useEffect(() => {
+		if (awsPickTarget === "clear") onBedrockProfileChange?.(undefined);
+		if (awsPickTarget === "seed") onBedrockProfileChange?.(preselectBedrockProfile(awsProfiles, awsDefault, rememberedAws?.profile));
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- fire once per transition
+	}, [awsPickTarget, agentId]);
 	// "auto" is a launch-time choice, not an account: catalogs are read for the
 	// default until the launch resolves which login it really lands on.
 	const catalogAccountId = isAutoAccountId(accountId) ? undefined : accountId;
@@ -499,6 +562,31 @@ function AgentConfigPicker({
 						onChange={handleModeChange}
 					/>
 				</div>
+
+				{wantsAwsPick && (
+					<div className="col-span-full min-w-0 flex items-center gap-2">
+						<label htmlFor={`${idPrefix}-aws-profile`} className="text-xs text-fg-3 shrink-0">
+							{t("launch.awsProfile")}
+						</label>
+						<div className="min-w-0 flex-1">
+							<Select
+								id={`${idPrefix}-aws-profile`}
+								value={bedrockProfile === undefined && inheritAws ? INHERIT_AWS_PROFILE : bedrockProfile ?? NO_AWS_PROFILE}
+								options={[
+									...(inheritAws ? [{ value: INHERIT_AWS_PROFILE, label: bedrockProfileInheritLabel }] : []),
+									{ value: NO_AWS_PROFILE, label: t("launch.awsProfileNone") },
+									...awsProfiles.map((p) => ({
+										value: p.name,
+										label: [p.name, p.awsProfile, p.region].filter(Boolean).join(" · "),
+									})),
+								]}
+								onChange={(val) =>
+									onBedrockProfileChange?.(val === INHERIT_AWS_PROFILE ? undefined : val === NO_AWS_PROFILE ? null : val)
+								}
+							/>
+						</div>
+					</div>
+				)}
 
 				{/* The account belongs to the whole selection, not to Provider: its own
 				    full-width line keeps the field columns the same height. The indicator

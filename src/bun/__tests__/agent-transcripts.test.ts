@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listResumableSessionIds, resolveResumableSessionIds } from "../agent-transcripts";
+import { claudeConfigDirHasSession, listResumableSessionIds, resolveResumableSessionIds } from "../agent-transcripts";
 import { claudeEncodePath } from "../../shared/conversation-search-core";
 
 const WORKTREE = "/Users/dev/.dev3.0/ops/operations/7d8312c0/work";
@@ -252,5 +252,22 @@ describe("listResumableSessionIds", () => {
 		seedTranscript("aaaaaaaa-0000-0000-0000-000000000001", 0);
 
 		expect(listResumableSessionIds("codex", WORKTREE, home)).toEqual([]);
+	});
+});
+
+describe("claudeConfigDirHasSession", () => {
+	it("finds a conversation in any project store of that config dir, and only there", () => {
+		seedTranscriptFor("/elsewhere", "conv-1");
+		expect(claudeConfigDirHasSession(join(home, ".claude"), "conv-1")).toBe(true);
+		expect(claudeConfigDirHasSession(join(home, ".claude"), "conv-2")).toBe(false);
+		// An account with its own history folder cannot see the home store's conversations.
+		mkdirSync(join(home, "account", "projects", "other"), { recursive: true });
+		expect(claudeConfigDirHasSession(join(home, "account"), "conv-1")).toBe(false);
+	});
+
+	it("answers false for a folder with no projects store, and never walks out of it", () => {
+		expect(claudeConfigDirHasSession(join(home, "missing"), "conv-1")).toBe(false);
+		seedTranscriptFor("/elsewhere", "conv-1");
+		expect(claudeConfigDirHasSession(join(home, ".claude"), "../conv-1")).toBe(false);
 	});
 });

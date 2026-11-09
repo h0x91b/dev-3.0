@@ -125,6 +125,7 @@ vi.mock("../tmux-pty", () => ({
 }));
 
 import { taskPanesHandlers } from "../task-panes";
+import { ptyWsUrl } from "../../pty-server-access";
 
 // ── Shared fixtures ──────────────────────────────────────────────────────────
 
@@ -1011,7 +1012,7 @@ describe("getPanePtyUrl", () => {
 
 	it("returns a ws:// URL for the first pane using the bare taskId", async () => {
 		const result = await taskPanesHandlers.getPanePtyUrl({ taskId: TASK_ID, paneId: "pane-1" });
-		expect(result).toEqual({ url: `ws://localhost:9999?session=${TASK_ID}` });
+		expect(result).toEqual({ url: ptyWsUrl(9999, TASK_ID) });
 		expect(mocks.ensureNativePanePtySession).not.toHaveBeenCalled();
 	});
 
@@ -1025,7 +1026,7 @@ describe("getPanePtyUrl", () => {
 		const result = await taskPanesHandlers.getPanePtyUrl({ taskId: TASK_ID, paneId: "pane-1" });
 
 		expect(mocks.reattachNativeTaskSession).toHaveBeenCalledWith(TASK_ID, "proj-1", "/tmp/wt");
-		expect(result).toEqual({ url: `ws://localhost:9999?session=${TASK_ID}` });
+		expect(result).toEqual({ url: ptyWsUrl(9999, TASK_ID) });
 	});
 
 	it("does not rebind the first pane when this process already holds the session", async () => {
@@ -1059,7 +1060,7 @@ describe("getPanePtyUrl", () => {
 
 	it("returns a composite-key URL for a non-first pane", async () => {
 		const result = await taskPanesHandlers.getPanePtyUrl({ taskId: TASK_ID, paneId: "pane-2" });
-		expect(result).toEqual({ url: `ws://localhost:9999?session=${TASK_ID}~pane-2` });
+		expect(result).toEqual({ url: ptyWsUrl(9999, `${TASK_ID}~pane-2`) });
 	});
 
 	it("calls ensureNativePanePtySession for non-first panes", async () => {

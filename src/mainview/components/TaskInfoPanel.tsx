@@ -78,6 +78,7 @@ import HelpSpot from "./HelpSpot";
 import Tooltip from "./Tooltip";
 import ForeignCodeMark from "./ForeignCodeMark";
 import TaskOriginRow from "./TaskOriginRow";
+import TaskCompletionStrip from "./task-info-panel/TaskCompletionStrip";
 import TaskEpicRow from "./TaskEpicRow";
 import VariantSwitcher from "./VariantSwitcher";
 import { isMac } from "../utils/platform";
@@ -1847,4 +1848,14 @@ function TaskInfoPanel({
 	);
 }
 
-export default TaskInfoPanel;
+/** The inspector plus the task's pending completion offer, which sits right under it. */
+function TaskInfoPanelWithOffer(props: Parameters<typeof TaskInfoPanel>[0]) {
+	return (
+		<>
+			<TaskInfoPanel {...props} />
+			<TaskCompletionStrip task={props.task} project={props.project} />
+		</>
+	);
+}
+
+export default TaskInfoPanelWithOffer;

@@ -24,18 +24,18 @@ Last updated: 2026-11-03
 
 | Agent | CLI binary | Skill directories |
 |-------|-----------|-------------------|
-| Claude Code | `claude` | `~/.claude/skills/dev3/`, `~/.claude/skills/dev3-project-config/`, `~/.claude/skills/dev3-tmux/`, `~/.claude/skills/dev3-bug-hunter/`, `~/.claude/skills/ask-dev3/`, `~/.claude/skills/dev3-artifact/`, `~/.claude/skills/dev3-share-artifact/`, `~/.claude/skills/dev3-coordinator/` |
-| Cursor Agent | `agent` | `~/.cursor/skills/dev3/`, `~/.cursor/skills/dev3-project-config/`, `~/.cursor/skills/dev3-tmux/`, `~/.cursor/skills/dev3-bug-hunter/`, `~/.cursor/skills/ask-dev3/`, `~/.cursor/skills/dev3-artifact/`, `~/.cursor/skills/dev3-share-artifact/`, `~/.cursor/skills/dev3-coordinator/` |
-| Codex | `codex` | `~/.codex/skills/dev3/`, `~/.codex/skills/dev3-project-config/`, `~/.codex/skills/dev3-tmux/`, `~/.codex/skills/dev3-bug-hunter/`, `~/.codex/skills/ask-dev3/`, `~/.codex/skills/dev3-artifact/`, `~/.codex/skills/dev3-share-artifact/`, `~/.codex/skills/dev3-coordinator/` |
-| Gemini CLI | `gemini` | `~/.agents/skills/dev3/`, `~/.agents/skills/dev3-project-config/`, `~/.agents/skills/dev3-tmux/`, `~/.agents/skills/dev3-bug-hunter/`, `~/.agents/skills/ask-dev3/`, `~/.agents/skills/dev3-artifact/`, `~/.agents/skills/dev3-share-artifact/`, `~/.agents/skills/dev3-coordinator/` |
-| GitHub Copilot CLI | `copilot` | `~/.agents/skills/dev3/`, `~/.agents/skills/dev3-project-config/`, `~/.agents/skills/dev3-tmux/`, `~/.agents/skills/dev3-bug-hunter/`, `~/.agents/skills/ask-dev3/`, `~/.agents/skills/dev3-artifact/`, `~/.agents/skills/dev3-share-artifact/`, `~/.agents/skills/dev3-coordinator/` |
-| OpenCode | — | `~/.opencode/skills/dev3/`, `~/.config/opencode/skills/dev3/`, `~/.opencode/skills/dev3-project-config/`, `~/.config/opencode/skills/dev3-project-config/`, `~/.opencode/skills/dev3-tmux/`, `~/.config/opencode/skills/dev3-tmux/`, `~/.opencode/skills/dev3-bug-hunter/`, `~/.config/opencode/skills/dev3-bug-hunter/`, `~/.opencode/skills/ask-dev3/`, `~/.config/opencode/skills/ask-dev3/`, `~/.opencode/skills/dev3-artifact/`, `~/.opencode/skills/dev3-share-artifact/`, `~/.config/opencode/skills/dev3-artifact/`, `~/.config/opencode/skills/dev3-share-artifact/`, `~/.opencode/skills/dev3-coordinator/`, `~/.config/opencode/skills/dev3-coordinator/` |
+| Claude Code | `claude` | `~/.claude/skills/dev3/`, `~/.claude/skills/dev3-project-config/`, `~/.claude/skills/dev3-tmux/`, `~/.claude/skills/dev3-extensions/`, `~/.claude/skills/dev3-bug-hunter/`, `~/.claude/skills/ask-dev3/`, `~/.claude/skills/dev3-artifact/`, `~/.claude/skills/dev3-share-artifact/`, `~/.claude/skills/dev3-coordinator/` |
+| Cursor Agent | `agent` | `~/.cursor/skills/dev3/`, `~/.cursor/skills/dev3-project-config/`, `~/.cursor/skills/dev3-tmux/`, `~/.cursor/skills/dev3-extensions/`, `~/.cursor/skills/dev3-bug-hunter/`, `~/.cursor/skills/ask-dev3/`, `~/.cursor/skills/dev3-artifact/`, `~/.cursor/skills/dev3-share-artifact/`, `~/.cursor/skills/dev3-coordinator/` |
+| Codex | `codex` | `~/.codex/skills/dev3/`, `~/.codex/skills/dev3-project-config/`, `~/.codex/skills/dev3-tmux/`, `~/.codex/skills/dev3-extensions/`, `~/.codex/skills/dev3-bug-hunter/`, `~/.codex/skills/ask-dev3/`, `~/.codex/skills/dev3-artifact/`, `~/.codex/skills/dev3-share-artifact/`, `~/.codex/skills/dev3-coordinator/` |
+| Gemini CLI | `gemini` | `~/.agents/skills/dev3/`, `~/.agents/skills/dev3-project-config/`, `~/.agents/skills/dev3-tmux/`, `~/.agents/skills/dev3-extensions/`, `~/.agents/skills/dev3-bug-hunter/`, `~/.agents/skills/ask-dev3/`, `~/.agents/skills/dev3-artifact/`, `~/.agents/skills/dev3-share-artifact/`, `~/.agents/skills/dev3-coordinator/` |
+| GitHub Copilot CLI | `copilot` | `~/.agents/skills/dev3/`, `~/.agents/skills/dev3-project-config/`, `~/.agents/skills/dev3-tmux/`, `~/.agents/skills/dev3-extensions/`, `~/.agents/skills/dev3-bug-hunter/`, `~/.agents/skills/ask-dev3/`, `~/.agents/skills/dev3-artifact/`, `~/.agents/skills/dev3-share-artifact/`, `~/.agents/skills/dev3-coordinator/` |
+| OpenCode | — | `~/.opencode/skills/dev3/`, `~/.config/opencode/skills/dev3/`, `~/.opencode/skills/dev3-project-config/`, `~/.config/opencode/skills/dev3-project-config/`, `~/.opencode/skills/dev3-tmux/`, `~/.opencode/skills/dev3-extensions/`, `~/.config/opencode/skills/dev3-tmux/`, `~/.config/opencode/skills/dev3-extensions/`, `~/.opencode/skills/dev3-bug-hunter/`, `~/.config/opencode/skills/dev3-bug-hunter/`, `~/.opencode/skills/ask-dev3/`, `~/.config/opencode/skills/ask-dev3/`, `~/.opencode/skills/dev3-artifact/`, `~/.opencode/skills/dev3-share-artifact/`, `~/.config/opencode/skills/dev3-artifact/`, `~/.config/opencode/skills/dev3-share-artifact/`, `~/.opencode/skills/dev3-coordinator/`, `~/.config/opencode/skills/dev3-coordinator/` |
 | Pi | `pi` | `~/.agents/skills/dev3/` and the other dev3 skills under the shared `~/.agents/skills/` alias, which pi reads natively — no pi-specific directory is written |
-| Oh My Pi | `omp` | `~/.omp/agent/skills/dev3/`, `~/.omp/agent/skills/dev3-project-config/`, `~/.omp/agent/skills/dev3-tmux/`, `~/.omp/agent/skills/dev3-bug-hunter/`, `~/.omp/agent/skills/ask-dev3/`, `~/.omp/agent/skills/dev3-artifact/`, `~/.omp/agent/skills/dev3-share-artifact/`, `~/.omp/agent/skills/dev3-coordinator/` |
+| Oh My Pi | `omp` | `~/.omp/agent/skills/dev3/`, `~/.omp/agent/skills/dev3-project-config/`, `~/.omp/agent/skills/dev3-tmux/`, `~/.omp/agent/skills/dev3-extensions/`, `~/.omp/agent/skills/dev3-bug-hunter/`, `~/.omp/agent/skills/ask-dev3/`, `~/.omp/agent/skills/dev3-artifact/`, `~/.omp/agent/skills/dev3-share-artifact/`, `~/.omp/agent/skills/dev3-coordinator/` |
 
 ## Managed restart and hibernation
 
-Codex and Claude Code support task hibernation and resume through their saved conversation IDs; Codex's ID comes from its lifecycle hooks and is resolved in the original account store. Right-click a task → **Restart agent session…** reuses that recovery path while the terminal is still present, preserving managed accounts and future hibernation. It replaces the task terminal, closes its auxiliary panes and discards scrollback; commands and dev servers in those panes stop, while files remain intact. Restart refuses if a saved conversation would be replaced or started fresh. Native terminals currently restore only the main agent, so restart refuses a native task with extra panes before stopping anything. See [`restart-agents-through-managed-resume`](decisions/2026/11/03/restart-agents-through-managed-resume.md).
+Codex and Claude Code support task hibernation and resume through their saved conversation IDs; Codex's ID comes from its lifecycle hooks and is resolved in the original account store. Right-click a task → **Restart agent session…** reuses that recovery path while the terminal is still present, preserving managed accounts and future hibernation. It replaces the task terminal, closes its auxiliary panes and discards scrollback; commands and dev servers in those panes stop, while files remain intact. Restart refuses if a saved conversation would be replaced or started fresh. A resume can move Claude panes to another managed account (wake/recovery screen, the resume approval dialog, or `--account`); Codex panes keep the account their conversation lives in. See [`resume-on-another-claude-account`](decisions/2026/11/08/resume-on-another-claude-account.md). Native terminals currently restore only the main agent, so restart refuses a native task with extra panes before stopping anything. See [`restart-agents-through-managed-resume`](decisions/2026/11/03/restart-agents-through-managed-resume.md).
 
 ## Feature Matrix
 
@@ -248,6 +248,10 @@ All variants teach the same two-step dev3 bug-feedback flow: send the private an
 
 A supplementary skill that teaches agents about `.dev3/config.json` and `.dev3/config.local.json`. Covers the schema, merge priority, when to create/modify config files, and CLI commands (`dev3 config show`, `dev3 config export`). Same content for all agents (no variant differences).
 
+### dev3-extensions (displayed as "dev3 Extensions")
+
+A user-invocable skill that teaches writing a board-view extension end to end: the manifest and a working `index.js` template, the `ctx.board` / `ctx.boardViews` contract and its Cordis traps, install and trust (a desktop click the user makes; never forged on the real `~/.dev3.0`), seeing it render in a scoped QA instance with a streamer-mode screenshot, and a symptom → cause table for load failures. It carries the contract itself, so it works for agents without a dev3 clone. Today's workarounds sit in one section meant to be replaced by the planned `dev3 extension` CLI. Same content for all agents.
+
 ### dev3-bug-hunter (displayed as "dev3 Bug Hunter")
 
 A user-invocable skill that turns the agent into a seeded bug hunter. It generates a random seed, derives an identity letter, chooses a starting area plus analysis style, and then forces the hunt to begin from that assigned area before branching out. The skill is read-only, uses a terminal-friendly findings format with a compact ASCII summary table plus detail sections, asks whether `critical` and `medium` findings should become separate dev3 tasks, and requires those follow-up tasks to validate and reproduce the bug before any fix is attempted. When launched inside an existing task, it skips the main agent's session-start/lifecycle duties and may write only confirmed findings through `dev3 note add`. Same content for all agents.
@@ -293,14 +297,21 @@ and model table all read the registry. The toggle only appears on agents that
 have ≥1 registered backend.
 
 dev3 injects only the provider's enable flag + the pinned model (merged into the
-launch env; a config's own `envVars` still win). **Credentials, AWS
-region/profile are NOT set by dev3** — the customer configures those in their own
-global agent setup (shell env / `~/.claude/settings.json`).
+launch env; a config's own `envVars` still win). **Credentials are NOT set by
+dev3**. The customer configures those in their own global agent setup (shell env /
+`~/.claude/settings.json`). One exception: a Bedrock agent may list named **AWS
+profiles** (Settings → Coding Agents → the Bedrock section, or `dev3 agent
+aws-profiles set`). The launch dialog then shows an AWS profile dropdown, and the
+picked entry sets `AWS_PROFILE`/`AWS_REGION` over the preset `envVars` and the
+project env. See `decisions/2026/11/05/bedrock-per-launch-aws-profile.md`. A Claude
+launch with a picked profile also gets `awsAuthRefresh: "aws sso login"` in its dev3
+`--settings` file, so an expired SSO session opens the browser login
+(`decisions/2026/11/08/bedrock-sso-refresh-managed-settings.md`).
 
 | Provider | Injected env | Model id source |
 |----------|--------------|-----------------|
 | Anthropic | _(none)_ | `--model <alias>` as usual |
-| Bedrock (Claude) | `CLAUDE_CODE_USE_BEDROCK=1`, `ANTHROPIC_MODEL` | alias→`<geo>.anthropic.*` map (geo = `global`/`us`/`eu`/`jp` toggle), or the per-model override |
+| Bedrock (Claude) | `CLAUDE_CODE_USE_BEDROCK=1`, `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_{FABLE,OPUS,SONNET,HAIKU}_MODEL` | alias→`<geo>.anthropic.*` map (geo = `global`/`us`/`eu`/`jp` toggle), or the per-model override. Each alias slot gets the launching model for its own slot and the newest built-in model the geo serves for the rest, so `/model haiku` and subagent `model:` aliases never fall back to Claude Code's built-in `us.*` ids; a preset `envVars` value still wins |
 | Bedrock (Codex) | _(none — `--model <geo>.openai.<family>` + `-c model_provider="amazon-bedrock-runtime"`)_ | same geo toggle; per-model override |
 
 Known model aliases map to provider-native ids automatically

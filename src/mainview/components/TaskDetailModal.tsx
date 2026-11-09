@@ -279,6 +279,12 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 		onLaunchVariants(launchTask, "in-progress");
 	}
 
+	/** The close button saves an open description edit first; a failed save keeps the modal open. */
+	async function handleCloseButton() {
+		if (isEditing && !(await handleSave())) return;
+		onClose();
+	}
+
 	async function handleDelete() {
 		const confirmed = await confirm({
 			title: t("task.delete"),
@@ -448,7 +454,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 						<HelpSpot topicId="modal.task-detail" />
 					</div>
 					<button
-						onClick={onClose}
+						onClick={handleCloseButton}
 						className="w-7 h-7 flex items-center justify-center rounded-lg text-fg-3 hover:text-fg hover:bg-fg/8 transition-colors"
 						title={t("task.close")}
 					>
@@ -459,7 +465,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 				</div>
 
 				{/* Content */}
-				<div className="px-6 pb-5 overflow-y-auto flex-1">
+				<div className={`px-6 overflow-y-auto flex-1 ${isEditing ? "" : "pb-5"}`}>
 					<div className="mb-3 grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1.5 text-xs">
 						{taskOrigin(task).kind !== "user" && <TaskOriginRow task={task} testId="task-detail-origin" navigate={navigateAway} />}
 						<TaskEpicRow task={task} testId="task-detail-epic" />
@@ -477,7 +483,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 								disabled={renameSaving}
 							/>
 							<div className="flex items-center justify-between">
-								<span className="text-xs text-fg-muted">Enter to save · Esc to cancel</span>
+								<span className="text-xs text-fg-muted">{t("task.renameHint")}</span>
 								<div className="flex gap-1.5">
 									{task.customTitle && (
 										<button
@@ -512,7 +518,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 								className={`text-fg text-base font-semibold leading-relaxed flex-1 ${!isEditing ? "cursor-pointer hover:text-fg-2" : ""}`}
 								onClick={!isEditing ? handleStartRename : undefined}
 							>
-								{isEditing ? (generatedTitle || getTaskTitle(task)) : getTaskTitle(task)}
+								{isEditing && !task.customTitle ? (generatedTitle || task.title) : getTaskTitle(task)}
 							</div>
 							{!isEditing && (
 								<button
@@ -534,7 +540,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 							<span className="text-fg-3 text-xs font-medium uppercase tracking-wider">
 								{t("task.descriptionLabel")}
 							</span>
-							{isTodo && !isEditing && (
+							{isTodo && !isEditing && !isRenaming && (
 								<button
 									onClick={handleStartEdit}
 									className="text-xs text-accent hover:text-accent-emphasis transition-colors font-medium"
@@ -578,13 +584,15 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 									<span className="text-micro text-accent animate-pulse">{t(pasteKind === "text" ? "paste.savingText" : "images.pasting")}</span>
 								)}
 								<ImageAttachmentsStrip text={editValue} onRemovePath={handleRemovePath} />
-								{generatedTitle && generatedTitle !== editValue.trim() && (
+								{!task.customTitle && generatedTitle && generatedTitle !== editValue.trim() && (
 									<div className="text-fg-3 text-xs">
 										{t("createTask.generatedTitle")}{" "}
 										<span className="text-fg-2 font-medium">{generatedTitle}</span>
 									</div>
 								)}
-								<div className="flex items-center justify-between">
+								{/* Pinned to the scroll area's bottom edge so Save is never below the fold. Spans the
+								    full scroll width so it covers the textarea's focus outline, and owns the area's pb-5. */}
+								<div className="sticky bottom-0 -mx-6 px-6 pb-5 pt-2 bg-overlay flex items-center justify-between">
 									<span className="text-xs text-fg-muted">{t("task.editHint")}</span>
 									<div className="flex gap-1.5">
 										<button

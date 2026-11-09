@@ -58,7 +58,7 @@ import { retireLowBattery } from "./low-battery";
 import { managedCliWriteAllowed } from "./managed-cli-guard";
 import { ensureCodexConfigFile } from "./codex-config";
 import { ensureWindowsShortcuts } from "./windows-shortcuts";
-import { makeTitle } from "./app-utils";
+import { buildSourceLabel, makeTitle } from "./app-utils";
 import { buildApplicationMenu, getMenuContext, MENU_ACTIONS, onMenuContextChange, type MenuContext } from "../shared/application-menu";
 import { openLogsDirectory } from "./menu-actions";
 import { startLoopMonitor } from "./loop-monitor";
@@ -71,7 +71,7 @@ import { createAppWindow, focusFocusedWindow, getFocusedWindow, getWindowCount, 
 import type { WindowState } from "./window-state";
 import { pushEverywhere } from "./push-targets";
 import electrobunConfig, { cliBinaryName } from "../../electrobun.config";
-import { BUILD_TIME } from "../shared/build-info.generated";
+import { BUILD_BRANCH, BUILD_COMMIT, BUILD_TIME, UPDATES_DISABLED } from "../shared/build-info.generated";
 import { existsSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
 import { rehydrateTaskLifecycles } from "./lifecycle/rehydrate";
@@ -495,7 +495,12 @@ async function openMainWindow(restore?: WindowState, activate = true) {
 	return createAppWindow({
 		restore,
 		activate,
-		title: makeTitle(APP_VERSION, lastBuildTime, buildChannel),
+		title: makeTitle(
+			APP_VERSION,
+			lastBuildTime,
+			buildChannel,
+			buildSourceLabel(BUILD_BRANCH, BUILD_COMMIT, UPDATES_DISABLED || buildChannel === "dev"),
+		),
 		url,
 		handlers: handlers as unknown as Record<string, (...args: unknown[]) => unknown>,
 		// The telemetry verdict and, when telemetry may run, the install's identity —

@@ -1,0 +1,1 @@
+`bun run dev` now snapshots the binaries electrobun downloads from GitHub into a machine-level cache keyed by version and restores them into fresh worktrees, so the dev loop builds offline and through a GitHub outage instead of failing with "Failed to download electrobun CLI". A version the cache has never seen is still downloaded as before.

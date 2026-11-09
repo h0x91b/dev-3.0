@@ -35,7 +35,10 @@ export interface AgentSessionStats {
 	/** The task waits on the user (questions or user review), so an expiring cache is theirs to save. */
 	awaitingUser?: boolean;
 	capturedAt: number;
+	/** Display name when Claude Code gives one (`Opus 5.5`), else the raw id. */
 	model: string | null;
+	/** Raw `model.id` (`claude-opus-5-5[1m]`): the one that compares against a preset's model. */
+	modelId: string | null;
 	effort: string | null;
 	/** Claude Code's session name (`/rename`), when set. */
 	sessionName: string | null;
@@ -104,6 +107,7 @@ export function parseClaudeSessionStats(payload: unknown, taskId: string, captur
 		projectName: null,
 		capturedAt,
 		model: str(model?.display_name) ?? str(model?.id),
+		modelId: str(model?.id),
 		effort: str(asRecord(root.effort)?.level),
 		sessionName: str(root.session_name),
 		thinking: typeof thinkingEnabled === "boolean" ? thinkingEnabled : null,
@@ -130,6 +134,43 @@ export function parseClaudeSessionStats(payload: unknown, taskId: string, captur
 		linesAdded: num(cost?.total_lines_added),
 		linesRemoved: num(cost?.total_lines_removed),
 	};
+}
+
+/** What a live session runs with that its launch preset no longer says. */
+export interface LaunchConfigDrift {
+	/** The effort in effect now, when `/effort` moved it off the preset's. */
+	effort: string | null;
+	/** The model's display name now, when `/model` moved it off the preset's. */
+	model: string | null;
+}
+
+/** A model id without Claude Code's context-window suffix: `claude-opus-5-5[1m]` -> `claude-opus-5-5`. */
+function bareModelId(model: string): string {
+	return model.trim().replace(/\[[^\]]*\]$/, "").toLowerCase();
+}
+
+/** Only first-party ids compare: an alias (`opus`) or a provider id names no exact model. */
+function comparableModelId(model: string | null | undefined): string | null {
+	const bare = model ? bareModelId(model) : "";
+	return bare.startsWith("claude-") ? bare : null;
+}
+
+/**
+ * Compare the preset a task was launched with against its session's live statusLine
+ * stats. A field drifts only when both sides name a comparable value and they differ.
+ */
+export function launchConfigDrift(
+	preset: { model?: string; effort?: string },
+	session: Pick<AgentSessionStats, "model" | "modelId" | "effort"> | null | undefined,
+): LaunchConfigDrift | null {
+	if (!session) return null;
+	const effort = preset.effort && session.effort && session.effort.toLowerCase() !== preset.effort.toLowerCase()
+		? session.effort
+		: null;
+	const launchedModel = comparableModelId(preset.model);
+	const liveModel = comparableModelId(session.modelId);
+	const model = launchedModel && liveModel && launchedModel !== liveModel ? session.model ?? session.modelId : null;
+	return effort || model ? { effort, model } : null;
 }
 
 /** A warm cache whose expiry has passed is cold, whatever the last refresh said. */

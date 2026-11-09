@@ -19,6 +19,8 @@ import { setStreamerMode } from "../../streamer-mode";
 import { isBoardMounted, resetBoardViewCommandsForTests, runBoardViewCommand } from "../view-commands";
 import { resetPreviousBoardViewsForTests } from "../BoardHost";
 import { toast } from "../../toast";
+import { resetBoardPluginsForTests, setExtensionLoadForTests } from "../plugins";
+import { OPEN_SETTINGS_SECTION_EVENT } from "../../state";
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -117,6 +119,7 @@ beforeEach(() => {
 	resetBoardViewStateCacheForTests();
 	resetBoardViewCommandsForTests();
 	resetPreviousBoardViewsForTests();
+	resetBoardPluginsForTests();
 	setHiddenControlsForTests([]);
 	vi.mocked(api.request.getBoardViewState).mockResolvedValue(defaultBoardViewState());
 	vi.mocked(api.request.setBoardViewState).mockClear();
@@ -221,6 +224,23 @@ describe("BoardHost", () => {
 		renderHost();
 		expect(await screen.findByRole("alert")).toBeInTheDocument();
 		expect(screen.getByTestId("kanban")).toBeInTheDocument();
+		expect(api.request.setBoardViewState).not.toHaveBeenCalled();
+	});
+
+	// An undeclared view id unloads the extension before it can crash, so no error boundary fires.
+	it("says which extension failed when its saved view falls back to Kanban, and links to the settings", async () => {
+		startBoardViews([installKanbanView]);
+		setExtensionLoadForTests("gone", { state: "failed", error: "registered an undeclared board view" });
+		vi.mocked(api.request.getBoardViewState).mockResolvedValue(withViewType(defaultBoardViewState(), "wide", "gone:main"));
+		const opened = vi.fn();
+		window.addEventListener(OPEN_SETTINGS_SECTION_EVENT, opened);
+		renderHost();
+		const alert = await screen.findByRole("alert");
+		expect(alert).toHaveTextContent("The gone extension failed to load, so the board is shown as Kanban.");
+		expect(screen.getByTestId("kanban")).toBeInTheDocument();
+		fireEvent.click(screen.getByRole("button", { name: "Manage views…" }));
+		expect(opened).toHaveBeenCalled();
+		window.removeEventListener(OPEN_SETTINGS_SECTION_EVENT, opened);
 		expect(api.request.setBoardViewState).not.toHaveBeenCalled();
 	});
 

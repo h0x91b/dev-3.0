@@ -249,8 +249,45 @@ describe("buildProviderEnv", () => {
 		const env = buildProviderEnv(LLM_PROVIDER.BedrockClaude, undefined, "claude-opus-4-8[1m]");
 		expect(env.AWS_REGION).toBeUndefined();
 		expect(env.AWS_PROFILE).toBeUndefined();
-		// Only the flag + model are injected.
-		expect(Object.keys(env).sort()).toEqual(["ANTHROPIC_MODEL", "CLAUDE_CODE_USE_BEDROCK"]);
+		// Only the flag, the main model and the alias-slot models are injected.
+		expect(Object.keys(env).sort()).toEqual([
+			"ANTHROPIC_DEFAULT_FABLE_MODEL",
+			"ANTHROPIC_DEFAULT_HAIKU_MODEL",
+			"ANTHROPIC_DEFAULT_OPUS_MODEL",
+			"ANTHROPIC_DEFAULT_SONNET_MODEL",
+			"ANTHROPIC_MODEL",
+			"CLAUDE_CODE_USE_BEDROCK",
+		]);
+	});
+
+	it("bedrock: pins every alias slot to the newest built-in model, so /model haiku never hits a built-in id", () => {
+		const env = buildProviderEnv(LLM_PROVIDER.BedrockClaude, undefined, "claude-sonnet-5-5");
+		expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("global.anthropic.claude-haiku-5-5");
+		expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("global.anthropic.claude-opus-5-5[1m]");
+		expect(env.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("global.anthropic.claude-fable-5-1[1m]");
+		expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe(env.ANTHROPIC_MODEL);
+	});
+
+	it("bedrock: the launching model owns its own slot, even when a newer one exists", () => {
+		const env = buildProviderEnv(LLM_PROVIDER.BedrockClaude, undefined, "claude-opus-4-8[1m]");
+		expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("global.anthropic.claude-opus-4-8[1m]");
+		expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe(env.ANTHROPIC_MODEL);
+	});
+
+	it("bedrock: slot models follow the geo and the per-model overrides", () => {
+		const env = buildProviderEnv(
+			LLM_PROVIDER.BedrockClaude,
+			{ bedrock: { geo: "us", modelOverrides: { "claude-haiku-5-5": "arn:aws:bedrock:haiku" } } },
+			"claude-opus-5-5[1m]",
+		);
+		expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("arn:aws:bedrock:haiku");
+		expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("us.anthropic.claude-sonnet-5-5");
+	});
+
+	it("bedrock: a slot whose models the geo does not serve stands in with the launching model", () => {
+		const env = buildProviderEnv(LLM_PROVIDER.BedrockClaude, { bedrock: { geo: "eu" } }, "claude-opus-5-5[1m]");
+		expect(env.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("eu.anthropic.claude-opus-5-5[1m]");
+		expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("eu.anthropic.claude-haiku-5-5");
 	});
 
 	it("bedrock: an override for a DIFFERENT alias doesn't apply; this model uses the map", () => {

@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
 import type { BoardColumnSlot, Label, Project, Task } from "../../../shared/types";
-import { getTaskTitle, taskSeqLabel } from "../../../shared/types";
+import { getTaskOverview, getTaskTitle, taskSeqLabel } from "../../../shared/types";
 import { parentTaskIdOf } from "../../../shared/types/task-origin";
 import { useT, type TranslationKey } from "../../i18n";
 import LabelChip from "../../components/LabelChip";
@@ -8,6 +8,7 @@ import LabelPicker from "../../components/LabelPicker";
 import PipelineDropdown from "../../components/PipelineDropdown";
 import PriorityBadge from "../../components/PriorityBadge";
 import StatusMenuPortal from "../../components/StatusMenuPortal";
+import { TaskRefText } from "../../components/TaskRefText";
 import { useStatusMenu } from "../../hooks/useStatusMenu";
 import { useStatusColors } from "../../hooks/useStatusColors";
 import { getStatusLabel } from "../../utils/statusLabel";
@@ -62,6 +63,9 @@ export function CellControl({ children, className = "" }: { children: ReactNode;
 	);
 }
 
+/** A cell control looks small but answers across the row's full height, so a near miss never opens the task instead. */
+const ROW_HIT_AREA = "relative after:absolute after:inset-x-0 after:-inset-y-2 after:content-['']";
+
 function laneOf(task: Task, ctx: TableRowContext): BoardColumnSlot | null {
 	const index = laneOfTask(task, ctx.columns);
 	return index >= 0 ? ctx.columns[index] : null;
@@ -85,7 +89,7 @@ export function StatusCell({ task, ctx }: { task: Task; ctx: TableRowContext }) 
 				aria-haspopup="menu"
 				aria-expanded={menu.open}
 				aria-label={t("boardTable.changeStatus", { status: label })}
-				className="-mx-1.5 flex max-w-[calc(100%+0.75rem)] items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs text-fg-2 transition-colors duration-150 hover:bg-fg/8 hover:text-fg focus-visible:ring-1 focus-visible:ring-accent/60"
+				className={`${ROW_HIT_AREA} -mx-1.5 flex max-w-[calc(100%+0.75rem)] items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs text-fg-2 transition-colors duration-150 hover:bg-fg/8 hover:text-fg focus-visible:ring-1 focus-visible:ring-accent/60`}
 			>
 				<span aria-hidden className="h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: color }} />
 				<span className="truncate" title={label}>{label}</span>
@@ -115,7 +119,7 @@ export function StatusCell({ task, ctx }: { task: Task; ctx: TableRowContext }) 
 export function PriorityCell({ task, ctx }: { task: Task; ctx: TableRowContext }) {
 	return (
 		<CellControl>
-			<PriorityBadge size="sm" priority={task.priority} onChange={(priority) => void ctx.board.setPriority(task.id, priority)} />
+			<PriorityBadge size="sm" className={ROW_HIT_AREA} priority={task.priority} onChange={(priority) => void ctx.board.setPriority(task.id, priority)} />
 		</CellControl>
 	);
 }
@@ -132,7 +136,7 @@ export function LabelsCell({ task, ctx }: { task: Task; ctx: TableRowContext }) 
 		void ctx.board.setLabels(task.id, next);
 	};
 	return (
-		<CellControl className="flex min-w-0 items-center gap-1 overflow-hidden">
+		<CellControl className="flex min-w-0 items-center">
 			<button
 				ref={anchorRef}
 				type="button"
@@ -140,13 +144,15 @@ export function LabelsCell({ task, ctx }: { task: Task; ctx: TableRowContext }) 
 				aria-haspopup="dialog"
 				aria-expanded={open}
 				aria-label={t("boardTable.editLabels")}
-				className="-mx-1 flex min-w-0 items-center gap-1 overflow-hidden rounded-md px-1 py-0.5 transition-colors duration-150 hover:bg-fg/8 focus-visible:ring-1 focus-visible:ring-accent/60"
+				className={`${ROW_HIT_AREA} -mx-1 flex min-w-0 rounded-md px-1 py-0.5 transition-colors duration-150 hover:bg-fg/8 focus-visible:ring-1 focus-visible:ring-accent/60`}
 			>
-				{assigned.length === 0 ? (
-					<Muted />
-				) : (
-					assigned.map((label) => <LabelChip key={label.id} label={label} size="xs" />)
-				)}
+				<span className="flex min-w-0 items-center gap-1 overflow-hidden">
+					{assigned.length === 0 ? (
+						<Muted />
+					) : (
+						assigned.map((label) => <LabelChip key={label.id} label={label} size="xs" />)
+					)}
+				</span>
 			</button>
 			{open && anchorRef.current && project && (
 				<LabelPicker
@@ -176,6 +182,17 @@ export function PrCell({ task, ctx }: { task: Task; ctx: TableRowContext }) {
 	);
 }
 
+/** The task's overview on one line; its `<seq:N>` and `<pr:N>` references stay live links. */
+export function OverviewCell({ task, className = "" }: { task: Task; className?: string }) {
+	const overview = getTaskOverview(task);
+	if (!overview) return null;
+	return (
+		<span title={overview} className={`text-xs text-fg-2 ${className}`}>
+			<TaskRefText text={overview} contextProjectId={task.projectId} taskId={task.id} />
+		</span>
+	);
+}
+
 /** Only the editable Labels cell marks "none": an empty read-only cell is quieter left blank. */
 function Muted() {
 	return <span className="text-xs text-fg-muted">—</span>;
@@ -194,7 +211,7 @@ export function TableCell({ column, task, ctx }: { column: TableColumnId; task: 
 		case "title":
 			return <span className="block truncate text-sm text-fg" title={getTaskTitle(task)}>{getTaskTitle(task)}</span>;
 		case "project":
-			return <Text>{ctx.projectName(task.projectId)}</Text>;
+			return <Text title={ctx.projectName(task.projectId)}>{ctx.projectName(task.projectId)}</Text>;
 		case "status":
 			return <StatusCell task={task} ctx={ctx} />;
 		case "priority":
@@ -203,7 +220,7 @@ export function TableCell({ column, task, ctx }: { column: TableColumnId; task: 
 			return <LabelsCell task={task} ctx={ctx} />;
 		case "agent": {
 			const name = task.agentId ? ctx.agentNameById.get(task.agentId) : undefined;
-			return name ? <Text>{name}</Text> : null;
+			return name ? <Text title={name}>{name}</Text> : null;
 		}
 		case "pr":
 			return <PrCell task={task} ctx={ctx} />;

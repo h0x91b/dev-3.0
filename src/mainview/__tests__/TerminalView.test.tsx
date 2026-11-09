@@ -1,3 +1,4 @@
+import type { ComponentProps } from "react";
 import { render, act, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import TerminalView, { type TerminalHandle, TERMINAL_SYNC_GATE_TIMEOUT_MS, buildResizeDance, buildCursorMoveSequence, clearStaleSelectionOnWrite, normalizePastedText } from "../TerminalView";
 import { I18nProvider } from "../i18n";
@@ -271,10 +272,10 @@ async function waitForInitialSocket() {
 	await waitFor(() => expect(lastWebSocket).not.toBeNull());
 }
 
-async function renderAndSetup() {
+async function renderAndSetup(props: Partial<ComponentProps<typeof TerminalView>> = {}) {
 	let result!: ReturnType<typeof render>;
 	await act(async () => {
-		result = render(<I18nProvider><TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" /></I18nProvider>);
+		result = render(<I18nProvider><TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" {...props} /></I18nProvider>);
 		// Flush the microtask queue so the fonts.load() .then() runs → setup()
 		await Promise.resolve();
 		await Promise.resolve();
@@ -345,6 +346,57 @@ describe("TerminalView – PTY reconnect", () => {
 			vi.useRealTimers();
 		}
 
+		expect(webSockets).toHaveLength(1);
+	});
+
+	function refuseUnknownSession(socket: MockWebSocket) {
+		socket.readyState = WebSocket.CLOSED;
+		socket.onclose?.({ code: 4001, reason: "Unknown session", wasClean: false } as CloseEvent);
+	}
+
+	// A restarted app has an empty session map, so the first socket after the
+	// restart is refused although tmux still runs the session.
+	it("re-registers a session the app forgot mid-stream and reconnects", async () => {
+		const onSessionUnknown = vi.fn(async () => true);
+		await renderAndSetup({ onSessionUnknown });
+		await act(async () => { webSockets[0].onmessage?.({ data: "prompt$ " } as MessageEvent); });
+
+		await act(async () => { refuseUnknownSession(webSockets[0]); });
+
+		expect(onSessionUnknown).toHaveBeenCalledTimes(1);
+		expect(webSockets).toHaveLength(2);
+	});
+
+	it("re-registers only once until the session streams again", async () => {
+		const onSessionUnknown = vi.fn(async () => true);
+		await renderAndSetup({ onSessionUnknown });
+		await act(async () => { webSockets[0].onmessage?.({ data: "prompt$ " } as MessageEvent); });
+		await act(async () => { refuseUnknownSession(webSockets[0]); });
+
+		await act(async () => { refuseUnknownSession(webSockets[1]); });
+
+		expect(onSessionUnknown).toHaveBeenCalledTimes(1);
+		expect(webSockets).toHaveLength(2);
+	});
+
+	it("treats a session refused before any output as final", async () => {
+		const onSessionUnknown = vi.fn(async () => true);
+		await renderAndSetup({ onSessionUnknown });
+
+		await act(async () => { refuseUnknownSession(webSockets[0]); });
+
+		expect(onSessionUnknown).not.toHaveBeenCalled();
+		expect(webSockets).toHaveLength(1);
+	});
+
+	it("stops when the app cannot re-register the session", async () => {
+		const onSessionUnknown = vi.fn(async () => false);
+		await renderAndSetup({ onSessionUnknown });
+		await act(async () => { webSockets[0].onmessage?.({ data: "prompt$ " } as MessageEvent); });
+
+		await act(async () => { refuseUnknownSession(webSockets[0]); });
+
+		expect(onSessionUnknown).toHaveBeenCalledTimes(1);
 		expect(webSockets).toHaveLength(1);
 	});
 });
@@ -1382,6 +1434,71 @@ describe("TerminalView – tmux copy-mode focus recovery", () => {
 
 	afterEach(() => {
 		mockTermInstance.hasMouseTracking.mockReturnValue(false);
+		vi.useRealTimers();
+	});
+
+	/** Mounted, scrolled into tmux history, with the clock faked from here on. */
+	async function scrolledIntoHistory() {
+		mockTermInstance.hasMouseTracking.mockReturnValue(true);
+		const { container } = await renderAndSetup();
+		const terminal = container.querySelector('[data-terminal="true"]') as HTMLElement;
+		act(() => { lastWebSocket!.onmessage!({ data: "$ " } as MessageEvent); });
+		const wheel = mockTermInstance.attachCustomWheelEventHandler.mock.lastCall![0] as (e: WheelEvent) => boolean;
+		vi.useFakeTimers();
+		act(() => { wheel({ deltaY: -100, clientX: 20, clientY: 20 } as WheelEvent); });
+		mockedExitCopyModeAllPanes.mockClear();
+		const press = () => { fireEvent.mouseDown(terminal); fireEvent.click(terminal); };
+		const wait = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+		return { press, wait };
+	}
+
+	it("lets a plain click leave history only once tmux can no longer make it a double-click", async () => {
+		const { press, wait } = await scrolledIntoHistory();
+
+		press();
+		await wait(349);
+		expect(mockedExitCopyModeAllPanes).not.toHaveBeenCalled();
+
+		await wait(1);
+		expect(mockedExitCopyModeAllPanes).toHaveBeenCalledTimes(1);
+		expect(mockedExitCopyModeAllPanes).toHaveBeenCalledWith({ taskId: "t1" });
+	});
+
+	// The first click of a double-click used to leave history, so tmux selected the word
+	// under the pointer on the LIVE screen and copied that instead (h0x91b/dev-3.0#978).
+	it("keeps history through a double- and a triple-click, and leaves it on the next plain click", async () => {
+		const { press, wait } = await scrolledIntoHistory();
+
+		press();
+		await wait(120);
+		press();
+		await wait(2000);
+		expect(mockedExitCopyModeAllPanes).not.toHaveBeenCalled();
+
+		press();
+		await wait(120);
+		press();
+		await wait(120);
+		press();
+		await wait(2000);
+		expect(mockedExitCopyModeAllPanes).not.toHaveBeenCalled();
+
+		press();
+		await wait(350);
+		expect(mockedExitCopyModeAllPanes).toHaveBeenCalledTimes(1);
+	});
+
+	it("typing inside the click's wait leaves history at once, and the wait then adds nothing", async () => {
+		const { press, wait } = await scrolledIntoHistory();
+		const key = mockTermInstance.attachCustomKeyEventHandler.mock.lastCall![0] as (e: KeyboardEvent) => boolean;
+
+		press();
+		act(() => { key(new KeyboardEvent("keydown", { key: "a", code: "KeyA" })); });
+		expect(mockedExitCopyModeAllPanes).toHaveBeenCalledTimes(1);
+		expect(mockedExitCopyModeAllPanes).toHaveBeenCalledWith({ taskId: "t1", typedKey: true });
+
+		await wait(2000);
+		expect(mockedExitCopyModeAllPanes).toHaveBeenCalledTimes(1);
 	});
 
 	it("exits retained copy mode when the user next clicks the terminal", async () => {

@@ -73,10 +73,10 @@ ux_architecture:
       owns: ["task", "custom_column", "label", "project_settings"]
       common_actions: ["add", "clone", "open_settings", "reorder", "remove", "pull_main"]
       kind:   # observed: Project.kind discriminator
-        git: "Repo-backed project; tasks get a git worktree + branch (default when kind absent)."
-        virtual: "An 'Operations' board: tasks run agent + shell in a managed or chosen folder; no worktree/branch/PR, review columns hidden; an attached repo (Task.attachedRepo) adds read-only diff+review. Stored in ~/.dev3.0/virtual-projects.json. One built-in board hosts the Quick-shell operation (⇧⌘`)."
-        git_workflow_off: "Not a kind: gitWorkflow=false (Board-tab toggle, refused while a task runs; or the AddProject folder-pane switch). Tasks share the folder; git domain, review columns, variants hidden."
-      evidence: ["src/shared/types.ts (Project.kind, hasGitWorkflow)", "src/mainview/components/ActivityOverview.tsx", "src/mainview/components/AddProjectModal.tsx", "src/bun/data.ts (addVirtualProject)", "decisions/2026/06/24/virtual-operations-board-identity.md"]
+        git: "Repo-backed; tasks get a worktree + branch (default)."
+        virtual: "Operations board: agent + shell in a managed or chosen folder; no worktree/branch/PR or review columns; Task.attachedRepo adds read-only diff+review. Stored in ~/.dev3.0/virtual-projects.json; the built-in board hosts Quick-shell (⇧⌘`)."
+        git_workflow_off: "Not a kind: gitWorkflow=false. Tasks share the folder; git domain, review columns, variants hidden."
+      evidence: ["src/shared/types.ts (Project.kind)", "src/mainview/components/ActivityOverview.tsx", "src/mainview/components/AddProjectModal.tsx", "src/bun/data.ts (addVirtualProject)", "decisions/2026/06/24/virtual-operations-board-identity.md"]
     extension:
       label: "Extension"
       observed: true
@@ -269,7 +269,7 @@ ux_architecture:
       forbidden: ["durable_global_configuration"]
       evidence: ["board-views/kanban/KanbanView.tsx", "board-views/kanban/KanbanColumn.tsx"]
     board_view_table:
-      purpose: "builtin:table — every board task as sortable virtualised rows."
+      purpose: "builtin:table — every board task as sortable virtualised rows; spare width at the row end shows the task overview (read-only, not a column)."
       allowed: ["header_sort", "inline_status_priority_labels", "context_menu", "open_task", "column_toggles_in_view_options"]
       forbidden: ["bulk_actions", "durable_global_configuration"]
       evidence: ["board-views/table/"]
@@ -288,14 +288,15 @@ ux_architecture:
       allowed: ["status_dot", "label_chip", "variant_dots", "open_action", "context_menu", "git_status_badge", "deferred_timer_chip", "native_backend_mark", "dev_server_control"]
       forbidden: ["full_settings", "global_destination"]
       zone_model:
-        rationale: "The card had no zoning: identity, content, state, signals and actions stacked at one visual weight across up to three badge rows, and every feature added a row. Five zones, each with one admission rule, give a new feature a home instead of a new row."
+        rationale: "Five zones, each with one admission rule, give a new feature a home instead of a new row."
         order: ["lifecycle", "identity", "content", "signals", "actions"]
         lifecycle: "The 3px top strip + left rail (TaskCardRail.tsx). Owns ONLY what changes or reports the column: pipeline ring, upright status name, bell count, quick-complete (hibernated: quick-cancel in its place). Clicking the rail opens Move-to. Nothing informational may enter it."
-        identity: "One full-width header row above the rail: priority (frozen PriorityBadge), #seq, attempt, agent + config, variant dots, scratch/automation/native marks, dismiss. Full width is deliberate — the agent config string had 182px next to a rail and now has 244px. Never grows past one line; overflow goes to the tooltip."
+        identity: "One full-width header row above the rail: priority (frozen PriorityBadge), #seq, attempt, agent + config, variant dots, scratch/automation/native marks, dismiss, age_stamps. Full width gives the agent config string room. Never grows past one line; overflow goes to the tooltip; age_stamps shed first."
         content: "Epic chip, title (3-line clamp), label chips. The only zone allowed to be the card's visual focus. The show-description affordance is an icon on the label row, never its own row."
         signals: "Read-only facts in the segmented bottom bar, sub-grouped git / run / time with 1px dividers between groups. This is where new badges land."
         actions: "A reserved strip at the very bottom of the bar (min-height 36px) so signals can never squeeze actions out. Max 4 visible, rest to the context menu."
       rail_label: "Short uppercase status form, max 8 upright letters (status.rail.* keys per locale; custom columns clipped to 8 chars). Upright means writing-mode: vertical-rl + text-orientation: upright — never rotated 90deg. The full column label lives in the rail's accessible name and tooltip."
+      age_stamps: "TaskAgeStamps, shared with the sidebar row: muted created age + freshness-tinted last status change. Why: decisions/2026/11/07/task-age-stamps-freshness.md."
       deferred_timer_chip: "One shared countdown-chip slot (popover with cancel / run-now, 30s re-render) for deferred agent interactions. Content depends on state and the two NEVER coexist: scheduledLaunch on a `todo` card, scheduledMessages on a live-agent card. Do not add a second timer badge class."
       variant_dots: "Max 3 status dots (self — ring-highlighted — + lowest-variantIndex siblings; NO +N counter), always a clickable button opening SiblingPopover — the group overview: per-variant title, agent/config, status, current-variant marker; dead variants greyed, non-navigable. Same pattern on sidebar cards; do not fork the mechanic per surface."
       dev_server_control: "The card's ONE split control (open | stop), in the actions strip, leading. Renders only for an active, non-hibernated task with a worktree and a resolved devScript. Left half opens the lowest dev port; right half stops the server (risk INK, never a danger fill, no confirmation — a dev server loses no data and restart is one click). Port is the label; extra ports, uptime and any port conflict live in the hover popover. State colours follow the 2026-06-29 dev-server token decision: green = running only, spinner = transient start, neutral dashed = stopped, danger ink = port conflict. On narrow it sheds to the icon-only open target and Stop moves to the context menu. No second split control may be added to the card."
@@ -327,6 +328,10 @@ ux_architecture:
       forbidden: ["global_destination", "cross_project_action", "uncapped_note_list"]
       note: "This panel is the densest surface (34K). It is the main complexity-budget risk in the app."
       evidence: ["src/mainview/components/TaskInfoPanel.tsx", "src/mainview/components/task-info-panel/*"]
+      completion_strip:
+        rule: "A completion ask (merge, agent, or the user's own Complete on the open task) floats as one card over the top-right of the live terminal (row under the inspector if none); never a modal or a toast with an action, never resizes the terminal. Unsolicited: no focus, 600 ms click arming; Complete gated on the unsaved-work check. Elsewhere: bell, a toast that opens the task, card and sidebar marker."
+        actions: { complete: "destructive", keep_open: "secondary", manual_completion: "ghost (merge)", settings: "icon (merge)" }
+        evidence: ["src/mainview/completion-offers.ts", "src/mainview/components/task-info-panel/TaskCompletionStrip.tsx"]
       bar_model:
         layout: "2x2"  # two rows; each row split into left|right by a flex-1 spacer
         rationale: "Wide desktop width is used instead of stacking more rows; the panel has a hard height budget (MAX_RATIO=0.33). One bar = one action domain. Panel chrome is not a bar."
@@ -437,14 +442,14 @@ ux_architecture:
       forbidden: ["primary_navigation", "persistent_dashboard"]
       observed: ["CreateTaskModal", "AddProjectModal", "TaskDetailModal", "LaunchVariantsModal", "SpawnAgentModal", "AgentLaunchRequestModal", "SecretRequestModal", "GitPullErrorModal", "FolderPickerModal", "AccountLoginModal"]
       agent_request:
-        rule: "Agent requests share an accent border, AI badge and autofocused decline. Severity follows the action: destructive only for destroying state. Input beyond yes/no uses its own modal; confirm() stays boolean. Requests queue, one dialog at a time."
-        identity: ["accent border", "AI agent request badge", "autofocused decline"]
+        rule: "Agent requests share an accent border, AI badge and autofocused decline. Severity follows the action: destructive only for destroying state. Input beyond yes/no uses its own modal; confirm() stays boolean. Requests queue, one dialog at a time. Completion requests are the exception: they render inline on their task (task_info_panel.completion_strip), never as a modal."
+        identity: ["accent border", "AI agent request badge", "autofocused decline (modal only)"]
         severity_by_action: { destroys_state: "destructive", creates_state: "primary" }
-        observed: ["agentCompletionRequested → confirm() (destructive)", "agentLaunchRequested → AgentLaunchRequestModal (primary)", "secretRequested → SecretRequestModal (primary; explicit approval only, masked input, no output)"]
+        observed: ["agentLaunchRequested → AgentLaunchRequestModal (primary)", "secretRequested → SecretRequestModal (primary; explicit approval only, masked input, no output)"]
       evidence: ["src/mainview/components/*Modal.tsx", "src/mainview/confirm.tsx"]
     popover:
       purpose: "Lightweight contextual preview/hint anchored to an element."
-      allowed: ["preview", "hint", "quick_action", "remediation"]
+      allowed: ["preview", "hint", "quick_action", "remediation", "own_click_confirm"]
       forbidden: ["multi_step_flow", "primary_destination"]
       observed: ["SiblingPopover", "TerminalPreviewPopover", "StuckPreparationPopover"]
       evidence: ["src/mainview/components/*Popover.tsx"]
@@ -452,7 +457,7 @@ ux_architecture:
       purpose: "Object-scoped actions on right-click / long-press (task card, sidebar row, terminal)."
       allowed: ["object_action", "open_in", "destructive"]
       forbidden: ["global_destination"]
-      task_menu: "ONE menu for the task object (TaskContextMenu), mounted by card AND sidebar row; routes to the existing picker/modal/RPC, owns no action. MAY repeat a control the surface shows — a context menu is reached blind. Narrow: BottomSheet. Shift+F10 opens it."
+      task_menu: "ONE menu for the task object (TaskContextMenu), mounted by card AND sidebar row; routes to the existing picker/modal/RPC, owns no action. MAY repeat a control the surface shows — a context menu is reached blind. Pickers: hover flyout. Narrow: BottomSheet, picker rows tap through. Shift+F10 opens it."
       evidence: ["src/mainview/components/TaskContextMenu.tsx", "src/mainview/components/OpenInMenu.tsx"]
     settings:
       purpose: "Durable configuration. GlobalSettings (app-wide) and ProjectSettings (per-project scripts, columns, labels, gh account)."
@@ -476,7 +481,7 @@ ux_architecture:
       evidence: ["src/mainview/components/GlobalSettings.tsx", "src/mainview/components/ProjectSettings.tsx", "src/mainview/components/project-settings/*", "src/mainview/components/global-settings/*"]
     sidebar:
       purpose: "Active tasks list / quick jump across running agents, with global-scope toggle."
-      allowed: ["destination", "task_jump", "terminal_hover_preview", "search", "variant_dots", "native_backend_mark", "git_status_badge", "task_visibility_toggle", "reveal_hidden_mode", "row_context_menu"]
+      allowed: ["destination", "task_jump", "terminal_hover_preview", "search", "variant_dots", "native_backend_mark", "git_status_badge", "task_visibility_toggle", "reveal_hidden_mode", "row_context_menu", "age_stamps"]
       forbidden: ["durable_configuration", "permanent_header_control"]
       header_budget: "Header is FULL: scope group + collapse. Measured on a board with spaces, a fifth control truncates the 'Active Tasks' title, so the reveal-hidden eye sits in the filter row beside the funnel — same axis (which tasks are in this list) and state-gated. A new sidebar control goes to the filter row or the funnel, never the header."
       visibility: "Task.hidden hides a variant group from THIS list only. Header eye reveals them dimmed and renders ONLY while something is hidden (the scope group owns the rest of the header); red dot when a hidden task needs the user; is:hidden reveals from the funnel. Hibernated/disconnected tasks are out by default too (is:hibernated); same eye reveals them. Why: decisions/2026/09/07/hide-tasks-from-active-sidebar.md."

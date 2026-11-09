@@ -1,27 +1,28 @@
 import { useState, type Dispatch } from "react";
-import { TaskRoleChip } from "./TaskRoleBand";
+import { COORDINATOR_TITLE, TaskRoleChip } from "./TaskRoleBand";
 import { TaskRefText } from "./TaskRefText";
 import type { CodingAgent, Label, PortInfo, Project, Task, TaskPRBadgeInfo, TaskPriority, TaskStatus } from "../../shared/types";
 import { getAllowedTransitions, getTaskTitle, isCoordinatorTask, isTaskDisconnected } from "../../shared/types";
 import { earlierPullRequests } from "../../shared/task-pull-requests";
 import { api } from "../rpc";
 import { toast } from "../toast";
-import { useT, useLocale } from "../i18n";
+import { useT } from "../i18n";
 import { useStatusMenu } from "../hooks/useStatusMenu";
 import { useContextMenu } from "../hooks/useContextMenu";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import { reviewedPrLink } from "../utils/taskPrBadge";
 import { useReducedMotion } from "../utils/useReducedMotion";
-import { ageParts, compactAge, type AgeUnit } from "../utils/statusAge";
 import type { AppAction, Route } from "../state";
 import AgentLauncherBadge from "./AgentLauncherBadge";
 import LabelChip from "./LabelChip";
 import NativeBackendMark, { isNativeBackendTask } from "./NativeBackendMark";
+import CompletionOfferMark from "./CompletionOfferMark";
 import PipelineDropdown from "./PipelineDropdown";
 import PortBadgeList from "./PortBadgeList";
 import PriorityBadge from "./PriorityBadge";
 import StatusMenuPortal from "./StatusMenuPortal";
+import TaskAgeStamps from "./TaskAgeStamps";
 import TaskCardRail from "./TaskCardRail";
 import TaskContextMenu from "./TaskContextMenu";
 import TaskPrBadges from "./TaskPrBadges";
@@ -31,16 +32,6 @@ import Tooltip from "./Tooltip";
 import { EyeIcon } from "./TaskIcons";
 import VariantDots from "./VariantDots";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
-
-/** Maps the single most-significant age unit to its verbose i18n key. */
-const AGE_UNIT_KEY: Record<AgeUnit, string> = {
-	s: "activity.secondsAgo",
-	m: "activity.minutesAgo",
-	h: "activity.hoursAgo",
-	d: "activity.daysAgo",
-	M: "activity.monthsAgo",
-	y: "activity.yearsAgo",
-};
 
 interface ActiveTaskRowProps {
 	task: Task;
@@ -110,7 +101,6 @@ export default function ActiveTaskRow({
 }: ActiveTaskRowProps) {
 	const t = useT();
 	const reviewedPr = reviewedPrLink(task, prInfo);
-	const [locale] = useLocale();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const statusMenu = useStatusMenu(narrow);
 	const contextMenu = useContextMenu(task.shuttingDown);
@@ -134,7 +124,7 @@ export default function ActiveTaskRow({
 	// ring reports the stage, not that an agent is moving right now.
 	const isBusy = (task.status === "in-progress" || task.status === "review-by-ai") && !disconnected;
 
-	async function handleMove(newStatus: TaskStatus, opts?: { alwaysConfirm?: boolean }) {
+	async function handleMove(newStatus: TaskStatus, opts?: { alwaysConfirm?: boolean; anchor?: HTMLElement }) {
 		statusMenu.setOpen(false);
 		await moveTaskToStatus({
 			task,
@@ -144,6 +134,7 @@ export default function ActiveTaskRow({
 			t,
 			onOpenTask: onOpen,
 			alwaysConfirm: opts?.alwaysConfirm,
+			anchor: opts?.anchor,
 			onMovingChange: setMoving,
 		});
 	}
@@ -170,7 +161,7 @@ export default function ActiveTaskRow({
 		e.stopPropagation();
 		setCompleting(true);
 		try {
-			await handleMove("completed", { alwaysConfirm: true });
+			await handleMove("completed", { alwaysConfirm: true, anchor: e.currentTarget as HTMLElement });
 		} finally {
 			setCompleting(false);
 		}
@@ -180,7 +171,7 @@ export default function ActiveTaskRow({
 		e.stopPropagation();
 		setCancelling(true);
 		try {
-			await handleMove("cancelled", { alwaysConfirm: true });
+			await handleMove("cancelled", { alwaysConfirm: true, anchor: e.currentTarget as HTMLElement });
 		} finally {
 			setCancelling(false);
 		}
@@ -199,8 +190,6 @@ export default function ActiveTaskRow({
 			setHiding(false);
 		}
 	}
-
-	const agePart = ageParts(task.movedAt, now);
 
 	return (
 		<div
@@ -294,7 +283,8 @@ export default function ActiveTaskRow({
 			{task.shuttingDown && <TaskShutdownOverlay />}
 
 			<div className="min-w-0 flex-1 px-2.5 py-2">
-				<Tooltip content={task.hidden ? t("task.showInSidebar") : t("task.hideFromSidebar")}>
+				{/* A coordinator row carries no hide toggle (#2214). */}
+				{!isCoordinatorTask(task) && <Tooltip content={task.hidden ? t("task.showInSidebar") : t("task.hideFromSidebar")}>
 					<button
 						type="button"
 						onClick={handleSetHidden}
@@ -309,7 +299,7 @@ export default function ActiveTaskRow({
 					>
 						<EyeIcon off={!task.hidden} className="h-3.5 w-3.5" />
 					</button>
-				</Tooltip>
+				</Tooltip>}
 				{/* Project badge (global/attention scope only) */}
 				{projectBadgeName && (
 					<Tooltip content={projectBadgeName}>
@@ -330,7 +320,10 @@ export default function ActiveTaskRow({
 				)}
 
 				{/* CONTENT — the row's only visual focus. */}
-				<div className={`pr-6 text-xs leading-snug break-words ${isActive ? "text-fg font-medium" : "text-fg-2"}`}>
+				<div
+					data-testid={`sidebar-task-title-${task.id}`}
+					className={`text-xs leading-snug break-words ${isCoordinatorTask(task) ? `${COORDINATOR_TITLE} font-bold` : `pr-6 ${isActive ? "text-fg font-medium" : "text-fg-2"}`}`}
+				>
 					{displayTitle}
 				</div>
 
@@ -355,6 +348,7 @@ export default function ActiveTaskRow({
 				<div className="mt-1.5 flex items-center gap-1 min-w-0 flex-wrap">
 					<PriorityBadge priority={task.priority} onChange={onSetPriority} />
 					<div className="text-nano text-fg-3 font-mono shrink-0">#{task.seq}</div>
+					<CompletionOfferMark task={task} testId={`sidebar-completion-offer-${task.id}`} />
 					{task.hidden && (
 						<Tooltip content={t("task.hiddenFromSidebar")}>
 							<span className="inline-flex text-fg-muted" data-testid={`sidebar-task-hidden-badge-${task.id}`}>
@@ -429,29 +423,7 @@ export default function ActiveTaskRow({
 						<div className="min-w-0 flex-1 truncate text-nano font-mono text-fg-muted">{agentSummary}</div>
 					</div>
 				</Tooltip>
-				{agePart && (
-					<Tooltip
-						content={t("sidebar.statusChanged", {
-							ago:
-								agePart.unit === "s" && agePart.value < 1
-									? t("activity.justNow")
-									: t(AGE_UNIT_KEY[agePart.unit] as Parameters<typeof t>[0], {
-											count: String(agePart.value),
-										}),
-							date: new Date(task.movedAt!).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" }),
-						})}
-					>
-						<span
-							className="shrink-0 flex items-center gap-0.5 text-nano text-fg-3 font-mono whitespace-nowrap"
-							data-testid={`sidebar-status-age-${task.id}`}
-						>
-							<span aria-hidden className="leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-								{""}
-							</span>
-							{compactAge(task.movedAt, now)}
-						</span>
-					</Tooltip>
-				)}
+				<TaskAgeStamps task={task} now={now} testId={`sidebar-age-${task.id}`} />
 				</div>
 
 				{ports && ports.length > 0 && <PortBadgeList ports={ports} testId={`sidebar-ports-${task.id}`} />}

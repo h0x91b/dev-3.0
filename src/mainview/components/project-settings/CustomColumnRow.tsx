@@ -24,10 +24,15 @@ export function CustomColumnRow({ column, saving, onUpdate, onDelete, availableA
 	const [agentId, setAgentId] = useState(column.agentConfig?.agentId ?? "builtin-claude");
 	const [configId, setConfigId] = useState(column.agentConfig?.configId ?? "claude-default");
 	const [agentPrompt, setAgentPrompt] = useState(column.agentConfig?.prompt ?? "");
+	const [bedrockProfile, setBedrockProfile] = useState(column.agentConfig?.bedrockProfile);
+
+	function buildAgentConfigFor(nextAgentId: string, nextConfigId: string, nextProfile: string | null | undefined): ColumnAgentConfig {
+		return { agentId: nextAgentId, configId: nextConfigId, prompt: agentPrompt, ...(nextProfile !== undefined ? { bedrockProfile: nextProfile } : {}) };
+	}
 
 	function buildAgentConfig(): ColumnAgentConfig | null {
 		if (!agentEnabled) return null;
-		return { agentId, configId, prompt: agentPrompt };
+		return buildAgentConfigFor(agentId, configId, bedrockProfile);
 	}
 
 	function commitUpdate(newName = name, newColor = color, newInstruction = llmInstruction, newAgentConfig?: ColumnAgentConfig | null) {
@@ -123,7 +128,7 @@ export function CustomColumnRow({ column, saving, onUpdate, onDelete, availableA
 						onToggle={() => {
 							const next = !agentEnabled;
 							setAgentEnabled(next);
-							commitUpdate(name, color, llmInstruction, next ? { agentId, configId, prompt: agentPrompt } : null);
+							commitUpdate(name, color, llmInstruction, next ? buildAgentConfigFor(agentId, configId, bedrockProfile) : null);
 						}}
 					/>
 				</div>
@@ -142,8 +147,14 @@ export function CustomColumnRow({ column, saving, onUpdate, onDelete, availableA
 								setConfigId(nextConfigId);
 								// State updates are async, so persist with the fresh pair
 								// rather than relying on the (stale) state values.
-								commitUpdate(name, color, llmInstruction, { agentId: nextAgentId, configId: nextConfigId, prompt: agentPrompt });
+								commitUpdate(name, color, llmInstruction, buildAgentConfigFor(nextAgentId, nextConfigId, bedrockProfile));
 							}}
+							bedrockProfile={bedrockProfile}
+							onBedrockProfileChange={(next) => {
+								setBedrockProfile(next);
+								commitUpdate(name, color, llmInstruction, buildAgentConfigFor(agentId, configId, next));
+							}}
+							bedrockProfileInheritLabel={t("columnAgent.awsProfileInherit")}
 						/>
 						<div>
 							<label htmlFor={`column-agent-prompt-${column.id}`} className="block text-fg-3 text-xs mb-1">{t("columnAgent.prompt")}</label>

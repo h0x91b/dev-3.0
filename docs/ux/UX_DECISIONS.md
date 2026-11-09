@@ -10,6 +10,16 @@ reasoning (48 of 50 dates), so the record wins and this file stays an index. Wri
 in full only while no record exists — the case for 84 below, whose reasoning lives nowhere
 else, so never compact them by deleting it.
 
+## 2026-11-07 — The user's own Complete/Cancel confirms where they clicked
+- **Rule:** bible §10 "completion ask", yaml `task_info_panel.completion_strip`, `popover.allowed: own_click_confirm`.
+- **Why:** decisions/2026/11/07/user-completion-confirm-anchored-not-modal.md.
+
+## 2026-11-07 — Completion offers render inline, not as a modal
+- **Rule:** bible §10 "completion offer", yaml `task_info_panel.completion_strip`.
+- **Why:** decisions/2026/11/07/completion-offers-render-inline-not-modal.md.
+
+2026-11-07 — Cards and sidebar rows show created + freshness-tinted last-activity stamps (yaml `task_card.age_stamps`). Why: decisions/2026/11/07/task-age-stamps-freshness.md.
+
 ## 2026-11-04 — A gone pre-strict agent path warns, not fails
 - **Rule:** PATH fallback + toast with Reset path; record `grandfather-stale-custom-agent-paths`.
 
@@ -39,9 +49,7 @@ Bible §5.7: card → sender (inert without one), traffic only via its action; a
 
 2026-10-02 — Agent toast names every destination (card → traffic, superseded 2026-10-08). Why: decisions/2026/10/02/agent-message-toast-names-every-destination.md.
 
-## 2026-09-25 — Clips play inside the image viewer
-
-Bible §3 `Task image viewer` / yaml `task_image_viewer`: `dev3 show-media` clips (videos in `sharedVideos`, audio in `sharedAudio`, merged by `taskSharedMedia`) join the same history and stage as images; no second viewer or panel. Why: decisions/2026/09/25/show-video-additive-shared-videos-field.md, decisions/2026/10/27/show-media-replaces-show-video.md.
+2026-09-25 — Clips play inside the image viewer (yaml `task_image_viewer`). Why: decisions/2026/09/25/show-video-additive-shared-videos-field.md, decisions/2026/10/27/show-media-replaces-show-video.md.
 
 2026-09-22 — One task context menu for card and sidebar row; yaml `context_menu.task_menu`. Why: decisions/2026/09/22/one-task-context-menu-for-card-and-sidebar-row.md.
 
@@ -632,11 +640,9 @@ Folded into bible §12 (terminal windows row).
 - **Why:** Users invoke skills by `/name` and shouldn't memorize slugs; caret-anchored positioning rejected as needless complexity for a 4-row textarea.
 - **Status:** Observed. Evidence: `useSkillAutocomplete.ts`, `SkillAutocompleteDropdown.tsx`, `src/bun/skills-catalog.ts`.
 
-## 2026-06-10 — AI-initiated task completion uses a blocking, visually distinct confirm dialog
+## 2026-06-10 — AI-initiated task completion uses a blocking confirm dialog
 
-- **Rule:** Agent-requested completion opens the imperative `confirm()` modal with an `agentInitiated` treatment (accent border + "AI agent request" badge, danger-role confirm, autofocused cancel); the CLI blocks ≤10 min; decline = exit code 6; `cancelled` stays CLI-forbidden.
-- **Why:** Completion destroys the worktree + tmux session (destructive → human approval); the AI-identity badge prevents mistaking it for a routine confirm. Zero new chrome. Decision 067.
-- **Status:** Observed. Evidence: `confirm.tsx`, `completion-requests.ts`, `cli-socket/approvals.ts`.
+- Superseded 2026-11-07: completion offers render inline (bible §10 "completion offer", yaml `task_info_panel.completion_strip`).
 
 ## 2026-06-03 — Narrow-viewport carousel navigation (mobile / remote)
 
