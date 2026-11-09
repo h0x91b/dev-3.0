@@ -95,3 +95,23 @@ export function digitBadgeById(targets: MixedEntry[]): Record<string, string> {
 	});
 	return badges;
 }
+
+/** `ids` with `sourceId` moved beside `targetId`; null when nothing would change. */
+export function movedIds(ids: string[], sourceId: string, targetId: string, side: "before" | "after"): string[] | null {
+	if (sourceId === targetId) return null;
+	const next = ids.filter((id) => id !== sourceId);
+	const at = next.indexOf(targetId);
+	if (at === -1 || !ids.includes(sourceId)) return null;
+	next.splice(side === "after" ? at + 1 : at, 0, sourceId);
+	return next;
+}
+
+/** `ids` with `id` swapped one place; null at either end. */
+export function steppedIds(ids: string[], id: string, delta: -1 | 1): string[] | null {
+	const from = ids.indexOf(id);
+	const to = from + delta;
+	if (from === -1 || to < 0 || to >= ids.length) return null;
+	const next = [...ids];
+	[next[from], next[to]] = [next[to], next[from]];
+	return next;
+}

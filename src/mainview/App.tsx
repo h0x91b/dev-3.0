@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAppState, canGoBack, routeTaskId, routeShowsTaskWorkspace, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, taskOpenRoute, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type NavigateOptions, type Route } from "./state";
 import { lastProjectForSpace, rememberProjectForSpace } from "./utils/spaceBoardMemory";
 import { digitTargets, mixedEntryId, type MixedEntry } from "./utils/digitOrder";
+import { useMixedPending, withPendingMixedOrder } from "./mixed-order-store";
 import { api, isElectrobun, getRpcConnectionState } from "./rpc";
 import { ignoreStartupReadFailure, startupRead } from "./startup-read";
 import { setWebNotificationsSuppressed, showWebNotificationOrToast, type WebNotificationDetail } from "./utils/webNotification";
@@ -1167,9 +1168,10 @@ function App() {
 	// ⌘1..9, ⇧⌘1..9 and `g` + digit share this list; a space target opens its board
 	// anchored on the member last used there, else the first one.
 	const followSpaces = globalSettings.digitsFollowSpaces === true;
+	const mixedPending = useMixedPending();
 	const digitTargetList = useMemo(
-		() => digitTargets(state.projects, spacesFile, followSpaces),
-		[state.projects, spacesFile, followSpaces],
+		() => digitTargets(state.projects, withPendingMixedOrder(spacesFile, mixedPending), followSpaces),
+		[state.projects, spacesFile, mixedPending, followSpaces],
 	);
 	const digitTargetBoard = useCallback((target: MixedEntry): { projectId: string; spaceId?: string } => {
 		if (target.kind === "project") return { projectId: target.project.id };
@@ -1181,7 +1183,8 @@ function App() {
 		(view: "project" | "task") => {
 			const projectId = "projectId" in state.route ? state.route.projectId : state.projects.find((p) => !p.deleted)?.id;
 			if (!projectId) return navigate({ screen: "dashboard" });
-			goToProjectView(projectId, view);
+			// Changing the view of the board on screen keeps its space.
+			goToProjectView(projectId, view, routeSpaceId(state.route) ?? undefined);
 		},
 		[navigate, state.route, state.projects, goToProjectView],
 	);

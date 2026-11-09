@@ -7,6 +7,7 @@ import type { Project, Task } from "../../../shared/types";
 import { getTaskTitle } from "../../../shared/types";
 import type { Route } from "../../state";
 import { setStreamerMode } from "../../streamer-mode";
+import { _resetMixedOrderStore } from "../../mixed-order-store";
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -1217,6 +1218,7 @@ describe("ActivityOverview — mixed top-level order", () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		_resetMixedOrderStore();
 		localStorage.clear();
 		mockedApi.request.getAllProjectTasks.mockResolvedValue([]);
 		mockedApi.request.reorderMixedOrder.mockResolvedValue({} as never);
@@ -1291,6 +1293,8 @@ describe("ActivityOverview — mixed top-level order", () => {
 
 	it("on: Move up on a space steps within the mixed order, not the space order", async () => {
 		const user = userEvent.setup();
+		// The write stays out, so the order on screen is the shown-at-once one.
+		mockedApi.request.reorderMixedOrder.mockReturnValue(new Promise(() => {}));
 		renderMixed();
 		await user.click(await screen.findByTestId("space-menu-sp_hands"));
 		await user.click(screen.getByTestId("space-move-up-sp_hands"));
@@ -1321,6 +1325,29 @@ describe("ActivityOverview — mixed top-level order", () => {
 		await waitFor(() => expect(topLevel()).toEqual(["chisim", "polymarket", "space-group-sp_hands", "Nerd-Dictum", "dev-3.0"]));
 	});
 
+	it("on, but filtered to Home: rows offer no reorder, since the digits ignore the flat order", async () => {
+		renderMixed(true, "home");
+		await screen.findByTestId("space-group-rest");
+		expect(document.querySelector("[data-reorder-grip]")).toBeNull();
+		const row = screen.getByText("chisim").closest<HTMLElement>('[data-help-id="dashboard.project-row"]')!;
+		expect(row.querySelector("[data-reorder-grip]")).toBeNull();
+		expect(within(row).getByTitle("Move project up")).toBeDisabled();
+		expect(within(row).getByTitle("Move project down")).toBeDisabled();
+	});
+
+	it("shows the ⌘0 hint on Operations whenever the setting is on, search and filter included", async () => {
+		(window as Window & { __electrobunWebviewId?: number }).__electrobunWebviewId = 1;
+		const ops: Project = { ...mockProject, id: "ops", name: "Operations", kind: "virtual", builtin: true };
+		render(
+			<I18nProvider>
+				<ActivityOverview projects={[ops, ...board]} navigate={vi.fn()} dispatch={vi.fn()} bellCounts={new Map()} onRemoveProject={vi.fn()} onOpenAddProject={vi.fn()} digitsFollowSpaces selectedSpaceId="home" />
+			</I18nProvider>,
+		);
+		await screen.findByTestId("space-group-rest");
+		const opsRow = screen.getByTestId("space-group-rest").parentElement!.querySelector('[data-help-id="dashboard.ops-board"]')!;
+		expect(opsRow.querySelector("kbd")?.textContent).toBe("⌘0");
+	});
+
 	it("on, but filtered to Home: falls back to the grouped path with no space grip", async () => {
 		renderMixed(true, "home");
 		await screen.findByTestId("space-group-rest");
@@ -1332,5 +1359,73 @@ describe("ActivityOverview — mixed top-level order", () => {
 		renderMixed(true, "sp_hands");
 		const header = (await screen.findByTestId("space-header-sp_hands")).parentElement!;
 		expect(header.querySelector("[data-reorder-grip]")).toBeNull();
+	});
+});
+
+describe("ActivityOverview — mixed order on a narrow viewport", () => {
+	const originalInnerWidth = window.innerWidth;
+	const originalMatchMedia = window.matchMedia;
+	const names = ["chisim", "bus", "pollex"];
+	const board: Project[] = names.map((n) => ({ ...mockProject, id: n, name: n, path: `/tmp/${n}` }));
+	const hands = { id: "sp_hands", name: "hands.ru", parentId: null, projectIds: ["bus", "pollex"], createdAt: 1 };
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		_resetMixedOrderStore();
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([]);
+		mockedApi.request.reorderMixedOrder.mockResolvedValue({} as never);
+		mockedApi.request.reorderSpaceProjects.mockResolvedValue({} as never);
+		(mockedApi.request.getSpaces as ReturnType<typeof vi.fn>).mockResolvedValue({ version: 1, spaces: [hands], order: ["sp_hands"] });
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+		Object.defineProperty(window, "matchMedia", {
+			configurable: true,
+			value: (query: string) => ({
+				matches: true,
+				media: query,
+				onchange: null,
+				addEventListener: vi.fn(),
+				removeEventListener: vi.fn(),
+				addListener: vi.fn(),
+				removeListener: vi.fn(),
+				dispatchEvent: vi.fn(),
+			}),
+		});
+	});
+
+	afterEach(() => {
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: originalInnerWidth });
+		Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
+	});
+
+	async function openSheetOf(name: string, selectedSpaceId: string | null = null) {
+		const user = userEvent.setup();
+		render(
+			<I18nProvider>
+				<ActivityOverview projects={board} navigate={vi.fn()} dispatch={vi.fn()} bellCounts={new Map()} onRemoveProject={vi.fn()} onReorderProjects={vi.fn()} digitsFollowSpaces selectedSpaceId={selectedSpaceId} />
+			</I18nProvider>,
+		);
+		const row = (await screen.findByText(name)).closest<HTMLElement>('[data-help-id="dashboard.project-row"]')!;
+		await user.click(within(row).getByTitle("Project actions"));
+		return { user, sheet: screen.getByTestId("activity-project-action-sheet") };
+	}
+
+	it("steps a standalone project within the mixed list", async () => {
+		const { user, sheet } = await openSheetOf("chisim");
+		await user.click(within(sheet).getByText("Move project down"));
+		expect(mockedApi.request.reorderMixedOrder).toHaveBeenCalledWith({ ids: ["sp_hands", "chisim"] });
+	});
+
+	it("steps a project inside a space within that space, not the flat order", async () => {
+		const { user, sheet } = await openSheetOf("bus");
+		expect(within(sheet).getByText("Move project up").closest("button")).toBeDisabled();
+		await user.click(within(sheet).getByText("Move project down"));
+		expect(mockedApi.request.reorderSpaceProjects).toHaveBeenCalledWith({ spaceId: "sp_hands", projectIds: ["pollex", "bus"] });
+		expect(mockedApi.request.reorderMixedOrder).not.toHaveBeenCalled();
+	});
+
+	it("offers no Move actions for a row outside the mixed list and outside a space", async () => {
+		const { sheet } = await openSheetOf("chisim", "home");
+		expect(within(sheet).queryByText("Move project up")).toBeNull();
+		expect(within(sheet).queryByText("Move project down")).toBeNull();
 	});
 });

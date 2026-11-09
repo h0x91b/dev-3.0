@@ -454,6 +454,38 @@ describe("SpaceGroupedProjects — mixed top-level list", () => {
 		expect(screen.getByTestId("row-p1")).toBeInTheDocument();
 	});
 
+	it("keeps the gap above a block outside the registered element, and drops it while a drag is on", () => {
+		const { unmount } = renderMixed();
+		const block = screen.getByTestId("space-group-sp_a");
+		expect(block.className).not.toContain("pt-6");
+		expect(block.parentElement!.className).toContain("pt-6");
+		unmount();
+		renderMixed({ scope: "mixed", id: "sp_a" });
+		const dragged = screen.getByTestId("space-group-sp_a");
+		// Evenly spaced entries, and a surface the preview can copy and the placeholder can dash.
+		expect(dragged.parentElement!.className).not.toContain("pt-6");
+		expect(dragged).toHaveAttribute("data-reorder-placeholder");
+		expect(dragged.className).toContain("border");
+		expect(dragged.className).toContain("bg-raised");
+		expect(dragged.className).toContain("rounded-xl");
+	});
+
+	it("keeps the gap above a block outside it, and drops the gap while a drag is on", () => {
+		const { unmount } = renderMixed(null);
+		const resting = screen.getByTestId("space-group-sp_a");
+		expect(resting.className).toContain("rounded-xl");
+		expect(resting.className).not.toContain("pt-6");
+		expect(resting.parentElement!.className).toContain("pt-6");
+		unmount();
+		renderMixed({ scope: "mixed", id: "sp_a" });
+		const dragged = screen.getByTestId("space-group-sp_a");
+		// An opaque surface with an edge: the preview clone and the dashed placeholder both need one.
+		expect(dragged.className).toContain("bg-raised");
+		expect(dragged.className).toContain("border");
+		expect(dragged).toHaveAttribute("data-reorder-placeholder");
+		expect(dragged.parentElement!.className).not.toContain("pt-6");
+	});
+
 	it("steps through the mixed order from the header menu", async () => {
 		const user = userEvent.setup();
 		const onStep = vi.fn();

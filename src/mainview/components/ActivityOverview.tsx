@@ -16,8 +16,8 @@ import SpacePicker from "./SpacePicker";
 import { useProjectSpaceMembership } from "../useProjectSpaceMembership";
 import { lastProjectForSpace } from "../utils/spaceBoardMemory";
 import SpaceGroupedProjects, { DigitHint, MIXED_SCOPE_KEY, type RowReorderCtx } from "./SpaceGroupedProjects";
-import { resolveMixedOrder } from "../utils/digitOrder";
-import { useMixedOrder } from "../hooks/useMixedOrder";
+import { mixedEntryId, movedIds, resolveMixedOrder, steppedIds } from "../utils/digitOrder";
+import { commitMixedOrder, useMixedPending, withPendingMixedOrder } from "../mixed-order-store";
 import { isRemote } from "../utils/platform";
 import { getStatusLabel } from "../utils/statusLabel";
 import { useReorderDrag, type ReorderScope } from "../hooks/useReorderDrag";
@@ -144,6 +144,8 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 	// touch, so per-project actions + reorder collapse into a single kebab that
 	// opens this action sheet (the project whose id is set here).
 	const [actionSheetProjectId, setActionSheetProjectId] = useState<string | null>(null);
+	// The space whose block the sheet's row sat in, if any: its Move up / down steps there.
+	const [actionSheetSpaceId, setActionSheetSpaceId] = useState<string | null>(null);
 	// Narrow viewport: per-project task lists are capped to NARROW_ROW_CAP rows;
 	// these are the projects the user has explicitly expanded past the cap.
 	const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
@@ -157,7 +159,19 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 	// The row whose Spaces… picker is open, with the button it is anchored to.
 	const [spacesPicker, setSpacesPicker] = useState<{ projectId: string; anchor: HTMLElement } | null>(null);
 	const membership = useProjectSpaceMembership(spacesFile);
-	const mixedOrder = useMixedOrder(digitsFollowSpaces ? resolveMixedOrder(projects, spacesFile) : []);
+	const mixedPending = useMixedPending();
+	const mixedEntries = digitsFollowSpaces ? resolveMixedOrder(projects, withPendingMixedOrder(spacesFile, mixedPending)) : [];
+	const mixedOrder = {
+		entries: mixedEntries,
+		reorder: (sourceId: string, targetId: string, side: "before" | "after") => {
+			const next = movedIds(mixedEntries.map(mixedEntryId), sourceId, targetId, side);
+			if (next) commitMixedOrder(next);
+		},
+		step: (id: string, delta: -1 | 1) => {
+			const next = steppedIds(mixedEntries.map(mixedEntryId), id, delta);
+			if (next) commitMixedOrder(next);
+		},
+	};
 
 	const openSpacesPicker = useCallback((project: Project, anchor: HTMLElement) => {
 		setSpacesPicker({ projectId: project.id, anchor });
@@ -370,6 +384,11 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 	// Search and the rail filter show a subset, so there is no whole list to drag in.
 	const mixedActive = digitsFollowSpaces && selectedSpaceId === null && projectQuery.trim() === "";
 	const showDigitHints = mixedActive && !isRemote();
+	// ⌘0 is Operations whenever the setting is on, search and filter included.
+	const opsDigitHint = digitsFollowSpaces && !isRemote();
+	// With the setting on, the flat project order is not what ⌘1–9 follow, so the
+	// rows outside the mixed list and outside a space block offer no reorder.
+	const flatReorderOff = digitsFollowSpaces && !mixedActive;
 	const sensitiveProjectIds = new Set(projects.filter((p) => p.sensitive).map((p) => p.id));
 	const hasPinnedBuiltin = visibleProjects.length > 0 && isBuiltinOpsProject(visibleProjects[0]);
 	const totalActive = Array.from(tasksByProject.values()).reduce((sum, tasks) => sum + tasks.length, 0);
@@ -387,12 +406,23 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 		? mixedOrder.entries.findIndex((e) => e.kind === "project" && e.project.id === sheetProject.id)
 		: -1;
 	const sheetInMixed = sheetMixedIndex !== -1;
-	const sheetCannotMoveUp = sheetInMixed
-		? sheetMixedIndex === 0
-		: sheetIndex <= 0 || (hasPinnedBuiltin && sheetIndex === 1) || !!sheetIsVirtual;
-	const sheetCannotMoveDown = sheetInMixed
-		? sheetMixedIndex === mixedOrder.entries.length - 1
-		: sheetIndex === visibleProjects.length - 1 || !!sheetIsVirtual;
+	// A project inside a space block steps within that block (setting on).
+	const sheetSpaceMembers = digitsFollowSpaces && actionSheetSpaceId && sheetProject
+		? allSpaceGroups?.find((g) => g.space?.id === actionSheetSpaceId)?.projects.map((p) => p.id) ?? []
+		: [];
+	const sheetSpaceIndex = sheetProject ? sheetSpaceMembers.indexOf(sheetProject.id) : -1;
+	const sheetInSpace = sheetSpaceIndex !== -1;
+	const sheetCannotMoveUp = sheetInSpace
+		? sheetSpaceIndex === 0
+		: sheetInMixed
+			? sheetMixedIndex === 0
+			: sheetIndex <= 0 || (hasPinnedBuiltin && sheetIndex === 1) || !!sheetIsVirtual;
+	const sheetCannotMoveDown = sheetInSpace
+		? sheetSpaceIndex === sheetSpaceMembers.length - 1
+		: sheetInMixed
+			? sheetMixedIndex === mixedOrder.entries.length - 1
+			: sheetIndex === visibleProjects.length - 1 || !!sheetIsVirtual;
+	const sheetOffersReorder = !!onReorderProjects && (sheetInSpace || sheetInMixed || !digitsFollowSpaces);
 
 	function moveProject(sourceProjectId: string, targetProjectId: string, side: DropSide): string[] {
 		const ids = visibleProjects.map((project) => project.id);
@@ -405,9 +435,21 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 		return ids;
 	}
 
-	/** The action sheet's Move up / down: a standalone project steps within the mixed list. */
+	function closeActionSheet() {
+		setActionSheetProjectId(null);
+		setActionSheetSpaceId(null);
+	}
+
+	/** The action sheet's Move up / down: within its space block, within the mixed list, or in the flat order. */
 	function stepSheetProject(projectId: string, step: -1 | 1) {
-		if (sheetInMixed) mixedOrder.step(projectId, step);
+		if (sheetInSpace && actionSheetSpaceId) {
+			const ids = steppedIds(sheetSpaceMembers, projectId, step);
+			if (ids) {
+				api.request.reorderSpaceProjects({ spaceId: actionSheetSpaceId, projectIds: ids }).catch((err) => {
+					toast.error(t("spaces.failedUpdate", { error: String(err) }));
+				});
+			}
+		} else if (sheetInMixed) mixedOrder.step(projectId, step);
 		else moveProjectByStep(projectId, step);
 	}
 
@@ -450,7 +492,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 		// board would silently snap back after the API call. The project right
 		// below the pinned builtin also cannot move above the pin.
 		// The mixed list is its own order, so a virtual board can move in it.
-		const cannotReorder = project.kind === "virtual" && reorder?.scope.key !== MIXED_SCOPE_KEY;
+		const cannotReorder = (project.kind === "virtual" && reorder?.scope.key !== MIXED_SCOPE_KEY) || (!reorder && flatReorderOff);
 		// Grouped rows reorder within their space (RowReorderCtx); flat rows keep
 		// the global projects.json order machinery below.
 		const dragEnabled = reorder ? reorder.dragEnabled : !!onReorderProjects && !cannotReorder;
@@ -618,7 +660,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 						    link emphasis on row hover. Without it the only cue was the
 						    background lifting one step, which reads as "row", not "link". */}
 						<span className={`truncate select-text ${locked || compact ? "" : "group-hover:text-accent group-hover:underline decoration-accent/50 underline-offset-2"} ${privacy.maskClass(project)}`} title={locked || isBuiltinOps ? undefined : project.name}>{projectDisplayName(project, t("ops.boardName"))}</span>
-									{reorder?.digitHint && !compact && <DigitHint digit={reorder.digitHint} />}
+{reorder?.digitHint && !compact && <DigitHint digit={reorder.digitHint} />}
 									{!isBuiltinOps && !compact && (
 										<ProjectSpaceChips
 											spaces={spacesFile.spaces}
@@ -633,10 +675,10 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 										{isBuiltinOps ? t("ops.badgeSystem") : t("ops.badge")}
 									</span>
 								)}
-								{isBuiltinOps && !compact && showDigitHints && (
+								{isBuiltinOps && !compact && opsDigitHint && (
 									<span className="hidden md:inline-flex"><DigitHint digit="0" /></span>
 								)}
-								{isBuiltinOps && !compact && !showDigitHints && (
+								{isBuiltinOps && !compact && !opsDigitHint && (
 									<span className="hidden md:inline-flex text-fg-3 text-nano font-mono border border-edge rounded px-1 py-0.5 leading-none flex-shrink-0">⌘0</span>
 								)}
 							</div>
@@ -678,6 +720,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 							onClick={(event) => {
 								event.stopPropagation();
 								setActionSheetProjectId(project.id);
+								setActionSheetSpaceId(groupSpaceId ?? null);
 							}}
 							className="flex h-11 w-11 items-center justify-center rounded-lg text-fg-3 hover:text-fg hover:bg-elevated transition-colors flex-shrink-0"
 							title={t("activity.projectActions")}
@@ -1087,7 +1130,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 				{narrow && sheetProject && (
 					<BottomSheet
 						open={!!sheetProject}
-						onClose={() => setActionSheetProjectId(null)}
+						onClose={closeActionSheet}
 						title={projectDisplayName(sheetProject, t("ops.boardName"))}
 						ariaLabel={t("activity.projectActions")}
 						testId="activity-project-action-sheet"
@@ -1097,7 +1140,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 								glyph={""}
 								label={t("activity.openBoard")}
 								onClick={() => {
-									setActionSheetProjectId(null);
+									closeActionSheet();
 									openProject(sheetProject.id);
 								}}
 							/>
@@ -1105,7 +1148,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 								glyph={"\u{F0493}"}
 								label={t("header.projectSettings")}
 								onClick={() => {
-									setActionSheetProjectId(null);
+									closeActionSheet();
 									navigate({ screen: "project-settings", projectId: sheetProject.id });
 								}}
 							/>
@@ -1114,7 +1157,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 									glyph={"\u{F115}"}
 									label={t("dashboard.openInFinder")}
 									onClick={() => {
-										setActionSheetProjectId(null);
+										closeActionSheet();
 										api.request.openFolder({ path: sheetProject.path }).catch(() => {});
 									}}
 								/>
@@ -1124,12 +1167,12 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 									glyph={"\u{F489}"}
 									label={t("activity.openTerminal")}
 									onClick={() => {
-										setActionSheetProjectId(null);
+										closeActionSheet();
 										navigate({ screen: "project-terminal", projectId: sheetProject.id });
 									}}
 								/>
 							)}
-							{onReorderProjects && (
+							{sheetOffersReorder && (
 								<>
 									<ActionSheetButton
 										glyph={"\u{F062}"}
@@ -1151,7 +1194,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 									label={t("dashboard.remove")}
 									danger
 									onClick={() => {
-										setActionSheetProjectId(null);
+										closeActionSheet();
 										void onRemoveProject(sheetProject.id);
 									}}
 								/>

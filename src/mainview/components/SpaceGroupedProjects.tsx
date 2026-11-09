@@ -121,6 +121,8 @@ interface SpaceGroupMixed {
 	hint?: string;
 	outerRef: (el: HTMLElement | null) => void;
 	isDragged: boolean;
+	/** Any block of the mixed list is being dragged: the list is one-line entries, evenly spaced. */
+	dragActive: boolean;
 }
 
 interface SpaceGroupProps {
@@ -165,10 +167,16 @@ function SpaceGroup({
 	mixed,
 }: SpaceGroupProps) {
 	const t = useT();
-	return (
+	const block = (
 		<div
 			ref={mixed?.outerRef}
-			className={`relative ${GROUP_CLASS}`}
+			className={
+				mixed
+					// The registered element is a surface of its own, so the drag preview
+					// is opaque and the placeholder has an edge to dash.
+					? `relative space-y-2 rounded-xl ${mixed.isDragged ? "border border-edge bg-raised px-3 py-2" : ""}`
+					: `relative ${GROUP_CLASS}`
+			}
 			data-testid={`space-group-${space.id}`}
 			data-reorder-placeholder={mixed?.isDragged || undefined}
 		>
@@ -270,6 +278,9 @@ function SpaceGroup({
 			{!isCollapsed && <div className={ROWS_CLASS}>{renderRows()}</div>}
 		</div>
 	);
+	// The gap above a block sits outside the registered element and goes while a
+	// drag is on, so every entry is spaced alike and the slots line up.
+	return mixed ? <div className={mixed.dragActive ? "" : "pt-6"}>{block}</div> : block;
 }
 
 /**
@@ -472,6 +483,7 @@ function SpaceGroupedProjects({
 								hint: badges[id],
 								outerRef: drag.rowRef(MIXED_SCOPE_KEY, id),
 								isDragged: dragActive && drag.active?.id === id,
+								dragActive,
 							},
 						},
 					);

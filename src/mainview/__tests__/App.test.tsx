@@ -29,6 +29,7 @@ vi.mock("../rpc", () => ({
 			scanImportableConversations: vi.fn().mockResolvedValue({ conversations: [] }),
 			markConversationImportOffered: vi.fn().mockResolvedValue({ project: null }),
 			getSpaces: vi.fn().mockResolvedValue({ version: 1, spaces: [], order: [] }),
+			reorderMixedOrder: vi.fn(() => new Promise(() => {})),
 			getLastRoute: vi.fn().mockResolvedValue({ route: null }),
 			saveLastRoute: vi.fn().mockResolvedValue(undefined),
 			quitApp: vi.fn().mockResolvedValue(undefined),
@@ -161,6 +162,7 @@ vi.mock("../components/ProjectView", () => ({
 		bellReasons?: Map<string, string[]>;
 		dockArtifact?: boolean;
 		dispatch?: (action: { type: string; request?: unknown }) => void;
+		navigationGuardRef?: { current: { isDirty: () => boolean; onSave: () => Promise<void> } | null };
 	}) => (
 		<div
 			data-testid="project-screen"
@@ -173,6 +175,7 @@ vi.mock("../components/ProjectView", () => ({
 			data-bell-count={String(props.bellCounts?.get("t-overflow") ?? 0)}
 			data-bell-reasons={JSON.stringify(props.bellReasons?.get("t-overflow") ?? [])}
 		>
+			<button data-testid="mock-make-dirty" onClick={() => { if (props.navigationGuardRef) props.navigationGuardRef.current = { isDirty: () => true, onSave: async () => {} }; }} />
 			<button data-testid="mock-open-diff" onClick={() => props.dispatch?.({ type: "openTaskDiff", request: { mode: "branch" } })} />
 			<button data-testid="mock-close-diff" onClick={() => props.dispatch?.({ type: "closeTaskDiff" })} />
 		</div>
@@ -225,6 +228,7 @@ vi.mock("../components/TaskImageViewer", () => ({
 }));
 
 import { api } from "../rpc";
+import { _resetMixedOrderStore, commitMixedOrder } from "../mixed-order-store";
 import { confirm } from "../confirm";
 
 vi.mock("../confirm", () => ({
@@ -805,6 +809,7 @@ describe("App keyboard shortcuts", () => {
 		const project = () => screen.getByTestId("project-screen");
 
 		afterEach(() => {
+			_resetMixedOrderStore();
 			localStorage.removeItem("dev3-space-last-project-sp_a");
 			vi.mocked(api.request.getSpaces).mockResolvedValue({ version: 1, spaces: [], order: [] });
 			vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
@@ -862,6 +867,66 @@ describe("App keyboard shortcuts", () => {
 			expect(project()).toHaveAttribute("data-project-id", "p1");
 			expect(project()).toHaveAttribute("data-space-id", "");
 			expect(project()).toHaveAttribute("data-task-view", "true");
+		});
+
+		// A switch discarded through the unsaved-changes dialog must still be a switch.
+		it("⌘1 from a space board's split view lands on the project alone after Discard on a dirty form", async () => {
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p2", spaceId: "sp_a", taskView: true }),
+			});
+			await renderWith(false);
+			await userEvent.click(screen.getByTestId("mock-make-dirty"));
+			press({ key: "1", code: "Digit1", metaKey: true });
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
+			await userEvent.click(await screen.findByRole("button", { name: "Discard" }));
+			expect(project()).toHaveAttribute("data-project-id", "p1");
+			expect(project()).toHaveAttribute("data-space-id", "");
+		});
+
+		it("g then t, left to time out, keeps the board's space", async () => {
+			vi.useFakeTimers({ shouldAdvanceTime: true });
+			try {
+				vi.mocked(api.request.getLastRoute).mockResolvedValue({
+					route: JSON.stringify({ screen: "project", projectId: "p2", spaceId: "sp_a" }),
+				});
+				await renderWith(false);
+				press({ key: "g", code: "KeyG" });
+				press({ key: "t", code: "KeyT" });
+				await act(async () => {
+					await vi.advanceTimersByTimeAsync(1200);
+				});
+				expect(project()).toHaveAttribute("data-project-id", "p2");
+				expect(project()).toHaveAttribute("data-space-id", "sp_a");
+				expect(project()).toHaveAttribute("data-task-view", "true");
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("g then p, left to time out, keeps the board's space", async () => {
+			vi.useFakeTimers({ shouldAdvanceTime: true });
+			try {
+				vi.mocked(api.request.getLastRoute).mockResolvedValue({
+					route: JSON.stringify({ screen: "project", projectId: "p2", spaceId: "sp_a", taskView: true }),
+				});
+				await renderWith(false);
+				press({ key: "g", code: "KeyG" });
+				press({ key: "p", code: "KeyP" });
+				await act(async () => {
+					await vi.advanceTimersByTimeAsync(1200);
+				});
+				expect(project()).toHaveAttribute("data-space-id", "sp_a");
+				expect(project()).toHaveAttribute("data-task-view", "false");
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("digits follow the order just chosen, before the host has stored it", async () => {
+			await renderWith(true);
+			act(() => commitMixedOrder(["sp_a", "p1", "p4"]));
+			press({ key: "1", code: "Digit1", metaKey: true });
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
 		});
 
 		it("⌘0 still opens Operations", async () => {

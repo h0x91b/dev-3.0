@@ -10,6 +10,7 @@ import { MASK_CLASS, useProjectPrivacy } from "../sensitive-projects";
 import { useSpaces } from "../useSpaces";
 import { groupProjectsForSwitcher } from "../utils/spaceGroups";
 import { digitBadgeById, digitTargets } from "../utils/digitOrder";
+import { useMixedPending, withPendingMixedOrder } from "../mixed-order-store";
 import { projectLastActivityMs } from "../utils/projectActivity";
 import { fuzzyScore } from "../utils/fuzzyMatch";
 import { projectSearchHaystack } from "../utils/projectSearchHaystack";
@@ -143,6 +144,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	const highlightHelp = !helpDiscovered && !tourRunning && !suppressHelpCallout && HELP_ATTRACTOR_SCREENS.has(route.screen);
 	const privacy = useProjectPrivacy();
 	const { file: spacesFile } = useSpaces();
+	const mixedPending = useMixedPending();
 	const compact = useCompact();
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	// Header hideability is capped at exactly three ids (§5.10 §2.4): agent
@@ -589,7 +591,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	}, [availableProjects, navigate]);
 	// ⌘N badges come from the shared digit list, so they keep matching the shortcut
 	// once spaces regroup the rows (same source as the ⇧⌘K palette's badges).
-	const switcherShortcutById: Record<string, string> = digitBadgeById(digitTargets(projects, spacesFile, digitsFollowSpaces));
+	const switcherShortcutById: Record<string, string> = digitBadgeById(digitTargets(projects, withPendingMixedOrder(spacesFile, mixedPending), digitsFollowSpaces));
 	for (const p of availableProjects) if (isBuiltinOpsProject(p)) switcherShortcutById[p.id] = "0";
 	// Spaces group the switcher exactly as they group the dashboard, except the
 	// current project's own space is hoisted first. null = no space holds a
