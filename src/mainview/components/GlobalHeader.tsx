@@ -556,6 +556,8 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 		// A global screen, so the tail names it and nothing claims a project — the
 		// route's scope seed is a filter on the screen, not a location.
 		segments.push({ label: t("traffic.label") });
+	} else if (route.screen === "completions") {
+		segments.push({ label: t("completions.title") });
 	} else if (route.screen === "sessions") {
 		// Same as traffic: the scope project is a filter on the screen, not a location.
 		segments.push({ label: t("sessions.title") });

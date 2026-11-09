@@ -21,6 +21,8 @@ export interface CompletionOffer {
 	kind: CompletionOfferKind;
 	/** Merge offers only: the branch that landed. */
 	branchName?: string;
+	/** When this client raised it (epoch ms), so a waiting list can show how long it has waited. */
+	offeredAt: number;
 	answer: (answer: CompletionOfferAnswer) => void;
 }
 
@@ -79,6 +81,7 @@ export function offerCompletion(params: OfferCompletionParams): Promise<Completi
 			projectId: params.projectId,
 			kind: params.kind,
 			branchName: params.branchName,
+			offeredAt: Date.now(),
 			answer: settle,
 		}];
 		emit();
@@ -174,14 +177,27 @@ export function useCompletionOverlayHosted(taskId: string): boolean {
 	return useSyncExternalStore(subscribe, read, read);
 }
 
-/** True when a strip for this task is mounted: in immersive fullscreen it is not, even on the task. */
-export function isCompletionStripMounted(taskId: string): boolean {
-	return mountedStrips.has(taskId);
+const waitingLists = new Set<symbol>();
+
+/** Tracks mounted lists of every waiting ask (the Ready to complete screen). */
+export function registerWaitingOffersList(): () => void {
+	const token = Symbol("waiting-offers-list");
+	waitingLists.add(token);
+	return () => { waitingLists.delete(token); };
+}
+
+/**
+ * Whether an ask on this task is already on screen, so no toast needs to tell about
+ * it: its task's strip is mounted (not in immersive fullscreen), or the list is.
+ */
+export function isCompletionOfferOnScreen(taskId: string): boolean {
+	return mountedStrips.has(taskId) || waitingLists.size > 0;
 }
 
 export function _resetCompletionOffersForTests(): void {
 	offers = [];
 	style = DEFAULT_COMPLETION_OFFER_STYLE;
+	waitingLists.clear();
 	mountedStrips.clear();
 	overlayHosts.clear();
 	emit();
