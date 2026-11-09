@@ -133,6 +133,7 @@ function LabelPicker({ project, onCreateLabel, onClose, anchorEl, selectedIds, o
 	return createPortal(
 		<div
 			ref={pickerRef}
+			data-menu-surface
 			className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active overflow-hidden"
 			style={{
 				top: pos.top,

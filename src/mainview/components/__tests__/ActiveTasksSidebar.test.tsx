@@ -1241,6 +1241,35 @@ function makeTask(overrides?: Partial<Task>): Task {
 		expect(screen.queryByText("Alpha task")).not.toBeInTheDocument();
 	});
 
+	it("offers statuses with no tasks, and only the custom columns of projects in scope", async () => {
+		const user = userEvent.setup();
+		const other: Project = {
+			...project,
+			id: "other-project",
+			name: "Other",
+			customColumns: [{ id: "col-else", name: "Elsewhere", color: "#abcdef", llmInstruction: "" }],
+		};
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					allProjects={[project, other]}
+					tasks={[makeTask({ id: "a", title: "Alpha task", description: "Alpha", status: "in-progress", groupId: null as unknown as string, variantIndex: null })]}
+					activeTaskId="none"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+
+		await user.click(screen.getByTestId("filter-funnel-button"));
+		expect(screen.getByRole("checkbox", { name: "Has Questions" })).toBeInTheDocument();
+		expect(screen.queryByRole("checkbox", { name: "Elsewhere" })).not.toBeInTheDocument();
+	});
+
 	it("keeps an unchecked custom column's tasks out of a built-in status selection (#1804)", async () => {
 		const user = userEvent.setup();
 		const projectWithCol: Project = {

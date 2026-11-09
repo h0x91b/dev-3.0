@@ -17,6 +17,9 @@ import { useStatusColors } from "../hooks/useStatusColors";
 import { useTerminalPreview } from "../hooks/useTerminalPreview";
 import { useIsTruncated } from "../hooks/useIsTruncated";
 import { useShedOnOverflow } from "../hooks/useShedOnOverflow";
+import { useLiveSessionStats } from "../hooks/useLiveSessionStats";
+import { launchConfigDrift } from "../../shared/session-stats";
+import { agentKey } from "../../shared/agent-adapters/families";
 import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
 import PriorityBadge from "./PriorityBadge";
@@ -478,10 +481,10 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		setDetailOpen(true);
 	}
 
-	function handleCardMouseEnter() {
+	function handleCardMouseEnter(e: React.MouseEvent) {
 		if (!isActive || menuOpen || isShuttingDown) return;
 		if (!cardRef.current) return;
-		preview.handlers.onMouseEnter(task.id, cardRef.current);
+		preview.handlers.onMouseEnter(task.id, cardRef.current, e.target);
 	}
 
 	function handleCardMouseLeave() {
@@ -501,7 +504,15 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const railColor = isCompleting || isShuttingDown ? "#888" : activeCol ? activeCol.color : color;
 
 	// ---- IDENTITY zone inputs -----------------------------------------------
-	const { agent, configLabel, hasLauncherIcon } = taskCardAgent(task, agents);
+	const { agent, agentConfig, configLabel, hasLauncherIcon } = taskCardAgent(task, agents);
+	// The preset is only what the agent was launched with; `/effort` and `/model`
+	// move a live Claude session off it, and the statusLine dump is where that shows.
+	const liveSession = useLiveSessionStats(task.id);
+	const isClaudeAgent = agent ? agentKey(agent.baseCommand, agent.agentFamily) === "claude" : false;
+	// A sleeping task runs nothing, and its resume relaunches with the preset again.
+	const hasLiveSession = isActive && !isHibernated && !isDisconnected;
+	const drift = hasLiveSession && isClaudeAgent && agentConfig ? launchConfigDrift(agentConfig, liveSession) : null;
+	const driftLabel = drift ? [drift.model, drift.effort].filter(Boolean).join(", ") : "";
 	// A lone variant is not a variant — `1/1` says nothing, and the spelled-out
 	// "Variant 1" ate the header room the config string exists for.
 	const variantFraction = task.variantIndex !== null && groupMembers.length > 1
@@ -512,7 +523,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	// creation date first, before anything that names the task or its agent.
 	const [locale] = useLocale();
 	const identityRef = useRef<HTMLDivElement>(null);
-	const identityKey = [configLabel, locale, isCoordinator, isDraft, isHibernated, isDisconnected, task.taskType, task.scratch, task.automationId, task.keepAlive?.enabled].join("|");
+	const identityKey = [configLabel, driftLabel, locale, isCoordinator, isDraft, isHibernated, isDisconnected, task.taskType, task.scratch, task.automationId, task.keepAlive?.enabled].join("|");
 	const ageLevel = useShedOnOverflow(identityRef, 2, identityKey);
 	const ageFit: AgeStampsFit = ageLevel === 2 ? "both" : ageLevel === 1 ? "activity" : "none";
 
@@ -894,6 +905,19 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							className="min-w-[3rem] flex-1 truncate font-mono text-dense font-medium text-accent/80"
 						>
 							{configLabel}
+						</span>
+					</Tooltip>
+				)}
+				{drift && (
+					<Tooltip
+						content={t("task.liveConfig", { live: driftLabel })}
+						detail={t("task.liveConfigDetail", { launched: configLabel })}
+					>
+						<span
+							data-testid="task-card-live-config"
+							className="max-w-[50%] flex-shrink-0 truncate font-mono text-dense font-medium text-fg-2"
+						>
+							<span aria-hidden="true">{"→ "}</span>{driftLabel}
 						</span>
 					</Tooltip>
 				)}

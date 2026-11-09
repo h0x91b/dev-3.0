@@ -19,7 +19,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, openSync, readSync, closeSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, openSync, readSync, closeSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import type { AgentRateLimitSnapshot, AgentRateLimitsReport } from "../shared/rate-limits";
@@ -162,6 +162,17 @@ export function readClaudeSnapshot(dumpPath: string = CLAUDE_RATE_LIMIT_DUMP_PAT
 		return configDir && !resolvedAccountId ? { ...attributed, configDir } : attributed;
 	} catch {
 		return null; // torn write or corrupt file — keep whatever we knew before
+	}
+}
+
+/** Drop a task's session dump once its agent exits: the file outlives the process by
+ *  up to SESSION_STATS_RECENT_MS, and the card would keep reporting a session that is gone. */
+export function forgetClaudeSessionDump(taskId: string, dir: string = CLAUDE_SESSION_STATS_DIR): void {
+	if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(taskId)) return;
+	try {
+		rmSync(join(dir, `${taskId}.json`), { force: true });
+	} catch {
+		// the next statusLine render rewrites it anyway
 	}
 }
 

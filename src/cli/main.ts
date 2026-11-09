@@ -19,7 +19,7 @@ import { handleBoard } from "./commands/board";
 import { handleAutomations } from "./commands/automations";
 import { handleInstallHooks } from "./commands/install-hooks";
 import { handleInstallSkills } from "./commands/install-skills";
-import { handleConfig } from "./commands/config";
+import { OFFLINE_CONFIG_SUBCOMMANDS, handleConfig } from "./commands/config";
 import { handleDevServer } from "./commands/dev-server";
 import { handleRemote } from "./commands/remote";
 import { LOCAL_HELP, expandLocalAlias, localHostError } from "./commands/local";
@@ -160,7 +160,12 @@ Commands:
   dev3 pr auto-merge [<number|url>] [--strategy squash|merge|rebase] [--off]
                                          Set (or clear) auto-merge on an existing pull request —
                                          defaults to the one for the branch checked out here
-  dev3 config show                       Show effective project settings (merged)
+  dev3 config show [--json]              Effective project settings, each with the layer it came from
+  dev3 config get <key>[.<name>] [--json]  One effective value
+  dev3 config set <key>[.<name>] <value> [--local] [--main]  Validated write to .dev3/config.json (--local: config.local.json)
+  dev3 config unset <key>[.<name>] [--local] [--main]  Remove a key from that file
+  dev3 config validate [--file <path>] [--json]  Check the .dev3 config files against the schema (exit 47 on errors; no app needed)
+  dev3 config schema [<key>] [--json]    Every configurable field: type, default, example (--json: JSON Schema; no app needed)
   dev3 config export                     Export settings to .dev3/config.json
   dev3 doctor [--json]                   Check install health (app bundle, tmux shim, brew state); works without the app running
   dev3 doctor --processes [--json]       Which task owns each native terminal host/shell (seq, pane, role, pid, liveness)
@@ -387,6 +392,11 @@ async function main(): Promise<void> {
 		// — a run must keep printing even if the app goes away mid-build.
 		return await handlePaneExec(rawArgs.slice(1));
 	}
+	if (command === "config" && subcommand !== undefined && OFFLINE_CONFIG_SUBCOMMANDS.has(subcommand)) {
+		// Reads the schema and local files only, so CI can validate a repo's
+		// committed config with no dev3 app on the machine.
+		return await handleConfig(subcommand, args, null, context, restArgs);
+	}
 	if (command === "doctor") {
 		// Install health check — must work precisely when the app is broken
 		// or not running, so it never touches the socket.
@@ -521,7 +531,7 @@ async function main(): Promise<void> {
 			case "automations":
 				return await handleAutomations(subcommand, args, socketPath, context);
 			case "config":
-				return await handleConfig(subcommand, args, socketPath, context);
+				return await handleConfig(subcommand, args, socketPath, context, restArgs);
 			case "dev-server":
 				return await handleDevServer(subcommand, args, socketPath, context);
 			case "notify":

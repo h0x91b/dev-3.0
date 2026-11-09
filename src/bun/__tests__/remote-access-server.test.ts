@@ -91,6 +91,7 @@ import { escapesRoot } from "../remote-access-server";
 import { startRemoteAccessServer, resetRemoteAccessStartState } from "../remote-access-server";
 import { encodeResizeSequence } from "../../shared/resize-protocol";
 import { win32 } from "node:path";
+import { hasPtyAccessToken } from "../pty-server-access";
 
 describe("PTY proxy initial geometry", () => {
 	it("forwards the latest early size once the upstream opens", async () => {
@@ -127,6 +128,41 @@ describe("PTY proxy initial geometry", () => {
 			expect(client.data).not.toHaveProperty("pendingResize");
 			handlers.message(client, encodeResizeSequence(90, 40));
 			expect(upstream.send).toHaveBeenLastCalledWith(encodeResizeSequence(90, 40));
+		} finally {
+			Bun.serve = originalServe;
+			globalThis.WebSocket = OriginalWebSocket;
+			resetRemoteAccessStartState();
+		}
+	});
+});
+
+describe("PTY proxy upstream hop", () => {
+	it("dials the loopback PTY server with its access token and the viewer's watermark", async () => {
+		const originalServe = Bun.serve;
+		const OriginalWebSocket = globalThis.WebSocket;
+		let handlers: any;
+		let dialed = "";
+		class RecordingSocket extends EventTarget {
+			constructor(url: string) { super(); dialed = url; }
+		}
+		try {
+			(Bun as any).serve = (options: any) => {
+				handlers = options.websocket;
+				return { port: 12345 };
+			};
+			globalThis.WebSocket = RecordingSocket as any;
+			await startRemoteAccessServer({
+				rpcHandler: async () => ({}), getPtyPort: () => 12346,
+				registerBackpressureProbe: () => () => {},
+			});
+			// The browser controls `session`; it must not be able to append parameters of its own.
+			handlers.open({ data: { type: "pty", sessionId: "task-1&token=forged", sinceSeq: 7 }, close: vi.fn() });
+
+			const url = new URL(dialed);
+			expect(url.host).toBe("127.0.0.1:12346");
+			expect(url.searchParams.get("session")).toBe("task-1&token=forged");
+			expect(url.searchParams.get("since")).toBe("7");
+			expect(hasPtyAccessToken(url)).toBe(true);
 		} finally {
 			Bun.serve = originalServe;
 			globalThis.WebSocket = OriginalWebSocket;

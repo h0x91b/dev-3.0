@@ -6,6 +6,8 @@ import {
 	laneOfTask,
 	normalizeTableLayout,
 	sortTableTasks,
+	TABLE_COLUMNS,
+	tableGrid,
 	toggleTableColumn,
 	toggleTableSort,
 	type TableSortContext,
@@ -96,6 +98,27 @@ describe("toggleTableColumn", () => {
 	it("never removes the title", () => {
 		const base = defaultTableLayout("project");
 		expect(toggleTableColumn(base, "title", "project")).toEqual(base);
+	});
+});
+
+describe("tableGrid", () => {
+	const columns = ["seq", "title", "status", "labels"] as const;
+
+	it("sizes fixed columns once, elastic ones between a floor and a cap, and ends with the spare-room track", () => {
+		expect(tableGrid(columns).rowStyle.gridTemplateColumns)
+			.toBe("4.5rem minmax(14rem, 36rem) 8rem minmax(8rem, 16rem) minmax(0, 1fr)");
+	});
+
+	it("keeps the spare room the only flexible track, so columns reach their caps before it gets anything", () => {
+		const template = tableGrid(TABLE_COLUMNS).rowStyle.gridTemplateColumns;
+		expect(template.match(/fr\b/g)).toHaveLength(1);
+		expect(template.endsWith("minmax(0, 1fr)")).toBe(true);
+	});
+
+	it("lets the table shrink until every elastic column sits on its floor", () => {
+		// seq 4.5 + title 14 + status 8 + labels 8, a 0.75 gap after each column, 0.5 of padding on each side.
+		expect(tableGrid(columns).minWidth).toBe("38.5rem");
+		expect(tableGrid(DEFAULT_TABLE_COLUMNS).minWidth).toBe("65rem");
 	});
 });
 

@@ -417,6 +417,7 @@ export default function TaskContextMenu({
 				) : (
 					createPortal(
 						<div
+							data-menu-surface
 							className="fixed z-[10000] min-w-[11.25rem] rounded-xl border border-edge-active bg-overlay py-1.5 shadow-2xl shadow-black/40"
 							style={clampToViewport(anchorPos)}
 							onClick={(e) => e.stopPropagation()}
