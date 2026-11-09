@@ -270,7 +270,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 
 	/** The row's one object action. Always confirms: this is a one-click ✓ on a
 	 *  triage list, so a mis-click must never silently complete a task. */
-	async function completeTask(task: Task, project: Project, anchor?: HTMLElement) {
+	async function completeTask(task: Task, project: Project) {
 		markCompleting(task.id, true);
 		try {
 			await moveTaskToStatus({
@@ -282,7 +282,6 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 				afterOptimistic: () => setRowPresent(task, false),
 				onFailure: () => setRowPresent(task, true),
 				alwaysConfirm: true,
-				anchor,
 			});
 		} finally {
 			markCompleting(task.id, false);
@@ -777,7 +776,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 									<button
 										type="button"
 										data-testid="activity-row-complete"
-										onClick={(e) => void completeTask(task, project, e.currentTarget)}
+										onClick={() => void completeTask(task, project)}
 										disabled={completing}
 										aria-label={`${t("pipeline.completeTooltip")} — ${getTaskTitle(task)}`}
 										className={`task-anim flex flex-shrink-0 items-center justify-center self-stretch pr-1 md:pr-2 text-success transition-[opacity,background-color,transform] duration-150 ease-out hover:bg-success/10 motion-safe:active:scale-[0.96] ${narrow ? "w-11" : "w-9"} ${

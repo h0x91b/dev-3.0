@@ -1,7 +1,7 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, vi } from "vitest";
-import { ConfirmHost, confirm, placeBesideAnchor, whenConfirmHostMounted } from "../confirm";
+import { vi } from "vitest";
+import { ConfirmHost, confirm, whenConfirmHostMounted } from "../confirm";
 import { I18nProvider } from "../i18n";
 
 function renderHost() {
@@ -81,19 +81,41 @@ describe("confirm service", () => {
 		await expect(result!).resolves.toBe("keep");
 	});
 
-	it("ignores backdrop clicks when dismissal is disabled", async () => {
+	it("renders outcome cards and ignores backdrop clicks when dismissal is disabled", async () => {
 		const user = userEvent.setup();
 		renderHost();
 		let result: Promise<boolean | string>;
 		act(() => {
-			result = confirm({ title: "T", message: "M", confirmLabel: "Yes", cancelLabel: "No", dismissOnBackdrop: false });
+			result = confirm({
+				title: "The branch is in the base branch",
+				message: "The merge is complete. Is the task complete too?",
+				confirmLabel: "Complete task",
+				cancelLabel: "Not now",
+				alternativeAction: { label: "I’ll complete it myself", value: "manual" },
+				outcomeCards: {
+					kicker: "Branch merged",
+					statusLabel: "Merged",
+					statusValue: "feat/manual-completion",
+					confirmDescription: "Move the task to Completed now.",
+					cancelDescription: "Keep it open and ask again after the next merge.",
+					alternativeDescription: "Keep it open and stop asking after merges.",
+				},
+				dismissOnBackdrop: false,
+			});
 		});
 
-		const dialog = await screen.findByRole("dialog");
+		expect(await screen.findByText("Branch merged")).toBeInTheDocument();
+		expect(screen.getByText("Merged")).toBeInTheDocument();
+		expect(screen.getByText("feat/manual-completion")).toBeInTheDocument();
+		expect(screen.getByText("Move the task to Completed now.")).toBeInTheDocument();
+		expect(screen.getByText("Keep it open and ask again after the next merge.")).toBeInTheDocument();
+		expect(screen.getByText("Keep it open and stop asking after merges.")).toBeInTheDocument();
+
+		const dialog = screen.getByRole("dialog");
 		await user.click(dialog.parentElement!);
 		expect(screen.getByRole("dialog")).toBeInTheDocument();
 
-		await user.click(screen.getByRole("button", { name: "No" }));
+		await user.click(screen.getByRole("button", { name: "Not now" }));
 		await expect(result!).resolves.toBe(false);
 	});
 
@@ -609,73 +631,5 @@ describe("confirm service — keyboardChoice", () => {
 		press("y");
 		expect(screen.getByText("Close pane 2?")).toBeInTheDocument();
 		expect(screen.getByRole("button", { name: "Close pane" })).not.toHaveTextContent("↵");
-	});
-});
-
-describe("confirm anchored to the clicked control", () => {
-	it("opens as a popover with no dimmed backdrop and keeps the subject card", async () => {
-		const anchor = document.createElement("button");
-		document.body.appendChild(anchor);
-		renderHost();
-		let result: Promise<boolean>;
-		act(() => {
-			result = confirm({
-				title: "Complete task?",
-				message: "The worktree and branch will be deleted.",
-				confirmLabel: "Complete task",
-				anchor,
-				info: { title: "Fix the thing", body: "Overview line", seqLabel: "68", projectName: "dev-3.0" },
-			});
-		});
-		const dialog = await screen.findByRole("dialog");
-		expect(dialog).toHaveAttribute("data-anchored", "true");
-		expect(dialog.parentElement?.className).not.toContain("bg-black");
-		expect(screen.getByText("Overview line")).toBeInTheDocument();
-		expect(document.activeElement).toHaveTextContent("Cancel");
-		await userEvent.setup().click(dialog.parentElement!);
-		await expect(result!).resolves.toBe(false);
-		anchor.remove();
-	});
-
-	it("is a centred modal when the anchor has left the page", async () => {
-		renderHost();
-		act(() => { void confirm({ title: "Complete task?", message: "m", confirmLabel: "Go", anchor: document.createElement("button") }); });
-		expect(await screen.findByRole("dialog")).not.toHaveAttribute("data-anchored");
-	});
-
-	const viewport = { width: window.innerWidth, height: window.innerHeight };
-	function setViewport(width: number, height: number) {
-		Object.defineProperty(window, "innerWidth", { value: width, configurable: true });
-		Object.defineProperty(window, "innerHeight", { value: height, configurable: true });
-	}
-	afterEach(() => setViewport(viewport.width, viewport.height));
-
-	it("re-places itself when the window resizes", async () => {
-		setViewport(1000, 800);
-		const anchor = document.createElement("button");
-		anchor.getBoundingClientRect = () => ({ left: 100, top: 770, right: 120, bottom: 790, width: 20, height: 20 }) as DOMRect;
-		document.body.appendChild(anchor);
-		renderHost();
-		act(() => { void confirm({ title: "Complete task?", message: "m", confirmLabel: "Go", anchor }); });
-		const dialog = await screen.findByRole("dialog");
-		expect(dialog.style.top).toBe("764px");
-		act(() => {
-			setViewport(1000, 1000);
-			window.dispatchEvent(new Event("resize"));
-		});
-		expect(dialog.style.top).toBe("796px");
-		anchor.remove();
-	});
-
-	it("sits below the anchor, else above, else beside it, and stays on screen", () => {
-		const panel = { width: 300, height: 200 } as DOMRect;
-		setViewport(1000, 800);
-		const at = (left: number, top: number) => ({ left, top, right: left + 20, bottom: top + 20, height: 20 }) as DOMRect;
-		expect(placeBesideAnchor(at(100, 100), panel)).toEqual({ top: 126, left: 100 });
-		expect(placeBesideAnchor(at(100, 700), panel)).toEqual({ top: 494, left: 100 });
-		expect(placeBesideAnchor(at(900, 100), panel).left).toBe(692);
-		const short = { width: 300, height: 700 } as DOMRect;
-		expect(placeBesideAnchor(at(100, 380), short)).toEqual({ top: 40, left: 126 });
-		expect(placeBesideAnchor(at(900, 380), short).left).toBe(594);
 	});
 });

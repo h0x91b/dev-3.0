@@ -62,18 +62,10 @@ vi.mock("../../analytics", () => ({
 
 vi.mock("../../utils/confirmTaskCompletion", () => ({
 	confirmTaskCompletion: vi.fn().mockResolvedValue(true),
-	completionSkipsGitCheck: vi.fn().mockReturnValue(true),
-	unsavedWorkWarning: vi.fn().mockReturnValue(null),
 }));
 
 import { api } from "../../rpc";
 import { confirm } from "../../confirm";
-import { offerCompletion } from "../../completion-offers";
-
-vi.mock("../../completion-offers", async (importOriginal) => ({
-	...(await importOriginal<typeof import("../../completion-offers")>()),
-	offerCompletion: vi.fn().mockResolvedValue(false),
-}));
 import { toast } from "../../toast";
 import { trackEvent } from "../../analytics";
 import { confirmTaskCompletion } from "../../utils/confirmTaskCompletion";
@@ -3712,7 +3704,7 @@ describe("TaskInfoPanel", () => {
 				mergedByContent: true,
 				mergeCompletionFingerprint: "v1:dev3/task-t1:manual",
 			});
-			vi.mocked(offerCompletion).mockResolvedValue("manual" as never);
+			vi.mocked(confirm).mockResolvedValue("manual" as never);
 
 			await act(async () => {
 				renderPanel(task);
@@ -3724,7 +3716,12 @@ describe("TaskInfoPanel", () => {
 				manualCompletion: true,
 			}));
 			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();
-			expect(vi.mocked(offerCompletion)).toHaveBeenCalledWith(expect.objectContaining({ taskId: "t1", kind: "merge" }));
+			expect(vi.mocked(confirm)).toHaveBeenCalledWith(expect.objectContaining({
+				confirmLabel: "Complete task",
+				cancelLabel: "Not now",
+				alternativeAction: { label: "I’ll complete it myself", value: "manual" },
+				dismissOnBackdrop: false,
+			}));
 		});
 
 		it("shows a merge notice when the backend suppresses the popup", async () => {
@@ -3748,7 +3745,7 @@ describe("TaskInfoPanel", () => {
 				'Branch of task "Test task" was merged.',
 				expect.objectContaining({ taskId: "t1" }),
 			));
-			expect(vi.mocked(offerCompletion)).not.toHaveBeenCalled();
+			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
 		});
 
 		it("does not offer auto-complete for merged AI Review tasks", async () => {
@@ -3759,7 +3756,7 @@ describe("TaskInfoPanel", () => {
 				...defaultBranchStatus,
 				mergedByContent: true,
 			});
-			vi.mocked(offerCompletion).mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
 
 			await act(async () => {
@@ -3770,7 +3767,7 @@ describe("TaskInfoPanel", () => {
 				await vi.advanceTimersByTimeAsync(100);
 			});
 
-			expect(vi.mocked(offerCompletion)).not.toHaveBeenCalled();
+			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
 			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();
 		});
 
@@ -3782,7 +3779,7 @@ describe("TaskInfoPanel", () => {
 				...defaultBranchStatus,
 				mergedByContent: true,
 			});
-			vi.mocked(offerCompletion).mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
 
 			await act(async () => {
@@ -3790,7 +3787,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			await waitFor(() => {
-				expect(vi.mocked(offerCompletion)).toHaveBeenCalled();
+				expect(vi.mocked(confirm)).toHaveBeenCalled();
 			});
 			await waitFor(() => {
 				expect(mockedApi.request.moveTask).toHaveBeenCalledWith({
@@ -3812,7 +3809,7 @@ describe("TaskInfoPanel", () => {
 					...defaultBranchStatus,
 					mergedByContent: true,
 				});
-				vi.mocked(offerCompletion).mockResolvedValue(true);
+				vi.mocked(confirm).mockResolvedValue(true);
 				mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
 
 				await act(async () => {
@@ -3835,7 +3832,7 @@ describe("TaskInfoPanel", () => {
 				...defaultBranchStatus,
 				mergedByContent: true,
 			});
-			vi.mocked(offerCompletion).mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
 
 			await act(async () => {
@@ -3843,7 +3840,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			await waitFor(() => {
-				expect(vi.mocked(offerCompletion)).toHaveBeenCalled();
+				expect(vi.mocked(confirm)).toHaveBeenCalled();
 			});
 			await waitFor(() => {
 				expect(mockedApi.request.moveTask).toHaveBeenCalledWith({
@@ -3867,7 +3864,7 @@ describe("TaskInfoPanel", () => {
 				mergedByContent: true,
 				mergeCompletionFingerprint: "v1:dev3/task-t1:abc123",
 			});
-			vi.mocked(offerCompletion).mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 
 			await act(async () => {
 				renderPanel(task, { dispatch, navigate, project: customCompareProject });
@@ -3881,7 +3878,7 @@ describe("TaskInfoPanel", () => {
 				});
 			});
 			expect(mockedApi.request.prepareMergeCompletionPrompt).not.toHaveBeenCalled();
-			expect(vi.mocked(offerCompletion)).not.toHaveBeenCalled();
+			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
 		});
 
 		it("does not offer auto-complete while the worktree has uncommitted changes", async () => {
@@ -3895,7 +3892,7 @@ describe("TaskInfoPanel", () => {
 				deletions: 2,
 				mergeCompletionFingerprint: "v1:dev3/task-t1:abc123",
 			});
-			vi.mocked(offerCompletion).mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 
 			await act(async () => {
 				renderPanel(task, { dispatch, navigate });
@@ -3905,7 +3902,7 @@ describe("TaskInfoPanel", () => {
 				expect(mockedApi.request.getBranchStatus).toHaveBeenCalled();
 			});
 			expect(mockedApi.request.prepareMergeCompletionPrompt).not.toHaveBeenCalled();
-			expect(vi.mocked(offerCompletion)).not.toHaveBeenCalled();
+			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
 		});
 
 		it("does not offer auto-complete after a merge while uncommitted changes remain", async () => {
@@ -3917,7 +3914,7 @@ describe("TaskInfoPanel", () => {
 				insertions: 5,
 				deletions: 2,
 			});
-			vi.mocked(offerCompletion).mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 
 			await act(async () => {
 				renderPanel(task, { dispatch, navigate });
@@ -3932,7 +3929,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			expect(mockedApi.request.prepareMergeCompletionPrompt).not.toHaveBeenCalled();
-			expect(vi.mocked(offerCompletion)).not.toHaveBeenCalled();
+			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
 		});
 
 		it("does not show a second merge-complete dialog while one is already open", async () => {
@@ -3946,8 +3943,8 @@ describe("TaskInfoPanel", () => {
 				mergedByContent: true,
 				mergeCompletionFingerprint: "v1:dev3/task-t1:abc123",
 			});
-			vi.mocked(offerCompletion).mockReturnValue(
-				new Promise<boolean | "manual">((resolve) => {
+			vi.mocked(confirm).mockReturnValue(
+				new Promise<boolean>((resolve) => {
 					resolveConfirm = resolve;
 				}),
 			);
@@ -3957,7 +3954,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			await waitFor(() => {
-				expect(vi.mocked(offerCompletion)).toHaveBeenCalledTimes(1);
+				expect(vi.mocked(confirm)).toHaveBeenCalledTimes(1);
 			});
 
 			await act(async () => {
@@ -3968,7 +3965,7 @@ describe("TaskInfoPanel", () => {
 				);
 			});
 
-			expect(vi.mocked(offerCompletion)).toHaveBeenCalledTimes(1);
+			expect(vi.mocked(confirm)).toHaveBeenCalledTimes(1);
 
 			await act(async () => {
 				resolveConfirm(false);
@@ -4004,7 +4001,7 @@ describe("TaskInfoPanel", () => {
 			await waitFor(() => {
 				expect(mockedApi.request.prepareMergeCompletionPrompt).toHaveBeenCalled();
 			});
-			expect(vi.mocked(offerCompletion)).not.toHaveBeenCalled();
+			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
 			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();
 		});
 
@@ -4012,7 +4009,7 @@ describe("TaskInfoPanel", () => {
 			const dispatch = vi.fn();
 			const navigate = vi.fn();
 			const task = makeTask({ status: "in-progress" });
-			vi.mocked(offerCompletion).mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
 
 			await act(async () => {
@@ -4030,7 +4027,7 @@ describe("TaskInfoPanel", () => {
 
 			// Wait for the confirm dialog to resolve
 			await waitFor(() => {
-				expect(vi.mocked(offerCompletion)).toHaveBeenCalled();
+				expect(vi.mocked(confirm)).toHaveBeenCalled();
 			});
 
 			await waitFor(() => {
@@ -4053,7 +4050,7 @@ describe("TaskInfoPanel", () => {
 			const dispatch = vi.fn();
 			const navigate = vi.fn();
 			const task = makeTask({ status: "review-by-user" });
-			vi.mocked(offerCompletion).mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 			mockedApi.request.moveTask.mockReturnValue(new Promise(() => {}) as never);
 
 			await act(async () => {
@@ -4069,7 +4066,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			await waitFor(() => {
-				expect(vi.mocked(offerCompletion)).toHaveBeenCalled();
+				expect(vi.mocked(confirm)).toHaveBeenCalled();
 			});
 
 			await waitFor(() => {
@@ -4089,7 +4086,7 @@ describe("TaskInfoPanel", () => {
 			const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 			const task = makeTask({ status: "review-by-user" });
 
-			vi.mocked(offerCompletion).mockResolvedValue(true);
+			vi.mocked(confirm).mockResolvedValue(true);
 			mockedApi.request.moveTask
 				.mockRejectedValueOnce(new Error("primary failure"))
 				.mockRejectedValueOnce(new Error("forced failure"));
@@ -4107,7 +4104,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			await waitFor(() => {
-				expect(vi.mocked(offerCompletion)).toHaveBeenCalled();
+				expect(vi.mocked(confirm)).toHaveBeenCalled();
 			});
 			await waitFor(() => {
 				expect(mockedApi.request.moveTask).toHaveBeenCalledTimes(2);

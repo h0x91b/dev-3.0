@@ -103,8 +103,6 @@ export const HELP_TOPICS: HelpTopic[] = [
 	{ id: "inspector.runtime-bar", titleKey: "help.inspector.runtimeBar.title", bodyKey: "help.inspector.runtimeBar.body" },
 	{ id: "inspector.metadata", titleKey: "help.inspector.metadata.title", bodyKey: "help.inspector.metadata.body" },
 	{ id: "inspector.notes", titleKey: "help.inspector.notes.title", bodyKey: "help.inspector.notes.body" },
-	// Conditional: present only while a completion offer waits on the task, so not a REQUIRED_HELP_SURFACES entry.
-	{ id: "task.completion-strip", titleKey: "help.task.completionStrip.title", bodyKey: "help.task.completionStrip.body" },
 
 	// ── Diff viewer ──
 	{ id: "diff.modes", titleKey: "help.diff.modes.title", bodyKey: "help.diff.modes.body" },

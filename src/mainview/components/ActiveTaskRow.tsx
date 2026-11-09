@@ -17,7 +17,6 @@ import type { AppAction, Route } from "../state";
 import AgentLauncherBadge from "./AgentLauncherBadge";
 import LabelChip from "./LabelChip";
 import NativeBackendMark, { isNativeBackendTask } from "./NativeBackendMark";
-import CompletionOfferMark from "./CompletionOfferMark";
 import PipelineDropdown from "./PipelineDropdown";
 import PortBadgeList from "./PortBadgeList";
 import PriorityBadge from "./PriorityBadge";
@@ -124,7 +123,7 @@ export default function ActiveTaskRow({
 	// ring reports the stage, not that an agent is moving right now.
 	const isBusy = (task.status === "in-progress" || task.status === "review-by-ai") && !disconnected;
 
-	async function handleMove(newStatus: TaskStatus, opts?: { alwaysConfirm?: boolean; anchor?: HTMLElement }) {
+	async function handleMove(newStatus: TaskStatus, opts?: { alwaysConfirm?: boolean }) {
 		statusMenu.setOpen(false);
 		await moveTaskToStatus({
 			task,
@@ -134,7 +133,6 @@ export default function ActiveTaskRow({
 			t,
 			onOpenTask: onOpen,
 			alwaysConfirm: opts?.alwaysConfirm,
-			anchor: opts?.anchor,
 			onMovingChange: setMoving,
 		});
 	}
@@ -161,7 +159,7 @@ export default function ActiveTaskRow({
 		e.stopPropagation();
 		setCompleting(true);
 		try {
-			await handleMove("completed", { alwaysConfirm: true, anchor: e.currentTarget as HTMLElement });
+			await handleMove("completed", { alwaysConfirm: true });
 		} finally {
 			setCompleting(false);
 		}
@@ -171,7 +169,7 @@ export default function ActiveTaskRow({
 		e.stopPropagation();
 		setCancelling(true);
 		try {
-			await handleMove("cancelled", { alwaysConfirm: true, anchor: e.currentTarget as HTMLElement });
+			await handleMove("cancelled", { alwaysConfirm: true });
 		} finally {
 			setCancelling(false);
 		}
@@ -348,7 +346,6 @@ export default function ActiveTaskRow({
 				<div className="mt-1.5 flex items-center gap-1 min-w-0 flex-wrap">
 					<PriorityBadge priority={task.priority} onChange={onSetPriority} />
 					<div className="text-nano text-fg-3 font-mono shrink-0">#{task.seq}</div>
-					<CompletionOfferMark task={task} testId={`sidebar-completion-offer-${task.id}`} />
 					{task.hidden && (
 						<Tooltip content={t("task.hiddenFromSidebar")}>
 							<span className="inline-flex text-fg-muted" data-testid={`sidebar-task-hidden-badge-${task.id}`}>

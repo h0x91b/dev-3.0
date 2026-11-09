@@ -38,7 +38,7 @@ import type { Space, SpacesFile } from "./spaces";
 import type { BoardRef, BoardViewState } from "../board-view-state";
 import type { ExtensionInspection, ExtensionsOverview, InstalledExtension } from "../extensions";
 import type { Epic, EpicMember, EpicsFile } from "./epics";
-import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, AgentLaunchRequest, LaunchAfterUntil, LaunchVariant, PendingMergeOffer, TaskDialogSubject } from "./agent-launch";
+import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, AgentLaunchRequest, LaunchAfterUntil, LaunchVariant, TaskDialogSubject } from "./agent-launch";
 import type { ScheduledMessageTarget } from "./scheduled-messages";
 import type { LiveArtifact, SharedArtifact, SharedImage } from "./shared-media";
 import type { ScriptPlacement, ScriptRunner, ScriptSource, WorktreeScripts } from "./package-scripts";
@@ -835,11 +835,6 @@ export type AppRPCSchema = {
 			dismissMergeCompletionPrompt: {
 				params: { taskId: string; projectId: string; fingerprint: string | null };
 				response: Task;
-			};
-			/** Unanswered merge offers, replayed on connect like `listPendingCompletionRequests`. */
-			listPendingMergeOffers: {
-				params: Record<string, never>;
-				response: PendingMergeOffer[];
 			};
 			getPtyUrl: {
 				params: { taskId: string; resume?: boolean };
