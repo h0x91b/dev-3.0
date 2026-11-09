@@ -362,6 +362,42 @@ describe("TaskDetailModal", () => {
 			expect(onLaunchVariants).toHaveBeenCalledWith(task, "in-progress");
 		});
 
+		it("closing with X saves an open description edit before closing", async () => {
+			const task = makeTodoTask({ description: "original" });
+			const updated = { ...task, description: "original more" };
+			const dispatch = vi.fn();
+			const onClose = vi.fn();
+			mockedApi.request.editTask.mockResolvedValue(updated);
+			renderModal(task, { dispatch, onClose });
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			await user.type(screen.getByRole("textbox"), " more");
+			await user.click(screen.getByTitle("Close"));
+
+			expect(mockedApi.request.editTask).toHaveBeenCalledWith({
+				taskId: "t1",
+				projectId: "p1",
+				description: "original more",
+			});
+			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: updated });
+			expect(onClose).toHaveBeenCalledTimes(1);
+		});
+
+		it("closing with X stays open when saving the edited description fails", async () => {
+			const onClose = vi.fn();
+			mockedApi.request.editTask.mockRejectedValue(new Error("disk full"));
+			renderModal(makeTodoTask({ description: "original" }), { onClose });
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			await user.type(screen.getByRole("textbox"), " more");
+			await user.click(screen.getByTitle("Close"));
+
+			expect(onClose).not.toHaveBeenCalled();
+			expect(screen.getByRole("textbox")).toHaveValue("original more");
+		});
+
 		it("clicking Delete confirms, deletes the task and closes", async () => {
 			const task = makeTodoTask();
 			const dispatch = vi.fn();

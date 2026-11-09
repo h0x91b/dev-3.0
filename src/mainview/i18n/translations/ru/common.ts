@@ -47,6 +47,7 @@ const common = {
 	"agentLaunch.titleSpawn": "Агент хочет добавить агента в эту задачу",
 	"agentLaunch.titleResume": "Агент хочет возобновить сохранённую сессию задачи",
 	"agentLaunch.resumeNote": "Откроет сохранённые разговоры, каждый со своим агентом, пресетом и аккаунтом.",
+	"agentLaunch.resumeNoteAccount": "Откроет сохранённые разговоры, каждый со своим агентом и пресетом. Панели Claude можно перенести на другой аккаунт ниже.",
 	"agentLaunch.resumeConversation": "Разговор {id}",
 	"agentLaunch.resumeLatest": "Нет сохранённого id разговора — агент откроет свой последний",
 	"agentLaunch.resume": "Возобновить",

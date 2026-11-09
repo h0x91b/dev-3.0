@@ -3898,17 +3898,6 @@ function App() {
 				onClose={() => setShortcutsModal((s) => ({ ...s, open: false }))}
 			/>
 			{updatePreviewOpen && <UpdatePopoverSimulatorModal onClose={() => setUpdatePreviewOpen(false)} />}
-			<ConfirmHost onBusyChange={setConfirmBusy} />
-			{!confirmBusy && pendingAgentRequest && ("env" in pendingAgentRequest ? (
-				<SecretRequestModal key={pendingAgentRequest.requestId} request={pendingAgentRequest}
-					onDone={() => setAgentRequests((queue) => queue.filter((request) => request.requestId !== pendingAgentRequest.requestId))} />
-			) : (
-				<AgentLaunchRequestModal
-					key={pendingAgentRequest.requestId}
-					request={pendingAgentRequest}
-					onRespond={(approved, launch) => respondToLaunchRequest(pendingAgentRequest, approved, launch)}
-				/>
-			))}
 			{artifactViewer && (
 				<TaskArtifactViewer
 					taskId={artifactViewer.taskId}
@@ -3959,6 +3948,19 @@ function App() {
 			</>
 			)}
 			{launchLocationIssue && <LaunchLocationGate issue={launchLocationIssue} />}
+			{/* Agents block on these answers, and confirm() declines when no host is
+			    mounted — so the hosts stay up in immersive fullscreen too. */}
+			<ConfirmHost onBusyChange={setConfirmBusy} />
+			{!confirmBusy && pendingAgentRequest && ("env" in pendingAgentRequest ? (
+				<SecretRequestModal key={pendingAgentRequest.requestId} request={pendingAgentRequest}
+					onDone={() => setAgentRequests((queue) => queue.filter((request) => request.requestId !== pendingAgentRequest.requestId))} />
+			) : (
+				<AgentLaunchRequestModal
+					key={pendingAgentRequest.requestId}
+					request={pendingAgentRequest}
+					onRespond={(approved, launch) => respondToLaunchRequest(pendingAgentRequest, approved, launch)}
+				/>
+			))}
 			{/* File preview opens from Cmd/Ctrl+Click in ANY terminal, including the
 			    immersive fullscreen one, so it lives outside the chrome conditional. */}
 			{filePreview && (
