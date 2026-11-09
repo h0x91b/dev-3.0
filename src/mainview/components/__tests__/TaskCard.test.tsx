@@ -79,6 +79,7 @@ vi.mock("../LabelPicker", () => ({
 			<button onClick={onClose}>Close picker</button>
 		</div>
 	),
+	LabelPickerPanel: () => <div data-testid="label-picker-panel" />,
 }));
 
 import { api } from "../../rpc";

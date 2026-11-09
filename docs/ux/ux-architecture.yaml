@@ -452,7 +452,7 @@ ux_architecture:
       purpose: "Object-scoped actions on right-click / long-press (task card, sidebar row, terminal)."
       allowed: ["object_action", "open_in", "destructive"]
       forbidden: ["global_destination"]
-      task_menu: "ONE menu for the task object (TaskContextMenu), mounted by card AND sidebar row; routes to the existing picker/modal/RPC, owns no action. MAY repeat a control the surface shows — a context menu is reached blind. Narrow: BottomSheet. Shift+F10 opens it."
+      task_menu: "ONE menu for the task object (TaskContextMenu), mounted by card AND sidebar row; routes to the existing picker/modal/RPC, owns no action. MAY repeat a control the surface shows — a context menu is reached blind. Pickers: hover flyout. Narrow: BottomSheet, picker rows tap through. Shift+F10 opens it."
       evidence: ["src/mainview/components/TaskContextMenu.tsx", "src/mainview/components/OpenInMenu.tsx"]
     settings:
       purpose: "Durable configuration. GlobalSettings (app-wide) and ProjectSettings (per-project scripts, columns, labels, gh account)."
