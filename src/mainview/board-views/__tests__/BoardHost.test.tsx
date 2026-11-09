@@ -21,6 +21,7 @@ import { resetPreviousBoardViewsForTests } from "../BoardHost";
 import { toast } from "../../toast";
 import { resetBoardPluginsForTests, setExtensionLoadForTests } from "../plugins";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../../state";
+import { READABLE_GUTTER } from "../readable-width";
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -376,6 +377,29 @@ describe("BoardHost", () => {
 		const update = dispatch.mock.calls[dispatch.mock.calls.length - 1][0] as { project: Project };
 		expect(update.project.customColumns).toEqual([column]);
 	});
+	describe("filter-bar gutter for the readable-width Tree view", () => {
+		const filterBar = () => document.querySelector<HTMLElement>('[data-help-id="board.filter-bar"]')!;
+
+		it("lines the bar up with Tree, and keeps px-6 for every other view", async () => {
+			startBoardViews([installKanbanView]);
+			registerView("builtin:table");
+			registerView("builtin:tree");
+			registerView("ext:list");
+			renderHost();
+			await screen.findByTestId("board-view-switcher");
+			expect(filterBar()).toHaveClass("px-6");
+			act(() => runBoardViewCommand({ kind: "pick", viewId: "builtin:tree" }));
+			await screen.findByTestId("view-builtin:tree");
+			expect(filterBar().className).toContain(READABLE_GUTTER);
+			expect(filterBar()).not.toHaveClass("px-6");
+			for (const viewId of ["builtin:table", "ext:list"]) {
+				act(() => runBoardViewCommand({ kind: "pick", viewId }));
+				await screen.findByTestId(`view-${viewId}`);
+				expect(filterBar()).toHaveClass("px-6");
+			}
+		});
+	});
+
 	describe("board-view commands (v chord, menu, palette)", () => {
 		it("answers commands only while mounted", async () => {
 			startBoardViews([installKanbanView]);
