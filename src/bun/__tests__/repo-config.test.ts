@@ -1361,3 +1361,63 @@ describe("useRepoConfig: false — repository config is ignored", () => {
 		expect(explicit.portCount).toBe(7);
 	});
 });
+
+describe("schema-aware saves and named layers", () => {
+	const dir = join(TEST_DIR, ".dev3");
+
+	it("saveRepoConfig keeps schemaVersion and keys a newer dev3 wrote", async () => {
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, "config.json"), JSON.stringify({ schemaVersion: 1, futureField: { a: 1 }, setupScript: "old" }));
+		await saveRepoConfig(TEST_DIR, { setupScript: "new" });
+		expect(JSON.parse(readFileSync(join(dir, "config.json"), "utf-8"))).toEqual({ schemaVersion: 1, futureField: { a: 1 }, setupScript: "new" });
+	});
+
+	it("lists four layers from a worktree and distrusts a foreign-code worktree", async () => {
+		const { listConfigLayers } = await import("../repo-config");
+		const wt = join(TEST_DIR, "wt");
+		const layers = listConfigLayers(makeProject(), wt, { foreignCode: true });
+		expect(layers.map((l) => [l.id, l.trusted])).toEqual([
+			["local", false], ["repo", false], ["main-local", true], ["main-repo", true],
+		]);
+		expect(listConfigLayers(makeProject()).map((l) => l.id)).toEqual(["local", "repo"]);
+		expect(listConfigLayers(makeProject({ useRepoConfig: false }), wt)).toEqual([]);
+	});
+
+	it("attributes worktree vs main layers in provenance", async () => {
+		const wt = join(TEST_DIR, "wt");
+		mkdirSync(join(wt, ".dev3"), { recursive: true });
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(wt, ".dev3", "config.json"), JSON.stringify({ portCount: 2 }));
+		writeFileSync(join(dir, "config.local.json"), JSON.stringify({ defaultBaseBranch: "develop" }));
+		const project = makeProject();
+		const resolved = await resolveOperationalProjectConfig(project, wt);
+		const prov = resolveConfigProvenance(resolved, project, wt);
+		expect(prov.portCount).toBe("repo");
+		expect(prov.defaultBaseBranch).toBe("main-local");
+		expect(prov.setupScript).toBe("project");
+	});
+
+	it("describeEditReach names the higher layer that still wins", async () => {
+		const { listConfigLayers, describeEditReach, configFilePath } = await import("../repo-config");
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, "config.local.json"), JSON.stringify({ portCount: 3, env: { A: "1" } }));
+		const layers = listConfigLayers(makeProject());
+		const repoFile = configFilePath(TEST_DIR, false);
+		expect(describeEditReach(layers, repoFile, "portCount").shadowedBy).toBe("local");
+		expect(describeEditReach(layers, repoFile, "env", "B").shadowedBy).toBeUndefined();
+		expect(describeEditReach(layers, repoFile, "env", "A").shadowedBy).toBe("local");
+		expect(describeEditReach(layers, configFilePath(TEST_DIR, true), "portCount").shadowedBy).toBeUndefined();
+	});
+
+	it("editConfigFile edits one record entry and drops an emptied record", async () => {
+		const { editConfigFile } = await import("../repo-config");
+		const file = join(dir, "config.json");
+		editConfigFile(file, "env", "A", "1");
+		editConfigFile(file, "env", "B", "2");
+		expect(JSON.parse(readFileSync(file, "utf-8")).env).toEqual({ A: "1", B: "2" });
+		editConfigFile(file, "env", "A", undefined);
+		const result = editConfigFile(file, "env", "B", undefined);
+		expect(result.previous).toBe("2");
+		expect(JSON.parse(readFileSync(file, "utf-8"))).toEqual({});
+	});
+});

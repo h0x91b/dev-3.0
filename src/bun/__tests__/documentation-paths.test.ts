@@ -9,7 +9,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
@@ -58,30 +59,21 @@ function references(doc: string): string[] {
 }
 
 /**
- * Not repo content: build output, and gitignored per-machine state that is present on a developer's
- * box but absent on a fresh checkout. Walking them would make the result depend on the machine.
+ * Every tracked file, by full path and by basename so a token written without its directory still
+ * resolves. Build output and per-machine state (`node_modules`, a board kept in `.dev3/data`) are
+ * untracked, so the machine cannot change the result.
  */
-const NOT_REPO_CONTENT = new Set([
-	"node_modules",
-	"dist",
-	".git",
-	"settings.local.json",
-]);
-
-/** Every file in the repo by basename, so a token written without its directory still resolves. */
-function basenames(dir = ROOT, seen = new Set<string>()): Set<string> {
-	for (const entry of readdirSync(dir, { withFileTypes: true })) {
-		if (NOT_REPO_CONTENT.has(entry.name)) continue;
-		if (entry.isDirectory()) basenames(`${dir}/${entry.name}`, seen);
-		else seen.add(entry.name);
-	}
-	return seen;
+function trackedFiles(): string[] {
+	const ls = spawnSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "utf8" });
+	if (ls.status !== 0) throw new Error(`git ls-files failed: ${ls.stderr}`);
+	return ls.stdout.split("\0").filter(Boolean);
 }
 
-const ALL_BASENAMES = basenames();
+const TRACKED = new Set(trackedFiles());
+const ALL_BASENAMES = new Set([...TRACKED].map((path) => path.slice(path.lastIndexOf("/") + 1)));
 
 const resolves = (token: string) =>
-	token.includes("/") ? existsSync(`${ROOT}/${token}`) : ALL_BASENAMES.has(token);
+	token.includes("/") ? TRACKED.has(token) : ALL_BASENAMES.has(token);
 
 describe("documentation paths", () => {
 	for (const doc of DOCS) {

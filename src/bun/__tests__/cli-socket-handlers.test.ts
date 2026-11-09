@@ -536,6 +536,11 @@ describe("message.send / message.sendAsSender — the sender guards", () => {
 		expect(resp).toMatchObject({ ok: false, error: expect.stringContaining("agent.resumeAsSender") });
 	});
 
+	it("refuses a resume account that names nothing before resolving anything", async () => {
+		const resp = await handleRequest(makeRequest("agent.resume", { taskId: makeTask().id, accountId: 42 }));
+		expect(resp).toMatchObject({ ok: false, error: expect.stringContaining("accountId must be") });
+	});
+
 	it("never queues a sender's message into tasks.json", async () => {
 		const at = new Date(Date.now() + 60_000).toISOString();
 		const resp = await handleRequest(makeRequest("message.schedule", { ...base(), at, asSender: "cli" }));
@@ -2482,7 +2487,7 @@ describe("ui.show-image", () => {
 
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toMatchObject({ delivered: true, stored: 1 });
-		expect(videoSpy).toHaveBeenCalledWith(project.path, [{ path: "/tmp/demo.mp4", caption: "play me" }]);
+		expect(videoSpy).toHaveBeenCalledWith(project, [{ path: "/tmp/demo.mp4", caption: "play me" }]);
 		expect(imageSpy).not.toHaveBeenCalled();
 		const cliPush = pushFn.mock.calls.find((c) => c[0] === "cliShowImage");
 		expect(cliPush?.[1]).toMatchObject({ newKind: "video", newCount: 1 });
@@ -2572,8 +2577,8 @@ describe("ui.show-image", () => {
 
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toMatchObject({ delivered: true, stored: 2 });
-		expect(saveSpy).toHaveBeenCalledWith(project.path, "/tmp/a.png", "before");
-		expect(saveSpy).toHaveBeenCalledWith(project.path, "/tmp/b.png", "after");
+		expect(saveSpy).toHaveBeenCalledWith(project, "/tmp/a.png", "before");
+		expect(saveSpy).toHaveBeenCalledWith(project, "/tmp/b.png", "after");
 		const cliPush = pushFn.mock.calls.find((c) => c[0] === "cliShowImage");
 		expect(cliPush?.[1].images).toEqual(
 			expect.arrayContaining([
@@ -2682,7 +2687,7 @@ describe("ui.show-artifact", () => {
 
 		expect(response.ok).toBe(true);
 		expect(saveSharedArtifact).toHaveBeenCalledWith(
-			project.path,
+			project,
 			"/tmp/report.html",
 			["/tmp/app.css", "/tmp/app.js", "/tmp/chart.png"],
 			"Metrics",
@@ -2814,7 +2819,7 @@ describe("ui.show-artifact", () => {
 		}));
 
 		expect(saveSharedArtifact).toHaveBeenCalledWith(
-			project.path,
+			project,
 			"/tmp/report.html",
 			[],
 			"Metrics",

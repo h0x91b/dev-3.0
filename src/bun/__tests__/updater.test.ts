@@ -7,7 +7,8 @@ import { join } from "node:path";
 // with the parsed remote update.json, which only contains {version, hash} —
 // so every check wipes the `updateReady` flag (issue #813). These mocks
 // reproduce that exact behavior so the tests exercise the real failure mode.
-const { mockUpdater, markQuitConfirmed } = vi.hoisted(() => ({
+const { mockUpdater, markQuitConfirmed, buildInfo } = vi.hoisted(() => ({
+	buildInfo: { updatesDisabled: false },
 	mockUpdater: {
 		localInfo: {
 			version: vi.fn(async () => "1.29.0"),
@@ -30,6 +31,13 @@ vi.mock("../electrobun-platform", () => ({
 	PATHS: {},
 }));
 vi.mock("../quit-manager", () => ({ markQuitConfirmed }));
+// DEV3_DISABLE_UPDATES=1 is baked in at build time; a getter lets one describe flip it.
+vi.mock("../../shared/build-info.generated", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../../shared/build-info.generated")>()),
+	get UPDATES_DISABLED() {
+		return buildInfo.updatesDisabled;
+	},
+}));
 
 import {
 	applyUpdate,
@@ -45,6 +53,7 @@ import {
 	isUpdateAlreadyReady,
 	shouldRemindAboutReadyUpdate,
 	READY_REMINDER_INTERVAL_MS,
+	updatesDisabled,
 } from "../updater";
 
 /** Remote state as Electrobun's checkForUpdate() returns it: no updateReady. */
@@ -499,5 +508,63 @@ describe("startAutoCheck", () => {
 		await vi.advanceTimersByTimeAsync(STARTUP_DELAY_MS);
 
 		expect(onUpdate).toHaveBeenCalledWith("1.31.0", undefined);
+	});
+});
+
+describe("updatesDisabled", () => {
+	it("disables updates on the dev channel and on builds made with DEV3_DISABLE_UPDATES=1", () => {
+		expect(updatesDisabled("dev", false)).toBe(true);
+		expect(updatesDisabled("prod", true)).toBe(true);
+		expect(updatesDisabled("prod", false)).toBe(false);
+		expect(updatesDisabled("stable", false)).toBe(false);
+	});
+});
+
+describe("build-time update opt-out (DEV3_DISABLE_UPDATES=1)", () => {
+	const STARTUP_DELAY_MS = 10_000;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		buildInfo.updatesDisabled = true;
+		mockUpdater.localInfo.channel.mockResolvedValue("stable");
+	});
+
+	afterEach(() => {
+		buildInfo.updatesDisabled = false;
+		vi.useRealTimers();
+		vi.restoreAllMocks();
+	});
+
+	it("checkForUpdateWithChannel never reaches the network on a stable build", async () => {
+		const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+		const result = await checkForUpdateWithChannel("stable");
+
+		expect(result.updateAvailable).toBe(false);
+		expect(result.devBuild).toBe(true);
+		expect(fetchSpy).not.toHaveBeenCalled();
+		expect(mockUpdater.checkForUpdate).not.toHaveBeenCalled();
+	});
+
+	it("downloadUpdateForChannel refuses before touching the built-in updater", async () => {
+		const result = await downloadUpdateForChannel("stable", vi.fn());
+
+		expect(result.ok).toBe(false);
+		expect(mockUpdater.checkForUpdate).not.toHaveBeenCalled();
+		expect(mockUpdater.downloadUpdate).not.toHaveBeenCalled();
+	});
+
+	it("startAutoCheck skips every scheduled check", async () => {
+		vi.useFakeTimers();
+		const fetchSpy = vi.spyOn(globalThis, "fetch");
+		const onUpdate = vi.fn();
+		const onProgress = vi.fn();
+
+		startAutoCheck(async () => "stable", onUpdate, onProgress, vi.fn());
+		await vi.advanceTimersByTimeAsync(STARTUP_DELAY_MS);
+
+		expect(onUpdate).not.toHaveBeenCalled();
+		expect(onProgress).not.toHaveBeenCalled();
+		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 });

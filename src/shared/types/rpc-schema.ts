@@ -38,7 +38,7 @@ import type { Space, SpacesFile } from "./spaces";
 import type { BoardRef, BoardViewState } from "../board-view-state";
 import type { ExtensionInspection, ExtensionsOverview, InstalledExtension } from "../extensions";
 import type { Epic, EpicMember, EpicsFile } from "./epics";
-import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, AgentLaunchRequest, LaunchVariant, TaskDialogSubject } from "./agent-launch";
+import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, AgentLaunchRequest, LaunchVariant, PendingMergeOffer, TaskDialogSubject } from "./agent-launch";
 import type { ScheduledMessageTarget } from "./scheduled-messages";
 import type { LiveArtifact, SharedArtifact, SharedImage } from "./shared-media";
 import type { ScriptPlacement, ScriptRunner, ScriptSource, WorktreeScripts } from "./package-scripts";
@@ -246,11 +246,11 @@ export type AppRPCSchema = {
 				/** `autoConfigure` writes detected settings to `.dev3/config.local.json`; `autoConfigured` reports the outcome. */
 				params: { path: string; name?: string; autoConfigure?: boolean; boardCopy?: boolean };
 				/** `gitInit` is set when the folder could be made a repo in place (needs the user's confirmation). */
-				response: { ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer } | { ok: false; error: string; gitInit?: GitInitOffer };
+				response: { ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true } | { ok: false; error: string; gitInit?: GitInitOffer };
 			};
 			cloneAndAddProject: {
 				params: { url: string; baseDir: string; repoName?: string; progressId?: string; autoConfigure?: boolean; boardCopy?: boolean };
-				response: { ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer } | { ok: false; error: string };
+				response: { ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true } | { ok: false; error: string };
 			};
 			createDirectory: {
 				params: { parentPath: string; name: string };
@@ -259,7 +259,7 @@ export type AppRPCSchema = {
 			initAndAddProject: {
 				/** `initNonEmpty`: the user confirmed initializing a folder that already has files. */
 				params: { path: string; name?: string; initNonEmpty?: boolean; autoConfigure?: boolean; boardCopy?: boolean };
-				response: { ok: true; project: Project; gitInit?: GitInitOffer; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer } | { ok: false; error: string; gitInit?: GitInitOffer };
+				response: { ok: true; project: Project; gitInit?: GitInitOffer; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true } | { ok: false; error: string; gitInit?: GitInitOffer };
 			};
 			/**
 			 * Restore an EMPTY board from the copy in its project folder (`.dev3/board/`).
@@ -833,6 +833,11 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; fingerprint: string | null };
 				response: Task;
 			};
+			/** Unanswered merge offers, replayed on connect like `listPendingCompletionRequests`. */
+			listPendingMergeOffers: {
+				params: Record<string, never>;
+				response: PendingMergeOffer[];
+			};
 			getPtyUrl: {
 				params: { taskId: string; resume?: boolean };
 				// `hibernated` marks a recovery offer the user must accept explicitly:
@@ -848,7 +853,8 @@ export type AppRPCSchema = {
 				response: { url: string } | { gone: true };
 			};
 			resumeTask: {
-				params: { taskId: string; restart?: boolean };
+				/** `accountId` resumes every Claude pane on that account (null: system login); ignored with `restart`. */
+				params: { taskId: string; restart?: boolean; accountId?: string | null };
 				response: string;
 			};
 			restartTask: {
@@ -1052,7 +1058,7 @@ export type AppRPCSchema = {
 			};
 			getAppVersion: {
 				params: void;
-				response: { version: string; channel: string; buildChannel: string };
+				response: { version: string; channel: string; buildChannel: string; leanProtocolForcedByEnv: boolean; projectClaudeFolderSupported: boolean };
 			};
 			/** Coarse, bucketed install facts for analytics — never names, paths or titles. */
 			getTelemetryProfile: {
@@ -1239,6 +1245,11 @@ export type AppRPCSchema = {
 			setTaskForeignCode: {
 				params: { taskId: string; projectId: string; foreignCode: boolean };
 				response: Task;
+			};
+			/** The project's last explicit AWS profile pick; null when it never made one. */
+			getRememberedBedrockProfile: {
+				params: { projectId: string };
+				response: { profile: string | null } | null;
 			};
 			/** Persist a deferred launch on a todo task ("Start in…"). */
 			scheduleTaskLaunch: {
@@ -1447,6 +1458,7 @@ export type AppRPCSchema = {
 					agentId: string | null;
 					configId: string | null;
 					accountId?: string | null;
+					bedrockProfile?: string | null;
 					handoff?: boolean;
 				};
 				response: SpawnAgentResult;

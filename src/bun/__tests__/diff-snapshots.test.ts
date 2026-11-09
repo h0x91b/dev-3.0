@@ -119,18 +119,19 @@ describe("whole-tree helpers", () => {
 		mkdirSync(a, { recursive: true });
 		mkdirSync(b, { recursive: true });
 		mkdirSync(join(dir, "slug-b", "cccccccc"), { recursive: true });
+		const taskDirs = [join(dir, "slug-a", "aaaaaaaa"), join(dir, "slug-b", "bbbbbbbb"), join(dir, "slug-b", "cccccccc")];
 		for (const d of [a, b]) {
 			writeFileSync(join(d, "2026-03-10T19-23-18.patch"), DIFF);
 			utimesSync(join(d, "2026-03-10T19-23-18.patch"), OLD, OLD);
 		}
 
-		expect(measurePlainDiffSnapshots(dir)).toEqual({ dirs: 2, files: 2, bytes: 2 * Buffer.byteLength(DIFF) });
-		const result = compressAllDiffSnapshots(dir, Date.now());
+		expect(measurePlainDiffSnapshots(taskDirs)).toEqual({ dirs: 2, files: 2, bytes: 2 * Buffer.byteLength(DIFF) });
+		const result = compressAllDiffSnapshots(taskDirs, Date.now());
 		expect(result).toMatchObject({ dirs: 2, compressed: 2, skipped: 0, bytesBefore: 2 * Buffer.byteLength(DIFF) });
-		expect(measurePlainDiffSnapshots(dir)).toEqual({ dirs: 0, files: 0, bytes: 0 });
+		expect(measurePlainDiffSnapshots(taskDirs)).toEqual({ dirs: 0, files: 0, bytes: 0 });
 	});
 
-	it("tolerates a missing worktrees root", () => {
-		expect(compressAllDiffSnapshots(join(dir, "missing"))).toMatchObject({ dirs: 0, compressed: 0 });
+	it("tolerates task dirs that no longer exist", () => {
+		expect(compressAllDiffSnapshots([join(dir, "missing")])).toMatchObject({ dirs: 0, compressed: 0 });
 	});
 });

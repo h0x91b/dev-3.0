@@ -146,6 +146,9 @@ export interface Task {
 	 * account the usage-balanced router picked.
 	 */
 	accountId?: string | null;
+	/** AWS profile entry picked for a Bedrock agent (see LaunchVariant). Persisted so
+	 *  Retry, respawn and recovery launch on the same AWS account. */
+	bedrockProfile?: string | null;
 	/** Why Auto chose `accountId`, recorded at the launch that routed it. */
 	accountPick?: { reason: AccountPickReason; at: string } | null;
 	createdAt: string;
@@ -368,6 +371,12 @@ export interface Task {
 	 * (new branch from `baseBranch`) of that repo instead of a plain folder.
 	 */
 	opsWorktree?: boolean;
+	/**
+	 * `"project"` when this task's dir was created under `<project>/.dev3/worktrees/`.
+	 * Stamped once at creation from the project's `storageRoot`, never recomputed,
+	 * so flipping that setting cannot move a live task. Absent means `~/.dev3.0`.
+	 */
+	taskDirLocation?: "project";
 	/** Last-launch timestamps (ISO) per package.json script — used to sort the Scripts dropdown. */
 	scriptLastRunAt?: Record<string, string>;
 	/** Last-used placement per package.json script — pre-selects it in the placement picker. */

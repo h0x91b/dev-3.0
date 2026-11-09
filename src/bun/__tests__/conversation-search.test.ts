@@ -5,13 +5,14 @@ import { join } from "node:path";
 import { searchConversations, type EngineTask } from "../conversation-search";
 import { claudeEncodePath, reconstructWorktreePath } from "../../shared/conversation-search-core";
 
-const SLUG = "test-proj";
+const PROJECT = { path: "/test-proj" };
+const wtPath = (taskId: string) => reconstructWorktreePath(dev3Home, PROJECT, { id: taskId });
 
 let home: string;
 let dev3Home: string;
 
 function seedTranscript(taskId: string, lines: string[]): void {
-	const wt = reconstructWorktreePath(dev3Home, SLUG, taskId);
+	const wt = wtPath(taskId);
 	const dir = join(home, ".claude", "projects", claudeEncodePath(wt));
 	mkdirSync(dir, { recursive: true });
 	const jsonl = lines
@@ -21,7 +22,7 @@ function seedTranscript(taskId: string, lines: string[]): void {
 }
 
 function seedCodexRollout(taskId: string, messages: Array<{ role: "user" | "assistant"; text: string }>): void {
-	const cwd = reconstructWorktreePath(dev3Home, SLUG, taskId);
+	const cwd = wtPath(taskId);
 	const dir = join(home, ".codex", "sessions", "2026", "01", "01");
 	mkdirSync(dir, { recursive: true });
 	const lines = [
@@ -37,7 +38,7 @@ function seedCodexRollout(taskId: string, messages: Array<{ role: "user" | "assi
 }
 
 function seedGeminiChat(taskId: string, alias: string, messages: Array<{ type: string; text: string }>): void {
-	const projectRoot = reconstructWorktreePath(dev3Home, SLUG, taskId);
+	const projectRoot = wtPath(taskId);
 	const aliasDir = join(home, ".gemini", "tmp", alias);
 	mkdirSync(join(aliasDir, "chats"), { recursive: true });
 	writeFileSync(join(aliasDir, ".project_root"), projectRoot);
@@ -79,7 +80,7 @@ describe("searchConversations", () => {
 		const results = searchConversations({
 			query: "websocket reconnect",
 			tasks,
-			projectSlug: SLUG,
+			project: PROJECT,
 			currentTaskId: null,
 			currentGroupId: null,
 			home,
@@ -90,6 +91,29 @@ describe("searchConversations", () => {
 		expect(results[0].taskId).toBe("aaaaaaaa-1");
 		expect(results[0].snippets[0]).toContain("websocket");
 		expect(results[0].transcriptPaths).toHaveLength(1);
+	});
+
+	it("finds a transcript of a task whose dir lives inside the project", () => {
+		const project = { path: join(home, "repo"), storageRoot: "project" as const };
+		const id = "inprj000-1";
+		const wt = reconstructWorktreePath(dev3Home, project, { id, taskDirLocation: "project" });
+		expect(wt).toBe(`${project.path}/.dev3/worktrees/inprj000/worktree`);
+		const dir = join(home, ".claude", "projects", claudeEncodePath(wt));
+		mkdirSync(dir, { recursive: true });
+		const line = { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "Fixed the websocket reconnect loop." }] } };
+		writeFileSync(join(dir, "session.jsonl"), JSON.stringify(line) + "\n");
+
+		const results = searchConversations({
+			query: "websocket reconnect",
+			tasks: [task(id, { taskDirLocation: "project" })],
+			project,
+			currentTaskId: null,
+			currentGroupId: null,
+			home,
+			dev3Home,
+		});
+
+		expect(results.map((r) => r.taskId)).toEqual([id]);
 	});
 
 	it("excludes the current task and all same-group siblings", () => {
@@ -106,7 +130,7 @@ describe("searchConversations", () => {
 		const results = searchConversations({
 			query: "websocket",
 			tasks,
-			projectSlug: SLUG,
+			project: PROJECT,
 			currentTaskId: "self0000-x",
 			currentGroupId: "grp",
 			home,
@@ -123,7 +147,7 @@ describe("searchConversations", () => {
 		const def = searchConversations({
 			query: "websocket",
 			tasks,
-			projectSlug: SLUG,
+			project: PROJECT,
 			currentTaskId: null,
 			currentGroupId: null,
 			home,
@@ -134,7 +158,7 @@ describe("searchConversations", () => {
 		const all = searchConversations({
 			query: "websocket",
 			tasks,
-			projectSlug: SLUG,
+			project: PROJECT,
 			currentTaskId: null,
 			currentGroupId: null,
 			statuses: ["todo", "in-progress", "completed", "cancelled"],
@@ -153,7 +177,7 @@ describe("searchConversations", () => {
 		const results = searchConversations({
 			query: "alpha",
 			tasks,
-			projectSlug: SLUG,
+			project: PROJECT,
 			currentTaskId: null,
 			currentGroupId: null,
 			limit: 2,
@@ -173,7 +197,7 @@ describe("searchConversations", () => {
 		const results = searchConversations({
 			query: "websocket",
 			tasks,
-			projectSlug: SLUG,
+			project: PROJECT,
 			currentTaskId: null,
 			currentGroupId: null,
 			home,
@@ -196,7 +220,7 @@ describe("searchConversations", () => {
 		const results = searchConversations({
 			query: "kafka consumer lag",
 			tasks,
-			projectSlug: SLUG,
+			project: PROJECT,
 			currentTaskId: null,
 			currentGroupId: null,
 			home,
@@ -218,7 +242,7 @@ describe("searchConversations", () => {
 		const results = searchConversations({
 			query: "webhook retries backoff",
 			tasks,
-			projectSlug: SLUG,
+			project: PROJECT,
 			currentTaskId: null,
 			currentGroupId: null,
 			home,
@@ -232,10 +256,10 @@ describe("searchConversations", () => {
 
 	describe("cursor agent transcripts", () => {
 		const search = (query: string, tasks: EngineTask[]) =>
-			searchConversations({ query, tasks, projectSlug: SLUG, currentTaskId: null, currentGroupId: null, home, dev3Home });
+			searchConversations({ query, tasks, project: PROJECT, currentTaskId: null, currentGroupId: null, home, dev3Home });
 
 		it("finds every hash-named dir that names the worktree, matching the user's words only", () => {
-			const wt = reconstructWorktreePath(dev3Home, SLUG, "cur00000-a");
+			const wt = wtPath("cur00000-a");
 			seedCursorChat("Users-x-Docume-1111111", wt, "s1", [
 				{ role: "user", text: "<timestamp>Sunday, Oct 18</timestamp>\n<user_query>\nthrottle the webhook\n</user_query>" },
 			]);
@@ -248,7 +272,7 @@ describe("searchConversations", () => {
 		});
 
 		it("does not claim a derived-name dir whose trust record names another workspace", () => {
-			const wt = reconstructWorktreePath(dev3Home, SLUG, "cur00000-b");
+			const wt = wtPath("cur00000-b");
 			const derived = wt.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "");
 			seedCursorChat(derived, "/somewhere/else", "s1", [{ role: "assistant", text: "unrelated zebra work" }]);
 
@@ -266,7 +290,7 @@ describe("searchConversations", () => {
 		const results = searchConversations({
 			query: "kafka rebalance",
 			tasks,
-			projectSlug: SLUG,
+			project: PROJECT,
 			currentTaskId: null,
 			currentGroupId: null,
 			home,
@@ -279,7 +303,7 @@ describe("searchConversations", () => {
 	it("finds a transcript written under a dev3 Claude agent account", () => {
 		// dev3 injects the account dir as CLAUDE_CONFIG_DIR, so half a machine's
 		// history lives here and a home-only scan cannot see it.
-		const wt = reconstructWorktreePath(dev3Home, SLUG, "acct0000-a");
+		const wt = wtPath("acct0000-a");
 		const dir = join(dev3Home, "agent-accounts", "claude", "acc-1", "projects", claudeEncodePath(wt));
 		mkdirSync(dir, { recursive: true });
 		writeFileSync(
@@ -290,7 +314,7 @@ describe("searchConversations", () => {
 		const results = searchConversations({
 			query: "tunnel handshake",
 			tasks: [task("acct0000-a")],
-			projectSlug: SLUG,
+			project: PROJECT,
 			currentTaskId: null,
 			currentGroupId: null,
 			home,
@@ -303,7 +327,7 @@ describe("searchConversations", () => {
 	it("keeps finding a task through dev3's own dump after the transcript is gone", () => {
 		// The dump is written when a task goes terminal, and it is the only copy
 		// that outlives Claude's retention window.
-		const wt = reconstructWorktreePath(dev3Home, SLUG, "dump0000-a");
+		const wt = wtPath("dump0000-a");
 		const container = wt.slice(0, wt.lastIndexOf("/"));
 		mkdirSync(join(container, "conversations"), { recursive: true });
 		writeFileSync(
@@ -314,7 +338,7 @@ describe("searchConversations", () => {
 		const results = searchConversations({
 			query: "retention window",
 			tasks: [task("dump0000-a")],
-			projectSlug: SLUG,
+			project: PROJECT,
 			currentTaskId: null,
 			currentGroupId: null,
 			home,
@@ -329,7 +353,7 @@ describe("searchConversations", () => {
 			searchConversations({
 				query: "   ",
 				tasks: [task("aaaaaaaa-1")],
-				projectSlug: SLUG,
+				project: PROJECT,
 				currentTaskId: null,
 				currentGroupId: null,
 				home,

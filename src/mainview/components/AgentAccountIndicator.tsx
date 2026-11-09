@@ -552,6 +552,8 @@ export default function AgentAccountIndicator({
 	onSelect,
 	onAddAccount,
 	projectId,
+	allowAuto = true,
+	subtitle,
 }: {
 	agent: CodingAgent | undefined | null;
 	/** Per-launch selection: `undefined` → the registry default (the preselect);
@@ -559,7 +561,7 @@ export default function AgentAccountIndicator({
 	value?: string | null;
 	/** When provided the pill is a LOCAL per-launch selector (no global mutation,
 	 *  no confirm). When omitted it stays the global default switcher. */
-	onSelect?: (accountId: string | null) => void;
+	onSelect?: (accountId: string | null | undefined) => void;
 	/** Renders the "add another account" link in the popover footer. A launch
 	 *  surface passes what it must do first (close itself); omit it where leaving
 	 *  is wrong — the blocked-CLI approval dialog. */
@@ -568,6 +570,10 @@ export default function AgentAccountIndicator({
 	 *  system-login row names that directory and shows its account instead of
 	 *  `~/.claude`'s, because that is the login the session will really use. */
 	projectId?: string;
+	/** False drops the Auto row: a resume reopens an existing conversation, and Auto only routes new ones. */
+	allowAuto?: boolean;
+	/** Replaces the per-launch popover subtitle, for a surface whose pick outlives one launch. */
+	subtitle?: string;
 }) {
 	const t = useT();
 	const kind = agent ? agentAccountKindForCommand(agent.baseCommand) : null;
@@ -579,12 +585,14 @@ export default function AgentAccountIndicator({
 	const report = useAgentRateLimits(anchor !== null);
 	const buttonRef = useRef<HTMLButtonElement>(null);
 	const isLocal = !!onSelect;
-	const routable = isRoutableAccountKind(kind);
+	const routable = allowAuto && isRoutableAccountKind(kind);
 	const autoDefault = routable && !!state && state[kind].autoDefault === true;
-	const autoSelected = routable && (isLocal ? isAutoAccountId(value) || (value === undefined && autoDefault) : autoDefault);
+	// A per-launch choice that is no explicit pick (none or Auto) keeps the project's own folder.
+	const keepsProjectLogin = isLocal && kind === "claude" && !!projectLogin?.configDir && (value === undefined || isAutoAccountId(value));
+	const autoSelected = routable && !keepsProjectLogin && (isLocal ? isAutoAccountId(value) || (value === undefined && autoDefault) : autoDefault);
 	// Fetched while the popover is open (to decide whether Auto is worth a row)
 	// and whenever Auto is the choice (the pill names the account it would use).
-	const preview = useAutoAccountPreview(kind, projectId, anchor !== null || autoSelected);
+	const preview = useAutoAccountPreview(kind, projectId, routable && (anchor !== null || autoSelected));
 
 	// Closing the popover hands focus back to the pill that opened it — the panel
 	// unmounts, and without this a keyboard user lands on <body>, outside the
@@ -595,7 +603,7 @@ export default function AgentAccountIndicator({
 	}, []);
 
 	const handleSelectLocal = useCallback(
-		(accountId: string | null) => {
+		(accountId: string | null | undefined) => {
 			closePopover();
 			onSelect?.(accountId);
 		},
@@ -630,7 +638,7 @@ export default function AgentAccountIndicator({
 	// picking) falls back to this kind's default — never shows as "nothing selected".
 	const carriedOver = isLocal && typeof value === "string" && !isAutoAccountId(value) && !kindState.accounts.some((a) => a.id === value);
 	const effectiveSelectedId = isLocal && value !== undefined && !carriedOver && !isAutoAccountId(value) ? value : kindState.activeId;
-	const isRowActive = (id: string | null) => !autoSelected && id === effectiveSelectedId;
+	const isRowActive = (id: string | null) => !autoSelected && !keepsProjectLogin && id === effectiveSelectedId;
 	// The preview merges the app-wide list into the project's, so tell the two apart here.
 	const globallyExcluded = (id: string | null) =>
 		isRoutableAccountKind(kind) && state[kind].autoExcluded?.includes(exclusionKey(kind, id)) === true;
@@ -639,10 +647,14 @@ export default function AgentAccountIndicator({
 			? null
 			: t(globallyExcluded(id) ? "launch.accountExcludedEverywhere" : "launch.accountExcludedHere");
 
-	const selectedAccount: AgentAccount | null = kindState.accounts.find((a) => a.id === effectiveSelectedId) ?? null;
-	// Any managed Claude account makes every launch set (or unset) CLAUDE_CONFIG_DIR
-	// itself, which overrides the project's pin - so the pin only holds without one.
-	const pinnedDir = state.claude.accounts.length === 0 ? (projectLogin?.configDir ?? null) : null;
+	const selectedAccount: AgentAccount | null = keepsProjectLogin
+		? null
+		: (kindState.accounts.find((a) => a.id === effectiveSelectedId) ?? null);
+	// With managed accounts, the project's pin gets its own row and the system row is ~/.claude:
+	// picking the system login explicitly overrides the pin.
+	const projectPinDir = kind === "claude" ? (projectLogin?.configDir ?? null) : null;
+	const pinnedDir = state.claude.accounts.length === 0 ? projectPinDir : null;
+	const projectPinLabel = projectPinDir ? t("settings.accountsProjectLogin", { dir: shortClaudeConfigDir(projectPinDir) }) : null;
 	const fallbackIdentity =
 		kind === "claude"
 			? (pinnedDir ? (projectLogin?.identity ?? null) : state.claude.systemIdentity)
@@ -658,7 +670,9 @@ export default function AgentAccountIndicator({
 				: kind === "pi"
 					? t("settings.accountsPiDefaultLogin")
 					: t("settings.accountsUnmanaged");
-	const accountLabel = selectedAccount ? selectedAccount.label : (fallbackIdentity?.email ?? fallbackLabel);
+	const accountLabel = keepsProjectLogin
+		? (projectLogin?.identity?.email ?? projectPinLabel ?? fallbackLabel)
+		: selectedAccount ? selectedAccount.label : (fallbackIdentity?.email ?? fallbackLabel);
 	const activeLabel = !autoSelected
 		? accountLabel
 		: !preview
@@ -689,7 +703,9 @@ export default function AgentAccountIndicator({
 	const rows: PopoverRow[] = [];
 	// Auto earns its row once there are two logins to balance — or while it is the
 	// choice, so a selected state never vanishes from the list.
-	if (routable && (autoSelected || autoCandidateTotal(preview) >= 2)) {
+	// Auto never overrides a project's own folder, so a pinned launch has nothing to route.
+	const projectPinHolds = isLocal && kind === "claude" && !!projectLogin?.configDir && state.claude.accounts.length > 0;
+	if (routable && !projectPinHolds && (autoSelected || autoCandidateTotal(preview) >= 2)) {
 		rows.push({
 			key: "auto",
 			label: t("launch.accountAuto"),
@@ -705,6 +721,19 @@ export default function AgentAccountIndicator({
 			onSelect: isLocal
 				? () => handleSelectLocal(AUTO_ACCOUNT_ID)
 				: () => handleSelectGlobal(kind, AUTO_ACCOUNT_ID),
+		});
+	}
+	if (isLocal && projectPinDir && state.claude.accounts.length > 0) {
+		rows.push({
+			key: "project",
+			label: projectPinLabel ?? "",
+			sub: projectLogin?.identity?.email ?? null,
+			planLabel: identityBadge(projectLogin?.identity ?? null),
+			workspaceLabel: null,
+			isApi: false,
+			isActive: keepsProjectLogin,
+			usage: usageFor(null, false, projectPinDir),
+			onSelect: () => handleSelectLocal(undefined),
 		});
 	}
 	// System-login row: selectable for BOTH kinds in local mode (codex now has a
@@ -806,7 +835,7 @@ export default function AgentAccountIndicator({
 					busy={busy}
 					hint={isLocal ? t("launch.accountForLaunchHint") : t("settings.accountsNewSessionsHint")}
 					title={isLocal ? t("launch.accountForLaunchTitle") : t("launch.accountActiveTitle")}
-					subtitle={isLocal ? t("launch.accountForLaunchSubtitle") : t("launch.accountGlobalSubtitle")}
+					subtitle={subtitle ?? (isLocal ? t("launch.accountForLaunchSubtitle") : t("launch.accountGlobalSubtitle"))}
 					// In the settings surfaces (global mode) the link costs nothing — the
 					// user is already in Settings, so it just scrolls them to Accounts.
 					onAddAccount={onAddAccount ?? (isLocal ? null : openAgentAccountSettings)}

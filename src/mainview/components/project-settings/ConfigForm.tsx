@@ -9,6 +9,7 @@ import { BranchPicker } from "./BranchPicker";
 import { DevServersEditor } from "./DevServersEditor";
 import { EnvVarsEditor, type EnvStorageScope } from "./EnvVarsEditor";
 import { Field, ToggleSwitch, WarningNote } from "./fields";
+import { SchemaConfigFields } from "./SchemaConfigFields";
 
 // ---- Config form (shared between Repo and Local tabs) ----
 
@@ -90,6 +91,7 @@ export function ConfigForm({ config, onChange, inherited, projectId, projectPath
 				description={t("projectSettings.groupScriptsDesc")}
 			>
 			{/* Setup Script */}
+			<div data-config-keys="setupScript">
 			<Field title={t("projectSettings.setupScript")} description={t("projectSettings.setupScriptDesc")}>
 				<textarea
 					value={config.setupScript ?? ""}
@@ -103,8 +105,9 @@ export function ConfigForm({ config, onChange, inherited, projectId, projectPath
 					className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
 				/>
 			</Field>
+			</div>
 
-			<div>
+			<div data-config-keys="setupScriptLaunchMode">
 				<fieldset>
 					<legend className="block text-fg text-sm font-semibold mb-2">
 						{t("projectSettings.setupScriptLaunchMode")}
@@ -158,6 +161,7 @@ export function ConfigForm({ config, onChange, inherited, projectId, projectPath
 			</div>
 
 			{/* Dev servers: `devScript` as the row named `dev`, plus `devServers` */}
+			<div data-config-keys="devScript devServers">
 			<DevServersEditor
 				devScript={config.devScript}
 				devServers={config.devServers}
@@ -167,8 +171,10 @@ export function ConfigForm({ config, onChange, inherited, projectId, projectPath
 					if (patch.devServers !== undefined) update("devServers", patch.devServers);
 				}}
 			/>
+			</div>
 
 			{/* Cleanup Script */}
+			<div data-config-keys="cleanupScript">
 			<Field title={t("projectSettings.cleanupScript")} description={t("projectSettings.cleanupScriptDesc")}>
 				<textarea
 					value={config.cleanupScript ?? ""}
@@ -182,14 +188,18 @@ export function ConfigForm({ config, onChange, inherited, projectId, projectPath
 					className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
 				/>
 			</Field>
+			</div>
 
 			{/* Environment Variables */}
+			<div data-config-keys="env">
 			<EnvVarsEditor
 				env={config.env}
 				storageScope={envStorageScope}
 				onChange={(env) => update("env", env)}
 				onErrorChange={onEnvErrorChange}
 			/>
+			</div>
+			<SchemaConfigFields section="scripts" config={config} onChange={onChange} inherited={inherited} />
 			</SettingsSection>
 
 			<SettingsSection
@@ -197,7 +207,7 @@ export function ConfigForm({ config, onChange, inherited, projectId, projectPath
 				description={t("projectSettings.groupWorktreeDesc")}
 			>
 			{/* Clone Paths (CoW) */}
-			<div>
+			<div data-config-keys="clonePaths">
 				<span className="block text-fg text-sm font-semibold mb-2">
 					{t("projectSettings.clonePaths")}
 				</span>
@@ -231,7 +241,7 @@ export function ConfigForm({ config, onChange, inherited, projectId, projectPath
 			</div>
 
 			{/* Worktree File Filter (Sparse Checkout) */}
-			<div>
+			<div data-config-keys="sparseCheckoutEnabled sparseCheckoutPaths">
 				<span className="block text-fg text-sm font-semibold mb-2">
 					{t("projectSettings.sparseCheckout")}
 				</span>
@@ -277,7 +287,7 @@ export function ConfigForm({ config, onChange, inherited, projectId, projectPath
 			</div>
 
 			{/* Port Allocation */}
-			<div>
+			<div data-config-keys="portCount">
 				<label htmlFor="project-port-count" className="block text-fg text-sm font-semibold mb-1">
 					{t("projectSettings.portCount")}
 				</label>
@@ -294,6 +304,7 @@ export function ConfigForm({ config, onChange, inherited, projectId, projectPath
 					className="w-20 px-3 py-1.5 rounded-lg bg-base border border-edge text-fg text-sm tabular-nums outline-none focus:border-accent transition-colors"
 				/>
 			</div>
+			<SchemaConfigFields section="worktree" config={config} onChange={onChange} inherited={inherited} />
 			</SettingsSection>
 
 			<SettingsSection
@@ -301,6 +312,7 @@ export function ConfigForm({ config, onChange, inherited, projectId, projectPath
 				description={t("projectSettings.groupGitDesc")}
 			>
 			{/* Default Base Branch */}
+			<div data-config-keys="defaultBaseBranch">
 			<Field title={t("projectSettings.baseBranch")} description={t("projectSettings.baseBranchDesc")}>
 				<BranchPicker
 					projectId={projectId}
@@ -311,7 +323,9 @@ export function ConfigForm({ config, onChange, inherited, projectId, projectPath
 					includeRemote={false}
 				/>
 			</Field>
+			</div>
 
+			<div data-config-keys="defaultCompareRef">
 			<Field title={t("projectSettings.compareRef")} description={t("projectSettings.compareRefDesc")}>
 				<BranchPicker
 					projectId={projectId}
@@ -322,9 +336,10 @@ export function ConfigForm({ config, onChange, inherited, projectId, projectPath
 					includeRemote={true}
 				/>
 			</Field>
+			</div>
 
 			{/* Peer Review Column */}
-			<div className="flex items-center justify-between gap-4">
+			<div data-config-keys="peerReviewEnabled" className="flex items-center justify-between gap-4">
 				<div>
 					<span className="block text-fg text-sm font-semibold mb-1">
 						{t("projectSettings.peerReview")}
@@ -341,7 +356,7 @@ export function ConfigForm({ config, onChange, inherited, projectId, projectPath
 			</div>
 
 			{/* Automatic AI Review */}
-			<div className="space-y-3">
+			<div data-config-keys="autoReviewEnabled" className="space-y-3">
 				<div className="flex items-center justify-between gap-4">
 					<div>
 						<span className="block text-fg text-sm font-semibold mb-1">
@@ -359,6 +374,7 @@ export function ConfigForm({ config, onChange, inherited, projectId, projectPath
 				</div>
 				{(config.autoReviewEnabled ?? false) && <WarningNote>{t("projectSettings.autoReviewWarning")}</WarningNote>}
 			</div>
+			<SchemaConfigFields section="git" config={config} onChange={onChange} inherited={inherited} />
 			</SettingsSection>
 		</div>
 	);

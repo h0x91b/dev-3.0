@@ -30,7 +30,7 @@ describe("scanHumanTerminalInput — is that a submit?", () => {
 
 	it("treats CRs inside a bracketed paste as content, not keypresses", () => {
 		const paste = `\x1b[200~line one\rline two\r\x1b[201~`;
-		expect(scanHumanTerminalInput(paste)).toEqual({ submitted: false, inPaste: false });
+		expect(scanHumanTerminalInput(paste)).toEqual({ submitted: false, typed: true, inPaste: false });
 	});
 
 	it("sees the Enter that follows a paste", () => {
@@ -39,10 +39,31 @@ describe("scanHumanTerminalInput — is that a submit?", () => {
 
 	it("carries an unfinished paste across chunks, so its content is never a submit", () => {
 		const first = scanHumanTerminalInput("\x1b[200~line one\r");
-		expect(first).toEqual({ submitted: false, inPaste: true });
+		expect(first).toEqual({ submitted: false, typed: true, inPaste: true });
 		const second = scanHumanTerminalInput("line two\r\x1b[201~", first.inPaste);
-		expect(second).toEqual({ submitted: false, inPaste: false });
+		expect(second).toEqual({ submitted: false, typed: true, inPaste: false });
 		// And the very next Enter, outside the paste, is his own again.
 		expect(scanHumanTerminalInput("\r", second.inPaste).submitted).toBe(true);
+	});
+});
+
+describe("scanHumanTerminalInput — is that typing?", () => {
+	const CLICK = "\x1b[<0;12;5M\x1b[<0;12;5m";
+
+	it("does not read a mouse click or a focus change as typing", () => {
+		expect(scanHumanTerminalInput(CLICK)).toEqual({ submitted: false, typed: false, inPaste: false });
+		expect(scanHumanTerminalInput("\x1b[M !!").typed).toBe(false); // X10 mouse press
+		expect(scanHumanTerminalInput("\x1b[I\x1b[O").typed).toBe(false);
+	});
+
+	it("reads keys around a mouse report as typing", () => {
+		expect(scanHumanTerminalInput(`${CLICK}a`).typed).toBe(true);
+		expect(scanHumanTerminalInput(`x${CLICK}`).typed).toBe(true);
+		expect(scanHumanTerminalInput("\x1b[Z").typed).toBe(true); // Shift+Tab
+		expect(scanHumanTerminalInput("\x1b").typed).toBe(true); // a bare Escape
+	});
+
+	it("still sees a submit after a click", () => {
+		expect(scanHumanTerminalInput(`${CLICK}\r`)).toEqual({ submitted: true, typed: true, inPaste: false });
 	});
 });

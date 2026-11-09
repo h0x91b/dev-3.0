@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Project } from "../../shared/types";
 import { api } from "../rpc";
@@ -29,16 +29,24 @@ const POPOVER_WIDTH = 260;
  * project and deleted projects are never listed. Selection is delegated to the
  * parent via `onSelect`; this component owns only discovery + search + layout.
  */
-export default function MoveToProjectPicker({ currentProjectId, anchorEl, onSelect, onClose }: MoveToProjectPickerProps) {
+interface MoveToProjectPanelProps {
+	currentProjectId: string;
+	onSelect: (project: Project) => void;
+	/** "sheet" drops the divider under the search field; the bottom sheet has its own title bar. */
+	variant?: "popover" | "sheet";
+	/** Fires after the list's height can have changed, so a positioned host can re-measure. */
+	onLayoutChange?: () => void;
+	/** Focus the search field on mount. */
+	autoFocus?: boolean;
+}
+
+/** Search field and destination list, without a surface: the popover, the sheet and the task menu flyout host it. */
+export function MoveToProjectPanel({ currentProjectId, onSelect, variant = "popover", onLayoutChange, autoFocus = true }: MoveToProjectPanelProps) {
 	const t = useT();
 	const privacy = useProjectPrivacy();
-	const narrow = useNarrowViewport(MOBILE_MAX_WIDTH);
 	const [projects, setProjects] = useState<Project[] | null>(null);
 	const [query, setQuery] = useState("");
-	const popoverRef = useRef<HTMLDivElement>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
-	const [pos, setPos] = useState({ top: 0, left: 0 });
-	const [positioned, setPositioned] = useState(false);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -63,10 +71,76 @@ export default function MoveToProjectPicker({ currentProjectId, anchorEl, onSele
 
 	const loading = projects === null;
 
+	useLayoutEffect(() => {
+		onLayoutChange?.();
+	}, [loading, destinations.length, onLayoutChange]);
+
+	// Auto-focus the search field once mounted.
+	useEffect(() => {
+		if (!autoFocus) return;
+		const id = requestAnimationFrame(() => inputRef.current?.focus());
+		return () => cancelAnimationFrame(id);
+	}, [autoFocus]);
+
+	return (
+		<>
+			<div className={variant === "sheet" ? "pb-1" : "border-b border-edge/50 p-2"}>
+				<input
+					ref={inputRef}
+					type="text"
+					value={query}
+					onChange={(e) => setQuery(e.target.value)}
+					placeholder={t("task.moveToProjectSearch")}
+					className="w-full bg-elevated border border-edge rounded-lg px-2.5 py-1.5 text-sm text-fg placeholder-fg-muted outline-none focus:border-accent/50 transition-colors"
+					aria-label={t("task.moveToProjectSearch")}
+				/>
+			</div>
+			<div className="max-h-60 overflow-y-auto py-1" data-testid="move-to-project-list">
+				{loading ? (
+					<div className="px-3 py-4 text-center text-xs text-fg-muted">…</div>
+				) : destinations.length === 0 ? (
+					<div className="px-3 py-4 text-center text-xs text-fg-muted">{t("task.moveToProjectEmpty")}</div>
+				) : (
+					destinations.map((p) => (
+						<button
+							key={p.id}
+							type="button"
+							aria-disabled={privacy.isLocked(p) || undefined}
+							title={privacy.isLocked(p) ? t("streamer.projectLocked") : undefined}
+							onClick={() => {
+								if (privacy.isLocked(p)) return;
+								onSelect(p);
+							}}
+							className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-overlay-hover"
+						>
+							<span className={`truncate text-sm text-fg ${privacy.maskClass(p)}`}>{p.name}</span>
+						</button>
+					))
+				)}
+			</div>
+		</>
+	);
+}
+
+/**
+ * Searchable destination-project picker for "Move to project…". Desktop renders
+ * an anchored popover (portaled + viewport-clamped, like LabelPicker); narrow
+ * viewports render a bottom sheet (the app's mandated mobile surface — the fixed
+ * detail-modal width would clip an in-modal popover on a phone). The current
+ * project and deleted projects are never listed. Selection is delegated to the
+ * parent via `onSelect`; this component owns only layout.
+ */
+export default function MoveToProjectPicker({ currentProjectId, anchorEl, onSelect, onClose }: MoveToProjectPickerProps) {
+	const t = useT();
+	const narrow = useNarrowViewport(MOBILE_MAX_WIDTH);
+	const popoverRef = useRef<HTMLDivElement>(null);
+	const [pos, setPos] = useState({ top: 0, left: 0 });
+	const [positioned, setPositioned] = useState(false);
+
 	// Position the desktop popover relative to the anchor, clamped to the viewport,
 	// flipping above when it would overflow the bottom (the trigger sits in the
 	// modal footer). Re-runs as content height settles after the async load.
-	useLayoutEffect(() => {
+	const place = useCallback(() => {
 		if (narrow || !popoverRef.current) return;
 		const anchor = anchorEl.getBoundingClientRect();
 		const rect = popoverRef.current.getBoundingClientRect();
@@ -81,13 +155,9 @@ export default function MoveToProjectPicker({ currentProjectId, anchorEl, onSele
 		if (top < pad) top = pad;
 		setPos({ top, left });
 		setPositioned(true);
-	}, [anchorEl, narrow, loading, destinations.length]);
+	}, [anchorEl, narrow]);
 
-	// Auto-focus the search field once mounted (both surfaces).
-	useEffect(() => {
-		const id = requestAnimationFrame(() => inputRef.current?.focus());
-		return () => cancelAnimationFrame(id);
-	}, [narrow]);
+	useLayoutEffect(place, [place]);
 
 	// Desktop: dismiss on click outside the popover and its anchor.
 	useEffect(() => {
@@ -101,49 +171,10 @@ export default function MoveToProjectPicker({ currentProjectId, anchorEl, onSele
 		return () => document.removeEventListener("mousedown", handleClick);
 	}, [narrow, anchorEl, onClose]);
 
-	const searchInput = (
-		<input
-			ref={inputRef}
-			type="text"
-			value={query}
-			onChange={(e) => setQuery(e.target.value)}
-			placeholder={t("task.moveToProjectSearch")}
-			className="w-full bg-elevated border border-edge rounded-lg px-2.5 py-1.5 text-sm text-fg placeholder-fg-muted outline-none focus:border-accent/50 transition-colors"
-			aria-label={t("task.moveToProjectSearch")}
-		/>
-	);
-
-	const list = (
-		<div className="max-h-60 overflow-y-auto py-1" data-testid="move-to-project-list">
-			{loading ? (
-				<div className="px-3 py-4 text-center text-xs text-fg-muted">…</div>
-			) : destinations.length === 0 ? (
-				<div className="px-3 py-4 text-center text-xs text-fg-muted">{t("task.moveToProjectEmpty")}</div>
-			) : (
-				destinations.map((p) => (
-					<button
-						key={p.id}
-						type="button"
-						aria-disabled={privacy.isLocked(p) || undefined}
-						title={privacy.isLocked(p) ? t("streamer.projectLocked") : undefined}
-						onClick={() => {
-							if (privacy.isLocked(p)) return;
-							onSelect(p);
-						}}
-						className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-overlay-hover"
-					>
-						<span className={`truncate text-sm text-fg ${privacy.maskClass(p)}`}>{p.name}</span>
-					</button>
-				))
-			)}
-		</div>
-	);
-
 	if (narrow) {
 		return (
 			<BottomSheet open onClose={onClose} title={t("task.moveToProjectTitle")} testId="move-to-project-sheet">
-				<div className="pb-1">{searchInput}</div>
-				{list}
+				<MoveToProjectPanel currentProjectId={currentProjectId} onSelect={onSelect} variant="sheet" />
 			</BottomSheet>
 		);
 	}
@@ -152,14 +183,14 @@ export default function MoveToProjectPicker({ currentProjectId, anchorEl, onSele
 		<div
 			ref={popoverRef}
 			role="dialog"
+			data-menu-surface
 			aria-label={t("task.moveToProjectTitle")}
 			data-testid="move-to-project-popover"
 			className="fixed z-[60] overflow-hidden rounded-xl border border-edge-active bg-overlay shadow-2xl shadow-black/40"
 			style={{ top: pos.top, left: pos.left, width: POPOVER_WIDTH, visibility: positioned ? "visible" : "hidden" }}
 			onClick={(e) => e.stopPropagation()}
 		>
-			<div className="border-b border-edge/50 p-2">{searchInput}</div>
-			{list}
+			<MoveToProjectPanel currentProjectId={currentProjectId} onSelect={onSelect} onLayoutChange={place} />
 		</div>,
 		document.body,
 	);

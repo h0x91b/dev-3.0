@@ -1,0 +1,5 @@
+Short: Keep dev3 data inside the project
+
+Project Settings can now keep a project's board data and new task worktrees inside the project folder (`.dev3/data`, `.dev3/worktrees`) instead of `~/.dev3.0`, and the Add Project dialog gains a remembered "Keep dev3 data in the project folder" switch for new projects; switching copies the data and never deletes it, and running tasks stay where they are. On macOS, Settings → Agents also gains "Each project uses its own Claude folder", which runs task agents with `CLAUDE_CONFIG_DIR` set to the project's `.claude` (its rules, agents, skills, memory and `CLAUDE.md` load, runtime files stay out of `git status`), and that project folder now wins over the default managed Claude account on every launch path unless an account is picked for the task. The lean agent protocol is now a global Settings toggle as well as `DEV3_LEAN_PROTOCOL=1`.
+
+Contributed by @fallenfuzz (h0x91b/dev-3.0#2235)

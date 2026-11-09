@@ -98,7 +98,7 @@ export function createLiveHandlers(deps: LiveHandlerDeps): Record<string, Handle
 			const { project, task } = await deps.resolveTask(params);
 			assertWritable(task);
 			const write = { collection: str(params, "collection"), id: str(params, "id"), by: "agent" as const, now: Date.now(), ifRev: optionalRev(params) };
-			return mutateLiveState(project.path, task.id, (draft) => {
+			return mutateLiveState(project, task.id, (draft) => {
 				const change = apply(draft, write);
 				return { result: change, changes: change ? [change] : [] };
 			});
@@ -115,7 +115,7 @@ export function createLiveHandlers(deps: LiveHandlerDeps): Record<string, Handle
 			const title = typeof params.title === "string" && params.title.trim() ? params.title.trim() : task.liveArtifact?.page.title;
 			let page: SharedArtifact;
 			try {
-				page = saveSharedArtifact(project.path, str(params, "htmlPath"), assetPaths, title, { forceNew: true });
+				page = saveSharedArtifact(project, str(params, "htmlPath"), assetPaths, title, { forceNew: true });
 			} catch (error) {
 				if (error instanceof SharedArtifactError) throw new LiveStoreError(error.message);
 				throw error;
@@ -130,7 +130,7 @@ export function createLiveHandlers(deps: LiveHandlerDeps): Record<string, Handle
 
 		"live.status": async (params) => {
 			const { project, task } = await deps.resolveTask(params);
-			const state = await readLiveState(project.path, task.id);
+			const state = await readLiveState(project, task.id);
 			const collections = Object.fromEntries(Object.entries(state.collections).map(([name, docs]) => [name, Object.keys(docs).length]));
 			return {
 				taskId: task.id,
@@ -139,13 +139,13 @@ export function createLiveHandlers(deps: LiveHandlerDeps): Record<string, Handle
 				rev: state.rev,
 				collections,
 				events: { total: state.events.length, unhandled: state.events.filter((event) => !event.handled).length },
-				bytes: liveStoreBytes(project.path, task.id),
+				bytes: liveStoreBytes(project, task.id),
 			};
 		},
 
 		"live.get": async (params) => {
 			const { project, task } = await deps.resolveTask(params);
-			const state = await readLiveState(project.path, task.id);
+			const state = await readLiveState(project, task.id);
 			const collection = str(params, "collection");
 			const id = str(params, "id");
 			const doc = state.collections[collection]?.[id];
@@ -155,7 +155,7 @@ export function createLiveHandlers(deps: LiveHandlerDeps): Record<string, Handle
 
 		"live.list": async (params) => {
 			const { project, task } = await deps.resolveTask(params);
-			const state = await readLiveState(project.path, task.id);
+			const state = await readLiveState(project, task.id);
 			const collection = typeof params.collection === "string" && params.collection ? params.collection : null;
 			if (!collection) return { collections: Object.fromEntries(Object.entries(state.collections).map(([name, docs]) => [name, Object.keys(docs).length])) };
 			return { collection, docs: Object.values(state.collections[collection] ?? {}) };
@@ -167,7 +167,7 @@ export function createLiveHandlers(deps: LiveHandlerDeps): Record<string, Handle
 
 		"live.events": async (params) => {
 			const { project, task } = await deps.resolveTask(params);
-			const state = await readLiveState(project.path, task.id);
+			const state = await readLiveState(project, task.id);
 			const since = params.since === undefined ? 0 : Number(params.since);
 			return state.events.filter((event) => event.id > since && (params.unhandled !== true || !event.handled));
 		},
@@ -176,7 +176,7 @@ export function createLiveHandlers(deps: LiveHandlerDeps): Record<string, Handle
 			const { project, task } = await deps.resolveTask(params);
 			const ids = params.all === true ? ("all" as const) : Array.isArray(params.ids) ? params.ids.map(Number).filter(Number.isInteger) : [];
 			if (ids !== "all" && ids.length === 0) throw new LiveStoreError("Pass event ids or --all");
-			return mutateLiveState(project.path, task.id, (draft) => {
+			return mutateLiveState(project, task.id, (draft) => {
 				const acked = liveAckEvents(draft, ids);
 				return { result: { acked }, changes: [], dirty: acked > 0 };
 			});
@@ -187,7 +187,7 @@ export function createLiveHandlers(deps: LiveHandlerDeps): Record<string, Handle
 			const { project, task } = await deps.resolveTask(params);
 			assertWritable(task);
 			const { task: updated } = await data.updateTaskWith<null>(project, task.id, () => ({ updates: { liveArtifact: undefined }, result: null }));
-			if (params.data === true) await wipeLiveStore(project.path, task.id);
+			if (params.data === true) await wipeLiveStore(project, task.id);
 			deps.push()?.("taskUpdated", { projectId: project.id, task: updated });
 			return { taskId: task.id, clearedData: params.data === true };
 		},

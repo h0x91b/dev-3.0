@@ -4,6 +4,7 @@ import { writeClaudeHooks, writeCodexHooks } from "../../shared/agent-hooks";
 import { writeOmpStatusExtension } from "../../shared/omp-status-extension";
 import { writePiStatusExtension } from "../../shared/pi-status-extension";
 import { resolveDev3Home } from "../../shared/dev3-home";
+import { parseInProjectTaskPath } from "../../shared/project-storage";
 import { removeCursorUsageHooks, writeCursorUsageHooks } from "../../bun/cursor-usage-hooks";
 
 const WORKTREES_DIR = `${resolveDev3Home()}/worktrees`;
@@ -13,6 +14,8 @@ const WORKTREES_DIR = `${resolveDev3Home()}/worktrees`;
  * (path matching ~/.dev3.0/worktrees/{slug}/{id}/worktree).
  */
 function detectWorktreePath(cwd: string): string | null {
+	const inProject = parseInProjectTaskPath(cwd);
+	if (inProject?.inWorktree) return `${inProject.taskDir}/worktree`;
 	let dir = cwd;
 	for (let i = 0; i < 30; i++) {
 		if (dir.startsWith(WORKTREES_DIR + "/")) {

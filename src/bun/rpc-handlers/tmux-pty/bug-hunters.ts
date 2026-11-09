@@ -21,7 +21,7 @@ import { deliverAgentPrompt } from "../../agent-prompt-delivery";
 import { agentPromptMayHaveLanded, type AgentPromptDelivery } from "../../../shared/agent-prompt-delivery";
 import { closeTaskPane, splitTaskPane, type AuxPaneHandle, type AuxPanePlacement } from "../../task-aux-panes";
 import { getPushMessage, AGENT_ENV_DEFAULTS, buildAgentEnv, buildCmdScript, generatedScriptLaunch, generatedScriptName, log, writeLaunchScript } from "../shared-pure";
-import { applyAgentHooksToCommand, ensureAgentTrust, handlePaneExited } from "./task-launch";
+import { applyAgentHooksToCommand, ensureAgentTrust, handlePaneExited, notifyBedrockProfileMissing } from "./task-launch";
 
 /** How long the hunter agents get to boot before their prompt is typed in. */
 const BUG_HUNTER_AUTOTYPE_DELAY_MS = 5000;
@@ -99,6 +99,9 @@ async function spawnSingleBugHunterPane(opts: {
 	const cmdOptions: agents.CommandOptions = {
 		sessionId: freshSessionId,
 		accountId: opts.accountId,
+		projectEnv,
+		// Hunters audit the task's own work, so they run on its AWS account.
+		bedrockProfile: opts.task.bedrockProfile,
 		autoRouting: await autoRoutingContext(opts.project, `${opts.task.id}:hunter:${freshSessionId}`, projectEnv),
 	};
 	let launchAccountId = opts.accountId;
@@ -116,6 +119,7 @@ async function spawnSingleBugHunterPane(opts: {
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		resolvedAgentFamily = resolved.agentFamily;
 		if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
+		if (resolved.bedrockProfileMissing) await notifyBedrockProfileMissing(opts.task);
 		launchedAgentId = resolved.agent?.id ?? opts.agentId;
 		launchedConfigId = resolved.config?.id ?? opts.configId;
 	} else {
@@ -132,6 +136,7 @@ async function spawnSingleBugHunterPane(opts: {
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		resolvedAgentFamily = resolved.agentFamily;
 		if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
+		if (resolved.bedrockProfileMissing) await notifyBedrockProfileMissing(opts.task);
 		launchedAgentId = resolved.agent?.id ?? null;
 		launchedConfigId = resolved.config?.id ?? null;
 	}

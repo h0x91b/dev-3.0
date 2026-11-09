@@ -100,6 +100,11 @@ describe("taskShortIdFromWorktreePath", () => {
 		expect(taskShortIdFromWorktreePath(`${ROOT}/proj`, ROOT)).toBeNull();
 		expect(taskShortIdFromWorktreePath("/home/u/Desktop/src/abcd1234/worktree", ROOT)).toBeNull();
 	});
+
+	it("reads the task id out of an in-project task dir", () => {
+		expect(taskShortIdFromWorktreePath("/home/u/Desktop/acme/.dev3/worktrees/abcd1234/worktree/src", ROOT)).toBe("abcd1234");
+		expect(taskShortIdFromWorktreePath("/home/u/Desktop/acme/.dev3/worktrees/uploads/x.png", ROOT)).toBeNull();
+	});
 });
 
 describe("selectOrphanGroups", () => {

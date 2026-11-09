@@ -16,5 +16,5 @@ export function taskCardAgent(task: Pick<Task, "agentId" | "configId" | "worktre
 		? (agentConfig.model ? `${agentConfig.name} · ${agentConfig.model}` : agentConfig.name)
 		: agent?.name ?? "";
 	const hasLauncherIcon = agent ? resolveAgentLauncherIcon(agent) !== null : false;
-	return { agent, configLabel, hasLauncherIcon };
+	return { agent, agentConfig: agentConfig ?? null, configLabel, hasLauncherIcon };
 }

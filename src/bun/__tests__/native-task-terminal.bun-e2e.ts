@@ -82,6 +82,7 @@ import { defaultNativeShellLaunchSpec } from "../native-terminal-registry/shell-
 import type { ErrorMessage } from "../native-terminal-registry/protocol";
 import { sendUntilObserved, SHELL_WARMUP_PROBE } from "../native-terminal-registry/__tests__/command-roundtrip";
 import { tmux } from "../tmux";
+import { ptyWsUrl } from "../pty-server-access";
 
 let failures = 0;
 function check(condition: boolean, message: string): void {
@@ -212,7 +213,7 @@ interface RendererClient {
 }
 
 async function openRenderer(port: number, taskId: string, since: number | null = null): Promise<RendererClient> {
-	const url = ptyUrlWithSince(`ws://localhost:${port}?session=${encodeURIComponent(taskId)}`, since);
+	const url = ptyUrlWithSince(ptyWsUrl(port, taskId), since);
 	const ws = new WebSocket(url);
 	const { sink, push } = makeSink();
 	const headers: NativeStreamHeader[] = [];

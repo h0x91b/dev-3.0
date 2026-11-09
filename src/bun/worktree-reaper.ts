@@ -1,4 +1,5 @@
 import { realpathSync } from "node:fs";
+import { parseInProjectTaskPath } from "../shared/project-storage";
 import type { WorktreeOrphanGroup } from "../shared/types";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
@@ -162,7 +163,7 @@ const WORKTREES_ROOT = `${DEV3_HOME}/worktrees`;
  * `~/.dev3.0/worktrees/<project-slug>/<taskId8>/worktree/...`. Exported for tests.
  */
 export function taskShortIdFromWorktreePath(cwd: string, root = WORKTREES_ROOT): string | null {
-	if (!cwd.startsWith(`${root}/`)) return null;
+	if (!cwd.startsWith(`${root}/`)) return parseInProjectTaskPath(cwd)?.shortId ?? null;
 	const segments = cwd.slice(root.length + 1).split("/");
 	// [slug, taskId8, ...]; `uploads` / `shared-artifacts` / `live-artifacts` siblings have no id.
 	const shortId = segments[1];

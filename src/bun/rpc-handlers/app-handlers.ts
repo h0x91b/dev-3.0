@@ -12,6 +12,7 @@ import { buildUpdateChangelog, changedKeysFromPaths, changelogEntryKey, countMer
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
+import { ptyHttpUrl } from "../pty-server-access";
 import { loadSettings, saveSettings } from "../settings";
 import { consumeQuitDialogPending, markQuitConfirmed } from "../quit-manager";
 import { consumePendingDeepLinkNav as consumeDeepLinkNavPending } from "../deep-link-nav";
@@ -21,11 +22,13 @@ import { previewTaskPrRef as previewTaskPrRefTarget, resolveTaskPrRef as resolve
 import { BUNDLED_CHANGELOG } from "../changelog-bundled";
 import * as repoConfig from "../repo-config";
 import { autoConfigureProject } from "../project-autoconfig";
+import { storeNewProjectInProject } from "./settings-config";
 import { boardCopyOfferForNewProject, restoreBoardCopy } from "../board-copy";
 import { DEV3_HOME } from "../paths";
 import { createSandboxProject } from "../sandbox-project";
 import { IGNORED_FOLDER_JUNK, initGitInPlace, probeGitInit } from "../git-init-in-place";
-import { pathBasename, projectStorageKey } from "../../shared/project-storage-key";
+import { pathBasename } from "../../shared/project-storage-key";
+import { projectWorktreesRoot, storesInProject } from "../../shared/project-storage";
 import { listFilesystemRoots } from "../../shared/filesystem-roots";
 import { listAgentSkills as scanAgentSkills } from "../skills-catalog";
 import { spawn, spawnSync } from "../spawn";
@@ -363,7 +366,7 @@ function isInsideDev3Home(path: string): boolean {
 async function addProjectImpl(
 	params: { path: string; name?: string; autoConfigure?: boolean; boardCopy?: boolean },
 	opts: { offerGitInit?: boolean } = {},
-): Promise<{ ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer } | { ok: false; error: string; gitInit?: GitInitOffer }> {
+): Promise<{ ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true } | { ok: false; error: string; gitInit?: GitInitOffer }> {
 	log.info("→ addProject", params);
 	try {
 		// Protect the synthetic virtual-project namespace: a real git repo must
@@ -386,6 +389,7 @@ async function addProjectImpl(
 		// A renderer cannot name a project from its path: in remote mode the browser
 		// may be macOS while the repo lives on a Windows drive.
 		const name = params.name?.trim() || pathBasename(params.path);
+		const addStartedAt = Date.now();
 		const added = await data.addProject(params.path, name);
 		// Read before the copy is switched on: its first write must not become the offer.
 		const boardCopyOffer = await boardCopyOfferForNewProject(added).catch((err) => {
@@ -399,6 +403,17 @@ async function addProjectImpl(
 			project.defaultBaseBranch = defaultBranch;
 		} catch (err) {
 			log.warn("Could not detect default branch, keeping 'main'", { error: String(err) });
+		}
+		// Only a record created by this call: re-adding a known project never moves its data.
+		const createdNow = Date.parse(added.createdAt) >= addStartedAt;
+		let storageKeptHome = false;
+		if (createdNow && !storesInProject(project) && (await loadSettings()).newProjectsStoreInProject === true) {
+			try {
+				Object.assign(project, await storeNewProjectInProject(project));
+			} catch (err) {
+				log.warn("Kept the new project's data in ~/.dev3.0", { id: project.id, error: String(err) });
+				storageKeptHome = true;
+			}
 		}
 		// Written before resolveProjectConfig so the returned project already carries it.
 		const autoConfigured = params.autoConfigure
@@ -420,6 +435,7 @@ async function addProjectImpl(
 			project: resolved,
 			...(autoConfigured ? { autoConfigured } : {}),
 			...(boardCopyOffer ? { boardCopyOffer } : {}),
+			...(storageKeptHome ? { storageKeptHome: true as const } : {}),
 		};
 	} catch (err) {
 		log.error("addProject failed", { error: String(err), params });
@@ -443,7 +459,7 @@ async function addVirtualProject(params: { name: string }): Promise<{ ok: true; 
 /** How often clone output updates are pushed to the renderer. */
 const CLONE_PROGRESS_PUSH_INTERVAL_MS = 150;
 
-async function cloneAndAddProject(params: { url: string; baseDir: string; repoName?: string; progressId?: string; autoConfigure?: boolean; boardCopy?: boolean }): Promise<{ ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer } | { ok: false; error: string }> {
+async function cloneAndAddProject(params: { url: string; baseDir: string; repoName?: string; progressId?: string; autoConfigure?: boolean; boardCopy?: boolean }): Promise<{ ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true } | { ok: false; error: string }> {
 	log.info("→ cloneAndAddProject", params);
 	try {
 		const name = params.repoName || extractRepoName(params.url);
@@ -555,7 +571,7 @@ function isEffectivelyEmpty(path: string): boolean {
  *   `gitInit` describing what would happen. The user's files are never committed.
  */
 async function initAndAddProject(params: { path: string; name?: string; initNonEmpty?: boolean; autoConfigure?: boolean; boardCopy?: boolean }): Promise<
-	{ ok: true; project: Project; gitInit?: GitInitOffer; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer } | { ok: false; error: string; gitInit?: GitInitOffer }
+	{ ok: true; project: Project; gitInit?: GitInitOffer; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true } | { ok: false; error: string; gitInit?: GitInitOffer }
 > {
 	log.info("→ initAndAddProject", params);
 	try {
@@ -814,7 +830,7 @@ async function saveUploadedFile(
 	opts?: { filename?: string; mimeType?: string },
 ): Promise<{ path: string }> {
 	const project = await data.getProject(projectId);
-	const uploadsDir = `${DEV3_HOME}/worktrees/${projectStorageKey(project.path)}/uploads`;
+	const uploadsDir = `${projectWorktreesRoot(DEV3_HOME, project.path, storesInProject(project) ? "project" : undefined)}/uploads`;
 	mkdirSync(uploadsDir, { recursive: true });
 	const filename = buildUploadedFilename(opts);
 	const fullPath = `${uploadsDir}/${filename}`;
@@ -908,12 +924,12 @@ async function getSharedMediaUrl(params: { path: string }): Promise<{ url: strin
 		log.warn("← getSharedMediaUrl: not a stored clip, rejected");
 		return null;
 	}
-	return { url: `http://127.0.0.1:${pty.getPtyPort()}${path}`, path };
+	return { url: ptyHttpUrl(pty.getPtyPort(), path), path };
 }
 
 async function getFileMediaUrl(params: { path: string }): Promise<{ url: string; path: string }> {
 	const path = await mintPreviewMediaLink(params.path);
-	return { url: `http://127.0.0.1:${pty.getPtyPort()}${path}`, path };
+	return { url: ptyHttpUrl(pty.getPtyPort(), path), path };
 }
 
 async function readArtifactContent(params: { artifact: SharedArtifact }) {
