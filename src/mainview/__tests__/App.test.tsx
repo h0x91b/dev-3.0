@@ -4123,6 +4123,23 @@ describe("App keyboard shortcuts", () => {
 			expect(api.request.moveTask).not.toHaveBeenCalled();
 		});
 
+		it("says the folder is kept, not destroyed, when the project's git workflow is off", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "", gitWorkflow: false },
+			]);
+			vi.mocked(confirm).mockResolvedValue(false);
+
+			await renderApp();
+			await fireAgentCompletionRequested("req-f1", "t1", "p1");
+
+			await waitFor(() => {
+				expect(api.request.respondToAgentCompletionRequest).toHaveBeenCalledWith({ requestId: "req-f1", approved: false });
+			});
+			const opts = vi.mocked(confirm).mock.calls[0][0];
+			expect(opts.message).toContain("The working folder and its files are kept.");
+			expect(opts.message).not.toContain("destroy the worktree");
+		});
+
 		it("passes the task subject (project, seq, priority, labels, overview) into the confirm dialog", async () => {
 			vi.mocked(confirm).mockResolvedValue(false);
 			await renderApp();

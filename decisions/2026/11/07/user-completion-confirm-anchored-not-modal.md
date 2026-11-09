@@ -1,3 +1,5 @@
+> Superseded on 2026-11-09 by `decisions/2026/11/09/revert-inline-completion-offers-to-modal.md`: reverted, completion asks through the blocking modal again.
+
 # The user's own Complete/Cancel confirms where they clicked
 
 ## Context
