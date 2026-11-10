@@ -446,7 +446,7 @@ ux_architecture:
     popover:
       purpose: "Lightweight contextual preview/hint anchored to an element."
       allowed: ["preview", "hint", "quick_action", "remediation", "own_click_confirm"]
-      own_click_confirm: "The user's own one-click ✓/Cancel on a card, sidebar or Activity row: confirm({ anchor }) beside the button, no dim layer. Merge, agent and anchorless asks stay the modal."
+      own_click_confirm: "The user's own one-click ✓/Cancel on an Active Tasks sidebar row only: confirm({ anchor }) beside the button, no dim layer. Board cards, Activity rows, merge, agent and anchorless asks stay the modal."
       forbidden: ["multi_step_flow", "primary_destination"]
       observed: ["SiblingPopover", "TerminalPreviewPopover", "StuckPreparationPopover"]
       evidence: ["src/mainview/components/*Popover.tsx"]

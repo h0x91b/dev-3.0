@@ -808,6 +808,8 @@ describe("ActivityOverview row complete action", () => {
 		expect(mockedMove).toHaveBeenCalledWith(
 			expect.objectContaining({ newStatus: "completed", alwaysConfirm: true }),
 		);
+		// The Activity row asks in the centred modal; only the Active Tasks sidebar anchors it.
+		expect(mockedMove.mock.calls[0][0].anchor).toBeUndefined();
 		await waitFor(() => expect(screen.queryByTestId("activity-row-complete")).toBeNull());
 	});
 
