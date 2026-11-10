@@ -72,7 +72,7 @@ export default function SecretRequestModal({ request, onDone }: { request: Secre
 						<button type="button" autoFocus disabled={busy} onClick={() => { void respond(false); }}
 							className="px-4 py-2 rounded-lg text-sm text-fg-2 hover:bg-overlay-hover active:scale-[0.96] motion-reduce:transform-none">{t("secret.decline")}</button>
 						<button type="submit" disabled={busy || !transportAllowed}
-							className="px-4 py-2 rounded-lg text-sm bg-accent text-white hover:bg-accent-hover disabled:opacity-50 active:scale-[0.96] motion-reduce:transform-none">{t("secret.run")}</button>
+							className="px-4 py-2 rounded-lg text-sm bg-accent-fill text-white hover:bg-accent-fill-hover disabled:opacity-50 active:scale-[0.96] motion-reduce:transform-none">{t("secret.run")}</button>
 					</div>
 				</form>
 			</div>

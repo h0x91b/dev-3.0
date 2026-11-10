@@ -506,8 +506,8 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 								gateActive
 									? "bg-fg-muted/40 cursor-not-allowed"
 									: pending.danger
-										? "bg-danger hover:bg-danger/80"
-										: "bg-accent hover:bg-accent-hover"
+										? "bg-danger-fill hover:bg-danger-fill-hover"
+										: "bg-accent-fill hover:bg-accent-fill-hover"
 							}`}
 						>
 							{confirmLabel}

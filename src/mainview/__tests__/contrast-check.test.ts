@@ -14,7 +14,7 @@
  * Failure output names the pair, measured Lc, and the floor it missed.
  */
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -355,4 +355,29 @@ describe("role band — discernible from the card and the sidebar row (|Lc| ≥ 
 			expect(Math.abs(apcaContrast(rgb("text-primary"), band)), lcLabel(rgb("text-primary"), band, `${theme}/cleanup ink`)).toBeGreaterThanOrEqual(60);
 		});
 	}
+});
+
+// ─── White ink must sit on a *-fill token ───────────────────────────────────
+// The bare status tokens double as text colours, so they stay light on dark paper:
+// white on dark --danger is 2.29:1 and on dark --accent 2.98:1. Classes can sit a
+// few lines apart in a template literal, so each text-white line checks its neighbours.
+
+describe("white ink sits on a fill token, never on a bare status colour", () => {
+	const root = resolve(__dirname, "..");
+	const bareFill = /(?<![\w:-])bg-(accent|danger|success|warning)(?![\w/-])/;
+	const sources = (readdirSync(root, { recursive: true }) as string[])
+		.filter((f) => /\.tsx?$/.test(f) && !f.includes("__tests__"));
+
+	it("finds no text-white beside a bare bg-accent, bg-danger, bg-success or bg-warning", () => {
+		const hits: string[] = [];
+		for (const file of sources) {
+			const lines = readFileSync(resolve(root, file), "utf-8").split("\n");
+			lines.forEach((line, i) => {
+				if (line.includes("text-white") && lines.slice(Math.max(0, i - 4), i + 5).some((l) => bareFill.test(l))) {
+					hits.push(`${file}:${i + 1}`);
+				}
+			});
+		}
+		expect(hits, "use bg-<tone>-fill / hover:bg-<tone>-fill-hover under text-white").toEqual([]);
+	});
 });

@@ -720,7 +720,7 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 								type="button"
 								onClick={save}
 								disabled={busy || issues.length > 0}
-								className="px-3 py-1.5 rounded-lg bg-accent text-white text-sm hover:bg-accent-hover transition-colors disabled:opacity-50"
+								className="px-3 py-1.5 rounded-lg bg-accent-fill text-white text-sm hover:bg-accent-fill-hover transition-colors disabled:opacity-50"
 							>
 								{t("catalog.save")}
 							</button>
