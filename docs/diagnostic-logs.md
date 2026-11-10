@@ -4,7 +4,9 @@ The Bun backend and CLI write daily diagnostic files under `~/.dev3.0/logs/YYYY/
 
 ## Retention
 
-The logger keeps the current day's file and the previous 13 calendar days (14 days total). On the first successful write of each day, it removes dated `.log` files older than that window. Missing, unreadable, or concurrently removed files do not interrupt application work.
+The logger keeps the current day's file and the previous 13 calendar days (14 days total). On the first successful write of each day, it removes dated `.log` and `.log.tgz` files older than that window. Missing, unreadable, or concurrently removed files do not interrupt application work.
+
+Today's file and the two days before it stay plain text. Older day files are packed into `YYYY-MM-DD.log.tgz` next to the original, five minutes after the app starts and then once a day; the plain file is removed only after the archive has been read back and matches it byte for byte. Read one without unpacking with `tar -xOzf 2026-11-01.log.tgz | grep …` (`tar` ships with macOS, Linux and Windows 10+; 7-Zip and Finder open it too).
 
 ## Payload policy
 

@@ -69,14 +69,17 @@ function gitSubcommand(cmd: string[]): string | undefined {
 
 /**
  * Exit 1 with empty stderr is a "no", not a failure, for the probes that answer
- * that way: `rev-parse --verify --quiet` (ref absent) and `merge-base --is-ancestor`
- * (not an ancestor). An unresolvable ref still exits 128 with stderr and is logged.
+ * that way: `rev-parse --verify --quiet` (ref absent), `merge-base --is-ancestor`
+ * (not an ancestor), `config --get` (key unset) and `merge-tree --write-tree`
+ * (conflicts). An unresolvable ref still exits 128 with stderr and is logged.
  */
 function isExpectedNo(cmd: string[], code: number | null, stderr: string): boolean {
 	if (code !== 1 || stderr.trim()) return false;
 	switch (gitSubcommand(cmd)) {
 		case "rev-parse": return cmd.includes("--verify") && cmd.includes("--quiet");
 		case "merge-base": return cmd.includes("--is-ancestor");
+		case "config": return cmd.includes("--get");
+		case "merge-tree": return cmd.includes("--write-tree");
 		default: return false;
 	}
 }
@@ -222,6 +225,7 @@ export async function run(
 	if (!result.ok && !isExpectedNo(finalCmd, outcome.code, stderr)) {
 		log.warn("Git command failed", {
 			command: finalCmd,
+			subcommand: gitSubcommand(finalCmd),
 			exitCode: outcome.code,
 			stderr: result.stderr,
 		});

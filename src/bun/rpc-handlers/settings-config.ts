@@ -295,9 +295,9 @@ async function getRepoConfigSources(params: { projectId: string; worktreePath?: 
 }
 
 async function getGlobalSettings(): Promise<GlobalSettings> {
-	log.info("→ getGlobalSettings");
+	log.debug("→ getGlobalSettings");
 	const settings = await loadSettings();
-	log.info("← getGlobalSettings", { settings });
+	log.debug("← getGlobalSettings", { settings });
 	return settings;
 }
 

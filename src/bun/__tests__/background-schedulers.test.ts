@@ -27,6 +27,10 @@ vi.mock("../task-keep-alive-scheduler", () => ({
 	startTaskKeepAliveScheduler: record("startTaskKeepAliveScheduler"),
 	stopTaskKeepAliveScheduler: record("stopTaskKeepAliveScheduler"),
 }));
+vi.mock("../log-archive-scheduler", () => ({
+	startLogArchiveScheduler: record("startLogArchiveScheduler"),
+	stopLogArchiveScheduler: record("stopLogArchiveScheduler"),
+}));
 vi.mock("../worktree-cleanup-scheduler", () => ({
 	startWorktreeCleanupScheduler: record("startWorktreeCleanupScheduler"),
 	stopWorktreeCleanupScheduler: record("stopWorktreeCleanupScheduler"),

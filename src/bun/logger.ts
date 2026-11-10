@@ -25,7 +25,8 @@ const DIM = "\x1b[2m";
 export const LOG_RETENTION_DAYS = 14;
 
 const REDACTED = "[redacted]";
-const LOG_FILE_RE = /^(\d{4})-(\d{2})-(\d{2})\.log$/;
+// A day file or its `.tgz` archive (see log-archive.ts); both age out together.
+const LOG_FILE_RE = /^(\d{4})-(\d{2})-(\d{2})\.log(?:\.tgz)?$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // These values can contain the task prompt, agent instructions, credentials,

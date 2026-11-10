@@ -20,7 +20,7 @@ vi.mock("../spawn", async () => {
 	return createSpawnMock();
 });
 
-import { getBehindOriginCount, getUnpushedCount, isRefMergedInto, refExists } from "../git";
+import { getBehindOriginCount, getUnpushedCount, isRefMergedInto, refExists, run } from "../git";
 import { createTestRepo, cleanup, g, type TestRepo } from "./git-test-helpers";
 
 describe("rev-parse --verify misses", () => {
@@ -77,5 +77,39 @@ describe("merge-base --is-ancestor answers", () => {
 	it("an unresolvable ref is still logged", async () => {
 		expect(await isRefMergedInto(repo.local, "no-such-branch", "main")).toBe(false);
 		expect(warn).toHaveBeenCalledWith("Git command failed", expect.objectContaining({ exitCode: 128 }));
+	});
+});
+
+describe("other probes that answer no with exit 1", () => {
+	let repo: TestRepo;
+
+	beforeEach(() => {
+		repo = createTestRepo();
+		warn.mockClear();
+	});
+
+	afterEach(() => {
+		cleanup(repo);
+	});
+
+	it("an unset config key is not logged as a failed git command", async () => {
+		expect((await run(["git", "config", "--get", "core.sshCommand"], repo.local)).ok).toBe(false);
+		expect(warn).not.toHaveBeenCalledWith("Git command failed", expect.anything());
+	});
+
+	it("a conflicting merge-tree is not logged as a failed git command", async () => {
+		g("git checkout -b side", repo.local);
+		g("sh -c 'echo side > conflict.txt' && git add conflict.txt && git commit -m side", repo.local);
+		g("git checkout main", repo.local);
+		g("sh -c 'echo main > conflict.txt' && git add conflict.txt && git commit -m main", repo.local);
+		warn.mockClear();
+
+		expect((await run(["git", "merge-tree", "--write-tree", "side", "HEAD"], repo.local)).ok).toBe(false);
+		expect(warn).not.toHaveBeenCalledWith("Git command failed", expect.anything());
+	});
+
+	it("a real failure names the subcommand but never its arguments", async () => {
+		await run(["git", "rev-parse", "--verify", "no-such-ref"], repo.local);
+		expect(warn).toHaveBeenCalledWith("Git command failed", expect.objectContaining({ subcommand: "rev-parse", exitCode: 128 }));
 	});
 });
