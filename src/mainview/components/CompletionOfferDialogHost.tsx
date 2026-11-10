@@ -3,7 +3,7 @@ import type { Project, Task } from "../../shared/types";
 import { useT, type TFunction } from "../i18n";
 import { api } from "../rpc";
 import { confirm, whenConfirmHostMounted, type ConfirmOptions } from "../confirm";
-import { offerAsksInDialog, useCompletionOffers, useCompletionOfferStyle, type CompletionOffer } from "../completion-offers";
+import { keepTaskOpen, offerAsksInDialog, useCompletionOffers, useCompletionOfferStyle, type CompletionOffer } from "../completion-offers";
 import { completionSkipsGitCheck, unsavedWorkWarning } from "../utils/confirmTaskCompletion";
 import { taskDialogInfo } from "../utils/taskDialogInfo";
 import { completionOfferNote } from "./task-info-panel/TaskCompletionStrip";
@@ -34,7 +34,7 @@ export default function CompletionOfferDialogHost({ ready, projects, onOpenTask 
 		}
 		if (!ready) return;
 		for (const offer of offers) {
-			if (!offerAsksInDialog(style) || asked.current.has(offer.id)) continue;
+			if (!offerAsksInDialog(offer, style) || asked.current.has(offer.id)) continue;
 			const controller = new AbortController();
 			asked.current.set(offer.id, controller);
 			void askInDialog(offer, controller.signal, latest.current);
@@ -91,5 +91,6 @@ async function askInDialog(
 	const { alternativeAction } = options;
 	const result = alternativeAction ? await confirm({ ...options, alternativeAction }) : await confirm(options);
 	if (signal.aborted) return;
-	offer.answer(result === "manual" ? "manual" : result === true);
+	if (result === false) keepTaskOpen(offer.taskId);
+	else offer.answer(result === "manual" ? "manual" : true);
 }
