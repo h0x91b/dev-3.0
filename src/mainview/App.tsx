@@ -3263,6 +3263,8 @@ function App() {
 
 	return (
 		<div className="h-full w-full flex flex-col">
+			{/* Reserves the iOS status-bar inset (viewport-fit=cover); zero height everywhere else. */}
+			<div aria-hidden className="shrink-0 bg-base" style={{ height: "env(safe-area-inset-top, 0px)" }} />
 			{terminalImmersiveVisible ? (
 				<TerminalImmersiveChrome onExit={() => setTerminalImmersiveActive(false)} />
 			) : (
