@@ -551,6 +551,9 @@ const settings = {
 	"projectSettings.setupScriptLaunchModeBlocking": "Ждать setup",
 	"projectSettings.setupScriptLaunchModeBlockingDesc":
 		"Запустить агента только после успешного завершения setup-скрипта.",
+	"projectSettings.setupScriptLaunchModeSinglePane": "В той же панели",
+	"projectSettings.setupScriptLaunchModeSinglePaneDesc":
+		"Выполнить setup, затем запустить агента в той же панели. Лишняя панель не открывается.",
 	"projectSettings.devScript": "Dev-скрипт",
 	"projectSettings.devScriptDesc":
 		"Запускается при старте dev-сервера для этого проекта",

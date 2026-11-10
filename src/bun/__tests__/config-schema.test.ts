@@ -75,6 +75,12 @@ describe("validateConfigFile", () => {
 		})).toEqual({ errors: [], warnings: [] });
 	});
 
+	it("accepts every setupScriptLaunchMode", () => {
+		for (const mode of ["parallel", "blocking", "single-pane"]) {
+			expect(validateConfigFile({ setupScriptLaunchMode: mode }).errors).toEqual([]);
+		}
+	});
+
 	it("reports wrong types with the path", () => {
 		const { errors } = validateConfigFile({ portCount: "2", clonePaths: ["a", 3], setupScriptLaunchMode: "later" });
 		expect(errors.map((e) => e.path)).toEqual(["portCount", "clonePaths[1]", "setupScriptLaunchMode"]);

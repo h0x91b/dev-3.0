@@ -530,6 +530,9 @@ const settings = {
 	"projectSettings.setupScriptLaunchModeBlocking": "Esperar al setup",
 	"projectSettings.setupScriptLaunchModeBlockingDesc":
 		"Inicia el agente solo después de que el script de setup termine con éxito.",
+	"projectSettings.setupScriptLaunchModeSinglePane": "Mismo panel",
+	"projectSettings.setupScriptLaunchModeSinglePaneDesc":
+		"Ejecuta el setup y luego inicia el agente en ese mismo panel. No se abre un panel extra.",
 	"projectSettings.devScript": "Script de desarrollo",
 	"projectSettings.devScriptDesc":
 		"Se ejecuta al iniciar el servidor de desarrollo de este proyecto",

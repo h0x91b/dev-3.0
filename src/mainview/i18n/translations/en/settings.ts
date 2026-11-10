@@ -529,6 +529,9 @@ const settings = {
 	"projectSettings.setupScriptLaunchModeBlocking": "Wait for setup",
 	"projectSettings.setupScriptLaunchModeBlockingDesc":
 		"Start the agent only after the setup script exits successfully.",
+	"projectSettings.setupScriptLaunchModeSinglePane": "Same pane",
+	"projectSettings.setupScriptLaunchModeSinglePaneDesc":
+		"Run setup, then start the agent in that same pane. No extra pane is opened.",
 	"projectSettings.devScript": "Dev Script",
 	"projectSettings.devScriptDesc":
 		"Runs when starting the dev server for this project",

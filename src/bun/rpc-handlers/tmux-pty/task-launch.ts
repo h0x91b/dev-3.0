@@ -702,7 +702,8 @@ export async function launchTaskPty(
 		isSetupWrapper = true;
 		// Which offer the pane may make is decided HERE, where the wrapper's shape is
 		// known — a parallel tmux launch has already split the agent pane above, so a
-		// later failure finds it alive. Native ignores launchMode and always gates.
+		// later failure finds it alive. Native ignores launchMode and always gates,
+		// as does a single-pane tmux launch.
 		const agentRunning = !nativeBackend && setupScriptLaunchMode === "parallel";
 		// Only this process can see the wrapper's verdict — see setup-failure-watch.
 		watchSetupFailure(task.id, async (exitCode) => {

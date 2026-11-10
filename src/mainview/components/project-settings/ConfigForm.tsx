@@ -115,7 +115,7 @@ export function ConfigForm({ config, onChange, inherited, projectId, projectPath
 					<p className="text-fg-3 text-sm mb-3">
 						{t("projectSettings.setupScriptLaunchModeDesc")}
 					</p>
-					<div role="radiogroup" aria-label={t("projectSettings.setupScriptLaunchMode")} className="grid gap-3 sm:grid-cols-2">
+					<div role="radiogroup" aria-label={t("projectSettings.setupScriptLaunchMode")} className="grid gap-3 sm:grid-cols-3">
 						{([
 							{
 								value: "parallel",
@@ -127,7 +127,12 @@ export function ConfigForm({ config, onChange, inherited, projectId, projectPath
 								title: t("projectSettings.setupScriptLaunchModeBlocking"),
 								description: t("projectSettings.setupScriptLaunchModeBlockingDesc"),
 							},
-						] as const).map((option) => {
+							{
+								value: "single-pane",
+								title: t("projectSettings.setupScriptLaunchModeSinglePane"),
+								description: t("projectSettings.setupScriptLaunchModeSinglePaneDesc"),
+							},
+						] as const).map((option, index, options) => {
 							const checked = setupScriptLaunchMode === option.value;
 							return (
 								<button
@@ -141,9 +146,11 @@ export function ConfigForm({ config, onChange, inherited, projectId, projectPath
 									onKeyDown={(event) => {
 										if (!["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp"].includes(event.key)) return;
 										event.preventDefault();
-										update("setupScriptLaunchMode", (option.value === "parallel" ? "blocking" : "parallel") as SetupScriptLaunchMode);
+										const step = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
+										const next = (index + step + options.length) % options.length;
+										update("setupScriptLaunchMode", options[next].value as SetupScriptLaunchMode);
 										const siblings = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="radio"]');
-										siblings?.[option.value === "parallel" ? 1 : 0]?.focus();
+										siblings?.[next]?.focus();
 									}}
 									className={`rounded-xl border p-4 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/60 ${
 										checked
