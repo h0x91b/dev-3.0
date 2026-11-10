@@ -3943,7 +3943,7 @@ describe("App keyboard shortcuts", () => {
 
 				await fireBranchMerged("t1", "p1", "fp-toast-1");
 
-				expect(await screen.findByText("Branch merged. The task is ready to complete.")).toBeInTheDocument();
+				expect(await screen.findByText("Branch merged. Is this task done?")).toBeInTheDocument();
 				expect(confirm).not.toHaveBeenCalled();
 			});
 		});
@@ -4142,7 +4142,7 @@ describe("App keyboard shortcuts", () => {
 
 				await fireAgentCompletionRequested("req-3", "t1", "p1");
 
-				expect(await screen.findByText("The agent asks to complete this task.")).toBeInTheDocument();
+				expect(await screen.findByText("The agent reports this task is done")).toBeInTheDocument();
 				expect(confirm).not.toHaveBeenCalled();
 			});
 		});

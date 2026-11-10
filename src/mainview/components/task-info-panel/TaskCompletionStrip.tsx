@@ -3,7 +3,7 @@ import { taskUsesWorktree, type Project, type Task } from "../../../shared/types
 import { useT, type TFunction } from "../../i18n";
 import { api } from "../../rpc";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../../state";
-import { registerCompletionOverlayHost, registerCompletionStrip, useCompletionOverlayHosted, useTaskStripOffer, type CompletionOffer, type CompletionOfferAnswer } from "../../completion-offers";
+import { keepTaskOpen, registerCompletionOverlayHost, registerCompletionStrip, useCompletionOverlayHosted, useTaskStripOffer, type CompletionOffer, type CompletionOfferAnswer } from "../../completion-offers";
 import { WorktreeSettingsIcon } from "../TaskIcons";
 import { toastClearanceRef } from "../../toast-clearance";
 import { completionSkipsGitCheck, unsavedWorkWarning } from "../../utils/confirmTaskCompletion";
@@ -75,10 +75,15 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 	const skipGit = completionSkipsGitCheck(task, project);
 	const [git, setGit] = useState<GitCheck>(skipGit ? { state: "skipped" } : { state: "checking" });
 
+	// Filled after mount: a live region announces a change, not the text it was born with.
+	const [announcement, setAnnouncement] = useState("");
 	useEffect(() => {
 		const timer = setTimeout(() => { armedRef.current = true; }, COMPLETION_STRIP_ARM_MS);
-		return () => clearTimeout(timer);
+		const announce = setTimeout(() => setAnnouncement(t(offer.kind === "agent" ? "completionStrip.agentTitle" : "completionStrip.mergedTitle")), 100);
+		return () => { clearTimeout(timer); clearTimeout(announce); };
+		// One announcement per offer: the strip is keyed by offer id.
 	}, []);
+	const liveRegion = <span role="status" className="sr-only" data-testid="task-completion-strip-announcement">{announcement}</span>;
 
 	const liveRef = useRef(true);
 	const checkGit = (): Promise<GitCheck> => api.request.getUnsavedWork({ taskId: task.id, projectId: project.id })
@@ -94,7 +99,8 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 
 	const answer = (value: CompletionOfferAnswer) => {
 		if (!armedRef.current) return;
-		offer.answer(value);
+		if (value === false) keepTaskOpen(offer.taskId);
+		else offer.answer(value);
 	};
 
 	// An offer can wait for hours while the user keeps working, so the shown
@@ -132,6 +138,7 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 					: "flex-shrink-0 border-b bg-raised"
 			} ${isAgent ? "border-accent/40" : "border-success/30"}`}
 		>
+			{liveRegion}
 			<div className={`flex ${bar ? "items-end basis-[14rem]" : "items-center basis-full md:basis-[18rem]"} gap-2 min-w-0 flex-1`}>
 				{isAgent ? (
 					// The bar keeps the badge's glyph and colour; its label moves to the tooltip.

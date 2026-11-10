@@ -294,7 +294,7 @@ const settings = {
 	"settings.completionOfferStyleDialog": "Dialog",
 	"settings.completionOfferStyleDialogDesc": "A window opens over the app and waits for your answer.",
 	"settings.completionOfferStyleInline": "On the task",
-	"settings.completionOfferStyleInlineDesc": "A bar at the bottom of the task's terminal. Nothing is blocked.",
+	"settings.completionOfferStyleInlineDesc": "A bar in the agent's pane. You keep working; the agent waits for your answer.",
 	"settings.agentLaunchAutoApprove": "Auto-approve agent launch requests",
 	"settings.agentLaunchAutoApproveDesc": "When an agent asks to start another task, the dialog approves itself after this long so the asking agent is not left waiting. Touch the dialog and the countdown stops for good — it then waits for your answer. Decline still cancels it. Never applies to completion requests.",
 	"settings.resourceLevels": "CPU and disk warning levels",

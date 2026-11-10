@@ -302,7 +302,7 @@ const settings = {
 	"settings.completionOfferStyleDialog": "Диалог",
 	"settings.completionOfferStyleDialogDesc": "Окно поверх приложения ждёт вашего ответа.",
 	"settings.completionOfferStyleInline": "На задаче",
-	"settings.completionOfferStyleInlineDesc": "Полоса внизу терминала задачи. Ничего не блокируется.",
+	"settings.completionOfferStyleInlineDesc": "Полоса в панели агента. Вы продолжаете работать, агент ждёт вашего ответа.",
 	"settings.agentLaunchAutoApprove": "Автоподтверждение запуска задач агентом",
 	"settings.agentLaunchAutoApproveDesc": "Когда агент просит запустить другую задачу, диалог подтверждает себя сам через это время, чтобы просящий агент не ждал впустую. Стоит тронуть диалог — отсчёт останавливается насовсем, и запуск ждёт вашего ответа. Кнопка «Отказать» по-прежнему отменяет запуск. К запросам на завершение задачи не применяется.",
 	"settings.resourceLevels": "Пороги CPU и диска",

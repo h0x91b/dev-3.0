@@ -21,6 +21,8 @@ export interface CompletionOffer {
 	kind: CompletionOfferKind;
 	/** Merge offers only: the branch that landed. */
 	branchName?: string;
+	/** Set when the style switched to Dialog while this offer waited: it keeps asking on its task. */
+	staysOnTask?: boolean;
 	/** When this client raised it (epoch ms), so a waiting list can show how long it has waited. */
 	offeredAt: number;
 	answer: (answer: CompletionOfferAnswer) => void;
@@ -88,9 +90,14 @@ export function offerCompletion(params: OfferCompletionParams): Promise<Completi
 	});
 }
 
-/** Set by App from the global setting; every surface re-reads it, so a switch moves waiting offers. */
+/**
+ * Set by App from the global setting. A switch to Dialog applies to new offers:
+ * the ones already waiting on their tasks stay there instead of opening a modal
+ * each, which the user could only leave by answering or refusing every agent.
+ */
 export function setCompletionOfferStyle(next: CompletionOfferStyle): void {
 	if (next === style) return;
+	if (next === "dialog") offers = offers.map((o) => ({ ...o, staysOnTask: true }));
 	style = next;
 	emit();
 }
@@ -100,8 +107,17 @@ export function getCompletionOfferStyle(): CompletionOfferStyle {
 }
 
 /** Whether the offer asks in the app-level dialog rather than on its task. */
-export function offerAsksInDialog(current: CompletionOfferStyle = style): boolean {
-	return current === "dialog";
+export function offerAsksInDialog(offer: Pick<CompletionOffer, "staysOnTask">, current: CompletionOfferStyle = style): boolean {
+	return current === "dialog" && !offer.staysOnTask;
+}
+
+/**
+ * "Keep open" means the task is not done, whichever offer asked: it says no to
+ * the agent and dismisses the merge offer too, so a second bar never takes the
+ * first one's place under the pointer.
+ */
+export function keepTaskOpen(taskId: string): void {
+	for (const offer of offers.filter((o) => o.taskId === taskId)) offer.answer(false);
 }
 
 /** Aborts once the offer is answered or withdrawn anywhere, so a modal asking it can close. */
@@ -152,10 +168,11 @@ export function useCompletionOfferStyle(): CompletionOfferStyle {
 	return useSyncExternalStore(subscribe, styleSnapshot, styleSnapshot);
 }
 
-/** The offer the task's own strip shows, or null while offers ask in the dialog. */
+/** The offer the task's own strip shows, or null while it asks in the dialog. */
 export function useTaskStripOffer(taskId: string): CompletionOffer | null {
 	const offer = useCompletionOffer(taskId);
-	return offerAsksInDialog(useCompletionOfferStyle()) ? null : offer;
+	const current = useCompletionOfferStyle();
+	return offer && !offerAsksInDialog(offer, current) ? offer : null;
 }
 
 const mountedStrips = new Map<string, number>();

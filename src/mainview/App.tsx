@@ -814,14 +814,15 @@ function App() {
 	// The toast carries its own source line and click: the resolver only knows the open project's tasks.
 	// Returns the bell's withdrawal, for once the offer settles — possibly on another client.
 	const announceCompletionOffer = (offer: {
-		taskId: string; projectId: string; taskTitle?: string; subject?: TaskDialogSubject; toastText: string; reason: string;
+		taskId: string; projectId: string; taskTitle?: string; subject?: TaskDialogSubject; reason: string;
 	}): (() => void) => {
 		const { taskId, projectId, taskTitle, subject, reason } = offer;
 		dispatch({ type: "addBell", taskId, reason });
 		const withdrawBell = () => dispatch({ type: "removeBellReason", taskId, reason });
 		if (getCompletionOfferStyle() === "dialog" || isCompletionOfferOnScreen(taskId)) return withdrawBell;
 		const context = subject ? [`#${subject.seqLabel}`, subject.projectName, taskTitle].filter(Boolean).join(" · ") : taskTitle;
-		toast.info(offer.toastText, { taskId, context, onClick: () => openTaskFromNotification(taskId, projectId) });
+		// The toast asks the bar's own question, so the two never read as different asks.
+		toast.info(reason, { taskId, context, onClick: () => openTaskFromNotification(taskId, projectId) });
 		return withdrawBell;
 	};
 
@@ -2306,7 +2307,7 @@ function App() {
 					onOffered: () => {
 						withdrawBell = announceCompletionOffer({
 							taskId, projectId, taskTitle, subject,
-							toastText: t("app.completionOfferMergedToast"), reason: t("completionStrip.mergedTitle"),
+							reason: t("completionStrip.mergedTitle"),
 						});
 					},
 					onComplete: () => {
@@ -2433,7 +2434,7 @@ function App() {
 				const answer = offerCompletion({ taskId, projectId, kind: "agent", signal: abort.signal });
 				if (isNew) withdrawBell = announceCompletionOffer({
 					taskId, projectId, taskTitle, subject,
-					toastText: t("app.completionOfferAgentToast"), reason: t("completionStrip.agentTitle"),
+					reason: t("completionStrip.agentTitle"),
 				});
 				const result = await answer;
 				// Already on its task through another request id: that one answers the CLI.

@@ -329,7 +329,7 @@ ux_architecture:
       note: "This panel is the densest surface (34K). It is the main complexity-budget risk in the app."
       evidence: ["src/mainview/components/TaskInfoPanel.tsx", "src/mainview/components/task-info-panel/*"]
       completion_strip:
-        rule: "Merge/agent completion asks follow completionOfferStyle: 'dialog' (default) = confirm() via CompletionOfferDialogHost; 'inline' = a one-line bar, bottom-right of the agent's pane (whole terminal if one pane or zoomed; row under the inspector if no terminal), max two rows, buttons fixed while the note opens upward, never resizes the terminal. No focus, 600 ms arming, Complete gated on the unsaved-work check. Card + sidebar marker in both. The user's own Complete is not an offer (popover.own_click_confirm)."
+        rule: "Merge/agent completion asks follow completionOfferStyle: 'dialog' (default) = confirm() via CompletionOfferDialogHost; 'inline' = a one-line bar, bottom-right of the agent's pane (whole terminal if one pane or zoomed; row under the inspector if no terminal), max two rows, buttons fixed while the note opens upward, never resizes the terminal. No focus, 600 ms arming, Complete gated on the unsaved-work check. Card + sidebar marker in both. A switch to Dialog leaves waiting offers on their task; Keep open settles every offer on the task. The user's own Complete is not an offer (popover.own_click_confirm)."
         actions: { complete: "destructive", keep_open: "secondary", manual_completion: "ghost (merge)", settings: "icon (merge)" }
         evidence: ["src/mainview/completion-offers.ts", "src/mainview/components/task-info-panel/TaskCompletionStrip.tsx", "src/mainview/components/CompletionOfferDialogHost.tsx"]
       bar_model:
