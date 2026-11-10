@@ -19,6 +19,7 @@ const common = {
 	"app.loading": "Loading...",
 	"app.branchMergedToast": "Branch of task \"{taskTitle}\" was merged.",
 	"completionStrip.mergedTitle": "Branch merged. Is this task done?",
+	"completionStrip.mergedBarTitle": "Branch merged",
 	"completionStrip.agentTitle": "The agent reports this task is done",
 	"completionStrip.worktreeNote": "Completing removes the worktree and ends the terminal session.",
 	"completionStrip.sessionNote": "Completing ends the terminal session.",

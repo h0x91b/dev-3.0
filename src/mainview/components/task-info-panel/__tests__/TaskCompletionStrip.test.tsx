@@ -168,11 +168,39 @@ describe("TaskCompletionStrip", () => {
 		// On a wide terminal it stays near the prompt instead of the far corner.
 		expect(strip.className).toContain("right-[max(0.75rem,calc(100%-72rem))]");
 		// Opening the note grows the bar upward; its buttons stay on the bottom line.
-		expect(strip.className).toContain("items-end");
+		expect(strip.className).toContain("flex-col");
 		// The note opens on hover or focus, so the bar covers only the bottom rows.
-		expect(screen.getByTestId("task-completion-strip-note").className).toContain("hidden");
+		expect(screen.getByTestId("task-completion-strip-details").className).toContain("hidden");
+		expect(screen.getByTestId("task-completion-strip-details")).toContainElement(screen.getByTestId("task-completion-strip-note"));
 		// A bottom bar never collides with the toast stack at the top.
 		expect(clearanceNodes.has(strip)).toBe(false);
+	});
+
+	it("titles a merge bar with what happened, keeping the question in its label", async () => {
+		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" /></I18nProvider>);
+		await offer("merge");
+		const strip = screen.getByRole("region", { name: "Branch merged. Is this task done?" });
+		expect(strip).toHaveTextContent("Branch merged");
+		expect(screen.getByTitle("Branch merged. Is this task done?")).toHaveTextContent(/^Branch merged$/);
+		// The opt-out and the settings link open with the note; the answers stay on the line.
+		const details = screen.getByTestId("task-completion-strip-details");
+		expect(details).toContainElement(screen.getByRole("button", { name: "I’ll complete it myself" }));
+		expect(details).toContainElement(screen.getByRole("button", { name: "Settings for completion offers after a merge" }));
+		expect(details).not.toContainElement(screen.getByTestId("task-completion-strip-complete"));
+		expect(details).not.toContainElement(screen.getByRole("button", { name: "Keep open" }));
+	});
+
+	it("keeps the bar on one line when work would be lost, marking the line and opening the warning on hover", async () => {
+		vi.mocked(api.request.getUnsavedWork).mockResolvedValue({ ...clean, insertions: 3, deletions: 1 });
+		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" /></I18nProvider>);
+		await offer("merge");
+		await act(async () => {});
+		const details = screen.getByTestId("task-completion-strip-details");
+		expect(details).toContainElement(screen.getByTestId("task-completion-strip-warning"));
+		expect(details.className).toContain("hidden");
+		// A touch screen has no hover, so it always shows the warning.
+		expect(details.className).toContain("[@media(hover:none)]:flex");
+		expect(screen.getByTestId("task-completion-strip-alert")).toHaveTextContent(/3/);
 	});
 
 	it("shows nothing while the dialog style asks for merge and agent offers", async () => {

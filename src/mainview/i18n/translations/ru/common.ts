@@ -19,6 +19,7 @@ const common = {
 	"app.loading": "Загрузка...",
 	"app.branchMergedToast": "Ветка задачи «{taskTitle}» смержена.",
 	"completionStrip.mergedTitle": "Ветка смержена. Задача готова?",
+	"completionStrip.mergedBarTitle": "Ветка смержена",
 	"completionStrip.agentTitle": "Агент сообщает, что задача готова",
 	"completionStrip.worktreeNote": "Завершение удалит worktree и закроет терминальную сессию.",
 	"completionStrip.sessionNote": "Завершение закроет терминальную сессию.",

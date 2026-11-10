@@ -19,6 +19,7 @@ const common = {
 	"app.loading": "Cargando...",
 	"app.branchMergedToast": "La rama de la tarea «{taskTitle}» se fusionó.",
 	"completionStrip.mergedTitle": "Rama fusionada. ¿Está terminada la tarea?",
+	"completionStrip.mergedBarTitle": "Rama fusionada",
 	"completionStrip.agentTitle": "El agente informa que la tarea está terminada",
 	"completionStrip.worktreeNote": "Completar elimina el worktree y cierra la sesión de terminal.",
 	"completionStrip.sessionNote": "Completar cierra la sesión de terminal.",
