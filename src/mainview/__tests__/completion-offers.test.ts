@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { _resetCompletionOffersForTests, offerCompletion, pickCompletionOffer, useCompletionOffers } from "../completion-offers";
+import { _resetCompletionOffersForTests, keepTaskOpen, offerAsksInDialog, offerCompletion, pickCompletionOffer, setCompletionOfferStyle, useCompletionOffers } from "../completion-offers";
 import { renderHook, act } from "@testing-library/react";
 
 afterEach(() => _resetCompletionOffersForTests());
@@ -59,5 +59,29 @@ describe("completion offers", () => {
 		expect(pickCompletionOffer(result.current, "t1")?.kind).toBe("agent");
 		expect(pickCompletionOffer(result.current, "t2")?.kind).toBe("merge");
 		expect(pickCompletionOffer(result.current, "t3")).toBeNull();
+	});
+
+	it("keeps offers waiting when the style switches to Dialog, and asks new ones there", () => {
+		const { result } = renderHook(() => useCompletionOffers());
+		act(() => setCompletionOfferStyle("inline"));
+		act(() => { void offerCompletion({ taskId: "t1", projectId: "p1", kind: "agent" }); });
+		act(() => setCompletionOfferStyle("dialog"));
+		act(() => { void offerCompletion({ taskId: "t2", projectId: "p1", kind: "agent" }); });
+		expect(result.current.map((o) => offerAsksInDialog(o))).toEqual([false, true]);
+	});
+
+	it("keepTaskOpen answers every offer on the task and no other", async () => {
+		let merge!: Promise<unknown>, agent!: Promise<unknown>, other!: Promise<unknown>;
+		act(() => {
+			merge = offerCompletion({ taskId: "t1", projectId: "p1", kind: "merge" });
+			agent = offerCompletion({ taskId: "t1", projectId: "p1", kind: "agent" });
+			other = offerCompletion({ taskId: "t2", projectId: "p1", kind: "agent" });
+		});
+		act(() => keepTaskOpen("t1"));
+		await expect(merge).resolves.toBe(false);
+		await expect(agent).resolves.toBe(false);
+		const { result } = renderHook(() => useCompletionOffers());
+		expect(result.current.map((o) => o.taskId)).toEqual(["t2"]);
+		void other;
 	});
 });

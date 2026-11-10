@@ -88,14 +88,27 @@ describe("CompletionOfferDialogHost", () => {
 		await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
 	});
 
-	it("leaves offers on the task on the inline style, and moves them into the dialog on a switch", async () => {
+	// A switch to Dialog with many asks waiting must not chain one modal per ask,
+	// which the user could only leave by answering or refusing every agent.
+	it("leaves waiting offers on their task after a switch to Dialog, and asks new ones in it", async () => {
 		setCompletionOfferStyle("inline");
 		renderHost();
 		await offer("agent");
 		await act(async () => {});
 		expect(confirm).not.toHaveBeenCalled();
-		// Switching the setting moves a waiting offer into the dialog.
 		await act(async () => { setCompletionOfferStyle("dialog"); });
+		await act(async () => {});
+		expect(confirm).not.toHaveBeenCalled();
+		await offer("merge");
 		await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+	});
+
+	it("settles every offer on the task when one is kept open", async () => {
+		vi.mocked(confirm).mockResolvedValue(false);
+		renderHost();
+		const merge = await offer("merge");
+		const agent = await offer("agent");
+		await expect(agent.answer).resolves.toBe(false);
+		await expect(merge.answer).resolves.toBe(false);
 	});
 });

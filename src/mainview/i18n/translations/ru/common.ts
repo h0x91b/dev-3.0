@@ -30,8 +30,6 @@ const common = {
 	"completionStrip.keepOpenAgentHint": "Отказать агенту. Он продолжит работать в этой сессии.",
 	"completionStrip.manualHint": "Оставить открытой и больше не спрашивать после merge.",
 	"completionStrip.settings": "Настройки предложений завершить задачу после merge",
-	"app.completionOfferMergedToast": "Ветка смержена. Задачу можно завершить.",
-	"app.completionOfferAgentToast": "Агент просит завершить эту задачу.",
 	"app.branchMergedComplete": "Завершить задачу",
 	"app.branchMergedManualCompletion": "Завершу самостоятельно",
 	"app.manualCompletionAgentEnabled": "Агент отключил вопросы о завершении для этой задачи.",
