@@ -237,6 +237,38 @@ describe("TaskTerminal", () => {
 			expect(screen.getByTestId("terminal-task-closed-screen")).toBeInTheDocument();
 			expect(screen.queryByTestId("terminal-view")).not.toBeInTheDocument();
 		});
+
+		// The teardown push reverts the optimistic completion (old status, live
+		// worktree) while the PTY is being destroyed.
+		it("shows the shutdown state instead of reattaching while the task tears down", async () => {
+			const shuttingDown = makeTask({ status: "review-by-user", shuttingDown: true });
+
+			await act(async () => {
+				renderTerminal({ tasks: [shuttingDown] });
+			});
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:ptyDied", { detail: { taskId: "t1" } }));
+			});
+
+			expect(screen.getByTestId("terminal-task-shutting-down")).toBeInTheDocument();
+			expect(screen.queryByText("Terminal session ended")).not.toBeInTheDocument();
+			expect(mockedApi.request.getPtyUrl).not.toHaveBeenCalled();
+			expect(mockedApi.request.checkWorktreeState).not.toHaveBeenCalled();
+		});
+
+		it("keeps the shutdown state for a later teardown snapshot without the transient flag", async () => {
+			const tearingDown = makeTask({
+				status: "review-by-user",
+				runtimeState: { runtime: "tearing-down", stage: "completed", updatedAt: 1 },
+			});
+
+			await act(async () => {
+				renderTerminal({ tasks: [tearingDown] });
+			});
+
+			expect(screen.getByTestId("terminal-task-shutting-down")).toBeInTheDocument();
+			expect(mockedApi.request.getPtyUrl).not.toHaveBeenCalled();
+		});
 	});
 
 	describe("worktree check after a lost session", () => {
