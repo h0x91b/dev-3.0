@@ -116,7 +116,7 @@
 		"@vitejs/plugin-react": "6.0.2",
 		"autoprefixer": "10.5.0",
 		"concurrently": "9.2.1",
-		"happy-dom": "20.9.0",
+		"happy-dom": "20.14.6",
 		"png-to-ico": "2.1.8",
 		"postcss": "8.5.14",
 		"rcedit": "4.0.1",
