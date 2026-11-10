@@ -15749,15 +15749,19 @@ describe("listPendingMergeOffers (replay after a reload)", () => {
 		expect(await handlers.listPendingMergeOffers()).toEqual([]);
 	});
 
-	it("drops a dismissed offer and one the poller never reserved in this run", async () => {
+	it("drops a dismissed offer", async () => {
 		const dismissed = offeredTask({ mergeCompletionPrompt: { fingerprint: FINGERPRINT, promptedAt: "2026-06-01T08:00:00.000Z", dismissedAt: "2026-06-01T08:01:00.000Z", precise: true } });
 		await reserve(dismissed);
 		vi.mocked(data.loadTasks).mockResolvedValue([dismissed]);
 		expect(await handlers.listPendingMergeOffers()).toEqual([]);
+	});
 
+	// A lifecycle move or an app restart clears the in-memory reservation; the
+	// persisted, undismissed prompt still waits for the user and must come back.
+	it("returns an unanswered offer the poller has not reserved in this run", async () => {
 		_resetMergePollerState();
 		vi.mocked(data.loadTasks).mockResolvedValue([offeredTask()]);
-		expect(await handlers.listPendingMergeOffers()).toEqual([]);
+		expect(await handlers.listPendingMergeOffers()).toEqual([expect.objectContaining({ fingerprint: FINGERPRINT })]);
 	});
 
 	it("returns nothing for a manually completed task or with merge offers turned off", async () => {
