@@ -10,6 +10,7 @@ import { useTaskPrBadges } from "../hooks/useTaskPrBadges";
 import { boardFilterKey, useRememberedFilter } from "../hooks/useRememberedFilter";
 import { childrenFilterToken, childrenTokenRefs, withChildrenToken, type TaskLineage } from "../utils/taskLineage";
 import { matchesTaskQuery } from "../utils/taskSearch";
+import { usePersistedStatusFilter } from "./usePersistedStatusFilter";
 import {
 	buildFilterGroups,
 	isAttentionTask,
@@ -65,7 +66,9 @@ export function useBoardFilter({ project, space, memberProjects, tasks, agents, 
 	);
 	const projectById = useMemo(() => new Map(boardProjects.map((p) => [p.id, p])), [boardProjects]);
 	// A space board keeps its own filter apart from its anchor project.
-	const [query, setQuery] = useRememberedFilter(boardFilterKey(project.id, space?.id));
+	const filterKey = boardFilterKey(project.id, space?.id);
+	const [query, setQuery] = useRememberedFilter(filterKey);
+	usePersistedStatusFilter(space ? { kind: "space", id: space.id } : { kind: "project", id: project.id }, filterKey, query, setQuery);
 
 	// PR badge data: what each task already carries (sticky prNumber/prUrl +
 	// prStatusCache), refreshed by the `taskPrStatus` push, plus a per-project

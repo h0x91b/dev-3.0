@@ -345,6 +345,21 @@ export function facetToken(facet: FacetKey, value: string): string {
 	return `${facet}:${quoted ? `"${escapeDslValue(value)}"` : value}`;
 }
 
+/** The raw `status:` values of a query, case preserved (`parseTaskQuery` lowercases them). */
+export function statusFilterValues(query: string): string[] {
+	const values: string[] = [];
+	TOKEN_RE.lastIndex = 0;
+	let m: RegExpExecArray | null;
+	while ((m = TOKEN_RE.exec(query)) !== null) {
+		const quoted = m[1] !== undefined;
+		const key = quoted ? m[1] : m[4];
+		if (key?.toLowerCase() !== "status") continue;
+		const value = (quoted ? unescapeDslValue(m[2]) + (m[3] ?? "") : m[5]).trim();
+		if (value) values.push(value);
+	}
+	return values;
+}
+
 /**
  * Matches a specific facet token in the query in either bare or quoted form,
  * case-insensitively. Used for both the checked-state check and removal.

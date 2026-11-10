@@ -33,6 +33,8 @@ vi.mock("../../rpc", () => ({
 			getEpicMembers: vi.fn().mockResolvedValue([]),
 			getBoardViewState: vi.fn(),
 			setBoardViewState: vi.fn(async ({ state }) => state),
+			getBoardFilterState: vi.fn().mockResolvedValue({ statuses: [] }),
+			setBoardFilterState: vi.fn(async ({ state }) => state),
 			createLabel: vi.fn(),
 			getGlobalSettings: vi.fn().mockResolvedValue({ taskSortOrder: "oldest-first" }),
 			moveTaskToCustomColumn: vi.fn(),

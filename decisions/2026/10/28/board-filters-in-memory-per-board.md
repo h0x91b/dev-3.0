@@ -1,3 +1,5 @@
+Superseded on 2026-11-09 by `decisions/2026/11/09/persist-board-status-filter.md`: board status tokens now survive restart in a separate JSON file.
+
 # Board and Active Tasks filters live in memory, per board
 
 ## Context
