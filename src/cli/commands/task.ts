@@ -850,6 +850,7 @@ async function requestDestructiveApproval(
 	const params: Record<string, unknown> = { taskId };
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (projectId) params.projectId = projectId;
+	if (context?.taskId) params.sourceTaskId = context.taskId;
 	const spec = approvalSpecFor(baseSpec, projectId, taskId);
 	const ownSession = targetsOwnSession(taskId, args, context);
 
