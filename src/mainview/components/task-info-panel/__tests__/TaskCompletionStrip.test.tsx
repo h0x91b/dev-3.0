@@ -190,17 +190,48 @@ describe("TaskCompletionStrip", () => {
 		expect(details).not.toContainElement(screen.getByRole("button", { name: "Keep open" }));
 	});
 
-	it("keeps the bar on one line when work would be lost, marking the line and opening the warning on hover", async () => {
+	it("opens the warning on the first Complete click when work would be lost, and completes on the second", async () => {
 		vi.mocked(api.request.getUnsavedWork).mockResolvedValue({ ...clean, insertions: 3, deletions: 1 });
 		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" /></I18nProvider>);
-		await offer("merge");
-		await act(async () => {});
+		const { answer } = await offer("merge");
+		await arm();
 		const details = screen.getByTestId("task-completion-strip-details");
 		expect(details).toContainElement(screen.getByTestId("task-completion-strip-warning"));
+		// At rest it stays one line, so the input row stays visible; the line carries the mark.
 		expect(details.className).toContain("hidden");
-		// A touch screen has no hover, so it always shows the warning.
-		expect(details.className).toContain("[@media(hover:none)]:flex");
 		expect(screen.getByTestId("task-completion-strip-alert")).toHaveTextContent(/3/);
+		await act(async () => { fireEvent.click(screen.getByTestId("task-completion-strip-complete")); });
+		expect(screen.getByTestId("task-completion-strip")).toBeInTheDocument();
+		expect(details.className).not.toContain("hidden");
+		expect(screen.queryByTestId("task-completion-strip-more")).toBeNull();
+		expect(screen.getByTestId("task-completion-strip-alert")).not.toHaveTextContent(/3/);
+		expect(screen.getByTestId("task-completion-strip-complete")).toHaveTextContent("Complete anyway");
+		await act(async () => { fireEvent.click(screen.getByTestId("task-completion-strip-complete")); });
+		await expect(answer).resolves.toBe(true);
+	});
+
+	it("completes a clean task from the bar in one click and cues the hover panel", async () => {
+		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" /></I18nProvider>);
+		const { answer } = await offer("merge");
+		await arm();
+		expect(screen.getByTestId("task-completion-strip-details").className).toContain("[@media(hover:none)]:flex");
+		expect(screen.getByTestId("task-completion-strip-more")).toBeInTheDocument();
+		await act(async () => { fireEvent.click(screen.getByTestId("task-completion-strip-complete")); });
+		await expect(answer).resolves.toBe(true);
+	});
+
+	it("marks a merge with the merge icon, never the quick-complete ✓", async () => {
+		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" /></I18nProvider>);
+		await offer("merge");
+		const strip = screen.getByTestId("task-completion-strip");
+		expect(strip).not.toHaveTextContent("✓");
+		expect(strip.querySelector("svg circle")).not.toBeNull();
+	});
+
+	it("keeps the same pane wrapper with one pane, so a split never remounts the bar", async () => {
+		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" /></I18nProvider>);
+		await offer("agent");
+		expect(screen.getByTestId("task-completion-strip-pane")).toContainElement(screen.getByTestId("task-completion-strip"));
 	});
 
 	it("shows nothing while the dialog style asks for merge and agent offers", async () => {
