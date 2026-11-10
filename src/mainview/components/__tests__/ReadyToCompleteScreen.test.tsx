@@ -192,6 +192,13 @@ describe("ReadyToCompleteCard", () => {
 		fireEvent.click(card);
 		expect(navigate).toHaveBeenCalledWith({ screen: "completions" });
 	});
+
+	// The card already counts the ask, so a toast about it would only repeat it.
+	it("counts as on screen while mounted, so offers raise no toast", () => {
+		expect(isCompletionOfferOnScreen("t1")).toBe(false);
+		render(<I18nProvider><ReadyToCompleteCard usage={usage([])} navigate={vi.fn()} /></I18nProvider>);
+		expect(isCompletionOfferOnScreen("t1")).toBe(true);
+	});
 });
 
 describe("waitingOffers", () => {

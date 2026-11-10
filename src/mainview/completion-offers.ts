@@ -209,7 +209,7 @@ export function useCompletionOverlayHosted(taskId: string): boolean {
 
 const waitingLists = new Set<symbol>();
 
-/** Tracks mounted lists of every waiting ask (the Ready to complete screen). */
+/** Tracks mounted surfaces that already show every waiting ask: the Ready to complete screen and its dashboard card. */
 export function registerWaitingOffersList(): () => void {
 	const token = Symbol("waiting-offers-list");
 	waitingLists.add(token);
