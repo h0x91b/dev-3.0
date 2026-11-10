@@ -294,7 +294,7 @@ const settings = {
 	"settings.completionOfferStyleDialog": "Diálogo",
 	"settings.completionOfferStyleDialogDesc": "Una ventana se abre sobre la app y espera tu respuesta.",
 	"settings.completionOfferStyleInline": "En la tarea",
-	"settings.completionOfferStyleInlineDesc": "Una barra al pie del terminal de la tarea. No bloquea nada.",
+	"settings.completionOfferStyleInlineDesc": "Una barra en el panel del agente. Sigues trabajando; el agente espera tu respuesta.",
 	"settings.agentLaunchAutoApprove": "Aprobar solo las solicitudes de inicio de los agentes",
 	"settings.agentLaunchAutoApproveDesc": "Cuando un agente pide iniciar otra tarea, el diálogo se aprueba solo pasado este tiempo para no dejar al agente esperando. Si tocas el diálogo, la cuenta atrás se detiene definitivamente y espera tu respuesta. Rechazar sigue cancelándolo. Nunca se aplica a las solicitudes de finalización.",
 	"settings.resourceLevels": "Niveles de aviso de CPU y disco",
