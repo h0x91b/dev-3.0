@@ -35,7 +35,7 @@ import {
 import { ARTIFACT_TEMPLATE_FILES } from "../../shared/artifact-template";
 import { CLI_EXIT_CODE_DEV_SERVER_NAME_REQUIRED } from "../../shared/cli-exit-codes";
 import { AGENT_MESSAGE_HOLD_IDLE_SECONDS } from "../../shared/agent-message-hold-timing";
-import { ARTIFACT_AUTHORING_STEPS, ARTIFACT_FORMAT_RULES, OMP_SKILL_BODY, skillPrLinkInstruction } from "../../shared/agent-skill-content";
+import { ARTIFACT_AUTHORING_STEPS, ARTIFACT_FORMAT_RULES, GENERIC_LEAN_SKILL_BODY, OMP_SKILL_BODY, skillPrLinkInstruction } from "../../shared/agent-skill-content";
 import { COORDINATOR_PROMPT } from "../../shared/types";
 import { parseSkillFrontmatter } from "../skills-catalog";
 import { hookCliDialect } from "../../shared/dev3-cli-path";
@@ -70,6 +70,15 @@ describe("platform feedback skill section (always present)", () => {
 });
 
 describe("dev3 skill content", () => {
+	it("tells generic-family agents (opencode) to give approval waits a shell timeout past ten minutes", () => {
+		const line = "give each a shell timeout of 660000 ms when your shell tool takes one";
+		expect(getGenericSkillContent()).toContain(line);
+		expect(GENERIC_LEAN_SKILL_BODY).toContain(line);
+		// Claude Code backgrounds a slow command and Codex keeps it running, so they skip the note.
+		expect(CLAUDE_SKILL_BODY).not.toContain(line);
+		expect(getCodexSkillContent()).not.toContain(line);
+	});
+
 	it("defaults every human-facing report to the HTML template in every harness", () => {
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), OMP_SKILL_BODY, getGenericSkillContent()]) {
 			expect(skill).toContain("Any report a human reads defaults to the dev3 template, text-only summaries and daily briefs included.");

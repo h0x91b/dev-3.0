@@ -20,3 +20,22 @@ export async function launchApprovalTimeoutMs(socketPath: string): Promise<numbe
 export async function launchAndPrepareTimeoutMs(socketPath: string): Promise<number> {
 	return await launchApprovalTimeoutMs(socketPath) + LAUNCH_PREPARATION_REPORT_BUDGET_MS;
 }
+
+export const WAIT_HEARTBEAT_MS = 60_000;
+
+/**
+ * Prints a line every minute while an approval wait runs. Gemini CLI kills a shell
+ * command after 300 s without output, which would drop a ten-minute wait mid-way.
+ */
+export async function withWaitHeartbeat<T>(wait: Promise<T>): Promise<T> {
+	const started = Date.now();
+	const timer = setInterval(() => {
+		const minutes = Math.round((Date.now() - started) / 60_000);
+		process.stderr.write(`Still waiting for the user's answer in the dev-3.0 app (${minutes} min)...\n`);
+	}, WAIT_HEARTBEAT_MS);
+	try {
+		return await wait;
+	} finally {
+		clearInterval(timer);
+	}
+}

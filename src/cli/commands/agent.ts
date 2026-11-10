@@ -6,7 +6,7 @@ import { CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_RESUME_ALREADY_RUNNING, CL
 import type { ParsedArgs } from "../args";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
-import { launchApprovalTimeoutMs } from "../launch-approval";
+import { launchApprovalTimeoutMs, withWaitHeartbeat } from "../launch-approval";
 import { exitError, exitUsage } from "../output";
 import { sendRequest } from "../socket-client";
 import { readStdin } from "../stdin";
@@ -52,7 +52,7 @@ export async function handleAgent(subcommand: string | undefined, args: ParsedAr
 	};
 	let resp;
 	try {
-		resp = await sendRequest(socketPath, "agent.spawn", params, { timeoutMs: await launchApprovalTimeoutMs(socketPath) });
+		resp = await withWaitHeartbeat(sendRequest(socketPath, "agent.spawn", params, { timeoutMs: await launchApprovalTimeoutMs(socketPath) }));
 	} catch (err) {
 		if (err instanceof Error && err.message.startsWith("Socket timeout")) {
 			return exitError("Timed out waiting for the launch", "The approval dialog may still be open; a later approval can still launch the agent. Do not blindly retry.");
@@ -98,7 +98,7 @@ async function handleResume(args: ParsedArgs, socketPath: string, context: CliCo
 	};
 	let resp;
 	try {
-		resp = await sendRequest(socketPath, asSender ? "agent.resumeAsSender" : "agent.resume", params, { timeoutMs: await launchApprovalTimeoutMs(socketPath) });
+		resp = await withWaitHeartbeat(sendRequest(socketPath, asSender ? "agent.resumeAsSender" : "agent.resume", params, { timeoutMs: await launchApprovalTimeoutMs(socketPath) }));
 	} catch (err) {
 		if (err instanceof Error && err.message.startsWith("Socket timeout")) {
 			return exitError("Timed out waiting for the resume", "The approval dialog may still be open and a later approval still resumes the task. Running the same command again waits on that same request.");
