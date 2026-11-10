@@ -179,12 +179,11 @@ export interface CreateAppWindowOptions {
 	 */
 	restore?: WindowState | null;
 	/**
-	 * Whether showing the window also activates the app (macOS
-	 * `activateIgnoringOtherApps:`). False orders the window in without taking
-	 * foreground, so a launch cannot pull the user out of a fullscreen app or
-	 * switch their Space. Defaults to true — only the dev launch opts out.
+	 * Open the window minimized to the Dock / taskbar without activating the app,
+	 * so a launch neither takes foreground nor covers the app the user works in.
+	 * Defaults to false — only the dev launch opts in.
 	 */
-	activate?: boolean;
+	background?: boolean;
 }
 
 /**
@@ -262,9 +261,12 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 		url: opts.url,
 		rpc,
 		frame,
-		activate: opts.activate ?? true,
+		activate: !opts.background,
+		// Hidden first, so the window never flashes on screen before it minimizes.
+		hidden: opts.background === true,
 		...(opts.preload ? { preload: opts.preload } : {}),
 	});
+	if (opts.background) win.minimize();
 
 	// The `frame` option above only reaches the FIRST window of the process —
 	// every later one opens stacked on the existing window, ignoring both the

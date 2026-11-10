@@ -20,14 +20,15 @@ export function isFreshStartMode(): boolean {
 }
 
 /**
- * Whether the windows opened BY A LAUNCH may take foreground. A dev launch fires
- * while the user is working in another app — often fullscreen on another Space —
- * so activating would yank them out of it. An ordinary launch is the user opening
- * the app and must come to the front as always.
+ * Whether the windows opened BY A LAUNCH start minimized in the background. A dev
+ * launch fires while the user is working in another app — often fullscreen on
+ * another Space — so a window that activates or even just appears on top yanks
+ * them out of it. An ordinary launch is the user opening the app and must come
+ * to the front as always.
  *
  * Windows the user opens later (Cmd+Shift+N, a notification click) are unaffected:
- * they activate in every mode.
+ * they open in front in every mode.
  */
-export function shouldActivateLaunchWindow(): boolean {
-	return !isFreshStartMode();
+export function shouldOpenLaunchWindowInBackground(): boolean {
+	return isFreshStartMode();
 }

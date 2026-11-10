@@ -1,5 +1,7 @@
 # A dev launch opens its window without activating the app
 
+Superseded on 2026-11-09 by `decisions/2026/11/09/dev-launch-opens-minimized.md`: the window now also opens minimized, and the `activate` option became `background`.
+
 ## Context
 
 Starting a dev build (`bun run dev` / the task dev server) yanked the user out of
