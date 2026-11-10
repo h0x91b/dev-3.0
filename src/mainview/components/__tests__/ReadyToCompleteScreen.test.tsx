@@ -172,6 +172,16 @@ describe("ReadyToCompleteScreen", () => {
 		expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1", activeTaskId: "t1" });
 	});
 
+	it("settles both offers on a task with one Keep open", async () => {
+		await renderScreen();
+		const merge = await offer("t1", "merge");
+		const agent = await offer("t1", "agent");
+		fireEvent.click(screen.getByText("Keep open"));
+		await expect(agent.answer).resolves.toBe(false);
+		await expect(merge.answer).resolves.toBe(false);
+		expect(screen.getByTestId("completions-empty")).toBeInTheDocument();
+	});
+
 	it("counts as on screen while mounted, so offers raise no toast", async () => {
 		expect(isCompletionOfferOnScreen("t1")).toBe(false);
 		await renderScreen();
