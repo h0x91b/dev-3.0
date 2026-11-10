@@ -232,7 +232,7 @@ export default function ReadyToCompleteScreen({ projects, usage, navigate }: {
 											type="button"
 											onClick={() => void completeMany(selectedRows)}
 											data-testid="completions-complete-selected"
-											className="px-3 py-1.5 min-h-[44px] md:min-h-0 text-xs whitespace-nowrap rounded-lg text-white bg-danger hover:bg-danger/80 transition-[background-color,transform] active:scale-[0.96]"
+											className="px-3 py-1.5 min-h-[44px] md:min-h-0 text-xs whitespace-nowrap rounded-lg text-white bg-danger-fill hover:bg-danger-fill-hover transition-[background-color,transform] active:scale-[0.96]"
 										>
 											{t.plural("completions.completeMany", selectedRows.length)}
 										</button>
@@ -300,7 +300,7 @@ export default function ReadyToCompleteScreen({ projects, usage, navigate }: {
 																type="button"
 																onClick={() => void complete(row)}
 																data-testid={`completions-complete-${task.id}`}
-																className="px-3 py-1.5 min-h-[44px] md:min-h-0 text-xs whitespace-nowrap rounded-lg text-white bg-danger hover:bg-danger/80 transition-[background-color,transform] active:scale-[0.96]"
+																className="px-3 py-1.5 min-h-[44px] md:min-h-0 text-xs whitespace-nowrap rounded-lg text-white bg-danger-fill hover:bg-danger-fill-hover transition-[background-color,transform] active:scale-[0.96]"
 															>
 																{t("app.branchMergedComplete")}
 															</button>
