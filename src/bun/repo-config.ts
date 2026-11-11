@@ -348,10 +348,12 @@ export async function resolveOperationalProjectConfig(
 export async function resolveProjectEnv(
 	project: Project,
 	worktreePath?: string | null,
-	opts?: { foreignCode?: boolean },
+	opts?: { foreignCode?: boolean; agentEnvDefaults?: Record<string, string> },
 ): Promise<Record<string, string>> {
 	const resolved = await resolveOperationalProjectConfig(project, worktreePath ?? undefined, opts);
-	return applyAgentEnvDefaults(resolved.env ?? {}, await loadAgentEnvDefaults(), project, homedir(), (dir) =>
+	// `agentEnvDefaults` given (even as undefined) answers "what if the global defaults were these".
+	const defaults = opts && "agentEnvDefaults" in opts ? opts.agentEnvDefaults : await loadAgentEnvDefaults();
+	return applyAgentEnvDefaults(resolved.env ?? {}, defaults, project, homedir(), (dir) =>
 		projectClaudeConfigDirAllowed(project, dir),
 	);
 }

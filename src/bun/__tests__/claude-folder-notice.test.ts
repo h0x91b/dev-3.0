@@ -1,17 +1,21 @@
 import { homedir } from "node:os";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Project } from "../../shared/types";
+import type { Project, Task } from "../../shared/types";
 
-const { resolveProjectEnv, loadSettings } = vi.hoisted(() => ({
+const { resolveProjectEnv, loadSettings, loadProjects, loadTasks } = vi.hoisted(() => ({
 	resolveProjectEnv: vi.fn(),
 	loadSettings: vi.fn(),
+	loadProjects: vi.fn(),
+	loadTasks: vi.fn(),
 }));
 vi.mock("../repo-config", () => ({ resolveProjectEnv }));
 vi.mock("../settings", () => ({ loadSettings }));
+vi.mock("../data", () => ({ loadProjects, loadTasks }));
 
 import {
 	claudeFolderHasLogin,
 	claudeFolderNotice,
+	claudeFolderSwitchImpact,
 	claudeKeychainAccount,
 	claudeKeychainService,
 	type LoginProbe,
@@ -26,6 +30,8 @@ function probe(over: Partial<LoginProbe> = {}): LoginProbe {
 beforeEach(() => {
 	resolveProjectEnv.mockReset();
 	loadSettings.mockReset().mockResolvedValue({});
+	loadProjects.mockReset();
+	loadTasks.mockReset();
 });
 
 describe("claudeKeychainService", () => {
@@ -91,3 +97,26 @@ describe("claudeFolderNotice", () => {
 	});
 });
 
+describe("claudeFolderSwitchImpact", () => {
+	const other = { id: "p2", name: "api", path: "/work/api" } as Project;
+	const tasks = (...statuses: string[]) => statuses.map((status) => ({ status }) as Task);
+
+	it("counts active tasks only in projects whose folder the switch changes", async () => {
+		loadProjects.mockResolvedValue([project, other]);
+		// `web` follows the default; `api` pins its own folder, so the switch leaves it alone.
+		resolveProjectEnv.mockImplementation(async (p: Project, _wt?: unknown, opts?: { agentEnvDefaults?: Record<string, string> }) => {
+			if (p.id === "p2") return { CLAUDE_CONFIG_DIR: "/elsewhere/.claude" };
+			return opts && "agentEnvDefaults" in opts && opts.agentEnvDefaults?.CLAUDE_CONFIG_DIR ? { CLAUDE_CONFIG_DIR: "/work/web/.claude" } : {};
+		});
+		loadTasks.mockImplementation(async (p: Project) => (p.id === "p1" ? tasks("in-progress", "review-by-user", "completed", "todo") : tasks("in-progress")));
+		expect(await claudeFolderSwitchImpact(true)).toEqual({ taskCount: 2, projectNames: ["web"] });
+		expect(resolveProjectEnv).toHaveBeenCalledWith(project, null, { agentEnvDefaults: { CLAUDE_CONFIG_DIR: "{projectPath}/.claude" } });
+	});
+
+	it("reports nothing when no project changes folder", async () => {
+		loadProjects.mockResolvedValue([project]);
+		resolveProjectEnv.mockResolvedValue({});
+		expect(await claudeFolderSwitchImpact(true)).toEqual({ taskCount: 0, projectNames: [] });
+		expect(loadTasks).not.toHaveBeenCalled();
+	});
+});

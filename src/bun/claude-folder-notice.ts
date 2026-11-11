@@ -6,10 +6,11 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
-import type { Project } from "../shared/types";
-import type { ClaudeFolderNotice } from "../shared/claude-folder-notice";
-import { expandAgentEnvDefault } from "../shared/agent-env-defaults";
-import { normalizeClaudeConfigDir, pinnedClaudeConfigDir } from "../shared/claude-config-dir";
+import { ACTIVE_STATUSES, type Project } from "../shared/types";
+import type { ClaudeFolderNotice, ClaudeFolderSwitchImpact } from "../shared/claude-folder-notice";
+import { expandAgentEnvDefault, withProjectClaudeConfigDir } from "../shared/agent-env-defaults";
+import { launchClaudeConfigLocation, normalizeClaudeConfigDir, pinnedClaudeConfigDir } from "../shared/claude-config-dir";
+import * as data from "./data";
 import { createLogger } from "./logger";
 import { resolveProjectEnv } from "./repo-config";
 import { loadSettings } from "./settings";
@@ -92,3 +93,24 @@ export async function claudeFolderNotice(project: Project, probe: LoginProbe = r
 	}
 }
 
+/** What turning the switch to `enabled` does to tasks that are already running or waiting. Never throws. */
+export async function claudeFolderSwitchImpact(enabled: boolean): Promise<ClaudeFolderSwitchImpact> {
+	const impact: ClaudeFolderSwitchImpact = { taskCount: 0, projectNames: [] };
+	const current = (await loadSettings()).agentEnvDefaults;
+	const next = withProjectClaudeConfigDir(current, enabled);
+	const home = homedir();
+	for (const project of await data.loadProjects()) {
+		try {
+			const before = await resolveProjectEnv(project);
+			const after = await resolveProjectEnv(project, null, { agentEnvDefaults: next });
+			if (launchClaudeConfigLocation(before, process.env, home, project.path).dir === launchClaudeConfigLocation(after, process.env, home, project.path).dir) continue;
+			const active = (await data.loadTasks(project)).filter((task) => ACTIVE_STATUSES.includes(task.status)).length;
+			if (active === 0) continue;
+			impact.taskCount += active;
+			impact.projectNames.push(project.name);
+		} catch (err) {
+			log.warn("Could not check a project for the Claude folder switch (non-fatal)", { projectId: project.id, error: String(err) });
+		}
+	}
+	return impact;
+}

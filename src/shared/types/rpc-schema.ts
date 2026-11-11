@@ -54,7 +54,7 @@ import type { RemoteAccessStatus, RemoteNetInterface } from "./remote";
 import type { AgentCheckResult, AgentSkillInfo, HarnessReadinessReport, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo } from "./environment";
 import type { ExplorerListing, FolderListing } from "./file-explorer";
 import type { AgentUsageReport, ProductivityStats } from "./usage-stats";
-import type { ClaudeFolderNotice } from "../claude-folder-notice";
+import type { ClaudeFolderNotice, ClaudeFolderSwitchImpact } from "../claude-folder-notice";
 
 export type RendererLogLevel = "debug" | "info" | "warn" | "error";
 
@@ -549,6 +549,11 @@ export type AppRPCSchema = {
 			listPinnedClaudeLogins: {
 				params: void;
 				response: PinnedClaudeLogin[];
+			};
+			/** Active tasks whose Claude folder the per-project folder switch, set to `enabled`, would change. */
+			claudeFolderSwitchImpact: {
+				params: { enabled: boolean };
+				response: ClaudeFolderSwitchImpact;
 			};
 			importAgentAccount: {
 				params: { kind: AgentAccountKind };

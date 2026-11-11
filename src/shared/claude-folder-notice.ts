@@ -11,3 +11,8 @@ export interface ClaudeFolderNotice {
 	dir: string;
 }
 
+/** Active tasks whose Claude folder the "Each project uses its own Claude folder" switch would change. */
+export interface ClaudeFolderSwitchImpact {
+	taskCount: number;
+	projectNames: string[];
+}
