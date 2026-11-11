@@ -10,7 +10,7 @@ export type {
 	TrustKind,
 	TemplateContext,
 } from "./types";
-export { getAgentAdapter, hasAgentAdapter, agentKey } from "./registry";
+export { getAgentAdapter, hasAgentAdapter, hasStatusHooks, agentKey } from "./registry";
 export {
 	autoAgentFamily,
 	isKnownAgentCommand,

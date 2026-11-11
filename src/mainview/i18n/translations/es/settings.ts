@@ -334,7 +334,7 @@ const settings = {
 	"settings.externalAppMacName": "Nombre de app macOS (para open -a)",
 	"settings.addExternalApp": "Agregar",
 	"settings.focusMode": "Modo concentración",
-	"settings.focusModeDesc": "Pausa los avisos de atención de los agentes: pone en cola toasts, insignias, avisos del terminal, visores y notificaciones nativas hasta salir del modo concentración.",
+	"settings.focusModeDesc": "Pausa los avisos de atención de los agentes: pone en cola toasts, insignias, visores y notificaciones nativas hasta salir del modo concentración.",
 	"settings.browserNotifications": "Notificaciones del navegador",
 	"settings.browserNotificationsDesc": "Muestra notificaciones de escritorio desde esta pestaña del navegador (dev3 notify --desktop y cambios en tareas observadas). Requiere un contexto seguro (túnel HTTPS o localhost).",
 	"settings.browserNotificationsEnable": "Activar notificaciones del navegador",

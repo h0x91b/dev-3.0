@@ -618,7 +618,7 @@ export function reducer(state: AppState, action: AppAction): AppState {
 			}
 			const bellCounts = new Map(state.bellCounts);
 			bellCounts.set(action.taskId, (bellCounts.get(action.taskId) ?? 0) + 1);
-			// Only attention calls carry a reason; bare terminal bells don't.
+			// Only some badges carry a reason (`dev3 attention`, entering User questions).
 			const trimmed = action.reason?.trim();
 			if (!trimmed) {
 				return { ...state, bellCounts };

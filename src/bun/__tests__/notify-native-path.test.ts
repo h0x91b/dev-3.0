@@ -45,7 +45,6 @@ const {
 	queueTerminalFocusToast,
 	pushCliToast,
 	pushCliAttention,
-	pushTerminalBell,
 	pushCliShowImage,
 	pushCliShowArtifact,
 	setStreamerPrivacy,
@@ -195,7 +194,6 @@ describe("native notification channel routing", () => {
 		setFocusMode(true);
 
 		pushCliToast({ taskId: "task-1", projectId: "proj-1", message: "toast", level: "info" });
-		pushTerminalBell("task-1");
 		pushCliShowImage({ taskId: "task-1", projectId: "proj-1", images: [], newCount: 1 });
 		pushCliAttention({ taskId: "task-2", projectId: "project-1", reason: "attention" });
 		pushCliShowArtifact({ taskId: "task-2", projectId: "proj-1", artifacts: [], newCount: 1 });
@@ -205,7 +203,6 @@ describe("native notification channel routing", () => {
 
 		expect(push.mock.calls.map(([name]) => name)).toEqual([
 			"cliToast",
-			"terminalBell",
 			"cliShowImage",
 			"cliAttention",
 			"cliShowArtifact",

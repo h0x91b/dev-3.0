@@ -7,6 +7,7 @@ import {
 	KNOWN_AGENT_COMMANDS,
 	SELECTABLE_AGENT_FAMILIES,
 	hasAgentAdapter,
+	hasStatusHooks,
 	agentKey,
 	claudeAdapter,
 	codexAdapter,
@@ -228,6 +229,17 @@ describe("hooksSpec", () => {
 		expect(opencodeAdapter.hooksSpec()).toBeNull();
 		expect(genericAdapter.hooksSpec()).toBeNull();
 	});
+});
+
+describe("hasStatusHooks", () => {
+	it.each([claudeAdapter, codexAdapter, copilotAdapter, ompAdapter, piAdapter])(
+		"$command hooks move the task status",
+		(adapter) => expect(hasStatusHooks(adapter.hooksSpec())).toBe(true),
+	);
+	it.each([cursorAdapter, geminiAdapter, opencodeAdapter, genericAdapter])(
+		"$command has no status hooks (Cursor's only account usage)",
+		(adapter) => expect(hasStatusHooks(adapter.hooksSpec())).toBe(false),
+	);
 });
 
 describe("exitProgram", () => {

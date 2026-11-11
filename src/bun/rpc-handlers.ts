@@ -32,7 +32,6 @@ export {
 	pushCliToast,
 	pushAgentMessage,
 	pushCliAttention,
-	pushTerminalBell,
 	pushCliShowImage,
 	pushCliShowArtifact,
 } from "./rpc-handlers/shared";
@@ -52,7 +51,6 @@ export {
 	createTask,
 	deleteTask,
 	handleBellAutoStatus,
-	isTaskInProgress,
 	launchTaskWithAgentChoice,
 	moveTask,
 	resetTaskToTodo,

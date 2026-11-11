@@ -342,7 +342,7 @@ const settings = {
 	"settings.externalAppMacName": "Имя macOS-приложения (для open -a)",
 	"settings.addExternalApp": "Добавить",
 	"settings.focusMode": "Режим фокуса",
-	"settings.focusModeDesc": "Поставить пинги внимания от агентов на паузу — тосты, бейджи, звонки терминала, события просмотра и нативные уведомления появятся после выхода из режима фокуса.",
+	"settings.focusModeDesc": "Поставить пинги внимания от агентов на паузу — тосты, бейджи, события просмотра и нативные уведомления появятся после выхода из режима фокуса.",
 	"settings.browserNotifications": "Уведомления браузера",
 	"settings.browserNotificationsDesc": "Показывать системные уведомления из этой вкладки браузера (dev3 notify --desktop и обновления отслеживаемых задач). Требуется защищённый контекст (HTTPS-туннель или localhost).",
 	"settings.browserNotificationsEnable": "Включить уведомления браузера",

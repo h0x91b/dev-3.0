@@ -20,7 +20,7 @@ import { ompAdapter } from "./omp";
 import { opencodeAdapter } from "./opencode";
 import { piAdapter } from "./pi";
 import type { AgentFamily } from "../types";
-import type { AgentAdapter } from "./types";
+import type { AgentAdapter, HooksSpec } from "./types";
 
 export { agentKey } from "./families";
 
@@ -43,4 +43,9 @@ export function getAgentAdapter(baseCommand: string, family?: AgentFamily): Agen
 /** Whether an agent maps to a first-class (non-generic) adapter. */
 export function hasAgentAdapter(baseCommand: string, family?: AgentFamily): boolean {
 	return agentKey(baseCommand, family) in REGISTRY;
+}
+
+/** Whether the hooks move the task's status; Cursor's hooks only account usage. */
+export function hasStatusHooks(spec: HooksSpec | null): boolean {
+	return spec !== null && spec.kind !== "cursor";
 }

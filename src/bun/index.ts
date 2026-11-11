@@ -11,7 +11,7 @@ import Electrobun, {
 	Utils,
 } from "electrobun/bun";
 import { startDisplayWatch } from "./display-watch";
-import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, setAppForeground, isAppForeground, setFocusMode, pushTerminalBell, getActiveContext } from "./rpc-handlers";
+import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, setAppForeground, isAppForeground, setFocusMode, getActiveContext } from "./rpc-handlers";
 import { applyFreezeDiagnosticsSetting, configureFreezeDiagnostics, recordFreezeDiagnostic, stopFreezeDiagnostics } from "./freeze-diagnostics";
 import { resolve } from "node:path";
 import { startRendererWatchdog } from "./renderer-watchdog";
@@ -389,7 +389,7 @@ log.info("CLI socket server ready", { path: cliSocketPath });
 }
 
 // Side-effect: starts the PTY WebSocket server (dynamic import so PATH is patched first)
-const { setOnPtyDied, setOnBell, setOnIdle, setOnPaneExited, setOnOsc52Copy, getActiveSessionIds, getPtyPort, registerBackpressureProbe } = await import("./pty-server");
+const { setOnPtyDied, setOnBell, setOnPaneExited, setOnOsc52Copy, getActiveSessionIds, getPtyPort, registerBackpressureProbe } = await import("./pty-server");
 const { setNativeDevServerProbe, setNativePaneRecordsReader, startPortScanPoller, stopPortScanPoller } = await import("./port-scanner");
 const { startResourceMonitor, stopResourceMonitor } = await import("./resource-monitor");
 const { startRateLimitMonitor, stopRateLimitMonitor } = await import("./rate-limit-monitor");
@@ -771,8 +771,7 @@ setOnBell((sessionKey) => {
 		// Project terminals are plain shells — skip bell/auto-status logic
 		if (sessionKey.startsWith("project-")) return;
 
-		log.debug("Terminal bell, notifying renderer", { taskId: sessionKey.slice(0, 8) });
-		pushTerminalBell(sessionKey);
+		log.debug("Terminal bell", { taskId: sessionKey.slice(0, 8) });
 		// Auto-move task from "in-progress" to "user-questions" on bell
 		handleBellAutoStatus(sessionKey).catch((err) => {
 			log.error("handleBellAutoStatus unhandled error", { error: String(err) });
@@ -784,29 +783,6 @@ setOnBell((sessionKey) => {
 			stack: (err as Error)?.stack ?? "no stack",
 		});
 	}
-});
-
-// Wire terminal idle notifications (red badge only, no status transition)
-// Only fires for tasks that are currently "in-progress" — idle terminals
-// in other statuses (review, todo, etc.) are expected and not noteworthy.
-setOnIdle((sessionKey) => {
-	// Project terminals have no task status — skip idle notifications
-	if (sessionKey.startsWith("project-")) return;
-
-	isTaskInProgress(sessionKey).then((inProgress) => {
-		if (!inProgress) return;
-		try {
-			log.debug("Terminal idle, notifying renderer", { taskId: sessionKey.slice(0, 8) });
-			pushTerminalBell(sessionKey);
-		} catch (err) {
-			log.error("Failed to handle terminal idle", {
-				taskId: sessionKey.slice(0, 8),
-				error: String(err),
-			});
-		}
-	}).catch((err) => {
-		log.error("isTaskInProgress failed in idle handler", { error: String(err) });
-	});
 });
 
 setOnOsc52Copy((payload) => {

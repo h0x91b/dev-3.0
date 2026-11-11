@@ -507,7 +507,6 @@ const {
 	setFocusMode,
 	isNotificationSuppressed,
 	pushCliAttention,
-	pushTerminalBell,
 	dropQueuedAttention,
 	emitTaskSound,
 	runCleanupScript,
@@ -635,6 +634,8 @@ describe("handleBellAutoStatus", () => {
 		vi.mocked(data.loadTasks).mockReset();
 		vi.mocked(data.updateTask).mockReset();
 		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskSortOrder: "oldest-first" } as any);
+		vi.mocked(agents.getAllAgents).mockResolvedValue([]);
+		vi.mocked(agents.findConfig).mockReturnValue(undefined);
 	});
 
 	it("moves in-progress task to user-questions", async () => {
@@ -702,6 +703,42 @@ describe("handleBellAutoStatus", () => {
 		vi.mocked(data.loadTasks).mockResolvedValue([]);
 
 		await expect(handleBellAutoStatus("unknown-task")).resolves.toBeUndefined();
+	});
+
+	it("leaves a task whose agent has status hooks alone: its Stop hook reports the turn end", async () => {
+		const task = makeTask({ status: "in-progress", agentId: "builtin-claude" });
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(agents.getAllAgents).mockResolvedValue([{ id: "builtin-claude", baseCommand: "claude", configurations: [] }] as any);
+
+		await handleBellAutoStatus("task-1");
+
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("still moves a task whose agent has no status hooks", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress", agentId: "builtin-gemini" });
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, status: "user-questions" });
+		vi.mocked(agents.getAllAgents).mockResolvedValue([{ id: "builtin-gemini", baseCommand: "gemini", configurations: [] }] as any);
+
+		await handleBellAutoStatus("task-1");
+
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", expect.objectContaining({ status: "user-questions" }), { ifStatus: "in-progress" });
+	});
+
+	it("still moves a Cursor task: its hooks only account usage", async () => {
+		const task = makeTask({ status: "in-progress", agentId: "builtin-cursor" });
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, status: "user-questions" });
+		vi.mocked(agents.getAllAgents).mockResolvedValue([{ id: "builtin-cursor", baseCommand: "agent", agentFamily: "agent", configurations: [] }] as any);
+
+		await handleBellAutoStatus("task-1");
+
+		expect(data.updateTask).toHaveBeenCalled();
 	});
 });
 
@@ -3417,6 +3454,24 @@ describe("handlers.moveTask", () => {
 		// The board still syncs via taskUpdated — only the sound push is skipped.
 		expect(push).toHaveBeenCalledWith("taskUpdated", expect.objectContaining({ projectId: project.id }));
 		expect(result.status).toBe("completed");
+	});
+
+	it("moveTask: a hook move into user-questions raises the questions badge, a UI move does not", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress" });
+		const push = vi.fn();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, status: "user-questions" });
+		vi.mocked(loadSettingsSync).mockReturnValue({} as any);
+		setPushMessage(push);
+
+		await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "user-questions" });
+		expect(push).toHaveBeenCalledWith("cliAttention", { taskId: "task-1", projectId: "proj-1", reason: "", kind: "questions" });
+
+		push.mockClear();
+		await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "user-questions", clientPlayedSound: true });
+		expect(push).not.toHaveBeenCalledWith("cliAttention", expect.anything());
 	});
 
 	it("in-progress → cancelled: same cleanup as completed", async () => {
@@ -17068,7 +17123,7 @@ describe("dropQueuedAttention (dev3 attention --clear)", () => {
 		setPushMessage(push);
 		setTerminalFocus(true);
 		pushCliAttention({ taskId: "task-cleared", projectId: "proj-1", reason: "blocked" });
-		pushTerminalBell("task-cleared");
+		pushCliAttention({ taskId: "task-cleared", projectId: "proj-1", reason: "second" });
 		pushCliAttention({ taskId: "task-other", projectId: "proj-1", reason: "still waiting" });
 
 		dropQueuedAttention("task-cleared");

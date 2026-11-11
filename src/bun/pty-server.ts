@@ -183,8 +183,6 @@ interface PtySession {
 	tmuxSocket: string;
 	tmuxSessionName: string;
 	sessionType: PtySessionType;
-	lastOutputTime: number;
-	idleNotified: boolean;
 	/** Streaming decoder that buffers incomplete multi-byte UTF-8 sequences
 	 *  across PTY data chunks, preventing U+FFFD replacement characters. */
 	decoder: TextDecoder;
@@ -259,7 +257,6 @@ export function registerBackpressureProbe(sessionKey: string, probe: () => numbe
 }
 let onPtyDiedCallback: ((taskId: string) => void) | null = null;
 let onBellCallback: ((taskId: string) => void) | null = null;
-let onIdleCallback: ((taskId: string) => void) | null = null;
 let onPaneExitedCallback: ((taskId: string, paneId: string) => void) | null = null;
 let onOsc52CopyCallback: ((payload: { taskId: string; text: string; len: number }) => void) | null = null;
 
@@ -269,10 +266,6 @@ export function setOnPtyDied(fn: (taskId: string) => void): void {
 
 export function setOnBell(fn: (taskId: string) => void): void {
 	onBellCallback = fn;
-}
-
-export function setOnIdle(fn: (taskId: string) => void): void {
-	onIdleCallback = fn;
 }
 
 export function setOnPaneExited(fn: (taskId: string, paneId: string) => void): void {
@@ -346,8 +339,6 @@ export function createSession(
 		tmuxSocket,
 		tmuxSessionName,
 		sessionType,
-		lastOutputTime: Date.now(),
-		idleNotified: false,
 		decoder: new TextDecoder("utf-8", { fatal: false }),
 		pendingData: "",
 		batchTimer: null,
@@ -370,8 +361,6 @@ export function createSession(
 /** Feed one chunk of PTY bytes through the same pipeline both backends share. */
 function ingestPtyOutput(session: PtySession, data: string | Uint8Array): void {
 	const str = typeof data === "string" ? data : session.decoder.decode(data, { stream: true });
-	session.lastOutputTime = Date.now();
-	session.idleNotified = false;
 	const cleaned = handleOsc52(str, session);
 	checkForBell(cleaned, session.taskId);
 	if (!cleaned) return;
@@ -512,8 +501,6 @@ export async function createNativeTaskSession(
 		tmuxSocket: "",
 		tmuxSessionName: "",
 		sessionType: "task",
-		lastOutputTime: Date.now(),
-		idleNotified: false,
 		decoder: new TextDecoder("utf-8", { fatal: false }),
 		pendingData: "",
 		batchTimer: null,
@@ -598,8 +585,6 @@ export async function reattachNativeTaskSession(taskId: string, projectId: strin
 		tmuxSocket: "",
 		tmuxSessionName: "",
 		sessionType: "task",
-		lastOutputTime: Date.now(),
-		idleNotified: false,
 		decoder: new TextDecoder("utf-8", { fatal: false }),
 		pendingData: "",
 		batchTimer: null,
@@ -688,8 +673,6 @@ export async function ensureNativePanePtySession(
 		tmuxSocket: "",
 		tmuxSessionName: "",
 		sessionType: "task",
-		lastOutputTime: Date.now(),
-		idleNotified: false,
 		decoder: new TextDecoder("utf-8", { fatal: false }),
 		pendingData: "",
 		batchTimer: null,
@@ -2224,25 +2207,6 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 		})();
 	}, 200);
 }
-
-// ── Idle detection ──────────────────────────────────────────────────
-// If a PTY session produces no output for IDLE_THRESHOLD_MS, fire the
-// idle callback once.  The flag resets as soon as new output arrives.
-const IDLE_THRESHOLD_MS = 15_000;
-const IDLE_CHECK_INTERVAL_MS = 5_000;
-
-setInterval(() => {
-	const now = Date.now();
-	for (const session of sessions.values()) {
-		if (!sessionShell(session)) continue;
-		if (session.idleNotified) continue;
-		if (now - session.lastOutputTime >= IDLE_THRESHOLD_MS) {
-			session.idleNotified = true;
-			log.info("Terminal idle detected", { taskId: shortId(session.taskId) });
-			onIdleCallback?.(session.taskId);
-		}
-	}
-}, IDLE_CHECK_INTERVAL_MS);
 
 /** Attempts and pause used to mint the generation token; a fresh server may not answer yet. */
 const SERVER_TOKEN_ATTEMPTS = 3;

@@ -163,10 +163,8 @@ export interface TerminalFocusAttentionPayload {
 	/** Owning project — carried solely so a sensitive project's badge can be dropped. */
 	projectId: string;
 	reason: string;
-}
-
-export interface TerminalFocusBellPayload {
-	taskId: string;
+	/** `questions`: the renderer words the badge itself, `reason` is empty. */
+	kind?: "questions";
 }
 
 export interface TerminalFocusImagePayload {
@@ -213,7 +211,6 @@ type QueuedTerminalNotification =
 	| { kind: "agentMessage"; payload: AgentMessagePayload }
 	| { kind: "toast"; payload: TerminalFocusToastPayload }
 	| { kind: "attention"; payload: TerminalFocusAttentionPayload }
-	| { kind: "terminalBell"; payload: TerminalFocusBellPayload }
 	| { kind: "showImage"; payload: TerminalFocusImagePayload }
 	| { kind: "showArtifact"; payload: TerminalFocusArtifactPayload };
 
@@ -252,8 +249,6 @@ function flushQueuedNotifications(): void {
 			getPushMessage()?.("cliToast", notification.payload);
 		} else if (notification.kind === "attention") {
 			getPushMessage()?.("cliAttention", notification.payload);
-		} else if (notification.kind === "terminalBell") {
-			getPushMessage()?.("terminalBell", notification.payload);
 		} else if (notification.kind === "showImage") {
 			getPushMessage()?.("cliShowImage", notification.payload);
 		} else {
@@ -292,15 +287,13 @@ export function queueTerminalFocusAttention(payload: TerminalFocusAttentionPaylo
 }
 
 /**
- * Drop a task's queued badge events (`dev3 attention --clear`). Attention calls
- * and terminal bells light the same badge, so both go — otherwise a badge
- * cleared during Focus Mode reappears when the queue flushes.
+ * Drop a task's queued attention events (`dev3 attention --clear`), so a badge
+ * cleared during Focus Mode does not reappear when the queue flushes.
  */
 export function dropQueuedAttention(taskId: string): void {
 	for (let i = queuedTerminalNotifications.length - 1; i >= 0; i--) {
 		const queued = queuedTerminalNotifications[i];
-		const isBadge = queued.kind === "attention" || queued.kind === "terminalBell";
-		if (isBadge && queued.payload.taskId === taskId) {
+		if (queued.kind === "attention" && queued.payload.taskId === taskId) {
 			queuedTerminalNotifications.splice(i, 1);
 		}
 	}
@@ -337,16 +330,6 @@ export function pushCliAttention(payload: TerminalFocusAttentionPayload): void {
 		return;
 	}
 	getPushMessage()?.("cliAttention", payload);
-}
-
-/** Queue or deliver a terminal bell while an attention-suppressing mode is active. */
-export function pushTerminalBell(taskId: string): void {
-	const payload = { taskId };
-	if (isNotificationSuppressed()) {
-		queuedTerminalNotifications.push({ kind: "terminalBell", payload });
-		return;
-	}
-	getPushMessage()?.("terminalBell", payload);
 }
 
 /** Queue or deliver a shared-image notification while an attention-suppressing mode is active. */

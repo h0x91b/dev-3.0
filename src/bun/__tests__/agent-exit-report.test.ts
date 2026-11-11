@@ -43,7 +43,8 @@ describe("the launch wrapper's exit report (#2034)", () => {
 		await expect(exited(code)).resolves.toEqual({ moved: true });
 
 		expect(fixtures.task.status).toBe("user-questions");
-		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ newStatus: "user-questions", ifStatus: "in-progress" }));
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ newStatus: "user-questions", ifStatus: "in-progress", callerRaisesAttention: true }));
+		expect(pushCliAttention).toHaveBeenCalledTimes(1);
 		expect(pushCliAttention).toHaveBeenCalledWith(expect.objectContaining({
 			taskId: "task",
 			reason: expect.stringContaining(`exit code ${code}`),

@@ -1474,6 +1474,9 @@ export async function executeLifecycleEffect(
 		case "emitTaskSound":
 			emitTaskSound(effect.status, ctx.task.id);
 			return {};
+		case "raiseQuestionsAttention":
+			pushCliAttention({ taskId: ctx.task.id, projectId: ctx.task.projectId, reason: "", kind: "questions" });
+			return {};
 		case "push":
 			pushEffect(effect, ctx);
 			return {};

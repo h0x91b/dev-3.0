@@ -5,6 +5,8 @@ import { isTaskSoundEnabled } from "../../shared/task-sound-statuses";
 import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, LAUNCH_AFTER_UNTIL, hasGitWorkflow, normalizeTaskType, OWN_WORKTREE_NOT_A_REPO_ERROR, reviewTaskTitle, taskUsesWorktree } from "../../shared/types";
 import { armLaunchAfter, clearLaunchAfter, startLaunchAfterNow } from "../launch-after";
 import * as data from "../data";
+import { resolveTaskAgentHooks } from "../agent-hooks-refresh";
+import { getAgentAdapter, hasStatusHooks } from "../../shared/agent-adapters/registry";
 import { loadTaskLineage } from "../task-lineage";
 import { epicForNewTask } from "../task-epics";
 import * as git from "../git";
@@ -137,6 +139,9 @@ export async function handleBellAutoStatus(taskId: string): Promise<void> {
 			const tasks = await data.loadTasks(project);
 			const task = tasks.find((candidate) => candidate.id === taskId);
 			if (!task) continue;
+			// An agent with status hooks reports its own turn end; its BEL can land first.
+			const agent = await resolveTaskAgentHooks(task);
+			if (agent && hasStatusHooks(getAgentAdapter(agent.baseCommand, agent.family).hooksSpec())) return;
 			log.info("Bell auto-transition requested", { taskId: taskId.slice(0, 8) });
 			await dispatchLifecycleEvent(project.id, task.id, {
 				type: "moveRequested",
@@ -148,20 +153,6 @@ export async function handleBellAutoStatus(taskId: string): Promise<void> {
 	} catch (err) {
 		log.error("handleBellAutoStatus failed", { taskId: taskId.slice(0, 8), error: String(err) });
 	}
-}
-
-export async function isTaskInProgress(taskId: string): Promise<boolean> {
-	try {
-		const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
-		for (const project of projects) {
-			const tasks = await data.loadTasks(project);
-			const task = tasks.find((candidate) => candidate.id === taskId);
-			if (task) return task.status === "in-progress";
-		}
-	} catch (err) {
-		log.error("isTaskInProgress failed", { taskId: taskId.slice(0, 8), error: String(err) });
-	}
-	return false;
 }
 
 async function getTasks(params: { projectId: string }): Promise<Task[]> {
@@ -371,6 +362,8 @@ export async function moveTask(params: {
 	ifStatus?: string;
 	ifStatusNot?: string;
 	clientPlayedSound?: boolean;
+	/** The caller raises its own attention badge, so the move adds none. */
+	callerRaisesAttention?: boolean;
 	enforceAllowedTransition?: boolean;
 	/** A deliberate start from outside the task — see `explicitLaunch` on the event. */
 	explicitLaunch?: boolean;
@@ -389,6 +382,7 @@ export async function moveTask(params: {
 		},
 		force: params.force,
 		clientPlayedSound: params.clientPlayedSound,
+		callerRaisesAttention: params.callerRaisesAttention,
 		enforceAllowedTransition: params.enforceAllowedTransition,
 		explicitLaunch: params.explicitLaunch,
 	});

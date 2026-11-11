@@ -1892,20 +1892,11 @@ function App() {
 		return () => window.removeEventListener("rpc:taskSound", onTaskSound);
 	}, []);
 
-	useEffect(() => {
-		function onTerminalBell(e: Event) {
-			const { taskId } = (e as CustomEvent).detail;
-			dispatch({ type: "addBell", taskId });
-		}
-		window.addEventListener("rpc:terminalBell", onTerminalBell);
-		return () => window.removeEventListener("rpc:terminalBell", onTerminalBell);
-	}, [dispatch]);
-
-	// CLI-initiated attention badge (`dev3 attention "reason"`). Same red badge as
-	// the terminal bell, but carries a hoverable reason.
+	// Attention badge: `dev3 attention "reason"` or a task newly entering User
+	// questions (`kind: "questions"`). Carries a hoverable reason.
 	useEffect(() => {
 		function onCliAttention(e: Event) {
-			const { taskId, projectId, reason, clear } = (e as CustomEvent).detail as { taskId: string; projectId?: string; reason: string; clear?: boolean };
+			const { taskId, projectId, reason, kind, clear } = (e as CustomEvent).detail as { taskId: string; projectId?: string; reason: string; kind?: "questions"; clear?: boolean };
 			if (!taskId) return;
 			// Clearing shows nothing, so a silenced project must not keep a stale
 			// badge lit; only raising a badge is gated on display silencing.
@@ -1914,11 +1905,11 @@ function App() {
 				return;
 			}
 			if (isProjectSilencedForDisplay(projectId)) return;
-			dispatch({ type: "addBell", taskId, reason: reason ?? "" });
+			dispatch({ type: "addBell", taskId, reason: kind === "questions" ? t("kanban.badge.waitingForAnswer") : reason ?? "" });
 		}
 		window.addEventListener("rpc:cliAttention", onCliAttention);
 		return () => window.removeEventListener("rpc:cliAttention", onCliAttention);
-	}, [dispatch]);
+	}, [dispatch, t]);
 
 	useEffect(() => {
 		const onStaleAgentPath = (e: Event) => showStaleAgentPathToast((e as CustomEvent).detail as StaleAgentPathDetail, t);

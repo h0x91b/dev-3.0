@@ -157,6 +157,7 @@ vi.mock("../components/ProjectView", () => ({
 		taskDetailId?: string;
 		taskView?: boolean;
 		bellCounts?: Map<string, number>;
+		bellReasons?: Map<string, string[]>;
 		dockArtifact?: boolean;
 		dispatch?: (action: { type: string; request?: unknown }) => void;
 	}) => (
@@ -168,6 +169,7 @@ vi.mock("../components/ProjectView", () => ({
 			data-task-view={props.taskView ? "true" : "false"}
 			data-dock-artifact={props.dockArtifact ? "true" : "false"}
 			data-bell-count={String(props.bellCounts?.get("t-overflow") ?? 0)}
+			data-bell-reasons={JSON.stringify(props.bellReasons?.get("t-overflow") ?? [])}
 		>
 			<button data-testid="mock-open-diff" onClick={() => props.dispatch?.({ type: "openTaskDiff", request: { mode: "branch" } })} />
 			<button data-testid="mock-close-diff" onClick={() => props.dispatch?.({ type: "closeTaskDiff" })} />
@@ -2403,6 +2405,23 @@ describe("App keyboard shortcuts", () => {
 			});
 
 			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-bell-count", "0"));
+		});
+
+		it("words a questions badge itself instead of showing the empty reason", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1" }),
+			});
+
+			await renderApp();
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:cliAttention", {
+					detail: { taskId: "t-overflow", projectId: "p1", reason: "", kind: "questions" },
+				}));
+			});
+
+			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-bell-count", "1"));
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-bell-reasons", JSON.stringify(["Waiting for your answer"]));
 		});
 	});
 
