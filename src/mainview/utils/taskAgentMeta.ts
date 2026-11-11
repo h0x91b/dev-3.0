@@ -59,9 +59,19 @@ export function getCompactConfigLabel(config: AgentConfiguration | null): string
 	return trimmedName.replace(/^Default\s+/i, "").trim();
 }
 
+/** The agent a task runs: its own pick, else (no pick, worktree exists) the main pane's, i.e. the global default. */
+export function taskRunningAgentIds(
+	task: Pick<Task, "agentId" | "configId" | "worktreePath" | "sessionState">,
+): { agentId: string | null; configId: string | null } {
+	if (task.agentId) return { agentId: task.agentId, configId: task.configId ?? null };
+	const pane = task.worktreePath ? task.sessionState?.panes?.[0] : undefined;
+	return { agentId: pane?.agentId ?? null, configId: pane?.configId ?? null };
+}
+
 export function getTaskAgentMeta(task: Task, agents: CodingAgent[]) {
-	const agent = task.agentId ? agents.find((candidate) => candidate.id === task.agentId) ?? null : null;
-	const config = resolveTaskAgentConfig(agent, task.configId ?? null);
+	const { agentId, configId } = taskRunningAgentIds(task);
+	const agent = agentId ? agents.find((candidate) => candidate.id === agentId) ?? null : null;
+	const config = resolveTaskAgentConfig(agent, configId);
 	const configLabel = getCompactConfigLabel(config);
 
 	return {

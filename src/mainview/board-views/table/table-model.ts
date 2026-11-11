@@ -2,6 +2,7 @@ import type { BoardColumnSlot, Task } from "../../../shared/types";
 import { getTaskTitle, priorityRank } from "../../../shared/types";
 import { parentTaskIdOf } from "../../../shared/types/task-origin";
 import { taskLastActivityMs } from "../../utils/projectActivity";
+import { taskRunningAgentIds } from "../../utils/taskAgentMeta";
 
 /** Every column the Table can show, in canonical display order (spec D18). */
 export const TABLE_COLUMNS = [
@@ -166,7 +167,7 @@ function sortKey(task: Task, column: TableColumnId, ctx: TableSortContext): Sort
 		}
 		case "priority": return priorityRank(task.priority);
 		case "labels": return ctx.labelNames(task).map((n) => n.toLocaleLowerCase()).sort().join("\u0000") || null;
-		case "agent": return ctx.agentName(task.agentId).toLocaleLowerCase() || null;
+		case "agent": return ctx.agentName(taskRunningAgentIds(task).agentId).toLocaleLowerCase() || null;
 		case "pr": return taskPrNumber(task);
 		case "activity": return taskLastActivityMs(task) || null;
 		case "parent": {

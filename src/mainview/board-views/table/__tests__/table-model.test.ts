@@ -164,6 +164,12 @@ describe("sortTableTasks", () => {
 		expect(ids(["priority", "asc"])).toEqual(["b", "a", "c"]);
 	});
 
+	it("sorts a task on the default agent by the agent its main pane runs", () => {
+		const pane = { agentCmd: "claude", sessionId: null, agentId: "a2", configId: null };
+		const d = task({ id: "d", seq: 4, worktreePath: "/tmp/wt", sessionState: { panes: [pane] } });
+		expect(sortTableTasks([d, b], ["agent", "asc"], ctx).map((t) => t.id)).toEqual(["b", "d"]);
+	});
+
 	it("sorts by agent name, project name, label names, PR, branch, parent seq and created", () => {
 		expect(ids(["agent", "asc"])).toEqual(["b", "a", "c"]);
 		expect(ids(["project", "asc"])).toEqual(["c", "b", "a"]);
