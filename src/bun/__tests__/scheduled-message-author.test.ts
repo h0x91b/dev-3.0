@@ -3,10 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../pane-input", () => ({ pinTaskPane: vi.fn() }));
 vi.mock("../port-scanner", () => ({ collectProcessInfo: vi.fn() }));
 vi.mock("../agent-process-signature", () => ({ readAgentProcessSignature: vi.fn(), isSameAgentProcess: vi.fn() }));
-vi.mock("../native-task-panes", () => ({ nativeTaskPanesState: vi.fn() }));
+vi.mock("../native-task-panes", () => ({ nativeTaskPanesState: vi.fn(), nativeTaskPaneCommandsStrict: vi.fn() }));
 vi.mock("../tmux", () => ({
 	DEFAULT_TMUX_SOCKET: "dev3",
 	PANE_ID_PID_FORMAT: { formatString: "#{pane_id}\t#{pane_pid}" },
+	PANE_START_COMMAND_FORMAT: { formatString: "#{pane_id}\t#{pane_start_command}" },
+	SERVER_IDENTITY_FORMAT: { formatString: "#{socket_path}\t#{pid}" },
 	taskSessionName: (id: string) => `dev3-${id}`,
 	tmux: { listPanes: vi.fn() },
 }));
@@ -14,8 +16,8 @@ vi.mock("../tmux", () => ({
 import { pinTaskPane } from "../pane-input";
 import { collectProcessInfo } from "../port-scanner";
 import { isSameAgentProcess, readAgentProcessSignature } from "../agent-process-signature";
-import { nativeTaskPanesState } from "../native-task-panes";
-import { tmux } from "../tmux";
+import { nativeTaskPaneCommandsStrict, nativeTaskPanesState } from "../native-task-panes";
+import { PANE_ID_PID_FORMAT, SERVER_IDENTITY_FORMAT, tmux } from "../tmux";
 import {
 	captureScheduledMessageAuthor,
 	captureSenderAgent,
@@ -26,12 +28,19 @@ import {
 } from "../scheduled-message-author";
 import type { PaneSessionEntry, Task } from "../../shared/types";
 import { decodeAgentHandle, encodeAgentHandle } from "../../shared/agent-handle";
+import { dev3TaskTempPath } from "../temp-paths";
+
+const TMUX_SOCKET_PATH = "/private/tmp/tmux-501/dev3";
+const TMUX_SERVER_PID = 4242;
+/** The CLI's own `$TMUX`: the task's server, session 0. */
+const TMUX_ENV = `${TMUX_SOCKET_PATH},${TMUX_SERVER_PID},0`;
 
 /** A synthetic machine: processes plus the tmux panes (root pid each) on one server generation. */
 type Proc = { pid: number; ppid: number; args: string; start?: string };
 let procs: Proc[];
 let panes: Record<string, number>;
 let serverToken: string;
+let startCommands: Record<string, string>;
 
 /**
  * Two agents in one task (A in %1, B in %2), an AI Review agent in %3 that is not
@@ -40,6 +49,7 @@ let serverToken: string;
  */
 function machine(): void {
 	serverToken = "gen-1";
+	startCommands = {};
 	panes = { "%1": 100, "%2": 200, "%3": 300, "%4": 400 };
 	procs = [
 		{ pid: 100, ppid: 50, args: "/opt/homebrew/bin/zsh /tmp/dev3-task-cmd.sh" },
@@ -99,7 +109,9 @@ beforeEach(() => {
 			? { ok: true, incarnation: { backend: "tmux", taskId: t.id, paneId, sessionName: "s", serverToken } }
 			: { ok: false, reason: "pane-absent", detail: "gone" });
 	vi.mocked(tmux.listPanes).mockImplementation(async () =>
-		Object.entries(panes).map(([paneId, panePid]) => ({ paneId, panePid })) as never);
+		Object.entries(panes).map(([paneId, panePid]) => ({
+			paneId, panePid, startCommand: startCommands[paneId] ?? "", socketPath: TMUX_SOCKET_PATH, serverPid: TMUX_SERVER_PID,
+		})) as never);
 	vi.mocked(collectProcessInfo).mockImplementation(async () => {
 		const tree = new Map<number, number[]>();
 		const cmdlines = new Map<number, string>();
@@ -209,8 +221,61 @@ describe("liveAgentPaneIds — which panes really run an agent", () => {
 		expect(await liveAgentPaneIds(task())).toEqual(["%1", "%2"]);
 	});
 
-	it("tmux: a recorded entry with no pane id yet makes the answer unknown", async () => {
-		expect(await liveAgentPaneIds(task([pane(null, null)]))).toBeNull();
+	describe("tmux: an entry with no pane id yet is answered from the panes the task launched", () => {
+		const startedBy = (script: string) => `'/bin/bash' '${dev3TaskTempPath("task-1", script)}'`;
+		const unrecorded = () => task([pane(null, "conv-a")]);
+
+		beforeEach(() => {
+			// %1 and %2 are main-script panes; %3 (AI Review) and %4 (shell split) keep their own commands.
+			startCommands = { "%1": startedBy("cmd.sh"), "%2": startedBy("run.sh"), "%3": "bash /tmp/dev3-task-1-column-agent.sh" };
+		});
+
+		it("finds the one live agent pane, skipping the AI Review agent and the shell split", async () => {
+			delete panes["%2"];
+			expect(await liveAgentPaneIds(unrecorded())).toEqual(["%1"]);
+		});
+
+		it("returns every live main-script pane, so the caller never guesses between them", async () => {
+			expect(await liveAgentPaneIds(unrecorded())).toEqual(["%1", "%2"]);
+		});
+
+		it("does not count the AI Review pane even when it is the only agent left", async () => {
+			delete panes["%1"];
+			delete panes["%2"];
+			expect(await liveAgentPaneIds(unrecorded())).toEqual([]);
+		});
+
+		it("does not count the dev server viewer pane that attaches to the nested session", async () => {
+			delete panes["%2"];
+			procs.push(
+				{ pid: 600, ppid: 50, args: "bash -c trap 'exit' TERM; while true; do tmux attach-session -t dev3-dev-task-1; done" },
+				{ pid: 601, ppid: 600, args: "tmux -L dev3 attach-session -t dev3-dev-task-1" },
+			);
+			panes["%6"] = 600;
+			startCommands["%6"] = "bash -c 'trap exit TERM; while true; do tmux attach-session -t dev3-dev-task-1; done'";
+
+			expect(await liveAgentPaneIds(unrecorded())).toEqual(["%1"]);
+		});
+
+		it("does not count a parallel setup pane whose launch script runs only the setup shell", async () => {
+			delete panes["%1"];
+			delete panes["%2"];
+			procs.push({ pid: 600, ppid: 50, args: "/bin/bash /tmp/dev3-task-1-run.sh" }, { pid: 601, ppid: 600, args: "/bin/bash /tmp/dev3-task-1-startup.sh" });
+			panes["%6"] = 600;
+			startCommands["%6"] = startedBy("run.sh");
+
+			expect(await liveAgentPaneIds(unrecorded())).toEqual([]);
+		});
+
+		it("keeps the recorded panes that have an id", async () => {
+			delete panes["%2"];
+			expect(await liveAgentPaneIds(task([pane(null, "conv-a"), pane("%3", null)]))).toEqual(["%3", "%1"]);
+		});
+
+		it("is unknown when the session's panes cannot be listed", async () => {
+			vi.mocked(tmux.listPanes).mockRejectedValue(new Error("no server"));
+			expect(await liveAgentPaneIds(unrecorded())).toBeNull();
+		});
 	});
 
 	it("native: counts extra agent panes that sessionState never recorded", async () => {
@@ -451,6 +516,156 @@ describe("captureSenderAgent — the sender a reply must reach, or why there is 
 		for (const cliPid of [403, 411, 421]) {
 			expect(await captureSenderAgent(task(), "%4", cliPid)).toMatchObject({ ok: false, reason: "no-agent" });
 		}
+	});
+
+	describe("an agent started through a wrapper, detached from the CLI's ancestry", () => {
+		/** Pane %5: launch script → wrapper (python3); the real agent and the CLI hang under pid 1. */
+		function wrapperPane(): void {
+			procs.push(
+				{ pid: 500, ppid: 50, args: "/bin/bash /tmp/dev3-task-cmd.sh" },
+				{ pid: 501, ppid: 500, args: "python3 /opt/claude-wrapper.py" },
+				{ pid: 510, ppid: 1, args: "/Users/me/.local/bin/claude --session-id conv-w" },
+				{ pid: 520, ppid: 510, args: "/bin/zsh -c dev3 pr watch" },
+				{ pid: 521, ppid: 520, args: "/Users/me/.dev3.0/bin/dev3 pr watch" },
+			);
+			panes["%5"] = 500;
+		}
+		const evidence = { tmuxEnv: TMUX_ENV, envTaskId: "task-1" };
+		const recorded = () => task([pane("%5", "conv-w")]);
+
+		it("finds the agent running in the recorded pane, given the evidence", async () => {
+			wrapperPane();
+			expect(await captureSenderAgent(recorded(), "%5", 521, { generation: true, ...evidence })).toEqual({
+				ok: true,
+				author: { paneId: "%5", sessionId: "conv-w", paneToken: "gen-1", agentProcess: sig(501) },
+			});
+		});
+
+		it("says no agent for a shell outside the task claiming the pane: unrelated ancestry, no evidence", async () => {
+			wrapperPane();
+			expect(await captureSenderAgent(recorded(), "%5", 521)).toMatchObject({ ok: false, reason: "no-agent" });
+		});
+
+		it("says no agent when $TMUX names another server or socket", async () => {
+			wrapperPane();
+			for (const tmuxEnv of [`${TMUX_SOCKET_PATH},9999,0`, `/private/tmp/tmux-501/other,${TMUX_SERVER_PID},0`, null, "garbage"]) {
+				expect(await captureSenderAgent(recorded(), "%5", 521, { ...evidence, tmuxEnv })).toMatchObject({ ok: false, reason: "no-agent" });
+			}
+		});
+
+		it("says no agent when the CLI's DEV3_TASK_ID is another task's or missing", async () => {
+			wrapperPane();
+			for (const envTaskId of ["task-2", null]) {
+				expect(await captureSenderAgent(recorded(), "%5", 521, { ...evidence, envTaskId })).toMatchObject({ ok: false, reason: "no-agent" });
+			}
+		});
+
+		it("says no agent for a pid that is not in the process table", async () => {
+			wrapperPane();
+			expect(await captureSenderAgent(recorded(), "%5", 999, evidence)).toMatchObject({ ok: false, reason: "no-agent" });
+		});
+
+		it("says no agent when the tmux server cannot be read", async () => {
+			wrapperPane();
+			vi.mocked(tmux.listPanes).mockImplementation(async (format) => {
+				if (format === SERVER_IDENTITY_FORMAT) throw new Error("no server");
+				return Object.entries(panes).map(([paneId, panePid]) => ({ paneId, panePid })) as never;
+			});
+			expect(await captureSenderAgent(recorded(), "%5", 521, evidence)).toMatchObject({ ok: false, reason: "no-agent" });
+		});
+
+		it("says no agent when the CLI visibly runs under another pane and claims this one", async () => {
+			wrapperPane();
+			expect(await captureSenderAgent(task([pane("%5", "conv-w"), pane("%1", "conv-a")]), "%5", 103, evidence)).toMatchObject({ ok: false, reason: "no-agent" });
+		});
+
+		it("says no agent when the panes cannot be listed to rule out another pane", async () => {
+			wrapperPane();
+			let paneListings = 0; // the first one finds the sender's pane root; the second is the other-pane check
+			vi.mocked(tmux.listPanes).mockImplementation(async (format) => {
+				if (format === SERVER_IDENTITY_FORMAT) return [{ socketPath: TMUX_SOCKET_PATH, serverPid: TMUX_SERVER_PID }] as never;
+				if (format === PANE_ID_PID_FORMAT && ++paneListings > 1) throw new Error("no server");
+				return [{ paneId: "%5", panePid: 500 }] as never;
+			});
+			expect(await captureSenderAgent(recorded(), "%5", 521, evidence)).toMatchObject({ ok: false, reason: "no-agent" });
+		});
+
+		it("says no agent for a pane nobody recorded", async () => {
+			wrapperPane();
+			expect(await captureSenderAgent(task([pane("%1", "conv-a")]), "%5", 521, evidence)).toMatchObject({ ok: false, reason: "no-agent" });
+		});
+
+		it("says no agent for a shell split, recorded or not", async () => {
+			expect(await captureSenderAgent(task([pane("%1", "conv-a")]), "%4", 421, evidence)).toMatchObject({ ok: false, reason: "no-agent" });
+			expect(await captureSenderAgent(task([pane("%4", "conv-x")]), "%4", 421, evidence)).toMatchObject({ ok: false, reason: "no-agent" });
+		});
+
+		it("says no agent when the recorded pane's agent has exited", async () => {
+			wrapperPane();
+			procs = procs.filter((p) => p.pid !== 501);
+			procs.find((p) => p.pid === 500)!.args = "-zsh";
+			expect(await captureSenderAgent(recorded(), "%5", 521, evidence)).toMatchObject({ ok: false, reason: "no-agent" });
+		});
+
+		it("says it cannot tell, not no agent, while the pane's agent has not started yet", async () => {
+			wrapperPane();
+			procs = procs.filter((p) => p.pid !== 501);
+			expect(await captureSenderAgent(recorded(), "%5", 521, evidence)).toMatchObject({ ok: false, reason: "unknown" });
+		});
+
+		describe("native", () => {
+			const nativeTask = () => task([pane(null, "conv-n")], { terminalBackend: "native" } as Partial<Task>);
+			const nativePane = (paneId: string, shellPid: number) => ({ paneId, sessionId: `s-${paneId}`, hostPid: 90, shellPid, cols: 80, rows: 24, alive: true });
+			const strictPanes = (...rows: Array<[string, number]>) =>
+				vi.mocked(nativeTaskPaneCommandsStrict).mockResolvedValue({
+					kind: "read",
+					panes: rows.map(([paneId, shellPid]) => ({ paneId, sessionId: `s-${paneId}`, command: ["bash"], shellPid, alive: true })),
+				});
+			/** Sibling pane-2: launch script → agent → tool shell → dev3 (pid 603). */
+			const siblingPane = () => procs.push(
+				{ pid: 600, ppid: 50, args: "/bin/bash /tmp/dev3-task-cmd.sh" },
+				{ pid: 601, ppid: 600, args: "/Users/me/.local/bin/claude" },
+				{ pid: 602, ppid: 601, args: "/bin/zsh -c dev3 pr watch" },
+				{ pid: 603, ppid: 602, args: "/Users/me/.dev3.0/bin/dev3 pr watch" },
+			);
+			beforeEach(() => {
+				wrapperPane();
+				siblingPane();
+				vi.mocked(nativeTaskPanesState).mockResolvedValue({
+					taskId: "task-1", layout: "", activePaneId: "pane-1", panes: [nativePane("pane-1", 500)],
+				});
+				strictPanes(["pane-1", 500], ["pane-2", 600]);
+			});
+
+			it("finds the agent of pane-1 when the CLI's DEV3_TASK_ID is this task's and the pane set is complete", async () => {
+				expect(await captureSenderAgent(nativeTask(), "pane-1", 521, { envTaskId: "task-1" })).toMatchObject({ ok: true, author: { paneId: "pane-1", agentProcess: sig(501) } });
+			});
+
+			it("says no agent when pane-1 is claimed with another task's DEV3_TASK_ID", async () => {
+				expect(await captureSenderAgent(nativeTask(), "pane-1", 521, { envTaskId: "task-2" })).toMatchObject({ ok: false, reason: "no-agent" });
+			});
+
+			it("says no agent for a CLI under sibling pane-2 claiming pane-1, even when the tolerant read omits pane-2", async () => {
+				expect(await captureSenderAgent(nativeTask(), "pane-1", 603, { envTaskId: "task-1" })).toMatchObject({ ok: false, reason: "no-agent" });
+			});
+
+			it("says no agent for a CLI under sibling pane-2 when every read is complete", async () => {
+				vi.mocked(nativeTaskPanesState).mockResolvedValue({
+					taskId: "task-1", layout: "", activePaneId: "pane-1", panes: [nativePane("pane-1", 500), nativePane("pane-2", 600)],
+				});
+				expect(await captureSenderAgent(nativeTask(), "pane-1", 603, { envTaskId: "task-1" })).toMatchObject({ ok: false, reason: "no-agent" });
+			});
+
+			it("says no agent when the strict pane read finds no pane set, cannot read it, or omits the claimed pane", async () => {
+				const nativeCall = () => captureSenderAgent(nativeTask(), "pane-1", 521, { envTaskId: "task-1" });
+				vi.mocked(nativeTaskPaneCommandsStrict).mockResolvedValue({ kind: "absent" });
+				expect(await nativeCall()).toMatchObject({ ok: false, reason: "no-agent" });
+				vi.mocked(nativeTaskPaneCommandsStrict).mockRejectedValue(new Error("coordinator record unreadable"));
+				expect(await nativeCall()).toMatchObject({ ok: false, reason: "no-agent" });
+				strictPanes(["pane-2", 600]);
+				expect(await nativeCall()).toMatchObject({ ok: false, reason: "no-agent" });
+			});
+		});
 	});
 
 	it("says no agent sent it when dev3 ran outside a task pane", async () => {

@@ -46,7 +46,8 @@ async function paneSessionAlreadyRecorded(
  * and the reporting CLI is the task's own agent — a new main entry. Anything else
  * is ambiguous and skipped. A no-op once the id is already recorded. Claude
  * takes a launch id, so only its recorded panes follow their own conversation
- * (`/clear`, `/resume`); see {@link placeRecordedPaneSession}.
+ * (`/clear`, `/resume`), and a paneless entry holding that id learns its pane;
+ * see {@link placeRecordedPaneSession}.
  *
  * The steady state is exactly that no-op — Codex fires this hook continuously for
  * the whole life of a session — so it is answered from the cached read BEFORE
