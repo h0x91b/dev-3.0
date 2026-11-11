@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { execFileSync, spawnSync as spawnSyncNode } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
@@ -212,6 +212,67 @@ describe("ensureClaudeTrust / ensureClaudeConfigDir with a pinned dir", () => {
 		expect(git("status", "--porcelain").toString()).toBe("");
 	});
 
+	describe("off macOS, a pin whose login git would not ignore after provisioning", () => {
+		let project = "";
+		let pinned = "";
+		const git = (...args: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], { cwd: project });
+
+		beforeEach(() => {
+			project = join(home, "project");
+			pinned = join(project, ".claude");
+			mkdirSync(project);
+			git("init", "-q");
+			vi.stubEnv("DEV3_HOME", join(home, ".dev3.0"));
+			// The suite stubs Bun.spawnSync; these tests need real git answers.
+			vi.doMock("../spawn", async (importOriginal) => ({
+				...(await importOriginal<typeof import("../spawn")>()),
+				spawnSync: (cmd: string[], opts: { cwd: string; env?: Record<string, string> }) => {
+					const res = spawnSyncNode(cmd[0], cmd.slice(1), { cwd: opts.cwd, env: { ...process.env, ...opts.env } });
+					return { exitCode: res.status, stdout: res.stdout, stderr: res.stderr };
+				},
+			}));
+		});
+
+		it("keeps the pin once the launch's exclude rule hides the login", async () => {
+			const env = { CLAUDE_CONFIG_DIR: pinned };
+			const { ensureClaudeConfigDir } = await import("../agents");
+			ensureClaudeConfigDir(env, project, "linux");
+
+			expect(env.CLAUDE_CONFIG_DIR).toBe(pinned);
+			writeFileSync(join(pinned, ".credentials.json"), "{}");
+			expect(git("status", "--porcelain", "--", ".claude/.credentials.json").toString()).toBe("");
+		});
+
+		it("clears the pin when a .gitignore negation keeps the login visible, but not on macOS", async () => {
+			writeFileSync(join(project, ".gitignore"), "!.claude/.credentials.json\n");
+			const { ensureClaudeConfigDir } = await import("../agents");
+			const linux = { CLAUDE_CONFIG_DIR: pinned };
+			ensureClaudeConfigDir(linux, project, "linux");
+			const darwin = { CLAUDE_CONFIG_DIR: pinned };
+			ensureClaudeConfigDir(darwin, project, "darwin");
+
+			expect(linux.CLAUDE_CONFIG_DIR).toBe(ENV_UNSET);
+			expect(darwin.CLAUDE_CONFIG_DIR).toBe(pinned);
+		});
+
+		it.skipIf(process.getuid?.() === 0)("clears the pin when the exclude write fails, and writes it on the next launch", async () => {
+			const info = join(project, ".git", "info");
+			const exclude = join(info, "exclude");
+			const original = readFileSync(exclude, "utf-8");
+			chmodSync(exclude, 0o400);
+			const { ensureClaudeConfigDir } = await import("../agents");
+			const first = { CLAUDE_CONFIG_DIR: pinned };
+			ensureClaudeConfigDir(first, project, "linux");
+			expect(readFileSync(exclude, "utf-8")).toBe(original);
+			expect(first.CLAUDE_CONFIG_DIR).toBe(ENV_UNSET);
+
+			chmodSync(exclude, 0o600);
+			const second = { CLAUDE_CONFIG_DIR: pinned };
+			ensureClaudeConfigDir(second, project, "linux");
+			expect(readFileSync(exclude, "utf-8")).toContain(".credentials.json");
+			expect(second.CLAUDE_CONFIG_DIR).toBe(pinned);
+		});
+	});
 });
 
 describe("projectClaudeConfigDirAllowed", () => {

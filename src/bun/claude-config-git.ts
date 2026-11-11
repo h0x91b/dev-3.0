@@ -72,10 +72,9 @@ export function isGitTracked(file: string): boolean {
 
 const excluded = new Set<string>();
 
-/** Add the runtime-state rules for `configDir` to its repo's `info/exclude`. Once per dir per process; never throws. */
+/** Add the runtime-state rules for `configDir` to its repo's `info/exclude`. Once per dir per process once written; never throws. */
 export function excludeClaudeRuntimeState(configDir: string, skillNames: readonly string[]): void {
 	if (excluded.has(configDir) || !existsSync(configDir)) return;
-	excluded.add(configDir);
 	try {
 		const res = git(["rev-parse", "--git-path", "info/exclude", "--show-prefix"], configDir);
 		if (!res.ok) return;
@@ -85,10 +84,15 @@ export function excludeClaudeRuntimeState(configDir: string, skillNames: readonl
 		const content = existsSync(excludePath) ? readFileSync(excludePath, "utf-8") : "";
 		const present = new Set(content.split("\n").map((line) => line.trimEnd()));
 		const missing = claudeRuntimeExcludeRules(prefix, skillNames).filter((rule) => !present.has(rule));
-		if (missing.length === 0) return;
+		if (missing.length === 0) {
+			excluded.add(configDir);
+			return;
+		}
 		mkdirSync(dirname(excludePath), { recursive: true });
 		const separator = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
 		writeFileSync(excludePath, `${content}${separator}# dev3: Claude runtime state in ${prefix}\n${missing.join("\n")}\n`);
+		// Marked only once written, so a failed write is retried by the next launch.
+		excluded.add(configDir);
 		log.info("Excluded Claude runtime state from git", { configDir, rules: missing.length });
 	} catch (err) {
 		log.warn("Failed to exclude Claude runtime state (non-fatal)", { configDir, error: String(err) });
@@ -120,10 +124,11 @@ function loginRuleFile(): string {
 
 /**
  * True when the `.credentials.json` Claude Code would write into `configDir` stays out of git:
- * no work tree holds the dir, or git ignores the file once the launch's exclude rule exists.
- * A tracked file or a `.gitignore` negation is not ignored. Read-only; false on any error.
+ * no work tree holds the dir, or git ignores the file. By default the launch's exclude rule is
+ * assumed present (supplied through `core.excludesFile`); `assumeLaunchRule: false` asks git about
+ * the repo as it is. A tracked file or a `.gitignore` negation is not ignored. Read-only; false on any error.
  */
-export function claudeLoginKeptOutOfGit(configDir: string): boolean {
+export function claudeLoginKeptOutOfGit(configDir: string, opts: { assumeLaunchRule?: boolean } = {}): boolean {
 	try {
 		const located = nearestExisting(configDir);
 		if (!located) return false;
@@ -133,7 +138,8 @@ export function claudeLoginKeptOutOfGit(configDir: string): boolean {
 		if (!workTree.ok) return /not a git repository/i.test(workTree.stderr);
 		if (workTree.stdout.trim() !== "true") return false;
 		const file = located.tail ? `${located.tail}/.credentials.json` : ".credentials.json";
-		return git(["-c", `core.excludesFile=${loginRuleFile()}`, "check-ignore", "-q", "--", file], base).ok;
+		const rule = opts.assumeLaunchRule === false ? [] : ["-c", `core.excludesFile=${loginRuleFile()}`];
+		return git([...rule, "check-ignore", "-q", "--", file], base).ok;
 	} catch (err) {
 		log.warn("Could not check whether git ignores the Claude login (non-fatal)", { configDir, error: String(err) });
 		return false;
