@@ -264,7 +264,7 @@ describe("buildProviderEnv", () => {
 		const env = buildProviderEnv(LLM_PROVIDER.BedrockClaude, undefined, "claude-sonnet-5-5");
 		expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("global.anthropic.claude-haiku-5-5");
 		expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("global.anthropic.claude-opus-5-5[1m]");
-		expect(env.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("global.anthropic.claude-fable-5-1[1m]");
+		expect(env.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("global.anthropic.claude-fable-5-2[1m]");
 		expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe(env.ANTHROPIC_MODEL);
 	});
 
@@ -319,6 +319,9 @@ describe("bedrockModelServedInGeo", () => {
 	// Snapshot of `aws bedrock list-inference-profiles` per region, 2026-09-09.
 	it("knows Fable is global/us only and jp carries only the 4.x generation", () => {
 		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockClaude, "claude-fable-5-1[1m]", "eu")).toBe(false);
+		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockClaude, "claude-fable-5-2[1m]", "eu")).toBe(false);
+		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockClaude, "claude-fable-5-2[1m]", "jp")).toBe(false);
+		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockClaude, "claude-fable-5-2[1m]", "global")).toBe(true);
 		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockClaude, "claude-fable-5", "us")).toBe(true);
 		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockClaude, "claude-opus-5[1m]", "eu")).toBe(true);
 		expect(bedrockModelServedInGeo(LLM_PROVIDER.BedrockClaude, "claude-opus-5[1m]", "jp")).toBe(false);
