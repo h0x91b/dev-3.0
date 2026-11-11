@@ -250,6 +250,13 @@ describe("resetWorktree — owned branches only, noted first (S1, S4, S7)", () =
 });
 
 describe("episode end voids pending approvals", () => {
+	it.each(["completed", "cancelled"] as const)("%s cancels pending messages with the terminal status", async (status) => {
+		const task = liveTask({ scheduledMessages: [{ id: "reminder" }] as never });
+		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...task, ...updates }));
+		await executeLifecycleEffect({ type: "persistTerminalTask", status, onError: "abort" } as LifecycleEffect, ctx(task));
+		expect(data.updateTask).toHaveBeenCalledWith(expect.anything(), TASK_ID, expect.objectContaining({ status, scheduledMessages: null }));
+	});
+
 	// Every kind, completion and cancellation included: a completion dialog left
 	// open after the board or a merged PR completed the task asks a second time.
 	it.each(["completed", "cancelled"] as const)("%s voids every pending approval for the ended run", async (status) => {

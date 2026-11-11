@@ -1336,6 +1336,7 @@ export async function executeLifecycleEffect(
 			const taskUpdates: Partial<Task> = {
 				status: effect.status,
 				customColumnId: null,
+				scheduledMessages: null,
 				// An Operations task keeps its folder path; nothing else of a finished task does.
 				...(ctx.project.kind === "virtual" && !isOpsWorktreeTask(ctx.task) ? {} : { worktreePath: null, branchName: null }),
 				...(ctx.completedDiffStats ? { completedDiffStats: ctx.completedDiffStats } : {}),
