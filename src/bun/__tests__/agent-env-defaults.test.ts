@@ -30,11 +30,12 @@ describe("applyAgentEnvDefaults and the per-project Claude folder", () => {
 });
 
 describe("usesProjectClaudeConfigDir", () => {
-	it("recognizes the default with trailing or Windows separators", () => {
-		for (const value of ["{projectPath}/.claude", "{projectPath}/.claude/", "{projectPath}\\.claude\\"]) {
+	it("recognizes the default with trailing slashes, and nothing else", () => {
+		for (const value of ["{projectPath}/.claude", "{projectPath}/.claude/"]) {
 			expect(usesProjectClaudeConfigDir({ CLAUDE_CONFIG_DIR: value })).toBe(true);
 		}
 		expect(usesProjectClaudeConfigDir({ CLAUDE_CONFIG_DIR: "{projectPath}/.claude-x" })).toBe(false);
+		expect(usesProjectClaudeConfigDir({ CLAUDE_CONFIG_DIR: "{projectPath}\\.claude" })).toBe(false);
 		expect(usesProjectClaudeConfigDir(undefined)).toBe(false);
 	});
 });

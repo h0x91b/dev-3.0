@@ -216,20 +216,23 @@ describe("ensureClaudeTrust / ensureClaudeConfigDir with a pinned dir", () => {
 describe("projectClaudeConfigDirAllowed", () => {
 	let root = "";
 	let project = "";
+	const spawned = vi.fn();
 	const git = (...args: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], { cwd: project });
 
 	beforeEach(() => {
 		root = mkdtempSync(join(tmpdir(), "dev3-claude-allowed-"));
 		project = join(root, "project");
 		mkdirSync(project);
+		spawned.mockReset();
 		vi.resetModules();
 		vi.doMock("../logger", () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) }));
 		// The suite stubs Bun.spawnSync; these tests need real git answers.
 		vi.doMock("../spawn", async (importOriginal) => ({
 			...(await importOriginal<typeof import("../spawn")>()),
-			spawnSync: (cmd: string[], opts: { cwd: string }) => {
-				const res = spawnSyncNode(cmd[0], cmd.slice(1), { cwd: opts.cwd });
-				return { exitCode: res.status, stdout: res.stdout };
+			spawnSync: (cmd: string[], opts: { cwd: string; env?: Record<string, string> }) => {
+				spawned(cmd);
+				const res = spawnSyncNode(cmd[0], cmd.slice(1), { cwd: opts.cwd, env: { ...process.env, ...opts.env } });
+				return { exitCode: res.status, stdout: res.stdout, stderr: res.stderr };
 			},
 		}));
 	});
@@ -245,16 +248,15 @@ describe("projectClaudeConfigDirAllowed", () => {
 		return projectClaudeConfigDirAllowed({ path: project, kind }, value, platform);
 	}
 
-	it("allows a project's .claude on Linux once git ignores the login, even before the folder exists", async () => {
+	it("allows a project's .claude on Linux before it exists, and changes nothing in the repo", async () => {
 		git("init", "-q");
+		const exclude = readFileSync(join(project, ".git", "info", "exclude"), "utf-8");
 		expect(await allowed(join(project, ".claude"), "linux")).toBe(true);
 		expect(existsSync(join(project, ".claude"))).toBe(false);
-		mkdirSync(join(project, ".claude"));
-		writeFileSync(join(project, ".claude", ".credentials.json"), "{}");
-		expect(git("status", "--porcelain").toString()).toBe("");
+		expect(readFileSync(join(project, ".git", "info", "exclude"), "utf-8")).toBe(exclude);
 	});
 
-	it("refuses it on Linux and Windows when the login file is tracked", async () => {
+	it("refuses it on Linux and Windows when the login file is tracked or un-ignored", async () => {
 		mkdirSync(join(project, ".claude"));
 		writeFileSync(join(project, ".claude", ".credentials.json"), "{}");
 		git("init", "-q");
@@ -263,16 +265,33 @@ describe("projectClaudeConfigDirAllowed", () => {
 		expect(await allowed(join(project, ".claude"), "linux")).toBe(false);
 		expect(await allowed(join(project, ".claude"), "win32")).toBe(false);
 		expect(await allowed(join(project, ".claude"), "darwin")).toBe(true);
+
+		git("rm", "-q", "--cached", ".claude/.credentials.json");
+		writeFileSync(join(project, ".gitignore"), "!.claude/.credentials.json\n");
+		expect(await allowed(join(project, ".claude"), "linux")).toBe(false);
 	});
 
-	it("refuses it outside a git repo, except on macOS", async () => {
-		expect(await allowed(join(project, ".claude"), "linux")).toBe(false);
-		expect(await allowed(join(project, ".claude"), "darwin")).toBe(true);
+	it("allows it where no git repo holds it, including behind a symlink out of the repo", async () => {
+		expect(await allowed(join(project, ".claude"), "linux")).toBe(true);
+		git("init", "-q");
+		const shared = join(root, "shared-claude");
+		mkdirSync(shared);
+		symlinkSync(shared, join(project, ".claude"));
+		expect(await allowed(join(project, ".claude"), "linux")).toBe(true);
 	});
 
 	it("never applies to an Operations board", async () => {
 		git("init", "-q");
 		expect(await allowed(join(project, ".claude"), "darwin", "virtual")).toBe(false);
 		expect(await allowed(join(project, ".claude"), "linux", "virtual")).toBe(false);
+	});
+
+	it("refuses instead of throwing when git cannot run", async () => {
+		vi.doMock("../spawn", () => ({
+			spawnSync: () => {
+				throw new Error("Executable not found in $PATH: \"git\"");
+			},
+		}));
+		expect(await allowed(join(project, ".claude"), "linux")).toBe(false);
 	});
 });

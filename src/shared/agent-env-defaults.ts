@@ -7,18 +7,16 @@ function expandAgentEnvDefault(value: string, project: { path: string; name: str
 }
 
 /**
- * Fill the keys a project's own env leaves unset from the global defaults.
- * A key the project sets - even to an empty string - always keeps its value.
- * A `CLAUDE_CONFIG_DIR` default that names a folder inside the project is kept only
- * when `claudeConfigDirAllowed` accepts the expanded value (the host decides; see
- * `projectClaudeConfigDirAllowed` in `src/bun/claude-config-git.ts`).
+ * Fill the keys a project's own env leaves unset from the global defaults; a key the project
+ * sets, even to "", keeps its value. A `CLAUDE_CONFIG_DIR` default built from `{projectPath}`
+ * applies only when `claudeConfigDirAllowed` accepts its expansion.
  */
 export function applyAgentEnvDefaults(
 	projectEnv: Record<string, string>,
 	defaults: Record<string, string> | undefined,
 	project: { path: string; name: string },
 	home: string,
-	claudeConfigDirAllowed: (dir: string) => boolean = () => true,
+	claudeConfigDirAllowed: (dir: string) => boolean,
 ): Record<string, string> {
 	if (!defaults) return projectEnv;
 	const filled: Record<string, string> = {};
@@ -34,10 +32,9 @@ export function applyAgentEnvDefaults(
 /** The default that points Claude Code at each project's own `.claude` instead of `~/.claude`. */
 export const PROJECT_CLAUDE_CONFIG_DIR_DEFAULT = "{projectPath}/.claude";
 
-/** True for the switch's default in any spelling: `{projectPath}/.claude`, `{projectPath}\.claude\` and so on. */
+/** True for the switch's default, trailing slashes included. */
 export function usesProjectClaudeConfigDir(defaults: Record<string, string> | undefined): boolean {
-	const value = defaults?.CLAUDE_CONFIG_DIR?.trim().replace(/[\\/]+$/, "").replace(/\\/g, "/");
-	return value === PROJECT_CLAUDE_CONFIG_DIR_DEFAULT;
+	return defaults?.CLAUDE_CONFIG_DIR?.trim().replace(/\/+$/, "") === PROJECT_CLAUDE_CONFIG_DIR_DEFAULT;
 }
 
 /** Turn the per-project Claude folder default on or off, leaving every other key alone. */
