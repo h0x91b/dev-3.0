@@ -3,8 +3,8 @@
  * at add time. Absent when they use `~/.claude` because nothing pins another folder.
  * - `ready`: a pinned folder that already holds a Claude login.
  * - `no-login`: a pinned folder with no login yet; the first task asks the user to sign in.
- * - `refused`: the global per-project default was refused because git would not ignore the
- *   login file, so agents keep `~/.claude`.
+ * - `refused`: off macOS, git would not ignore the folder's login file, so the global default is
+ *   not applied or the launch drops the project's own pin, and agents keep `~/.claude`.
  */
 export interface ClaudeFolderNotice {
 	state: "ready" | "no-login" | "refused";

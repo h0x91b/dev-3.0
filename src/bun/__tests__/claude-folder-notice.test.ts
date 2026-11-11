@@ -25,7 +25,7 @@ import {
 const project = { id: "p1", name: "web", path: "/work/web" } as Project;
 
 function probe(over: Partial<LoginProbe> = {}): LoginProbe {
-	return { platform: "linux", fileExists: () => false, keychainHasItem: async () => false, ...over };
+	return { platform: "linux", fileExists: () => false, keychainHasItem: async () => false, loginKeptOutOfGit: () => true, ...over };
 }
 
 beforeEach(() => {
@@ -70,6 +70,14 @@ describe("claudeFolderNotice", () => {
 		resolveProjectEnv.mockResolvedValue({ CLAUDE_CONFIG_DIR: "/work/web/.claude" });
 		expect(await claudeFolderNotice(project, probe())).toEqual({ state: "no-login", dir: "/work/web/.claude" });
 		expect(await claudeFolderNotice(project, probe({ fileExists: () => true }))).toEqual({ state: "ready", dir: "/work/web/.claude" });
+	});
+
+	it("reports a pin git would not ignore as refused off macOS, as the launch drops it", async () => {
+		resolveProjectEnv.mockResolvedValue({ CLAUDE_CONFIG_DIR: "/work/web/.claude" });
+		const loginKeptOutOfGit = vi.fn(() => false);
+		expect(await claudeFolderNotice(project, probe({ loginKeptOutOfGit }))).toEqual({ state: "refused", dir: "/work/web/.claude" });
+		expect(loginKeptOutOfGit).toHaveBeenCalledWith("/work/web/.claude");
+		expect(await claudeFolderNotice(project, probe({ platform: "darwin", loginKeptOutOfGit }))).toEqual({ state: "no-login", dir: "/work/web/.claude" });
 	});
 
 	it("says nothing when agents use ~/.claude and no project-folder default applies", async () => {

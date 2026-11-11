@@ -11,6 +11,7 @@ import type { ClaudeFolderNotice, ClaudeFolderSwitchImpact } from "../shared/cla
 import { expandAgentEnvDefault, withProjectClaudeConfigDir } from "../shared/agent-env-defaults";
 import { launchClaudeConfigLocation, normalizeClaudeConfigDir, pinnedClaudeConfigDir } from "../shared/claude-config-dir";
 import * as data from "./data";
+import { claudeLoginKeptOutOfGit } from "./claude-config-git";
 import { createLogger } from "./logger";
 import { resolveProjectEnv } from "./repo-config";
 import { loadSettings } from "./settings";
@@ -57,9 +58,15 @@ export interface LoginProbe {
 	platform: string;
 	fileExists: (file: string) => boolean;
 	keychainHasItem: (service: string) => Promise<boolean>;
+	loginKeptOutOfGit: (dir: string) => boolean;
 }
 
-const realProbe: LoginProbe = { platform: process.platform, fileExists: existsSync, keychainHasItem };
+const realProbe: LoginProbe = {
+	platform: process.platform,
+	fileExists: existsSync,
+	keychainHasItem,
+	loginKeptOutOfGit: (dir) => claudeLoginKeptOutOfGit(dir),
+};
 
 /**
  * Whether Claude Code has a login for `dir`, reached through the `CLAUDE_CONFIG_DIR` value the
@@ -79,6 +86,8 @@ export async function claudeFolderNotice(project: Project, probe: LoginProbe = r
 		const value = env.CLAUDE_CONFIG_DIR;
 		const dir = pinnedClaudeConfigDir(value, home, project.path);
 		if (dir && value !== undefined) {
+			// Off macOS the launch drops any pin, the project's own included, whose login git would show.
+			if (probe.platform !== "darwin" && !probe.loginKeptOutOfGit(dir)) return { state: "refused", dir };
 			return { state: (await claudeFolderHasLogin(dir, value, probe)) ? "ready" : "no-login", dir };
 		}
 		if ("CLAUDE_CONFIG_DIR" in env) return null;
