@@ -94,6 +94,8 @@ export const claudeAdapter: AgentAdapter = {
 		};
 	},
 
+	hooksReportPermissionWaits: true,
+
 	hooksSpec(options) {
 		return { kind: "claude", stopTarget: options?.stopTarget, permissionMode: options?.permissionMode };
 	},

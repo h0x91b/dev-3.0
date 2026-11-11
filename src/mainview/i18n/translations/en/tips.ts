@@ -77,8 +77,6 @@ const tips = {
 	"tip.resumeAgentSession.body": "If a task's terminal dies, click Resume Session to restart the agent in its previous conversation.",
 	"tip.tmuxActionButtons.title": "Split terminal with one click",
 	"tip.tmuxActionButtons.body": "The horizontal split, vertical split, and zoom buttons in the task panel send tmux commands directly to your active session.",
-	"tip.bellAutoMove.title": "Bell moves tasks automatically",
-	"tip.bellAutoMove.body": "When an agent without status hooks rings the terminal bell, its task moves to Has Questions, so you never miss a request for input.",
 	"tip.configurableAgents.title": "Pick your coding agent",
 	"tip.configurableAgents.body": "Set a default agent — Claude, Codex, Gemini, Cursor and more — in settings, or pick another one when you launch a task.",
 	"tip.gitBranchStatus.title": "Branch sync at a glance",

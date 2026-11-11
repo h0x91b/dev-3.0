@@ -59,6 +59,8 @@ export const piAdapter: AgentAdapter = {
 
 	// Status rides on a generated extension module (`src/shared/pi-status-extension.ts`),
 	// loaded with `--extension`; the executor returns that flag for the launch to splice in.
+	hooksReportPermissionWaits: true,
+
 	hooksSpec() {
 		return { kind: "pi" };
 	},

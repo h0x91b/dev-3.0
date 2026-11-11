@@ -972,7 +972,7 @@ describe("User questions badge", () => {
 		const moved = transition(state("in-progress"), {
 			type: "moveRequested",
 			target: { status: "user-questions", customColumnId: null },
-			callerRaisesAttention: true,
+			skipQuestionsBadge: true,
 		});
 		expect(badgesOf(moved.effects)).toEqual([]);
 	});

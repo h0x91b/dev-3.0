@@ -7,7 +7,6 @@ import {
 	KNOWN_AGENT_COMMANDS,
 	SELECTABLE_AGENT_FAMILIES,
 	hasAgentAdapter,
-	hasStatusHooks,
 	agentKey,
 	claudeAdapter,
 	codexAdapter,
@@ -231,14 +230,14 @@ describe("hooksSpec", () => {
 	});
 });
 
-describe("hasStatusHooks", () => {
-	it.each([claudeAdapter, codexAdapter, copilotAdapter, ompAdapter, piAdapter])(
-		"$command hooks move the task status",
-		(adapter) => expect(hasStatusHooks(adapter.hooksSpec())).toBe(true),
+describe("hooksReportPermissionWaits", () => {
+	it.each([claudeAdapter, codexAdapter, ompAdapter, piAdapter])(
+		"$command hooks move the task to user-questions on a permission wait",
+		(adapter) => expect(adapter.hooksReportPermissionWaits).toBe(true),
 	);
-	it.each([cursorAdapter, geminiAdapter, opencodeAdapter, genericAdapter])(
-		"$command has no status hooks (Cursor's only account usage)",
-		(adapter) => expect(hasStatusHooks(adapter.hooksSpec())).toBe(false),
+	it.each([copilotAdapter, cursorAdapter, geminiAdapter, opencodeAdapter, genericAdapter])(
+		"$command hooks do not report a permission wait (none, or no user-questions move)",
+		(adapter) => expect(adapter.hooksReportPermissionWaits).toBe(false),
 	);
 });
 

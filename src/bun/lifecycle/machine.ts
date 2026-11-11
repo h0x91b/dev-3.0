@@ -178,14 +178,14 @@ function needsYouSoundEffects(
 
 /**
  * The red badge for a move that newly lands in User questions. Skipped for a
- * move the user made in the UI and for a caller that raises its own badge.
+ * move the user made in the UI and for a move that sets `skipQuestionsBadge`.
  */
 function questionsBadgeEffects(
 	oldStatus: TaskStatus,
 	target: LifecycleColumn,
 	event: Extract<LifecycleEvent, { type: "moveRequested" }>,
 ): LifecycleEffect[] {
-	if (event.clientPlayedSound || event.callerRaisesAttention) return [];
+	if (event.clientPlayedSound || event.skipQuestionsBadge) return [];
 	if (target.status === oldStatus || target.status !== "user-questions") return [];
 	return [effect({ type: "raiseQuestionsAttention" })];
 }

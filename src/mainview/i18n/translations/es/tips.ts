@@ -77,8 +77,6 @@ const tips = {
 	"tip.resumeAgentSession.body": "Si el terminal de una tarea muere, pulsa \"Reanudar sesión\" para retomar la conversación anterior del agente.",
 	"tip.tmuxActionButtons.title": "Divide el terminal con un clic",
 	"tip.tmuxActionButtons.body": "Los botones de split horizontal, vertical y zoom en el panel de tarea envían comandos tmux directamente a tu sesión activa.",
-	"tip.bellAutoMove.title": "Bell mueve tareas automáticamente",
-	"tip.bellAutoMove.body": "Cuando un agente sin hooks de estado emite un bell de terminal, la tarea pasa a \"Tiene preguntas\" para que no pierdas ninguna solicitud.",
 	"tip.configurableAgents.title": "Elige tu agente de código",
 	"tip.configurableAgents.body": "Elige un agente por defecto (Claude, Codex, Gemini, Cursor y más) en la configuración, o uno distinto al lanzar una tarea.",
 	"tip.gitBranchStatus.title": "Estado de rama de un vistazo",

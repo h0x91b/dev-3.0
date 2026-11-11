@@ -94,10 +94,10 @@ export interface AppState {
 	bellCounts: Map<string, number>;
 	/**
 	 * Accumulated human-readable reasons per attention badge, set by repeated
-	 * `dev3 attention "reason"` calls. Keyed by task id, mirrors `bellCounts`
-	 * lifecycle (cleared when the badge is cleared). Repeated reasons are kept
-	 * once and moved to the newest position; terminal-bell badges / empty reasons
-	 * add nothing here.
+	 * `dev3 attention "reason"` calls and by the questions badge (its reason is
+	 * worded by the renderer). Keyed by task id, mirrors `bellCounts` lifecycle
+	 * (cleared when the badge is cleared). Repeated reasons are kept once and
+	 * moved to the newest position; empty reasons add nothing here.
 	 */
 	bellReasons: Map<string, string[]>;
 	taskPorts: Map<string, PortInfo[]>;

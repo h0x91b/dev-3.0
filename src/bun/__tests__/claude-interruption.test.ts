@@ -60,6 +60,12 @@ describe("Claude interruption lifecycle", () => {
 		expect(moveTask).toHaveBeenCalledTimes(3);
 	});
 
+	it("raises no questions badge when it parks the task after Escape", async () => {
+		await prompt();
+		await idle();
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ newStatus: "user-questions", skipQuestionsBadge: true }));
+	});
+
 	it.each(["review-by-ai", "review-by-user"] as const)("preserves normal Stop's %s lane", async status => {
 		await prompt();
 		await agentHandlers["task.claudeTurnEnded"]!(params);

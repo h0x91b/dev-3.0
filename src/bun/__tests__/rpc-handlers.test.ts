@@ -716,6 +716,35 @@ describe("handleBellAutoStatus", () => {
 		expect(data.updateTask).not.toHaveBeenCalled();
 	});
 
+	it("leaves a default-agent task alone when its main pane records Claude", async () => {
+		const task = makeTask({
+			status: "in-progress",
+			agentId: null,
+			sessionState: { panes: [{ paneId: "%1", sessionId: null, agentCmd: "claude", agentId: "builtin-claude", configId: null, main: true }] },
+		} as Partial<Task>);
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+		await handleBellAutoStatus("task-1");
+
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("still moves a Copilot task: its hooks do not report a permission wait", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			status: "in-progress",
+			sessionState: { panes: [{ paneId: "%1", sessionId: null, agentCmd: "copilot", agentId: "builtin-copilot", configId: null, main: true }] },
+		} as Partial<Task>);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, status: "user-questions" });
+
+		await handleBellAutoStatus("task-1");
+
+		expect(data.updateTask).toHaveBeenCalled();
+	});
+
 	it("still moves a task whose agent has no status hooks", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "in-progress", agentId: "builtin-gemini" });

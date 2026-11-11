@@ -184,6 +184,8 @@ export const codexAdapter: AgentAdapter = {
 		return sessionId ? `${baseCmd} resume ${sessionId} -c ${UPDATE_CHECK_OVERRIDE}` : null;
 	},
 
+	hooksReportPermissionWaits: true,
+
 	hooksSpec() {
 		return { kind: "codex" };
 	},
