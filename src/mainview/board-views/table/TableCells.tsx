@@ -15,7 +15,7 @@ import { getStatusLabel } from "../../utils/statusLabel";
 import { prStateTone } from "../../utils/prStateTone";
 import { compactAge } from "../../utils/statusAge";
 import { taskLastActivityMs } from "../../utils/projectActivity";
-import { taskRunningAgentIds } from "../../utils/taskAgentMeta";
+import { taskRunningAgentIds } from "../../../shared/task-running-agent";
 import type { BoardService } from "../board-service";
 import { laneOfTask, taskPrNumber, type TableColumnId } from "./table-model";
 

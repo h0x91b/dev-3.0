@@ -2,7 +2,7 @@ import type { BoardColumnSlot, Task } from "../../../shared/types";
 import { getTaskTitle, priorityRank } from "../../../shared/types";
 import { parentTaskIdOf } from "../../../shared/types/task-origin";
 import { taskLastActivityMs } from "../../utils/projectActivity";
-import { taskRunningAgentIds } from "../../utils/taskAgentMeta";
+import { taskRunningAgentIds } from "../../../shared/task-running-agent";
 
 /** Every column the Table can show, in canonical display order (spec D18). */
 export const TABLE_COLUMNS = [

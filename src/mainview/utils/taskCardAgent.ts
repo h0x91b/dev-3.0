@@ -1,7 +1,7 @@
 import { findAgentConfig } from "../../shared/agent-live-models";
 import type { CodingAgent, Task } from "../../shared/types";
 import { resolveAgentLauncherIcon } from "../components/AgentLauncherBadge";
-import { taskRunningAgentIds } from "./taskAgentMeta";
+import { taskRunningAgentIds } from "../../shared/task-running-agent";
 
 /** Who runs a task, as a card's identity row names it: the agent, and its config · model string. */
 export function taskCardAgent(task: Pick<Task, "agentId" | "configId" | "worktreePath" | "sessionState">, agents: CodingAgent[]) {

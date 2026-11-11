@@ -1,5 +1,5 @@
 import type { CodingAgent, Task } from "../../../shared/types";
-import { getTaskAgentMeta, taskRunningAgentIds } from "../taskAgentMeta";
+import { getTaskAgentMeta } from "../taskAgentMeta";
 
 const claude: CodingAgent = {
 	id: "builtin-claude",
@@ -30,22 +30,6 @@ function makeTask(overrides: Partial<Task> = {}): Task {
 		...overrides,
 	};
 }
-
-describe("taskRunningAgentIds", () => {
-	it("falls back to the main pane when the task picked no agent", () => {
-		expect(taskRunningAgentIds(makeTask())).toEqual({ agentId: "builtin-claude", configId: "c2" });
-	});
-
-	it("prefers the task's own pick over the pane", () => {
-		const task = makeTask({ agentId: "builtin-codex", configId: "x1" });
-		expect(taskRunningAgentIds(task)).toEqual({ agentId: "builtin-codex", configId: "x1" });
-	});
-
-	it("returns nulls without a worktree or without panes", () => {
-		expect(taskRunningAgentIds(makeTask({ worktreePath: null }))).toEqual({ agentId: null, configId: null });
-		expect(taskRunningAgentIds(makeTask({ sessionState: undefined }))).toEqual({ agentId: null, configId: null });
-	});
-});
 
 describe("getTaskAgentMeta", () => {
 	it("resolves the default agent and config from the main pane", () => {

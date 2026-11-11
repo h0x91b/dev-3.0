@@ -1,5 +1,6 @@
 import type { AgentConfiguration, CodingAgent, Task } from "../../shared/types";
 import { findAgentConfig } from "../../shared/agent-live-models";
+import { taskRunningAgentIds } from "../../shared/task-running-agent";
 
 export function resolveTaskAgentConfig(agent: CodingAgent | null, configId: string | null): AgentConfiguration | null {
 	if (!agent) return null;
@@ -57,15 +58,6 @@ export function getCompactConfigLabel(config: AgentConfiguration | null): string
 	}
 
 	return trimmedName.replace(/^Default\s+/i, "").trim();
-}
-
-/** The agent a task runs: its own pick, else (no pick, worktree exists) the main pane's, i.e. the global default. */
-export function taskRunningAgentIds(
-	task: Pick<Task, "agentId" | "configId" | "worktreePath" | "sessionState">,
-): { agentId: string | null; configId: string | null } {
-	if (task.agentId) return { agentId: task.agentId, configId: task.configId ?? null };
-	const pane = task.worktreePath ? task.sessionState?.panes?.[0] : undefined;
-	return { agentId: pane?.agentId ?? null, configId: pane?.configId ?? null };
 }
 
 export function getTaskAgentMeta(task: Task, agents: CodingAgent[]) {
