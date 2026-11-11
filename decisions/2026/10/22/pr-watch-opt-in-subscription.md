@@ -1,5 +1,7 @@
 # `dev3 pr watch` is an opt-in subscription, not automatic PR notifications
 
+Superseded in part on 2026-11-11 by `decisions/2026/11/11/pr-watch-subscriber-without-process-link.md`: the subscribing agent is also found when no process path leads from the CLI to it (a wrapper detaches the agent), and an unrecorded main pane no longer blocks delivery.
+
 Partly superseded on 2026-11-04 by `decisions/2026/11/04/pr-watch-confirms-close-before-telling.md`: a close now fires only once a later poll still sees it; a merge still fires at once.
 
 Partly superseded on 2026-10-27 by `decisions/2026/10/27/hold-merge-offer-for-pr-watch.md`: the merge-completion offer now waits for the watching agent, and the merged sentence follows that.

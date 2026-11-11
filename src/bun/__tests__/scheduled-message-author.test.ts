@@ -543,26 +543,27 @@ describe("captureSenderAgent — the sender a reply must reach, or why there is 
 
 		it("says no agent for a shell outside the task claiming the pane: unrelated ancestry, no evidence", async () => {
 			wrapperPane();
-			expect(await captureSenderAgent(recorded(), "%5", 521)).toMatchObject({ ok: false, reason: "no-agent" });
+			expect(await captureSenderAgent(recorded(), "%5", 521)).toMatchObject({ ok: false, reason: "no-agent", detail: expect.stringContaining("outside this task's environment") });
 		});
 
 		it("says no agent when $TMUX names another server or socket", async () => {
 			wrapperPane();
 			for (const tmuxEnv of [`${TMUX_SOCKET_PATH},9999,0`, `/private/tmp/tmux-501/other,${TMUX_SERVER_PID},0`, null, "garbage"]) {
-				expect(await captureSenderAgent(recorded(), "%5", 521, { ...evidence, tmuxEnv })).toMatchObject({ ok: false, reason: "no-agent" });
+				expect(await captureSenderAgent(recorded(), "%5", 521, { ...evidence, tmuxEnv })).toMatchObject({ ok: false, reason: "no-agent", detail: expect.stringContaining("another tmux server") });
+				expect(JSON.stringify(await captureSenderAgent(recorded(), "%5", 521, { ...evidence, tmuxEnv }))).not.toContain("/tmp/tmux-");
 			}
 		});
 
 		it("says no agent when the CLI's DEV3_TASK_ID is another task's or missing", async () => {
 			wrapperPane();
 			for (const envTaskId of ["task-2", null]) {
-				expect(await captureSenderAgent(recorded(), "%5", 521, { ...evidence, envTaskId })).toMatchObject({ ok: false, reason: "no-agent" });
+				expect(await captureSenderAgent(recorded(), "%5", 521, { ...evidence, envTaskId })).toMatchObject({ ok: false, reason: "no-agent", detail: expect.stringContaining("outside this task's environment") });
 			}
 		});
 
 		it("says no agent for a pid that is not in the process table", async () => {
 			wrapperPane();
-			expect(await captureSenderAgent(recorded(), "%5", 999, evidence)).toMatchObject({ ok: false, reason: "no-agent" });
+			expect(await captureSenderAgent(recorded(), "%5", 999, evidence)).toMatchObject({ ok: false, reason: "no-agent", detail: expect.stringContaining("no longer running") });
 		});
 
 		it("says no agent when the tmux server cannot be read", async () => {
@@ -571,12 +572,12 @@ describe("captureSenderAgent — the sender a reply must reach, or why there is 
 				if (format === SERVER_IDENTITY_FORMAT) throw new Error("no server");
 				return Object.entries(panes).map(([paneId, panePid]) => ({ paneId, panePid })) as never;
 			});
-			expect(await captureSenderAgent(recorded(), "%5", 521, evidence)).toMatchObject({ ok: false, reason: "no-agent" });
+			expect(await captureSenderAgent(recorded(), "%5", 521, evidence)).toMatchObject({ ok: false, reason: "no-agent", detail: expect.stringContaining("tmux server could not be read") });
 		});
 
 		it("says no agent when the CLI visibly runs under another pane and claims this one", async () => {
 			wrapperPane();
-			expect(await captureSenderAgent(task([pane("%5", "conv-w"), pane("%1", "conv-a")]), "%5", 103, evidence)).toMatchObject({ ok: false, reason: "no-agent" });
+			expect(await captureSenderAgent(task([pane("%5", "conv-w"), pane("%1", "conv-a")]), "%5", 103, evidence)).toMatchObject({ ok: false, reason: "no-agent", detail: expect.stringContaining("another pane of this task") });
 		});
 
 		it("says no agent when the panes cannot be listed to rule out another pane", async () => {
@@ -587,24 +588,24 @@ describe("captureSenderAgent — the sender a reply must reach, or why there is 
 				if (format === PANE_ID_PID_FORMAT && ++paneListings > 1) throw new Error("no server");
 				return [{ paneId: "%5", panePid: 500 }] as never;
 			});
-			expect(await captureSenderAgent(recorded(), "%5", 521, evidence)).toMatchObject({ ok: false, reason: "no-agent" });
+			expect(await captureSenderAgent(recorded(), "%5", 521, evidence)).toMatchObject({ ok: false, reason: "no-agent", detail: expect.stringContaining("panes could not be read") });
 		});
 
 		it("says no agent for a pane nobody recorded", async () => {
 			wrapperPane();
-			expect(await captureSenderAgent(task([pane("%1", "conv-a")]), "%5", 521, evidence)).toMatchObject({ ok: false, reason: "no-agent" });
+			expect(await captureSenderAgent(task([pane("%1", "conv-a")]), "%5", 521, evidence)).toMatchObject({ ok: false, reason: "no-agent", detail: expect.stringContaining("no agent process runs dev3 here") });
 		});
 
 		it("says no agent for a shell split, recorded or not", async () => {
-			expect(await captureSenderAgent(task([pane("%1", "conv-a")]), "%4", 421, evidence)).toMatchObject({ ok: false, reason: "no-agent" });
-			expect(await captureSenderAgent(task([pane("%4", "conv-x")]), "%4", 421, evidence)).toMatchObject({ ok: false, reason: "no-agent" });
+			expect(await captureSenderAgent(task([pane("%1", "conv-a")]), "%4", 421, evidence)).toMatchObject({ ok: false, reason: "no-agent", detail: expect.stringContaining("no agent process runs dev3 here") });
+			expect(await captureSenderAgent(task([pane("%4", "conv-x")]), "%4", 421, evidence)).toMatchObject({ ok: false, reason: "no-agent", detail: expect.stringContaining("no agent process runs dev3 here") });
 		});
 
 		it("says no agent when the recorded pane's agent has exited", async () => {
 			wrapperPane();
 			procs = procs.filter((p) => p.pid !== 501);
 			procs.find((p) => p.pid === 500)!.args = "-zsh";
-			expect(await captureSenderAgent(recorded(), "%5", 521, evidence)).toMatchObject({ ok: false, reason: "no-agent" });
+			expect(await captureSenderAgent(recorded(), "%5", 521, evidence)).toMatchObject({ ok: false, reason: "no-agent", detail: expect.stringContaining("no agent process runs dev3 here") });
 		});
 
 		it("says it cannot tell, not no agent, while the pane's agent has not started yet", async () => {
@@ -642,28 +643,28 @@ describe("captureSenderAgent — the sender a reply must reach, or why there is 
 			});
 
 			it("says no agent when pane-1 is claimed with another task's DEV3_TASK_ID", async () => {
-				expect(await captureSenderAgent(nativeTask(), "pane-1", 521, { envTaskId: "task-2" })).toMatchObject({ ok: false, reason: "no-agent" });
+				expect(await captureSenderAgent(nativeTask(), "pane-1", 521, { envTaskId: "task-2" })).toMatchObject({ ok: false, reason: "no-agent", detail: expect.stringContaining("outside this task's environment") });
 			});
 
 			it("says no agent for a CLI under sibling pane-2 claiming pane-1, even when the tolerant read omits pane-2", async () => {
-				expect(await captureSenderAgent(nativeTask(), "pane-1", 603, { envTaskId: "task-1" })).toMatchObject({ ok: false, reason: "no-agent" });
+				expect(await captureSenderAgent(nativeTask(), "pane-1", 603, { envTaskId: "task-1" })).toMatchObject({ ok: false, reason: "no-agent", detail: expect.stringContaining("another pane of this task") });
 			});
 
 			it("says no agent for a CLI under sibling pane-2 when every read is complete", async () => {
 				vi.mocked(nativeTaskPanesState).mockResolvedValue({
 					taskId: "task-1", layout: "", activePaneId: "pane-1", panes: [nativePane("pane-1", 500), nativePane("pane-2", 600)],
 				});
-				expect(await captureSenderAgent(nativeTask(), "pane-1", 603, { envTaskId: "task-1" })).toMatchObject({ ok: false, reason: "no-agent" });
+				expect(await captureSenderAgent(nativeTask(), "pane-1", 603, { envTaskId: "task-1" })).toMatchObject({ ok: false, reason: "no-agent", detail: expect.stringContaining("another pane of this task") });
 			});
 
 			it("says no agent when the strict pane read finds no pane set, cannot read it, or omits the claimed pane", async () => {
 				const nativeCall = () => captureSenderAgent(nativeTask(), "pane-1", 521, { envTaskId: "task-1" });
 				vi.mocked(nativeTaskPaneCommandsStrict).mockResolvedValue({ kind: "absent" });
-				expect(await nativeCall()).toMatchObject({ ok: false, reason: "no-agent" });
+				expect(await nativeCall()).toMatchObject({ ok: false, reason: "no-agent", detail: expect.stringContaining("panes could not be read") });
 				vi.mocked(nativeTaskPaneCommandsStrict).mockRejectedValue(new Error("coordinator record unreadable"));
-				expect(await nativeCall()).toMatchObject({ ok: false, reason: "no-agent" });
+				expect(await nativeCall()).toMatchObject({ ok: false, reason: "no-agent", detail: expect.stringContaining("panes could not be read") });
 				strictPanes(["pane-2", 600]);
-				expect(await nativeCall()).toMatchObject({ ok: false, reason: "no-agent" });
+				expect(await nativeCall()).toMatchObject({ ok: false, reason: "no-agent", detail: expect.stringContaining("panes could not be read") });
 			});
 		});
 	});

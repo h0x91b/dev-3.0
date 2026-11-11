@@ -1,0 +1,16 @@
+# A pr watch subscriber is found without a process link to the CLI
+
+## Context
+`dev3 pr watch` fired but never delivered: the watch had no author and the single-live-agent fallback found no pane. The Claude main pane id was never recorded after a setup-script launch (`persistInitialAgentPaneId` skips setup wrappers, and the Claude hook only moved entries that already carried the pane). Separately, a wrapper that detaches the agent from the pane's process tree leaves the CLI with no ancestry path to the agent, so no author was captured. This changes the capture rule of `decisions/2026/10/06/scheduled-self-reminder-author-binding.md` and the subscriber binding of `decisions/2026/10/22/pr-watch-opt-in-subscription.md`.
+
+## Investigation
+Live data showed a main entry without `paneId` in `sessionState.panes[0]`, so `liveAgentPaneIds` returned null. In the wrapper case the pane root runs a non-shell child, while the real agent is reparented to a detached daemon (its ppid chain ends at pid 1). That agent still carries `TMUX_PANE`, `$TMUX` and `DEV3_TASK_ID`.
+
+## Decision
+`placeRecordedPaneSession` (`src/bun/pane-session-capture.ts`) gives an unrecorded pane to the one paneless entry that already holds the reported launch session id. `liveAgentPaneIds` (tmux) uses the recorded ids plus the session panes started from the task's main launch script (`run` or `cmd`), so dev-server viewers and AI Review are never candidates. When `agentAncestor` finds nothing, `captureSenderAgent` takes the agent running in the recorded pane the CLI names, but only with evidence: a live pid, `DEV3_TASK_ID` equal to the task, `$TMUX` socket path and server pid equal to the task's server, and a strict read showing the CLI is under no other pane of the task (`src/bun/scheduled-message-author.ts`, `src/bun/sender-evidence.ts`). A failed gate returns no-agent with the gate named, and `dev3 pr watch` then says the subscriber was not identified.
+
+## Risks
+A process that inherits the agent pane's full environment is indistinguishable from a wrapper-launched agent; this is accepted, since it can only reach the agent of a pane it already shares. The tmux gate depends on `#{socket_path}` and `#{pid}`; where they are missing, the gate closes and the old no-author behaviour remains.
+
+## Alternatives considered
+Refusing identity without a process or TTY link was rejected: agents behind a wrapper would never get notices or replies. Trusting `TMUX_PANE` alone was rejected: another tmux server or a native task reuses the same pane ids (every native main pane is `pane-1`). Binding any paneless entry to the reporting pane was rejected: a teammate or a hand-started Claude would take over the main pane.

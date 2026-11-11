@@ -17,6 +17,9 @@ import { DEFAULT_TMUX_SOCKET, PANE_ID_PID_FORMAT, PANE_START_COMMAND_FORMAT, SER
 import { launchDialect } from "../shared/platform-launch";
 import { dev3TaskTempPath } from "./temp-paths";
 import type { SenderEvidence } from "./sender-evidence";
+import { createLogger } from "./logger";
+
+const log = createLogger("scheduled-message-author");
 
 export type AuthorPaneResolution = { ok: true; paneId: string } | { ok: false; detail: string };
 
@@ -118,29 +121,30 @@ async function identityOf(task: Task, paneId: string, root: PaneRoot, agentPid: 
 }
 
 /**
- * True when the CLI's ancestry passes through another pane's root. Also true when the full pane
- * set cannot be proven (strict read: absent, unreadable, or missing the claimed pane).
+ * Why the CLI's pane claim cannot stand: its ancestry passes through another pane's root, or the
+ * full pane set cannot be proven (strict read: absent, unreadable, or missing the claimed pane).
  */
-async function runsUnderOtherPane(task: Task, paneId: string, table: ProcessTable, cliPid: number): Promise<boolean> {
+async function otherPaneVerdict(task: Task, paneId: string, table: ProcessTable, cliPid: number): Promise<"other-pane" | "unreadable" | null> {
 	let panes: Array<{ paneId: string; root: number }>;
 	try {
 		if (taskTerminalBackendIdentity(task) === "native") {
 			const read = await nativeTaskPaneCommandsStrict(task.id);
-			if (read.kind !== "read") return true;
+			if (read.kind !== "read") return "unreadable";
 			panes = read.panes.map((p) => ({ paneId: p.paneId, root: p.shellPid }));
 		} else {
 			const rows = await tmux.listPanes(PANE_ID_PID_FORMAT, { target: taskSessionName(task.id), scope: "session", socket: task.tmuxSocket ?? DEFAULT_TMUX_SOCKET });
 			panes = rows.map((row) => ({ paneId: row.paneId, root: row.panePid }));
 		}
 	} catch {
-		return true;
+		log.debug("sender fallback refused: the task's panes could not be listed", { taskId: task.id.slice(0, 8), paneId, gate: "panes-unreadable" });
+		return "unreadable";
 	}
-	if (!panes.some((p) => p.paneId === paneId)) return true;
+	if (!panes.some((p) => p.paneId === paneId)) return "unreadable";
 	const others = new Set(panes.filter((p) => p.paneId !== paneId).map((p) => p.root));
 	for (let pid: number | undefined = cliPid, i = 0; pid !== undefined && i < MAX_ANCESTRY; pid = table.parentOf.get(pid), i++) {
-		if (others.has(pid)) return true;
+		if (others.has(pid)) return "other-pane";
 	}
-	return false;
+	return null;
 }
 
 /** `$TMUX` is `<socket path>,<server pid>,<session index>`; the path may itself hold commas. */
@@ -152,10 +156,15 @@ function parseTmuxEnv(raw: string | null | undefined): { socketPath: string; ser
 /**
  * A CLI the pane's process tree does not reach may speak for the pane only with
  * evidence it runs there: a live pid, this task's id in its env, and (tmux) the
- * task's own tmux server in its `$TMUX`.
+ * task's own tmux server in its `$TMUX`. Null when proven, else the first failed gate.
  */
-async function senderProvenInPane(task: Task, pane: string, table: ProcessTable, cliPid: number, evidence: SenderEvidence): Promise<boolean> {
-	if (!table.cmdlines.has(cliPid) || evidence.envTaskId !== task.id) return false;
+async function senderRefusal(task: Task, pane: string, table: ProcessTable, cliPid: number, evidence: SenderEvidence): Promise<string | null> {
+	const refuse = (gate: string, detail: string) => {
+		log.debug("sender fallback refused", { taskId: task.id.slice(0, 8), paneId: pane, gate });
+		return detail;
+	};
+	if (!table.cmdlines.has(cliPid)) return refuse("pid-absent", "the dev3 process is no longer running");
+	if (evidence.envTaskId !== task.id) return refuse("task-env", "dev3 runs outside this task's environment");
 	if (taskTerminalBackendIdentity(task) !== "native") {
 		const claimed = parseTmuxEnv(evidence.tmuxEnv);
 		const server = await tmux.listPanes(SERVER_IDENTITY_FORMAT, {
@@ -163,9 +172,15 @@ async function senderProvenInPane(task: Task, pane: string, table: ProcessTable,
 			scope: "session",
 			socket: task.tmuxSocket ?? DEFAULT_TMUX_SOCKET,
 		}).then((rows) => rows[0], () => undefined);
-		if (!claimed || !server || claimed.socketPath !== server.socketPath || claimed.serverPid !== server.serverPid) return false;
+		if (!server) return refuse("tmux-server-unreadable", "the task's tmux server could not be read");
+		if (!claimed || claimed.socketPath !== server.socketPath || claimed.serverPid !== server.serverPid) {
+			return refuse("tmux-server", "dev3 runs under another tmux server");
+		}
 	}
-	return !(await runsUnderOtherPane(task, pane, table, cliPid));
+	const verdict = await otherPaneVerdict(task, pane, table, cliPid);
+	if (verdict === "other-pane") return refuse("other-pane", "dev3 runs under another pane of this task");
+	if (verdict === "unreadable") return refuse("panes-unreadable", "the task's panes could not be read");
+	return null;
 }
 
 /**
@@ -188,7 +203,9 @@ export async function captureSenderAgent(
 	const table = await processTable();
 	const agentPid = agentAncestor(table, cliPid, root.rootPid);
 	if (!agentPid) {
-		if (entryFor(task, pane) && (await senderProvenInPane(task, pane, table, cliPid, options))) {
+		if (entryFor(task, pane)) {
+			const refusal = await senderRefusal(task, pane, table, cliPid, options);
+			if (refusal) return unproven("no-agent", refusal);
 			const inPane = await agentInPane(task, pane, root, table, options.generation === true);
 			if (inPane.ok || inPane.reason === "unknown") return inPane;
 		}
@@ -264,18 +281,15 @@ async function taskSessionAgentCandidates(task: Task, recorded: string[]): Promi
 		const launched = rows.filter((row) => scripts.some((script) => row.startCommand.includes(script))).map((row) => row.paneId);
 		return [...new Set([...recorded, ...launched])];
 	} catch {
+		log.debug("agent pane candidates unknown: the session's panes could not be listed", { taskId: task.id.slice(0, 8) });
 		return null;
 	}
 }
 
 /**
  * The panes of the task that run an agent right now, or null when that cannot be told.
- * Candidates come from the backend: tmux, the recorded agent panes that still exist (plus, when
- * a record has no pane id yet, the panes started from the task's launch scripts);
- * native, every live pane the coordinator knows (extra agents are not recorded in
- * `sessionState`). A pane counts when its launch script has a non-shell child; a stale
- * record and a shell split (even one running a program) never do. Windows has no process table: there
- * only a lone coordinator pane is provably the agent.
+ * A pane counts when its launch script has a non-shell child; stale records and shell splits never do.
+ * Why the candidates are chosen this way: decisions/2026/11/11/pr-watch-subscriber-without-process-link.md.
  */
 export async function liveAgentPaneIds(task: Task): Promise<string[] | null> {
 	const native = taskTerminalBackendIdentity(task) === "native";
