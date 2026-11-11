@@ -496,7 +496,7 @@ const kanban = {
 	"launch.scheduleInvalid": "Укажите задержку или время",
 
 	// Scheduled message ("Send later")
-	"scheduleMessage.title": "Отправить сообщение позже",
+	"scheduleMessage.title": "Сообщение агенту",
 	"scheduleMessage.placeholder": "Сообщение для агента…",
 	"scheduleMessage.deliverTo": "Доставить в",
 	"scheduleMessage.targetAgent": "Агент",
@@ -505,9 +505,13 @@ const kanban = {
 	"scheduleMessage.scheduling": "Планирование…",
 	"scheduleMessage.failed": "Не удалось запланировать: {error}",
 	"scheduleMessage.scheduleHint": "Отправит {day} в {time} — через {rel}",
-	"scheduleMessage.discardConfirm": "Удалить неотправленное сообщение?",
-	"scheduleMessage.keepEditing": "Продолжить редактирование",
-	"scheduleMessage.discard": "Удалить сообщение",
+	"scheduleMessage.modeNow": "Сейчас",
+	"scheduleMessage.modeStop": "Когда агент остановится",
+	"scheduleMessage.nowHint": "Сразу вводится в терминал агента.",
+	"scheduleMessage.stopHint": "Отправится автоматически, когда агент закончит ход. До тех пор ждёт здесь как черновик.",
+	"scheduleMessage.saveOnStop": "Отправить при остановке",
+	"scheduleMessage.draftSaved": "Сохранено как черновик — можно закрыть.",
+	"scheduleMessage.draftSaveFailed": "Не удалось сохранить черновик: {error}",
 
 	// SpawnAgentModal
 	"spawnAgent.title": "Добавить агента в задачу",
@@ -585,11 +589,17 @@ const kanban = {
 	"task.unwatchTooltip": "Не следить — отключить уведомления",
 	"task.sendLater": "Отправить позже",
 	"task.sendLaterShort": "Позже",
-	"task.sendLaterHint": "Поставить сообщение агенту в очередь на потом",
+	"task.sendLaterHint": "Черновик сообщения агенту: отправить сейчас, когда агент остановится, или позже",
 	"task.sendMessageLater": "Отправить сообщение позже…",
 	"task.scheduledMessageTooltip": "Запланированное сообщение — нажмите для опций",
 	"task.sendNow": "Отправить сейчас",
 	"task.sendNowFailed": "Не удалось отправить сообщение: {error}",
+	"task.draft": "Черновик",
+	"task.draftOnStop": "При остановке",
+	"task.draftTooltip": "Неотправленный черновик — нажмите для действий",
+	"task.draftEdit": "Изменить",
+	"task.draftDiscard": "Удалить",
+	"task.draftDiscardFailed": "Не удалось удалить черновик: {error}",
 
 	// Pipeline
 	"pipeline.current": "текущий",

@@ -6,6 +6,7 @@ import {
 	type ScheduledMessage,
 	type ScheduledMessageAuthor,
 	type ScheduledMessageTarget,
+	type TaskMessageDraft,
 	getTaskTitle,
 	MAX_SCHEDULED_MESSAGES_PER_TASK,
 	MAX_SCHEDULED_MESSAGE_LENGTH,
@@ -549,6 +550,72 @@ export async function sendMessageImmediately(
 		throw new Error(`Could not deliver the message — ${why ?? "the task has no live agent session."}`);
 	}
 	return { ...delivery, spilledPath, messageId: id };
+}
+
+/** Save the task's message draft, or clear it when `text` is blank (#2281). */
+export async function saveMessageDraft(
+	project: Project,
+	taskId: string,
+	input: { text: string; sendOnStop?: boolean },
+): Promise<Task> {
+	if (input.text.length > MAX_SCHEDULED_MESSAGE_LENGTH) {
+		throw new Error(`Draft too long: ${input.text.length} chars, and the limit is ${MAX_SCHEDULED_MESSAGE_LENGTH}.`);
+	}
+	const draft: TaskMessageDraft | null = input.text.trim()
+		? { text: input.text, ...(input.sendOnStop ? { sendOnStop: true } : {}), updatedAt: new Date().toISOString() }
+		: null;
+	const updated = await data.updateTask(project, taskId, { messageDraft: draft });
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+	return updated;
+}
+
+/** Drop the draft once sent, unless the user edited it while it was going out. */
+async function clearSentDraft(project: Project, taskId: string, sent: TaskMessageDraft): Promise<Task> {
+	const { task } = await data.updateTaskWith<void>(project, taskId, (current) => ({
+		updates: current.messageDraft?.updatedAt === sent.updatedAt ? { messageDraft: null } : {},
+		result: undefined,
+	}));
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task });
+	return task;
+}
+
+/**
+ * Send the saved draft right now (a click: no hold) and clear it. Throws when
+ * nothing was sent, and the draft is then left untouched.
+ */
+export async function sendMessageDraft(project: Project, taskId: string): Promise<Task> {
+	const task = await data.getTask(project, taskId);
+	const draft = task.messageDraft;
+	if (!draft?.text.trim()) throw new Error("There is no message draft to send");
+	await sendMessageImmediately(task, draft.text, null, null, { hold: false, origin: "user" });
+	return clearSentDraft(project, taskId, draft);
+}
+
+/**
+ * The agent stopped: send an armed draft. It is disarmed inside the tasks lock
+ * before sending, so two quick status moves cannot send it twice. It goes through
+ * the hold because the user may be typing in that pane. A failed send keeps the text.
+ */
+export async function fireArmedMessageDraft(project: Project, taskId: string): Promise<void> {
+	const { task, result: armed } = await data.updateTaskWith<TaskMessageDraft | null>(project, taskId, (current) => {
+		const draft = current.messageDraft;
+		if (!draft?.sendOnStop || isTerminal(current.status)) return { updates: {}, result: null };
+		return { updates: { messageDraft: { text: draft.text, updatedAt: draft.updatedAt } }, result: draft };
+	});
+	if (!armed) return;
+	try {
+		await sendMessageImmediately(task, armed.text, null, null, { hold: true, origin: "user" });
+		await clearSentDraft(project, taskId, armed);
+		log.info("Armed message draft sent", { taskId: taskId.slice(0, 8) });
+	} catch (err) {
+		getPushMessage()?.("taskUpdated", { projectId: project.id, task });
+		log.warn("Armed message draft not sent", { taskId: taskId.slice(0, 8), error: String(err) });
+		notifyOutcome(project, task, {
+			toast: `Draft not sent, it is still saved — ${err instanceof Error ? err.message : String(err)}`,
+			level: "error",
+			reason: `Draft not sent when the agent stopped: "${messagePreview(armed.text)}"`,
+		});
+	}
 }
 
 /**

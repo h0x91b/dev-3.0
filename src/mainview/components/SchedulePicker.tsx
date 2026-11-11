@@ -99,10 +99,22 @@ interface SchedulePickerProps {
 	 */
 	hintKey?: TranslationKey;
 	/**
-	 * A third mode beside in/at that is not a time (the launch modal's "After task").
-	 * Its content replaces the time fields and the hint; `onActiveChange` reports when it is picked.
+	 * Modes beside in/at that are not a time (the launch modal's "After task", the
+	 * message modal's "Now"). Their content replaces the time fields and the hint;
+	 * `leading` ones sit before in/at.
 	 */
-	extraMode?: { label: string; content: ReactNode; onActiveChange: (active: boolean) => void; initiallyActive?: boolean };
+	extraModes?: ExtraMode[];
+	/** Reports the picked extra mode's id, or null when in/at is picked. */
+	onExtraModeChange?: (id: string | null) => void;
+	/** Id of the extra mode to start on; in/at otherwise. */
+	initialExtraMode?: string;
+}
+
+export interface ExtraMode {
+	id: string;
+	label: string;
+	content: ReactNode;
+	leading?: boolean;
 }
 
 /**
@@ -112,9 +124,21 @@ interface SchedulePickerProps {
  * messages ("Send later") agree on the grammar and range (`in` ≤ 99h, `at`
  * today/tomorrow). Pure time resolution lives in `src/shared/schedule.ts`.
  */
-function SchedulePicker({ disabled = false, onTargetChange, onSubmit, initialDelayMinutes = 60, hintKey = "launch.scheduleHint", extraMode }: SchedulePickerProps) {
+function SchedulePicker({
+	disabled = false,
+	onTargetChange,
+	onSubmit,
+	initialDelayMinutes = 60,
+	hintKey = "launch.scheduleHint",
+	extraModes = [],
+	onExtraModeChange,
+	initialExtraMode,
+}: SchedulePickerProps) {
 	const t = useT();
-	const [mode, setMode] = useState<ScheduleMode | "extra">(extraMode?.initiallyActive ? "extra" : "in");
+	const [mode, setMode] = useState<string>(
+		initialExtraMode && extraModes.some((m) => m.id === initialExtraMode) ? initialExtraMode : "in",
+	);
+	const extra = extraModes.find((m) => m.id === mode) ?? null;
 	const [delayHours, setDelayHours] = useState(Math.floor(initialDelayMinutes / 60));
 	const [delayMinutes, setDelayMinutes] = useState(initialDelayMinutes % 60);
 	const [atTime, setAtTime] = useState(() => toTimeInputValue(new Date(Date.now() + initialDelayMinutes * 60_000)));
@@ -125,21 +149,25 @@ function SchedulePicker({ disabled = false, onTargetChange, onSubmit, initialDel
 		return () => clearInterval(timer);
 	}, []);
 
-	const timeMode: ScheduleMode = mode === "extra" ? "in" : mode;
+	const timeMode: ScheduleMode = mode === "at" ? "at" : "in";
 	const draft = { mode: timeMode, delayHours, delayMinutes, atTime };
 	const target = resolveScheduleTarget(draft, nowTick);
 
 	// Report the resolved target to the parent on every change / tick.
 	useEffect(() => {
-		if (mode !== "extra") onTargetChange(resolveScheduleTarget(draft, Date.now()), timeMode);
+		if (!extra) onTargetChange(resolveScheduleTarget(draft, Date.now()), timeMode);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [mode, delayHours, delayMinutes, atTime, nowTick]);
 	useEffect(() => {
-		extraMode?.onActiveChange(mode === "extra");
+		onExtraModeChange?.(extra?.id ?? null);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [mode]);
-	const modes: Array<ScheduleMode | "extra"> = extraMode ? ["in", "at", "extra"] : ["in", "at"];
-	const modeLabel = (m: ScheduleMode | "extra") => (m === "in" ? t("launch.modeIn") : m === "at" ? t("launch.modeAt") : extraMode!.label);
+	const modes: Array<{ id: string; label: string }> = [
+		...extraModes.filter((m) => m.leading),
+		{ id: "in", label: t("launch.modeIn") },
+		{ id: "at", label: t("launch.modeAt") },
+		...extraModes.filter((m) => !m.leading),
+	];
 
 	const hint = (() => {
 		if (!target) return t("launch.scheduleInvalid");
@@ -155,20 +183,20 @@ function SchedulePicker({ disabled = false, onTargetChange, onSubmit, initialDel
 				<div className="inline-flex h-8 flex-shrink-0 items-center rounded-lg border border-edge p-0.5">
 					{modes.map((m) => (
 						<button
-							key={m}
+							key={m.id}
 							type="button"
-							aria-pressed={mode === m}
-							onClick={() => setMode(m)}
+							aria-pressed={mode === m.id}
+							onClick={() => setMode(m.id)}
 							className={`text-sm px-2.5 py-1 rounded-md whitespace-nowrap transition-colors ${
-								mode === m ? "bg-overlay-hover text-fg font-medium" : "text-fg-3 hover:text-fg"
+								mode === m.id ? "bg-overlay-hover text-fg font-medium" : "text-fg-3 hover:text-fg"
 							}`}
 						>
-							{modeLabel(m)}
+							{m.label}
 						</button>
 					))}
 				</div>
 
-				{mode === "extra" ? null : mode === "in" ? (
+				{extra ? null : mode === "in" ? (
 					<div className="flex items-center gap-4">
 						<NumberStepper
 							label={t("launch.hours")}
@@ -203,8 +231,8 @@ function SchedulePicker({ disabled = false, onTargetChange, onSubmit, initialDel
 				)}
 			</div>
 
-			{mode === "extra" && <div className="mt-3">{extraMode!.content}</div>}
-			{mode !== "extra" && <p className={`text-sm mt-2 ${target ? "text-fg-3" : "text-danger"}`}>
+			{extra && <div className="mt-3">{extra.content}</div>}
+			{!extra && <p className={`text-sm mt-2 ${target ? "text-fg-3" : "text-danger"}`}>
 				{hint}
 				{mode === "at" && target && (
 					<span className="text-fg-3"> · {t("launch.atTimeLabel").toLowerCase()}</span>

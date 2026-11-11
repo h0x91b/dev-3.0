@@ -88,6 +88,7 @@ vi.mock("../../board-operations/task-notes", () => ({ addNote: vi.fn(async () =>
 vi.mock("../../board-operations/runtime", () => ({ boardPorts: { push: vi.fn(), clearMergeNotification: vi.fn(), syncTerminalTitle: vi.fn() } }));
 vi.mock("../../agent-requests", () => ({ voidAgentRequestsForTask: vi.fn() }));
 vi.mock("../../board-operations/types", () => ({ AGENT_ACTOR: { kind: "agent" } }));
+vi.mock("../../scheduled-message-scheduler", () => ({ fireArmedMessageDraft: vi.fn(async () => undefined) }));
 
 import * as data from "../../data";
 import * as git from "../../git";
@@ -95,6 +96,7 @@ import { voidAgentRequestsForTask } from "../../agent-requests";
 import { addNote } from "../../board-operations/task-notes";
 import { getPushMessage } from "../../rpc-handlers/shared";
 import { AGENT_ACTOR } from "../../board-operations/types";
+import { fireArmedMessageDraft } from "../../scheduled-message-scheduler";
 import { executeLifecycleEffect, type LifecycleExecutionContext } from "../executor";
 import type { LifecycleEffect } from "../effects";
 import type { Project, Task } from "../../../shared/types";
@@ -299,5 +301,22 @@ describe("judgeFailureWorkspace fails closed (S-F1a)", () => {
 		expect(context.failureWorkspaceKept).toContain("could not be checked (EIO: i/o error)");
 		await executeLifecycleEffect({ type: "removeWorktree", allowDerivedPath: true, failureCleanup: true, onError: "continue" } as LifecycleEffect, context);
 		expect(git.removeWorktree).not.toHaveBeenCalled();
+	});
+});
+
+describe("notifyStatusChange — armed message draft (#2281)", () => {
+	const armed = { text: "then rebase", sendOnStop: true, updatedAt: "t0" };
+	const change = (to: Task["status"]) => ({ type: "notifyStatusChange", from: "in-progress", to }) as LifecycleEffect;
+
+	it("sends the armed draft when the agent stops", async () => {
+		await executeLifecycleEffect(change("review-by-user"), ctx(liveTask({ messageDraft: armed })));
+		await vi.waitFor(() => expect(fireArmedMessageDraft).toHaveBeenCalledWith(expect.objectContaining({ id: "proj-1" }), TASK_ID));
+	});
+
+	it("leaves it for any other move, and leaves an unarmed draft alone", async () => {
+		await executeLifecycleEffect(change("review-by-ai"), ctx(liveTask({ messageDraft: armed })));
+		await executeLifecycleEffect(change("user-questions"), ctx(liveTask({ messageDraft: { text: "notes", updatedAt: "t0" } })));
+		await new Promise((r) => setTimeout(r, 10));
+		expect(fireArmedMessageDraft).not.toHaveBeenCalled();
 	});
 });

@@ -471,7 +471,7 @@ const kanban = {
 	"launch.scheduleInvalid": "Pick a delay or time first",
 
 	// Scheduled message ("Send later")
-	"scheduleMessage.title": "Send message later",
+	"scheduleMessage.title": "Message the agent",
 	"scheduleMessage.placeholder": "Message to send to the agent…",
 	"scheduleMessage.deliverTo": "Deliver to",
 	"scheduleMessage.targetAgent": "Agent",
@@ -480,9 +480,13 @@ const kanban = {
 	"scheduleMessage.scheduling": "Scheduling…",
 	"scheduleMessage.failed": "Failed to schedule: {error}",
 	"scheduleMessage.scheduleHint": "Will send {day} at {time} — in {rel}",
-	"scheduleMessage.discardConfirm": "Discard this unsent message?",
-	"scheduleMessage.keepEditing": "Keep editing",
-	"scheduleMessage.discard": "Discard message",
+	"scheduleMessage.modeNow": "Now",
+	"scheduleMessage.modeStop": "When agent stops",
+	"scheduleMessage.nowHint": "Typed into the agent's terminal right away.",
+	"scheduleMessage.stopHint": "Sent automatically when the agent finishes its turn. Until then it waits here as a draft.",
+	"scheduleMessage.saveOnStop": "Send on stop",
+	"scheduleMessage.draftSaved": "Saved as a draft — safe to close.",
+	"scheduleMessage.draftSaveFailed": "Couldn't save the draft: {error}",
 
 	// SpawnAgentModal
 	"spawnAgent.title": "Add agent to this task",
@@ -558,11 +562,17 @@ const kanban = {
 	"task.unwatchTooltip": "Unwatch — stop notifications",
 	"task.sendLater": "Send later",
 	"task.sendLaterShort": "Later",
-	"task.sendLaterHint": "Queue a message to this task's agent for later",
+	"task.sendLaterHint": "Draft a message to this task's agent, send it when the agent stops, or queue it for later",
 	"task.sendMessageLater": "Send message later…",
 	"task.scheduledMessageTooltip": "Scheduled message — click for options",
 	"task.sendNow": "Send now",
 	"task.sendNowFailed": "Failed to send message: {error}",
+	"task.draft": "Draft",
+	"task.draftOnStop": "On stop",
+	"task.draftTooltip": "Unsent message draft — click for options",
+	"task.draftEdit": "Edit",
+	"task.draftDiscard": "Discard",
+	"task.draftDiscardFailed": "Couldn't discard the draft: {error}",
 
 	// Pipeline
 	"pipeline.current": "current",

@@ -470,7 +470,7 @@ const kanban = {
 	"launch.scheduleInvalid": "Elige primero un retraso o una hora",
 
 	// Scheduled message ("Send later")
-	"scheduleMessage.title": "Enviar mensaje más tarde",
+	"scheduleMessage.title": "Mensaje al agente",
 	"scheduleMessage.placeholder": "Mensaje para el agente…",
 	"scheduleMessage.deliverTo": "Entregar a",
 	"scheduleMessage.targetAgent": "Agente",
@@ -479,9 +479,13 @@ const kanban = {
 	"scheduleMessage.scheduling": "Programando…",
 	"scheduleMessage.failed": "Error al programar: {error}",
 	"scheduleMessage.scheduleHint": "Se enviará {day} a las {time} — en {rel}",
-	"scheduleMessage.discardConfirm": "¿Descartar este mensaje sin enviar?",
-	"scheduleMessage.keepEditing": "Seguir editando",
-	"scheduleMessage.discard": "Descartar mensaje",
+	"scheduleMessage.modeNow": "Ahora",
+	"scheduleMessage.modeStop": "Cuando el agente pare",
+	"scheduleMessage.nowHint": "Se escribe en el terminal del agente de inmediato.",
+	"scheduleMessage.stopHint": "Se envía automáticamente cuando el agente termina su turno. Hasta entonces espera aquí como borrador.",
+	"scheduleMessage.saveOnStop": "Enviar al parar",
+	"scheduleMessage.draftSaved": "Guardado como borrador — puedes cerrar.",
+	"scheduleMessage.draftSaveFailed": "No se pudo guardar el borrador: {error}",
 
 	// SpawnAgentModal
 	"spawnAgent.title": "Agregar agente a esta tarea",
@@ -557,11 +561,17 @@ const kanban = {
 	"task.unwatchTooltip": "Dejar de vigilar — detener notificaciones",
 	"task.sendLater": "Enviar más tarde",
 	"task.sendLaterShort": "Luego",
-	"task.sendLaterHint": "Poner en cola un mensaje al agente para más tarde",
+	"task.sendLaterHint": "Redacta un mensaje al agente: envíalo ahora, cuando el agente pare o más tarde",
 	"task.sendMessageLater": "Enviar mensaje más tarde…",
 	"task.scheduledMessageTooltip": "Mensaje programado — clic para opciones",
 	"task.sendNow": "Enviar ahora",
 	"task.sendNowFailed": "Error al enviar el mensaje: {error}",
+	"task.draft": "Borrador",
+	"task.draftOnStop": "Al parar",
+	"task.draftTooltip": "Borrador sin enviar — haz clic para ver opciones",
+	"task.draftEdit": "Editar",
+	"task.draftDiscard": "Descartar",
+	"task.draftDiscardFailed": "No se pudo descartar el borrador: {error}",
 
 	// Pipeline
 	"pipeline.current": "actual",

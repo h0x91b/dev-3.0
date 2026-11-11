@@ -7,7 +7,7 @@ import type { TaskPriority } from "./task-priority";
 import type { TaskType } from "./task-type";
 import type { Project } from "./project";
 import type { LaunchAfter, ScheduledLaunch } from "./agent-launch";
-import type { ScheduledMessage } from "./scheduled-messages";
+import type { ScheduledMessage, TaskMessageDraft } from "./scheduled-messages";
 import type { KeepAliveState } from "./keep-alive";
 import type { PrWatch } from "../pr-watch";
 import type { LiveArtifact, SharedArtifact, SharedImage } from "./shared-media";
@@ -475,6 +475,8 @@ export interface Task {
 	 * See {@link ScheduledMessage}.
 	 */
 	scheduledMessages?: ScheduledMessage[] | null;
+	/** The user's unsent message to this task's agent; see {@link TaskMessageDraft}. */
+	messageDraft?: TaskMessageDraft | null;
 	/**
 	 * `dev3 pr watch` subscriptions: the app messages the agent once when the
 	 * watched PR event happens, then removes the watch. At most one per kind.
