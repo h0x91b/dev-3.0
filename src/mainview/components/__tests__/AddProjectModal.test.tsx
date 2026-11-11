@@ -698,13 +698,13 @@ describe("AddProjectModal", () => {
 			mockedApi.request.addProject.mockResolvedValue({
 				ok: true as const,
 				project: mockProject,
-				claudeFolder: { state: "no-login", dir: "/work/app/.claude" },
+				claudeFolder: { state: "no-login", dir: "/base/my-repo/.claude" },
 			});
 			renderModal();
 			await user.click(screen.getByText("Browse..."));
 
 			expect(toast.info).toHaveBeenCalledWith(
-				"my-repo: Claude agents use /work/app/.claude, which has no Claude login yet. The first Claude task asks you to sign in.",
+				"my-repo: Claude agents use my-repo/.claude, which has no Claude login yet. The first Claude task asks you to sign in.",
 				expect.anything(),
 			);
 		});
@@ -715,13 +715,13 @@ describe("AddProjectModal", () => {
 			mockedApi.request.addProject.mockResolvedValue({
 				ok: true as const,
 				project: mockProject,
-				claudeFolder: { state: "refused", dir: "/work/app/.claude" },
+				claudeFolder: { state: "refused", dir: "/base/my-repo/.claude" },
 			});
 			renderModal();
 			await user.click(screen.getByText("Browse..."));
 
 			expect(toast.error).toHaveBeenCalledWith(
-				"my-repo: Claude agents keep ~/.claude, because git does not ignore /work/app/.claude/.credentials.json, where the login would be saved.",
+				"my-repo: Claude agents keep ~/.claude, because git does not ignore my-repo/.claude/.credentials.json, where the login would be saved.",
 				expect.anything(),
 			);
 		});

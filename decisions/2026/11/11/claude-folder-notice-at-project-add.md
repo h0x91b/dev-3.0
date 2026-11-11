@@ -9,7 +9,7 @@ Claude Code 2.1.322 stores a custom-dir login in the macOS Keychain under servic
 ## Decision
 - `claudeFolderNotice` (`src/bun/claude-folder-notice.ts`) runs at the end of `addProjectImpl`, so Add, Init, Clone and `dev3 projects add|clone` all get one `claudeFolder` result field: `ready`, `no-login`, or `refused`. It fires whenever the resolved env pins a folder other than `~/.claude`, whether the global default or the repo's own config set it, and for a refused `{projectPath}` default.
 - A login is a `.credentials.json` on any OS, or on macOS a Keychain item found with `security find-generic-password -a -s` without `-w`, which reads no secret and raises no prompt.
-- The renderer shows one toast per project beside the auto-configure toast; refused is an error toast, like `storageKeptHome`. The CLI prints a `Claude folder:` line.
+- The renderer shows one toast per project beside the auto-configure toast; refused is an error toast, like `storageKeptHome`. A folder inside the project reads as `<project>/.claude` (`claudeFolderLabel`), because a plain-string toast cannot carry the streamer-mode blur class. The CLI prints a `Claude folder:` line.
 - `claudeFolderSwitchImpact` resolves every project's env under the current and the toggled defaults (`resolveProjectEnv` takes `agentEnvDefaults`) and counts `ACTIVE_STATUSES` tasks whose folder changes. `AgentEnvDefaultsSection` asks through `confirm()` only when that count is above zero; switching back restores resume, so the confirm is not `danger`.
 
 ## Risks

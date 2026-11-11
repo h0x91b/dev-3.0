@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Project, Task } from "../../shared/types";
+import { claudeFolderLabel } from "../../shared/claude-folder-notice";
 
 const { resolveProjectEnv, loadSettings, loadProjects, loadTasks } = vi.hoisted(() => ({
 	resolveProjectEnv: vi.fn(),
@@ -118,5 +119,16 @@ describe("claudeFolderSwitchImpact", () => {
 		resolveProjectEnv.mockResolvedValue({});
 		expect(await claudeFolderSwitchImpact(true)).toEqual({ taskCount: 0, projectNames: [] });
 		expect(loadTasks).not.toHaveBeenCalled();
+	});
+});
+
+describe("claudeFolderLabel", () => {
+	it("names a folder inside the project by the project's name", () => {
+		expect(claudeFolderLabel("/work/web/.claude", project)).toBe("web/.claude");
+		expect(claudeFolderLabel("C:\\src\\web\\.claude", { name: "web", path: "C:\\src\\web\\" })).toBe("web\\.claude");
+	});
+	it("keeps the full path for a folder outside the project, including a sibling sharing its prefix", () => {
+		expect(claudeFolderLabel("/work/web2/.claude", project)).toBe("/work/web2/.claude");
+		expect(claudeFolderLabel("/elsewhere/.claude", project)).toBe("/elsewhere/.claude");
 	});
 });

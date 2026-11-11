@@ -16,3 +16,10 @@ export interface ClaudeFolderSwitchImpact {
 	taskCount: number;
 	projectNames: string[];
 }
+
+/** `dir` as `<project name>/<rest>` when it sits inside the project, so a toast shows no home path. */
+export function claudeFolderLabel(dir: string, project: { name: string; path: string }): string {
+	const root = project.path.replace(/[\\/]+$/, "");
+	const sep = dir.charAt(root.length);
+	return dir.startsWith(root) && (sep === "/" || sep === "\\") ? `${project.name}${sep}${dir.slice(root.length + 1)}` : dir;
+}

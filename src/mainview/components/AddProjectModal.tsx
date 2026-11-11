@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, type Dispatch } from "react";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { extractRepoName, hasGitWorkflow } from "../../shared/types";
 import type { AutoConfigureKey, AutoConfigureResult, BoardCopyOffer, GitInitOffer, Project } from "../../shared/types";
-import type { ClaudeFolderNotice } from "../../shared/claude-folder-notice";
+import { claudeFolderLabel, type ClaudeFolderNotice } from "../../shared/claude-folder-notice";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT, type TranslationKey } from "../i18n";
@@ -190,7 +190,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 	// Which Claude folder the new project's agents use, so a separate login never comes as a surprise.
 	function reportClaudeFolder(project: Project, notice: ClaudeFolderNotice | undefined) {
 		if (!notice) return;
-		const params = { name: project.name, dir: notice.dir };
+		const params = { name: project.name, dir: claudeFolderLabel(notice.dir, project) };
 		if (notice.state === "refused") toast.error(t("addProject.claudeFolderRefused", params), { source: "dashboard" });
 		else toast.info(t(notice.state === "ready" ? "addProject.claudeFolderReady" : "addProject.claudeFolderNoLogin", params), { source: "dashboard" });
 	}
