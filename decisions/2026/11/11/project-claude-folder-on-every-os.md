@@ -17,7 +17,7 @@ The "Each project uses its own Claude folder" switch writes `CLAUDE_CONFIG_DIR={
 - If the launch fails to write `info/exclude`, that launch runs on `~/.claude` instead of the project folder; the log says why.
 - The check runs two blocking git calls per call to `resolveProjectEnv`: about 5 ms on ext4, 25-35 ms on a WSL `/mnt` drive, once per project when the login list opens.
 - A macOS user with an Operations board and the switch on loses that board's folder: its tasks return to `~/.claude` and cannot resume conversations started in `~/.dev3.0/ops/<name>/.claude`.
-- A refused project falls back to `~/.claude` without a UI hint; only the log says why.
+- A refused project falls back to `~/.claude`; the add flow says so (`claude-folder-notice-at-project-add.md`), but a project added before the switch was turned on gets no hint, only the log.
 
 ## Alternatives considered
 - Keep the macOS gate and document the trailing-slash spelling. Rejected: anyone can fix that bug away, and it leaks the login on a repo that tracks `.claude/`.

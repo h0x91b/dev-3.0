@@ -1,3 +1,4 @@
+import type { ClaudeFolderNotice } from "./claude-folder-notice";
 import type { Project, Space, SpacesFile } from "./types";
 import { orderSpaces } from "./types";
 
@@ -151,6 +152,8 @@ export interface ProjectRegistrationResult {
 	outcome: "added" | "exists";
 	project: CliProject;
 	createdSpaces: CliSpaceRef[];
+	/** Set on `added` when the project's Claude agents will not use `~/.claude`, or were refused another folder. */
+	claudeFolder?: ClaudeFolderNotice;
 }
 
 /** `spaces.change`: spaces whose last member left are deleted, exactly as in the app. */

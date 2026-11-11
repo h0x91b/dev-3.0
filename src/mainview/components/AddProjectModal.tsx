@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, type Dispatch } from "react";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { extractRepoName, hasGitWorkflow } from "../../shared/types";
 import type { AutoConfigureKey, AutoConfigureResult, BoardCopyOffer, GitInitOffer, Project } from "../../shared/types";
+import type { ClaudeFolderNotice } from "../../shared/claude-folder-notice";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT, type TranslationKey } from "../i18n";
@@ -141,7 +142,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 	 * initialize in place. `null` means the user declined and nothing changed.
 	 */
 	async function initAfterConfirm(offer: GitInitOffer, withAutoConfigure: boolean): Promise<
-		{ ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true } | { ok: false; error: string } | null
+		{ ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true; claudeFolder?: ClaudeFolderNotice } | { ok: false; error: string } | null
 	> {
 		if (!(await confirmGitInit(offer))) return null;
 		const result = await api.request.initAndAddProject({
@@ -184,6 +185,14 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 	// The switch asked for in-project storage; the user must hear when the folder refused it.
 	function reportStorageKeptHome(project: Project, keptHome: true | undefined) {
 		if (keptHome) toast.error(t("addProject.storeInProjectFailed", { name: project.name }), { source: "dashboard" });
+	}
+
+	// Which Claude folder the new project's agents use, so a separate login never comes as a surprise.
+	function reportClaudeFolder(project: Project, notice: ClaudeFolderNotice | undefined) {
+		if (!notice) return;
+		const params = { name: project.name, dir: notice.dir };
+		if (notice.state === "refused") toast.error(t("addProject.claudeFolderRefused", params), { source: "dashboard" });
+		else toast.info(t(notice.state === "ready" ? "addProject.claudeFolderReady" : "addProject.claudeFolderNoLogin", params), { source: "dashboard" });
 	}
 
 	// Says what auto-configure wrote, so a new .dev3 file never appears unannounced.
@@ -307,6 +316,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 					dispatch({ type: "addProject", project: result.project });
 					reportAutoConfigured(result.project, result.autoConfigured);
 					reportStorageKeptHome(result.project, "storageKeptHome" in result ? result.storageKeptHome : undefined);
+					reportClaudeFolder(result.project, "claudeFolder" in result ? result.claudeFolder : undefined);
 					if ("boardCopyOffer" in result) await offerBoardCopyRestore(result.project, result.boardCopyOffer);
 					added.push(result.project);
 					void applyPendingSpaces(result.project.id);
@@ -395,6 +405,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 			if (result.ok) {
 				dispatch({ type: "addProject", project: result.project });
 				reportStorageKeptHome(result.project, result.storageKeptHome);
+				reportClaudeFolder(result.project, result.claudeFolder);
 				await offerBoardCopyRestore(result.project, result.boardCopyOffer);
 				void applyPendingSpaces(result.project.id);
 				trackEvent("project_added", { source: "init" });
@@ -452,6 +463,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdde
 				dispatch({ type: "addProject", project: result.project });
 				reportAutoConfigured(result.project, result.autoConfigured);
 				reportStorageKeptHome(result.project, result.storageKeptHome);
+				reportClaudeFolder(result.project, result.claudeFolder);
 				await offerBoardCopyRestore(result.project, result.boardCopyOffer);
 				void applyPendingSpaces(result.project.id);
 				trackEvent("project_added", { source: "clone" });

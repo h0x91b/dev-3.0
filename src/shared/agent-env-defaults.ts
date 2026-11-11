@@ -1,5 +1,5 @@
 /** Placeholders: `{home}` is the user's home directory, `{projectPath}` the project's main checkout. */
-function expandAgentEnvDefault(value: string, project: { path: string; name: string }, home: string): string {
+export function expandAgentEnvDefault(value: string, project: { path: string; name: string }, home: string): string {
 	return value
 		.replaceAll("{home}", home)
 		.replaceAll("{projectPath}", project.path)

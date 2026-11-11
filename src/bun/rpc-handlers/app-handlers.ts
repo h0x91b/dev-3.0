@@ -44,6 +44,8 @@ import { cloneDirNameProblem } from "../../shared/project-registration";
 import { clipboardImageToPng } from "../clipboard-image";
 import { sharedMediaUrlPath } from "../shared-media-stream";
 import { mintPreviewMediaLink } from "./terminal-paths";
+import { claudeFolderNotice } from "../claude-folder-notice";
+import type { ClaudeFolderNotice } from "../../shared/claude-folder-notice";
 
 async function updateMenuContext(params: MenuContext): Promise<void> {
 	applyMenuContext({
@@ -366,7 +368,7 @@ function isInsideDev3Home(path: string): boolean {
 async function addProjectImpl(
 	params: { path: string; name?: string; gitWorkflow?: boolean; autoConfigure?: boolean; boardCopy?: boolean },
 	opts: { offerGitInit?: boolean } = {},
-): Promise<{ ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true } | { ok: false; error: string; gitInit?: GitInitOffer; notGitRepo?: true }> {
+): Promise<{ ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true; claudeFolder?: ClaudeFolderNotice } | { ok: false; error: string; gitInit?: GitInitOffer; notGitRepo?: true }> {
 	log.info("→ addProject", params);
 	try {
 		// Protect the synthetic virtual-project namespace: a real git repo must
@@ -440,13 +442,16 @@ async function addProjectImpl(
 			log.warn("Failed to resolve config for the new project", { id: project.id, error: String(err) });
 			return project;
 		});
-		log.info("← addProject OK", { projectId: resolved.id, name: resolved.name, autoConfigured, boardCopyOffer: boardCopyOffer?.status });
+		// Read after auto-configure, which may write the repo's own CLAUDE_CONFIG_DIR.
+		const claudeFolder = await claudeFolderNotice(resolved);
+		log.info("← addProject OK", { projectId: resolved.id, name: resolved.name, autoConfigured, boardCopyOffer: boardCopyOffer?.status, claudeFolder: claudeFolder?.state });
 		return {
 			ok: true,
 			project: resolved,
 			...(autoConfigured ? { autoConfigured } : {}),
 			...(boardCopyOffer ? { boardCopyOffer } : {}),
 			...(storageKeptHome ? { storageKeptHome: true as const } : {}),
+			...(claudeFolder ? { claudeFolder } : {}),
 		};
 	} catch (err) {
 		log.error("addProject failed", { error: String(err), params });
@@ -470,7 +475,7 @@ async function addVirtualProject(params: { name: string }): Promise<{ ok: true; 
 /** How often clone output updates are pushed to the renderer. */
 const CLONE_PROGRESS_PUSH_INTERVAL_MS = 150;
 
-async function cloneAndAddProject(params: { url: string; baseDir: string; repoName?: string; progressId?: string; autoConfigure?: boolean; boardCopy?: boolean }): Promise<{ ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true } | { ok: false; error: string }> {
+async function cloneAndAddProject(params: { url: string; baseDir: string; repoName?: string; progressId?: string; autoConfigure?: boolean; boardCopy?: boolean }): Promise<{ ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true; claudeFolder?: ClaudeFolderNotice } | { ok: false; error: string }> {
 	log.info("→ cloneAndAddProject", params);
 	try {
 		const name = params.repoName || extractRepoName(params.url);
@@ -582,7 +587,7 @@ function isEffectivelyEmpty(path: string): boolean {
  *   `gitInit` describing what would happen. The user's files are never committed.
  */
 async function initAndAddProject(params: { path: string; name?: string; initNonEmpty?: boolean; autoConfigure?: boolean; boardCopy?: boolean }): Promise<
-	{ ok: true; project: Project; gitInit?: GitInitOffer; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true } | { ok: false; error: string; gitInit?: GitInitOffer }
+	{ ok: true; project: Project; gitInit?: GitInitOffer; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true; claudeFolder?: ClaudeFolderNotice } | { ok: false; error: string; gitInit?: GitInitOffer }
 > {
 	log.info("→ initAndAddProject", params);
 	try {

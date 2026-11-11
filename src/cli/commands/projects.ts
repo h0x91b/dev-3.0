@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import type { Project, SpacesFile } from "../../shared/types";
 import { EMPTY_SPACES_FILE } from "../../shared/types";
 import { CLI_EXIT_CODE_PROJECT_ALREADY_REGISTERED } from "../../shared/cli-exit-codes";
+import type { ClaudeFolderNotice } from "../../shared/claude-folder-notice";
 import { looksLikeGitUrl, shortSpaceId, toCliProject, type ProjectRegistrationResult } from "../../shared/project-registration";
 import { sendRequest } from "../socket-client";
 import { printTable, exitUsage } from "../output";
@@ -63,6 +64,11 @@ async function listProjects(args: ParsedArgs, socketPath: string): Promise<void>
 	);
 }
 
+function claudeFolderLine({ state, dir }: ClaudeFolderNotice): string {
+	if (state === "refused") return `Claude folder: ~/.claude - git does not ignore ${dir}/.credentials.json, so ${dir} is not used`;
+	return state === "ready" ? `Claude folder: ${dir}` : `Claude folder: ${dir} (no login yet - the first Claude task asks you to sign in)`;
+}
+
 /** Print an add/clone result; an already-registered folder exits with its own code. */
 function report(result: ProjectRegistrationResult, json: boolean): void {
 	const { project } = result;
@@ -82,6 +88,7 @@ function report(result: ProjectRegistrationResult, json: boolean): void {
 			`Added project ${project.id.slice(0, 8)} "${project.name}" — ${project.path}\n` +
 				`Spaces: ${spaceNames(project)}\n`,
 		);
+		if (result.claudeFolder) process.stdout.write(`${claudeFolderLine(result.claudeFolder)}\n`);
 	}
 	if (result.outcome === "exists") process.exit(CLI_EXIT_CODE_PROJECT_ALREADY_REGISTERED);
 }
