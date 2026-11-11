@@ -5,10 +5,11 @@
  * own `info/exclude`, which is never committed, the way auto-configure does.
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import type { Project } from "../shared/types";
 import { normalizeClaudeConfigDir } from "../shared/claude-config-dir";
+import { resolveDev3Home } from "../shared/dev3-home";
 import { createLogger } from "./logger";
 import { spawnSync } from "./spawn";
 
@@ -105,9 +106,14 @@ function nearestExisting(dir: string): { base: string; tail: string } | null {
 	return { base, tail: relative(base, dir).split(sep).join("/") };
 }
 
-/** A one-rule excludes file standing in for the `info/exclude` rule a launch writes, so the check changes no repo. */
+/**
+ * A one-rule excludes file standing in for the `info/exclude` rule a launch writes, so the check
+ * changes no repo. It lives in dev3's per-user home, not the shared tmpdir another user can pre-create.
+ */
 function loginRuleFile(): string {
-	const file = join(tmpdir(), "dev3-claude-login-exclude");
+	const dir = resolveDev3Home();
+	mkdirSync(dir, { recursive: true });
+	const file = join(dir, "claude-login-exclude");
 	if (!existsSync(file) || readFileSync(file, "utf-8") !== ".credentials.json\n") writeFileSync(file, ".credentials.json\n");
 	return file;
 }
