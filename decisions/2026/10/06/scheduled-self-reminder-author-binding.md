@@ -1,5 +1,7 @@
 # Bind a scheduled self-reminder to the agent process that queued it
 
+Superseded in part on 2026-11-11 by `decisions/2026/11/11/cancel-schedules-with-recipient-task.md`: completion and cancellation clear the recipient queue; legacy reminders on finished tasks are discarded without toast or attention.
+
 Superseded in part on 2026-10-27 by `decisions/2026/10/27/agent-signature-from-proc-start-tick.md`: on Linux `agentProcess` is `pid@linux:<boot id>:<start tick>`, not `pid@lstart`.
 
 Superseded in part on 2026-10-28 by `decisions/2026/10/28/native-scheduled-message-rebind.md`: on native, "resumed in a NEW pane or server" does not apply (a native pane keeps its id and registry session id); the main agent is rebound by the start signature of its pane root.

@@ -1,5 +1,7 @@
 # 124 — Scheduled agent message ("Send later")
 
+Superseded in part on 2026-11-11 by `decisions/2026/11/11/cancel-schedules-with-recipient-task.md`: completion and cancellation clear the recipient queue; legacy reminders on finished tasks are discarded without toast or attention.
+
 ## Context
 
 Glossary — **Scheduled message**: a one-shot piece of text the user (or the agent

@@ -313,8 +313,8 @@ async function removeFromQueue(project: Project, task: Task, messageId: string):
 /**
  * Deliver one message (best-effort, even if the agent is mid-generation), then
  * remove it from the queue. A normal successful fire while the app is open is
- * silent; only a late fire (offline catch-up) or a drop (unresolvable target /
- * terminal task) raises a toast + attention. Returns the queue-updated task.
+ * silent; only a late fire (offline catch-up) or a drop (unresolvable target on an
+ * active task) raises a toast + attention. Finished tasks are cleaned up silently.
  */
 export async function fireScheduledMessage(
 	project: Project,
@@ -335,6 +335,12 @@ export async function fireScheduledMessage(
 	}
 	await recordMessageAttempt(task, message, delivery);
 	const updated = await removeFromQueue(project, task, message.id);
+	// Older versions can leave queues on finished tasks. Ending the recipient's
+	// run cancels its reminders; this is cleanup, not a delivery failure.
+	if (isTerminal(task.status)) {
+		log.info("Scheduled message discarded for finished task", { taskId: task.id.slice(0, 8), messageId: message.id, status: task.status });
+		return { delivery, task: updated };
+	}
 	const preview = messagePreview(message.text);
 	if (delivery.status === "not-delivered") {
 		const who = !message.author ? "no live agent" : message.source ? "the addressed agent is gone" : "the agent that scheduled it is gone";
@@ -601,7 +607,7 @@ async function tickProject(project: Project, late: boolean): Promise<void> {
 				await removeFromQueue(project, task, message.id);
 				continue;
 			}
-			if (at > now) continue;
+			if (at > now && !isTerminal(task.status)) continue;
 			try {
 				await fireScheduledMessage(project, task, message, { late });
 			} catch (err) {
