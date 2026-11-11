@@ -136,7 +136,6 @@ async function otherPaneVerdict(task: Task, paneId: string, table: ProcessTable,
 			panes = rows.map((row) => ({ paneId: row.paneId, root: row.panePid }));
 		}
 	} catch {
-		log.debug("sender fallback refused: the task's panes could not be listed", { taskId: task.id.slice(0, 8), paneId, gate: "panes-unreadable" });
 		return "unreadable";
 	}
 	if (!panes.some((p) => p.paneId === paneId)) return "unreadable";
