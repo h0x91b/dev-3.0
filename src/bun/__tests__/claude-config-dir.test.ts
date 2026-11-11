@@ -211,12 +211,14 @@ describe("ensureClaudeTrust / ensureClaudeConfigDir with a pinned dir", () => {
 		writeFileSync(join(pinned, ".claude.json"), "{}");
 		expect(git("status", "--porcelain").toString()).toBe("");
 	});
+
 });
 
 describe("projectClaudeConfigDirAllowed", () => {
 	let root = "";
 	let project = "";
 	const spawned = vi.fn();
+	let gitCannotRun = false;
 	const git = (...args: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], { cwd: project });
 
 	beforeEach(() => {
@@ -224,13 +226,16 @@ describe("projectClaudeConfigDirAllowed", () => {
 		project = join(root, "project");
 		mkdirSync(project);
 		spawned.mockReset();
+		gitCannotRun = false;
 		vi.resetModules();
 		vi.doMock("../logger", () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) }));
-		// The suite stubs Bun.spawnSync; these tests need real git answers.
+		// The suite stubs Bun.spawnSync; these tests need real git answers. One mock per module:
+		// a second doMock of the same path races the first one's async factory, so tests flip a flag.
 		vi.doMock("../spawn", async (importOriginal) => ({
 			...(await importOriginal<typeof import("../spawn")>()),
 			spawnSync: (cmd: string[], opts: { cwd: string; env?: Record<string, string> }) => {
 				spawned(cmd);
+				if (gitCannotRun) throw new Error('Executable not found in $PATH: "git"');
 				const res = spawnSyncNode(cmd[0], cmd.slice(1), { cwd: opts.cwd, env: { ...process.env, ...opts.env } });
 				return { exitCode: res.status, stdout: res.stdout, stderr: res.stderr };
 			},
@@ -287,11 +292,8 @@ describe("projectClaudeConfigDirAllowed", () => {
 	});
 
 	it("refuses instead of throwing when git cannot run", async () => {
-		vi.doMock("../spawn", () => ({
-			spawnSync: () => {
-				throw new Error("Executable not found in $PATH: \"git\"");
-			},
-		}));
+		gitCannotRun = true;
 		expect(await allowed(join(project, ".claude"), "linux")).toBe(false);
+		expect(spawned).toHaveBeenCalled();
 	});
 });
