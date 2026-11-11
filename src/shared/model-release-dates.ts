@@ -14,6 +14,7 @@
  */
 export const MODEL_RELEASE_DATES: Record<string, string> = {
 	// Claude
+	"claude-fable-5-2[1m]": "2026-11-11",
 	"claude-haiku-5-5": "2026-10-08",
 	"claude-sonnet-5-5": "2026-10-05",
 	"claude-opus-5-5[1m]": "2026-09-22",
