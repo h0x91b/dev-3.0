@@ -1,14 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { GlobalSettings } from "../../../../shared/types";
 import AgentEnvDefaultsSection from "../AgentEnvDefaultsSection";
 
 vi.mock("../../../i18n", () => ({ useT: () => (key: string) => key }));
-
-const appVersion = vi.hoisted(() => ({ projectClaudeFolderSupported: true }));
-vi.mock("../../../rpc", () => ({
-	api: { request: { getAppVersion: vi.fn(async () => ({ ...appVersion })) } },
-}));
 
 const t = ((key: string) => key) as never;
 
@@ -78,26 +73,8 @@ describe("AgentEnvDefaultsSection", () => {
 		expect(onChange).toHaveBeenLastCalledWith({ B: "2", CLAUDE_CONFIG_DIR: "{projectPath}/.claude" });
 	});
 
-	it("explains instead of offering the switch when the host keeps Claude's login in a file", async () => {
-		appVersion.projectClaudeFolderSupported = false;
-		try {
-			renderSection();
-			await waitFor(() => expect(screen.getByText("settings.projectClaudeFolderMacOnly")).toBeTruthy());
-			expect(screen.queryByRole("switch", { name: "settings.projectClaudeFolder" })).toBeNull();
-		} finally {
-			appVersion.projectClaudeFolderSupported = true;
-		}
-	});
-
-	it("still lets an unsupported host turn an existing default off", async () => {
-		appVersion.projectClaudeFolderSupported = false;
-		try {
-			const { onChange } = renderSection({ agentEnvDefaults: { CLAUDE_CONFIG_DIR: "{projectPath}/.claude" } });
-			await waitFor(() => expect(screen.getByRole("switch", { name: "settings.projectClaudeFolder" })).toBeTruthy());
-			fireEvent.click(screen.getByRole("switch", { name: "settings.projectClaudeFolder" }));
-			expect(onChange).toHaveBeenLastCalledWith(undefined);
-		} finally {
-			appVersion.projectClaudeFolderSupported = true;
-		}
+	it("reads a trailing-slash spelling of the default as the switch being on", () => {
+		renderSection({ agentEnvDefaults: { CLAUDE_CONFIG_DIR: "{projectPath}/.claude/" } });
+		expect(screen.getByRole("switch", { name: "settings.projectClaudeFolder" }).getAttribute("aria-checked")).toBe("true");
 	});
 });

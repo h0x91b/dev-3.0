@@ -9,36 +9,35 @@ function expandAgentEnvDefault(value: string, project: { path: string; name: str
 /**
  * Fill the keys a project's own env leaves unset from the global defaults.
  * A key the project sets - even to an empty string - always keeps its value.
+ * A `CLAUDE_CONFIG_DIR` default that names a folder inside the project is kept only
+ * when `claudeConfigDirAllowed` accepts the expanded value (the host decides; see
+ * `projectClaudeConfigDirAllowed` in `src/bun/claude-config-git.ts`).
  */
 export function applyAgentEnvDefaults(
 	projectEnv: Record<string, string>,
 	defaults: Record<string, string> | undefined,
 	project: { path: string; name: string },
 	home: string,
-	platform: string = process.platform,
+	claudeConfigDirAllowed: (dir: string) => boolean = () => true,
 ): Record<string, string> {
 	if (!defaults) return projectEnv;
 	const filled: Record<string, string> = {};
 	for (const [key, value] of Object.entries(defaults)) {
-		if (key === "CLAUDE_CONFIG_DIR" && value === PROJECT_CLAUDE_CONFIG_DIR_DEFAULT && !projectClaudeFolderSupported(platform)) continue;
-		if (!(key in projectEnv)) filled[key] = expandAgentEnvDefault(value, project, home);
+		if (key in projectEnv) continue;
+		const expanded = expandAgentEnvDefault(value, project, home);
+		if (key === "CLAUDE_CONFIG_DIR" && value.includes("{projectPath}") && !claudeConfigDirAllowed(expanded)) continue;
+		filled[key] = expanded;
 	}
 	return Object.keys(filled).length > 0 ? { ...filled, ...projectEnv } : projectEnv;
-}
-
-/**
- * Only macOS keeps Claude Code's login in the Keychain. Elsewhere it writes
- * `.credentials.json` into the config dir, which would put a secret inside the repo folder.
- */
-export function projectClaudeFolderSupported(platform: string): boolean {
-	return platform === "darwin";
 }
 
 /** The default that points Claude Code at each project's own `.claude` instead of `~/.claude`. */
 export const PROJECT_CLAUDE_CONFIG_DIR_DEFAULT = "{projectPath}/.claude";
 
+/** True for the switch's default in any spelling: `{projectPath}/.claude`, `{projectPath}\.claude\` and so on. */
 export function usesProjectClaudeConfigDir(defaults: Record<string, string> | undefined): boolean {
-	return defaults?.CLAUDE_CONFIG_DIR === PROJECT_CLAUDE_CONFIG_DIR_DEFAULT;
+	const value = defaults?.CLAUDE_CONFIG_DIR?.trim().replace(/[\\/]+$/, "").replace(/\\/g, "/");
+	return value === PROJECT_CLAUDE_CONFIG_DIR_DEFAULT;
 }
 
 /** Turn the per-project Claude folder default on or off, leaving every other key alone. */

@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { execFileSync, spawnSync as spawnSyncNode } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, win32 } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { claudeConfigLocation, launchClaudeConfigLocation, pinnedClaudeConfigDir } from "../../shared/claude-config-dir";
+import { claudeConfigLocation, launchClaudeConfigLocation, normalizeClaudeConfigDir, pinnedClaudeConfigDir } from "../../shared/claude-config-dir";
 import { ENV_UNSET } from "../../shared/agent-accounts";
 
 describe("pinnedClaudeConfigDir", () => {
@@ -21,6 +21,22 @@ describe("pinnedClaudeConfigDir", () => {
 		expect(pinnedClaudeConfigDir(ENV_UNSET, home)).toBeNull();
 		expect(pinnedClaudeConfigDir("~/.claude", home)).toBeNull();
 		expect(pinnedClaudeConfigDir("/home/me/.claude/", home)).toBeNull();
+	});
+});
+
+describe("normalizeClaudeConfigDir with Windows paths", () => {
+	const home = "C:\\Users\\me";
+	it("gives a {projectPath} expansion with mixed separators one backslash spelling", () => {
+		expect(normalizeClaudeConfigDir("C:\\src\\acme/.claude/", home, undefined, win32)).toBe("C:\\src\\acme\\.claude");
+		expect(normalizeClaudeConfigDir("C:/src/acme/.claude", home, undefined, win32)).toBe("C:\\src\\acme\\.claude");
+	});
+	it("expands ~ with either separator and resolves a relative value against a drive-letter cwd", () => {
+		expect(normalizeClaudeConfigDir("~\\proj\\.claude", home, undefined, win32)).toBe("C:\\Users\\me\\proj\\.claude");
+		expect(normalizeClaudeConfigDir("~/proj/.claude", home, undefined, win32)).toBe("C:\\Users\\me\\proj\\.claude");
+		expect(normalizeClaudeConfigDir(".claude", home, "D:\\wt\\task", win32)).toBe("D:\\wt\\task\\.claude");
+	});
+	it("keeps a drive root intact", () => {
+		expect(normalizeClaudeConfigDir("C:\\", home, undefined, win32)).toBe("C:\\");
 	});
 });
 
@@ -194,5 +210,69 @@ describe("ensureClaudeTrust / ensureClaudeConfigDir with a pinned dir", () => {
 		expect(existsSync(join(pinned, "skills/dev3/SKILL.md"))).toBe(true);
 		writeFileSync(join(pinned, ".claude.json"), "{}");
 		expect(git("status", "--porcelain").toString()).toBe("");
+	});
+});
+
+describe("projectClaudeConfigDirAllowed", () => {
+	let root = "";
+	let project = "";
+	const git = (...args: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], { cwd: project });
+
+	beforeEach(() => {
+		root = mkdtempSync(join(tmpdir(), "dev3-claude-allowed-"));
+		project = join(root, "project");
+		mkdirSync(project);
+		vi.resetModules();
+		vi.doMock("../logger", () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) }));
+		// The suite stubs Bun.spawnSync; these tests need real git answers.
+		vi.doMock("../spawn", async (importOriginal) => ({
+			...(await importOriginal<typeof import("../spawn")>()),
+			spawnSync: (cmd: string[], opts: { cwd: string }) => {
+				const res = spawnSyncNode(cmd[0], cmd.slice(1), { cwd: opts.cwd });
+				return { exitCode: res.status, stdout: res.stdout };
+			},
+		}));
+	});
+
+	afterEach(() => {
+		vi.doUnmock("../spawn");
+		vi.doUnmock("../logger");
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	async function allowed(value: string, platform: string, kind?: "git" | "virtual") {
+		const { projectClaudeConfigDirAllowed } = await import("../claude-config-git");
+		return projectClaudeConfigDirAllowed({ path: project, kind }, value, platform);
+	}
+
+	it("allows a project's .claude on Linux once git ignores the login, even before the folder exists", async () => {
+		git("init", "-q");
+		expect(await allowed(join(project, ".claude"), "linux")).toBe(true);
+		expect(existsSync(join(project, ".claude"))).toBe(false);
+		mkdirSync(join(project, ".claude"));
+		writeFileSync(join(project, ".claude", ".credentials.json"), "{}");
+		expect(git("status", "--porcelain").toString()).toBe("");
+	});
+
+	it("refuses it on Linux and Windows when the login file is tracked", async () => {
+		mkdirSync(join(project, ".claude"));
+		writeFileSync(join(project, ".claude", ".credentials.json"), "{}");
+		git("init", "-q");
+		git("add", ".claude/.credentials.json");
+		git("commit", "-qm", "init");
+		expect(await allowed(join(project, ".claude"), "linux")).toBe(false);
+		expect(await allowed(join(project, ".claude"), "win32")).toBe(false);
+		expect(await allowed(join(project, ".claude"), "darwin")).toBe(true);
+	});
+
+	it("refuses it outside a git repo, except on macOS", async () => {
+		expect(await allowed(join(project, ".claude"), "linux")).toBe(false);
+		expect(await allowed(join(project, ".claude"), "darwin")).toBe(true);
+	});
+
+	it("never applies to an Operations board", async () => {
+		git("init", "-q");
+		expect(await allowed(join(project, ".claude"), "darwin", "virtual")).toBe(false);
+		expect(await allowed(join(project, ".claude"), "linux", "virtual")).toBe(false);
 	});
 });
