@@ -199,6 +199,36 @@ describe("TaskDetailModal", () => {
 		});
 	});
 
+	describe("description markdown", () => {
+		const source = "# Goal\n\n- fix `paths.ts`\n- after seq:2076";
+
+		it("renders the description as Markdown in view mode, refs as chips", () => {
+			renderModal(makeTodoTask({ customTitle: "Custom", description: source }));
+			const body = screen.getByTestId("task-description-markdown");
+
+			expect(body.querySelector("h1")).toHaveTextContent("Goal");
+			expect(body.querySelectorAll("li")).toHaveLength(2);
+			expect(body.querySelector("li code")).toHaveTextContent("paths.ts");
+			expect(body.querySelector("[data-task-ref='seq:2076']")).not.toBeNull();
+			expect(body).not.toHaveTextContent("# Goal");
+		});
+
+		it("renders an archived task's description as Markdown too", () => {
+			renderModal(makeTodoTask({ status: "completed", customTitle: "Custom", description: source }));
+			expect(screen.getByTestId("task-description-markdown").querySelector("h1")).toHaveTextContent("Goal");
+		});
+
+		it("edits the raw Markdown source in a plain textarea", async () => {
+			renderModal(makeTodoTask({ customTitle: "Custom", description: source }));
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+
+			expect(screen.getByRole("textbox")).toHaveValue(source);
+			expect(screen.queryByTestId("task-description-markdown")).not.toBeInTheDocument();
+		});
+	});
+
 	describe("description edit", () => {
 		it("shows edit button for todo tasks", () => {
 			const task = makeTodoTask();
