@@ -80,6 +80,8 @@ import { paneSessionKey } from "../../shared/pane-session-key";
 import { taskPeek } from "../task-peek";
 import type { TaskPeekSnapshot } from "../../shared/task-peek";
 import { createLogger } from "../logger";
+import { mainAgentPaneId } from "../agent-message-target";
+import type { Task } from "../../shared/types";
 
 const log = createLogger("task-panes");
 
@@ -104,7 +106,7 @@ async function findTaskAcrossProjects(taskId: string): Promise<{ task: import(".
 }
 
 /** Build TaskPaneState from the live tmux layout for a task session. */
-async function tmuxTaskPaneState(taskId: string): Promise<TaskPaneState> {
+async function tmuxTaskPaneState(taskId: string, task: Task | null): Promise<TaskPaneState> {
 	const socket = pty.getSessionSocket(taskId);
 	const tmuxSession = pty.getSessionTmuxName(taskId);
 
@@ -158,6 +160,7 @@ async function tmuxTaskPaneState(taskId: string): Promise<TaskPaneState> {
 		panes,
 		activePaneId: panes[paneLayout.activeIndex]?.paneId ?? null,
 		zoomedPaneId: paneLayout.zoomed ? (panes[paneLayout.activeIndex]?.paneId ?? null) : null,
+		agentPaneId: task ? mainAgentPaneId(task, panes.map((pane) => pane.paneId)) : undefined,
 		layout: null,
 		layoutPreset: null,
 		capabilities,
@@ -216,6 +219,7 @@ function nativeAuxPaneLabels(taskId: string, state: NativeTaskPanesState): Map<s
 
 /** Build TaskPaneState from a NativeTaskPanesState. */
 function nativeStateToTaskPaneState(
+	task: Task,
 	nativeState: import("../native-task-panes").NativeTaskPanesState,
 	tree: SplitTree | null,
 	labels?: Map<string, string>,
@@ -251,6 +255,7 @@ function nativeStateToTaskPaneState(
 		panes,
 		activePaneId,
 		zoomedPaneId,
+		agentPaneId: mainAgentPaneId(task, panes.map((pane) => pane.paneId)),
 		layout: nativeState.layout,
 		layoutPreset,
 		capabilities,
@@ -278,7 +283,7 @@ async function taskPaneState(params: { taskId: string }): Promise<TaskPaneState>
 	const { task } = await findTaskAcrossProjects(params.taskId);
 	if (!task) {
 		// Fallback: assume tmux (legacy task not found)
-		return tmuxTaskPaneState(params.taskId);
+		return tmuxTaskPaneState(params.taskId, null);
 	}
 
 	const identity = taskTerminalBackendIdentity(task);
@@ -298,10 +303,10 @@ async function taskPaneState(params: { taskId: string }): Promise<TaskPaneState>
 			};
 		}
 		const tree = nativeState.layout ? restoreSplitTree(nativeState.layout) : null;
-		return nativeStateToTaskPaneState(nativeState, tree, nativeAuxPaneLabels(params.taskId, nativeState));
+		return nativeStateToTaskPaneState(task, nativeState, tree, nativeAuxPaneLabels(params.taskId, nativeState));
 	}
 
-	return tmuxTaskPaneState(params.taskId);
+	return tmuxTaskPaneState(params.taskId, task);
 }
 
 // ── Handler: taskPaneAction ───────────────────────────────────────────────────
@@ -315,14 +320,15 @@ async function taskPaneAction(params: { taskId: string; action: TaskPaneAction }
 	const identity = taskTerminalBackendIdentity(task);
 
 	if (identity === "native") {
-		return nativePaneAction(taskId, action);
+		return nativePaneAction(task, action);
 	}
-	return tmuxPaneAction(taskId, action);
+	return tmuxPaneAction(task, action);
 }
 
 // ── tmux pane action dispatch ─────────────────────────────────────────────────
 
-async function tmuxPaneAction(taskId: string, action: TaskPaneAction): Promise<TaskPaneState> {
+async function tmuxPaneAction(task: Task, action: TaskPaneAction): Promise<TaskPaneState> {
+	const taskId = task.id;
 	const socket = pty.getSessionSocket(taskId);
 	const tmuxSession = pty.getSessionTmuxName(taskId);
 
@@ -394,7 +400,7 @@ async function tmuxPaneAction(taskId: string, action: TaskPaneAction): Promise<T
 		}
 	}
 
-	return tmuxTaskPaneState(taskId);
+	return tmuxTaskPaneState(taskId, task);
 }
 
 // ── native pane action dispatch ───────────────────────────────────────────────
@@ -413,7 +419,8 @@ async function splitContext(taskId: string): Promise<{ cwd: string; env: Record<
 	return { cwd, env: buildTaskLifecycleEnv(project, task, cwd) };
 }
 
-async function nativePaneAction(taskId: string, action: TaskPaneAction): Promise<TaskPaneState> {
+async function nativePaneAction(task: Task, action: TaskPaneAction): Promise<TaskPaneState> {
+	const taskId = task.id;
 	// Every action decides from the tree, so read the layout only: the per-pane
 	// ownership sweep the full state carries would be a second `ps` pass per pane
 	// that nothing here reads (seq 1382).
@@ -543,7 +550,7 @@ async function nativePaneAction(taskId: string, action: TaskPaneAction): Promise
 	const finalState = updatedState ?? (await nativeTaskPanesState(taskId));
 	if (!finalState) throw new Error(`No native pane set for task ${taskId.slice(0, 8)}`);
 	const updatedTree = finalState.layout ? restoreSplitTree(finalState.layout) : null;
-	return nativeStateToTaskPaneState(finalState, updatedTree, nativeAuxPaneLabels(taskId, finalState));
+	return nativeStateToTaskPaneState(task, finalState, updatedTree, nativeAuxPaneLabels(taskId, finalState));
 }
 
 // ── Handler: tmuxNewWindow ────────────────────────────────────────────────────

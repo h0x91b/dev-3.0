@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { taskUsesWorktree, type Project, type Task } from "../../../shared/types";
 import { useT, type TFunction } from "../../i18n";
 import { api } from "../../rpc";
@@ -29,21 +29,28 @@ export default function TaskCompletionStrip({ task, project, variant = "inline" 
 }) {
 	const offer = useTaskStripOffer(task.id);
 	const hosted = useCompletionOverlayHosted(task.id);
+	const paneState = useTaskPaneState(task.id);
+	const placement = variant === "overlay" ? agentPanePlacement(paneState) : null;
+	const hosting = placement !== null && placement !== "hidden";
 	useEffect(() => registerCompletionStrip(task.id), [task.id]);
-	useEffect(() => (variant === "overlay" ? registerCompletionOverlayHost(task.id) : undefined), [task.id, variant]);
-	if (!offer || (variant === "inline" && hosted)) return null;
+	useEffect(() => (hosting ? registerCompletionOverlayHost(task.id) : undefined), [task.id, hosting]);
+	if (!offer || (variant === "inline" && hosted) || placement === "hidden") return null;
 	const strip = <Strip key={offer.id} offer={offer} task={task} project={project} bar={variant === "overlay"} />;
-	return variant === "overlay" ? <AgentPaneFrame taskId={task.id}>{strip}</AgentPaneFrame> : strip;
+	if (!placement || placement === "terminal") return strip;
+	return <div className="pointer-events-none absolute z-20 [&>*]:pointer-events-auto" style={placement} data-testid="task-completion-strip-pane">{strip}</div>;
 }
 
 /**
- * The agent's pane as insets of the terminal area, so the bar sits beside the prompt
- * the agent is waiting at, not over a shell pane. The agent runs in the first pane;
- * one pane, a zoomed pane or no state yet means the whole terminal.
+ * Where the bar goes, so it sits beside the prompt the agent waits at, never over
+ * another pane: the agent pane's insets of the terminal area, or the whole terminal
+ * when the agent fills it or its pane is unknown. "hidden" means another pane is
+ * zoomed over the agent, so the inspector's row asks instead.
  */
-export function agentPaneInsets(state: TaskPaneState | null): CSSProperties | null {
-	if (!state || state.zoomedPaneId || state.panes.length < 2) return null;
-	const agent = [...state.panes].sort((a, b) => a.index - b.index)[0]!;
+export function agentPanePlacement(state: TaskPaneState | null): CSSProperties | "terminal" | "hidden" {
+	const agent = state?.panes.find((pane) => pane.paneId === state.agentPaneId);
+	if (!state || !agent) return "terminal";
+	if (state.zoomedPaneId) return state.zoomedPaneId === agent.paneId ? "terminal" : "hidden";
+	if (state.panes.length < 2) return "terminal";
 	const pct = (value: number) => `${Math.max(0, Math.min(1, value)) * 100}%`;
 	return {
 		left: pct(agent.rect.x),
@@ -51,13 +58,6 @@ export function agentPaneInsets(state: TaskPaneState | null): CSSProperties | nu
 		top: pct(agent.rect.y),
 		bottom: pct(1 - agent.rect.y - agent.rect.height),
 	};
-}
-
-/** Confines the bar to the agent's pane; it lets clicks through everywhere but the bar. */
-function AgentPaneFrame({ taskId, children }: { taskId: string; children: ReactNode }) {
-	const insets = agentPaneInsets(useTaskPaneState(taskId));
-	if (!insets) return <>{children}</>;
-	return <div className="pointer-events-none absolute z-20 [&>*]:pointer-events-auto" style={insets} data-testid="task-completion-strip-pane">{children}</div>;
 }
 
 /** What completing removes: the worktree and the session, the session, or the session but not the folder. */

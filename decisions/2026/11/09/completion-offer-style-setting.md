@@ -1,3 +1,5 @@
+> Superseded in part on 2026-11-12 by `decisions/2026/11/12/completion-bar-follows-agent-pane-id.md`: the bar finds the agent's pane by the id the backend reports, not by pane order, and gives way to the inspector row while another pane is zoomed.
+
 # Completion asks: a dialog by default, a bar in the agent's pane on request
 
 ## Context

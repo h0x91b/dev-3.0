@@ -93,6 +93,8 @@ export interface TaskPaneState {
 	panes: TaskPaneInfo[];
 	activePaneId: string | null;
 	zoomedPaneId: string | null;
+	/** The task's main agent pane, which can sit anywhere after a swap. Absent when the task is unknown. */
+	agentPaneId?: string | null;
 	/** Native only: the serialized shared SplitTree that produced `panes`. */
 	layout: string | null;
 	/** Native only: the preset the shared layout currently matches, if any. */
