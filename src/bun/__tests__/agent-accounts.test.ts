@@ -41,7 +41,7 @@ import {
 	type AccountPaths,
 	type ClaudeAuthStatusProbe,
 } from "../agent-accounts";
-import { claudeApiProfileEnvKeys, codexEmailsNeedingWorkspaceId, ENV_UNSET, type ProviderLogin } from "../../shared/agent-accounts";
+import { claudeApiProfileEnvKeys, codexWorkspaceIdNeeded, ENV_UNSET, type AgentAccountsState, type ProviderLogin } from "../../shared/agent-accounts";
 
 let root: string;
 let paths: AccountPaths;
@@ -1286,11 +1286,26 @@ describe("pi accounts", () => {
 	});
 });
 
-describe("codexEmailsNeedingWorkspaceId", () => {
+describe("codexWorkspaceIdNeeded", () => {
 	const id = (email: string | null, accountId: string | null) => ({ email, organization: null, plan: null, planLabel: null, accountId });
+	const needed = (accounts: ReturnType<typeof id>[], currentIdentity: ReturnType<typeof id> | null = null) =>
+		codexWorkspaceIdNeeded({
+			codex: { accounts: accounts.map((identity, i) => ({ id: `cx-${i}`, identity })), activeId: null, currentIdentity },
+		} as unknown as AgentAccountsState);
 
-	it("lists an email only when it appears with two different workspace ids", () => {
-		const identities = [id("a@x", "w1"), id("a@x", "w2"), id("b@x", "w1"), id("b@x", "w1"), id("c@x", null), id("c@x", "w1"), id(null, "w1"), null];
-		expect([...codexEmailsNeedingWorkspaceId(identities)]).toEqual(["a@x"]);
+	it("is true only for an email that appears with two different workspace ids", () => {
+		const check = needed([id("a@x", "w1"), id("a@x", "w2"), id("b@x", "w1"), id("b@x", "w1"), id("c@x", null), id("c@x", "w1"), id(null, "w1")]);
+		expect(["a@x", "b@x", "c@x"].map((email) => check(id(email, "w1")))).toEqual([true, false, false]);
+		expect(check(null)).toBe(false);
+	});
+
+	it("compares emails case-insensitively", () => {
+		const check = needed([id("Dana@X.test", "w1"), id("dana@x.test", "w2")]);
+		expect(check(id("DANA@x.test", "w1"))).toBe(true);
+	});
+
+	it("counts the ~/.codex login beside the managed ones", () => {
+		expect(needed([id("a@x", "w1")], id("A@x", "w2"))(id("a@x", "w1"))).toBe(true);
+		expect(needed([id("a@x", "w1")], id("a@x", "w1"))(id("a@x", "w1"))).toBe(false);
 	});
 });

@@ -433,15 +433,17 @@ export function shortCodexWorkspaceId(identity: AgentAccountIdentity | null): st
 	return identity?.accountId?.slice(0, 8) ?? null;
 }
 
-/** Emails that appear with two or more different workspace ids: only there the id tells logins apart.
+/** Whether a Codex identity's unnamed workspace id must show: only when its email (case-insensitive)
+ *  appears with two or more different workspace ids among the managed logins and `~/.codex`.
  *  The same email and id twice is one login (a managed account and its `~/.codex` twin). */
-export function codexEmailsNeedingWorkspaceId(identities: (AgentAccountIdentity | null)[]): Set<string> {
+export function codexWorkspaceIdNeeded(state: AgentAccountsState): (identity: AgentAccountIdentity | null) => boolean {
 	const ids = new Map<string, Set<string>>();
-	for (const identity of identities) {
+	for (const identity of [state.codex.currentIdentity, ...state.codex.accounts.map((a) => a.identity)]) {
 		if (!identity?.email || !identity.accountId) continue;
-		ids.set(identity.email, (ids.get(identity.email) ?? new Set()).add(identity.accountId));
+		const email = identity.email.toLowerCase();
+		ids.set(email, (ids.get(email) ?? new Set()).add(identity.accountId));
 	}
-	return new Set([...ids].filter(([, accountIds]) => accountIds.size > 1).map(([email]) => email));
+	return (identity) => !!identity?.email && (ids.get(identity.email.toLowerCase())?.size ?? 0) > 1;
 }
 
 /** Default display label for a freshly added account. */

@@ -890,7 +890,8 @@ describe("AgentAccountsSection", () => {
 		);
 
 		renderSection();
-		expect(await screen.findByText("ChatGPT workspace Globex ChatGPT Enterprise")).toBeTruthy();
+		const chip = await screen.findByText("ChatGPT workspace Globex ChatGPT Enterprise");
+		expect(chip.getAttribute("title")).toBe("The ChatGPT workspace this login belongs to: Globex ChatGPT Enterprise");
 		expect(screen.queryByText("ChatGPT workspace b8e0e9ae")).toBeNull();
 	});
 

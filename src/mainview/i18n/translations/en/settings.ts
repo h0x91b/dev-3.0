@@ -778,7 +778,7 @@ const settings = {
 	"settings.accountsUnmanaged": "Unmanaged login",
 	"settings.accountsUnmanagedHint": "Current ~/.codex/auth.json login is not saved in dev3 yet",
 	"settings.accountsWorkspace": "ChatGPT workspace {id}",
-	"settings.accountsWorkspaceHint": "The ChatGPT workspace this login belongs to",
+	"settings.accountsWorkspaceHint": "The ChatGPT workspace this login belongs to: {id}",
 	"settings.accountsNoneYet": "No accounts added yet.",
 	"settings.accountsNewSessionsHint": "The default account is the preselect for new launches — each launch can pick a different one; running sessions keep their current login.",
 	"settings.accountsAddApi": "API profile",

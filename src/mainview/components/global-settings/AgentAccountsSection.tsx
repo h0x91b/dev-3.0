@@ -10,7 +10,7 @@ import type {
 	ClaudeSlotModels,
 } from "../../../shared/agent-accounts";
 import type { AccountLoginState } from "../../../shared/agent-accounts";
-import { ACCOUNT_LOGIN_STARTED_MESSAGE, AUTO_ACCOUNT_ID, CLAUDE_MODEL_SLOTS, isAccountLoginRefusal, codexEmailsNeedingWorkspaceId, isAgentDirAccountKind, managedCodexTwin, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../../shared/agent-accounts";
+import { ACCOUNT_LOGIN_STARTED_MESSAGE, AUTO_ACCOUNT_ID, CLAUDE_MODEL_SLOTS, codexWorkspaceIdNeeded, isAccountLoginRefusal, isAgentDirAccountKind, managedCodexTwin, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../../shared/agent-accounts";
 import { api, isElectrobun } from "../../rpc";
 import AccountLoginModal, { AGENT_NAMES, loginPhaseTitle } from "./AccountLoginModal";
 import { confirm } from "../../confirm";
@@ -82,7 +82,7 @@ function IdentityBadges({
 			) : null}
 			{workspace ? (
 				<span
-					title={t("settings.accountsWorkspaceHint")}
+					title={t("settings.accountsWorkspaceHint", { id: workspace })}
 					className={`text-fg-3 text-micro px-1.5 py-0.5 bg-raised rounded max-w-full truncate streamer-private ${
 						identity.organization ? "" : "font-mono"
 					}`}
@@ -284,7 +284,7 @@ function AccountRow({
 							event.stopPropagation();
 							onEditApi();
 						}}
-						className="text-fg-2 text-xs hover:bg-elevated-hover px-1.5 py-0.5 rounded transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] shrink-0"
+						className="text-accent hover:text-accent-emphasis text-xs hover:bg-elevated-hover px-1.5 py-0.5 rounded transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] shrink-0"
 						title={t("settings.accountsEditApi")}
 						aria-label={t("settings.accountsEditApiFor", { label })}
 					>
@@ -933,7 +933,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 							onEditApi={account.auth === "api" ? () => handleStartEditApi(account) : undefined}
 							onRemove={() => handleRemove(kind, account)}
 							autoSwitch={account.auth === "api" ? undefined : autoSwitchFor(kind, account.id)}
-							showWorkspaceId={kind === "codex" && repeatedCodexEmails.has(account.identity?.email ?? "")}
+							showWorkspaceId={kind === "codex" && workspaceIdNeeded(account.identity)}
 							t={t}
 						/>
 					))}
@@ -1016,10 +1016,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 	const codexUnmanaged =
 		state.codex.currentIdentity && (state.codex.activeId === null || !codexTwin) ? state.codex.currentIdentity : null;
 
-	const repeatedCodexEmails = codexEmailsNeedingWorkspaceId([
-		...state.codex.accounts.map((a) => a.identity),
-		codexUnmanaged,
-	]);
+	const workspaceIdNeeded = codexWorkspaceIdNeeded(state);
 
 	// "Auto (balanced)" sits beside the accounts as one more default: it earns its
 	// row once two subscription logins could be balanced, and keeps it while chosen.
@@ -1099,7 +1096,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 						<span aria-hidden className="w-3.5 h-3.5 rounded-full border-2 border-warning/60 shrink-0" />
 						<div className="basis-40 min-w-0 flex-1 flex flex-wrap items-center gap-2">
 							<span className="text-fg-2 text-sm whitespace-nowrap">{t("settings.accountsUnmanaged")}</span>
-							<IdentityBadges identity={codexUnmanaged} kind="codex" showWorkspaceId={repeatedCodexEmails.has(codexUnmanaged.email ?? "")} t={t} />
+							<IdentityBadges identity={codexUnmanaged} kind="codex" showWorkspaceId={workspaceIdNeeded(codexUnmanaged)} t={t} />
 						</div>
 						<span className="ml-auto text-fg-muted text-xs">{t("settings.accountsUnmanagedHint")}</span>
 						{codexSystemSwitch ? <AutoExclusionSwitch {...codexSystemSwitch} label={t("settings.accountsUnmanaged")} t={t} /> : null}
