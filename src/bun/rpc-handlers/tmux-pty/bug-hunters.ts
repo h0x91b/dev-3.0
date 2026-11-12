@@ -120,6 +120,7 @@ async function spawnSingleBugHunterPane(opts: {
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		resolvedAgentFamily = resolved.agentFamily;
 		if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
+		if (resolved.projectLoginKept) launchAccountId = undefined;
 		if (resolved.bedrockProfileMissing) await notifyBedrockProfileMissing(opts.task);
 		launchedAgentId = resolved.agent?.id ?? opts.agentId;
 		launchedConfigId = resolved.config?.id ?? opts.configId;
@@ -137,6 +138,7 @@ async function spawnSingleBugHunterPane(opts: {
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		resolvedAgentFamily = resolved.agentFamily;
 		if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
+		if (resolved.projectLoginKept) launchAccountId = undefined;
 		if (resolved.bedrockProfileMissing) await notifyBedrockProfileMissing(opts.task);
 		launchedAgentId = resolved.agent?.id ?? null;
 		launchedConfigId = resolved.config?.id ?? null;

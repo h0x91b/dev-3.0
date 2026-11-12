@@ -19,6 +19,7 @@ vi.mock("../agent-accounts", async (importOriginal) => {
 		...actual,
 		getActiveClaudeSessionEnv: (id?: string | null) => actual.getActiveClaudeSessionEnv(id, state.paths as import("../agent-accounts").AccountPaths),
 		claudeAccountRegistered: (id: string) => actual.claudeAccountRegistered(id, state.paths as import("../agent-accounts").AccountPaths),
+		claudeAccountSignedIntoDir: (id: string, dir: string) => actual.claudeAccountSignedIntoDir(id, dir, state.paths as import("../agent-accounts").AccountPaths),
 	};
 });
 
@@ -234,6 +235,53 @@ describe("a project that pins its own Claude folder", () => {
 	it("an unpinned project still gets the default account", async () => {
 		const { dir } = await defaultAccount();
 		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { projectEnv: { ANTHROPIC_MODEL: "x" } });
+		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(dir);
+	});
+});
+
+describe("an account the project's own Claude folder is signed in to", () => {
+	const login = (accountUuid: string, organizationUuid = "org-1") =>
+		JSON.stringify({ oauthAccount: { emailAddress: "me@example.com", accountUuid, organizationUuid } });
+	let projectDir: string;
+	let projectEnv: Record<string, string>;
+	async function accountSignedInAs(accountUuid: string, organizationUuid?: string) {
+		const paths = state.paths as AccountPaths;
+		mkdirSync(paths.claudeHome, { recursive: true });
+		const account = registerStagedClaudeAccount((await prepareClaudeLogin(paths)).accountId, paths);
+		writeFileSync(join(claudeAccountDir(account.id, paths), ".claude.json"), login(accountUuid, organizationUuid));
+		return { account, dir: claudeAccountDir(account.id, paths) };
+	}
+	beforeEach(() => {
+		projectDir = join(root, "project", ".claude");
+		mkdirSync(projectDir, { recursive: true });
+		writeFileSync(join(projectDir, ".claude.json"), login("person-1"));
+		projectEnv = { CLAUDE_CONFIG_DIR: projectDir };
+	});
+
+	it("keeps the project folder on a fresh launch and records no account on the pane", async () => {
+		const { account } = await accountSignedInAs("person-1");
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, projectEnv });
+		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(projectDir);
+		expect(resolved.projectLoginKept).toBe(true);
+		expect(resolved.resolvedAccountId).toBeUndefined();
+	});
+
+	it("uses the account's own folder when the project folder is signed in to someone else", async () => {
+		const { account, dir } = await accountSignedInAs("person-2");
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, projectEnv });
+		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(dir);
+		expect(resolved.projectLoginKept).toBeUndefined();
+	});
+
+	it("treats the same person in another org as a different login", async () => {
+		const { account, dir } = await accountSignedInAs("person-1", "org-2");
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, projectEnv });
+		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(dir);
+	});
+
+	it("resumes in the account's folder, where the conversation was written", async () => {
+		const { account, dir } = await accountSignedInAs("person-1");
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, accountFromStore: true, resume: true, projectEnv });
 		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(dir);
 	});
 });
