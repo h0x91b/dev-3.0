@@ -473,6 +473,8 @@ html {
 	margin: 0;
 	padding: 0;
 	overflow: hidden;
+	/* Safari 26+ ignores theme-color and tints its bars from this; body's gradient gives it no colour. */
+	background-color: rgb(var(--surface-base));
 }
 
 body, #root {
