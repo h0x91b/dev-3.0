@@ -356,7 +356,7 @@ async function approvalsList(args: ParsedArgs, socketPath: string, context: CliC
 		return;
 	}
 	printTable(
-		["KIND", "SEQ", "PROJECT", "TASK", "ASKED BY", "SINCE", "AUTO-APPROVES"],
+		["KIND", "SEQ", "PROJECT", "TASK", "ASKED BY", "SINCE", "AUTO-APPROVES", "REASON"],
 		pending.map((r) => [
 			r.kind,
 			r.seqLabel ?? r.taskId.slice(0, 8),
@@ -365,6 +365,7 @@ async function approvalsList(args: ParsedArgs, socketPath: string, context: CliC
 			r.requesterSenderId ? `sender ${r.requesterSenderId}` : r.requesterSeq !== null ? `#${r.requesterSeq}` : "-",
 			formatWhen(r.createdAt),
 			r.heldByUser ? "held by user" : formatWhen(r.autoApproveAt),
+			r.reason ? truncate(r.reason.replace(/\s+/g, " "), 40) : "-",
 		]),
 	);
 }

@@ -95,7 +95,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "spawn",
-				usage: "dev3 agent spawn [--task <id>] [--project <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--json]",
+				usage: "dev3 agent spawn [--task <id>] [--project <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--reason <text>] [--json]",
 				summary: "Add one agent pane to a running task, sharing its existing worktree.",
 				details: [
 					"--task <id>     Target task, or the current worktree's task. Supports seq:<N>.",
@@ -106,6 +106,7 @@ const COMMANDS: CommandHelp[] = [
 					"--prompt <text> Initial instructions; - reads stdin, @file reads a file.",
 					"--handoff       Also retell the target task's latest conversation.",
 					"--json          Print pane ID, backend, agent/config IDs and handoff result.",
+					"--reason <text> Why you ask, shown in the approval dialog (plain text, max 500 chars).",
 					"From a task worktree, asks the user to approve and pick the agent in the app.",
 					"The configured launch auto-approval policy applies; decline exits 10.",
 					"Outside a task worktree, runs directly as a user-initiated launch.",
@@ -115,7 +116,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "resume",
-				usage: "dev3 agent resume [--task <id>] [--project <id>] [--allow-agent-latest] [--account <id|system>] [--as-sender <id>] [--json]",
+				usage: "dev3 agent resume [--task <id>] [--project <id>] [--allow-agent-latest] [--account <id|system>] [--as-sender <id>] [--reason <text>] [--json]",
 				summary: "Resume a task's saved agent session when its terminal is gone — the app's Resume Session.",
 				details: [
 					"Same path as the Resume Session button: same worktree, branch, files and conversations,",
@@ -133,6 +134,7 @@ const COMMANDS: CommandHelp[] = [
 					"                      its saved one; Codex panes keep theirs. The approval dialog preselects it.",
 					`                      An account that cannot see the conversation exits ${CLI_EXIT_CODE_RESUME_UNAVAILABLE}; nothing launches.`,
 					"--as-sender <id>      From OUTSIDE dev3: ask as a registered external sender; the user approves it in the app.",
+					"--reason <text>       Why you ask, shown in the approval dialog (plain text, max 500 chars).",
 					"--json          Print the outcome: backend, tmux session, and per pane its ids and status.",
 					`Already running exits ${CLI_EXIT_CODE_RESUME_ALREADY_RUNNING} and touches nothing; nothing to resume exits ${CLI_EXIT_CODE_RESUME_UNAVAILABLE}.`,
 					`From another task's worktree, asks the user to approve in the app; decline exits ${CLI_EXIT_CODE_LAUNCH_DECLINED}.`,
@@ -206,6 +208,8 @@ const COMMANDS: CommandHelp[] = [
 					"                      no prompt. Blocks up to 10 min on their approval in the",
 					"                      app; exit 10 if declined, 46 if it failed to prepare.",
 					"                      Drive it with `dev3 message`.",
+					"--reason <text>       With --scratch --run: why you ask, shown in the approval",
+					"                      dialog (plain text, max 500 chars).",
 					"--handoff-file <path> Append this file's text to the handoff note the new agent",
 					"                      receives, for standing instructions you would otherwise",
 					"                      message by hand. Launches only; unreadable/empty exits 3.",
@@ -252,7 +256,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "move",
-				usage: "dev3 task move [<id>] --status <status> [--agent <id> [--config <id>]] [--as-sender <id>]",
+				usage: "dev3 task move [<id>] --status <status> [--agent <id> [--config <id>]] [--as-sender <id>] [--reason <text>]",
 				summary: "Change a task's status / column.",
 				details: [
 					"--status <status>        Target status or custom column id (required).",
@@ -279,6 +283,9 @@ const COMMANDS: CommandHelp[] = [
 					"                         user keeps the final pick; an unattended auto-approval",
 					"                         launches the suggestion. Unknown or mismatched ids fail",
 					"                         instead of falling back to the default. Launches only.",
+					"--reason <text>          Why you ask, shown in any approval dialog this move opens",
+					"                         (complete, cancel, reset, start). Plain text, max 500 chars.",
+					"                         Pass it whenever you act on another task.",
 				],
 			},
 			{
@@ -293,7 +300,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "hibernate",
-				usage: "dev3 task hibernate [<id>] [--task <id>] [--json]",
+				usage: "dev3 task hibernate [<id>] [--task <id>] [--reason <text>] [--json]",
 				summary: "Park a task to free memory — the session bar's Hibernate button.",
 				details: [
 					"Stops the agent, the terminal and the dev server and releases the ports. Keeps the",
@@ -304,12 +311,13 @@ const COMMANDS: CommandHelp[] = [
 					"Hibernating your own task ends this session once approved.",
 					"Outside a task worktree, hibernates directly, as if the user had clicked the button.",
 					`Already hibernated, a draft, not active, or no live terminal exits ${CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE}.`,
+					"--reason <text> Why you ask, shown in the approval dialog (plain text, max 500 chars).",
 					"--json          Print the outcome; a refusal carries a `reason`.",
 				],
 			},
 			{
 				name: "wake",
-				usage: "dev3 task wake [<id>] [--task <id>] --resume [--allow-agent-latest] [--account <id|system>] | --shell [--json]",
+				usage: "dev3 task wake [<id>] [--task <id>] --resume [--allow-agent-latest] [--account <id|system>] | --shell [--reason <text>] [--json]",
 				summary: "Wake a hibernated task — the wake screen's two buttons.",
 				details: [
 					"--resume        Wake and resume the agent's saved conversation; same outcome, output",
@@ -319,6 +327,7 @@ const COMMANDS: CommandHelp[] = [
 					"                stays for a later Resume Session / dev3 agent resume.",
 					"The dev server stays down either way; start it with dev3 dev-server start.",
 					`From another task's worktree, asks the user to approve in the app; decline exits ${CLI_EXIT_CODE_LAUNCH_DECLINED}.`,
+					"--reason <text> Why you ask, shown in the approval dialog (plain text, max 500 chars).",
 					`A task that is not hibernated exits ${CLI_EXIT_CODE_TASK_NOT_HIBERNATED}; nothing is launched.`,
 				],
 			},

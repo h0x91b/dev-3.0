@@ -46,7 +46,7 @@ function usageDay(overrides: Partial<AgentUsageDay> = {}): AgentUsageDay {
 function approval(overrides: Partial<PendingApprovalSummary> = {}): PendingApprovalSummary {
 	return {
 		requestId: "r1", kind: "complete", taskId: "task-1", projectId: PROJECT_A, taskTitle: "Finish", seqLabel: "42",
-		projectName: "dev-3.0", requesterTaskId: null, requesterSeq: null, requesterTitle: null, requesterSenderId: null,
+		projectName: "dev-3.0", requesterTaskId: null, requesterSeq: null, requesterTitle: null, requesterSenderId: null, reason: null,
 		createdAt: "2026-10-27T08:00:00.000Z",
 		autoApproveAt: null, heldByUser: false,
 		...overrides,
@@ -402,6 +402,13 @@ describe("dev3 approvals list", () => {
 		expect(stdout).toContain("#33");
 		expect(stdout).toContain("sender openclaw");
 		expect(stdout).toContain("held by user");
+	});
+
+	it("shows the agent's reason on one line", async () => {
+		mockSend.mockResolvedValue(ok({ requests: [approval({ kind: "launch", reason: "Move off the\nexhausted account" })] }));
+		await handleApprovals("list", args(), SOCKET, CTX);
+		expect(stdout).toContain("REASON");
+		expect(stdout).toContain("Move off the exhausted account");
 	});
 
 	it("needs the list verb", async () => {

@@ -89,6 +89,7 @@ import LaunchLocationGate from "./components/LaunchLocationGate";
 import { initTaskSoundPlayback, playTaskCompletionSound, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
 import { offerMergeCompletion } from "./utils/offerMergeCompletion";
 import { taskDialogInfoFromSubject } from "./utils/taskDialogInfo";
+import type { ApprovalReason } from "../shared/approval-reason";
 import { unsavedWorkWarning } from "./utils/confirmTaskCompletion";
 import { createAgentRequestAbort } from "./utils/agentRequestAbort";
 import { getRecentProjectIds, orderByRecency, recordProjectJump } from "./utils/recentProjects";
@@ -2365,6 +2366,7 @@ function App() {
 			projectId?: string;
 			taskTitle: string;
 			subject?: TaskDialogSubject;
+			reason?: ApprovalReason;
 		}) {
 			const { requestId, taskId, taskTitle, subject } = request;
 			if (showing.has(requestId)) return;
@@ -2385,6 +2387,7 @@ function App() {
 					// Without its own worktree nothing is deleted: the folder outlives the task.
 					message: t(keepsTaskFolder(request.projectId, subject) ? "app.agentCompletionMessageFolder" : "app.agentCompletionMessage"),
 					info: taskDialogInfoFromSubject(taskTitle, subject),
+					...(request.reason ? { reason: request.reason } : {}),
 					confirmLabel: t("app.agentCompletionConfirm"),
 					cancelLabel: t("app.agentCompletionCancel"),
 					danger: true,
@@ -2490,6 +2493,7 @@ function App() {
 			taskTitle: string;
 			subject?: TaskDialogSubject;
 			branchKept?: boolean;
+			reason?: ApprovalReason;
 		}) {
 			const { requestId, taskId, projectId, taskTitle, subject, branchKept } = request;
 			if (showing.has(requestId)) return;
@@ -2509,6 +2513,7 @@ function App() {
 					title: t(copy.title),
 					message: t(branchKept && copy === kind.copy && kind.toStatus === "todo" ? "app.agentResetMessageBranchKept" : copy.message),
 					info: taskDialogInfoFromSubject(taskTitle, subject),
+					...(request.reason ? { reason: request.reason } : {}),
 					confirmLabel: t(copy.confirm),
 					cancelLabel: t(copy.cancel),
 					danger: true,

@@ -1088,6 +1088,7 @@ async function listPendingCompletionRequests(): Promise<AgentCompletionRequest[]
 		projectId: r.projectId,
 		taskTitle: r.dialog.taskTitle,
 		subject: r.dialog.subject,
+		...(r.dialog.reason ? { reason: r.dialog.reason } : {}),
 	}));
 }
 
@@ -1106,6 +1107,7 @@ async function listPendingCancellationRequests(): Promise<AgentCancellationReque
 		projectId: r.projectId,
 		taskTitle: r.dialog.taskTitle,
 		subject: r.dialog.subject,
+		...(r.dialog.reason ? { reason: r.dialog.reason } : {}),
 	}));
 }
 
@@ -1124,6 +1126,7 @@ async function listPendingResetRequests(): Promise<AgentCancellationRequest[]> {
 		projectId: r.projectId,
 		taskTitle: r.dialog.taskTitle,
 		subject: r.dialog.subject,
+		...(r.dialog.reason ? { reason: r.dialog.reason } : {}),
 		...(r.dialog.branchKept ? { branchKept: true } : {}),
 	}));
 }
