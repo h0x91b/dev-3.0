@@ -158,7 +158,7 @@ const tips = {
 	"tip.projectsDailyBackup.title": "Список проектов бэкапится ежедневно",
 	"tip.projectsDailyBackup.body": "Пропали проекты? Восстановите из ~/.dev3.0/projects-YYYY-MM-DD.json.bak — снимки хранятся 7 дней.",
 	"tip.agentCompletionRequest.title": "Агент может запросить завершение",
-	"tip.agentCompletionRequest.body": "Когда агент выполняет `dev3 task move --status completed`, вы получаете диалог подтверждения — одобрите завершение или оставьте сессию.",
+	"tip.agentCompletionRequest.body": "Когда агент выполняет `dev3 task move --status completed`, вас просят подтвердить; настройка выбирает диалог или полосу на задаче.",
 	"tip.taskSwitcher.title": "Option+Tab между задачами",
 	"tip.taskSwitcher.body": "Держите Option и жмите Tab, чтобы листать активные задачи; отпустите — перейдёте. Стрелки ↑↓ листают в обе стороны. (На Linux — Ctrl+Tab.) Нажмите Shift, чтобы переключиться на все проекты.",
 	"tip.pasteLargeText.title": "Вставляйте большие логи файлами",

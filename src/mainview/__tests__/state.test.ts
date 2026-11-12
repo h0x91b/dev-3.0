@@ -876,6 +876,37 @@ describe("reducer", () => {
 		expect(next.bellCounts.has("t1")).toBe(false);
 	});
 
+	it("removeBellReason: drops only that reason and one count", () => {
+		const state: AppState = {
+			...initialState,
+			bellCounts: new Map([["t1", 2]]),
+			bellReasons: new Map([["t1", ["Agent needs input", "Branch merged"]]]),
+		};
+		const next = reducer(state, { type: "removeBellReason", taskId: "t1", reason: "Branch merged" });
+		expect(next.bellCounts.get("t1")).toBe(1);
+		expect(next.bellReasons.get("t1")).toEqual(["Agent needs input"]);
+	});
+
+	it("removeBellReason: clears the task when it was the last bell", () => {
+		const state: AppState = {
+			...initialState,
+			bellCounts: new Map([["t1", 1]]),
+			bellReasons: new Map([["t1", ["Branch merged"]]]),
+		};
+		const next = reducer(state, { type: "removeBellReason", taskId: "t1", reason: "Branch merged" });
+		expect(next.bellCounts.has("t1")).toBe(false);
+		expect(next.bellReasons.has("t1")).toBe(false);
+	});
+
+	it("removeBellReason: no-op when that reason is not ringing", () => {
+		const state: AppState = {
+			...initialState,
+			bellCounts: new Map([["t1", 3]]),
+			bellReasons: new Map([["t1", ["Agent needs input"]]]),
+		};
+		expect(reducer(state, { type: "removeBellReason", taskId: "t1", reason: "Branch merged" })).toBe(state);
+	});
+
 	it("clearBell: no-op when task has no bell", () => {
 		const next = reducer(initialState, { type: "clearBell", taskId: "t1" });
 		expect(next).toBe(initialState);

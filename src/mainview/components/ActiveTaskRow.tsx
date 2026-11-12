@@ -20,6 +20,7 @@ import NativeBackendMark, { isNativeBackendTask } from "./NativeBackendMark";
 import PipelineDropdown from "./PipelineDropdown";
 import PortBadgeList from "./PortBadgeList";
 import PriorityBadge from "./PriorityBadge";
+import CompletionOfferMark from "./CompletionOfferMark";
 import StatusMenuPortal from "./StatusMenuPortal";
 import TaskAgeStamps from "./TaskAgeStamps";
 import TaskCardRail from "./TaskCardRail";
@@ -347,6 +348,7 @@ export default function ActiveTaskRow({
 				<div className="mt-1.5 flex items-center gap-1 min-w-0 flex-wrap">
 					<PriorityBadge priority={task.priority} onChange={onSetPriority} />
 					<div className="text-nano text-fg-3 font-mono shrink-0">#{task.seq}</div>
+					<CompletionOfferMark task={task} testId={`sidebar-completion-offer-${task.id}`} />
 					{task.hidden && (
 						<Tooltip content={t("task.hiddenFromSidebar")}>
 							<span className="inline-flex text-fg-muted" data-testid={`sidebar-task-hidden-badge-${task.id}`}>

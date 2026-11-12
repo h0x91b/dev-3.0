@@ -253,6 +253,58 @@ describe("task.requestCompletion", () => {
 		const resp = await respPromise;
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toEqual({ approved: false });
+		expect(moveTask).not.toHaveBeenCalledWith(expect.objectContaining({ newStatus: "completed" }));
+	});
+
+	// The agent is blocked on the user's answer, so the task reads Has Questions
+	// while it waits and goes back to work when the user says no.
+	it("parks a working task in Has Questions while the agent waits and restores it on decline", async () => {
+		const task = makeTask();
+		setupTask(task);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(moveTask).mockImplementation(async (p) => ({ ...task, status: p.newStatus ?? task.status }));
+
+		const respPromise = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1", sourceTaskId: task.id }));
+		await vi.waitFor(() => expect(moveTask).toHaveBeenCalledWith({
+			taskId: task.id, projectId: "proj-1", newStatus: "user-questions", ifStatus: "in-progress",
+		}));
+
+		const payload = pushFn.mock.calls[0][1] as { requestId: string };
+		resolveAgentRequest(payload.requestId, { approved: false });
+
+		expect((await respPromise).data).toEqual({ approved: false });
+		expect(moveTask).toHaveBeenLastCalledWith({
+			taskId: task.id, projectId: "proj-1", newStatus: "in-progress", ifStatus: "user-questions",
+		});
+	});
+
+	it("leaves the task working when a peer agent asks to complete it", async () => {
+		setupTask(makeTask());
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		const respPromise = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1", sourceTaskId: "task-peer" }));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		const payload = pushFn.mock.calls[0][1] as { requestId: string };
+		resolveAgentRequest(payload.requestId, { approved: false });
+
+		expect((await respPromise).data).toEqual({ approved: false });
+		expect(moveTask).not.toHaveBeenCalled();
+	});
+
+	it("leaves a task that is not working where it is while the agent waits", async () => {
+		const task = makeTask({ status: "review-by-user" });
+		setupTask(task);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		const respPromise = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1", sourceTaskId: task.id }));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		const payload = pushFn.mock.calls[0][1] as { requestId: string };
+		resolveAgentRequest(payload.requestId, { approved: false });
+
+		expect((await respPromise).data).toEqual({ approved: false });
 		expect(moveTask).not.toHaveBeenCalled();
 	});
 
@@ -335,7 +387,9 @@ describe("task.requestCompletion when the task ends by another path", () => {
 		expect(getAgentRequestState("complete", TASK_ID)).toMatchObject({ state: "answered", requestId, stale: true });
 		expect((await resp).data).toEqual({ approved: false, stale: true, taskStatus: "completed" });
 		expect(listPendingAgentRequests("complete")).toEqual([]);
-		expect(moveTask).not.toHaveBeenCalled();
+		// Parked while it asked; never completed or restored by this path.
+		expect(moveTask).not.toHaveBeenCalledWith(expect.objectContaining({ newStatus: "completed" }));
+		expect(moveTask).not.toHaveBeenCalledWith(expect.objectContaining({ newStatus: "in-progress" }));
 	});
 
 	it("never pushes a dialog when the task completed between the read and the registration", async () => {
@@ -376,7 +430,8 @@ describe("task.requestCompletion when the task ends by another path", () => {
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
 		const completed = { ...task, status: "completed" as const };
 		// The approved move runs the lifecycle, which voids every request for the task.
-		vi.mocked(moveTask).mockImplementation(async () => {
+		vi.mocked(moveTask).mockImplementation(async (p) => {
+			if (p.newStatus !== "completed") return { ...task, status: p.newStatus ?? task.status };
 			voidAgentRequestsForTask(TASK_ID);
 			return completed;
 		});
