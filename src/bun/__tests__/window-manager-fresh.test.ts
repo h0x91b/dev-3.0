@@ -169,11 +169,22 @@ describe("window-manager fresh-start mode", () => {
 		expect(createdWindows[0].minimize).not.toHaveBeenCalled();
 	});
 
-	it("opens hidden, minimized and without taking foreground when asked for the background", () => {
-		process.env.DEV3_FRESH_START = "1";
-		spawn(true);
+	it.each([
+		["darwin", true],
+		// GTK/X11 cannot iconify or activate a never-mapped window, so it would never appear.
+		["linux", false],
+		["win32", false],
+	] as const)("on %s opens minimized without taking foreground when asked for the background (hidden: %s)", (platform, hidden) => {
+		const original = Object.getOwnPropertyDescriptor(process, "platform")!;
+		Object.defineProperty(process, "platform", { value: platform });
+		try {
+			process.env.DEV3_FRESH_START = "1";
+			spawn(true);
+		} finally {
+			Object.defineProperty(process, "platform", original);
+		}
 		expect(createdWindows[0].activate).toBe(false);
-		expect(createdWindows[0].hidden).toBe(true);
+		expect(createdWindows[0].hidden).toBe(hidden);
 		expect(createdWindows[0].minimize).toHaveBeenCalledTimes(1);
 	});
 

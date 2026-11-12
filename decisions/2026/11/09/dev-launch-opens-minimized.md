@@ -18,14 +18,20 @@ still fired, and the window rendered fully when restored from the Dock.
 ## Decision
 
 `createAppWindow` takes `background` (`window-manager.ts`) instead of `activate`: it passes
-`activate: false` and `hidden: true` to the constructor, then calls `win.minimize()`.
+`activate: false` to the constructor, then calls `win.minimize()`. Only on macOS does it also
+pass `hidden: true`: in electrobun 1.18.1 a hidden window is never mapped, and on Linux
+`gtk_window_iconify`/`XIconifyWindow` do not map it while `activateGTKWindow`/`activateX11Window`
+bail on an unmapped window, so it would never appear at all. Linux and Windows map the window
+inactive and minimize it right away.
 `src/bun/index.ts` passes `shouldOpenLaunchWindowInBackground()` (`fresh-start.ts`,
-`DEV3_FRESH_START=1`) for launch windows only, and skips re-focusing the primary window
-for a background launch. Windows opened later still come to the front.
+`DEV3_FRESH_START=1`) for launch windows only. Windows opened later still come to the front.
+`focusFocusedWindow` un-minimizes before `focus()`, because Win32 activation does not restore
+an iconic window, so a launch handoff or notification click would leave it in the taskbar.
 
 ## Risks
 
-A dev launch now ends with nothing visible: the user opens it from the Dock. The first-paint
+A dev launch now ends with nothing visible: the user opens it from the Dock. On Linux and
+Windows the window may flash for a frame before it minimizes; neither path was run natively. The first-paint
 resize nudge runs while the window is minimized; the restore check above showed no blank
 paint, but it is not covered by an automated test.
 

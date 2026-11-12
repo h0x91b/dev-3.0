@@ -577,7 +577,7 @@ const primaryWindow = await openMainWindow(restoreSession[0], launchInBackground
 log.info("Main window created", { background: launchInBackground });
 for (const state of restoreSession.slice(1)) await openMainWindow(state, launchInBackground);
 // Creation order decides key focus, so hand it back to the primary window.
-if (restoreSession.length > 1 && !launchInBackground) {
+if (restoreSession.length > 1) {
 	try { primaryWindow.focus(); } catch (err) { log.debug("Focusing the restored primary window failed", { error: String(err) }); }
 }
 readiness.arm();
