@@ -165,7 +165,7 @@ function SpaceProjectsModal({ space, projects, onClose, onCreateProject }: Space
 						type="button"
 						onClick={handleSave}
 						disabled={!dirty || saving}
-						className="px-3 py-1.5 text-sm rounded-lg bg-accent text-white hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+						className="px-3 py-1.5 text-sm rounded-lg bg-accent-fill text-white hover:bg-accent-fill-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
 						data-testid="space-projects-save"
 					>
 						{t("spaces.editProjectsSubmit")}

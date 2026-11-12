@@ -3552,7 +3552,7 @@ function App() {
 								}}
 								disabled={qrConsumed || tunnelUrlPending || remoteUrlCopyState === "copying"}
 								aria-label={t(remoteCopyLabel)}
-								className={`inline-flex min-w-[7.25rem] items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg transition-[background-color,color,transform] active:scale-[0.98] ${qrConsumed || tunnelUrlPending ? "bg-elevated text-fg-3 cursor-not-allowed" : remoteUrlCopyState === "copying" ? "bg-accent/80 text-white cursor-wait" : remoteUrlCopyState === "copied" ? "bg-success-fill text-white hover:bg-success-fill-hover" : "bg-accent-fill text-white hover:bg-accent-fill-hover"}`}
+								className={`inline-flex min-w-[7.25rem] items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg transition-[background-color,color,transform] active:scale-[0.98] ${qrConsumed || tunnelUrlPending ? "bg-elevated text-fg-3 cursor-not-allowed" : remoteUrlCopyState === "copying" ? "bg-accent-fill text-white cursor-wait" : remoteUrlCopyState === "copied" ? "bg-success-fill text-white hover:bg-success-fill-hover" : "bg-accent-fill text-white hover:bg-accent-fill-hover"}`}
 							>
 								{remoteUrlCopyState === "copying" && (
 									<svg

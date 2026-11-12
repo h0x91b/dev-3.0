@@ -164,7 +164,7 @@ function SpaceHeaderMenu({
 									type="button"
 									onClick={commitRename}
 									disabled={!draft.trim()}
-									className="mt-2 w-full px-2.5 py-1.5 rounded-lg bg-accent text-white text-xs hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+									className="mt-2 w-full px-2.5 py-1.5 rounded-lg bg-accent-fill text-white text-xs hover:bg-accent-fill-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
 									data-testid={`${scope}-rename-save-${space.id}`}
 								>
 									{t("spaces.renameSave")}
