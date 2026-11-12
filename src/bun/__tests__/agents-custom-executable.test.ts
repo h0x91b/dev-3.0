@@ -28,6 +28,7 @@ import { resolveCommandForAgent, resolveCommandForProject } from "../agents";
 import type { Project } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
 import { DEV3_HOME } from "../paths";
+import { claudeTranscriptDir } from "../../shared/conversation-search-core";
 import { resetStaleAgentPathNoticesForTests } from "../stale-agent-path";
 import { setPushMessage } from "../rpc-handlers/shared-pure";
 
@@ -281,7 +282,26 @@ describe("an account the project's own Claude folder is signed in to", () => {
 
 	it("resumes in the account's folder, where the conversation was written", async () => {
 		const { account, dir } = await accountSignedInAs("person-1");
-		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, accountFromStore: true, resume: true, projectEnv });
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, accountFromStore: true, resume: true, sessionId: "s-1", projectEnv });
 		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(dir);
+	});
+
+	it("resumes in the project folder when the conversation was written there", async () => {
+		const { account } = await accountSignedInAs("person-1");
+		const store = claudeTranscriptDir(projectDir, ctx.worktreePath);
+		mkdirSync(store, { recursive: true });
+		writeFileSync(join(store, "s-1.jsonl"), "{}\n");
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, accountFromStore: true, resume: true, sessionId: "s-1", projectEnv });
+		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(projectDir);
+		expect(resolved.projectLoginKept).toBe(true);
+	});
+
+	it("continues in the project folder when it holds this worktree's conversations", async () => {
+		const { account } = await accountSignedInAs("person-1");
+		const store = claudeTranscriptDir(projectDir, ctx.worktreePath);
+		mkdirSync(store, { recursive: true });
+		writeFileSync(join(store, "s-2.jsonl"), "{}\n");
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, accountFromStore: true, resume: true, projectEnv });
+		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(projectDir);
 	});
 });
