@@ -175,11 +175,70 @@ describe("TaskCompletionStrip", () => {
 		// On a wide terminal it stays near the prompt instead of the far corner.
 		expect(strip.className).toContain("right-[max(0.75rem,calc(100%-72rem))]");
 		// Opening the note grows the bar upward; its buttons stay on the bottom line.
-		expect(strip.className).toContain("items-end");
+		expect(strip.className).toContain("flex-col");
 		// The note opens on hover or focus, so the bar covers only the bottom rows.
-		expect(screen.getByTestId("task-completion-strip-note").className).toContain("hidden");
+		expect(screen.getByTestId("task-completion-strip-details").className).toContain("hidden");
+		expect(screen.getByTestId("task-completion-strip-details")).toContainElement(screen.getByTestId("task-completion-strip-note"));
 		// A bottom bar never collides with the toast stack at the top.
 		expect(clearanceNodes.has(strip)).toBe(false);
+	});
+
+	it("titles a merge bar with what happened, keeping the question in its label", async () => {
+		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" /></I18nProvider>);
+		await offer("merge");
+		const strip = screen.getByRole("region", { name: "Branch merged. Is this task done?" });
+		expect(strip).toHaveTextContent("Branch merged");
+		expect(screen.getByTitle("Branch merged. Is this task done?")).toHaveTextContent(/^Branch merged$/);
+		// The opt-out and the settings link open with the note; the answers stay on the line.
+		const details = screen.getByTestId("task-completion-strip-details");
+		expect(details).toContainElement(screen.getByRole("button", { name: "I’ll complete it myself" }));
+		expect(details).toContainElement(screen.getByRole("button", { name: "Settings for completion offers after a merge" }));
+		expect(details).not.toContainElement(screen.getByTestId("task-completion-strip-complete"));
+		expect(details).not.toContainElement(screen.getByRole("button", { name: "Keep open" }));
+	});
+
+	it("opens the warning on the first Complete click when work would be lost, and completes on the second", async () => {
+		vi.mocked(api.request.getUnsavedWork).mockResolvedValue({ ...clean, insertions: 3, deletions: 1 });
+		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" /></I18nProvider>);
+		const { answer } = await offer("merge");
+		await arm();
+		const details = screen.getByTestId("task-completion-strip-details");
+		expect(details).toContainElement(screen.getByTestId("task-completion-strip-warning"));
+		// At rest it stays one line, so the input row stays visible; the line carries the mark.
+		expect(details.className).toContain("hidden");
+		expect(screen.getByTestId("task-completion-strip-alert")).toHaveTextContent(/3/);
+		await act(async () => { fireEvent.click(screen.getByTestId("task-completion-strip-complete")); });
+		expect(screen.getByTestId("task-completion-strip")).toBeInTheDocument();
+		expect(details.className).not.toContain("hidden");
+		expect(screen.queryByTestId("task-completion-strip-more")).toBeNull();
+		expect(screen.getByTestId("task-completion-strip-alert")).not.toHaveTextContent(/3/);
+		expect(screen.getByTestId("task-completion-strip-complete")).toHaveTextContent("Complete anyway");
+		await act(async () => { fireEvent.click(screen.getByTestId("task-completion-strip-complete")); });
+		await expect(answer).resolves.toBe(true);
+	});
+
+	it("completes a clean task from the bar in one click and cues the hover panel", async () => {
+		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" /></I18nProvider>);
+		const { answer } = await offer("merge");
+		await arm();
+		expect(screen.getByTestId("task-completion-strip-details").className).toContain("[@media(hover:none)]:flex");
+		expect(screen.getByTestId("task-completion-strip-more")).toBeInTheDocument();
+		await act(async () => { fireEvent.click(screen.getByTestId("task-completion-strip-complete")); });
+		await expect(answer).resolves.toBe(true);
+	});
+
+	it("marks a merge with the merge icon, never the quick-complete ✓", async () => {
+		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" /></I18nProvider>);
+		await offer("merge");
+		const strip = screen.getByTestId("task-completion-strip");
+		expect(strip).not.toHaveTextContent("✓");
+		expect(strip.querySelector("svg circle")).not.toBeNull();
+	});
+
+	it("keeps the same pane wrapper with one pane, so a split never remounts the bar", async () => {
+		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" /></I18nProvider>);
+		await offer("agent");
+		expect(screen.getByTestId("task-completion-strip-pane")).toContainElement(screen.getByTestId("task-completion-strip"));
 	});
 
 	it("shows nothing while the dialog style asks for merge and agent offers", async () => {
