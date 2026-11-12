@@ -70,8 +70,8 @@ describe("platform feedback skill section (always present)", () => {
 });
 
 describe("dev3 skill content", () => {
-	it("tells generic-family agents (opencode) to give approval waits a shell timeout past ten minutes", () => {
-		const line = "give each a shell timeout of 660000 ms when your shell tool takes one";
+	it("tells generic-family agents (opencode) to give approval waits a shell timeout past the launch wait", () => {
+		const line = "give it a shell timeout of 900000 ms when your shell tool takes one";
 		expect(getGenericSkillContent()).toContain(line);
 		expect(GENERIC_LEAN_SKILL_BODY).toContain(line);
 		// Claude Code backgrounds a slow command and Codex keeps it running, so they skip the note.

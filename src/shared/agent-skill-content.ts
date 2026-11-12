@@ -459,7 +459,9 @@ const SKILL_STATUS: Record<SkillFamily, (mode: ProtocolMode) => string> = {
 // opencode kills a shell command after 120 s unless the call passes a longer timeout;
 // Claude Code and Codex keep a slow command running (decisions/2026/11/09/approval-waits-vs-agent-shell-timeouts.md).
 const SKILL_LONG_WAIT_SHELL = `
-Commands that wait for the user (\`dev3 task move\` to completed, cancelled or todo, and \`--run\`) block up to 10 minutes: give each a shell timeout of 660000 ms when your shell tool takes one.
+## Long waits
+
+A command that waits for the user's approval can block 13+ minutes: give it a shell timeout of 900000 ms when your shell tool takes one.
 `;
 
 const shellNote = (family: SkillFamily): string =>

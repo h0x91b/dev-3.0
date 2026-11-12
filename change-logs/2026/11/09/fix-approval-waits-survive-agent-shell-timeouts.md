@@ -1,1 +1,0 @@
-Agents waiting on a completion, cancellation or launch approval no longer lose their shell call to a timeout: opencode and other generic-family agents are told to give those calls an 11-minute timeout, and the CLI prints a "still waiting" line every minute so Gemini CLI's 300-second silence limit does not kill it.
