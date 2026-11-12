@@ -5,7 +5,7 @@ import { claudeHookPaneId } from "./claude-prompt";
 /**
  * What matters in Claude Code's `PostToolUse` payload. `agent_id` is present only
  * when the tool ran inside a subagent or an in-process teammate: that agent is not
- * the pane's own conversation, so it never takes the pane's held messages.
+ * the pane's own conversation, so it changes neither task status nor the pane's held messages.
  */
 function parsePayload(rawInput: string): { subagent: boolean } | null {
 	try {
@@ -48,7 +48,8 @@ export async function handleClaudePostTool(
 ): Promise<void> {
 	if (!socketPath || !context?.taskId) return;
 	const payload = parsePayload(rawInput);
-	const paneId = payload && !payload.subagent ? claudeHookPaneId(env) : undefined;
+	if (payload?.subagent) return;
+	const paneId = payload ? claudeHookPaneId(env) : undefined;
 	try {
 		const response = await sendRequest(socketPath, "task.claudePostToolUse", {
 			taskId: context.taskId,

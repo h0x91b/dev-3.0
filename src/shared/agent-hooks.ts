@@ -511,16 +511,6 @@ function withTaskEnvGuard(command: string, dialect: HookCliDialect): string {
 }
 
 /**
- * The adapter exits 0 on every runtime failure, so `||` reaches the plain move only
- * when the installed CLI predates the subcommand and rejects it as unknown. Windows
- * has no tmux, so no mailbox to drain, and no shell for `||`: it keeps the plain move.
- */
-function claudePostToolCommand(workingCmd: string, dialect: HookCliDialect): string {
-	if (!dialect.posixShell) return workingCmd;
-	return `${dialect.cli} ${CLAUDE_POST_TOOL_HOOK_SUBCOMMAND} || ${workingCmd}`;
-}
-
-/**
  * True when `folder` is a working directory dev3 created and removes with the
  * task: a worktree or ops folder under the dev3 home, or an in-project task dir.
  */
@@ -554,13 +544,7 @@ function buildUnguardedClaudeHooks(
 	const move = (status: string, extra?: string) =>
 		withAppOfflineTolerance(buildMoveCommand(status, extra, undefined, dialect), dialect);
 
-	// Working hook: move to in-progress, but NOT when in review-by-ai
-	// (the review agent shares the same hooks file and must not flip status).
-	// review-by-user is intentionally allowed: when the user leaves feedback
-	// and the primary agent resumes, UserPromptSubmit should move the task back.
-	// PostToolUse also covers answers submitted to AskUserQuestion, which resume
-	// an existing tool call without emitting a new user prompt event.
-	const workingCmd = move("in-progress", "--if-status-not review-by-ai");
+	// Tool adapters inspect agent_id so background work cannot overwrite a parent approval wait.
 
 	return {
 		SessionStart: [
@@ -583,7 +567,7 @@ function buildUnguardedClaudeHooks(
 			},
 		],
 		PreToolUse: [
-			{ hooks: [{ type: "command", command: workingCmd }] },
+			{ hooks: [{ type: "command", command: `${dialect.cli} hook claude-pre-tool` }] },
 			...(options?.fileLeases
 				? [{
 					matcher: CLAUDE_CLAIM_MATCHER,
@@ -592,11 +576,15 @@ function buildUnguardedClaudeHooks(
 				: []),
 		],
 		PostToolUse: [
-			{ hooks: [{ type: "command", command: claudePostToolCommand(workingCmd, dialect) }] },
+			{ hooks: [{ type: "command", command: `${dialect.cli} ${CLAUDE_POST_TOOL_HOOK_SUBCOMMAND}` }] },
 		],
 		PermissionRequest: [
 			{ hooks: [{ type: "command", command: move("user-questions") }] },
 		],
+		Notification: [{
+			matcher: "permission_prompt|elicitation_dialog",
+			hooks: [{ type: "command", command: move("user-questions") }],
+		}],
 		Stop: buildStopGroups(stopTarget, dialect),
 		SessionEnd: [{ hooks: [{ type: "command", command: `${dialect.cli} hook claude-turn-ended`, timeout: 5 }] }],
 		// No matcher: every API error that killed the turn leaves the agent idle at

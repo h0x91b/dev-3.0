@@ -29,8 +29,7 @@ function movedTaskId(result: unknown): string | null {
 export const hookMailboxHandlers: Record<string, Handler> = {
 	/**
 	 * Claude's PostToolUse in one round trip: the same status move the hook always
-	 * made, then the hook mailbox. A subagent or teammate sends no `paneId`, so it
-	 * only moves the status: held mail is for the pane's own agent.
+	 * made, then the hook mailbox. Subagents and teammates are filtered by the CLI before sending this request.
 	 */
 	"task.claudePostToolUse": async (params, ctx) => {
 		const out: ClaudePostToolUseResult = {};

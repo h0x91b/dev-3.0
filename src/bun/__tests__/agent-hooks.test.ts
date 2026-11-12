@@ -63,13 +63,12 @@ describe("buildClaudeHooks", () => {
 		expect(hooks.UserPromptSubmit).toEqual([{ hooks: [{ type: "command", command: `${DEV3_CLI} hook claude-prompt`, timeout: 5 }] }]);
 	});
 
-	it("PreToolUse hook moves to in-progress with --if-status-not guard", () => {
+	it("PreToolUse delegates to the subagent-aware status adapter", () => {
 		const hooks = buildClaudeHooks();
 		const cmd = hooks.PreToolUse[0].hooks[0].command;
 
 		expect(cmd).toContain(DEV3_CLI);
-		expect(cmd).toContain("--status in-progress");
-		expect(cmd).toContain("--if-status-not review-by-ai");
+		expect(cmd).toContain("hook claude-pre-tool");
 		expect(cmd).not.toContain("review-by-user");
 	});
 
@@ -79,21 +78,20 @@ describe("buildClaudeHooks", () => {
 		expect(hooks).toHaveProperty("PostToolUse");
 		const cmd = hooks.PostToolUse[0].hooks[0].command;
 		expect(cmd).toContain(DEV3_CLI);
-		expect(cmd).toContain("--status in-progress");
-		expect(cmd).toContain("--if-status-not review-by-ai");
+		expect(cmd).toContain("hook claude-post-tool");
 	});
 
-	it("PostToolUse drains held messages first and falls back to the plain move on a CLI that predates it", () => {
+	it("PostToolUse delegates status and mailbox delivery to the subagent-aware adapter", () => {
 		const hooks = buildClaudeHooks();
 		const entry = hooks.PostToolUse[0].hooks[0];
-		expect(entry.command).toBe(`${DEV3_CLI} hook claude-post-tool || ${hooks.PreToolUse[0].hooks[0].command}`);
+		expect(entry.command).toBe(`${DEV3_CLI} hook claude-post-tool`);
 		// Same as the plain move it replaced: no hook timeout of its own.
 		expect(entry.timeout).toBeUndefined();
 	});
 
-	it("PostToolUse on Windows keeps the plain move: no tmux mailbox there and no shell for a fallback", () => {
+	it("PostToolUse on Windows also inspects the subagent identity", () => {
 		const hooks = buildClaudeHooks({ dialect: { cli: '"C:/Users/dev/.dev3.0/bin/dev3.exe"', posixShell: false } });
-		expect(hooks.PostToolUse[0].hooks[0]).toEqual(hooks.PreToolUse[0].hooks[0]);
+		expect(hooks.PostToolUse[0].hooks[0].command).toBe('"C:/Users/dev/.dev3.0/bin/dev3.exe" hook claude-post-tool');
 	});
 
 	it("uses correct three-level nesting (event → matcher group → hooks)", () => {
@@ -105,6 +103,14 @@ describe("buildClaudeHooks", () => {
 		expect(permGroup.hooks).toHaveLength(1);
 		expect(permGroup.hooks[0]).toHaveProperty("type", "command");
 		expect(permGroup.hooks[0]).toHaveProperty("command");
+	});
+
+	it("observes permission and elicitation notifications without treating idle notifications as questions", () => {
+		const hooks = buildClaudeHooks();
+		expect(hooks.Notification).toEqual([{
+			matcher: "permission_prompt|elicitation_dialog",
+			hooks: [{ type: "command", command: hooks.PermissionRequest[0].hooks[0].command }],
+		}]);
 	});
 
 	it("PermissionRequest hook moves to user-questions", () => {
@@ -178,16 +184,16 @@ describe("buildClaudeHooks", () => {
 		// review-by-user must NOT be excluded — when user leaves feedback
 		// and the agent resumes, the hook should move the task back to in-progress
 		expect(cmd).not.toContain("review-by-user");
-		expect(cmd).toContain("--if-status-not review-by-ai");
+		expect(cmd).toContain("hook claude-pre-tool");
 	});
 
-	it("working hooks use --if-status-not to skip during AI review", () => {
+	it("working hooks delegate AI review guards to the adapters", () => {
 		const hooks = buildClaudeHooks({ stopTarget: "review-by-ai" });
 
 		const preCmd = hooks.PreToolUse[0].hooks[0].command;
 		const userCmd = hooks.UserPromptSubmit[0].hooks[0].command;
 
-		expect(preCmd).toContain("--status in-progress --if-status-not review-by-ai");
+		expect(preCmd).toContain("hook claude-pre-tool");
 		expect(userCmd).toContain("hook claude-prompt");
 		expect(preCmd).not.toContain("review-by-user");
 		expect(userCmd).not.toContain("review-by-user");
@@ -213,7 +219,7 @@ describe("buildClaudeHooks", () => {
 				for (const entry of group.hooks) {
 					// Either "dev3 task move --status X" or a "dev3 hook <name>" adapter
 					// that reads the event from stdin — never a UUID either way.
-					expect(entry.command).toMatch(/task move --status|hook claude-stop-failure|hook claude-prompt|hook claude-session-start|hook claude-turn-ended|hook claude-post-tool/);
+					expect(entry.command).toMatch(/task move --status|hook claude-stop-failure|hook claude-prompt|hook claude-session-start|hook claude-turn-ended|hook claude-post-tool|hook claude-pre-tool/);
 					expect(entry.command).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
 				}
 			}
@@ -252,12 +258,12 @@ describe("buildClaudeHooks", () => {
 		}
 	});
 
-	it("working hooks keep the move guard before the offline fallback", () => {
+	it("working hooks use adapters that tolerate an offline app", () => {
 		const hooks = buildClaudeHooks();
 
 		for (const event of ["PreToolUse", "PostToolUse"] as const) {
 			const cmd = hooks[event][0].hooks[0].command;
-			expect(cmd).toContain("--status in-progress --if-status-not review-by-ai || [ $? -eq 2 ]");
+			expect(cmd).toContain(event === "PreToolUse" ? "hook claude-pre-tool" : "hook claude-post-tool");
 		}
 	});
 
@@ -347,7 +353,7 @@ describe("mergeClaudeHooks", () => {
 
 		expect(hooks.PostToolUse).toHaveLength(2);
 		expect(hooks.PostToolUse[0].hooks[0].command).toBe("echo post");
-		expect(hooks.PostToolUse[1].hooks[0].command).toContain("--status in-progress");
+		expect(hooks.PostToolUse[1].hooks[0].command).toContain("hook claude-post-tool");
 		expect(hooks.PreToolUse).toHaveLength(1);
 		expect(hooks.PermissionRequest).toHaveLength(1);
 		expect(hooks.Stop).toHaveLength(2);
@@ -628,9 +634,9 @@ describe("writeClaudeHooks", () => {
 		const content = JSON.parse(readFileSync(settingsPath, "utf-8"));
 		const hooks = content.hooks as Record<string, MatcherGroup[]>;
 
-		expect(hooks.PreToolUse[0].hooks[0].command).toContain("--if-status-not review-by-ai");
+		expect(hooks.PreToolUse[0].hooks[0].command).toContain("hook claude-pre-tool");
 		expect(hooks.PreToolUse[0].hooks[0].command).not.toContain("review-by-user");
-		expect(hooks.PostToolUse[0].hooks[0].command).toContain("--if-status-not review-by-ai");
+		expect(hooks.PostToolUse[0].hooks[0].command).toContain("hook claude-post-tool");
 		expect(hooks.PostToolUse[0].hooks[0].command).not.toContain("review-by-user");
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).toContain("hook claude-prompt");
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).not.toContain("review-by-user");
@@ -738,6 +744,7 @@ describe("writeClaudeHooks", () => {
 			"PreToolUse",
 			"PostToolUse",
 			"PermissionRequest",
+			"Notification",
 			"Stop",
 			"SessionEnd",
 			"StopFailure",
@@ -952,11 +959,10 @@ describe("POSIX hook output (byte-identical contract)", () => {
 
 	it("renders the exact Claude command strings", () => {
 		const hooks = buildClaudeHooks({ stopTarget: "review-by-ai", dialect: posix });
-		const working = `${DEV3_CLI} task move --status in-progress --if-status-not review-by-ai || [ $? -eq 2 ]`;
 
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).toBe(`${DEV3_CLI} hook claude-prompt`);
-		expect(hooks.PreToolUse[0].hooks[0].command).toBe(working);
-		expect(hooks.PostToolUse[0].hooks[0].command).toBe(`${DEV3_CLI} hook claude-post-tool || ${working}`);
+		expect(hooks.PreToolUse[0].hooks[0].command).toBe(`${DEV3_CLI} hook claude-pre-tool`);
+		expect(hooks.PostToolUse[0].hooks[0].command).toBe(`${DEV3_CLI} hook claude-post-tool`);
 		expect(hooks.PermissionRequest[0].hooks[0].command).toBe(
 			`${DEV3_CLI} task move --status user-questions || [ $? -eq 2 ]`,
 		);
@@ -993,11 +999,10 @@ describe("Windows hook output", () => {
 		const hooks = buildClaudeHooks({ stopTarget: "review-by-ai", dialect: WIN_SPACES });
 		const cli = WIN_SPACES.cli;
 		expect(cli).toBe('"C:/Users/John Doe/.dev3.0/bin/dev3.exe"');
-		const working = `${cli} task move --status in-progress --if-status-not review-by-ai --tolerate-app-offline`;
 
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).toBe(`${cli} hook claude-prompt`);
-		expect(hooks.PreToolUse[0].hooks[0].command).toBe(working);
-		expect(hooks.PostToolUse[0].hooks[0].command).toBe(working);
+		expect(hooks.PreToolUse[0].hooks[0].command).toBe(`${cli} hook claude-pre-tool`);
+		expect(hooks.PostToolUse[0].hooks[0].command).toBe(`${cli} hook claude-post-tool`);
 		expect(hooks.PermissionRequest[0].hooks[0].command).toBe(
 			`${cli} task move --status user-questions --tolerate-app-offline`,
 		);
@@ -1113,6 +1118,7 @@ describe("mergeClaudeHooks with malformed settings", () => {
 		"PreToolUse",
 		"PostToolUse",
 		"PermissionRequest",
+		"Notification",
 		"Stop",
 		"SessionEnd",
 		"StopFailure",
@@ -1160,10 +1166,10 @@ describe("mergeClaudeHooks with malformed settings", () => {
 
 	it("leaves an unrelated event alone even when its value is malformed", () => {
 		const merged = mergeClaudeHooks({
-			hooks: { Notification: "whatever" },
+			hooks: { ConfigChange: "whatever" },
 		}) as { hooks: Record<string, unknown> };
 
-		expect(merged.hooks.Notification).toBe("whatever");
+		expect(merged.hooks.ConfigChange).toBe("whatever");
 	});
 
 	it("drops a malformed group without dropping the rest of the event", () => {

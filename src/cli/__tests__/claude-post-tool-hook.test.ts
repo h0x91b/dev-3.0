@@ -1,7 +1,7 @@
 /**
  * Claude Code's `PostToolUse` adapter: one request moves the status and drains
  * the pane's held messages. A subagent's tool call (payload carries `agent_id`)
- * moves the status only.
+ * must not change the parent task status.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -87,11 +87,10 @@ describe("handleClaudePostTool", () => {
 		expect(stderr).toBe("");
 	});
 
-	it("never asks for the pane's mail from inside a subagent or teammate", async () => {
+	it("keeps the parent approval wait intact when a subagent or teammate finishes a tool", async () => {
 		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
 		await handleClaudePostTool(JSON.stringify({ ...PAYLOAD, agent_id: "agent-7", agent_type: "Explore" }), SOCKET, CONTEXT, PANE_ENV);
-		const [, , params] = mockSend.mock.calls[0]!;
-		expect(params).not.toHaveProperty("paneId");
+		expect(mockSend).not.toHaveBeenCalled();
 	});
 
 	it("never asks for mail from a `claude -p` run inside the pane: it is not the pane's conversation", async () => {
