@@ -407,6 +407,7 @@ export async function launchTaskPty(
 	let launchAccountId = accountId;
 	let accountPick: agents.ResolvedAgentCommand["accountPick"];
 	let staleAccountDropped = false;
+	let projectLoginKept = false;
 	let freshLaunchSessionId: string | null = null;
 	let agentFromDefault = false;
 	let launchBedrockProfile: string | null | undefined;
@@ -455,6 +456,8 @@ export async function launchTaskPty(
 			resolvedAgentFamily = resolved.agentFamily;
 			resolvedLaunchModel = resolved.launchModel;
 			if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
+			projectLoginKept = !!resolved.projectLoginKept;
+			if (projectLoginKept) launchAccountId = undefined;
 			accountPick = resolved.accountPick;
 			staleAccountDropped = !!resolved.staleAccountDropped;
 			launchBedrockProfile = resolved.resolvedBedrockProfile;
@@ -476,6 +479,8 @@ export async function launchTaskPty(
 			resolvedAgentFamily = resolved.agentFamily;
 			resolvedLaunchModel = resolved.launchModel;
 			if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
+			projectLoginKept = !!resolved.projectLoginKept;
+			if (projectLoginKept) launchAccountId = undefined;
 			accountPick = resolved.accountPick;
 			staleAccountDropped = !!resolved.staleAccountDropped;
 			// No pick runs the global default. Name it on the pane only: the task keeps
@@ -515,7 +520,7 @@ export async function launchTaskPty(
 				sessionId: effectiveSessionId ?? null,
 				agentId: agentId ?? task.agentId,
 				configId: configId ?? task.configId,
-				accountId: resume && !staleAccountDropped ? accountId : (agentKey(resolvedBaseCmd, resolvedAgentFamily) === "codex"
+				accountId: resume && !staleAccountDropped && !projectLoginKept ? accountId : (agentKey(resolvedBaseCmd, resolvedAgentFamily) === "codex"
 					? codexAccountIdForHome(extraEnv.CODEX_HOME) : undefined) ?? launchAccountId,
 				agentFamily: resolvedAgentFamily,
 				sessionOriginCwd: carriedOriginCwd,

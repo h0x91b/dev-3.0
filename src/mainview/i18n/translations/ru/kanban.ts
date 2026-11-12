@@ -435,6 +435,8 @@ const kanban = {
 	"launch.accountAutoReasonNone": "Ни у одного подписочного аккаунта нет запаса · ближайший сброс через {time}",
 	"launch.accountAutoReasonNoneNever": "Для Авто нет свободного подписочного аккаунта",
 	"launch.accountExcludedHere": "Исключён из Авто в этом проекте",
+	"launch.accountRunsInProjectFolder": "Работает в папке Claude этого проекта",
+	"launch.accountRunsInOwnFolder": "Работает в своей папке Claude",
 	"launch.accountExcludedEverywhere": "Исключён из Авто во всех проектах",
 	"launch.addVariant": "+ Добавить вариант",
 	"launch.removeVariant": "Удалить",
