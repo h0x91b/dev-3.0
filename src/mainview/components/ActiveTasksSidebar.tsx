@@ -301,8 +301,20 @@ function ActiveTasksSidebar({
 				return prev;
 			});
 		}
+		// Scoped to the project: a move to another project has already re-homed the row via `taskUpdated`.
+		function onTaskRemoved(e: Event) {
+			const { taskId, projectId } = (e as CustomEvent).detail as { taskId: string; projectId: string };
+			setGlobalTasks((prev) => {
+				const next = prev.filter((t) => t.id !== taskId || t.projectId !== projectId);
+				return next.length === prev.length ? prev : next;
+			});
+		}
 		window.addEventListener("rpc:taskUpdated", onTaskUpdated);
-		return () => window.removeEventListener("rpc:taskUpdated", onTaskUpdated);
+		window.addEventListener("rpc:taskRemoved", onTaskRemoved);
+		return () => {
+			window.removeEventListener("rpc:taskUpdated", onTaskUpdated);
+			window.removeEventListener("rpc:taskRemoved", onTaskRemoved);
+		};
 	}, [effectiveScope]);
 
 	const sourceTasks = effectiveScope === "project" ? tasks : globalTasks;
