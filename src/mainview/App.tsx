@@ -2,7 +2,7 @@ import InterfaceOnboarding from "./components/InterfaceOnboarding";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAppState, canGoBack, routeTaskId, routeShowsTaskWorkspace, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, taskOpenRoute, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type NavigateOptions, type Route } from "./state";
 import { lastProjectForSpace, rememberProjectForSpace } from "./utils/spaceBoardMemory";
-import { digitTargets, mixedEntryId, type MixedEntry } from "./utils/digitOrder";
+import { digitTargets, isDigitTargetOnScreen, mixedEntryId, type MixedEntry } from "./utils/digitOrder";
 import { useMixedPending, withPendingMixedOrder } from "./mixed-order-store";
 import { api, isElectrobun, getRpcConnectionState } from "./rpc";
 import { ignoreStartupReadFailure, startupRead } from "./startup-read";
@@ -1238,11 +1238,12 @@ function App() {
 		(n: number, view: "project" | "task" | "preserve") => {
 			const target = digitTargetList[n - 1];
 			if (!target) return; // out of range — no-op
+			if (view === "preserve" && isDigitTargetOnScreen(target, state.route)) return;
 			const { projectId, spaceId } = digitTargetBoard(target);
 			if (view === "preserve") navigateToProject(projectId, spaceId);
 			else goToProjectView(projectId, view, spaceId);
 		},
-		[digitTargetList, digitTargetBoard, navigateToProject, goToProjectView],
+		[digitTargetList, digitTargetBoard, navigateToProject, goToProjectView, state.route],
 	);
 	const armGoToVerb = useCallback(() => {
 		goToModeRef.current = { stage: "verb" };
@@ -1725,6 +1726,7 @@ function App() {
 				if (target) {
 					e.preventDefault();
 					e.stopPropagation();
+					if (isDigitTargetOnScreen(target, state.route)) return;
 					const { projectId, spaceId } = digitTargetBoard(target);
 					navigateToProject(projectId, spaceId);
 				}
