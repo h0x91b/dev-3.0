@@ -9,7 +9,7 @@ import type {
 	PinnedClaudeLogin,
 	ProjectClaudeLogin,
 } from "../../shared/agent-accounts";
-import { AUTO_ACCOUNT_ID, isAgentDirAccountKind, isAutoAccountId, isRoutableAccountKind, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../shared/agent-accounts";
+import { AUTO_ACCOUNT_ID, codexWorkspaceIdNeeded, isAgentDirAccountKind, isAutoAccountId, isRoutableAccountKind, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../shared/agent-accounts";
 import { exclusionKey } from "../../shared/account-routing";
 import { autoCandidateTotal, autoReasonText, useAutoAccountPreview } from "./auto-account-ui";
 import type { CodingAgent } from "../../shared/types";
@@ -683,9 +683,10 @@ export default function AgentAccountIndicator({
 	// Only the picked account's name is private; "Auto ·" stays readable in streamer mode.
 	const autoPillParts =
 		autoSelected && preview?.picked ? (t("launch.accountAutoPill", { label: "\u0000" }).split("\u0000") as [string, string?]) : null;
+	const workspaceIdNeeded = codexWorkspaceIdNeeded(state);
 	const workspaceLabel = (identity: AgentAccountIdentity | null): string | null => {
 		if (kind !== "codex") return null;
-		const workspace = identity?.organization ?? shortCodexWorkspaceId(identity);
+		const workspace = identity?.organization ?? (workspaceIdNeeded(identity) ? shortCodexWorkspaceId(identity) : null);
 		return workspace ? t("settings.accountsWorkspace", { id: workspace }) : null;
 	};
 
