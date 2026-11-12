@@ -1,6 +1,7 @@
-> Superseded on 2026-11-09 by `decisions/2026/11/09/revert-inline-completion-offers-to-modal.md`: reverted, completion asks through the blocking modal again.
+> Superseded on 2026-11-09 by `decisions/2026/11/09/revert-inline-completion-offers-to-modal.md`: reverted, completion asks through the blocking modal again. Then `decisions/2026/11/09/completion-offer-style-setting.md` brought the inline style back as an opt-in setting, as a bar in the agent's pane rather than this card, and `decisions/2026/11/09/ready-to-complete-screen.md` built the global list this record rejected, as a screen of its own.
 
 # Completion offers render inline on the task, not as a modal
+
 
 ## Context
 

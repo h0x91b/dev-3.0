@@ -63,6 +63,29 @@ async function voidIfRunEndedMeanwhile(
 	if (ended) voidAgentRequest(kind, task.id);
 }
 
+/**
+ * The agent is blocked on the user's answer, so its task is a question, not work:
+ * Has Questions while it waits, back to Agent is Working when the user says no.
+ * Guarded moves, so a status someone else set in the meantime is never overwritten.
+ */
+async function parkWhileAsking(project: Project, task: Task): Promise<boolean> {
+	if (task.status !== "in-progress") return false;
+	try {
+		const moved = await moveTask({ taskId: task.id, projectId: project.id, newStatus: "user-questions", ifStatus: "in-progress" });
+		return moved?.status === "user-questions";
+	} catch {
+		return false;
+	}
+}
+
+async function unparkAfterDecline(project: Project, task: Task): Promise<void> {
+	try {
+		await moveTask({ taskId: task.id, projectId: project.id, newStatus: "in-progress", ifStatus: "user-questions" });
+	} catch {
+		// The agent's next hook moves it back anyway.
+	}
+}
+
 function isPendingRequest(kind: "complete" | "cancel" | "reset" | "launch", taskId: string, requestId: string): boolean {
 	const state = getAgentRequestState(kind, taskId);
 	return state.state === "pending" && state.requestId === requestId;
@@ -149,9 +172,14 @@ export async function requestDestructiveApproval(
 		});
 	}
 
+	// Only the task's own agent is blocked by its ask; a peer's ask leaves it working.
+	const ownAgentAsks = params.sourceTaskId === task.id;
+	const parked = stillAsking && ownAgentAsks && params.attachOnly !== true && await parkWhileAsking(project, task);
+
 	const { approved, stale } = await request.decision;
 	if (!approved) {
 		resetConsentByRequestId.delete(request.requestId);
+		if (parked && !stale) await unparkAfterDecline(project, task);
 		if (!stale) return { approved: false };
 		// Voided: the task finished or vanished by another path. Its live status lets
 		// the CLI tell "already where you asked" apart from "ended some other way".

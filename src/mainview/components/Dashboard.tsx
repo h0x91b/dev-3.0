@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch } from "react";
 import { toast } from "../toast";
-import type { Project, Space } from "../../shared/types";
+import type { Project, ResourceUsage, Space } from "../../shared/types";
 import { isBuiltinOpsProject, isSpaceSensitive, orderProjectsForDisplay } from "../../shared/types";
 import { HOME_GROUP_ID } from "../utils/spaceGroups";
 import { resolveMixedOrder } from "../utils/digitOrder";
@@ -24,6 +24,7 @@ interface DashboardProps {
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
 	bellCounts: Map<string, number>;
+	resourceUsage?: Map<string, ResourceUsage>;
 	onOpenAddProject: (spaceIds?: string[]) => void;
 	/** The dashboard then shows the mixed order, so the rail's own space order is not what is on screen. */
 	digitsFollowSpaces?: boolean;
@@ -34,6 +35,7 @@ function Dashboard({
 	dispatch,
 	navigate,
 	bellCounts,
+	resourceUsage,
 	onOpenAddProject,
 	digitsFollowSpaces = false,
 }: DashboardProps) {
@@ -178,6 +180,7 @@ function Dashboard({
 						dispatch={dispatch}
 						navigate={navigate}
 						bellCounts={bellCounts}
+						resourceUsage={resourceUsage}
 						onRemoveProject={handleRemoveProject}
 						onOpenAddProject={onOpenAddProject}
 						onReorderProjects={handleReorderProjects}
