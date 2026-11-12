@@ -15,7 +15,7 @@ import { columnAgentFailureCopy } from "./utils/columnAgentFailureToast";
 import { preparationFailureMessage } from "./utils/preparationFailureMessage";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
-import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, BoardCopyFailureReason, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo, LiveArtifact, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
+import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, BoardCopyFailureReason, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo, LiveArtifact, SharedArtifact, SharedImage, StaleTmuxServer, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
 import { ACTIVE_STATUSES, hasGitWorkflow, orderProjectsForDisplay, getTaskTitle } from "../shared/types";
 import type { DeepLinkNav } from "../shared/deep-link";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
@@ -78,6 +78,7 @@ import RemoteAccessDownNotice from "./components/RemoteAccessDownNotice";
 import RemoteSignIn from "./components/RemoteSignIn";
 import RemoteAccessExposedPorts from "./components/RemoteAccessExposedPorts";
 import { ConfirmHost, confirm, whenConfirmHostMounted } from "./confirm";
+import { STALE_TMUX_SERVER_MESSAGE, describeTmuxRestartImpact } from "./tmux-restart-impact";
 import SecretRequestModal from "./components/SecretRequestModal";
 import type { SecretRequest } from "../shared/secret-request";
 import AgentLaunchRequestModal from "./components/AgentLaunchRequestModal";
@@ -796,23 +797,33 @@ function App() {
 			})
 			.catch((err) => console.error("Failed to check the tmux server:", err));
 
-		function showStaleServerNotice(staleBinary: "deleted" | "elsewhere") {
-			toast.warning(t(staleBinary === "deleted" ? "terminal.staleTmuxServerDeleted" : "terminal.staleTmuxServerElsewhere"), {
+		function showStaleServerNotice(staleBinary: StaleTmuxServer) {
+			toast.warning(t(STALE_TMUX_SERVER_MESSAGE[staleBinary]), {
 				source: "terminal",
-				// Lost access waits for the user: a timed toast went unseen at launch. Another
-				// running copy legitimately shares the server, so that one must not nag forever.
-				durationMs: staleBinary === "deleted" ? Infinity : 15_000,
+				// A coming access loss or an undrivable server waits for the user: a timed toast went
+				// unseen at launch. Another running copy legitimately shares the server, so that one must not nag forever.
+				durationMs: staleBinary === "elsewhere" ? 15_000 : Infinity,
 				actions: [{ label: t("terminal.restartTerminals"), emphasis: true, onClick: () => void restartTmuxServer(staleBinary) }],
 			});
 		}
 
 		// The action dismisses the toast before the dialog answers, so Cancel or a failure brings it back.
-		async function restartTmuxServer(staleBinary: "deleted" | "elsewhere") {
+		async function restartTmuxServer(staleBinary: StaleTmuxServer) {
 			const ok = await confirm({
 				title: t("terminal.restartTerminalsTitle"),
 				message: t("terminal.restartTerminalsMessage"),
-				confirmLabel: t("terminal.restartTerminals"),
+				confirmLabel: t("terminal.restartNow"),
+				cancelLabel: t("terminal.restartLater"),
 				danger: true,
+				focusCancel: true,
+				deferred: {
+					pending: t("terminal.restartImpactPending"),
+					promise: api.request.getTmuxRestartImpact().then((impact) => describeTmuxRestartImpact(impact, t)),
+					unknown: t("terminal.restartImpactUnknown"),
+					// The user decides on what is listed, so it must be on screen before Restart now works.
+					gateConfirm: true,
+					gateTimeoutMs: 5_000,
+				},
 			});
 			if (!ok) {
 				showStaleServerNotice(staleBinary);

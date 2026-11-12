@@ -1,5 +1,8 @@
 # Start the macOS tmux server as a launchd job
 
+> Superseded in part on 2026-11-12 by `decisions/2026/11/12/same-path-update-keeps-tmux-tcc-access.md`: a tmux
+> replaced at the same path (an ordinary update) keeps folder access and is no longer reported as `deleted`.
+
 ## Context
 
 Task terminals on macOS lost `~/Documents`, `~/Desktop` and Full Disk Access at random, hours after

@@ -25,6 +25,7 @@ import {
 	selectTmuxBinary,
 } from "./binary";
 import { type BoundedRunResult, type SpawnBounds, runBounded } from "./bounded-spawn";
+import type { StaleTmuxServer } from "../../shared/types";
 import { DEFAULT_TMUX_SOCKET } from "./constants";
 import { activeTmuxConfigPath, tmuxClientCwd } from "./config";
 import { ensureLaunchdServer, predatesLaunchdServer, staleServerBinary } from "./launchd-server";
@@ -158,8 +159,12 @@ export class TmuxClient {
 		return predatesLaunchdServer({ binary: getTmuxBinary(), socket: opts?.socket ?? this.defaultSocket });
 	}
 
-	/** A running server whose executable is gone or belongs to another dev3 bundle (macOS bundled tmux only). */
-	serverBinaryStale(opts?: SocketOpt): "deleted" | "elsewhere" | null {
+	/**
+	 * A running server no known tmux can drive (`incompatible`), or whose tmux
+	 * is gone or belongs to another dev3 bundle (macOS bundled tmux only).
+	 */
+	serverBinaryStale(opts?: SocketOpt): StaleTmuxServer | null {
+		if (getTmuxServerVersionMismatch()) return "incompatible";
 		return staleServerBinary({ binary: getTmuxBinary(), socket: opts?.socket ?? this.defaultSocket });
 	}
 

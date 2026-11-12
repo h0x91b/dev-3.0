@@ -24,6 +24,7 @@ vi.mock("../rpc", () => ({
 			getLaunchLocationIssue: vi.fn().mockResolvedValue(null),
 			getTmuxServerNotice: vi.fn().mockResolvedValue({ predatesLaunchd: false, staleBinary: null }),
 			restartTmuxServer: vi.fn().mockResolvedValue({ ok: true }),
+			getTmuxRestartImpact: vi.fn().mockResolvedValue({ taskTerminals: 0, otherSessions: 0, working: [] }),
 			checkGhAvailable: vi.fn().mockResolvedValue({ available: true, notInstalled: false }),
 			getProjects: vi.fn().mockResolvedValue([]),
 			// Opening a project board asks once whether there is anything to import.
@@ -391,7 +392,11 @@ describe("App keyboard shortcuts", () => {
 
 			vi.mocked(confirm).mockResolvedValueOnce(false);
 			await userEvent.click(screen.getByRole("button", { name: "Restart terminals" }));
-			await waitFor(() => expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ title: "Restart all task terminals?", danger: true })));
+			await waitFor(() =>
+				expect(confirm).toHaveBeenCalledWith(
+					expect.objectContaining({ title: "Restart all task terminals?", danger: true, focusCancel: true, cancelLabel: "Restart later" }),
+				),
+			);
 			expect(api.request.restartTmuxServer).not.toHaveBeenCalled();
 			expect(await screen.findByRole("button", { name: "Restart terminals" })).toBeInTheDocument();
 			expect(screen.getByText(/dev-3.0 copy was deleted/)).toBeInTheDocument();
@@ -413,6 +418,31 @@ describe("App keyboard shortcuts", () => {
 			await renderApp();
 			await userEvent.click(await screen.findByRole("button", { name: "Restart terminals" }));
 			await waitFor(() => expect(api.request.restartTmuxServer).toHaveBeenCalledTimes(1));
+		});
+
+		it("lists the agents a restart would cut off mid-turn before Restart now works", async () => {
+			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: false, staleBinary: "deleted" });
+			vi.mocked(api.request.getTmuxRestartImpact).mockResolvedValueOnce({
+				taskTerminals: 3,
+				otherSessions: 0,
+				working: [{ taskId: "t1", seqLabel: "1801", title: "Coordinate the board", projectName: "dev-3.0" }],
+			});
+			vi.mocked(confirm).mockResolvedValueOnce(false);
+			await renderApp();
+			await userEvent.click(await screen.findByRole("button", { name: "Restart terminals" }));
+			await waitFor(() => expect(confirm).toHaveBeenCalled());
+			const { deferred } = vi.mocked(confirm).mock.lastCall![0];
+			expect(deferred?.gateConfirm).toBe(true);
+			await expect(deferred?.promise).resolves.toBe(
+				"3 task terminals close.\nThis agent is mid-turn and gets cut off:\n• #1801 Coordinate the board · dev-3.0",
+			);
+		});
+
+		it("offers a restart for a server no known tmux can drive", async () => {
+			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: false, staleBinary: "incompatible" });
+			await renderApp();
+			expect(await screen.findByText(/can't drive/)).toBeInTheDocument();
+			expect(screen.getByRole("button", { name: "Restart terminals" })).toBeInTheDocument();
 		});
 
 		it("warns about a server running another dev-3.0 copy's tmux", async () => {

@@ -52,7 +52,7 @@ import type { ExposedPort, PortInfo, ResourceUsage, SystemLoadSnapshot, SystemMe
 import type { PtyThroughputStats, TmuxLayout, TmuxSessionInfo, TmuxWindowEntry } from "./tmux";
 import type { DevServerStatus, DevServerSummary } from "./dev-server";
 import type { RemoteAccessStatus, RemoteNetInterface } from "./remote";
-import type { AgentCheckResult, AgentSkillInfo, HarnessReadinessReport, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo, TmuxServerNotice } from "./environment";
+import type { AgentCheckResult, AgentSkillInfo, HarnessReadinessReport, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo, TmuxRestartImpact, TmuxServerNotice } from "./environment";
 import type { ExplorerListing, FolderListing } from "./file-explorer";
 import type { AgentUsageReport, ProductivityStats } from "./usage-stats";
 
@@ -1099,6 +1099,11 @@ export type AppRPCSchema = {
 			getTmuxServerNotice: {
 				params: void;
 				response: TmuxServerNotice;
+			};
+			/** What a `restartTmuxServer` would end right now; null when the server cannot be read. */
+			getTmuxRestartImpact: {
+				params: void;
+				response: TmuxRestartImpact | null;
 			};
 			/** Kill the default tmux server; open task terminals end and offer to resume. */
 			restartTmuxServer: {

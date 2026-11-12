@@ -28,6 +28,8 @@ export interface ConfirmOptions {
 	cancelLabel?: string;
 	/** Style the confirm button as destructive (red). */
 	danger?: boolean;
+	/** Focus Cancel on open, so Enter or Space picks the safe answer. */
+	focusCancel?: boolean;
 	/**
 	 * Mark the dialog as initiated by an AI agent, not by the user's own click:
 	 * shows a robot badge, an accent border, and autofocuses Cancel so muscle
@@ -485,7 +487,7 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 					<div className="flex flex-wrap justify-end gap-2 pt-1">
 						<button
 							type="button"
-							autoFocus={pending.agentInitiated || anchored}
+							autoFocus={pending.agentInitiated || pending.focusCancel || anchored}
 							data-confirm-cancel
 							onClick={() => close(false)}
 							className={`${anchored ? "px-3 py-1.5 text-xs" : "px-4 py-2 text-sm"} whitespace-nowrap rounded-lg text-fg-2 hover:text-fg hover:bg-overlay-hover transition-colors`}
