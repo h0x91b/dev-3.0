@@ -1,4 +1,4 @@
-import { digitBadgeById, digitTargets, mixedEntryId, resolveMixedOrder } from "../digitOrder";
+import { digitBadgeById, digitTargets, isDigitTargetOnScreen, mixedEntryId, resolveMixedOrder, type MixedEntry } from "../digitOrder";
 import type { Project, Space, SpacesFile } from "../../../shared/types";
 
 const proj = (id: string, over?: Partial<Project>): Project => ({
@@ -158,5 +158,43 @@ describe("digitBadgeById", () => {
 			"Nerd-Dictum": "4",
 			"dev-3.0": "5",
 		});
+	});
+});
+
+describe("isDigitTargetOnScreen", () => {
+	const a = proj("a");
+	const b = proj("b");
+	const c = proj("c");
+	const projectA: MixedEntry = { kind: "project", project: a };
+	const spaceBC: MixedEntry = { kind: "space", space: sp("s1", ["b", "c"]), projects: [b, c] };
+	const otherSpace: MixedEntry = { kind: "space", space: sp("s2", ["a"]), projects: [a] };
+
+	it("is true for the project board on screen, with or without a selected task", () => {
+		expect(isDigitTargetOnScreen(projectA, { screen: "project", projectId: "a" })).toBe(true);
+		expect(isDigitTargetOnScreen(projectA, { screen: "project", projectId: "a", activeTaskId: "t1" })).toBe(true);
+		expect(isDigitTargetOnScreen(projectA, { screen: "task", projectId: "a", taskId: "t1" })).toBe(true);
+	});
+
+	it("is false for another project", () => {
+		expect(isDigitTargetOnScreen(projectA, { screen: "project", projectId: "b" })).toBe(false);
+	});
+
+	it("is false for a project while a space board containing it is on screen", () => {
+		expect(isDigitTargetOnScreen(projectA, { screen: "project", projectId: "a", spaceId: "s2" })).toBe(false);
+	});
+
+	it("is true for a space target on its board, whichever member anchors it", () => {
+		expect(isDigitTargetOnScreen(spaceBC, { screen: "project", projectId: "c", spaceId: "s1" })).toBe(true);
+		expect(isDigitTargetOnScreen(spaceBC, { screen: "task", projectId: "b", taskId: "t1", spaceId: "s1" })).toBe(true);
+	});
+
+	it("is false for a space target on another space or on a plain project board", () => {
+		expect(isDigitTargetOnScreen(spaceBC, { screen: "project", projectId: "a", spaceId: "s2" })).toBe(false);
+		expect(isDigitTargetOnScreen(otherSpace, { screen: "project", projectId: "a" })).toBe(false);
+	});
+
+	it("is false off the project and task screens", () => {
+		expect(isDigitTargetOnScreen(projectA, { screen: "dashboard" })).toBe(false);
+		expect(isDigitTargetOnScreen(spaceBC, { screen: "dashboard" })).toBe(false);
 	});
 });

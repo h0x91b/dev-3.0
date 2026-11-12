@@ -1,4 +1,5 @@
 import { isBuiltinOpsProject, orderSpaces, type Project, type Space, type SpacesFile } from "../../shared/types";
+import type { Route } from "../state";
 
 export type MixedEntry =
 	| { kind: "space"; space: Space; projects: Project[] }
@@ -95,6 +96,18 @@ export function digitTargets(projects: Project[], file: SpacesFile, followSpaces
 		.filter((p) => !p.deleted && !isBuiltinOpsProject(p))
 		.slice(0, 9)
 		.map((project) => ({ kind: "project", project }));
+}
+
+/**
+ * True when `target` is the board `route` already shows, so a digit shortcut for
+ * it has nothing to switch to. A space board anchored on a project is a different
+ * board from that project alone.
+ */
+export function isDigitTargetOnScreen(target: MixedEntry, route: Route): boolean {
+	if (route.screen !== "project" && route.screen !== "task") return false;
+	const spaceId = route.spaceId ?? null;
+	if (target.kind === "space") return spaceId === target.space.id;
+	return spaceId === null && route.projectId === target.project.id;
 }
 
 /** Digit badge ("1".."9") per target id, for surfaces that label rows with their shortcut. */
