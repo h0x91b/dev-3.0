@@ -1721,14 +1721,13 @@ function App() {
 				//  - "fullscreen" users have no task to show full-page after a switch, so
 				//                 dropping them into a split they never use is jarring —
 				//                 land on the Kanban board instead (pre-#619 behavior).
+				// The board already on screen is a no-op, so the selection stays.
 				// Built-in Operations board is reached via Cmd+0, not Cmd+1..9.
-				const target = digitTargetList[parseInt(e.key, 10) - 1];
-				if (target) {
+				const n = parseInt(e.key, 10);
+				if (digitTargetList[n - 1]) {
 					e.preventDefault();
 					e.stopPropagation();
-					if (isDigitTargetOnScreen(target, state.route)) return;
-					const { projectId, spaceId } = digitTargetBoard(target);
-					navigateToProject(projectId, spaceId);
+					goToProjectIndex(n, "preserve");
 				}
 			} else if (matchesShortcut(e, "task-hints")) {
 				// Vimium-style hint navigation. Works on any screen that has hint

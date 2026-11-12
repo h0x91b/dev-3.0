@@ -1050,6 +1050,28 @@ describe("App keyboard shortcuts", () => {
 			expect(project()).toHaveAttribute("data-active-task-id", "t1");
 		});
 
+		it("⌘ + the digit of another board switches to it and clears the selected task", async () => {
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1", taskView: true }),
+			});
+			await renderWith(true);
+			press({ key: "2", code: "Digit2", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p2");
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
+			expect(project()).toHaveAttribute("data-active-task-id", "");
+		});
+
+		it("g then the digit of another board switches to it and clears the selected task", async () => {
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1", taskView: true }),
+			});
+			await renderWith(true);
+			press({ key: "g", code: "KeyG" });
+			press({ key: "3", code: "Digit3" });
+			expect(project()).toHaveAttribute("data-project-id", "p4");
+			expect(project()).toHaveAttribute("data-active-task-id", "");
+		});
+
 		it("digits follow the order just chosen, before the host has stored it", async () => {
 			await renderWith(true);
 			act(() => commitMixedOrder(["sp_a", "p1", "p4"]));
