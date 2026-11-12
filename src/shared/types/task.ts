@@ -58,6 +58,8 @@ export interface TaskRuntimeState {
 	 * instances share `~/.dev3.0`; boot recovery must leave a live peer's run alone.
 	 */
 	ownerPid?: number;
+	/** A `tearing-down` run that stopped on an error: the task is waiting for a retry, not closing. */
+	failed?: true;
 	updatedAt: number;
 }
 

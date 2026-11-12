@@ -18,6 +18,8 @@ export type LifecycleRuntime =
 		phase: "tearing-down";
 		targetStatus: "completed" | "cancelled";
 		runId: string;
+		/** The run stopped on an error and waits for a retry; nothing is tearing down now. */
+		failed?: true;
 	};
 
 export interface LifecycleFacts {

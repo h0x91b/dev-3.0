@@ -52,3 +52,13 @@ describe("lifecycleStateFromTask — completion ownership", () => {
 		).toBe(true);
 	});
 });
+
+describe("lifecycleStateFromTask — teardown runtime", () => {
+	it("keeps a failed teardown marked failed, and a live one unmarked", () => {
+		const failed = makeTask({ runtimeState: { runtime: "tearing-down", stage: "cancelled", runId: "r1", failed: true, updatedAt: 1 } });
+		const live = makeTask({ runtimeState: { runtime: "tearing-down", stage: "completed", runId: "r2", updatedAt: 1 } });
+
+		expect(lifecycleStateFromTask(project, failed).runtime).toEqual({ phase: "tearing-down", targetStatus: "cancelled", runId: "r1", failed: true });
+		expect(lifecycleStateFromTask(project, live).runtime).toEqual({ phase: "tearing-down", targetStatus: "completed", runId: "r2" });
+	});
+});

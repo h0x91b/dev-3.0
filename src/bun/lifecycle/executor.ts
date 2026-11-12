@@ -142,6 +142,7 @@ function runtimeState(runtime: LifecycleRuntime): TaskRuntimeState {
 			stage: runtime.targetStatus,
 			runId: runtime.runId,
 			ownerPid: process.pid,
+			...(runtime.failed ? { failed: true as const } : {}),
 			updatedAt: Date.now(),
 		};
 	}
