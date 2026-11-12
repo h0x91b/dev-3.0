@@ -12,13 +12,23 @@ import { useResolvedTheme } from "../../hooks/useResolvedTheme";
 import { MarkdownImage, MarkdownImageProvider } from "./markdown-images";
 import { createSourceLineComponents } from "./markdown-source-lines";
 import { remarkProtectRelativeUrls, safeLinkHref, unprotect } from "./markdown-urls";
+import { remarkBareTaskRefs, remarkHtmlAsText } from "./markdown-task-text";
 import { parseRefUri } from "../../../shared/task-refs";
-import { TaskRefLink } from "../TaskRefText";
+import { TaskRefLink, TaskRefScopeContext } from "../TaskRefText";
 
 const mermaidPlugin = createMermaidPlugin();
 const plugins = { mermaid: mermaidPlugin };
 const documentRemarkPlugins = [...Object.values(defaultRemarkPlugins), remarkProtectRelativeUrls];
 const commentRemarkPlugins = [...documentRemarkPlugins, remarkBreaks];
+// Plain-text authors: HTML stays literal and bare refs become links before the
+// URL protector runs, so those links ride its reference token.
+const taskTextRemarkPlugins = [
+	...Object.values(defaultRemarkPlugins),
+	remarkHtmlAsText,
+	remarkBareTaskRefs,
+	remarkProtectRelativeUrls,
+	remarkBreaks,
+];
 const allowedTags = {
 	details: [],
 	summary: [],
@@ -125,6 +135,8 @@ interface MarkdownContentProps {
 	sourceLines?: MarkdownSourceLines | null;
 	/** Marks body rows of a table with `data-diff-kind`, one entry per row after the header. */
 	tableRows?: readonly string[];
+	/** Agent-written plain text (a task description): literal HTML, bare `seq:N` refs linked. */
+	taskText?: boolean;
 }
 
 /** Lines the header and delimiter rows take before the first body row. */
@@ -138,6 +150,7 @@ export function MarkdownContent({
 	rendererConfig,
 	sourceLines,
 	tableRows,
+	taskText = false,
 }: MarkdownContentProps) {
 	const lineOffset = sourceLines?.lineOffset ?? null;
 	const commentedLines = sourceLines?.commentedLines ?? null;
@@ -177,13 +190,14 @@ export function MarkdownContent({
 
 	return (
 		<Streamdown
-			key={`${rendererConfig.theme}:${isDocument}:${imageBaseDir ?? ""}:${imageRootDir ?? ""}:${lineOffset ?? ""}:${commentedSignature}:${rowSignature}`}
+			key={`${rendererConfig.theme}:${isDocument}:${taskText}:${imageBaseDir ?? ""}:${imageRootDir ?? ""}:${lineOffset ?? ""}:${commentedSignature}:${rowSignature}`}
 			mode="static"
 			dir="auto"
 			// `space-y-0` zeroes `margin-top` on every block but the first, and it
 			// outranks the stylesheet — a document needs its own top margins to put
 			// more air above a heading than below it, so it opts out.
-			className={isDocument ? "dev3-md-doc" : "space-y-0"}
+			// A task description keeps Streamdown's default block rhythm (`space-y-4`).
+			className={isDocument ? "dev3-md-doc" : taskText ? undefined : "space-y-0"}
 			components={components}
 			controls={false}
 			lineNumbers={false}
@@ -194,7 +208,7 @@ export function MarkdownContent({
 			allowedTags={allowedTags}
 			plugins={plugins}
 			mermaid={{ config: rendererConfig.mermaid, errorComponent: MermaidSourceFallback }}
-			remarkPlugins={isDocument ? documentRemarkPlugins : commentRemarkPlugins}
+			remarkPlugins={taskText ? taskTextRemarkPlugins : isDocument ? documentRemarkPlugins : commentRemarkPlugins}
 		>
 			{body}
 		</Streamdown>
@@ -240,5 +254,25 @@ export function CommentMarkdown({ body }: { body: string }) {
 		>
 			<MarkdownContent body={body} rendererConfig={rendererConfig} />
 		</div>
+	);
+}
+
+/**
+ * A task description as Markdown: comment-sized type, line breaks kept as typed,
+ * raw HTML shown literally, and every `seq:N` / `pr:N` a reference chip scoped
+ * to the task's own project.
+ */
+export function TaskDescriptionMarkdown({ body, projectId, taskId }: { body: string; projectId: string; taskId: string }) {
+	const rendererConfig = useMarkdownRendererConfig();
+	const scope = useMemo(() => ({ projectId, taskId }), [projectId, taskId]);
+	return (
+		<TaskRefScopeContext.Provider value={scope}>
+			<div
+				className="dev3-pr-md dev3-task-desc-md min-w-0 text-sm leading-relaxed text-fg-2"
+				data-testid="task-description-markdown"
+			>
+				<MarkdownContent body={body} rendererConfig={rendererConfig} taskText />
+			</div>
+		</TaskRefScopeContext.Provider>
 	);
 }

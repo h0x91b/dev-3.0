@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
-import { CommentMarkdown, MarkdownDocument } from "../markdown";
+import { CommentMarkdown, MarkdownDocument, TaskDescriptionMarkdown } from "../markdown";
+import { I18nProvider } from "../../../i18n";
 import { installImmediateIntersectionObserver } from "../../../test-utils/immediate-intersection";
 
 const mermaid = vi.hoisted(() => ({
@@ -152,5 +153,67 @@ describe("MarkdownDocument", () => {
 			"data-mermaid-state",
 			"error",
 		));
+	});
+});
+
+describe("TaskDescriptionMarkdown", () => {
+	function renderDescription(body: string) {
+		render(
+			<I18nProvider>
+				<TaskDescriptionMarkdown body={body} projectId="p1" taskId="t1" />
+			</I18nProvider>,
+		);
+		return screen.getByTestId("task-description-markdown");
+	}
+
+	it("renders headings, lists, emphasis, inline and fenced code", () => {
+		const container = renderDescription(
+			"# Goal\n\n## Notes\n\n- first *item*\n- second\n\n1. one\n\nUse `bun run lint` now.\n\n```ts\nconst a = 1;\n```",
+		);
+
+		expect(container.querySelector("h1")?.textContent).toBe("Goal");
+		expect(container.querySelector("h2")?.textContent).toBe("Notes");
+		expect([...container.querySelectorAll("ul > li")].map((li) => li.textContent)).toEqual(["first item", "second"]);
+		expect(container.querySelector("ol > li")?.textContent).toBe("one");
+		expect(container.querySelector("em")?.textContent).toBe("item");
+		expect(container.querySelector("p code")?.textContent).toBe("bun run lint");
+		expect(container.querySelector("pre")?.textContent).toContain("const a = 1;");
+		expect(container.textContent).not.toContain("# Goal");
+	});
+
+	it("keeps single line breaks as typed", () => {
+		const container = renderDescription("line one\nline two");
+		expect(container.querySelector("br")).not.toBeNull();
+	});
+
+	it("turns bare and bracketed task / PR refs into chips, inside lists and headings too", () => {
+		const container = renderDescription("## Follow-up to seq:2076\n\n- see <seq:115>\n- and pr:2187 too");
+		const refs = [...container.querySelectorAll("[data-task-ref]")].map((el) => el.getAttribute("data-task-ref"));
+
+		expect(refs).toEqual(["seq:2076", "seq:115", "pr:2187"]);
+		expect(container.querySelector("h2 [data-task-ref]")?.textContent).toBe("seq:2076");
+		expect(container.querySelector("a[href^='seq:'], a[href^='pr:']")).toBeNull();
+	});
+
+	it("leaves refs inside code and inside a link's own label as plain text", () => {
+		const container = renderDescription("`seq:9` and\n\n```\npr:3\n```\n\n[about seq:4](https://example.com)");
+
+		expect(container.querySelectorAll("[data-task-ref]")).toHaveLength(0);
+		expect(screen.getByRole("link", { name: "about seq:4" })).toHaveAttribute("href", "https://example.com/");
+	});
+
+	it("shows raw HTML as literal text and never executes it", () => {
+		const container = renderDescription(
+			'Fix <TaskCard> now <img src="x" onerror="alert(1)">\n\n<script>alert(2)</script>\n\n<div onclick="x()">block</div>',
+		);
+
+		expect(container.querySelector("script, img, div[onclick], taskcard")).toBeNull();
+		expect(container.textContent).toContain("Fix <TaskCard> now");
+		expect(container.textContent).toContain("<script>alert(2)</script>");
+	});
+
+	it("neutralizes javascript links", () => {
+		renderDescription("[click](javascript:alert(1))");
+		expect(screen.getByText(/click/).closest("a")).toBeNull();
 	});
 });
