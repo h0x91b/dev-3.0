@@ -25,7 +25,7 @@ const WORKER_TIMEOUT_MS = 2 * HOUR_MS;
 export interface WorktreeCleanupState {
 	lastStartedAt?: string;
 	lastFinishedAt?: string;
-	lastResult?: { freedBytes: number; removedDirs: number; failed: number; scannedDirs: number };
+	lastResult?: { freedBytes: number; removedDirs: number; removedMediaFiles?: number; failed: number; scannedDirs: number };
 	lastError?: string;
 }
 
@@ -68,6 +68,7 @@ export async function checkWorktreeCleanup(deps: WorktreeCleanupDeps): Promise<"
 				lastResult: {
 					freedBytes: result.freedBytes,
 					removedDirs: result.removedDirs,
+					removedMediaFiles: result.removedMediaFiles,
 					failed: result.failed,
 					scannedDirs: result.scannedDirs,
 				},
@@ -78,6 +79,7 @@ export async function checkWorktreeCleanup(deps: WorktreeCleanupDeps): Promise<"
 		log.info("Daily worktree cleanup finished", {
 			freed: formatBytes(result.freedBytes),
 			removedDirs: result.removedDirs,
+			removedMediaFiles: result.removedMediaFiles,
 			failed: result.failed,
 			skipped: result.skipped,
 			scannedDirs: result.scannedDirs,

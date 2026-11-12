@@ -14,6 +14,7 @@ import type { ParsedArgs } from "../args";
 import { isExecutableFile } from "../../bun/executable";
 import { compressAllDiffSnapshots, measurePlainDiffSnapshots } from "../../bun/diff-snapshots";
 import { checkRepositoryAccess, type RepoAccessDeps } from "./doctor-repo-access";
+import { BUNDLE_RETENTION_DAYS, collectMediaReport, MEDIA_PRUNE_MIN_BYTES, MEDIA_RETENTION_DAYS, mediaPruneSelects, pruneMedia, type MediaPruneOutcome, type MediaReport } from "./doctor-media";
 import { collectNativeProcesses, realProcessInventoryDeps, renderNativeProcesses } from "./doctor-processes";
 import {
 	collectWorktreeReport,
@@ -493,18 +494,46 @@ export function renderChecks(results: CheckResult[]): string {
  * Report-only exits 0 like `--processes`; a prune that could not reclaim
  * everything it selected exits {@link CLI_EXIT_CODE_PRUNE_INCOMPLETE}.
  */
-function handleWorktrees(args: ParsedArgs, scanDeps: WorktreeScanDeps): never {
-	const rawOlderThan = args.flags?.["prune-older-than"];
-	let olderThanDays: number | null = null;
-	if (rawOlderThan !== undefined) {
-		olderThanDays = rawOlderThan === "true" ? null : parseDurationDays(rawOlderThan);
-		if (olderThanDays === null) {
-			process.stderr.write(
-				`--prune-older-than needs a duration like 30d, 2w, 6m or 1y (got ${rawOlderThan === "true" ? "no value" : `"${rawOlderThan}"`}).\n`,
-			);
-			process.exit(CLI_EXIT_CODE_USAGE_ERROR);
-		}
+/** Days from a `--flag 30d` duration, null when absent; exits with a usage error when unparseable. */
+function durationFlag(args: ParsedArgs, name: string): number | null {
+	const raw = args.flags?.[name];
+	if (raw === undefined) return null;
+	const days = raw === "true" ? null : parseDurationDays(raw);
+	if (days === null) {
+		process.stderr.write(`--${name} needs a duration like 30d, 2w, 6m or 1y (got ${raw === "true" ? "no value" : `"${raw}"`}).\n`);
+		process.exit(CLI_EXIT_CODE_USAGE_ERROR);
 	}
+	return days;
+}
+
+function renderMedia(report: MediaReport, pruned: MediaPruneOutcome[] | null): string {
+	if (pruned) {
+		const removed = pruned.filter((o) => o.action === "removed");
+		const failed = pruned.filter((o) => o.action === "failed");
+		const freed = removed.reduce((sum, o) => sum + o.freedBytes, 0);
+		const lines = [`Large media: removed ${removed.length} files, ${formatBytes(freed)} freed.`];
+		for (const f of failed) lines.push(`  failed: ${f.path} — ${f.reason}`);
+		return `${lines.join("\n")}\n`;
+	}
+	if (report.entries.length === 0) return `Large media (≥ ${formatBytes(MEDIA_PRUNE_MIN_BYTES)}) in shared-images/shared-artifacts/uploads: none.\n`;
+	const held = report.entries.filter((e) => e.heldByOpenTask);
+	const old = report.entries.filter((e) => mediaPruneSelects(e, { mediaDays: MEDIA_RETENTION_DAYS, bundleDays: null }));
+	const oldBundles = report.entries.filter((e) => mediaPruneSelects(e, { mediaDays: null, bundleDays: BUNDLE_RETENTION_DAYS }));
+	const sum = (list: typeof report.entries) => formatBytes(list.reduce((n, e) => n + e.bytes, 0));
+	return [
+		`Large media (≥ ${formatBytes(MEDIA_PRUNE_MIN_BYTES)}) in shared-images/shared-artifacts/uploads: ${report.entries.length} files, ${formatBytes(report.totalBytes)} (${held.length} held by open tasks, ${sum(held)}).`,
+		`  Images/videos older than ${MEDIA_RETENTION_DAYS}d and not held: ${old.length} files, ${sum(old)} — dev3 doctor --worktrees --prune-media-older-than ${MEDIA_RETENTION_DAYS}d`,
+		`  Stored artifact ZIPs older than ${BUNDLE_RETENTION_DAYS}d and not held: ${oldBundles.length} files, ${sum(oldBundles)} — dev3 doctor --worktrees --prune-bundles-older-than ${BUNDLE_RETENTION_DAYS}d`,
+		"",
+	].join("\n");
+}
+
+function handleWorktrees(args: ParsedArgs, scanDeps: WorktreeScanDeps): never {
+	const olderThanDays = durationFlag(args, "prune-older-than");
+	const mediaPolicy = {
+		mediaDays: durationFlag(args, "prune-media-older-than"),
+		bundleDays: durationFlag(args, "prune-bundles-older-than"),
+	};
 	const options = {
 		orphans: args.flags?.["prune-orphans"] === "true",
 		olderThanDays,
@@ -513,6 +542,10 @@ function handleWorktrees(args: ParsedArgs, scanDeps: WorktreeScanDeps): never {
 	const report = collectWorktreeReport(scanDeps);
 	const pruning = options.orphans || options.olderThanDays !== null;
 	const outcomes = pruning ? prune(report, options, scanDeps) : [];
+	// After the worktree prune, so media of a just-deleted orphan is not walked twice.
+	const media = collectMediaReport(scanDeps);
+	const mediaPruned =
+		mediaPolicy.mediaDays === null && mediaPolicy.bundleDays === null ? null : pruneMedia(media, mediaPolicy, scanDeps);
 	// After the prune, so nothing is compressed just to be deleted.
 	const taskDirs = report.entries.map((e) => e.dir);
 	const gzipping = args.flags?.["gzip-diffs"] === "true";
@@ -521,13 +554,15 @@ function handleWorktrees(args: ParsedArgs, scanDeps: WorktreeScanDeps): never {
 		: { uncompressed: measurePlainDiffSnapshots(taskDirs) };
 
 	if (args.flags?.json) {
-		process.stdout.write(`${JSON.stringify({ worktrees: report, pruned: outcomes, diffs }, null, 2)}\n`);
+		process.stdout.write(`${JSON.stringify({ worktrees: report, pruned: outcomes, diffs, media, mediaPruned }, null, 2)}\n`);
 	} else {
 		process.stdout.write(renderWorktreeReport(report));
 		if (pruning) process.stdout.write(`\n${renderPruneOutcomes(outcomes)}`);
 		process.stdout.write(`\n${renderDiffSnapshots(diffs)}`);
+		process.stdout.write(`\n${renderMedia(media, mediaPruned)}`);
 	}
-	const incomplete = outcomes.some((o) => o.action === "skipped" || o.action === "failed");
+	const incomplete =
+		outcomes.some((o) => o.action === "skipped" || o.action === "failed") || (mediaPruned ?? []).some((o) => o.action === "failed");
 	process.exit(incomplete ? CLI_EXIT_CODE_PRUNE_INCOMPLETE : CLI_EXIT_CODE_SUCCESS);
 }
 

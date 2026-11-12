@@ -118,6 +118,7 @@ function fixtureDeps(overrides: Partial<WorktreeScanDeps> = {}): WorktreeScanDep
 			return { status: 0, stdout: "" };
 		},
 		remove: () => {},
+		walkFiles: () => [],
 		...overrides,
 	};
 }
@@ -309,6 +310,7 @@ describe("renderWorktreeReport", () => {
 			seq: null,
 			taskStatus: null,
 			branch: null,
+			detachedHead: false,
 			branchMerged: null,
 			registeredInGit: true,
 			bytes: MB,
@@ -443,6 +445,80 @@ describe("prune", () => {
 		expect(removed).not.toContain(`${HOME}/worktrees/${SLUG}/99999999`);
 	});
 
+	describe("a worktree whose branch the agent renamed", () => {
+		const TEARDOWN = `${HOME}/worktrees/${SLUG}/bbbbbbbb`;
+		/** bbbbbbbb (completed 38 days ago, teardown never ran) checks out `head` instead of dev3/task-bbbbbbbb. */
+		function renamedGit(head: string, merged: string[]): WorktreeScanDeps["git"] {
+			return (repo, args) => {
+				if (repo === REPO && args[0] === "worktree" && args[1] === "list") {
+					return {
+						status: 0,
+						stdout: [
+							`worktree ${HOME}/worktrees/${SLUG}/aaaaaaaa/worktree\nHEAD 1111\nbranch refs/heads/feat/dev3-open-work`,
+							`worktree ${TEARDOWN}/worktree\nHEAD 2222\n${head}`,
+							`worktree ${HOME}/worktrees/${SLUG}/cccccccc/worktree\nHEAD 3333\nbranch refs/heads/dev3/task-cccccccc`,
+						].join("\n\n"),
+					};
+				}
+				if (repo === REPO && args[0] === "for-each-ref") return { status: 0, stdout: "dev3/task-cccccccc\n" };
+				if (repo === REPO && args[0] === "branch" && args[1] === "--merged") return { status: 0, stdout: merged.join("\n") };
+				return fixtureDeps().git(repo, args);
+			};
+		}
+		function run(head: string, merged: string[], forceUnmerged = false) {
+			const git = renamedGit(head, merged);
+			const removed: string[] = [];
+			const gitCalls: string[][] = [];
+			const report = collectWorktreeReport(fixtureDeps({ git }));
+			const outcomes = prune(report, { orphans: false, olderThanDays: 14, forceUnmerged }, fixtureDeps({
+				git: (repo, args) => {
+					gitCalls.push(args);
+					return git(repo, args);
+				},
+				remove: (path) => {
+					removed.push(path);
+				},
+			}));
+			return { report, outcomes, removed, gitCalls };
+		}
+
+		it("reports the checked-out branch, not the dev3/task-* name it started with", () => {
+			const { report } = run("branch refs/heads/fix/dev3-renamed", []);
+			const e = entry(report.entries, "bbbbbbbb");
+			expect(e.branch).toBe("fix/dev3-renamed");
+			expect(e.branchMerged).toBe(false);
+			expect(e.needsForce).toBe(true);
+		});
+
+		it("keeps an unmerged renamed branch's worktree under the 60-day floor", () => {
+			const { outcomes, removed } = run("branch refs/heads/fix/dev3-renamed", []);
+			expect(removed).not.toContain(`${TEARDOWN}/worktree`);
+			const o = outcomes.find((x) => x.shortId === "bbbbbbbb")!;
+			expect(o.action).toBe("skipped");
+			expect(o.reason).toContain("fix/dev3-renamed");
+		});
+
+		it("removes a merged renamed branch's worktree but never deletes the renamed ref", () => {
+			const { removed, gitCalls } = run("branch refs/heads/fix/dev3-renamed", ["fix/dev3-renamed"]);
+			expect(removed).toContain(`${TEARDOWN}/worktree`);
+			expect(gitCalls.some((c) => c[0] === "branch" && c.includes("fix/dev3-renamed"))).toBe(false);
+		});
+
+		it("keeps the renamed ref even when --force-unmerged deletes the worktree", () => {
+			const { removed, gitCalls } = run("branch refs/heads/fix/dev3-renamed", [], true);
+			expect(removed).toContain(`${TEARDOWN}/worktree`);
+			expect(gitCalls.some((c) => c[0] === "branch" && c.includes("fix/dev3-renamed"))).toBe(false);
+		});
+
+		it("treats a detached HEAD as unmerged, because nothing proves its commits landed", () => {
+			const { report, removed } = run("detached", []);
+			const e = entry(report.entries, "bbbbbbbb");
+			expect(e.detachedHead).toBe(true);
+			expect(e.needsForce).toBe(true);
+			expect(removed).not.toContain(`${TEARDOWN}/worktree`);
+		});
+	});
+
 	it("never selects the metadata of a still-open task, however old", () => {
 		const { removed } = pruneWith({ orphans: false, olderThanDays: 30, forceUnmerged: false });
 		expect(removed).not.toContain(`${HOME}/worktrees/${SLUG}/99999999`);
@@ -547,6 +623,34 @@ describe("dev3 doctor --worktrees", () => {
 			),
 		).rejects.toThrow("exit");
 		expect(exitSpy).toHaveBeenCalledWith(CLI_EXIT_CODE_SUCCESS);
+	});
+
+	it("reports large shared media and deletes the old ones only with --prune-media-older-than", async () => {
+		const images = `${HOME}/worktrees/${SLUG}/shared-images`;
+		const removed: string[] = [];
+		const base = fixtureDeps();
+		const media = fixtureDeps({
+			exists: (path) => path === images || base.exists(path),
+			walkFiles: (dir) => (dir === images ? [{ path: `${images}/clip.mp4`, bytes: 30 * MB, changedMs: NOW - 90 * 24 * 60 * 60 * 1000 }] : []),
+			remove: (path) => {
+				removed.push(path);
+			},
+		});
+		await expect(handleDoctor({ flags: { worktrees: "true" }, positional: [] }, unusedDoctorDeps, media)).rejects.toThrow("exit");
+		expect(stdout()).toContain("Images/videos older than 60d and not held: 1 files");
+		expect(removed).not.toContain(`${images}/clip.mp4`);
+
+		await expect(
+			handleDoctor({ flags: { worktrees: "true", "prune-media-older-than": "60d" }, positional: [] }, unusedDoctorDeps, media),
+		).rejects.toThrow("exit");
+		expect(removed).toContain(`${images}/clip.mp4`);
+	});
+
+	it("rejects a --prune-media-older-than value it cannot parse", async () => {
+		await expect(
+			handleDoctor({ flags: { worktrees: "true", "prune-media-older-than": "later" }, positional: [] }, unusedDoctorDeps, fixtureDeps()),
+		).rejects.toThrow("exit");
+		expect(exitSpy).toHaveBeenCalledWith(CLI_EXIT_CODE_USAGE_ERROR);
 	});
 
 	it("rejects a --prune-older-than value it cannot parse", async () => {

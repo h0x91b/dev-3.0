@@ -14,7 +14,7 @@
  * without a second, separate force flag — that is unpushed human work.
  */
 
-import { readdirSync, readFileSync, rmSync, statSync, type Dirent } from "node:fs";
+import { lstatSync, readdirSync, readFileSync, rmSync, statSync, type Dirent } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { projectStorageKey } from "../../shared/project-storage-key";
@@ -39,7 +39,7 @@ const RECENT_DAYS = 14;
 const BORDERLINE_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const TERMINAL_STATUSES = new Set(["completed", "cancelled"]);
+export const TERMINAL_STATUSES = new Set(["completed", "cancelled"]);
 
 export interface WorktreeEntry {
 	/** Configured project name, or null when no project owns this slug any more. */
@@ -54,8 +54,10 @@ export interface WorktreeEntry {
 	/** Human task number when a task record still exists. */
 	seq: string | null;
 	taskStatus: string | null;
-	/** `dev3/task-<shortId>` when that branch still exists in the repo. */
+	/** The branch the worktree has checked out (agents rename `dev3/task-<shortId>`), else that default name when it exists. */
 	branch: string | null;
+	/** Git registers the worktree but on a detached HEAD: nothing proves its commits are merged. */
+	detachedHead: boolean;
 	/** True/false when checkable, null when there is no repo or no branch. */
 	branchMerged: boolean | null;
 	/** Whether `git worktree list` still registers this worktree; null without a repo. */
@@ -111,6 +113,15 @@ export interface WorktreeScanDeps {
 	git: (repo: string, args: string[]) => { status: number | null; stdout: string };
 	/** Recursive delete. Only ever called from a prune flag the user typed. */
 	remove: (path: string) => void;
+	/** Every regular file under `dir`, recursively, symlinks skipped. */
+	walkFiles: (dir: string) => MediaFileStat[];
+}
+
+export interface MediaFileStat {
+	path: string;
+	bytes: number;
+	/** Newest of mtime and birth time: a copy keeps the source's mtime on some platforms. */
+	changedMs: number;
 }
 
 export function realWorktreeScanDeps(dev3Home: string = DEV3_HOME): WorktreeScanDeps {
@@ -148,7 +159,34 @@ export function realWorktreeScanDeps(dev3Home: string = DEV3_HOME): WorktreeScan
 			}
 		},
 		remove: (path) => rmSync(path, { recursive: true, force: true }),
+		walkFiles,
 	};
+}
+
+function walkFiles(dir: string): MediaFileStat[] {
+	const out: MediaFileStat[] = [];
+	const stack = [dir];
+	while (stack.length > 0) {
+		const current = stack.pop()!;
+		let names: string[];
+		try {
+			names = readdirSync(current);
+		} catch {
+			continue;
+		}
+		for (const name of names) {
+			const path = join(current, name);
+			let st;
+			try {
+				st = lstatSync(path);
+			} catch {
+				continue;
+			}
+			if (st.isDirectory()) stack.push(path);
+			else if (st.isFile()) out.push({ path, bytes: st.size, changedMs: Math.max(st.mtimeMs, st.birthtimeMs || 0) });
+		}
+	}
+	return out;
 }
 
 /**
@@ -202,7 +240,7 @@ function walkSize(dir: string): number {
 	return total;
 }
 
-interface RawProject {
+export interface RawProject {
 	id: string;
 	name: string;
 	path: string;
@@ -212,17 +250,22 @@ interface RawProject {
 	deleted?: boolean;
 }
 
-interface RawTask {
+export interface RawTask {
 	id: string;
 	seq?: number | string;
 	status?: string;
 	createdAt?: string;
 	movedAt?: string | null;
 	statusEnteredAt?: string;
+	description?: string;
+	sharedImages?: Array<{ storedPath?: string }>;
+	sharedVideos?: Array<{ storedPath?: string }>;
+	sharedAudio?: Array<{ storedPath?: string }>;
+	sharedArtifacts?: Array<{ storedPath?: string }>;
 }
 
 /** Projects from both files; a virtual ("Operations") project has no worktrees. */
-function readProjects(deps: WorktreeScanDeps): RawProject[] {
+export function readProjects(deps: Pick<WorktreeScanDeps, "dev3Home" | "readFile">): RawProject[] {
 	const out: RawProject[] = [];
 	for (const file of [`${deps.dev3Home}/projects.json`, `${deps.dev3Home}/virtual-projects.json`]) {
 		try {
@@ -239,7 +282,7 @@ function readProjects(deps: WorktreeScanDeps): RawProject[] {
 	return out;
 }
 
-function readTasksFile(deps: WorktreeScanDeps, file: string): RawTask[] {
+function readTasksFile(deps: Pick<WorktreeScanDeps, "readFile">, file: string): RawTask[] {
 	try {
 		const parsed = JSON.parse(deps.readFile(file)) as RawTask[];
 		return Array.isArray(parsed) ? parsed : [];
@@ -252,7 +295,7 @@ function readTasksFile(deps: WorktreeScanDeps, file: string): RawTask[] {
  * Both layouts are read: a task in either file means its dir is not an orphan.
  * The live file comes last so its records win over the copy a switch left behind.
  */
-function readTasks(deps: WorktreeScanDeps, project: RawProject): RawTask[] {
+export function readTasks(deps: Pick<WorktreeScanDeps, "dev3Home" | "readFile">, project: RawProject): RawTask[] {
 	const files = new Set([
 		`${legacyProjectDataDir(deps.dev3Home, project.path)}/tasks.json`,
 		projectTasksFile(deps.dev3Home, project),
@@ -277,6 +320,8 @@ function bucketFor(ageDays: number | null): AgeBucket | null {
 
 interface RepoFacts {
 	registeredShortIds: Set<string>;
+	/** Checked-out branch per registered worktree; null for a detached HEAD. */
+	checkedOutBranch: Map<string, string | null>;
 	branches: Set<string>;
 	mergedBranches: Set<string>;
 	usable: boolean;
@@ -286,6 +331,7 @@ interface RepoFacts {
 function readRepoFacts(deps: WorktreeScanDeps, project: RawProject | null): RepoFacts {
 	const empty: RepoFacts = {
 		registeredShortIds: new Set(),
+		checkedOutBranch: new Map(),
 		branches: new Set(),
 		mergedBranches: new Set(),
 		usable: false,
@@ -295,12 +341,17 @@ function readRepoFacts(deps: WorktreeScanDeps, project: RawProject | null): Repo
 	const list = deps.git(project.path, ["worktree", "list", "--porcelain"]);
 	if (list.status !== 0) return empty;
 	const registeredShortIds = new Set<string>();
+	const checkedOutBranch = new Map<string, string | null>();
+	let current: string | null = null;
 	for (const line of list.stdout.split("\n")) {
 		// Path comparison instead of realpath: /private/var vs /var symlink
 		// differences make absolute equality unreliable, the trailing
 		// `<shortId>/worktree` is not.
 		const match = line.match(/^worktree .*[\\/]([0-9a-f]{8})[\\/]worktree$/i);
-		if (match) registeredShortIds.add(match[1]!.toLowerCase());
+		if (line.startsWith("worktree ")) current = match ? match[1]!.toLowerCase() : null;
+		if (match) registeredShortIds.add(current!);
+		if (current && line.startsWith("branch refs/heads/")) checkedOutBranch.set(current, line.slice("branch refs/heads/".length));
+		if (current && line === "detached") checkedOutBranch.set(current, null);
 	}
 
 	const refs = deps.git(project.path, ["for-each-ref", "--format=%(refname:short)", "refs/heads/dev3/"]);
@@ -316,7 +367,11 @@ function readRepoFacts(deps: WorktreeScanDeps, project: RawProject | null): Repo
 		merged.status === 0 ? merged.stdout.split("\n").map((l) => l.trim()).filter(Boolean) : [],
 	);
 
-	return { registeredShortIds, branches, mergedBranches, usable: true };
+	return { registeredShortIds, checkedOutBranch, branches, mergedBranches, usable: true };
+}
+
+function unmergedLabel(entry: Pick<WorktreeEntry, "branch" | "detachedHead">): string {
+	return entry.detachedHead ? "detached HEAD, merge unknown" : `branch ${entry.branch} NOT merged`;
 }
 
 function recommend(entry: Omit<WorktreeEntry, "recommendation">): string {
@@ -324,10 +379,10 @@ function recommend(entry: Omit<WorktreeEntry, "recommendation">): string {
 		case "live-open":
 			return `keep — task ${entry.seq ? `<seq:${entry.seq}>` : entry.shortId} is ${entry.taskStatus ?? "open"}`;
 		case "orphaned":
-			if (entry.needsForce) return `orphan; branch ${entry.branch} NOT merged — needs --force-unmerged`;
+			if (entry.needsForce) return `orphan; ${unmergedLabel(entry)} — needs --force-unmerged`;
 			return "orphan, no task record — --prune-orphans, or --prune-older-than once old enough";
 		case "abandoned-teardown":
-			if (entry.needsForce) return `teardown never finished; branch ${entry.branch} NOT merged — needs --force-unmerged`;
+			if (entry.needsForce) return `teardown never finished; ${unmergedLabel(entry)} — needs --force-unmerged`;
 			return "teardown never finished — --prune-orphans, or --prune-older-than once old enough";
 		case "metadata-only":
 			if (entry.reclaimableBytes > 0) return `diffs/logs of a task last touched ${entry.ageDays}d ago — --prune-older-than 30d`;
@@ -410,8 +465,12 @@ export function collectWorktreeReport(deps: WorktreeScanDeps): WorktreeReport {
 		const project = projectBySlug.get(item.slug) ?? null;
 		const facts = repoFactsBySlug.get(item.slug)!;
 		const task = tasksByShortId.get(item.shortId.toLowerCase()) ?? null;
-		const branchName = `dev3/task-${item.shortId}`;
-		const branch = facts.branches.has(branchName) ? branchName : null;
+		// Agents rename dev3/task-<id> at session start, so the checked-out branch is the truth.
+		const sid = item.shortId.toLowerCase();
+		const checkedOut = facts.checkedOutBranch.get(sid);
+		const detachedHead = checkedOut === null;
+		const defaultName = `dev3/task-${item.shortId}`;
+		const branch = checkedOut ?? (facts.branches.has(defaultName) ? defaultName : null);
 		const branchMerged = branch ? facts.mergedBranches.has(branch) : null;
 
 		const activityMs = task ? lastActivityMs(task) : null;
@@ -429,7 +488,9 @@ export function collectWorktreeReport(deps: WorktreeScanDeps): WorktreeReport {
 
 		const bytes = sizes.get(item.dir) ?? 0;
 		const worktreeBytes = item.hasWorktree ? (sizes.get(join(item.dir, "worktree")) ?? 0) : 0;
-		const needsForce = (category === "orphaned" || category === "abandoned-teardown") && branch !== null && branchMerged === false;
+		const needsForce =
+			(category === "orphaned" || category === "abandoned-teardown") &&
+			((branch !== null && branchMerged === false) || detachedHead);
 
 		let reclaimableBytes = 0;
 		if (category === "orphaned") reclaimableBytes = bytes;
@@ -449,6 +510,7 @@ export function collectWorktreeReport(deps: WorktreeScanDeps): WorktreeReport {
 			seq: task?.seq === undefined || task.seq === null ? null : String(task.seq),
 			taskStatus: task?.status ?? null,
 			branch,
+			detachedHead,
 			branchMerged,
 			registeredInGit: facts.usable ? facts.registeredShortIds.has(item.shortId.toLowerCase()) : null,
 			bytes,
@@ -641,6 +703,8 @@ export function parseDurationDays(raw: string): number | null {
 
 function deleteBranchIfSafe(deps: WorktreeScanDeps, entry: WorktreeEntry, options: PruneOptions): string | null {
 	if (!entry.branch || !entry.projectPath) return null;
+	// A renamed branch carries a name someone chose (and maybe pushed): keep the ref.
+	if (entry.branch !== `dev3/task-${entry.shortId}`) return null;
 	if (entry.branchMerged !== true && !options.forceUnmerged) return null;
 	const flag = entry.branchMerged === true ? "-d" : "-D";
 	const res = deps.git(entry.projectPath, ["branch", flag, entry.branch]);
@@ -695,7 +759,7 @@ export function prune(report: WorktreeReport, options: PruneOptions, deps: Workt
 				action: "skipped",
 				freedBytes: 0,
 				branchDeleted: null,
-				reason: `branch ${entry.branch} is not merged into the base branch — kept until ${UNMERGED_PRUNE_FLOOR_DAYS}d old, or re-run with --force-unmerged`,
+				reason: `${unmergedLabel(entry)} — kept until ${UNMERGED_PRUNE_FLOOR_DAYS}d old, or re-run with --force-unmerged`,
 			});
 			continue;
 		}
