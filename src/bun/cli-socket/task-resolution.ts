@@ -5,6 +5,7 @@ import { ID_PREFIX_MIN_LENGTH, getTaskTitle, isCoordinatorTask, parentTaskIdOf }
 import * as data from "../data";
 import { loadEffectiveTaskHistory } from "../task-blobs";
 import { captureSenderAgent } from "../scheduled-message-author";
+import { senderEvidenceOf } from "../sender-evidence";
 import { requireExternalSender } from "../external-senders";
 import type { ExternalSenderRequester } from "../../shared/external-senders";
 
@@ -406,6 +407,7 @@ export async function withSenderAgent(source: AgentMessageSource, params: Record
 		sender,
 		typeof params.sourcePaneId === "string" ? params.sourcePaneId : null,
 		typeof params.sourcePid === "number" ? params.sourcePid : null,
+		senderEvidenceOf(params),
 	);
 	return identity.ok ? { ...source, agent: identity.author } : { ...source, agentUnavailable: identity.detail };
 }

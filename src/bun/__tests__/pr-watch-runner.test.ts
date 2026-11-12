@@ -367,6 +367,17 @@ describe("runPrWatches", () => {
 		expect(lastStoredWatches()).toBeUndefined();
 	});
 
+	it("probes the live agent panes once per delivery, even when the answer is unknown", async () => {
+		current = task({ prWatches: [watch("merged", { author: { ...AUTHOR, agentProcess: "1@old" } }), watch("ci", { author: { ...AUTHOR, agentProcess: "2@new" } })] });
+		vi.mocked(liveAgentPaneIds).mockResolvedValue(null);
+		vi.mocked(resolveScheduledMessageAuthorPane).mockResolvedValue({ ok: false, detail: "gone" });
+
+		await runPrWatches(project, "t1", { ...greenSample, state: "MERGED" }, URL, Date.now(), true);
+
+		expect(liveAgentPaneIds).toHaveBeenCalledTimes(1);
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
+	});
+
 	it("tells two agents apart even when the second runs in the first's pane", async () => {
 		const first = { ...AUTHOR, agentProcess: "1@old" };
 		const second = { ...AUTHOR, agentProcess: "2@new" };

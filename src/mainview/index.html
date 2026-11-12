@@ -5,6 +5,9 @@
     <!-- Boot value only; useViewport() replaces it per transport and route. The zoom
          cap is deliberate — see the comment in hooks/useViewport.ts. -->
     <meta name="viewport" content="width=1024, user-scalable=no, maximum-scale=1, interactive-widget=resizes-content" />
+    <!-- iOS Safari paints its status bar from this; without it the bar is light over a dark app.
+         Boot value mirrors the dark --surface-base token (index.css); theme-color.ts keeps it in step. -->
+    <meta name="theme-color" content="#060916" />
     <!-- Favicon (new dev3 app icon). Absolute paths resolve against the served
          root: Vite copies src/mainview/public/* to the dist root, and the
          remote/web server (src/bun/remote-access-server.ts) serves dist at "/". -->

@@ -13,6 +13,7 @@ import type { TerminalHandle } from "../TerminalView";
 import TaskInfoPanel from "./TaskInfoPanel";
 import TaskPreparingView from "./TaskPreparingView";
 import BackToKanbanEmptyState from "./BackToKanbanEmptyState";
+import TaskShutdownOverlay from "./TaskShutdownOverlay";
 import ExtraKeyBar from "./ExtraKeyBar";
 import TerminalComposer, { type TerminalComposerApi } from "./TerminalComposer";
 import MobilePaneCarousel from "./MobilePaneCarousel";
@@ -99,6 +100,15 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	// purpose, so every recovery offer in here would be a lie. This view has one
 	// honest exit, and it must win over the error and restart screens below.
 	const isClosed = task?.status === "completed" || task?.status === "cancelled";
+	// Teardown snapshots still carry the old status and worktree, so without this the
+	// pane reattaches to a dying PTY and flashes a recovery card. `shuttingDown` rides
+	// only on the first push; the persisted runtime covers every later one until it fails.
+	const isShuttingDown = task?.shuttingDown === true
+		|| (task?.runtimeState?.runtime === "tearing-down" && task.runtimeState.failed !== true);
+	const sessionGone = isClosed || isShuttingDown;
+	// Async session reads check this after their await: a teardown may have begun meanwhile.
+	const sessionGoneRef = useRef(sessionGone);
+	sessionGoneRef.current = sessionGone;
 
 	// Detect native backend from the task record (available before state loads).
 	const isNative = task?.terminalBackend === "native";
@@ -244,19 +254,30 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			// Same criterion as the launch guard, or a folder without `.git` would
 			// offer Resume, fail, and offer Resume again.
 			const state = await api.request.checkWorktreeState({ path: worktreePath, requireGit: !!project && !!task && taskUsesWorktree(project, task) });
+			if (sessionGoneRef.current) return;
 			setError({
 				kind: state === "present" ? "session-ended" : state === "unreadable" ? "worktree-unreadable" : "worktree-gone",
 				path: worktreePath,
 			});
 		} catch {
+			if (sessionGoneRef.current) return;
 			setError({ kind: "worktree-gone", path: worktreePath });
 		}
 	}
 
+	// Whatever the dying session reported is stale once teardown starts; a failed
+	// teardown lifts the gate and the effects below read the session afresh.
+	useEffect(() => {
+		if (!isShuttingDown) return;
+		setPtyUrl(null);
+		setError(null);
+		setRecoverable(null);
+	}, [isShuttingDown]);
+
 	// ── Tmux PTY URL effect (skipped for native) ──────────────────────────────
 	useEffect(() => {
 		if (isNative) return;
-		if (isPreparing || isClosed) return;
+		if (isPreparing || sessionGone) return;
 		let cancelled = false;
 		(async () => {
 			debugLog("terminal", "[TaskTerminal] Requesting PTY URL for task", taskId.slice(0, 8));
@@ -278,14 +299,14 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			}
 		})();
 		return () => { cancelled = true; };
-	}, [taskId, isPreparing, isNative, isClosed]);
+	}, [taskId, isPreparing, isNative, sessionGone]);
 
 	// ── Native pane state ──────────────────────────────────────────────────────
 	// Every arrival — this poll, the inspector toolbar's poll, or any pane action's
 	// own response — comes through the bus, so a toolbar click repaints the canvas
 	// as soon as the server answers instead of on the next poll tick.
 	useEffect(() => {
-		if (!isNative || isPreparing || isClosed) return;
+		if (!isNative || isPreparing || sessionGone) return;
 		setAbsentReads(0);
 		return subscribePaneState(taskId, (state) => {
 			setNativePaneState(state);
@@ -332,12 +353,12 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				return next;
 			});
 		});
-	}, [taskId, isPreparing, isNative, isClosed]);
+	}, [taskId, isPreparing, isNative, sessionGone]);
 
 	// Reconciliation only: the server owns the tree, and a failed read is how this
 	// view learns the session died.
 	useEffect(() => {
-		if (!isNative || isPreparing || isClosed) return;
+		if (!isNative || isPreparing || sessionGone) return;
 		let cancelled = false;
 		const fetch = async () => {
 			try {
@@ -349,7 +370,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		void fetch();
 		const timer = setInterval(() => { void fetch(); }, NATIVE_PANE_POLL_MS);
 		return () => { cancelled = true; clearInterval(timer); };
-	}, [taskId, isPreparing, isNative, isClosed]);
+	}, [taskId, isPreparing, isNative, sessionGone]);
 
 	// ── Fetch per-pane URLs when new panes appear ─────────────────────────────
 	useEffect(() => {
@@ -459,13 +480,13 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	useEffect(() => {
 		function onPtyDied(e: Event) {
 			const detail = (e as CustomEvent).detail;
-			if (detail?.taskId === taskId && !isClosed) {
+			if (detail?.taskId === taskId && !sessionGone) {
 				void classifyAndSetError();
 			}
 		}
 		window.addEventListener("rpc:ptyDied", onPtyDied);
 		return () => window.removeEventListener("rpc:ptyDied", onPtyDied);
-	}, [taskId, task?.worktreePath, isClosed]);
+	}, [taskId, task?.worktreePath, sessionGone]);
 
 	// Fallback timeout for cases where ptyDied doesn't fire
 	useEffect(() => {
@@ -758,6 +779,17 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				hint={t("terminal.taskClosedHint")}
 				onBack={() => navigate({ screen: "project", projectId })}
 			/>
+		);
+	}
+
+	if (isShuttingDown) {
+		return (
+			<div className="h-full w-full flex flex-col overflow-hidden">
+				{!hideInfoPanel && task && project && <TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />}
+				<div className="relative flex-1 min-h-0" data-testid="terminal-task-shutting-down">
+					<TaskShutdownOverlay />
+				</div>
+			</div>
 		);
 	}
 

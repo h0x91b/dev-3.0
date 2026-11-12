@@ -1,4 +1,5 @@
 import type { Epic, Task } from "../../../shared/types";
+import { isPinnedCoordinator } from "../../../shared/types";
 import { parentTaskIdOf } from "../../../shared/types/task-origin";
 import type { BoardLineageNode } from "../board-service";
 
@@ -90,7 +91,7 @@ function byAttempt(a: Task, b: Task): number {
  * The lineage forest of a board (spec D19). A task's parent is its lineage
  * origin; variants of a task are one node; a parent on another board becomes a
  * ghost root. Tasks that do not match the query appear only as ancestors of
- * ones that do. Roots and children are newest first.
+ * ones that do. Roots and children: pinned coordinators (and branches holding one) first, then newest first.
  */
 export function buildTaskTree({ tasks, scopeTasks, lineageNode }: TreeInput): TreeNode[] {
 	const unitsByKey = new Map<string, Task[]>();
@@ -157,13 +158,28 @@ export function buildTaskTree({ tasks, scopeTasks, lineageNode }: TreeInput): Tr
 
 	for (const key of matching) if (unitsByKey.has(key)) ensure(key);
 
-	const newestFirst = (a: TreeNode, b: TreeNode) => nodeSeq(b) - nodeSeq(a);
+	// A branch holding a pinned coordinator rises with it, so a nested one is never buried below the fold.
+	const pinnedMemo = new Map<TreeNode, boolean>();
+	const pinned = (n: TreeNode): boolean => {
+		let hit = pinnedMemo.get(n);
+		if (hit === undefined) {
+			hit = isPinnedCoordinatorNode(n) || n.children.some(pinned);
+			pinnedMemo.set(n, hit);
+		}
+		return hit;
+	};
+	const newestFirst = (a: TreeNode, b: TreeNode) => Number(pinned(b)) - Number(pinned(a)) || nodeSeq(b) - nodeSeq(a);
 	const sortDeep = (list: TreeNode[]) => {
 		list.sort(newestFirst);
 		for (const node of list) sortDeep(node.children);
 	};
 	sortDeep(roots);
 	return roots;
+}
+
+/** A task node whose lead is a pinned coordinator: the row that carries the pin tint. */
+export function isPinnedCoordinatorNode(node: TreeNode): boolean {
+	return node.kind === "task" && isPinnedCoordinator(node.tasks[0]);
 }
 
 export function nodeSeq(node: TreeNode): number {

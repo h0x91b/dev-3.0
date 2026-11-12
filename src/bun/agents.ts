@@ -770,10 +770,8 @@ export function claudeDefaultEnv(
 
 /**
  * omp rings a terminal bell when a turn completes (`completion.notify`, on by
- * default). dev3 reads a bare BEL as "the agent needs the user" and parks the
- * task in user-questions before the status extension's Stop arrives, which then
- * refuses to move it — so every omp turn ended in the wrong column. This env
- * is omp's own kill switch for all terminal notifications.
+ * default). This env is omp's own kill switch for all terminal notifications;
+ * dev3 ignores BEL for agents with status hooks, so it only keeps the pane quiet.
  */
 export const OMP_DEFAULT_ENV: Record<string, string> = {
 	PI_NOTIFICATIONS: "off",

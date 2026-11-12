@@ -1,4 +1,5 @@
 import type { Project, Task } from "../shared/types";
+import type { ApprovalReason } from "../shared/approval-reason";
 import { ACTIVE_STATUSES } from "../shared/types";
 import type { CliResumeOutcome, ResumeDialogPane, ResumeUnavailableReason, ResumePaneReport } from "../shared/agent-resume";
 import { askSessionApproval, type LaunchRequester, launchRequesterKey, perTaskJoiner, sameRunAfterApproval } from "./cli-session-approval";
@@ -15,6 +16,8 @@ interface ResumeOptions {
 	allowAgentLatest: boolean;
 	/** `--account`: resume Claude panes on this account (null: system login). The dialog preselects it. */
 	accountId?: string | null;
+	/** Why the requester asks (`--reason`), shown in the dialog. */
+	reason?: ApprovalReason;
 }
 
 function unavailable(task: Task, reason: ResumeUnavailableReason, message: string, panes?: ResumePaneReport[]): CliResumeOutcome {
@@ -52,9 +55,9 @@ async function preflight(project: Project, task: Task, accountId: string | null 
 }
 
 /** A resume restores the saved harness and config, so the dialog offers no agent choice — only the Claude account. */
-function askUser(project: Project, task: Task, requester: LaunchRequester, panes: ResumeDialogPane[], accountId: string | null | undefined) {
+function askUser(project: Project, task: Task, requester: LaunchRequester, panes: ResumeDialogPane[], accountId: string | null | undefined, reason: ApprovalReason | undefined) {
 	return askSessionApproval({
-		project, task, requester,
+		project, task, requester, reason,
 		subject: { resume: { panes, ...(accountId !== undefined ? { accountId } : {}) } },
 		alreadyPending: "Another launch approval is pending for this task — answer it before resuming.",
 	});
@@ -67,7 +70,7 @@ async function performResume(opts: ResumeOptions): Promise<CliResumeOutcome> {
 	if ("refused" in checked) return checked.refused;
 	let current = task;
 	if (requester) {
-		const answer = await askUser(project, task, requester, checked.panes, accountId);
+		const answer = await askUser(project, task, requester, checked.panes, accountId, opts.reason);
 		if (!answer.approved) return { outcome: "declined", taskId: task.id, seq: task.seq, ...(answer.stale ? { stale: true } : {}) };
 		if (answer.resumeAccountId !== undefined) accountId = answer.resumeAccountId;
 		current = await sameRunAfterApproval(project, task, "The target task's run changed while waiting — nothing was resumed.");

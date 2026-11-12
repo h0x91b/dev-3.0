@@ -473,6 +473,8 @@ html {
 	margin: 0;
 	padding: 0;
 	overflow: hidden;
+	/* Safari 26+ ignores theme-color and tints its bars from this; body's gradient gives it no colour. */
+	background-color: rgb(var(--surface-base));
 }
 
 body, #root {
@@ -2198,6 +2200,7 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
    The slot the dragged row will land in reads as an empty, accent-dashed hole;
    the row itself travels as a lifted clone under the pointer. */
 [data-reorder-placeholder] {
+	border-width: 1px;
 	border-style: dashed;
 	border-color: rgb(var(--accent) / 0.6);
 	background-color: rgb(var(--accent) / 0.08);

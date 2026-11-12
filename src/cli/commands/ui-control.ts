@@ -141,7 +141,7 @@ export async function handleNotify(
 
 /**
  * `dev3 attention "reason"` — light the red attention badge on a task card, with
- * an optional hoverable reason. Same visual surface as the terminal bell.
+ * an optional hoverable reason.
  * `dev3 attention --clear` takes the badge back down with its reasons.
  */
 export async function handleAttention(

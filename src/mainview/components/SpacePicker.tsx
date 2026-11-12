@@ -64,7 +64,7 @@ function Row({
 			<span
 				aria-hidden="true"
 				className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${
-					checked ? "bg-accent border-accent text-white" : "border-edge-active text-transparent"
+					checked ? "bg-accent-fill border-accent-fill text-white" : "border-edge-active text-transparent"
 				}`}
 			>
 				<svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>

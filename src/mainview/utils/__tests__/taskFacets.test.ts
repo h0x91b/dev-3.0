@@ -88,6 +88,12 @@ describe("taskQueryContext", () => {
 		expect(c.prNumber).toBe(123);
 	});
 
+	it("reports the agent the main pane runs when the task picked none", () => {
+		const pane = { agentCmd: "codex", sessionId: null, agentId: "builtin-codex", configId: "x1", agentFromDefault: true };
+		const c = taskQueryContext(makeTask({ agentId: null, configId: null, worktreePath: "/wt", sessionState: { panes: [pane] } }), resolver);
+		expect(c.agentName).toBe("Codex");
+	});
+
 	it("reports a null agent name when unassigned", () => {
 		const c = taskQueryContext(makeTask({ agentId: null }), resolver);
 		expect(c.agentName).toBeNull();

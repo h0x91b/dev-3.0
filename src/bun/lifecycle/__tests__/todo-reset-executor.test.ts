@@ -79,6 +79,7 @@ vi.mock("../../rpc-handlers/shared", () => ({
 	notifyWatchedTaskEvent: vi.fn(),
 	notifyWatchedTaskStatusChange: vi.fn(),
 	pushCliAttention: vi.fn(),
+	dropQueuedQuestionsAttention: vi.fn(),
 }));
 
 

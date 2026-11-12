@@ -11,7 +11,7 @@ import { CLI_EXIT_CODE_HIBERNATE_DECLINED, CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FR
 
 vi.mock("../stdin", () => ({ readStdin: vi.fn() }));
 vi.mock("../socket-client", () => ({ sendRequest: vi.fn() }));
-vi.mock("../launch-approval", () => ({ launchApprovalTimeoutMs: vi.fn(async () => 600_000) }));
+vi.mock("../launch-approval", () => ({ launchApprovalTimeoutMs: vi.fn(async () => 600_000), withWaitHeartbeat: <T>(wait: Promise<T>) => wait }));
 
 import { sendRequest } from "../socket-client";
 const mockSend = vi.mocked(sendRequest);

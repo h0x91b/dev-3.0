@@ -22,7 +22,7 @@ Two deliberate deviations from "mask, don't replace":
 
 - **No client reports ⇒ nothing is silenced.** In headless `dev3 remote` with no browser attached, the backend's flag stays false. Accepted: with no client there is no screen to leak on.
 - **Last writer wins.** One flag is shared by all clients, so a remote browser with `?streamer=on` (every agent QA run) silences the desktop's notifications *for sensitive projects only*. Accepted.
-- **The bare terminal bell is not gated** — `pushTerminalBell` only knows a session key, and resolving its project would mean a full task scan on every bell. The badge carries no content, and its card is unreachable + masked.
+- **The bare terminal bell is not gated** — superseded on 2026-11-10 by `decisions/2026/11/10/needs-you-badge-real-attention-only.md`: a bell no longer lights any badge.
 - Blur remains CSS-only: values stay in the DOM and the accessibility tree, exactly as in decision 161. The routing block, not the blur, is what prevents the leak.
 
 ## Alternatives considered

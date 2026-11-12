@@ -191,6 +191,8 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		helpModeDiscovered: d.helpModeDiscovered === true ? true : undefined,
 		completedTours: Array.isArray(d.completedTours) ? d.completedTours.filter((id: unknown): id is string => typeof id === "string") : undefined,
 		taskOpenMode: d.taskOpenMode === "fullscreen" ? "fullscreen" : undefined,
+		// Default-off opt-in — only an explicit true is stored.
+		digitsFollowSpaces: d.digitsFollowSpaces === true ? true : undefined,
 		terminalPathOpenMode:
 			d.terminalPathOpenMode === "preview" ||
 			d.terminalPathOpenMode === "system" ||

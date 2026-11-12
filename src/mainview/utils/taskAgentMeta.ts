@@ -1,5 +1,6 @@
 import type { AgentConfiguration, CodingAgent, Task } from "../../shared/types";
 import { findAgentConfig } from "../../shared/agent-live-models";
+import { taskRunningAgentIds } from "../../shared/task-running-agent";
 
 export function resolveTaskAgentConfig(agent: CodingAgent | null, configId: string | null): AgentConfiguration | null {
 	if (!agent) return null;
@@ -60,8 +61,9 @@ export function getCompactConfigLabel(config: AgentConfiguration | null): string
 }
 
 export function getTaskAgentMeta(task: Task, agents: CodingAgent[]) {
-	const agent = task.agentId ? agents.find((candidate) => candidate.id === task.agentId) ?? null : null;
-	const config = resolveTaskAgentConfig(agent, task.configId ?? null);
+	const { agentId, configId } = taskRunningAgentIds(task);
+	const agent = agentId ? agents.find((candidate) => candidate.id === agentId) ?? null : null;
+	const config = resolveTaskAgentConfig(agent, configId);
 	const configLabel = getCompactConfigLabel(config);
 
 	return {

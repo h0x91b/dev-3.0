@@ -176,6 +176,20 @@ function needsYouSoundEffects(
 	return [effect({ type: "emitTaskSound", status: target.status as "review-by-user" | "user-questions" })];
 }
 
+/**
+ * The red badge for a move that newly lands in User questions. Skipped for a
+ * move the user made in the UI and for a move that sets `skipQuestionsBadge`.
+ */
+function questionsBadgeEffects(
+	oldStatus: TaskStatus,
+	target: LifecycleColumn,
+	event: Extract<LifecycleEvent, { type: "moveRequested" }>,
+): LifecycleEffect[] {
+	if (event.clientPlayedSound || event.skipQuestionsBadge) return [];
+	if (target.status === oldStatus || target.status !== "user-questions") return [];
+	return [effect({ type: "raiseQuestionsAttention" })];
+}
+
 function moveTransition(
 	state: LifecycleState,
 	event: Extract<LifecycleEvent, { type: "moveRequested" }>,
@@ -432,6 +446,7 @@ function moveTransition(
 				runtime: nextRuntime,
 			}, "abort"),
 			...needsYouSoundEffects(oldStatus, target, event),
+			...questionsBadgeEffects(oldStatus, target, event),
 			effect({ type: "clearMergeThrottle" }),
 			effect({ type: "push", message: "taskUpdated", view: "current" }),
 			effect({ type: "notifyStatusChange", from: oldStatus, to: target.status }),
@@ -796,9 +811,12 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 		}
 		case "teardownFailed": {
 			if (state.runtime.phase !== "tearing-down" || state.runtime.runId !== event.runId) return unchanged(state);
+			// Marked failed so the task's surfaces stop showing "Shutting down…" and offer recovery.
+			const runtime: LifecycleRuntime = { ...state.runtime, failed: true };
 			return {
-				next: state,
+				next: { ...state, runtime },
 				effects: [
+					effect({ type: "persistRuntime", runtime }),
 					effect({ type: "push", message: "taskUpdated", view: "current" }),
 					effect({ type: "reject", message: event.error }, "abort"),
 				],

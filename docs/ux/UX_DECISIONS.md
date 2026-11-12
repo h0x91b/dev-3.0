@@ -563,7 +563,7 @@ Folded into bible §12 (terminal windows row).
 - **Status:** Observed. Evidence: `tips.ts` (`TipContext`), `hooks/useTipRotation.ts`.
 
 ## 2026-07-11 — Active Tasks sidebar: readiness tiers + visible priority (supersedes 2026-06-22)
-- **Rule:** The sidebar groups by **readiness tier** — `NEEDS YOU` (review-by-user ∪ user-questions ∪ *signalled* review-by-colleague) → custom columns (project order) → `WAITING` (in-progress ∪ review-by-ai ∪ unsignalled review-by-colleague) — not by status; tiers sort by priority; NEEDS YOU: coordinators, then questions.
+- **Rule:** The sidebar groups by **readiness tier** — `NEEDS YOU` (review-by-user ∪ user-questions ∪ *signalled* review-by-colleague) → custom columns (project order) → `WAITING` (in-progress ∪ review-by-ai ∪ unsignalled review-by-colleague) — not by status; tiers sort by priority; NEEDS YOU: questions first. Non-hibernated coordinators form a headerless tier above all of them.
 - **Why:** `decisions/2026/07/11/sidebar-readiness-tiers.md`.
 
 ## 2026-06-21 — Hint navigation is a cross-surface primitive; keyboard-first expert layer
@@ -748,3 +748,7 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 ## 2026-11-07 — Start after lives in Launch later, shown in the timer slot
 - **Rule:** "After task" is a third mode of the launch modal's Launch later panel (task picker + completed/merged, agent from the variant row); the card chip shares the deferred-timer slot with a Start now / Remove popover, and the To Do context menu opens that panel ("Start after…") or removes it. Yaml `deferred_timer_chip`.
 - **Why:** it is a deferred launch like Start in. The context menu only opens the same panel, never a second picker; rejected an × on the chip (the card strip is full). `decisions/2026/11/05/start-after-conditional-launch.md`.
+
+## 2026-11-09 — Number keys can follow spaces
+- **Rule:** an opt-in Keyboard setting interleaves spaces with standalone projects in one draggable dashboard order; ⌘1–9 follow it, a space opens its board, ⌘0 stays Operations. Bible §10 space order.
+- **Why:** digits by project skipped past grouped work. Rejected per-key pinning (manual, user-rejected) and slot-of-first-member (not movable). Off = unchanged.

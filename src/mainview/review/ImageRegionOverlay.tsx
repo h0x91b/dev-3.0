@@ -118,7 +118,7 @@ export function ImageRegionOverlay({ box, picking, comments, activeCommentId, on
 						className={`pointer-events-auto absolute rounded-sm border-2 ${resolved ? "border-success bg-success/10" : "border-accent bg-accent/15"} ${comment.id === activeCommentId ? "ring-2 ring-accent/40" : ""}`}
 						style={regionStyle(anchor)}
 					>
-						<span className={`absolute -right-2.5 -top-2.5 flex h-5 w-5 items-center justify-center rounded-full text-micro font-bold text-white shadow ${resolved ? "bg-success" : "bg-accent"}`}>{i + 1}</span>
+						<span className={`absolute -right-2.5 -top-2.5 flex h-5 w-5 items-center justify-center rounded-full text-micro font-bold text-white shadow ${resolved ? "bg-success-fill" : "bg-accent-fill"}`}>{i + 1}</span>
 					</button>
 				);
 			})}

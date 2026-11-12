@@ -2485,7 +2485,10 @@ describe("task create --scratch --run", () => {
 	});
 
 	it("names its own pane and pid, so the scratch peer can reply to THIS agent", async () => {
+		vi.stubEnv("TMUX_PANE", "");
 		vi.stubEnv("DEV3_PANE_ID", "pane-2");
+		vi.stubEnv("TMUX", "");
+		vi.stubEnv("DEV3_TASK_ID", "");
 		mockSend.mockResolvedValue(okResp({ approved: true, seq: 91, title: "Scratch — 14:32" }));
 		await handleTask("create", args([], { scratch: "true", run: "true" }), SOCKET, CTX);
 		const launch = mockSend.mock.calls.find(([, method]) => method === "task.createScratchAndRun");

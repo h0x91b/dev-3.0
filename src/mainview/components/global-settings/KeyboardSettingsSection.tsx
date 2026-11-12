@@ -22,9 +22,10 @@ import {
 } from "../../keymap-store";
 import { confirm } from "../../confirm";
 import { toast } from "../../toast";
-import { isMac, isRemote } from "../../utils/platform";
+import { isMac, isRemote, modifierLabel } from "../../utils/platform";
 import SettingsEntry from "./SettingsEntry";
 import SettingsSection from "./SettingsSection";
+import SettingsToggle from "./SettingsToggle";
 import ShortcutRow from "./ShortcutRow";
 
 /**
@@ -44,9 +45,13 @@ function bindingsAfter(spec: ShortcutSpec, pending: ShortcutOverride): Binding[]
 
 export default function KeyboardSettingsSection({
 	t,
+	digitsFollowSpaces,
+	onDigitsFollowSpacesToggle,
 	onShortcutsChange,
 }: {
 	t: TFunction;
+	digitsFollowSpaces: boolean;
+	onDigitsFollowSpacesToggle: (enabled: boolean) => void;
 	onShortcutsChange: (next: ShortcutOverrides) => void;
 }) {
 	// Re-render on every rebind: the rows read the resolved keymap from a module
@@ -106,6 +111,20 @@ export default function KeyboardSettingsSection({
 
 	return (
 		<SettingsSection title={t("settings.categoryKeyboard")} helpTopicId="settings.keyboard">
+			<SettingsEntry anchor="digits-follow-spaces">
+				<div>
+					<p className="block text-fg text-sm font-semibold mb-2">{t("settings.digitsFollowSpaces")}</p>
+					<p className="text-fg-3 text-sm mb-3">{t("settings.digitsFollowSpacesDesc", { mod: modifierLabel() })}</p>
+					<SettingsToggle
+						checked={digitsFollowSpaces}
+						ariaLabel={t("settings.digitsFollowSpaces")}
+						onLabel={t("settings.on")}
+						offLabel={t("settings.off")}
+						onToggle={() => onDigitsFollowSpacesToggle(!digitsFollowSpaces)}
+					/>
+				</div>
+			</SettingsEntry>
+
 			<SettingsEntry anchor="app-shortcuts">
 				<div>
 					<label className="block text-fg text-sm font-semibold mb-2" htmlFor="shortcut-filter">

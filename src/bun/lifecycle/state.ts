@@ -35,6 +35,7 @@ function runtimeFromTask(task: Task): LifecycleRuntime {
 			phase: "tearing-down",
 			targetStatus,
 			runId: persisted.runId ?? `recovered-${task.id}`,
+			...(persisted.failed ? { failed: true as const } : {}),
 		};
 	}
 	if (persisted?.runtime === "running") return { phase: "running" };

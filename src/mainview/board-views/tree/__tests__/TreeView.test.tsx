@@ -126,6 +126,19 @@ describe("Tree board view", () => {
 		expect(within(root).getByText("+2 inside")).toBeInTheDocument();
 	});
 
+	it("pins a live coordinator root on top and marks it with the role chip", async () => {
+		await renderTree({ tasks: [task("coord", 1, { taskType: "coordinator", status: "in-progress" }), task("new", 2)] });
+		expect(rowKeys()).toEqual(["p1#1", "p1#2"]);
+		expect(within(screen.getByTestId("board-tree-row-p1#1")).getByTestId("board-tree-coordinator-chip")).toBeInTheDocument();
+		expect(within(screen.getByTestId("board-tree-row-p1#2")).queryByTestId("board-tree-coordinator-chip")).toBeNull();
+	});
+
+	it("names the coordinator role in the row's accessible name, and only there", async () => {
+		await renderTree({ tasks: [task("coord", 1, { title: "Release plan", taskType: "coordinator", status: "in-progress" }), task("plain", 2, { title: "Fix bug" })] });
+		expect(screen.getByRole("treeitem", { name: /Coordinator Release plan/ })).toBeInTheDocument();
+		expect(screen.getByRole("treeitem", { name: /Fix bug/ }).getAttribute("aria-label")).not.toMatch(/Coordinator/);
+	});
+
 	it("expands from the chevron and persists the open node in the view layout", async () => {
 		const { layouts, rerender, actions } = await renderTree({ tasks: family });
 		fireEvent.click(screen.getByTestId("board-tree-toggle-p1#1"));

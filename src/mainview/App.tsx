@@ -1,7 +1,9 @@
 import InterfaceOnboarding from "./components/InterfaceOnboarding";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useAppState, canGoBack, routeTaskId, routeShowsTaskWorkspace, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, taskOpenRoute, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type Route } from "./state";
+import { useAppState, canGoBack, routeTaskId, routeShowsTaskWorkspace, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, taskOpenRoute, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type NavigateOptions, type Route } from "./state";
 import { lastProjectForSpace, rememberProjectForSpace } from "./utils/spaceBoardMemory";
+import { digitTargets, mixedEntryId, type MixedEntry } from "./utils/digitOrder";
+import { useMixedPending, withPendingMixedOrder } from "./mixed-order-store";
 import { api, isElectrobun, getRpcConnectionState } from "./rpc";
 import { ignoreStartupReadFailure, startupRead } from "./startup-read";
 import { setWebNotificationsSuppressed, showWebNotificationOrToast, type WebNotificationDetail } from "./utils/webNotification";
@@ -13,7 +15,7 @@ import { columnAgentFailureCopy } from "./utils/columnAgentFailureToast";
 import { preparationFailureMessage } from "./utils/preparationFailureMessage";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
-import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, BoardCopyFailureReason, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo, LiveArtifact, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
+import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, BoardCopyFailureReason, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo, LiveArtifact, SharedArtifact, SharedImage, StaleTmuxServer, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
 import { ACTIVE_STATUSES, hasGitWorkflow, orderProjectsForDisplay, getTaskTitle } from "../shared/types";
 import type { DeepLinkNav } from "../shared/deep-link";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
@@ -76,6 +78,7 @@ import RemoteAccessDownNotice from "./components/RemoteAccessDownNotice";
 import RemoteSignIn from "./components/RemoteSignIn";
 import RemoteAccessExposedPorts from "./components/RemoteAccessExposedPorts";
 import { ConfirmHost, confirm, whenConfirmHostMounted } from "./confirm";
+import { STALE_TMUX_SERVER_MESSAGE, describeTmuxRestartImpact } from "./tmux-restart-impact";
 import SecretRequestModal from "./components/SecretRequestModal";
 import type { SecretRequest } from "../shared/secret-request";
 import AgentLaunchRequestModal from "./components/AgentLaunchRequestModal";
@@ -89,6 +92,7 @@ import LaunchLocationGate from "./components/LaunchLocationGate";
 import { initTaskSoundPlayback, playTaskCompletionSound, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
 import { offerMergeCompletion } from "./utils/offerMergeCompletion";
 import { taskDialogInfoFromSubject } from "./utils/taskDialogInfo";
+import type { ApprovalReason } from "../shared/approval-reason";
 import { unsavedWorkWarning } from "./utils/confirmTaskCompletion";
 import { createAgentRequestAbort } from "./utils/agentRequestAbort";
 import { getRecentProjectIds, orderByRecency, recordProjectJump } from "./utils/recentProjects";
@@ -451,7 +455,7 @@ function App() {
 	const [navPalette, setNavPalette] = useState<NavPalette | null>(null);
 	const closeNavPalette = useCallback((kind: NavPalette) => setNavPalette((open) => (open === kind ? null : open)), []);
 	const toggleNavPalette = useCallback((kind: NavPalette) => setNavPalette((open) => (open === kind ? null : kind)), []);
-	const { spaces: appSpaces } = useSpaces();
+	const { spaces: appSpaces, file: spacesFile } = useSpaces();
 	// Cmd/Ctrl+O picker when no app is chosen yet (or the chosen one is gone).
 	const [openInPicker, setOpenInPicker] = useState<{ path: string; taskId?: string } | null>(null);
 	// Vimium-style task hint navigation overlay (toggled with `f` on the board).
@@ -779,20 +783,65 @@ function App() {
 			.catch((err) => console.error("Failed to check the launch location:", err));
 	}, []);
 
-	// A tmux server an older dev3 started outside launchd can still lose folder
-	// access (decisions/2026/10/26/tmux-server-as-launchd-job.md). Once per launch.
+	// A tmux server started outside launchd, or running a tmux from another or a
+	// deleted bundle, loses folder access (decisions/2026/10/26/tmux-server-as-launchd-job.md). Once per launch.
 	useEffect(() => {
 		api.request
 			.getTmuxServerNotice()
-			.then(({ predatesLaunchd }) => {
-				if (predatesLaunchd) toast.warning(t("terminal.legacyTmuxServer"), { source: "terminal", durationMs: 15_000 });
+			.then(({ predatesLaunchd, staleBinary }) => {
+				if (staleBinary) {
+					showStaleServerNotice(staleBinary);
+				} else if (predatesLaunchd) {
+					toast.warning(t("terminal.legacyTmuxServer"), { source: "terminal", durationMs: 15_000 });
+				}
 			})
 			.catch((err) => console.error("Failed to check the tmux server:", err));
+
+		function showStaleServerNotice(staleBinary: StaleTmuxServer) {
+			toast.warning(t(STALE_TMUX_SERVER_MESSAGE[staleBinary]), {
+				source: "terminal",
+				// A coming access loss or an undrivable server waits for the user: a timed toast went
+				// unseen at launch. Another running copy legitimately shares the server, so that one must not nag forever.
+				durationMs: staleBinary === "elsewhere" ? 15_000 : Infinity,
+				actions: [{ label: t("terminal.restartTerminals"), emphasis: true, onClick: () => void restartTmuxServer(staleBinary) }],
+			});
+		}
+
+		// The action dismisses the toast before the dialog answers, so Cancel or a failure brings it back.
+		async function restartTmuxServer(staleBinary: StaleTmuxServer) {
+			const ok = await confirm({
+				title: t("terminal.restartTerminalsTitle"),
+				message: t("terminal.restartTerminalsMessage"),
+				confirmLabel: t("terminal.restartNow"),
+				cancelLabel: t("terminal.restartLater"),
+				danger: true,
+				focusCancel: true,
+				deferred: {
+					pending: t("terminal.restartImpactPending"),
+					promise: api.request.getTmuxRestartImpact().then((impact) => describeTmuxRestartImpact(impact, t)),
+					unknown: t("terminal.restartImpactUnknown"),
+					// The user decides on what is listed, so it must be on screen before Restart now works.
+					gateConfirm: true,
+					gateTimeoutMs: 5_000,
+				},
+			});
+			if (!ok) {
+				showStaleServerNotice(staleBinary);
+				return;
+			}
+			try {
+				await api.request.restartTmuxServer();
+				toast.success(t("terminal.restartTerminalsDone"), { source: "terminal" });
+			} catch (err) {
+				toast.error(t("terminal.restartTerminalsFailed", { error: String(err) }), { source: "terminal" });
+				showStaleServerNotice(staleBinary);
+			}
+		}
 	}, []);
 
 	// Navigation guard for unsaved-changes prompts (e.g. ProjectSettings, diff viewer)
 	const navigationGuardRef = useRef<NavigationGuard | null>(null);
-	const [pendingNavigation, setPendingNavigation] = useState<Route | null>(null);
+	const [pendingNavigation, setPendingNavigation] = useState<{ route: Route; options?: NavigateOptions } | null>(null);
 
 	// Completion dialogs this window already has on screen, so the push and the
 	// on-connect replay of the same request cannot stack two confirms.
@@ -898,15 +947,15 @@ function App() {
 	// the palette, the `g`-prefix go-to, terminal toggles, future ones…) is
 	// covered automatically — they all funnel through here.
 	const commitNavigation = useCallback(
-		(route: Route) => {
+		(route: Route, options?: NavigateOptions) => {
 			const projectId = projectIdForRoute(route);
 			if (projectId) recordProjectJump(projectId);
-			dispatch({ type: "navigate", route });
+			dispatch({ type: "navigate", route, inheritSpace: options?.inheritSpace });
 		},
 		[dispatch],
 	);
 	const navigate = useCallback(
-		(route: Route) => {
+		(route: Route, options?: NavigateOptions) => {
 			// One guard for every entry point into a sensitive project (card, Cmd+1..9,
 			// Cmd+Shift+K, palette, deep link, notification click, hint overlay). Checked
 			// before the dirty-form guard: a refused route must not prompt to save.
@@ -915,10 +964,10 @@ function App() {
 				return;
 			}
 			if (navigationGuardRef.current?.isDirty()) {
-				setPendingNavigation(route);
+				setPendingNavigation({ route, options });
 				return;
 			}
-			commitNavigation(route);
+			commitNavigation(route, options);
 		},
 		[commitNavigation, isRouteLocked, t],
 	);
@@ -1016,7 +1065,7 @@ function App() {
 	// (no task selected); otherwise land on its Kanban board. Shared by the
 	// Cmd+1..9 index shortcuts and the Cmd+Shift+K quick-switch palette.
 	const navigateToProject = useCallback(
-		(projectId: string) => {
+		(projectId: string, spaceId?: string) => {
 			const route = state.route;
 			const taskOpenMode = getTaskOpenMode();
 			const inTaskView =
@@ -1024,8 +1073,9 @@ function App() {
 				(route.screen === "project" && (Boolean(route.activeTaskId) || Boolean(route.taskView)));
 			navigate(
 				inTaskView && taskOpenMode === "split"
-					? { screen: "project", projectId, taskView: true }
-					: { screen: "project", projectId },
+					? { screen: "project", projectId, ...(spaceId ? { spaceId } : {}), taskView: true }
+					: { screen: "project", projectId, ...(spaceId ? { spaceId } : {}) },
+				{ inheritSpace: false },
 			);
 		},
 		[navigate, state.route],
@@ -1154,26 +1204,45 @@ function App() {
 		}
 	}, []);
 	const goToProjectView = useCallback(
-		(projectId: string, view: "project" | "task") =>
-			navigate(view === "task" ? { screen: "project", projectId, taskView: true } : { screen: "project", projectId }),
+		(projectId: string, view: "project" | "task", spaceId?: string) =>
+			navigate(
+				{ screen: "project", projectId, ...(spaceId ? { spaceId } : {}), ...(view === "task" ? { taskView: true } : {}) },
+				{ inheritSpace: false },
+			),
 		[navigate],
 	);
+	// ⌘1..9, ⇧⌘1..9 and `g` + digit share this list; a space target opens its board
+	// anchored on the member last used there, else the first one.
+	const followSpaces = globalSettings.digitsFollowSpaces === true;
+	const mixedPending = useMixedPending();
+	const digitTargetList = useMemo(
+		() => digitTargets(state.projects, withPendingMixedOrder(spacesFile, mixedPending), followSpaces),
+		[state.projects, spacesFile, mixedPending, followSpaces],
+	);
+	const digitTargetBoard = useCallback((target: MixedEntry): { projectId: string; spaceId?: string } => {
+		if (target.kind === "project") return { projectId: target.project.id };
+		const remembered = lastProjectForSpace(target.space.id);
+		const anchor = target.projects.find((p) => p.id === remembered) ?? target.projects[0];
+		return { projectId: anchor.id, spaceId: target.space.id };
+	}, []);
 	const goToCurrentProject = useCallback(
 		(view: "project" | "task") => {
 			const projectId = "projectId" in state.route ? state.route.projectId : state.projects.find((p) => !p.deleted)?.id;
 			if (!projectId) return navigate({ screen: "dashboard" });
-			goToProjectView(projectId, view);
+			// Changing the view of the board on screen keeps its space.
+			goToProjectView(projectId, view, routeSpaceId(state.route) ?? undefined);
 		},
 		[navigate, state.route, state.projects, goToProjectView],
 	);
 	const goToProjectIndex = useCallback(
 		(n: number, view: "project" | "task" | "preserve") => {
-			const project = state.projects.filter((p) => !p.deleted)[n - 1];
-			if (!project) return; // out of range — no-op
-			if (view === "preserve") navigateToProject(project.id);
-			else goToProjectView(project.id, view);
+			const target = digitTargetList[n - 1];
+			if (!target) return; // out of range — no-op
+			const { projectId, spaceId } = digitTargetBoard(target);
+			if (view === "preserve") navigateToProject(projectId, spaceId);
+			else goToProjectView(projectId, view, spaceId);
 		},
-		[state.projects, navigateToProject, goToProjectView],
+		[digitTargetList, digitTargetBoard, navigateToProject, goToProjectView],
 	);
 	const armGoToVerb = useCallback(() => {
 		goToModeRef.current = { stage: "verb" };
@@ -1231,13 +1300,11 @@ function App() {
 	// order); the ⌘N badge stays keyed to the stable board index.
 	const quickSwitch = useMemo(() => {
 		const boardProjects = state.projects.filter((p) => !p.deleted);
-		// ⌘1..9 address ordinary projects only — the builtin Operations board owns
-		// ⌘0 (see the keydown handler). The ⌘N badge index must mirror that same
-		// builtin-excluded ordering, or the badge would disagree with the shortcut.
-		const ordinary = boardProjects.filter((p) => !(p.builtin && p.kind === "virtual"));
+		// The ⌘N badges come from the same list the digit handlers walk, or a badge
+		// would disagree with its shortcut. Spaces carry a badge too (mixed mode).
 		const shortcutIndexById: Record<string, number> = {};
-		ordinary.forEach((p, i) => {
-			shortcutIndexById[p.id] = i;
+		digitTargetList.forEach((target, i) => {
+			shortcutIndexById[mixedEntryId(target)] = i;
 		});
 		// Pin the builtin Operations board first (consistent with the dashboard,
 		// header switcher, and sidebar), then recency, then board order. Any "Go to"
@@ -1246,7 +1313,7 @@ function App() {
 			isGoToMode(navPalette) ? orderByRecency(boardProjects, getRecentProjectIds()) : boardProjects,
 		);
 		return { projects: ordered, shortcutIndexById };
-	}, [state.projects, navPalette]);
+	}, [state.projects, navPalette, digitTargetList]);
 
 	const getProjectIdForRoute = useCallback((route: Route): string | null => projectIdForRoute(route), []);
 
@@ -1621,21 +1688,23 @@ function App() {
 				// the explicit Shift means "give me the other view" regardless of the
 				// `dev3-task-open-mode` preference. Note: macOS reserves Cmd+Shift+3/4/5
 				// for screenshots, so those may be swallowed by the OS before reaching us.
-				const idx = parseInt(e.code.slice(5), 10) - 1;
-				// The built-in Operations board owns Cmd+0, so it is excluded here —
-				// Cmd+1..9 address ordinary projects only.
-				const available = state.projects.filter((p) => !p.deleted && !(p.builtin && p.kind === "virtual"));
-				if (idx < available.length) {
+				const target = digitTargetList[parseInt(e.code.slice(5), 10) - 1];
+				if (target) {
 					e.preventDefault();
 					e.stopPropagation();
 					const { route } = state;
 					const inTaskView =
 						route.screen === "task" ||
 						(route.screen === "project" && (Boolean(route.activeTaskId) || Boolean(route.taskView)));
+					const { projectId, spaceId } = digitTargetBoard(target);
 					navigate(
-						inTaskView
-							? { screen: "project", projectId: available[idx].id }
-							: { screen: "project", projectId: available[idx].id, taskView: true },
+						{
+							screen: "project",
+							projectId,
+							...(spaceId ? { spaceId } : {}),
+							...(inTaskView ? {} : { taskView: true }),
+						},
+						{ inheritSpace: false },
 					);
 				}
 			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key >= "1" && e.key <= "9") {
@@ -1651,13 +1720,13 @@ function App() {
 				//  - "fullscreen" users have no task to show full-page after a switch, so
 				//                 dropping them into a split they never use is jarring —
 				//                 land on the Kanban board instead (pre-#619 behavior).
-				const idx = parseInt(e.key, 10) - 1;
 				// Built-in Operations board is reached via Cmd+0, not Cmd+1..9.
-				const available = state.projects.filter((p) => !p.deleted && !(p.builtin && p.kind === "virtual"));
-				if (idx < available.length) {
+				const target = digitTargetList[parseInt(e.key, 10) - 1];
+				if (target) {
 					e.preventDefault();
 					e.stopPropagation();
-					navigateToProject(available[idx].id);
+					const { projectId, spaceId } = digitTargetBoard(target);
+					navigateToProject(projectId, spaceId);
 				}
 			} else if (matchesShortcut(e, "task-hints")) {
 				// Vimium-style hint navigation. Works on any screen that has hint
@@ -1690,7 +1759,7 @@ function App() {
 				}
 			}
 		},
-		[armGoToIndex, armGoToVerb, armViewChord, clearGoTo, clearViewChord, createTaskProjectId, cycleVariant, dispatch, goToCurrentProject, goToProjectIndex, handleMenuBarAction, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, openInCurrent, openQuickShell, showAddProjectModal, showQuitDialog, state.projects, state.route, toggleTerminalImmersive],
+		[armGoToIndex, armGoToVerb, armViewChord, clearGoTo, clearViewChord, createTaskProjectId, cycleVariant, digitTargetBoard, digitTargetList, dispatch, goToCurrentProject, goToProjectIndex, handleMenuBarAction, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, openInCurrent, openQuickShell, showAddProjectModal, showQuitDialog, state.projects, state.route, toggleTerminalImmersive],
 		{ capture: true },
 	);
 
@@ -1892,20 +1961,11 @@ function App() {
 		return () => window.removeEventListener("rpc:taskSound", onTaskSound);
 	}, []);
 
-	useEffect(() => {
-		function onTerminalBell(e: Event) {
-			const { taskId } = (e as CustomEvent).detail;
-			dispatch({ type: "addBell", taskId });
-		}
-		window.addEventListener("rpc:terminalBell", onTerminalBell);
-		return () => window.removeEventListener("rpc:terminalBell", onTerminalBell);
-	}, [dispatch]);
-
-	// CLI-initiated attention badge (`dev3 attention "reason"`). Same red badge as
-	// the terminal bell, but carries a hoverable reason.
+	// Attention badge: `dev3 attention "reason"` or a task newly entering User
+	// questions (`kind: "questions"`). Carries a hoverable reason.
 	useEffect(() => {
 		function onCliAttention(e: Event) {
-			const { taskId, projectId, reason, clear } = (e as CustomEvent).detail as { taskId: string; projectId?: string; reason: string; clear?: boolean };
+			const { taskId, projectId, reason, kind, clear } = (e as CustomEvent).detail as { taskId: string; projectId?: string; reason: string; kind?: "questions"; clear?: boolean };
 			if (!taskId) return;
 			// Clearing shows nothing, so a silenced project must not keep a stale
 			// badge lit; only raising a badge is gated on display silencing.
@@ -1914,11 +1974,13 @@ function App() {
 				return;
 			}
 			if (isProjectSilencedForDisplay(projectId)) return;
-			dispatch({ type: "addBell", taskId, reason: reason ?? "" });
+			dispatch(kind === "questions"
+				? { type: "addBell", taskId, reason: t("kanban.badge.waitingForAnswer"), questions: true }
+				: { type: "addBell", taskId, reason: reason ?? "" });
 		}
 		window.addEventListener("rpc:cliAttention", onCliAttention);
 		return () => window.removeEventListener("rpc:cliAttention", onCliAttention);
-	}, [dispatch]);
+	}, [dispatch, t]);
 
 	useEffect(() => {
 		const onStaleAgentPath = (e: Event) => showStaleAgentPathToast((e as CustomEvent).detail as StaleAgentPathDetail, t);
@@ -2365,6 +2427,7 @@ function App() {
 			projectId?: string;
 			taskTitle: string;
 			subject?: TaskDialogSubject;
+			reason?: ApprovalReason;
 		}) {
 			const { requestId, taskId, taskTitle, subject } = request;
 			if (showing.has(requestId)) return;
@@ -2385,6 +2448,7 @@ function App() {
 					// Without its own worktree nothing is deleted: the folder outlives the task.
 					message: t(keepsTaskFolder(request.projectId, subject) ? "app.agentCompletionMessageFolder" : "app.agentCompletionMessage"),
 					info: taskDialogInfoFromSubject(taskTitle, subject),
+					...(request.reason ? { reason: request.reason } : {}),
 					confirmLabel: t("app.agentCompletionConfirm"),
 					cancelLabel: t("app.agentCompletionCancel"),
 					danger: true,
@@ -2490,6 +2554,7 @@ function App() {
 			taskTitle: string;
 			subject?: TaskDialogSubject;
 			branchKept?: boolean;
+			reason?: ApprovalReason;
 		}) {
 			const { requestId, taskId, projectId, taskTitle, subject, branchKept } = request;
 			if (showing.has(requestId)) return;
@@ -2509,6 +2574,7 @@ function App() {
 					title: t(copy.title),
 					message: t(branchKept && copy === kind.copy && kind.toStatus === "todo" ? "app.agentResetMessageBranchKept" : copy.message),
 					info: taskDialogInfoFromSubject(taskTitle, subject),
+					...(request.reason ? { reason: request.reason } : {}),
 					confirmLabel: t(copy.confirm),
 					cancelLabel: t(copy.cancel),
 					danger: true,
@@ -3263,6 +3329,8 @@ function App() {
 
 	return (
 		<div className="h-full w-full flex flex-col">
+			{/* Reserves the iOS status-bar inset (viewport-fit=cover); zero height everywhere else. */}
+			<div aria-hidden className="shrink-0 bg-base" style={{ height: "env(safe-area-inset-top, 0px)" }} />
 			{terminalImmersiveVisible ? (
 				<TerminalImmersiveChrome onExit={() => setTerminalImmersiveActive(false)} />
 			) : (
@@ -3286,6 +3354,7 @@ function App() {
 						helpDiscovered={globalSettings.helpModeDiscovered}
 						suppressHelpCallout={invitationVisible}
 						tourRunning={!!tour}
+						digitsFollowSpaces={followSpaces}
 					/>
 					{ghWarning && (
 						<GhWarningBanner
@@ -3462,10 +3531,10 @@ function App() {
 							</button>
 							<button
 								onClick={() => {
-									const route = pendingNavigation;
+									const { route, options } = pendingNavigation;
 									navigationGuardRef.current = null;
 									setPendingNavigation(null);
-									commitNavigation(route);
+									commitNavigation(route, options);
 								}}
 								className="px-4 py-2 text-sm rounded-lg text-danger hover:bg-danger/10 transition-colors"
 							>
@@ -3473,13 +3542,13 @@ function App() {
 							</button>
 							<button
 								onClick={async () => {
-									const route = pendingNavigation;
+									const { route, options } = pendingNavigation;
 									if (navigationGuardRef.current) {
 										await navigationGuardRef.current.onSave();
 									}
 									navigationGuardRef.current = null;
 									setPendingNavigation(null);
-									commitNavigation(route);
+									commitNavigation(route, options);
 								}}
 								className="px-4 py-2 text-sm rounded-lg bg-accent-fill text-white hover:bg-accent-fill-hover transition-colors"
 							>
@@ -3552,7 +3621,7 @@ function App() {
 								}}
 								disabled={qrConsumed || tunnelUrlPending || remoteUrlCopyState === "copying"}
 								aria-label={t(remoteCopyLabel)}
-								className={`inline-flex min-w-[7.25rem] items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg transition-[background-color,color,transform] active:scale-[0.98] ${qrConsumed || tunnelUrlPending ? "bg-elevated text-fg-3 cursor-not-allowed" : remoteUrlCopyState === "copying" ? "bg-accent/80 text-white cursor-wait" : remoteUrlCopyState === "copied" ? "bg-success-fill text-white hover:bg-success-fill-hover" : "bg-accent-fill text-white hover:bg-accent-fill-hover"}`}
+								className={`inline-flex min-w-[7.25rem] items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg transition-[background-color,color,transform] active:scale-[0.98] ${qrConsumed || tunnelUrlPending ? "bg-elevated text-fg-3 cursor-not-allowed" : remoteUrlCopyState === "copying" ? "bg-accent-fill text-white cursor-wait" : remoteUrlCopyState === "copied" ? "bg-success-fill text-white hover:bg-success-fill-hover" : "bg-accent-fill text-white hover:bg-accent-fill-hover"}`}
 							>
 								{remoteUrlCopyState === "copying" && (
 									<svg
@@ -4014,6 +4083,7 @@ function App() {
 							setAddProjectSpaceIds(spaceIds ?? []);
 							setShowAddProjectModal(true);
 						}}
+						digitsFollowSpaces={followSpaces}
 					/>
 				);
 			case "project":

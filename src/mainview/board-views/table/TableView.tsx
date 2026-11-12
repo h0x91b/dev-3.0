@@ -2,11 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, type KeyboardEvent, type Mouse
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Context } from "cordis";
 import type { Label, Task } from "../../../shared/types";
-import { getTaskTitle, projectDisplayName } from "../../../shared/types";
+import { isPinnedCoordinator, projectDisplayName } from "../../../shared/types";
 import { useT, type TranslationKey } from "../../i18n";
 import { useBoard } from "../react";
 import type { BoardService } from "../board-service";
-import { TableCell, LabelsCell, OverviewCell, PriorityCell, StatusCell, rowSeqLabel, type TableRowContext } from "./TableCells";
+import { TableCell, TitleCell, LabelsCell, OverviewCell, PriorityCell, StatusCell, rowSeqLabel, type TableRowContext } from "./TableCells";
 import {
 	END_ALIGNED_COLUMNS,
 	normalizeTableLayout,
@@ -16,7 +16,7 @@ import {
 	type TableColumnId,
 	type TableLayout,
 } from "./table-model";
-import { ZEBRA_ROW } from "../zebra";
+import { COORDINATOR_ROW, ZEBRA_ROW } from "../zebra";
 
 export const TABLE_VIEW_ID = "builtin:table";
 const ROW_HEIGHT = 36;
@@ -181,7 +181,7 @@ export function TableView(_props: { ctx: Context }) {
 								<div className="flex h-full flex-col justify-between rounded-xl bg-raised px-3 py-2 shadow-[0_0_0_1px_rgb(var(--border-default))] active:bg-raised-hover">
 									<div className="flex min-w-0 items-baseline gap-2">
 										<span className="flex-shrink-0 text-xs tabular-nums text-fg-3">{rowSeqLabel(task, rowCtx)}</span>
-										<span className="min-w-0 flex-1 truncate text-sm text-fg">{getTaskTitle(task)}</span>
+										<TitleCell task={task} className="flex-1" />
 										<span className="flex-shrink-0"><TableCell column="activity" task={task} ctx={rowCtx} /></span>
 									</div>
 									<div className="flex min-w-0 items-center gap-2">
@@ -254,7 +254,7 @@ export function TableView(_props: { ctx: Context }) {
 								onClick={() => board.openTask(task.id)}
 								onContextMenu={(e) => openMenu(task, e)}
 								onKeyDown={(e) => onRowKeyDown(task, item.index, e)}
-								className={`absolute left-0 top-0 grid w-full cursor-pointer items-center border-b border-edge/40 outline-none ${item.index % 2 === 1 ? ZEBRA_ROW : ""} hover:bg-raised-hover focus-visible:bg-raised-hover focus-visible:shadow-[inset_2px_0_0_rgb(var(--accent))]`}
+								className={`absolute left-0 top-0 grid w-full cursor-pointer items-center border-b border-edge/40 outline-none ${isPinnedCoordinator(task) ? COORDINATOR_ROW : item.index % 2 === 1 ? ZEBRA_ROW : ""} hover:bg-raised-hover focus-visible:bg-raised-hover focus-visible:shadow-[inset_2px_0_0_rgb(var(--accent))]`}
 								style={{ ...grid.rowStyle, height: ROW_HEIGHT, transform: `translateY(${item.start}px)` }}
 							>
 								{layout.columns.map((column) => (
