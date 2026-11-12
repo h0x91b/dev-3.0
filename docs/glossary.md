@@ -5,6 +5,7 @@ records — do not drift to synonyms. When a term changes meaning, change it her
 
 ## Task lifecycle
 
+- **Approval reason** — the optional `--reason "<text>"` an agent passes to a command that opens an approval dialog (`task move` to completed/cancelled/todo/an active status, `task create --scratch --run`, `task hibernate`, `task wake`, `agent spawn`, `agent resume`). The dialog shows it as plain text — never HTML or markdown — capped at 500 characters, and names the asking task when it is not the target's own agent. Without it the dialog is unchanged. It explains a request; it authorizes nothing.
 - **Board cleanup** — a task type (`board-cleanup`) whose built-in brief passively audits open work and recommends COMPLETE, CANCEL, KEEP or INVESTIGATE. Scoped to its project unless the user explicitly requests all projects; a central audit may live on Operations. It never wakes or messages the agents being audited, does not receive the coordinator sort lift, and always completes manually. Read-only behavior is an agent instruction, not a tool sandbox; destructive actions still use the normal approval flow after an explicit user selection.
 
 - **Column** — the task's Kanban placement: a built-in `status` plus an optional custom-column ID. Users, hooks, and agents request column changes; the lifecycle machine accepts or rejects them from fresh task state.

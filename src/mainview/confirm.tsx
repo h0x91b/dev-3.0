@@ -4,6 +4,8 @@ import TaskDialogSubjectCard from "./components/TaskDialogSubjectCard";
 import { useT } from "./i18n";
 import { UNSOLICITED_DIALOG_QUIET_MS, useDialogKeyboardGuard } from "./utils/dialog-keyboard-guard";
 import { useFocusTrap } from "./utils/useFocusTrap";
+import type { ApprovalReason } from "../shared/approval-reason";
+import ApprovalReasonNote from "./components/ApprovalReasonNote";
 
 export interface ConfirmAlternativeAction {
 	label: string;
@@ -65,6 +67,8 @@ export interface ConfirmOptions {
 		/** Optional action for opening the subject task; resolves the dialog as "Not now". */
 		onClick?: () => void;
 	};
+	/** Why the agent asks (`--reason`), shown under the subject card as plain text. */
+	reason?: ApprovalReason;
 	/**
 	 * Close the dialog externally, without a user choice — e.g. the underlying
 	 * task was resolved on another window or on the remote browser. When the
@@ -430,6 +434,7 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 						} : {})}
 					/>
 				)}
+				{pending.reason && <ApprovalReasonNote reason={pending.reason} tone={dangerTone ? "danger" : "accent"} />}
 				{pending.outcomeCards && (
 					<div className="flex min-w-0 items-center gap-2 rounded-lg border border-success/25 bg-success/10 px-3 py-2 text-xs">
 						<span className="text-success" aria-hidden>✓</span>

@@ -355,7 +355,9 @@ It **inherits your priority** unless it has its own. Approval returns its \`seq\
 
 Use it only for work that needs its own session — never to escape your scope, never several at once: each interrupts the user.
 
-**Extra agent in an existing task** → \`dev3 agent spawn --task seq:<N> --prompt "brief"\`: new pane, same worktree and approval, prints the pane ID; default account unless the user picks another. \`--handoff\` adds the conversation retelling. Messages reach the task's main agent, not this pane. Terminal gone → \`dev3 agent resume\` first. Idle → \`dev3 task hibernate --task seq:<N>\` frees its memory (declined: exit 36); \`dev3 task wake\` brings it back.
+Acting on another task? Pass \`--reason "<why>"\`: its approval dialog shows it.
+
+**Extra agent in an existing task** → \`dev3 agent spawn --task seq:<N> --prompt "brief"\`: new pane, same worktree and approval; default account unless the user picks another. \`--handoff\` adds the conversation retelling. Messages reach the task's main agent, not this pane. Terminal gone → \`dev3 agent resume\` first. Idle → \`dev3 task hibernate --task seq:<N>\` frees its memory (declined: exit 36); \`dev3 task wake\` brings it back.
 
 **Naming tasks and PRs** — a task is \`<seq:N>\` (\`<seq:proj/N>\` off-board, proj = its project id's first 8 chars), a PR \`<pr:N>\`, in messages, notes, overviews and reports; never \`#N\` or "seq N". dev3 links them.
 

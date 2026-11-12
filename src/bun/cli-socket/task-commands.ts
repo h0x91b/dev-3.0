@@ -22,6 +22,7 @@ import { armLaunchAfter, clearLaunchAfter, prerequisiteRefusal, writeLaunchAfter
 import { approvalStatusOf, launchSuggestionRequested, launcherHandoffNote, requestAgentLaunchApproval, requestDestructiveApproval, resolveLaunchSuggestion } from "./approvals";
 import { log, type Handler, withSenderVariant } from "./shared";
 import { findByIdPrefix, findTaskByRef, parseSeqRef, resolveAgentMessageSource, resolveRequesterTask, resolveTaskAcrossProjects, resolveTaskFromParams, resumeAccountParam, scopedTaskNotFoundError, senderRequester, taskNotFoundError, withArchivedHistory, withEpic, withOriginParent, withSenderAgent } from "./task-resolution";
+import { approvalReasonFromParams } from "../../shared/approval-reason";
 
 // Lazy like `conversationImport` (shared.ts): it reaches the app and spaces handler domains.
 async function projectRegistration() {
@@ -371,6 +372,7 @@ export const taskHandlers: Record<string, Handler> = {
 			requester: await withSenderAgent(requester, params),
 			launcherNote: launcherHandoffNote(params),
 			suggested,
+			...approvalReasonFromParams(params),
 		});
 		// A declined scratch task has no reason to exist — it was created only to
 		// have something for the dialog to launch. Leaving it would litter To Do
@@ -685,6 +687,7 @@ export const taskHandlers: Record<string, Handler> = {
 				requester: sender ?? await withSenderAgent(requester as AgentMessageSource, params),
 				launcherNote: launcherHandoffNote(params),
 				suggested: await resolveLaunchSuggestion(params),
+				...approvalReasonFromParams(params),
 			});
 		}
 
@@ -709,7 +712,7 @@ export const taskHandlers: Record<string, Handler> = {
 		const { project, task } = await resolveTaskFromParams(params);
 		const requester = await resolveRequesterTask(params);
 		const { hibernateCliTask } = await import("../cli-task-session");
-		return hibernateCliTask({ project, task, requester });
+		return hibernateCliTask({ project, task, requester, ...approvalReasonFromParams(params) });
 	},
 
 	"task.wake": async (params) => {
@@ -720,7 +723,7 @@ export const taskHandlers: Record<string, Handler> = {
 		const { wakeCliTask } = await import("../cli-task-session");
 		const accountId = resumeAccountParam(params);
 		if (accountId !== undefined && mode !== "resume") throw new Error("accountId only applies to a resume.");
-		return wakeCliTask({ project, task, requester, mode, allowAgentLatest: params.allowAgentLatest === true, ...(accountId !== undefined ? { accountId } : {}) });
+		return wakeCliTask({ project, task, requester, mode, ...approvalReasonFromParams(params), allowAgentLatest: params.allowAgentLatest === true, ...(accountId !== undefined ? { accountId } : {}) });
 	},
 
 	// Agent-initiated request to complete a task. Blocks until the user

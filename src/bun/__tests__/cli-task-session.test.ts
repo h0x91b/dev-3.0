@@ -14,7 +14,7 @@ import { getPushMessage } from "../rpc-handlers/shared-pure";
 import { hibernateTask } from "../rpc-handlers/task-lifecycle";
 import { taskTerminalAlive, wakeTaskShell } from "../rpc-handlers/tmux-pty";
 import { resumeCliAgent } from "../cli-agent-resume";
-import { _resetAgentRequestsForTests, resolveAgentRequest, voidAgentRequest } from "../agent-requests";
+import { _resetAgentRequestsForTests, listPendingApprovalSummaries, resolveAgentRequest, voidAgentRequest } from "../agent-requests";
 import { askSessionApproval } from "../cli-session-approval";
 import { assertTaskWorkspacePresent } from "../task-workspace-guard";
 
@@ -79,6 +79,16 @@ describe("dev3 task hibernate", () => {
 		expect(request.autoApproveAt).toBeGreaterThan(Date.now());
 		expect(request.resume).toBeUndefined();
 		expect(request.spawn).toBeUndefined();
+	});
+
+	it("shows the agent's --reason in the dialog", async () => {
+		const reason = { text: "Moving it off the exhausted Claude account." };
+		const pending = hibernateCliTask({ project, task, requester, reason });
+		await vi.waitFor(() => expect(push).toHaveBeenCalledWith("agentLaunchRequested", expect.anything()));
+		expect(push.mock.calls[0][1].reason).toEqual(reason);
+		expect(listPendingApprovalSummaries()[0]?.reason).toBe(reason.text);
+		await answer(true);
+		await pending;
 	});
 
 	it("asks even when an agent hibernates its own task", async () => {

@@ -7,6 +7,7 @@ import type { ParsedArgs } from "../args";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 import { launchApprovalTimeoutMs, withWaitHeartbeat } from "../launch-approval";
+import { readReasonFlag } from "../approval-reason";
 import { exitError, exitUsage } from "../output";
 import { sendRequest } from "../socket-client";
 import { readStdin } from "../stdin";
@@ -31,8 +32,8 @@ export async function handleAgent(subcommand: string | undefined, args: ParsedAr
 	}
 	if (subcommand === "resume") return handleResume(args, socketPath, context);
 	if (subcommand === "aws-profiles") return handleAwsProfiles(args, socketPath);
-	if (subcommand !== "spawn") return exitUsage("Usage: dev3 agent list [--json] | dev3 agent aws-profiles list|set ... | dev3 agent spawn [--task <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--json] | dev3 agent resume [--task <id>] [--allow-agent-latest] [--account <id|system>] [--as-sender <id>] [--json]");
-	rejectUnknownFlags(args, ["task", "task-id", "project", "agent", "config", "prompt", "handoff", "json"]);
+	if (subcommand !== "spawn") return exitUsage("Usage: dev3 agent list [--json] | dev3 agent aws-profiles list|set ... | dev3 agent spawn [--task <id>] [--agent <id>] [--config <id>] [--prompt <text>|-] [--handoff] [--reason <text>] [--json] | dev3 agent resume [--task <id>] [--allow-agent-latest] [--account <id|system>] [--as-sender <id>] [--reason <text>] [--json]");
+	rejectUnknownFlags(args, ["task", "task-id", "project", "agent", "config", "prompt", "handoff", "json", "reason"]);
 	if (args.positional.length) return exitUsage("agent spawn takes flags, not positional arguments");
 	const rawTask = args.flags.task || args.flags["task-id"] || context?.taskId;
 	if (!rawTask) return exitUsage("No task in context — pass --task <id>.");
@@ -49,6 +50,7 @@ export async function handleAgent(subcommand: string | undefined, args: ParsedAr
 		configId: args.flags.config ?? null,
 		...(prompt !== undefined ? { prompt } : {}),
 		handoff: "handoff" in args.flags,
+		...readReasonFlag(args),
 	};
 	let resp;
 	try {
@@ -79,7 +81,7 @@ function describePane(pane: ResumePaneReport): string {
 
 /** Same managed path as the terminal's Resume Session button — never a reset or a new worktree, and never the task brief again. */
 async function handleResume(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["task", "task-id", "project", "allow-agent-latest", "account", "as-sender", "json"]);
+	rejectUnknownFlags(args, ["task", "task-id", "project", "allow-agent-latest", "account", "as-sender", "json", "reason"]);
 	if (args.positional.length) return exitUsage("agent resume takes flags, not positional arguments");
 	const accountId = parseResumeAccountFlag(args);
 	// A sender's resume goes through the same approval dialog an agent's does.
@@ -95,6 +97,7 @@ async function handleResume(args: ParsedArgs, socketPath: string, context: CliCo
 		...(asSender ? { asSender } : {}),
 		allowAgentLatest: "allow-agent-latest" in args.flags,
 		...(accountId !== undefined ? { accountId } : {}),
+		...readReasonFlag(args),
 	};
 	let resp;
 	try {

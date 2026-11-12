@@ -17,6 +17,7 @@ import { claudeSessionWatches, type ClaudeIdleEvent } from "../claude-session-wa
 import { rememberTaskSession } from "../task-sessions";
 import { claimFileForTask } from "../file-leases";
 import { codexTurnWatches, type CodexTurnFailure } from "../codex-turn-watch";
+import { approvalReasonFromParams } from "../../shared/approval-reason";
 
 const codexQuestions = new CodexQuestionState();
 
@@ -171,6 +172,7 @@ export const agentHandlers: Record<string, Handler> = {
 			project, task, requester,
 			choice: { agentId: (params.agentId as string | null) ?? null, configId: (params.configId as string | null) ?? null },
 			prompt: typeof params.prompt === "string" ? params.prompt : undefined, handoff: params.handoff === true,
+			...approvalReasonFromParams(params),
 		});
 	},
 	...withSenderVariant("agent.resume", async (params) => {
@@ -181,7 +183,7 @@ export const agentHandlers: Record<string, Handler> = {
 		const { project, task } = await requirePaneTask(params);
 		const requester = senderRequester(params) ?? await resolveRequesterTask(params, "resume request");
 		const { resumeCliAgent } = await import("../cli-agent-resume");
-		return resumeCliAgent({ project, task, requester, allowAgentLatest: params.allowAgentLatest === true, ...(accountId !== undefined ? { accountId } : {}) });
+		return resumeCliAgent({ project, task, requester, allowAgentLatest: params.allowAgentLatest === true, ...(accountId !== undefined ? { accountId } : {}), ...approvalReasonFromParams(params) });
 	}),
 
 	"task.agentHook": (params) => codexQuestions.run(String(params.taskId), async () => {
