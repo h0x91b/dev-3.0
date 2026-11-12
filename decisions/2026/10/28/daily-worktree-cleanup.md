@@ -1,5 +1,7 @@
 # The app runs `doctor --worktrees --prune-older-than 14d` once a day
 
+Superseded in part on 2026-11-12 by `decisions/2026/11/12/prune-large-shared-media.md`: the daily job also deletes large shared media older than 60 days.
+
 ## Context
 
 `doctor-worktrees-only-sanctioned-deletion` made deletion under `~/.dev3.0/` a typed CLI flag only, "never from the

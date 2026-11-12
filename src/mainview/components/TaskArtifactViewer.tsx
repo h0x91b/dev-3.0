@@ -770,7 +770,7 @@ export default function TaskArtifactViewer({ artifacts: sharedArtifacts, initial
 						aria-label={themeLabel}
 						title={themeLabel}
 					><span style={{ fontFamily: ICON }}>{themeIcon}</span></button>
-					<button type="button" className={iconButton} disabled={downloading} onClick={download} aria-label={(downloadKind ?? (current.bundlePath ? "zip" : "html")) === "zip" ? t("artifactViewer.downloadZip") : t("artifactViewer.downloadHtml")}><span style={{ fontFamily: ICON }}>{downloading ? "" : ""}</span></button>
+					<button type="button" className={iconButton} disabled={downloading} onClick={download} aria-label={(downloadKind ?? ((current.assets?.length ?? 0) > 0 ? "zip" : "html")) === "zip" ? t("artifactViewer.downloadZip") : t("artifactViewer.downloadHtml")}><span style={{ fontFamily: ICON }}>{downloading ? "" : ""}</span></button>
 					{canMakeLive && (
 						<button
 							type="button"

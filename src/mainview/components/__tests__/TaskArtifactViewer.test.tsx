@@ -20,7 +20,7 @@ import { api } from "../../rpc";
 const mockedApi = vi.mocked(api, true);
 import { toast } from "../../toast";
 
-function artifact(id: string, withBundle = false): SharedArtifact {
+function artifact(id: string, withAssets = false): SharedArtifact {
 	return {
 		id,
 		kind: "html",
@@ -30,8 +30,9 @@ function artifact(id: string, withBundle = false): SharedArtifact {
 		originalPath: `/tmp/${id}.html`,
 		bytes: 10,
 		createdAt: 1,
-		assets: [],
-		...(withBundle ? { bundlePath: `/wt/shared-artifacts/${id}/${id}.zip`, bundleBytes: 20 } : {}),
+		assets: withAssets
+			? [{ name: "chart.png", storedPath: `/wt/shared-artifacts/${id}/chart.png`, originalPath: "/tmp/chart.png", mime: "image/png", bytes: 3 }]
+			: [],
 	};
 }
 
