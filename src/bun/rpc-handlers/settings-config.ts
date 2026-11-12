@@ -39,7 +39,6 @@ import { copyHomeDataIntoProject, copyProjectDataToHome } from "../project-stora
 import { projectTasksFile, storesInProject } from "../../shared/project-storage";
 import { withFileLock } from "../file-lock";
 import { recordStorageSwitch } from "../project-storage-live";
-import { projectClaudeFolderSupported } from "../../shared/agent-env-defaults";
 import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath, setFocusMode } from "./shared";
 import { binaryCandidatesOnPath, tmuxSearchPaths } from "./shared-pure";
 import { agentBinaryPathOverride, brokenCustomPath, enforcedCustomBinaryPaths, isExecutableFile, staleCustomPath } from "../executable";
@@ -651,7 +650,7 @@ async function getLastRoute(): Promise<{ route: string | null }> {
 	return { route };
 }
 
-async function getAppVersion(): Promise<{ version: string; channel: string; buildChannel: string; leanProtocolForcedByEnv: boolean; projectClaudeFolderSupported: boolean }> {
+async function getAppVersion(): Promise<{ version: string; channel: string; buildChannel: string; leanProtocolForcedByEnv: boolean }> {
 	log.info("-> getAppVersion");
 	const local = await updater.getLocalVersion();
 	const settings = await loadSettings();
@@ -660,7 +659,6 @@ async function getAppVersion(): Promise<{ version: string; channel: string; buil
 		channel: settings.updateChannel,
 		buildChannel: local.channel,
 		leanProtocolForcedByEnv: process.env.DEV3_LEAN_PROTOCOL === "1",
-		projectClaudeFolderSupported: projectClaudeFolderSupported(process.platform),
 	};
 	log.info("<- getAppVersion", result);
 	return result;

@@ -1,9 +1,9 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { execFileSync, spawnSync as spawnSyncNode } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, win32 } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { claudeConfigLocation, launchClaudeConfigLocation, pinnedClaudeConfigDir } from "../../shared/claude-config-dir";
+import { claudeConfigLocation, launchClaudeConfigLocation, normalizeClaudeConfigDir, pinnedClaudeConfigDir } from "../../shared/claude-config-dir";
 import { ENV_UNSET } from "../../shared/agent-accounts";
 
 describe("pinnedClaudeConfigDir", () => {
@@ -21,6 +21,22 @@ describe("pinnedClaudeConfigDir", () => {
 		expect(pinnedClaudeConfigDir(ENV_UNSET, home)).toBeNull();
 		expect(pinnedClaudeConfigDir("~/.claude", home)).toBeNull();
 		expect(pinnedClaudeConfigDir("/home/me/.claude/", home)).toBeNull();
+	});
+});
+
+describe("normalizeClaudeConfigDir with Windows paths", () => {
+	const home = "C:\\Users\\me";
+	it("gives a {projectPath} expansion with mixed separators one backslash spelling", () => {
+		expect(normalizeClaudeConfigDir("C:\\src\\acme/.claude/", home, undefined, win32)).toBe("C:\\src\\acme\\.claude");
+		expect(normalizeClaudeConfigDir("C:/src/acme/.claude", home, undefined, win32)).toBe("C:\\src\\acme\\.claude");
+	});
+	it("expands ~ with either separator and resolves a relative value against a drive-letter cwd", () => {
+		expect(normalizeClaudeConfigDir("~\\proj\\.claude", home, undefined, win32)).toBe("C:\\Users\\me\\proj\\.claude");
+		expect(normalizeClaudeConfigDir("~/proj/.claude", home, undefined, win32)).toBe("C:\\Users\\me\\proj\\.claude");
+		expect(normalizeClaudeConfigDir(".claude", home, "D:\\wt\\task", win32)).toBe("D:\\wt\\task\\.claude");
+	});
+	it("keeps a drive root intact", () => {
+		expect(normalizeClaudeConfigDir("C:\\", home, undefined, win32)).toBe("C:\\");
 	});
 });
 
@@ -194,5 +210,151 @@ describe("ensureClaudeTrust / ensureClaudeConfigDir with a pinned dir", () => {
 		expect(existsSync(join(pinned, "skills/dev3/SKILL.md"))).toBe(true);
 		writeFileSync(join(pinned, ".claude.json"), "{}");
 		expect(git("status", "--porcelain").toString()).toBe("");
+	});
+
+	describe("off macOS, a pin whose login git would not ignore after provisioning", () => {
+		let project = "";
+		let pinned = "";
+		const git = (...args: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], { cwd: project });
+
+		beforeEach(() => {
+			project = join(home, "project");
+			pinned = join(project, ".claude");
+			mkdirSync(project);
+			git("init", "-q");
+			vi.stubEnv("DEV3_HOME", join(home, ".dev3.0"));
+			// The suite stubs Bun.spawnSync; these tests need real git answers.
+			vi.doMock("../spawn", async (importOriginal) => ({
+				...(await importOriginal<typeof import("../spawn")>()),
+				spawnSync: (cmd: string[], opts: { cwd: string; env?: Record<string, string> }) => {
+					const res = spawnSyncNode(cmd[0], cmd.slice(1), { cwd: opts.cwd, env: { ...process.env, ...opts.env } });
+					return { exitCode: res.status, stdout: res.stdout, stderr: res.stderr };
+				},
+			}));
+		});
+
+		it("keeps the pin once the launch's exclude rule hides the login", async () => {
+			const env = { CLAUDE_CONFIG_DIR: pinned };
+			const { ensureClaudeConfigDir } = await import("../agents");
+			ensureClaudeConfigDir(env, project, "linux");
+
+			expect(env.CLAUDE_CONFIG_DIR).toBe(pinned);
+			writeFileSync(join(pinned, ".credentials.json"), "{}");
+			expect(git("status", "--porcelain", "--", ".claude/.credentials.json").toString()).toBe("");
+		});
+
+		it("clears the pin when a .gitignore negation keeps the login visible, but not on macOS", async () => {
+			writeFileSync(join(project, ".gitignore"), "!.claude/.credentials.json\n");
+			const { ensureClaudeConfigDir } = await import("../agents");
+			const linux = { CLAUDE_CONFIG_DIR: pinned };
+			ensureClaudeConfigDir(linux, project, "linux");
+			const darwin = { CLAUDE_CONFIG_DIR: pinned };
+			ensureClaudeConfigDir(darwin, project, "darwin");
+
+			expect(linux.CLAUDE_CONFIG_DIR).toBe(ENV_UNSET);
+			expect(darwin.CLAUDE_CONFIG_DIR).toBe(pinned);
+		});
+
+		it.skipIf(process.getuid?.() === 0)("clears the pin when the exclude write fails, and writes it on the next launch", async () => {
+			const info = join(project, ".git", "info");
+			const exclude = join(info, "exclude");
+			const original = readFileSync(exclude, "utf-8");
+			chmodSync(exclude, 0o400);
+			const { ensureClaudeConfigDir } = await import("../agents");
+			const first = { CLAUDE_CONFIG_DIR: pinned };
+			ensureClaudeConfigDir(first, project, "linux");
+			expect(readFileSync(exclude, "utf-8")).toBe(original);
+			expect(first.CLAUDE_CONFIG_DIR).toBe(ENV_UNSET);
+
+			chmodSync(exclude, 0o600);
+			const second = { CLAUDE_CONFIG_DIR: pinned };
+			ensureClaudeConfigDir(second, project, "linux");
+			expect(readFileSync(exclude, "utf-8")).toContain(".credentials.json");
+			expect(second.CLAUDE_CONFIG_DIR).toBe(pinned);
+		});
+	});
+});
+
+describe("projectClaudeConfigDirAllowed", () => {
+	let root = "";
+	let project = "";
+	const spawned = vi.fn();
+	let gitCannotRun = false;
+	const git = (...args: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], { cwd: project });
+
+	beforeEach(() => {
+		root = mkdtempSync(join(tmpdir(), "dev3-claude-allowed-"));
+		project = join(root, "project");
+		mkdirSync(project);
+		spawned.mockReset();
+		gitCannotRun = false;
+		vi.resetModules();
+		vi.doMock("../logger", () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) }));
+		// The suite stubs Bun.spawnSync; these tests need real git answers. One mock per module:
+		// a second doMock of the same path races the first one's async factory, so tests flip a flag.
+		vi.doMock("../spawn", async (importOriginal) => ({
+			...(await importOriginal<typeof import("../spawn")>()),
+			spawnSync: (cmd: string[], opts: { cwd: string; env?: Record<string, string> }) => {
+				spawned(cmd);
+				if (gitCannotRun) throw new Error('Executable not found in $PATH: "git"');
+				const res = spawnSyncNode(cmd[0], cmd.slice(1), { cwd: opts.cwd, env: { ...process.env, ...opts.env } });
+				return { exitCode: res.status, stdout: res.stdout, stderr: res.stderr };
+			},
+		}));
+	});
+
+	afterEach(() => {
+		vi.doUnmock("../spawn");
+		vi.doUnmock("../logger");
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	async function allowed(value: string, platform: string, kind?: "git" | "virtual") {
+		const { projectClaudeConfigDirAllowed } = await import("../claude-config-git");
+		return projectClaudeConfigDirAllowed({ path: project, kind }, value, platform);
+	}
+
+	it("allows a project's .claude on Linux before it exists, and changes nothing in the repo", async () => {
+		git("init", "-q");
+		const exclude = readFileSync(join(project, ".git", "info", "exclude"), "utf-8");
+		expect(await allowed(join(project, ".claude"), "linux")).toBe(true);
+		expect(existsSync(join(project, ".claude"))).toBe(false);
+		expect(readFileSync(join(project, ".git", "info", "exclude"), "utf-8")).toBe(exclude);
+	});
+
+	it("refuses it on Linux and Windows when the login file is tracked or un-ignored", async () => {
+		mkdirSync(join(project, ".claude"));
+		writeFileSync(join(project, ".claude", ".credentials.json"), "{}");
+		git("init", "-q");
+		git("add", ".claude/.credentials.json");
+		git("commit", "-qm", "init");
+		expect(await allowed(join(project, ".claude"), "linux")).toBe(false);
+		expect(await allowed(join(project, ".claude"), "win32")).toBe(false);
+		expect(await allowed(join(project, ".claude"), "darwin")).toBe(true);
+
+		git("rm", "-q", "--cached", ".claude/.credentials.json");
+		writeFileSync(join(project, ".gitignore"), "!.claude/.credentials.json\n");
+		expect(await allowed(join(project, ".claude"), "linux")).toBe(false);
+	});
+
+	it("allows it where no git repo holds it, including behind a symlink out of the repo", async () => {
+		expect(await allowed(join(project, ".claude"), "linux")).toBe(true);
+		git("init", "-q");
+		const shared = join(root, "shared-claude");
+		mkdirSync(shared);
+		symlinkSync(shared, join(project, ".claude"));
+		expect(await allowed(join(project, ".claude"), "linux")).toBe(true);
+	});
+
+	it("never applies to an Operations board", async () => {
+		git("init", "-q");
+		expect(await allowed(join(project, ".claude"), "darwin", "virtual")).toBe(false);
+		expect(await allowed(join(project, ".claude"), "linux", "virtual")).toBe(false);
+	});
+
+	it("refuses instead of throwing when git cannot run", async () => {
+		gitCannotRun = true;
+		expect(await allowed(join(project, ".claude"), "linux")).toBe(false);
+		expect(spawned).toHaveBeenCalled();
 	});
 });
