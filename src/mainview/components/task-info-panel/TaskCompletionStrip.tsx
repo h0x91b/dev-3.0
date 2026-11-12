@@ -203,7 +203,7 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 					disabled={checking}
 					onClick={() => void complete()}
 					className={`px-3 ${buttonPad} max-md:min-h-11 text-xs whitespace-nowrap rounded-lg text-white transition-colors ${
-						checking ? "bg-fg-muted/40 cursor-not-allowed" : "bg-danger hover:bg-danger/80"
+						checking ? "bg-fg-muted/40 cursor-not-allowed" : "bg-danger-fill hover:bg-danger-fill-hover"
 					}`}
 				>
 					{t("app.branchMergedComplete")}
