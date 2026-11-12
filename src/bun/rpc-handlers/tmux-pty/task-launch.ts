@@ -960,7 +960,8 @@ export function cleanupTaskTmuxState(taskId: string): void {
  *    unmatched, assign it (the setup pane exited, leaving the real agent).
  * 3. If no live panes remain and null-paneId entries exist, remove them too.
  * 4. If no non-parked, non-hunter entry is left, park the entries removed above (paneId null,
- *    keeping sessionId) so Resume continues the last agents' conversations.
+ *    keeping sessionId) so Resume continues the last agents' conversations; an entry
+ *    with no sessionId yet is parked too and resumes the harness's own latest one.
  *    Bug-hunter entries are one-shot and are always dropped.
  * 5. If the task-level agent belonged to a removed pane, put the surviving main
  *    pane's agent back on the task and push the update to the renderer.

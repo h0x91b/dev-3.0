@@ -16,6 +16,9 @@ const H = vi.hoisted(() => ({
 }));
 
 vi.mock("../data", () => ({
+	loadProjects: vi.fn(async () => [{ id: "proj-1" }]),
+	loadVirtualProjects: vi.fn(async () => []),
+	loadTasks: vi.fn(async () => [H.task]),
 	updateTaskWith: vi.fn(async (_p: unknown, _id: unknown, mutator: (t: Task) => { updates: Partial<Task>; result: unknown }) => {
 		const { updates } = await mutator(H.task);
 		if (updates.keepAlive !== undefined) {
@@ -45,7 +48,7 @@ import { resumeTaskSession, ResumeUnavailableError, taskTerminalAlive } from "..
 import { taskMainAgentLiveness } from "../scheduled-message-author";
 import { getCachedRateLimitsReport } from "../rate-limit-monitor";
 import { pushCliAttention, pushCliToast } from "../rpc-handlers";
-import { evaluateTask } from "../task-keep-alive-scheduler";
+import { evaluateTask, startTaskKeepAliveScheduler, stopTaskKeepAliveScheduler } from "../task-keep-alive-scheduler";
 
 const project = { id: "proj-1", name: "Proj", path: "/x/repo" } as never;
 const NOW = 2_000_000;
@@ -167,5 +170,40 @@ describe("evaluateTask", () => {
 		await evaluateTask(project, task, NOW);
 		expect(resumeTaskSession).not.toHaveBeenCalled();
 		expect(H.patches).toHaveLength(0);
+	});
+});
+
+// Closing the last agent pane parks its entry (no pane id) instead of dropping it,
+// so the watchdog still sees a launched task with a conversation to resume.
+describe("a task whose last agent pane closed", () => {
+	const parkedTask = () => makeTask({ enabled: true, status: "watching", attempts: 0 }, {
+		sessionState: { panes: [{ main: true, agentCmd: "claude", sessionId: "s1", agentId: "a", configId: null, agentFamily: "claude", accountId: null, paneId: null, parked: true }] },
+	} as Partial<Task>);
+
+	async function runOneTick(): Promise<void> {
+		startTaskKeepAliveScheduler();
+		try {
+			await vi.waitFor(() => expect(taskTerminalAlive).toHaveBeenCalled());
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		} finally {
+			stopTaskKeepAliveScheduler();
+		}
+	}
+
+	beforeEach(() => {
+		vi.mocked(taskMainAgentLiveness).mockResolvedValue("unknown");
+		H.task = parkedTask();
+	});
+
+	it("is revived into its saved conversation once the terminal is gone", async () => {
+		vi.mocked(taskTerminalAlive).mockResolvedValue(false);
+		await runOneTick();
+		await vi.waitFor(() => expect(resumeTaskSession).toHaveBeenCalledWith(H.task.id, { refuseLive: true }));
+	});
+
+	it("is left alone while another pane keeps the terminal alive", async () => {
+		vi.mocked(taskTerminalAlive).mockResolvedValue(true);
+		await runOneTick();
+		expect(resumeTaskSession).not.toHaveBeenCalled();
 	});
 });
