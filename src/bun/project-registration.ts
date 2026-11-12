@@ -1,6 +1,7 @@
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import type { GitInitOffer, Project, Space, SpacesFile } from "../shared/types";
+import type { ClaudeFolderNotice } from "../shared/claude-folder-notice";
 import { extractRepoName, spacesOfProject } from "../shared/types";
 import {
 	SPACE_REF_INVALID_PREFIX,
@@ -144,7 +145,7 @@ async function existingOutcome(project: Project): Promise<ProjectRegistrationRes
 	return { outcome: "exists", project: toCliProject(project, await spacesHandlers.getSpaces({})), createdSpaces: [] };
 }
 
-async function finishRegistration(project: Project, flags: SpaceFlags): Promise<ProjectRegistrationResult> {
+async function finishRegistration(project: Project, flags: SpaceFlags, claudeFolder?: ClaudeFolderNotice): Promise<ProjectRegistrationResult> {
 	// Announced first: the project exists whatever happens to its memberships next.
 	getPushMessage()?.("projectAdded", { project });
 	let created: Space[];
@@ -164,6 +165,7 @@ async function finishRegistration(project: Project, flags: SpaceFlags): Promise<
 		outcome: "added",
 		project: toCliProject(project, await spacesHandlers.getSpaces({})),
 		createdSpaces: created.map(toCliSpaceRef),
+		...(claudeFolder ? { claudeFolder } : {}),
 	};
 }
 
@@ -178,7 +180,7 @@ export async function registerProject(params: SpaceFlags & { path: string; name?
 		? await appHandlers.initAndAddProject({ path, name, initNonEmpty: true })
 		: await appHandlers.addProject({ path, name });
 	if (!result.ok) throw new Error(result.gitInit ? gitInitAdvice(result.gitInit) : result.error);
-	return finishRegistration(result.project, params);
+	return finishRegistration(result.project, params, result.claudeFolder);
 }
 
 export async function cloneProject(params: SpaceFlags & { url: string; dir?: string; name?: string }): Promise<ProjectRegistrationResult> {
@@ -199,7 +201,7 @@ export async function cloneProject(params: SpaceFlags & { url: string; dir?: str
 
 	const result = await appHandlers.cloneAndAddProject({ url, baseDir, repoName });
 	if (!result.ok) throw new Error(result.error);
-	return finishRegistration(result.project, params);
+	return finishRegistration(result.project, params, result.claudeFolder);
 }
 
 async function activeProject(projectId: string): Promise<Project> {

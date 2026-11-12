@@ -1,3 +1,4 @@
+> Superseded in part on 2026-11-11 by `decisions/2026/11/11/project-claude-folder-on-every-os.md`: the folder now works on every OS when git ignores its login file, and never on Operations boards.
 > Superseded in part on 2026-11-05 by `decisions/2026/11/05/project-claude-pin-beats-default-account.md`: the default managed account no longer overrides a project pin.
 
 # Per-project Claude config dir: switch, git hygiene, task-local settings

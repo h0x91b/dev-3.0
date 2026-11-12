@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "../../rpc";
+import { useCallback, useRef } from "react";
 import type { GlobalSettings } from "../../../shared/types";
+import type { ClaudeFolderSwitchImpact } from "../../../shared/claude-folder-notice";
 import type { TFunction } from "../../i18n";
 import { usesProjectClaudeConfigDir, withProjectClaudeConfigDir } from "../../../shared/agent-env-defaults";
 import { EnvVarsEditor } from "../project-settings/EnvVarsEditor";
 import SettingsEntry from "./SettingsEntry";
 import SettingsSection from "./SettingsSection";
 import SettingsToggle from "./SettingsToggle";
+import { api } from "../../rpc";
+import { confirm } from "../../confirm";
 
 export default function AgentEnvDefaultsSection({
 	t,
@@ -37,18 +39,29 @@ export default function AgentEnvDefaultsSection({
 		onChange(next);
 	}
 	const projectFolder = usesProjectClaudeConfigDir(globalSettings.agentEnvDefaults);
-	// Asked of the host: in remote mode the browser's OS is not the one agents run on.
-	const [folderSupported, setFolderSupported] = useState<boolean | null>(null);
-	useEffect(() => {
-		api.request
-			.getAppVersion()
-			.then((info) => setFolderSupported(info?.projectClaudeFolderSupported !== false))
-			.catch(() => {});
-	}, []);
-	function toggleProjectFolder() {
-		const next = withProjectClaudeConfigDir(saved.current, !projectFolder);
+	async function toggleProjectFolder() {
+		const enabled = !projectFolder;
+		if (!(await confirmFolderSwitch(enabled))) return;
+		const next = withProjectClaudeConfigDir(saved.current, enabled);
 		saved.current = next;
 		onChange(next);
+	}
+
+	// Tasks already running or waiting keep their folder until restarted, then cannot resume.
+	async function confirmFolderSwitch(enabled: boolean): Promise<boolean> {
+		let impact: ClaudeFolderSwitchImpact;
+		try {
+			impact = await api.request.claudeFolderSwitchImpact({ enabled });
+		} catch (err) {
+			console.warn("[AgentEnvDefaultsSection] claudeFolderSwitchImpact failed:", err);
+			return true;
+		}
+		if (impact.taskCount === 0) return true;
+		return confirm({
+			title: t("settings.projectClaudeFolderConfirmTitle"),
+			message: t.plural("settings.projectClaudeFolderConfirmMessage", impact.taskCount, { projects: impact.projectNames.join(", ") }),
+			confirmLabel: t(enabled ? "settings.projectClaudeFolderConfirmOn" : "settings.projectClaudeFolderConfirmOff"),
+		});
 	}
 
 	return (
@@ -57,17 +70,13 @@ export default function AgentEnvDefaultsSection({
 			<SettingsEntry anchor="project-claude-folder">
 				<div>
 					<p className="text-fg-3 text-sm mb-3">{t("settings.projectClaudeFolderDesc")}</p>
-					{folderSupported === false && !projectFolder ? (
-						<p className="text-fg-3 text-sm">{t("settings.projectClaudeFolderMacOnly")}</p>
-					) : (
-						<SettingsToggle
-							checked={projectFolder}
-							ariaLabel={t("settings.projectClaudeFolder")}
-							onLabel={t("settings.on")}
-							offLabel={t("settings.off")}
-							onToggle={toggleProjectFolder}
-						/>
-					)}
+					<SettingsToggle
+						checked={projectFolder}
+						ariaLabel={t("settings.projectClaudeFolder")}
+						onLabel={t("settings.on")}
+						offLabel={t("settings.off")}
+						onToggle={() => void toggleProjectFolder()}
+					/>
 				</div>
 			</SettingsEntry>
 		</SettingsSection>

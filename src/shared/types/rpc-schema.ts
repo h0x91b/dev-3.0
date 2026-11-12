@@ -55,6 +55,7 @@ import type { RemoteAccessStatus, RemoteNetInterface } from "./remote";
 import type { AgentCheckResult, AgentSkillInfo, HarnessReadinessReport, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo, TmuxRestartImpact, TmuxServerNotice } from "./environment";
 import type { ExplorerListing, FolderListing } from "./file-explorer";
 import type { AgentUsageReport, ProductivityStats } from "./usage-stats";
+import type { ClaudeFolderNotice, ClaudeFolderSwitchImpact } from "../claude-folder-notice";
 
 export type RendererLogLevel = "debug" | "info" | "warn" | "error";
 
@@ -262,11 +263,11 @@ export type AppRPCSchema = {
 				params: { path: string; name?: string; autoConfigure?: boolean; gitWorkflow?: boolean; boardCopy?: boolean };
 				/** `gitInit` is set when the folder could be made a repo in place (needs the user's confirmation).
 				 *  `notGitRepo` marks the refusal that `gitWorkflow: false` would lift. */
-				response: { ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true } | { ok: false; error: string; gitInit?: GitInitOffer; notGitRepo?: true };
+				response: { ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true; claudeFolder?: ClaudeFolderNotice } | { ok: false; error: string; gitInit?: GitInitOffer; notGitRepo?: true };
 			};
 			cloneAndAddProject: {
 				params: { url: string; baseDir: string; repoName?: string; progressId?: string; autoConfigure?: boolean; boardCopy?: boolean };
-				response: { ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true } | { ok: false; error: string };
+				response: { ok: true; project: Project; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true; claudeFolder?: ClaudeFolderNotice } | { ok: false; error: string };
 			};
 			createDirectory: {
 				params: { parentPath: string; name: string };
@@ -275,7 +276,7 @@ export type AppRPCSchema = {
 			initAndAddProject: {
 				/** `initNonEmpty`: the user confirmed initializing a folder that already has files. */
 				params: { path: string; name?: string; initNonEmpty?: boolean; autoConfigure?: boolean; boardCopy?: boolean };
-				response: { ok: true; project: Project; gitInit?: GitInitOffer; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true } | { ok: false; error: string; gitInit?: GitInitOffer };
+				response: { ok: true; project: Project; gitInit?: GitInitOffer; autoConfigured?: AutoConfigureResult; boardCopyOffer?: BoardCopyOffer; storageKeptHome?: true; claudeFolder?: ClaudeFolderNotice } | { ok: false; error: string; gitInit?: GitInitOffer };
 			};
 			/**
 			 * Restore an EMPTY board from the copy in its project folder (`.dev3/board/`).
@@ -562,6 +563,11 @@ export type AppRPCSchema = {
 			listPinnedClaudeLogins: {
 				params: void;
 				response: PinnedClaudeLogin[];
+			};
+			/** Active tasks whose Claude folder the per-project folder switch, set to `enabled`, would change. */
+			claudeFolderSwitchImpact: {
+				params: { enabled: boolean };
+				response: ClaudeFolderSwitchImpact;
 			};
 			importAgentAccount: {
 				params: { kind: AgentAccountKind };
@@ -1070,7 +1076,7 @@ export type AppRPCSchema = {
 			};
 			getAppVersion: {
 				params: void;
-				response: { version: string; channel: string; buildChannel: string; leanProtocolForcedByEnv: boolean; projectClaudeFolderSupported: boolean };
+				response: { version: string; channel: string; buildChannel: string; leanProtocolForcedByEnv: boolean };
 			};
 			/** Coarse, bucketed install facts for analytics — never names, paths or titles. */
 			getTelemetryProfile: {

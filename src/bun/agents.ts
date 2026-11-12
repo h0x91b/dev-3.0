@@ -39,7 +39,7 @@ import { writeCodexModelCatalog } from "./codex-model-catalog";
 import { loadModelCatalog } from "./model-catalog-store";
 import { ensureModelSidecar, preflightModelRoles } from "./model-sidecar";
 import { CLAUDE_SKILL_BODY, CLAUDE_SKILL_NAMES, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, installClaudeConfigDir } from "./agent-skills";
-import { excludeClaudeRuntimeState, isGitTracked } from "./claude-config-git";
+import { claudeLoginKeptOutOfGit, excludeClaudeRuntimeState, isGitTracked } from "./claude-config-git";
 import { launchClaudeConfigLocation, pinnedClaudeConfigDir } from "../shared/claude-config-dir";
 import { rememberPinnedClaudeConfigDir } from "./claude-config-dirs";
 import { updateClaudeJson } from "./claude-json-update";
@@ -1512,20 +1512,38 @@ export async function ensureClaudeTrust(
  * agent-config env) the dev3 skills and settings that startup installs into
  * ~/.claude. The default dir and managed account dirs are already covered at
  * startup, so they are skipped; a slot the user's own tool linked to its folder is not. `cwd` is the agent's working dir, which a relative
- * pin resolves against. Never throws.
+ * pin resolves against. Off macOS, Claude keeps its login in `.credentials.json` inside the dir, so a
+ * pin from `launchEnv` that git would still not ignore after provisioning is cleared from `launchEnv`
+ * (set to ENV_UNSET) and the agent falls back to ~/.claude. Never throws.
  */
-export function ensureClaudeConfigDir(launchEnv: Record<string, string> | undefined, cwd: string): void {
+export function ensureClaudeConfigDir(
+	launchEnv: Record<string, string> | undefined,
+	cwd: string,
+	platform: string = process.platform,
+): void {
+	let location: ReturnType<typeof launchClaudeConfigLocation>;
 	try {
-		const location = launchClaudeConfigLocation(launchEnv, process.env, homedir(), cwd);
+		location = launchClaudeConfigLocation(launchEnv, process.env, homedir(), cwd);
 		// A linked slot (the user's own folder) gets no startup install, so only real managed dirs are skipped here.
 		const managed = listClaudeAccountDirs().includes(location.dir) && !isLinkedClaudeSlot(location.dir);
 		if (!location.pinned || managed) return;
+	} catch (err) {
+		log.warn("Failed to resolve pinned Claude config dir (non-fatal)", { error: String(err) });
+		return;
+	}
+	try {
 		// A committed settings.json stays untouched: the dev3 entries go to the task's own local settings.
 		const tracked = isGitTracked(join(location.dir, "settings.json"));
 		installClaudeConfigDir(location.dir, homedir(), tracked ? taskLocalClaudeSettings(cwd) : undefined);
 		excludeClaudeRuntimeState(location.dir, CLAUDE_SKILL_NAMES);
 	} catch (err) {
 		log.warn("Failed to provision pinned Claude config dir (non-fatal)", { error: String(err) });
+	}
+	// The allow check assumed the exclude rule above; confirm against the repo as it is now.
+	const fromLaunch = !!launchEnv?.CLAUDE_CONFIG_DIR?.trim() && launchEnv.CLAUDE_CONFIG_DIR !== ENV_UNSET;
+	if (platform !== "darwin" && launchEnv && fromLaunch && !claudeLoginKeptOutOfGit(location.dir, { assumeLaunchRule: false })) {
+		launchEnv.CLAUDE_CONFIG_DIR = ENV_UNSET;
+		log.warn("Pinned Claude config dir dropped: git would not ignore its login file", { dir: location.dir });
 	}
 }
 
