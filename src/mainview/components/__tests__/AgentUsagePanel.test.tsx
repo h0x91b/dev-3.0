@@ -330,6 +330,23 @@ describe("AgentUsagePanel", () => {
 		expect(setActive).not.toHaveBeenCalled();
 	});
 
+	it("shows no project row for a folder signed in to a managed account", () => {
+		render(
+			<I18nProvider>
+				<AgentUsagePanel
+					report={{ generatedAt: Date.now(), snapshots: [] }}
+					accounts={accounts()}
+					pinnedLogins={[{ configDir: "/p/app/.claude", identity: null, projectNames: ["app"], accountId: "home" }]}
+					interactive
+					onOpenSettings={() => {}}
+				/>
+			</I18nProvider>,
+		);
+		const rows = screen.getAllByRole("radio").map((r) => r.textContent ?? "");
+		expect(rows.some((text) => text.includes("Home Claude"))).toBe(true);
+		expect(rows.some((text) => text.includes("…/app/.claude"))).toBe(false);
+	});
+
 	it("still shows a reading from a dir no project pins any more, named by its dir", () => {
 		const now = Date.now();
 		render(

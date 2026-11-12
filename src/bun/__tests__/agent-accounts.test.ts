@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
 	addClaudeApiProfile,
 	claudeAccountDir,
+	claudeAccountForConfigDir,
 	isPrivateClaudeEntry,
 	codexAccountDir,
 	codexAccountIdForHome,
@@ -488,6 +489,44 @@ describe("Claude organizations sharing one login", () => {
 		const { accountId } = await prepareClaudeLogin(paths);
 		writeFileSync(join(claudeAccountDir(accountId, paths), ".claude.json"), JSON.stringify({ oauthAccount: { ...login, organizationName: "Org (renamed)" } }));
 		await expect(completeClaudeLogin(accountId, paths, confirmedStatus("main@example.com"))).rejects.toThrow(/already added/);
+	});
+});
+
+describe("claudeAccountForConfigDir", () => {
+	const projectDir = () => join(root, "proj", ".claude");
+	const signIn = (accountUuid: string, organizationUuid = "org-1") => {
+		mkdirSync(projectDir(), { recursive: true });
+		writeFileSync(
+			join(projectDir(), ".claude.json"),
+			JSON.stringify({ oauthAccount: { emailAddress: "main@example.com", organizationName: "Org", organizationUuid, accountUuid } }),
+		);
+	};
+	async function managedAccount() {
+		seedClaudeLogin();
+		writeFileSync(
+			paths.claudeJson,
+			JSON.stringify({ oauthAccount: { emailAddress: "main@example.com", organizationName: "Org", organizationUuid: "org-1", accountUuid: "claude-acc-1" } }),
+		);
+		return importCurrentClaudeAccount(paths);
+	}
+
+	it("names the managed account a project folder is signed in to", async () => {
+		const account = await managedAccount();
+		signIn("claude-acc-1");
+		expect(claudeAccountForConfigDir(projectDir(), paths)).toBe(account.id);
+	});
+
+	it("is null for another person or another organization of the same person", async () => {
+		await managedAccount();
+		signIn("someone-else");
+		expect(claudeAccountForConfigDir(projectDir(), paths)).toBeNull();
+		signIn("claude-acc-1", "org-2");
+		expect(claudeAccountForConfigDir(projectDir(), paths)).toBeNull();
+	});
+
+	it("is null for a folder nobody is signed in to", async () => {
+		await managedAccount();
+		expect(claudeAccountForConfigDir(projectDir(), paths)).toBeNull();
 	});
 });
 
