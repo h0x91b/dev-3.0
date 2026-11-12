@@ -2078,6 +2078,8 @@ export type AppRPCSchema = {
 		};
 		messages: {
 			taskUpdated: { projectId: string; task: Task };
+			/** A task left `projectId`: deleted, or moved to another project (which also sends `taskUpdated`). */
+			taskRemoved: { projectId: string; taskId: string };
 			projectUpdated: { project: Project };
 			/** A board-copy write failed; sent once per failure streak, cleared by the next write that succeeds. */
 			boardCopyFailed: { projectId: string; projectName: string; reason: BoardCopyFailureReason };

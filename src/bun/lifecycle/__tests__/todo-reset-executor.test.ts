@@ -93,6 +93,7 @@ import * as data from "../../data";
 import * as git from "../../git";
 import { voidAgentRequestsForTask } from "../../agent-requests";
 import { addNote } from "../../board-operations/task-notes";
+import { getPushMessage } from "../../rpc-handlers/shared";
 import { AGENT_ACTOR } from "../../board-operations/types";
 import { executeLifecycleEffect, type LifecycleExecutionContext } from "../executor";
 import type { LifecycleEffect } from "../effects";
@@ -269,6 +270,13 @@ describe("episode end voids pending approvals", () => {
 	it("deleting the task record voids every pending approval for it", async () => {
 		await executeLifecycleEffect({ type: "deleteTaskRecord", onError: "abort" } as LifecycleEffect, ctx(liveTask()));
 		expect(voidAgentRequestsForTask).toHaveBeenCalledWith(TASK_ID);
+	});
+
+	it("announces a deleted task as removed from its project", async () => {
+		const push = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(push);
+		await executeLifecycleEffect({ type: "push", message: "taskRemoved", onError: "continue" } as LifecycleEffect, ctx(liveTask()));
+		expect(push).toHaveBeenCalledWith("taskRemoved", { projectId: "proj-1", taskId: TASK_ID });
 	});
 
 	it("persistTerminalTask writes the Codex scan floor with the terminal status", async () => {

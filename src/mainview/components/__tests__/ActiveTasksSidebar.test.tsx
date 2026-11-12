@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "../../i18n";
 import ActiveTasksSidebar from "../ActiveTasksSidebar";
@@ -752,6 +752,43 @@ function makeTask(overrides?: Partial<Task>): Task {
 			projectId: "p2",
 			activeTaskId: "t99",
 		});
+	});
+
+	it("drops a deleted task from the global list, but keeps one moved to another project", async () => {
+		const user = userEvent.setup();
+		const { api } = await import("../../rpc");
+		const deleted = makeTask({ id: "t-del", seq: 801, title: "Doomed task", description: "Doomed task" });
+		const moved = makeTask({ id: "t-mov", seq: 802, title: "Moving task", description: "Moving task" });
+		(api.request.getAllProjectTasks as ReturnType<typeof vi.fn>).mockResolvedValue([
+			{ projectId: "p1", tasks: [makeTask(), deleted, moved] },
+		]);
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[makeTask()]}
+					allProjects={[project]}
+					activeTaskId="t1"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+		await user.click(screen.getByTestId("sidebar-scope-global"));
+		await waitFor(() => expect(screen.getByText("Doomed task")).toBeInTheDocument());
+
+		act(() => {
+			window.dispatchEvent(new CustomEvent("rpc:taskRemoved", { detail: { projectId: "p1", taskId: "t-del" } }));
+			// A move re-homes the row first, then removes it from the source project.
+			window.dispatchEvent(new CustomEvent("rpc:taskUpdated", { detail: { projectId: "p2", task: { ...moved, projectId: "p2" } } }));
+			window.dispatchEvent(new CustomEvent("rpc:taskRemoved", { detail: { projectId: "p1", taskId: "t-mov" } }));
+		});
+
+		expect(screen.queryByText("Doomed task")).not.toBeInTheDocument();
+		expect(screen.getByText("Moving task")).toBeInTheDocument();
 	});
 
 	it("falls back to the project scope when localStorage holds the removed attention value", () => {

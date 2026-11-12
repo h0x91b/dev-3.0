@@ -7,6 +7,7 @@ type BunMessagePayload<Name extends keyof AppRPCSchema["bun"]["messages"]> =
 
 export const LIFECYCLE_PUSH_MESSAGES = [
 	"taskUpdated",
+	"taskRemoved",
 	"taskSound",
 	"taskPreparationFailed",
 	"columnAgentFailed",
@@ -25,6 +26,7 @@ interface EffectPolicy {
 
 type LifecyclePushEffect = (
 	| { type: "push"; message: "taskUpdated"; view: "current" | "shuttingDown" }
+	| { type: "push"; message: "taskRemoved" }
 	| { type: "push"; message: "taskPreparationFailed"; payload: { error: string | null } }
 	| {
 		type: "push";

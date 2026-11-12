@@ -904,6 +904,9 @@ function pushEffect(effect: Extract<LifecycleEffect, { type: "push" }>, ctx: Lif
 			push("taskUpdated", payload);
 			return;
 		}
+		case "taskRemoved":
+			push("taskRemoved", { projectId: ctx.project.id, taskId: ctx.task.id });
+			return;
 		case "taskPreparationFailed":
 			push("taskPreparationFailed", preparationFailurePayload(ctx, effect));
 			return;
