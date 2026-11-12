@@ -1,5 +1,7 @@
 # Has Questions leads the sidebar's NEEDS YOU tier
 
+Superseded on 2026-11-09 by `decisions/2026/11/09/coordinators-headerless-sidebar-tier.md`: coordinators left NEEDS YOU for their own headerless top tier.
+
 ## Context
 
 NEEDS YOU merged `review-by-user`, `user-questions` and signalled `review-by-colleague` under one
