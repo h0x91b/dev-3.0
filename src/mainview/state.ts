@@ -52,6 +52,8 @@ export type Route =
 	| { screen: "settings"; section?: SettingsSectionId; anchor?: SettingsEntryAnchor; preset?: SettingsPresetTarget }
 	| { screen: "changelog" }
 	| { screen: "stats" }
+	/** Every task waiting for a merge or agent completion answer, across projects. */
+	| { screen: "completions" }
 	| { screen: "sessions"; scopeProjectId?: string }
 	/**
 	 * Agent traffic. The id seeds the screen's scope filter with the project the
@@ -378,6 +380,7 @@ export type AppAction =
 	| { type: "setLoading"; loading: boolean }
 	| { type: "addBell"; taskId: string; reason?: string; force?: boolean; questions?: boolean }
 	| { type: "clearBell"; taskId: string }
+	| { type: "removeBellReason"; taskId: string; reason: string }
 	| { type: "setPorts"; taskId: string; ports: PortInfo[] }
 	| { type: "clearPorts"; taskId: string }
 	| { type: "setDevServer"; summary: DevServerSummary }
@@ -679,6 +682,22 @@ export function reducer(state: AppState, action: AppAction): AppState {
 				bellReasons: withoutKey(state.bellReasons, action.taskId),
 				questionBells: withoutKey(state.questionBells, action.taskId),
 			};
+		}
+		case "removeBellReason": {
+			// Withdraws one bell whose cause went away (an offer answered on another
+			// client), leaving every other bell on the task ringing.
+			const reasons = state.bellReasons.get(action.taskId);
+			const trimmed = action.reason.trim();
+			if (!reasons?.includes(trimmed)) return state;
+			const bellReasons = new Map(state.bellReasons);
+			const rest = reasons.filter((reason) => reason !== trimmed);
+			if (rest.length > 0) bellReasons.set(action.taskId, rest);
+			else bellReasons.delete(action.taskId);
+			const bellCounts = new Map(state.bellCounts);
+			const count = (bellCounts.get(action.taskId) ?? 1) - 1;
+			if (count > 0) bellCounts.set(action.taskId, count);
+			else bellCounts.delete(action.taskId);
+			return { ...state, bellCounts, bellReasons };
 		}
 		case "setPorts": {
 			const taskPorts = new Map(state.taskPorts);

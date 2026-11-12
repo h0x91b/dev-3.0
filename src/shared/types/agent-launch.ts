@@ -99,6 +99,19 @@ export interface TaskDialogSubject {
 }
 
 /**
+ * A merge completion offer the user has not answered, as `listPendingMergeOffers`
+ * returns it to a renderer that connected after the one-shot `branchMerged` push.
+ */
+export interface PendingMergeOffer {
+	taskId: string;
+	projectId: string;
+	taskTitle: string;
+	branchName: string;
+	fingerprint: string;
+	subject: TaskDialogSubject;
+}
+
+/**
  * An agent asking the user for permission to complete its own task — the payload
  * of the `agentCompletionRequested` push, and of `listPendingCompletionRequests`
  * for a renderer that connected after the push went out.

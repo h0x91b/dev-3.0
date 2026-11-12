@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { COORDINATOR_PROMPT, DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES, DEFAULT_PR_REVIEW_PROMPT, type ArtifactTemplateMode, type AutoApproveHms, type GlobalSettings, autoApproveMinutesFromHms, splitAutoApproveHms } from "../../../shared/types";
+import { COORDINATOR_PROMPT, DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES, DEFAULT_COMPLETION_OFFER_STYLE, type CompletionOfferStyle, DEFAULT_PR_REVIEW_PROMPT, type ArtifactTemplateMode, type AutoApproveHms, type GlobalSettings, autoApproveMinutesFromHms, splitAutoApproveHms } from "../../../shared/types";
 import type { TFunction, TranslationKey } from "../../i18n";
 import SettingsSection from "./SettingsSection";
 import SettingsEntry from "./SettingsEntry";
@@ -107,6 +107,7 @@ interface BehaviorSettingsSectionProps {
 	/** Blank string = the default `~/.dev3.0` folder. */
 	onArtifactTemplatePathChange: (path: string) => void;
 	onSuggestCompletingTasksAfterMergeToggle: (enabled: boolean) => void;
+	onCompletionOfferStyleChange: (style: CompletionOfferStyle) => void;
 	onPrOriginTaskLinkToggle: (enabled: boolean) => void;
 	/** Minutes before an unanswered agent-launch dialog approves itself; 0 = never. */
 	onAgentLaunchAutoApproveChange: (minutes: number) => void;
@@ -132,6 +133,7 @@ export default function BehaviorSettingsSection({
 	onArtifactTemplateChange,
 	onArtifactTemplatePathChange,
 	onSuggestCompletingTasksAfterMergeToggle,
+	onCompletionOfferStyleChange,
 	onPrOriginTaskLinkToggle,
 	onAgentLaunchAutoApproveChange,
 	prOriginTaskLinkSupported,
@@ -228,6 +230,33 @@ export default function BehaviorSettingsSection({
 						onSuggestCompletingTasksAfterMergeToggle(globalSettings.suggestCompletingTasksAfterMerge === false)
 					}
 				/>
+			</div>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="completion-offer-style">
+			<div>
+				<p className="block text-fg text-sm font-semibold mb-2">
+					{t("settings.completionOfferStyle")}
+				</p>
+				<p className="text-fg-3 text-sm mb-3">
+					{t("settings.completionOfferStyleDesc")}
+				</p>
+				<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+					<SortOrderCard
+						label={t("settings.completionOfferStyleDialog")}
+						description={t("settings.completionOfferStyleDialogDesc")}
+						active={(globalSettings.completionOfferStyle ?? DEFAULT_COMPLETION_OFFER_STYLE) === "dialog"}
+						onClick={() => onCompletionOfferStyleChange("dialog")}
+						icon="▣"
+					/>
+					<SortOrderCard
+						label={t("settings.completionOfferStyleInline")}
+						description={t("settings.completionOfferStyleInlineDesc")}
+						active={(globalSettings.completionOfferStyle ?? DEFAULT_COMPLETION_OFFER_STYLE) === "inline"}
+						onClick={() => onCompletionOfferStyleChange("inline")}
+						icon="▁"
+					/>
+				</div>
 			</div>
 			</SettingsEntry>
 

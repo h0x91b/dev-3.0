@@ -854,8 +854,8 @@ async function requestDestructiveApproval(
 	const params: Record<string, unknown> = { taskId, ...readReasonFlag(args) };
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (projectId) params.projectId = projectId;
-	// Attributes a --reason to the asking task when it is not the target's own agent.
-	if (params.reason && context?.taskId) params.sourceTaskId = context.taskId;
+	// Lets the server park the target's own agent and attribute a --reason from a peer task.
+	if (context?.taskId) params.sourceTaskId = context.taskId;
 	const spec = approvalSpecFor(baseSpec, projectId, taskId);
 	const ownSession = targetsOwnSession(taskId, args, context);
 

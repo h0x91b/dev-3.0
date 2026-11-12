@@ -10,6 +10,14 @@ reasoning (48 of 50 dates), so the record wins and this file stays an index. Wri
 in full only while no record exists — the case for 84 below, whose reasoning lives nowhere
 else, so never compact them by deleting it.
 
+## 2026-11-09 — Waiting completion asks get their own screen
+- **Rule:** bible §4 destinations (`completions`), yaml `surfaces.completions_screen`.
+- **Why:** decisions/2026/11/09/ready-to-complete-screen.md.
+
+## 2026-11-09 — Completion asks: dialog by default, a bar in the agent's pane on request
+- **Rule:** bible §10 "merge/agent completion ask", yaml `task_info_panel.completion_strip`.
+- **Why:** decisions/2026/11/09/completion-offer-style-setting.md.
+
 ## 2026-11-09 — The user's own Complete/Cancel confirms beside the clicked button
 - **Rule:** bible §10 "the user's own one-click Complete/Cancel", yaml `popover.own_click_confirm`.
 - **Why:** decisions/2026/11/07/user-completion-confirm-anchored-not-modal.md.
