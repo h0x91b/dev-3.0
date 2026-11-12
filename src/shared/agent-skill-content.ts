@@ -456,7 +456,16 @@ const SKILL_STATUS: Record<SkillFamily, (mode: ProtocolMode) => string> = {
 	generic: skillStatusManual,
 };
 
-const shellNote = (family: SkillFamily): string => (family === "codex" || family === "generic" ? SKILL_CODEX_SHELL : "");
+// opencode kills a shell command after 120 s unless the call passes a longer timeout;
+// Claude Code and Codex keep a slow command running (decisions/2026/11/09/approval-waits-vs-agent-shell-timeouts.md).
+const SKILL_LONG_WAIT_SHELL = `
+## Long waits
+
+A command that waits for the user's approval can block 13+ minutes: give it a shell timeout of 900000 ms when your shell tool takes one.
+`;
+
+const shellNote = (family: SkillFamily): string =>
+	family === "codex" ? SKILL_CODEX_SHELL : family === "generic" ? SKILL_CODEX_SHELL + SKILL_LONG_WAIT_SHELL : "";
 
 const skillCore = (mode: ProtocolMode): string =>
 	skillHeader(mode) + skillBugHunterIsolation(mode) + skillSessionStartChecklist(mode) + skillBranchNaming(mode) + SKILL_TITLE_GENERATION;

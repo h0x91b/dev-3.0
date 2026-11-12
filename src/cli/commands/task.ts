@@ -16,7 +16,7 @@ import { rejectUnknownFlags } from "../flag-validation";
 import { exitOnSenderError, readSenderFlag } from "./sender";
 import { readStdin } from "../stdin";
 import { singleTextInput } from "../text-input";
-import { launchAndPrepareTimeoutMs, launchApprovalTimeoutMs } from "../launch-approval";
+import { launchAndPrepareTimeoutMs, launchApprovalTimeoutMs, withWaitHeartbeat } from "../launch-approval";
 import type { LaunchPreparationOutcome } from "../../shared/launch-preparation";
 import { handleTasks } from "./tasks";
 import { parseResumeAccountFlag, reportResumeOutcome } from "./agent";
@@ -855,7 +855,7 @@ async function requestDestructiveApproval(
 
 	process.stderr.write(`${spec.intro}\nWaiting for the user to respond in the dev-3.0 app (up to 10 minutes)...\n`);
 
-	const wait = await waitForDestructiveApproval(spec, params, socketPath);
+	const wait = await withWaitHeartbeat(waitForDestructiveApproval(spec, params, socketPath));
 	if (wait.kind === "status") return reportApprovalStatus(spec, wait.status, wait.timedOut, ownSession, codexStopHook);
 	if (wait.kind === "unreachable") {
 		if (wait.timedOut) {
@@ -956,14 +956,14 @@ async function createScratchAndRun(
 
 	let resp: CliResponse;
 	try {
-		resp = await sendRequest(socketPath, "task.createScratchAndRun", {
+		resp = await withWaitHeartbeat(sendRequest(socketPath, "task.createScratchAndRun", {
 			projectId,
 			sourceTaskId: context.taskId,
 			...senderAgentParams(context),
 			...(handoffNote ? { handoffNote } : {}),
 			...suggestion,
 			...epic,
-		}, { timeoutMs: await launchAndPrepareTimeoutMs(socketPath) });
+		}, { timeoutMs: await launchAndPrepareTimeoutMs(socketPath) }));
 	} catch (err) {
 		if (err instanceof Error && err.message.startsWith("Socket timeout")) {
 			exitError(
@@ -1165,7 +1165,7 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	// into one waits on the long timeout. A silent move still answers instantly.
 	const method = asSender ? "task.moveAsSender" : "task.move";
 	const resp = asSender || movesForeignTaskIntoActiveColumn(taskId, newStatus, context)
-		? await sendRequest(socketPath, method, params, { timeoutMs: await launchAndPrepareTimeoutMs(socketPath) })
+		? await withWaitHeartbeat(sendRequest(socketPath, method, params, { timeoutMs: await launchAndPrepareTimeoutMs(socketPath) }))
 		: await sendRequest(socketPath, method, params);
 	if (!resp.ok) {
 		exitOnSenderError(resp.error);
@@ -1291,7 +1291,7 @@ function formatFreed(bytes: number | null): string {
 /** Both commands block on the launch dialog when an agent asks, so a timeout is not a failure to retry blindly. */
 async function sendSessionAction(socketPath: string, method: string, params: Record<string, unknown>, what: string): Promise<CliResponse> {
 	try {
-		return await sendRequest(socketPath, method, params, { timeoutMs: await launchApprovalTimeoutMs(socketPath) });
+		return await withWaitHeartbeat(sendRequest(socketPath, method, params, { timeoutMs: await launchApprovalTimeoutMs(socketPath) }));
 	} catch (err) {
 		if (err instanceof Error && err.message.startsWith("Socket timeout")) {
 			exitError(`Timed out waiting for the ${what}`, "The approval dialog may still be open; a later approval still goes ahead. Running the same command again waits on that same request.");
