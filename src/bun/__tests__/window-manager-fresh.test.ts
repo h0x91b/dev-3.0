@@ -22,6 +22,8 @@ type FakeWindow = {
 	handlers: Record<string, () => void>;
 	frame?: { x: number; y: number; width: number; height: number };
 	activate?: boolean;
+	hidden?: boolean;
+	minimize: ReturnType<typeof vi.fn>;
 };
 
 const globalBag = globalThis as typeof globalThis & { __fakeWindows: FakeWindow[] };
@@ -43,10 +45,14 @@ vi.mock("electrobun/bun", () => {
 		handlers: Record<string, () => void>;
 		frame?: { x: number; y: number; width: number; height: number };
 		activate?: boolean;
+		hidden?: boolean;
+		minimize: ReturnType<typeof vi.fn>;
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		constructor(opts?: any) {
 			this.frame = opts?.frame;
 			this.activate = opts?.activate;
+			this.hidden = opts?.hidden;
+			this.minimize = vi.fn();
 			const handlers: Record<string, () => void> = {};
 			this.webview = {
 				rpc: { send: new Proxy({} as Record<string, ReturnType<typeof vi.fn>>, { get(t, p: string) { if (!(p in t)) t[p] = vi.fn(); return t[p]; } }) },
@@ -101,8 +107,8 @@ afterEach(() => {
 	else process.env.DEV3_FRESH_START = ORIGINAL;
 });
 
-function spawn(activate?: boolean) {
-	return createAppWindow({ title: "dev-3.0", url: "views://mainview/index.html", handlers: {}, ...(activate === undefined ? {} : { activate }) });
+function spawn(background?: boolean) {
+	return createAppWindow({ title: "dev-3.0", url: "views://mainview/index.html", handlers: {}, ...(background === undefined ? {} : { background }) });
 }
 
 /** Fire every registered dom-ready listener, then let their timers run. */
@@ -154,17 +160,32 @@ describe("window-manager fresh-start mode", () => {
 	});
 
 	// A dev launch fires while the user is in another app, often fullscreen on
-	// another Space: taking foreground would yank them out of it.
-	it("takes foreground by default — an ordinary launch behaves as before", () => {
+	// another Space: taking foreground or covering their window would yank them out.
+	it("opens visible and in front by default — an ordinary launch behaves as before", () => {
 		delete process.env.DEV3_FRESH_START;
 		spawn();
 		expect(createdWindows[0].activate).toBe(true);
+		expect(createdWindows[0].hidden).toBe(false);
+		expect(createdWindows[0].minimize).not.toHaveBeenCalled();
 	});
 
-	it("opens without taking foreground when the caller asks not to activate", () => {
-		process.env.DEV3_FRESH_START = "1";
-		spawn(false);
+	it.each([
+		["darwin", true],
+		// GTK/X11 cannot iconify or activate a never-mapped window, so it would never appear.
+		["linux", false],
+		["win32", false],
+	] as const)("on %s opens minimized without taking foreground when asked for the background (hidden: %s)", (platform, hidden) => {
+		const original = Object.getOwnPropertyDescriptor(process, "platform")!;
+		Object.defineProperty(process, "platform", { value: platform });
+		try {
+			process.env.DEV3_FRESH_START = "1";
+			spawn(true);
+		} finally {
+			Object.defineProperty(process, "platform", original);
+		}
 		expect(createdWindows[0].activate).toBe(false);
+		expect(createdWindows[0].hidden).toBe(hidden);
+		expect(createdWindows[0].minimize).toHaveBeenCalledTimes(1);
 	});
 
 	it("nudges the first paint only once, even if dom-ready fires again", () => {
