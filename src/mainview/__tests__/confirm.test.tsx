@@ -204,6 +204,15 @@ describe("confirm service", () => {
 		expect(cancelBtn).toHaveFocus();
 	});
 
+	it("focuses the cancel button when the caller makes it the safe default", async () => {
+		renderHost();
+		act(() => {
+			void confirm({ title: "Restart?", message: "M", confirmLabel: "Restart now", cancelLabel: "Restart later", danger: true, focusCancel: true });
+		});
+
+		expect(await screen.findByRole("button", { name: "Restart later" })).toHaveFocus();
+	});
+
 	// A red confirm button inside otherwise-accent chrome reads as the ordinary
 	// agent prompt. The danger tone has to reach the dialog's own frame, its
 	// badge and the subject card, or the "don't destroy this by accident" signal
