@@ -18,6 +18,7 @@
  * dev3 app that preserves its terminal.
  */
 
+import { excludeTaskClaudeSettings } from "./claude-config-git";
 import type { AgentFamily, Task } from "../shared/types";
 import { getPrimaryStopTarget } from "../shared/types";
 import { createLogger } from "./logger";
@@ -60,6 +61,7 @@ export async function refreshClaudeHooksForTask(task: Task): Promise<void> {
 		const { written } = writeClaudeHooks(task.worktreePath, {
 			stopTarget: getPrimaryStopTarget(project.autoReviewEnabled, task.taskType),
 		});
+		excludeTaskClaudeSettings(task.worktreePath);
 		if (written) {
 			log.info("Claude hooks were missing before a prompt and got reinstalled", {
 				taskId: task.id,
