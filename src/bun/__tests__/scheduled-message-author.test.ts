@@ -242,7 +242,19 @@ describe("liveAgentPaneIds — which panes really run an agent", () => {
 		it("does not count the AI Review pane even when it is the only agent left", async () => {
 			delete panes["%1"];
 			delete panes["%2"];
-			expect(await liveAgentPaneIds(unrecorded())).toEqual([]);
+			expect(await liveAgentPaneIds(unrecorded())).toBeNull();
+		});
+
+		it("is unknown, never the recorded extra agent alone, while the paneless entry has no launched pane", async () => {
+			delete panes["%1"];
+			delete panes["%2"];
+			expect(await liveAgentPaneIds(task([pane(null, "conv-a"), pane("%3", null)]))).toBeNull();
+		});
+
+		it("does not wait for a parked entry, which never has a pane", async () => {
+			delete panes["%1"];
+			delete panes["%2"];
+			expect(await liveAgentPaneIds(task([{ ...pane(null, "conv-a"), parked: true }, pane("%3", null)]))).toEqual(["%3"]);
 		});
 
 		it("does not count the dev server viewer pane that attaches to the nested session", async () => {
@@ -570,6 +582,15 @@ describe("captureSenderAgent — the sender a reply must reach, or why there is 
 			wrapperPane();
 			vi.mocked(tmux.listPanes).mockImplementation(async (format) => {
 				if (format === SERVER_IDENTITY_FORMAT) throw new Error("no server");
+				return Object.entries(panes).map(([paneId, panePid]) => ({ paneId, panePid })) as never;
+			});
+			expect(await captureSenderAgent(recorded(), "%5", 521, evidence)).toMatchObject({ ok: false, reason: "no-agent", detail: expect.stringContaining("tmux server could not be read") });
+		});
+
+		it("says the server could not be read, not another server, when tmux lacks the identity formats", async () => {
+			wrapperPane();
+			vi.mocked(tmux.listPanes).mockImplementation(async (format) => {
+				if (format === SERVER_IDENTITY_FORMAT) return [{ socketPath: "", serverPid: Number.NaN }] as never;
 				return Object.entries(panes).map(([paneId, panePid]) => ({ paneId, panePid })) as never;
 			});
 			expect(await captureSenderAgent(recorded(), "%5", 521, evidence)).toMatchObject({ ok: false, reason: "no-agent", detail: expect.stringContaining("tmux server could not be read") });

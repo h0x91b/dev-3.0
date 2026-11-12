@@ -171,7 +171,9 @@ async function senderRefusal(task: Task, pane: string, table: ProcessTable, cliP
 			scope: "session",
 			socket: task.tmuxSocket ?? DEFAULT_TMUX_SOCKET,
 		}).then((rows) => rows[0], () => undefined);
-		if (!server) return refuse("tmux-server-unreadable", "the task's tmux server could not be read");
+		if (!server || !server.socketPath || !(server.serverPid > 0)) {
+			return refuse("tmux-server-unreadable", "the task's tmux server could not be read");
+		}
 		if (!claimed || claimed.socketPath !== server.socketPath || claimed.serverPid !== server.serverPid) {
 			return refuse("tmux-server", "dev3 runs under another tmux server");
 		}
@@ -268,8 +270,12 @@ function mainLaunchScripts(task: Task): string[] {
 	return [dev3TaskTempPath(task.id, `run${ext}`), dev3TaskTempPath(task.id, `cmd${ext}`)];
 }
 
-/** Recorded pane ids plus the session panes started from a main launch script; null when the listing fails. */
-async function taskSessionAgentCandidates(task: Task, recorded: string[]): Promise<string[] | null> {
+/**
+ * Recorded pane ids plus the session panes started from a main launch script. Null when the listing
+ * fails, or when fewer such panes exist than paneless entries: the recorded panes alone must never
+ * pass for the task's only agents while an entry's pane is unaccounted for.
+ */
+async function taskSessionAgentCandidates(task: Task, recorded: string[], paneless: number): Promise<string[] | null> {
 	try {
 		const rows = await tmux.listPanes(PANE_START_COMMAND_FORMAT, {
 			target: taskSessionName(task.id),
@@ -278,6 +284,11 @@ async function taskSessionAgentCandidates(task: Task, recorded: string[]): Promi
 		});
 		const scripts = mainLaunchScripts(task);
 		const launched = rows.filter((row) => scripts.some((script) => row.startCommand.includes(script))).map((row) => row.paneId);
+		const unrecorded = new Set(launched.filter((paneId) => !recorded.includes(paneId)));
+		if (unrecorded.size < paneless) {
+			log.debug("agent pane candidates unknown: a paneless entry has no launched pane", { taskId: task.id.slice(0, 8) });
+			return null;
+		}
 		return [...new Set([...recorded, ...launched])];
 	} catch {
 		log.debug("agent pane candidates unknown: the session's panes could not be listed", { taskId: task.id.slice(0, 8) });
@@ -300,7 +311,8 @@ export async function liveAgentPaneIds(task: Task): Promise<string[] | null> {
 	} else {
 		const recorded = task.sessionState?.panes ?? [];
 		if (recorded.some((pane) => !pane.paneId)) {
-			const found = await taskSessionAgentCandidates(task, recorded.flatMap((pane) => (pane.paneId ? [pane.paneId] : [])));
+			const paneless = recorded.filter((pane) => !pane.paneId && !pane.parked).length;
+			const found = await taskSessionAgentCandidates(task, recorded.flatMap((pane) => (pane.paneId ? [pane.paneId] : [])), paneless);
 			if (!found) return null;
 			candidates = found;
 		} else candidates = recorded.map((pane) => pane.paneId as string);
