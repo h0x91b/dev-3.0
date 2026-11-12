@@ -261,7 +261,13 @@ async function listPinnedClaudeLogins(): Promise<PinnedClaudeLogin[]> {
 			if (!configDir) continue;
 			const entry = byDir.get(configDir);
 			if (entry) entry.projectNames.push(project.name);
-			else byDir.set(configDir, { configDir, identity: accounts.readClaudeConfigDirIdentity(configDir), projectNames: [project.name] });
+			else
+				byDir.set(configDir, {
+					configDir,
+					identity: accounts.readClaudeConfigDirIdentity(configDir),
+					projectNames: [project.name],
+					accountId: accounts.claudeAccountForConfigDir(configDir),
+				});
 		} catch (err) {
 			log.warn("listPinnedClaudeLogins: project env unreadable", { projectId: project.id, error: String(err) });
 		}

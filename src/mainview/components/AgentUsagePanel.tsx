@@ -171,9 +171,11 @@ function rowsForKind(
 	}
 
 	// A pinned login is never "the default": the project's config picks it, not
-	// this switcher, so its row only reports usage.
+	// this switcher, so its row only reports usage. A folder signed in to a managed
+	// account is that account: its readings land on the account's row above.
 	if (kind === "claude") {
 		for (const login of pinnedLogins) {
+			if (login.accountId && kindState?.accounts.some((a) => a.id === login.accountId)) continue;
 			const chip = labels.projectLogin(shortClaudeConfigDir(login.configDir));
 			const identity = identityLine(login.identity);
 			rows.push({

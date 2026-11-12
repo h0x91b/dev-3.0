@@ -275,6 +275,12 @@ describe("attributeManagedConfigDir", () => {
 
 	it("leaves a real project pin alone", () => {
 		const snap = { ...base, accountId: null, configDir: "/work/proj/.claude" };
-		expect(attributeManagedConfigDir(snap, dev3Home)).toBe(snap);
+		expect(attributeManagedConfigDir(snap, dev3Home, () => null)).toBe(snap);
+	});
+
+	it("gives a project folder signed in to a managed account to that account", () => {
+		const snap = { ...base, accountId: null, configDir: "/work/proj/.claude" };
+		const accountForDir = (dir: string) => (dir === "/work/proj/.claude" ? "acc-2" : null);
+		expect(attributeManagedConfigDir(snap, dev3Home, accountForDir)).toEqual({ ...base, accountId: "acc-2" });
 	});
 });

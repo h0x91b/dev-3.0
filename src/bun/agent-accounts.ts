@@ -793,6 +793,17 @@ export function claudeAccountRegistered(id: string, paths: AccountPaths = defaul
 	return loadRegistry(paths).claude.accounts.some((e) => e.id === id);
 }
 
+/** The subscription account `configDir` is signed in to (same person, same org), if any:
+ *  a session in that folder spends this account's quota. */
+export function claudeAccountForConfigDir(configDir: string, paths: AccountPaths = defaultAccountPaths()): string | null {
+	const identity = readClaudeConfigDirIdentity(configDir);
+	if (!identity?.accountId) return null;
+	const entry = loadRegistry(paths).claude.accounts.find(
+		(e) => e.auth !== "api" && sameClaudeLogin(claudeAccountIdentity(e.id, paths), identity),
+	);
+	return entry?.id ?? null;
+}
+
 function isDirectory(path: string): boolean {
 	try {
 		return statSync(path).isDirectory();
