@@ -165,6 +165,12 @@ describe("GoToPalette — spaces", () => {
 		});
 	});
 
+	it("badges a space row with its ⌘N digit while the query is empty", async () => {
+		render(<Harness shortcutIndexById={{ sp_a: 2, p2: 0 }} />);
+		await waitFor(() => expect(rowTexts()).toHaveLength(4));
+		expect(rowTexts()[3]).toContain("⌘3");
+	});
+
 	it("selecting a space row reports the space, never a project", async () => {
 		const user = userEvent.setup();
 		const onSelectProject = vi.fn();

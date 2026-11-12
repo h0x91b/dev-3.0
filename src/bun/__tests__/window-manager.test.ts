@@ -16,6 +16,8 @@ type FakeWindow = {
 	setFullScreen: ReturnType<typeof vi.fn>;
 	setTitle: ReturnType<typeof vi.fn>;
 	focus: ReturnType<typeof vi.fn>;
+	isMinimized: ReturnType<typeof vi.fn>;
+	unminimize: ReturnType<typeof vi.fn>;
 	on: ReturnType<typeof vi.fn>;
 	handlers: Record<string, () => void>;
 	/** The RPC request handlers this window's own rpc instance was built with. */
@@ -43,6 +45,8 @@ vi.mock("electrobun/bun", () => {
 		setFullScreen: ReturnType<typeof vi.fn>;
 		setTitle: ReturnType<typeof vi.fn>;
 		focus: ReturnType<typeof vi.fn>;
+		isMinimized: ReturnType<typeof vi.fn>;
+		unminimize: ReturnType<typeof vi.fn>;
 		on: ReturnType<typeof vi.fn>;
 		handlers: Record<string, () => void>;
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -76,6 +80,8 @@ vi.mock("electrobun/bun", () => {
 			this.setFullScreen = vi.fn();
 			this.setTitle = vi.fn();
 			this.focus = vi.fn();
+			this.isMinimized = vi.fn(() => false);
+			this.unminimize = vi.fn();
 			this.on = vi.fn((name: string, handler: () => void) => {
 				handlers[name] = handler;
 			});
@@ -197,6 +203,17 @@ describe("window-manager", () => {
 		expect(focusFocusedWindow()).toBe(true);
 		expect(secondWin.focus).toHaveBeenCalledTimes(1);
 		expect(createdWindows[0].focus).not.toHaveBeenCalled();
+		expect(secondWin.unminimize).not.toHaveBeenCalled();
+	});
+
+	// A dev launch starts minimized, and focus() alone leaves it iconic on Windows.
+	it("focusFocusedWindow restores a minimized window before focusing it", () => {
+		spawn();
+		createdWindows[0].isMinimized.mockReturnValue(true);
+
+		expect(focusFocusedWindow()).toBe(true);
+		expect(createdWindows[0].unminimize).toHaveBeenCalledTimes(1);
+		expect(createdWindows[0].focus).toHaveBeenCalledTimes(1);
 	});
 
 	it("focusFocusedWindow returns false when no window is open", () => {

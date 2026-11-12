@@ -1,5 +1,7 @@
 # `dev3 attention --clear` ignores Focus Mode and project silencing
 
+> Superseded in part on 2026-11-10 by `decisions/2026/11/10/needs-you-badge-real-attention-only.md`: terminal bells no longer light the badge, so there are no queued bells to drop.
+
 ## Context
 
 `dev3 attention "reason"` lights the red task-card badge; reasons accumulate (newest 5 kept)

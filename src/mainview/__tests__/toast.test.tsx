@@ -595,6 +595,19 @@ describe("toast service", () => {
 		expect(screen.queryByText("Temporary")).not.toBeInTheDocument();
 	});
 
+	it("keeps an Infinity toast with no countdown bar until it is dismissed", () => {
+		vi.useFakeTimers();
+		render(<ToastHost />);
+		act(() => {
+			toast.warning("Waits for you", { durationMs: Infinity });
+		});
+		expect(document.querySelector("[data-toast-progress]")).toBeNull();
+		act(() => {
+			vi.advanceTimersByTime(24 * 60 * 60_000);
+		});
+		expect(screen.getByText("Waits for you")).toBeInTheDocument();
+	});
+
 	it("pauses a toast while the renderer is hidden and resumes its remaining time", () => {
 		vi.useFakeTimers();
 		render(<ToastHost />);

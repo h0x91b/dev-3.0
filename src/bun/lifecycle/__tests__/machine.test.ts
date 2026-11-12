@@ -636,13 +636,15 @@ describe("task lifecycle transition table", () => {
 			},
 		});
 
+		const failed = { phase: "tearing-down", targetStatus: "completed", runId: "failed-run", failed: true } as const;
 		expect(transition(current, {
 			type: "teardownFailed",
 			runId: "failed-run",
 			error: "Git removal failed",
 		})).toEqual({
-			next: current,
+			next: { ...current, runtime: failed },
 			effects: [
+				{ type: "persistRuntime", runtime: failed, onError: "continue" },
 				{ type: "push", message: "taskUpdated", view: "current", onError: "continue" },
 				{ type: "reject", message: "Git removal failed", onError: "abort" },
 			],
@@ -937,6 +939,64 @@ describe("needs-you chime", () => {
 				target: { status: target, customColumnId: null },
 			});
 			expect(soundsOf(moved.effects)).toEqual([]);
+		},
+	);
+});
+
+describe("User questions badge", () => {
+	function badgesOf(effects: ReturnType<typeof transition>["effects"]) {
+		return effects.filter((candidate) => candidate.type === "raiseQuestionsAttention");
+	}
+
+	it("raises the badge when a hook moves the task into User questions, after the column write", () => {
+		const moved = transition(state("in-progress"), {
+			type: "moveRequested",
+			target: { status: "user-questions", customColumnId: null },
+			guards: { ifStatus: "in-progress" },
+		});
+		const persistIndex = moved.effects.findIndex((candidate) => candidate.type === "persistColumn");
+		const badgeIndex = moved.effects.findIndex((candidate) => candidate.type === "raiseQuestionsAttention");
+
+		expect(badgesOf(moved.effects)).toHaveLength(1);
+		expect(badgeIndex).toBeGreaterThan(persistIndex);
+	});
+
+	it("raises no badge when the UI made the move", () => {
+		const moved = transition(state("in-progress"), {
+			type: "moveRequested",
+			target: { status: "user-questions", customColumnId: null },
+			clientPlayedSound: true,
+		});
+		expect(badgesOf(moved.effects)).toEqual([]);
+	});
+
+	it("raises no badge when the caller raises its own", () => {
+		const moved = transition(state("in-progress"), {
+			type: "moveRequested",
+			target: { status: "user-questions", customColumnId: null },
+			skipQuestionsBadge: true,
+		});
+		expect(badgesOf(moved.effects)).toEqual([]);
+	});
+
+	it("raises no badge for a move that stays in User questions", () => {
+		const moved = transition(state("user-questions", {
+			column: { status: "user-questions", customColumnId: "qa-column" },
+		}), {
+			type: "moveRequested",
+			target: { status: "user-questions", customColumnId: null },
+		});
+		expect(badgesOf(moved.effects)).toEqual([]);
+	});
+
+	it.each(["review-by-user", "in-progress", "review-by-ai"] as const)(
+		"raises no badge for a move into %s",
+		(target) => {
+			const moved = transition(state("in-progress"), {
+				type: "moveRequested",
+				target: { status: target, customColumnId: null },
+			});
+			expect(badgesOf(moved.effects)).toEqual([]);
 		},
 	);
 });

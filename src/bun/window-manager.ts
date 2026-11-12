@@ -179,12 +179,11 @@ export interface CreateAppWindowOptions {
 	 */
 	restore?: WindowState | null;
 	/**
-	 * Whether showing the window also activates the app (macOS
-	 * `activateIgnoringOtherApps:`). False orders the window in without taking
-	 * foreground, so a launch cannot pull the user out of a fullscreen app or
-	 * switch their Space. Defaults to true — only the dev launch opts out.
+	 * Open the window minimized to the Dock / taskbar without activating the app,
+	 * so a launch neither takes foreground nor covers the app the user works in.
+	 * Defaults to false — only the dev launch opts in.
 	 */
-	activate?: boolean;
+	background?: boolean;
 }
 
 /**
@@ -257,14 +256,19 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 		frame = { x, y, width, height };
 	}
 
+	const background = opts.background === true;
 	const win = new BrowserWindow({
 		title: opts.title,
 		url: opts.url,
 		rpc,
 		frame,
-		activate: opts.activate ?? true,
+		activate: !background,
+		// Hidden first so it never flashes before minimizing — macOS only: GTK/X11 cannot
+		// iconify or later activate a window that was never mapped, so it would never appear.
+		hidden: background && process.platform === "darwin",
 		...(opts.preload ? { preload: opts.preload } : {}),
 	});
+	if (background) win.minimize();
 
 	// The `frame` option above only reaches the FIRST window of the process —
 	// every later one opens stacked on the existing window, ignoring both the
@@ -465,6 +469,8 @@ export function focusFocusedWindow(): boolean {
 	const win = getFocusedWindow();
 	if (!win) return false;
 	try {
+		// A minimized window (every dev launch starts so) is not restored by focus() on Windows.
+		if (win.isMinimized()) win.unminimize();
 		win.focus();
 		return true;
 	} catch (err) {

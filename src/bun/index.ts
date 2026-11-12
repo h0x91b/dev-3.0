@@ -11,7 +11,7 @@ import Electrobun, {
 	Utils,
 } from "electrobun/bun";
 import { startDisplayWatch } from "./display-watch";
-import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, setAppForeground, isAppForeground, setFocusMode, pushTerminalBell, getActiveContext } from "./rpc-handlers";
+import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, setAppForeground, isAppForeground, setFocusMode, getActiveContext } from "./rpc-handlers";
 import { applyFreezeDiagnosticsSetting, configureFreezeDiagnostics, recordFreezeDiagnostic, stopFreezeDiagnostics } from "./freeze-diagnostics";
 import { resolve } from "node:path";
 import { startRendererWatchdog } from "./renderer-watchdog";
@@ -66,7 +66,7 @@ import { configureHandoffWorker } from "./conversation-handoff-runner";
 import { configureClonefileWorker } from "./cow-clone";
 import { configureWorktreeCleanupWorker } from "./worktree-cleanup-scheduler";
 import { configureClipboardImageWorker } from "./clipboard-image-reader";
-import { shouldActivateLaunchWindow } from "./fresh-start";
+import { shouldOpenLaunchWindowInBackground } from "./fresh-start";
 import { createAppWindow, focusFocusedWindow, getFocusedWindow, getWindowCount, handleDisplayConfigurationChange, loadWindowSession, sendToFocusedWindow, setOpenNewWindow, flushWindowState } from "./window-manager";
 import type { WindowState } from "./window-state";
 import { pushEverywhere } from "./push-targets";
@@ -389,7 +389,7 @@ log.info("CLI socket server ready", { path: cliSocketPath });
 }
 
 // Side-effect: starts the PTY WebSocket server (dynamic import so PATH is patched first)
-const { setOnPtyDied, setOnBell, setOnIdle, setOnPaneExited, setOnOsc52Copy, getActiveSessionIds, getPtyPort, registerBackpressureProbe } = await import("./pty-server");
+const { setOnPtyDied, setOnBell, setOnPaneExited, setOnOsc52Copy, getActiveSessionIds, getPtyPort, registerBackpressureProbe } = await import("./pty-server");
 const { setNativeDevServerProbe, setNativePaneRecordsReader, startPortScanPoller, stopPortScanPoller } = await import("./port-scanner");
 const { startResourceMonitor, stopResourceMonitor } = await import("./resource-monitor");
 const { startRateLimitMonitor, stopRateLimitMonitor } = await import("./rate-limit-monitor");
@@ -490,11 +490,11 @@ function failDesktopLaunch(timeoutMs: number): void {
 	void hardExit(CLI_EXIT_CODE_RENDERER_UNAVAILABLE);
 }
 
-async function openMainWindow(restore?: WindowState, activate = true) {
+async function openMainWindow(restore?: WindowState, background = false) {
 	const buildChannel = await Updater.localInfo.channel();
 	return createAppWindow({
 		restore,
-		activate,
+		background,
 		title: makeTitle(
 			APP_VERSION,
 			lastBuildTime,
@@ -570,13 +570,12 @@ try {
 const restoreSession = loadWindowSession();
 if (restoreSession.length > 1) log.info("Restoring window session", { windows: restoreSession.length });
 // A dev launch (`bun run dev` / the task dev server) must not pull the user out
-// of whatever they are doing: the window opens without activating the app, so no
-// foreground steal and no Space switch away from a fullscreen app. Only these
-// launch windows — a window the user opens later still comes to the front.
-const activateOnLaunch = shouldActivateLaunchWindow();
-const primaryWindow = await openMainWindow(restoreSession[0], activateOnLaunch);
-log.info("Main window created", { activate: activateOnLaunch });
-for (const state of restoreSession.slice(1)) await openMainWindow(state, activateOnLaunch);
+// of whatever they are doing: the window opens minimized without activating the
+// app. Only these launch windows — a window the user opens later comes to the front.
+const launchInBackground = shouldOpenLaunchWindowInBackground();
+const primaryWindow = await openMainWindow(restoreSession[0], launchInBackground);
+log.info("Main window created", { background: launchInBackground });
+for (const state of restoreSession.slice(1)) await openMainWindow(state, launchInBackground);
 // Creation order decides key focus, so hand it back to the primary window.
 if (restoreSession.length > 1) {
 	try { primaryWindow.focus(); } catch (err) { log.debug("Focusing the restored primary window failed", { error: String(err) }); }
@@ -771,8 +770,7 @@ setOnBell((sessionKey) => {
 		// Project terminals are plain shells — skip bell/auto-status logic
 		if (sessionKey.startsWith("project-")) return;
 
-		log.debug("Terminal bell, notifying renderer", { taskId: sessionKey.slice(0, 8) });
-		pushTerminalBell(sessionKey);
+		log.debug("Terminal bell", { taskId: sessionKey.slice(0, 8) });
 		// Auto-move task from "in-progress" to "user-questions" on bell
 		handleBellAutoStatus(sessionKey).catch((err) => {
 			log.error("handleBellAutoStatus unhandled error", { error: String(err) });
@@ -784,29 +782,6 @@ setOnBell((sessionKey) => {
 			stack: (err as Error)?.stack ?? "no stack",
 		});
 	}
-});
-
-// Wire terminal idle notifications (red badge only, no status transition)
-// Only fires for tasks that are currently "in-progress" — idle terminals
-// in other statuses (review, todo, etc.) are expected and not noteworthy.
-setOnIdle((sessionKey) => {
-	// Project terminals have no task status — skip idle notifications
-	if (sessionKey.startsWith("project-")) return;
-
-	isTaskInProgress(sessionKey).then((inProgress) => {
-		if (!inProgress) return;
-		try {
-			log.debug("Terminal idle, notifying renderer", { taskId: sessionKey.slice(0, 8) });
-			pushTerminalBell(sessionKey);
-		} catch (err) {
-			log.error("Failed to handle terminal idle", {
-				taskId: sessionKey.slice(0, 8),
-				error: String(err),
-			});
-		}
-	}).catch((err) => {
-		log.error("isTaskInProgress failed in idle handler", { error: String(err) });
-	});
 });
 
 setOnOsc52Copy((payload) => {

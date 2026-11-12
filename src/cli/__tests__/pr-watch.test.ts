@@ -97,6 +97,17 @@ describe("dev3 pr watch", () => {
 		expect(send.mock.calls[0][2]).toMatchObject({ sourceTaskId: "task-1", sourcePaneId: "%4", sourcePid: process.pid });
 	});
 
+	it("sends the evidence an app needs to find an agent started through a wrapper", async () => {
+		vi.stubEnv("TMUX_PANE", "%4");
+		vi.stubEnv("TMUX", "/private/tmp/tmux-501/dev3,4242,0");
+		vi.stubEnv("DEV3_TASK_ID", "task-1");
+		send.mockResolvedValue({ id: "1", ok: true, data: { prNumber: 2041 } });
+
+		await run({});
+
+		expect(send.mock.calls[0][2]).toMatchObject({ sourceTmux: "/private/tmp/tmux-501/dev3,4242,0", sourceEnvTaskId: "task-1" });
+	});
+
 	it("waits longer for the app than the app waits for gh", async () => {
 		send.mockResolvedValue({ id: "1", ok: true, data: { prNumber: 1 } });
 		await run({});
@@ -117,6 +128,17 @@ describe("dev3 pr watch", () => {
 		expect(await run({ pr: "2111" })).toBe(CLI_EXIT_CODE_PR_WATCH_PR_FINISHED);
 		expect(stderr).toContain("Pull request #2111 is already merged");
 		expect(stderr).not.toContain(PR_WATCH_PR_FINISHED_PREFIX);
+	});
+
+	it("says plainly when the app could not identify the subscribing agent", async () => {
+		send.mockResolvedValue({ id: "1", ok: true, data: { prNumber: 2041, unidentifiedSubscriber: "no agent process runs dev3 here" } });
+
+		await run({});
+
+		expect(stdout).toBe(
+			"Watching <pr:2041> until CI finishes — dev3 will message this agent. No need to poll gh.\n"
+			+ "Subscriber not identified (no agent process runs dev3 here); the notice goes to the task's only live agent and waits while several agents run.\n",
+		);
 	});
 
 	it("says when the watched PR is not the task's own", async () => {

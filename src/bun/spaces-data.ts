@@ -6,7 +6,8 @@ import { DEV3_HOME } from "./paths";
 import type { Space, SpacesFile } from "../shared/types";
 
 // Additive sibling file (AGENTS.md on-disk rule 5): older app versions never
-// read it, and it is not created until the user makes the first space.
+// read it, and it is not created until the first space or mixed-order write
+// (a dashboard reorder can come before any space exists).
 const SPACES_FILE = `${DEV3_HOME}/spaces.json`;
 
 export class SpaceValidationError extends Error {}
@@ -155,6 +156,14 @@ export async function reorderSpaces(order: string[]): Promise<SpacesFile> {
 		const next = order.filter((id) => activeIds.has(id));
 		for (const id of file.order) if (activeIds.has(id) && !next.includes(id)) next.push(id);
 		file.order = next;
+		return structuredClone(file);
+	});
+}
+
+/** Store the mixed top-level order verbatim: its ids span spaces AND projects, so only the renderer can validate them. */
+export async function reorderMixed(ids: string[]): Promise<SpacesFile> {
+	return mutate((file) => {
+		file.mixedOrder = [...new Set(ids.filter((id): id is string => typeof id === "string" && id.length > 0))];
 		return structuredClone(file);
 	});
 }

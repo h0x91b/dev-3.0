@@ -24,7 +24,8 @@ export function placePaneSession(
 	const moved = panes.flatMap((pane, i) => (pane.sessionId === sessionId ? [i] : []));
 	if (moved.length === 1) idx = moved[0];
 	else {
-		const unassigned = panes.flatMap((pane, i) => (pane.paneId ? [] : [i]));
+		// A parked entry keeps a saved conversation for Resume; another conversation never takes it over.
+		const unassigned = panes.flatMap((pane, i) => (pane.paneId || pane.parked ? [] : [i]));
 		if (unassigned.length !== 1) return null;
 		idx = unassigned[0];
 	}
@@ -41,14 +42,13 @@ export function placeUnaddressedPaneSession(
 	mainEntry: SessionPane | null,
 ): SessionPane[] | null {
 	if (!panes.length) return mainEntry ? [{ ...mainEntry, sessionId }] : null;
-	if (panes.length !== 1 || panes[0].sessionId === sessionId) return null;
+	if (panes.length !== 1 || panes[0].parked || panes[0].sessionId === sessionId) return null;
 	return [{ ...panes[0], sessionId }];
 }
 
 /**
- * Claude's placement: only the entry already recorded for this exact pane moves.
- * A pane dev3 never recorded — a teammate an agent team split off, a Claude the
- * user started by hand — must not take over another pane's pointer.
+ * Claude's placement: the entry recorded for this pane follows its conversation; a paneless
+ * entry holding the reported session id learns its pane. Any other unrecorded pane is ignored.
  */
 export function placeRecordedPaneSession(
 	panes: SessionPane[],
@@ -56,7 +56,12 @@ export function placeRecordedPaneSession(
 	sessionId: string,
 ): SessionPane[] | null {
 	const idx = panes.findIndex((pane) => pane.paneId === paneId);
-	if (idx === -1 || panes[idx].sessionId === sessionId) return null;
+	if (idx === -1) {
+		const unrecorded = panes.flatMap((pane, i) => (!pane.paneId && pane.sessionId === sessionId ? [i] : []));
+		if (unrecorded.length !== 1) return null;
+		return panes.map((pane, i) => (i === unrecorded[0] ? { ...pane, paneId } : pane));
+	}
+	if (panes[idx].sessionId === sessionId) return null;
 	// The origin belonged to the old id; resume finds a `/resume`d conversation in any
 	// directory's store on its own (`inSiblingStore`).
 	return panes.map((pane, i) => (i === idx ? { ...pane, sessionId, sessionOriginCwd: undefined } : pane));

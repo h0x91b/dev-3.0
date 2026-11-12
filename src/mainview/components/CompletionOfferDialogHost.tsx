@@ -74,6 +74,7 @@ async function askInDialog(
 		message: known ? completionOfferNote(known.task, known.project, t) : t("completionStrip.worktreeNote"),
 		// Opening the task answers "Keep open": right for a merge, a refusal for the agent.
 		info: known ? taskDialogInfo(known.task, known.project, isAgent ? undefined : () => onOpenTask(offer.taskId, offer.projectId)) : undefined,
+		...(offer.reason ? { reason: offer.reason } : {}),
 		confirmLabel: t("app.branchMergedComplete"),
 		cancelLabel: t("completionStrip.keepOpen"),
 		danger: true,

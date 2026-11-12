@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, 
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Context } from "cordis";
 import type { Project, Task } from "../../../shared/types";
-import { getTaskTitle, taskSeqLabel } from "../../../shared/types";
+import { getTaskTitle, isCoordinatorTask, taskSeqLabel } from "../../../shared/types";
 import { useT } from "../../i18n";
 import PriorityBadge from "../../components/PriorityBadge";
+import { COORDINATOR_TITLE, TaskRoleChip } from "../../components/TaskRoleBand";
 import { useStatusColors } from "../../hooks/useStatusColors";
 import { getStatusLabel } from "../../utils/statusLabel";
 import { compactAge } from "../../utils/statusAge";
@@ -16,6 +17,7 @@ import {
 	buildTaskTree,
 	flattenTree,
 	isGroupOpen,
+	isPinnedCoordinatorNode,
 	isStandalone,
 	normalizeTreeLayout,
 	toggleExpanded,
@@ -23,7 +25,7 @@ import {
 	type TreeNode,
 	type TreeRow,
 } from "./tree-model";
-import { ZEBRA_ROW } from "../zebra";
+import { COORDINATOR_ROW, ZEBRA_ROW } from "../zebra";
 import { READABLE_SCROLL, READABLE_WIDTH } from "../readable-width";
 
 export const TREE_VIEW_ID = "builtin:tree";
@@ -70,12 +72,13 @@ function countTasks(node: TreeNode): number {
 	return count;
 }
 
-/** The row's accessible name: its seq and title, never the chevron's "Expand". */
-function rowLabel(node: TreeNode, hiddenTitle: string, groupName: (node: Extract<TreeNode, { kind: "group" }>) => string): string {
+/** The row's accessible name: its seq, role and title, never the chevron's "Expand". */
+function rowLabel(node: TreeNode, hiddenTitle: string, coordinatorLabel: string, groupName: (node: Extract<TreeNode, { kind: "group" }>) => string): string {
 	if (node.kind === "group") return groupName(node);
 	if (node.kind === "ghost") return `#${node.ref.seq} ${node.ref.title ?? hiddenTitle} · ${node.ref.projectName}`;
 	const lead = node.tasks[0];
-	return `#${node.tasks.length > 1 ? lead.seq : taskSeqLabel(lead)} ${getTaskTitle(lead)}`;
+	const role = isCoordinatorTask(lead) ? `${coordinatorLabel} ` : "";
+	return `#${node.tasks.length > 1 ? lead.seq : taskSeqLabel(lead)} ${role}${getTaskTitle(lead)}`;
 }
 
 function Chevron({ open }: { open: boolean }) {
@@ -256,7 +259,8 @@ function TaskContent({ node, narrow, nested, project, showProject, projectName }
 		<>
 			<SeqLabel seq={lead.seq} label={variants ? String(lead.seq) : taskSeqLabel(lead)} />
 			<span className="flex min-w-0 flex-1 items-center gap-2">
-				<span className="min-w-0 truncate text-sm text-fg">{getTaskTitle(lead)}</span>
+				{isCoordinatorTask(lead) && <TaskRoleChip role="coordinator" testId="board-tree-coordinator-chip" />}
+				<span className={`min-w-0 truncate text-sm ${isCoordinatorTask(lead) ? `font-semibold ${COORDINATOR_TITLE}` : "text-fg"}`}>{getTaskTitle(lead)}</span>
 				{variants && <VariantDots tasks={node.tasks} />}
 				{nested}
 			</span>
@@ -413,7 +417,7 @@ export function TreeView(_props: { ctx: Context }) {
 							key={item.key}
 							role="treeitem"
 							aria-level={row.depth + 1}
-							aria-label={rowLabel(node, t("boardTree.hiddenTitle"), groupName)}
+							aria-label={rowLabel(node, t("boardTree.hiddenTitle"), t("task.coordinatorBadge"), groupName)}
 							aria-expanded={hasChildren ? row.expanded : undefined}
 							aria-selected={false}
 							tabIndex={0}
@@ -424,7 +428,7 @@ export function TreeView(_props: { ctx: Context }) {
 							onClick={() => open(row)}
 							onContextMenu={(e) => openMenu(row, e)}
 							onKeyDown={(e) => onRowKeyDown(row, item.index, e)}
-							className={`absolute left-0 top-0 w-full cursor-pointer rounded-md px-2 outline-none ${item.index % 2 === 1 ? ZEBRA_ROW : ""} hover:bg-raised-hover focus-visible:bg-raised-hover focus-visible:shadow-[inset_2px_0_0_rgb(var(--accent))] ${narrow ? "border-b border-edge/50" : ""}`}
+							className={`absolute left-0 top-0 w-full cursor-pointer rounded-md px-2 outline-none ${isPinnedCoordinatorNode(node) ? COORDINATOR_ROW : item.index % 2 === 1 ? ZEBRA_ROW : ""} hover:bg-raised-hover focus-visible:bg-raised-hover focus-visible:shadow-[inset_2px_0_0_rgb(var(--accent))] ${narrow ? "border-b border-edge/50" : ""}`}
 							style={{ height: rowHeight, transform: `translateY(${item.start}px)` }}
 						>
 							<RowBody row={row} narrow={narrow} projectById={projectById} showProject={showProject} projectName={projectName} onToggle={onToggle} />

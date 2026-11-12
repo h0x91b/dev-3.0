@@ -20,6 +20,7 @@ import { bootstrapTerminalFont } from "./terminal-font";
 import { startViewportDiagnostics } from "./viewport-diagnostics";
 import { startRendererHeartbeat } from "./renderer-heartbeat";
 import { getInitialThemeState, getWindowInjectedThemeState } from "./theme-bootstrap";
+import { initThemeColorSync } from "./theme-color";
 import { initStreamerMode } from "./streamer-mode";
 import { buildChannelTitlePrefix } from "../shared/update-channel";
 import RootErrorBoundary from "./components/RootErrorBoundary";
@@ -84,6 +85,7 @@ function applySavedTheme() {
 
 applySavedTheme();
 systemThemeMq.addEventListener("change", applySavedTheme);
+initThemeColorSync();
 
 // Apply saved zoom before React mounts (see zoom.ts for implementation)
 bootstrapZoom();

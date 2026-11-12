@@ -56,6 +56,8 @@ export const geminiAdapter: AgentAdapter = {
 		return sessionId ? `${baseCmd} --resume ${sessionId}` : `${baseCmd} --resume latest`;
 	},
 
+	hooksReportPermissionWaits: false,
+
 	hooksSpec() {
 		return null;
 	},

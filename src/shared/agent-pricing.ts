@@ -74,6 +74,8 @@ const BASE_RATES: ReadonlyArray<{ match: (id: string) => boolean; rate: ModelBas
 	{ match: (id) => id.includes("gpt-5-codex-mini"), rate: { input: 0.25, output: 2, cacheRead: 0.025 } },
 	{ match: (id) => id.includes("gpt-5-codex") || id === "gpt-5", rate: { input: 1.25, output: 10, cacheRead: 0.125 } },
 	// --- Anthropic / Claude ---
+	// Fable 5.2 / Mythos 5.2 undercut 5.1: $8 / $40, cache reads $0.20. Must precede the "fable-5" row.
+	{ match: (id) => id.includes("fable-5-2") || id.includes("mythos-5-2"), rate: { input: 8, output: 40, cacheRead: 0.2 } },
 	// Fable 5.1 / Mythos 5.1: same $10 / $50 tier as Fable 5, but cache reads
 	// dropped to $0.25 (Fable 5 keeps the default $1). Must precede the "fable-5" row.
 	{ match: (id) => id.includes("fable-5-1") || id.includes("mythos-5-1"), rate: { input: 10, output: 50, cacheRead: 0.25 } },

@@ -76,6 +76,8 @@ export const copilotAdapter: AgentAdapter = {
 		return sessionId ? `${baseCmd} --resume=${sessionId}` : `${baseCmd} --continue`;
 	},
 
+	hooksReportPermissionWaits: false,
+
 	hooksSpec() {
 		return { kind: "copilot" };
 	},

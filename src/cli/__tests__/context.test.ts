@@ -134,9 +134,11 @@ describe("in-project storage root", () => {
 	});
 
 	it("matches a project registered through a symlinked folder", async () => {
-		const { readFileSync, symlinkSync } = require("node:fs");
+		const { readFileSync, symlinkSync, unlinkSync } = require("node:fs");
 		const link = `${HOME}/.dev3.0/cli-context-inproject-link`;
-		rmSync(link, { force: true });
+		// Bun's rmSync refuses a symlink to a directory on macOS; unlink removes only the link.
+		const removeLink = () => { try { unlinkSync(link); } catch {} };
+		removeLink();
 		symlinkSync(REPO, link);
 		try {
 			const projects = JSON.parse(readFileSync(PROJECTS_FILE, "utf-8"));
@@ -145,7 +147,7 @@ describe("in-project storage root", () => {
 			const { detectContext } = await import("../context");
 			expect(detectContext(`${TASK_DIR}/worktree`)).toMatchObject({ projectId: IN_PROJECT_ID, taskId: TASK_ID });
 		} finally {
-			rmSync(link, { force: true });
+			removeLink();
 		}
 	});
 

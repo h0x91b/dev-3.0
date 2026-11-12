@@ -35,6 +35,7 @@ import type { ClaudeModStatus } from "./claude-mods";
 import type { AutoConfigureResult, BoardCopyFailureReason, BoardCopyOffer, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GitInitOffer, Project, ProjectSettingsUpdate, PrResolveFailureReason, ShellAvailability, ShellPromptPreview } from "./project";
 import type { CustomColumn, Label } from "./labels-columns";
 import type { Space, SpacesFile } from "./spaces";
+import type { BoardFilterState } from "../board-filter-state";
 import type { BoardRef, BoardViewState } from "../board-view-state";
 import type { ExtensionInspection, ExtensionsOverview, InstalledExtension } from "../extensions";
 import type { Epic, EpicMember, EpicsFile } from "./epics";
@@ -51,7 +52,7 @@ import type { ExposedPort, PortInfo, ResourceUsage, SystemLoadSnapshot, SystemMe
 import type { PtyThroughputStats, TmuxLayout, TmuxSessionInfo, TmuxWindowEntry } from "./tmux";
 import type { DevServerStatus, DevServerSummary } from "./dev-server";
 import type { RemoteAccessStatus, RemoteNetInterface } from "./remote";
-import type { AgentCheckResult, AgentSkillInfo, HarnessReadinessReport, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo } from "./environment";
+import type { AgentCheckResult, AgentSkillInfo, HarnessReadinessReport, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo, TmuxRestartImpact, TmuxServerNotice } from "./environment";
 import type { ExplorerListing, FolderListing } from "./file-explorer";
 import type { AgentUsageReport, ProductivityStats } from "./usage-stats";
 
@@ -122,6 +123,10 @@ export type AppRPCSchema = {
 				params: { order: string[] };
 				response: SpacesFile;
 			};
+			reorderMixedOrder: {
+				params: { ids: string[] };
+				response: SpacesFile;
+			};
 			reorderSpaceProjects: {
 				params: { spaceId: string; projectIds: string[] };
 				response: Space;
@@ -134,6 +139,15 @@ export type AppRPCSchema = {
 			setBoardViewState: {
 				params: { board: BoardRef; state: BoardViewState };
 				response: BoardViewState;
+			};
+			/** Persisted status tokens of one board's filter (`board-filters.json`). */
+			getBoardFilterState: {
+				params: { board: BoardRef };
+				response: BoardFilterState;
+			};
+			setBoardFilterState: {
+				params: { board: BoardRef; state: BoardFilterState };
+				response: BoardFilterState;
 			};
 			/** Board-view extensions (`~/.dev3.0/extensions/`), the kill switch and built-in toggles. */
 			listExtensions: {
@@ -1086,10 +1100,20 @@ export type AppRPCSchema = {
 				params: void;
 				response: { ok: true; destination: string } | { ok: false; error: string };
 			};
-			/** macOS: task terminals still run on a tmux server started outside launchd. */
+			/** macOS: the live tmux server can lose (or has lost) folder access for task terminals. */
 			getTmuxServerNotice: {
 				params: void;
-				response: { predatesLaunchd: boolean };
+				response: TmuxServerNotice;
+			};
+			/** What a `restartTmuxServer` would end right now; null when the server cannot be read. */
+			getTmuxRestartImpact: {
+				params: void;
+				response: TmuxRestartImpact | null;
+			};
+			/** Kill the default tmux server; open task terminals end and offer to resume. */
+			restartTmuxServer: {
+				params: void;
+				response: { ok: true };
 			};
 			checkGhAvailable: {
 				params: void;
@@ -2073,7 +2097,6 @@ export type AppRPCSchema = {
 			projectPtyDied: { projectId: string };
 			/** An in-app account sign-in changed phase; `state: null` = it was closed. */
 			accountLoginChanged: { kind: AgentAccountKind; state: AccountLoginState | null };
-			terminalBell: { taskId: string };
 			gitOpCompleted: { taskId: string; projectId: string; operation: string; ok: boolean };
 			/**
 			 * A downloaded update waits for a restart. `reminder` marks a repeat
@@ -2262,12 +2285,13 @@ export type AppRPCSchema = {
 				preview: string;
 			};
 			/**
-			 * CLI-initiated attention signal (`dev3 attention`). Lights the red bell
-			 * badge on the task card with a hoverable `reason`, same surface the
-			 * terminal bell uses. `clear: true` (`dev3 attention --clear`) lowers the
-			 * badge and drops every accumulated reason instead of adding one.
+			 * Attention signal (`dev3 attention`, or a task newly entering User
+			 * questions). Lights the red badge on the task card with a hoverable
+			 * `reason`; `kind: "questions"` carries no reason, the renderer words it.
+			 * `clear: true` (`dev3 attention --clear`) lowers the badge and drops
+			 * every accumulated reason instead of adding one.
 			 */
-			cliAttention: { taskId: string; reason: string; clear?: boolean };
+			cliAttention: { taskId: string; reason: string; kind?: "questions"; clear?: boolean };
 			/**
 			 * CLI-shared images (`dev3 show-image`). Carries the task's shared images
 			 * so the renderer can raise the attention badge and open the lightbox

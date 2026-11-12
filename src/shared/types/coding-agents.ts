@@ -211,7 +211,10 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		installCommand: "brew install claude-code",
 		installUrl: "https://docs.anthropic.com/en/docs/claude-code",
 		configurations: [
-			// --- Auto (Fable 5.1 first — flagship — then Fable 5, Opus 5.5/Opus 5/Opus 4.8/Sonnet 5 effort tiers, then Opus 4.7) ---
+			// --- Auto (Fable 5.2 first — flagship — then Fable 5.1, Fable 5, Opus 5.5/Opus 5/Opus 4.8/Sonnet 5 effort tiers, then Opus 4.7) ---
+			{ id: "claude-auto-fable52-medium", name: "Auto (Fable 5.2, Medium)", model: "claude-fable-5-2[1m]", permissionMode: "auto", effort: "medium", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-auto-fable52-high", name: "Auto (Fable 5.2, High)", model: "claude-fable-5-2[1m]", permissionMode: "auto", effort: "high", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-auto-fable52-xhigh", name: "Auto (Fable 5.2, X-High)", model: "claude-fable-5-2[1m]", permissionMode: "auto", effort: "xhigh", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-auto-fable51-medium", name: "Auto (Fable 5.1, Medium)", model: "claude-fable-5-1[1m]", permissionMode: "auto", effort: "medium", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-auto-fable51-high", name: "Auto (Fable 5.1, High)", model: "claude-fable-5-1[1m]", permissionMode: "auto", effort: "high", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-auto-fable51-xhigh", name: "Auto (Fable 5.1, X-High)", model: "claude-fable-5-1[1m]", permissionMode: "auto", effort: "xhigh", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
@@ -233,6 +236,9 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "claude-auto-haiku55", name: "Auto (Haiku 5.5)", model: "claude-haiku-5-5", permissionMode: "auto", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-auto-opus47", name: "Auto (Opus 4.7)", model: "claude-opus-4-7[1m]", permissionMode: "auto", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 2 },
 			// --- Bypass (same model order as Auto) ---
+			{ id: "claude-bypass-fable52-medium", name: "Bypass (Fable 5.2, Medium)", model: "claude-fable-5-2[1m]", permissionMode: "bypassPermissions", effort: "medium", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-bypass-fable52-high", name: "Bypass (Fable 5.2, High)", model: "claude-fable-5-2[1m]", permissionMode: "bypassPermissions", effort: "high", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-bypass-fable52-xhigh", name: "Bypass (Fable 5.2, X-High)", model: "claude-fable-5-2[1m]", permissionMode: "bypassPermissions", effort: "xhigh", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-bypass-fable51-medium", name: "Bypass (Fable 5.1, Medium)", model: "claude-fable-5-1[1m]", permissionMode: "bypassPermissions", effort: "medium", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-bypass-fable51-high", name: "Bypass (Fable 5.1, High)", model: "claude-fable-5-1[1m]", permissionMode: "bypassPermissions", effort: "high", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-bypass-fable51-xhigh", name: "Bypass (Fable 5.1, X-High)", model: "claude-fable-5-1[1m]", permissionMode: "bypassPermissions", effort: "xhigh", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
@@ -259,6 +265,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			//     Versions bumped so the old hard --dangerously-skip-permissions is
 			//     dropped from already-stored copies (mergeConfig discards user
 			//     additionalArgs when the preset version advances). ---
+			{ id: "claude-default-fable52", name: "Default (Fable 5.2)", model: "claude-fable-5-2[1m]", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-default-fable51", name: "Default (Fable 5.1)", model: "claude-fable-5-1[1m]", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-default", name: "Default (Fable 5)", model: "claude-fable-5", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 9 },
 			{ id: "claude-default-opus55", name: "Default (Opus 5.5)", model: "claude-opus-5-5[1m]", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
@@ -270,6 +277,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			// --- Plan ---
 			// Plan mode: the allow-bypass flag is now injected by the claude adapter
 			// for every session, so it is not repeated here (single source).
+			{ id: "claude-plan-fable52", name: "Plan (Fable 5.2)", model: "claude-fable-5-2[1m]", permissionMode: "plan", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-plan-fable51", name: "Plan (Fable 5.1)", model: "claude-fable-5-1[1m]", permissionMode: "plan", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-plan", name: "Plan (Fable 5)", model: "claude-fable-5", permissionMode: "plan", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 9 },
 			{ id: "claude-plan-opus55", name: "Plan (Opus 5.5)", model: "claude-opus-5-5[1m]", permissionMode: "plan", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
@@ -279,6 +287,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "claude-plan-sonnet5", name: "Plan (Sonnet 5)", model: "claude-sonnet-5", permissionMode: "plan", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-plan-haiku55", name: "Plan (Haiku 5.5)", model: "claude-haiku-5-5", permissionMode: "plan", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			// --- Accept Edits ---
+			{ id: "claude-approvals-fable52", name: "Accept Edits (Fable 5.2)", model: "claude-fable-5-2[1m]", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-approvals-fable51", name: "Accept Edits (Fable 5.1)", model: "claude-fable-5-1[1m]", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-approvals", name: "Accept Edits (Fable 5)", model: "claude-fable-5", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 8 },
 			{ id: "claude-approvals-opus55", name: "Accept Edits (Opus 5.5)", model: "claude-opus-5-5[1m]", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },

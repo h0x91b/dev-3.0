@@ -343,14 +343,6 @@ const ALL_TIPS: Tip[] = [
 		contexts: ["terminal"],
 	},
 	{
-		id: "bell-auto-move",
-		titleKey: "tip.bellAutoMove.title",
-		bodyKey: "tip.bellAutoMove.body",
-		icon: "\uF0F3", // nf-fa-bell
-		score: 4,
-		contexts: ["board", "terminal"],
-	},
-	{
 		id: "configurable-agents",
 		titleKey: "tip.configurableAgents.title",
 		bodyKey: "tip.configurableAgents.body",

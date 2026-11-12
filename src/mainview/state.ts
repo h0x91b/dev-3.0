@@ -94,12 +94,18 @@ export interface AppState {
 	bellCounts: Map<string, number>;
 	/**
 	 * Accumulated human-readable reasons per attention badge, set by repeated
-	 * `dev3 attention "reason"` calls. Keyed by task id, mirrors `bellCounts`
-	 * lifecycle (cleared when the badge is cleared). Repeated reasons are kept
-	 * once and moved to the newest position; terminal-bell badges / empty reasons
-	 * add nothing here.
+	 * `dev3 attention "reason"` calls and by the questions badge (its reason is
+	 * worded by the renderer). Keyed by task id, mirrors `bellCounts` lifecycle
+	 * (cleared when the badge is cleared). Repeated reasons are kept once and
+	 * moved to the newest position; empty reasons add nothing here.
 	 */
 	bellReasons: Map<string, string[]>;
+	/**
+	 * The part of a task's badge that came from entering User questions: how many
+	 * increments and the worded reason. Taken back off when the task leaves that
+	 * column, so a resumed task does not keep saying it waits for an answer.
+	 */
+	questionBells: Map<string, { count: number; reason: string }>;
 	taskPorts: Map<string, PortInfo[]>;
 	/** Live dev-server state per task, feeding the dev control on the Kanban card. */
 	taskDevServers: Map<string, DevServerSummary>;
@@ -122,6 +128,7 @@ export const initialState: AppState = {
 	loading: true,
 	bellCounts: new Map(),
 	bellReasons: new Map(),
+	questionBells: new Map(),
 	taskPorts: new Map(),
 	taskDevServers: new Map(),
 	taskResourceUsage: new Map(),
@@ -352,7 +359,7 @@ function bumpMru(mru: string[], route: Route): string[] {
 // ---- Actions ----
 
 export type AppAction =
-	| { type: "navigate"; route: Route }
+	| ({ type: "navigate"; route: Route } & NavigateOptions)
 	| { type: "goBack" }
 	| { type: "goForward" }
 	| { type: "openTaskDiff"; request: TaskInlineDiffRequest }
@@ -369,7 +376,7 @@ export type AppAction =
 	| { type: "removeProject"; projectId: string }
 	| { type: "updateProject"; project: Project }
 	| { type: "setLoading"; loading: boolean }
-	| { type: "addBell"; taskId: string; reason?: string; force?: boolean }
+	| { type: "addBell"; taskId: string; reason?: string; force?: boolean; questions?: boolean }
 	| { type: "clearBell"; taskId: string }
 	| { type: "removeBellReason"; taskId: string; reason: string }
 	| { type: "setPorts"; taskId: string; ports: PortInfo[] }
@@ -383,37 +390,59 @@ export type AppAction =
  * is now focused on. Returns the same map references untouched when there is
  * nothing to clear, so callers can spread them without forcing a re-render.
  */
-function clearBellForRoute(
-	bellCounts: Map<string, number>,
-	bellReasons: Map<string, string[]>,
-	route: Route,
-): { bellCounts: Map<string, number>; bellReasons: Map<string, string[]> } {
+type BellMaps = Pick<AppState, "bellCounts" | "bellReasons" | "questionBells">;
+
+function withoutKey<V>(map: Map<string, V>, key: string): Map<string, V> {
+	if (!map.has(key)) return map;
+	const next = new Map(map);
+	next.delete(key);
+	return next;
+}
+
+function clearBellForRoute(state: BellMaps, route: Route): BellMaps {
 	let focusedTaskId: string | null = null;
 	if (route.screen === "task") focusedTaskId = route.taskId;
 	else if (route.screen === "project" && route.activeTaskId) focusedTaskId = route.activeTaskId;
 
-	if (!focusedTaskId) return { bellCounts, bellReasons };
+	if (!focusedTaskId) return { bellCounts: state.bellCounts, bellReasons: state.bellReasons, questionBells: state.questionBells };
+	return {
+		bellCounts: withoutKey(state.bellCounts, focusedTaskId),
+		bellReasons: withoutKey(state.bellReasons, focusedTaskId),
+		questionBells: withoutKey(state.questionBells, focusedTaskId),
+	};
+}
 
-	const nextCounts = bellCounts.has(focusedTaskId) ? new Map(bellCounts) : bellCounts;
-	if (nextCounts !== bellCounts) nextCounts.delete(focusedTaskId);
-
-	const nextReasons = bellReasons.has(focusedTaskId) ? new Map(bellReasons) : bellReasons;
-	if (nextReasons !== bellReasons) nextReasons.delete(focusedTaskId);
-
-	return { bellCounts: nextCounts, bellReasons: nextReasons };
+/** Take the User questions share of a badge back off a task that left that column. */
+function dropQuestionBell(state: AppState, task: Task): AppState {
+	const share = state.questionBells.get(task.id);
+	if (!share || task.status === "user-questions") return state;
+	const bellCounts = new Map(state.bellCounts);
+	const remaining = (bellCounts.get(task.id) ?? 0) - share.count;
+	if (remaining > 0) bellCounts.set(task.id, remaining);
+	else bellCounts.delete(task.id);
+	const bellReasons = new Map(state.bellReasons);
+	const reasons = (bellReasons.get(task.id) ?? []).filter((reason) => reason !== share.reason);
+	if (reasons.length > 0) bellReasons.set(task.id, reasons);
+	else bellReasons.delete(task.id);
+	return { ...state, bellCounts, bellReasons, questionBells: withoutKey(state.questionBells, task.id) };
 }
 
 function normalizeProjectPath(path: string): string {
 	return path.replace(/\/+$/, "");
 }
 
+/** `inheritSpace: false` marks a project SWITCH: it lands on that project alone, never on the space board left behind. */
+export interface NavigateOptions {
+	inheritSpace?: boolean;
+}
+
 /** Push `route` onto the history stack, truncating any forward entries. */
-function pushRoute(state: AppState, requested: Route): AppState {
+function pushRoute(state: AppState, requested: Route, inherit = true): AppState {
 	// Inheritance happens here and not in stepHistory/replaceRoute: Back and
 	// Forward must replay stored routes verbatim, or the stack stops matching
 	// where the user has been.
-	const route = inheritSpace(state.route, requested);
-	const { bellCounts, bellReasons } = clearBellForRoute(state.bellCounts, state.bellReasons, route);
+	const route = inherit ? inheritSpace(state.route, requested) : requested;
+	const { bellCounts, bellReasons, questionBells } = clearBellForRoute(state, route);
 	// Truncate any forward history beyond the current index, then push
 	const base = state.routeHistory.slice(0, state.historyIndex + 1);
 	base.push(route);
@@ -426,6 +455,7 @@ function pushRoute(state: AppState, requested: Route): AppState {
 		historyIndex: routeHistory.length - 1,
 		bellCounts,
 		bellReasons,
+		questionBells,
 		taskMru: bumpMru(state.taskMru, route),
 		currentProjectTasks: boardScopeKey(state.route) === boardScopeKey(route) ? state.currentProjectTasks : [],
 	};
@@ -442,13 +472,14 @@ function replaceRoute(state: AppState, route: Route): AppState {
 function stepHistory(state: AppState, newIndex: number): AppState {
 	if (newIndex < 0 || newIndex >= state.routeHistory.length) return state;
 	const route = state.routeHistory[newIndex];
-	const { bellCounts, bellReasons } = clearBellForRoute(state.bellCounts, state.bellReasons, route);
+	const { bellCounts, bellReasons, questionBells } = clearBellForRoute(state, route);
 	return {
 		...state,
 		route,
 		historyIndex: newIndex,
 		bellCounts,
 		bellReasons,
+		questionBells,
 		taskMru: bumpMru(state.taskMru, route),
 		currentProjectTasks:
 			boardScopeKey(state.route) === boardScopeKey(route) ? state.currentProjectTasks : [],
@@ -458,7 +489,7 @@ function stepHistory(state: AppState, newIndex: number): AppState {
 export function reducer(state: AppState, action: AppAction): AppState {
 	switch (action.type) {
 		case "navigate":
-			return pushRoute(state, action.route);
+			return pushRoute(state, action.route, action.inheritSpace !== false);
 		case "goBack":
 			return stepHistory(state, state.historyIndex - 1);
 		case "goForward":
@@ -512,20 +543,21 @@ export function reducer(state: AppState, action: AppAction): AppState {
 			return { ...state, currentProjectTasks: others.length > 0 ? [...others, ...action.tasks] : action.tasks };
 		}
 		case "updateTask": {
-			const exists = state.currentProjectTasks.some((t) => t.id === action.task.id);
+			const next = dropQuestionBell(state, action.task);
+			const exists = next.currentProjectTasks.some((t) => t.id === action.task.id);
 			if (exists) {
 				return {
-					...state,
-					currentProjectTasks: state.currentProjectTasks.map((t) =>
+					...next,
+					currentProjectTasks: next.currentProjectTasks.map((t) =>
 						t.id === action.task.id ? action.task : t,
 					),
 				};
 			}
 			// New task (e.g. created via CLI) — add only if this board holds it.
-			if (!acceptsTaskFrom(state, action.task.projectId)) return state;
+			if (!acceptsTaskFrom(next, action.task.projectId)) return next;
 			return {
-				...state,
-				currentProjectTasks: [...state.currentProjectTasks, action.task],
+				...next,
+				currentProjectTasks: [...next.currentProjectTasks, action.task],
 			};
 		}
 		case "addTask":
@@ -619,8 +651,14 @@ export function reducer(state: AppState, action: AppAction): AppState {
 			}
 			const bellCounts = new Map(state.bellCounts);
 			bellCounts.set(action.taskId, (bellCounts.get(action.taskId) ?? 0) + 1);
-			// Only attention calls carry a reason; bare terminal bells don't.
+			// Only some badges carry a reason (`dev3 attention`, entering User questions).
 			const trimmed = action.reason?.trim();
+			const questionBells = action.questions && trimmed
+				? new Map(state.questionBells).set(action.taskId, {
+					count: (state.questionBells.get(action.taskId)?.count ?? 0) + 1,
+					reason: trimmed,
+				})
+				: state.questionBells;
 			if (!trimmed) {
 				return { ...state, bellCounts };
 			}
@@ -632,15 +670,16 @@ export function reducer(state: AppState, action: AppAction): AppState {
 				trimmed,
 			].slice(-MAX_ATTENTION_REASONS);
 			bellReasons.set(action.taskId, nextList);
-			return { ...state, bellCounts, bellReasons };
+			return { ...state, bellCounts, bellReasons, questionBells };
 		}
 		case "clearBell": {
 			if (!state.bellCounts.has(action.taskId) && !state.bellReasons.has(action.taskId)) return state;
-			const bellCounts = new Map(state.bellCounts);
-			bellCounts.delete(action.taskId);
-			const bellReasons = new Map(state.bellReasons);
-			bellReasons.delete(action.taskId);
-			return { ...state, bellCounts, bellReasons };
+			return {
+				...state,
+				bellCounts: withoutKey(state.bellCounts, action.taskId),
+				bellReasons: withoutKey(state.bellReasons, action.taskId),
+				questionBells: withoutKey(state.questionBells, action.taskId),
+			};
 		}
 		case "removeBellReason": {
 			// Withdraws one bell whose cause went away (an offer answered on another

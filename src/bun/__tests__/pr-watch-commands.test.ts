@@ -8,7 +8,7 @@ vi.mock("../git", () => ({ getCurrentBranch: vi.fn(), getHeadSha: vi.fn(), getRe
 vi.mock("../github", () => ({ runGitHub: vi.fn(), findOpenPullRequest: vi.fn(), readTaskPullRequest: vi.fn() }));
 vi.mock("../lifecycle/activities", () => ({ persistTaskPrIdentity: vi.fn() }));
 vi.mock("../lifecycle/service", () => ({ lifecycleActorRuntime: () => runtime }));
-vi.mock("../scheduled-message-author", () => ({ captureScheduledMessageAuthor: vi.fn(async () => null) }));
+vi.mock("../scheduled-message-author", () => ({ captureSenderAgent: vi.fn() }));
 vi.mock("../pr-watch-runner", () => ({ addPrWatch: vi.fn(), clearPrWatches: vi.fn(async () => 2) }));
 
 import * as data from "../data";
@@ -16,7 +16,7 @@ import * as git from "../git";
 import * as github from "../github";
 import { persistTaskPrIdentity } from "../lifecycle/activities";
 import { addPrWatch, clearPrWatches } from "../pr-watch-runner";
-import { captureScheduledMessageAuthor } from "../scheduled-message-author";
+import { captureSenderAgent } from "../scheduled-message-author";
 import { PR_WATCH_GH_TIMEOUT_MS, prWatchHandlers } from "../cli-socket/pr-watch-commands";
 
 const project = { id: "p1" } as Project;
@@ -132,7 +132,7 @@ describe("pr.watch.add", () => {
 
 	it("binds a pinned watch to the calling agent like any other", async () => {
 		const author = { paneId: "%3", sessionId: null, paneToken: "t", agentProcess: "9@x" };
-		vi.mocked(captureScheduledMessageAuthor).mockResolvedValue(author);
+		vi.mocked(captureSenderAgent).mockResolvedValue({ ok: true, author });
 		vi.mocked(github.readTaskPullRequest).mockResolvedValue(prByNumber(2111));
 
 		await add({ prNumber: 2111, sourceTaskId: "t1", sourcePaneId: "%3", sourcePid: 99 });
@@ -194,14 +194,47 @@ describe("pr.watch.add", () => {
 
 	it("binds the watch to the calling agent only for the caller's own task", async () => {
 		const author = { paneId: "%3", sessionId: null, paneToken: "t", agentProcess: "9@x" };
-		vi.mocked(captureScheduledMessageAuthor).mockResolvedValue(author);
+		vi.mocked(captureSenderAgent).mockResolvedValue({ ok: true, author });
 
 		await add({ sourceTaskId: "t1", sourcePaneId: "%3", sourcePid: 99 });
-		expect(captureScheduledMessageAuthor).toHaveBeenCalledWith(task, "%3", 99);
+		expect(captureSenderAgent).toHaveBeenCalledWith(task, "%3", 99, { generation: true, tmuxEnv: null, envTaskId: null });
 		expect(vi.mocked(addPrWatch).mock.calls[0][2]).toMatchObject({ author });
 
 		await add({ sourceTaskId: "someone-else", sourcePaneId: "%3", sourcePid: 99 });
 		expect(vi.mocked(addPrWatch).mock.calls[1][2]).not.toHaveProperty("author");
+	});
+
+	it("names no unidentified subscriber when the calling agent is identified", async () => {
+		vi.mocked(captureSenderAgent).mockResolvedValue({ ok: true, author: { paneId: "%3", sessionId: null, paneToken: "t", agentProcess: "9@x" } });
+		expect(await add({ sourceTaskId: "t1", sourcePaneId: "%3", sourcePid: 99 })).not.toHaveProperty("unidentifiedSubscriber");
+	});
+
+	it("says plainly when no subscriber was identified, with the reason", async () => {
+		vi.mocked(captureSenderAgent).mockResolvedValue({ ok: false, reason: "no-agent", detail: "no agent process runs dev3 here" });
+
+		const res = await add({ sourceTaskId: "t1", sourcePaneId: "%3", sourcePid: 99 });
+
+		expect(res).toMatchObject({ unidentifiedSubscriber: "no agent process runs dev3 here" });
+		expect(vi.mocked(addPrWatch).mock.calls[0][2]).not.toHaveProperty("author");
+	});
+
+	it("stays silent about the subscriber where identity is unsupported (Windows)", async () => {
+		vi.mocked(captureSenderAgent).mockResolvedValue({ ok: false, reason: "unsupported", detail: "agent identity cannot be verified on Windows yet" });
+
+		expect(await add({ sourceTaskId: "t1", sourcePaneId: "%3", sourcePid: 99 })).not.toHaveProperty("unidentifiedSubscriber");
+	});
+
+	it("hands the CLI's own $TMUX and DEV3_TASK_ID to the identity check", async () => {
+		await add({ sourceTaskId: "t1", sourcePaneId: "%3", sourcePid: 99, sourceTmux: "/tmp/tmux-1/dev3,42,0", sourceEnvTaskId: "t1" });
+
+		expect(captureSenderAgent).toHaveBeenCalledWith(task, "%3", 99, { generation: true, tmuxEnv: "/tmp/tmux-1/dev3,42,0", envTaskId: "t1" });
+	});
+
+	it("says so too when the command came from outside the task", async () => {
+		const res = await add({ sourceTaskId: "someone-else", sourcePaneId: "%3", sourcePid: 99 });
+
+		expect(captureSenderAgent).not.toHaveBeenCalled();
+		expect(res).toHaveProperty("unidentifiedSubscriber");
 	});
 
 	it("fails with the no-PR prefix when the branch has no open PR, and stores nothing", async () => {

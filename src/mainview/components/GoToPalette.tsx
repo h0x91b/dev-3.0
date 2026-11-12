@@ -46,7 +46,7 @@ interface GoToPaletteProps {
 	onModeChange: (mode: GoToMode) => void;
 	/** Non-deleted projects in display order (recency-first) — the project rows. */
 	projects: Project[];
-	/** Project id → 0-based BOARD index, for the ⌘N badge (stable, board-order). */
+	/** Project or space id → 0-based digit index, for the ⌘N badge (stable, not the display order). */
 	shortcutIndexById?: Record<string, number>;
 	/** Every project by id (carries labels + custom columns) — resolver & task rows. */
 	projectById: Map<string, Project>;
@@ -266,7 +266,13 @@ function GoToPalette({
 			testId="go-to-palette"
 			renderItemRight={(it, _i, q) => {
 				if (it.kind === "space") {
-					return <span className="text-fg-3 text-xs flex-shrink-0">{t("spaces.boardSubtitle")}</span>;
+					const idx = shortcutIndexById?.[it.space.id];
+					return (
+						<span className="flex items-center gap-2 text-fg-3 text-xs flex-shrink-0">
+							{t("spaces.boardSubtitle")}
+							{idx !== undefined && idx < 9 && q.length === 0 ? <span>⌘{idx + 1}</span> : null}
+						</span>
+					);
 				}
 				if (it.kind === "project") {
 					const p = it.project;

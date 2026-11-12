@@ -207,8 +207,8 @@ describe("AgentSettingsSection — per-agent provider selector", () => {
 		renderSection({ llmProvider: "bedrock", providerConfig: { bedrock: { geo: "eu" } } });
 		await expandAgent(user, "Claude");
 		const notServed = screen.getAllByText("settings.providerModelNotServed");
-		// Fable 5 and Fable 5.1 have no eu. profile; every other preset family does.
-		expect(notServed.length).toBe(2);
+		// Fable 5, 5.1 and 5.2 have no eu. profile; every other preset family does.
+		expect(notServed.length).toBe(3);
 		expect(screen.getByPlaceholderText("eu.anthropic.claude-opus-5[1m]")).toBeTruthy();
 	});
 

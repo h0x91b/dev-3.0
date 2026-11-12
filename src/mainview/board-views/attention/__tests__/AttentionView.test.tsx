@@ -21,6 +21,8 @@ vi.mock("../../../rpc", () => ({
 			getTaskLineage: vi.fn().mockResolvedValue({ nodes: [] }),
 			getBoardViewState: vi.fn(),
 			setBoardViewState: vi.fn(async ({ state }) => state),
+			getBoardFilterState: vi.fn().mockResolvedValue({ statuses: [] }),
+			setBoardFilterState: vi.fn(async ({ state }) => state),
 		},
 	},
 }));
@@ -113,11 +115,12 @@ describe("Attention board view", () => {
 	});
 
 	it("moves a quiet task into Stalled on the tick, with no board change", async () => {
-		// The interval is faked only here: `waitFor` polls with a real one.
+		// Faking setInterval also stops RTL's `waitFor` polling, and its observer can miss
+		// a late commit under load. `vi.waitFor` polls with vitest's own unfaked timers.
 		vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
 		vi.setSystemTime(NOW);
 		renderAttentionBoard();
-		await screen.findByTestId("attention-view");
+		await vi.waitFor(() => screen.getByTestId("attention-view"));
 		expect(bucketSeqs("stalled")).toEqual([3]);
 		act(() => {
 			vi.setSystemTime(NOW + 2 * 60_000);

@@ -47,6 +47,12 @@ describe("refreshClaudeHooksForTask", () => {
 		expect(writeClaudeHooks).toHaveBeenCalledWith("/tmp/worktree", { stopTarget: "review-by-user" });
 	});
 
+	it("re-installs the hooks for a task on the global default, whose agent lives on its main pane", async () => {
+		const pane = { agentCmd: "claude", sessionId: null, agentId: "agent-1", configId: null, agentFromDefault: true };
+		await refreshClaudeHooksForTask(task({ agentId: null, sessionState: { panes: [pane] } }));
+		expect(writeClaudeHooks).toHaveBeenCalledWith("/tmp/worktree", { stopTarget: "review-by-user" });
+	});
+
 	it("leaves a folder dev3 does not own alone: its hooks travel in --settings", async () => {
 		vi.mocked(isDev3OwnedFolder).mockReturnValue(false);
 		await refreshClaudeHooksForTask(task({ worktreePath: "/home/me/notes" }));

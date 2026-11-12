@@ -2263,6 +2263,22 @@ describe("ActiveTasksSidebar port badges", () => {
 		expect(screen.queryByTestId("sidebar-ports-t1-toggle")).not.toBeInTheDocument();
 	});
 
+	it("renders the coordinators group on top without a header row", () => {
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar project={project} tasks={[makeTask({ id: "plain", title: "Plain task", groupId: null, variantIndex: null }), makeTask({ id: "coord", title: "Coordinate", taskType: "coordinator", groupId: null, variantIndex: null })]}
+					dispatch={vi.fn()} navigate={vi.fn()} agents={[claudeAgent]}
+					bellCounts={new Map<string, number>()} taskPorts={new Map<string, never[]>()} />
+			</I18nProvider>,
+		);
+
+		const tiers = document.querySelectorAll("[data-sidebar-tier]");
+		expect(tiers).toHaveLength(2);
+		expect(tiers[0].querySelector('[data-task-id="coord"]')).not.toBeNull();
+		expect(tiers[0].querySelector("[data-sidebar-tier-header]")).toBeNull();
+		expect(tiers[1].querySelector("[data-sidebar-tier-header]")).not.toBeNull();
+	});
+
 	it("marks a coordinator row with a filled role chip and names the role, leaving an ordinary row plain", () => {
 		render(
 			<I18nProvider>
