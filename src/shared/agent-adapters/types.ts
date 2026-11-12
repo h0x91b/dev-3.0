@@ -151,6 +151,9 @@ export interface AgentAdapter {
 	 */
 	transcriptStore?(worktreePath: string, configDirs: readonly string[]): { dirs: string[]; ext: string };
 
+	/** Whether its hooks move the task to user-questions on a tool-approval wait, so a BEL adds nothing. */
+	readonly hooksReportPermissionWaits: boolean;
+
 	/** Agent-native lifecycle hooks to install, or null when the agent has none. */
 	hooksSpec(options?: { stopTarget?: TaskStatus; permissionMode?: PermissionMode }): HooksSpec | null;
 

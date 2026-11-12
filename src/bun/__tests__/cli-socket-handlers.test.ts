@@ -905,6 +905,33 @@ describe("task.agentHook", () => {
 		expect(notifyFromCliDesktop).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining("Approved 0123456789ab") }));
 	});
 
+	it("raises exactly one badge for an approval hold: the move leaves it to the hold's own reason", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress" });
+		mockAtomicHookUpdate(project, task);
+		const push = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(push);
+
+		await handleRequest(makeRequest("task.agentHook", {
+			taskId: task.id, projectId: project.id, sessionId: "one-badge-hold", event: "Stop", approvalHold: "Approved 0123456789ab",
+		}));
+
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ newStatus: "user-questions", skipQuestionsBadge: true }));
+		expect(push.mock.calls.filter(([name]) => name === "cliAttention")).toHaveLength(1);
+	});
+
+	it("leaves the badge to the lifecycle machine for a plain permission request", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress" });
+		mockAtomicHookUpdate(project, task);
+
+		await handleRequest(makeRequest("task.agentHook", {
+			taskId: task.id, projectId: project.id, sessionId: "plain-permission", event: "PermissionRequest",
+		}));
+
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ newStatus: "user-questions", skipQuestionsBadge: false }));
+	});
+
 	it("never reopens a finished task for a late approval-hold Stop", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "completed" });
@@ -974,7 +1001,7 @@ describe("task.agentHook", () => {
 
 		it("parks the task in user-questions and names the error", async () => {
 			const task = await armAndFail("errored-turn");
-			expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ taskId: task.id, newStatus: "user-questions" }));
+			expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ taskId: task.id, newStatus: "user-questions", skipQuestionsBadge: true }));
 			expect(notifyFromCliDesktop).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining("403 Forbidden") }));
 		});
 
@@ -1407,8 +1434,23 @@ describe("task.claudeStopFailure", () => {
 		}));
 
 		expect((response.data as { task: Task }).task.status).toBe("user-questions");
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ newStatus: "user-questions", skipQuestionsBadge: true }));
 		expect(pushCliAttention).not.toHaveBeenCalled(); // not suppressed → pushed live
 		expect(notifyFromCliDesktop).toHaveBeenCalledWith(expect.objectContaining({ body: LIMIT_MESSAGE }));
+	});
+
+	it("raises exactly one badge for a failed turn: its own reason, not the generic questions one", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress" });
+		stub(project, task);
+		const push = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(push);
+
+		await handleRequest(makeRequest("task.claudeStopFailure", { taskId: task.id, projectId: project.id, error: "server_error" }));
+
+		const badges = push.mock.calls.filter(([name]) => name === "cliAttention");
+		expect(badges).toHaveLength(1);
+		expect(badges[0]![1]).not.toHaveProperty("kind");
 	});
 
 	it("still badges when the task is already in user-questions", async () => {

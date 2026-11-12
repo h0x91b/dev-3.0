@@ -31,7 +31,7 @@ import { getProject } from "./data";
 const log = createLogger("agent-hooks-refresh");
 
 /** The base command + declared CLI family of the task's agent, or null if unknown. */
-async function resolveTaskAgentHooks(
+export async function resolveTaskAgentHooks(
 	task: Task,
 ): Promise<{ baseCommand: string; family?: AgentFamily } | null> {
 	const { agentId, configId } = taskRunningAgentIds(task);

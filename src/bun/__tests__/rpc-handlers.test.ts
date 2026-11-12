@@ -507,7 +507,6 @@ const {
 	setFocusMode,
 	isNotificationSuppressed,
 	pushCliAttention,
-	pushTerminalBell,
 	dropQueuedAttention,
 	emitTaskSound,
 	runCleanupScript,
@@ -635,6 +634,8 @@ describe("handleBellAutoStatus", () => {
 		vi.mocked(data.loadTasks).mockReset();
 		vi.mocked(data.updateTask).mockReset();
 		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskSortOrder: "oldest-first" } as any);
+		vi.mocked(agents.getAllAgents).mockResolvedValue([]);
+		vi.mocked(agents.findConfig).mockReturnValue(undefined);
 	});
 
 	it("moves in-progress task to user-questions", async () => {
@@ -702,6 +703,88 @@ describe("handleBellAutoStatus", () => {
 		vi.mocked(data.loadTasks).mockResolvedValue([]);
 
 		await expect(handleBellAutoStatus("unknown-task")).resolves.toBeUndefined();
+	});
+
+	it("leaves a task whose agent has status hooks alone: its Stop hook reports the turn end", async () => {
+		const task = makeTask({ status: "in-progress", agentId: "builtin-claude" });
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(agents.getAllAgents).mockResolvedValue([{ id: "builtin-claude", baseCommand: "claude", configurations: [] }] as any);
+
+		await handleBellAutoStatus("task-1");
+
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("leaves a default-agent task alone when its main pane records Claude", async () => {
+		const task = makeTask({
+			status: "in-progress",
+			agentId: null,
+			sessionState: { panes: [{ paneId: "%1", sessionId: null, agentCmd: "claude", agentId: "builtin-claude", configId: null, main: true }] },
+		} as Partial<Task>);
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+		await handleBellAutoStatus("task-1");
+
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("reads the pane marked main, not whichever pane is listed first", async () => {
+		const task = makeTask({
+			status: "in-progress",
+			agentId: null,
+			sessionState: { panes: [
+				{ paneId: "%2", sessionId: null, agentCmd: "gemini", agentId: "builtin-gemini", configId: null },
+				{ paneId: "%1", sessionId: null, agentCmd: "claude", agentId: "builtin-claude", configId: null, main: true },
+			] },
+		} as Partial<Task>);
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+		await handleBellAutoStatus("task-1");
+
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("still moves a Copilot task: its hooks do not report a permission wait", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			status: "in-progress",
+			sessionState: { panes: [{ paneId: "%1", sessionId: null, agentCmd: "copilot", agentId: "builtin-copilot", configId: null, main: true }] },
+		} as Partial<Task>);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, status: "user-questions" });
+
+		await handleBellAutoStatus("task-1");
+
+		expect(data.updateTask).toHaveBeenCalled();
+	});
+
+	it("still moves a task whose agent has no status hooks", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress", agentId: "builtin-gemini" });
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, status: "user-questions" });
+		vi.mocked(agents.getAllAgents).mockResolvedValue([{ id: "builtin-gemini", baseCommand: "gemini", configurations: [] }] as any);
+
+		await handleBellAutoStatus("task-1");
+
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", expect.objectContaining({ status: "user-questions" }), { ifStatus: "in-progress" });
+	});
+
+	it("still moves a Cursor task: its hooks only account usage", async () => {
+		const task = makeTask({ status: "in-progress", agentId: "builtin-cursor" });
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, status: "user-questions" });
+		vi.mocked(agents.getAllAgents).mockResolvedValue([{ id: "builtin-cursor", baseCommand: "agent", agentFamily: "agent", configurations: [] }] as any);
+
+		await handleBellAutoStatus("task-1");
+
+		expect(data.updateTask).toHaveBeenCalled();
 	});
 });
 
@@ -3417,6 +3500,24 @@ describe("handlers.moveTask", () => {
 		// The board still syncs via taskUpdated — only the sound push is skipped.
 		expect(push).toHaveBeenCalledWith("taskUpdated", expect.objectContaining({ projectId: project.id }));
 		expect(result.status).toBe("completed");
+	});
+
+	it("moveTask: a hook move into user-questions raises the questions badge, a UI move does not", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress" });
+		const push = vi.fn();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, status: "user-questions" });
+		vi.mocked(loadSettingsSync).mockReturnValue({} as any);
+		setPushMessage(push);
+
+		await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "user-questions" });
+		expect(push).toHaveBeenCalledWith("cliAttention", { taskId: "task-1", projectId: "proj-1", reason: "", kind: "questions" });
+
+		push.mockClear();
+		await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "user-questions", clientPlayedSound: true });
+		expect(push).not.toHaveBeenCalledWith("cliAttention", expect.anything());
 	});
 
 	it("in-progress → cancelled: same cleanup as completed", async () => {
@@ -17068,7 +17169,7 @@ describe("dropQueuedAttention (dev3 attention --clear)", () => {
 		setPushMessage(push);
 		setTerminalFocus(true);
 		pushCliAttention({ taskId: "task-cleared", projectId: "proj-1", reason: "blocked" });
-		pushTerminalBell("task-cleared");
+		pushCliAttention({ taskId: "task-cleared", projectId: "proj-1", reason: "second" });
 		pushCliAttention({ taskId: "task-other", projectId: "proj-1", reason: "still waiting" });
 
 		dropQueuedAttention("task-cleared");
@@ -17076,6 +17177,37 @@ describe("dropQueuedAttention (dev3 attention --clear)", () => {
 
 		expect(push).toHaveBeenCalledTimes(1);
 		expect(push).toHaveBeenCalledWith("cliAttention", expect.objectContaining({ taskId: "task-other" }));
+	});
+});
+
+describe("dropQueuedQuestionsAttention (task left User questions)", () => {
+	afterEach(() => {
+		setTerminalFocus(false);
+		setPushMessage(() => {});
+	});
+
+	it("a questions badge queued in Focus Mode is dropped once the task leaves User questions; other badges flush", async () => {
+		const project = makeProject();
+		const working = makeTask({ status: "in-progress" });
+		const asking = { ...working, status: "user-questions" as const };
+		const push = vi.fn();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(loadSettingsSync).mockReturnValue({} as any);
+		setPushMessage(push);
+		setTerminalFocus(true);
+
+		vi.mocked(data.getTask).mockResolvedValue(working);
+		vi.mocked(data.updateTask).mockResolvedValue(asking);
+		await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "user-questions" });
+		pushCliAttention({ taskId: "task-1", projectId: "proj-1", reason: "blocked" });
+
+		vi.mocked(data.getTask).mockResolvedValue(asking);
+		vi.mocked(data.updateTask).mockResolvedValue(working);
+		await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "in-progress" });
+		setTerminalFocus(false);
+
+		const attention = push.mock.calls.filter(([message]) => message === "cliAttention").map(([, payload]) => payload);
+		expect(attention).toEqual([{ taskId: "task-1", projectId: "proj-1", reason: "blocked" }]);
 	});
 });
 

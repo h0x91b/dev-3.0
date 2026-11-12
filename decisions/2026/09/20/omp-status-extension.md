@@ -1,5 +1,7 @@
 # omp status through a generated extension
 
+> Superseded in part on 2026-11-10 by `decisions/2026/11/10/needs-you-badge-real-attention-only.md`: BEL is ignored for agents with status hooks, so omp's bell can no longer park a turn in `user-questions`; the env stays only to keep the pane quiet.
+
 ## Context
 
 `decisions/2026/09/12/omp-first-class-agent.md` landed omp with manual status: the agent had to run

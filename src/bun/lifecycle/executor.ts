@@ -72,6 +72,7 @@ import { resolveOperationalProjectConfig } from "../rpc-handlers/settings-config
 import {
 	buildScriptRunnerCommand,
 	buildTaskLifecycleEnv,
+	dropQueuedQuestionsAttention,
 	getPushMessage,
 	log,
 	notifyWatchedTaskEvent,
@@ -1331,9 +1332,11 @@ export async function executeLifecycleEffect(
 			}
 			ctx.task = taskAfterPersistedUpdate(ctx.task, persisted, updates);
 			ctx.stateTask = ctx.task;
+			if (persisted.status !== "user-questions") dropQueuedQuestionsAttention(ctx.task.id);
 			return {};
 		}
 		case "persistTerminalTask": {
+			dropQueuedQuestionsAttention(ctx.task.id);
 			const taskUpdates: Partial<Task> = {
 				status: effect.status,
 				customColumnId: null,
@@ -1474,6 +1477,9 @@ export async function executeLifecycleEffect(
 			return {};
 		case "emitTaskSound":
 			emitTaskSound(effect.status, ctx.task.id);
+			return {};
+		case "raiseQuestionsAttention":
+			pushCliAttention({ taskId: ctx.task.id, projectId: ctx.task.projectId, reason: "", kind: "questions" });
 			return {};
 		case "push":
 			pushEffect(effect, ctx);

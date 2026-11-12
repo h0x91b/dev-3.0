@@ -92,6 +92,7 @@ vi.mock("../../rpc-handlers/shared", () => ({
 	notifyWatchedTaskEvent: vi.fn(),
 	notifyWatchedTaskStatusChange: vi.fn(),
 	pushCliAttention: vi.fn(),
+	dropQueuedQuestionsAttention: vi.fn(),
 }));
 
 import { requestGracefulAgentExit } from "../../agent-graceful-exit";

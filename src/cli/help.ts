@@ -1075,7 +1075,7 @@ const COMMANDS: CommandHelp[] = [
 		subcommands: [],
 		usage: 'dev3 attention "reason" | --clear [--task <id>]',
 		details: [
-			"Same visual surface as the terminal bell; the reason shows on hover.",
+			"The reason shows on hover.",
 			"Reasons accumulate (newest 5 kept) until the badge is cleared.",
 			"--clear      Lower the badge now and drop every accumulated reason.",
 			"The badge also clears when the user opens the task.",

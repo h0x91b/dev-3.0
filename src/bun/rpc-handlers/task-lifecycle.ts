@@ -1,10 +1,12 @@
-import type { ReviewedPullRequest, AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchAfterUntil, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskOrigin, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
+import type { AgentFamily, ReviewedPullRequest, AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchAfterUntil, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskOrigin, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
 import { rememberVariantBedrockProfile } from "../bedrock-profile-pref";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
 import { isTaskSoundEnabled } from "../../shared/task-sound-statuses";
 import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, LAUNCH_AFTER_UNTIL, hasGitWorkflow, normalizeTaskType, OWN_WORKTREE_NOT_A_REPO_ERROR, reviewTaskTitle, taskUsesWorktree } from "../../shared/types";
 import { armLaunchAfter, clearLaunchAfter, startLaunchAfterNow } from "../launch-after";
 import * as data from "../data";
+import { resolveTaskAgentHooks } from "../agent-hooks-refresh";
+import { getAgentAdapter } from "../../shared/agent-adapters/registry";
 import { loadTaskLineage } from "../task-lineage";
 import { epicForNewTask } from "../task-epics";
 import * as git from "../git";
@@ -130,6 +132,14 @@ function draftPlaceholderTitle(now: Date = new Date()): string {
 	return `Draft — ${hh}:${mm}`;
 }
 
+/** The main pane names the agent that really launched, even when the task follows the default agent. */
+async function bellAgentOf(task: Task): Promise<{ baseCommand: string; family?: AgentFamily } | null> {
+	const panes = task.sessionState?.panes ?? [];
+	const main = panes.find((pane) => pane.main) ?? panes[0];
+	if (main?.agentCmd) return { baseCommand: main.agentCmd, family: main.agentFamily ?? undefined };
+	return resolveTaskAgentHooks(task);
+}
+
 export async function handleBellAutoStatus(taskId: string): Promise<void> {
 	try {
 		const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
@@ -137,6 +147,9 @@ export async function handleBellAutoStatus(taskId: string): Promise<void> {
 			const tasks = await data.loadTasks(project);
 			const task = tasks.find((candidate) => candidate.id === taskId);
 			if (!task) continue;
+			// Its hooks already report this wait, and a turn-end BEL can land before Stop.
+			const agent = await bellAgentOf(task);
+			if (agent && getAgentAdapter(agent.baseCommand, agent.family).hooksReportPermissionWaits) return;
 			log.info("Bell auto-transition requested", { taskId: taskId.slice(0, 8) });
 			await dispatchLifecycleEvent(project.id, task.id, {
 				type: "moveRequested",
@@ -148,20 +161,6 @@ export async function handleBellAutoStatus(taskId: string): Promise<void> {
 	} catch (err) {
 		log.error("handleBellAutoStatus failed", { taskId: taskId.slice(0, 8), error: String(err) });
 	}
-}
-
-export async function isTaskInProgress(taskId: string): Promise<boolean> {
-	try {
-		const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
-		for (const project of projects) {
-			const tasks = await data.loadTasks(project);
-			const task = tasks.find((candidate) => candidate.id === taskId);
-			if (task) return task.status === "in-progress";
-		}
-	} catch (err) {
-		log.error("isTaskInProgress failed", { taskId: taskId.slice(0, 8), error: String(err) });
-	}
-	return false;
 }
 
 async function getTasks(params: { projectId: string }): Promise<Task[]> {
@@ -371,6 +370,8 @@ export async function moveTask(params: {
 	ifStatus?: string;
 	ifStatusNot?: string;
 	clientPlayedSound?: boolean;
+	/** The move raises no questions badge: the caller raises its own, or the user just acted. */
+	skipQuestionsBadge?: boolean;
 	enforceAllowedTransition?: boolean;
 	/** A deliberate start from outside the task — see `explicitLaunch` on the event. */
 	explicitLaunch?: boolean;
@@ -389,6 +390,7 @@ export async function moveTask(params: {
 		},
 		force: params.force,
 		clientPlayedSound: params.clientPlayedSound,
+		skipQuestionsBadge: params.skipQuestionsBadge,
 		enforceAllowedTransition: params.enforceAllowedTransition,
 		explicitLaunch: params.explicitLaunch,
 	});

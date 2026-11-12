@@ -93,6 +93,8 @@ export type LifecycleEvent =
 		guards?: MoveGuards;
 		force?: boolean;
 		clientPlayedSound?: boolean;
+		/** The move raises no questions badge: the caller raises its own, or the user just acted. */
+		skipQuestionsBadge?: boolean;
 		launchColumnAgent?: boolean;
 		/**
 		 * The move is a deliberate start from outside the task (quick shell, a

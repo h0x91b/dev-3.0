@@ -31,7 +31,8 @@ async function claudeReturnedToInput(event: ClaudeIdleEvent): Promise<void> {
 		if (!claudeSessionWatches.allIdle(task.id, panes)) return;
 		// Stop runs while Claude is still busy and already chose the review lane.
 		// An idle edge left in a working lane instead needs the user's next input.
-		await moveTask({ projectId: project.id, taskId: task.id, newStatus: "user-questions", ifStatus: task.status });
+		// The user just pressed Escape, so there is nothing new to call them about.
+		await moveTask({ projectId: project.id, taskId: task.id, newStatus: "user-questions", ifStatus: task.status, skipQuestionsBadge: true });
 	});
 }
 
@@ -49,7 +50,7 @@ async function raiseTurnAttention(project: Project, task: Task, reason: string):
 async function parkFailedTurn(project: Project, task: Task, reason: string): Promise<Task> {
 	let updated = task;
 	if (task.status !== "user-questions" || task.customColumnId != null) {
-		updated = await moveTask({ taskId: task.id, projectId: project.id, newStatus: "user-questions", ifStatus: task.status });
+		updated = await moveTask({ taskId: task.id, projectId: project.id, newStatus: "user-questions", ifStatus: task.status, skipQuestionsBadge: true });
 	}
 	await raiseTurnAttention(project, updated, reason);
 	return updated;
@@ -128,7 +129,7 @@ export const agentHandlers: Record<string, Handler> = {
 		if (!verdict) return { moved: false };
 		log.info("Launched agent exited", { taskId: task.id.slice(0, 8), verdict, exitCode });
 		if (task.status !== "in-progress" || task.hibernated) return { moved: false };
-		await moveTask({ projectId: project.id, taskId: task.id, newStatus: "user-questions", ifStatus: "in-progress" });
+		await moveTask({ projectId: project.id, taskId: task.id, newStatus: "user-questions", ifStatus: "in-progress", skipQuestionsBadge: true });
 		const code = exitCode === null ? "" : ` (exit code ${exitCode})`;
 		pushCliAttention({
 			taskId: task.id,
@@ -240,6 +241,7 @@ export const agentHandlers: Record<string, Handler> = {
 				ifStatus: event === "Stop" && task.status === "in-progress"
 					? "in-progress,user-questions"
 					: task.status,
+				skipQuestionsBadge: Boolean(approvalHold),
 			});
 			moveAccepted = updated.status === target && updated.customColumnId == null;
 		}
