@@ -269,6 +269,43 @@ describe("TaskTerminal", () => {
 			expect(screen.getByTestId("terminal-task-shutting-down")).toBeInTheDocument();
 			expect(mockedApi.request.getPtyUrl).not.toHaveBeenCalled();
 		});
+
+		it("keeps the task header above the shutdown state", async () => {
+			await act(async () => {
+				renderTerminal({ tasks: [makeTask({ shuttingDown: true })] });
+			});
+
+			expect(screen.getByTestId("task-info-panel")).toBeInTheDocument();
+			expect(screen.getByTestId("terminal-task-shutting-down")).toBeInTheDocument();
+		});
+
+		// A failed teardown keeps the tearing-down runtime for its retry, marked failed;
+		// the pane must come back instead of spinning forever.
+		it("reads the session again once the teardown fails", async () => {
+			mockedApi.request.getPtyUrl.mockResolvedValue({ url: "ws://pty/1" });
+			const tearingDown = { runtime: "tearing-down" as const, stage: "completed", runId: "r1", updatedAt: 1 };
+			const { rerender } = renderTerminal({ tasks: [makeTask({ shuttingDown: true, runtimeState: tearingDown })] });
+			await act(async () => {});
+			expect(mockedApi.request.getPtyUrl).not.toHaveBeenCalled();
+
+			await act(async () => {
+				rerender(
+					<I18nProvider>
+						<TaskTerminal
+							projectId="p1"
+							taskId="t1"
+							tasks={[makeTask({ runtimeState: { ...tearingDown, failed: true } })]}
+							projects={[project]}
+							navigate={vi.fn()}
+							dispatch={vi.fn()}
+						/>
+					</I18nProvider>,
+				);
+			});
+
+			await waitFor(() => expect(screen.getByTestId("terminal-view")).toBeInTheDocument());
+			expect(screen.queryByTestId("terminal-task-shutting-down")).not.toBeInTheDocument();
+		});
 	});
 
 	describe("worktree check after a lost session", () => {

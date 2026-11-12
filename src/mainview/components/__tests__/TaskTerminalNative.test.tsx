@@ -276,6 +276,14 @@ describe("TaskTerminal (native multi-pane)", () => {
 		expect(api.request.getPtyUrl).not.toHaveBeenCalled();
 	});
 
+	it("does not read native pane state while the task tears down", async () => {
+		renderTaskTerminal({ ...NATIVE_TASK, runtimeState: { runtime: "tearing-down", stage: "completed", updatedAt: 1 } } as Task);
+		await new Promise((r) => setTimeout(r, 30));
+		expect(screen.getByTestId("terminal-task-shutting-down")).toBeInTheDocument();
+		expect(api.request.taskPaneState).not.toHaveBeenCalled();
+		expect(api.request.getPanePtyUrl).not.toHaveBeenCalled();
+	});
+
 	it("calls getPanePtyUrl for each native pane", async () => {
 		vi.mocked(api.request.taskPaneState).mockResolvedValue(makeNativePaneState(["pane-1", "pane-2"]));
 		renderTaskTerminal(NATIVE_TASK);

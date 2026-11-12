@@ -1,1 +1,0 @@
-Completing or cancelling a task while its terminal is open no longer flashes a "Terminal session ended" or "Previous agent session found" card in the middle of the screen; the terminal pane shows the same "Shutting down…" state as the task row until the task closes.

@@ -796,9 +796,12 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 		}
 		case "teardownFailed": {
 			if (state.runtime.phase !== "tearing-down" || state.runtime.runId !== event.runId) return unchanged(state);
+			// Marked failed so the task's surfaces stop showing "Shutting down…" and offer recovery.
+			const runtime: LifecycleRuntime = { ...state.runtime, failed: true };
 			return {
-				next: state,
+				next: { ...state, runtime },
 				effects: [
+					effect({ type: "persistRuntime", runtime }),
 					effect({ type: "push", message: "taskUpdated", view: "current" }),
 					effect({ type: "reject", message: event.error }, "abort"),
 				],

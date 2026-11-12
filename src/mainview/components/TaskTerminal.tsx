@@ -102,9 +102,13 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	const isClosed = task?.status === "completed" || task?.status === "cancelled";
 	// Teardown snapshots still carry the old status and worktree, so without this the
 	// pane reattaches to a dying PTY and flashes a recovery card. `shuttingDown` rides
-	// only on the first push; the persisted runtime covers every later one.
-	const isShuttingDown = task?.shuttingDown === true || task?.runtimeState?.runtime === "tearing-down";
+	// only on the first push; the persisted runtime covers every later one until it fails.
+	const isShuttingDown = task?.shuttingDown === true
+		|| (task?.runtimeState?.runtime === "tearing-down" && task.runtimeState.failed !== true);
 	const sessionGone = isClosed || isShuttingDown;
+	// Async session reads check this after their await: a teardown may have begun meanwhile.
+	const sessionGoneRef = useRef(sessionGone);
+	sessionGoneRef.current = sessionGone;
 
 	// Detect native backend from the task record (available before state loads).
 	const isNative = task?.terminalBackend === "native";
@@ -250,14 +254,25 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			// Same criterion as the launch guard, or a folder without `.git` would
 			// offer Resume, fail, and offer Resume again.
 			const state = await api.request.checkWorktreeState({ path: worktreePath, requireGit: !!project && !!task && taskUsesWorktree(project, task) });
+			if (sessionGoneRef.current) return;
 			setError({
 				kind: state === "present" ? "session-ended" : state === "unreadable" ? "worktree-unreadable" : "worktree-gone",
 				path: worktreePath,
 			});
 		} catch {
+			if (sessionGoneRef.current) return;
 			setError({ kind: "worktree-gone", path: worktreePath });
 		}
 	}
+
+	// Whatever the dying session reported is stale once teardown starts; a failed
+	// teardown lifts the gate and the effects below read the session afresh.
+	useEffect(() => {
+		if (!isShuttingDown) return;
+		setPtyUrl(null);
+		setError(null);
+		setRecoverable(null);
+	}, [isShuttingDown]);
 
 	// ── Tmux PTY URL effect (skipped for native) ──────────────────────────────
 	useEffect(() => {
@@ -769,8 +784,11 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 
 	if (isShuttingDown) {
 		return (
-			<div className="relative h-full w-full" data-testid="terminal-task-shutting-down">
-				<TaskShutdownOverlay />
+			<div className="h-full w-full flex flex-col overflow-hidden">
+				{!hideInfoPanel && task && project && <TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />}
+				<div className="relative flex-1 min-h-0" data-testid="terminal-task-shutting-down">
+					<TaskShutdownOverlay />
+				</div>
 			</div>
 		);
 	}

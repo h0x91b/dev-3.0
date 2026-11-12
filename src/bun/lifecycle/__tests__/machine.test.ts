@@ -636,13 +636,15 @@ describe("task lifecycle transition table", () => {
 			},
 		});
 
+		const failed = { phase: "tearing-down", targetStatus: "completed", runId: "failed-run", failed: true } as const;
 		expect(transition(current, {
 			type: "teardownFailed",
 			runId: "failed-run",
 			error: "Git removal failed",
 		})).toEqual({
-			next: current,
+			next: { ...current, runtime: failed },
 			effects: [
+				{ type: "persistRuntime", runtime: failed, onError: "continue" },
 				{ type: "push", message: "taskUpdated", view: "current", onError: "continue" },
 				{ type: "reject", message: "Git removal failed", onError: "abort" },
 			],
