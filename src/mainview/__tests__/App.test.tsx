@@ -30,6 +30,7 @@ vi.mock("../rpc", () => ({
 			scanImportableConversations: vi.fn().mockResolvedValue({ conversations: [] }),
 			markConversationImportOffered: vi.fn().mockResolvedValue({ project: null }),
 			getSpaces: vi.fn().mockResolvedValue({ version: 1, spaces: [], order: [] }),
+			reorderMixedOrder: vi.fn(() => new Promise(() => {})),
 			getLastRoute: vi.fn().mockResolvedValue({ route: null }),
 			saveLastRoute: vi.fn().mockResolvedValue(undefined),
 			quitApp: vi.fn().mockResolvedValue(undefined),
@@ -154,6 +155,7 @@ vi.mock("../components/Changelog", () => ({
 vi.mock("../components/ProjectView", () => ({
 	default: (props: {
 		projectId: string;
+		spaceId?: string;
 		activeTaskId?: string;
 		taskDetailId?: string;
 		taskView?: boolean;
@@ -161,10 +163,12 @@ vi.mock("../components/ProjectView", () => ({
 		bellReasons?: Map<string, string[]>;
 		dockArtifact?: boolean;
 		dispatch?: (action: { type: string; request?: unknown }) => void;
+		navigationGuardRef?: { current: { isDirty: () => boolean; onSave: () => Promise<void> } | null };
 	}) => (
 		<div
 			data-testid="project-screen"
 			data-project-id={props.projectId}
+			data-space-id={props.spaceId ?? ""}
 			data-active-task-id={props.activeTaskId ?? ""}
 			data-task-detail-id={props.taskDetailId ?? ""}
 			data-task-view={props.taskView ? "true" : "false"}
@@ -172,6 +176,7 @@ vi.mock("../components/ProjectView", () => ({
 			data-bell-count={String(props.bellCounts?.get("t-overflow") ?? 0)}
 			data-bell-reasons={JSON.stringify(props.bellReasons?.get("t-overflow") ?? [])}
 		>
+			<button data-testid="mock-make-dirty" onClick={() => { if (props.navigationGuardRef) props.navigationGuardRef.current = { isDirty: () => true, onSave: async () => {} }; }} />
 			<button data-testid="mock-open-diff" onClick={() => props.dispatch?.({ type: "openTaskDiff", request: { mode: "branch" } })} />
 			<button data-testid="mock-close-diff" onClick={() => props.dispatch?.({ type: "closeTaskDiff" })} />
 		</div>
@@ -224,6 +229,7 @@ vi.mock("../components/TaskImageViewer", () => ({
 }));
 
 import { api } from "../rpc";
+import { _resetMixedOrderStore, commitMixedOrder } from "../mixed-order-store";
 import { confirm } from "../confirm";
 
 vi.mock("../confirm", () => ({
@@ -825,6 +831,197 @@ describe("App keyboard shortcuts", () => {
 			});
 			act(() => window.dispatchEvent(wrapped));
 			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "v1");
+		});
+	});
+
+	describe("number keys follow spaces", () => {
+		const base = { path: "/x", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" };
+		const projects = [
+			{ ...base, id: "ops", name: "Operations", kind: "virtual" as const, builtin: true },
+			{ ...base, id: "p1", name: "Alpha" },
+			{ ...base, id: "p2", name: "Beta" },
+			{ ...base, id: "p3", name: "Gamma" },
+			{ ...base, id: "p4", name: "Delta" },
+		];
+		// Mixed order: Alpha, the space (slot of Beta), Delta.
+		const spacesFile = {
+			version: 1,
+			spaces: [{ id: "sp_a", name: "Client", parentId: null, projectIds: ["p2", "p3"], createdAt: 1 }],
+			order: ["sp_a"],
+		};
+
+		async function renderWith(follow: boolean) {
+			vi.mocked(api.request.getProjects).mockResolvedValue(projects);
+			vi.mocked(api.request.getSpaces).mockResolvedValue(spacesFile as never);
+			vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+				defaultAgentId: "builtin-claude",
+				defaultConfigId: "claude-default",
+				taskSortOrder: "oldest-first",
+				updateChannel: "stable",
+				...(follow ? { digitsFollowSpaces: true } : {}),
+			} as never);
+			await renderApp();
+			// Settings and spaces load after the first screen; let them land.
+			await act(async () => {
+				await new Promise((resolve) => setTimeout(resolve, 0));
+			});
+		}
+
+		function press(init: KeyboardEventInit) {
+			act(() => {
+				window.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
+			});
+		}
+
+		const project = () => screen.getByTestId("project-screen");
+
+		afterEach(() => {
+			_resetMixedOrderStore();
+			localStorage.removeItem("dev3-space-last-project-sp_a");
+			vi.mocked(api.request.getSpaces).mockResolvedValue({ version: 1, spaces: [], order: [] });
+			vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+				defaultAgentId: "builtin-claude",
+				defaultConfigId: "claude-default",
+				taskSortOrder: "oldest-first",
+				updateChannel: "stable",
+			} as never);
+		});
+
+		it("⌘2 opens the space board anchored on its first member", async () => {
+			await renderWith(true);
+			press({ key: "2", code: "Digit2", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p2");
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
+		});
+
+		it("⌘2 anchors on the member last used on that board while it is still a member", async () => {
+			localStorage.setItem("dev3-space-last-project-sp_a", "p3");
+			await renderWith(true);
+			press({ key: "2", code: "Digit2", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p3");
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
+		});
+
+		it("⌘2 falls back to the first member when the remembered one left the space", async () => {
+			localStorage.setItem("dev3-space-last-project-sp_a", "p4");
+			await renderWith(true);
+			press({ key: "2", code: "Digit2", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p2");
+		});
+
+		it("⌘3 opens the standalone project, with no space", async () => {
+			await renderWith(true);
+			press({ key: "3", code: "Digit3", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p4");
+			expect(project()).toHaveAttribute("data-space-id", "");
+		});
+
+		it("⇧⌘2 opens the space board in the task view", async () => {
+			await renderWith(true);
+			press({ key: "@", code: "Digit2", metaKey: true, shiftKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p2");
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
+			expect(project()).toHaveAttribute("data-task-view", "true");
+		});
+
+		it.each([true, false])("⌘1 from a space board's split view lands on the project alone (follow=%s)", async (follow) => {
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p2", spaceId: "sp_a", taskView: true }),
+			});
+			await renderWith(follow);
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
+			press({ key: "1", code: "Digit1", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p1");
+			expect(project()).toHaveAttribute("data-space-id", "");
+			expect(project()).toHaveAttribute("data-task-view", "true");
+		});
+
+		// A switch discarded through the unsaved-changes dialog must still be a switch.
+		it("⌘1 from a space board's split view lands on the project alone after Discard on a dirty form", async () => {
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p2", spaceId: "sp_a", taskView: true }),
+			});
+			await renderWith(false);
+			await userEvent.click(screen.getByTestId("mock-make-dirty"));
+			press({ key: "1", code: "Digit1", metaKey: true });
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
+			await userEvent.click(await screen.findByRole("button", { name: "Discard" }));
+			expect(project()).toHaveAttribute("data-project-id", "p1");
+			expect(project()).toHaveAttribute("data-space-id", "");
+		});
+
+		it("g then t, left to time out, keeps the board's space", async () => {
+			vi.useFakeTimers({ shouldAdvanceTime: true });
+			try {
+				vi.mocked(api.request.getLastRoute).mockResolvedValue({
+					route: JSON.stringify({ screen: "project", projectId: "p2", spaceId: "sp_a" }),
+				});
+				await renderWith(false);
+				press({ key: "g", code: "KeyG" });
+				press({ key: "t", code: "KeyT" });
+				await act(async () => {
+					await vi.advanceTimersByTimeAsync(1200);
+				});
+				expect(project()).toHaveAttribute("data-project-id", "p2");
+				expect(project()).toHaveAttribute("data-space-id", "sp_a");
+				expect(project()).toHaveAttribute("data-task-view", "true");
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("g then p, left to time out, keeps the board's space", async () => {
+			vi.useFakeTimers({ shouldAdvanceTime: true });
+			try {
+				vi.mocked(api.request.getLastRoute).mockResolvedValue({
+					route: JSON.stringify({ screen: "project", projectId: "p2", spaceId: "sp_a", taskView: true }),
+				});
+				await renderWith(false);
+				press({ key: "g", code: "KeyG" });
+				press({ key: "p", code: "KeyP" });
+				await act(async () => {
+					await vi.advanceTimersByTimeAsync(1200);
+				});
+				expect(project()).toHaveAttribute("data-space-id", "sp_a");
+				expect(project()).toHaveAttribute("data-task-view", "false");
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("digits follow the order just chosen, before the host has stored it", async () => {
+			await renderWith(true);
+			act(() => commitMixedOrder(["sp_a", "p1", "p4"]));
+			press({ key: "1", code: "Digit1", metaKey: true });
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
+		});
+
+		it("⌘0 still opens Operations", async () => {
+			await renderWith(true);
+			press({ key: "0", code: "Digit0", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "ops");
+		});
+
+		it("g then 2 opens the space board too", async () => {
+			await renderWith(true);
+			press({ key: "g", code: "KeyG" });
+			press({ key: "2", code: "Digit2" });
+			expect(project()).toHaveAttribute("data-project-id", "p2");
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
+		});
+
+		it("g then 1 skips Operations in both modes", async () => {
+			await renderWith(false);
+			press({ key: "g", code: "KeyG" });
+			press({ key: "1", code: "Digit1" });
+			expect(project()).toHaveAttribute("data-project-id", "p1");
+		});
+
+		it("with the setting off, ⌘2 is the second project, never a space", async () => {
+			await renderWith(false);
+			press({ key: "2", code: "Digit2", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p2");
+			expect(project()).toHaveAttribute("data-space-id", "");
 		});
 	});
 

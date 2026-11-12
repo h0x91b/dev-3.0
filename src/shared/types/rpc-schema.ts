@@ -123,6 +123,10 @@ export type AppRPCSchema = {
 				params: { order: string[] };
 				response: SpacesFile;
 			};
+			reorderMixedOrder: {
+				params: { ids: string[] };
+				response: SpacesFile;
+			};
 			reorderSpaceProjects: {
 				params: { spaceId: string; projectIds: string[] };
 				response: Space;

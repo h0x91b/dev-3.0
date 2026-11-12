@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
 	deleteSpace: vi.fn(),
 	setProjectSpaces: vi.fn(),
 	reorderSpaces: vi.fn(),
+	reorderMixed: vi.fn(),
 	reorderSpaceProjects: vi.fn(),
 	pushMessage: vi.fn(),
 }));
@@ -21,6 +22,7 @@ vi.mock("../../spaces-data", () => ({
 	deleteSpace: mocks.deleteSpace,
 	setProjectSpaces: mocks.setProjectSpaces,
 	reorderSpaces: mocks.reorderSpaces,
+	reorderMixed: mocks.reorderMixed,
 	reorderSpaceProjects: mocks.reorderSpaceProjects,
 }));
 
@@ -78,6 +80,13 @@ describe("spacesHandlers", () => {
 		const result = await spacesHandlers.setProjectSpaces({ projectId: "p1", spaceIds: [] });
 		expect(result.autoDeleted).toEqual([space]);
 		expect(mocks.setProjectSpaces).toHaveBeenCalledWith("p1", []);
+		expect(mocks.pushMessage).toHaveBeenCalledWith("spacesUpdated", { file });
+	});
+
+	it("reorderMixedOrder delegates and pushes", async () => {
+		mocks.reorderMixed.mockResolvedValue(file);
+		await spacesHandlers.reorderMixedOrder({ ids: ["sp_1", "p2"] });
+		expect(mocks.reorderMixed).toHaveBeenCalledWith(["sp_1", "p2"]);
 		expect(mocks.pushMessage).toHaveBeenCalledWith("spacesUpdated", { file });
 	});
 

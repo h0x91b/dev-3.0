@@ -40,6 +40,7 @@ import {
 	deleteSpace,
 	loadSpacesFile,
 	renameSpace,
+	reorderMixed,
 	reorderSpaceProjects,
 	reorderSpaces,
 	setProjectSpaces,
@@ -135,6 +136,31 @@ describe("reordering", () => {
 	it("reorderSpaces drops ids of unknown or deleted spaces", async () => {
 		const a = await createSpace("A", ["p1"]);
 		expect((await reorderSpaces(["sp_ghost", a.id])).order).toEqual([a.id]);
+	});
+
+	it("reorderMixed stores the ids verbatim, deduped, and leaves every other field alone", async () => {
+		const a = await createSpace("A", ["p1", "p2"]);
+		const b = await createSpace("B", ["p3"]);
+		await setSpaceSensitive(a.id, true);
+		const before = await loadSpacesFile();
+		const next = await reorderMixed(["p9", b.id, "p9", a.id]);
+		expect(next.mixedOrder).toEqual(["p9", b.id, a.id]);
+		expect(next.spaces).toEqual(before.spaces);
+		expect(next.order).toEqual(before.order);
+		expect((await loadSpacesFile()).mixedOrder).toEqual(["p9", b.id, a.id]);
+	});
+
+	it("reorderMixed drops anything that is not a non-empty string id", async () => {
+		const next = await reorderMixed(["p1", "", 7, null, "p2"] as unknown as string[]);
+		expect(next.mixedOrder).toEqual(["p1", "p2"]);
+	});
+
+	it("later space edits keep mixedOrder, which older builds never write", async () => {
+		const a = await createSpace("A", ["p1"]);
+		await reorderMixed([a.id, "p2"]);
+		await renameSpace(a.id, "A2");
+		await reorderSpaces([a.id]);
+		expect((await loadSpacesFile()).mixedOrder).toEqual([a.id, "p2"]);
 	});
 
 	it("reorderSpaceProjects reorders members and never adds new ones", async () => {

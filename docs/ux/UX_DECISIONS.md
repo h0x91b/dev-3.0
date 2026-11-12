@@ -748,3 +748,7 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 ## 2026-11-07 — Start after lives in Launch later, shown in the timer slot
 - **Rule:** "After task" is a third mode of the launch modal's Launch later panel (task picker + completed/merged, agent from the variant row); the card chip shares the deferred-timer slot with a Start now / Remove popover, and the To Do context menu opens that panel ("Start after…") or removes it. Yaml `deferred_timer_chip`.
 - **Why:** it is a deferred launch like Start in. The context menu only opens the same panel, never a second picker; rejected an × on the chip (the card strip is full). `decisions/2026/11/05/start-after-conditional-launch.md`.
+
+## 2026-11-09 — Number keys can follow spaces
+- **Rule:** an opt-in Keyboard setting interleaves spaces with standalone projects in one draggable dashboard order; ⌘1–9 follow it, a space opens its board, ⌘0 stays Operations. Bible §10 space order.
+- **Why:** digits by project skipped past grouped work. Rejected per-key pinning (manual, user-rejected) and slot-of-first-member (not movable). Off = unchanged.

@@ -11,6 +11,11 @@ export function isMac(): boolean {
 }
 
 /** The renderer's own OS. In the desktop shell that is also the host's; in a browser tab it is not. */
+/** The app modifier as shortcut copy spells it: "⌘" on macOS, "Ctrl+" elsewhere. */
+export function modifierLabel(): string {
+	return isMac() ? "⌘" : "Ctrl+";
+}
+
 export function isWindows(): boolean {
 	if (typeof navigator === "undefined") return false;
 	return /Win/.test(navigator.platform || "") || (navigator.userAgent || "").includes("Windows");

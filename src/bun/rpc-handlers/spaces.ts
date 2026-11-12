@@ -49,6 +49,12 @@ async function reorderSpaces(params: { order: string[] }): Promise<SpacesFile> {
 	return file;
 }
 
+async function reorderMixedOrder(params: { ids: string[] }): Promise<SpacesFile> {
+	const file = await spacesData.reorderMixed(params.ids);
+	await pushSpacesUpdated();
+	return file;
+}
+
 async function reorderSpaceProjects(params: { spaceId: string; projectIds: string[] }): Promise<Space> {
 	const space = await spacesData.reorderSpaceProjects(params.spaceId, params.projectIds);
 	await pushSpacesUpdated();
@@ -63,5 +69,6 @@ export const spacesHandlers = {
 	deleteSpace,
 	setProjectSpaces,
 	reorderSpaces,
+	reorderMixedOrder,
 	reorderSpaceProjects,
 };

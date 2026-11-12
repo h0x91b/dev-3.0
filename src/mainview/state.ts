@@ -359,7 +359,7 @@ function bumpMru(mru: string[], route: Route): string[] {
 // ---- Actions ----
 
 export type AppAction =
-	| { type: "navigate"; route: Route }
+	| ({ type: "navigate"; route: Route } & NavigateOptions)
 	| { type: "goBack" }
 	| { type: "goForward" }
 	| { type: "openTaskDiff"; request: TaskInlineDiffRequest }
@@ -430,12 +430,17 @@ function normalizeProjectPath(path: string): string {
 	return path.replace(/\/+$/, "");
 }
 
+/** `inheritSpace: false` marks a project SWITCH: it lands on that project alone, never on the space board left behind. */
+export interface NavigateOptions {
+	inheritSpace?: boolean;
+}
+
 /** Push `route` onto the history stack, truncating any forward entries. */
-function pushRoute(state: AppState, requested: Route): AppState {
+function pushRoute(state: AppState, requested: Route, inherit = true): AppState {
 	// Inheritance happens here and not in stepHistory/replaceRoute: Back and
 	// Forward must replay stored routes verbatim, or the stack stops matching
 	// where the user has been.
-	const route = inheritSpace(state.route, requested);
+	const route = inherit ? inheritSpace(state.route, requested) : requested;
 	const { bellCounts, bellReasons, questionBells } = clearBellForRoute(state, route);
 	// Truncate any forward history beyond the current index, then push
 	const base = state.routeHistory.slice(0, state.historyIndex + 1);
@@ -483,7 +488,7 @@ function stepHistory(state: AppState, newIndex: number): AppState {
 export function reducer(state: AppState, action: AppAction): AppState {
 	switch (action.type) {
 		case "navigate":
-			return pushRoute(state, action.route);
+			return pushRoute(state, action.route, action.inheritSpace !== false);
 		case "goBack":
 			return stepHistory(state, state.historyIndex - 1);
 		case "goForward":
