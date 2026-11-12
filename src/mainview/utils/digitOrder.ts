@@ -57,12 +57,22 @@ export function resolveMixedOrder(projects: Project[], file: SpacesFile): MixedE
 	});
 
 	// A space the stored list never named takes the earliest slot any of its
-	// members held there as a standalone project; otherwise it goes last.
+	// members held there as a standalone project; a project freed by a deleted
+	// space takes that space's slot. Anything else goes last.
+	const deletedSpaceRank = new Map<string, number>();
+	for (const space of file.spaces) {
+		const at = stored.indexOf(space.id);
+		if (space.deleted && at !== -1) deletedSpaceRank.set(space.id, at);
+	}
+	const heldBy = (entry: MixedEntry): number[] =>
+		entry.kind === "space"
+			? entry.projects.map((m) => stored.indexOf(m.id)).filter((at) => at !== -1)
+			: file.spaces.filter((s) => deletedSpaceRank.has(s.id) && s.projectIds.includes(entry.project.id)).map((s) => deletedSpaceRank.get(s.id)!);
 	const rest: MixedEntry[] = [];
 	for (const entry of derived) {
 		const id = mixedEntryId(entry);
 		if (rank.has(id)) continue;
-		const held = entry.kind === "space" ? entry.projects.map((m) => stored.indexOf(m.id)).filter((at) => at !== -1) : [];
+		const held = heldBy(entry);
 		if (held.length === 0) {
 			rest.push(entry);
 			continue;

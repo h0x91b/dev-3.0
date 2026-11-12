@@ -103,7 +103,15 @@ describe("resolveMixedOrder", () => {
 		const gone = sp("sp_gone", ["chisim"], { deleted: true });
 		const projects = board.map((p) => (p.id === "polymarket" ? { ...p, deleted: true } : p));
 		const file = fileOf([hands, gone], ["sp_gone", "polymarket", "ghost", "dev-3.0"]);
-		expect(ids(resolveMixedOrder(projects, file))).toEqual(["dev-3.0", "chisim", "hands.ru", "Nerd-Dictum"]);
+		// chisim was freed by the deleted space, so it takes that space's slot.
+		expect(ids(resolveMixedOrder(projects, file))).toEqual(["chisim", "dev-3.0", "hands.ru", "Nerd-Dictum"]);
+	});
+
+	it("gives the members of a deleted space that space's slot, in their board order", () => {
+		const projects = ["a", "b", "c", "d", "e"].map((n) => proj(n));
+		const web = sp("sp_web", ["b", "d"], { deleted: true });
+		const file = fileOf([web], ["a", "sp_web", "c", "e"]);
+		expect(ids(resolveMixedOrder(projects, file))).toEqual(["a", "b", "d", "c", "e"]);
 	});
 
 	it("drops a space with no eligible member and frees nothing for it", () => {

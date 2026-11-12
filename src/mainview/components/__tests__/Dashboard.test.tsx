@@ -259,6 +259,28 @@ describe("Dashboard", () => {
 			await waitFor(() => expect(screen.getByTestId("rail-space-row-s1")).not.toHaveAttribute("draggable"));
 		});
 
+		it("lists the rail's spaces in the mixed order while the setting is on", async () => {
+			mockedApi.request.getSpaces.mockResolvedValue({
+				version: 1,
+				spaces: [
+					{ id: "s1", name: "Client X", projectIds: ["p1"], createdAt: 1 },
+					{ id: "s2", name: "Client Y", projectIds: ["p2"], createdAt: 1 },
+				],
+				order: ["s1", "s2"],
+				mixedOrder: ["s2", "s1"],
+			} as any);
+			const projects = [mockProject, { ...mockProject, id: "p2", name: "Second", path: "/home/user/second" }];
+			const rowOrder = () => screen.getAllByTestId(/^rail-space-row-/).map((el) => el.dataset.testid);
+
+			const { unmount } = renderDashboard(projects, vi.fn(), vi.fn(), vi.fn());
+			await screen.findByTestId("rail-space-row-s1");
+			expect(rowOrder()).toEqual(["rail-space-row-s1", "rail-space-row-s2"]);
+			unmount();
+
+			renderDashboard(projects, vi.fn(), vi.fn(), vi.fn(), true);
+			await waitFor(() => expect(rowOrder()).toEqual(["rail-space-row-s2", "rail-space-row-s1"]));
+		});
+
 		it("keeps the selected space when the rail goes, and hands the filter to the sheet", async () => {
 			const user = userEvent.setup();
 			const projects = [

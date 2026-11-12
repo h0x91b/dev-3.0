@@ -163,7 +163,7 @@ export async function reorderSpaces(order: string[]): Promise<SpacesFile> {
 /** Store the mixed top-level order verbatim: its ids span spaces AND projects, so only the renderer can validate them. */
 export async function reorderMixed(ids: string[]): Promise<SpacesFile> {
 	return mutate((file) => {
-		file.mixedOrder = [...new Set(ids)];
+		file.mixedOrder = [...new Set(ids.filter((id): id is string => typeof id === "string" && id.length > 0))];
 		return structuredClone(file);
 	});
 }

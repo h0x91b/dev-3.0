@@ -150,6 +150,11 @@ describe("reordering", () => {
 		expect((await loadSpacesFile()).mixedOrder).toEqual(["p9", b.id, a.id]);
 	});
 
+	it("reorderMixed drops anything that is not a non-empty string id", async () => {
+		const next = await reorderMixed(["p1", "", 7, null, "p2"] as unknown as string[]);
+		expect(next.mixedOrder).toEqual(["p1", "p2"]);
+	});
+
 	it("later space edits keep mixedOrder, which older builds never write", async () => {
 		const a = await createSpace("A", ["p1"]);
 		await reorderMixed([a.id, "p2"]);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import type { Dispatch } from "react";
 import type { HarnessReadinessReport, Project, Space, Task, TaskStatus } from "../../shared/types";
 import { compareTaskSortRank, getTaskTitle, isBuiltinOpsProject, isCoordinatorTask, isTaskDisconnected, orderProjectsForDisplay, projectDisplayName } from "../../shared/types";
@@ -163,7 +163,10 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 	const [spacesPicker, setSpacesPicker] = useState<{ projectId: string; anchor: HTMLElement } | null>(null);
 	const membership = useProjectSpaceMembership(spacesFile);
 	const mixedPending = useMixedPending();
-	const mixedEntries = digitsFollowSpaces ? resolveMixedOrder(projects, withPendingMixedOrder(spacesFile, mixedPending)) : [];
+	const mixedEntries = useMemo(
+		() => (digitsFollowSpaces ? resolveMixedOrder(projects, withPendingMixedOrder(spacesFile, mixedPending)) : []),
+		[digitsFollowSpaces, projects, spacesFile, mixedPending],
+	);
 	const mixedOrder = {
 		entries: mixedEntries,
 		reorder: (sourceId: string, targetId: string, side: "before" | "after") => {
