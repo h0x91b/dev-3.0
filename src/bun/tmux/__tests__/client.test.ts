@@ -107,6 +107,43 @@ describe("argv construction", () => {
 		}
 	});
 
+	it("stopServer throws when kill-server is refused, and keeps the socket file a surviving server may own", async () => {
+		const root = mkdtempSync(join(tmpdir(), "dev3-socket-file-"));
+		const previous = process.env.TMUX_TMPDIR;
+		process.env.TMUX_TMPDIR = root;
+		try {
+			const socketPath = tmuxSocketPath("dev3-live-test-44");
+			mkdirSync(dirname(socketPath), { recursive: true });
+			writeFileSync(socketPath, "");
+			const { client } = makeClient({ exited: Promise.resolve(1), stderr: "server exited unexpectedly" });
+			await expect(client.stopServer({ socket: "dev3-live-test-44" })).rejects.toThrow(/kill-server failed/);
+			expect(existsSync(socketPath)).toBe(true);
+		} finally {
+			if (previous === undefined) delete process.env.TMUX_TMPDIR;
+			else process.env.TMUX_TMPDIR = previous;
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("stopServer counts no running server as stopped and unlinks the socket file", async () => {
+		const root = mkdtempSync(join(tmpdir(), "dev3-socket-file-"));
+		const previous = process.env.TMUX_TMPDIR;
+		process.env.TMUX_TMPDIR = root;
+		try {
+			const socketPath = tmuxSocketPath("dev3-live-test-45");
+			mkdirSync(dirname(socketPath), { recursive: true });
+			writeFileSync(socketPath, "");
+			const { client, spawnFn } = makeClient({ exited: Promise.resolve(1), stderr: "no server running on /tmp/x" });
+			await expect(client.stopServer({ socket: "dev3-live-test-45" })).resolves.toBeUndefined();
+			expect(argvOf(spawnFn)).toEqual(["tmux", "-L", "dev3-live-test-45", "kill-server"]);
+			expect(existsSync(socketPath)).toBe(false);
+		} finally {
+			if (previous === undefined) delete process.env.TMUX_TMPDIR;
+			else process.env.TMUX_TMPDIR = previous;
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("pipes stdout and stderr for every run", async () => {
 		const { client, spawnFn } = makeClient();
 		await client.sourceFile("/tmp/conf");

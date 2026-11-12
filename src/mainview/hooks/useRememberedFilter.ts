@@ -1,12 +1,16 @@
 import { useCallback, useState } from "react";
 
-// In memory only, by design: a filter survives navigation but never an app restart,
-// so a fresh launch cannot open on a board that silently hides tasks.
+// The Map is in memory only, so a stray search word never outlives the app; a board's
+// status tokens are persisted separately (`usePersistedStatusFilter`).
 const rememberedFilters = new Map<string, string>();
 
 /** Board filter key; a space board keeps its own filter apart from its anchor project. */
 export function boardFilterKey(projectId: string, spaceId?: string | null): string {
 	return spaceId ? `board:space-${spaceId}` : `board:${projectId}`;
+}
+
+export function hasRememberedFilter(key: string): boolean {
+	return rememberedFilters.has(key);
 }
 
 /** Preset the filter a surface will open with — e.g. another board, before navigating there. */

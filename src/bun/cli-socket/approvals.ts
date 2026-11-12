@@ -11,7 +11,8 @@ import type { AgentLaunchChoice, LaunchVariant } from "../../shared/types";
 import { deliverLaunchHandoff } from "../agent-launch-handoff";
 import { getPushMessage, launchTaskWithAgentChoice, moveTask, resetTaskToTodo } from "../rpc-handlers";
 import { loadSettings } from "../settings";
-import { loadBoardTasks, resolveTaskAcrossProjects, resolveTaskFromParams } from "./task-resolution";
+import { loadBoardTasks, resolveAgentMessageSource, resolveTaskAcrossProjects, resolveTaskFromParams } from "./task-resolution";
+import { type ApprovalReason, approvalReasonFromParams, normalizeApprovalReason } from "../../shared/approval-reason";
 import { awaitLaunchPreparation } from "./launch-preparation";
 import type { LaunchPreparationOutcome } from "../../shared/launch-preparation";
 
@@ -86,6 +87,13 @@ const resetConsentByRequestId = new Map<string, TaskResetConsent>();
  */
 const resetRunByRequestId = new Map<string, Promise<TaskResetResult>>();
 
+/** `--reason`, attributed to the asking task when that is not the target's own agent. */
+async function destructiveReason(params: Record<string, unknown>, task: Task): Promise<{ reason?: ApprovalReason }> {
+	if (!normalizeApprovalReason(params.reason)) return {};
+	const source = await resolveAgentMessageSource(params, task.id);
+	return approvalReasonFromParams(params, source ? { seq: source.seq, title: source.title ?? "" } : null);
+}
+
 export async function requestDestructiveApproval(
 	kind: DestructiveApprovalKind,
 	params: Record<string, unknown>,
@@ -106,6 +114,7 @@ export async function requestDestructiveApproval(
 		subject: buildTaskDialogSubject(task, project),
 		// An owned Operations worktree is removed on reset, but its branch is kept.
 		...(kind === "reset" && isOpsWorktreeTask(task) ? { branchKept: true } : {}),
+		...await destructiveReason(params, task),
 	};
 
 	let request: { requestId: string; decision: Promise<{ approved: boolean; stale?: boolean }> };
@@ -260,6 +269,8 @@ export async function requestAgentLaunchApproval(opts: {
 	suggested?: LaunchVariant | null;
 	/** False when the requester can no longer take a report, so the launched agent gets no handoff note. */
 	handoff?: boolean;
+	/** Why the requester asks (`--reason`), already normalized. */
+	reason?: ApprovalReason;
 }): Promise<LaunchApprovalOutcome> {
 	const { project, task, targetStatus, requester } = opts;
 	// A coordinator's own preset preselects the dialog and is what an unwatched auto-approval launches.
@@ -288,7 +299,7 @@ export async function requestAgentLaunchApproval(opts: {
 		"launch",
 		task.id,
 		project.id,
-		{ autoApproveAfterMs, dialog: { taskTitle: getTaskTitle(task), subject, requester: asker } },
+		{ autoApproveAfterMs, dialog: { taskTitle: getTaskTitle(task), subject, requester: asker, ...(opts.reason ? { reason: opts.reason } : {}) } },
 	);
 	// Seeds what an unwatched auto-approval launches. A joined retry must not
 	// overwrite a pick the user may already have made in the open dialog.
@@ -314,6 +325,7 @@ export async function requestAgentLaunchApproval(opts: {
 		canAddVariants: canSpawnAsVariants(task),
 		autoApproveAt,
 		...(suggested ? { suggested } : {}),
+		...(opts.reason ? { reason: opts.reason } : {}),
 	});
 
 	const answer = await decision;

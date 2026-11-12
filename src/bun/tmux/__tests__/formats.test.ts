@@ -4,6 +4,7 @@ import {
 	parseWindowLayout,
 	TMUX_FORMAT_SEPARATOR,
 	PANE_ID_FORMAT,
+	SERVER_IDENTITY_FORMAT,
 	ALL_PANE_PIDS_FORMAT,
 	SESSION_OVERVIEW_FORMAT,
 	PANE_CAPTURE_FORMAT,
@@ -66,6 +67,11 @@ describe("format declarations", () => {
 	it("PANE_ID_FORMAT is the bare pane id", () => {
 		expect(PANE_ID_FORMAT.formatString).toBe("#{pane_id}");
 		expect(PANE_ID_FORMAT.parse("%0\n%12\n")).toEqual([{ paneId: "%0" }, { paneId: "%12" }]);
+	});
+
+	it("SERVER_IDENTITY_FORMAT reads the socket path and pid a pane's $TMUX is built from", () => {
+		expect(SERVER_IDENTITY_FORMAT.formatString).toBe("#{socket_path}\t#{pid}");
+		expect(SERVER_IDENTITY_FORMAT.parse("/private/tmp/tmux-501/dev3\t4242\n")).toEqual([{ socketPath: "/private/tmp/tmux-501/dev3", serverPid: 4242 }]);
 	});
 
 	it("ALL_PANE_PIDS_FORMAT puts the free-text session name last", () => {

@@ -4,6 +4,8 @@ import TaskDialogSubjectCard from "./components/TaskDialogSubjectCard";
 import { useT } from "./i18n";
 import { UNSOLICITED_DIALOG_QUIET_MS, useDialogKeyboardGuard } from "./utils/dialog-keyboard-guard";
 import { useFocusTrap } from "./utils/useFocusTrap";
+import type { ApprovalReason } from "../shared/approval-reason";
+import ApprovalReasonNote from "./components/ApprovalReasonNote";
 
 export interface ConfirmAlternativeAction {
 	label: string;
@@ -26,6 +28,8 @@ export interface ConfirmOptions {
 	cancelLabel?: string;
 	/** Style the confirm button as destructive (red). */
 	danger?: boolean;
+	/** Focus Cancel on open, so Enter or Space picks the safe answer. */
+	focusCancel?: boolean;
 	/**
 	 * Mark the dialog as initiated by an AI agent, not by the user's own click:
 	 * shows a robot badge, an accent border, and autofocuses Cancel so muscle
@@ -65,6 +69,8 @@ export interface ConfirmOptions {
 		/** Optional action for opening the subject task; resolves the dialog as "Not now". */
 		onClick?: () => void;
 	};
+	/** Why the agent asks (`--reason`), shown under the subject card as plain text. */
+	reason?: ApprovalReason;
 	/**
 	 * Close the dialog externally, without a user choice — e.g. the underlying
 	 * task was resolved on another window or on the remote browser. When the
@@ -430,6 +436,7 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 						} : {})}
 					/>
 				)}
+				{pending.reason && <ApprovalReasonNote reason={pending.reason} tone={dangerTone ? "danger" : "accent"} />}
 				{pending.outcomeCards && (
 					<div className="flex min-w-0 items-center gap-2 rounded-lg border border-success/25 bg-success/10 px-3 py-2 text-xs">
 						<span className="text-success" aria-hidden>✓</span>
@@ -480,7 +487,7 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 					<div className="flex flex-wrap justify-end gap-2 pt-1">
 						<button
 							type="button"
-							autoFocus={pending.agentInitiated || anchored}
+							autoFocus={pending.agentInitiated || pending.focusCancel || anchored}
 							data-confirm-cancel
 							onClick={() => close(false)}
 							className={`${anchored ? "px-3 py-1.5 text-xs" : "px-4 py-2 text-sm"} whitespace-nowrap rounded-lg text-fg-2 hover:text-fg hover:bg-overlay-hover transition-colors`}
@@ -506,8 +513,8 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 								gateActive
 									? "bg-fg-muted/40 cursor-not-allowed"
 									: pending.danger
-										? "bg-danger hover:bg-danger/80"
-										: "bg-accent hover:bg-accent-hover"
+										? "bg-danger-fill hover:bg-danger-fill-hover"
+										: "bg-accent-fill hover:bg-accent-fill-hover"
 							}`}
 						>
 							{confirmLabel}

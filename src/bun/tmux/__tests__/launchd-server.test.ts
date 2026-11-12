@@ -5,6 +5,7 @@ import {
 	ensureLaunchdServer,
 	launchdLabel,
 	predatesLaunchdServer,
+	staleServerBinary,
 	usesLaunchdServer,
 } from "../launchd-server";
 
@@ -64,6 +65,7 @@ function fakeDeps(over: {
 		signal: (pid, signal) => signals.push([pid, signal]),
 		fileLimits: () => over.fileLimits === undefined ? { soft: 1050880, hard: null } : over.fileLimits,
 		realpath: (path) => (path === SHIM ? BUNDLED : path.startsWith("/") ? path : null),
+		pathExists: () => true,
 	};
 	const launchctl = () => calls.filter((c) => c[0] === "launchctl").map((c) => c.slice(0, 2).join(" "));
 	return { deps, calls, timeouts, files, removed, signals, launchctl };
@@ -228,5 +230,62 @@ describe("predatesLaunchdServer", () => {
 		expect(predatesLaunchdServer(OPTS, deps({ exitCode: 0, pid: "16123" }, { exitCode: 1 }))).toBe(false);
 		expect(predatesLaunchdServer(OPTS, deps({ exitCode: 0, pid: "garbage" }, { exitCode: 113 }))).toBe(false);
 		expect(predatesLaunchdServer({ ...OPTS, binary: "/opt/homebrew/bin/tmux" }, deps({ exitCode: 0, pid: "1" }, { exitCode: 113 }))).toBe(false);
+	});
+});
+
+describe("staleServerBinary", () => {
+	const enc = (text: string) => new TextEncoder().encode(text);
+	const LSOF = (path: string) => `p16123\nftxt\nn${path}\nftxt\nn/usr/lib/dyld\n`;
+	function deps(server: { exitCode: number; pid?: string }, lsof: { exitCode: number; out?: string }, existing: string[] = []) {
+		const calls: string[][] = [];
+		const d: LaunchdServerDeps = {
+			...fakeDeps().deps,
+			spawnSync: (cmd) => {
+				calls.push(cmd);
+				return cmd[0] === "/usr/sbin/lsof"
+					? { exitCode: lsof.exitCode, stdout: enc(lsof.out ?? "") }
+					: { exitCode: server.exitCode, stdout: enc(server.pid ?? "") };
+			},
+			pathExists: (path) => existing.includes(path),
+		};
+		return { d, calls };
+	}
+	const OLD = "/Users/u/dev3-app-backup.app/Contents/Resources/app/tmux/tmux";
+	const SERVER = { exitCode: 0, pid: "16123" };
+
+	it("reads the server's executable path from lsof, not from argv", () => {
+		const { d, calls } = deps(SERVER, { exitCode: 0, out: LSOF(BUNDLED) }, [BUNDLED]);
+		expect(staleServerBinary(OPTS, d)).toBeNull();
+		expect(calls[1]).toEqual(["/usr/sbin/lsof", "-a", "-p", "16123", "-d", "txt", "-Fn"]);
+	});
+
+	it("reports an executable with nothing left at its path", () => {
+		expect(staleServerBinary(OPTS, deps(SERVER, { exitCode: 0, out: LSOF(OLD) }).d)).toBe("deleted");
+	});
+
+	it("reports an executable in another, still present dev3 bundle", () => {
+		expect(staleServerBinary(OPTS, deps(SERVER, { exitCode: 0, out: LSOF(OLD) }, [OLD]).d)).toBe("elsewhere");
+	});
+
+	// The updater, brew and a DMG reinstall put the new bundle at the old path, and tccd
+	// judges the file at that path: access survives, so a restart would only kill agents.
+	it("stays quiet when an update replaced this app's own tmux at the same path", () => {
+		expect(staleServerBinary(OPTS, deps(SERVER, { exitCode: 0, out: LSOF(BUNDLED) }, [BUNDLED]).d)).toBeNull();
+	});
+
+	it.each([
+		["a present non-bundle tmux", SERVER, { exitCode: 0, out: LSOF("/opt/homebrew/bin/tmux") }, ["/opt/homebrew/bin/tmux"], OPTS, "darwin"],
+		["a missing server", { exitCode: 1 }, { exitCode: 0, out: LSOF(OLD) }, [], OPTS, "darwin"],
+		["a failed lsof", SERVER, { exitCode: 1 }, [], OPTS, "darwin"],
+		["an lsof with no txt path", SERVER, { exitCode: 0, out: "p16123\n" }, [], OPTS, "darwin"],
+		["a non-bundled client", { exitCode: 0, pid: "1" }, { exitCode: 0, out: LSOF(OLD) }, [], { ...OPTS, binary: "/opt/homebrew/bin/tmux" }, "darwin"],
+		["Linux", SERVER, { exitCode: 0, out: LSOF(OLD) }, [], OPTS, "linux"],
+	] as const)("stays quiet for %s", (_name, server, lsof, existing, opts, platform) => {
+		const { d } = deps(server, lsof, [...existing]);
+		expect(staleServerBinary(opts, { ...d, platform })).toBeNull();
+	});
+
+	it("compares against the shim's resolved bundle path", () => {
+		expect(staleServerBinary({ ...OPTS, binary: SHIM }, deps(SERVER, { exitCode: 0, out: LSOF(BUNDLED) }, [BUNDLED]).d)).toBeNull();
 	});
 });

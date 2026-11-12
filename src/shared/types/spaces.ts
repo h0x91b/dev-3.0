@@ -27,6 +27,12 @@ export interface SpacesFile {
 	version: 1;
 	spaces: Space[];
 	order: string[];
+	/**
+	 * Ids of spaces and standalone projects in the user's mixed top-level order,
+	 * which drives ⌘1–⌘9 when "Number keys follow spaces" is on. Ids that no
+	 * longer resolve are skipped; entries not listed follow in derived order.
+	 */
+	mixedOrder?: string[];
 }
 
 export const EMPTY_SPACES_FILE: SpacesFile = Object.freeze({

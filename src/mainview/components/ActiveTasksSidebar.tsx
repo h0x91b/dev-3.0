@@ -451,6 +451,8 @@ function ActiveTasksSidebar({
 		label: string;
 		color: string;
 		tasks: Task[];
+		/** The coordinators group: tasks only, no header row. */
+		headerless?: boolean;
 	}
 
 	const sortOrder = useTaskSortOrder();
@@ -464,11 +466,14 @@ function ActiveTasksSidebar({
 		return cols;
 	}, [scopeProjects]);
 
-	// Readiness tiers: NEEDS YOU → custom columns → WAITING. Grouping +
+	// Readiness tiers: coordinators → NEEDS YOU → custom columns → WAITING. Grouping +
 	// within-tier ordering is a pure function so it is unit-tested without
 	// rendering; here we only map it to header chrome.
 	const tiers = groupTasksIntoTiers(activeTasks, { scope: effectiveScope, orderedCustomColumns, sortOrder });
 	const grouped: SidebarGroup[] = tiers.map((tier) => {
+		if (tier.kind === "coordinators") {
+			return { key: tier.key, label: "", color: statusColors["in-progress"], tasks: tier.tasks, headerless: true };
+		}
 		if (tier.kind === "needs-you") {
 			return {
 				key: tier.key,
@@ -802,7 +807,7 @@ function ActiveTasksSidebar({
 						)}
 					</div>
 				) : (
-					grouped.map(({ key: groupKey, label: groupLabel, color: groupColor, tasks: groupTasks }, groupIdx) => (
+					grouped.map(({ key: groupKey, label: groupLabel, color: groupColor, tasks: groupTasks, headerless }, groupIdx) => (
 						<div key={groupKey} data-sidebar-tier>
 							{/* Solid separator between readiness-tier blocks */}
 							{groupIdx > 0 && (
@@ -812,7 +817,7 @@ function ActiveTasksSidebar({
 							{/* Tier header with count. No spinner: the WAITING tier merges
 							    working + AI-review + PRs, so a tier-wide spinner would mislead;
 							    the per-card rail busy-flow animation remains the cue. */}
-							<div data-sidebar-tier-header className="relative px-3 py-1.5 flex items-center gap-2 sticky top-0 bg-base/95 backdrop-blur-sm z-10">
+							{!headerless && <div data-sidebar-tier-header className="relative px-3 py-1.5 flex items-center gap-2 sticky top-0 bg-base/95 backdrop-blur-sm z-10">
 								{/* Faint zone wash + left bar so the tier reads as one color zone */}
 								<span
 									className="absolute inset-0 pointer-events-none"
@@ -832,7 +837,7 @@ function ActiveTasksSidebar({
 								<span className="text-dense text-fg-muted" data-testid={`sidebar-tier-count-${groupKey}`}>
 									{groupTasks.length}
 								</span>
-							</div>
+							</div>}
 
 							{/* Tasks in this status */}
 							{groupTasks.map((task, idx) => {

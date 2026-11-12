@@ -1,12 +1,13 @@
 import { useRef, useState, type ReactNode } from "react";
 import type { BoardColumnSlot, Label, Project, Task } from "../../../shared/types";
-import { getTaskOverview, getTaskTitle, taskSeqLabel } from "../../../shared/types";
+import { getTaskOverview, getTaskTitle, isCoordinatorTask, taskSeqLabel } from "../../../shared/types";
 import { parentTaskIdOf } from "../../../shared/types/task-origin";
 import { useT, type TranslationKey } from "../../i18n";
 import LabelChip from "../../components/LabelChip";
 import LabelPicker from "../../components/LabelPicker";
 import PipelineDropdown from "../../components/PipelineDropdown";
 import PriorityBadge from "../../components/PriorityBadge";
+import { COORDINATOR_TITLE, TaskRoleChip } from "../../components/TaskRoleBand";
 import StatusMenuPortal from "../../components/StatusMenuPortal";
 import { TaskRefText } from "../../components/TaskRefText";
 import { useStatusMenu } from "../../hooks/useStatusMenu";
@@ -15,6 +16,7 @@ import { getStatusLabel } from "../../utils/statusLabel";
 import { prStateTone } from "../../utils/prStateTone";
 import { compactAge } from "../../utils/statusAge";
 import { taskLastActivityMs } from "../../utils/projectActivity";
+import { taskRunningAgentIds } from "../../../shared/task-running-agent";
 import type { BoardService } from "../board-service";
 import { laneOfTask, taskPrNumber, type TableColumnId } from "./table-model";
 
@@ -202,6 +204,18 @@ function Text({ children, mono = false, numeric = false, title }: { children: Re
 	return <span title={title} className={`block truncate text-xs text-fg-2 ${mono ? "font-mono" : ""} ${numeric ? "tabular-nums" : ""}`}>{children}</span>;
 }
 
+/** The title, led by the role chip on a coordinator; shared by the grid row and the narrow card. */
+export function TitleCell({ task, className = "" }: { task: Task; className?: string }) {
+	const title = getTaskTitle(task);
+	const coordinator = isCoordinatorTask(task);
+	return (
+		<span className={`flex min-w-0 items-center gap-1.5 ${className}`}>
+			{coordinator && <TaskRoleChip role="coordinator" testId="board-table-coordinator-chip" />}
+			<span className={`min-w-0 truncate text-sm ${coordinator ? `font-semibold ${COORDINATOR_TITLE}` : "text-fg"}`} title={title}>{title}</span>
+		</span>
+	);
+}
+
 /** One cell's content. The interactive ones own their pickers; the rest are plain text. */
 export function TableCell({ column, task, ctx }: { column: TableColumnId; task: Task; ctx: TableRowContext }) {
 	const t = useT();
@@ -209,7 +223,7 @@ export function TableCell({ column, task, ctx }: { column: TableColumnId; task: 
 		case "seq":
 			return <span className="text-xs tabular-nums text-fg-3">{rowSeqLabel(task, ctx)}</span>;
 		case "title":
-			return <span className="block truncate text-sm text-fg" title={getTaskTitle(task)}>{getTaskTitle(task)}</span>;
+			return <TitleCell task={task} />;
 		case "project":
 			return <Text title={ctx.projectName(task.projectId)}>{ctx.projectName(task.projectId)}</Text>;
 		case "status":
@@ -219,7 +233,8 @@ export function TableCell({ column, task, ctx }: { column: TableColumnId; task: 
 		case "labels":
 			return <LabelsCell task={task} ctx={ctx} />;
 		case "agent": {
-			const name = task.agentId ? ctx.agentNameById.get(task.agentId) : undefined;
+			const { agentId } = taskRunningAgentIds(task);
+			const name = agentId ? ctx.agentNameById.get(agentId) : undefined;
 			return name ? <Text title={name}>{name}</Text> : null;
 		}
 		case "pr":

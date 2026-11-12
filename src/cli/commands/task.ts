@@ -16,7 +16,8 @@ import { rejectUnknownFlags } from "../flag-validation";
 import { exitOnSenderError, readSenderFlag } from "./sender";
 import { readStdin } from "../stdin";
 import { singleTextInput } from "../text-input";
-import { launchAndPrepareTimeoutMs, launchApprovalTimeoutMs } from "../launch-approval";
+import { launchAndPrepareTimeoutMs, launchApprovalTimeoutMs, withWaitHeartbeat } from "../launch-approval";
+import { readReasonFlag } from "../approval-reason";
 import type { LaunchPreparationOutcome } from "../../shared/launch-preparation";
 import { handleTasks } from "./tasks";
 import { parseResumeAccountFlag, reportResumeOutcome } from "./agent";
@@ -287,7 +288,7 @@ function epicParams(args: ParsedArgs): Record<string, unknown> {
 
 async function createTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
 	args = withBooleanFlags(args, ["no-epic"]);
-	rejectUnknownFlags(args, ["project", "title", "description", "type", "scratch", "run", "pr", "branch", "worktree", "handoff-file", "agent", "config", "epic", "no-epic", "start-after", "until"]);
+	rejectUnknownFlags(args, ["project", "title", "description", "type", "scratch", "run", "pr", "branch", "worktree", "handoff-file", "agent", "config", "epic", "no-epic", "start-after", "until", "reason"]);
 	const epic = epicParams(args);
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (!projectId) {
@@ -312,7 +313,10 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 				"Create a normal task instead, or send instructions with `dev3 message --task seq:<N>` after it starts.",
 			);
 		}
-		return createScratchAndRun(projectId, socketPath, context, readHandoffFile(args), readLaunchSuggestion(args), epic);
+		return createScratchAndRun(projectId, socketPath, context, readHandoffFile(args), readLaunchSuggestion(args), { ...epic, ...readReasonFlag(args) });
+	}
+	if (args.flags.reason !== undefined) {
+		exitUsage("--reason only applies to a launch the user approves: `task create --scratch --run`.");
 	}
 	if (args.flags["handoff-file"] !== undefined) {
 		exitUsage("--handoff-file only applies to a launch: `task create --scratch --run` or `task move --status in-progress`.");
@@ -847,15 +851,17 @@ async function requestDestructiveApproval(
 	context: CliContext | null,
 	codexStopHook: boolean,
 ): Promise<void> {
-	const params: Record<string, unknown> = { taskId };
+	const params: Record<string, unknown> = { taskId, ...readReasonFlag(args) };
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (projectId) params.projectId = projectId;
+	// Attributes a --reason to the asking task when it is not the target's own agent.
+	if (params.reason && context?.taskId) params.sourceTaskId = context.taskId;
 	const spec = approvalSpecFor(baseSpec, projectId, taskId);
 	const ownSession = targetsOwnSession(taskId, args, context);
 
 	process.stderr.write(`${spec.intro}\nWaiting for the user to respond in the dev-3.0 app (up to 10 minutes)...\n`);
 
-	const wait = await waitForDestructiveApproval(spec, params, socketPath);
+	const wait = await withWaitHeartbeat(waitForDestructiveApproval(spec, params, socketPath));
 	if (wait.kind === "status") return reportApprovalStatus(spec, wait.status, wait.timedOut, ownSession, codexStopHook);
 	if (wait.kind === "unreachable") {
 		if (wait.timedOut) {
@@ -948,7 +954,7 @@ async function createScratchAndRun(
 	context: CliContext | null,
 	handoffNote?: string,
 	suggestion?: { agentId: string; configId?: string },
-	epic: Record<string, unknown> = {},
+	extra: Record<string, unknown> = {},
 ): Promise<void> {
 	if (!context?.taskId) {
 		exitUsage("Run this from inside a task worktree — the new scratch task reports back to yours.");
@@ -956,14 +962,14 @@ async function createScratchAndRun(
 
 	let resp: CliResponse;
 	try {
-		resp = await sendRequest(socketPath, "task.createScratchAndRun", {
+		resp = await withWaitHeartbeat(sendRequest(socketPath, "task.createScratchAndRun", {
 			projectId,
 			sourceTaskId: context.taskId,
 			...senderAgentParams(context),
 			...(handoffNote ? { handoffNote } : {}),
 			...suggestion,
-			...epic,
-		}, { timeoutMs: await launchAndPrepareTimeoutMs(socketPath) });
+			...extra,
+		}, { timeoutMs: await launchAndPrepareTimeoutMs(socketPath) }));
 	} catch (err) {
 		if (err instanceof Error && err.message.startsWith("Socket timeout")) {
 			exitError(
@@ -1087,7 +1093,7 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	// `--tolerate-app-offline` only changes the app-offline exit code, which is
 	// decided before dispatch (main.ts) — accepted and ignored here.
 	rejectUnknownFlags(args, [
-		"id", "task", "task-id", "project", "status", "if-status", "if-status-not", "handoff-file", "agent", "config", "as-sender",
+		"id", "task", "task-id", "project", "status", "if-status", "if-status-not", "handoff-file", "agent", "config", "as-sender", "reason",
 		CODEX_STOP_HOOK_FLAG.slice(2), TOLERATE_APP_OFFLINE_FLAG.slice(2),
 	]);
 	// An external sender starting a task gets the launch dialog, like an agent does.
@@ -1160,12 +1166,13 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	const handoffNote = readHandoffFile(args);
 	if (handoffNote) params.handoffNote = handoffNote;
 	if (suggestion) Object.assign(params, suggestion);
+	Object.assign(params, readReasonFlag(args));
 
 	// The approval dialog can sit open for minutes, so a move that might turn
 	// into one waits on the long timeout. A silent move still answers instantly.
 	const method = asSender ? "task.moveAsSender" : "task.move";
 	const resp = asSender || movesForeignTaskIntoActiveColumn(taskId, newStatus, context)
-		? await sendRequest(socketPath, method, params, { timeoutMs: await launchAndPrepareTimeoutMs(socketPath) })
+		? await withWaitHeartbeat(sendRequest(socketPath, method, params, { timeoutMs: await launchAndPrepareTimeoutMs(socketPath) }))
 		: await sendRequest(socketPath, method, params);
 	if (!resp.ok) {
 		exitOnSenderError(resp.error);
@@ -1291,7 +1298,7 @@ function formatFreed(bytes: number | null): string {
 /** Both commands block on the launch dialog when an agent asks, so a timeout is not a failure to retry blindly. */
 async function sendSessionAction(socketPath: string, method: string, params: Record<string, unknown>, what: string): Promise<CliResponse> {
 	try {
-		return await sendRequest(socketPath, method, params, { timeoutMs: await launchApprovalTimeoutMs(socketPath) });
+		return await withWaitHeartbeat(sendRequest(socketPath, method, params, { timeoutMs: await launchApprovalTimeoutMs(socketPath) }));
 	} catch (err) {
 		if (err instanceof Error && err.message.startsWith("Socket timeout")) {
 			exitError(`Timed out waiting for the ${what}`, "The approval dialog may still be open; a later approval still goes ahead. Running the same command again waits on that same request.");
@@ -1321,7 +1328,7 @@ function sessionActionParams(args: ParsedArgs, context: CliContext | null, usage
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (projectId) params.projectId = projectId;
 	if (context?.taskId) params.sourceTaskId = context.taskId;
-	return params;
+	return { ...params, ...readReasonFlag(args) };
 }
 
 /**
@@ -1330,8 +1337,8 @@ function sessionActionParams(args: ParsedArgs, context: CliContext | null, usage
  * person at a plain terminal hibernates directly.
  */
 async function hibernateTaskCommand(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "json"]);
-	const usage = "Usage: dev3 task hibernate [<id>|--task <id>] [--json]";
+	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "json", "reason"]);
+	const usage = "Usage: dev3 task hibernate [<id>|--task <id>] [--reason <text>] [--json]";
 	rejectFlagValues(args, ["json"], usage);
 	const json = "json" in args.flags;
 	const params = sessionActionParams(args, context, usage);
@@ -1358,8 +1365,8 @@ async function hibernateTaskCommand(args: ParsedArgs, socketPath: string, contex
 
 /** `dev3 task wake --resume|--shell` — the wake screen's two buttons. */
 async function wakeTaskCommand(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "resume", "shell", "allow-agent-latest", "account", "json"]);
-	const usage = "Usage: dev3 task wake [<id>|--task <id>] --resume [--allow-agent-latest] [--account <id|system>] | --shell [--json]";
+	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "resume", "shell", "allow-agent-latest", "account", "json", "reason"]);
+	const usage = "Usage: dev3 task wake [<id>|--task <id>] --resume [--allow-agent-latest] [--account <id|system>] | --shell [--reason <text>] [--json]";
 	rejectFlagValues(args, ["resume", "shell", "allow-agent-latest", "json"], usage);
 	const resume = "resume" in args.flags;
 	const shell = "shell" in args.flags;

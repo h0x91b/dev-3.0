@@ -29,8 +29,14 @@ export const CATALOG_PROVIDER_KINDS: CatalogProviderKind[] = ["openai", "anthrop
 export interface CatalogProvider {
 	id: string;
 	kind: CatalogProviderKind;
-	/** User-facing name. For a custom endpoint it also seeds the wire prefix. */
+	/** For a `custom` endpoint this is the routing identity: older app versions
+	 *  derive the wire key from it, so it never changes after the first save. */
 	label: string;
+	/** The name shown after a custom endpoint was renamed; `label` stays as saved. */
+	displayName?: string;
+	/** Transient: the real proxy key the server hands the renderer in the view.
+	 *  Never written to disk, where the key is derived from `label`. */
+	wireKey?: string;
 	/** Required for `custom`; ignored for the known kinds. */
 	baseUrl?: string;
 	/**
@@ -125,25 +131,53 @@ function slugify(label: string): string {
 /**
  * The provider's key inside the sidecar's config, and the prefix of every wire
  * name it serves. A known kind uses its canonical provider name (so at most one
- * provider per kind — enforced by `validateCatalog`); a custom endpoint gets a
- * `custom-<slug>` name declared as an OpenAI-compatible custom provider.
+ * provider per kind — enforced by `validateCatalog`); a custom endpoint gets
+ * `custom-<slug of label>`, or the view's `wireKey` when the renderer holds one.
  */
 export function sidecarProviderKey(provider: CatalogProvider): string {
-	return provider.kind === "custom" ? `custom-${slugify(provider.label)}` : provider.kind;
+	if (provider.kind !== "custom") return provider.kind;
+	return provider.wireKey ?? `custom-${slugify(provider.label)}`;
+}
+
+/** What the user sees for a provider: its rename if it has one, else its label. */
+export function providerDisplayName(provider: CatalogProvider): string {
+	return provider.displayName ?? provider.label;
+}
+
+/**
+ * Turns a catalog coming from the view (where `label` is the shown name) into the
+ * one to store. A custom endpoint's stored `label` is its routing identity — older
+ * app versions share the file and derive the wire key from it — so a rename goes
+ * into `displayName`. Anything the caller sends as `wireKey` is dropped.
+ */
+export function keepProviderRoutingLabels(stored: ModelCatalog, next: ModelCatalog): ModelCatalog {
+	return {
+		...next,
+		providers: next.providers.map(({ wireKey: _wireKey, displayName: _displayName, ...incoming }) => {
+			const before = stored.providers.find((p) => p.id === incoming.id);
+			if (incoming.kind !== "custom" || before?.kind !== "custom") return incoming;
+			return {
+				...incoming,
+				label: before.label,
+				...(incoming.label === before.label ? {} : { displayName: incoming.label }),
+			};
+		}),
+	};
 }
 
 /**
  * A label no existing custom provider already resolves to.
  *
- * The label IS the identity of a custom endpoint — `sidecarProviderKey` slugifies
- * it — so two endpoints offered the same fixed label (both "Custom", both
- * "Ollama") collide and the second one cannot be saved at all. The host of the
- * endpoint is tried first because it says which box this is; a counter is the
+ * Two endpoints offered the same fixed label (both "Custom", both "Ollama")
+ * resolve to one wire key and the second cannot be saved. A renamed provider
+ * still owns its old key, so candidates are compared against existing keys.
+ * The host is tried first because it says which box this is; a counter is the
  * fallback for two paths on one host.
  */
 export function uniqueCustomProviderLabel(existing: CatalogProvider[], desired: string, baseUrl?: string): string {
-	const taken = new Set(existing.filter((p) => p.kind === "custom").map((p) => slugify(p.label)));
-	if (!taken.has(slugify(desired))) return desired;
+	const taken = new Set(existing.filter((p) => p.kind === "custom").map(sidecarProviderKey));
+	const key = (label: string) => `custom-${slugify(label)}`;
+	if (!taken.has(key(desired))) return desired;
 
 	let host = "";
 	try {
@@ -151,11 +185,11 @@ export function uniqueCustomProviderLabel(existing: CatalogProvider[], desired: 
 	} catch {
 		/* not a URL we can read a host out of */
 	}
-	if (host && !taken.has(slugify(`${desired} ${host}`))) return `${desired} (${host})`;
+	if (host && !taken.has(key(`${desired} ${host}`))) return `${desired} (${host})`;
 
 	for (let n = 2; ; n += 1) {
 		const candidate = `${desired} ${n}`;
-		if (!taken.has(slugify(candidate))) return candidate;
+		if (!taken.has(key(candidate))) return candidate;
 	}
 }
 
@@ -480,7 +514,7 @@ function catalogDisplay(catalog: ModelCatalog, bindings: ModelRoleBindings): Rec
 		const model = catalog.models.find((m) => m.id === catalogModelId);
 		const provider = catalog.providers.find((p) => p.id === model?.providerId);
 		if (!model || !provider) continue;
-		display[roleId] = { name: model.name, description: `${provider.label} · ${model.modelId}` };
+		display[roleId] = { name: model.name, description: `${providerDisplayName(provider)} · ${model.modelId}` };
 	}
 	return display;
 }
@@ -629,7 +663,7 @@ export function buildCodexModelCatalog(builtin: CodexModelCatalog, catalog: Mode
 				...template,
 				slug,
 				display_name: model.name,
-				description: `Served by ${provider.label} through the dev3 model catalog.`,
+				description: `Served by ${providerDisplayName(provider)} through the dev3 model catalog.`,
 				// Ours first: in a routed session every built-in is unreachable.
 				priority: 0,
 				visibility: "list",

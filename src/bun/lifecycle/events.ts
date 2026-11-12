@@ -18,6 +18,8 @@ export type LifecycleRuntime =
 		phase: "tearing-down";
 		targetStatus: "completed" | "cancelled";
 		runId: string;
+		/** The run stopped on an error and waits for a retry; nothing is tearing down now. */
+		failed?: true;
 	};
 
 export interface LifecycleFacts {
@@ -91,6 +93,8 @@ export type LifecycleEvent =
 		guards?: MoveGuards;
 		force?: boolean;
 		clientPlayedSound?: boolean;
+		/** The move raises no questions badge: the caller raises its own, or the user just acted. */
+		skipQuestionsBadge?: boolean;
 		launchColumnAgent?: boolean;
 		/**
 		 * The move is a deliberate start from outside the task (quick shell, a

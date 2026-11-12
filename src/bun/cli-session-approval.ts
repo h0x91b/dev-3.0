@@ -1,4 +1,5 @@
 import type { AgentLaunchRequest, Project, Task } from "../shared/types";
+import type { ApprovalReason } from "../shared/approval-reason";
 import { agentLaunchAutoApproveMs, buildTaskDialogSubject, DEFAULT_PRIORITY, getTaskTitle } from "../shared/types";
 import { type ExternalSenderRequester, isExternalSenderRequester } from "../shared/external-senders";
 import { type AgentRequestRequester, createAgentRequest, getAgentRequestState, setAgentLaunchDialog } from "./agent-requests";
@@ -59,6 +60,8 @@ export async function askSessionApproval(opts: {
 	subject: SessionApprovalSubject;
 	/** Raised when a request of this kind is already waiting for this task. */
 	alreadyPending: string;
+	/** Why the requester asks (`--reason`). */
+	reason?: ApprovalReason;
 }): Promise<SessionApprovalAnswer> {
 	const { project, task, requester } = opts;
 	const push = getPushMessage();
@@ -68,14 +71,15 @@ export async function askSessionApproval(opts: {
 	// pass too, then JOIN the first one's decision — one approval acting twice.
 	if (getAgentRequestState("launch", task.id).state === "pending") throw new Error(opts.alreadyPending);
 	const subject = buildTaskDialogSubject(task, project);
+	const reasonField = opts.reason ? { reason: opts.reason } : {};
 	const { requestId, decision, autoApproveAt } = createAgentRequest("launch", task.id, project.id, {
-		autoApproveAfterMs, dialog: { taskTitle: getTaskTitle(task), subject, requester: launchRequesterSummary(requester) },
+		autoApproveAfterMs, dialog: { taskTitle: getTaskTitle(task), subject, requester: launchRequesterSummary(requester), ...reasonField },
 	});
 	const request: AgentLaunchRequest = {
 		requestId, taskId: task.id, projectId: project.id, taskTitle: getTaskTitle(task), targetStatus: task.status,
 		scratch: false, ...launchRequesterFields(requester),
 		subject, defaultPriority: task.priority ?? DEFAULT_PRIORITY,
-		canAddVariants: false, autoApproveAt, ...opts.subject,
+		canAddVariants: false, autoApproveAt, ...opts.subject, ...reasonField,
 	};
 	setAgentLaunchDialog(request);
 	push("agentLaunchRequested", request);

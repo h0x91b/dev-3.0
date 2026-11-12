@@ -22,13 +22,16 @@ vi.mock("../rpc", () => ({
 			checkSystemRequirements: vi.fn().mockResolvedValue([]),
 			getRosettaWarning: vi.fn().mockResolvedValue(null),
 			getLaunchLocationIssue: vi.fn().mockResolvedValue(null),
-			getTmuxServerNotice: vi.fn().mockResolvedValue({ predatesLaunchd: false }),
+			getTmuxServerNotice: vi.fn().mockResolvedValue({ predatesLaunchd: false, staleBinary: null }),
+			restartTmuxServer: vi.fn().mockResolvedValue({ ok: true }),
+			getTmuxRestartImpact: vi.fn().mockResolvedValue({ taskTerminals: 0, otherSessions: 0, working: [] }),
 			checkGhAvailable: vi.fn().mockResolvedValue({ available: true, notInstalled: false }),
 			getProjects: vi.fn().mockResolvedValue([]),
 			// Opening a project board asks once whether there is anything to import.
 			scanImportableConversations: vi.fn().mockResolvedValue({ conversations: [] }),
 			markConversationImportOffered: vi.fn().mockResolvedValue({ project: null }),
 			getSpaces: vi.fn().mockResolvedValue({ version: 1, spaces: [], order: [] }),
+			reorderMixedOrder: vi.fn(() => new Promise(() => {})),
 			getLastRoute: vi.fn().mockResolvedValue({ route: null }),
 			saveLastRoute: vi.fn().mockResolvedValue(undefined),
 			quitApp: vi.fn().mockResolvedValue(undefined),
@@ -153,22 +156,28 @@ vi.mock("../components/Changelog", () => ({
 vi.mock("../components/ProjectView", () => ({
 	default: (props: {
 		projectId: string;
+		spaceId?: string;
 		activeTaskId?: string;
 		taskDetailId?: string;
 		taskView?: boolean;
 		bellCounts?: Map<string, number>;
+		bellReasons?: Map<string, string[]>;
 		dockArtifact?: boolean;
 		dispatch?: (action: { type: string; request?: unknown }) => void;
+		navigationGuardRef?: { current: { isDirty: () => boolean; onSave: () => Promise<void> } | null };
 	}) => (
 		<div
 			data-testid="project-screen"
 			data-project-id={props.projectId}
+			data-space-id={props.spaceId ?? ""}
 			data-active-task-id={props.activeTaskId ?? ""}
 			data-task-detail-id={props.taskDetailId ?? ""}
 			data-task-view={props.taskView ? "true" : "false"}
 			data-dock-artifact={props.dockArtifact ? "true" : "false"}
 			data-bell-count={String(props.bellCounts?.get("t-overflow") ?? 0)}
+			data-bell-reasons={JSON.stringify(props.bellReasons?.get("t-overflow") ?? [])}
 		>
+			<button data-testid="mock-make-dirty" onClick={() => { if (props.navigationGuardRef) props.navigationGuardRef.current = { isDirty: () => true, onSave: async () => {} }; }} />
 			<button data-testid="mock-open-diff" onClick={() => props.dispatch?.({ type: "openTaskDiff", request: { mode: "branch" } })} />
 			<button data-testid="mock-close-diff" onClick={() => props.dispatch?.({ type: "closeTaskDiff" })} />
 		</div>
@@ -221,6 +230,7 @@ vi.mock("../components/TaskImageViewer", () => ({
 }));
 
 import { api } from "../rpc";
+import { _resetMixedOrderStore, commitMixedOrder } from "../mixed-order-store";
 import { confirm } from "../confirm";
 
 vi.mock("../confirm", () => ({
@@ -361,16 +371,111 @@ describe("App keyboard shortcuts", () => {
 		const HINT = /tmux server from an earlier dev-3.0 run/;
 
 		it("warns once when task terminals run on a server that predates the launchd start", async () => {
-			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: true });
+			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: true, staleBinary: null });
 			await renderApp();
 			expect(await screen.findByText(HINT)).toBeInTheDocument();
 			expect(api.request.getTmuxServerNotice).toHaveBeenCalledTimes(1);
 		});
 
 		it("stays silent when the server is launchd-owned", async () => {
-			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: false });
+			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: false, staleBinary: null });
 			await renderApp();
 			expect(screen.queryByText(HINT)).not.toBeInTheDocument();
+			expect(screen.queryByRole("button", { name: "Restart terminals" })).not.toBeInTheDocument();
+		});
+
+		it("offers a restart when the server's tmux was deleted, and keeps the offer if the user cancels", async () => {
+			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: true, staleBinary: "deleted" });
+			await renderApp();
+			expect(await screen.findByText(/dev-3.0 copy was deleted/)).toBeInTheDocument();
+			expect(screen.queryByText(HINT)).not.toBeInTheDocument();
+
+			vi.mocked(confirm).mockResolvedValueOnce(false);
+			await userEvent.click(screen.getByRole("button", { name: "Restart terminals" }));
+			await waitFor(() =>
+				expect(confirm).toHaveBeenCalledWith(
+					expect.objectContaining({ title: "Restart all task terminals?", danger: true, focusCancel: true, cancelLabel: "Restart later" }),
+				),
+			);
+			expect(api.request.restartTmuxServer).not.toHaveBeenCalled();
+			expect(await screen.findByRole("button", { name: "Restart terminals" })).toBeInTheDocument();
+			expect(screen.getByText(/dev-3.0 copy was deleted/)).toBeInTheDocument();
+		});
+
+		it("reports a failed restart and brings the offer back", async () => {
+			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: false, staleBinary: "deleted" });
+			vi.mocked(api.request.restartTmuxServer).mockRejectedValueOnce(new Error("kill-server failed"));
+			vi.mocked(confirm).mockResolvedValueOnce(true);
+			await renderApp();
+			await userEvent.click(await screen.findByRole("button", { name: "Restart terminals" }));
+			expect(await screen.findByText(/Couldn't restart terminals/)).toBeInTheDocument();
+			expect(await screen.findByRole("button", { name: "Restart terminals" })).toBeInTheDocument();
+		});
+
+		it("restarts the tmux server once the user confirms", async () => {
+			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: false, staleBinary: "deleted" });
+			vi.mocked(confirm).mockResolvedValueOnce(true);
+			await renderApp();
+			await userEvent.click(await screen.findByRole("button", { name: "Restart terminals" }));
+			await waitFor(() => expect(api.request.restartTmuxServer).toHaveBeenCalledTimes(1));
+		});
+
+		it("lists the agents a restart would cut off mid-turn before Restart now works", async () => {
+			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: false, staleBinary: "deleted" });
+			vi.mocked(api.request.getTmuxRestartImpact).mockResolvedValueOnce({
+				taskTerminals: 3,
+				otherSessions: 0,
+				working: [{ taskId: "t1", seqLabel: "1801", title: "Coordinate the board", projectName: "dev-3.0" }],
+			});
+			vi.mocked(confirm).mockResolvedValueOnce(false);
+			await renderApp();
+			await userEvent.click(await screen.findByRole("button", { name: "Restart terminals" }));
+			await waitFor(() => expect(confirm).toHaveBeenCalled());
+			const { deferred } = vi.mocked(confirm).mock.lastCall![0];
+			expect(deferred?.gateConfirm).toBe(true);
+			await expect(deferred?.promise).resolves.toBe(
+				"3 task terminals close.\nThis agent is mid-turn and gets cut off:\n• #1801 Coordinate the board · dev-3.0",
+			);
+		});
+
+		it("offers a restart for a server no known tmux can drive", async () => {
+			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: false, staleBinary: "incompatible" });
+			await renderApp();
+			expect(await screen.findByText(/can't drive/)).toBeInTheDocument();
+			expect(screen.getByRole("button", { name: "Restart terminals" })).toBeInTheDocument();
+		});
+
+		it("warns about a server running another dev-3.0 copy's tmux", async () => {
+			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: false, staleBinary: "elsewhere" });
+			await renderApp();
+			expect(await screen.findByText(/from another dev-3.0 copy/)).toBeInTheDocument();
+		});
+
+		it("keeps the lost-access restart offer on screen until the user acts on it", async () => {
+			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: false, staleBinary: "deleted" });
+			vi.useFakeTimers({ shouldAdvanceTime: true });
+			try {
+				await renderApp();
+				expect(await screen.findByText(/dev-3.0 copy was deleted/)).toBeInTheDocument();
+				act(() => vi.advanceTimersByTime(10 * 60_000));
+				expect(screen.getByText(/dev-3.0 copy was deleted/)).toBeInTheDocument();
+				expect(screen.getByRole("button", { name: "Restart terminals" })).toBeInTheDocument();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("lets the another-copy notice time out: a second running copy shares the server on purpose", async () => {
+			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: false, staleBinary: "elsewhere" });
+			vi.useFakeTimers({ shouldAdvanceTime: true });
+			try {
+				await renderApp();
+				expect(await screen.findByText(/from another dev-3.0 copy/)).toBeInTheDocument();
+				act(() => vi.advanceTimersByTime(10 * 60_000));
+				await waitFor(() => expect(screen.queryByText(/from another dev-3.0 copy/)).not.toBeInTheDocument());
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 	});
 
@@ -756,6 +861,197 @@ describe("App keyboard shortcuts", () => {
 			});
 			act(() => window.dispatchEvent(wrapped));
 			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "v1");
+		});
+	});
+
+	describe("number keys follow spaces", () => {
+		const base = { path: "/x", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" };
+		const projects = [
+			{ ...base, id: "ops", name: "Operations", kind: "virtual" as const, builtin: true },
+			{ ...base, id: "p1", name: "Alpha" },
+			{ ...base, id: "p2", name: "Beta" },
+			{ ...base, id: "p3", name: "Gamma" },
+			{ ...base, id: "p4", name: "Delta" },
+		];
+		// Mixed order: Alpha, the space (slot of Beta), Delta.
+		const spacesFile = {
+			version: 1,
+			spaces: [{ id: "sp_a", name: "Client", parentId: null, projectIds: ["p2", "p3"], createdAt: 1 }],
+			order: ["sp_a"],
+		};
+
+		async function renderWith(follow: boolean) {
+			vi.mocked(api.request.getProjects).mockResolvedValue(projects);
+			vi.mocked(api.request.getSpaces).mockResolvedValue(spacesFile as never);
+			vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+				defaultAgentId: "builtin-claude",
+				defaultConfigId: "claude-default",
+				taskSortOrder: "oldest-first",
+				updateChannel: "stable",
+				...(follow ? { digitsFollowSpaces: true } : {}),
+			} as never);
+			await renderApp();
+			// Settings and spaces load after the first screen; let them land.
+			await act(async () => {
+				await new Promise((resolve) => setTimeout(resolve, 0));
+			});
+		}
+
+		function press(init: KeyboardEventInit) {
+			act(() => {
+				window.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
+			});
+		}
+
+		const project = () => screen.getByTestId("project-screen");
+
+		afterEach(() => {
+			_resetMixedOrderStore();
+			localStorage.removeItem("dev3-space-last-project-sp_a");
+			vi.mocked(api.request.getSpaces).mockResolvedValue({ version: 1, spaces: [], order: [] });
+			vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+				defaultAgentId: "builtin-claude",
+				defaultConfigId: "claude-default",
+				taskSortOrder: "oldest-first",
+				updateChannel: "stable",
+			} as never);
+		});
+
+		it("⌘2 opens the space board anchored on its first member", async () => {
+			await renderWith(true);
+			press({ key: "2", code: "Digit2", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p2");
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
+		});
+
+		it("⌘2 anchors on the member last used on that board while it is still a member", async () => {
+			localStorage.setItem("dev3-space-last-project-sp_a", "p3");
+			await renderWith(true);
+			press({ key: "2", code: "Digit2", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p3");
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
+		});
+
+		it("⌘2 falls back to the first member when the remembered one left the space", async () => {
+			localStorage.setItem("dev3-space-last-project-sp_a", "p4");
+			await renderWith(true);
+			press({ key: "2", code: "Digit2", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p2");
+		});
+
+		it("⌘3 opens the standalone project, with no space", async () => {
+			await renderWith(true);
+			press({ key: "3", code: "Digit3", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p4");
+			expect(project()).toHaveAttribute("data-space-id", "");
+		});
+
+		it("⇧⌘2 opens the space board in the task view", async () => {
+			await renderWith(true);
+			press({ key: "@", code: "Digit2", metaKey: true, shiftKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p2");
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
+			expect(project()).toHaveAttribute("data-task-view", "true");
+		});
+
+		it.each([true, false])("⌘1 from a space board's split view lands on the project alone (follow=%s)", async (follow) => {
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p2", spaceId: "sp_a", taskView: true }),
+			});
+			await renderWith(follow);
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
+			press({ key: "1", code: "Digit1", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p1");
+			expect(project()).toHaveAttribute("data-space-id", "");
+			expect(project()).toHaveAttribute("data-task-view", "true");
+		});
+
+		// A switch discarded through the unsaved-changes dialog must still be a switch.
+		it("⌘1 from a space board's split view lands on the project alone after Discard on a dirty form", async () => {
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p2", spaceId: "sp_a", taskView: true }),
+			});
+			await renderWith(false);
+			await userEvent.click(screen.getByTestId("mock-make-dirty"));
+			press({ key: "1", code: "Digit1", metaKey: true });
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
+			await userEvent.click(await screen.findByRole("button", { name: "Discard" }));
+			expect(project()).toHaveAttribute("data-project-id", "p1");
+			expect(project()).toHaveAttribute("data-space-id", "");
+		});
+
+		it("g then t, left to time out, keeps the board's space", async () => {
+			vi.useFakeTimers({ shouldAdvanceTime: true });
+			try {
+				vi.mocked(api.request.getLastRoute).mockResolvedValue({
+					route: JSON.stringify({ screen: "project", projectId: "p2", spaceId: "sp_a" }),
+				});
+				await renderWith(false);
+				press({ key: "g", code: "KeyG" });
+				press({ key: "t", code: "KeyT" });
+				await act(async () => {
+					await vi.advanceTimersByTimeAsync(1200);
+				});
+				expect(project()).toHaveAttribute("data-project-id", "p2");
+				expect(project()).toHaveAttribute("data-space-id", "sp_a");
+				expect(project()).toHaveAttribute("data-task-view", "true");
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("g then p, left to time out, keeps the board's space", async () => {
+			vi.useFakeTimers({ shouldAdvanceTime: true });
+			try {
+				vi.mocked(api.request.getLastRoute).mockResolvedValue({
+					route: JSON.stringify({ screen: "project", projectId: "p2", spaceId: "sp_a", taskView: true }),
+				});
+				await renderWith(false);
+				press({ key: "g", code: "KeyG" });
+				press({ key: "p", code: "KeyP" });
+				await act(async () => {
+					await vi.advanceTimersByTimeAsync(1200);
+				});
+				expect(project()).toHaveAttribute("data-space-id", "sp_a");
+				expect(project()).toHaveAttribute("data-task-view", "false");
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("digits follow the order just chosen, before the host has stored it", async () => {
+			await renderWith(true);
+			act(() => commitMixedOrder(["sp_a", "p1", "p4"]));
+			press({ key: "1", code: "Digit1", metaKey: true });
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
+		});
+
+		it("⌘0 still opens Operations", async () => {
+			await renderWith(true);
+			press({ key: "0", code: "Digit0", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "ops");
+		});
+
+		it("g then 2 opens the space board too", async () => {
+			await renderWith(true);
+			press({ key: "g", code: "KeyG" });
+			press({ key: "2", code: "Digit2" });
+			expect(project()).toHaveAttribute("data-project-id", "p2");
+			expect(project()).toHaveAttribute("data-space-id", "sp_a");
+		});
+
+		it("g then 1 skips Operations in both modes", async () => {
+			await renderWith(false);
+			press({ key: "g", code: "KeyG" });
+			press({ key: "1", code: "Digit1" });
+			expect(project()).toHaveAttribute("data-project-id", "p1");
+		});
+
+		it("with the setting off, ⌘2 is the second project, never a space", async () => {
+			await renderWith(false);
+			press({ key: "2", code: "Digit2", metaKey: true });
+			expect(project()).toHaveAttribute("data-project-id", "p2");
+			expect(project()).toHaveAttribute("data-space-id", "");
 		});
 	});
 
@@ -2403,6 +2699,23 @@ describe("App keyboard shortcuts", () => {
 			});
 
 			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-bell-count", "0"));
+		});
+
+		it("words a questions badge itself instead of showing the empty reason", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1" }),
+			});
+
+			await renderApp();
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:cliAttention", {
+					detail: { taskId: "t-overflow", projectId: "p1", reason: "", kind: "questions" },
+				}));
+			});
+
+			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-bell-count", "1"));
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-bell-reasons", JSON.stringify(["Waiting for your answer"]));
 		});
 	});
 

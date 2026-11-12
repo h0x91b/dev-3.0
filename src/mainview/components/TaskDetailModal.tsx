@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type Dispatch } from "react";
-import { TaskRefText } from "./TaskRefText";
+import { TaskDescriptionMarkdown } from "./pr-review/markdown";
 import { toast } from "../toast";
 import TaskOriginRow from "./TaskOriginRow";
 import TaskEpicRow from "./TaskEpicRow";
@@ -613,9 +613,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 								</div>
 							</div>
 						) : (
-							<div className="text-fg-2 text-sm leading-relaxed whitespace-pre-wrap break-words">
-								<TaskRefText text={task.description} contextProjectId={task.projectId} taskId={task.id} />
-							</div>
+							<TaskDescriptionMarkdown body={task.description} projectId={task.projectId} taskId={task.id} />
 						)}
 					</div>
 
@@ -881,9 +879,7 @@ function ArchivedView({
 									<span className="text-fg-3 text-xs font-medium uppercase tracking-wider mb-2 block">
 										{t("task.descriptionLabel")}
 									</span>
-									<div className="text-fg-2 text-sm leading-relaxed whitespace-pre-wrap break-words">
-										<TaskRefText text={task.description} contextProjectId={task.projectId} taskId={task.id} />
-									</div>
+									<TaskDescriptionMarkdown body={task.description} projectId={task.projectId} taskId={task.id} />
 								</div>
 							)}
 

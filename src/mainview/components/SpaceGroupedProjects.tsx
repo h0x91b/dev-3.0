@@ -1,13 +1,14 @@
-import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { isSpaceSensitive, type Project, type Space } from "../../shared/types";
 import { HOME_GROUP_ID, type DashboardGroup } from "../utils/spaceGroups";
+import { digitBadgeById, mixedEntryId, type MixedEntry } from "../utils/digitOrder";
 import { MASK_CLASS } from "../sensitive-projects";
 import { api } from "../rpc";
 import { toast } from "../toast";
 import { useT } from "../i18n";
 import SpaceHeaderMenu from "./SpaceHeaderMenu";
 import SpaceIcon from "./SpaceIcon";
-import type { ReorderScope } from "../hooks/useReorderDrag";
+import type { ReorderScope, useReorderDrag } from "../hooks/useReorderDrag";
 
 const LS_COLLAPSED_SPACES = "dev3-collapsed-spaces";
 
@@ -55,6 +56,31 @@ export interface RowReorderCtx {
 	canMoveDown: boolean;
 	onMoveUp: () => void;
 	onMoveDown: () => void;
+	/** ⌘N digit this row answers to (mixed order only), shown beside its name. */
+	digitHint?: string;
+}
+
+/** Scope key of the mixed top-level list: spaces and standalone projects together. */
+export const MIXED_SCOPE_KEY = "mixed";
+
+/** The ⌘N badge — same markup as the header switcher's. */
+export function DigitHint({ digit }: { digit: string }) {
+	return (
+		<kbd className="flex-shrink-0 inline-flex items-center gap-0.5 text-dense text-fg-muted/60 font-mono">
+			<span className="text-micro">⌘</span>{digit}
+		</kbd>
+	);
+}
+
+/** One top-level list in the user's order: spaces and standalone projects interleaved. */
+export interface MixedOrderConfig {
+	/** In display order, any optimistic reorder already applied. */
+	entries: MixedEntry[];
+	onReorder: (sourceId: string, targetId: string, side: "before" | "after") => void;
+	onStep: (id: string, delta: -1 | 1) => void;
+	drag: Pick<ReturnType<typeof useReorderDrag>, "active" | "begin" | "rowRef">;
+	/** ⌘1–9 hints are desktop-only: the browser keeps those keys in remote mode. */
+	showDigitHints: boolean;
 }
 
 interface SpaceGroupedProjectsProps {
@@ -84,6 +110,177 @@ interface SpaceGroupedProjectsProps {
 	 *  see it, so a stale collapse from a previous session must not hide the very
 	 *  group the user just asked for. */
 	selectedSpaceId?: string | null;
+	/** Mixed top-level order: replaces the per-group list with one reorderable one. */
+	mixed?: MixedOrderConfig;
+}
+
+/** The pieces of one space block that only exist in the mixed top-level list. */
+interface SpaceGroupMixed {
+	dragEnabled: boolean;
+	onGripPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
+	hint?: string;
+	outerRef: (el: HTMLElement | null) => void;
+	isDragged: boolean;
+	/** Any block of the mixed list is being dragged: the list is one-line entries, evenly spaced. */
+	dragActive: boolean;
+}
+
+interface SpaceGroupProps {
+	space: Space;
+	projectCount: number;
+	isCollapsed: boolean;
+	masked: boolean;
+	needsYou: number;
+	working: number;
+	onToggleCollapsed: () => void;
+	onEditProjects?: (space: Space) => void;
+	onOpenSpaceBoard?: (space: Space) => void;
+	onRenameSpace?: (space: Space, name: string) => void;
+	onDeleteSpace?: (space: Space) => void;
+	onToggleSensitive?: (space: Space, sensitive: boolean) => void;
+	/** Undefined hides `Move up` / `Move down`. */
+	onMove?: (space: Space, delta: -1 | 1) => void;
+	canMoveUp: boolean;
+	canMoveDown: boolean;
+	renderRows: () => ReactNode;
+	mixed?: SpaceGroupMixed;
+}
+
+/** One space block: header (collapse, open board, menu) and its indented member rows. */
+function SpaceGroup({
+	space,
+	projectCount,
+	isCollapsed,
+	masked,
+	needsYou,
+	working,
+	onToggleCollapsed,
+	onEditProjects,
+	onOpenSpaceBoard,
+	onRenameSpace,
+	onDeleteSpace,
+	onToggleSensitive,
+	onMove,
+	canMoveUp,
+	canMoveDown,
+	renderRows,
+	mixed,
+}: SpaceGroupProps) {
+	const t = useT();
+	const block = (
+		<div
+			ref={mixed?.outerRef}
+			className={
+				mixed
+					// The registered element is a surface of its own, so the drag preview
+					// is opaque and the placeholder has an edge to dash.
+					? `relative space-y-2 rounded-xl ${mixed.isDragged ? "border border-edge bg-raised px-3 py-2" : ""}`
+					: `relative ${GROUP_CLASS}`
+			}
+			data-testid={`space-group-${space.id}`}
+			data-reorder-placeholder={mixed?.isDragged || undefined}
+		>
+			<div className="flex items-center gap-2">
+				{mixed?.dragEnabled && (
+					<div className="hidden md:flex -ml-1.5 items-center select-none">
+						{/* Pointer-only, like the project row's grip: the header menu's
+						    Move up / Move down is the keyboard path. */}
+						<span
+							role="presentation"
+							onPointerDown={mixed.onGripPointerDown}
+							data-reorder-grip
+							className="p-1.5 rounded-lg text-fg-3 transition-colors touch-none cursor-grab active:cursor-grabbing hover:text-fg hover:bg-elevated"
+							title={t("spaces.dragSpace")}
+						>
+							<span
+								aria-hidden="true"
+								className="text-base leading-none"
+								style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+							>
+								{"\u{F01DB}"}
+							</span>
+						</span>
+					</div>
+				)}
+				<button
+					type="button"
+					onClick={onToggleCollapsed}
+					aria-expanded={!isCollapsed}
+					className="flex items-center gap-2 min-w-0 text-left group"
+					data-testid={`space-header-${space.id}`}
+				>
+					<svg
+						aria-hidden="true"
+						focusable="false"
+						className={`w-3.5 h-3.5 text-fg-muted group-hover:text-fg-3 transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
+						fill="none"
+						stroke="currentColor"
+						viewBox="0 0 24 24"
+					>
+						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+					</svg>
+					<SpaceIcon className="w-4 h-4 flex-shrink-0 text-fg-muted group-hover:text-fg-3" />
+					<span className={`text-fg-2 text-sm font-semibold truncate ${masked ? MASK_CLASS : ""}`}>
+						{space.name}
+					</span>
+					<span className={`text-fg-muted text-xs tabular-nums flex-shrink-0 ${masked ? MASK_CLASS : ""}`}>
+						{t.plural("spaces.projectCount", projectCount)}
+					</span>
+					{mixed?.hint && <DigitHint digit={mixed.hint} />}
+					{/* Words, no colour marker: a dot needs a legend, and the
+					    only legend was this same line saying it out loud. */}
+					{needsYou > 0 && (
+						<span className={`flex-shrink-0 text-xs text-fg-3 ${masked ? MASK_CLASS : ""}`}>
+							{t.plural("spaces.needYou", needsYou)}
+						</span>
+					)}
+					{working > 0 && (
+						<span className={`flex-shrink-0 text-xs text-fg-3 ${masked ? MASK_CLASS : ""}`}>
+							{t.plural("spaces.working", working)}
+						</span>
+					)}
+				</button>
+				{/* Named and visible, not folded into the menu next to it: opening the
+				    space's board is the group's primary action, and a menu would make
+				    the board reachable only to someone who already knows it exists. */}
+				{onOpenSpaceBoard && projectCount > 0 && (
+					<button
+						type="button"
+						onClick={() => onOpenSpaceBoard(space)}
+						className="flex flex-shrink-0 items-center gap-1.5 rounded-md border border-edge bg-raised px-2 py-1 text-xs font-medium text-fg-2 transition-colors hover:border-edge-active hover:bg-raised-hover hover:text-accent motion-safe:active:scale-[0.96]"
+						data-testid={`space-open-board-${space.id}`}
+					>
+						<svg aria-hidden="true" focusable="false" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+							<path strokeLinecap="round" strokeLinejoin="round" d="M7 17L17 7m0 0H9m8 0v8" />
+						</svg>
+						{t("spaces.openBoard")}
+					</button>
+				)}
+				{/* One control for the whole space, sitting against its name and
+				    not pushed to the far right of a 1024px column (§9a.6 — group
+				    with proximity). Membership lives inside it: a bare `+` could
+				    only add, so removing a project was reachable nowhere near
+				    the space it belonged to. */}
+				{onRenameSpace && onDeleteSpace && (
+					<SpaceHeaderMenu
+						space={space}
+						onRename={onRenameSpace}
+						onDelete={onDeleteSpace}
+						onEditProjects={onEditProjects}
+						onToggleSensitive={onToggleSensitive}
+						touchTarget
+						onMove={onMove}
+						canMoveUp={canMoveUp}
+						canMoveDown={canMoveDown}
+					/>
+				)}
+			</div>
+			{!isCollapsed && <div className={ROWS_CLASS}>{renderRows()}</div>}
+		</div>
+	);
+	// The gap above a block sits outside the registered element and goes while a
+	// drag is on, so every entry is spaced alike and the slots line up.
+	return mixed ? <div className={mixed.dragActive ? "" : "pt-6"}>{block}</div> : block;
 }
 
 /**
@@ -108,6 +305,7 @@ function SpaceGroupedProjects({
 	onToggleSensitive,
 	spaceOrder,
 	selectedSpaceId,
+	mixed,
 }: SpaceGroupedProjectsProps) {
 	const t = useT();
 	const [collapsed, setCollapsed] = useState<Set<string>>(readCollapsed);
@@ -202,6 +400,98 @@ function SpaceGroupedProjects({
 		};
 	}
 
+	function renderSpaceGroup(group: DashboardGroup & { space: Space }, extra: { mixed?: SpaceGroupMixed; collapsedNow?: boolean; move?: { onMove?: (space: Space, delta: -1 | 1) => void; canMoveUp: boolean; canMoveDown: boolean } }) {
+		const space = group.space;
+		const move = extra.move ?? {
+			onMove: onMoveSpace && (spaceOrder?.length ?? 0) > 1 ? onMoveSpace : undefined,
+			canMoveUp: (spaceOrder?.indexOf(space.id) ?? 0) > 0,
+			canMoveDown: spaceOrder ? spaceOrder.indexOf(space.id) < spaceOrder.length - 1 : false,
+		};
+		return (
+			<SpaceGroup
+				key={space.id}
+				space={space}
+				projectCount={group.projects.length}
+				isCollapsed={extra.collapsedNow ?? collapsed.has(space.id)}
+				masked={isSpaceSensitive(space, sensitiveProjectIds)}
+				needsYou={group.projects.reduce((sum, p) => sum + needsYouCountOf(p.id), 0)}
+				working={group.projects.reduce((sum, p) => sum + workingCountOf(p.id), 0)}
+				onToggleCollapsed={() => toggleCollapsed(space.id)}
+				onEditProjects={onEditProjects}
+				onOpenSpaceBoard={onOpenSpaceBoard}
+				onRenameSpace={onRenameSpace}
+				onDeleteSpace={onDeleteSpace}
+				onToggleSensitive={onToggleSensitive}
+				onMove={move.onMove}
+				canMoveUp={move.canMoveUp}
+				canMoveDown={move.canMoveDown}
+				mixed={extra.mixed}
+				renderRows={() =>
+					withPendingOrder(space.id, group.projects).map((project, index, members) => (
+						<div key={`${space.id}:${project.id}`}>
+							{renderProject(project, rowCtx(space.id, members, project, index), space.id)}
+						</div>
+					))
+				}
+			/>
+		);
+	}
+
+	if (mixed) {
+		const { drag } = mixed;
+		const displayedMixed = mixed.entries;
+		const ids = displayedMixed.map(mixedEntryId);
+		const dragActive = drag.active?.scope === MIXED_SCOPE_KEY;
+		const badges = mixed.showDigitHints ? digitBadgeById(displayedMixed.slice(0, 9)) : {};
+		const scope: ReorderScope = {
+			key: MIXED_SCOPE_KEY,
+			ids,
+			commit: mixed.onReorder,
+		};
+		return (
+			<>
+				{displayedMixed.map((entry, index) => {
+					const id = mixedEntryId(entry);
+					const canDrag = ids.length > 1;
+					if (entry.kind === "project") {
+						const ctx: RowReorderCtx = {
+							showReorder: true,
+							dragEnabled: canDrag,
+							scope,
+							canMoveUp: index > 0,
+							canMoveDown: index < ids.length - 1,
+							onMoveUp: () => mixed.onStep(id, -1),
+							onMoveDown: () => mixed.onStep(id, 1),
+							digitHint: badges[id],
+						};
+						return <Fragment key={`mixed:${id}`}>{renderProject(entry.project, ctx, null)}</Fragment>;
+					}
+					return renderSpaceGroup(
+						{ space: entry.space, projects: entry.projects },
+						{
+							// Every block shrinks to its header for the length of a drag, so the
+							// whole list fits the screen and any slot is one pointer-move away.
+							collapsedNow: dragActive || collapsed.has(entry.space.id),
+							move: {
+								onMove: ids.length > 1 ? (space, delta) => mixed.onStep(space.id, delta) : undefined,
+								canMoveUp: index > 0,
+								canMoveDown: index < ids.length - 1,
+							},
+							mixed: {
+								dragEnabled: canDrag,
+								onGripPointerDown: (event) => drag.begin(event, scope, id),
+								hint: badges[id],
+								outerRef: drag.rowRef(MIXED_SCOPE_KEY, id),
+								isDragged: dragActive && drag.active?.id === id,
+								dragActive,
+							},
+						},
+					);
+				})}
+			</>
+		);
+	}
+
 	return (
 		<>
 			{groups.map((group) => {
@@ -226,101 +516,7 @@ function SpaceGroupedProjects({
 						</div>
 					);
 				}
-
-				const space = group.space;
-				const isCollapsed = collapsed.has(space.id);
-				const masked = isSpaceSensitive(space, sensitiveProjectIds);
-				const needsYou = group.projects.reduce((sum, p) => sum + needsYouCountOf(p.id), 0);
-				const working = group.projects.reduce((sum, p) => sum + workingCountOf(p.id), 0);
-
-				return (
-					<div key={space.id} className={`relative ${GROUP_CLASS}`} data-testid={`space-group-${space.id}`}>
-						<div className="flex items-center gap-2">
-							<button
-								type="button"
-								onClick={() => toggleCollapsed(space.id)}
-								aria-expanded={!isCollapsed}
-								className="flex items-center gap-2 min-w-0 text-left group"
-								data-testid={`space-header-${space.id}`}
-							>
-								<svg
-									aria-hidden="true"
-									focusable="false"
-									className={`w-3.5 h-3.5 text-fg-muted group-hover:text-fg-3 transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
-									fill="none"
-									stroke="currentColor"
-									viewBox="0 0 24 24"
-								>
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-								</svg>
-								<SpaceIcon className="w-4 h-4 flex-shrink-0 text-fg-muted group-hover:text-fg-3" />
-								<span className={`text-fg-2 text-sm font-semibold truncate ${masked ? MASK_CLASS : ""}`}>
-									{space.name}
-								</span>
-								<span className={`text-fg-muted text-xs tabular-nums flex-shrink-0 ${masked ? MASK_CLASS : ""}`}>
-									{t.plural("spaces.projectCount", group.projects.length)}
-								</span>
-								{/* Words, no colour marker: a dot needs a legend, and the
-								    only legend was this same line saying it out loud. */}
-								{needsYou > 0 && (
-									<span className={`flex-shrink-0 text-xs text-fg-3 ${masked ? MASK_CLASS : ""}`}>
-										{t.plural("spaces.needYou", needsYou)}
-									</span>
-								)}
-								{working > 0 && (
-									<span className={`flex-shrink-0 text-xs text-fg-3 ${masked ? MASK_CLASS : ""}`}>
-										{t.plural("spaces.working", working)}
-									</span>
-								)}
-							</button>
-							{/* Named and visible, not folded into the menu next to it: opening the
-						    space's board is the group's primary action, and a menu would make
-						    the board reachable only to someone who already knows it exists. */}
-						{onOpenSpaceBoard && group.projects.length > 0 && (
-							<button
-								type="button"
-								onClick={() => onOpenSpaceBoard(space)}
-								className="flex flex-shrink-0 items-center gap-1.5 rounded-md border border-edge bg-raised px-2 py-1 text-xs font-medium text-fg-2 transition-colors hover:border-edge-active hover:bg-raised-hover hover:text-accent motion-safe:active:scale-[0.96]"
-								data-testid={`space-open-board-${space.id}`}
-							>
-								<svg aria-hidden="true" focusable="false" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-									<path strokeLinecap="round" strokeLinejoin="round" d="M7 17L17 7m0 0H9m8 0v8" />
-								</svg>
-								{t("spaces.openBoard")}
-							</button>
-						)}
-						{/* One control for the whole space, sitting against its name and
-							    not pushed to the far right of a 1024px column (§9a.6 — group
-							    with proximity). Membership lives inside it: a bare `+` could
-							    only add, so removing a project was reachable nowhere near
-							    the space it belonged to. */}
-							{onRenameSpace && onDeleteSpace && (
-								<SpaceHeaderMenu
-									space={space}
-									onRename={onRenameSpace}
-									onDelete={onDeleteSpace}
-									onEditProjects={onEditProjects}
-									onToggleSensitive={onToggleSensitive}
-									touchTarget
-									onMove={onMoveSpace && (spaceOrder?.length ?? 0) > 1 ? onMoveSpace : undefined}
-									canMoveUp={(spaceOrder?.indexOf(space.id) ?? 0) > 0}
-									canMoveDown={
-										spaceOrder ? spaceOrder.indexOf(space.id) < spaceOrder.length - 1 : false
-									}
-								/>
-							)}
-						</div>
-						{!isCollapsed && (
-							<div className={ROWS_CLASS}>
-								{withPendingOrder(space.id, group.projects).map((project, index, members) => (
-									<div key={`${space.id}:${project.id}`}>
-										{renderProject(project, rowCtx(space.id, members, project, index), space.id)}
-									</div>
-								))}
-							</div>
-						)}
-					</div>
-				);
+				return renderSpaceGroup({ ...group, space: group.space }, {});
 			})}
 		</>
 	);

@@ -130,4 +130,5 @@ export type LifecycleEffect =
 	| ({ type: "notifyStatusChange"; from: TaskStatus; to: TaskStatus } & EffectPolicy)
 	| ({ type: "raisePrAttention"; reason: string } & EffectPolicy)
 	| ({ type: "emitTaskSound"; status: TaskSoundStatus } & EffectPolicy)
+	| ({ type: "raiseQuestionsAttention" } & EffectPolicy)
 	| LifecyclePushEffect;

@@ -1,5 +1,7 @@
 import {
 	compareTaskSortRank,
+	isLiftedCoordinator,
+	isPinnedCoordinator,
 	isTaskDisconnected,
 	taskAgentSessionLooksLive,
 	taskSortRank,
@@ -806,6 +808,29 @@ describe("buildTaskDialogSubject", () => {
 
 		const none = buildTaskDialogSubject(makeTask({ labelIds: [] }), makeProject());
 		expect(none.labels).toEqual([]);
+	});
+});
+
+describe("isLiftedCoordinator / isPinnedCoordinator", () => {
+	const coord = (overrides: Partial<Task> = {}) => ({ taskType: "coordinator" as const, status: "in-progress" as const, ...overrides });
+
+	it("pins only a live coordinator in an active column", () => {
+		expect([isLiftedCoordinator(coord()), isPinnedCoordinator(coord())]).toEqual([true, true]);
+	});
+
+	it("lifts but does not pin a coordinator in todo or completed", () => {
+		for (const status of ["todo", "completed"] as const) {
+			expect([isLiftedCoordinator(coord({ status })), isPinnedCoordinator(coord({ status }))]).toEqual([true, false]);
+		}
+	});
+
+	it("neither lifts nor pins a hibernated coordinator", () => {
+		expect([isLiftedCoordinator(coord({ hibernated: true })), isPinnedCoordinator(coord({ hibernated: true }))]).toEqual([false, false]);
+	});
+
+	it("pins a disconnected coordinator although it loses the lift", () => {
+		const dead = coord({ worktreePath: "/w", runtimeState: { runtime: "idle", updatedAt: 0 } });
+		expect([isLiftedCoordinator(dead), isPinnedCoordinator(dead)]).toEqual([false, true]);
 	});
 });
 
