@@ -204,6 +204,18 @@ function Text({ children, mono = false, numeric = false, title }: { children: Re
 	return <span title={title} className={`block truncate text-xs text-fg-2 ${mono ? "font-mono" : ""} ${numeric ? "tabular-nums" : ""}`}>{children}</span>;
 }
 
+/** The title, led by the role chip on a coordinator; shared by the grid row and the narrow card. */
+export function TitleCell({ task, className = "" }: { task: Task; className?: string }) {
+	const title = getTaskTitle(task);
+	const coordinator = isCoordinatorTask(task);
+	return (
+		<span className={`flex min-w-0 items-center gap-1.5 ${className}`}>
+			{coordinator && <TaskRoleChip role="coordinator" testId="board-table-coordinator-chip" />}
+			<span className={`min-w-0 truncate text-sm ${coordinator ? `font-semibold ${COORDINATOR_TITLE}` : "text-fg"}`} title={title}>{title}</span>
+		</span>
+	);
+}
+
 /** One cell's content. The interactive ones own their pickers; the rest are plain text. */
 export function TableCell({ column, task, ctx }: { column: TableColumnId; task: Task; ctx: TableRowContext }) {
 	const t = useT();
@@ -211,12 +223,7 @@ export function TableCell({ column, task, ctx }: { column: TableColumnId; task: 
 		case "seq":
 			return <span className="text-xs tabular-nums text-fg-3">{rowSeqLabel(task, ctx)}</span>;
 		case "title":
-			return isCoordinatorTask(task) ? (
-				<span className="flex min-w-0 items-center gap-1.5">
-					<TaskRoleChip role="coordinator" testId="board-table-coordinator-chip" />
-					<span className={`block truncate text-sm font-semibold ${COORDINATOR_TITLE}`} title={getTaskTitle(task)}>{getTaskTitle(task)}</span>
-				</span>
-			) : <span className="block truncate text-sm text-fg" title={getTaskTitle(task)}>{getTaskTitle(task)}</span>;
+			return <TitleCell task={task} />;
 		case "project":
 			return <Text title={ctx.projectName(task.projectId)}>{ctx.projectName(task.projectId)}</Text>;
 		case "status":

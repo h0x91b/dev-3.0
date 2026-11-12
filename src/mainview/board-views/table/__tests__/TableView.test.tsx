@@ -8,6 +8,7 @@ import { BoardViewRegistry } from "../../registry";
 import "../../root";
 import { installTableView, TABLE_VIEW_ID } from "..";
 import { TableOptions } from "../TableOptions";
+import { COORDINATOR_ROW } from "../../zebra";
 
 vi.mock("../../../rpc", () => ({ api: { request: {} } }));
 
@@ -153,6 +154,15 @@ describe("Table board view", () => {
 		expect(rowIds()).toEqual(["c1", "t3"]);
 		expect(within(screen.getByTestId("board-table-row-c1")).getByTestId("board-table-coordinator-chip")).toBeInTheDocument();
 		expect(within(screen.getByTestId("board-table-row-t3")).queryByTestId("board-table-coordinator-chip")).toBeNull();
+	});
+
+	it("tints only pinned coordinators; a completed one keeps the chip but not the tint", async () => {
+		await renderTable({
+			tasks: [task("live", 1, { taskType: "coordinator", status: "in-progress" }), task("done", 2, { taskType: "coordinator", status: "completed" })],
+		});
+		expect(screen.getByTestId("board-table-row-live").className).toContain(COORDINATOR_ROW);
+		expect(screen.getByTestId("board-table-row-done").className).not.toContain(COORDINATOR_ROW);
+		expect(within(screen.getByTestId("board-table-row-done")).getByTestId("board-table-coordinator-chip")).toBeInTheDocument();
 	});
 
 	it("labels variants with their attempt suffix, like the card", async () => {

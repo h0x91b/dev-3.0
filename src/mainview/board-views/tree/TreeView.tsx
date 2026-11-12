@@ -17,6 +17,7 @@ import {
 	buildTaskTree,
 	flattenTree,
 	isGroupOpen,
+	isPinnedCoordinatorNode,
 	isStandalone,
 	normalizeTreeLayout,
 	toggleExpanded,
@@ -427,7 +428,7 @@ export function TreeView(_props: { ctx: Context }) {
 							onClick={() => open(row)}
 							onContextMenu={(e) => openMenu(row, e)}
 							onKeyDown={(e) => onRowKeyDown(row, item.index, e)}
-							className={`absolute left-0 top-0 w-full cursor-pointer rounded-md px-2 outline-none ${node.kind === "task" && isCoordinatorTask(node.tasks[0]) ? COORDINATOR_ROW : item.index % 2 === 1 ? ZEBRA_ROW : ""} hover:bg-raised-hover focus-visible:bg-raised-hover focus-visible:shadow-[inset_2px_0_0_rgb(var(--accent))] ${narrow ? "border-b border-edge/50" : ""}`}
+							className={`absolute left-0 top-0 w-full cursor-pointer rounded-md px-2 outline-none ${isPinnedCoordinatorNode(node) ? COORDINATOR_ROW : item.index % 2 === 1 ? ZEBRA_ROW : ""} hover:bg-raised-hover focus-visible:bg-raised-hover focus-visible:shadow-[inset_2px_0_0_rgb(var(--accent))] ${narrow ? "border-b border-edge/50" : ""}`}
 							style={{ height: rowHeight, transform: `translateY(${item.start}px)` }}
 						>
 							<RowBody row={row} narrow={narrow} projectById={projectById} showProject={showProject} projectName={projectName} onToggle={onToggle} />

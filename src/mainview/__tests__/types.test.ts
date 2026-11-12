@@ -827,6 +827,11 @@ describe("isLiftedCoordinator / isPinnedCoordinator", () => {
 	it("neither lifts nor pins a hibernated coordinator", () => {
 		expect([isLiftedCoordinator(coord({ hibernated: true })), isPinnedCoordinator(coord({ hibernated: true }))]).toEqual([false, false]);
 	});
+
+	it("pins a disconnected coordinator although it loses the lift", () => {
+		const dead = coord({ worktreePath: "/w", runtimeState: { runtime: "idle", updatedAt: 0 } });
+		expect([isLiftedCoordinator(dead), isPinnedCoordinator(dead)]).toEqual([false, true]);
+	});
 });
 
 describe("taskSortRank / compareTaskSortRank", () => {

@@ -220,10 +220,14 @@ describe("sortTableTasks", () => {
 			expect(first([...all, done, cancelled], ["title", "asc"]).slice(0, 3)).toEqual(["b", "a", "c"]);
 		});
 
-		it("keep their normal place when hibernated or disconnected", () => {
+		it("keep their normal place when hibernated", () => {
 			const parked = coord("parked", { hibernated: true });
+			expect(first([...all, parked], ["title", "asc"]).slice(0, 3)).toEqual(["b", "a", "c"]);
+		});
+
+		it("stay pinned when disconnected, so a restart does not scatter them", () => {
 			const dead = coord("dead", { status: "in-progress", worktreePath: "/w", runtimeState: { runtime: "idle", updatedAt: 0 } });
-			expect(first([...all, parked, dead], ["title", "asc"]).slice(0, 3)).toEqual(["b", "a", "c"]);
+			expect(first([...all, dead], ["title", "asc"])[0]).toBe("dead");
 		});
 	});
 });

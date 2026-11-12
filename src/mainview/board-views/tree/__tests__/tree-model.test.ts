@@ -5,6 +5,7 @@ import {
 	buildTaskTree,
 	expandableKeys,
 	flattenTree,
+	isPinnedCoordinatorNode,
 	normalizeTreeLayout,
 	toggleExpanded,
 	type TreeNode,
@@ -85,14 +86,28 @@ describe("buildTaskTree", () => {
 		expect(shape(buildTaskTree({ tasks, scopeTasks: tasks, lineageNode: () => null }))).toEqual([["p1#1", ["p1#2", "p1#3"]]]);
 	});
 
-	it("does not pin a completed or disconnected coordinator", () => {
+	it("does not pin a completed coordinator", () => {
 		const done = [task("coord", 1, { taskType: "coordinator", status: "completed" }), task("new", 2)];
 		expect(shape(buildTaskTree({ tasks: done, scopeTasks: done, lineageNode: () => null }))).toEqual(["p1#2", "p1#1"]);
+	});
+
+	it("keeps a disconnected coordinator pinned", () => {
 		const dead = [
 			task("coord", 1, { taskType: "coordinator", status: "in-progress", worktreePath: "/w", runtimeState: { runtime: "idle", updatedAt: 0 } }),
 			task("new", 2),
 		];
-		expect(shape(buildTaskTree({ tasks: dead, scopeTasks: dead, lineageNode: () => null }))).toEqual(["p1#2", "p1#1"]);
+		expect(shape(buildTaskTree({ tasks: dead, scopeTasks: dead, lineageNode: () => null }))).toEqual(["p1#1", "p1#2"]);
+	});
+
+	it("lifts the branch that holds a nested live coordinator above newer roots", () => {
+		const tasks = [
+			task("p", 1),
+			task("coord", 2, { taskType: "coordinator", status: "in-progress", ...childOf("p") }),
+			task("new", 3),
+		];
+		const roots = buildTaskTree({ tasks, scopeTasks: tasks, lineageNode: () => null });
+		expect(shape(roots)).toEqual([["p1#1", ["p1#2"]], "p1#3"]);
+		expect([isPinnedCoordinatorNode(roots[0]), isPinnedCoordinatorNode(roots[0].children[0])]).toEqual([false, true]);
 	});
 
 	it("survives an origin cycle", () => {

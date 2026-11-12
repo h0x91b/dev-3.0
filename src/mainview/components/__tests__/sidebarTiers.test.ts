@@ -450,6 +450,11 @@ describe("groupTasksIntoTiers — coordinators tier", () => {
 		expect(kinds(tiers)).toEqual(["needs-you"]);
 	});
 
+	it("leads the tier with a coordinator waiting on a reply, ahead of a higher band", () => {
+		const tiers = groupTasksIntoTiers([coord("p0", { priority: "P0" }), coord("asks", { priority: "P4", status: "user-questions" })], ctx());
+		expect(ids(tiers[0].tasks)).toEqual(["asks", "p0"]);
+	});
+
 	it("orders coordinators by band then clock, and omits the tier when there are none", () => {
 		const tiers = groupTasksIntoTiers([coord("p2", { priority: "P2" }), coord("p1", { priority: "P1" })], ctx());
 		expect(ids(tiers[0].tasks)).toEqual(["p1", "p2"]);

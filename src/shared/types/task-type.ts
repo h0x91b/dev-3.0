@@ -106,9 +106,12 @@ export function isLiftedCoordinator(task: TaskSortFields): boolean {
 	return isCoordinatorTask(task) && !task.hibernated && !isTaskDisconnected(task);
 }
 
-/** A lifted coordinator whose task is still in an active column; board lists pin only these. */
+/**
+ * A coordinator board lists pin on top: not hibernated and still in an active column.
+ * A disconnected one stays pinned, as in the sidebar: after a restart it is the task to resume.
+ */
 export function isPinnedCoordinator(task: TaskSortFields): boolean {
-	return isLiftedCoordinator(task) && !!task.status && ACTIVE_STATUSES.includes(task.status);
+	return isCoordinatorTask(task) && !task.hibernated && !!task.status && ACTIVE_STATUSES.includes(task.status);
 }
 
 /**

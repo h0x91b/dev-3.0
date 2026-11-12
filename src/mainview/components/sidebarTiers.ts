@@ -9,6 +9,7 @@ import { isAttentionTask } from "../utils/taskFacets";
  *
  *   - `coordinators` — every non-hibernated coordinator, whatever its status or
  *                    custom column; headerless, so a coordinator never jumps tiers.
+ *                    One waiting on a reply (`user-questions`) leads it.
  *   - `needs-you`  — waiting on the user: `review-by-user` ∪ `user-questions` ∪
  *                    `review-by-colleague`. Every `user-questions` task (an agent
  *                    blocked on a reply) leads it, ahead of every band.
@@ -33,7 +34,7 @@ export interface SidebarTier {
 	projectId?: string;
 	customColumnId?: string;
 	/** Tasks in final render order (priority band → activity clock → `seq`;
-	 *  NEEDS YOU leads with `user-questions`). */
+	 *  coordinators and NEEDS YOU lead with `user-questions`). */
 	tasks: Task[];
 }
 
@@ -96,7 +97,7 @@ export function groupTasksIntoTiers(tasks: Task[], ctx: TierGroupingContext): Si
 
 	const tiers: SidebarTier[] = [];
 	if (coordinators.length > 0) {
-		tiers.push({ kind: "coordinators", key: "coordinators", tasks: coordinators.sort(byBand) });
+		tiers.push({ kind: "coordinators", key: "coordinators", tasks: coordinators.sort(questionsFirst) });
 	}
 	if (needsYou.length > 0) {
 		tiers.push({ kind: "needs-you", key: "needs-you", tasks: needsYou.sort(questionsFirst) });
