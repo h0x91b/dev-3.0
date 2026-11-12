@@ -38,6 +38,16 @@ export type LaunchLocationIssue = {
 	reason: string;
 } | null;
 
+/**
+ * macOS: why task terminals on the live tmux server can lose folder access.
+ * `staleBinary`: the server runs a tmux that is `deleted` (access already lost)
+ * or sits in another dev3 bundle (`elsewhere`, lost once that copy is deleted).
+ */
+export type TmuxServerNotice = {
+	predatesLaunchd: boolean;
+	staleBinary: "deleted" | "elsewhere" | null;
+};
+
 // ---- Agent availability ----
 
 export interface AgentCheckResult {

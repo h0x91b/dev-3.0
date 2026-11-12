@@ -12,7 +12,7 @@
  * See decisions/2026/10/26/tmux-server-as-launchd-job.md.
  */
 import { createHash } from "node:crypto";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { createLogger } from "../logger";
 import { spawnSync as defaultSpawnSync } from "../spawn";
@@ -50,6 +50,9 @@ export interface LaunchdServerDeps {
 	fileLimits: () => { soft: number; hard: number | null } | null;
 	/** Resolves the ~/.dev3.0/bin shim to the bundle it points at; null when unresolvable. */
 	realpath: (path: string) => string | null;
+	pathExists: (path: string) => boolean;
+	/** The inode now at `path`; null when it cannot be read. */
+	inode: (path: string) => number | null;
 }
 
 const defaultDeps: LaunchdServerDeps = {
@@ -66,6 +69,14 @@ const defaultDeps: LaunchdServerDeps = {
 	realpath: (path) => {
 		try {
 			return realpathSync(path);
+		} catch {
+			return null;
+		}
+	},
+	pathExists: (path) => existsSync(path),
+	inode: (path) => {
+		try {
+			return statSync(path).ino;
 		} catch {
 			return null;
 		}
@@ -260,14 +271,8 @@ export function predatesLaunchdServer(
 ): boolean {
 	const binary = deps.realpath(opts.binary);
 	if (!binary || !usesLaunchdServer(deps.platform, binary)) return false;
-	const server = deps.spawnSync([binary, "-L", opts.socket, "display-message", "-p", "#{pid}"], {
-		stdout: "pipe",
-		stderr: "ignore",
-		timeout: PROBE_TIMEOUT_MS,
-	});
-	if (server.exitCode !== 0 || server.exitedDueToTimeout) return false;
-	const serverPid = Number(new TextDecoder().decode(server.stdout ?? new Uint8Array()).trim());
-	if (!Number.isInteger(serverPid) || serverPid <= 0) return false;
+	const serverPid = liveServerPid(binary, opts.socket, deps);
+	if (serverPid === null) return false;
 
 	const label = launchdLabel(tmuxSocketPath(opts.socket, opts.env ?? process.env, deps.uid));
 	const job = launchctl(["print", `gui/${deps.uid}/${label}`], deps, "pipe");
@@ -276,4 +281,73 @@ export function predatesLaunchdServer(
 	if (job.exitCode !== 0) return false;
 	const jobPid = Number(/^\s*pid = (\d+)/m.exec(new TextDecoder().decode(job.stdout ?? new Uint8Array()))?.[1]);
 	return jobPid !== serverPid;
+}
+
+function liveServerPid(binary: string, socket: string, deps: LaunchdServerDeps): number | null {
+	const server = deps.spawnSync([binary, "-L", socket, "display-message", "-p", "#{pid}"], {
+		stdout: "pipe",
+		stderr: "ignore",
+		timeout: PROBE_TIMEOUT_MS,
+	});
+	if (server.exitCode !== 0 || server.exitedDueToTimeout) return null;
+	const pid = Number(new TextDecoder().decode(server.stdout ?? new Uint8Array()).trim());
+	return Number.isInteger(pid) && pid > 0 ? pid : null;
+}
+
+/**
+ * The program text of `pid` as lsof sees it now: it follows a move, unlike argv
+ * or `ps -o comm=`. Its inode and link count expose a file replaced at the same path.
+ */
+function processExecutable(pid: number, deps: LaunchdServerDeps): ServerExecutable | null {
+	const result = deps.spawnSync(["/usr/sbin/lsof", "-a", "-p", String(pid), "-d", "txt", "-Fikn"], {
+		stdout: "pipe",
+		stderr: "ignore",
+		timeout: PROBE_TIMEOUT_MS,
+	});
+	if (result.exitCode !== 0 || result.exitedDueToTimeout) return null;
+	let inode: number | null = null;
+	let links: number | null = null;
+	for (const line of new TextDecoder().decode(result.stdout ?? new Uint8Array()).split("\n")) {
+		if (line.startsWith("f")) [inode, links] = [null, null];
+		else if (line.startsWith("i")) inode = fieldNumber(line);
+		else if (line.startsWith("k")) links = fieldNumber(line);
+		else if (line.startsWith("n/")) return { path: line.slice(1), inode, links };
+	}
+	return null;
+}
+
+function fieldNumber(line: string): number | null {
+	const value = Number(line.slice(1));
+	return Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+/**
+ * Whether the live server on `socket` runs a tmux other than this app's.
+ * tccd attributes panes through the server's executable, so `deleted` means
+ * folder access is already gone, and `elsewhere` (another dev3 bundle) means it
+ * goes the moment that copy is deleted. Any doubt answers null: this only drives a hint.
+ */
+export function staleServerBinary(
+	opts: { binary: string; socket: string },
+	deps: LaunchdServerDeps = defaultDeps,
+): "deleted" | "elsewhere" | null {
+	const binary = deps.realpath(opts.binary);
+	if (!binary || !usesLaunchdServer(deps.platform, binary)) return null;
+	const serverPid = liveServerPid(binary, opts.socket, deps);
+	if (serverPid === null) return null;
+	const executable = processExecutable(serverPid, deps);
+	if (!executable) return null;
+	// An update or reinstall swaps the bundle at the same path: only the inode tells the old file apart.
+	if (executable.path === binary) return replacedOnDisk(executable, deps) ? "deleted" : null;
+	if (!deps.pathExists(executable.path) || replacedOnDisk(executable, deps)) return "deleted";
+	return usesLaunchdServer(deps.platform, executable.path) ? "elsewhere" : null;
+}
+
+type ServerExecutable = { path: string; inode: number | null; links: number | null };
+
+function replacedOnDisk(executable: ServerExecutable, deps: LaunchdServerDeps): boolean {
+	if (executable.links === 0) return true;
+	if (executable.inode === null) return false;
+	const onDisk = deps.inode(executable.path);
+	return onDisk !== null && onDisk !== executable.inode;
 }

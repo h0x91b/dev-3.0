@@ -22,7 +22,8 @@ vi.mock("../rpc", () => ({
 			checkSystemRequirements: vi.fn().mockResolvedValue([]),
 			getRosettaWarning: vi.fn().mockResolvedValue(null),
 			getLaunchLocationIssue: vi.fn().mockResolvedValue(null),
-			getTmuxServerNotice: vi.fn().mockResolvedValue({ predatesLaunchd: false }),
+			getTmuxServerNotice: vi.fn().mockResolvedValue({ predatesLaunchd: false, staleBinary: null }),
+			restartTmuxServer: vi.fn().mockResolvedValue({ ok: true }),
 			checkGhAvailable: vi.fn().mockResolvedValue({ available: true, notInstalled: false }),
 			getProjects: vi.fn().mockResolvedValue([]),
 			// Opening a project board asks once whether there is anything to import.
@@ -363,16 +364,82 @@ describe("App keyboard shortcuts", () => {
 		const HINT = /tmux server from an earlier dev-3.0 run/;
 
 		it("warns once when task terminals run on a server that predates the launchd start", async () => {
-			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: true });
+			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: true, staleBinary: null });
 			await renderApp();
 			expect(await screen.findByText(HINT)).toBeInTheDocument();
 			expect(api.request.getTmuxServerNotice).toHaveBeenCalledTimes(1);
 		});
 
 		it("stays silent when the server is launchd-owned", async () => {
-			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: false });
+			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: false, staleBinary: null });
 			await renderApp();
 			expect(screen.queryByText(HINT)).not.toBeInTheDocument();
+			expect(screen.queryByRole("button", { name: "Restart terminals" })).not.toBeInTheDocument();
+		});
+
+		it("offers a restart when the server's tmux was deleted, and keeps the offer if the user cancels", async () => {
+			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: true, staleBinary: "deleted" });
+			await renderApp();
+			expect(await screen.findByText(/dev-3.0 copy was deleted/)).toBeInTheDocument();
+			expect(screen.queryByText(HINT)).not.toBeInTheDocument();
+
+			vi.mocked(confirm).mockResolvedValueOnce(false);
+			await userEvent.click(screen.getByRole("button", { name: "Restart terminals" }));
+			await waitFor(() => expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ title: "Restart all task terminals?", danger: true })));
+			expect(api.request.restartTmuxServer).not.toHaveBeenCalled();
+			expect(await screen.findByRole("button", { name: "Restart terminals" })).toBeInTheDocument();
+			expect(screen.getByText(/dev-3.0 copy was deleted/)).toBeInTheDocument();
+		});
+
+		it("reports a failed restart and brings the offer back", async () => {
+			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: false, staleBinary: "deleted" });
+			vi.mocked(api.request.restartTmuxServer).mockRejectedValueOnce(new Error("kill-server failed"));
+			vi.mocked(confirm).mockResolvedValueOnce(true);
+			await renderApp();
+			await userEvent.click(await screen.findByRole("button", { name: "Restart terminals" }));
+			expect(await screen.findByText(/Couldn't restart terminals/)).toBeInTheDocument();
+			expect(await screen.findByRole("button", { name: "Restart terminals" })).toBeInTheDocument();
+		});
+
+		it("restarts the tmux server once the user confirms", async () => {
+			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: false, staleBinary: "deleted" });
+			vi.mocked(confirm).mockResolvedValueOnce(true);
+			await renderApp();
+			await userEvent.click(await screen.findByRole("button", { name: "Restart terminals" }));
+			await waitFor(() => expect(api.request.restartTmuxServer).toHaveBeenCalledTimes(1));
+		});
+
+		it("warns about a server running another dev-3.0 copy's tmux", async () => {
+			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: false, staleBinary: "elsewhere" });
+			await renderApp();
+			expect(await screen.findByText(/from another dev-3.0 copy/)).toBeInTheDocument();
+		});
+
+		it("keeps the lost-access restart offer on screen until the user acts on it", async () => {
+			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: false, staleBinary: "deleted" });
+			vi.useFakeTimers({ shouldAdvanceTime: true });
+			try {
+				await renderApp();
+				expect(await screen.findByText(/dev-3.0 copy was deleted/)).toBeInTheDocument();
+				act(() => vi.advanceTimersByTime(10 * 60_000));
+				expect(screen.getByText(/dev-3.0 copy was deleted/)).toBeInTheDocument();
+				expect(screen.getByRole("button", { name: "Restart terminals" })).toBeInTheDocument();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("lets the another-copy notice time out: a second running copy shares the server on purpose", async () => {
+			vi.mocked(api.request.getTmuxServerNotice).mockResolvedValueOnce({ predatesLaunchd: false, staleBinary: "elsewhere" });
+			vi.useFakeTimers({ shouldAdvanceTime: true });
+			try {
+				await renderApp();
+				expect(await screen.findByText(/from another dev-3.0 copy/)).toBeInTheDocument();
+				act(() => vi.advanceTimersByTime(10 * 60_000));
+				await waitFor(() => expect(screen.queryByText(/from another dev-3.0 copy/)).not.toBeInTheDocument());
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 	});
 

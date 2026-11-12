@@ -780,15 +780,50 @@ function App() {
 			.catch((err) => console.error("Failed to check the launch location:", err));
 	}, []);
 
-	// A tmux server an older dev3 started outside launchd can still lose folder
-	// access (decisions/2026/10/26/tmux-server-as-launchd-job.md). Once per launch.
+	// A tmux server started outside launchd, or running a tmux from another or a
+	// deleted bundle, loses folder access (decisions/2026/10/26/tmux-server-as-launchd-job.md). Once per launch.
 	useEffect(() => {
 		api.request
 			.getTmuxServerNotice()
-			.then(({ predatesLaunchd }) => {
-				if (predatesLaunchd) toast.warning(t("terminal.legacyTmuxServer"), { source: "terminal", durationMs: 15_000 });
+			.then(({ predatesLaunchd, staleBinary }) => {
+				if (staleBinary) {
+					showStaleServerNotice(staleBinary);
+				} else if (predatesLaunchd) {
+					toast.warning(t("terminal.legacyTmuxServer"), { source: "terminal", durationMs: 15_000 });
+				}
 			})
 			.catch((err) => console.error("Failed to check the tmux server:", err));
+
+		function showStaleServerNotice(staleBinary: "deleted" | "elsewhere") {
+			toast.warning(t(staleBinary === "deleted" ? "terminal.staleTmuxServerDeleted" : "terminal.staleTmuxServerElsewhere"), {
+				source: "terminal",
+				// Lost access waits for the user: a timed toast went unseen at launch. Another
+				// running copy legitimately shares the server, so that one must not nag forever.
+				durationMs: staleBinary === "deleted" ? Infinity : 15_000,
+				actions: [{ label: t("terminal.restartTerminals"), emphasis: true, onClick: () => void restartTmuxServer(staleBinary) }],
+			});
+		}
+
+		// The action dismisses the toast before the dialog answers, so Cancel or a failure brings it back.
+		async function restartTmuxServer(staleBinary: "deleted" | "elsewhere") {
+			const ok = await confirm({
+				title: t("terminal.restartTerminalsTitle"),
+				message: t("terminal.restartTerminalsMessage"),
+				confirmLabel: t("terminal.restartTerminals"),
+				danger: true,
+			});
+			if (!ok) {
+				showStaleServerNotice(staleBinary);
+				return;
+			}
+			try {
+				await api.request.restartTmuxServer();
+				toast.success(t("terminal.restartTerminalsDone"), { source: "terminal" });
+			} catch (err) {
+				toast.error(t("terminal.restartTerminalsFailed", { error: String(err) }), { source: "terminal" });
+				showStaleServerNotice(staleBinary);
+			}
+		}
 	}, []);
 
 	// Navigation guard for unsaved-changes prompts (e.g. ProjectSettings, diff viewer)

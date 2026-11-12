@@ -27,7 +27,7 @@ import {
 import { type BoundedRunResult, type SpawnBounds, runBounded } from "./bounded-spawn";
 import { DEFAULT_TMUX_SOCKET } from "./constants";
 import { activeTmuxConfigPath, tmuxClientCwd } from "./config";
-import { ensureLaunchdServer, predatesLaunchdServer } from "./launchd-server";
+import { ensureLaunchdServer, predatesLaunchdServer, staleServerBinary } from "./launchd-server";
 import { TmuxError, TmuxSpawnError, TmuxTimeoutError } from "./errors";
 import type { TmuxFormat } from "./formats";
 import { PANE_ID_FORMAT, PANE_SIGHTING_FORMAT } from "./formats";
@@ -158,6 +158,11 @@ export class TmuxClient {
 		return predatesLaunchdServer({ binary: getTmuxBinary(), socket: opts?.socket ?? this.defaultSocket });
 	}
 
+	/** A running server whose executable is gone or belongs to another dev3 bundle (macOS bundled tmux only). */
+	serverBinaryStale(opts?: SocketOpt): "deleted" | "elsewhere" | null {
+		return staleServerBinary({ binary: getTmuxBinary(), socket: opts?.socket ?? this.defaultSocket });
+	}
+
 	/** Version skew detected against the live server, when no compatible client was found. */
 	serverVersionMismatch(): { clientVersion: string; serverVersion: string } | null {
 		return getTmuxServerVersionMismatch();
@@ -236,6 +241,20 @@ export class TmuxClient {
 	async killServer(opts?: SocketOpt): Promise<void> {
 		const socket = opts?.socket ?? this.defaultSocket;
 		await this.run(socket, ["kill-server"]).catch(() => undefined);
+		removeTmuxSocketFile(socket);
+	}
+
+	/**
+	 * `kill-server` that reports failure, for a restart the user asked for. No
+	 * server counts as stopped. A refused or timed-out kill throws and leaves the
+	 * socket file alone, since a server that survived may still own it.
+	 */
+	async stopServer(opts?: SocketOpt): Promise<void> {
+		const socket = opts?.socket ?? this.defaultSocket;
+		const result = await this.run(socket, ["kill-server"]);
+		if (result.exitCode !== 0 && !/no server running|error connecting|No such file or directory/i.test(result.stderr)) {
+			throw new TmuxError(["kill-server"], result.exitCode, result.stderr);
+		}
 		removeTmuxSocketFile(socket);
 	}
 
