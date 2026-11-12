@@ -2,7 +2,7 @@ import InterfaceOnboarding from "./components/InterfaceOnboarding";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAppState, canGoBack, routeTaskId, routeShowsTaskWorkspace, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, taskOpenRoute, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type NavigateOptions, type Route } from "./state";
 import { lastProjectForSpace, rememberProjectForSpace } from "./utils/spaceBoardMemory";
-import { digitTargets, mixedEntryId, type MixedEntry } from "./utils/digitOrder";
+import { digitTargets, isDigitTargetOnScreen, mixedEntryId, type MixedEntry } from "./utils/digitOrder";
 import { useMixedPending, withPendingMixedOrder } from "./mixed-order-store";
 import { api, isElectrobun, getRpcConnectionState } from "./rpc";
 import { ignoreStartupReadFailure, startupRead } from "./startup-read";
@@ -1238,11 +1238,12 @@ function App() {
 		(n: number, view: "project" | "task" | "preserve") => {
 			const target = digitTargetList[n - 1];
 			if (!target) return; // out of range — no-op
+			if (view === "preserve" && isDigitTargetOnScreen(target, state.route)) return;
 			const { projectId, spaceId } = digitTargetBoard(target);
 			if (view === "preserve") navigateToProject(projectId, spaceId);
 			else goToProjectView(projectId, view, spaceId);
 		},
-		[digitTargetList, digitTargetBoard, navigateToProject, goToProjectView],
+		[digitTargetList, digitTargetBoard, navigateToProject, goToProjectView, state.route],
 	);
 	const armGoToVerb = useCallback(() => {
 		goToModeRef.current = { stage: "verb" };
@@ -1720,13 +1721,13 @@ function App() {
 				//  - "fullscreen" users have no task to show full-page after a switch, so
 				//                 dropping them into a split they never use is jarring —
 				//                 land on the Kanban board instead (pre-#619 behavior).
+				// The board already on screen is a no-op, so the selection stays.
 				// Built-in Operations board is reached via Cmd+0, not Cmd+1..9.
-				const target = digitTargetList[parseInt(e.key, 10) - 1];
-				if (target) {
+				const n = parseInt(e.key, 10);
+				if (digitTargetList[n - 1]) {
 					e.preventDefault();
 					e.stopPropagation();
-					const { projectId, spaceId } = digitTargetBoard(target);
-					navigateToProject(projectId, spaceId);
+					goToProjectIndex(n, "preserve");
 				}
 			} else if (matchesShortcut(e, "task-hints")) {
 				// Vimium-style hint navigation. Works on any screen that has hint
