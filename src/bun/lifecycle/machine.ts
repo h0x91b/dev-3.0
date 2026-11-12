@@ -718,7 +718,11 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 			} else if (state.facts.opsWorktree) {
 				effects.push(effect({ type: "removeTaskWorkspace", allowDerivedPath: true }));
 			}
-			effects.push(effect({ type: "deleteTaskRecord" }, "abort"));
+			effects.push(
+				effect({ type: "deleteTaskRecord" }, "abort"),
+				// Without it a deleted task lingers in every list the deleting view does not own.
+				effect({ type: "push", message: "taskRemoved" }),
+			);
 			return { next: state, effects };
 		}
 		case "preparationStageChanged": {

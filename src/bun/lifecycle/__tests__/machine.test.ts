@@ -752,6 +752,7 @@ describe("task lifecycle transition table", () => {
 			"reapWorktreeProcesses",
 			"removeTaskWorkspace",
 			"deleteTaskRecord",
+			"push",
 		]);
 		expect(result.effects.find((effect) => effect.type === "runCleanupScript")).toMatchObject({
 			allowDerivedPath: true,
