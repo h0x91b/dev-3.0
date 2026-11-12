@@ -139,6 +139,14 @@ export function newerRateLimitSnapshot(
 	return b.capturedAt > a.capturedAt ? b : a;
 }
 
+/** A window past its reset time has started over, but the reading taken before the
+ *  reset still holds the old percentage: read it as 0% until a fresh reading lands. */
+export function withElapsedResets(snapshot: AgentRateLimitSnapshot, nowMs: number): AgentRateLimitSnapshot {
+	const elapsed = (w: RateLimitWindow) => w.resetsAt != null && w.resetsAt <= nowMs && w.usedPercent !== 0;
+	if (!snapshot.windows.some(elapsed)) return snapshot;
+	return { ...snapshot, windows: snapshot.windows.map((w) => (elapsed(w) ? { ...w, usedPercent: 0 } : w)) };
+}
+
 /** Whether a reading carries any limit at all. A Claude session on a plan that
  *  gets no `rate_limits` still yields a reading — proof the account is live —
  *  but it must never be drawn as a quota. */

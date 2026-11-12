@@ -33,6 +33,7 @@ import {
 	parseKimiUsage,
 	rateLimitActivityAt,
 	rateLimitLoginKey,
+	withElapsedResets,
 } from "../shared/rate-limits";
 import type { AgentSessionStats } from "../shared/session-stats";
 import { SESSION_STATS_RECENT_MS, parseClaudeSessionStats } from "../shared/session-stats";
@@ -532,6 +533,7 @@ export async function getAgentRateLimitsReport(): Promise<AgentRateLimitsReport>
 	const addSnapshot = (snapshot: AgentRateLimitSnapshot | null): void => {
 		if (!snapshot || !isRateLimitSnapshotRecent(snapshot, now)) return;
 		if (snapshot.source === "claude" && snapshot.accountId && !knownClaudeAccountIds.has(snapshot.accountId)) return;
+		snapshot = withElapsedResets(snapshot, now);
 		const key = rateLimitLoginKey(snapshot);
 		const existing = byAccount.get(key);
 		if (!existing || rateLimitActivityAt(snapshot) > rateLimitActivityAt(existing) || snapshot.capturedAt > existing.capturedAt) {
