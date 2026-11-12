@@ -128,6 +128,13 @@ describe("Table board view", () => {
 		expect(screen.getByTestId("board-table-empty")).toHaveTextContent("No tasks on this board yet.");
 	});
 
+	it("names the default agent a launched task runs in its Agent cell", async () => {
+		const pane = { agentCmd: "claude", sessionId: null, agentId: "a1", configId: null, agentFromDefault: true };
+		await renderTable({ tasks: [task("t1", 1, { worktreePath: "/tmp/wt", sessionState: { panes: [pane] } }), task("t2", 2)] });
+		expect(screen.getByTestId("board-table-row-t1")).toHaveTextContent("Claude");
+		expect(screen.getByTestId("board-table-row-t2")).not.toHaveTextContent("Claude");
+	});
+
 	it("tells a filtered-out board apart from an empty one", async () => {
 		await renderTable({ tasks: [], scopeTasks: [task("t1", 1)] });
 		expect(screen.getByTestId("board-table-empty")).toHaveTextContent("No tasks match the filter.");

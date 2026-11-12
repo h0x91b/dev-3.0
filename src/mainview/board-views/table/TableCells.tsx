@@ -15,6 +15,7 @@ import { getStatusLabel } from "../../utils/statusLabel";
 import { prStateTone } from "../../utils/prStateTone";
 import { compactAge } from "../../utils/statusAge";
 import { taskLastActivityMs } from "../../utils/projectActivity";
+import { taskRunningAgentIds } from "../../../shared/task-running-agent";
 import type { BoardService } from "../board-service";
 import { laneOfTask, taskPrNumber, type TableColumnId } from "./table-model";
 
@@ -219,7 +220,8 @@ export function TableCell({ column, task, ctx }: { column: TableColumnId; task: 
 		case "labels":
 			return <LabelsCell task={task} ctx={ctx} />;
 		case "agent": {
-			const name = task.agentId ? ctx.agentNameById.get(task.agentId) : undefined;
+			const { agentId } = taskRunningAgentIds(task);
+			const name = agentId ? ctx.agentNameById.get(agentId) : undefined;
 			return name ? <Text title={name}>{name}</Text> : null;
 		}
 		case "pr":
