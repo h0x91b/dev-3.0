@@ -299,10 +299,7 @@ export function AccountQuotaLines({ snap, now }: { snap: AgentRateLimitSnapshot;
 				<span className="text-fg-3">{t("rateLimits.credits", {
 					balance:
 						snap.creditsBalance.trim() !== "" && Number.isFinite(Number(snap.creditsBalance))
-							? numberFormat
-									.formatToParts(Number(snap.creditsBalance))
-									.map((part) => (part.type === "group" ? "\u00a0" : part.value))
-									.join("")
+							? numberFormat.format(Number(snap.creditsBalance))
 							: snap.creditsBalance,
 				})}</span>
 			)}

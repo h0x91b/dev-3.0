@@ -551,7 +551,7 @@ describe("AgentUsagePanel — ~/.codex beside a managed Codex account (#1964)", 
 				<AgentUsagePanel report={withCredits} accounts={codexState({ ...dana })} interactive onOpenSettings={() => {}} />
 			</I18nProvider>,
 		);
-		expect(screen.getByText(/credits: 38\s357\.44/)).toBeTruthy();
+		expect(screen.getByText(/credits: 38,357\.44/)).toBeTruthy();
 	});
 
 	it("folds the same person's default-login reading into the managed row", () => {
