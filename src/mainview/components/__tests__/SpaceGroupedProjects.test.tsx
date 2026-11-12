@@ -398,3 +398,102 @@ describe("opening the space board from the dashboard", () => {
 		expect(screen.queryByTestId("space-open-board-sp_a")).toBeNull();
 	});
 });
+
+describe("SpaceGroupedProjects — mixed top-level list", () => {
+	const alpha = sp("sp_a", "Alpha", ["p1", "p2"]);
+	const entries = [
+		{ kind: "project" as const, project: proj("solo") },
+		{ kind: "space" as const, space: alpha, projects: [proj("p1"), proj("p2")] },
+	];
+	const begin = vi.fn();
+	const rowRef = vi.fn(() => () => {});
+
+	function renderMixed(active: { scope: string; id: string } | null = null, onStep = vi.fn()) {
+		return render(
+			<I18nProvider>
+				<SpaceGroupedProjects
+					groups={[{ space: alpha, projects: [proj("p1"), proj("p2")] }, { space: null, projects: [proj("solo")] }]}
+					sensitiveProjectIds={new Set()}
+					needsYouCountOf={() => 0}
+					workingCountOf={() => 0}
+					renderProject={(p, ctx) => <div data-testid={`row-${p.id}`} data-scope={ctx.scope.key} data-hint={ctx.digitHint}>{p.name}</div>}
+					renderBottomBlockProject={(p) => <div data-testid={`rest-row-${p.id}`}>{p.name}</div>}
+					onRenameSpace={vi.fn()}
+					onDeleteSpace={vi.fn()}
+					mixed={{ entries, onReorder: vi.fn(), onStep, drag: { active, begin, rowRef }, showDigitHints: true }}
+				/>
+			</I18nProvider>,
+		);
+	}
+
+	it("lists entries in the given order, with no Home block, scoping top-level rows to the mixed list", () => {
+		renderMixed();
+		expect(screen.queryByTestId("space-group-rest")).toBeNull();
+		const solo = screen.getByTestId("row-solo");
+		const group = screen.getByTestId("space-group-sp_a");
+		expect(solo.compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(solo).toHaveAttribute("data-scope", "mixed");
+		expect(solo).toHaveAttribute("data-hint", "1");
+		expect(screen.getByTestId("row-p1")).toHaveAttribute("data-scope", "space:sp_a");
+		expect(screen.getByTestId("space-header-sp_a").querySelector("kbd")).toHaveTextContent("⌘2");
+	});
+
+	it("starts a mixed drag from the header grip, scoped to every entry id", () => {
+		renderMixed();
+		const grip = screen.getByTestId("space-header-sp_a").parentElement!.querySelector("[data-reorder-grip]")!;
+		fireEvent.pointerDown(grip);
+		expect(begin).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ key: "mixed", ids: ["solo", "sp_a"] }), "sp_a");
+	});
+
+	it("collapses every block to its header while a mixed drag is active, and restores it after", () => {
+		const { rerender } = renderMixed({ scope: "mixed", id: "solo" });
+		expect(screen.getByTestId("space-header-sp_a")).toBeInTheDocument();
+		expect(screen.queryByTestId("row-p1")).toBeNull();
+		rerender(<div />);
+		renderMixed(null);
+		expect(screen.getByTestId("row-p1")).toBeInTheDocument();
+	});
+
+	it("keeps the gap above a block outside the registered element, and drops it while a drag is on", () => {
+		const { unmount } = renderMixed();
+		const block = screen.getByTestId("space-group-sp_a");
+		expect(block.className).not.toContain("pt-6");
+		expect(block.parentElement!.className).toContain("pt-6");
+		unmount();
+		renderMixed({ scope: "mixed", id: "sp_a" });
+		const dragged = screen.getByTestId("space-group-sp_a");
+		// Evenly spaced entries, and a surface the preview can copy and the placeholder can dash.
+		expect(dragged.parentElement!.className).not.toContain("pt-6");
+		expect(dragged).toHaveAttribute("data-reorder-placeholder");
+		expect(dragged.className).toContain("border");
+		expect(dragged.className).toContain("bg-raised");
+		expect(dragged.className).toContain("rounded-xl");
+	});
+
+	it("keeps the gap above a block outside it, and drops the gap while a drag is on", () => {
+		const { unmount } = renderMixed(null);
+		const resting = screen.getByTestId("space-group-sp_a");
+		expect(resting.className).toContain("rounded-xl");
+		expect(resting.className).not.toContain("pt-6");
+		expect(resting.parentElement!.className).toContain("pt-6");
+		unmount();
+		renderMixed({ scope: "mixed", id: "sp_a" });
+		const dragged = screen.getByTestId("space-group-sp_a");
+		// An opaque surface with an edge: the preview clone and the dashed placeholder both need one.
+		expect(dragged.className).toContain("bg-raised");
+		expect(dragged.className).toContain("border");
+		expect(dragged).toHaveAttribute("data-reorder-placeholder");
+		expect(dragged.parentElement!.className).not.toContain("pt-6");
+	});
+
+	it("steps through the mixed order from the header menu", async () => {
+		const user = userEvent.setup();
+		const onStep = vi.fn();
+		renderMixed(null, onStep);
+		await user.click(screen.getByTestId("space-menu-sp_a"));
+		// Last of two entries: nothing below it in the mixed list.
+		expect(screen.getByTestId("space-move-down-sp_a")).toBeDisabled();
+		await user.click(screen.getByTestId("space-move-up-sp_a"));
+		expect(onStep).toHaveBeenCalledWith("sp_a", -1);
+	});
+});

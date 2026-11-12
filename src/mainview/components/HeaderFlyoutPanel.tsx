@@ -38,7 +38,7 @@ export default function HeaderFlyoutPanel({
 				left: flyout.pos?.left ?? 0,
 				width,
 				maxWidth: "calc(100vw - 2rem)",
-				maxHeight: "28rem",
+				maxHeight: `calc(100vh - ${(flyout.pos?.top ?? 0) + 8}px)`,
 				visibility: flyout.pos ? "visible" : "hidden",
 			}}
 			{...flyout.panelProps}

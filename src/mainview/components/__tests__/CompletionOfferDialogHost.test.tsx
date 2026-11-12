@@ -56,6 +56,14 @@ describe("CompletionOfferDialogHost", () => {
 		await expect(answer).resolves.toBe(true);
 	});
 
+	it("passes the agent's --reason to the modal", async () => {
+		vi.mocked(confirm).mockResolvedValue(true);
+		renderHost();
+		await act(async () => { void offerCompletion({ taskId: "t1", projectId: "p1", kind: "agent", reason: { text: "PR merged" } }); });
+		await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+		expect(lastConfirm().reason).toEqual({ text: "PR merged" });
+	});
+
 	it("offers manual completion for a merge and passes it through", async () => {
 		vi.mocked(confirm).mockResolvedValue("manual" as never);
 		renderHost();

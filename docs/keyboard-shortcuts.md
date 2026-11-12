@@ -39,8 +39,8 @@ this page and the website all read from it.
 | Send the tmux prefix (⌃B) — rebind it to ⌘A to make ⌘A your prefix | ⌘B | Ctrl+Shift+B |
 | Back / Forward | ⌘[ / ⌘] | Ctrl+[ / Ctrl+] |
 | Previous / next live variant | ⇧⌘[ / ⇧⌘] | Ctrl+Shift+[ / Ctrl+Shift+] |
-| Switch to project 1–9 (keep view) | ⌘1–9 | Ctrl+1–9 |
-| Switch to project 1–9 (flip view) | ⇧⌘1–9 | Ctrl+Shift+1–9 |
+| Switch to project 1–9 (keep view); with Settings → Keyboard → "Number keys follow spaces" on, to space or standalone project 1–9 | ⌘1–9 | Ctrl+1–9 |
+| Switch to project 1–9 (flip view); same setting | ⇧⌘1–9 | Ctrl+Shift+1–9 |
 | Cycle active tasks (this project / all) | ⌥Tab / ⌥⇧Tab | Ctrl+Tab / Ctrl+Shift+Tab |
 | New task | ⌘N | Ctrl+N |
 | Add project | ⌘P | Ctrl+P |

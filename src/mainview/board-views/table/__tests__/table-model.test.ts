@@ -164,6 +164,12 @@ describe("sortTableTasks", () => {
 		expect(ids(["priority", "asc"])).toEqual(["b", "a", "c"]);
 	});
 
+	it("sorts a task on the default agent by the agent its main pane runs", () => {
+		const pane = { agentCmd: "claude", sessionId: null, agentId: "a2", configId: null };
+		const d = task({ id: "d", seq: 4, worktreePath: "/tmp/wt", sessionState: { panes: [pane] } });
+		expect(sortTableTasks([d, b], ["agent", "desc"], ctx).map((t) => t.id)).toEqual(["d", "b"]);
+	});
+
 	it("sorts by agent name, project name, label names, PR, branch, parent seq and created", () => {
 		expect(ids(["agent", "asc"])).toEqual(["b", "a", "c"]);
 		expect(ids(["project", "asc"])).toEqual(["c", "b", "a"]);
@@ -187,5 +193,41 @@ describe("sortTableTasks", () => {
 		const twins = [task({ id: "x", seq: 1 }), task({ id: "y", seq: 9 })];
 		expect(sortTableTasks(twins, ["title", "asc"], ctx).map((t) => t.id)).toEqual(["y", "x"]);
 		expect(twins.map((t) => t.id)).toEqual(["x", "y"]);
+	});
+
+	describe("live coordinators", () => {
+		const coord = (id: string, overrides: Partial<Task> = {}) =>
+			task({ id, seq: 0, title: "zzz", priority: "P4", taskType: "coordinator", status: "in-progress", ...overrides });
+		const first = (tasks: Task[], sort: Parameters<typeof sortTableTasks>[1]) => sortTableTasks(tasks, sort, ctx).map((t) => t.id);
+
+		it("come first under any sort column and direction", () => {
+			const k = coord("k");
+			for (const sort of [["activity", "desc"], ["title", "asc"], ["priority", "asc"], ["priority", "desc"], ["seq", "desc"]] as const) {
+				expect(first([...all, k], sort)[0]).toBe("k");
+			}
+		});
+
+		it("order between themselves by the active sort", () => {
+			const k1 = coord("k1", { title: "alpha", seq: 5 });
+			const k2 = coord("k2", { title: "beta", seq: 6 });
+			expect(first([k2, ...all, k1], ["title", "asc"]).slice(0, 2)).toEqual(["k1", "k2"]);
+			expect(first([k1, ...all, k2], ["title", "desc"]).slice(0, 2)).toEqual(["k2", "k1"]);
+		});
+
+		it("are not pinned once completed or cancelled", () => {
+			const done = coord("done", { status: "completed" });
+			const cancelled = coord("cancelled", { status: "cancelled" });
+			expect(first([...all, done, cancelled], ["title", "asc"]).slice(0, 3)).toEqual(["b", "a", "c"]);
+		});
+
+		it("keep their normal place when hibernated", () => {
+			const parked = coord("parked", { hibernated: true });
+			expect(first([...all, parked], ["title", "asc"]).slice(0, 3)).toEqual(["b", "a", "c"]);
+		});
+
+		it("stay pinned when disconnected, so a restart does not scatter them", () => {
+			const dead = coord("dead", { status: "in-progress", worktreePath: "/w", runtimeState: { runtime: "idle", updatedAt: 0 } });
+			expect(first([...all, dead], ["title", "asc"])[0]).toBe("dead");
+		});
 	});
 });

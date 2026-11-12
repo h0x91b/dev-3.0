@@ -1,4 +1,5 @@
 import type { Project, Task } from "../shared/types";
+import type { ApprovalReason } from "../shared/approval-reason";
 import { ACTIVE_STATUSES } from "../shared/types";
 import type { AgentSessionAction, CliHibernateOutcome, CliWakeOutcome, HibernateRefusalReason } from "../shared/task-hibernate";
 import { resumeCliAgent } from "./cli-agent-resume";
@@ -13,6 +14,8 @@ interface SessionActionOptions {
 	task: Task;
 	/** The task whose agent asked; null for a person at a terminal, who acts directly. */
 	requester: Task | null;
+	/** Why the agent asks (`--reason`), shown in the dialog. */
+	reason?: ApprovalReason;
 }
 
 function refused(task: Task, reason: HibernateRefusalReason, message: string): CliHibernateOutcome {
@@ -30,9 +33,9 @@ async function hibernatePreflight(task: Task): Promise<CliHibernateOutcome | nul
 }
 
 /** Same dialog, queue and countdown as an agent asking to launch or resume another task. */
-function askUser(project: Project, task: Task, requester: Task, action: AgentSessionAction) {
+function askUser(project: Project, task: Task, requester: Task, action: AgentSessionAction, reason: ApprovalReason | undefined) {
 	return askSessionApproval({
-		project, task, requester,
+		project, task, requester, reason,
 		subject: { sessionAction: action },
 		alreadyPending: "Another approval is pending for this task — answer it first.",
 	});
@@ -40,12 +43,12 @@ function askUser(project: Project, task: Task, requester: Task, action: AgentSes
 
 const RUN_CHANGED = "The target task's run changed while waiting — nothing was done.";
 
-async function performHibernate({ project, task, requester }: SessionActionOptions): Promise<CliHibernateOutcome> {
+async function performHibernate({ project, task, requester, reason }: SessionActionOptions): Promise<CliHibernateOutcome> {
 	const early = await hibernatePreflight(task);
 	if (early) return early;
 	let current = task;
 	if (requester) {
-		const answer = await askUser(project, task, requester, { kind: "hibernate", paneCount: task.sessionState?.panes?.length ?? 1 });
+		const answer = await askUser(project, task, requester, { kind: "hibernate", paneCount: task.sessionState?.panes?.length ?? 1 }, reason);
 		if (!answer.approved) return { outcome: "declined", taskId: task.id, seq: task.seq, ...(answer.stale ? { stale: true } : {}) };
 		current = await sameRunAfterApproval(project, task, RUN_CHANGED);
 		const again = await hibernatePreflight(current);
@@ -55,13 +58,13 @@ async function performHibernate({ project, task, requester }: SessionActionOptio
 	return { outcome: "hibernated", taskId: updated.id, seq: updated.seq, freedRssBytes };
 }
 
-async function performWakeShell({ project, task, requester }: SessionActionOptions): Promise<CliWakeOutcome> {
+async function performWakeShell({ project, task, requester, reason }: SessionActionOptions): Promise<CliWakeOutcome> {
 	if (!task.hibernated) return { outcome: "not-hibernated", taskId: task.id, seq: task.seq };
 	// Refused before the dialog: an approval that ends in "worktree is missing" asked for nothing.
 	assertTaskWorkspacePresent(project, task.worktreePath, task);
 	let current = task;
 	if (requester) {
-		const answer = await askUser(project, task, requester, { kind: "wake-shell" });
+		const answer = await askUser(project, task, requester, { kind: "wake-shell" }, reason);
 		if (!answer.approved) return { outcome: "declined", taskId: task.id, seq: task.seq, ...(answer.stale ? { stale: true } : {}) };
 		current = await sameRunAfterApproval(project, task, RUN_CHANGED);
 		if (!current.hibernated) return { outcome: "not-hibernated", taskId: current.id, seq: current.seq };
@@ -82,5 +85,5 @@ export function hibernateCliTask(opts: SessionActionOptions): Promise<CliHiberna
 export async function wakeCliTask(opts: SessionActionOptions & { mode: "shell" | "resume"; allowAgentLatest: boolean; accountId?: string | null }): Promise<CliWakeOutcome> {
 	if (opts.mode === "shell") return joinOrRun(opts.task.id, `wake-shell:${opts.requester?.id ?? ""}`, () => performWakeShell(opts));
 	if (!opts.task.hibernated) return { outcome: "not-hibernated", taskId: opts.task.id, seq: opts.task.seq };
-	return { outcome: "resume", resume: await resumeCliAgent({ project: opts.project, task: opts.task, requester: opts.requester, allowAgentLatest: opts.allowAgentLatest, accountId: opts.accountId }) };
+	return { outcome: "resume", resume: await resumeCliAgent({ project: opts.project, task: opts.task, requester: opts.requester, allowAgentLatest: opts.allowAgentLatest, accountId: opts.accountId, reason: opts.reason }) };
 }

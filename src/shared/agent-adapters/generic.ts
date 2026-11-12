@@ -47,6 +47,8 @@ export const genericAdapter: AgentAdapter = {
 		return null;
 	},
 
+	hooksReportPermissionWaits: false,
+
 	hooksSpec() {
 		return null;
 	},

@@ -4,7 +4,7 @@ import { chmodSync, existsSync, mkdirSync, symlinkSync, unlinkSync } from "node:
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { PATHS } from "../electrobun-platform";
-import type { AgentCheckResult, AgentModelAvailability, CodingAgent, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GlobalSettings, HarnessReadinessReport, Project, ProjectSettingsUpdate, RequirementCheckResult, RosettaWarningInfo, ShellAvailability, TelemetryProfile } from "../../shared/types";
+import type { AgentCheckResult, AgentModelAvailability, CodingAgent, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GlobalSettings, HarnessReadinessReport, Project, ProjectSettingsUpdate, RequirementCheckResult, RosettaWarningInfo, ShellAvailability, TelemetryProfile, TmuxRestartImpact, TmuxServerNotice } from "../../shared/types";
 import { SHELL_FALLBACK_ORDER, type ShellFlavor, shellCandidatePaths } from "../../shared/posix-shell";
 import { getUserShell, resolveUserShell, setShellPreference } from "../shell-env";
 import * as data from "../data";
@@ -19,7 +19,8 @@ import * as updater from "../updater";
 import * as rosetta from "../rosetta";
 import * as repoConfig from "../repo-config";
 import * as pty from "../pty-server";
-import { tmux } from "../tmux";
+import { SESSION_OVERVIEW_FORMAT, tmux } from "../tmux";
+import { tmuxRestartImpact } from "../tmux-restart-impact";
 import { setTmuxPaneDimming, setTmuxPaneTitles, writeTmuxConfigs } from "../tmux/config";
 import { loadSettings, saveSettings } from "../settings";
 import { resolveNeedsYouSoundToggles } from "../../shared/task-sound-statuses";
@@ -750,10 +751,35 @@ async function getRosettaWarning(): Promise<RosettaWarningInfo> {
 	return info;
 }
 
-async function getTmuxServerNotice(): Promise<{ predatesLaunchd: boolean }> {
+async function getTmuxServerNotice(): Promise<TmuxServerNotice> {
 	const predatesLaunchd = tmux.serverPredatesLaunchd();
 	if (predatesLaunchd) log.warn("tmux server predates the launchd start; task terminals can still lose folder access");
-	return { predatesLaunchd };
+	const staleBinary = tmux.serverBinaryStale();
+	if (staleBinary) log.warn("tmux server runs a tmux outside this app bundle; task terminals lose folder access once it is deleted", { staleBinary });
+	return { predatesLaunchd, staleBinary };
+}
+
+/** What stopping the default tmux server would end; null when it cannot be read. */
+async function getTmuxRestartImpact(): Promise<TmuxRestartImpact | null> {
+	try {
+		const sessions = await tmux.listSessions(SESSION_OVERVIEW_FORMAT);
+		const projects = [...(await data.loadProjects()), ...(await data.loadVirtualProjects())];
+		const boards = await Promise.all(projects.map(async (project) => ({ project, tasks: await data.loadTasks(project) })));
+		return tmuxRestartImpact(
+			sessions.map((s) => s.name),
+			boards,
+		);
+	} catch (err) {
+		log.warn("Could not read what a tmux restart would end", { error: String(err) });
+		return null;
+	}
+}
+
+/** Stop the default tmux server; the next terminal open starts a fresh one from this bundle. */
+async function restartTmuxServer(): Promise<{ ok: true }> {
+	log.warn("Restarting the tmux server at the user's request");
+	await tmux.stopServer();
+	return { ok: true };
 }
 
 async function checkGhAvailable(): Promise<{ available: boolean; notInstalled: boolean }> {
@@ -943,6 +969,8 @@ export const settingsConfigHandlers = {
 	checkSystemRequirements,
 	getRosettaWarning,
 	getTmuxServerNotice,
+	getTmuxRestartImpact,
+	restartTmuxServer,
 	checkGhAvailable,
 	setCustomBinaryPath,
 	checkAgentAvailability,

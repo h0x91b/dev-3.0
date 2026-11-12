@@ -17,6 +17,7 @@ const kanban = {
 	"kanban.launchAccountRemoved": "Аккаунт, который использовала эта задача, удалён — запуск на аккаунте по умолчанию.",
 	"kanban.launchAwsProfileMissing": "Профиль AWS этой задачи больше не указан у агента, поэтому она запущена с окружением проекта. Верните имя профиля в настройках, чтобы переключиться обратно.",
 	"kanban.awsProfilesChangedFromCli": "dev3 CLI изменил AWS-профили агента — они определяют, в каком AWS-аккаунте идут его запуски. Проверьте их в Настройках → Агенты.",
+	"kanban.badge.waitingForAnswer": "Ждёт вашего ответа",
 	"kanban.taskPreparationFailed": "Не удалось подготовить «{taskTitle}» — задача возвращена в To Do: {error}",
 	"task.launchFailed": "Ошибка запуска: {error}",
 	"task.startBranchMissing": "Ветка «{branch}», с которой начинается эта задача, больше не существует. Скорее всего, её удалили после слияния pull request. Создайте новую задачу от другой ветки.",

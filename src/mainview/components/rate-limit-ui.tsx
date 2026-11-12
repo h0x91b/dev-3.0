@@ -296,7 +296,12 @@ export function AccountQuotaLines({ snap, now }: { snap: AgentRateLimitSnapshot;
 				/>
 			)}
 			{snap.creditsBalance != null && !unlimited && (
-				<span className="text-fg-3">{t("rateLimits.credits", { balance: snap.creditsBalance })}</span>
+				<span className="text-fg-3">{t("rateLimits.credits", {
+					balance:
+						snap.creditsBalance.trim() !== "" && Number.isFinite(Number(snap.creditsBalance))
+							? numberFormat.format(Number(snap.creditsBalance))
+							: snap.creditsBalance,
+				})}</span>
 			)}
 		</>
 	);

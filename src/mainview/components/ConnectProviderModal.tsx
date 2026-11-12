@@ -93,9 +93,8 @@ export default function ConnectProviderModal({ onClose, onConnected }: { onClose
 		try {
 			const catalog = await api.request.modelCatalogGet();
 			const providerId = randomUUID();
-			// Every target carries a fixed label, and a custom endpoint's label is
-			// its identity on the wire — so a second Ollama box or a second
-			// hand-entered endpoint would collide with the first and be refused.
+			// Every target carries a fixed label, and a custom endpoint's wire key is
+			// taken from it on first save — a second one would collide and be refused.
 			const label =
 				target.kind === "custom" ? uniqueCustomProviderLabel(catalog.providers, target.label, url) : target.label;
 			const withProvider = {

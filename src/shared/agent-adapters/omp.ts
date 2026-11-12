@@ -66,6 +66,8 @@ export const ompAdapter: AgentAdapter = {
 
 	// Status rides on a generated extension module (`src/shared/omp-status-extension.ts`),
 	// loaded with `--hook`; the executor returns that flag for the launch to splice in.
+	hooksReportPermissionWaits: true,
+
 	hooksSpec() {
 		return { kind: "omp" };
 	},

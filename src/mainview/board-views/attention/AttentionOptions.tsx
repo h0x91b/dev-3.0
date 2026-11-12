@@ -138,7 +138,7 @@ export function AttentionOptions(_props: { ctx: Context }) {
 				<button
 					type="button"
 					onClick={() => write([...buckets, { id: newBucketId(buckets), name: "", query: "", sort: "priority" }])}
-					className="min-h-8 px-3 rounded-md text-xs font-medium bg-accent text-white hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent motion-safe:active:scale-[0.96] transition-[background-color,transform] duration-150 ease-out"
+					className="min-h-8 px-3 rounded-md text-xs font-medium bg-accent-fill text-white hover:bg-accent-fill-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent motion-safe:active:scale-[0.96] transition-[background-color,transform] duration-150 ease-out"
 				>
 					{t("boardView.attention.options.add")}
 				</button>

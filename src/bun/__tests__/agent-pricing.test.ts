@@ -36,6 +36,11 @@ describe("resolveModelRate", () => {
 		expect(resolveModelRate("claude-opus-4-1")?.input).toBe(15);
 	});
 
+	it("prices Fable 5.2 / Mythos 5.2 at their published $8/$40 with $0.20 cache reads", () => {
+		expect(resolveModelRate("claude-fable-5-2[1m]")).toEqual({ input: 8, output: 40, cacheWrite5m: 10, cacheWrite1h: 16, cacheRead: 0.2 });
+		expect(resolveModelRate("claude-mythos-5-2")).toMatchObject({ input: 8, output: 40, cacheRead: 0.2 });
+	});
+
 	it("prices Fable 5 at $10/$50", () => {
 		expect(resolveModelRate("claude-fable-5")).toMatchObject({ input: 10, output: 50, cacheWrite5m: 12.5, cacheWrite1h: 20, cacheRead: 1 });
 		expect(resolveModelRate("claude-fable-5-1[1m]")).toMatchObject({ input: 10, output: 50, cacheWrite5m: 12.5, cacheWrite1h: 20, cacheRead: 0.25 });

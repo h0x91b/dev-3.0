@@ -6,6 +6,7 @@ import { OPEN_SETTINGS_SECTION_EVENT } from "../../state";
 import { keepTaskOpen, registerCompletionOverlayHost, registerCompletionStrip, useCompletionOverlayHosted, useTaskStripOffer, type CompletionOffer, type CompletionOfferAnswer } from "../../completion-offers";
 import { WorktreeSettingsIcon } from "../TaskIcons";
 import { MergeIcon } from "./GitIcons";
+import ApprovalReasonNote from "../ApprovalReasonNote";
 import { toastClearanceRef } from "../../toast-clearance";
 import { completionSkipsGitCheck, unsavedWorkWarning } from "../../utils/confirmTaskCompletion";
 import { useTaskPaneState } from "../../hooks/useTaskPaneState";
@@ -144,6 +145,7 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 	const unknownLine = git.state === "unknown" && <div className="text-xs text-warning-strong">{t("task.branchStateUnknown")}</div>;
 	const warningLine = warning && <div className="text-xs text-danger whitespace-pre-line" data-testid="task-completion-strip-warning">{warning}</div>;
 	const noteLine = <div className="text-xs text-fg-3" data-testid="task-completion-strip-note">{note}</div>;
+	const reasonLine = offer.reason ? <ApprovalReasonNote reason={offer.reason} tone="danger" /> : null;
 
 	const mergeControls = offer.kind === "merge" && (
 		<>
@@ -214,6 +216,7 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 				<div className={`w-full items-end gap-3 pb-1.5 ${detailsOpen ? "flex" : "hidden group-hover:flex group-focus-within:flex [@media(hover:none)]:flex"}`} data-testid="task-completion-strip-details">
 					<div className="flex min-w-0 flex-1 flex-col gap-1">
 						{noteLine}
+						{reasonLine}
 						{unknownLine}
 						{warningLine}
 					</div>
@@ -256,6 +259,7 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 				<div className="min-w-0">
 					<div className="font-medium text-fg">{title}</div>
 					{noteLine}
+					{reasonLine && <div className="pt-1">{reasonLine}</div>}
 					{checking && <div className="text-xs text-fg-3" role="status">{t("task.checkingBranchState")}</div>}
 					{unknownLine}
 					{warningLine}

@@ -197,6 +197,21 @@ describe("AgentLaunchRequestModal", () => {
 		expect(onRespond).toHaveBeenCalledWith(true, undefined);
 	});
 
+	it("shows the agent's reason as plain text", async () => {
+		const reason = "Weekly limit hit on this account.\n<b>move</b> **off** it";
+		renderModal(makeRequest({ canAddVariants: false, sessionAction: { kind: "hibernate", paneCount: 1 }, reason: { text: reason } }));
+		const note = await screen.findByTestId("approval-reason");
+		expect(note).toHaveTextContent("Agent's reason");
+		expect(note.querySelector("blockquote")?.textContent).toBe(reason);
+		expect(note.querySelector("b, strong")).toBeNull();
+	});
+
+	it("shows no reason block when the agent gave none", async () => {
+		renderModal(makeRequest({ canAddVariants: false, sessionAction: { kind: "hibernate", paneCount: 1 } }));
+		await screen.findByRole("heading", { name: "Agent wants to hibernate this task" });
+		expect(screen.queryByTestId("approval-reason")).not.toBeInTheDocument();
+	});
+
 	it("shows a plain-shell wake request", async () => {
 		renderModal(makeRequest({ canAddVariants: false, sessionAction: { kind: "wake-shell" } }));
 		expect(await screen.findByRole("heading", { name: "Agent wants to wake this task with a plain shell" })).toBeInTheDocument();

@@ -455,6 +455,7 @@ describe("saveSettings", () => {
 			completedTours: ["first-task"],
 			reviewModePrompt: "Review the diff and report only blockers.",
 			taskOpenMode: "fullscreen",
+			digitsFollowSpaces: true,
 			defaultDiffViewMode: "unified",
 			remoteSilentUpdate: false,
 			preventSleepWhileRunning: true,

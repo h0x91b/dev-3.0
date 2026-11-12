@@ -177,6 +177,47 @@
 	font-size: 0.9375rem;
 	color: rgb(var(--text-primary));
 }
+/* Task descriptions are briefs, not replies: their headings structure the page,
+   so the top two levels step up, and a heading gets more air above than below.
+   Streamdown's `space-y-4` owns block margins, so the extra air is padding. */
+.dev3-task-desc-md h1 {
+	font-size: 1.0625rem;
+}
+.dev3-task-desc-md h2 {
+	font-size: 1rem;
+}
+.dev3-task-desc-md :is(h1, h2, h3):not(:first-child) {
+	padding-top: 0.25rem;
+}
+/* One frame per fence or table, as in `.dev3-md-doc`: Streamdown's own two
+   nested boxes use shadcn tokens this app does not define. */
+.dev3-task-desc-md [data-streamdown="code-block"],
+.dev3-task-desc-md [data-streamdown="table-wrapper"] {
+	margin: 0.5rem 0;
+	padding: 0;
+	border: none;
+	background: none;
+	gap: 0.125rem;
+}
+.dev3-task-desc-md [data-streamdown="code-block-body"],
+.dev3-task-desc-md [data-streamdown="table-wrapper"] > div {
+	padding: 0;
+	border: none;
+	background: none;
+	border-radius: 0;
+}
+.dev3-task-desc-md [data-streamdown="code-block-body"] > pre,
+.dev3-task-desc-md [data-streamdown="table-wrapper"] table {
+	margin: 0;
+}
+.dev3-task-desc-md [data-streamdown="code-block-header"] {
+	height: auto;
+	padding-left: 0.125rem;
+	font-family: var(--dev3-mono-stack);
+	font-size: 0.6875rem;
+	letter-spacing: 0.06em;
+	color: rgb(var(--text-muted));
+}
 .dev3-pr-md ul,
 .dev3-pr-md ol {
 	padding-left: 1.25rem;

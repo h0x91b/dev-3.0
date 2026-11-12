@@ -1,5 +1,8 @@
 # Start the macOS tmux server as a launchd job
 
+> Superseded in part on 2026-11-12 by `decisions/2026/11/12/same-path-update-keeps-tmux-tcc-access.md`: a tmux
+> replaced at the same path (an ordinary update) keeps folder access and is no longer reported as `deleted`.
+
 ## Context
 
 Task terminals on macOS lost `~/Documents`, `~/Desktop` and Full Disk Access at random, hours after
@@ -16,7 +19,14 @@ spawned with responsibility disclaimed, and one run as a `launchctl bootstrap` j
 by tccd as `responsible_path=<dev3.app>/Contents/Resources/app/tmux/tmux`,
 `AUTHREQ_SUBJECT=dev3.electrobun.dev`: the existing app grants applied, with no prompt and no live
 app. A disclaimed server whose bundle was swapped and the original deleted kept access across a
-`sandboxd` restart (136 probes, 0 denials).
+`sandboxd` restart (136 probes, 0 denials). The launchd job does not: reproduced on 2026-11-08, once
+the bundle the job's tmux came from was deleted, tccd logged `proc_pidpath_audittoken() failed from
+PID[<server>]: (#2) No such file or directory` and `Failed to create attribution chain from message`,
+and about 45 s later every pane lost `~/Desktop`, `~/Documents` and Full Disk Access. A bundle that was
+only moved kept access. `lsof -a -p <pid> -d txt -Fikn` reports the server's current executable
+(it follows a move, and keeps the old path once the file is deleted); `ps -o comm=` shows the stale argv.
+An update puts the new bundle at the same path, so the path alone matches; the old file shows as
+`k0` (no links left) with an inode that differs from what `stat` returns for that path now.
 
 ## Decision
 
@@ -36,7 +46,12 @@ it points at. `-D` turns tmux's `exit-empty` off; a `session-created` hook in th
 (`src/bun/tmux/config.ts`) turns it back on once a session exists, so the server still exits after
 the last session closes. `predatesLaunchdServer` flags a live server launchd does not own, and the
 renderer shows a one-time warning toast (`getTmuxServerNotice`) because such a server stays exposed
-until it restarts.
+until it restarts. `staleServerBinary` compares the server's executable (from `lsof`) with this
+bundle's tmux: `deleted` (access already lost: the file is gone, has no links, or its inode was
+replaced) or `elsewhere` (another dev3 bundle, lost once it is deleted) replaces that toast with one
+offering "Restart terminals", which confirms and then runs `restartTmuxServer` (`tmux.stopServer`,
+which throws instead of reporting a restart that did not happen). `deleted` stays until acted on;
+`elsewhere` times out, because two running copies legitimately share the `dev3` socket.
 
 ## Risks
 
@@ -46,7 +61,10 @@ until it restarts.
   succeeds); re-check `ls ~/Documents` in a task terminal after major macOS updates.
 - A server created by an older dev3 keeps the flaw until it restarts; the first update ships the
   fix without protecting terminals that are already open.
-- An update that changes the tmux binary's code was not verified, only a byte-identical swap.
+- Deleting the bundle a running launchd server came from (the Electrobun updater removes the old
+  bundle, `brew upgrade`, a reinstall that drops the old copy) cuts access for every pane until the
+  server restarts. The check runs once per launch, so a deletion while dev3 stays open is caught only
+  at the next launch; restarting ends every running agent, so it is never automatic.
 - Homebrew/PATH/custom tmux keep the old start: tccd would judge them as themselves and they would
   lose the access they inherit from a live app. The native backend's detached host has the same flaw.
 

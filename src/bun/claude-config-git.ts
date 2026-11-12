@@ -68,25 +68,46 @@ export function isGitTracked(file: string): boolean {
 
 const excluded = new Set<string>();
 
-/** Add the runtime-state rules for `configDir` to its repo's `info/exclude`. Once per dir per process; never throws. */
-export function excludeClaudeRuntimeState(configDir: string, skillNames: readonly string[]): void {
-	if (excluded.has(configDir) || !existsSync(configDir)) return;
-	excluded.add(configDir);
+/**
+ * Append the rules `rulesFor(prefix)` builds to the `info/exclude` of the repo `dir`
+ * sits in (never committed), skipping rules already there. `prefix` is `dir` relative
+ * to the repo root. Once per key per process; never throws.
+ */
+function addExcludeRules(key: string, dir: string, rulesFor: (prefix: string) => string[], label: string): void {
+	if (excluded.has(key) || !existsSync(dir)) return;
+	excluded.add(key);
 	try {
-		const res = git(["rev-parse", "--git-path", "info/exclude", "--show-prefix"], configDir);
+		const res = git(["rev-parse", "--git-path", "info/exclude", "--show-prefix"], dir);
 		if (!res.ok) return;
 		const [gitPath, prefix = "", ...rest] = res.stdout.split("\n");
 		if (!gitPath || rest.some((line) => line.length > 0)) return;
-		const excludePath = isAbsolute(gitPath) ? gitPath : join(configDir, gitPath);
+		const excludePath = isAbsolute(gitPath) ? gitPath : join(dir, gitPath);
 		const content = existsSync(excludePath) ? readFileSync(excludePath, "utf-8") : "";
 		const present = new Set(content.split("\n").map((line) => line.trimEnd()));
-		const missing = claudeRuntimeExcludeRules(prefix, skillNames).filter((rule) => !present.has(rule));
+		const missing = rulesFor(prefix).filter((rule) => !present.has(rule));
 		if (missing.length === 0) return;
 		mkdirSync(dirname(excludePath), { recursive: true });
 		const separator = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
-		writeFileSync(excludePath, `${content}${separator}# dev3: Claude runtime state in ${prefix}\n${missing.join("\n")}\n`);
-		log.info("Excluded Claude runtime state from git", { configDir, rules: missing.length });
+		writeFileSync(excludePath, `${content}${separator}# dev3: ${label} in ${prefix}\n${missing.join("\n")}\n`);
+		log.info("Excluded from git", { dir, label, rules: missing.length });
 	} catch (err) {
-		log.warn("Failed to exclude Claude runtime state (non-fatal)", { configDir, error: String(err) });
+		log.warn("Failed to write git exclude rules (non-fatal)", { dir, label, error: String(err) });
 	}
+}
+
+/** Add the runtime-state rules for `configDir` to its repo's `info/exclude`. Once per dir per process; never throws. */
+export function excludeClaudeRuntimeState(configDir: string, skillNames: readonly string[]): void {
+	addExcludeRules(`runtime:${configDir}`, configDir, (prefix) => claudeRuntimeExcludeRules(prefix, skillNames), "Claude runtime state");
+}
+
+/**
+ * dev3 writes Claude's hooks and approvals into the task folder's
+ * `.claude/settings.local.json`. Untracked, it reads as uncommitted work: it holds
+ * back the merge-completion offer and warns on Complete. Exclude it unless the
+ * repo tracks it. Never throws.
+ */
+export function excludeTaskClaudeSettings(taskDir: string): void {
+	const file = join(taskDir, ".claude", "settings.local.json");
+	if (!existsSync(file) || isGitTracked(file)) return;
+	addExcludeRules(`task-settings:${taskDir}`, taskDir, (prefix) => [`/${prefix.replace(/[\\*?[]/g, "\\$&")}.claude/settings.local.json`], "dev3 task settings");
 }

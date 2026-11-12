@@ -175,6 +175,7 @@ function renderHeader(
 		canGoBack?: boolean;
 		canGoForward?: boolean;
 		agents?: CodingAgent[];
+		digitsFollowSpaces?: boolean;
 	},
 ) {
 	return render(headerElement(route, projects, navigate, tasks, extra));
@@ -206,6 +207,7 @@ function headerElement(
 				remoteAccessActive={extra?.remoteAccessActive ?? false}
 				suppressHelpCallout={extra?.suppressHelpCallout}
 				helpDiscovered={extra?.helpDiscovered}
+				digitsFollowSpaces={extra?.digitsFollowSpaces}
 			/>
 		</I18nProvider>
 	);
@@ -473,6 +475,24 @@ describe("GlobalHeader — project switcher dropdown", () => {
 			expect(badgeOf("Project Alpha")).toBe("⌘1");
 			expect(badgeOf("Project Beta")).toBe("⌘2");
 			expect(badgeOf("Project Delta")).toBe("⌘3");
+		});
+
+		it("with number keys following spaces, badges the space heading and standalone projects, not the members", async () => {
+			withSpaces();
+			const user = userEvent.setup();
+			renderHeader({ screen: "project", projectId: "p1" }, [project1, project2, project4], undefined, [], { digitsFollowSpaces: true });
+			await user.click(getChevronButton());
+			const menu = await screen.findByRole("menu");
+			await within(menu).findByText("Dev Space");
+			const kbdOf = (el: HTMLElement) => el.querySelector("kbd")?.textContent;
+			// Board order: sp_dev (slot of Alpha), then sp_other (slot of Beta), then Delta.
+			expect(kbdOf(screen.getByTestId("switcher-space-sp_dev"))).toBe("⌘1");
+			expect(kbdOf(screen.getByTestId("switcher-space-sp_other"))).toBe("⌘2");
+			const rows = within(menu).getAllByTestId("switcher-row");
+			const rowOf = (name: string) => rows.find((r) => r.textContent?.includes(name))!;
+			expect(kbdOf(rowOf("Project Delta"))).toBe("⌘3");
+			expect(kbdOf(rowOf("Project Alpha"))).toBeUndefined();
+			expect(kbdOf(rowOf("Project Beta"))).toBeUndefined();
 		});
 
 		// A heading names a board of its own, so it has to lead somewhere. Before

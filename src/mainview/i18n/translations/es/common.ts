@@ -94,6 +94,8 @@ const common = {
 	// Generic confirmation dialog (imperative confirm() service)
 	"confirmDialog.cancel": "Cancelar",
 	"confirmDialog.agentBadge": "Solicitud del agente de IA",
+	"approvalReason.label": "Motivo del agente",
+	"approvalReason.fromTask": "Motivo de la tarea #{seq} — {title}",
 
 	// About dialog (in-app, replaces the native About message box)
 	"about.version": "Versión {version}",

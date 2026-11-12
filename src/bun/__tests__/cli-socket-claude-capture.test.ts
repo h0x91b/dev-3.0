@@ -156,6 +156,15 @@ describe("cli-socket — Claude per-pane session capture (e2e, real data)", () =
 		expect(readPanes().map((p) => [p.paneId, p.sessionId])).toEqual([["%1", LAUNCH_A], [null, LAUNCH_B]]);
 	});
 
+	it("records the pane of a launch-time entry that still has none, matched by session id", async () => {
+		const { handleRequest } = await import("../cli-socket-server");
+		seed([makeTask({ sessionState: { panes: [claudePane(null, LAUNCH_A)] } })]);
+
+		await handleRequest(promptSubmitted({ sessionId: LAUNCH_A, paneId: "%1" }));
+
+		expect(readPanes().map((p) => [p.paneId, p.sessionId])).toEqual([["%1", LAUNCH_A]]);
+	});
+
 	it("leaves the panes alone when the hook names no pane", async () => {
 		const { handleRequest } = await import("../cli-socket-server");
 		seed([makeTask({ sessionState: { panes: [claudePane("%1", LAUNCH_A)] } })]);

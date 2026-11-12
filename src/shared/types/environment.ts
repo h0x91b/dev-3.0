@@ -38,6 +38,29 @@ export type LaunchLocationIssue = {
 	reason: string;
 } | null;
 
+/**
+ * macOS: why task terminals on the live tmux server can lose folder access, or
+ * cannot be driven. `deleted`: nothing is left at the server tmux's path, so
+ * access goes at macOS's next check; `elsewhere`: another dev3 bundle, lost once
+ * that copy is deleted; `incompatible`: this app's tmux cannot speak its protocol.
+ */
+export type StaleTmuxServer = "deleted" | "elsewhere" | "incompatible";
+
+export type TmuxServerNotice = {
+	predatesLaunchd: boolean;
+	staleBinary: StaleTmuxServer | null;
+};
+
+/** What restarting the default tmux server would end, so its confirm can name it. */
+export type TmuxRestartImpact = {
+	/** Main agent sessions of tasks (`dev3-<short>`). */
+	taskTerminals: number;
+	/** Every other session on the server: project terminals, dev servers, cleanup scripts. */
+	otherSessions: number;
+	/** Tasks with a live terminal whose agent is mid-turn right now. */
+	working: Array<{ taskId: string; seqLabel: string; title: string; projectName: string }>;
+};
+
 // ---- Agent availability ----
 
 export interface AgentCheckResult {

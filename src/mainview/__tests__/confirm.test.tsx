@@ -37,6 +37,29 @@ describe("confirm service", () => {
 		expect(screen.queryByText("Delete task")).not.toBeInTheDocument();
 	});
 
+	it("shows an agent's reason, attributed to the asking task, as plain text", async () => {
+		renderHost();
+		act(() => {
+			void confirm({
+				title: "Complete task?", message: "M", confirmLabel: "Complete", agentInitiated: true,
+				reason: { text: "<img src=x onerror=alert(1)> PR merged", from: { seq: 7, title: "Coordinator" } },
+			});
+		});
+		const note = await screen.findByTestId("approval-reason");
+		expect(note).toHaveTextContent("Reason from task #7 — Coordinator");
+		expect(note).toHaveTextContent("<img src=x onerror=alert(1)> PR merged");
+		expect(note.querySelector("img")).toBeNull();
+	});
+
+	it("shows no reason block without a reason", async () => {
+		renderHost();
+		act(() => {
+			void confirm({ title: "Complete task?", message: "M", confirmLabel: "Complete", agentInitiated: true });
+		});
+		await screen.findByText("Complete task?");
+		expect(screen.queryByTestId("approval-reason")).not.toBeInTheDocument();
+	});
+
 	it("resolves false on cancel", async () => {
 		const user = userEvent.setup();
 		renderHost();
@@ -179,6 +202,15 @@ describe("confirm service", () => {
 
 		const cancelBtn = await screen.findByRole("button", { name: "Keep session" });
 		expect(cancelBtn).toHaveFocus();
+	});
+
+	it("focuses the cancel button when the caller makes it the safe default", async () => {
+		renderHost();
+		act(() => {
+			void confirm({ title: "Restart?", message: "M", confirmLabel: "Restart now", cancelLabel: "Restart later", danger: true, focusCancel: true });
+		});
+
+		expect(await screen.findByRole("button", { name: "Restart later" })).toHaveFocus();
 	});
 
 	// A red confirm button inside otherwise-accent chrome reads as the ordinary

@@ -322,6 +322,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "digits-follow-spaces",
+		category: "keyboard",
+		titleKey: "settings.digitsFollowSpaces",
+		descriptionKey: "settings.digitsFollowSpacesDesc",
+		anchor: "digits-follow-spaces",
+		globalField: "digitsFollowSpaces",
+		storage: "global",
+	},
+	{
 		id: "terminal-backend-new-tasks",
 		category: "terminal",
 		titleKey: "settings.terminalBackend",
@@ -804,6 +813,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"helpModeDiscovered",
 	"completedTours",
 	"taskOpenMode",
+	"digitsFollowSpaces",
 	"terminalPathOpenMode",
 	"defaultDiffViewMode",
 	"openArtifactsInPopup",

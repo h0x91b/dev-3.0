@@ -1,3 +1,4 @@
+import { modifierLabel } from "../utils/platform";
 import EpicsSettingsSection from "./global-settings/EpicsSettingsSection";
 import {
 	useCallback,
@@ -724,6 +725,16 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
+	const handleDigitsFollowSpacesToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange(
+				{ digitsFollowSpaces: enabled },
+				{ tracking: { setting: "digits_follow_spaces", value: enabled ? "spaces" : "projects" } },
+			);
+		},
+		[persistSettingChange],
+	);
+
 	const handleRemoteSilentUpdateToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange({ remoteSilentUpdate: enabled });
@@ -1097,6 +1108,8 @@ function GlobalSettings({
 				return (
 					<KeyboardSettingsSection
 						t={t}
+						digitsFollowSpaces={globalSettings.digitsFollowSpaces === true}
+						onDigitsFollowSpacesToggle={handleDigitsFollowSpacesToggle}
 						onShortcutsChange={handleShortcutsChange}
 					/>
 				);
@@ -1461,7 +1474,7 @@ function SettingsSearchResults({
 										{t(entry.titleKey)}
 									</span>
 									<span className="mt-0.5 block text-xs text-fg-3">
-										{t(entry.descriptionKey)}
+										{t(entry.descriptionKey, { mod: modifierLabel() })}
 									</span>
 									<span className="mt-2 block text-micro text-fg-muted">
 										{t("settings.searchResultCategory", {

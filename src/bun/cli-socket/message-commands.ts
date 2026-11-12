@@ -5,6 +5,7 @@ import {
 	captureScheduledMessageAuthor,
 	resolveScheduledMessageAuthorPane,
 } from "../scheduled-message-author";
+import { senderEvidenceOf } from "../sender-evidence";
 import { requireExternalSender } from "../external-senders";
 import { toScheduledMessageListing } from "../../shared/scheduled-message-listing";
 import { LEGACY_AGENT_HANDLE_PREFIX, decodeAgentHandle } from "../../shared/agent-handle";
@@ -94,6 +95,7 @@ export const messageHandlers: Record<string, Handler> = {
 				task,
 				typeof params.sourcePaneId === "string" ? params.sourcePaneId : null,
 				typeof params.sourcePid === "number" ? params.sourcePid : null,
+				senderEvidenceOf(params),
 			)
 			: null);
 		const updated = await scheduleMessageCore(project, task, { text, at, source, subject, author });

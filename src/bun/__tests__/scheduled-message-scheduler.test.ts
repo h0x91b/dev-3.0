@@ -46,6 +46,7 @@ vi.mock("../logger", () => ({
 import * as data from "../data";
 import { holdMessageForPane, sendPromptToAgentPane, sendPromptToPane } from "../agent-prompt";
 import { isSoleMainAgent, resolveMainAgentTarget } from "../agent-message-target";
+import { resolveTaskAcrossProjects } from "../cli-socket/task-resolution";
 import { encodeAgentHandle } from "../../shared/agent-handle";
 import { sendPromptToNativeAgentPane, sendPromptToNativePane } from "../agent-prompt-native";
 import { resolveScheduledMessageAuthorPane } from "../scheduled-message-author";
@@ -149,6 +150,18 @@ describe("scheduled-message scheduler — tick", () => {
 		expect(data.updateTaskWith).toHaveBeenCalledWith(project, task.id, expect.any(Function));
 	});
 
+	it("clears even future legacy reminders when their recipient has finished", async () => {
+		const message = makeMessage({ at: new Date(Date.now() + 3_600_000).toISOString() });
+		const task = makeTask({ status: "completed", scheduledMessages: [message] });
+		mockUpdateTaskWith(task);
+		vi.mocked(data.loadTasks).mockResolvedValue([task] as never);
+		startScheduledMessageScheduler();
+		await flush();
+		expect(data.updateTaskWith).toHaveBeenCalled();
+		expect(holdMessageForPane).not.toHaveBeenCalled();
+		expect(pushFn).not.toHaveBeenCalledWith("cliToast", expect.anything());
+	});
+
 	it("does not deliver a message scheduled in the future", async () => {
 		const task = makeTask({ scheduledMessages: [makeMessage({ at: new Date(Date.now() + 3_600_000).toISOString() })] });
 		vi.mocked(data.loadTasks).mockResolvedValue([task] as never);
@@ -240,12 +253,17 @@ describe("fireScheduledMessage — notification semantics", () => {
 		expect(data.updateTaskWith).toHaveBeenCalled(); // still removed
 	});
 
-	it("drops (never delivers) for a terminal-status task", async () => {
-		const task = makeTask({ status: "completed" });
+	it.each(["completed", "cancelled"])("quietly discards a retained reminder for a %s task", async (status) => {
+		const message = makeMessage({ author: { paneId: "%586" }, text: "This message is 29079 bytes — longer than one terminal read" });
+		const task = makeTask({ status, scheduledMessages: [message] });
 		mockUpdateTaskWith(task);
-		await fireScheduledMessage(project, task as never, makeMessage() as never, { late: false });
+		const { delivery, task: after } = await fireScheduledMessage(project, task as never, message as never, { late: true });
+		expect(delivery).toMatchObject({ status: "not-delivered", detail: "the task is finished" });
+		expect(after.scheduledMessages).toEqual([]);
 		expect(holdMessageForPane).not.toHaveBeenCalled();
-		expect(pushFn).toHaveBeenCalledWith("cliToast", expect.objectContaining({ level: "error" }));
+		expect(resolveScheduledMessageAuthorPane).not.toHaveBeenCalled();
+		expect(pushFn).not.toHaveBeenCalledWith("cliToast", expect.anything());
+		expect(pushFn).not.toHaveBeenCalledWith("cliAttention", expect.anything());
 	});
 });
 
@@ -408,6 +426,16 @@ describe("cancel / send-now / immediate", () => {
 		expect(text).not.toContain("<reply-with>");
 		expect(text).not.toContain("dev3 message --task");
 		expect(text).toContain("<reply-unavailable>agent identity cannot be verified on Windows yet</reply-unavailable>");
+	});
+
+	it("delivers a cross-task schedule even when its sender has completed", async () => {
+		vi.mocked(resolveTaskAcrossProjects).mockResolvedValueOnce({ project, task: makeTask({ id: "sender", status: "completed" }) } as never);
+		const message = makeMessage({ source: { taskId: "sender", seq: 7, agent: senderAgent } });
+		const task = makeTask({ scheduledMessages: [message] });
+		mockUpdateTaskWith(task);
+		const { delivery } = await fireScheduledMessage(project, task as never, message as never, { late: false });
+		expect(delivery.status).toBe("held");
+		expect(holdMessageForPane).toHaveBeenCalledWith(expect.anything(), "%1", expect.stringContaining("check CI and continue"), expect.any(Function), undefined, expect.anything());
 	});
 
 	it("fireScheduledMessage wraps a queued cross-task message but stores it plain", async () => {

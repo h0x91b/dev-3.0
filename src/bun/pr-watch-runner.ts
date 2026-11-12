@@ -203,7 +203,8 @@ async function deliverFired(
 	}
 
 	const byPane = new Map<string, { fired: Fired; keys: string[] }>();
-	let liveAgents: string[] | null | undefined;
+	let liveAgents: string[] | null = null;
+	let probed = false;
 	for (const [key, fired] of subscribers) {
 		const backoffKey = `${taskId}|${pinnedPr ?? "branch"}|${key}`;
 		if ((retryAfter.get(backoffKey) ?? 0) > Date.now()) continue;
@@ -216,7 +217,10 @@ async function deliverFired(
 		}
 		if (!paneId) {
 			const { liveAgentPaneIds } = await import("./scheduled-message-author");
-			liveAgents ??= await liveAgentPaneIds(task);
+			if (!probed) {
+				liveAgents = await liveAgentPaneIds(task);
+				probed = true;
+			}
 			if (liveAgents?.length === 1) paneId = liveAgents[0];
 		}
 		if (!paneId) {

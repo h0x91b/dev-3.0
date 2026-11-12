@@ -175,8 +175,8 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 		remappable: false, fixedReasonKey: "keymap.fixed.chordSequence",
 		display: { mac: "G then D/P/T/S/1–9", other: "G then D/P/T/S/1–9" },
 	},
-	// Zoom out from a project's board to its space's unified board. One key for the
-	// whole feature: ⌘1..9 stay exactly what they are today (a project each).
+	// Zoom out from a project's board to its space's unified board. ⌘1..9 are a
+	// project each, or a space / standalone project each with "Number keys follow spaces".
 	{ id: "zoom-out-to-space", primary: [mod("KeyU", "Shift")], descKey: "keymap.shortcut.zoomOutToSpace", category: "navigation" },
 	{ id: "focus-search", primary: [{ code: "Slash", mods: [] }], descKey: "keymap.shortcut.focusSearch", category: "navigation" },
 	{

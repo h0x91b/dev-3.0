@@ -13,6 +13,7 @@ import ResumeAccountPicker, { isClaudePane, savedResumeAccount } from "./ResumeA
 import AgentPickerSkeleton from "./AgentPickerSkeleton";
 import MemoryPressureBanner from "./MemoryPressureBanner";
 import TaskDialogSubjectCard from "./TaskDialogSubjectCard";
+import ApprovalReasonNote from "./ApprovalReasonNote";
 
 const NOT_INSTALLED_ID = "agent-launch-not-installed";
 
@@ -274,6 +275,8 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 								title: request.requesterTitle,
 							})}
 					</p>
+
+					{request.reason && <ApprovalReasonNote reason={request.reason} />}
 
 					<TaskDialogSubjectCard
 						title={request.taskTitle}

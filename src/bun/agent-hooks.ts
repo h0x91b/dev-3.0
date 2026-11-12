@@ -8,6 +8,7 @@
  * Currently supports Claude Code, Codex, omp and pi. Extensible for Gemini, Cursor, etc.
  */
 
+import { excludeTaskClaudeSettings } from "./claude-config-git";
 import type { AgentFamily, PermissionMode, TaskStatus } from "../shared/types";
 import { createLogger } from "./logger";
 import { getAgentAdapter } from "../shared/agent-adapters/registry";
@@ -109,6 +110,7 @@ export async function setupAgentHooks(
 			stopTarget: spec.stopTarget,
 			permissionMode: spec.permissionMode,
 		});
+		excludeTaskClaudeSettings(worktreePath);
 		if (skippedSymlink) {
 			// The board stops following this task, so say why.
 			log.warn("Claude hooks not written: settings path is a symlink", { worktreePath, symlink: skippedSymlink });

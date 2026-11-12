@@ -211,6 +211,8 @@ export interface GlobalSettings {
 	 */
 	completedTours?: string[];
 	taskOpenMode?: "split" | "fullscreen"; // how active tasks open when clicked
+	/** ⌘1–⌘9 address spaces and standalone projects in the dashboard's mixed order instead of projects. */
+	digitsFollowSpaces?: boolean;
 	/**
 	 * What Cmd/Ctrl+Click on a file path in terminal output does:
 	 * in-app preview modal (default), OS default app, or reveal in the file

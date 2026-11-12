@@ -9,6 +9,7 @@ import type { GlobalSettings } from "./global-settings";
 import { taskUsesWorktree, type Project } from "./project";
 import type { Label } from "./labels-columns";
 import { getTaskOverview, taskSeqLabel } from "./task-display";
+import type { ApprovalReason } from "../approval-reason";
 
 /** One row of the Launch modal: the agent + configuration to run, plus the
  *  per-launch managed account (`undefined` → the registry default; `null` → the
@@ -121,6 +122,8 @@ export interface AgentCompletionRequest {
 	projectId: string;
 	taskTitle: string;
 	subject: TaskDialogSubject;
+	/** Why the agent asks (`--reason`), plain text. */
+	reason?: ApprovalReason;
 }
 
 /**
@@ -141,6 +144,8 @@ export interface AgentCancellationRequest {
 	subject: TaskDialogSubject;
 	/** Reset only: the branch survives, so the dialog must not say it is deleted. */
 	branchKept?: boolean;
+	/** Why the agent asks (`--reason`), plain text. */
+	reason?: ApprovalReason;
 }
 
 /**
@@ -198,6 +203,8 @@ export interface AgentLaunchRequest {
 	 * lives in the bun process, so closing the window cannot stall the agent.
 	 */
 	autoApproveAt: number | null;
+	/** Why the requester asks (`--reason`), plain text; the dialog already names who asked. */
+	reason?: ApprovalReason;
 }
 
 /**
