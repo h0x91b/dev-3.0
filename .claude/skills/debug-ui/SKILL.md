@@ -135,10 +135,13 @@ Do **not** put `DEV3_QA_SCOPE` in `.dev3/config.local.json`. That was the old re
 is exactly what the flag removes: the file also reaches the agent sessions of this worktree, and a
 forgotten one silently boots the next QA run on the throwaway board.
 
-**What it does NOT isolate** — name these rather than assuming a clean room: the tmux socket
-directory (only `TMUX_TMPDIR` moves it, and dev3 sets it nowhere), the PowerShell history file on
-Windows, the user's own `~/.codex` / `~/.claude` agent configs, and `dev3` CLI commands run from
-inside a REAL worktree (cwd-based task detection outranks `$DEV3_HOME` by design).
+The scoped board also runs its own tmux server: `TMUX_TMPDIR` points at `<scoped root>/t`, so its
+task sessions never join the real app's server. To drive one by hand, prefix the same variable:
+`TMUX_TMPDIR=<scoped root>/t tmux -L dev3 ls`. A bare `tmux -L dev3` reaches the REAL server.
+
+**What it does NOT isolate** — name these rather than assuming a clean room: the PowerShell
+history file on Windows, the user's own `~/.codex` / `~/.claude` agent configs, and `dev3` CLI
+commands run from inside a REAL worktree (cwd-based task detection outranks `$DEV3_HOME` by design).
 
 ## Gotchas
 

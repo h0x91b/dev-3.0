@@ -45,7 +45,10 @@ export function qaScopeRoot(worktreeRoot: string, mode: QaScopeMode, tempRoot = 
 }
 
 /**
- * Only `DEV3_HOME` and `DEV3_LOG_DIR` are redirected. `HOME` deliberately stays
+ * `DEV3_HOME`, `DEV3_LOG_DIR` and `TMUX_TMPDIR` are redirected. `TMUX_TMPDIR` gives
+ * the instance its own tmux server: every tmux it spawns, task panes included,
+ * inherits it, so nothing lands on the real app's server. Kept short, because a
+ * macOS socket path stops at 104 bytes. `HOME` deliberately stays
  * real: the agent's own `dev3` CLI, git and module resolution all read it, and
  * moving it would break the QA run rather than isolate it. `DEV3_TEST_ROOT` (the
  * OS scratch root behind `dev3TempPath`) also stays real — task scratch files are
@@ -55,6 +58,7 @@ export function qaScopeEnv(root: string): Record<string, string> {
 	return {
 		DEV3_HOME: join(root, "home", ".dev3.0").replaceAll("\\", "/"),
 		DEV3_LOG_DIR: join(root, "logs").replaceAll("\\", "/"),
+		TMUX_TMPDIR: join(root, "t").replaceAll("\\", "/"),
 	};
 }
 
@@ -106,10 +110,10 @@ export function seedQaScope(
 	run: QaScopeRunner = bunRunner,
 ): Record<string, string> {
 	const env = qaScopeEnv(root);
-	// The data root and log dir are created even for `virgin`: an absent parent is
+	// The data root, log dir and tmux dir are created even for `virgin`: an absent parent is
 	// not "a new user", it is a different failure, and the app creates this dir on
 	// first run anyway.
-	for (const dir of [env.DEV3_HOME, env.DEV3_LOG_DIR]) mkdirSync(dir, { recursive: true });
+	for (const dir of [env.DEV3_HOME, env.DEV3_LOG_DIR, env.TMUX_TMPDIR]) mkdirSync(dir, { recursive: true });
 	if (mode === "virgin") return env;
 
 	const repo = qaFixtureRepo(root);

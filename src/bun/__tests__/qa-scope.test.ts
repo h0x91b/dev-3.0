@@ -33,8 +33,8 @@ describe("QA scope selection", () => {
 		expect(qaScopeRoot("/repo/worktree", "seeded", "/tmp")).toBe(seeded);
 	});
 
-	it("redirects the data root and logs, and nothing else", () => {
-		expect(Object.keys(qaScopeEnv("/tmp/scope")).sort()).toEqual(["DEV3_HOME", "DEV3_LOG_DIR"]);
+	it("redirects the data root, logs and tmux server, and nothing else", () => {
+		expect(Object.keys(qaScopeEnv("/tmp/scope")).sort()).toEqual(["DEV3_HOME", "DEV3_LOG_DIR", "TMUX_TMPDIR"]);
 		// HOME staying real is load-bearing: the agent's dev3 CLI and git read it.
 		expect(qaScopeEnv("/tmp/scope")).not.toHaveProperty("HOME");
 	});
@@ -48,6 +48,19 @@ describe("QA scope selection", () => {
 		}
 	});
 
+	it("gives the instance its own tmux server, so its panes never join the real app's", () => {
+		const scope = qaScopeEnv("/tmp/scope");
+		expect(scope.TMUX_TMPDIR).toBe("/tmp/scope/t");
+		const env = devRunEnv("dev", { staticCode: null, port0: undefined, qaScope: scope });
+		expect(env.TMUX_TMPDIR).toBe("/tmp/scope/t");
+	});
+
+	it("keeps the scoped tmux socket path under the macOS limit", () => {
+		// A typical macOS os.tmpdir() plus tmux's own `tmux-<uid>/<name>` suffix.
+		const root = qaScopeRoot("/repo/worktree", "seeded", "/var/folders/zz/zyxvpxvq6csfxvn_n0000000000000/T");
+		expect(`${qaScopeEnv(root).TMUX_TMPDIR}/tmux-501/dev3`.length).toBeLessThan(104);
+	});
+
 	it("leaves DEV3_HOME unset when no scope was requested", () => {
 		const env = devRunEnv("dev", { staticCode: null, port0: "1234" });
 		expect(env).not.toHaveProperty("DEV3_HOME");
@@ -59,6 +72,8 @@ describe("QA scope seeding", () => {
 		const root = testScopedPath("qa-virgin");
 		const env = seedQaScope(root, "virgin");
 		expect(existsSync(env.DEV3_HOME)).toBe(true);
+		// tmux creates only its own `tmux-<uid>` dir and needs TMUX_TMPDIR to exist.
+		expect(existsSync(env.TMUX_TMPDIR)).toBe(true);
 		expect(existsSync(join(env.DEV3_HOME, "projects.json"))).toBe(false);
 		expect(existsSync(join(root, "fixture-repo"))).toBe(false);
 	});
