@@ -21,6 +21,8 @@ vi.mock("../../../rpc", () => ({
 			getTaskLineage: vi.fn().mockResolvedValue({ nodes: [] }),
 			getBoardViewState: vi.fn(),
 			setBoardViewState: vi.fn(async ({ state }) => state),
+			getBoardFilterState: vi.fn().mockResolvedValue({ statuses: [] }),
+			setBoardFilterState: vi.fn(async ({ state }) => state),
 		},
 	},
 }));

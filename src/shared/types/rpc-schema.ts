@@ -35,6 +35,7 @@ import type { ClaudeModStatus } from "./claude-mods";
 import type { AutoConfigureResult, BoardCopyFailureReason, BoardCopyOffer, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GitInitOffer, Project, ProjectSettingsUpdate, PrResolveFailureReason, ShellAvailability, ShellPromptPreview } from "./project";
 import type { CustomColumn, Label } from "./labels-columns";
 import type { Space, SpacesFile } from "./spaces";
+import type { BoardFilterState } from "../board-filter-state";
 import type { BoardRef, BoardViewState } from "../board-view-state";
 import type { ExtensionInspection, ExtensionsOverview, InstalledExtension } from "../extensions";
 import type { Epic, EpicMember, EpicsFile } from "./epics";
@@ -134,6 +135,15 @@ export type AppRPCSchema = {
 			setBoardViewState: {
 				params: { board: BoardRef; state: BoardViewState };
 				response: BoardViewState;
+			};
+			/** Persisted status tokens of one board's filter (`board-filters.json`). */
+			getBoardFilterState: {
+				params: { board: BoardRef };
+				response: BoardFilterState;
+			};
+			setBoardFilterState: {
+				params: { board: BoardRef; state: BoardFilterState };
+				response: BoardFilterState;
 			};
 			/** Board-view extensions (`~/.dev3.0/extensions/`), the kill switch and built-in toggles. */
 			listExtensions: {
