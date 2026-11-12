@@ -435,6 +435,8 @@ export function analyticsLocationForRoute(route: Route): AnalyticsLocation {
 			return { screen: "changelog", title: "Changelog", path: "/app/changelog" };
 		case "stats":
 			return { screen: "stats", title: "Stats", path: "/app/stats" };
+		case "completions":
+			return { screen: "completions", title: "Ready to complete", path: "/app/completions" };
 		case "sessions":
 			// The scope project stays out of the path, same rule as agent-traffic.
 			return { screen: "sessions", title: "Sessions", path: "/app/sessions" };

@@ -53,8 +53,9 @@ import ViewportLab from "./components/ViewportLab";
 import NativePaneLayoutLab from "./labs/native-pane/NativePaneLayoutLab";
 import { setToastSuppressed, taskToastContext, ToastHost, toast, type ToastEntry, type ToastOrigin } from "./toast";
 import { toastClearanceRef } from "./toast-clearance";
-import { getCompletionOfferStyle, hasCompletionOffer, isCompletionStripMounted, offerCompletion, setCompletionOfferStyle } from "./completion-offers";
+import { getCompletionOfferStyle, hasCompletionOffer, isCompletionOfferOnScreen, offerCompletion, setCompletionOfferStyle } from "./completion-offers";
 import CompletionOfferDialogHost from "./components/CompletionOfferDialogHost";
+import ReadyToCompleteScreen from "./components/ReadyToCompleteScreen";
 import { agentMessageToast, type AgentMessageDetail, type AgentToastEnd } from "./agent-message-toast";
 import { showStaleAgentPathToast, type StaleAgentPathDetail } from "./stale-agent-path-toast";
 import { useSpaces } from "./useSpaces";
@@ -867,7 +868,7 @@ function App() {
 		const { taskId, projectId, taskTitle, subject, reason } = offer;
 		dispatch({ type: "addBell", taskId, reason });
 		const withdrawBell = () => dispatch({ type: "removeBellReason", taskId, reason });
-		if (getCompletionOfferStyle() === "dialog" || isCompletionStripMounted(taskId)) return withdrawBell;
+		if (getCompletionOfferStyle() === "dialog" || isCompletionOfferOnScreen(taskId)) return withdrawBell;
 		const context = subject ? [`#${subject.seqLabel}`, subject.projectName, taskTitle].filter(Boolean).join(" · ") : taskTitle;
 		// The toast asks the bar's own question, so the two never read as different asks.
 		toast.info(reason, { taskId, context, onClick: () => openTaskFromNotification(taskId, projectId) });
@@ -3341,6 +3342,7 @@ function App() {
 			case "settings": return t("settings.screenTitle");
 			case "changelog": return t("changelog.screenTitle");
 			case "stats": return t("stats.title");
+			case "completions": return t("completions.title");
 			case "sessions": return t("sessions.title");
 			case "agent-traffic": return t("traffic.label");
 			default: return "";
@@ -4125,6 +4127,7 @@ function App() {
 						dispatch={dispatch}
 						navigate={navigate}
 						bellCounts={state.bellCounts}
+						resourceUsage={state.taskResourceUsage}
 						onOpenAddProject={(spaceIds) => {
 							setAddProjectSpaceIds(spaceIds ?? []);
 							setShowAddProjectModal(true);
@@ -4218,6 +4221,14 @@ function App() {
 						navigate={navigate}
 						goBack={() => dispatch({ type: "goBack" })}
 						canGoBack={state.historyIndex > 0}
+					/>
+				);
+			case "completions":
+				return (
+					<ReadyToCompleteScreen
+						projects={state.projects}
+						usage={state.taskResourceUsage}
+						navigate={navigate}
 					/>
 				);
 			case "sessions":
