@@ -20,8 +20,10 @@ app. A disclaimed server whose bundle was swapped and the original deleted kept 
 the bundle the job's tmux came from was deleted, tccd logged `proc_pidpath_audittoken() failed from
 PID[<server>]: (#2) No such file or directory` and `Failed to create attribution chain from message`,
 and about 45 s later every pane lost `~/Desktop`, `~/Documents` and Full Disk Access. A bundle that was
-only moved kept access. `lsof -a -p <pid> -d txt -Fn` reports the server's current executable
+only moved kept access. `lsof -a -p <pid> -d txt -Fikn` reports the server's current executable
 (it follows a move, and keeps the old path once the file is deleted); `ps -o comm=` shows the stale argv.
+An update puts the new bundle at the same path, so the path alone matches; the old file shows as
+`k0` (no links left) with an inode that differs from what `stat` returns for that path now.
 
 ## Decision
 
@@ -42,9 +44,11 @@ it points at. `-D` turns tmux's `exit-empty` off; a `session-created` hook in th
 the last session closes. `predatesLaunchdServer` flags a live server launchd does not own, and the
 renderer shows a one-time warning toast (`getTmuxServerNotice`) because such a server stays exposed
 until it restarts. `staleServerBinary` compares the server's executable (from `lsof`) with this
-bundle's tmux: `deleted` (access already lost) or `elsewhere` (another dev3 bundle, lost once it is
-deleted) replaces that toast with one offering "Restart terminals", which confirms and then runs
-`restartTmuxServer` (`kill-server`); open task terminals end and offer to resume.
+bundle's tmux: `deleted` (access already lost: the file is gone, has no links, or its inode was
+replaced) or `elsewhere` (another dev3 bundle, lost once it is deleted) replaces that toast with one
+offering "Restart terminals", which confirms and then runs `restartTmuxServer` (`tmux.stopServer`,
+which throws instead of reporting a restart that did not happen). `deleted` stays until acted on;
+`elsewhere` times out, because two running copies legitimately share the `dev3` socket.
 
 ## Risks
 

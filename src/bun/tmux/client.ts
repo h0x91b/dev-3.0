@@ -244,6 +244,20 @@ export class TmuxClient {
 		removeTmuxSocketFile(socket);
 	}
 
+	/**
+	 * `kill-server` that reports failure, for a restart the user asked for. No
+	 * server counts as stopped. A refused or timed-out kill throws and leaves the
+	 * socket file alone, since a server that survived may still own it.
+	 */
+	async stopServer(opts?: SocketOpt): Promise<void> {
+		const socket = opts?.socket ?? this.defaultSocket;
+		const result = await this.run(socket, ["kill-server"]);
+		if (result.exitCode !== 0 && !/no server running|error connecting|No such file or directory/i.test(result.stderr)) {
+			throw new TmuxError(["kill-server"], result.exitCode, result.stderr);
+		}
+		removeTmuxSocketFile(socket);
+	}
+
 	/** `list-sessions -F` parsed through a typed format declaration. */
 	async listSessions<T>(format: TmuxFormat<T>, opts?: SocketOpt): Promise<T[]> {
 		const { stdout } = await this.runChecked(opts?.socket, ["list-sessions", "-F", format.formatString]);

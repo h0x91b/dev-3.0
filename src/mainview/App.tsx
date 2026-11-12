@@ -787,31 +787,41 @@ function App() {
 			.getTmuxServerNotice()
 			.then(({ predatesLaunchd, staleBinary }) => {
 				if (staleBinary) {
-					toast.warning(t(staleBinary === "deleted" ? "terminal.staleTmuxServerDeleted" : "terminal.staleTmuxServerElsewhere"), {
-						source: "terminal",
-						// A timed toast went unseen at launch while the user looked elsewhere; this one waits for them.
-						durationMs: Infinity,
-						actions: [{ label: t("terminal.restartTerminals"), emphasis: true, onClick: () => void restartTmuxServer() }],
-					});
+					showStaleServerNotice(staleBinary);
 				} else if (predatesLaunchd) {
 					toast.warning(t("terminal.legacyTmuxServer"), { source: "terminal", durationMs: 15_000 });
 				}
 			})
 			.catch((err) => console.error("Failed to check the tmux server:", err));
 
-		async function restartTmuxServer() {
+		function showStaleServerNotice(staleBinary: "deleted" | "elsewhere") {
+			toast.warning(t(staleBinary === "deleted" ? "terminal.staleTmuxServerDeleted" : "terminal.staleTmuxServerElsewhere"), {
+				source: "terminal",
+				// Lost access waits for the user: a timed toast went unseen at launch. Another
+				// running copy legitimately shares the server, so that one must not nag forever.
+				durationMs: staleBinary === "deleted" ? Infinity : 15_000,
+				actions: [{ label: t("terminal.restartTerminals"), emphasis: true, onClick: () => void restartTmuxServer(staleBinary) }],
+			});
+		}
+
+		// The action dismisses the toast before the dialog answers, so Cancel or a failure brings it back.
+		async function restartTmuxServer(staleBinary: "deleted" | "elsewhere") {
 			const ok = await confirm({
 				title: t("terminal.restartTerminalsTitle"),
 				message: t("terminal.restartTerminalsMessage"),
 				confirmLabel: t("terminal.restartTerminals"),
 				danger: true,
 			});
-			if (!ok) return;
+			if (!ok) {
+				showStaleServerNotice(staleBinary);
+				return;
+			}
 			try {
 				await api.request.restartTmuxServer();
 				toast.success(t("terminal.restartTerminalsDone"), { source: "terminal" });
 			} catch (err) {
 				toast.error(t("terminal.restartTerminalsFailed", { error: String(err) }), { source: "terminal" });
+				showStaleServerNotice(staleBinary);
 			}
 		}
 	}, []);

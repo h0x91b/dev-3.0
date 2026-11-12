@@ -761,7 +761,7 @@ async function getTmuxServerNotice(): Promise<TmuxServerNotice> {
 /** Stop the default tmux server; the next terminal open starts a fresh one from this bundle. */
 async function restartTmuxServer(): Promise<{ ok: true }> {
 	log.warn("Restarting the tmux server at the user's request");
-	await tmux.killServer();
+	await tmux.stopServer();
 	return { ok: true };
 }
 

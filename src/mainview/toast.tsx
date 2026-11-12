@@ -944,14 +944,16 @@ function ToastCard({ entry, context, onClick, earlier, dismissLabel, paused, onD
 						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
 					</svg>
 				</button>
-				{Number.isFinite(entry.durationMs) && <div
-					data-toast-progress
-					className={`absolute bottom-0 left-0 h-0.5 ${v.bar} opacity-50`}
-					style={{
-						animation: `toast-shrink ${entry.durationMs}ms linear forwards`,
-						animationPlayState: paused ? "paused" : "running",
-					}}
-				/>}
+				{Number.isFinite(entry.durationMs) && (
+					<div
+						data-toast-progress
+						className={`absolute bottom-0 left-0 h-0.5 ${v.bar} opacity-50`}
+						style={{
+							animation: `toast-shrink ${entry.durationMs}ms linear forwards`,
+							animationPlayState: paused ? "paused" : "running",
+						}}
+					/>
+				)}
 			</div>
 			{/* Hangs on the deck's bottom edge, half into the stack gap, so the count
 			    costs the card no width and the column no height. Inside the card's root

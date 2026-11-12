@@ -66,6 +66,7 @@ function fakeDeps(over: {
 		fileLimits: () => over.fileLimits === undefined ? { soft: 1050880, hard: null } : over.fileLimits,
 		realpath: (path) => (path === SHIM ? BUNDLED : path.startsWith("/") ? path : null),
 		pathExists: () => true,
+		inode: () => null,
 	};
 	const launchctl = () => calls.filter((c) => c[0] === "launchctl").map((c) => c.slice(0, 2).join(" "));
 	return { deps, calls, timeouts, files, removed, signals, launchctl };
@@ -235,8 +236,14 @@ describe("predatesLaunchdServer", () => {
 
 describe("staleServerBinary", () => {
 	const enc = (text: string) => new TextEncoder().encode(text);
-	const LSOF = (path: string) => `p16123\nftxt\nn${path}\nftxt\nn/usr/lib/dyld\n`;
-	function deps(server: { exitCode: number; pid?: string }, lsof: { exitCode: number; out?: string }, existing: string[] = []) {
+	const LSOF = (path: string, file: { inode?: number; links?: number } = {}) =>
+		`p16123\nftxt\ni${file.inode ?? 4242}\nk${file.links ?? 1}\nn${path}\nftxt\ni7\nk1\nn/usr/lib/dyld\n`;
+	function deps(
+		server: { exitCode: number; pid?: string },
+		lsof: { exitCode: number; out?: string },
+		existing: string[] = [],
+		inodes: Record<string, number> = {},
+	) {
 		const calls: string[][] = [];
 		const d: LaunchdServerDeps = {
 			...fakeDeps().deps,
@@ -247,35 +254,61 @@ describe("staleServerBinary", () => {
 					: { exitCode: server.exitCode, stdout: enc(server.pid ?? "") };
 			},
 			pathExists: (path) => existing.includes(path),
+			inode: (path) => inodes[path] ?? null,
 		};
 		return { d, calls };
 	}
 	const OLD = "/Users/u/dev3-app-backup.app/Contents/Resources/app/tmux/tmux";
+	const SERVER = { exitCode: 0, pid: "16123" };
 
-	it("reads the server's executable from lsof, not from argv", () => {
-		const { d, calls } = deps({ exitCode: 0, pid: "16123" }, { exitCode: 0, out: LSOF(BUNDLED) });
+	it("reads the server's executable, inode and link count from lsof, not from argv", () => {
+		const { d, calls } = deps(SERVER, { exitCode: 0, out: LSOF(BUNDLED) }, [BUNDLED], { [BUNDLED]: 4242 });
 		expect(staleServerBinary(OPTS, d)).toBeNull();
-		expect(calls[1]).toEqual(["/usr/sbin/lsof", "-a", "-p", "16123", "-d", "txt", "-Fn"]);
+		expect(calls[1]).toEqual(["/usr/sbin/lsof", "-a", "-p", "16123", "-d", "txt", "-Fikn"]);
 	});
 
 	it("reports a deleted executable", () => {
-		expect(staleServerBinary(OPTS, deps({ exitCode: 0, pid: "16123" }, { exitCode: 0, out: LSOF(OLD) }).d)).toBe("deleted");
+		expect(staleServerBinary(OPTS, deps(SERVER, { exitCode: 0, out: LSOF(OLD) }).d)).toBe("deleted");
 	});
 
 	it("reports an executable in another, still present dev3 bundle", () => {
-		expect(staleServerBinary(OPTS, deps({ exitCode: 0, pid: "16123" }, { exitCode: 0, out: LSOF(OLD) }, [OLD]).d)).toBe("elsewhere");
+		expect(staleServerBinary(OPTS, deps(SERVER, { exitCode: 0, out: LSOF(OLD) }, [OLD], { [OLD]: 4242 }).d)).toBe("elsewhere");
 	});
 
-	it("stays quiet for a present non-bundle tmux, a missing server, a failed lsof or a non-bundled client", () => {
-		expect(staleServerBinary(OPTS, deps({ exitCode: 0, pid: "16123" }, { exitCode: 0, out: LSOF("/opt/homebrew/bin/tmux") }, ["/opt/homebrew/bin/tmux"]).d)).toBeNull();
-		expect(staleServerBinary(OPTS, deps({ exitCode: 1 }, { exitCode: 0, out: LSOF(OLD) }).d)).toBeNull();
-		expect(staleServerBinary(OPTS, deps({ exitCode: 0, pid: "16123" }, { exitCode: 1 }).d)).toBeNull();
-		expect(staleServerBinary(OPTS, deps({ exitCode: 0, pid: "16123" }, { exitCode: 0, out: "p16123\n" }).d)).toBeNull();
-		expect(staleServerBinary({ ...OPTS, binary: "/opt/homebrew/bin/tmux" }, deps({ exitCode: 0, pid: "1" }, { exitCode: 0, out: LSOF(OLD) }).d)).toBeNull();
-		expect(staleServerBinary(OPTS, { ...deps({ exitCode: 0, pid: "16123" }, { exitCode: 0, out: LSOF(OLD) }).d, platform: "linux" })).toBeNull();
+	// The updater, brew and a DMG reinstall all put the new bundle at the old path.
+	it("reports this app's own tmux replaced in place: the file the server runs has no links left", () => {
+		const out = LSOF(BUNDLED, { inode: 4242, links: 0 });
+		expect(staleServerBinary(OPTS, deps(SERVER, { exitCode: 0, out }, [BUNDLED], { [BUNDLED]: 9999 }).d)).toBe("deleted");
+	});
+
+	it("reports this app's own tmux replaced in place: the inode on disk is a different file", () => {
+		const out = LSOF(BUNDLED, { inode: 4242, links: 1 });
+		expect(staleServerBinary(OPTS, deps(SERVER, { exitCode: 0, out }, [BUNDLED], { [BUNDLED]: 9999 }).d)).toBe("deleted");
+	});
+
+	it("reports another bundle's tmux replaced in place as deleted, not elsewhere", () => {
+		const out = LSOF(OLD, { inode: 4242, links: 0 });
+		expect(staleServerBinary(OPTS, deps(SERVER, { exitCode: 0, out }, [OLD], { [OLD]: 9999 }).d)).toBe("deleted");
+	});
+
+	it("stays quiet when the inode cannot be read for this app's own path", () => {
+		expect(staleServerBinary(OPTS, deps(SERVER, { exitCode: 0, out: LSOF(BUNDLED) }, [BUNDLED]).d)).toBeNull();
+	});
+
+	it.each([
+		["a present non-bundle tmux", SERVER, { exitCode: 0, out: LSOF("/opt/homebrew/bin/tmux") }, ["/opt/homebrew/bin/tmux"], OPTS, "darwin"],
+		["a missing server", { exitCode: 1 }, { exitCode: 0, out: LSOF(OLD) }, [], OPTS, "darwin"],
+		["a failed lsof", SERVER, { exitCode: 1 }, [], OPTS, "darwin"],
+		["an lsof with no txt path", SERVER, { exitCode: 0, out: "p16123\n" }, [], OPTS, "darwin"],
+		["a non-bundled client", { exitCode: 0, pid: "1" }, { exitCode: 0, out: LSOF(OLD) }, [], { ...OPTS, binary: "/opt/homebrew/bin/tmux" }, "darwin"],
+		["Linux", SERVER, { exitCode: 0, out: LSOF(OLD) }, [], OPTS, "linux"],
+	] as const)("stays quiet for %s", (_name, server, lsof, existing, opts, platform) => {
+		const { d } = deps(server, lsof, [...existing]);
+		expect(staleServerBinary(opts, { ...d, platform })).toBeNull();
 	});
 
 	it("compares against the shim's resolved bundle path", () => {
-		expect(staleServerBinary({ ...OPTS, binary: SHIM }, deps({ exitCode: 0, pid: "16123" }, { exitCode: 0, out: LSOF(BUNDLED) }).d)).toBeNull();
+		const out = LSOF(BUNDLED);
+		expect(staleServerBinary({ ...OPTS, binary: SHIM }, deps(SERVER, { exitCode: 0, out }, [BUNDLED], { [BUNDLED]: 4242 }).d)).toBeNull();
 	});
 });
