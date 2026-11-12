@@ -7,6 +7,7 @@ import {
 	isFacetTokenActive,
 	countActiveFacetTokens,
 	facetToken,
+	statusFilterValues,
 } from "../taskSearch";
 
 function makeTask(overrides: Partial<Task> = {}): Task {
@@ -546,5 +547,20 @@ describe("matchesTaskQuery — epic:", () => {
 	it("serialises a multi-word epic name as one quoted token", () => {
 		expect(facetToken("epic", "Payments v2")).toBe('epic:"Payments v2"');
 		expect(parseTaskQuery('epic:"Payments v2" fix').facets.epic).toEqual(["payments v2"]);
+	});
+});
+
+describe("statusFilterValues", () => {
+	it("returns raw status values with case preserved", () => {
+		expect(statusFilterValues("fix STATUS:Todo status:In-Progress P1")).toEqual(["Todo", "In-Progress"]);
+	});
+
+	it("unescapes a quoted value with a space and round-trips through facetToken", () => {
+		const token = facetToken("status", 'On "hold" now');
+		expect(statusFilterValues(`bug ${token}`)).toEqual(['On "hold" now']);
+	});
+
+	it("returns an empty list when the query has no status tokens", () => {
+		expect(statusFilterValues("priority:P1 label:bug free text")).toEqual([]);
 	});
 });

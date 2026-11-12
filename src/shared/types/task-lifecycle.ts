@@ -86,10 +86,12 @@ export interface PaneSessionEntry {
 	 *  recovery must look there, not in the task's own worktree store. Absent on every
 	 *  pane whose session began where the task lives. */
 	sessionOriginCwd?: string | null;
-	/** Saved for a later resume while no live pane runs it — a task woken with a
-	 *  plain shell. The pane reconciler never adopts or drops a parked entry; a
-	 *  resume of this pane clears the flag. */
+	/** Saved for a later resume while no live pane runs it (a plain-shell wake, or the last
+	 *  agent's pane closed). The pane reconciler never adopts or drops a parked entry;
+	 *  a resume of this pane clears the flag. */
 	parked?: boolean;
+	/** A one-shot bug-hunter pane: never parked, dropped when its pane is gone. */
+	hunter?: boolean;
 	/** The task's own agent pane, written by its launch. Only this pane may restore the
 	 *  task-level agent after another pane exits; entries saved before it lack the flag. */
 	main?: boolean;

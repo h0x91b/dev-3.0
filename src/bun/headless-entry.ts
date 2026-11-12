@@ -25,7 +25,7 @@ import { codexTurnWatches } from "./codex-turn-watch";
 import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
-import { handlers, setPushMessage, getPushMessage, setAppForeground, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, setFocusMode, pushTerminalBell } from "./rpc-handlers";
+import { handlers, setPushMessage, getPushMessage, setAppForeground, handleBellAutoStatus, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, setFocusMode } from "./rpc-handlers";
 import { createLogger, getLogPath } from "./logger";
 import { applySavedTmuxPanePreferences } from "./tmux/config";
 import { DEV3_HOME } from "./paths";
@@ -274,7 +274,7 @@ log.info("CLI socket server ready", { path: cliSocketPath });
 }
 
 // ── PTY / port scanner / resource monitor (dynamic import so PATH is patched first) ──
-const { setOnPtyDied, setOnBell, setOnIdle, setOnPaneExited, setOnOsc52Copy, getActiveSessionIds, getPtyPort, registerBackpressureProbe } = await import("./pty-server");
+const { setOnPtyDied, setOnBell, setOnPaneExited, setOnOsc52Copy, getActiveSessionIds, getPtyPort, registerBackpressureProbe } = await import("./pty-server");
 const { setNativeDevServerProbe, setNativePaneRecordsReader, startPortScanPoller, stopPortScanPoller } = await import("./port-scanner");
 const { startResourceMonitor, stopResourceMonitor } = await import("./resource-monitor");
 const { startRateLimitMonitor, stopRateLimitMonitor } = await import("./rate-limit-monitor");
@@ -561,27 +561,12 @@ setOnBell((sessionKey) => {
 	try {
 		if (sessionKey.startsWith("project-")) return;
 		log.debug("Terminal bell", { taskId: sessionKey.slice(0, 8) });
-		pushTerminalBell(sessionKey);
 		handleBellAutoStatus(sessionKey).catch((err) => {
 			log.error("handleBellAutoStatus failed", { error: String(err) });
 		});
 	} catch (err) {
 		log.error("Failed to handle terminal bell", { taskId: sessionKey.slice(0, 8), error: String(err) });
 	}
-});
-
-setOnIdle((sessionKey) => {
-	if (sessionKey.startsWith("project-")) return;
-	isTaskInProgress(sessionKey).then((inProgress) => {
-		if (!inProgress) return;
-		try {
-			pushTerminalBell(sessionKey);
-		} catch (err) {
-			log.error("Failed to handle terminal idle", { taskId: sessionKey.slice(0, 8), error: String(err) });
-		}
-	}).catch((err) => {
-		log.error("isTaskInProgress failed in idle handler", { error: String(err) });
-	});
 });
 
 setOnOsc52Copy((payload) => {

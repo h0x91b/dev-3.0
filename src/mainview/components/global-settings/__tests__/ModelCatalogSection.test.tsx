@@ -233,6 +233,26 @@ describe("editing the catalog", () => {
 		expect(screen.queryByDisplayValue("catalog.kind.openai")).toBeNull();
 	});
 
+	it("does not add a custom row whose key a renamed provider already owns", async () => {
+		// The stub translator names a fresh custom row "catalog.kind.custom"; the
+		// renamed row still owns the key that label would resolve to.
+		vi.mocked(api.request.modelCatalogGet).mockResolvedValue({
+			providers: [
+				{ id: "p-oai", kind: "openai", label: "OpenAI", hasKey: true },
+				{ id: "p-an", kind: "anthropic", label: "Anthropic", hasKey: true },
+				{ id: "p-or", kind: "openrouter", label: "OpenRouter", hasKey: true },
+				{ id: "p-c", kind: "custom", label: "Kimi code", wireKey: "custom-catalog-kind-custom", hasKey: true },
+			],
+			models: [],
+		});
+		renderSection();
+		await screen.findByDisplayValue("Kimi code");
+		await userEvent.click(screen.getByRole("button", { name: "catalog.addProvider" }));
+		expect(screen.queryByDisplayValue("catalog.kind.custom")).toBeNull();
+		expect(screen.getByDisplayValue(/^catalog\.kind\.custom 2$/)).toBeTruthy();
+		expect(screen.queryByText("catalog.issue.duplicate-provider")).toBeNull();
+	});
+
 	it("keeps a name the user typed when the kind changes", async () => {
 		renderSection();
 		const name = await screen.findByDisplayValue("OpenRouter");

@@ -5,6 +5,7 @@ import type { Project, Task, CliRequest, TaskDialogSubject } from "../../shared/
 
 vi.mock("../data", () => ({
 	loadProjects: vi.fn(),
+	loadVirtualProjects: vi.fn(async () => []),
 	getProject: vi.fn(),
 	loadTasks: vi.fn(),
 	getTask: vi.fn(),
@@ -192,6 +193,50 @@ describe("task.requestCompletion", () => {
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toEqual({ approved: true, task: completedTask });
 		expect(moveTask).toHaveBeenCalledWith({ taskId: task.id, projectId: "proj-1", newStatus: "completed" });
+	});
+
+	it("shows another task's --reason attributed to it, and keeps it for a replayed dialog", async () => {
+		const task = makeTask();
+		const coordinator = makeTask({ id: "coord-0000-1111-2222-3333-444444444444", seq: 7, title: "Coordinate the board" });
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+		vi.mocked(data.loadTasks).mockResolvedValue([task, coordinator]);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		const respPromise = handleRequest(makeRequest({
+			taskId: "task-abc12345", projectId: "proj-1", sourceTaskId: coordinator.id,
+			reason: "  Its PR merged\u0007 an hour ago.\r\n\n\n\nNothing left to do.  ",
+		}));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+
+		const expected = { text: "Its PR merged an hour ago.\n\nNothing left to do.", from: { seq: 7, title: "Coordinate the board" } };
+		const payload = pushFn.mock.calls[0][1] as { requestId: string; reason?: unknown };
+		expect(payload.reason).toEqual(expected);
+		expect(listPendingAgentRequests("complete")[0].dialog.reason).toEqual(expected);
+
+		resolveAgentRequest(payload.requestId, { approved: false });
+		await respPromise;
+	});
+
+	it("shows the target's own --reason without naming a requester, and no reason when none was given", async () => {
+		setupTask(makeTask());
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		const own = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1", sourceTaskId: makeTask().id, reason: "Merged." }));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalledTimes(1));
+		const first = pushFn.mock.calls[0][1] as { requestId: string; reason?: unknown };
+		expect(first.reason).toEqual({ text: "Merged." });
+		resolveAgentRequest(first.requestId, { approved: false });
+		await own;
+
+		const bare = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalledTimes(2));
+		const second = pushFn.mock.calls[1][1] as { requestId: string };
+		expect(second).not.toHaveProperty("reason");
+		resolveAgentRequest(second.requestId, { approved: false });
+		await bare;
 	});
 
 	it("returns approved:false without moving the task when declined", async () => {

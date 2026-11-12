@@ -8,6 +8,7 @@ import { BoardViewRegistry } from "../../registry";
 import "../../root";
 import { installTableView, TABLE_VIEW_ID } from "..";
 import { TableOptions } from "../TableOptions";
+import { COORDINATOR_ROW } from "../../zebra";
 
 vi.mock("../../../rpc", () => ({ api: { request: {} } }));
 
@@ -128,6 +129,13 @@ describe("Table board view", () => {
 		expect(screen.getByTestId("board-table-empty")).toHaveTextContent("No tasks on this board yet.");
 	});
 
+	it("names the default agent a launched task runs in its Agent cell", async () => {
+		const pane = { agentCmd: "claude", sessionId: null, agentId: "a1", configId: null, agentFromDefault: true };
+		await renderTable({ tasks: [task("t1", 1, { worktreePath: "/tmp/wt", sessionState: { panes: [pane] } }), task("t2", 2)] });
+		expect(screen.getByTestId("board-table-row-t1")).toHaveTextContent("Claude");
+		expect(screen.getByTestId("board-table-row-t2")).not.toHaveTextContent("Claude");
+	});
+
 	it("tells a filtered-out board apart from an empty one", async () => {
 		await renderTable({ tasks: [], scopeTasks: [task("t1", 1)] });
 		expect(screen.getByTestId("board-table-empty")).toHaveTextContent("No tasks match the filter.");
@@ -139,6 +147,22 @@ describe("Table board view", () => {
 		expect(headers).toEqual(["#", "Title", "Status", "Priority", "Labels", "Agent", "PR", "Activity", "Overview"]);
 		expect(rowIds()).toEqual(["t3", "t2", "t1"]);
 		expect(within(screen.getByTestId("board-table-row-t2")).getByText("Cancelled")).toBeInTheDocument();
+	});
+
+	it("pins a live coordinator on top and marks it with the role chip", async () => {
+		await renderTable({ tasks: [task("t3", 3), task("c1", 1, { taskType: "coordinator", status: "in-progress" })] });
+		expect(rowIds()).toEqual(["c1", "t3"]);
+		expect(within(screen.getByTestId("board-table-row-c1")).getByTestId("board-table-coordinator-chip")).toBeInTheDocument();
+		expect(within(screen.getByTestId("board-table-row-t3")).queryByTestId("board-table-coordinator-chip")).toBeNull();
+	});
+
+	it("tints only pinned coordinators; a completed one keeps the chip but not the tint", async () => {
+		await renderTable({
+			tasks: [task("live", 1, { taskType: "coordinator", status: "in-progress" }), task("done", 2, { taskType: "coordinator", status: "completed" })],
+		});
+		expect(screen.getByTestId("board-table-row-live").className).toContain(COORDINATOR_ROW);
+		expect(screen.getByTestId("board-table-row-done").className).not.toContain(COORDINATOR_ROW);
+		expect(within(screen.getByTestId("board-table-row-done")).getByTestId("board-table-coordinator-chip")).toBeInTheDocument();
 	});
 
 	it("labels variants with their attempt suffix, like the card", async () => {

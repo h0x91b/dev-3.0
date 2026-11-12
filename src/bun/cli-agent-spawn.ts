@@ -14,6 +14,7 @@ import { getPushMessage } from "./rpc-handlers/shared-pure";
 import { settingsConfigHandlers } from "./rpc-handlers/settings-config";
 import { taskTerminalAlive, tmuxPtyHandlers } from "./rpc-handlers/tmux-pty";
 import { agentKey } from "../shared/agent-adapters/families";
+import type { ApprovalReason } from "../shared/approval-reason";
 
 interface SpawnOptions {
 	project: Project;
@@ -22,6 +23,8 @@ interface SpawnOptions {
 	choice: Pick<LaunchVariant, "agentId" | "configId">;
 	prompt?: string;
 	handoff: boolean;
+	/** Why the requester asks (`--reason`), shown in the dialog. */
+	reason?: ApprovalReason;
 }
 
 /** IDs only: presets may carry credentials in envVars, and this output lands in agent transcripts. */
@@ -97,7 +100,7 @@ async function performSpawn(opts: SpawnOptions): Promise<SpawnOutcome> {
 		if (getAgentRequestState("launch", task.id).state === "pending") throw new Error("Another launch approval is pending for this task — answer it before adding an agent.");
 		const subject = buildTaskDialogSubject(task, project);
 		const { requestId, decision, autoApproveAt } = createAgentRequest("launch", task.id, project.id, {
-			autoApproveAfterMs, dialog: { taskTitle: getTaskTitle(task), subject, requester: launchRequesterSummary(requester) },
+			autoApproveAfterMs, dialog: { taskTitle: getTaskTitle(task), subject, requester: launchRequesterSummary(requester), ...(opts.reason ? { reason: opts.reason } : {}) },
 		});
 		setAgentRequestLaunchChoice(requestId, { variants: [choice] });
 		const request: AgentLaunchRequest = {
@@ -105,6 +108,7 @@ async function performSpawn(opts: SpawnOptions): Promise<SpawnOutcome> {
 			scratch: false, requesterSeq: requester.seq, requesterTitle: getTaskTitle(requester),
 			subject, defaultPriority: task.priority ?? DEFAULT_PRIORITY,
 			canAddVariants: false, autoApproveAt, spawn: { choice, prompt, handoff },
+			...(opts.reason ? { reason: opts.reason } : {}),
 		};
 		setAgentLaunchDialog(request);
 		push("agentLaunchRequested", request);

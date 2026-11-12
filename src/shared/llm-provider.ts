@@ -99,8 +99,9 @@ const BEDROCK_ANTHROPIC_IDS: Record<string, string> = {
  */
 const BEDROCK_GEO_GAPS: Partial<Record<LlmProvider, Partial<Record<BedrockGeo, string[] | "all">>>> = {
 	[LLM_PROVIDER.BedrockClaude]: {
-		eu: ["claude-fable-5", "claude-fable-5-1"],
-		jp: ["claude-fable-5", "claude-fable-5-1", "claude-opus-5", "claude-sonnet-5"],
+		// Fable 5.2 was not in that snapshot; it mirrors its family's gaps until re-listed.
+		eu: ["claude-fable-5", "claude-fable-5-1", "claude-fable-5-2"],
+		jp: ["claude-fable-5", "claude-fable-5-1", "claude-fable-5-2", "claude-opus-5", "claude-sonnet-5"],
 	},
 	[LLM_PROVIDER.BedrockCodex]: { eu: "all", jp: "all" },
 };

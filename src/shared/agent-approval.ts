@@ -57,6 +57,8 @@ export interface PendingApprovalSummary {
 	requesterTitle: string | null;
 	/** `launch` only: the registered external sender that asked, if one did. */
 	requesterSenderId: string | null;
+	/** Why the agent asked (`--reason`), or null when it gave none. */
+	reason: string | null;
 	/** ISO 8601, like every other time in the CLI's --json output. */
 	createdAt: string;
 	/** ISO time the request approves itself, or null when it never will. */

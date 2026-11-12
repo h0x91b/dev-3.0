@@ -50,6 +50,7 @@ describe("initialState", () => {
 			loading: true,
 			bellCounts: new Map(),
 			bellReasons: new Map(),
+			questionBells: new Map(),
 			taskPorts: new Map(),
 			taskDevServers: new Map(),
 			taskResourceUsage: new Map(),
@@ -779,6 +780,37 @@ describe("reducer", () => {
 		expect(next.loading).toBe(false);
 	});
 
+	// ---- questions badge ----
+
+	it("updateTask: a task leaving User questions takes its questions badge back off", () => {
+		const asking = { ...mockTask, id: "t1", status: "user-questions" as const };
+		let state = reducer(boardState, { type: "addBell", taskId: "t1", reason: "Waiting for your answer", questions: true });
+		state = reducer(state, { type: "addBell", taskId: "t1", reason: "Waiting for your answer", questions: true });
+		state = reducer(state, { type: "updateTask", task: asking });
+		expect(state.bellCounts.get("t1")).toBe(2);
+
+		state = reducer(state, { type: "updateTask", task: { ...asking, status: "in-progress" } });
+		expect(state.bellCounts.has("t1")).toBe(false);
+		expect(state.bellReasons.has("t1")).toBe(false);
+		expect(state.questionBells.has("t1")).toBe(false);
+	});
+
+	it("updateTask: leaving User questions keeps the badge's other reasons", () => {
+		let state = reducer(boardState, { type: "addBell", taskId: "t1", reason: "Need DB credentials" });
+		state = reducer(state, { type: "addBell", taskId: "t1", reason: "Waiting for your answer", questions: true });
+		state = reducer(state, { type: "updateTask", task: { ...mockTask, id: "t1", status: "in-progress" } });
+		expect(state.bellCounts.get("t1")).toBe(1);
+		expect(state.bellReasons.get("t1")).toEqual(["Need DB credentials"]);
+	});
+
+	it("clearBell: forgets the questions share, so a later badge is not undercounted", () => {
+		let state = reducer(boardState, { type: "addBell", taskId: "t1", reason: "Waiting for your answer", questions: true });
+		state = reducer(state, { type: "clearBell", taskId: "t1" });
+		state = reducer(state, { type: "addBell", taskId: "t1", reason: "Need DB credentials" });
+		state = reducer(state, { type: "updateTask", task: { ...mockTask, id: "t1", status: "in-progress" } });
+		expect(state.bellCounts.get("t1")).toBe(1);
+	});
+
 	// ---- addBell ----
 
 	it("addBell: adds bell count for a task", () => {
@@ -1388,6 +1420,16 @@ describe("reducer — the space a task was opened through", () => {
 	it("a bare board route is left alone", () => {
 		expect(navigateFrom(onSpaceBoard, { screen: "project", projectId: "p2" }))
 			.toEqual({ screen: "project", projectId: "p2" });
+	});
+
+	// A project switch (⌘1..9, the palette, a notification) is a destination, not
+	// a task opened through the board: it must not drag the space along.
+	it("a navigation flagged as a project switch inherits no space, split view included", () => {
+		const route: Route = { screen: "project", projectId: "p9", taskView: true };
+		expect(reducer(onSpaceBoard, { type: "navigate", route, inheritSpace: false }).route).toEqual(route);
+		expect(reducer(onSpaceBoard, { type: "navigate", route, inheritSpace: true }).route)
+			.toEqual({ ...route, spaceId: "sp_1" });
+		expect(navigateFrom(onSpaceBoard, route)).toEqual({ ...route, spaceId: "sp_1" });
 	});
 
 	it("an explicitly named space wins over the one being left", () => {

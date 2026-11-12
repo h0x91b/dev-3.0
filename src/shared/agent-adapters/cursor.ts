@@ -97,6 +97,8 @@ export const cursorAdapter: AgentAdapter = {
 		return sessionId ? `${baseCmd} --resume ${sessionId}` : `${baseCmd} --continue`;
 	},
 
+	hooksReportPermissionWaits: false,
+
 	hooksSpec() {
 		return { kind: "cursor" };
 	},

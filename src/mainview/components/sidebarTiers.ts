@@ -1,15 +1,18 @@
-import { isCoordinatorTask, isTaskDisconnected, type Task } from "../../shared/types";
+import { isCoordinatorTask, type Task } from "../../shared/types";
 import { compareTasksInBand, type TaskSortOrder } from "./sortTasks";
 import { isAttentionTask } from "../utils/taskFacets";
 
 /**
  * Readiness tiers for the Active Tasks sidebar. The sidebar is a live work
  * queue, so it groups by "how much this needs YOU right now" instead of by raw
- * status. Three tiers, rendered top → bottom:
+ * status. Four tiers, rendered top → bottom:
  *
+ *   - `coordinators` — every non-hibernated coordinator, whatever its status or
+ *                    custom column; headerless, so a coordinator never jumps tiers.
+ *                    One waiting on a reply (`user-questions`) leads it.
  *   - `needs-you`  — waiting on the user: `review-by-user` ∪ `user-questions` ∪
- *                    `review-by-colleague`. Live coordinators lead it, then every
- *                    `user-questions` task (an agent blocked on a reply), ahead of every band.
+ *                    `review-by-colleague`. Every `user-questions` task (an agent
+ *                    blocked on a reply) leads it, ahead of every band.
  *   - `custom`     — one tier per project custom column (deliberate manual
  *                    placement), in the project's column order, between the two
  *                    built-in tiers.
@@ -20,7 +23,7 @@ import { isAttentionTask } from "../utils/taskFacets";
  *
  * See UX_DECISIONS 2026-07-11 and decision record 124.
  */
-export type SidebarTierKind = "needs-you" | "custom" | "waiting";
+export type SidebarTierKind = "coordinators" | "needs-you" | "custom" | "waiting";
 
 export interface SidebarTier {
 	kind: SidebarTierKind;
@@ -31,7 +34,7 @@ export interface SidebarTier {
 	projectId?: string;
 	customColumnId?: string;
 	/** Tasks in final render order (priority band → activity clock → `seq`;
-	 *  NEEDS YOU leads with live coordinators, then `user-questions`). */
+	 *  coordinators and NEEDS YOU lead with `user-questions`). */
 	tasks: Task[];
 }
 
@@ -62,18 +65,22 @@ export function groupTasksIntoTiers(tasks: Task[], ctx: TierGroupingContext): Si
 	const { orderedCustomColumns, sortOrder } = ctx;
 	// The board's in-band comparator verbatim, so the two surfaces can never disagree.
 	const byBand = (a: Task, b: Task) => compareTasksInBand(a, b, sortOrder);
-	// Live coordinators steer everything else, then an unanswered question blocks an agent:
-	// both outrank priority and recency. A parked coordinator loses the lift, as in `taskSortRank`.
-	const needsYouRank = (t: Task) =>
-		isCoordinatorTask(t) && !t.hibernated && !isTaskDisconnected(t) ? 0 : t.status === "user-questions" ? 1 : 2;
-	const coordinatorsThenQuestions = (a: Task, b: Task) => needsYouRank(a) - needsYouRank(b) || byBand(a, b);
+	// An unanswered question blocks an agent, so it outranks priority and recency.
+	const needsYouRank = (t: Task) => (t.status === "user-questions" ? 0 : 1);
+	const questionsFirst = (a: Task, b: Task) => needsYouRank(a) - needsYouRank(b) || byBand(a, b);
 
+	const coordinators: Task[] = [];
 	const needsYou: Task[] = [];
 	const waiting: Task[] = [];
 	const customByKey = new Map<string, Task[]>();
 	const knownColumns = new Set(orderedCustomColumns.map((c) => `${c.projectId}|${c.columnId}`));
 
 	for (const task of tasks) {
+		// A parked coordinator is not the thing to look at: it falls through to the normal rules.
+		if (isCoordinatorTask(task) && !task.hibernated) {
+			coordinators.push(task);
+			continue;
+		}
 		const key = `${task.projectId}|${task.customColumnId}`;
 		// A dangling customColumnId (column deleted) falls back to its status tier, as on the board.
 		if (task.customColumnId && knownColumns.has(key)) {
@@ -89,8 +96,11 @@ export function groupTasksIntoTiers(tasks: Task[], ctx: TierGroupingContext): Si
 	}
 
 	const tiers: SidebarTier[] = [];
+	if (coordinators.length > 0) {
+		tiers.push({ kind: "coordinators", key: "coordinators", tasks: coordinators.sort(questionsFirst) });
+	}
 	if (needsYou.length > 0) {
-		tiers.push({ kind: "needs-you", key: "needs-you", tasks: needsYou.sort(coordinatorsThenQuestions) });
+		tiers.push({ kind: "needs-you", key: "needs-you", tasks: needsYou.sort(questionsFirst) });
 	}
 	for (const { projectId, columnId } of orderedCustomColumns) {
 		const key = `${projectId}|${columnId}`;

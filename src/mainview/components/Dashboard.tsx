@@ -3,6 +3,8 @@ import { toast } from "../toast";
 import type { Project, ResourceUsage, Space } from "../../shared/types";
 import { isBuiltinOpsProject, isSpaceSensitive, orderProjectsForDisplay } from "../../shared/types";
 import { HOME_GROUP_ID } from "../utils/spaceGroups";
+import { resolveMixedOrder } from "../utils/digitOrder";
+import { useMixedPending, withPendingMixedOrder } from "../mixed-order-store";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
@@ -24,6 +26,8 @@ interface DashboardProps {
 	bellCounts: Map<string, number>;
 	resourceUsage?: Map<string, ResourceUsage>;
 	onOpenAddProject: (spaceIds?: string[]) => void;
+	/** The dashboard then shows the mixed order, so the rail's own space order is not what is on screen. */
+	digitsFollowSpaces?: boolean;
 }
 
 function Dashboard({
@@ -33,9 +37,20 @@ function Dashboard({
 	bellCounts,
 	resourceUsage,
 	onOpenAddProject,
+	digitsFollowSpaces = false,
 }: DashboardProps) {
 	const t = useT();
-	const { spaces } = useSpaces();
+	const { spaces, file: spacesFile } = useSpaces();
+	const mixedPending = useMixedPending();
+	// With the mixed order on, the rail lists spaces as the dashboard beside it does.
+	const railSpaces = useMemo(() => {
+		if (!digitsFollowSpaces) return spaces;
+		const ranked = resolveMixedOrder(projects, withPendingMixedOrder(spacesFile, mixedPending)).flatMap((entry) =>
+			entry.kind === "space" ? [entry.space.id] : [],
+		);
+		const rank = (id: string) => (ranked.includes(id) ? ranked.indexOf(id) : ranked.length);
+		return [...spaces].sort((a, b) => rank(a.id) - rank(b.id));
+	}, [digitsFollowSpaces, spaces, projects, spacesFile, mixedPending]);
 	const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null);
 	const [showNewSpace, setShowNewSpace] = useState(false);
 	const [editSpace, setEditSpace] = useState<Space | null>(null);
@@ -142,7 +157,7 @@ function Dashboard({
 			<div ref={containerRef} className="flex-1 overflow-hidden flex">
 				{railOnScreen && (
 					<SpacesRail
-						spaces={spaces}
+						spaces={railSpaces}
 						projectCountOf={(id) => railCounts.perSpace.get(id) ?? 0}
 						maskedSpaceIds={maskedSpaceIds}
 						totalProjects={railCounts.total}
@@ -150,10 +165,10 @@ function Dashboard({
 						selectedSpaceId={selectedSpaceId}
 						onSelect={setSelectedSpaceId}
 						onNewSpace={() => setShowNewSpace(true)}
-						onReorder={handleReorderSpaces}
+						onReorder={digitsFollowSpaces ? undefined : handleReorderSpaces}
 						onRenameSpace={(space, name) => void renameSpace(space, name, t)}
 						onDeleteSpace={(space) => void deleteSpaceWithConfirm(space, t)}
-						onMoveSpace={(space, delta) => void moveSpace(space, delta, spaces, t)}
+						onMoveSpace={digitsFollowSpaces ? undefined : (space, delta) => void moveSpace(space, delta, spaces, t)}
 						onEditProjects={setEditSpace}
 						onToggleSensitive={(space, next) => void toggleSpaceSensitive(space, next, t)}
 					/>
@@ -170,6 +185,7 @@ function Dashboard({
 						onOpenAddProject={onOpenAddProject}
 						onReorderProjects={handleReorderProjects}
 						selectedSpaceId={selectedSpaceId}
+						digitsFollowSpaces={digitsFollowSpaces}
 						onNewSpace={railOnScreen ? undefined : () => setShowNewSpace(true)}
 						onEditSpaceProjects={setEditSpace}
 						spaceFilter={
@@ -230,7 +246,7 @@ function Dashboard({
 			</div>
 			{showSpaceFilter && (
 				<SpaceFilterSheet
-					spaces={spaces}
+					spaces={railSpaces}
 					maskedSpaceIds={maskedSpaceIds}
 					projectCountOf={(id) => railCounts.perSpace.get(id) ?? 0}
 					totalProjects={railCounts.total}

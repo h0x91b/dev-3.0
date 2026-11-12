@@ -18,9 +18,11 @@
  * dev3 app that preserves its terminal.
  */
 
+import { excludeTaskClaudeSettings } from "./claude-config-git";
 import type { AgentFamily, Task } from "../shared/types";
 import { getPrimaryStopTarget } from "../shared/types";
 import { createLogger } from "./logger";
+import { taskRunningAgentIds } from "../shared/task-running-agent";
 import { getAgentAdapter } from "../shared/agent-adapters/registry";
 import { isDev3OwnedFolder, writeClaudeHooks } from "../shared/agent-hooks";
 import { findConfig, getAllAgents } from "./agents";
@@ -29,13 +31,14 @@ import { getProject } from "./data";
 const log = createLogger("agent-hooks-refresh");
 
 /** The base command + declared CLI family of the task's agent, or null if unknown. */
-async function resolveTaskAgentHooks(
+export async function resolveTaskAgentHooks(
 	task: Task,
 ): Promise<{ baseCommand: string; family?: AgentFamily } | null> {
-	if (!task.agentId) return null;
-	const agent = (await getAllAgents()).find((a) => a.id === task.agentId);
+	const { agentId, configId } = taskRunningAgentIds(task);
+	if (!agentId) return null;
+	const agent = (await getAllAgents()).find((a) => a.id === agentId);
 	if (!agent) return null;
-	const baseCommand = findConfig(agent, task.configId)?.baseCommandOverride || agent.baseCommand;
+	const baseCommand = findConfig(agent, configId)?.baseCommandOverride || agent.baseCommand;
 	if (!baseCommand) return null;
 	return { baseCommand, family: agent.agentFamily };
 }
@@ -60,6 +63,7 @@ export async function refreshClaudeHooksForTask(task: Task): Promise<void> {
 		const { written } = writeClaudeHooks(task.worktreePath, {
 			stopTarget: getPrimaryStopTarget(project.autoReviewEnabled, task.taskType),
 		});
+		excludeTaskClaudeSettings(task.worktreePath);
 		if (written) {
 			log.info("Claude hooks were missing before a prompt and got reinstalled", {
 				taskId: task.id,

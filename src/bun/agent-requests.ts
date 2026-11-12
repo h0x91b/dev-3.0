@@ -1,5 +1,6 @@
 import type { AgentLaunchChoice, AgentLaunchRequest, TaskDialogSubject } from "../shared/types";
 import type { PendingApprovalSummary } from "../shared/agent-approval";
+import type { ApprovalReason } from "../shared/approval-reason";
 import { createLogger } from "./logger";
 import { getPushMessage } from "./rpc-handlers/shared-pure";
 
@@ -31,6 +32,8 @@ export interface AgentRequestDialog {
 	branchKept?: boolean;
 	/** `launch` only: who asked, for `dev3 approvals list`. */
 	requester?: AgentRequestRequester;
+	/** Why the agent asks (`--reason`); replayed with the dialog. */
+	reason?: ApprovalReason;
 }
 
 /** A task asked (`taskId` set) or a registered external sender did (`senderId` set). */
@@ -277,6 +280,7 @@ export function listPendingApprovalSummaries(): PendingApprovalSummary[] {
 			requesterSeq: dialog?.requester?.seq ?? null,
 			requesterTitle: dialog?.requester?.title ?? null,
 			requesterSenderId: dialog?.requester?.senderId ?? null,
+			reason: dialog?.reason?.text ?? null,
 			createdAt: new Date(entry.createdAt).toISOString(),
 			autoApproveAt: entry.autoApproveAt === null ? null : new Date(entry.autoApproveAt).toISOString(),
 			heldByUser: entry.heldByUser === true,

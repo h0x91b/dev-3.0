@@ -44,6 +44,8 @@ export const opencodeAdapter: AgentAdapter = {
 		return sessionId ? `${baseCmd} --session ${sessionId}` : `${baseCmd} --continue`;
 	},
 
+	hooksReportPermissionWaits: false,
+
 	hooksSpec() {
 		return null;
 	},

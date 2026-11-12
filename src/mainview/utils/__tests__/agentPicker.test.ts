@@ -270,6 +270,7 @@ describe("buildPickerGroups", () => {
 		it("puts the newest Claude model on top and the proxy-gated group last", () => {
 			const claudeDefaults = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude")!;
 			expect(buildPickerGroups(claudeDefaults).map((g) => g.label)).toEqual([
+				"Fable 5.2",
 				"Haiku 5.5",
 				"Sonnet 5.5",
 				"Opus 5.5",
@@ -404,6 +405,7 @@ describe("pickConfigForModelChange", () => {
 
 describe("MODEL_GROUP_LABELS", () => {
 	it("covers the Claude model strings that drove the redesign", () => {
+		expect(MODEL_GROUP_LABELS["claude-fable-5-2[1m]"]).toBe("Fable 5.2");
 		expect(MODEL_GROUP_LABELS["claude-fable-5-1[1m]"]).toBe("Fable 5.1");
 		expect(MODEL_GROUP_LABELS["claude-opus-5-5[1m]"]).toBe("Opus 5.5");
 		expect(MODEL_GROUP_LABELS["claude-fable-5"]).toBe("Fable 5");

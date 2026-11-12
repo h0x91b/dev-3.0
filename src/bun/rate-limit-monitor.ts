@@ -37,7 +37,7 @@ import {
 import type { AgentSessionStats } from "../shared/session-stats";
 import { SESSION_STATS_RECENT_MS, parseClaudeSessionStats } from "../shared/session-stats";
 import { fetchCodexRateLimitSnapshot } from "./codex-rate-limits";
-import type { CatalogProvider } from "../shared/model-catalog";
+import { providerDisplayName, type CatalogProvider } from "../shared/model-catalog";
 import { loadModelCatalog, loadProviderKeys } from "./model-catalog-store";
 import { loadProjects, loadTasks, loadVirtualProjects } from "./data";
 import { TERMINAL_STATUSES, getTaskTitle } from "../shared/types";
@@ -592,7 +592,7 @@ export async function getAgentRateLimitsReport(): Promise<AgentRateLimitsReport>
 		sessions,
 		usageProviders: usageProviders.map((p) => ({
 			id: p.id,
-			label: p.label,
+			label: providerDisplayName(p),
 			source: "kimi-code",
 			...(keys[p.id]?.trim() ? {} : { missingKey: true }),
 		})),

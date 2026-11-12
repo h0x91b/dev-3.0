@@ -230,6 +230,17 @@ describe("hooksSpec", () => {
 	});
 });
 
+describe("hooksReportPermissionWaits", () => {
+	it.each([claudeAdapter, codexAdapter, ompAdapter, piAdapter])(
+		"$command hooks move the task to user-questions on a permission wait",
+		(adapter) => expect(adapter.hooksReportPermissionWaits).toBe(true),
+	);
+	it.each([copilotAdapter, cursorAdapter, geminiAdapter, opencodeAdapter, genericAdapter])(
+		"$command hooks do not report a permission wait (none, or no user-questions move)",
+		(adapter) => expect(adapter.hooksReportPermissionWaits).toBe(false),
+	);
+});
+
 describe("exitProgram", () => {
 	it.each([
 		[claudeAdapter, "/exit"],

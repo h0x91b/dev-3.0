@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { DEFAULT_COMPLETION_OFFER_STYLE, type CompletionOfferStyle } from "../shared/types";
+import type { ApprovalReason } from "../shared/approval-reason";
 
 /**
  * Completion offers the user has not answered yet: "the branch merged" and "the
@@ -21,6 +22,8 @@ export interface CompletionOffer {
 	kind: CompletionOfferKind;
 	/** Merge offers only: the branch that landed. */
 	branchName?: string;
+	/** Agent offers only: why the agent asks (`--reason`). */
+	reason?: ApprovalReason;
 	/** Set when the style switched to Dialog while this offer waited: it keeps asking on its task. */
 	staysOnTask?: boolean;
 	/** When this client raised it (epoch ms), so a waiting list can show how long it has waited. */
@@ -33,6 +36,7 @@ export interface OfferCompletionParams {
 	projectId: string;
 	kind: CompletionOfferKind;
 	branchName?: string;
+	reason?: ApprovalReason;
 	/** Aborting withdraws the offer and resolves `false` (answered on another client). */
 	signal?: AbortSignal;
 }
@@ -83,6 +87,7 @@ export function offerCompletion(params: OfferCompletionParams): Promise<Completi
 			projectId: params.projectId,
 			kind: params.kind,
 			branchName: params.branchName,
+			...(params.reason ? { reason: params.reason } : {}),
 			offeredAt: Date.now(),
 			answer: settle,
 		}];

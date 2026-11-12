@@ -93,6 +93,7 @@ export interface ToastEntry extends ToastOrigin, ToastDestinations {
 }
 
 export interface ToastOpts extends ToastOrigin, ToastDestinations {
+	/** `Infinity` keeps the toast until the user dismisses it or runs its action. */
 	durationMs?: number;
 	/** When set, the toast becomes clickable and runs this on click (then dismisses). */
 	onClick?: () => void;
@@ -457,6 +458,7 @@ export function ToastHost({ onTaskOverflow, resolveOrigin, isTaskInView }: Toast
 		) {
 			return;
 		}
+		if (!Number.isFinite(runtime.remainingMs)) return;
 		if (runtime.remainingMs <= 0) {
 			removeToast(id);
 			return;
@@ -942,14 +944,16 @@ function ToastCard({ entry, context, onClick, earlier, dismissLabel, paused, onD
 						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
 					</svg>
 				</button>
-				<div
-					data-toast-progress
-					className={`absolute bottom-0 left-0 h-0.5 ${v.bar} opacity-50`}
-					style={{
-						animation: `toast-shrink ${entry.durationMs}ms linear forwards`,
-						animationPlayState: paused ? "paused" : "running",
-					}}
-				/>
+				{Number.isFinite(entry.durationMs) && (
+					<div
+						data-toast-progress
+						className={`absolute bottom-0 left-0 h-0.5 ${v.bar} opacity-50`}
+						style={{
+							animation: `toast-shrink ${entry.durationMs}ms linear forwards`,
+							animationPlayState: paused ? "paused" : "running",
+						}}
+					/>
+				)}
 			</div>
 			{/* Hangs on the deck's bottom edge, half into the stack gap, so the count
 			    costs the card no width and the column no height. Inside the card's root
