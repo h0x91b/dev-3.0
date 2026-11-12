@@ -25,6 +25,8 @@ const common = {
 	"completionStrip.sessionNote": "Completar cierra la sesión de terminal.",
 	"completionStrip.folderNote": "Al completar se cierra la sesión de terminal. La carpeta de trabajo y sus archivos se conservan.",
 	"completionStrip.keepOpen": "Mantener abierta",
+	"completionStrip.showAgent": "Mostrar agente",
+	"completionStrip.showAgentHint": "Muestra el panel del agente para leer lo que informa",
 	"completionStrip.completeAnyway": "Completar de todos modos",
 	"completionStrip.keepOpenMergeHint": "Mantenerla abierta y volver a preguntar tras la próxima fusión.",
 	"completionStrip.keepOpenAgentHint": "Decirle que no al agente. Sigue trabajando en esta sesión.",

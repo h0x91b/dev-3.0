@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
 	reattachNativeTaskSession: vi.fn(async () => true),
 	// tmux singleton methods
 	tmuxSelectPane: vi.fn(),
+	tmuxSelectWindow: vi.fn(),
 	tmuxSelectPaneDirection: vi.fn(),
 	tmuxToggleZoom: vi.fn(),
 	tmuxSwapPaneStep: vi.fn(),
@@ -87,6 +88,7 @@ vi.mock("../../tmux", () => ({
 	},
 	tmux: {
 		selectPane: mocks.tmuxSelectPane,
+		selectWindow: mocks.tmuxSelectWindow,
 		selectPaneDirection: mocks.tmuxSelectPaneDirection,
 		toggleZoom: mocks.tmuxToggleZoom,
 		swapPaneStep: mocks.tmuxSwapPaneStep,
@@ -303,6 +305,34 @@ describe("taskPaneState", () => {
 		expect(state.agentPaneId).toBe("pane-1");
 	});
 
+	it("names the agent's tmux pane while it sits in another window", async () => {
+		mocks.getTask.mockResolvedValue({ ...tmuxTask, sessionState: { panes: [{ paneId: "%7" }] } });
+		mocks.getTmuxLayout.mockResolvedValue({
+			...twoPane80TmuxLayout,
+			windows: [...twoPane80TmuxLayout.windows, { index: 1, name: "agent", active: false, panes: 1, zoomed: false }],
+			panes: [...twoPane80TmuxLayout.panes, { windowIndex: 1, paneId: "%7", active: true, left: 0, top: 0, width: 100, height: 40, command: "claude", title: "" }],
+		});
+		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
+		expect(state.panes.map((pane) => pane.paneId)).toEqual(["%1", "%2"]);
+		expect(state.agentPaneId).toBe("%7");
+	});
+
+	it("names no agent pane once the agent's tmux pane is gone", async () => {
+		mocks.getTask.mockResolvedValue({ ...tmuxTask, sessionState: { panes: [{ paneId: "%9" }] } });
+		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
+		expect(state.agentPaneId).toBeNull();
+	});
+
+	it("names no native agent pane once it has exited", async () => {
+		mocks.taskTerminalBackendIdentity.mockReturnValue("native");
+		mocks.getTask.mockResolvedValue(nativeTask);
+		const twoPane = makeTwoPaneNativeState();
+		twoPane.panes[0] = { ...twoPane.panes[0]!, alive: false };
+		mocks.nativeTaskPanesState.mockResolvedValue(twoPane);
+		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
+		expect(state.agentPaneId).toBeNull();
+	});
+
 	it("keeps naming the agent's pane after a pane action", async () => {
 		mocks.getTask.mockResolvedValue({ ...tmuxTask, sessionState: { panes: [{ paneId: "%2" }] } });
 		const state = await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "swapStep", step: "next" } });
@@ -389,6 +419,13 @@ describe("taskPaneAction (tmux)", () => {
 	it("focus selects the specified pane", async () => {
 		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "focus", paneId: "%2" } });
 		expect(mocks.tmuxSelectPane).toHaveBeenCalledWith("%2", expect.anything());
+	});
+
+	it("reveal switches to the pane's window, then selects it, which lifts a zoom", async () => {
+		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "reveal", paneId: "%1" } });
+		expect(mocks.tmuxSelectWindow).toHaveBeenCalledWith("%1", { socket: "dev3-sock", bestEffort: true });
+		expect(mocks.tmuxSelectPane).toHaveBeenCalledWith("%1", { socket: "dev3-sock", bestEffort: true });
+		expect(mocks.tmuxSelectWindow.mock.invocationCallOrder[0]).toBeLessThan(mocks.tmuxSelectPane.mock.invocationCallOrder[0]!);
 	});
 
 	it("focusStep:next selects .+ target", async () => {
@@ -562,6 +599,21 @@ describe("taskPaneAction (native)", () => {
 		// Two panes side by side — direction "right" from pane-1 should focus pane-2
 		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "focusDirection", direction: "right" } });
 		expect(mocks.focusNativeTaskPane).toHaveBeenCalledWith(TASK_ID, "pane-2");
+	});
+
+	it("reveal lifts a zoom on another pane, then focuses the pane", async () => {
+		const zoomed = makeTwoPaneNativeState();
+		zoomed.layout = serializeSplitTree({ ...restoreSplitTree(zoomed.layout!)!, zoomedPaneId: "pane-2", activePaneId: "pane-2" });
+		mocks.nativeTaskPanesState.mockResolvedValue(zoomed);
+		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "reveal", paneId: "pane-1" } });
+		expect(mocks.setNativeTaskPaneLayout.mock.calls[0][1].zoomedPaneId).toBeNull();
+		expect(mocks.focusNativeTaskPane).toHaveBeenCalledWith(TASK_ID, "pane-1");
+	});
+
+	it("reveal leaves the layout alone when nothing hides the pane", async () => {
+		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "reveal", paneId: "pane-1" } });
+		expect(mocks.setNativeTaskPaneLayout).not.toHaveBeenCalled();
+		expect(mocks.focusNativeTaskPane).toHaveBeenCalledWith(TASK_ID, "pane-1");
 	});
 
 	it("zoom:toggle updates layout via setNativeTaskPaneLayout", async () => {

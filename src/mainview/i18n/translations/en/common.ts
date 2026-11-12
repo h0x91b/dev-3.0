@@ -25,6 +25,8 @@ const common = {
 	"completionStrip.sessionNote": "Completing ends the terminal session.",
 	"completionStrip.folderNote": "Completing ends the terminal session. The working folder and its files are kept.",
 	"completionStrip.keepOpen": "Keep open",
+	"completionStrip.showAgent": "Show agent",
+	"completionStrip.showAgentHint": "Bring the agent's pane into view to read what it reports",
 	"completionStrip.completeAnyway": "Complete anyway",
 	"completionStrip.keepOpenMergeHint": "Keep it open and ask again after the next merge.",
 	"completionStrip.keepOpenAgentHint": "Say no to the agent. It keeps working in this session.",

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Project, Task, UnsavedWork } from "../../../../shared/types";
 import { I18nProvider } from "../../../i18n";
 
-vi.mock("../../../rpc", () => ({ api: { request: { getUnsavedWork: vi.fn() } } }));
+vi.mock("../../../rpc", () => ({ api: { request: { getUnsavedWork: vi.fn(), taskPaneAction: vi.fn() } } }));
 
 import { api } from "../../../rpc";
 import { _resetCompletionOffersForTests, isCompletionOfferOnScreen, offerCompletion, setCompletionOfferStyle, type CompletionOfferAnswer } from "../../../completion-offers";
@@ -310,19 +310,21 @@ describe("agentPanePlacement", () => {
 		expect(agentPanePlacement(state([pane(1, 0, 0.6), pane(2, 0.6, 0.4)], "%1"))).toEqual({ left: "0%", right: "40%", top: "0%", bottom: "0%" });
 	});
 
-	it("uses the whole terminal for one pane, the agent zoomed, an unknown agent pane, or no state yet", () => {
+	it("uses the whole terminal for one pane, the agent zoomed, a gone or unknown agent pane, or no state yet", () => {
 		expect(agentPanePlacement(null)).toBe("terminal");
 		expect(agentPanePlacement(state([pane(1, 0, 1)], "%1"))).toBe("terminal");
 		expect(agentPanePlacement(state([pane(1, 0, 0.5), pane(2, 0.5, 0.5)], "%2", "%2"))).toBe("terminal");
-		expect(agentPanePlacement(state([pane(1, 0, 0.5), pane(2, 0.5, 0.5)], "%9"))).toBe("terminal");
 		expect(agentPanePlacement(state([pane(1, 0, 0.5), pane(2, 0.5, 0.5)], null))).toBe("terminal");
+		expect(agentPanePlacement({ ...state([pane(1, 0, 0.5), pane(2, 0.5, 0.5)], null), agentPaneId: undefined })).toBe("terminal");
 	});
 
-	it("is hidden while another pane is zoomed over the agent", () => {
+	it("is hidden while another pane is zoomed over the agent, or the agent sits in another window", () => {
 		expect(agentPanePlacement(state([pane(1, 0, 0.5), pane(2, 0.5, 0.5)], "%1", "%2"))).toBe("hidden");
+		expect(agentPanePlacement(state([pane(1, 0, 0.5), pane(2, 0.5, 0.5)], "%9"))).toBe("hidden");
 	});
 
-	it("hands the offer to the inspector row while another pane is zoomed, and takes it back on unzoom", async () => {
+	it("keeps the bar over the terminal while the agent is out of view, and Show agent reveals its pane", async () => {
+		vi.mocked(api.request.taskPaneAction).mockResolvedValue(state([pane(1, 0, 0.5), pane(2, 0.5, 0.5)], "%1"));
 		render(
 			<I18nProvider>
 				<div data-testid="inspector"><TaskCompletionStrip task={worktreeTask} project={project} /></div>
@@ -335,10 +337,25 @@ describe("agentPanePlacement", () => {
 		});
 		const panes = [pane(1, 0, 0.5), pane(2, 0.5, 0.5)];
 		publish(state(panes, "%1", "%2"));
-		expect(screen.getByTestId("inspector")).toContainElement(screen.getByTestId("task-completion-strip"));
-		expect(screen.getByTestId("viewport")).toBeEmptyDOMElement();
-		publish(state(panes, "%1"));
+		// Zooming never moves the offer into the inspector, so nothing shifts and the terminal keeps its size.
 		expect(screen.getByTestId("inspector")).toBeEmptyDOMElement();
+		const bar = screen.getByTestId("task-completion-strip");
+		expect(screen.getByTestId("viewport")).toContainElement(bar);
+		expect(screen.getByTestId("task-completion-strip-pane")).toHaveStyle({ inset: "0" });
+		await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Show agent" })); });
+		expect(api.request.taskPaneAction).toHaveBeenCalledWith({ taskId: "t1", action: { kind: "reveal", paneId: "%1" } });
+		publish(state(panes, "%1"));
+		expect(screen.getByTestId("task-completion-strip")).toBe(bar);
 		expect(screen.getByTestId("task-completion-strip-pane")).toHaveStyle({ left: "0%", right: "50%" });
+		expect(screen.queryByRole("button", { name: "Show agent" })).not.toBeInTheDocument();
+	});
+
+	it("offers no Show agent on a merge offer or while the agent is in view", async () => {
+		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" /></I18nProvider>);
+		await offer("merge");
+		act(() => {
+			window.dispatchEvent(new CustomEvent(PANE_STATE_EVENT, { detail: { taskId: "t1", state: state([pane(1, 0, 0.5), pane(2, 0.5, 0.5)], "%1", "%2") } }));
+		});
+		expect(screen.queryByRole("button", { name: "Show agent" })).not.toBeInTheDocument();
 	});
 });

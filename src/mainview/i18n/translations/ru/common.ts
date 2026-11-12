@@ -25,6 +25,8 @@ const common = {
 	"completionStrip.sessionNote": "Завершение закроет терминальную сессию.",
 	"completionStrip.folderNote": "При завершении терминальная сессия закроется. Рабочая папка и её файлы сохраняются.",
 	"completionStrip.keepOpen": "Оставить открытой",
+	"completionStrip.showAgent": "Показать агента",
+	"completionStrip.showAgentHint": "Показать панель агента, чтобы прочитать его отчёт",
 	"completionStrip.completeAnyway": "Всё равно завершить",
 	"completionStrip.keepOpenMergeHint": "Оставить открытой и спросить снова после следующего merge.",
 	"completionStrip.keepOpenAgentHint": "Отказать агенту. Он продолжит работать в этой сессии.",
