@@ -24,7 +24,8 @@ export function placePaneSession(
 	const moved = panes.flatMap((pane, i) => (pane.sessionId === sessionId ? [i] : []));
 	if (moved.length === 1) idx = moved[0];
 	else {
-		const unassigned = panes.flatMap((pane, i) => (pane.paneId ? [] : [i]));
+		// A parked entry keeps a saved conversation for Resume; another conversation never takes it over.
+		const unassigned = panes.flatMap((pane, i) => (pane.paneId || pane.parked ? [] : [i]));
 		if (unassigned.length !== 1) return null;
 		idx = unassigned[0];
 	}
@@ -41,7 +42,7 @@ export function placeUnaddressedPaneSession(
 	mainEntry: SessionPane | null,
 ): SessionPane[] | null {
 	if (!panes.length) return mainEntry ? [{ ...mainEntry, sessionId }] : null;
-	if (panes.length !== 1 || panes[0].sessionId === sessionId) return null;
+	if (panes.length !== 1 || panes[0].parked || panes[0].sessionId === sessionId) return null;
 	return [{ ...panes[0], sessionId }];
 }
 

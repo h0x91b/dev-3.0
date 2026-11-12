@@ -189,6 +189,21 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 		expect(main?.sessionId).toBe(MAIN);
 	});
 
+	it("a Codex started by hand in the shell left behind never takes over a parked conversation", async () => {
+		await import("../data");
+		const { handleRequest } = await import("../cli-socket-server");
+
+		const parked = { ...codexPane(null, MAIN), parked: true };
+		seed([makeTask({ sessionState: { panes: [parked] } })]);
+		rollout(CONV_X);
+
+		for (const paneId of ["%7", undefined]) {
+			await handleRequest(agentHook({ projectId: "proj-1", taskId: "task-1", event: "UserPromptSubmit", sessionId: CONV_X, paneId }));
+		}
+
+		expect(readPanes()).toEqual([parked]);
+	});
+
 	it("repeating the same hook never rewrites tasks.json", async () => {
 		await import("../data");
 		const { handleRequest } = await import("../cli-socket-server");

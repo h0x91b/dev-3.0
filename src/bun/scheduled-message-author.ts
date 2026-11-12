@@ -97,7 +97,7 @@ function unproven(reason: "unsupported" | "no-agent" | "unknown", detail: string
 	return { ok: false, reason, detail };
 }
 
-/** The recorded entry of `paneId`; a native main agent is recorded without a pane id, as the first entry, unless parked (a woken plain shell). */
+/** The recorded entry of `paneId`; a native main agent is recorded without a pane id, as the first entry, unless parked (no live pane: a woken shell or a closed last agent). */
 function entryFor(task: Task, paneId: string) {
 	const panes = task.sessionState?.panes ?? [];
 	const exact = panes.find((p) => p.paneId === paneId);

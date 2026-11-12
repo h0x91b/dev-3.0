@@ -11853,6 +11853,8 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		const project = makeProject();
 		let persistedTask = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
 		(data.getProject as any).mockResolvedValue(project);
+		(data.loadProjects as any).mockResolvedValue([project]);
+		(data.loadVirtualProjects as any).mockResolvedValue([]);
 		(data.getTask as any).mockImplementation(async () => persistedTask);
 		(data.updateTask as any).mockImplementation(async (_project: Project, _taskId: string, patch: Partial<Task>) => {
 			persistedTask = { ...persistedTask, ...patch };
@@ -11866,6 +11868,26 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		// kill-pane fires no pane-exited hook, so the entry this launch appended has to
 		// be gone by hand — otherwise the next prompt can be aimed at a dead pane.
 		expect(persistedTask.sessionState?.panes ?? []).toEqual([]);
+	});
+
+	it("drops a rolled-back hunter but keeps a parked main entry from a woken shell", async () => {
+		const project = makeProject();
+		const mainParked = { main: true, agentCmd: "claude", agentId: "builtin-claude", configId: "claude-default", sessionId: "s-main", paneId: null, parked: true };
+		let persistedTask = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt", sessionState: { panes: [mainParked] } });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.loadProjects as any).mockResolvedValue([project]);
+		(data.loadVirtualProjects as any).mockResolvedValue([]);
+		(data.getTask as any).mockImplementation(async () => persistedTask);
+		(data.updateTask as any).mockImplementation(async (_project: Project, _taskId: string, patch: Partial<Task>) => {
+			persistedTask = { ...persistedTask, ...patch };
+			return persistedTask;
+		});
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude", extraEnv: {} });
+		makeSplitMock(["%10"], { guardRefuses: ["%10"] });
+
+		await expect(launchTmuxHunters(1)).rejects.toThrow(/never reached %10/);
+
+		expect(persistedTask.sessionState?.panes).toEqual([mainParked]);
 	});
 
 	it("does not flag the hunter pane entry as the task's main pane", async () => {
@@ -13138,11 +13160,13 @@ describe("Codex conversation survives pane-exit reconciliation into a wake", () 
 		return { project, task };
 	}
 
-	it("without the hook following the conversation, %5's exit leaves nothing to resume", async () => {
+	it("without the hook following the conversation, %5's exit parks the entry and Resume continues its conversation", async () => {
 		const { project, task } = arrange([stalePane]);
+		vi.mocked(pty.listPaneIds).mockResolvedValue([]);
 		await handlePaneExited(task.id, "%5");
-		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([]);
-		await expect(handlers.resumeTask({ taskId: task.id })).rejects.toThrow("no stored pane sessions");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([{ ...stalePane, paneId: null, parked: true }]);
+		await handlers.resumeTask({ taskId: task.id });
+		expect(agents.resolveCommandForAgent).toHaveBeenLastCalledWith("builtin-codex", "codex-default", expect.anything(), expect.objectContaining({ sessionId }));
 	});
 
 	it("a hook from %6 moves the entry there, so %5's exit keeps it and a later wake resumes it under its own store", async () => {
@@ -13171,11 +13195,11 @@ describe("Codex conversation survives pane-exit reconciliation into a wake", () 
 		expect(pty.createSession).toHaveBeenLastCalledWith(task.id, project.id, task.worktreePath, expect.any(String), expect.objectContaining({ CODEX_HOME: home }), expect.any(String));
 	});
 
-	it("a closed pane stays removed: reconciliation with no live pane drops it and nothing recreates it", async () => {
+	it("a closed last pane stays parked: reconciliation with no live pane keeps its conversation and nothing recreates a live entry", async () => {
 		const { project, task } = arrange([stalePane]);
 		vi.mocked(pty.listPaneIds).mockResolvedValue([]);
 		await handlePaneExited(task.id, "%5");
-		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([]);
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([{ ...stalePane, paneId: null, parked: true }]);
 		// Only a hook from a running agent can add an entry back.
 		expect(placePaneSession([], "%5", sessionId, null)).toBeNull();
 	});
@@ -13224,7 +13248,7 @@ describe("handlePaneExited restores the task-level agent from the main pane", ()
 	it("leaves the task agent alone when no pane survives", async () => {
 		const { project, task } = arrange([extra], "claude-kimi", []);
 		await handlePaneExited(task.id, "%1");
-		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([]);
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([{ ...extra, paneId: null, parked: true }]);
 		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-kimi" });
 	});
 
@@ -13362,6 +13386,129 @@ describe("handlePaneExited restores the task-level agent from the main pane", ()
 	});
 });
 
+describe("the last agent's conversation survives its pane exit", () => {
+	const WORKTREE = "/tmp/last-agent-wt";
+	const STORE = `${process.env.HOME}/.claude/projects/${claudeEncodePath(WORKTREE)}`;
+	const idA = "1160218f-85f5-4a45-8032-ced3af5a5aaa";
+	const idB = "1160218f-85f5-4a45-8032-ced3af5a5bbb";
+	const agentA = { main: true, agentCmd: "claude", agentId: "builtin-claude", configId: "claude-default", sessionId: idA, paneId: "%0" };
+	const agentB = { agentCmd: "claude", agentId: "builtin-claude", configId: "claude-default", sessionId: idB, paneId: "%1" };
+
+	function arrange(panes: NonNullable<Task["sessionState"]>["panes"], overrides: Partial<Task> = {}) {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress", worktreePath: WORKTREE, agentId: "builtin-claude", configId: "claude-default", sessionState: { panes }, ...overrides });
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
+		return { project, task };
+	}
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		(readdirSync as any).mockImplementation((dir: string) => (String(dir) === STORE ? [`${idA}.jsonl`, `${idB}.jsonl`] : []));
+	});
+	afterEach(() => {
+		(readdirSync as any).mockImplementation(() => []);
+		vi.mocked(pty.tmuxSessionExists).mockReset().mockResolvedValue(true);
+	});
+
+	it("parks the last agent's entry with its session id instead of dropping it", async () => {
+		const { project, task } = arrange([agentA]);
+		vi.mocked(pty.listPaneIds).mockResolvedValue([]);
+		await handlePaneExited(task.id, "%0");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([{ ...agentA, paneId: null, parked: true }]);
+	});
+
+	it("parks a null-id entry as well, because the id may be filled in later", async () => {
+		const { project, task } = arrange([{ ...agentA, sessionId: null }]);
+		vi.mocked(pty.listPaneIds).mockResolvedValue([]);
+		await handlePaneExited(task.id, "%0");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([{ ...agentA, sessionId: null, paneId: null, parked: true }]);
+	});
+
+	it("parks every entry when the whole session dies at once", async () => {
+		const { project, task } = arrange([agentA, agentB]);
+		vi.mocked(pty.listPaneIds).mockResolvedValue([]);
+		await handlePaneExited(task.id, "%0");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([
+			{ ...agentA, paneId: null, parked: true },
+			{ ...agentB, paneId: null, parked: true },
+		]);
+	});
+
+	it("drops a closed agent while another lives, parks the survivor when it exits later, and Resume continues that one", async () => {
+		const { project, task } = arrange([agentA, agentB]);
+		vi.mocked(pty.listPaneIds).mockResolvedValue(["%1"]);
+		await handlePaneExited(task.id, "%0");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([agentB]);
+
+		vi.mocked(pty.listPaneIds).mockResolvedValue([]);
+		await handlePaneExited(task.id, "%1");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([{ ...agentB, paneId: null, parked: true }]);
+
+		await handlers.resumeTask({ taskId: task.id });
+		const resolveCalls = vi.mocked(agents.resolveCommandForAgent).mock.calls;
+		expect(resolveCalls[resolveCalls.length - 1][3]).toMatchObject({ resume: true, sessionId: idB });
+	});
+
+	it("a hunter that is the last pane to exit is dropped, not parked", async () => {
+		const hunter = { ...agentB, hunter: true };
+		const { project, task } = arrange([agentA, hunter]);
+		vi.mocked(pty.listPaneIds).mockResolvedValue([]);
+		await handlePaneExited(task.id, "%1");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([{ ...agentA, paneId: null, parked: true }]);
+	});
+
+	it("main exits while a hunter lives, then the hunter exits: main ends parked, the hunter is dropped", async () => {
+		const hunter = { ...agentB, hunter: true };
+		const { project, task } = arrange([agentA, hunter]);
+		vi.mocked(pty.listPaneIds).mockResolvedValue(["%1"]);
+		await handlePaneExited(task.id, "%0");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([{ ...agentA, paneId: null, parked: true }, hunter]);
+
+		vi.mocked(pty.listPaneIds).mockResolvedValue([]);
+		await handlePaneExited(task.id, "%1");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([{ ...agentA, paneId: null, parked: true }]);
+	});
+
+	it("a plain shell keeps the tmux session alive: the main entry's dead pane is parked, not adopted onto the shell", async () => {
+		const { project, task } = arrange([agentA]);
+		vi.mocked(pty.listPaneIds).mockResolvedValue(["%7"]);
+		await handlePaneExited(task.id, "%0");
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([{ ...agentA, paneId: null, parked: true }]);
+	});
+
+	it("does not hand the task agent to a parked copy", async () => {
+		const { project, task } = arrange([{ ...agentA, configId: "claude-opus" }], { configId: "claude-kimi" });
+		vi.mocked(pty.listPaneIds).mockResolvedValue([]);
+		await handlePaneExited(task.id, "%0");
+		expect(await data.getTask(project, task.id)).toMatchObject({ agentId: "builtin-claude", configId: "claude-kimi" });
+	});
+
+	it("reconnecting to a live tmux session after an app restart leaves the stored panes and ids alone", async () => {
+		const { project, task } = arrange([agentA, agentB]);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
+		const result = await handlers.getPtyUrl({ taskId: task.id });
+		expect(result).toEqual({ url: expect.stringContaining(`session=${task.id}`) });
+		expect(pty.createSession).toHaveBeenCalled();
+		expect(vi.mocked(data.updateTask).mock.calls.filter((call) => call[2].sessionState)).toEqual([]);
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([agentA, agentB]);
+	});
+
+	it("opening the terminal after the pane exit reports the parked pane as recoverable instead of launching fresh", async () => {
+		const { project, task } = arrange([agentA]);
+		vi.mocked(pty.listPaneIds).mockResolvedValue([]);
+		await handlePaneExited(task.id, "%0");
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(false);
+		const result = await handlers.getPtyUrl({ taskId: task.id });
+		expect(result).toEqual({ recoverable: true, sessionState: { panes: [{ ...agentA, paneId: null, parked: true }] } });
+		expect((await data.getTask(project, task.id)).sessionState?.panes[0]).toMatchObject({ sessionId: idA, parked: true });
+		expect(pty.createSession).not.toHaveBeenCalled();
+	});
+});
+
 // PR #2049 review: the saved panes kept the dead session's paneIds, so closing one
 // split in the woken shell dropped every saved conversation (before 2, after 0).
 describe("wakeTaskShell parks the saved panes", () => {
@@ -13402,7 +13549,7 @@ describe("wakeTaskShell parks the saved panes", () => {
 		expect(resumed.filter((pane) => pane.parked)).toEqual([]);
 	});
 
-	it("an unparked entry beside parked ones is still reconciled on its own", async () => {
+	it("an unparked entry beside parked ones is reconciled on its own and parked when it was the last agent", async () => {
 		const { project, task } = arrange();
 		await handlers.wakeTaskShell({ taskId: task.id });
 		const spawned = { agentCmd: "claude", agentId: "builtin-claude", configId: "claude-default", sessionId: "s-new", paneId: "%3" };
@@ -13410,7 +13557,7 @@ describe("wakeTaskShell parks the saved panes", () => {
 		await data.updateTask(project, task.id, { sessionState: { panes: [...parked, spawned] } });
 		vi.mocked(pty.listPaneIds).mockResolvedValue(["%0"]);
 		await handlePaneExited(task.id, "%3");
-		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual(parked);
+		expect((await data.getTask(project, task.id)).sessionState?.panes).toEqual([...parked, { ...spawned, paneId: null, parked: true }]);
 	});
 });
 
