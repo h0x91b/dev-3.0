@@ -793,6 +793,14 @@ export function claudeAccountRegistered(id: string, paths: AccountPaths = defaul
 	return loadRegistry(paths).claude.accounts.some((e) => e.id === id);
 }
 
+/** Whether `configDir` is signed in to this subscription account (same person, same org).
+ *  An API profile never matches: its key lives in the account's own folder. */
+export function claudeAccountSignedIntoDir(id: string, configDir: string, paths: AccountPaths = defaultAccountPaths()): boolean {
+	const entry = loadRegistry(paths).claude.accounts.find((e) => e.id === id);
+	if (!entry || entry.auth === "api") return false;
+	return sameClaudeLogin(claudeAccountIdentity(id, paths), readClaudeConfigDirIdentity(configDir));
+}
+
 function isDirectory(path: string): boolean {
 	try {
 		return statSync(path).isDirectory();

@@ -27,7 +27,7 @@ import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from
 import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
 import { ensureAgentSystemPromptFile } from "./agent-system-prompt-file";
 import { leanProtocolReference, leanSkillBodyFor, skillBodyFor, withSharedFolderNotice, type SkillFamily } from "../shared/agent-skill-content";
-import { claudeAccountRegistered, effectiveAccountId, getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveAgentDirSessionEnv, getActiveCodexSessionEnv, listClaudeAccountDirs, isLinkedClaudeSlot } from "./agent-accounts";
+import { claudeAccountRegistered, claudeAccountSignedIntoDir, effectiveAccountId, getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveAgentDirSessionEnv, getActiveCodexSessionEnv, listClaudeAccountDirs, isLinkedClaudeSlot } from "./agent-accounts";
 import { ENV_UNSET, claudeModelFamily, isAutoAccountId, isRoutableAccountKind, type AgentAccountKind } from "../shared/agent-accounts";
 import { isAutoAccountDefault, pickAutoAccount, type AutoAccountPick, type AutoRoutingContext } from "./account-router";
 import { hasOmpFlag } from "../shared/agent-adapters/omp-flags";
@@ -830,14 +830,15 @@ export function claudeSettingsSetAwsAuthRefresh(launchEnv: Record<string, string
  *  everything explicit passes through untouched. A preset that pins its own
  *  config dir/home bypasses accounts entirely, so it is never routed. Auto with
  *  a project-pinned Claude folder, or no pick at all, keeps that folder: only an
- *  explicit account (or the system login) overrides a project pin. */
+ *  explicit account (or the system login) overrides a project pin, and a fresh
+ *  launch on the account that folder is already signed in to keeps it too. */
 async function resolveLaunchAccount(
 	baseCmd: string,
 	family: AgentFamily | undefined,
 	extraEnv: Record<string, string>,
 	options: CommandOptions | undefined,
 	projectPath: string,
-): Promise<{ accountId: string | null | undefined; resolvedAccountId: string | null | undefined; pick?: AutoAccountPick; staleAccountDropped?: true; keepsProjectClaudeConfig?: true }> {
+): Promise<{ accountId: string | null | undefined; resolvedAccountId: string | null | undefined; pick?: AutoAccountPick; staleAccountDropped?: true; keepsProjectClaudeConfig?: true; projectLoginKept?: true }> {
 	const kind: AgentAccountKind | null = isClaudeCommand(baseCmd, family)
 		? "claude"
 		: agentKey(baseCmd, family) === "codex"
@@ -855,8 +856,14 @@ async function resolveLaunchAccount(
 		explicit = undefined;
 		staleAccountDropped = true;
 	}
-	if (kind === "claude" && explicit === undefined && (options?.autoRouting?.claudeConfigPinned || (options?.projectEnv && pinnedClaudeConfigDir(options.projectEnv.CLAUDE_CONFIG_DIR, homedir(), projectPath) != null))) {
+	const pinnedDir = kind === "claude" && options?.projectEnv ? pinnedClaudeConfigDir(options.projectEnv.CLAUDE_CONFIG_DIR, homedir(), projectPath) : null;
+	if (kind === "claude" && explicit === undefined && (options?.autoRouting?.claudeConfigPinned || pinnedDir != null)) {
 		return { accountId: undefined, resolvedAccountId: undefined, keepsProjectClaudeConfig: true, ...(staleAccountDropped ? { staleAccountDropped } : {}) };
+	}
+	// A resume stays where its conversation was written, so only a fresh session switches folder.
+	if (pinnedDir && typeof explicit === "string" && !options?.resume && claudeAccountSignedIntoDir(explicit, pinnedDir)) {
+		log.info("Picked Claude account is the project folder's own login — keeping the project folder", { accountId: explicit.slice(0, 8) });
+		return { accountId: undefined, resolvedAccountId: undefined, keepsProjectClaudeConfig: true, projectLoginKept: true };
 	}
 	const settle = (accountId: string | null | undefined) => ({
 		accountId,
@@ -1048,6 +1055,9 @@ export interface ResolvedAgentCommand<A extends CodingAgent | null = CodingAgent
 	accountPick?: AutoAccountPick;
 	/** The stored Claude account no longer exists; the default was used instead. */
 	staleAccountDropped?: true;
+	/** The picked Claude account is the one the project's own folder is signed in to, so the
+	 *  launch kept that folder. A pane records no account, and resume then finds it there. */
+	projectLoginKept?: true;
 	/** The AWS profile entry this launch injected (null = none). Absent when the
 	 *  agent takes no AWS profile. What a pane records so resume reuses it. */
 	resolvedBedrockProfile?: string | null;
@@ -1118,6 +1128,7 @@ export async function resolveCommandForAgent(
 		resolvedAccountId: account.resolvedAccountId,
 		...(account.pick ? { accountPick: account.pick } : {}),
 		...(account.staleAccountDropped ? { staleAccountDropped: true as const } : {}),
+		...(account.projectLoginKept ? { projectLoginKept: true as const } : {}),
 		...bedrockProfile,
 	};
 }
@@ -1282,6 +1293,7 @@ export async function resolveCommandForProject(
 			resolvedAccountId: account.resolvedAccountId,
 			...(account.pick ? { accountPick: account.pick } : {}),
 			...(account.staleAccountDropped ? { staleAccountDropped: true as const } : {}),
+			...(account.projectLoginKept ? { projectLoginKept: true as const } : {}),
 			...bedrockProfile,
 		};
 	}
