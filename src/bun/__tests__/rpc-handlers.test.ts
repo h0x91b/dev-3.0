@@ -730,6 +730,23 @@ describe("handleBellAutoStatus", () => {
 		expect(data.updateTask).not.toHaveBeenCalled();
 	});
 
+	it("reads the pane marked main, not whichever pane is listed first", async () => {
+		const task = makeTask({
+			status: "in-progress",
+			agentId: null,
+			sessionState: { panes: [
+				{ paneId: "%2", sessionId: null, agentCmd: "gemini", agentId: "builtin-gemini", configId: null },
+				{ paneId: "%1", sessionId: null, agentCmd: "claude", agentId: "builtin-claude", configId: null, main: true },
+			] },
+		} as Partial<Task>);
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+		await handleBellAutoStatus("task-1");
+
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
 	it("still moves a Copilot task: its hooks do not report a permission wait", async () => {
 		const project = makeProject();
 		const task = makeTask({
@@ -17160,6 +17177,37 @@ describe("dropQueuedAttention (dev3 attention --clear)", () => {
 
 		expect(push).toHaveBeenCalledTimes(1);
 		expect(push).toHaveBeenCalledWith("cliAttention", expect.objectContaining({ taskId: "task-other" }));
+	});
+});
+
+describe("dropQueuedQuestionsAttention (task left User questions)", () => {
+	afterEach(() => {
+		setTerminalFocus(false);
+		setPushMessage(() => {});
+	});
+
+	it("a questions badge queued in Focus Mode is dropped once the task leaves User questions; other badges flush", async () => {
+		const project = makeProject();
+		const working = makeTask({ status: "in-progress" });
+		const asking = { ...working, status: "user-questions" as const };
+		const push = vi.fn();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(loadSettingsSync).mockReturnValue({} as any);
+		setPushMessage(push);
+		setTerminalFocus(true);
+
+		vi.mocked(data.getTask).mockResolvedValue(working);
+		vi.mocked(data.updateTask).mockResolvedValue(asking);
+		await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "user-questions" });
+		pushCliAttention({ taskId: "task-1", projectId: "proj-1", reason: "blocked" });
+
+		vi.mocked(data.getTask).mockResolvedValue(asking);
+		vi.mocked(data.updateTask).mockResolvedValue(working);
+		await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "in-progress" });
+		setTerminalFocus(false);
+
+		const attention = push.mock.calls.filter(([message]) => message === "cliAttention").map(([, payload]) => payload);
+		expect(attention).toEqual([{ taskId: "task-1", projectId: "proj-1", reason: "blocked" }]);
 	});
 });
 

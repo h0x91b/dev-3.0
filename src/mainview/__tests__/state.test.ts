@@ -50,6 +50,7 @@ describe("initialState", () => {
 			loading: true,
 			bellCounts: new Map(),
 			bellReasons: new Map(),
+			questionBells: new Map(),
 			taskPorts: new Map(),
 			taskDevServers: new Map(),
 			taskResourceUsage: new Map(),
@@ -777,6 +778,37 @@ describe("reducer", () => {
 			loading: false,
 		});
 		expect(next.loading).toBe(false);
+	});
+
+	// ---- questions badge ----
+
+	it("updateTask: a task leaving User questions takes its questions badge back off", () => {
+		const asking = { ...mockTask, id: "t1", status: "user-questions" as const };
+		let state = reducer(boardState, { type: "addBell", taskId: "t1", reason: "Waiting for your answer", questions: true });
+		state = reducer(state, { type: "addBell", taskId: "t1", reason: "Waiting for your answer", questions: true });
+		state = reducer(state, { type: "updateTask", task: asking });
+		expect(state.bellCounts.get("t1")).toBe(2);
+
+		state = reducer(state, { type: "updateTask", task: { ...asking, status: "in-progress" } });
+		expect(state.bellCounts.has("t1")).toBe(false);
+		expect(state.bellReasons.has("t1")).toBe(false);
+		expect(state.questionBells.has("t1")).toBe(false);
+	});
+
+	it("updateTask: leaving User questions keeps the badge's other reasons", () => {
+		let state = reducer(boardState, { type: "addBell", taskId: "t1", reason: "Need DB credentials" });
+		state = reducer(state, { type: "addBell", taskId: "t1", reason: "Waiting for your answer", questions: true });
+		state = reducer(state, { type: "updateTask", task: { ...mockTask, id: "t1", status: "in-progress" } });
+		expect(state.bellCounts.get("t1")).toBe(1);
+		expect(state.bellReasons.get("t1")).toEqual(["Need DB credentials"]);
+	});
+
+	it("clearBell: forgets the questions share, so a later badge is not undercounted", () => {
+		let state = reducer(boardState, { type: "addBell", taskId: "t1", reason: "Waiting for your answer", questions: true });
+		state = reducer(state, { type: "clearBell", taskId: "t1" });
+		state = reducer(state, { type: "addBell", taskId: "t1", reason: "Need DB credentials" });
+		state = reducer(state, { type: "updateTask", task: { ...mockTask, id: "t1", status: "in-progress" } });
+		expect(state.bellCounts.get("t1")).toBe(1);
 	});
 
 	// ---- addBell ----

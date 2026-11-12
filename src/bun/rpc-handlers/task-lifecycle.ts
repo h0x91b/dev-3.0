@@ -134,7 +134,8 @@ function draftPlaceholderTitle(now: Date = new Date()): string {
 
 /** The main pane names the agent that really launched, even when the task follows the default agent. */
 async function bellAgentOf(task: Task): Promise<{ baseCommand: string; family?: AgentFamily } | null> {
-	const main = task.sessionState?.panes?.[0];
+	const panes = task.sessionState?.panes ?? [];
+	const main = panes.find((pane) => pane.main) ?? panes[0];
 	if (main?.agentCmd) return { baseCommand: main.agentCmd, family: main.agentFamily ?? undefined };
 	return resolveTaskAgentHooks(task);
 }

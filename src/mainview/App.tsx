@@ -1905,7 +1905,9 @@ function App() {
 				return;
 			}
 			if (isProjectSilencedForDisplay(projectId)) return;
-			dispatch({ type: "addBell", taskId, reason: kind === "questions" ? t("kanban.badge.waitingForAnswer") : reason ?? "" });
+			dispatch(kind === "questions"
+				? { type: "addBell", taskId, reason: t("kanban.badge.waitingForAnswer"), questions: true }
+				: { type: "addBell", taskId, reason: reason ?? "" });
 		}
 		window.addEventListener("rpc:cliAttention", onCliAttention);
 		return () => window.removeEventListener("rpc:cliAttention", onCliAttention);

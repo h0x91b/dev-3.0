@@ -323,6 +323,16 @@ export function pushAgentMessage(payload: AgentMessagePayload): void {
 	getPushMessage()?.("agentMessage", payload);
 }
 
+/** Drop a task's queued questions badges once it left User questions, so a Focus Mode flush cannot raise a stale one. */
+export function dropQueuedQuestionsAttention(taskId: string): void {
+	for (let i = queuedTerminalNotifications.length - 1; i >= 0; i--) {
+		const queued = queuedTerminalNotifications[i];
+		if (queued.kind === "attention" && queued.payload.kind === "questions" && queued.payload.taskId === taskId) {
+			queuedTerminalNotifications.splice(i, 1);
+		}
+	}
+}
+
 export function pushCliAttention(payload: TerminalFocusAttentionPayload): void {
 	if (isProjectSilenced(payload.projectId)) return;
 	if (isNotificationSuppressed()) {
