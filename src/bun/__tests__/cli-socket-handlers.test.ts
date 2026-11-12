@@ -578,7 +578,7 @@ describe("message.scheduled.list / cancel — the CLI queue verbs", () => {
 			sourceTaskId: task.id, sourcePaneId: "%1", sourcePid: 4242,
 		}));
 		expect(resp.ok).toBe(true);
-		expect(captureScheduledMessageAuthor).toHaveBeenCalledWith(expect.objectContaining({ id: task.id }), "%1", 4242);
+		expect(captureScheduledMessageAuthor).toHaveBeenCalledWith(expect.objectContaining({ id: task.id }), "%1", 4242, { tmuxEnv: null, envTaskId: null });
 		expect(vi.mocked(scheduleMessage).mock.calls[0]?.[2]).toMatchObject({ author: { paneId: "%1", sessionId: "conv-a" } });
 	});
 

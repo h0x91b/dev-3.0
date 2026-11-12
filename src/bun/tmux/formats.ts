@@ -135,6 +135,9 @@ export const PANE_ID_FORMAT = tmuxFormat().string("paneId", "pane_id").build();
 /** Pane id + the pid of the process the pane was started with — graceful-exit polling. */
 export const PANE_ID_PID_FORMAT = tmuxFormat().string("paneId", "pane_id").number("panePid", "pane_pid").build();
 
+/** The server's socket path and pid — the two parts of a pane's `$TMUX` that name a server. */
+export const SERVER_IDENTITY_FORMAT = tmuxFormat().string("socketPath", "socket_path").number("serverPid", "pid").build();
+
 /** Pane id + root process pid — port/resource scanning. */
 export const PANE_PID_FORMAT = tmuxFormat().number("panePid", "pane_pid").build();
 

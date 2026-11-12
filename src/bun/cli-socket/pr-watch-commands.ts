@@ -12,7 +12,8 @@ import type { Project, Task } from "../../shared/types";
 import * as git from "../git";
 import * as github from "../github";
 import { addPrWatch, clearPrWatches } from "../pr-watch-runner";
-import { captureScheduledMessageAuthor } from "../scheduled-message-author";
+import { captureSenderAgent } from "../scheduled-message-author";
+import { senderEvidenceOf } from "../sender-evidence";
 import type { Handler } from "./shared";
 import { resolveTaskFromParams } from "./task-resolution";
 
@@ -114,13 +115,15 @@ export const prWatchHandlers: Record<string, Handler> = {
 		// A pinned PR is never the task's own, so it never becomes its identity.
 		if (!pr.pinned && pr.url) await persistTaskPrIdentity(project, task, pr.number, pr.url);
 		// Only the agent that ran the command hears back, and only for its own task.
-		const author = params.sourceTaskId === task.id
-			? await captureScheduledMessageAuthor(
+		const identity = params.sourceTaskId === task.id
+			? await captureSenderAgent(
 				task,
 				typeof params.sourcePaneId === "string" ? params.sourcePaneId : null,
 				typeof params.sourcePid === "number" ? params.sourcePid : null,
+				{ generation: true, ...senderEvidenceOf(params) },
 			)
 			: null;
+		const author = identity?.ok ? identity.author : null;
 		const watch: PrWatch = {
 			id: crypto.randomUUID(),
 			until,
@@ -132,7 +135,19 @@ export const prWatchHandlers: Record<string, Handler> = {
 		};
 		await addPrWatch(project, task.id, watch);
 		delete lifecycleActorRuntime(task.id).prNextDue;
-		return { taskId: task.id, projectId: project.id, until, prNumber: pr.number, ...(pr.pinned ? { pinned: true } : {}) };
+		// Windows has no identity to prove, so saying so on every call would be noise.
+		const failed = identity?.ok === false ? identity : null;
+		const unidentified = author || failed?.reason === "unsupported"
+			? null
+			: failed?.detail ?? "dev3 was not run by an agent of this task";
+		return {
+			taskId: task.id,
+			projectId: project.id,
+			until,
+			prNumber: pr.number,
+			...(pr.pinned ? { pinned: true } : {}),
+			...(unidentified ? { unidentifiedSubscriber: unidentified } : {}),
+		};
 	},
 
 	"pr.watch.list": async (params) => {

@@ -6,6 +6,7 @@ import { rejectUnknownFlags } from "../flag-validation";
 import { sendRequest } from "../socket-client";
 import { CLI_EXIT_CODE_PR_WATCH_NO_PR, CLI_EXIT_CODE_PR_WATCH_PR_FINISHED } from "../../shared/cli-exit-codes";
 import { PR_WATCH_NO_PR_PREFIX, PR_WATCH_PR_FINISHED_PREFIX, PR_WATCH_UNTIL, type PrWatchUntil } from "../../shared/pr-watch";
+import { senderAgentParams } from "../sender-agent";
 import { requireValuelessFlag } from "./pr";
 
 const WATCH_USAGE = "Usage: dev3 pr watch [--until ci|merged] [--pr <N>] [--task <id>] [--project <id>] | dev3 pr watch --off [--pr <N>] | dev3 pr watch --list";
@@ -70,12 +71,8 @@ export async function handlePrWatch(args: ParsedArgs, socketPath: string, contex
 	params.until = until;
 	if (prNumber !== undefined) params.prNumber = prNumber;
 	// Our pane and pid, so the message comes back to this agent and not to a sibling; the app decides whether it applies.
-	const sourcePaneId = context?.taskId ? (process.env.TMUX_PANE?.trim() || process.env.DEV3_PANE_ID?.trim()) : undefined;
 	if (context?.taskId) params.sourceTaskId = context.taskId;
-	if (sourcePaneId) {
-		params.sourcePaneId = sourcePaneId;
-		params.sourcePid = process.pid;
-	}
+	Object.assign(params, senderAgentParams(context));
 	// The app caps its own `gh` calls at 15 s; the wait here must outlast them.
 	const resp = await sendRequest(socketPath, "pr.watch.add", params, { timeoutMs: SUBSCRIBE_TIMEOUT_MS });
 	if (!resp.ok) {
@@ -88,7 +85,10 @@ export async function handlePrWatch(args: ParsedArgs, socketPath: string, contex
 		}
 		exitError(error);
 	}
-	const data = resp.data as { prNumber: number; pinned?: boolean };
+	const data = resp.data as { prNumber: number; pinned?: boolean; unidentifiedSubscriber?: string };
 	const whose = data.pinned ? " (not this task's own PR)" : "";
 	process.stdout.write(`Watching ${formatPrRef(data.prNumber)}${whose} until ${WATCH_SUMMARY[until]} — dev3 will message this agent. No need to poll gh.\n`);
+	if (data.unidentifiedSubscriber) {
+		process.stdout.write(`Subscriber not identified (${data.unidentifiedSubscriber}); the notice goes to the task's only live agent and waits while several agents run.\n`);
+	}
 }

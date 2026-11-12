@@ -393,7 +393,7 @@ describe("task.move — agent-initiated launch approval", () => {
 		});
 		expect((await respPromise).ok).toBe(true);
 
-		expect(captureSenderAgent).toHaveBeenCalledWith(expect.objectContaining({ id: REQUESTER_ID }), "%2", 4242);
+		expect(captureSenderAgent).toHaveBeenCalledWith(expect.objectContaining({ id: REQUESTER_ID }), "%2", 4242, { tmuxEnv: null, envTaskId: null });
 		expect(deliverLaunchHandoff).toHaveBeenCalledWith(expect.objectContaining({
 			source: expect.objectContaining({ seq: 3, agent: expect.objectContaining({ paneId: "%2", agentProcess: "77@x" }) }),
 		}));
