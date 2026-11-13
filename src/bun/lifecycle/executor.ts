@@ -114,8 +114,8 @@ export interface LifecycleExecutionContext {
 	/** Set by `resetWorktree`: the worktree is gone, so a failed final write must say so. */
 	resetWorktreeRemoved?: boolean;
 	resetBranchOutcome?: git.RemoveWorktreeBranchOutcome;
-	/** Set by `removeAttachedWorktree`: the persist that follows also detaches the repo. */
-	attachedWorktreeRemoved?: boolean;
+	/** Set by `removeAttachedWorktree`: the repo it removed. The persist that follows detaches it only if the row still names it. */
+	removedAttachedRepo?: string;
 	/** Set by `judgeFailureWorkspace`: why the failure cleanup keeps the folder. */
 	failureWorkspaceKept?: string;
 }
@@ -1251,7 +1251,7 @@ export async function executeLifecycleEffect(
 			if (!attached || !isAttachedRepoInTaskFolder(ctx.sourceTask)) return {};
 			// Gone already (a retry or a boot after an earlier removal): only the record is left to clear.
 			if (!existsSync(attached)) {
-				ctx.attachedWorktreeRemoved = true;
+				ctx.removedAttachedRepo = attached;
 				return {};
 			}
 			// Only the repo the user's dialog checked is ever removed; a swapped-in one is kept.
@@ -1264,7 +1264,7 @@ export async function executeLifecycleEffect(
 				// Never remove what git could not vouch for: it may hold unsaved work. The record stays attached.
 				log.warn("Kept the attached worktree: git could not classify it", { taskId: ctx.sourceTask.id.slice(0, 8), attached, error: probe.error });
 			} else if (probe.kind === "linked" && await git.removeLinkedWorktree(probe.mainRepo, attached)) {
-				ctx.attachedWorktreeRemoved = true;
+				ctx.removedAttachedRepo = attached;
 			}
 			return {};
 		}
@@ -1285,13 +1285,13 @@ export async function executeLifecycleEffect(
 					&& current.status !== "cancelled"
 					&& taskResetConsentMatches(current, effect.consent);
 				return sameRun
-					? { updates: { ...resetTaskUpdates(), ...(ctx.attachedWorktreeRemoved ? { attachedRepo: null } : {}), codexScanFloorAt: new Date().toISOString() }, result: true }
+					? { updates: { ...resetTaskUpdates(), ...(ctx.removedAttachedRepo && current.attachedRepo === ctx.removedAttachedRepo ? { attachedRepo: null } : {}), codexScanFloorAt: new Date().toISOString() }, result: true }
 					: { updates: {}, result: false };
 			});
 			if (!applied.result) {
 				throw new Error(ctx.resetWorktreeRemoved
 					? "the task changed elsewhere while it was being reset; its worktree is already removed — reset it again to finish"
-					: ctx.attachedWorktreeRemoved
+					: ctx.removedAttachedRepo
 						? "the task changed elsewhere while it was being reset; its attached worktree is already removed — reset it again to finish"
 						: "the task changed elsewhere while it was being reset; nothing was written");
 			}
@@ -1378,7 +1378,6 @@ export async function executeLifecycleEffect(
 				status: effect.status,
 				customColumnId: null,
 				scheduledMessages: null,
-				...(ctx.attachedWorktreeRemoved ? { attachedRepo: null } : {}),
 				// An Operations task keeps its folder path; nothing else of a finished task does.
 				...(ctx.project.kind === "virtual" && !isOpsWorktreeTask(ctx.task) ? {} : { worktreePath: null, branchName: null }),
 				...(ctx.completedDiffStats ? { completedDiffStats: ctx.completedDiffStats } : {}),
@@ -1390,7 +1389,14 @@ export async function executeLifecycleEffect(
 				// This run's conversations must not be picked up by a later scan.
 				codexScanFloorAt: new Date().toISOString(),
 			};
-			const persisted = await data.updateTask(ctx.project, ctx.task.id, taskUpdates);
+			const removedRepo = ctx.removedAttachedRepo;
+			// Detach only the repo that was removed: another client may have attached a different one since.
+			const persisted = removedRepo
+				? (await data.updateTaskWith(ctx.project, ctx.task.id, (current) => ({
+					updates: { ...taskUpdates, ...(current.attachedRepo === removedRepo ? { attachedRepo: null } : {}) },
+					result: null,
+				}))).task
+				: await data.updateTask(ctx.project, ctx.task.id, taskUpdates);
 			ctx.task = taskAfterPersistedUpdate(ctx.task, persisted, taskUpdates);
 			ctx.stateTask = ctx.task;
 			// Every pending approval belongs to the run that just ended — a completion

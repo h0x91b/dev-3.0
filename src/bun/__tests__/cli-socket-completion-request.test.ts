@@ -195,7 +195,7 @@ describe("task.requestCompletion", () => {
 		expect(moveTask).toHaveBeenCalledWith({ taskId: task.id, projectId: "proj-1", newStatus: "completed", approvedAttachedRepo: null });
 	});
 
-	it("approves only the attached repo the dialog was raised for, even if the task is re-attached before the answer", async () => {
+	it("approves exactly the repo the dialog reports it checked, not what the task had when the request opened", async () => {
 		const task = makeTask({ worktreePath: "/ops/s/ab/work", attachedRepo: "/ops/s/ab/work/wt-a" });
 		setupTask(task);
 		const pushFn = vi.fn();
@@ -205,12 +205,26 @@ describe("task.requestCompletion", () => {
 		const respPromise = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
 		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
 		const [, payload] = pushFn.mock.calls[0] as [string, { requestId: string; subject: TaskDialogSubject }];
-		expect(payload.subject.attachedRepoInFolder).toBe(true);
-		setupTask({ ...task, attachedRepo: "/ops/s/ab/work/wt-b" });
-		resolveAgentRequest(payload.requestId, { approved: true });
+		expect(payload.subject).toMatchObject({ attachedRepoInFolder: true, attachedRepo: "/ops/s/ab/work/wt-a" });
+		resolveAgentRequest(payload.requestId, { approved: true, attachedRepo: "/ops/s/ab/work/wt-a" });
 		await respPromise;
 
 		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ newStatus: "completed", approvedAttachedRepo: "/ops/s/ab/work/wt-a" }));
+	});
+
+	it("approves no repo when the dialog reports none (its check failed, or the answer predates the field)", async () => {
+		const task = makeTask({ worktreePath: "/ops/s/ab/work", attachedRepo: "/ops/s/ab/work/wt-a" });
+		setupTask(task);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(moveTask).mockResolvedValue({ ...task, status: "completed" as const });
+
+		const respPromise = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		resolveAgentRequest((pushFn.mock.calls[0] as [string, { requestId: string }])[1].requestId, { approved: true });
+		await respPromise;
+
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ approvedAttachedRepo: null }));
 	});
 
 	it("shows another task's --reason attributed to it, and keeps it for a replayed dialog", async () => {

@@ -446,9 +446,13 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
  * semaphore, so it answers in milliseconds and can be awaited in front of the
  * user. Use `getBranchStatus` when remote truth actually matters.
  */
-async function getUnsavedWork(params: { taskId: string; projectId: string }): Promise<UnsavedWork> {
+async function getUnsavedWork(params: { taskId: string; projectId: string; expectedAttachedRepo?: string | null }): Promise<UnsavedWork> {
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
+	// The caller will approve exactly this repo for removal: a task attached to another one was not checked.
+	if (params.expectedAttachedRepo !== undefined && (task.attachedRepo ?? null) !== params.expectedAttachedRepo) {
+		throw new Error("The attached repository changed since this dialog opened");
+	}
 	const nothingUnsaved = { insertions: 0, deletions: 0, unpushed: 0, preservedOutsideBranch: false, ahead: 0, baseUnreachable: false };
 	// A plain attached repo or clone is never deleted; a worktree-mode task and a linked worktree in its own folder are.
 	if (project.kind === "virtual") {
@@ -961,6 +965,8 @@ async function inspectOpsFolder(params: { path: string }): Promise<{ repoRoot: s
 	return { repoRoot, defaultBranch };
 }
 
+const TEARING_DOWN_ATTACH_ERROR = "The task is being closed; its repository cannot be changed now";
+
 /**
  * Attach (or detach, with `path: null`) a local git repo to an Operations task so
  * its diff can be read and reviewed. Attaching a subfolder stores the repo root.
@@ -972,7 +978,7 @@ async function setTaskAttachedRepo(params: { taskId: string; projectId: string; 
 	if (project.kind !== "virtual") throw new Error("A repository can only be attached to an Operations task");
 	if (isOpsWorktreeTask(task)) throw new Error("The repository of a worktree task cannot be changed");
 	// A close in flight removes only the repo its dialog approved; swapping it mid-teardown is refused.
-	if (task.runtimeState?.runtime === "tearing-down") throw new Error("The task is being closed; its repository cannot be changed now");
+	if (task.runtimeState?.runtime === "tearing-down") throw new Error(TEARING_DOWN_ATTACH_ERROR);
 
 	let root: string | null = null;
 	if (params.path !== null) {
@@ -986,7 +992,11 @@ async function setTaskAttachedRepo(params: { taskId: string; projectId: string; 
 	}
 	// Detected once here, not on every status poll: a repo without origin/HEAD makes detection hit the network.
 	const defaultBranch = root ? await git.getDefaultBranch(root, { local: true }).catch(() => null) : null;
-	const updated = await data.updateTask(project, task.id, { attachedRepo: root, ...(defaultBranch ? { baseBranch: defaultBranch } : {}) });
+	// Rechecked under the tasks lock: a close that started during the awaits above must not have its repo swapped.
+	const { task: updated } = await data.updateTaskWith(project, task.id, (current) => {
+		if (current.runtimeState?.runtime === "tearing-down") throw new Error(TEARING_DOWN_ATTACH_ERROR);
+		return { updates: { attachedRepo: root, ...(defaultBranch ? { baseBranch: defaultBranch } : {}) }, result: null };
+	});
 	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 
 	if (root && isActive(updated.status)) {

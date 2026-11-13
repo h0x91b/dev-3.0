@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
 	getProject: vi.fn(),
 	getTask: vi.fn(),
 	updateTask: vi.fn(),
+	updateTaskWith: vi.fn(),
 	push: vi.fn(),
 	deliverAgentPrompt: vi.fn(async (_task: unknown, _prompt: string) => ({ status: "delivered", reason: null })),
 }));
@@ -39,6 +40,7 @@ vi.mock("../../data", () => ({
 	getProject: mocks.getProject,
 	getTask: mocks.getTask,
 	updateTask: mocks.updateTask,
+	updateTaskWith: mocks.updateTaskWith,
 }));
 vi.mock("../../task-aux-panes", () => ({ openAuxPane: vi.fn(), auxPaneAlive: vi.fn(async () => false), auxPaneTitle: () => "Git" }));
 vi.mock("../../github", () => ({ getGitHubShellExports: vi.fn(async () => []), findOpenPullRequest: vi.fn() }));
@@ -93,6 +95,11 @@ beforeEach(() => {
 	mocks.getProject.mockResolvedValue(VPROJECT);
 	mocks.getTask.mockResolvedValue(vtask());
 	mocks.updateTask.mockImplementation(async (_p: unknown, _id: string, updates: Record<string, unknown>) => vtask(updates));
+	// The locked read-modify-write: runs the mutator on the stored task, then records the write like `updateTask`.
+	mocks.updateTaskWith.mockImplementation(async (project: unknown, id: string, mutator: (t: unknown) => { updates: Record<string, unknown>; result: unknown }) => {
+		const { updates, result } = mutator(await mocks.getTask());
+		return { task: await mocks.updateTask(project, id, updates), result };
+	});
 });
 
 afterEach(() => {
@@ -147,6 +154,14 @@ describe("setTaskAttachedRepo", () => {
 		mocks.getTask.mockResolvedValue(vtask({ attachedRepo: root, runtimeState: { runtime: "tearing-down" } }));
 		await expect(handlers.setTaskAttachedRepo({ taskId: "t", projectId: "vp1", path: root })).rejects.toThrow(/being closed/);
 		await expect(handlers.setTaskAttachedRepo({ taskId: "t", projectId: "vp1", path: null })).rejects.toThrow(/being closed/);
+		expect(mocks.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("rejects at write time when a close started while the repo was being resolved", async () => {
+		// The early check sees a healthy task; the locked write sees the teardown that began meanwhile.
+		mocks.getTask.mockResolvedValueOnce(vtask());
+		mocks.getTask.mockResolvedValue(vtask({ runtimeState: { runtime: "tearing-down" } }));
+		await expect(handlers.setTaskAttachedRepo({ taskId: "t", projectId: "vp1", path: root })).rejects.toThrow(/being closed/);
 		expect(mocks.updateTask).not.toHaveBeenCalled();
 	});
 
@@ -390,6 +405,18 @@ describe("a repo inside the task's own managed folder", () => {
 	it("getUnsavedWork stays empty when the attached repo is already gone", async () => {
 		mocks.getTask.mockResolvedValue(ownTask({ attachedRepo: `${folder}/gone`, baseBranch: "main" }));
 		expect(await handlers.getUnsavedWork({ taskId: "t", projectId: "vp1" })).toMatchObject({ insertions: 0, unpushed: 0, ahead: 0 });
+	});
+
+	it("getUnsavedWork rejects when the task is attached to another repo than the one the caller will approve (A, B, A)", async () => {
+		const a = `${folder}/wt-a`;
+		await createOpsWorktree(root, vtask(), a, "main");
+		// Live attachment is B: the caller holding A was never shown B's state.
+		mocks.getTask.mockResolvedValue(ownTask({ attachedRepo: `${folder}/wt-b`, baseBranch: "main" }));
+		await expect(handlers.getUnsavedWork({ taskId: "t", projectId: "vp1", expectedAttachedRepo: a })).rejects.toThrow(/changed since this dialog opened/);
+		await expect(handlers.getUnsavedWork({ taskId: "t", projectId: "vp1", expectedAttachedRepo: null })).rejects.toThrow(/changed since this dialog opened/);
+
+		mocks.getTask.mockResolvedValue(ownTask({ attachedRepo: a, baseBranch: "main" }));
+		await expect(handlers.getUnsavedWork({ taskId: "t", projectId: "vp1", expectedAttachedRepo: a })).resolves.toBeDefined();
 	});
 
 	it("getUnsavedWork stays empty for a plain clone in the folder: it is not removed", async () => {

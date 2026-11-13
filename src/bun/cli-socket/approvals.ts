@@ -79,8 +79,6 @@ function isPendingRequest(kind: "complete" | "cancel" | "reset" | "launch", task
  */
 /** What each pending reset request asked to destroy, fixed when its dialog opened. */
 const resetConsentByRequestId = new Map<string, TaskResetConsent>();
-/** The attached repo each complete/cancel dialog was raised for; the approved move may remove only that one. */
-const approvedAttachedRepoByRequestId = new Map<string, string | null>();
 
 /**
  * One reset per approved request, shared by every waiter joined to it: the
@@ -119,7 +117,7 @@ export async function requestDestructiveApproval(
 		...await destructiveReason(params, task),
 	};
 
-	let request: { requestId: string; decision: Promise<{ approved: boolean; stale?: boolean }> };
+	let request: { requestId: string; decision: Promise<{ approved: boolean; stale?: boolean; attachedRepo?: string | null }> };
 	if (params.attachOnly === true) {
 		const joined = joinAgentRequest(kind, task.id);
 		if (!joined) return { attached: false, status: approvalStatusOf(kind, task) };
@@ -137,9 +135,6 @@ export async function requestDestructiveApproval(
 		if (kind === "reset" && !resetConsentByRequestId.has(request.requestId)) {
 			resetConsentByRequestId.set(request.requestId, taskResetConsent(task));
 		}
-		if (kind !== "reset" && !approvedAttachedRepoByRequestId.has(request.requestId)) {
-			approvedAttachedRepoByRequestId.set(request.requestId, task.attachedRepo ?? null);
-		}
 		await voidIfRunEndedMeanwhile(kind, project, task);
 	}
 	const stillAsking = isPendingRequest(kind, task.id, request.requestId);
@@ -154,10 +149,9 @@ export async function requestDestructiveApproval(
 		});
 	}
 
-	const { approved, stale } = await request.decision;
+	const { approved, stale, attachedRepo } = await request.decision;
 	if (!approved) {
 		resetConsentByRequestId.delete(request.requestId);
-		approvedAttachedRepoByRequestId.delete(request.requestId);
 		if (!stale) return { approved: false };
 		// Voided: the task finished or vanished by another path. Its live status lets
 		// the CLI tell "already where you asked" apart from "ended some other way".
@@ -170,10 +164,11 @@ export async function requestDestructiveApproval(
 		if (!run) {
 			// Consent is bound to the run the dialog showed; the machine refuses a
 			// different one and deletes nothing.
-			const consent = resetConsentByRequestId.get(requestId);
+			const snapshot = resetConsentByRequestId.get(requestId);
 			resetConsentByRequestId.delete(requestId);
-			run = consent
-				? resetTaskToTodo({ taskId: task.id, projectId: project.id, consent })
+			// The attached repo in the consent is the one the dialog checked, not the one seen when it opened.
+			run = snapshot
+				? resetTaskToTodo({ taskId: task.id, projectId: project.id, consent: { ...snapshot, attachedRepo: attachedRepo ?? null } })
 				: Promise.reject(new Error("The reset request lost its consent record, so the reset was not run. Ask again."));
 			resetRunByRequestId.set(requestId, run);
 			void run.catch(() => {}).finally(() => {
@@ -185,9 +180,7 @@ export async function requestDestructiveApproval(
 	}
 	// Every caller joined to this request lands here; a repeat move to the same
 	// status is a no-op in the lifecycle machine.
-	const approvedAttachedRepo = approvedAttachedRepoByRequestId.get(request.requestId) ?? null;
-	setTimeout(() => approvedAttachedRepoByRequestId.delete(request.requestId), 60_000);
-	const updated = await moveTask({ taskId: task.id, projectId: project.id, newStatus: targetStatus, approvedAttachedRepo });
+	const updated = await moveTask({ taskId: task.id, projectId: project.id, newStatus: targetStatus, approvedAttachedRepo: attachedRepo ?? null });
 	return { approved: true, task: updated };
 }
 

@@ -4402,7 +4402,7 @@ describe("App keyboard shortcuts", () => {
 			await waitFor(() => {
 				expect(api.request.respondToAgentCompletionRequest).toHaveBeenCalledWith({
 					requestId: "req-1",
-					approved: true,
+					approved: true, attachedRepo: null
 				});
 			});
 			expect(screen.getByTestId("project-screen")).toBeInTheDocument();
@@ -4430,7 +4430,7 @@ describe("App keyboard shortcuts", () => {
 
 			await fire("req-in-folder", { seqLabel: "1", projectName: "Alpha", priority: "P1", labels: [], overview: null, keepsFolder: true, attachedRepoInFolder: true });
 			await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
-			expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+			expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", expectedAttachedRepo: null });
 			expect(vi.mocked(confirm).mock.calls[0][0]).toMatchObject({ deferred: { gateConfirm: true } });
 			expect(vi.mocked(confirm).mock.calls[0][0].message).toContain("If the attached repository is a git worktree, it is removed; its branch is kept.");
 
@@ -4458,7 +4458,7 @@ describe("App keyboard shortcuts", () => {
 			await waitFor(() => {
 				expect(api.request.respondToAgentCompletionRequest).toHaveBeenCalledWith({
 					requestId: "req-2",
-					approved: false,
+					approved: false, attachedRepo: null
 				});
 			});
 			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
@@ -4475,7 +4475,7 @@ describe("App keyboard shortcuts", () => {
 			await fireAgentCompletionRequested("req-f1", "t1", "p1");
 
 			await waitFor(() => {
-				expect(api.request.respondToAgentCompletionRequest).toHaveBeenCalledWith({ requestId: "req-f1", approved: false });
+				expect(api.request.respondToAgentCompletionRequest).toHaveBeenCalledWith({ requestId: "req-f1", approved: false, attachedRepo: null });
 			});
 			const opts = vi.mocked(confirm).mock.calls[0][0];
 			expect(opts.message).toContain("The working folder and its files are kept.");
@@ -4522,6 +4522,52 @@ describe("App keyboard shortcuts", () => {
 		});
 	});
 
+	// One rule for agent requests: the repo the dialog checked is the only one it reports as approved.
+	describe("agent requests approve only the attached repo their check covered", () => {
+		const REPO_A = "/ops/s/ab/work/wt-a";
+		const subject = { seqLabel: "1", projectName: "Alpha", priority: "P1", labels: [], overview: null, keepsFolder: true, attachedRepoInFolder: true, attachedRepo: REPO_A };
+		const cases = [
+			{ kind: "completion", event: "rpc:agentCompletionRequested", respond: () => api.request.respondToAgentCompletionRequest },
+			{ kind: "cancellation", event: "rpc:agentCancellationRequested", respond: () => api.request.respondToAgentCancellationRequest },
+			{ kind: "reset", event: "rpc:agentResetRequested", respond: () => api.request.respondToAgentResetRequest },
+		] as const;
+
+		afterEach(() => {
+			vi.mocked(api.request.getUnsavedWork).mockResolvedValue({ insertions: 0, deletions: 0, unpushed: 0, ahead: 0, baseUnreachable: false } as never);
+		});
+
+		describe.each(cases)("$kind dialog", ({ event, respond }) => {
+			async function openAndConfirm(requestId: string) {
+				vi.mocked(api.request.getProjects).mockResolvedValue([
+					{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+				]);
+				vi.mocked(api.request.getLastRoute).mockResolvedValue({ route: JSON.stringify({ screen: "project", projectId: "p1" }) });
+				// Like the real dialog, the answer waits for the streamed check to settle.
+				vi.mocked(confirm).mockImplementation(async (options) => {
+					await options.deferred?.promise.catch(() => undefined);
+					return true;
+				});
+				await renderApp();
+				await act(async () => {
+					window.dispatchEvent(new CustomEvent(event, { detail: { requestId, taskId: "t1", projectId: "p1", taskTitle: "Some task", subject } }));
+				});
+				await waitFor(() => expect(respond()).toHaveBeenCalled());
+			}
+
+			it("checks the repo from the request, and reports exactly that one as approved", async () => {
+				await openAndConfirm("req-bind-ok");
+				expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", expectedAttachedRepo: REPO_A });
+				expect(respond()).toHaveBeenCalledWith({ requestId: "req-bind-ok", approved: true, attachedRepo: REPO_A });
+			});
+
+			it("reports no repo when the task was re-attached (A, B, A): the check was refused, so nothing is approved", async () => {
+				vi.mocked(api.request.getUnsavedWork).mockRejectedValue(new Error("The attached repository changed since this dialog opened"));
+				await openAndConfirm("req-bind-swapped");
+				expect(respond()).toHaveBeenCalledWith({ requestId: "req-bind-swapped", approved: true, attachedRepo: null });
+			});
+		});
+	});
+
 	// Cancellation is deliberately NOT the completion dialog: it throws the work
 	// away, so it is red from border to badge and gates its confirm on the local
 	// git check.
@@ -4558,7 +4604,7 @@ describe("App keyboard shortcuts", () => {
 			await waitFor(() => {
 				expect(api.request.respondToAgentCancellationRequest).toHaveBeenCalledWith({
 					requestId: "req-c1",
-					approved: true,
+					approved: true, attachedRepo: null
 				});
 			});
 			expect(screen.getByTestId("project-screen")).toBeInTheDocument();
@@ -4569,7 +4615,7 @@ describe("App keyboard shortcuts", () => {
 			// The confirm button stays unavailable until the git check settles — a
 			// mis-click must not get past a warning that has not arrived yet.
 			expect(opts.deferred?.gateConfirm).toBe(true);
-			expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+			expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", expectedAttachedRepo: null });
 		});
 
 		it("says the folder is kept, not deleted, when the project's git workflow is off", async () => {
@@ -4582,7 +4628,7 @@ describe("App keyboard shortcuts", () => {
 			await fireAgentCancellationRequested("req-c9", "t1", "p1");
 
 			await waitFor(() => {
-				expect(api.request.respondToAgentCancellationRequest).toHaveBeenCalledWith({ requestId: "req-c9", approved: false });
+				expect(api.request.respondToAgentCancellationRequest).toHaveBeenCalledWith({ requestId: "req-c9", approved: false, attachedRepo: null });
 			});
 			const opts = vi.mocked(confirm).mock.calls[0][0];
 			expect(opts.message).toContain("The working folder and its files are kept.");
@@ -4606,7 +4652,7 @@ describe("App keyboard shortcuts", () => {
 			await waitFor(() => {
 				expect(api.request.respondToAgentCancellationRequest).toHaveBeenCalledWith({
 					requestId: "req-c2",
-					approved: false,
+					approved: false, attachedRepo: null
 				});
 			});
 			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
@@ -4634,10 +4680,10 @@ describe("App keyboard shortcuts", () => {
 			await waitFor(() => {
 				expect(api.request.respondToAgentCancellationRequest).toHaveBeenCalledWith({
 					requestId: "req-c-cross",
-					approved: true,
+					approved: true, attachedRepo: null
 				});
 			});
-			expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t-target", projectId: "p2" });
+			expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t-target", projectId: "p2", expectedAttachedRepo: null });
 			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
 		});
 
@@ -4662,7 +4708,7 @@ describe("App keyboard shortcuts", () => {
 			await waitFor(() => {
 				expect(api.request.respondToAgentCancellationRequest).toHaveBeenCalledWith({
 					requestId: "req-c-dropped",
-					approved: false,
+					approved: false, attachedRepo: null
 				});
 			});
 		});
@@ -4697,7 +4743,7 @@ describe("App keyboard shortcuts", () => {
 			await waitFor(() => {
 				expect(api.request.respondToAgentCancellationRequest).toHaveBeenCalledWith({
 					requestId: "req-c-orphan",
-					approved: false,
+					approved: false, attachedRepo: null
 				});
 			});
 		});
@@ -4733,7 +4779,7 @@ describe("App keyboard shortcuts", () => {
 				}));
 			});
 			await waitFor(() => {
-				expect(api.request.respondToAgentResetRequest).toHaveBeenCalledWith({ requestId: "req-r1", approved: false });
+				expect(api.request.respondToAgentResetRequest).toHaveBeenCalledWith({ requestId: "req-r1", approved: false, attachedRepo: null });
 			});
 			expect(api.request.respondToAgentCancellationRequest).not.toHaveBeenCalled();
 			const opts = vi.mocked(confirm).mock.calls[0][0];
@@ -4762,7 +4808,7 @@ describe("App keyboard shortcuts", () => {
 			vi.mocked(confirm).mockResolvedValue(false);
 			await renderApp();
 			await waitFor(() => {
-				expect(api.request.respondToAgentResetRequest).toHaveBeenCalledWith({ requestId: "req-r-orphan", approved: false });
+				expect(api.request.respondToAgentResetRequest).toHaveBeenCalledWith({ requestId: "req-r-orphan", approved: false, attachedRepo: null });
 			});
 		});
 	});
@@ -4814,7 +4860,7 @@ describe("App keyboard shortcuts", () => {
 			await waitFor(() => {
 				expect(api.request.respondToAgentCompletionRequest).toHaveBeenCalledWith({
 					requestId: "req-orphan",
-					approved: false,
+					approved: false, attachedRepo: null
 				});
 			});
 		});

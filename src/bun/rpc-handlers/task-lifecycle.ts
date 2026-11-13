@@ -1097,8 +1097,8 @@ async function listPendingCompletionRequests(): Promise<AgentCompletionRequest[]
 	}));
 }
 
-async function respondToAgentCompletionRequest(params: { requestId: string; approved: boolean }): Promise<void> {
-	const known = resolveAgentRequest(params.requestId, { approved: params.approved }, "complete");
+async function respondToAgentCompletionRequest(params: { requestId: string; approved: boolean; attachedRepo?: string | null }): Promise<void> {
+	const known = resolveAgentRequest(params.requestId, { approved: params.approved, attachedRepo: params.attachedRepo ?? null }, "complete");
 	if (!known) {
 		log.debug("respondToAgentCompletionRequest: request expired or unknown", { requestId: params.requestId });
 	}
@@ -1116,8 +1116,8 @@ async function listPendingCancellationRequests(): Promise<AgentCancellationReque
 	}));
 }
 
-async function respondToAgentCancellationRequest(params: { requestId: string; approved: boolean }): Promise<void> {
-	const known = resolveAgentRequest(params.requestId, { approved: params.approved }, "cancel");
+async function respondToAgentCancellationRequest(params: { requestId: string; approved: boolean; attachedRepo?: string | null }): Promise<void> {
+	const known = resolveAgentRequest(params.requestId, { approved: params.approved, attachedRepo: params.attachedRepo ?? null }, "cancel");
 	if (!known) {
 		log.debug("respondToAgentCancellationRequest: request expired or unknown", { requestId: params.requestId });
 	}
@@ -1136,8 +1136,8 @@ async function listPendingResetRequests(): Promise<AgentCancellationRequest[]> {
 	}));
 }
 
-async function respondToAgentResetRequest(params: { requestId: string; approved: boolean }): Promise<void> {
-	const known = resolveAgentRequest(params.requestId, { approved: params.approved }, "reset");
+async function respondToAgentResetRequest(params: { requestId: string; approved: boolean; attachedRepo?: string | null }): Promise<void> {
+	const known = resolveAgentRequest(params.requestId, { approved: params.approved, attachedRepo: params.attachedRepo ?? null }, "reset");
 	if (!known) {
 		log.debug("respondToAgentResetRequest: request expired or unknown", { requestId: params.requestId });
 	}

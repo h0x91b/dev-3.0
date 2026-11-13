@@ -258,7 +258,7 @@ describe("confirmTaskCompletion", () => {
 
 			await confirmTaskCompletion(baseTask, project, "completed", t, undefined, { alwaysConfirm: true });
 
-			expect(mockedUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+			expect(mockedUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", expectedAttachedRepo: null });
 			expect(mockedBranchStatus).not.toHaveBeenCalled();
 		});
 
@@ -343,7 +343,7 @@ describe("confirmTaskCompletion", () => {
 			const inFolder = { ...baseTask, attachedRepo: "/wt/wt2" } as Task;
 			await confirmTaskCompletion(inFolder, ops, "completed", t);
 
-			expect(mockedUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+			expect(mockedUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", expectedAttachedRepo: "/wt/wt2" });
 			expect(mockedBranchStatus).not.toHaveBeenCalled();
 			expect(mockedConfirm).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("task.attachedWorktreeNote") }));
 		});
@@ -361,7 +361,7 @@ describe("confirmTaskCompletion", () => {
 			const inFolder = { ...baseTask, attachedRepo: "/wt/wt2" } as Task;
 			await confirmTaskCompletion(inFolder, ops, "cancelled", t, undefined, { alwaysConfirm: true });
 
-			expect(mockedUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+			expect(mockedUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", expectedAttachedRepo: "/wt/wt2" });
 			expect(mockedConfirm.mock.calls[0]![0].deferred).toBeDefined();
 			expect(mockedConfirm.mock.calls[0]![0].message).toBe("task.attachedWorktreeNote");
 		});
@@ -396,7 +396,7 @@ describe("confirmTaskCompletion", () => {
 			expect(mockedBranchStatus).toHaveBeenCalled();
 
 			await confirmTaskCompletion(wtTask, ops, "completed", t, undefined, { alwaysConfirm: true });
-			expect(mockedUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+			expect(mockedUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", expectedAttachedRepo: "/repo" });
 		});
 	});
 

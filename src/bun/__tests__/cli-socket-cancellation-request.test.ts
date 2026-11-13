@@ -189,6 +189,26 @@ describe("task.requestCancellation", () => {
 		expect(moveTask).toHaveBeenCalledWith({ taskId: task.id, projectId: "proj-1", newStatus: "cancelled", approvedAttachedRepo: null });
 	});
 
+	it("cancels with exactly the repo the dialog reports it checked, and with none when it reports none", async () => {
+		const task = makeTask({ worktreePath: "/ops/s/ab/work", attachedRepo: "/ops/s/ab/work/wt-a" });
+		setupTask(task);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(moveTask).mockResolvedValue({ ...task, status: "cancelled" as const });
+		const ask = async (decision: { approved: boolean; attachedRepo?: string | null }) => {
+			pushFn.mockClear();
+			const resp = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
+			await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+			resolveAgentRequest((pushFn.mock.calls[0] as [string, { requestId: string }])[1].requestId, decision);
+			await resp;
+		};
+
+		await ask({ approved: true, attachedRepo: "/ops/s/ab/work/wt-a" });
+		expect(moveTask).toHaveBeenLastCalledWith(expect.objectContaining({ newStatus: "cancelled", approvedAttachedRepo: "/ops/s/ab/work/wt-a" }));
+		await ask({ approved: true });
+		expect(moveTask).toHaveBeenLastCalledWith(expect.objectContaining({ newStatus: "cancelled", approvedAttachedRepo: null }));
+	});
+
 	it("returns approved:false without moving the task when declined", async () => {
 		setupTask(makeTask());
 		const pushFn = vi.fn();

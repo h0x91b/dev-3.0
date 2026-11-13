@@ -112,7 +112,7 @@ export async function confirmTaskCompletion(
 	if (alwaysConfirm) {
 		const unsaved = skipGitCheck
 			? null
-			: api.request.getUnsavedWork({ taskId: task.id, projectId: project.id });
+			: api.request.getUnsavedWork({ taskId: task.id, projectId: project.id, expectedAttachedRepo: task.attachedRepo ?? null });
 		return confirm({
 			title: t(newStatus === "completed" ? "task.confirmCompleteTitle" : "task.confirmCancelTitle"),
 			confirmLabel: t(newStatus === "completed" ? "task.confirmCompleteLabel" : "task.confirmCancelLabel"),
@@ -136,7 +136,7 @@ export async function confirmTaskCompletion(
 	try {
 		// A clone in the folder is not removed: the local check answers "nothing", where branch status would warn.
 		status = inOwnFolder
-			? await api.request.getUnsavedWork({ taskId: task.id, projectId: project.id })
+			? await api.request.getUnsavedWork({ taskId: task.id, projectId: project.id, expectedAttachedRepo: task.attachedRepo ?? null })
 			: await api.request.getBranchStatus({ taskId: task.id, projectId: project.id });
 	} catch {
 		// Can't check — don't block the move, unless completing deletes an owned worktree.

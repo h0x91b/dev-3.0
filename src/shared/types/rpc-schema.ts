@@ -972,7 +972,9 @@ export type AppRPCSchema = {
 				response: BranchStatus;
 			};
 			getUnsavedWork: {
-				params: { taskId: string; projectId: string };
+				// `expectedAttachedRepo`: the attached repo the caller is about to approve for removal; a task
+				// attached to anything else is an error, so the check and the approval name the same repo.
+				params: { taskId: string; projectId: string; expectedAttachedRepo?: string | null };
 				response: UnsavedWork;
 			};
 			refreshTaskPrStatus: {
@@ -1955,7 +1957,8 @@ export type AppRPCSchema = {
 			 * releases it with a refusal.
 			 */
 			respondToAgentCompletionRequest: {
-				params: { requestId: string; approved: boolean };
+				// `attachedRepo`: the repo the dialog's unsaved-work check covered. Only that one may be removed; none means none.
+				params: { requestId: string; approved: boolean; attachedRepo?: string | null };
 				response: void;
 			};
 			/**
@@ -1976,7 +1979,8 @@ export type AppRPCSchema = {
 			 * releases it with a refusal.
 			 */
 			respondToAgentCancellationRequest: {
-				params: { requestId: string; approved: boolean };
+				// `attachedRepo`: the repo the dialog's unsaved-work check covered. Only that one may be removed; none means none.
+				params: { requestId: string; approved: boolean; attachedRepo?: string | null };
 				response: void;
 			};
 			/**
@@ -1993,7 +1997,8 @@ export type AppRPCSchema = {
 			 * task to To Do (agent stopped, worktree and dev3 branch deleted).
 			 */
 			respondToAgentResetRequest: {
-				params: { requestId: string; approved: boolean };
+				// `attachedRepo`: the repo the dialog's unsaved-work check covered. Only that one may be removed; none means none.
+				params: { requestId: string; approved: boolean; attachedRepo?: string | null };
 				response: void;
 			};
 			listPendingResetRequests: {

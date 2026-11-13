@@ -16,6 +16,8 @@ export interface AgentRequestDecision {
 	approved: boolean;
 	/** Present only for approved `launch` requests. */
 	launch?: AgentLaunchChoice;
+	/** Complete/cancel/reset: the attached repo the user's dialog checked; null when it checked none. */
+	attachedRepo?: string | null;
 	/** Set when nobody answered: the run the request was about ended first. */
 	stale?: boolean;
 }

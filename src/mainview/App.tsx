@@ -2442,10 +2442,16 @@ function App() {
 				showing.delete(requestId);
 				return;
 			}
+			// The repo the check covered: only it is reported back as approved, and none if the check never succeeded.
+			let checkedAttachedRepo: string | null = null;
 			try {
 				// A linked worktree in the task's own folder is removed on completion: stream the unsaved-work check in.
+				const expectedAttachedRepo = subject?.attachedRepo ?? null;
 				const unsaved = subject?.attachedRepoInFolder && request.projectId
-					? api.request.getUnsavedWork({ taskId, projectId: request.projectId })
+					? api.request.getUnsavedWork({ taskId, projectId: request.projectId, expectedAttachedRepo }).then((status) => {
+						checkedAttachedRepo = expectedAttachedRepo;
+						return status;
+					})
 					: null;
 				approved = await confirm({
 					title: t("app.agentCompletionTitle"),
@@ -2488,7 +2494,7 @@ function App() {
 				dispatch({ type: "clearBell", taskId });
 				trackEvent("task_moved", { to_status: "completed", agent_requested: true });
 			}
-			api.request.respondToAgentCompletionRequest({ requestId, approved }).catch((err) =>
+			api.request.respondToAgentCompletionRequest({ requestId, approved, attachedRepo: checkedAttachedRepo }).catch((err) =>
 				console.error("respondToAgentCompletionRequest failed:", err),
 			);
 		}
@@ -2547,7 +2553,7 @@ function App() {
 				copy: { title: "app.agentCancellationTitle", message: "app.agentCancellationMessage", confirm: "app.agentCancellationConfirm", cancel: "app.agentCancellationCancel" } as const,
 				folderCopy: { title: "app.agentCancellationTitle", message: "app.agentCancellationMessageFolder", confirm: "app.agentCancellationConfirmFolder", cancel: "app.agentCancellationCancel" } as const,
 				listPending: () => api.request.listPendingCancellationRequests({}),
-				respond: (params: { requestId: string; approved: boolean }) => api.request.respondToAgentCancellationRequest(params),
+				respond: (params: { requestId: string; approved: boolean; attachedRepo: string | null }) => api.request.respondToAgentCancellationRequest(params),
 			},
 			{
 				event: "rpc:agentResetRequested",
@@ -2555,7 +2561,7 @@ function App() {
 				copy: { title: "app.agentResetTitle", message: "app.agentResetMessage", confirm: "app.agentResetConfirm", cancel: "app.agentResetCancel" } as const,
 				folderCopy: { title: "app.agentResetTitle", message: "task.confirmResetMessageVirtual", confirm: "app.agentResetConfirm", cancel: "app.agentResetCancel" } as const,
 				listPending: () => api.request.listPendingResetRequests({}),
-				respond: (params: { requestId: string; approved: boolean }) => api.request.respondToAgentResetRequest(params),
+				respond: (params: { requestId: string; approved: boolean; attachedRepo: string | null }) => api.request.respondToAgentResetRequest(params),
 			},
 		];
 		type DialogKind = (typeof kinds)[number];
@@ -2581,8 +2587,14 @@ function App() {
 			}
 			// Without the git workflow nothing is deleted: the folder outlives the task.
 			const copy = keepsTaskFolder(projectId, subject) ? kind.folderCopy : kind.copy;
+			// The repo the check covered: only it is reported back as approved, and none if the check never succeeded.
+			let checkedAttachedRepo: string | null = null;
 			try {
-				const unsaved = api.request.getUnsavedWork({ taskId, projectId });
+				const expectedAttachedRepo = subject?.attachedRepo ?? null;
+				const unsaved = api.request.getUnsavedWork({ taskId, projectId, expectedAttachedRepo }).then((status) => {
+					checkedAttachedRepo = expectedAttachedRepo;
+					return status;
+				});
 				approved = await confirm({
 					title: t(copy.title),
 					message: t(branchKept && copy === kind.copy && kind.toStatus === "todo" ? "app.agentResetMessageBranchKept" : copy.message)
@@ -2618,7 +2630,7 @@ function App() {
 				dispatch({ type: "clearBell", taskId });
 				trackEvent("task_moved", { to_status: kind.toStatus, agent_requested: true });
 			}
-			kind.respond({ requestId, approved }).catch((err) =>
+			kind.respond({ requestId, approved, attachedRepo: checkedAttachedRepo }).catch((err) =>
 				console.error(`[App] answering ${kind.event} failed:`, err),
 			);
 		}

@@ -98,6 +98,8 @@ export interface TaskDialogSubject {
 	keepsFolder?: boolean;
 	/** The task's attached repo lies in its own folder: closing it removes a linked worktree there. */
 	attachedRepoInFolder?: boolean;
+	/** The task's attached repo when the dialog was raised: what its unsaved-work check must cover. */
+	attachedRepo?: string | null;
 }
 
 /**
@@ -264,5 +266,6 @@ export function buildTaskDialogSubject(task: Task, project: Project): TaskDialog
 		overview: getTaskOverview(task),
 		keepsFolder: !taskUsesWorktree(project, task),
 		...(isAttachedRepoInTaskFolder(task) ? { attachedRepoInFolder: true } : {}),
+		attachedRepo: task.attachedRepo ?? null,
 	};
 }
