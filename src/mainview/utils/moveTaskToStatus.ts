@@ -7,7 +7,7 @@ import { confirmTaskCompletion } from "./confirmTaskCompletion";
 import { confirmTaskReset } from "./confirmTaskReset";
 import { playTaskCompletionSound } from "../task-sounds";
 import { isNeedsYouSoundStatus } from "../../shared/task-sound-statuses";
-import { ACTIVE_STATUSES, taskNeedsReset, type Task, type Project, type TaskStatus } from "../../shared/types";
+import { ACTIVE_STATUSES, isAttachedRepoInTaskFolder, taskNeedsReset, type Task, type Project, type TaskStatus } from "../../shared/types";
 
 /**
  * Starting a To Do card is a launch (agent + variant picker), never a bare column
@@ -198,9 +198,12 @@ export async function moveTaskToStatus({
 		return requestTaskLaunch({ task, project, targetStatus: newStatus, dispatch, t, onOpenTask });
 	}
 
+	// The repo the unsaved-work dialog checked: the server removes a worktree in the task folder only if it is still this one.
+	let approvedAttachedRepo: string | undefined;
 	if (confirm && terminal && (task.worktreePath || alwaysConfirm)) {
 		const proceed = await confirmTaskCompletion(task, project, newStatus, t, onOpenTask, { alwaysConfirm, anchor });
 		if (!proceed) return false;
+		if (isAttachedRepoInTaskFolder(task)) approvedAttachedRepo = task.attachedRepo!;
 	}
 
 	const fromStatus = task.status;
@@ -238,10 +241,10 @@ export async function moveTaskToStatus({
 	try {
 		let updated: Task;
 		try {
-			updated = await api.request.moveTask({ taskId: task.id, projectId: project.id, newStatus, clientPlayedSound });
+			updated = await api.request.moveTask({ taskId: task.id, projectId: project.id, newStatus, clientPlayedSound, approvedAttachedRepo });
 		} catch {
 			// Environment is likely broken (missing worktree, etc.) — force it through.
-			updated = await api.request.moveTask({ taskId: task.id, projectId: project.id, newStatus, force: true, clientPlayedSound });
+			updated = await api.request.moveTask({ taskId: task.id, projectId: project.id, newStatus, force: true, clientPlayedSound, approvedAttachedRepo });
 		}
 		dispatch({ type: "updateTask", task: updated });
 		trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus, agent_name: agentNameFromId(task.agentId) });

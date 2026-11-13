@@ -170,7 +170,7 @@ describe("task.requestReset (T17, T17b)", () => {
 		expect(resetTaskToTodo).toHaveBeenCalledWith({
 			taskId: task.id,
 			projectId: "proj-1",
-			consent: { worktreePath: "/tmp/wt", lifecycleStartedAt: STARTED },
+			consent: { worktreePath: "/tmp/wt", lifecycleStartedAt: STARTED, attachedRepo: null },
 		});
 		expect(moveTask).not.toHaveBeenCalled();
 	});

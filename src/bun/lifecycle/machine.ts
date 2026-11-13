@@ -410,7 +410,7 @@ function moveTransition(
 			} else if (state.facts.opsWorktree) {
 				effects.push(effect({ type: "removeTaskWorkspace", allowDerivedPath: true }, "abort", teardownFailed));
 			} else if (state.facts.attachedRepoInFolder) {
-				effects.push(effect({ type: "removeAttachedWorktree" }));
+				effects.push(effect({ type: "removeAttachedWorktree", approvedAttachedRepo: event.approvedAttachedRepo ?? null }));
 			}
 		} else if (!skipCleanup && state.facts.opsWorktree) {
 			// After a reset or a failed preparation the path is gone from the record, but the worktree may not be.
@@ -478,6 +478,7 @@ function resetTransition(
 	const consentHolds = taskResetConsentMatches({
 		worktreePath: state.facts.worktreePath ?? null,
 		lifecycleStartedAt: state.facts.lifecycleStartedAt ?? null,
+		attachedRepo: state.facts.attachedRepo ?? null,
 	}, event.consent);
 	if (!needsReset || !consentHolds) {
 		return { next: state, effects: [effect({ type: "reject", message: RESET_CONSENT_STALE_ERROR }, "abort")] };
@@ -507,7 +508,7 @@ function resetTransition(
 				: state.facts.opsWorktree
 					? [effect({ type: "removeTaskWorkspace" }, "abort", failed)]
 					: state.facts.attachedRepoInFolder
-						? [effect({ type: "removeAttachedWorktree" })]
+						? [effect({ type: "removeAttachedWorktree", approvedAttachedRepo: event.consent.attachedRepo })]
 						: []),
 			effect({ type: "persistResetTask", consent: event.consent }, "abort", failed),
 			effect({ type: "push", message: "taskUpdated", view: "current" }),
@@ -598,7 +599,8 @@ function bootTransition(
 				: state.facts.opsWorktree
 					? [effect({ type: "removeTaskWorkspace", allowDerivedPath: true }, "abort", teardownFailed)]
 					: state.facts.attachedRepoInFolder
-						? [effect({ type: "removeAttachedWorktree" })]
+						// Boot recovery has no approval to show: only an already-removed worktree is settled.
+						? [effect({ type: "removeAttachedWorktree", approvedAttachedRepo: null })]
 						: []),
 			effect({ type: "persistTerminalTask", status: terminalStatus }, "abort"),
 			effect({ type: "push", message: "taskUpdated", view: "current" }),

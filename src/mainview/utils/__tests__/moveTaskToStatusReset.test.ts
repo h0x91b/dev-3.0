@@ -20,7 +20,7 @@ const STARTED = "2026-09-25T10:00:00.000Z";
 const running = { id: "t1", projectId: "p1", status: "review-by-user", worktreePath: "/wt", lifecycleStartedAt: STARTED } as Task;
 const project = { id: "p1", name: "P", path: "/p" } as Project;
 const t = ((key: string) => key) as never;
-const consent = { worktreePath: "/wt", lifecycleStartedAt: STARTED };
+const consent = { worktreePath: "/wt", lifecycleStartedAt: STARTED, attachedRepo: null };
 
 describe("moveTaskToStatus → To Do on a task with a run (T16)", () => {
 	beforeEach(() => {
@@ -95,7 +95,7 @@ describe("moveTaskToStatus → an active column on a To Do card (R1)", () => {
 
 	it("a legacy card that owns a worktree is reset (with consent) before the dialog opens", async () => {
 		const listener = captureLaunch();
-		vi.mocked(confirmTaskReset).mockResolvedValue({ worktreePath: "/wt", lifecycleStartedAt: null });
+		vi.mocked(confirmTaskReset).mockResolvedValue({ worktreePath: "/wt", lifecycleStartedAt: null, attachedRepo: null });
 		vi.mocked(api.request.resetTaskToTodo).mockResolvedValue({ task: { ...clean, id: "t3" }, keptBranches: [] });
 		const legacy = { ...clean, id: "t3", worktreePath: "/wt", branchName: "dev3/task-t3" } as Task;
 		await moveTaskToStatus({ task: legacy, project, newStatus: "in-progress", dispatch: vi.fn(), t });

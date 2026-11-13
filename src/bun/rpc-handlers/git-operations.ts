@@ -452,8 +452,14 @@ async function getUnsavedWork(params: { taskId: string; projectId: string }): Pr
 	const nothingUnsaved = { insertions: 0, deletions: 0, unpushed: 0, preservedOutsideBranch: false, ahead: 0, baseUnreachable: false };
 	// A plain attached repo or clone is never deleted; a worktree-mode task and a linked worktree in its own folder are.
 	if (project.kind === "virtual") {
-		const removedWithTask = isOpsWorktreeTask(task)
-			|| (isAttachedRepoInTaskFolder(task) && !!await git.getMainRepoOfLinkedWorktree(task.attachedRepo!));
+		let removedWithTask = isOpsWorktreeTask(task);
+		// A vanished attached repo has nothing left to lose.
+		if (!removedWithTask && isAttachedRepoInTaskFolder(task) && existsSync(task.attachedRepo!)) {
+			const probe = await git.classifyLinkedWorktree(task.attachedRepo!);
+			// Unknown is an error, as for a git task: the dialog says "unknown", never "clean".
+			if (probe.kind === "unknown") throw new Error(`Cannot tell whether the attached repository is a worktree: ${probe.error}`);
+			removedWithTask = probe.kind === "linked";
+		}
 		if (!removedWithTask) return nothingUnsaved;
 	} else if (!taskUsesWorktree(project, task) || !task.worktreePath) return nothingUnsaved;
 	// An error propagates, as it does for a git task: the dialog then says "unknown", never "clean".
@@ -965,6 +971,8 @@ async function setTaskAttachedRepo(params: { taskId: string; projectId: string; 
 	const task = await data.getTask(project, params.taskId);
 	if (project.kind !== "virtual") throw new Error("A repository can only be attached to an Operations task");
 	if (isOpsWorktreeTask(task)) throw new Error("The repository of a worktree task cannot be changed");
+	// A close in flight removes only the repo its dialog approved; swapping it mid-teardown is refused.
+	if (task.runtimeState?.runtime === "tearing-down") throw new Error("The task is being closed; its repository cannot be changed now");
 
 	let root: string | null = null;
 	if (params.path !== null) {

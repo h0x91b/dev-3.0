@@ -186,7 +186,7 @@ describe("task.requestCancellation", () => {
 		const resp = await respPromise;
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toEqual({ approved: true, task: cancelledTask });
-		expect(moveTask).toHaveBeenCalledWith({ taskId: task.id, projectId: "proj-1", newStatus: "cancelled" });
+		expect(moveTask).toHaveBeenCalledWith({ taskId: task.id, projectId: "proj-1", newStatus: "cancelled", approvedAttachedRepo: null });
 	});
 
 	it("returns approved:false without moving the task when declined", async () => {

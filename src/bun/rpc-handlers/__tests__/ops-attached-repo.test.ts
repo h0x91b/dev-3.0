@@ -62,7 +62,7 @@ vi.mock("../../lifecycle/activities", () => ({
 }));
 vi.mock("../../lifecycle/merge-fingerprint", () => ({ getMergeCompletionFingerprint: vi.fn() }));
 
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cleanup, createTestRepo, g, type TestRepo } from "../../__tests__/git-test-helpers";
@@ -141,6 +141,13 @@ describe("setTaskAttachedRepo", () => {
 			.rejects.toThrow(/another Operations task's folder/);
 		expect(mocks.updateTask).not.toHaveBeenCalled();
 		rmSync(`${OPS_DIR}/slug`, { recursive: true, force: true });
+	});
+
+	it("refuses to change the repo while the task is being closed", async () => {
+		mocks.getTask.mockResolvedValue(vtask({ attachedRepo: root, runtimeState: { runtime: "tearing-down" } }));
+		await expect(handlers.setTaskAttachedRepo({ taskId: "t", projectId: "vp1", path: root })).rejects.toThrow(/being closed/);
+		await expect(handlers.setTaskAttachedRepo({ taskId: "t", projectId: "vp1", path: null })).rejects.toThrow(/being closed/);
+		expect(mocks.updateTask).not.toHaveBeenCalled();
 	});
 
 	it("detaches with a null path and does not message the agent", async () => {
@@ -363,6 +370,26 @@ describe("a repo inside the task's own managed folder", () => {
 		expect(unsaved.insertions + unsaved.deletions).toBeGreaterThan(0);
 		expect(unsaved.ahead).toBe(1);
 		expect(unsaved.unpushed).not.toBe(0);
+	});
+
+	it("getUnsavedWork rejects, never says clean, when git cannot classify the repo (broken main config)", async () => {
+		const wt = `${folder}/wt`;
+		await createOpsWorktree(root, vtask(), wt, "main");
+		writeFileSync(join(wt, "app.ts"), "const a = 100;\n");
+		mocks.getTask.mockResolvedValue(ownTask({ attachedRepo: wt, baseBranch: "main" }));
+		const config = join(root, ".git", "config");
+		const original = readFileSync(config, "utf-8");
+		writeFileSync(config, "[core\n\tbroken = = =\n");
+		try {
+			await expect(handlers.getUnsavedWork({ taskId: "t", projectId: "vp1" })).rejects.toThrow(/Cannot tell whether/);
+		} finally {
+			writeFileSync(config, original);
+		}
+	});
+
+	it("getUnsavedWork stays empty when the attached repo is already gone", async () => {
+		mocks.getTask.mockResolvedValue(ownTask({ attachedRepo: `${folder}/gone`, baseBranch: "main" }));
+		expect(await handlers.getUnsavedWork({ taskId: "t", projectId: "vp1" })).toMatchObject({ insertions: 0, unpushed: 0, ahead: 0 });
 	});
 
 	it("getUnsavedWork stays empty for a plain clone in the folder: it is not removed", async () => {
