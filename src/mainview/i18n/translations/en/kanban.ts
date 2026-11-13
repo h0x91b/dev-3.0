@@ -178,7 +178,7 @@ const kanban = {
 	"task.liveConfig": "Now running: {live}",
 	"task.liveConfigDetail": "Changed inside the session. Launched with {launched}.",
 	"task.failedEdit": "Couldn’t save the change — try again. ({error})",
-	"task.editHint": "⌘Enter to save · Esc to cancel",
+	"task.editHint": "⌘Enter to save · Esc to cancel · Closing saves",
 	"task.renameHint": "Enter to save · Esc to cancel",
 	"task.detailTitle": "Task Details",
 	"task.descriptionLabel": "Description",

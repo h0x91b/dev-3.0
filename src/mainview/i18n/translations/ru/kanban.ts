@@ -179,7 +179,7 @@ const kanban = {
 	"task.liveConfig": "Сейчас работает: {live}",
 	"task.liveConfigDetail": "Изменено внутри сессии. Запущено с {launched}.",
 	"task.failedEdit": "Не удалось обновить задачу: {error}",
-	"task.editHint": "⌘Enter для сохранения · Esc для отмены",
+	"task.editHint": "⌘Enter для сохранения · Esc для отмены · При закрытии сохраняется",
 	"task.renameHint": "Enter для сохранения · Esc для отмены",
 	"task.detailTitle": "Детали задачи",
 	"task.descriptionLabel": "Описание",
