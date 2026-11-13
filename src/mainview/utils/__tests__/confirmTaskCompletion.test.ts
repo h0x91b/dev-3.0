@@ -258,7 +258,7 @@ describe("confirmTaskCompletion", () => {
 
 			await confirmTaskCompletion(baseTask, project, "completed", t, undefined, { alwaysConfirm: true });
 
-			expect(mockedUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+			expect(mockedUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", expectedAttachedRepo: null });
 			expect(mockedBranchStatus).not.toHaveBeenCalled();
 		});
 
@@ -339,6 +339,40 @@ describe("confirmTaskCompletion", () => {
 			expect(mockedConfirm).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("task.warnUncommitted") }));
 		});
 
+		it("checks a repo in the task's own folder through the local unsaved-work read, which answers nothing for a clone", async () => {
+			const inFolder = { ...baseTask, attachedRepo: "/wt/wt2" } as Task;
+			await confirmTaskCompletion(inFolder, ops, "completed", t);
+
+			expect(mockedUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", expectedAttachedRepo: "/wt/wt2" });
+			expect(mockedBranchStatus).not.toHaveBeenCalled();
+			expect(mockedConfirm).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("task.attachedWorktreeNote") }));
+		});
+
+		it("shows the dialog as unknown, never lets the move through, when the local read of a repo in the folder fails", async () => {
+			mockedUnsavedWork.mockRejectedValueOnce(new Error("boom"));
+			const inFolder = { ...baseTask, attachedRepo: "/wt/wt2" } as Task;
+
+			await confirmTaskCompletion(inFolder, ops, "completed", t);
+
+			expect(mockedConfirm).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("task.branchStateUnknown") }));
+		});
+
+		it("streams the check into the quick-complete dialog for a repo in the task's own folder", async () => {
+			const inFolder = { ...baseTask, attachedRepo: "/wt/wt2" } as Task;
+			await confirmTaskCompletion(inFolder, ops, "cancelled", t, undefined, { alwaysConfirm: true });
+
+			expect(mockedUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", expectedAttachedRepo: "/wt/wt2" });
+			expect(mockedConfirm.mock.calls[0]![0].deferred).toBeDefined();
+			expect(mockedConfirm.mock.calls[0]![0].message).toBe("task.attachedWorktreeNote");
+		});
+
+		it("does not check a repo attached outside the task folder", async () => {
+			const ok = await confirmTaskCompletion({ ...baseTask, attachedRepo: "/repo" } as Task, ops, "completed", t);
+			expect(ok).toBe(true);
+			expect(mockedBranchStatus).not.toHaveBeenCalled();
+			expect(mockedUnsavedWork).not.toHaveBeenCalled();
+		});
+
 		it("asks before completing a worktree-mode task whose branch status cannot be read (drag path)", async () => {
 			mockedBranchStatus.mockRejectedValueOnce(new Error("Attached repository not found"));
 			const wtTask = { ...baseTask, attachedRepo: "/repo", opsWorktree: true } as Task;
@@ -362,7 +396,7 @@ describe("confirmTaskCompletion", () => {
 			expect(mockedBranchStatus).toHaveBeenCalled();
 
 			await confirmTaskCompletion(wtTask, ops, "completed", t, undefined, { alwaysConfirm: true });
-			expect(mockedUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+			expect(mockedUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", expectedAttachedRepo: "/repo" });
 		});
 	});
 

@@ -2,7 +2,7 @@ import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { taskDialogInfo } from "./taskDialogInfo";
 import type { Task, Project, TaskStatus, BranchStatus, UnsavedWork } from "../../shared/types";
-import { isOpsWorktreeTask } from "../../shared/types";
+import { isAttachedRepoInTaskFolder, isOpsWorktreeTask } from "../../shared/types";
 import type { TFunction } from "../i18n";
 
 /**
@@ -93,12 +93,16 @@ export async function confirmTaskCompletion(
 	// PR-review tasks check out someone else's existing branch — the commits,
 	// unpushed and unmerged state aren't the user's work, so completing them
 	// must not warn about uncommitted/unpushed/unmerged changes.
-	// An Operations task has nothing to lose in git, unless it works in its own worktree.
+	// An Operations task has nothing to lose in git, unless it works in its own worktree
+	// or made a git worktree inside its folder, which closing removes.
+	const inOwnFolder = isAttachedRepoInTaskFolder(task);
 	const skipGitCheck = !task.worktreePath || (Boolean(task.existingBranch) && !isOpsWorktreeTask(task))
-		|| (project.kind === "virtual" && !isOpsWorktreeTask(task));
+		|| (project.kind === "virtual" && !isOpsWorktreeTask(task) && !inOwnFolder);
 	if (skipGitCheck && !alwaysConfirm) return true;
 
-	const tail = task.worktreePath
+	const tail = inOwnFolder
+		? t("task.attachedWorktreeNote")
+		: task.worktreePath
 		? t("task.warnCompletionFooter")
 		: t(newStatus === "completed" ? "task.confirmCompleteFooter" : "task.confirmCancelFooter");
 	const info = taskDialogInfo(task, project, onOpenTask);
@@ -108,7 +112,7 @@ export async function confirmTaskCompletion(
 	if (alwaysConfirm) {
 		const unsaved = skipGitCheck
 			? null
-			: api.request.getUnsavedWork({ taskId: task.id, projectId: project.id });
+			: api.request.getUnsavedWork({ taskId: task.id, projectId: project.id, expectedAttachedRepo: task.attachedRepo ?? null });
 		return confirm({
 			title: t(newStatus === "completed" ? "task.confirmCompleteTitle" : "task.confirmCancelTitle"),
 			confirmLabel: t(newStatus === "completed" ? "task.confirmCompleteLabel" : "task.confirmCancelLabel"),
@@ -130,10 +134,13 @@ export async function confirmTaskCompletion(
 	// there is something to warn about.
 	let status;
 	try {
-		status = await api.request.getBranchStatus({ taskId: task.id, projectId: project.id });
+		// A clone in the folder is not removed: the local check answers "nothing", where branch status would warn.
+		status = inOwnFolder
+			? await api.request.getUnsavedWork({ taskId: task.id, projectId: project.id, expectedAttachedRepo: task.attachedRepo ?? null })
+			: await api.request.getBranchStatus({ taskId: task.id, projectId: project.id });
 	} catch {
 		// Can't check — don't block the move, unless completing deletes an owned worktree.
-		if (!isOpsWorktreeTask(task)) return true;
+		if (!isOpsWorktreeTask(task) && !inOwnFolder) return true;
 		return confirmWarnings([t("task.branchStateUnknown")]);
 	}
 	if (!status) return true;

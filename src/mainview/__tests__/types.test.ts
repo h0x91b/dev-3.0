@@ -767,6 +767,7 @@ describe("buildTaskDialogSubject", () => {
 			labels: [LABEL_FEAT, LABEL_BUG],
 			overview: "agent overview",
 			keepsFolder: false,
+			attachedRepo: null,
 		});
 	});
 
@@ -774,6 +775,13 @@ describe("buildTaskDialogSubject", () => {
 		const gitless = makeProject({ gitWorkflow: false });
 		expect(buildTaskDialogSubject(makeTask(), gitless).keepsFolder).toBe(true);
 		expect(buildTaskDialogSubject(makeTask({ ownWorktree: true }), gitless).keepsFolder).toBe(false);
+	});
+
+	it("flags a task whose attached repo lies in its own folder", () => {
+		const virtual = makeProject({ kind: "virtual" });
+		const inFolder = makeTask({ worktreePath: "/ops/s/ab/work", attachedRepo: "/ops/s/ab/work/wt" });
+		expect(buildTaskDialogSubject(inFolder, virtual)).toMatchObject({ attachedRepoInFolder: true, attachedRepo: "/ops/s/ab/work/wt" });
+		expect(buildTaskDialogSubject(makeTask({ worktreePath: "/ops/s/ab/work", attachedRepo: "/repo" }), virtual)).not.toHaveProperty("attachedRepoInFolder");
 	});
 
 	it("adds the variant suffix to the seq label", () => {

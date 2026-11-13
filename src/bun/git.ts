@@ -1664,6 +1664,52 @@ export async function createOpsWorktree(
 	return { worktreePath: wtPath, branchName: branch };
 }
 
+export type LinkedWorktreeKind =
+	| { kind: "linked"; mainRepo: string }
+	| { kind: "plain" }
+	| { kind: "unknown"; error: string };
+
+/**
+ * "plain" only when git positively answers that the checkout owns its git dir. A missing path or a
+ * failed probe is "unknown", so a broken repo is never mistaken for a clone that is safe to ignore.
+ */
+export async function classifyLinkedWorktree(path: string): Promise<LinkedWorktreeKind> {
+	if (!existsSync(path)) return { kind: "unknown", error: `Path not found: ${path}` };
+	let result: GitRunResult;
+	try {
+		result = await run(["git", "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir"], path);
+	} catch (err) {
+		return { kind: "unknown", error: String(err) };
+	}
+	if (!result.ok) return { kind: "unknown", error: result.stderr.trim() || "git rev-parse failed" };
+	const [gitDir, commonDir] = result.stdout.split("\n");
+	if (!gitDir || !commonDir) return { kind: "unknown", error: `Unexpected git rev-parse output: ${result.stdout}` };
+	if (gitDir === commonDir) return { kind: "plain" };
+	return { kind: "linked", mainRepo: commonDir.endsWith("/.git") ? commonDir.slice(0, -"/.git".length) : commonDir };
+}
+
+/**
+ * Removes a linked worktree through its main repo; the branch stays. If git refuses, the directory is
+ * deleted and the stale registration pruned. Returns false only when the directory is still there.
+ */
+export async function removeLinkedWorktree(mainRepo: string, path: string): Promise<boolean> {
+	try {
+		const result = await run(["git", "worktree", "remove", "--force", "--force", path], mainRepo);
+		if (result.ok) return true;
+		log.warn("git worktree remove failed, deleting the directory instead", { mainRepo, path, stderr: result.stderr });
+	} catch (err) {
+		log.warn("git worktree remove failed, deleting the directory instead", { mainRepo, path, error: String(err) });
+	}
+	try {
+		await rm(path, { recursive: true, force: true });
+	} catch (err) {
+		log.warn("Could not delete the attached worktree directory", { path, error: String(err) });
+		return false;
+	}
+	await pruneWorktrees(mainRepo);
+	return !existsSync(path);
+}
+
 /** Drop registrations of worktrees whose directory is gone. Never throws. */
 export async function pruneWorktrees(repo: string): Promise<void> {
 	try {

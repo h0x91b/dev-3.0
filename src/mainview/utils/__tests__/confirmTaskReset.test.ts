@@ -18,12 +18,12 @@ afterEach(() => vi.clearAllMocks());
 describe("confirmTaskReset", () => {
 	it("always asks (even a clean branch), names the branch, gates on the unsaved-work check, returns the consent it showed", async () => {
 		vi.mocked(confirm).mockResolvedValue(true);
-		expect(await confirmTaskReset(task, project, t)).toEqual({ worktreePath: "/wt", lifecycleStartedAt: "S" });
+		expect(await confirmTaskReset(task, project, t)).toEqual({ worktreePath: "/wt", lifecycleStartedAt: "S", attachedRepo: null });
 		const options = vi.mocked(confirm).mock.calls[0]![0];
 		expect(options).toMatchObject({ danger: true, tone: "danger", confirmLabel: "task.confirmResetLabel" });
 		expect(options.message).toContain("feat/dev3-x");
 		expect(options.deferred?.gateConfirm).toBe(true);
-		expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+		expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", expectedAttachedRepo: null });
 	});
 
 	it("declined → null", async () => {
@@ -39,12 +39,31 @@ describe("confirmTaskReset", () => {
 		expect(options.message).toContain("task.confirmResetMessageOpsWorktree");
 		expect(options.message).toContain("feat/dev3-x");
 		expect(options.deferred?.gateConfirm).toBe(true);
-		expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+		expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", expectedAttachedRepo: "/repo" });
 	});
 
 	it("an Operations task says its folder is kept and runs no git check", async () => {
 		vi.mocked(confirm).mockResolvedValue(true);
 		await confirmTaskReset(task, { ...project, kind: "virtual" } as Project, t);
+		expect(vi.mocked(confirm).mock.calls[0]![0].message).toBe("task.confirmResetMessageVirtual");
+		expect(api.request.getUnsavedWork).not.toHaveBeenCalled();
+	});
+
+	it("an Operations task with a repo in its own folder runs the unsaved-work check and says the worktree goes, the branch stays", async () => {
+		vi.mocked(confirm).mockResolvedValue(true);
+		const inFolder = { ...task, attachedRepo: "/wt/wt2" } as Task;
+		// The consent names the repo the dialog checked, so a reset after a swap is refused by the server.
+		expect(await confirmTaskReset(inFolder, { ...project, kind: "virtual" } as Project, t)).toMatchObject({ attachedRepo: "/wt/wt2" });
+		const options = vi.mocked(confirm).mock.calls[0]![0];
+		expect(options.message).toContain("task.confirmResetMessageVirtual");
+		expect(options.message).toContain("task.attachedWorktreeNote");
+		expect(options.deferred?.gateConfirm).toBe(true);
+		expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", expectedAttachedRepo: "/wt/wt2" });
+	});
+
+	it("a repo attached outside the task folder changes nothing for an Operations reset", async () => {
+		vi.mocked(confirm).mockResolvedValue(true);
+		await confirmTaskReset({ ...task, attachedRepo: "/repo" } as Task, { ...project, kind: "virtual" } as Project, t);
 		expect(vi.mocked(confirm).mock.calls[0]![0].message).toBe("task.confirmResetMessageVirtual");
 		expect(api.request.getUnsavedWork).not.toHaveBeenCalled();
 	});

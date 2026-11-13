@@ -4,7 +4,7 @@ import type { ExternalSenderRequester } from "../external-senders";
 import type { TaskStatus } from "./task-status";
 import type { AgentMessageSource } from "./scheduled-messages";
 import { DEFAULT_PRIORITY, type TaskPriority } from "./task-priority";
-import type { Task } from "./task";
+import { isAttachedRepoInTaskFolder, type Task } from "./task";
 import type { GlobalSettings } from "./global-settings";
 import { taskUsesWorktree, type Project } from "./project";
 import type { Label } from "./labels-columns";
@@ -96,6 +96,10 @@ export interface TaskDialogSubject {
 	overview: string | null;
 	/** Finishing the task keeps its folder: it shares a gitless project's folder, so no worktree is removed. */
 	keepsFolder?: boolean;
+	/** The task's attached repo lies in its own folder: closing it removes a linked worktree there. */
+	attachedRepoInFolder?: boolean;
+	/** The task's attached repo when the dialog was raised: what its unsaved-work check must cover. */
+	attachedRepo?: string | null;
 }
 
 /**
@@ -261,5 +265,7 @@ export function buildTaskDialogSubject(task: Task, project: Project): TaskDialog
 		labels,
 		overview: getTaskOverview(task),
 		keepsFolder: !taskUsesWorktree(project, task),
+		...(isAttachedRepoInTaskFolder(task) ? { attachedRepoInFolder: true } : {}),
+		attachedRepo: task.attachedRepo ?? null,
 	};
 }

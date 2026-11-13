@@ -9,10 +9,10 @@ vi.mock("../spawn", async () => {
 	return createSpawnMock();
 });
 
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { cleanup, createTestRepo, g, spawnedCommands, type TestRepo } from "./git-test-helpers";
-import { createOpsWorktree, isWorktreeDirtyOrUnknown, getDefaultBranch, getRepoTopLevel, pruneWorktrees, _resetFetchState } from "../git";
+import { createOpsWorktree, isWorktreeDirtyOrUnknown, getDefaultBranch, classifyLinkedWorktree, getRepoTopLevel, removeLinkedWorktree, pruneWorktrees, _resetFetchState } from "../git";
 
 const task = { id: "abcdef12-0000-0000-0000-000000000009" } as any;
 
@@ -114,6 +114,63 @@ describe("Operations worktree", () => {
 		expect(await getRepoTopLevel(sub)).toBe(await getRepoTopLevel(repo.local));
 		expect(await getRepoTopLevel("/tmp/dev3-not-a-repo-xyz")).toBeNull();
 	});
+	it("classifyLinkedWorktree names the owning repo of a linked worktree", async () => {
+		await createOpsWorktree(repo.local, task, wtPath, "main");
+		expect(await classifyLinkedWorktree(wtPath)).toEqual({ kind: "linked", mainRepo: realpathSync(repo.local) });
+	});
+
+	it("classifyLinkedWorktree says plain only for a checkout git positively confirms owns its git dir", async () => {
+		expect(await classifyLinkedWorktree(repo.local)).toEqual({ kind: "plain" });
+	});
+
+	it("classifyLinkedWorktree is unknown for a missing path, a non-repo and a repo with a broken config", async () => {
+		expect((await classifyLinkedWorktree("/tmp/dev3-not-a-repo-xyz")).kind).toBe("unknown");
+		await createOpsWorktree(repo.local, task, wtPath, "main");
+		writeFileSync(join(repo.local, ".git", "config"), "[core\n\tbroken = = =\n");
+
+		expect((await classifyLinkedWorktree(wtPath)).kind).toBe("unknown");
+		expect((await classifyLinkedWorktree(repo.local)).kind).toBe("unknown");
+	});
+
+	it("removeLinkedWorktree drops the worktree and its registration but keeps the branch", async () => {
+		await createOpsWorktree(repo.local, task, wtPath, "main");
+		writeFileSync(join(wtPath, "dirty.ts"), "uncommitted\n");
+
+		expect(await removeLinkedWorktree(repo.local, wtPath)).toBe(true);
+
+		expect(existsSync(wtPath)).toBe(false);
+		expect(g("git worktree list", repo.local)).not.toContain("abcdef12");
+		expect(g("git branch --list dev3/task-abcdef12", repo.local)).toContain("dev3/task-abcdef12");
+	});
+
+	it("removeLinkedWorktree removes a locked worktree too, and its registration is gone", async () => {
+		await createOpsWorktree(repo.local, task, wtPath, "main");
+		g(`git worktree lock ${wtPath}`, repo.local);
+
+		expect(await removeLinkedWorktree(repo.local, wtPath)).toBe(true);
+
+		expect(existsSync(wtPath)).toBe(false);
+		expect(g("git worktree list", repo.local)).not.toContain("abcdef12");
+	});
+
+	it("removeLinkedWorktree falls back to rm and prune when git refuses, leaving no registration", async () => {
+		await createOpsWorktree(repo.local, task, wtPath, "main");
+		// Git refuses to remove a worktree whose .git file is gone ("validation failed").
+		rmSync(join(wtPath, ".git"));
+		expect(() => g(`git worktree remove --force --force ${wtPath}`, repo.local)).toThrow();
+
+		expect(await removeLinkedWorktree(repo.local, wtPath)).toBe(true);
+
+		expect(existsSync(wtPath)).toBe(false);
+		expect(g("git worktree list", repo.local)).not.toContain("abcdef12");
+	});
+
+	it("removeLinkedWorktree never throws when the main repo is gone", async () => {
+		await createOpsWorktree(repo.local, task, wtPath, "main");
+		expect(await removeLinkedWorktree("/tmp/dev3-not-a-repo-xyz", wtPath)).toBe(true);
+		expect(existsSync(wtPath)).toBe(false);
+	});
+
 	it("re-adds the worktree after a prune that never ran: the stale registration no longer blocks the path", async () => {
 		await createOpsWorktree(repo.local, task, wtPath, "main");
 		rmSync(wtPath, { recursive: true, force: true });

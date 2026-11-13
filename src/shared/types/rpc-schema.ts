@@ -754,7 +754,9 @@ export type AppRPCSchema = {
 				// attached remote browser, so the chime would play a second time on
 				// the same machine). Unset for CLI / branch-merge / agent
 				// approval, where no renderer played locally and the push is the sound.
-				params: { taskId: string; projectId: string; newStatus: TaskStatus; force?: boolean; clientPlayedSound?: boolean };
+				// `approvedAttachedRepo`: the attached repo the user's unsaved-work dialog checked; a close removes
+				// a git worktree in the task's own folder only when it is still this one.
+				params: { taskId: string; projectId: string; newStatus: TaskStatus; force?: boolean; clientPlayedSound?: boolean; approvedAttachedRepo?: string | null };
 				response: Task;
 			};
 			// View → Debug probe: fires the same `taskSound` push a real CLI /
@@ -970,7 +972,9 @@ export type AppRPCSchema = {
 				response: BranchStatus;
 			};
 			getUnsavedWork: {
-				params: { taskId: string; projectId: string };
+				// `expectedAttachedRepo`: the attached repo the caller is about to approve for removal; a task
+				// attached to anything else is an error, so the check and the approval name the same repo.
+				params: { taskId: string; projectId: string; expectedAttachedRepo?: string | null };
 				response: UnsavedWork;
 			};
 			refreshTaskPrStatus: {
@@ -1953,7 +1957,8 @@ export type AppRPCSchema = {
 			 * releases it with a refusal.
 			 */
 			respondToAgentCompletionRequest: {
-				params: { requestId: string; approved: boolean };
+				// `attachedRepo`: the repo the dialog's unsaved-work check covered. Only that one may be removed; none means none.
+				params: { requestId: string; approved: boolean; attachedRepo?: string | null };
 				response: void;
 			};
 			/**
@@ -1974,7 +1979,8 @@ export type AppRPCSchema = {
 			 * releases it with a refusal.
 			 */
 			respondToAgentCancellationRequest: {
-				params: { requestId: string; approved: boolean };
+				// `attachedRepo`: the repo the dialog's unsaved-work check covered. Only that one may be removed; none means none.
+				params: { requestId: string; approved: boolean; attachedRepo?: string | null };
 				response: void;
 			};
 			/**
@@ -1991,7 +1997,8 @@ export type AppRPCSchema = {
 			 * task to To Do (agent stopped, worktree and dev3 branch deleted).
 			 */
 			respondToAgentResetRequest: {
-				params: { requestId: string; approved: boolean };
+				// `attachedRepo`: the repo the dialog's unsaved-work check covered. Only that one may be removed; none means none.
+				params: { requestId: string; approved: boolean; attachedRepo?: string | null };
 				response: void;
 			};
 			listPendingResetRequests: {

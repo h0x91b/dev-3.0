@@ -170,9 +170,24 @@ describe("task.requestReset (T17, T17b)", () => {
 		expect(resetTaskToTodo).toHaveBeenCalledWith({
 			taskId: task.id,
 			projectId: "proj-1",
-			consent: { worktreePath: "/tmp/wt", lifecycleStartedAt: STARTED },
+			consent: { worktreePath: "/tmp/wt", lifecycleStartedAt: STARTED, attachedRepo: null },
 		});
 		expect(moveTask).not.toHaveBeenCalled();
+	});
+
+	it("resets with the attached repo the dialog reports it checked, even if the task was re-attached meanwhile, and none when it reports none", async () => {
+		const task = makeTask({ status: "review-by-user", lifecycleStartedAt: STARTED, attachedRepo: "/ops/s/ab/work/wt-a" });
+		const ask = async (decision: { approved: boolean; attachedRepo?: string | null }) => {
+			const { resp, requestId } = await openRequest(task);
+			vi.mocked(resetTaskToTodo).mockResolvedValue({ task: { ...task, status: "todo" as const }, keptBranches: [] });
+			resolveAgentRequest(requestId, decision);
+			await resp;
+			const calls = vi.mocked(resetTaskToTodo).mock.calls;
+			return calls[calls.length - 1]![0].consent;
+		};
+
+		expect(await ask({ approved: true, attachedRepo: "/ops/s/ab/work/wt-a" })).toMatchObject({ attachedRepo: "/ops/s/ab/work/wt-a", lifecycleStartedAt: STARTED });
+		expect(await ask({ approved: true })).toMatchObject({ attachedRepo: null });
 	});
 
 	it("flags the dialog when the task's branch survives the reset (owned Operations worktree)", async () => {

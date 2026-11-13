@@ -24,13 +24,16 @@ export type LifecycleRuntime =
 
 export interface LifecycleFacts {
 	hasWorktree: boolean;
-	/** The two fields a reset consent is bound to (see `TaskResetConsent`). */
+	/** The fields a reset consent is bound to (see `TaskResetConsent`). */
 	worktreePath?: string | null;
 	lifecycleStartedAt?: string | null;
+	attachedRepo?: string | null;
 	/** False on virtual boards and on projects with the git workflow off. */
 	usesWorktrees: boolean;
 	/** An Operations task working in a worktree of its attached repo: completion removes it like a git task's. */
 	opsWorktree?: boolean;
+	/** A plain Operations task whose attached repo lies in its own folder: closing it removes a linked worktree there. */
+	attachedRepoInFolder?: boolean;
 	hasPrIdentity: boolean;
 	/** The task is an unfinished draft: no activation path may start it. */
 	draft?: boolean;
@@ -92,6 +95,8 @@ export type LifecycleEvent =
 		enforceAllowedTransition?: boolean;
 		guards?: MoveGuards;
 		force?: boolean;
+		/** The attached repo the user's dialog checked; a close removes a worktree in the task folder only if it is this one. */
+		approvedAttachedRepo?: string | null;
 		clientPlayedSound?: boolean;
 		/** The move raises no questions badge: the caller raises its own, or the user just acted. */
 		skipQuestionsBadge?: boolean;

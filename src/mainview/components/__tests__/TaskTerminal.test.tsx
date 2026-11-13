@@ -27,6 +27,11 @@ vi.mock("../../rpc", () => ({
 	isElectrobun: false,
 }));
 
+vi.mock("../../utils/confirmTaskCompletion", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../../utils/confirmTaskCompletion")>()),
+	confirmTaskCompletion: vi.fn(async () => true),
+}));
+
 vi.mock("../../analytics", () => ({
 	trackEvent: vi.fn(),
 	agentNameFromId: vi.fn(() => "unknown"),
@@ -97,6 +102,7 @@ function setCoarsePointer(coarse: boolean) {
 import { api } from "../../rpc";
 import { trackEvent } from "../../analytics";
 import { toast } from "../../toast";
+import { confirmTaskCompletion } from "../../utils/confirmTaskCompletion";
 
 const mockedApi = vi.mocked(api, true);
 const mockedTrackEvent = vi.mocked(trackEvent);
@@ -376,6 +382,38 @@ describe("TaskTerminal", () => {
 				to_status: "completed",
 				agent_name: "unknown",
 			});
+		});
+
+		it("runs the unsaved-work dialog first when the attached repo lies in the task's own folder", async () => {
+			const user = userEvent.setup();
+			vi.mocked(confirmTaskCompletion).mockClear();
+			mockedApi.request.getPtyUrl.mockRejectedValue(new Error("no pty"));
+			mockedApi.request.checkWorktreeState.mockResolvedValue("present");
+			mockedApi.request.moveTask.mockResolvedValue({ ...makeTask(), status: "completed" });
+
+			await act(async () => {
+				renderTerminal({ tasks: [makeTask({ attachedRepo: "/tmp/wt/t1/wt" })] });
+			});
+			await waitFor(() => expect(screen.getByText(/Complete/i)).toBeInTheDocument());
+			await user.click(screen.getByText(/Complete/i));
+
+			expect(confirmTaskCompletion).toHaveBeenCalledWith(expect.objectContaining({ attachedRepo: "/tmp/wt/t1/wt" }), expect.anything(), "completed", expect.anything(), undefined, expect.anything());
+		});
+
+		it("does not ask again for any other task, where the buttons are the confirmation", async () => {
+			const user = userEvent.setup();
+			vi.mocked(confirmTaskCompletion).mockClear();
+			mockedApi.request.getPtyUrl.mockRejectedValue(new Error("no pty"));
+			mockedApi.request.checkWorktreeState.mockResolvedValue("present");
+			mockedApi.request.moveTask.mockResolvedValue({ ...makeTask(), status: "completed" });
+
+			await act(async () => {
+				renderTerminal({ tasks: [makeTask({ attachedRepo: "/repo" })] });
+			});
+			await waitFor(() => expect(screen.getByText(/Complete/i)).toBeInTheDocument());
+			await user.click(screen.getByText(/Complete/i));
+
+			expect(confirmTaskCompletion).not.toHaveBeenCalled();
 		});
 
 		it("sets movedAt when cancelling task from error screen", async () => {

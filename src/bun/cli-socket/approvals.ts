@@ -117,7 +117,7 @@ export async function requestDestructiveApproval(
 		...await destructiveReason(params, task),
 	};
 
-	let request: { requestId: string; decision: Promise<{ approved: boolean; stale?: boolean }> };
+	let request: { requestId: string; decision: Promise<{ approved: boolean; stale?: boolean; attachedRepo?: string | null }> };
 	if (params.attachOnly === true) {
 		const joined = joinAgentRequest(kind, task.id);
 		if (!joined) return { attached: false, status: approvalStatusOf(kind, task) };
@@ -149,7 +149,7 @@ export async function requestDestructiveApproval(
 		});
 	}
 
-	const { approved, stale } = await request.decision;
+	const { approved, stale, attachedRepo } = await request.decision;
 	if (!approved) {
 		resetConsentByRequestId.delete(request.requestId);
 		if (!stale) return { approved: false };
@@ -164,10 +164,11 @@ export async function requestDestructiveApproval(
 		if (!run) {
 			// Consent is bound to the run the dialog showed; the machine refuses a
 			// different one and deletes nothing.
-			const consent = resetConsentByRequestId.get(requestId);
+			const snapshot = resetConsentByRequestId.get(requestId);
 			resetConsentByRequestId.delete(requestId);
-			run = consent
-				? resetTaskToTodo({ taskId: task.id, projectId: project.id, consent })
+			// The attached repo in the consent is the one the dialog checked, not the one seen when it opened.
+			run = snapshot
+				? resetTaskToTodo({ taskId: task.id, projectId: project.id, consent: { ...snapshot, attachedRepo: attachedRepo ?? null } })
 				: Promise.reject(new Error("The reset request lost its consent record, so the reset was not run. Ask again."));
 			resetRunByRequestId.set(requestId, run);
 			void run.catch(() => {}).finally(() => {
@@ -179,7 +180,7 @@ export async function requestDestructiveApproval(
 	}
 	// Every caller joined to this request lands here; a repeat move to the same
 	// status is a no-op in the lifecycle machine.
-	const updated = await moveTask({ taskId: task.id, projectId: project.id, newStatus: targetStatus });
+	const updated = await moveTask({ taskId: task.id, projectId: project.id, newStatus: targetStatus, approvedAttachedRepo: attachedRepo ?? null });
 	return { approved: true, task: updated };
 }
 

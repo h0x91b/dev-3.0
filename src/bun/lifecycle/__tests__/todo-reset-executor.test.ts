@@ -101,7 +101,7 @@ import type { Project, Task } from "../../../shared/types";
 const TASK_ID = "aabbccdd-1111-2222-3333-444444444444";
 const PATH = "/wt/aabbccdd/worktree";
 const STARTED = "2026-09-25T10:00:00.000Z";
-const CONSENT = { worktreePath: PATH, lifecycleStartedAt: STARTED };
+const CONSENT = { worktreePath: PATH, lifecycleStartedAt: STARTED, attachedRepo: null };
 
 function project(): Project {
 	return { id: "proj-1", name: "P", path: "/repo", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" };

@@ -522,8 +522,55 @@ describe("task lifecycle transition table", () => {
 		});
 	});
 
+	describe.each(["completed", "cancelled"] as const)("plain Operations task with a repo in its own folder moved to %s", (target) => {
+		const make = (attachedRepoInFolder: boolean) => state("in-progress", {
+			facts: { hasWorktree: true, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, ...(attachedRepoInFolder ? { attachedRepoInFolder } : {}) },
+		});
+		const teardown = (current: LifecycleState, approvedAttachedRepo?: string | null) => transition(current, {
+			type: "moveRequested",
+			target: { status: target, customColumnId: null },
+			runId: "run",
+			...(approvedAttachedRepo !== undefined ? { approvedAttachedRepo } : {}),
+		}).effects;
+
+		it("carries the repo the user approved into the effect, and null when the move carried none", () => {
+			expect(teardown(make(true), "/ops/s/ab/work/wt").find((e) => e.type === "removeAttachedWorktree")).toMatchObject({ approvedAttachedRepo: "/ops/s/ab/work/wt" });
+			expect(teardown(make(true)).find((e) => e.type === "removeAttachedWorktree")).toMatchObject({ approvedAttachedRepo: null });
+		});
+
+		it("removes the attached worktree best-effort, after the reap and before it is persisted", () => {
+			const effects = teardown(make(true));
+			const types = effects.map((e) => e.type);
+			expect(effects.find((e) => e.type === "removeAttachedWorktree")).toMatchObject({ onError: "continue" });
+			expect(types.indexOf("reapWorktreeProcesses")).toBeLessThan(types.indexOf("removeAttachedWorktree"));
+			expect(types.indexOf("removeAttachedWorktree")).toBeLessThan(types.indexOf("persistTerminalTask"));
+			expect(types).not.toContain("removeTaskWorkspace");
+		});
+
+		it("emits nothing without the fact", () => {
+			expect(teardown(make(false)).map((e) => e.type)).not.toContain("removeAttachedWorktree");
+		});
+	});
+
+	it("reset removes the attached worktree of a plain Operations task only with the fact, and only the consented repo", () => {
+		const consent = { worktreePath: "/w", lifecycleStartedAt: "S", attachedRepo: "/w/wt" };
+		const make = (attachedRepoInFolder: boolean) => state("in-progress", {
+			facts: { hasWorktree: true, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, worktreePath: "/w", lifecycleStartedAt: "S", attachedRepo: "/w/wt", ...(attachedRepoInFolder ? { attachedRepoInFolder } : {}) },
+		});
+		const effects = transition(make(true), { type: "resetRequested", consent }).effects;
+		const types = effects.map((e) => e.type);
+
+		expect(effects.find((e) => e.type === "removeAttachedWorktree")).toMatchObject({ onError: "continue", approvedAttachedRepo: "/w/wt" });
+		// Another client swapped the attached repo after the dialog: the consent no longer matches.
+		const swapped = transition(make(true), { type: "resetRequested", consent: { ...consent, attachedRepo: "/w/other" } }).effects;
+		expect(swapped.map((e) => e.type)).toEqual(["reject"]);
+		expect(types.indexOf("reapWorktreeProcesses")).toBeLessThan(types.indexOf("removeAttachedWorktree"));
+		expect(types.indexOf("removeAttachedWorktree")).toBeLessThan(types.indexOf("persistResetTask"));
+		expect(transition(make(false), { type: "resetRequested", consent }).effects.map((e) => e.type)).not.toContain("removeAttachedWorktree");
+	});
+
 	it("reset removes the workspace of a worktree-mode Operations task and not of a plain one", () => {
-		const consent = { worktreePath: "/w", lifecycleStartedAt: "S" };
+		const consent = { worktreePath: "/w", lifecycleStartedAt: "S", attachedRepo: null };
 		const make = (opsWorktree: boolean) => state("in-progress", {
 			facts: { hasWorktree: true, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, worktreePath: "/w", lifecycleStartedAt: "S", ...(opsWorktree ? { opsWorktree } : {}) },
 		});
@@ -1208,6 +1255,23 @@ describe("boot runtime reconciliation", () => {
 			"persistTerminalTask",
 			"push",
 		]);
+	});
+
+	it("removes a linked worktree of a plain Operations task when boot recovery finishes its teardown, and only with the fact", () => {
+		const resumed = (attachedRepoInFolder: boolean) => transition(state("in-progress", {
+			runtime: { phase: "tearing-down", targetStatus: "cancelled", runId: "teardown-crash" },
+			facts: { hasWorktree: true, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, ...(attachedRepoInFolder ? { attachedRepoInFolder } : {}) },
+		}), {
+			type: "bootObserved",
+			reality: { worktreeExists: true, terminalAlive: false },
+		}).effects;
+
+		const withFact = resumed(true);
+		const types = withFact.map((effect) => effect.type);
+		expect(withFact.find((effect) => effect.type === "removeAttachedWorktree")).toMatchObject({ onError: "continue" });
+		expect(types.indexOf("reapWorktreeProcesses")).toBeLessThan(types.indexOf("removeAttachedWorktree"));
+		expect(types.indexOf("removeAttachedWorktree")).toBeLessThan(types.indexOf("persistTerminalTask"));
+		expect(resumed(false).map((effect) => effect.type)).not.toContain("removeAttachedWorktree");
 	});
 
 	it("aborts boot recovery when worktree removal fails", () => {
