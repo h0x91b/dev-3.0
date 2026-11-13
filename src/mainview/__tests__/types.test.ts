@@ -776,6 +776,13 @@ describe("buildTaskDialogSubject", () => {
 		expect(buildTaskDialogSubject(makeTask({ ownWorktree: true }), gitless).keepsFolder).toBe(false);
 	});
 
+	it("flags a task whose attached repo lies in its own folder", () => {
+		const virtual = makeProject({ kind: "virtual" });
+		const inFolder = makeTask({ worktreePath: "/ops/s/ab/work", attachedRepo: "/ops/s/ab/work/wt" });
+		expect(buildTaskDialogSubject(inFolder, virtual).attachedRepoInFolder).toBe(true);
+		expect(buildTaskDialogSubject(makeTask({ worktreePath: "/ops/s/ab/work", attachedRepo: "/repo" }), virtual)).not.toHaveProperty("attachedRepoInFolder");
+	});
+
 	it("adds the variant suffix to the seq label", () => {
 		const subject = buildTaskDialogSubject(makeTask({ variantIndex: 2 }), makeProject());
 		expect(subject.seqLabel).toBe("42-2");

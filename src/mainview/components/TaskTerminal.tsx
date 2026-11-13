@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
 import type { Task, Project, TaskSessionState } from "../../shared/types";
-import { getTaskTitle, taskUsesWorktree } from "../../shared/types";
+import { getTaskTitle, isAttachedRepoInTaskFolder, taskUsesWorktree } from "../../shared/types";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
 import { debugLog } from "../debug-log";
@@ -506,7 +506,8 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			newStatus,
 			dispatch,
 			t,
-			confirm: false,
+			// A linked worktree in the task's own folder is removed on close: show the unsaved-work dialog.
+			confirm: isAttachedRepoInTaskFolder(task),
 			revertOnFailure: false,
 			afterOptimistic: () => navigate(taskClosedHomeRoute(projectId, getTaskOpenMode())),
 		});

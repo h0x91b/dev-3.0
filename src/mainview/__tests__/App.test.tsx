@@ -4412,6 +4412,35 @@ describe("App keyboard shortcuts", () => {
 			expect(vi.mocked(confirm).mock.calls[0][0]).toMatchObject({ agentInitiated: true, danger: true });
 		});
 
+		it("streams the unsaved-work check into the dialog when the task's repo lies in its own folder, and not otherwise", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
+			});
+			vi.mocked(confirm).mockResolvedValue(true);
+			await renderApp();
+			const fire = (requestId: string, subject?: object) =>
+				act(async () => {
+					window.dispatchEvent(new CustomEvent("rpc:agentCompletionRequested", {
+						detail: { requestId, taskId: "t1", projectId: "p1", taskTitle: "Some task", ...(subject ? { subject } : {}) },
+					}));
+				});
+
+			await fire("req-in-folder", { seqLabel: "1", projectName: "Alpha", priority: "P1", labels: [], overview: null, keepsFolder: true, attachedRepoInFolder: true });
+			await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+			expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+			expect(vi.mocked(confirm).mock.calls[0][0]).toMatchObject({ deferred: { gateConfirm: true } });
+			expect(vi.mocked(confirm).mock.calls[0][0].message).toContain("If the attached repository is a git worktree, it is removed; its branch is kept.");
+
+			vi.mocked(api.request.getUnsavedWork).mockClear();
+			await fire("req-plain", { seqLabel: "1", projectName: "Alpha", priority: "P1", labels: [], overview: null, keepsFolder: true });
+			await waitFor(() => expect(confirm).toHaveBeenCalledTimes(2));
+			expect(api.request.getUnsavedWork).not.toHaveBeenCalled();
+			expect(vi.mocked(confirm).mock.calls[1][0].deferred).toBeUndefined();
+		});
+
 		it("responds with approved:false and stays in place when declined", async () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue([
 				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },

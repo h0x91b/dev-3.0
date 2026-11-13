@@ -2443,16 +2443,29 @@ function App() {
 				return;
 			}
 			try {
+				// A linked worktree in the task's own folder is removed on completion: stream the unsaved-work check in.
+				const unsaved = subject?.attachedRepoInFolder && request.projectId
+					? api.request.getUnsavedWork({ taskId, projectId: request.projectId })
+					: null;
 				approved = await confirm({
 					title: t("app.agentCompletionTitle"),
 					// Without its own worktree nothing is deleted: the folder outlives the task.
-					message: t(keepsTaskFolder(request.projectId, subject) ? "app.agentCompletionMessageFolder" : "app.agentCompletionMessage"),
+					message: t(keepsTaskFolder(request.projectId, subject) ? "app.agentCompletionMessageFolder" : "app.agentCompletionMessage")
+						+ (subject?.attachedRepoInFolder ? `\n\n${t("task.attachedWorktreeNote")}` : ""),
 					info: taskDialogInfoFromSubject(taskTitle, subject),
 					...(request.reason ? { reason: request.reason } : {}),
 					confirmLabel: t("app.agentCompletionConfirm"),
 					cancelLabel: t("app.agentCompletionCancel"),
 					danger: true,
 					agentInitiated: true,
+					deferred: unsaved
+						? {
+							pending: t("task.checkingBranchState"),
+							unknown: t("task.branchStateUnknown"),
+							gateConfirm: true,
+							promise: unsaved.then((status) => unsavedWorkWarning(status, t)),
+						}
+						: undefined,
 					signal: abort.signal,
 				});
 			} catch (err) {
@@ -2572,7 +2585,8 @@ function App() {
 				const unsaved = api.request.getUnsavedWork({ taskId, projectId });
 				approved = await confirm({
 					title: t(copy.title),
-					message: t(branchKept && copy === kind.copy && kind.toStatus === "todo" ? "app.agentResetMessageBranchKept" : copy.message),
+					message: t(branchKept && copy === kind.copy && kind.toStatus === "todo" ? "app.agentResetMessageBranchKept" : copy.message)
+						+ (subject?.attachedRepoInFolder ? `\n\n${t("task.attachedWorktreeNote")}` : ""),
 					info: taskDialogInfoFromSubject(taskTitle, subject),
 					...(request.reason ? { reason: request.reason } : {}),
 					confirmLabel: t(copy.confirm),

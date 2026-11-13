@@ -22,6 +22,7 @@ import {
 	getPreparingStageProgress,
 	getTaskTitle,
 	hasGitWorkflow,
+	isAttachedRepoInTaskFolder,
 	isOpsWorktreeTask,
 	taskUsesWorktree,
 	taskResetConsentMatches,
@@ -113,6 +114,8 @@ export interface LifecycleExecutionContext {
 	/** Set by `resetWorktree`: the worktree is gone, so a failed final write must say so. */
 	resetWorktreeRemoved?: boolean;
 	resetBranchOutcome?: git.RemoveWorktreeBranchOutcome;
+	/** Set by `removeAttachedWorktree`: the persist that follows also detaches the repo. */
+	attachedWorktreeRemoved?: boolean;
 	/** Set by `judgeFailureWorkspace`: why the failure cleanup keeps the folder. */
 	failureWorkspaceKept?: string;
 }
@@ -1221,8 +1224,16 @@ export async function executeLifecycleEffect(
 						if (unrecorded && existsSync(`${worktreePath}/.git`) && await git.isWorktreeDirtyOrUnknown(worktreePath)) {
 							log.warn("Kept a worktree with uncommitted or unreadable state and no recorded path", { taskId: ctx.sourceTask.id.slice(0, 8), worktreePath });
 						} else {
+							// A linked worktree the agent made inside the folder is removed through git first (it may be locked);
+							// the prune below is the safety net.
+							// Deleting takes the whole folder, so a repo that is the folder itself counts here.
+							const attached = ctx.sourceTask.attachedRepo;
+							const ownRepo = attached && (attached === worktreePath || isAttachedRepoInTaskFolder(ctx.sourceTask)) ? attached : null;
+							const mainRepo = ownRepo ? await git.getMainRepoOfLinkedWorktree(ownRepo) : null;
+							if (mainRepo && ownRepo) await git.removeLinkedWorktree(mainRepo, ownRepo);
 							await rm(worktreePath, { recursive: true, force: true });
 							if (isOpsWorktreeTask(ctx.sourceTask)) await git.pruneWorktrees(ctx.sourceTask.attachedRepo!);
+							else if (mainRepo) await git.pruneWorktrees(mainRepo);
 						}
 					}
 				} else {
@@ -1233,6 +1244,19 @@ export async function executeLifecycleEffect(
 				await forgetWorktreeTrust(worktreePath);
 			}
 			return {};
+		case "removeAttachedWorktree": {
+			// Best-effort (no "abort" policy): a stuck worktree must not block closing the task.
+			const attached = ctx.sourceTask.attachedRepo;
+			if (!attached || !isAttachedRepoInTaskFolder(ctx.sourceTask)) return {};
+			// Gone already (a retry or a boot after an earlier removal): only the record is left to clear.
+			if (!existsSync(attached)) {
+				ctx.attachedWorktreeRemoved = true;
+				return {};
+			}
+			const mainRepo = await git.getMainRepoOfLinkedWorktree(attached);
+			if (mainRepo && await git.removeLinkedWorktree(mainRepo, attached)) ctx.attachedWorktreeRemoved = true;
+			return {};
+		}
 		case "resetWorktree": {
 			const worktreePath = ctx.sourceTask.worktreePath;
 			const outcome = await git.removeWorktree(ctx.project, ctx.sourceTask, {
@@ -1250,13 +1274,15 @@ export async function executeLifecycleEffect(
 					&& current.status !== "cancelled"
 					&& taskResetConsentMatches(current, effect.consent);
 				return sameRun
-					? { updates: { ...resetTaskUpdates(), codexScanFloorAt: new Date().toISOString() }, result: true }
+					? { updates: { ...resetTaskUpdates(), ...(ctx.attachedWorktreeRemoved ? { attachedRepo: null } : {}), codexScanFloorAt: new Date().toISOString() }, result: true }
 					: { updates: {}, result: false };
 			});
 			if (!applied.result) {
 				throw new Error(ctx.resetWorktreeRemoved
 					? "the task changed elsewhere while it was being reset; its worktree is already removed — reset it again to finish"
-					: "the task changed elsewhere while it was being reset; nothing was written");
+					: ctx.attachedWorktreeRemoved
+						? "the task changed elsewhere while it was being reset; its attached worktree is already removed — reset it again to finish"
+						: "the task changed elsewhere while it was being reset; nothing was written");
 			}
 			ctx.task = applied.task;
 			ctx.stateTask = ctx.task;
@@ -1341,6 +1367,7 @@ export async function executeLifecycleEffect(
 				status: effect.status,
 				customColumnId: null,
 				scheduledMessages: null,
+				...(ctx.attachedWorktreeRemoved ? { attachedRepo: null } : {}),
 				// An Operations task keeps its folder path; nothing else of a finished task does.
 				...(ctx.project.kind === "virtual" && !isOpsWorktreeTask(ctx.task) ? {} : { worktreePath: null, branchName: null }),
 				...(ctx.completedDiffStats ? { completedDiffStats: ctx.completedDiffStats } : {}),

@@ -98,6 +98,8 @@ export type LifecycleEffect =
 	/** Preparation failure only: may the (derived) worktree folder be destroyed? */
 	| ({ type: "judgeFailureWorkspace" } & EffectPolicy)
 	| ({ type: "removeTaskWorkspace"; allowDerivedPath?: boolean } & EffectPolicy)
+	/** Close or reset of a plain Operations task: drop a linked worktree it made in its own folder; the branch stays. */
+	| ({ type: "removeAttachedWorktree" } & EffectPolicy)
 	/** Reset only: remove the worktree, delete only branches dev3 owns, note each first. */
 	| ({ type: "resetWorktree" } & EffectPolicy)
 	/** Reset only: the single compare-and-set write that lands the card in To Do. */

@@ -31,6 +31,8 @@ export interface LifecycleFacts {
 	usesWorktrees: boolean;
 	/** An Operations task working in a worktree of its attached repo: completion removes it like a git task's. */
 	opsWorktree?: boolean;
+	/** A plain Operations task whose attached repo lies in its own folder: closing it removes a linked worktree there. */
+	attachedRepoInFolder?: boolean;
 	hasPrIdentity: boolean;
 	/** The task is an unfinished draft: no activation path may start it. */
 	draft?: boolean;

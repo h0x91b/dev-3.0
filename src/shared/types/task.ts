@@ -545,6 +545,17 @@ export function isOpsWorktreeTask(task: Pick<Task, "opsWorktree" | "attachedRepo
 }
 
 /**
+ * An Operations task whose attached repo lives strictly inside its own managed folder, which is
+ * deleted with the task. The folder itself being the repo does not count: closing keeps it.
+ * A user-chosen folder (`opsWorkDir`) is never deleted.
+ */
+export function isAttachedRepoInTaskFolder(task: Pick<Task, "opsWorktree" | "attachedRepo" | "worktreePath" | "opsWorkDir">): boolean {
+	const { attachedRepo, worktreePath } = task;
+	if (!attachedRepo || !worktreePath || task.opsWorktree || task.opsWorkDir) return false;
+	return attachedRepo.startsWith(`${worktreePath}/`);
+}
+
+/**
  * The branch a task's changes should be *compared against* — the base for the
  * branch diff, ahead/behind status, and rebase/merge targets.
  *
