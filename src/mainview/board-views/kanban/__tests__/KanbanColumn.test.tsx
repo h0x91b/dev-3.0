@@ -15,6 +15,7 @@
  */
 import { act } from "@testing-library/react";
 import { render, screen } from "@testing-library/react";
+import { createPortal } from "react-dom";
 import KanbanColumn from "../KanbanColumn";
 import { I18nProvider } from "../../../i18n";
 import userEvent from "@testing-library/user-event";
@@ -386,6 +387,34 @@ describe("KanbanColumn — double-click empty space to add task", () => {
 		const { container } = renderBuiltinColumn({ onAddTask, status: "todo", tasks: [task] });
 		const taskElement = container.querySelector("[data-task-id='t1']") as HTMLElement;
 		await userEvent.dblClick(taskElement);
+		expect(onAddTask).not.toHaveBeenCalled();
+	});
+
+	it("does NOT call onAddTask when double-clicking inside a modal a card portals to body", async () => {
+		// The real card portals TaskDetailModal; React bubbles its events up to the column.
+		function PortalCard({ task }: BoardTaskCardProps) {
+			return createPortal(<textarea aria-label="description" defaultValue={task.description} />, document.body);
+		}
+		const onAddTask = vi.fn();
+		const task = { id: "t1", projectId: "p1", seq: 1, title: "T", description: "edit me", status: "todo" } as Task;
+		render(
+			<I18nProvider>
+				<KanbanColumn
+					status="todo"
+					label="To Do"
+					tasks={[task]}
+					TaskCard={PortalCard}
+					onAddTask={onAddTask}
+					onTaskDrop={vi.fn()}
+					dragFromStatus={null}
+					dragFromCustomColumnId={null}
+					onDragStart={vi.fn()}
+					movingTaskIds={new Set()}
+					onSetMoving={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+		await userEvent.dblClick(screen.getByLabelText("description"));
 		expect(onAddTask).not.toHaveBeenCalled();
 	});
 });
