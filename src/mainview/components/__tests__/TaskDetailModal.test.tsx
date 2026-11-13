@@ -316,6 +316,17 @@ describe("TaskDetailModal", () => {
 			expect(screen.getByText("Enter to save · Esc to cancel")).toBeInTheDocument();
 		});
 
+		it("opens the description editor with the caret at the end", async () => {
+			const setRange = vi.spyOn(HTMLTextAreaElement.prototype, "setSelectionRange");
+			renderModal(makeTodoTask({ description: "the brief" }));
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			await waitFor(() => expect(screen.getByRole("textbox")).toHaveFocus());
+			expect(setRange).toHaveBeenCalledWith("the brief".length, "the brief".length);
+			setRange.mockRestore();
+		});
+
 		it("pins the description editor's hint row to the bottom of the scroll area", async () => {
 			renderModal(makeTodoTask());
 			const user = userEvent.setup();

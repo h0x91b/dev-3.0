@@ -92,7 +92,12 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 
 	useEffect(() => {
 		if (isEditing) {
-			setTimeout(() => textareaRef.current?.focus(), 0);
+			setTimeout(() => {
+				const el = textareaRef.current;
+				if (!el) return;
+				el.focus();
+				el.setSelectionRange(el.value.length, el.value.length);
+			}, 0);
 		}
 	}, [isEditing]);
 
