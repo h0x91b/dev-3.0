@@ -110,6 +110,7 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 	const [agentId, setAgentId] = useState<string | null>(automation?.agentId ?? null);
 	const [configId, setConfigId] = useState<string | null>(automation?.configId ?? null);
 	const [catchUp, setCatchUp] = useState<AutomationCatchUpPolicy>(automation?.catchUp ?? "skip");
+	const [selfCompletion, setSelfCompletion] = useState(automation?.selfCompletion === true);
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -177,6 +178,7 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 					agentId,
 					configId,
 					catchUp,
+					selfCompletion,
 				});
 			} else {
 				await api.request.updateAutomation({
@@ -189,6 +191,7 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 					agentId,
 					configId,
 					catchUp,
+					selfCompletion,
 				});
 			}
 			onSaved();
@@ -417,6 +420,21 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 									onChange={(val) => setConfigId(val || null)}
 								/>
 							</div>
+						)}
+						<div>
+							<label htmlFor="automation-completion" className={labelClass}>{t("automations.completion")}</label>
+							<Select
+								id="automation-completion"
+								value={selfCompletion ? "self" : "ask"}
+								options={[
+									{ value: "ask", label: t("automations.completionAsk") },
+									{ value: "self", label: t("automations.completionSelf") },
+								]}
+								onChange={(val) => setSelfCompletion(val === "self")}
+							/>
+						</div>
+						{selfCompletion && (
+							<p className="col-span-2 text-xs text-warning-strong">{t("automations.completionSelfHint")}</p>
 						)}
 					</div>
 				</div>

@@ -173,10 +173,12 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "create",
-				usage: 'dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--worktree] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] [--start-after <id> [--until completed|merged] [--agent <id> [--config <id>]]] | dev3 task create --scratch --run [--agent <id> [--config <id>]]',
+				usage: 'dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--worktree] [--self-completion on] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] [--start-after <id> [--until completed|merged] [--agent <id> [--config <id>]]] | dev3 task create --scratch --run [--agent <id> [--config <id>]]',
 				summary: "Create a task in To Do, or ask the user to start a scratch peer agent.",
 				details: [
 					"--title <text>        Task title (required).",
+					"--self-completion on  Opt the new task in to completing itself without the approval",
+					"                      dialog (`task move --status completed --force`). Off unless given.",
 					"--description <text>  Longer description (optional); use - to read it from stdin.",
 					"Positional content (or @file) becomes the description; its first line",
 					"is used as the title when --title is omitted.",
@@ -228,7 +230,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "update",
-				usage: 'dev3 task update [<id>] [--title "..."] [--description "..." | --description -] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] [--start-after <id> [--until completed|merged] [--agent <id> [--config <id>]] | --no-start-after]',
+				usage: 'dev3 task update [<id>] [--title "..."] [--description "..." | --description -] [--priority P0..P4] [--manual-completion on|off] [--self-completion on|off] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] [--start-after <id> [--until completed|merged] [--agent <id> [--config <id>]] | --no-start-after]',
 				summary: "Update a task's title, description, priority, completion policy, type, epic, or start-after condition.",
 				details: [
 					"--title <text>        New title (cannot be empty).",
@@ -238,6 +240,8 @@ const COMMANDS: CommandHelp[] = [
 					"--priority <P0..P4>   Set importance (P0 highest … P4 lowest) of this task only; its variants keep theirs.",
 					"                      Only set priority when the user asks — never on your own initiative.",
 					"--manual-completion on|off  Control whether merge detection suggests completing this task.",
+					"--self-completion on|off    Opt the task in to `task move --status completed --force`, which",
+					"                      completes it without asking the user. A task cannot opt ITSELF in.",
 					"--type coordinator|pr-review|board-cleanup|standard  Set the task's type, or clear it with standard.",
 					"                      Rewrites the description's role preamble and tells a running agent,",
 					"                      so the badge never claims a role the agent was not given.",
@@ -256,7 +260,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "move",
-				usage: "dev3 task move [<id>] --status <status> [--agent <id> [--config <id>]] [--as-sender <id>] [--reason <text>]",
+				usage: "dev3 task move [<id>] --status <status> [--force] [--agent <id> [--config <id>]] [--as-sender <id>] [--reason <text>]",
 				summary: "Change a task's status / column.",
 				details: [
 					"--status <status>        Target status or custom column id (required).",
@@ -266,6 +270,10 @@ const COMMANDS: CommandHelp[] = [
 					"                         running, instead of exit 2. For generated hooks.",
 					"Built-in: todo, in-progress, user-questions, review-by-ai, review-by-user.",
 					'"completed" and "cancelled" ask the user for approval (exit 6 / 22 if declined).',
+					"--force                  With --status completed only: complete NOW, asking nobody.",
+					"                         Refused unless the task opted in (`--self-completion on` at",
+					"                         `task create`, from its automation, or `task update` by someone",
+					"                         else). The worktree goes at once, unsaved work included.",
 					'"todo" on a running task (or one still owning a worktree) is a RESET: the agent',
 					"is stopped and the worktree and its dev3 branch deleted, only after the user",
 					"approves it in the app (exit 27 if not). On a clean task it is a plain move.",
@@ -647,6 +655,8 @@ const COMMANDS: CommandHelp[] = [
 					"--timezone     IANA name (default: this machine's timezone).",
 					"--agent <id>   Agent to launch (default: project default agent).",
 					"--catch-up     skip | runOnce — what to do with runs missed while the app was offline (default skip).",
+					"--self-completion on|off  Let each task it creates complete itself with",
+					"               `dev3 task move --status completed --force`, no approval dialog (default off).",
 					"--template     Pre-fill from a built-in template (see: dev3 automations templates).",
 					"--disabled     Create paused.",
 					"--prompt <text>  Use @file for a file or - to read the prompt from stdin.",
@@ -654,7 +664,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "update",
-				usage: "dev3 automations update <id> [--name ...] [--prompt ... | --prompt -] [--rrule ...] [--timezone ...] [--enable|--disable]",
+				usage: "dev3 automations update <id> [--name ...] [--prompt ... | --prompt -] [--rrule ...] [--timezone ...] [--enable|--disable] [--self-completion on|off]",
 				summary: "Update fields / pause / resume.",
 				details: ["--prompt <text>  Use @file for a file or - to read the prompt from stdin."],
 			},

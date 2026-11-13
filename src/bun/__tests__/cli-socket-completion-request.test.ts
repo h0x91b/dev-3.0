@@ -315,6 +315,46 @@ describe("task.requestCompletion", () => {
 // The reported bug: the dialog stayed open (or opened) after the task was
 // already completed by another path — the board, or a merged PR — so the user
 // had to answer a second time for a task that was already done.
+describe("task.requestCompletion with --force", () => {
+	it("completes an opted-in task at once, with no dialog and no connected window", async () => {
+		const task = makeTask({ selfCompletion: true });
+		setupTask(task);
+		vi.mocked(getPushMessage).mockReturnValue(null);
+		const completedTask = { ...task, status: "completed" as const };
+		vi.mocked(moveTask).mockResolvedValue(completedTask);
+
+		const resp = await handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1", force: true }));
+
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toEqual({ approved: true, task: completedTask });
+		expect(moveTask).toHaveBeenCalledWith({ taskId: task.id, projectId: "proj-1", newStatus: "completed" });
+		expect(listPendingAgentRequests("complete")).toHaveLength(0);
+	});
+
+	it("refuses a task that never opted in, and moves nothing", async () => {
+		setupTask(makeTask());
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		const resp = await handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1", force: true }));
+
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("has not opted in to self-completion");
+		expect(moveTask).not.toHaveBeenCalled();
+		expect(pushFn).not.toHaveBeenCalled();
+	});
+
+	it("errors on an opted-in task that is already completed", async () => {
+		setupTask(makeTask({ selfCompletion: true, status: "completed" }));
+
+		const resp = await handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1", force: true }));
+
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("already completed");
+		expect(moveTask).not.toHaveBeenCalled();
+	});
+});
+
 describe("task.requestCompletion when the task ends by another path", () => {
 	const TASK_ID = "task-abc12345-1111-2222-3333-444444444444";
 

@@ -92,6 +92,14 @@ describe("priority load migration", () => {
 		expect(readSavedTasks()[0].priority).toBe("P3");
 	});
 
+	it("addTask persists the self-completion opt-in, and leaves it off otherwise", async () => {
+		const opted = await addTask(testProject, "automation run", "todo", { selfCompletion: true });
+		const plain = await addTask(testProject, "ordinary task");
+		const stored = await loadTasks(testProject);
+		expect(stored.find((t) => t.id === opted.id)?.selfCompletion).toBe(true);
+		expect(stored.find((t) => t.id === plain.id)?.selfCompletion).toBeUndefined();
+	});
+
 	it("addTask honors an explicit priority", async () => {
 		const task = await addTask(testProject, "Urgent", "todo", { priority: "P0" });
 		expect(task.priority).toBe("P0");

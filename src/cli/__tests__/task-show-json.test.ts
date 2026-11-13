@@ -80,7 +80,7 @@ describe("task show --json", () => {
 		expect(Object.keys(buildTaskShowJson(TASK)).sort()).toEqual([
 			"baseBranch", "branch", "createdAt", "customColumnId", "description", "draft", "epic", "groupId", "hibernated", "id",
 			"keepAlive", "labelIds", "manualCompletion", "movedAt", "noteCount", "origin", "overview", "prNumber", "prStatus", "prUrl", "priority",
-			"projectId", "pullRequests", "schemaVersion", "seq", "startAfter", "status", "statusLabel", "taskType", "title", "titleEditedByUser",
+			"projectId", "pullRequests", "schemaVersion", "selfCompletion", "seq", "startAfter", "status", "statusLabel", "taskType", "title", "titleEditedByUser",
 			"updatedAt", "variantIndex", "worktree",
 		]);
 	});

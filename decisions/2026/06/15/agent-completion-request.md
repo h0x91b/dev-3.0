@@ -1,5 +1,7 @@
 # 067 — Agent-initiated task completion via blocking CLI approval
 
+Superseded on 2026-11-13 by `decisions/2026/11/13/opt-in-self-completion-with-force.md`: a task that was opted in to self-completion completes with `--force` and no dialog. Every other task still goes through the approval described here.
+
 ## Context
 
 Only the user could move a task to `completed` (it destroys the worktree + tmux session); the CLI blocked it client-side in `DESTRUCTIVE_STATUSES`. Agents needed a way to signal "I'm fully done" — without being able to silently kill their own session. The agent must also learn from the CLI response whether the user approved or declined.
