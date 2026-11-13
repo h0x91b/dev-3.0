@@ -147,8 +147,8 @@ describe("TaskDetailModal", () => {
 			expect(renameBtn.className).not.toContain("opacity-0");
 		});
 
-		it("clicking the title text starts rename", async () => {
-			const task = makeTodoTask();
+		it("clicking a running task's title text starts rename", async () => {
+			const task = makeTodoTask({ status: "in-progress", worktreePath: "/tmp/wt" });
 			renderModal(task);
 			const user = userEvent.setup();
 
@@ -275,7 +275,7 @@ describe("TaskDetailModal", () => {
 
 			await user.click(screen.getByTitle("Edit title"));
 			expect(screen.queryByText("Edit")).not.toBeInTheDocument();
-			expect(screen.getAllByText("Save")).toHaveLength(1);
+			expect(screen.getAllByRole("textbox")).toHaveLength(1);
 
 			await user.keyboard("{Escape}");
 			expect(screen.getByText("Edit")).toBeInTheDocument();
@@ -289,15 +289,76 @@ describe("TaskDetailModal", () => {
 			expect(screen.queryByTitle("Edit title")).not.toBeInTheDocument();
 			await user.click(document.getElementById("task-detail-title")!);
 			expect(screen.getAllByRole("textbox")).toHaveLength(1);
-			expect(screen.getAllByText("Save")).toHaveLength(1);
 		});
 
-		it("pins the description editor's Save row to the bottom of the scroll area", async () => {
+		it("clicking an auto-generated title on a todo task opens the description editor", async () => {
+			renderModal(makeTodoTask({ description: "the brief" }));
+			const user = userEvent.setup();
+
+			await user.click(document.getElementById("task-detail-title")!);
+			expect(screen.getByRole("textbox")).toHaveValue("the brief");
+		});
+
+		it("clicking a custom title still opens the title editor", async () => {
+			renderModal(makeTodoTask({ customTitle: "My custom title" }));
+			const user = userEvent.setup();
+
+			await user.click(document.getElementById("task-detail-title")!);
+			expect(screen.getByRole("textbox")).toHaveValue("My custom title");
+			expect(screen.getByText("Enter to save · Esc to cancel")).toBeInTheDocument();
+		});
+
+		it("the pencil still renames a task with an auto-generated title", async () => {
+			renderModal(makeTodoTask({ description: "the brief" }));
+			const user = userEvent.setup();
+
+			await user.click(screen.getByTitle("Edit title"));
+			expect(screen.getByText("Enter to save · Esc to cancel")).toBeInTheDocument();
+		});
+
+		it("opens the description editor with the caret at the end", async () => {
+			const setRange = vi.spyOn(HTMLTextAreaElement.prototype, "setSelectionRange");
+			renderModal(makeTodoTask({ description: "the brief" }));
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			await waitFor(() => expect(screen.getByRole("textbox")).toHaveFocus());
+			expect(setRange).toHaveBeenCalledWith("the brief".length, "the brief".length);
+			setRange.mockRestore();
+		});
+
+		it("pins the description editor's hint row to the bottom of the scroll area", async () => {
 			renderModal(makeTodoTask());
 			const user = userEvent.setup();
 
 			await user.click(screen.getByText("Edit"));
-			expect(screen.getByText("Save").closest(".sticky")).toHaveClass("bottom-0", "-mx-6");
+			expect(screen.getByTestId("description-edit-hint")).toHaveClass("sticky", "bottom-0", "-mx-6");
+		});
+
+		it("drops the separate Save/Cancel buttons from both editors", async () => {
+			renderModal(makeTodoTask({ customTitle: "Custom" }));
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+			expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+			await user.keyboard("{Escape}");
+
+			await user.click(screen.getByTitle("Edit title"));
+			expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+			expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+			expect(screen.getByRole("button", { name: "Reset to auto" })).toBeInTheDocument();
+		});
+
+		it("labels Run as Save & Run only once the open description has changed", async () => {
+			renderModal(makeTodoTask());
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			expect(screen.getByRole("button", { name: "Run" })).toBeInTheDocument();
+			await user.type(screen.getByRole("textbox"), " more");
+			expect(screen.getByRole("button", { name: "Save & Run" })).toBeInTheDocument();
+			expect(screen.queryByRole("button", { name: "Run" })).not.toBeInTheDocument();
 		});
 
 		it("uploads an image dropped into the edit textarea and appends the saved path", async () => {
@@ -375,7 +436,7 @@ describe("TaskDetailModal", () => {
 			const textarea = screen.getByRole("textbox");
 			await user.clear(textarea);
 			await user.type(textarea, "edited brief");
-			await user.click(screen.getByRole("button", { name: "Run" }));
+			await user.click(screen.getByRole("button", { name: "Save & Run" }));
 
 			expect(mockedApi.request.editTask).toHaveBeenCalledWith({
 				taskId: "t1",
@@ -398,7 +459,7 @@ describe("TaskDetailModal", () => {
 
 			await user.click(screen.getByText("Edit"));
 			await user.type(screen.getByRole("textbox"), " more");
-			await user.click(screen.getByRole("button", { name: "Run" }));
+			await user.click(screen.getByRole("button", { name: "Save & Run" }));
 
 			expect(onLaunchVariants).not.toHaveBeenCalled();
 			expect(onClose).not.toHaveBeenCalled();
@@ -416,9 +477,9 @@ describe("TaskDetailModal", () => {
 
 			await user.click(screen.getByText("Edit"));
 			await user.type(screen.getByRole("textbox"), " more");
-			await user.click(screen.getByRole("button", { name: "Run" }));
+			await user.click(screen.getByRole("button", { name: "Save & Run" }));
 
-			expect(screen.getByRole("button", { name: "Run" })).toBeDisabled();
+			expect(screen.getByRole("button", { name: "Save & Run" })).toBeDisabled();
 			expect(onLaunchVariants).not.toHaveBeenCalled();
 
 			await act(async () => resolveSave(updated));
@@ -433,7 +494,7 @@ describe("TaskDetailModal", () => {
 			await user.click(screen.getByText("Edit"));
 			await user.clear(screen.getByRole("textbox"));
 
-			expect(screen.getByRole("button", { name: "Run" })).toBeDisabled();
+			expect(screen.getByRole("button", { name: "Save & Run" })).toBeDisabled();
 		});
 
 		it("clicking Run while editing an unchanged description launches without saving", async () => {
