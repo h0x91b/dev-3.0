@@ -9,7 +9,7 @@ import type {
 	PinnedClaudeLogin,
 	ProjectClaudeLogin,
 } from "../../shared/agent-accounts";
-import { AUTO_ACCOUNT_ID, codexWorkspaceIdNeeded, isAgentDirAccountKind, isAutoAccountId, isRoutableAccountKind, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../shared/agent-accounts";
+import { AUTO_ACCOUNT_ID, codexWorkspaceIdNeeded, isAgentDirAccountKind, isAutoAccountId, isRoutableAccountKind, sameClaudeLogin, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../shared/agent-accounts";
 import { exclusionKey } from "../../shared/account-routing";
 import { autoCandidateTotal, autoReasonText, useAutoAccountPreview } from "./auto-account-ui";
 import type { CodingAgent } from "../../shared/types";
@@ -771,6 +771,13 @@ export default function AgentAccountIndicator({
 			onSelect: null,
 		});
 	}
+	// In a project with its own Claude folder, say where each account's session will run.
+	const folderNote = (account: AgentAccount): string | null => {
+		if (!isLocal || !projectPinDir) return null;
+		return account.auth !== "api" && sameClaudeLogin(account.identity, projectLogin?.identity)
+			? t("launch.accountRunsInProjectFolder")
+			: t("launch.accountRunsInOwnFolder");
+	};
 	for (const account of kindState.accounts) {
 		rows.push({
 			key: account.id,
@@ -781,7 +788,7 @@ export default function AgentAccountIndicator({
 			isApi: account.auth === "api",
 			isActive: isRowActive(account.id),
 			usage: usageFor(account.id, account.auth === "api"),
-			note: excludedNote(account.id),
+			note: [folderNote(account), excludedNote(account.id)].filter(Boolean).join(" · ") || null,
 			onSelect: isLocal
 				? () => handleSelectLocal(account.id)
 				: () => handleSelectGlobal(kind, account.id),

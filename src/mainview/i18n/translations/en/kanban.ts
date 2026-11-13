@@ -410,6 +410,8 @@ const kanban = {
 	"launch.accountAutoReasonNone": "No subscription login has room · next reset in {time}",
 	"launch.accountAutoReasonNoneNever": "No subscription login is free for Auto",
 	"launch.accountExcludedHere": "Excluded from Auto in this project",
+	"launch.accountRunsInProjectFolder": "Runs in this project's Claude folder",
+	"launch.accountRunsInOwnFolder": "Runs in its own Claude folder",
 	"launch.accountExcludedEverywhere": "Excluded from Auto in all projects",
 	"launch.addVariant": "+ Add variant",
 	"launch.removeVariant": "Remove",

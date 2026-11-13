@@ -450,6 +450,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 						resumeBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || pane.agentCmd;
 						resumeAgentFamily = resolved.agentFamily ?? resumeAgentFamily;
 						if (resolved.bedrockProfileMissing) await notifyBedrockProfileMissing(task);
+						if (resolved.projectLoginKept) accountId = undefined;
 						if (resolved.staleAccountDropped) {
 							accountId = resolved.resolvedAccountId;
 							await notifyStaleAccountDropped(task);

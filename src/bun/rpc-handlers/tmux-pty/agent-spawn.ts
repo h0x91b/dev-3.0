@@ -109,6 +109,7 @@ export async function spawnAgentInTask(params: {
 		resolvedAgentFamily = resolved.agentFamily;
 		resolvedLaunchModel = resolved.launchModel;
 		if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
+		if (resolved.projectLoginKept) launchAccountId = undefined;
 		launchBedrockProfile = resolved.resolvedBedrockProfile;
 		if (resolved.bedrockProfileMissing) await notifyBedrockProfileMissing(task);
 		launchedAgentId = resolved.agent?.id ?? params.agentId;
@@ -130,6 +131,7 @@ export async function spawnAgentInTask(params: {
 		resolvedAgentFamily = resolved.agentFamily;
 		resolvedLaunchModel = resolved.launchModel;
 		if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
+		if (resolved.projectLoginKept) launchAccountId = undefined;
 		launchBedrockProfile = resolved.resolvedBedrockProfile;
 		if (resolved.bedrockProfileMissing) await notifyBedrockProfileMissing(task);
 		launchedAgentId = resolved.agent?.id ?? null;
