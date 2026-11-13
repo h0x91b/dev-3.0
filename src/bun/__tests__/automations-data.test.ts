@@ -75,6 +75,13 @@ describe("addAutomation", () => {
 		expect(onDisk[0].id).toBe(a.id);
 	});
 
+	it("stores self-completion only when asked for", async () => {
+		const plain = await addAutomation(project, draft);
+		const opted = await addAutomation(project, { ...draft, selfCompletion: true });
+		expect(plain.selfCompletion).toBeUndefined();
+		expect(opted.selfCompletion).toBe(true);
+	});
+
 	it("rejects an invalid rrule", async () => {
 		await expect(addAutomation(project, { ...draft, rrule: "FREQ=YEARLY" })).rejects.toThrow(AutomationValidationError);
 	});
@@ -90,6 +97,12 @@ describe("addAutomation", () => {
 });
 
 describe("updateAutomation", () => {
+	it("turns self-completion off again", async () => {
+		const a = await addAutomation(project, { ...draft, selfCompletion: true });
+		const updated = await updateAutomation(project, a.id, { selfCompletion: false });
+		expect(updated.selfCompletion).toBe(false);
+	});
+
 	it("recomputes nextRunAt when the schedule changes", async () => {
 		const a = await addAutomation(project, draft);
 		const updated = await updateAutomation(project, a.id, { rrule: "FREQ=WEEKLY;BYDAY=MO;BYHOUR=8" });

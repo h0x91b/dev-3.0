@@ -27,6 +27,7 @@ export interface TitleDescriptionChange {
 export interface TaskMetadataChange extends TitleDescriptionChange {
 	taskType?: TaskType | null;
 	manualCompletion?: boolean;
+	selfCompletion?: boolean;
 	overview?: string | null;
 	userOverview?: string | null;
 	/** Toggle "keep alive" (auto-revive): a fresh watching state, or null to clear. */
@@ -116,6 +117,7 @@ export async function updateTaskMetadata(
 		if (change.overview !== undefined) updates.overview = change.overview?.trim() || null;
 		if (change.userOverview !== undefined) updates.userOverview = change.userOverview?.trim() || null;
 		if (change.keepAlive !== undefined) updates.keepAlive = change.keepAlive;
+		if (change.selfCompletion !== undefined) updates.selfCompletion = change.selfCompletion;
 		const flipsCompletion = change.manualCompletion !== undefined && change.manualCompletion !== current.manualCompletion;
 		if (flipsCompletion) {
 			updates.manualCompletion = change.manualCompletion;

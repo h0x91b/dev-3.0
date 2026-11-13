@@ -11131,6 +11131,29 @@ describe("createAutomationTask", () => {
 	});
 });
 
+describe("createAutomationTask self-completion", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	async function addTaskExtras(automation: { selfCompletion?: boolean }) {
+		const { createAutomationTask } = await import("../rpc-handlers/task-lifecycle");
+		const project = makeProject();
+		const created = makeTask({ status: "todo", worktreePath: null });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.addTask).mockResolvedValue(created);
+		mockTaskWrites(created);
+		await createAutomationTask(project, { id: "auto-1", name: "Nightly", prompt: "Run it", agentId: null, configId: null, ...automation });
+		return vi.mocked(data.addTask).mock.calls[0][3];
+	}
+
+	it("stamps the opt-in onto the task of an opted-in automation", async () => {
+		expect(await addTaskExtras({ selfCompletion: true })).toEqual(expect.objectContaining({ selfCompletion: true }));
+	});
+
+	it("leaves the task without the opt-in by default", async () => {
+		expect(await addTaskExtras({})).not.toHaveProperty("selfCompletion");
+	});
+});
+
 describe("handlers.openQuickShell", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();

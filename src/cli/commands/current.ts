@@ -6,7 +6,7 @@ import { sendRequest } from "../socket-client";
 import { spaceFields } from "../spaces";
 import { printDetail, exitError } from "../output";
 import { BUILD_TIME, BUILD_COMMIT, BUILD_VERSION } from "../../shared/build-info.generated";
-import { describeTaskEpic, describeTaskOrigin, type ShownTask } from "../task-json";
+import { SELF_COMPLETION_HINT, describeTaskEpic, describeTaskOrigin, type ShownTask } from "../task-json";
 
 /**
  * Print the project's custom columns and their move IDs. Shared by the online
@@ -83,6 +83,7 @@ export async function handleCurrent(socketPath: string | null, opts: { brief?: b
 					["Status:", statusDisplay],
 				];
 				if (task.customColumnId) fields.push(["Custom Column:", task.customColumnId.slice(0, 8)]);
+				if (task.selfCompletion === true) fields.push(["Self-completion:", SELF_COMPLETION_HINT]);
 				fields.push(...workspaceFields(project, task, task.worktreePath, task.branchName));
 				const createdBy = describeTaskOrigin(task);
 				if (createdBy) fields.push(["Created by:", createdBy]);

@@ -3440,6 +3440,36 @@ describe("task.update", () => {
 		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { customTitle: "Updated" });
 	});
 
+	it("opts a task in to self-completion when another task asks", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, selfCompletion: true });
+
+		const resp = await handleRequest(makeRequest("task.update", {
+			taskId: task.id, projectId: project.id, selfCompletion: true, sourceTaskId: "some-coordinator-task",
+		}));
+
+		expect(resp.ok).toBe(true);
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { selfCompletion: true });
+	});
+
+	it("refuses a task opting itself in to self-completion", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+		const resp = await handleRequest(makeRequest("task.update", {
+			taskId: task.id, projectId: project.id, selfCompletion: true, sourceTaskId: task.id,
+		}));
+
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("cannot opt itself in");
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
 	it("updates manual completion and emits an agent-only change event", async () => {
 		const project = makeProject();
 		const task = makeTask({ manualCompletion: false });

@@ -1260,7 +1260,7 @@ async function openQuickShellInner(): Promise<Task> {
  */
 export async function createAutomationTask(
 	project: Project,
-	automation: { id: string; name: string; prompt: string; agentId: string | null; configId: string | null },
+	automation: { id: string; name: string; prompt: string; agentId: string | null; configId: string | null; selfCompletion?: boolean },
 ): Promise<Task> {
 	const now = new Date();
 	const createdTask = await data.addTask(project, automation.prompt, "todo", {
@@ -1269,6 +1269,7 @@ export async function createAutomationTask(
 		automationId: automation.id,
 		origin: { kind: "automation" },
 		customTitle: `${automation.name} · ${now.toISOString().slice(0, 10)}`,
+		...(automation.selfCompletion === true ? { selfCompletion: true } : {}),
 	});
 	const task = { ...createdTask, status: "todo" as const };
 	log.info("Automation task created, preparing in background", {

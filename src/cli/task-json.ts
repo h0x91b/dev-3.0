@@ -9,6 +9,9 @@ import { allPullRequests } from "../shared/task-pull-requests";
  * script reading `description` must not break when one does. Additive changes
  * keep `schemaVersion`; removing or renaming a field bumps it.
  */
+/** What `dev3 current` and `task show` print for an opted-in task. */
+export const SELF_COMPLETION_HINT = "on - `dev3 task move --status completed --force` completes it without asking the user";
+
 export const TASK_SHOW_JSON_SCHEMA_VERSION = 1;
 
 export interface TaskShowJson {
@@ -30,6 +33,7 @@ export interface TaskShowJson {
 	taskType: string | null;
 	draft: boolean;
 	manualCompletion: boolean;
+	selfCompletion: boolean;
 	branch: string | null;
 	baseBranch: string;
 	worktree: string | null;
@@ -149,6 +153,7 @@ export function buildTaskShowJson(task: ShownTask, opts: { notes?: boolean; hist
 		taskType: task.taskType ?? null,
 		draft: task.draft === true,
 		manualCompletion: taskCompletesManually(task),
+		selfCompletion: task.selfCompletion === true,
 		branch: task.branchName ?? null,
 		baseBranch: task.baseBranch,
 		worktree: task.worktreePath ?? null,

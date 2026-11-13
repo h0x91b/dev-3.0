@@ -94,6 +94,11 @@ async function destructiveReason(params: Record<string, unknown>, task: Task): P
 	return approvalReasonFromParams(params, source ? { seq: source.seq, title: source.title ?? "" } : null);
 }
 
+export const SELF_COMPLETION_NOT_ALLOWED =
+	"This task has not opted in to self-completion, so --force is refused and nothing changed. " +
+	"Run the command without --force to ask the user, or have the user (or the task's creator) opt it in: " +
+	"`dev3 task update --task <id> --self-completion on` from outside this task.";
+
 export async function requestDestructiveApproval(
 	kind: DestructiveApprovalKind,
 	params: Record<string, unknown>,
@@ -106,6 +111,17 @@ export async function requestDestructiveApproval(
 		return { approved: true, task: moved, plainMove: true };
 	}
 	const targetStatus = DESTRUCTIVE_APPROVAL_TARGET[kind];
+	// `--force`: the caller owns the decision, so no dialog and no window is needed.
+	if (kind === "complete" && params.force === true && params.attachOnly !== true) {
+		if (task.status === "completed" || task.status === "cancelled") {
+			throw new Error(`Task is already ${task.status}`);
+		}
+		if (task.selfCompletion !== true) {
+			throw new Error(SELF_COMPLETION_NOT_ALLOWED);
+		}
+		const forced = await moveTask({ taskId: task.id, projectId: project.id, newStatus: targetStatus });
+		return { approved: true, task: forced };
+	}
 	const push = getPushMessage();
 	const dialog = {
 		taskTitle: getTaskTitle(task),

@@ -278,6 +278,8 @@ export interface Task {
 	watched?: boolean;
 	/** When true, merge detection reports the merge without suggesting completion. */
 	manualCompletion?: boolean;
+	/** Opt-in: `task move --status completed --force` completes this task without the approval dialog. */
+	selfCompletion?: boolean;
 	/** Persisted agent session state for recovery after tmux/app crash. */
 	sessionState?: TaskSessionState | null;
 	/**
