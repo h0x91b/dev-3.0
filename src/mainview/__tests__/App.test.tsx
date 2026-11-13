@@ -5016,3 +5016,40 @@ describe("App navigation palettes are mutually exclusive", () => {
 		trigger.remove();
 	});
 });
+
+describe("Browser-mode Safari top band", () => {
+	beforeEach(() => {
+		(window as Window & { __electrobunWebviewId?: number }).__electrobunWebviewId = 1;
+		rpcTransport.isElectrobun = true;
+		fakePlatform("mac");
+		vi.clearAllMocks();
+		vi.mocked(api.request.checkSystemRequirements).mockResolvedValue([]);
+		vi.mocked(api.request.getProjects).mockResolvedValue([]);
+		vi.mocked(api.request.getLastRoute).mockResolvedValue({ route: null });
+		vi.mocked(api.request.listTmuxSessions).mockResolvedValue([]);
+		vi.mocked(api.request.getAllProjectTasks).mockResolvedValue([]);
+	});
+
+	afterEach(() => {
+		rpcTransport.isElectrobun = true;
+		Object.defineProperty(globalThis, "navigator", { value: realNavigator, writable: true, configurable: true });
+	});
+
+	it("makes the browser-mode header a sticky full-width opaque bg-base band without glass-header", async () => {
+		rpcTransport.isElectrobun = false;
+		await renderApp();
+
+		const header = screen.getByRole("banner", { name: "Application header" });
+		expect(header).toHaveClass("sticky", "top-0", "inset-x-0", "w-full", "bg-base", "pt-[env(safe-area-inset-top,0px)]");
+		expect(header.querySelector(".glass-header")).toBeNull();
+	});
+
+	it("keeps the desktop Electrobun header static with glass-header", async () => {
+		rpcTransport.isElectrobun = true;
+		await renderApp();
+
+		const header = screen.getByRole("banner", { name: "Application header" });
+		expect(header).not.toHaveClass("sticky", "pt-[env(safe-area-inset-top,0px)]");
+		expect(header.querySelector(".glass-header")).not.toBeNull();
+	});
+});

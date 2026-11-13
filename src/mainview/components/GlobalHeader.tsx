@@ -773,7 +773,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 
 	return (
 		<>
-		<div className="relative z-30 flex items-center justify-between px-2.5 py-2.5 border-b border-edge flex-shrink-0 glass-header" data-collapse-on-compose>
+		<div className={`relative z-30 flex items-center justify-between px-2.5 py-2.5 border-b border-edge flex-shrink-0 ${isElectrobun ? "glass-header" : "bg-base"}`} data-collapse-on-compose>
 			{/* Breadcrumbs */}
 			<nav className="flex items-center gap-2 text-sm min-w-0" aria-label={t("nav.appHeader")}>
 				{/* Back / forward navigation — segmented history control (Safari toolbar style).

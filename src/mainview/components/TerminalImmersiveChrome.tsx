@@ -1,4 +1,5 @@
 import { useT } from "../i18n";
+import { isElectrobun } from "../rpc";
 
 interface TerminalImmersiveChromeProps {
 	onExit: () => void;
@@ -10,7 +11,7 @@ export default function TerminalImmersiveChrome({ onExit }: TerminalImmersiveChr
 
 	return (
 		<div
-			className="h-11 min-h-11 md:h-7 md:min-h-7 flex-shrink-0 flex items-center justify-between gap-2 border-b border-edge bg-raised px-2.5"
+			className={`h-11 min-h-11 md:h-7 md:min-h-7 flex-shrink-0 flex items-center justify-between gap-2 border-b border-edge ${isElectrobun ? "bg-raised" : "bg-base"} px-2.5`}
 			data-testid="terminal-immersive-chrome"
 		>
 			<span className="text-fg-3 text-dense font-semibold tracking-wide" aria-label="dev3">dev3</span>
