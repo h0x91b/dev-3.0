@@ -267,6 +267,33 @@ describe("an account the project's own Claude folder is signed in to", () => {
 		expect(resolved.resolvedAccountId).toBeUndefined();
 	});
 
+	it("keeps the folder but not the project's Bedrock switch or model ids", async () => {
+		const { account } = await accountSignedInAs("person-1");
+		const env = { ...projectEnv, CLAUDE_CODE_USE_BEDROCK: "1", ANTHROPIC_MODEL: "global.anthropic.x", ANTHROPIC_DEFAULT_OPUS_MODEL: "global.anthropic.y", AWS_PROFILE: "p" };
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, projectEnv: env });
+		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(projectDir);
+		expect(resolved.extraEnv.CLAUDE_CODE_USE_BEDROCK).toBe(ENV_UNSET);
+		expect(resolved.extraEnv.ANTHROPIC_MODEL).toBe(ENV_UNSET);
+		expect(resolved.extraEnv.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe(ENV_UNSET);
+		expect(resolved.extraEnv.AWS_PROFILE).toBeUndefined();
+	});
+
+	it("drops the project's Bedrock switch for a picked account in its own folder too", async () => {
+		const { account, dir } = await accountSignedInAs("person-2");
+		const env = { ...projectEnv, CLAUDE_CODE_USE_BEDROCK: "1" };
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, projectEnv: env });
+		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(dir);
+		expect(resolved.extraEnv.CLAUDE_CODE_USE_BEDROCK).toBe(ENV_UNSET);
+	});
+
+	it("leaves the project's Bedrock env alone when no account is picked", async () => {
+		await accountSignedInAs("person-1");
+		const env = { ...projectEnv, CLAUDE_CODE_USE_BEDROCK: "1", ANTHROPIC_MODEL: "global.anthropic.x" };
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { projectEnv: env });
+		expect(resolved.extraEnv.CLAUDE_CODE_USE_BEDROCK).toBeUndefined();
+		expect(resolved.extraEnv.ANTHROPIC_MODEL).not.toBe(ENV_UNSET);
+	});
+
 	it("uses the account's own folder when the project folder is signed in to someone else", async () => {
 		const { account, dir } = await accountSignedInAs("person-2");
 		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, projectEnv });

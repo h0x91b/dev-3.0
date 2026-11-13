@@ -28,7 +28,7 @@ import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from
 import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
 import { ensureAgentSystemPromptFile } from "./agent-system-prompt-file";
 import { leanProtocolReference, leanSkillBodyFor, skillBodyFor, withSharedFolderNotice, type SkillFamily } from "../shared/agent-skill-content";
-import { claudeAccountRegistered, claudeAccountSignedIntoDir, effectiveAccountId, getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveAgentDirSessionEnv, getActiveCodexSessionEnv, listClaudeAccountDirs, isLinkedClaudeSlot } from "./agent-accounts";
+import { CLAUDE_ENV_AUTH_KEYS, claudeAccountRegistered, claudeAccountSignedIntoDir, effectiveAccountId, getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveAgentDirSessionEnv, getActiveCodexSessionEnv, listClaudeAccountDirs, isLinkedClaudeSlot } from "./agent-accounts";
 import { ENV_UNSET, claudeModelFamily, isAutoAccountId, isRoutableAccountKind, type AgentAccountKind } from "../shared/agent-accounts";
 import { isAutoAccountDefault, pickAutoAccount, type AutoAccountPick, type AutoRoutingContext } from "./account-router";
 import { hasOmpFlag } from "../shared/agent-adapters/omp-flags";
@@ -916,6 +916,26 @@ async function applyClaudeAccountEnv(
 	}
 }
 
+/** Project env that picks Claude's backend or its model ids. A picked login must not run
+ *  on it: a project-wide Bedrock switch would carry a subscription task onto Bedrock. */
+function isClaudeBackendKey(key: string): boolean {
+	return (CLAUDE_ENV_AUTH_KEYS as readonly string[]).includes(key)
+		|| key === "ANTHROPIC_MODEL" || key === "ANTHROPIC_SMALL_FAST_MODEL" || key.startsWith("ANTHROPIC_DEFAULT_");
+}
+
+/** Unset the project's backend env under a picked login, unless the agent itself set the key. */
+function dropProjectClaudeBackendEnv(extraEnv: Record<string, string>, projectEnv: Record<string, string>): void {
+	for (const key of Object.keys(projectEnv)) {
+		if (isClaudeBackendKey(key) && !(key in extraEnv)) extraEnv[key] = ENV_UNSET;
+	}
+}
+
+/** The task names a login: an explicit pick, the router's pick, or the project folder's own login. */
+function launchPicksClaudeLogin(account: Awaited<ReturnType<typeof resolveLaunchAccount>>, options?: CommandOptions): boolean {
+	if (account.projectLoginKept || account.pick) return true;
+	return options?.accountId !== undefined && !isAutoAccountId(options.accountId) && !account.staleAccountDropped && account.resolvedAccountId !== undefined;
+}
+
 /** A launch that kept the project's Claude folder runs on the project's env: drop the
  *  account env's ENV_UNSET for keys the project sets (they reach the session through the
  *  project env, never the `--model` rewrite), and name the folder for panes that export only
@@ -1115,6 +1135,7 @@ export async function resolveCommandForAgent(
 	const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options, ctx.projectPath, ctx.worktreePath);
 	await applyClaudeAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily, account.keepsProjectClaudeConfig);
 	if (options?.projectEnv && account.keepsProjectClaudeConfig) keepProjectClaudeEnv(extraEnv, options.projectEnv);
+	if (options?.projectEnv && isClaudeCommand(baseCmd, agentWithPath.agentFamily) && launchPicksClaudeLogin(account, options)) dropProjectClaudeBackendEnv(extraEnv, options.projectEnv);
 	await applyCodexAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 	await applyAgentDirAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 	// After the account env: its CLAUDE_CONFIG_DIR names the user settings to check.
@@ -1286,6 +1307,7 @@ export async function resolveCommandForProject(
 		const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options, project.path, worktreePath);
 		await applyClaudeAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily, account.keepsProjectClaudeConfig);
 		if (options?.projectEnv && account.keepsProjectClaudeConfig) keepProjectClaudeEnv(extraEnv, options.projectEnv);
+	if (options?.projectEnv && isClaudeCommand(baseCmd, agentWithPath.agentFamily) && launchPicksClaudeLogin(account, options)) dropProjectClaudeBackendEnv(extraEnv, options.projectEnv);
 		await applyCodexAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 		await applyAgentDirAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 		const providerOpts = withProviderOptions(applyStatusLineOption(options, settings, bedrockProfile, extraEnv, ctx.worktreePath), agentWithPath, config);
