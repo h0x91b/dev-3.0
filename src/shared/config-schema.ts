@@ -109,8 +109,8 @@ export const CONFIG_FIELDS = {
 		executes: true,
 	}),
 	setupScriptLaunchMode: field({
-		type: oneOf("parallel", "blocking"),
-		description: "Whether the agent starts alongside setupScript (parallel) or waits for it to finish (blocking).",
+		type: oneOf("parallel", "blocking", "single-pane"),
+		description: "Whether the agent starts alongside setupScript (parallel), waits for it in a pane of its own (blocking), or replaces it in the same pane once it succeeds (single-pane).",
 		default: "parallel",
 		example: "blocking",
 		section: "scripts",

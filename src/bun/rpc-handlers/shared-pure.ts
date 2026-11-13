@@ -3,7 +3,7 @@
  * Split from shared.ts so that modules like tmux-pty.ts can be imported
  * in standalone bun scripts (e.g. e2e tests) without triggering native deps.
  */
-import type { Project, Task, TaskStatus } from "../../shared/types";
+import type { Project, SetupScriptLaunchMode, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, DEV3_REPO_CONFIG_KEYS, taskSeqLabel } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
 import {
@@ -275,7 +275,8 @@ export function buildModelVersionGateWrapper(opts: {
  * inside a dev3 tmux pane. A native
  * session has one view and no $TMUX, so there the setup script runs first and
  * then EXECs the agent in the same view — never a bare `tmux` shell-out, which
- * outside tmux would target the user's own default socket.
+ * outside tmux would target the user's own default socket. A tmux launch in
+ * `single-pane` mode asks for that same one-view shape.
  */
 export function buildSetupStartupWrapper(opts: {
 	setupPath: string;
@@ -283,7 +284,7 @@ export function buildSetupStartupWrapper(opts: {
 	worktreePath: string;
 	shellPath: string;
 	nativeBackend: boolean;
-	launchMode: "parallel" | "blocking";
+	launchMode: SetupScriptLaunchMode;
 	/** Where the fail branch records the setup exit code for the app to read. */
 	setupExitPath: string;
 }): string {
@@ -306,7 +307,7 @@ export function buildSetupStartupWrapper(opts: {
 			]),
 		}),
 	];
-	if (opts.nativeBackend) {
+	if (opts.nativeBackend || opts.launchMode === "single-pane") {
 		return [...d.header(), ...runSetup, setupDone, d.execReplacing(cmdRunner)].join("\n") + "\n";
 	}
 	assertPosixLaunchDialect("the tmux setup/startup wrapper");

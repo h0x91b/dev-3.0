@@ -24,6 +24,7 @@ import {
 	portableReadKey,
 } from "../rpc-handlers/shared-pure";
 import { ENV_UNSET } from "../../shared/agent-accounts";
+import type { SetupScriptLaunchMode } from "../../shared/types";
 
 const SHELL = "/bin/zsh";
 const SETUP_PATH = "/tmp/dev3-T-setup.sh";
@@ -135,7 +136,7 @@ const STARTUP_WRAPPER_TMUX_BLOCKING = [
 	"exit 0",
 ].join("\n") + "\n";
 
-const startupWrapper = (overrides: { nativeBackend: boolean; launchMode: "parallel" | "blocking" }) =>
+const startupWrapper = (overrides: { nativeBackend: boolean; launchMode: SetupScriptLaunchMode }) =>
 	buildSetupStartupWrapper({
 		setupPath: SETUP_PATH,
 		cmdPath: CMD_PATH,
@@ -268,6 +269,10 @@ describe("POSIX setup/startup wrapper", () => {
 
 	it("renders the tmux blocking flavour byte-identically", () => {
 		expect(startupWrapper({ nativeBackend: false, launchMode: "blocking" })).toBe(STARTUP_WRAPPER_TMUX_BLOCKING);
+	});
+
+	it("renders the tmux single-pane flavour as the native one, with no split", () => {
+		expect(startupWrapper({ nativeBackend: false, launchMode: "single-pane" })).toBe(STARTUP_WRAPPER_NATIVE);
 	});
 });
 
