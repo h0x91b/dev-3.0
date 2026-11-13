@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { PRCheckInfo, RefreshTaskPrStatusResult, TaskPRBadgeInfo, TaskPullRequestRecord } from "../../shared/types";
 import { summarizeMergeability, type PRMergeabilityReason } from "../../shared/pr-status";
 import { api } from "../rpc";
@@ -31,7 +31,8 @@ interface TaskPrStatusPopoverProps {
 	 * a PR the badge already colours merged as merely "unknown".
 	 */
 	displayState?: PRDisplayState;
-	children: ReactElement;
+	/** One or more triggers; several siblings share this single popover, placed beside all of them. */
+	children: ReactNode;
 }
 
 type RefreshNotice = Extract<RefreshTaskPrStatusResult["outcome"], "unavailable" | "not-found">;
@@ -155,17 +156,22 @@ function mergeReasonDetails(
 	return reasons;
 }
 
-function anchorRect(element: HTMLElement): RectLike {
-	const rect = element.getBoundingClientRect();
-	return {
-		top: rect.top,
-		left: rect.left,
-		right: rect.right,
-		bottom: rect.bottom,
-		width: rect.width,
-		height: rect.height,
-	};
+// The trigger wrapper is `display: contents` and has no box, so the anchor is the
+// union of its children: a badge cluster gets one card beside the whole row.
+function anchorRect(trigger: HTMLElement): RectLike {
+	const rects = Array.from(trigger.children, (child) => child.getBoundingClientRect())
+		.filter((rect) => rect.width > 0 || rect.height > 0);
+	if (rects.length === 0) rects.push(trigger.getBoundingClientRect());
+	const top = Math.min(...rects.map((rect) => rect.top));
+	const left = Math.min(...rects.map((rect) => rect.left));
+	const right = Math.max(...rects.map((rect) => rect.right));
+	const bottom = Math.max(...rects.map((rect) => rect.bottom));
+	return { top, left, right, bottom, width: right - left, height: bottom - top };
 }
+
+// Only one PR popover is open at a time: opening another closes this one at once,
+// instead of both lingering through the hover-out delay.
+let hideOpenPopover: (() => void) | null = null;
 
 export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onRefresh, onOpen, onShowUnresolved, earlierPullRequests, displayState, children }: TaskPrStatusPopoverProps) {
 	const t = useT();
@@ -183,6 +189,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onRefre
 	const pointerInsideRef = useRef(false);
 	const openRef = useRef(false);
 	const refreshingRef = useRef(false);
+	const hideRef = useRef<() => void>(() => {});
 	const onOpenRef = useRef(onOpen);
 	onOpenRef.current = onOpen;
 	const canRefresh = !!onRefresh || !!(taskId && projectId);
@@ -206,6 +213,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onRefre
 		cancelAutoRefresh();
 		pointerInsideRef.current = false;
 		openRef.current = false;
+		if (hideOpenPopover === hideRef.current) hideOpenPopover = null;
 		setOpen(false);
 		setPosition(null);
 		setRefreshNotice(null);
@@ -213,8 +221,12 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onRefre
 
 	useEffect(() => setRefreshNotice(null), [prInfo.number]);
 
+	hideRef.current = hide;
+
 	const show = useCallback(() => {
 		cancelHide();
+		if (hideOpenPopover && hideOpenPopover !== hideRef.current) hideOpenPopover();
+		hideOpenPopover = hideRef.current;
 		if (!openRef.current) onOpenRef.current?.();
 		openRef.current = true;
 		setOpen(true);
@@ -275,6 +287,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onRefre
 	useEffect(() => () => {
 		cancelHide();
 		cancelAutoRefresh();
+		if (hideOpenPopover === hideRef.current) hideOpenPopover = null;
 	}, [cancelAutoRefresh, cancelHide]);
 
 	useEffect(() => {
@@ -565,7 +578,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onRefre
 		return (
 			<span
 				ref={triggerRef}
-				className="inline-flex"
+				className="contents"
 				onClickCapture={(event) => {
 					if (!(event.target instanceof Node) || !triggerRef.current?.contains(event.target)) return;
 					event.preventDefault();
@@ -627,7 +640,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onRefre
 	return (
 		<span
 			ref={triggerRef}
-			className="inline-flex"
+			className="contents"
 			onMouseEnter={handlePointerEnter}
 			onMouseLeave={handlePointerLeave}
 			onFocus={show}
