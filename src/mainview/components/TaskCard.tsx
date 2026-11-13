@@ -2,7 +2,7 @@ import { Fragment, useState, useRef, useEffect, useLayoutEffect, type Dispatch }
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import type { CodingAgent, DevServerSummary, Epic, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, getAllowedTransitions, getPreparingStageProgress, getTaskTitle, isCoordinatorTask, isTaskDisconnected, projectDisplayName } from "../../shared/types";
+import { ACTIVE_STATUSES, getAllowedTransitions, getPreparingStageProgress, getTaskTitle, isCoordinatorTask, isTaskAgentless, isTaskDisconnected, projectDisplayName } from "../../shared/types";
 import { earlierPullRequests } from "../../shared/task-pull-requests";
 import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
@@ -161,6 +161,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	// Its session died with the app (force quit, reboot). Nothing was lost, but
 	// nothing is running either — the card must not pass for live work.
 	const isDisconnected = isTaskDisconnected(task);
+	const isAgentless = isTaskAgentless(task);
 	const isCoordinator = isCoordinatorTask(task);
 	const role = taskRole(task);
 	const isCancelled = task.status === "cancelled";
@@ -536,7 +537,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const liveSession = useLiveSessionStats(task.id);
 	const isClaudeAgent = agent ? agentKey(agent.baseCommand, agent.agentFamily) === "claude" : false;
 	// A sleeping task runs nothing, and its resume relaunches with the preset again.
-	const hasLiveSession = isActive && !isHibernated && !isDisconnected;
+	const hasLiveSession = isActive && !isHibernated && !isAgentless;
 	const drift = hasLiveSession && isClaudeAgent && agentConfig ? launchConfigDrift(agentConfig, liveSession) : null;
 	const driftLabel = drift ? [drift.model, drift.effort].filter(Boolean).join(", ") : "";
 	// A lone variant is not a variant — `1/1` says nothing, and the spelled-out
@@ -549,7 +550,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	// creation date first, before anything that names the task or its agent.
 	const [locale] = useLocale();
 	const identityRef = useRef<HTMLDivElement>(null);
-	const identityKey = [configLabel, driftLabel, locale, isCoordinator, isDraft, isHibernated, isDisconnected, task.taskType, task.scratch, task.automationId, task.keepAlive?.enabled].join("|");
+	const identityKey = [configLabel, driftLabel, locale, isCoordinator, isDraft, isHibernated, isDisconnected, isAgentless, task.taskType, task.scratch, task.automationId, task.keepAlive?.enabled].join("|");
 	const ageLevel = useShedOnOverflow(identityRef, 2, identityKey);
 	const ageFit: AgeStampsFit = ageLevel === 2 ? "both" : ageLevel === 1 ? "activity" : "none";
 
@@ -861,7 +862,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			onMouseLeave={handleCardMouseLeave}
 			className={`group relative flex flex-col overflow-hidden glass-card rounded-xl transition-[transform,box-shadow,background-color,border-color,opacity,filter] duration-150 ease-out border ${isDraft ? "border-dashed border-edge-active" : isActiveInSplit ? "border-accent ring-2 ring-accent/70 shadow-lg shadow-accent/20" : "border-transparent"} ${
 				isActive || isCompleted || isCancelled ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"
-			} hover:-translate-y-0.5 ${isCoordinator && !isActiveInSplit ? COORDINATOR_CARD_HALO : "hover:shadow-card-hover"} ${isCompleting || isShuttingDown ? "grayscale opacity-40 pointer-events-none" : isPreparing ? "opacity-60" : isDisabled ? "opacity-50 pointer-events-none" : isHibernated || isDisconnected ? "grayscale opacity-60" : ""}`}
+			} hover:-translate-y-0.5 ${isCoordinator && !isActiveInSplit ? COORDINATOR_CARD_HALO : "hover:shadow-card-hover"} ${isCompleting || isShuttingDown ? "grayscale opacity-40 pointer-events-none" : isPreparing ? "opacity-60" : isDisabled ? "opacity-50 pointer-events-none" : isHibernated || isAgentless ? "grayscale opacity-60" : ""}`}
 			onClick={handleClick}
 		>
 			{/* Moving spinner overlay */}
@@ -1065,13 +1066,13 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						</span>
 					</Tooltip>
 				)}
-				{isDisconnected && (
-					<Tooltip content={t("task.disconnectedBadge")} detail={t("task.disconnectedHint")}>
+				{isAgentless && (
+					<Tooltip content={t("task.noAgentBadge")} detail={isDisconnected ? t("task.disconnectedHint") : t("task.agentExitedHint")}>
 						<span
-							data-testid="task-card-disconnected-badge"
+							data-testid="task-card-no-agent-badge"
 							className="flex-shrink-0 rounded border border-dashed border-edge-active px-1.5 py-0.5 text-dense font-semibold uppercase tracking-[0.06em] text-fg-muted"
 						>
-							{t("task.disconnectedBadge")}
+							{t("task.noAgentBadge")}
 						</span>
 					</Tooltip>
 				)}

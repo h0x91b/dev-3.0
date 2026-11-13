@@ -19,7 +19,7 @@ interface CoordinatorFinderModalProps {
 const STATE_KEY: Record<CoordinatorState, TranslationKey | null> = {
 	current: "coordinatorFinder.state.current",
 	live: null,
-	disconnected: "coordinatorFinder.state.disconnected",
+	"no-agent": "coordinatorFinder.state.noAgent",
 	hibernated: "coordinatorFinder.state.hibernated",
 };
 

@@ -73,7 +73,7 @@ function writeShowHidden(showHidden: boolean) {
 }
 
 /** Out of the default list: hidden by the user, or not running (hibernated or
- *  disconnected). The reveal eye brings both back; nothing about the task changes. */
+ *  without an agent). The reveal eye brings both back; nothing about the task changes. */
 function isOutOfDefaultList(task: Task): boolean {
 	return task.hidden === true || isTaskNotRunning(task);
 }
@@ -741,7 +741,7 @@ function ActiveTasksSidebar({
 				    with spaces, a fifth header control truncates the "Active Tasks"
 				    title. It is the same axis as the funnel anyway — which tasks are
 				    in this list — and `is:hidden` lives one click away inside it.
-				    Hibernated and disconnected tasks are out of the list too, and come back with it.
+				    Hibernated tasks and tasks with no agent are out of the list too, and come back with it.
 				    Rendered only while there is something to bring back; the dot is
 				    the sole signal that an absent task is asking for the user, since
 				    hiding never silences a task. */}
