@@ -3327,19 +3327,18 @@ function App() {
 				? "remote.urlCopied"
 				: "remote.copyUrl";
 
+	const mobileBrowser = isMobileDevice && !isElectrobun;
+
 	return (
 		<div className="h-full w-full flex flex-col">
-			{/* Browser mode: a sticky full-width opaque bg-base band at top:0 triggers WebKit's
+			{/* Mobile browser: a sticky full-width opaque bg-base band at top:0 triggers WebKit's
 			    fixed-color extension, hiding Safari 26+ scroll-edge glass blur over the header. */}
 			{terminalImmersiveVisible ? (
-				<div
-					className={!isElectrobun ? "sticky top-0 inset-x-0 z-30 w-full shrink-0 bg-base pt-[env(safe-area-inset-top,0px)]" : undefined}
-					style={!isElectrobun ? { paddingTop: "env(safe-area-inset-top, 0px)" } : undefined}
-				>
+				<div className={mobileBrowser ? "sticky top-0 inset-x-0 z-30 w-full shrink-0 bg-base pt-[env(safe-area-inset-top,0px)]" : undefined}>
 					<TerminalImmersiveChrome onExit={() => setTerminalImmersiveActive(false)} />
 				</div>
 			) : (
-				<header ref={toastClearanceRef} aria-label={t("nav.appHeader")} className={!isElectrobun ? "sticky top-0 inset-x-0 z-30 w-full shrink-0 bg-base pt-[env(safe-area-inset-top,0px)]" : undefined} style={!isElectrobun ? { paddingTop: "env(safe-area-inset-top, 0px)" } : undefined}>
+				<header ref={toastClearanceRef} aria-label={t("nav.appHeader")} className={mobileBrowser ? "sticky top-0 inset-x-0 z-30 w-full shrink-0 bg-base pt-[env(safe-area-inset-top,0px)]" : undefined}>
 					{!isElectrobun && <AppMenuBar context={menuContext} onAction={handleMenuBarAction} />}
 					<GlobalHeader
 						route={route}
