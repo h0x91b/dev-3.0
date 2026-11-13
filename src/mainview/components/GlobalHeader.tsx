@@ -41,6 +41,7 @@ import ConnectionQualityIndicator from "./ConnectionQualityIndicator";
 import BottomSheet from "./BottomSheet";
 import Tooltip from "./Tooltip";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { useMobile } from "../hooks/useMobile";
 import { useIsControlHidden, useHiddenControls } from "../hooks/useIsControlHidden";
 import { restoreControl } from "../hidden-controls";
 import HideableControl from "./HideableControl";
@@ -147,6 +148,8 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	const mixedPending = useMixedPending();
 	const compact = useCompact();
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
+	const isMobile = useMobile();
+	const mobileBrowser = isMobile && !isElectrobun;
 	// Header hideability is capped at exactly three ids (§5.10 §2.4): agent
 	// traffic, project terminal, remote-access QR. The ambient readouts and
 	// tmux session manager are not hideable from here. Stats nav (a
@@ -773,7 +776,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 
 	return (
 		<>
-		<div className={`relative z-30 flex items-center justify-between px-2.5 py-2.5 border-b border-edge flex-shrink-0 ${isElectrobun ? "glass-header" : "bg-base"}`} data-collapse-on-compose>
+		<div className={`relative z-30 flex items-center justify-between px-2.5 py-2.5 border-b border-edge flex-shrink-0 ${mobileBrowser ? "bg-base" : "glass-header"}`} data-collapse-on-compose>
 			{/* Breadcrumbs */}
 			<nav className="flex items-center gap-2 text-sm min-w-0" aria-label={t("nav.appHeader")}>
 				{/* Back / forward navigation — segmented history control (Safari toolbar style).
