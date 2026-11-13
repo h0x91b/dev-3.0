@@ -86,6 +86,29 @@ function TaskWorkspacePane({
 	const resizeSessionRef = useRef<ArtifactResizeSession | null>(null);
 	const showArtifact = dockArtifact && !inlineDiffRequest && !isNarrow;
 
+	// The open task was deleted or moved away: leave its dead screen for the board. Asks the
+	// server first, so a list briefly holding another project's tasks never bounces the user.
+	const shownTaskRef = useRef<string | null>(null);
+	useEffect(() => {
+		if (task) {
+			shownTaskRef.current = task.id;
+			return;
+		}
+		if (shownTaskRef.current !== taskId) return;
+		let cancelled = false;
+		api.request.getTasks({ projectId }).then(
+			(loaded) => {
+				if (cancelled || loaded.some((item) => item.id === taskId)) return;
+				shownTaskRef.current = null;
+				navigate({ screen: "project", projectId });
+			},
+			() => {},
+		);
+		return () => {
+			cancelled = true;
+		};
+	}, [task, taskId, projectId, navigate]);
+
 	// The slot is what tells the viewer to render here instead of as a popup, so
 	// it is published only while the panel is actually on screen and taken back
 	// the moment it is not — a stale dock would portal the viewer into nothing.
