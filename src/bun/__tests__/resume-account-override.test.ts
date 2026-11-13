@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PaneSessionEntry, Project, Task } from "../../shared/types";
 
-vi.mock("../data", () => ({ updateTask: vi.fn(), getTask: vi.fn() }));
+vi.mock("../data", () => ({ updateTask: vi.fn(), getTask: vi.fn(), updateTaskWith: vi.fn() }));
 vi.mock("../pty-server", () => ({
 	hasSession: vi.fn(() => false),
 	destroySessionAwaited: vi.fn(),
@@ -60,6 +60,7 @@ import { getActiveClaudeConfigDir } from "../agent-accounts";
 import { claudeConfigDirHasSession } from "../agent-transcripts";
 import { chooseTaskCodexConversations } from "../codex-task-selection";
 import { launchTaskPty } from "../rpc-handlers/tmux-pty/task-launch";
+import { getPushMessage } from "../rpc-handlers/shared-pure";
 import { findTaskAcrossProjects, wakeIfHibernated } from "../rpc-handlers/tmux-pty/task-state";
 import { resumeTaskSession } from "../rpc-handlers/tmux-pty/resume";
 import { resolveResumableSessionIds } from "../agent-transcripts";
@@ -83,6 +84,43 @@ beforeEach(() => {
 	vi.mocked(taskTerminalBackendIdentity).mockReturnValue("tmux");
 	vi.mocked(claudeConfigDirHasSession).mockReturnValue(true);
 	vi.mocked(chooseTaskCodexConversations).mockResolvedValue(new Map());
+});
+
+describe("resume clears the agent-exited mark", () => {
+	const FLAG = "2026-11-13T10:00:00.000Z";
+	// Runs the mutator against the current row, like the real read-modify-write under the lock.
+	function currentRow(row: Task) {
+		vi.mocked(data.updateTaskWith).mockImplementation((async (_p: unknown, _id: string, mutator: (t: Task) => { updates: Partial<Task> }) => {
+			const { updates } = await mutator(row);
+			return { task: { ...row, ...updates }, result: null };
+		}) as never);
+	}
+
+	it("clears the flag on the current row and pushes the update", async () => {
+		const push = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(push as never);
+		const task = arrange([claudePane], { agentExitedAt: FLAG });
+		currentRow(task);
+		await resumeTaskSession("t1");
+		expect(data.updateTaskWith).toHaveBeenCalledTimes(1);
+		expect(push).toHaveBeenCalledWith("taskUpdated", expect.objectContaining({ projectId: "p1", task: expect.not.objectContaining({ agentExitedAt: FLAG }) }));
+	});
+
+	it("decides on the current row, not on the snapshot loaded at the start", async () => {
+		const push = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(push as never);
+		const task = arrange([claudePane], { agentExitedAt: FLAG });
+		currentRow({ ...task, agentExitedAt: undefined });
+		await resumeTaskSession("t1");
+		expect(push).not.toHaveBeenCalledWith("taskUpdated", expect.anything());
+	});
+
+	it("does not fail a successful relaunch when the clear throws", async () => {
+		const task = arrange([claudePane], { agentExitedAt: FLAG });
+		vi.mocked(data.updateTaskWith).mockRejectedValue(new Error("disk full"));
+		await expect(resumeTaskSession("t1")).resolves.toMatchObject({ kind: "resumed" });
+		expect(task.agentExitedAt).toBe(FLAG);
+	});
 });
 
 describe("resume with an account override", () => {

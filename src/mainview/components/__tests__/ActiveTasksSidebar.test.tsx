@@ -333,6 +333,22 @@ function makeTask(overrides?: Partial<Task>): Task {
 			expect(screen.getByText("Dead session")).toBeInTheDocument();
 		});
 
+		it("treats a task whose agent exited like a disconnected one: out by default, back with the eye", async () => {
+			const user = userEvent.setup();
+			renderTasks([
+				makeTask({ id: "live", title: "Live task", groupId: null, variantIndex: null }),
+				makeTask({
+					id: "exited", title: "Shell only", groupId: null, variantIndex: null,
+					runtimeState: { runtime: "running", updatedAt: 1 }, agentExitedAt: "2026-11-13T10:00:00.000Z",
+				}),
+			]);
+
+			expect(screen.queryByText("Shell only")).not.toBeInTheDocument();
+			await user.click(screen.getByTestId("sidebar-show-hidden"));
+			expect(screen.getByText("Shell only")).toBeInTheDocument();
+			expect(screen.getByTestId("sidebar-no-agent-badge")).toHaveAttribute("title", expect.stringContaining("terminal now runs only a shell"));
+		});
+
 		it("counts hidden and hibernated tasks apart on the eye", async () => {
 			renderTasks([
 				makeTask({ id: "live", title: "Live task", groupId: null, variantIndex: null }),
@@ -344,7 +360,7 @@ function makeTask(overrides?: Partial<Task>): Task {
 			]);
 
 			fireEvent.mouseEnter(screen.getByTestId("sidebar-show-hidden"));
-			expect(await screen.findByText("2 hidden tasks · 2 hibernated or disconnected tasks")).toBeInTheDocument();
+			expect(await screen.findByText("2 hidden tasks · 2 hibernated or no-agent tasks")).toBeInTheDocument();
 		});
 
 		it("flags a hibernated task that waits on the user and says when everything is out", () => {
@@ -459,7 +475,8 @@ function makeTask(overrides?: Partial<Task>): Task {
 			</I18nProvider>,
 		);
 
-		expect(screen.getByTestId("sidebar-disconnected-badge")).toHaveTextContent(/disconnected/i);
+		expect(screen.getByTestId("sidebar-no-agent-badge")).toHaveTextContent("No agent");
+		expect(screen.getByTestId("sidebar-no-agent-badge")).toHaveAttribute("title", expect.stringContaining("did not survive the last shutdown"));
 		const live = screen.getByText("Live session");
 		const dead = screen.getByText("Dead session");
 		expect(live.compareDocumentPosition(dead) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

@@ -12950,6 +12950,44 @@ describe("restartTask (start fresh) floors the Codex scan", () => {
 	});
 });
 
+describe("restartTask clears the agent-exited mark", () => {
+	beforeEach(() => vi.clearAllMocks());
+	const FLAG = "2026-11-13T10:00:00.000Z";
+
+	function arrangeRestart(task: Task): void {
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+	}
+
+	it("clears the flag on the current row once the agent is relaunched", async () => {
+		const task = makeTask({ agentExitedAt: FLAG, sessionState: { panes: [{ agentCmd: "claude", agentId: "builtin-claude", configId: "claude-default", sessionId: null }] } });
+		arrangeRestart(task);
+		await handlers.restartTask({ taskId: task.id });
+		expect(vi.mocked(data.updateTask).mock.calls.some((call) => "agentExitedAt" in call[2] && call[2].agentExitedAt === undefined)).toBe(true);
+		expect((await data.getTask(makeProject(), task.id)).agentExitedAt).toBeUndefined();
+	});
+
+	it("writes nothing when the current row carries no flag", async () => {
+		const task = makeTask({ sessionState: { panes: [{ agentCmd: "claude", agentId: "builtin-claude", configId: "claude-default", sessionId: null }] } });
+		arrangeRestart(task);
+		await handlers.restartTask({ taskId: task.id });
+		expect(vi.mocked(data.updateTask).mock.calls.some((call) => "agentExitedAt" in call[2])).toBe(false);
+	});
+
+	it("does not fail a successful relaunch when the clear fails", async () => {
+		const task = makeTask({ agentExitedAt: FLAG, sessionState: { panes: [{ agentCmd: "claude", agentId: "builtin-claude", configId: "claude-default", sessionId: null }] } });
+		arrangeRestart(task);
+		vi.mocked(data.updateTaskWith).mockImplementation(async (project, taskId, mutator) => {
+			const { updates } = await mutator(await data.getTask(project, taskId));
+			if ("agentExitedAt" in updates) throw new Error("disk full");
+			return { task: await data.getTask(project, taskId), result: undefined as never };
+		});
+		await expect(handlers.restartTask({ taskId: task.id })).resolves.toEqual(expect.any(String));
+	});
+});
+
 describe("restartTask with a pane that ran the global default", () => {
 	beforeEach(() => vi.clearAllMocks());
 

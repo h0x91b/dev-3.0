@@ -1,6 +1,6 @@
 import type { Project, Task, TaskStatus } from "../../shared/types";
 import { COORDINATOR_TITLE, TaskRoleChip } from "./TaskRoleBand";
-import { getTaskTitle } from "../../shared/types";
+import { getTaskTitle, isTaskDisconnected } from "../../shared/types";
 import { useT } from "../i18n";
 import type { CoordinatorCandidate } from "../utils/coordinatorFinder";
 import { getStatusLabel } from "../utils/statusLabel";
@@ -39,7 +39,7 @@ function DashboardCoordinatorRows({ project, coordinators, narrow, statusColors,
 				const column = task.customColumnId ? columnById.get(task.customColumnId) ?? null : null;
 				const label = column ? column.name : getStatusLabel(task.status, t, project);
 				const color = column ? column.color : statusColors[task.status];
-				const parked = state === "hibernated" || state === "disconnected";
+				const parked = state === "hibernated" || state === "no-agent";
 				// "Agent is Working" on a parked coordinator advertises an agent that is not
 				// there; the badge already says what it is. Waiting statuses stay true.
 				const showLabel = column !== null || !parked || !WORKING_STATUSES.includes(task.status);
@@ -67,8 +67,8 @@ function DashboardCoordinatorRows({ project, coordinators, narrow, statusColors,
 							</span>
 							<span className="flex items-center gap-2 md:gap-3 flex-shrink-0">
 								{state === "hibernated" && <span className={STATE_BADGE}>{t("task.hibernatedBadge")}</span>}
-								{state === "disconnected" && (
-									<span title={t("task.disconnectedHint")} className={STATE_BADGE}>{t("task.disconnectedBadge")}</span>
+								{state === "no-agent" && (
+									<span title={isTaskDisconnected(task) ? t("task.disconnectedHint") : t("task.agentExitedHint")} className={STATE_BADGE}>{t("task.noAgentBadge")}</span>
 								)}
 								{bellCounts.has(task.id) && (
 									<>

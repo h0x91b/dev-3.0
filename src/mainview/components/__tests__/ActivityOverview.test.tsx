@@ -434,7 +434,7 @@ describe("ActivityOverview", () => {
 		const live = await screen.findByText("Live task");
 		const dead = screen.getByText("Dead session");
 		expect(live.compareDocumentPosition(dead) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-		expect(screen.getByTestId("activity-disconnected-badge")).toBeInTheDocument();
+		expect(screen.getByTestId("activity-no-agent-badge")).toBeInTheDocument();
 	});
 
 	it("shows custom-column tasks as rows labeled with the column name", async () => {
@@ -1158,7 +1158,7 @@ describe("ActivityOverview — coordinator rows", () => {
 		]);
 		renderActivityOverview();
 		await screen.findByText("Infra lead");
-		expect(rows().map((r) => r.getAttribute("data-coordinator-state"))).toEqual(["live", "live", "disconnected", "hibernated"]);
+		expect(rows().map((r) => r.getAttribute("data-coordinator-state"))).toEqual(["live", "live", "no-agent", "hibernated"]);
 		const hibernated = rows()[3];
 		expect(hibernated.textContent).toContain("Hibernated");
 		// A parked coordinator must not claim an agent is working.

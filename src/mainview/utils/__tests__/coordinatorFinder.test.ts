@@ -35,7 +35,7 @@ describe("coordinatorCandidates", () => {
 		expect(coordinatorCandidates(tasks, null, []).map((c) => c.task.id).sort()).toEqual(["t1", "t2"]);
 	});
 
-	it("labels state and sinks disconnected then hibernated below live", () => {
+	it("labels state and sinks no-agent then hibernated below live", () => {
 		const tasks = [
 			task("t1", { hibernated: true }),
 			task("t2", { runtimeState: { runtime: "idle" } as Task["runtimeState"] }),
@@ -46,9 +46,14 @@ describe("coordinatorCandidates", () => {
 		expect(result.map((c) => [c.task.id, c.state])).toEqual([
 			["t4", "current"],
 			["t3", "live"],
-			["t2", "disconnected"],
+			["t2", "no-agent"],
 			["t1", "hibernated"],
 		]);
+	});
+
+	it("files a coordinator whose agent exited under the same no-agent state", () => {
+		const exited = task("t1", { agentExitedAt: "2026-11-13T10:00:00.000Z" });
+		expect(coordinatorCandidates([exited, task("t2")], null, []).map((c) => [c.task.id, c.state])).toEqual([["t2", "live"], ["t1", "no-agent"]]);
 	});
 
 	it("orders by MRU inside a band, then newest seq", () => {
