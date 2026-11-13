@@ -249,11 +249,32 @@ describe("TaskPrStatusPopover — way into the PR and a compact reason", () => {
 	it("opens beside the badge, not on top of it", async () => {
 		renderPopover();
 		const trigger = screen.getByRole("button", { name: "PR #42" });
-		const wrapper = trigger.parentElement as HTMLElement;
-		wrapper.getBoundingClientRect = () => ({ top: 300, left: 100, right: 160, bottom: 320, width: 60, height: 20, x: 100, y: 300, toJSON: () => ({}) });
+		trigger.getBoundingClientRect = () => ({ top: 300, left: 100, right: 160, bottom: 320, width: 60, height: 20, x: 100, y: 300, toJSON: () => ({}) });
 		await userEvent.hover(trigger);
 		const popover = await screen.findByTestId("pr-status-popover");
 		expect(parseFloat(popover.style.left)).toBeGreaterThanOrEqual(160);
 		expect(popover.style.maxHeight).not.toBe("");
+	});
+});
+
+describe("TaskPrStatusPopover - one open at a time", () => {
+	it("closes the open popover at once when another PR's popover opens", async () => {
+		render(
+			<I18nProvider>
+				<TaskPrStatusPopover prInfo={makePrInfo()} projectId="p1" taskId="t1">
+					<button type="button">PR #42</button>
+				</TaskPrStatusPopover>
+				<TaskPrStatusPopover prInfo={makePrInfo({ number: 43, url: "https://github.com/acme/widget/pull/43" })} projectId="p1" taskId="t2">
+					<button type="button">PR #43</button>
+				</TaskPrStatusPopover>
+			</I18nProvider>,
+		);
+
+		await userEvent.hover(screen.getByRole("button", { name: "PR #42" }));
+		await screen.findByRole("dialog", { name: "PR #42 status" });
+		await userEvent.hover(screen.getByRole("button", { name: "PR #43" }));
+
+		expect(screen.getAllByTestId("pr-status-popover")).toHaveLength(1);
+		expect(screen.getByRole("dialog", { name: "PR #43 status" })).toBeInTheDocument();
 	});
 });
