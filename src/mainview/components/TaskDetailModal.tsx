@@ -173,6 +173,13 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 		setTimeout(() => renameInputRef.current?.focus(), 0);
 	}
 
+	/** An auto title is the description's first line, so on a todo task clicking it edits the
+	 *  description the agent receives; the pencil still sets a custom title. */
+	function handleTitleClick() {
+		if (isTodo && !task.customTitle) handleStartEdit();
+		else handleStartRename();
+	}
+
 	// Opened from "Rename…": land in the title editor, not on the modal body.
 	useEffect(() => {
 		if (autoRename) handleStartRename();
@@ -502,7 +509,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 							<div
 								id="task-detail-title"
 								className={`text-fg text-base font-semibold leading-relaxed flex-1 ${!isEditing ? "cursor-pointer hover:text-fg-2" : ""}`}
-								onClick={!isEditing ? handleStartRename : undefined}
+								onClick={!isEditing ? handleTitleClick : undefined}
 							>
 								{isEditing && !task.customTitle ? (generatedTitle || task.title) : getTaskTitle(task)}
 							</div>

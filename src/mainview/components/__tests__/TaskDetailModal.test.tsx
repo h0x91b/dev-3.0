@@ -147,8 +147,8 @@ describe("TaskDetailModal", () => {
 			expect(renameBtn.className).not.toContain("opacity-0");
 		});
 
-		it("clicking the title text starts rename", async () => {
-			const task = makeTodoTask();
+		it("clicking a running task's title text starts rename", async () => {
+			const task = makeTodoTask({ status: "in-progress", worktreePath: "/tmp/wt" });
 			renderModal(task);
 			const user = userEvent.setup();
 
@@ -289,6 +289,32 @@ describe("TaskDetailModal", () => {
 			expect(screen.queryByTitle("Edit title")).not.toBeInTheDocument();
 			await user.click(document.getElementById("task-detail-title")!);
 			expect(screen.getAllByRole("textbox")).toHaveLength(1);
+		});
+
+		it("clicking an auto-generated title on a todo task opens the description editor", async () => {
+			renderModal(makeTodoTask({ description: "the brief" }));
+			const user = userEvent.setup();
+
+			await user.click(document.getElementById("task-detail-title")!);
+			expect(screen.getByRole("textbox")).toHaveValue("the brief");
+			expect(screen.getByRole("button", { name: "Save & Run" })).toBeInTheDocument();
+		});
+
+		it("clicking a custom title still opens the title editor", async () => {
+			renderModal(makeTodoTask({ customTitle: "My custom title" }));
+			const user = userEvent.setup();
+
+			await user.click(document.getElementById("task-detail-title")!);
+			expect(screen.getByRole("textbox")).toHaveValue("My custom title");
+			expect(screen.getByText("Enter to save · Esc to cancel")).toBeInTheDocument();
+		});
+
+		it("the pencil still renames a task with an auto-generated title", async () => {
+			renderModal(makeTodoTask({ description: "the brief" }));
+			const user = userEvent.setup();
+
+			await user.click(screen.getByTitle("Edit title"));
+			expect(screen.getByText("Enter to save · Esc to cancel")).toBeInTheDocument();
 		});
 
 		it("pins the description editor's hint row to the bottom of the scroll area", async () => {
