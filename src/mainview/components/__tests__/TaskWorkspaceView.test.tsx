@@ -143,6 +143,38 @@ describe("TaskWorkspaceView", () => {
 		);
 	});
 
+	it("goes back to the board when the open task is deleted", async () => {
+		const navigate = vi.fn();
+		getTasksMock.mockResolvedValue([task]);
+		const props = { projectId: "p1", taskId: "t1", projects: [project], route: TASK_ROUTE, navigate, dispatch: vi.fn() };
+		const { rerender } = renderWorkspace(<TaskWorkspaceView {...props} tasks={[task]} />);
+		await waitFor(() => expect(getTasksMock).toHaveBeenCalled());
+		expect(navigate).not.toHaveBeenCalled();
+
+		getTasksMock.mockResolvedValue([]);
+		rerender(<TaskWorkspaceView {...props} tasks={[]} />);
+		await waitFor(() => expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" }));
+	});
+
+	it("stays when the task only drops out of the local list", async () => {
+		const navigate = vi.fn();
+		getTasksMock.mockResolvedValue([task]);
+		const props = { projectId: "p1", taskId: "t1", projects: [project], route: TASK_ROUTE, navigate, dispatch: vi.fn() };
+		const { rerender } = renderWorkspace(<TaskWorkspaceView {...props} tasks={[task]} />);
+		rerender(<TaskWorkspaceView {...props} tasks={[]} />);
+		await waitFor(() => expect(getTasksMock).toHaveBeenCalledTimes(2));
+		await new Promise((r) => setTimeout(r, 0));
+		expect(navigate).not.toHaveBeenCalled();
+	});
+
+	it("does not leave a task that has not loaded yet", async () => {
+		const navigate = vi.fn();
+		renderWorkspace(<TaskWorkspaceView projectId="p1" taskId="t1" tasks={[]} projects={[project]} route={TASK_ROUTE} navigate={navigate} dispatch={vi.fn()} />);
+		await waitFor(() => expect(getTasksMock).toHaveBeenCalled());
+		await new Promise((r) => setTimeout(r, 0));
+		expect(navigate).not.toHaveBeenCalled();
+	});
+
 	// Help mode said nothing about the terminal, which is most of this screen and
 	// the least familiar part of it. Immersive fullscreen stays chrome-free (§5),
 	// so the zone is gated rather than unconditional.
