@@ -6,6 +6,7 @@ vi.mock("../rpc-handlers/shared", () => ({
 vi.mock("../data", () => ({ loadProjects: vi.fn(), getProject: vi.fn() }));
 vi.mock("../repo-config", () => ({ resolveProjectEnv: vi.fn() }));
 vi.mock("../agent-accounts", () => ({
+	CLAUDE_ENV_AUTH_KEYS: ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"],
 	readClaudeConfigDirIdentity: vi.fn((dir: string) => ({
 		email: `${dir.split("/").slice(-2)[0]}@example.com`,
 		organization: null,
@@ -29,6 +30,9 @@ beforeEach(() => {
 			b: { CLAUDE_CONFIG_DIR: "/work/shared/.claude/" },
 			c: { CLAUDE_CONFIG_DIR: "~/.claude" },
 			d: {},
+			f: { CLAUDE_CONFIG_DIR: "/work/f/.claude", CLAUDE_CODE_USE_BEDROCK: "1" },
+			g: { CLAUDE_CONFIG_DIR: "/work/g/.claude", ANTHROPIC_API_KEY: "k" },
+			h: { CLAUDE_CONFIG_DIR: "/work/h/.claude", CLAUDE_CODE_USE_BEDROCK: "0" },
 		};
 		if (p.id === "e") throw new Error("unreadable config");
 		return env[p.id];
@@ -53,5 +57,15 @@ describe("listPinnedClaudeLogins", () => {
 			configDir: null,
 			identity: null,
 		});
+	});
+
+	it.each([
+		["a", null],
+		["f", "bedrock"],
+		["g", "env-auth"],
+		["h", null],
+	])("reports the backend project %s's env puts Claude on: %s", async (id, backend) => {
+		vi.mocked(data.getProject).mockResolvedValue(project(id));
+		await expect(agentAccountHandlers.getProjectClaudeLogin({ projectId: id })).resolves.toMatchObject({ backend });
 	});
 });

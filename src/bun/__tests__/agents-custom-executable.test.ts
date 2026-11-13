@@ -19,6 +19,7 @@ vi.mock("../agent-accounts", async (importOriginal) => {
 		...actual,
 		getActiveClaudeSessionEnv: (id?: string | null) => actual.getActiveClaudeSessionEnv(id, state.paths as import("../agent-accounts").AccountPaths),
 		claudeAccountRegistered: (id: string) => actual.claudeAccountRegistered(id, state.paths as import("../agent-accounts").AccountPaths),
+		claudeAccountSignedIntoDir: (id: string, dir: string) => actual.claudeAccountSignedIntoDir(id, dir, state.paths as import("../agent-accounts").AccountPaths),
 	};
 });
 
@@ -27,6 +28,7 @@ import { resolveCommandForAgent, resolveCommandForProject } from "../agents";
 import type { Project } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
 import { DEV3_HOME } from "../paths";
+import { claudeTranscriptDir } from "../../shared/conversation-search-core";
 import { resetStaleAgentPathNoticesForTests } from "../stale-agent-path";
 import { setPushMessage } from "../rpc-handlers/shared-pure";
 
@@ -235,5 +237,98 @@ describe("a project that pins its own Claude folder", () => {
 		const { dir } = await defaultAccount();
 		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { projectEnv: { ANTHROPIC_MODEL: "x" } });
 		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(dir);
+	});
+});
+
+describe("an account the project's own Claude folder is signed in to", () => {
+	const login = (accountUuid: string, organizationUuid = "org-1") =>
+		JSON.stringify({ oauthAccount: { emailAddress: "me@example.com", accountUuid, organizationUuid } });
+	let projectDir: string;
+	let projectEnv: Record<string, string>;
+	async function accountSignedInAs(accountUuid: string, organizationUuid?: string) {
+		const paths = state.paths as AccountPaths;
+		mkdirSync(paths.claudeHome, { recursive: true });
+		const account = registerStagedClaudeAccount((await prepareClaudeLogin(paths)).accountId, paths);
+		writeFileSync(join(claudeAccountDir(account.id, paths), ".claude.json"), login(accountUuid, organizationUuid));
+		return { account, dir: claudeAccountDir(account.id, paths) };
+	}
+	beforeEach(() => {
+		projectDir = join(root, "project", ".claude");
+		mkdirSync(projectDir, { recursive: true });
+		writeFileSync(join(projectDir, ".claude.json"), login("person-1"));
+		projectEnv = { CLAUDE_CONFIG_DIR: projectDir };
+	});
+
+	it("keeps the project folder on a fresh launch and records no account on the pane", async () => {
+		const { account } = await accountSignedInAs("person-1");
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, projectEnv });
+		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(projectDir);
+		expect(resolved.projectLoginKept).toBe(true);
+		expect(resolved.resolvedAccountId).toBeUndefined();
+	});
+
+	it("keeps the folder but not the project's Bedrock switch or model ids", async () => {
+		const { account } = await accountSignedInAs("person-1");
+		const env = { ...projectEnv, CLAUDE_CODE_USE_BEDROCK: "1", ANTHROPIC_MODEL: "global.anthropic.x", ANTHROPIC_DEFAULT_OPUS_MODEL: "global.anthropic.y", AWS_PROFILE: "p" };
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, projectEnv: env });
+		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(projectDir);
+		expect(resolved.extraEnv.CLAUDE_CODE_USE_BEDROCK).toBe(ENV_UNSET);
+		expect(resolved.extraEnv.ANTHROPIC_MODEL).toBe(ENV_UNSET);
+		expect(resolved.extraEnv.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe(ENV_UNSET);
+		expect(resolved.extraEnv.AWS_PROFILE).toBeUndefined();
+	});
+
+	it("drops the project's Bedrock switch for a picked account in its own folder too", async () => {
+		const { account, dir } = await accountSignedInAs("person-2");
+		const env = { ...projectEnv, CLAUDE_CODE_USE_BEDROCK: "1" };
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, projectEnv: env });
+		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(dir);
+		expect(resolved.extraEnv.CLAUDE_CODE_USE_BEDROCK).toBe(ENV_UNSET);
+	});
+
+	it("leaves the project's Bedrock env alone when no account is picked", async () => {
+		await accountSignedInAs("person-1");
+		const env = { ...projectEnv, CLAUDE_CODE_USE_BEDROCK: "1", ANTHROPIC_MODEL: "global.anthropic.x" };
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { projectEnv: env });
+		expect(resolved.extraEnv.CLAUDE_CODE_USE_BEDROCK).toBeUndefined();
+		expect(resolved.extraEnv.ANTHROPIC_MODEL).not.toBe(ENV_UNSET);
+	});
+
+	it("uses the account's own folder when the project folder is signed in to someone else", async () => {
+		const { account, dir } = await accountSignedInAs("person-2");
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, projectEnv });
+		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(dir);
+		expect(resolved.projectLoginKept).toBeUndefined();
+	});
+
+	it("treats the same person in another org as a different login", async () => {
+		const { account, dir } = await accountSignedInAs("person-1", "org-2");
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, projectEnv });
+		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(dir);
+	});
+
+	it("resumes in the account's folder, where the conversation was written", async () => {
+		const { account, dir } = await accountSignedInAs("person-1");
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, accountFromStore: true, resume: true, sessionId: "s-1", projectEnv });
+		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(dir);
+	});
+
+	it("resumes in the project folder when the conversation was written there", async () => {
+		const { account } = await accountSignedInAs("person-1");
+		const store = claudeTranscriptDir(projectDir, ctx.worktreePath);
+		mkdirSync(store, { recursive: true });
+		writeFileSync(join(store, "s-1.jsonl"), "{}\n");
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, accountFromStore: true, resume: true, sessionId: "s-1", projectEnv });
+		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(projectDir);
+		expect(resolved.projectLoginKept).toBe(true);
+	});
+
+	it("continues in the project folder when it holds this worktree's conversations", async () => {
+		const { account } = await accountSignedInAs("person-1");
+		const store = claudeTranscriptDir(projectDir, ctx.worktreePath);
+		mkdirSync(store, { recursive: true });
+		writeFileSync(join(store, "s-2.jsonl"), "{}\n");
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, accountFromStore: true, resume: true, projectEnv });
+		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(projectDir);
 	});
 });

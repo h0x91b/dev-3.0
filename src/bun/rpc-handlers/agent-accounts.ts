@@ -13,7 +13,7 @@ import type {
 	ProjectClaudeLogin,
 } from "../../shared/agent-accounts";
 import type { ClaudeApiProfileDraft } from "../agent-accounts";
-import { isAgentDirAccountKind, isAutoAccountId, isRoutableAccountKind, parseEnvLines, shortCodexWorkspaceId, type RoutableAccountKind } from "../../shared/agent-accounts";
+import { isAgentDirAccountKind, isAutoAccountId, isRoutableAccountKind, parseEnvLines, shortCodexWorkspaceId, type ProjectClaudeBackend, type RoutableAccountKind } from "../../shared/agent-accounts";
 import { exclusionKey, systemLoginExclusionKey, type AutoAccountPreview } from "../../shared/account-routing";
 import { previewAutoAccount as previewAutoAccountNow } from "../account-router";
 import { loadSettings, saveSettings } from "../settings";
@@ -236,14 +236,24 @@ async function renameAgentAccount(params: { kind: AgentAccountKind; accountId: s
 	log.info("← renameAgentAccount done");
 }
 
+/** The backend a project env puts Claude on in place of its folder's login, if any. */
+function projectClaudeBackend(env: Record<string, string>): ProjectClaudeBackend | null {
+	const on = (key: string) => !!env[key] && !/^(0|false)$/i.test(env[key]);
+	if (on("CLAUDE_CODE_USE_BEDROCK")) return "bedrock";
+	if (on("CLAUDE_CODE_USE_VERTEX")) return "vertex";
+	if (on("CLAUDE_CODE_USE_FOUNDRY")) return "foundry";
+	return accounts.CLAUDE_ENV_AUTH_KEYS.some((key) => !key.startsWith("CLAUDE_CODE_USE_") && !!env[key]) ? "env-auth" : null;
+}
+
 /** Which Claude login a project's sessions use. Read on demand so an edit to
  *  `.dev3/config*.json` shows on the next open of the launch dialog. */
 async function getProjectClaudeLogin(params: { projectId: string }): Promise<ProjectClaudeLogin> {
 	try {
 		const project = await data.getProject(params.projectId);
-		const configDir = pinnedClaudeConfigDir((await resolveProjectEnv(project)).CLAUDE_CONFIG_DIR, homedir(), project.path);
+		const env = await resolveProjectEnv(project);
+		const configDir = pinnedClaudeConfigDir(env.CLAUDE_CONFIG_DIR, homedir(), project.path);
 		if (!configDir) return { configDir: null, identity: null };
-		return { configDir, identity: accounts.readClaudeConfigDirIdentity(configDir) };
+		return { configDir, identity: accounts.readClaudeConfigDirIdentity(configDir), backend: projectClaudeBackend(env) };
 	} catch (err) {
 		log.warn("getProjectClaudeLogin failed", { projectId: params.projectId, error: String(err) });
 		return { configDir: null, identity: null };

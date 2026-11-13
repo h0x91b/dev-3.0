@@ -9,7 +9,7 @@ import type {
 	PinnedClaudeLogin,
 	ProjectClaudeLogin,
 } from "../../shared/agent-accounts";
-import { AUTO_ACCOUNT_ID, codexWorkspaceIdNeeded, isAgentDirAccountKind, isAutoAccountId, isRoutableAccountKind, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../shared/agent-accounts";
+import { AUTO_ACCOUNT_ID, type ProjectClaudeBackend, codexWorkspaceIdNeeded, isAgentDirAccountKind, isAutoAccountId, isRoutableAccountKind, sameClaudeLogin, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../shared/agent-accounts";
 import { exclusionKey } from "../../shared/account-routing";
 import { autoCandidateTotal, autoReasonText, useAutoAccountPreview } from "./auto-account-ui";
 import type { CodingAgent } from "../../shared/types";
@@ -29,7 +29,7 @@ import {
 } from "../../shared/rate-limits";
 import { api } from "../rpc";
 import { toast } from "../toast";
-import { useT } from "../i18n";
+import { useT, type TranslationKey } from "../i18n";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../state";
 import { useOverlayLayer } from "../utils/useOverlayLayer";
 import { CapturedAgeSuffix, LimitsNotReported, UsageBar, severityText, useSpendLimitDetail, useWindowLabel } from "./rate-limit-ui";
@@ -278,6 +278,13 @@ function RowQuota({ usage, now }: { usage: RowUsage; now: number }) {
 		</span>
 	);
 }
+
+const PROJECT_BACKEND_NOTE = {
+	bedrock: "launch.projectBackendBedrock",
+	vertex: "launch.projectBackendVertex",
+	foundry: "launch.projectBackendFoundry",
+	"env-auth": "launch.projectBackendEnvAuth",
+} as const satisfies Record<ProjectClaudeBackend, TranslationKey>;
 
 function identityBadge(identity: AgentAccountIdentity | null): string | null {
 	return identity?.planLabel ?? null;
@@ -655,6 +662,14 @@ export default function AgentAccountIndicator({
 	const projectPinDir = kind === "claude" ? (projectLogin?.configDir ?? null) : null;
 	const pinnedDir = state.claude.accounts.length === 0 ? projectPinDir : null;
 	const projectPinLabel = projectPinDir ? t("settings.accountsProjectLogin", { dir: shortClaudeConfigDir(projectPinDir) }) : null;
+	// A login the project folder is already signed in to launches in that folder, so the project row stands for it.
+	// A project env that swaps the backend (Bedrock, an API key) makes "no pick" launch differently, so both rows stay.
+	const projectBackend = projectPinDir ? (projectLogin?.backend ?? null) : null;
+	const sameAsProjectFolder = (identity: AgentAccountIdentity | null | undefined) =>
+		isLocal && !!projectPinDir && sameClaudeLogin(identity, projectLogin?.identity);
+	const folderAccount = state.claude.accounts.find((a) => a.auth !== "api" && sameAsProjectFolder(a.identity)) ?? null;
+	const projectAccount = projectBackend ? null : folderAccount;
+	const systemFoldsIntoProject = !projectBackend && state.claude.accounts.length > 0 && sameAsProjectFolder(state.claude.systemIdentity);
 	const fallbackIdentity =
 		kind === "claude"
 			? (pinnedDir ? (projectLogin?.identity ?? null) : state.claude.systemIdentity)
@@ -725,6 +740,8 @@ export default function AgentAccountIndicator({
 		});
 	}
 	if (isLocal && projectPinDir && state.claude.accounts.length > 0) {
+		const accountUsage = projectAccount ? usageFor(projectAccount.id) : null;
+		const projectUsage = accountUsage && accountUsage.state !== "none" ? accountUsage : usageFor(null, false, projectPinDir);
 		rows.push({
 			key: "project",
 			label: projectPinLabel ?? "",
@@ -732,15 +749,16 @@ export default function AgentAccountIndicator({
 			planLabel: identityBadge(projectLogin?.identity ?? null),
 			workspaceLabel: null,
 			isApi: false,
-			isActive: keepsProjectLogin,
-			usage: usageFor(null, false, projectPinDir),
+			isActive: keepsProjectLogin || (!!projectAccount && isRowActive(projectAccount.id)) || (systemFoldsIntoProject && isRowActive(null)),
+			usage: projectUsage,
+			note: projectBackend ? t(PROJECT_BACKEND_NOTE[projectBackend]) : null,
 			onSelect: () => handleSelectLocal(undefined),
 		});
 	}
 	// System-login row: selectable for BOTH kinds in local mode (codex now has a
 	// real system-login fallback); in the global switcher it stays claude-only
 	// selectable, and codex renders an informational "unmanaged" row.
-	if (kind !== "codex" || isLocal) {
+	if ((kind !== "codex" || isLocal) && !(kind === "claude" && systemFoldsIntoProject)) {
 		rows.push({
 			key: "system",
 			label: fallbackLabel,
@@ -771,7 +789,13 @@ export default function AgentAccountIndicator({
 			onSelect: null,
 		});
 	}
+	// In a project with its own Claude folder, say where each account's session will run.
+	const folderNote = (account: AgentAccount): string | null => {
+		if (!isLocal || !projectPinDir) return null;
+		return account.id === folderAccount?.id ? t("launch.accountRunsInProjectFolder") : t("launch.accountRunsInOwnFolder");
+	};
 	for (const account of kindState.accounts) {
+		if (account.id === projectAccount?.id) continue;
 		rows.push({
 			key: account.id,
 			label: account.label,
@@ -781,7 +805,7 @@ export default function AgentAccountIndicator({
 			isApi: account.auth === "api",
 			isActive: isRowActive(account.id),
 			usage: usageFor(account.id, account.auth === "api"),
-			note: excludedNote(account.id),
+			note: [folderNote(account), excludedNote(account.id)].filter(Boolean).join(" · ") || null,
 			onSelect: isLocal
 				? () => handleSelectLocal(account.id)
 				: () => handleSelectGlobal(kind, account.id),
