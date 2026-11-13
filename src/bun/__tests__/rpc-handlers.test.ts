@@ -4078,7 +4078,7 @@ describe("virtual task lifecycle", () => {
 		vi.mocked(pty.destroySession).mockImplementation(() => {});
 		mockTaskWrites(task);
 
-		const { task: reset } = await handlers.resetTaskToTodo({ taskId: "task-1", projectId: "vp1", consent: { worktreePath: wt, lifecycleStartedAt: "S" } });
+		const { task: reset } = await handlers.resetTaskToTodo({ taskId: "task-1", projectId: "vp1", consent: { worktreePath: wt, lifecycleStartedAt: "S", attachedRepo: "/Users/me/repo" } });
 
 		expect(rm).toHaveBeenCalledWith(wt, { recursive: true, force: true });
 		expect(git.pruneWorktrees).toHaveBeenCalledWith("/Users/me/repo");

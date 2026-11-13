@@ -12,7 +12,7 @@ import { transition } from "../machine";
 
 const PATH = "/wt/c1c1c1c1/worktree";
 const STARTED = "2026-09-25T10:00:00.000Z";
-const CONSENT = { worktreePath: PATH, lifecycleStartedAt: STARTED };
+const CONSENT = { worktreePath: PATH, lifecycleStartedAt: STARTED, attachedRepo: null };
 
 function state(status: TaskStatus, overrides: Partial<LifecycleState["facts"]> = {}, runtime?: LifecycleState["runtime"]): LifecycleState {
 	const clean = status === "todo" || status === "completed" || status === "cancelled";
@@ -155,12 +155,12 @@ describe("resetRequested (T8–T10)", () => {
 
 	it("absent anchor on both sides binds to the worktree path alone", () => {
 		const unstamped = state("user-questions", { lifecycleStartedAt: null });
-		expect(rejection(transition(unstamped, reset({ worktreePath: PATH, lifecycleStartedAt: null })).effects)).toBeUndefined();
+		expect(rejection(transition(unstamped, reset({ worktreePath: PATH, lifecycleStartedAt: null, attachedRepo: null })).effects)).toBeUndefined();
 	});
 
 	it("refuses when there is nothing to reset, or while preparing / tearing down", () => {
-		expect(rejection(transition(state("todo"), reset({ worktreePath: null, lifecycleStartedAt: null })).effects)).toBe(RESET_CONSENT_STALE_ERROR);
-		expect(rejection(transition(state("completed"), reset({ worktreePath: null, lifecycleStartedAt: null })).effects)).toBe(RESET_CONSENT_STALE_ERROR);
+		expect(rejection(transition(state("todo"), reset({ worktreePath: null, lifecycleStartedAt: null, attachedRepo: null })).effects)).toBe(RESET_CONSENT_STALE_ERROR);
+		expect(rejection(transition(state("completed"), reset({ worktreePath: null, lifecycleStartedAt: null, attachedRepo: null })).effects)).toBe(RESET_CONSENT_STALE_ERROR);
 		const preparing = state("in-progress", {}, { phase: "preparing", stage: "creating-worktree", runId: "r", origin: { status: "todo", customColumnId: null } });
 		expect(rejection(transition(preparing, reset()).effects)).toBe(RESET_BUSY_ERROR);
 		const tearingDown = state("in-progress", {}, { phase: "tearing-down", targetStatus: "cancelled", runId: "r" });

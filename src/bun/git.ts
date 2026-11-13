@@ -1664,14 +1664,28 @@ export async function createOpsWorktree(
 	return { worktreePath: wtPath, branchName: branch };
 }
 
-/** The repo a linked worktree belongs to, or null for a plain checkout or when git cannot say. */
-export async function getMainRepoOfLinkedWorktree(path: string): Promise<string | null> {
-	if (!existsSync(path)) return null;
-	const result = await run(["git", "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir"], path).catch(() => null);
-	if (!result?.ok) return null;
+export type LinkedWorktreeKind =
+	| { kind: "linked"; mainRepo: string }
+	| { kind: "plain" }
+	| { kind: "unknown"; error: string };
+
+/**
+ * "plain" only when git positively answers that the checkout owns its git dir. A missing path or a
+ * failed probe is "unknown", so a broken repo is never mistaken for a clone that is safe to ignore.
+ */
+export async function classifyLinkedWorktree(path: string): Promise<LinkedWorktreeKind> {
+	if (!existsSync(path)) return { kind: "unknown", error: `Path not found: ${path}` };
+	let result: GitRunResult;
+	try {
+		result = await run(["git", "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir"], path);
+	} catch (err) {
+		return { kind: "unknown", error: String(err) };
+	}
+	if (!result.ok) return { kind: "unknown", error: result.stderr.trim() || "git rev-parse failed" };
 	const [gitDir, commonDir] = result.stdout.split("\n");
-	if (!gitDir || !commonDir || gitDir === commonDir) return null;
-	return commonDir.endsWith("/.git") ? commonDir.slice(0, -"/.git".length) : commonDir;
+	if (!gitDir || !commonDir) return { kind: "unknown", error: `Unexpected git rev-parse output: ${result.stdout}` };
+	if (gitDir === commonDir) return { kind: "plain" };
+	return { kind: "linked", mainRepo: commonDir.endsWith("/.git") ? commonDir.slice(0, -"/.git".length) : commonDir };
 }
 
 /**

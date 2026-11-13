@@ -18,7 +18,7 @@ afterEach(() => vi.clearAllMocks());
 describe("confirmTaskReset", () => {
 	it("always asks (even a clean branch), names the branch, gates on the unsaved-work check, returns the consent it showed", async () => {
 		vi.mocked(confirm).mockResolvedValue(true);
-		expect(await confirmTaskReset(task, project, t)).toEqual({ worktreePath: "/wt", lifecycleStartedAt: "S" });
+		expect(await confirmTaskReset(task, project, t)).toEqual({ worktreePath: "/wt", lifecycleStartedAt: "S", attachedRepo: null });
 		const options = vi.mocked(confirm).mock.calls[0]![0];
 		expect(options).toMatchObject({ danger: true, tone: "danger", confirmLabel: "task.confirmResetLabel" });
 		expect(options.message).toContain("feat/dev3-x");
@@ -52,7 +52,8 @@ describe("confirmTaskReset", () => {
 	it("an Operations task with a repo in its own folder runs the unsaved-work check and says the worktree goes, the branch stays", async () => {
 		vi.mocked(confirm).mockResolvedValue(true);
 		const inFolder = { ...task, attachedRepo: "/wt/wt2" } as Task;
-		await confirmTaskReset(inFolder, { ...project, kind: "virtual" } as Project, t);
+		// The consent names the repo the dialog checked, so a reset after a swap is refused by the server.
+		expect(await confirmTaskReset(inFolder, { ...project, kind: "virtual" } as Project, t)).toMatchObject({ attachedRepo: "/wt/wt2" });
 		const options = vi.mocked(confirm).mock.calls[0]![0];
 		expect(options.message).toContain("task.confirmResetMessageVirtual");
 		expect(options.message).toContain("task.attachedWorktreeNote");

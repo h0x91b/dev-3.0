@@ -1229,7 +1229,8 @@ export async function executeLifecycleEffect(
 							// Deleting takes the whole folder, so a repo that is the folder itself counts here.
 							const attached = ctx.sourceTask.attachedRepo;
 							const ownRepo = attached && (attached === worktreePath || isAttachedRepoInTaskFolder(ctx.sourceTask)) ? attached : null;
-							const mainRepo = ownRepo ? await git.getMainRepoOfLinkedWorktree(ownRepo) : null;
+							const probe = ownRepo ? await git.classifyLinkedWorktree(ownRepo) : null;
+							const mainRepo = probe?.kind === "linked" ? probe.mainRepo : null;
 							if (mainRepo && ownRepo) await git.removeLinkedWorktree(mainRepo, ownRepo);
 							await rm(worktreePath, { recursive: true, force: true });
 							if (isOpsWorktreeTask(ctx.sourceTask)) await git.pruneWorktrees(ctx.sourceTask.attachedRepo!);
@@ -1253,8 +1254,18 @@ export async function executeLifecycleEffect(
 				ctx.attachedWorktreeRemoved = true;
 				return {};
 			}
-			const mainRepo = await git.getMainRepoOfLinkedWorktree(attached);
-			if (mainRepo && await git.removeLinkedWorktree(mainRepo, attached)) ctx.attachedWorktreeRemoved = true;
+			// Only the repo the user's dialog checked is ever removed; a swapped-in one is kept.
+			if (effect.approvedAttachedRepo !== attached) {
+				log.warn("Kept the attached worktree: it is not the one the user approved", { taskId: ctx.sourceTask.id.slice(0, 8), attached, approved: effect.approvedAttachedRepo });
+				return {};
+			}
+			const probe = await git.classifyLinkedWorktree(attached);
+			if (probe.kind === "unknown") {
+				// Never remove what git could not vouch for: it may hold unsaved work. The record stays attached.
+				log.warn("Kept the attached worktree: git could not classify it", { taskId: ctx.sourceTask.id.slice(0, 8), attached, error: probe.error });
+			} else if (probe.kind === "linked" && await git.removeLinkedWorktree(probe.mainRepo, attached)) {
+				ctx.attachedWorktreeRemoved = true;
+			}
 			return {};
 		}
 		case "resetWorktree": {

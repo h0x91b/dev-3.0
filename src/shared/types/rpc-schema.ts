@@ -754,7 +754,9 @@ export type AppRPCSchema = {
 				// attached remote browser, so the chime would play a second time on
 				// the same machine). Unset for CLI / branch-merge / agent
 				// approval, where no renderer played locally and the push is the sound.
-				params: { taskId: string; projectId: string; newStatus: TaskStatus; force?: boolean; clientPlayedSound?: boolean };
+				// `approvedAttachedRepo`: the attached repo the user's unsaved-work dialog checked; a close removes
+				// a git worktree in the task's own folder only when it is still this one.
+				params: { taskId: string; projectId: string; newStatus: TaskStatus; force?: boolean; clientPlayedSound?: boolean; approvedAttachedRepo?: string | null };
 				response: Task;
 			};
 			// View → Debug probe: fires the same `taskSound` push a real CLI /

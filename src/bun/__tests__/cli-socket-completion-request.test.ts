@@ -192,7 +192,25 @@ describe("task.requestCompletion", () => {
 		const resp = await respPromise;
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toEqual({ approved: true, task: completedTask });
-		expect(moveTask).toHaveBeenCalledWith({ taskId: task.id, projectId: "proj-1", newStatus: "completed" });
+		expect(moveTask).toHaveBeenCalledWith({ taskId: task.id, projectId: "proj-1", newStatus: "completed", approvedAttachedRepo: null });
+	});
+
+	it("approves only the attached repo the dialog was raised for, even if the task is re-attached before the answer", async () => {
+		const task = makeTask({ worktreePath: "/ops/s/ab/work", attachedRepo: "/ops/s/ab/work/wt-a" });
+		setupTask(task);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(moveTask).mockResolvedValue({ ...task, status: "completed" as const });
+
+		const respPromise = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		const [, payload] = pushFn.mock.calls[0] as [string, { requestId: string; subject: TaskDialogSubject }];
+		expect(payload.subject.attachedRepoInFolder).toBe(true);
+		setupTask({ ...task, attachedRepo: "/ops/s/ab/work/wt-b" });
+		resolveAgentRequest(payload.requestId, { approved: true });
+		await respPromise;
+
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ newStatus: "completed", approvedAttachedRepo: "/ops/s/ab/work/wt-a" }));
 	});
 
 	it("shows another task's --reason attributed to it, and keeps it for a replayed dialog", async () => {

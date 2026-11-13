@@ -79,6 +79,8 @@ function isPendingRequest(kind: "complete" | "cancel" | "reset" | "launch", task
  */
 /** What each pending reset request asked to destroy, fixed when its dialog opened. */
 const resetConsentByRequestId = new Map<string, TaskResetConsent>();
+/** The attached repo each complete/cancel dialog was raised for; the approved move may remove only that one. */
+const approvedAttachedRepoByRequestId = new Map<string, string | null>();
 
 /**
  * One reset per approved request, shared by every waiter joined to it: the
@@ -135,6 +137,9 @@ export async function requestDestructiveApproval(
 		if (kind === "reset" && !resetConsentByRequestId.has(request.requestId)) {
 			resetConsentByRequestId.set(request.requestId, taskResetConsent(task));
 		}
+		if (kind !== "reset" && !approvedAttachedRepoByRequestId.has(request.requestId)) {
+			approvedAttachedRepoByRequestId.set(request.requestId, task.attachedRepo ?? null);
+		}
 		await voidIfRunEndedMeanwhile(kind, project, task);
 	}
 	const stillAsking = isPendingRequest(kind, task.id, request.requestId);
@@ -152,6 +157,7 @@ export async function requestDestructiveApproval(
 	const { approved, stale } = await request.decision;
 	if (!approved) {
 		resetConsentByRequestId.delete(request.requestId);
+		approvedAttachedRepoByRequestId.delete(request.requestId);
 		if (!stale) return { approved: false };
 		// Voided: the task finished or vanished by another path. Its live status lets
 		// the CLI tell "already where you asked" apart from "ended some other way".
@@ -179,7 +185,9 @@ export async function requestDestructiveApproval(
 	}
 	// Every caller joined to this request lands here; a repeat move to the same
 	// status is a no-op in the lifecycle machine.
-	const updated = await moveTask({ taskId: task.id, projectId: project.id, newStatus: targetStatus });
+	const approvedAttachedRepo = approvedAttachedRepoByRequestId.get(request.requestId) ?? null;
+	setTimeout(() => approvedAttachedRepoByRequestId.delete(request.requestId), 60_000);
+	const updated = await moveTask({ taskId: task.id, projectId: project.id, newStatus: targetStatus, approvedAttachedRepo });
 	return { approved: true, task: updated };
 }
 

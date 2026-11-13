@@ -526,11 +526,17 @@ describe("task lifecycle transition table", () => {
 		const make = (attachedRepoInFolder: boolean) => state("in-progress", {
 			facts: { hasWorktree: true, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, ...(attachedRepoInFolder ? { attachedRepoInFolder } : {}) },
 		});
-		const teardown = (current: LifecycleState) => transition(current, {
+		const teardown = (current: LifecycleState, approvedAttachedRepo?: string | null) => transition(current, {
 			type: "moveRequested",
 			target: { status: target, customColumnId: null },
 			runId: "run",
+			...(approvedAttachedRepo !== undefined ? { approvedAttachedRepo } : {}),
 		}).effects;
+
+		it("carries the repo the user approved into the effect, and null when the move carried none", () => {
+			expect(teardown(make(true), "/ops/s/ab/work/wt").find((e) => e.type === "removeAttachedWorktree")).toMatchObject({ approvedAttachedRepo: "/ops/s/ab/work/wt" });
+			expect(teardown(make(true)).find((e) => e.type === "removeAttachedWorktree")).toMatchObject({ approvedAttachedRepo: null });
+		});
 
 		it("removes the attached worktree best-effort, after the reap and before it is persisted", () => {
 			const effects = teardown(make(true));
@@ -546,22 +552,25 @@ describe("task lifecycle transition table", () => {
 		});
 	});
 
-	it("reset removes the attached worktree of a plain Operations task only with the fact", () => {
-		const consent = { worktreePath: "/w", lifecycleStartedAt: "S" };
+	it("reset removes the attached worktree of a plain Operations task only with the fact, and only the consented repo", () => {
+		const consent = { worktreePath: "/w", lifecycleStartedAt: "S", attachedRepo: "/w/wt" };
 		const make = (attachedRepoInFolder: boolean) => state("in-progress", {
-			facts: { hasWorktree: true, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, worktreePath: "/w", lifecycleStartedAt: "S", ...(attachedRepoInFolder ? { attachedRepoInFolder } : {}) },
+			facts: { hasWorktree: true, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, worktreePath: "/w", lifecycleStartedAt: "S", attachedRepo: "/w/wt", ...(attachedRepoInFolder ? { attachedRepoInFolder } : {}) },
 		});
 		const effects = transition(make(true), { type: "resetRequested", consent }).effects;
 		const types = effects.map((e) => e.type);
 
-		expect(effects.find((e) => e.type === "removeAttachedWorktree")).toMatchObject({ onError: "continue" });
+		expect(effects.find((e) => e.type === "removeAttachedWorktree")).toMatchObject({ onError: "continue", approvedAttachedRepo: "/w/wt" });
+		// Another client swapped the attached repo after the dialog: the consent no longer matches.
+		const swapped = transition(make(true), { type: "resetRequested", consent: { ...consent, attachedRepo: "/w/other" } }).effects;
+		expect(swapped.map((e) => e.type)).toEqual(["reject"]);
 		expect(types.indexOf("reapWorktreeProcesses")).toBeLessThan(types.indexOf("removeAttachedWorktree"));
 		expect(types.indexOf("removeAttachedWorktree")).toBeLessThan(types.indexOf("persistResetTask"));
 		expect(transition(make(false), { type: "resetRequested", consent }).effects.map((e) => e.type)).not.toContain("removeAttachedWorktree");
 	});
 
 	it("reset removes the workspace of a worktree-mode Operations task and not of a plain one", () => {
-		const consent = { worktreePath: "/w", lifecycleStartedAt: "S" };
+		const consent = { worktreePath: "/w", lifecycleStartedAt: "S", attachedRepo: null };
 		const make = (opsWorktree: boolean) => state("in-progress", {
 			facts: { hasWorktree: true, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, worktreePath: "/w", lifecycleStartedAt: "S", ...(opsWorktree ? { opsWorktree } : {}) },
 		});

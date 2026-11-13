@@ -12,7 +12,7 @@ vi.mock("../spawn", async () => {
 import { existsSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { cleanup, createTestRepo, g, spawnedCommands, type TestRepo } from "./git-test-helpers";
-import { createOpsWorktree, isWorktreeDirtyOrUnknown, getDefaultBranch, getMainRepoOfLinkedWorktree, getRepoTopLevel, removeLinkedWorktree, pruneWorktrees, _resetFetchState } from "../git";
+import { createOpsWorktree, isWorktreeDirtyOrUnknown, getDefaultBranch, classifyLinkedWorktree, getRepoTopLevel, removeLinkedWorktree, pruneWorktrees, _resetFetchState } from "../git";
 
 const task = { id: "abcdef12-0000-0000-0000-000000000009" } as any;
 
@@ -114,14 +114,22 @@ describe("Operations worktree", () => {
 		expect(await getRepoTopLevel(sub)).toBe(await getRepoTopLevel(repo.local));
 		expect(await getRepoTopLevel("/tmp/dev3-not-a-repo-xyz")).toBeNull();
 	});
-	it("getMainRepoOfLinkedWorktree names the owning repo of a linked worktree", async () => {
+	it("classifyLinkedWorktree names the owning repo of a linked worktree", async () => {
 		await createOpsWorktree(repo.local, task, wtPath, "main");
-		expect(await getMainRepoOfLinkedWorktree(wtPath)).toBe(realpathSync(repo.local));
+		expect(await classifyLinkedWorktree(wtPath)).toEqual({ kind: "linked", mainRepo: realpathSync(repo.local) });
 	});
 
-	it("getMainRepoOfLinkedWorktree is null for a plain checkout and for a path that is not a repo", async () => {
-		expect(await getMainRepoOfLinkedWorktree(repo.local)).toBeNull();
-		expect(await getMainRepoOfLinkedWorktree("/tmp/dev3-not-a-repo-xyz")).toBeNull();
+	it("classifyLinkedWorktree says plain only for a checkout git positively confirms owns its git dir", async () => {
+		expect(await classifyLinkedWorktree(repo.local)).toEqual({ kind: "plain" });
+	});
+
+	it("classifyLinkedWorktree is unknown for a missing path, a non-repo and a repo with a broken config", async () => {
+		expect((await classifyLinkedWorktree("/tmp/dev3-not-a-repo-xyz")).kind).toBe("unknown");
+		await createOpsWorktree(repo.local, task, wtPath, "main");
+		writeFileSync(join(repo.local, ".git", "config"), "[core\n\tbroken = = =\n");
+
+		expect((await classifyLinkedWorktree(wtPath)).kind).toBe("unknown");
+		expect((await classifyLinkedWorktree(repo.local)).kind).toBe("unknown");
 	});
 
 	it("removeLinkedWorktree drops the worktree and its registration but keeps the branch", async () => {

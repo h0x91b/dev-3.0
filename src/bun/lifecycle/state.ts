@@ -68,6 +68,7 @@ export function lifecycleStateFromTask(project: Project, task: Task): LifecycleS
 			hasWorktree: !!task.worktreePath,
 			worktreePath: task.worktreePath ?? null,
 			lifecycleStartedAt: task.lifecycleStartedAt ?? null,
+			attachedRepo: task.attachedRepo ?? null,
 			usesWorktrees: taskUsesWorktree(project, task),
 			...(isOpsWorktreeTask(task) ? { opsWorktree: true } : {}),
 			...(isAttachedRepoInTaskFolder(task) ? { attachedRepoInFolder: true } : {}),

@@ -370,6 +370,8 @@ export async function moveTask(params: {
 	ifStatus?: string;
 	ifStatusNot?: string;
 	clientPlayedSound?: boolean;
+	/** The attached repo the user's dialog checked — see the event field of the same name. */
+	approvedAttachedRepo?: string | null;
 	/** The move raises no questions badge: the caller raises its own, or the user just acted. */
 	skipQuestionsBadge?: boolean;
 	enforceAllowedTransition?: boolean;
@@ -389,6 +391,7 @@ export async function moveTask(params: {
 			...(params.ifStatusNot ? { ifStatusNot: params.ifStatusNot } : {}),
 		},
 		force: params.force,
+		approvedAttachedRepo: params.approvedAttachedRepo,
 		clientPlayedSound: params.clientPlayedSound,
 		skipQuestionsBadge: params.skipQuestionsBadge,
 		enforceAllowedTransition: params.enforceAllowedTransition,
