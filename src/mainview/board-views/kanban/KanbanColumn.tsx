@@ -578,10 +578,10 @@ function KanbanColumn({
 				className="flex-1 overflow-y-auto px-3 py-3 space-y-2"
 				onScroll={syncListClipped}
 				onDoubleClick={(e) => {
-					// Only trigger when clicking empty space, not on a task card.
-					// Every column opens the same New Task form — the task still lands
-					// in To Do, exactly like Cmd+N.
-					if ((e.target as HTMLElement).closest("[data-task-id]")) return;
+					// Only empty list space opens New Task (lands in To Do, like Cmd+N).
+					// React bubbles events out of portals, so a card's modal must be ruled out by DOM containment.
+					const target = e.target as HTMLElement;
+					if (!e.currentTarget.contains(target) || target.closest("[data-task-id]")) return;
 					onAddTask();
 				}}
 			>
