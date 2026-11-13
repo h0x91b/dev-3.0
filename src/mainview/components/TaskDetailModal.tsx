@@ -494,20 +494,6 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 											{t("task.resetTitle")}
 										</button>
 									)}
-									<button
-										onClick={() => setIsRenaming(false)}
-										className="text-xs px-2.5 py-1 rounded-lg text-fg-2 hover:bg-fg/8 transition-colors"
-										disabled={renameSaving}
-									>
-										{t("task.editCancel")}
-									</button>
-									<button
-										onClick={handleRenameSave}
-										className="text-xs px-2.5 py-1 rounded-lg bg-accent-fill text-white hover:bg-accent-fill-hover font-semibold transition-colors disabled:opacity-50"
-										disabled={renameSaving || !renameValue.trim()}
-									>
-										{t("task.editSave")}
-									</button>
 								</div>
 							</div>
 						</div>
@@ -590,26 +576,10 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 										<span className="text-fg-2 font-medium">{generatedTitle}</span>
 									</div>
 								)}
-								{/* Pinned to the scroll area's bottom edge so Save is never below the fold. Spans the
-								    full scroll width so it covers the textarea's focus outline, and owns the area's pb-5. */}
-								<div className="sticky bottom-0 -mx-6 px-6 pb-5 pt-2 bg-overlay flex items-center justify-between">
+								{/* Pinned to the scroll area's bottom edge so the hint stays in view. Spans the full scroll
+								    width so it covers the textarea's focus outline, and owns the area's pb-5. */}
+								<div className="sticky bottom-0 -mx-6 px-6 pb-5 pt-2 bg-overlay flex items-center" data-testid="description-edit-hint">
 									<span className="text-xs text-fg-muted">{t("task.editHint")}</span>
-									<div className="flex gap-1.5">
-										<button
-											onClick={() => setIsEditing(false)}
-											className="text-xs px-2.5 py-1 rounded-lg text-fg-2 hover:bg-fg/8 transition-colors"
-											disabled={saving}
-										>
-											{t("task.editCancel")}
-										</button>
-										<button
-											onClick={handleSave}
-											className="text-xs px-2.5 py-1 rounded-lg bg-accent-fill text-white hover:bg-accent-fill-hover font-semibold transition-colors disabled:opacity-50"
-											disabled={saving || !editValue.trim()}
-										>
-											{t("task.editSave")}
-										</button>
-									</div>
 								</div>
 							</div>
 						) : (
@@ -692,10 +662,10 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 									onClick={handleRun}
 									disabled={deleting || moving || saving || (isEditing && !editValue.trim())}
 									className="task-anim flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-green-900/30 transition-colors hover:bg-green-500 disabled:opacity-50"
-									title={t("task.run")}
+									title={isEditing ? t("task.saveAndRun") : t("task.run")}
 								>
 									<PlayIcon className="h-3.5 w-3.5" />
-									{t("task.run")}
+									{isEditing ? t("task.saveAndRun") : t("task.run")}
 								</button>
 							)}
 						</div>
