@@ -297,7 +297,6 @@ describe("TaskDetailModal", () => {
 
 			await user.click(document.getElementById("task-detail-title")!);
 			expect(screen.getByRole("textbox")).toHaveValue("the brief");
-			expect(screen.getByRole("button", { name: "Save & Run" })).toBeInTheDocument();
 		});
 
 		it("clicking a custom title still opens the title editor", async () => {
@@ -340,12 +339,13 @@ describe("TaskDetailModal", () => {
 			expect(screen.getByRole("button", { name: "Reset to auto" })).toBeInTheDocument();
 		});
 
-		it("labels Run as Save & Run while the description editor is open", async () => {
+		it("labels Run as Save & Run only once the open description has changed", async () => {
 			renderModal(makeTodoTask());
 			const user = userEvent.setup();
 
-			expect(screen.getByRole("button", { name: "Run" })).toBeInTheDocument();
 			await user.click(screen.getByText("Edit"));
+			expect(screen.getByRole("button", { name: "Run" })).toBeInTheDocument();
+			await user.type(screen.getByRole("textbox"), " more");
 			expect(screen.getByRole("button", { name: "Save & Run" })).toBeInTheDocument();
 			expect(screen.queryByRole("button", { name: "Run" })).not.toBeInTheDocument();
 		});
@@ -493,7 +493,7 @@ describe("TaskDetailModal", () => {
 			const user = userEvent.setup();
 
 			await user.click(screen.getByText("Edit"));
-			await user.click(screen.getByRole("button", { name: "Save & Run" }));
+			await user.click(screen.getByRole("button", { name: "Run" }));
 
 			expect(mockedApi.request.editTask).not.toHaveBeenCalled();
 			expect(onLaunchVariants).toHaveBeenCalledWith(task, "in-progress");

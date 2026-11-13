@@ -406,6 +406,8 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 
 	const color = statusColors[task.status];
 	const generatedTitle = editValue.trim() ? titleFromDescription(editValue) : "";
+	const descriptionDirty = isEditing && editValue.trim() !== task.description;
+	const runLabel = descriptionDirty ? t("task.saveAndRun") : t("task.run");
 	const assignedLabels = (task.labelIds ?? [])
 		.map((id) => (project.labels ?? []).find((l) => l.id === id))
 		.filter(Boolean) as NonNullable<typeof project.labels>[number][];
@@ -669,10 +671,10 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 									onClick={handleRun}
 									disabled={deleting || moving || saving || (isEditing && !editValue.trim())}
 									className="task-anim flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-green-900/30 transition-colors hover:bg-green-500 disabled:opacity-50"
-									title={isEditing ? t("task.saveAndRun") : t("task.run")}
+									title={runLabel}
 								>
 									<PlayIcon className="h-3.5 w-3.5" />
-									{isEditing ? t("task.saveAndRun") : t("task.run")}
+									{runLabel}
 								</button>
 							)}
 						</div>

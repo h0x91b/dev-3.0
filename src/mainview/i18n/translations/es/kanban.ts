@@ -177,7 +177,7 @@ const kanban = {
 	"task.liveConfig": "Ahora se ejecuta: {live}",
 	"task.liveConfigDetail": "Cambiado dentro de la sesión. Iniciado con {launched}.",
 	"task.failedEdit": "Error al actualizar tarea: {error}",
-	"task.editHint": "⌘Enter para guardar · Esc para cancelar",
+	"task.editHint": "⌘Enter para guardar · Esc para cancelar · Al cerrar se guarda",
 	"task.renameHint": "Enter para guardar · Esc para cancelar",
 	"task.detailTitle": "Detalles de la tarea",
 	"task.descriptionLabel": "Descripción",
