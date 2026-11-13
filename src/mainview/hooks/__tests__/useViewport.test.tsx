@@ -28,9 +28,11 @@ describe("useViewport", () => {
 		isMobileMock.mockReturnValue(false);
 	});
 
-	it("serves device-width to a browser remote session", () => {
+	it("serves device-width and viewport-fit=cover to a browser remote session", () => {
 		isElectrobunMock.value = false;
-		expect(renderWith({ screen: "dashboard" })).toContain("width=device-width");
+		const content = renderWith({ screen: "dashboard" });
+		expect(content).toContain("width=device-width");
+		expect(content).toContain("viewport-fit=cover");
 	});
 
 	// The zoom cap on browser remote is a product decision, not an oversight: the
