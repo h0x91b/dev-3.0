@@ -23,7 +23,7 @@ import type { TaskSoundStatus } from "../task-sound-statuses";
 import type { ChangelogEntry, UpdateChangelog, UpdatePopoverPreview } from "./changelog";
 import type { TaskResetConsent, TaskResetResult, TaskStatus, WorktreeAccessState } from "./task-status";
 import type { TaskPriority } from "./task-priority";
-import type { TaskType } from "./task-type";
+import type { TaskCompletionOwner, TaskType } from "./task-type";
 import type { Task } from "./task";
 import type { TaskLineageIndex } from "./task-origin";
 import type { ColumnAgentConfig, ColumnAgentFailureReason, ColumnAgentIdentity } from "./column-agents";
@@ -1248,6 +1248,11 @@ export type AppRPCSchema = {
 			};
 			setTaskManualCompletion: {
 				params: { taskId: string; projectId: string; manualCompletion: boolean };
+				response: Task;
+			};
+			/** The user picks who completes the task; `agent` opts it in to `task move --status completed --force`. */
+			setTaskCompletionOwner: {
+				params: { taskId: string; projectId: string; owner: TaskCompletionOwner };
 				response: Task;
 			};
 			/**

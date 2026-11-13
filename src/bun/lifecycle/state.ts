@@ -1,5 +1,5 @@
 import type { PreparingStage, Project, Task } from "../../shared/types";
-import { isOpsWorktreeTask, taskCompletesManually, taskUsesWorktree } from "../../shared/types";
+import { isOpsWorktreeTask, taskSkipsMergeSuggestion, taskUsesWorktree } from "../../shared/types";
 import type { LifecycleRuntime, LifecycleState } from "./events";
 
 const PREPARING_STAGES = new Set<PreparingStage>([
@@ -75,7 +75,7 @@ export function lifecycleStateFromTask(project: Project, task: Task): LifecycleS
 			hibernated: task.hibernated === true,
 			peerReviewEnabled: project.peerReviewEnabled !== false,
 			// Derived, not the raw flag: a coordinator always owns its own completion.
-			manualCompletion: taskCompletesManually(task),
+			manualCompletion: taskSkipsMergeSuggestion(task),
 			mergeCompletionPrompt: task.mergeCompletionPrompt,
 		},
 	};

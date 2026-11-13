@@ -33,6 +33,8 @@ function makeTask(overrides?: Partial<Task>): Task {
 describe("lifecycleStateFromTask — completion ownership", () => {
 	it("reads the explicit flag for an ordinary task", () => {
 		expect(lifecycleStateFromTask(project, makeTask()).facts.manualCompletion).toBe(false);
+		// An agent-owned task is the agent's to close: a merge must not prompt the user.
+		expect(lifecycleStateFromTask(project, makeTask({ selfCompletion: true })).facts.manualCompletion).toBe(true);
 		expect(
 			lifecycleStateFromTask(project, makeTask({ manualCompletion: true })).facts.manualCompletion,
 		).toBe(true);

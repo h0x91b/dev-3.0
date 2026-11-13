@@ -25,6 +25,7 @@ vi.mock("../../rpc", () => ({
 			prepareMergeCompletionPrompt: vi.fn(),
 			dismissMergeCompletionPrompt: vi.fn(),
 			setTaskManualCompletion: vi.fn(),
+			setTaskCompletionOwner: vi.fn(),
 			rebaseTask: vi.fn(),
 			rebaseTaskViaAgent: vi.fn(),
 			commitTaskViaAgent: vi.fn(),
@@ -3627,7 +3628,7 @@ describe("TaskInfoPanel", () => {
 		it("toggles manual completion from the task context bar", async () => {
 			const task = makeTask({ manualCompletion: false });
 			const updated = makeTask({ manualCompletion: true });
-			mockedApi.request.setTaskManualCompletion.mockResolvedValue(updated);
+			mockedApi.request.setTaskCompletionOwner.mockResolvedValue(updated);
 			const dispatch = vi.fn();
 
 			await act(async () => {
@@ -3639,13 +3640,46 @@ describe("TaskInfoPanel", () => {
 				fireEvent.click(toggle);
 			});
 
-			expect(mockedApi.request.setTaskManualCompletion).toHaveBeenCalledWith({
+			expect(mockedApi.request.setTaskCompletionOwner).toHaveBeenCalledWith({
 				taskId: "t1",
 				projectId: "p1",
-				manualCompletion: true,
+				owner: "user",
 			});
 			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: updated });
 			expect(vi.mocked(toast.info)).not.toHaveBeenCalled();
+		});
+
+		it("hands completion to the agent on the next click, and back to dev3 after that", async () => {
+			mockedApi.request.setTaskCompletionOwner.mockResolvedValue(makeTask({ selfCompletion: true }));
+			await act(async () => {
+				renderPanel(makeTask({ manualCompletion: true }));
+			});
+			await act(async () => {
+				fireEvent.click(screen.getAllByTestId("task-completion-owner")[0]);
+			});
+			expect(mockedApi.request.setTaskCompletionOwner).toHaveBeenLastCalledWith({ taskId: "t1", projectId: "p1", owner: "agent" });
+		});
+
+		it("returns an agent-owned task to dev3's suggestion on click", async () => {
+			mockedApi.request.setTaskCompletionOwner.mockResolvedValue(makeTask());
+			await act(async () => {
+				renderPanel(makeTask({ selfCompletion: true }));
+			});
+			await act(async () => {
+				fireEvent.click(screen.getAllByTestId("task-completion-owner")[0]);
+			});
+			expect(mockedApi.request.setTaskCompletionOwner).toHaveBeenLastCalledWith({ taskId: "t1", projectId: "p1", owner: "dev3" });
+		});
+
+		it("says in words that the agent completes the task, and what that skips", async () => {
+			await act(async () => {
+				renderPanel(makeTask({ selfCompletion: true }));
+			});
+
+			expect(screen.getAllByText("Agent completes it").length).toBeGreaterThan(0);
+			const button = screen.getAllByTestId("task-completion-owner")[0];
+			expect(button.getAttribute("aria-label")).toContain("no approval dialog");
+			expect(button.className).toContain("text-warning-strong");
 		});
 
 		it("states active completion ownership in words, colour and the accessible name", async () => {

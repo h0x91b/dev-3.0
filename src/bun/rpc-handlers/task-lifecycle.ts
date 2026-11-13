@@ -1,4 +1,4 @@
-import type { AgentFamily, ReviewedPullRequest, AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchAfterUntil, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskOrigin, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
+import type { TaskCompletionOwner, AgentFamily, ReviewedPullRequest, AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchAfterUntil, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskOrigin, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
 import { rememberVariantBedrockProfile } from "../bedrock-profile-pref";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
 import { isTaskSoundEnabled } from "../../shared/task-sound-statuses";
@@ -1069,6 +1069,15 @@ async function setTaskManualCompletion(params: { taskId: string; projectId: stri
 	return task;
 }
 
+async function setTaskCompletionOwner(params: { taskId: string; projectId: string; owner: TaskCompletionOwner }): Promise<Task> {
+	log.info("→ setTaskCompletionOwner", { taskId: params.taskId, owner: params.owner });
+	const project = await data.getProject(params.projectId);
+	const change = { manualCompletion: params.owner === "user", selfCompletion: params.owner === "agent" };
+	const { task, verdict } = await updateTaskMetadata(boardPorts, project, params.taskId, change, USER_ACTOR);
+	log.info("← setTaskCompletionOwner done", { taskId: task.id, verdict });
+	return task;
+}
+
 async function setTaskKeepAlive(params: { taskId: string; projectId: string; enabled: boolean }): Promise<Task> {
 	log.info("→ setTaskKeepAlive", { taskId: params.taskId, enabled: params.enabled });
 	const project = await data.getProject(params.projectId);
@@ -1486,6 +1495,7 @@ export const taskLifecycleHandlers = {
 	setTaskForeignCode,
 	resolveReviewedPr,
 	setTaskManualCompletion,
+	setTaskCompletionOwner,
 	setTaskKeepAlive,
 	scheduleTaskLaunch,
 	cancelScheduledLaunch,

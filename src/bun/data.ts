@@ -916,6 +916,8 @@ export async function addTask(
 		overview?: string | null;
 		userOverview?: string | null;
 		automationId?: string | null;
+		/** See Task.selfCompletion. */
+		selfCompletion?: boolean;
 		priority?: TaskPriority;
 		relations?: Task["relations"];
 		/** Overrides the derived base branch — the imported conversation's own branch. */
@@ -997,6 +999,7 @@ export async function addTask(
 			...(extras?.overview ? { overview: extras.overview } : {}),
 			...(extras?.userOverview ? { userOverview: extras.userOverview } : {}),
 			...(extras?.automationId ? { automationId: extras.automationId } : {}),
+			...(extras?.selfCompletion === true ? { selfCompletion: true } : {}),
 			...(extras?.origin && extras.origin.kind !== "user" ? { origin: extras.origin } : {}),
 			...(extras?.epicId ? { epicId: extras.epicId } : {}),
 			...(hidden ? { hidden: true } : {}),

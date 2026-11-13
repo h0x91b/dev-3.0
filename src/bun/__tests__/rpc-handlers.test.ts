@@ -16143,6 +16143,32 @@ describe("dismissMergeCompletionPrompt broadcast", () => {
 	});
 });
 
+describe("setTaskCompletionOwner", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		_resetMergePollerState();
+	});
+
+	async function ownerPatch(task: Task, owner: "dev3" | "user" | "agent") {
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue(task);
+		await handlers.setTaskCompletionOwner({ taskId: task.id, projectId: project.id, owner });
+		return vi.mocked(data.updateTask).mock.calls[0]?.[2];
+	}
+
+	it("opts the task in to self-completion when the agent becomes the owner", async () => {
+		expect(await ownerPatch(makeTask(), "agent")).toEqual(expect.objectContaining({ selfCompletion: true }));
+	});
+
+	it("withdraws the opt-in when the user takes completion back", async () => {
+		expect(await ownerPatch(makeTask({ selfCompletion: true }), "user")).toEqual(
+			expect.objectContaining({ selfCompletion: false, manualCompletion: true }),
+		);
+	});
+});
+
 describe("setTaskManualCompletion", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
