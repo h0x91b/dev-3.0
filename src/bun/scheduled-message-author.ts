@@ -38,9 +38,9 @@ const SCRIPT_RUNTIMES = new Set(["node", "bun", "deno", "python", "python3"]);
 const SHELLS = new Set(["sh", "bash", "zsh", "fish", "dash", "ash", "ksh", "mksh", "tcsh", "csh", "nu", "elvish", "xonsh", "pwsh", "powershell"]);
 const MAX_ANCESTRY = 64;
 
-type ProcessTable = { parentOf: Map<number, number>; childrenOf: Map<number, number[]>; cmdlines: Map<number, string> };
+export type ProcessTable = { parentOf: Map<number, number>; childrenOf: Map<number, number[]>; cmdlines: Map<number, string> };
 
-async function processTable(): Promise<ProcessTable> {
+export async function processTable(): Promise<ProcessTable> {
 	// Fresh, never the 5 s poller cache: the CLI asking us may be younger than it.
 	const { tree, cmdlines } = await collectProcessInfo({ maxAgeMs: 0 });
 	const parentOf = new Map<number, number>();
@@ -374,13 +374,13 @@ function relaunchedAgentPid(task: Task, paneId: string, table: ProcessTable, roo
  * script still running, Windows (no `ps`) — is `unknown`, because the watchdog
  * tears the terminal down on `exited`.
  */
-export async function taskMainAgentLiveness(task: Task): Promise<MainAgentLiveness> {
+export async function taskMainAgentLiveness(task: Task, sharedTable?: ProcessTable): Promise<MainAgentLiveness> {
 	if (process.platform === "win32") return "unknown";
 	const paneId = task.sessionState?.panes?.[0]?.paneId?.trim();
 	if (!paneId) return "unknown";
 	const root = await paneRoot(task, paneId);
 	if (!root) return "unknown";
-	const table = await processTable();
+	const table = sharedTable ?? await processTable();
 	if (!table.cmdlines.has(root.rootPid)) return "unknown"; // `ps` failed, timed out, or raced the pane
 	if (isHandedOverShell(table, root.rootPid)) return relaunchedAgentPid(task, paneId, table, root.rootPid) ? "alive" : "exited";
 	return (table.childrenOf.get(root.rootPid) ?? []).some((pid) => !isShell(table, pid)) ? "alive" : "unknown";

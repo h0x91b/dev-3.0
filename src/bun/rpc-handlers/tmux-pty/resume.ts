@@ -261,6 +261,21 @@ async function assertAccountReachesPanes(
 	}
 }
 
+/** The relaunched agent is running again: drop the "No agent" mark now, not at the next probe tick. */
+async function clearAgentExited(project: Project, task: Task): Promise<void> {
+	try {
+		let wrote = false;
+		// Decided on the row under the lock: the probe may have written since resume started.
+		const { task: updated } = await data.updateTaskWith(project, task.id, (current) => {
+			wrote = !!current.agentExitedAt;
+			return { updates: wrote ? { agentExitedAt: undefined } : {}, result: null };
+		});
+		if (wrote) getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+	} catch (err) {
+		log.warn("Failed to clear the agent-exited mark (non-fatal)", { taskId: task.id.slice(0, 8), error: String(err) });
+	}
+}
+
 async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promise<ResumeTaskSessionOutcome> {
 	const params = { taskId };
 	log.info("→ resumeTask", { taskId: params.taskId.slice(0, 8) });
@@ -502,6 +517,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 	}
 
 	await markTerminalAttached(project, task);
+	await clearAgentExited(project, task);
 
 	try {
 		const mainPaneId = (await data.getTask(project, params.taskId)).sessionState?.panes?.[0]?.paneId ?? null;
@@ -572,6 +588,7 @@ export async function restartTask(params: { taskId: string }): Promise<string> {
 	}
 
 	await markTerminalAttached(project, task);
+	await clearAgentExited(project, task);
 
 	const url = ptyWsUrl(pty.getPtyPort(), params.taskId);
 	log.info("← restartTask", { taskId: params.taskId.slice(0, 8) });

@@ -2534,10 +2534,20 @@ describe("disconnected card", () => {
 		});
 	}
 
-	it("says 'disconnected' on the card and greys it out", () => {
+	it("says 'No agent' on the card and greys it out", () => {
 		const { container } = renderCard(disconnected());
 
-		expect(screen.getByTestId("task-card-disconnected-badge")).toHaveTextContent(/disconnected/i);
+		expect(screen.getByTestId("task-card-no-agent-badge")).toHaveTextContent("No agent");
+		expect(container.querySelector("[data-task-id='t1']")?.className).toContain("grayscale");
+	});
+
+	it("says 'No agent' on a running task whose agent exited, and greys it out", () => {
+		const { container } = renderCard(disconnected({
+			runtimeState: { runtime: "running", updatedAt: 1 },
+			agentExitedAt: "2026-11-13T10:00:00.000Z",
+		}));
+
+		expect(screen.getByTestId("task-card-no-agent-badge")).toHaveTextContent("No agent");
 		expect(container.querySelector("[data-task-id='t1']")?.className).toContain("grayscale");
 	});
 
@@ -2551,7 +2561,7 @@ describe("disconnected card", () => {
 	it("says nothing while the session is running", () => {
 		const { container } = renderCard(disconnected({ runtimeState: { runtime: "running", updatedAt: 1 } }));
 
-		expect(screen.queryByTestId("task-card-disconnected-badge")).toBeNull();
+		expect(screen.queryByTestId("task-card-no-agent-badge")).toBeNull();
 		expect(container.querySelector("[data-task-id='t1']")?.className).not.toContain("grayscale");
 	});
 
@@ -2559,7 +2569,7 @@ describe("disconnected card", () => {
 		renderCard(disconnected({ hibernated: true }));
 
 		expect(screen.getByTestId("task-card-hibernated-badge")).toBeInTheDocument();
-		expect(screen.queryByTestId("task-card-disconnected-badge")).toBeNull();
+		expect(screen.queryByTestId("task-card-no-agent-badge")).toBeNull();
 	});
 });
 

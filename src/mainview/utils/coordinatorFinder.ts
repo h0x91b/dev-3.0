@@ -1,20 +1,20 @@
 import type { Task } from "../../shared/types";
-import { ACTIVE_STATUSES, isCoordinatorTask, isTaskDisconnected } from "../../shared/types";
+import { ACTIVE_STATUSES, isCoordinatorTask, isTaskAgentless } from "../../shared/types";
 
 /** What the user would find if they opened this coordinator right now. */
-export type CoordinatorState = "current" | "live" | "disconnected" | "hibernated";
+export type CoordinatorState = "current" | "live" | "no-agent" | "hibernated";
 
 export interface CoordinatorCandidate {
 	task: Task;
 	state: CoordinatorState;
 }
 
-const STATE_BAND: Record<CoordinatorState, number> = { current: 0, live: 0, disconnected: 1, hibernated: 2 };
+const STATE_BAND: Record<CoordinatorState, number> = { current: 0, live: 0, "no-agent": 1, hibernated: 2 };
 
 function coordinatorState(task: Task, currentTaskId: string | null): CoordinatorState {
 	if (task.id === currentTaskId) return "current";
 	if (task.hibernated) return "hibernated";
-	if (isTaskDisconnected(task)) return "disconnected";
+	if (isTaskAgentless(task)) return "no-agent";
 	return "live";
 }
 
