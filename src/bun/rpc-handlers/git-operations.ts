@@ -11,6 +11,7 @@ import {
 	getTaskTitle,
 	hasGitWorkflow,
 	LOCAL_MERGE_SHARED_FOLDER_ERROR,
+	isAttachedRepoInTaskFolder,
 	isOpsWorktreeTask,
 	taskUsesWorktree,
 	resolveTaskCompareBaseBranch,
@@ -22,7 +23,8 @@ import * as github from "../github";
 import { loadSettings } from "../settings";
 import { DEFAULT_TMUX_SOCKET } from "../tmux";
 import { dev3TaskTempPath } from "../temp-paths";
-import { isInsideOpsDir } from "../ops-worktree";
+import { isInsideOpsDir, repoPathInOwnTaskFolder } from "../ops-worktree";
+import { folderWorkDir } from "../task-folder";
 import { deliverAgentPrompt } from "../agent-prompt-delivery";
 import type { AgentPromptDelivery } from "../../shared/agent-prompt-delivery";
 import { auxPaneAlive, auxPaneTitle, openAuxPane } from "../task-aux-panes";
@@ -448,8 +450,12 @@ async function getUnsavedWork(params: { taskId: string; projectId: string }): Pr
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 	const nothingUnsaved = { insertions: 0, deletions: 0, unpushed: 0, preservedOutsideBranch: false, ahead: 0, baseUnreachable: false };
-	// A plain attached repo is never deleted, so only a worktree-mode task has anything to lose.
-	if (project.kind === "virtual" ? !isOpsWorktreeTask(task) : (!taskUsesWorktree(project, task) || !task.worktreePath)) return nothingUnsaved;
+	// A plain attached repo or clone is never deleted; a worktree-mode task and a linked worktree in its own folder are.
+	if (project.kind === "virtual") {
+		const removedWithTask = isOpsWorktreeTask(task)
+			|| (isAttachedRepoInTaskFolder(task) && !!await git.getMainRepoOfLinkedWorktree(task.attachedRepo!));
+		if (!removedWithTask) return nothingUnsaved;
+	} else if (!taskUsesWorktree(project, task) || !task.worktreePath) return nothingUnsaved;
 	// An error propagates, as it does for a git task: the dialog then says "unknown", never "clean".
 	const ctx = await resolveGitReadContext(project, task);
 	if (!ctx) return nothingUnsaved;
@@ -964,7 +970,11 @@ async function setTaskAttachedRepo(params: { taskId: string; projectId: string; 
 	if (params.path !== null) {
 		root = await git.getRepoTopLevel(params.path);
 		if (!root) throw new Error(`Not a git repository: ${params.path}`);
-		if (isInsideOpsDir(root)) throw new Error(`A repository inside an Operations task folder cannot be attached: ${root}`);
+		if (isInsideOpsDir(root)) {
+			const own = task.opsWorkDir ? null : repoPathInOwnTaskFolder(root, task.worktreePath || folderWorkDir(project, task));
+			if (!own) throw new Error(`A repository inside another Operations task's folder cannot be attached: ${root}`);
+			root = own;
+		}
 	}
 	// Detected once here, not on every status poll: a repo without origin/HEAD makes detection hit the network.
 	const defaultBranch = root ? await git.getDefaultBranch(root, { local: true }).catch(() => null) : null;

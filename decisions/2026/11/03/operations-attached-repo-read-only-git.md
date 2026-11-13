@@ -1,3 +1,5 @@
+Superseded on 2026-11-13 by `decisions/2026/11/13/operations-attach-repo-in-own-task-folder.md`: a repo inside the task's own managed folder can now be attached; only another task's folder is refused.
+
 # Operations tasks: an attached repo gives read-only git
 
 ## Context
