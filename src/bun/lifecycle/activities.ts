@@ -7,7 +7,7 @@ import type {
 	Task,
 	TaskPRStatusCache,
 } from "../../shared/types";
-import { resolveTaskCompareBaseBranch, taskCompletesManually, taskUsesWorktree } from "../../shared/types";
+import { resolveTaskCompareBaseBranch, taskSkipsMergeSuggestion, taskUsesWorktree } from "../../shared/types";
 import { savedPrMergedFromBranch } from "../../shared/task-pull-requests";
 import * as data from "../data";
 import * as git from "../git";
@@ -97,7 +97,7 @@ export async function prepareMergeCompletionPrompt(params: { taskId: string; pro
 		suggestCompletion,
 		force: params.force === true,
 	});
-	const manualCompletion = taskCompletesManually(updated);
+	const manualCompletion = taskSkipsMergeSuggestion(updated);
 	const noticeOnly = manualCompletion || !suggestCompletion;
 	if (noticeOnly) {
 		const reservation = lifecycleActorRuntime(task.id).mergePromptReservation;
@@ -246,7 +246,7 @@ async function checkMergedBranches(): Promise<void> {
 				// every 60s tick.
 				const fingerprint = await getMergeCompletionFingerprint(task, branchName);
 				const nowMs = Date.now();
-				const noticeOnly = taskCompletesManually(task) || !suggestCompletion;
+				const noticeOnly = taskSkipsMergeSuggestion(task) || !suggestCompletion;
 				if (isPromptReserved(task.id, fingerprint.fingerprint, nowMs)) continue;
 				if (!noticeOnly && shouldSuppressMergePrompt(task.mergeCompletionPrompt, fingerprint, nowMs)) continue;
 

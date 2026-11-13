@@ -39,7 +39,7 @@ export const tooltips = {
 	"ttip.task.watch":
 		"Esto solo cambia esta tarea. Para observar automáticamente todas las tareas nuevas, activa el ajuste «Observar tareas de forma predeterminada».",
 	"ttip.task.manualCompletion":
-		"Mantiene la tarea abierta y deja la decisión en tus manos. Desactívala cuando la fusión final deba mostrar la sugerencia habitual.",
+		"Quién decide que la tarea está terminada: dev3 lo sugiere tras una fusión, la completas tú o el agente la completa sin diálogo de aprobación. Haz clic para cambiar.",
 	"ttip.task.siblings":
 		"Abre el resumen de variantes para comparar títulos y estados, y cambia a cualquier variante activa.",
 	"ttip.task.devOpen":

@@ -26,6 +26,23 @@ export function taskCompletesManually(
 	return task.manualCompletion === true || isCoordinatorTask(task) || task.taskType === "board-cleanup";
 }
 
+/** Who decides that a task is finished. `agent` = opted in to `task move --status completed --force`. */
+export type TaskCompletionOwner = "dev3" | "user" | "agent";
+
+export function taskCompletionOwner(
+	task: { manualCompletion?: boolean; selfCompletion?: boolean; taskType?: TaskType | null },
+): TaskCompletionOwner {
+	if (task.selfCompletion === true) return "agent";
+	return taskCompletesManually(task) ? "user" : "dev3";
+}
+
+/** A merge is reported without suggesting completion: someone other than dev3 owns that call. */
+export function taskSkipsMergeSuggestion(
+	task: { manualCompletion?: boolean; selfCompletion?: boolean; taskType?: TaskType | null },
+): boolean {
+	return taskCompletionOwner(task) !== "dev3";
+}
+
 /**
  * Rank offset added to a hibernated task so it sinks below every live P4 while
  * hibernated tasks stay internally ordered by their own priority. Any value
