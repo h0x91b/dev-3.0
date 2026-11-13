@@ -23,7 +23,7 @@ export async function confirmTaskReset(
 	const opsWorktree = isOpsWorktreeTask(task);
 	const inOwnFolder = isAttachedRepoInTaskFolder(task);
 	const unsaved = task.worktreePath && ((!keepsFolder && !task.existingBranch) || opsWorktree || inOwnFolder)
-		? api.request.getUnsavedWork({ taskId: task.id, projectId: project.id })
+		? api.request.getUnsavedWork({ taskId: task.id, projectId: project.id, expectedAttachedRepo: task.attachedRepo ?? null })
 		: null;
 	const approved = await confirm({
 		title: t("task.confirmResetTitle"),

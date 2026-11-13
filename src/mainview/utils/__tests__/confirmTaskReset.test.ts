@@ -23,7 +23,7 @@ describe("confirmTaskReset", () => {
 		expect(options).toMatchObject({ danger: true, tone: "danger", confirmLabel: "task.confirmResetLabel" });
 		expect(options.message).toContain("feat/dev3-x");
 		expect(options.deferred?.gateConfirm).toBe(true);
-		expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+		expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", expectedAttachedRepo: null });
 	});
 
 	it("declined → null", async () => {
@@ -39,7 +39,7 @@ describe("confirmTaskReset", () => {
 		expect(options.message).toContain("task.confirmResetMessageOpsWorktree");
 		expect(options.message).toContain("feat/dev3-x");
 		expect(options.deferred?.gateConfirm).toBe(true);
-		expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+		expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", expectedAttachedRepo: "/repo" });
 	});
 
 	it("an Operations task says its folder is kept and runs no git check", async () => {
@@ -58,7 +58,7 @@ describe("confirmTaskReset", () => {
 		expect(options.message).toContain("task.confirmResetMessageVirtual");
 		expect(options.message).toContain("task.attachedWorktreeNote");
 		expect(options.deferred?.gateConfirm).toBe(true);
-		expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+		expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", expectedAttachedRepo: "/wt/wt2" });
 	});
 
 	it("a repo attached outside the task folder changes nothing for an Operations reset", async () => {

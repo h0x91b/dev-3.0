@@ -175,6 +175,21 @@ describe("task.requestReset (T17, T17b)", () => {
 		expect(moveTask).not.toHaveBeenCalled();
 	});
 
+	it("resets with the attached repo the dialog reports it checked, even if the task was re-attached meanwhile, and none when it reports none", async () => {
+		const task = makeTask({ status: "review-by-user", lifecycleStartedAt: STARTED, attachedRepo: "/ops/s/ab/work/wt-a" });
+		const ask = async (decision: { approved: boolean; attachedRepo?: string | null }) => {
+			const { resp, requestId } = await openRequest(task);
+			vi.mocked(resetTaskToTodo).mockResolvedValue({ task: { ...task, status: "todo" as const }, keptBranches: [] });
+			resolveAgentRequest(requestId, decision);
+			await resp;
+			const calls = vi.mocked(resetTaskToTodo).mock.calls;
+			return calls[calls.length - 1]![0].consent;
+		};
+
+		expect(await ask({ approved: true, attachedRepo: "/ops/s/ab/work/wt-a" })).toMatchObject({ attachedRepo: "/ops/s/ab/work/wt-a", lifecycleStartedAt: STARTED });
+		expect(await ask({ approved: true })).toMatchObject({ attachedRepo: null });
+	});
+
 	it("flags the dialog when the task's branch survives the reset (owned Operations worktree)", async () => {
 		const plain = await openRequest(makeTask({ status: "in-progress", lifecycleStartedAt: STARTED }));
 		expect(listPendingAgentRequests("reset")[0].dialog.branchKept).toBeUndefined();

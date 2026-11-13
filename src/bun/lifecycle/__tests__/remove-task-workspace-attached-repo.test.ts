@@ -187,6 +187,15 @@ describe("removeAttachedWorktree — closing or resetting a plain Operations tas
 	const task = (overrides: Partial<Task> = {}) =>
 		({ id: "aabbccdd-1111-2222-3333-444444444444", projectId: "vp1", worktreePath: FOLDER, attachedRepo: WT, ...overrides }) as Task;
 	const ctxFor = (t: Task) => ({ project, sourceTask: t, task: t, stateTask: t }) as unknown as LifecycleExecutionContext;
+	// The row the locked write sees; tests change it to mimic another client writing meanwhile.
+	let row: Task;
+	beforeEach(() => {
+		row = task();
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_p, _id, mutator) => {
+			const { updates, result } = await mutator({ ...row });
+			return { task: { ...row, ...updates }, result } as never;
+		});
+	});
 	// The user's dialog approved the repo the task has when the effect starts, unless a test says otherwise.
 	const step = (type: string, ctx: LifecycleExecutionContext, extra: object = {}) =>
 		executeLifecycleEffect({ type, onError: "continue", approvedAttachedRepo: WT, ...extra } as LifecycleEffect, ctx);
@@ -200,7 +209,19 @@ describe("removeAttachedWorktree — closing or resetting a plain Operations tas
 
 		expect(git.removeLinkedWorktree).toHaveBeenCalledWith(MAIN, WT);
 		expect(rm).not.toHaveBeenCalled();
-		expect(vi.mocked(data.updateTask).mock.calls[0]![2]).toMatchObject({ status: "completed", attachedRepo: null });
+		expect(ctx.task).toMatchObject({ status: "completed", attachedRepo: null });
+	});
+
+	it("keeps a different repo another client attached after the removal: only the removed one is detached", async () => {
+		vi.mocked(git.classifyLinkedWorktree).mockResolvedValue({ kind: "linked", mainRepo: MAIN });
+		const ctx = ctxFor(task());
+		row = task({ attachedRepo: `${FOLDER}/wt-b` });
+
+		await step("removeAttachedWorktree", ctx);
+		await step("persistTerminalTask", ctx, { status: "completed", onError: "abort" });
+
+		expect(git.removeLinkedWorktree).toHaveBeenCalledWith(MAIN, WT);
+		expect(ctx.task).toMatchObject({ status: "completed", attachedRepo: `${FOLDER}/wt-b` });
 	});
 
 	it("detaches it in the reset write too", async () => {
@@ -256,7 +277,7 @@ describe("removeAttachedWorktree — closing or resetting a plain Operations tas
 
 		expect(git.classifyLinkedWorktree).not.toHaveBeenCalled();
 		expect(git.removeLinkedWorktree).not.toHaveBeenCalled();
-		expect(vi.mocked(data.updateTask).mock.calls[0]![2]).toMatchObject({ attachedRepo: null });
+		expect(ctx.task.attachedRepo).toBeNull();
 	});
 
 	it("says the attached worktree is already removed when the reset write misses afterwards", async () => {
