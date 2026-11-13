@@ -1,4 +1,6 @@
 import { useT } from "../i18n";
+import { useMobile } from "../hooks/useMobile";
+import { isElectrobun } from "../rpc";
 
 interface TerminalImmersiveChromeProps {
 	onExit: () => void;
@@ -7,10 +9,12 @@ interface TerminalImmersiveChromeProps {
 /** The only app-owned chrome rendered while a task terminal is immersive. */
 export default function TerminalImmersiveChrome({ onExit }: TerminalImmersiveChromeProps) {
 	const t = useT();
+	const isMobile = useMobile();
+	const mobileBrowser = isMobile && !isElectrobun;
 
 	return (
 		<div
-			className="h-11 min-h-11 md:h-7 md:min-h-7 flex-shrink-0 flex items-center justify-between gap-2 border-b border-edge bg-raised px-2.5"
+			className={`h-11 min-h-11 md:h-7 md:min-h-7 flex-shrink-0 flex items-center justify-between gap-2 border-b border-edge ${mobileBrowser ? "bg-base" : "bg-raised"} px-2.5`}
 			data-testid="terminal-immersive-chrome"
 		>
 			<span className="text-fg-3 text-dense font-semibold tracking-wide" aria-label="dev3">dev3</span>

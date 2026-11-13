@@ -2,6 +2,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "../App";
 import { registerBoardViewCommandHandler, resetBoardViewCommandsForTests } from "../board-views/view-commands";
+import { MobileProvider } from "../hooks/useMobile";
 import { I18nProvider } from "../i18n";
 import type { SecretRequest } from "../../shared/secret-request";
 
@@ -5014,5 +5015,76 @@ describe("App navigation palettes are mutually exclusive", () => {
 		expect(openPalettes()).toEqual([]);
 		expect(document.activeElement).toBe(trigger);
 		trigger.remove();
+	});
+});
+
+describe("Browser-mode Safari top band", () => {
+	const originalScreenWidth = window.screen.width;
+
+	function setScreenWidth(width: number) {
+		Object.defineProperty(window.screen, "width", { value: width, configurable: true, writable: true });
+	}
+
+	async function renderAppWithMobile() {
+		render(
+			<I18nProvider>
+				<MobileProvider>
+					<App />
+				</MobileProvider>
+			</I18nProvider>,
+		);
+		await waitFor(() => expect(screen.queryByTestId("dashboard-screen")).toBeInTheDocument());
+		await act(async () => {
+			await Promise.resolve();
+		});
+	}
+
+	beforeEach(() => {
+		(window as Window & { __electrobunWebviewId?: number }).__electrobunWebviewId = 1;
+		rpcTransport.isElectrobun = true;
+		fakePlatform("mac");
+		setScreenWidth(1440);
+		vi.clearAllMocks();
+		vi.mocked(api.request.checkSystemRequirements).mockResolvedValue([]);
+		vi.mocked(api.request.getProjects).mockResolvedValue([]);
+		vi.mocked(api.request.getLastRoute).mockResolvedValue({ route: null });
+		vi.mocked(api.request.listTmuxSessions).mockResolvedValue([]);
+		vi.mocked(api.request.getAllProjectTasks).mockResolvedValue([]);
+	});
+
+	afterEach(() => {
+		rpcTransport.isElectrobun = true;
+		setScreenWidth(originalScreenWidth);
+		Object.defineProperty(globalThis, "navigator", { value: realNavigator, writable: true, configurable: true });
+	});
+
+	it("makes a mobile browser header a sticky full-width opaque bg-base band without glass-header", async () => {
+		rpcTransport.isElectrobun = false;
+		setScreenWidth(390);
+		await renderAppWithMobile();
+
+		const header = screen.getByRole("banner", { name: "Application header" });
+		expect(header).toHaveClass("sticky", "top-0", "inset-x-0", "w-full", "bg-base", "pt-[env(safe-area-inset-top,0px)]");
+		expect(header.querySelector(".glass-header")).toBeNull();
+	});
+
+	it("keeps glass-header and a static header for a desktop browser remote session", async () => {
+		rpcTransport.isElectrobun = false;
+		setScreenWidth(1440);
+		await renderAppWithMobile();
+
+		const header = screen.getByRole("banner", { name: "Application header" });
+		expect(header).not.toHaveClass("sticky", "pt-[env(safe-area-inset-top,0px)]");
+		expect(header.querySelector(".glass-header")).not.toBeNull();
+	});
+
+	it("keeps the desktop Electrobun header static with glass-header", async () => {
+		rpcTransport.isElectrobun = true;
+		setScreenWidth(390);
+		await renderAppWithMobile();
+
+		const header = screen.getByRole("banner", { name: "Application header" });
+		expect(header).not.toHaveClass("sticky", "pt-[env(safe-area-inset-top,0px)]");
+		expect(header.querySelector(".glass-header")).not.toBeNull();
 	});
 });
