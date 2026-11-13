@@ -76,6 +76,7 @@ async function showAutomation(args: ParsedArgs, socketPath: string, context: Cli
 		`Timezone:  ${a.timezone}`,
 		`Agent:     ${a.agentId ?? "(project default)"}`,
 		`Catch-up:  ${a.catchUp}`,
+		`Self-completion: ${a.selfCompletion ? "on — its tasks may complete themselves with --force" : "off"}`,
 		`Next run:  ${formatWhen(a.nextRunAt)} (UTC)`,
 		`Created:   ${formatWhen(a.createdAt)}`,
 		"",
@@ -96,8 +97,15 @@ async function showAutomation(args: ParsedArgs, socketPath: string, context: Cli
 	process.stdout.write(lines.join("\n") + "\n");
 }
 
+function readOnOff(raw: string | undefined, flag: string): boolean | undefined {
+	if (raw === undefined) return undefined;
+	const value = raw.trim().toLowerCase();
+	if (value !== "on" && value !== "off") exitUsage(`${flag} must be on or off (got "${raw}")`);
+	return value === "on";
+}
+
 async function createAutomation(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["project", "name", "prompt", "rrule", "timezone", "tz", "agent", "config", "catch-up", "disabled", "template"]);
+	rejectUnknownFlags(args, ["project", "name", "prompt", "rrule", "timezone", "tz", "agent", "config", "catch-up", "disabled", "template", "self-completion"]);
 	const projectId = requireProjectId(args, context);
 
 	const template = args.flags.template ? getAutomationTemplate(args.flags.template) : undefined;
@@ -119,6 +127,8 @@ async function createAutomation(args: ParsedArgs, socketPath: string, context: C
 	if (args.flags.config) params.configId = args.flags.config;
 	if (args.flags["catch-up"]) params.catchUp = args.flags["catch-up"];
 	if (args.flags.disabled === "true") params.enabled = false;
+	const selfCompletion = readOnOff(args.flags["self-completion"], "--self-completion");
+	if (selfCompletion !== undefined) params.selfCompletion = selfCompletion;
 
 	const resp = await sendRequest(socketPath, "automations.create", params);
 	if (!resp.ok) exitError(resp.error || "Failed to create automation");
@@ -128,7 +138,7 @@ async function createAutomation(args: ParsedArgs, socketPath: string, context: C
 }
 
 async function updateAutomation(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["project", "id", "name", "prompt", "rrule", "timezone", "tz", "agent", "config", "catch-up", "enable", "disable"]);
+	rejectUnknownFlags(args, ["project", "id", "name", "prompt", "rrule", "timezone", "tz", "agent", "config", "catch-up", "enable", "disable", "self-completion"]);
 	const projectId = requireProjectId(args, context);
 	const automationId = args.positional[0] || args.flags.id;
 	if (!automationId) exitUsage("Usage: dev3 automations update <automation-id> [--name ...] [--prompt ...] [--rrule ...] [--enable|--disable]");
@@ -146,6 +156,8 @@ async function updateAutomation(args: ParsedArgs, socketPath: string, context: C
 	if (args.flags["catch-up"] !== undefined) params.catchUp = args.flags["catch-up"];
 	if (args.flags.enable === "true") params.enabled = true;
 	if (args.flags.disable === "true") params.enabled = false;
+	const selfCompletion = readOnOff(args.flags["self-completion"], "--self-completion");
+	if (selfCompletion !== undefined) params.selfCompletion = selfCompletion;
 	if (Object.keys(params).length === 2) exitUsage("Nothing to update — pass at least one field flag.");
 
 	const resp = await sendRequest(socketPath, "automations.update", params);

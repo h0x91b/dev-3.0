@@ -1,5 +1,7 @@
 # Auto-approve agent launch requests, never completion requests
 
+Superseded in part on 2026-11-13 by `decisions/2026/11/13/opt-in-self-completion-with-force.md`: the completion dialog still never approves itself on a timer, but a task explicitly opted in to self-completion skips it with `--force`.
+
 ## Context
 
 An agent asking to set another task running (`dev3 task move --task seq:N --status in-progress`,

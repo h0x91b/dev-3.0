@@ -22,7 +22,7 @@ import type { LaunchPreparationOutcome } from "../../shared/launch-preparation";
 import { handleTasks } from "./tasks";
 import { parseResumeAccountFlag, reportResumeOutcome } from "./agent";
 import type { CliHibernateOutcome, CliWakeOutcome } from "../../shared/task-hibernate";
-import { buildTaskShowJson, describeTaskEpic, describeTaskOrigin, type ShownTask } from "../task-json";
+import { SELF_COMPLETION_HINT, buildTaskShowJson, describeTaskEpic, describeTaskOrigin, type ShownTask } from "../task-json";
 import { exitEpicRequestFailed } from "./epic";
 import { withBooleanFlags } from "./spaces";
 import { dependencyIds, formatDependencyRefs, type ResolvedDependency, type TaskDependencyInfo } from "../../shared/task-dependencies";
@@ -285,6 +285,7 @@ function printTask(task: ShownTask, opts: ShowTaskOptions = {}): void {
 	}
 	// A coordinator owns its completion whether or not the flag is set.
 	if (taskCompletesManually(task)) fields.push(["Manual completion:", "on"]);
+	if (task.selfCompletion === true) fields.push(["Self-completion:", SELF_COMPLETION_HINT]);
 
 	printDetail(fields);
 
@@ -343,9 +344,18 @@ function epicParams(args: ParsedArgs): Record<string, unknown> {
 	return epic !== undefined ? { epic } : {};
 }
 
+/** `--self-completion on|off`: whether `task move --status completed --force` may skip the approval dialog. */
+function readSelfCompletionFlag(args: ParsedArgs): boolean | undefined {
+	const raw = args.flags["self-completion"];
+	if (raw === undefined) return undefined;
+	const value = raw.trim().toLowerCase();
+	if (value !== "on" && value !== "off") exitUsage(`--self-completion must be on or off (got "${raw}")`);
+	return value === "on";
+}
+
 async function createTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
 	args = withBooleanFlags(args, ["no-epic"]);
-	rejectUnknownFlags(args, ["project", "title", "description", "type", "scratch", "run", "pr", "branch", "worktree", "handoff-file", "agent", "config", "epic", "no-epic", "start-after", "until", "reason", "depends-on"]);
+	rejectUnknownFlags(args, ["project", "title", "description", "type", "scratch", "run", "pr", "branch", "worktree", "handoff-file", "agent", "config", "epic", "no-epic", "start-after", "until", "reason", "depends-on", "self-completion"]);
 	const epic = epicParams(args);
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (!projectId) {
@@ -428,6 +438,7 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 	if (prFlag) params.pr = prFlag;
 	if (branchFlag) params.branch = branchFlag;
 	if (ownWorktree) params.ownWorktree = true;
+	if (readSelfCompletionFlag(args) === true) params.selfCompletion = true;
 	// Without either flag the new task inherits the creating task's epic in the app.
 	Object.assign(params, epic);
 	Object.assign(params, startAfter, dependencyParams(args));
@@ -477,7 +488,7 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 
 async function updateTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
 	args = withBooleanFlags(args, ["no-epic", "no-start-after"]);
-	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description", "priority", "manual-completion", "type", "force", "print-role", "epic", "no-epic", "start-after", "until", "no-start-after", "agent", "config", "depends-on", "no-depends-on"]);
+	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description", "priority", "manual-completion", "self-completion", "type", "force", "print-role", "epic", "no-epic", "start-after", "until", "no-start-after", "agent", "config", "depends-on", "no-depends-on"]);
 	const taskId = resolveTaskId(args, context);
 	if (!taskId) {
 		exitUsage("Usage: dev3 task update <id|--task id|--task-id id|--id id> [--title '...'] [--description '...'] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] [--depends-on <id>[,<id>...]] [--no-depends-on [<id>[,<id>...]]] [--start-after <id> [--until completed|merged] | --no-start-after]");
@@ -528,6 +539,12 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 		}
 		params.manualCompletion = normalized === "on";
 	}
+	const selfCompletion = readSelfCompletionFlag(args);
+	if (selfCompletion !== undefined) {
+		params.selfCompletion = selfCompletion;
+		// Lets the app refuse a task opting ITSELF in.
+		if (context?.taskId) params.sourceTaskId = context.taskId;
+	}
 	const rawType = args.flags.type;
 	if (rawType !== undefined) params.taskType = parseTypeFlag(rawType);
 	if (args.flags.force === "true") {
@@ -550,6 +567,7 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 		&& params.description === undefined
 		&& params.priority === undefined
 		&& rawManualCompletion === undefined
+		&& selfCompletion === undefined
 		&& rawType === undefined
 		&& params.epic === undefined
 		&& params.noEpic === undefined
@@ -558,7 +576,7 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 		&& params.dependsOn === undefined
 		&& params.noDependsOn === undefined
 	) {
-		exitUsage("Provide --title, --description, --priority, --manual-completion, --type, --epic, --no-epic, --depends-on, --no-depends-on, --start-after or --no-start-after to update");
+		exitUsage("Provide --title, --description, --priority, --manual-completion, --self-completion, --type, --epic, --no-epic, --depends-on, --no-depends-on, --start-after or --no-start-after to update");
 	}
 
 	const resp = await sendRequest(socketPath, "task.update", params);
@@ -834,9 +852,9 @@ async function waitForDestructiveApproval(
 	}
 }
 
-function reportApproved(spec: DestructiveApprovalSpec, taskRef: string, task: Task | undefined, ownSession: boolean, context: CliContext | null): void {
+function reportApproved(spec: DestructiveApprovalSpec, taskRef: string, task: Task | undefined, ownSession: boolean, context: CliContext | null, lead = "User approved"): void {
 	process.stdout.write(
-		`User approved — task ${(task?.id ?? taskRef).slice(0, 8)} moved to ${spec.label}.\n` +
+		`${lead} — task ${(task?.id ?? taskRef).slice(0, 8)} moved to ${spec.label}.\n` +
 		(spec.keepsFolder
 			? (task?.id === context?.taskId || (!task && ownSession)
 				? "This terminal session is closing now. The project folder keeps every file.\n"
@@ -964,6 +982,29 @@ async function requestDestructiveApproval(
 	for (const branch of result.keptBranches ?? []) {
 		process.stdout.write(`Kept branch ${branch.name}: ${KEPT_BRANCH_REASON[branch.reason] ?? branch.reason}. The task's notes record it.\n`);
 	}
+}
+
+/** `task move --status completed --force`: the caller decides, so nobody is asked and nothing blocks. */
+async function completeWithoutApproval(
+	taskId: string,
+	args: ParsedArgs,
+	socketPath: string,
+	context: CliContext | null,
+	codexStopHook: boolean,
+): Promise<void> {
+	const params: Record<string, unknown> = { taskId, force: true };
+	const projectId = resolveProjectId(args.flags.project, context);
+	if (projectId) params.projectId = projectId;
+	const spec = approvalSpecFor(COMPLETION_APPROVAL, projectId, taskId);
+
+	const resp = await sendRequest(socketPath, spec.method, params);
+	if (!resp.ok) exitError(resp.error || "Failed to complete the task");
+	if (codexStopHook) {
+		process.stdout.write(CODEX_STOP_HOOK_SUCCESS_JSON);
+		return;
+	}
+	const task = (resp.data as { task?: Task }).task;
+	reportApproved(spec, taskId, task, targetsOwnSession(taskId, args, context), context, "Completed without asking (--force)");
 }
 
 const KEPT_BRANCH_REASON: Record<string, string> = {
@@ -1166,7 +1207,7 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	// `--tolerate-app-offline` only changes the app-offline exit code, which is
 	// decided before dispatch (main.ts) — accepted and ignored here.
 	rejectUnknownFlags(args, [
-		"id", "task", "task-id", "project", "status", "if-status", "if-status-not", "handoff-file", "agent", "config", "as-sender", "reason",
+		"id", "task", "task-id", "project", "status", "if-status", "if-status-not", "handoff-file", "agent", "config", "as-sender", "reason", "force",
 		CODEX_STOP_HOOK_FLAG.slice(2), TOLERATE_APP_OFFLINE_FLAG.slice(2),
 	]);
 	// An external sender starting a task gets the launch dialog, like an agent does.
@@ -1201,6 +1242,12 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 
 	// `completed` is not a direct move — it asks the user for approval in the
 	// app and blocks until they answer (or the wait times out).
+	const force = args.flags.force === "true";
+	if (force && newStatus !== "completed") {
+		exitUsage("--force only applies to --status completed: it completes the task without asking the user.");
+	}
+	if (force) return completeWithoutApproval(taskId, args, socketPath, context, codexStopHook);
+
 	if (newStatus === "completed") {
 		return requestDestructiveApproval(COMPLETION_APPROVAL, taskId, args, socketPath, context, codexStopHook);
 	}
