@@ -25,7 +25,8 @@ import LabelPicker from "./LabelPicker";
 import PriorityBadge from "./PriorityBadge";
 import VariantDots from "./VariantDots";
 import LineageCluster from "./LineageCluster";
-import { StartAfterCompletedIcon, StartAfterMergedIcon } from "./LineageIcons";
+import { DependencyBlockedIcon, StartAfterCompletedIcon, StartAfterMergedIcon } from "./LineageIcons";
+import { formatDependencyRefs, type DependencySummary } from "../../shared/task-dependencies";
 import { COORDINATOR_CARD_HALO, TaskRoleBand, taskRole } from "./TaskRoleBand";
 import EpicChip from "./EpicChip";
 import { useEpics } from "../hooks/useEpics";
@@ -101,11 +102,13 @@ interface TaskCardProps {
 	showProjectMark?: boolean;
 	/** Where the task came from and what it created — see LineageCluster. */
 	lineage?: CardLineage;
+	/** The tasks this one depends on, resolved against its board; absent when it has none. */
+	dependency?: DependencySummary;
 	/** Filter the board to an epic; without it the epic chip is plain text. */
 	onFilterByEpic?: (epic: Epic) => void;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, resourceUsage, bellCount = 0, bellReasons, ports, devServer, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo, onOpenUnresolvedComments, onEditDraft, showProjectMark = false, lineage, onFilterByEpic }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, resourceUsage, bellCount = 0, bellReasons, ports, devServer, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo, onOpenUnresolvedComments, onEditDraft, showProjectMark = false, lineage, dependency, onFilterByEpic }: TaskCardProps) {
 	const { byId: epicsById } = useEpics();
 	const epic = task.epicId ? epicsById.get(task.epicId) : undefined;
 	const t = useT();
@@ -687,6 +690,20 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					</div>
 				)}
 			</div>,
+		);
+	}
+	// Read-only: only open dependencies show. A card with none, or with all done, shows nothing.
+	// The start-after prerequisite already has its own chip above.
+	const openDeps = task.status === "completed" || task.status === "cancelled" ? [] : (dependency?.open ?? []).filter((d) => d.taskId !== launchAfter?.taskId);
+	if (openDeps.length > 0) {
+		const shown = formatDependencyRefs(openDeps.slice(0, 3)) + (openDeps.length > 3 ? ", …" : "");
+		timeSignals.push(
+			<Tooltip key="blocked" content={t("task.blockedByTooltip", { refs: formatDependencyRefs(openDeps) })}>
+				<span data-testid="task-card-blocked-chip" className="flex h-5 flex-shrink-0 items-center gap-1 rounded px-1.5 text-micro text-fg-3">
+					<DependencyBlockedIcon className="w-3 h-3" />
+					{t("task.blockedBy", { refs: shown })}
+				</span>
+			</Tooltip>,
 		);
 	}
 	if (!isTodo) {

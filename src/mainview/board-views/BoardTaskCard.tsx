@@ -4,6 +4,7 @@ import type { AppAction, Route } from "../state";
 import type { CardLineage } from "../utils/taskLineage";
 import TaskCard from "../components/TaskCard";
 import type { BoardTaskCardProps } from "./board-service";
+import type { DependencySummary } from "../../shared/task-dependencies";
 
 /** Everything the host knows about a card that a view never has to pass. */
 export interface BoardCardBindings {
@@ -22,6 +23,8 @@ export interface BoardCardBindings {
 	siblingMap: Map<string, Task[]>;
 	taskPrMap: Map<string, TaskPRBadgeInfo>;
 	lineageFor(task: Task): CardLineage | undefined;
+	/** Dependency state per task id; only tasks that depend on something have an entry. */
+	dependencyMap: Map<string, DependencySummary>;
 	onFilterByEpic?: (epic: Epic) => void;
 	onLaunchVariants(task: Task, targetStatus: TaskStatus): void;
 	onAddAttempts(task: Task): void;
@@ -56,6 +59,7 @@ export function BoardTaskCard({ task, onDragStart, isMoving = false, onSetMoving
 			onSetMoving={onSetMoving}
 			siblingMap={host.siblingMap}
 			lineage={host.lineageFor(task)}
+			dependency={host.dependencyMap.get(task.id)}
 			onFilterByEpic={host.onFilterByEpic}
 			prInfo={host.taskPrMap.get(task.id)}
 			onOpenUnresolvedComments={host.onOpenUnresolvedComments}

@@ -52,6 +52,16 @@ export function StartAfterCompletedIcon({ className }: { className?: string }) {
 	);
 }
 
+/** Blocked by a dependency: two chained links. */
+export function DependencyBlockedIcon({ className }: { className?: string }) {
+	return (
+		<svg {...svgBase(className)}>
+			<path d="M10 13a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" />
+			<path d="M14 11a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
+		</svg>
+	);
+}
+
 /** Start after another task's pull request merges: a merge branch. */
 export function StartAfterMergedIcon({ className }: { className?: string }) {
 	return (

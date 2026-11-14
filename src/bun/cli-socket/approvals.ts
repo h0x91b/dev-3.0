@@ -15,6 +15,7 @@ import { loadBoardTasks, resolveAgentMessageSource, resolveTaskAcrossProjects, r
 import { type ApprovalReason, approvalReasonFromParams, normalizeApprovalReason } from "../../shared/approval-reason";
 import { awaitLaunchPreparation } from "./launch-preparation";
 import type { LaunchPreparationOutcome } from "../../shared/launch-preparation";
+import type { ResolvedDependency } from "../../shared/task-dependencies";
 
 export function approvalStatusOf(kind: DestructiveApprovalKind, task: Task): AgentApprovalStatus {
 	const known = getAgentRequestState(kind, task.id);
@@ -228,6 +229,8 @@ type LaunchApprovalOutcome =
 		seq: number;
 		title: string;
 		launched: Array<{ variantIndex: number | null; replyCommand: string; preparation: LaunchPreparationOutcome }>;
+		/** Dependencies still open when the launch was approved. */
+		startedBlockedBy?: ResolvedDependency[];
 	};
 
 /**
@@ -271,6 +274,8 @@ export async function requestAgentLaunchApproval(opts: {
 	handoff?: boolean;
 	/** Why the requester asks (`--reason`), already normalized. */
 	reason?: ApprovalReason;
+	/** The target's open dependencies: the dialog names them, the start is still the user's call. */
+	openDependencies?: ResolvedDependency[];
 }): Promise<LaunchApprovalOutcome> {
 	const { project, task, targetStatus, requester } = opts;
 	// A coordinator's own preset preselects the dialog and is what an unwatched auto-approval launches.
@@ -326,6 +331,7 @@ export async function requestAgentLaunchApproval(opts: {
 		autoApproveAt,
 		...(suggested ? { suggested } : {}),
 		...(opts.reason ? { reason: opts.reason } : {}),
+		...(opts.openDependencies?.length ? { openDependencies: opts.openDependencies.map((d) => d.seq) } : {}),
 	});
 
 	const answer = await decision;
@@ -382,6 +388,7 @@ export async function requestAgentLaunchApproval(opts: {
 			// against its own.
 			replyCommand: launchReplyCommand(child, requester, boardTasks),
 		})),
+		...(opts.openDependencies?.length ? { startedBlockedBy: opts.openDependencies } : {}),
 	};
 }
 

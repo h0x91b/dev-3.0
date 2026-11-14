@@ -25,6 +25,8 @@ import AgentConfigPicker, {
 import SchedulePicker from "./SchedulePicker";
 import StartAfterPicker, { type StartAfterChoice } from "./StartAfterPicker";
 import MemoryPressureBanner from "./MemoryPressureBanner";
+import OpenDependenciesNote from "./OpenDependenciesNote";
+import { dependencyIds, summarizeDependencies } from "../../shared/task-dependencies";
 import { SendLaterIcon, WatchIcon, WatchingIcon } from "./TaskIcons";
 import AgentInstallNotice, { findMissingVariantAgent, type AgentCheckState } from "./AgentInstallNotice";
 
@@ -165,6 +167,18 @@ function LaunchVariantsModal({
 	}, []);
 
 	const missingAgent = findMissingVariantAgent(variants, agents, agentAvailability);
+
+	// Starting a To Do task that still depends on open tasks warns, and never refuses.
+	const [openDependencies, setOpenDependencies] = useState<number[]>([]);
+	useEffect(() => {
+		if (mode !== "spawn" || task.status !== "todo" || dependencyIds(task).length === 0) return;
+		let live = true;
+		Promise.resolve()
+			.then(() => api.request.getTasks({ projectId: project.id }))
+			.then((all) => { if (live) setOpenDependencies(summarizeDependencies(task, all).open.map((d) => d.seq)); })
+			.catch(() => {});
+		return () => { live = false; };
+	}, [mode, task, project.id]);
 
 	// Keep Tab/Shift+Tab inside the dialog — otherwise focus escapes to the
 	// Kanban board behind the modal (labels, task cards), letting the user
@@ -437,6 +451,11 @@ function LaunchVariantsModal({
 				<div className="px-6 pt-3 empty:hidden">
 					<MemoryPressureBanner launchCount={variants.length} />
 				</div>
+				{!scheduleOpen && openDependencies.length > 0 && (
+					<div className="px-6 pt-3">
+						<OpenDependenciesNote seqs={openDependencies} />
+					</div>
+				)}
 
 				{/* Variant rows. Every row shares one set of rails —
 				    #N | picker | remove — so the index and the × line up with the

@@ -37,6 +37,7 @@ import { READABLE_GUTTER } from "./readable-width";
 import { flushPendingBoardViewCommand, registerBoardViewCommandHandler, type BoardViewCommand } from "./view-commands";
 import type { RegisteredBoardView } from "./registry";
 import { toast } from "../toast";
+import { dependencyIds, summarizeDependencies, type DependencySummary } from "../../shared/task-dependencies";
 
 
 export interface BoardHostProps {
@@ -243,6 +244,14 @@ function BoardHost(props: BoardHostProps) {
 		return map;
 	}, [tasks]);
 
+	const dependencyMap = useMemo(() => {
+		const map = new Map<string, DependencySummary>();
+		for (const task of tasks) {
+			if (dependencyIds(task).length > 0) map.set(task.id, summarizeDependencies(task, tasks));
+		}
+		return map;
+	}, [tasks]);
+
 	const { lineage, knownProjects, applyChildrenFilter } = filter;
 	const lineageFor = useCallback((task: Task): CardLineage | undefined => {
 		const parent = lineageParent(task, lineage);
@@ -275,6 +284,7 @@ function BoardHost(props: BoardHostProps) {
 		taskResourceUsage: props.taskResourceUsage,
 		activeTaskId: props.activeTaskId,
 		siblingMap,
+		dependencyMap,
 		taskPrMap: filter.taskPrMap,
 		lineageFor,
 		onFilterByEpic: filter.applyEpicFilter,
@@ -282,7 +292,7 @@ function BoardHost(props: BoardHostProps) {
 		onAddAttempts: (task) => launch(task, task.status, "addAttempts"),
 		onEditDraft: (task) => setEditDraftTaskId(task.id),
 		onOpenUnresolvedComments: props.onOpenUnresolvedComments,
-	}), [projectOf, space, dispatch, navigate, agents, props.bellCounts, props.bellReasons, taskPorts, props.taskDevServers, props.taskResourceUsage, props.activeTaskId, siblingMap, filter.taskPrMap, lineageFor, filter.applyEpicFilter, launch, props.onOpenUnresolvedComments]);
+	}), [projectOf, space, dispatch, navigate, agents, props.bellCounts, props.bellReasons, taskPorts, props.taskDevServers, props.taskResourceUsage, props.activeTaskId, siblingMap, dependencyMap, filter.taskPrMap, lineageFor, filter.applyEpicFilter, launch, props.onOpenUnresolvedComments]);
 
 	// Written during render so a view rendering in this same pass already reads it.
 	const sourceRef = useRef<BoardModelSource | null>(null);
