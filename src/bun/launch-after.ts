@@ -1,5 +1,6 @@
 import type { AgentMessageSource, LaunchAfter, LaunchAfterUntil, LaunchVariant, Project, Task } from "../shared/types";
 import { startAfterAbandonedMessage, type StartAfterAbandonReason } from "../shared/preparation-failure";
+import { dependencyWouldCycle } from "../shared/task-dependencies";
 import * as data from "./data";
 import { createLogger } from "./logger";
 import { getPushMessage } from "./rpc-handlers/shared-pure";
@@ -86,13 +87,9 @@ export function launchAfterRefusal(task: Task, prereq: Task, until: LaunchAfterU
 	if (prereq.projectId !== task.projectId) return "The task to wait for must be on the same board.";
 	const refusal = prerequisiteRefusal(prereq, until, tasks);
 	if (refusal) return refusal;
-	const byId = new Map(tasks.map((t) => [t.id, t]));
-	const seen = new Set<string>();
-	for (let cur: Task | undefined = prereq; cur?.launchAfter && !seen.has(cur.id); cur = byId.get(cur.launchAfter.taskId)) {
-		seen.add(cur.id);
-		if (cur.launchAfter.taskId === task.id) {
-			return `Task #${prereq.seq} already waits, directly or through other tasks, for this one. That would never start.`;
-		}
+	// One graph with `task update --depends-on`: a start-after condition is a dependency link.
+	if (dependencyWouldCycle(task, prereq, tasks)) {
+		return `Task #${prereq.seq} already waits, directly or through other tasks, for this one. That would never start.`;
 	}
 	return null;
 }
