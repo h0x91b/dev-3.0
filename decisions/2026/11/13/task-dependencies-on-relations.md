@@ -15,7 +15,7 @@ A board with an order (this before that, this after those three) had only `--sta
 - One graph: `dependencyIds` in `src/shared/task-dependencies.ts` returns the `blocked-by` targets plus the `launchAfter` prerequisite. The card, `task show`, the start warning and the cycle check all read it. `launchAfterRefusal` in `src/bun/launch-after.ts` dropped its own cycle walk for the shared `dependencyWouldCycle`, so a loop that mixes both links is refused from either side.
 - State (`summarizeDependencies`): a dependency is done once any variant of it completed, or once every variant is finished. A cancelled dependency therefore stops blocking, and `task show` still prints its status. A deleted dependency is ignored. `blocked` means at least one is open; `ready` means all are done.
 - Writes go through `addDependencies` / `removeDependencies` in `src/bun/task-dependencies.ts` (`updateTaskWith`, under the tasks-file lock). The CLI is the only editor in the first cut: `task create|update --depends-on`, `task update --no-depends-on [refs]`. A seq shared by a variant group names its lowest variant.
-- The card shows a read-only chip in the signals zone (`TaskCard.tsx`): "Blocked by #3, #5" in muted ink on any open task, "Ready" in the success tone on a To Do card. The start-after prerequisite keeps its own chip and is left out of the blocked list. `BoardHost` resolves the state once per board (`dependencyMap`).
+- The card shows a read-only chip in the signals zone (`TaskCard.tsx`): "Blocked by #3, #5" in muted ink on any open task. Once every dependency is done the card shows nothing, like a card with no dependencies: a To Do card without the chip can be started. `tasks list` and `task show` still say `ready`. The start-after prerequisite keeps its own chip and is left out of the blocked list. `BoardHost` resolves the state once per board (`dependencyMap`).
 - Starting a blocked task warns and proceeds: an inline note in the launch modal and in the agent launch approval dialog (`OpenDependenciesNote.tsx`), and a stderr warning from `dev3 task move` (`startedBlockedBy` on the answer).
 - Moving a To Do task to another board drops its `blocked-by` relations, like its start-after condition.
 
@@ -30,4 +30,5 @@ A board with an order (this before that, this after those three) had only `--sta
 - Widening `launchAfter` to a list: older builds read one `taskId` and would start early or never. Rejected.
 - A new `dependsOn` field with a stored seq: a second field beside the reserved `blocked-by` kind, and a seq that can go stale.
 - Auto-start once every dependency is done: asked not to. `--start-after` stays the one way to start a task by itself.
+- A "Ready" chip on the card once every dependency is done: built, then removed. It named no task, and an absent "Blocked by" chip already says the same with less on the card.
 - A graph view and an in-app editor: left out of the first cut.
