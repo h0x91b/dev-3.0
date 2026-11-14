@@ -19,6 +19,8 @@ import { assertEpicAttachable, epicForNewTask, setTaskEpic } from "../task-epics
 import { findEpic } from "../epics-data";
 import { readTaskTerminalBackendState, switchTaskTerminalBackend } from "../task-terminal-backend-switch";
 import { armLaunchAfter, clearLaunchAfter, prerequisiteRefusal, writeLaunchAfter } from "../launch-after";
+import { addDependencies, removeDependencies } from "../task-dependencies";
+import { dependencyInfo, summarizeDependencies, type TaskDependencyInfo } from "../../shared/task-dependencies";
 import { approvalStatusOf, launchSuggestionRequested, launcherHandoffNote, requestAgentLaunchApproval, requestDestructiveApproval, resolveLaunchSuggestion } from "./approvals";
 import { log, type Handler, withSenderVariant } from "./shared";
 import { findByIdPrefix, findTaskByRef, parseSeqRef, resolveAgentMessageSource, resolveRequesterTask, resolveTaskAcrossProjects, resolveTaskFromParams, resumeAccountParam, scopedTaskNotFoundError, senderRequester, taskNotFoundError, withArchivedHistory, withEpic, withOriginParent, withSenderAgent } from "./task-resolution";
@@ -119,6 +121,34 @@ async function writeStartAfter(project: Project, task: Task, req: StartAfterRequ
 	return writeLaunchAfter(project, task, req.prereq, req.until, req.variant, await resolveAgentMessageSource(params, task.id));
 }
 
+/** A task ref for a dependency. A seq shared by a variant group names its lowest variant: any variant satisfies the link. */
+function findDependencyTask(tasks: Task[], ref: string): Task | null {
+	const seq = parseSeqRef(ref);
+	if (seq === null) return findByIdPrefix(tasks, ref, "task");
+	return tasks.filter((t) => t.seq === seq).sort((a, b) => (a.variantIndex ?? 0) - (b.variantIndex ?? 0))[0] ?? null;
+}
+
+/** `--depends-on` / `--no-depends-on` refs resolved on the task's board, before anything is written. */
+async function readDependencyRefs(value: unknown, flag: string, project: Project): Promise<Task[] | null> {
+	if (value === undefined) return null;
+	const refs = stringList(value);
+	if (refs.length === 0) throw new Error(`${flag} needs at least one task: ${flag} seq:<N>[,seq:<M>]`);
+	const tasks = await data.loadTasks(project);
+	const found: Task[] = [];
+	for (const ref of refs) {
+		const task = findDependencyTask(tasks, ref);
+		if (!task) throw await scopedTaskNotFoundError(ref, project);
+		found.push(task);
+	}
+	return found;
+}
+
+/** `task show` and `task list` answer with the task's dependency links resolved. */
+function withDependencyInfo<T extends Task>(task: T, tasks: Task[]): T & { dependencyInfo?: TaskDependencyInfo } {
+	const info = dependencyInfo(task, tasks);
+	return info ? { ...task, dependencyInfo: info } : task;
+}
+
 function assertEpicFlagsExclusive(params: Record<string, unknown>): void {
 	if (params.noEpic === true && typeof params.epic === "string") throw new Error("--epic and --no-epic cannot be combined.");
 }
@@ -171,7 +201,8 @@ export const taskHandlers: Record<string, Handler> = {
 		if (!projectId) throw new Error("projectId is required");
 
 		const project = await data.getProject(projectId);
-		let tasks = await data.loadTasks(project);
+		const board = await data.loadTasks(project);
+		let tasks = board;
 
 		if (params.status) {
 			const status = params.status as TaskStatus;
@@ -181,7 +212,7 @@ export const taskHandlers: Record<string, Handler> = {
 			tasks = tasks.filter((t) => t.status === status);
 		}
 
-		return tasks;
+		return tasks.map((t) => withDependencyInfo(t, board));
 	},
 
 	/**
@@ -237,12 +268,13 @@ export const taskHandlers: Record<string, Handler> = {
 			const tasks = await data.loadTasks(project);
 			const task = findTaskByRef(tasks, taskId);
 			if (!task) throw await scopedTaskNotFoundError(taskId, project);
-			return await withEpic(await withOriginParent(await withArchivedHistory(project, await syncTaskBranchName(project, task))));
+			return withDependencyInfo(await withEpic(await withOriginParent(await withArchivedHistory(project, await syncTaskBranchName(project, task)))), tasks);
 		}
 
 		const found = await resolveTaskAcrossProjects(taskId);
 		if (!found) throw taskNotFoundError(taskId);
-		return await withEpic(await withOriginParent(await withArchivedHistory(found.project, await syncTaskBranchName(found.project, found.task))));
+		const shown = await withEpic(await withOriginParent(await withArchivedHistory(found.project, await syncTaskBranchName(found.project, found.task))));
+		return withDependencyInfo(shown, await data.loadTasks(found.project));
 	},
 
 	/**
@@ -305,6 +337,7 @@ export const taskHandlers: Record<string, Handler> = {
 		// A new To Do task can only be refused for its prerequisite, so this is the whole check.
 		const startAfterRefusal = startAfter && prerequisiteRefusal(startAfter.prereq, startAfter.until, await data.loadTasks(project));
 		if (startAfterRefusal) throw new Error(startAfterRefusal);
+		const dependsOn = await readDependencyRefs(params.dependsOn, "--depends-on", project);
 		// Use description as the task body if provided, otherwise fall back to title.
 		// A type puts its role brief above that text at creation, through the same
 		// function `task update --type` uses, so a card never claims a role its
@@ -336,6 +369,7 @@ export const taskHandlers: Record<string, Handler> = {
 			created = await data.updateTask(project, task.id, { customTitle: title });
 		}
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: created });
+		if (dependsOn) created = await addDependencies(project, created, dependsOn);
 		return startAfter ? writeStartAfter(project, created, startAfter, params) : created;
 	},
 
@@ -478,6 +512,8 @@ export const taskHandlers: Record<string, Handler> = {
 		}
 		const startAfter = await readStartAfter(params, project);
 		const clearStartAfter = params.noStartAfter === true;
+		const dependsOn = await readDependencyRefs(params.dependsOn, "--depends-on", project);
+		const dropDependencies = params.noDependsOn === true ? "all" as const : await readDependencyRefs(params.noDependsOn, "--no-depends-on", project);
 		if (!startAfter && launchSuggestionRequested(params)) throw new Error("--agent/--config on task update only apply together with --start-after.");
 		if (params.manualCompletion !== undefined) {
 			if (typeof params.manualCompletion !== "boolean") {
@@ -497,8 +533,10 @@ export const taskHandlers: Record<string, Handler> = {
 			&& epicChange === undefined
 			&& !startAfter
 			&& !clearStartAfter
+			&& !dependsOn
+			&& !dropDependencies
 		) {
-			throw new Error("Nothing to update. Provide --title, --description, --priority, --manual-completion, --type, --epic, --no-epic, --start-after or --no-start-after.");
+			throw new Error("Nothing to update. Provide --title, --description, --priority, --manual-completion, --type, --epic, --no-epic, --depends-on, --no-depends-on, --start-after or --no-start-after.");
 		}
 
 		let updated = task;
@@ -517,6 +555,9 @@ export const taskHandlers: Record<string, Handler> = {
 			for (const t of changed) getPushMessage()?.("taskUpdated", { projectId: project.id, task: t });
 			updated = { ...updated, priority };
 		}
+		// Removal first, so one call can swap a dependency for another.
+		if (dropDependencies) updated = await removeDependencies(project, updated, dropDependencies);
+		if (dependsOn) updated = await addDependencies(project, updated, dependsOn);
 		if (startAfter) {
 			updated = await armStartAfter(project, updated, startAfter, params);
 		} else if (clearStartAfter) {
@@ -675,6 +716,10 @@ export const taskHandlers: Record<string, Handler> = {
 			log.info("Ignoring own-agent activation of a To Do task", { taskId: task.id.slice(0, 8), to: builtinStatus });
 			return task;
 		}
+		// A dependency never refuses a start: the open ones travel with the answer so the caller can warn.
+		const openDependencies = isActivation && task.status === "todo"
+			? summarizeDependencies(task, await data.loadTasks(project)).open
+			: [];
 		const isLaunch = requester && isActivation && !isStatusGuardBlocked(task.status, { ifStatus, ifStatusNot });
 		if (launchSuggestionRequested(params) && !isLaunch) {
 			throw new Error("--agent/--config only apply when the move asks to start another task's agent — this one is a plain move.");
@@ -687,11 +732,12 @@ export const taskHandlers: Record<string, Handler> = {
 				requester: sender ?? await withSenderAgent(requester as AgentMessageSource, params),
 				launcherNote: launcherHandoffNote(params),
 				suggested: await resolveLaunchSuggestion(params),
+				openDependencies,
 				...approvalReasonFromParams(params),
 			});
 		}
 
-		return moveTask({
+		const moved = await moveTask({
 			taskId: task.id,
 			projectId: project.id,
 			newStatus: builtinStatus,
@@ -703,6 +749,7 @@ export const taskHandlers: Record<string, Handler> = {
 			// nothing more — it is never reset consent (that is `task.requestReset`).
 			...(sourceTaskId ? {} : { explicitLaunch: true }),
 		});
+		return openDependencies.length && moved.status !== "todo" ? { ...moved, startedBlockedBy: openDependencies } : moved;
 	}),
 
 	// `dev3 task hibernate` / `dev3 task wake`. An agent asking (sourceTaskId)

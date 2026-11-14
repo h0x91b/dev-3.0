@@ -1,5 +1,6 @@
-import { render, screen, waitFor, fireEvent, act, within } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act, within, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { DependencySummary } from "../../../shared/task-dependencies";
 import TaskCard from "../TaskCard";
 import { I18nProvider } from "../../i18n";
 import type { CodingAgent, DevServerSummary, Label, PortInfo, Project, Task, TaskPRBadgeInfo, TaskStatus } from "../../../shared/types";
@@ -191,6 +192,7 @@ function renderCard(
 		devServer?: DevServerSummary;
 		ports?: PortInfo[];
 		lineage?: CardLineage;
+		dependency?: DependencySummary;
 	},
 ) {
 	return render(
@@ -214,6 +216,7 @@ function renderCard(
 				devServer={opts?.devServer}
 				ports={opts?.ports}
 				lineage={opts?.lineage}
+				dependency={opts?.dependency}
 			/>
 		</I18nProvider>,
 	);
@@ -261,6 +264,43 @@ describe("TaskCard", () => {
 		expect(screen.getByTestId("variant-indicator-t5-dot-t5")).toHaveClass("ring-1");
 		await userEvent.click(screen.getByTestId("variant-indicator-t5"));
 		expect(screen.getByRole("dialog", { name: "Siblings" })).toBeInTheDocument();
+	});
+
+	describe("dependency chips", () => {
+		const dep = (seq: number, state: "open" | "done") => ({ taskId: `t${seq}`, seq, title: `Task ${seq}`, status: state === "open" ? "todo" as const : "completed" as const, state });
+
+		it("names the open dependencies of a blocked task and is not a control", () => {
+			const dependencies = [dep(3, "open"), dep(5, "done"), dep(7, "open")];
+			renderCard(makeTask({ status: "todo" }), { dependency: { verdict: "blocked", dependencies, open: [dependencies[0], dependencies[2]] } });
+			const chip = screen.getByTestId("task-card-blocked-chip");
+			expect(chip).toHaveTextContent("Blocked by #3, #7");
+			expect(chip.tagName).toBe("SPAN");
+			expect(screen.queryByTestId("task-card-ready-chip")).toBeNull();
+		});
+
+		it("shows ready on a To Do card once every dependency is done", () => {
+			renderCard(makeTask({ status: "todo" }), { dependency: { verdict: "ready", dependencies: [dep(3, "done")], open: [] } });
+			expect(screen.getByTestId("task-card-ready-chip")).toHaveTextContent("Ready");
+		});
+
+		it("shows neither on a card with no dependencies, a started ready task, or a completed one", () => {
+			renderCard(makeTask({ status: "todo" }));
+			expect(screen.queryByTestId("task-card-blocked-chip")).toBeNull();
+			expect(screen.queryByTestId("task-card-ready-chip")).toBeNull();
+			cleanup();
+			renderCard(makeTask({ status: "in-progress" }), { dependency: { verdict: "ready", dependencies: [dep(3, "done")], open: [] } });
+			expect(screen.queryByTestId("task-card-ready-chip")).toBeNull();
+			cleanup();
+			renderCard(makeTask({ status: "completed" }), { dependency: { verdict: "blocked", dependencies: [dep(3, "open")], open: [dep(3, "open")] } });
+			expect(screen.queryByTestId("task-card-blocked-chip")).toBeNull();
+		});
+
+		it("leaves the start-after prerequisite to its own chip", () => {
+			const launchAfter = { taskId: "t3", seq: 3, until: "completed" as const, armedAt: "2026-11-04T10:00:00Z" };
+			renderCard(makeTask({ status: "todo", launchAfter }), { dependency: { verdict: "blocked", dependencies: [dep(3, "open")], open: [dep(3, "open")] } });
+			expect(screen.getByTestId("task-card-starts-after-chip")).toBeInTheDocument();
+			expect(screen.queryByTestId("task-card-blocked-chip")).toBeNull();
+		});
 	});
 
 	describe("start-after chip", () => {

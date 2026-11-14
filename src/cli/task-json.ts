@@ -2,6 +2,7 @@ import type { PRCIStatus, PRMergeState, PRReviewDecision, Task, TaskEpicRef, Tas
 import { formatTaskRefFor } from "../shared/task-refs";
 import { DEFAULT_PRIORITY, STATUS_LABELS, getTaskOverview, getTaskTitle, taskCompletesManually, taskOrigin } from "../shared/types";
 import { allPullRequests } from "../shared/task-pull-requests";
+import type { TaskDependencyInfo } from "../shared/task-dependencies";
 
 /**
  * `dev3 task show --json` is a public contract, so it is a projection with a
@@ -59,6 +60,15 @@ export interface TaskShowJson {
 	 * a person armed it (direct start) and set when an agent did (start asks first).
 	 */
 	startAfter: { taskId: string; seq: number; until: string; armedByTaskId: string | null; armedAt: string } | null;
+	/**
+	 * Dependency links, or null when the task has none in either direction.
+	 * `state` is `blocked` while a task in `dependsOn` is open, `ready` once all are done.
+	 */
+	dependencies: {
+		state: "none" | "blocked" | "ready";
+		dependsOn: Array<{ taskId: string; seq: number; title: string; status: string; open: boolean }>;
+		blocks: Array<{ taskId: string; seq: number; title: string; status: string }>;
+	} | null;
 	/** The agent, terminal and dev server are stopped until the task is woken. */
 	hibernated: boolean;
 	/** `status` is the watchdog state: watching, reviving or gave-up. */
@@ -83,7 +93,7 @@ export interface TaskShowJson {
 }
 
 /** The task as `task.show` returns it: the stored task plus its resolved parent. */
-export type ShownTask = Task & { originParent?: TaskOriginParent | null; epic?: TaskEpicRef | null };
+export type ShownTask = Task & { originParent?: TaskOriginParent | null; epic?: TaskEpicRef | null; dependencyInfo?: TaskDependencyInfo };
 
 function epicJson(task: ShownTask): TaskShowJson["epic"] {
 	if (!task.epicId) return null;
@@ -168,6 +178,13 @@ export function buildTaskShowJson(task: ShownTask, opts: { notes?: boolean; hist
 				until: task.launchAfter.until,
 				armedByTaskId: task.launchAfter.armedBy?.taskId ?? null,
 				armedAt: task.launchAfter.armedAt,
+			}
+			: null,
+		dependencies: task.dependencyInfo
+			? {
+				state: task.dependencyInfo.verdict,
+				dependsOn: task.dependencyInfo.dependsOn.map(({ taskId, seq, title, status, state }) => ({ taskId, seq, title, status, open: state === "open" })),
+				blocks: task.dependencyInfo.blocks,
 			}
 			: null,
 		hibernated: task.hibernated === true,

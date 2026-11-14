@@ -25,6 +25,7 @@ import type { CliHibernateOutcome, CliWakeOutcome } from "../../shared/task-hibe
 import { buildTaskShowJson, describeTaskEpic, describeTaskOrigin, type ShownTask } from "../task-json";
 import { exitEpicRequestFailed } from "./epic";
 import { withBooleanFlags } from "./spaces";
+import { formatDependencyRefs, type ResolvedDependency, type TaskDependencyInfo } from "../../shared/task-dependencies";
 
 // Statuses that destroy the worktree + terminal are never a direct CLI move.
 // Both become a blocking approval request the user answers in the app, so an
@@ -106,6 +107,49 @@ function startAfterParams(args: ParsedArgs): Record<string, unknown> {
 		...(until !== undefined ? { until } : {}),
 		...(suggestion ? { agentId: suggestion.agentId, configId: suggestion.configId ?? null } : {}),
 	};
+}
+
+function splitRefs(raw: string): string[] {
+	return raw.split(",").map((ref) => ref.trim()).filter(Boolean);
+}
+
+/** `--depends-on seq:A[,seq:B]` and `--no-depends-on [seq:A[,seq:B]]` as request params; refs are resolved by the app. */
+function dependencyParams(args: ParsedArgs, allowRemove: boolean): Record<string, unknown> {
+	const params: Record<string, unknown> = {};
+	const add = args.flags["depends-on"];
+	if (add !== undefined) {
+		const refs = add === "true" ? [] : splitRefs(add);
+		if (refs.length === 0) exitUsage("--depends-on needs the tasks this one depends on: --depends-on seq:<N>[,seq:<M>]");
+		params.dependsOn = refs;
+	}
+	const remove = args.flags["no-depends-on"];
+	if (remove !== undefined) {
+		if (!allowRemove) exitUsage("--no-depends-on only applies to task update.");
+		// Bare flag: drop every dependency.
+		params.noDependsOn = remove === "true" ? true : splitRefs(remove);
+	}
+	return params;
+}
+
+/** One line per dependency link for `task show`. */
+function describeDependencies(info: TaskDependencyInfo): Array<[string, string]> {
+	const fields: Array<[string, string]> = [];
+	if (info.dependsOn.length > 0) {
+		const open = info.dependsOn.filter((d) => d.state === "open");
+		const verdict = open.length ? `blocked by ${formatDependencyRefs(open)}` : "ready, every dependency is done";
+		const list = info.dependsOn.map((d) => `#${d.seq} (${STATUS_LABELS[d.status] || d.status})`).join(", ");
+		fields.push(["Depends on:", `${list} - ${verdict}`]);
+	}
+	if (info.blocks.length > 0) {
+		fields.push(["Blocks:", info.blocks.map((d) => `#${d.seq} (${STATUS_LABELS[d.status] || d.status})`).join(", ")]);
+	}
+	return fields;
+}
+
+/** Names the open dependencies of a task that was started anyway. */
+function warnStartedBlocked(seq: number, open: ResolvedDependency[] | undefined): void {
+	if (!open?.length) return;
+	process.stderr.write(`Warning: #${seq} was started while it still depends on ${open.map((d) => `#${d.seq} (${STATUS_LABELS[d.status] || d.status})`).join(", ")}.\n`);
 }
 
 function describeLaunchAfter(task: Task): string | null {
@@ -190,6 +234,7 @@ function printTask(task: ShownTask, opts: ShowTaskOptions = {}): void {
 	if (task.draft === true) fields.push(["Draft:", "yes — cannot be started until the user finishes it"]);
 	const startsAfter = describeLaunchAfter(task);
 	if (startsAfter) fields.push(["Starts after:", startsAfter]);
+	if (task.dependencyInfo) fields.push(...describeDependencies(task.dependencyInfo));
 
 	if (task.branchName) fields.push(["Branch:", task.branchName]);
 	if (task.worktreePath) fields.push(["Worktree:", task.worktreePath]);
@@ -288,7 +333,7 @@ function epicParams(args: ParsedArgs): Record<string, unknown> {
 
 async function createTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
 	args = withBooleanFlags(args, ["no-epic"]);
-	rejectUnknownFlags(args, ["project", "title", "description", "type", "scratch", "run", "pr", "branch", "worktree", "handoff-file", "agent", "config", "epic", "no-epic", "start-after", "until", "reason"]);
+	rejectUnknownFlags(args, ["project", "title", "description", "type", "scratch", "run", "pr", "branch", "worktree", "handoff-file", "agent", "config", "epic", "no-epic", "start-after", "until", "reason", "depends-on"]);
 	const epic = epicParams(args);
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (!projectId) {
@@ -307,6 +352,7 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 		if (args.flags["start-after"] !== undefined || args.flags.until !== undefined) {
 			exitUsage("--start-after does not apply to --scratch --run, which starts right away.");
 		}
+		if (args.flags["depends-on"] !== undefined) exitUsage("--depends-on does not apply to --scratch --run, which starts right away.");
 		if (args.positional[0] || args.flags.title || args.flags.description || args.flags.type || args.flags.pr || args.flags.branch || args.flags.worktree) {
 			exitUsage(
 				"A scratch task takes no title, description or type — it has no prompt by design.\n" +
@@ -372,7 +418,7 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 	if (ownWorktree) params.ownWorktree = true;
 	// Without either flag the new task inherits the creating task's epic in the app.
 	Object.assign(params, epic);
-	Object.assign(params, startAfter);
+	Object.assign(params, startAfter, dependencyParams(args, false));
 
 	const resp = await sendRequest(socketPath, "task.create", params);
 	if (!resp.ok) {
@@ -413,14 +459,15 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 	}
 	const startsAfter = describeLaunchAfter(task);
 	if (startsAfter) process.stderr.write(`Starts after: ${startsAfter}. Nothing starts until then.\n`);
+	if (params.dependsOn !== undefined) process.stderr.write(`Depends on: ${(params.dependsOn as string[]).join(", ")}.\n`);
 }
 
 async function updateTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
 	args = withBooleanFlags(args, ["no-epic", "no-start-after"]);
-	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description", "priority", "manual-completion", "type", "force", "print-role", "epic", "no-epic", "start-after", "until", "no-start-after", "agent", "config"]);
+	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description", "priority", "manual-completion", "type", "force", "print-role", "epic", "no-epic", "start-after", "until", "no-start-after", "agent", "config", "depends-on", "no-depends-on"]);
 	const taskId = resolveTaskId(args, context);
 	if (!taskId) {
-		exitUsage("Usage: dev3 task update <id|--task id|--task-id id|--id id> [--title '...'] [--description '...'] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] [--start-after <id> [--until completed|merged] | --no-start-after]");
+		exitUsage("Usage: dev3 task update <id|--task id|--task-id id|--id id> [--title '...'] [--description '...'] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] [--depends-on <id>[,<id>...]] [--no-depends-on [<id>[,<id>...]]] [--start-after <id> [--until completed|merged] | --no-start-after]");
 	}
 
 	const startAfter = startAfterParams(args);
@@ -429,7 +476,7 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 	if (startAfter.startAfter === undefined && (args.flags.agent !== undefined || args.flags.config !== undefined)) {
 		exitUsage("--agent/--config on task update only apply together with --start-after.");
 	}
-	const params: Record<string, unknown> = { taskId, ...epicParams(args), ...startAfter };
+	const params: Record<string, unknown> = { taskId, ...epicParams(args), ...startAfter, ...dependencyParams(args, true) };
 	if (noStartAfter) params.noStartAfter = true;
 	// Armed from inside a task, the launch later asks the user the way that agent's own move would.
 	if (startAfter.startAfter !== undefined && context?.taskId) params.sourceTaskId = context.taskId;
@@ -495,8 +542,10 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 		&& params.noEpic === undefined
 		&& params.startAfter === undefined
 		&& !noStartAfter
+		&& params.dependsOn === undefined
+		&& params.noDependsOn === undefined
 	) {
-		exitUsage("Provide --title, --description, --priority, --manual-completion, --type, --epic, --no-epic, --start-after or --no-start-after to update");
+		exitUsage("Provide --title, --description, --priority, --manual-completion, --type, --epic, --no-epic, --depends-on, --no-depends-on, --start-after or --no-start-after to update");
 	}
 
 	const resp = await sendRequest(socketPath, "task.update", params);
@@ -531,6 +580,10 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 		process.stderr.write(`Starts after: ${describeLaunchAfter(task) ?? "(not set)"}.\n`);
 	} else if (noStartAfter) {
 		process.stderr.write("Start-after cleared: this task starts only when someone starts it.\n");
+	}
+	if (params.dependsOn !== undefined || params.noDependsOn !== undefined) {
+		const links = (task.relations ?? []).filter((r) => r.type === "blocked-by").length;
+		process.stderr.write(links ? `Dependencies: ${links}. See them with: dev3 task show seq:${task.seq}\n` : "Dependencies: none.\n");
 	}
 	// The role brief goes to stdout as the command's payload: the agent that ran it
 	// reads it right here, and re-running prints the same text whether or not the
@@ -991,6 +1044,8 @@ interface LaunchApprovalOutcome {
 	stale?: boolean;
 	seq?: number;
 	title?: string;
+	/** Dependencies of the started task that were still open. */
+	startedBlockedBy?: ResolvedDependency[];
 	/** One entry per task that started, in variant order; length 1 for a plain launch. */
 	launched?: Array<{ variantIndex: number | null; replyCommand: string; preparation?: LaunchPreparationOutcome }>;
 }
@@ -1037,6 +1092,7 @@ function reportLaunchOutcome(outcome: LaunchApprovalOutcome, codexStopHook: bool
 		return;
 	}
 	const launched = outcome.launched ?? [];
+	if (outcome.seq != null) warnStartedBlocked(outcome.seq, outcome.startedBlockedBy);
 	exitOnFailedPreparation(outcome, launched);
 	const fallback = `dev3 message --task seq:${outcome.seq} --subject "what this is about" "your message"`;
 	if (launched.length > 1) {
@@ -1194,7 +1250,8 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 		return reportLaunchOutcome(resp.data, codexStopHook, Boolean(asSender));
 	}
 
-	const task = resp.data as Task;
+	const task = resp.data as Task & { startedBlockedBy?: ResolvedDependency[] };
+	warnStartedBlocked(task.seq, task.startedBlockedBy);
 	if (codexStopHook) {
 		// Codex Stop hooks may require a JSON object even on success.
 		process.stdout.write(CODEX_STOP_HOOK_SUCCESS_JSON);
