@@ -25,7 +25,7 @@ import LabelPicker from "./LabelPicker";
 import PriorityBadge from "./PriorityBadge";
 import VariantDots from "./VariantDots";
 import LineageCluster from "./LineageCluster";
-import { DependencyBlockedIcon, DependencyReadyIcon, StartAfterCompletedIcon, StartAfterMergedIcon } from "./LineageIcons";
+import { DependencyBlockedIcon, StartAfterCompletedIcon, StartAfterMergedIcon } from "./LineageIcons";
 import { formatDependencyRefs, type DependencySummary } from "../../shared/task-dependencies";
 import { COORDINATOR_CARD_HALO, TaskRoleBand, taskRole } from "./TaskRoleBand";
 import EpicChip from "./EpicChip";
@@ -692,7 +692,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			</div>,
 		);
 	}
-	// Read-only dependency state. The start-after prerequisite already has its own chip above.
+	// Read-only: only open dependencies show. A card with none, or with all done, shows nothing.
+	// The start-after prerequisite already has its own chip above.
 	const openDeps = task.status === "completed" || task.status === "cancelled" ? [] : (dependency?.open ?? []).filter((d) => d.taskId !== launchAfter?.taskId);
 	if (openDeps.length > 0) {
 		const shown = formatDependencyRefs(openDeps.slice(0, 3)) + (openDeps.length > 3 ? ", …" : "");
@@ -701,15 +702,6 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				<span data-testid="task-card-blocked-chip" className="flex h-5 flex-shrink-0 items-center gap-1 rounded px-1.5 text-micro text-fg-3">
 					<DependencyBlockedIcon className="w-3 h-3" />
 					{t("task.blockedBy", { refs: shown })}
-				</span>
-			</Tooltip>,
-		);
-	} else if (isTodo && dependency?.verdict === "ready") {
-		timeSignals.push(
-			<Tooltip key="ready" content={t("task.dependenciesReadyTooltip", { refs: formatDependencyRefs(dependency.dependencies) })}>
-				<span data-testid="task-card-ready-chip" className="flex h-5 flex-shrink-0 items-center gap-1 rounded px-1.5 text-micro text-success">
-					<DependencyReadyIcon className="w-3 h-3" />
-					{t("task.dependenciesReady")}
 				</span>
 			</Tooltip>,
 		);

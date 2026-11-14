@@ -62,16 +62,6 @@ export function DependencyBlockedIcon({ className }: { className?: string }) {
 	);
 }
 
-/** Every dependency is done: a check in a circle. */
-export function DependencyReadyIcon({ className }: { className?: string }) {
-	return (
-		<svg {...svgBase(className)}>
-			<circle cx="12" cy="12" r="8.5" />
-			<path d="M8.5 12.3l2.4 2.4 4.6-5" />
-		</svg>
-	);
-}
-
 /** Start after another task's pull request merges: a merge branch. */
 export function StartAfterMergedIcon({ className }: { className?: string }) {
 	return (

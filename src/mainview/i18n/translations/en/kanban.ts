@@ -525,8 +525,6 @@ const kanban = {
 	"task.removeStartAfter": "Remove start condition",
 	"task.blockedBy": "Blocked by {refs}",
 	"task.blockedByTooltip": "Depends on {refs}, not done yet. You can still start it.",
-	"task.dependenciesReady": "Ready",
-	"task.dependenciesReadyTooltip": "Every task this one depends on is done: {refs}",
 	"task.openDependenciesWarning": "This task depends on {refs}, not done yet. You can still start it.",
 	"task.startAfterRemoveFailed": "Couldn’t remove the start condition: {error}",
 	"task.startAfterGone": "Did not start: task #{seq}, which this task waited for, no longer exists.",

@@ -552,8 +552,6 @@ const kanban = {
 	"task.removeStartAfter": "Убрать условие запуска",
 	"task.blockedBy": "Ждёт {refs}",
 	"task.blockedByTooltip": "Зависит от {refs}, они ещё не завершены. Запустить всё равно можно.",
-	"task.dependenciesReady": "Готова",
-	"task.dependenciesReadyTooltip": "Все задачи, от которых зависит эта, завершены: {refs}",
 	"task.openDependenciesWarning": "Эта задача зависит от {refs}, они ещё не завершены. Запустить всё равно можно.",
 	"task.startAfterRemoveFailed": "Не удалось убрать условие запуска: {error}",
 	"task.startAfterGone": "Не запущена: задачи #{seq}, которую она ждала, больше нет.",

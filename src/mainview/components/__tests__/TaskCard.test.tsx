@@ -275,21 +275,15 @@ describe("TaskCard", () => {
 			const chip = screen.getByTestId("task-card-blocked-chip");
 			expect(chip).toHaveTextContent("Blocked by #3, #7");
 			expect(chip.tagName).toBe("SPAN");
-			expect(screen.queryByTestId("task-card-ready-chip")).toBeNull();
 		});
 
-		it("shows ready on a To Do card once every dependency is done", () => {
+		it("shows nothing once every dependency is done, with no dependencies, or on a completed card", () => {
 			renderCard(makeTask({ status: "todo" }), { dependency: { verdict: "ready", dependencies: [dep(3, "done")], open: [] } });
-			expect(screen.getByTestId("task-card-ready-chip")).toHaveTextContent("Ready");
-		});
-
-		it("shows neither on a card with no dependencies, a started ready task, or a completed one", () => {
+			expect(screen.queryByTestId("task-card-blocked-chip")).toBeNull();
+			expect(screen.queryByText("Ready")).toBeNull();
+			cleanup();
 			renderCard(makeTask({ status: "todo" }));
 			expect(screen.queryByTestId("task-card-blocked-chip")).toBeNull();
-			expect(screen.queryByTestId("task-card-ready-chip")).toBeNull();
-			cleanup();
-			renderCard(makeTask({ status: "in-progress" }), { dependency: { verdict: "ready", dependencies: [dep(3, "done")], open: [] } });
-			expect(screen.queryByTestId("task-card-ready-chip")).toBeNull();
 			cleanup();
 			renderCard(makeTask({ status: "completed" }), { dependency: { verdict: "blocked", dependencies: [dep(3, "open")], open: [dep(3, "open")] } });
 			expect(screen.queryByTestId("task-card-blocked-chip")).toBeNull();
