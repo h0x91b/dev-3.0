@@ -14,6 +14,7 @@ import AgentPickerSkeleton from "./AgentPickerSkeleton";
 import MemoryPressureBanner from "./MemoryPressureBanner";
 import TaskDialogSubjectCard from "./TaskDialogSubjectCard";
 import ApprovalReasonNote from "./ApprovalReasonNote";
+import OpenDependenciesNote from "./OpenDependenciesNote";
 
 const NOT_INSTALLED_ID = "agent-launch-not-installed";
 
@@ -277,6 +278,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 					</p>
 
 					{request.reason && <ApprovalReasonNote reason={request.reason} />}
+					{request.openDependencies && <OpenDependenciesNote seqs={request.openDependencies} />}
 
 					<TaskDialogSubjectCard
 						title={request.taskTitle}

@@ -155,6 +155,8 @@ export interface AgentLaunchRequest {
 	 * already validated. Only preselects the picker — the user still decides.
 	 */
 	suggested?: LaunchVariant;
+	/** Seqs of the dependencies of this task that are still open; the dialog warns and the user decides. */
+	openDependencies?: number[];
 	requestId: string;
 	taskId: string;
 	projectId: string;

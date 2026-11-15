@@ -1,5 +1,7 @@
 # Start after: a conditional launch beside "Start in"
 
+> Amended on 2026-11-13 by `decisions/2026/11/13/task-dependencies-on-relations.md`: the cycle check is no longer a walk over `launchAfter` alone. A start-after prerequisite counts as a task dependency, and one shared check covers both links.
+
 ## Context
 
 Stacked work (one PR built on another, a backlog a coordinator orders by hand) needs "start B when A is done". Before this change a person or a coordinator had to watch `dev3 events` and run the launch. dev3 already had a one-shot timed launch (`Task.scheduledLaunch`, fired by `src/bun/scheduled-launch-scheduler.ts`); this adds a condition next to the time.

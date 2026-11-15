@@ -1074,6 +1074,27 @@ describe("LaunchVariantsModal — harness availability gate", () => {
 	});
 });
 
+describe("LaunchVariantsModal - open dependencies", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("names the open dependencies and leaves Launch enabled", async () => {
+		const open: Task = { ...baseTask, id: "t2", seq: 2, title: "Part one", status: "in-progress" };
+		const done: Task = { ...baseTask, id: "t3", seq: 3, title: "Part two", status: "completed" };
+		const blocked: Task = { ...baseTask, relations: [{ type: "blocked-by", taskId: "t2" }, { type: "blocked-by", taskId: "t3" }] };
+		mockedApi.request.getTasks.mockResolvedValue([blocked, open, done]);
+		renderModal(makeProject(), { task: blocked });
+		expect(await screen.findByTestId("open-dependencies-note")).toHaveTextContent("This task depends on #2, not done yet. You can still start it.");
+		expect(screen.getByText("Launch").closest("button")).toBeEnabled();
+	});
+
+	it("says nothing for a task with no dependencies", async () => {
+		renderModal(makeProject());
+		await waitFor(() => expect(mockedApi.request.checkAgentAvailability).toHaveBeenCalled());
+		expect(screen.queryByTestId("open-dependencies-note")).toBeNull();
+		expect(mockedApi.request.getTasks).not.toHaveBeenCalled();
+	});
+});
+
 describe("LaunchVariantsModal — Launch later → After task", () => {
 	const prereq: Task = { ...baseTask, id: "t2", seq: 2, title: "Part one", status: "in-progress" };
 	const cancelled: Task = { ...baseTask, id: "t3", seq: 3, title: "Dropped", status: "cancelled" };

@@ -78,7 +78,7 @@ describe("task show --json", () => {
 
 	it("is a fixed projection: the key set is the contract, internals never leak", () => {
 		expect(Object.keys(buildTaskShowJson(TASK)).sort()).toEqual([
-			"baseBranch", "branch", "createdAt", "customColumnId", "description", "draft", "epic", "groupId", "hibernated", "id",
+			"baseBranch", "branch", "createdAt", "customColumnId", "dependencies", "description", "draft", "epic", "groupId", "hibernated", "id",
 			"keepAlive", "labelIds", "manualCompletion", "movedAt", "noteCount", "origin", "overview", "prNumber", "prStatus", "prUrl", "priority",
 			"projectId", "pullRequests", "schemaVersion", "seq", "startAfter", "status", "statusLabel", "taskType", "title", "titleEditedByUser",
 			"updatedAt", "variantIndex", "worktree",

@@ -2615,6 +2615,74 @@ describe("epic flags", () => {
 	});
 });
 
+describe("--depends-on", () => {
+	const open = { taskId: "bbbbbbbb", seq: 12, title: "First", status: "in-progress", state: "open" };
+	const done = { taskId: "cccccccc", seq: 13, title: "Second", status: "completed", state: "done" };
+
+	it("task create and update send the refs as a list", async () => {
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+		await handleTask("create", args([], { project: "proj-001", title: "Next", "depends-on": "seq:12, seq:13" }), SOCKET, null);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", expect.objectContaining({ dependsOn: ["seq:12", "seq:13"] }));
+
+		mockSend.mockResolvedValue(okResp({ task: FAKE_TASK }));
+		await handleTask("update", args(["aaaaaaaa"], { "depends-on": "seq:12", "no-depends-on": "seq:13" }), SOCKET, null);
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "task.update", { taskId: "aaaaaaaa", dependsOn: ["seq:12"], noDependsOn: ["seq:13"] });
+	});
+
+	it("a bare --no-depends-on removes every dependency, and a bare --depends-on is a usage error", async () => {
+		mockSend.mockResolvedValue(okResp({ task: FAKE_TASK }));
+		await handleTask("update", args(["aaaaaaaa"], { "no-depends-on": "true" }), SOCKET, null);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", { taskId: "aaaaaaaa", noDependsOn: true });
+		expect(stderrOutput).toContain("Dependencies: none.");
+		await expect(handleTask("update", args(["aaaaaaaa"], { "depends-on": "true" }), SOCKET, null)).rejects.toThrow("EXIT_3");
+		await expect(handleTask("create", args([], { project: "proj-001", title: "Next", "no-depends-on": "seq:1" }), SOCKET, null)).rejects.toThrow("EXIT_3");
+	});
+
+	it("task show lists what the task depends on and what it blocks", async () => {
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, dependencyInfo: { verdict: "blocked", dependsOn: [open, done], blocks: [{ taskId: "dddddddd", seq: 20, title: "Later", status: "todo" }] } }));
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).toMatch(/Depends on:\s*#12 \(Agent is Working\), #13 \(Completed\) - blocked by #12/);
+		expect(stdoutOutput).toMatch(/Blocks:\s*#20 \(To Do\)/);
+
+		stdoutOutput = "";
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, dependencyInfo: { verdict: "ready", dependsOn: [done], blocks: [] } }));
+		await handleTask("show", args(["aaaaaaaa"], { json: "true" }), SOCKET, null);
+		expect(JSON.parse(stdoutOutput).dependencies).toEqual({
+			state: "ready",
+			dependsOn: [{ taskId: "cccccccc", seq: 13, title: "Second", status: "completed", open: false, state: "done" }],
+			blocks: [],
+		});
+	});
+
+	it("task show names a cancelled dependency as cancelled, not done", async () => {
+		const cancelled = { taskId: "eeeeeeee", seq: 14, title: "Dropped", status: "cancelled", state: "cancelled" };
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, dependencyInfo: { verdict: "ready", dependsOn: [done, cancelled], blocks: [] } }));
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).toMatch(/Depends on:\s*#13 \(Completed\), #14 \(Cancelled\) - ready, but #14 was cancelled/);
+	});
+
+	it("warns that start-after starts the task even while its other dependencies are open", async () => {
+		const launchAfter = { taskId: "bbbbbbbb", seq: 12, until: "completed", armedAt: "2026-11-15T10:00:00Z" };
+		const relations = [{ type: "blocked-by", taskId: "cccccccc" }, { type: "blocked-by", taskId: "bbbbbbbb" }];
+		mockSend.mockResolvedValue(okResp({ task: { ...FAKE_TASK, seq: 44, status: "todo", launchAfter, relations } }));
+		await handleTask("update", args(["aaaaaaaa"], { "depends-on": "seq:13" }), SOCKET, null);
+		expect(stderrOutput).toContain("Dependencies: 2.");
+		expect(stderrOutput).toContain("Warning: #44 starts by itself after #12 even if its other dependency is still open.");
+
+		stderrOutput = "";
+		mockSend.mockResolvedValue(okResp({ task: { ...FAKE_TASK, seq: 44, status: "todo", launchAfter, relations: [relations[1]] } }));
+		await handleTask("update", args(["aaaaaaaa"], { "start-after": "seq:12" }), SOCKET, null);
+		expect(stderrOutput).not.toContain("Warning:");
+	});
+
+	it("task move warns, and still moves, when the started task has open dependencies", async () => {
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, seq: 44, status: "in-progress", startedBlockedBy: [open] }));
+		await handleTask("move", args(["aaaaaaaa"], { status: "in-progress" }), SOCKET, null);
+		expect(stderrOutput).toContain("Warning: #44 was started while it still depends on #12 (Agent is Working).");
+		expect(stdoutOutput).toContain("Moved task");
+	});
+});
+
 describe("--start-after", () => {
 	const waiting: Task = {
 		...FAKE_TASK,

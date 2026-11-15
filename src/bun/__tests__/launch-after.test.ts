@@ -113,6 +113,18 @@ describe("start-after tick", () => {
 		expect(requestAgentLaunchApproval).toHaveBeenCalledWith(expect.objectContaining({ requester: armedBy, suggested: variant, targetStatus: "in-progress" }));
 	});
 
+	it("names the other dependencies that are still open in the approval dialog, and still asks", async () => {
+		const armedBy = { taskId: "c", seq: 9 };
+		store = [
+			task({ id: "a", status: "completed" }),
+			task({ id: "d", seq: 4, status: "in-progress" }),
+			task({ id: "b", seq: 2, relations: [{ type: "blocked-by", taskId: "d" }], launchAfter: cond({ armedBy }) }),
+		];
+		await tick();
+		const [{ openDependencies }] = requestAgentLaunchApproval.mock.calls[0] as [{ openDependencies: Array<{ seq: number }> }];
+		expect(openDependencies.map((d) => d.seq)).toEqual([4]);
+	});
+
 	it("launches a person-armed condition with its chosen agent", async () => {
 		const variant = { agentId: "codex", configId: null };
 		store = [task({ id: "a", status: "completed" }), task({ id: "b", seq: 2, launchAfter: cond({ variant }) })];
