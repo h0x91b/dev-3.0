@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { handlePr, type PrCommandResult, type PrDeps } from "../commands/pr";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { handlePr, realPrDeps, type PrCommandResult, type PrDeps } from "../commands/pr";
 import type { ParsedArgs } from "../args";
 import type { CliContext } from "../context";
 
@@ -113,7 +117,7 @@ describe("dev3 pr create — happy path", () => {
 
 		await handlePr("create", args({ title: "Add a thing", description: "Why it exists" }), null, d);
 
-		expect(ran(calls, "git", ["push", "--set-upstream", "origin", "feat/thing"])).toBeDefined();
+		expect(ran(calls, "git", ["push", "--set-upstream", "origin", "feat/thing:refs/heads/feat/thing"])).toBeDefined();
 		const create = ran(calls, "gh", ["pr", "create"])!;
 		expect(create.args).toContain("Add a thing");
 		expect(create.args).toContain("Why it exists");
@@ -677,5 +681,48 @@ describe("dev3 pr — the project's GitHub account", () => {
 
 		expect(ran(calls, "git", ["push"])).toBeUndefined();
 		expect(stderrOutput).toContain("ghost@github.com");
+	});
+});
+
+describe("dev3 pr create — real git push destination (#2289)", () => {
+	let root: string;
+	const git = (cwd: string, ...gitArgs: string[]) =>
+		execFileSync("git", gitArgs, { cwd, encoding: "utf8", env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1" } }).trim();
+
+	beforeEach(() => {
+		root = mkdtempSync(join(tmpdir(), "dev3-pr-push-"));
+		git(root, "init", "-q", "--bare", "-b", "main", "remote.git");
+		git(root, "clone", "-q", "remote.git", "wt");
+		const wt = join(root, "wt");
+		git(wt, "config", "user.email", "t@example.com");
+		git(wt, "config", "user.name", "T");
+		git(wt, "commit", "-q", "--allow-empty", "-m", "init");
+		git(wt, "push", "-q", "origin", "main");
+		// A task branch that still tracks the base after a `git branch -m` rename.
+		git(wt, "checkout", "-q", "-b", "dev3/task-x", "--track", "origin/main");
+		git(wt, "branch", "-m", "dev3/task-x", "fix/example");
+		git(wt, "commit", "-q", "--allow-empty", "-m", "work");
+		git(wt, "config", "push.default", "upstream");
+	});
+
+	afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+	it("pushes to a same-named remote branch and leaves the base untouched", async () => {
+		const wt = join(root, "wt");
+		const remote = join(root, "remote.git");
+		const baseBefore = git(remote, "rev-parse", "refs/heads/main");
+		const { deps: fake } = deps();
+		const d: PrDeps = {
+			...fake,
+			cwd: wt,
+			run: (command, runArgs, cwd, env) =>
+				command === "git" ? realPrDeps.run(command, runArgs, cwd, env) : fake.run(command, runArgs, cwd, env),
+		};
+
+		await handlePr("create", args({ title: "T", base: "main" }), null, d);
+
+		expect(git(remote, "rev-parse", "refs/heads/main")).toBe(baseBefore);
+		expect(git(remote, "rev-parse", "refs/heads/fix/example")).toBe(git(wt, "rev-parse", "HEAD"));
+		expect(git(wt, "config", "--get", "branch.fix/example.merge")).toBe("refs/heads/fix/example");
 	});
 });
