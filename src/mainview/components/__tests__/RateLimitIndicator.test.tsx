@@ -735,8 +735,8 @@ describe("RateLimitIndicator project scope", () => {
 		});
 		request.getProjectClaudeLogin = vi.fn().mockResolvedValue({ configDir: "/p/app/.claude", identity: null });
 		request.listPinnedClaudeLogins = vi.fn().mockResolvedValue([
-			{ configDir: "/p/app/.claude", identity: null, projectNames: ["app"] },
-			{ configDir: "/p/other/.claude", identity: null, projectNames: ["other"] },
+			{ configDir: "/p/app/.claude", identity: null, projectNames: ["app"], accountId: null },
+			{ configDir: "/p/other/.claude", identity: null, projectNames: ["other"], accountId: null },
 		]);
 	});
 

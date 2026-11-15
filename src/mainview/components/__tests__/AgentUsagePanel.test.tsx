@@ -314,6 +314,7 @@ describe("AgentUsagePanel", () => {
 							configDir: "/mnt/e/Projects/app/.claude",
 							identity: { email: "pin@corp.com", organization: null, plan: null, planLabel: null, accountId: null },
 							projectNames: ["app"],
+							accountId: null,
 						},
 					]}
 					interactive
@@ -385,7 +386,7 @@ describe("AgentUsagePanel", () => {
 				<AgentUsagePanel
 					report={report()}
 					accounts={state}
-					pinnedLogins={[{ configDir: "/p/app/.claude", identity: null, projectNames: ["app"] }]}
+					pinnedLogins={[{ configDir: "/p/app/.claude", identity: null, projectNames: ["app"], accountId: null }]}
 					interactive
 					onOpenSettings={() => {}}
 				/>
@@ -417,7 +418,7 @@ describe("AgentUsagePanel", () => {
 						],
 					}}
 					accounts={state}
-					pinnedLogins={[{ configDir: "/p/app/.claude", identity: null, projectNames: ["app"] }]}
+					pinnedLogins={[{ configDir: "/p/app/.claude", identity: null, projectNames: ["app"], accountId: null }]}
 					interactive
 					onOpenSettings={() => {}}
 				/>
@@ -440,6 +441,7 @@ describe("AgentUsagePanel", () => {
 							configDir: "/p/app/.claude",
 							identity: { email: "pin@corp.com", organization: null, plan: null, planLabel: null, accountId: null },
 							projectNames: ["app"],
+							accountId: null,
 						},
 					]}
 					interactive

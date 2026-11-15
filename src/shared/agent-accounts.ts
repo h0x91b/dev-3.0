@@ -288,7 +288,7 @@ export interface PinnedClaudeLogin {
 	identity: AgentAccountIdentity | null;
 	projectNames: string[];
 	/** The managed account this folder is signed in to: its readings are that account's. */
-	accountId?: string | null;
+	accountId: string | null;
 }
 
 /** `/home/me/x/.claude` -> `.../x/.claude`; short paths stay whole. */
