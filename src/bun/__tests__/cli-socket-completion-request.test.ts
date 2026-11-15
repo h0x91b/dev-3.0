@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { Project, Task, CliRequest, TaskDialogSubject } from "../../shared/types";
+import { CLI_FAILURE_WORKTREE_HALF_REMOVED, type Project, type Task, type CliRequest, type TaskDialogSubject } from "../../shared/types";
+import { existsSync } from "node:fs";
 
 // ---- Mocks (same boundary set as cli-socket-handlers.test.ts) ----
 
@@ -139,6 +140,7 @@ function setupTask(task: Task): void {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	vi.mocked(existsSync).mockImplementation(() => false);
 	_resetAgentRequestsForTests();
 });
 
@@ -193,6 +195,42 @@ describe("task.requestCompletion", () => {
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toEqual({ approved: true, task: completedTask });
 		expect(moveTask).toHaveBeenCalledWith({ taskId: task.id, projectId: "proj-1", newStatus: "completed" });
+	});
+
+	it("flags an approved completion whose teardown left the worktree half removed (h0x91b/dev-3.0#2269)", async () => {
+		const task = makeTask();
+		setupTask(task);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(moveTask).mockRejectedValue(new Error("Failed to remove worktree at /tmp/wt: error: failed to delete '/tmp/wt': Directory not empty"));
+		vi.mocked(existsSync).mockImplementation((path) => path === "/tmp/wt");
+
+		const respPromise = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		resolveAgentRequest((pushFn.mock.calls[0][1] as { requestId: string }).requestId, { approved: true });
+
+		const resp = await respPromise;
+		expect(resp.ok).toBe(false);
+		expect(resp.reason).toBe(CLI_FAILURE_WORKTREE_HALF_REMOVED);
+		expect(resp.error).toContain("/tmp/wt is half removed");
+		expect(resp.error).toContain('rm -rf "/tmp/wt"');
+	});
+
+	it("passes a teardown failure through untouched while the worktree is intact", async () => {
+		const task = makeTask();
+		setupTask(task);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(moveTask).mockRejectedValue(new Error("Failed to remove worktree at /tmp/wt: locked"));
+		vi.mocked(existsSync).mockImplementation((path) => path === "/tmp/wt" || path === "/tmp/wt/.git");
+
+		const respPromise = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		resolveAgentRequest((pushFn.mock.calls[0][1] as { requestId: string }).requestId, { approved: true });
+
+		const resp = await respPromise;
+		expect(resp).toMatchObject({ ok: false, error: "Failed to remove worktree at /tmp/wt: locked" });
+		expect(resp.reason).toBeUndefined();
 	});
 
 	it("shows another task's --reason attributed to it, and keeps it for a replayed dialog", async () => {

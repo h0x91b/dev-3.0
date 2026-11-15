@@ -73,11 +73,16 @@ export interface CliRequest {
 	token?: string;
 }
 
+/** A teardown that left the task folder behind after git dropped its link. */
+export const CLI_FAILURE_WORKTREE_HALF_REMOVED = "worktree-half-removed";
+
 export interface CliResponse {
 	id: string;
 	ok: boolean;
 	data?: unknown;
 	error?: string;
+	/** Machine-readable cause of a failure, for the few the CLI gives their own exit code. */
+	reason?: typeof CLI_FAILURE_WORKTREE_HALF_REMOVED;
 }
 
 // ---- RPC schema ----

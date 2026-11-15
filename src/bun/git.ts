@@ -19,6 +19,7 @@ import { projectStorageKey } from "../shared/project-storage-key";
 import { startBranchMissingMessage } from "../shared/preparation-failure";
 import { allProjectWorktreesRoots, taskDirFor } from "../shared/project-storage";
 import { ensureInProjectStorageDirs } from "./in-project-storage";
+import { isHalfRemovedWorktree, WorktreeHalfRemovedError } from "./worktree-leftover";
 import * as github from "./github";
 
 const log = createLogger("git");
@@ -3531,6 +3532,23 @@ export async function applySparseCheckout(
  * git reports as a validation failure and refuses forever, `--force` included.
  * A locked or dirty worktree is a different message and still rejects.
  */
+const LEFTOVER_REMOVE_ATTEMPTS = 5;
+
+/** Retried because whatever made git fail may still be writing into the tree. */
+async function removeLeftoverWorktreeOrReport(path: string): Promise<void> {
+	for (let attempt = 1; ; attempt++) {
+		try {
+			await rm(path, { recursive: true, force: true });
+			return;
+		} catch (err) {
+			if (attempt >= LEFTOVER_REMOVE_ATTEMPTS) {
+				throw new WorktreeHalfRemovedError(path, err instanceof Error ? err.message : String(err));
+			}
+			await new Promise((resolve) => setTimeout(resolve, 100 * attempt));
+		}
+	}
+}
+
 function isUnregisteredWorktreeError(stderr: string): boolean {
 	return /is not a working tree|is not a worktree|not a valid path/i.test(stderr)
 		|| /cannot remove working tree:.*does not exist/i.test(stderr);
@@ -3676,8 +3694,17 @@ export async function removeWorktree(
 					stderr: removeResult.stderr,
 				});
 				if (isManagedTaskWorktreePath(project, targetPath)) {
-					await rm(targetPath, { recursive: true, force: true });
+					await removeLeftoverWorktreeOrReport(targetPath);
 				}
+				await run(["git", "worktree", "prune"], project.path);
+			} else if (isHalfRemovedWorktree(targetPath)) {
+				log.warn("Git dropped the worktree link but left files behind", {
+					path: targetPath,
+					taskId: task.id,
+					stderr: removeResult.stderr,
+				});
+				if (!isManagedTaskWorktreePath(project, targetPath)) throw new WorktreeHalfRemovedError(targetPath, detail);
+				await removeLeftoverWorktreeOrReport(targetPath);
 				await run(["git", "worktree", "prune"], project.path);
 			} else {
 				log.error("Failed to remove worktree", {

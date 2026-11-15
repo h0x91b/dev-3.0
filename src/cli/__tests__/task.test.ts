@@ -1193,6 +1193,17 @@ describe("task move --status completed", () => {
 		expect(stderrOutput).toContain("Task is already completed");
 	});
 
+	it("exits with code 48 when the approved completion left the worktree half removed (h0x91b/dev-3.0#2269)", async () => {
+		mockSend.mockResolvedValue({ ...errResp("The worktree at /tmp/wt is half removed: ..."), reason: "worktree-half-removed" });
+
+		await expect(
+			handleTask("move", args(["aaaaaaaa"], { status: "completed" }), SOCKET, null),
+		).rejects.toThrow("EXIT_48");
+		expect(stderrOutput).toContain("/tmp/wt is half removed");
+		expect(stderrOutput).toContain("Run the same `dev3 task move` again");
+		expect(stdoutOutput).not.toContain("User approved");
+	});
+
 	it("prints minimal JSON stdout for Codex stop hooks on approval", async () => {
 		mockSend.mockResolvedValue(okResp({ approved: true, task: { ...FAKE_TASK, status: "completed" } }));
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import type { Project, Task } from "../../shared/types";
@@ -42,7 +42,7 @@ import {
 	taskDir,
 	run,
 } from "../git";
-import { createTestRepo, cleanup, makeTaskCommits, g, spawnedCommands, type TestRepo } from "./git-test-helpers";
+import { createTestRepo, cleanup, makeTaskCommits, g, spawnedCommands, setSpawnOverride, type TestRepo } from "./git-test-helpers";
 import { startBranchMissingMessage } from "../../shared/preparation-failure";
 
 // ─── Shared factories ────────────────────────────────────────────────────────
@@ -206,6 +206,74 @@ describe("removeWorktree", () => {
 		await removeWorktree(project, withPath);
 		await expect(removeWorktree(project, withPath)).resolves.toEqual({ deleted: [], kept: [] });
 		expect(existsSync(wtPath)).toBe(false);
+	});
+
+	describe("git stops half way through deleting the checkout (h0x91b/dev-3.0#2269)", () => {
+		// What `git worktree remove --force` leaves when a file appears while it
+		// walks a large untracked tree: the `.git` link already deleted, the rest
+		// still on disk, and "Directory not empty" on stderr.
+		function interruptWorktreeRemove(wtPath: string): void {
+			setSpawnOverride((cmd) => {
+				const at = cmd.indexOf("worktree");
+				if (cmd[0] !== "git" || at < 0 || cmd[at + 1] !== "remove") return undefined;
+				rmSync(join(wtPath, ".git"), { force: true });
+				return { exitCode: 255, stderr: `error: failed to delete '${wtPath}': Directory not empty\n` };
+			});
+		}
+
+		function halfRemovableTask(id: string): { project: Project; task: Task; wtPath: string } {
+			const project = makeProject(repo.local);
+			const branchName = `dev3/task-${id.slice(0, 8)}`;
+			const base = makeTask({ id, branchName });
+			const wtPath = join(taskDir(project, base), "worktree");
+			mkdirSync(taskDir(project, base), { recursive: true });
+			g(`git worktree add -b ${branchName} "${wtPath}" main`, repo.local);
+			mkdirSync(join(wtPath, ".venv", "lib"), { recursive: true });
+			writeFileSync(join(wtPath, ".venv", "lib", "site.py"), "x");
+			return { project, task: { ...base, worktreePath: wtPath }, wtPath };
+		}
+
+		afterEach(() => setSpawnOverride(null));
+
+		it("finishes deleting the leftover tree and the branch", async () => {
+			const { project, task, wtPath } = halfRemovableTask("12121212-3434-5656-7878-909090909090");
+			interruptWorktreeRemove(wtPath);
+
+			await removeWorktree(project, task);
+
+			expect(existsSync(wtPath)).toBe(false);
+			expect(g("git worktree list", repo.local)).not.toContain(wtPath);
+			expect(g("git branch", repo.local)).not.toContain("dev3/task-12121212");
+		});
+
+		it("reports the half-removed folder when the leftover cannot be deleted either", async () => {
+			const { project, task, wtPath } = halfRemovableTask("23232323-4545-6767-8989-010101010101");
+			const stuck = join(wtPath, ".venv", "lib");
+			chmodSync(stuck, 0o555);
+			interruptWorktreeRemove(wtPath);
+			try {
+				const failure = await removeWorktree(project, task).catch((err: unknown) => err);
+
+				expect(failure).toBeInstanceOf(Error);
+				expect((failure as Error).name).toBe("WorktreeHalfRemovedError");
+				expect((failure as Error).message).toContain(`rm -rf "${wtPath}"`);
+				expect(existsSync(wtPath)).toBe(true);
+			} finally {
+				chmodSync(stuck, 0o755);
+			}
+		});
+
+		it("never deletes a half-removed folder outside dev3's task folders", async () => {
+			const wtPath = join(repo.dir, "outside-worktree");
+			g(`git worktree add -b dev3/task-aaaaaaaa "${wtPath}" main`, repo.local);
+			interruptWorktreeRemove(wtPath);
+
+			const failure = await removeWorktree(makeProject(repo.local), makeTask({ worktreePath: wtPath, branchName: "dev3/task-aaaaaaaa" }))
+				.catch((err: unknown) => err);
+
+			expect((failure as Error).name).toBe("WorktreeHalfRemovedError");
+			expect(existsSync(wtPath)).toBe(true);
+		});
 	});
 
 	it("still rejects a locked worktree whose checkout is intact", async () => {

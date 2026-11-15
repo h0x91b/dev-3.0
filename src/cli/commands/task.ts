@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { formatPrRef, formatTaskRef, formatTaskRefFor } from "../../shared/task-refs";
 import { resolve } from "node:path";
-import type { CliResponse, Task, TaskStatus, TaskType, TaskHistoryEntry, TaskNote } from "../../shared/types";
+import { CLI_FAILURE_WORKTREE_HALF_REMOVED, type CliResponse, type Task, type TaskStatus, type TaskType, type TaskHistoryEntry, type TaskNote } from "../../shared/types";
 import { STATUS_LABELS, ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DRAFT_TASK_ACTIVATION_ERROR, TASK_REF_UNRESOLVED_PREFIX, TASK_TYPES, getTaskTitle, getTaskOverview, normalizePriority, normalizeTaskType, taskAgentSessionLooksLive, taskCompletesManually, taskProtocolMode } from "../../shared/types";
-import { CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN, CLI_EXIT_CODE_APPROVAL_STILL_PENDING, CLI_EXIT_CODE_CANCELLATION_DECLINED, CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_HIBERNATE_DECLINED, CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED, CLI_EXIT_CODE_RESET_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT, CLI_EXIT_CODE_TASK_NOT_HIBERNATED, CLI_EXIT_CODE_TASK_REF_UNRESOLVED } from "../../shared/cli-exit-codes";
+import { CLI_EXIT_CODE_APPROVAL_OUTCOME_UNKNOWN, CLI_EXIT_CODE_APPROVAL_STILL_PENDING, CLI_EXIT_CODE_CANCELLATION_DECLINED, CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_HIBERNATE_DECLINED, CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED, CLI_EXIT_CODE_RESET_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT, CLI_EXIT_CODE_TASK_NOT_HIBERNATED, CLI_EXIT_CODE_TASK_REF_UNRESOLVED, CLI_EXIT_CODE_WORKTREE_HALF_REMOVED } from "../../shared/cli-exit-codes";
 import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON, TOLERATE_APP_OFFLINE_FLAG } from "../../shared/agent-hooks";
 import { allPullRequests } from "../../shared/task-pull-requests";
 import { sendRequest } from "../socket-client";
@@ -943,6 +943,9 @@ async function requestDestructiveApproval(
 	}
 
 	const resp = wait.resp;
+	if (!resp.ok && resp.reason === CLI_FAILURE_WORKTREE_HALF_REMOVED) {
+		exitError(resp.error || spec.failed, "The user approved, but the task did not move: only its cleanup is left, and it is still in its column.\nRun the same `dev3 task move` again to finish removing the folder.", CLI_EXIT_CODE_WORKTREE_HALF_REMOVED);
+	}
 	if (!resp.ok) exitError(resp.error || spec.failed);
 	const result = resp.data as { approved: boolean; task?: Task; plainMove?: boolean; stale?: boolean; taskStatus?: TaskStatus | null; keptBranches?: Array<{ name: string; reason: string }> };
 	if (!result.approved) {
