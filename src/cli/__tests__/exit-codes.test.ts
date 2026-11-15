@@ -24,6 +24,10 @@ describe("CLI exit code registry", () => {
 		expect(exported.filter((name) => !registered.includes(name))).toEqual([]);
 	});
 
+	it("gives a half-removed worktree its own code", () => {
+		expect(exitCodes.CLI_EXIT_CODE_WORKTREE_HALF_REMOVED).toBe(48);
+	});
+
 	it("documents every registered exit code in docs/cli-exit-codes.md", () => {
 		const doc = readFileSync(DOC_PATH, "utf-8");
 

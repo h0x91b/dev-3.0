@@ -1,7 +1,7 @@
 import type { AgentMessageSource, Project, ResetKeptBranch, Task, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus } from "../../shared/types";
 import { agentReplyCommand, seqIsShared } from "../../shared/agent-message-envelope";
 import { type ExternalSenderRequester, isExternalSenderRequester } from "../../shared/external-senders";
-import { DEFAULT_PRIORITY, agentLaunchAutoApproveMs, buildTaskDialogSubject, getTaskTitle, isCoordinatorTask, isOpsWorktreeTask, taskNeedsReset, taskResetConsent } from "../../shared/types";
+import { DEFAULT_PRIORITY, agentLaunchAutoApproveMs, buildTaskDialogSubject, getTaskTitle, isCoordinatorTask, isOpsWorktreeTask, taskNeedsReset, taskResetConsent, taskUsesWorktree } from "../../shared/types";
 import { coordinatorLaunchDefault } from "../../shared/coordinator-launch";
 import { getAllAgents } from "../agents";
 import { createAgentRequest, getAgentRequestState, joinAgentRequest, setAgentRequestLaunchChoice, voidAgentRequest } from "../agent-requests";
@@ -11,6 +11,7 @@ import type { AgentLaunchChoice, LaunchVariant } from "../../shared/types";
 import { deliverLaunchHandoff } from "../agent-launch-handoff";
 import { getPushMessage, launchTaskWithAgentChoice, moveTask, resetTaskToTodo } from "../rpc-handlers";
 import { loadSettings } from "../settings";
+import { isHalfRemovedWorktree, WorktreeHalfRemovedError } from "../worktree-leftover";
 import { loadBoardTasks, resolveAgentMessageSource, resolveTaskAcrossProjects, resolveTaskFromParams } from "./task-resolution";
 import { type ApprovalReason, approvalReasonFromParams, normalizeApprovalReason } from "../../shared/approval-reason";
 import { awaitLaunchPreparation } from "./launch-preparation";
@@ -180,8 +181,16 @@ export async function requestDestructiveApproval(
 	}
 	// Every caller joined to this request lands here; a repeat move to the same
 	// status is a no-op in the lifecycle machine.
-	const updated = await moveTask({ taskId: task.id, projectId: project.id, newStatus: targetStatus });
-	return { approved: true, task: updated };
+	try {
+		const updated = await moveTask({ taskId: task.id, projectId: project.id, newStatus: targetStatus });
+		return { approved: true, task: updated };
+	} catch (err) {
+		// The lifecycle hands back only the message, so the leftover is read off disk.
+		if (task.worktreePath && taskUsesWorktree(project, task) && isHalfRemovedWorktree(task.worktreePath)) {
+			throw new WorktreeHalfRemovedError(task.worktreePath, err instanceof Error ? err.message : String(err));
+		}
+		throw err;
+	}
 }
 
 /**

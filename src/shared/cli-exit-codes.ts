@@ -46,6 +46,7 @@ export const CLI_EXIT_CODE_EPIC_REF_INVALID = 44;
 export const CLI_EXIT_CODE_EPIC_CREATE_FORBIDDEN = 45;
 export const CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED = 46;
 export const CLI_EXIT_CODE_CONFIG_INVALID = 47;
+export const CLI_EXIT_CODE_WORKTREE_HALF_REMOVED = 48;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -330,5 +331,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_CONFIG_INVALID,
 		description:
 			"`dev3 config validate` found an error in a `.dev3/config.json` or `.dev3/config.local.json` (invalid JSON, a wrong type, an out-of-range value), or `dev3 config set` was given a value the schema rejects, so **nothing** was written. Unknown keys are warnings and do not cause it. Run `dev3 config schema <key>` for the expected type. Distinct from exit 1 so CI can tell a bad config from a failed command.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_WORKTREE_HALF_REMOVED",
+		code: CLI_EXIT_CODE_WORKTREE_HALF_REMOVED,
+		description:
+			"`dev3 task move --status completed|cancelled` was approved, but tearing the task down stopped half way: git already dropped the worktree's link while files (often a large untracked tree such as a `.venv`) are still in its folder, so the task did NOT move and stays in its column. The message names the folder. Run the same move again to finish it, or delete that folder yourself. Distinct from exit 1 so an agent knows the approval landed and only the cleanup is left.",
 	},
 ] as const;
