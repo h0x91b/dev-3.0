@@ -485,6 +485,7 @@ const kanban = {
 	"scheduleMessage.nowHint": "Typed into the agent's terminal right away.",
 	"scheduleMessage.stopHint": "Sent automatically when the agent finishes its turn. Until then it waits here as a draft.",
 	"scheduleMessage.saveOnStop": "Send on stop",
+	"scheduleMessage.keepDraft": "Keep as draft",
 	"scheduleMessage.draftSaved": "Saved as a draft — safe to close.",
 	"scheduleMessage.draftSaveFailed": "Couldn't save the draft: {error}",
 

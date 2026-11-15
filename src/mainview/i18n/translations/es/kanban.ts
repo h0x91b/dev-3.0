@@ -484,6 +484,7 @@ const kanban = {
 	"scheduleMessage.nowHint": "Se escribe en el terminal del agente de inmediato.",
 	"scheduleMessage.stopHint": "Se envía automáticamente cuando el agente termina su turno. Hasta entonces espera aquí como borrador.",
 	"scheduleMessage.saveOnStop": "Enviar al parar",
+	"scheduleMessage.keepDraft": "Guardar como borrador",
 	"scheduleMessage.draftSaved": "Guardado como borrador — puedes cerrar.",
 	"scheduleMessage.draftSaveFailed": "No se pudo guardar el borrador: {error}",
 

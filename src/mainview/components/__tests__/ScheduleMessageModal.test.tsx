@@ -167,6 +167,19 @@ describe("ScheduleMessageModal", () => {
 			expect(onClose).toHaveBeenCalledTimes(1);
 		});
 
+		it("Keep as draft parks the text unarmed, without sending", async () => {
+			const { onClose } = renderModal(undefined, { messageDraft: { text: "later", sendOnStop: true, updatedAt: "t0" } });
+			await userEvent.click(screen.getByRole("button", { name: "Keep as draft" }));
+			await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+			expect(mockedApi.request.saveMessageDraft).toHaveBeenLastCalledWith({ taskId: task.id, projectId: project.id, text: "later", sendOnStop: false });
+			expect(mockedApi.request.sendMessageDraft).not.toHaveBeenCalled();
+		});
+
+		it("shows Close instead while there is nothing to keep", () => {
+			renderModal();
+			expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+		});
+
 		it("autosaves the text as the task's draft after a typing pause", async () => {
 			renderModal();
 			await userEvent.type(screen.getByTestId("schedule-message-input"), "half a thought");

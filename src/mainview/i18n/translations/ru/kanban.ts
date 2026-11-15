@@ -510,6 +510,7 @@ const kanban = {
 	"scheduleMessage.nowHint": "Сразу вводится в терминал агента.",
 	"scheduleMessage.stopHint": "Отправится автоматически, когда агент закончит ход. До тех пор ждёт здесь как черновик.",
 	"scheduleMessage.saveOnStop": "Отправить при остановке",
+	"scheduleMessage.keepDraft": "Оставить черновиком",
 	"scheduleMessage.draftSaved": "Сохранено как черновик — можно закрыть.",
 	"scheduleMessage.draftSaveFailed": "Не удалось сохранить черновик: {error}",
 

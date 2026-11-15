@@ -201,6 +201,12 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 		void submitWith(() => persistDraft("", false));
 	}
 
+	/** Park the text with no send attached; an armed draft is disarmed. */
+	function handleKeepDraft() {
+		if (!text.trim()) return requestClose();
+		void submitWith(() => persistDraft(text, false));
+	}
+
 	const submitLabel = delivery === "now"
 		? t("task.sendNow")
 		: delivery === "stop"
@@ -342,11 +348,12 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 					)}
 					<div className="flex-1" />
 					<button
-						onClick={requestClose}
+						onClick={handleKeepDraft}
 						disabled={submitting}
-						className="text-fg-3 hover:text-fg text-sm transition-colors px-3 py-1.5"
+						data-testid="message-draft-keep"
+						className="text-fg-2 hover:text-fg text-sm font-medium transition-colors px-3 py-1.5 rounded-xl border border-edge hover:border-edge-active disabled:opacity-50"
 					>
-						{t("common.close")}
+						{text.trim() ? t("scheduleMessage.keepDraft") : t("common.close")}
 					</button>
 					<button
 						onClick={handleSubmit}
