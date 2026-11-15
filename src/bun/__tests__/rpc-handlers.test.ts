@@ -148,6 +148,7 @@ vi.mock("../git", () => ({
 	createOpsWorktree: vi.fn(),
 	resolveReadOnlyCompareRef: vi.fn(async (_repo: string, base: string) => `origin/${base}`),
 	pruneWorktrees: vi.fn().mockResolvedValue(undefined),
+	resolveRemovableAttachedRepo: vi.fn((attached: string) => attached),
 	run: vi.fn(),
 	getOriginUrl: vi.fn().mockResolvedValue("https://github.com/test/repo.git"),
 	resolveRef: vi.fn().mockResolvedValue("1111111111111111111111111111111111111111"),

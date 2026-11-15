@@ -114,8 +114,10 @@ export interface LifecycleExecutionContext {
 	/** Set by `resetWorktree`: the worktree is gone, so a failed final write must say so. */
 	resetWorktreeRemoved?: boolean;
 	resetBranchOutcome?: git.RemoveWorktreeBranchOutcome;
-	/** Set by `removeAttachedWorktree`: the repo it removed or deliberately left alone. The persist that follows detaches it only if the row still names it. */
+	/** Set by `removeAttachedWorktree` for a repo it removed, found already gone, or refused by the path guard. The persist that follows detaches it only if the row still names it. */
 	detachedAttachedRepo?: string;
+	/** Set with `detachedAttachedRepo` only when the worktree is really gone (removed now or earlier), so a failed final write can say so. */
+	attachedRepoRemoved?: boolean;
 	/** Set by `judgeFailureWorkspace`: why the failure cleanup keeps the folder. */
 	failureWorkspaceKept?: string;
 }
@@ -1233,11 +1235,14 @@ export async function executeLifecycleEffect(
 							const attached = ctx.sourceTask.attachedRepo;
 							const ownRepo = attached && (attached === worktreePath || isAttachedRepoInTaskFolder(ctx.sourceTask)) ? attached : null;
 							// A symlink swapped in since the attach would send git to a worktree outside the folder.
-							const realRepo = ownRepo ? git.resolveRemovableAttachedRepo(ownRepo, ownRepo === worktreePath ? OPS_DIR : worktreePath) : null;
+							const realRepo = ownRepo ? git.resolveRemovableAttachedRepo(ownRepo, worktreePath, OPS_DIR, ownRepo === worktreePath) : null;
 							const probe = realRepo ? await git.classifyLinkedWorktree(realRepo) : null;
 							const mainRepo = probe?.kind === "linked" ? probe.mainRepo : null;
 							if (mainRepo && realRepo) await git.removeLinkedWorktree(mainRepo, realRepo);
-							await rm(worktreePath, { recursive: true, force: true });
+							// A swapped-in symlink on the folder or above it would make the recursive delete follow it out of the managed root.
+							if (!existsSync(worktreePath) || git.resolveRemovableAttachedRepo(worktreePath, worktreePath, OPS_DIR, true)) {
+								await rm(worktreePath, { recursive: true, force: true });
+							}
 							if (isOpsWorktreeTask(ctx.sourceTask)) await git.pruneWorktrees(ctx.sourceTask.attachedRepo!);
 							else if (mainRepo) await git.pruneWorktrees(mainRepo);
 						}
@@ -1257,6 +1262,7 @@ export async function executeLifecycleEffect(
 			// Gone already (a retry or a boot after an earlier removal): only the record is left to clear.
 			if (!existsSync(attached)) {
 				ctx.detachedAttachedRepo = attached;
+				ctx.attachedRepoRemoved = true;
 				return {};
 			}
 			// Only the repo the user's dialog checked is ever removed; a swapped-in one is kept.
@@ -1265,7 +1271,7 @@ export async function executeLifecycleEffect(
 				return {};
 			}
 			// A symlink swapped in since the attach would send git to a worktree outside the folder: detach only.
-			const real = git.resolveRemovableAttachedRepo(attached, ctx.sourceTask.worktreePath!);
+			const real = git.resolveRemovableAttachedRepo(attached, ctx.sourceTask.worktreePath!, OPS_DIR);
 			if (!real) {
 				ctx.detachedAttachedRepo = attached;
 				return {};
@@ -1276,6 +1282,7 @@ export async function executeLifecycleEffect(
 				log.warn("Kept the attached worktree: git could not classify it", { taskId: ctx.sourceTask.id.slice(0, 8), attached, error: probe.error });
 			} else if (probe.kind === "linked" && await git.removeLinkedWorktree(probe.mainRepo, real)) {
 				ctx.detachedAttachedRepo = attached;
+				ctx.attachedRepoRemoved = true;
 			}
 			return {};
 		}
@@ -1302,8 +1309,8 @@ export async function executeLifecycleEffect(
 			if (!applied.result) {
 				throw new Error(ctx.resetWorktreeRemoved
 					? "the task changed elsewhere while it was being reset; its worktree is already removed — reset it again to finish"
-					: ctx.detachedAttachedRepo
-						? "the task changed elsewhere while it was being reset; its attached repository is already detached — reset it again to finish"
+					: ctx.attachedRepoRemoved
+						? "the task changed elsewhere while it was being reset; its attached worktree is already removed — reset it again to finish"
 						: "the task changed elsewhere while it was being reset; nothing was written");
 			}
 			ctx.task = applied.task;

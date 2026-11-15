@@ -23,6 +23,7 @@ import * as github from "../github";
 import { loadSettings } from "../settings";
 import { DEFAULT_TMUX_SOCKET } from "../tmux";
 import { dev3TaskTempPath } from "../temp-paths";
+import { OPS_DIR } from "../paths";
 import { isInsideOpsDir, repoPathInOwnTaskFolder } from "../ops-worktree";
 import { folderWorkDir } from "../task-folder";
 import { deliverAgentPrompt } from "../agent-prompt-delivery";
@@ -459,10 +460,12 @@ async function getUnsavedWork(params: { taskId: string; projectId: string; expec
 		let removedWithTask = isOpsWorktreeTask(task);
 		// A vanished attached repo has nothing left to lose.
 		if (!removedWithTask && isAttachedRepoInTaskFolder(task) && existsSync(task.attachedRepo!)) {
-			const probe = await git.classifyLinkedWorktree(task.attachedRepo!);
+			// A path the removal would refuse (a swapped-in symlink) is never removed, so it has nothing to report.
+			const real = git.resolveRemovableAttachedRepo(task.attachedRepo!, task.worktreePath!, OPS_DIR);
+			const probe = real ? await git.classifyLinkedWorktree(real) : null;
 			// Unknown is an error, as for a git task: the dialog says "unknown", never "clean".
-			if (probe.kind === "unknown") throw new Error(`Cannot tell whether the attached repository is a worktree: ${probe.error}`);
-			removedWithTask = probe.kind === "linked";
+			if (probe?.kind === "unknown") throw new Error(`Cannot tell whether the attached repository is a worktree: ${probe.error}`);
+			removedWithTask = probe?.kind === "linked";
 		}
 		if (!removedWithTask) return nothingUnsaved;
 	} else if (!taskUsesWorktree(project, task) || !task.worktreePath) return nothingUnsaved;

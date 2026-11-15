@@ -198,10 +198,13 @@ describe("Operations worktree", () => {
 	});
 
 	describe("resolveRemovableAttachedRepo", () => {
+		let ops: string;
 		let folder: string;
 		let external: string;
+		const resolve = (attached: string, allowSelf = false) => resolveRemovableAttachedRepo(attached, folder, ops, allowSelf);
 		beforeEach(async () => {
-			folder = join(repo.dir, "ops", "abcdef12", "work");
+			ops = join(repo.dir, "ops");
+			folder = join(ops, "slug", "abcdef12", "work");
 			mkdirSync(folder, { recursive: true });
 			external = join(repo.dir, "external-wt");
 			await createOpsWorktree(repo.local, task, external, "main");
@@ -211,33 +214,65 @@ describe("Operations worktree", () => {
 		it("returns the real path of a repo strictly inside the folder", async () => {
 			const inside = join(folder, "wt");
 			await createOpsWorktree(repo.local, { id: "bbcdef12-0000-0000-0000-00000000000a" } as any, inside, "main");
-			expect(resolveRemovableAttachedRepo(inside, folder)).toBe(realpathSync(inside));
+			expect(resolve(inside)).toBe(realpathSync(inside));
+		});
+
+		it("keeps working when the managed root itself is behind a symlink", async () => {
+			const link = join(repo.dir, "ops-link");
+			symlinkSync(ops, link);
+			const inside = join(link, "slug", "abcdef12", "work", "wt");
+			await createOpsWorktree(repo.local, { id: "bbcdef12-0000-0000-0000-00000000000a" } as any, inside, "main");
+			expect(resolveRemovableAttachedRepo(inside, join(link, "slug", "abcdef12", "work"), link)).toBe(realpathSync(inside));
 		});
 
 		it("refuses a repo path replaced by a symlink to a worktree elsewhere", () => {
 			const link = join(folder, "wt");
 			symlinkSync(external, link);
-			expect(resolveRemovableAttachedRepo(link, folder)).toBeNull();
+			expect(resolve(link)).toBeNull();
 			expect(readFileSync(join(external, "dirty.ts"), "utf-8")).toBe("uncommitted\n");
 		});
 
 		it("refuses a repo whose parent folder was replaced by a symlink", () => {
 			const parent = join(folder, "sub");
 			symlinkSync(repo.dir, parent);
-			expect(resolveRemovableAttachedRepo(join(parent, "external-wt"), folder)).toBeNull();
+			expect(resolve(join(parent, "external-wt"))).toBeNull();
 		});
 
-		it("refuses the folder itself, a lookalike sibling, an outside path and a missing one", () => {
+		it("refuses a task folder swapped for a symlink to an external one holding a worktree of the same name", async () => {
+			rmSync(join(ops, "slug", "abcdef12"), { recursive: true });
+			const elsewhere = join(repo.dir, "elsewhere");
+			mkdirSync(join(elsewhere, "work"), { recursive: true });
+			g(`git worktree add -b same-name "${join(elsewhere, "work", "wt")}"`, repo.local);
+			symlinkSync(elsewhere, join(ops, "slug", "abcdef12"));
+			expect(resolve(join(folder, "wt"))).toBeNull();
+		});
+
+		it("refuses the task folder itself and an ancestor of it swapped for symlinks", () => {
+			const swapped = join(repo.dir, "swapped");
+			mkdirSync(join(swapped, "wt"), { recursive: true });
+			rmSync(folder, { recursive: true });
+			symlinkSync(swapped, folder);
+			expect(resolve(join(folder, "wt"))).toBeNull();
+			expect(resolve(folder, true)).toBeNull();
+
+			rmSync(join(ops, "slug"), { recursive: true });
+			mkdirSync(join(swapped, "abcdef12", "work", "wt"), { recursive: true });
+			symlinkSync(swapped, join(ops, "slug"));
+			expect(resolve(join(folder, "wt"))).toBeNull();
+		});
+
+		it("refuses the folder itself unless allowed, a lookalike sibling, an outside path, a task folder outside the root and a missing path", () => {
 			const sibling = `${folder}-x`;
 			mkdirSync(sibling);
-			expect(resolveRemovableAttachedRepo(folder, folder)).toBeNull();
-			expect(resolveRemovableAttachedRepo(sibling, folder)).toBeNull();
-			expect(resolveRemovableAttachedRepo(external, folder)).toBeNull();
-			expect(resolveRemovableAttachedRepo(join(folder, "gone"), folder)).toBeNull();
+			expect(resolve(folder)).toBeNull();
+			expect(resolve(sibling)).toBeNull();
+			expect(resolve(external)).toBeNull();
+			expect(resolve(join(folder, "gone"))).toBeNull();
+			expect(resolveRemovableAttachedRepo(external, external, ops, true)).toBeNull();
 		});
 
-		it("accepts the folder itself when the root is a folder above it", () => {
-			expect(resolveRemovableAttachedRepo(folder, join(repo.dir, "ops"))).toBe(realpathSync(folder));
+		it("accepts the task folder itself when allowed", () => {
+			expect(resolve(folder, true)).toBe(realpathSync(folder));
 		});
 	});
 

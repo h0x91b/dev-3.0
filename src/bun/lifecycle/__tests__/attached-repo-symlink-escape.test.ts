@@ -83,7 +83,7 @@ vi.mock("../../board-operations/runtime", () => ({ boardPorts: { push: vi.fn(), 
 vi.mock("../../agent-requests", () => ({ voidAgentRequestsForTask: vi.fn() }));
 vi.mock("../../board-operations/types", () => ({ AGENT_ACTOR: { kind: "agent" } }));
 
-import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import * as data from "../../data";
 import { executeLifecycleEffect, type LifecycleExecutionContext } from "../executor";
@@ -193,4 +193,60 @@ describe("a symlink swapped in for the attached repo after attaching", () => {
 		expect(existsSync(FOLDER)).toBe(false);
 		expect(g("git worktree list", repo.local)).not.toContain(WT);
 	});
+
+	// The external tree mirrors the managed layout and holds a dirty linked worktree of the same name.
+	const externalTree = () => {
+		const tree = join(repo.dir, "external-tree");
+		g(`git worktree add -b same-name "${join(tree, "wt")}"`, repo.local);
+		writeFileSync(join(tree, "wt", "dirty.ts"), "uncommitted\n");
+		return tree;
+	};
+	const swapTaskFolder = () => {
+		const tree = externalTree();
+		rmSync(FOLDER, { recursive: true });
+		symlinkSync(tree, FOLDER);
+		return join(tree, "wt");
+	};
+	const swapAncestor = () => {
+		const tree = join(repo.dir, "external-ancestor");
+		const wt = join(tree, "work", "wt");
+		mkdirSync(join(tree, "work"), { recursive: true });
+		g(`git worktree add -b same-name-2 "${wt}"`, repo.local);
+		writeFileSync(join(wt, "dirty.ts"), "uncommitted\n");
+		rmSync(`${ROOT}/ops/slug/aabbccdd`, { recursive: true });
+		symlinkSync(tree, `${ROOT}/ops/slug/aabbccdd`);
+		return wt;
+	};
+	const survives = (wt: string) => {
+		expect(readFileSync(join(wt, "dirty.ts"), "utf-8")).toBe("uncommitted\n");
+		expect(g("git worktree list", repo.local)).toContain(realpathSync(wt));
+	};
+
+	for (const [name, swap] of [["the task folder itself", swapTaskFolder], ["an ancestor of the task folder", swapAncestor]] as const) {
+		describe(`${name} swapped for a symlink to an external tree`, () => {
+			it("closing keeps the external worktree and still detaches", async () => {
+				const wt = swap();
+				const ctx = ctxFor(row = taskWith(`${FOLDER}/wt`));
+				await step("removeAttachedWorktree", ctx, { approvedAttachedRepo: `${FOLDER}/wt` });
+				await step("persistTerminalTask", ctx, { status: "completed", onError: "abort" });
+				survives(wt);
+				expect(ctx.task.attachedRepo).toBeNull();
+			});
+
+			it("resetting keeps the external worktree and still detaches", async () => {
+				const wt = swap();
+				const ctx = ctxFor(row = { ...taskWith(`${FOLDER}/wt`), status: "in-progress", lifecycleStartedAt: "S" } as Task);
+				await step("removeAttachedWorktree", ctx, { approvedAttachedRepo: `${FOLDER}/wt` });
+				await step("persistResetTask", ctx, { consent: { worktreePath: FOLDER, lifecycleStartedAt: "S", attachedRepo: `${FOLDER}/wt`, approvedAttachedRepo: `${FOLDER}/wt` }, onError: "abort" });
+				survives(wt);
+				expect(ctx.task).toMatchObject({ status: "todo", attachedRepo: null });
+			});
+
+			it("deleting the task keeps the external worktree", async () => {
+				const wt = swap();
+				await step("removeTaskWorkspace", ctxFor(taskWith(`${FOLDER}/wt`)));
+				survives(wt);
+			});
+		});
+	}
 });

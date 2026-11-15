@@ -6,6 +6,7 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, statSync, 
 import {
 	basename as basenamePath,
 	dirname as dirnamePath,
+	isAbsolute,
 	relative as relativePath,
 	resolve as resolvePath,
 	sep as pathSep,
@@ -1698,20 +1699,39 @@ function realPathOr(path: string): string {
 
 /**
  * The real path of an attached repo that may be removed, or null. Removal runs long after the attach
- * check, so a symlink swapped in since (on the repo or a folder above it) must not lead git to a
- * worktree outside `root`, which the repo must resolve strictly inside.
+ * check, so a symlink swapped in since, on the repo or on any folder from `opsDir` down (the task
+ * folder included), must not lead git to a worktree outside. Only `opsDir` is canonicalized: the
+ * expected real path is built from it and the written path, never read back from a link.
+ * `allowFolderItself`: the repo may be the task folder.
  */
-export function resolveRemovableAttachedRepo(attached: string, root: string): string | null {
+export function resolveRemovableAttachedRepo(attached: string, taskFolder: string, opsDir: string, allowFolderItself = false): string | null {
 	if (!existsSync(attached)) return null;
 	try {
-		if (lstatSync(attached).isSymbolicLink()) throw new Error("the attached path is a symlink");
+		const realOps = realpathSync(opsDir);
+		const base = [opsDir, realOps].find((root) => isLexicallyInside(taskFolder, root));
+		if (!base) throw new Error("the task folder is not inside the managed root");
+		const attachedRel = relativePath(taskFolder, attached);
+		const inFolder = attachedRel === "" ? allowFolderItself : isLexicallyInside(attached, taskFolder);
+		if (!inFolder) throw new Error("it is not inside the task folder");
+		const fromRoot = relativePath(base, resolvePath(attached));
+		let current = base;
+		for (const part of fromRoot.split(pathSep)) {
+			current = `${current}${pathSep}${part}`;
+			if (lstatSync(current).isSymbolicLink()) throw new Error(`a symlink on the way: ${current}`);
+		}
+		const expected = resolvePath(realOps, fromRoot);
 		const real = realpathSync(attached);
-		if (!real.startsWith(`${realpathSync(root)}${pathSep}`)) throw new Error("it resolves outside the task folder");
+		if (real !== expected) throw new Error("it resolves elsewhere than where it is written");
 		return real;
 	} catch (err) {
-		log.warn("Kept the attached repo: it is not safe to remove", { attached, root, reason: err instanceof Error ? err.message : String(err) });
+		log.warn("Kept the attached repo: it is not safe to remove", { attached, taskFolder, reason: err instanceof Error ? err.message : String(err) });
 		return null;
 	}
+}
+
+function isLexicallyInside(path: string, root: string): boolean {
+	const rel = relativePath(root, path);
+	return rel !== "" && rel !== ".." && !rel.startsWith(`..${pathSep}`) && !isAbsolute(rel);
 }
 
 /**

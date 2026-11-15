@@ -64,7 +64,7 @@ vi.mock("../../lifecycle/activities", () => ({
 }));
 vi.mock("../../lifecycle/merge-fingerprint", () => ({ getMergeCompletionFingerprint: vi.fn() }));
 
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cleanup, createTestRepo, g, type TestRepo } from "../../__tests__/git-test-helpers";
@@ -385,6 +385,16 @@ describe("a repo inside the task's own managed folder", () => {
 		expect(unsaved.insertions + unsaved.deletions).toBeGreaterThan(0);
 		expect(unsaved.ahead).toBe(1);
 		expect(unsaved.unpushed).not.toBe(0);
+	});
+
+	it("getUnsavedWork reports nothing for a symlink standing in for the attached path: the close would not remove it", async () => {
+		const outside = `${repo.dir}/outside-wt`;
+		await createOpsWorktree(root, vtask(), outside, "main");
+		writeFileSync(join(outside, "app.ts"), "const a = 100;\n");
+		symlinkSync(outside, `${folder}/wt`);
+		mocks.getTask.mockResolvedValue(ownTask({ attachedRepo: `${folder}/wt`, baseBranch: "main" }));
+
+		expect(await handlers.getUnsavedWork({ taskId: "t", projectId: "vp1" })).toMatchObject({ insertions: 0, deletions: 0, unpushed: 0, ahead: 0 });
 	});
 
 	it("getUnsavedWork rejects, never says clean, when git cannot classify the repo (broken main config)", async () => {
