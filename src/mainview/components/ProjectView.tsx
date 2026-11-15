@@ -286,6 +286,7 @@ function ProjectView({
 		const terminalPane = activeTaskId ? (
 			<TaskWorkspacePane
 				projectId={projectId}
+				spaceId={spaceId}
 				taskId={activeTaskId}
 				tasks={tasks}
 				projects={projects}
