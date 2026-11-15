@@ -1,5 +1,7 @@
 # Shell prompt styles: one engine, many one-line styles
 
+> Partly superseded on 2026-11-15 by `decisions/2026/11/15/async-zsh-prompt-git-state.md`: in an interactive zsh the git call no longer runs inside `precmd`; it runs in the background and the prompt redraws when it lands.
+
 ## Context
 Settings → Terminal → Shell prompt lets the user pick a prompt style for zsh shell panes, write their own, or keep the prompt from their own `.zshrc`. The user wanted every style to be small enough to copy and tweak.
 

@@ -1,5 +1,7 @@
 # Shell prompt shows git counters, not the branch name
 
+> Partly superseded on 2026-11-15 by `decisions/2026/11/15/async-zsh-prompt-git-state.md`: in an interactive zsh the git call no longer runs inside `precmd`; it runs in the background and the prompt redraws when it lands.
+
 ## Context
 The dev3 shell-pane prompt (`src/bun/shell-init.ts`) was redesigned into a two-line segmented prompt. Task branches are long (`feat/dev3-…`) and the user found the name a waste of width; tmux panes are often under 40 columns.
 
