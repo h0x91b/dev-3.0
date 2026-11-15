@@ -1464,16 +1464,21 @@ describe("App keyboard shortcuts", () => {
 			expect(after).toHaveAttribute("data-task-view", "true");
 		});
 
-		it("Cmd+1 on the full-page task of that project stays on the task", async () => {
+		it("fullscreen mode: Cmd+1 on the full-page task of that project goes to its Kanban board", async () => {
+			localStorage.setItem("dev3-task-open-mode", "fullscreen");
 			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
 			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
 			});
 
 			await renderApp();
+			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+
 			await userEvent.keyboard("{Meta>}1{/Meta}");
 
-			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
+			const after = screen.getByTestId("project-screen");
+			expect(after).toHaveAttribute("data-project-id", "p1");
+			expect(after).toHaveAttribute("data-task-view", "false");
 		});
 
 		it("keeps board view: Cmd+2 from the Kanban board switches project without task view", async () => {

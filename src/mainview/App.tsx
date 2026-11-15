@@ -1721,7 +1721,8 @@ function App() {
 				//  - "fullscreen" users have no task to show full-page after a switch, so
 				//                 dropping them into a split they never use is jarring —
 				//                 land on the Kanban board instead (pre-#619 behavior).
-				// The board already on screen is a no-op, so the selection stays.
+				// The board already on screen is a no-op, so the selection stays; a
+				// full-page task is not a board, so its own digit still leads to one.
 				// Built-in Operations board is reached via Cmd+0, not Cmd+1..9.
 				const n = parseInt(e.key, 10);
 				if (digitTargetList[n - 1]) {

@@ -172,7 +172,10 @@ describe("isDigitTargetOnScreen", () => {
 	it("is true for the project board on screen, with or without a selected task", () => {
 		expect(isDigitTargetOnScreen(projectA, { screen: "project", projectId: "a" })).toBe(true);
 		expect(isDigitTargetOnScreen(projectA, { screen: "project", projectId: "a", activeTaskId: "t1" })).toBe(true);
-		expect(isDigitTargetOnScreen(projectA, { screen: "task", projectId: "a", taskId: "t1" })).toBe(true);
+	});
+
+	it("is false on that project's full-page task, which is not a board", () => {
+		expect(isDigitTargetOnScreen(projectA, { screen: "task", projectId: "a", taskId: "t1" })).toBe(false);
 	});
 
 	it("is false for another project", () => {
@@ -185,7 +188,7 @@ describe("isDigitTargetOnScreen", () => {
 
 	it("is true for a space target on its board, whichever member anchors it", () => {
 		expect(isDigitTargetOnScreen(spaceBC, { screen: "project", projectId: "c", spaceId: "s1" })).toBe(true);
-		expect(isDigitTargetOnScreen(spaceBC, { screen: "task", projectId: "b", taskId: "t1", spaceId: "s1" })).toBe(true);
+		expect(isDigitTargetOnScreen(spaceBC, { screen: "project", projectId: "b", spaceId: "s1", activeTaskId: "t1" })).toBe(true);
 	});
 
 	it("is false for a space target on another space or on a plain project board", () => {
@@ -193,8 +196,9 @@ describe("isDigitTargetOnScreen", () => {
 		expect(isDigitTargetOnScreen(otherSpace, { screen: "project", projectId: "a" })).toBe(false);
 	});
 
-	it("is false off the project and task screens", () => {
+	it("is false off the project screen", () => {
 		expect(isDigitTargetOnScreen(projectA, { screen: "dashboard" })).toBe(false);
 		expect(isDigitTargetOnScreen(spaceBC, { screen: "dashboard" })).toBe(false);
+		expect(isDigitTargetOnScreen(spaceBC, { screen: "task", projectId: "b", taskId: "t1", spaceId: "s1" })).toBe(false);
 	});
 });

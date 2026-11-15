@@ -101,10 +101,10 @@ export function digitTargets(projects: Project[], file: SpacesFile, followSpaces
 /**
  * True when `target` is the board `route` already shows, so a digit shortcut for
  * it has nothing to switch to. A space board anchored on a project is a different
- * board from that project alone.
+ * board from that project alone, and a full-page task is not a board at all.
  */
 export function isDigitTargetOnScreen(target: MixedEntry, route: Route): boolean {
-	if (route.screen !== "project" && route.screen !== "task") return false;
+	if (route.screen !== "project") return false;
 	const spaceId = route.spaceId ?? null;
 	if (target.kind === "space") return spaceId === target.space.id;
 	return spaceId === null && route.projectId === target.project.id;
