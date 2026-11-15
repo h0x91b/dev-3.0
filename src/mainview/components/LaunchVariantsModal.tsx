@@ -170,15 +170,17 @@ function LaunchVariantsModal({
 
 	// Starting a To Do task that still depends on open tasks warns, and never refuses.
 	const [openDependencies, setOpenDependencies] = useState<number[]>([]);
+	// Keyed on the links, not the task object: an unrelated push for this task must not refetch the board.
+	const dependencyKey = dependencyIds(task).join(",");
 	useEffect(() => {
-		if (mode !== "spawn" || task.status !== "todo" || dependencyIds(task).length === 0) return;
+		if (mode !== "spawn" || task.status !== "todo" || !dependencyKey) return;
 		let live = true;
 		Promise.resolve()
 			.then(() => api.request.getTasks({ projectId: project.id }))
 			.then((all) => { if (live) setOpenDependencies(summarizeDependencies(task, all).open.map((d) => d.seq)); })
 			.catch(() => {});
 		return () => { live = false; };
-	}, [mode, task, project.id]);
+	}, [mode, task.status, dependencyKey, project.id]);
 
 	// Keep Tab/Shift+Tab inside the dialog — otherwise focus escapes to the
 	// Kanban board behind the modal (labels, task cards), letting the user

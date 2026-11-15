@@ -25,7 +25,7 @@ import type { CliHibernateOutcome, CliWakeOutcome } from "../../shared/task-hibe
 import { buildTaskShowJson, describeTaskEpic, describeTaskOrigin, type ShownTask } from "../task-json";
 import { exitEpicRequestFailed } from "./epic";
 import { withBooleanFlags } from "./spaces";
-import { formatDependencyRefs, type ResolvedDependency, type TaskDependencyInfo } from "../../shared/task-dependencies";
+import { dependencyIds, formatDependencyRefs, type ResolvedDependency, type TaskDependencyInfo } from "../../shared/task-dependencies";
 
 // Statuses that destroy the worktree + terminal are never a direct CLI move.
 // Both become a blocking approval request the user answers in the app, so an
@@ -114,7 +114,7 @@ function splitRefs(raw: string): string[] {
 }
 
 /** `--depends-on seq:A[,seq:B]` and `--no-depends-on [seq:A[,seq:B]]` as request params; refs are resolved by the app. */
-function dependencyParams(args: ParsedArgs, allowRemove: boolean): Record<string, unknown> {
+function dependencyParams(args: ParsedArgs): Record<string, unknown> {
 	const params: Record<string, unknown> = {};
 	const add = args.flags["depends-on"];
 	if (add !== undefined) {
@@ -124,7 +124,6 @@ function dependencyParams(args: ParsedArgs, allowRemove: boolean): Record<string
 	}
 	const remove = args.flags["no-depends-on"];
 	if (remove !== undefined) {
-		if (!allowRemove) exitUsage("--no-depends-on only applies to task update.");
 		// Bare flag: drop every dependency.
 		params.noDependsOn = remove === "true" ? true : splitRefs(remove);
 	}
@@ -136,7 +135,10 @@ function describeDependencies(info: TaskDependencyInfo): Array<[string, string]>
 	const fields: Array<[string, string]> = [];
 	if (info.dependsOn.length > 0) {
 		const open = info.dependsOn.filter((d) => d.state === "open");
-		const verdict = open.length ? `blocked by ${formatDependencyRefs(open)}` : "ready, every dependency is done";
+		const cancelled = info.dependsOn.filter((d) => d.state === "cancelled");
+		const verdict = open.length
+			? `blocked by ${formatDependencyRefs(open)}`
+			: cancelled.length ? `ready, but ${formatDependencyRefs(cancelled)} was cancelled` : "ready, every dependency is done";
 		const list = info.dependsOn.map((d) => `#${d.seq} (${STATUS_LABELS[d.status] || d.status})`).join(", ");
 		fields.push(["Depends on:", `${list} - ${verdict}`]);
 	}
@@ -144,6 +146,16 @@ function describeDependencies(info: TaskDependencyInfo): Array<[string, string]>
 		fields.push(["Blocks:", info.blocks.map((d) => `#${d.seq} (${STATUS_LABELS[d.status] || d.status})`).join(", ")]);
 	}
 	return fields;
+}
+
+/** Start-after starts the task by itself; its other dependencies only warn, so say so when both are set. */
+function warnStartAfterSkipsDependencies(task: Task): void {
+	const cond = task.launchAfter;
+	if (!cond || task.status !== "todo") return;
+	const others = dependencyIds({ relations: task.relations }).filter((id) => id !== cond.taskId).length;
+	if (!others) return;
+	const what = others === 1 ? "dependency is" : `${others} dependencies are`;
+	process.stderr.write(`Warning: #${task.seq} starts by itself after #${cond.seq} even if its other ${what} still open. Dependencies warn; they never hold a start.\n`);
 }
 
 /** Names the open dependencies of a task that was started anyway. */
@@ -418,7 +430,7 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 	if (ownWorktree) params.ownWorktree = true;
 	// Without either flag the new task inherits the creating task's epic in the app.
 	Object.assign(params, epic);
-	Object.assign(params, startAfter, dependencyParams(args, false));
+	Object.assign(params, startAfter, dependencyParams(args));
 
 	const resp = await sendRequest(socketPath, "task.create", params);
 	if (!resp.ok) {
@@ -460,6 +472,7 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 	const startsAfter = describeLaunchAfter(task);
 	if (startsAfter) process.stderr.write(`Starts after: ${startsAfter}. Nothing starts until then.\n`);
 	if (params.dependsOn !== undefined) process.stderr.write(`Depends on: ${(params.dependsOn as string[]).join(", ")}.\n`);
+	warnStartAfterSkipsDependencies(task);
 }
 
 async function updateTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
@@ -476,7 +489,7 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 	if (startAfter.startAfter === undefined && (args.flags.agent !== undefined || args.flags.config !== undefined)) {
 		exitUsage("--agent/--config on task update only apply together with --start-after.");
 	}
-	const params: Record<string, unknown> = { taskId, ...epicParams(args), ...startAfter, ...dependencyParams(args, true) };
+	const params: Record<string, unknown> = { taskId, ...epicParams(args), ...startAfter, ...dependencyParams(args) };
 	if (noStartAfter) params.noStartAfter = true;
 	// Armed from inside a task, the launch later asks the user the way that agent's own move would.
 	if (startAfter.startAfter !== undefined && context?.taskId) params.sourceTaskId = context.taskId;
@@ -582,9 +595,10 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 		process.stderr.write("Start-after cleared: this task starts only when someone starts it.\n");
 	}
 	if (params.dependsOn !== undefined || params.noDependsOn !== undefined) {
-		const links = (task.relations ?? []).filter((r) => r.type === "blocked-by").length;
+		const links = dependencyIds(task).length;
 		process.stderr.write(links ? `Dependencies: ${links}. See them with: dev3 task show seq:${task.seq}\n` : "Dependencies: none.\n");
 	}
+	if (params.dependsOn !== undefined || params.startAfter !== undefined) warnStartAfterSkipsDependencies(task);
 	// The role brief goes to stdout as the command's payload: the agent that ran it
 	// reads it right here, and re-running prints the same text whether or not the
 	// type had to change.

@@ -37,7 +37,7 @@ import { READABLE_GUTTER } from "./readable-width";
 import { flushPendingBoardViewCommand, registerBoardViewCommandHandler, type BoardViewCommand } from "./view-commands";
 import type { RegisteredBoardView } from "./registry";
 import { toast } from "../toast";
-import { dependencyIds, summarizeDependencies, type DependencySummary } from "../../shared/task-dependencies";
+import { dependencyIds, indexDependencies, summarizeDependencies, type DependencySummary } from "../../shared/task-dependencies";
 
 
 export interface BoardHostProps {
@@ -246,8 +246,9 @@ function BoardHost(props: BoardHostProps) {
 
 	const dependencyMap = useMemo(() => {
 		const map = new Map<string, DependencySummary>();
+		const index = indexDependencies(tasks);
 		for (const task of tasks) {
-			if (dependencyIds(task).length > 0) map.set(task.id, summarizeDependencies(task, tasks));
+			if (dependencyIds(task).length > 0) map.set(task.id, summarizeDependencies(task, index));
 		}
 		return map;
 	}, [tasks]);

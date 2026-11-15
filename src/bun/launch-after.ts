@@ -1,6 +1,6 @@
 import type { AgentMessageSource, LaunchAfter, LaunchAfterUntil, LaunchVariant, Project, Task } from "../shared/types";
 import { startAfterAbandonedMessage, type StartAfterAbandonReason } from "../shared/preparation-failure";
-import { dependencyWouldCycle } from "../shared/task-dependencies";
+import { dependencyWouldCycle, summarizeDependencies } from "../shared/task-dependencies";
 import * as data from "./data";
 import { createLogger } from "./logger";
 import { getPushMessage } from "./rpc-handlers/shared-pure";
@@ -258,6 +258,8 @@ async function fire(project: Project, task: Task, cond: LaunchAfter): Promise<vo
 		if (cond.armedBy) {
 			const { requestAgentLaunchApproval } = await loadApprovals();
 			const fresh = await data.getTask(project, task.id);
+			// A start-after start never waits for the other dependencies; the dialog names the open ones.
+			const openDependencies = summarizeDependencies(fresh, await data.loadTasks(project)).open;
 			// The arming agent has usually finished by the time its condition holds; the new one must not report to it then.
 			const handoff = await requesterIsLive(cond.armedBy);
 			// Not awaited: the dialog can stay open for minutes and the tick must not stall on it.
@@ -268,6 +270,7 @@ async function fire(project: Project, task: Task, cond: LaunchAfter): Promise<vo
 				requester: cond.armedBy,
 				suggested: cond.variant ?? null,
 				handoff,
+				openDependencies,
 			}).catch((err) => recordFailure(project, task, err));
 		} else if (cond.variant) {
 			await launchTaskWithAgentChoice({ taskId: task.id, projectId: project.id, targetStatus: "in-progress", choice: { variants: [cond.variant] } });

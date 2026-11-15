@@ -699,7 +699,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	if (openDeps.length > 0) {
 		const shown = formatDependencyRefs(openDeps.slice(0, 3)) + (openDeps.length > 3 ? ", …" : "");
 		timeSignals.push(
-			<Tooltip key="blocked" content={t("task.blockedByTooltip", { refs: formatDependencyRefs(openDeps) })}>
+			<Tooltip key="blocked" content={t(isTodo ? "task.blockedByTooltip" : "task.blockedByTooltipStarted", { refs: formatDependencyRefs(openDeps) })}>
 				<span data-testid="task-card-blocked-chip" className="flex h-5 flex-shrink-0 items-center gap-1 rounded px-1.5 text-micro text-fg-3">
 					<DependencyBlockedIcon className="w-3 h-3" />
 					{t("task.blockedBy", { refs: shown })}

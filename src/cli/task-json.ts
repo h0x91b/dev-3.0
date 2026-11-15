@@ -62,11 +62,12 @@ export interface TaskShowJson {
 	startAfter: { taskId: string; seq: number; until: string; armedByTaskId: string | null; armedAt: string } | null;
 	/**
 	 * Dependency links, or null when the task has none in either direction.
-	 * `state` is `blocked` while a task in `dependsOn` is open, `ready` once all are done.
+	 * `state` is `blocked` while a task in `dependsOn` is open, `ready` once none is. A dependency whose
+	 * every variant finished without completing has `state: "cancelled"`: it no longer blocks.
 	 */
 	dependencies: {
 		state: "none" | "blocked" | "ready";
-		dependsOn: Array<{ taskId: string; seq: number; title: string; status: string; open: boolean }>;
+		dependsOn: Array<{ taskId: string; seq: number; title: string; status: string; open: boolean; state: "open" | "done" | "cancelled" }>;
 		blocks: Array<{ taskId: string; seq: number; title: string; status: string }>;
 	} | null;
 	/** The agent, terminal and dev server are stopped until the task is woken. */
@@ -183,7 +184,7 @@ export function buildTaskShowJson(task: ShownTask, opts: { notes?: boolean; hist
 		dependencies: task.dependencyInfo
 			? {
 				state: task.dependencyInfo.verdict,
-				dependsOn: task.dependencyInfo.dependsOn.map(({ taskId, seq, title, status, state }) => ({ taskId, seq, title, status, open: state === "open" })),
+				dependsOn: task.dependencyInfo.dependsOn.map(({ taskId, seq, title, status, state }) => ({ taskId, seq, title, status, open: state === "open", state })),
 				blocks: task.dependencyInfo.blocks,
 			}
 			: null,

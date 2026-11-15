@@ -19,17 +19,19 @@ import { resolveProjectId, type CliContext } from "../context";
 type ListedTask = Task & { dependencyInfo?: TaskDependencyInfo };
 
 /** An open task's dependency state for the listing, so it answers "what can I start next". */
-function dependencyJson(task: ListedTask): { state: "blocked" | "ready"; blockedBy: number[] } | null {
+function dependencyJson(task: ListedTask): { state: "blocked" | "ready"; blockedBy: number[]; cancelled: number[] } | null {
 	const info = task.dependencyInfo;
 	if (!info || info.verdict === "none" || task.status === "completed" || task.status === "cancelled") return null;
-	return { state: info.verdict, blockedBy: info.dependsOn.filter((d) => d.state === "open").map((d) => d.seq) };
+	const seqs = (state: string) => info.dependsOn.filter((d) => d.state === state).map((d) => d.seq);
+	return { state: info.verdict, blockedBy: seqs("open"), cancelled: seqs("cancelled") };
 }
 
 function dependencyMark(task: ListedTask): string {
 	const dep = dependencyJson(task);
 	if (!dep) return "";
 	if (dep.state === "blocked") return ` (blocked by ${dep.blockedBy.map((seq) => `#${seq}`).join(", ")})`;
-	return task.status === "todo" ? " (ready)" : "";
+	if (task.status !== "todo") return "";
+	return dep.cancelled.length ? ` (ready, ${dep.cancelled.map((seq) => `#${seq}`).join(", ")} cancelled)` : " (ready)";
 }
 
 // Default page size for `tasks list` when --limit is omitted. Keeps large

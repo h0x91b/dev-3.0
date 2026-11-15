@@ -18,9 +18,9 @@ import { loadTaskChildren } from "../task-lineage";
 import { assertEpicAttachable, epicForNewTask, setTaskEpic } from "../task-epics";
 import { findEpic } from "../epics-data";
 import { readTaskTerminalBackendState, switchTaskTerminalBackend } from "../task-terminal-backend-switch";
-import { armLaunchAfter, clearLaunchAfter, prerequisiteRefusal, writeLaunchAfter } from "../launch-after";
-import { addDependencies, removeDependencies } from "../task-dependencies";
-import { dependencyInfo, summarizeDependencies, type TaskDependencyInfo } from "../../shared/task-dependencies";
+import { armLaunchAfter, clearLaunchAfter, launchAfterRefusal, prerequisiteRefusal, writeLaunchAfter } from "../launch-after";
+import { addDependencies, planDependencyChange, writeDependencyPlan } from "../task-dependencies";
+import { dependencyInfo, indexDependencies, summarizeDependencies, type DependencyBoard, type TaskDependencyInfo } from "../../shared/task-dependencies";
 import { approvalStatusOf, launchSuggestionRequested, launcherHandoffNote, requestAgentLaunchApproval, requestDestructiveApproval, resolveLaunchSuggestion } from "./approvals";
 import { log, type Handler, withSenderVariant } from "./shared";
 import { findByIdPrefix, findTaskByRef, parseSeqRef, resolveAgentMessageSource, resolveRequesterTask, resolveTaskAcrossProjects, resolveTaskFromParams, resumeAccountParam, scopedTaskNotFoundError, senderRequester, taskNotFoundError, withArchivedHistory, withEpic, withOriginParent, withSenderAgent } from "./task-resolution";
@@ -144,8 +144,8 @@ async function readDependencyRefs(value: unknown, flag: string, project: Project
 }
 
 /** `task show` and `task list` answer with the task's dependency links resolved. */
-function withDependencyInfo<T extends Task>(task: T, tasks: Task[]): T & { dependencyInfo?: TaskDependencyInfo } {
-	const info = dependencyInfo(task, tasks);
+function withDependencyInfo<T extends Task>(task: T, board: DependencyBoard): T & { dependencyInfo?: TaskDependencyInfo } {
+	const info = dependencyInfo(task, board);
 	return info ? { ...task, dependencyInfo: info } : task;
 }
 
@@ -212,7 +212,8 @@ export const taskHandlers: Record<string, Handler> = {
 			tasks = tasks.filter((t) => t.status === status);
 		}
 
-		return tasks.map((t) => withDependencyInfo(t, board));
+		const index = indexDependencies(board);
+		return tasks.map((t) => withDependencyInfo(t, index));
 	},
 
 	/**
@@ -538,6 +539,13 @@ export const taskHandlers: Record<string, Handler> = {
 		) {
 			throw new Error("Nothing to update. Provide --title, --description, --priority, --manual-completion, --type, --epic, --no-epic, --depends-on, --no-depends-on, --start-after or --no-start-after.");
 		}
+		// Every link refusal is found before the first write, so a refused update changes nothing.
+		const board = dependsOn || dropDependencies || startAfter ? await data.loadTasks(project) : [];
+		const dependencyPlan = dependsOn || dropDependencies
+			? planDependencyChange(task, board, { drop: dropDependencies, add: dependsOn })
+			: null;
+		const startAfterRefusal = startAfter && launchAfterRefusal(task, startAfter.prereq, startAfter.until, board);
+		if (startAfterRefusal) throw new Error(startAfterRefusal);
 
 		let updated = task;
 		let titlePreserved = false;
@@ -555,9 +563,8 @@ export const taskHandlers: Record<string, Handler> = {
 			for (const t of changed) getPushMessage()?.("taskUpdated", { projectId: project.id, task: t });
 			updated = { ...updated, priority };
 		}
-		// Removal first, so one call can swap a dependency for another.
-		if (dropDependencies) updated = await removeDependencies(project, updated, dropDependencies);
-		if (dependsOn) updated = await addDependencies(project, updated, dependsOn);
+		// One write: removals then additions, so one call can swap a dependency for another.
+		if (dependencyPlan) updated = await writeDependencyPlan(project, updated, dependencyPlan);
 		if (startAfter) {
 			updated = await armStartAfter(project, updated, startAfter, params);
 		} else if (clearStartAfter) {

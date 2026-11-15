@@ -1783,6 +1783,17 @@ describe("task dependencies over the socket", () => {
 		expect(saved).toBeNull();
 	});
 
+	it("task.update refused for one link changes nothing else, not the removal and not the title", async () => {
+		const holding = { ...second, relations: [{ type: "blocked-by" as const, taskId: first.id }] };
+		vi.mocked(data.loadTasks).mockResolvedValue([first, holding]);
+		const resp = await handleRequest(makeRequest("task.update", { taskId: "seq:13", projectId: "proj-1", title: "Renamed", noDependsOn: ["seq:12"], dependsOn: ["seq:13"] }));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("itself");
+		expect(saved).toBeNull();
+		expect(data.updateTaskWith).not.toHaveBeenCalled();
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
 	it("task.show and tasks.list carry the resolved links", async () => {
 		const blocked = { ...second, relations: [{ type: "blocked-by" as const, taskId: first.id }] };
 		vi.mocked(data.loadTasks).mockResolvedValue([first, blocked]);

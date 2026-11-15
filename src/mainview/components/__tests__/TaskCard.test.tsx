@@ -271,27 +271,27 @@ describe("TaskCard", () => {
 
 		it("names the open dependencies of a blocked task and is not a control", () => {
 			const dependencies = [dep(3, "open"), dep(5, "done"), dep(7, "open")];
-			renderCard(makeTask({ status: "todo" }), { dependency: { verdict: "blocked", dependencies, open: [dependencies[0], dependencies[2]] } });
+			renderCard(makeTask({ status: "todo" }), { dependency: { verdict: "blocked", dependencies, open: [dependencies[0], dependencies[2]], cancelled: [] } });
 			const chip = screen.getByTestId("task-card-blocked-chip");
 			expect(chip).toHaveTextContent("Blocked by #3, #7");
 			expect(chip.tagName).toBe("SPAN");
 		});
 
 		it("shows nothing once every dependency is done, with no dependencies, or on a completed card", () => {
-			renderCard(makeTask({ status: "todo" }), { dependency: { verdict: "ready", dependencies: [dep(3, "done")], open: [] } });
+			renderCard(makeTask({ status: "todo" }), { dependency: { verdict: "ready", dependencies: [dep(3, "done")], open: [], cancelled: [] } });
 			expect(screen.queryByTestId("task-card-blocked-chip")).toBeNull();
 			expect(screen.queryByText("Ready")).toBeNull();
 			cleanup();
 			renderCard(makeTask({ status: "todo" }));
 			expect(screen.queryByTestId("task-card-blocked-chip")).toBeNull();
 			cleanup();
-			renderCard(makeTask({ status: "completed" }), { dependency: { verdict: "blocked", dependencies: [dep(3, "open")], open: [dep(3, "open")] } });
+			renderCard(makeTask({ status: "completed" }), { dependency: { verdict: "blocked", dependencies: [dep(3, "open")], open: [dep(3, "open")], cancelled: [] } });
 			expect(screen.queryByTestId("task-card-blocked-chip")).toBeNull();
 		});
 
 		it("leaves the start-after prerequisite to its own chip", () => {
 			const launchAfter = { taskId: "t3", seq: 3, until: "completed" as const, armedAt: "2026-11-04T10:00:00Z" };
-			renderCard(makeTask({ status: "todo", launchAfter }), { dependency: { verdict: "blocked", dependencies: [dep(3, "open")], open: [dep(3, "open")] } });
+			renderCard(makeTask({ status: "todo", launchAfter }), { dependency: { verdict: "blocked", dependencies: [dep(3, "open")], open: [dep(3, "open")], cancelled: [] } });
 			expect(screen.getByTestId("task-card-starts-after-chip")).toBeInTheDocument();
 			expect(screen.queryByTestId("task-card-blocked-chip")).toBeNull();
 		});

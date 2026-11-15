@@ -2649,9 +2649,30 @@ describe("--depends-on", () => {
 		await handleTask("show", args(["aaaaaaaa"], { json: "true" }), SOCKET, null);
 		expect(JSON.parse(stdoutOutput).dependencies).toEqual({
 			state: "ready",
-			dependsOn: [{ taskId: "cccccccc", seq: 13, title: "Second", status: "completed", open: false }],
+			dependsOn: [{ taskId: "cccccccc", seq: 13, title: "Second", status: "completed", open: false, state: "done" }],
 			blocks: [],
 		});
+	});
+
+	it("task show names a cancelled dependency as cancelled, not done", async () => {
+		const cancelled = { taskId: "eeeeeeee", seq: 14, title: "Dropped", status: "cancelled", state: "cancelled" };
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, dependencyInfo: { verdict: "ready", dependsOn: [done, cancelled], blocks: [] } }));
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).toMatch(/Depends on:\s*#13 \(Completed\), #14 \(Cancelled\) - ready, but #14 was cancelled/);
+	});
+
+	it("warns that start-after starts the task even while its other dependencies are open", async () => {
+		const launchAfter = { taskId: "bbbbbbbb", seq: 12, until: "completed", armedAt: "2026-11-15T10:00:00Z" };
+		const relations = [{ type: "blocked-by", taskId: "cccccccc" }, { type: "blocked-by", taskId: "bbbbbbbb" }];
+		mockSend.mockResolvedValue(okResp({ task: { ...FAKE_TASK, seq: 44, status: "todo", launchAfter, relations } }));
+		await handleTask("update", args(["aaaaaaaa"], { "depends-on": "seq:13" }), SOCKET, null);
+		expect(stderrOutput).toContain("Dependencies: 2.");
+		expect(stderrOutput).toContain("Warning: #44 starts by itself after #12 even if its other dependency is still open.");
+
+		stderrOutput = "";
+		mockSend.mockResolvedValue(okResp({ task: { ...FAKE_TASK, seq: 44, status: "todo", launchAfter, relations: [relations[1]] } }));
+		await handleTask("update", args(["aaaaaaaa"], { "start-after": "seq:12" }), SOCKET, null);
+		expect(stderrOutput).not.toContain("Warning:");
 	});
 
 	it("task move warns, and still moves, when the started task has open dependencies", async () => {

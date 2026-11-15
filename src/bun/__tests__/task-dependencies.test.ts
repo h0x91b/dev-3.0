@@ -14,9 +14,9 @@ vi.mock("../data", () => ({
 }));
 vi.mock("../rpc-handlers/shared-pure", () => ({ getPushMessage: () => pushMessage }));
 
-import { addDependencies, removeDependencies } from "../task-dependencies";
+import { addDependencies, planDependencyChange, writeDependencyPlan } from "../task-dependencies";
 import { launchAfterRefusal } from "../launch-after";
-import { dependencyInfo, dependencyRefusal, summarizeDependencies } from "../../shared/task-dependencies";
+import { dependencyInfo, dependencyRefusal, indexDependencies, summarizeDependencies } from "../../shared/task-dependencies";
 
 const project = { id: "proj-1", path: "/repo" } as never;
 
@@ -64,14 +64,33 @@ describe("dependency state", () => {
 		expect(summarizeDependencies(tasks[2], tasks).open.map((d) => d.seq)).toEqual([1]);
 	});
 
-	it("is satisfied by any completed variant, drops a deleted dependency, and frees a cancelled one", () => {
+	it("is satisfied by any completed variant and drops a deleted dependency", () => {
 		const v1 = task({ id: "v1", seq: 1, groupId: "g", status: "cancelled" });
 		const v2 = task({ id: "v2", seq: 1, groupId: "g", status: "in-progress" });
 		const b = task({ id: "b", seq: 2, relations: dependsOn("v1", "gone") });
 		expect(summarizeDependencies(b, [v1, v2, b]).verdict).toBe("blocked");
-		expect(summarizeDependencies(b, [v1, { ...v2, status: "completed" }, b]).verdict).toBe("ready");
-		expect(summarizeDependencies(b, [v1, { ...v2, status: "cancelled" }, b]).verdict).toBe("ready");
+		const done = summarizeDependencies(b, [v1, { ...v2, status: "completed" }, b]);
+		expect(done.verdict).toBe("ready");
+		expect(done.dependencies.map((d) => d.state)).toEqual(["done"]);
 		expect(summarizeDependencies(b, [b]).verdict).toBe("none");
+	});
+
+	it("stops blocking on a dependency cancelled in every variant, but names it cancelled, never done", () => {
+		const v1 = task({ id: "v1", seq: 1, groupId: "g", status: "cancelled" });
+		const v2 = task({ id: "v2", seq: 1, groupId: "g", status: "cancelled" });
+		const b = task({ id: "b", seq: 2, relations: dependsOn("v1") });
+		const summary = summarizeDependencies(b, [v1, v2, b]);
+		expect(summary.verdict).toBe("ready");
+		expect(summary.open).toEqual([]);
+		expect(summary.cancelled.map((d) => d.seq)).toEqual([1]);
+		expect(summary.dependencies[0].state).toBe("cancelled");
+	});
+
+	it("resolves the same against a prebuilt index as against the board", () => {
+		const tasks = [task({ id: "a", seq: 1, status: "cancelled" }), task({ id: "b", seq: 2, relations: dependsOn("a") }), task({ id: "c", seq: 3, relations: dependsOn("a", "b") })];
+		const index = indexDependencies(tasks);
+		for (const t of tasks) expect(dependencyInfo(t, index)).toEqual(dependencyInfo(t, tasks));
+		expect(dependencyInfo(tasks[0], index)?.blocks.map((d) => d.seq)).toEqual([2, 3]);
 	});
 
 	it("lists both directions for task show", () => {
@@ -119,13 +138,23 @@ describe("writing dependencies", () => {
 
 	it("removes named links or all of them, and says when there is nothing to remove", async () => {
 		store = [task({ id: "a", seq: 1 }), task({ id: "b", seq: 2 }), task({ id: "c", seq: 3, relations: [...dependsOn("a", "b"), { type: "relates-to", taskId: "a" }] })];
-		expect((await removeDependencies(project, store[2], [store[0]])).relations).toEqual([...dependsOn("b"), { type: "relates-to", taskId: "a" }]);
-		await expect(removeDependencies(project, store[2], [store[0]])).rejects.toThrow("does not depend on #1");
-		expect((await removeDependencies(project, store[2], "all")).relations).toEqual([{ type: "relates-to", taskId: "a" }]);
+		const remove = async (drop: Task[] | "all") => writeDependencyPlan(project, store[2], planDependencyChange(store[2], store, { drop }));
+		expect((await remove([store[0]])).relations).toEqual([...dependsOn("b"), { type: "relates-to", taskId: "a" }]);
+		await expect(remove([store[0]])).rejects.toThrow("does not depend on #1");
+		expect((await remove("all")).relations).toEqual([{ type: "relates-to", taskId: "a" }]);
 	});
 
-	it("points at --no-start-after when the link is the start-after condition", async () => {
+	it("swaps a link in one write, and writes nothing when the added half is refused", async () => {
+		store = [task({ id: "a", seq: 1 }), task({ id: "b", seq: 2 }), task({ id: "c", seq: 3, relations: dependsOn("a") })];
+		expect(() => planDependencyChange(store[2], store, { drop: [store[0]], add: [store[2]] })).toThrow(/itself/);
+		expect(store[2].relations).toEqual(dependsOn("a"));
+		const swapped = await writeDependencyPlan(project, store[2], planDependencyChange(store[2], store, { drop: [store[0]], add: [store[1]] }));
+		expect(swapped.relations).toEqual(dependsOn("b"));
+		expect(pushMessage).toHaveBeenCalledTimes(1);
+	});
+
+	it("points at --no-start-after when the link is the start-after condition", () => {
 		store = [task({ id: "a", seq: 1 }), task({ id: "b", seq: 2, launchAfter: { taskId: "a", seq: 1, until: "completed", armedAt: "t" } })];
-		await expect(removeDependencies(project, store[1], [store[0]])).rejects.toThrow("--no-start-after");
+		expect(() => planDependencyChange(store[1], store, { drop: [store[0]] })).toThrow("--no-start-after");
 	});
 });
