@@ -264,6 +264,77 @@ describe("removeWorktree", () => {
 		expect(branches).not.toContain("dev3/task-aaaaaaaa");
 	});
 
+	it("deletes a renamed branch after branch-sync stored the new name (#2278)", async () => {
+		const wtPath = join(repo.dir, "worktree");
+		g(`git worktree add -b dev3/task-aaaaaaaa "${wtPath}" main`, repo.local);
+		g("git branch -m dev3/task-aaaaaaaa fix/dev3-synced", wtPath);
+
+		const project = makeProject(repo.local);
+		const task = makeTask({ worktreePath: wtPath, branchName: "fix/dev3-synced" });
+
+		await removeWorktree(project, task);
+
+		expect(g("git branch", repo.local)).not.toContain("fix/dev3-synced");
+	});
+
+	it("deletes a synced renamed branch when the worktree directory is already gone (#2278)", async () => {
+		const wtPath = join(repo.dir, "worktree");
+		g(`git worktree add -b dev3/task-aaaaaaaa "${wtPath}" main`, repo.local);
+		g("git branch -m dev3/task-aaaaaaaa fix/dev3-gone", wtPath);
+		rmSync(wtPath, { recursive: true, force: true });
+
+		const project = makeProject(repo.local);
+		const task = makeTask({ worktreePath: wtPath, branchName: "fix/dev3-gone" });
+
+		await removeWorktree(project, task);
+
+		expect(g("git branch", repo.local)).not.toContain("fix/dev3-gone");
+	});
+
+	it("deletes a synced renamed branch under unique-kept when it holds no unique commits (#2278)", async () => {
+		const wtPath = join(repo.dir, "worktree");
+		g(`git worktree add -b dev3/task-aaaaaaaa "${wtPath}" main`, repo.local);
+		g("git branch -m dev3/task-aaaaaaaa fix/dev3-unique-kept", wtPath);
+
+		const project = makeProject(repo.local);
+		const task = makeTask({ worktreePath: wtPath, branchName: "fix/dev3-unique-kept" });
+
+		await removeWorktree(project, task, { branchPolicy: "unique-kept" });
+
+		expect(g("git branch", repo.local)).not.toContain("fix/dev3-unique-kept");
+	});
+
+	it("preserves a branch renamed from ANOTHER task's dev3 branch", async () => {
+		const wtPath = join(repo.dir, "worktree");
+		g(`git worktree add -b dev3/task-bbbbbbbb "${wtPath}" main`, repo.local);
+		g("git branch -m dev3/task-bbbbbbbb fix/dev3-not-mine", wtPath);
+
+		const project = makeProject(repo.local);
+		const task = makeTask({ worktreePath: wtPath, branchName: "fix/dev3-not-mine" });
+
+		await removeWorktree(project, task);
+
+		expect(g("git branch", repo.local)).toContain("fix/dev3-not-mine");
+	});
+
+	it("preserves a user branch the task was started on, even after an agent renamed it", async () => {
+		g("git branch feature/brought-in", repo.local);
+		const wtPath = join(repo.dir, "worktree");
+		g(`git worktree add "${wtPath}" feature/brought-in`, repo.local);
+		g("git branch -m feature/brought-in topic/user-renamed", wtPath);
+
+		const project = makeProject(repo.local);
+		const task = makeTask({
+			worktreePath: wtPath,
+			branchName: "topic/user-renamed",
+			existingBranch: "feature/brought-in",
+		});
+
+		await removeWorktree(project, task);
+
+		expect(g("git branch", repo.local)).toContain("topic/user-renamed");
+	});
+
 	it("preserves user-owned branch (non-dev3) on removal", async () => {
 		const wtPath = join(repo.dir, "worktree");
 		g(`git worktree add -b feature/login "${wtPath}" main`, repo.local);
