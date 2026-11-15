@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { qaFixtureProject, qaScopeEnv, qaScopeRoot, seedQaScope } from "../../../scripts/qa-scope";
+import { qaFixtureProject, qaScopeEnv, qaScopeResetHint, qaScopeRoot, qaTmuxSocketDir, seedQaScope, stopQaScopeTmux } from "../../../scripts/qa-scope";
+import { DEFAULT_TMUX_SOCKET } from "../tmux/constants";
 import { devRunEnv, qaScopeMode } from "../../../scripts/dev";
 import { testScopedPath } from "../../../test-scoped-path";
 
@@ -56,9 +57,10 @@ describe("QA scope selection", () => {
 	});
 
 	it("keeps the scoped tmux socket path under the macOS limit", () => {
-		// A typical macOS os.tmpdir() plus tmux's own `tmux-<uid>/<name>` suffix.
+		// A typical macOS os.tmpdir(), a five-digit uid and the app's own socket name.
 		const root = qaScopeRoot("/repo/worktree", "seeded", "/var/folders/zz/zyxvpxvq6csfxvn_n0000000000000/T");
-		expect(`${qaScopeEnv(root).TMUX_TMPDIR}/tmux-501/dev3`.length).toBeLessThan(104);
+		const env = qaScopeEnv(root);
+		expect(`${qaTmuxSocketDir(env, 99999)}/${DEFAULT_TMUX_SOCKET}`.length).toBeLessThan(104);
 	});
 
 	it("leaves DEV3_HOME unset when no scope was requested", () => {
@@ -111,5 +113,48 @@ describe("QA scope seeding", () => {
 		expect(project.defaultBaseBranch).toBe("main");
 		// No dev script: a QA fixture must not be able to spawn a second app instance.
 		expect(project.devScript).toBe("");
+	});
+});
+
+describe("QA scope tmux lifecycle", () => {
+	it("kills every server in the scoped socket dir, and only there", () => {
+		const env = seedQaScope(testScopedPath("qa-tmux-stop"), "virgin");
+		const dir = qaTmuxSocketDir(env);
+		mkdirSync(dir, { recursive: true });
+		for (const name of ["dev3", "dev3-live-test-1"]) writeFileSync(join(dir, name), "");
+		const calls: string[][] = [];
+		expect(stopQaScopeTmux(env, (command) => calls.push(command), "darwin").sort()).toEqual(["dev3", "dev3-live-test-1"]);
+		expect(calls.map((command) => command.slice(1)).sort()).toEqual([
+			["-S", join(dir, "dev3"), "kill-server"],
+			["-S", join(dir, "dev3-live-test-1"), "kill-server"],
+		]);
+	});
+
+	it("uses the scoped app's tmux shim when it wrote one, so client and server versions match", () => {
+		const env = seedQaScope(testScopedPath("qa-tmux-shim"), "virgin");
+		mkdirSync(qaTmuxSocketDir(env), { recursive: true });
+		writeFileSync(join(qaTmuxSocketDir(env), "dev3"), "");
+		const calls: string[][] = [];
+		stopQaScopeTmux(env, (command) => calls.push(command), "darwin");
+		expect(calls[0][0]).toBe("tmux");
+		mkdirSync(join(env.DEV3_HOME, "bin"), { recursive: true });
+		writeFileSync(join(env.DEV3_HOME, "bin", "tmux"), "");
+		calls.length = 0;
+		stopQaScopeTmux(env, (command) => calls.push(command), "darwin");
+		expect(calls[0][0]).toBe(join(env.DEV3_HOME, "bin", "tmux"));
+	});
+
+	it("does nothing when no server ever started, or on Windows", () => {
+		const env = seedQaScope(testScopedPath("qa-tmux-none"), "virgin");
+		const calls: string[][] = [];
+		expect(stopQaScopeTmux(env, (command) => calls.push(command), "darwin")).toEqual([]);
+		expect(stopQaScopeTmux(env, (command) => calls.push(command), "win32")).toEqual([]);
+		expect(calls).toEqual([]);
+	});
+
+	it("puts kill-server before rm -rf in the reset hint", () => {
+		const env = qaScopeEnv("/tmp/scope");
+		const hint = qaScopeResetHint("/tmp/scope", env);
+		expect(hint).toMatch(/-S \/tmp\/scope\/t\/tmux-\d+\/dev3 kill-server; rm -rf \/tmp\/scope$/);
 	});
 });

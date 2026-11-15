@@ -19,9 +19,10 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { DEFAULT_TMUX_SOCKET } from "../src/bun/tmux/constants";
 import type { Project } from "../src/shared/types";
 
 export type QaScopeMode = "seeded" | "virgin";
@@ -132,4 +133,52 @@ export function seedQaScope(
 		writeFileSync(projectsFile, `${JSON.stringify([qaFixtureProject(repo, now)], null, 2)}\n`);
 	}
 	return env;
+}
+
+export function qaTmuxSocketDir(env: Record<string, string>, uid = process.getuid?.() ?? 0): string {
+	return join(env.TMUX_TMPDIR, `tmux-${uid}`);
+}
+
+/**
+ * The scoped app's own tmux shim when it wrote one, so the client matches the
+ * server's version; PATH `tmux` otherwise.
+ */
+export function qaTmuxBinary(env: Record<string, string>): string {
+	const shim = join(env.DEV3_HOME, "bin", "tmux");
+	return existsSync(shim) ? shim : "tmux";
+}
+
+/** What to run, before `rm -rf`, so a reset does not orphan the scoped server. */
+export function qaScopeResetHint(root: string, env: Record<string, string>): string {
+	const socket = join(qaTmuxSocketDir(env), DEFAULT_TMUX_SOCKET);
+	return `${qaTmuxBinary(env)} -S ${socket} kill-server; rm -rf ${root}`;
+}
+
+export type QaTmuxKiller = (command: string[]) => void;
+
+const bunKiller: QaTmuxKiller = (command) => {
+	Bun.spawnSync(command, { stdout: "ignore", stderr: "ignore", env: process.env, timeout: 3_000 });
+};
+
+/**
+ * Stop every tmux server in the scoped socket directory. The directory belongs
+ * to this scope alone, so nothing in it can be the real app's server. Best
+ * effort: a server that does not answer is left to the reset hint.
+ */
+export function stopQaScopeTmux(
+	env: Record<string, string>,
+	kill: QaTmuxKiller = bunKiller,
+	platform: NodeJS.Platform = process.platform,
+): string[] {
+	if (platform === "win32") return [];
+	const dir = qaTmuxSocketDir(env);
+	let sockets: string[];
+	try {
+		sockets = readdirSync(dir);
+	} catch {
+		return [];
+	}
+	const binary = qaTmuxBinary(env);
+	for (const socket of sockets) kill([binary, "-S", join(dir, socket), "kill-server"]);
+	return sockets;
 }

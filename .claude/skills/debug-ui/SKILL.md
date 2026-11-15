@@ -138,6 +138,8 @@ forgotten one silently boots the next QA run on the throwaway board.
 The scoped board also runs its own tmux server: `TMUX_TMPDIR` points at `<scoped root>/t`, so its
 task sessions never join the real app's server. To drive one by hand, prefix the same variable:
 `TMUX_TMPDIR=<scoped root>/t tmux -L dev3 ls`. A bare `tmux -L dev3` reaches the REAL server.
+Stopping the dev server kills the scoped server. To reset a scope, use the command `dev.ts` prints:
+it runs `kill-server` first, because a bare `rm -rf` deletes the socket and orphans a live server.
 
 **What it does NOT isolate** — name these rather than assuming a clean room: the PowerShell
 history file on Windows, the user's own `~/.codex` / `~/.claude` agent configs, and `dev3` CLI
