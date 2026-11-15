@@ -33,15 +33,22 @@ vi.mock("../../analytics", () => ({
 	agentNameFromId: vi.fn(() => "unknown"),
 }));
 
+vi.mock("../../utils/platform", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../../utils/platform")>()),
+	isTouchPrimary: vi.fn(() => false),
+}));
+
 vi.mock("../../confirm", () => ({
 	confirm: vi.fn(() => Promise.resolve(true)),
 }));
 
 import { api } from "../../rpc";
 import { confirm } from "../../confirm";
+import { isTouchPrimary } from "../../utils/platform";
 
 const mockedApi = vi.mocked(api, true);
 const mockedConfirm = vi.mocked(confirm);
+const mockedIsTouchPrimary = vi.mocked(isTouchPrimary);
 
 const mockProject: Project = {
 	id: "p1",
@@ -494,7 +501,7 @@ describe("TaskDetailModal", () => {
 			await user.click(screen.getByText("Edit"));
 			await user.clear(screen.getByRole("textbox"));
 
-			expect(screen.getByRole("button", { name: "Save & Run" })).toBeDisabled();
+			expect(screen.getByRole("button", { name: "Run" })).toBeDisabled();
 		});
 
 		it("clicking Run while editing an unchanged description launches without saving", async () => {
@@ -530,6 +537,67 @@ describe("TaskDetailModal", () => {
 			});
 			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: updated });
 			expect(onClose).toHaveBeenCalledTimes(1);
+		});
+
+		it("closing with X saves an open title edit before closing", async () => {
+			const task = makeTodoTask();
+			const updated = { ...task, customTitle: "Renamed" };
+			const onClose = vi.fn();
+			mockedApi.request.renameTask.mockResolvedValue(updated);
+			renderModal(task, { onClose });
+			const user = userEvent.setup();
+
+			await user.click(screen.getByTitle("Edit title"));
+			await user.clear(screen.getByRole("textbox"));
+			await user.type(screen.getByRole("textbox"), "Renamed");
+			await user.click(screen.getByTitle("Close"));
+
+			expect(mockedApi.request.renameTask).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", customTitle: "Renamed" });
+			expect(onClose).toHaveBeenCalledTimes(1);
+		});
+
+		it("closing with X stays open when saving the edited title fails", async () => {
+			const onClose = vi.fn();
+			mockedApi.request.renameTask.mockRejectedValue(new Error("disk full"));
+			renderModal(makeTodoTask(), { onClose });
+			const user = userEvent.setup();
+
+			await user.click(screen.getByTitle("Edit title"));
+			await user.type(screen.getByRole("textbox"), " more");
+			await user.click(screen.getByTitle("Close"));
+
+			expect(onClose).not.toHaveBeenCalled();
+			expect(screen.getByRole("textbox")).toHaveValue("Auto-generated title more");
+		});
+
+		it("on touch, both editors keep a Cancel button that discards the edit", async () => {
+			mockedIsTouchPrimary.mockReturnValue(true);
+			try {
+				renderModal(makeTodoTask({ description: "original" }));
+				const user = userEvent.setup();
+
+				await user.click(screen.getByText("Edit"));
+				await user.type(screen.getByRole("textbox"), " more");
+				expect(screen.getByText("Closing saves")).toBeInTheDocument();
+				await user.click(screen.getByRole("button", { name: "Cancel" }));
+				expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+				expect(mockedApi.request.editTask).not.toHaveBeenCalled();
+
+				await user.click(screen.getByTitle("Edit title"));
+				await user.click(screen.getByRole("button", { name: "Cancel" }));
+				expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+				expect(mockedApi.request.renameTask).not.toHaveBeenCalled();
+			} finally {
+				mockedIsTouchPrimary.mockReturnValue(false);
+			}
+		});
+
+		it("explains on hover that an auto title edits the description", () => {
+			renderModal(makeTodoTask());
+			expect(document.getElementById("task-detail-title")).toHaveAttribute(
+				"title",
+				"Edit the description — the title follows its first line",
+			);
 		});
 
 		it("closing with X stays open when saving the edited description fails", async () => {

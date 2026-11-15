@@ -33,6 +33,7 @@ import { useFileDrop } from "../hooks/useFileDrop";
 import { removeImagePath } from "../utils/imageAttachments";
 import { prDisplayState, prStateTone } from "../utils/prStateTone";
 import { PlayIcon } from "./TaskIcons";
+import { isTouchPrimary, modifierLabel } from "../utils/platform";
 
 interface TaskDetailModalProps {
 	task: Task;
@@ -190,11 +191,12 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 		if (autoRename) handleStartRename();
 	}, [autoRename]);
 
-	async function handleRenameSave() {
+	/** Resolves to false when saving failed, so callers can keep the editor open. */
+	async function handleRenameSave(): Promise<boolean> {
 		const trimmed = renameValue.trim();
 		if (!trimmed || trimmed === getTaskTitle(task)) {
 			setIsRenaming(false);
-			return;
+			return true;
 		}
 		setRenameSaving(true);
 		try {
@@ -206,10 +208,13 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 			dispatch({ type: "updateTask", task: updated });
 			trackEvent("task_renamed", { project_id: project.id });
 			setIsRenaming(false);
+			return true;
 		} catch (err) {
 			toast.error(t("task.failedRename", { error: String(err) }), { taskId: task.id });
+			return false;
+		} finally {
+			setRenameSaving(false);
 		}
-		setRenameSaving(false);
 	}
 
 	async function handleResetTitle() {
@@ -291,8 +296,9 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 		onLaunchVariants(launchTask, "in-progress");
 	}
 
-	/** The close button saves an open description edit first; a failed save keeps the modal open. */
+	/** The close button saves an open title or description edit first; a failed save keeps the modal open. */
 	async function handleCloseButton() {
+		if (isRenaming && !(await handleRenameSave())) return;
 		if (isEditing && !(await handleSave())) return;
 		onClose();
 	}
@@ -411,7 +417,9 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 
 	const color = statusColors[task.status];
 	const generatedTitle = editValue.trim() ? titleFromDescription(editValue) : "";
-	const descriptionDirty = isEditing && editValue.trim() !== task.description;
+	const descriptionDirty = isEditing && !!editValue.trim() && editValue.trim() !== task.description.trim();
+	// Touch has no Esc, so it keeps an explicit way to throw an edit away.
+	const touch = isTouchPrimary();
 	const runLabel = descriptionDirty ? t("task.saveAndRun") : t("task.run");
 	const assignedLabels = (task.labelIds ?? [])
 		.map((id) => (project.labels ?? []).find((l) => l.id === id))
@@ -497,8 +505,17 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 								disabled={renameSaving}
 							/>
 							<div className="flex items-center justify-between">
-								<span className="text-xs text-fg-muted">{t("task.renameHint")}</span>
+								<span className="text-xs text-fg-muted">{touch ? t("task.closingSavesHint") : t("task.renameHint")}</span>
 								<div className="flex gap-1.5">
+									{touch && (
+										<button
+											onClick={() => setIsRenaming(false)}
+											className="text-xs px-2.5 py-1 rounded-lg text-fg-2 hover:bg-fg/8 transition-colors"
+											disabled={renameSaving}
+										>
+											{t("task.editCancel")}
+										</button>
+									)}
 									{task.customTitle && (
 										<button
 											onClick={handleResetTitle}
@@ -517,6 +534,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 								id="task-detail-title"
 								className={`text-fg text-base font-semibold leading-relaxed flex-1 ${!isEditing ? "cursor-pointer hover:text-fg-2" : ""}`}
 								onClick={!isEditing ? handleTitleClick : undefined}
+								title={!isEditing && isTodo && !task.customTitle ? t("task.autoTitleEditsDescription") : undefined}
 							>
 								{isEditing && !task.customTitle ? (generatedTitle || task.title) : getTaskTitle(task)}
 							</div>
@@ -593,7 +611,18 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 								{/* Pinned to the scroll area's bottom edge so the hint stays in view. Spans the full scroll
 								    width so it covers the textarea's focus outline, and owns the area's pb-5. */}
 								<div className="sticky bottom-0 -mx-6 px-6 pb-5 pt-2 bg-overlay flex items-center" data-testid="description-edit-hint">
-									<span className="text-xs text-fg-muted">{t("task.editHint")}</span>
+									<span className="text-xs text-fg-muted">
+										{touch ? t("task.closingSavesHint") : t("task.editHint", { mod: modifierLabel() })}
+									</span>
+									{touch && (
+										<button
+											onClick={() => setIsEditing(false)}
+											className="ml-auto text-xs px-2.5 py-1 rounded-lg text-fg-2 hover:bg-fg/8 transition-colors"
+											disabled={saving}
+										>
+											{t("task.editCancel")}
+										</button>
+									)}
 								</div>
 							</div>
 						) : (
