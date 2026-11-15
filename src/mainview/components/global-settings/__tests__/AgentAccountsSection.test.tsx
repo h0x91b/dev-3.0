@@ -906,6 +906,7 @@ describe("AgentAccountsSection", () => {
 				configDir: "/mnt/e/Projects/app/.claude",
 				identity: { email: "pin@example.com", organization: null, plan: null, planLabel: null, accountId: null },
 				projectNames: ["app", "app-docs"],
+				accountId: null,
 			},
 		]);
 		renderSection();
@@ -946,7 +947,7 @@ describe("AgentAccountsSection", () => {
 	it("says managed accounts replace a pin only when picked for a task", async () => {
 		mockedApi.request.listAgentAccounts.mockResolvedValue(makeState());
 		mockedApi.request.listPinnedClaudeLogins.mockResolvedValueOnce([
-			{ configDir: "/p/app/.claude", identity: null, projectNames: ["app"] },
+			{ configDir: "/p/app/.claude", identity: null, projectNames: ["app"], accountId: null },
 		]);
 		renderSection();
 		expect(await screen.findByText(/only when you pick that account for a task/)).toBeTruthy();

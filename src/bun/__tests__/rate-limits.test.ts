@@ -22,6 +22,7 @@ import {
 	windowLabel,
 	worstSnapshotWindow,
 	worstWindow,
+	withElapsedResets,
 } from "../../shared/rate-limits";
 
 const NOW = 1_783_200_000_000; // fixed epoch ms
@@ -232,6 +233,35 @@ describe("extractCodexSnapshotFromRolloutLines", () => {
 
 	it("returns null when no event carries rate limits", () => {
 		expect(extractCodexSnapshotFromRolloutLines(['{"type":"other"}', ""])).toBeNull();
+	});
+});
+
+describe("withElapsedResets", () => {
+	const now = 1_800_000_000_000;
+	const snap = (resetsAt: number | null) => ({
+		source: "claude" as const,
+		accountId: null,
+		capturedAt: now - 3 * 60 * 60_000,
+		windows: [
+			{ id: "five_hour", usedPercent: 97, resetsAt, windowMinutes: 300 },
+			{ id: "seven_day", usedPercent: 61, resetsAt: now + 86_400_000, windowMinutes: 10_080 },
+		],
+		creditsBalance: null,
+		monthlyCredits: null,
+		planType: null,
+	});
+
+	it("reads a window past its reset as 0% and leaves the running one alone", () => {
+		const out = withElapsedResets(snap(now - 60_000), now);
+		expect(out.windows.map((w) => w.usedPercent)).toEqual([0, 61]);
+		expect(out.capturedAt).toBe(now - 3 * 60 * 60_000);
+	});
+
+	it("returns the same reading when no window has reset", () => {
+		const fresh = snap(now + 60_000);
+		expect(withElapsedResets(fresh, now)).toBe(fresh);
+		const unknown = snap(null);
+		expect(withElapsedResets(unknown, now)).toBe(unknown);
 	});
 });
 
