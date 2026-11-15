@@ -1698,33 +1698,33 @@ function realPathOr(path: string): string {
 }
 
 /**
- * The real path of an attached repo that may be removed, or null. Removal runs long after the attach
- * check, so a symlink swapped in since, on the repo or on any folder from `opsDir` down (the task
- * folder included), must not lead git to a worktree outside. Only `opsDir` is canonicalized: the
- * expected real path is built from it and the written path, never read back from a link.
- * `allowFolderItself`: the repo may be the task folder.
+ * The real path of `path` when it lies inside an Operations task folder with no symlink on the way, or
+ * null. Removal runs long after the attach check, so a link swapped in since, on the path or on any folder
+ * from `opsDir` down (the task folder included), must not lead git or `rm` outside. Only `opsDir` is
+ * canonicalized: the expected real path is built from it and the written path, never read back from a link.
+ * `skipped` names what the caller leaves alone on a refusal. `allowFolderItself`: `path` may be the task folder.
  */
-export function resolveRemovableAttachedRepo(attached: string, taskFolder: string, opsDir: string, allowFolderItself = false): string | null {
-	if (!existsSync(attached)) return null;
+export function resolvePathInsideOpsTaskFolder(path: string, taskFolder: string, opsDir: string, skipped: string, allowFolderItself = false): string | null {
+	if (!existsSync(path)) return null;
 	try {
 		const realOps = realpathSync(opsDir);
 		const base = [opsDir, realOps].find((root) => isLexicallyInside(taskFolder, root));
 		if (!base) throw new Error("the task folder is not inside the managed root");
-		const attachedRel = relativePath(taskFolder, attached);
-		const inFolder = attachedRel === "" ? allowFolderItself : isLexicallyInside(attached, taskFolder);
+		const rel = relativePath(taskFolder, path);
+		const inFolder = rel === "" ? allowFolderItself : isLexicallyInside(path, taskFolder);
 		if (!inFolder) throw new Error("it is not inside the task folder");
-		const fromRoot = relativePath(base, resolvePath(attached));
+		const fromRoot = relativePath(base, resolvePath(path));
 		let current = base;
 		for (const part of fromRoot.split(pathSep)) {
 			current = `${current}${pathSep}${part}`;
 			if (lstatSync(current).isSymbolicLink()) throw new Error(`a symlink on the way: ${current}`);
 		}
 		const expected = resolvePath(realOps, fromRoot);
-		const real = realpathSync(attached);
+		const real = realpathSync(path);
 		if (real !== expected) throw new Error("it resolves elsewhere than where it is written");
 		return real;
 	} catch (err) {
-		log.warn("Kept the attached repo: it is not safe to remove", { attached, taskFolder, reason: err instanceof Error ? err.message : String(err) });
+		log.warn(`Kept ${skipped}: its path is not safely inside the task folder`, { path, taskFolder, reason: err instanceof Error ? err.message : String(err) });
 		return null;
 	}
 }

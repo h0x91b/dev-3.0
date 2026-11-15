@@ -12,7 +12,7 @@ vi.mock("../spawn", async () => {
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { cleanup, createTestRepo, g, spawnedCommands, type TestRepo } from "./git-test-helpers";
-import { createOpsWorktree, isWorktreeDirtyOrUnknown, getDefaultBranch, classifyLinkedWorktree, getRepoTopLevel, removeLinkedWorktree, resolveRemovableAttachedRepo, pruneWorktrees, _resetFetchState } from "../git";
+import { createOpsWorktree, isWorktreeDirtyOrUnknown, getDefaultBranch, classifyLinkedWorktree, getRepoTopLevel, removeLinkedWorktree, resolvePathInsideOpsTaskFolder, pruneWorktrees, _resetFetchState } from "../git";
 
 const task = { id: "abcdef12-0000-0000-0000-000000000009" } as any;
 
@@ -197,11 +197,11 @@ describe("Operations worktree", () => {
 		expect(await removeLinkedWorktree(repo.local, join(repo.dir, "never-existed"))).toBe(true);
 	});
 
-	describe("resolveRemovableAttachedRepo", () => {
+	describe("resolvePathInsideOpsTaskFolder", () => {
 		let ops: string;
 		let folder: string;
 		let external: string;
-		const resolve = (attached: string, allowSelf = false) => resolveRemovableAttachedRepo(attached, folder, ops, allowSelf);
+		const resolve = (attached: string, allowSelf = false) => resolvePathInsideOpsTaskFolder(attached, folder, ops, "the test removal", allowSelf);
 		beforeEach(async () => {
 			ops = join(repo.dir, "ops");
 			folder = join(ops, "slug", "abcdef12", "work");
@@ -222,7 +222,7 @@ describe("Operations worktree", () => {
 			symlinkSync(ops, link);
 			const inside = join(link, "slug", "abcdef12", "work", "wt");
 			await createOpsWorktree(repo.local, { id: "bbcdef12-0000-0000-0000-00000000000a" } as any, inside, "main");
-			expect(resolveRemovableAttachedRepo(inside, join(link, "slug", "abcdef12", "work"), link)).toBe(realpathSync(inside));
+			expect(resolvePathInsideOpsTaskFolder(inside, join(link, "slug", "abcdef12", "work"), link, "the test removal")).toBe(realpathSync(inside));
 		});
 
 		it("refuses a repo path replaced by a symlink to a worktree elsewhere", () => {
@@ -268,7 +268,7 @@ describe("Operations worktree", () => {
 			expect(resolve(sibling)).toBeNull();
 			expect(resolve(external)).toBeNull();
 			expect(resolve(join(folder, "gone"))).toBeNull();
-			expect(resolveRemovableAttachedRepo(external, external, ops, true)).toBeNull();
+			expect(resolvePathInsideOpsTaskFolder(external, external, ops, "the test removal", true)).toBeNull();
 		});
 
 		it("accepts the task folder itself when allowed", () => {

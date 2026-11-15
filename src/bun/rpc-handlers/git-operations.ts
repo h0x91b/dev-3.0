@@ -461,7 +461,7 @@ async function getUnsavedWork(params: { taskId: string; projectId: string; expec
 		// A vanished attached repo has nothing left to lose.
 		if (!removedWithTask && isAttachedRepoInTaskFolder(task) && existsSync(task.attachedRepo!)) {
 			// A path the removal would refuse (a swapped-in symlink) is never removed, so it has nothing to report.
-			const real = git.resolveRemovableAttachedRepo(task.attachedRepo!, task.worktreePath!, OPS_DIR);
+			const real = git.resolvePathInsideOpsTaskFolder(task.attachedRepo!, task.worktreePath!, OPS_DIR, "the attached repo out of the unsaved-work report");
 			const probe = real ? await git.classifyLinkedWorktree(real) : null;
 			// Unknown is an error, as for a git task: the dialog says "unknown", never "clean".
 			if (probe?.kind === "unknown") throw new Error(`Cannot tell whether the attached repository is a worktree: ${probe.error}`);

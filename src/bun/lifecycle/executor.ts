@@ -1235,12 +1235,12 @@ export async function executeLifecycleEffect(
 							const attached = ctx.sourceTask.attachedRepo;
 							const ownRepo = attached && (attached === worktreePath || isAttachedRepoInTaskFolder(ctx.sourceTask)) ? attached : null;
 							// A symlink swapped in since the attach would send git to a worktree outside the folder.
-							const realRepo = ownRepo ? git.resolveRemovableAttachedRepo(ownRepo, worktreePath, OPS_DIR, ownRepo === worktreePath) : null;
+							const realRepo = ownRepo ? git.resolvePathInsideOpsTaskFolder(ownRepo, worktreePath, OPS_DIR, "the attached repo removal", ownRepo === worktreePath) : null;
 							const probe = realRepo ? await git.classifyLinkedWorktree(realRepo) : null;
 							const mainRepo = probe?.kind === "linked" ? probe.mainRepo : null;
 							if (mainRepo && realRepo) await git.removeLinkedWorktree(mainRepo, realRepo);
 							// A swapped-in symlink on the folder or above it would make the recursive delete follow it out of the managed root.
-							if (!existsSync(worktreePath) || git.resolveRemovableAttachedRepo(worktreePath, worktreePath, OPS_DIR, true)) {
+							if (!existsSync(worktreePath) || git.resolvePathInsideOpsTaskFolder(worktreePath, worktreePath, OPS_DIR, "the task folder delete", true)) {
 								await rm(worktreePath, { recursive: true, force: true });
 							}
 							if (isOpsWorktreeTask(ctx.sourceTask)) await git.pruneWorktrees(ctx.sourceTask.attachedRepo!);
@@ -1271,7 +1271,7 @@ export async function executeLifecycleEffect(
 				return {};
 			}
 			// A symlink swapped in since the attach would send git to a worktree outside the folder: detach only.
-			const real = git.resolveRemovableAttachedRepo(attached, ctx.sourceTask.worktreePath!, OPS_DIR);
+			const real = git.resolvePathInsideOpsTaskFolder(attached, ctx.sourceTask.worktreePath!, OPS_DIR, "the attached repo removal");
 			if (!real) {
 				ctx.detachedAttachedRepo = attached;
 				return {};

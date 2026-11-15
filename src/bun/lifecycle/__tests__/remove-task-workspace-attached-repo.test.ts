@@ -17,7 +17,7 @@ vi.mock("../../git", () => ({
 	removeWorktree: vi.fn(async () => ({ deleted: [], kept: [] })),
 	classifyLinkedWorktree: vi.fn(async () => ({ kind: "plain" })),
 	removeLinkedWorktree: vi.fn(async () => true),
-	resolveRemovableAttachedRepo: vi.fn((attached: string) => attached),
+	resolvePathInsideOpsTaskFolder: vi.fn((attached: string) => attached),
 	pruneWorktrees: vi.fn(async () => undefined),
 	isWorktreeDirtyOrUnknown: vi.fn(async () => false),
 	assertWorkspaceReclaimable: vi.fn(async () => undefined),
@@ -121,7 +121,7 @@ beforeEach(() => {
 	vi.mocked(rm).mockResolvedValue(undefined);
 	vi.mocked(existsSync).mockReturnValue(true);
 	vi.mocked(git.removeLinkedWorktree).mockResolvedValue(true);
-	vi.mocked(git.resolveRemovableAttachedRepo).mockImplementation((attached) => attached);
+	vi.mocked(git.resolvePathInsideOpsTaskFolder).mockImplementation((attached) => attached);
 	vi.mocked(data.updateTask).mockImplementation(async (_p, id, updates) => ({ id, ...updates }) as never);
 });
 
@@ -144,9 +144,9 @@ describe("removeTaskWorkspace — a repo the agent made inside the task folder",
 
 	it("on deletion removes the folder but never asks git about a repo that resolves outside it", async () => {
 		vi.mocked(git.classifyLinkedWorktree).mockResolvedValue({ kind: "linked", mainRepo: MAIN });
-		vi.mocked(git.resolveRemovableAttachedRepo).mockImplementation((attached) => (attached === FOLDER ? attached : null));
+		vi.mocked(git.resolvePathInsideOpsTaskFolder).mockImplementation((attached) => (attached === FOLDER ? attached : null));
 		await run({ attachedRepo: `${FOLDER}/wt` });
-		expect(git.resolveRemovableAttachedRepo).toHaveBeenCalledWith(`${FOLDER}/wt`, FOLDER, OPS, false);
+		expect(git.resolvePathInsideOpsTaskFolder).toHaveBeenCalledWith(`${FOLDER}/wt`, FOLDER, OPS, "the attached repo removal", false);
 		expect(git.classifyLinkedWorktree).not.toHaveBeenCalled();
 		expect(git.removeLinkedWorktree).not.toHaveBeenCalled();
 		expect(git.pruneWorktrees).not.toHaveBeenCalled();
@@ -154,15 +154,15 @@ describe("removeTaskWorkspace — a repo the agent made inside the task folder",
 	});
 
 	it("on deletion keeps the folder when a symlink on it or above it fails the path guard", async () => {
-		vi.mocked(git.resolveRemovableAttachedRepo).mockReturnValue(null);
+		vi.mocked(git.resolvePathInsideOpsTaskFolder).mockReturnValue(null);
 		await run({ attachedRepo: `${FOLDER}/wt` });
-		expect(git.resolveRemovableAttachedRepo).toHaveBeenCalledWith(FOLDER, FOLDER, OPS, true);
+		expect(git.resolvePathInsideOpsTaskFolder).toHaveBeenCalledWith(FOLDER, FOLDER, OPS, "the task folder delete", true);
 		expect(rm).not.toHaveBeenCalled();
 	});
 
 	it("on deletion hands git the resolved path, not the stored one", async () => {
 		vi.mocked(git.classifyLinkedWorktree).mockResolvedValue({ kind: "linked", mainRepo: MAIN });
-		vi.mocked(git.resolveRemovableAttachedRepo).mockImplementation((attached) => (attached === FOLDER ? attached : "/real/folder/wt"));
+		vi.mocked(git.resolvePathInsideOpsTaskFolder).mockImplementation((attached) => (attached === FOLDER ? attached : "/real/folder/wt"));
 		await run({ attachedRepo: `${FOLDER}/wt` });
 		expect(git.classifyLinkedWorktree).toHaveBeenCalledWith("/real/folder/wt");
 		expect(git.removeLinkedWorktree).toHaveBeenCalledWith(MAIN, "/real/folder/wt");
@@ -340,7 +340,7 @@ describe("removeAttachedWorktree — closing or resetting a plain Operations tas
 	});
 
 	it("uses the generic message, not a removal claim, when the guard refused the path and the reset write misses", async () => {
-		vi.mocked(git.resolveRemovableAttachedRepo).mockReturnValue(null);
+		vi.mocked(git.resolvePathInsideOpsTaskFolder).mockReturnValue(null);
 		const current = task({ status: "in-progress", lifecycleStartedAt: "S" } as Partial<Task>);
 		vi.mocked(data.updateTaskWith).mockImplementation(async (_p, _id, mutator) => {
 			const { updates, result } = await mutator({ ...current, lifecycleStartedAt: "other-run" });
@@ -366,13 +366,13 @@ describe("removeAttachedWorktree — closing or resetting a plain Operations tas
 
 	it("removes nothing but still detaches when the attached path no longer resolves inside the folder", async () => {
 		vi.mocked(git.classifyLinkedWorktree).mockResolvedValue({ kind: "linked", mainRepo: MAIN });
-		vi.mocked(git.resolveRemovableAttachedRepo).mockReturnValue(null);
+		vi.mocked(git.resolvePathInsideOpsTaskFolder).mockReturnValue(null);
 		const ctx = ctxFor(task());
 
 		await step("removeAttachedWorktree", ctx);
 		await step("persistTerminalTask", ctx, { status: "completed", onError: "abort" });
 
-		expect(git.resolveRemovableAttachedRepo).toHaveBeenCalledWith(WT, FOLDER, OPS);
+		expect(git.resolvePathInsideOpsTaskFolder).toHaveBeenCalledWith(WT, FOLDER, OPS, "the attached repo removal");
 		expect(git.classifyLinkedWorktree).not.toHaveBeenCalled();
 		expect(git.removeLinkedWorktree).not.toHaveBeenCalled();
 		expect(ctx.task).toMatchObject({ status: "completed", attachedRepo: null });
@@ -380,7 +380,7 @@ describe("removeAttachedWorktree — closing or resetting a plain Operations tas
 
 	it("hands git the resolved path when it removes the worktree", async () => {
 		vi.mocked(git.classifyLinkedWorktree).mockResolvedValue({ kind: "linked", mainRepo: MAIN });
-		vi.mocked(git.resolveRemovableAttachedRepo).mockReturnValue("/real/folder/wt");
+		vi.mocked(git.resolvePathInsideOpsTaskFolder).mockReturnValue("/real/folder/wt");
 		await step("removeAttachedWorktree", ctxFor(task()));
 		expect(git.classifyLinkedWorktree).toHaveBeenCalledWith("/real/folder/wt");
 		expect(git.removeLinkedWorktree).toHaveBeenCalledWith(MAIN, "/real/folder/wt");
