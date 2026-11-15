@@ -37,6 +37,8 @@ Last updated: 2026-11-03
 
 Codex and Claude Code support task hibernation and resume through their saved conversation IDs; Codex's ID comes from its lifecycle hooks and is resolved in the original account store. Right-click a task → **Restart agent session…** reuses that recovery path while the terminal is still present, preserving managed accounts and future hibernation. It replaces the task terminal, closes its auxiliary panes and discards scrollback; commands and dev servers in those panes stop, while files remain intact. Restart refuses if a saved conversation would be replaced or started fresh. A resume can move Claude panes to another managed account (wake/recovery screen, the resume approval dialog, or `--account`); Codex panes keep the account their conversation lives in. See [`resume-on-another-claude-account`](decisions/2026/11/08/resume-on-another-claude-account.md). Native terminals currently restore only the main agent, so restart refuses a native task with extra panes before stopping anything. See [`restart-agents-through-managed-resume`](decisions/2026/11/03/restart-agents-through-managed-resume.md).
 
+The **"No agent" mark** for an agent that exited to a shell is tmux-only: the native terminal backend (and so every Windows task) never gets it, because its main agent is recorded without a pane id and the exit probe reads that as `unknown`. A task whose terminal is gone is marked on every backend. See [`no-agent-mark-agent-exited-probe`](decisions/2026/11/13/no-agent-mark-agent-exited-probe.md).
+
 ## Feature Matrix
 
 | Feature | Claude Code | Cursor Agent | Codex | Gemini CLI | OpenCode | GitHub Copilot CLI | Oh My Pi | Pi |

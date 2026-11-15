@@ -2,6 +2,8 @@ import {
 	compareTaskSortRank,
 	isLiftedCoordinator,
 	isPinnedCoordinator,
+	isTaskAgentExited,
+	isTaskAgentless,
 	isTaskDisconnected,
 	taskAgentSessionLooksLive,
 	taskSortRank,
@@ -1003,6 +1005,46 @@ describe("isTaskDisconnected — a session that died with the app", () => {
 		const disconnectedP0 = dead({ priority: "P0" });
 		expect(compareTaskSortRank(disconnectedP0, { priority: "P4" })).toBeGreaterThan(0);
 		expect(compareTaskSortRank(disconnectedP0, { priority: "P0", hibernated: true })).toBeLessThan(0);
+	});
+});
+
+describe("isTaskAgentExited / isTaskAgentless — a terminal that outlived its agent", () => {
+	const exited = (over: Partial<Task> = {}): Partial<Task> => ({
+		status: "in-progress",
+		worktreePath: "/wt",
+		runtimeState: { runtime: "running", updatedAt: 1 },
+		agentExitedAt: "2026-11-13T10:00:00.000Z",
+		...over,
+	});
+
+	it("flags a running task the probe marked", () => {
+		expect(isTaskAgentExited(exited())).toBe(true);
+		expect(isTaskAgentless(exited())).toBe(true);
+		expect(isTaskDisconnected(exited())).toBe(false);
+	});
+
+	it("leaves a task with a live agent (no mark) alone", () => {
+		expect(isTaskAgentExited(exited({ agentExitedAt: undefined }))).toBe(false);
+		expect(isTaskAgentless(exited({ agentExitedAt: undefined }))).toBe(false);
+	});
+
+	it("never marks a parked, unlaunched or finished task", () => {
+		for (const over of [{ hibernated: true }, { draft: true }, { preparing: true }, { shuttingDown: true }, { status: "todo" as const }, { status: "completed" as const }, { worktreePath: null }]) {
+			expect(isTaskAgentExited(exited(over))).toBe(false);
+			expect(isTaskAgentless(exited(over))).toBe(false);
+		}
+	});
+
+	it("reads an idle runtime as disconnected, not as an exited agent", () => {
+		const idle = exited({ runtimeState: { runtime: "idle", updatedAt: 1 } });
+		expect(isTaskAgentExited(idle)).toBe(false);
+		expect(isTaskDisconnected(idle)).toBe(true);
+		expect(isTaskAgentless(idle)).toBe(true);
+	});
+
+	it("sinks an agent-exited P0 below a live P4, like a disconnected one", () => {
+		expect(compareTaskSortRank(exited({ priority: "P0" }), { priority: "P4" })).toBeGreaterThan(0);
+		expect(taskAgentSessionLooksLive(exited())).toBe(false);
 	});
 });
 

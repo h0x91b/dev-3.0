@@ -493,6 +493,15 @@ describe("taskMainAgentLiveness — what the keep-alive watchdog may conclude", 
 		expect(await taskMainAgentLiveness(task([pane(null, "conv-a")]))).toBe("unknown");
 	});
 
+	it("is unknown on the native backend, whose main agent is recorded without a pane id", async () => {
+		vi.mocked(nativeTaskPanesState).mockResolvedValue({
+			taskId: "task-1", layout: "", activePaneId: "pane-1",
+			panes: [{ paneId: "pane-1", sessionId: "s-1", hostPid: 90, shellPid: 100, cols: 80, rows: 24, alive: true }],
+		});
+		agentExits(100);
+		expect(await taskMainAgentLiveness(task([pane(null, "conv-a")], { terminalBackend: "native" } as Partial<Task>))).toBe("unknown");
+	});
+
 	it("is unknown on Windows, which has no `ps` to read the process table from", async () => {
 		const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
 		Object.defineProperty(process, "platform", { value: "win32" });

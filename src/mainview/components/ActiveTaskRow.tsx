@@ -2,7 +2,7 @@ import { useState, type Dispatch } from "react";
 import { COORDINATOR_TITLE, TaskRoleChip } from "./TaskRoleBand";
 import { TaskRefText } from "./TaskRefText";
 import type { CodingAgent, Label, PortInfo, Project, Task, TaskPRBadgeInfo, TaskPriority, TaskStatus } from "../../shared/types";
-import { getAllowedTransitions, getTaskTitle, isCoordinatorTask, isTaskDisconnected } from "../../shared/types";
+import { getAllowedTransitions, getTaskTitle, isCoordinatorTask, isTaskAgentless, isTaskDisconnected } from "../../shared/types";
 import { earlierPullRequests } from "../../shared/task-pull-requests";
 import { api } from "../rpc";
 import { toast } from "../toast";
@@ -113,15 +113,15 @@ export default function ActiveTaskRow({
 	const agentSummary = [agent?.name, configLabel].filter(Boolean).join(" · ");
 	const busy = task.shuttingDown || task.preparing || moving;
 	const disabled = busy || task.hibernated;
-	// Session gone with the app; the row still opens (that is where recovery is
-	// offered), it just stops counting as one of the sessions running right now.
-	const disconnected = isTaskDisconnected(task);
+	// No agent (terminal gone, or only a shell left); the row still opens and the task can be
+	// restarted from there, it just stops counting as one of the sessions running right now.
+	const agentless = isTaskAgentless(task);
 	const activeCol = task.customColumnId
 		? (taskProject.customColumns ?? []).find((c) => c.id === task.customColumnId)
 		: null;
 	// Busy statuses keep the flowing highlight the thin rail used to carry — the
 	// ring reports the stage, not that an agent is moving right now.
-	const isBusy = (task.status === "in-progress" || task.status === "review-by-ai") && !disconnected;
+	const isBusy = (task.status === "in-progress" || task.status === "review-by-ai") && !agentless;
 
 	async function handleMove(newStatus: TaskStatus, opts?: { alwaysConfirm?: boolean; anchor?: HTMLElement }) {
 		statusMenu.setOpen(false);
@@ -235,7 +235,7 @@ export default function ActiveTaskRow({
 			className={`group relative flex w-full items-stretch text-left transition-[color,background-color,opacity,transform] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none cursor-pointer focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60 ${
 				task.shuttingDown
 					? "grayscale opacity-40 pointer-events-none"
-					: task.hibernated || disconnected
+					: task.hibernated || agentless
 						? "grayscale opacity-60 hover:bg-elevated-hover"
 						: isActive
 							? "bg-accent/20 ring-1 ring-inset ring-accent/50"
@@ -409,13 +409,13 @@ export default function ActiveTaskRow({
 								{t("task.hibernatedBadge")}
 							</span>
 						)}
-						{disconnected && (
+						{agentless && (
 							<span
-								data-testid="sidebar-disconnected-badge"
-								title={t("task.disconnectedHint")}
+								data-testid="sidebar-no-agent-badge"
+								title={isTaskDisconnected(task) ? t("task.disconnectedHint") : t("task.agentExitedHint")}
 								className="inline-flex flex-shrink-0 items-center rounded border border-dashed border-edge-active px-1 py-px text-nano font-semibold uppercase tracking-[0.06em] text-fg-muted"
 							>
-								{t("task.disconnectedBadge")}
+								{t("task.noAgentBadge")}
 							</span>
 						)}
 						<div className="min-w-0 flex-1 truncate text-nano font-mono text-fg-muted">{agentSummary}</div>

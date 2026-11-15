@@ -169,6 +169,11 @@ export interface Task {
 	 */
 	codexScanFloorAt?: string | null;
 	/**
+	 * Set by the agent-exit probe when the main agent exited and its pane shows only
+	 * a shell; cleared when the agent runs again. Drives the "No agent" mark.
+	 */
+	agentExitedAt?: string;
+	/**
 	 * Legacy manual position inside a column. Nothing reads or writes it any more —
 	 * in-column order is derived from priority + the activity clock (see
 	 * sortTasks.ts). Declared only so older values already sitting in `tasks.json`

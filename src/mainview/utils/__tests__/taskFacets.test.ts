@@ -206,6 +206,8 @@ describe("buildFilterGroups", () => {
 		expect(flagsOf([makeTask({ id: "sleep", status: "in-progress", hibernated: true })])).toEqual(["is:hibernated"]);
 		const dead = makeTask({ id: "dead", status: "in-progress", worktreePath: "/tmp/wt", runtimeState: { runtime: "idle", updatedAt: 0 } });
 		expect(flagsOf([dead])).toEqual(["is:hibernated"]);
+		const exited = makeTask({ id: "exited", status: "in-progress", worktreePath: "/tmp/wt", agentExitedAt: "2026-11-13T10:00:00.000Z" });
+		expect(flagsOf([exited])).toEqual(["is:hibernated"]);
 		expect(taskQueryContext(dead, resolverFor()).isHibernated).toBe(true);
 	});
 
