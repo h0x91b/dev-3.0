@@ -19,9 +19,10 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { DEFAULT_TMUX_SOCKET } from "../src/bun/tmux/constants";
 import type { Project } from "../src/shared/types";
 
 export type QaScopeMode = "seeded" | "virgin";
@@ -45,7 +46,10 @@ export function qaScopeRoot(worktreeRoot: string, mode: QaScopeMode, tempRoot = 
 }
 
 /**
- * Only `DEV3_HOME` and `DEV3_LOG_DIR` are redirected. `HOME` deliberately stays
+ * `DEV3_HOME`, `DEV3_LOG_DIR` and `TMUX_TMPDIR` are redirected. `TMUX_TMPDIR` gives
+ * the instance its own tmux server: every tmux it spawns, task panes included,
+ * inherits it, so nothing lands on the real app's server. Kept short, because a
+ * macOS socket path stops at 104 bytes. `HOME` deliberately stays
  * real: the agent's own `dev3` CLI, git and module resolution all read it, and
  * moving it would break the QA run rather than isolate it. `DEV3_TEST_ROOT` (the
  * OS scratch root behind `dev3TempPath`) also stays real — task scratch files are
@@ -55,6 +59,7 @@ export function qaScopeEnv(root: string): Record<string, string> {
 	return {
 		DEV3_HOME: join(root, "home", ".dev3.0").replaceAll("\\", "/"),
 		DEV3_LOG_DIR: join(root, "logs").replaceAll("\\", "/"),
+		TMUX_TMPDIR: join(root, "t").replaceAll("\\", "/"),
 	};
 }
 
@@ -106,10 +111,10 @@ export function seedQaScope(
 	run: QaScopeRunner = bunRunner,
 ): Record<string, string> {
 	const env = qaScopeEnv(root);
-	// The data root and log dir are created even for `virgin`: an absent parent is
+	// The data root, log dir and tmux dir are created even for `virgin`: an absent parent is
 	// not "a new user", it is a different failure, and the app creates this dir on
 	// first run anyway.
-	for (const dir of [env.DEV3_HOME, env.DEV3_LOG_DIR]) mkdirSync(dir, { recursive: true });
+	for (const dir of [env.DEV3_HOME, env.DEV3_LOG_DIR, env.TMUX_TMPDIR]) mkdirSync(dir, { recursive: true });
 	if (mode === "virgin") return env;
 
 	const repo = qaFixtureRepo(root);
@@ -128,4 +133,52 @@ export function seedQaScope(
 		writeFileSync(projectsFile, `${JSON.stringify([qaFixtureProject(repo, now)], null, 2)}\n`);
 	}
 	return env;
+}
+
+export function qaTmuxSocketDir(env: Record<string, string>, uid = process.getuid?.() ?? 0): string {
+	return join(env.TMUX_TMPDIR, `tmux-${uid}`);
+}
+
+/**
+ * The scoped app's own tmux shim when it wrote one, so the client matches the
+ * server's version; PATH `tmux` otherwise.
+ */
+export function qaTmuxBinary(env: Record<string, string>): string {
+	const shim = join(env.DEV3_HOME, "bin", "tmux");
+	return existsSync(shim) ? shim : "tmux";
+}
+
+/** What to run, before `rm -rf`, so a reset does not orphan the scoped server. */
+export function qaScopeResetHint(root: string, env: Record<string, string>): string {
+	const socket = join(qaTmuxSocketDir(env), DEFAULT_TMUX_SOCKET);
+	return `${qaTmuxBinary(env)} -S ${socket} kill-server; rm -rf ${root}`;
+}
+
+export type QaTmuxKiller = (command: string[]) => void;
+
+const bunKiller: QaTmuxKiller = (command) => {
+	Bun.spawnSync(command, { stdout: "ignore", stderr: "ignore", env: process.env, timeout: 3_000 });
+};
+
+/**
+ * Stop every tmux server in the scoped socket directory. The directory belongs
+ * to this scope alone, so nothing in it can be the real app's server. Best
+ * effort: a server that does not answer is left to the reset hint.
+ */
+export function stopQaScopeTmux(
+	env: Record<string, string>,
+	kill: QaTmuxKiller = bunKiller,
+	platform: NodeJS.Platform = process.platform,
+): string[] {
+	if (platform === "win32") return [];
+	const dir = qaTmuxSocketDir(env);
+	let sockets: string[];
+	try {
+		sockets = readdirSync(dir);
+	} catch {
+		return [];
+	}
+	const binary = qaTmuxBinary(env);
+	for (const socket of sockets) kill([binary, "-S", join(dir, socket), "kill-server"]);
+	return sockets;
 }

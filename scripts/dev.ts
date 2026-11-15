@@ -15,7 +15,7 @@ import { join, resolve } from "node:path";
 import electrobunConfig from "../electrobun.config";
 import { WORKER_ENTRIES } from "./build-cli";
 import { binaryCacheLayout, restoreElectrobunBinaries, storeElectrobunBinaries } from "./electrobun-binary-cache";
-import { type QaScopeMode, qaScopeRoot, seedQaScope } from "./qa-scope";
+import { type QaScopeMode, qaScopeResetHint, qaScopeRoot, seedQaScope, stopQaScopeTmux } from "./qa-scope";
 
 /** Lazy: `import.meta.dir` is a Bun-runtime value, absent when tests import this. */
 function repoRoot(): string {
@@ -291,7 +291,7 @@ function main(): void {
 		const root = qaScopeRoot(repoRoot(), scopeMode);
 		qaScope = seedQaScope(root, scopeMode);
 		console.log(`[dev] QA scope (${scopeMode}): DEV3_HOME=${qaScope.DEV3_HOME} — real ~/.dev3.0 untouched`);
-		console.log(`[dev] reset this scope with: rm -rf ${root}`);
+		console.log(`[dev] reset this scope with: ${qaScopeResetHint(root, qaScope)}`);
 	}
 
 	const env = devRunEnv(mode, {
@@ -310,6 +310,12 @@ function main(): void {
 		env: { ...process.env, ...env },
 	});
 
+	// The scoped tmux server outlives the app, and nothing else would ever stop it.
+	const exit = (code: number): never => {
+		if (qaScope) stopQaScopeTmux(qaScope);
+		process.exit(code);
+	};
+
 	let shuttingDown = false;
 	const shutDown = (signal: NodeJS.Signals): void => {
 		if (shuttingDown) return;
@@ -324,11 +330,11 @@ function main(): void {
 			// to type. The prompt comes back on a deadline no matter what.
 			const giveUp = setTimeout(() => {
 				console.error("[dev] the app did not exit after taskkill; leaving it to the OS");
-				process.exit(0);
+				exit(0);
 			}, FORCE_KILL_GRACE_MS);
 			child.exited.then(() => {
 				clearTimeout(giveUp);
-				process.exit(0);
+				exit(0);
 			});
 			return;
 		}
@@ -340,12 +346,12 @@ function main(): void {
 		// console another process is still writing to.
 		const forceKill = setTimeout(() => {
 			signalPids(pids, "SIGKILL");
-			process.exit(0);
+			exit(0);
 		}, FORCE_KILL_GRACE_MS);
 		child.exited.then(() => {
 			clearTimeout(forceKill);
 			signalPids(pids, "SIGKILL");
-			process.exit(0);
+			exit(0);
 		});
 	};
 
@@ -353,7 +359,7 @@ function main(): void {
 		process.on(signal, () => shutDown(signal));
 	}
 
-	child.exited.then((code) => process.exit(code ?? 0));
+	child.exited.then((code) => exit(code ?? 0));
 }
 
 if (import.meta.main) main();
