@@ -1,8 +1,9 @@
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve as resolvePath } from "node:path";
 import { claudeTranscriptDir } from "../shared/conversation-search-core";
+import { claudeConfigDirHasSession } from "./agent-transcripts";
 import type { AgentConfiguration, AgentFamily, CodingAgent, LlmProvider, Project, ProtocolMode } from "../shared/types";
 import { DEFAULT_AGENTS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
 export { skillInvocationPrefix } from "../shared/types";
@@ -28,7 +29,7 @@ import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from
 import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
 import { ensureAgentSystemPromptFile } from "./agent-system-prompt-file";
 import { leanProtocolReference, leanSkillBodyFor, skillBodyFor, withSharedFolderNotice, type SkillFamily } from "../shared/agent-skill-content";
-import { claudeAccountRegistered, claudeAccountSignedIntoDir, effectiveAccountId, getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveAgentDirSessionEnv, getActiveCodexSessionEnv, listClaudeAccountDirs, isLinkedClaudeSlot } from "./agent-accounts";
+import { claudeAccountDir, claudeAccountRegistered, claudeAccountSignedIntoDir, effectiveAccountId, getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveAgentDirSessionEnv, getActiveCodexSessionEnv, listClaudeAccountDirs, isLinkedClaudeSlot } from "./agent-accounts";
 import { ENV_UNSET, claudeModelFamily, isAutoAccountId, isRoutableAccountKind, type AgentAccountKind } from "../shared/agent-accounts";
 import { isAutoAccountDefault, pickAutoAccount, type AutoAccountPick, type AutoRoutingContext } from "./account-router";
 import { hasOmpFlag } from "../shared/agent-adapters/omp-flags";
@@ -826,16 +827,40 @@ export function claudeSettingsSetAwsAuthRefresh(launchEnv: Record<string, string
 	});
 }
 
-/** Whether `configDir` holds the conversation a resume reopens: `sessionId`'s transcript,
- *  or for `--continue` any transcript of this worktree. */
-function claudeStoreHoldsConversation(configDir: string, worktreePath: string, sessionId?: string): boolean {
+function newestWorktreeTranscript(configDir: string, worktreePath: string): number | null {
 	const store = claudeTranscriptDir(configDir, worktreePath);
-	if (sessionId) return existsSync(join(store, `${sessionId}.jsonl`));
+	let newest: number | null = null;
 	try {
-		return readdirSync(store).some((name) => name.endsWith(".jsonl"));
+		for (const name of readdirSync(store)) {
+			if (!name.endsWith(".jsonl")) continue;
+			const mtime = statSync(join(store, name)).mtimeMs;
+			if (newest === null || mtime > newest) newest = mtime;
+		}
 	} catch {
-		return false;
+		return newest;
 	}
+	return newest;
+}
+
+export interface ProjectFolderLaunch {
+	projectEnv: Record<string, string>;
+	projectPath: string;
+	worktreePath: string;
+	resume?: boolean;
+	sessionId?: string;
+}
+
+/** Whether a Claude launch on `accountId` keeps the project's pinned folder: that folder is signed in
+ *  to this account and, on a resume, holds the conversation (`--continue`: this worktree's newest).
+ *  The launch and the resume account guard share it, so the two never disagree. */
+export function claudeLaunchKeepsProjectFolder(accountId: string, launch: ProjectFolderLaunch): boolean {
+	const pinnedDir = pinnedClaudeConfigDir(launch.projectEnv.CLAUDE_CONFIG_DIR, homedir(), launch.projectPath);
+	if (!pinnedDir || !claudeAccountSignedIntoDir(accountId, pinnedDir)) return false;
+	if (!launch.resume) return true;
+	if (launch.sessionId) return claudeConfigDirHasSession(pinnedDir, launch.sessionId);
+	const inProject = newestWorktreeTranscript(pinnedDir, launch.worktreePath);
+	const inAccount = newestWorktreeTranscript(claudeAccountDir(accountId), launch.worktreePath);
+	return inProject !== null && (inAccount === null || inProject > inAccount);
 }
 
 /** Which account a launch uses, before any env is built. `"auto"` (or a
@@ -874,9 +899,7 @@ async function resolveLaunchAccount(
 	if (kind === "claude" && explicit === undefined && (options?.autoRouting?.claudeConfigPinned || pinnedDir != null)) {
 		return { accountId: undefined, resolvedAccountId: undefined, keepsProjectClaudeConfig: true, ...(staleAccountDropped ? { staleAccountDropped } : {}) };
 	}
-	// A resume opens the folder its conversation was written in; only a fresh session switches folder.
-	const conversationInPinnedDir = () => !!pinnedDir && claudeStoreHoldsConversation(pinnedDir, worktreePath, options?.sessionId);
-	if (pinnedDir && typeof explicit === "string" && (!options?.resume || conversationInPinnedDir()) && claudeAccountSignedIntoDir(explicit, pinnedDir)) {
+	if (pinnedDir && options?.projectEnv && typeof explicit === "string" && claudeLaunchKeepsProjectFolder(explicit, { projectEnv: options.projectEnv, projectPath, worktreePath, resume: options.resume, sessionId: options.sessionId })) {
 		log.info("Picked Claude account is the project folder's own login — keeping the project folder", { accountId: explicit.slice(0, 8) });
 		return { accountId: undefined, resolvedAccountId: undefined, keepsProjectClaudeConfig: true, projectLoginKept: true };
 	}

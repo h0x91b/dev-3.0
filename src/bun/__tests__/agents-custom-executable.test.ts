@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,11 +20,12 @@ vi.mock("../agent-accounts", async (importOriginal) => {
 		getActiveClaudeSessionEnv: (id?: string | null) => actual.getActiveClaudeSessionEnv(id, state.paths as import("../agent-accounts").AccountPaths),
 		claudeAccountRegistered: (id: string) => actual.claudeAccountRegistered(id, state.paths as import("../agent-accounts").AccountPaths),
 		claudeAccountSignedIntoDir: (id: string, dir: string) => actual.claudeAccountSignedIntoDir(id, dir, state.paths as import("../agent-accounts").AccountPaths),
+		claudeAccountDir: (id: string, paths?: import("../agent-accounts").AccountPaths) => actual.claudeAccountDir(id, paths ?? (state.paths as import("../agent-accounts").AccountPaths)),
 	};
 });
 
 import { claudeAccountDir, prepareClaudeLogin, registerStagedClaudeAccount, importCurrentClaudeAccount, setActiveClaudeAccount, type AccountPaths } from "../agent-accounts";
-import { resolveCommandForAgent, resolveCommandForProject } from "../agents";
+import { claudeLaunchKeepsProjectFolder, resolveCommandForAgent, resolveCommandForProject } from "../agents";
 import type { Project } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
 import { DEV3_HOME } from "../paths";
@@ -296,12 +297,39 @@ describe("an account the project's own Claude folder is signed in to", () => {
 		expect(resolved.projectLoginKept).toBe(true);
 	});
 
-	it("continues in the project folder when it holds this worktree's conversations", async () => {
-		const { account } = await accountSignedInAs("person-1");
-		const store = claudeTranscriptDir(projectDir, ctx.worktreePath);
+	function transcript(configDir: string, name: string, ageSeconds: number) {
+		const store = claudeTranscriptDir(configDir, ctx.worktreePath);
 		mkdirSync(store, { recursive: true });
-		writeFileSync(join(store, "s-2.jsonl"), "{}\n");
+		const file = join(store, name);
+		writeFileSync(file, "{}\n");
+		const at = Date.now() / 1000 - ageSeconds;
+		utimesSync(file, at, at);
+	}
+
+	it("continues in the project folder when it holds this worktree's newest conversation", async () => {
+		const { account, dir } = await accountSignedInAs("person-1");
+		transcript(dir, "old.jsonl", 600);
+		transcript(projectDir, "s-2.jsonl", 10);
 		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, accountFromStore: true, resume: true, projectEnv });
 		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(projectDir);
+	});
+
+	it("continues in the account's folder when its conversation is newer than the project folder's", async () => {
+		const { account, dir } = await accountSignedInAs("person-1");
+		transcript(projectDir, "stale.jsonl", 600);
+		transcript(dir, "latest.jsonl", 10);
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, accountFromStore: true, resume: true, projectEnv });
+		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(dir);
+		expect(resolved.projectLoginKept).toBeUndefined();
+	});
+
+	it("answers the resume guard with the same rule the launch uses", async () => {
+		const { account } = await accountSignedInAs("person-1");
+		transcript(projectDir, "s-3.jsonl", 10);
+		const where = { projectEnv, projectPath: ctx.projectPath, worktreePath: ctx.worktreePath };
+		expect(claudeLaunchKeepsProjectFolder(account.id, { ...where, resume: true, sessionId: "s-3" })).toBe(true);
+		expect(claudeLaunchKeepsProjectFolder(account.id, { ...where, resume: true, sessionId: "elsewhere" })).toBe(false);
+		const { account: other } = await accountSignedInAs("person-2");
+		expect(claudeLaunchKeepsProjectFolder(other.id, { ...where, resume: true, sessionId: "s-3" })).toBe(false);
 	});
 });

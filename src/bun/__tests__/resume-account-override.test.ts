@@ -15,6 +15,7 @@ vi.mock("../agents", () => ({
 	findConfig: vi.fn(() => undefined),
 	resolveCommandForAgent: vi.fn(async () => ({ command: "claude --resume", extraEnv: {} })),
 	buildResumeCommand: vi.fn(() => "claude --resume"),
+	claudeLaunchKeepsProjectFolder: vi.fn(() => false),
 }));
 vi.mock("../agent-accounts", () => ({
 	codexAccountIdForHome: vi.fn(() => "codex-acct"),
@@ -84,6 +85,7 @@ beforeEach(() => {
 	vi.mocked(taskTerminalBackendIdentity).mockReturnValue("tmux");
 	vi.mocked(claudeConfigDirHasSession).mockReturnValue(true);
 	vi.mocked(chooseTaskCodexConversations).mockResolvedValue(new Map());
+	vi.mocked(agents.claudeLaunchKeepsProjectFolder).mockReturnValue(false);
 });
 
 describe("resume clears the agent-exited mark", () => {
@@ -165,6 +167,31 @@ describe("resume with an account override", () => {
 		expect(claudeConfigDirHasSession).toHaveBeenCalledWith("/accounts/acct-split", "s-claude");
 		expect(wakeIfHibernated).not.toHaveBeenCalled();
 		expect(launchTaskPty).not.toHaveBeenCalled();
+	});
+
+	it("accepts the project folder's own login when the conversation lives in that folder", async () => {
+		arrange([{ ...claudePane, accountId: undefined }]);
+		vi.mocked(claudeConfigDirHasSession).mockReturnValue(false);
+		vi.mocked(agents.claudeLaunchKeepsProjectFolder).mockReturnValue(true);
+		await resumeTaskSession("t1", { accountId: "acct-project-login" });
+		expect(agents.claudeLaunchKeepsProjectFolder).toHaveBeenCalledWith("acct-project-login", expect.objectContaining({ resume: true, sessionId: "s-claude", worktreePath: "/wt" }));
+		expect(launchedAccount()).toBe("acct-project-login");
+	});
+
+	it("still refuses --continue onto the project login for a pane that ran on another account", async () => {
+		arrange([{ ...claudePane, sessionId: null }]);
+		vi.mocked(resolveResumableSessionIds).mockReturnValueOnce([{ sessionId: null, substituted: false, startFresh: false, verified: false }]);
+		vi.mocked(agents.claudeLaunchKeepsProjectFolder).mockReturnValue(true);
+		await expect(resumeTaskSession("t1", { accountId: "acct-project-login" })).rejects.toMatchObject({ reason: "account-cannot-see-conversation" });
+	});
+
+	it("lets --continue onto the project login through for a pane that ran in the project folder", async () => {
+		arrange([{ ...claudePane, sessionId: null, accountId: undefined }]);
+		vi.mocked(resolveResumableSessionIds).mockReturnValueOnce([{ sessionId: null, substituted: false, startFresh: false, verified: false }]);
+		vi.mocked(agents.claudeLaunchKeepsProjectFolder).mockReturnValue(true);
+		await resumeTaskSession("t1", { accountId: "acct-project-login" });
+		expect(agents.claudeLaunchKeepsProjectFolder).toHaveBeenCalledWith("acct-project-login", expect.objectContaining({ resume: true, sessionId: undefined }));
+		expect(launchedAccount()).toBe("acct-project-login");
 	});
 
 	it("keeps the account's folder out of the refusal, which reaches toasts and other agents", async () => {

@@ -238,11 +238,15 @@ async function assertAccountReachesPanes(
 	reports: ResumePaneReport[],
 	mainOnly: boolean,
 	switches: (pane: PaneSessionEntry, i: number) => boolean,
+	keepsProjectFolder: (sessionId: string | null) => boolean,
 ): Promise<void> {
 	const configDir = await assertResumeAccountUsable(accountId, panes, mainOnly, reports);
 	for (const [i, pane] of panes.entries()) {
 		if (!switches(pane, i) || (mainOnly && i > 0)) continue;
 		const { sessionId, mode } = targets[i];
+		// The project folder's own login reopens it there, as the launch will. `--continue` only for a
+		// pane that ran in that folder (no account): one from another account's folder is elsewhere.
+		if ((mode !== "agent-latest" || pane.accountId === undefined) && keepsProjectFolder(sessionId)) continue;
 		// `--continue` under another account opens that account's latest, not this pane's conversation.
 		if (mode === "agent-latest") {
 			throw new ResumeUnavailableError(
@@ -367,7 +371,15 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 		);
 	}
 	if (accountOverride !== undefined) {
-		await assertAccountReachesPanes(accountOverride, panes, targets, reports, taskTerminalBackendIdentity(task) !== "tmux", switchesAccount);
+		const launch = {
+			projectEnv: await repoConfig.resolveProjectEnv(resolvedProject, task.worktreePath, { foreignCode: task.foreignCode }),
+			projectPath: rootProjectFor(project, task).path,
+			worktreePath: task.worktreePath,
+			resume: true,
+		};
+		const keepsProjectFolder = (sessionId: string | null) =>
+			typeof accountOverride === "string" && agents.claudeLaunchKeepsProjectFolder(accountOverride, { ...launch, sessionId: sessionId ?? undefined });
+		await assertAccountReachesPanes(accountOverride, panes, targets, reports, taskTerminalBackendIdentity(task) !== "tmux", switchesAccount, keepsProjectFolder);
 	}
 	await wakeIfHibernated(project, task);
 
