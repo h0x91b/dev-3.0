@@ -168,9 +168,9 @@ export async function requestDestructiveApproval(
 			// different one and deletes nothing.
 			const snapshot = resetConsentByRequestId.get(requestId);
 			resetConsentByRequestId.delete(requestId);
-			// The attached repo in the consent is the one the dialog checked, not the one seen when it opened.
+			// `attachedRepo` stays the one seen when the dialog opened; only the checked one is approved for removal.
 			run = snapshot
-				? resetTaskToTodo({ taskId: task.id, projectId: project.id, consent: { ...snapshot, attachedRepo: attachedRepo ?? null } })
+				? resetTaskToTodo({ taskId: task.id, projectId: project.id, consent: { ...snapshot, approvedAttachedRepo: attachedRepo ?? null } })
 				: Promise.reject(new Error("The reset request lost its consent record, so the reset was not run. Ask again."));
 			resetRunByRequestId.set(requestId, run);
 			void run.catch(() => {}).finally(() => {

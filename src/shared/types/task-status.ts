@@ -102,17 +102,20 @@ export interface TaskResetResult {
 export interface TaskResetConsent {
 	worktreePath: string | null;
 	lifecycleStartedAt: string | null;
-	/** The attached repo the dialog checked: a reset removes only this one. */
+	/** The attached repo the task had when the dialog opened: the staleness match key. */
 	attachedRepo: string | null;
+	/** The attached repo the dialog checked; a reset removes only this one. Null: not approved, nothing is removed. */
+	approvedAttachedRepo: string | null;
 }
 
 type ResetConsentFields = { worktreePath?: string | null; lifecycleStartedAt?: string | null; attachedRepo?: string | null };
 
-export function taskResetConsent(task: ResetConsentFields): TaskResetConsent {
+export function taskResetConsent(task: ResetConsentFields, approvedAttachedRepo: string | null = null): TaskResetConsent {
 	return {
 		worktreePath: task.worktreePath ?? null,
 		lifecycleStartedAt: task.lifecycleStartedAt ?? null,
 		attachedRepo: task.attachedRepo ?? null,
+		approvedAttachedRepo,
 	};
 }
 

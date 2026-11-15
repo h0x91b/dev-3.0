@@ -8,6 +8,7 @@ import {
 	dirname as dirnamePath,
 	relative as relativePath,
 	resolve as resolvePath,
+	sep as pathSep,
 } from "node:path";
 import { createLogger } from "./logger";
 import { CloneProgressParser } from "./clone-progress";
@@ -1673,33 +1674,66 @@ export type LinkedWorktreeKind =
 /**
  * "plain" only when git positively answers that the checkout owns its git dir. A missing path or a
  * failed probe is "unknown", so a broken repo is never mistaken for a clone that is safe to ignore.
+ * A subfolder of a linked worktree is "plain": only the worktree root may be removed as a worktree.
  */
 export async function classifyLinkedWorktree(path: string): Promise<LinkedWorktreeKind> {
 	if (!existsSync(path)) return { kind: "unknown", error: `Path not found: ${path}` };
 	let result: GitRunResult;
 	try {
-		result = await run(["git", "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir"], path);
+		result = await run(["git", "rev-parse", "--path-format=absolute", "--show-toplevel", "--git-dir", "--git-common-dir"], path);
 	} catch (err) {
 		return { kind: "unknown", error: String(err) };
 	}
 	if (!result.ok) return { kind: "unknown", error: result.stderr.trim() || "git rev-parse failed" };
-	const [gitDir, commonDir] = result.stdout.split("\n");
-	if (!gitDir || !commonDir) return { kind: "unknown", error: `Unexpected git rev-parse output: ${result.stdout}` };
+	const [topLevel, gitDir, commonDir] = result.stdout.split("\n");
+	if (!topLevel || !gitDir || !commonDir) return { kind: "unknown", error: `Unexpected git rev-parse output: ${result.stdout}` };
+	if (realPathOr(topLevel) !== realPathOr(path)) return { kind: "plain" };
 	if (gitDir === commonDir) return { kind: "plain" };
 	return { kind: "linked", mainRepo: commonDir.endsWith("/.git") ? commonDir.slice(0, -"/.git".length) : commonDir };
 }
 
+function realPathOr(path: string): string {
+	try { return realpathSync(path); } catch { return path; }
+}
+
+/**
+ * The real path of an attached repo that may be removed, or null. Removal runs long after the attach
+ * check, so a symlink swapped in since (on the repo or a folder above it) must not lead git to a
+ * worktree outside `root`, which the repo must resolve strictly inside.
+ */
+export function resolveRemovableAttachedRepo(attached: string, root: string): string | null {
+	if (!existsSync(attached)) return null;
+	try {
+		if (lstatSync(attached).isSymbolicLink()) throw new Error("the attached path is a symlink");
+		const real = realpathSync(attached);
+		if (!real.startsWith(`${realpathSync(root)}${pathSep}`)) throw new Error("it resolves outside the task folder");
+		return real;
+	} catch (err) {
+		log.warn("Kept the attached repo: it is not safe to remove", { attached, root, reason: err instanceof Error ? err.message : String(err) });
+		return null;
+	}
+}
+
 /**
  * Removes a linked worktree through its main repo; the branch stays. If git refuses, the directory is
- * deleted and the stale registration pruned. Returns false only when the directory is still there.
+ * deleted and the stale registration pruned, but only when the main repo still lists it as a worktree.
+ * Returns false when the directory is still there.
  */
 export async function removeLinkedWorktree(mainRepo: string, path: string): Promise<boolean> {
 	try {
 		const result = await run(["git", "worktree", "remove", "--force", "--force", path], mainRepo);
 		if (result.ok) return true;
-		log.warn("git worktree remove failed, deleting the directory instead", { mainRepo, path, stderr: result.stderr });
+		log.warn("git worktree remove failed", { mainRepo, path, stderr: result.stderr });
 	} catch (err) {
-		log.warn("git worktree remove failed, deleting the directory instead", { mainRepo, path, error: String(err) });
+		log.warn("git worktree remove failed", { mainRepo, path, error: String(err) });
+	}
+	if (!existsSync(path)) {
+		await pruneWorktrees(mainRepo);
+		return true;
+	}
+	if (!(await isRegisteredWorktree(mainRepo, path))) {
+		log.warn("Kept the directory: the main repo does not list it as a worktree", { mainRepo, path });
+		return false;
 	}
 	try {
 		await rm(path, { recursive: true, force: true });
@@ -1709,6 +1743,17 @@ export async function removeLinkedWorktree(mainRepo: string, path: string): Prom
 	}
 	await pruneWorktrees(mainRepo);
 	return !existsSync(path);
+}
+
+async function isRegisteredWorktree(mainRepo: string, path: string): Promise<boolean> {
+	try {
+		const result = await run(["git", "worktree", "list", "--porcelain"], mainRepo);
+		if (!result.ok) return false;
+		const target = realPathOr(path);
+		return result.stdout.split("\n").some((line) => line.startsWith("worktree ") && realPathOr(line.slice("worktree ".length)) === target);
+	} catch {
+		return false;
+	}
 }
 
 /** Drop registrations of worktrees whose directory is gone. Never throws. */

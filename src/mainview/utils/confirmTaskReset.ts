@@ -17,13 +17,17 @@ export async function confirmTaskReset(
 	t: TFunction,
 	onOpenTask?: () => void,
 ): Promise<TaskResetConsent | null> {
-	const consent = taskResetConsent(task);
 	const keepsFolder = !taskUsesWorktree(project, task);
 	const branch = task.branchName;
 	const opsWorktree = isOpsWorktreeTask(task);
 	const inOwnFolder = isAttachedRepoInTaskFolder(task);
+	// Only a repo whose unsaved-work check succeeded is approved for removal.
+	let checkedAttachedRepo: string | null = null;
 	const unsaved = task.worktreePath && ((!keepsFolder && !task.existingBranch) || opsWorktree || inOwnFolder)
-		? api.request.getUnsavedWork({ taskId: task.id, projectId: project.id, expectedAttachedRepo: task.attachedRepo ?? null })
+		? api.request.getUnsavedWork({ taskId: task.id, projectId: project.id, expectedAttachedRepo: task.attachedRepo ?? null }).then((status) => {
+			checkedAttachedRepo = task.attachedRepo ?? null;
+			return status;
+		})
 		: null;
 	const approved = await confirm({
 		title: t("task.confirmResetTitle"),
@@ -48,5 +52,5 @@ export async function confirmTaskReset(
 			}
 			: undefined,
 	});
-	return approved ? consent : null;
+	return approved ? taskResetConsent(task, inOwnFolder ? checkedAttachedRepo : null) : null;
 }

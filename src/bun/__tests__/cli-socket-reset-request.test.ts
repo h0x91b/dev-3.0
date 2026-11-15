@@ -170,12 +170,12 @@ describe("task.requestReset (T17, T17b)", () => {
 		expect(resetTaskToTodo).toHaveBeenCalledWith({
 			taskId: task.id,
 			projectId: "proj-1",
-			consent: { worktreePath: "/tmp/wt", lifecycleStartedAt: STARTED, attachedRepo: null },
+			consent: { worktreePath: "/tmp/wt", lifecycleStartedAt: STARTED, attachedRepo: null, approvedAttachedRepo: null },
 		});
 		expect(moveTask).not.toHaveBeenCalled();
 	});
 
-	it("resets with the attached repo the dialog reports it checked, even if the task was re-attached meanwhile, and none when it reports none", async () => {
+	it("approves for removal the attached repo the dialog reports it checked, and none when its unsaved-work check failed", async () => {
 		const task = makeTask({ status: "review-by-user", lifecycleStartedAt: STARTED, attachedRepo: "/ops/s/ab/work/wt-a" });
 		const ask = async (decision: { approved: boolean; attachedRepo?: string | null }) => {
 			const { resp, requestId } = await openRequest(task);
@@ -186,8 +186,11 @@ describe("task.requestReset (T17, T17b)", () => {
 			return calls[calls.length - 1]![0].consent;
 		};
 
-		expect(await ask({ approved: true, attachedRepo: "/ops/s/ab/work/wt-a" })).toMatchObject({ attachedRepo: "/ops/s/ab/work/wt-a", lifecycleStartedAt: STARTED });
-		expect(await ask({ approved: true })).toMatchObject({ attachedRepo: null });
+		// `attachedRepo` stays the staleness key from when the dialog opened; only `approvedAttachedRepo` follows the check.
+		const key = "/ops/s/ab/work/wt-a";
+		expect(await ask({ approved: true, attachedRepo: key })).toMatchObject({ attachedRepo: key, approvedAttachedRepo: key, lifecycleStartedAt: STARTED });
+		expect(await ask({ approved: true, attachedRepo: "/ops/s/ab/work/wt-b" })).toMatchObject({ attachedRepo: key, approvedAttachedRepo: "/ops/s/ab/work/wt-b" });
+		expect(await ask({ approved: true })).toMatchObject({ attachedRepo: key, approvedAttachedRepo: null });
 	});
 
 	it("flags the dialog when the task's branch survives the reset (owned Operations worktree)", async () => {

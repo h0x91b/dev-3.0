@@ -366,6 +366,27 @@ describe("confirmTaskCompletion", () => {
 			expect(mockedConfirm.mock.calls[0]![0].message).toBe("task.attachedWorktreeNote");
 		});
 
+		it("reports the repo as checked only once its local unsaved-work read succeeded, on both paths", async () => {
+			const inFolder = { ...baseTask, attachedRepo: "/wt/wt2" } as Task;
+			const clean = { insertions: 0, deletions: 0, unpushed: 0, preservedOutsideBranch: false, ahead: 0, baseUnreachable: false };
+			// The dialog settles its deferred check before the user can confirm.
+			mockedConfirm.mockImplementation(async (options) => { await options.deferred?.promise.catch(() => {}); return true; });
+			const checked = vi.fn();
+
+			mockedUnsavedWork.mockResolvedValueOnce(clean);
+			await confirmTaskCompletion(inFolder, ops, "completed", t, undefined, { onAttachedRepoChecked: checked });
+			mockedUnsavedWork.mockResolvedValueOnce(clean);
+			await confirmTaskCompletion(inFolder, ops, "completed", t, undefined, { alwaysConfirm: true, onAttachedRepoChecked: checked });
+			expect(checked.mock.calls).toEqual([["/wt/wt2"], ["/wt/wt2"]]);
+
+			checked.mockClear();
+			mockedUnsavedWork.mockRejectedValueOnce(new Error("boom"));
+			await confirmTaskCompletion(inFolder, ops, "completed", t, undefined, { onAttachedRepoChecked: checked });
+			mockedUnsavedWork.mockRejectedValueOnce(new Error("boom"));
+			await confirmTaskCompletion(inFolder, ops, "completed", t, undefined, { alwaysConfirm: true, onAttachedRepoChecked: checked });
+			expect(checked).not.toHaveBeenCalled();
+		});
+
 		it("does not check a repo attached outside the task folder", async () => {
 			const ok = await confirmTaskCompletion({ ...baseTask, attachedRepo: "/repo" } as Task, ops, "completed", t);
 			expect(ok).toBe(true);

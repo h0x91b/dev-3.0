@@ -508,7 +508,7 @@ function resetTransition(
 				: state.facts.opsWorktree
 					? [effect({ type: "removeTaskWorkspace" }, "abort", failed)]
 					: state.facts.attachedRepoInFolder
-						? [effect({ type: "removeAttachedWorktree", approvedAttachedRepo: event.consent.attachedRepo })]
+						? [effect({ type: "removeAttachedWorktree", approvedAttachedRepo: event.consent.approvedAttachedRepo })]
 						: []),
 			effect({ type: "persistResetTask", consent: event.consent }, "abort", failed),
 			effect({ type: "push", message: "taskUpdated", view: "current" }),

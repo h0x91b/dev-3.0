@@ -18,7 +18,7 @@ afterEach(() => vi.clearAllMocks());
 describe("confirmTaskReset", () => {
 	it("always asks (even a clean branch), names the branch, gates on the unsaved-work check, returns the consent it showed", async () => {
 		vi.mocked(confirm).mockResolvedValue(true);
-		expect(await confirmTaskReset(task, project, t)).toEqual({ worktreePath: "/wt", lifecycleStartedAt: "S", attachedRepo: null });
+		expect(await confirmTaskReset(task, project, t)).toEqual({ worktreePath: "/wt", lifecycleStartedAt: "S", attachedRepo: null, approvedAttachedRepo: null });
 		const options = vi.mocked(confirm).mock.calls[0]![0];
 		expect(options).toMatchObject({ danger: true, tone: "danger", confirmLabel: "task.confirmResetLabel" });
 		expect(options.message).toContain("feat/dev3-x");
@@ -59,6 +59,19 @@ describe("confirmTaskReset", () => {
 		expect(options.message).toContain("task.attachedWorktreeNote");
 		expect(options.deferred?.gateConfirm).toBe(true);
 		expect(api.request.getUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", expectedAttachedRepo: "/wt/wt2" });
+	});
+
+	it("approves the attached repo only when its unsaved-work check succeeded; the match key stays either way", async () => {
+		const inFolder = { ...task, attachedRepo: "/wt/wt2" } as Task;
+		const virtual = { ...project, kind: "virtual" } as Project;
+		// The dialog settles its deferred check before the user can confirm.
+		vi.mocked(confirm).mockImplementation(async (options) => { await options.deferred?.promise.catch(() => {}); return true; });
+
+		vi.mocked(api.request.getUnsavedWork).mockResolvedValueOnce({ insertions: 0, deletions: 0, unpushed: 0, preservedOutsideBranch: false, ahead: 0, baseUnreachable: false });
+		expect(await confirmTaskReset(inFolder, virtual, t)).toMatchObject({ attachedRepo: "/wt/wt2", approvedAttachedRepo: "/wt/wt2" });
+
+		vi.mocked(api.request.getUnsavedWork).mockRejectedValueOnce(new Error("cannot tell"));
+		expect(await confirmTaskReset(inFolder, virtual, t)).toMatchObject({ attachedRepo: "/wt/wt2", approvedAttachedRepo: null });
 	});
 
 	it("a repo attached outside the task folder changes nothing for an Operations reset", async () => {

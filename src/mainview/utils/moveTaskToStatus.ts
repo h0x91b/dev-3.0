@@ -198,12 +198,17 @@ export async function moveTaskToStatus({
 		return requestTaskLaunch({ task, project, targetStatus: newStatus, dispatch, t, onOpenTask });
 	}
 
-	// The repo the unsaved-work dialog checked: the server removes a worktree in the task folder only if it is still this one.
-	let approvedAttachedRepo: string | undefined;
+	// The repo whose unsaved-work check succeeded: the server removes a worktree in the task folder only if it is still this one.
+	let approvedAttachedRepo: string | null | undefined;
 	if (confirm && terminal && (task.worktreePath || alwaysConfirm)) {
-		const proceed = await confirmTaskCompletion(task, project, newStatus, t, onOpenTask, { alwaysConfirm, anchor });
+		let checkedAttachedRepo: string | null = null;
+		const proceed = await confirmTaskCompletion(task, project, newStatus, t, onOpenTask, {
+			alwaysConfirm,
+			anchor,
+			onAttachedRepoChecked: (repo) => { checkedAttachedRepo = repo; },
+		});
 		if (!proceed) return false;
-		if (isAttachedRepoInTaskFolder(task)) approvedAttachedRepo = task.attachedRepo!;
+		if (isAttachedRepoInTaskFolder(task)) approvedAttachedRepo = checkedAttachedRepo;
 	}
 
 	const fromStatus = task.status;

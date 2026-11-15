@@ -696,7 +696,7 @@ describe("TaskCard", () => {
 				"completed",
 				expect.anything(),
 				expect.anything(),
-				{ alwaysConfirm: true },
+				expect.objectContaining({ alwaysConfirm: true }),
 			);
 			await waitFor(() => {
 				expect(mockedApi.request.moveTask).toHaveBeenCalledWith(
@@ -789,7 +789,7 @@ describe("TaskCard", () => {
 				"cancelled",
 				expect.anything(),
 				expect.anything(),
-				{ alwaysConfirm: true },
+				expect.objectContaining({ alwaysConfirm: true }),
 			);
 			await waitFor(() => {
 				expect(mockedApi.request.moveTask).toHaveBeenCalledWith(
@@ -822,7 +822,7 @@ describe("TaskCard", () => {
 			await user.keyboard("{Enter}");
 
 			expect(mockedConfirmTaskCompletion).toHaveBeenCalledWith(
-				expect.anything(), expect.anything(), "cancelled", expect.anything(), expect.anything(), { alwaysConfirm: true },
+				expect.anything(), expect.anything(), "cancelled", expect.anything(), expect.anything(), expect.objectContaining({ alwaysConfirm: true }),
 			);
 			expect(navigate).not.toHaveBeenCalled();
 		});

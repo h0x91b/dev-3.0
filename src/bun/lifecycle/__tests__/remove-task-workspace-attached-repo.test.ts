@@ -17,6 +17,7 @@ vi.mock("../../git", () => ({
 	removeWorktree: vi.fn(async () => ({ deleted: [], kept: [] })),
 	classifyLinkedWorktree: vi.fn(async () => ({ kind: "plain" })),
 	removeLinkedWorktree: vi.fn(async () => true),
+	resolveRemovableAttachedRepo: vi.fn((attached: string) => attached),
 	pruneWorktrees: vi.fn(async () => undefined),
 	isWorktreeDirtyOrUnknown: vi.fn(async () => false),
 	assertWorkspaceReclaimable: vi.fn(async () => undefined),
@@ -119,6 +120,7 @@ beforeEach(() => {
 	vi.mocked(rm).mockResolvedValue(undefined);
 	vi.mocked(existsSync).mockReturnValue(true);
 	vi.mocked(git.removeLinkedWorktree).mockResolvedValue(true);
+	vi.mocked(git.resolveRemovableAttachedRepo).mockImplementation((attached) => attached);
 	vi.mocked(data.updateTask).mockImplementation(async (_p, id, updates) => ({ id, ...updates }) as never);
 });
 
@@ -137,6 +139,25 @@ describe("removeTaskWorkspace — a repo the agent made inside the task folder",
 		expect(rm).toHaveBeenCalledWith(FOLDER, { recursive: true, force: true });
 		expect(git.pruneWorktrees).toHaveBeenCalledWith(MAIN);
 		expect(order).toEqual(["remove", "rm", "prune"]);
+	});
+
+	it("on deletion removes the folder but never asks git about a repo that resolves outside it", async () => {
+		vi.mocked(git.classifyLinkedWorktree).mockResolvedValue({ kind: "linked", mainRepo: MAIN });
+		vi.mocked(git.resolveRemovableAttachedRepo).mockReturnValue(null);
+		await run({ attachedRepo: `${FOLDER}/wt` });
+		expect(git.resolveRemovableAttachedRepo).toHaveBeenCalledWith(`${FOLDER}/wt`, FOLDER);
+		expect(git.classifyLinkedWorktree).not.toHaveBeenCalled();
+		expect(git.removeLinkedWorktree).not.toHaveBeenCalled();
+		expect(git.pruneWorktrees).not.toHaveBeenCalled();
+		expect(rm).toHaveBeenCalledWith(FOLDER, { recursive: true, force: true });
+	});
+
+	it("on deletion hands git the resolved path, not the stored one", async () => {
+		vi.mocked(git.classifyLinkedWorktree).mockResolvedValue({ kind: "linked", mainRepo: MAIN });
+		vi.mocked(git.resolveRemovableAttachedRepo).mockReturnValue("/real/folder/wt");
+		await run({ attachedRepo: `${FOLDER}/wt` });
+		expect(git.classifyLinkedWorktree).toHaveBeenCalledWith("/real/folder/wt");
+		expect(git.removeLinkedWorktree).toHaveBeenCalledWith(MAIN, "/real/folder/wt");
 	});
 
 	it("on deletion also removes the folder itself when it is the linked worktree", async () => {
@@ -234,7 +255,7 @@ describe("removeAttachedWorktree — closing or resetting a plain Operations tas
 		const ctx = ctxFor(current);
 
 		await step("removeAttachedWorktree", ctx);
-		await step("persistResetTask", ctx, { consent: { worktreePath: FOLDER, lifecycleStartedAt: "S", attachedRepo: WT }, onError: "abort" });
+		await step("persistResetTask", ctx, { consent: { worktreePath: FOLDER, lifecycleStartedAt: "S", attachedRepo: WT, approvedAttachedRepo: WT }, onError: "abort" });
 
 		expect(ctx.task.attachedRepo).toBeNull();
 		expect(ctx.task.status).toBe("todo");
@@ -280,7 +301,7 @@ describe("removeAttachedWorktree — closing or resetting a plain Operations tas
 		expect(ctx.task.attachedRepo).toBeNull();
 	});
 
-	it("says the attached worktree is already removed when the reset write misses afterwards", async () => {
+	it("says the attached repository is already detached when the reset write misses afterwards", async () => {
 		vi.mocked(existsSync).mockReturnValue(false);
 		const current = task({ status: "in-progress", lifecycleStartedAt: "S" } as Partial<Task>);
 		vi.mocked(data.updateTaskWith).mockImplementation(async (_p, _id, mutator) => {
@@ -290,8 +311,24 @@ describe("removeAttachedWorktree — closing or resetting a plain Operations tas
 		const ctx = ctxFor(current);
 
 		await step("removeAttachedWorktree", ctx);
-		await expect(step("persistResetTask", ctx, { consent: { worktreePath: FOLDER, lifecycleStartedAt: "S", attachedRepo: WT }, onError: "abort" }))
-			.rejects.toThrow(/its attached worktree is already removed/);
+		await expect(step("persistResetTask", ctx, { consent: { worktreePath: FOLDER, lifecycleStartedAt: "S", attachedRepo: WT, approvedAttachedRepo: WT }, onError: "abort" }))
+			.rejects.toThrow(/its attached repository is already detached/);
+	});
+
+	it("resets without removing or detaching when the dialog's unsaved-work check failed (nothing approved)", async () => {
+		vi.mocked(git.classifyLinkedWorktree).mockResolvedValue({ kind: "linked", mainRepo: MAIN });
+		const current = task({ status: "in-progress", lifecycleStartedAt: "S" } as Partial<Task>);
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_p, _id, mutator) => {
+			const { updates, result } = await mutator({ ...current });
+			return { task: { ...current, ...updates }, result } as never;
+		});
+		const ctx = ctxFor(current);
+
+		await step("removeAttachedWorktree", ctx, { approvedAttachedRepo: null });
+		await step("persistResetTask", ctx, { consent: { worktreePath: FOLDER, lifecycleStartedAt: "S", attachedRepo: WT, approvedAttachedRepo: null }, onError: "abort" });
+
+		expect(git.removeLinkedWorktree).not.toHaveBeenCalled();
+		expect(ctx.task).toMatchObject({ status: "todo", attachedRepo: WT });
 	});
 
 	it("refuses the reset write when another client swapped the attached repo after the dialog", async () => {
@@ -301,8 +338,30 @@ describe("removeAttachedWorktree — closing or resetting a plain Operations tas
 			return { task: { ...current, ...updates }, result } as never;
 		});
 
-		await expect(step("persistResetTask", ctxFor(current), { consent: { worktreePath: FOLDER, lifecycleStartedAt: "S", attachedRepo: WT }, onError: "abort" }))
+		await expect(step("persistResetTask", ctxFor(current), { consent: { worktreePath: FOLDER, lifecycleStartedAt: "S", attachedRepo: WT, approvedAttachedRepo: WT }, onError: "abort" }))
 			.rejects.toThrow(/changed elsewhere/);
+	});
+
+	it("removes nothing but still detaches when the attached path no longer resolves inside the folder", async () => {
+		vi.mocked(git.classifyLinkedWorktree).mockResolvedValue({ kind: "linked", mainRepo: MAIN });
+		vi.mocked(git.resolveRemovableAttachedRepo).mockReturnValue(null);
+		const ctx = ctxFor(task());
+
+		await step("removeAttachedWorktree", ctx);
+		await step("persistTerminalTask", ctx, { status: "completed", onError: "abort" });
+
+		expect(git.resolveRemovableAttachedRepo).toHaveBeenCalledWith(WT, FOLDER);
+		expect(git.classifyLinkedWorktree).not.toHaveBeenCalled();
+		expect(git.removeLinkedWorktree).not.toHaveBeenCalled();
+		expect(ctx.task).toMatchObject({ status: "completed", attachedRepo: null });
+	});
+
+	it("hands git the resolved path when it removes the worktree", async () => {
+		vi.mocked(git.classifyLinkedWorktree).mockResolvedValue({ kind: "linked", mainRepo: MAIN });
+		vi.mocked(git.resolveRemovableAttachedRepo).mockReturnValue("/real/folder/wt");
+		await step("removeAttachedWorktree", ctxFor(task()));
+		expect(git.classifyLinkedWorktree).toHaveBeenCalledWith("/real/folder/wt");
+		expect(git.removeLinkedWorktree).toHaveBeenCalledWith(MAIN, "/real/folder/wt");
 	});
 
 	it("removes nothing and keeps the attachment when git cannot classify the repo (it may hold unsaved work)", async () => {

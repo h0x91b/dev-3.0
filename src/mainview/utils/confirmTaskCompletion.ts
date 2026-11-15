@@ -86,7 +86,7 @@ export async function confirmTaskCompletion(
 	newStatus: TaskStatus,
 	t: TFunction,
 	onOpenTask?: () => void,
-	options?: { alwaysConfirm?: boolean; anchor?: HTMLElement | null },
+	options?: { alwaysConfirm?: boolean; anchor?: HTMLElement | null; onAttachedRepoChecked?: (attachedRepo: string | null) => void },
 ): Promise<boolean> {
 	if (newStatus !== "completed" && newStatus !== "cancelled") return true;
 	const alwaysConfirm = options?.alwaysConfirm ?? false;
@@ -112,7 +112,10 @@ export async function confirmTaskCompletion(
 	if (alwaysConfirm) {
 		const unsaved = skipGitCheck
 			? null
-			: api.request.getUnsavedWork({ taskId: task.id, projectId: project.id, expectedAttachedRepo: task.attachedRepo ?? null });
+			: api.request.getUnsavedWork({ taskId: task.id, projectId: project.id, expectedAttachedRepo: task.attachedRepo ?? null }).then((status) => {
+				options?.onAttachedRepoChecked?.(task.attachedRepo ?? null);
+				return status;
+			});
 		return confirm({
 			title: t(newStatus === "completed" ? "task.confirmCompleteTitle" : "task.confirmCancelTitle"),
 			confirmLabel: t(newStatus === "completed" ? "task.confirmCompleteLabel" : "task.confirmCancelLabel"),
@@ -138,6 +141,7 @@ export async function confirmTaskCompletion(
 		status = inOwnFolder
 			? await api.request.getUnsavedWork({ taskId: task.id, projectId: project.id, expectedAttachedRepo: task.attachedRepo ?? null })
 			: await api.request.getBranchStatus({ taskId: task.id, projectId: project.id });
+		if (inOwnFolder) options?.onAttachedRepoChecked?.(task.attachedRepo ?? null);
 	} catch {
 		// Can't check — don't block the move, unless completing deletes an owned worktree.
 		if (!isOpsWorktreeTask(task) && !inOwnFolder) return true;

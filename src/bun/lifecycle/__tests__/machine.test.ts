@@ -553,7 +553,7 @@ describe("task lifecycle transition table", () => {
 	});
 
 	it("reset removes the attached worktree of a plain Operations task only with the fact, and only the consented repo", () => {
-		const consent = { worktreePath: "/w", lifecycleStartedAt: "S", attachedRepo: "/w/wt" };
+		const consent = { worktreePath: "/w", lifecycleStartedAt: "S", attachedRepo: "/w/wt", approvedAttachedRepo: "/w/wt" };
 		const make = (attachedRepoInFolder: boolean) => state("in-progress", {
 			facts: { hasWorktree: true, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, worktreePath: "/w", lifecycleStartedAt: "S", attachedRepo: "/w/wt", ...(attachedRepoInFolder ? { attachedRepoInFolder } : {}) },
 		});
@@ -561,6 +561,10 @@ describe("task lifecycle transition table", () => {
 		const types = effects.map((e) => e.type);
 
 		expect(effects.find((e) => e.type === "removeAttachedWorktree")).toMatchObject({ onError: "continue", approvedAttachedRepo: "/w/wt" });
+		// A dialog whose unsaved-work check failed approves nothing, yet the reset still goes ahead.
+		const unchecked = transition(make(true), { type: "resetRequested", consent: { ...consent, approvedAttachedRepo: null } }).effects;
+		expect(unchecked.find((e) => e.type === "removeAttachedWorktree")).toMatchObject({ approvedAttachedRepo: null });
+		expect(unchecked.map((e) => e.type)).not.toContain("reject");
 		// Another client swapped the attached repo after the dialog: the consent no longer matches.
 		const swapped = transition(make(true), { type: "resetRequested", consent: { ...consent, attachedRepo: "/w/other" } }).effects;
 		expect(swapped.map((e) => e.type)).toEqual(["reject"]);
@@ -570,7 +574,7 @@ describe("task lifecycle transition table", () => {
 	});
 
 	it("reset removes the workspace of a worktree-mode Operations task and not of a plain one", () => {
-		const consent = { worktreePath: "/w", lifecycleStartedAt: "S", attachedRepo: null };
+		const consent = { worktreePath: "/w", lifecycleStartedAt: "S", attachedRepo: null, approvedAttachedRepo: null };
 		const make = (opsWorktree: boolean) => state("in-progress", {
 			facts: { hasWorktree: true, usesWorktrees: false, hasPrIdentity: false, peerReviewEnabled: true, worktreePath: "/w", lifecycleStartedAt: "S", ...(opsWorktree ? { opsWorktree } : {}) },
 		});

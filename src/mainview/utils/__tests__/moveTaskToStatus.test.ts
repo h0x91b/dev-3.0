@@ -66,11 +66,21 @@ describe("moveTaskToStatus", () => {
 	it("hands the server the attached repo its unsaved-work dialog checked, on the retry too", async () => {
 		const inFolder = { ...task, attachedRepo: "/wt/linked" } as Task;
 		mockedMoveTask.mockRejectedValueOnce(new Error("environment broken"));
+		mockedConfirm.mockImplementationOnce(async (_t, _p, _s, _tt, _o, options) => { options?.onAttachedRepoChecked?.("/wt/linked"); return true; });
 
 		await moveTaskToStatus({ task: inFolder, project, newStatus: "cancelled", dispatch: vi.fn(), t });
 
 		expect(mockedMoveTask).toHaveBeenNthCalledWith(1, expect.objectContaining({ newStatus: "cancelled", approvedAttachedRepo: "/wt/linked" }));
 		expect(mockedMoveTask).toHaveBeenNthCalledWith(2, expect.objectContaining({ force: true, approvedAttachedRepo: "/wt/linked" }));
+	});
+
+	it("approves nothing, yet still closes, when the unsaved-work check failed", async () => {
+		const inFolder = { ...task, attachedRepo: "/wt/linked" } as Task;
+
+		await moveTaskToStatus({ task: inFolder, project, newStatus: "cancelled", dispatch: vi.fn(), t });
+
+		expect(mockedMoveTask).toHaveBeenCalledTimes(1);
+		expect(mockedMoveTask.mock.calls[0]![0]).toMatchObject({ newStatus: "cancelled", approvedAttachedRepo: null });
 	});
 
 	it("approves no repo when the dialog was skipped, was declined, or the repo is outside the task folder", async () => {
@@ -90,7 +100,7 @@ describe("moveTaskToStatus", () => {
 
 		await moveTaskToStatus({ task, project, newStatus: "completed", dispatch, t, onOpenTask });
 
-		expect(mockedConfirm).toHaveBeenCalledWith(task, project, "completed", t, onOpenTask, { alwaysConfirm: false });
+		expect(mockedConfirm).toHaveBeenCalledWith(task, project, "completed", t, onOpenTask, expect.objectContaining({ alwaysConfirm: false }));
 	});
 
 	it("forces the dialog for a worktree-less task when alwaysConfirm is set", async () => {
@@ -100,7 +110,7 @@ describe("moveTaskToStatus", () => {
 		await moveTaskToStatus({ task: noWorktree, project, newStatus: "completed", dispatch, t, alwaysConfirm: true });
 
 		expect(mockedConfirm).toHaveBeenCalledWith(
-			noWorktree, project, "completed", t, undefined, { alwaysConfirm: true },
+			noWorktree, project, "completed", t, undefined, expect.objectContaining({ alwaysConfirm: true }),
 		);
 	});
 
