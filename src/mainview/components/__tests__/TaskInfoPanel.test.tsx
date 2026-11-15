@@ -70,6 +70,7 @@ import { toast } from "../../toast";
 import { trackEvent } from "../../analytics";
 import { confirmTaskCompletion } from "../../utils/confirmTaskCompletion";
 import { openFolderPicker } from "../../folder-picker";
+import { syncHiddenControlsFromGlobalSettings } from "../../hidden-controls";
 
 vi.mock("../../folder-picker", () => ({
 	openFolderPicker: vi.fn(),
@@ -4442,6 +4443,83 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 			expect(within(sheet).getByText("#7")).toBeInTheDocument();
 		});
 
+		async function openSheet(task: Task, opts?: Parameters<typeof renderPanel>[1]) {
+			await act(async () => {
+				renderPanel(task, opts);
+			});
+			await act(async () => {
+				fireEvent.click(screen.getByTestId("task-actions-kebab"));
+			});
+			return screen.getByTestId("task-actions-sheet");
+		}
+
+		it("Full screen row closes the sheet and enters terminal fullscreen", async () => {
+			const onToggleTerminalFullscreen = vi.fn();
+			const sheet = await openSheet(makeTask(), { onToggleTerminalFullscreen });
+
+			await act(async () => {
+				fireEvent.click(within(sheet).getByTestId("task-actions-fullscreen"));
+			});
+
+			expect(onToggleTerminalFullscreen).toHaveBeenCalledTimes(1);
+			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
+		});
+
+		it("Hibernate row closes the sheet and runs the confirmed hibernate flow", async () => {
+			vi.mocked(confirm).mockResolvedValue(true);
+			const task = makeTask();
+			mockedApi.request.hibernateTask.mockResolvedValue({ task: { ...task, hibernated: true }, freedRssBytes: null });
+			const sheet = await openSheet(task);
+
+			await act(async () => {
+				fireEvent.click(within(sheet).getByTestId("task-actions-hibernate"));
+			});
+
+			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
+			expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ danger: true }));
+			expect(mockedApi.request.hibernateTask).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+		});
+
+		it.each([
+			["already hibernated", { hibernated: true }],
+			["still preparing", { preparing: true }],
+			["shutting down", { shuttingDown: true }],
+			["without a worktree", { worktreePath: null }],
+			["not active", { status: "completed" as const }],
+		])("offers no Hibernate row when the task is %s", async (_label, overrides) => {
+			const sheet = await openSheet(makeTask(overrides as Partial<Task>));
+
+			expect(within(sheet).queryByTestId("task-actions-hibernate")).not.toBeInTheDocument();
+		});
+
+		it("offers no hide buttons, and a control hidden on desktop keeps its sheet row", async () => {
+			syncHiddenControlsFromGlobalSettings({ simplifiedMode: false, personalHiddenControls: ["spawn-agent", "bug-hunters", "hibernate"] });
+			try {
+				const sheet = await openSheet(makeTask());
+
+				expect(within(sheet).queryByRole("button", { name: "Hide" })).not.toBeInTheDocument();
+				expect(within(sheet).getByTestId("task-actions-spawn-agent")).toBeInTheDocument();
+				expect(within(sheet).getByTestId("task-actions-bug-hunters")).toBeInTheDocument();
+				expect(within(sheet).getByTestId("task-actions-hibernate")).toBeInTheDocument();
+			} finally {
+				syncHiddenControlsFromGlobalSettings({ simplifiedMode: false, personalHiddenControls: [] });
+			}
+		});
+
+		it("Simplified Mode still trims the advanced rows", async () => {
+			syncHiddenControlsFromGlobalSettings({ simplifiedMode: true, personalHiddenControls: [] });
+			try {
+				const sheet = await openSheet(makeTask());
+
+				expect(within(sheet).queryByTestId("task-actions-spawn-agent")).not.toBeInTheDocument();
+				expect(within(sheet).queryByTestId("task-actions-bug-hunters")).not.toBeInTheDocument();
+				expect(within(sheet).queryByTestId("task-actions-hibernate")).not.toBeInTheDocument();
+				expect(within(sheet).getByTestId("task-actions-fullscreen")).toBeInTheDocument();
+			} finally {
+				syncHiddenControlsFromGlobalSettings({ simplifiedMode: false, personalHiddenControls: [] });
+			}
+		});
+
 		it("surfaces the images and artifacts badges in the summary bar itself", async () => {
 			const openImage = vi.fn();
 			window.addEventListener("dev3:openImageViewer", openImage);
@@ -4792,7 +4870,7 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 			expect(screen.queryByText("Changed files")).not.toBeInTheDocument();
 		});
 
-		it("feeds the sheet from the panel-level status (rows enabled, no refetch on open)", async () => {
+		it("feeds the sheet from the panel-level status (rows enabled, one remote refresh on open)", async () => {
 			await act(async () => {
 				renderPanel(makeTask());
 			});
@@ -4805,7 +4883,8 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 			// Branch status (ahead: 3) loaded before the sheet opened, so Create PR
 			// is enabled immediately — no "Loading branch status…" flash.
 			expect(within(sheet).getByText("Create PR").closest("button")).not.toBeDisabled();
-			expect(mockedApi.request.getBranchStatus.mock.calls.length).toBe(callsBefore);
+			const openCalls = mockedApi.request.getBranchStatus.mock.calls.slice(callsBefore);
+			expect(openCalls).toEqual([[expect.objectContaining({ taskId: "t1", refresh: true })]]);
 		});
 
 		it("omits the git section for a virtual (Operations) project", async () => {
