@@ -93,6 +93,7 @@ import * as data from "../../data";
 import * as git from "../../git";
 import { voidAgentRequestsForTask } from "../../agent-requests";
 import { addNote } from "../../board-operations/task-notes";
+import { getPushMessage } from "../../rpc-handlers/shared";
 import { AGENT_ACTOR } from "../../board-operations/types";
 import { executeLifecycleEffect, type LifecycleExecutionContext } from "../executor";
 import type { LifecycleEffect } from "../effects";
@@ -278,6 +279,15 @@ describe("episode end voids pending approvals", () => {
 		const updates = vi.mocked(data.updateTask).mock.calls[0]![2];
 		expect(updates).toMatchObject({ status: "completed" });
 		expect(Date.parse(updates.codexScanFloorAt!)).toBeGreaterThanOrEqual(before);
+	});
+});
+
+describe("taskRemoved push", () => {
+	it("announces a deleted task as removed from its project", async () => {
+		const push = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(push);
+		await executeLifecycleEffect({ type: "push", message: "taskRemoved", onError: "continue" } as LifecycleEffect, ctx(liveTask()));
+		expect(push).toHaveBeenCalledWith("taskRemoved", { projectId: "proj-1", taskId: TASK_ID });
 	});
 });
 
