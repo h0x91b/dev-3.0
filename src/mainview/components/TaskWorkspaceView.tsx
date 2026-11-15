@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { Dispatch, MutableRefObject } from "react";
 import type { Project, Task } from "../../shared/types";
-import type { AppAction, Route } from "../state";
+import { routeSpaceId, type AppAction, type Route } from "../state";
 import type { NavigationGuard } from "../navigation-guard";
 import { api } from "../rpc";
 import TaskInfoPanel from "./TaskInfoPanel";
@@ -110,6 +110,7 @@ function TaskWorkspaceView({
 				<TaskWorkspacePane
 					immersive={immersive}
 					projectId={projectId}
+					spaceId={routeSpaceId(route)}
 					taskId={taskId}
 					tasks={tasks}
 					projects={projects}

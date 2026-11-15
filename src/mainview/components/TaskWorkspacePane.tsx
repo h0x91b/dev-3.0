@@ -40,6 +40,8 @@ function initialArtifactWidth(): number {
 
 interface TaskWorkspacePaneProps {
 	projectId: string;
+	/** The space the task was opened from; leaving a deleted task returns to that space's board. */
+	spaceId?: string | null;
 	taskId: string;
 	tasks: Task[];
 	projects: Project[];
@@ -60,6 +62,7 @@ interface TaskWorkspacePaneProps {
 
 function TaskWorkspacePane({
 	projectId,
+	spaceId = null,
 	taskId,
 	tasks,
 	projects,
@@ -100,14 +103,14 @@ function TaskWorkspacePane({
 			(loaded) => {
 				if (cancelled || loaded.some((item) => item.id === taskId)) return;
 				shownTaskRef.current = null;
-				navigate({ screen: "project", projectId });
+				navigate(spaceId ? { screen: "project", projectId, spaceId } : { screen: "project", projectId });
 			},
-			() => {},
+			(err) => console.warn("Could not confirm the open task was deleted:", err),
 		);
 		return () => {
 			cancelled = true;
 		};
-	}, [task, taskId, projectId, navigate]);
+	}, [task, taskId, projectId, spaceId, navigate]);
 
 	// The slot is what tells the viewer to render here instead of as a popup, so
 	// it is published only while the panel is actually on screen and taken back

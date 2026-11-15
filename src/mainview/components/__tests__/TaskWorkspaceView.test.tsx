@@ -98,11 +98,11 @@ const TASK_ROUTE: Route = { screen: "task", projectId: "p1", taskId: "t1" };
 
 // The inline diff lives on the route, so the view is driven by the real reducer
 // here — opening it is a history push and Back/close is a history step.
-const renderWorkspace = (element: ReactElement) => {
-	const result = render(<RouteHost route={TASK_ROUTE} element={element} />, { wrapper: I18nProvider });
+const renderWorkspace = (element: ReactElement, route: Route = TASK_ROUTE) => {
+	const result = render(<RouteHost route={route} element={element} />, { wrapper: I18nProvider });
 	return {
 		...result,
-		rerender: (next: ReactElement) => result.rerender(<RouteHost route={TASK_ROUTE} element={next} />),
+		rerender: (next: ReactElement) => result.rerender(<RouteHost route={route} element={next} />),
 	};
 };
 
@@ -161,8 +161,42 @@ describe("TaskWorkspaceView", () => {
 		getTasksMock.mockResolvedValue([task]);
 		const props = { projectId: "p1", taskId: "t1", projects: [project], route: TASK_ROUTE, navigate, dispatch: vi.fn() };
 		const { rerender } = renderWorkspace(<TaskWorkspaceView {...props} tasks={[task]} />);
+		const callsBefore = getTasksMock.mock.calls.length;
 		rerender(<TaskWorkspaceView {...props} tasks={[]} />);
-		await waitFor(() => expect(getTasksMock).toHaveBeenCalledTimes(2));
+		await waitFor(() => expect(getTasksMock.mock.calls.length).toBeGreaterThan(callsBefore));
+		await Promise.all(getTasksMock.mock.results.map((result) => result.value));
+		await new Promise((r) => setTimeout(r, 0));
+		expect(navigate).not.toHaveBeenCalled();
+	});
+
+	it("returns to the space board the deleted task was opened from", async () => {
+		const navigate = vi.fn();
+		getTasksMock.mockResolvedValue([task]);
+		const route: Route = { ...TASK_ROUTE, spaceId: "s1" };
+		const props = { projectId: "p1", taskId: "t1", projects: [project], route, navigate, dispatch: vi.fn() };
+		const { rerender } = renderWorkspace(<TaskWorkspaceView {...props} tasks={[task]} />, route);
+		await waitFor(() => expect(getTasksMock).toHaveBeenCalled());
+
+		getTasksMock.mockResolvedValue([]);
+		rerender(<TaskWorkspaceView {...props} tasks={[]} />);
+		await waitFor(() => expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1", spaceId: "s1" }));
+	});
+
+	it("does not leave when the user switches tasks while the check is in flight", async () => {
+		const navigate = vi.fn();
+		getTasksMock.mockResolvedValue([task]);
+		const props = { projectId: "p1", projects: [project], route: TASK_ROUTE, navigate, dispatch: vi.fn() };
+		const { rerender } = renderWorkspace(<TaskWorkspaceView {...props} taskId="t1" tasks={[task]} />);
+		await waitFor(() => expect(getTasksMock).toHaveBeenCalled());
+
+		const pending: ((tasks: Task[]) => void)[] = [];
+		getTasksMock.mockImplementation(() => new Promise<Task[]>((resolve) => { pending.push(resolve); }));
+		const callsBefore = getTasksMock.mock.calls.length;
+		rerender(<TaskWorkspaceView {...props} taskId="t1" tasks={[]} />);
+		await waitFor(() => expect(getTasksMock.mock.calls.length).toBeGreaterThan(callsBefore));
+
+		rerender(<TaskWorkspaceView {...props} taskId="t2" tasks={[]} />);
+		for (const resolve of pending) resolve([]);
 		await new Promise((r) => setTimeout(r, 0));
 		expect(navigate).not.toHaveBeenCalled();
 	});
