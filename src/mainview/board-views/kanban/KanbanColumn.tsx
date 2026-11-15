@@ -579,7 +579,7 @@ function KanbanColumn({
 				onScroll={syncListClipped}
 				onDoubleClick={(e) => {
 					// Only empty list space opens New Task (lands in To Do, like Cmd+N).
-					// React bubbles events out of portals, so a card's modal must be ruled out by DOM containment.
+					// React bubbles events out of portals, so anything a card portals out is ruled out by DOM containment.
 					const target = e.target as HTMLElement;
 					if (!e.currentTarget.contains(target) || target.closest("[data-task-id]")) return;
 					onAddTask();
