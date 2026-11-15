@@ -791,6 +791,41 @@ function makeTask(overrides?: Partial<Task>): Task {
 		expect(screen.getByText("Moving task")).toBeInTheDocument();
 	});
 
+	it("keeps a task removed while the global list was loading out of that list", async () => {
+		const user = userEvent.setup();
+		const { api } = await import("../../rpc");
+		const deleted = makeTask({ id: "t-race", seq: 803, title: "Racing task", description: "Racing task" });
+		let resolve!: (value: { projectId: string; tasks: Task[] }[]) => void;
+		(api.request.getAllProjectTasks as ReturnType<typeof vi.fn>).mockImplementation(
+			() => new Promise((r) => { resolve = r; }),
+		);
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[makeTask()]}
+					allProjects={[project]}
+					activeTaskId="t1"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+		await user.click(screen.getByTestId("sidebar-scope-global"));
+
+		act(() => {
+			window.dispatchEvent(new CustomEvent("rpc:taskRemoved", { detail: { projectId: "p1", taskId: "t-race" } }));
+		});
+		await act(async () => resolve([{ projectId: "p1", tasks: [makeTask(), deleted] }]));
+
+		await waitFor(() => expect(screen.getByText("Привет! как сам?")).toBeInTheDocument());
+		expect(screen.queryByText("Racing task")).not.toBeInTheDocument();
+		(api.request.getAllProjectTasks as ReturnType<typeof vi.fn>).mockImplementation(() => Promise.resolve([]));
+	});
+
 	it("falls back to the project scope when localStorage holds the removed attention value", () => {
 		localStorage.setItem("dev3-sidebar-scope", "attention");
 		render(

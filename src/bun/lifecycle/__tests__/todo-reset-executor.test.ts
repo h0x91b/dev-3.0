@@ -272,13 +272,6 @@ describe("episode end voids pending approvals", () => {
 		expect(voidAgentRequestsForTask).toHaveBeenCalledWith(TASK_ID);
 	});
 
-	it("announces a deleted task as removed from its project", async () => {
-		const push = vi.fn();
-		vi.mocked(getPushMessage).mockReturnValue(push);
-		await executeLifecycleEffect({ type: "push", message: "taskRemoved", onError: "continue" } as LifecycleEffect, ctx(liveTask()));
-		expect(push).toHaveBeenCalledWith("taskRemoved", { projectId: "proj-1", taskId: TASK_ID });
-	});
-
 	it("persistTerminalTask writes the Codex scan floor with the terminal status", async () => {
 		vi.mocked(data.updateTask).mockResolvedValue(liveTask({ status: "completed" }));
 		const before = Date.now();
@@ -286,6 +279,15 @@ describe("episode end voids pending approvals", () => {
 		const updates = vi.mocked(data.updateTask).mock.calls[0]![2];
 		expect(updates).toMatchObject({ status: "completed" });
 		expect(Date.parse(updates.codexScanFloorAt!)).toBeGreaterThanOrEqual(before);
+	});
+});
+
+describe("taskRemoved push", () => {
+	it("announces a deleted task as removed from its project", async () => {
+		const push = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(push);
+		await executeLifecycleEffect({ type: "push", message: "taskRemoved", onError: "continue" } as LifecycleEffect, ctx(liveTask()));
+		expect(push).toHaveBeenCalledWith("taskRemoved", { projectId: "proj-1", taskId: TASK_ID });
 	});
 });
 
