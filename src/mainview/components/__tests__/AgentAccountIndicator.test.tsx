@@ -875,6 +875,31 @@ describe("project-pinned CLAUDE_CONFIG_DIR", () => {
 		expect(onSelect).toHaveBeenCalledWith(undefined);
 	});
 
+	it("says an account signed in to the project's folder runs there, and the others in their own", async () => {
+		const base = makeState();
+		const own = { ...base.claude.accounts[0], id: "cl-2", label: "other@example.com", identity: { ...base.claude.accounts[0].identity!, email: "other@example.com", accountId: "uuid-2" } };
+		const here = { ...base.claude.accounts[0], label: "project@example.com", identity: { ...projectLogin.identity } };
+		mockedApi.request.listAgentAccounts.mockResolvedValue(makeState({ claude: { ...base.claude, accounts: [here, own] } }));
+		mockedApi.request.getProjectClaudeLogin.mockResolvedValue(projectLogin);
+		renderIndicator(claudeAgent, { projectId: "p1", onSelect: vi.fn() });
+		const trigger = await screen.findByTestId("agent-account-trigger");
+		await waitFor(() => expect(trigger.textContent).toContain("project@example.com"));
+		await userEvent.click(trigger);
+		const rowOf = (label: string) => screen.getAllByText(label).map((el) => el.closest("[role='menuitemradio']")).find((row) => row?.textContent?.includes("folder"));
+		await screen.findByText("Project login (…/thumbs/.claude)");
+		expect(rowOf("project@example.com")?.textContent).toContain("Runs in this project's Claude folder");
+		expect(rowOf("other@example.com")?.textContent).toContain("Runs in its own Claude folder");
+	});
+
+	it("adds no folder note when the project pins nothing", async () => {
+		renderIndicator(claudeAgent, { projectId: "p1", onSelect: vi.fn() });
+		const trigger = await screen.findByTestId("agent-account-trigger");
+		await waitFor(() => expect(mockedApi.request.getProjectClaudeLogin).toHaveBeenCalled());
+		await userEvent.click(trigger);
+		await screen.findAllByText("work@example.com");
+		expect(screen.queryByText(/Claude folder/)).toBeNull();
+	});
+
 	it("keeps the system login when the project pins nothing", async () => {
 		withNoManagedDefault();
 		renderIndicator(claudeAgent, { projectId: "p1", onSelect: vi.fn() });

@@ -13146,6 +13146,22 @@ describe("restartTask and resume with a stored account or a refused launch", () 
 		}
 	});
 
+	it("resume records no account on a pane that kept the project's own Claude folder", async () => {
+		const { project, task } = arrange();
+		await data.updateTask(project, task.id, { sessionState: { panes: [claudePanes[0], { ...claudePanes[0], sessionId: null, paneId: "%5" }] as any } });
+		const resolve = vi.mocked(agents.resolveCommandForAgent);
+		const original = resolve.getMockImplementation();
+		resolve.mockResolvedValue({ command: "claude", extraEnv: {}, agentFamily: "claude", resolvedAccountId: undefined, projectLoginKept: true } as any);
+		try {
+			const { resumeTaskSession } = await import("../rpc-handlers/tmux-pty");
+			await resumeTaskSession(task.id, {});
+			const last = vi.mocked(data.updateTask).mock.calls.map((call) => call[2]).filter((u) => u.sessionState).pop()!;
+			expect(last.sessionState!.panes.map((pane) => pane.accountId)).toEqual([undefined, undefined]);
+		} finally {
+			resolve.mockImplementation(original!);
+		}
+	});
+
 	it("resume shows one removed-account notice per task, however many panes carried that account", async () => {
 		const { project, task } = arrange();
 		await data.updateTask(project, task.id, { sessionState: { panes: [claudePanes[0], { ...claudePanes[0], sessionId: null, paneId: "%5" }, { ...claudePanes[0], sessionId: null, paneId: "%6" }] as any } });
