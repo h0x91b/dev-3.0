@@ -3597,6 +3597,28 @@ export async function isTaskOwnedBranch(projectPath: string, task: Task, name: s
 	return reflog.stdout.split("\n").some((line) => line.includes(`renamed refs/heads/${own} to `));
 }
 
+/**
+ * Is this the fresh variant branch createWorktree made for this task —
+ * `<existing>-v<N>`, or `<existing>-v<N>-<k>` when that name was taken? A branch
+ * that was renamed is judged by its ORIGINAL name from the reflog, so a user's
+ * branch renamed to `<existing>-something` (or even `<existing>-v1`) is never one.
+ */
+export async function isTaskVariantBranch(projectPath: string, task: Task, name: string): Promise<boolean> {
+	const existing = task.existingBranch?.replace(/^origin\//, "");
+	if (!existing || name === existing) return false;
+	const index = task.variantIndex != null ? String(task.variantIndex) : "\\d+";
+	const variantName = new RegExp(`^${escapeRegExp(existing)}-v${index}(?:-\\d+)?$`);
+	const reflog = await run(["git", "reflog", "show", "--format=%gs", `refs/heads/${name}`, "--"], projectPath);
+	const renamedFrom = reflog.ok
+		? reflog.stdout.split("\n").map((line) => /renamed refs\/heads\/(.+) to refs\/heads\//.exec(line)?.[1]).filter((from): from is string => !!from)
+		: [];
+	return variantName.test(renamedFrom[renamedFrom.length - 1] ?? name);
+}
+
+function escapeRegExp(text: string): string {
+	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 async function ownedBranchInfo(projectPath: string, name: string): Promise<OwnedBranchInfo | null> {
 	const tip = await run(["git", "rev-parse", "--verify", "--quiet", `refs/heads/${name}^{commit}`], projectPath);
 	if (!tip.ok || !tip.stdout.trim()) return null;
@@ -3734,8 +3756,7 @@ export async function removeWorktree(
 		// ours by its reflog (#2278), not by the stored name.
 		const isDevBranch = task.branchName?.startsWith("dev3/task-") || branchToDelete.startsWith("dev3/")
 			|| await isTaskOwnedBranch(project.path, task, branchToDelete);
-		const isVariantBranch = task.existingBranch && branchToDelete !== task.existingBranch.replace(/^origin\//, "")
-			&& branchToDelete.startsWith(task.existingBranch.replace(/^origin\//, ""));
+		const isVariantBranch = !isDevBranch && await isTaskVariantBranch(project.path, task, branchToDelete);
 		if ((isDevBranch || isVariantBranch) && options.branchPolicy === "unique-kept") {
 			const tip = await run(["git", "rev-parse", "--verify", "--quiet", `refs/heads/${branchToDelete}^{commit}`], project.path);
 			const sha = tip.ok ? tip.stdout.trim() : "";
