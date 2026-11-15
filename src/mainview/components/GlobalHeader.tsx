@@ -41,7 +41,7 @@ import ConnectionQualityIndicator from "./ConnectionQualityIndicator";
 import BottomSheet from "./BottomSheet";
 import Tooltip from "./Tooltip";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
-import { useMobile } from "../hooks/useMobile";
+import { useMobileBrowser } from "../hooks/useMobileBrowser";
 import { useIsControlHidden, useHiddenControls } from "../hooks/useIsControlHidden";
 import { restoreControl } from "../hidden-controls";
 import HideableControl from "./HideableControl";
@@ -148,8 +148,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	const mixedPending = useMixedPending();
 	const compact = useCompact();
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
-	const isMobile = useMobile();
-	const mobileBrowser = isMobile && !isElectrobun;
+	const mobileBrowser = useMobileBrowser();
 	// Header hideability is capped at exactly three ids (§5.10 §2.4): agent
 	// traffic, project terminal, remote-access QR. The ambient readouts and
 	// tmux session manager are not hideable from here. Stats nav (a

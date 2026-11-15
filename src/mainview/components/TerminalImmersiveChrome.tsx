@@ -1,6 +1,5 @@
 import { useT } from "../i18n";
-import { useMobile } from "../hooks/useMobile";
-import { isElectrobun } from "../rpc";
+import { useMobileBrowser } from "../hooks/useMobileBrowser";
 
 interface TerminalImmersiveChromeProps {
 	onExit: () => void;
@@ -9,8 +8,7 @@ interface TerminalImmersiveChromeProps {
 /** The only app-owned chrome rendered while a task terminal is immersive. */
 export default function TerminalImmersiveChrome({ onExit }: TerminalImmersiveChromeProps) {
 	const t = useT();
-	const isMobile = useMobile();
-	const mobileBrowser = isMobile && !isElectrobun;
+	const mobileBrowser = useMobileBrowser();
 
 	return (
 		<div

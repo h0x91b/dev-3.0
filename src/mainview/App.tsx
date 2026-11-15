@@ -28,7 +28,7 @@ import { setShortcutOverrides } from "./keymap-store";
 import { syncTerminalBidiFromGlobalSettings } from "./terminal-bidi/flag";
 import { adjustZoom, applyZoom, mobileDensityForRoute, setMobileDensity, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 import { useViewport } from "./hooks/useViewport";
-import { useMobile } from "./hooks/useMobile";
+import { useMobileBrowser } from "./hooks/useMobileBrowser";
 import { useAndroidBackGuard } from "./hooks/useAndroidBackGuard";
 import GlobalHeader from "./components/GlobalHeader";
 import AppMenuBar from "./components/AppMenuBar";
@@ -199,6 +199,11 @@ function findVisibleSearchInput(): HTMLElement | null {
 	return null;
 }
 
+// An opaque band touching the top edge makes Safari 26+ extend a solid colour under its
+// Liquid Glass status bar instead of blurring the header. Nothing here scrolls: `sticky`
+// only satisfies WebKit's fixed/sticky heuristic. It also carries the status-bar inset.
+const MOBILE_BROWSER_TOP_BAND = "sticky top-0 z-30 w-full shrink-0 bg-base pt-[env(safe-area-inset-top,0px)]";
+
 function App() {
 	const [state, dispatch] = useAppState();
 	const handleToastOverflow = useCallback((entry: ToastEntry) => {
@@ -258,11 +263,11 @@ function App() {
 	// Android hardware/gesture Back drives in-app navigation in mobile remote
 	// mode: close the topmost layer → route back → double-back-to-exit toast.
 	// Reads history depth through a ref so the popstate handler stays stable.
-	const isMobileDevice = useMobile();
+	const mobileBrowser = useMobileBrowser();
 	const historyIndexRef = useRef(state.historyIndex);
 	historyIndexRef.current = state.historyIndex;
 	useAndroidBackGuard({
-		enabled: isMobileDevice && !isElectrobun,
+		enabled: mobileBrowser,
 		routeBack: () => {
 			if (historyIndexRef.current <= 0) return false;
 			dispatch({ type: "goBack" });
@@ -3327,18 +3332,16 @@ function App() {
 				? "remote.urlCopied"
 				: "remote.copyUrl";
 
-	const mobileBrowser = isMobileDevice && !isElectrobun;
-
 	return (
 		<div className="h-full w-full flex flex-col">
-			{/* Mobile browser: a sticky full-width opaque bg-base band at top:0 triggers WebKit's
-			    fixed-color extension, hiding Safari 26+ scroll-edge glass blur over the header. */}
+			{/* Elsewhere this reserves the iOS status-bar inset (viewport-fit=cover); zero height on desktop. */}
+			{!mobileBrowser && <div aria-hidden className="shrink-0 bg-base" style={{ height: "env(safe-area-inset-top, 0px)" }} />}
 			{terminalImmersiveVisible ? (
-				<div className={mobileBrowser ? "sticky top-0 inset-x-0 z-30 w-full shrink-0 bg-base pt-[env(safe-area-inset-top,0px)]" : undefined}>
+				<div className={mobileBrowser ? MOBILE_BROWSER_TOP_BAND : undefined}>
 					<TerminalImmersiveChrome onExit={() => setTerminalImmersiveActive(false)} />
 				</div>
 			) : (
-				<header ref={toastClearanceRef} aria-label={t("nav.appHeader")} className={mobileBrowser ? "sticky top-0 inset-x-0 z-30 w-full shrink-0 bg-base pt-[env(safe-area-inset-top,0px)]" : undefined}>
+				<header ref={toastClearanceRef} aria-label={t("nav.appHeader")} className={mobileBrowser ? MOBILE_BROWSER_TOP_BAND : undefined}>
 					{!isElectrobun && <AppMenuBar context={menuContext} onAction={handleMenuBarAction} />}
 					<GlobalHeader
 						route={route}

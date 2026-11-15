@@ -5033,10 +5033,15 @@ describe("Browser-mode Safari top band", () => {
 				</MobileProvider>
 			</I18nProvider>,
 		);
-		await waitFor(() => expect(screen.queryByTestId("dashboard-screen")).toBeInTheDocument());
+		await waitFor(() => expect(screen.queryByTestId("dashboard-screen") || screen.queryByTestId("project-screen")).toBeInTheDocument());
 		await act(async () => {
 			await Promise.resolve();
 		});
+	}
+
+	// The status-bar spacer is the aria-hidden sibling rendered right before the top chrome.
+	function hasStatusBarSpacerBefore(chrome: Element) {
+		return chrome.previousElementSibling?.getAttribute("aria-hidden") === "true";
 	}
 
 	beforeEach(() => {
@@ -5064,8 +5069,28 @@ describe("Browser-mode Safari top band", () => {
 		await renderAppWithMobile();
 
 		const header = screen.getByRole("banner", { name: "Application header" });
-		expect(header).toHaveClass("sticky", "top-0", "inset-x-0", "w-full", "bg-base", "pt-[env(safe-area-inset-top,0px)]");
+		expect(header).toHaveClass("sticky", "top-0", "w-full", "bg-base", "pt-[env(safe-area-inset-top,0px)]");
 		expect(header.querySelector(".glass-header")).toBeNull();
+		expect(hasStatusBarSpacerBefore(header)).toBe(false);
+	});
+
+	it("wraps the mobile browser immersive chrome in the same opaque band", async () => {
+		rpcTransport.isElectrobun = false;
+		setScreenWidth(390);
+		vi.mocked(api.request.getProjects).mockResolvedValue([
+			{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+		]);
+		vi.mocked(api.request.getLastRoute).mockResolvedValue({
+			route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1" }),
+		});
+		await renderAppWithMobile();
+
+		await userEvent.keyboard("{Meta>}{Shift>}F{/Shift}{/Meta}");
+		const chrome = screen.getByTestId("terminal-immersive-chrome");
+		expect(chrome).toHaveClass("bg-base");
+		expect(chrome).not.toHaveClass("bg-raised");
+		expect(chrome.parentElement).toHaveClass("sticky", "top-0", "bg-base", "pt-[env(safe-area-inset-top,0px)]");
+		expect(hasStatusBarSpacerBefore(chrome.parentElement!)).toBe(false);
 	});
 
 	it("keeps glass-header and a static header for a desktop browser remote session", async () => {
@@ -5076,6 +5101,8 @@ describe("Browser-mode Safari top band", () => {
 		const header = screen.getByRole("banner", { name: "Application header" });
 		expect(header).not.toHaveClass("sticky", "pt-[env(safe-area-inset-top,0px)]");
 		expect(header.querySelector(".glass-header")).not.toBeNull();
+		// A wide browser can still have a top inset (an iPad home-screen app), so the spacer stays.
+		expect(hasStatusBarSpacerBefore(header)).toBe(true);
 	});
 
 	it("keeps the desktop Electrobun header static with glass-header", async () => {
