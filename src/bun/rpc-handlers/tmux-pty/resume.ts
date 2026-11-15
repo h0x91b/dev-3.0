@@ -411,7 +411,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 		main.configId,
 		false,
 		true,
-		{ sessionId: mainResume ?? undefined, accountId: switchesAccount(main, 0) ? accountOverride : main.accountId, bedrockProfile: main.bedrockProfile, codexHome: codexHomes.get(0), freshSessionId: mainFreshSessionId },
+		{ sessionId: mainResume ?? undefined, accountId: switchesAccount(main, 0) ? accountOverride : main.accountId, bedrockProfile: main.bedrockProfile, projectLogin: main.projectLogin, codexHome: codexHomes.get(0), freshSessionId: mainFreshSessionId },
 	);
 	if (mainAccountId !== undefined) reports[0].accountId = mainAccountId;
 	// Start Fresh and reconnect read the task's account, so a switch must not revert there.
@@ -446,7 +446,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 				worktreePath: task.worktreePath,
 			};
 			const projectEnv = await repoConfig.resolveProjectEnv(resolvedProject, task.worktreePath, { foreignCode: task.foreignCode });
-			const paneIdUpdates: Array<{ index: number; paneId: string; accountId: string | null | undefined; sessionId: string | null }> = [];
+			const paneIdUpdates: Array<{ index: number; paneId: string; accountId: string | null | undefined; sessionId: string | null; projectLogin: boolean }> = [];
 			for (let i = 1; i < panes.length; i++) {
 				const pane = panes[i];
 				try {
@@ -461,6 +461,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 						? { sessionId: freshSessionId, accountId, accountFromStore: true, protocolMode }
 						: { resume: true, accountId, accountFromStore: true, protocolMode };
 					cmdOpts.projectEnv = projectEnv;
+					if (pane.projectLogin) cmdOpts.projectLogin = true;
 					cmdOpts.bedrockProfile = pane.bedrockProfile !== undefined ? pane.bedrockProfile : task.bedrockProfile;
 					if (paneResume) cmdOpts.sessionId = paneResume;
 					let resumeCmd: string;
@@ -470,6 +471,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 					// a renamed binary is exactly what broke resume.
 					let resumeAgentFamily: AgentFamily | undefined = pane.agentFamily ?? undefined;
 					let extraEnv: Record<string, string> = {};
+					let projectLogin = !!pane.projectLogin;
 					if (pane.agentId) {
 						const resolved = await agents.resolveCommandForAgent(pane.agentId, pane.configId, ctx, cmdOpts);
 						resumeCmd = resolved.command;
@@ -478,6 +480,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 						resumeAgentFamily = resolved.agentFamily ?? resumeAgentFamily;
 						if (resolved.bedrockProfileMissing) await notifyBedrockProfileMissing(task);
 						if (resolved.projectLoginKept) accountId = undefined;
+						projectLogin = !!resolved.projectLoginKept;
 						if (resolved.staleAccountDropped) {
 							accountId = resolved.resolvedAccountId;
 							await notifyStaleAccountDropped(task);
@@ -499,7 +502,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 					const wrappedCmd = `bash "${scriptPath}"`;
 					const newPaneId = await pty.splitAndRunCommand(params.taskId, socket, wrappedCmd, task.worktreePath);
 					if (opts.restart && !newPaneId) throw new Error("The restarted agent pane was not created.");
-					if (newPaneId) paneIdUpdates.push({ index: i, paneId: newPaneId, accountId, sessionId: freshSessionId ?? paneResume });
+					if (newPaneId) paneIdUpdates.push({ index: i, paneId: newPaneId, accountId, sessionId: freshSessionId ?? paneResume, projectLogin });
 					reports[i] = { ...reports[i], status: "resumed", paneId: newPaneId ?? null, accountId: accountId ?? null, sessionId: freshSessionId ?? paneResume };
 					log.info("Resumed extra pane", { taskId: params.taskId.slice(0, 8), paneIndex: i, paneId: newPaneId, command: resumeCmd.slice(0, 100) });
 				} catch (err) {
@@ -512,14 +515,14 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 				try {
 					const freshTask = await data.getTask(project, params.taskId);
 					const updatedPanes = [...(freshTask.sessionState?.panes ?? [])];
-					for (const { index, paneId, accountId, sessionId } of paneIdUpdates) {
+					for (const { index, paneId, accountId, sessionId, projectLogin } of paneIdUpdates) {
 						const prior = updatedPanes[index];
 						if (!prior) continue;
 						// `--continue` names no id, so the stored one stays. A replaced id was found
 						// in this worktree's own store, so the origin goes with the old one.
 						const resumed = sessionId ?? prior.sessionId;
 						const originCwd = resumed === prior.sessionId ? prior.sessionOriginCwd : undefined;
-						updatedPanes[index] = { ...prior, paneId, accountId, sessionId: resumed, sessionOriginCwd: originCwd, parked: undefined };
+						updatedPanes[index] = { ...prior, paneId, accountId, sessionId: resumed, sessionOriginCwd: originCwd, parked: undefined, projectLogin: projectLogin || undefined };
 					}
 					await data.updateTask(project, params.taskId, { sessionState: { panes: updatedPanes } });
 				} catch (err) {
