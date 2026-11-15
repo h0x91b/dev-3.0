@@ -149,7 +149,10 @@ async function createPr(args: ParsedArgs, context: CliContext | null, deps: PrDe
 		);
 	}
 
-	const push = deps.run("git", ["push", "--set-upstream", "origin", branch], cwd);
+	// An explicit `<branch>:refs/heads/<branch>` refspec: with a bare `<branch>` and
+	// `push.default=upstream`, git maps the push onto the inherited upstream — the
+	// base, for a task branch renamed with `git branch -m` (#2289).
+	const push = deps.run("git", ["push", "--set-upstream", "origin", `${branch}:refs/heads/${branch}`], cwd);
 	if (push.status !== 0) {
 		exitError(`git push failed for branch ${branch}`, push.stderr.trim() || push.stdout.trim());
 	}
