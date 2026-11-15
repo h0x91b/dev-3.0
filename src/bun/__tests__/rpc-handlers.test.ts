@@ -13096,6 +13096,35 @@ describe("resume reuses the AWS profile a pane launched with", () => {
 	});
 });
 
+describe("resume keeps a pane on the project folder's own login", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("passes the pane's mark to every resumed pane and keeps it on the panes", async () => {
+		const project = makeProject();
+		const pane = { agentCmd: "claude", agentFamily: "claude", agentId: "builtin-claude", configId: "claude-default", projectLogin: true };
+		const panes = [{ ...pane, main: true, sessionId: "00000000-0000-4000-8000-00000000a201" }, { ...pane, sessionId: "00000000-0000-4000-8000-00000000a202" }];
+		const task = makeTask({ sessionState: { panes: panes as any } });
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
+		const resolve = vi.mocked(agents.resolveCommandForAgent);
+		const original = resolve.getMockImplementation();
+		resolve.mockResolvedValue({ command: "claude", extraEnv: {}, agentFamily: "claude", projectLoginKept: true } as any);
+		try {
+			const { resumeTaskSession } = await import("../rpc-handlers/tmux-pty");
+			await resumeTaskSession(task.id, {});
+			expect(resolve.mock.calls.length).toBe(2);
+			for (const call of resolve.mock.calls) expect(call[3]).toMatchObject({ projectLogin: true });
+			const last = vi.mocked(data.updateTask).mock.calls.map((call) => call[2]).filter((u) => u.sessionState).pop()!;
+			expect(last.sessionState!.panes.map((p) => p.projectLogin)).toEqual([true, true]);
+		} finally {
+			resolve.mockImplementation(original!);
+		}
+	});
+});
+
 describe("restartTask and resume with a stored account or a refused launch", () => {
 	beforeEach(async () => {
 		vi.clearAllMocks();
@@ -13948,6 +13977,23 @@ describe("launchTaskPty", () => {
 		const patch = vi.mocked(data.updateTask).mock.calls.map(([, , updates]) => updates).find((u) => u.sessionState);
 		expect(patch).toMatchObject({ accountId: "acct-b", accountPick: { reason } });
 		expect(patch?.sessionState?.panes[0].accountId).toBe("acct-b");
+	});
+
+	it("marks a pane that kept the project folder's own login, and a resume passes the mark back", async () => {
+		const project = makeProject();
+		const task = makeTask({ accountId: "acct-a" });
+		vi.mocked(agents.resolveCommandForAgent).mockResolvedValueOnce({
+			command: "claude", extraEnv: {}, agent: { baseCommand: "claude" }, resolvedAccountId: undefined, projectLoginKept: true,
+		} as never);
+		await launchTaskPty(project, task, "/tmp/wt", "builtin-claude", "claude-default");
+		const pane = vi.mocked(data.updateTask).mock.calls.map(([, , updates]) => updates).find((u) => u.sessionState)!.sessionState!.panes[0];
+		expect(pane.accountId).toBeUndefined();
+		expect(pane.projectLogin).toBe(true);
+
+		await launchTaskPty(project, task, "/tmp/wt", "builtin-claude", "claude-default", false, true, { sessionId: "s-1", projectLogin: true });
+		expect(agents.resolveCommandForAgent).toHaveBeenLastCalledWith(
+			"builtin-claude", "claude-default", expect.anything(), expect.objectContaining({ resume: true, projectLogin: true }),
+		);
 	});
 
 	it("never hands a resume the routing context", async () => {

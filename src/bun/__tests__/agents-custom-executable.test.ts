@@ -279,6 +279,16 @@ describe("an account the project's own Claude folder is signed in to", () => {
 		expect(resolved.extraEnv.AWS_PROFILE).toBeUndefined();
 	});
 
+	it("keeps the Bedrock env off when a pane launched on the project folder's login resumes", async () => {
+		await accountSignedInAs("person-1");
+		const env = { ...projectEnv, CLAUDE_CODE_USE_BEDROCK: "1", ANTHROPIC_MODEL: "global.anthropic.x" };
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { resume: true, accountFromStore: true, projectLogin: true, projectEnv: env });
+		expect(resolved.extraEnv.CLAUDE_CONFIG_DIR).toBe(projectDir);
+		expect(resolved.projectLoginKept).toBe(true);
+		expect(resolved.extraEnv.CLAUDE_CODE_USE_BEDROCK).toBe(ENV_UNSET);
+		expect(resolved.extraEnv.ANTHROPIC_MODEL).toBe(ENV_UNSET);
+	});
+
 	it("drops the project's Bedrock switch for a picked account in its own folder too", async () => {
 		const { account, dir } = await accountSignedInAs("person-2");
 		const env = { ...projectEnv, CLAUDE_CODE_USE_BEDROCK: "1" };
@@ -292,7 +302,39 @@ describe("an account the project's own Claude folder is signed in to", () => {
 		const env = { ...projectEnv, CLAUDE_CODE_USE_BEDROCK: "1", ANTHROPIC_MODEL: "global.anthropic.x" };
 		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { projectEnv: env });
 		expect(resolved.extraEnv.CLAUDE_CODE_USE_BEDROCK).toBeUndefined();
-		expect(resolved.extraEnv.ANTHROPIC_MODEL).not.toBe(ENV_UNSET);
+		expect(resolved.extraEnv.ANTHROPIC_MODEL).toBeUndefined();
+	});
+
+	it("drops the project's credentials and base URL under the project folder's own login too", async () => {
+		const { account } = await accountSignedInAs("person-1");
+		const env = { ...projectEnv, ANTHROPIC_BASE_URL: "https://gateway.example", ANTHROPIC_AUTH_TOKEN: "t" };
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: account.id, projectEnv: env });
+		expect(resolved.projectLoginKept).toBe(true);
+		expect(resolved.extraEnv.ANTHROPIC_BASE_URL).toBe(ENV_UNSET);
+		expect(resolved.extraEnv.ANTHROPIC_AUTH_TOKEN).toBe(ENV_UNSET);
+	});
+
+	it("drops the project's Bedrock switch for Auto's pick", async () => {
+		const { account } = await accountSignedInAs("person-2");
+		state.pickId = account.id;
+		const routing = { exclusions: [], reservationKey: "k", claudeConfigPinned: false };
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: "auto", autoRouting: routing as never, projectEnv: { CLAUDE_CODE_USE_BEDROCK: "1" } });
+		expect(resolved.accountPick?.accountId).toBe(account.id);
+		expect(resolved.extraEnv.CLAUDE_CODE_USE_BEDROCK).toBe(ENV_UNSET);
+	});
+
+	it("drops the project's Bedrock switch for an explicitly picked system login", async () => {
+		await accountSignedInAs("person-2");
+		const resolved = await resolveCommandForAgent("builtin-claude", null, ctx, { accountId: null, projectEnv: { CLAUDE_CODE_USE_BEDROCK: "1" } });
+		expect(resolved.extraEnv.CLAUDE_CODE_USE_BEDROCK).toBe(ENV_UNSET);
+	});
+
+	it("drops the project's Bedrock switch when the agent comes from the project default", async () => {
+		const { account } = await accountSignedInAs("person-1");
+		const env = { ...projectEnv, CLAUDE_CODE_USE_BEDROCK: "1" };
+		const resolved = await resolveCommandForProject({ name: "p", path: "/p" } as Project, "t", "d", "/w", null, { accountId: account.id, projectEnv: env });
+		expect(resolved.projectLoginKept).toBe(true);
+		expect(resolved.extraEnv.CLAUDE_CODE_USE_BEDROCK).toBe(ENV_UNSET);
 	});
 
 	it("uses the account's own folder when the project folder is signed in to someone else", async () => {
