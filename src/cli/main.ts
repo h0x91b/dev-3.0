@@ -154,7 +154,7 @@ Commands:
   dev3 pane logs <run-id> [--lines <N>]  That run's outcome (running / exit code) + the tail of what it printed
   dev3 pane close <run-id>               Close the run's pane (kills the command)
   dev3 ui state [--json]                 Show focused task/project, foreground, user idle time + the worktree's tmux layout (ASCII pane map)
-  dev3 pr create --title "..." [--description "..."] [--base <branch>] [--draft] [--auto-merge[=squash|merge|rebase]]
+  dev3 pr create --title "..." [--description "..."] [--base <branch>] [--draft] [--assignee <login>] [--auto-merge[=squash|merge|rebase]]
                                          Push this branch and open a pull request for it via gh
                                          (needs an authenticated gh — exits 23 before pushing if not;
                                           inside a task the body links back to the originating task)

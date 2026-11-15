@@ -1338,7 +1338,7 @@ const COMMANDS: CommandHelp[] = [
 		subcommands: [
 			{
 				name: "create",
-				usage: 'dev3 pr create --title "..." [--description "..."] [--base <branch>] [--draft] [--auto-merge[=squash|merge|rebase]]',
+				usage: 'dev3 pr create --title "..." [--description "..."] [--base <branch>] [--draft] [--assignee <login>] [--auto-merge[=squash|merge|rebase]]',
 				summary: "Push the current branch and open a pull request for it in one step.",
 				details: [
 					"--title <text>        Pull request title (required).",
@@ -1347,6 +1347,8 @@ const COMMANDS: CommandHelp[] = [
 					"                      from, so a project whose base is not the repo default still gets",
 					"                      the right target; outside a task worktree gh's default is used.",
 					"--draft               Open it as a draft.",
+					"--assignee <login>    Assign the pull request (optional; repeat it or comma-separate",
+					"                      logins, as with gh). Without it nobody is ever assigned.",
 					"--auto-merge[=<m>]    Enable auto-merge after creating it: squash (default), merge, rebase.",
 					"                      A repo with that strategy disabled exits 1 — the pull request is",
 					"                      still open, only auto-merge was not enabled.",

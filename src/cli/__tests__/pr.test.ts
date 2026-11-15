@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handlePr, realPrDeps, type PrCommandResult, type PrDeps } from "../commands/pr";
-import type { ParsedArgs } from "../args";
+import { parseArgs, type ParsedArgs } from "../args";
 import type { CliContext } from "../context";
 
 vi.mock("../context", () => ({
@@ -172,6 +172,54 @@ describe("dev3 pr create — happy path", () => {
 		await handlePr("create", args({ title: "T", draft: "true" }), null, d);
 
 		expect(ran(calls, "gh", ["pr", "create"])!.args).toContain("--draft");
+	});
+});
+
+describe("dev3 pr create — --assignee", () => {
+	function assigneeArgs(call: Call | undefined): string[] {
+		const out: string[] = [];
+		call!.args.forEach((a, i) => {
+			if (a === "--assignee") out.push(call!.args[i + 1]);
+		});
+		return out;
+	}
+
+	it("adds no --assignee to gh when the flag is absent", async () => {
+		const { deps: d, calls } = deps();
+
+		await handlePr("create", args({ title: "T", description: "B", base: "main", draft: "true" }), ctx(), d);
+
+		expect(ran(calls, "gh", ["pr", "create"])!.args).not.toContain("--assignee");
+	});
+
+	it("passes one login through to gh", async () => {
+		const { deps: d, calls } = deps();
+
+		await handlePr("create", parseArgs(["--title", "T", "--assignee", "octocat"]), null, d);
+
+		expect(assigneeArgs(ran(calls, "gh", ["pr", "create"]))).toEqual(["octocat"]);
+	});
+
+	it("accepts it repeated and comma-separated, like gh", async () => {
+		const { deps: d, calls } = deps();
+
+		await handlePr(
+			"create",
+			parseArgs(["--title", "T", "--assignee", "alice, bob", "--assignee", "@me"]),
+			null,
+			d,
+		);
+
+		expect(assigneeArgs(ran(calls, "gh", ["pr", "create"]))).toEqual(["alice", "bob", "@me"]);
+	});
+
+	it.each([[["--assignee"]], [["--assignee", ","]]])("refuses %j with no login before pushing", async (flag) => {
+		const { deps: d, calls } = deps();
+
+		await expect(handlePr("create", parseArgs(["--title", "T", ...flag]), null, d)).rejects.toThrow("EXIT_3");
+
+		expect(ran(calls, "git", ["push"])).toBeUndefined();
+		expect(ran(calls, "gh", ["pr", "create"])).toBeUndefined();
 	});
 });
 

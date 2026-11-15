@@ -9,7 +9,7 @@ import { buildTaskPrDeepLinkSection, deepLinkSchemeRegistered } from "../../shar
 import { taskProtocolMode } from "../../shared/types";
 import { CLI_EXIT_CODE_GH_TLS_UNVERIFIED, CLI_EXIT_CODE_GH_UNAVAILABLE } from "../../shared/cli-exit-codes";
 
-const USAGE = `Usage: dev3 pr create --title "..." [--description "..."] [--base <branch>] [--draft] [--auto-merge[=squash|merge|rebase]]
+const USAGE = `Usage: dev3 pr create --title "..." [--description "..."] [--base <branch>] [--draft] [--assignee <login>] [--auto-merge[=squash|merge|rebase]]
        dev3 pr auto-merge [<number|url>] [--strategy squash|merge|rebase] [--off]
        dev3 pr watch [--until ci|merged] [--pr <N>] [--task <id>] [--project <id>] [--off|--list]`;
 
@@ -122,7 +122,7 @@ async function setAutoMerge(args: ParsedArgs, context: CliContext | null, deps: 
 async function createPr(args: ParsedArgs, context: CliContext | null, deps: PrDeps): Promise<void> {
 	// Deliberately no `--task`: the pull request is opened for the branch checked
 	// out HERE, so naming another task would push one branch and describe another.
-	rejectUnknownFlags(args, ["title", "description", "base", "draft", "auto-merge"]);
+	rejectUnknownFlags(args, ["title", "description", "base", "draft", "assignee", "auto-merge"]);
 
 	const title = (args.flags.title ?? "").trim();
 	if (!title) exitUsage(`--title is required.\n${USAGE}`);
@@ -133,6 +133,7 @@ async function createPr(args: ParsedArgs, context: CliContext | null, deps: PrDe
 	if (args.flags.description === "true") {
 		exitUsage('--description needs a value: --description "..." , --description @file, or drop the flag.');
 	}
+	const assignees = resolveAssignees(args);
 
 	const cwd = context?.worktreePath ?? deps.cwd;
 	deps = withProjectGitHubAccount(deps, context, cwd);
@@ -160,6 +161,7 @@ async function createPr(args: ParsedArgs, context: CliContext | null, deps: PrDe
 	const ghArgs = ["pr", "create", "--title", title, "--body", prBody(args.flags.description, context, deps)];
 	if (base) ghArgs.push("--base", base);
 	if (draft) ghArgs.push("--draft");
+	for (const login of assignees) ghArgs.push("--assignee", login);
 
 	const created = deps.run("gh", ghArgs, cwd);
 	if (created.status !== 0) {
@@ -195,6 +197,22 @@ async function createPr(args: ParsedArgs, context: CliContext | null, deps: PrDe
 				: "Waiting on CI or merge? `dev3 pr watch [--until merged]` — dev3 messages you; do not poll gh.\n",
 		);
 	}
+}
+
+/**
+ * `--assignee` logins, repeatable or comma-separated like `gh pr create --assignee`.
+ * Only what was passed: nothing is ever assigned by default or inferred.
+ */
+function resolveAssignees(args: ParsedArgs): string[] {
+	const raw = args.repeated?.assignee ?? (args.flags.assignee !== undefined ? [args.flags.assignee] : []);
+	const logins = raw.flatMap((value) => {
+		if (value === "true") exitUsage("--assignee needs a login: --assignee <login>[,<login>...], or drop the flag.");
+		return value.split(",").map((login) => login.trim()).filter(Boolean);
+	});
+	if (raw.length > 0 && logins.length === 0) {
+		exitUsage("--assignee needs a login: --assignee <login>[,<login>...], or drop the flag.");
+	}
+	return logins;
 }
 
 /**
