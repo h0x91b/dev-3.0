@@ -85,8 +85,14 @@ async function tickProject(project: Project, sharedTable: () => Promise<ProcessT
 	const tasks = await data.loadTasks(project);
 	for (const task of tasks) {
 		try {
-			const liveness = isAgentExitCandidate(task) ? await taskMainAgentLiveness(task, await sharedTable()) : null;
-			if (agentExitDecision(task, liveness) === "keep") continue;
+			let liveness = isAgentExitCandidate(task) ? await taskMainAgentLiveness(task, await sharedTable()) : null;
+			let decision = agentExitDecision(task, liveness);
+			// The shared table may predate an agent started by hand since: confirm on a fresh one before marking.
+			if (decision === "mark") {
+				liveness = await taskMainAgentLiveness(task);
+				decision = agentExitDecision(task, liveness);
+			}
+			if (decision === "keep") continue;
 			await applyDecision(project, task, liveness);
 		} catch (err) {
 			log.error("Agent exit check failed for task", { taskId: task.id.slice(0, 8), error: String(err) });

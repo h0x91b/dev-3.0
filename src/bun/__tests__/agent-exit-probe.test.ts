@@ -149,6 +149,17 @@ describe("probe tick", () => {
 		expect(processTable).not.toHaveBeenCalled();
 	});
 
+	it.skipIf(process.platform === "win32")("does not mark when a fresh process table shows the agent running again", async () => {
+		H.stored.set("t1", task({ id: "t1" }) as never);
+		// Exited on the shared snapshot; the user started the agent by hand before the confirmation.
+		vi.mocked(taskMainAgentLiveness).mockImplementation(async (_t, table) => (table ? "exited" : "alive"));
+		startAgentExitProbe();
+		await vi.waitFor(() => expect(taskMainAgentLiveness).toHaveBeenCalledTimes(2));
+		await new Promise((r) => setTimeout(r, 20));
+		expect(H.stored.get("t1")?.agentExitedAt).toBeUndefined();
+		expect(data.updateTaskWith).not.toHaveBeenCalled();
+	});
+
 	it.skipIf(process.platform === "win32")("builds one process table for the pass and marks only exited tasks", async () => {
 		H.stored.set("t1", task({ id: "t1" }) as never);
 		H.stored.set("t2", task({ id: "t2" }) as never);
@@ -156,10 +167,13 @@ describe("probe tick", () => {
 		vi.mocked(taskMainAgentLiveness).mockImplementation(async (t) => (t.id === "t1" ? "exited" : t.id === "t2" ? "alive" : "unknown"));
 		startAgentExitProbe();
 		await vi.waitFor(() => expect(H.stored.get("t1")?.agentExitedAt).toBeDefined());
-		await vi.waitFor(() => expect(taskMainAgentLiveness).toHaveBeenCalledTimes(3));
+		// One call per task on the shared table, plus a fresh-table confirmation for the one being marked.
+		await vi.waitFor(() => expect(taskMainAgentLiveness).toHaveBeenCalledTimes(4));
 		expect(processTable).toHaveBeenCalledTimes(1);
 		const shared = await vi.mocked(processTable).mock.results[0].value;
-		for (const call of vi.mocked(taskMainAgentLiveness).mock.calls) expect(call[1]).toBe(shared);
+		const calls = vi.mocked(taskMainAgentLiveness).mock.calls;
+		expect(calls.filter((call) => call[1] === shared).map((call) => call[0].id)).toEqual(["t1", "t2", "t3"]);
+		expect(calls.filter((call) => call[1] === undefined).map((call) => call[0].id)).toEqual(["t1"]);
 		expect(H.stored.get("t2")?.agentExitedAt).toBeUndefined();
 		expect(H.stored.get("t3")?.agentExitedAt).toBeUndefined();
 		expect(data.updateTaskWith).toHaveBeenCalledTimes(1);
