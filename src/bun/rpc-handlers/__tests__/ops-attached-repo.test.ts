@@ -387,14 +387,13 @@ describe("a repo inside the task's own managed folder", () => {
 		expect(unsaved.unpushed).not.toBe(0);
 	});
 
-	it("getUnsavedWork reports nothing for a symlink standing in for the attached path: the close would not remove it", async () => {
+	it("getUnsavedWork fails, never says clean, for a symlink standing in for the attached path", async () => {
 		const outside = `${repo.dir}/outside-wt`;
 		await createOpsWorktree(root, vtask(), outside, "main");
-		writeFileSync(join(outside, "app.ts"), "const a = 100;\n");
 		symlinkSync(outside, `${folder}/wt`);
 		mocks.getTask.mockResolvedValue(ownTask({ attachedRepo: `${folder}/wt`, baseBranch: "main" }));
 
-		expect(await handlers.getUnsavedWork({ taskId: "t", projectId: "vp1" })).toMatchObject({ insertions: 0, deletions: 0, unpushed: 0, ahead: 0 });
+		await expect(handlers.getUnsavedWork({ taskId: "t", projectId: "vp1" })).rejects.toThrow(/not safely inside the task folder/);
 	});
 
 	it("getUnsavedWork rejects, never says clean, when git cannot classify the repo (broken main config)", async () => {

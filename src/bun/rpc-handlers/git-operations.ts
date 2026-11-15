@@ -460,12 +460,13 @@ async function getUnsavedWork(params: { taskId: string; projectId: string; expec
 		let removedWithTask = isOpsWorktreeTask(task);
 		// A vanished attached repo has nothing left to lose.
 		if (!removedWithTask && isAttachedRepoInTaskFolder(task) && existsSync(task.attachedRepo!)) {
-			// A path the removal would refuse (a swapped-in symlink) is never removed, so it has nothing to report.
+			// A path the removal would refuse is a failed check, never a clean one: the dialog must not approve it.
 			const real = git.resolvePathInsideOpsTaskFolder(task.attachedRepo!, task.worktreePath!, OPS_DIR, "the attached repo out of the unsaved-work report");
-			const probe = real ? await git.classifyLinkedWorktree(real) : null;
+			if (!real) throw new Error("Cannot check the attached repository: its path is not safely inside the task folder");
+			const probe = await git.classifyLinkedWorktree(real);
 			// Unknown is an error, as for a git task: the dialog says "unknown", never "clean".
-			if (probe?.kind === "unknown") throw new Error(`Cannot tell whether the attached repository is a worktree: ${probe.error}`);
-			removedWithTask = probe?.kind === "linked";
+			if (probe.kind === "unknown") throw new Error(`Cannot tell whether the attached repository is a worktree: ${probe.error}`);
+			removedWithTask = probe.kind === "linked";
 		}
 		if (!removedWithTask) return nothingUnsaved;
 	} else if (!taskUsesWorktree(project, task) || !task.worktreePath) return nothingUnsaved;

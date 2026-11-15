@@ -10,6 +10,8 @@ vi.mock("../../data", () => ({
 	updateTask: vi.fn(async () => undefined),
 	deleteTask: vi.fn(async () => undefined),
 	updateTaskWith: vi.fn(),
+	getProject: vi.fn(),
+	getTask: vi.fn(),
 }));
 const ROOT = vi.hoisted(() => `${process.env.DEV3_TEST_ROOT ?? "/tmp"}/attached-symlink-${process.pid}`);
 vi.mock("../../paths", () => ({ DEV3_HOME: ROOT, OPS_DIR: `${ROOT}/ops` }));
@@ -77,15 +79,32 @@ vi.mock("../../rpc-handlers/shared", () => ({
 }));
 
 
+vi.mock("../../task-aux-panes", () => ({ openAuxPane: vi.fn(), auxPaneAlive: vi.fn(async () => false), auxPaneTitle: () => "Git" }));
+vi.mock("../../github", () => ({ getGitHubShellExports: vi.fn(async () => []), findOpenPullRequest: vi.fn() }));
+vi.mock("../../agent-prompt-delivery", () => ({ deliverAgentPrompt: vi.fn() }));
+vi.mock("../../scheduled-message-scheduler", () => ({ scheduleMessage: vi.fn(), cancelScheduledMessage: vi.fn(), sendScheduledMessageNow: vi.fn() }));
+vi.mock("../../lifecycle/activities", () => ({
+	PR_DETECTION_TIMEOUT_MS: 1000,
+	dismissMergeCompletionPrompt: vi.fn(),
+	persistProjectPrIdentities: vi.fn(),
+	persistTaskPrIdentity: vi.fn(),
+	prepareMergeCompletionPrompt: vi.fn(),
+	refreshTaskPrStatus: vi.fn(),
+	reportTaskPrStatus: vi.fn(),
+}));
+vi.mock("../../task-branch-sync", () => ({ syncTaskBranchName: vi.fn() }));
+vi.mock("../../lifecycle/service", () => ({ lifecycleActorRuntime: vi.fn(() => ({})) }));
+vi.mock("../../lifecycle/merge-fingerprint", () => ({ getMergeCompletionFingerprint: vi.fn() }));
 vi.mock("../../worktree-trust", () => ({ forgetWorktreeTrust: vi.fn(async () => undefined) }));
 vi.mock("../../board-operations/task-notes", () => ({ addNote: vi.fn(async () => undefined) }));
 vi.mock("../../board-operations/runtime", () => ({ boardPorts: { push: vi.fn(), clearMergeNotification: vi.fn(), syncTerminalTitle: vi.fn() } }));
 vi.mock("../../agent-requests", () => ({ voidAgentRequestsForTask: vi.fn() }));
 vi.mock("../../board-operations/types", () => ({ AGENT_ACTOR: { kind: "agent" } }));
 
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import * as data from "../../data";
+import { gitOperationHandlers } from "../../rpc-handlers/git-operations";
 import { executeLifecycleEffect, type LifecycleExecutionContext } from "../executor";
 import type { LifecycleEffect } from "../effects";
 import type { Project, Task } from "../../../shared/types";
@@ -249,4 +268,25 @@ describe("a symlink swapped in for the attached repo after attaching", () => {
 			});
 		});
 	}
+
+	it("a dirty worktree parked aside while a symlink stood in for it survives a close that carries no approval", async () => {
+		const wt = `${FOLDER}/wt`;
+		const held = `${FOLDER}/held`;
+		g(`git worktree add -b parked "${wt}"`, repo.local);
+		writeFileSync(join(wt, "dirty.ts"), "uncommitted\n");
+		g(`git worktree move "${wt}" "${held}"`, repo.local);
+		symlinkSync(held, wt);
+		const ctxTask = taskWith(wt);
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(ctxTask);
+
+		// The dialog's check fails, so nothing is reported as checked and the close carries no approval.
+		await expect(gitOperationHandlers.getUnsavedWork({ taskId: ctxTask.id, projectId: "vp1", expectedAttachedRepo: wt })).rejects.toThrow();
+		unlinkSync(wt);
+		g(`git worktree move "${held}" "${wt}"`, repo.local);
+		await step("removeAttachedWorktree", ctxFor(row = ctxTask), { approvedAttachedRepo: null });
+
+		expect(readFileSync(join(wt, "dirty.ts"), "utf-8")).toBe("uncommitted\n");
+		expect(g("git worktree list", repo.local)).toContain(realpathSync(wt));
+	});
 });
