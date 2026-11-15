@@ -3702,11 +3702,11 @@ export async function removeWorktree(
 	}
 
 	if (branchToDelete) {
-		// Delete branches that dev3 created. We check task.branchName (the original name
-		// assigned at worktree creation) rather than the live branch name, because agents
-		// may rename branches to conventional prefixes (feat/, fix/, etc.).
-		// A task.branchName starting with "dev3/task-" means dev3 created it.
-		const isDevBranch = task.branchName?.startsWith("dev3/task-") || branchToDelete.startsWith("dev3/");
+		// Delete branches that dev3 created. Agents rename `dev3/task-<id>` and branch-sync
+		// then overwrites task.branchName with the new name, so a renamed branch is proven
+		// ours by its reflog (#2278), not by the stored name.
+		const isDevBranch = task.branchName?.startsWith("dev3/task-") || branchToDelete.startsWith("dev3/")
+			|| await isTaskOwnedBranch(project.path, task, branchToDelete);
 		const isVariantBranch = task.existingBranch && branchToDelete !== task.existingBranch.replace(/^origin\//, "")
 			&& branchToDelete.startsWith(task.existingBranch.replace(/^origin\//, ""));
 		if ((isDevBranch || isVariantBranch) && options.branchPolicy === "unique-kept") {
