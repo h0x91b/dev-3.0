@@ -9,6 +9,9 @@
 
 import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES, MAX_SCHEDULED_MESSAGE_LENGTH, MAX_SHARED_MEDIA_BYTES, formatMediaCap } from "../shared/types";
 import { MAX_MESSAGE_SUBJECT_LENGTH, MESSAGE_SUBJECT_WORD_GUIDANCE } from "../shared/agent-message-subject";
+import type { CliCommandSpec } from "../shared/codex-exec-policy";
+import { PANE_RUN_VERB } from "../bun/pane-run-store";
+import { DEV_SERVER_LOG_SINK_VERB } from "../shared/dev-server-log";
 import { CLI_EXIT_CODE_HIBERNATE_DECLINED, CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_PANE_NO_ROOM, CLI_EXIT_CODE_RESUME_ALREADY_RUNNING, CLI_EXIT_CODE_RESUME_UNAVAILABLE, CLI_EXIT_CODE_TASK_NOT_HIBERNATED } from "../shared/cli-exit-codes";
 
 /** One subcommand of a command group (e.g. `task create`). */
@@ -1431,6 +1434,25 @@ const COMMAND_INDEX: Map<string, CommandHelp> = new Map(COMMANDS.map((c) => [c.n
 // its help must resolve too — otherwise the hint and the command disagree.
 COMMAND_INDEX.set("project", COMMAND_INDEX.get("projects") as CommandHelp);
 COMMAND_INDEX.set("space", COMMAND_INDEX.get("spaces") as CommandHelp);
+
+/**
+ * Top-level words main.ts dispatches that have no help entry: internal runners,
+ * hook entry points, the `local` alias and the commands that own their help.
+ * `cli-command-specs.test.ts` fails when main.ts grows a command missing from both.
+ */
+const UNLISTED_COMMANDS = [
+	"live", "show-image", "epics", "hook", "statusline", "local", "remote", "gui", "update",
+	PANE_RUN_VERB, DEV_SERVER_LOG_SINK_VERB,
+];
+
+/** Every top-level command with its subcommands, aliases included. */
+export function cliCommandSpecs(): CliCommandSpec[] {
+	const specs: CliCommandSpec[] = [...COMMAND_INDEX].map(([name, cmd]) => ({ name, subcommands: cmd.subcommands.map((s) => s.name) }));
+	for (const name of UNLISTED_COMMANDS) {
+		if (!COMMAND_INDEX.has(name)) specs.push({ name, subcommands: [] });
+	}
+	return specs;
+}
 
 /** Whether the registry knows how to render help for this command. */
 export function hasCommandHelp(command: string): boolean {

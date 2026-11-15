@@ -178,4 +178,10 @@ describe("ensureCodexConfigFile against a real home directory", () => {
 		expect(healedParsed.my_own_section.note).toBe("kept verbatim");
 		expect(readFileSync(`${configPath}.dev3-backup`, "utf-8")).toBe(BROKEN_CONFIG);
 	});
+	it("writes dev3's Codex execpolicy rules next to the config (#2043)", async () => {
+		vi.spyOn(Bun, "spawn").mockReturnValue({ pid: 0, kill() {}, exited: Promise.resolve(0), stdout: new Response("codex-cli 0.163.0").body, stderr: new Response("").body } as never);
+		const home = mkdtempSync(join(tmpdir(), "dev3-codex-home-"));
+		await ensureCodexConfigFile(home);
+		expect(readFileSync(join(home, ".codex", "rules", "dev3.rules"), "utf-8")).toContain('"pane", "run"], decision="prompt"');
+	});
 });

@@ -82,6 +82,7 @@ import {
 	shortCodexWorkspaceId,
 } from "../shared/agent-accounts";
 import { writePiLoginExtension } from "../shared/pi-login-extension";
+import { ensureCodexDev3Rules } from "./codex-rules";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { spawn } from "./spawn";
@@ -480,6 +481,9 @@ function ensureCodexAccountHome(id: string, paths: AccountPaths): string {
 			log.warn("Failed to symlink shared codex entry", { entry, error: String(err) });
 		}
 	}
+	// `rules/` is per CODEX_HOME and stays unshared: Codex saves the user's
+	// approvals there, so each account gets its own copy of dev3's file instead.
+	ensureCodexDev3Rules(dir, dirname(paths.codexHome));
 	return dir;
 }
 
