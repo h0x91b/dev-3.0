@@ -272,12 +272,12 @@ export function codexPlanLabel(plan: string | null): string | null {
 	return plan.split("_").map(titleCaseToken).join(" ");
 }
 
-/** The Claude login a project's sessions really use when its env pins
- *  `CLAUDE_CONFIG_DIR`: the account then comes from that directory, not
- *  `~/.claude`. `configDir` is null when the project does not pin one. */
 /** What a project's own env switches Claude onto instead of its folder's login. */
 export type ProjectClaudeBackend = "bedrock" | "vertex" | "foundry" | "env-auth";
 
+/** The Claude login a project's sessions really use when its env pins
+ *  `CLAUDE_CONFIG_DIR`: the account then comes from that directory, not
+ *  `~/.claude`. `configDir` is null when the project does not pin one. */
 export interface ProjectClaudeLogin {
 	configDir: string | null;
 	identity: AgentAccountIdentity | null;
