@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import type { Dispatch } from "react";
 import type { HarnessReadinessReport, Project, ResourceUsage, Space, Task, TaskStatus } from "../../shared/types";
-import { compareTaskSortRank, getTaskTitle, isBuiltinOpsProject, isCoordinatorTask, isTaskDisconnected, orderProjectsForDisplay, projectDisplayName } from "../../shared/types";
+import { compareTaskSortRank, getTaskTitle, isBuiltinOpsProject, isCoordinatorTask, isTaskAgentless, isTaskDisconnected, orderProjectsForDisplay, projectDisplayName } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { deleteSpaceWithConfirm, moveSpace, renameSpace, toggleSpaceSensitive } from "../utils/spaceActions";
@@ -123,7 +123,7 @@ function ActionSheetButton({
 	);
 }
 
-function ActivityOverview({ projects, dispatch, navigate, bellCounts, resourceUsage, onRemoveProject, onOpenAddProject, onReorderProjects, selectedSpaceId = null, onNewSpace, onEditSpaceProjects, spaceFilter }: ActivityOverviewProps) {
+function ActivityOverview({ projects, dispatch, navigate, bellCounts, resourceUsage, onRemoveProject, onOpenAddProject, onReorderProjects, selectedSpaceId = null, onNewSpace, onEditSpaceProjects, spaceFilter, digitsFollowSpaces = false }: ActivityOverviewProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);

@@ -23,6 +23,14 @@ export interface CompletionOffer {
 	kind: CompletionOfferKind;
 	/** Merge offers only: the branch that landed. */
 	branchName?: string;
+	/** Agent offers only: why the agent asks (`--reason`). */
+	reason?: ApprovalReason;
+	/** The task card the Dialog style shows, built by the caller exactly as before offers existed. */
+	dialogInfo?: ConfirmOptions["info"];
+	/** Agent offers only: completing keeps the task's folder, so the Dialog style says so. */
+	keepsFolder?: boolean;
+	/** Set when the style switched to Dialog while this offer waited: it keeps asking on its task. */
+	staysOnTask?: boolean;
 	/** When this client raised it (epoch ms), so a waiting list can show how long it has waited. */
 	offeredAt: number;
 	answer: (answer: CompletionOfferAnswer) => void;
@@ -86,6 +94,9 @@ export function offerCompletion(params: OfferCompletionParams): Promise<Completi
 			projectId: params.projectId,
 			kind: params.kind,
 			branchName: params.branchName,
+			...(params.reason ? { reason: params.reason } : {}),
+			...(params.dialogInfo ? { dialogInfo: params.dialogInfo } : {}),
+			...(params.keepsFolder !== undefined ? { keepsFolder: params.keepsFolder } : {}),
 			offeredAt: Date.now(),
 			answer: settle,
 		}];

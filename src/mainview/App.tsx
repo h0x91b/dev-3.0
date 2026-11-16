@@ -876,7 +876,7 @@ function App() {
 		if (getCompletionOfferStyle() !== "inline" || isProjectSilencedForDisplay(projectId)) return () => {};
 		dispatch({ type: "addBell", taskId, reason });
 		const withdrawBell = () => dispatch({ type: "removeBellReason", taskId, reason });
-		if (getCompletionOfferStyle() === "dialog" || isCompletionOfferOnScreen(taskId)) return withdrawBell;
+		if (isCompletionOfferOnScreen(taskId)) return withdrawBell;
 		const context = subject ? [`#${subject.seqLabel}`, subject.projectName, taskTitle].filter(Boolean).join(" · ") : taskTitle;
 		// The toast asks the bar's own question, so the two never read as different asks.
 		toast.info(reason, { taskId, context, onClick: () => openTaskFromNotification(taskId, projectId) });

@@ -6,7 +6,7 @@ import { I18nProvider } from "../../../i18n";
 vi.mock("../../../rpc", () => ({ api: { request: { getUnsavedWork: vi.fn(), taskPaneAction: vi.fn() } } }));
 
 import { api } from "../../../rpc";
-import { _resetCompletionOffersForTests, isCompletionStripMounted, offerCompletion, setCompletionOfferStyle, type CompletionOfferAnswer } from "../../../completion-offers";
+import { _resetCompletionOffersForTests, isCompletionOfferOnScreen, offerCompletion, setCompletionOfferStyle, type CompletionOfferAnswer } from "../../../completion-offers";
 import TaskCompletionStrip, { COMPLETION_STRIP_ARM_MS, agentPanePlacement } from "../TaskCompletionStrip";
 import type { TaskPaneInfo, TaskPaneState } from "../../../../shared/task-panes";
 import { clearanceNodes } from "../../../toast-clearance";

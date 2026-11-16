@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { _resetCompletionOffersForTests, offerCompletion, offerSettledSignal, pickCompletionOffer, useCompletionOffers } from "../completion-offers";
+import { _resetCompletionOffersForTests, keepTaskOpen, offerAsksInDialog, offerCompletion, offerSettledSignal, pickCompletionOffer, setCompletionOfferStyle, useCompletionOffers } from "../completion-offers";
 import { renderHook, act } from "@testing-library/react";
 
 afterEach(() => _resetCompletionOffersForTests());
