@@ -25,7 +25,7 @@ const alpha = { id: "p1", name: "Alpha", path: "/a" } as Project;
 const beta = { id: "p2", name: "Beta", path: "/b" } as Project;
 const secret = { id: "p3", name: "Secret", path: "/s", sensitive: true } as Project;
 const task = (id: string, projectId = "p1", title = `Task ${id}`) =>
-	({ id, projectId, title, worktreePath: `/wt/${id}`, branchName: `feat/${id}`, status: "review-by-user" }) as unknown as Task;
+	({ id, projectId, title, seq: Number(id.replace(/\D/g, "").slice(0, 3)) || 1, worktreePath: `/wt/${id}`, branchName: `feat/${id}`, status: "review-by-user" }) as unknown as Task;
 const clean = { insertions: 0, deletions: 0, unpushed: 0, ahead: 0 } as UnsavedWork;
 const dirty = { insertions: 3, deletions: 1, unpushed: 0, ahead: 0 } as UnsavedWork;
 const usage = (entries: Array<[string, number]>) => new Map<string, ResourceUsage>(entries.map(([id, rss]) => [id, { cpu: 1, rss }]));
@@ -83,6 +83,7 @@ describe("ReadyToCompleteScreen", () => {
 		await offer("t2");
 		expect(rowIds()).toEqual(["completions-row-t2", `completions-row-${long}`]);
 		expect(screen.getByTestId(`completions-row-${long}`)).toHaveTextContent("512 MB");
+		expect(screen.getByTestId("completions-row-t2")).toHaveTextContent("#2");
 		expect(screen.getByText(/576 MB/)).toBeInTheDocument();
 		fireEvent.click(screen.getByRole("combobox", { name: "Sort" }));
 		fireEvent.click(await screen.findByRole("option", { name: "Most memory" }));
@@ -154,6 +155,8 @@ describe("ReadyToCompleteScreen", () => {
 		expect(title).toBe("Complete 20 tasks?");
 		expect(message.match(/^• /gm)).toHaveLength(12);
 		expect(message).toContain("…and 8 more");
+		// Scratch tasks share titles, so each name carries its task number.
+		expect(message).toContain("• #3 Task t3");
 	});
 
 	it("offers no answer for a locked project's task", async () => {
