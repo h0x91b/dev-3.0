@@ -25,6 +25,7 @@ import type {
 	ShellAvailability,
 	ShortcutOverrides,
 	TerminalPathOpenMode,
+	CompletionOfferStyle,
 } from "../../shared/types";
 import type { ShellFlavor } from "../../shared/posix-shell";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
@@ -476,6 +477,16 @@ function GlobalSettings({
 	const handleSuggestCompletingTasksAfterMergeToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange({ suggestCompletingTasksAfterMerge: enabled });
+		},
+		[persistSettingChange],
+	);
+
+	const handleCompletionOfferStyleChange = useCallback(
+		(style: CompletionOfferStyle) => {
+			persistSettingChange(
+				{ completionOfferStyle: style },
+				{ tracking: { setting: "completion_offer_style", value: style } },
+			);
 		},
 		[persistSettingChange],
 	);
@@ -1067,6 +1078,7 @@ function GlobalSettings({
 							onArtifactTemplateChange={handleArtifactTemplateChange}
 							onArtifactTemplatePathChange={handleArtifactTemplatePathChange}
 							onSuggestCompletingTasksAfterMergeToggle={handleSuggestCompletingTasksAfterMergeToggle}
+							onCompletionOfferStyleChange={handleCompletionOfferStyleChange}
 							onPrOriginTaskLinkToggle={handlePrOriginTaskLinkToggle}
 							onAgentLaunchAutoApproveChange={handleAgentLaunchAutoApproveChange}
 							prOriginTaskLinkSupported={prOriginTaskLinkSupported}

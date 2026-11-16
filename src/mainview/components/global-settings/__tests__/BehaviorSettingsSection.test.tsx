@@ -39,6 +39,7 @@ function renderSection(
 				onArtifactTemplateChange={onArtifactTemplateChange}
 				onArtifactTemplatePathChange={vi.fn()}
 				onSuggestCompletingTasksAfterMergeToggle={vi.fn()}
+				onCompletionOfferStyleChange={vi.fn()}
 				onPrOriginTaskLinkToggle={onPrOriginTaskLinkToggle}
 				onAgentLaunchAutoApproveChange={vi.fn()}
 				prOriginTaskLinkSupported={prOriginTaskLinkSupported}

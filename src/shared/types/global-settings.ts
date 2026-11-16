@@ -322,6 +322,12 @@ export interface GlobalSettings {
 	/** When false, merged branches show a notice instead of a completion prompt. */
 	suggestCompletingTasksAfterMerge?: boolean;
 	/**
+	 * How a merge or agent completion offer asks: a modal that waits for an
+	 * answer, or a bar on the task's terminal that blocks nothing. Undefined ⇒
+	 * {@link DEFAULT_COMPLETION_OFFER_STYLE}.
+	 */
+	completionOfferStyle?: CompletionOfferStyle;
+	/**
 	 * Minutes the agent-launch dialog waits before approving itself, so a
 	 * requesting agent is not blocked on a user who stepped away. `0` disables
 	 * it and restores the answer-or-time-out behaviour. Undefined ⇒
@@ -420,6 +426,10 @@ export type ShortcutOverrides = Record<string, ShortcutOverride>;
 
 /** Behavior of Cmd/Ctrl+Click on a file path in terminal output. */
 export type TerminalPathOpenMode = "preview" | "system" | "reveal";
+
+export type CompletionOfferStyle = "dialog" | "inline";
+/** The dialog answers fastest, so a finished task's agent, worktree and memory go soonest. */
+export const DEFAULT_COMPLETION_OFFER_STYLE: CompletionOfferStyle = "dialog";
 
 /** A path candidate resolved against a task worktree / project directory. */
 export interface ResolvedTerminalPath {

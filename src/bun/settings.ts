@@ -243,6 +243,8 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		watchByDefault: typeof d.watchByDefault === "boolean" ? d.watchByDefault : undefined,
 		// Default-on toggle — only an explicit false is a stored opt-out.
 		suggestCompletingTasksAfterMerge: d.suggestCompletingTasksAfterMerge === false ? false : undefined,
+		// Only the non-default choice is stored.
+		completionOfferStyle: d.completionOfferStyle === "inline" ? "inline" : undefined,
 		// 0 is a meaningful stored value ("never auto-approve"), so only a missing
 		// or nonsensical entry falls back to the built-in default.
 		agentLaunchAutoApproveMinutes:

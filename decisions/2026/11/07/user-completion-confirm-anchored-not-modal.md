@@ -2,6 +2,7 @@
 
 # The user's own Complete/Cancel confirms where they clicked
 
+
 ## Context
 
 After `completion-offers-render-inline-not-modal`, merge and agent completion offers render on the task, but the user's own Complete/Cancel (card ✓, sidebar row, Activity row, inspector ✓, menu and palette) still opened the centred `confirm()` modal over a dimmed app. That modal blocks the whole board for a choice about one task the user just pointed at.

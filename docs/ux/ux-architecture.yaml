@@ -328,6 +328,10 @@ ux_architecture:
       forbidden: ["global_destination", "cross_project_action", "uncapped_note_list"]
       note: "This panel is the densest surface (34K). It is the main complexity-budget risk in the app."
       evidence: ["src/mainview/components/TaskInfoPanel.tsx", "src/mainview/components/task-info-panel/*"]
+      completion_strip:
+        rule: "Merge and agent completion asks follow completionOfferStyle: 'dialog' (default) asks through confirm() (CompletionOfferDialogHost); 'inline' floats a one-line bar at the bottom-right of the agent's pane (the whole terminal for one pane or a zoomed one; a row under the inspector if no terminal is live), at most two rows tall, buttons fixed while the note opens upward on hover/focus, never resizes the terminal. No focus, 600 ms click arming, Complete gated on the unsaved-work check. Card and sidebar marker in both styles; inline adds a toast that opens the task. The user's own Complete/Cancel is not an offer (popover.own_click_confirm)."
+        actions: { complete: "destructive", keep_open: "secondary", manual_completion: "ghost (merge)", settings: "icon (merge)" }
+        evidence: ["src/mainview/completion-offers.ts", "src/mainview/components/task-info-panel/TaskCompletionStrip.tsx", "src/mainview/components/CompletionOfferDialogHost.tsx"]
       bar_model:
         layout: "2x2"  # two rows; each row split into left|right by a flex-1 spacer
         rationale: "Wide desktop width is used instead of stacking more rows; the panel has a hard height budget (MAX_RATIO=0.33). One bar = one action domain. Panel chrome is not a bar."
@@ -438,7 +442,7 @@ ux_architecture:
       forbidden: ["primary_navigation", "persistent_dashboard"]
       observed: ["CreateTaskModal", "AddProjectModal", "TaskDetailModal", "LaunchVariantsModal", "SpawnAgentModal", "AgentLaunchRequestModal", "SecretRequestModal", "GitPullErrorModal", "FolderPickerModal", "AccountLoginModal"]
       agent_request:
-        rule: "Agent requests share an accent border, AI badge and autofocused decline. Severity follows the action: destructive only for destroying state. Input beyond yes/no uses its own modal; confirm() stays boolean. Requests queue, one dialog at a time."
+        rule: "Agent requests share an accent border, AI badge and autofocused decline. Severity follows the action: destructive only for destroying state. Input beyond yes/no uses its own modal; confirm() stays boolean. Requests queue, one dialog at a time. Completion requests follow completionOfferStyle (task_info_panel.completion_strip)."
         identity: ["accent border", "AI agent request badge", "autofocused decline"]
         severity_by_action: { destroys_state: "destructive", creates_state: "primary" }
         observed: ["agentCompletionRequested → confirm() (destructive)", "agentLaunchRequested → AgentLaunchRequestModal (primary)", "secretRequested → SecretRequestModal (primary; explicit approval only, masked input, no output)"]
