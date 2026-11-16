@@ -1,7 +1,8 @@
 import type { ResourceUsage } from "../../shared/types";
 import { useT } from "../i18n";
 import type { Route } from "../state";
-import { useCompletionOffers } from "../completion-offers";
+import { useEffect } from "react";
+import { registerWaitingOffersList, useCompletionOffers } from "../completion-offers";
 import { formatBytesCompact } from "../utils/formatBytes";
 import { waitingRss } from "./ReadyToCompleteScreen";
 
@@ -13,6 +14,8 @@ import { waitingRss } from "./ReadyToCompleteScreen";
 export default function ReadyToCompleteCard({ usage, navigate }: { usage: Map<string, ResourceUsage>; navigate: (route: Route) => void }) {
 	const t = useT();
 	const offers = useCompletionOffers();
+	// The card already counts every ask, so a toast about one would only repeat it.
+	useEffect(() => registerWaitingOffersList(), []);
 	const count = new Set(offers.map((o) => o.taskId)).size;
 	if (count === 0) return null;
 	const held = waitingRss(offers, usage);
