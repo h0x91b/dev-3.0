@@ -93,7 +93,11 @@ export interface TaskPaneState {
 	panes: TaskPaneInfo[];
 	activePaneId: string | null;
 	zoomedPaneId: string | null;
-	/** The task's main agent pane, which can sit anywhere after a swap. Absent when the task is unknown. */
+	/**
+	 * The task's main agent pane, which can sit anywhere after a swap. It may be
+	 * missing from `panes` when it sits in another tmux window. Null when the
+	 * agent's pane is gone; absent when the task is unknown.
+	 */
 	agentPaneId?: string | null;
 	/** Native only: the serialized shared SplitTree that produced `panes`. */
 	layout: string | null;
@@ -113,6 +117,8 @@ export interface TaskPaneState {
 export type TaskPaneAction =
 	| { kind: "splitH" | "splitV"; paneId?: string }
 	| { kind: "focus"; paneId: string }
+	/** Bring a pane into view: switch to its window and lift a zoom on another pane, then focus it. */
+	| { kind: "reveal"; paneId: string }
 	| { kind: "focusStep"; step: "next" | "prev" }
 	| { kind: "focusDirection"; direction: SplitDirection }
 	| { kind: "zoom"; paneId?: string; mode?: "toggle" | "on" | "off" }

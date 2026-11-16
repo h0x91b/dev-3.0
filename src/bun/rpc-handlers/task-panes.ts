@@ -160,11 +160,17 @@ async function tmuxTaskPaneState(taskId: string, task: Task | null): Promise<Tas
 		panes,
 		activePaneId: panes[paneLayout.activeIndex]?.paneId ?? null,
 		zoomedPaneId: paneLayout.zoomed ? (panes[paneLayout.activeIndex]?.paneId ?? null) : null,
-		agentPaneId: task ? mainAgentPaneId(task, panes.map((pane) => pane.paneId)) : undefined,
+		agentPaneId: task ? liveAgentPaneId(task, tmuxLayout.panes.map((pane) => pane.paneId)) : undefined,
 		layout: null,
 		layoutPreset: null,
 		capabilities,
 	};
+}
+
+/** The agent's pane id while it lives anywhere in the task's session, else null. */
+function liveAgentPaneId(task: Task, live: string[]): string | null {
+	const paneId = mainAgentPaneId(task, live);
+	return paneId && live.includes(paneId) ? paneId : null;
 }
 
 const RECT_EPS = 0.001;
@@ -255,7 +261,7 @@ function nativeStateToTaskPaneState(
 		panes,
 		activePaneId,
 		zoomedPaneId,
-		agentPaneId: mainAgentPaneId(task, panes.map((pane) => pane.paneId)),
+		agentPaneId: liveAgentPaneId(task, panes.filter((pane) => pane.alive !== false).map((pane) => pane.paneId)),
 		layout: nativeState.layout,
 		layoutPreset,
 		capabilities,
@@ -344,6 +350,12 @@ async function tmuxPaneAction(task: Task, action: TaskPaneAction): Promise<TaskP
 			} catch (err) {
 				if (!(err instanceof TmuxError)) throw err;
 			}
+			break;
+		}
+		case "reveal": {
+			// select-pane lifts a zoom in its own window but never switches windows.
+			await tmux.selectWindow(action.paneId, { socket, bestEffort: true });
+			await tmux.selectPane(action.paneId, { socket, bestEffort: true });
 			break;
 		}
 		case "focusStep": {
@@ -440,6 +452,11 @@ async function nativePaneAction(task: Task, action: TaskPaneAction): Promise<Tas
 			break;
 		}
 		case "focus": {
+			updatedState = await focusNativeTaskPane(taskId, action.paneId);
+			break;
+		}
+		case "reveal": {
+			if (tree.zoomedPaneId && tree.zoomedPaneId !== action.paneId) await setNativeTaskPaneLayout(taskId, unzoomPane(tree));
 			updatedState = await focusNativeTaskPane(taskId, action.paneId);
 			break;
 		}
