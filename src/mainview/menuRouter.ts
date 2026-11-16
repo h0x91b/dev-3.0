@@ -219,6 +219,9 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 		case "view-stats":
 			navigate(ctx, { screen: "stats" });
 			break;
+		case "view-completions":
+			navigate(ctx, { screen: "completions" });
+			break;
 		case "view-sessions": {
 			const projectId = currentProjectId(state);
 			navigate(ctx, projectId ? { screen: "sessions", scopeProjectId: projectId } : { screen: "sessions" });
@@ -526,7 +529,7 @@ export const BROWSER_HANDLED_ACTIONS: ReadonlySet<string> = new Set<string>([
 	// View / navigation
 	"view-dashboard", "view-board",
 	"view-board:builtin:kanban", "view-board:builtin:table", "view-board:builtin:tree", "view-board:builtin:attention",
-	"view-changelog", "view-stats", "view-sessions", "open-settings",
+	"view-changelog", "view-stats", "view-completions", "view-sessions", "open-settings",
 	// The traffic log is a renderer overlay, so it works in a browser tab too — it
 	// was only ever missing here, which left remote users on ⇧⌘M and the palette.
 	"view-agent-traffic-log",

@@ -52,6 +52,8 @@ export type Route =
 	| { screen: "settings"; section?: SettingsSectionId; anchor?: SettingsEntryAnchor; preset?: SettingsPresetTarget }
 	| { screen: "changelog" }
 	| { screen: "stats" }
+	/** Every task waiting for a merge or agent completion answer, across projects. */
+	| { screen: "completions" }
 	| { screen: "sessions"; scopeProjectId?: string }
 	/**
 	 * Agent traffic. The id seeds the screen's scope filter with the project the
