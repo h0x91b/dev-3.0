@@ -6,6 +6,7 @@ import { hasEnvLineBreak, sanitizeEnvMap } from "../shared/env-text";
 import { recordFavoriteUsage, sanitizeFavorites } from "../shared/favorites";
 import { coerceUpdateChannel, DEFAULT_UPDATE_CHANNEL } from "../shared/update-channel";
 import { canaryPublishesFor, hostOsName } from "../shared/canary-publish";
+import { DEFAULT_LOG_RETENTION_DAYS, isRetentionDayCount, sanitizeLogRetention } from "../shared/log-retention";
 
 /**
  * Does the canary feed carry a build for THIS machine? Asked here rather than passed in,
@@ -286,6 +287,8 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 			typeof d.experimentalAgentTraffic === "boolean" ? d.experimentalAgentTraffic : undefined,
 		// Default-on: only an explicit false is the user opting out of the daily cleanup.
 		autoCleanupTaskHistory: d.autoCleanupTaskHistory === false ? false : undefined,
+		// 30 days is the default and stays absent; anything but a day count or "forever" falls back to it.
+		logRetentionDays: sanitizeLogRetention(d.logRetentionDays),
 		leanAgentProtocol: d.leanAgentProtocol === true ? true : undefined,
 		// Default-off local diagnostics — only an explicit true is a stored opt-in.
 		freezeDiagnosticsEnabled: d.freezeDiagnosticsEnabled === true ? true : undefined,
@@ -430,5 +433,35 @@ export function loadSettingsSync(): GlobalSettings {
 	} catch (err) {
 		log.error("Failed to load settings (sync)", { error: String(err) });
 		return { ...DEFAULT_SETTINGS };
+	}
+}
+
+/**
+ * The log retention a prune may act on, read from the raw file: `{ days }` (null =
+ * forever), or null when the file is unreadable or the field holds something the
+ * sanitizer would silently turn into the default. Pruning on a guess would delete
+ * history the user chose to keep. A missing file or field means the default.
+ */
+export function readLogRetentionForPrune(): { days: number | null } | null {
+	const raw = readSettingsFileStrict();
+	if (!raw) return null;
+	const field = raw.logRetentionDays;
+	if (field === undefined) return { days: DEFAULT_LOG_RETENTION_DAYS };
+	if (field === "forever") return { days: null };
+	return isRetentionDayCount(field) ? { days: field } : null;
+}
+
+/**
+ * The raw content of `settings.json` as a plain object (empty when the file does
+ * not exist yet), or null when it exists but cannot be read or is not an object.
+ * Callers that would write settings back use it to refuse to overwrite a corrupt file.
+ */
+export function readSettingsFileStrict(): Record<string, unknown> | null {
+	try {
+		if (!existsSync(SETTINGS_FILE)) return {};
+		const raw: unknown = JSON.parse(readFileSync(SETTINGS_FILE, "utf-8"));
+		return typeof raw === "object" && raw !== null && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null;
+	} catch {
+		return null;
 	}
 }

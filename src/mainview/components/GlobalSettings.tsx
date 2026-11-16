@@ -57,6 +57,7 @@ import ModelCatalogSection from "./global-settings/ModelCatalogSection";
 import NotificationSettingsSection from "./global-settings/NotificationSettingsSection";
 import PxpipeProxySettingsSection from "./global-settings/PxpipeProxySettingsSection";
 import SystemSettingsSection from "./global-settings/SystemSettingsSection";
+import type { LogRetentionChoice } from "../../shared/log-retention";
 import TelemetrySettingsSection from "./global-settings/TelemetrySettingsSection";
 import TerminalSettingsSection from "./global-settings/TerminalSettingsSection";
 import WorkspaceSettingsSection from "./global-settings/WorkspaceSettingsSection";
@@ -759,6 +760,18 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
+	// Host-owned: the host saves it and prunes, so this adopts the saved settings it returns.
+	const handleLogRetentionChange = useCallback(
+		async (choice: LogRetentionChoice) => {
+			try {
+				adoptHostSettings(await api.request.setLogRetention({ value: choice }));
+			} catch {
+				// The select keeps showing the stored value.
+			}
+		},
+		[adoptHostSettings],
+	);
+
 	const handleFocusModeToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange({ focusMode: enabled });
@@ -1191,6 +1204,7 @@ function GlobalSettings({
 							onResourceLevelsChange={handleResourceLevelsChange}
 							onConfirmBeforeQuitToggle={handleConfirmBeforeQuitToggle}
 							onAutoCleanupTaskHistoryToggle={handleAutoCleanupTaskHistoryToggle}
+							onLogRetentionChange={handleLogRetentionChange}
 						/>
 						<TelemetrySettingsSection
 							t={t}

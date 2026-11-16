@@ -28,6 +28,8 @@ vi.mock("../../rpc", () => ({
 			getAgents: vi.fn(),
 			saveAgents: vi.fn(),
 			getGlobalSettings: vi.fn(),
+			getLogRetentionUsage: vi.fn().mockResolvedValue({ days: [] }),
+			setLogRetention: vi.fn(),
 			getRemoteAccessStatus: vi.fn().mockResolvedValue({ running: true, port: 51473, failure: null }),
 			retryRemoteAccess: vi.fn().mockResolvedValue({ running: true, port: 51473, failure: null }),
 			saveGlobalSettings: vi.fn(),
@@ -1071,6 +1073,29 @@ describe("GlobalSettings", () => {
 			expect(mockedApi.request.saveGlobalSettings).toHaveBeenLastCalledWith(
 				expect.objectContaining({ autoCleanupTaskHistory: undefined }),
 			);
+		});
+
+		it("changes the log retention through the host, which owns the field", async () => {
+			setupMocks(mockAgents, { ...mockGlobalSettings });
+			mockedApi.request.setLogRetention.mockImplementation(async ({ value }: { value: number | "forever" }) => ({
+				...mockGlobalSettings,
+				logRetentionDays: value === 30 ? undefined : value,
+			}));
+			const user = userEvent.setup();
+			renderGlobalSettings("system");
+			await waitForLoad();
+
+			const select = (await screen.findByTestId("log-retention")) as HTMLSelectElement;
+			expect(select.value).toBe("30");
+
+			await user.selectOptions(select, "forever");
+			await waitFor(() => expect(mockedApi.request.setLogRetention).toHaveBeenLastCalledWith({ value: "forever" }));
+			await waitFor(() => expect(select.value).toBe("forever"));
+
+			await user.selectOptions(select, "30");
+			await waitFor(() => expect(mockedApi.request.setLogRetention).toHaveBeenLastCalledWith({ value: 30 }));
+			// The host owns the field: the settings snapshot save never carries a change of it.
+			expect(mockedApi.request.saveGlobalSettings).not.toHaveBeenCalled();
 		});
 
 		it("round-trips the confirm-before-quit toggle through skipQuitDialog", async () => {

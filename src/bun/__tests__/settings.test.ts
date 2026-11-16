@@ -12,7 +12,7 @@ vi.mock("../paths", () => ({
 	DEV3_HOME: TEST_HOME,
 }));
 
-import { saveSettings, loadSettings, loadSettingsSync, type GlobalSettings } from "../settings";
+import { saveSettings, loadSettings, loadSettingsSync, readLogRetentionForPrune, readSettingsFileStrict, type GlobalSettings } from "../settings";
 
 function makeSettings(overrides: Partial<GlobalSettings> = {}): GlobalSettings {
 	return {
@@ -440,6 +440,7 @@ describe("saveSettings", () => {
 			experimentalAgentTraffic: true,
 			freezeDiagnosticsEnabled: true,
 			autoCleanupTaskHistory: false,
+			logRetentionDays: 730,
 			leanAgentProtocol: true,
 			agentTrafficExperiment: "1",
 			lowBatteryEnabled: true,
@@ -502,6 +503,30 @@ describe("saveSettings", () => {
 
 		writeFileSync(settingsPath, JSON.stringify({ agentEnvDefaults: { "BAD-KEY": "v" } }));
 		expect((await loadSettings()).agentEnvDefaults).toBeUndefined();
+	});
+
+	it("reads the retention a prune may act on from the raw file, and refuses anything unclear", () => {
+		expect(readLogRetentionForPrune()).toEqual({ days: 30 }); // no file
+		const read = (contents: string) => {
+			writeFileSync(settingsPath, contents);
+			return readLogRetentionForPrune();
+		};
+		expect(read("{}")).toEqual({ days: 30 });
+		expect(read(JSON.stringify({ logRetentionDays: 730 }))).toEqual({ days: 730 });
+		expect(read(JSON.stringify({ logRetentionDays: "forever" }))).toEqual({ days: null });
+		for (const bad of ["{ not json", "null", "[]", JSON.stringify({ logRetentionDays: "90" }), JSON.stringify({ logRetentionDays: 0 }), JSON.stringify({ logRetentionDays: -5 }), JSON.stringify({ logRetentionDays: 1.5 }), JSON.stringify({ logRetentionDays: null })]) {
+			expect(read(bad), bad).toBeNull();
+		}
+	});
+
+	it("reads settings.json strictly: missing is empty, anything but a plain object is refused", () => {
+		expect(readSettingsFileStrict()).toEqual({});
+		writeFileSync(settingsPath, JSON.stringify({ theme: "dark" }));
+		expect(readSettingsFileStrict()).toEqual({ theme: "dark" });
+		for (const bad of ["{ not json", "null", "[]", "42"]) {
+			writeFileSync(settingsPath, bad);
+			expect(readSettingsFileStrict(), bad).toBeNull();
+		}
 	});
 
 	it("creates the settings directory before writing the file", async () => {

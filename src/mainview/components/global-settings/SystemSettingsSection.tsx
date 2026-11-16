@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { RESOURCE_LEVEL_CHOICES, resolveResourceLevels } from "../../../shared/types";
 import type { GlobalSettings, RemoteTunnelSettings, ResourceLevels } from "../../../shared/types";
 import type { UpdateChannel } from "../../../shared/update-channel";
+import type { LogRetentionChoice } from "../../../shared/log-retention";
 import type { TFunction } from "../../i18n";
 import SettingsEntry from "./SettingsEntry";
+import LogRetentionSetting from "./LogRetentionSetting";
 import SettingsSection from "./SettingsSection";
 import SettingsToggle from "./SettingsToggle";
 import { MIN_REMOTE_STATIC_CODE_LENGTH, remoteStaticCodeError } from "../../../shared/remote-static-code";
@@ -24,6 +26,7 @@ export default function SystemSettingsSection({
 	onResourceLevelsChange,
 	onConfirmBeforeQuitToggle,
 	onAutoCleanupTaskHistoryToggle,
+	onLogRetentionChange,
 }: {
 	t: TFunction;
 	globalSettings: GlobalSettings;
@@ -40,6 +43,7 @@ export default function SystemSettingsSection({
 	onResourceLevelsChange: (levels: Partial<ResourceLevels>) => void;
 	onConfirmBeforeQuitToggle: (enabled: boolean) => void;
 	onAutoCleanupTaskHistoryToggle: (enabled: boolean) => void;
+	onLogRetentionChange: (choice: LogRetentionChoice) => Promise<void>;
 }) {
 	const [remoteAccessStatus, setRemoteAccessStatus] = useRemoteAccessStatus();
 	const retryRemoteAccess = useCallback(
@@ -223,6 +227,10 @@ export default function SystemSettingsSection({
 						}
 					/>
 				</div>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="log-retention">
+				<LogRetentionSetting t={t} globalSettings={globalSettings} onChange={onLogRetentionChange} />
 			</SettingsEntry>
 		</SettingsSection>
 	);

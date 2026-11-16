@@ -18,6 +18,7 @@ import type { AgentPromptDelivery } from "../agent-prompt-delivery";
 import type { SecretRequest } from "../secret-request";
 import type { AgentMessageLogPage } from "../agent-message-log";
 import type { NotificationLogPage } from "../notification-log";
+import type { LogRetentionUsage } from "../log-retention";
 import type { TaskPeekSnapshot } from "../task-peek";
 import type { TaskSoundStatus } from "../task-sound-statuses";
 import type { ChangelogEntry, UpdateChangelog, UpdatePopoverPreview } from "./changelog";
@@ -377,6 +378,19 @@ export type AppRPCSchema = {
 			saveGlobalSettings: {
 				params: GlobalSettings;
 				response: void;
+			};
+			/**
+			 * On-disk bytes per day of the message and notification logs, all projects summed.
+			 * With `retentionDays`, also what that retention would delete.
+			 */
+			getLogRetentionUsage: {
+				params: { retentionDays?: number };
+				response: LogRetentionUsage;
+			};
+			/** The one writer of `logRetentionDays`; a shorter value prunes every log at once. */
+			setLogRetention: {
+				params: { value: number | "forever" };
+				response: GlobalSettings;
 			};
 			/** Toggle an (agentId, configId) pair in the global favorites list —
 			 *  add it (with LFU-then-LRU eviction once MAX_FAVORITES is reached) or

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Project, Task } from "../../../shared/types";
 import { getTrafficState, loadTraffic, subscribeTraffic } from "../../agent-traffic";
+import { DEFAULT_LOG_RETENTION_DAYS } from "../../../shared/log-retention";
 import { api } from "../../rpc";
 import { useProjectPrivacy } from "../../sensitive-projects";
 import { endpointKey } from "./traffic-model";
@@ -93,9 +94,12 @@ export function useTrafficData(cutoff?: number) {
 	const pages = useMemo(() => visibleProjects.map(project => getTrafficState(project.id)), [visibleProjects, tick]);
 	const rows = useMemo(() => pages.flatMap(page => page.rows).filter(row => !isLocked(row.fromProjectId) && !isLocked(row.toProjectId)).sort((a, b) => Date.parse(b.at) - Date.parse(a.at)), [pages, isLocked]);
 	const projectIds = new Set(visibleProjects.map(project => project.id));
+	const retentionPage = pages.find(page => page.loaded);
 	return { projects: visibleProjects, tasks: tasks.filter(task => projectIds.has(task.projectId)), rows, loading, historyLoading, tasksLoading,
 		error: error || pages.some(page => page.error), hasMore: pages.some(page => page.hasMore), limit,
 		oldestDay: pages.map(page => page.oldestDay).filter((day): day is string => !!day).sort()[0],
-		retentionDays: pages[0]?.retentionDays ?? 30,
+		// Until a first page has loaded the stored default says nothing about this install.
+		retentionLoaded: !!retentionPage,
+		retentionDays: retentionPage ? retentionPage.retentionDays : DEFAULT_LOG_RETENTION_DAYS,
 		reload, loadMore: () => setLimit(value => pages.reduce((maximum, page) => Math.max(maximum, page.rows.length), value) + 500) };
 }

@@ -30,6 +30,7 @@ function renderSection(settings: Partial<GlobalSettings> = {}) {
 				onResourceLevelsChange={onResourceLevelsChange}
 				onConfirmBeforeQuitToggle={vi.fn()}
 				onAutoCleanupTaskHistoryToggle={vi.fn()}
+				onLogRetentionChange={vi.fn()}
 			/>
 		</I18nProvider>
 	);

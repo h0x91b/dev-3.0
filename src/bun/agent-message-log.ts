@@ -28,7 +28,6 @@ import { liveProjectDataDir } from "./project-storage-live";
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, unlinkSync } from "node:fs";
 import type { Project } from "../shared/types";
 import {
-	AGENT_MESSAGE_LOG_RETENTION_DAYS,
 	type AgentMessageLogInput,
 	type AgentMessageLogPage,
 	type AgentMessageLogReceipt,
@@ -38,14 +37,14 @@ import {
 	serializeAgentMessageLogReceipt,
 	serializeAgentMessageLogRow,
 } from "../shared/agent-message-log";
+import { retentionCutoff } from "../shared/log-retention";
+import { parseDay } from "./log-day-files";
 import { createLogger } from "./logger";
+import { configuredLogRetentionDays, pruneRetentionDays } from "./log-retention-setting";
 import { getPushMessage } from "./rpc-handlers/shared-pure";
 import { noteLocalMessageLogAppend } from "./agent-message-log-watch";
 
 const log = createLogger("agent-message-log");
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-const DAY_FILE_RE = /^(\d{4})-(\d{2})-(\d{2})\.jsonl$/;
 
 /** Local-day stamp, matching the diagnostic log's convention. */
 function dayStamp(at: Date): string {
@@ -61,24 +60,16 @@ function dayFile(project: Project, at: Date): string {
 	return `${messageLogDir(project)}/${dayStamp(at)}.jsonl`;
 }
 
-function parseDay(fileName: string): number | null {
-	const match = DAY_FILE_RE.exec(fileName);
-	if (!match) return null;
-	const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
-	const date = new Date(year, month - 1, day);
-	if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
-	return date.getTime();
-}
-
 /**
- * Delete day-files outside the retention window. Best-effort and silent: a
- * concurrent writer or a permission change must never break message delivery.
- * Returns how many files went.
+ * Delete day-files outside the retention window; `null` keeps everything.
+ * Best-effort and silent: a concurrent writer or a permission change must never
+ * break message delivery. Returns how many files went.
  */
-export function pruneAgentMessageLog(project: Project, now: Date = new Date()): number {
+export function pruneAgentMessageLog(project: Project, retentionDays: number | null, now: Date = new Date()): number {
+	if (retentionDays === null) return 0;
 	const dir = messageLogDir(project);
-	const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-	const cutoff = today - (AGENT_MESSAGE_LOG_RETENTION_DAYS - 1) * DAY_MS;
+	const cutoff = retentionCutoff(now, retentionDays);
+	if (!Number.isFinite(cutoff)) return 0; // A window beyond the Date range keeps everything.
 	let removed = 0;
 	try {
 		for (const name of readdirSync(dir)) {
@@ -102,8 +93,10 @@ let lastPrunedDay = new Map<string, string>();
 function pruneIfNeeded(project: Project, now: Date): void {
 	const today = dayStamp(now);
 	if (lastPrunedDay.get(project.id) === today) return;
+	const retention = pruneRetentionDays(now);
+	if (!retention) return; // Retry on the next append.
 	lastPrunedDay.set(project.id, today);
-	pruneAgentMessageLog(project, now);
+	pruneAgentMessageLog(project, retention.days, now);
 }
 
 /** Test seam: forget which projects were pruned today. */
@@ -160,7 +153,7 @@ export function readAgentMessageLog(project: Project, limit = 500): AgentMessage
 	try {
 		days = readdirSync(dir).filter((name) => parseDay(name) !== null).sort();
 	} catch {
-		return { rows: [], oldestDay: null, retentionDays: AGENT_MESSAGE_LOG_RETENTION_DAYS, hasMore: false };
+		return { rows: [], oldestDay: null, retentionDays: configuredLogRetentionDays(), hasMore: false };
 	}
 	const oldestDay = days[0] ? days[0].slice(0, -".jsonl".length) : null;
 	const rows: AgentMessageLogRow[] = [];
@@ -195,5 +188,5 @@ export function readAgentMessageLog(project: Project, limit = 500): AgentMessage
 			rows.push(withReceipt(row, receipts));
 		}
 	}
-	return { rows, oldestDay, retentionDays: AGENT_MESSAGE_LOG_RETENTION_DAYS, hasMore };
+	return { rows, oldestDay, retentionDays: configuredLogRetentionDays(), hasMore };
 }

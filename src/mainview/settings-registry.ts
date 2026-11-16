@@ -610,6 +610,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "log-retention",
+		category: "system",
+		titleKey: "settings.logRetention",
+		descriptionKey: "settings.logRetentionDesc",
+		anchor: "log-retention",
+		globalField: "logRetentionDays",
+		storage: "global",
+	},
+	{
 		id: "browser-notifications",
 		category: "notifications",
 		titleKey: "settings.browserNotifications",
@@ -814,6 +823,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"preventSleepWhileRunning",
 	"skipQuitDialog",
 	"autoCleanupTaskHistory",
+	"logRetentionDays",
 	"leanAgentProtocol",
 	"importShellEnv",
 	"agentEnvDefaults",

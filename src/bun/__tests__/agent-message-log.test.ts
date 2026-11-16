@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, readFileSync, rmSync, writeFileSync, appendFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, appendFileSync } from "node:fs";
 
 // A real filesystem, redirected: the point of these cases is that appends land as
 // bytes and that pruning deletes files, neither of which a mocked fs can prove.
@@ -15,13 +15,13 @@ vi.mock("../rpc-handlers/shared-pure", () => ({ getPushMessage: () => push }));
 import type { Project } from "../../shared/types";
 import {
 	AGENT_MESSAGE_LOG_MAX_ROW_BYTES,
-	AGENT_MESSAGE_LOG_RETENTION_DAYS,
 	AGENT_MESSAGE_LOG_TRUNCATION_MARK,
 	parseAgentMessageLogRow,
 	serializeAgentMessageLogReceipt,
 	serializeAgentMessageLogRow,
 	type AgentMessageLogInput,
 } from "../../shared/agent-message-log";
+import { DEFAULT_LOG_RETENTION_DAYS } from "../../shared/log-retention";
 import {
 	appendAgentMessageLog,
 	appendAgentMessageLogReceipt,
@@ -108,7 +108,7 @@ describe("append and read", () => {
 		const page = readAgentMessageLog(project);
 		expect(page.rows.map((r) => r.body)).toEqual(["second", "first"]);
 		expect(page.oldestDay).toBe("2026-08-23");
-		expect(page.retentionDays).toBe(AGENT_MESSAGE_LOG_RETENTION_DAYS);
+		expect(page.retentionDays).toBe(DEFAULT_LOG_RETENTION_DAYS);
 		expect(page.hasMore).toBe(false);
 	});
 
@@ -174,7 +174,7 @@ describe("append and read", () => {
 
 	it("answers an empty page for a project that has never sent a message", () => {
 		const page = readAgentMessageLog(project);
-		expect(page).toEqual({ rows: [], oldestDay: null, retentionDays: AGENT_MESSAGE_LOG_RETENTION_DAYS, hasMore: false });
+		expect(page).toEqual({ rows: [], oldestDay: null, retentionDays: DEFAULT_LOG_RETENTION_DAYS, hasMore: false });
 	});
 
 	it("survives an unwritable log directory without throwing", () => {
@@ -235,8 +235,8 @@ describe("retention", () => {
 	it("deletes day-files past the window and keeps the boundary day", () => {
 		const now = new Date(2026, 7, 23, 12, 0, 0);
 		const dayMs = 24 * 60 * 60 * 1000;
-		const boundary = new Date(now.getTime() - (AGENT_MESSAGE_LOG_RETENTION_DAYS - 1) * dayMs);
-		const expired = new Date(now.getTime() - AGENT_MESSAGE_LOG_RETENTION_DAYS * dayMs);
+		const boundary = new Date(now.getTime() - (DEFAULT_LOG_RETENTION_DAYS - 1) * dayMs);
+		const expired = new Date(now.getTime() - DEFAULT_LOG_RETENTION_DAYS * dayMs);
 		// Written directly, so the write path's own prune cannot pre-empt the case.
 		mkdirSync(messageLogDir(project), { recursive: true });
 		for (const [day, body] of [[expired, "expired"], [boundary, "boundary"], [now, "today"]] as const) {
@@ -244,9 +244,71 @@ describe("retention", () => {
 			writeFileSync(`${messageLogDir(project)}/${stamp}.jsonl`, serializeAgentMessageLogRow(makeRow({ body })));
 		}
 
-		expect(pruneAgentMessageLog(project, now)).toBe(1);
+		expect(pruneAgentMessageLog(project, DEFAULT_LOG_RETENTION_DAYS, now)).toBe(1);
 		const bodies = readAgentMessageLog(project).rows.map((r) => r.body);
 		expect(bodies).toEqual(["today", "boundary"]);
+	});
+
+	it("keeps a longer window when the retention is raised", () => {
+		const now = new Date(2026, 7, 23, 12, 0, 0);
+		const dayMs = 24 * 60 * 60 * 1000;
+		mkdirSync(messageLogDir(project), { recursive: true });
+		const stampOf = (daysAgo: number) => {
+			const day = new Date(now.getTime() - daysAgo * dayMs);
+			return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+		};
+		for (const daysAgo of [89, 90]) writeFileSync(`${messageLogDir(project)}/${stampOf(daysAgo)}.jsonl`, serializeAgentMessageLogRow(makeRow()));
+
+		expect(pruneAgentMessageLog(project, 90, now)).toBe(1);
+		expect(readdirSync(messageLogDir(project))).toEqual([`${stampOf(89)}.jsonl`]);
+	});
+
+	it("deletes nothing for a window beyond the Date range", () => {
+		mkdirSync(messageLogDir(project), { recursive: true });
+		writeFileSync(`${messageLogDir(project)}/2001-01-01.jsonl`, serializeAgentMessageLogRow(makeRow()));
+		expect(pruneAgentMessageLog(project, 1e9, new Date(2026, 7, 23))).toBe(0);
+		expect(readdirSync(messageLogDir(project))).toEqual(["2001-01-01.jsonl"]);
+	});
+
+	it("deletes nothing when the history is kept forever", () => {
+		mkdirSync(messageLogDir(project), { recursive: true });
+		writeFileSync(`${messageLogDir(project)}/2001-01-01.jsonl`, serializeAgentMessageLogRow(makeRow()));
+		expect(pruneAgentMessageLog(project, null, new Date(2026, 7, 23))).toBe(0);
+		expect(readdirSync(messageLogDir(project))).toEqual(["2001-01-01.jsonl"]);
+	});
+
+	it("reads the configured retention for the daily prune and for the page", () => {
+		const now = new Date(2026, 7, 23, 12, 0, 0);
+		writeFileSync(`${home}/settings.json`, JSON.stringify({ logRetentionDays: "forever" }));
+		try {
+			mkdirSync(messageLogDir(project), { recursive: true });
+			writeFileSync(`${messageLogDir(project)}/2001-01-01.jsonl`, serializeAgentMessageLogRow(makeRow({ body: "ancient" })));
+			appendAgentMessageLog(project, makeRow({ body: "today" }), now);
+			const page = readAgentMessageLog(project);
+			expect(page.rows.map((r) => r.body)).toEqual(["today", "ancient"]);
+			expect(page.retentionDays).toBeNull();
+		} finally {
+			rmSync(`${home}/settings.json`, { force: true });
+		}
+	});
+
+	it("skips the daily prune while settings.json is unreadable and prunes once it is fixed", () => {
+		const now = new Date(2026, 7, 23, 12, 0, 0);
+		mkdirSync(messageLogDir(project), { recursive: true });
+		writeFileSync(`${messageLogDir(project)}/2001-01-01.jsonl`, serializeAgentMessageLogRow(makeRow({ body: "ancient" })));
+		try {
+			for (const broken of ["{ not json", JSON.stringify({ logRetentionDays: "abc" })]) {
+				writeFileSync(`${home}/settings.json`, broken);
+				appendAgentMessageLog(project, makeRow({ body: "first" }), now);
+				expect(readdirSync(messageLogDir(project))).toContain("2001-01-01.jsonl");
+			}
+
+			writeFileSync(`${home}/settings.json`, JSON.stringify({}));
+			appendAgentMessageLog(project, makeRow({ body: "second" }), now);
+			expect(readdirSync(messageLogDir(project))).not.toContain("2001-01-01.jsonl");
+		} finally {
+			rmSync(`${home}/settings.json`, { force: true });
+		}
 	});
 
 	it("prunes from the write path, once per day per project", () => {
@@ -263,7 +325,7 @@ describe("retention", () => {
 		const now = new Date(2026, 7, 23, 12, 0, 0);
 		appendAgentMessageLog(project, makeRow(), now);
 		writeFileSync(`${messageLogDir(project)}/README.txt`, "hands off");
-		expect(pruneAgentMessageLog(project, new Date(2027, 0, 1))).toBe(1);
+		expect(pruneAgentMessageLog(project, DEFAULT_LOG_RETENTION_DAYS, new Date(2027, 0, 1))).toBe(1);
 		expect(readFileSync(`${messageLogDir(project)}/README.txt`, "utf8")).toBe("hands off");
 	});
 });
