@@ -75,6 +75,8 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 	const armedRef = useRef(false);
 	const skipGit = completionSkipsGitCheck(task, project);
 	const [git, setGit] = useState<GitCheck>(skipGit ? { state: "skipped" } : { state: "checking" });
+	// Set once a click was held back for new losses: then the warning says why, hover or not.
+	const [held, setHeld] = useState(false);
 
 	// Filled after mount: a live region announces a change, not the text it was born with.
 	const [announcement, setAnnouncement] = useState("");
@@ -115,7 +117,10 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 		if (!liveRef.current) return;
 		setGit(next);
 		const fresh = next.state === "done" ? next.warning : null;
-		if (fresh && fresh !== shown) return;
+		if (fresh && fresh !== shown) {
+			setHeld(true);
+			return;
+		}
 		offer.answer(true);
 	};
 	const isAgent = offer.kind === "agent";
@@ -123,6 +128,9 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 	const title = t(isAgent ? "completionStrip.agentTitle" : "completionStrip.mergedTitle");
 	const note = completionOfferNote(task, project, t);
 	const buttonPad = bar ? "py-1" : "py-1.5";
+	// The bar stays one line: its note and git state open upward on hover or focus,
+	// which reaching Complete always passes through.
+	const hoverOnly = bar ? "hidden group-hover:block group-focus-within:block" : "";
 
 	return (
 		<div
@@ -152,16 +160,16 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 				)}
 				<div className={bar ? "min-w-0 flex flex-col-reverse" : "min-w-0"}>
 					<div className={`font-medium text-fg ${bar ? "truncate" : ""}`} title={bar ? title : undefined}>{title}</div>
-					<div className={`text-xs text-fg-3 ${bar ? "hidden group-hover:block group-focus-within:block" : ""}`} data-testid="task-completion-strip-note">{note}</div>
+					<div className={`text-xs text-fg-3 ${hoverOnly}`} data-testid="task-completion-strip-note">{note}</div>
 					{offer.reason && (
-						<div className={bar ? "hidden group-hover:block group-focus-within:block pb-1" : "pt-1"}>
+						<div className={bar ? `${hoverOnly} pb-1` : "pt-1"}>
 							<ApprovalReasonNote reason={offer.reason} tone="danger" />
 						</div>
 					)}
 					{checking && !bar && <div className="text-xs text-fg-3" role="status">{t("task.checkingBranchState")}</div>}
-					{git.state === "unknown" && <div className="text-xs text-warning-strong">{t("task.branchStateUnknown")}</div>}
+					{git.state === "unknown" && <div className={`text-xs text-warning-strong ${hoverOnly}`}>{t("task.branchStateUnknown")}</div>}
 					{git.state === "done" && git.warning && (
-						<div className="text-xs text-danger whitespace-pre-line" data-testid="task-completion-strip-warning">{git.warning}</div>
+						<div className={`text-xs text-danger whitespace-pre-line ${held ? "" : hoverOnly}`} data-testid="task-completion-strip-warning">{git.warning}</div>
 					)}
 				</div>
 			</div>
