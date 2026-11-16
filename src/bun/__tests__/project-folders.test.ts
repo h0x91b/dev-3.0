@@ -46,6 +46,11 @@ describe("collectProjectFolders", () => {
 		expect(folders[0].name).toBe("docs");
 	});
 
+	it("drops a folder inside the project and keeps one that contains it", async () => {
+		const folders = await collectProjectFolders(project({ extraFolders: [join(projectDir, "src"), "./docs-inside", tmp] }));
+		expect(folders.map((f) => f.path)).toEqual([tmp, lib, docs]);
+	});
+
 	it("resolves relative paths against the project and ~ against home", async () => {
 		const folders = await collectProjectFolders(project({ extraFolders: ["../lib", "~/dev3-nonexistent-folder"] }));
 		expect(folders[0].path).toBe(lib);

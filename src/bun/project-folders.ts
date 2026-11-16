@@ -94,7 +94,8 @@ export async function collectProjectFolders(project: Project, opts: { withBranch
 			return;
 		}
 		const path = expandPath(raw, project.path);
-		if (seen.has(path)) return;
+		// A folder inside the project is already in its tree. A folder that contains the project stays: it is a wider grant worth seeing.
+		if (seen.has(path) || path.startsWith(own + sep)) return;
 		seen.add(path);
 		candidates.push({ path, source });
 	};
