@@ -141,7 +141,7 @@ export async function isSoleMainAgent(task: Task, agent: ScheduledMessageAuthor)
 	const reviews = await findAuxPanes(task, "columnAgent", socketOf(task), { strict: true }).catch(() => null);
 	if (!live || !reviews) return false;
 	const agents = new Set([...live, ...reviews.map((pane) => pane.paneId)]);
-	const mainPaneId = taskTerminalBackendIdentity(task) === "native" ? NATIVE_AGENT_PANE_ID : mainAgentPaneId(task, await livePaneIds(task));
+	const mainPaneId = mainAgentPaneId(task, await livePaneIds(task));
 	if (agents.size !== 1 || !mainPaneId || !agents.has(mainPaneId)) return false;
 	const resolved = await resolveScheduledMessageAuthorPane(task, agent);
 	return resolved.ok && resolved.paneId === mainPaneId;
