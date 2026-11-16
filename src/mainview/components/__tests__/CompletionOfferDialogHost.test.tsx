@@ -1,25 +1,18 @@
 import { act, render, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Project, Task, UnsavedWork } from "../../../shared/types";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 
-vi.mock("../../rpc", () => ({ api: { request: { getUnsavedWork: vi.fn(), getTasks: vi.fn() } } }));
 vi.mock("../../confirm", () => ({
 	confirm: vi.fn(),
 	whenConfirmHostMounted: vi.fn().mockResolvedValue(true),
 }));
 
-import { api } from "../../rpc";
 import { confirm, type ConfirmOptions } from "../../confirm";
-import { _resetCompletionOffersForTests, offerCompletion, setCompletionOfferStyle, type CompletionOfferAnswer, type CompletionOfferKind } from "../../completion-offers";
+import { _resetCompletionOffersForTests, hasCompletionOffer, offerCompletion, setCompletionOfferStyle, type CompletionOfferAnswer, type CompletionOfferKind } from "../../completion-offers";
 import CompletionOfferDialogHost from "../CompletionOfferDialogHost";
 
-const project = { id: "p1", name: "Alpha", path: "/a" } as Project;
-const task = { id: "t1", projectId: "p1", worktreePath: "/wt/t1", branchName: "feat/x", status: "review-by-user", seq: 1 } as Task;
-const clean = { insertions: 0, deletions: 0, unpushed: 0, ahead: 0 } as UnsavedWork;
-
 function renderHost(ready = true) {
-	return render(<I18nProvider><CompletionOfferDialogHost ready={ready} projects={[project]} onOpenTask={vi.fn()} /></I18nProvider>);
+	return render(<I18nProvider><CompletionOfferDialogHost ready={ready} /></I18nProvider>);
 }
 
 /** Wrapped, because an async function would flatten the answer promise and wait on it. */
@@ -34,23 +27,26 @@ function lastConfirm(): ConfirmOptions {
 	return calls[calls.length - 1]![0];
 }
 
-beforeEach(() => {
-	vi.mocked(api.request.getTasks).mockResolvedValue([task]);
-	vi.mocked(api.request.getUnsavedWork).mockResolvedValue(clean);
-});
 afterEach(() => {
 	_resetCompletionOffersForTests();
 	vi.clearAllMocks();
 });
 
 describe("CompletionOfferDialogHost", () => {
-	it("asks an agent request in the agent-request modal and hands the answer to the offer", async () => {
+	it("asks an agent request in main's agent-request modal and hands the answer to the offer", async () => {
 		vi.mocked(confirm).mockResolvedValue(true);
 		renderHost();
 		const { answer } = await offer("agent");
 		await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
-		expect(lastConfirm()).toMatchObject({ agentInitiated: true, danger: true, dismissOnBackdrop: false });
-		expect(lastConfirm().deferred?.gateConfirm).toBe(true);
+		expect(lastConfirm()).toMatchObject({
+			title: "Agent requests completion",
+			confirmLabel: "Complete task",
+			cancelLabel: "Keep session",
+			agentInitiated: true,
+			danger: true,
+		});
+		expect(lastConfirm().message).toContain("Approving will destroy the worktree");
+		expect(lastConfirm().deferred).toBeUndefined();
 		// Opening the task from the card would decline the agent, so it has no click.
 		expect(lastConfirm().info?.onClick).toBeUndefined();
 		await expect(answer).resolves.toBe(true);
@@ -64,13 +60,37 @@ describe("CompletionOfferDialogHost", () => {
 		expect(lastConfirm().reason).toEqual({ text: "PR merged" });
 	});
 
-	it("offers manual completion for a merge and passes it through", async () => {
+	it("says the folder is kept when the agent's task has no worktree of its own", async () => {
+		vi.mocked(confirm).mockResolvedValue(true);
+		renderHost();
+		await act(async () => { void offerCompletion({ taskId: "t1", projectId: "p1", kind: "agent", keepsFolder: true }); });
+		await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+		expect(lastConfirm().message).toContain("The working folder and its files are kept.");
+	});
+
+	it("shows the task card the caller built", async () => {
+		vi.mocked(confirm).mockResolvedValue(true);
+		renderHost();
+		const onClick = vi.fn();
+		await act(async () => { void offerCompletion({ taskId: "t1", projectId: "p1", kind: "merge", branchName: "feat/x", dialogInfo: { title: "Wire Task", onClick } }); });
+		await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+		expect(lastConfirm().info).toEqual({ title: "Wire Task", onClick });
+	});
+
+	it("asks a merge in main's outcome-card dialog and passes manual completion through", async () => {
 		vi.mocked(confirm).mockResolvedValue("manual" as never);
 		renderHost();
 		const { answer } = await offer("merge");
 		await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
-		expect(lastConfirm().alternativeAction).toEqual(expect.objectContaining({ value: "manual" }));
-		expect(lastConfirm().agentInitiated).toBe(false);
+		expect(lastConfirm()).toMatchObject({
+			title: "The branch is in the base branch",
+			cancelLabel: "Not now",
+			alternativeAction: { value: "manual" },
+			outcomeCards: { kicker: "Branch merged", statusLabel: "Merged", statusValue: "feat/x" },
+			dismissOnBackdrop: false,
+		});
+		expect(lastConfirm().outcomeCards?.cancelDescription).toBe("Keep it open and ask again after the next merge.");
+		expect(lastConfirm().agentInitiated).toBeUndefined();
 		await expect(answer).resolves.toBe("manual");
 	});
 
@@ -92,7 +112,7 @@ describe("CompletionOfferDialogHost", () => {
 		await offer("agent");
 		await act(async () => {});
 		expect(confirm).not.toHaveBeenCalled();
-		rerender(<I18nProvider><CompletionOfferDialogHost ready projects={[project]} onOpenTask={vi.fn()} /></I18nProvider>);
+		rerender(<I18nProvider><CompletionOfferDialogHost ready /></I18nProvider>);
 		await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
 	});
 
@@ -111,12 +131,15 @@ describe("CompletionOfferDialogHost", () => {
 		await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
 	});
 
-	it("settles every offer on the task when one is kept open", async () => {
-		vi.mocked(confirm).mockResolvedValue(false);
+	// Each ask has its own dialog, as before the setting existed: "Keep session"
+	// says no to the agent and leaves a waiting merge dialog alone.
+	it("answers only its own offer when a dialog is declined", async () => {
+		vi.mocked(confirm).mockReturnValueOnce(new Promise(() => {})).mockResolvedValueOnce(false);
 		renderHost();
-		const merge = await offer("merge");
+		await offer("merge");
+		await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
 		const agent = await offer("agent");
 		await expect(agent.answer).resolves.toBe(false);
-		await expect(merge.answer).resolves.toBe(false);
+		expect(hasCompletionOffer("t1", "merge")).toBe(true);
 	});
 });

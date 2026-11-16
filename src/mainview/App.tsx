@@ -2372,6 +2372,7 @@ function App() {
 					fingerprint: fingerprint ?? null,
 					shouldPrompt,
 					shouldNotify,
+					onOpenTask: () => openTaskFromNotification(taskId, projectId),
 					onOffered: () => {
 						withdrawBell = announceCompletionOffer({
 							taskId, projectId, taskTitle, subject,
@@ -2486,7 +2487,7 @@ function App() {
 			requestId: string;
 			taskId: string;
 			projectId: string;
-			taskTitle?: string;
+			taskTitle: string;
 			subject?: TaskDialogSubject;
 			reason?: ApprovalReason;
 		}) {
@@ -2506,7 +2507,13 @@ function App() {
 			let withdrawBell: (() => void) | undefined;
 			try {
 				const isNew = !hasCompletionOffer(taskId, "agent");
-				const answer = offerCompletion({ taskId, projectId, kind: "agent", ...(reason ? { reason } : {}), signal: abort.signal });
+				const answer = offerCompletion({
+					taskId, projectId, kind: "agent", ...(reason ? { reason } : {}),
+					dialogInfo: taskDialogInfoFromSubject(taskTitle, subject),
+					// Without its own worktree nothing is deleted: the folder outlives the task.
+					keepsFolder: keepsTaskFolder(projectId, subject),
+					signal: abort.signal,
+				});
 				if (isNew) withdrawBell = announceCompletionOffer({
 					taskId, projectId, taskTitle, subject,
 					reason: t("completionStrip.agentTitle"),
@@ -4067,7 +4074,7 @@ function App() {
 			{/* Agents block on these answers, and confirm() declines when no host is
 			    mounted — so the hosts stay up in immersive fullscreen too. */}
 			<ConfirmHost onBusyChange={setConfirmBusy} />
-			<CompletionOfferDialogHost ready={settingsLoaded} projects={state.projects} onOpenTask={openTaskFromNotification} />
+			<CompletionOfferDialogHost ready={settingsLoaded} />
 			{!confirmBusy && pendingAgentRequest && ("env" in pendingAgentRequest ? (
 				<SecretRequestModal key={pendingAgentRequest.requestId} request={pendingAgentRequest}
 					onDone={() => setAgentRequests((queue) => queue.filter((request) => request.requestId !== pendingAgentRequest.requestId))} />

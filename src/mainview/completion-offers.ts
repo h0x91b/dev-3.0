@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { DEFAULT_COMPLETION_OFFER_STYLE, type CompletionOfferStyle } from "../shared/types";
 import type { ApprovalReason } from "../shared/approval-reason";
+import type { ConfirmOptions } from "./confirm";
 
 /**
  * Completion offers the user has not answered yet: "the branch merged" and "the
@@ -24,6 +25,10 @@ export interface CompletionOffer {
 	branchName?: string;
 	/** Agent offers only: why the agent asks (`--reason`). */
 	reason?: ApprovalReason;
+	/** The task card the Dialog style shows, built by the caller exactly as before offers existed. */
+	dialogInfo?: ConfirmOptions["info"];
+	/** Agent offers only: completing keeps the task's folder, so the Dialog style says so. */
+	keepsFolder?: boolean;
 	/** Set when the style switched to Dialog while this offer waited: it keeps asking on its task. */
 	staysOnTask?: boolean;
 	answer: (answer: CompletionOfferAnswer) => void;
@@ -35,6 +40,8 @@ export interface OfferCompletionParams {
 	kind: CompletionOfferKind;
 	branchName?: string;
 	reason?: ApprovalReason;
+	dialogInfo?: ConfirmOptions["info"];
+	keepsFolder?: boolean;
 	/** Aborting withdraws the offer and resolves `false` (answered on another client). */
 	signal?: AbortSignal;
 }
@@ -86,6 +93,8 @@ export function offerCompletion(params: OfferCompletionParams): Promise<Completi
 			kind: params.kind,
 			branchName: params.branchName,
 			...(params.reason ? { reason: params.reason } : {}),
+			...(params.dialogInfo ? { dialogInfo: params.dialogInfo } : {}),
+			...(params.keepsFolder !== undefined ? { keepsFolder: params.keepsFolder } : {}),
 			answer: settle,
 		}];
 		emit();

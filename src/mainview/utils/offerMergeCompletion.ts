@@ -6,6 +6,7 @@ import type { Project, Task, TaskDialogSubject } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import { createMergePromptAbort } from "./mergePromptAbort";
 import { runMergeCompletionPromptOnce } from "./mergeCompletionPrompt";
+import { taskDialogInfo, taskDialogInfoFromSubject } from "./taskDialogInfo";
 
 /**
  * Where the "Branch merged → complete the task?" offer originates. The App-level
@@ -53,6 +54,8 @@ export interface OfferMergeCompletionParams {
 	 * completes the live task through `moveTaskToStatus`).
 	 */
 	onComplete: () => void;
+	/** Opens the task subject from the dialog and intentionally follows the Not now path. */
+	onOpenTask?: () => void;
 	/** Runs once the offer is on its task — the App path uses it to tell a user who is looking elsewhere. */
 	onOffered?: () => void;
 }
@@ -80,6 +83,7 @@ function resolveContext(context: MergeCompletionContext) {
 			projectId: project.id,
 			taskTitle: getTaskTitle(task),
 			branchName: task.branchName ?? "",
+			info: taskDialogInfo(task, project),
 		};
 	}
 	return {
@@ -87,6 +91,7 @@ function resolveContext(context: MergeCompletionContext) {
 		projectId: context.projectId,
 		taskTitle: context.taskTitle,
 		branchName: context.branchName,
+		info: taskDialogInfoFromSubject(context.taskTitle, context.subject),
 	};
 }
 
@@ -102,8 +107,8 @@ function resolveContext(context: MergeCompletionContext) {
 export async function offerMergeCompletion(
 	params: OfferMergeCompletionParams,
 ): Promise<OfferMergeCompletionOutcome> {
-	const { context, t, reserve = false, force = false, onComplete, onOffered } = params;
-	const { taskId, projectId, taskTitle, branchName } = resolveContext(context);
+	const { context, t, reserve = false, force = false, onComplete, onOpenTask, onOffered } = params;
+	const { taskId, projectId, taskTitle, branchName, info } = resolveContext(context);
 
 	let fingerprint = params.fingerprint;
 	let shouldPrompt = params.shouldPrompt;
@@ -128,7 +133,11 @@ export async function offerMergeCompletion(
 	const abort = createMergePromptAbort(taskId);
 	const runPrompt = () => {
 		const isNew = !hasCompletionOffer(taskId, "merge");
-		const answer = offerCompletion({ taskId, projectId, kind: "merge", branchName, signal: abort.signal });
+		const answer = offerCompletion({
+			taskId, projectId, kind: "merge", branchName,
+			dialogInfo: onOpenTask ? { ...info, onClick: onOpenTask } : info,
+			signal: abort.signal,
+		});
 		if (isNew) onOffered?.();
 		return answer;
 	};

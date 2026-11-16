@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Project, Task } from "../../../shared/types";
+import type { Project, Task, TaskDialogSubject } from "../../../shared/types";
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -153,6 +153,39 @@ describe("offerMergeCompletion", () => {
 		consoleError.mockRestore();
 	});
 
+	it("builds the Dialog style's info card from the wire subject, with the open-task click", async () => {
+		mockedConfirm.mockResolvedValue(false);
+		const subject: TaskDialogSubject = {
+			seqLabel: "99",
+			projectName: "Beta",
+			priority: "P1",
+			labels: [],
+			overview: "some overview",
+		};
+		const onOpenTask = vi.fn();
+
+		await offerMergeCompletion({
+			context: { ...wireContext, subject },
+			t,
+			fingerprint: "fp-1",
+			onComplete: vi.fn(),
+			onOpenTask,
+		});
+
+		expect(mockedConfirm).toHaveBeenCalledWith(
+			expect.objectContaining({
+				dialogInfo: expect.objectContaining({
+					title: "Wire Task",
+					body: "some overview",
+					seqLabel: "99",
+					projectName: "Beta",
+					priority: "P1",
+					onClick: onOpenTask,
+				}),
+			}),
+		);
+	});
+
 	it("calls onOffered once the offer is on its task", async () => {
 		mockedConfirm.mockResolvedValue(false);
 		const onOffered = vi.fn();
@@ -277,7 +310,10 @@ describe("offerMergeCompletion", () => {
 		});
 
 		expect(mockedConfirm).toHaveBeenCalledWith(
-			expect.objectContaining({ taskId: "t1", projectId: "p1", kind: "merge", branchName: "feat/x" }),
+			expect.objectContaining({
+				taskId: "t1", projectId: "p1", kind: "merge", branchName: "feat/x",
+				dialogInfo: expect.objectContaining({ title: "My Task", projectName: "Alpha" }),
+			}),
 		);
 		expect(onComplete).toHaveBeenCalledTimes(1);
 	});

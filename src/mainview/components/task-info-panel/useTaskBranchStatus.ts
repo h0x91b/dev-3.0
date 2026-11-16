@@ -213,7 +213,15 @@ export function useTaskBranchStatus({
 		});
 	}, [dispatch, navigate, project, task, t]);
 
-	// Offers the "Branch Merged → complete the task?" strip when the branch is
+	const openTask = useCallback(() => {
+		if (getTaskOpenMode() === "fullscreen") {
+			navigate({ screen: "task", projectId: project.id, taskId: task.id });
+		} else {
+			navigate({ screen: "project", projectId: project.id, activeTaskId: task.id });
+		}
+	}, [navigate, project.id, task.id]);
+
+	// Offers the "Branch Merged → complete the task?" offer when the branch is
 	// fully merged into its base. `force` is set when the user explicitly clicks
 	// the git refresh button: it re-asks even after a prior dismissal or within
 	// the same session (bypassing both the in-memory once-guard and the backend
@@ -248,6 +256,7 @@ export function useTaskBranchStatus({
 				fingerprint: status.mergeCompletionFingerprint,
 				reserve: true,
 				force,
+				onOpenTask: openTask,
 				onComplete: completeTask,
 			});
 		},
@@ -255,6 +264,7 @@ export function useTaskBranchStatus({
 			baseBranch,
 			compareRef,
 			completeTask,
+			openTask,
 			project.id,
 			task.branchName,
 			task.customTitle,
@@ -399,6 +409,7 @@ export function useTaskBranchStatus({
 					t,
 					fingerprint: refreshedStatus?.mergeCompletionFingerprint,
 					reserve: true,
+					onOpenTask: openTask,
 					onComplete: completeTask,
 				});
 			}
@@ -406,7 +417,7 @@ export function useTaskBranchStatus({
 
 		window.addEventListener("rpc:gitOpCompleted", onGitOpCompleted);
 		return () => window.removeEventListener("rpc:gitOpCompleted", onGitOpCompleted);
-	}, [applyStatus, cacheKey, compareRef, completeTask, enabled, handleCreatePR, project.id, task.customTitle, task.id, task.manualCompletion, task.status, task.title, t]);
+	}, [applyStatus, cacheKey, compareRef, completeTask, enabled, handleCreatePR, openTask, project.id, task.customTitle, task.id, task.manualCompletion, task.status, task.title, t]);
 
 	const handleRefreshStatus = useCallback(async () => {
 		if (refreshingStatus || !isTaskActive || !task.worktreePath) {
