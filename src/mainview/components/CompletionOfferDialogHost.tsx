@@ -21,8 +21,11 @@ export default function CompletionOfferDialogHost({ ready }: {
 	latestT.current = t;
 
 	useEffect(() => {
+		// A modal closes when its offer settled or no longer asks in the dialog (a switch
+		// to On the task): the offer stays in the store and its bar takes over.
 		for (const [id, controller] of asked.current) {
-			if (offers.some((o) => o.id === id)) continue;
+			const offer = offers.find((o) => o.id === id);
+			if (offer && offerAsksInDialog(offer, style)) continue;
 			controller.abort();
 			asked.current.delete(id);
 		}

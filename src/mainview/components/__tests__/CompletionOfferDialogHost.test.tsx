@@ -142,4 +142,14 @@ describe("CompletionOfferDialogHost", () => {
 		await expect(agent.answer).resolves.toBe(false);
 		expect(hasCompletionOffer("t1", "merge")).toBe(true);
 	});
+
+	it("closes an open modal when the style switches to On the task", async () => {
+		vi.mocked(confirm).mockReturnValue(new Promise(() => {}));
+		renderHost();
+		await offer("agent");
+		await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+		const signal = lastConfirm().signal!;
+		await act(async () => { setCompletionOfferStyle("inline"); });
+		expect(signal.aborted).toBe(true); // currently false
+	});
 });
