@@ -862,17 +862,19 @@ function App() {
 		routeRef.current = state.route;
 	}, [state.route]);
 
-	// A completion offer asks in the dialog, or waits on its task's strip. Where no
-	// strip is on screen (another task, the board, immersive fullscreen) the bell and a toast carry it.
+	// On the task, an offer waits on its task's strip. Where no strip is on screen
+	// (another task, the board, immersive fullscreen) the bell and a toast carry it.
+	// The Dialog style is the modal alone, as before the setting: no bell, no toast.
 	// The toast carries its own source line and click: the resolver only knows the open project's tasks.
-	// Returns the bell's withdrawal, for once the offer settles — possibly on another client.
+	// Returns the bell's withdrawal, for once the offer settles - possibly on another client.
 	const announceCompletionOffer = (offer: {
 		taskId: string; projectId: string; taskTitle?: string; subject?: TaskDialogSubject; reason: string;
 	}): (() => void) => {
 		const { taskId, projectId, taskTitle, subject, reason } = offer;
+		if (getCompletionOfferStyle() !== "inline") return () => {};
 		dispatch({ type: "addBell", taskId, reason });
 		const withdrawBell = () => dispatch({ type: "removeBellReason", taskId, reason });
-		if (getCompletionOfferStyle() === "dialog" || isCompletionStripMounted(taskId)) return withdrawBell;
+		if (isCompletionStripMounted(taskId)) return withdrawBell;
 		const context = subject ? [`#${subject.seqLabel}`, subject.projectName, taskTitle].filter(Boolean).join(" · ") : taskTitle;
 		// The toast asks the bar's own question, so the two never read as different asks.
 		toast.info(reason, { taskId, context, onClick: () => openTaskFromNotification(taskId, projectId) });
@@ -1928,9 +1930,10 @@ function App() {
 		return () => window.removeEventListener("rpc:taskRemoved", onTaskRemoved);
 	}, [dispatch]);
 
+	const completionOfferStyle = globalSettings.completionOfferStyle ?? DEFAULT_COMPLETION_OFFER_STYLE;
 	useEffect(() => {
-		setCompletionOfferStyle(globalSettings.completionOfferStyle ?? DEFAULT_COMPLETION_OFFER_STYLE);
-	}, [globalSettings.completionOfferStyle]);
+		setCompletionOfferStyle(completionOfferStyle);
+	}, [completionOfferStyle]);
 
 	useEffect(() => {
 		function onGlobalSettingsUpdated(e: Event) {
@@ -2429,14 +2432,16 @@ function App() {
 		}
 		window.addEventListener("rpc:branchMerged", onBranchMerged);
 
-		// `branchMerged` is one-shot, so a reload or a reconnect asks what is still
-		// unanswered. The offer store and the once-guard drop what is already shown.
+		// On the task, `branchMerged` is one-shot, so a reload or a reconnect asks what is
+		// still unanswered. The offer store and the once-guard drop what is already shown.
+		// The Dialog style does not replay, as before the setting.
 		function replayPendingMergeOffers() {
+			if (getCompletionOfferStyle() !== "inline") return;
 			api.request.listPendingMergeOffers({}).then((pending) => {
 				for (const offer of pending) void offerMerged(offer);
 			}).catch((err) => console.error("listPendingMergeOffers failed:", err));
 		}
-		replayPendingMergeOffers();
+		if (settingsLoaded) replayPendingMergeOffers();
 		const onRpcStatus = (e: Event) => {
 			if ((e as CustomEvent).detail?.state === "connected") replayPendingMergeOffers();
 		};
@@ -2445,7 +2450,7 @@ function App() {
 			window.removeEventListener("rpc:branchMerged", onBranchMerged);
 			window.removeEventListener(RPC_STATUS_EVENT, onRpcStatus);
 		};
-	}, [dispatch, navigate, openTaskFromNotification, t]);
+	}, [dispatch, navigate, openTaskFromNotification, t, settingsLoaded, completionOfferStyle]);
 
 	// Agent-initiated changes are intentionally visible because they change how
 	// future merge events behave; user toggles in the inspector stay silent.

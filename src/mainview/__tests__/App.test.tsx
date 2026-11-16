@@ -4341,17 +4341,26 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.queryByText("Branch merged. The task is ready to complete.")).not.toBeInTheDocument();
 		});
 
-		it("replays an unanswered merge offer after a reload", async () => {
-			vi.mocked(api.request.listPendingMergeOffers).mockResolvedValueOnce([{
-				taskId: "t1", projectId: "p1", taskTitle: "Some task", branchName: "feat/replayed", fingerprint: "fp-replay-1",
-				subject: { seqLabel: "1", projectName: "Alpha", priority: "P3", labels: [], overview: null },
-			}] as never);
+		it("replays an unanswered merge offer after a reload on the inline style", async () => {
+			await withCompletionOfferStyle("inline", async () => {
+				vi.mocked(api.request.listPendingMergeOffers).mockResolvedValueOnce([{
+					taskId: "t1", projectId: "p1", taskTitle: "Some task", branchName: "feat/replayed", fingerprint: "fp-replay-1",
+					subject: { seqLabel: "1", projectName: "Alpha", priority: "P3", labels: [], overview: null },
+				}] as never);
 
+				await renderApp();
+
+				await waitFor(() => expect(offerCompletion).toHaveBeenCalledWith(expect.objectContaining({
+					taskId: "t1", kind: "merge", branchName: "feat/replayed",
+				})));
+			});
+		});
+
+		it("does not replay merge offers on the default dialog style", async () => {
 			await renderApp();
+			await act(async () => {});
 
-			await waitFor(() => expect(offerCompletion).toHaveBeenCalledWith(expect.objectContaining({
-				taskId: "t1", kind: "merge", branchName: "feat/replayed",
-			})));
+			expect(api.request.listPendingMergeOffers).not.toHaveBeenCalled();
 		});
 
 		it("re-asks on the next merge after Not now", async () => {
@@ -4914,32 +4923,53 @@ describe("App keyboard shortcuts", () => {
 			expect(api.request.respondToAgentCompletionRequest).not.toHaveBeenCalled();
 		});
 
-		it("withdraws the offer's bell once another client answers it", async () => {
+		it("withdraws the offer's bell once another client answers it, on the inline style", async () => {
+			await withCompletionOfferStyle("inline", async () => {
+				vi.mocked(api.request.getProjects).mockResolvedValue([
+					{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+				]);
+				vi.mocked(api.request.getLastRoute).mockResolvedValue({
+					route: JSON.stringify({ screen: "project", projectId: "p1" }),
+				});
+				vi.mocked(offerCompletion).mockImplementation(((opts: { signal?: AbortSignal }) =>
+					new Promise<boolean>((resolve) => {
+						opts.signal?.addEventListener("abort", () => resolve(false));
+					})) as never);
+
+				await renderApp();
+				await act(async () => {
+					window.dispatchEvent(new CustomEvent("rpc:agentCompletionRequested", {
+						detail: { requestId: "req-bell", taskId: "t-overflow", projectId: "p1", taskTitle: "Some task" },
+					}));
+				});
+				await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-bell-count", "1"));
+
+				await act(async () => {
+					window.dispatchEvent(new CustomEvent("rpc:agentRequestResolved", {
+						detail: { requestId: "req-bell", kind: "complete", taskId: "t-overflow", projectId: "p1" },
+					}));
+				});
+				await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-bell-count", "0"));
+			});
+		});
+
+		it("raises no bell for an agent's completion request on the default dialog style", async () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue([
 				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
 			]);
 			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "project", projectId: "p1" }),
 			});
-			vi.mocked(offerCompletion).mockImplementation(((opts: { signal?: AbortSignal }) =>
-				new Promise<boolean>((resolve) => {
-					opts.signal?.addEventListener("abort", () => resolve(false));
-				})) as never);
+			vi.mocked(offerCompletion).mockReturnValue(new Promise(() => {}) as never);
 
 			await renderApp();
 			await act(async () => {
 				window.dispatchEvent(new CustomEvent("rpc:agentCompletionRequested", {
-					detail: { requestId: "req-bell", taskId: "t-overflow", projectId: "p1", taskTitle: "Some task" },
+					detail: { requestId: "req-no-bell", taskId: "t-overflow", projectId: "p1", taskTitle: "Some task" },
 				}));
 			});
-			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-bell-count", "1"));
-
-			await act(async () => {
-				window.dispatchEvent(new CustomEvent("rpc:agentRequestResolved", {
-					detail: { requestId: "req-bell", kind: "complete", taskId: "t-overflow", projectId: "p1" },
-				}));
-			});
-			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-bell-count", "0"));
+			await waitFor(() => expect(offerCompletion).toHaveBeenCalled());
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-bell-count", "0");
 		});
 
 		it("closes the launch dialog without answering", async () => {

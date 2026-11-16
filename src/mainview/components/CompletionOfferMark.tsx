@@ -1,17 +1,19 @@
 import type { Task } from "../../shared/types";
-import { pickCompletionOffer, useCompletionOffers } from "../completion-offers";
+import { offerAsksInDialog, pickCompletionOffer, useCompletionOffers, useCompletionOfferStyle } from "../completion-offers";
 import { useT } from "../i18n";
 import Tooltip from "./Tooltip";
 import { MergeIcon } from "./task-info-panel/GitIcons";
 
 /**
- * Passive card marker: a completion offer waits in this task's view. A tinted badge,
+ * Passive card marker: a completion offer waits in this task's view. Only offers
+ * that ask on their task count: the Dialog style shows none, as before the setting. A tinted badge,
  * so it never reads as part of the agent label beside it, and never a ✓, which is
  * the quick-complete action. With both kinds waiting it shows the agent's and names both.
  */
 export default function CompletionOfferMark({ task, testId }: { task: Pick<Task, "id">; testId?: string }) {
 	const t = useT();
-	const offers = useCompletionOffers();
+	const style = useCompletionOfferStyle();
+	const offers = useCompletionOffers().filter((o) => !offerAsksInDialog(o, style));
 	const offer = pickCompletionOffer(offers, task.id);
 	if (!offer) return null;
 	const kinds = new Set(offers.filter((o) => o.taskId === task.id).map((o) => o.kind));
