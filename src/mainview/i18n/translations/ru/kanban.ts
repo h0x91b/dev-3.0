@@ -505,6 +505,8 @@ const kanban = {
 	"scheduleMessage.scheduling": "Планирование…",
 	"scheduleMessage.failed": "Не удалось запланировать: {error}",
 	"scheduleMessage.scheduleHint": "Отправит {day} в {time} — через {rel}",
+	"scheduleMessage.modeDraft": "Не сейчас",
+	"scheduleMessage.draftHint": "Хранится здесь как заметка. Ничего не отправится, пока вы не отправите с карточки.",
 	"scheduleMessage.modeNow": "Сейчас",
 	"scheduleMessage.modeStop": "Когда агент остановится",
 	"scheduleMessage.nowHint": "Сразу вводится в терминал агента.",

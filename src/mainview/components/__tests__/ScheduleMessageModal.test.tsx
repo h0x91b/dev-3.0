@@ -142,9 +142,23 @@ describe("ScheduleMessageModal", () => {
 			return screen.getByRole("dialog").parentElement!;
 		}
 
-		it("defaults to When agent stops while the agent works, and arms the draft", async () => {
-			const { onClose } = renderModal();
+		it("defaults to Not now, which keeps the text as a note without sending", async () => {
+			const { onClose } = renderModal(undefined, { messageDraft: { text: "later", sendOnStop: true, updatedAt: "t0" }, status: "review-by-user" });
+			expect(screen.getByRole("button", { name: "Not now" })).toHaveAttribute("aria-pressed", "true");
+			await userEvent.click(screen.getByRole("button", { name: "Keep as draft" }));
+			await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+			expect(mockedApi.request.saveMessageDraft).toHaveBeenLastCalledWith({ taskId: task.id, projectId: project.id, text: "later", sendOnStop: false });
+			expect(mockedApi.request.sendMessageDraft).not.toHaveBeenCalled();
+		});
+
+		it("reopens an armed draft on When agent stops", () => {
+			renderModal(undefined, { messageDraft: { text: "then rebase", sendOnStop: true, updatedAt: "t0" } });
 			expect(screen.getByRole("button", { name: "When agent stops" })).toHaveAttribute("aria-pressed", "true");
+		});
+
+		it("When agent stops arms the draft", async () => {
+			const { onClose } = renderModal();
+			await userEvent.click(screen.getByRole("button", { name: "When agent stops" }));
 			await userEvent.type(screen.getByTestId("schedule-message-input"), "then rebase");
 			await userEvent.click(screen.getByRole("button", { name: "Send on stop" }));
 			await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
@@ -152,14 +166,15 @@ describe("ScheduleMessageModal", () => {
 			expect(mockedApi.request.sendMessageDraft).not.toHaveBeenCalled();
 		});
 
-		it("offers only Now when the agent is not working", () => {
+		it("offers no When agent stops when the agent is not working", () => {
 			renderModal(undefined, { status: "review-by-user" });
 			expect(screen.queryByRole("button", { name: "When agent stops" })).toBeNull();
-			expect(screen.getByRole("button", { name: "Now" })).toHaveAttribute("aria-pressed", "true");
+			expect(screen.getByRole("button", { name: "Now" })).toBeInTheDocument();
 		});
 
 		it("Now saves the text and sends the draft", async () => {
 			const { onClose } = renderModal(undefined, { status: "review-by-user" });
+			await userEvent.click(screen.getByRole("button", { name: "Now" }));
 			await userEvent.type(screen.getByTestId("schedule-message-input"), "go on");
 			await userEvent.click(screen.getByRole("button", { name: "Send now" }));
 			await waitFor(() => expect(mockedApi.request.sendMessageDraft).toHaveBeenCalledWith({ taskId: task.id, projectId: project.id }));
@@ -167,17 +182,11 @@ describe("ScheduleMessageModal", () => {
 			expect(onClose).toHaveBeenCalledTimes(1);
 		});
 
-		it("Keep as draft parks the text unarmed, without sending", async () => {
-			const { onClose } = renderModal(undefined, { messageDraft: { text: "later", sendOnStop: true, updatedAt: "t0" } });
-			await userEvent.click(screen.getByRole("button", { name: "Keep as draft" }));
-			await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-			expect(mockedApi.request.saveMessageDraft).toHaveBeenLastCalledWith({ taskId: task.id, projectId: project.id, text: "later", sendOnStop: false });
+		it("Close leaves without sending", async () => {
+			const { onClose } = renderModal();
+			await userEvent.click(screen.getByRole("button", { name: "Close" }));
+			expect(onClose).toHaveBeenCalledTimes(1);
 			expect(mockedApi.request.sendMessageDraft).not.toHaveBeenCalled();
-		});
-
-		it("shows Close instead while there is nothing to keep", () => {
-			renderModal();
-			expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
 		});
 
 		it("autosaves the text as the task's draft after a typing pause", async () => {

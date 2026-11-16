@@ -480,6 +480,8 @@ const kanban = {
 	"scheduleMessage.scheduling": "Scheduling…",
 	"scheduleMessage.failed": "Failed to schedule: {error}",
 	"scheduleMessage.scheduleHint": "Will send {day} at {time} — in {rel}",
+	"scheduleMessage.modeDraft": "Not now",
+	"scheduleMessage.draftHint": "Kept here as a note. Nothing is sent until you send it from the card.",
 	"scheduleMessage.modeNow": "Now",
 	"scheduleMessage.modeStop": "When agent stops",
 	"scheduleMessage.nowHint": "Typed into the agent's terminal right away.",

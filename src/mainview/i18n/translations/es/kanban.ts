@@ -479,6 +479,8 @@ const kanban = {
 	"scheduleMessage.scheduling": "Programando…",
 	"scheduleMessage.failed": "Error al programar: {error}",
 	"scheduleMessage.scheduleHint": "Se enviará {day} a las {time} — en {rel}",
+	"scheduleMessage.modeDraft": "Ahora no",
+	"scheduleMessage.draftHint": "Se guarda aquí como nota. No se envía nada hasta que lo envíes desde la tarjeta.",
 	"scheduleMessage.modeNow": "Ahora",
 	"scheduleMessage.modeStop": "Cuando el agente pare",
 	"scheduleMessage.nowHint": "Se escribe en el terminal del agente de inmediato.",

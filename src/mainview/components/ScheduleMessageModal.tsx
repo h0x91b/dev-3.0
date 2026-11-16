@@ -27,8 +27,8 @@ interface ScheduleMessageModalProps {
 /** Target-selector value: "agent" (default role) or a concrete pane id. */
 type TargetValue = "agent" | string;
 
-/** How the message leaves: typed now, armed for the agent's next stop, or queued on the clock. */
-type Delivery = "now" | "stop" | "later";
+/** How the message leaves: kept as a note, typed now, armed for the agent's next stop, or queued on the clock. */
+type Delivery = "draft" | "now" | "stop" | "later";
 
 /** Typing pause before the draft is written to the task. */
 const DRAFT_SAVE_DELAY_MS = 500;
@@ -50,7 +50,8 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 	const seed = initialText?.trim() ?? "";
 	const [text, setText] = useState(savedDraft && seed ? `${savedDraft}\n\n${seed}` : savedDraft || seed);
 	const agentWorking = task.status === "in-progress";
-	const [delivery, setDelivery] = useState<Delivery>(agentWorking ? "stop" : "now");
+	// Never a send by default: a reopened armed draft stays armed, anything else is a note.
+	const [delivery, setDelivery] = useState<Delivery>(agentWorking && task.messageDraft?.sendOnStop ? "stop" : "draft");
 	const [scheduleTarget, setScheduleTarget] = useState<Date | null>(null);
 	const [targetValue, setTargetValue] = useState<TargetValue>("agent");
 	const [panes, setPanes] = useState<TmuxPaneInfo[]>([]);
@@ -168,6 +169,10 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 	function handleSubmit() {
 		if (!canSubmit) return;
 		void submitWith(async () => {
+			if (delivery === "draft") {
+				await persistDraft(text, false);
+				return;
+			}
 			if (delivery === "now") {
 				await persistDraft(text, false);
 				dispatch({ type: "updateTask", task: await api.request.sendMessageDraft({ taskId: task.id, projectId: project.id }) });
@@ -201,13 +206,9 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 		void submitWith(() => persistDraft("", false));
 	}
 
-	/** Park the text with no send attached; an armed draft is disarmed. */
-	function handleKeepDraft() {
-		if (!text.trim()) return requestClose();
-		void submitWith(() => persistDraft(text, false));
-	}
-
-	const submitLabel = delivery === "now"
+	const submitLabel = delivery === "draft"
+		? t("scheduleMessage.keepDraft")
+		: delivery === "now"
 		? t("task.sendNow")
 		: delivery === "stop"
 			? t("scheduleMessage.saveOnStop")
@@ -317,13 +318,14 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 						hintKey="scheduleMessage.scheduleHint"
 						onTargetChange={(target) => setScheduleTarget(target)}
 						extraModes={[
+							{ id: "draft", label: t("scheduleMessage.modeDraft"), leading: true, content: <p className="text-sm text-fg-3">{t("scheduleMessage.draftHint")}</p> },
 							{ id: "now", label: t("scheduleMessage.modeNow"), leading: true, content: <p className="text-sm text-fg-3">{t("scheduleMessage.nowHint")}</p> },
 							...(agentWorking
 								? [{ id: "stop", label: t("scheduleMessage.modeStop"), leading: true, content: <p className="text-sm text-fg-3">{t("scheduleMessage.stopHint")}</p> }]
 								: []),
 						]}
 						initialExtraMode={delivery}
-						onExtraModeChange={(id) => setDelivery(id === "now" || id === "stop" ? id : "later")}
+						onExtraModeChange={(id) => setDelivery(id === "draft" || id === "now" || id === "stop" ? id : "later")}
 					/>
 				</div>
 
@@ -348,12 +350,11 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 					)}
 					<div className="flex-1" />
 					<button
-						onClick={handleKeepDraft}
+						onClick={requestClose}
 						disabled={submitting}
-						data-testid="message-draft-keep"
-						className="text-fg-2 hover:text-fg text-sm font-medium transition-colors px-3 py-1.5 rounded-xl border border-edge hover:border-edge-active disabled:opacity-50"
+						className="text-fg-2 hover:text-fg text-sm transition-colors px-3 py-1.5 disabled:opacity-50"
 					>
-						{text.trim() ? t("scheduleMessage.keepDraft") : t("common.close")}
+						{t("common.close")}
 					</button>
 					<button
 						onClick={handleSubmit}
