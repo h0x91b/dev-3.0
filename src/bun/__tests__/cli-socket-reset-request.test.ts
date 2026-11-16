@@ -200,7 +200,8 @@ describe("task.requestReset (T17, T17b)", () => {
 		resolveAgentRequest(requestId, { approved: false });
 		expect((await resp).data).toEqual({ approved: false });
 		expect(resetTaskToTodo).not.toHaveBeenCalled();
-		expect(moveTask).not.toHaveBeenCalled();
+		// Its own agent waited, so the task only went to Has Questions and back.
+		expect(moveTask).not.toHaveBeenCalledWith(expect.objectContaining({ newStatus: "todo" }));
 	});
 
 	it("a run that ends first voids the request as stale — never approved (T9b)", async () => {
