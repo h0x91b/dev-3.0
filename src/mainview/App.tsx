@@ -2526,7 +2526,9 @@ function App() {
 					reason: t("completionStrip.agentTitle"),
 				});
 				const result = await answer;
-				// Already on its task through another request id: that one answers the CLI.
+				// Unanswered on purpose: answering would decide an ask the user never saw. The
+				// server joins retries into one pending ask per task, so this needs a stale offer
+				// still on the task; the next replay asks again, and the CLI times out otherwise.
 				if (result === null) return;
 				approved = result === true;
 			} catch (err) {
