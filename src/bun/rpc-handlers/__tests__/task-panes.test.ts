@@ -279,6 +279,36 @@ describe("taskPaneState", () => {
 		expect(state.zoomedPaneId).toBe("%2");
 	});
 
+	it("names the agent's tmux pane from the session registry, wherever a swap moved it", async () => {
+		mocks.getTask.mockResolvedValue({ ...tmuxTask, sessionState: { panes: [{ paneId: "%2" }] } });
+		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
+		expect(state.agentPaneId).toBe("%2");
+	});
+
+	it("names the first tmux pane as the agent's when the task has no registry", async () => {
+		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
+		expect(state.agentPaneId).toBe("%1");
+	});
+
+	it("names no agent pane when the task cannot be found", async () => {
+		mocks.getTask.mockRejectedValue(new Error("not found"));
+		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
+		expect(state.agentPaneId).toBeUndefined();
+	});
+
+	it("names the native agent pane", async () => {
+		mocks.taskTerminalBackendIdentity.mockReturnValue("native");
+		mocks.getTask.mockResolvedValue(nativeTask);
+		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
+		expect(state.agentPaneId).toBe("pane-1");
+	});
+
+	it("keeps naming the agent's pane after a pane action", async () => {
+		mocks.getTask.mockResolvedValue({ ...tmuxTask, sessionState: { panes: [{ paneId: "%2" }] } });
+		const state = await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "swapStep", step: "next" } });
+		expect(state.agentPaneId).toBe("%2");
+	});
+
 	it("reports tmux capabilities including newWindow", async () => {
 		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
 		expect(state.capabilities).toContain("split");

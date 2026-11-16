@@ -81,11 +81,12 @@ export async function withAgentPanes(task: Task, listing: PaneRunListing): Promi
 }
 
 /**
- * The main agent's pane on tmux: the first `sessionState` entry. A task with no
- * registry, or whose first entry has no pane id yet (Codex before its hook), uses
- * the first pane tmux lists, which is the one the task was created with.
+ * The task's main agent pane. On tmux it is the first `sessionState` entry; a task
+ * with no registry, or whose first entry has no pane id yet (Codex before its hook),
+ * uses the first pane tmux lists, which is the one the task was created with.
  */
-function mainTmuxPane(task: Task, live: string[]): string | null {
+export function mainAgentPaneId(task: Task, live: string[]): string | null {
+	if (taskTerminalBackendIdentity(task) === "native") return NATIVE_AGENT_PANE_ID;
 	const entries = task.sessionState?.panes ?? [];
 	return entries[0]?.paneId || live[0] || null;
 }
@@ -103,7 +104,7 @@ async function refusal(task: Task, why: string, mainPaneId: string | null, live:
 /** The pane a task-addressed message goes to, with the agent it must still be there at delivery. */
 export async function resolveMainAgentTarget(task: Task): Promise<HeldMessageTarget> {
 	const live = await livePaneIds(task);
-	const paneId = taskTerminalBackendIdentity(task) === "native" ? NATIVE_AGENT_PANE_ID : mainTmuxPane(task, live);
+	const paneId = mainAgentPaneId(task, live);
 	if (!paneId || !live.includes(paneId)) {
 		return refusal(task, `the task's main agent${paneId ? ` (pane ${paneId})` : ""} is not running`, paneId, live);
 	}
@@ -135,7 +136,7 @@ export async function isSoleMainAgent(task: Task, agent: ScheduledMessageAuthor)
 	const reviews = await findAuxPanes(task, "columnAgent", socketOf(task), { strict: true }).catch(() => null);
 	if (!live || !reviews) return false;
 	const agents = new Set([...live, ...reviews.map((pane) => pane.paneId)]);
-	const mainPaneId = taskTerminalBackendIdentity(task) === "native" ? NATIVE_AGENT_PANE_ID : mainTmuxPane(task, await livePaneIds(task));
+	const mainPaneId = taskTerminalBackendIdentity(task) === "native" ? NATIVE_AGENT_PANE_ID : mainAgentPaneId(task, await livePaneIds(task));
 	if (agents.size !== 1 || !mainPaneId || !agents.has(mainPaneId)) return false;
 	const resolved = await resolveScheduledMessageAuthorPane(task, agent);
 	return resolved.ok && resolved.paneId === mainPaneId;
