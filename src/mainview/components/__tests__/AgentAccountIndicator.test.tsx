@@ -958,16 +958,37 @@ describe("project-pinned CLAUDE_CONFIG_DIR", () => {
 		expect(onSelect).toHaveBeenLastCalledWith(here.id);
 	});
 
-	it("folds ~/.claude into the project row when both are signed in to the same login", async () => {
+	function systemOnProjectLogin() {
 		const base = makeState();
-		mockedApi.request.listAgentAccounts.mockResolvedValue(makeState({ claude: { ...base.claude, systemIdentity: { ...projectLogin.identity } } }));
+		mockedApi.request.listAgentAccounts.mockResolvedValue(
+			makeState({ claude: { ...base.claude, activeId: null, systemIdentity: { ...projectLogin.identity } } }),
+		);
 		mockedApi.request.getProjectClaudeLogin.mockResolvedValue(projectLogin);
-		renderIndicator(claudeAgent, { projectId: "p1", onSelect: vi.fn(), value: null });
+	}
+	const checkedRows = () => screen.getAllByRole("menuitemradio").filter((row) => row.getAttribute("aria-checked") === "true");
+
+	it("keeps ~/.claude as its own row on the project's login, and a saved null checks that row", async () => {
+		systemOnProjectLogin();
+		const onSelect = vi.fn();
+		renderIndicator(claudeAgent, { projectId: "p1", onSelect, value: null });
 		const trigger = await screen.findByTestId("agent-account-trigger");
 		await waitFor(() => expect(mockedApi.request.getProjectClaudeLogin).toHaveBeenCalled());
 		await userEvent.click(trigger);
-		expect((await projectRowEl()).getAttribute("aria-checked")).toBe("true");
-		expect(screen.queryByText("Default login (/home/me/.claude)")).toBeNull();
+		expect((await projectRowEl()).getAttribute("aria-checked")).toBe("false");
+		const systemRow = screen.getByText("Default login (/home/me/.claude)").closest("[role='menuitemradio']") as HTMLElement;
+		expect(checkedRows()).toEqual([systemRow]);
+		await userEvent.click(systemRow);
+		expect(onSelect).toHaveBeenLastCalledWith(null);
+	});
+
+	it("checks only the project row when no managed account is the default", async () => {
+		systemOnProjectLogin();
+		renderIndicator(claudeAgent, { projectId: "p1", onSelect: vi.fn() });
+		const trigger = await screen.findByTestId("agent-account-trigger");
+		await waitFor(() => expect(trigger.textContent).toContain("project@example.com"));
+		await userEvent.click(trigger);
+		expect(checkedRows()).toEqual([await projectRowEl()]);
+		expect(screen.queryByText("Unmanaged login")).toBeNull();
 	});
 
 	it("keeps ~/.claude when it is signed in to someone else", async () => {

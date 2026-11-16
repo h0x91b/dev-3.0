@@ -662,14 +662,14 @@ export default function AgentAccountIndicator({
 	const projectPinDir = kind === "claude" ? (projectLogin?.configDir ?? null) : null;
 	const pinnedDir = state.claude.accounts.length === 0 ? projectPinDir : null;
 	const projectPinLabel = projectPinDir ? t("settings.accountsProjectLogin", { dir: shortClaudeConfigDir(projectPinDir) }) : null;
-	// A login the project folder is already signed in to launches in that folder, so the project row stands for it.
-	// A project env that swaps the backend (Bedrock, an API key) makes "no pick" launch differently, so both rows stay.
+	// A managed account the project folder is signed in to launches in that folder, so the project row stands for it.
+	// Only managed accounts fold: an explicit system-login pick runs in ~/.claude. A project env that swaps
+	// the backend (Bedrock, an API key) makes "no pick" launch differently, so both rows stay.
 	const projectBackend = projectPinDir ? (projectLogin?.backend ?? null) : null;
 	const sameAsProjectFolder = (identity: AgentAccountIdentity | null | undefined) =>
 		isLocal && !!projectPinDir && sameClaudeLogin(identity, projectLogin?.identity);
 	const folderAccount = state.claude.accounts.find((a) => a.auth !== "api" && sameAsProjectFolder(a.identity)) ?? null;
 	const projectAccount = projectBackend ? null : folderAccount;
-	const systemFoldsIntoProject = !projectBackend && state.claude.accounts.length > 0 && sameAsProjectFolder(state.claude.systemIdentity);
 	const fallbackIdentity =
 		kind === "claude"
 			? (pinnedDir ? (projectLogin?.identity ?? null) : state.claude.systemIdentity)
@@ -749,7 +749,7 @@ export default function AgentAccountIndicator({
 			planLabel: identityBadge(projectLogin?.identity ?? null),
 			workspaceLabel: null,
 			isApi: false,
-			isActive: keepsProjectLogin || (!!projectAccount && isRowActive(projectAccount.id)) || (systemFoldsIntoProject && isRowActive(null)),
+			isActive: keepsProjectLogin || (!!projectAccount && isRowActive(projectAccount.id)),
 			usage: projectUsage,
 			note: projectBackend ? t(PROJECT_BACKEND_NOTE[projectBackend]) : null,
 			onSelect: () => handleSelectLocal(undefined),
@@ -758,7 +758,7 @@ export default function AgentAccountIndicator({
 	// System-login row: selectable for BOTH kinds in local mode (codex now has a
 	// real system-login fallback); in the global switcher it stays claude-only
 	// selectable, and codex renders an informational "unmanaged" row.
-	if ((kind !== "codex" || isLocal) && !(kind === "claude" && systemFoldsIntoProject)) {
+	if (kind !== "codex" || isLocal) {
 		rows.push({
 			key: "system",
 			label: fallbackLabel,
