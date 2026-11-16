@@ -102,29 +102,27 @@ describe("ReadyToCompleteScreen", () => {
 		expect(screen.getByTestId("completions-no-match")).toBeInTheDocument();
 	});
 
-	it("answers a row's own offer: Complete when nothing would be lost, Keep open otherwise", async () => {
+	it("asks a row in the same modal as the Dialog style, and Keep open answers no", async () => {
+		vi.mocked(confirm).mockResolvedValue(true);
 		await renderScreen();
 		const first = await offer("t1");
-		const second = await offer("t2");
+		const second = await offer("t2", "merge");
 		fireEvent.click(screen.getByTestId("completions-complete-t1"));
 		await expect(first.answer).resolves.toBe(true);
+		const options = vi.mocked(confirm).mock.calls[0]![0];
+		expect(options).toMatchObject({ agentInitiated: true, danger: true, dismissOnBackdrop: false });
+		expect(options.deferred?.gateConfirm).toBe(true);
 		fireEvent.click(screen.getByText("Keep open"));
 		await expect(second.answer).resolves.toBe(false);
 		expect(screen.getByTestId("completions-empty")).toBeInTheDocument();
 	});
 
-	it("shows a loss first and completes only on a second click", async () => {
-		vi.mocked(api.request.getUnsavedWork).mockResolvedValue(dirty);
+	it("leaves the row waiting when the modal is declined", async () => {
+		vi.mocked(confirm).mockResolvedValue(false);
 		await renderScreen();
 		const { answer } = await offer("t1");
-		let settled = false;
-		void answer.then(() => { settled = true; });
 		fireEvent.click(screen.getByTestId("completions-complete-t1"));
-		expect(await screen.findByTestId("completions-warning-t1")).toBeInTheDocument();
-		await act(async () => {});
-		expect(settled).toBe(false);
-		fireEvent.click(screen.getByTestId("completions-complete-t1"));
-		await expect(answer).resolves.toBe(true);
+		await expect(answer).resolves.toBe(false);
 	});
 
 	it("completes the selection after one confirm, keeping open a task that would lose work", async () => {

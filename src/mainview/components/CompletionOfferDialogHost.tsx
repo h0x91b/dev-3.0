@@ -51,13 +51,35 @@ function dialogOptions(offer: CompletionOffer, t: TFunction, signal: AbortSignal
 	if (offer.kind === "merge") {
 		return { ...buildMergeCompletionDialogOptions(t, offer.branchName ?? ""), info: offer.dialogInfo, signal };
 	}
-	return {
-		title: t("app.agentCompletionTitle"),
-		message: t(offer.keepsFolder ? "app.agentCompletionMessageFolder" : "app.agentCompletionMessage"),
-		info: offer.dialogInfo,
-		...(offer.reason ? { reason: offer.reason } : {}),
-		confirmLabel: t("app.agentCompletionConfirm"),
-		cancelLabel: t("app.agentCompletionCancel"),
+	if (signal.aborted) return;
+	if (!await whenConfirmHostMounted()) {
+		console.error("[CompletionOfferDialogHost] ConfirmHost never mounted; the offer stays on its task marker");
+		return;
+	}
+	await askOfferInModal(offer, task && project ? { task, project } : null, t, { signal, onOpenTask });
+}
+
+/**
+ * Asks one merge or agent offer in the shared `confirm()` modal and hands the answer
+ * to the offer: the agent-request identity, the manual-completion action for merges
+ * and the gated unsaved-work check. The Ready to complete screen asks a row the same way.
+ */
+export async function askOfferInModal(
+	offer: CompletionOffer,
+	known: { task: Task; project: Project } | null,
+	t: TFunction,
+	{ signal, onOpenTask }: { signal?: AbortSignal; onOpenTask?: (taskId: string, projectId: string) => void } = {},
+): Promise<void> {
+	const isAgent = offer.kind === "agent";
+	const skipGit = known ? completionSkipsGitCheck(known.task, known.project) : false;
+	const openTask = !isAgent && onOpenTask ? () => onOpenTask(offer.taskId, offer.projectId) : undefined;
+	const options: ConfirmOptions = {
+		title: t(isAgent ? "completionStrip.agentTitle" : "completionStrip.mergedTitle"),
+		message: known ? completionOfferNote(known.task, known.project, t) : t("completionStrip.worktreeNote"),
+		// Opening the task answers "Keep open": right for a merge, a refusal for the agent.
+		info: known ? taskDialogInfo(known.task, known.project, openTask) : undefined,
+		confirmLabel: t("app.branchMergedComplete"),
+		cancelLabel: t("completionStrip.keepOpen"),
 		danger: true,
 		agentInitiated: true,
 		signal,
@@ -73,6 +95,6 @@ async function askInDialog(offer: CompletionOffer, signal: AbortSignal, t: TFunc
 	const options = dialogOptions(offer, t, signal);
 	const { alternativeAction } = options;
 	const result = alternativeAction ? await confirm({ ...options, alternativeAction }) : await confirm(options);
-	if (signal.aborted) return;
+	if (signal?.aborted) return;
 	offer.answer(result === "manual" ? "manual" : result === true);
 }

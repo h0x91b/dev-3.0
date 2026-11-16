@@ -6,7 +6,8 @@ import { confirm } from "../confirm";
 import { toast } from "../toast";
 import type { Route } from "../state";
 import { useProjectPrivacy } from "../sensitive-projects";
-import { pickCompletionOffer, registerWaitingOffersList, useCompletionOffers, type CompletionOffer } from "../completion-offers";
+import { offerSettledSignal, pickCompletionOffer, registerWaitingOffersList, useCompletionOffers, type CompletionOffer } from "../completion-offers";
+import { askOfferInModal } from "./CompletionOfferDialogHost";
 import { completionSkipsGitCheck, unsavedWorkWarning } from "../utils/confirmTaskCompletion";
 import { formatBytesCompact } from "../utils/formatBytes";
 import { timeAgo } from "../utils/timeAgo";
@@ -84,7 +85,6 @@ export default function ReadyToCompleteScreen({ projects, usage, navigate }: {
 	const [sort, setSort] = useState<WaitingSort>("oldest");
 	const [selected, setSelected] = useState<Set<string>>(new Set());
 	const [warnings, setWarnings] = useState<Map<string, string>>(new Map());
-	const [busy, setBusy] = useState<Set<string>>(new Set());
 
 	useEffect(() => registerWaitingOffersList(), []);
 
@@ -126,24 +126,11 @@ export default function ReadyToCompleteScreen({ projects, usage, navigate }: {
 		];
 	}, [all, projects, privacy, t]);
 
-	const setFlag = (setter: typeof setBusy, id: string, on: boolean) => setter((prev) => {
-		const next = new Set(prev);
-		if (on) next.add(id); else next.delete(id);
-		return next;
+	// One row asks in the same modal the Dialog style uses, with its gated unsaved-work check.
+	const complete = (row: WaitingOffer) => askOfferInModal(row.offer, { task: row.task, project: row.project }, t, {
+		signal: offerSettledSignal(row.offer.id),
+		onOpenTask: (taskId, projectId) => navigate({ screen: "project", projectId, activeTaskId: taskId }),
 	});
-
-	// A loss that was not on screen when the user clicked shows first and needs a second click.
-	const complete = async (row: WaitingOffer) => {
-		const id = row.offer.id;
-		setFlag(setBusy, id, true);
-		const warning = await lossWarning(row, t);
-		setFlag(setBusy, id, false);
-		if (warning && warnings.get(id) !== warning) {
-			setWarnings((prev) => new Map(prev).set(id, warning));
-			return;
-		}
-		row.offer.answer(true);
-	};
 
 	const completeMany = async (targets: WaitingOffer[]) => {
 		const names = targets.slice(0, 12).map((row) => `• #${taskSeqLabel(row.task)} ${getTaskTitle(row.task)}`);
@@ -260,7 +247,6 @@ export default function ReadyToCompleteScreen({ projects, usage, navigate }: {
 										const { offer, task, project } = row;
 										const rss = taskRss(usage, task.id);
 										const warning = warnings.get(offer.id);
-										const checking = busy.has(offer.id);
 										const isAgent = offer.kind === "agent";
 										const locked = privacy.isLocked(project);
 										return (
@@ -312,10 +298,9 @@ export default function ReadyToCompleteScreen({ projects, usage, navigate }: {
 															</button>
 															<button
 																type="button"
-																disabled={checking}
 																onClick={() => void complete(row)}
 																data-testid={`completions-complete-${task.id}`}
-																className={`px-3 py-1.5 min-h-[44px] md:min-h-0 text-xs whitespace-nowrap rounded-lg text-white transition-[background-color,transform] active:scale-[0.96] ${checking ? "bg-fg-muted/40 cursor-not-allowed" : "bg-danger hover:bg-danger/80"}`}
+																className="px-3 py-1.5 min-h-[44px] md:min-h-0 text-xs whitespace-nowrap rounded-lg text-white bg-danger hover:bg-danger/80 transition-[background-color,transform] active:scale-[0.96]"
 															>
 																{t("app.branchMergedComplete")}
 															</button>
