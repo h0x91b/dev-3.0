@@ -1006,6 +1006,21 @@ describe("project-pinned CLAUDE_CONFIG_DIR", () => {
 		expect(twinRow?.textContent).toContain("Runs in this project's Claude folder");
 	});
 
+	it("names a project env that only sets a gateway URL or a model without claiming credentials", async () => {
+		projectFolderAccounts();
+		mockedApi.request.getProjectClaudeLogin.mockResolvedValue({ ...projectLogin, backend: "gateway" });
+		const view = renderIndicator(claudeAgent, { projectId: "p1", onSelect: vi.fn() });
+		await userEvent.click(await screen.findByTestId("agent-account-trigger"));
+		expect((await projectRowEl()).textContent).toContain("Runs through the gateway URL from the project settings");
+		expect(screen.getByText("Project account")).toBeTruthy();
+		view.unmount();
+		mockedApi.request.getProjectClaudeLogin.mockResolvedValue({ ...projectLogin, backend: "model" });
+		renderIndicator(claudeAgent, { projectId: "p1", onSelect: vi.fn() });
+		await userEvent.click(await screen.findByTestId("agent-account-trigger"));
+		expect((await projectRowEl()).textContent).toContain("Uses the model set in the project settings");
+		expect(screen.getByText("Project account")).toBeTruthy();
+	});
+
 	it("keeps the folder's account as its own row in the resume picker, and picking it resumes on it", async () => {
 		const { here } = projectFolderAccounts();
 		const onChange = vi.fn();

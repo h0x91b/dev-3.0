@@ -242,7 +242,12 @@ function projectClaudeBackend(env: Record<string, string>): ProjectClaudeBackend
 	if (on("CLAUDE_CODE_USE_BEDROCK")) return "bedrock";
 	if (on("CLAUDE_CODE_USE_VERTEX")) return "vertex";
 	if (on("CLAUDE_CODE_USE_FOUNDRY")) return "foundry";
-	return accounts.CLAUDE_ENV_AUTH_KEYS.some((key) => !key.startsWith("CLAUDE_CODE_USE_") && !!env[key]) ? "env-auth" : null;
+	// The keys a named login drops at launch (the same predicate), so a fold never hides a difference.
+	const dropped = Object.keys(env).filter((key) => !!env[key] && accounts.isClaudeBackendKey(key) && !key.startsWith("CLAUDE_CODE_USE_"));
+	const authKeys: readonly string[] = accounts.CLAUDE_ENV_AUTH_KEYS;
+	if (dropped.some((key) => authKeys.includes(key) && key !== "ANTHROPIC_BASE_URL")) return "env-auth";
+	if (dropped.includes("ANTHROPIC_BASE_URL")) return "gateway";
+	return dropped.length > 0 ? "model" : null;
 }
 
 /** Which Claude login a project's sessions use. Read on demand so an edit to

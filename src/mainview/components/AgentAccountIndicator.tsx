@@ -284,6 +284,8 @@ const PROJECT_BACKEND_NOTE = {
 	vertex: "launch.projectBackendVertex",
 	foundry: "launch.projectBackendFoundry",
 	"env-auth": "launch.projectBackendEnvAuth",
+	gateway: "launch.projectBackendGateway",
+	model: "launch.projectBackendModel",
 } as const satisfies Record<ProjectClaudeBackend, TranslationKey>;
 
 function identityBadge(identity: AgentAccountIdentity | null): string | null {
@@ -667,8 +669,8 @@ export default function AgentAccountIndicator({
 	const pinnedDir = state.claude.accounts.length === 0 ? projectPinDir : null;
 	const projectPinLabel = projectPinDir ? t("settings.accountsProjectLogin", { dir: shortClaudeConfigDir(projectPinDir) }) : null;
 	// A managed account the project folder is signed in to launches in that folder, so the project row stands for it.
-	// Only managed accounts fold: an explicit system-login pick runs in ~/.claude. A project env that swaps
-	// the backend (Bedrock, an API key) makes "no pick" launch differently, so both rows stay.
+	// Only managed accounts fold: an explicit system-login pick runs in ~/.claude. A project env the account
+	// would drop (Bedrock, an API key, a model) makes "no pick" launch differently, so both rows stay.
 	const projectBackend = projectPinDir ? (projectLogin?.backend ?? null) : null;
 	const runsInProjectFolder = (account: AgentAccount) =>
 		isLocal && !!projectPinDir && account.auth !== "api" && sameClaudeLogin(account.identity, projectLogin?.identity);

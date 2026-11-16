@@ -444,6 +444,8 @@ const kanban = {
 	"launch.projectBackendVertex": "Работает через Vertex AI, по настройкам проекта",
 	"launch.projectBackendFoundry": "Работает через Microsoft Foundry, по настройкам проекта",
 	"launch.projectBackendEnvAuth": "Входит с учётными данными из настроек проекта",
+	"launch.projectBackendGateway": "Работает через адрес шлюза из настроек проекта",
+	"launch.projectBackendModel": "Использует модель из настроек проекта",
 	"launch.accountExcludedEverywhere": "Исключён из Авто во всех проектах",
 	"launch.addVariant": "+ Добавить вариант",
 	"launch.removeVariant": "Удалить",

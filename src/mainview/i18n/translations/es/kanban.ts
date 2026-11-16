@@ -418,6 +418,8 @@ const kanban = {
 	"launch.projectBackendVertex": "Se ejecuta en Vertex AI, según la configuración del proyecto",
 	"launch.projectBackendFoundry": "Se ejecuta en Microsoft Foundry, según la configuración del proyecto",
 	"launch.projectBackendEnvAuth": "Inicia sesión con credenciales de la configuración del proyecto",
+	"launch.projectBackendGateway": "Pasa por la URL de la pasarela de la configuración del proyecto",
+	"launch.projectBackendModel": "Usa el modelo de la configuración del proyecto",
 	"launch.accountExcludedEverywhere": "Excluida del modo automático en todos los proyectos",
 	"launch.addVariant": "+ Agregar variante",
 	"launch.removeVariant": "Eliminar",
