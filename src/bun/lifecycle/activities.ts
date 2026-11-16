@@ -133,14 +133,14 @@ export async function dismissMergeCompletionPrompt(params: { taskId: string; pro
 
 /**
  * Merge offers still waiting for an answer, for a renderer that just connected.
- * `branchMerged` is one-shot and the reservation stops the poller re-sending it,
- * so a reload would hide the offer until the reservation lapsed. An offer counts
- * only while the branch head is still the one that merged.
+ * `branchMerged` is one-shot and the poller does not re-send an offer it already
+ * made, so a reload or an app restart would hide it. The persisted, undismissed
+ * prompt is the truth: the in-memory reservation dies with the app. An offer
+ * counts only while the branch head is still the one that merged.
  */
 export async function listPendingMergeOffers(): Promise<PendingMergeOffer[]> {
 	const settings = await loadSettings();
 	if (settings.suggestCompletingTasksAfterMerge === false) return [];
-	const nowMs = Date.now();
 	const offers: PendingMergeOffer[] = [];
 	for (const project of await data.loadProjects()) {
 		let tasks: Task[];
@@ -154,7 +154,6 @@ export async function listPendingMergeOffers(): Promise<PendingMergeOffer[]> {
 			if (!prompt || prompt.dismissedAt != null || !task.branchName) continue;
 			if (taskCompletesManually(task) || mergeOfferHeld(task)) continue;
 			if (!activitiesFor(lifecycleStateFromTask(project, task)).includes("mergeWatch")) continue;
-			if (!isPromptReserved(task.id, prompt.fingerprint, nowMs)) continue;
 			try {
 				const current = await getMergeCompletionFingerprint(task, task.branchName);
 				if (current.fingerprint !== prompt.fingerprint) continue;
