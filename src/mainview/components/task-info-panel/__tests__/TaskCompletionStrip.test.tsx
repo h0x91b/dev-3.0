@@ -209,6 +209,28 @@ describe("TaskCompletionStrip", () => {
 		await expect(answer).resolves.toBe(false);
 	});
 
+	// Otherwise the merge bar takes the agent bar's place under the pointer with
+	// the same two buttons, and the click reads as lost.
+	it("settles both offers on the task with one Keep open", async () => {
+		renderStrip();
+		const merge = await offer("merge");
+		const agent = await offer("agent");
+		await arm();
+		fireEvent.click(screen.getByRole("button", { name: "Keep open" }));
+		await expect(agent.answer).resolves.toBe(false);
+		await expect(merge.answer).resolves.toBe(false);
+		expect(screen.queryByTestId("task-completion-strip")).not.toBeInTheDocument();
+	});
+
+	it("announces the offer to a screen reader once it is on screen", async () => {
+		renderStrip();
+		await offer("agent");
+		expect(screen.getByTestId("task-completion-strip-announcement")).toBeEmptyDOMElement();
+		await arm();
+		expect(screen.getByTestId("task-completion-strip-announcement")).toHaveTextContent("The agent reports this task is done");
+		expect(screen.getByTestId("task-completion-strip-announcement")).toHaveAttribute("role", "status");
+	});
+
 });
 
 describe("agentPaneInsets", () => {
