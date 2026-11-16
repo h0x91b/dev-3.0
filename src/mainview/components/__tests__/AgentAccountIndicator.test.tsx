@@ -25,6 +25,7 @@ import { api } from "../../rpc";
 import { confirm } from "../../confirm";
 import { I18nProvider } from "../../i18n";
 import AgentAccountIndicator, { agentAccountKindForCommand } from "../AgentAccountIndicator";
+import ResumeAccountPicker from "../ResumeAccountPicker";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../../state";
 
 const mockedApi = vi.mocked(api, true);
@@ -1003,6 +1004,23 @@ describe("project-pinned CLAUDE_CONFIG_DIR", () => {
 		await projectRowEl();
 		const twinRow = screen.getByText("Second project account").closest("[role='menuitemradio']");
 		expect(twinRow?.textContent).toContain("Runs in this project's Claude folder");
+	});
+
+	it("keeps the folder's account as its own row in the resume picker, and picking it resumes on it", async () => {
+		const { here } = projectFolderAccounts();
+		const onChange = vi.fn();
+		render(
+			<I18nProvider>
+				<ResumeAccountPicker panes={[{ agentId: claudeAgent.id, agentCmd: "claude" }]} agents={[claudeAgent]} value={undefined} onChange={onChange} projectId="p1" />
+			</I18nProvider>,
+		);
+		const trigger = await screen.findByTestId("agent-account-trigger");
+		await waitFor(() => expect(mockedApi.request.getProjectClaudeLogin).toHaveBeenCalled());
+		await userEvent.click(trigger);
+		await projectRowEl();
+		const accountRow = screen.getByText("Project account").closest("[role='menuitemradio']") as HTMLElement;
+		await userEvent.click(accountRow);
+		expect(onChange).toHaveBeenLastCalledWith(here.id);
 	});
 
 	it("keeps ~/.claude when it is signed in to someone else", async () => {

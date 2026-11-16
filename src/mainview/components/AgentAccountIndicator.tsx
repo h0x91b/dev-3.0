@@ -561,6 +561,7 @@ export default function AgentAccountIndicator({
 	projectId,
 	allowAuto = true,
 	subtitle,
+	foldProjectAccount = true,
 }: {
 	agent: CodingAgent | undefined | null;
 	/** Per-launch selection: `undefined` → the registry default (the preselect);
@@ -581,6 +582,9 @@ export default function AgentAccountIndicator({
 	allowAuto?: boolean;
 	/** Replaces the per-launch popover subtitle, for a surface whose pick outlives one launch. */
 	subtitle?: string;
+	/** False keeps the account the project's folder is signed in to as its own row: on a resume
+	 *  that pick and the project row can open different conversation stores. */
+	foldProjectAccount?: boolean;
 }) {
 	const t = useT();
 	const kind = agent ? agentAccountKindForCommand(agent.baseCommand) : null;
@@ -668,7 +672,7 @@ export default function AgentAccountIndicator({
 	const projectBackend = projectPinDir ? (projectLogin?.backend ?? null) : null;
 	const runsInProjectFolder = (account: AgentAccount) =>
 		isLocal && !!projectPinDir && account.auth !== "api" && sameClaudeLogin(account.identity, projectLogin?.identity);
-	const projectAccount = projectBackend ? null : (state.claude.accounts.find(runsInProjectFolder) ?? null);
+	const projectAccount = projectBackend || !foldProjectAccount ? null : (state.claude.accounts.find(runsInProjectFolder) ?? null);
 	const fallbackIdentity =
 		kind === "claude"
 			? (pinnedDir ? (projectLogin?.identity ?? null) : state.claude.systemIdentity)
