@@ -9,20 +9,23 @@ const runGit = vi.fn(async (_cmd: string[], cwd: string) =>
 );
 vi.mock("../git", () => ({ run: (...args: unknown[]) => runGit(...(args as [string[], string])) }));
 
-import { claudeSettingsFiles, collectProjectFolders } from "../project-folders";
+import { claudeConfigDirFor, claudeSettingsFiles, collectProjectFolders } from "../project-folders";
 
 const tmp = mkdtempSync(join(tmpdir(), "dev3-project-folders-"));
 const projectDir = join(tmp, "project");
 const lib = join(tmp, "lib");
 const docs = join(tmp, "docs");
 const configDir = join(tmp, "claude-config");
+const userDir = join(tmp, "user-claude");
+// The machine's real ~/.claude must never leak into these lists.
+process.env.CLAUDE_CONFIG_DIR = userDir;
 
 function project(over: Partial<Project> = {}): Project {
 	return { id: "p", name: "p", path: projectDir, kind: "git", ...over } as Project;
 }
 
 beforeAll(() => {
-	for (const dir of [join(projectDir, ".claude"), lib, docs, configDir]) mkdirSync(dir, { recursive: true });
+	for (const dir of [join(projectDir, ".claude"), lib, docs, configDir, userDir]) mkdirSync(dir, { recursive: true });
 	writeFileSync(join(projectDir, ".claude", "settings.json"), JSON.stringify({ permissions: { additionalDirectories: [lib] } }));
 	writeFileSync(join(projectDir, ".claude", "settings.local.json"), JSON.stringify({ permissions: { additionalDirectories: ["../docs", projectDir] } }));
 	writeFileSync(join(configDir, "settings.json"), "{ not json");
@@ -80,6 +83,19 @@ describe("collectProjectFolders", () => {
 			expect(cmd.slice(0, 5)).toEqual(["git", "-c", "safe.bareRepository=explicit", "-c", "core.fsmonitor=false"]);
 		}
 		expect(runGit).toHaveBeenCalled();
+	});
+
+	it("reads the user-scope settings when the project pins no config dir", async () => {
+		writeFileSync(join(userDir, "settings.json"), JSON.stringify({ permissions: { additionalDirectories: [join(tmp, "global")] } }));
+		try {
+			expect((await collectProjectFolders(project())).map((f) => f.path)).toEqual([lib, docs, join(tmp, "global")]);
+			delete process.env.CLAUDE_CONFIG_DIR;
+			expect(claudeConfigDirFor({})).toBe(join(homedir(), ".claude"));
+			expect(claudeConfigDirFor({ env: { CLAUDE_CONFIG_DIR: configDir } })).toBe(configDir);
+		} finally {
+			process.env.CLAUDE_CONFIG_DIR = userDir;
+			rmSync(join(userDir, "settings.json"));
+		}
 	});
 
 	it("returns nothing for a board without a folder", async () => {

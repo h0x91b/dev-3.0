@@ -8,7 +8,7 @@ import { createLogger } from "./logger";
 
 /**
  * Folders shown beside a project: its `extraFolders` config field plus Claude's
- * `permissions.additionalDirectories` from the project's own Claude settings.
+ * `permissions.additionalDirectories` from the project's and the user's Claude settings.
  * See decisions/2026/11/15/project-extra-folders.md.
  */
 
@@ -32,7 +32,12 @@ function expandPath(raw: string, base: string): string {
 	return isAbsolute(trimmed) ? resolvePath(trimmed) : resolvePath(base, trimmed);
 }
 
-/** Project-scope Claude settings, plus the config dir the project pins through `env.CLAUDE_CONFIG_DIR`. */
+/** The user-scope Claude config dir a project's agents read: the project's pin, else the server's, else `~/.claude`. */
+export function claudeConfigDirFor(project: Pick<Project, "env">): string {
+	return project.env?.CLAUDE_CONFIG_DIR?.trim() || process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude");
+}
+
+/** Project-scope Claude settings, plus the user-scope ones in `configDir`. */
 export function claudeSettingsFiles(projectPath: string, configDir?: string): string[] {
 	const files = [join(projectPath, ".claude", "settings.json"), join(projectPath, ".claude", "settings.local.json")];
 	if (configDir && !isNetworkPath(configDir)) {
@@ -94,7 +99,7 @@ export async function collectProjectFolders(project: Project, opts: { withBranch
 		candidates.push({ path, source });
 	};
 	for (const raw of project.extraFolders ?? []) if (raw.trim()) add(raw, "dev3");
-	for (const file of claudeSettingsFiles(project.path, project.env?.CLAUDE_CONFIG_DIR)) {
+	for (const file of claudeSettingsFiles(project.path, claudeConfigDirFor(project))) {
 		for (const raw of await readAdditionalDirectories(file)) add(raw, "claude");
 	}
 	return Promise.all(candidates.map(async ({ path, source }) => {
