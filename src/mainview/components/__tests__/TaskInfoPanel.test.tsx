@@ -3802,6 +3802,31 @@ describe("TaskInfoPanel", () => {
 			});
 		});
 
+		it("completes without moving the user when the offer is answered after the task view closed", async () => {
+			const dispatch = vi.fn();
+			const navigate = vi.fn();
+			const task = makeTask({ status: "review-by-colleague" });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				mergedByContent: true,
+			});
+			let answer!: (value: boolean) => void;
+			vi.mocked(offerCompletion).mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
+
+			let unmount!: () => void;
+			await act(async () => {
+				({ unmount } = renderPanel(task, { dispatch, navigate }));
+			});
+			await waitFor(() => expect(vi.mocked(offerCompletion)).toHaveBeenCalled());
+			// The user left for another screen and answered there (the dialog, the Ready to complete list).
+			unmount();
+			await act(async () => { answer(true); });
+
+			await waitFor(() => expect(mockedApi.request.moveTask).toHaveBeenCalledWith(expect.objectContaining({ taskId: "t1", newStatus: "completed" })));
+			expect(navigate).not.toHaveBeenCalled();
+		});
+
 		it("returns fullscreen open-mode users to the Kanban board after auto-complete", async () => {
 			localStorage.setItem("dev3-task-open-mode", "fullscreen");
 			try {
