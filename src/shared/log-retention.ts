@@ -12,6 +12,9 @@ export type LogRetentionChoice = LogRetentionValue;
 
 export const DEFAULT_LOG_RETENTION_DAYS = 30;
 
+/** The message `setLogRetention` rejects with when the stored retention is not the one the caller saw. */
+export const LOG_RETENTION_CHANGED_MESSAGE = "log-retention-changed";
+
 /** The select's standard choices; a stored day count outside them is offered as an extra option. */
 export const LOG_RETENTION_PRESET_DAYS: readonly number[] = [30, 90, 180, 365];
 

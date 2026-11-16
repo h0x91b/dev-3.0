@@ -408,6 +408,7 @@ const settings = {
 	"settings.logRetentionConfirmMessage_other": "История старше {days} дней будет удалена: {count} дня, {size}. Это нельзя отменить.",
 	"settings.logRetentionConfirmUnknown": "История старше {days} дней будет удалена. Это нельзя отменить.",
 	"settings.logRetentionConfirmLabel": "Удалить",
+	"settings.logRetentionChangedElsewhere": "Срок хранения изменился в другом месте. Выберите заново.",
 	"settings.rateLimitTracking": "Отслеживание лимитов агентов",
 	"settings.rateLimitTrackingDesc": "Показывает в шапке живое использование лимитов Claude/Codex. Данные Claude собираются через statusLine сессии, маршрутизируемый через dev3 — ваш собственный statusLine продолжает работать, dev3 лишь дописывает свой сегмент.",
 	"settings.leanAgentProtocol": "Короткий протокол агента",

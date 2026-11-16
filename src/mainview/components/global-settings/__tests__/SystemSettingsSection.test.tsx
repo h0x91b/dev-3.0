@@ -31,6 +31,7 @@ function renderSection(settings: Partial<GlobalSettings> = {}) {
 				onConfirmBeforeQuitToggle={vi.fn()}
 				onAutoCleanupTaskHistoryToggle={vi.fn()}
 				onLogRetentionChange={vi.fn()}
+				hostSettingsLoaded
 			/>
 		</I18nProvider>
 	);

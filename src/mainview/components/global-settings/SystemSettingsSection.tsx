@@ -27,6 +27,7 @@ export default function SystemSettingsSection({
 	onConfirmBeforeQuitToggle,
 	onAutoCleanupTaskHistoryToggle,
 	onLogRetentionChange,
+	hostSettingsLoaded,
 }: {
 	t: TFunction;
 	globalSettings: GlobalSettings;
@@ -43,7 +44,8 @@ export default function SystemSettingsSection({
 	onResourceLevelsChange: (levels: Partial<ResourceLevels>) => void;
 	onConfirmBeforeQuitToggle: (enabled: boolean) => void;
 	onAutoCleanupTaskHistoryToggle: (enabled: boolean) => void;
-	onLogRetentionChange: (choice: LogRetentionChoice) => Promise<void>;
+	onLogRetentionChange: (choice: LogRetentionChoice, expectedCurrent: LogRetentionChoice) => Promise<void>;
+	hostSettingsLoaded: boolean;
 }) {
 	const [remoteAccessStatus, setRemoteAccessStatus] = useRemoteAccessStatus();
 	const retryRemoteAccess = useCallback(
@@ -230,7 +232,7 @@ export default function SystemSettingsSection({
 			</SettingsEntry>
 
 			<SettingsEntry anchor="log-retention">
-				<LogRetentionSetting t={t} globalSettings={globalSettings} onChange={onLogRetentionChange} />
+				<LogRetentionSetting t={t} globalSettings={globalSettings} loaded={hostSettingsLoaded} onChange={onLogRetentionChange} />
 			</SettingsEntry>
 		</SettingsSection>
 	);

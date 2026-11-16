@@ -24,7 +24,7 @@ import { tmuxRestartImpact } from "../tmux-restart-impact";
 import { setTmuxPaneDimming, setTmuxPaneTitles, writeTmuxConfigs } from "../tmux/config";
 import { loadSettings, readSettingsFileStrict, saveSettings } from "../settings";
 import { collectLogRetentionUsage, pruneAllLogs } from "../log-retention";
-import { isRetentionDayCount, isShorterRetention, resolveLogRetentionDays, storedLogRetention, type LogRetentionUsage } from "../../shared/log-retention";
+import { isRetentionDayCount, isShorterRetention, resolveLogRetentionDays, storedLogRetention, type LogRetentionUsage, type LogRetentionValue } from "../../shared/log-retention";
 import { resolveNeedsYouSoundToggles } from "../../shared/task-sound-statuses";
 import { toggleFavorite } from "../../shared/favorites";
 import { DEV3_HOME } from "../paths";
@@ -419,7 +419,7 @@ async function saveGlobalSettingsNow(params: GlobalSettings): Promise<void> {
 		// Written only by the account surfaces' Auto controls, after the snapshot was taken.
 		autoAccountDefault: stored.autoAccountDefault,
 		autoAccountExclusions: stored.autoAccountExclusions,
-		// Written only by `setLogRetention`, which prunes; a stale snapshot must not change it silently.
+		// Only for the push below: `saveSettings` keeps the file's own value whatever this says.
 		logRetentionDays: stored.logRetentionDays,
 	};
 	await saveSettings(next);
@@ -482,21 +482,28 @@ async function getLogRetentionUsage(params?: { retentionDays?: number }): Promis
 	return collectLogRetentionUsage(await allProjectsForLogs(), params?.retentionDays);
 }
 
-/** Change the log retention; a shorter one deletes the older days of every log at once. */
-function setLogRetention(params: { value: number | "forever" }): Promise<GlobalSettings> {
+type LogRetentionRequest = { value: LogRetentionValue; expectedCurrent: LogRetentionValue };
+
+/**
+ * Change the log retention; a shorter one deletes the older days of every log at once.
+ * `expectedCurrent` is the value the caller saw: if the file holds another one, nothing is written.
+ */
+function setLogRetention(params: LogRetentionRequest): Promise<GlobalSettings> {
 	return serializeSettingsWrite(() => setLogRetentionNow(params));
 }
 
-async function setLogRetentionNow(params: { value: number | "forever" }): Promise<GlobalSettings> {
-	const value = params.value;
-	if (value !== "forever" && !isRetentionDayCount(value)) throw new Error(`Invalid log retention: ${String(value)}`);
+async function setLogRetentionNow(params: LogRetentionRequest): Promise<GlobalSettings> {
+	const { value, expectedCurrent } = params;
+	for (const field of [value, expectedCurrent]) {
+		if (field !== "forever" && !isRetentionDayCount(field)) throw new Error(`Invalid log retention: ${String(field)}`);
+	}
 	// A corrupt settings.json loads as defaults; saving those would erase it.
 	if (!readSettingsFileStrict()) throw new Error("settings.json is unreadable; not overwriting it");
 	const stored = await loadSettings();
 	const next: GlobalSettings = { ...stored, logRetentionDays: storedLogRetention(value) };
-	await saveSettings(next);
+	await saveSettings(next, { value, expectedCurrent });
 	const retentionAfter = resolveLogRetentionDays(next);
-	if (isShorterRetention(resolveLogRetentionDays(stored), retentionAfter)) {
+	if (isShorterRetention(resolveLogRetentionDays({ logRetentionDays: expectedCurrent }), retentionAfter)) {
 		try {
 			pruneAllLogs(await allProjectsForLogs(), retentionAfter);
 		} catch (err) {

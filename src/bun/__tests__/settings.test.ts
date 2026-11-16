@@ -12,7 +12,7 @@ vi.mock("../paths", () => ({
 	DEV3_HOME: TEST_HOME,
 }));
 
-import { saveSettings, loadSettings, loadSettingsSync, readLogRetentionForPrune, readSettingsFileStrict, type GlobalSettings } from "../settings";
+import { saveSettings, loadSettings, loadSettingsSync, LogRetentionChangedError, readLogRetentionForPrune, readSettingsFileStrict, type GlobalSettings } from "../settings";
 
 function makeSettings(overrides: Partial<GlobalSettings> = {}): GlobalSettings {
 	return {
@@ -475,6 +475,8 @@ describe("saveSettings", () => {
 			favorites: [{ agentId: "builtin-codex", configId: "codex-default", uses: 3, lastUsedAt: 123 }],
 		};
 
+		// The retention is host-owned: an ordinary save keeps what the file holds.
+		writeFileSync(settingsPath, JSON.stringify({ logRetentionDays: 730 }));
 		await saveSettings(full);
 
 		// Downgrade safety: the file is a plain JSON superset of all pre-existing keys.
@@ -517,6 +519,77 @@ describe("saveSettings", () => {
 		for (const bad of ["{ not json", "null", "[]", JSON.stringify({ logRetentionDays: "90" }), JSON.stringify({ logRetentionDays: 0 }), JSON.stringify({ logRetentionDays: -5 }), JSON.stringify({ logRetentionDays: 1.5 }), JSON.stringify({ logRetentionDays: null })]) {
 			expect(read(bad), bad).toBeNull();
 		}
+	});
+
+	describe("host-owned logRetentionDays", () => {
+		const onDisk = () => JSON.parse(readFileSync(settingsPath, "utf-8"));
+
+		beforeEach(() => {
+			vi.spyOn(Bun, "write").mockImplementation(async (target, data) => {
+				writeFileSync(String(target), String(data), "utf-8");
+				return 0;
+			});
+		});
+
+		it("keeps an on-disk forever through an ordinary save whose snapshot is stale", async () => {
+			writeFileSync(settingsPath, JSON.stringify({ logRetentionDays: "forever" }));
+			await saveSettings(makeSettings());
+			expect(onDisk().logRetentionDays).toBe("forever");
+			await saveSettings(makeSettings({ logRetentionDays: 30 }));
+			expect(onDisk().logRetentionDays).toBe("forever");
+			expect(readLogRetentionForPrune()).toEqual({ days: null });
+		});
+
+		it("keeps an unknown on-disk value verbatim, so the prune still skips", async () => {
+			writeFileSync(settingsPath, JSON.stringify({ logRetentionDays: "90" }));
+			await saveSettings(makeSettings());
+			expect(onDisk().logRetentionDays).toBe("90");
+			expect(readLogRetentionForPrune()).toBeNull();
+		});
+
+		it("omits the field when the file has none or is unreadable", async () => {
+			await saveSettings(makeSettings({ logRetentionDays: 365 }));
+			expect("logRetentionDays" in onDisk()).toBe(false);
+			writeFileSync(settingsPath, "{ not json");
+			await saveSettings(makeSettings({ logRetentionDays: 365 }));
+			expect("logRetentionDays" in onDisk()).toBe(false);
+		});
+
+		it("does not let a delayed favorite save undo a retention change", async () => {
+			writeFileSync(settingsPath, JSON.stringify({}));
+			const snapshot = await loadSettings(); // the favorite toggle's load: retention absent
+			await saveSettings(makeSettings(), { value: "forever", expectedCurrent: 30 });
+			await saveSettings({ ...snapshot, favorites: [{ agentId: "a", configId: "c", uses: 1, lastUsedAt: 1 }] });
+			expect(onDisk().logRetentionDays).toBe("forever");
+			expect(onDisk().favorites).toHaveLength(1);
+			expect(readLogRetentionForPrune()).toEqual({ days: null });
+		});
+
+		it("writes the new retention when the stored one is what the caller saw, 30 as an absent key", async () => {
+			writeFileSync(settingsPath, JSON.stringify({ logRetentionDays: 365 }));
+			await saveSettings(makeSettings(), { value: 90, expectedCurrent: 365 });
+			expect(onDisk().logRetentionDays).toBe(90);
+			await saveSettings(makeSettings(), { value: 30, expectedCurrent: 90 });
+			expect("logRetentionDays" in onDisk()).toBe(false);
+			await saveSettings(makeSettings(), { value: "forever", expectedCurrent: 30 });
+			expect(onDisk().logRetentionDays).toBe("forever");
+		});
+
+		it("lets an explicit choice replace an unknown stored value", async () => {
+			writeFileSync(settingsPath, JSON.stringify({ logRetentionDays: "90" }));
+			await saveSettings(makeSettings(), { value: 90, expectedCurrent: 30 });
+			expect(onDisk().logRetentionDays).toBe(90);
+			expect(readLogRetentionForPrune()).toEqual({ days: 90 });
+		});
+
+		it.each([
+			["another value", JSON.stringify({ logRetentionDays: "forever" }), 30],
+			["an unreadable file", "{ not json", 30],
+		])("refuses and writes nothing when the file holds %s", async (_name, contents, expectedCurrent) => {
+			writeFileSync(settingsPath, contents);
+			await expect(saveSettings(makeSettings(), { value: 90, expectedCurrent })).rejects.toBeInstanceOf(LogRetentionChangedError);
+			expect(readFileSync(settingsPath, "utf-8")).toBe(contents);
+		});
 	});
 
 	it("reads settings.json strictly: missing is empty, anything but a plain object is refused", () => {

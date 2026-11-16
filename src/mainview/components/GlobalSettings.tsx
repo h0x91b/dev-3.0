@@ -41,6 +41,7 @@ import { destroyAnalytics, trackEvent } from "../analytics";
 import posthogClient from "../posthog";
 import { setRuntimeTelemetryOptOut } from "../telemetry";
 import { confirm } from "../confirm";
+import { toast } from "../toast";
 import type { UpdateChannel } from "../../shared/update-channel";
 import AdvancedExperienceSection from "./global-settings/AdvancedExperienceSection";
 import AgentAccountsSection from "./global-settings/AgentAccountsSection";
@@ -57,7 +58,7 @@ import ModelCatalogSection from "./global-settings/ModelCatalogSection";
 import NotificationSettingsSection from "./global-settings/NotificationSettingsSection";
 import PxpipeProxySettingsSection from "./global-settings/PxpipeProxySettingsSection";
 import SystemSettingsSection from "./global-settings/SystemSettingsSection";
-import type { LogRetentionChoice } from "../../shared/log-retention";
+import { LOG_RETENTION_CHANGED_MESSAGE, type LogRetentionChoice } from "../../shared/log-retention";
 import TelemetrySettingsSection from "./global-settings/TelemetrySettingsSection";
 import TerminalSettingsSection from "./global-settings/TerminalSettingsSection";
 import WorkspaceSettingsSection from "./global-settings/WorkspaceSettingsSection";
@@ -218,8 +219,10 @@ function GlobalSettings({
 	);
 
 	const hostSettingsLoadedRef = useRef(false);
+	const [hostSettingsLoaded, setHostSettingsLoaded] = useState(false);
 	const adoptHostSettings = useCallback((next: GlobalSettingsType) => {
 		hostSettingsLoadedRef.current = true;
+		setHostSettingsLoaded(true);
 		setGlobalSettingsState(next);
 	}, [setGlobalSettingsState]);
 
@@ -762,14 +765,17 @@ function GlobalSettings({
 
 	// Host-owned: the host saves it and prunes, so this adopts the saved settings it returns.
 	const handleLogRetentionChange = useCallback(
-		async (choice: LogRetentionChoice) => {
+		async (choice: LogRetentionChoice, expectedCurrent: LogRetentionChoice) => {
 			try {
-				adoptHostSettings(await api.request.setLogRetention({ value: choice }));
-			} catch {
-				// The select keeps showing the stored value.
+				adoptHostSettings(await api.request.setLogRetention({ value: choice, expectedCurrent }));
+			} catch (err) {
+				// The host refused because the retention changed since the user chose; show the real one.
+				if (!String(err).includes(LOG_RETENTION_CHANGED_MESSAGE)) return;
+				await api.request.getGlobalSettings().then(adoptHostSettings).catch(() => {});
+				toast.info(t("settings.logRetentionChangedElsewhere"), { source: "settings" });
 			}
 		},
-		[adoptHostSettings],
+		[adoptHostSettings, t],
 	);
 
 	const handleFocusModeToggle = useCallback(
@@ -1205,6 +1211,7 @@ function GlobalSettings({
 							onConfirmBeforeQuitToggle={handleConfirmBeforeQuitToggle}
 							onAutoCleanupTaskHistoryToggle={handleAutoCleanupTaskHistoryToggle}
 							onLogRetentionChange={handleLogRetentionChange}
+							hostSettingsLoaded={hostSettingsLoaded}
 						/>
 						<TelemetrySettingsSection
 							t={t}

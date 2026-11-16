@@ -1,9 +1,10 @@
 import { syncGlobalSettingsCache } from "../../global-settings-cache";
 import { setHiddenControlsForTests } from "../../hidden-controls";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import GlobalSettings from "../GlobalSettings";
 import { I18nProvider } from "../../i18n";
+import { toast } from "../../toast";
 import type { CodingAgent, GlobalSettings as GlobalSettingsType } from "../../../shared/types";
 import type { SettingsSectionId } from "../../state";
 import type { SettingsEntryAnchor } from "../../settings-registry";
@@ -1086,16 +1087,53 @@ describe("GlobalSettings", () => {
 			await waitForLoad();
 
 			const select = (await screen.findByTestId("log-retention")) as HTMLSelectElement;
-			expect(select.value).toBe("30");
+			await waitFor(() => expect(select.value).toBe("30"));
 
 			await user.selectOptions(select, "forever");
-			await waitFor(() => expect(mockedApi.request.setLogRetention).toHaveBeenLastCalledWith({ value: "forever" }));
+			await waitFor(() => expect(mockedApi.request.setLogRetention).toHaveBeenLastCalledWith({ value: "forever", expectedCurrent: 30 }));
 			await waitFor(() => expect(select.value).toBe("forever"));
 
 			await user.selectOptions(select, "30");
-			await waitFor(() => expect(mockedApi.request.setLogRetention).toHaveBeenLastCalledWith({ value: 30 }));
+			await waitFor(() => expect(mockedApi.request.setLogRetention).toHaveBeenLastCalledWith({ value: 30, expectedCurrent: "forever" }));
 			// The host owns the field: the settings snapshot save never carries a change of it.
 			expect(mockedApi.request.saveGlobalSettings).not.toHaveBeenCalled();
+		});
+
+		it("keeps the log retention select empty and disabled until the host settings arrive", async () => {
+			let release: (settings: GlobalSettingsType) => void = () => {};
+			setupMocks(mockAgents, { ...mockGlobalSettings });
+			mockedApi.request.getGlobalSettings.mockReturnValue(new Promise((resolve) => { release = resolve; }));
+			renderGlobalSettings("system");
+			await waitForLoad();
+
+			const select = (await screen.findByTestId("log-retention")) as HTMLSelectElement;
+			expect(select).toBeDisabled();
+			expect(select.value).toBe("");
+			expect(select.options).toHaveLength(1);
+			expect(mockedApi.request.setLogRetention).not.toHaveBeenCalled();
+
+			await act(async () => release({ ...mockGlobalSettings, logRetentionDays: "forever" }));
+			await waitFor(() => expect(select).not.toBeDisabled());
+			expect(select.value).toBe("forever");
+		});
+
+		it("re-reads the settings and tells the user when the host says the retention changed elsewhere", async () => {
+			setupMocks(mockAgents, { ...mockGlobalSettings });
+			mockedApi.request.setLogRetention.mockRejectedValue(new Error("log-retention-changed"));
+			const info = vi.spyOn(toast, "info").mockImplementation(() => undefined as never);
+			const user = userEvent.setup();
+			renderGlobalSettings("system");
+			await waitForLoad();
+			const select = (await screen.findByTestId("log-retention")) as HTMLSelectElement;
+			await waitFor(() => expect(select).not.toBeDisabled());
+
+			mockedApi.request.getGlobalSettings.mockResolvedValue({ ...mockGlobalSettings, logRetentionDays: 365 });
+			await user.selectOptions(select, "90");
+
+			await waitFor(() => expect(select.value).toBe("365"));
+			expect(mockedApi.request.setLogRetention).toHaveBeenCalledWith({ value: 90, expectedCurrent: 30 });
+			expect(info).toHaveBeenCalledWith("Retention changed elsewhere. Choose again.", { source: "settings" });
+			info.mockRestore();
 		});
 
 		it("round-trips the confirm-before-quit toggle through skipQuitDialog", async () => {

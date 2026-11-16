@@ -387,9 +387,12 @@ export type AppRPCSchema = {
 				params: { retentionDays?: number };
 				response: LogRetentionUsage;
 			};
-			/** The one writer of `logRetentionDays`; a shorter value prunes every log at once. */
+			/**
+			 * The one writer of `logRetentionDays`; a shorter value prunes every log at once.
+			 * Rejects with LOG_RETENTION_CHANGED_MESSAGE when the stored value is not `expectedCurrent`.
+			 */
 			setLogRetention: {
-				params: { value: number | "forever" };
+				params: { value: number | "forever"; expectedCurrent: number | "forever" };
 				response: GlobalSettings;
 			};
 			/** Toggle an (agentId, configId) pair in the global favorites list —

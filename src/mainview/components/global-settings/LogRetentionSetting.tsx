@@ -29,12 +29,15 @@ async function fetchUsage(retentionDays?: number): Promise<LogRetentionUsage | n
 export default function LogRetentionSetting({
 	t,
 	globalSettings,
+	loaded,
 	onChange,
 }: {
 	t: TFunction;
 	globalSettings: GlobalSettings;
-	/** Saves the choice; the select stays disabled until it settles. */
-	onChange: (choice: LogRetentionChoice) => Promise<void>;
+	/** False until the host has sent its settings; before that `globalSettings` is a placeholder, not the stored retention. */
+	loaded: boolean;
+	/** Saves the choice, naming the retention the user was looking at; the select stays disabled until it settles. */
+	onChange: (choice: LogRetentionChoice, expectedCurrent: LogRetentionChoice) => Promise<void>;
 }) {
 	const [usage, setUsage] = useState<LogRetentionUsage | null>(null);
 	const [pending, setPending] = useState(false);
@@ -53,6 +56,7 @@ export default function LogRetentionSetting({
 	}, [reloadUsage]);
 
 	async function handleChange(raw: string) {
+		if (!loaded) return;
 		const choice: LogRetentionChoice = raw === "forever" ? "forever" : Number(raw);
 		const nextDays = choice === "forever" ? null : choice;
 		setPending(true);
@@ -74,7 +78,7 @@ export default function LogRetentionSetting({
 					if (!confirmed) return;
 				}
 			}
-			await onChange(choice);
+			await onChange(choice, logRetentionChoice(globalSettings));
 		} finally {
 			setPending(false);
 		}
@@ -94,19 +98,25 @@ export default function LogRetentionSetting({
 			<select
 				id="log-retention"
 				data-testid="log-retention"
-				value={String(current)}
-				disabled={pending}
+				value={loaded ? String(current) : ""}
+				disabled={pending || !loaded}
 				onChange={(event) => void handleChange(event.target.value)}
 				className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none appearance-none"
 			>
-				{dayOptions.map((days) => (
-					<option key={days} value={String(days)}>
-						{t.plural("settings.logRetentionOption", days)}
-					</option>
-				))}
-				<option value="forever">{t("settings.logRetentionForever")}</option>
+				{loaded ? (
+					<>
+						{dayOptions.map((days) => (
+							<option key={days} value={String(days)}>
+								{t.plural("settings.logRetentionOption", days)}
+							</option>
+						))}
+						<option value="forever">{t("settings.logRetentionForever")}</option>
+					</>
+				) : (
+					<option value="" />
+				)}
 			</select>
-			{usage && usage.days.length > 0 ? (
+			{loaded && usage && usage.days.length > 0 ? (
 				<p data-testid="log-retention-usage" className="text-fg-3 text-xs mt-2 tabular-nums">
 					{t.plural("settings.logRetentionUsage", usage.days.length, { size: formatBytesPrecise(usedBytes) })}
 				</p>

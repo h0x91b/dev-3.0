@@ -1,6 +1,6 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import type { GlobalSettings } from "../../../../shared/types";
 import type { LogRetentionChoice } from "../../../../shared/log-retention";
 import { I18nProvider, useT } from "../../../i18n";
@@ -32,15 +32,17 @@ function hostAnswer(beyondByRetention: Record<number, { days: number; bytes: num
 	}));
 }
 
-function Harness({ settings, onChange }: { settings: Partial<GlobalSettings>; onChange: (choice: LogRetentionChoice) => Promise<void> }) {
+type OnChange = (choice: LogRetentionChoice, expectedCurrent: LogRetentionChoice) => Promise<void>;
+
+function Harness({ settings, loaded, onChange }: { settings: Partial<GlobalSettings>; loaded: boolean; onChange: OnChange }) {
 	const t = useT();
-	return <LogRetentionSetting t={t} globalSettings={{ updateChannel: "stable", ...settings } as GlobalSettings} onChange={onChange} />;
+	return <LogRetentionSetting t={t} globalSettings={{ updateChannel: "stable", ...settings } as GlobalSettings} loaded={loaded} onChange={onChange} />;
 }
 
-function renderSetting(settings: Partial<GlobalSettings> = {}, onChange = vi.fn(async () => {})) {
+function renderSetting(settings: Partial<GlobalSettings> = {}, onChange: Mock<OnChange> = vi.fn<OnChange>(async () => {}), loaded = true) {
 	render(
 		<I18nProvider>
-			<Harness settings={settings} onChange={onChange} />
+			<Harness settings={settings} loaded={loaded} onChange={onChange} />
 		</I18nProvider>,
 	);
 	return { onChange, select: () => screen.getByTestId("log-retention") as HTMLSelectElement };
@@ -104,7 +106,7 @@ describe("LogRetentionSetting", () => {
 	it("asks before lowering with what the host says would go, then saves", async () => {
 		const { select, onChange } = renderSetting({ logRetentionDays: 365 });
 		await userEvent.selectOptions(select(), "90");
-		await waitFor(() => expect(onChange).toHaveBeenCalledWith(90));
+		await waitFor(() => expect(onChange).toHaveBeenCalledWith(90, 365));
 		expect(mocks.getLogRetentionUsage).toHaveBeenCalledWith({ retentionDays: 90 });
 		expect(mocks.confirm).toHaveBeenCalledWith({
 			title: "Delete older history?",
@@ -118,13 +120,13 @@ describe("LogRetentionSetting", () => {
 		hostAnswer({ 90: { days: 1, bytes: 10 } });
 		const { select, onChange } = renderSetting({ logRetentionDays: 120 });
 		await userEvent.selectOptions(select(), "90");
-		await waitFor(() => expect(onChange).toHaveBeenCalledWith(90));
+		await waitFor(() => expect(onChange).toHaveBeenCalledWith(90, 120));
 		expect(mocks.confirm).toHaveBeenCalledTimes(1);
 
 		onChange.mockClear();
 		mocks.confirm.mockClear();
 		await userEvent.selectOptions(select(), "180");
-		await waitFor(() => expect(onChange).toHaveBeenCalledWith(180));
+		await waitFor(() => expect(onChange).toHaveBeenCalledWith(180, 120));
 		expect(mocks.confirm).not.toHaveBeenCalled();
 	});
 
@@ -142,23 +144,23 @@ describe("LogRetentionSetting", () => {
 		hostAnswer({ 90: { days: 0, bytes: 0 } });
 		const { select, onChange } = renderSetting({ logRetentionDays: 365 });
 		await userEvent.selectOptions(select(), "90");
-		await waitFor(() => expect(onChange).toHaveBeenCalledWith(90));
+		await waitFor(() => expect(onChange).toHaveBeenCalledWith(90, 365));
 		expect(mocks.confirm).not.toHaveBeenCalled();
 	});
 
 	it("never asks when the retention is raised or set to forever", async () => {
 		const { select, onChange } = renderSetting({ logRetentionDays: 90 });
 		await userEvent.selectOptions(select(), "365");
-		await waitFor(() => expect(onChange).toHaveBeenCalledWith(365));
+		await waitFor(() => expect(onChange).toHaveBeenCalledWith(365, 90));
 		await userEvent.selectOptions(select(), "forever");
-		await waitFor(() => expect(onChange).toHaveBeenCalledWith("forever"));
+		await waitFor(() => expect(onChange).toHaveBeenCalledWith("forever", 90));
 		expect(mocks.confirm).not.toHaveBeenCalled();
 	});
 
 	it("treats going from forever to a number as lowering", async () => {
 		const { select, onChange } = renderSetting({ logRetentionDays: "forever" });
 		await userEvent.selectOptions(select(), "90");
-		await waitFor(() => expect(onChange).toHaveBeenCalledWith(90));
+		await waitFor(() => expect(onChange).toHaveBeenCalledWith(90, "forever"));
 		expect(mocks.confirm).toHaveBeenCalledTimes(1);
 	});
 
@@ -166,7 +168,7 @@ describe("LogRetentionSetting", () => {
 		mocks.getLogRetentionUsage.mockRejectedValue(new Error("offline"));
 		const { select, onChange } = renderSetting({ logRetentionDays: 365 });
 		await userEvent.selectOptions(select(), "90");
-		await waitFor(() => expect(onChange).toHaveBeenCalledWith(90));
+		await waitFor(() => expect(onChange).toHaveBeenCalledWith(90, 365));
 		expect(mocks.confirm).toHaveBeenCalledWith(
 			expect.objectContaining({ message: "History older than 90 days will be deleted. This can't be undone." }),
 		);
@@ -174,11 +176,39 @@ describe("LogRetentionSetting", () => {
 
 	it("disables the select from the change until it is saved, so changes cannot overlap", async () => {
 		let finishSave: () => void = () => {};
-		const onChange = vi.fn(() => new Promise<void>((resolve) => { finishSave = resolve; }));
+		const onChange = vi.fn<OnChange>(() => new Promise<void>((resolve) => { finishSave = resolve; }));
 		const { select } = renderSetting({ logRetentionDays: 90 }, onChange);
 		await userEvent.selectOptions(select(), "365");
 		await waitFor(() => expect(select()).toBeDisabled());
 		await act(async () => finishSave());
 		await waitFor(() => expect(select()).not.toBeDisabled());
+	});
+
+	it("before the host settings load, shows no value, offers no choice and shows no usage", async () => {
+		const { select, onChange } = renderSetting({ logRetentionDays: "forever" }, vi.fn<OnChange>(async () => {}), false);
+		expect(select()).toBeDisabled();
+		expect(select().value).toBe("");
+		expect(options(select())).toEqual([""]);
+		await waitFor(() => expect(mocks.getLogRetentionUsage).toHaveBeenCalled());
+		expect(screen.queryByTestId("log-retention-usage")).toBeNull();
+		fireEvent.change(select(), { target: { value: "90" } });
+		expect(onChange).not.toHaveBeenCalled();
+		expect(mocks.confirm).not.toHaveBeenCalled();
+	});
+
+	it("shows the host value once the settings have loaded", () => {
+		const view = render(
+			<I18nProvider>
+				<Harness settings={{ logRetentionDays: "forever" }} loaded={false} onChange={vi.fn(async () => {})} />
+			</I18nProvider>,
+		);
+		view.rerender(
+			<I18nProvider>
+				<Harness settings={{ logRetentionDays: "forever" }} loaded onChange={vi.fn(async () => {})} />
+			</I18nProvider>,
+		);
+		const select = screen.getByTestId("log-retention") as HTMLSelectElement;
+		expect(select).not.toBeDisabled();
+		expect(select.value).toBe("forever");
 	});
 });

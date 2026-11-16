@@ -394,6 +394,7 @@ const settings = {
 	"settings.logRetentionConfirmMessage_other": "Se eliminará el historial de más de {days} días: {count} días, {size}. No se puede deshacer.",
 	"settings.logRetentionConfirmUnknown": "Se eliminará el historial de más de {days} días. No se puede deshacer.",
 	"settings.logRetentionConfirmLabel": "Eliminar",
+	"settings.logRetentionChangedElsewhere": "El periodo de conservación cambió en otro lugar. Elige de nuevo.",
 	"settings.rateLimitTracking": "Seguimiento de límites de agentes",
 	"settings.rateLimitTrackingDesc": "Muestra en la cabecera el uso en vivo de los límites de Claude/Codex. Los datos de Claude se capturan enrutando el statusLine de la sesión a través de dev3 — tu propio statusLine sigue funcionando, dev3 solo añade su segmento.",
 	"settings.leanAgentProtocol": "Protocolo de agente reducido",

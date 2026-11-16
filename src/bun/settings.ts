@@ -6,7 +6,14 @@ import { hasEnvLineBreak, sanitizeEnvMap } from "../shared/env-text";
 import { recordFavoriteUsage, sanitizeFavorites } from "../shared/favorites";
 import { coerceUpdateChannel, DEFAULT_UPDATE_CHANNEL } from "../shared/update-channel";
 import { canaryPublishesFor, hostOsName } from "../shared/canary-publish";
-import { DEFAULT_LOG_RETENTION_DAYS, isRetentionDayCount, sanitizeLogRetention } from "../shared/log-retention";
+import {
+	DEFAULT_LOG_RETENTION_DAYS,
+	LOG_RETENTION_CHANGED_MESSAGE,
+	isRetentionDayCount,
+	sanitizeLogRetention,
+	storedLogRetention,
+	type LogRetentionValue,
+} from "../shared/log-retention";
 
 /**
  * Does the canary feed carry a build for THIS machine? Asked here rather than passed in,
@@ -374,9 +381,41 @@ export async function loadSettings(): Promise<GlobalSettings> {
 }
 
 
-export async function saveSettings(settings: GlobalSettings): Promise<void> {
+/** The on-disk retention differs from what the caller based its change on. */
+export class LogRetentionChangedError extends Error {
+	constructor() {
+		super(LOG_RETENTION_CHANGED_MESSAGE);
+		this.name = "LogRetentionChangedError";
+	}
+}
+
+/** The retention a raw settings object holds, or undefined when the field holds something unknown. */
+function interpretStoredRetention(raw: Record<string, unknown> | null): LogRetentionValue | undefined {
+	if (!raw) return undefined;
+	const field = raw.logRetentionDays;
+	if (field === undefined) return DEFAULT_LOG_RETENTION_DAYS;
+	return field === "forever" || isRetentionDayCount(field) ? field : undefined;
+}
+
+/**
+ * `logRetentionDays` is host-owned: an ordinary save writes back whatever the file
+ * holds, verbatim, ignoring the field in `settings`. Only `retention` changes it, and
+ * only while the file still holds `expectedCurrent`; otherwise nothing is written.
+ */
+export async function saveSettings(
+	settings: GlobalSettings,
+	retention?: { value: LogRetentionValue; expectedCurrent: LogRetentionValue },
+): Promise<void> {
 	log.info("Saving global settings", { settings });
 	await withFileLock(SETTINGS_FILE, async () => {
+		const raw = readSettingsFileStrict();
+		let retentionField: unknown = raw && Object.prototype.hasOwnProperty.call(raw, "logRetentionDays") ? raw.logRetentionDays : undefined;
+		if (retention) {
+			// An unreadable file refuses; an unknown stored value matches anything, so an explicit choice replaces it.
+			const current = interpretStoredRetention(raw);
+			if (!raw || (current !== undefined && current !== retention.expectedCurrent)) throw new LogRetentionChangedError();
+			retentionField = storedLogRetention(retention.value);
+		}
 		mkdirSync(DEV3_HOME, { recursive: true });
 		// Written even when empty, so clearing every exclusion is not undone by a stale settings.json copy.
 		const exclusionsTemp = `${AUTO_EXCLUSIONS_FILE}.tmp`;
@@ -386,7 +425,7 @@ export async function saveSettings(settings: GlobalSettings): Promise<void> {
 		const tempFile = `${SETTINGS_FILE}.tmp`;
 		// The legacy key keeps an older co-installed build's single toggle on only while both are on.
 		const legacyNeedsYou = settings.playSoundOnTaskQuestions === true && settings.playSoundOnTaskReview === true;
-		await Bun.write(tempFile, JSON.stringify({ ...settings, playSoundOnTaskNeedsYou: legacyNeedsYou }, null, 2));
+		await Bun.write(tempFile, JSON.stringify({ ...settings, logRetentionDays: retentionField, playSoundOnTaskNeedsYou: legacyNeedsYou }, null, 2));
 		renameSync(tempFile, SETTINGS_FILE);
 	});
 	log.info("Global settings saved");

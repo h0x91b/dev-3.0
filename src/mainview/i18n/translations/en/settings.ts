@@ -394,6 +394,7 @@ const settings = {
 	"settings.logRetentionConfirmMessage_other": "History older than {days} days will be deleted: {count} days, {size}. This can't be undone.",
 	"settings.logRetentionConfirmUnknown": "History older than {days} days will be deleted. This can't be undone.",
 	"settings.logRetentionConfirmLabel": "Delete",
+	"settings.logRetentionChangedElsewhere": "Retention changed elsewhere. Choose again.",
 	"settings.rateLimitTracking": "Agent rate-limit tracking",
 	"settings.rateLimitTrackingDesc": "Show live Claude/Codex rate-limit usage in the header. Claude data is captured by routing the session statusLine through dev3 — your own statusLine keeps working, dev3 only appends its usage segment.",
 	"settings.leanAgentProtocol": "Lean agent protocol",
