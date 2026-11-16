@@ -733,6 +733,89 @@ export default function FileExplorer({
 	);
 }
 
+const MENU_ITEMS = "[role=menuitemcheckbox]:not([aria-disabled=true]), [role=menuitem]";
+
+/**
+ * The one popup frame every explorer menu uses: a portal over a click-away backdrop,
+ * measured invisible first and clamped into the window, focus on the first item,
+ * Escape to close, arrow keys, Home and End between items.
+ */
+function MenuShell({ top, left, alignEnd = false, label, testId, className, onClose, children }: {
+	top: number;
+	left: number;
+	/** `left` is the menu's right edge: a header button's menu opens under it, flush right. */
+	alignEnd?: boolean;
+	label?: string;
+	testId?: string;
+	className: string;
+	onClose: () => void;
+	children: ReactNode;
+}) {
+	const menuRef = useRef<HTMLDivElement>(null);
+	const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+	// The parent re-renders on every toggle and poll; a fresh onClose must not re-run the focus below.
+	const onCloseRef = useRef(onClose);
+	onCloseRef.current = onClose;
+
+	useEffect(() => {
+		const el = menuRef.current;
+		if (el) {
+			const rect = el.getBoundingClientRect();
+			setPosition({
+				top: Math.max(8, Math.min(top, window.innerHeight - rect.height - 8)),
+				left: Math.max(8, Math.min(alignEnd ? left - rect.width : left, window.innerWidth - rect.width - 8)),
+			});
+			el.querySelector<HTMLElement>(MENU_ITEMS)?.focus();
+		}
+		const onKey = (event: KeyboardEvent) => {
+			if (event.key === "Escape") {
+				event.stopPropagation();
+				onCloseRef.current();
+			}
+		};
+		window.addEventListener("keydown", onKey, true);
+		return () => window.removeEventListener("keydown", onKey, true);
+	}, [top, left, alignEnd]);
+
+	function onMenuKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+		const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>(MENU_ITEMS) ?? []);
+		const index = items.indexOf(document.activeElement as HTMLElement);
+		let next: number;
+		if (event.key === "ArrowDown") next = (index + 1) % items.length;
+		else if (event.key === "ArrowUp") next = (index - 1 + items.length) % items.length;
+		else if (event.key === "Home") next = 0;
+		else if (event.key === "End") next = items.length - 1;
+		else return;
+		event.preventDefault();
+		items[next]?.focus();
+	}
+
+	return createPortal(
+		<>
+			<div
+				className="fixed inset-0 z-[200]"
+				onClick={onClose}
+				onContextMenu={(event) => {
+					event.preventDefault();
+					onClose();
+				}}
+			/>
+			<div
+				ref={menuRef}
+				role="menu"
+				aria-label={label}
+				onKeyDown={onMenuKeyDown}
+				data-testid={testId}
+				className={`fixed z-[201] rounded-xl bg-overlay p-1 ring-1 ring-edge-active shadow-2xl shadow-black/40 ${className} ${position ? "" : "invisible"}`}
+				style={{ top: position?.top ?? top, left: position?.left ?? left }}
+			>
+				{children}
+			</div>
+		</>,
+		document.body,
+	);
+}
+
 /** Checkboxes choosing which extra folders the tree shows; stays open while toggling. */
 function FolderPickerMenu({ top, left, primary, folders, hidden, onToggle, onShowAll, onEdit, onClose }: {
 	top: number;
@@ -746,45 +829,6 @@ function FolderPickerMenu({ top, left, primary, folders, hidden, onToggle, onSho
 	onClose: () => void;
 }) {
 	const t = useT();
-	const menuRef = useRef<HTMLDivElement>(null);
-	const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
-	// The parent re-renders on every toggle and poll; a fresh onClose must not re-run the focus below.
-	const onCloseRef = useRef(onClose);
-	onCloseRef.current = onClose;
-
-	useEffect(() => {
-		const el = menuRef.current;
-		if (el) {
-			const rect = el.getBoundingClientRect();
-			setPosition({
-				top: Math.max(8, Math.min(top, window.innerHeight - rect.height - 8)),
-				left: Math.max(8, Math.min(left, window.innerWidth - rect.width - 8)),
-			});
-			el.querySelector<HTMLElement>("[role=menuitemcheckbox]:not([aria-disabled=true]), [role=menuitem]")?.focus();
-		}
-		const onKey = (event: KeyboardEvent) => {
-			if (event.key === "Escape") {
-				event.stopPropagation();
-				onCloseRef.current();
-			}
-		};
-		window.addEventListener("keydown", onKey, true);
-		return () => window.removeEventListener("keydown", onKey, true);
-	}, [top, left]);
-
-	function onMenuKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
-		const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>("[role=menuitemcheckbox]:not([aria-disabled=true]), [role=menuitem]") ?? []);
-		const index = items.indexOf(document.activeElement as HTMLElement);
-		let next: number;
-		if (event.key === "ArrowDown") next = (index + 1) % items.length;
-		else if (event.key === "ArrowUp") next = (index - 1 + items.length) % items.length;
-		else if (event.key === "Home") next = 0;
-		else if (event.key === "End") next = items.length - 1;
-		else return;
-		event.preventDefault();
-		items[next]?.focus();
-	}
-
 	const item = "group flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-overlay-hover focus-visible:bg-overlay-hover focus-visible:outline-none";
 	const check = (checked: boolean) => (
 		<span
@@ -796,177 +840,102 @@ function FolderPickerMenu({ top, left, primary, folders, hidden, onToggle, onSho
 	);
 	const action = "flex w-full items-center rounded-lg px-2 py-1.5 text-left text-xs text-fg-2 transition-colors hover:bg-overlay-hover hover:text-fg focus-visible:bg-overlay-hover focus-visible:text-fg focus-visible:outline-none";
 
-	return createPortal(
-		<>
-			<div
-				className="fixed inset-0 z-[200]"
-				onClick={onClose}
-				onContextMenu={(event) => {
-					event.preventDefault();
-					onClose();
-				}}
-			/>
-			<div
-				ref={menuRef}
-				role="menu"
-				aria-label={t("fileExplorer.showFolders")}
-				onKeyDown={onMenuKeyDown}
-				data-testid="file-explorer-folder-picker"
-				className={`fixed z-[201] w-[17rem] rounded-xl bg-overlay p-1 ring-1 ring-edge-active shadow-2xl shadow-black/40 ${position ? "" : "invisible"}`}
-				style={{ top: position?.top ?? top, left: position?.left ?? left }}
-			>
-				<div className="px-2 pb-1 pt-1.5 text-dense font-semibold uppercase tracking-[0.06em] text-fg-muted">{t("fileExplorer.showFolders")}</div>
-				<div className="max-h-[15rem] overflow-y-auto">
-					<div role="menuitemcheckbox" aria-checked="true" aria-disabled="true" className={`${item} opacity-60 cursor-default hover:bg-transparent`}>
-						{check(true)}
-						<span className="min-w-0 flex-1">
-							<span className="block truncate text-xs text-fg-2">{primary.label}</span>
-							{primary.path && <span className="block truncate font-mono text-dense text-fg-muted streamer-private">{primary.path}</span>}
-						</span>
-					</div>
-					{folders.map((folder) => {
-						const shown = !hidden.includes(folder.path);
-						return (
-							<button
-								key={folder.path}
-								type="button"
-								role="menuitemcheckbox"
-								aria-checked={shown}
-								onClick={() => onToggle(folder.path, !shown)}
-								title={folder.path}
-								className={item}
-							>
-								{check(shown)}
-								<span className="min-w-0 flex-1">
-									<span className="block truncate text-xs text-fg-2 group-hover:text-fg">{folder.name}</span>
-									<span className="block truncate font-mono text-dense text-fg-muted streamer-private">{folder.displayPath}</span>
-								</span>
-								<span className={`flex-shrink-0 rounded px-1 text-dense ring-1 ring-inset ${folder.exists ? "text-fg-3 ring-edge" : "text-danger ring-danger/40"}`}>
-									{folder.exists ? (folder.source === "claude" ? t("fileExplorer.folderSourceClaude") : t("fileExplorer.folderSourceDev3")) : t("fileExplorer.folderMissing")}
-								</span>
-							</button>
-						);
-					})}
+	return (
+		<MenuShell top={top} left={left} label={t("fileExplorer.showFolders")} testId="file-explorer-folder-picker" className="w-[17rem]" onClose={onClose}>
+			<div className="px-2 pb-1 pt-1.5 text-dense font-semibold uppercase tracking-[0.06em] text-fg-muted">{t("fileExplorer.showFolders")}</div>
+			<div className="max-h-[15rem] overflow-y-auto">
+				<div role="menuitemcheckbox" aria-checked="true" aria-disabled="true" className={`${item} opacity-60 cursor-default hover:bg-transparent`}>
+					{check(true)}
+					<span className="min-w-0 flex-1">
+						<span className="block truncate text-xs text-fg-2">{primary.label}</span>
+						{primary.path && <span className="block truncate font-mono text-dense text-fg-muted streamer-private">{primary.path}</span>}
+					</span>
 				</div>
-				<div role="group" className="mt-1 border-t border-edge pt-1">
-					{folders.some((f) => hidden.includes(f.path)) && (
-						<button type="button" role="menuitem" className={action} onClick={onShowAll}>{t("fileExplorer.showAllFolders")}</button>
-					)}
-					{onEdit && (
+				{folders.map((folder) => {
+					const shown = !hidden.includes(folder.path);
+					return (
 						<button
+							key={folder.path}
 							type="button"
-							role="menuitem"
-							className={action}
-							onClick={() => {
-								onClose();
-								onEdit();
-							}}
+							role="menuitemcheckbox"
+							aria-checked={shown}
+							onClick={() => onToggle(folder.path, !shown)}
+							title={folder.path}
+							className={item}
 						>
-							{t("fileExplorer.editFolders")}
+							{check(shown)}
+							<span className="min-w-0 flex-1">
+								<span className="block truncate text-xs text-fg-2 group-hover:text-fg">{folder.name}</span>
+								<span className="block truncate font-mono text-dense text-fg-muted streamer-private">{folder.displayPath}</span>
+							</span>
+							<span className={`flex-shrink-0 rounded px-1 text-dense ring-1 ring-inset ${folder.exists ? "text-fg-3 ring-edge" : "text-danger ring-danger/40"}`}>
+								{folder.exists ? (folder.source === "claude" ? t("fileExplorer.folderSourceClaude") : t("fileExplorer.folderSourceDev3")) : t("fileExplorer.folderMissing")}
+							</span>
 						</button>
-					)}
-				</div>
+					);
+				})}
 			</div>
-		</>,
-		document.body,
+			<div role="group" className="mt-1 border-t border-edge pt-1">
+				{folders.some((f) => hidden.includes(f.path)) && (
+					<button type="button" role="menuitem" className={action} onClick={onShowAll}>{t("fileExplorer.showAllFolders")}</button>
+				)}
+				{onEdit && (
+					<button
+						type="button"
+						role="menuitem"
+						className={action}
+						onClick={() => {
+							onClose();
+							onEdit();
+						}}
+					>
+						{t("fileExplorer.editFolders")}
+					</button>
+				)}
+			</div>
+		</MenuShell>
 	);
 }
 
 function ExplorerMenu({ top, left, alignEnd = false, title, sections, onClose }: {
 	top: number;
 	left: number;
-	/** `left` is the menu's right edge: a header button's menu opens under it, flush right. */
 	alignEnd?: boolean;
 	/** The entry the menu acts on, so a right-click in a long list is never ambiguous. */
 	title?: { name: string; icon: ReactNode };
 	sections: MenuItem[][];
 	onClose: () => void;
 }) {
-	const menuRef = useRef<HTMLDivElement>(null);
-	const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
-
-	useEffect(() => {
-		const el = menuRef.current;
-		if (el) {
-			const rect = el.getBoundingClientRect();
-			setPosition({
-				top: Math.max(8, Math.min(top, window.innerHeight - rect.height - 8)),
-				left: Math.max(8, Math.min(alignEnd ? left - rect.width : left, window.innerWidth - rect.width - 8)),
-			});
-			el.querySelector<HTMLElement>("[role=menuitem]")?.focus();
-		}
-		const onKey = (event: KeyboardEvent) => {
-			if (event.key === "Escape") {
-				event.stopPropagation();
-				onClose();
-			}
-		};
-		window.addEventListener("keydown", onKey, true);
-		return () => window.removeEventListener("keydown", onKey, true);
-	}, [top, left, alignEnd, onClose]);
-
-	function onMenuKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
-		const buttons = Array.from(menuRef.current?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? []);
-		const index = buttons.indexOf(document.activeElement as HTMLElement);
-		let next: number;
-		if (event.key === "ArrowDown") next = (index + 1) % buttons.length;
-		else if (event.key === "ArrowUp") next = (index - 1 + buttons.length) % buttons.length;
-		else if (event.key === "Home") next = 0;
-		else if (event.key === "End") next = buttons.length - 1;
-		else return;
-		event.preventDefault();
-		buttons[next]?.focus();
-	}
-
-	return createPortal(
-		<>
-			<div
-				className="fixed inset-0 z-[200]"
-				onClick={onClose}
-				onContextMenu={(event) => {
-					event.preventDefault();
-					onClose();
-				}}
-			/>
-			{/* Measured invisible first, so clamping into the window never shows a jump. */}
-			<div
-				ref={menuRef}
-				role="menu"
-				aria-label={title?.name}
-				onKeyDown={onMenuKeyDown}
-				className={`fixed z-[201] w-max min-w-[12.5rem] max-w-[20rem] rounded-xl bg-overlay p-1 ring-1 ring-edge-active shadow-2xl shadow-black/40 ${position ? "" : "invisible"}`}
-				style={{ top: position?.top ?? top, left: position?.left ?? left }}
-			>
-				{title && (
-					<div className="flex min-w-0 items-center gap-2 px-2 pb-1.5 pt-1 text-xs text-fg-muted" data-testid="file-explorer-menu-title">
-						<span className="flex w-4 flex-shrink-0 justify-center" aria-hidden="true">{title.icon}</span>
-						<span className="min-w-0 truncate font-medium text-fg-3">{title.name}</span>
-					</div>
-				)}
-				{sections.map((section, sectionIndex) => (
-					<div key={section[0]?.id ?? sectionIndex} role="group" className={sectionIndex > 0 || title ? "mt-1 border-t border-edge pt-1" : ""}>
-						{section.map((item) => (
-							<button
-								key={item.id}
-								type="button"
-								role="menuitem"
-								onClick={() => {
-									onClose();
-									item.run();
-								}}
-								className="group flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs text-fg-2 transition-colors hover:bg-overlay-hover hover:text-fg focus-visible:bg-overlay-hover focus-visible:text-fg focus-visible:outline-none"
-							>
-								<span className="flex w-4 flex-shrink-0 justify-center text-fg-3 transition-colors group-hover:text-accent group-focus-visible:text-accent" aria-hidden="true">
-									{item.icon}
-								</span>
-								<span className="min-w-0 flex-1 truncate">{item.label}</span>
-							</button>
-						))}
-					</div>
-				))}
-			</div>
-		</>,
-		document.body,
+	return (
+		<MenuShell top={top} left={left} alignEnd={alignEnd} label={title?.name} className="w-max min-w-[12.5rem] max-w-[20rem]" onClose={onClose}>
+			{title && (
+				<div className="flex min-w-0 items-center gap-2 px-2 pb-1.5 pt-1 text-xs text-fg-muted" data-testid="file-explorer-menu-title">
+					<span className="flex w-4 flex-shrink-0 justify-center" aria-hidden="true">{title.icon}</span>
+					<span className="min-w-0 truncate font-medium text-fg-3">{title.name}</span>
+				</div>
+			)}
+			{sections.map((section, sectionIndex) => (
+				<div key={section[0]?.id ?? sectionIndex} role="group" className={sectionIndex > 0 || title ? "mt-1 border-t border-edge pt-1" : ""}>
+					{section.map((item) => (
+						<button
+							key={item.id}
+							type="button"
+							role="menuitem"
+							onClick={() => {
+								onClose();
+								item.run();
+							}}
+							className="group flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs text-fg-2 transition-colors hover:bg-overlay-hover hover:text-fg focus-visible:bg-overlay-hover focus-visible:text-fg focus-visible:outline-none"
+						>
+							<span className="flex w-4 flex-shrink-0 justify-center text-fg-3 transition-colors group-hover:text-accent group-focus-visible:text-accent" aria-hidden="true">
+								{item.icon}
+							</span>
+							<span className="min-w-0 flex-1 truncate">{item.label}</span>
+						</button>
+					))}
+				</div>
+			))}
+		</MenuShell>
 	);
 }
 
