@@ -5,6 +5,7 @@ import { api } from "../../rpc";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../../state";
 import { registerCompletionOverlayHost, registerCompletionStrip, useCompletionOverlayHosted, useTaskStripOffer, type CompletionOffer, type CompletionOfferAnswer } from "../../completion-offers";
 import { WorktreeSettingsIcon } from "../TaskIcons";
+import { MergeIcon } from "./GitIcons";
 import { toastClearanceRef } from "../../toast-clearance";
 import { completionSkipsGitCheck, unsavedWorkWarning } from "../../utils/confirmTaskCompletion";
 import { useTaskPaneState } from "../../hooks/useTaskPaneState";
@@ -54,8 +55,8 @@ export function agentPaneInsets(state: TaskPaneState | null): CSSProperties | nu
 
 /** Confines the bar to the agent's pane; it lets clicks through everywhere but the bar. */
 function AgentPaneFrame({ taskId, children }: { taskId: string; children: ReactNode }) {
-	const insets = agentPaneInsets(useTaskPaneState(taskId));
-	if (!insets) return <>{children}</>;
+	// Always the same wrapper, so splitting or unsplitting the pane never remounts the bar.
+	const insets = agentPaneInsets(useTaskPaneState(taskId)) ?? { inset: 0 };
 	return <div className="pointer-events-none absolute z-20 [&>*]:pointer-events-auto" style={insets} data-testid="task-completion-strip-pane">{children}</div>;
 }
 
@@ -67,13 +68,14 @@ export function completionOfferNote(task: Task, project: Project, t: TFunction):
 /**
  * `bar` is the one-line overlay: no taller than the two hint rows under an agent's
  * input box. Its note, any unsaved-work warning and a merge's secondary controls open
- * upward on hover or focus while the answers stay on the bottom line, so nothing moves.
+ * upward on hover, focus, or a Complete click that would lose work; the answers stay put.
  */
 function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Task; project: Project; bar: boolean }) {
 	const t = useT();
 	const armedRef = useRef(false);
 	const skipGit = completionSkipsGitCheck(task, project);
 	const [git, setGit] = useState<GitCheck>(skipGit ? { state: "skipped" } : { state: "checking" });
+	const [lossAcknowledged, setLossAcknowledged] = useState(false);
 
 	useEffect(() => {
 		const timer = setTimeout(() => { armedRef.current = true; }, COMPLETION_STRIP_ARM_MS);
@@ -108,7 +110,11 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 		if (!liveRef.current) return;
 		setGit(next);
 		const fresh = next.state === "done" ? next.warning : null;
-		if (fresh && fresh !== shown) return;
+		// The bar sits where a stray click lands, so losing work there always takes a second click.
+		if (fresh && (fresh !== shown || (bar && !lossAcknowledged))) {
+			setLossAcknowledged(true);
+			return;
+		}
 		offer.answer(true);
 	};
 	const isAgent = offer.kind === "agent";
@@ -126,7 +132,8 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 			{bar ? <span className="sr-only">{t("confirmDialog.agentBadge")}</span> : t("confirmDialog.agentBadge")}
 		</span>
 	) : (
-		<span aria-hidden className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-success/15 text-success text-xs">✓</span>
+		// Never a ✓, which is the quick-complete action.
+		<span aria-hidden className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-success/15 text-success"><MergeIcon className="h-3.5 w-3.5" /></span>
 	);
 	const unknownLine = git.state === "unknown" && <div className="text-xs text-warning-strong">{t("task.branchStateUnknown")}</div>;
 	const warningLine = warning && <div className="text-xs text-danger whitespace-pre-line" data-testid="task-completion-strip-warning">{warning}</div>;
@@ -171,10 +178,10 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 				disabled={checking}
 				onClick={() => void complete()}
 				className={`px-3 ${buttonPad} max-md:min-h-11 text-xs whitespace-nowrap rounded-lg text-white transition-colors ${
-					checking ? "bg-fg-muted/40 cursor-not-allowed" : "bg-danger hover:bg-danger/80"
+					checking ? "bg-fg-muted/40 cursor-not-allowed" : "bg-danger-fill hover:bg-danger-fill-hover"
 				}`}
 			>
-				{t("app.branchMergedComplete")}
+				{t(bar && lossAcknowledged && warning ? "completionStrip.completeAnyway" : "app.branchMergedComplete")}
 			</button>
 		</>
 	);
@@ -184,6 +191,8 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 		// settings link wait in the panel, so no locale truncates the title.
 		const barTitle = isAgent ? title : t("completionStrip.mergedBarTitle");
 		const alert = warning ? "text-danger" : git.state === "unknown" ? "text-warning-strong" : null;
+		// Opened at rest it would cover the input row, so the warning opens on the first Complete click.
+		const detailsOpen = lossAcknowledged && !!warning;
 		return (
 			<div
 				role="region"
@@ -194,8 +203,8 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 				// On a wide terminal the corner is far from the prompt, so the bar stops within 72rem of the pane's left edge.
 				className={`group absolute bottom-1 right-[max(0.75rem,calc(100%-72rem))] z-20 flex max-w-[min(40rem,calc(100%-1.5rem))] flex-col items-end text-sm px-2 py-1 rounded-xl border bg-overlay shadow-lg ${border}`}
 			>
-				{/* Opens upward over the full width on hover or focus; a pointer without hover always sees it. */}
-				<div className="hidden w-full items-end gap-3 pb-1.5 group-hover:flex group-focus-within:flex [@media(hover:none)]:flex" data-testid="task-completion-strip-details">
+				{/* Opens upward on hover or focus, and after a Complete click that would lose work; a pointer without hover always sees it. */}
+				<div className={`w-full items-end gap-3 pb-1.5 ${detailsOpen ? "flex" : "hidden group-hover:flex group-focus-within:flex [@media(hover:none)]:flex"}`} data-testid="task-completion-strip-details">
 					<div className="flex min-w-0 flex-1 flex-col gap-1">
 						{noteLine}
 						{unknownLine}
@@ -207,10 +216,14 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 					<div className="flex min-w-0 flex-1 items-center gap-2">
 						{mark}
 						<div className="truncate font-medium text-fg" title={title}>{barTitle}</div>
+						{!detailsOpen && (
+							// The cue that more opens above on hover.
+							<svg aria-hidden data-testid="task-completion-strip-more" viewBox="0 0 12 12" className="h-3 w-3 shrink-0 text-fg-3 group-hover:hidden group-focus-within:hidden [@media(hover:none)]:hidden" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><path d="M3 7.5 6 4.5 9 7.5" /></svg>
+						)}
 						{alert && (
 							<span className={`shrink-0 font-semibold ${alert}`} title={warning ?? t("task.branchStateUnknown")} data-testid="task-completion-strip-alert">
 								<span aria-hidden>!</span>
-								<span className="sr-only">{warning ?? t("task.branchStateUnknown")}</span>
+								{!detailsOpen && <span className="sr-only">{warning ?? t("task.branchStateUnknown")}</span>}
 							</span>
 						)}
 					</div>
