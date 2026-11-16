@@ -3,6 +3,7 @@ import { TaskRefText } from "./TaskRefText";
 import { toast } from "../toast";
 import { toastClearanceRef } from "../toast-clearance";
 import { confirm } from "../confirm";
+import CompletionOwnerMenu from "./CompletionOwnerMenu";
 import { createPortal } from "react-dom";
 import type { Task, Project, TaskStatus, PortInfo, ResourceUsage, TaskPRBadgeInfo, TaskCompletionOwner } from "../../shared/types";
 import LabelChip from "./LabelChip";
@@ -473,11 +474,29 @@ function TaskInfoPanel({
 	}
 
 	// One control, three owners: dev3 suggests → I decide → the agent closes it → back.
-	async function handleCycleCompletionOwner(event: ReactMouseEvent<HTMLButtonElement>) {
+	// A menu, never a click-to-cycle: no habitual click may land on the owner that
+	// lets the agent destroy the worktree, and picking that one is confirmed.
+	const [completionMenuAnchor, setCompletionMenuAnchor] = useState<HTMLElement | null>(null);
+	function handleOpenCompletionMenu(event: ReactMouseEvent<HTMLButtonElement>) {
 		event.stopPropagation();
 		if (isCoordinatorTask(task)) return;
-		const current = taskCompletionOwner(task);
-		const owner: TaskCompletionOwner = current === "dev3" ? "user" : current === "user" ? "agent" : "dev3";
+		const anchor = event.currentTarget;
+		setCompletionMenuAnchor((open) => (open ? null : anchor));
+	}
+
+	async function handleSelectCompletionOwner(owner: TaskCompletionOwner) {
+		setCompletionMenuAnchor(null);
+		if (owner === taskCompletionOwner(task)) return;
+		if (owner === "agent") {
+			const granted = await confirm({
+				title: t("task.selfCompletionConfirmTitle"),
+				message: t("task.selfCompletionConfirmMessage"),
+				confirmLabel: t("task.selfCompletionConfirmAction"),
+				danger: true,
+				focusCancel: true,
+			});
+			if (!granted) return;
+		}
 		try {
 			const updated = await api.request.setTaskCompletionOwner({
 				taskId: task.id,
@@ -873,7 +892,9 @@ function TaskInfoPanel({
 	const manualCompletionToggleButton = (
 		<Tooltip content={completionOwnerName} detail={t("ttip.task.manualCompletion")}>
 			<button
-				onClick={handleCycleCompletionOwner}
+				onClick={handleOpenCompletionMenu}
+				aria-haspopup="menu"
+				aria-expanded={completionMenuAnchor !== null}
 				disabled={completionIsForced}
 				aria-label={completionOwnerName}
 				aria-pressed={completionIsManual}
@@ -901,6 +922,15 @@ function TaskInfoPanel({
 				)}
 			</button>
 		</Tooltip>
+	);
+
+	const completionOwnerMenu = completionMenuAnchor && (
+		<CompletionOwnerMenu
+			selected={completionOwner}
+			anchorEl={completionMenuAnchor}
+			onClose={() => setCompletionMenuAnchor(null)}
+			onSelect={handleSelectCompletionOwner}
+		/>
 	);
 
 	const priorityBadge = <PriorityBadge priority={task.priority} onChange={handleSetPriority} className="shrink-0" />;
@@ -1419,6 +1449,7 @@ function TaskInfoPanel({
 		return (
 			<div ref={toastClearanceRef} className="flex-shrink-0 border-b border-edge glass-header">
 				{diffFilesPopover}
+				{completionOwnerMenu}
 				{fileOpenInMenuPortal}
 				{statusSheet}
 				{/* The bar sheds, it never stacks (bible §12.6). A second row costs a
@@ -1507,7 +1538,9 @@ function TaskInfoPanel({
 							</button>
 							<button
 								type="button"
-								onClick={handleCycleCompletionOwner}
+								onClick={handleOpenCompletionMenu}
+				aria-haspopup="menu"
+				aria-expanded={completionMenuAnchor !== null}
 								disabled={completionIsForced}
 								aria-pressed={completionIsManual}
 								className={`${SHEET_ROW_CLASS} ${completionIsManual ? "warning-paper border-warning/30 bg-warning/10 text-warning-strong" : ""} ${completionIsForced ? "cursor-not-allowed opacity-60" : ""}`}
@@ -1669,6 +1702,7 @@ function TaskInfoPanel({
 			style={{ height }}
 		>
 			{diffFilesPopover}
+			{completionOwnerMenu}
 			{fileOpenInMenuPortal}
 			{collapsed ? (
 				<div className="flex flex-col h-full px-2 gap-1 justify-center">

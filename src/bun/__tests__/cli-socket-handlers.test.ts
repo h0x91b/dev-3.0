@@ -3523,6 +3523,23 @@ describe("task.update", () => {
 		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { selfCompletion: true });
 	});
 
+	it("tells the user when an agent grants self-completion", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		const pushFn = vi.fn();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, selfCompletion: true });
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		await handleRequest(makeRequest("task.update", {
+			taskId: task.id, projectId: project.id, selfCompletion: true, sourceTaskId: "some-coordinator-task",
+		}));
+
+		expect(pushFn).toHaveBeenCalledWith("manualCompletionChanged", expect.objectContaining({ taskId: task.id, selfCompletion: true }));
+		expect(clearMergeNotification).toHaveBeenCalledWith(task.id);
+	});
+
 	it("refuses a task opting itself in to self-completion", async () => {
 		const project = makeProject();
 		const task = makeTask();

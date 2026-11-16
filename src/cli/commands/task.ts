@@ -40,6 +40,8 @@ const ROLE_SOURCE_LABELS: Record<string, string> = {
 	"built-in": "built-in default",
 };
 const COMPLETION_APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
+// Teardown alone waits up to 30 s for the agent to exit, then runs the cleanup script.
+const FORCED_COMPLETION_TIMEOUT_MS = 2 * 60 * 1000;
 /**
  * The one reading of `--type` for every command that takes it, so `task create`
  * and `task update` can never accept different spellings of the same three
@@ -997,7 +999,7 @@ async function completeWithoutApproval(
 	if (projectId) params.projectId = projectId;
 	const spec = approvalSpecFor(COMPLETION_APPROVAL, projectId, taskId);
 
-	const resp = await sendRequest(socketPath, spec.method, params);
+	const resp = await sendRequest(socketPath, spec.method, params, { timeoutMs: FORCED_COMPLETION_TIMEOUT_MS });
 	if (!resp.ok) exitError(resp.error || "Failed to complete the task");
 	if (codexStopHook) {
 		process.stdout.write(CODEX_STOP_HOOK_SUCCESS_JSON);

@@ -410,6 +410,9 @@ describe("task.requestCompletion with --force", () => {
 
 		expect(resp.ok).toBe(false);
 		expect(resp.error).toContain("has not opted in to self-completion");
+		// The refusal must not teach the agent how to grant itself the opt-in.
+		expect(resp.error).not.toContain("--self-completion on");
+		expect(resp.error).not.toContain("from outside");
 		expect(moveTask).not.toHaveBeenCalled();
 		expect(pushFn).not.toHaveBeenCalled();
 	});

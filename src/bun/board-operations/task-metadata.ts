@@ -117,27 +117,34 @@ export async function updateTaskMetadata(
 		if (change.overview !== undefined) updates.overview = change.overview?.trim() || null;
 		if (change.userOverview !== undefined) updates.userOverview = change.userOverview?.trim() || null;
 		if (change.keepAlive !== undefined) updates.keepAlive = change.keepAlive;
-		if (change.selfCompletion !== undefined) updates.selfCompletion = change.selfCompletion;
 		const flipsCompletion = change.manualCompletion !== undefined && change.manualCompletion !== current.manualCompletion;
 		if (flipsCompletion) {
 			updates.manualCompletion = change.manualCompletion;
 			updates.mergeCompletionPrompt = null;
 		}
+		// Changes who answers a merge, so a prompt reserved under the old owner is stale too.
+		const flipsSelfCompletion = change.selfCompletion !== undefined && change.selfCompletion !== (current.selfCompletion === true);
+		if (flipsSelfCompletion) {
+			updates.selfCompletion = change.selfCompletion;
+			updates.mergeCompletionPrompt = null;
+		}
 		const changed = withoutUnchanged(current, updates);
-		return { updates: changed, result: { rejected, applied: Object.keys(changed).length > 0, flipsCompletion } };
+		return { updates: changed, result: { rejected, applied: Object.keys(changed).length > 0, flipsCompletion, flipsSelfCompletion } };
 	});
 
-	const { rejected, applied, flipsCompletion } = result;
+	const { rejected, applied, flipsCompletion, flipsSelfCompletion } = result;
 	if (!applied) return { verdict: rejected.length > 0 ? "guardRejected" : "noop", task, rejected };
 
-	if (flipsCompletion) await ports.clearMergeNotification(task.id);
+	if (flipsCompletion || flipsSelfCompletion) await ports.clearMergeNotification(task.id);
 	pushTaskUpdated(ports, project, task);
 	if (getTaskTitle(task) !== previousTitle) ports.syncTerminalTitle(task);
-	if (flipsCompletion && actor.kind === "agent") {
+	if ((flipsCompletion || flipsSelfCompletion) && actor.kind === "agent") {
 		ports.push("manualCompletionChanged", {
 			taskId: task.id,
 			projectId: project.id,
 			manualCompletion: task.manualCompletion === true,
+			// Present only when the self-completion grant is what changed: the toast names it.
+			...(flipsSelfCompletion ? { selfCompletion: task.selfCompletion === true } : {}),
 			taskSeq: task.seq,
 			taskTitle: getTaskTitle(task),
 			projectName: project.name,

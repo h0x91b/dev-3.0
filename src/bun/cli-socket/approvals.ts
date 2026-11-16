@@ -98,8 +98,8 @@ async function destructiveReason(params: Record<string, unknown>, task: Task): P
 
 export const SELF_COMPLETION_NOT_ALLOWED =
 	"This task has not opted in to self-completion, so --force is refused and nothing changed. " +
-	"Run the command without --force to ask the user, or have the user (or the task's creator) opt it in: " +
-	"`dev3 task update --task <id> --self-completion on` from outside this task.";
+	"Only the user, or the task that created this one, can grant that. " +
+	"Run the command without --force to ask the user for approval.";
 
 export async function requestDestructiveApproval(
 	kind: DestructiveApprovalKind,

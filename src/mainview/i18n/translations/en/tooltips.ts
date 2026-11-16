@@ -41,7 +41,7 @@ export const tooltips = {
 	"ttip.task.watch":
 		"This changes only this task. To watch every new task automatically, turn on the \"Watch tasks by default\" setting.",
 	"ttip.task.manualCompletion":
-		"Who decides this task is finished: dev3 suggests it after a merge, you complete it yourself, or the agent completes it with no approval dialog. Click to switch.",
+		"Who decides this task is finished: dev3 suggests it after a merge, you complete it yourself, or the agent completes it with no approval dialog. Click to choose.",
 	"ttip.task.siblings":
 		"Open the sibling overview to compare variant titles and statuses, then jump to any live variant.",
 	"ttip.task.devOpen":

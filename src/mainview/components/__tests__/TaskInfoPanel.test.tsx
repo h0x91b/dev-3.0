@@ -3643,50 +3643,58 @@ describe("TaskInfoPanel", () => {
 	});
 
 	describe("post-merge auto-complete", () => {
-		it("toggles manual completion from the task context bar", async () => {
-			const task = makeTask({ manualCompletion: false });
+		// The chip opens a menu; a click on it alone must never change the owner.
+		async function chooseOwner(task: Task, option: RegExp, opts: Parameters<typeof renderPanel>[1] = {}) {
+			await act(async () => {
+				renderPanel(task, opts);
+			});
+			await act(async () => {
+				fireEvent.click(screen.getAllByTestId("task-completion-owner")[0]);
+			});
+			expect(mockedApi.request.setTaskCompletionOwner).not.toHaveBeenCalled();
+			await act(async () => {
+				fireEvent.click(screen.getByRole("menuitemradio", { name: option }));
+			});
+		}
+
+		it("turns on manual completion from the chip's menu", async () => {
 			const updated = makeTask({ manualCompletion: true });
 			mockedApi.request.setTaskCompletionOwner.mockResolvedValue(updated);
 			const dispatch = vi.fn();
 
-			await act(async () => {
-				renderPanel(task, { dispatch });
-			});
+			await chooseOwner(makeTask({ manualCompletion: false }), /I’ll complete it myself/, { dispatch });
 
-			const toggle = screen.getAllByRole("button", { name: "I’ll complete it myself — stop completion prompts after merges" })[0];
-			await act(async () => {
-				fireEvent.click(toggle);
-			});
-
-			expect(mockedApi.request.setTaskCompletionOwner).toHaveBeenCalledWith({
-				taskId: "t1",
-				projectId: "p1",
-				owner: "user",
-			});
+			expect(mockedApi.request.setTaskCompletionOwner).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", owner: "user" });
 			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: updated });
+			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
 			expect(vi.mocked(toast.info)).not.toHaveBeenCalled();
 		});
 
-		it("hands completion to the agent on the next click, and back to dev3 after that", async () => {
-			mockedApi.request.setTaskCompletionOwner.mockResolvedValue(makeTask({ selfCompletion: true }));
-			await act(async () => {
-				renderPanel(makeTask({ manualCompletion: true }));
-			});
-			await act(async () => {
-				fireEvent.click(screen.getAllByTestId("task-completion-owner")[0]);
-			});
-			expect(mockedApi.request.setTaskCompletionOwner).toHaveBeenLastCalledWith({ taskId: "t1", projectId: "p1", owner: "agent" });
+		it("turns manual completion off again without passing through the agent", async () => {
+			mockedApi.request.setTaskCompletionOwner.mockResolvedValue(makeTask());
+
+			await chooseOwner(makeTask({ manualCompletion: true }), /dev3 suggests completing it/);
+
+			expect(mockedApi.request.setTaskCompletionOwner).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", owner: "dev3" });
+			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
 		});
 
-		it("returns an agent-owned task to dev3's suggestion on click", async () => {
-			mockedApi.request.setTaskCompletionOwner.mockResolvedValue(makeTask());
-			await act(async () => {
-				renderPanel(makeTask({ selfCompletion: true }));
-			});
-			await act(async () => {
-				fireEvent.click(screen.getAllByTestId("task-completion-owner")[0]);
-			});
-			expect(mockedApi.request.setTaskCompletionOwner).toHaveBeenLastCalledWith({ taskId: "t1", projectId: "p1", owner: "dev3" });
+		it("hands completion to the agent only after a danger confirmation", async () => {
+			vi.mocked(confirm).mockResolvedValue(true as never);
+			mockedApi.request.setTaskCompletionOwner.mockResolvedValue(makeTask({ selfCompletion: true }));
+
+			await chooseOwner(makeTask({ manualCompletion: true }), /Agent completes it/);
+
+			expect(vi.mocked(confirm)).toHaveBeenCalledWith(expect.objectContaining({ danger: true, confirmLabel: "Let the agent complete it" }));
+			expect(mockedApi.request.setTaskCompletionOwner).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", owner: "agent" });
+		});
+
+		it("grants nothing when the agent confirmation is cancelled", async () => {
+			vi.mocked(confirm).mockResolvedValue(false as never);
+
+			await chooseOwner(makeTask({ manualCompletion: true }), /Agent completes it/);
+
+			expect(mockedApi.request.setTaskCompletionOwner).not.toHaveBeenCalled();
 		});
 
 		it("says in words that the agent completes the task, and what that skips", async () => {

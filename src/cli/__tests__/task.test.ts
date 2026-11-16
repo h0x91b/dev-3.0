@@ -1161,7 +1161,7 @@ describe("task move --status completed", () => {
 
 		await handleTask("move", args(["aaaaaaaa"], { status: "completed", force: "true" }), SOCKET, null);
 
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.requestCompletion", { taskId: "aaaaaaaa", force: true });
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.requestCompletion", { taskId: "aaaaaaaa", force: true }, { timeoutMs: 2 * 60 * 1000 });
 		expect(stderrOutput).not.toContain("requires user approval");
 		expect(stdoutOutput).toContain("Completed without asking (--force)");
 	});
