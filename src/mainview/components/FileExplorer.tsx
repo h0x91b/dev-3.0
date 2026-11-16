@@ -128,9 +128,20 @@ function errorMessage(listing: ExplorerListing, t: ReturnType<typeof useT>): str
  * Anything outside a conservative safe set gets single quotes, which mean the
  * same to POSIX shells and PowerShell; only an embedded quote is escaped the
  * POSIX way, so a name with `'` still needs care in PowerShell.
+ *
+ * A control byte never reaches the terminal: `ESC[201~` in a file name would end
+ * bracketed paste and run the rest as typed input. Each one becomes an unquoted
+ * `?`, which a POSIX shell globs back to the real file.
  */
 export function quoteForShell(relPath: string): string {
-	return /^[\w./@%+=:,-]+$/.test(relPath) ? relPath : `'${relPath.replace(/'/g, "'\\''")}'`;
+	return relPath.split(CONTROL_BYTE).map(quotePart).join("?");
+}
+
+const CONTROL_BYTE = /[\u0000-\u001f\u007f-\u009f]/;
+
+function quotePart(part: string): string {
+	if (part === "") return "";
+	return /^[\w./@%+=:,-]+$/.test(part) ? part : `'${part.replace(/'/g, "'\\''")}'`;
 }
 
 interface RememberedTree {

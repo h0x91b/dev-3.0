@@ -19,7 +19,7 @@ Folders are project-scoped: they come from the main checkout's `.dev3` layers an
 
 Two committed files can name folders: `.dev3/config.json` and `.claude/settings.json`. A cloned repo can therefore make dev3 list file names under a folder it chooses, to the local user. `extraFolders: []` in `.dev3/config.local.json` hides a committed list (`emptyArrayIsExplicit`). Two side effects are closed: network paths (`\\host\x`, `//host/x`) are dropped before any `stat`, because on Windows a `stat` alone sends the user's credentials to that host; and every git call in a listed folder runs with `safe.bareRepository=explicit` and `core.fsmonitor=false`, so a committed directory laid out as a bare repo cannot run a hook.
 
-Each folder check resolves the config cascade, which can spawn git for compare-ref detection; `resolveProjectFolders` caches the result for 5 seconds so the 10-second explorer poll does not repeat it. "Insert path" pastes an extra folder's absolute path, since the terminal runs in the worktree.
+Each folder check resolves the config cascade, which can spawn git for compare-ref detection; `resolveProjectFolders` caches the result for 5 seconds so the 10-second explorer poll does not repeat it. "Insert path" pastes an extra folder's absolute path, since the terminal runs in the worktree. A folder outside the project widens which file names reach that paste, so `quoteForShell` turns every control byte into an unquoted `?`: a name carrying `ESC[201~` would otherwise end bracketed paste and run the rest as typed input.
 
 ## Alternatives considered
 
