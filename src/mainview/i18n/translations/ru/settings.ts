@@ -298,7 +298,7 @@ const settings = {
 	"settings.watchByDefault": "Следить за задачами по умолчанию",
 	"settings.watchByDefaultDesc": "Предварительно включает «Следить» при запуске задачи. Для каждой задачи это можно изменить отдельно.",
 	"settings.suggestCompletingTasksAfterMerge": "Предлагать завершить задачу после merge",
-	"settings.suggestCompletingTasksAfterMergeDesc": "Включено: после merge вам предлагают завершить задачу. Выключено: только уведомление, задачи вы завершаете сами. Запрос агента на завершение показывается всегда.",
+	"settings.suggestCompletingTasksAfterMergeDesc": "Если выключено, после merge показывается информационное уведомление вместо вопроса о завершении задачи.",
 	"settings.completionOfferStyle": "Как предлагать завершение",
 	"settings.completionOfferStyleDesc": "Касается предложений после merge и запросов агента на завершение. Каждая открытая задача держит память и CPU, поэтому быстрый ответ их освобождает.",
 	"settings.completionOfferStyleDialog": "Диалог",

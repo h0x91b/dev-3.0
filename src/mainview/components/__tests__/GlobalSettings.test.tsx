@@ -512,7 +512,7 @@ describe("GlobalSettings", () => {
 
 	describe("merge completion suggestions", () => {
 		function getMergeSuggestionSwitch() {
-			return screen.getByRole("switch", { name: "Offer to complete tasks after a merge" });
+			return screen.getByRole("switch", { name: "Suggest completing tasks after merge" });
 		}
 
 		it("is on by default", async () => {
