@@ -4332,6 +4332,40 @@ describe("App keyboard shortcuts", () => {
 			});
 		});
 
+		it("drops the toast and the bell for a sensitive project in streamer mode", async () => {
+			await withCompletionOfferStyle("inline", async () => {
+				vi.mocked(api.request.getProjects).mockResolvedValue([
+					{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+					{ id: "p2", name: "Secret", path: "/b", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "", sensitive: true },
+				]);
+				vi.mocked(api.request.getLastRoute).mockResolvedValue({
+					route: JSON.stringify({ screen: "project", projectId: "p1" }),
+				});
+				vi.mocked(offerCompletion).mockReturnValue(new Promise(() => {}) as never);
+				try {
+					await renderApp();
+					setStreamerMode(true);
+
+					await act(async () => {
+						window.dispatchEvent(new CustomEvent("rpc:branchMerged", {
+							detail: {
+								taskId: "t-overflow", projectId: "p2", taskTitle: "Secret task", branchName: "feat/secret", fingerprint: "fp-sensitive-1",
+								subject: { seqLabel: "9", projectName: "Secret", priority: "P3", labels: [], overview: null },
+							},
+						}));
+					});
+
+					await waitFor(() => expect(offerCompletion).toHaveBeenCalledWith(expect.objectContaining({ taskId: "t-overflow", kind: "merge" })));
+					expect(screen.queryByText("Branch merged. Is this task done?")).not.toBeInTheDocument();
+					expect(screen.queryByText(/Secret task/)).not.toBeInTheDocument();
+					expect(screen.getByTestId("project-screen")).toHaveAttribute("data-bell-count", "0");
+				} finally {
+					setStreamerMode(false);
+					delete document.documentElement.dataset.streamer;
+				}
+			});
+		});
+
 		it("sends no toast on the default dialog style: the dialog is the notice", async () => {
 			await renderApp();
 

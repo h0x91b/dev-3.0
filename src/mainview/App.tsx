@@ -871,7 +871,8 @@ function App() {
 		taskId: string; projectId: string; taskTitle?: string; subject?: TaskDialogSubject; reason: string;
 	}): (() => void) => {
 		const { taskId, projectId, taskTitle, subject, reason } = offer;
-		if (getCompletionOfferStyle() !== "inline") return () => {};
+		// A sensitive project on camera gets neither, like every other toast and bell here.
+		if (getCompletionOfferStyle() !== "inline" || isProjectSilencedForDisplay(projectId)) return () => {};
 		dispatch({ type: "addBell", taskId, reason });
 		const withdrawBell = () => dispatch({ type: "removeBellReason", taskId, reason });
 		if (isCompletionStripMounted(taskId)) return withdrawBell;
