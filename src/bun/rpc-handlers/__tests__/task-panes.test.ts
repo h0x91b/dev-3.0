@@ -287,8 +287,17 @@ describe("taskPaneState", () => {
 		expect(state.agentPaneId).toBe("%2");
 	});
 
-	it("names the first tmux pane as the agent's when the task has no registry", async () => {
+	it("names the oldest tmux pane as the agent's when the task has no registry", async () => {
 		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
+		expect(state.agentPaneId).toBe("%1");
+	});
+
+	it("keeps the oldest tmux pane as the agent's with no registry after a swap", async () => {
+		const [first, second] = twoPane80TmuxLayout.panes;
+		mocks.getTmuxLayout.mockResolvedValue({ ...twoPane80TmuxLayout, panes: [{ ...first!, paneId: "%2" }, { ...second!, paneId: "%1" }] });
+		mocks.readPaneLayout.mockResolvedValue({ ...twoPane80PaneLayout, paneIds: ["%2", "%1"] });
+		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
+		expect(state.panes.map((pane) => pane.paneId)).toEqual(["%2", "%1"]);
 		expect(state.agentPaneId).toBe("%1");
 	});
 

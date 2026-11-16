@@ -83,12 +83,17 @@ export async function withAgentPanes(task: Task, listing: PaneRunListing): Promi
 /**
  * The task's main agent pane. On tmux it is the first `sessionState` entry; a task
  * with no registry, or whose first entry has no pane id yet (Codex before its hook),
- * uses the first pane tmux lists, which is the one the task was created with.
+ * uses its oldest live pane. A swap reorders the list, but tmux never reuses a `%N`.
  */
 export function mainAgentPaneId(task: Task, live: string[]): string | null {
 	if (taskTerminalBackendIdentity(task) === "native") return NATIVE_AGENT_PANE_ID;
 	const entries = task.sessionState?.panes ?? [];
-	return entries[0]?.paneId || live[0] || null;
+	return entries[0]?.paneId || oldestTmuxPane(live);
+}
+
+function oldestTmuxPane(live: string[]): string | null {
+	const number = (paneId: string) => Number(paneId.slice(1));
+	return live.reduce<string | null>((oldest, paneId) => (oldest === null || number(paneId) < number(oldest) ? paneId : oldest), null);
 }
 
 async function refusal(task: Task, why: string, mainPaneId: string | null, live: string[]): Promise<HeldMessageTarget> {
