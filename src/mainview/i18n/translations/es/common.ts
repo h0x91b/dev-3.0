@@ -28,8 +28,6 @@ const common = {
 	"completionStrip.keepOpenAgentHint": "Decirle que no al agente. Sigue trabajando en esta sesión.",
 	"completionStrip.manualHint": "Mantenerla abierta y dejar de preguntar tras las fusiones.",
 	"completionStrip.settings": "Ajustes de las sugerencias de completar tras una fusión",
-	"app.completionOfferMergedToast": "Rama fusionada. La tarea está lista para completarse.",
-	"app.completionOfferAgentToast": "El agente pide completar esta tarea.",
 	"app.branchMergedComplete": "Completar tarea",
 	"app.branchMergedManualCompletion": "La completaré por mi cuenta",
 	"app.manualCompletionAgentEnabled": "El agente desactivó las preguntas de finalización para esta tarea.",

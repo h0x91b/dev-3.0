@@ -28,8 +28,6 @@ const common = {
 	"completionStrip.keepOpenAgentHint": "Say no to the agent. It keeps working in this session.",
 	"completionStrip.manualHint": "Keep it open and stop asking after merges.",
 	"completionStrip.settings": "Settings for completion offers after a merge",
-	"app.completionOfferMergedToast": "Branch merged. The task is ready to complete.",
-	"app.completionOfferAgentToast": "The agent asks to complete this task.",
 	"app.branchMergedComplete": "Complete task",
 	"app.branchMergedManualCompletion": "I’ll complete it myself",
 	"app.manualCompletionAgentEnabled": "Agent turned off completion prompts for this task.",
