@@ -3,9 +3,8 @@ import { taskUsesWorktree, type Project, type Task } from "../../../shared/types
 import { useT, type TFunction } from "../../i18n";
 import { api } from "../../rpc";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../../state";
-import { keepTaskOpen, registerCompletionOverlayHost, registerCompletionStrip, useCompletionOverlayHosted, useTaskStripOffer, type CompletionOffer, type CompletionOfferAnswer } from "../../completion-offers";
+import { registerCompletionOverlayHost, registerCompletionStrip, useCompletionOverlayHosted, useTaskStripOffer, type CompletionOffer, type CompletionOfferAnswer } from "../../completion-offers";
 import { WorktreeSettingsIcon } from "../TaskIcons";
-import ApprovalReasonNote from "../ApprovalReasonNote";
 import { toastClearanceRef } from "../../toast-clearance";
 import { completionSkipsGitCheck, unsavedWorkWarning } from "../../utils/confirmTaskCompletion";
 import { useTaskPaneState } from "../../hooks/useTaskPaneState";
@@ -67,26 +66,19 @@ export function completionOfferNote(task: Task, project: Project, t: TFunction):
 
 /**
  * `bar` is the one-line overlay: no taller than the two hint rows under an agent's
- * input box, its note opening upward on hover or focus while the title and buttons
- * stay on the bottom line, so nothing moves under the pointer.
+ * input box. Its note, any unsaved-work warning and a merge's secondary controls open
+ * upward on hover or focus while the answers stay on the bottom line, so nothing moves.
  */
 function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Task; project: Project; bar: boolean }) {
 	const t = useT();
 	const armedRef = useRef(false);
 	const skipGit = completionSkipsGitCheck(task, project);
 	const [git, setGit] = useState<GitCheck>(skipGit ? { state: "skipped" } : { state: "checking" });
-	// Set once a click was held back for new losses: then the warning says why, hover or not.
-	const [held, setHeld] = useState(false);
 
-	// Filled after mount: a live region announces a change, not the text it was born with.
-	const [announcement, setAnnouncement] = useState("");
 	useEffect(() => {
 		const timer = setTimeout(() => { armedRef.current = true; }, COMPLETION_STRIP_ARM_MS);
-		const announce = setTimeout(() => setAnnouncement(t(offer.kind === "agent" ? "completionStrip.agentTitle" : "completionStrip.mergedTitle")), 100);
-		return () => { clearTimeout(timer); clearTimeout(announce); };
-		// One announcement per offer: the strip is keyed by offer id.
+		return () => clearTimeout(timer);
 	}, []);
-	const liveRegion = <span role="status" className="sr-only" data-testid="task-completion-strip-announcement">{announcement}</span>;
 
 	const liveRef = useRef(true);
 	const checkGit = (): Promise<GitCheck> => api.request.getUnsavedWork({ taskId: task.id, projectId: project.id })
@@ -102,8 +94,7 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 
 	const answer = (value: CompletionOfferAnswer) => {
 		if (!armedRef.current) return;
-		if (value === false) keepTaskOpen(offer.taskId);
-		else offer.answer(value);
+		offer.answer(value);
 	};
 
 	// An offer can wait for hours while the user keeps working, so the shown
@@ -117,105 +108,141 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 		if (!liveRef.current) return;
 		setGit(next);
 		const fresh = next.state === "done" ? next.warning : null;
-		if (fresh && fresh !== shown) {
-			setHeld(true);
-			return;
-		}
+		if (fresh && fresh !== shown) return;
 		offer.answer(true);
 	};
 	const isAgent = offer.kind === "agent";
 	const checking = git.state === "checking";
 	const title = t(isAgent ? "completionStrip.agentTitle" : "completionStrip.mergedTitle");
 	const note = completionOfferNote(task, project, t);
+	const warning = git.state === "done" ? git.warning : null;
 	const buttonPad = bar ? "py-1" : "py-1.5";
-	// The bar stays one line: its note and git state open upward on hover or focus,
-	// which reaching Complete always passes through.
-	const hoverOnly = bar ? "hidden group-hover:block group-focus-within:block" : "";
+	const border = isAgent ? "border-accent/40" : "border-success/30";
+
+	const mark = isAgent ? (
+		// The bar keeps the badge's glyph and colour; its label moves to the tooltip.
+		<span className="inline-flex shrink-0 items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-accent/15 text-accent" title={bar ? t("confirmDialog.agentBadge") : undefined}>
+			<span aria-hidden className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F06A9}"}</span>
+			{bar ? <span className="sr-only">{t("confirmDialog.agentBadge")}</span> : t("confirmDialog.agentBadge")}
+		</span>
+	) : (
+		<span aria-hidden className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-success/15 text-success text-xs">✓</span>
+	);
+	const unknownLine = git.state === "unknown" && <div className="text-xs text-warning-strong">{t("task.branchStateUnknown")}</div>;
+	const warningLine = warning && <div className="text-xs text-danger whitespace-pre-line" data-testid="task-completion-strip-warning">{warning}</div>;
+	const noteLine = <div className="text-xs text-fg-3" data-testid="task-completion-strip-note">{note}</div>;
+
+	const mergeControls = offer.kind === "merge" && (
+		<>
+			<button
+				type="button"
+				onClick={() => window.dispatchEvent(new CustomEvent(OPEN_SETTINGS_SECTION_EVENT, {
+					detail: { section: "tasks", anchor: "suggest-completing-after-merge" },
+				}))}
+				aria-label={t("completionStrip.settings")}
+				title={t("completionStrip.settings")}
+				className={`grid ${bar ? "h-6 w-6" : "h-8 w-8"} max-md:h-11 max-md:w-11 place-items-center rounded-lg text-fg-3 hover:text-fg hover:bg-raised-hover transition-colors`}
+			>
+				<WorktreeSettingsIcon className="w-4 h-4" />
+			</button>
+			<button
+				type="button"
+				title={t("completionStrip.manualHint")}
+				onClick={() => answer("manual")}
+				className={`px-3 ${buttonPad} max-md:min-h-11 text-xs whitespace-nowrap rounded-lg text-fg-2 hover:text-fg hover:bg-raised-hover transition-colors`}
+			>
+				{t("app.branchMergedManualCompletion")}
+			</button>
+		</>
+	);
+	const answerButtons = (
+		<>
+			<button
+				type="button"
+				title={t(isAgent ? "completionStrip.keepOpenAgentHint" : "completionStrip.keepOpenMergeHint")}
+				onClick={() => answer(false)}
+				className={`px-3 ${buttonPad} max-md:min-h-11 text-xs whitespace-nowrap rounded-lg border border-edge text-fg-2 hover:text-fg hover:bg-raised-hover transition-colors`}
+			>
+				{t("completionStrip.keepOpen")}
+			</button>
+			<button
+				type="button"
+				data-testid="task-completion-strip-complete"
+				disabled={checking}
+				onClick={() => void complete()}
+				className={`px-3 ${buttonPad} max-md:min-h-11 text-xs whitespace-nowrap rounded-lg text-white transition-colors ${
+					checking ? "bg-fg-muted/40 cursor-not-allowed" : "bg-danger hover:bg-danger/80"
+				}`}
+			>
+				{t("app.branchMergedComplete")}
+			</button>
+		</>
+	);
+
+	if (bar) {
+		// The line holds what happened and the two answers; the question, the opt-out and the
+		// settings link wait in the panel, so no locale truncates the title.
+		const barTitle = isAgent ? title : t("completionStrip.mergedBarTitle");
+		const alert = warning ? "text-danger" : git.state === "unknown" ? "text-warning-strong" : null;
+		return (
+			<div
+				role="region"
+				aria-label={title}
+				data-testid="task-completion-strip"
+				data-help-id="task.completion-strip"
+				data-layout="terminal"
+				// On a wide terminal the corner is far from the prompt, so the bar stops within 72rem of the pane's left edge.
+				className={`group absolute bottom-1 right-[max(0.75rem,calc(100%-72rem))] z-20 flex max-w-[min(40rem,calc(100%-1.5rem))] flex-col items-end text-sm px-2 py-1 rounded-xl border bg-overlay shadow-lg ${border}`}
+			>
+				{/* Opens upward over the full width on hover or focus; a pointer without hover always sees it. */}
+				<div className="hidden w-full items-end gap-3 pb-1.5 group-hover:flex group-focus-within:flex [@media(hover:none)]:flex" data-testid="task-completion-strip-details">
+					<div className="flex min-w-0 flex-1 flex-col gap-1">
+						{noteLine}
+						{unknownLine}
+						{warningLine}
+					</div>
+					{mergeControls && <div className="flex shrink-0 items-center gap-2">{mergeControls}</div>}
+				</div>
+				<div className="flex w-full items-center gap-x-3">
+					<div className="flex min-w-0 flex-1 items-center gap-2">
+						{mark}
+						<div className="truncate font-medium text-fg" title={title}>{barTitle}</div>
+						{alert && (
+							<span className={`shrink-0 font-semibold ${alert}`} title={warning ?? t("task.branchStateUnknown")} data-testid="task-completion-strip-alert">
+								<span aria-hidden>!</span>
+								<span className="sr-only">{warning ?? t("task.branchStateUnknown")}</span>
+							</span>
+						)}
+					</div>
+					<div className="flex shrink-0 items-center gap-2">{answerButtons}</div>
+				</div>
+			</div>
+		);
+	}
 
 	return (
 		<div
-			ref={bar ? undefined : toastClearanceRef}
+			ref={toastClearanceRef}
 			role="region"
 			aria-label={title}
 			data-testid="task-completion-strip"
 			data-help-id="task.completion-strip"
-			data-layout={bar ? "terminal" : "row"}
-			className={`group flex flex-wrap ${bar ? "items-end" : "items-center"} gap-x-3 gap-y-2 text-sm ${bar ? "px-2 py-1" : "px-3 py-2"} ${
-				bar
-					// On a wide terminal the corner is far from the prompt, so the bar stops within 72rem of the pane's left edge.
-					? "absolute bottom-1 right-[max(0.75rem,calc(100%-72rem))] z-20 max-w-[min(40rem,calc(100%-1.5rem))] rounded-xl border bg-overlay shadow-lg"
-					: "flex-shrink-0 border-b bg-raised"
-			} ${isAgent ? "border-accent/40" : "border-success/30"}`}
+			data-layout="row"
+			className={`group flex flex-wrap items-center gap-x-3 gap-y-2 text-sm px-3 py-2 flex-shrink-0 border-b bg-raised ${border}`}
 		>
-			{liveRegion}
-			<div className={`flex ${bar ? "items-end basis-[14rem]" : "items-center basis-full md:basis-[18rem]"} gap-2 min-w-0 flex-1`}>
-				{isAgent ? (
-					// The bar keeps the badge's glyph and colour; its label moves to the tooltip.
-					<span className="inline-flex shrink-0 items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-accent/15 text-accent" title={bar ? t("confirmDialog.agentBadge") : undefined}>
-						<span aria-hidden className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F06A9}"}</span>
-						{bar ? <span className="sr-only">{t("confirmDialog.agentBadge")}</span> : t("confirmDialog.agentBadge")}
-					</span>
-				) : (
-					<span aria-hidden className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-success/15 text-success text-xs">✓</span>
-				)}
-				<div className={bar ? "min-w-0 flex flex-col-reverse" : "min-w-0"}>
-					<div className={`font-medium text-fg ${bar ? "truncate" : ""}`} title={bar ? title : undefined}>{title}</div>
-					<div className={`text-xs text-fg-3 ${hoverOnly}`} data-testid="task-completion-strip-note">{note}</div>
-					{offer.reason && (
-						<div className={bar ? `${hoverOnly} pb-1` : "pt-1"}>
-							<ApprovalReasonNote reason={offer.reason} tone="danger" />
-						</div>
-					)}
-					{checking && !bar && <div className="text-xs text-fg-3" role="status">{t("task.checkingBranchState")}</div>}
-					{git.state === "unknown" && <div className={`text-xs text-warning-strong ${hoverOnly}`}>{t("task.branchStateUnknown")}</div>}
-					{git.state === "done" && git.warning && (
-						<div className={`text-xs text-danger whitespace-pre-line ${held ? "" : hoverOnly}`} data-testid="task-completion-strip-warning">{git.warning}</div>
-					)}
+			<div className="flex items-center basis-full md:basis-[18rem] gap-2 min-w-0 flex-1">
+				{mark}
+				<div className="min-w-0">
+					<div className="font-medium text-fg">{title}</div>
+					{noteLine}
+					{checking && <div className="text-xs text-fg-3" role="status">{t("task.checkingBranchState")}</div>}
+					{unknownLine}
+					{warningLine}
 				</div>
 			</div>
-			<div className={`flex flex-wrap items-center gap-2 shrink-0 ${bar ? "ml-auto" : "max-md:ml-auto"}`}>
-				{offer.kind === "merge" && (
-					<>
-						<button
-							type="button"
-							onClick={() => window.dispatchEvent(new CustomEvent(OPEN_SETTINGS_SECTION_EVENT, {
-								detail: { section: "tasks", anchor: "suggest-completing-after-merge" },
-							}))}
-							aria-label={t("completionStrip.settings")}
-							title={t("completionStrip.settings")}
-							className={`grid ${bar ? "h-6 w-6" : "h-8 w-8"} max-md:h-11 max-md:w-11 place-items-center rounded-lg text-fg-3 hover:text-fg hover:bg-raised-hover transition-colors`}
-						>
-							<WorktreeSettingsIcon className="w-4 h-4" />
-						</button>
-						<button
-							type="button"
-							title={t("completionStrip.manualHint")}
-							onClick={() => answer("manual")}
-							className={`px-3 ${buttonPad} max-md:min-h-11 text-xs whitespace-nowrap rounded-lg text-fg-2 hover:text-fg hover:bg-raised-hover transition-colors`}
-						>
-							{t("app.branchMergedManualCompletion")}
-						</button>
-					</>
-				)}
-				<button
-					type="button"
-					title={t(isAgent ? "completionStrip.keepOpenAgentHint" : "completionStrip.keepOpenMergeHint")}
-					onClick={() => answer(false)}
-					className={`px-3 ${buttonPad} max-md:min-h-11 text-xs whitespace-nowrap rounded-lg border border-edge text-fg-2 hover:text-fg hover:bg-raised-hover transition-colors`}
-				>
-					{t("completionStrip.keepOpen")}
-				</button>
-				<button
-					type="button"
-					data-testid="task-completion-strip-complete"
-					disabled={checking}
-					onClick={() => void complete()}
-					className={`px-3 ${buttonPad} max-md:min-h-11 text-xs whitespace-nowrap rounded-lg text-white transition-colors ${
-						checking ? "bg-fg-muted/40 cursor-not-allowed" : "bg-danger-fill hover:bg-danger-fill-hover"
-					}`}
-				>
-					{t("app.branchMergedComplete")}
-				</button>
+			<div className="flex flex-wrap items-center gap-2 shrink-0 max-md:ml-auto">
+				{mergeControls}
+				{answerButtons}
 			</div>
 		</div>
 	);
