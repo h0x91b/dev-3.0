@@ -2480,7 +2480,8 @@ function App() {
 
 	// Listen for agent-initiated completion requests — the CLI is blocked on a
 	// socket waiting for the user's decision, so always respond, even on cancel.
-	// The request renders inline on its task (completion-offers.ts), never as a modal.
+	// The request becomes a completion offer (completion-offers.ts): the modal by
+	// default, a bar on its task with the "On the task" style.
 	useEffect(() => {
 		// One dialog per request on this client. The push and the on-connect replay
 		// can both name the same request (a reload that raced the push), and two
