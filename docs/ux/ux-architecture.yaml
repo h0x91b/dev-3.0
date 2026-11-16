@@ -443,7 +443,7 @@ ux_architecture:
       forbidden: ["primary_navigation", "persistent_dashboard"]
       observed: ["CreateTaskModal", "AddProjectModal", "TaskDetailModal", "LaunchVariantsModal", "SpawnAgentModal", "AgentLaunchRequestModal", "SecretRequestModal", "GitPullErrorModal", "FolderPickerModal", "AccountLoginModal"]
       agent_request:
-        rule: "Agent requests share an accent border, AI badge and autofocused decline. Severity follows the action: destructive only for destroying state. Input beyond yes/no uses its own modal; confirm() stays boolean. Requests queue, one dialog at a time. Completion requests follow completionOfferStyle (task_info_panel.completion_strip)."
+        rule: "Agent requests share an accent border, AI badge and autofocused decline. Severity follows the action: destructive only for destroying state. Input beyond yes/no uses its own modal; confirm() stays boolean. Requests queue, one dialog at a time. Completion asks follow completionOfferStyle."
         identity: ["accent border", "AI agent request badge", "autofocused decline"]
         severity_by_action: { destroys_state: "destructive", creates_state: "primary" }
         observed: ["agentCompletionRequested → confirm() (destructive)", "agentLaunchRequested → AgentLaunchRequestModal (primary)", "secretRequested → SecretRequestModal (primary; explicit approval only, masked input, no output)"]
