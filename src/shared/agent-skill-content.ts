@@ -166,13 +166,13 @@ const SKILL_CUSTOM_COLUMNS = `
 const SKILL_COMPLETION_BY_MODE: Record<ProtocolMode, { approved: string; rest: () => string }> = {
 	worktree: {
 		approved: "then this worktree and terminal session are destroyed.",
-		rest: () => `**Preservation gate (mandatory):** never move a task to \`completed\` or request approval while its work exists only in a disposable worktree. Allowed only when the result is preserved in the destination the task requires — usually a PR merged into \`main\`, possibly an external file, a task note, a shared artifact — or when the user explicitly asks to complete it. A local commit, passing tests, or an open unmerged PR is not enough. Unclear destination or unpreserved work → keep the task open and ask. \`cancelled\` asks the same way.
+		rest: () => `**Preservation gate (mandatory):** never move a task to \`completed\` or request approval while its work exists only in a disposable worktree. Allowed only when the result is preserved in the destination the task requires — usually a PR merged into \`main\`, possibly an external file, a task note, a shared artifact — or when the user explicitly asks to complete it. A local commit, passing tests, or an open unmerged PR is not enough. Unclear destination or unpreserved work → keep the task open and ask. Gate met → run it yourself (\`cancelled\` too); the dialog is their approval — never tell the user to close it by hand.
 
 ${skillPrLinkInstruction()}`,
 	},
 	"shared-folder": {
 		approved: "then the terminal session closes. The folder keeps every file.",
-		rest: () => `**Preservation gate (mandatory):** request approval only when the result is where the task requires it (a commit, a file, a task note, a shared artifact, a PR in whichever repository the work belongs to) or when the user explicitly asks to complete it. The project's own closeout steps come first. Unclear destination → keep the task open and ask. \`cancelled\` asks the same way.
+		rest: () => `**Preservation gate (mandatory):** request approval only when the result is where the task requires it (a commit, a file, a task note, a shared artifact, a PR in whichever repository the work belongs to) or when the user explicitly asks to complete it. The project's own closeout steps come first. Unclear destination → keep the task open and ask. Gate met → run it yourself (\`cancelled\` too); the dialog is their approval — never tell the user to close it by hand.
 
 **PRs are optional here.** This task has none of its own unless the user or the project's rules ask for one, and its PRs may live in other repositories. \`dev3 pr create\` (opens one from this folder's current branch, never a branch you create or switch to here) and \`dev3 pr watch --pr <N>\` are helpers, not requirements. A PR that needs a new branch needs its own worktree, or ask the user.`,
 	},
@@ -185,9 +185,9 @@ function skillCompletionRequest(mode: ProtocolMode): string {
 
 \`dev3 task move --status completed\` does NOT complete anything directly — it asks the user to approve and **blocks for up to 10 minutes**:
 
-- **Approved** → your CLI is asked to quit first, so its exit hooks run (30 s bound), ${approved}
+- **Approved** → your CLI quits first (exit hooks run, 30 s bound), ${approved}
 - **Declined** → exit code 6, session alive: keep working or ask what to change.
-- **Timeout** → the dialog may still be open; a later approval completes it.
+- **Timeout** → a later approval still completes it.
 
 ${rest()}
 `;
@@ -399,9 +399,9 @@ function skillStatusNativeHooks(agent: string, mode: ProtocolMode): string {
 
 dev3 injects trusted native hooks into every ${agent} pane. They own normal lifecycle transitions: session/prompt/tool activity → \`in-progress\`, tool approval waits → \`user-questions\`, tool completion → active again, agent stop → \`review-by-ai\` or \`review-by-user\`.
 
-**Never call \`dev3 task move\` for normal lifecycle transitions** — not \`in-progress\` at turn start, not \`review-by-ai\`/\`review-by-user\` when finishing. A status that looks stale is not a licence to manage it manually: report it with \`dev3 notify "${agent} status hooks did not update the task" --level error\` and leave the evidence intact.
+**Never call \`dev3 task move\` for normal lifecycle transitions** — not \`in-progress\` at turn start, not \`review-by-ai\`/\`review-by-user\` when finishing. A stale-looking status is no licence to manage it: report it with \`dev3 notify "${agent} status hooks did not update the task" --level error\` and leave the evidence intact.
 
-The one exception is a semantic question that no native event can detect: needing user input or clarification (not a tool approval) → move to \`user-questions\` before your final response. Explicit custom-column moves and the user-approved \`completed\` flow below stay allowed.
+The one exception is a semantic question that no native event can detect: needing user input or clarification (not a tool approval) → move to \`user-questions\` before your final response. Explicit custom-column moves and the \`completed\` flow below stay allowed.
 ${SKILL_CUSTOM_COLUMNS}${skillCompletionRequest(mode)}`;
 }
 
