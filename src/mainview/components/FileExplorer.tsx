@@ -16,6 +16,7 @@ import {
 	showAllFolders,
 	useHiddenFolders,
 	useProjectFolders,
+	useProjectFoldersLoaded,
 	useRevealRequest,
 } from "../project-folders";
 
@@ -183,6 +184,8 @@ export default function FileExplorer({
 	treeKeyRef.current = treeKey;
 
 	const folders = useProjectFolders(projectId);
+	// Until the list answers, the header and tree wait: drawing the single-root layout first flashes it.
+	const foldersLoaded = useProjectFoldersLoaded(projectId);
 	const hiddenFolders = useHiddenFolders(projectId);
 	const revealPath = useRevealRequest(projectId, taskId ?? null);
 	const multiRoot = folders.length > 0;
@@ -576,7 +579,9 @@ export default function FileExplorer({
 		);
 	}
 
-	const singleRootStatus = !multiRoot
+	const singleRootStatus = !foldersLoaded
+		? t("fileExplorer.loading")
+		: !multiRoot
 		? !rootState || (rootState.status === "loading" && !rootState.entries)
 			? t("fileExplorer.loading")
 			: rootState.status === "error"
@@ -587,7 +592,9 @@ export default function FileExplorer({
 	return (
 		<div className="h-full w-full flex flex-col bg-raised text-fg-2 min-w-0" data-testid="file-explorer">
 			<div className="flex items-center gap-1 pl-3 pr-1.5 h-9 flex-shrink-0 border-b border-edge">
-				{multiRoot ? (
+				{!foldersLoaded ? (
+					<div className="min-w-0 flex-1" />
+				) : multiRoot ? (
 					// The task title or project name moves into the first section, so the narrow header keeps only the picker.
 					<div className="min-w-0 flex-1">
 						<button

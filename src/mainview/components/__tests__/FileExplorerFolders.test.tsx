@@ -103,6 +103,24 @@ describe("FileExplorer with extra folders", () => {
 		expect(document.activeElement).toBe(docs);
 	});
 
+	it("draws neither header layout until the folder list answers", async () => {
+		let answer!: (folders: ProjectFolder[]) => void;
+		mockedApi.request.getProjectFolders.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+		renderExplorer("pending-1");
+		await waitFor(() => expect(mockedApi.request.getProjectFolders).toHaveBeenCalled());
+		expect(screen.queryByText("feat/branch")).toBeNull();
+		expect(screen.queryByTestId("file-explorer-folders")).toBeNull();
+		answer(FOLDERS);
+		expect((await screen.findByTestId("file-explorer-folders")).textContent).toContain("3/3");
+	});
+
+	it("falls back to the single-root header when the folder list fails", async () => {
+		mockedApi.request.getProjectFolders.mockRejectedValue(new Error("offline"));
+		renderExplorer("failed-1");
+		expect(await screen.findByText("feat/branch")).toBeTruthy();
+		expect(screen.queryByTestId("file-explorer-folders")).toBeNull();
+	});
+
 	it("keeps the single-root header when the project has no extra folders", async () => {
 		mockedApi.request.getProjectFolders.mockResolvedValue([]);
 		renderExplorer("single-1");

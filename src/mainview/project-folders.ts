@@ -90,6 +90,8 @@ export function clearRevealRequest(): void {
 
 interface FolderEntry {
 	folders: ProjectFolder[];
+	/** The first reply (or failure) arrived; until then the list is unknown, not empty. */
+	loaded: boolean;
 	listeners: Set<() => void>;
 	load: () => void;
 }
@@ -105,6 +107,7 @@ function folderEntry(projectId: string, withBranch: boolean): FolderEntry {
 	let latest = 0;
 	const created: FolderEntry = {
 		folders: NO_FOLDERS,
+		loaded: false,
 		listeners: new Set(),
 		load: () => {
 			const request = ++latest;
@@ -112,12 +115,17 @@ function folderEntry(projectId: string, withBranch: boolean): FolderEntry {
 				.then(() => api.request.getProjectFolders({ projectId, withBranch }))
 				.then((next) => {
 					// A late reply from an older request must not overwrite a newer one.
-					if (request !== latest || JSON.stringify(next) === JSON.stringify(created.folders)) return;
+					if (request !== latest || (created.loaded && JSON.stringify(next) === JSON.stringify(created.folders))) return;
 					created.folders = next.length > 0 ? next : NO_FOLDERS;
+					created.loaded = true;
 					for (const listener of created.listeners) listener();
 				})
 				// A failed reload (e.g. a remote reconnect) keeps the last list instead of collapsing the tree.
-				.catch(() => {});
+				.catch(() => {
+					if (created.loaded) return;
+					created.loaded = true;
+					for (const listener of created.listeners) listener();
+				});
 		},
 	};
 	folderCache.set(key, created);
@@ -139,15 +147,26 @@ if (typeof window !== "undefined") {
 	window.addEventListener("focus", () => reloadProjectFolders());
 }
 
-/** The project's extra folders, re-read when its settings change or the window regains focus. */
-export function useProjectFolders(projectId: string | null, opts: { withBranch?: boolean; enabled?: boolean } = {}): ProjectFolder[] {
-	const { withBranch = false, enabled = true } = opts;
-	const entry = projectId && enabled ? folderEntry(projectId, withBranch) : null;
-	const subscribe = useCallback((listener: () => void) => {
+function useEntrySubscribe(entry: FolderEntry | null) {
+	return useCallback((listener: () => void) => {
 		if (!entry) return () => {};
 		entry.listeners.add(listener);
 		if (entry.listeners.size === 1) entry.load();
 		return () => { entry.listeners.delete(listener); };
 	}, [entry]);
+}
+
+/** The project's extra folders, re-read when its settings change or the window regains focus. */
+export function useProjectFolders(projectId: string | null, opts: { withBranch?: boolean; enabled?: boolean } = {}): ProjectFolder[] {
+	const { withBranch = false, enabled = true } = opts;
+	const entry = projectId && enabled ? folderEntry(projectId, withBranch) : null;
+	const subscribe = useEntrySubscribe(entry);
 	return useSyncExternalStore(subscribe, () => entry?.folders ?? NO_FOLDERS);
+}
+
+/** False until the project's folder list first answers, so a view can wait instead of drawing the wrong layout. */
+export function useProjectFoldersLoaded(projectId: string | null): boolean {
+	const entry = projectId ? folderEntry(projectId, false) : null;
+	const subscribe = useEntrySubscribe(entry);
+	return useSyncExternalStore(subscribe, () => entry?.loaded ?? true);
 }
