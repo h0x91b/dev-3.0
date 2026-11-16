@@ -323,7 +323,7 @@ function ProjectSettings({
 		if (spA !== spB) return false;
 		// Schema-rendered fields have no hand-written comparison; an empty list equals unset.
 		const normalized = (v: unknown) => (Array.isArray(v) && v.length === 0 ? undefined : v);
-		for (const key of genericFieldKeys("scripts").concat(genericFieldKeys("worktree"), genericFieldKeys("git"))) {
+		for (const key of genericFieldKeys()) {
 			if (JSON.stringify(normalized(a[key]) ?? null) !== JSON.stringify(normalized(b[key]) ?? null)) return false;
 		}
 		// Compare devServers: a row edit must count as an unsaved change.
@@ -1463,6 +1463,7 @@ function ProjectSettings({
 											onChange={setWtRepoConfig}
 											projectId={projectId}
 											projectPath={selectedTask?.worktreePath ?? project.path}
+											worktreeLayer={!!selectedTask?.worktreePath && selectedTask.worktreePath !== project.path}
 											envStorageScope="repo"
 											onEnvErrorChange={setEnvTextError}
 										/>
@@ -1474,6 +1475,7 @@ function ProjectSettings({
 											inherited={wtRepoConfig}
 											projectId={projectId}
 											projectPath={selectedTask?.worktreePath ?? project.path}
+											worktreeLayer={!!selectedTask?.worktreePath && selectedTask.worktreePath !== project.path}
 											envStorageScope="local"
 											onEnvErrorChange={setEnvTextError}
 										/>

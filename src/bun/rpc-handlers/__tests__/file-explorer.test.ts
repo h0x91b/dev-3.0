@@ -32,6 +32,8 @@ const runGit = vi.fn(async (_cmd: string[], _cwd: string) =>
 vi.mock("../../git", () => ({ run: (...args: unknown[]) => runGit(...(args as [string[], string])) }));
 
 vi.mock("../../project-folders", () => ({
+	SAFE_GIT_ARGS: ["-c", "safe.bareRepository=explicit", "-c", "core.fsmonitor=false"],
+	clearProjectFoldersCache: vi.fn(),
 	resolveProjectFolders: vi.fn(async () => [
 		{ path: extraDir, displayPath: extraDir, name: "extra", source: "claude", exists: true },
 		{ path: join(tmp, "gone"), displayPath: join(tmp, "gone"), name: "gone", source: "dev3", exists: false },

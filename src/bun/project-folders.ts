@@ -14,6 +14,16 @@ import { createLogger } from "./logger";
 
 const log = createLogger("project-folders");
 const BRANCH_TIMEOUT_MS = 3000;
+/** The explorer re-lists open folders every 10s and each listing re-checks the folder; this keeps that off the config cascade. */
+const CACHE_TTL_MS = 5000;
+/** git must never pick up a repository a committed folder smuggles in: no bare-repo discovery, no fsmonitor hook. */
+export const SAFE_GIT_ARGS = ["-c", "safe.bareRepository=explicit", "-c", "core.fsmonitor=false"];
+
+/** A network path is opened by `stat` alone, which on Windows sends the user's credentials to that host. */
+function isNetworkPath(raw: string): boolean {
+	const trimmed = raw.trim();
+	return trimmed.startsWith("\\\\") || trimmed.startsWith("//");
+}
 
 function expandPath(raw: string, base: string): string {
 	const trimmed = raw.trim();
@@ -25,7 +35,7 @@ function expandPath(raw: string, base: string): string {
 /** Project-scope Claude settings, plus the config dir the project pins through `env.CLAUDE_CONFIG_DIR`. */
 export function claudeSettingsFiles(projectPath: string, configDir?: string): string[] {
 	const files = [join(projectPath, ".claude", "settings.json"), join(projectPath, ".claude", "settings.local.json")];
-	if (configDir) {
+	if (configDir && !isNetworkPath(configDir)) {
 		const dir = expandPath(configDir, projectPath);
 		files.push(join(dir, "settings.json"), join(dir, "settings.local.json"));
 	}
@@ -62,7 +72,7 @@ async function isDirectory(path: string): Promise<boolean> {
 }
 
 async function currentBranch(path: string): Promise<string | undefined> {
-	const result = await runGit(["git", "rev-parse", "--abbrev-ref", "HEAD"], path, { timeoutMs: BRANCH_TIMEOUT_MS }).catch(() => null);
+	const result = await runGit(["git", ...SAFE_GIT_ARGS, "rev-parse", "--abbrev-ref", "HEAD"], path, { timeoutMs: BRANCH_TIMEOUT_MS }).catch(() => null);
 	const branch = result?.ok ? result.stdout.trim() : "";
 	return branch && branch !== "HEAD" ? branch : undefined;
 }
@@ -74,6 +84,10 @@ export async function collectProjectFolders(project: Project, opts: { withBranch
 	const seen = new Set<string>([own]);
 	const candidates: { path: string; source: ProjectFolder["source"] }[] = [];
 	const add = (raw: string, source: ProjectFolder["source"]) => {
+		if (isNetworkPath(raw)) {
+			log.warn("Skipping a network path in the project's extra folders", { source });
+			return;
+		}
 		const path = expandPath(raw, project.path);
 		if (seen.has(path)) return;
 		seen.add(path);
@@ -90,7 +104,20 @@ export async function collectProjectFolders(project: Project, opts: { withBranch
 	}));
 }
 
+const cache = new Map<string, { at: number; folders: Promise<ProjectFolder[]> }>();
+
 export async function resolveProjectFolders(project: Project, opts: { withBranch?: boolean } = {}): Promise<ProjectFolder[]> {
 	if (project.kind === "virtual" || !project.path) return [];
-	return collectProjectFolders(await repoConfig.resolveProjectConfig(project), opts);
+	const key = `${project.id}:${opts.withBranch ? 1 : 0}`;
+	const hit = cache.get(key);
+	if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.folders;
+	const folders = repoConfig.resolveProjectConfig(project).then((resolved) => collectProjectFolders(resolved, opts));
+	cache.set(key, { at: Date.now(), folders });
+	folders.catch(() => cache.delete(key));
+	return folders;
+}
+
+/** Tests and settings saves start from a fresh read. */
+export function clearProjectFoldersCache(projectId?: string): void {
+	for (const key of cache.keys()) if (!projectId || key.startsWith(`${projectId}:`)) cache.delete(key);
 }

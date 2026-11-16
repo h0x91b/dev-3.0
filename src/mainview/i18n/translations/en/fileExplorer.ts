@@ -39,6 +39,7 @@ const fileExplorer = {
 	"fileExplorer.rootHintProject": "project",
 	"fileExplorer.rootHintTask": "task",
 	"fileExplorer.folderMissing": "missing",
+	"fileExplorer.folderMissingNote": "This folder does not exist on this machine.",
 	"fileExplorer.folderSourceClaude": "Claude",
 	"fileExplorer.folderSourceDev3": "dev3",
 	"fileExplorer.hiddenFolders_one": "{count} folder hidden",

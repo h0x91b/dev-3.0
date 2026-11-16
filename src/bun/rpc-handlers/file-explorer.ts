@@ -3,7 +3,7 @@ import { isAbsolute, join, relative, resolve as resolvePath, sep } from "node:pa
 import { EXPLORER_MAX_ENTRIES, type ExplorerEntry, type ExplorerListing, type ProjectFolder } from "../../shared/types";
 import * as data from "../data";
 import { run as runGit } from "../git";
-import { resolveProjectFolders } from "../project-folders";
+import { clearProjectFoldersCache, resolveProjectFolders, SAFE_GIT_ARGS } from "../project-folders";
 import { log } from "./shared";
 
 /**
@@ -21,8 +21,12 @@ async function explorerRoot(projectId: string, taskId?: string | null, folder?: 
 	const project = await data.getProject(projectId);
 	// Only a folder the project itself declares: the renderer cannot name an arbitrary path.
 	if (folder) {
-		const folders = await resolveProjectFolders(project);
-		return folders.find((f) => f.path === folder && f.exists)?.path ?? null;
+		const find = async () => (await resolveProjectFolders(project)).find((f) => f.path === folder && f.exists)?.path ?? null;
+		const found = await find();
+		if (found) return found;
+		// A folder added a moment ago may postdate the short cache.
+		clearProjectFoldersCache(project.id);
+		return find();
 	}
 	if (taskId) {
 		const task = await data.getTask(project, taskId);
@@ -43,7 +47,7 @@ function toPosix(relPath: string): string {
 async function ignoredChildren(root: string, relDir: string): Promise<Set<string>> {
 	const prefix = relDir ? `${relDir}/` : "";
 	const result = await runGit(
-		["git", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z", "--", relDir || "."],
+		["git", ...SAFE_GIT_ARGS, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z", "--", relDir || "."],
 		root,
 		{ timeoutMs: IGNORED_LOOKUP_TIMEOUT_MS },
 	).catch(() => null);
@@ -117,6 +121,7 @@ async function listExplorerDirectory(params: {
 }
 
 async function getProjectFolders(params: { projectId: string; withBranch?: boolean }): Promise<ProjectFolder[]> {
+	clearProjectFoldersCache(params.projectId);
 	return resolveProjectFolders(await data.getProject(params.projectId), { withBranch: params.withBranch });
 }
 

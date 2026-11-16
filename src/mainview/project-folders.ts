@@ -42,7 +42,9 @@ function createStore<T>(initial: T, persist: (value: T) => void) {
 
 const hiddenStore = createStore<Record<string, string[]>>(readJson(HIDDEN_KEY, {}), (v) => writeJson(HIDDEN_KEY, v));
 const openStore = createStore<string[]>(readJson(OPEN_KEY, []), (v) => writeJson(OPEN_KEY, v));
-const revealStore = createStore<{ projectId: string; path: string } | null>(null, () => {});
+const revealStore = createStore<{ projectId: string; path: string; at: number } | null>(null, () => {});
+/** A reveal nobody consumed (the Repo explorer was off, e.g. on a narrow screen) must not fire on a later visit. */
+const REVEAL_TTL_MS = 10_000;
 
 const EMPTY: string[] = [];
 
@@ -70,15 +72,16 @@ export function useDashboardFoldersOpen(projectId: string): [boolean, () => void
 	return [open, toggle];
 }
 
-/** Ask the next file explorer of `projectId` to show and open `path`. */
+/** Ask the project's Repo file explorer, about to open, to show and open `path`. */
 export function requestRevealFolder(projectId: string, path: string): void {
-	setFolderHidden(projectId, path, false);
-	revealStore.set({ projectId, path });
+	revealStore.set({ projectId, path, at: Date.now() });
 }
 
-export function useRevealRequest(projectId: string): string | null {
+/** Only the Repo explorer (no task) consumes a reveal, and only while it is fresh. */
+export function useRevealRequest(projectId: string, taskId: string | null): string | null {
 	const request = useSyncExternalStore(revealStore.subscribe, revealStore.get);
-	return request?.projectId === projectId ? request.path : null;
+	if (taskId || request?.projectId !== projectId || Date.now() - request.at > REVEAL_TTL_MS) return null;
+	return request.path;
 }
 
 export function clearRevealRequest(): void {
@@ -99,18 +102,22 @@ function folderEntry(projectId: string, withBranch: boolean): FolderEntry {
 	const key = `${projectId}:${withBranch ? 1 : 0}`;
 	let entry = folderCache.get(key);
 	if (entry) return entry;
+	let latest = 0;
 	const created: FolderEntry = {
 		folders: NO_FOLDERS,
 		listeners: new Set(),
 		load: () => {
+			const request = ++latest;
 			Promise.resolve()
 				.then(() => api.request.getProjectFolders({ projectId, withBranch }))
-				.catch(() => NO_FOLDERS)
 				.then((next) => {
-					if (JSON.stringify(next) === JSON.stringify(created.folders)) return;
+					// A late reply from an older request must not overwrite a newer one.
+					if (request !== latest || JSON.stringify(next) === JSON.stringify(created.folders)) return;
 					created.folders = next.length > 0 ? next : NO_FOLDERS;
 					for (const listener of created.listeners) listener();
-				});
+				})
+				// A failed reload (e.g. a remote reconnect) keeps the last list instead of collapsing the tree.
+				.catch(() => {});
 		},
 	};
 	folderCache.set(key, created);

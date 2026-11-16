@@ -65,8 +65,11 @@ type VisibleRow =
 		ignored: boolean;
 	};
 
-/** Tree keys pair a root with a root-relative path, so two roots never collide on `src`. */
-const KEY_SEP = "\u0000";
+/**
+ * Tree keys pair a root with a root-relative path, so two roots never collide on `src`.
+ * U+001F, not NUL: `CSS.escape` turns NUL into U+FFFD, so a `[data-key]` selector would never match.
+ */
+const KEY_SEP = "\u001f";
 const keyOf = (rootId: string, relPath: string) => `${rootId}${KEY_SEP}${relPath}`;
 function splitKey(key: string): [rootId: string, relPath: string] {
 	const i = key.indexOf(KEY_SEP);
@@ -170,7 +173,7 @@ export default function FileExplorer({
 
 	const folders = useProjectFolders(projectId);
 	const hiddenFolders = useHiddenFolders(projectId);
-	const revealPath = useRevealRequest(projectId);
+	const revealPath = useRevealRequest(projectId, taskId ?? null);
 	const multiRoot = folders.length > 0;
 	const roots = useMemo<ExplorerRootDef[]>(() => [
 		{ id: PRIMARY, folder: null, label: rootSectionLabel ?? (taskId && rootPath ? baseName(rootPath) : rootLabel), hint: taskId ? t("fileExplorer.rootHintTask") : t("fileExplorer.rootHintProject") },
@@ -249,7 +252,7 @@ export default function FileExplorer({
 	const extraRootIds = roots.slice(1).map((r) => r.id).join("\n");
 	useEffect(() => {
 		for (const root of rootsRef.current.slice(1)) {
-			if (openRootsRef.current.has(root.id) && !dirs.has(keyOf(root.id, ""))) loadRoot(root.id, expanded);
+			if (!root.missing && openRootsRef.current.has(root.id) && !dirs.has(keyOf(root.id, ""))) loadRoot(root.id, expanded);
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [extraRootIds, openRoots]);
@@ -262,12 +265,17 @@ export default function FileExplorer({
 		if (want) next.add(rootId);
 		else next.delete(rootId);
 		setOpenRoots(next);
-		if (want) loadRoot(rootId, expanded);
+		if (want && !rootsRef.current.find((r) => r.id === rootId)?.missing) loadRoot(rootId, expanded);
 	}, [openRoots, expanded, loadRoot]);
 
 	// The dashboard asked to show this folder: open its section and bring it into view.
 	useEffect(() => {
-		if (!revealPath || !roots.some((r) => r.id === revealPath)) return;
+		if (!revealPath || !folders.some((f) => f.path === revealPath)) return;
+		// Unhide first; the section exists on the next render and the request is consumed then.
+		if (hiddenFolders.includes(revealPath)) {
+			setFolderHidden(projectId, revealPath, false);
+			return;
+		}
 		clearRevealRequest();
 		toggleRoot(revealPath, true);
 		setActiveKey(keyOf(revealPath, ""));
@@ -276,12 +284,14 @@ export default function FileExplorer({
 				?.querySelector<HTMLElement>(`[data-key="${CSS.escape(keyOf(revealPath, ""))}"]`)
 				?.scrollIntoView({ block: "start" });
 		});
-	}, [revealPath, roots, toggleRoot]);
+	}, [revealPath, folders, hiddenFolders, projectId, toggleRoot]);
 
 	const refreshAll = useCallback((quiet: boolean) => {
 		const open = rememberedByTree.get(treeKeyRef.current)?.expanded ?? new Set<string>();
+		const multi = rootsRef.current.length > 1;
 		for (const root of rootsRef.current) {
-			if (root.id === PRIMARY || openRootsRef.current.has(root.id)) loadRoot(root.id, open, quiet);
+			if (root.missing) continue;
+			if ((!multi && root.id === PRIMARY) || openRootsRef.current.has(root.id)) loadRoot(root.id, open, quiet);
 		}
 	}, [loadRoot]);
 
@@ -506,6 +516,7 @@ export default function FileExplorer({
 					<span className="whitespace-nowrap text-dense text-fg-muted streamer-private">{row.root.hint}</span>
 					{row.root.missing && <span className="whitespace-nowrap text-dense text-danger">{t("fileExplorer.folderMissing")}</span>}
 				</div>
+				{row.open && row.root.missing && nestedNote(0, t("fileExplorer.folderMissingNote"))}
 				{row.open && state && state.status !== "ready" && !(state.status === "loading" && state.entries) &&
 					nestedNote(0, state.status === "error" ? state.message : t("fileExplorer.loading"))}
 				{row.open && state?.status === "ready" && state.entries.length === 0 && nestedNote(0, t("fileExplorer.empty"))}
@@ -726,6 +737,9 @@ function FolderPickerMenu({ top, left, primary, folders, hidden, onToggle, onSho
 	const t = useT();
 	const menuRef = useRef<HTMLDivElement>(null);
 	const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+	// The parent re-renders on every toggle and poll; a fresh onClose must not re-run the focus below.
+	const onCloseRef = useRef(onClose);
+	onCloseRef.current = onClose;
 
 	useEffect(() => {
 		const el = menuRef.current;
@@ -740,12 +754,12 @@ function FolderPickerMenu({ top, left, primary, folders, hidden, onToggle, onSho
 		const onKey = (event: KeyboardEvent) => {
 			if (event.key === "Escape") {
 				event.stopPropagation();
-				onClose();
+				onCloseRef.current();
 			}
 		};
 		window.addEventListener("keydown", onKey, true);
 		return () => window.removeEventListener("keydown", onKey, true);
-	}, [top, left, onClose]);
+	}, [top, left]);
 
 	function onMenuKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
 		const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>("[role=menuitemcheckbox]:not([aria-disabled=true]), [role=menuitem]") ?? []);
@@ -824,7 +838,7 @@ function FolderPickerMenu({ top, left, primary, folders, hidden, onToggle, onSho
 					})}
 				</div>
 				<div role="group" className="mt-1 border-t border-edge pt-1">
-					{hidden.length > 0 && (
+					{folders.some((f) => hidden.includes(f.path)) && (
 						<button type="button" role="menuitem" className={action} onClick={onShowAll}>{t("fileExplorer.showAllFolders")}</button>
 					)}
 					{onEdit && (

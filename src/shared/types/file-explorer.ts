@@ -46,7 +46,7 @@ export interface ProjectFolder {
 	name: string;
 	source: "dev3" | "claude";
 	exists: boolean;
-	/** Checked-out branch; only filled when requested and the folder is a git checkout. */
+	/** Branch of the checkout the folder belongs to; only filled when requested. */
 	branch?: string;
 }
 

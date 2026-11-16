@@ -80,6 +80,29 @@ describe("FileExplorer with extra folders", () => {
 		expect(screen.getByTestId("file-explorer-hidden-folders").textContent).toContain("docs");
 	});
 
+	it("scrolls the row the arrow keys land on into view", async () => {
+		const scroll = vi.fn();
+		Element.prototype.scrollIntoView = scroll;
+		renderExplorer("multi-3");
+		await screen.findByRole("treeitem", { name: /README\.md/ });
+		const tree = screen.getByRole("tree");
+		tree.focus();
+		await userEvent.keyboard("{ArrowDown}{ArrowDown}");
+		expect(scroll).toHaveBeenCalled();
+		const target = scroll.mock.contexts[scroll.mock.contexts.length - 1] as HTMLElement;
+		expect(target.getAttribute("aria-selected")).toBe("true");
+	});
+
+	it("keeps keyboard focus on the toggled folder in the picker", async () => {
+		renderExplorer("multi-4");
+		await userEvent.click(await screen.findByTestId("file-explorer-folders"));
+		const docs = within(screen.getByTestId("file-explorer-folder-picker")).getByRole("menuitemcheckbox", { name: /docs/ });
+		docs.focus();
+		await userEvent.keyboard(" ");
+		await waitFor(() => expect(screen.getByTestId("file-explorer-folders").textContent).toContain("2/3"));
+		expect(document.activeElement).toBe(docs);
+	});
+
 	it("keeps the single-root header when the project has no extra folders", async () => {
 		mockedApi.request.getProjectFolders.mockResolvedValue([]);
 		renderExplorer("single-1");

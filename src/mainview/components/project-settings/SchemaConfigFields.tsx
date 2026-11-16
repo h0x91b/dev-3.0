@@ -13,8 +13,8 @@ import { ListEditor } from "../ListEditor";
 import { ToggleSwitch } from "./fields";
 
 /** Fields of `section` that have no hand-built control, in schema order. */
-export function genericFieldKeys(section: ConfigSection): ConfigKey[] {
-	return CONFIG_KEYS.filter((key) => fieldUi(key) === "generic" && getFieldSpec(key).section === section);
+export function genericFieldKeys(section?: ConfigSection): ConfigKey[] {
+	return CONFIG_KEYS.filter((key) => fieldUi(key) === "generic" && (section === undefined || getFieldSpec(key).section === section));
 }
 
 const INPUT = "w-full px-3 py-2 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors";
@@ -31,13 +31,16 @@ export function SchemaConfigFields({
 	config,
 	onChange,
 	inherited,
+	worktreeLayer = false,
 }: {
 	section: ConfigSection;
 	config: Dev3RepoConfig;
 	onChange: (config: Dev3RepoConfig) => void;
 	inherited?: Dev3RepoConfig;
+	/** Editing a task worktree's own files: project-only fields would be saved and never read. */
+	worktreeLayer?: boolean;
 }) {
-	const keys = genericFieldKeys(section);
+	const keys = genericFieldKeys(section).filter((key) => !(worktreeLayer && getFieldSpec(key).projectOnly));
 	if (keys.length === 0) return null;
 	return (
 		<>
@@ -74,7 +77,7 @@ function SchemaField({ fieldKey, value, inherited, onChange }: {
 				<span id={labelId} className="block text-fg text-sm font-semibold font-mono mb-1">{fieldKey}</span>
 				<p className={`text-fg-3 text-sm ${inline ? "" : "mb-2"}`}>{spec.description}</p>
 			</div>
-			<SchemaControl spec={spec.type} labelId={labelId} value={value} inherited={inherited} example={spec.example} defaultValue={spec.default} onChange={onChange} />
+			<SchemaControl spec={spec.type} labelId={labelId} value={value} inherited={inherited} example={spec.example} defaultValue={spec.default} emptyListIsValue={spec.emptyArrayIsExplicit === true} onChange={onChange} />
 		</div>
 	);
 }
@@ -85,8 +88,10 @@ function placeholderOf(inherited: unknown, example: unknown): string {
 	return typeof v === "string" ? v : Array.isArray(v) ? v.join(", ") : JSON.stringify(v);
 }
 
-function SchemaControl({ spec, labelId, value, inherited, example, defaultValue, onChange }: {
+function SchemaControl({ spec, labelId, value, inherited, example, defaultValue, emptyListIsValue, onChange }: {
 	spec: ValueSpec;
+	/** An emptied list is saved as `[]`, which clears lower layers; otherwise it is dropped as unset. */
+	emptyListIsValue: boolean;
 	labelId: string;
 	value: unknown;
 	inherited: unknown;
@@ -151,7 +156,7 @@ function SchemaControl({ spec, labelId, value, inherited, example, defaultValue,
 				return (
 					<ListEditor
 						items={Array.isArray(value) ? (value as string[]) : []}
-						onChange={(items) => onChange(items)}
+						onChange={(items) => onChange(items.length > 0 || emptyListIsValue ? items : undefined)}
 						placeholder={placeholder}
 						addLabel={t("listEditor.addItem")}
 						removeLabel={t("listEditor.removeItem")}
