@@ -3,9 +3,10 @@ import { taskUsesWorktree, type Project, type Task } from "../../../shared/types
 import { useT, type TFunction } from "../../i18n";
 import { api } from "../../rpc";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../../state";
-import { registerCompletionOverlayHost, registerCompletionStrip, useCompletionOverlayHosted, useTaskStripOffer, type CompletionOffer, type CompletionOfferAnswer } from "../../completion-offers";
+import { keepTaskOpen, registerCompletionOverlayHost, registerCompletionStrip, useCompletionOverlayHosted, useTaskStripOffer, type CompletionOffer, type CompletionOfferAnswer } from "../../completion-offers";
 import { WorktreeSettingsIcon } from "../TaskIcons";
 import { MergeIcon } from "./GitIcons";
+import ApprovalReasonNote from "../ApprovalReasonNote";
 import { toastClearanceRef } from "../../toast-clearance";
 import { completionSkipsGitCheck, unsavedWorkWarning } from "../../utils/confirmTaskCompletion";
 import { useTaskPaneState } from "../../hooks/useTaskPaneState";
@@ -77,10 +78,15 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 	const [git, setGit] = useState<GitCheck>(skipGit ? { state: "skipped" } : { state: "checking" });
 	const [lossAcknowledged, setLossAcknowledged] = useState(false);
 
+	// Filled after mount: a live region announces a change, not the text it was born with.
+	const [announcement, setAnnouncement] = useState("");
 	useEffect(() => {
 		const timer = setTimeout(() => { armedRef.current = true; }, COMPLETION_STRIP_ARM_MS);
-		return () => clearTimeout(timer);
+		const announce = setTimeout(() => setAnnouncement(t(offer.kind === "agent" ? "completionStrip.agentTitle" : "completionStrip.mergedTitle")), 100);
+		return () => { clearTimeout(timer); clearTimeout(announce); };
+		// One announcement per offer: the strip is keyed by offer id.
 	}, []);
+	const liveRegion = <span role="status" className="sr-only" data-testid="task-completion-strip-announcement">{announcement}</span>;
 
 	const liveRef = useRef(true);
 	const checkGit = (): Promise<GitCheck> => api.request.getUnsavedWork({ taskId: task.id, projectId: project.id })
@@ -96,7 +102,8 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 
 	const answer = (value: CompletionOfferAnswer) => {
 		if (!armedRef.current) return;
-		offer.answer(value);
+		if (value === false) keepTaskOpen(offer.taskId);
+		else offer.answer(value);
 	};
 
 	// An offer can wait for hours while the user keeps working, so the shown
@@ -138,6 +145,7 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 	const unknownLine = git.state === "unknown" && <div className="text-xs text-warning-strong">{t("task.branchStateUnknown")}</div>;
 	const warningLine = warning && <div className="text-xs text-danger whitespace-pre-line" data-testid="task-completion-strip-warning">{warning}</div>;
 	const noteLine = <div className="text-xs text-fg-3" data-testid="task-completion-strip-note">{note}</div>;
+	const reasonLine = offer.reason ? <ApprovalReasonNote reason={offer.reason} tone="danger" /> : null;
 
 	const mergeControls = offer.kind === "merge" && (
 		<>
@@ -203,10 +211,12 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 				// On a wide terminal the corner is far from the prompt, so the bar stops within 72rem of the pane's left edge.
 				className={`group absolute bottom-1 right-[max(0.75rem,calc(100%-72rem))] z-20 flex max-w-[min(40rem,calc(100%-1.5rem))] flex-col items-end text-sm px-2 py-1 rounded-xl border bg-overlay shadow-lg ${border}`}
 			>
+				{liveRegion}
 				{/* Opens upward on hover or focus, and after a Complete click that would lose work; a pointer without hover always sees it. */}
 				<div className={`w-full items-end gap-3 pb-1.5 ${detailsOpen ? "flex" : "hidden group-hover:flex group-focus-within:flex [@media(hover:none)]:flex"}`} data-testid="task-completion-strip-details">
 					<div className="flex min-w-0 flex-1 flex-col gap-1">
 						{noteLine}
+						{reasonLine}
 						{unknownLine}
 						{warningLine}
 					</div>
@@ -243,11 +253,13 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 			data-layout="row"
 			className={`group flex flex-wrap items-center gap-x-3 gap-y-2 text-sm px-3 py-2 flex-shrink-0 border-b bg-raised ${border}`}
 		>
+			{liveRegion}
 			<div className="flex items-center basis-full md:basis-[18rem] gap-2 min-w-0 flex-1">
 				{mark}
 				<div className="min-w-0">
 					<div className="font-medium text-fg">{title}</div>
 					{noteLine}
+					{reasonLine && <div className="pt-1">{reasonLine}</div>}
 					{checking && <div className="text-xs text-fg-3" role="status">{t("task.checkingBranchState")}</div>}
 					{unknownLine}
 					{warningLine}

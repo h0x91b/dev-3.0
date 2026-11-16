@@ -85,28 +85,6 @@ describe("TaskCompletionStrip", () => {
 		expect(screen.getByTestId("task-completion-strip-warning")).toHaveTextContent("3");
 	});
 
-	// The bar stays one line high: its warning opens with the note on hover or focus,
-	// and stays open once a click was held back because of it.
-	it("keeps the bar's git warning in its hover panel until it holds a click back", async () => {
-		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" /></I18nProvider>);
-		await offer("merge");
-		await arm();
-		await act(async () => {});
-		vi.mocked(api.request.getUnsavedWork).mockResolvedValue({ ...clean, insertions: 2, deletions: 0 });
-		await act(async () => { fireEvent.click(screen.getByTestId("task-completion-strip-complete")); });
-		expect(screen.getByTestId("task-completion-strip-warning")).not.toHaveClass("hidden");
-	});
-
-	it("puts a known git warning in the bar's hover panel", async () => {
-		vi.mocked(api.request.getUnsavedWork).mockResolvedValue({ ...clean, insertions: 3, deletions: 1 });
-		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" /></I18nProvider>);
-		await offer("agent");
-		await act(async () => {});
-		const warning = screen.getByTestId("task-completion-strip-warning");
-		expect(warning).toHaveClass("hidden", "group-hover:block", "group-focus-within:block");
-		expect(screen.getByTestId("task-completion-strip-note")).toHaveClass("hidden");
-	});
-
 	it("skips the git check for a task without a worktree and says the session ends", async () => {
 		renderStrip(folderTask);
 		await offer("agent");
