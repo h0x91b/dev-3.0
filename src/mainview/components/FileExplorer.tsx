@@ -773,7 +773,6 @@ function MenuShell({ top, left, alignEnd = false, label, testId, className, onCl
 				top: Math.max(8, Math.min(top, window.innerHeight - rect.height - 8)),
 				left: Math.max(8, Math.min(alignEnd ? left - rect.width : left, window.innerWidth - rect.width - 8)),
 			});
-			el.querySelector<HTMLElement>(MENU_ITEMS)?.focus();
 		}
 		const onKey = (event: KeyboardEvent) => {
 			if (event.key === "Escape") {
@@ -784,6 +783,12 @@ function MenuShell({ top, left, alignEnd = false, label, testId, className, onCl
 		window.addEventListener("keydown", onKey, true);
 		return () => window.removeEventListener("keydown", onKey, true);
 	}, [top, left, alignEnd]);
+
+	// A browser refuses focus while the menu is still measured invisible, so focus waits for the first placement.
+	const placed = position !== null;
+	useEffect(() => {
+		if (placed) menuRef.current?.querySelector<HTMLElement>(MENU_ITEMS)?.focus();
+	}, [placed]);
 
 	function onMenuKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
 		const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>(MENU_ITEMS) ?? []);
