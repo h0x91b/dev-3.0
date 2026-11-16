@@ -6,7 +6,7 @@ import { confirm } from "../confirm";
 import { toast } from "../toast";
 import type { Route } from "../state";
 import { useProjectPrivacy } from "../sensitive-projects";
-import { offerSettledSignal, pickCompletionOffer, registerWaitingOffersList, useCompletionOffers, type CompletionOffer } from "../completion-offers";
+import { keepTaskOpen, offerSettledSignal, pickCompletionOffer, registerWaitingOffersList, useCompletionOffers, type CompletionOffer } from "../completion-offers";
 import { askOfferInModal } from "./CompletionOfferDialogHost";
 import { completionSkipsGitCheck, unsavedWorkWarning } from "../utils/confirmTaskCompletion";
 import { formatBytesCompact } from "../utils/formatBytes";
@@ -14,6 +14,7 @@ import { timeAgo } from "../utils/timeAgo";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import Select from "./Select";
+import { MergeIcon } from "./task-info-panel/GitIcons";
 
 /** A merge or agent offer waiting on the user, with the task and project it is about. */
 export interface WaitingOffer {
@@ -265,7 +266,7 @@ export default function ReadyToCompleteScreen({ projects, usage, navigate }: {
 														className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-xs ${isAgent ? "bg-accent/15 text-accent" : "bg-success/15 text-success"}`}
 														style={isAgent ? { fontFamily: "'JetBrainsMono Nerd Font Mono'" } : undefined}
 													>
-														{isAgent ? "\u{F06A9}" : "✓"}
+														{isAgent ? "\u{F06A9}" : <MergeIcon className="h-3 w-3" />}
 													</span>
 													<button
 														type="button"
@@ -291,7 +292,7 @@ export default function ReadyToCompleteScreen({ projects, usage, navigate }: {
 														<div className="flex items-center justify-end gap-2 shrink-0 ml-auto max-md:w-full">
 															<button
 																type="button"
-																onClick={() => offer.answer(false)}
+																onClick={() => keepTaskOpen(task.id)}
 																className={`px-3 py-1.5 min-h-[44px] md:min-h-0 text-xs whitespace-nowrap ${control}`}
 															>
 																{t("completionStrip.keepOpen")}
