@@ -41,6 +41,7 @@ const fileExplorer = {
 	"fileExplorer.folderMissing": "missing",
 	"fileExplorer.folderMissingNote": "This folder does not exist on this machine.",
 	"fileExplorer.folderSourceClaude": "Claude",
+	"fileExplorer.folderSourceVscode": "VS Code",
 	"fileExplorer.folderSourceDev3": "dev3",
 	"fileExplorer.hiddenFolders_one": "{count} folder hidden",
 	"fileExplorer.hiddenFolders_other": "{count} folders hidden",

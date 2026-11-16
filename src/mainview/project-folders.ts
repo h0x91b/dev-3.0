@@ -1,6 +1,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 import type { ProjectFolder } from "../shared/types";
 import { api } from "./rpc";
+import type { useT } from "./i18n";
 
 /**
  * Renderer side of a project's extra folders: the list itself, which ones the
@@ -169,4 +170,15 @@ export function useProjectFoldersLoaded(projectId: string | null): boolean {
 	const entry = projectId ? folderEntry(projectId, false) : null;
 	const subscribe = useEntrySubscribe(entry);
 	return useSyncExternalStore(subscribe, () => entry?.loaded ?? true);
+}
+
+const SOURCE_KEYS = {
+	dev3: "fileExplorer.folderSourceDev3",
+	claude: "fileExplorer.folderSourceClaude",
+	vscode: "fileExplorer.folderSourceVscode",
+} as const;
+
+/** Where a project's extra folder was declared, as its short tag. */
+export function folderSourceLabel(folder: ProjectFolder, t: ReturnType<typeof useT>): string {
+	return t(SOURCE_KEYS[folder.source]);
 }

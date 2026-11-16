@@ -36,7 +36,8 @@ export interface ExplorerListing {
 
 /**
  * A folder shown beside the project (`getProjectFolders`): the project's own
- * `extraFolders` setting, or Claude's `permissions.additionalDirectories`.
+ * `extraFolders` setting, Claude's `permissions.additionalDirectories`, or a
+ * folder of a VS Code `*.code-workspace` file in the project root.
  */
 export interface ProjectFolder {
 	/** Absolute, `~` and relative paths already resolved. */
@@ -44,7 +45,7 @@ export interface ProjectFolder {
 	/** `path` with the home directory written as `~`, for display. */
 	displayPath: string;
 	name: string;
-	source: "dev3" | "claude";
+	source: "dev3" | "claude" | "vscode";
 	exists: boolean;
 	/** Branch of the checkout the folder belongs to; only filled when requested. */
 	branch?: string;

@@ -1,6 +1,7 @@
-import { readFile, stat } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, resolve as resolvePath, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Project, ProjectFolder } from "../shared/types";
 import { run as runGit } from "./git";
 import * as repoConfig from "./repo-config";
@@ -8,7 +9,8 @@ import { createLogger } from "./logger";
 
 /**
  * Folders shown beside a project: its `extraFolders` config field plus Claude's
- * `permissions.additionalDirectories` from the project's and the user's Claude settings.
+ * `permissions.additionalDirectories` from the project's and the user's Claude settings,
+ * plus the folders of any VS Code `*.code-workspace` file in the project root.
  * See decisions/2026/11/15/project-extra-folders.md.
  */
 
@@ -68,6 +70,63 @@ async function readAdditionalDirectories(file: string): Promise<string[]> {
 	}
 }
 
+/** Comments and trailing commas out, strings untouched: `.code-workspace` files are JSONC. */
+export function stripJsonc(text: string): string {
+	let out = "";
+	for (let i = 0; i < text.length; i++) {
+		const ch = text[i];
+		if (ch === '"') {
+			let j = i + 1;
+			while (j < text.length && text[j] !== '"') j += text[j] === "\\" ? 2 : 1;
+			out += text.slice(i, j + 1);
+			i = j;
+		} else if (ch === "/" && text[i + 1] === "/") {
+			while (i < text.length && text[i] !== "\n") i++;
+			out += "\n";
+		} else if (ch === "/" && text[i + 1] === "*") {
+			const end = text.indexOf("*/", i + 2);
+			i = end < 0 ? text.length : end + 1;
+		} else {
+			out += ch;
+		}
+	}
+	return out.replace(/,(\s*[}\]])/g, "$1");
+}
+
+/** A Windows drive path means nothing to a server on another OS (a workspace file shared with Windows VS Code). */
+const FOREIGN_DRIVE_PATH = /^[A-Za-z]:[\\/]/;
+
+/** A `file://host/share` URI is a network path: on POSIX it throws, on Windows it becomes a UNC path and is dropped later. */
+function fileUrlPath(uri: string): string | undefined {
+	try {
+		return fileURLToPath(uri);
+	} catch {
+		return undefined;
+	}
+}
+
+/** Folder paths from every `*.code-workspace` file in the project root; `.` is the project itself and drops out later. */
+export async function readWorkspaceFolders(projectPath: string): Promise<string[]> {
+	const names = await readdir(projectPath).catch(() => [] as string[]);
+	const folders: string[] = [];
+	for (const name of names.filter((n) => n.endsWith(".code-workspace")).sort()) {
+		const file = join(projectPath, name);
+		try {
+			const parsed = JSON.parse(stripJsonc(await readFile(file, "utf-8")));
+			for (const folder of Array.isArray(parsed?.folders) ? parsed.folders : []) {
+				let path: string | undefined;
+				if (typeof folder?.path === "string") path = folder.path;
+				else if (typeof folder?.uri === "string" && folder.uri.startsWith("file:")) path = fileUrlPath(folder.uri);
+				if (!path?.trim() || (process.platform !== "win32" && FOREIGN_DRIVE_PATH.test(path))) continue;
+				folders.push(path);
+			}
+		} catch (err) {
+			log.warn("Unreadable VS Code workspace file", { file, error: String(err) });
+		}
+	}
+	return folders;
+}
+
 async function isDirectory(path: string): Promise<boolean> {
 	try {
 		return (await stat(path)).isDirectory();
@@ -103,6 +162,7 @@ export async function collectProjectFolders(project: Project, opts: { withBranch
 	for (const file of claudeSettingsFiles(project.path, claudeConfigDirFor(project))) {
 		for (const raw of await readAdditionalDirectories(file)) add(raw, "claude");
 	}
+	for (const raw of await readWorkspaceFolders(project.path)) add(raw, "vscode");
 	return Promise.all(candidates.map(async ({ path, source }) => {
 		const exists = await isDirectory(path);
 		const branch = opts.withBranch && exists ? await currentBranch(path) : undefined;

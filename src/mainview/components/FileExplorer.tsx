@@ -11,6 +11,7 @@ import Tooltip from "./Tooltip";
 import { isMac, isWindows } from "../utils/platform";
 import {
 	clearRevealRequest,
+	folderSourceLabel,
 	reloadProjectFolders,
 	setFolderHidden,
 	showAllFolders,
@@ -876,7 +877,7 @@ function FolderPickerMenu({ top, left, primary, folders, hidden, onToggle, onSho
 								<span className="block truncate font-mono text-dense text-fg-muted streamer-private">{folder.displayPath}</span>
 							</span>
 							<span className={`flex-shrink-0 rounded px-1 text-dense ring-1 ring-inset ${folder.exists ? "text-fg-3 ring-edge" : "text-danger ring-danger/40"}`}>
-								{folder.exists ? (folder.source === "claude" ? t("fileExplorer.folderSourceClaude") : t("fileExplorer.folderSourceDev3")) : t("fileExplorer.folderMissing")}
+								{folder.exists ? folderSourceLabel(folder, t) : t("fileExplorer.folderMissing")}
 							</span>
 						</button>
 					);

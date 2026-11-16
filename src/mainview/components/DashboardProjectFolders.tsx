@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { Project, ProjectFolder } from "../../shared/types";
 import type { Route } from "../state";
 import { useT } from "../i18n";
-import { requestRevealFolder, useDashboardFoldersOpen, useProjectFolders } from "../project-folders";
+import { folderSourceLabel, requestRevealFolder, useDashboardFoldersOpen, useProjectFolders } from "../project-folders";
 import Tooltip from "./Tooltip";
 
 /** Rows shown before "Show N more": a card stays one glance tall however many folders a project has. */
@@ -41,7 +41,7 @@ export function ProjectFoldersToggle({ project }: { project: Project }) {
 
 function sourceLabel(folder: ProjectFolder, t: ReturnType<typeof useT>): string {
 	if (!folder.exists) return t("fileExplorer.folderMissing");
-	return folder.source === "claude" ? t("fileExplorer.folderSourceClaude") : t("fileExplorer.folderSourceDev3");
+	return folderSourceLabel(folder, t);
 }
 
 /** The expanded list under a row header: one slim line per folder, a click opens it in the Repo file explorer. */

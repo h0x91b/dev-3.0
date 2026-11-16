@@ -9,7 +9,7 @@ const runGit = vi.fn(async (_cmd: string[], cwd: string) =>
 );
 vi.mock("../git", () => ({ run: (...args: unknown[]) => runGit(...(args as [string[], string])) }));
 
-import { claudeConfigDirFor, claudeSettingsFiles, collectProjectFolders } from "../project-folders";
+import { claudeConfigDirFor, claudeSettingsFiles, collectProjectFolders, stripJsonc } from "../project-folders";
 
 const tmp = mkdtempSync(join(tmpdir(), "dev3-project-folders-"));
 const projectDir = join(tmp, "project");
@@ -101,6 +101,35 @@ describe("collectProjectFolders", () => {
 			process.env.CLAUDE_CONFIG_DIR = userDir;
 			rmSync(join(userDir, "settings.json"));
 		}
+	});
+
+	it("adds the folders of a VS Code workspace file in the project root, JSONC and all", async () => {
+		const file = join(projectDir, "team.code-workspace");
+		writeFileSync(file, `{
+			// the project itself, then its siblings
+			"folders": [
+				{ "name": "Main", "path": "." },
+				{ "path": "../lib" }, /* already a Claude grant */
+				{ "path": "../vs-only", },
+				{ "uri": "file://attacker.example/share" },
+				{ "path": "C:\\\\Users\\\\me\\\\repo" },
+			],
+			"settings": { "x": "// not a comment" },
+		}`);
+		try {
+			const folders = await collectProjectFolders(project());
+			expect(folders.map((f) => [f.path, f.source])).toEqual([
+				[lib, "claude"],
+				[docs, "claude"],
+				[join(tmp, "vs-only"), "vscode"],
+			]);
+		} finally {
+			rmSync(file);
+		}
+	});
+
+	it("strips JSONC comments and trailing commas without touching strings", () => {
+		expect(JSON.parse(stripJsonc('{"a": "//x", /* c */ "b": [1, 2,], // end\n}'))).toEqual({ a: "//x", b: [1, 2] });
 	});
 
 	it("returns nothing for a board without a folder", async () => {

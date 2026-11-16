@@ -41,6 +41,7 @@ const fileExplorer = {
 	"fileExplorer.folderMissing": "не найдена",
 	"fileExplorer.folderMissingNote": "Этой папки нет на этом компьютере.",
 	"fileExplorer.folderSourceClaude": "Claude",
+	"fileExplorer.folderSourceVscode": "VS Code",
 	"fileExplorer.folderSourceDev3": "dev3",
 	"fileExplorer.hiddenFolders_one": "{count} папка скрыта",
 	"fileExplorer.hiddenFolders_few": "{count} папки скрыты",
