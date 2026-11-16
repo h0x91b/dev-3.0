@@ -32,6 +32,19 @@ const fileExplorer = {
 	"fileExplorer.openFailed": "Не удалось открыть файл: {error}",
 	"fileExplorer.showFiles": "Показать файлы",
 	"fileExplorer.resize": "Изменить ширину проводника",
+	"fileExplorer.folders": "Папки",
+	"fileExplorer.showFolders": "Показывать папки",
+	"fileExplorer.showAllFolders": "Показать все",
+	"fileExplorer.editFolders": "Изменить папки в настройках проекта…",
+	"fileExplorer.rootHintProject": "проект",
+	"fileExplorer.rootHintTask": "задача",
+	"fileExplorer.folderMissing": "не найдена",
+	"fileExplorer.folderSourceClaude": "Claude",
+	"fileExplorer.folderSourceDev3": "dev3",
+	"fileExplorer.hiddenFolders_one": "{count} папка скрыта",
+	"fileExplorer.hiddenFolders_few": "{count} папки скрыты",
+	"fileExplorer.hiddenFolders_many": "{count} папок скрыто",
+	"fileExplorer.hiddenFolders_other": "{count} папки скрыты",
 } as const;
 
 export default fileExplorer;

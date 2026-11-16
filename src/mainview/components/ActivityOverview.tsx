@@ -11,6 +11,7 @@ import { toast } from "../toast";
 import { MASK_CLASS, useProjectPrivacy } from "../sensitive-projects";
 import { useSpaces } from "../useSpaces";
 import { filterDashboardGroups, groupProjectsForDashboard } from "../utils/spaceGroups";
+import { ProjectFoldersRows, ProjectFoldersToggle } from "./DashboardProjectFolders";
 import ProjectSpaceChips from "./ProjectSpaceChips";
 import SpacePicker from "./SpacePicker";
 import { useProjectSpaceMembership } from "../useProjectSpaceMembership";
@@ -703,6 +704,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 							)}
 						</div>
 					</button>
+					{!compact && <ProjectFoldersToggle project={project} />}
 					{/* Desktop: resting-visible inline icon cluster, hover-emphasised. */}
 					<div className={compact ? "hidden" : "hidden md:flex"}>
 						<ProjectActionButtons
@@ -744,6 +746,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 					)}
 				</div>
 
+				{!compact && <ProjectFoldersRows project={project} navigate={navigate} />}
 				{hasActiveTasks && !compact && (
 					<div className="border-t border-edge">
 						<DashboardCoordinatorRows

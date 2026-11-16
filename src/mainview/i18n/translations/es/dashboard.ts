@@ -373,6 +373,10 @@ const dashboard = {
 	"memory.bannerOutOfRoom_one": "Esta máquina se ha quedado sin memoria: una tarea más la ralentizará.",
 	"memory.bannerOutOfRoom_other": "Esta máquina se ha quedado sin memoria: {count} tareas más la ralentizarán.",
 	"dashboard.noSpaceGroup": "Home",
+	"dashboard.extraFolders_one": "+{count} carpeta",
+	"dashboard.extraFolders_other": "+{count} carpetas",
+	"dashboard.moreFolders_one": "Mostrar {count} más",
+	"dashboard.moreFolders_other": "Mostrar {count} más",
 };
 
 export default dashboard;

@@ -293,6 +293,8 @@ function TaskWorkspacePane({
 						rootLabel={task?.branchName ?? task?.title ?? ""}
 						enabled={!immersive && !isNarrow && !!task?.worktreePath}
 						onOpenYazi={task ? yazi.launch : undefined}
+						rootSectionLabel={task?.branchName ?? undefined}
+						onEditFolders={() => navigate({ screen: "project-settings", projectId, tab: "project" })}
 					>
 						<TaskTerminal
 							key={taskId}

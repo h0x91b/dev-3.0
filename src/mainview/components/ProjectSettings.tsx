@@ -19,6 +19,7 @@ import { useIsControlHidden } from "../hooks/useIsControlHidden";
 import { BackIcon } from "./HeaderIcons";
 import { ConfigForm } from "./project-settings/ConfigForm";
 import { CustomColumnRow } from "./project-settings/CustomColumnRow";
+import { genericFieldKeys } from "./project-settings/SchemaConfigFields";
 import { LabelRow } from "./project-settings/LabelRow";
 import { ProjectNameField } from "./project-settings/ProjectNameField";
 import { CONFIG_BOOLEAN_DEFAULTS, decodeGitHubAccountValue, encodeGitHubAccountValue, formatGitHubAccountLabel, getEffectiveCompareRef, type ProjectConfigValues } from "./project-settings/config-values";
@@ -44,7 +45,7 @@ type ConfigTab = "global" | "project" | "worktree" | "automations";
 type WorktreeSubTab = "repo" | "local";
 
 /**
- * Strip empty strings from clonePaths and sparseCheckoutPaths before saving.
+ * Strip empty strings from clonePaths, sparseCheckoutPaths and extraFolders before saving.
  * Only includes these fields if they were actually present in the input config —
  * avoids creating phantom `clonePaths: []` entries that shadow project-level values. See #378.
  */
@@ -56,6 +57,9 @@ function sanitizeConfigPaths<T extends Dev3RepoConfig>(config: T): T {
 	}
 	if (rest.sparseCheckoutPaths !== undefined) {
 		result.sparseCheckoutPaths = rest.sparseCheckoutPaths.filter((p) => p.trim() !== "");
+	}
+	if (rest.extraFolders !== undefined) {
+		result.extraFolders = rest.extraFolders.filter((p) => p.trim() !== "");
 	}
 	return result;
 }
@@ -156,6 +160,7 @@ function ProjectSettings({
 		peerReviewEnabled: p.peerReviewEnabled,
 		sparseCheckoutEnabled: p.sparseCheckoutEnabled,
 		sparseCheckoutPaths: p.sparseCheckoutPaths,
+		extraFolders: p.extraFolders,
 		env: p.env,
 	}), []);
 	const [projectConfig, setProjectConfig] = useState<ProjectConfigValues>(() => project ? projectConfigFromProject(project) : {});
@@ -316,6 +321,11 @@ function ProjectSettings({
 		const spA = (a.sparseCheckoutPaths ?? []).join("\0");
 		const spB = (b.sparseCheckoutPaths ?? []).join("\0");
 		if (spA !== spB) return false;
+		// Schema-rendered fields have no hand-written comparison; an empty list equals unset.
+		const normalized = (v: unknown) => (Array.isArray(v) && v.length === 0 ? undefined : v);
+		for (const key of genericFieldKeys("scripts").concat(genericFieldKeys("worktree"), genericFieldKeys("git"))) {
+			if (JSON.stringify(normalized(a[key]) ?? null) !== JSON.stringify(normalized(b[key]) ?? null)) return false;
+		}
 		// Compare devServers: a row edit must count as an unsaved change.
 		if (JSON.stringify(a.devServers ?? {}) !== JSON.stringify(b.devServers ?? {})) return false;
 		// Compare builtinColumnAgents

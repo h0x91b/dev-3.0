@@ -151,7 +151,7 @@ function SchemaControl({ spec, labelId, value, inherited, example, defaultValue,
 				return (
 					<ListEditor
 						items={Array.isArray(value) ? (value as string[]) : []}
-						onChange={(items) => onChange(items.length > 0 ? items : undefined)}
+						onChange={(items) => onChange(items)}
 						placeholder={placeholder}
 						addLabel={t("listEditor.addItem")}
 						removeLabel={t("listEditor.removeItem")}

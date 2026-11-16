@@ -6,6 +6,7 @@ import { join } from "node:path";
 const tmp = mkdtempSync(join(tmpdir(), "dev3-file-explorer-"));
 const worktree = join(tmp, "worktree");
 const projectDir = join(tmp, "project");
+const extraDir = join(tmp, "extra");
 
 vi.mock("../../data", () => ({
 	getProject: vi.fn(async (projectId: string) => {
@@ -30,6 +31,13 @@ const runGit = vi.fn(async (_cmd: string[], _cwd: string) =>
 );
 vi.mock("../../git", () => ({ run: (...args: unknown[]) => runGit(...(args as [string[], string])) }));
 
+vi.mock("../../project-folders", () => ({
+	resolveProjectFolders: vi.fn(async () => [
+		{ path: extraDir, displayPath: extraDir, name: "extra", source: "claude", exists: true },
+		{ path: join(tmp, "gone"), displayPath: join(tmp, "gone"), name: "gone", source: "dev3", exists: false },
+	]),
+}));
+
 import { fileExplorerHandlers } from "../file-explorer";
 
 const list = fileExplorerHandlers.listExplorerDirectory;
@@ -49,6 +57,8 @@ beforeAll(() => {
 	symlinkSync(join(worktree, "missing-target"), join(worktree, "broken-link"));
 	mkdirSync(projectDir, { recursive: true });
 	writeFileSync(join(projectDir, "main.txt"), "main\n");
+	mkdirSync(join(extraDir, "lib"), { recursive: true });
+	writeFileSync(join(extraDir, "notes.md"), "");
 });
 
 afterAll(() => {
@@ -133,5 +143,30 @@ describe("listExplorerDirectory", () => {
 	it("has no root for a virtual project or a task without a worktree", async () => {
 		expect((await list({ projectId: "virtual" })).error).toBe("no-root");
 		expect((await list({ projectId: "proj-1", taskId: "no-worktree" })).error).toBe("no-root");
+	});
+});
+
+describe("listExplorerDirectory with an extra folder", () => {
+	it("lists a folder the project declares, with paths relative to that folder", async () => {
+		const listing = await list({ projectId: "proj-1", taskId: "task-1", folder: extraDir });
+		expect(listing.root).toBe(extraDir);
+		expect(listing.entries.map((e) => [e.name, e.relPath])).toEqual([["lib", "lib"], ["notes.md", "notes.md"]]);
+	});
+
+	it("refuses a folder the project does not declare, or one that is missing", async () => {
+		expect((await list({ projectId: "proj-1", folder: worktree })).error).toBe("no-root");
+		expect((await list({ projectId: "proj-1", folder: join(tmp, "gone") })).error).toBe("no-root");
+	});
+
+	it("still refuses a path that climbs out of the extra folder", async () => {
+		const listing = await list({ projectId: "proj-1", folder: extraDir, relPath: "../worktree" });
+		expect(listing.error).toBe("outside-root");
+	});
+});
+
+describe("getProjectFolders", () => {
+	it("returns the resolved folders of the project", async () => {
+		const folders = await fileExplorerHandlers.getProjectFolders({ projectId: "proj-1" });
+		expect(folders.map((f) => f.name)).toEqual(["extra", "gone"]);
 	});
 });

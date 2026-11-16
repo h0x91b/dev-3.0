@@ -213,6 +213,15 @@ export const CONFIG_FIELDS = {
 		section: "worktree",
 		ui: "bespoke",
 	}),
+	extraFolders: field({
+		type: list(str()),
+		description: "Folders outside the project shown beside it in the file explorer and on the dashboard.",
+		details: "Absolute, `~/`-prefixed or relative to the project root. Claude's `permissions.additionalDirectories` from the project's `.claude/settings*.json` are added automatically. Per-machine paths belong in `.dev3/config.local.json`.",
+		defaultNote: "none: only Claude's additionalDirectories",
+		example: ["~/src/shared-lib", "../docs"],
+		section: "worktree",
+		ui: "generic",
+	}),
 	builtinColumnAgents: field({
 		type: record(columnAgentSpec),
 		description: "Agent that runs when a task enters a built-in column, keyed by status: { agentId, configId, prompt }.",

@@ -378,6 +378,10 @@ const dashboard = {
 	"memory.bannerOutOfRoom_one": "This machine is out of memory — one more task will likely make it crawl.",
 	"memory.bannerOutOfRoom_other": "This machine is out of memory — {count} more tasks will likely make it crawl.",
 	"dashboard.noSpaceGroup": "Home",
+	"dashboard.extraFolders_one": "+{count} folder",
+	"dashboard.extraFolders_other": "+{count} folders",
+	"dashboard.moreFolders_one": "Show {count} more",
+	"dashboard.moreFolders_other": "Show {count} more",
 } as const;
 
 export default dashboard;

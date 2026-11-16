@@ -34,6 +34,22 @@ export interface ExplorerListing {
 	error?: "no-root" | "outside-root" | "not-found" | "unreadable";
 }
 
+/**
+ * A folder shown beside the project (`getProjectFolders`): the project's own
+ * `extraFolders` setting, or Claude's `permissions.additionalDirectories`.
+ */
+export interface ProjectFolder {
+	/** Absolute, `~` and relative paths already resolved. */
+	path: string;
+	/** `path` with the home directory written as `~`, for display. */
+	displayPath: string;
+	name: string;
+	source: "dev3" | "claude";
+	exists: boolean;
+	/** Checked-out branch; only filled when requested and the folder is a git checkout. */
+	branch?: string;
+}
+
 export interface FolderListing {
 	path: string;
 	parent: string | null;

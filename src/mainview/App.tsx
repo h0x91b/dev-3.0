@@ -4130,6 +4130,7 @@ function App() {
 							projectPath={proj.path}
 							projectName={proj.name}
 							onBack={() => navigate({ screen: "project", projectId: route.projectId })}
+							onEditFolders={() => navigate({ screen: "project-settings", projectId: route.projectId, tab: "project" })}
 						/>
 					</div>
 				) : null;
