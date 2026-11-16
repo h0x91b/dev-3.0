@@ -275,9 +275,14 @@ export function codexPlanLabel(plan: string | null): string | null {
 /** The Claude login a project's sessions really use when its env pins
  *  `CLAUDE_CONFIG_DIR`: the account then comes from that directory, not
  *  `~/.claude`. `configDir` is null when the project does not pin one. */
+/** What a project's own env switches Claude onto instead of its folder's login. */
+export type ProjectClaudeBackend = "bedrock" | "vertex" | "foundry" | "env-auth";
+
 export interface ProjectClaudeLogin {
 	configDir: string | null;
 	identity: AgentAccountIdentity | null;
+	/** Set when the project env replaces the folder's login, so "no pick" and "this account" launch differently. */
+	backend?: ProjectClaudeBackend | null;
 }
 
 /** One login pinned by at least one project's `CLAUDE_CONFIG_DIR`, with the
