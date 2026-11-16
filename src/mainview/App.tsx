@@ -2490,7 +2490,7 @@ function App() {
 			subject?: TaskDialogSubject;
 			reason?: ApprovalReason;
 		}) {
-			const { requestId, taskId, projectId, taskTitle, subject } = request;
+			const { requestId, taskId, projectId, taskTitle, subject, reason } = request;
 			if (showing.has(requestId)) return;
 			showing.add(requestId);
 			let approved = false;
@@ -2506,7 +2506,7 @@ function App() {
 			let withdrawBell: (() => void) | undefined;
 			try {
 				const isNew = !hasCompletionOffer(taskId, "agent");
-				const answer = offerCompletion({ taskId, projectId, kind: "agent", signal: abort.signal });
+				const answer = offerCompletion({ taskId, projectId, kind: "agent", ...(reason ? { reason } : {}), signal: abort.signal });
 				if (isNew) withdrawBell = announceCompletionOffer({
 					taskId, projectId, taskTitle, subject,
 					reason: t("completionStrip.agentTitle"),

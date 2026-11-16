@@ -5,6 +5,7 @@ import { api } from "../../rpc";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../../state";
 import { keepTaskOpen, registerCompletionOverlayHost, registerCompletionStrip, useCompletionOverlayHosted, useTaskStripOffer, type CompletionOffer, type CompletionOfferAnswer } from "../../completion-offers";
 import { WorktreeSettingsIcon } from "../TaskIcons";
+import ApprovalReasonNote from "../ApprovalReasonNote";
 import { toastClearanceRef } from "../../toast-clearance";
 import { completionSkipsGitCheck, unsavedWorkWarning } from "../../utils/confirmTaskCompletion";
 import { useTaskPaneState } from "../../hooks/useTaskPaneState";
@@ -152,6 +153,11 @@ function Strip({ offer, task, project, bar }: { offer: CompletionOffer; task: Ta
 				<div className={bar ? "min-w-0 flex flex-col-reverse" : "min-w-0"}>
 					<div className={`font-medium text-fg ${bar ? "truncate" : ""}`} title={bar ? title : undefined}>{title}</div>
 					<div className={`text-xs text-fg-3 ${bar ? "hidden group-hover:block group-focus-within:block" : ""}`} data-testid="task-completion-strip-note">{note}</div>
+					{offer.reason && (
+						<div className={bar ? "hidden group-hover:block group-focus-within:block pb-1" : "pt-1"}>
+							<ApprovalReasonNote reason={offer.reason} tone="danger" />
+						</div>
+					)}
 					{checking && !bar && <div className="text-xs text-fg-3" role="status">{t("task.checkingBranchState")}</div>}
 					{git.state === "unknown" && <div className="text-xs text-warning-strong">{t("task.branchStateUnknown")}</div>}
 					{git.state === "done" && git.warning && (

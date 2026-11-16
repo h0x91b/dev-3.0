@@ -56,6 +56,12 @@ describe("TaskCompletionStrip", () => {
 		expect(document.activeElement).toBe(before);
 	});
 
+	it("shows the agent's --reason as plain text", async () => {
+		renderStrip();
+		await act(async () => { void offerCompletion({ taskId: "t1", projectId: "p1", kind: "agent", reason: { text: "<b>PR merged</b>" } }); });
+		expect(screen.getByTestId("approval-reason")).toHaveTextContent("<b>PR merged</b>");
+	});
+
 	it("ignores a click that lands before the strip arms", async () => {
 		renderStrip();
 		const { answer } = await offer("merge");
