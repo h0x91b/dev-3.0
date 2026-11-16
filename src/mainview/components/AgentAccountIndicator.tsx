@@ -666,10 +666,9 @@ export default function AgentAccountIndicator({
 	// Only managed accounts fold: an explicit system-login pick runs in ~/.claude. A project env that swaps
 	// the backend (Bedrock, an API key) makes "no pick" launch differently, so both rows stay.
 	const projectBackend = projectPinDir ? (projectLogin?.backend ?? null) : null;
-	const sameAsProjectFolder = (identity: AgentAccountIdentity | null | undefined) =>
-		isLocal && !!projectPinDir && sameClaudeLogin(identity, projectLogin?.identity);
-	const folderAccount = state.claude.accounts.find((a) => a.auth !== "api" && sameAsProjectFolder(a.identity)) ?? null;
-	const projectAccount = projectBackend ? null : folderAccount;
+	const runsInProjectFolder = (account: AgentAccount) =>
+		isLocal && !!projectPinDir && account.auth !== "api" && sameClaudeLogin(account.identity, projectLogin?.identity);
+	const projectAccount = projectBackend ? null : (state.claude.accounts.find(runsInProjectFolder) ?? null);
 	const fallbackIdentity =
 		kind === "claude"
 			? (pinnedDir ? (projectLogin?.identity ?? null) : state.claude.systemIdentity)
@@ -792,7 +791,7 @@ export default function AgentAccountIndicator({
 	// In a project with its own Claude folder, say where each account's session will run.
 	const folderNote = (account: AgentAccount): string | null => {
 		if (!isLocal || !projectPinDir) return null;
-		return account.id === folderAccount?.id ? t("launch.accountRunsInProjectFolder") : t("launch.accountRunsInOwnFolder");
+		return runsInProjectFolder(account) ? t("launch.accountRunsInProjectFolder") : t("launch.accountRunsInOwnFolder");
 	};
 	for (const account of kindState.accounts) {
 		if (account.id === projectAccount?.id) continue;

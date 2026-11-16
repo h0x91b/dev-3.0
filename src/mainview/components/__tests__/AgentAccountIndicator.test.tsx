@@ -991,6 +991,20 @@ describe("project-pinned CLAUDE_CONFIG_DIR", () => {
 		expect(screen.queryByText("Unmanaged login")).toBeNull();
 	});
 
+	it("says a second account on the project's login also runs in the project's folder", async () => {
+		const { here, own } = projectFolderAccounts();
+		const twin = { ...here, id: "cl-3", label: "Second project account" };
+		const base = makeState();
+		mockedApi.request.listAgentAccounts.mockResolvedValue(makeState({ claude: { ...base.claude, accounts: [here, twin, own] } }));
+		renderIndicator(claudeAgent, { projectId: "p1", onSelect: vi.fn() });
+		const trigger = await screen.findByTestId("agent-account-trigger");
+		await waitFor(() => expect(trigger.textContent).toContain("project@example.com"));
+		await userEvent.click(trigger);
+		await projectRowEl();
+		const twinRow = screen.getByText("Second project account").closest("[role='menuitemradio']");
+		expect(twinRow?.textContent).toContain("Runs in this project's Claude folder");
+	});
+
 	it("keeps ~/.claude when it is signed in to someone else", async () => {
 		projectFolderAccounts();
 		renderIndicator(claudeAgent, { projectId: "p1", onSelect: vi.fn() });
