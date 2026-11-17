@@ -37,6 +37,8 @@ export async function spawnAgentInTask(params: {
 	bedrockProfile?: string | null;
 	/** Hand the new agent a retelling of this task's newest conversation. */
 	handoff?: boolean;
+	/** The user asked for this pane from the UI: focus moves to it. Absent → background. */
+	focus?: boolean;
 }): Promise<SpawnAgentResult> {
 	log.info("→ spawnAgentInTask", { taskId: params.taskId.slice(0, 8), agentId: params.agentId, configId: params.configId, handoff: params.handoff === true, promptChars: params.prompt?.length ?? 0 });
 
@@ -189,6 +191,8 @@ export async function spawnAgentInTask(params: {
 			socket,
 			tmuxCommand: `bash "${scriptPath}"`,
 			nativeLaunch: generatedScriptLaunch(scriptPath),
+			focus: params.focus === true,
+			restoreFocus: params.focus !== true,
 		});
 	} catch (err) {
 		log.error("spawnAgentInTask failed", { taskId: params.taskId.slice(0, 8), error: String(err) });

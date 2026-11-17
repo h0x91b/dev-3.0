@@ -312,7 +312,9 @@ export function buildSetupStartupWrapper(opts: {
 	assertPosixLaunchDialect("the tmux setup/startup wrapper");
 	// `-b` puts the agent ABOVE the wrapper's own pane, so the setup log sits at
 	// the bottom and the agent keeps the top slot it has without a setup script.
-	const splitCmd = `tmux split-window -v -b -c "${escapeForDoubleQuotes(opts.worktreePath)}" "${escapeForDoubleQuotes(cmdRunner)}"`;
+	// Explicit `-d`: the server may still run a config without the split alias.
+	// `select-pane -U` then hands focus to the agent pane the split just opened.
+	const splitCmd = `tmux split-window -d -v -b -c "${escapeForDoubleQuotes(opts.worktreePath)}" "${escapeForDoubleQuotes(cmdRunner)}" \\; select-pane -U`;
 	return [
 		...d.header(),
 		...(opts.launchMode === "parallel" ? [splitCmd] : []),

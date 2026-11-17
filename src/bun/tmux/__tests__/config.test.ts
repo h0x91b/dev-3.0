@@ -145,8 +145,27 @@ describe("buildThemeConfig", () => {
 
 	it("writes a backslash split binding with a literal double backslash", () => {
 		expect(buildThemeConfig("mocha")).toContain(
-			String.raw`bind \\ split-window -h -c "${PANE_CWD_FORMAT}"`,
+			String.raw`bind \\ split-window -d -h -c "${PANE_CWD_FORMAT}" \; select-pane -R`,
 		);
+	});
+
+	it("user split keys carry an explicit -d (aliases are not yet defined when bind runs) and then focus the new pane", () => {
+		const config = buildThemeConfig("mocha");
+		expect(config).toContain(String.raw`bind | split-window -d -h -c "${PANE_CWD_FORMAT}" \; select-pane -R`);
+		expect(config).toContain(String.raw`bind - split-window -d -v -c "${PANE_CWD_FORMAT}" \; select-pane -D`);
+		// The stock prefix " and % splits are rebound too: with the alias they would open in the background.
+		expect(config).toContain(String.raw`bind '"' split-window -d -v -c "${PANE_CWD_FORMAT}" \; select-pane -D`);
+		expect(config).toContain(String.raw`bind % split-window -d -h -c "${PANE_CWD_FORMAT}" \; select-pane -R`);
+	});
+
+	it("aliases make every window and split command open in the background", () => {
+		for (const flavor of ["mocha", "latte"] as const) {
+			const config = buildThemeConfig(flavor);
+			expect(config).toContain("set -s command-alias[90] 'new-window=new-window -d'");
+			expect(config).toContain("set -s command-alias[91] 'neww=new-window -d'");
+			expect(config).toContain("set -s command-alias[92] 'split-window=split-window -d'");
+			expect(config).toContain("set -s command-alias[93] 'splitw=split-window -d'");
+		}
 	});
 
 	it("never sources the system or user tmux configs", () => {

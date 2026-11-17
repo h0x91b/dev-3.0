@@ -4276,6 +4276,21 @@ describe("worktree-mode Operations task: the repo is the project root outside th
 		expect(repoConfig.resolveProjectEnv).toHaveBeenCalledWith(repoRoot, "/tmp/wt", expect.anything());
 	});
 
+	it("re-running setup opens its tmux pane in the background: no select-pane after the split", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(vproject());
+		vi.mocked(data.getTask).mockResolvedValue(wtTask());
+		vi.mocked(data.loadProjects).mockResolvedValueOnce([]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValueOnce([vproject()]);
+		vi.mocked(repoConfig.resolveOperationalProjectConfig).mockResolvedValueOnce({ ...vproject(), setupScript: "echo setup" } as never);
+		mockSpawn.mockImplementation(() => ({ stderr: new Response("").body, stdout: new Response("%8\n").body, exited: Promise.resolve(0) }));
+
+		await handlers.rerunSetupScript({ taskId: "abcd1234-full-id" });
+
+		const argvs = mockSpawn.mock.calls.map((c) => c[0] as string[]);
+		expect(argvs.some((a) => a.includes("split-window") && a.includes("-d"))).toBe(true);
+		expect(argvs.some((a) => a.includes("select-pane") && !a.includes("-T"))).toBe(false);
+	});
+
 	it("a plain Operations task keeps the Operations project as root", async () => {
 		const plain = makeTask({ id: "abcd1234-full-id", projectId: "vp1", status: "in-progress", worktreePath: "/tmp/wt" });
 		vi.mocked(data.getProject).mockResolvedValue(vproject());
@@ -10550,11 +10565,11 @@ describe("tmuxAction", () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it("sends split-window -v for splitH action", async () => {
-		mockSpawn.mockReturnValue({
+		mockSpawn.mockImplementation(() => ({
 			stderr: new Response(""),
-			stdout: new Response(""),
+			stdout: new Response("%5\n").body,
 			exited: Promise.resolve(0),
-		});
+		}));
 
 		await tmuxAction({ taskId: "abcd1234-full-id", action: "splitH" });
 		// -c must carry a session_path fallback: tmux 3.7 on macOS sometimes
@@ -10562,23 +10577,26 @@ describe("tmuxAction", () => {
 		// bare #{pane_current_path} then expands to "" — tmux falls back to the
 		// split CLIENT's cwd, i.e. the app bundle dir, opening the pane there.
 		expect(mockSpawn).toHaveBeenCalledWith(
-			["tmux", "-L", "dev3", "split-window", "-v", "-t", "dev3-abcd1234", "-c", "#{?pane_current_path,#{pane_current_path},#{session_path}}"],
+			["tmux", "-L", "dev3", "split-window", "-d", "-v", "-P", "-F", "#{pane_id}", "-t", "dev3-abcd1234", "-c", "#{?pane_current_path,#{pane_current_path},#{session_path}}"],
 			expect.any(Object),
 		);
+		// A user split is a background split plus an explicit select of the new pane.
+		expect(mockSpawn).toHaveBeenCalledWith(["tmux", "-L", "dev3", "select-pane", "-t", "%5"], expect.any(Object));
 	});
 
 	it("sends split-window -h for splitV action", async () => {
-		mockSpawn.mockReturnValue({
+		mockSpawn.mockImplementation(() => ({
 			stderr: new Response(""),
-			stdout: new Response(""),
+			stdout: new Response("%5\n").body,
 			exited: Promise.resolve(0),
-		});
+		}));
 
 		await tmuxAction({ taskId: "abcd1234-full-id", action: "splitV" });
 		expect(mockSpawn).toHaveBeenCalledWith(
-			["tmux", "-L", "dev3", "split-window", "-h", "-t", "dev3-abcd1234", "-c", "#{?pane_current_path,#{pane_current_path},#{session_path}}"],
+			["tmux", "-L", "dev3", "split-window", "-d", "-h", "-P", "-F", "#{pane_id}", "-t", "dev3-abcd1234", "-c", "#{?pane_current_path,#{pane_current_path},#{session_path}}"],
 			expect.any(Object),
 		);
+		expect(mockSpawn).toHaveBeenCalledWith(["tmux", "-L", "dev3", "select-pane", "-t", "%5"], expect.any(Object));
 	});
 
 	it("sends even-vertical layout for layoutEvenH action", async () => {
@@ -11181,7 +11199,7 @@ describe("handlers.openQuickShell", () => {
 	});
 });
 
-describe("addVirtualShellPane — focus lands on the agent pane", () => {
+describe("addVirtualShellPane — the agent pane keeps focus", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockSpawn.mockImplementation((args: string[]) => {
@@ -11191,20 +11209,16 @@ describe("addVirtualShellPane — focus lands on the agent pane", () => {
 		});
 	});
 
-	it("selects the agent pane (.0) LAST so the user lands on the agent, not the split shell", async () => {
+	it("splits in the background and only titles the shell pane, never selecting a pane", async () => {
 		const task = makeTask({ id: "abcdef12-0000-0000-0000-000000000000", projectId: "ops1" });
 		await addVirtualShellPane(task, "/tmp/work", "dev3", "/bin/zsh");
 
-		const session = `dev3-${task.id.slice(0, 8)}`;
-		const selectCalls = mockSpawn.mock.calls
-			.map((c) => c[0] as string[])
-			.filter((a) => a.includes("select-pane"));
-
-		// Regression: previously the shell title was set last, so `select-pane -t`
-		// left focus on the freshly-split shell. The agent pane must be selected last.
-		const last = selectCalls[selectCalls.length - 1];
-		expect(last).toBeDefined();
-		expect(last[last.indexOf("-t") + 1]).toBe(`${session}.0`);
+		const argvs = mockSpawn.mock.calls.map((c) => c[0] as string[]);
+		expect(argvs.find((a) => a.includes("split-window"))).toContain("-d");
+		// `select-pane -T` titles without moving focus; any select-pane without -T would move it.
+		const selectCalls = argvs.filter((a) => a.includes("select-pane"));
+		expect(selectCalls).toHaveLength(1);
+		expect(selectCalls[0]).toEqual(expect.arrayContaining(["-t", "%9", "-T", "Shell"]));
 	});
 });
 
@@ -11427,8 +11441,8 @@ describe("handlers.spawnAgentInTask on a native task", () => {
 		return { project, task };
 	}
 
-	function spawn() {
-		return handlers.spawnAgentInTask({ taskId: TASK_ID, projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default" });
+	function spawn(focus?: boolean) {
+		return handlers.spawnAgentInTask({ taskId: TASK_ID, projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default", ...(focus ? { focus } : {}) });
 	}
 
 	it("opens one real native pane to the right and never calls tmux", async () => {
@@ -11449,16 +11463,24 @@ describe("handlers.spawnAgentInTask on a native task", () => {
 		expect(mockSpawn).not.toHaveBeenCalled();
 	});
 
-	// tmux's own split-window leaves the new pane active; the native path must not
-	// hand focus back, or "+ Agent" would land the user in the wrong pane.
-	it("leaves the new agent pane focused, like the tmux path", async () => {
+	// "+ Agent" from the UI: the user asked for the pane, so focus moves to it on both backends.
+	it("leaves the new agent pane focused when the UI asks for it", async () => {
 		arrangeNativeTask();
 		const set = arrangeNativePaneSet();
 
-		await spawn();
+		await spawn(true);
 
 		expect(set.activePaneId()).toBe("pane-2");
 		expect(mockNativePanes.focusNativeTaskPane).not.toHaveBeenCalled();
+	});
+
+	it("hands focus back to the previous pane when nothing asks for focus (CLI spawn)", async () => {
+		arrangeNativeTask();
+		arrangeNativePaneSet();
+
+		await spawn();
+
+		expect(mockNativePanes.focusNativeTaskPane).toHaveBeenCalledWith(TASK_ID, "pane-1");
 	});
 
 	// sessionState.panes is reconciled against live TMUX panes, so a native entry
@@ -11663,6 +11685,13 @@ describe("handlers.spawnBugHuntersInTask", () => {
 			.map((c) => c[0] as string[])
 			.filter((args) => args.includes("split-window"));
 		expect(splitCalls).toHaveLength(3);
+
+		// Each hunter is a user-requested pane: the split is followed by selecting it.
+		const hunterSelects = mockSpawn.mock.calls
+			.map((c) => c[0] as string[])
+			.filter((args) => args.includes("select-pane") && !args.includes("-T"))
+			.map((args) => args[args.indexOf("-t") + 1]);
+		expect(hunterSelects).toEqual(["%10", "%11", "%12"]);
 
 		// First split: -h -l 50% targeting the session
 		expect(splitCalls[0]).toEqual(expect.arrayContaining(["split-window", "-h", "-l", "50%", "-t", "dev3-abcd1234"]));
@@ -14039,7 +14068,7 @@ describe("launchTaskPty", () => {
 			const startupCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-startup.sh"));
 			const script = String(startupCall?.[1] ?? "");
 			const setupIndex = script.indexOf(`'${process.env.SHELL}' '${process.env.DEV3_TEST_ROOT}/dev3-task-1-setup.sh'`);
-			const splitIndex = script.indexOf(`tmux split-window -v -b -c "/tmp/wt" "'${process.env.SHELL}' '${process.env.DEV3_TEST_ROOT}/dev3-task-1-cmd.sh'"`);
+			const splitIndex = script.indexOf(`tmux split-window -d -v -b -c "/tmp/wt" "'${process.env.SHELL}' '${process.env.DEV3_TEST_ROOT}/dev3-task-1-cmd.sh'"`);
 
 			expect(setupIndex).toBeGreaterThanOrEqual(0);
 			expect(splitIndex).toBeGreaterThanOrEqual(0);
@@ -14063,7 +14092,7 @@ describe("launchTaskPty", () => {
 
 			const startupCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-startup.sh"));
 			const script = String(startupCall?.[1] ?? "");
-			const splitIndex = script.indexOf(`tmux split-window -v -b -c "/tmp/wt" "'${process.env.SHELL}' '${process.env.DEV3_TEST_ROOT}/dev3-task-1-cmd.sh'"`);
+			const splitIndex = script.indexOf(`tmux split-window -d -v -b -c "/tmp/wt" "'${process.env.SHELL}' '${process.env.DEV3_TEST_ROOT}/dev3-task-1-cmd.sh'"`);
 			const setupIndex = script.indexOf(`'${process.env.SHELL}' '${process.env.DEV3_TEST_ROOT}/dev3-task-1-setup.sh'`);
 
 			expect(splitIndex).toBeGreaterThanOrEqual(0);

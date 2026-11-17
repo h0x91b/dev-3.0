@@ -1371,6 +1371,7 @@ describe("TaskInfoPanel", () => {
 				taskId: "t1",
 				projectId: "p1",
 				opId: expect.stringMatching(/^[0-9a-f]{8}$/),
+				focus: true,
 			});
 		});
 
@@ -1462,6 +1463,7 @@ describe("TaskInfoPanel", () => {
 			await waitFor(() => expect(mockedApi.request.restartDevServer).toHaveBeenCalledWith({
 				taskId: "t1",
 				projectId: "p1",
+				focus: true,
 			}));
 			expect(mockedApi.request.runDevServer).not.toHaveBeenCalled();
 		});

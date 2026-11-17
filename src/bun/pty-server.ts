@@ -1984,15 +1984,17 @@ async function setupTiledLayout(session: PtySession): Promise<void> {
 			return;
 		}
 		// Create 3 more panes (4 total), then apply tiled layout for 2×2 grid.
-		// We always split the active pane — no pane-index arithmetic needed,
-		// so pane-base-index setting doesn't matter.
+		// Each split targets the previously created pane (a split never moves
+		// focus), so pane order matches creation order and pane-base-index is moot.
 		// -c sets the working directory — without it, new panes inherit the
 		// tmux server's start dir (e.g. /Applications/dev-3.0.app/Contents/MacOS/).
+		let splitTarget = s;
 		for (let i = 0; i < 3; i++) {
 			// A single failed split is ignored (as before) — the layout below
 			// still tiles whatever panes were created.
 			try {
-				await tmux.splitWindow({ target: s, orientation: "vertical", cwd: session.cwd, socket: sock });
+				const { paneId } = await tmux.splitWindow({ target: splitTarget, orientation: "vertical", printPaneId: true, cwd: session.cwd, socket: sock });
+				if (paneId) splitTarget = paneId;
 			} catch (err) {
 				if (!(err instanceof TmuxError)) throw err;
 			}

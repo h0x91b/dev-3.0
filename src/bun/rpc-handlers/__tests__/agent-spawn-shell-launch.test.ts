@@ -204,3 +204,17 @@ describe("spawnAgentInTask agent attribution", () => {
 		expect(mocks.updateTask.mock.calls[0][2].sessionState.panes).toEqual([expect.objectContaining({ paneId: "%42", accountId: "acc-1" })]);
 	});
 });
+
+describe("spawnAgentInTask focus", () => {
+	const base = { taskId: TASK_ID, projectId: PROJECT.id, agentId: "builtin-claude", configId: null };
+
+	it("opens in the background when nothing asks for focus (the CLI path)", async () => {
+		await tmuxPtyHandlers.spawnAgentInTask(base);
+		expect(mocks.splitTaskPane).toHaveBeenCalledWith(expect.objectContaining({ focus: false, restoreFocus: true }));
+	});
+
+	it("moves focus to the new pane when the UI asks for it", async () => {
+		await tmuxPtyHandlers.spawnAgentInTask({ ...base, focus: true });
+		expect(mocks.splitTaskPane).toHaveBeenCalledWith(expect.objectContaining({ focus: true, restoreFocus: false }));
+	});
+});

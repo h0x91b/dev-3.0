@@ -69,6 +69,7 @@ export async function runScript(opts: RunScriptOptions): Promise<void> {
 				before: spec.before,
 				cwd: worktreePath,
 				printPaneId: true,
+				focus: true,
 				command: wrapped,
 				socket,
 			}));

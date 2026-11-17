@@ -121,6 +121,7 @@ export function tmuxBackendPort(client: TmuxClient = tmux): TmuxBackendPort {
 				env: launch.env as Record<string, string> | undefined,
 				command: launch.command,
 				printPaneId: true,
+				focus: true,
 			});
 			if (!paneId) throw new Error(`tmux split of ${fromPaneId} returned no pane id`);
 			return paneId;

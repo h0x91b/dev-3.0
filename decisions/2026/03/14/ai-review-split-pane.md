@@ -1,3 +1,5 @@
+> Superseded on 2026-11-17 by `decisions/2026/11/17/auto-opened-panes-open-in-background.md`: the `select-pane -t :0` focus return is gone; the column-agent split opens in the background.
+
 # 015 — AI Review Uses tmux Split-Pane (Not New Window)
 
 ## Context

@@ -105,7 +105,7 @@ const STARTUP_WRAPPER_NATIVE = [
 
 const STARTUP_WRAPPER_TMUX_PARALLEL = [
 	"#!/bin/bash",
-	"tmux split-window -v -b -c \"/w/t\" \"'/bin/zsh' '/tmp/dev3-T-cmd.sh'\"",
+	"tmux split-window -d -v -b -c \"/w/t\" \"'/bin/zsh' '/tmp/dev3-T-cmd.sh'\" \\; select-pane -U",
 	"'/bin/zsh' '/tmp/dev3-T-setup.sh'",
 	"S=$?",
 	"if [ $S -ne 0 ]; then",
@@ -128,7 +128,7 @@ const STARTUP_WRAPPER_TMUX_BLOCKING = [
 	"  printf '%s' \"$S\" > '/tmp/dev3-T-setup-exit'",
 	"  exec '/bin/zsh'",
 	"fi",
-	"tmux split-window -v -b -c \"/w/t\" \"'/bin/zsh' '/tmp/dev3-T-cmd.sh'\"",
+	"tmux split-window -d -v -b -c \"/w/t\" \"'/bin/zsh' '/tmp/dev3-T-cmd.sh'\" \\; select-pane -U",
 	"printf '\\033[1;32m✓ Setup done\\033[0m\\n'",
 	"printf '\\033[2mClosing in 15s — press any key to close now\\033[0m\\n'",
 	"if [ -n \"$ZSH_VERSION\" ]; then read -t 15 -k 1 -s; elif [ -n \"$BASH_VERSION\" ]; then read -t 15 -n 1 -s; else sleep 15; fi",

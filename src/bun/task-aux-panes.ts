@@ -89,7 +89,7 @@ export interface OpenAuxPaneSpec extends TaskPaneLaunch {
 	slot?: string;
 	/** Native pane to split off. Defaults to the pane that currently has focus. */
 	nativeAnchor?: string;
-	/** Native: leave focus on the new pane, as a tmux split does, instead of handing it back. */
+	/** Leave focus on the new pane (an interactive pane the user opened) on both backends. */
 	focusNewPane?: boolean;
 }
 
@@ -411,7 +411,8 @@ async function findOwnedPanesStrictly(
  * On native, focus is handed back to the pane that had it — a new pane becomes
  * the coordinator's active pane on split, and the agent must not lose input just
  * because a dev server started. `focusNewPane` keeps it on the new pane instead,
- * for an interactive pane the user opened to type into.
+ * for an interactive pane the user opened to type into. On tmux a split stays in
+ * the background unless `focusNewPane` asks for the new pane.
  */
 export async function openAuxPane(spec: OpenAuxPaneSpec): Promise<AuxPaneHandle> {
 	const { task, purpose, socket, slot } = spec;
@@ -420,7 +421,11 @@ export async function openAuxPane(spec: OpenAuxPaneSpec): Promise<AuxPaneHandle>
 	} else {
 		await closeAuxPane(task, purpose, socket, undefined, slot);
 	}
-	const handle = await splitTaskPane({ ...spec, restoreFocus: !spec.focusNewPane });
+	const handle = await splitTaskPane({
+		...spec,
+		restoreFocus: !spec.focusNewPane,
+		focus: spec.focusNewPane,
+	});
 	log.info("Opened auxiliary pane", {
 		taskId: task.id.slice(0, 8),
 		purpose,
@@ -439,6 +444,8 @@ export interface SplitTaskPaneSpec extends TaskPaneLaunch {
 	nativeAnchor?: string;
 	/** Native only: hand focus back to the pane that had it before the split. */
 	restoreFocus?: boolean;
+	/** tmux only: select the new pane. Without it the split stays in the background. */
+	focus?: boolean;
 }
 
 /**
@@ -490,13 +497,12 @@ export async function splitTaskPane(spec: SplitTaskPaneSpec): Promise<AuxPaneHan
 			printPaneId: true,
 			env,
 			cwd,
+			focus: spec.focus,
 			command: spec.tmuxCommand,
 			socket,
 		});
 		if (stderr.trim()) log.warn("splitTaskPane tmux stderr", { stderr: stderr.trim() });
-		// AWAITED on purpose. `select-pane -t` sets the title AND makes that pane
-		// active, so a fire-and-forget call can land after the caller has already
-		// focused the pane it wants and silently steal focus back.
+		// `select-pane -T` only sets the title; it never changes the active pane.
 		if (paneId && title) {
 			await tmux.selectPane(paneId, { socket, title }).catch(() => {});
 		}

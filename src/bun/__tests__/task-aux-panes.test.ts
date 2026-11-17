@@ -622,36 +622,25 @@ describe("openTaskPaneWindow", () => {
 	});
 });
 
-describe("splitTaskPane focus ordering (tmux)", () => {
-	it("finishes titling the new pane before returning, so a caller's own focus wins", async () => {
-		// `select-pane -t` sets the title AND activates that pane. A fire-and-forget
-		// title call can land after the caller focused the pane it wants, silently
-		// stealing focus back — so the title must be settled before the split returns.
-		const order: string[] = [];
-		let releaseTitle: (() => void) | undefined;
-		const titleSettled = new Promise<void>((resolve) => { releaseTitle = resolve; });
-		mocks.tmuxSelectPane.mockImplementation(async (target: string) => {
-			if (target === "%7") {
-				await titleSettled;
-				order.push("title");
-				return;
-			}
-			order.push(`focus:${target}`);
-		});
+describe("splitTaskPane focus (tmux)", () => {
+	it("splits in the background unless the caller asks for focus", async () => {
+		await splitTaskPane(spec(tmuxTask, { title: "AI Review" }));
+		expect(mocks.tmuxSplitWindow.mock.calls[0][0].focus).toBeUndefined();
+	});
 
-		const opening = splitTaskPane(spec(tmuxTask, { title: "AI Review" }));
-		// Nothing may have completed while the title call is still in flight.
-		expect(order).toEqual([]);
-		releaseTitle?.();
-		await opening;
-		// Only now may the caller focus its own pane; it must be last.
-		await tmuxCaretFocus();
+	it("passes an explicit focus request down to the split", async () => {
+		await splitTaskPane({ ...spec(tmuxTask), focus: true });
+		expect(mocks.tmuxSplitWindow.mock.calls[0][0].focus).toBe(true);
+	});
 
-		expect(order).toEqual(["title", "focus:dev3-aaaaaaaa:.0"]);
+	it("titling the pane never counts as a focus request", async () => {
+		await openAuxPane(spec(tmuxTask));
+		expect(mocks.tmuxSplitWindow.mock.calls[0][0].focus).toBeFalsy();
+		expect(mocks.tmuxSelectPane).toHaveBeenCalledWith("%7", { socket: SOCKET, title: "Dev Server" });
+	});
+
+	it("an opener that wants the new pane (focusNewPane) gets it on tmux too", async () => {
+		await openAuxPane(spec(tmuxTask, { focusNewPane: true }));
+		expect(mocks.tmuxSplitWindow.mock.calls[0][0].focus).toBe(true);
 	});
 });
-
-/** What `launchColumnAgent` does after the split: focus the agent pane. */
-async function tmuxCaretFocus(): Promise<void> {
-	await mocks.tmuxSelectPane(`${SESSION}:.0`, { socket: SOCKET, bestEffort: true });
-}
