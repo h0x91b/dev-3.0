@@ -8,8 +8,21 @@ const runGit = vi.fn(async (_cmd: string[], cwd: string) =>
 	cwd.endsWith("lib") ? { ok: true, stdout: "feature/x\n", stderr: "" } : { ok: false, stdout: "", stderr: "not a repo" },
 );
 vi.mock("../git", () => ({ run: (...args: unknown[]) => runGit(...(args as [string[], string])) }));
+const launchEnv = vi.fn(async (): Promise<Record<string, string>> => ({}));
+vi.mock("../repo-config", () => ({
+	resolveProjectConfig: async (p: unknown) => p,
+	resolveProjectEnv: () => launchEnv(),
+}));
 
-import { claudeConfigDirFor, claudeSettingsFiles, collectProjectFolders, stripJsonc } from "../project-folders";
+import { ENV_UNSET } from "../../shared/agent-accounts";
+import {
+	claudeConfigDirFor,
+	claudeSettingsFiles,
+	clearProjectFoldersCache,
+	collectProjectFolders,
+	resolveProjectFolders,
+	stripJsonc,
+} from "../project-folders";
 
 const tmp = mkdtempSync(join(tmpdir(), "dev3-project-folders-"));
 const projectDir = join(tmp, "project");
@@ -95,8 +108,8 @@ describe("collectProjectFolders", () => {
 		try {
 			expect((await collectProjectFolders(project())).map((f) => f.path)).toEqual([lib, docs, join(tmp, "global")]);
 			delete process.env.CLAUDE_CONFIG_DIR;
-			expect(claudeConfigDirFor({})).toBe(join(homedir(), ".claude"));
-			expect(claudeConfigDirFor({ env: { CLAUDE_CONFIG_DIR: configDir } })).toBe(configDir);
+			expect(claudeConfigDirFor({ path: projectDir })).toBe(join(homedir(), ".claude"));
+			expect(claudeConfigDirFor({ path: projectDir, env: { CLAUDE_CONFIG_DIR: configDir } })).toBe(configDir);
 		} finally {
 			process.env.CLAUDE_CONFIG_DIR = userDir;
 			rmSync(join(userDir, "settings.json"));
@@ -134,5 +147,35 @@ describe("collectProjectFolders", () => {
 
 	it("returns nothing for a board without a folder", async () => {
 		expect(await collectProjectFolders(project({ kind: "virtual", path: "" }))).toEqual([]);
+	});
+});
+
+describe("resolveProjectFolders", () => {
+	// The server was started from a terminal pinned to another project's Claude folder.
+	const appSettings = join(userDir, "settings.local.json");
+	beforeAll(() => {
+		writeFileSync(appSettings, JSON.stringify({ permissions: { additionalDirectories: [join(tmp, "other-project-grant")] } }));
+	});
+	afterAll(() => {
+		rmSync(appSettings);
+	});
+
+	async function foldersWithLaunchEnv(env: Record<string, string>): Promise<string[]> {
+		launchEnv.mockResolvedValueOnce(env);
+		clearProjectFoldersCache();
+		return (await resolveProjectFolders(project())).map((f) => f.path);
+	}
+
+	it("reads the config dir the project's agent launches with, not the server's own", async () => {
+		// The global `{projectPath}/.claude` default resolves to the project's own folder.
+		expect(await foldersWithLaunchEnv({ CLAUDE_CONFIG_DIR: join(projectDir, ".claude") })).toEqual([lib, docs]);
+	});
+
+	it("reads ~/.claude, not the server's dir, when the launch clears the variable", async () => {
+		expect(claudeConfigDirFor({ path: projectDir, env: { CLAUDE_CONFIG_DIR: ENV_UNSET } })).toBe(join(homedir(), ".claude"));
+	});
+
+	it("falls back to the server's dir only when the launch sets none", async () => {
+		expect(await foldersWithLaunchEnv({})).toEqual([lib, docs, join(tmp, "other-project-grant")]);
 	});
 });

@@ -2,6 +2,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, resolve as resolvePath, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { launchClaudeConfigLocation } from "../shared/claude-config-dir";
 import type { Project, ProjectFolder } from "../shared/types";
 import { run as runGit } from "./git";
 import * as repoConfig from "./repo-config";
@@ -34,9 +35,13 @@ function expandPath(raw: string, base: string): string {
 	return isAbsolute(trimmed) ? resolvePath(trimmed) : resolvePath(base, trimmed);
 }
 
-/** The user-scope Claude config dir a project's agents read: the project's pin, else the server's, else `~/.claude`. */
-export function claudeConfigDirFor(project: Pick<Project, "env">): string {
-	return project.env?.CLAUDE_CONFIG_DIR?.trim() || process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude");
+/**
+ * The user-scope Claude config dir a project's agents read. `project.env` must be the launch env
+ * (`resolveProjectEnv`, global agent env defaults included): the server's own `CLAUDE_CONFIG_DIR`
+ * counts only when the launch sets none, since that is the only case an agent inherits it.
+ */
+export function claudeConfigDirFor(project: Pick<Project, "env" | "path">): string {
+	return launchClaudeConfigLocation(project.env, process.env, homedir(), project.path).dir;
 }
 
 /** Project-scope Claude settings, plus the user-scope ones in `configDir`. */
@@ -141,7 +146,7 @@ async function currentBranch(path: string): Promise<string | undefined> {
 	return branch && branch !== "HEAD" ? branch : undefined;
 }
 
-/** `project` must already be resolved through the config cascade. */
+/** `project` must already be resolved through the config cascade, with `env` set to its launch env. */
 export async function collectProjectFolders(project: Project, opts: { withBranch?: boolean } = {}): Promise<ProjectFolder[]> {
 	if (project.kind === "virtual" || !project.path) return [];
 	const own = expandPath(project.path, project.path);
@@ -177,7 +182,9 @@ export async function resolveProjectFolders(project: Project, opts: { withBranch
 	const key = `${project.id}:${opts.withBranch ? 1 : 0}`;
 	const hit = cache.get(key);
 	if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.folders;
-	const folders = repoConfig.resolveProjectConfig(project).then((resolved) => collectProjectFolders(resolved, opts));
+	const folders = Promise.all([repoConfig.resolveProjectConfig(project), repoConfig.resolveProjectEnv(project, project.path)]).then(
+		([resolved, env]) => collectProjectFolders({ ...resolved, env }, opts),
+	);
 	cache.set(key, { at: Date.now(), folders });
 	folders.catch(() => cache.delete(key));
 	return folders;
