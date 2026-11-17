@@ -31,7 +31,8 @@ import { applySavedTmuxPanePreferences } from "./tmux/config";
 import { DEV3_HOME } from "./paths";
 import { ensureDev3CliSymlink } from "./cli-self-install";
 import { managedCliWriteAllowed } from "./managed-cli-guard";
-import { applyFullShellEnvToProcess, getUserShell, resolveShellEnv, stripPaneLaunchEnv } from "./shell-env";
+import { applyFullShellEnvToProcess, getUserShell, resolveShellEnv } from "./shell-env";
+import { resetEnvFromDev3Pane } from "./pane-launch-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServer, pushToBrowserClients, getServerPort, getAccessUrl, getStaticCode } from "./remote-access-server";
 import { startTunnel, stopTunnel, isTunnelBinaryAvailable, getTunnelUrl, retryMainTunnel } from "./cloudflare-tunnel";
@@ -72,7 +73,7 @@ log.info(`=== dev-3.0 headless starting [${BUILD_TIME}] v${BUILD_VERSION} ===`);
 log.info("All data at", { dir: DEV3_HOME });
 log.info("Log files", { dir: getLogPath() });
 {
-	const removed = stripPaneLaunchEnv(process.env);
+	const removed = resetEnvFromDev3Pane(process.env);
 	if (removed.length > 0) log.info("Started inside a dev3 pane: dropped its launch env", { removed });
 }
 

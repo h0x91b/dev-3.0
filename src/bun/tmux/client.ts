@@ -27,6 +27,7 @@ import {
 import { type BoundedRunResult, type SpawnBounds, runBounded } from "./bounded-spawn";
 import type { StaleTmuxServer } from "../../shared/types";
 import { DEFAULT_TMUX_SOCKET } from "./constants";
+import { withoutLaunchTaskWiring } from "../pane-launch-env";
 import { activeTmuxConfigPath, tmuxClientCwd } from "./config";
 import { ensureLaunchdServer, predatesLaunchdServer, staleServerBinary } from "./launchd-server";
 import { TmuxError, TmuxSpawnError, TmuxTimeoutError } from "./errors";
@@ -222,7 +223,7 @@ export class TmuxClient {
 			socket: socket ?? this.defaultSocket,
 			configFile,
 			cwd: tmuxClientCwd(),
-			env,
+			env: withoutLaunchTaskWiring(env),
 		});
 	}
 
@@ -308,6 +309,8 @@ export class TmuxClient {
 			proc = this.spawnFn(this.argv(opts.socket, args), {
 				stdout: "pipe",
 				stderr: "pipe",
+				// Without launchd this command starts the server, which keeps this env.
+				env: withoutLaunchTaskWiring(process.env),
 				// A tmux server started by this client keeps the client cwd forever —
 				// it must never be a mortal task worktree (decision 103).
 				cwd: tmuxClientCwd(),
@@ -359,7 +362,7 @@ export class TmuxClient {
 		try {
 			return this.spawnFn(argv, {
 				terminal: opts.terminal,
-				env: opts.processEnv,
+				env: opts.processEnv ?? withoutLaunchTaskWiring(process.env),
 				cwd: tmuxClientCwd(),
 			});
 		} catch (err) {

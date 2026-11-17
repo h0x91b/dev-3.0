@@ -47,7 +47,8 @@ import { CLI_EXIT_CODE_RENDERER_UNAVAILABLE } from "../shared/cli-exit-codes";
 import { DEV3_HOME } from "./paths";
 import { resolveUserHome } from "../shared/user-home";
 import { normalizeEnvPath } from "../shared/env-path";
-import { applyFullShellEnvToProcess, getShellRcFiles, getUserShell, resolveShellEnv, stripPaneLaunchEnv } from "./shell-env";
+import { applyFullShellEnvToProcess, getShellRcFiles, getUserShell, resolveShellEnv } from "./shell-env";
+import { resetEnvFromDev3Pane } from "./pane-launch-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServerGuarded, setRemoteAccessStatusHook } from "./remote-access-server";
 import { writeSystemClipboard } from "./system-clipboard";
@@ -147,7 +148,7 @@ if (shouldTryLaunchHandoff({ platform: process.platform, env: process.env })) {
 
 // Before skills install into the Claude config dir and before any tmux server starts.
 {
-	const removed = stripPaneLaunchEnv(process.env);
+	const removed = resetEnvFromDev3Pane(process.env);
 	if (removed.length > 0) log.info("Started inside a dev3 pane: dropped its launch env", { removed });
 }
 

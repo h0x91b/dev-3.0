@@ -170,41 +170,6 @@ describe("shell environment bootstrap", () => {
 		});
 	});
 
-	describe("stripPaneLaunchEnv", () => {
-		it("drops the agent and tmux keys a dev3 pane wrote when DEV3_TASK_ID is set", async () => {
-			const { stripPaneLaunchEnv } = await import("../shell-env");
-			const env: Record<string, string | undefined> = {
-				DEV3_TASK_ID: "task-a",
-				CLAUDE_CONFIG_DIR: "/projects/a/.claude",
-				ANTHROPIC_BASE_URL: "https://proxy.example",
-				TMUX: "/tmp/tmux-501/dev3,1,0",
-				TMUX_PANE: "%0",
-				KEEP: "yes",
-			};
-
-			const removed = stripPaneLaunchEnv(env);
-
-			expect(env).toEqual({ DEV3_TASK_ID: "task-a", KEEP: "yes" });
-			expect(removed.sort()).toEqual(["ANTHROPIC_BASE_URL", "CLAUDE_CONFIG_DIR", "TMUX", "TMUX_PANE"]);
-		});
-
-		it("keeps an ambient CLAUDE_CONFIG_DIR when the app did not start inside a pane", async () => {
-			const { stripPaneLaunchEnv } = await import("../shell-env");
-			const env: Record<string, string | undefined> = { CLAUDE_CONFIG_DIR: "/home/me/.claude-work", TMUX: "/tmp/tmux-501/default,1,0" };
-
-			expect(stripPaneLaunchEnv(env)).toEqual([]);
-			expect(env).toEqual({ CLAUDE_CONFIG_DIR: "/home/me/.claude-work", TMUX: "/tmp/tmux-501/default,1,0" });
-		});
-
-		it("treats a blank DEV3_TASK_ID as not inside a pane", async () => {
-			const { stripPaneLaunchEnv } = await import("../shell-env");
-			const env: Record<string, string | undefined> = { DEV3_TASK_ID: " ", CLAUDE_CONFIG_DIR: "/x" };
-
-			expect(stripPaneLaunchEnv(env)).toEqual([]);
-			expect(env.CLAUDE_CONFIG_DIR).toBe("/x");
-		});
-	});
-
 	describe("applyFullShellEnvToProcess", () => {
 		afterEach(() => {
 			delete process.env.CLAUDE_CODE_DISABLE_MOUSE_CLICKS;

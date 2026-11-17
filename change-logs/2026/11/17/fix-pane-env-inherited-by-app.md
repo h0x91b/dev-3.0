@@ -1,5 +1,5 @@
 Short: Pane env no longer leaks into dev3
 
-dev3 started from inside one of its own panes no longer passes that pane's Claude config folder, model and API keys, or tmux pane identity on to its tmux server, so projects without their own Claude folder stop running agents on another project's folder. A `CLAUDE_CONFIG_DIR` exported in your shell profile still applies.
+dev3 started from inside one of its own panes now starts from a clean environment plus your login shell's, as a fresh terminal would, so its tmux server no longer hands that pane's Claude folder, Claude Code session keys, model pins, project env and task identity to every other terminal. A tmux server already running keeps its old environment until it restarts.
 
 Contributed by @fallenfuzz
