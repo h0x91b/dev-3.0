@@ -173,12 +173,23 @@ describe("Windows PowerShell dialect", () => {
 		expect(d.readKey({ timeoutSeconds: 15 })).toContain("AddSeconds(15)");
 	});
 
+	it("resets terminal modes with ESC built from [char]27 and has no tty state to save", () => {
+		expect(d.saveTerminalState()).toEqual([]);
+		const [reset] = d.restoreTerminalState();
+		expect(reset).toMatch(/^Write-Host -NoNewline "/);
+		expect(reset).toContain("$([char]27)[?1049l");
+		expect(reset).toContain("$([char]27)[?25h");
+		expect(reset).not.toContain("\\033");
+	});
+
 	it("uses no POSIX shell constructs anywhere in a rendered script", () => {
 		const script = [
 			...d.header(),
 			...d.envLines({ FOO: "bar" }),
+			...d.saveTerminalState(),
 			...d.announceAndRun("Starting: claude", "claude"),
 			d.captureExitCode("__EC"),
+			...d.restoreTerminalState(),
 			...d.branchOnFailure("__EC", { fail: [d.print(d.style("✗ %s", "error"), { args: [d.exitCodeArg("__EC")] })] }),
 			...d.loopForever([d.readLine()]),
 			...d.declareFunction("check_and_run", ["  Write-Host 'x'"]),

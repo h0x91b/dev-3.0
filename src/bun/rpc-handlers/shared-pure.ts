@@ -144,8 +144,10 @@ export function buildCmdScript(
 		...d.header(),
 		...(titleLine ? [titleLine] : []),
 		...exportLines,
+		...d.saveTerminalState(),
 		...d.announceAndRun(`Starting: ${tmuxCmd}`, tmuxCmd),
 		d.captureExitCode("__EC"),
+		...d.restoreTerminalState(),
 		...(options?.exitReport ? [`${d.runCommand(options.exitReport)} ${d.exitCodeArg("__EC")}`] : []),
 	];
 	if (options?.keepShell) {
