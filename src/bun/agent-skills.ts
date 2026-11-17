@@ -305,6 +305,8 @@ ${renderConfigFieldTable()}
 
 **A project can opt out entirely.** Project Settings → Project Config has a **Use repository dev3 configuration** switch (on by default). While it is off, dev3 reads neither file for that project and refuses to write them, so writing a config there accomplishes nothing — tell the user to switch it back on first.
 
+**Machine-local switches are not config keys.** \`name\`, \`gitWorkflow\`, \`storageRoot\`, \`useRepoConfig\`, \`boardCopy\` and \`boardCopyMessages\` live in the app's project registry: read them with \`dev3 projects get\`. \`dev3 projects set <key> <value>\` changes one, but only the user (outside any task) or a coordinator may; any other task gets exit 49, so ask the user instead.
+
 ## CLI commands
 
 - \`dev3 config schema [<key>] [--json]\` — what can be configured: type, default, example (no app needed)
@@ -314,6 +316,7 @@ ${renderConfigFieldTable()}
 - \`dev3 config unset <key>[.<name>] [--local] [--main]\` — remove a key so lower layers apply
 - \`dev3 config validate [--json]\` — check the files (exit 47 on errors; unknown keys only warn)
 - \`dev3 config export\` — migrate legacy settings from projects.json
+- \`dev3 projects get [<key>]\` / \`dev3 projects set <key> <value>\` - the machine-local switches above
 `;
 
 const CLAUDE_PROJECT_CONFIG_SKILL = `---

@@ -14,6 +14,7 @@ import { liveHandlers } from "./cli-socket/live-commands";
 import { messageHandlers } from "./cli-socket/message-commands";
 import { paneHandlers } from "./cli-socket/pane-commands";
 import { prWatchHandlers } from "./cli-socket/pr-watch-commands";
+import { projectSettingsHandlers } from "./cli-socket/project-settings-commands";
 import { log, type Handler } from "./cli-socket/shared";
 import { statsHandlers } from "./cli-socket/stats-commands";
 import { systemHandlers } from "./cli-socket/system-commands";
@@ -71,6 +72,7 @@ const handlers: Record<string, Handler> = {
 	...systemHandlers,
 	...taskHandlers,
 	...epicHandlers,
+	...projectSettingsHandlers,
 	...liveHandlers,
 };
 

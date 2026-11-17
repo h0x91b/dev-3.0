@@ -47,6 +47,7 @@ export const CLI_EXIT_CODE_EPIC_CREATE_FORBIDDEN = 45;
 export const CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED = 46;
 export const CLI_EXIT_CODE_CONFIG_INVALID = 47;
 export const CLI_EXIT_CODE_WORKTREE_HALF_REMOVED = 48;
+export const CLI_EXIT_CODE_PROJECT_SETTING_FORBIDDEN = 49;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -337,5 +338,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_WORKTREE_HALF_REMOVED,
 		description:
 			"`dev3 task move --status completed|cancelled` was approved, but tearing the task down stopped half way: git already dropped the worktree's link while files (often a large untracked tree such as a `.venv`) are still in its folder, so the task did NOT move and stays in its column. The message names the folder. Run the same move again to finish it, or delete that folder yourself. Distinct from exit 1 so an agent knows the approval landed and only the cleanup is left.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_PROJECT_SETTING_FORBIDDEN",
+		code: CLI_EXIT_CODE_PROJECT_SETTING_FORBIDDEN,
+		description:
+			"`dev3 projects set` ran inside a task that is not a coordinator. These switches (`gitWorkflow`, `storageRoot`, `useRepoConfig`, `boardCopy` and the rest) change how every task of the project runs, so only the user (outside any task) and coordinator tasks may change them; **nothing** was changed. Ask the user to switch it in Project Settings or to run the command from a terminal outside any task. Distinct from exit 1 so an agent stops instead of retrying.",
 	},
 ] as const;

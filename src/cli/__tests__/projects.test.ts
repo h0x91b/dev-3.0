@@ -312,3 +312,51 @@ describe("projects clone", () => {
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 });
+
+describe("projects get|set", () => {
+	const PROJECT_ID = PROJECTS[0].id;
+	const TASK_CTX = { projectId: PROJECT_ID, taskId: "task-aaaa-bbbb-cccc-dddddddddddd", socketPath: SOCKET };
+	const runIn = (argv: string[], context: Parameters<typeof handleProjects>[3] = null) =>
+		handleProjects(argv[0], parseArgs(argv.slice(1)), SOCKET, context);
+	const VALUES = { name: "My App", gitWorkflow: true, storageRoot: "home", useRepoConfig: true, boardCopy: false, boardCopyMessages: false };
+
+	it("prints every switch with its meaning", async () => {
+		mockSend.mockResolvedValue(okResp(VALUES));
+		await runIn(["get", "--project", PROJECT_ID]);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "projects.settings.get", { projectId: PROJECT_ID });
+		expect(stdoutOutput).toMatch(/gitWorkflow\s+on\s+Worktrees/);
+		expect(stdoutOutput).toMatch(/storageRoot\s+home/);
+	});
+
+	it("prints one value raw, or as JSON with --json", async () => {
+		mockSend.mockResolvedValue(okResp(VALUES));
+		await runIn(["get", "boardCopy"], TASK_CTX);
+		expect(stdoutOutput).toBe("off\n");
+		stdoutOutput = "";
+		await runIn(["get", "boardCopy", "--json"], TASK_CTX);
+		expect(stdoutOutput).toBe("false\n");
+	});
+
+	it("sends a typed value and prints the change", async () => {
+		mockSend.mockResolvedValue(okResp({ key: "gitWorkflow", previous: true, value: false }));
+		await runIn(["set", "gitWorkflow", "off", "--project", PROJECT_ID]);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "projects.settings.set", { projectId: PROJECT_ID, key: "gitWorkflow", value: false }, expect.anything());
+		expect(stdoutOutput).toBe("gitWorkflow: on -> off\n");
+	});
+
+	it("names the calling task so the app can refuse it, and exits 49 when it does", async () => {
+		mockSend.mockResolvedValue(errResp("project-setting-forbidden: Only the user or a coordinator task can change gitWorkflow."));
+		await expect(runIn(["set", "gitWorkflow", "off"], TASK_CTX)).rejects.toThrow("EXIT_49");
+		expect(mockSend.mock.calls[0]![2]).toMatchObject({ sourceTaskId: TASK_CTX.taskId });
+		expect(stderrOutput).toContain("Only the user or a coordinator task can change gitWorkflow.");
+		expect(stderrOutput).not.toContain("project-setting-forbidden");
+	});
+
+	it("rejects an unknown key, a bad value and a missing value before calling the app", async () => {
+		await expect(runIn(["set", "sensitive", "off"], TASK_CTX)).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("Settable: name, gitWorkflow");
+		await expect(runIn(["set", "gitWorkflow", "maybe"], TASK_CTX)).rejects.toThrow("EXIT_3");
+		await expect(runIn(["set", "storageRoot"], TASK_CTX)).rejects.toThrow("EXIT_3");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+});
