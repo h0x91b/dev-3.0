@@ -9,6 +9,7 @@ import {
 	resolvePosixShell,
 	shellFlavorOf,
 } from "../shared/posix-shell";
+import { claudeApiProfileEnvKeys } from "../shared/agent-accounts";
 
 const log = createLogger("shell-env");
 
@@ -242,6 +243,26 @@ export function stripNeutralizedEnvVars(env: Record<string, string | undefined>)
 	for (const key of NEUTRALIZED_ENV_VARS) {
 		delete env[key];
 	}
+}
+
+// A dev3 pane launch writes these per session. An app started inside a pane
+// (DEV3_TASK_ID set) must not pass that pane's values on to its tmux server.
+const PANE_TMUX_ENV_VARS = ["TMUX", "TMUX_PANE"];
+
+/**
+ * When `env` comes from a dev3 pane, delete the agent and tmux keys that pane's
+ * launch wrote, before the login-shell import re-reads the user's own values.
+ * Returns the deleted keys. See decisions/2026/11/16/drop-pane-env-inherited-by-the-app.md.
+ */
+export function stripPaneLaunchEnv(env: Record<string, string | undefined>): string[] {
+	if (!env.DEV3_TASK_ID?.trim()) return [];
+	const removed: string[] = [];
+	for (const key of [...claudeApiProfileEnvKeys(), ...PANE_TMUX_ENV_VARS]) {
+		if (!(key in env)) continue;
+		delete env[key];
+		removed.push(key);
+	}
+	return removed;
 }
 
 function isDeniedEnvVar(key: string): boolean {

@@ -47,7 +47,7 @@ import { CLI_EXIT_CODE_RENDERER_UNAVAILABLE } from "../shared/cli-exit-codes";
 import { DEV3_HOME } from "./paths";
 import { resolveUserHome } from "../shared/user-home";
 import { normalizeEnvPath } from "../shared/env-path";
-import { applyFullShellEnvToProcess, getShellRcFiles, getUserShell, resolveShellEnv } from "./shell-env";
+import { applyFullShellEnvToProcess, getShellRcFiles, getUserShell, resolveShellEnv, stripPaneLaunchEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServerGuarded, setRemoteAccessStatusHook } from "./remote-access-server";
 import { writeSystemClipboard } from "./system-clipboard";
@@ -144,6 +144,12 @@ if (shouldTryLaunchHandoff({ platform: process.platform, env: process.env })) {
 // inheriting a since-deleted bundle cwd — is instead handled in spawn.ts, which
 // pins cwd-less children to DEV3_HOME without ever moving the process. See
 // decisions/2026/07/06/no-chdir-pin-child-cwd.md.
+
+// Before skills install into the Claude config dir and before any tmux server starts.
+{
+	const removed = stripPaneLaunchEnv(process.env);
+	if (removed.length > 0) log.info("Started inside a dev3 pane: dropped its launch env", { removed });
+}
 
 // ── CLI binary + agent skills + shell PATH (FIRST — before any async work) ──
 // These must run before resolveShellEnv() because existing tmux sessions
