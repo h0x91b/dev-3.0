@@ -3,15 +3,17 @@
 import { basename } from "node:path";
 import { DEFAULT_TMUX_SOCKET } from "./tmux/constants";
 
-/** What the OS or session manager gives a freshly started app; everything else comes back from the login shell. */
+/** OS and desktop-session keys a fresh app gets; the login shell restores the user's own on top. */
 const BASE_ENV_KEYS = new Set([
 	"HOME", "USER", "LOGNAME", "SHELL", "PATH", "TMPDIR", "TMP", "TZ", "LANG", "LANGUAGE",
 	"SSH_AUTH_SOCK", "SSH_CONNECTION", "DBUS_SESSION_BUS_ADDRESS", "DISPLAY", "WAYLAND_DISPLAY",
-	"WSLENV", "WSL_DISTRO_NAME", "WSL_INTEROP", "TMUX_TMPDIR", "DO_NOT_TRACK",
-	"LD_LIBRARY_PATH", "LD_PRELOAD", "COMMAND_MODE", "VITE_PORT",
+	"XAUTHORITY", "XMODIFIERS", "DESKTOP_SESSION", "container",
+	"WSLENV", "WSL_DISTRO_NAME", "WSL_INTEROP", "TMUX_TMPDIR", "LD_LIBRARY_PATH", "COMMAND_MODE",
+	// Not from the OS, but a user's opt-out and a dev build's Vite port must survive.
+	"DO_NOT_TRACK", "VITE_PORT",
 ]);
 // DEV3_ keys are dev3's own launch settings (DEV3_HOME, DEV3_PORT*, DEV3_QA_SCOPE, ...) and stay.
-const BASE_ENV_PREFIXES = ["DEV3_", "BUN_", "LC_", "XDG_", "XPC_", "__CF"];
+const BASE_ENV_PREFIXES = ["DEV3_", "BUN_", "LC_", "XDG_", "XPC_", "__CF", "GDK_", "GTK_", "QT_", "SDL_"];
 
 /** The per-task keys a pane launch writes. The app may read them; the tmux server must not get them. */
 const TASK_WIRING_PREFIXES = ["DEV3_TASK_", "DEV3_WORKTREE_", "DEV3_PROJECT_", "DEV3_PORT"];

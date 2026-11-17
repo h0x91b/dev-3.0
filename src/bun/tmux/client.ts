@@ -362,7 +362,7 @@ export class TmuxClient {
 		try {
 			return this.spawnFn(argv, {
 				terminal: opts.terminal,
-				env: opts.processEnv ?? withoutLaunchTaskWiring(process.env),
+				env: withoutLaunchTaskWiring(opts.processEnv ?? process.env),
 				cwd: tmuxClientCwd(),
 			});
 		} catch (err) {

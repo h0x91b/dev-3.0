@@ -111,6 +111,12 @@ log.info(`=== dev-3.0 starting [${lastBuildTime}] ===`);
 log.info("All data at", { dir: DEV3_HOME });
 log.info("Log files", { dir: getLogPath() });
 
+// First: before skills install into the Claude config dir, any tmux server start, or any env read.
+{
+	const removed = resetEnvFromDev3Pane(process.env);
+	if (removed.length > 0) log.info("Started inside a dev3 pane: dropped its launch env", { removed });
+}
+
 // ── Linux: a relaunch hands off to the running instance (issue #2039) ──
 // Before anything writes shared state: a window-less instance left behind by
 // a closed window opens a window instead of a second backend starting.
@@ -145,12 +151,6 @@ if (shouldTryLaunchHandoff({ platform: process.platform, env: process.env })) {
 // inheriting a since-deleted bundle cwd — is instead handled in spawn.ts, which
 // pins cwd-less children to DEV3_HOME without ever moving the process. See
 // decisions/2026/07/06/no-chdir-pin-child-cwd.md.
-
-// Before skills install into the Claude config dir and before any tmux server starts.
-{
-	const removed = resetEnvFromDev3Pane(process.env);
-	if (removed.length > 0) log.info("Started inside a dev3 pane: dropped its launch env", { removed });
-}
 
 // ── CLI binary + agent skills + shell PATH (FIRST — before any async work) ──
 // These must run before resolveShellEnv() because existing tmux sessions

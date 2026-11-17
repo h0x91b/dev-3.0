@@ -102,27 +102,94 @@ describe("withoutLaunchTaskWiring", () => {
 			.toEqual({ HOME: "/Users/me", DEV3_HOME: "/h", DEV3_QA_SCOPE: "0" });
 	});
 
-	it("is what TmuxClient hands to a tmux server it starts", async () => {
-		resetEnvFromDev3Pane(agentPaneEnv(), "darwin");
+	/** Runs `body` with the launching task's keys in process.env, as in an app started from a pane. */
+	async function withTaskEnv(body: () => Promise<void>): Promise<void> {
+		const keys = { DEV3_TASK_ID: "task-a", DEV3_PORT0: "17747", DEV3_WORKTREE_ROOT: "/projects/a" };
+		const before = Object.fromEntries(Object.keys(keys).map((key) => [key, process.env[key]]));
+		Object.assign(process.env, keys);
+		try {
+			await body();
+		} finally {
+			for (const [key, value] of Object.entries(before)) {
+				if (value === undefined) delete process.env[key];
+				else process.env[key] = value;
+			}
+		}
+	}
+
+	function expectNoTaskWiring(env: Env): void {
+		// Undefined, so the spawn wrapper's process.env merge unsets the key instead of keeping it.
+		for (const key of ["DEV3_TASK_ID", "DEV3_PORT0", "DEV3_WORKTREE_ROOT"]) {
+			expect(key in env).toBe(true);
+			expect(env[key]).toBeUndefined();
+		}
+	}
+
+	function fakeClient() {
 		const seen: Env[] = [];
 		const ensureServer = vi.fn((opts: { env: Env }) => { seen.push({ ...opts.env }); });
 		const spawn = vi.fn().mockReturnValue({ pid: 1, kill: vi.fn(), stdout: "", stderr: "", exited: Promise.resolve(0) });
 		const client = new TmuxClient({ cwdExists: () => true, spawn: spawn as never, ensureServer: ensureServer as never });
-		const before = { ...process.env };
-		process.env.DEV3_TASK_ID = "task-a";
-		process.env.DEV3_PORT0 = "17747";
-		try {
-			await client.newSessionDetached({ sessionName: "s", cwd: "/tmp", socket: "probe" });
-		} finally {
-			for (const key of ["DEV3_TASK_ID", "DEV3_PORT0"]) {
-				if (before[key] === undefined) delete process.env[key];
-				else process.env[key] = before[key];
-			}
-		}
+		return { client, seen, spawnEnv: (call = 0) => (spawn.mock.calls[call][1] as { env: Env }).env };
+	}
 
-		const env = seen[0];
-		expect(env.DEV3_TASK_ID).toBeUndefined();
-		expect(env.DEV3_PORT0).toBeUndefined();
-		expect(env.PATH).toBe(process.env.PATH);
+	it("reaches the launchd server and the tmux command of a detached session", async () => {
+		resetEnvFromDev3Pane(agentPaneEnv(), "darwin");
+		const { client, seen, spawnEnv } = fakeClient();
+
+		await withTaskEnv(async () => { await client.newSessionDetached({ sessionName: "s", cwd: "/tmp", socket: "probe" }); });
+
+		expectNoTaskWiring(seen[0]);
+		expectNoTaskWiring(spawnEnv());
+	});
+
+	it("reaches the tmux client of an attached session even with its own process env", async () => {
+		resetEnvFromDev3Pane(agentPaneEnv(), "darwin");
+		const { client, seen, spawnEnv } = fakeClient();
+
+		await withTaskEnv(async () => {
+			client.spawnAttachedSession({
+				sessionName: "s", configFile: "/tmp/c.conf", cwd: "/tmp", socket: "probe",
+				terminal: { cols: 80, rows: 24, data: () => {} },
+				processEnv: { TERM: "xterm-256color", HOME: "/Users/me" },
+			});
+		});
+
+		expectNoTaskWiring(seen[0]);
+		expectNoTaskWiring(spawnEnv());
+		expect(spawnEnv().TERM).toBe("xterm-256color");
+	});
+});
+
+describe("reset, then the login-shell import", () => {
+	it("restores a CLAUDE_CONFIG_DIR the user's dotfiles export", async () => {
+		const { applyFullShellEnvToProcess } = await import("../shell-env");
+		const env = agentPaneEnv();
+		resetEnvFromDev3Pane(env, "darwin");
+		const before = process.env.CLAUDE_CONFIG_DIR;
+		try {
+			delete process.env.CLAUDE_CONFIG_DIR;
+			applyFullShellEnvToProcess({ fullEnv: { CLAUDE_CONFIG_DIR: "/Users/me/.claude-work" } }, true);
+			expect(env.CLAUDE_CONFIG_DIR).toBeUndefined();
+			expect(process.env.CLAUDE_CONFIG_DIR).toBe("/Users/me/.claude-work");
+		} finally {
+			if (before === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+			else process.env.CLAUDE_CONFIG_DIR = before;
+		}
+	});
+});
+
+describe("Linux desktop session keys", () => {
+	it("keeps what a GTK window needs to open", () => {
+		const env: Env = {
+			DEV3_TASK_ID: "task-a", DISPLAY: ":0", XAUTHORITY: "/run/user/1000/.Xauthority", GDK_BACKEND: "x11",
+			GTK_IM_MODULE: "ibus", QT_IM_MODULE: "ibus", XMODIFIERS: "@im=ibus", container: "systemd-nspawn", INVOCATION_ID: "stale",
+		};
+
+		resetEnvFromDev3Pane(env, "linux");
+
+		expect(Object.keys(env).sort()).toEqual([
+			"DEV3_TASK_ID", "DISPLAY", "GDK_BACKEND", "GTK_IM_MODULE", "QT_IM_MODULE", "XAUTHORITY", "XMODIFIERS", "container",
+		]);
 	});
 });
