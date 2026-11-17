@@ -14,15 +14,17 @@ interface BoardVisibilitySwitchProps {
 	visibility: TaskVisibility;
 	onChange: (visibility: TaskVisibility) => void;
 	narrow?: boolean;
+	/** False while the shown value is only a placeholder: then even a click on it is the user's pick. */
+	confirmed?: boolean;
 }
 
 /** One-click Active | All switch for the board; Active hides completed and cancelled tasks. */
-function BoardVisibilitySwitch({ visibility, onChange, narrow = false }: BoardVisibilitySwitchProps) {
+function BoardVisibilitySwitch({ visibility, onChange, narrow = false, confirmed = true }: BoardVisibilitySwitchProps) {
 	const t = useT();
 	const refs = useRef<Record<TaskVisibility, HTMLButtonElement | null>>({ active: null, all: null });
 
 	const select = (next: TaskVisibility) => {
-		if (next !== visibility) onChange(next);
+		if (next !== visibility || !confirmed) onChange(next);
 		refs.current[next]?.focus();
 	};
 

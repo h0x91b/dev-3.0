@@ -235,6 +235,15 @@ describe("LabelFilterBar — narrow viewport", () => {
 		expect(screen.queryByRole("button", { name: /priority P0/i })).not.toBeInTheDocument();
 	});
 
+	it("wraps the row and keeps search, funnel and options in one group that keeps a usable width", () => {
+		renderBar({ labels: LABELS });
+		const group = screen.getByTestId("filter-bar-search-group");
+		expect(group.parentElement).toHaveClass("flex", "flex-wrap");
+		expect(group).toHaveClass("flex-1", "min-w-[14rem]");
+		expect(screen.getByRole("textbox").parentElement).toHaveClass("flex-1", "min-w-[9rem]");
+		expect(group).toContainElement(screen.getByTestId("filter-funnel-button"));
+	});
+
 	it("opens a bottom sheet with the grouped facets when the funnel is tapped", async () => {
 		renderBar({ labels: LABELS });
 		await userEvent.click(screen.getByTestId("filter-funnel-button"));

@@ -13,7 +13,7 @@ import { installKanbanView } from "../kanban";
 import { installTreeView, TREE_VIEW_ID } from "../tree";
 import { useBoard } from "../react";
 import { resetBoardViewStateCacheForTests } from "../useBoardViewState";
-import { resetTaskVisibilityForTests } from "../useTaskVisibility";
+import { VISIBILITY_READ_TIMEOUT_MS, resetTaskVisibilityForTests } from "../useTaskVisibility";
 import { defaultBoardViewState, withViewType } from "../../../shared/board-view-state";
 import { _resetTaskLineageStoreForTest } from "../../hooks/useTaskLineage";
 import { _resetEpicStoresForTest } from "../../hooks/useEpics";
@@ -180,6 +180,26 @@ describe("BoardHost", () => {
 		await act(async () => resolveRead({ visibility: "active" }));
 		expect(await screen.findByTestId("kanban")).toHaveAttribute("data-shown", "t1");
 		expect(screen.getByRole("radio", { name: "Active" })).toHaveAttribute("aria-checked", "true");
+	});
+
+	it("keeps the user's All pick when a timed-out read lands late with a saved Active", async () => {
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			let resolveRead!: (v: { visibility: "active" }) => void;
+			vi.mocked(api.request.getBoardFilterState).mockReturnValue(new Promise((r) => { resolveRead = r; }));
+			renderHost();
+			await act(async () => { await vi.advanceTimersByTimeAsync(VISIBILITY_READ_TIMEOUT_MS); });
+			expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t1,t2");
+			fireEvent.click(screen.getByRole("radio", { name: "All" }));
+			await act(async () => resolveRead({ visibility: "active" }));
+			expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t1,t2");
+			expect(screen.getByRole("radio", { name: "All" })).toHaveAttribute("aria-checked", "true");
+			expect(api.request.setBoardFilterState).toHaveBeenCalledWith({ board: { kind: "project", id: "p1" }, state: { visibility: "all" } });
+		} finally {
+			warn.mockRestore();
+			vi.useRealTimers();
+		}
 	});
 
 	it("renders the board after a failed visibility read", async () => {

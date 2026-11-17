@@ -5,11 +5,11 @@ import BoardVisibilitySwitch from "../BoardVisibilitySwitch";
 import { I18nProvider } from "../../i18n";
 import type { TaskVisibility } from "../../../shared/board-filter-state";
 
-function Harness({ initial, onChange, narrow }: { initial: TaskVisibility; onChange: (v: TaskVisibility) => void; narrow?: boolean }) {
+function Harness({ initial, onChange, narrow, confirmed }: { initial: TaskVisibility; onChange: (v: TaskVisibility) => void; narrow?: boolean; confirmed?: boolean }) {
 	const [visibility, setVisibility] = useState(initial);
 	return (
 		<I18nProvider>
-			<BoardVisibilitySwitch visibility={visibility} onChange={(v) => { setVisibility(v); onChange(v); }} narrow={narrow} />
+			<BoardVisibilitySwitch visibility={visibility} onChange={(v) => { setVisibility(v); onChange(v); }} narrow={narrow} confirmed={confirmed} />
 		</I18nProvider>
 	);
 }
@@ -56,6 +56,13 @@ describe("BoardVisibilitySwitch", () => {
 		expect(onChange).not.toHaveBeenCalled();
 		await userEvent.click(radio("Active"));
 		expect(onChange).toHaveBeenCalledWith("active");
+	});
+
+	it("counts a click on the shown value as a pick while the value is only a placeholder", async () => {
+		const onChange = vi.fn();
+		render(<Harness initial="all" onChange={onChange} confirmed={false} />);
+		await userEvent.click(radio("All"));
+		expect(onChange).toHaveBeenCalledWith("all");
 	});
 
 	it.each([

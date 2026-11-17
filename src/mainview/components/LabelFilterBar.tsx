@@ -176,54 +176,57 @@ function LabelFilterBar({
 	// let the funnel own all filtering (it opens a bottom sheet on narrow).
 	if (narrow) {
 		return (
-			<div ref={toastClearanceRef} className="flex items-center gap-2 px-3 py-2 border-b border-edge/50" data-help-id="board.filter-bar">
+			<div ref={toastClearanceRef} className="flex flex-wrap items-center gap-x-2 gap-y-2 px-3 py-2 border-b border-edge/50" data-help-id="board.filter-bar">
 				{leading}
-				<div className="relative flex-1 min-w-0">
-					<svg
-						className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-fg-3 pointer-events-none"
-						fill="none"
-						viewBox="0 0 24 24"
-						strokeWidth={2}
-						stroke="currentColor"
-					>
-						<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-					</svg>
-					<input
-						ref={inputRef}
-						type="text"
-						data-search-input="true"
-						aria-label={t("labels.searchAriaLabel")}
-						value={searchQuery}
-						onChange={(e) => onSearchChange(e.target.value)}
-						onKeyDown={(e) => {
-							if (e.key === "Escape") {
-								e.stopPropagation();
-								onSearchChange("");
-								inputRef.current?.blur();
-							}
-						}}
-						placeholder={t("labels.searchPlaceholderTasks")}
-						className="w-full pl-7 pr-6 py-1.5 text-sm bg-base border border-edge rounded-lg text-fg placeholder:text-fg-muted focus:border-edge-active transition-colors"
-					/>
-					{searchQuery && (
-						<button
-							type="button"
-							onClick={() => onSearchChange("")}
-							className="absolute right-1.5 top-1/2 -translate-y-1/2 text-fg-3 hover:text-fg text-sm leading-none"
+				{/* Search, funnel and options stay together and drop to their own line when the row is tight. */}
+				<div className="flex flex-1 min-w-[14rem] items-center gap-2" data-testid="filter-bar-search-group">
+					<div className="relative flex-1 min-w-[9rem]">
+						<svg
+							className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-fg-3 pointer-events-none"
+							fill="none"
+							viewBox="0 0 24 24"
+							strokeWidth={2}
+							stroke="currentColor"
 						>
-							×
-						</button>
-					)}
+							<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+						</svg>
+						<input
+							ref={inputRef}
+							type="text"
+							data-search-input="true"
+							aria-label={t("labels.searchAriaLabel")}
+							value={searchQuery}
+							onChange={(e) => onSearchChange(e.target.value)}
+							onKeyDown={(e) => {
+								if (e.key === "Escape") {
+									e.stopPropagation();
+									onSearchChange("");
+									inputRef.current?.blur();
+								}
+							}}
+							placeholder={t("labels.searchPlaceholderTasks")}
+							className="w-full pl-7 pr-6 py-1.5 text-sm bg-base border border-edge rounded-lg text-fg placeholder:text-fg-muted focus:border-edge-active transition-colors"
+						/>
+						{searchQuery && (
+							<button
+								type="button"
+								onClick={() => onSearchChange("")}
+								className="absolute right-1.5 top-1/2 -translate-y-1/2 text-fg-3 hover:text-fg text-sm leading-none"
+							>
+								×
+							</button>
+						)}
+					</div>
+					<FilterFunnel
+						query={searchQuery}
+						onChange={onSearchChange}
+						groups={filterGroups}
+						open={funnelOpen}
+						onOpenChange={setFunnelOpen}
+						helpTopicId="board.filter-bar"
+					/>
+					{trailing}
 				</div>
-				<FilterFunnel
-					query={searchQuery}
-					onChange={onSearchChange}
-					groups={filterGroups}
-					open={funnelOpen}
-					onOpenChange={setFunnelOpen}
-					helpTopicId="board.filter-bar"
-				/>
-				{trailing}
 			</div>
 		);
 	}

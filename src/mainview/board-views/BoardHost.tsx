@@ -346,7 +346,7 @@ function BoardHost(props: BoardHostProps) {
 		<>
 			{switcher}
 			{/* Always rendered so the search box never shifts; a click before the read lands wins over it. */}
-			<BoardVisibilitySwitch visibility={filter.visibility} onChange={filter.setVisibility} narrow={isNarrow} />
+			<BoardVisibilitySwitch visibility={filter.visibility} onChange={filter.setVisibility} narrow={isNarrow} confirmed={filter.visibilityConfirmed} />
 		</>
 	);
 	const options = active?.def.Options ? <BoardViewOptionsButton view={active} /> : null;

@@ -914,7 +914,7 @@ ux_architecture:
       mobile_orientation: { narrow: "portrait-only device guard — best-effort Screen Orientation API lock, with a blocking localized rotate prompt and inert app fallback when landscape cannot be locked", status: observed, evidence: "MobilePortraitGate.tsx, usePortraitOrientation.ts" }
       kanban_board: { narrow: "column carousel (one column/screen, swipe; vertical task scroll; collapsed cols excluded, empty kept)", status: observed, evidence: "MobileBoardCarousel.tsx, KanbanView.tsx useNarrowViewport(768), KanbanColumn fullWidth" }
       task_move_drag: { narrow: "drag impossible -> 'Move to <status>' bottom action sheet (long-press) on existing status path; completion reuses confirmTaskCompletion", status: proposed }
-      board_filters: { narrow: "compact row: view Select + Active|All switch + search inline, funnel → bottom sheet", status: observed }
+      board_filters: { narrow: "compact wrapping row: view Select + Active|All switch, search + funnel + options kept together (own line when tight), funnel → bottom sheet", status: observed }
       board_view_table: { narrow: "virtualised card list", status: observed }
       board_view_tree: { narrow: "outline, indent capped at 3 then a level marker", status: observed }
       board_view_attention: { narrow: "stacked buckets", status: observed }

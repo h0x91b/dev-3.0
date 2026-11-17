@@ -7,6 +7,8 @@ interface VisibilitySnapshot {
 	value: TaskVisibility;
 	/** The saved value has been read (or failed to), or the user already chose. */
 	ready: boolean;
+	/** The value is the saved one or the user's own, not a placeholder awaiting a late read. */
+	confirmed: boolean;
 }
 
 interface VisibilitySlot {
@@ -37,7 +39,7 @@ function slotFor(board: BoardRef): VisibilitySlot {
 	if (!slot) {
 		const created: VisibilitySlot = {
 			board: { kind: board.kind, id: board.id },
-			snapshot: { value: "all", ready: false },
+			snapshot: { value: "all", ready: false, confirmed: false },
 			edited: false,
 			loaded: false,
 			reading: false,
@@ -105,7 +107,7 @@ function startRead(slot: VisibilitySlot): void {
 			endAttempt();
 			if (slot.loaded) return;
 			slot.loaded = true;
-			publish(slot, { value: slot.edited ? slot.snapshot.value : visibility, ready: true });
+			publish(slot, { value: slot.edited ? slot.snapshot.value : visibility, ready: true, confirmed: true });
 		})
 		.catch((err) => {
 			clearTimeout(timer);
@@ -120,6 +122,8 @@ export interface TaskVisibilityState {
 	setVisibility: (visibility: TaskVisibility) => void;
 	/** False until the board's saved value has settled; render the board only once it is true. */
 	ready: boolean;
+	/** False while the shown value is a placeholder a late read may still replace. */
+	confirmed: boolean;
 }
 
 /**
@@ -133,10 +137,10 @@ export function useTaskVisibility(board: BoardRef): TaskVisibilityState {
 
 	const setVisibility = useCallback((visibility: TaskVisibility) => {
 		slot.edited = true;
-		publish(slot, { value: visibility, ready: true });
+		publish(slot, { value: visibility, ready: true, confirmed: true });
 		slot.desired = visibility;
 		pump(slot);
 	}, [slot]);
 
-	return { visibility: snapshot.value, setVisibility, ready: snapshot.ready };
+	return { visibility: snapshot.value, setVisibility, ready: snapshot.ready, confirmed: snapshot.confirmed };
 }

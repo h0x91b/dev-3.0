@@ -45,6 +45,8 @@ export interface BoardFilter {
 	setVisibility: (visibility: TaskVisibility) => void;
 	/** False until the board's saved Active | All choice has settled. */
 	visibilityReady: boolean;
+	/** False while the shown choice is a placeholder: a click on it must still count as the user's pick. */
+	visibilityConfirmed: boolean;
 	displayTasks: readonly Task[];
 	matches: (task: Task, query: string) => boolean;
 	labels: Label[];
@@ -73,7 +75,7 @@ export function useBoardFilter({ project, space, memberProjects, tasks, agents, 
 	// A space board keeps its own filter apart from its anchor project.
 	const filterKey = boardFilterKey(project.id, space?.id);
 	const [query, setQuery] = useRememberedFilter(filterKey);
-	const { visibility, setVisibility, ready: visibilityReady } = useTaskVisibility(space ? { kind: "space", id: space.id } : { kind: "project", id: project.id });
+	const { visibility, setVisibility, ready: visibilityReady, confirmed: visibilityConfirmed } = useTaskVisibility(space ? { kind: "space", id: space.id } : { kind: "project", id: project.id });
 
 	// PR badge data: what each task already carries (sticky prNumber/prUrl +
 	// prStatusCache), refreshed by the `taskPrStatus` push, plus a per-project
@@ -209,6 +211,7 @@ export function useBoardFilter({ project, space, memberProjects, tasks, agents, 
 		visibility,
 		setVisibility,
 		visibilityReady,
+		visibilityConfirmed,
 		displayTasks,
 		matches,
 		labels,
