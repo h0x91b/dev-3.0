@@ -105,7 +105,7 @@ Bundling JSX or TypeScript is fine — emit one ESM file with `react`, `react-do
   Registration is undone automatically when the plugin stops. An id that is not declared in the manifest, or one
   that another view already owns, makes dev3 unload the extension and mark it **Failed to load**.
 - **`ctx.board`** — the board on screen: `scope`, `formFactor` (`wide` / `narrow`), `query` / `setQuery()`,
-  `tasks()` (scope ∩ board query, every status), `scopeTasks()`, `matches(task, query)`, `columns()`, `labels()`,
+  `tasks()` (board scope ∩ the Active | All switch ∩ board query), `scopeTasks()` (board scope, unfiltered), `matches(task, query)`, `columns()`, `labels()`,
   `agents()`, `projects()`, `preferences()`, `layout(viewId)` / `setLayout(viewId, value)` (persisted per board and
   form factor), `TaskCard` (the real dev3 card component), and the actions `openTask`, `openContextMenu`, `moveTask`,
   `setPriority`, `setLabels`, `createLabel`, `createTask`, `launch`, `remove`. Destructive actions still go through

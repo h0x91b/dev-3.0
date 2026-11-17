@@ -10,6 +10,7 @@ import { ignoreStartupReadFailure, startupRead } from "../startup-read";
 import { useT } from "../i18n";
 import { failedExtensionForView, getBoardPluginsSnapshot, subscribeBoardPlugins } from "./plugins";
 import LabelFilterBar from "../components/LabelFilterBar";
+import BoardVisibilitySwitch from "../components/BoardVisibilitySwitch";
 import LineageFilterNotice from "../components/LineageFilterNotice";
 import EpicFilterNotice from "../components/EpicFilterNotice";
 import { epicFilterToken } from "../utils/taskEpic";
@@ -171,11 +172,11 @@ function BoardHost(props: BoardHostProps) {
 			if (slot.type === "custom") for (const member of slot.members) customColumnKeys.add(`${member.projectId}::${member.columnId}`);
 		}
 		const occupiedStatuses = new Set<TaskStatus>();
-		for (const task of tasks) {
+		for (const task of filter.visibleTasks) {
 			if (!task.customColumnId || !customColumnKeys.has(`${task.projectId}::${task.customColumnId}`)) occupiedStatuses.add(task.status);
 		}
 		return getBoardColumns(boardProjects, { occupiedStatuses });
-	}, [boardProjects, columns, tasks]);
+	}, [boardProjects, columns, filter.visibleTasks]);
 	const laneOrderRef = useRef<string[]>([]);
 	laneOrderRef.current = occupiedColumns.map(laneKey);
 
@@ -341,6 +342,13 @@ function BoardHost(props: BoardHostProps) {
 	const switcher = showSwitcher && active ? (
 		<BoardViewSwitcher views={offered} activeId={active.def.id} onPick={pickView} onManage={manageViews} />
 	) : null;
+	const leading = (
+		<>
+			{switcher}
+			{/* Always rendered so the search box never shifts; a click before the read lands wins over it. */}
+			<BoardVisibilitySwitch visibility={filter.visibility} onChange={filter.setVisibility} narrow={isNarrow} />
+		</>
+	);
 	const options = active?.def.Options ? <BoardViewOptionsButton view={active} /> : null;
 
 	return (
@@ -351,7 +359,7 @@ function BoardHost(props: BoardHostProps) {
 				onSearchChange={filter.setQuery}
 				filterGroups={filter.filterGroups}
 				disableGlobalFindShortcut={disableGlobalFindShortcut}
-				leading={switcher}
+				leading={leading}
 				trailing={options}
 				gutterClassName={active?.def.id === TREE_VIEW_ID ? READABLE_GUTTER : undefined}
 			/>
@@ -386,7 +394,7 @@ function BoardHost(props: BoardHostProps) {
 					</button>
 				</div>
 			)}
-			{provided && (
+			{provided && filter.visibilityReady && (
 				<BoardViewErrorBoundary
 					viewId={active?.def.id ?? KANBAN_VIEW_ID}
 					fallback={() => (

@@ -136,9 +136,9 @@ export class BoardService {
 	get query(): string { return this.model.query; }
 	setQuery(query: string): void { this.model.setQuery(query); }
 
-	/** Scope ∩ board query, every status included (D9). */
+	/** Board scope ∩ the Active | All switch ∩ board query (D9); Active drops completed and cancelled tasks. */
 	tasks(): readonly Task[] { return this.model.tasks; }
-	/** The scope unfiltered — for counts and "+N hidden". */
+	/** The board scope unfiltered — for counts, "+N hidden" and parent lookup. */
 	scopeTasks(): readonly Task[] { return this.model.scopeTasks; }
 	matches(task: Task, query: string): boolean { return this.model.matches(task, query); }
 	/**

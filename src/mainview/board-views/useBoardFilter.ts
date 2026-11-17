@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import type { CodingAgent, CustomColumn, Epic, EpicMember, Label, PortInfo, Project, Space, Task, TaskPRBadgeInfo } from "../../shared/types";
-import { ALL_PRIORITIES, ALL_STATUSES, DEFAULT_PRIORITY, hasGitWorkflow, normalizeLaneName } from "../../shared/types";
+import { ALL_PRIORITIES, ALL_STATUSES, DEFAULT_PRIORITY, TERMINAL_STATUSES, hasGitWorkflow, normalizeLaneName } from "../../shared/types";
+import type { TaskVisibility } from "../../shared/board-filter-state";
 import { statusKey, useT } from "../i18n";
 import { PRIORITY_NAME_KEYS } from "../components/priorityStyles";
 import { useTaskLineage } from "../hooks/useTaskLineage";
@@ -9,8 +10,8 @@ import { epicFilterToken, epicOf, withEpicToken } from "../utils/taskEpic";
 import { useTaskPrBadges } from "../hooks/useTaskPrBadges";
 import { boardFilterKey, useRememberedFilter } from "../hooks/useRememberedFilter";
 import { childrenFilterToken, childrenTokenRefs, withChildrenToken, type TaskLineage } from "../utils/taskLineage";
-import { matchesTaskQuery } from "../utils/taskSearch";
-import { usePersistedStatusFilter } from "./usePersistedStatusFilter";
+import { matchesTaskQuery, statusFilterValues } from "../utils/taskSearch";
+import { useTaskVisibility } from "./useTaskVisibility";
 import {
 	buildFilterGroups,
 	isAttentionTask,
@@ -40,6 +41,12 @@ export interface BoardFilter {
 	lineageProjectId: string | null;
 	query: string;
 	setQuery: (query: string) => void;
+	visibility: TaskVisibility;
+	setVisibility: (visibility: TaskVisibility) => void;
+	/** False until the board's saved Active | All choice has settled. */
+	visibilityReady: boolean;
+	/** The board's tasks under the Active | All switch, before the query. */
+	visibleTasks: readonly Task[];
 	displayTasks: readonly Task[];
 	matches: (task: Task, query: string) => boolean;
 	labels: Label[];
@@ -68,7 +75,7 @@ export function useBoardFilter({ project, space, memberProjects, tasks, agents, 
 	// A space board keeps its own filter apart from its anchor project.
 	const filterKey = boardFilterKey(project.id, space?.id);
 	const [query, setQuery] = useRememberedFilter(filterKey);
-	usePersistedStatusFilter(space ? { kind: "space", id: space.id } : { kind: "project", id: project.id }, filterKey, query, setQuery);
+	const { visibility, setVisibility, ready: visibilityReady } = useTaskVisibility(space ? { kind: "space", id: space.id } : { kind: "project", id: project.id });
 
 	// PR badge data: what each task already carries (sticky prNumber/prUrl +
 	// prStatusCache), refreshed by the `taskPrStatus` push, plus a per-project
@@ -138,9 +145,15 @@ export function useBoardFilter({ project, space, memberProjects, tasks, agents, 
 		(task: Task, q: string) => !q.trim() || matchesTaskQuery(task, q, taskQueryContext(task, resolver)),
 		[resolver],
 	);
+	// An explicit `status:` token wins over the switch, so "Completed" in the funnel still shows them.
+	const hidesFinished = visibility === "active" && statusFilterValues(query).length === 0;
+	const visibleTasks = useMemo(
+		() => (hidesFinished ? tasks.filter((task) => !TERMINAL_STATUSES.includes(task.status)) : tasks),
+		[tasks, hidesFinished],
+	);
 	const displayTasks = useMemo(
-		() => (query.trim() ? tasks.filter((task) => matches(task, query)) : tasks),
-		[tasks, query, matches],
+		() => (query.trim() ? visibleTasks.filter((task) => matches(task, query)) : visibleTasks),
+		[visibleTasks, query, matches],
 	);
 
 	// Priority leads the funnel; the board offers all five levels (P0…P4).
@@ -195,6 +208,10 @@ export function useBoardFilter({ project, space, memberProjects, tasks, agents, 
 		lineageProjectId,
 		query,
 		setQuery,
+		visibility,
+		setVisibility,
+		visibilityReady,
+		visibleTasks,
 		displayTasks,
 		matches,
 		labels,

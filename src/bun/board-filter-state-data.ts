@@ -9,7 +9,7 @@ import { normalizeBoardFilterState, type BoardFilterState } from "../shared/boar
 import { isSafeBoardId, type BoardRef } from "../shared/board-view-state";
 
 // Both are NEW files (AGENTS.md on-disk rules 2 and 5): older app versions never
-// read them, nothing is renamed, and nothing is written until the user changes a status filter.
+// read them, nothing is renamed, and nothing is written until the user flips the Active | All switch.
 const BOARD_FILTERS_FILE = "board-filters.json";
 const SPACE_BOARD_FILTERS_DIR = `${DEV3_HOME}/space-board-filters`;
 
