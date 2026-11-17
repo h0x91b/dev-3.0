@@ -10,13 +10,14 @@ On macOS, an app started from a task pane and the `dev3` tmux server's global en
 
 ## Decision
 
-`src/bun/pane-launch-env.ts` runs first in both entries, before the launch-origin check of `os-launched-app-is-never-a-guest`, skills install and the login-shell import. When `DEV3_TASK_ID` or `DEV3_PROJECT_PATH` is set, or `TMUX` names the `dev3` socket, `resetEnvFromDev3Pane` keeps only a fixed list of OS and desktop-session keys plus every `DEV3_*` and `BUN_*` key, and the login shell then restores the user's own values on that base. `DEV3_*` stays in the app's env because the app reads it (`DEV3_HOME`, a dev build's `DEV3_PORT1`, guest detection), but `withoutLaunchTaskWiring` unsets the launching task's per-task `DEV3_*` keys in the env of every tmux command that can start a server. It sets them to `undefined` rather than deleting them, because `spawn.ts` merges `process.env` under every spawn and `undefined` is what unsets a key there.
+`src/bun/pane-launch-env.ts` runs first in both entries, before any other env read, skills install and the login-shell import. When `DEV3_TASK_ID` or `DEV3_PROJECT_PATH` is set, or `TMUX` names the `dev3` socket, `resetEnvFromDev3Pane` keeps only a fixed list of OS and desktop-session keys plus every `DEV3_*` and `BUN_*` key, and the login shell then restores the user's own values on that base. `DEV3_*` stays in the app's env because the app reads it (`DEV3_HOME`, a dev build's `DEV3_PORT1`, guest detection), but `withoutLaunchTaskWiring` unsets the launching task's per-task `DEV3_*` keys in the env of every tmux command that can start a server. It sets them to `undefined` rather than deleting them, because `spawn.ts` merges `process.env` under every spawn and `undefined` is what unsets a key there.
 
 ## Risks
 
 - Dropped for a pane-launched app: keys set on purpose for that launch (`dev3 dev-server start --env CLAUDE_CONFIG_DIR=...`, a devScript export), and values from `launchctl setenv`, `environment.d` or PAM, which the login shell does not restore. With `importShellEnv` off, dotfile values are not restored either.
 - Kept with the pane's value: the base keys, so a project env that sets `PATH`, `TMPDIR` or `LD_LIBRARY_PATH` still reaches the app. The app's own children other than tmux still get `DEV3_TASK_ID` and the other `DEV3_*` keys.
-- The base list is fixed; a platform variable the app needs must be added there. A tmux server already running keeps its env until it restarts.
+- The reset changes Bun's `process.env`, not the native environ: native code (GTK, WebKit) and the processes it starts still see the full launch env. Only children dev3 spawns get the rebuilt env.
+- `DEV3_*` keys outside the per-task list (`DEV3_QA_SCOPE`, `DEV3_TREE`) still reach the tmux server. The base list is fixed, so a platform variable the app needs, or a proxy or CA variable set only through PAM or `/etc/environment`, must be added there. A tmux server already running keeps its env until it restarts.
 
 ## Alternatives considered
 

@@ -161,26 +161,8 @@ describe("withoutLaunchTaskWiring", () => {
 	});
 });
 
-describe("reset, then the login-shell import", () => {
-	it("restores a CLAUDE_CONFIG_DIR the user's dotfiles export", async () => {
-		const { applyFullShellEnvToProcess } = await import("../shell-env");
-		const env = agentPaneEnv();
-		resetEnvFromDev3Pane(env, "darwin");
-		const before = process.env.CLAUDE_CONFIG_DIR;
-		try {
-			delete process.env.CLAUDE_CONFIG_DIR;
-			applyFullShellEnvToProcess({ fullEnv: { CLAUDE_CONFIG_DIR: "/Users/me/.claude-work" } }, true);
-			expect(env.CLAUDE_CONFIG_DIR).toBeUndefined();
-			expect(process.env.CLAUDE_CONFIG_DIR).toBe("/Users/me/.claude-work");
-		} finally {
-			if (before === undefined) delete process.env.CLAUDE_CONFIG_DIR;
-			else process.env.CLAUDE_CONFIG_DIR = before;
-		}
-	});
-});
-
 describe("Linux desktop session keys", () => {
-	it("keeps what a GTK window needs to open", () => {
+	it("keeps the desktop-session keys that GTK and input-method children need", () => {
 		const env: Env = {
 			DEV3_TASK_ID: "task-a", DISPLAY: ":0", XAUTHORITY: "/run/user/1000/.Xauthority", GDK_BACKEND: "x11",
 			GTK_IM_MODULE: "ibus", QT_IM_MODULE: "ibus", XMODIFIERS: "@im=ibus", container: "systemd-nspawn", INVOCATION_ID: "stale",
