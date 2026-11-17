@@ -77,6 +77,8 @@ export interface PaneLaunchSpec {
 	timeoutMs?: number;
 	/** Mirror this pane's output to a plain-text file as well (dev-server panes only). */
 	outputLogPath?: string;
+	/** Split only: add the pane without ever publishing it as the active one. */
+	background?: boolean;
 }
 
 export interface PaneSnapshot {
@@ -466,8 +468,11 @@ export class NativeMultipaneCoordinator {
 				timeoutMs: spec.timeoutMs,
 				outputLogPath: spec.outputLogPath,
 			});
-			// Activate the new pane in the shared layout (clear zoom; new pane is focused).
-			this.publish({ ...rawTree, activePaneId: created, zoomedPaneId: null });
+			// One publish adds the pane and either focuses it (clearing zoom) or, for a
+			// background pane, leaves the active pane and zoom exactly as they were.
+			this.publish(spec.background
+				? { ...rawTree, activePaneId: this.tree.activePaneId, zoomedPaneId: this.tree.zoomedPaneId }
+				: { ...rawTree, activePaneId: created, zoomedPaneId: null });
 			return created;
 		});
 	}

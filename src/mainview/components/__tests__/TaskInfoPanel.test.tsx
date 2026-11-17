@@ -1638,7 +1638,7 @@ describe("TaskInfoPanel", () => {
 			await user.click(within(screen.getByTestId("dev-server-row-dev")).getByText("Start"));
 
 			expect(mockedApi.request.runDevServer).toHaveBeenCalledWith(
-				expect.objectContaining({ server: "dev" }),
+				expect.objectContaining({ server: "dev", focus: true }),
 			);
 		});
 
@@ -1728,6 +1728,21 @@ describe("TaskInfoPanel", () => {
 			await user.keyboard("{Enter}");
 
 			expect(mockedApi.request.runDevServer).toHaveBeenCalledWith(expect.objectContaining({ server: "dev" }));
+		});
+
+		it("Start all and a named Restart are user actions: both ask for focus, Stop does not", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.restartDevServer.mockResolvedValue(multiStatus);
+			const { list } = await openList(user);
+
+			await user.click(within(list).getByText("Start all"));
+			expect(mockedApi.request.runDevServer).toHaveBeenCalledWith(expect.objectContaining({ all: true, focus: true }));
+
+			await user.click(within(screen.getByTestId("dev-server-row-api")).getByText("Restart"));
+			expect(mockedApi.request.restartDevServer).toHaveBeenCalledWith(expect.objectContaining({ server: "api", focus: true }));
+
+			await user.click(within(screen.getByTestId("dev-server-row-api")).getByText("Stop"));
+			expect(mockedApi.request.stopDevServer.mock.calls[0][0]).not.toHaveProperty("focus");
 		});
 
 		it("Stop all takes down every server in one action", async () => {

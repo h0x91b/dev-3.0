@@ -192,9 +192,8 @@ export async function startPaneRun(spec: StartPaneRunSpec): Promise<StartedPaneR
 					...launch,
 					tmuxTarget: where.tmuxTarget,
 					nativeAnchor: where.nativeAnchor,
-					// Native hands input focus back to the pane that had it, so a run an agent
-					// started does not take its keyboard (tmux behaves as it does for every
-					// other dev3 pane: the new pane becomes active).
+					// A run an agent started never takes its keyboard: the pane opens in the
+					// background on both backends.
 					restoreFocus: true,
 				});
 	} catch (err) {

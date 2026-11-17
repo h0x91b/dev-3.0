@@ -141,7 +141,7 @@ vi.mock("../../tmux", async (importOriginal) => ({
 	},
 }));
 
-import { runDevServer, stopDevServer, cleanupTaskTmuxState } from "../tmux-pty";
+import { runDevServer, stopDevServer, restartDevServer, cleanupTaskTmuxState } from "../tmux-pty";
 
 const TASK_ID = "abcdef12-0000-0000-0000-000000000001";
 const DEV_SESSION = "dev3-dev-abcdef12";
@@ -273,6 +273,29 @@ describe("runDevServer — tmux backend is unchanged", () => {
 
 		await runDevServer({ taskId: TASK_ID, projectId: PROJECT.id, focus: true });
 		expect(mocks.tmuxSplitWindow).toHaveBeenNthCalledWith(2, expect.objectContaining({ focus: true }));
+	});
+});
+
+describe("restartDevServer focus", () => {
+	it("tmux: the viewer pane is background for a CLI restart and focused for a UI restart", async () => {
+		useBackend("tmux");
+
+		await restartDevServer({ taskId: TASK_ID, projectId: PROJECT.id });
+		expect(mocks.tmuxSplitWindow).toHaveBeenNthCalledWith(1, expect.objectContaining({ focus: false }));
+
+		await restartDevServer({ taskId: TASK_ID, projectId: PROJECT.id, focus: true });
+		expect(mocks.tmuxSplitWindow).toHaveBeenNthCalledWith(2, expect.objectContaining({ focus: true }));
+	});
+
+	it("native: the pane is background for a CLI restart and focused for a UI restart", async () => {
+		useBackend("native");
+		trackNativeLiveness();
+
+		await restartDevServer({ taskId: TASK_ID, projectId: PROJECT.id });
+		expect(mocks.openAuxPane.mock.calls[0][0].focusNewPane).toBe(false);
+
+		await restartDevServer({ taskId: TASK_ID, projectId: PROJECT.id, focus: true });
+		expect(mocks.openAuxPane.mock.calls[1][0].focusNewPane).toBe(true);
 	});
 });
 

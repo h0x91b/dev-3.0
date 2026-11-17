@@ -11417,10 +11417,12 @@ describe("handlers.spawnAgentInTask on a native task", () => {
 			activePaneId: tree.activePaneId,
 		});
 		mockNativePanes.nativeTaskPanesState.mockImplementation(async () => state() as any);
-		mockNativePanes.splitNativeTaskPane.mockImplementation(async (_taskId: string, fromPaneId: string, orientation: SplitOrientation) => {
+		mockNativePanes.splitNativeTaskPane.mockImplementation(async (_taskId: string, fromPaneId: string, orientation: SplitOrientation, launchOpts?: { background?: boolean }) => {
 			if (opts.splitFails) throw new Error("host would not start");
 			const paneId = `pane-${tree.nextPaneOrdinal}`;
+			const previouslyActive = tree.activePaneId;
 			tree = splitPane(tree, fromPaneId, orientation);
+			if (launchOpts?.background) tree = { ...tree, activePaneId: previouslyActive };
 			return { paneId, state: state() } as any;
 		});
 		return { paneIds: () => listPaneIds(tree), activePaneId: () => tree.activePaneId };
@@ -11474,13 +11476,15 @@ describe("handlers.spawnAgentInTask on a native task", () => {
 		expect(mockNativePanes.focusNativeTaskPane).not.toHaveBeenCalled();
 	});
 
-	it("hands focus back to the previous pane when nothing asks for focus (CLI spawn)", async () => {
+	it("keeps the previous pane active when nothing asks for focus (CLI spawn)", async () => {
 		arrangeNativeTask();
-		arrangeNativePaneSet();
+		const set = arrangeNativePaneSet();
 
 		await spawn();
 
-		expect(mockNativePanes.focusNativeTaskPane).toHaveBeenCalledWith(TASK_ID, "pane-1");
+		expect(set.paneIds()).toEqual(["pane-1", "pane-2"]);
+		expect(set.activePaneId()).toBe("pane-1");
+		expect(mockNativePanes.focusNativeTaskPane).not.toHaveBeenCalled();
 	});
 
 	// sessionState.panes is reconciled against live TMUX panes, so a native entry

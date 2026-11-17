@@ -279,6 +279,62 @@ describe("native multipane writer ownership", () => {
 	});
 });
 
+describe("native multipane coordinator background split", () => {
+	let root: string;
+	let deps: FakeRegistry;
+
+	beforeEach(() => {
+		root = mkdtempSync(join(tmpdir(), "dev3-multipane-"));
+		process.env[NATIVE_MULTIPANE_DIR_ENV] = root;
+		deps = createFakeRegistry();
+	});
+
+	afterEach(() => {
+		delete process.env[NATIVE_MULTIPANE_DIR_ENV];
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	/** Every layout the coordinator publishes, in order. */
+	function recordPublishes(coordinator: NativeMultipaneCoordinator): Array<{ panes: string[]; active: string }> {
+		const seen: Array<{ panes: string[]; active: string }> = [];
+		const original = (coordinator as unknown as { publish: (tree: ReturnType<typeof createSplitTree>) => void }).publish.bind(coordinator);
+		(coordinator as unknown as { publish: typeof original }).publish = (tree) => {
+			seen.push({ panes: listPaneIds(tree), active: tree.activePaneId });
+			original(tree);
+		};
+		return seen;
+	}
+
+	it("adds the pane in one publish that never makes it the active pane", async () => {
+		const coordinator = await createWithPanes(deps, 1);
+		const seen = recordPublishes(coordinator);
+
+		const created = await coordinator.split("pane-1", "horizontal", { ...launchFor("pane-2"), background: true });
+
+		expect(seen).toEqual([{ panes: ["pane-1", created], active: "pane-1" }]);
+		expect(coordinator.layout.activePaneId).toBe("pane-1");
+	});
+
+	it("keeps the zoom on the pane that had it", async () => {
+		const coordinator = await createWithPanes(deps, 2);
+		await coordinator.publishGeometry({ ...coordinator.layout, activePaneId: "pane-1", zoomedPaneId: "pane-1" });
+
+		await coordinator.split("pane-1", "vertical", { ...launchFor("pane-3"), background: true });
+
+		expect(coordinator.layout.activePaneId).toBe("pane-1");
+		expect(coordinator.layout.zoomedPaneId).toBe("pane-1");
+	});
+
+	it("a foreground split still focuses the new pane", async () => {
+		const coordinator = await createWithPanes(deps, 1);
+		const seen = recordPublishes(coordinator);
+
+		const created = await coordinator.split("pane-1", "horizontal", launchFor("pane-2"));
+
+		expect(seen).toEqual([{ panes: ["pane-1", created], active: created }]);
+	});
+});
+
 describe("native multipane coordinator publishGeometry", () => {
 	let root: string;
 	let deps: FakeRegistry;

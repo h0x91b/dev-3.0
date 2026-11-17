@@ -165,6 +165,9 @@ describe("buildThemeConfig", () => {
 			expect(config).toContain("set -s command-alias[91] 'neww=new-window -d'");
 			expect(config).toContain("set -s command-alias[92] 'split-window=split-window -d'");
 			expect(config).toContain("set -s command-alias[93] 'splitw=split-window -d'");
+			// tmux's own split-pane / splitp aliases (indexes 0 and 1) would bypass -d.
+			expect(config).toContain("set -s command-alias[0] 'split-pane=split-window -d'");
+			expect(config).toContain("set -s command-alias[1] 'splitp=split-window -d'");
 		}
 	});
 

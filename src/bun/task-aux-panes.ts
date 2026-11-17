@@ -37,7 +37,6 @@ import type { TerminalLaunchSpec } from "./task-terminal-backend";
 import { tmux, taskSessionName, TmuxError, PANE_START_COMMAND_FORMAT } from "./tmux";
 import {
 	closeNativeTaskPane,
-	focusNativeTaskPane,
 	nativeTaskPaneCommands,
 	nativeTaskPaneCommandsStrict,
 	nativeTaskPanesState,
@@ -408,11 +407,10 @@ async function findOwnedPanesStrictly(
  * click can never stack a second one (this also sweeps a native pane left dead
  * by a previous run).
  *
- * On native, focus is handed back to the pane that had it — a new pane becomes
- * the coordinator's active pane on split, and the agent must not lose input just
- * because a dev server started. `focusNewPane` keeps it on the new pane instead,
- * for an interactive pane the user opened to type into. On tmux a split stays in
- * the background unless `focusNewPane` asks for the new pane.
+ * The pane opens in the background on both backends — on native it is never
+ * published as the active pane — so the agent does not lose input just because a
+ * dev server started. `focusNewPane` focuses it instead, for an interactive pane
+ * the user opened to type into.
  */
 export async function openAuxPane(spec: OpenAuxPaneSpec): Promise<AuxPaneHandle> {
 	const { task, purpose, socket, slot } = spec;
@@ -442,7 +440,7 @@ export interface SplitTaskPaneSpec extends TaskPaneLaunch {
 	tmuxTarget?: string;
 	/** Native pane to split off. Defaults to the pane that currently has focus. */
 	nativeAnchor?: string;
-	/** Native only: hand focus back to the pane that had it before the split. */
+	/** Native only: keep the previously active pane active — the new one is never published as active. */
 	restoreFocus?: boolean;
 	/** tmux only: select the new pane. Without it the split stays in the background. */
 	focus?: boolean;
@@ -467,24 +465,14 @@ export async function splitTaskPane(spec: SplitTaskPaneSpec): Promise<AuxPaneHan
 		const state = await nativeTaskPanesState(task.id);
 		if (!state || state.panes.length === 0) throw new AuxPaneUnavailableError("terminal-not-running");
 		const anchor = spec.nativeAnchor || state.activePaneId || state.panes[0].paneId;
-		const previouslyActive = state.activePaneId || null;
 
 		const { paneId } = await splitNativeTaskPane(task.id, anchor, orientationFor(placement), {
 			cwd,
 			env,
 			launch: spec.nativeLaunch,
 			outputLogPath: spec.outputLogPath,
+			background: spec.restoreFocus,
 		});
-
-		if (spec.restoreFocus && previouslyActive && previouslyActive !== paneId) {
-			await focusNativeTaskPane(task.id, previouslyActive).catch((err) =>
-				log.warn("splitTaskPane: could not restore focus to the previous pane", {
-					taskId: task.id.slice(0, 8),
-					previouslyActive,
-					error: String(err),
-				}),
-			);
-		}
 		log.info("Split a native task pane", { taskId: task.id.slice(0, 8), paneId, anchor });
 		return { backend: "native", paneId };
 	}

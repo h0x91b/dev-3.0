@@ -296,6 +296,10 @@ set -s command-alias[90] 'new-window=new-window -d'
 set -s command-alias[91] 'neww=new-window -d'
 set -s command-alias[92] 'split-window=split-window -d'
 set -s command-alias[93] 'splitw=split-window -d'
+# tmux's built-in split-pane/splitp aliases (indexes 0 and 1) expand to a plain split-window, and
+# aliases do not recurse, so they would bypass the -d above; override them.
+set -s command-alias[0] 'split-pane=split-window -d'
+set -s command-alias[1] 'splitp=split-window -d'
 bind c new-window -c "${PANE_CWD_FORMAT}" \\; select-window -t "{end}"
 `;
 

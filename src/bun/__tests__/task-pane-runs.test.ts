@@ -150,6 +150,8 @@ describe("startPaneRun", () => {
 		expect(mocks.decidePaneRunSplit).toHaveBeenCalledWith(expect.objectContaining({ below: true }));
 		expect(splitSpec().placement).toBe("below");
 		expect(splitSpec().restoreFocus).toBe(true);
+		// Nothing asks for focus on the new pane, so tmux opens it in the background too.
+		expect(splitSpec().focus).toBeUndefined();
 	});
 
 	it("splits the pane the placement chose, 50/50, on both backends' anchors", async () => {
