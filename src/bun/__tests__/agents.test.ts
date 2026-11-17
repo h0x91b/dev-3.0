@@ -1271,10 +1271,14 @@ describe("mergeWithDefaults — preserves user-defined order", () => {
 	it("keeps GPT-6.1 Sol, GPT-6 Sol, and GPT-6 Luna selectable next to the Astra default", () => {
 		const codex = DEFAULT_AGENTS.find((agent) => agent.id === "builtin-codex")!;
 		const models = new Set(codex.configurations.map((config) => config.model));
+		expect(models.has("gpt-6.2-astra")).toBe(true);
+		expect(models.has("gpt-6.2-sol")).toBe(true);
 		expect(models.has("gpt-6.1-sol")).toBe(true);
 		expect(models.has("gpt-6-sol")).toBe(true);
 		expect(models.has("gpt-6-luna")).toBe(true);
 		expect(findConfig(codex, undefined)?.model).toBe("gpt-6-astra");
+		expect(findConfig(codex, "codex-6.2-astra-medium-bypass")?.model).toBe("gpt-6.2-astra");
+		expect(findConfig(codex, "codex-6.2-sol-medium-bypass")?.model).toBe("gpt-6.2-sol");
 		expect(findConfig(codex, "codex-6.1-sol-medium-bypass")?.model).toBe("gpt-6.1-sol");
 		expect(findConfig(codex, "codex-6-sol-medium-bypass")?.model).toBe("gpt-6-sol");
 		expect(findConfig(codex, "codex-6-luna-medium-bypass")?.model).toBe("gpt-6-luna");
@@ -1287,6 +1291,8 @@ describe("mergeWithDefaults — preserves user-defined order", () => {
 		const stored = [{ ...codex, configurations: codex.configurations.filter((config) => config.id === "codex-default") }];
 		const updated = mergeWithDefaults(stored).find((agent) => agent.id === "builtin-codex")!;
 		expect(updated.configurations.some((config) => config.id === "codex-6.1-sol-medium-bypass")).toBe(true);
+		expect(updated.configurations.some((config) => config.id === "codex-6.2-astra-medium-bypass")).toBe(true);
+		expect(updated.configurations.some((config) => config.id === "codex-6.2-sol-medium-bypass")).toBe(true);
 		expect(updated.defaultConfigId).toBe("codex-default");
 	});
 
@@ -1294,7 +1300,14 @@ describe("mergeWithDefaults — preserves user-defined order", () => {
 		const codex = DEFAULT_AGENTS.find((agent) => agent.id === "builtin-codex")!;
 		const omitted = await resolveAgentCommand(codex, findConfig(codex, undefined), makeCtx());
 		expect(omitted).toContain("gpt-6-astra");
+		expect(omitted).not.toContain("gpt-6.2-");
 		expect(omitted).not.toContain("gpt-6.1-sol");
+		const explicitAstra = await resolveAgentCommand(codex, findConfig(codex, "codex-6.2-astra-high-bypass"), makeCtx());
+		expect(explicitAstra).toContain("gpt-6.2-astra");
+		expect(explicitAstra).toContain('model_reasoning_effort="high"');
+		const explicitSol62 = await resolveAgentCommand(codex, findConfig(codex, "codex-6.2-sol-medium"), makeCtx());
+		expect(explicitSol62).toContain("gpt-6.2-sol");
+		expect(explicitSol62).not.toContain("gpt-6-astra");
 		expect(omitted).not.toContain("gpt-6-sol");
 		const explicitNewSol = await resolveAgentCommand(codex, findConfig(codex, "codex-6.1-sol-medium-bypass"), makeCtx());
 		expect(explicitNewSol).toContain("gpt-6.1-sol");
@@ -1307,6 +1320,8 @@ describe("mergeWithDefaults — preserves user-defined order", () => {
 	it("ships canonical model labels on every Codex preset", () => {
 		const codex = DEFAULT_AGENTS.find((agent) => agent.id === "builtin-codex")!;
 		const expectedLabels: Record<string, string> = {
+			"gpt-6.2-astra": "GPT-6.2 Astra",
+			"gpt-6.2-sol": "GPT-6.2 Sol",
 			"gpt-6.1-sol": "GPT-6.1 Sol",
 			"gpt-6-sol": "GPT-6 Sol",
 			"gpt-6-astra": "GPT-6 Astra",
