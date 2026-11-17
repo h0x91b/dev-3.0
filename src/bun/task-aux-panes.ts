@@ -419,11 +419,7 @@ export async function openAuxPane(spec: OpenAuxPaneSpec): Promise<AuxPaneHandle>
 	} else {
 		await closeAuxPane(task, purpose, socket, undefined, slot);
 	}
-	const handle = await splitTaskPane({
-		...spec,
-		restoreFocus: !spec.focusNewPane,
-		focus: spec.focusNewPane,
-	});
+	const handle = await splitTaskPane({ ...spec, focus: spec.focusNewPane });
 	log.info("Opened auxiliary pane", {
 		taskId: task.id.slice(0, 8),
 		purpose,
@@ -440,9 +436,10 @@ export interface SplitTaskPaneSpec extends TaskPaneLaunch {
 	tmuxTarget?: string;
 	/** Native pane to split off. Defaults to the pane that currently has focus. */
 	nativeAnchor?: string;
-	/** Native only: keep the previously active pane active — the new one is never published as active. */
-	restoreFocus?: boolean;
-	/** tmux only: select the new pane. Without it the split stays in the background. */
+	/**
+	 * Focus the new pane (an explicit user action). Default: the pane opens in the
+	 * background and the active pane never changes, on both backends.
+	 */
 	focus?: boolean;
 }
 
@@ -471,7 +468,7 @@ export async function splitTaskPane(spec: SplitTaskPaneSpec): Promise<AuxPaneHan
 			env,
 			launch: spec.nativeLaunch,
 			outputLogPath: spec.outputLogPath,
-			background: spec.restoreFocus,
+			background: !spec.focus,
 		});
 		log.info("Split a native task pane", { taskId: task.id.slice(0, 8), paneId, anchor });
 		return { backend: "native", paneId };

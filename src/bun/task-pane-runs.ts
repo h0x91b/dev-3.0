@@ -192,9 +192,7 @@ export async function startPaneRun(spec: StartPaneRunSpec): Promise<StartedPaneR
 					...launch,
 					tmuxTarget: where.tmuxTarget,
 					nativeAnchor: where.nativeAnchor,
-					// A run an agent started never takes its keyboard: the pane opens in the
-					// background on both backends.
-					restoreFocus: true,
+					// No `focus`: a run an agent started never takes its keyboard.
 				});
 	} catch (err) {
 		// No pane means no run. A spec left behind would show up as a phantom run with

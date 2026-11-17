@@ -210,11 +210,11 @@ describe("spawnAgentInTask focus", () => {
 
 	it("opens in the background when nothing asks for focus (the CLI path)", async () => {
 		await tmuxPtyHandlers.spawnAgentInTask(base);
-		expect(mocks.splitTaskPane).toHaveBeenCalledWith(expect.objectContaining({ focus: false, restoreFocus: true }));
+		expect(mocks.splitTaskPane).toHaveBeenCalledWith(expect.objectContaining({ focus: false }));
 	});
 
 	it("moves focus to the new pane when the UI asks for it", async () => {
 		await tmuxPtyHandlers.spawnAgentInTask({ ...base, focus: true });
-		expect(mocks.splitTaskPane).toHaveBeenCalledWith(expect.objectContaining({ focus: true, restoreFocus: false }));
+		expect(mocks.splitTaskPane).toHaveBeenCalledWith(expect.objectContaining({ focus: true }));
 	});
 });

@@ -315,6 +315,16 @@ describe("native multipane coordinator background split", () => {
 		expect(coordinator.layout.activePaneId).toBe("pane-1");
 	});
 
+	it("keeps the active pane when the anchor is a different pane", async () => {
+		const coordinator = await createWithPanes(deps, 2);
+		await coordinator.publishGeometry({ ...coordinator.layout, activePaneId: "pane-2" });
+
+		const created = await coordinator.split("pane-1", "vertical", { ...launchFor("pane-3"), background: true });
+
+		expect(coordinator.paneIds()).toContain(created);
+		expect(coordinator.layout.activePaneId).toBe("pane-2");
+	});
+
 	it("keeps the zoom on the pane that had it", async () => {
 		const coordinator = await createWithPanes(deps, 2);
 		await coordinator.publishGeometry({ ...coordinator.layout, activePaneId: "pane-1", zoomedPaneId: "pane-1" });

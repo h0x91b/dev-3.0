@@ -192,7 +192,6 @@ export async function spawnAgentInTask(params: {
 			tmuxCommand: `bash "${scriptPath}"`,
 			nativeLaunch: generatedScriptLaunch(scriptPath),
 			focus: params.focus === true,
-			restoreFocus: params.focus !== true,
 		});
 	} catch (err) {
 		log.error("spawnAgentInTask failed", { taskId: params.taskId.slice(0, 8), error: String(err) });

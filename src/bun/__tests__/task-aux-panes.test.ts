@@ -633,6 +633,18 @@ describe("openTaskPaneWindow", () => {
 	});
 });
 
+describe("splitTaskPane focus (native)", () => {
+	it("opens in the background by default", async () => {
+		await splitTaskPane(spec(nativeTask));
+		expect(mocks.splitNativeTaskPane.mock.calls[0][3].background).toBe(true);
+	});
+
+	it("an explicit focus request lets the new pane take focus", async () => {
+		await splitTaskPane({ ...spec(nativeTask), focus: true });
+		expect(mocks.splitNativeTaskPane.mock.calls[0][3].background).toBe(false);
+	});
+});
+
 describe("splitTaskPane focus (tmux)", () => {
 	it("splits in the background unless the caller asks for focus", async () => {
 		await splitTaskPane(spec(tmuxTask, { title: "AI Review" }));
