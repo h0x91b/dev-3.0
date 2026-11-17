@@ -209,6 +209,34 @@ describe("BoardHost", () => {
 		width.mockRestore();
 	});
 
+	it("restores a saved Active visibility", async () => {
+		vi.mocked(api.request.getBoardFilterState).mockResolvedValue({ visibility: "active" });
+		renderHost();
+		await waitFor(() => expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t1"));
+		expect(screen.getByRole("radio", { name: "Active" })).toHaveAttribute("aria-checked", "true");
+	});
+
+	it("lets an explicit status token bypass Active, and bringing the query back restores it", async () => {
+		renderHost();
+		await screen.findByTestId("kanban");
+		fireEvent.click(screen.getByRole("radio", { name: "Active" }));
+		expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t1");
+		fireEvent.change(screen.getByRole("textbox", { name: /search/i }), { target: { value: "status:completed" } });
+		expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t2");
+		fireEvent.change(screen.getByRole("textbox", { name: /search/i }), { target: { value: "" } });
+		expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t1");
+	});
+
+	it("shows a custom-column task under Active when the query names that column", async () => {
+		vi.mocked(api.request.getBoardFilterState).mockResolvedValue({ visibility: "active" });
+		const column = { id: "col-a", name: "On hold", color: "#f00", llmInstruction: "" };
+		const inColumn = makeTask("t3", "gamma", { status: "completed", customColumnId: "col-a" });
+		renderHost({ project: { ...project, customColumns: [column] }, tasks: [...tasks, inColumn] });
+		await waitFor(() => expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t1"));
+		fireEvent.change(screen.getByRole("textbox", { name: /search/i }), { target: { value: 'status:"On hold"' } });
+		expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t3");
+	});
+
 	it("re-renders a memoised view on board/changed", async () => {
 		startBoardViews([installKanbanView]);
 		const Count = memo(function Count() {

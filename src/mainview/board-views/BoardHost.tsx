@@ -172,11 +172,11 @@ function BoardHost(props: BoardHostProps) {
 			if (slot.type === "custom") for (const member of slot.members) customColumnKeys.add(`${member.projectId}::${member.columnId}`);
 		}
 		const occupiedStatuses = new Set<TaskStatus>();
-		for (const task of filter.visibleTasks) {
+		for (const task of tasks) {
 			if (!task.customColumnId || !customColumnKeys.has(`${task.projectId}::${task.customColumnId}`)) occupiedStatuses.add(task.status);
 		}
 		return getBoardColumns(boardProjects, { occupiedStatuses });
-	}, [boardProjects, columns, filter.visibleTasks]);
+	}, [boardProjects, columns, tasks]);
 	const laneOrderRef = useRef<string[]>([]);
 	laneOrderRef.current = occupiedColumns.map(laneKey);
 

@@ -57,6 +57,7 @@ function BoardVisibilitySwitch({ visibility, onChange, narrow = false }: BoardVi
 						aria-checked={selected}
 						tabIndex={selected ? 0 : -1}
 						title={value === "active" ? t("board.visibility.activeHint") : undefined}
+						aria-description={value === "active" ? t("board.visibility.activeHint") : undefined}
 						onClick={() => select(value)}
 						onKeyDown={onKeyDown}
 						className={`${narrow ? NARROW_SIZE : WIDE_SIZE} ${SEGMENT} ${selected ? "bg-elevated text-fg" : "text-fg-3 hover:text-fg-2 hover:bg-raised-hover"}`}

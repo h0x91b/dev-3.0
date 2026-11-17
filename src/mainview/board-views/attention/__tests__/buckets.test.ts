@@ -64,6 +64,15 @@ describe("fillBuckets", () => {
 		const [only] = fillBuckets(tasks, [bucket("a", "todo", "recent")], byStatus);
 		expect(only.tasks.map((t) => t.seq)).toEqual([2, 1]);
 	});
+
+	it("gives tasks the Active switch hides only to a bucket that names a status", () => {
+		const matches = (t: Task, q: string) => q === "*" || q.split(" ").includes(`status:${t.status}`);
+		const shown = [task(1, { status: "todo" })];
+		const hidden = [task(2, { status: "completed" })];
+		const [any, done] = fillBuckets(shown, [bucket("any", "*"), bucket("done", "status:completed")], matches, hidden);
+		expect(any.tasks.map((t) => t.seq)).toEqual([1]);
+		expect(done.tasks.map((t) => t.seq)).toEqual([2]);
+	});
 });
 
 describe("newBucketId", () => {

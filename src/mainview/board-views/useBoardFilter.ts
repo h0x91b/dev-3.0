@@ -45,8 +45,6 @@ export interface BoardFilter {
 	setVisibility: (visibility: TaskVisibility) => void;
 	/** False until the board's saved Active | All choice has settled. */
 	visibilityReady: boolean;
-	/** The board's tasks under the Active | All switch, before the query. */
-	visibleTasks: readonly Task[];
 	displayTasks: readonly Task[];
 	matches: (task: Task, query: string) => boolean;
 	labels: Label[];
@@ -211,7 +209,6 @@ export function useBoardFilter({ project, space, memberProjects, tasks, agents, 
 		visibility,
 		setVisibility,
 		visibilityReady,
-		visibleTasks,
 		displayTasks,
 		matches,
 		labels,

@@ -46,6 +46,8 @@ describe("BoardVisibilitySwitch", () => {
 		expect(radios[1]).toHaveAttribute("tabindex", "0");
 		expect(screen.getByRole("radiogroup", { name: "Show tasks" })).toBeInTheDocument();
 		expect(radios[0]).toHaveAttribute("title", "Hide completed and cancelled tasks");
+		expect(radios[0]).toHaveAttribute("aria-description", "Hide completed and cancelled tasks");
+		expect(radios[1]).not.toHaveAttribute("aria-description");
 	});
 
 	it("selects on click and ignores a click on the selected segment", async () => {

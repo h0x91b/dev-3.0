@@ -671,7 +671,7 @@ another extension's id), makes dev3 unload the whole extension and mark it **Fai
 
 - Shape: \`scope\` (\`{ kind: "project" | "space", id, projectIds }\`), \`formFactor\` (\`"wide"\` / \`"narrow"\`),
   \`query\` and \`setQuery(q)\`.
-- Data: \`tasks()\` (board scope ∩ Active | All switch ∩ query), \`scopeTasks()\` (board scope, unfiltered — for counts),
+- Data: \`tasks()\` (board scope ∩ user's Active | All switch ∩ query; may omit completed/cancelled — for every status use \`scopeTasks()\` with \`matches(task, query)\`), \`scopeTasks()\` (board scope, unfiltered — for counts),
   \`matches(task, query)\`, \`columns({ includeOccupied? })\`, \`labels()\`, \`agents()\`, \`projects()\`, \`epics()\`,
   \`preferences()\` (\`{ taskSortOrder, tipsDisabled }\`), \`lineageNode(id)\`.
 - Per-view persisted state: \`layout(viewId)\` / \`setLayout(viewId, value)\` — stored per board and form factor.

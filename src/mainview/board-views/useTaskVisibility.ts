@@ -14,7 +14,10 @@ interface VisibilitySlot {
 	snapshot: VisibilitySnapshot;
 	// A user set before the read lands wins over the read.
 	edited: boolean;
-	readStarted: boolean;
+	/** A successful read has landed: no more reads this session. */
+	loaded: boolean;
+	reading: boolean;
+	attempt: number;
 	desired: TaskVisibility | null;
 	inFlight: boolean;
 	listeners: Set<() => void>;
@@ -36,7 +39,9 @@ function slotFor(board: BoardRef): VisibilitySlot {
 			board: { kind: board.kind, id: board.id },
 			snapshot: { value: "all", ready: false },
 			edited: false,
-			readStarted: false,
+			loaded: false,
+			reading: false,
+			attempt: 0,
 			desired: null,
 			inFlight: false,
 			listeners: new Set(),
@@ -72,17 +77,41 @@ function pump(slot: VisibilitySlot): void {
 		});
 }
 
+// Lets a silent (lost) request stop holding the board hidden; the transport itself waits 6 minutes.
+export const VISIBILITY_READ_TIMEOUT_MS = 3_000;
+
+function settle(slot: VisibilitySlot): void {
+	if (!slot.snapshot.ready) publish(slot, { ...slot.snapshot, ready: true });
+}
+
+// A failed or timed-out read settles the board as "all" and is retried on the next mount;
+// a late success still applies unless the user already chose.
 function startRead(slot: VisibilitySlot): void {
-	if (slot.readStarted) return;
-	slot.readStarted = true;
+	if (slot.loaded || slot.edited || slot.reading) return;
+	slot.reading = true;
+	const attempt = ++slot.attempt;
+	const endAttempt = () => {
+		if (slot.attempt === attempt) slot.reading = false;
+	};
+	const timer = setTimeout(() => {
+		console.warn("[task-visibility] read timed out");
+		endAttempt();
+		settle(slot);
+	}, VISIBILITY_READ_TIMEOUT_MS);
 	Promise.resolve()
 		.then(() => api.request.getBoardFilterState({ board: slot.board }))
 		.then(({ visibility }) => {
+			clearTimeout(timer);
+			endAttempt();
+			if (slot.loaded) return;
+			slot.loaded = true;
 			publish(slot, { value: slot.edited ? slot.snapshot.value : visibility, ready: true });
 		})
 		.catch((err) => {
+			clearTimeout(timer);
+			endAttempt();
 			console.warn("[task-visibility] failed to read:", err);
-			publish(slot, { ...slot.snapshot, ready: true });
+			settle(slot);
 		});
 }
 
