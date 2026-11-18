@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProductivityStatEvent } from "../../../shared/types";
@@ -191,7 +191,7 @@ describe("ProductivityStatsView", () => {
 		).toBeInTheDocument();
 	});
 
-	it("shows token + API-cost counters when agent usage exists in the period", async () => {
+	it("splits real API key spend from plan-covered and unknown-billing cost, never adding unknown to either", async () => {
 		mockGet.mockResolvedValue({ events: [ev()], generatedAt: new Date().toISOString() });
 		const now = new Date();
 		const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -206,6 +206,9 @@ describe("ProductivityStatsView", () => {
 					cacheCreationInputTokens: 0,
 					cacheReadInputTokens: 0,
 					costUsd: 17.5,
+					apiCostUsd: 2.25,
+					subscriptionCostUsd: 12,
+					unclassifiedCostUsd: 3.25,
 					fullyPriced: true,
 				},
 			],
@@ -214,15 +217,34 @@ describe("ProductivityStatsView", () => {
 		});
 		renderView();
 		expect(await screen.findByText("Tokens used")).toBeInTheDocument();
-		expect(screen.getByText("~API cost")).toBeInTheDocument();
-		expect(screen.getByText("$17.50")).toBeInTheDocument();
+		const figure = (label: string) => screen.getByText(label).previousElementSibling?.textContent;
+		await waitFor(() => expect(figure("API key spend")).toBe("$2.25"));
+		expect(figure("~Covered by subscriptions")).toBe("$12.00");
+		expect(figure("~Billing unknown")).toBe("$3.25");
+		expect(screen.queryByText("$17.50")).not.toBeInTheDocument();
+	});
+
+	it("hides the unknown-billing figure when every cost was classified", async () => {
+		mockGet.mockResolvedValue({ events: [ev()], generatedAt: new Date().toISOString() });
+		const now = new Date();
+		mockUsage.mockResolvedValue({
+			days: [{
+				date: "2026-01-01", startMs: new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime(), source: "codex",
+				inputTokens: 1, outputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0,
+				costUsd: 4, apiCostUsd: 0, subscriptionCostUsd: 4, unclassifiedCostUsd: 0, fullyPriced: true,
+			}],
+			generatedAt: now.toISOString(), hasUnpricedModels: false,
+		});
+		renderView();
+		expect(await screen.findByText("API key spend")).toBeInTheDocument();
+		expect(screen.queryByText("~Billing unknown")).not.toBeInTheDocument();
 	});
 
 	it("hides the usage counters when no agent usage is on disk", async () => {
 		mockGet.mockResolvedValue({ events: [ev()], generatedAt: new Date().toISOString() });
 		renderView();
 		expect(await screen.findByText("Productivity")).toBeInTheDocument();
-		expect(screen.queryByText("~API cost")).not.toBeInTheDocument();
+		expect(screen.queryByText("API key spend")).not.toBeInTheDocument();
 	});
 
 	it("includes Gemini, Cursor and Copilot usage in the displayed total", async () => {
@@ -234,7 +256,7 @@ describe("ProductivityStatsView", () => {
 				date: now.toISOString().slice(0, 10), startMs, source,
 				inputTokens: 1_000_000, outputTokens: 0,
 				cacheCreationInputTokens: 0, cacheReadInputTokens: 0,
-				costUsd: index + 2, fullyPriced: true,
+				costUsd: index + 2, apiCostUsd: 0, subscriptionCostUsd: index + 2, unclassifiedCostUsd: 0, fullyPriced: true,
 			})),
 			generatedAt: now.toISOString(), hasUnpricedModels: false,
 		});

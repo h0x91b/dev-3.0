@@ -190,7 +190,7 @@ const tips = {
 	"tip.mobilePanePager.title": "Desliza entre paneles",
 	"tip.mobilePanePager.body": "En un teléfono la tarea muestra un panel a la vez: desliza el terminal hacia un lado o usa la barra ‹ › para cambiar entre ellos.",
 	"tip.statsTokenCost.title": "Mira tu gasto de tokens",
-	"tip.statsTokenCost.body": "Estadísticas muestra los tokens registrados y el coste equivalente en API, con historial guardado y precios actualizados.",
+	"tip.statsTokenCost.body": "Estadísticas separa el gasto real con claves API de lo que cubren tus suscripciones a tarifas API.",
 	"tip.agentShowImage.title": "Los agentes pueden mostrarte imágenes",
 	"tip.agentShowImage.body": "Ejecuta `dev3 show-image <path>` en una tarea y las capturas o renders se abren en un visor integrado con historial.",
 	"tip.mobileComposer.title": "Cuadro de prompts para móvil",

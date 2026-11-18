@@ -82,6 +82,12 @@ export interface AgentUsageDay {
 	cacheReadInputTokens: number;
 	/** API-equivalent cost in USD (what per-token API billing *would* cost; subscription-subsidised in reality). */
 	costUsd: number;
+	/** Part of `costUsd` billed per token through an API key: real spend. */
+	apiCostUsd: number;
+	/** Part of `costUsd` covered by a plan login: what it would have cost at API rates. */
+	subscriptionCostUsd: number;
+	/** Part of `costUsd` whose billing the local logs cannot prove. */
+	unclassifiedCostUsd: number;
 	/** True if every model seen on this day had a known price; false means costUsd under-counts. */
 	fullyPriced: boolean;
 }
