@@ -3,13 +3,14 @@ import { TaskRefText } from "./TaskRefText";
 import { toast } from "../toast";
 import { toastClearanceRef } from "../toast-clearance";
 import { confirm } from "../confirm";
+import CompletionOwnerMenu from "./CompletionOwnerMenu";
 import { createPortal } from "react-dom";
-import type { Task, Project, TaskStatus, PortInfo, ResourceUsage, TaskPRBadgeInfo } from "../../shared/types";
+import type { Task, Project, TaskStatus, PortInfo, ResourceUsage, TaskPRBadgeInfo, TaskCompletionOwner } from "../../shared/types";
 import LabelChip from "./LabelChip";
 import PriorityBadge from "./PriorityBadge";
 import OpenInMenu from "./OpenInMenu";
 import { formatDate } from "./NoteItem";
-import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle, isCoordinatorTask, isSharedClip, resolveTaskCompareBaseBranch, taskCompletesManually, taskSharedMedia, taskUsesWorktree } from "../../shared/types";
+import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle, isCoordinatorTask, isSharedClip, resolveTaskCompareBaseBranch, taskCompletionOwner, taskSharedMedia, taskUsesWorktree } from "../../shared/types";
 import { earlierPullRequests, trustedPrStatusCache } from "../../shared/task-pull-requests";
 import InlineRename from "./InlineRename";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
@@ -68,9 +69,9 @@ import { useIncludeTestsInDiff } from "../utils/includeTestsInDiff";
 import { useCompact } from "../utils/useCompact";
 import { useContainerWidth } from "../hooks/useContainerWidth";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
-import { useIsControlHidden } from "../hooks/useIsControlHidden";
+import { useIsControlHidden, useIsSimplifyViewApplied } from "../hooks/useIsControlHidden";
 import { restoreControl } from "../hidden-controls";
-import HideableControl, { HideRowButton } from "./HideableControl";
+import HideableControl from "./HideableControl";
 import PanelRestoreControl, { type PanelHideableEntry } from "./task-info-panel/PanelRestoreControl";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import BottomSheet from "./BottomSheet";
@@ -78,6 +79,7 @@ import HelpSpot from "./HelpSpot";
 import Tooltip from "./Tooltip";
 import ForeignCodeMark from "./ForeignCodeMark";
 import TaskOriginRow from "./TaskOriginRow";
+import TaskCompletionStrip from "./task-info-panel/TaskCompletionStrip";
 import TaskEpicRow from "./TaskEpicRow";
 import VariantSwitcher from "./VariantSwitcher";
 import { isMac } from "../utils/platform";
@@ -177,6 +179,7 @@ function TaskInfoPanel({
 	const tmuxPaneControlsHidden = useIsControlHidden("tmux-pane-controls");
 	const scriptsRunnerHidden = useIsControlHidden("scripts-runner");
 	const diffIncludeTestsHidden = useIsControlHidden("diff-include-tests");
+	const simplified = useIsSimplifyViewApplied();
 	const [actionsSheetOpen, setActionsSheetOpen] = useState(false);
 	const [collapsed, setCollapsed] = useState(() => readBool(LS_COLLAPSED, true));
 	const [panelHeight, setPanelHeight] = useState(() => readNumber(LS_HEIGHT, DEFAULT_HEIGHT));
@@ -471,14 +474,35 @@ function TaskInfoPanel({
 		}
 	}
 
-	async function handleToggleManualCompletion(event: ReactMouseEvent<HTMLButtonElement>) {
+	// One control, three owners: dev3 suggests → I decide → the agent closes it → back.
+	// A menu, never a click-to-cycle: no habitual click may land on the owner that
+	// lets the agent destroy the worktree, and picking that one is confirmed.
+	const [completionMenuAnchor, setCompletionMenuAnchor] = useState<HTMLElement | null>(null);
+	function handleOpenCompletionMenu(event: ReactMouseEvent<HTMLButtonElement>) {
 		event.stopPropagation();
 		if (isCoordinatorTask(task)) return;
+		const anchor = event.currentTarget;
+		setCompletionMenuAnchor((open) => (open ? null : anchor));
+	}
+
+	async function handleSelectCompletionOwner(owner: TaskCompletionOwner) {
+		setCompletionMenuAnchor(null);
+		if (owner === taskCompletionOwner(task)) return;
+		if (owner === "agent") {
+			const granted = await confirm({
+				title: t("task.selfCompletionConfirmTitle"),
+				message: t("task.selfCompletionConfirmMessage"),
+				confirmLabel: t("task.selfCompletionConfirmAction"),
+				danger: true,
+				focusCancel: true,
+			});
+			if (!granted) return;
+		}
 		try {
-			const updated = await api.request.setTaskManualCompletion({
+			const updated = await api.request.setTaskCompletionOwner({
 				taskId: task.id,
 				projectId: project.id,
-				manualCompletion: task.manualCompletion !== true,
+				owner,
 			});
 			dispatch({ type: "updateTask", task: updated });
 		} catch (err) {
@@ -856,14 +880,22 @@ function TaskInfoPanel({
 	// so the control shows it on and refuses the click instead of offering a toggle
 	// that the lifecycle would ignore.
 	const completionIsForced = isCoordinatorTask(task);
-	const completionIsManual = taskCompletesManually(task);
+	const completionOwner = taskCompletionOwner(task);
+	const completionIsAgent = completionOwner === "agent";
+	// "Held": dev3 no longer suggests completing it — you decide, or the agent does.
+	const completionIsManual = completionOwner !== "dev3";
+	const completionOwnerLabel = completionIsAgent ? t("task.selfCompletionEnabled") : t("task.manualCompletionEnabled");
 	const completionOwnerName = completionIsForced
 		? t("task.manualCompletionCoordinatorTooltip")
-		: completionIsManual ? t("task.manualCompletionEnabledTooltip") : t("task.manualCompletionTooltip");
+		: completionIsAgent
+			? t("task.selfCompletionEnabledTooltip")
+			: completionIsManual ? t("task.manualCompletionEnabledTooltip") : t("task.manualCompletionTooltip");
 	const manualCompletionToggleButton = (
 		<Tooltip content={completionOwnerName} detail={t("ttip.task.manualCompletion")}>
 			<button
-				onClick={handleToggleManualCompletion}
+				onClick={handleOpenCompletionMenu}
+				aria-haspopup="menu"
+				aria-expanded={completionMenuAnchor !== null}
 				disabled={completionIsForced}
 				aria-label={completionOwnerName}
 				aria-pressed={completionIsManual}
@@ -880,17 +912,26 @@ function TaskInfoPanel({
 				    (same role as hibernate), and it is never the colour of an error or
 				    of a finished task. Off stays grey and wordless — the state that
 				    needs no explanation. */}
-				<CompletionOwnerIcon className="h-[0.95rem] w-[0.95rem]" active={completionIsManual} />
+				<CompletionOwnerIcon className="h-[0.95rem] w-[0.95rem]" active={completionIsManual} agent={completionIsAgent} />
 				{/* Colour never carries the state alone: on a roomy bar the chip spells
 				    the mode out, in the same words as the merge dialog's third button —
 				    that dialog is where most people turn this on, and a shortened echo
 				    of it ("I decide") did not read as the same thing. Tight folds it
 				    back to the icon, where shape and hue still separate it. */}
 				{completionIsManual && !tight && (
-					<span className="text-micro font-semibold whitespace-nowrap">{t("task.manualCompletionEnabled")}</span>
+					<span className="text-micro font-semibold whitespace-nowrap">{completionOwnerLabel}</span>
 				)}
 			</button>
 		</Tooltip>
+	);
+
+	const completionOwnerMenu = completionMenuAnchor && (
+		<CompletionOwnerMenu
+			selected={completionOwner}
+			anchorEl={completionMenuAnchor}
+			onClose={() => setCompletionMenuAnchor(null)}
+			onSelect={handleSelectCompletionOwner}
+		/>
 	);
 
 	const priorityBadge = <PriorityBadge priority={task.priority} onChange={handleSetPriority} className="shrink-0" />;
@@ -1089,7 +1130,8 @@ function TaskInfoPanel({
 	// back". It is the only coloured button left in this bar, and the skull is its
 	// one filled glyph on purpose — it has to stop the eye before the tooltip
 	// explains that the worktree survives.
-	const hibernateButton = isTaskActive && task.worktreePath && !task.hibernated && !task.preparing && !task.shuttingDown && !hibernateHidden ? (
+	const canHibernate = isTaskActive && !!task.worktreePath && !task.hibernated && !task.preparing && !task.shuttingDown;
+	const hibernateButton = canHibernate && !hibernateHidden ? (
 		<HideableControl id="hibernate">
 			<Tooltip content={t("task.hibernate")} detail={t("task.hibernateHint")}>
 				<button
@@ -1408,6 +1450,7 @@ function TaskInfoPanel({
 		return (
 			<div ref={toastClearanceRef} className="flex-shrink-0 border-b border-edge glass-header">
 				{diffFilesPopover}
+				{completionOwnerMenu}
 				{fileOpenInMenuPortal}
 				{statusSheet}
 				{/* The bar sheds, it never stacks (bible §12.6). A second row costs a
@@ -1473,6 +1516,18 @@ function TaskInfoPanel({
 						<div className="touch-actions flex flex-col gap-2">
 							<button
 								type="button"
+								data-testid="task-actions-fullscreen"
+								onClick={() => {
+									setActionsSheetOpen(false);
+									toggleTerminalFullscreen();
+								}}
+								className={SHEET_ROW_CLASS}
+							>
+								<FullscreenEnterIcon className="h-5 w-5 shrink-0 text-fg-3" />
+								<span className="flex-1 text-sm font-medium">{t("infoPanel.fullScreen")}</span>
+							</button>
+							<button
+								type="button"
 								onClick={handleToggleWatch}
 								aria-pressed={task.watched}
 								className={`${SHEET_ROW_CLASS} ${task.watched ? "border-accent/30 bg-accent/10" : ""}`}
@@ -1484,15 +1539,17 @@ function TaskInfoPanel({
 							</button>
 							<button
 								type="button"
-								onClick={handleToggleManualCompletion}
+								onClick={handleOpenCompletionMenu}
+				aria-haspopup="menu"
+				aria-expanded={completionMenuAnchor !== null}
 								disabled={completionIsForced}
 								aria-pressed={completionIsManual}
 								className={`${SHEET_ROW_CLASS} ${completionIsManual ? "warning-paper border-warning/30 bg-warning/10 text-warning-strong" : ""} ${completionIsForced ? "cursor-not-allowed opacity-60" : ""}`}
 							>
-								<CompletionOwnerIcon className={`h-5 w-5 shrink-0 ${completionIsManual ? "text-warning-strong" : "text-fg-3"}`} active={completionIsManual} />
+								<CompletionOwnerIcon className={`h-5 w-5 shrink-0 ${completionIsManual ? "text-warning-strong" : "text-fg-3"}`} active={completionIsManual} agent={completionIsAgent} />
 								<span className="flex-1 min-w-0">
 									<span className="block text-sm font-medium">{completionIsManual
-										? t("task.manualCompletionEnabled")
+										? completionOwnerLabel
 										: t("task.manualCompletion")}</span>
 									{/* A phone has no tooltip, so the row itself carries the
 									    consequence — the thing that reads as a bug when unsaid. */}
@@ -1500,7 +1557,9 @@ function TaskInfoPanel({
 										<span className="block text-micro font-normal leading-snug opacity-80">
 											{completionIsForced
 												? t("task.manualCompletionCoordinatorTooltip")
-												: t("task.manualCompletionConsequence")}
+												: completionIsAgent
+													? t("task.selfCompletionConsequence")
+													: t("task.manualCompletionConsequence")}
 										</span>
 									)}
 								</span>
@@ -1527,26 +1586,22 @@ function TaskInfoPanel({
 								</button>
 							)}
 
-							{isTaskActive && task.worktreePath && !spawnAgentHidden && (
-								<div className={`${SHEET_ROW_CLASS} !pr-2`}>
-									<button type="button" onClick={() => setSpawnModalOpen(true)} className="flex flex-1 min-w-0 items-center gap-3">
-										<AddAgentIcon className="h-5 w-5 shrink-0 text-success" />
-										<span className="flex-1 text-sm font-medium">{t("tmux.spawnExtraAgent")}</span>
-										<ChevronRightIcon />
-									</button>
-									<HideRowButton id="spawn-agent" />
-								</div>
+							{/* Simplified Mode applies (Settings can turn it off on a phone);
+							    personal hiding does not — the phone has no restore control. */}
+							{isTaskActive && task.worktreePath && !simplified && (
+								<button type="button" data-testid="task-actions-spawn-agent" onClick={() => setSpawnModalOpen(true)} className={SHEET_ROW_CLASS}>
+									<AddAgentIcon className="h-5 w-5 shrink-0 text-success" />
+									<span className="flex-1 text-sm font-medium">{t("tmux.spawnExtraAgent")}</span>
+									<ChevronRightIcon />
+								</button>
 							)}
 
-							{taskUsesWorktree(project, task) && isTaskActive && task.worktreePath && !bugHuntersHidden && (
-								<div className={`${SHEET_ROW_CLASS} !pr-2`}>
-									<button type="button" onClick={() => setBugHuntersOpen(true)} className="flex flex-1 min-w-0 items-center gap-3">
-										<FindBugsIcon className="h-5 w-5 shrink-0 text-danger" />
-										<span className="flex-1 text-sm font-medium">{t("bugHunters.buttonLabel")}</span>
-										<ChevronRightIcon />
-									</button>
-									<HideRowButton id="bug-hunters" />
-								</div>
+							{taskUsesWorktree(project, task) && isTaskActive && task.worktreePath && !simplified && (
+								<button type="button" data-testid="task-actions-bug-hunters" onClick={() => setBugHuntersOpen(true)} className={SHEET_ROW_CLASS}>
+									<FindBugsIcon className="h-5 w-5 shrink-0 text-danger" />
+									<span className="flex-1 text-sm font-medium">{t("bugHunters.buttonLabel")}</span>
+									<ChevronRightIcon />
+								</button>
 							)}
 
 							<TaskExposedPorts task={task} rowClassName={SHEET_ROW_CLASS} />
@@ -1582,6 +1637,23 @@ function TaskInfoPanel({
 									<ArtifactsIcon className="h-5 w-5 shrink-0 text-fg-3" />
 									<span className="flex-1 text-sm font-medium">{t("infoPanel.artifactsLabel")}</span>
 									<span className="text-xs font-semibold text-accent tabular-nums">{artifactEntryCount}</span>
+								</button>
+							)}
+
+							{/* Last in the group: the one row that stops the session. */}
+							{canHibernate && !simplified && (
+								<button
+									type="button"
+									data-testid="task-actions-hibernate"
+									disabled={hibernating}
+									onClick={() => {
+										setActionsSheetOpen(false);
+										void handleHibernate();
+									}}
+									className={`${SHEET_ROW_CLASS} disabled:opacity-50`}
+								>
+									<HibernateIcon className="h-5 w-5 shrink-0 text-warning-strong" />
+									<span className="flex-1 text-sm font-medium">{t("task.hibernate")}</span>
 								</button>
 							)}
 						</div>
@@ -1631,6 +1703,7 @@ function TaskInfoPanel({
 			style={{ height }}
 		>
 			{diffFilesPopover}
+			{completionOwnerMenu}
 			{fileOpenInMenuPortal}
 			{collapsed ? (
 				<div className="flex flex-col h-full px-2 gap-1 justify-center">
@@ -1847,4 +1920,14 @@ function TaskInfoPanel({
 	);
 }
 
-export default TaskInfoPanel;
+/** The inspector plus the task's pending completion offer, which sits right under it. */
+function TaskInfoPanelWithOffer(props: Parameters<typeof TaskInfoPanel>[0]) {
+	return (
+		<>
+			<TaskInfoPanel {...props} />
+			<TaskCompletionStrip task={props.task} project={props.project} />
+		</>
+	);
+}
+
+export default TaskInfoPanelWithOffer;

@@ -367,6 +367,14 @@ describe("task create", () => {
 		expect(stdoutOutput).toContain("New task");
 	});
 
+	it("opts the new task in with --self-completion on", async () => {
+		mockSend.mockResolvedValue(okResp(createdTask));
+
+		await handleTask("create", args([], { project: "proj-001", title: "New task", "self-completion": "on" }), SOCKET, null);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", { projectId: "proj-001", title: "New task", selfCompletion: true });
+	});
+
 	it("auto-detects projectId from context", async () => {
 		mockSend.mockResolvedValue(okResp(createdTask));
 
@@ -727,6 +735,22 @@ describe("task update", () => {
 		});
 	});
 
+	it("accepts --self-completion on as a standalone update", async () => {
+		mockSend.mockResolvedValue(okResp({ task: { ...FAKE_TASK, selfCompletion: true }, titlePreserved: false }));
+
+		await handleTask("update", args(["aaaaaaaa"], { "self-completion": "on" }), SOCKET, null);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", { taskId: "aaaaaaaa", selfCompletion: true });
+	});
+
+	it("rejects an invalid --self-completion value before sending", async () => {
+		await expect(
+			handleTask("update", args(["aaaaaaaa"], { "self-completion": "maybe" }), SOCKET, null),
+		).rejects.toThrow();
+		expect(stderrOutput).toContain("--self-completion must be on or off");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
 	it("sends --type coordinator as a standalone update", async () => {
 		mockSend.mockResolvedValue(okResp({
 			task: { ...FAKE_TASK, taskType: "coordinator" },
@@ -1024,7 +1048,7 @@ describe("task move", () => {
 	});
 
 	// `cancelled` is never a direct move either — it detours through the same
-	// approval dialog as `completed` (covered in its own describe below).
+	// user approval as `completed` (covered in its own describe below).
 	it("does not send a plain task.move for cancelled", async () => {
 		mockSend.mockResolvedValue(okResp({ approved: false }));
 
@@ -1130,6 +1154,33 @@ describe("task move --status completed", () => {
 		expect(stderrOutput).toContain("requires user approval");
 		expect(stdoutOutput).toContain("User approved");
 		expect(stdoutOutput).toContain("moved to Completed");
+	});
+
+	it("sends force with --force and reports the completion without waiting on a dialog", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: true, task: { ...FAKE_TASK, status: "completed" } }));
+
+		await handleTask("move", args(["aaaaaaaa"], { status: "completed", force: "true" }), SOCKET, null);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.requestCompletion", { taskId: "aaaaaaaa", force: true }, { timeoutMs: 2 * 60 * 1000 });
+		expect(stderrOutput).not.toContain("requires user approval");
+		expect(stdoutOutput).toContain("Completed without asking (--force)");
+	});
+
+	it("surfaces the app's refusal when the task never opted in", async () => {
+		mockSend.mockResolvedValue(errResp("This task has not opted in to self-completion"));
+
+		await expect(
+			handleTask("move", args(["aaaaaaaa"], { status: "completed", force: "true" }), SOCKET, null),
+		).rejects.toThrow();
+		expect(stderrOutput).toContain("has not opted in to self-completion");
+	});
+
+	it("rejects --force on any status other than completed", async () => {
+		await expect(
+			handleTask("move", args(["aaaaaaaa"], { status: "cancelled", force: "true" }), SOCKET, null),
+		).rejects.toThrow();
+		expect(stderrOutput).toContain("--force only applies to --status completed");
+		expect(mockSend).not.toHaveBeenCalled();
 	});
 
 	// The task reached Completed another way (board, merged PR) while the dialog

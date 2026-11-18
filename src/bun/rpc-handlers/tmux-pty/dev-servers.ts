@@ -727,8 +727,11 @@ function assertScriptArgs(args: unknown, all: boolean | undefined): asserts args
  *
  * `server` names ONE declared server; `all` starts every one of them. Neither
  * means the default server, exactly as before.
+ *
+ * `focus` is set only by the UI: the pane the user asked for takes focus. A start
+ * from the CLI opens its pane in the background.
  */
-export async function runDevServer(params: { taskId: string; projectId: string; opId?: string; env?: Record<string, string>; args?: string[]; server?: string; all?: boolean }): Promise<DevServerStatus> {
+export async function runDevServer(params: { taskId: string; projectId: string; opId?: string; env?: Record<string, string>; args?: string[]; server?: string; all?: boolean; focus?: boolean }): Promise<DevServerStatus> {
 	// Echo the renderer's correlation id so a click that never reached a handler is
 	// distinguishable from one that did (seq 1407).
 	// Values redacted: an extra env pair can carry a secret and this log is a file.
@@ -744,7 +747,7 @@ export async function runDevServer(params: { taskId: string; projectId: string; 
 		const targets = params.all ? ctx.resolution.servers : [pickServer(ctx, params.server)];
 		await ensureDevServerPorts(ctx);
 		for (const server of targets) {
-			await startOneDevServer(ctx, server, params.env, params.args, params.opId);
+			await startOneDevServer(ctx, server, params.env, params.args, { opId: params.opId, focus: params.focus === true });
 		}
 		refreshBoardDevServer(params.taskId);
 		return buildDevServerStatus(ctx);
@@ -763,7 +766,7 @@ async function startOneDevServer(
 	server: ResolvedDevServer,
 	env: Record<string, string> | undefined,
 	args: string[] | undefined,
-	opId?: string,
+	{ opId, focus = false }: { opId?: string; focus?: boolean } = {},
 ): Promise<void> {
 	const { task, project, native, socket } = ctx;
 	const worktreePath = assertTaskWorkspacePresent(project, task.worktreePath, task);
@@ -872,6 +875,7 @@ async function startOneDevServer(
 			// the terminal however many servers run.
 			placement: anchor.nativeAnchor ? "below" : "right",
 			nativeAnchor: anchor.nativeAnchor,
+			focusNewPane: focus,
 			size: "50%",
 			cwd,
 			env: paneEnv,
@@ -948,6 +952,7 @@ async function startOneDevServer(
 			orientation: anchor.tmuxTarget ? "vertical" : "horizontal",
 			size: "50%",
 			printPaneId: true,
+			focus,
 			env: paneEnv,
 			cwd: worktreePath,
 			command: attachCmd,
@@ -1083,7 +1088,7 @@ const DEV_SERVER_RESTART_DELAY_MS = 250;
  * dev-server restart`) come back on the same configuration instead of quietly
  * dropping to the project defaults. `args` follow the same rule: omitted reuses, `[]` clears.
  */
-export async function restartDevServer(params: { taskId: string; projectId: string; env?: Record<string, string>; args?: string[]; server?: string; all?: boolean }): Promise<DevServerStatus> {
+export async function restartDevServer(params: { taskId: string; projectId: string; env?: Record<string, string>; args?: string[]; server?: string; all?: boolean; focus?: boolean }): Promise<DevServerStatus> {
 	log.info("→ restartDevServer", { ...params, env: params.env ? Object.keys(params.env).sort() : undefined, args: params.args?.length });
 	assertScriptArgs(params.args, params.all);
 	const ctx = await loadDevServerContext(params.projectId, params.taskId);
@@ -1118,7 +1123,7 @@ export async function restartDevServer(params: { taskId: string; projectId: stri
 	await new Promise((resolve) => setTimeout(resolve, DEV_SERVER_RESTART_DELAY_MS));
 	await ensureDevServerPorts(ctx);
 	for (const server of targets) {
-		await startOneDevServer(ctx, server, envs.get(server.name), argsByServer.get(server.name));
+		await startOneDevServer(ctx, server, envs.get(server.name), argsByServer.get(server.name), { focus: params.focus === true });
 	}
 	refreshBoardDevServer(params.taskId);
 	log.info("← restartDevServer done");

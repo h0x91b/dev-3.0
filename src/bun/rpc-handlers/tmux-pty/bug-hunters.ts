@@ -179,6 +179,7 @@ async function spawnSingleBugHunterPane(opts: {
 		nativeAnchor: opts.split.nativeAnchor,
 		tmuxCommand: `bash "${scriptPath}"`,
 		nativeLaunch: generatedScriptLaunch(scriptPath),
+		focus: true,
 	});
 
 	// sessionState.panes is the tmux pane registry — recovery and `handlePaneExited`

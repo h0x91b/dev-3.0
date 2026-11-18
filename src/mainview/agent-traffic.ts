@@ -2,6 +2,7 @@
 
 import { isUserOrigin, type AgentMessageLogPage, type AgentMessageLogRow } from "../shared/agent-message-log";
 import type { AgentPromptDeliveryStatus } from "../shared/agent-prompt-delivery";
+import { DEFAULT_LOG_RETENTION_DAYS } from "../shared/log-retention";
 import { api } from "./rpc";
 
 /**
@@ -110,7 +111,8 @@ export interface TrafficState {
 	rows: AgentMessageLogRow[];
 	/** Oldest day still on disk, `YYYY-MM-DD`, or null when there is no history. */
 	oldestDay: string | null;
-	retentionDays: number;
+	/** Days of history kept; null when everything is kept. */
+	retentionDays: number | null;
 	/** True when the page was cut short and older rows exist on disk. */
 	hasMore: boolean;
 	loading: boolean;
@@ -121,7 +123,7 @@ export interface TrafficState {
 const EMPTY: TrafficState = {
 	rows: [],
 	oldestDay: null,
-	retentionDays: 30,
+	retentionDays: DEFAULT_LOG_RETENTION_DAYS,
 	hasMore: false,
 	loading: false,
 	loaded: false,

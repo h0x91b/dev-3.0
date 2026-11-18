@@ -522,7 +522,7 @@ export class NativeTerminalBackend implements TerminalBackend {
 
 		let paneSpec: PaneLaunchSpec;
 		try {
-			paneSpec = { launch: buildLaunchSpec(spec), outputLogPath: spec.outputLogPath };
+			paneSpec = { launch: buildLaunchSpec(spec), outputLogPath: spec.outputLogPath, background: spec.background };
 		} catch (err) {
 			if (err instanceof TerminalBackendError) throw err;
 			throw backendFailure("splitView", err, { sessionId: id });

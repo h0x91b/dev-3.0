@@ -4,6 +4,7 @@ import type { BranchStatus, Project, Task } from "../../../../shared/types";
 import { I18nProvider } from "../../../i18n";
 import { clearBranchStatusCache } from "../branchStatusCache";
 import { useTaskBranchStatus } from "../useTaskBranchStatus";
+import { toast } from "../../../toast";
 
 const getBranchStatus = vi.fn();
 const refreshTaskPrStatus = vi.fn().mockResolvedValue({ outcome: "updated" });
@@ -134,6 +135,19 @@ describe("useTaskBranchStatus — poll failure", () => {
 		expect(getBranchStatus).toHaveBeenLastCalledWith(expect.objectContaining({ refresh: true }));
 		await waitFor(() => expect(result.current.branchStatus?.ahead).toBe(4));
 		expect(result.current.statusError).toBeNull();
+	});
+
+	it("refreshes quietly: same forced fetch, but a failure only sets the error, never a toast", async () => {
+		getBranchStatus.mockResolvedValue(statusFor(1));
+		const { result } = renderForTask(taskWithId("task-quiet"));
+		await waitFor(() => expect(result.current.branchStatus?.ahead).toBe(1));
+
+		getBranchStatus.mockRejectedValueOnce(new Error("offline"));
+		await act(async () => { await result.current.refreshStatusQuietly(); });
+
+		expect(getBranchStatus).toHaveBeenLastCalledWith(expect.objectContaining({ refresh: true }));
+		expect(result.current.statusError).toContain("offline");
+		expect(toast.error).not.toHaveBeenCalled();
 	});
 
 	it("keeps the error when the retry fails too", async () => {

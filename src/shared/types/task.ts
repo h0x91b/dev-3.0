@@ -283,6 +283,8 @@ export interface Task {
 	watched?: boolean;
 	/** When true, merge detection reports the merge without suggesting completion. */
 	manualCompletion?: boolean;
+	/** Opt-in: `task move --status completed --force` completes this task without the approval dialog. */
+	selfCompletion?: boolean;
 	/** Persisted agent session state for recovery after tmux/app crash. */
 	sessionState?: TaskSessionState | null;
 	/**
@@ -547,6 +549,17 @@ export const TERMINAL_STATUSES: readonly TaskStatus[] = ["completed", "cancelled
 /** An Operations task whose work dir is a worktree of its attached repo. */
 export function isOpsWorktreeTask(task: Pick<Task, "opsWorktree" | "attachedRepo">): boolean {
 	return task.opsWorktree === true && !!task.attachedRepo;
+}
+
+/**
+ * An Operations task whose attached repo lives strictly inside its own managed folder, which is
+ * deleted with the task. The folder itself being the repo does not count: closing keeps it.
+ * A user-chosen folder (`opsWorkDir`) is never deleted.
+ */
+export function isAttachedRepoInTaskFolder(task: Pick<Task, "opsWorktree" | "attachedRepo" | "worktreePath" | "opsWorkDir">): boolean {
+	const { attachedRepo, worktreePath } = task;
+	if (!attachedRepo || !worktreePath || task.opsWorktree || task.opsWorkDir) return false;
+	return attachedRepo.startsWith(`${worktreePath}/`);
 }
 
 /**

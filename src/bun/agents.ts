@@ -29,7 +29,7 @@ import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from
 import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
 import { ensureAgentSystemPromptFile } from "./agent-system-prompt-file";
 import { leanProtocolReference, leanSkillBodyFor, skillBodyFor, withSharedFolderNotice, type SkillFamily } from "../shared/agent-skill-content";
-import { CLAUDE_ENV_AUTH_KEYS, claudeAccountDir, claudeAccountRegistered, claudeAccountSignedIntoDir, effectiveAccountId, getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveAgentDirSessionEnv, getActiveCodexSessionEnv, listClaudeAccountDirs, isLinkedClaudeSlot } from "./agent-accounts";
+import { claudeAccountDir, claudeAccountRegistered, claudeAccountSignedIntoDir, effectiveAccountId, getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveAgentDirSessionEnv, getActiveCodexSessionEnv, isClaudeBackendKey, listClaudeAccountDirs, isLinkedClaudeSlot } from "./agent-accounts";
 import { ENV_UNSET, claudeModelFamily, isAutoAccountId, isRoutableAccountKind, type AgentAccountKind } from "../shared/agent-accounts";
 import { isAutoAccountDefault, pickAutoAccount, type AutoAccountPick, type AutoRoutingContext } from "./account-router";
 import { hasOmpFlag } from "../shared/agent-adapters/omp-flags";
@@ -956,13 +956,6 @@ async function applyClaudeAccountEnv(
 	for (const [key, value] of Object.entries(accountEnv)) {
 		if (!(key in extraEnv)) extraEnv[key] = value;
 	}
-}
-
-/** Project env that picks Claude's backend, its credentials or its model ids. A named login
- *  runs on none of it: a project-wide Bedrock switch, API key or base URL would override it. */
-function isClaudeBackendKey(key: string): boolean {
-	return (CLAUDE_ENV_AUTH_KEYS as readonly string[]).includes(key)
-		|| key === "ANTHROPIC_MODEL" || key === "ANTHROPIC_SMALL_FAST_MODEL" || key.startsWith("ANTHROPIC_DEFAULT_");
 }
 
 /** Unset the project's backend env under a picked login, unless the agent itself set the key. */

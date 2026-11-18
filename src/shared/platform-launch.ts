@@ -128,6 +128,10 @@ export interface LaunchDialect {
 	exitWith(varName: string): string;
 	/** Store the previous exit code into `varName`. */
 	captureExitCode(varName: string): string;
+	/** Remember the tty settings before a full-screen program takes the terminal over. */
+	saveTerminalState(): string[];
+	/** Undo what a killed full-screen program left on the terminal: tty settings and escape modes. */
+	restoreTerminalState(): string[];
 	/** Reference `varName` as a `print` argument expression. */
 	exitCodeArg(varName: string): string;
 	/** `if <varName> != 0 { fail } else { ok }`; `ok` empty omits the else arm. */
@@ -257,6 +261,33 @@ function describeArgv(argv: string[], quote: (value: string) => string): string 
 	return argv.map((word) => (/^[A-Za-z0-9._/\\:@=+-]+$/.test(word) ? word : quote(word))).join(" ");
 }
 
+/**
+ * What follows ESC in the sequences that undo a killed TUI's terminal modes. `?1049h` then
+ * `?1049l` lands on the main screen with the right cursor whether or not the TUI was in the
+ * alternate screen; the kitty pop runs on each screen because each keeps its own stack.
+ */
+const TERMINAL_RESET_SEQUENCES = [
+	"[?1000l",
+	"[?1002l",
+	"[?1003l",
+	"[?1005l",
+	"[?1006l",
+	"[?1015l",
+	"[?2004l",
+	"[?1004l",
+	"[<99u",
+	"[>4;0m",
+	"[?1l",
+	">",
+	"[?1049h",
+	"[<99u",
+	"[?1049l",
+	"[<99u",
+	"[0m",
+	"[0 q",
+	"[?25h",
+];
+
 const posixDialect: LaunchDialect = {
 	id: "posix-shell",
 	scriptExtension: ".sh",
@@ -287,6 +318,11 @@ const posixDialect: LaunchDialect = {
 	writeExitCodeFile: (varName, filePath) => `printf '%s' "$${varName}" > ${posixShellQuote(filePath)}`,
 	exitWith: (varName) => `exit $${varName}`,
 	captureExitCode: (varName) => `${varName}=$?`,
+	saveTerminalState: () => ["__TTY=$(stty -g 2>/dev/null)"],
+	restoreTerminalState: () => [
+		'if [ -n "$__TTY" ]; then stty "$__TTY" 2>/dev/null; fi',
+		`printf '${TERMINAL_RESET_SEQUENCES.map((seq) => `\\033${seq}`).join("")}'`,
+	],
 	exitCodeArg: (varName) => `"$${varName}"`,
 	branchOnFailure: (varName, arms) => [
 		`if [ $${varName} -ne 0 ]; then`,
@@ -476,6 +512,10 @@ const windowsDialect: LaunchDialect = {
 	exitWith: (varName) => `exit $${varName}`,
 	captureExitCode: (varName) =>
 		`$${varName} = if ($null -eq $LASTEXITCODE) { if ($?) { 0 } else { 1 } } else { $LASTEXITCODE }`,
+	saveTerminalState: () => [],
+	restoreTerminalState: () => [
+		`Write-Host -NoNewline "${TERMINAL_RESET_SEQUENCES.map((seq) => `$([char]27)${seq}`).join("")}"`,
+	],
 	exitCodeArg: (varName) => `$${varName}`,
 	branchOnFailure: (varName, arms) => [
 		`if ($${varName} -ne 0) {`,

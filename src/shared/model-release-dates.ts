@@ -25,6 +25,8 @@ export const MODEL_RELEASE_DATES: Record<string, string> = {
 	"claude-opus-4-8[1m]": "2026-05-29",
 	"claude-opus-4-7[1m]": "2026-05-29",
 	// Codex
+	"gpt-6.2-astra": "2026-11-17",
+	"gpt-6.2-sol": "2026-11-17",
 	"gpt-6.1-sol": "2026-09-29",
 	"gpt-6-sol": "2026-09-22",
 	"gpt-6-luna": "2026-09-22",

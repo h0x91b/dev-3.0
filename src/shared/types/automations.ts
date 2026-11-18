@@ -42,6 +42,8 @@ export interface Automation {
 	configId: string | null;
 	enabled: boolean;
 	catchUp: AutomationCatchUpPolicy;
+	/** Stamped onto every task this automation creates: it may complete itself with `--force`. */
+	selfCompletion?: boolean;
 	createdAt: string;
 	updatedAt: string;
 	/**
@@ -67,4 +69,5 @@ export interface AutomationDraft {
 	configId?: string | null;
 	enabled?: boolean;
 	catchUp?: AutomationCatchUpPolicy;
+	selfCompletion?: boolean;
 }

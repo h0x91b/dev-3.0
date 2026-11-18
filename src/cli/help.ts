@@ -9,6 +9,9 @@
 
 import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES, MAX_SCHEDULED_MESSAGE_LENGTH, MAX_SHARED_MEDIA_BYTES, formatMediaCap } from "../shared/types";
 import { MAX_MESSAGE_SUBJECT_LENGTH, MESSAGE_SUBJECT_WORD_GUIDANCE } from "../shared/agent-message-subject";
+import type { CliCommandSpec } from "../shared/codex-exec-policy";
+import { PANE_RUN_VERB } from "../bun/pane-run-store";
+import { DEV_SERVER_LOG_SINK_VERB } from "../shared/dev-server-log";
 import { CLI_EXIT_CODE_HIBERNATE_DECLINED, CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_PANE_NO_ROOM, CLI_EXIT_CODE_RESUME_ALREADY_RUNNING, CLI_EXIT_CODE_RESUME_UNAVAILABLE, CLI_EXIT_CODE_TASK_NOT_HIBERNATED } from "../shared/cli-exit-codes";
 
 /** One subcommand of a command group (e.g. `task create`). */
@@ -173,10 +176,12 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "create",
-				usage: 'dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--worktree] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] [--depends-on <id>[,<id>...]] [--start-after <id> [--until completed|merged] [--agent <id> [--config <id>]]] | dev3 task create --scratch --run [--agent <id> [--config <id>]]',
+				usage: 'dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--worktree] [--self-completion on] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] [--depends-on <id>[,<id>...]] [--start-after <id> [--until completed|merged] [--agent <id> [--config <id>]]] | dev3 task create --scratch --run [--agent <id> [--config <id>]]',
 				summary: "Create a task in To Do, or ask the user to start a scratch peer agent.",
 				details: [
 					"--title <text>        Task title (required).",
+					"--self-completion on  Opt the new task in to completing itself without the approval",
+					"                      dialog (`task move --status completed --force`). Off unless given.",
 					"--description <text>  Longer description (optional); use - to read it from stdin.",
 					"Positional content (or @file) becomes the description; its first line",
 					"is used as the title when --title is omitted.",
@@ -232,7 +237,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "update",
-				usage: 'dev3 task update [<id>] [--title "..."] [--description "..." | --description -] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] [--depends-on <id>[,<id>...]] [--no-depends-on [<id>[,<id>...]]] [--start-after <id> [--until completed|merged] [--agent <id> [--config <id>]] | --no-start-after]',
+				usage: 'dev3 task update [<id>] [--title "..."] [--description "..." | --description -] [--priority P0..P4] [--manual-completion on|off] [--self-completion on|off] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] [--depends-on <id>[,<id>...]] [--no-depends-on [<id>[,<id>...]]] [--start-after <id> [--until completed|merged] [--agent <id> [--config <id>]] | --no-start-after]',
 				summary: "Update a task's title, description, priority, completion policy, type, epic, dependencies, or start-after condition.",
 				details: [
 					"--title <text>        New title (cannot be empty).",
@@ -242,6 +247,9 @@ const COMMANDS: CommandHelp[] = [
 					"--priority <P0..P4>   Set importance (P0 highest … P4 lowest) of this task only; its variants keep theirs.",
 					"                      Only set priority when the user asks — never on your own initiative.",
 					"--manual-completion on|off  Control whether merge detection suggests completing this task.",
+					"--self-completion on|off    Opt the task in to `task move --status completed --force`, which",
+					"                      completes it without asking the user. Granted by the user or by the",
+					"                      task that created this one; a task cannot opt ITSELF in.",
 					"--type coordinator|pr-review|board-cleanup|standard  Set the task's type, or clear it with standard.",
 					"                      Rewrites the description's role preamble and tells a running agent,",
 					"                      so the badge never claims a role the agent was not given.",
@@ -265,7 +273,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "move",
-				usage: "dev3 task move [<id>] --status <status> [--agent <id> [--config <id>]] [--as-sender <id>] [--reason <text>]",
+				usage: "dev3 task move [<id>] --status <status> [--force] [--agent <id> [--config <id>]] [--as-sender <id>] [--reason <text>]",
 				summary: "Change a task's status / column.",
 				details: [
 					"--status <status>        Target status or custom column id (required).",
@@ -275,6 +283,10 @@ const COMMANDS: CommandHelp[] = [
 					"                         running, instead of exit 2. For generated hooks.",
 					"Built-in: todo, in-progress, user-questions, review-by-ai, review-by-user.",
 					'"completed" and "cancelled" ask the user for approval (exit 6 / 22 if declined).',
+					"--force                  With --status completed only: complete NOW, asking nobody.",
+					"                         Refused unless the user, the task's automation or the task that",
+					"                         created it granted self-completion. Without the grant, drop",
+					"                         --force and ask. The worktree goes at once, unsaved work included.",
 					'"todo" on a running task (or one still owning a worktree) is a RESET: the agent',
 					"is stopped and the worktree and its dev3 branch deleted, only after the user",
 					"approves it in the app (exit 27 if not). On a clean task it is a plain move.",
@@ -656,6 +668,8 @@ const COMMANDS: CommandHelp[] = [
 					"--timezone     IANA name (default: this machine's timezone).",
 					"--agent <id>   Agent to launch (default: project default agent).",
 					"--catch-up     skip | runOnce — what to do with runs missed while the app was offline (default skip).",
+					"--self-completion on|off  Let each task it creates complete itself with",
+					"               `dev3 task move --status completed --force`, no approval dialog (default off).",
 					"--template     Pre-fill from a built-in template (see: dev3 automations templates).",
 					"--disabled     Create paused.",
 					"--prompt <text>  Use @file for a file or - to read the prompt from stdin.",
@@ -663,7 +677,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "update",
-				usage: "dev3 automations update <id> [--name ...] [--prompt ... | --prompt -] [--rrule ...] [--timezone ...] [--enable|--disable]",
+				usage: "dev3 automations update <id> [--name ...] [--prompt ... | --prompt -] [--rrule ...] [--timezone ...] [--enable|--disable] [--self-completion on|off]",
 				summary: "Update fields / pause / resume.",
 				details: ["--prompt <text>  Use @file for a file or - to read the prompt from stdin."],
 			},
@@ -1460,6 +1474,25 @@ const COMMAND_INDEX: Map<string, CommandHelp> = new Map(COMMANDS.map((c) => [c.n
 // its help must resolve too — otherwise the hint and the command disagree.
 COMMAND_INDEX.set("project", COMMAND_INDEX.get("projects") as CommandHelp);
 COMMAND_INDEX.set("space", COMMAND_INDEX.get("spaces") as CommandHelp);
+
+/**
+ * Top-level words main.ts dispatches that have no help entry: internal runners,
+ * hook entry points, the `local` alias and the commands that own their help.
+ * `cli-command-specs.test.ts` fails when main.ts grows a command missing from both.
+ */
+const UNLISTED_COMMANDS = [
+	"live", "show-image", "epics", "hook", "statusline", "local", "remote", "gui", "update",
+	PANE_RUN_VERB, DEV_SERVER_LOG_SINK_VERB,
+];
+
+/** Every top-level command with its subcommands, aliases included. */
+export function cliCommandSpecs(): CliCommandSpec[] {
+	const specs: CliCommandSpec[] = [...COMMAND_INDEX].map(([name, cmd]) => ({ name, subcommands: cmd.subcommands.map((s) => s.name) }));
+	for (const name of UNLISTED_COMMANDS) {
+		if (!COMMAND_INDEX.has(name)) specs.push({ name, subcommands: [] });
+	}
+	return specs;
+}
 
 /** Whether the registry knows how to render help for this command. */
 export function hasCommandHelp(command: string): boolean {

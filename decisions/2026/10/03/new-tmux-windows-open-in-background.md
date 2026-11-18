@@ -1,3 +1,5 @@
+> Extended on 2026-11-17 by `decisions/2026/11/17/auto-opened-panes-open-in-background.md`: splits follow the same background rule.
+
 # New tmux windows open in the background; only explicit user actions switch
 
 ## Context

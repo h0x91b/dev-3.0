@@ -140,10 +140,14 @@ setw -g automatic-rename on
 set -g renumber-windows on
 
 # Intuitive splits (open in same directory; fall back to the session's
-# start dir — the task worktree — when pane_current_path is unreadable)
-bind | split-window -h -c "${PANE_CWD_FORMAT}"
-bind \\ split-window -h -c "${PANE_CWD_FORMAT}"
-bind - split-window -v -c "${PANE_CWD_FORMAT}"
+# start dir — the task worktree — when pane_current_path is unreadable).
+# tmux expands aliases when bind runs, before the aliases below exist on a
+# fresh server, so -d is explicit and the select-pane focuses the new pane.
+bind | split-window -d -h -c "${PANE_CWD_FORMAT}" \; select-pane -R
+bind \\ split-window -d -h -c "${PANE_CWD_FORMAT}" \; select-pane -R
+bind - split-window -d -v -c "${PANE_CWD_FORMAT}" \; select-pane -D
+bind '"' split-window -d -v -c "${PANE_CWD_FORMAT}" \; select-pane -D
+bind % split-window -d -h -c "${PANE_CWD_FORMAT}" \; select-pane -R
 
 # Alt+Shift+arrow pane switching (no prefix required). Plain Alt+arrow is
 # deliberately NOT bound: the shell and agent TUIs use modifier+arrow for word
@@ -284,12 +288,18 @@ set-hook -gu window-unlinked
 set-hook -gu client-attached
 set-hook -gu client-session-changed
 
-# A new window never takes the screen on its own: an agent or a script opening
-# one must not hide the agent. Explicit user actions switch on purpose — the app
-# selects the window it created, and ⌃B c selects the new last window itself.
-# Decision: decisions/2026/10/03/new-tmux-windows-open-in-background.md
+# A new window or pane never takes focus on its own: an agent or a script opening
+# one must not pull the user off the agent. Explicit user actions focus on purpose —
+# the app selects what it created, and ⌃B c / | \\ - select the new window or pane.
+# Decision: decisions/2026/11/17/auto-opened-panes-open-in-background.md
 set -s command-alias[90] 'new-window=new-window -d'
 set -s command-alias[91] 'neww=new-window -d'
+set -s command-alias[92] 'split-window=split-window -d'
+set -s command-alias[93] 'splitw=split-window -d'
+# tmux's built-in split-pane/splitp aliases (indexes 0 and 1) expand to a plain split-window, and
+# aliases do not recurse, so they would bypass the -d above; override them.
+set -s command-alias[0] 'split-pane=split-window -d'
+set -s command-alias[1] 'splitp=split-window -d'
 bind c new-window -c "${PANE_CWD_FORMAT}" \\; select-window -t "{end}"
 `;
 
