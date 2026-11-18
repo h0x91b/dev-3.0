@@ -6167,3 +6167,100 @@ describe("message.send — the sender's role travels to the envelope", () => {
 		expect(sendMessageImmediately).not.toHaveBeenCalled();
 	});
 });
+
+
+describe("Claude approval ownership", () => {
+	let stored: Task;
+	let project: Project;
+
+	beforeEach(() => {
+		project = makeProject();
+		stored = makeTask({ id: crypto.randomUUID(), status: "in-progress" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockImplementation(async () => [stored]);
+		const move = vi.mocked(moveTask).getMockImplementation()!;
+		vi.mocked(moveTask).mockImplementation(async params => {
+			stored = await move(params);
+			return stored;
+		});
+	});
+
+	async function hook(event: string, agentId?: string, sessionId = "session-1") {
+		const response = await handleRequest(makeRequest(event === "PostToolUse" ? "task.claudePostToolUse" : "task.claudeToolStatus", {
+			taskId: stored.id, projectId: project.id, event, agentId, sessionId,
+		}));
+		expect(response.ok).toBe(true);
+		return stored.status;
+	}
+
+	it("keeps a parent's approval wait while other agents start and finish tools", async () => {
+		await hook("PermissionRequest");
+		await hook("PreToolUse", "reader");
+		expect(await hook("PostToolUse", "reader")).toBe("user-questions");
+		expect(await hook("PostToolUse")).toBe("in-progress");
+	});
+
+	it("lets a background agent clear its own approval without waiting for the parent", async () => {
+		await hook("PermissionRequest", "reader");
+		await hook("PostToolUse", "unrelated");
+		expect(stored.status).toBe("user-questions");
+		expect(await hook("PreToolUse", "reader")).toBe("in-progress");
+	});
+
+	it.each(["PostToolUseFailure", "SubagentStop", "TeammateIdle"])("clears an owner's wait after %s", async event => {
+		await hook("PermissionRequest", "reader");
+		expect(await hook(event, "reader")).toBe("in-progress");
+	});
+
+	it("keeps independent waits visible until every owner resumes", async () => {
+		await hook("PermissionRequest");
+		await hook("PermissionRequest", "reader");
+		expect(await hook("PostToolUse", "reader")).toBe("user-questions");
+		expect(await hook("PostToolUse")).toBe("in-progress");
+	});
+
+	it("restores AI review after a background approval", async () => {
+		stored = { ...stored, status: "review-by-ai" };
+		await hook("PermissionRequest", "reviewer");
+		expect(await hook("PostToolUse", "reviewer")).toBe("review-by-ai");
+	});
+
+	it("reports continued teammate work after the parent has stopped", async () => {
+		stored = { ...stored, status: "review-by-user" };
+		expect(await hook("PreToolUse", "teammate")).toBe("in-progress");
+	});
+
+	it.each(["SubagentStop", "TeammateIdle"])("returns to the parent's stopped lane on the final %s", async event => {
+		stored = { ...stored, status: "review-by-user" };
+		await hook("PreToolUse", "first");
+		await hook("PostToolUse", "second");
+		expect(await hook(event, "first")).toBe("in-progress");
+		expect(await hook(event, "second")).toBe("review-by-user");
+	});
+
+	it("clears a cancelled headless session's approval without a pane", async () => {
+		await hook("PermissionRequest", undefined, "sdk");
+		const response = await handleRequest(makeRequest("task.claudeTurnEnded", {
+			taskId: stored.id, projectId: project.id, sessionId: "sdk", sessionEnded: true,
+		}));
+		expect(response.ok).toBe(true);
+		expect(stored.status).toBe("in-progress");
+	});
+
+	it("does not clear unowned questions with background activity after an app restart", async () => {
+		stored = { ...stored, status: "user-questions" };
+		expect(await hook("PostToolUse", "reader")).toBe("user-questions");
+	});
+
+	it("scopes an agent's identity to its conversation", async () => {
+		await hook("PermissionRequest", "reader", "first");
+		expect(await hook("PostToolUse", "reader", "second")).toBe("user-questions");
+		expect(await hook("PostToolUse", "reader", "first")).toBe("in-progress");
+	});
+
+	it("documents that parallel tools in one parent share approval ownership", async () => {
+		await hook("PermissionRequest");
+		// PermissionRequest provides no tool_use_id: a sibling in the same owner can clear this wait.
+		expect(await hook("PostToolUse")).toBe("in-progress");
+	});
+});

@@ -1,7 +1,7 @@
 /**
  * Claude Code's `PostToolUse` adapter: one request moves the status and drains
  * the pane's held messages. A subagent's tool call (payload carries `agent_id`)
- * must not change the parent task status.
+ * must only clear approval waits that it owns.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -62,6 +62,7 @@ describe("handleClaudePostTool", () => {
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.claudePostToolUse", {
 			taskId: "task-1",
 			projectId: "project-1",
+			event: "PostToolUse", sessionId: "session-1",
 			paneId: "%3",
 		});
 		// No custom timeout: the default the plain `task move` hook waited on.
@@ -87,10 +88,12 @@ describe("handleClaudePostTool", () => {
 		expect(stderr).toBe("");
 	});
 
-	it("keeps the parent approval wait intact when a subagent or teammate finishes a tool", async () => {
+	it("reports background completion without claiming the parent mailbox", async () => {
 		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
 		await handleClaudePostTool(JSON.stringify({ ...PAYLOAD, agent_id: "agent-7", agent_type: "Explore" }), SOCKET, CONTEXT, PANE_ENV);
-		expect(mockSend).not.toHaveBeenCalled();
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.claudePostToolUse", {
+			taskId: "task-1", projectId: "project-1", event: "PostToolUse", sessionId: "session-1", agentId: "agent-7",
+		});
 	});
 
 	it("never asks for mail from a `claude -p` run inside the pane: it is not the pane's conversation", async () => {
@@ -100,10 +103,9 @@ describe("handleClaudePostTool", () => {
 		expect(params).not.toHaveProperty("paneId");
 	});
 
-	it("still moves the status when the payload is not readable, without a pane", async () => {
-		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
-		await handleClaudePostTool("not json", SOCKET, CONTEXT, PANE_ENV);
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.claudePostToolUse", { taskId: "task-1", projectId: "project-1" });
+	it.each([' {"hook_event_name":"PostToolUse","agent_id":42}', "not json", "null", "[]", "{}", '{"hook_event_name":"PreToolUse"}'])("does not move status or drain mail for malformed or unrelated payload %s", async raw => {
+		await handleClaudePostTool(raw, SOCKET, CONTEXT, PANE_ENV);
+		expect(mockSend).not.toHaveBeenCalled();
 	});
 
 	it("shows the user a notice line, since hook context never appears in the pane", async () => {

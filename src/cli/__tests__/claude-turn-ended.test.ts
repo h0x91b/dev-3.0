@@ -11,12 +11,20 @@ describe("Claude normal turn/exit observation", () => {
 		await handleClaudeTurnEnded(JSON.stringify({ hook_event_name, session_id: "session" }), context.socketPath, context, { DEV3_PANE_ID: "pane-1" });
 		expect(sendRequest).toHaveBeenCalledWith(context.socketPath, "task.claudeTurnEnded", {
 			taskId: "task", projectId: "project", sessionId: "session", paneId: "pane-1",
+			...(hook_event_name === "SessionEnd" ? { sessionEnded: true } : {}),
 		}, expect.anything());
 	});
 	it("ignores nested SDK sessions even when they inherit a tmux pane", async () => {
 		await handleClaudeTurnEnded('{"hook_event_name":"Stop","session_id":"session"}', context.socketPath, context, { TMUX_PANE: "%1", CLAUDE_CODE_ENTRYPOINT: "sdk-cli" });
 		expect(sendRequest).not.toHaveBeenCalled();
 	});
+	it("cleans up a nested SDK session on exit without changing pane observation", async () => {
+		await handleClaudeTurnEnded('{"hook_event_name":"SessionEnd","session_id":"sdk"}', context.socketPath, context, { TMUX_PANE: "%1", CLAUDE_CODE_ENTRYPOINT: "sdk-cli" });
+		expect(sendRequest).toHaveBeenCalledWith(context.socketPath, "task.claudeTurnEnded", {
+			taskId: "task", projectId: "project", sessionId: "sdk", sessionEnded: true,
+		}, expect.anything());
+	});
+
 	it("does not block Stop if the app is offline", async () => {
 		vi.mocked(sendRequest).mockRejectedValue(new Error("offline"));
 		await expect(handleClaudeTurnEnded('{"hook_event_name":"Stop","session_id":"session"}', context.socketPath, context, { TMUX_PANE: "%1" })).resolves.toBeUndefined();

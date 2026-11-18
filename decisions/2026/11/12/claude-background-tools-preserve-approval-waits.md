@@ -1,3 +1,5 @@
+Superseded on 2026-11-18 by `decisions/2026/11/18/track-claude-approval-owners.md`: track waiting owners instead of ignoring background tools, and tolerate older offline CLIs.
+
 # Claude background tools preserve parent approval waits
 
 ## Context

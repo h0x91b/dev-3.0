@@ -7,8 +7,8 @@ import {
 	pendingAgentMessageHoldCount,
 } from "../agent-message-hold";
 import { log, type Handler } from "./shared";
-import { taskHandlers } from "./task-commands";
 import { resolveTaskFromParams } from "./task-resolution";
+import { applyClaudeHookStatus } from "./claude-hook-status";
 
 /** What the Claude PostToolUse hook gets back: held messages to inject, and why the move failed if it did. */
 export interface ClaudePostToolUseResult {
@@ -27,28 +27,23 @@ function movedTaskId(result: unknown): string | null {
 }
 
 export const hookMailboxHandlers: Record<string, Handler> = {
+	"task.claudeToolStatus": applyClaudeHookStatus,
 	/**
 	 * Claude's PostToolUse in one round trip: the same status move the hook always
-	 * made, then the hook mailbox. Subagents and teammates are filtered by the CLI before sending this request.
+	 * made, then the hook mailbox. Background agents report status but never take the parent's mail.
 	 */
 	"task.claudePostToolUse": async (params, ctx) => {
 		const out: ClaudePostToolUseResult = {};
 		let taskId: string | null = null;
 		try {
-			taskId = movedTaskId(await taskHandlers["task.move"]({
-				taskId: params.taskId,
-				...(params.projectId ? { projectId: params.projectId } : {}),
-				newStatus: "in-progress",
-				ifStatusNot: "review-by-ai",
-				sourceTaskId: params.taskId,
-			}, ctx));
+			taskId = movedTaskId(await applyClaudeHookStatus({ ...params, event: "PostToolUse" }, ctx));
 		} catch (err) {
 			out.moveError = err instanceof Error ? err.message : String(err);
 			log.warn("Claude PostToolUse status move failed", { taskId: String(params.taskId).slice(0, 8), error: out.moveError });
 		}
 		const paneId = typeof params.paneId === "string" ? params.paneId : "";
 		// Nothing held anywhere is the common case, and it costs no task lookup.
-		if (!paneId || pendingAgentMessageHoldCount() === 0) return out;
+		if (params.agentId || !paneId || pendingAgentMessageHoldCount() === 0) return out;
 		try {
 			taskId ??= (await resolveTaskFromParams(params)).task.id;
 			const claim = await claimHeldAgentMessagesForHook(agentMessageHoldKey("tmux", taskId, paneId), AGENT_MESSAGE_HOOK_MAX_CHARS);

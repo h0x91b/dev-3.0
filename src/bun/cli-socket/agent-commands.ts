@@ -18,6 +18,8 @@ import { rememberTaskSession } from "../task-sessions";
 import { claimFileForTask } from "../file-leases";
 import { codexTurnWatches, type CodexTurnFailure } from "../codex-turn-watch";
 import { approvalReasonFromParams } from "../../shared/approval-reason";
+import { applyClaudeHookStatus } from "./claude-hook-status";
+import { claudeApprovals } from "../claude-approval-state";
 
 const codexQuestions = new CodexQuestionState();
 
@@ -99,6 +101,16 @@ function getApprovalResumeStatus(
 export const agentHandlers: Record<string, Handler> = {
 	"task.claudeTurnEnded": (params) => codexQuestions.run(String(params.taskId), async () => {
 		const { task } = await resolveTaskFromParams(params);
+		if (params.sessionEnded === true && typeof params.sessionId === "string") {
+			const sessionId = params.sessionId;
+			await claudeApprovals.run(task.id, async () => {
+				const target = claudeApprovals.endSession(task.id, sessionId);
+				// A nested SDK session can finish while the pane's own agent is still working.
+				if (target && !params.paneId) {
+					await moveTask({ projectId: task.projectId, taskId: task.id, newStatus: target, ifStatus: "user-questions" });
+				}
+			});
+		}
 		if (typeof params.paneId === "string" && typeof params.sessionId === "string") {
 			claudeSessionWatches.endTurn(task.id, params.paneId, params.sessionId);
 			noteAgentSessionActive(task.id, params.sessionId, params.paneId);
@@ -340,10 +352,7 @@ export const agentHandlers: Record<string, Handler> = {
 			}
 		}
 		if (harness === "claude") {
-			const target = getAgentHookTargetStatus("UserPromptSubmit", task.status, getPrimaryStopTarget(project.autoReviewEnabled, task.taskType));
-			if (target && (task.status !== target || task.customColumnId != null)) {
-				await moveTask({ projectId: project.id, taskId: task.id, newStatus: target, ifStatus: task.status });
-			}
+			await applyClaudeHookStatus({ ...params, event: "UserPromptSubmit" });
 		}
 		const outcome = recordTerminalPromptSubmission({
 			project,

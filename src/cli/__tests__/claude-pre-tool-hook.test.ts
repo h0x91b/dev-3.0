@@ -16,16 +16,17 @@ beforeEach(() => {
 });
 
 describe("handleClaudePreTool", () => {
-	it("preserves a parent approval wait when a background subagent starts a tool", async () => {
+	it("reports the background owner so only its own approval can resume", async () => {
 		await handleClaudePreTool(JSON.stringify({ ...payload, agent_id: "agent-7" }), socket, context);
-		expect(send).not.toHaveBeenCalled();
+		expect(send).toHaveBeenCalledWith(socket, "task.claudeToolStatus", {
+			taskId: "task-1", projectId: "project-1", event: "PreToolUse", agentId: "agent-7",
+		});
 	});
 
 	it("resumes the main conversation while preserving AI review", async () => {
 		await handleClaudePreTool(JSON.stringify(payload), socket, context);
-		expect(send).toHaveBeenCalledWith(socket, "task.move", {
-			taskId: "task-1", projectId: "project-1", newStatus: "in-progress",
-			ifStatusNot: "review-by-ai", sourceTaskId: "task-1",
+		expect(send).toHaveBeenCalledWith(socket, "task.claudeToolStatus", {
+			taskId: "task-1", projectId: "project-1", event: "PreToolUse",
 		});
 	});
 
@@ -54,6 +55,18 @@ describe("handleClaudePreTool", () => {
 			await expect(handleClaudePreTool(raw, socket, context)).resolves.toBeUndefined();
 			expect(send).not.toHaveBeenCalled();
 		} finally { stderr.mockRestore(); }
+	});
+
+	it.each(["PermissionRequest", "Notification"])("reports %s with the waiting owner's identity", async event => {
+		await handleClaudePreTool(JSON.stringify({ hook_event_name: event, session_id: "s", agent_id: "reader", notification_type: "permission_prompt" }), socket, context);
+		expect(send).toHaveBeenCalledWith(socket, "task.claudeToolStatus", {
+			taskId: "task-1", projectId: "project-1", event, sessionId: "s", agentId: "reader",
+		});
+	});
+
+	it("ignores idle notifications", async () => {
+		await handleClaudePreTool('{"hook_event_name":"Notification","notification_type":"idle_prompt"}', socket, context);
+		expect(send).not.toHaveBeenCalled();
 	});
 
 	it("does nothing without a task or socket", async () => {

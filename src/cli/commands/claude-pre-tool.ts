@@ -1,24 +1,21 @@
 import type { CliContext } from "../context";
 import { sendRequest } from "../socket-client";
+import { parseClaudeToolStatus } from "../../shared/claude-status-hook";
 
-/** Background tool calls must not overwrite the parent conversation's approval wait. */
+/** Report activity and permission waits with their conversation and background owner. */
 export async function handleClaudePreTool(
 	rawInput: string,
 	socketPath: string | null,
 	context: CliContext | null,
 ): Promise<void> {
 	if (!socketPath || !context?.taskId) return;
+	const status = parseClaudeToolStatus(rawInput);
+	if (!status || status.event === "PostToolUse") return;
 	try {
-		const payload = JSON.parse(rawInput) as Record<string, unknown>;
-		if (!payload || Array.isArray(payload)) return;
-		if (payload.hook_event_name !== "PreToolUse") return;
-		if (typeof payload.agent_id === "string" && payload.agent_id) return;
-		const response = await sendRequest(socketPath, "task.move", {
+		const response = await sendRequest(socketPath, "task.claudeToolStatus", {
 			taskId: context.taskId,
 			...(context.projectId ? { projectId: context.projectId } : {}),
-			newStatus: "in-progress",
-			ifStatusNot: "review-by-ai",
-			sourceTaskId: context.taskId,
+			...status,
 		});
 		if (!response.ok) process.stderr.write(`dev3 Claude tool hook: ${response.error || "status update failed"}\n`);
 	} catch (error) {

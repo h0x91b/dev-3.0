@@ -541,10 +541,9 @@ function buildUnguardedClaudeHooks(
 ): HookMap {
 	const stopTarget: TaskStatus = options?.stopTarget ?? "review-by-user";
 	const dialect = options?.dialect ?? DEFAULT_DIALECT;
-	const move = (status: string, extra?: string) =>
-		withAppOfflineTolerance(buildMoveCommand(status, extra, undefined, dialect), dialect);
 
-	// Tool adapters inspect agent_id so background work cannot overwrite a parent approval wait.
+	// Older installed CLIs may exit 2 before dispatching an unknown hook while offline.
+	const beforeTool = withAppOfflineTolerance(`${dialect.cli} hook claude-pre-tool`, dialect);
 
 	return {
 		SessionStart: [
@@ -567,7 +566,7 @@ function buildUnguardedClaudeHooks(
 			},
 		],
 		PreToolUse: [
-			{ hooks: [{ type: "command", command: `${dialect.cli} hook claude-pre-tool` }] },
+			{ hooks: [{ type: "command", command: beforeTool }] },
 			...(options?.fileLeases
 				? [{
 					matcher: CLAUDE_CLAIM_MATCHER,
@@ -576,14 +575,17 @@ function buildUnguardedClaudeHooks(
 				: []),
 		],
 		PostToolUse: [
-			{ hooks: [{ type: "command", command: `${dialect.cli} ${CLAUDE_POST_TOOL_HOOK_SUBCOMMAND}` }] },
+			{ hooks: [{ type: "command", command: withAppOfflineTolerance(`${dialect.cli} ${CLAUDE_POST_TOOL_HOOK_SUBCOMMAND}`, dialect) }] },
 		],
+		PostToolUseFailure: [{ hooks: [{ type: "command", command: beforeTool }] }],
+		SubagentStop: [{ hooks: [{ type: "command", command: beforeTool }] }],
+		TeammateIdle: [{ hooks: [{ type: "command", command: beforeTool }] }],
 		PermissionRequest: [
-			{ hooks: [{ type: "command", command: move("user-questions") }] },
+			{ hooks: [{ type: "command", command: beforeTool }] },
 		],
 		Notification: [{
 			matcher: "permission_prompt|elicitation_dialog",
-			hooks: [{ type: "command", command: move("user-questions") }],
+			hooks: [{ type: "command", command: beforeTool }],
 		}],
 		Stop: buildStopGroups(stopTarget, dialect),
 		SessionEnd: [{ hooks: [{ type: "command", command: `${dialect.cli} hook claude-turn-ended`, timeout: 5 }] }],
