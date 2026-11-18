@@ -468,11 +468,13 @@ export class NativeMultipaneCoordinator {
 				timeoutMs: spec.timeoutMs,
 				outputLogPath: spec.outputLogPath,
 			});
-			// One publish adds the pane and either focuses it (clearing zoom) or, for a
-			// background pane, leaves the active pane and zoom exactly as they were.
-			this.publish(spec.background
-				? { ...rawTree, activePaneId: this.tree.activePaneId, zoomedPaneId: this.tree.zoomedPaneId }
-				: { ...rawTree, activePaneId: created, zoomedPaneId: null });
+			// One publish adds the pane and clears zoom, as tmux does on a split. A
+			// background pane keeps the active pane; otherwise the new pane is focused.
+			this.publish({
+				...rawTree,
+				activePaneId: spec.background ? this.tree.activePaneId : created,
+				zoomedPaneId: null,
+			});
 			return created;
 		});
 	}

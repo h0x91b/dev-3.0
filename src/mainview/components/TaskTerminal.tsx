@@ -334,8 +334,8 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			});
 			// A pane that is BOTH brand new and the server's active one was opened for
 			// the user to work in ("+ Agent"), so this viewer follows it. A pane opened
-			// without a user action (CLI dev server, column agent) hands focus back
-			// on split, so it never matches and never steals the agent's keyboard.
+			// without a user action (CLI dev server, column agent) is never published
+			// as active, so it never matches and never steals the agent's keyboard.
 			const known = knownPaneIdsRef.current;
 			const fresh = state.activePaneId && known.size > 0 && !known.has(state.activePaneId)
 				? state.activePaneId

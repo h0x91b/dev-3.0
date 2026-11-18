@@ -2001,8 +2001,6 @@ async function setupTiledLayout(session: PtySession): Promise<void> {
 		}
 		// tiled layout arranges 4 panes as a 2×2 grid automatically
 		await tmux.selectLayout(s, "tiled", { socket: sock, bestEffort: true });
-		// Return focus to pane 1 (base-index 1 in tmux config)
-		await tmux.selectPane(`${s}:1.1`, { socket: sock, bestEffort: true });
 		log.info("Tiled 2×2 layout created", { tmuxSession: s, sessionType: session.sessionType });
 	} catch (err) {
 		log.error("Failed to create tiled terminal layout", {
