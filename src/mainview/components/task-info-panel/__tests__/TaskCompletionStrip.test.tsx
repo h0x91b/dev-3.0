@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Project, Task, UnsavedWork } from "../../../../shared/types";
 import { I18nProvider } from "../../../i18n";
@@ -8,7 +8,7 @@ vi.mock("../../../toast", () => ({ toast: { error: vi.fn() } }));
 
 import { api } from "../../../rpc";
 import { _resetCompletionOffersForTests, isCompletionStripMounted, offerCompletion, setCompletionOfferStyle, type CompletionOfferAnswer } from "../../../completion-offers";
-import TaskCompletionStrip, { COMPLETION_STRIP_ARM_MS, agentPanePlacement } from "../TaskCompletionStrip";
+import TaskCompletionStrip, { COMPLETION_BAR_HOVER_OPEN_MS, COMPLETION_STRIP_ARM_MS, agentPanePlacement } from "../TaskCompletionStrip";
 import type { TaskPaneInfo, TaskPaneState } from "../../../../shared/task-panes";
 import { clearanceNodes } from "../../../toast-clearance";
 import { PANE_STATE_EVENT } from "../../../pane-state-bus";
@@ -86,28 +86,6 @@ describe("TaskCompletionStrip", () => {
 		await act(async () => release({ ...clean, insertions: 3, deletions: 1 }));
 		expect(screen.getByTestId("task-completion-strip-complete")).toBeEnabled();
 		expect(screen.getByTestId("task-completion-strip-warning")).toHaveTextContent("3");
-	});
-
-	// The bar stays one line high: its warning opens with the note on hover or focus,
-	// and stays open once a click was held back because of it.
-	it("keeps the bar's git warning in its hover panel until it holds a click back", async () => {
-		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" /></I18nProvider>);
-		await offer("merge");
-		await arm();
-		await act(async () => {});
-		vi.mocked(api.request.getUnsavedWork).mockResolvedValue({ ...clean, insertions: 2, deletions: 0 });
-		await act(async () => { fireEvent.click(screen.getByTestId("task-completion-strip-complete")); });
-		expect(screen.getByTestId("task-completion-strip-warning")).not.toHaveClass("hidden");
-	});
-
-	it("puts a known git warning in the bar's hover panel", async () => {
-		vi.mocked(api.request.getUnsavedWork).mockResolvedValue({ ...clean, insertions: 3, deletions: 1 });
-		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" /></I18nProvider>);
-		await offer("agent");
-		await act(async () => {});
-		const warning = screen.getByTestId("task-completion-strip-warning");
-		expect(warning).toHaveClass("hidden", "group-hover:block", "group-focus-within:block");
-		expect(screen.getByTestId("task-completion-strip-note")).toHaveClass("hidden");
 	});
 
 	it("skips the git check for a task without a worktree and says the session ends", async () => {
@@ -229,11 +207,109 @@ describe("TaskCompletionStrip", () => {
 		// On a wide terminal it stays near the prompt instead of the far corner.
 		expect(strip.className).toContain("right-[max(0.75rem,calc(100%-72rem))]");
 		// Opening the note grows the bar upward; its buttons stay on the bottom line.
-		expect(strip.className).toContain("items-end");
+		expect(strip.className).toContain("flex-col");
 		// The note opens on hover or focus, so the bar covers only the bottom rows.
-		expect(screen.getByTestId("task-completion-strip-note").className).toContain("hidden");
+		expect(screen.getByTestId("task-completion-strip-details").className).toContain("hidden");
+		expect(screen.getByTestId("task-completion-strip-details")).toContainElement(screen.getByTestId("task-completion-strip-note"));
 		// A bottom bar never collides with the toast stack at the top.
 		expect(clearanceNodes.has(strip)).toBe(false);
+	});
+
+	it("titles a merge bar with what happened, keeping the question in its label", async () => {
+		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" /></I18nProvider>);
+		await offer("merge");
+		const strip = screen.getByRole("region", { name: "Branch merged. Is this task done?" });
+		expect(strip).toHaveTextContent("Branch merged");
+		expect(screen.getByTitle("Branch merged. Is this task done?")).toHaveTextContent(/^Branch merged$/);
+		// The opt-out and the settings link open with the note; the answers stay on the line.
+		const details = screen.getByTestId("task-completion-strip-details");
+		expect(details).toContainElement(screen.getByRole("button", { name: "I’ll complete it myself" }));
+		expect(details).toContainElement(screen.getByRole("button", { name: "Settings for completion offers after a merge" }));
+		expect(details).not.toContainElement(screen.getByTestId("task-completion-strip-complete"));
+		expect(details).not.toContainElement(screen.getByRole("button", { name: "Keep open" }));
+	});
+
+	it("opens the warning on the first Complete click when work would be lost, and completes on the second", async () => {
+		vi.mocked(api.request.getUnsavedWork).mockResolvedValue({ ...clean, insertions: 3, deletions: 1 });
+		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" /></I18nProvider>);
+		const { answer } = await offer("merge");
+		await arm();
+		const details = screen.getByTestId("task-completion-strip-details");
+		expect(details).toContainElement(screen.getByTestId("task-completion-strip-warning"));
+		// At rest it stays one line, so the input row stays visible; the line carries the mark.
+		expect(details.className).toContain("hidden");
+		expect(screen.getByTestId("task-completion-strip-alert")).toHaveTextContent(/3/);
+		await act(async () => { fireEvent.click(screen.getByTestId("task-completion-strip-complete")); });
+		expect(screen.getByTestId("task-completion-strip")).toBeInTheDocument();
+		expect(details.className).not.toContain("hidden");
+		expect(screen.queryByTestId("task-completion-strip-more")).toBeNull();
+		expect(screen.getByTestId("task-completion-strip-alert")).not.toHaveTextContent(/3/);
+		expect(screen.getByTestId("task-completion-strip-complete")).toHaveTextContent("Complete anyway");
+		await act(async () => { fireEvent.click(screen.getByTestId("task-completion-strip-complete")); });
+		await expect(answer).resolves.toBe(true);
+	});
+
+	it("opens the could-not-check note on the first Complete click when the check fails, and completes on the second", async () => {
+		vi.mocked(api.request.getUnsavedWork).mockRejectedValue(new Error("git gone"));
+		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" /></I18nProvider>);
+		const { answer } = await offer("merge");
+		await arm();
+		const details = screen.getByTestId("task-completion-strip-details");
+		expect(within(details).getByText("Could not check the branch for unsaved work.")).toBeInTheDocument();
+		expect(details.className).toContain("hidden");
+		let settled = false;
+		void answer.then(() => { settled = true; });
+		await act(async () => { fireEvent.click(screen.getByTestId("task-completion-strip-complete")); });
+		expect(settled).toBe(false);
+		expect(screen.getByTestId("task-completion-strip")).toBeInTheDocument();
+		expect(details.className).not.toContain("hidden");
+		expect(screen.getByTestId("task-completion-strip-complete")).toHaveTextContent("Complete anyway");
+		await act(async () => { fireEvent.click(screen.getByTestId("task-completion-strip-complete")); });
+		await expect(answer).resolves.toBe(true);
+	});
+
+	it("opens the bar's panel only after the pointer rests on it, so a passing pointer never covers the input row", async () => {
+		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" /></I18nProvider>);
+		await offer("merge");
+		const strip = screen.getByTestId("task-completion-strip");
+		const details = screen.getByTestId("task-completion-strip-details");
+		fireEvent.mouseEnter(strip);
+		await act(async () => { vi.advanceTimersByTime(COMPLETION_BAR_HOVER_OPEN_MS - 50); });
+		fireEvent.mouseLeave(strip);
+		await act(async () => { vi.advanceTimersByTime(COMPLETION_BAR_HOVER_OPEN_MS); });
+		expect(details.className).toContain("hidden");
+		fireEvent.mouseEnter(strip);
+		await act(async () => { vi.advanceTimersByTime(COMPLETION_BAR_HOVER_OPEN_MS - 1); });
+		expect(details.className).toContain("hidden");
+		await act(async () => { vi.advanceTimersByTime(1); });
+		expect(details.className).not.toContain("hidden");
+		expect(screen.queryByTestId("task-completion-strip-more")).toBeNull();
+		fireEvent.mouseLeave(strip);
+		expect(details.className).toContain("hidden");
+	});
+
+	it("completes a clean task from the bar in one click and cues the hover panel", async () => {
+		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" /></I18nProvider>);
+		const { answer } = await offer("merge");
+		await arm();
+		expect(screen.getByTestId("task-completion-strip-details").className).toContain("[@media(hover:none)]:flex");
+		expect(screen.getByTestId("task-completion-strip-more")).toBeInTheDocument();
+		await act(async () => { fireEvent.click(screen.getByTestId("task-completion-strip-complete")); });
+		await expect(answer).resolves.toBe(true);
+	});
+
+	it("marks a merge with the merge icon, never the quick-complete ✓", async () => {
+		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" /></I18nProvider>);
+		await offer("merge");
+		const strip = screen.getByTestId("task-completion-strip");
+		expect(strip).not.toHaveTextContent("✓");
+		expect(strip.querySelector("svg circle")).not.toBeNull();
+	});
+
+	it("keeps the same pane wrapper with one pane, so a split never remounts the bar", async () => {
+		render(<I18nProvider><TaskCompletionStrip task={worktreeTask} project={project} variant="overlay" /></I18nProvider>);
+		await offer("agent");
+		expect(screen.getByTestId("task-completion-strip-pane")).toContainElement(screen.getByTestId("task-completion-strip"));
 	});
 
 	it("shows nothing while the dialog style asks for merge and agent offers", async () => {
