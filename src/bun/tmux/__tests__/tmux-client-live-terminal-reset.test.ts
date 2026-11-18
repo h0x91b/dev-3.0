@@ -2,7 +2,7 @@
  * Live tmux: an agent killed with SIGKILL must not leave the pane in the alternate screen,
  * mouse or extended-key mode, or a raw tty. Private socket; slow e2e (`tmux-client-live*`).
  */
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,25 +26,50 @@ function tmux(...args: string[]): string {
 }
 
 const CLEAN_FLAGS = "0 0 0 1 VT10x";
+const MODES = "\\033[?1003h\\033[?1006h\\033[?2004h\\033[?1004h\\033[>1u\\033[>4;2m\\033[?25l";
 
-const FAKE_AGENT = [
-	"#!/bin/bash",
-	"printf '\\033[?1049h\\033[?1003h\\033[?1006h\\033[?2004h\\033[?1004h\\033[>1u\\033[>4;2m\\033[?25l'",
-	"stty raw -echo",
-	"sleep 0.5",
-	"kill -9 $$",
-	"",
-].join("\n");
+function fakeAgent(body: string, modes: string): string {
+	return [
+		"#!/bin/bash",
+		`printf '${body}'`,
+		`printf '${modes}'`,
+		"stty raw -echo",
+		"sleep 0.5",
+		"kill -9 $$",
+		"",
+	].join("\n");
+}
+
+const MAIN_FOUR = "l1\\r\\nl2\\r\\nl3\\r\\nl4";
+
+// The agent lines the pane must still show, in order, once the wrapper has run.
+const SCENARIOS = [
+	{
+		name: "never entered the alternate screen",
+		agent: fakeAgent(MAIN_FOUR, MODES),
+		lines: ["l1", "l2", "l3", "l4"],
+	},
+	{
+		name: "killed inside the alternate screen",
+		agent: fakeAgent(`${MAIN_FOUR}\\033[?1049h\\033[2J\\033[HALT1\\r\\nALT2`, MODES),
+		lines: ["l1", "l2", "l3", "l4"],
+	},
+	{
+		name: "left the alternate screen cleanly, then printed more",
+		agent: fakeAgent("a\\r\\nb\\r\\n\\033[?1049hALT\\033[?1049lc\\r\\nd\\r\\ne\\r\\nf", MODES),
+		lines: ["a", "b", "c", "d", "e", "f"],
+	},
+];
 
 describe.skipIf(!runnable)("run wrapper after a killed agent", () => {
-	afterAll(() => {
+	afterAll(() => rmSync(dir, { recursive: true, force: true }));
+	afterEach(() => {
 		try {
 			tmux("kill-server");
 		} catch { /* already gone */ }
-		rmSync(dir, { recursive: true, force: true });
 	});
 
-	it("leaves the pane out of the alternate screen with mouse, keys and cursor back to normal", async () => {
+	it.each(SCENARIOS)("restores the pane: $name", async ({ agent: agentSource, lines }) => {
 		const conf = join(dir, "tmux.conf");
 		writeFileSync(
 			conf,
@@ -57,7 +82,7 @@ describe.skipIf(!runnable)("run wrapper after a killed agent", () => {
 			].join("\n"),
 		);
 		const agent = join(dir, "agent.sh");
-		writeFileSync(agent, FAKE_AGENT, { mode: 0o755 });
+		writeFileSync(agent, agentSource, { mode: 0o755 });
 		const wrapper = join(dir, "run.sh");
 		// `cat` as the hand-over shell: its name differs from the bash running the wrapper and the agent.
 		writeFileSync(wrapper, buildCmdScript(`bash ${agent}`, undefined, { keepShell: true, shellPath: "/bin/cat" }));
@@ -80,6 +105,11 @@ describe.skipIf(!runnable)("run wrapper after a killed agent", () => {
 			seen = flags();
 		}
 		expect(seen).toBe(CLEAN_FLAGS);
+
+		// -J joins wrapped lines; bash's own "Killed" notice is noise, so compare the agent lines by their start.
+		const screen = tmux("capture-pane", "-p", "-J");
+		expect([...screen.matchAll(/^(l\d|[a-f])/gm)].map((match) => match[1])).toEqual(lines);
+		expect(screen.indexOf("✗ Process exited with code 137")).toBeGreaterThan(screen.lastIndexOf(lines[lines.length - 1]));
 
 		const tty = tmux("display", "-p", "#{pane_tty}");
 		const settings = execFileSync("stty", process.platform === "darwin" ? ["-a", "-f", tty] : ["-F", tty, "-a"], {

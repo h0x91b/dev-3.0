@@ -262,8 +262,9 @@ function describeArgv(argv: string[], quote: (value: string) => string): string 
 }
 
 /**
- * What follows ESC in the sequences that undo a killed TUI's terminal modes. `7` (DECSC)
- * precedes `?1049l` so leaving a screen that was never entered cannot jump the cursor.
+ * What follows ESC in the sequences that undo a killed TUI's terminal modes. `?1049h` then
+ * `?1049l` lands on the main screen with the right cursor whether or not the TUI was in the
+ * alternate screen; the kitty pop runs on each screen because each keeps its own stack.
  */
 const TERMINAL_RESET_SEQUENCES = [
 	"[?1000l",
@@ -278,9 +279,12 @@ const TERMINAL_RESET_SEQUENCES = [
 	"[>4;0m",
 	"[?1l",
 	">",
-	"7",
+	"[?1049h",
+	"[<99u",
 	"[?1049l",
 	"[<99u",
+	"[0m",
+	"[0 q",
 	"[?25h",
 ];
 

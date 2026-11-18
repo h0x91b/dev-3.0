@@ -35,7 +35,7 @@ const WORKTREE = "/w/t";
 const TTY_SAVE = "__TTY=$(stty -g 2>/dev/null)";
 const TTY_RESTORE = [
 	'if [ -n "$__TTY" ]; then stty "$__TTY" 2>/dev/null; fi',
-	"printf '\\033[?1000l\\033[?1002l\\033[?1003l\\033[?1005l\\033[?1006l\\033[?1015l\\033[?2004l\\033[?1004l\\033[<99u\\033[>4;0m\\033[?1l\\033>\\0337\\033[?1049l\\033[<99u\\033[?25h'",
+	"printf '\\033[?1000l\\033[?1002l\\033[?1003l\\033[?1005l\\033[?1006l\\033[?1015l\\033[?2004l\\033[?1004l\\033[<99u\\033[>4;0m\\033[?1l\\033>\\033[?1049h\\033[<99u\\033[?1049l\\033[<99u\\033[0m\\033[0 q\\033[?25h'",
 ];
 
 const RUN_WRAPPER_KEEP_SHELL = [
@@ -202,7 +202,7 @@ describe("POSIX run wrapper (buildCmdScript)", () => {
 		expect(capture).toBeLessThan(restore);
 		expect(restore).toBeLessThan(reset);
 		expect(reset).toBeLessThan(report);
-		for (const part of ["[?1003l", "[?1006l", "[?2004l", "[<99u", "[>4;0m", "[?1049l", "[?25h"]) {
+		for (const part of ["[?1003l", "[?1006l", "[?2004l", "[<99u", "[>4;0m", "[?1049h", "[?1049l", "[0m", "[0 q", "[?25h"]) {
 			expect(script).toContain(`\\033${part}`);
 		}
 	});

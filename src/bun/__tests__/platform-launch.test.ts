@@ -178,6 +178,7 @@ describe("Windows PowerShell dialect", () => {
 		const [reset] = d.restoreTerminalState();
 		expect(reset).toMatch(/^Write-Host -NoNewline "/);
 		expect(reset).toContain("$([char]27)[?1049l");
+		expect(reset).toContain("$([char]27)[0 q");
 		expect(reset).toContain("$([char]27)[?25h");
 		expect(reset).not.toContain("\\033");
 	});
