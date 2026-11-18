@@ -1,7 +1,7 @@
 import type { AgentMessageSource, Project, ResetKeptBranch, Task, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus } from "../../shared/types";
 import { agentReplyCommand, seqIsShared } from "../../shared/agent-message-envelope";
 import { type ExternalSenderRequester, isExternalSenderRequester } from "../../shared/external-senders";
-import { ACTIVE_STATUSES, DEFAULT_PRIORITY, agentLaunchAutoApproveMs, buildTaskDialogSubject, getTaskTitle, isCoordinatorTask, isOpsWorktreeTask, taskNeedsReset, taskResetConsent, taskUsesWorktree } from "../../shared/types";
+import { ACTIVE_STATUSES, DEFAULT_PRIORITY, agentLaunchAutoApproveMs, getPrimaryStopTarget, buildTaskDialogSubject, getTaskTitle, isCoordinatorTask, isOpsWorktreeTask, taskNeedsReset, taskResetConsent, taskUsesWorktree } from "../../shared/types";
 import { coordinatorLaunchDefault } from "../../shared/coordinator-launch";
 import { getAllAgents } from "../agents";
 import { createAgentRequest, getAgentRequestState, joinAgentRequest, setAgentRequestLaunchChoice, voidAgentRequest } from "../agent-requests";
@@ -66,8 +66,7 @@ async function voidIfRunEndedMeanwhile(
 }
 
 /**
- * The agent is blocked on the user's answer, so its task is a question, not work:
- * Has Questions while it waits, back to Agent is Working when the user says no.
+ * The agent is blocked on the user's answer, so its task is a question, not work.
  * Guarded moves, so a status someone else set in the meantime is never overwritten.
  */
 async function parkWhileAsking(project: Project, task: Task): Promise<boolean> {
@@ -80,12 +79,40 @@ async function parkWhileAsking(project: Project, task: Task): Promise<boolean> {
 	}
 }
 
-async function unparkAfterDecline(project: Project, task: Task): Promise<void> {
+/**
+ * A waiting agent goes back to work. An agent that stopped waiting may have ended
+ * its turn while parked, and its Stop hook (guarded on in-progress) moved nothing,
+ * so the task takes the move that hook would have made.
+ */
+async function unparkAfterDecline(project: Project, task: Task, askerWaiting: boolean): Promise<void> {
+	const newStatus = askerWaiting ? "in-progress" : getPrimaryStopTarget(project.autoReviewEnabled, task.taskType);
 	try {
-		await moveTask({ taskId: task.id, projectId: project.id, newStatus: "in-progress", ifStatus: "user-questions" });
+		await moveTask({ taskId: task.id, projectId: project.id, newStatus, ifStatus: "user-questions" });
 	} catch {
-		// The agent's next hook moves it back anyway.
+		// The agent's next hook moves it anyway.
 	}
+}
+
+/** Connections of every CLI waiting on a request: the original ask, retries, re-attaches. */
+const waiterSignalsByRequestId = new Map<string, Set<AbortSignal | undefined>>();
+
+function addWaiter(requestId: string, decision: Promise<unknown>, signal: AbortSignal | undefined): void {
+	let waiters = waiterSignalsByRequestId.get(requestId);
+	if (!waiters) {
+		waiters = new Set();
+		waiterSignalsByRequestId.set(requestId, waiters);
+		// After every waiter's continuation has read the set.
+		void decision.finally(() => setTimeout(() => waiterSignalsByRequestId.delete(requestId), 0));
+	}
+	waiters.add(signal);
+}
+
+/** A caller with no connection (an in-process call) counts as waiting. */
+function askerStillWaiting(requestId: string): boolean {
+	for (const signal of waiterSignalsByRequestId.get(requestId) ?? []) {
+		if (!signal?.aborted) return true;
+	}
+	return false;
 }
 
 function isPendingRequest(kind: "complete" | "cancel" | "reset" | "launch", taskId: string, requestId: string): boolean {
@@ -127,6 +154,7 @@ export const SELF_COMPLETION_NOT_ALLOWED =
 export async function requestDestructiveApproval(
 	kind: DestructiveApprovalKind,
 	params: Record<string, unknown>,
+	signal?: AbortSignal,
 ): Promise<{ approved: boolean; task?: Task; stale?: boolean; taskStatus?: TaskStatus | null; plainMove?: boolean; keptBranches?: ResetKeptBranch[] } | AgentApprovalNotAttached> {
 	const { project, task } = await resolveTaskFromParams(params);
 	// A clean To Do card, a draft, a completed/cancelled task: moving it to To Do
@@ -181,6 +209,7 @@ export async function requestDestructiveApproval(
 		await voidIfRunEndedMeanwhile(kind, project, task);
 	}
 	const stillAsking = isPendingRequest(kind, task.id, request.requestId);
+	if (stillAsking) addWaiter(request.requestId, request.decision, signal);
 
 	// Pushed on EVERY attempt, joined retries and re-attaches included. A retry
 	// used to push nothing, so once a client lost the original dialog the request
@@ -199,7 +228,7 @@ export async function requestDestructiveApproval(
 	const { approved, stale, attachedRepo } = await request.decision;
 	if (!approved) {
 		resetConsentByRequestId.delete(request.requestId);
-		if (parked && !stale) await unparkAfterDecline(project, task);
+		if (parked && !stale) await unparkAfterDecline(project, task, askerStillWaiting(request.requestId));
 		if (!stale) return { approved: false };
 		// Voided: the task finished or vanished by another path. Its live status lets
 		// the CLI tell "already where you asked" apart from "ended some other way".

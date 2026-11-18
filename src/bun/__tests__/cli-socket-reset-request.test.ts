@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { Project, Task, CliRequest } from "../../shared/types";
+import { isStatusGuardBlocked, type Project, type Task, type CliRequest } from "../../shared/types";
 
 // ---- Mocks (same boundary set as cli-socket-handlers.test.ts) ----
 
@@ -220,6 +220,25 @@ describe("task.requestReset (T17, T17b)", () => {
 		expect(resetTaskToTodo).not.toHaveBeenCalled();
 		// Its own agent waited, so the task only went to Has Questions and back.
 		expect(moveTask).not.toHaveBeenCalledWith(expect.objectContaining({ newStatus: "todo" }));
+	});
+
+	it("parks its own agent's task in Has Questions while it waits and puts it back to work on decline", async () => {
+		const own = "task-abc12345-1111-2222-3333-444444444444";
+		let stored = makeTask({ lifecycleStartedAt: STARTED });
+		vi.mocked(moveTask).mockImplementation(async (p) => {
+			if (p.newStatus && !isStatusGuardBlocked(stored.status, p)) stored = { ...stored, status: p.newStatus };
+			return { ...stored };
+		});
+		const { resp, requestId } = await openRequest(stored, { sourceTaskId: own });
+		vi.mocked(data.loadTasks).mockImplementation(async () => [{ ...stored }]);
+		await vi.waitFor(() => expect(stored.status).toBe("user-questions"));
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ newStatus: "user-questions", ifStatus: "in-progress" }));
+
+		resolveAgentRequest(requestId, { approved: false });
+
+		expect((await resp).data).toEqual({ approved: false });
+		expect(stored.status).toBe("in-progress");
+		expect(resetTaskToTodo).not.toHaveBeenCalled();
 	});
 
 	it("a run that ends first voids the request as stale — never approved (T9b)", async () => {

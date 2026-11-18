@@ -799,7 +799,7 @@ export const taskHandlers: Record<string, Handler> = {
 	// approves or declines in the app UI. Approval executes the move even if
 	// the requesting CLI has already disconnected (its tmux session may have
 	// hit a client-side timeout while the dialog stayed open).
-	"task.requestCompletion": async (params) => requestDestructiveApproval("complete", params),
+	"task.requestCompletion": async (params, ctx) => requestDestructiveApproval("complete", params, ctx?.signal),
 
 	// Agent-initiated request to CANCEL a task — an agent cleaning up a task it
 	// should not have created. Same approval model as `task.requestCompletion`,
@@ -807,13 +807,13 @@ export const taskHandlers: Record<string, Handler> = {
 	// work away, and the dialog asking for it must not look like the other one.
 	// Never auto-approved (no `autoApproveAfterMs`) — nobody loses a worktree to
 	// a dialog they never saw.
-	"task.requestCancellation": async (params) => requestDestructiveApproval("cancel", params),
+	"task.requestCancellation": async (params, ctx) => requestDestructiveApproval("cancel", params, ctx?.signal),
 
 	// `dev3 task move --status todo`. A task that needs a reset (active, or still
 	// owning a worktree) is reset only after the user approves it in the app —
 	// from any caller, task context or not. Never auto-approved; a request whose
 	// run ends first is voided, not approved. Anything else is a plain move.
-	"task.requestReset": async (params) => requestDestructiveApproval("reset", params),
+	"task.requestReset": async (params, ctx) => requestDestructiveApproval("reset", params, ctx?.signal),
 
 	// Read-only: where a completion/cancellation request stands. Never creates,
 	// joins or answers one — it is what a CLI asks after its wait timed out.

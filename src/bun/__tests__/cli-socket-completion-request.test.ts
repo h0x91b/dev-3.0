@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { CLI_FAILURE_WORKTREE_HALF_REMOVED, type Project, type Task, type CliRequest, type TaskDialogSubject } from "../../shared/types";
+import { CLI_FAILURE_WORKTREE_HALF_REMOVED, isStatusGuardBlocked, type Project, type Task, type CliRequest, type TaskDialogSubject } from "../../shared/types";
 import { existsSync } from "node:fs";
 
 // ---- Mocks (same boundary set as cli-socket-handlers.test.ts) ----
@@ -522,9 +522,7 @@ describe("task.requestCompletion when the task ends by another path", () => {
 		expect(getAgentRequestState("complete", TASK_ID)).toMatchObject({ state: "answered", requestId, stale: true });
 		expect((await resp).data).toEqual({ approved: false, stale: true, taskStatus: "completed" });
 		expect(listPendingAgentRequests("complete")).toEqual([]);
-		// Parked while it asked; never completed or restored by this path.
-		expect(moveTask).not.toHaveBeenCalledWith(expect.objectContaining({ newStatus: "completed" }));
-		expect(moveTask).not.toHaveBeenCalledWith(expect.objectContaining({ newStatus: "in-progress" }));
+		expect(moveTask).not.toHaveBeenCalled();
 	});
 
 	it("never pushes a dialog when the task completed between the read and the registration", async () => {
@@ -577,5 +575,130 @@ describe("task.requestCompletion when the task ends by another path", () => {
 		resolveAgentRequest(requestId, { approved: true });
 
 		expect((await resp).data).toEqual({ approved: true, task: completed });
+	});
+});
+
+// The moves land on one stored task through the real status guard, the way the
+// lifecycle's guarded write does, so a refused move really changes nothing.
+describe("task.requestCompletion parking against the real status guards", () => {
+	const TASK_ID = "task-abc12345-1111-2222-3333-444444444444";
+	let stored: Task;
+
+	function guardedBoard(task: Task, project: Partial<Project> = {}): void {
+		stored = { ...task };
+		vi.mocked(data.getProject).mockResolvedValue(makeProject(project));
+		vi.mocked(data.loadTasks).mockImplementation(async () => [{ ...stored }]);
+		vi.mocked(moveTask).mockImplementation(async (p) => {
+			if (p.newStatus && !isStatusGuardBlocked(stored.status, p)) stored = { ...stored, status: p.newStatus };
+			return { ...stored };
+		});
+	}
+
+	async function ownAsk(params: Record<string, unknown> = {}) {
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		const connection = new AbortController();
+		const resp = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1", sourceTaskId: TASK_ID, ...params }), connection.signal);
+		await vi.waitFor(() => expect(stored.status).toBe("user-questions"));
+		const { requestId } = pushFn.mock.calls[0][1] as { requestId: string };
+		return { resp, requestId, connection, pushFn };
+	}
+
+	function stopHook(stopTarget = "review-by-user") {
+		return handleRequest({ id: "req-stop", method: "task.move", params: { taskId: TASK_ID, projectId: "proj-1", newStatus: stopTarget, ifStatus: "in-progress", sourceTaskId: TASK_ID } });
+	}
+
+	it("puts a waiting agent back to work on decline", async () => {
+		guardedBoard(makeTask());
+		const { resp, requestId } = await ownAsk();
+
+		resolveAgentRequest(requestId, { approved: false });
+
+		expect((await resp).data).toEqual({ approved: false });
+		expect(stored.status).toBe("in-progress");
+	});
+
+	it("completes a parked task on approval", async () => {
+		guardedBoard(makeTask());
+		const { resp, requestId } = await ownAsk();
+
+		resolveAgentRequest(requestId, { approved: true });
+
+		expect((await resp).data).toMatchObject({ approved: true, task: { status: "completed" } });
+		expect(stored.status).toBe("completed");
+	});
+
+	it("gives a task whose agent stopped waiting the move its refused Stop hook would have made", async () => {
+		guardedBoard(makeTask());
+		const { resp, requestId, connection } = await ownAsk();
+		// The CLI dies, the turn ends, and the Stop hook's guarded move is refused.
+		connection.abort();
+		await stopHook();
+		expect(stored.status).toBe("user-questions");
+
+		resolveAgentRequest(requestId, { approved: false });
+
+		expect((await resp).data).toEqual({ approved: false });
+		expect(stored.status).toBe("review-by-user");
+	});
+
+	it("uses the project's AI review lane as that stop target when auto review is on", async () => {
+		guardedBoard(makeTask(), { autoReviewEnabled: true });
+		const { resp, requestId, connection } = await ownAsk();
+		connection.abort();
+
+		resolveAgentRequest(requestId, { approved: false });
+
+		await resp;
+		expect(stored.status).toBe("review-by-ai");
+	});
+
+	it("counts a re-attached CLI as still waiting after its first connection dropped", async () => {
+		guardedBoard(makeTask());
+		const { resp, requestId, connection, pushFn } = await ownAsk();
+		connection.abort();
+		const reattach = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1", sourceTaskId: TASK_ID, attachOnly: true }), new AbortController().signal);
+		// A joined re-attach pushes the dialog again.
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalledTimes(2));
+
+		resolveAgentRequest(requestId, { approved: false });
+
+		expect((await resp).data).toEqual({ approved: false });
+		expect((await reattach).data).toEqual({ approved: false });
+		expect(stored.status).toBe("in-progress");
+	});
+
+	it("leaves a task the agent already took back to work alone on decline", async () => {
+		guardedBoard(makeTask());
+		const { resp, requestId, connection } = await ownAsk();
+		// A Bash timeout returns control to the agent; its next PreToolUse unparks the task.
+		connection.abort();
+		await handleRequest({ id: "req-hook", method: "task.move", params: { taskId: TASK_ID, projectId: "proj-1", newStatus: "in-progress", ifStatusNot: "review-by-ai", sourceTaskId: TASK_ID } });
+		expect(stored.status).toBe("in-progress");
+
+		resolveAgentRequest(requestId, { approved: false });
+
+		await resp;
+		expect(stored.status).toBe("in-progress");
+	});
+
+	it("never unparks a task the park move did not land in Has Questions", async () => {
+		guardedBoard(makeTask());
+		// Something else moved the task between the read and the park, so the guard refuses it.
+		vi.mocked(moveTask).mockImplementationOnce(async () => {
+			stored = { ...stored, status: "review-by-user" };
+			return { ...stored };
+		});
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		const resp = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1", sourceTaskId: TASK_ID }), new AbortController().signal);
+		await vi.waitFor(() => expect(moveTask).toHaveBeenCalledTimes(1));
+		const { requestId } = pushFn.mock.calls[0][1] as { requestId: string };
+
+		resolveAgentRequest(requestId, { approved: false });
+
+		expect((await resp).data).toEqual({ approved: false });
+		expect(moveTask).toHaveBeenCalledTimes(1);
+		expect(stored.status).toBe("review-by-user");
 	});
 });
