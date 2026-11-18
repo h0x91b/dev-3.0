@@ -52,6 +52,7 @@ import { lifecycleActorRuntime } from "../lifecycle/service";
 import {
 	PR_DETECTION_TIMEOUT_MS,
 	dismissMergeCompletionPrompt,
+	listPendingMergeOffers,
 	persistProjectPrIdentities,
 	persistTaskPrIdentity,
 	prepareMergeCompletionPrompt,
@@ -1171,6 +1172,7 @@ export const gitOperationHandlers = {
 	getTaskDiff,
 	prepareMergeCompletionPrompt,
 	dismissMergeCompletionPrompt,
+	listPendingMergeOffers,
 	rebaseTask,
 	rebaseTaskViaAgent,
 	commitTaskViaAgent,

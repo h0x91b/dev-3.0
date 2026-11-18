@@ -77,6 +77,7 @@ vi.mock("../../lifecycle/service", () => ({ lifecycleActorRuntime: vi.fn(() => (
 vi.mock("../../lifecycle/activities", () => ({
 	PR_DETECTION_TIMEOUT_MS: 1000,
 	dismissMergeCompletionPrompt: vi.fn(),
+	listPendingMergeOffers: vi.fn(),
 	persistProjectPrIdentities: vi.fn(),
 	persistTaskPrIdentity: vi.fn(),
 	prepareMergeCompletionPrompt: vi.fn(),
