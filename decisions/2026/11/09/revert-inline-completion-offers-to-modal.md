@@ -1,3 +1,4 @@
+> Superseded in part on 2026-11-09 by `decisions/2026/11/09/completion-offer-style-setting.md`: the modal stays the default, and the inline style returns as an opt-in setting with a new placement (a one-line bar in the agent's pane), the offer store, the card and sidebar markers and the merge-offer replay. The user's own Complete/Cancel is unchanged.
 > Superseded in part on 2026-11-09 by `decisions/2026/11/07/user-completion-confirm-anchored-not-modal.md` (revised): the user's own ✓/Cancel on a card, sidebar row or Activity row asks in a popover beside the button again; everything else stays the modal.
 
 # Completion offers go back to the blocking modal

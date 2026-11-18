@@ -309,6 +309,28 @@ describe("task.requestCompletion", () => {
 		await bare;
 	});
 
+	it("marks the ask for a To Do task, which has no terminal view, and keeps the mark for a replay", async () => {
+		setupTask(makeTask({ status: "todo" }));
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		const todo = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalledTimes(1));
+		const first = pushFn.mock.calls[0][1] as { requestId: string; noTaskView?: boolean };
+		expect(first.noTaskView).toBe(true);
+		expect(listPendingAgentRequests("complete")[0].dialog.noTaskView).toBe(true);
+		resolveAgentRequest(first.requestId, { approved: false });
+		await todo;
+
+		setupTask(makeTask());
+		const running = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalledTimes(2));
+		const second = pushFn.mock.calls[1][1] as { requestId: string };
+		expect(second).not.toHaveProperty("noTaskView");
+		resolveAgentRequest(second.requestId, { approved: false });
+		await running;
+	});
+
 	it("returns approved:false without moving the task when declined", async () => {
 		setupTask(makeTask());
 		const pushFn = vi.fn();

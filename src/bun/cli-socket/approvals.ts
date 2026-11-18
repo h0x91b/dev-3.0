@@ -1,7 +1,7 @@
 import type { AgentMessageSource, Project, ResetKeptBranch, Task, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus } from "../../shared/types";
 import { agentReplyCommand, seqIsShared } from "../../shared/agent-message-envelope";
 import { type ExternalSenderRequester, isExternalSenderRequester } from "../../shared/external-senders";
-import { DEFAULT_PRIORITY, agentLaunchAutoApproveMs, buildTaskDialogSubject, getTaskTitle, isCoordinatorTask, isOpsWorktreeTask, taskNeedsReset, taskResetConsent, taskUsesWorktree } from "../../shared/types";
+import { ACTIVE_STATUSES, DEFAULT_PRIORITY, agentLaunchAutoApproveMs, buildTaskDialogSubject, getTaskTitle, isCoordinatorTask, isOpsWorktreeTask, taskNeedsReset, taskResetConsent, taskUsesWorktree } from "../../shared/types";
 import { coordinatorLaunchDefault } from "../../shared/coordinator-launch";
 import { getAllAgents } from "../agents";
 import { createAgentRequest, getAgentRequestState, joinAgentRequest, setAgentRequestLaunchChoice, voidAgentRequest } from "../agent-requests";
@@ -132,6 +132,8 @@ export async function requestDestructiveApproval(
 		subject: buildTaskDialogSubject(task, project),
 		// An owned Operations worktree is removed on reset, but its branch is kept.
 		...(kind === "reset" && isOpsWorktreeTask(task) ? { branchKept: true } : {}),
+		// Opening a To Do task shows its detail modal, which has no completion bar.
+		...(kind === "complete" && !ACTIVE_STATUSES.includes(task.status) ? { noTaskView: true } : {}),
 		...await destructiveReason(params, task),
 	};
 

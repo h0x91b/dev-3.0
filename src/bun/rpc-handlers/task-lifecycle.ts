@@ -1103,6 +1103,7 @@ async function listPendingCompletionRequests(): Promise<AgentCompletionRequest[]
 		taskTitle: r.dialog.taskTitle,
 		subject: r.dialog.subject,
 		...(r.dialog.reason ? { reason: r.dialog.reason } : {}),
+		...(r.dialog.noTaskView ? { noTaskView: true } : {}),
 	}));
 }
 
