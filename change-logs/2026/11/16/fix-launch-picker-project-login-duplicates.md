@@ -1,0 +1,3 @@
+Short: One row per login in the account picker
+
+The launch account picker no longer lists the same Claude login twice in a project with its own Claude folder: a managed account signed in to the project's folder folds into the Project login row, which shows that account's usage and stays checked for a task that saved it. `~/.claude` keeps its own row, because picking it runs the task in `~/.claude`. In a project whose settings switch Claude to Bedrock, Vertex AI, Foundry, env credentials, a gateway URL or a pinned model, both rows stay and the project row says what the project settings change. The resume picker keeps the account as its own row, since a resume on it can open a different conversation store.
