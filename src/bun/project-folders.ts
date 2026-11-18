@@ -75,14 +75,20 @@ async function readAdditionalDirectories(file: string): Promise<string[]> {
 	}
 }
 
+/** Index of the quote that closes the string opening at `start`, or the text length when it never closes. */
+function stringEnd(text: string, start: number): number {
+	let j = start + 1;
+	while (j < text.length && text[j] !== '"') j += text[j] === "\\" ? 2 : 1;
+	return j;
+}
+
 /** Comments and trailing commas out, strings untouched: `.code-workspace` files are JSONC. */
 export function stripJsonc(text: string): string {
 	let out = "";
 	for (let i = 0; i < text.length; i++) {
 		const ch = text[i];
 		if (ch === '"') {
-			let j = i + 1;
-			while (j < text.length && text[j] !== '"') j += text[j] === "\\" ? 2 : 1;
+			const j = stringEnd(text, i);
 			out += text.slice(i, j + 1);
 			i = j;
 		} else if (ch === "/" && text[i + 1] === "/") {
@@ -95,7 +101,23 @@ export function stripJsonc(text: string): string {
 			out += ch;
 		}
 	}
-	return out.replace(/,(\s*[}\]])/g, "$1");
+	// A second pass, so a comment between a trailing comma and its bracket is already gone.
+	let result = "";
+	for (let i = 0; i < out.length; i++) {
+		const ch = out[i];
+		if (ch === '"') {
+			const j = stringEnd(out, i);
+			result += out.slice(i, j + 1);
+			i = j;
+		} else if (ch === ",") {
+			let k = i + 1;
+			while (k < out.length && /\s/.test(out[k])) k++;
+			if (out[k] !== "}" && out[k] !== "]") result += ch;
+		} else {
+			result += ch;
+		}
+	}
+	return result;
 }
 
 /** A Windows drive path means nothing to a server on another OS (a workspace file shared with Windows VS Code). */

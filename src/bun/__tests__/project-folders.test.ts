@@ -145,6 +145,11 @@ describe("collectProjectFolders", () => {
 		expect(JSON.parse(stripJsonc('{"a": "//x", /* c */ "b": [1, 2,], // end\n}'))).toEqual({ a: "//x", b: [1, 2] });
 	});
 
+	it("leaves a comma-and-bracket sequence inside a string alone", () => {
+		const text = '{"folders": [{"path": "../odd,]name"}, {"path": "../b,}c\\",}"},], /* x */}';
+		expect(JSON.parse(stripJsonc(text))).toEqual({ folders: [{ path: "../odd,]name" }, { path: '../b,}c",}' }] });
+	});
+
 	it("returns nothing for a board without a folder", async () => {
 		expect(await collectProjectFolders(project({ kind: "virtual", path: "" }))).toEqual([]);
 	});
