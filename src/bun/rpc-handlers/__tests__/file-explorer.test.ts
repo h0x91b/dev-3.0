@@ -171,4 +171,15 @@ describe("getProjectFolders", () => {
 		const folders = await fileExplorerHandlers.getProjectFolders({ projectId: "proj-1" });
 		expect(folders.map((f) => f.name)).toEqual(["extra", "gone"]);
 	});
+
+	it("keeps the short cache on a plain call and drops it only when asked for a fresh read", async () => {
+		const { clearProjectFoldersCache } = await import("../../project-folders");
+		const clear = clearProjectFoldersCache as ReturnType<typeof vi.fn>;
+		clear.mockClear();
+		await fileExplorerHandlers.getProjectFolders({ projectId: "proj-1" });
+		await fileExplorerHandlers.getProjectFolders({ projectId: "proj-1", withBranch: true });
+		expect(clear).not.toHaveBeenCalled();
+		await fileExplorerHandlers.getProjectFolders({ projectId: "proj-1", fresh: true });
+		expect(clear).toHaveBeenCalledWith("proj-1");
+	});
 });

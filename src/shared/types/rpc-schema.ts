@@ -228,9 +228,9 @@ export type AppRPCSchema = {
 				params: { projectId: string; taskId?: string | null; relPath?: string; insideIgnored?: boolean; folder?: string | null };
 				response: ExplorerListing;
 			};
-			/** Folders shown beside the project in the file explorer and on the dashboard. */
+			/** Folders shown beside the project in the file explorer and on the dashboard. `fresh` skips the short backend cache. */
 			getProjectFolders: {
-				params: { projectId: string; withBranch?: boolean };
+				params: { projectId: string; withBranch?: boolean; fresh?: boolean };
 				response: ProjectFolder[];
 			};
 			listAgentSkills: {

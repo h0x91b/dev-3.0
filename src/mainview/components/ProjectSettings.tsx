@@ -6,6 +6,7 @@ import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, GitH
 import { ACTIVE_STATUSES, GIT_WORKFLOW_NOT_A_REPO_ERROR, getTaskTitle, gitWorkflowSwitchBlocker, hasGitWorkflow, repoConfigEnabled, STORAGE_TRACKED_CONFLICT_ERROR, storageSwitchBlocker } from "../../shared/types";
 import { builtinCoordinatorPrompt, COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, DEFAULT_REVIEW_PROMPT, resolveArtifactTemplate, resolvePresetPrompt, type ArtifactTemplateMode, type ProjectSettingsUpdate, type ResolvedArtifactTemplate } from "../../shared/types";
 import { EXPLICIT_EMPTY_ARRAY_CONFIG_KEYS } from "../../shared/config-schema";
+import { reloadProjectFolders } from "../project-folders";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -739,6 +740,7 @@ function ProjectSettings({
 			const toSave = sanitizeConfigPaths(wtRepoConfig);
 			await api.request.saveRepoConfig({ projectId, worktreePath: selectedTask.worktreePath, autoCommit: true, ...toSave });
 			loadedWtRepoConfig.current = toSave;
+			reloadProjectFolders(projectId);
 			const updatedProjects = await api.request.getProjects();
 			for (const p of updatedProjects) dispatch({ type: "updateProject", project: p });
 		} catch (err) {
@@ -755,6 +757,7 @@ function ProjectSettings({
 			const toSave = sanitizeConfigPaths(wtLocalConfig);
 			await api.request.saveLocalConfig({ projectId, worktreePath: selectedTask.worktreePath, ...toSave });
 			loadedWtLocalConfig.current = toSave;
+			reloadProjectFolders(projectId);
 			const updatedProjects = await api.request.getProjects();
 			for (const p of updatedProjects) dispatch({ type: "updateProject", project: p });
 		} catch (err) {

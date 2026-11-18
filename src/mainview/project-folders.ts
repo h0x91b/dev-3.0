@@ -94,7 +94,7 @@ interface FolderEntry {
 	/** The first reply (or failure) arrived; until then the list is unknown, not empty. */
 	loaded: boolean;
 	listeners: Set<() => void>;
-	load: () => void;
+	load: (fresh?: boolean) => void;
 }
 
 /** One fetch per project and branch mode, shared by every component showing it. */
@@ -110,10 +110,10 @@ function folderEntry(projectId: string, withBranch: boolean): FolderEntry {
 		folders: NO_FOLDERS,
 		loaded: false,
 		listeners: new Set(),
-		load: () => {
+		load: (fresh) => {
 			const request = ++latest;
 			Promise.resolve()
-				.then(() => api.request.getProjectFolders({ projectId, withBranch }))
+				.then(() => api.request.getProjectFolders({ projectId, withBranch, ...(fresh ? { fresh } : {}) }))
 				.then((next) => {
 					// A late reply from an older request must not overwrite a newer one.
 					if (request !== latest || (created.loaded && JSON.stringify(next) === JSON.stringify(created.folders))) return;
@@ -134,9 +134,10 @@ function folderEntry(projectId: string, withBranch: boolean): FolderEntry {
 	return entry;
 }
 
-export function reloadProjectFolders(projectId?: string): void {
+/** `fresh` skips the backend's short cache: for an explicit refresh or a config file just written. */
+export function reloadProjectFolders(projectId?: string, opts: { fresh?: boolean } = {}): void {
 	for (const [key, entry] of folderCache) {
-		if ((!projectId || key.startsWith(`${projectId}:`)) && entry.listeners.size > 0) entry.load();
+		if ((!projectId || key.startsWith(`${projectId}:`)) && entry.listeners.size > 0) entry.load(opts.fresh);
 	}
 }
 

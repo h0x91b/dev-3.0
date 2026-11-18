@@ -628,7 +628,7 @@ export default function FileExplorer({
 					</Tooltip>
 				)}
 				<Tooltip content={t("fileExplorer.refresh")}>
-					<button type="button" className={headerButton} aria-label={t("fileExplorer.refresh")} onClick={() => { reloadProjectFolders(projectId); refreshAll(false); }}>
+					<button type="button" className={headerButton} aria-label={t("fileExplorer.refresh")} onClick={() => { reloadProjectFolders(projectId, { fresh: true }); refreshAll(false); }}>
 						<RefreshGlyph />
 					</button>
 				</Tooltip>

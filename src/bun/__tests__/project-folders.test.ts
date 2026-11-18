@@ -175,6 +175,18 @@ describe("resolveProjectFolders", () => {
 		expect(claudeConfigDirFor({ path: projectDir, env: { CLAUDE_CONFIG_DIR: ENV_UNSET } })).toBe(join(homedir(), ".claude"));
 	});
 
+	it("answers a second call inside the TTL from the cache, without resolving the config again", async () => {
+		clearProjectFoldersCache();
+		launchEnv.mockClear();
+		const first = await resolveProjectFolders(project());
+		const second = await resolveProjectFolders(project());
+		expect(second).toBe(first);
+		expect(launchEnv).toHaveBeenCalledTimes(1);
+		clearProjectFoldersCache("p");
+		await resolveProjectFolders(project());
+		expect(launchEnv).toHaveBeenCalledTimes(2);
+	});
+
 	it("falls back to the server's dir only when the launch sets none", async () => {
 		expect(await foldersWithLaunchEnv({})).toEqual([lib, docs, join(tmp, "other-project-grant")]);
 	});

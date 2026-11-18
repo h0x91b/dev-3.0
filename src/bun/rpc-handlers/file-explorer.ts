@@ -120,8 +120,10 @@ async function listExplorerDirectory(params: {
 	return { root, relPath: relDir, entries: truncated ? entries.slice(0, EXPLORER_MAX_ENTRIES) : entries, ...(truncated ? { truncated } : {}) };
 }
 
-async function getProjectFolders(params: { projectId: string; withBranch?: boolean }): Promise<ProjectFolder[]> {
-	clearProjectFoldersCache(params.projectId);
+// Every dashboard card asks on each window focus, so a plain call takes the short cache;
+// settings saves clear it, and the explorer's refresh button asks for a fresh read.
+async function getProjectFolders(params: { projectId: string; withBranch?: boolean; fresh?: boolean }): Promise<ProjectFolder[]> {
+	if (params.fresh) clearProjectFoldersCache(params.projectId);
 	return resolveProjectFolders(await data.getProject(params.projectId), { withBranch: params.withBranch });
 }
 
