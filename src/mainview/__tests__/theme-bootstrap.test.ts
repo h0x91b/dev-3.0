@@ -84,7 +84,7 @@ describe("applyBeigeDepth", () => {
 		applyBeigeDepth(1);
 		const css = document.getElementById("dev3-beige-depth")?.textContent ?? "";
 		expect(css).toContain('[data-theme="light"][data-palette="beige"]');
-		expect(css).toContain("--surface-base: 226 219 203;");
+		expect(css).toContain("--surface-base: 206 190 162;");
 		expect(document.documentElement.dataset.beigeDepth).toBe("1");
 		expect(readBeigeDepth()).toBe(1);
 		applyBeigeDepth(7);

@@ -277,10 +277,10 @@ describe("beige tmux theme", () => {
 		setTmuxBeigeDepth(1);
 		const dark = buildThemeConfig("beige");
 		expect(light).toContain('set -gq @thm_bg "#fcfbf8"');
-		expect(dark).toContain('set -gq @thm_bg "#e8e2d5"');
+		expect(dark).toContain('set -gq @thm_bg "#daccb3"');
 		expect(light).not.toContain("catppuccin_beige_tmux.conf");
 		expect(lightPath).toContain("dev3-tmux-beige0-dimmed");
 		expect(tmuxConfigPath("beige", true)).toContain("dev3-tmux-beige100-dimmed");
-		setTmuxBeigeDepth(0.3);
+		setTmuxBeigeDepth(0.15);
 	});
 });
