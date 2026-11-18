@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getInitialThemeState } from "../theme-bootstrap";
+import { applyThemeToDocument, getInitialThemeState } from "../theme-bootstrap";
 
 describe("getInitialThemeState", () => {
 	it("uses the injected remote theme when browser storage is empty", () => {
@@ -59,5 +59,22 @@ describe("getInitialThemeState", () => {
 			preference: "dark",
 			resolved: "dark",
 		});
+	});
+
+	it("resolves beige to the light theme", () => {
+		expect(
+			getInitialThemeState({ localStorageTheme: "beige", prefersDark: true }),
+		).toEqual({ preference: "beige", resolved: "light" });
+	});
+});
+
+describe("applyThemeToDocument", () => {
+	it("sets the beige palette and clears it when leaving beige", () => {
+		const root = document.documentElement;
+		applyThemeToDocument("beige", "light");
+		expect(root.dataset.theme).toBe("light");
+		expect(root.dataset.palette).toBe("beige");
+		applyThemeToDocument("light", "light");
+		expect(root.dataset.palette).toBeUndefined();
 	});
 });

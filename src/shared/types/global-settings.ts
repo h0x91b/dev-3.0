@@ -98,7 +98,7 @@ export interface GlobalSettings {
 	 */
 	taskSortOrder: "oldest-first" | "newest-first";
 	updateChannel: UpdateChannel;
-	theme?: "dark" | "light" | "system";
+	theme?: "dark" | "light" | "beige" | "system";
 	resolvedTheme?: "dark" | "light";
 	/**
 	 * The id PostHog buckets this install by, owned by bun so every renderer —

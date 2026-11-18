@@ -467,6 +467,47 @@ html {
 		0 32px 64px -24px rgb(80 100 140 / 0.26);
 }
 
+/* Beige: a warm-paper palette over the light theme (data-theme stays "light").
+   Only the tokens that carry the look are overridden; status colours stay light's. */
+[data-theme="light"][data-palette="beige"] {
+	--surface-base: 244 242 236;
+	--surface-raised: 250 249 246;
+	--surface-raised-hover: 240 238 232;
+	--surface-elevated: 255 255 255;
+	--surface-elevated-hover: 245 243 238;
+	--surface-overlay: 255 255 255;
+	--surface-overlay-hover: 240 238 232;
+
+	--text-primary: 28 27 25;
+	--text-secondary: 74 72 67;
+	--text-tertiary: 105 102 95;
+	--text-muted: 143 140 133;
+
+	--border-default: 214 210 200;
+	--border-active: 178 173 162;
+
+	/* Ink accents are the screenshot's burnt orange; solid fills are its near-black button. */
+	--accent: 166 77 18;
+	--accent-hover: 140 63 13;
+	--accent-emphasis: 120 54 11;
+	--accent-fill: 28 27 25;
+	--accent-fill-hover: 62 60 55;
+
+	--bg-grad-from: #f4f2ec;
+	--bg-grad-mid: #efece4;
+	--bg-grad-to: #e6e2d7;
+
+	--glass-border-rgb: 60 50 30;
+
+	--shadow-column: 0 8px 30px -8px rgb(60 50 30 / 0.1), 0 2px 8px -2px rgb(60 50 30 / 0.05);
+	--shadow-card-hover: 0 8px 24px -6px rgb(60 50 30 / 0.12);
+	--shadow-popover:
+		0 0 0 1px rgb(60 50 30 / 0.12),
+		0 2px 4px -1px rgb(60 50 30 / 0.12),
+		0 12px 24px -8px rgb(60 50 30 / 0.18),
+		0 32px 64px -24px rgb(60 50 30 / 0.22);
+}
+
 html {
 	height: 100vh;
 	height: 100dvh;

@@ -6,6 +6,7 @@ import type { TFunction } from "./i18n";
 import type { AppState, AppAction, Route } from "./state";
 import type { Locale } from "./i18n/types";
 import type { TaskStatus } from "../shared/types";
+import { applyThemeToDocument } from "./theme-bootstrap";
 
 /**
  * The actions the native menu and the command palette share. Each one reads the
@@ -58,7 +59,7 @@ export function emitAppEvent(name: string, detail?: unknown): void {
 export function applyTheme(preference: "light" | "dark" | "system"): void {
 	const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
 	const resolved = preference === "system" ? (prefersDark ? "dark" : "light") : preference;
-	document.documentElement.dataset.theme = resolved;
+	applyThemeToDocument(preference, resolved);
 	localStorage.setItem("dev3-theme", preference);
 	api.request.setTmuxTheme({ theme: resolved, preference }).catch(() => {});
 }

@@ -68,7 +68,7 @@ export default function AppearanceSettingsSection({
 						{t("settings.theme")}
 					</p>
 					<p className="text-fg-3 text-sm mb-3">{t("settings.themeDesc")}</p>
-				<div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+				<div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
 					<ThemeCard
 						name={t("settings.themeDark")}
 						description={t("settings.themeDarkDesc")}
@@ -91,6 +91,18 @@ export default function AppearanceSettingsSection({
 							raised: "#ffffff",
 							text: "#1a1d2e",
 							accent: "#5e9eff",
+						}}
+					/>
+					<ThemeCard
+						name={t("settings.themeBeige")}
+						description={t("settings.themeBeigeDesc")}
+						active={theme === "beige"}
+						onClick={() => onThemeChange("beige")}
+						preview={{
+							bg: "#f4f2ec",
+							raised: "#ffffff",
+							text: "#1c1b19",
+							accent: "#1c1b19",
 						}}
 					/>
 					<ThemeCard

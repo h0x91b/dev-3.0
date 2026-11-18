@@ -985,7 +985,7 @@ async function clearAgentBinaryPath(params: { agentId: string }): Promise<void> 
 	log.info("<- clearAgentBinaryPath saved");
 }
 
-async function setTmuxTheme(params: { theme: "dark" | "light"; preference?: "dark" | "light" | "system" }): Promise<void> {
+async function setTmuxTheme(params: { theme: "dark" | "light"; preference?: "dark" | "light" | "beige" | "system" }): Promise<void> {
 	log.info("→ setTmuxTheme", params);
 	const settings = await loadSettings();
 	await saveSettings({

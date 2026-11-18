@@ -8,6 +8,8 @@ const settings = {
 	"settings.themeDarkDesc": "Полуночный индиго",
 	"settings.themeLight": "Светлая",
 	"settings.themeLightDesc": "Чистая и яркая",
+	"settings.themeBeige": "Бежевая",
+	"settings.themeBeigeDesc": "Тёплая бумага",
 	"settings.themeSystem": "Системная",
 	"settings.themeSystemDesc": "Как в ОС",
 	"settings.language": "Язык",

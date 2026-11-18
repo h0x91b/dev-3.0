@@ -19,7 +19,7 @@ import { bootstrapScrollSpeed } from "./scroll-speed";
 import { bootstrapTerminalFont } from "./terminal-font";
 import { startViewportDiagnostics } from "./viewport-diagnostics";
 import { startRendererHeartbeat } from "./renderer-heartbeat";
-import { getInitialThemeState, getWindowInjectedThemeState } from "./theme-bootstrap";
+import { applyThemeToDocument, getInitialThemeState, getWindowInjectedThemeState } from "./theme-bootstrap";
 import { initThemeColorSync } from "./theme-color";
 import { initStreamerMode } from "./streamer-mode";
 import { buildChannelTitlePrefix } from "../shared/update-channel";
@@ -80,7 +80,7 @@ function applySavedTheme() {
 		...injectedThemeState,
 	});
 	injectedThemeState = {};
-	document.documentElement.dataset.theme = resolved;
+	applyThemeToDocument(preference, resolved);
 	localStorage.setItem("dev3-theme", preference);
 	api.request.setTmuxTheme({ theme: resolved, preference }).catch(() => {});
 }
