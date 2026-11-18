@@ -1,0 +1,1 @@
+Changelog entries are now dated by the day they are written and never moved afterwards, replacing the old "expected merge date, rename before merging" rule in AGENTS.md, change-logs/README.md, CONTRIBUTING.md and the PR template.
