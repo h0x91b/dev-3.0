@@ -104,16 +104,16 @@ export const agentHandlers: Record<string, Handler> = {
 		if (typeof params.sessionId === "string") {
 			const sessionId = params.sessionId;
 			await claudeApprovals.run(task.id, async () => {
-				const { project, task: current } = await resolveTaskFromParams(params);
+				const { task: current } = await resolveTaskFromParams(params);
 				let target: Task["status"] | null = null;
+				const stopTarget = params.stopTarget;
 				if (params.sessionEnded === true) {
 					const resumed = claudeApprovals.endSession(task.id, sessionId);
 					// A nested SDK session can finish while the pane's own agent is still working.
 					if (!params.paneId && current.status === "user-questions") target = resumed;
-				} else if (params.paneId) {
-					const configured = params.stopTarget;
-					const stopTarget = configured === "review-by-user" || configured === "review-by-ai" || configured === "user-questions" || configured === "in-progress"
-						? configured : getPrimaryStopTarget(project.autoReviewEnabled, current.taskType);
+				} else if (params.paneId && (
+					stopTarget === "review-by-user" || stopTarget === "review-by-ai" || stopTarget === "user-questions" || stopTarget === "in-progress"
+				)) {
 					target = claudeApprovals.stopParent(task.id, current.status, sessionId, stopTarget);
 				}
 				if (target && (target !== current.status || current.customColumnId != null)) {
