@@ -451,9 +451,36 @@ describe("isContentMergedInto with a branch that has no commits of its own", () 
 		expect(await isContentMergedInto(repo.local, "origin/main")).toBe(true);
 	});
 
+	it("returns true after the merged branch fast-forwards to the new base", async () => {
+		g("git checkout -b task-branch", repo.local);
+		makeTaskCommits(repo.local);
+		g("git checkout main", repo.local);
+		writeFileSync(join(repo.local, "other.ts"), "export const x = 1;\n");
+		g("git add other.ts", repo.local);
+		g('git commit -m "base moved on"', repo.local);
+		g("git merge --no-ff -m 'merge task-branch' task-branch", repo.local);
+		g("git push origin main", repo.local);
+		g("git checkout task-branch", repo.local);
+		g("git merge --ff-only origin/main", repo.local);
+
+		expect(await isContentMergedInto(repo.local, "origin/main")).toBe(true);
+	});
+
 	it("returns true after a local fast-forward merge, which leaves no merge commit", async () => {
 		g("git checkout -b task-branch", repo.local);
 		makeTaskCommits(repo.local);
+		g("git checkout main", repo.local);
+		g("git merge --ff-only task-branch", repo.local);
+		g("git checkout task-branch", repo.local);
+
+		expect(await isContentMergedInto(repo.local, "main")).toBe(true);
+	});
+
+	it("returns true after a fast-forward merge of a commit whose subject mentions Fast-forward", async () => {
+		g("git checkout -b task-branch", repo.local);
+		writeFileSync(join(repo.local, "feature.ts"), "export const ff = true;\n");
+		g("git add feature.ts", repo.local);
+		g('git commit -m "fix: Fast-forward task updates"', repo.local);
 		g("git checkout main", repo.local);
 		g("git merge --ff-only task-branch", repo.local);
 		g("git checkout task-branch", repo.local);
@@ -480,6 +507,21 @@ describe("isContentMergedInto with a branch that has no commits of its own", () 
 		expect(await isContentMergedInto(repo.local, "origin/main")).toBe(false);
 	});
 
+	it("returns true after a squash merge followed by git pull --rebase, which drops the branch's own commit", async () => {
+		g("git checkout -b task-branch", repo.local);
+		writeFileSync(join(repo.local, "feature.ts"), "export const add = (a: number, b: number) => a + b;\n");
+		g("git add feature.ts", repo.local);
+		g('git commit -m "feat: add function"', repo.local);
+		g("git checkout main", repo.local);
+		g("git merge --squash task-branch", repo.local);
+		g('git commit -m "squash: task (#1)"', repo.local);
+		g("git push origin main", repo.local);
+		g("git checkout task-branch", repo.local);
+		g("git pull --rebase origin main", repo.local);
+
+		expect(await isContentMergedInto(repo.local, "origin/main")).toBe(true);
+	});
+
 	it("returns false for an untouched branch that merely rebased onto the base", async () => {
 		g("git checkout -b task-branch", repo.local);
 		g("git checkout main", repo.local);
@@ -489,6 +531,24 @@ describe("isContentMergedInto with a branch that has no commits of its own", () 
 		g("git push origin main", repo.local);
 		g("git checkout task-branch", repo.local);
 		g("git rebase origin/main", repo.local);
+
+		expect(await isContentMergedInto(repo.local, "origin/main")).toBe(false);
+	});
+
+	it.each([
+		["git merge --ff-only origin/main"],
+		["git pull --ff-only origin main"],
+		["git pull --rebase origin main"],
+	])("returns false for an untouched branch that fast-forwarded to the base via `%s`", async (update) => {
+		g("git checkout -b task-branch", repo.local);
+		g("git checkout main", repo.local);
+		writeFileSync(join(repo.local, "other.ts"), "export const x = 1;\n");
+		g("git add other.ts", repo.local);
+		g('git commit -m "base moved on"', repo.local);
+		g("git push origin main", repo.local);
+		g("git reset --hard HEAD~1", repo.local);
+		g("git checkout task-branch", repo.local);
+		g(update, repo.local);
 
 		expect(await isContentMergedInto(repo.local, "origin/main")).toBe(false);
 	});

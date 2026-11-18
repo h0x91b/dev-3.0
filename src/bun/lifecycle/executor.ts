@@ -22,6 +22,7 @@ import {
 	getPreparingStageProgress,
 	getTaskTitle,
 	hasGitWorkflow,
+	isAttachedRepoInTaskFolder,
 	isOpsWorktreeTask,
 	taskUsesWorktree,
 	taskResetConsentMatches,
@@ -113,6 +114,10 @@ export interface LifecycleExecutionContext {
 	/** Set by `resetWorktree`: the worktree is gone, so a failed final write must say so. */
 	resetWorktreeRemoved?: boolean;
 	resetBranchOutcome?: git.RemoveWorktreeBranchOutcome;
+	/** Set by `removeAttachedWorktree` for a repo it removed, found already gone, or refused by the path guard. The persist that follows detaches it only if the row still names it. */
+	detachedAttachedRepo?: string;
+	/** Set with `detachedAttachedRepo` only when the worktree is really gone (removed now or earlier), so a failed final write can say so. */
+	attachedRepoRemoved?: boolean;
 	/** Set by `judgeFailureWorkspace`: why the failure cleanup keeps the folder. */
 	failureWorkspaceKept?: string;
 }
@@ -1224,8 +1229,22 @@ export async function executeLifecycleEffect(
 						if (unrecorded && existsSync(`${worktreePath}/.git`) && await git.isWorktreeDirtyOrUnknown(worktreePath)) {
 							log.warn("Kept a worktree with uncommitted or unreadable state and no recorded path", { taskId: ctx.sourceTask.id.slice(0, 8), worktreePath });
 						} else {
-							await rm(worktreePath, { recursive: true, force: true });
+							// A linked worktree the agent made inside the folder is removed through git first (it may be locked);
+							// the prune below is the safety net.
+							// Deleting takes the whole folder, so a repo that is the folder itself counts here.
+							const attached = ctx.sourceTask.attachedRepo;
+							const ownRepo = attached && (attached === worktreePath || isAttachedRepoInTaskFolder(ctx.sourceTask)) ? attached : null;
+							// A symlink swapped in since the attach would send git to a worktree outside the folder.
+							const realRepo = ownRepo ? git.resolvePathInsideOpsTaskFolder(ownRepo, worktreePath, OPS_DIR, "the attached repo removal", ownRepo === worktreePath) : null;
+							const probe = realRepo ? await git.classifyLinkedWorktree(realRepo) : null;
+							const mainRepo = probe?.kind === "linked" ? probe.mainRepo : null;
+							if (mainRepo && realRepo) await git.removeLinkedWorktree(mainRepo, realRepo);
+							// A swapped-in symlink on the folder or above it would make the recursive delete follow it out of the managed root.
+							if (!existsSync(worktreePath) || git.resolvePathInsideOpsTaskFolder(worktreePath, worktreePath, OPS_DIR, "the task folder delete", true)) {
+								await rm(worktreePath, { recursive: true, force: true });
+							}
 							if (isOpsWorktreeTask(ctx.sourceTask)) await git.pruneWorktrees(ctx.sourceTask.attachedRepo!);
+							else if (mainRepo) await git.pruneWorktrees(mainRepo);
 						}
 					}
 				} else {
@@ -1236,6 +1255,37 @@ export async function executeLifecycleEffect(
 				await forgetWorktreeTrust(worktreePath);
 			}
 			return {};
+		case "removeAttachedWorktree": {
+			// Best-effort (no "abort" policy): a stuck worktree must not block closing the task.
+			const attached = ctx.sourceTask.attachedRepo;
+			if (!attached || !isAttachedRepoInTaskFolder(ctx.sourceTask)) return {};
+			// Gone already (a retry or a boot after an earlier removal): only the record is left to clear.
+			if (!existsSync(attached)) {
+				ctx.detachedAttachedRepo = attached;
+				ctx.attachedRepoRemoved = true;
+				return {};
+			}
+			// Only the repo the user's dialog checked is ever removed; a swapped-in one is kept.
+			if (effect.approvedAttachedRepo !== attached) {
+				log.warn("Kept the attached worktree: it is not the one the user approved", { taskId: ctx.sourceTask.id.slice(0, 8), attached, approved: effect.approvedAttachedRepo });
+				return {};
+			}
+			// A symlink swapped in since the attach would send git to a worktree outside the folder: detach only.
+			const real = git.resolvePathInsideOpsTaskFolder(attached, ctx.sourceTask.worktreePath!, OPS_DIR, "the attached repo removal");
+			if (!real) {
+				ctx.detachedAttachedRepo = attached;
+				return {};
+			}
+			const probe = await git.classifyLinkedWorktree(real);
+			if (probe.kind === "unknown") {
+				// Never remove what git could not vouch for: it may hold unsaved work. The record stays attached.
+				log.warn("Kept the attached worktree: git could not classify it", { taskId: ctx.sourceTask.id.slice(0, 8), attached, error: probe.error });
+			} else if (probe.kind === "linked" && await git.removeLinkedWorktree(probe.mainRepo, real)) {
+				ctx.detachedAttachedRepo = attached;
+				ctx.attachedRepoRemoved = true;
+			}
+			return {};
+		}
 		case "resetWorktree": {
 			const worktreePath = ctx.sourceTask.worktreePath;
 			const outcome = await git.removeWorktree(ctx.project, ctx.sourceTask, {
@@ -1253,13 +1303,15 @@ export async function executeLifecycleEffect(
 					&& current.status !== "cancelled"
 					&& taskResetConsentMatches(current, effect.consent);
 				return sameRun
-					? { updates: { ...resetTaskUpdates(), codexScanFloorAt: new Date().toISOString() }, result: true }
+					? { updates: { ...resetTaskUpdates(), ...(ctx.detachedAttachedRepo && current.attachedRepo === ctx.detachedAttachedRepo ? { attachedRepo: null } : {}), codexScanFloorAt: new Date().toISOString() }, result: true }
 					: { updates: {}, result: false };
 			});
 			if (!applied.result) {
 				throw new Error(ctx.resetWorktreeRemoved
 					? "the task changed elsewhere while it was being reset; its worktree is already removed — reset it again to finish"
-					: "the task changed elsewhere while it was being reset; nothing was written");
+					: ctx.attachedRepoRemoved
+						? "the task changed elsewhere while it was being reset; its attached worktree is already removed — reset it again to finish"
+						: "the task changed elsewhere while it was being reset; nothing was written");
 			}
 			ctx.task = applied.task;
 			ctx.stateTask = ctx.task;
@@ -1355,7 +1407,14 @@ export async function executeLifecycleEffect(
 				// This run's conversations must not be picked up by a later scan.
 				codexScanFloorAt: new Date().toISOString(),
 			};
-			const persisted = await data.updateTask(ctx.project, ctx.task.id, taskUpdates);
+			const detachedRepo = ctx.detachedAttachedRepo;
+			// Detach only the repo that was handled: another client may have attached a different one since.
+			const persisted = detachedRepo
+				? (await data.updateTaskWith(ctx.project, ctx.task.id, (current) => ({
+					updates: { ...taskUpdates, ...(current.attachedRepo === detachedRepo ? { attachedRepo: null } : {}) },
+					result: null,
+				}))).task
+				: await data.updateTask(ctx.project, ctx.task.id, taskUpdates);
 			ctx.task = taskAfterPersistedUpdate(ctx.task, persisted, taskUpdates);
 			ctx.stateTask = ctx.task;
 			// Every pending approval belongs to the run that just ended — a completion

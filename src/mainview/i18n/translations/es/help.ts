@@ -81,6 +81,8 @@ const help = {
 	"help.inspector.sessionBar.title": "Sesión y agentes",
 	"help.inspector.sessionBar.body":
 		"Controla quién trabaja en la tarea: añade un segundo agente a la misma sesión, suelta un enjambre de cazadores de bugs, y divide, amplía o reorganiza los paneles de tmux.",
+	"help.task.completionStrip.title": "Lista para completar",
+	"help.task.completionStrip.body": "La rama se fusionó o el agente dice que el trabajo está hecho. Complétala cuando no quede nada; hasta entonces la franja espera aquí y no bloquea nada. El engranaje abre el ajuste que detiene las sugerencias tras una fusión.",
 	"help.inspector.gitBar.title": "Git y PR",
 	"help.inspector.gitBar.body":
 		"Todo lo relacionado con la rama: ver el diff, hacer rebase sobre la rama base, hacer push, abrir un pull request, fusionar. Las operaciones git corren en una terminal visible — siempre ves qué pasa.",

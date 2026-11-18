@@ -529,11 +529,17 @@ describe("DEFAULT_AGENTS", () => {
 		const modelOrder = codex!.configurations
 			.map((config) => config.model)
 			.filter((model, index, models) => model != null && models.indexOf(model) === index);
-		expect(modelOrder).toEqual(["gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5"]);
+		expect(modelOrder).toEqual(["gpt-6.2-astra", "gpt-6.2-sol", "gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5"]);
 
 		const modesFor = (model: string) => codex!.configurations
 			.filter((config) => config.model === model)
 			.map((config) => config.modeLabel);
+		for (const model of ["gpt-6.2-astra", "gpt-6.2-sol"]) {
+			expect(modesFor(model)).toEqual([
+				"Bypass [Medium]", "Bypass [Low]", "Bypass [High]", "Bypass [X-High]", "Bypass [Max]", "Bypass [Ultra]",
+				"Standard [Medium]", "Standard [Low]", "Standard [High]", "Standard [X-High]", "Standard [Max]", "Standard [Ultra]",
+			]);
+		}
 		expect(modesFor("gpt-6.1-sol")).toEqual([
 			"Bypass [Medium]", "Bypass [Low]", "Bypass [High]", "Bypass [X-High]", "Bypass [Max]", "Bypass [Ultra]",
 			"Standard [Medium]", "Standard [Low]", "Standard [High]", "Standard [X-High]", "Standard [Max]", "Standard [Ultra]",
@@ -572,7 +578,7 @@ describe("DEFAULT_AGENTS", () => {
 
 	it("configures every generated GPT-6.x and GPT-5.6 Codex mode with matching effort and permissions", () => {
 		const codex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
-		const generated = codex.configurations.filter((config) => /^codex-(6(?:\.1)?|5\.6)-/.test(config.id));
+		const generated = codex.configurations.filter((config) => /^codex-(6(?:\.[12])?|5\.6)-/.test(config.id));
 		expect(generated.some((config) => config.model === "gpt-6-luna")).toBe(true);
 		for (const config of generated) {
 			const effort = config.modeLabel!.match(/\[([^\]]+)\]/)![1].toLowerCase().replace("x-high", "xhigh");
@@ -769,6 +775,7 @@ describe("buildTaskDialogSubject", () => {
 			labels: [LABEL_FEAT, LABEL_BUG],
 			overview: "agent overview",
 			keepsFolder: false,
+			attachedRepo: null,
 		});
 	});
 
@@ -776,6 +783,13 @@ describe("buildTaskDialogSubject", () => {
 		const gitless = makeProject({ gitWorkflow: false });
 		expect(buildTaskDialogSubject(makeTask(), gitless).keepsFolder).toBe(true);
 		expect(buildTaskDialogSubject(makeTask({ ownWorktree: true }), gitless).keepsFolder).toBe(false);
+	});
+
+	it("flags a task whose attached repo lies in its own folder", () => {
+		const virtual = makeProject({ kind: "virtual" });
+		const inFolder = makeTask({ worktreePath: "/ops/s/ab/work", attachedRepo: "/ops/s/ab/work/wt" });
+		expect(buildTaskDialogSubject(inFolder, virtual)).toMatchObject({ attachedRepoInFolder: true, attachedRepo: "/ops/s/ab/work/wt" });
+		expect(buildTaskDialogSubject(makeTask({ worktreePath: "/ops/s/ab/work", attachedRepo: "/repo" }), virtual)).not.toHaveProperty("attachedRepoInFolder");
 	});
 
 	it("adds the variant suffix to the seq label", () => {

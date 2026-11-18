@@ -10,6 +10,10 @@ reasoning (48 of 50 dates), so the record wins and this file stays an index. Wri
 in full only while no record exists — the case for 84 below, whose reasoning lives nowhere
 else, so never compact them by deleting it.
 
+## 2026-11-09 — Completion asks: dialog by default, a bar in the agent's pane on request
+- **Rule:** bible §10 "merge/agent completion ask", yaml `task_info_panel.completion_strip`.
+- **Why:** decisions/2026/11/09/completion-offer-style-setting.md.
+
 ## 2026-11-09 — The user's own Complete/Cancel confirms beside the clicked button
 - **Rule:** bible §10 "the user's own one-click Complete/Cancel", yaml `popover.own_click_confirm`.
 - **Why:** decisions/2026/11/07/user-completion-confirm-anchored-not-modal.md.
@@ -752,3 +756,7 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 ## 2026-11-09 — Number keys can follow spaces
 - **Rule:** an opt-in Keyboard setting interleaves spaces with standalone projects in one draggable dashboard order; ⌘1–9 follow it, a space opens its board, ⌘0 stays Operations. Bible §10 space order.
 - **Why:** digits by project skipped past grouped work. Rejected per-key pinning (manual, user-rejected) and slot-of-first-member (not movable). Off = unchanged.
+
+## 2026-11-16 — The phone actions sheet is the complete inventory
+- **Rule:** Full screen (first) and Hibernate (last) are narrow sheet rows; narrow offers no hiding and ignores personal hiding (Simplified Mode still trims). Card long-press stays the drag; move = status-rail tap. Bible §12.3, §5.10.
+- **Why:** no touch path existed and hidden rows had no restore on a phone. Rejected a restore row and a per-user mobile button setting. `decisions/2026/11/16/phone-task-actions-sheet-is-the-complete-inventory.md`.

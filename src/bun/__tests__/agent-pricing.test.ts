@@ -72,6 +72,9 @@ describe("resolveModelRate", () => {
 	});
 
 	it("prices the GPT-6 lineup at its short-context API rates", () => {
+		expect(resolveModelRate("gpt-6.2-astra")).toMatchObject({ input: 8, output: 40, cacheWrite5m: 10, cacheRead: 0.4 });
+		expect(resolveModelRate("gpt-6.2-sol")).toMatchObject({ input: 2, output: 10, cacheWrite5m: 2.5, cacheRead: 0.1 });
+		expect(resolveModelRate("openai/gpt-6.2-astra")).toMatchObject({ input: 8, output: 40 });
 		expect(resolveModelRate("gpt-6.1-sol")).toMatchObject({ input: 2, output: 10, cacheWrite5m: 2.5, cacheRead: 0.1 });
 		expect(resolveModelRate("gpt-6-astra")).toMatchObject({ input: 10, output: 50, cacheWrite5m: 12.5, cacheRead: 1 });
 		expect(resolveModelRate("gpt-6-sol")).toMatchObject({ input: 2, output: 10, cacheWrite5m: 2.5, cacheRead: 0.2 });

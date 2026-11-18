@@ -6,7 +6,7 @@ Conflict-free changelog for parallel agent workflows. Each change gets its own f
 
 **Path:** `change-logs/YYYY/MM/DD/<type>-<short-slug>.md`
 
-The `YYYY/MM/DD` is the **expected PR merge date**, not the day you started. If a task spans more than one day, rename the file/folder to the actual merge day before merging — entries are grouped by ship date in the UI.
+The `YYYY/MM/DD` is the **day you write the entry**. Never move it afterwards — not when the PR merges days later, not after review rounds. Which release a change ships in comes from git between `v*` tags (`scripts/release-window.ts`); the path date only groups entries on the Changelog screen, so reviewers should not ask for it to be changed.
 
 **Type prefixes:** `feature-`, `fix-`, `refactor-`, `docs-`, `chore-`
 

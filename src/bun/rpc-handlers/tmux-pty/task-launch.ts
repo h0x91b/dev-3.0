@@ -814,11 +814,8 @@ export async function addVirtualShellPane(task: Task, worktreePath: string, sock
 		}
 		if (paneId) {
 			tmux.setOption(session, "pane-border-status", "top", { socket }).catch(() => {});
-			// `select-pane -t` sets a pane's title but ALSO makes it the active pane.
-			// Title the shell first and the agent (pane 0) LAST, awaited in order, so
-			// focus deterministically lands on the agent — not the freshly-split shell.
+			// The split is a background one, so the agent keeps focus; `-T` only titles.
 			await tmux.selectPane(paneId, { socket, title: "Shell" }).catch(() => {});
-			await tmux.selectPane(`${session}.0`, { socket, title: "Agent" }).catch(() => {});
 			log.info("Virtual shell pane created", { taskId: task.id.slice(0, 8), paneId });
 		} else {
 			log.warn("Virtual shell pane split failed (non-fatal)", { taskId: task.id.slice(0, 8), exitCode: 0 });
@@ -860,7 +857,6 @@ export async function launchColumnAgent(
 	});
 
 	const socket = pty.getSessionSocket(task.id);
-	const tmuxSession = taskSessionName(task.id);
 
 	const ctx: agents.TemplateContext = {
 		taskTitle: `${options.paneTitle}: ${task.title}`,
@@ -939,14 +935,6 @@ export async function launchColumnAgent(
 		tmuxCommand: `bash "${scriptPath}"`,
 		nativeLaunch: generatedScriptLaunch(scriptPath),
 	});
-
-	// tmux hands focus to the freshly split pane; the agent (pane 0) keeps it, as it
-	// always has. The native path restores focus inside the seam.
-	if (handle.backend === "tmux") {
-		try {
-			await tmux.selectPane(`${tmuxSession}:.0`, { socket, bestEffort: true });
-		} catch {}
-	}
 
 	log.info("launchColumnAgent DONE", { taskId: task.id.slice(0, 8), backend: handle.backend, paneId: handle.paneId });
 }

@@ -49,9 +49,14 @@ export const CLAUDE_RUNTIME_STATE = [
 	"worktrees/",
 ] as const;
 
+/** A repo-relative path prefix with gitignore glob characters escaped. */
+function escapeExcludePrefix(prefix: string): string {
+	return prefix.replace(/[\\*?[]/g, "\\$&");
+}
+
 /** `info/exclude` rules for one config dir, anchored at the repo root via `prefix` (e.g. `.claude/`). */
 export function claudeRuntimeExcludeRules(prefix: string, skillNames: readonly string[]): string[] {
-	const base = `/${prefix.replace(/[\\*?[]/g, "\\$&")}`;
+	const base = `/${escapeExcludePrefix(prefix)}`;
 	return [...CLAUDE_RUNTIME_STATE, ...skillNames.map((name) => `skills/${name}/`)].map((entry) => `${base}${entry}`);
 }
 
@@ -109,5 +114,15 @@ export function excludeClaudeRuntimeState(configDir: string, skillNames: readonl
 export function excludeTaskClaudeSettings(taskDir: string): void {
 	const file = join(taskDir, ".claude", "settings.local.json");
 	if (!existsSync(file) || isGitTracked(file)) return;
-	addExcludeRules(`task-settings:${taskDir}`, taskDir, (prefix) => [`/${prefix.replace(/[\\*?[]/g, "\\$&")}.claude/settings.local.json`], "dev3 task settings");
+	addExcludeRules(`task-settings:${taskDir}`, taskDir, (prefix) => [`/${escapeExcludePrefix(prefix)}.claude/settings.local.json`], "dev3 task settings");
+}
+
+/**
+ * Same as `excludeTaskClaudeSettings`, for the `.codex/hooks.json` dev3 writes. Only that file, never `.codex/`.
+ * `info/exclude` is shared by the whole repo, so the rule also hides an untracked one in the main checkout.
+ */
+export function excludeTaskCodexHooks(taskDir: string): void {
+	const file = join(taskDir, ".codex", "hooks.json");
+	if (!existsSync(file) || isGitTracked(file)) return;
+	addExcludeRules(`task-codex-hooks:${taskDir}`, taskDir, (prefix) => [`/${escapeExcludePrefix(prefix)}.codex/hooks.json`], "dev3 Codex hooks");
 }

@@ -321,6 +321,22 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		installUrl: "https://github.com/openai/codex",
 		configurations: [
 			// Newest generation first: the picker lists model groups in this order.
+			// --- GPT-6.2 Astra ---
+			...createCodexReasoningPresets(
+				"gpt-6.2-astra",
+				"GPT-6.2 Astra",
+				"codex-6.2-astra",
+				["medium", "low", "high", "xhigh", "max", "ultra"],
+				["medium", "low", "high", "xhigh", "max", "ultra"],
+			),
+			// --- GPT-6.2 Sol ---
+			...createCodexReasoningPresets(
+				"gpt-6.2-sol",
+				"GPT-6.2 Sol",
+				"codex-6.2-sol",
+				["medium", "low", "high", "xhigh", "max", "ultra"],
+				["medium", "low", "high", "xhigh", "max", "ultra"],
+			),
 			// --- GPT-6.1 Sol ---
 			...createCodexReasoningPresets(
 				"gpt-6.1-sol",

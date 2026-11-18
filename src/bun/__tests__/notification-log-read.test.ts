@@ -10,7 +10,8 @@ vi.mock("../logger", () => ({
 }));
 vi.mock("../rpc-handlers/shared-pure", () => ({ getPushMessage: () => null }));
 
-import { NOTIFICATION_LOG_RETENTION_DAYS, type NotificationLogInput, serializeNotificationLogRow } from "../../shared/notification-log";
+import { type NotificationLogInput, serializeNotificationLogRow } from "../../shared/notification-log";
+import { DEFAULT_LOG_RETENTION_DAYS } from "../../shared/log-retention";
 import { notificationLogDir, readNotificationLog } from "../notification-log";
 
 const dir = () => notificationLogDir();
@@ -46,7 +47,7 @@ describe("readNotificationLog", () => {
 			rows: [],
 			oldestDay: null,
 			newestDay: null,
-			retentionDays: NOTIFICATION_LOG_RETENTION_DAYS,
+			retentionDays: DEFAULT_LOG_RETENTION_DAYS,
 			hasMore: false,
 		});
 	});

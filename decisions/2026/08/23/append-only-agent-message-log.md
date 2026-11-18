@@ -1,5 +1,7 @@
 # Append-only agent message log, partitioned by day
 
+> Superseded on 2026-11-15 by `decisions/2026/11/15/log-retention-setting.md` for retention: it is a user setting now (30 days is the default), not a fixed 30 days.
+
 ## Context
 
 Agent-to-agent messages left no trace. `dev3 message` types straight into the
@@ -59,7 +61,7 @@ opens the directory. `projectSlug()` is used as-is, untouched.
   capped at `AGENT_MESSAGE_LOG_MAX_ROW_BYTES` (8 KiB); an oversized row shrinks its
   `body` and keeps every metadata field, because a row whose recipient or verdict
   had been dropped would be worthless to a traffic graph.
-- **Retention:** `AGENT_MESSAGE_LOG_RETENTION_DAYS = 30`. Expired day-files are
+- **Retention:** 30 days. Expired day-files are
   deleted whole — no rewrite, no rename. Pruning runs from the write path, at most
   once per day per project, mirroring `pruneLogFiles` in `src/bun/logger.ts`. The
   reader returns `oldestDay` and `retentionDays`, so trimmed history reads as
@@ -75,7 +77,8 @@ opens the directory. `projectSlug()` is used as-is, untouched.
 - **Message bodies land on disk unencrypted**, exactly as the agents wrote them,
   including paths and anything a human pasted by mistake. The file is `0600`, the
   same as the native-terminal stream taps, and nothing is filtered: a redacted
-  traffic log would not answer the question it exists for. 30 days is the bound.
+  traffic log would not answer the question it exists for. 30 days is the default
+  bound; with retention set to "forever" the bodies stay on disk indefinitely.
 - **A spill pointer can outlive its file.** Oversized bodies are written into the
   task directory, which dies with the task on cleanup. An old row's `spillPath` may
   name a file that is gone; the row then documents that a large message was sent,

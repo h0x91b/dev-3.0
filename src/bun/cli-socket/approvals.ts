@@ -1,7 +1,7 @@
 import type { AgentMessageSource, Project, ResetKeptBranch, Task, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus } from "../../shared/types";
 import { agentReplyCommand, seqIsShared } from "../../shared/agent-message-envelope";
 import { type ExternalSenderRequester, isExternalSenderRequester } from "../../shared/external-senders";
-import { DEFAULT_PRIORITY, agentLaunchAutoApproveMs, buildTaskDialogSubject, getTaskTitle, isCoordinatorTask, isOpsWorktreeTask, taskNeedsReset, taskResetConsent, taskUsesWorktree } from "../../shared/types";
+import { ACTIVE_STATUSES, DEFAULT_PRIORITY, agentLaunchAutoApproveMs, buildTaskDialogSubject, getTaskTitle, isCoordinatorTask, isOpsWorktreeTask, taskNeedsReset, taskResetConsent, taskUsesWorktree } from "../../shared/types";
 import { coordinatorLaunchDefault } from "../../shared/coordinator-launch";
 import { getAllAgents } from "../agents";
 import { createAgentRequest, getAgentRequestState, joinAgentRequest, setAgentRequestLaunchChoice, voidAgentRequest } from "../agent-requests";
@@ -119,6 +119,11 @@ async function destructiveReason(params: Record<string, unknown>, task: Task): P
 	return approvalReasonFromParams(params, source ? { seq: source.seq, title: source.title ?? "" } : null);
 }
 
+export const SELF_COMPLETION_NOT_ALLOWED =
+	"This task has not opted in to self-completion, so --force is refused and nothing changed. " +
+	"Only the user, or the task that created this one, can grant that. " +
+	"Run the command without --force to ask the user for approval.";
+
 export async function requestDestructiveApproval(
 	kind: DestructiveApprovalKind,
 	params: Record<string, unknown>,
@@ -131,6 +136,17 @@ export async function requestDestructiveApproval(
 		return { approved: true, task: moved, plainMove: true };
 	}
 	const targetStatus = DESTRUCTIVE_APPROVAL_TARGET[kind];
+	// `--force`: the caller owns the decision, so no dialog and no window is needed.
+	if (kind === "complete" && params.force === true && params.attachOnly !== true) {
+		if (task.status === "completed" || task.status === "cancelled") {
+			throw new Error(`Task is already ${task.status}`);
+		}
+		if (task.selfCompletion !== true) {
+			throw new Error(SELF_COMPLETION_NOT_ALLOWED);
+		}
+		const forced = await moveTask({ taskId: task.id, projectId: project.id, newStatus: targetStatus });
+		return { approved: true, task: forced };
+	}
 	const push = getPushMessage();
 	const dialog = {
 		taskTitle: getTaskTitle(task),
@@ -139,10 +155,12 @@ export async function requestDestructiveApproval(
 		subject: buildTaskDialogSubject(task, project),
 		// An owned Operations worktree is removed on reset, but its branch is kept.
 		...(kind === "reset" && isOpsWorktreeTask(task) ? { branchKept: true } : {}),
+		// Opening a To Do task shows its detail modal, which has no completion bar.
+		...(kind === "complete" && !ACTIVE_STATUSES.includes(task.status) ? { noTaskView: true } : {}),
 		...await destructiveReason(params, task),
 	};
 
-	let request: { requestId: string; decision: Promise<{ approved: boolean; stale?: boolean }> };
+	let request: { requestId: string; decision: Promise<{ approved: boolean; stale?: boolean; attachedRepo?: string | null }> };
 	if (params.attachOnly === true) {
 		const joined = joinAgentRequest(kind, task.id);
 		if (!joined) return { attached: false, status: approvalStatusOf(kind, task) };
@@ -178,7 +196,7 @@ export async function requestDestructiveApproval(
 	const ownAgentAsks = params.sourceTaskId === task.id;
 	const parked = stillAsking && ownAgentAsks && params.attachOnly !== true && await parkWhileAsking(project, task);
 
-	const { approved, stale } = await request.decision;
+	const { approved, stale, attachedRepo } = await request.decision;
 	if (!approved) {
 		resetConsentByRequestId.delete(request.requestId);
 		if (parked && !stale) await unparkAfterDecline(project, task);
@@ -194,10 +212,11 @@ export async function requestDestructiveApproval(
 		if (!run) {
 			// Consent is bound to the run the dialog showed; the machine refuses a
 			// different one and deletes nothing.
-			const consent = resetConsentByRequestId.get(requestId);
+			const snapshot = resetConsentByRequestId.get(requestId);
 			resetConsentByRequestId.delete(requestId);
-			run = consent
-				? resetTaskToTodo({ taskId: task.id, projectId: project.id, consent })
+			// `attachedRepo` stays the one seen when the dialog opened; only the checked one is approved for removal.
+			run = snapshot
+				? resetTaskToTodo({ taskId: task.id, projectId: project.id, consent: { ...snapshot, approvedAttachedRepo: attachedRepo ?? null } })
 				: Promise.reject(new Error("The reset request lost its consent record, so the reset was not run. Ask again."));
 			resetRunByRequestId.set(requestId, run);
 			void run.catch(() => {}).finally(() => {
@@ -210,7 +229,7 @@ export async function requestDestructiveApproval(
 	// Every caller joined to this request lands here; a repeat move to the same
 	// status is a no-op in the lifecycle machine.
 	try {
-		const updated = await moveTask({ taskId: task.id, projectId: project.id, newStatus: targetStatus });
+		const updated = await moveTask({ taskId: task.id, projectId: project.id, newStatus: targetStatus, approvedAttachedRepo: attachedRepo ?? null });
 		return { approved: true, task: updated };
 	} catch (err) {
 		// The lifecycle hands back only the message, so the leftover is read off disk.

@@ -280,7 +280,7 @@ describe("splitWindow / newWindow", () => {
 		});
 		expect(result).toEqual({ paneId: "%9", stderr: "warn\n" });
 		expect(argvOf(spawnFn)).toEqual([
-			"tmux", "-L", "s1", "split-window", "-h",
+			"tmux", "-L", "s1", "split-window", "-d", "-h",
 			"-l", "40%",
 			"-P", "-F", "#{pane_id}",
 			"-e", "A=1", "-e", "B=2",
@@ -320,6 +320,23 @@ describe("splitWindow / newWindow", () => {
 			"tmux", "-L", "dev3", "new-window", "-d", "-n", "Runs",
 			"-P", "-F", "#{pane_id}", "-e", "DEV3_TASK_SEQ=7", "-t", "dev3-abc:", "cmd",
 		]);
+	});
+});
+
+describe("splitWindow focus", () => {
+	it("always splits in the background and selects nothing without focus", async () => {
+		const { client, spawnFn } = makeClient({ stdout: "" });
+		await client.splitWindow({ target: "dev3-abc", orientation: "vertical" });
+		expect(spawnFn).toHaveBeenCalledTimes(1);
+		expect(argvOf(spawnFn, 0)).toEqual(["tmux", "-L", "dev3", "split-window", "-d", "-v", "-t", "dev3-abc"]);
+	});
+
+	it("an explicit user action selects exactly the pane it created", async () => {
+		const { client, spawnFn } = makeClient({ stdout: "%14\n" });
+		const result = await client.splitWindow({ target: "dev3-abc", orientation: "horizontal", focus: true });
+		expect(argvOf(spawnFn, 0)).toEqual(["tmux", "-L", "dev3", "split-window", "-d", "-h", "-P", "-F", "#{pane_id}", "-t", "dev3-abc"]);
+		expect(argvOf(spawnFn, 1)).toEqual(["tmux", "-L", "dev3", "select-pane", "-t", "%14"]);
+		expect(result.paneId).toBe("%14");
 	});
 });
 

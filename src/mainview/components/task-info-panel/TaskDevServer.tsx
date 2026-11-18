@@ -380,10 +380,10 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 		try {
 			const params = { taskId: task.id, projectId: project.id, ...(server ? { server } : {}), ...(all ? { all: true } : {}) };
 			const status = action === "start"
-				? await api.request.runDevServer(params)
+				? await api.request.runDevServer({ ...params, focus: true })
 				: action === "stop"
 					? await api.request.stopDevServer(params)
-					: await api.request.restartDevServer(params);
+					: await api.request.restartDevServer({ ...params, focus: true });
 			setDevStatus(status);
 			setDevState(status.running ? "running" : "stopped");
 		} catch (err) {
@@ -511,6 +511,7 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 				taskId: task.id,
 				projectId: project.id,
 				opId: trace.opId,
+				focus: true,
 			});
 			trace.settled();
 			const next = status?.running === false ? "stopped" : "running";
@@ -605,7 +606,7 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 		setDevServerMenuOpen(false);
 		setDevState("starting");
 		try {
-			const status = await api.request.restartDevServer({ taskId: task.id, projectId: project.id });
+			const status = await api.request.restartDevServer({ taskId: task.id, projectId: project.id, focus: true });
 			setDevState(status?.running === false ? "stopped" : "running");
 		} catch (err) {
 			setDevState("stopped");

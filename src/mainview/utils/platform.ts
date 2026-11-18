@@ -32,6 +32,15 @@ export function hasAppModifier(e: KeyboardEvent): boolean {
 }
 
 /**
+ * Whether a click is macOS's Ctrl+click, which the OS treats as a right click.
+ * The webview still fires `click` after `contextmenu`, so a row that opens on
+ * click must drop this one or the menu and the open happen together.
+ */
+export function isMacSecondaryClick(e: Pick<MouseEvent, "ctrlKey">): boolean {
+	return isMac() && e.ctrlKey;
+}
+
+/**
  * Whether the renderer is running in browser remote mode (`dev3 remote`) rather
  * than the Electrobun desktop shell. Electrobun injects `__electrobunWebviewId`
  * onto `window` inside the WKWebView; its absence means a plain browser tab over

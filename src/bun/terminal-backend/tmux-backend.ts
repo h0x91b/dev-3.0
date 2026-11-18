@@ -267,7 +267,7 @@ export class TmuxTerminalBackend implements TerminalBackend {
 		const paneId = await this.guard(
 			"splitView",
 			id,
-			() => this.port.splitPane(from, { cwd: spec.cwd, env: spec.env, command }, spec.orientation),
+			() => this.port.splitPane(from, { cwd: spec.cwd, env: spec.env, command }, spec.orientation, !spec.background),
 			from,
 		);
 		const focusedViewId = await this.guard("splitView.focus", id, () => this.port.activePaneId(id));
