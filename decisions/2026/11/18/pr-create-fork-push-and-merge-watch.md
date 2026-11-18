@@ -14,20 +14,24 @@ for completion.
 - **Push remote** (`pushBranch` in `src/cli/commands/pr.ts`): git's own
   `branch.<b>.pushRemote`, then `remote.pushDefault`, else `origin`. When `origin`
   refuses with a permission error and exactly one other remote exists, that remote
-  is the fork and gets the branch. With several, the command stops and names
+  gets the branch only if GitHub reports it as a fork of origin (`isForkOfOrigin`,
+  `gh repo view --json parent`). Otherwise the command stops and names
   `git config remote.pushDefault <fork-remote>` rather than guessing.
-- **Fork head:** for a non-origin push, `gh pr create` gets `--repo <origin owner/repo>`
-  and `--head <fork owner>:<branch>`, both parsed from `git remote get-url`.
-- **Merge watch:** inside a task, after the PR opens, the CLI sends `pr.watch.add`
-  with `until: "merged"` for the new PR number. The merge then reaches the agent
-  first (`mergeOfferHeld`), and the protocol tells it to request completion. An
-  unreachable app falls back to the old hint; `pr create` still works with dev3 closed.
+- **Fork head:** for a non-origin push, `gh pr create` gets `--repo [HOST/]OWNER/REPO`
+  of origin (the host kept for GitHub Enterprise) and `--head <owner>:<branch>` from the
+  remote's push URL. A remote that is origin's own repository gets neither.
+- **Merge watch:** inside a task, right after the PR opens and before auto-merge (whose
+  failure exits), the CLI sends `pr.watch.add` with `until: "merged"` and no PR number,
+  so the app resolves the branch's own PR. A number it could not tie to the branch would
+  be stored as a "followed" PR, outside `mergeOfferHeld`. The merge then reaches the
+  agent first, and the protocol tells it to request completion. An unreachable app falls
+  back to the old hint; `pr create` still works with dev3 closed.
 
 ## Risks
 
-The single-other-remote rule could pick a remote that is not a fork (a mirror); it
-only runs after `origin` refused, and the output names the remote it used. Every
-task PR now wakes its agent once at merge.
+Every task PR now wakes its agent once at merge. GitHub may not list a PR for its branch
+seconds after creation; then no watch is stored and the CLI prints the manual hint. A
+stalled app socket delays `pr create` by up to 20 s.
 
 ## Alternatives considered
 
