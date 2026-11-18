@@ -7,12 +7,16 @@ const context = { taskId: "task", projectId: "project", socketPath: "/fixture/so
 beforeEach(() => { vi.mocked(sendRequest).mockReset(); });
 
 describe("Claude normal turn/exit observation", () => {
-	it.each(["Stop", "SessionEnd"])("reports %s from a native pane without changing the column", async hook_event_name => {
+	it.each(["Stop", "SessionEnd"])("reports %s from a native pane", async hook_event_name => {
 		await handleClaudeTurnEnded(JSON.stringify({ hook_event_name, session_id: "session" }), context.socketPath, context, { DEV3_PANE_ID: "pane-1" });
 		expect(sendRequest).toHaveBeenCalledWith(context.socketPath, "task.claudeTurnEnded", {
 			taskId: "task", projectId: "project", sessionId: "session", paneId: "pane-1",
 			...(hook_event_name === "SessionEnd" ? { sessionEnded: true } : {}),
 		}, expect.anything());
+	});
+	it("forwards the generated primary Stop target to the atomic handler", async () => {
+		await handleClaudeTurnEnded('{"hook_event_name":"Stop","session_id":"session"}', context.socketPath, context, { DEV3_PANE_ID: "pane-1" }, "review-by-ai");
+		expect(sendRequest).toHaveBeenCalledWith(context.socketPath, "task.claudeTurnEnded", expect.objectContaining({ stopTarget: "review-by-ai" }), expect.anything());
 	});
 	it("ignores nested SDK sessions even when they inherit a tmux pane", async () => {
 		await handleClaudeTurnEnded('{"hook_event_name":"Stop","session_id":"session"}', context.socketPath, context, { TMUX_PANE: "%1", CLAUDE_CODE_ENTRYPOINT: "sdk-cli" });

@@ -418,18 +418,6 @@ export interface MatcherGroup {
 
 type HookMap = Record<string, MatcherGroup[]>;
 
-function buildMoveCommand(
-	status: string,
-	extra?: string,
-	options?: { codexStopHook?: boolean },
-	dialect: HookCliDialect = DEFAULT_DIALECT,
-): string {
-	const parts = [`${dialect.cli} task move --status ${status}`];
-	if (extra) parts.push(extra);
-	if (options?.codexStopHook) parts.push(CODEX_STOP_HOOK_FLAG);
-	return parts.join(" ");
-}
-
 // Status-move hooks must not hard-fail when the desktop app is down. The CLI
 // exits `CLI_EXIT_CODE_APP_NOT_RUNNING` (2) in that case — but exit code 2 is
 // ALSO how both Claude Code and Codex signal a *blocking* hook error (Claude:
@@ -454,22 +442,13 @@ function buildStopGroups(
 	stopTarget: TaskStatus,
 	dialect: HookCliDialect,
 ): MatcherGroup[] {
-	const move = (status: string, extra?: string) =>
-		withAppOfflineTolerance(buildMoveCommand(status, extra, undefined, dialect), dialect);
-
-	// The review group is unconditional: AI Review can be started by hand even
-	// when automatic review is off, and its reviewer shares these hooks (#1803).
-	return [
-		{
-			hooks: [
-				{ type: "command", command: move(stopTarget, "--if-status in-progress") },
-				{ type: "command", command: `${dialect.cli} hook claude-turn-ended`, timeout: 5 },
-			],
-		},
-		{
-			hooks: [{ type: "command", command: move("review-by-user", "--if-status review-by-ai") }],
-		},
-	];
+	return [{
+		hooks: [{
+			type: "command",
+			command: withAppOfflineTolerance(`${dialect.cli} hook claude-turn-ended --stop-target ${stopTarget}`, dialect),
+			timeout: 5,
+		}],
+	}];
 }
 
 /**

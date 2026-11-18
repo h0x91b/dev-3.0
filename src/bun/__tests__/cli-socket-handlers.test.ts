@@ -6238,6 +6238,25 @@ describe("Claude approval ownership", () => {
 		expect(await hook(event, "second")).toBe("review-by-user");
 	});
 
+	it.each(["review-by-user", "review-by-ai"] as const)("records parent Stop during a child approval, then restores %s", async stopTarget => {
+		await hook("PermissionRequest", "reader");
+		const response = await handleRequest(makeRequest("task.claudeTurnEnded", {
+			taskId: stored.id, projectId: project.id, sessionId: "session-1", paneId: "%1", stopTarget,
+		}));
+		expect(response.ok).toBe(true);
+		expect(stored.status).toBe("user-questions");
+		expect(await hook("SubagentStop", "reader")).toBe(stopTarget);
+	});
+
+	it("keeps working when the parent stops before its active child", async () => {
+		await hook("PreToolUse", "reader");
+		await handleRequest(makeRequest("task.claudeTurnEnded", {
+			taskId: stored.id, projectId: project.id, sessionId: "session-1", paneId: "%1", stopTarget: "review-by-user",
+		}));
+		expect(stored.status).toBe("in-progress");
+		expect(await hook("SubagentStop", "reader")).toBe("review-by-user");
+	});
+
 	it("clears a cancelled headless session's approval without a pane", async () => {
 		await hook("PermissionRequest", undefined, "sdk");
 		const response = await handleRequest(makeRequest("task.claudeTurnEnded", {

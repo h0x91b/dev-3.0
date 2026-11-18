@@ -5,7 +5,7 @@ interface ClaudeActivity {
 	waiting: Set<string>;
 	background: Set<string>;
 	resumeStatus: "in-progress" | "review-by-ai";
-	stoppedStatus?: "review-by-user";
+	stoppedStatus?: TaskStatus;
 }
 
 /** Only the conversation or background agent that raised a wait may clear it. */
@@ -68,6 +68,21 @@ export class ClaudeApprovalState {
 		}
 		if (owner.agentId && status === "user-questions") return null;
 		return status === "review-by-ai" ? null : "in-progress";
+	}
+
+	stopParent(taskId: string, status: TaskStatus, sessionId: string, stopTarget: TaskStatus): TaskStatus | null {
+		if (status === "todo" || status === "completed" || status === "cancelled") {
+			this.tasks.delete(taskId);
+			return null;
+		}
+		const activity = this.tasks.get(taskId);
+		if (!activity) return status === "in-progress" ? stopTarget : status === "review-by-ai" ? "review-by-user" : null;
+		const wasReviewing = status === "review-by-ai" || (status === "user-questions" && activity.resumeStatus === "review-by-ai");
+		activity.stoppedStatus = wasReviewing ? "review-by-user" : stopTarget;
+		activity.waiting.delete(JSON.stringify([sessionId, null]));
+		this.forgetEmpty(taskId, activity);
+		if (activity.waiting.size) return "user-questions";
+		return activity.background.size ? "in-progress" : activity.stoppedStatus;
 	}
 
 	endSession(taskId: string, sessionId: string): TaskStatus | null {

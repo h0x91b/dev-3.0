@@ -101,13 +101,23 @@ function getApprovalResumeStatus(
 export const agentHandlers: Record<string, Handler> = {
 	"task.claudeTurnEnded": (params) => codexQuestions.run(String(params.taskId), async () => {
 		const { task } = await resolveTaskFromParams(params);
-		if (params.sessionEnded === true && typeof params.sessionId === "string") {
+		if (typeof params.sessionId === "string") {
 			const sessionId = params.sessionId;
 			await claudeApprovals.run(task.id, async () => {
-				const target = claudeApprovals.endSession(task.id, sessionId);
-				// A nested SDK session can finish while the pane's own agent is still working.
-				if (target && !params.paneId) {
-					await moveTask({ projectId: task.projectId, taskId: task.id, newStatus: target, ifStatus: "user-questions" });
+				const { project, task: current } = await resolveTaskFromParams(params);
+				let target: Task["status"] | null = null;
+				if (params.sessionEnded === true) {
+					const resumed = claudeApprovals.endSession(task.id, sessionId);
+					// A nested SDK session can finish while the pane's own agent is still working.
+					if (!params.paneId && current.status === "user-questions") target = resumed;
+				} else if (params.paneId) {
+					const configured = params.stopTarget;
+					const stopTarget = configured === "review-by-user" || configured === "review-by-ai" || configured === "user-questions" || configured === "in-progress"
+						? configured : getPrimaryStopTarget(project.autoReviewEnabled, current.taskType);
+					target = claudeApprovals.stopParent(task.id, current.status, sessionId, stopTarget);
+				}
+				if (target && (target !== current.status || current.customColumnId != null)) {
+					await moveTask({ projectId: task.projectId, taskId: task.id, newStatus: target, ifStatus: current.status });
 				}
 			});
 		}

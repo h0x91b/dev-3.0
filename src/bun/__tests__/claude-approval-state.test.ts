@@ -23,6 +23,32 @@ describe("ClaudeApprovalState", () => {
 		expect(state.apply("t", "user-questions", "UserPromptSubmit", parent)).toBe("in-progress");
 	});
 
+	it("remembers a parent that stops while its child awaits approval", () => {
+		const state = new ClaudeApprovalState();
+		state.apply("t", "in-progress", "PermissionRequest", child);
+		expect(state.stopParent("t", "user-questions", "s", "review-by-user")).toBe("user-questions");
+		expect(state.apply("t", "user-questions", "SubagentStop", child)).toBe("review-by-user");
+	});
+
+	it("keeps working until every child of a stopped parent finishes", () => {
+		const state = new ClaudeApprovalState();
+		state.apply("t", "in-progress", "PreToolUse", child);
+		expect(state.stopParent("t", "in-progress", "s", "review-by-ai")).toBe("in-progress");
+		expect(state.apply("t", "in-progress", "SubagentStop", child)).toBe("review-by-ai");
+	});
+
+	it("finishes a paused AI reviewer after its child stops", () => {
+		const state = new ClaudeApprovalState();
+		state.apply("t", "review-by-ai", "PermissionRequest", child);
+		expect(state.stopParent("t", "user-questions", "s", "review-by-ai")).toBe("user-questions");
+		expect(state.apply("t", "user-questions", "SubagentStop", child)).toBe("review-by-user");
+	});
+
+	it("preserves unowned semantic questions when the parent stops", () => {
+		const state = new ClaudeApprovalState();
+		expect(state.stopParent("t", "user-questions", "s", "review-by-user")).toBeNull();
+	});
+
 	it("scopes session cleanup to that conversation", () => {
 		const state = new ClaudeApprovalState();
 		state.apply("t", "in-progress", "PermissionRequest", child);

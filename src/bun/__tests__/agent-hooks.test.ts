@@ -12,7 +12,7 @@ import {
 	writeCodexHooks,
 } from "../agent-hooks";
 import { ensureParentClaudeMdExcluded, isDev3OwnedFolder, type MatcherGroup } from "../../shared/agent-hooks";
-import { getPrimaryStopTarget, isStatusGuardBlocked, type TaskStatus } from "../../shared/types";
+import { getPrimaryStopTarget, type TaskStatus } from "../../shared/types";
 import {
 	CODEX_DEV3_HOOK_COMMAND,
 	dev3BashPermissions,
@@ -31,10 +31,12 @@ const DEV3_CLI = "~/.dev3.0/bin/dev3";
 const DEV3_BASH_PERMISSION = "Bash(dev3 note *)";
 
 describe("buildClaudeHooks", () => {
-	it.each([2, 1, 7])("an older offline CLI exit %s cannot accidentally block PreToolUse", exitCode => {
+	it.each([2, 1, 7])("an older offline CLI exit %s cannot accidentally block tool or Stop hooks", exitCode => {
 		const hooks = buildClaudeHooks({ dialect: { cli: `sh -c 'exit ${exitCode}' --`, posixShell: true } });
-		const result = spawnSync("sh", ["-c", hooks.PreToolUse[0].hooks[0].command]);
-		expect(result.status).toBe(exitCode === 2 ? 0 : 1);
+		for (const event of ["PreToolUse", "Stop"] as const) {
+			const result = spawnSync("sh", ["-c", hooks[event][0].hooks[0].command]);
+			expect(result.status).toBe(exitCode === 2 ? 0 : 1);
+		}
 	});
 
 	it("returns UserPromptSubmit, tool, PermissionRequest and Stop matcher groups", () => {
@@ -50,7 +52,7 @@ describe("buildClaudeHooks", () => {
 		expect(hooks.PreToolUse).toHaveLength(1);
 		expect(hooks.PostToolUse).toHaveLength(1);
 		expect(hooks.PermissionRequest).toHaveLength(1);
-		expect(hooks.Stop).toHaveLength(2);
+		expect(hooks.Stop).toHaveLength(1);
 	});
 
 	it("SessionStart only injects recent notes, on fresh conversations, and never moves status", () => {
@@ -127,60 +129,23 @@ describe("buildClaudeHooks", () => {
 		expect(cmd).toContain("hook claude-pre-tool");
 	});
 
-	it("Stop hook defaults to review-by-user with --if-status in-progress guard", () => {
+	it.each(["review-by-user", "review-by-ai", "user-questions"] as const)("Stop uses one atomic adapter with stop target %s", stopTarget => {
+		const hooks = buildClaudeHooks({ stopTarget });
+		expect(hooks.Stop).toEqual([{
+			hooks: [{
+				type: "command",
+				command: `${DEV3_CLI} hook claude-turn-ended --stop-target ${stopTarget} || [ $? -eq 2 ]`,
+				timeout: 5,
+			}],
+		}]);
+	});
+
+	it("Stop defaults to review-by-user and leaves SessionEnd observation unchanged", () => {
 		const hooks = buildClaudeHooks();
-
-		expect(hooks.Stop).toHaveLength(2);
-		const cmd = hooks.Stop[0].hooks[0].command;
-		expect(cmd).toContain(DEV3_CLI);
-		expect(cmd).toContain("--status review-by-user");
-		expect(cmd).toContain("--if-status in-progress");
-		expect(cmd).not.toContain("--codex-stop-hook");
-	});
-
-	// #1803: AI Review started by hand while automatic review is off. The reviewer
-	// shares the worktree hooks, so its Stop must still leave review-by-ai.
-	it("Stop hook finishes a manual AI Review when automatic review is off", () => {
-		const hooks = buildClaudeHooks({ stopTarget: "review-by-user" });
-
-		expect(hooks.Stop).toHaveLength(2);
-		expect(hooks.Stop[1].hooks[0].command).toBe(
-			`${DEV3_CLI} task move --status review-by-user --if-status review-by-ai || [ $? -eq 2 ]`,
-		);
-	});
-
-	it("Stop hook from the primary pane only ever leaves in-progress", () => {
-		for (const stopTarget of ["review-by-user", "review-by-ai"] as const) {
-			const commands = buildClaudeHooks({ stopTarget }).Stop.map((g) => g.hooks[0].command);
-			// Every Stop move is guarded, and none targets anything past review-by-user.
-			expect(commands.every((c) => /--if-status (in-progress|review-by-ai) /.test(c))).toBe(true);
-			expect(commands.filter((c) => c.includes("--if-status in-progress"))).toEqual([
-				`${DEV3_CLI} task move --status ${stopTarget} --if-status in-progress || [ $? -eq 2 ]`,
-			]);
-		}
-	});
-
-	it("Stop hook with review-by-ai stopTarget creates two matcher groups (primary + review)", () => {
-		const hooks = buildClaudeHooks({ stopTarget: "review-by-ai" });
-
-		// Two Stop groups: primary agent → review-by-ai, review agent → review-by-user
-		expect(hooks.Stop).toHaveLength(2);
-
-		const primaryCmd = hooks.Stop[0].hooks[0].command;
-		expect(primaryCmd).toContain("--status review-by-ai");
-		expect(primaryCmd).toContain("--if-status in-progress");
-
-		const reviewCmd = hooks.Stop[1].hooks[0].command;
-		expect(reviewCmd).toContain("--status review-by-user");
-		expect(reviewCmd).toContain("--if-status review-by-ai");
-	});
-
-	it("Stop hook with custom non-review-by-user stopTarget also creates two groups", () => {
-		const hooks = buildClaudeHooks({ stopTarget: "user-questions" });
-
-		expect(hooks.Stop).toHaveLength(2);
-		expect(hooks.Stop[0].hooks[0].command).toContain("--status user-questions");
-		expect(hooks.Stop[1].hooks[0].command).toContain("--status review-by-user --if-status review-by-ai");
+		expect(hooks.Stop[0].hooks[0].command).toContain("--stop-target review-by-user");
+		expect(hooks.SessionEnd).toEqual([{
+			hooks: [{ type: "command", command: `${DEV3_CLI} hook claude-turn-ended`, timeout: 5 }],
+		}]);
 	});
 
 	it("working hooks allow transition from review-by-user (user feedback resumes agent)", () => {
@@ -242,26 +207,10 @@ describe("buildClaudeHooks", () => {
 		expect(hooks.StopFailure[0].hooks[0].command).toContain("hook claude-stop-failure");
 	});
 
-	it("every status-move Claude hook tolerates app-offline (exit 2) without blocking the agent", () => {
-		// Claude Code treats a hook exit code of 2 as a *blocking* error
-		// (PreToolUse blocks the tool, UserPromptSubmit erases the prompt, Stop
-		// blocks stoppage). CLI_EXIT_CODE_APP_NOT_RUNNING is also 2, so when the
-		// desktop app is closed the hook must swallow exactly that code — and
-		// nothing else — into success. (issue: closed app wedged Edit/Bash.)
-		// `dev3 hook <name>` adapters are exempt: they own the offline case inside
-		// the CLI and always exit 0.
-		const hooks = buildClaudeHooks({ stopTarget: "review-by-ai" });
-
-		for (const groups of Object.values(hooks)) {
-			for (const group of groups) {
-				for (const entry of group.hooks) {
-					if (!entry.command.includes("task move")) continue;
-					expect(entry.command).toContain("|| [ $? -eq 2 ]");
-					// Never the blunt `|| true`, which would also hide real failures.
-					expect(entry.command).not.toContain("|| true");
-				}
-			}
-		}
+	it.each(["PreToolUse", "PostToolUse", "PermissionRequest", "Stop"] as const)("%s tolerates app-offline without hiding other failures", event => {
+		const command = buildClaudeHooks()[event][0].hooks[0].command;
+		expect(command).toContain("|| [ $? -eq 2 ]");
+		expect(command).not.toContain("|| true");
 	});
 
 	it("working hooks use adapters that tolerate an offline app", () => {
@@ -281,46 +230,26 @@ describe("buildClaudeHooks", () => {
 	});
 });
 
-// Plays generated Stop commands against the real status guard, in the given
-// order — Claude runs a hook event's groups in parallel, so both orders count.
-function replayStop(commands: string[], status: TaskStatus): TaskStatus {
-	for (const command of commands) {
-		const flag = (name: string) => command.match(new RegExp(`--${name} (\\S+)`))?.[1];
-		const target = flag("status") as TaskStatus;
-		if (!isStatusGuardBlocked(status, { ifStatus: flag("if-status"), ifStatusNot: flag("if-status-not") })) {
-			status = target;
-		}
-	}
-	return status;
+// The adapter owns one guarded transition; a primary Stop cannot also finish AI review.
+function replayStop(command: string, status: TaskStatus): TaskStatus {
+	const stopTarget = command.match(/--stop-target (\S+)/)?.[1] as TaskStatus;
+	return getAgentHookTargetStatus("Stop", status, stopTarget) ?? status;
 }
 
-describe("Claude Stop hooks replayed against the status guard (#1803)", () => {
-	const orders = (autoReview: boolean) => {
-		const commands = buildClaudeHooks({ stopTarget: getPrimaryStopTarget(autoReview) }).Stop
-			.map((group) => group.hooks[0].command);
-		return [commands, [...commands].reverse()];
-	};
+describe("Claude Stop adapter status transitions (#1803)", () => {
+	const command = (autoReview: boolean) => buildClaudeHooks({ stopTarget: getPrimaryStopTarget(autoReview) }).Stop[0].hooks[0].command;
 
-	it.each([false, true])("a reviewer finishing in review-by-ai lands in review-by-user (auto review %s)", (autoReview) => {
-		for (const commands of orders(autoReview)) {
-			expect(replayStop(commands, "review-by-ai")).toBe("review-by-user");
-		}
+	it.each([false, true])("a reviewer finishing in review-by-ai lands in review-by-user (auto review %s)", autoReview => {
+		expect(replayStop(command(autoReview), "review-by-ai")).toBe("review-by-user");
 	});
 
-	// Auto review on is left out on purpose: its two groups chain when replayed in
-	// sequence, and it leans on Claude running them concurrently instead
-	// (decisions/2026/03/14/ai-review-split-pane.md, Risks).
-	it("the primary agent finishing in-progress lands in review-by-user (auto review off)", () => {
-		for (const commands of orders(false)) {
-			expect(replayStop(commands, "in-progress")).toBe("review-by-user");
-		}
+	it.each([false, true])("the primary agent finishing in-progress lands in its stop target (auto review %s)", autoReview => {
+		expect(replayStop(command(autoReview), "in-progress")).toBe(getPrimaryStopTarget(autoReview));
 	});
 
-	it.each([false, true])("a Stop in any other column leaves the task alone (auto review %s)", (autoReview) => {
+	it.each([false, true])("a Stop in any other column leaves the task alone (auto review %s)", autoReview => {
 		for (const status of ["todo", "user-questions", "review-by-user", "completed", "cancelled"] as const) {
-			for (const commands of orders(autoReview)) {
-				expect(replayStop(commands, status)).toBe(status);
-			}
+			expect(replayStop(command(autoReview), status)).toBe(status);
 		}
 	});
 });
@@ -336,7 +265,7 @@ describe("mergeClaudeHooks", () => {
 		expect(hooks.PreToolUse).toHaveLength(1);
 		expect(hooks.PostToolUse).toHaveLength(1);
 		expect(hooks.PermissionRequest).toHaveLength(1);
-		expect(hooks.Stop).toHaveLength(2);
+		expect(hooks.Stop).toHaveLength(1);
 	});
 
 	it("preserves existing non-hook settings", () => {
@@ -362,7 +291,7 @@ describe("mergeClaudeHooks", () => {
 		expect(hooks.PostToolUse[1].hooks[0].command).toContain("hook claude-post-tool");
 		expect(hooks.PreToolUse).toHaveLength(1);
 		expect(hooks.PermissionRequest).toHaveLength(1);
-		expect(hooks.Stop).toHaveLength(2);
+		expect(hooks.Stop).toHaveLength(1);
 	});
 
 	it("preserves non-dev3 matcher groups on the same events", () => {
@@ -377,8 +306,22 @@ describe("mergeClaudeHooks", () => {
 
 		// Original matcher groups preserved + dev3 groups appended
 		expect(hooks.PermissionRequest).toHaveLength(2);
-		expect(hooks.Stop).toHaveLength(3);
+		expect(hooks.Stop).toHaveLength(2);
 		expect(hooks.Stop[0].hooks[0].command).toBe("echo done");
+	});
+
+	it("replaces both previous Stop move groups with one atomic adapter", () => {
+		const userHook = { hooks: [{ type: "command", command: "echo done" }] };
+		const result = mergeClaudeHooks({ hooks: { Stop: [
+			userHook,
+			{ hooks: [
+				{ type: "command", command: `${DEV3_CLI} task move --status review-by-ai --if-status in-progress || [ $? -eq 2 ]` },
+				{ type: "command", command: `${DEV3_CLI} hook claude-turn-ended`, timeout: 5 },
+			] },
+			{ hooks: [{ type: "command", command: `${DEV3_CLI} task move --status review-by-user --if-status review-by-ai || [ $? -eq 2 ]` }] },
+		] } }, { stopTarget: "review-by-ai" });
+		const hooks = result.hooks as Record<string, MatcherGroup[]>;
+		expect(hooks.Stop).toEqual([userHook, ...buildClaudeHooks({ stopTarget: "review-by-ai" }).Stop]);
 	});
 
 	it("is idempotent — running twice does not duplicate dev3 hooks", () => {
@@ -390,24 +333,23 @@ describe("mergeClaudeHooks", () => {
 		expect(hooks.UserPromptSubmit).toHaveLength(1);
 		expect(hooks.PreToolUse).toHaveLength(1);
 		expect(hooks.PermissionRequest).toHaveLength(1);
-		expect(hooks.Stop).toHaveLength(2);
+		expect(hooks.Stop).toHaveLength(1);
 	});
 
-	it("is idempotent with review-by-ai stopTarget (two Stop groups)", () => {
+	it("is idempotent with review-by-ai stopTarget (one atomic Stop adapter)", () => {
 		const first = mergeClaudeHooks({}, { stopTarget: "review-by-ai" });
 		const second = mergeClaudeHooks(first as Record<string, unknown>, { stopTarget: "review-by-ai" });
 		const hooks = second.hooks as Record<string, MatcherGroup[]>;
 
-		expect(hooks.Stop).toHaveLength(2);
+		expect(hooks.Stop).toHaveLength(1);
 	});
 
 	it("passes stopTarget through to buildClaudeHooks", () => {
 		const result = mergeClaudeHooks({}, { stopTarget: "review-by-ai" });
 		const hooks = result.hooks as Record<string, MatcherGroup[]>;
 
-		expect(hooks.Stop).toHaveLength(2);
-		expect(hooks.Stop[0].hooks[0].command).toContain("--status review-by-ai");
-		expect(hooks.Stop[1].hooks[0].command).toContain("--status review-by-user --if-status review-by-ai");
+		expect(hooks.Stop).toHaveLength(1);
+		expect(hooks.Stop[0].hooks[0].command).toContain("hook claude-turn-ended --stop-target review-by-ai");
 	});
 });
 
@@ -600,8 +542,8 @@ describe("writeClaudeHooks", () => {
 
 		// One atomic handler records the prompt and starts lifecycle observation.
 		expect(hooks.UserPromptSubmit).toHaveLength(1);
-		expect(hooks.Stop).toHaveLength(2);
-		expect(hooks.Stop[0].hooks[0].command).toContain("task move --status");
+		expect(hooks.Stop).toHaveLength(1);
+		expect(hooks.Stop[0].hooks[0].command).toContain("hook claude-turn-ended --stop-target review-by-user");
 		expect(content.permissions.allow).toContain(DEV3_BASH_PERMISSION);
 	});
 
@@ -621,16 +563,15 @@ describe("writeClaudeHooks", () => {
 		expect(content.hooks).toBeDefined();
 	});
 
-	it("writes hooks with stopTarget review-by-ai (two Stop groups)", () => {
+	it("writes hooks with stopTarget review-by-ai (one atomic Stop adapter)", () => {
 		writeClaudeHooks(tmp, { stopTarget: "review-by-ai" });
 
 		const settingsPath = join(tmp, ".claude", "settings.local.json");
 		const content = JSON.parse(readFileSync(settingsPath, "utf-8"));
 		const hooks = content.hooks as Record<string, MatcherGroup[]>;
 
-		expect(hooks.Stop).toHaveLength(2);
-		expect(hooks.Stop[0].hooks[0].command).toContain("--status review-by-ai --if-status in-progress");
-		expect(hooks.Stop[1].hooks[0].command).toContain("--status review-by-user --if-status review-by-ai");
+		expect(hooks.Stop).toHaveLength(1);
+		expect(hooks.Stop[0].hooks[0].command).toContain("hook claude-turn-ended --stop-target review-by-ai");
 	});
 
 	it("writes working hooks with --if-status-not guard", () => {
@@ -723,7 +664,7 @@ describe("writeClaudeHooks", () => {
 
 		const content = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
 		const hooks = content.hooks as Record<string, MatcherGroup[]>;
-		expect(hooks.Stop).toHaveLength(2);
+		expect(hooks.Stop).toHaveLength(1);
 	});
 
 	// A settings.local.json Claude Code wrote itself carries permissions.allow and
@@ -785,7 +726,7 @@ describe("writeClaudeHooks", () => {
 		writeClaudeHooks(tmp);
 
 		const content = JSON.parse(readFileSync(settingsPath, "utf-8"));
-		expect(content.hooks?.Stop).toHaveLength(2);
+		expect(content.hooks?.Stop).toHaveLength(1);
 		expect(content.enabledMcpjsonServers).toEqual(["playwright"]);
 	});
 
@@ -976,10 +917,7 @@ describe("POSIX hook output (byte-identical contract)", () => {
 			`${DEV3_CLI} hook claude-pre-tool || [ $? -eq 2 ]`,
 		);
 		expect(hooks.Stop[0].hooks[0].command).toBe(
-			`${DEV3_CLI} task move --status review-by-ai --if-status in-progress || [ $? -eq 2 ]`,
-		);
-		expect(hooks.Stop[1].hooks[0].command).toBe(
-			`${DEV3_CLI} task move --status review-by-user --if-status review-by-ai || [ $? -eq 2 ]`,
+			`${DEV3_CLI} hook claude-turn-ended --stop-target review-by-ai || [ $? -eq 2 ]`,
 		);
 	});
 
@@ -1016,10 +954,7 @@ describe("Windows hook output", () => {
 			`${cli} hook claude-pre-tool --tolerate-app-offline`,
 		);
 		expect(hooks.Stop[0].hooks[0].command).toBe(
-			`${cli} task move --status review-by-ai --if-status in-progress --tolerate-app-offline`,
-		);
-		expect(hooks.Stop[1].hooks[0].command).toBe(
-			`${cli} task move --status review-by-user --if-status review-by-ai --tolerate-app-offline`,
+			`${cli} hook claude-turn-ended --stop-target review-by-ai --tolerate-app-offline`,
 		);
 	});
 
@@ -1173,7 +1108,7 @@ describe("mergeClaudeHooks with malformed settings", () => {
 		}) as { hooks: Record<string, MatcherGroup[]> };
 
 		expect(merged.hooks.PreToolUse[0]).toEqual(userHook);
-		expect(merged.hooks.Stop).toHaveLength(2);
+		expect(merged.hooks.Stop).toHaveLength(1);
 	});
 
 	it("leaves an unrelated event alone even when its value is malformed", () => {
@@ -1198,7 +1133,7 @@ describe("mergeClaudeHooks with malformed settings", () => {
 			hooks: { Stop: [{ hooks: [{ type: "command", command: 42 }] }, { hooks: [null] }] },
 		}) as { hooks: Record<string, unknown[]> };
 
-		expect(merged.hooks.Stop).toHaveLength(4);
+		expect(merged.hooks.Stop).toHaveLength(3);
 	});
 
 	it("replaces an old dev3 hook stored in the legacy flat format", () => {
@@ -1206,7 +1141,7 @@ describe("mergeClaudeHooks with malformed settings", () => {
 			hooks: { Stop: [{ type: "command", command: `${DEV3_CLI} task move --status review-by-user` }] },
 		}) as { hooks: Record<string, unknown[]> };
 
-		expect(merged.hooks.Stop).toHaveLength(2);
+		expect(merged.hooks.Stop).toHaveLength(1);
 	});
 });
 
@@ -1427,7 +1362,7 @@ describe("writeClaudeHooks with a hostile file on disk", () => {
 		writeClaudeHooks(tmp);
 
 		const content = read();
-		expect(content.hooks?.Stop).toHaveLength(2);
+		expect(content.hooks?.Stop).toHaveLength(1);
 		expect(content.permissions.allow).toEqual(["Bash(gh:*)", ...dev3BashPermissions()]);
 	});
 
@@ -1451,7 +1386,7 @@ describe("writeClaudeHooks with a hostile file on disk", () => {
 		writeClaudeHooks(tmp);
 
 		const content = read();
-		expect(content.hooks?.Stop).toHaveLength(2);
+		expect(content.hooks?.Stop).toHaveLength(1);
 		expect(content["0"]).toBeUndefined();
 	});
 
@@ -1460,7 +1395,7 @@ describe("writeClaudeHooks with a hostile file on disk", () => {
 
 		writeClaudeHooks(tmp);
 
-		expect(read().hooks?.Stop).toHaveLength(2);
+		expect(read().hooks?.Stop).toHaveLength(1);
 	});
 
 	it("does not write the dev3 permission into a malformed shared settings.json", () => {
@@ -1470,7 +1405,7 @@ describe("writeClaudeHooks with a hostile file on disk", () => {
 
 		expect(readFileSync(join(tmp, ".claude", "settings.json"), "utf-8")).toBe("null");
 		expect(read().permissions.allow).toEqual(dev3BashPermissions());
-		expect(read().hooks?.Stop).toHaveLength(2);
+		expect(read().hooks?.Stop).toHaveLength(1);
 	});
 });
 
@@ -1508,7 +1443,7 @@ describe("writeClaudeHooks write suppression", () => {
 		writeFileSync(settingsPath(), JSON.stringify({ permissions: { allow: ["Bash(gh:*)"] } }));
 
 		expect(writeClaudeHooks(tmp).written).toBe(true);
-		expect(JSON.parse(readFileSync(settingsPath(), "utf-8")).hooks?.Stop).toHaveLength(2);
+		expect(JSON.parse(readFileSync(settingsPath(), "utf-8")).hooks?.Stop).toHaveLength(1);
 	});
 
 	it("writes again when the stop target changes", () => {

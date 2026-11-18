@@ -367,7 +367,7 @@ async function main(): Promise<void> {
 		return await handleClaudePostTool(await Bun.stdin.text(), socketPath || context?.socketPath || null, context);
 	}
 	if (command === "hook" && subcommand === "claude-turn-ended") {
-		return await handleClaudeTurnEnded(await Bun.stdin.text(), socketPath || context?.socketPath || null, context);
+		return await handleClaudeTurnEnded(await Bun.stdin.text(), socketPath || context?.socketPath || null, context, process.env, args.flags["stop-target"]);
 	}
 	if (command === "hook" && subcommand === "claude-claim") {
 		// Internal: Claude Code's PreToolUse on its edit tools in a shared folder.
