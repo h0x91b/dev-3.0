@@ -20,6 +20,8 @@ interface ScheduledMessagesChipProps {
 	 * popover flips to the opposite side when the preferred side would overflow.
 	 */
 	placement?: "up" | "down";
+	/** Called when the popover opens, so the card can close its hover preview. */
+	onOpen?: () => void;
 }
 
 /**
@@ -36,7 +38,7 @@ interface ScheduledMessagesChipProps {
  * terminal pane and the card hover-preview, hiding every message past the first;
  * portaling to `document.body` escapes those stacking contexts.
  */
-function ScheduledMessagesChip({ task, project, dispatch, placement = "up" }: ScheduledMessagesChipProps) {
+function ScheduledMessagesChip({ task, project, dispatch, placement = "up", onOpen }: ScheduledMessagesChipProps) {
 	const t = useT();
 	const messages = task.scheduledMessages ?? [];
 	const sorted = [...messages].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
@@ -153,7 +155,7 @@ function ScheduledMessagesChip({ task, project, dispatch, placement = "up" }: Sc
 				<button
 					ref={triggerRef}
 					data-testid="task-card-scheduled-message-badge"
-					onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+					onClick={(e) => { e.stopPropagation(); if (!open) onOpen?.(); setOpen(!open); }}
 					className="flex flex-shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-xs text-accent transition-colors hover:bg-fg/5"
 				>
 					{soonest === null ? (
@@ -179,6 +181,7 @@ function ScheduledMessagesChip({ task, project, dispatch, placement = "up" }: Sc
 			{open && createPortal(
 				<div
 					ref={popoverRef}
+					data-menu-surface // keeps the card's hover preview shut while open
 					className="fixed z-50 min-w-[13rem] max-w-[18rem] rounded-lg border border-edge-active bg-overlay shadow-2xl shadow-black/40 py-1"
 					style={{ top: pos.top, left: pos.left, visibility: visible ? "visible" : "hidden" }}
 					onClick={(e) => e.stopPropagation()}

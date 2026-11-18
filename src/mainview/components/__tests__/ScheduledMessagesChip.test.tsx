@@ -123,6 +123,12 @@ describe("ScheduledMessagesChip", () => {
 			expect(container.firstChild).toBeNull();
 		});
 
+		it("marks its popover as a menu surface, so the card hover preview stays shut", async () => {
+			renderChip(draftTask({ text: "later thought", updatedAt: "x" }));
+			await userEvent.click(screen.getByTestId("task-card-scheduled-message-badge"));
+			expect(document.querySelector("[data-menu-surface]")).not.toBeNull();
+		});
+
 		it("sends and discards the draft from the popover", async () => {
 			renderChip(draftTask({ text: "later thought", updatedAt: "x" }));
 			await userEvent.click(screen.getByTestId("task-card-scheduled-message-badge"));

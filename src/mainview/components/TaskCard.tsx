@@ -711,7 +711,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	}
 	if (!isTodo) {
 		timeSignals.push(
-			<ScheduledMessagesChip key="msgs" task={task} project={project} dispatch={dispatch} placement="up" />,
+			<ScheduledMessagesChip key="msgs" task={task} project={project} dispatch={dispatch} placement="up" onOpen={preview.close} />,
 		);
 	}
 	const variantDots = (
