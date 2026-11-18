@@ -1,5 +1,5 @@
 import type { PreparingStage, Project, Task } from "../../shared/types";
-import { isOpsWorktreeTask, taskCompletesManually, taskUsesWorktree } from "../../shared/types";
+import { isAttachedRepoInTaskFolder, isOpsWorktreeTask, taskSkipsMergeSuggestion, taskUsesWorktree } from "../../shared/types";
 import type { LifecycleRuntime, LifecycleState } from "./events";
 
 const PREPARING_STAGES = new Set<PreparingStage>([
@@ -68,14 +68,16 @@ export function lifecycleStateFromTask(project: Project, task: Task): LifecycleS
 			hasWorktree: !!task.worktreePath,
 			worktreePath: task.worktreePath ?? null,
 			lifecycleStartedAt: task.lifecycleStartedAt ?? null,
+			attachedRepo: task.attachedRepo ?? null,
 			usesWorktrees: taskUsesWorktree(project, task),
 			...(isOpsWorktreeTask(task) ? { opsWorktree: true } : {}),
+			...(isAttachedRepoInTaskFolder(task) ? { attachedRepoInFolder: true } : {}),
 			hasPrIdentity: task.prNumber != null,
 			draft: task.draft === true,
 			hibernated: task.hibernated === true,
 			peerReviewEnabled: project.peerReviewEnabled !== false,
 			// Derived, not the raw flag: a coordinator always owns its own completion.
-			manualCompletion: taskCompletesManually(task),
+			manualCompletion: taskSkipsMergeSuggestion(task),
 			mergeCompletionPrompt: task.mergeCompletionPrompt,
 		},
 	};

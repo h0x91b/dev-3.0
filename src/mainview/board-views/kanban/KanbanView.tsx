@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Context } from "cordis";
 import type { Task, TaskStatus } from "../../../shared/types";
-import { ALL_STATUSES, laneAcceptsProject, laneColumnIdForProject, laneKey } from "../../../shared/types";
+import { ALL_STATUSES, TERMINAL_STATUSES, laneAcceptsProject, laneColumnIdForProject, laneKey } from "../../../shared/types";
 import { statusDescKey, statusKey, useT } from "../../i18n";
 import { toast } from "../../toast";
 import { sortTasksForColumn } from "../../components/sortTasks";
@@ -278,8 +278,11 @@ export function KanbanView(_props: { ctx: Context }) {
 		// One column per screen. Built-in collapsed defaults stay reachable; only
 		// columns the user collapsed leave the rotation. Empty columns stay, so
 		// positions are stable.
+		// Under Active an empty finished column is a dead page; a `status:` query that fills it keeps it.
+		const hidesFinished = board.visibility() === "active";
 		const carouselColumns: CarouselColumn[] = lanes
 			.filter((slot) => !collapseState.isUserCollapsed(laneKey(slot)))
+			.filter((slot) => !(hidesFinished && slot.type === "builtin" && TERMINAL_STATUSES.includes(slot.status) && laneCount(slot) === 0))
 			.map((slot) => ({
 				id: laneKey(slot),
 				label: slot.type === "builtin" ? customStatusLabels[slot.status] || t(statusKey(slot.status)) : slot.col.name,

@@ -442,6 +442,68 @@ describe("removeWorktree", () => {
 		expect(branches).toContain("feature/login");
 	});
 
+	it("preserves a user branch an agent renamed to a name starting with it", async () => {
+		g("git branch feature/x", repo.local);
+		const wtPath = join(repo.dir, "worktree");
+		g(`git worktree add "${wtPath}" feature/x`, repo.local);
+		g("git branch -m feature/x feature/x-renamed", wtPath);
+
+		const project = makeProject(repo.local);
+		const task = makeTask({ worktreePath: wtPath, branchName: "feature/x-renamed", existingBranch: "feature/x", variantIndex: 1 });
+
+		await removeWorktree(project, task);
+
+		expect(g("git branch", repo.local)).toContain("feature/x-renamed");
+	});
+
+	it("preserves a user branch an agent renamed to the variant name itself", async () => {
+		g("git branch feature/x", repo.local);
+		const wtPath = join(repo.dir, "worktree");
+		g(`git worktree add "${wtPath}" feature/x`, repo.local);
+		g("git branch -m feature/x feature/x-v1", wtPath);
+
+		const project = makeProject(repo.local);
+		const task = makeTask({ worktreePath: wtPath, branchName: "feature/x-v1", existingBranch: "feature/x", variantIndex: 1 });
+
+		await removeWorktree(project, task);
+
+		expect(g("git branch", repo.local)).toContain("feature/x-v1");
+	});
+
+	it("preserves another variant's branch name", async () => {
+		g("git branch feature/login", repo.local);
+		const wtPath = join(repo.dir, "worktree");
+		g(`git worktree add -b feature/login-v3 "${wtPath}" feature/login`, repo.local);
+
+		const project = makeProject(repo.local);
+		const task = makeTask({ worktreePath: wtPath, branchName: "feature/login-v3", existingBranch: "feature/login", variantIndex: 1 });
+
+		await removeWorktree(project, task);
+
+		expect(g("git branch", repo.local)).toContain("feature/login-v3");
+	});
+
+	it.each([
+		["feature/login-v2", null],
+		["feature/login-v2-3", null],
+		["feature/login-v2", "fix/dev3-variant-renamed"],
+	])("deletes this task's variant branch %s (renamed to %s)", async (created, renamed) => {
+		g("git branch feature/login", repo.local);
+		const wtPath = join(repo.dir, "worktree");
+		g(`git worktree add -b ${created} "${wtPath}" feature/login`, repo.local);
+		if (renamed) g(`git branch -m ${created} ${renamed}`, wtPath);
+		const live = renamed ?? created;
+
+		const project = makeProject(repo.local);
+		const task = makeTask({ worktreePath: wtPath, branchName: live, existingBranch: "origin/feature/login", variantIndex: 2 });
+
+		await removeWorktree(project, task);
+
+		const branches = g("git branch", repo.local);
+		expect(branches).not.toContain(live);
+		expect(branches).toContain("feature/login");
+	});
+
 	it("still deletes the branch when worktree directory was already removed externally", async () => {
 		// Regression: `git rev-parse --abbrev-ref HEAD` was being spawned with
 		// cwd=task.worktreePath. When the directory was gone, Bun.spawn threw

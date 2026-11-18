@@ -72,6 +72,12 @@ describe("managed CLI agent spawning", () => {
 		expect(push.mock.calls[0][1].spawn.choice).not.toHaveProperty("accountId");
 		expect(vi.mocked(tmuxPtyHandlers.spawnAgentInTask).mock.calls[0][0]).not.toHaveProperty("accountId");
 	});
+	it("never asks for focus, so a CLI spawn opens in the background", async () => {
+		const pending = spawnCliAgent(options());
+		await answer(true);
+		await pending;
+		expect(vi.mocked(tmuxPtyHandlers.spawnAgentInTask).mock.calls[0][0]).not.toHaveProperty("focus");
+	});
 	it("seeds the approval dialog with the task's AWS profile and launches with the approved one", async () => {
 		const pending = spawnCliAgent({ ...options(), task: { ...task, bedrockProfile: "og" } });
 		await vi.waitFor(() => expect(push).toHaveBeenCalledWith("agentLaunchRequested", expect.anything()));

@@ -19,3 +19,11 @@ export function formatBytesCompact(bytes: number): string {
 	if (gib >= 1) return `${gib.toFixed(1)} GB`;
 	return `${Math.max(0, Math.round(bytes / 1024 ** 2))} MB`;
 }
+
+/** Storage size for a hint line: whole KB, one decimal from MB up ("640 KB", "3.2 MB", "1.1 GB"). */
+export function formatBytesPrecise(bytes: number): string {
+	if (bytes < 1024) return `${bytes} B`;
+	if (bytes < 1024 ** 2) return `${Math.max(1, Math.floor(bytes / 1024))} KB`;
+	if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+	return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+}

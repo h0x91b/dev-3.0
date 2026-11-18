@@ -408,7 +408,7 @@ Splits keep the agent and the running process visible in the same view — the u
 SESSION=dev3-<short-id>
 
 PANE=$(tmux -L dev3 split-window -h -t "$SESSION" -c "$PWD" -P -F '#{pane_id}')
-echo "new pane: $PANE"      # e.g. %42
+echo "new pane: $PANE"      # e.g. %42 — splits open in the background; run select-pane -t "$PANE" to move the user there on request
 tmux -L dev3 send-keys -t "$PANE" 'bun run dev' Enter
 \`\`\`
 
@@ -581,7 +581,7 @@ name that differs from the id is rejected.
 | \`id\` | 2–64 chars of \`a-z\`, \`0-9\`, \`-\`, starting with a letter or digit. \`builtin\`, \`dev3\`, \`third-party\`, \`third_party\` are reserved |
 | \`name\`, \`publisher\` | Required, max 80 chars. Shown in Settings and the consent dialog. Trust is bound to \`id\` + \`publisher\`: change the publisher and the user must consent again |
 | \`version\` | Semver, e.g. \`1.2.0\` |
-| \`engines.dev3\` | Semver range over the **extension API version** (\`1.0.0\` today; dev3 names it only in the consent dialog of an incompatible extension), not over the app version. Use \`^1.0.0\`. A range the app does not satisfy leaves it installed but **Incompatible** and off |
+| \`engines.dev3\` | Semver range over the **extension API version** (\`1.1.0\` today; dev3 names it only in the consent dialog of an incompatible extension), not over the app version. Use \`^1.0.0\`. A range the app does not satisfy leaves it installed but **Incompatible** and off |
 | \`contributes.boardViews\` | 1–16 views, each \`{ id, label }\`; view id \`a-z0-9-\`, label max 40 chars. The id you register at runtime is \`<extension id>:<view id>\` |
 | \`main\` | Must be \`"index.js"\` |
 
@@ -671,7 +671,7 @@ another extension's id), makes dev3 unload the whole extension and mark it **Fai
 
 - Shape: \`scope\` (\`{ kind: "project" | "space", id, projectIds }\`), \`formFactor\` (\`"wide"\` / \`"narrow"\`),
   \`query\` and \`setQuery(q)\`.
-- Data: \`tasks()\` (scope ∩ board query, every status), \`scopeTasks()\` (scope, unfiltered — for counts),
+- Data: \`tasks()\` (board scope ∩ user's Active | All switch ∩ query; may omit completed/cancelled — for every status use \`scopeTasks()\` with \`matches(task, query)\`), \`scopeTasks()\` (board scope, unfiltered — for counts), \`visibility()\` (\`"active"\` / \`"all"\`, the switch \`tasks()\` honours; API 1.1.0),
   \`matches(task, query)\`, \`columns({ includeOccupied? })\`, \`labels()\`, \`agents()\`, \`projects()\`, \`epics()\`,
   \`preferences()\` (\`{ taskSortOrder, tipsDisabled }\`), \`lineageNode(id)\`.
 - Per-view persisted state: \`layout(viewId)\` / \`setLayout(viewId, value)\` — stored per board and form factor.
@@ -806,7 +806,7 @@ There is no log file and no CLI for it yet.
 |---|---|---|
 | "This folder is not a dev3 extension: …" on install | Manifest invalid; the message names the field | Fix it against the field table |
 | **Invalid**, "folder name … does not match id" | Folder under \`extensions/\` is named differently from \`id\` | Rename the folder to the id |
-| **Incompatible** | \`engines.dev3\` does not admit API \`1.0.0\` | Use \`^1.0.0\` |
+| **Incompatible** | \`engines.dev3\` does not admit API \`1.1.0\` | Use \`^1.0.0\` |
 | **Not trusted** | Copied in by hand, or the publisher changed | User: "Review and trust…" in Settings → Extensions (scoped QA: fix the trust record's publisher) |
 | **Failed to load**, "index.js must default-export a Cordis plugin" | No \`export default\`, or it is not an object with \`apply\` / a function | Default-export the plugin |
 | **Failed to load**, a syntax or \`Failed to resolve module specifier\` error | Not a valid ES module, or an import other than \`react\` / \`react-dom\` / \`react/jsx-runtime\` / \`cordis\` | Bundle into one ESM file with those four external |
@@ -1316,7 +1316,7 @@ Off the main flow entirely.
 - **Filter and search by space.** ⇧⌘K matches space names as well as project names, the dashboard has its own field over projects + spaces, and the task funnel grows a **Spaces** group — \`space:"Client X"\` filters tasks anywhere task search runs, and \`is:home\` catches the projects in no space. The active-tasks sidebar gains a **space** scope (every project sharing a space with the current one). It lives in the task workspace, not on the dashboard — the dashboard's project rows already list every task waiting on you, so a panel beside them was showing the same rows twice; for cross-project task search, open any project and switch that sidebar to the globe scope.
 - **Terminals start in the wrong shell, or not at all → Settings → Terminal → Shell.** dev3 follows your login shell by default and falls back to whichever of zsh, bash or sh is installed, which is what makes a minimal Linux box (no zsh, sometimes no bash) work at all. Pin it to \`zsh\`, \`bash\` or \`sh\` when the detected one is not the one you want; a shell that is not installed says so under the picker and names the one actually running. Windows runs PowerShell and ignores the setting.
 - **Stats** — productivity and token-cost dashboards across projects.
-- **Automations** — recurring scheduled agent runs on a cron.
+- **Automations** — recurring scheduled agent runs on a cron. For a run nobody has to close, opt it in: \`dev3 automations create|update --self-completion on\` lets each task it creates finish itself with \`dev3 task move --status completed --force\`, no approval dialog. The same opt-in exists per task, granted by the user or by the task that creates it (\`dev3 task create --self-completion on\`); without it \`--force\` is refused, and a task cannot opt itself in. In the app: the automation editor's **When the work is done** field, or the completion chip in the task inspector — open it, pick **Agent completes it** and confirm.
 - **Multi-window** — a second window (⇧⌘N) for a second project on another monitor.
 
 ## Sibling skills
@@ -1936,7 +1936,7 @@ export function claudeBashPermissions(dialect: HookCliDialect = hookCliDialect()
  * an older wording of the same entry is recognised and replaced.
  */
 export const DEV3_AUTO_MODE_ALLOW_ENTRY =
-	"dev3 task lifecycle: the `dev3` CLI is the dev3 app's own control plane, and `dev3 task move` — `--status completed` and `--status cancelled` included — is a request to the running app, not local destruction. The app answers it with its own approval dialog that the user clicks, and the worktree it then removes is disposable task scratch space whose work is preserved elsewhere before the move is ever requested. Applies to `dev3` however it is spelled (`~/.dev3.0/bin/dev3`, an absolute `dev3.exe`), and only to `dev3` subcommands — nothing else on the command line is cleared by this entry. Commands that execute something are not control-plane requests: `dev3 pane run \"<command>\"` runs `<command>`, and `dev3 dev-server start|restart` runs the project's dev script (which the agent can edit in `.dev3/config.json`). Judge that command exactly as if the agent ran it directly; this entry clears none of it.";
+	"dev3 task lifecycle: the `dev3` CLI is the dev3 app's own control plane, and `dev3 task move` — `--status completed` and `--status cancelled` included — is a request to the running app, not local destruction. The app answers it with its own approval that the user gives in the app, and the worktree it then removes is disposable task scratch space whose work is preserved elsewhere before the move is ever requested. Applies to `dev3` however it is spelled (`~/.dev3.0/bin/dev3`, an absolute `dev3.exe`), and only to `dev3` subcommands — nothing else on the command line is cleared by this entry. Commands that execute something are not control-plane requests: `dev3 pane run \"<command>\"` runs `<command>`, and `dev3 dev-server start|restart` runs the project's dev script (which the agent can edit in `.dev3/config.json`). Judge that command exactly as if the agent ran it directly; this entry clears none of it.";
 
 /**
  * Git and PR management a dev3 task does when the user asks for it. The defaults

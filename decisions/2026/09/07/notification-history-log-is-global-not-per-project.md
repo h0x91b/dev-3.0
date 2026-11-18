@@ -1,5 +1,7 @@
 # The notification history is one global log, not a per-project one
 
+> Superseded on 2026-11-15 by `decisions/2026/11/15/log-retention-setting.md` for retention: it is a user setting now (30 days is the default), not a fixed 30 days.
+
 ## Context
 
 `dev3 notify` was the loudest thing an agent could do and the only one that left

@@ -119,6 +119,7 @@ export async function addAutomation(project: Project, draft: AutomationDraft): P
 			configId: draft.configId ?? null,
 			enabled: draft.enabled ?? true,
 			catchUp: draft.catchUp ?? "skip",
+			...(draft.selfCompletion === true ? { selfCompletion: true } : {}),
 			createdAt: now,
 			updatedAt: now,
 			nextRunAt: null,
@@ -154,6 +155,7 @@ export async function updateAutomation(
 			...(updates.configId !== undefined ? { configId: updates.configId } : {}),
 			...(updates.enabled !== undefined ? { enabled: updates.enabled } : {}),
 			...(updates.catchUp !== undefined ? { catchUp: updates.catchUp } : {}),
+			...(updates.selfCompletion !== undefined ? { selfCompletion: updates.selfCompletion === true } : {}),
 			updatedAt: new Date().toISOString(),
 		};
 		const scheduleChanged = next.rrule !== prev.rrule || next.timezone !== prev.timezone || next.enabled !== prev.enabled;

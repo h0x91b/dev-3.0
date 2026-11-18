@@ -10,8 +10,9 @@ vi.mock("../../rpc", () => ({
 		},
 	},
 }));
-vi.mock("../../confirm", () => ({
-	confirm: vi.fn(),
+vi.mock("../../completion-offers", () => ({
+	offerCompletion: vi.fn(),
+	hasCompletionOffer: vi.fn().mockReturnValue(false),
 }));
 vi.mock("../../toast", () => ({
 	toast: { info: vi.fn(), error: vi.fn() },
@@ -20,14 +21,14 @@ vi.mock("../../toast", () => ({
 import { offerMergeCompletion } from "../offerMergeCompletion";
 import { _resetMergeCompletionPromptInFlightForTests } from "../mergeCompletionPrompt";
 import { api } from "../../rpc";
-import { confirm } from "../../confirm";
+import { offerCompletion } from "../../completion-offers";
 import { toast } from "../../toast";
 import type { TFunction } from "../../i18n";
 
 const mockedPrepare = vi.mocked(api.request.prepareMergeCompletionPrompt);
 const mockedDismiss = vi.mocked(api.request.dismissMergeCompletionPrompt);
 const mockedManual = vi.mocked(api.request.setTaskManualCompletion);
-const mockedConfirm = vi.mocked(confirm);
+const mockedConfirm = vi.mocked(offerCompletion);
 
 // Echoes interpolation params so tests can assert the branch/task flow into copy.
 const t = Object.assign(
@@ -63,7 +64,7 @@ describe("offerMergeCompletion", () => {
 	});
 	afterEach(() => vi.clearAllMocks());
 
-	it("prompts with the outcome-card dialog and runs onComplete on accept (wire path)", async () => {
+	it("offers inline on the task and runs onComplete on accept (wire path)", async () => {
 		mockedConfirm.mockResolvedValue(true);
 		const onComplete = vi.fn();
 
@@ -79,14 +80,8 @@ describe("offerMergeCompletion", () => {
 		// App poller path never re-reserves (the poller reserved server-side).
 		expect(mockedPrepare).not.toHaveBeenCalled();
 		expect(mockedDismiss).not.toHaveBeenCalled();
-		// The dialog options come from buildMergeCompletionDialogOptions unchanged.
 		expect(mockedConfirm).toHaveBeenCalledWith(
-			expect.objectContaining({
-				title: "app.branchMergedTitle",
-				alternativeAction: { label: "app.branchMergedManualCompletion", value: "manual" },
-				outcomeCards: expect.objectContaining({ statusValue: "feat/wire" }),
-				dismissOnBackdrop: false,
-			}),
+			expect.objectContaining({ taskId: "t1", projectId: "p1", kind: "merge", branchName: "feat/wire" }),
 		);
 	});
 
@@ -158,7 +153,7 @@ describe("offerMergeCompletion", () => {
 		consoleError.mockRestore();
 	});
 
-	it("builds the info card from the wire subject", async () => {
+	it("builds the Dialog style's info card from the wire subject, with the open-task click", async () => {
 		mockedConfirm.mockResolvedValue(false);
 		const subject: TaskDialogSubject = {
 			seqLabel: "99",
@@ -167,25 +162,45 @@ describe("offerMergeCompletion", () => {
 			labels: [],
 			overview: "some overview",
 		};
+		const onOpenTask = vi.fn();
 
 		await offerMergeCompletion({
 			context: { ...wireContext, subject },
 			t,
 			fingerprint: "fp-1",
 			onComplete: vi.fn(),
+			onOpenTask,
 		});
 
 		expect(mockedConfirm).toHaveBeenCalledWith(
 			expect.objectContaining({
-				info: expect.objectContaining({
+				dialogInfo: expect.objectContaining({
 					title: "Wire Task",
 					body: "some overview",
 					seqLabel: "99",
 					projectName: "Beta",
 					priority: "P1",
+					onClick: onOpenTask,
 				}),
 			}),
 		);
+	});
+
+	it("calls onOffered once the offer is on its task", async () => {
+		mockedConfirm.mockResolvedValue(false);
+		const onOffered = vi.fn();
+
+		await offerMergeCompletion({ context: wireContext, t, fingerprint: "fp-1", onComplete: vi.fn(), onOffered });
+
+		expect(onOffered).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not call onOffered when the offer is suppressed", async () => {
+		const onOffered = vi.fn();
+
+		await offerMergeCompletion({ context: wireContext, t, fingerprint: "fp-1", shouldPrompt: false, onComplete: vi.fn(), onOffered });
+
+		expect(onOffered).not.toHaveBeenCalled();
 	});
 
 	it("downgrades to a passive toast when the poller says notify-only (wire path)", async () => {
@@ -282,7 +297,7 @@ describe("offerMergeCompletion", () => {
 		expect(mockedDismiss).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", fingerprint: "fp-server" });
 	});
 
-	it("derives title and branch from the live task+project context", async () => {
+	it("derives the branch from the live task+project context", async () => {
 		mockedConfirm.mockResolvedValue(true);
 		const onComplete = vi.fn();
 
@@ -296,8 +311,8 @@ describe("offerMergeCompletion", () => {
 
 		expect(mockedConfirm).toHaveBeenCalledWith(
 			expect.objectContaining({
-				outcomeCards: expect.objectContaining({ statusValue: "feat/x" }),
-				info: expect.objectContaining({ title: "My Task", projectName: "Alpha" }),
+				taskId: "t1", projectId: "p1", kind: "merge", branchName: "feat/x",
+				dialogInfo: expect.objectContaining({ title: "My Task", projectName: "Alpha" }),
 			}),
 		);
 		expect(onComplete).toHaveBeenCalledTimes(1);
@@ -321,7 +336,7 @@ describe("offerMergeCompletion", () => {
 
 	it("de-dupes a concurrent identical prompt (non-force)", async () => {
 		let resolveConfirm: (v: boolean) => void = () => {};
-		mockedConfirm.mockReturnValue(new Promise<boolean>((r) => (resolveConfirm = r)));
+		mockedConfirm.mockReturnValue(new Promise<boolean | "manual">((r) => (resolveConfirm = r)));
 
 		const first = offerMergeCompletion({
 			context: wireContext,
@@ -345,7 +360,7 @@ describe("offerMergeCompletion", () => {
 
 	it("returns aborted when the prompt is resolved on another client", async () => {
 		let resolveConfirm: (v: boolean) => void = () => {};
-		mockedConfirm.mockReturnValue(new Promise<boolean>((r) => (resolveConfirm = r)));
+		mockedConfirm.mockReturnValue(new Promise<boolean | "manual">((r) => (resolveConfirm = r)));
 		const onComplete = vi.fn();
 
 		const pending = offerMergeCompletion({

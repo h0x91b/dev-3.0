@@ -102,7 +102,7 @@ anonymous telemetry (`builtin:<id>` or `third_party`).
 Open:
 
 - No sandbox: consent, desktop-only install and the kill switch are the only defences.
-- `EXTENSION_API_VERSION` is `1.0.0`; there is no policy yet for when the contract breaks and how extensions
+- `EXTENSION_API_VERSION` is `1.1.0`; there is no policy yet for when the contract breaks and how extensions
   are told.
 - Cordis is a release candidate; moving to 4.0 stable is a deliberate bump that must re-run the runtime tests.
 - No measurement yet of runtime cost (load time, re-render cost on large boards) with several extensions.

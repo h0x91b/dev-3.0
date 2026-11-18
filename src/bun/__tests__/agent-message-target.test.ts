@@ -28,6 +28,7 @@ import {
 	addressedAgentRefusal,
 	agentPaneRoles,
 	isSoleMainAgent,
+	mainAgentPaneId,
 	resolveMainAgentTarget,
 	withAgentPanes,
 } from "../agent-message-target";
@@ -93,10 +94,17 @@ describe("resolveMainAgentTarget — where a task-addressed message goes", () =>
 		await expect(resolveMainAgentTarget(task())).resolves.toEqual({ ok: true, paneId: "%1", author: null });
 	});
 
-	it("uses the first pane tmux lists for a legacy task, or a first entry with no pane id yet", async () => {
+	it("uses the oldest tmux pane for a legacy task, or a first entry with no pane id yet", async () => {
 		live = ["%7", "%8"];
 		await expect(resolveMainAgentTarget(task(null))).resolves.toMatchObject({ ok: true, paneId: "%7" });
 		await expect(resolveMainAgentTarget(task([entry(null), entry("%8")]))).resolves.toMatchObject({ ok: true, paneId: "%7" });
+	});
+
+	it("keeps the oldest tmux pane with no registry after a swap reorders the list", async () => {
+		// swap-pane turns `0 %7, 1 %8` into `0 %8, 1 %7`; pane ids stay, and %10 sorts after %9.
+		live = ["%10", "%8", "%9"];
+		expect(mainAgentPaneId(task(null), live)).toBe("%8");
+		await expect(resolveMainAgentTarget(task(null))).resolves.toMatchObject({ ok: true, paneId: "%8" });
 	});
 
 	it("refuses a task with no live pane at all", async () => {

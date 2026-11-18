@@ -303,7 +303,7 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 			const taskId = currentTaskId(state);
 			if (!projectId || !taskId) return;
 			try {
-				await api.request.runDevServer({ taskId, projectId });
+				await api.request.runDevServer({ taskId, projectId, focus: true });
 			} catch (err) {
 				console.error("[menu] runDevServer failed", err);
 			}
@@ -326,7 +326,7 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 			if (!projectId || !taskId) return;
 			try {
 				await api.request.stopDevServer({ taskId, projectId });
-				await api.request.runDevServer({ taskId, projectId });
+				await api.request.runDevServer({ taskId, projectId, focus: true });
 			} catch (err) {
 				console.error("[menu] dev server restart failed", err);
 			}

@@ -5,7 +5,8 @@ vi.mock("../rpc-handlers/shared", () => ({
 }));
 vi.mock("../data", () => ({ loadProjects: vi.fn(), getProject: vi.fn() }));
 vi.mock("../repo-config", () => ({ resolveProjectEnv: vi.fn() }));
-vi.mock("../agent-accounts", () => ({
+vi.mock("../agent-accounts", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../agent-accounts")>()),
 	readClaudeConfigDirIdentity: vi.fn((dir: string) => ({
 		email: `${dir.split("/").slice(-2)[0]}@example.com`,
 		organization: null,
@@ -30,6 +31,13 @@ beforeEach(() => {
 			b: { CLAUDE_CONFIG_DIR: "/work/shared/.claude/" },
 			c: { CLAUDE_CONFIG_DIR: "~/.claude" },
 			d: {},
+			f: { CLAUDE_CONFIG_DIR: "/work/f/.claude", CLAUDE_CODE_USE_BEDROCK: "1" },
+			g: { CLAUDE_CONFIG_DIR: "/work/g/.claude", ANTHROPIC_API_KEY: "k" },
+			h: { CLAUDE_CONFIG_DIR: "/work/h/.claude", CLAUDE_CODE_USE_BEDROCK: "0" },
+			i: { CLAUDE_CONFIG_DIR: "/work/i/.claude", ANTHROPIC_MODEL: "claude-opus-5-5" },
+			j: { CLAUDE_CONFIG_DIR: "/work/j/.claude", ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-sonnet-5-5" },
+			k: { CLAUDE_CONFIG_DIR: "/work/k/.claude", ANTHROPIC_BASE_URL: "https://gw.example.com" },
+			l: { CLAUDE_CONFIG_DIR: "/work/l/.claude", ANTHROPIC_BASE_URL: "https://gw.example.com", ANTHROPIC_AUTH_TOKEN: "t" },
 		};
 		if (p.id === "e") throw new Error("unreadable config");
 		return env[p.id];
@@ -55,5 +63,19 @@ describe("listPinnedClaudeLogins", () => {
 			configDir: null,
 			identity: null,
 		});
+	});
+
+	it.each([
+		["a", null],
+		["f", "bedrock"],
+		["g", "env-auth"],
+		["h", null],
+		["i", "model"],
+		["j", "model"],
+		["k", "gateway"],
+		["l", "env-auth"],
+	])("reports the backend project %s's env puts Claude on: %s", async (id, backend) => {
+		vi.mocked(data.getProject).mockResolvedValue(project(id));
+		await expect(agentAccountHandlers.getProjectClaudeLogin({ projectId: id })).resolves.toMatchObject({ backend });
 	});
 });

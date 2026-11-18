@@ -162,3 +162,37 @@ describe("AutomationEditModal — daily day picker", () => {
 		expect(screen.getByRole("button", { name: "Mon" }).getAttribute("aria-pressed")).toBe("false");
 	});
 });
+
+describe("AutomationEditModal — completion", () => {
+	it("asks before completing by default", async () => {
+		const user = userEvent.setup();
+		renderCreate();
+		await fillNameAndPrompt(user);
+
+		await user.click(screen.getByRole("button", { name: "Create" }));
+
+		expect(api.request.createAutomation).toHaveBeenCalledWith(expect.objectContaining({ selfCompletion: false }));
+	});
+
+	it("saves self-completion and warns about it once chosen", async () => {
+		const user = userEvent.setup();
+		renderCreate();
+		await fillNameAndPrompt(user);
+
+		await user.click(screen.getByLabelText("When the work is done"));
+		await user.click(await screen.findByRole("option", { name: "The agent completes the task itself" }));
+		expect(await screen.findByText(/No approval dialog/)).toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: "Create" }));
+		expect(api.request.createAutomation).toHaveBeenLastCalledWith(expect.objectContaining({ selfCompletion: true }));
+	});
+
+	it("opens an opted-in automation with self-completion selected", () => {
+		render(
+			<I18nProvider>
+				<AutomationEditModal project={project} automation={{ ...weeklyAutomation, selfCompletion: true }} onClose={() => {}} onSaved={() => {}} />
+			</I18nProvider>,
+		);
+		expect(screen.getByText(/No approval dialog/)).toBeInTheDocument();
+	});
+});

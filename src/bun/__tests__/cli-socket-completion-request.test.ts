@@ -194,7 +194,24 @@ describe("task.requestCompletion", () => {
 		const resp = await respPromise;
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toEqual({ approved: true, task: completedTask });
-		expect(moveTask).toHaveBeenCalledWith({ taskId: task.id, projectId: "proj-1", newStatus: "completed" });
+		expect(moveTask).toHaveBeenCalledWith({ taskId: task.id, projectId: "proj-1", newStatus: "completed", approvedAttachedRepo: null });
+	});
+
+	it("approves exactly the repo the dialog reports it checked, not what the task had when the request opened", async () => {
+		const task = makeTask({ worktreePath: "/ops/s/ab/work", attachedRepo: "/ops/s/ab/work/wt-a" });
+		setupTask(task);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(moveTask).mockResolvedValue({ ...task, status: "completed" as const });
+
+		const respPromise = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		const [, payload] = pushFn.mock.calls[0] as [string, { requestId: string; subject: TaskDialogSubject }];
+		expect(payload.subject).toMatchObject({ attachedRepoInFolder: true, attachedRepo: "/ops/s/ab/work/wt-a" });
+		resolveAgentRequest(payload.requestId, { approved: true, attachedRepo: "/ops/s/ab/work/wt-a" });
+		await respPromise;
+
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ newStatus: "completed", approvedAttachedRepo: "/ops/s/ab/work/wt-a" }));
 	});
 
 	it("flags an approved completion whose teardown left the worktree half removed (h0x91b/dev-3.0#2269)", async () => {
@@ -231,6 +248,21 @@ describe("task.requestCompletion", () => {
 		const resp = await respPromise;
 		expect(resp).toMatchObject({ ok: false, error: "Failed to remove worktree at /tmp/wt: locked" });
 		expect(resp.reason).toBeUndefined();
+	});
+
+	it("approves no repo when the dialog reports none (its check failed, or the answer predates the field)", async () => {
+		const task = makeTask({ worktreePath: "/ops/s/ab/work", attachedRepo: "/ops/s/ab/work/wt-a" });
+		setupTask(task);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(moveTask).mockResolvedValue({ ...task, status: "completed" as const });
+
+		const respPromise = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		resolveAgentRequest((pushFn.mock.calls[0] as [string, { requestId: string }])[1].requestId, { approved: true });
+		await respPromise;
+
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ approvedAttachedRepo: null }));
 	});
 
 	it("shows another task's --reason attributed to it, and keeps it for a replayed dialog", async () => {
@@ -275,6 +307,28 @@ describe("task.requestCompletion", () => {
 		expect(second).not.toHaveProperty("reason");
 		resolveAgentRequest(second.requestId, { approved: false });
 		await bare;
+	});
+
+	it("marks the ask for a To Do task, which has no terminal view, and keeps the mark for a replay", async () => {
+		setupTask(makeTask({ status: "todo" }));
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		const todo = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalledTimes(1));
+		const first = pushFn.mock.calls[0][1] as { requestId: string; noTaskView?: boolean };
+		expect(first.noTaskView).toBe(true);
+		expect(listPendingAgentRequests("complete")[0].dialog.noTaskView).toBe(true);
+		resolveAgentRequest(first.requestId, { approved: false });
+		await todo;
+
+		setupTask(makeTask());
+		const running = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalledTimes(2));
+		const second = pushFn.mock.calls[1][1] as { requestId: string };
+		expect(second).not.toHaveProperty("noTaskView");
+		resolveAgentRequest(second.requestId, { approved: false });
+		await running;
 	});
 
 	it("returns approved:false without moving the task when declined", async () => {
@@ -353,6 +407,49 @@ describe("task.requestCompletion", () => {
 // The reported bug: the dialog stayed open (or opened) after the task was
 // already completed by another path — the board, or a merged PR — so the user
 // had to answer a second time for a task that was already done.
+describe("task.requestCompletion with --force", () => {
+	it("completes an opted-in task at once, with no dialog and no connected window", async () => {
+		const task = makeTask({ selfCompletion: true });
+		setupTask(task);
+		vi.mocked(getPushMessage).mockReturnValue(null);
+		const completedTask = { ...task, status: "completed" as const };
+		vi.mocked(moveTask).mockResolvedValue(completedTask);
+
+		const resp = await handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1", force: true }));
+
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toEqual({ approved: true, task: completedTask });
+		expect(moveTask).toHaveBeenCalledWith({ taskId: task.id, projectId: "proj-1", newStatus: "completed" });
+		expect(listPendingAgentRequests("complete")).toHaveLength(0);
+	});
+
+	it("refuses a task that never opted in, and moves nothing", async () => {
+		setupTask(makeTask());
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		const resp = await handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1", force: true }));
+
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("has not opted in to self-completion");
+		// The refusal must not teach the agent how to grant itself the opt-in.
+		expect(resp.error).not.toContain("--self-completion on");
+		expect(resp.error).not.toContain("from outside");
+		expect(moveTask).not.toHaveBeenCalled();
+		expect(pushFn).not.toHaveBeenCalled();
+	});
+
+	it("errors on an opted-in task that is already completed", async () => {
+		setupTask(makeTask({ selfCompletion: true, status: "completed" }));
+
+		const resp = await handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1", force: true }));
+
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("already completed");
+		expect(moveTask).not.toHaveBeenCalled();
+	});
+});
+
 describe("task.requestCompletion when the task ends by another path", () => {
 	const TASK_ID = "task-abc12345-1111-2222-3333-444444444444";
 

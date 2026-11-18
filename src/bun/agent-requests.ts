@@ -16,6 +16,8 @@ export interface AgentRequestDecision {
 	approved: boolean;
 	/** Present only for approved `launch` requests. */
 	launch?: AgentLaunchChoice;
+	/** Complete/cancel/reset: the attached repo the user's dialog checked; null when it checked none. */
+	attachedRepo?: string | null;
 	/** Set when nobody answered: the run the request was about ended first. */
 	stale?: boolean;
 }
@@ -34,6 +36,8 @@ export interface AgentRequestDialog {
 	requester?: AgentRequestRequester;
 	/** Why the agent asks (`--reason`); replayed with the dialog. */
 	reason?: ApprovalReason;
+	/** `complete` only: the task has no terminal view (To Do), so its ask can only be a dialog. */
+	noTaskView?: boolean;
 }
 
 /** A task asked (`taskId` set) or a registered external sender did (`senderId` set). */
