@@ -584,11 +584,18 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		}
 	}
 
-	async function handleResumeSession() {
-		const accountId = resumeAccount;
+	// A canvas mounted before the relaunch returns connects to a session not yet
+	// registered, gets "Unknown session" and never retries; mount it after the URL.
+	function leaveRecoveryForRelaunch() {
 		setRestarting(true);
 		setRecoverable(null);
 		setHibernated(false);
+		if (!isNative) setPtyUrl(null);
+	}
+
+	async function handleResumeSession() {
+		const accountId = resumeAccount;
+		leaveRecoveryForRelaunch();
 		try {
 			const url = await api.request.resumeTask({ taskId, ...(accountId !== undefined ? { accountId } : {}) });
 			setResumeAccount(undefined);
@@ -609,9 +616,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 
 	/** The wake screen's plain shell: no agent, and the saved panes stay resumable. */
 	async function handleWakeShell() {
-		setRestarting(true);
-		setRecoverable(null);
-		setHibernated(false);
+		leaveRecoveryForRelaunch();
 		try {
 			const url = await api.request.wakeTaskShell({ taskId });
 			if (isNative) await fetchPaneState(taskId);
@@ -627,9 +632,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	}
 
 	async function handleStartFresh() {
-		setRestarting(true);
-		setRecoverable(null);
-		setHibernated(false);
+		leaveRecoveryForRelaunch();
 		try {
 			const url = await api.request.restartTask({ taskId });
 			if (isNative) await fetchPaneState(taskId);
