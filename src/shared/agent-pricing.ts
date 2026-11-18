@@ -57,6 +57,8 @@ const BASE_RATES: ReadonlyArray<{ match: (id: string) => boolean; rate: ModelBas
 	// --- OpenAI / Codex ---
 	// Preview models without public API pricing are deliberately omitted.
 	// GPT-6 short-context rates; the long-context tier (2x) is not modelled.
+	{ match: (id) => id.includes("gpt-6.2-astra"), rate: { input: 8, output: 40, cacheRead: 0.4 } },
+	{ match: (id) => id.includes("gpt-6.2-sol"), rate: { input: 2, output: 10, cacheRead: 0.1 } },
 	{ match: (id) => id.includes("gpt-6.1-sol"), rate: { input: 2, output: 10, cacheRead: 0.1 } },
 	{ match: (id) => id.includes("gpt-6-astra"), rate: { input: 10, output: 50, cacheRead: 1 } },
 	{ match: (id) => id.includes("gpt-6-sol"), rate: { input: 2, output: 10, cacheRead: 0.2 } },

@@ -1105,6 +1105,13 @@ export const CLAUDE_ENV_AUTH_KEYS = [
 	"CLAUDE_CODE_USE_FOUNDRY",
 ] as const;
 
+/** Project env that picks Claude's backend, its credentials or its model ids. A named login
+ *  runs on none of it: a project-wide Bedrock switch, API key or base URL would override it. */
+export function isClaudeBackendKey(key: string): boolean {
+	return (CLAUDE_ENV_AUTH_KEYS as readonly string[]).includes(key)
+		|| key === "ANTHROPIC_MODEL" || key === "ANTHROPIC_SMALL_FAST_MODEL" || key.startsWith("ANTHROPIC_DEFAULT_");
+}
+
 /** Same for Codex: an API key in the env would make `codex login` moot. */
 export const CODEX_ENV_AUTH_KEYS = ["OPENAI_API_KEY", "CODEX_API_KEY"] as const;
 

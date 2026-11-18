@@ -1,5 +1,9 @@
 # One task context menu, shared by the Kanban card and the Active Tasks row
 
+> Corrected on 2026-11-16 by `decisions/2026/11/16/phone-task-actions-sheet-is-the-complete-inventory.md`:
+> long-press opens this menu on the Active Tasks row only. `TaskCard` wires right-click alone, and
+> its long-press stays the native drag on purpose.
+
 ## Context
 
 The Active Tasks sidebar row is a navigator with a hard budget (bible §10: two resting
@@ -10,8 +14,8 @@ external-app list and nothing else.
 ## Decision
 
 `src/mainview/components/TaskContextMenu.tsx` is ONE menu for the task object, mounted by
-`ActiveTaskRow` and by `TaskCard`, opened through `hooks/useContextMenu.ts` (right-click,
-long-press on touch, Shift+F10 / the Context-menu key on the focused row). It owns no
+`ActiveTaskRow` and by `TaskCard`, opened through `hooks/useContextMenu.ts` (right-click on
+both; long-press on touch and Shift+F10 / the Context-menu key on the focused row, sidebar only). It owns no
 action of its own: every row hands off to the picker, modal or RPC that already existed —
 `LabelPicker`, `PriorityPicker`, `PipelineDropdown`, `MoveToProjectPicker`, `OpenInMenu`,
 `TaskDetailModal` (with the new `autoRename` prop for "Rename…"), and the watch / hidden /

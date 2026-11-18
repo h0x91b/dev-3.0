@@ -156,6 +156,17 @@ describe("Tree board view", () => {
 		expect(actions.openContextMenu).toHaveBeenCalledWith("solo", { x: 5, y: 6 });
 	});
 
+	it("treats a macOS Ctrl+click as a right click: menu only, task stays closed", async () => {
+		const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+		onTestFinished(() => platform.mockRestore());
+		const { actions } = await renderTree({ tasks: family });
+		const row = screen.getByTestId("board-tree-row-p1#4");
+		fireEvent.contextMenu(row, { clientX: 5, clientY: 6, ctrlKey: true });
+		fireEvent.click(row, { ctrlKey: true });
+		expect(actions.openContextMenu).toHaveBeenCalledWith("solo", { x: 5, y: 6 });
+		expect(actions.openTask).not.toHaveBeenCalled();
+	});
+
 	it("keeps the nested count beside the title so status, priority and age stay in columns", async () => {
 		await renderTree({ tasks: family });
 		const root = screen.getByTestId("board-tree-row-p1#1");

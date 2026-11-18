@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isMacSecondaryClick } from "../utils/platform";
 
 /** How long a finger must rest before a long press counts as a right click. */
 const LONG_PRESS_MS = 500;
@@ -17,16 +18,16 @@ export interface ContextMenuTrigger {
 		onTouchMove: (e: React.TouchEvent) => void;
 		onTouchEnd: () => void;
 	};
-	/** True right after a long press, so the host can drop the click that follows. */
-	swallowClick: () => boolean;
+	/** True when the click ends a menu gesture (a long press, or macOS Ctrl+click), so the host drops it. */
+	swallowClick: (e: Pick<React.MouseEvent, "ctrlKey">) => boolean;
 }
 
 /**
  * Right-click (desktop) and long-press (touch) opener for an object's context
- * menu. Touch has no contextmenu event of its own on every engine, and React's
+ * menu. Touch has no contextmenu event of its own on every engine, React's
  * passive touch listeners cannot preventDefault the click that follows a long
- * press — so the host asks {@link ContextMenuTrigger.swallowClick} before acting
- * on its own onClick.
+ * press, and macOS Ctrl+click fires a click after the menu opens — so the host
+ * asks {@link ContextMenuTrigger.swallowClick} before acting on its own onClick.
  */
 export function useContextMenu(disabled = false): ContextMenuTrigger {
 	const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
@@ -82,7 +83,10 @@ export function useContextMenu(disabled = false): ContextMenuTrigger {
 		[cancelTimer],
 	);
 
-	const swallowClick = useCallback(() => Date.now() - longPressedAtRef.current < 600, []);
+	const swallowClick = useCallback(
+		(e: Pick<React.MouseEvent, "ctrlKey">) => isMacSecondaryClick(e) || Date.now() - longPressedAtRef.current < 600,
+		[],
+	);
 
 	return {
 		pos,

@@ -217,6 +217,17 @@ describe("Table board view", () => {
 		expect(actions.openContextMenu).toHaveBeenCalledTimes(2);
 	});
 
+	it("treats a macOS Ctrl+click as a right click: menu only, task stays closed", async () => {
+		const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+		onTestFinished(() => platform.mockRestore());
+		const { actions } = await renderTable({ tasks: [task("t1", 1)] });
+		const row = screen.getByTestId("board-table-row-t1");
+		fireEvent.contextMenu(row, { clientX: 40, clientY: 50, ctrlKey: true });
+		fireEvent.click(row, { ctrlKey: true });
+		expect(actions.openContextMenu).toHaveBeenCalledWith("t1", { x: 40, y: 50 });
+		expect(actions.openTask).not.toHaveBeenCalled();
+	});
+
 	it("changes priority with the card's picker without opening the task", async () => {
 		const { actions } = await renderTable({ tasks: [task("t1", 1, { priority: "P3" })] });
 		fireEvent.click(within(screen.getByTestId("board-table-row-t1")).getByRole("button", { name: /P3/ }));

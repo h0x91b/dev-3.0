@@ -6,8 +6,10 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, statSync, 
 import {
 	basename as basenamePath,
 	dirname as dirnamePath,
+	isAbsolute,
 	relative as relativePath,
 	resolve as resolvePath,
+	sep as pathSep,
 } from "node:path";
 import { createLogger } from "./logger";
 import { CloneProgressParser } from "./clone-progress";
@@ -1665,6 +1667,115 @@ export async function createOpsWorktree(
 	return { worktreePath: wtPath, branchName: branch };
 }
 
+export type LinkedWorktreeKind =
+	| { kind: "linked"; mainRepo: string }
+	| { kind: "plain" }
+	| { kind: "unknown"; error: string };
+
+/**
+ * "plain" only when git positively answers that the checkout owns its git dir. A missing path or a
+ * failed probe is "unknown", so a broken repo is never mistaken for a clone that is safe to ignore.
+ * A subfolder of a linked worktree is "plain": only the worktree root may be removed as a worktree.
+ */
+export async function classifyLinkedWorktree(path: string): Promise<LinkedWorktreeKind> {
+	if (!existsSync(path)) return { kind: "unknown", error: `Path not found: ${path}` };
+	let result: GitRunResult;
+	try {
+		result = await run(["git", "rev-parse", "--path-format=absolute", "--show-toplevel", "--git-dir", "--git-common-dir"], path);
+	} catch (err) {
+		return { kind: "unknown", error: String(err) };
+	}
+	if (!result.ok) return { kind: "unknown", error: result.stderr.trim() || "git rev-parse failed" };
+	const [topLevel, gitDir, commonDir] = result.stdout.split("\n");
+	if (!topLevel || !gitDir || !commonDir) return { kind: "unknown", error: `Unexpected git rev-parse output: ${result.stdout}` };
+	if (realPathOr(topLevel) !== realPathOr(path)) return { kind: "plain" };
+	if (gitDir === commonDir) return { kind: "plain" };
+	return { kind: "linked", mainRepo: commonDir.endsWith("/.git") ? commonDir.slice(0, -"/.git".length) : commonDir };
+}
+
+function realPathOr(path: string): string {
+	try { return realpathSync(path); } catch { return path; }
+}
+
+/**
+ * The real path of `path` when it lies inside an Operations task folder with no symlink on the way, or
+ * null. Removal runs long after the attach check, so a link swapped in since, on the path or on any folder
+ * from `opsDir` down (the task folder included), must not lead git or `rm` outside. Only `opsDir` is
+ * canonicalized: the expected real path is built from it and the written path, never read back from a link.
+ * `skipped` names what the caller leaves alone on a refusal. `allowFolderItself`: `path` may be the task folder.
+ */
+export function resolvePathInsideOpsTaskFolder(path: string, taskFolder: string, opsDir: string, skipped: string, allowFolderItself = false): string | null {
+	if (!existsSync(path)) return null;
+	try {
+		const realOps = realpathSync(opsDir);
+		const base = [opsDir, realOps].find((root) => isLexicallyInside(taskFolder, root));
+		if (!base) throw new Error("the task folder is not inside the managed root");
+		const rel = relativePath(taskFolder, path);
+		const inFolder = rel === "" ? allowFolderItself : isLexicallyInside(path, taskFolder);
+		if (!inFolder) throw new Error("it is not inside the task folder");
+		const fromRoot = relativePath(base, resolvePath(path));
+		let current = base;
+		for (const part of fromRoot.split(pathSep)) {
+			current = `${current}${pathSep}${part}`;
+			if (lstatSync(current).isSymbolicLink()) throw new Error(`a symlink on the way: ${current}`);
+		}
+		const expected = resolvePath(realOps, fromRoot);
+		const real = realpathSync(path);
+		if (real !== expected) throw new Error("it resolves elsewhere than where it is written");
+		return real;
+	} catch (err) {
+		log.warn(`Kept ${skipped}: its path is not safely inside the task folder`, { path, taskFolder, reason: err instanceof Error ? err.message : String(err) });
+		return null;
+	}
+}
+
+function isLexicallyInside(path: string, root: string): boolean {
+	const rel = relativePath(root, path);
+	return rel !== "" && rel !== ".." && !rel.startsWith(`..${pathSep}`) && !isAbsolute(rel);
+}
+
+/**
+ * Removes a linked worktree through its main repo; the branch stays. If git refuses, the directory is
+ * deleted and the stale registration pruned, but only when the main repo still lists it as a worktree.
+ * Returns false when the directory is still there.
+ */
+export async function removeLinkedWorktree(mainRepo: string, path: string): Promise<boolean> {
+	try {
+		const result = await run(["git", "worktree", "remove", "--force", "--force", path], mainRepo);
+		if (result.ok) return true;
+		log.warn("git worktree remove failed", { mainRepo, path, stderr: result.stderr });
+	} catch (err) {
+		log.warn("git worktree remove failed", { mainRepo, path, error: String(err) });
+	}
+	if (!existsSync(path)) {
+		await pruneWorktrees(mainRepo);
+		return true;
+	}
+	if (!(await isRegisteredWorktree(mainRepo, path))) {
+		log.warn("Kept the directory: the main repo does not list it as a worktree", { mainRepo, path });
+		return false;
+	}
+	try {
+		await rm(path, { recursive: true, force: true });
+	} catch (err) {
+		log.warn("Could not delete the attached worktree directory", { path, error: String(err) });
+		return false;
+	}
+	await pruneWorktrees(mainRepo);
+	return !existsSync(path);
+}
+
+async function isRegisteredWorktree(mainRepo: string, path: string): Promise<boolean> {
+	try {
+		const result = await run(["git", "worktree", "list", "--porcelain"], mainRepo);
+		if (!result.ok) return false;
+		const target = realPathOr(path);
+		return result.stdout.split("\n").some((line) => line.startsWith("worktree ") && realPathOr(line.slice("worktree ".length)) === target);
+	} catch {
+		return false;
+	}
+}
+
 /** Drop registrations of worktrees whose directory is gone. Never throws. */
 export async function pruneWorktrees(repo: string): Promise<void> {
 	try {
@@ -2738,8 +2849,10 @@ const FAKE_COMMIT_HEADER = new TextEncoder().encode(`commit ${"0".repeat(40)}\n\
  * `rebase` is deliberately absent: its finish entry records the tip the branch
  * was replayed onto, which for an empty branch is the base itself — proof of
  * nothing. A rebase that kept real commits still leaves its `commit:` entries.
+ * A fast-forward entry is excluded: its tip is a base commit, not the branch's work.
  */
 const WORK_PRODUCING_REFLOG_RE = /^(commit|merge|cherry-pick|am|revert|pull|applypatch)\b/;
+const FAST_FORWARD_REFLOG_RE = /^(merge|pull)\b.*: Fast-forward( \(no commit created; -m option ignored\))?$/;
 /** How many distinct reflog tips to ancestry-test before giving up. */
 const REFLOG_PROOF_LIMIT = 10;
 
@@ -2797,7 +2910,7 @@ async function isMergedWithoutOwnCommits(worktreePath: string, ref: string): Pro
 	const tips: string[] = [];
 	for (const line of reflogResult.stdout.split("\n")) {
 		const [sha, message = ""] = line.split("\t");
-		if (!sha || !WORK_PRODUCING_REFLOG_RE.test(message)) continue;
+		if (!sha || !WORK_PRODUCING_REFLOG_RE.test(message) || FAST_FORWARD_REFLOG_RE.test(message)) continue;
 		if (!tips.includes(sha)) tips.push(sha);
 		if (tips.length >= REFLOG_PROOF_LIMIT) break;
 	}
@@ -3597,6 +3710,28 @@ export async function isTaskOwnedBranch(projectPath: string, task: Task, name: s
 	return reflog.stdout.split("\n").some((line) => line.includes(`renamed refs/heads/${own} to `));
 }
 
+/**
+ * Is this the fresh variant branch createWorktree made for this task —
+ * `<existing>-v<N>`, or `<existing>-v<N>-<k>` when that name was taken? A branch
+ * that was renamed is judged by its ORIGINAL name from the reflog, so a user's
+ * branch renamed to `<existing>-something` (or even `<existing>-v1`) is never one.
+ */
+export async function isTaskVariantBranch(projectPath: string, task: Task, name: string): Promise<boolean> {
+	const existing = task.existingBranch?.replace(/^origin\//, "");
+	if (!existing || name === existing) return false;
+	const index = task.variantIndex != null ? String(task.variantIndex) : "\\d+";
+	const variantName = new RegExp(`^${escapeRegExp(existing)}-v${index}(?:-\\d+)?$`);
+	const reflog = await run(["git", "reflog", "show", "--format=%gs", `refs/heads/${name}`, "--"], projectPath);
+	const renamedFrom = reflog.ok
+		? reflog.stdout.split("\n").map((line) => /renamed refs\/heads\/(.+) to refs\/heads\//.exec(line)?.[1]).filter((from): from is string => !!from)
+		: [];
+	return variantName.test(renamedFrom[renamedFrom.length - 1] ?? name);
+}
+
+function escapeRegExp(text: string): string {
+	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 async function ownedBranchInfo(projectPath: string, name: string): Promise<OwnedBranchInfo | null> {
 	const tip = await run(["git", "rev-parse", "--verify", "--quiet", `refs/heads/${name}^{commit}`], projectPath);
 	if (!tip.ok || !tip.stdout.trim()) return null;
@@ -3734,8 +3869,7 @@ export async function removeWorktree(
 		// ours by its reflog (#2278), not by the stored name.
 		const isDevBranch = task.branchName?.startsWith("dev3/task-") || branchToDelete.startsWith("dev3/")
 			|| await isTaskOwnedBranch(project.path, task, branchToDelete);
-		const isVariantBranch = task.existingBranch && branchToDelete !== task.existingBranch.replace(/^origin\//, "")
-			&& branchToDelete.startsWith(task.existingBranch.replace(/^origin\//, ""));
+		const isVariantBranch = !isDevBranch && await isTaskVariantBranch(project.path, task, branchToDelete);
 		if ((isDevBranch || isVariantBranch) && options.branchPolicy === "unique-kept") {
 			const tip = await run(["git", "rev-parse", "--verify", "--quiet", `refs/heads/${branchToDelete}^{commit}`], project.path);
 			const sha = tip.ok ? tip.stdout.trim() : "";

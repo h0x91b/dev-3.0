@@ -68,9 +68,9 @@ import { useIncludeTestsInDiff } from "../utils/includeTestsInDiff";
 import { useCompact } from "../utils/useCompact";
 import { useContainerWidth } from "../hooks/useContainerWidth";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
-import { useIsControlHidden } from "../hooks/useIsControlHidden";
+import { useIsControlHidden, useIsSimplifyViewApplied } from "../hooks/useIsControlHidden";
 import { restoreControl } from "../hidden-controls";
-import HideableControl, { HideRowButton } from "./HideableControl";
+import HideableControl from "./HideableControl";
 import PanelRestoreControl, { type PanelHideableEntry } from "./task-info-panel/PanelRestoreControl";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import BottomSheet from "./BottomSheet";
@@ -177,6 +177,7 @@ function TaskInfoPanel({
 	const tmuxPaneControlsHidden = useIsControlHidden("tmux-pane-controls");
 	const scriptsRunnerHidden = useIsControlHidden("scripts-runner");
 	const diffIncludeTestsHidden = useIsControlHidden("diff-include-tests");
+	const simplified = useIsSimplifyViewApplied();
 	const [actionsSheetOpen, setActionsSheetOpen] = useState(false);
 	const [collapsed, setCollapsed] = useState(() => readBool(LS_COLLAPSED, true));
 	const [panelHeight, setPanelHeight] = useState(() => readNumber(LS_HEIGHT, DEFAULT_HEIGHT));
@@ -1089,7 +1090,8 @@ function TaskInfoPanel({
 	// back". It is the only coloured button left in this bar, and the skull is its
 	// one filled glyph on purpose — it has to stop the eye before the tooltip
 	// explains that the worktree survives.
-	const hibernateButton = isTaskActive && task.worktreePath && !task.hibernated && !task.preparing && !task.shuttingDown && !hibernateHidden ? (
+	const canHibernate = isTaskActive && !!task.worktreePath && !task.hibernated && !task.preparing && !task.shuttingDown;
+	const hibernateButton = canHibernate && !hibernateHidden ? (
 		<HideableControl id="hibernate">
 			<Tooltip content={t("task.hibernate")} detail={t("task.hibernateHint")}>
 				<button
@@ -1473,6 +1475,18 @@ function TaskInfoPanel({
 						<div className="touch-actions flex flex-col gap-2">
 							<button
 								type="button"
+								data-testid="task-actions-fullscreen"
+								onClick={() => {
+									setActionsSheetOpen(false);
+									toggleTerminalFullscreen();
+								}}
+								className={SHEET_ROW_CLASS}
+							>
+								<FullscreenEnterIcon className="h-5 w-5 shrink-0 text-fg-3" />
+								<span className="flex-1 text-sm font-medium">{t("infoPanel.fullScreen")}</span>
+							</button>
+							<button
+								type="button"
 								onClick={handleToggleWatch}
 								aria-pressed={task.watched}
 								className={`${SHEET_ROW_CLASS} ${task.watched ? "border-accent/30 bg-accent/10" : ""}`}
@@ -1527,26 +1541,22 @@ function TaskInfoPanel({
 								</button>
 							)}
 
-							{isTaskActive && task.worktreePath && !spawnAgentHidden && (
-								<div className={`${SHEET_ROW_CLASS} !pr-2`}>
-									<button type="button" onClick={() => setSpawnModalOpen(true)} className="flex flex-1 min-w-0 items-center gap-3">
-										<AddAgentIcon className="h-5 w-5 shrink-0 text-success" />
-										<span className="flex-1 text-sm font-medium">{t("tmux.spawnExtraAgent")}</span>
-										<ChevronRightIcon />
-									</button>
-									<HideRowButton id="spawn-agent" />
-								</div>
+							{/* Simplified Mode applies (Settings can turn it off on a phone);
+							    personal hiding does not — the phone has no restore control. */}
+							{isTaskActive && task.worktreePath && !simplified && (
+								<button type="button" data-testid="task-actions-spawn-agent" onClick={() => setSpawnModalOpen(true)} className={SHEET_ROW_CLASS}>
+									<AddAgentIcon className="h-5 w-5 shrink-0 text-success" />
+									<span className="flex-1 text-sm font-medium">{t("tmux.spawnExtraAgent")}</span>
+									<ChevronRightIcon />
+								</button>
 							)}
 
-							{taskUsesWorktree(project, task) && isTaskActive && task.worktreePath && !bugHuntersHidden && (
-								<div className={`${SHEET_ROW_CLASS} !pr-2`}>
-									<button type="button" onClick={() => setBugHuntersOpen(true)} className="flex flex-1 min-w-0 items-center gap-3">
-										<FindBugsIcon className="h-5 w-5 shrink-0 text-danger" />
-										<span className="flex-1 text-sm font-medium">{t("bugHunters.buttonLabel")}</span>
-										<ChevronRightIcon />
-									</button>
-									<HideRowButton id="bug-hunters" />
-								</div>
+							{taskUsesWorktree(project, task) && isTaskActive && task.worktreePath && !simplified && (
+								<button type="button" data-testid="task-actions-bug-hunters" onClick={() => setBugHuntersOpen(true)} className={SHEET_ROW_CLASS}>
+									<FindBugsIcon className="h-5 w-5 shrink-0 text-danger" />
+									<span className="flex-1 text-sm font-medium">{t("bugHunters.buttonLabel")}</span>
+									<ChevronRightIcon />
+								</button>
 							)}
 
 							<TaskExposedPorts task={task} rowClassName={SHEET_ROW_CLASS} />
@@ -1582,6 +1592,23 @@ function TaskInfoPanel({
 									<ArtifactsIcon className="h-5 w-5 shrink-0 text-fg-3" />
 									<span className="flex-1 text-sm font-medium">{t("infoPanel.artifactsLabel")}</span>
 									<span className="text-xs font-semibold text-accent tabular-nums">{artifactEntryCount}</span>
+								</button>
+							)}
+
+							{/* Last in the group: the one row that stops the session. */}
+							{canHibernate && !simplified && (
+								<button
+									type="button"
+									data-testid="task-actions-hibernate"
+									disabled={hibernating}
+									onClick={() => {
+										setActionsSheetOpen(false);
+										void handleHibernate();
+									}}
+									className={`${SHEET_ROW_CLASS} disabled:opacity-50`}
+								>
+									<HibernateIcon className="h-5 w-5 shrink-0 text-warning-strong" />
+									<span className="flex-1 text-sm font-medium">{t("task.hibernate")}</span>
 								</button>
 							)}
 						</div>

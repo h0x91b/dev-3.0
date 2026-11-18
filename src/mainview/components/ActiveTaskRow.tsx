@@ -203,9 +203,9 @@ export default function ActiveTaskRow({
 					.filter(Boolean)
 					.join(" — ")
 			}
-			onClick={() => {
-				// A long press opened the menu; the click that follows it is not a tap.
-				if (contextMenu.swallowClick()) return;
+			onClick={(e) => {
+				// A long press or a macOS Ctrl+click opened the menu; the click that follows it is not a tap.
+				if (contextMenu.swallowClick(e)) return;
 				onOpen();
 			}}
 			{...contextMenu.handlers}

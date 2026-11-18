@@ -5,6 +5,7 @@ import { ATTENTION_VIEW_ID } from "../../../shared/board-view-state";
 import { statusKey, useT } from "../../i18n";
 import { PRIORITY_STYLES } from "../../components/priorityStyles";
 import { taskActivityTime } from "../../components/sortTasks";
+import { isMacSecondaryClick } from "../../utils/platform";
 import { useBoard } from "../react";
 import type { BoardService } from "../board-service";
 import { fillBuckets, type AttentionBucket } from "./buckets";
@@ -52,7 +53,7 @@ function AttentionRow({ task, board, showProject }: { task: Task; board: BoardSe
 		<li className={`rounded-lg ${ZEBRA_ROW_EVEN}`}>
 			<button
 				type="button"
-				onClick={() => board.openTask(task.id)}
+				onClick={(e) => { if (!isMacSecondaryClick(e)) board.openTask(task.id); }}
 				onContextMenu={onContextMenu}
 				data-testid="attention-row"
 				data-task-id={task.id}

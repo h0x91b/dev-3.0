@@ -423,7 +423,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	);
 	const preparingStageLabel = t(PREPARING_STAGE_LABELS[preparingStage]);
 
-	function handleClick() {
+	function handleClick(e: React.MouseEvent) {
+		if (contextMenu.swallowClick(e)) return;
 		// A still-preparing task is `isDisabled` (no drag, dimmed) but must remain
 		// openable so the main view can show its loading state instead of leaving
 		// the previously-active task's terminal on screen.

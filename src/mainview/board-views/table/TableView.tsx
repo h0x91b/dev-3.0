@@ -4,6 +4,7 @@ import type { Context } from "cordis";
 import type { Label, Task } from "../../../shared/types";
 import { isPinnedCoordinator, projectDisplayName } from "../../../shared/types";
 import { useT, type TranslationKey } from "../../i18n";
+import { isMacSecondaryClick } from "../../utils/platform";
 import { useBoard } from "../react";
 import type { BoardService } from "../board-service";
 import { TableCell, TitleCell, LabelsCell, OverviewCell, PriorityCell, StatusCell, rowSeqLabel, type TableRowContext } from "./TableCells";
@@ -172,7 +173,7 @@ export function TableView(_props: { ctx: Context }) {
 								tabIndex={0}
 								data-row-index={item.index}
 								data-testid={`board-table-row-${task.id}`}
-								onClick={() => board.openTask(task.id)}
+								onClick={(e) => { if (!isMacSecondaryClick(e)) board.openTask(task.id); }}
 								onContextMenu={(e) => openMenu(task, e)}
 								onKeyDown={(e) => onRowKeyDown(task, item.index, e)}
 								className="absolute left-0 top-0 w-full pb-2 outline-none"
@@ -251,7 +252,7 @@ export function TableView(_props: { ctx: Context }) {
 								tabIndex={0}
 								data-row-index={item.index}
 								data-testid={`board-table-row-${task.id}`}
-								onClick={() => board.openTask(task.id)}
+								onClick={(e) => { if (!isMacSecondaryClick(e)) board.openTask(task.id); }}
 								onContextMenu={(e) => openMenu(task, e)}
 								onKeyDown={(e) => onRowKeyDown(task, item.index, e)}
 								className={`absolute left-0 top-0 grid w-full cursor-pointer items-center border-b border-edge/40 outline-none ${isPinnedCoordinator(task) ? COORDINATOR_ROW : item.index % 2 === 1 ? ZEBRA_ROW : ""} hover:bg-raised-hover focus-visible:bg-raised-hover focus-visible:shadow-[inset_2px_0_0_rgb(var(--accent))]`}

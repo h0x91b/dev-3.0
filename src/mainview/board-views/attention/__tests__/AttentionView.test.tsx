@@ -148,6 +148,15 @@ describe("Attention board view", () => {
 		expect(Object.values(navigate.mock.calls[0][0])).toContain("t2");
 	});
 
+	it("does not open the task on a macOS Ctrl+click, which is a right click", async () => {
+		const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+		onTestFinished(() => platform.mockRestore());
+		const navigate = renderAttentionBoard();
+		await screen.findByTestId("attention-view");
+		fireEvent.click(screen.getAllByTestId("attention-row").find((row) => row.dataset.taskId === "t2")!, { ctrlKey: true });
+		expect(navigate).not.toHaveBeenCalled();
+	});
+
 	it("uses the saved buckets and their names", async () => {
 		const state = withLayout(withViewType(defaultBoardViewState(), "wide", ATTENTION_VIEW_ID), "wide", ATTENTION_VIEW_ID, {
 			buckets: [{ id: "x", name: "Done pile", query: "status:completed status:cancelled", sort: "recent" }],
