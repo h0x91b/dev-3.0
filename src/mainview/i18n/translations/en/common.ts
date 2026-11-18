@@ -30,6 +30,8 @@ const common = {
 	"app.branchMergedManualDescription": "Keep it open and stop asking after merges.",
 	"app.manualCompletionAgentEnabled": "Agent turned off completion prompts for this task.",
 	"app.manualCompletionAgentDisabled": "Agent restored merge completion suggestions for this task.",
+	"app.selfCompletionAgentEnabled": "Another agent let this task complete itself without asking you.",
+	"app.selfCompletionAgentDisabled": "Another agent withdrew this task's permission to complete itself.",
 	"app.agentCompletionTitle": "Agent requests completion",
 	"app.agentCompletionMessage": "The AI agent working on this task reports it is fully done and asks to mark the task as completed.\n\nApproving will destroy the worktree and terminal session.",
 	"app.agentCompletionMessageFolder": "The AI agent working on this task reports it is fully done and asks to mark the task as completed.\n\nApproving ends the terminal session. The working folder and its files are kept.",

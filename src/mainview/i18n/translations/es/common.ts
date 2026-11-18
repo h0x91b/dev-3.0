@@ -30,6 +30,8 @@ const common = {
 	"app.branchMergedManualDescription": "Mantenerla abierta y dejar de preguntar tras las fusiones.",
 	"app.manualCompletionAgentEnabled": "El agente desactivó las preguntas de finalización para esta tarea.",
 	"app.manualCompletionAgentDisabled": "El agente restauró las sugerencias de finalización tras un merge.",
+	"app.selfCompletionAgentEnabled": "Otro agente permitió que esta tarea se complete sola sin preguntarte.",
+	"app.selfCompletionAgentDisabled": "Otro agente retiró a esta tarea el permiso para completarse sola.",
 	"app.agentCompletionTitle": "El agente solicita completar la tarea",
 	"app.agentCompletionMessage": "El agente de IA que trabaja en esta tarea informa que ha terminado por completo y pide marcarla como completada.\n\nAl aprobar se destruirán el worktree y la sesión de terminal.",
 	"app.agentCompletionMessageFolder": "El agente de IA que trabaja en esta tarea informa que ha terminado por completo y pide marcarla como completada.\n\nAl aprobar se cierra la sesión de terminal. La carpeta de trabajo y sus archivos se conservan.",

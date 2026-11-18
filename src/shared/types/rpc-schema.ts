@@ -24,7 +24,7 @@ import type { TaskSoundStatus } from "../task-sound-statuses";
 import type { ChangelogEntry, UpdateChangelog, UpdatePopoverPreview } from "./changelog";
 import type { TaskResetConsent, TaskResetResult, TaskStatus, WorktreeAccessState } from "./task-status";
 import type { TaskPriority } from "./task-priority";
-import type { TaskType } from "./task-type";
+import type { TaskCompletionOwner, TaskType } from "./task-type";
 import type { Task } from "./task";
 import type { TaskLineageIndex } from "./task-origin";
 import type { ColumnAgentConfig, ColumnAgentFailureReason, ColumnAgentIdentity } from "./column-agents";
@@ -1277,6 +1277,11 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; manualCompletion: boolean };
 				response: Task;
 			};
+			/** The user picks who completes the task; `agent` opts it in to `task move --status completed --force`. */
+			setTaskCompletionOwner: {
+				params: { taskId: string; projectId: string; owner: TaskCompletionOwner };
+				response: Task;
+			};
 			/**
 			 * Toggle "keep alive" (auto-revive) on a task ({@link Task.keepAlive}). When
 			 * on, the bun watchdog relaunches + resumes the task's agent if its
@@ -2135,7 +2140,7 @@ export type AppRPCSchema = {
 			 */
 			updateAvailable: { version: string; changelog?: UpdateChangelog; reminder?: boolean };
 			branchMerged: { taskId: string; projectId: string; taskTitle: string; branchName: string; fingerprint: string | null; subject: TaskDialogSubject; shouldPrompt?: boolean; shouldNotify?: boolean };
-			manualCompletionChanged: { taskId: string; projectId: string; manualCompletion: boolean; taskSeq?: number; taskTitle?: string; projectName?: string };
+			manualCompletionChanged: { taskId: string; projectId: string; manualCompletion: boolean; selfCompletion?: boolean; taskSeq?: number; taskTitle?: string; projectName?: string };
 			/**
 			 * A branch-merged completion prompt was resolved by declining it
 			 * (`dismissMergeCompletionPrompt`). Lets other connected clients — a

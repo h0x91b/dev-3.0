@@ -2397,16 +2397,19 @@ function App() {
 	// future merge events behave; user toggles in the inspector stay silent.
 	useEffect(() => {
 		function onManualCompletionChanged(e: Event) {
-			const { taskId, projectId, manualCompletion, taskSeq, taskTitle, projectName } = (e as CustomEvent).detail as {
+			const { taskId, projectId, manualCompletion, selfCompletion, taskSeq, taskTitle, projectName } = (e as CustomEvent).detail as {
 				taskId: string;
 				projectId: string;
 				manualCompletion: boolean;
+				selfCompletion?: boolean;
 				taskSeq?: number;
 				taskTitle?: string;
 				projectName?: string;
 			};
 			toast.info(
-				t(manualCompletion ? "app.manualCompletionAgentEnabled" : "app.manualCompletionAgentDisabled"),
+				selfCompletion !== undefined
+					? t(selfCompletion ? "app.selfCompletionAgentEnabled" : "app.selfCompletionAgentDisabled")
+					: t(manualCompletion ? "app.manualCompletionAgentEnabled" : "app.manualCompletionAgentDisabled"),
 				{
 					taskId,
 					context: taskToastContext(taskSeq, projectName, taskTitle),

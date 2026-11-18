@@ -3,13 +3,14 @@ import { TaskRefText } from "./TaskRefText";
 import { toast } from "../toast";
 import { toastClearanceRef } from "../toast-clearance";
 import { confirm } from "../confirm";
+import CompletionOwnerMenu from "./CompletionOwnerMenu";
 import { createPortal } from "react-dom";
-import type { Task, Project, TaskStatus, PortInfo, ResourceUsage, TaskPRBadgeInfo } from "../../shared/types";
+import type { Task, Project, TaskStatus, PortInfo, ResourceUsage, TaskPRBadgeInfo, TaskCompletionOwner } from "../../shared/types";
 import LabelChip from "./LabelChip";
 import PriorityBadge from "./PriorityBadge";
 import OpenInMenu from "./OpenInMenu";
 import { formatDate } from "./NoteItem";
-import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle, isCoordinatorTask, isSharedClip, resolveTaskCompareBaseBranch, taskCompletesManually, taskSharedMedia, taskUsesWorktree } from "../../shared/types";
+import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle, isCoordinatorTask, isSharedClip, resolveTaskCompareBaseBranch, taskCompletionOwner, taskSharedMedia, taskUsesWorktree } from "../../shared/types";
 import { earlierPullRequests, trustedPrStatusCache } from "../../shared/task-pull-requests";
 import InlineRename from "./InlineRename";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
@@ -472,14 +473,35 @@ function TaskInfoPanel({
 		}
 	}
 
-	async function handleToggleManualCompletion(event: ReactMouseEvent<HTMLButtonElement>) {
+	// One control, three owners: dev3 suggests → I decide → the agent closes it → back.
+	// A menu, never a click-to-cycle: no habitual click may land on the owner that
+	// lets the agent destroy the worktree, and picking that one is confirmed.
+	const [completionMenuAnchor, setCompletionMenuAnchor] = useState<HTMLElement | null>(null);
+	function handleOpenCompletionMenu(event: ReactMouseEvent<HTMLButtonElement>) {
 		event.stopPropagation();
 		if (isCoordinatorTask(task)) return;
+		const anchor = event.currentTarget;
+		setCompletionMenuAnchor((open) => (open ? null : anchor));
+	}
+
+	async function handleSelectCompletionOwner(owner: TaskCompletionOwner) {
+		setCompletionMenuAnchor(null);
+		if (owner === taskCompletionOwner(task)) return;
+		if (owner === "agent") {
+			const granted = await confirm({
+				title: t("task.selfCompletionConfirmTitle"),
+				message: t("task.selfCompletionConfirmMessage"),
+				confirmLabel: t("task.selfCompletionConfirmAction"),
+				danger: true,
+				focusCancel: true,
+			});
+			if (!granted) return;
+		}
 		try {
-			const updated = await api.request.setTaskManualCompletion({
+			const updated = await api.request.setTaskCompletionOwner({
 				taskId: task.id,
 				projectId: project.id,
-				manualCompletion: task.manualCompletion !== true,
+				owner,
 			});
 			dispatch({ type: "updateTask", task: updated });
 		} catch (err) {
@@ -857,14 +879,22 @@ function TaskInfoPanel({
 	// so the control shows it on and refuses the click instead of offering a toggle
 	// that the lifecycle would ignore.
 	const completionIsForced = isCoordinatorTask(task);
-	const completionIsManual = taskCompletesManually(task);
+	const completionOwner = taskCompletionOwner(task);
+	const completionIsAgent = completionOwner === "agent";
+	// "Held": dev3 no longer suggests completing it — you decide, or the agent does.
+	const completionIsManual = completionOwner !== "dev3";
+	const completionOwnerLabel = completionIsAgent ? t("task.selfCompletionEnabled") : t("task.manualCompletionEnabled");
 	const completionOwnerName = completionIsForced
 		? t("task.manualCompletionCoordinatorTooltip")
-		: completionIsManual ? t("task.manualCompletionEnabledTooltip") : t("task.manualCompletionTooltip");
+		: completionIsAgent
+			? t("task.selfCompletionEnabledTooltip")
+			: completionIsManual ? t("task.manualCompletionEnabledTooltip") : t("task.manualCompletionTooltip");
 	const manualCompletionToggleButton = (
 		<Tooltip content={completionOwnerName} detail={t("ttip.task.manualCompletion")}>
 			<button
-				onClick={handleToggleManualCompletion}
+				onClick={handleOpenCompletionMenu}
+				aria-haspopup="menu"
+				aria-expanded={completionMenuAnchor !== null}
 				disabled={completionIsForced}
 				aria-label={completionOwnerName}
 				aria-pressed={completionIsManual}
@@ -881,17 +911,26 @@ function TaskInfoPanel({
 				    (same role as hibernate), and it is never the colour of an error or
 				    of a finished task. Off stays grey and wordless — the state that
 				    needs no explanation. */}
-				<CompletionOwnerIcon className="h-[0.95rem] w-[0.95rem]" active={completionIsManual} />
+				<CompletionOwnerIcon className="h-[0.95rem] w-[0.95rem]" active={completionIsManual} agent={completionIsAgent} />
 				{/* Colour never carries the state alone: on a roomy bar the chip spells
 				    the mode out, in the same words as the merge dialog's third button —
 				    that dialog is where most people turn this on, and a shortened echo
 				    of it ("I decide") did not read as the same thing. Tight folds it
 				    back to the icon, where shape and hue still separate it. */}
 				{completionIsManual && !tight && (
-					<span className="text-micro font-semibold whitespace-nowrap">{t("task.manualCompletionEnabled")}</span>
+					<span className="text-micro font-semibold whitespace-nowrap">{completionOwnerLabel}</span>
 				)}
 			</button>
 		</Tooltip>
+	);
+
+	const completionOwnerMenu = completionMenuAnchor && (
+		<CompletionOwnerMenu
+			selected={completionOwner}
+			anchorEl={completionMenuAnchor}
+			onClose={() => setCompletionMenuAnchor(null)}
+			onSelect={handleSelectCompletionOwner}
+		/>
 	);
 
 	const priorityBadge = <PriorityBadge priority={task.priority} onChange={handleSetPriority} className="shrink-0" />;
@@ -1410,6 +1449,7 @@ function TaskInfoPanel({
 		return (
 			<div ref={toastClearanceRef} className="flex-shrink-0 border-b border-edge glass-header">
 				{diffFilesPopover}
+				{completionOwnerMenu}
 				{fileOpenInMenuPortal}
 				{statusSheet}
 				{/* The bar sheds, it never stacks (bible §12.6). A second row costs a
@@ -1498,15 +1538,17 @@ function TaskInfoPanel({
 							</button>
 							<button
 								type="button"
-								onClick={handleToggleManualCompletion}
+								onClick={handleOpenCompletionMenu}
+				aria-haspopup="menu"
+				aria-expanded={completionMenuAnchor !== null}
 								disabled={completionIsForced}
 								aria-pressed={completionIsManual}
 								className={`${SHEET_ROW_CLASS} ${completionIsManual ? "warning-paper border-warning/30 bg-warning/10 text-warning-strong" : ""} ${completionIsForced ? "cursor-not-allowed opacity-60" : ""}`}
 							>
-								<CompletionOwnerIcon className={`h-5 w-5 shrink-0 ${completionIsManual ? "text-warning-strong" : "text-fg-3"}`} active={completionIsManual} />
+								<CompletionOwnerIcon className={`h-5 w-5 shrink-0 ${completionIsManual ? "text-warning-strong" : "text-fg-3"}`} active={completionIsManual} agent={completionIsAgent} />
 								<span className="flex-1 min-w-0">
 									<span className="block text-sm font-medium">{completionIsManual
-										? t("task.manualCompletionEnabled")
+										? completionOwnerLabel
 										: t("task.manualCompletion")}</span>
 									{/* A phone has no tooltip, so the row itself carries the
 									    consequence — the thing that reads as a bug when unsaid. */}
@@ -1514,7 +1556,9 @@ function TaskInfoPanel({
 										<span className="block text-micro font-normal leading-snug opacity-80">
 											{completionIsForced
 												? t("task.manualCompletionCoordinatorTooltip")
-												: t("task.manualCompletionConsequence")}
+												: completionIsAgent
+													? t("task.selfCompletionConsequence")
+													: t("task.manualCompletionConsequence")}
 										</span>
 									)}
 								</span>
@@ -1658,6 +1702,7 @@ function TaskInfoPanel({
 			style={{ height }}
 		>
 			{diffFilesPopover}
+			{completionOwnerMenu}
 			{fileOpenInMenuPortal}
 			{collapsed ? (
 				<div className="flex flex-col h-full px-2 gap-1 justify-center">
