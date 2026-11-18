@@ -388,7 +388,7 @@ const skillStatusHooks = (mode: ProtocolMode): string => `
 ## Task status management
 
 Hooks automatically manage task status transitions (\`in-progress\`, \`user-questions\`, \`review-by-ai\`, \`review-by-user\`).
-Do NOT call \`dev3 task move\` for status changes — hooks handle it. On projects with Automatic AI Review enabled, completed work passes through \`review-by-ai\` before \`review-by-user\`. You can still use \`dev3 task move\` for custom columns.
+Do NOT call \`dev3 task move\` for status changes — hooks handle it. On projects with Automatic AI Review enabled, completed work passes through \`review-by-ai\` before \`review-by-user\`. Custom-column moves and the completion request below stay yours.
 ${SKILL_CUSTOM_COLUMNS}${skillCompletionRequest(mode)}`;
 
 // A hook-owned lifecycle (Codex, omp, pi). Keep manual moves limited to decisions

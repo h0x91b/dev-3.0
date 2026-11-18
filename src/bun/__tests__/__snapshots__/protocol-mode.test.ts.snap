@@ -63,7 +63,7 @@ Labels, same session-start pass: \`dev3 label list\` first and reuse existing on
 ## Task status management
 
 Hooks automatically manage task status transitions (\`in-progress\`, \`user-questions\`, \`review-by-ai\`, \`review-by-user\`).
-Do NOT call \`dev3 task move\` for status changes — hooks handle it. On projects with Automatic AI Review enabled, completed work passes through \`review-by-ai\` before \`review-by-user\`. You can still use \`dev3 task move\` for custom columns.
+Do NOT call \`dev3 task move\` for status changes — hooks handle it. On projects with Automatic AI Review enabled, completed work passes through \`review-by-ai\` before \`review-by-user\`. Custom-column moves and the completion request below stay yours.
 
 ### Custom columns
 
@@ -327,7 +327,7 @@ Labels, same session-start pass: \`dev3 label list\` first and reuse existing on
 ## Task status management
 
 Hooks automatically manage task status transitions (\`in-progress\`, \`user-questions\`, \`review-by-ai\`, \`review-by-user\`).
-Do NOT call \`dev3 task move\` for status changes — hooks handle it. On projects with Automatic AI Review enabled, completed work passes through \`review-by-ai\` before \`review-by-user\`. You can still use \`dev3 task move\` for custom columns.
+Do NOT call \`dev3 task move\` for status changes — hooks handle it. On projects with Automatic AI Review enabled, completed work passes through \`review-by-ai\` before \`review-by-user\`. Custom-column moves and the completion request below stay yours.
 
 ### Custom columns
 
