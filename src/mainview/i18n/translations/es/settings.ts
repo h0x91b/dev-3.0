@@ -714,6 +714,7 @@ const settings = {
 	"projectSettings.useRepoConfigOffHint": "dev3 ignora todos los archivos .dev3 de este proyecto. Los ajustes vienen solo de dev3. Se guarda en esta máquina — el repositorio nunca se toca.",
 	"projectSettings.useRepoConfigDiscardTitle": "¿Descartar los ajustes sin guardar?",
 	"projectSettings.useRepoConfigDiscardMessage": "Cambiar esto altera cómo se resuelven los ajustes, así que las ediciones sin guardar de esta pestaña no se pueden conservar.",
+	"projectSettings.useRepoConfigChangedElsewhere": "La configuración del repositorio se cambió fuera de esta pestaña, así que el formulario se recargó y se descartaron tus ediciones sin guardar.",
 	"projectSettings.repoConfigIgnored": "La configuración del repositorio se ignora. Los ajustes de abajo vienen de dev3 y de los valores predeterminados, y al guardar se escriben en dev3 — nunca en el repositorio.",
 	"projectSettings.repoConfigIgnoredWithFile": "La configuración del repositorio se ignora: {file} existe pero no se lee. Los ajustes de abajo vienen de dev3 y de los valores predeterminados, y al guardar se escriben en dev3 — nunca en el repositorio.",
 	"projectSettings.worktreeRepoConfigIgnored": "La configuración del repositorio se ignora en este proyecto, así que los archivos .dev3 del worktree no se leen ni se escriben. Vuelve a activar \"Usar la configuración dev3 del repositorio\" en la pestaña del proyecto para editarlos.",

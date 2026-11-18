@@ -1197,6 +1197,76 @@ describe("environment variables editor", () => {
 			expect(screen.queryByText(/These settings are overridden by/i)).not.toBeInTheDocument();
 		});
 
+		// `dev3 projects set useRepoConfig` (or another window) flips the flag while
+		// this tab is open: the form must not keep values resolved the other way.
+		describe("flipped outside this tab", () => {
+			const repoResolved = { ...mockProject, devScript: "bun dev" };
+			const fileless = { ...mockProject, useRepoConfig: false, devScript: "" };
+
+			function tree(project: Project) {
+				return (
+					<I18nProvider>
+						<ProjectSettings projectId={project.id} projects={[project]} tasks={mockTasks} dispatch={vi.fn()} navigate={vi.fn()} />
+					</I18nProvider>
+				);
+			}
+			const devScriptField = () => within(screen.getByTestId("dev-server-row-dev")).getByLabelText("Script of the dev server dev");
+
+			it("reseeds the form, so Save cannot copy repo values into projects.json", async () => {
+				const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+				mockSave.mockClear();
+				mockSave.mockResolvedValue(fileless);
+				const warn = vi.spyOn(toast, "warning");
+				const user = userEvent.setup();
+				const view = await renderProjectSettings(repoResolved);
+				await goToProjectTab();
+				expect(devScriptField()).toHaveValue("bun dev");
+
+				await act(async () => view.rerender(tree(fileless)));
+				expect(devScriptField()).toHaveValue("");
+				expect(warn).not.toHaveBeenCalled();
+
+				const cleanup = screen.getByLabelText("Cleanup Script");
+				await user.clear(cleanup);
+				await user.type(cleanup, "echo bye");
+				await user.click(screen.getByRole("button", { name: /^Save$/i }));
+				await vi.waitFor(() => expect(mockSave).toHaveBeenCalled());
+				expect(mockSave.mock.calls[0]![0]).toMatchObject({ devScript: "", cleanupScript: "echo bye" });
+				warn.mockRestore();
+			});
+
+			it("says so when the reseed drops unsaved edits", async () => {
+				const warn = vi.spyOn(toast, "warning");
+				const user = userEvent.setup();
+				const view = await renderProjectSettings(repoResolved);
+				await goToProjectTab();
+				await user.type(screen.getByLabelText("Cleanup Script"), " && echo typed");
+
+				await act(async () => view.rerender(tree(fileless)));
+				expect(screen.getByLabelText("Cleanup Script")).toHaveValue("rm -rf dist");
+				expect(warn).toHaveBeenCalledWith(expect.stringMatching(/switched outside this tab/i), expect.anything());
+				warn.mockRestore();
+			});
+
+			it("does not warn for this tab's own flip, even when its push lands before the reply", async () => {
+				const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+				const warn = vi.spyOn(toast, "warning");
+				const user = userEvent.setup();
+				const view = await renderProjectSettings(repoResolved);
+				await goToProjectTab();
+				await user.type(screen.getByLabelText("Cleanup Script"), " && echo typed");
+				mockSave.mockImplementationOnce(async () => {
+					view.rerender(tree(fileless));
+					return fileless;
+				});
+
+				await user.click(screen.getByLabelText("Use repository dev3 configuration"));
+				await vi.waitFor(() => expect(devScriptField()).toHaveValue(""));
+				expect(warn).not.toHaveBeenCalled();
+				warn.mockRestore();
+			});
+		});
+
 		it("replaces the worktree config editor with an explanation instead of hiding the tab", async () => {
 			const user = userEvent.setup();
 			await renderProjectSettings(mockProject, { useRepoConfig: false }, [mockTaskWithWorktree]);
