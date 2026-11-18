@@ -3,6 +3,7 @@ import type { TerminalBackendIdentity } from "../terminal-backend-identity";
 import type { UpdateChannel } from "../update-channel";
 import type { ShellFlavor } from "../posix-shell";
 import type { FavoriteAgentConfig } from "./coding-agents";
+import type { LogRetentionValue } from "../log-retention";
 
 // ---- External Apps ("Open in...") ----
 
@@ -195,6 +196,11 @@ export interface GlobalSettings {
 	 * false opts out.
 	 */
 	autoCleanupTaskHistory?: boolean;
+	/**
+	 * How long the agent message log and the notification log keep their days: a day
+	 * count or "forever". Absent = 30 days. Host-owned: written only by `setLogRetention`.
+	 */
+	logRetentionDays?: LogRetentionValue;
 	/** Inject the short agent protocol at launch instead of the full one. Off unless true; `DEV3_LEAN_PROTOCOL=1` also turns it on. */
 	leanAgentProtocol?: boolean;
 	/**

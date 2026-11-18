@@ -299,10 +299,16 @@ vi.mock("../rpc-handlers/settings-config", async (importOriginal) => ({
 }));
 
 vi.mock("../settings", () => ({
+	readSettingsFileStrict: vi.fn(() => ({})),
 	loadSettings: vi.fn(() => ({ updateChannel: "stable", taskSortOrder: "oldest-first" })),
 	loadSettingsSync: vi.fn(() => ({ playSoundOnTaskComplete: false })),
 	saveSettings: vi.fn(),
 	recordFavoriteUsages: vi.fn(),
+}));
+
+vi.mock("../log-retention", () => ({
+	collectLogRetentionUsage: vi.fn(() => ({ days: [{ day: "2026-11-01", bytes: 10 }] })),
+	pruneAllLogs: vi.fn(),
 }));
 
 vi.mock("../freeze-diagnostics", () => ({
@@ -458,7 +464,7 @@ import * as workspaceGuard from "../task-workspace-guard";
 import * as updater from "../updater";
 import { setupAgentHooks } from "../agent-hooks";
 import { CLAUDE_STATUSLINE_SETTINGS_PATH } from "../rate-limit-monitor";
-import { loadSettings, loadSettingsSync, saveSettings } from "../settings";
+import { loadSettings, loadSettingsSync, readSettingsFileStrict, saveSettings } from "../settings";
 import * as repoConfig from "../repo-config";
 import * as cowClone from "../cow-clone";
 import * as gitInit from "../git-init-in-place";
@@ -2587,6 +2593,132 @@ describe("handlers.saveGlobalSettings", () => {
 		vi.mocked(loadSettings).mockResolvedValue({ freezeDiagnosticsEnabled: true } as GlobalSettings);
 		await handlers.saveGlobalSettings({ freezeDiagnosticsEnabled: true, updateChannel: "beta" } as unknown as GlobalSettings);
 		expect(applyFreezeDiagnosticsSetting).not.toHaveBeenCalled();
+	});
+
+	describe("log retention", () => {
+		it("keeps the stored retention whatever the renderer's snapshot says, and never prunes", async () => {
+			const { pruneAllLogs } = await import("../log-retention");
+			vi.mocked(loadSettings).mockResolvedValue({ logRetentionDays: "forever" } as GlobalSettings);
+			await handlers.saveGlobalSettings({ updateChannel: "beta" } as unknown as GlobalSettings);
+			expect(vi.mocked(saveSettings).mock.lastCall?.[0].logRetentionDays).toBe("forever");
+
+			await handlers.saveGlobalSettings({ logRetentionDays: 30 } as unknown as GlobalSettings);
+			expect(vi.mocked(saveSettings).mock.lastCall?.[0].logRetentionDays).toBe("forever");
+			expect(pruneAllLogs).not.toHaveBeenCalled();
+		});
+
+		it("saves the new value and prunes both logs at once when it is lowered", async () => {
+			const { pruneAllLogs } = await import("../log-retention");
+			const project = { id: "p1" } as unknown as Project;
+			vi.mocked(data.loadProjects).mockResolvedValue([project]);
+			vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "beta", logRetentionDays: 365 } as unknown as GlobalSettings);
+
+			const saved = await handlers.setLogRetention({ value: 45, expectedCurrent: 365 });
+			expect(saveSettings).toHaveBeenLastCalledWith({ updateChannel: "beta", logRetentionDays: 45 }, { value: 45, expectedCurrent: 365 });
+			expect(pruneAllLogs).toHaveBeenLastCalledWith([project], 45);
+			expect(saved).toEqual({ updateChannel: "beta", logRetentionDays: 45 });
+			expect(push).toHaveBeenCalledWith("globalSettingsUpdated", saved);
+
+			vi.mocked(loadSettings).mockResolvedValue({ logRetentionDays: 45 } as GlobalSettings);
+			await handlers.setLogRetention({ value: 30, expectedCurrent: 45 });
+			expect(vi.mocked(saveSettings).mock.lastCall?.[0].logRetentionDays).toBeUndefined();
+			expect(pruneAllLogs).toHaveBeenLastCalledWith([project], 30);
+		});
+
+		it("does not prune when the retention is raised, unchanged or set to forever", async () => {
+			const { pruneAllLogs } = await import("../log-retention");
+			vi.mocked(loadSettings).mockResolvedValue({} as GlobalSettings);
+			await handlers.setLogRetention({ value: 90, expectedCurrent: 30 });
+			vi.mocked(loadSettings).mockResolvedValue({ logRetentionDays: 90 } as GlobalSettings);
+			await handlers.setLogRetention({ value: 365, expectedCurrent: 90 });
+			await handlers.setLogRetention({ value: "forever", expectedCurrent: 365 });
+			await handlers.setLogRetention({ value: 90, expectedCurrent: 90 });
+			expect(pruneAllLogs).not.toHaveBeenCalled();
+		});
+
+		it("refuses to write over a settings.json that cannot be read", async () => {
+			vi.mocked(readSettingsFileStrict).mockReturnValueOnce(null);
+			await expect(handlers.setLogRetention({ value: 90, expectedCurrent: 30 })).rejects.toThrow(/not overwriting/);
+			expect(saveSettings).not.toHaveBeenCalled();
+		});
+
+		it("serializes with a snapshot save, so a stale load cannot write the old retention back", async () => {
+			let stored = { logRetentionDays: 365 } as GlobalSettings;
+			let release: () => void = () => {};
+			const gate = new Promise<void>((resolve) => { release = resolve; });
+			vi.mocked(data.loadProjects).mockResolvedValue([]);
+			// The snapshot save's load is the slow one; the retention change arrives while it is in flight.
+			vi.mocked(loadSettings)
+				.mockImplementationOnce(async () => { const seen = { ...stored }; await gate; return seen; })
+				.mockImplementationOnce(async () => ({ ...stored }));
+			vi.mocked(saveSettings)
+				.mockImplementationOnce(async (next) => { stored = next; })
+				.mockImplementationOnce(async (next) => { stored = next; });
+
+			const snapshotSave = handlers.saveGlobalSettings({ updateChannel: "beta" } as unknown as GlobalSettings);
+			const retentionChange = handlers.setLogRetention({ value: 90, expectedCurrent: 365 });
+			release();
+			await Promise.all([snapshotSave, retentionChange]);
+
+			expect(stored.logRetentionDays).toBe(90);
+			expect(stored).toMatchObject({ updateChannel: "beta" });
+		});
+
+		it("rejects a value that is not a positive whole day count or forever", async () => {
+			for (const value of [0, -3, 1.5, "90", null, Number.NaN]) {
+				await expect(handlers.setLogRetention({ value: value as never, expectedCurrent: 365 })).rejects.toThrow();
+				await expect(handlers.setLogRetention({ value: 90, expectedCurrent: value as never })).rejects.toThrow();
+			}
+			expect(saveSettings).not.toHaveBeenCalled();
+		});
+
+		it("writes, prunes and broadcasts nothing when the stored retention is not the one the caller saw", async () => {
+			const { pruneAllLogs } = await import("../log-retention");
+			vi.mocked(data.loadProjects).mockResolvedValue([]);
+			vi.mocked(loadSettings).mockResolvedValue({ logRetentionDays: "forever" } as GlobalSettings);
+			vi.mocked(saveSettings).mockRejectedValueOnce(new Error("log-retention-changed"));
+			await expect(handlers.setLogRetention({ value: 90, expectedCurrent: 30 })).rejects.toThrow("log-retention-changed");
+			expect(saveSettings).toHaveBeenCalledWith(expect.anything(), { value: 90, expectedCurrent: 30 });
+			expect(pruneAllLogs).not.toHaveBeenCalled();
+			expect(push).not.toHaveBeenCalledWith("globalSettingsUpdated", expect.anything());
+		});
+
+		it("decides to prune from the retention the caller saw, which the lock proved is the stored one", async () => {
+			const { pruneAllLogs } = await import("../log-retention");
+			vi.mocked(data.loadProjects).mockResolvedValue([]);
+			// A stale load says 30; the lock check against `expectedCurrent` is what vouches for "forever".
+			vi.mocked(loadSettings).mockResolvedValue({} as GlobalSettings);
+			await handlers.setLogRetention({ value: 90, expectedCurrent: "forever" });
+			expect(pruneAllLogs).toHaveBeenLastCalledWith([], 90);
+		});
+
+		it("still saves and broadcasts when the immediate prune fails", async () => {
+			const { pruneAllLogs } = await import("../log-retention");
+			vi.mocked(pruneAllLogs).mockImplementationOnce(() => {
+				throw new Error("disk");
+			});
+			vi.mocked(data.loadProjects).mockResolvedValue([]);
+			vi.mocked(loadSettings).mockResolvedValue({ logRetentionDays: 365 } as GlobalSettings);
+			await expect(handlers.setLogRetention({ value: 90, expectedCurrent: 365 })).resolves.toMatchObject({ logRetentionDays: 90 });
+			expect(push).toHaveBeenCalledWith("globalSettingsUpdated", expect.objectContaining({ logRetentionDays: 90 }));
+		});
+
+		it("rejects a usage retention that is not a positive whole day count", async () => {
+			const { collectLogRetentionUsage } = await import("../log-retention");
+			for (const retentionDays of [0, -1, 1.5, Number.NaN, "90"]) {
+				await expect(handlers.getLogRetentionUsage({ retentionDays: retentionDays as never })).rejects.toThrow(/Invalid log retention/);
+			}
+			expect(collectLogRetentionUsage).not.toHaveBeenCalled();
+		});
+
+		it("passes the asked retention on when reporting the usage", async () => {
+			const { collectLogRetentionUsage } = await import("../log-retention");
+			vi.mocked(data.loadProjects).mockResolvedValue([]);
+			await expect(handlers.getLogRetentionUsage({ retentionDays: 90 })).resolves.toEqual({ days: [{ day: "2026-11-01", bytes: 10 }] });
+			expect(collectLogRetentionUsage).toHaveBeenLastCalledWith([], 90);
+			await handlers.getLogRetentionUsage();
+			expect(collectLogRetentionUsage).toHaveBeenLastCalledWith([], undefined);
+		});
 	});
 
 	it("does not release Focus Mode when an optional patch omits it", async () => {

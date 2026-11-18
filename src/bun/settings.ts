@@ -6,6 +6,14 @@ import { hasEnvLineBreak, sanitizeEnvMap } from "../shared/env-text";
 import { recordFavoriteUsage, sanitizeFavorites } from "../shared/favorites";
 import { coerceUpdateChannel, DEFAULT_UPDATE_CHANNEL } from "../shared/update-channel";
 import { canaryPublishesFor, hostOsName } from "../shared/canary-publish";
+import {
+	DEFAULT_LOG_RETENTION_DAYS,
+	LOG_RETENTION_CHANGED_MESSAGE,
+	isRetentionDayCount,
+	sanitizeLogRetention,
+	storedLogRetention,
+	type LogRetentionValue,
+} from "../shared/log-retention";
 
 /**
  * Does the canary feed carry a build for THIS machine? Asked here rather than passed in,
@@ -286,6 +294,8 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 			typeof d.experimentalAgentTraffic === "boolean" ? d.experimentalAgentTraffic : undefined,
 		// Default-on: only an explicit false is the user opting out of the daily cleanup.
 		autoCleanupTaskHistory: d.autoCleanupTaskHistory === false ? false : undefined,
+		// 30 days is the default and stays absent; anything but a day count or "forever" falls back to it.
+		logRetentionDays: sanitizeLogRetention(d.logRetentionDays),
 		leanAgentProtocol: d.leanAgentProtocol === true ? true : undefined,
 		// Default-off local diagnostics — only an explicit true is a stored opt-in.
 		freezeDiagnosticsEnabled: d.freezeDiagnosticsEnabled === true ? true : undefined,
@@ -371,9 +381,41 @@ export async function loadSettings(): Promise<GlobalSettings> {
 }
 
 
-export async function saveSettings(settings: GlobalSettings): Promise<void> {
+/** The on-disk retention differs from what the caller based its change on. */
+export class LogRetentionChangedError extends Error {
+	constructor() {
+		super(LOG_RETENTION_CHANGED_MESSAGE);
+		this.name = "LogRetentionChangedError";
+	}
+}
+
+/** The retention a raw settings object holds, or undefined when the field holds something unknown. */
+function interpretStoredRetention(raw: Record<string, unknown> | null): LogRetentionValue | undefined {
+	if (!raw) return undefined;
+	const field = raw.logRetentionDays;
+	if (field === undefined) return DEFAULT_LOG_RETENTION_DAYS;
+	return field === "forever" || isRetentionDayCount(field) ? field : undefined;
+}
+
+/**
+ * `logRetentionDays` is host-owned: an ordinary save writes back whatever the file
+ * holds, verbatim, ignoring the field in `settings`. Only `retention` changes it, and
+ * only while the file still holds `expectedCurrent`; otherwise nothing is written.
+ */
+export async function saveSettings(
+	settings: GlobalSettings,
+	retention?: { value: LogRetentionValue; expectedCurrent: LogRetentionValue },
+): Promise<void> {
 	log.info("Saving global settings", { settings });
 	await withFileLock(SETTINGS_FILE, async () => {
+		const raw = readSettingsFileStrict();
+		let retentionField: unknown = raw && Object.prototype.hasOwnProperty.call(raw, "logRetentionDays") ? raw.logRetentionDays : undefined;
+		if (retention) {
+			// An unreadable file refuses; an unknown stored value matches anything, so an explicit choice replaces it.
+			const current = interpretStoredRetention(raw);
+			if (!raw || (current !== undefined && current !== retention.expectedCurrent)) throw new LogRetentionChangedError();
+			retentionField = storedLogRetention(retention.value);
+		}
 		mkdirSync(DEV3_HOME, { recursive: true });
 		// Written even when empty, so clearing every exclusion is not undone by a stale settings.json copy.
 		const exclusionsTemp = `${AUTO_EXCLUSIONS_FILE}.tmp`;
@@ -383,7 +425,7 @@ export async function saveSettings(settings: GlobalSettings): Promise<void> {
 		const tempFile = `${SETTINGS_FILE}.tmp`;
 		// The legacy key keeps an older co-installed build's single toggle on only while both are on.
 		const legacyNeedsYou = settings.playSoundOnTaskQuestions === true && settings.playSoundOnTaskReview === true;
-		await Bun.write(tempFile, JSON.stringify({ ...settings, playSoundOnTaskNeedsYou: legacyNeedsYou }, null, 2));
+		await Bun.write(tempFile, JSON.stringify({ ...settings, logRetentionDays: retentionField, playSoundOnTaskNeedsYou: legacyNeedsYou }, null, 2));
 		renameSync(tempFile, SETTINGS_FILE);
 	});
 	log.info("Global settings saved");
@@ -430,5 +472,35 @@ export function loadSettingsSync(): GlobalSettings {
 	} catch (err) {
 		log.error("Failed to load settings (sync)", { error: String(err) });
 		return { ...DEFAULT_SETTINGS };
+	}
+}
+
+/**
+ * The log retention a prune may act on, read from the raw file: `{ days }` (null =
+ * forever), or null when the file is unreadable or the field holds something the
+ * sanitizer would silently turn into the default. Pruning on a guess would delete
+ * history the user chose to keep. A missing file or field means the default.
+ */
+export function readLogRetentionForPrune(): { days: number | null } | null {
+	const raw = readSettingsFileStrict();
+	if (!raw) return null;
+	const field = raw.logRetentionDays;
+	if (field === undefined) return { days: DEFAULT_LOG_RETENTION_DAYS };
+	if (field === "forever") return { days: null };
+	return isRetentionDayCount(field) ? { days: field } : null;
+}
+
+/**
+ * The raw content of `settings.json` as a plain object (empty when the file does
+ * not exist yet), or null when it exists but cannot be read or is not an object.
+ * Callers that would write settings back use it to refuse to overwrite a corrupt file.
+ */
+export function readSettingsFileStrict(): Record<string, unknown> | null {
+	try {
+		if (!existsSync(SETTINGS_FILE)) return {};
+		const raw: unknown = JSON.parse(readFileSync(SETTINGS_FILE, "utf-8"));
+		return typeof raw === "object" && raw !== null && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null;
+	} catch {
+		return null;
 	}
 }
