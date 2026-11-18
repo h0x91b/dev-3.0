@@ -36,6 +36,7 @@ import { markPendingDeepLinkNav } from "./deep-link-nav";
 import { resolveDeepLink } from "./deep-link";
 import { parseDeepLink } from "../shared/deep-link";
 import { createLogger, getLogPath } from "./logger";
+import { dropTaskEnvFromOsLaunch, readParentPid } from "./launch-origin";
 import { writeAppReadyMarker } from "./app-ready-marker";
 import {
 	buildRendererUnavailableDiagnostic,
@@ -115,6 +116,13 @@ log.info("Log files", { dir: getLogPath() });
 {
 	const removed = resetEnvFromDev3Pane(process.env);
 	if (removed.length > 0) log.info("Started inside a dev3 pane: dropped its launch env", { removed });
+}
+
+// ── macOS: an app `open`ed from a dev3 pane is not that task's guest ──
+// First, before the socket sidecar, launch handoff or any other DEV3_TASK_ID read.
+{
+	const removed = dropTaskEnvFromOsLaunch(process.env, { platform: process.platform, ppid: process.ppid, parentOf: readParentPid });
+	if (removed.length > 0) log.info("Launched by the OS: dropped the task env inherited from a dev3 pane", { removed });
 }
 
 // ── Linux: a relaunch hands off to the running instance (issue #2039) ──

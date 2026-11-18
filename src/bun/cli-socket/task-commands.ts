@@ -366,8 +366,12 @@ export const taskHandlers: Record<string, Handler> = {
 		// A role brief counts as a body too: without this the card would be named
 		// after the first 80 characters of the preamble, so every one would read alike.
 		let created = task;
-		if ((description || taskType) && title) {
-			created = await data.updateTask(project, task.id, { customTitle: title });
+		const selfCompletion = params.selfCompletion === true;
+		if (((description || taskType) && title) || selfCompletion) {
+			created = await data.updateTask(project, task.id, {
+				...((description || taskType) && title ? { customTitle: title } : {}),
+				...(selfCompletion ? { selfCompletion: true } : {}),
+			});
 		}
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: created });
 		if (dependsOn) created = await addDependencies(project, created, dependsOn);
@@ -522,6 +526,16 @@ export const taskHandlers: Record<string, Handler> = {
 			}
 			change.manualCompletion = params.manualCompletion;
 		}
+		if (params.selfCompletion !== undefined) {
+			if (typeof params.selfCompletion !== "boolean") {
+				throw new Error("selfCompletion must be a boolean");
+			}
+			// The opt-in is someone else's to give: a task granting it to itself would make it no guard at all.
+			if (params.selfCompletion && params.sourceTaskId === task.id) {
+				throw new Error("A task cannot opt itself in to self-completion. The user, or the task that created it, sets --self-completion on.");
+			}
+			change.selfCompletion = params.selfCompletion;
+		}
 
 		// Keyed on which params were provided, never on the verdict: a same-value
 		// --title is a quiet no-op, not an error.
@@ -530,6 +544,7 @@ export const taskHandlers: Record<string, Handler> = {
 			&& params.description === undefined
 			&& priority === undefined
 			&& params.manualCompletion === undefined
+			&& params.selfCompletion === undefined
 			&& params.taskType === undefined
 			&& epicChange === undefined
 			&& !startAfter
@@ -537,7 +552,7 @@ export const taskHandlers: Record<string, Handler> = {
 			&& !dependsOn
 			&& !dropDependencies
 		) {
-			throw new Error("Nothing to update. Provide --title, --description, --priority, --manual-completion, --type, --epic, --no-epic, --depends-on, --no-depends-on, --start-after or --no-start-after.");
+			throw new Error("Nothing to update. Provide --title, --description, --priority, --manual-completion, --self-completion, --type, --epic, --no-epic, --depends-on, --no-depends-on, --start-after or --no-start-after.");
 		}
 		// Every link refusal is found before the first write, so a refused update changes nothing.
 		const board = dependsOn || dropDependencies || startAfter ? await data.loadTasks(project) : [];

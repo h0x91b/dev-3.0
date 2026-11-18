@@ -9,10 +9,10 @@ vi.mock("../spawn", async () => {
 	return createSpawnMock();
 });
 
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { cleanup, createTestRepo, g, spawnedCommands, type TestRepo } from "./git-test-helpers";
-import { createOpsWorktree, isWorktreeDirtyOrUnknown, getDefaultBranch, getRepoTopLevel, pruneWorktrees, _resetFetchState } from "../git";
+import { createOpsWorktree, isWorktreeDirtyOrUnknown, getDefaultBranch, classifyLinkedWorktree, getRepoTopLevel, removeLinkedWorktree, resolvePathInsideOpsTaskFolder, pruneWorktrees, _resetFetchState } from "../git";
 
 const task = { id: "abcdef12-0000-0000-0000-000000000009" } as any;
 
@@ -114,6 +114,168 @@ describe("Operations worktree", () => {
 		expect(await getRepoTopLevel(sub)).toBe(await getRepoTopLevel(repo.local));
 		expect(await getRepoTopLevel("/tmp/dev3-not-a-repo-xyz")).toBeNull();
 	});
+	it("classifyLinkedWorktree names the owning repo of a linked worktree", async () => {
+		await createOpsWorktree(repo.local, task, wtPath, "main");
+		expect(await classifyLinkedWorktree(wtPath)).toEqual({ kind: "linked", mainRepo: realpathSync(repo.local) });
+	});
+
+	it("classifyLinkedWorktree says plain only for a checkout git positively confirms owns its git dir", async () => {
+		expect(await classifyLinkedWorktree(repo.local)).toEqual({ kind: "plain" });
+	});
+
+	it("classifyLinkedWorktree says plain for a subfolder of a linked worktree: only its root may be removed", async () => {
+		await createOpsWorktree(repo.local, task, wtPath, "main");
+		const sub = join(wtPath, "src");
+		mkdirSync(sub);
+		expect(await classifyLinkedWorktree(sub)).toEqual({ kind: "plain" });
+		expect((await classifyLinkedWorktree(wtPath)).kind).toBe("linked");
+	});
+
+	it("classifyLinkedWorktree is unknown for a missing path, a non-repo and a repo with a broken config", async () => {
+		expect((await classifyLinkedWorktree("/tmp/dev3-not-a-repo-xyz")).kind).toBe("unknown");
+		await createOpsWorktree(repo.local, task, wtPath, "main");
+		writeFileSync(join(repo.local, ".git", "config"), "[core\n\tbroken = = =\n");
+
+		expect((await classifyLinkedWorktree(wtPath)).kind).toBe("unknown");
+		expect((await classifyLinkedWorktree(repo.local)).kind).toBe("unknown");
+	});
+
+	it("removeLinkedWorktree drops the worktree and its registration but keeps the branch", async () => {
+		await createOpsWorktree(repo.local, task, wtPath, "main");
+		writeFileSync(join(wtPath, "dirty.ts"), "uncommitted\n");
+
+		expect(await removeLinkedWorktree(repo.local, wtPath)).toBe(true);
+
+		expect(existsSync(wtPath)).toBe(false);
+		expect(g("git worktree list", repo.local)).not.toContain("abcdef12");
+		expect(g("git branch --list dev3/task-abcdef12", repo.local)).toContain("dev3/task-abcdef12");
+	});
+
+	it("removeLinkedWorktree removes a locked worktree too, and its registration is gone", async () => {
+		await createOpsWorktree(repo.local, task, wtPath, "main");
+		g(`git worktree lock ${wtPath}`, repo.local);
+
+		expect(await removeLinkedWorktree(repo.local, wtPath)).toBe(true);
+
+		expect(existsSync(wtPath)).toBe(false);
+		expect(g("git worktree list", repo.local)).not.toContain("abcdef12");
+	});
+
+	it("removeLinkedWorktree falls back to rm and prune when git refuses, leaving no registration", async () => {
+		await createOpsWorktree(repo.local, task, wtPath, "main");
+		// Git refuses to remove a worktree whose .git file is gone ("validation failed").
+		rmSync(join(wtPath, ".git"));
+		expect(() => g(`git worktree remove --force --force ${wtPath}`, repo.local)).toThrow();
+
+		expect(await removeLinkedWorktree(repo.local, wtPath)).toBe(true);
+
+		expect(existsSync(wtPath)).toBe(false);
+		expect(g("git worktree list", repo.local)).not.toContain("abcdef12");
+	});
+
+	it("removeLinkedWorktree leaves the files alone, and never throws, when the main repo is gone and cannot vouch for them", async () => {
+		await createOpsWorktree(repo.local, task, wtPath, "main");
+		expect(await removeLinkedWorktree("/tmp/dev3-not-a-repo-xyz", wtPath)).toBe(false);
+		expect(existsSync(join(wtPath, "app.ts"))).toBe(true);
+	});
+
+	it("removeLinkedWorktree never deletes a directory the main repo does not list as a worktree", async () => {
+		// A worktree of ANOTHER repo: this repo's `git worktree remove` refuses it, and it is not in this repo's list.
+		const other = join(repo.dir, "other-repo");
+		g(`git clone "${repo.local}" "${other}"`, repo.dir);
+		const foreign = join(repo.dir, "foreign-wt");
+		g(`git worktree add -b foreign "${foreign}"`, other);
+		writeFileSync(join(foreign, "dirty.ts"), "uncommitted\n");
+
+		expect(await removeLinkedWorktree(repo.local, foreign)).toBe(false);
+
+		expect(readFileSync(join(foreign, "dirty.ts"), "utf-8")).toBe("uncommitted\n");
+		expect(g("git worktree list", other)).toContain("foreign-wt");
+	});
+
+	it("removeLinkedWorktree reports a directory that is already gone as removed", async () => {
+		expect(await removeLinkedWorktree(repo.local, join(repo.dir, "never-existed"))).toBe(true);
+	});
+
+	describe("resolvePathInsideOpsTaskFolder", () => {
+		let ops: string;
+		let folder: string;
+		let external: string;
+		const resolve = (attached: string, allowSelf = false) => resolvePathInsideOpsTaskFolder(attached, folder, ops, "the test removal", allowSelf);
+		beforeEach(async () => {
+			ops = join(repo.dir, "ops");
+			folder = join(ops, "slug", "abcdef12", "work");
+			mkdirSync(folder, { recursive: true });
+			external = join(repo.dir, "external-wt");
+			await createOpsWorktree(repo.local, task, external, "main");
+			writeFileSync(join(external, "dirty.ts"), "uncommitted\n");
+		});
+
+		it("returns the real path of a repo strictly inside the folder", async () => {
+			const inside = join(folder, "wt");
+			await createOpsWorktree(repo.local, { id: "bbcdef12-0000-0000-0000-00000000000a" } as any, inside, "main");
+			expect(resolve(inside)).toBe(realpathSync(inside));
+		});
+
+		it("keeps working when the managed root itself is behind a symlink", async () => {
+			const link = join(repo.dir, "ops-link");
+			symlinkSync(ops, link);
+			const inside = join(link, "slug", "abcdef12", "work", "wt");
+			await createOpsWorktree(repo.local, { id: "bbcdef12-0000-0000-0000-00000000000a" } as any, inside, "main");
+			expect(resolvePathInsideOpsTaskFolder(inside, join(link, "slug", "abcdef12", "work"), link, "the test removal")).toBe(realpathSync(inside));
+		});
+
+		it("refuses a repo path replaced by a symlink to a worktree elsewhere", () => {
+			const link = join(folder, "wt");
+			symlinkSync(external, link);
+			expect(resolve(link)).toBeNull();
+			expect(readFileSync(join(external, "dirty.ts"), "utf-8")).toBe("uncommitted\n");
+		});
+
+		it("refuses a repo whose parent folder was replaced by a symlink", () => {
+			const parent = join(folder, "sub");
+			symlinkSync(repo.dir, parent);
+			expect(resolve(join(parent, "external-wt"))).toBeNull();
+		});
+
+		it("refuses a task folder swapped for a symlink to an external one holding a worktree of the same name", async () => {
+			rmSync(join(ops, "slug", "abcdef12"), { recursive: true });
+			const elsewhere = join(repo.dir, "elsewhere");
+			mkdirSync(join(elsewhere, "work"), { recursive: true });
+			g(`git worktree add -b same-name "${join(elsewhere, "work", "wt")}"`, repo.local);
+			symlinkSync(elsewhere, join(ops, "slug", "abcdef12"));
+			expect(resolve(join(folder, "wt"))).toBeNull();
+		});
+
+		it("refuses the task folder itself and an ancestor of it swapped for symlinks", () => {
+			const swapped = join(repo.dir, "swapped");
+			mkdirSync(join(swapped, "wt"), { recursive: true });
+			rmSync(folder, { recursive: true });
+			symlinkSync(swapped, folder);
+			expect(resolve(join(folder, "wt"))).toBeNull();
+			expect(resolve(folder, true)).toBeNull();
+
+			rmSync(join(ops, "slug"), { recursive: true });
+			mkdirSync(join(swapped, "abcdef12", "work", "wt"), { recursive: true });
+			symlinkSync(swapped, join(ops, "slug"));
+			expect(resolve(join(folder, "wt"))).toBeNull();
+		});
+
+		it("refuses the folder itself unless allowed, a lookalike sibling, an outside path, a task folder outside the root and a missing path", () => {
+			const sibling = `${folder}-x`;
+			mkdirSync(sibling);
+			expect(resolve(folder)).toBeNull();
+			expect(resolve(sibling)).toBeNull();
+			expect(resolve(external)).toBeNull();
+			expect(resolve(join(folder, "gone"))).toBeNull();
+			expect(resolvePathInsideOpsTaskFolder(external, external, ops, "the test removal", true)).toBeNull();
+		});
+
+		it("accepts the task folder itself when allowed", () => {
+			expect(resolve(folder, true)).toBe(realpathSync(folder));
+		});
+	});
+
 	it("re-adds the worktree after a prune that never ran: the stale registration no longer blocks the path", async () => {
 		await createOpsWorktree(repo.local, task, wtPath, "main");
 		rmSync(wtPath, { recursive: true, force: true });

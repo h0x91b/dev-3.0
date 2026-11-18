@@ -25,6 +25,7 @@ vi.mock("../../rpc", () => ({
 			prepareMergeCompletionPrompt: vi.fn(),
 			dismissMergeCompletionPrompt: vi.fn(),
 			setTaskManualCompletion: vi.fn(),
+			setTaskCompletionOwner: vi.fn(),
 			rebaseTask: vi.fn(),
 			rebaseTaskViaAgent: vi.fn(),
 			commitTaskViaAgent: vi.fn(),
@@ -62,14 +63,23 @@ vi.mock("../../analytics", () => ({
 
 vi.mock("../../utils/confirmTaskCompletion", () => ({
 	confirmTaskCompletion: vi.fn().mockResolvedValue(true),
+	completionSkipsGitCheck: vi.fn().mockReturnValue(true),
+	unsavedWorkWarning: vi.fn().mockReturnValue(null),
 }));
 
 import { api } from "../../rpc";
 import { confirm } from "../../confirm";
+import { offerCompletion } from "../../completion-offers";
+
+vi.mock("../../completion-offers", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../../completion-offers")>()),
+	offerCompletion: vi.fn().mockResolvedValue(false),
+}));
 import { toast } from "../../toast";
 import { trackEvent } from "../../analytics";
 import { confirmTaskCompletion } from "../../utils/confirmTaskCompletion";
 import { openFolderPicker } from "../../folder-picker";
+import { syncHiddenControlsFromGlobalSettings } from "../../hidden-controls";
 
 vi.mock("../../folder-picker", () => ({
 	openFolderPicker: vi.fn(),
@@ -1176,7 +1186,7 @@ describe("TaskInfoPanel", () => {
 				"completed",
 				expect.any(Function),
 				expect.any(Function),
-				{ alwaysConfirm: false },
+				expect.objectContaining({ alwaysConfirm: false }),
 			);
 			// Move was blocked
 			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();
@@ -1370,6 +1380,7 @@ describe("TaskInfoPanel", () => {
 				taskId: "t1",
 				projectId: "p1",
 				opId: expect.stringMatching(/^[0-9a-f]{8}$/),
+				focus: true,
 			});
 		});
 
@@ -1461,6 +1472,7 @@ describe("TaskInfoPanel", () => {
 			await waitFor(() => expect(mockedApi.request.restartDevServer).toHaveBeenCalledWith({
 				taskId: "t1",
 				projectId: "p1",
+				focus: true,
 			}));
 			expect(mockedApi.request.runDevServer).not.toHaveBeenCalled();
 		});
@@ -1635,7 +1647,7 @@ describe("TaskInfoPanel", () => {
 			await user.click(within(screen.getByTestId("dev-server-row-dev")).getByText("Start"));
 
 			expect(mockedApi.request.runDevServer).toHaveBeenCalledWith(
-				expect.objectContaining({ server: "dev" }),
+				expect.objectContaining({ server: "dev", focus: true }),
 			);
 		});
 
@@ -1725,6 +1737,21 @@ describe("TaskInfoPanel", () => {
 			await user.keyboard("{Enter}");
 
 			expect(mockedApi.request.runDevServer).toHaveBeenCalledWith(expect.objectContaining({ server: "dev" }));
+		});
+
+		it("Start all and a named Restart are user actions: both ask for focus, Stop does not", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.restartDevServer.mockResolvedValue(multiStatus);
+			const { list } = await openList(user);
+
+			await user.click(within(list).getByText("Start all"));
+			expect(mockedApi.request.runDevServer).toHaveBeenCalledWith(expect.objectContaining({ all: true, focus: true }));
+
+			await user.click(within(screen.getByTestId("dev-server-row-api")).getByText("Restart"));
+			expect(mockedApi.request.restartDevServer).toHaveBeenCalledWith(expect.objectContaining({ server: "api", focus: true }));
+
+			await user.click(within(screen.getByTestId("dev-server-row-api")).getByText("Stop"));
+			expect(mockedApi.request.stopDevServer.mock.calls[0][0]).not.toHaveProperty("focus");
 		});
 
 		it("Stop all takes down every server in one action", async () => {
@@ -3624,28 +3651,69 @@ describe("TaskInfoPanel", () => {
 	});
 
 	describe("post-merge auto-complete", () => {
-		it("toggles manual completion from the task context bar", async () => {
-			const task = makeTask({ manualCompletion: false });
+		// The chip opens a menu; a click on it alone must never change the owner.
+		async function chooseOwner(task: Task, option: RegExp, opts: Parameters<typeof renderPanel>[1] = {}) {
+			await act(async () => {
+				renderPanel(task, opts);
+			});
+			await act(async () => {
+				fireEvent.click(screen.getAllByTestId("task-completion-owner")[0]);
+			});
+			expect(mockedApi.request.setTaskCompletionOwner).not.toHaveBeenCalled();
+			await act(async () => {
+				fireEvent.click(screen.getByRole("menuitemradio", { name: option }));
+			});
+		}
+
+		it("turns on manual completion from the chip's menu", async () => {
 			const updated = makeTask({ manualCompletion: true });
-			mockedApi.request.setTaskManualCompletion.mockResolvedValue(updated);
+			mockedApi.request.setTaskCompletionOwner.mockResolvedValue(updated);
 			const dispatch = vi.fn();
 
-			await act(async () => {
-				renderPanel(task, { dispatch });
-			});
+			await chooseOwner(makeTask({ manualCompletion: false }), /I’ll complete it myself/, { dispatch });
 
-			const toggle = screen.getAllByRole("button", { name: "I’ll complete it myself — stop completion prompts after merges" })[0];
-			await act(async () => {
-				fireEvent.click(toggle);
-			});
-
-			expect(mockedApi.request.setTaskManualCompletion).toHaveBeenCalledWith({
-				taskId: "t1",
-				projectId: "p1",
-				manualCompletion: true,
-			});
+			expect(mockedApi.request.setTaskCompletionOwner).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", owner: "user" });
 			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: updated });
+			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
 			expect(vi.mocked(toast.info)).not.toHaveBeenCalled();
+		});
+
+		it("turns manual completion off again without passing through the agent", async () => {
+			mockedApi.request.setTaskCompletionOwner.mockResolvedValue(makeTask());
+
+			await chooseOwner(makeTask({ manualCompletion: true }), /dev3 suggests completing it/);
+
+			expect(mockedApi.request.setTaskCompletionOwner).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", owner: "dev3" });
+			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
+		});
+
+		it("hands completion to the agent only after a danger confirmation", async () => {
+			vi.mocked(confirm).mockResolvedValue(true as never);
+			mockedApi.request.setTaskCompletionOwner.mockResolvedValue(makeTask({ selfCompletion: true }));
+
+			await chooseOwner(makeTask({ manualCompletion: true }), /Agent completes it/);
+
+			expect(vi.mocked(confirm)).toHaveBeenCalledWith(expect.objectContaining({ danger: true, confirmLabel: "Let the agent complete it" }));
+			expect(mockedApi.request.setTaskCompletionOwner).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", owner: "agent" });
+		});
+
+		it("grants nothing when the agent confirmation is cancelled", async () => {
+			vi.mocked(confirm).mockResolvedValue(false as never);
+
+			await chooseOwner(makeTask({ manualCompletion: true }), /Agent completes it/);
+
+			expect(mockedApi.request.setTaskCompletionOwner).not.toHaveBeenCalled();
+		});
+
+		it("says in words that the agent completes the task, and what that skips", async () => {
+			await act(async () => {
+				renderPanel(makeTask({ selfCompletion: true }));
+			});
+
+			expect(screen.getAllByText("Agent completes it").length).toBeGreaterThan(0);
+			const button = screen.getAllByTestId("task-completion-owner")[0];
+			expect(button.getAttribute("aria-label")).toContain("no approval dialog");
+			expect(button.className).toContain("text-warning-strong");
 		});
 
 		it("states active completion ownership in words, colour and the accessible name", async () => {
@@ -3704,7 +3772,7 @@ describe("TaskInfoPanel", () => {
 				mergedByContent: true,
 				mergeCompletionFingerprint: "v1:dev3/task-t1:manual",
 			});
-			vi.mocked(confirm).mockResolvedValue("manual" as never);
+			vi.mocked(offerCompletion).mockResolvedValue("manual" as never);
 
 			await act(async () => {
 				renderPanel(task);
@@ -3716,12 +3784,7 @@ describe("TaskInfoPanel", () => {
 				manualCompletion: true,
 			}));
 			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();
-			expect(vi.mocked(confirm)).toHaveBeenCalledWith(expect.objectContaining({
-				confirmLabel: "Complete task",
-				cancelLabel: "Not now",
-				alternativeAction: { label: "I’ll complete it myself", value: "manual" },
-				dismissOnBackdrop: false,
-			}));
+			expect(vi.mocked(offerCompletion)).toHaveBeenCalledWith(expect.objectContaining({ taskId: "t1", kind: "merge" }));
 		});
 
 		it("shows a merge notice when the backend suppresses the popup", async () => {
@@ -3745,7 +3808,7 @@ describe("TaskInfoPanel", () => {
 				'Branch of task "Test task" was merged.',
 				expect.objectContaining({ taskId: "t1" }),
 			));
-			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
+			expect(vi.mocked(offerCompletion)).not.toHaveBeenCalled();
 		});
 
 		it("does not offer auto-complete for merged AI Review tasks", async () => {
@@ -3756,7 +3819,7 @@ describe("TaskInfoPanel", () => {
 				...defaultBranchStatus,
 				mergedByContent: true,
 			});
-			vi.mocked(confirm).mockResolvedValue(true);
+			vi.mocked(offerCompletion).mockResolvedValue(true);
 			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
 
 			await act(async () => {
@@ -3767,7 +3830,7 @@ describe("TaskInfoPanel", () => {
 				await vi.advanceTimersByTimeAsync(100);
 			});
 
-			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
+			expect(vi.mocked(offerCompletion)).not.toHaveBeenCalled();
 			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();
 		});
 
@@ -3779,7 +3842,7 @@ describe("TaskInfoPanel", () => {
 				...defaultBranchStatus,
 				mergedByContent: true,
 			});
-			vi.mocked(confirm).mockResolvedValue(true);
+			vi.mocked(offerCompletion).mockResolvedValue(true);
 			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
 
 			await act(async () => {
@@ -3787,7 +3850,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			await waitFor(() => {
-				expect(vi.mocked(confirm)).toHaveBeenCalled();
+				expect(vi.mocked(offerCompletion)).toHaveBeenCalled();
 			});
 			await waitFor(() => {
 				expect(mockedApi.request.moveTask).toHaveBeenCalledWith({
@@ -3797,6 +3860,31 @@ describe("TaskInfoPanel", () => {
 					clientPlayedSound: true,
 				});
 			});
+		});
+
+		it("completes without moving the user when the offer is answered after the task view closed", async () => {
+			const dispatch = vi.fn();
+			const navigate = vi.fn();
+			const task = makeTask({ status: "review-by-colleague" });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				mergedByContent: true,
+			});
+			let answer!: (value: boolean) => void;
+			vi.mocked(offerCompletion).mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
+
+			let unmount!: () => void;
+			await act(async () => {
+				({ unmount } = renderPanel(task, { dispatch, navigate }));
+			});
+			await waitFor(() => expect(vi.mocked(offerCompletion)).toHaveBeenCalled());
+			// The user left for another screen and answered there (the dialog, the Ready to complete list).
+			unmount();
+			await act(async () => { answer(true); });
+
+			await waitFor(() => expect(mockedApi.request.moveTask).toHaveBeenCalledWith(expect.objectContaining({ taskId: "t1", newStatus: "completed" })));
+			expect(navigate).not.toHaveBeenCalled();
 		});
 
 		it("returns fullscreen open-mode users to the Kanban board after auto-complete", async () => {
@@ -3809,7 +3897,7 @@ describe("TaskInfoPanel", () => {
 					...defaultBranchStatus,
 					mergedByContent: true,
 				});
-				vi.mocked(confirm).mockResolvedValue(true);
+				vi.mocked(offerCompletion).mockResolvedValue(true);
 				mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
 
 				await act(async () => {
@@ -3832,7 +3920,7 @@ describe("TaskInfoPanel", () => {
 				...defaultBranchStatus,
 				mergedByContent: true,
 			});
-			vi.mocked(confirm).mockResolvedValue(true);
+			vi.mocked(offerCompletion).mockResolvedValue(true);
 			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
 
 			await act(async () => {
@@ -3840,7 +3928,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			await waitFor(() => {
-				expect(vi.mocked(confirm)).toHaveBeenCalled();
+				expect(vi.mocked(offerCompletion)).toHaveBeenCalled();
 			});
 			await waitFor(() => {
 				expect(mockedApi.request.moveTask).toHaveBeenCalledWith({
@@ -3864,7 +3952,7 @@ describe("TaskInfoPanel", () => {
 				mergedByContent: true,
 				mergeCompletionFingerprint: "v1:dev3/task-t1:abc123",
 			});
-			vi.mocked(confirm).mockResolvedValue(true);
+			vi.mocked(offerCompletion).mockResolvedValue(true);
 
 			await act(async () => {
 				renderPanel(task, { dispatch, navigate, project: customCompareProject });
@@ -3878,7 +3966,7 @@ describe("TaskInfoPanel", () => {
 				});
 			});
 			expect(mockedApi.request.prepareMergeCompletionPrompt).not.toHaveBeenCalled();
-			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
+			expect(vi.mocked(offerCompletion)).not.toHaveBeenCalled();
 		});
 
 		it("does not offer auto-complete while the worktree has uncommitted changes", async () => {
@@ -3892,7 +3980,7 @@ describe("TaskInfoPanel", () => {
 				deletions: 2,
 				mergeCompletionFingerprint: "v1:dev3/task-t1:abc123",
 			});
-			vi.mocked(confirm).mockResolvedValue(true);
+			vi.mocked(offerCompletion).mockResolvedValue(true);
 
 			await act(async () => {
 				renderPanel(task, { dispatch, navigate });
@@ -3902,7 +3990,7 @@ describe("TaskInfoPanel", () => {
 				expect(mockedApi.request.getBranchStatus).toHaveBeenCalled();
 			});
 			expect(mockedApi.request.prepareMergeCompletionPrompt).not.toHaveBeenCalled();
-			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
+			expect(vi.mocked(offerCompletion)).not.toHaveBeenCalled();
 		});
 
 		it("does not offer auto-complete after a merge while uncommitted changes remain", async () => {
@@ -3914,7 +4002,7 @@ describe("TaskInfoPanel", () => {
 				insertions: 5,
 				deletions: 2,
 			});
-			vi.mocked(confirm).mockResolvedValue(true);
+			vi.mocked(offerCompletion).mockResolvedValue(true);
 
 			await act(async () => {
 				renderPanel(task, { dispatch, navigate });
@@ -3929,7 +4017,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			expect(mockedApi.request.prepareMergeCompletionPrompt).not.toHaveBeenCalled();
-			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
+			expect(vi.mocked(offerCompletion)).not.toHaveBeenCalled();
 		});
 
 		it("does not show a second merge-complete dialog while one is already open", async () => {
@@ -3943,8 +4031,8 @@ describe("TaskInfoPanel", () => {
 				mergedByContent: true,
 				mergeCompletionFingerprint: "v1:dev3/task-t1:abc123",
 			});
-			vi.mocked(confirm).mockReturnValue(
-				new Promise<boolean>((resolve) => {
+			vi.mocked(offerCompletion).mockReturnValue(
+				new Promise<boolean | "manual">((resolve) => {
 					resolveConfirm = resolve;
 				}),
 			);
@@ -3954,7 +4042,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			await waitFor(() => {
-				expect(vi.mocked(confirm)).toHaveBeenCalledTimes(1);
+				expect(vi.mocked(offerCompletion)).toHaveBeenCalledTimes(1);
 			});
 
 			await act(async () => {
@@ -3965,7 +4053,7 @@ describe("TaskInfoPanel", () => {
 				);
 			});
 
-			expect(vi.mocked(confirm)).toHaveBeenCalledTimes(1);
+			expect(vi.mocked(offerCompletion)).toHaveBeenCalledTimes(1);
 
 			await act(async () => {
 				resolveConfirm(false);
@@ -4001,7 +4089,7 @@ describe("TaskInfoPanel", () => {
 			await waitFor(() => {
 				expect(mockedApi.request.prepareMergeCompletionPrompt).toHaveBeenCalled();
 			});
-			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
+			expect(vi.mocked(offerCompletion)).not.toHaveBeenCalled();
 			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();
 		});
 
@@ -4009,7 +4097,7 @@ describe("TaskInfoPanel", () => {
 			const dispatch = vi.fn();
 			const navigate = vi.fn();
 			const task = makeTask({ status: "in-progress" });
-			vi.mocked(confirm).mockResolvedValue(true);
+			vi.mocked(offerCompletion).mockResolvedValue(true);
 			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
 
 			await act(async () => {
@@ -4027,7 +4115,7 @@ describe("TaskInfoPanel", () => {
 
 			// Wait for the confirm dialog to resolve
 			await waitFor(() => {
-				expect(vi.mocked(confirm)).toHaveBeenCalled();
+				expect(vi.mocked(offerCompletion)).toHaveBeenCalled();
 			});
 
 			await waitFor(() => {
@@ -4050,7 +4138,7 @@ describe("TaskInfoPanel", () => {
 			const dispatch = vi.fn();
 			const navigate = vi.fn();
 			const task = makeTask({ status: "review-by-user" });
-			vi.mocked(confirm).mockResolvedValue(true);
+			vi.mocked(offerCompletion).mockResolvedValue(true);
 			mockedApi.request.moveTask.mockReturnValue(new Promise(() => {}) as never);
 
 			await act(async () => {
@@ -4066,7 +4154,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			await waitFor(() => {
-				expect(vi.mocked(confirm)).toHaveBeenCalled();
+				expect(vi.mocked(offerCompletion)).toHaveBeenCalled();
 			});
 
 			await waitFor(() => {
@@ -4086,7 +4174,7 @@ describe("TaskInfoPanel", () => {
 			const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 			const task = makeTask({ status: "review-by-user" });
 
-			vi.mocked(confirm).mockResolvedValue(true);
+			vi.mocked(offerCompletion).mockResolvedValue(true);
 			mockedApi.request.moveTask
 				.mockRejectedValueOnce(new Error("primary failure"))
 				.mockRejectedValueOnce(new Error("forced failure"));
@@ -4104,7 +4192,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			await waitFor(() => {
-				expect(vi.mocked(confirm)).toHaveBeenCalled();
+				expect(vi.mocked(offerCompletion)).toHaveBeenCalled();
 			});
 			await waitFor(() => {
 				expect(mockedApi.request.moveTask).toHaveBeenCalledTimes(2);
@@ -4440,6 +4528,83 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 			// Details grid moved into the sheet (Title row + task number).
 			expect(within(sheet).getByText("Title")).toBeInTheDocument();
 			expect(within(sheet).getByText("#7")).toBeInTheDocument();
+		});
+
+		async function openSheet(task: Task, opts?: Parameters<typeof renderPanel>[1]) {
+			await act(async () => {
+				renderPanel(task, opts);
+			});
+			await act(async () => {
+				fireEvent.click(screen.getByTestId("task-actions-kebab"));
+			});
+			return screen.getByTestId("task-actions-sheet");
+		}
+
+		it("Full screen row closes the sheet and enters terminal fullscreen", async () => {
+			const onToggleTerminalFullscreen = vi.fn();
+			const sheet = await openSheet(makeTask(), { onToggleTerminalFullscreen });
+
+			await act(async () => {
+				fireEvent.click(within(sheet).getByTestId("task-actions-fullscreen"));
+			});
+
+			expect(onToggleTerminalFullscreen).toHaveBeenCalledTimes(1);
+			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
+		});
+
+		it("Hibernate row closes the sheet and runs the confirmed hibernate flow", async () => {
+			vi.mocked(confirm).mockResolvedValue(true);
+			const task = makeTask();
+			mockedApi.request.hibernateTask.mockResolvedValue({ task: { ...task, hibernated: true }, freedRssBytes: null });
+			const sheet = await openSheet(task);
+
+			await act(async () => {
+				fireEvent.click(within(sheet).getByTestId("task-actions-hibernate"));
+			});
+
+			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
+			expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ danger: true }));
+			expect(mockedApi.request.hibernateTask).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+		});
+
+		it.each([
+			["already hibernated", { hibernated: true }],
+			["still preparing", { preparing: true }],
+			["shutting down", { shuttingDown: true }],
+			["without a worktree", { worktreePath: null }],
+			["not active", { status: "completed" as const }],
+		])("offers no Hibernate row when the task is %s", async (_label, overrides) => {
+			const sheet = await openSheet(makeTask(overrides as Partial<Task>));
+
+			expect(within(sheet).queryByTestId("task-actions-hibernate")).not.toBeInTheDocument();
+		});
+
+		it("offers no hide buttons, and a control hidden on desktop keeps its sheet row", async () => {
+			syncHiddenControlsFromGlobalSettings({ simplifiedMode: false, personalHiddenControls: ["spawn-agent", "bug-hunters", "hibernate"] });
+			try {
+				const sheet = await openSheet(makeTask());
+
+				expect(within(sheet).queryByRole("button", { name: "Hide" })).not.toBeInTheDocument();
+				expect(within(sheet).getByTestId("task-actions-spawn-agent")).toBeInTheDocument();
+				expect(within(sheet).getByTestId("task-actions-bug-hunters")).toBeInTheDocument();
+				expect(within(sheet).getByTestId("task-actions-hibernate")).toBeInTheDocument();
+			} finally {
+				syncHiddenControlsFromGlobalSettings({ simplifiedMode: false, personalHiddenControls: [] });
+			}
+		});
+
+		it("Simplified Mode still trims the advanced rows", async () => {
+			syncHiddenControlsFromGlobalSettings({ simplifiedMode: true, personalHiddenControls: [] });
+			try {
+				const sheet = await openSheet(makeTask());
+
+				expect(within(sheet).queryByTestId("task-actions-spawn-agent")).not.toBeInTheDocument();
+				expect(within(sheet).queryByTestId("task-actions-bug-hunters")).not.toBeInTheDocument();
+				expect(within(sheet).queryByTestId("task-actions-hibernate")).not.toBeInTheDocument();
+				expect(within(sheet).getByTestId("task-actions-fullscreen")).toBeInTheDocument();
+			} finally {
+				syncHiddenControlsFromGlobalSettings({ simplifiedMode: false, personalHiddenControls: [] });
+			}
 		});
 
 		it("surfaces the images and artifacts badges in the summary bar itself", async () => {
@@ -4792,7 +4957,7 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 			expect(screen.queryByText("Changed files")).not.toBeInTheDocument();
 		});
 
-		it("feeds the sheet from the panel-level status (rows enabled, no refetch on open)", async () => {
+		it("feeds the sheet from the panel-level status (rows enabled, one remote refresh on open)", async () => {
 			await act(async () => {
 				renderPanel(makeTask());
 			});
@@ -4805,7 +4970,8 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 			// Branch status (ahead: 3) loaded before the sheet opened, so Create PR
 			// is enabled immediately — no "Loading branch status…" flash.
 			expect(within(sheet).getByText("Create PR").closest("button")).not.toBeDisabled();
-			expect(mockedApi.request.getBranchStatus.mock.calls.length).toBe(callsBefore);
+			const openCalls = mockedApi.request.getBranchStatus.mock.calls.slice(callsBefore);
+			expect(openCalls).toEqual([[expect.objectContaining({ taskId: "t1", refresh: true })]]);
 		});
 
 		it("omits the git section for a virtual (Operations) project", async () => {

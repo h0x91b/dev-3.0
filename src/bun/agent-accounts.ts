@@ -82,6 +82,7 @@ import {
 	shortCodexWorkspaceId,
 } from "../shared/agent-accounts";
 import { writePiLoginExtension } from "../shared/pi-login-extension";
+import { ensureCodexDev3Rules } from "./codex-rules";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { spawn } from "./spawn";
@@ -480,6 +481,9 @@ function ensureCodexAccountHome(id: string, paths: AccountPaths): string {
 			log.warn("Failed to symlink shared codex entry", { entry, error: String(err) });
 		}
 	}
+	// `rules/` is per CODEX_HOME and stays unshared: Codex saves the user's
+	// approvals there, so each account gets its own copy of dev3's file instead.
+	ensureCodexDev3Rules(dir, dirname(paths.codexHome));
 	return dir;
 }
 
@@ -1104,6 +1108,13 @@ export const CLAUDE_ENV_AUTH_KEYS = [
 	"CLAUDE_CODE_USE_VERTEX",
 	"CLAUDE_CODE_USE_FOUNDRY",
 ] as const;
+
+/** Project env that picks Claude's backend, its credentials or its model ids. A named login
+ *  runs on none of it: a project-wide Bedrock switch, API key or base URL would override it. */
+export function isClaudeBackendKey(key: string): boolean {
+	return (CLAUDE_ENV_AUTH_KEYS as readonly string[]).includes(key)
+		|| key === "ANTHROPIC_MODEL" || key === "ANTHROPIC_SMALL_FAST_MODEL" || key.startsWith("ANTHROPIC_DEFAULT_");
+}
 
 /** Same for Codex: an API key in the env would make `codex login` moot. */
 export const CODEX_ENV_AUTH_KEYS = ["OPENAI_API_KEY", "CODEX_API_KEY"] as const;

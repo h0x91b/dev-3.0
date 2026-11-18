@@ -1,0 +1,1 @@
+The pane state now names the task's main agent pane by its id, wherever a swap moved it and in any tmux window, and a new reveal pane action switches to that pane's window and lifts a zoom on another pane. This is the backend for keeping the completion bar on the agent's pane.

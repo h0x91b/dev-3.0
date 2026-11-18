@@ -77,6 +77,7 @@ vi.mock("../../lifecycle/service", () => ({ lifecycleActorRuntime: vi.fn(() => (
 vi.mock("../../lifecycle/activities", () => ({
 	PR_DETECTION_TIMEOUT_MS: 1000,
 	dismissMergeCompletionPrompt: vi.fn(),
+	listPendingMergeOffers: vi.fn(),
 	persistProjectPrIdentities: vi.fn(),
 	persistTaskPrIdentity: vi.fn(),
 	prepareMergeCompletionPrompt: vi.fn(),
@@ -112,6 +113,17 @@ const OPERATIONS = [
 	{ name: "push", run: () => gitOperationHandlers.pushTask({ taskId: TASK.id, projectId: PROJECT.id }) },
 	{ name: "merge", run: () => gitOperationHandlers.mergeTask({ taskId: TASK.id, projectId: PROJECT.id }) },
 ] as const;
+
+describe("git-op pane focus", () => {
+	for (const operation of OPERATIONS) {
+		it(`${operation.name} opens its pane in the background, leaving focus on the agent`, async () => {
+			await operation.run();
+			const spec = mocks.openAuxPane.mock.calls[0][0];
+			expect(spec.focus).toBeUndefined();
+			expect(spec.focusNewPane).toBeUndefined();
+		});
+	}
+});
 
 describe(`git-op pane launch on ${process.platform}`, () => {
 	for (const operation of OPERATIONS) {

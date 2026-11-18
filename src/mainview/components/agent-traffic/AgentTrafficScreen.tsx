@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { TaskRefText } from "../TaskRefText";
 import { ACTIVE_STATUSES, getTaskOverview } from "../../../shared/types";
 import { markTrafficSeen } from "../../agent-traffic";
-import { useLocale, useT, type TranslationKey } from "../../i18n";
+import { useLocale, useT, type TFunction, type TranslationKey } from "../../i18n";
 import { useGlobalShortcut } from "../../hooks/useGlobalShortcut";
 import { useNarrowViewport } from "../../hooks/useNarrowViewport";
 import { getOverlayLayerElements } from "../../utils/overlay-layers";
@@ -57,6 +57,7 @@ import {
 	admits,
 	scopeProjectIds,
 } from "./traffic-scope";
+import { OPEN_SETTINGS_SECTION_EVENT } from "../../state";
 import "./traffic-orbit.css";
 import "./traffic-nodes.css";
 
@@ -100,6 +101,16 @@ const verdictKey = (status: string): TranslationKey => {
 			return "traffic.orbit.unknownDelivery";
 	}
 };
+
+/** The statusbar's history sentence; `retentionDays` is null when history is kept forever. */
+function retentionStatus(t: TFunction, retentionDays: number | null, oldestDay: string | undefined): string {
+	if (retentionDays === null) {
+		return oldestDay ? t("traffic.retentionForever", { oldest: oldestDay }) : t("traffic.retentionEmptyForever");
+	}
+	return oldestDay
+		? t.plural("traffic.retention", retentionDays, { oldest: oldestDay })
+		: t.plural("traffic.retentionEmpty", retentionDays);
+}
 
 /**
  * The Agent traffic screen: one routed destination, the same on every width.
@@ -371,6 +382,11 @@ function TrafficView({ projectId, focus, onOpenTask }: Props) {
 	const notifications = useNotificationTraffic(
 		data.loading ? null : data.projects.map((project) => project.id),
 	);
+	// The earliest day over every project's messages and the notifications; unknown (no clamp) until all have answered.
+	const calendarOldestDay =
+		data.archiveBoundsKnown && notifications.status === "ready"
+			? [data.oldestDay, notifications.oldestDay].filter((day): day is string => !!day).sort()[0] ?? null
+			: undefined;
 	const { experiment, choose } = useTrafficExperiment();
 	// Arriving without a project opens on the active projects, not on all of them:
 	// eighteen empty blocks are eighteen blocks of stage the busy two could have
@@ -1171,6 +1187,7 @@ function TrafficView({ projectId, focus, onOpenTask }: Props) {
 								<TrafficPeriodPicker
 									value={windowSize}
 									retentionDays={data.retentionDays}
+									oldestDay={calendarOldestDay}
 									onChange={(value) => {
 										setWindowSize(value);
 										clearSelection();
@@ -1535,15 +1552,27 @@ function TrafficView({ projectId, focus, onOpenTask }: Props) {
 			</div>
 			<footer className="traffic-statusbar">
 				<span>
-					{data.oldestDay
-						? t("traffic.retention", {
-								days: String(data.retentionDays),
-								oldest: data.oldestDay,
-							})
-						: t("traffic.retentionEmpty", {
-								days: String(data.retentionDays),
-							})}{" "}
-					·{" "}
+					{data.retentionLoaded ? (
+						<>
+							<button
+								type="button"
+								className="traffic-retention-link"
+								onClick={() =>
+									window.dispatchEvent(
+										new CustomEvent(OPEN_SETTINGS_SECTION_EVENT, {
+											detail: { section: "system", anchor: "log-retention" },
+										}),
+									)
+								}
+							>
+								{retentionStatus(t, data.retentionDays, data.oldestDay)}
+							</button>{" "}
+							·{" "}
+						</>
+					) : (
+						// Holds the line until the first page says how long history is kept.
+						<span aria-hidden="true">&nbsp;</span>
+					)}
 					{t("traffic.shownCount", {
 						shown: String(visible.length),
 						total: String(records.length),

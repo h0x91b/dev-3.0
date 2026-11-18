@@ -2,7 +2,7 @@ import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { taskDialogInfo } from "./taskDialogInfo";
 import { unsavedWorkWarning } from "./confirmTaskCompletion";
-import { isOpsWorktreeTask, taskResetConsent, taskUsesWorktree, type Project, type Task, type TaskResetConsent } from "../../shared/types";
+import { isAttachedRepoInTaskFolder, isOpsWorktreeTask, taskResetConsent, taskUsesWorktree, type Project, type Task, type TaskResetConsent } from "../../shared/types";
 import type { TFunction } from "../i18n";
 
 /**
@@ -17,19 +17,24 @@ export async function confirmTaskReset(
 	t: TFunction,
 	onOpenTask?: () => void,
 ): Promise<TaskResetConsent | null> {
-	const consent = taskResetConsent(task);
 	const keepsFolder = !taskUsesWorktree(project, task);
 	const branch = task.branchName;
 	const opsWorktree = isOpsWorktreeTask(task);
-	const unsaved = task.worktreePath && ((!keepsFolder && !task.existingBranch) || opsWorktree)
-		? api.request.getUnsavedWork({ taskId: task.id, projectId: project.id })
+	const inOwnFolder = isAttachedRepoInTaskFolder(task);
+	// Only a repo whose unsaved-work check succeeded is approved for removal.
+	let checkedAttachedRepo: string | null = null;
+	const unsaved = task.worktreePath && ((!keepsFolder && !task.existingBranch) || opsWorktree || inOwnFolder)
+		? api.request.getUnsavedWork({ taskId: task.id, projectId: project.id, expectedAttachedRepo: task.attachedRepo ?? null }).then((status) => {
+			checkedAttachedRepo = task.attachedRepo ?? null;
+			return status;
+		})
 		: null;
 	const approved = await confirm({
 		title: t("task.confirmResetTitle"),
 		message: opsWorktree
 			? t("task.confirmResetMessageOpsWorktree", { branch: branch ?? "" })
 			: keepsFolder
-				? t("task.confirmResetMessageVirtual")
+				? t("task.confirmResetMessageVirtual") + (inOwnFolder ? `\n\n${t("task.attachedWorktreeNote")}` : "")
 				: branch
 					? t("task.confirmResetMessage", { branch })
 					: t("task.confirmResetMessageNoBranch"),
@@ -47,5 +52,5 @@ export async function confirmTaskReset(
 			}
 			: undefined,
 	});
-	return approved ? consent : null;
+	return approved ? taskResetConsent(task, inOwnFolder ? checkedAttachedRepo : null) : null;
 }

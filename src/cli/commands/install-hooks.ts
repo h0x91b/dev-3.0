@@ -5,6 +5,8 @@ import { writeOmpStatusExtension } from "../../shared/omp-status-extension";
 import { writePiStatusExtension } from "../../shared/pi-status-extension";
 import { resolveDev3Home } from "../../shared/dev3-home";
 import { parseInProjectTaskPath } from "../../shared/project-storage";
+import { excludeTaskClaudeSettings, excludeTaskCodexHooks } from "../../bun/claude-config-git";
+import { setMinLevel } from "../../bun/logger";
 import { removeCursorUsageHooks, writeCursorUsageHooks } from "../../bun/cursor-usage-hooks";
 
 const WORKTREES_DIR = `${resolveDev3Home()}/worktrees`;
@@ -40,6 +42,7 @@ export async function handleRemoveCursorUsageHooks(home?: string): Promise<void>
 
 export async function handleInstallHooks(options: { removeCursor?: boolean } = {}): Promise<void> {
 	if (options.removeCursor) return handleRemoveCursorUsageHooks();
+	setMinLevel("error");
 	const worktreePath = detectWorktreePath(process.cwd());
 	if (!worktreePath) {
 		exitError("Cannot detect worktree path", "Run this command from inside a dev-3.0 worktree.");
@@ -50,6 +53,8 @@ export async function handleInstallHooks(options: { removeCursor?: boolean } = {
 
 	const claudeSymlink = writeClaudeHooks(worktreePath).skippedSymlink;
 	const codexSymlink = writeCodexHooks(worktreePath);
+	if (!claudeSymlink) excludeTaskClaudeSettings(worktreePath);
+	if (!codexSymlink) excludeTaskCodexHooks(worktreePath);
 	const ompExtensionPath = writeOmpStatusExtension();
 	const piExtensionPath = writePiStatusExtension();
 	const cursorUsageHooks = await writeCursorUsageHooks();

@@ -6,6 +6,7 @@ import { load } from "js-toml";
 import { buildCodexHooks, AGENT_STATUS_HOOK_EVENTS, mentionsDev3Cli } from "../shared/agent-hooks";
 import { type CliVersion, isCliVersionAtLeast, parseCliVersion } from "../shared/agent-model-cli-requirements";
 import type { HookCliDialect } from "../shared/dev3-cli-path";
+import { ensureCodexDev3Rules } from "./codex-rules";
 import { createLogger } from "./logger";
 import { spawn } from "./spawn";
 import { agentBinaryPathOverride, enforcedCustomBinaryPaths } from "./executable";
@@ -1710,6 +1711,7 @@ export async function ensureCodexConfigFile(homePath: string): Promise<void> {
 	const codexVersion = await detectCodexVersion();
 	if (codexVersion === null) return;
 	const syntax = getCodexSyntaxForVersion(codexVersion);
+	ensureCodexDev3Rules(join(homePath, ".codex"), homePath);
 
 	try {
 		let content: string | null = null;

@@ -38,6 +38,7 @@ export const automationHandlers: Record<string, Handler> = {
 			configId: (params.configId as string | undefined) ?? null,
 			...(params.enabled !== undefined ? { enabled: Boolean(params.enabled) } : {}),
 			...(params.catchUp !== undefined ? { catchUp: params.catchUp as "skip" | "runOnce" } : {}),
+			...(params.selfCompletion !== undefined ? { selfCompletion: params.selfCompletion === true } : {}),
 		});
 		getPushMessage()?.("automationsUpdated", { projectId: project.id });
 		return automation;
@@ -53,7 +54,7 @@ export const automationHandlers: Record<string, Handler> = {
 		const automation = findByIdPrefix(automations, automationId, "automation");
 		if (!automation) throw new Error(`Automation not found: ${automationId}`);
 		const updates: Record<string, unknown> = {};
-		for (const key of ["name", "prompt", "rrule", "timezone", "agentId", "configId", "enabled", "catchUp"] as const) {
+		for (const key of ["name", "prompt", "rrule", "timezone", "agentId", "configId", "enabled", "catchUp", "selfCompletion"] as const) {
 			if (params[key] !== undefined) updates[key] = params[key];
 		}
 		const updated = await updateAutomation(project, automation.id, updates);

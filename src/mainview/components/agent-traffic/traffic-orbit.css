@@ -805,6 +805,23 @@
 .traffic-statusbar button {
 	color: rgb(var(--accent));
 }
+.traffic-statusbar button.traffic-retention-link {
+	padding: 0;
+	font: inherit;
+	color: rgb(var(--text-tertiary));
+	background: none;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	cursor: pointer;
+}
+.traffic-statusbar button.traffic-retention-link:hover {
+	color: rgb(var(--accent-emphasis));
+}
+.traffic-statusbar button.traffic-retention-link:focus-visible {
+	outline: 2px solid rgb(var(--accent));
+	outline-offset: 1px;
+	border-radius: 2px;
+}
 .traffic-error {
 	padding: 8px 20px;
 	background: rgb(var(--warning) / 0.12);

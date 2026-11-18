@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import BoardHost from "../../BoardHost";
 import { I18nProvider } from "../../../i18n";
 import { api } from "../../../rpc";
+import { resetTaskVisibilityForTests } from "../../useTaskVisibility";
 import { toast } from "../../../toast";
 import type { CustomColumn, PRInfo, Project, Task, TipState } from "../../../../shared/types";
 
@@ -25,6 +26,8 @@ vi.mock("../../../rpc", () => ({
 			resetTipState: vi.fn().mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 }),
 			getProjectCurrentBranch: vi.fn().mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false }),
 			getProjectPRs: vi.fn().mockResolvedValue([]),
+			getBoardFilterState: vi.fn().mockResolvedValue({ visibility: "all" }),
+			setBoardFilterState: vi.fn(async ({ state }: { state: unknown }) => state),
 			moveTaskToCustomColumn: vi.fn(async ({ taskId }: { taskId: string }) => ({ id: taskId })),
 		},
 	},
@@ -679,6 +682,7 @@ describe("mobile carousel mode", () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		resetTaskVisibilityForTests();
 		localStorage.clear();
 		Element.prototype.scrollTo = vi.fn() as unknown as typeof Element.prototype.scrollTo;
 		Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
@@ -735,6 +739,24 @@ describe("mobile carousel mode", () => {
 
 		expect(screen.getByText("Completed")).toBeTruthy();
 		expect(screen.getByText("Cancelled")).toBeTruthy();
+	});
+
+	it("does not offer the finished columns as carousel pages under Active", async () => {
+		vi.mocked(api.request.getBoardFilterState).mockResolvedValueOnce({ visibility: "active" });
+		await renderBoardWith({ tasks: [makeTask({ status: "completed" })] });
+		expect(screen.getByText(/^\d+ \/ 6$/)).toBeTruthy();
+		expect(screen.queryByText("Completed")).toBeNull();
+		expect(screen.queryByText("Cancelled")).toBeNull();
+	});
+
+	it("keeps the Completed page under Active when a status query fills it", async () => {
+		vi.mocked(api.request.getBoardFilterState).mockResolvedValueOnce({ visibility: "active" });
+		await renderBoardWith({ tasks: [makeTask({ status: "completed", title: "Shipped one" })] });
+		expect(screen.queryByText("Completed")).toBeNull();
+		fireEvent.change(screen.getByRole("textbox", { name: /search/i }), { target: { value: "status:completed" } });
+		expect(screen.getByText(/^\d+ \/ 7$/)).toBeTruthy();
+		expect(screen.getByText("Completed")).toBeTruthy();
+		expect(screen.queryByText("Cancelled")).toBeNull();
 	});
 });
 

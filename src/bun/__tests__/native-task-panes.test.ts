@@ -225,6 +225,16 @@ describe("split cwd/env inheritance (fix #2)", () => {
 		void firstPaneId;
 	});
 
+	it("a background split leaves the previous pane active in the state it returns", async () => {
+		const started = await startNativeTaskPanes({ taskId: TASK_ID, cwd: "/work", env: {}, launch: LAUNCH, cols: 80, rows: 24 });
+		const first = started.panes[0]!.paneId;
+
+		const { paneId, state } = await splitNativeTaskPane(TASK_ID, first, "horizontal", { cwd: "/work", env: {}, background: true });
+
+		expect(state.panes.map((p) => p.paneId)).toContain(paneId);
+		expect(state.activePaneId).toBe(first);
+	});
+
 	it("split carries the dev3 prompt env; the caller's own values win", async () => {
 		await startNativeTaskPanes({ taskId: TASK_ID, cwd: "/work", env: {}, launch: LAUNCH, cols: 80, rows: 24 });
 		await splitNativeTaskPane(TASK_ID, "pane-1", "horizontal", { cwd: "/work", env: { ENV: "/mine/.shrc" } });

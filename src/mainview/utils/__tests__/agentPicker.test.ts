@@ -76,6 +76,8 @@ describe("getModelGroupLabel", () => {
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "claude-opus-5[1m]" })).toBe("Opus 5");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "claude-opus-4-8[1m]" })).toBe("Opus 4.8");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "claude-fable-5" })).toBe("Fable 5");
+		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-6.2-astra" })).toBe("GPT-6.2 Astra");
+		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-6.2-sol" })).toBe("GPT-6.2 Sol");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-6.1-sol" })).toBe("GPT-6.1 Sol");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-5.6-sol" })).toBe("GPT-5.6 Sol");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-5.6-terra" })).toBe("GPT-5.6 Terra");
@@ -239,6 +241,8 @@ describe("buildPickerGroups", () => {
 
 		it("lists Codex by release date, same-day models in curated order", () => {
 			expect(buildPickerGroups(codexDefaults).map((g) => g.label)).toEqual([
+				"GPT-6.2 Astra",
+				"GPT-6.2 Sol",
 				"GPT-6.1 Sol",
 				"GPT-6 Sol",
 				"GPT-6 Luna",
@@ -294,14 +298,14 @@ describe("buildPickerGroups", () => {
 				...codexDefaults,
 				configurations: [
 					{ id: "mine-new", name: "Mine", model: "gpt-7-experimental" },
-					{ id: "mine-sol", name: "My Sol", model: "gpt-6.1-sol" },
+					{ id: "mine-astra", name: "My Astra", model: "gpt-6.2-astra" },
 					...fossil.configurations,
 					{ id: "mine-other", name: "Other", model: "some-local-model" },
 				],
 			};
 			const groups = buildPickerGroups(agent);
-			expect(groups[0].label).toBe("GPT-6.1 Sol");
-			expect(groups[0].configs[groups[0].configs.length - 1].id).toBe("mine-sol");
+			expect(groups[0].label).toBe("GPT-6.2 Astra");
+			expect(groups[0].configs[groups[0].configs.length - 1].id).toBe("mine-astra");
 			expect(groups.slice(-2).map((g) => g.configs[0].id)).toEqual(["mine-new", "mine-other"]);
 		});
 	});

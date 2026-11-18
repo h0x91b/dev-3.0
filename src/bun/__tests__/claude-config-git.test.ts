@@ -25,7 +25,7 @@ vi.mock("../spawn", async () => {
 	};
 });
 
-import { excludeClaudeRuntimeState, excludeTaskClaudeSettings } from "../claude-config-git";
+import { excludeClaudeRuntimeState, excludeTaskClaudeSettings, excludeTaskCodexHooks } from "../claude-config-git";
 import { GIT_CONFIG_ISOLATION } from "./git-test-helpers";
 
 const ENV = {
@@ -44,6 +44,11 @@ function sh(cmd: string, cwd: string): string {
 function writeTaskSettings(dir: string): void {
 	mkdirSync(join(dir, ".claude"), { recursive: true });
 	writeFileSync(join(dir, ".claude", "settings.local.json"), "{\"hooks\":{}}\n");
+}
+
+function writeTaskCodexHooks(dir: string): void {
+	mkdirSync(join(dir, ".codex"), { recursive: true });
+	writeFileSync(join(dir, ".codex", "hooks.json"), "{\"hooks\":{}}\n");
 }
 
 let root: string;
@@ -111,6 +116,78 @@ describe("excludeTaskClaudeSettings", () => {
 		const plain = join(root, "plain");
 		writeTaskSettings(plain);
 		expect(() => excludeTaskClaudeSettings(plain)).not.toThrow();
+	});
+});
+
+describe("excludeTaskCodexHooks", () => {
+	it("hides dev3's Codex hooks file in a task worktree, so the branch reads as clean", () => {
+		const worktree = join(root, "wt");
+		sh(`git worktree add -q -b task "${worktree}"`, repo);
+		writeTaskCodexHooks(worktree);
+		expect(sh("git status --porcelain", worktree)).toContain(".codex/");
+
+		excludeTaskCodexHooks(worktree);
+
+		expect(sh("git status --porcelain", worktree)).toBe("");
+		expect(readFileSync(join(repo, ".git", "info", "exclude"), "utf-8")).toContain("/.codex/hooks.json");
+	});
+
+	it("adds the rule once for several worktrees of one repo", () => {
+		const first = join(root, "wt-a");
+		const second = join(root, "wt-b");
+		sh(`git worktree add -q -b task-a "${first}"`, repo);
+		sh(`git worktree add -q -b task-b "${second}"`, repo);
+		writeTaskCodexHooks(first);
+		writeTaskCodexHooks(second);
+
+		excludeTaskCodexHooks(first);
+		excludeTaskCodexHooks(second);
+
+		const rules = readFileSync(join(repo, ".git", "info", "exclude"), "utf-8").split("\n").filter((line) => line === "/.codex/hooks.json");
+		expect(rules).toHaveLength(1);
+		expect(sh("git status --porcelain", second)).toBe("");
+	});
+
+	it("leaves the user's other .codex files visible", () => {
+		const worktree = join(root, "wt2");
+		sh(`git worktree add -q -b task2 "${worktree}"`, repo);
+		writeTaskCodexHooks(worktree);
+		writeFileSync(join(worktree, ".codex", "config.toml"), "model = \"x\"\n");
+
+		excludeTaskCodexHooks(worktree);
+
+		expect(sh("git status --porcelain -uall", worktree).trim()).toBe("?? .codex/config.toml");
+	});
+
+	it("anchors the rule at the task folder inside the repo", () => {
+		const sub = join(repo, "packages", "app");
+		mkdirSync(sub, { recursive: true });
+		writeTaskCodexHooks(sub);
+
+		excludeTaskCodexHooks(sub);
+
+		expect(readFileSync(join(repo, ".git", "info", "exclude"), "utf-8")).toContain("/packages/app/.codex/hooks.json");
+		expect(sh("git status --porcelain -uall", repo)).toBe("");
+	});
+
+	it("adds nothing when the repo tracks the file, which stays visible once modified", () => {
+		const tracked = join(root, "tracked");
+		mkdirSync(tracked);
+		sh("git init -q -b main", tracked);
+		writeTaskCodexHooks(tracked);
+		sh("git add .codex/hooks.json && git commit -q -m hooks", tracked);
+		writeFileSync(join(tracked, ".codex", "hooks.json"), "{\"hooks\":{\"Stop\":[]}}\n");
+
+		excludeTaskCodexHooks(tracked);
+
+		expect(readFileSync(join(tracked, ".git", "info", "exclude"), "utf-8")).not.toContain("hooks.json");
+		expect(sh("git status --porcelain", tracked).trim()).toBe("M .codex/hooks.json");
+	});
+
+	it("does nothing outside a git repo", () => {
+		const plain = join(root, "plain");
+		writeTaskCodexHooks(plain);
+		expect(() => excludeTaskCodexHooks(plain)).not.toThrow();
 	});
 });
 

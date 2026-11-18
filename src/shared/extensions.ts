@@ -4,7 +4,7 @@
  */
 
 /** The version of the board-view contract (`ctx.board`, `ctx.boardViews`) an extension's `engines.dev3` is matched against. */
-export const EXTENSION_API_VERSION = "1.0.0";
+export const EXTENSION_API_VERSION = "1.1.0";
 
 /** The public author guide; it also tells an agent outside a dev3 clone where the `dev3-extensions` skill comes from. */
 export const EXTENSION_AUTHOR_GUIDE_URL = "https://github.com/h0x91b/dev-3.0/blob/main/docs/extensions.md";

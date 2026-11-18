@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
 import type { Task, Project, TaskSessionState } from "../../shared/types";
-import { getTaskTitle, taskUsesWorktree } from "../../shared/types";
+import { getTaskTitle, isAttachedRepoInTaskFolder, taskUsesWorktree } from "../../shared/types";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
 import { debugLog } from "../debug-log";
@@ -11,6 +11,7 @@ import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import TerminalView from "../TerminalView";
 import type { TerminalHandle } from "../TerminalView";
 import TaskInfoPanel from "./TaskInfoPanel";
+import TaskCompletionStrip from "./task-info-panel/TaskCompletionStrip";
 import TaskPreparingView from "./TaskPreparingView";
 import BackToKanbanEmptyState from "./BackToKanbanEmptyState";
 import TaskShutdownOverlay from "./TaskShutdownOverlay";
@@ -333,9 +334,9 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				return next;
 			});
 			// A pane that is BOTH brand new and the server's active one was opened for
-			// the user to work in ("+ Agent"), so this viewer follows it. An auxiliary
-			// pane (dev server, viewer) hands focus back on split, so it never matches
-			// and never steals the agent's keyboard.
+			// the user to work in ("+ Agent"), so this viewer follows it. A pane opened
+			// without a user action (CLI dev server, column agent) is never published
+			// as active, so it never matches and never steals the agent's keyboard.
 			const known = knownPaneIdsRef.current;
 			const fresh = state.activePaneId && known.size > 0 && !known.has(state.activePaneId)
 				? state.activePaneId
@@ -506,7 +507,8 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			newStatus,
 			dispatch,
 			t,
-			confirm: false,
+			// A linked worktree in the task's own folder is removed on close: show the unsaved-work dialog.
+			confirm: isAttachedRepoInTaskFolder(task),
 			revertOnFailure: false,
 			afterOptimistic: () => navigate(taskClosedHomeRoute(projectId, getTaskOpenMode())),
 		});
@@ -792,6 +794,9 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			</div>
 		);
 	}
+
+	// The completion offer floats over the live viewport, so the terminal keeps its size.
+	const completionOverlay = task && project ? <TaskCompletionStrip task={task} project={project} variant="overlay" /> : null;
 
 	if (isPreparing && task && project) {
 		return (
@@ -1143,6 +1148,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 						/>
 					)}
 					<div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
+						{completionOverlay}
 						<MobilePaneCarousel taskId={taskId}>{nativeTerminalArea}</MobilePaneCarousel>
 						{scrollToLatestFor(focusPaneId ?? "", focusedPaneHandle)}
 					</div>
@@ -1192,6 +1198,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				{zoomedPane ? (
 					// Zoom mode: render only the focused pane.
 					<div className="relative isolate flex-1 min-h-0 overflow-hidden">
+						{completionOverlay}
 						<div
 							key={zoomedPane}
 							data-pane-id={zoomedPane}
@@ -1216,6 +1223,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				) : panes.length > 0 ? (
 					// Tiled mode: render all panes by rect.
 					<div className="relative isolate flex-1 min-h-0 overflow-hidden">
+						{completionOverlay}
 						{panes.map((pane) => {
 							const rect = rects.get(pane.paneId) ?? { x: 0, y: 0, width: 1, height: 1 };
 							const isFocused = pane.paneId === focusPaneId;
@@ -1325,6 +1333,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			{narrow && ptyUrl ? (
 				// Narrow: a window switcher (outer) wraps the pane carousel (inner).
 				<div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
+					{completionOverlay}
 					<MobileWindowCarousel taskId={taskId} taskTitle={task ? getTaskTitle(task) : undefined} onSwitch={() => setWindowEpoch((e) => e + 1)}>
 						<MobilePaneCarousel taskId={taskId} refreshKey={windowEpoch}>{terminalArea}</MobilePaneCarousel>
 					</MobileWindowCarousel>
@@ -1334,6 +1343,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			) : (
 				<TerminalWindowNav taskId={taskId} taskStatus={task?.status} taskTitle={task ? getTaskTitle(task) : undefined} enabled={!!ptyUrl}>
 					<div className="relative isolate flex-1 min-h-0 overflow-hidden">
+						{completionOverlay}
 						{terminalArea}
 						{ptyUrl && <PaneZoomBadge taskId={taskId} />}
 						{ptyUrl && <ClosePanePicker taskId={taskId} />}

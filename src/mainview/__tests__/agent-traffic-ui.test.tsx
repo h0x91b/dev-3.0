@@ -25,6 +25,7 @@ import AgentTrafficScreen, {
 	FilterAxes,
 } from "../components/agent-traffic/AgentTrafficScreen";
 import { api } from "../rpc";
+import { OPEN_SETTINGS_SECTION_EVENT } from "../state";
 
 vi.mock("../components/agent-traffic/TrafficOrbit", () => ({
 	default: () => <div aria-label="Project traffic map" />,
@@ -398,6 +399,45 @@ describe("AgentTrafficScreen live orbit", () => {
 				limit: 1000,
 			}),
 		);
+	});
+
+	it("opens Settings at the retention entry from the statusbar link", async () => {
+		setPage([row()]);
+		renderLog();
+		const link = await screen.findByRole("button", { name: /Kept 30 days/ });
+		const opened = vi.fn();
+		window.addEventListener(OPEN_SETTINGS_SECTION_EVENT, opened);
+		try {
+			await userEvent.click(link);
+		} finally {
+			window.removeEventListener(OPEN_SETTINGS_SECTION_EVENT, opened);
+		}
+		expect(opened).toHaveBeenCalledTimes(1);
+		expect((opened.mock.calls[0][0] as CustomEvent).detail).toEqual({ section: "system", anchor: "log-retention" });
+	});
+
+	it("shows no retention sentence until the first page has said how long history is kept", async () => {
+		let answer: (value: AgentMessageLogPage) => void = () => {};
+		vi.mocked(api.request.readAgentMessageLog).mockImplementationOnce(
+			() => new Promise<AgentMessageLogPage>((resolve) => { answer = resolve; }),
+		);
+		renderLog();
+		await waitFor(() => expect(api.request.readAgentMessageLog).toHaveBeenCalled());
+		expect(screen.queryByText(/Kept \d+ days|History is kept/)).toBeNull();
+		await act(async () => answer({ rows: [], oldestDay: null, retentionDays: null, hasMore: false }));
+		expect(await screen.findByRole("button", { name: "History is kept forever" })).toBeTruthy();
+	});
+
+	it("says history is kept forever when the retention is unlimited", async () => {
+		setPage([row()], { retentionDays: null });
+		renderLog();
+		expect(await screen.findByRole("button", { name: "Kept forever · oldest still here: 2026-08-01" })).toBeTruthy();
+	});
+
+	it("says history is kept forever when there is nothing stored yet", async () => {
+		setPage([], { retentionDays: null });
+		renderLog();
+		expect(await screen.findByRole("button", { name: "History is kept forever" })).toBeTruthy();
 	});
 
 	it("leads with the full subject and reveals the full stored body on selection", async () => {

@@ -587,6 +587,13 @@ describe("codex accounts", () => {
 		expect(existsSync(join(codexAccountDir(account.id, paths), "auth.json"))).toBe(true);
 	});
 
+	it("gives each account CODEX_HOME dev3's execpolicy rules (#2043)", async () => {
+		seedCodexLogin("acc-1");
+		const account = await importCurrentCodexAccount(paths);
+		const rules = readFileSync(join(codexAccountDir(account.id, paths), "rules", "dev3.rules"), "utf-8");
+		expect(rules).toContain('"pane", "run"], decision="prompt"');
+	});
+
 	it("rejects import without a ChatGPT login", async () => {
 		await expect(importCurrentCodexAccount(paths)).rejects.toThrow(/No Codex login/);
 	});

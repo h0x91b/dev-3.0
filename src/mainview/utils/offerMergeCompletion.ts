@@ -1,11 +1,11 @@
 import { api } from "../rpc";
-import { confirm } from "../confirm";
+import { hasCompletionOffer, offerCompletion } from "../completion-offers";
 import { toast } from "../toast";
 import type { TFunction } from "../i18n";
 import type { Project, Task, TaskDialogSubject } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import { createMergePromptAbort } from "./mergePromptAbort";
-import { buildMergeCompletionDialogOptions, runMergeCompletionPromptOnce } from "./mergeCompletionPrompt";
+import { runMergeCompletionPromptOnce } from "./mergeCompletionPrompt";
 import { taskDialogInfo, taskDialogInfoFromSubject } from "./taskDialogInfo";
 
 /**
@@ -56,6 +56,8 @@ export interface OfferMergeCompletionParams {
 	onComplete: () => void;
 	/** Opens the task subject from the dialog and intentionally follows the Not now path. */
 	onOpenTask?: () => void;
+	/** Runs once the offer is on its task — the App path uses it to tell a user who is looking elsewhere. */
+	onOffered?: () => void;
 }
 
 /**
@@ -105,7 +107,7 @@ function resolveContext(context: MergeCompletionContext) {
 export async function offerMergeCompletion(
 	params: OfferMergeCompletionParams,
 ): Promise<OfferMergeCompletionOutcome> {
-	const { context, t, reserve = false, force = false, onComplete, onOpenTask } = params;
+	const { context, t, reserve = false, force = false, onComplete, onOpenTask, onOffered } = params;
 	const { taskId, projectId, taskTitle, branchName, info } = resolveContext(context);
 
 	let fingerprint = params.fingerprint;
@@ -129,12 +131,16 @@ export async function offerMergeCompletion(
 	}
 
 	const abort = createMergePromptAbort(taskId);
-	const runPrompt = () =>
-		confirm({
-			...buildMergeCompletionDialogOptions(t, branchName),
-			info: onOpenTask ? { ...info, onClick: onOpenTask } : info,
+	const runPrompt = () => {
+		const isNew = !hasCompletionOffer(taskId, "merge");
+		const answer = offerCompletion({
+			taskId, projectId, kind: "merge", branchName,
+			dialogInfo: onOpenTask ? { ...info, onClick: onOpenTask } : info,
 			signal: abort.signal,
 		});
+		if (isNew) onOffered?.();
+		return answer;
+	};
 
 	let choice: boolean | string | null;
 	try {

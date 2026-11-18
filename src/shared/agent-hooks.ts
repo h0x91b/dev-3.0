@@ -708,7 +708,8 @@ function isDev3Entry(group: MatcherGroup | HookEntry): boolean {
  * command — `pane run`, `dev-server start`, `agent spawn`, `automations run`,
  * `remote`, `update`, the internal `__pane-run` runner — is deliberately absent,
  * so the harness's own check (auto-mode classifier, permission prompt) still
- * judges it. Issue #2043; see `decisions/2026/10/26/narrow-dev3-agent-permissions.md`.
+ * judges it. The Codex prompt rules are this list's complement (`codex-exec-policy.ts`).
+ * Issue #2043; see `decisions/2026/10/26/narrow-dev3-agent-permissions.md`.
  */
 export const DEV3_AUTO_APPROVED_SUBCOMMANDS = [
 	"current", "task", "tasks", "note", "overview", "label", "review", "spaces", "space",

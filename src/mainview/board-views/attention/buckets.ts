@@ -1,4 +1,5 @@
 import type { Task } from "../../../shared/types";
+import { statusFilterValues } from "../../utils/taskSearch";
 import { compareTasksInBand, taskActivityTime } from "../../components/sortTasks";
 
 /** `priority`: priority bands, longest-waiting first inside a band. `recent`: last activity first. */
@@ -78,11 +79,18 @@ export function fillBuckets(
 	tasks: readonly Task[],
 	buckets: readonly AttentionBucket[],
 	matches: (task: Task, query: string) => boolean,
+	hiddenTasks: readonly Task[] = [],
 ): FilledBucket[] {
 	const filled = buckets.map((bucket) => ({ bucket, tasks: [] as Task[] }));
 	const live = filled.filter((entry) => entry.bucket.query.trim());
 	for (const task of tasks) {
 		const home = live.find((entry) => matches(task, entry.bucket.query));
+		home?.tasks.push(task);
+	}
+	// Tasks the Active | All switch hides: only a bucket that names a status itself may show them.
+	const statusBuckets = live.filter((entry) => statusFilterValues(entry.bucket.query).length > 0);
+	for (const task of hiddenTasks) {
+		const home = statusBuckets.find((entry) => matches(task, entry.bucket.query));
 		home?.tasks.push(task);
 	}
 	for (const entry of filled) sortBucket(entry.tasks, entry.bucket.sort);

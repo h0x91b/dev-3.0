@@ -200,7 +200,7 @@ Before `dev3 pr create` (it pushes) or any push of a PR branch, rebase on the li
 
 **Path:** `change-logs/YYYY/MM/DD/<type>-[<NN>-]<short-slug>.md` — type prefixes: `feature-`, `fix-`, `refactor-`, `docs-`, `chore-`.
 
-**The `YYYY/MM/DD` is the expected PR merge date, not the start date.** If the task spans days, move (rename) the entry before opening/merging the PR so it matches the actual merge day (with auto-merge, normally the day you open the PR) — the changelog UI groups by ship date.
+**The `YYYY/MM/DD` is the day you write the entry — never move it afterwards.** Nobody can predict when a PR merges (least of all an external contributor facing several review rounds), and the release a change ships in is computed from git between `v*` tags (`scripts/release-window.ts`), so the path date only groups entries on the Changelog screen. Reviewers must not ask for the date to be changed.
 
 **Content:** plain text, 1-3 sentences, no frontmatter/headers, one paragraph max.
 

@@ -696,7 +696,7 @@ describe("TaskCard", () => {
 				"completed",
 				expect.anything(),
 				expect.anything(),
-				{ alwaysConfirm: true },
+				expect.objectContaining({ alwaysConfirm: true }),
 			);
 			await waitFor(() => {
 				expect(mockedApi.request.moveTask).toHaveBeenCalledWith(
@@ -789,7 +789,7 @@ describe("TaskCard", () => {
 				"cancelled",
 				expect.anything(),
 				expect.anything(),
-				{ alwaysConfirm: true },
+				expect.objectContaining({ alwaysConfirm: true }),
 			);
 			await waitFor(() => {
 				expect(mockedApi.request.moveTask).toHaveBeenCalledWith(
@@ -822,7 +822,7 @@ describe("TaskCard", () => {
 			await user.keyboard("{Enter}");
 
 			expect(mockedConfirmTaskCompletion).toHaveBeenCalledWith(
-				expect.anything(), expect.anything(), "cancelled", expect.anything(), expect.anything(), { alwaysConfirm: true },
+				expect.anything(), expect.anything(), "cancelled", expect.anything(), expect.anything(), expect.objectContaining({ alwaysConfirm: true }),
 			);
 			expect(navigate).not.toHaveBeenCalled();
 		});
@@ -994,6 +994,19 @@ describe("TaskCard", () => {
 				projectId: "p1",
 				activeTaskId: "t1",
 			});
+		});
+
+		it("a macOS Ctrl+click on an active task opens only the menu, not the task", async () => {
+			const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+			onTestFinished(() => platform.mockRestore());
+			const navigate = vi.fn();
+			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" }), { navigate });
+			const card = screen.getByText("My task").closest("[draggable]")!;
+			fireEvent.contextMenu(card, { clientX: 100, clientY: 200, ctrlKey: true });
+			fireEvent.click(card, { ctrlKey: true });
+
+			expect(await screen.findByTestId("task-menu-labels")).toBeInTheDocument();
+			expect(navigate).not.toHaveBeenCalled();
 		});
 
 		it("clicking active task in split toggles it off", async () => {

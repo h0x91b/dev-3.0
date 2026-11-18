@@ -18,12 +18,13 @@ import type { AgentPromptDelivery } from "../agent-prompt-delivery";
 import type { SecretRequest } from "../secret-request";
 import type { AgentMessageLogPage } from "../agent-message-log";
 import type { NotificationLogPage } from "../notification-log";
+import type { LogRetentionUsage } from "../log-retention";
 import type { TaskPeekSnapshot } from "../task-peek";
 import type { TaskSoundStatus } from "../task-sound-statuses";
 import type { ChangelogEntry, UpdateChangelog, UpdatePopoverPreview } from "./changelog";
 import type { TaskResetConsent, TaskResetResult, TaskStatus, WorktreeAccessState } from "./task-status";
 import type { TaskPriority } from "./task-priority";
-import type { TaskType } from "./task-type";
+import type { TaskCompletionOwner, TaskType } from "./task-type";
 import type { Task } from "./task";
 import type { TaskLineageIndex } from "./task-origin";
 import type { ColumnAgentConfig, ColumnAgentFailureReason, ColumnAgentIdentity } from "./column-agents";
@@ -39,7 +40,7 @@ import type { BoardFilterState } from "../board-filter-state";
 import type { BoardRef, BoardViewState } from "../board-view-state";
 import type { ExtensionInspection, ExtensionsOverview, InstalledExtension } from "../extensions";
 import type { Epic, EpicMember, EpicsFile } from "./epics";
-import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, AgentLaunchRequest, LaunchAfterUntil, LaunchVariant, TaskDialogSubject } from "./agent-launch";
+import type { AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, AgentLaunchRequest, LaunchAfterUntil, LaunchVariant, PendingMergeOffer, TaskDialogSubject } from "./agent-launch";
 import type { ScheduledMessageTarget } from "./scheduled-messages";
 import type { LiveArtifact, SharedArtifact, SharedImage } from "./shared-media";
 import type { ScriptPlacement, ScriptRunner, ScriptSource, WorktreeScripts } from "./package-scripts";
@@ -145,7 +146,7 @@ export type AppRPCSchema = {
 				params: { board: BoardRef; state: BoardViewState };
 				response: BoardViewState;
 			};
-			/** Persisted status tokens of one board's filter (`board-filters.json`). */
+			/** Persisted Active | All visibility of one board (`board-filters.json`). */
 			getBoardFilterState: {
 				params: { board: BoardRef };
 				response: BoardFilterState;
@@ -377,6 +378,22 @@ export type AppRPCSchema = {
 			saveGlobalSettings: {
 				params: GlobalSettings;
 				response: void;
+			};
+			/**
+			 * On-disk bytes per day of the message and notification logs, all projects summed.
+			 * With `retentionDays`, also what that retention would delete.
+			 */
+			getLogRetentionUsage: {
+				params: { retentionDays?: number };
+				response: LogRetentionUsage;
+			};
+			/**
+			 * The one writer of `logRetentionDays`; a shorter value prunes every log at once.
+			 * Rejects with LOG_RETENTION_CHANGED_MESSAGE when the stored value is not `expectedCurrent`.
+			 */
+			setLogRetention: {
+				params: { value: number | "forever"; expectedCurrent: number | "forever" };
+				response: GlobalSettings;
 			};
 			/** Toggle an (agentId, configId) pair in the global favorites list —
 			 *  add it (with LFU-then-LRU eviction once MAX_FAVORITES is reached) or
@@ -759,7 +776,9 @@ export type AppRPCSchema = {
 				// attached remote browser, so the chime would play a second time on
 				// the same machine). Unset for CLI / branch-merge / agent
 				// approval, where no renderer played locally and the push is the sound.
-				params: { taskId: string; projectId: string; newStatus: TaskStatus; force?: boolean; clientPlayedSound?: boolean };
+				// `approvedAttachedRepo`: the attached repo the user's unsaved-work dialog checked; a close removes
+				// a git worktree in the task's own folder only when it is still this one.
+				params: { taskId: string; projectId: string; newStatus: TaskStatus; force?: boolean; clientPlayedSound?: boolean; approvedAttachedRepo?: string | null };
 				response: Task;
 			};
 			// View → Debug probe: fires the same `taskSound` push a real CLI /
@@ -855,6 +874,11 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; fingerprint: string | null };
 				response: Task;
 			};
+			/** Unanswered merge offers, replayed on connect like `listPendingCompletionRequests`. */
+			listPendingMergeOffers: {
+				params: Record<string, never>;
+				response: PendingMergeOffer[];
+			};
 			getPtyUrl: {
 				params: { taskId: string; resume?: boolean };
 				// `hibernated` marks a recovery offer the user must accept explicitly:
@@ -928,8 +952,9 @@ export type AppRPCSchema = {
 			// `server` names ONE declared dev server; absent means the default
 			// (`devScript`), or the only declared server when there is no default.
 			// `all` fans the action out over every declared server instead.
+			// `focus`: the user asked for the pane from the UI, so focus moves to it.
 			runDevServer: {
-				params: { taskId: string; projectId: string; opId?: string; env?: Record<string, string>; args?: string[]; server?: string; all?: boolean };
+				params: { taskId: string; projectId: string; opId?: string; env?: Record<string, string>; args?: string[]; server?: string; all?: boolean; focus?: boolean };
 				response: DevServerStatus;
 			};
 			checkDevServer: {
@@ -944,7 +969,7 @@ export type AppRPCSchema = {
 			// what keeps the UI's Restart button on the same configuration. `args`
 			// behaves the same way: omitted reuses, `[]` clears.
 			restartDevServer: {
-				params: { taskId: string; projectId: string; env?: Record<string, string>; args?: string[]; server?: string; all?: boolean };
+				params: { taskId: string; projectId: string; env?: Record<string, string>; args?: string[]; server?: string; all?: boolean; focus?: boolean };
 				response: DevServerStatus;
 			};
 			getDevServerStatus: {
@@ -975,7 +1000,9 @@ export type AppRPCSchema = {
 				response: BranchStatus;
 			};
 			getUnsavedWork: {
-				params: { taskId: string; projectId: string };
+				// `expectedAttachedRepo`: the attached repo the caller is about to approve for removal; a task
+				// attached to anything else is an error, so the check and the approval name the same repo.
+				params: { taskId: string; projectId: string; expectedAttachedRepo?: string | null };
 				response: UnsavedWork;
 			};
 			refreshTaskPrStatus: {
@@ -1255,6 +1282,11 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; manualCompletion: boolean };
 				response: Task;
 			};
+			/** The user picks who completes the task; `agent` opts it in to `task move --status completed --force`. */
+			setTaskCompletionOwner: {
+				params: { taskId: string; projectId: string; owner: TaskCompletionOwner };
+				response: Task;
+			};
 			/**
 			 * Toggle "keep alive" (auto-revive) on a task ({@link Task.keepAlive}). When
 			 * on, the bun watchdog relaunches + resumes the task's agent if its
@@ -1508,6 +1540,8 @@ export type AppRPCSchema = {
 					accountId?: string | null;
 					bedrockProfile?: string | null;
 					handoff?: boolean;
+					/** The user asked for this pane from the UI: focus moves to it. Absent → background. */
+					focus?: boolean;
 				};
 				response: SpawnAgentResult;
 			};
@@ -1958,7 +1992,8 @@ export type AppRPCSchema = {
 			 * releases it with a refusal.
 			 */
 			respondToAgentCompletionRequest: {
-				params: { requestId: string; approved: boolean };
+				// `attachedRepo`: the repo the dialog's unsaved-work check covered. Only that one may be removed; none means none.
+				params: { requestId: string; approved: boolean; attachedRepo?: string | null };
 				response: void;
 			};
 			/**
@@ -1979,7 +2014,8 @@ export type AppRPCSchema = {
 			 * releases it with a refusal.
 			 */
 			respondToAgentCancellationRequest: {
-				params: { requestId: string; approved: boolean };
+				// `attachedRepo`: the repo the dialog's unsaved-work check covered. Only that one may be removed; none means none.
+				params: { requestId: string; approved: boolean; attachedRepo?: string | null };
 				response: void;
 			};
 			/**
@@ -1996,7 +2032,8 @@ export type AppRPCSchema = {
 			 * task to To Do (agent stopped, worktree and dev3 branch deleted).
 			 */
 			respondToAgentResetRequest: {
-				params: { requestId: string; approved: boolean };
+				// `attachedRepo`: the repo the dialog's unsaved-work check covered. Only that one may be removed; none means none.
+				params: { requestId: string; approved: boolean; attachedRepo?: string | null };
 				response: void;
 			};
 			listPendingResetRequests: {
@@ -2108,7 +2145,7 @@ export type AppRPCSchema = {
 			 */
 			updateAvailable: { version: string; changelog?: UpdateChangelog; reminder?: boolean };
 			branchMerged: { taskId: string; projectId: string; taskTitle: string; branchName: string; fingerprint: string | null; subject: TaskDialogSubject; shouldPrompt?: boolean; shouldNotify?: boolean };
-			manualCompletionChanged: { taskId: string; projectId: string; manualCompletion: boolean; taskSeq?: number; taskTitle?: string; projectName?: string };
+			manualCompletionChanged: { taskId: string; projectId: string; manualCompletion: boolean; selfCompletion?: boolean; taskSeq?: number; taskTitle?: string; projectName?: string };
 			/**
 			 * A branch-merged completion prompt was resolved by declining it
 			 * (`dismissMergeCompletionPrompt`). Lets other connected clients — a

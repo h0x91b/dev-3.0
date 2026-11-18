@@ -18,7 +18,7 @@ bun run test:full # what CI runs — use this before opening a PR (~42s)
 
 The [pull request template](.github/pull_request_template.md) is the checklist; these are the rules behind its most-bounced items:
 
-- **Changelog entry, dated to the merge day.** Every code change ships one file under `change-logs/YYYY/MM/DD/<type>-<slug>.md` — and `YYYY/MM/DD` is the day the PR is expected to **merge**, not the day you started. If the work spans days, `git mv` the entry before opening the PR. Format spec: [`change-logs/README.md`](change-logs/README.md).
+- **Changelog entry, dated to the day you write it.** Every code change ships one file under `change-logs/YYYY/MM/DD/<type>-<slug>.md` — `YYYY/MM/DD` is the day you create the entry. Leave it there: no need to move it when the PR merges later. Format spec: [`change-logs/README.md`](change-logs/README.md).
 - **Decision records — write them, and keep old ones honest.** Non-obvious choices, workarounds, and reverse-engineered behavior go in `decisions/YYYY/MM/DD/<slug>.md` (never numbered). If your change makes an **existing** record's claims false, add a supersede note to it pointing at a new record in the same commit — see [`decisions/README.md`](decisions/README.md).
 - **Full verification, not partial.** Before the PR: `bun run lint` clean and `bun run test:full` green. Sibling test files assert against the same components, so running only the file you edited is not sufficient — and the plain `bun run test` excludes slow e2e suites that CI does run, so a green fast run is not a green CI. Re-run after any rebase.
 - **Rebase on `main` first.** `git fetch origin main && git rebase origin/main` before pushing — PRs are squash-merged and reviewed against current `main`.
