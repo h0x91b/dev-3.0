@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type Dispatch } from "react";
 import type { DevServerSummary, GlobalSettings, PortInfo, Project, ResourceUsage, Space, Task, TaskStatus } from "../../shared/types";
 import { getBoardColumns, laneKey } from "../../shared/types";
-import { KANBAN_VIEW_ID, type BoardFormFactor, type BoardRef } from "../../shared/board-view-state";
+import { ATTENTION_VIEW_ID, KANBAN_VIEW_ID, type BoardFormFactor, type BoardRef } from "../../shared/board-view-state";
 import { getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type AppAction, type OpenSettingsSectionDetail, type Route } from "../state";
 import { api } from "../rpc";
 import { trackEvent } from "../analytics";
@@ -389,14 +389,17 @@ function BoardHost(props: BoardHostProps) {
 					navigate({ screen: "project", projectId });
 				}}
 			/>
-			<HiddenByVisibilityNotice
-				visibility={filter.visibility}
-				searchQuery={filter.query}
-				tasks={tasks}
-				shownCount={filter.displayTasks.length}
-				matches={filter.matches}
-				onShowAll={() => filter.setVisibility("all")}
-			/>
+			{/* Attention buckets that name a status show finished tasks themselves, so a count here would lie. */}
+			{active?.def.id !== ATTENTION_VIEW_ID && (
+				<HiddenByVisibilityNotice
+					visibility={filter.visibility}
+					searchQuery={filter.query}
+					tasks={tasks}
+					shownCount={filter.displayTasks.length}
+					matches={filter.matches}
+					onShowAll={() => filter.setVisibility("all")}
+				/>
+			)}
 			{provided && failedExtension && (
 				<div role="alert" className="mx-6 mt-2 px-3 py-2 rounded-lg bg-danger/10 text-danger text-xs flex items-center gap-3">
 					<span>{t("boardView.extensionFailed", { name: failedExtension })}</span>

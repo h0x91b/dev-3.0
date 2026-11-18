@@ -11,10 +11,12 @@ import BoardHost from "../BoardHost";
 import { getBoardRoot, getBoardViewRegistry, resetBoardRootForTests, startBoardViews } from "../root";
 import { installKanbanView } from "../kanban";
 import { installTreeView, TREE_VIEW_ID } from "../tree";
+import { installTableView } from "../table";
+import { installAttentionView } from "../attention";
 import { useBoard } from "../react";
 import { resetBoardViewStateCacheForTests } from "../useBoardViewState";
 import { VISIBILITY_READ_TIMEOUT_MS, resetTaskVisibilityForTests } from "../useTaskVisibility";
-import { defaultBoardViewState, withViewType } from "../../../shared/board-view-state";
+import { ATTENTION_VIEW_ID, defaultBoardViewState, withViewType } from "../../../shared/board-view-state";
 import { _resetTaskLineageStoreForTest } from "../../hooks/useTaskLineage";
 import { _resetEpicStoresForTest } from "../../hooks/useEpics";
 import { setStreamerMode } from "../../streamer-mode";
@@ -190,6 +192,32 @@ describe("BoardHost", () => {
 		fireEvent.click(screen.getByRole("button", { name: "Show all" }));
 		expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t2");
 		expect(screen.queryByTestId("hidden-by-visibility-notice")).not.toBeInTheDocument();
+	});
+
+	it.each([
+		["builtin:table", true],
+		[ATTENTION_VIEW_ID, false],
+	])("shows the hidden-tasks notice on %s only if the view does not own status visibility: %s", async (viewId, expected) => {
+		const height = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(800);
+		const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1200);
+		try {
+			startBoardViews([installKanbanView, installTableView, installAttentionView]);
+			vi.mocked(api.request.getBoardViewState).mockResolvedValue(withViewType(defaultBoardViewState(), "wide", viewId));
+			vi.mocked(api.request.getBoardFilterState).mockResolvedValue({ visibility: "active" });
+			renderHost();
+			await waitFor(() => expect(screen.getByRole("radio", { name: "Active" })).toHaveAttribute("aria-checked", "true"));
+			await waitFor(() => expect(getBoardRoot().board.visibility()).toBe("active"));
+			fireEvent.change(screen.getByRole("textbox", { name: /search/i }), { target: { value: "beta" } });
+			await waitFor(() => expect(getBoardRoot().board.query).toBe("beta"));
+			if (expected) expect(await screen.findByTestId("hidden-by-visibility-notice")).toBeInTheDocument();
+			else {
+				await screen.findByTestId("attention-view");
+				expect(screen.queryByTestId("hidden-by-visibility-notice")).not.toBeInTheDocument();
+			}
+		} finally {
+			height.mockRestore();
+			width.mockRestore();
+		}
 	});
 
 	it("dims the switch while a status token overrides it", async () => {

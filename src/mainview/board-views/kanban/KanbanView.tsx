@@ -278,11 +278,11 @@ export function KanbanView(_props: { ctx: Context }) {
 		// One column per screen. Built-in collapsed defaults stay reachable; only
 		// columns the user collapsed leave the rotation. Empty columns stay, so
 		// positions are stable.
-		// Under Active the finished columns would be empty pages, so they are not offered.
+		// Under Active an empty finished column is a dead page; a `status:` query that fills it keeps it.
 		const hidesFinished = board.visibility() === "active";
 		const carouselColumns: CarouselColumn[] = lanes
 			.filter((slot) => !collapseState.isUserCollapsed(laneKey(slot)))
-			.filter((slot) => !(hidesFinished && slot.type === "builtin" && TERMINAL_STATUSES.includes(slot.status)))
+			.filter((slot) => !(hidesFinished && slot.type === "builtin" && TERMINAL_STATUSES.includes(slot.status) && laneCount(slot) === 0))
 			.map((slot) => ({
 				id: laneKey(slot),
 				label: slot.type === "builtin" ? customStatusLabels[slot.status] || t(statusKey(slot.status)) : slot.col.name,

@@ -748,6 +748,16 @@ describe("mobile carousel mode", () => {
 		expect(screen.queryByText("Completed")).toBeNull();
 		expect(screen.queryByText("Cancelled")).toBeNull();
 	});
+
+	it("keeps the Completed page under Active when a status query fills it", async () => {
+		vi.mocked(api.request.getBoardFilterState).mockResolvedValueOnce({ visibility: "active" });
+		await renderBoardWith({ tasks: [makeTask({ status: "completed", title: "Shipped one" })] });
+		expect(screen.queryByText("Completed")).toBeNull();
+		fireEvent.change(screen.getByRole("textbox", { name: /search/i }), { target: { value: "status:completed" } });
+		expect(screen.getByText(/^\d+ \/ 7$/)).toBeTruthy();
+		expect(screen.getByText("Completed")).toBeTruthy();
+		expect(screen.queryByText("Cancelled")).toBeNull();
+	});
 });
 
 describe("create custom column from board (issue #222)", () => {
