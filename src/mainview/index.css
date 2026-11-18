@@ -474,10 +474,7 @@ html {
 	--text-primary: 28 27 25;
 	--text-secondary: 74 72 67;
 
-	/* Ink accents are the screenshot's burnt orange; solid fills are its near-black button. */
-	--accent: 166 77 18;
-	--accent-hover: 140 63 13;
-	--accent-emphasis: 120 54 11;
+	/* Ink accents (burnt orange) follow the depth too; solid fills are the near-black button. */
 	--accent-fill: 28 27 25;
 	--accent-fill-hover: 62 60 55;
 
