@@ -569,46 +569,61 @@ export async function saveMessageDraft(
 	return updated;
 }
 
-/** Drop the draft once sent, unless the user edited it while it was going out. */
-async function clearSentDraft(project: Project, taskId: string, sent: TaskMessageDraft): Promise<Task> {
+/**
+ * Take the draft off the task under the tasks lock, so exactly one send path owns
+ * it: a held stop-send and a click on Send now can never both deliver it.
+ */
+async function claimDraft(
+	project: Project,
+	taskId: string,
+	accept: (draft: TaskMessageDraft, task: Task) => boolean,
+): Promise<{ task: Task; draft: TaskMessageDraft | null }> {
+	const { task, result } = await data.updateTaskWith<TaskMessageDraft | null>(project, taskId, (current) => {
+		const draft = current.messageDraft;
+		if (!draft?.text.trim() || !accept(draft, current)) return { updates: {}, result: null };
+		return { updates: { messageDraft: null }, result: draft };
+	});
+	if (result) getPushMessage()?.("taskUpdated", { projectId: project.id, task });
+	return { task, draft: result };
+}
+
+/** A send failed: put the text back, disarmed, unless the user already wrote a new draft. */
+async function restoreDraft(project: Project, taskId: string, draft: TaskMessageDraft): Promise<void> {
 	const { task } = await data.updateTaskWith<void>(project, taskId, (current) => ({
-		updates: current.messageDraft?.updatedAt === sent.updatedAt ? { messageDraft: null } : {},
+		updates: current.messageDraft ? {} : { messageDraft: { text: draft.text, updatedAt: draft.updatedAt } },
 		result: undefined,
 	}));
 	getPushMessage()?.("taskUpdated", { projectId: project.id, task });
-	return task;
 }
 
 /**
- * Send the saved draft right now (a click: no hold) and clear it. Throws when
- * nothing was sent, and the draft is then left untouched.
+ * Send the saved draft right now (a click: no hold). Throws when nothing was sent,
+ * and the draft is then back on the task.
  */
 export async function sendMessageDraft(project: Project, taskId: string): Promise<Task> {
-	const task = await data.getTask(project, taskId);
-	const draft = task.messageDraft;
-	if (!draft?.text.trim()) throw new Error("There is no message draft to send");
-	await sendMessageImmediately(task, draft.text, null, null, { hold: false, origin: "user" });
-	return clearSentDraft(project, taskId, draft);
+	const { task, draft } = await claimDraft(project, taskId, () => true);
+	if (!draft) throw new Error("There is no message draft to send");
+	try {
+		await sendMessageImmediately(task, draft.text, null, null, { hold: false, origin: "user" });
+	} catch (err) {
+		await restoreDraft(project, taskId, draft);
+		throw err;
+	}
+	return data.getTask(project, taskId);
 }
 
 /**
- * The agent stopped: send an armed draft. It is disarmed inside the tasks lock
- * before sending, so two quick status moves cannot send it twice. It goes through
- * the hold because the user may be typing in that pane. A failed send keeps the text.
+ * The agent stopped: send an armed draft. It goes through the hold because the
+ * user may be typing in that pane. A failed send puts the text back, disarmed.
  */
 export async function fireArmedMessageDraft(project: Project, taskId: string): Promise<void> {
-	const { task, result: armed } = await data.updateTaskWith<TaskMessageDraft | null>(project, taskId, (current) => {
-		const draft = current.messageDraft;
-		if (!draft?.sendOnStop || isTerminal(current.status)) return { updates: {}, result: null };
-		return { updates: { messageDraft: { text: draft.text, updatedAt: draft.updatedAt } }, result: draft };
-	});
+	const { task, draft: armed } = await claimDraft(project, taskId, (d, t) => !!d.sendOnStop && !isTerminal(t.status));
 	if (!armed) return;
 	try {
 		await sendMessageImmediately(task, armed.text, null, null, { hold: true, origin: "user" });
-		await clearSentDraft(project, taskId, armed);
 		log.info("Armed message draft sent", { taskId: taskId.slice(0, 8) });
 	} catch (err) {
-		getPushMessage()?.("taskUpdated", { projectId: project.id, task });
+		await restoreDraft(project, taskId, armed);
 		log.warn("Armed message draft not sent", { taskId: taskId.slice(0, 8), error: String(err) });
 		notifyOutcome(project, task, {
 			toast: `Draft not sent, it is still saved — ${err instanceof Error ? err.message : String(err)}`,

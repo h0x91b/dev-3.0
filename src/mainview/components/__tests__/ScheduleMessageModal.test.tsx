@@ -142,9 +142,14 @@ describe("ScheduleMessageModal", () => {
 			return screen.getByRole("dialog").parentElement!;
 		}
 
-		it("defaults to Not now, which keeps the text as a note without sending", async () => {
-			const { onClose } = renderModal(undefined, { messageDraft: { text: "later", sendOnStop: true, updatedAt: "t0" }, status: "review-by-user" });
+		it("defaults to Not now", () => {
+			renderModal(undefined, { messageDraft: { text: "later", updatedAt: "t0" } });
 			expect(screen.getByRole("button", { name: "Not now" })).toHaveAttribute("aria-pressed", "true");
+		});
+
+		it("Not now keeps an armed draft as a note, disarmed, without sending", async () => {
+			const { onClose } = renderModal(undefined, { messageDraft: { text: "later", sendOnStop: true, updatedAt: "t0" }, status: "review-by-user" });
+			await userEvent.click(screen.getByRole("button", { name: "Not now" }));
 			await userEvent.click(screen.getByRole("button", { name: "Keep as draft" }));
 			await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
 			expect(mockedApi.request.saveMessageDraft).toHaveBeenLastCalledWith({ taskId: task.id, projectId: project.id, text: "later", sendOnStop: false });
@@ -166,10 +171,27 @@ describe("ScheduleMessageModal", () => {
 			expect(mockedApi.request.sendMessageDraft).not.toHaveBeenCalled();
 		});
 
-		it("offers no When agent stops when the agent is not working", () => {
-			renderModal(undefined, { status: "review-by-user" });
-			expect(screen.queryByRole("button", { name: "When agent stops" })).toBeNull();
-			expect(screen.getByRole("button", { name: "Now" })).toBeInTheDocument();
+		it("Discard waits for an autosave still in flight, so the old text cannot come back", async () => {
+			let finishSave!: (v: unknown) => void;
+			mockedApi.request.saveMessageDraft.mockImplementationOnce(() => new Promise((r) => { finishSave = r; }) as never);
+			const { unmount } = renderModal(undefined, { messageDraft: { text: "old", updatedAt: "t0" } });
+			await userEvent.type(screen.getByTestId("schedule-message-input"), " more");
+			await waitFor(() => expect(mockedApi.request.saveMessageDraft).toHaveBeenCalledTimes(1));
+			fireEvent.click(screen.getByTestId("message-draft-discard"));
+			expect(mockedApi.request.saveMessageDraft).toHaveBeenCalledTimes(1);
+			await act(async () => finishSave({ id: task.id }));
+			await waitFor(() => expect(mockedApi.request.saveMessageDraft).toHaveBeenLastCalledWith(expect.objectContaining({ text: "" })));
+			unmount();
+		});
+
+		it("retries a failed autosave when the window closes", async () => {
+			mockedApi.request.saveMessageDraft.mockRejectedValueOnce(new Error("busy"));
+			const { unmount } = renderModal();
+			await userEvent.type(screen.getByTestId("schedule-message-input"), "keep me");
+			await waitFor(() => expect(mockedApi.request.saveMessageDraft).toHaveBeenCalledTimes(1));
+			await act(async () => {});
+			unmount();
+			await waitFor(() => expect(mockedApi.request.saveMessageDraft).toHaveBeenCalledTimes(2));
 		});
 
 		it("Now saves the text and sends the draft", async () => {
@@ -201,7 +223,7 @@ describe("ScheduleMessageModal", () => {
 			await userEvent.keyboard("{Escape}");
 			expect(onClose).toHaveBeenCalledTimes(1);
 			unmount();
-			expect(mockedApi.request.saveMessageDraft).toHaveBeenCalledWith(expect.objectContaining({ text: "important prompt" }));
+			await waitFor(() => expect(mockedApi.request.saveMessageDraft).toHaveBeenCalledWith(expect.objectContaining({ text: "important prompt" })));
 		});
 
 		it("opens on the saved draft, and Discard clears it", async () => {

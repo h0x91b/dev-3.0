@@ -49,9 +49,8 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 	const savedDraft = task.messageDraft?.text ?? "";
 	const seed = initialText?.trim() ?? "";
 	const [text, setText] = useState(savedDraft && seed ? `${savedDraft}\n\n${seed}` : savedDraft || seed);
-	const agentWorking = task.status === "in-progress";
 	// Never a send by default: a reopened armed draft stays armed, anything else is a note.
-	const [delivery, setDelivery] = useState<Delivery>(agentWorking && task.messageDraft?.sendOnStop ? "stop" : "draft");
+	const [delivery, setDelivery] = useState<Delivery>(task.messageDraft?.sendOnStop ? "stop" : "draft");
 	const [scheduleTarget, setScheduleTarget] = useState<Date | null>(null);
 	const [targetValue, setTargetValue] = useState<TargetValue>("agent");
 	const [panes, setPanes] = useState<TmuxPaneInfo[]>([]);
@@ -61,7 +60,7 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 	// State updates land a render late; a ref closes the double-click window.
 	const submittingRef = useRef(false);
 	// What the task already holds, so autosave and the unmount flush skip a no-op write.
-	const lastSavedRef = useRef(savedDraft);
+	const lastSavedRef = useRef<string | null>(savedDraft);
 	const textRef = useRef(text);
 	textRef.current = text;
 	const armedRef = useRef(false);
@@ -69,15 +68,23 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 
 	const trapRef = useFocusTrap<HTMLDivElement>();
 
-	const persistDraft = useCallback(async (value: string, sendOnStop: boolean) => {
-		const updated = await api.request.saveMessageDraft({ taskId: task.id, projectId: project.id, text: value, sendOnStop });
-		dispatch({ type: "updateTask", task: updated });
+	// Writes go out one at a time, so an autosave still in flight can never land after a Discard or a send.
+	const saveChainRef = useRef<Promise<unknown>>(Promise.resolve());
+	const persistDraft = useCallback((value: string, sendOnStop: boolean) => {
+		const run = saveChainRef.current.catch(() => {}).then(async () => {
+			const updated = await api.request.saveMessageDraft({ taskId: task.id, projectId: project.id, text: value, sendOnStop });
+			dispatch({ type: "updateTask", task: updated });
+		});
+		saveChainRef.current = run;
+		return run;
 	}, [task.id, project.id, dispatch]);
 
 	const autosave = useCallback((value: string) => {
 		if (value === lastSavedRef.current) return;
 		lastSavedRef.current = value;
 		persistDraft(value, armedRef.current).catch((err) => {
+			// Still unsaved, so the close-time flush tries again.
+			if (lastSavedRef.current === value) lastSavedRef.current = null;
 			toast.error(t("scheduleMessage.draftSaveFailed", { error: String(err) }), { taskId: task.id });
 		});
 	}, [persistDraft, t, task.id]);
@@ -320,9 +327,7 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 						extraModes={[
 							{ id: "draft", label: t("scheduleMessage.modeDraft"), leading: true, content: <p className="text-sm text-fg-3">{t("scheduleMessage.draftHint")}</p> },
 							{ id: "now", label: t("scheduleMessage.modeNow"), leading: true, content: <p className="text-sm text-fg-3">{t("scheduleMessage.nowHint")}</p> },
-							...(agentWorking
-								? [{ id: "stop", label: t("scheduleMessage.modeStop"), leading: true, content: <p className="text-sm text-fg-3">{t("scheduleMessage.stopHint")}</p> }]
-								: []),
+							{ id: "stop", label: t("scheduleMessage.modeStop"), leading: true, content: <p className="text-sm text-fg-3">{t("scheduleMessage.stopHint")}</p> },
 						]}
 						initialExtraMode={delivery}
 						onExtraModeChange={(id) => setDelivery(id === "draft" || id === "now" || id === "stop" ? id : "later")}

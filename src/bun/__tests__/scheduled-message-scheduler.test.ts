@@ -575,6 +575,18 @@ describe("message draft (#2281)", () => {
 		expect(holdMessageForPane).toHaveBeenCalledTimes(1);
 	});
 
+	it("Send now cannot deliver an armed draft a second time while the stop-send is held", async () => {
+		let release!: (v: unknown) => void;
+		vi.mocked(holdMessageForPane).mockImplementation((() => new Promise((r) => { release = r; })) as unknown as typeof holdMessageForPane);
+		statefulTask({ status: "review-by-user", messageDraft: { text: "once", sendOnStop: true, updatedAt: "t0" } });
+		const held = fireArmedMessageDraft(project, "task-12345678");
+		await vi.waitFor(() => expect(holdMessageForPane).toHaveBeenCalled());
+		await expect(sendMessageDraft(project, "task-12345678")).rejects.toThrow(/no message draft/i);
+		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
+		release(TMUX_DELIVERED);
+		await held;
+	});
+
 	it("keeps the text, disarmed, and says so when the armed draft cannot be delivered", async () => {
 		vi.mocked(holdMessageForPane).mockResolvedValue(PANE_GONE);
 		const state = statefulTask({ status: "user-questions", messageDraft: { text: "keep me", sendOnStop: true, updatedAt: "t0" } });
