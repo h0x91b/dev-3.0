@@ -402,7 +402,7 @@ Folded: one toast anatomy, origin resolved once at emit by `ToastHost` — owned
 - **Why:** `decisions/2026/07/11/scheduled-agent-message.md`.
 
 ## 2026-11-11 — Task message draft lives inside Send later
-- **Rule:** The per-task message draft is edited in the Send later dialog (autosave; Now / When agent stops / In / At) and shown in the existing deferred-timer chip; no new bar control or card badge.
+- **Rule:** The per-task message draft is edited in the Send later dialog (autosave; Not now / Now / When agent stops / In / At) and shown in the existing deferred-timer chip; no new bar control or card badge.
 - **Why:** the session bar is at its 4-control budget and the card has one deferred-work slot; rejected a separate draft button. `decisions/2026/11/11/task-message-draft.md`.
 
 ## 2026-07-11 — Favorites: leading "Favorites" column on the launch picker (NOT a chip row / split)

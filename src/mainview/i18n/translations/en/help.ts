@@ -205,7 +205,7 @@ const help = {
 		"A schedule that fires an agent on a recurring cadence. Pick the cadence, timezone, prompt, and agent — each run creates an ordinary task on the board.",
 	"help.modal.scheduleMessage.title": "Send later",
 	"help.modal.scheduleMessage.body":
-		"Write to the live agent outside its terminal, so nothing typed into the pane can submit it. The text autosaves as the task's draft; send it now, when the agent stops, or at a later time (optionally to a chosen tmux pane).",
+		"Write to the live agent outside its terminal, so nothing typed into the pane can submit it. The text autosaves as the task's draft; keep it as a note (Not now), send it now, when the agent stops, or at a later time (optionally to a chosen tmux pane).",
 	"help.modal.bugHunters.title": "Bug hunters",
 	"help.modal.bugHunters.body":
 		"Unleash a swarm of parallel agents on this task's code, each hunting bugs from a different angle in its own worktree. Choose how many and which agent; findings come back for you to triage.",
