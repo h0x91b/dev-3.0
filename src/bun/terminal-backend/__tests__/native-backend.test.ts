@@ -66,6 +66,18 @@ describe("NativeTerminalBackend", () => {
 		expect(state?.views).toHaveLength(2);
 	});
 
+	it("a background split adds the view without ever focusing it", async () => {
+		const h = harness();
+		world = h.world;
+		const created = await h.backend.openSession({ id: SESSION, cwd: CWD });
+		const first = created.views[0].id;
+		const second = await h.backend.splitView(SESSION, first, { cwd: CWD, background: true });
+		expect(second.focused).toBe(false);
+		const state = await h.backend.describeSession(SESSION);
+		expect(state?.views).toHaveLength(2);
+		expect(state?.focusedViewId).toBe(first);
+	});
+
 	it("focuses a second view by publishing a geometry change", async () => {
 		const h = harness();
 		world = h.world;

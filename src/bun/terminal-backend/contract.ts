@@ -128,6 +128,8 @@ export interface TerminalViewSpec {
 	 * Defaults to `"horizontal"` when omitted.
 	 */
 	readonly orientation?: TerminalSplitOrientation;
+	/** Open the new view without focusing it; the focused view never changes. */
+	readonly background?: boolean;
 }
 
 export interface TerminalViewState {

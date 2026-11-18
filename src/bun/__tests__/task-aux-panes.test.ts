@@ -160,6 +160,7 @@ describe("openAuxPane (native)", () => {
 			cwd: "/tmp/wt",
 			env: { DEV3_TASK_SEQ: "1383", DEV3_TASK_ID: TASK_ID },
 			launch: { executable: "/bin/bash", argv: [DEV_MARKER] },
+			background: true,
 		});
 		expect(handle).toEqual({ backend: "native", paneId: "pane-2" });
 	});
@@ -199,13 +200,15 @@ describe("openAuxPane (native)", () => {
 		expect(Object.keys(viewSpec.env)).toEqual(["DEV3_TASK_SEQ"]);
 	});
 
-	it("hands focus back to the pane that had it before the split", async () => {
+	it("asks the split to open in the background — the new pane is never published as active, so nothing is restored afterwards", async () => {
 		await openAuxPane(spec(nativeTask));
-		expect(mocks.focusNativeTaskPane).toHaveBeenCalledWith(TASK_ID, "pane-1");
+		expect(mocks.splitNativeTaskPane.mock.calls[0][3].background).toBe(true);
+		expect(mocks.focusNativeTaskPane).not.toHaveBeenCalled();
 	});
 
-	it("leaves focus on the new pane when the opener asks for it", async () => {
+	it("lets the new pane take focus when the opener asks for it", async () => {
 		await openAuxPane(spec(nativeTask, { focusNewPane: true }));
+		expect(mocks.splitNativeTaskPane.mock.calls[0][3].background).toBeFalsy();
 		expect(mocks.focusNativeTaskPane).not.toHaveBeenCalled();
 	});
 
@@ -380,6 +383,7 @@ describe("openAuxPane (columnAgent)", () => {
 			cwd: "/tmp/wt",
 			env: { DEV3_TASK_SEQ: "1383", DEV3_TASK_ID: TASK_ID },
 			launch: { executable: "/bin/bash", argv: [COL_MARKER] },
+			background: true,
 		});
 		for (const method of TMUX_METHODS) expect(method).not.toHaveBeenCalled();
 		expect(spawn).not.toHaveBeenCalled();
@@ -466,6 +470,13 @@ describe("openAuxPane (columnAgent)", () => {
 		});
 		expect(handle).toEqual({ backend: "tmux", paneId: "%7" });
 		expect(mocks.splitNativeTaskPane).not.toHaveBeenCalled();
+	});
+
+	it("opens the column agent's tmux pane in the background — no focus request, no select-pane without a title", async () => {
+		await openAuxPane(columnSpec(tmuxTask));
+
+		expect(mocks.tmuxSplitWindow.mock.calls[0][0].focus).toBeFalsy();
+		expect(mocks.tmuxSelectPane.mock.calls.every(([, opts]) => typeof opts?.title === "string")).toBe(true);
 	});
 
 	it("re-finds and kills its tmux panes by launch command, not a remembered id", async () => {
@@ -622,36 +633,37 @@ describe("openTaskPaneWindow", () => {
 	});
 });
 
-describe("splitTaskPane focus ordering (tmux)", () => {
-	it("finishes titling the new pane before returning, so a caller's own focus wins", async () => {
-		// `select-pane -t` sets the title AND activates that pane. A fire-and-forget
-		// title call can land after the caller focused the pane it wants, silently
-		// stealing focus back — so the title must be settled before the split returns.
-		const order: string[] = [];
-		let releaseTitle: (() => void) | undefined;
-		const titleSettled = new Promise<void>((resolve) => { releaseTitle = resolve; });
-		mocks.tmuxSelectPane.mockImplementation(async (target: string) => {
-			if (target === "%7") {
-				await titleSettled;
-				order.push("title");
-				return;
-			}
-			order.push(`focus:${target}`);
-		});
+describe("splitTaskPane focus (native)", () => {
+	it("opens in the background by default", async () => {
+		await splitTaskPane(spec(nativeTask));
+		expect(mocks.splitNativeTaskPane.mock.calls[0][3].background).toBe(true);
+	});
 
-		const opening = splitTaskPane(spec(tmuxTask, { title: "AI Review" }));
-		// Nothing may have completed while the title call is still in flight.
-		expect(order).toEqual([]);
-		releaseTitle?.();
-		await opening;
-		// Only now may the caller focus its own pane; it must be last.
-		await tmuxCaretFocus();
-
-		expect(order).toEqual(["title", "focus:dev3-aaaaaaaa:.0"]);
+	it("an explicit focus request lets the new pane take focus", async () => {
+		await splitTaskPane({ ...spec(nativeTask), focus: true });
+		expect(mocks.splitNativeTaskPane.mock.calls[0][3].background).toBe(false);
 	});
 });
 
-/** What `launchColumnAgent` does after the split: focus the agent pane. */
-async function tmuxCaretFocus(): Promise<void> {
-	await mocks.tmuxSelectPane(`${SESSION}:.0`, { socket: SOCKET, bestEffort: true });
-}
+describe("splitTaskPane focus (tmux)", () => {
+	it("splits in the background unless the caller asks for focus", async () => {
+		await splitTaskPane(spec(tmuxTask, { title: "AI Review" }));
+		expect(mocks.tmuxSplitWindow.mock.calls[0][0].focus).toBeUndefined();
+	});
+
+	it("passes an explicit focus request down to the split", async () => {
+		await splitTaskPane({ ...spec(tmuxTask), focus: true });
+		expect(mocks.tmuxSplitWindow.mock.calls[0][0].focus).toBe(true);
+	});
+
+	it("titling the pane never counts as a focus request", async () => {
+		await openAuxPane(spec(tmuxTask));
+		expect(mocks.tmuxSplitWindow.mock.calls[0][0].focus).toBeFalsy();
+		expect(mocks.tmuxSelectPane).toHaveBeenCalledWith("%7", { socket: SOCKET, title: "Dev Server" });
+	});
+
+	it("an opener that wants the new pane (focusNewPane) gets it on tmux too", async () => {
+		await openAuxPane(spec(tmuxTask, { focusNewPane: true }));
+		expect(mocks.tmuxSplitWindow.mock.calls[0][0].focus).toBe(true);
+	});
+});

@@ -408,7 +408,7 @@ Splits keep the agent and the running process visible in the same view — the u
 SESSION=dev3-<short-id>
 
 PANE=$(tmux -L dev3 split-window -h -t "$SESSION" -c "$PWD" -P -F '#{pane_id}')
-echo "new pane: $PANE"      # e.g. %42
+echo "new pane: $PANE"      # e.g. %42 — splits open in the background; run select-pane -t "$PANE" to move the user there on request
 tmux -L dev3 send-keys -t "$PANE" 'bun run dev' Enter
 \`\`\`
 

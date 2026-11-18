@@ -94,6 +94,7 @@ class TmuxParityRunner implements ParityRunner {
 			env: opts.env,
 			command: opts.command,
 			printPaneId: true,
+			focus: true,
 		});
 		if (!paneId) throw new Error(`split of view ${from} returned no new view id`);
 		const active = await this.activeViewId(id);

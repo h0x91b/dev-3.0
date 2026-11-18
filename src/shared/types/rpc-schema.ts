@@ -947,8 +947,9 @@ export type AppRPCSchema = {
 			// `server` names ONE declared dev server; absent means the default
 			// (`devScript`), or the only declared server when there is no default.
 			// `all` fans the action out over every declared server instead.
+			// `focus`: the user asked for the pane from the UI, so focus moves to it.
 			runDevServer: {
-				params: { taskId: string; projectId: string; opId?: string; env?: Record<string, string>; args?: string[]; server?: string; all?: boolean };
+				params: { taskId: string; projectId: string; opId?: string; env?: Record<string, string>; args?: string[]; server?: string; all?: boolean; focus?: boolean };
 				response: DevServerStatus;
 			};
 			checkDevServer: {
@@ -963,7 +964,7 @@ export type AppRPCSchema = {
 			// what keeps the UI's Restart button on the same configuration. `args`
 			// behaves the same way: omitted reuses, `[]` clears.
 			restartDevServer: {
-				params: { taskId: string; projectId: string; env?: Record<string, string>; args?: string[]; server?: string; all?: boolean };
+				params: { taskId: string; projectId: string; env?: Record<string, string>; args?: string[]; server?: string; all?: boolean; focus?: boolean };
 				response: DevServerStatus;
 			};
 			getDevServerStatus: {
@@ -1529,6 +1530,8 @@ export type AppRPCSchema = {
 					accountId?: string | null;
 					bedrockProfile?: string | null;
 					handoff?: boolean;
+					/** The user asked for this pane from the UI: focus moves to it. Absent → background. */
+					focus?: boolean;
 				};
 				response: SpawnAgentResult;
 			};

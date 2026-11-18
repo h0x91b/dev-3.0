@@ -2129,6 +2129,8 @@ describe("devServer.*", () => {
 
 		expect(resp.ok).toBe(true);
 		expect(runDevServer).toHaveBeenCalledWith({ taskId: task.id, projectId: project.id });
+		// A CLI start never carries `focus`, so its pane opens in the background.
+		expect(vi.mocked(runDevServer).mock.calls[0][0]).not.toHaveProperty("focus");
 		expect(resp.data).toEqual(status);
 	});
 
