@@ -382,9 +382,9 @@ function TrafficView({ projectId, focus, onOpenTask }: Props) {
 	const notifications = useNotificationTraffic(
 		data.loading ? null : data.projects.map((project) => project.id),
 	);
-	// The earlier of the two archives; unknown (no clamp) until both have answered.
+	// The earliest day over every project's messages and the notifications; unknown (no clamp) until all have answered.
 	const calendarOldestDay =
-		!data.loading && !data.error && notifications.status === "ready"
+		data.archiveBoundsKnown && notifications.status === "ready"
 			? [data.oldestDay, notifications.oldestDay].filter((day): day is string => !!day).sort()[0] ?? null
 			: undefined;
 	const { experiment, choose } = useTrafficExperiment();

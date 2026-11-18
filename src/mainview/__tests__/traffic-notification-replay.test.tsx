@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { NotificationLogPage, NotificationLogRow } from "../../shared/notification-log";
 import { I18nProvider } from "../i18n";
@@ -306,5 +306,29 @@ describe("the day calendar with history kept forever", () => {
 			expect(previous).not.toBeDisabled();
 			await userEvent.click(previous);
 		}
+	});
+
+	it("does not clamp while another project's message archive is still pending, then bounds by it", async () => {
+		vi.mocked(api.request.getProjects).mockResolvedValue([
+			{ id: "proj-1", name: "Project One" },
+			{ id: "proj-2", name: "Project Two" },
+		] as never);
+		keepForever(null);
+		let finishSecond: (page: unknown) => void = () => {};
+		const pendingSecond = new Promise((resolve) => { finishSecond = resolve; });
+		vi.mocked(api.request.readAgentMessageLog).mockImplementation(({ projectId }) =>
+			projectId === "proj-2"
+				? (pendingSecond as never)
+				: Promise.resolve({ rows: [], oldestDay: null, retentionDays: null, hasMore: false }),
+		);
+		const previous = await openCalendar();
+		await waitFor(() => expect(readNotificationLog).toHaveBeenCalled());
+		for (let i = 0; i < 4; i += 1) {
+			expect(previous).not.toBeDisabled();
+			await userEvent.click(previous);
+		}
+
+		await act(async () => finishSecond({ rows: [], oldestDay: shiftDay(localDay(new Date()), -100), retentionDays: null, hasMore: false }));
+		await waitFor(() => expect(previous).toBeDisabled());
 	});
 });

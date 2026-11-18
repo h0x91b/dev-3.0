@@ -98,6 +98,8 @@ export function useTrafficData(cutoff?: number) {
 	return { projects: visibleProjects, tasks: tasks.filter(task => projectIds.has(task.projectId)), rows, loading, historyLoading, tasksLoading,
 		error: error || pages.some(page => page.error), hasMore: pages.some(page => page.hasMore), limit,
 		oldestDay: pages.map(page => page.oldestDay).filter((day): day is string => !!day).sort()[0],
+		// True only when every visible project's archive read has answered; a pending or failed one leaves its bound unknown.
+		archiveBoundsKnown: !loading && pages.every(page => page.loaded && !page.error),
 		// Until a first page has loaded the stored default says nothing about this install.
 		retentionLoaded: !!retentionPage,
 		retentionDays: retentionPage ? retentionPage.retentionDays : DEFAULT_LOG_RETENTION_DAYS,
