@@ -5,6 +5,7 @@ import { confirmCustomColumnDelete } from "../utils/confirmCustomColumnDelete";
 import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, GitHubCliStatus, Label, Project, Task } from "../../shared/types";
 import { ACTIVE_STATUSES, GIT_WORKFLOW_NOT_A_REPO_ERROR, getTaskTitle, gitWorkflowSwitchBlocker, hasGitWorkflow, repoConfigEnabled, STORAGE_TRACKED_CONFLICT_ERROR, storageSwitchBlocker } from "../../shared/types";
 import { builtinCoordinatorPrompt, COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, DEFAULT_REVIEW_PROMPT, resolveArtifactTemplate, resolvePresetPrompt, type ArtifactTemplateMode, type ProjectSettingsUpdate, type ResolvedArtifactTemplate } from "../../shared/types";
+import { EXPLICIT_EMPTY_ARRAY_CONFIG_KEYS } from "../../shared/config-schema";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -321,9 +322,11 @@ function ProjectSettings({
 		const spA = (a.sparseCheckoutPaths ?? []).join("\0");
 		const spB = (b.sparseCheckoutPaths ?? []).join("\0");
 		if (spA !== spB) return false;
-		// Schema-rendered fields have no hand-written comparison; an empty list equals unset.
-		const normalized = (v: unknown) => (Array.isArray(v) && v.length === 0 ? undefined : v);
+		// Schema-rendered fields have no hand-written comparison; an empty list equals unset,
+		// except where the schema gives [] its own meaning (it hides a lower layer's list).
 		for (const key of genericFieldKeys()) {
+			const explicitEmpty = EXPLICIT_EMPTY_ARRAY_CONFIG_KEYS.has(key);
+			const normalized = (v: unknown) => (!explicitEmpty && Array.isArray(v) && v.length === 0 ? undefined : v);
 			if (JSON.stringify(normalized(a[key]) ?? null) !== JSON.stringify(normalized(b[key]) ?? null)) return false;
 		}
 		// Compare devServers: a row edit must count as an unsaved change.
