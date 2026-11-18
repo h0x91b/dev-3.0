@@ -117,7 +117,10 @@ export function excludeTaskClaudeSettings(taskDir: string): void {
 	addExcludeRules(`task-settings:${taskDir}`, taskDir, (prefix) => [`/${escapeExcludePrefix(prefix)}.claude/settings.local.json`], "dev3 task settings");
 }
 
-/** Same as `excludeTaskClaudeSettings`, for the `.codex/hooks.json` dev3 writes. Only that file, never `.codex/`. */
+/**
+ * Same as `excludeTaskClaudeSettings`, for the `.codex/hooks.json` dev3 writes. Only that file, never `.codex/`.
+ * `info/exclude` is shared by the whole repo, so the rule also hides an untracked one in the main checkout.
+ */
 export function excludeTaskCodexHooks(taskDir: string): void {
 	const file = join(taskDir, ".codex", "hooks.json");
 	if (!existsSync(file) || isGitTracked(file)) return;
