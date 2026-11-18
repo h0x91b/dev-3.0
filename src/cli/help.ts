@@ -1372,7 +1372,11 @@ const COMMANDS: CommandHelp[] = [
 					"verify GitHub's TLS certificate (an agent sandbox: x509 OSStatus -26276) exits 28.",
 					"Takes no --task: the pull request is for the branch checked out here, so naming",
 					"another task would push one branch and describe another.",
-					"Needs no running app — it is git and gh against the current branch.",
+					"Pushes to git's push remote (branch.<b>.pushRemote, remote.pushDefault), else origin;",
+					"when origin refuses and exactly one other remote exists, that fork gets the branch and",
+					"the pull request opens on origin's repository with --head <owner>:<branch>.",
+					"Inside a task it also runs `dev3 pr watch --until merged`, so the merge wakes the agent.",
+					"Needs no running app — it is git and gh against the current branch (the watch is skipped).",
 				],
 			},
 			{

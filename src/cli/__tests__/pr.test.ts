@@ -76,6 +76,7 @@ function deps(
 		cwd: CWD,
 		platform: "darwin",
 		originTaskLinkEnabled: () => true,
+		watchUntilMerged: async () => false,
 		...overrides,
 	};
 	return { deps: base, calls };
@@ -109,6 +110,86 @@ afterEach(() => {
 	stdoutSpy.mockRestore();
 	stderrSpy.mockRestore();
 	exitSpy.mockRestore();
+});
+
+/** Routes by the full argument list, which the prefix table in `deps()` cannot tell apart. */
+function forkRepo(base: PrDeps, { originDenied = true, remotes = "fork\norigin\n" } = {}): PrDeps {
+	return {
+		...base,
+		run: (command, runArgs, cwd, env) => {
+			const result = base.run(command, runArgs, cwd, env);
+			if (command !== "git") return result;
+			if (runArgs[0] === "push" && runArgs[2] === "origin" && originDenied) {
+				return fail("remote: Permission to acme/app.git denied to me.\nfatal: The requested URL returned error: 403");
+			}
+			if (runArgs[0] === "remote" && runArgs.length === 1) return ok(remotes);
+			if (runArgs[1] === "get-url") return ok(runArgs[2] === "origin" ? "https://github.com/acme/app\n" : "git@github.com:me/app.git\n");
+			return result;
+		},
+	};
+}
+
+describe("dev3 pr create — fork contributors", () => {
+	it("pushes to the only other remote when origin is not writable, and opens the PR on origin's repo", async () => {
+		const { deps: d, calls } = deps();
+
+		await handlePr("create", args({ title: "T" }), null, forkRepo(d));
+
+		expect(ran(calls, "git", ["push", "--set-upstream", "fork"])).toBeDefined();
+		const create = ran(calls, "gh", ["pr", "create"])!;
+		expect(create.args.join(" ")).toContain("--repo acme/app");
+		expect(create.args.join(" ")).toContain("--head me:feat/thing");
+		expect(stdoutOutput).toContain("feat/thing → fork");
+	});
+
+	it("uses git's configured push remote without trying origin first", async () => {
+		const { deps: d, calls } = deps({ "git config --get": ok("fork\n") });
+
+		await handlePr("create", args({ title: "T" }), null, forkRepo(d));
+
+		expect(ran(calls, "git", ["push", "--set-upstream", "origin"])).toBeUndefined();
+		expect(ran(calls, "git", ["push", "--set-upstream", "fork"])).toBeDefined();
+	});
+
+	it("does not guess between several other remotes and says how to name the fork", async () => {
+		const { deps: d, calls } = deps();
+
+		await expect(handlePr("create", args({ title: "T" }), null, forkRepo(d, { remotes: "fork\nmirror\norigin\n" }))).rejects.toThrow(/EXIT_/);
+
+		expect(stderrOutput).toContain("remote.pushDefault");
+		expect(ran(calls, "gh", ["pr", "create"])).toBeUndefined();
+	});
+
+	it("keeps an ordinary push to origin free of --repo and --head", async () => {
+		const { deps: d, calls } = deps();
+
+		await handlePr("create", args({ title: "T" }), null, forkRepo(d, { originDenied: false }));
+
+		const create = ran(calls, "gh", ["pr", "create"])!;
+		expect(create.args).not.toContain("--repo");
+		expect(create.args).not.toContain("--head");
+	});
+});
+
+describe("dev3 pr create — merge watch", () => {
+	it("subscribes the task's agent to the merge so it is woken to request completion", async () => {
+		const watchUntilMerged = vi.fn(async () => true);
+		const context = ctx();
+
+		await handlePr("create", args({ title: "T" }), context, deps({}, { watchUntilMerged }).deps);
+
+		expect(watchUntilMerged).toHaveBeenCalledWith(context, 42);
+		expect(stdoutOutput).toContain("until merged");
+		expect(stdoutOutput).not.toContain("Waiting on CI or merge?");
+	});
+
+	it("never subscribes outside a task", async () => {
+		const watchUntilMerged = vi.fn(async () => true);
+
+		await handlePr("create", args({ title: "T" }), null, deps({}, { watchUntilMerged }).deps);
+
+		expect(watchUntilMerged).not.toHaveBeenCalled();
+	});
 });
 
 describe("dev3 pr create — happy path", () => {
