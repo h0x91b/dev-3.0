@@ -11,9 +11,11 @@ import { useT } from "../i18n";
 import { failedExtensionForView, getBoardPluginsSnapshot, subscribeBoardPlugins } from "./plugins";
 import LabelFilterBar from "../components/LabelFilterBar";
 import BoardVisibilitySwitch from "../components/BoardVisibilitySwitch";
+import HiddenByVisibilityNotice from "../components/HiddenByVisibilityNotice";
 import LineageFilterNotice from "../components/LineageFilterNotice";
 import EpicFilterNotice from "../components/EpicFilterNotice";
 import { epicFilterToken } from "../utils/taskEpic";
+import { statusFilterValues } from "../utils/taskSearch";
 import CreateTaskModal from "../components/CreateTaskModal";
 import TaskDetailModal from "../components/TaskDetailModal";
 import { CAROUSEL_MAX_WIDTH } from "../components/MobileBoardCarousel";
@@ -209,6 +211,7 @@ function BoardHost(props: BoardHostProps) {
 		setQuery: filter.setQuery,
 		scopeTasks: tasks,
 		tasks: filter.displayTasks,
+		visibility: filter.visibility,
 		matches: filter.matches,
 		lineageNode,
 		columns,
@@ -221,7 +224,7 @@ function BoardHost(props: BoardHostProps) {
 		setLayout: viewState.setLayout,
 		preferences,
 		actions,
-	}), [boardRef, boardProjects, formFactor, filter.query, filter.setQuery, tasks, filter.displayTasks, filter.matches, lineageNode, columns, occupiedColumns, filter.labels, agents, filter.epics, viewState.layout, viewState.setLayout, preferences, actions]);
+	}), [boardRef, boardProjects, formFactor, filter.query, filter.setQuery, tasks, filter.displayTasks, filter.visibility, filter.matches, lineageNode, columns, occupiedColumns, filter.labels, agents, filter.epics, viewState.layout, viewState.setLayout, preferences, actions]);
 
 	// Draft being edited: reopens the New Task popup prefilled from the card.
 	// Resolved from the live list, so it closes by itself once the draft is promoted or deleted.
@@ -346,7 +349,7 @@ function BoardHost(props: BoardHostProps) {
 		<>
 			{switcher}
 			{/* Always rendered so the search box never shifts; a click before the read lands wins over it. */}
-			<BoardVisibilitySwitch visibility={filter.visibility} onChange={filter.setVisibility} narrow={isNarrow} confirmed={filter.visibilityConfirmed} />
+			<BoardVisibilitySwitch visibility={filter.visibility} onChange={filter.setVisibility} narrow={isNarrow} confirmed={filter.visibilityConfirmed} overridden={statusFilterValues(filter.query).length > 0} />
 		</>
 	);
 	const options = active?.def.Options ? <BoardViewOptionsButton view={active} /> : null;
@@ -385,6 +388,14 @@ function BoardHost(props: BoardHostProps) {
 					rememberFilter(boardFilterKey(projectId), epicFilterToken(epic));
 					navigate({ screen: "project", projectId });
 				}}
+			/>
+			<HiddenByVisibilityNotice
+				visibility={filter.visibility}
+				searchQuery={filter.query}
+				tasks={tasks}
+				shownCount={filter.displayTasks.length}
+				matches={filter.matches}
+				onShowAll={() => filter.setVisibility("all")}
 			/>
 			{provided && failedExtension && (
 				<div role="alert" className="mx-6 mt-2 px-3 py-2 rounded-lg bg-danger/10 text-danger text-xs flex items-center gap-3">

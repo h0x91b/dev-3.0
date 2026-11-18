@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import type { BoardColumnSlot, CodingAgent, Epic, GlobalSettings, Label, Project, Task, TaskPriority, TaskStatus } from "../../shared/types";
 import type { BoardFormFactor, BoardKind } from "../../shared/board-view-state";
+import type { TaskVisibility } from "../../shared/board-filter-state";
 
 export interface BoardScope {
 	kind: BoardKind;
@@ -92,6 +93,7 @@ export interface BoardModel {
 	setQuery(query: string): void;
 	scopeTasks: readonly Task[];
 	tasks: readonly Task[];
+	visibility: TaskVisibility;
 	matches(task: Task, query: string): boolean;
 	/** Lanes from project config alone. */
 	columns: BoardColumn[];
@@ -138,6 +140,8 @@ export class BoardService {
 
 	/** Board scope ∩ the Active | All switch ∩ board query (D9); Active drops completed and cancelled tasks. */
 	tasks(): readonly Task[] { return this.model.tasks; }
+	/** The user's Active | All choice for this board; `tasks()` already honours it. */
+	visibility(): TaskVisibility { return this.model.visibility; }
 	/** The board scope unfiltered — for counts, "+N hidden" and parent lookup. */
 	scopeTasks(): readonly Task[] { return this.model.scopeTasks; }
 	matches(task: Task, query: string): boolean { return this.model.matches(task, query); }

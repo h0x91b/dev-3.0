@@ -1,3 +1,5 @@
+The query itself stays in memory; the per-board Active | All choice is persisted, see `decisions/2026/11/17/board-visibility-switch-replaces-status-persistence.md`.
+
 # Board and Active Tasks filters live in memory, per board
 
 ## Context

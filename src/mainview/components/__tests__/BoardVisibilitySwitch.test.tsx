@@ -5,11 +5,11 @@ import BoardVisibilitySwitch from "../BoardVisibilitySwitch";
 import { I18nProvider } from "../../i18n";
 import type { TaskVisibility } from "../../../shared/board-filter-state";
 
-function Harness({ initial, onChange, narrow, confirmed }: { initial: TaskVisibility; onChange: (v: TaskVisibility) => void; narrow?: boolean; confirmed?: boolean }) {
+function Harness({ initial, onChange, narrow, confirmed, overridden }: { initial: TaskVisibility; onChange: (v: TaskVisibility) => void; narrow?: boolean; confirmed?: boolean; overridden?: boolean }) {
 	const [visibility, setVisibility] = useState(initial);
 	return (
 		<I18nProvider>
-			<BoardVisibilitySwitch visibility={visibility} onChange={(v) => { setVisibility(v); onChange(v); }} narrow={narrow} confirmed={confirmed} />
+			<BoardVisibilitySwitch visibility={visibility} onChange={(v) => { setVisibility(v); onChange(v); }} narrow={narrow} confirmed={confirmed} overridden={overridden} />
 		</I18nProvider>
 	);
 }
@@ -46,8 +46,9 @@ describe("BoardVisibilitySwitch", () => {
 		expect(radios[1]).toHaveAttribute("tabindex", "0");
 		expect(screen.getByRole("radiogroup", { name: "Show tasks" })).toBeInTheDocument();
 		expect(radios[0]).toHaveAttribute("title", "Hide completed and cancelled tasks");
-		expect(radios[0]).toHaveAttribute("aria-description", "Hide completed and cancelled tasks");
-		expect(radios[1]).not.toHaveAttribute("aria-description");
+		expect(radios[0]).toHaveAccessibleDescription("Hide completed and cancelled tasks");
+		expect(radios[0]).not.toHaveAttribute("aria-description");
+		expect(radios[1]).not.toHaveAttribute("aria-describedby");
 	});
 
 	it("selects on click and ignores a click on the selected segment", async () => {
@@ -56,6 +57,25 @@ describe("BoardVisibilitySwitch", () => {
 		expect(onChange).not.toHaveBeenCalled();
 		await userEvent.click(radio("Active"));
 		expect(onChange).toHaveBeenCalledWith("active");
+	});
+
+	it("is dimmed and described while a status filter overrides it, and still clickable", async () => {
+		const onChange = vi.fn();
+		render(<Harness initial="all" onChange={onChange} overridden />);
+		const group = screen.getByRole("radiogroup");
+		expect(group).toHaveClass("opacity-60", "transition-opacity", "motion-reduce:transition-none");
+		expect(group).toHaveAttribute("title", "A status filter in the search overrides this switch");
+		expect(group).toHaveAccessibleDescription("A status filter in the search overrides this switch");
+		await userEvent.click(radio("Active"));
+		expect(onChange).toHaveBeenCalledWith("active");
+	});
+
+	it("is not dimmed or described when nothing overrides it", () => {
+		renderSwitch("all");
+		const group = screen.getByRole("radiogroup");
+		expect(group).not.toHaveClass("opacity-60");
+		expect(group).not.toHaveAttribute("title");
+		expect(group).not.toHaveAttribute("aria-describedby");
 	});
 
 	it("counts a click on the shown value as a pick while the value is only a placeholder", async () => {

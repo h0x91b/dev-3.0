@@ -1,4 +1,4 @@
-import { useRef, type KeyboardEvent } from "react";
+import { useId, useRef, type KeyboardEvent } from "react";
 import type { TaskVisibility } from "../../shared/board-filter-state";
 import { useT } from "../i18n";
 
@@ -16,11 +16,16 @@ interface BoardVisibilitySwitchProps {
 	narrow?: boolean;
 	/** False while the shown value is only a placeholder: then even a click on it is the user's pick. */
 	confirmed?: boolean;
+	/** A `status:` token in the query overrides the switch: shown dimmed, still clickable. */
+	overridden?: boolean;
 }
 
 /** One-click Active | All switch for the board; Active hides completed and cancelled tasks. */
-function BoardVisibilitySwitch({ visibility, onChange, narrow = false, confirmed = true }: BoardVisibilitySwitchProps) {
+function BoardVisibilitySwitch({ visibility, onChange, narrow = false, confirmed = true, overridden = false }: BoardVisibilitySwitchProps) {
 	const t = useT();
+	const ids = useId();
+	const hintId = `${ids}-hint`;
+	const overriddenId = `${ids}-overridden`;
 	const refs = useRef<Record<TaskVisibility, HTMLButtonElement | null>>({ active: null, all: null });
 
 	const select = (next: TaskVisibility) => {
@@ -45,8 +50,10 @@ function BoardVisibilitySwitch({ visibility, onChange, narrow = false, confirmed
 		<div
 			role="radiogroup"
 			aria-label={t("board.visibility.label")}
+			aria-describedby={overridden ? overriddenId : undefined}
+			title={overridden ? t("board.visibility.overridden") : undefined}
 			data-testid="board-visibility-switch"
-			className="inline-flex items-center flex-shrink-0 p-0.5 gap-0.5 rounded-lg bg-base border border-edge"
+			className={`inline-flex items-center flex-shrink-0 p-0.5 gap-0.5 rounded-lg bg-base border border-edge transition-opacity duration-150 motion-reduce:transition-none ${overridden ? "opacity-60" : ""}`}
 		>
 			{VISIBILITIES.map((value) => {
 				const selected = value === visibility;
@@ -59,7 +66,7 @@ function BoardVisibilitySwitch({ visibility, onChange, narrow = false, confirmed
 						aria-checked={selected}
 						tabIndex={selected ? 0 : -1}
 						title={value === "active" ? t("board.visibility.activeHint") : undefined}
-						aria-description={value === "active" ? t("board.visibility.activeHint") : undefined}
+						aria-describedby={value === "active" ? hintId : undefined}
 						onClick={() => select(value)}
 						onKeyDown={onKeyDown}
 						className={`${narrow ? NARROW_SIZE : WIDE_SIZE} ${SEGMENT} ${selected ? "bg-elevated text-fg" : "text-fg-3 hover:text-fg-2 hover:bg-raised-hover"}`}
@@ -68,6 +75,8 @@ function BoardVisibilitySwitch({ visibility, onChange, narrow = false, confirmed
 					</button>
 				);
 			})}
+			<span id={hintId} hidden>{t("board.visibility.activeHint")}</span>
+			{overridden && <span id={overriddenId} hidden>{t("board.visibility.overridden")}</span>}
 		</div>
 	);
 }

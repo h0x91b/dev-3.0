@@ -171,6 +171,34 @@ describe("BoardHost", () => {
 		expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t1,t2,t3");
 	});
 
+	it("exposes the Active | All choice through ctx.board.visibility()", async () => {
+		renderHost();
+		await screen.findByTestId("kanban");
+		expect(getBoardRoot().board.visibility()).toBe("all");
+		fireEvent.click(screen.getByRole("radio", { name: "Active" }));
+		expect(getBoardRoot().board.visibility()).toBe("active");
+	});
+
+	it("tells how many finished tasks a search hides under Active, and Show all reveals them", async () => {
+		vi.mocked(api.request.getBoardFilterState).mockResolvedValue({ visibility: "active" });
+		renderHost();
+		await waitFor(() => expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t1"));
+		expect(screen.queryByTestId("hidden-by-visibility-notice")).not.toBeInTheDocument();
+		fireEvent.change(screen.getByRole("textbox", { name: /search/i }), { target: { value: "beta" } });
+		expect(screen.getByTestId("hidden-by-visibility-notice")).toHaveTextContent("1 finished task hidden");
+		expect(screen.getByRole("radiogroup")).not.toHaveClass("opacity-60");
+		fireEvent.click(screen.getByRole("button", { name: "Show all" }));
+		expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t2");
+		expect(screen.queryByTestId("hidden-by-visibility-notice")).not.toBeInTheDocument();
+	});
+
+	it("dims the switch while a status token overrides it", async () => {
+		renderHost();
+		await screen.findByTestId("kanban");
+		fireEvent.change(screen.getByRole("textbox", { name: /search/i }), { target: { value: "status:completed" } });
+		expect(screen.getByRole("radiogroup")).toHaveClass("opacity-60");
+	});
+
 	it("never renders finished tasks in the first frame of a board saved as Active", async () => {
 		let resolveRead!: (v: { visibility: "active" }) => void;
 		vi.mocked(api.request.getBoardFilterState).mockReturnValue(new Promise((r) => { resolveRead = r; }));

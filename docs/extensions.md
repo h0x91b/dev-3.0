@@ -54,7 +54,7 @@ my-extension/
 | `id` | 2–64 chars of `a-z`, `0-9`, `-`, starting with a letter or digit. Becomes the install folder name. `builtin`, `dev3`, `third-party` and `third_party` are reserved |
 | `name`, `publisher` | Shown in Settings and in the consent dialog (max 80 chars) |
 | `version` | Semver, e.g. `1.2.0` |
-| `engines.dev3` | A semver range over the **dev3 extension API version** (currently `1.0.0`; the consent dialog of an incompatible extension names it). It tracks the board contract below, not the app version. A range this app does not satisfy keeps the extension installed but **incompatible** and off |
+| `engines.dev3` | A semver range over the **dev3 extension API version** (currently `1.1.0`; the consent dialog of an incompatible extension names it). It tracks the board contract below, not the app version. A range this app does not satisfy keeps the extension installed but **incompatible** and off |
 | `contributes.boardViews` | 1–16 views, each `{ id, label }`. The registered id must be `<extension id>:<view id>` |
 | `main` | Must be `index.js` |
 
@@ -105,7 +105,7 @@ Bundling JSX or TypeScript is fine — emit one ESM file with `react`, `react-do
   Registration is undone automatically when the plugin stops. An id that is not declared in the manifest, or one
   that another view already owns, makes dev3 unload the extension and mark it **Failed to load**.
 - **`ctx.board`** — the board on screen: `scope`, `formFactor` (`wide` / `narrow`), `query` / `setQuery()`,
-  `tasks()` (board scope ∩ the user's Active | All switch ∩ board query, so it may omit completed and cancelled tasks; for every status read `scopeTasks()` and filter with `matches(task, query)`), `scopeTasks()` (board scope, unfiltered), `matches(task, query)`, `columns()`, `labels()`,
+  `tasks()` (board scope ∩ the user's Active | All switch ∩ board query, so it may omit completed and cancelled tasks; for every status read `scopeTasks()` and filter with `matches(task, query)`), `scopeTasks()` (board scope, unfiltered), `visibility()` (`"active"` / `"all"`: the user's Active | All switch that `tasks()` honours; added in API 1.1.0), `matches(task, query)`, `columns()`, `labels()`,
   `agents()`, `projects()`, `preferences()`, `layout(viewId)` / `setLayout(viewId, value)` (persisted per board and
   form factor), `TaskCard` (the real dev3 card component), and the actions `openTask`, `openContextMenu`, `moveTask`,
   `setPriority`, `setLabels`, `createLabel`, `createTask`, `launch`, `remove`. Destructive actions still go through

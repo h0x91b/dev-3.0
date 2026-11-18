@@ -54,6 +54,7 @@ async function renderTree(setup: Setup = {}) {
 		query: setup.query ?? "",
 		setQuery: vi.fn(),
 		scopeTasks: setup.scopeTasks ?? tasks,
+		visibility: "all",
 		tasks,
 		matches: () => false,
 		lineageNode: (id) => setup.lineage?.[id] ?? "deleted",
