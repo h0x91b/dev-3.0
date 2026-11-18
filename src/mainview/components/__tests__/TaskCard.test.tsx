@@ -996,6 +996,19 @@ describe("TaskCard", () => {
 			});
 		});
 
+		it("a macOS Ctrl+click on an active task opens only the menu, not the task", async () => {
+			const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+			onTestFinished(() => platform.mockRestore());
+			const navigate = vi.fn();
+			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" }), { navigate });
+			const card = screen.getByText("My task").closest("[draggable]")!;
+			fireEvent.contextMenu(card, { clientX: 100, clientY: 200, ctrlKey: true });
+			fireEvent.click(card, { ctrlKey: true });
+
+			expect(await screen.findByTestId("task-menu-labels")).toBeInTheDocument();
+			expect(navigate).not.toHaveBeenCalled();
+		});
+
 		it("clicking active task in split toggles it off", async () => {
 			const user = userEvent.setup();
 			const navigate = vi.fn();

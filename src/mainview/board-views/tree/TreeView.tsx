@@ -10,6 +10,7 @@ import { useStatusColors } from "../../hooks/useStatusColors";
 import { getStatusLabel } from "../../utils/statusLabel";
 import { compactAge } from "../../utils/statusAge";
 import { taskLastActivityMs } from "../../utils/projectActivity";
+import { isMacSecondaryClick } from "../../utils/platform";
 import { useBoard } from "../react";
 import type { BoardService } from "../board-service";
 import {
@@ -425,7 +426,7 @@ export function TreeView(_props: { ctx: Context }) {
 							data-testid={`board-tree-row-${node.key}`}
 							data-ghost={node.kind === "ghost" ? "" : undefined}
 							data-group={node.kind === "group" ? "" : undefined}
-							onClick={() => open(row)}
+							onClick={(e) => { if (!isMacSecondaryClick(e)) open(row); }}
 							onContextMenu={(e) => openMenu(row, e)}
 							onKeyDown={(e) => onRowKeyDown(row, item.index, e)}
 							className={`absolute left-0 top-0 w-full cursor-pointer rounded-md px-2 outline-none ${isPinnedCoordinatorNode(node) ? COORDINATOR_ROW : item.index % 2 === 1 ? ZEBRA_ROW : ""} hover:bg-raised-hover focus-visible:bg-raised-hover focus-visible:shadow-[inset_2px_0_0_rgb(var(--accent))] ${narrow ? "border-b border-edge/50" : ""}`}

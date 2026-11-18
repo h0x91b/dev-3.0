@@ -2270,7 +2270,7 @@ describe("ActiveTasksSidebar — revealing the selected task", () => {
 });
 
 describe("ActiveTasksSidebar — row context menu", () => {
-	function renderRow(task: Task = makeTask()) {
+	function renderRow(task: Task = makeTask(), navigate = vi.fn()) {
 		return render(
 			<I18nProvider>
 				<ActiveTasksSidebar
@@ -2278,7 +2278,7 @@ describe("ActiveTasksSidebar — row context menu", () => {
 					tasks={[task]}
 					activeTaskId="t1"
 					dispatch={vi.fn()}
-					navigate={vi.fn()}
+					navigate={navigate}
 					agents={[claudeAgent]}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
@@ -2294,6 +2294,19 @@ describe("ActiveTasksSidebar — row context menu", () => {
 		expect(await screen.findByTestId("sidebar-task-menu-t1")).toBeInTheDocument();
 		expect(screen.getByTestId("task-menu-labels")).toBeInTheDocument();
 		expect(terminalPreview.close).toHaveBeenCalled();
+	});
+
+	it("opens only the menu on a macOS Ctrl+click, not the task", async () => {
+		const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+		onTestFinished(() => platform.mockRestore());
+		const navigate = vi.fn();
+		renderRow(makeTask(), navigate);
+		const row = screen.getByTestId("sidebar-identity-t1");
+		fireEvent.contextMenu(row, { clientX: 30, clientY: 40, ctrlKey: true });
+		fireEvent.click(row, { ctrlKey: true });
+
+		expect(await screen.findByTestId("sidebar-task-menu-t1")).toBeInTheDocument();
+		expect(navigate).not.toHaveBeenCalled();
 	});
 
 	it("opens the same menu from the keyboard (Shift+F10)", async () => {

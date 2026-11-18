@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { hasAppModifier, isTouchPrimary } from "../platform";
+import { hasAppModifier, isMacSecondaryClick, isTouchPrimary } from "../platform";
 
 const originalNavigator = globalThis.navigator;
 
@@ -41,6 +41,19 @@ describe("hasAppModifier", () => {
 		expect(hasAppModifier(keyEvent("o", {}))).toBe(false);
 		setPlatform("Linux x86_64", "Mozilla/5.0 (X11; Linux x86_64)");
 		expect(hasAppModifier(keyEvent("o", {}))).toBe(false);
+	});
+});
+
+describe("isMacSecondaryClick", () => {
+	it("treats Ctrl+click on macOS as a right click", () => {
+		setPlatform("MacIntel", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)");
+		expect(isMacSecondaryClick({ ctrlKey: true })).toBe(true);
+		expect(isMacSecondaryClick({ ctrlKey: false })).toBe(false);
+	});
+
+	it("leaves Ctrl+click alone off macOS, where it is an ordinary click", () => {
+		setPlatform("Linux x86_64", "Mozilla/5.0 (X11; Linux x86_64)");
+		expect(isMacSecondaryClick({ ctrlKey: true })).toBe(false);
 	});
 });
 
