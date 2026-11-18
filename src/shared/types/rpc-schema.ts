@@ -7,7 +7,7 @@ import type { HandoffPreview, SpawnAgentResult } from "../conversation-handoff-m
 import type { TaskConversationView } from "../task-conversation-model";
 import type { AgentRateLimitsReport } from "../rate-limits";
 import type { AutoAccountPreview } from "../account-routing";
-import type { AccountLoginState, AgentAccount, AgentAccountKind, AgentAccountsState, ClaudeSlotModels, PinnedClaudeLogin, ProjectClaudeLogin } from "../agent-accounts";
+import type { AccountLoginState, AgentAccount, AgentAccountKind, AgentAccountsState, ClaudePickLaunches, ClaudeSlotModels, PinnedClaudeLogin, ProjectClaudeLogin } from "../agent-accounts";
 import type { TerminalBackendIdentity } from "../terminal-backend-identity";
 import type { TaskPaneState, TaskPaneAction, TmuxCloseWindowResult } from "../task-panes";
 import type { DeepLinkNav } from "../deep-link";
@@ -585,6 +585,11 @@ export type AppRPCSchema = {
 			getProjectClaudeLogin: {
 				params: { projectId: string };
 				response: ProjectClaudeLogin;
+			};
+			/** Where each launch-picker row (no pick, system login, each account) runs a Claude session. */
+			getClaudePickLaunches: {
+				params: { projectId: string; taskId?: string; resume?: boolean; sessionId?: string };
+				response: ClaudePickLaunches;
 			};
 			/** Every login some project pins via `CLAUDE_CONFIG_DIR`, one per directory. */
 			listPinnedClaudeLogins: {

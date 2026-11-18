@@ -282,8 +282,24 @@ export type ProjectClaudeBackend = "bedrock" | "vertex" | "foundry" | "env-auth"
 export interface ProjectClaudeLogin {
 	configDir: string | null;
 	identity: AgentAccountIdentity | null;
-	/** Set when the project env replaces the folder's login, so "no pick" and "this account" launch differently. */
-	backend?: ProjectClaudeBackend | null;
+}
+
+/** Where one launch-picker choice runs a Claude session, as the launcher resolves it. */
+export interface ClaudePickLaunch {
+	/** The session runs in the project's pinned Claude folder. */
+	projectFolder: boolean;
+	/** What the project env changes about Claude that reaches the session; null when it changes nothing or the pick drops it. */
+	backend: ProjectClaudeBackend | null;
+}
+
+/** Each launch-picker row's answer for one project, and for one task and conversation on a resume. */
+export interface ClaudePickLaunches {
+	/** No pick: the launch keeps the default. */
+	none: ClaudePickLaunch;
+	/** An explicit system-login pick. */
+	system: ClaudePickLaunch;
+	/** Each managed Claude account, by id. */
+	accounts: Record<string, ClaudePickLaunch>;
 }
 
 /** One login pinned by at least one project's `CLAUDE_CONFIG_DIR`, with the

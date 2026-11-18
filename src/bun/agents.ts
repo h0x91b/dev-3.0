@@ -890,6 +890,8 @@ async function resolveLaunchAccount(
 	options: CommandOptions | undefined,
 	projectPath: string,
 	worktreePath: string,
+	/** False for a picker's question: no session starts, so the log names no launch. */
+	logsLaunch = true,
 ): Promise<LaunchAccount> {
 	const kind: AgentAccountKind | null = isClaudeCommand(baseCmd, family)
 		? "claude"
@@ -915,7 +917,7 @@ async function resolveLaunchAccount(
 		return { accountId: undefined, resolvedAccountId: undefined, keepsProjectClaudeConfig: true, ...(staleAccountDropped ? { staleAccountDropped } : {}) };
 	}
 	if (pinnedDir && options?.projectEnv && typeof explicit === "string" && claudeLaunchKeepsProjectFolder(explicit, { projectEnv: options.projectEnv, projectPath, worktreePath, resume: options.resume, sessionId: options.sessionId })) {
-		log.info("Picked Claude account is the project folder's own login — keeping the project folder", { accountId: explicit.slice(0, 8) });
+		if (logsLaunch) log.info("Picked Claude account is the project folder's own login — keeping the project folder", { accountId: explicit.slice(0, 8) });
 		return { accountId: undefined, resolvedAccountId: undefined, keepsProjectClaudeConfig: true, projectLoginKept: true, namesLogin: true };
 	}
 	const settle = (accountId: string | null | undefined): LaunchAccount => {
@@ -933,6 +935,16 @@ async function resolveLaunchAccount(
 	if (!wantsAuto) return settle(explicit);
 	const pick = await pickAutoAccount({ kind, exclusions: routing.exclusions, reservationKey: routing.reservationKey });
 	return { accountId: pick.accountId, resolvedAccountId: pick.accountId, pick, namesLogin: true, ...(staleAccountDropped ? { staleAccountDropped } : {}) };
+}
+
+/** What a launch picker's choice does to a Claude session, read off the launcher's own resolver so
+ *  the picker and the launch never disagree. `accountId` is the pick: undefined is no pick, null the
+ *  system login. The project's pinned folder either holds the session or not, and the project env's
+ *  backend keys reach it only when the launch names no login. */
+export async function resolveClaudePickLaunch(accountId: string | null | undefined, launch: ProjectFolderLaunch): Promise<{ projectFolder: boolean; keepsProjectBackend: boolean }> {
+	const options = { accountId, projectEnv: launch.projectEnv, resume: launch.resume, sessionId: launch.sessionId };
+	const account = await resolveLaunchAccount("claude", undefined, {}, options, launch.projectPath, launch.worktreePath, false);
+	return { projectFolder: account.keepsProjectClaudeConfig === true, keepsProjectBackend: account.namesLogin !== true };
 }
 
 /** Inject the active managed account's env into Claude-based commands (agent

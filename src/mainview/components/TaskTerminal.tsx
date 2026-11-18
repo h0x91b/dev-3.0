@@ -908,6 +908,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 							value={resumeAccount !== undefined ? resumeAccount : savedResumeAccount(recoverable.panes, task?.accountId)}
 							onChange={setResumeAccount}
 							projectId={project?.id}
+							taskId={task?.id}
 						/>
 					)}
 					<div className="space-y-3 pt-2">

@@ -8,6 +8,8 @@ import type {
 	AgentAccount,
 	AgentAccountKind,
 	AgentAccountsState,
+	ClaudePickLaunch,
+	ClaudePickLaunches,
 	ClaudeSlotModels,
 	PinnedClaudeLogin,
 	ProjectClaudeLogin,
@@ -24,6 +26,8 @@ import { getPtyPort } from "../pty-server";
 import { ptyWsUrl } from "../pty-server-access";
 import * as data from "../data";
 import { resolveProjectEnv } from "../repo-config";
+import { resolveClaudePickLaunch } from "../agents";
+import { resolveLaunchProject, rootProjectFor } from "../ops-worktree";
 import { homedir } from "node:os";
 import { log } from "./shared";
 
@@ -258,11 +262,32 @@ async function getProjectClaudeLogin(params: { projectId: string }): Promise<Pro
 		const env = await resolveProjectEnv(project);
 		const configDir = pinnedClaudeConfigDir(env.CLAUDE_CONFIG_DIR, homedir(), project.path);
 		if (!configDir) return { configDir: null, identity: null };
-		return { configDir, identity: accounts.readClaudeConfigDirIdentity(configDir), backend: projectClaudeBackend(env) };
+		return { configDir, identity: accounts.readClaudeConfigDirIdentity(configDir) };
 	} catch (err) {
 		log.warn("getProjectClaudeLogin failed", { projectId: params.projectId, error: String(err) });
 		return { configDir: null, identity: null };
 	}
+}
+
+/** Where each launch-picker row runs a Claude session, from the launcher's own resolver. A resume
+ *  names its task and conversation: the project folder holds a pick only if it holds that conversation. */
+async function getClaudePickLaunches(params: { projectId: string; taskId?: string; resume?: boolean; sessionId?: string }): Promise<ClaudePickLaunches> {
+	const project = await data.getProject(params.projectId);
+	const task = params.taskId ? await data.getTask(project, params.taskId) : null;
+	const worktreePath = task?.worktreePath ?? project.path;
+	const projectEnv = task
+		? await resolveProjectEnv(await resolveLaunchProject(project, task, worktreePath), worktreePath, { foreignCode: task.foreignCode })
+		: await resolveProjectEnv(project);
+	const projectPath = task ? rootProjectFor(project, task).path : project.path;
+	const launch = { projectEnv, projectPath, worktreePath, resume: params.resume === true, sessionId: params.sessionId };
+	const backend = pinnedClaudeConfigDir(projectEnv.CLAUDE_CONFIG_DIR, homedir(), projectPath) ? projectClaudeBackend(projectEnv) : null;
+	const resolve = async (accountId: string | null | undefined): Promise<ClaudePickLaunch> => {
+		const pick = await resolveClaudePickLaunch(accountId, launch);
+		return { projectFolder: pick.projectFolder, backend: pick.keepsProjectBackend ? backend : null };
+	};
+	const picks: Record<string, ClaudePickLaunch> = {};
+	for (const account of (await accounts.listAgentAccounts()).claude.accounts) picks[account.id] = await resolve(account.id);
+	return { none: await resolve(undefined), system: await resolve(null), accounts: picks };
 }
 
 /** Every login some project pins via `CLAUDE_CONFIG_DIR`, one entry per
@@ -292,6 +317,7 @@ async function listPinnedClaudeLogins(): Promise<PinnedClaudeLogin[]> {
 
 export const agentAccountHandlers = {
 	getProjectClaudeLogin,
+	getClaudePickLaunches,
 	listPinnedClaudeLogins,
 	listAgentAccounts,
 	importAgentAccount,
