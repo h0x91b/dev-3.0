@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { GlobalSettings } from "../../../shared/types";
 import {
 	LOG_RETENTION_PRESET_DAYS,
@@ -41,10 +41,12 @@ export default function LogRetentionSetting({
 }) {
 	const [usage, setUsage] = useState<LogRetentionUsage | null>(null);
 	const [pending, setPending] = useState(false);
+	const selectRef = useRef<HTMLSelectElement>(null);
+	const asking = useRef(false);
 
 	const reloadUsage = useCallback(async () => {
-		const loaded = await fetchUsage();
-		if (loaded) setUsage(loaded);
+		const fresh = await fetchUsage();
+		if (fresh) setUsage(fresh);
 	}, []);
 
 	// The host announces a saved settings change after it has pruned, so this
@@ -56,10 +58,14 @@ export default function LogRetentionSetting({
 	}, [reloadUsage]);
 
 	async function handleChange(raw: string) {
-		if (!loaded) return;
+		if (!loaded || asking.current) return;
 		const choice: LogRetentionChoice = raw === "forever" ? "forever" : Number(raw);
 		const nextDays = choice === "forever" ? null : choice;
-		setPending(true);
+		asking.current = true;
+		// The confirm hands focus back to what was focused when it opened, and a click does not always
+		// focus a select. Keep it enabled meanwhile: a disabled one cannot take focus back, and a stale
+		// target elsewhere scrolls Settings to it.
+		selectRef.current?.focus({ preventScroll: true });
 		try {
 			if (nextDays !== null && isShorterRetention(resolveLogRetentionDays(globalSettings), nextDays)) {
 				const beyond = (await fetchUsage(nextDays))?.beyond ?? null;
@@ -68,18 +74,20 @@ export default function LogRetentionSetting({
 						title: t("settings.logRetentionConfirmTitle"),
 						message: beyond
 							? t.plural("settings.logRetentionConfirmMessage", beyond.days, {
-									days: String(nextDays),
+									age: t.plural("settings.logRetentionAge", nextDays),
 									size: formatBytesPrecise(beyond.bytes),
 								})
-							: t("settings.logRetentionConfirmUnknown", { days: String(nextDays) }),
+							: t("settings.logRetentionConfirmUnknown", { age: t.plural("settings.logRetentionAge", nextDays) }),
 						confirmLabel: t("settings.logRetentionConfirmLabel"),
 						danger: true,
 					});
 					if (!confirmed) return;
 				}
 			}
+			setPending(true);
 			await onChange(choice, logRetentionChoice(globalSettings));
 		} finally {
+			asking.current = false;
 			setPending(false);
 		}
 	}
@@ -96,6 +104,7 @@ export default function LogRetentionSetting({
 			</label>
 			<p className="text-fg-3 text-sm mb-3">{t("settings.logRetentionDesc")}</p>
 			<select
+				ref={selectRef}
 				id="log-retention"
 				data-testid="log-retention"
 				value={loaded ? String(current) : ""}

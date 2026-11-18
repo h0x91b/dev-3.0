@@ -92,9 +92,9 @@ let lastPrunedDay: string | null = null;
 function pruneIfNeeded(now: Date): void {
 	const today = dayStamp(now);
 	if (lastPrunedDay === today) return;
+	lastPrunedDay = today; // An unusable setting skips the whole day, not every append.
 	const retention = pruneRetentionDays(now);
-	if (!retention) return; // Retry on the next append.
-	lastPrunedDay = today;
+	if (!retention) return;
 	pruneNotificationLog(retention.days, now);
 }
 

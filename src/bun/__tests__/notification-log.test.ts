@@ -188,7 +188,7 @@ describe("notification log on disk", () => {
 		}
 	});
 
-	it("skips the daily prune while settings.json is unreadable and prunes once it is fixed", () => {
+	it("skips the whole day's prune while settings.json is unreadable and prunes on the next day once it is fixed", () => {
 		mkdirSync(notificationLogDir(), { recursive: true });
 		appendFileSync(`${notificationLogDir()}/2001-01-01.jsonl`, "{}\n");
 		try {
@@ -200,6 +200,8 @@ describe("notification log on disk", () => {
 
 			writeFileSync(`${home}/settings.json`, JSON.stringify({}));
 			appendNotificationLog(makeRow(), new Date(2026, 8, 7, 9, 0));
+			expect(readdirSync(notificationLogDir())).toContain("2001-01-01.jsonl");
+			appendNotificationLog(makeRow(), new Date(2026, 8, 8, 9, 0));
 			expect(readdirSync(notificationLogDir())).not.toContain("2001-01-01.jsonl");
 		} finally {
 			rmSync(`${home}/settings.json`, { force: true });

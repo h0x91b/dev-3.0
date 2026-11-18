@@ -2703,6 +2703,14 @@ describe("handlers.saveGlobalSettings", () => {
 			expect(push).toHaveBeenCalledWith("globalSettingsUpdated", expect.objectContaining({ logRetentionDays: 90 }));
 		});
 
+		it("rejects a usage retention that is not a positive whole day count", async () => {
+			const { collectLogRetentionUsage } = await import("../log-retention");
+			for (const retentionDays of [0, -1, 1.5, Number.NaN, "90"]) {
+				await expect(handlers.getLogRetentionUsage({ retentionDays: retentionDays as never })).rejects.toThrow(/Invalid log retention/);
+			}
+			expect(collectLogRetentionUsage).not.toHaveBeenCalled();
+		});
+
 		it("passes the asked retention on when reporting the usage", async () => {
 			const { collectLogRetentionUsage } = await import("../log-retention");
 			vi.mocked(data.loadProjects).mockResolvedValue([]);

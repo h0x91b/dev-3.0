@@ -1182,6 +1182,7 @@ function TrafficView({ projectId, focus, onOpenTask }: Props) {
 								<TrafficPeriodPicker
 									value={windowSize}
 									retentionDays={data.retentionDays}
+									oldestDay={data.oldestDay}
 									onChange={(value) => {
 										setWindowSize(value);
 										clearSelection();

@@ -292,7 +292,7 @@ describe("retention", () => {
 		}
 	});
 
-	it("skips the daily prune while settings.json is unreadable and prunes once it is fixed", () => {
+	it("skips the whole day's prune while settings.json is unreadable and prunes on the next day once it is fixed", () => {
 		const now = new Date(2026, 7, 23, 12, 0, 0);
 		mkdirSync(messageLogDir(project), { recursive: true });
 		writeFileSync(`${messageLogDir(project)}/2001-01-01.jsonl`, serializeAgentMessageLogRow(makeRow({ body: "ancient" })));
@@ -305,6 +305,8 @@ describe("retention", () => {
 
 			writeFileSync(`${home}/settings.json`, JSON.stringify({}));
 			appendAgentMessageLog(project, makeRow({ body: "second" }), now);
+			expect(readdirSync(messageLogDir(project))).toContain("2001-01-01.jsonl");
+			appendAgentMessageLog(project, makeRow({ body: "third" }), new Date(2026, 7, 24, 12, 0, 0));
 			expect(readdirSync(messageLogDir(project))).not.toContain("2001-01-01.jsonl");
 		} finally {
 			rmSync(`${home}/settings.json`, { force: true });

@@ -479,7 +479,9 @@ async function allProjectsForLogs(): Promise<Project[]> {
 
 /** What the logs occupy per day, and what `retentionDays` would delete, by the host's clock. */
 async function getLogRetentionUsage(params?: { retentionDays?: number }): Promise<LogRetentionUsage> {
-	return collectLogRetentionUsage(await allProjectsForLogs(), params?.retentionDays);
+	const retentionDays = params?.retentionDays;
+	if (retentionDays !== undefined && !isRetentionDayCount(retentionDays)) throw new Error(`Invalid log retention: ${String(retentionDays)}`);
+	return collectLogRetentionUsage(await allProjectsForLogs(), retentionDays);
 }
 
 type LogRetentionRequest = { value: LogRetentionValue; expectedCurrent: LogRetentionValue };

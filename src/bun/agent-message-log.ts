@@ -93,9 +93,9 @@ let lastPrunedDay = new Map<string, string>();
 function pruneIfNeeded(project: Project, now: Date): void {
 	const today = dayStamp(now);
 	if (lastPrunedDay.get(project.id) === today) return;
+	lastPrunedDay.set(project.id, today); // An unusable setting skips the whole day, not every append.
 	const retention = pruneRetentionDays(now);
-	if (!retention) return; // Retry on the next append.
-	lastPrunedDay.set(project.id, today);
+	if (!retention) return;
 	pruneAgentMessageLog(project, retention.days, now);
 }
 

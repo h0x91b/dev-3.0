@@ -1136,6 +1136,23 @@ describe("GlobalSettings", () => {
 			info.mockRestore();
 		});
 
+		it("tells the user when changing the log retention failed for any other reason", async () => {
+			setupMocks(mockAgents, { ...mockGlobalSettings });
+			mockedApi.request.setLogRetention.mockRejectedValue(new Error("settings.json is unreadable; not overwriting it"));
+			const error = vi.spyOn(toast, "error").mockImplementation(() => undefined as never);
+			const user = userEvent.setup();
+			renderGlobalSettings("system");
+			await waitForLoad();
+			const select = (await screen.findByTestId("log-retention")) as HTMLSelectElement;
+			await waitFor(() => expect(select).not.toBeDisabled());
+
+			await user.selectOptions(select, "forever");
+
+			await waitFor(() => expect(error).toHaveBeenCalledWith("Could not change the retention. Nothing was changed.", { source: "settings" }));
+			expect(select.value).toBe("30");
+			error.mockRestore();
+		});
+
 		it("round-trips the confirm-before-quit toggle through skipQuitDialog", async () => {
 			setupMocks(mockAgents, { ...mockGlobalSettings, skipQuitDialog: true });
 			const user = userEvent.setup();

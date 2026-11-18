@@ -116,6 +116,38 @@ describe("LogRetentionSetting", () => {
 		});
 	});
 
+	it("moves focus to the select and keeps it enabled while the confirmation is open, so closing it hands focus back there", async () => {
+		const { select } = renderSetting({ logRetentionDays: 365 });
+		const stale = document.createElement("button");
+		document.body.prepend(stale);
+		stale.focus();
+		let focusedDuringConfirm: Element | null = null;
+		let disabledDuringConfirm = true;
+		mocks.confirm.mockImplementation(async () => {
+			focusedDuringConfirm = document.activeElement;
+			disabledDuringConfirm = select().disabled;
+			return false;
+		});
+		await userEvent.selectOptions(select(), "90");
+		await waitFor(() => expect(mocks.confirm).toHaveBeenCalled());
+		expect(focusedDuringConfirm).toBe(select());
+		expect(disabledDuringConfirm).toBe(false);
+		stale.remove();
+	});
+
+	it("names the new retention in the right plural form", async () => {
+		hostAnswer({ 1: { days: 1, bytes: 10 } });
+		const { select } = renderSetting({ logRetentionDays: 365 });
+		const one = document.createElement("option");
+		one.value = "1";
+		select().appendChild(one);
+		await userEvent.selectOptions(select(), "1");
+		await waitFor(() => expect(mocks.confirm).toHaveBeenCalled());
+		expect(mocks.confirm).toHaveBeenCalledWith(
+			expect.objectContaining({ message: "History older than 1 day will be deleted: 1 day, 10 B. This can't be undone." }),
+		);
+	});
+
 	it("lowers from a non-standard stored value by its real number of days", async () => {
 		hostAnswer({ 90: { days: 1, bytes: 10 } });
 		const { select, onChange } = renderSetting({ logRetentionDays: 120 });
