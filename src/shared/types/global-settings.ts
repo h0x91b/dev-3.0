@@ -100,6 +100,8 @@ export interface GlobalSettings {
 	updateChannel: UpdateChannel;
 	theme?: "dark" | "light" | "beige" | "system";
 	resolvedTheme?: "dark" | "light";
+	/** Beige theme depth, 0 (lightest) … 1 (darkest); drives the tmux palette. */
+	beigeDepth?: number;
 	/**
 	 * The id PostHog buckets this install by, owned by bun so every renderer —
 	 * desktop window and remote browser alike — reports the same one. Seeded once

@@ -28,6 +28,7 @@ import { resolveNeedsYouSoundToggles } from "../shared/task-sound-statuses";
 import { withFileLock } from "./file-lock";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
+import { clampBeigeDepth } from "../shared/beige-palette";
 
 const log = createLogger("settings");
 
@@ -194,6 +195,7 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		updateChannel: coerceUpdateChannel(d.updateChannel, hostPublishesCanary()),
 		theme: d.theme === "light" || d.theme === "beige" || d.theme === "system" || d.theme === "dark" ? d.theme : undefined,
 		resolvedTheme: d.resolvedTheme === "light" || d.resolvedTheme === "dark" ? d.resolvedTheme : undefined,
+		beigeDepth: typeof d.beigeDepth === "number" ? clampBeigeDepth(d.beigeDepth) : undefined,
 		// Machine identity for analytics — opaque string, never regenerated on load.
 		analyticsDistinctId: typeof d.analyticsDistinctId === "string" && d.analyticsDistinctId
 			? d.analyticsDistinctId

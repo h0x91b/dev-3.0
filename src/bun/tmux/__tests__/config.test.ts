@@ -14,9 +14,11 @@ import {
 	setActiveTmuxTheme,
 	buildThemeConfig,
 	PANE_CWD_FORMAT,
+	setTmuxBeigeDepth,
 	setTmuxPaneDimming,
 	setTmuxPaneTitles,
 	tmuxConfigPath,
+	tmuxThemeFor,
 	TMUX_PANE_DIMMING_OPTION,
 	TMUX_PANE_TITLES_OPTION,
 	tmuxClientCwd,
@@ -257,5 +259,28 @@ describe("buildThemeConfig", () => {
 	it("selects the requested Catppuccin flavor", () => {
 		expect(buildThemeConfig("mocha")).toContain('@catppuccin_flavor "mocha"');
 		expect(buildThemeConfig("latte")).toContain('@catppuccin_flavor "latte"');
+	});
+});
+
+describe("beige tmux theme", () => {
+	it("maps only the beige preference to the beige palette", () => {
+		expect(tmuxThemeFor("beige", "light")).toBe("beige");
+		expect(tmuxThemeFor("light", "light")).toBe("light");
+		expect(tmuxThemeFor("system", "dark")).toBe("dark");
+		expect(tmuxThemeFor(undefined, "light")).toBe("light");
+	});
+
+	it("bakes the depth into the inlined palette and the config file name", () => {
+		setTmuxBeigeDepth(0);
+		const light = buildThemeConfig("beige");
+		const lightPath = tmuxConfigPath("beige", true);
+		setTmuxBeigeDepth(1);
+		const dark = buildThemeConfig("beige");
+		expect(light).toContain('set -gq @thm_bg "#fcfbf8"');
+		expect(dark).toContain('set -gq @thm_bg "#e8e2d5"');
+		expect(light).not.toContain("catppuccin_beige_tmux.conf");
+		expect(lightPath).toContain("dev3-tmux-beige0-dimmed");
+		expect(tmuxConfigPath("beige", true)).toContain("dev3-tmux-beige100-dimmed");
+		setTmuxBeigeDepth(0.3);
 	});
 });
