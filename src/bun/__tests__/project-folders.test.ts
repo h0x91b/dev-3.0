@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Project } from "../../shared/types";
@@ -62,6 +62,21 @@ describe("collectProjectFolders", () => {
 	it("drops a folder inside the project and keeps one that contains it", async () => {
 		const folders = await collectProjectFolders(project({ extraFolders: [join(projectDir, "src"), "./docs-inside", tmp] }));
 		expect(folders.map((f) => f.path)).toEqual([tmp, lib, docs]);
+	});
+
+	it("drops a symlink into the project or to a folder already listed", async () => {
+		const intoProject = join(tmp, "link-into-project");
+		const toDocs = join(tmp, "link-to-docs");
+		mkdirSync(join(projectDir, "inner"), { recursive: true });
+		symlinkSync(join(projectDir, "inner"), intoProject);
+		symlinkSync(docs, toDocs);
+		try {
+			const folders = await collectProjectFolders(project({ extraFolders: [intoProject, docs, toDocs] }));
+			expect(folders.map((f) => f.path)).toEqual([docs, lib]);
+		} finally {
+			rmSync(intoProject);
+			rmSync(toDocs);
+		}
 	});
 
 	it("resolves relative paths against the project and ~ against home", async () => {

@@ -1,4 +1,4 @@
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, resolve as resolvePath, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -154,6 +154,11 @@ export async function readWorkspaceFolders(projectPath: string): Promise<string[
 	return folders;
 }
 
+/** The path with symlinks resolved; a missing path keeps its text form. */
+async function realPathOr(path: string): Promise<string> {
+	return realpath(path).catch(() => path);
+}
+
 async function isDirectory(path: string): Promise<boolean> {
 	try {
 		return (await stat(path)).isDirectory();
@@ -171,25 +176,27 @@ async function currentBranch(path: string): Promise<string | undefined> {
 /** `project` must already be resolved through the config cascade, with `env` set to its launch env. */
 export async function collectProjectFolders(project: Project, opts: { withBranch?: boolean } = {}): Promise<ProjectFolder[]> {
 	if (project.kind === "virtual" || !project.path) return [];
-	const own = expandPath(project.path, project.path);
+	// Compared by real path, so a symlink into the project or to a listed folder adds no second tree.
+	const own = await realPathOr(expandPath(project.path, project.path));
 	const seen = new Set<string>([own]);
 	const candidates: { path: string; source: ProjectFolder["source"] }[] = [];
-	const add = (raw: string, source: ProjectFolder["source"]) => {
+	const add = async (raw: string, source: ProjectFolder["source"]) => {
 		if (isNetworkPath(raw)) {
 			log.warn("Skipping a network path in the project's extra folders", { source });
 			return;
 		}
 		const path = expandPath(raw, project.path);
+		const real = await realPathOr(path);
 		// A folder inside the project is already in its tree. A folder that contains the project stays: it is a wider grant worth seeing.
-		if (seen.has(path) || path.startsWith(own + sep)) return;
-		seen.add(path);
+		if (seen.has(real) || real.startsWith(own + sep)) return;
+		seen.add(real);
 		candidates.push({ path, source });
 	};
-	for (const raw of project.extraFolders ?? []) if (raw.trim()) add(raw, "dev3");
+	for (const raw of project.extraFolders ?? []) if (raw.trim()) await add(raw, "dev3");
 	for (const file of claudeSettingsFiles(project.path, claudeConfigDirFor(project))) {
-		for (const raw of await readAdditionalDirectories(file)) add(raw, "claude");
+		for (const raw of await readAdditionalDirectories(file)) await add(raw, "claude");
 	}
-	for (const raw of await readWorkspaceFolders(project.path)) add(raw, "vscode");
+	for (const raw of await readWorkspaceFolders(project.path)) await add(raw, "vscode");
 	return Promise.all(candidates.map(async ({ path, source }) => {
 		const exists = await isDirectory(path);
 		const branch = opts.withBranch && exists ? await currentBranch(path) : undefined;
