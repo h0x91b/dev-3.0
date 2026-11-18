@@ -15,11 +15,20 @@ const BASE_ENV_KEYS = new Set([
 // DEV3_ keys are dev3's own launch settings (DEV3_HOME, DEV3_PORT*, DEV3_QA_SCOPE, ...) and stay.
 const BASE_ENV_PREFIXES = ["DEV3_", "BUN_", "LC_", "XDG_", "XPC_", "__CF", "GDK_", "GTK_", "QT_", "SDL_"];
 
-/** The per-task keys a pane launch writes. The app may read them; the tmux server must not get them. */
-const TASK_WIRING_PREFIXES = ["DEV3_TASK_", "DEV3_WORKTREE_", "DEV3_PROJECT_", "DEV3_PORT"];
-const TASK_WIRING_KEYS = new Set(["DEV3_BRANCH_NAME", "DEV3_DEV_SERVER", "DEV3_ARTIFACT_TEMPLATE_DIR", "DEV3_LEAN_PROTOCOL", "DEV3_PANE_ID"]);
+/**
+ * The DEV3_ keys that describe the app instance rather than the pane that started it, so a tmux
+ * server or native host the app starts may keep them. Every other DEV3_ key is per-task or
+ * per-pane wiring (task identity, ports, artifact template, dev server, lean protocol, pane id):
+ * an allowlist, so a key a pane builder adds later is dropped without a change here.
+ */
+const APP_GLOBAL_DEV3_KEYS = new Set([
+	"DEV3_HOME", "DEV3_LOG_DIR", "DEV3_LOG_LEVEL", "DEV3_DEBUG", "DEV3_QA_SCOPE", "DEV3_FRESH_START",
+	"DEV3_TELEMETRY", "DEV3_CHANNEL", "DEV3_DISABLE_UPDATES", "DEV3_NATIVE_SESSIONS_DIR", "DEV3_EXPECT_HOST_EXECUTABLE",
+]);
+const APP_GLOBAL_DEV3_PREFIXES = ["DEV3_REMOTE_", "DEV3_NATIVE_HOST_", "DEV3_TERMINAL_HOST_"];
 
-let launchTaskWiringKeys: string[] = [];
+/** The launch value of each task wiring key, from the last reset. */
+let launchTaskWiring = new Map<string, string | undefined>();
 
 /** True when `env` comes from a pane on dev3's own tmux server (task, Repo terminal or dev server). */
 export function startedInsideDev3Pane(env: Record<string, string | undefined>): boolean {
@@ -32,8 +41,10 @@ function isBaseKey(key: string): boolean {
 	return BASE_ENV_KEYS.has(key) || BASE_ENV_PREFIXES.some((prefix) => key.startsWith(prefix));
 }
 
-function isTaskWiringKey(key: string): boolean {
-	return TASK_WIRING_KEYS.has(key) || TASK_WIRING_PREFIXES.some((prefix) => key.startsWith(prefix));
+/** True for a DEV3_ key that a pane launch writes for its own task or pane. */
+export function isTaskWiringKey(key: string): boolean {
+	if (!key.startsWith("DEV3_")) return false;
+	return !APP_GLOBAL_DEV3_KEYS.has(key) && !APP_GLOBAL_DEV3_PREFIXES.some((prefix) => key.startsWith(prefix));
 }
 
 /**
@@ -47,21 +58,25 @@ export function resetEnvFromDev3Pane(
 	if (platform === "win32" || !startedInsideDev3Pane(env)) return [];
 	const removed = Object.keys(env).filter((key) => !isBaseKey(key));
 	for (const key of removed) delete env[key];
-	launchTaskWiringKeys = Object.keys(env).filter(isTaskWiringKey);
+	launchTaskWiring = new Map(Object.keys(env).filter(isTaskWiringKey).map((key) => [key, env[key]]));
 	return removed;
 }
 
 /**
- * `env` with the per-task keys the app was started with set to undefined, for a tmux server it
- * starts. Undefined, not deleted: the spawn wrapper merges process.env back in, and undefined unsets.
+ * `env` with each task wiring key the app was started with set to undefined, for a tmux server or
+ * native host it starts. A key whose value differs from the launch value was set on purpose later
+ * (a new task's id or port) and stays. An absent key is set too: the spawn wrapper merges
+ * process.env back in, and only undefined unsets there.
  */
 export function withoutLaunchTaskWiring(env: Record<string, string | undefined>): Record<string, string | undefined> {
-	if (launchTaskWiringKeys.length === 0) return env;
+	if (launchTaskWiring.size === 0) return env;
 	const next = { ...env };
-	for (const key of launchTaskWiringKeys) next[key] = undefined;
+	for (const [key, launchValue] of launchTaskWiring) {
+		if (next[key] === undefined || next[key] === launchValue) next[key] = undefined;
+	}
 	return next;
 }
 
 export function _resetLaunchTaskWiringForTests(): void {
-	launchTaskWiringKeys = [];
+	launchTaskWiring = new Map();
 }

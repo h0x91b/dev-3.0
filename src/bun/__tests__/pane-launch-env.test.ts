@@ -1,11 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	_resetLaunchTaskWiringForTests,
+	isTaskWiringKey,
 	resetEnvFromDev3Pane,
 	startedInsideDev3Pane,
 	withoutLaunchTaskWiring,
 } from "../pane-launch-env";
 import { TmuxClient } from "../tmux/client";
+import { buildTaskEnv } from "../agents";
+import { buildNamedPortEnv, buildPortEnv } from "../port-pool";
+import { buildAgentEnv, buildProjectTerminalEnv, buildTaskLifecycleEnv, TASK_SCOPED_ENV_KEYS } from "../rpc-handlers/shared-pure";
+import { INHERITED_TASK_ENV_KEYS } from "../launch-origin";
+import type { Project, Task } from "../../shared/types";
 
 type Env = Record<string, string | undefined>;
 
@@ -98,11 +104,26 @@ describe("withoutLaunchTaskWiring", () => {
 	it("drops the launching task's keys but keeps dev3's launch settings and later values", () => {
 		resetEnvFromDev3Pane(agentPaneEnv(), "darwin");
 
-		expect(withoutLaunchTaskWiring({ HOME: "/Users/me", DEV3_HOME: "/h", DEV3_QA_SCOPE: "0", DEV3_TASK_ID: "task-a", DEV3_PORT0: "17747", DEV3_PROJECT_PATH: "/p", DEV3_WORKTREE_ROOT: "/w", DEV3_BRANCH_NAME: "b", DEV3_PORTS: "x", DEV3_TASK_SEQ: "1" }))
-			.toEqual({ HOME: "/Users/me", DEV3_HOME: "/h", DEV3_QA_SCOPE: "0" });
+		expect(withoutLaunchTaskWiring({ HOME: "/Users/me", DEV3_HOME: "/Users/me/.dev3.0", DEV3_QA_SCOPE: "0", DEV3_TASK_ID: "task-a", DEV3_PORT0: "17747", DEV3_PROJECT_PATH: "/projects/a", DEV3_WORKTREE_ROOT: "/projects/a", DEV3_BRANCH_NAME: "fix/a", DEV3_PORTS: "17747,17748", DEV3_TASK_SEQ: "78-1" }))
+			.toEqual({ HOME: "/Users/me", DEV3_HOME: "/Users/me/.dev3.0", DEV3_QA_SCOPE: "0", DEV3_TASK_ID: undefined, DEV3_PORT0: undefined, DEV3_PROJECT_PATH: undefined, DEV3_WORKTREE_ROOT: undefined, DEV3_BRANCH_NAME: undefined, DEV3_PORTS: undefined, DEV3_TASK_SEQ: undefined });
 	});
 
-	/** Runs `body` with the launching task's keys in process.env, as in an app started from a pane. */
+	it("drops the artifact template mode, so an off project does not switch every other project off", () => {
+		resetEnvFromDev3Pane({ ...agentPaneEnv(), DEV3_ARTIFACT_TEMPLATE: "off", DEV3_ARTIFACT_TEMPLATE_DIR: "/projects/a/.dev3/artifact" }, "darwin");
+
+		const env = withoutLaunchTaskWiring({ DEV3_ARTIFACT_TEMPLATE: "off", DEV3_ARTIFACT_TEMPLATE_DIR: "/projects/a/.dev3/artifact" });
+
+		expect(env).toEqual({ DEV3_ARTIFACT_TEMPLATE: undefined, DEV3_ARTIFACT_TEMPLATE_DIR: undefined });
+	});
+
+	it("keeps a wiring key a caller set to a new value after the launch", () => {
+		resetEnvFromDev3Pane(agentPaneEnv(), "darwin");
+
+		expect(withoutLaunchTaskWiring({ DEV3_TASK_ID: "task-b", DEV3_PORT0: "18000", DEV3_TASK_SEQ: "78-1" }))
+			.toEqual({ DEV3_TASK_ID: "task-b", DEV3_PORT0: "18000", DEV3_TASK_SEQ: undefined });
+	});
+
+		/** Runs `body` with the launching task's keys in process.env, as in an app started from a pane. */
 	async function withTaskEnv(body: () => Promise<void>): Promise<void> {
 		const keys = { DEV3_TASK_ID: "task-a", DEV3_PORT0: "17747", DEV3_WORKTREE_ROOT: "/projects/a" };
 		const before = Object.fromEntries(Object.keys(keys).map((key) => [key, process.env[key]]));
@@ -173,5 +194,37 @@ describe("Linux desktop session keys", () => {
 		expect(Object.keys(env).sort()).toEqual([
 			"DEV3_TASK_ID", "DISPLAY", "GDK_BACKEND", "GTK_IM_MODULE", "QT_IM_MODULE", "XAUTHORITY", "XMODIFIERS", "container",
 		]);
+	});
+});
+
+describe("isTaskWiringKey", () => {
+	const project = { id: "p", name: "a", path: "/projects/a" } as Project;
+	const task = { id: "task-a", seq: 78, title: "Fix a", branchName: "fix/a" } as Task;
+
+	it("counts every DEV3_ key the pane env builders write as wiring", () => {
+		const builtEnvs = [
+			buildTaskEnv(project, "Fix a", "task-a", "/w"),
+			buildAgentEnv({}, "task-a"),
+			buildTaskLifecycleEnv(project, task, "/w", "fix/a"),
+			buildProjectTerminalEnv(project, {}),
+			buildPortEnv([17747, 17748, 17749]),
+			buildNamedPortEnv({ api: 17750 }),
+		];
+		// Written inline at their call sites: artifact template, dev server pane, lean protocol, pane id.
+		const inlineKeys = ["DEV3_ARTIFACT_TEMPLATE", "DEV3_ARTIFACT_TEMPLATE_DIR", "DEV3_DEV_SERVER", "DEV3_WORKTREE_ROOT", "DEV3_LEAN_PROTOCOL", "DEV3_PANE_ID"];
+		const keys = [
+			...builtEnvs.flatMap((env) => Object.keys(env)), ...inlineKeys, ...TASK_SCOPED_ENV_KEYS, ...INHERITED_TASK_ENV_KEYS,
+		].filter((key) => key.startsWith("DEV3_"));
+
+		expect(keys.length).toBeGreaterThan(10);
+		expect(keys.filter((key) => !isTaskWiringKey(key))).toEqual([]);
+	});
+
+	it("treats an unknown DEV3_ key as wiring and keeps the app-wide ones", () => {
+		expect(isTaskWiringKey("DEV3_SOMETHING_ADDED_LATER")).toBe(true);
+		for (const key of ["DEV3_HOME", "DEV3_LOG_DIR", "DEV3_QA_SCOPE", "DEV3_FRESH_START", "DEV3_REMOTE_PORT", "DEV3_NATIVE_HOST_RUNTIME"]) {
+			expect(isTaskWiringKey(key)).toBe(false);
+		}
+		expect(isTaskWiringKey("CLAUDE_CONFIG_DIR")).toBe(false);
 	});
 });
