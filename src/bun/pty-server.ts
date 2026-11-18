@@ -171,6 +171,7 @@ interface PtySession {
 	 * deleting `taskId` for pane 2 would drop pane 1 instead.
 	 */
 	registryKey: string;
+	lastOutputAt: number;
 	/** Guards against two concurrent reattach attempts for one native session. */
 	nativeAttaching: boolean;
 	/** The host binding is being replaced; no viewer may be told it is the writer. */
@@ -332,6 +333,7 @@ export function createSession(
 		proc: null,
 		native: null,
 		registryKey: taskId,
+		lastOutputAt: Date.now(),
 		nativeAttaching: false,
 		nativeRecovering: false,
 		nativeStream: null,
@@ -362,7 +364,10 @@ export function createSession(
 /** Feed one chunk of PTY bytes through the same pipeline both backends share. */
 function ingestPtyOutput(session: PtySession, data: string | Uint8Array): void {
 	const str = typeof data === "string" ? data : session.decoder.decode(data, { stream: true });
-	if (session.backend === "native") recordTaskActivity(session.taskId);
+	if (session.backend === "native") {
+		session.lastOutputAt = Date.now();
+		recordTaskActivity(session.taskId, session.lastOutputAt);
+	}
 	const cleaned = handleOsc52(str, session);
 	checkForBell(cleaned, session.taskId);
 	if (!cleaned) return;
@@ -495,6 +500,7 @@ export async function createNativeTaskSession(
 		proc: null,
 		native: null,
 		registryKey: taskId,
+		lastOutputAt: Date.now(),
 		nativeAttaching: false,
 		nativeRecovering: false,
 		nativeStream: new NativeBridgeJournal(),
@@ -579,6 +585,7 @@ export async function reattachNativeTaskSession(taskId: string, projectId: strin
 		proc: null,
 		native: null,
 		registryKey: taskId,
+		lastOutputAt: Date.now(),
 		nativeAttaching: false,
 		nativeRecovering: false,
 		nativeStream: new NativeBridgeJournal(),
@@ -667,6 +674,7 @@ export async function ensureNativePanePtySession(
 		proc: null,
 		native: null,
 		registryKey: key,
+		lastOutputAt: Date.now(),
 		nativeAttaching: false,
 		nativeRecovering: false,
 		nativeStream: new NativeBridgeJournal(),
@@ -981,7 +989,7 @@ export function getSessionTmuxName(key: string): string {
 export function getNativeTaskOutputTime(taskId: string, paneIds: string[]): number | null {
 	const native = [...sessions.values()].filter(session => session.taskId === taskId && session.backend === "native" && session.native && !session.nativeAttaching);
 	if (!paneIds.length || paneIds.some(id => !native.some(session => session.native?.paneId === id))) return null;
-	return native.length ? Math.max(...native.map(session => session.lastOutputTime)) : null;
+	return native.length ? Math.max(...native.map(session => session.lastOutputAt)) : null;
 }
 
 export function getSessionType(key: string): PtySessionType | null {
