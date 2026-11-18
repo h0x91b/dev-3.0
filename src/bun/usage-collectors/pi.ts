@@ -1,5 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { providerBilling } from "../../shared/agent-billing";
+import { readProviderAuthTypes } from "./provider-auth";
 import type { TokenCounts } from "../../shared/agent-pricing";
 import { mergeUsageRecord, type UsageState } from "../rpc-handlers/agent-usage-parse";
 
@@ -65,7 +67,7 @@ function usageOf(flavor: PiFlavor, entry: Record<string, unknown>): { model: str
 }
 
 /** Forks and branch extracts copy entries verbatim, so identity is the entry, not the file. */
-export function foldPiEntry(state: UsageState, flavor: PiFlavor, value: unknown): void {
+export function foldPiEntry(state: UsageState, flavor: PiFlavor, value: unknown, authTypes: ReadonlyMap<string, string> = new Map()): void {
 	const entry = object(value);
 	if (!entry || typeof entry.id !== "string" || !entry.id) return;
 	const found = usageOf(flavor, entry);
@@ -73,24 +75,25 @@ export function foldPiEntry(state: UsageState, flavor: PiFlavor, value: unknown)
 	const counts = tokenCounts(found.usage);
 	const timestamp = timestampOf(entry, found.message);
 	if (!counts || timestamp === null) return;
-	mergeUsageRecord(state, `${flavor}:${JSON.stringify([entry.id, timestamp])}`, { model: found.model, timestamp, counts });
+	const billing = providerBilling(found.message?.provider ?? entry.provider, authTypes);
+	mergeUsageRecord(state, `${flavor}:${JSON.stringify([entry.id, timestamp])}`, { model: found.model, timestamp, counts, ...(billing ? { billing } : {}) });
 }
 
-function collectSessionFiles(state: UsageState, flavor: PiFlavor, dir: string): void {
+function collectSessionFiles(state: UsageState, flavor: PiFlavor, dir: string, authTypes: ReadonlyMap<string, string>): void {
 	let entries: import("node:fs").Dirent[];
 	try { entries = readdirSync(dir, { withFileTypes: true }); }
 	catch { return; }
 	for (const entry of entries) {
 		const path = join(dir, entry.name);
 		// omp nests subagent and advisor sessions below their parent session.
-		if (entry.isDirectory()) collectSessionFiles(state, flavor, path);
+		if (entry.isDirectory()) collectSessionFiles(state, flavor, path, authTypes);
 		else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
 			let text: string;
 			try { text = readFileSync(path, "utf8"); }
 			catch { continue; }
 			for (const line of text.split("\n")) {
 				if (!line.trim()) continue;
-				try { foldPiEntry(state, flavor, JSON.parse(line)); }
+				try { foldPiEntry(state, flavor, JSON.parse(line), authTypes); }
 				catch { /* A partially written final line must not hide earlier usage. */ }
 			}
 		}
@@ -99,7 +102,8 @@ function collectSessionFiles(state: UsageState, flavor: PiFlavor, dir: string): 
 
 /** Read only the per-response usage of every listed agent dir's `sessions` store. */
 export function collectPiUsage(state: UsageState, flavor: PiFlavor, sessionRoots: string[]): void {
-	for (const root of new Set(sessionRoots)) collectSessionFiles(state, flavor, root);
+	// `<agentDir>/sessions` sits beside that agent dir's own auth.json.
+	for (const root of new Set(sessionRoots)) collectSessionFiles(state, flavor, root, readProviderAuthTypes(join(dirname(root), "auth.json")));
 }
 
 /** Default, XDG and managed-account session stores; custom profiles and session-dir overrides are not read. */

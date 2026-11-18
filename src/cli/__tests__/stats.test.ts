@@ -38,7 +38,8 @@ function statEvent(overrides: Partial<ProductivityStatEvent> = {}): Productivity
 function usageDay(overrides: Partial<AgentUsageDay> = {}): AgentUsageDay {
 	return {
 		date: "2026-10-20", startMs: new Date(2026, 9, 20).getTime(), source: "claude", inputTokens: 1500,
-		outputTokens: 2_500_000, cacheCreationInputTokens: 0, cacheReadInputTokens: 0, costUsd: 3.5, fullyPriced: true,
+		outputTokens: 2_500_000, cacheCreationInputTokens: 0, cacheReadInputTokens: 0, costUsd: 3.5,
+		apiCostUsd: 1, subscriptionCostUsd: 2, unclassifiedCostUsd: 0.5, fullyPriced: true,
 		...overrides,
 	};
 }
