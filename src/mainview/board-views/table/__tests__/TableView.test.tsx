@@ -72,6 +72,7 @@ async function renderTable(setup: Setup = {}) {
 		query: "",
 		setQuery: vi.fn(),
 		scopeTasks: setup.scopeTasks ?? tasks,
+		visibility: "all",
 		tasks,
 		matches: setup.matches ?? (() => false),
 		lineageNode: () => null,

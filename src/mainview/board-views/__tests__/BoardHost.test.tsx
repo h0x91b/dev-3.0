@@ -10,9 +10,13 @@ import { setHiddenControlsForTests } from "../../hidden-controls";
 import BoardHost from "../BoardHost";
 import { getBoardRoot, getBoardViewRegistry, resetBoardRootForTests, startBoardViews } from "../root";
 import { installKanbanView } from "../kanban";
+import { installTreeView, TREE_VIEW_ID } from "../tree";
+import { installTableView } from "../table";
+import { installAttentionView } from "../attention";
 import { useBoard } from "../react";
 import { resetBoardViewStateCacheForTests } from "../useBoardViewState";
-import { defaultBoardViewState, withViewType } from "../../../shared/board-view-state";
+import { VISIBILITY_READ_TIMEOUT_MS, resetTaskVisibilityForTests } from "../useTaskVisibility";
+import { ATTENTION_VIEW_ID, defaultBoardViewState, withViewType } from "../../../shared/board-view-state";
 import { _resetTaskLineageStoreForTest } from "../../hooks/useTaskLineage";
 import { _resetEpicStoresForTest } from "../../hooks/useEpics";
 import { setStreamerMode } from "../../streamer-mode";
@@ -33,7 +37,7 @@ vi.mock("../../rpc", () => ({
 			getEpicMembers: vi.fn().mockResolvedValue([]),
 			getBoardViewState: vi.fn(),
 			setBoardViewState: vi.fn(async ({ state }) => state),
-			getBoardFilterState: vi.fn().mockResolvedValue({ statuses: [] }),
+			getBoardFilterState: vi.fn().mockResolvedValue({ visibility: "all" }),
 			setBoardFilterState: vi.fn(async ({ state }) => state),
 			createLabel: vi.fn(),
 			getGlobalSettings: vi.fn().mockResolvedValue({ taskSortOrder: "oldest-first" }),
@@ -120,6 +124,9 @@ function registerView(id: string, opts: { supportsNarrow?: boolean; component?: 
 beforeEach(() => {
 	resetBoardRootForTests();
 	resetBoardViewStateCacheForTests();
+	resetTaskVisibilityForTests();
+	vi.mocked(api.request.getBoardFilterState).mockResolvedValue({ visibility: "all" });
+	vi.mocked(api.request.setBoardFilterState).mockClear();
 	resetBoardViewCommandsForTests();
 	resetPreviousBoardViewsForTests();
 	resetBoardPluginsForTests();
@@ -133,24 +140,177 @@ describe("BoardHost", () => {
 	it("renders Kanban and provides ctx.board under StrictMode", async () => {
 		startBoardViews([installKanbanView]);
 		renderHost({ strict: true });
-		expect(screen.getByTestId("kanban")).toHaveAttribute("data-total", "2");
+		expect(await screen.findByTestId("kanban")).toHaveAttribute("data-total", "2");
 		await waitFor(() => expect(getBoardViewRegistry().list().map((v) => v.def.id)).toEqual(["builtin:kanban"]));
 		expect(getBoardRoot().board.scope).toEqual({ kind: "project", id: "p1", projectIds: ["p1"] });
 		expect(getBoardRoot().board.tasks().map((t) => t.id)).toEqual(["t1", "t2"]);
 	});
 
-	it("renders Kanban on the first frame, before any plugin has registered", () => {
+	it("renders Kanban before any plugin has registered, once the saved visibility has settled", async () => {
 		renderHost();
-		expect(screen.getByTestId("kanban")).toBeInTheDocument();
+		expect(await screen.findByTestId("kanban")).toBeInTheDocument();
 	});
 
-	it("filters through the shared row: views get scope ∩ query, all statuses", async () => {
+	it("filters through the shared row: views get board ∩ query, all statuses", async () => {
 		renderHost();
+		await screen.findByTestId("kanban");
 		fireEvent.change(screen.getByRole("textbox", { name: /search/i }), { target: { value: "beta" } });
 		expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t2");
 		expect(screen.getByTestId("kanban")).toHaveAttribute("data-total", "2");
 		expect(getBoardRoot().board.query).toBe("beta");
 		expect(getBoardRoot().board.matches(tasks[0], "alpha")).toBe(true);
+	});
+
+	it("hides completed and cancelled tasks from tasks() under Active, keeping scopeTasks() whole", async () => {
+		const list = [...tasks, makeTask("t3", "gamma", { status: "cancelled" })];
+		renderHost({ tasks: list });
+		expect(await screen.findByTestId("kanban")).toHaveAttribute("data-shown", "t1,t2,t3");
+		fireEvent.click(screen.getByRole("radio", { name: "Active" }));
+		expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t1");
+		expect(screen.getByTestId("kanban")).toHaveAttribute("data-total", "3");
+		await waitFor(() => expect(api.request.setBoardFilterState).toHaveBeenCalledWith({ board: { kind: "project", id: "p1" }, state: { visibility: "active" } }));
+		fireEvent.click(screen.getByRole("radio", { name: "All" }));
+		expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t1,t2,t3");
+	});
+
+	it("exposes the Active | All choice through ctx.board.visibility()", async () => {
+		renderHost();
+		await screen.findByTestId("kanban");
+		expect(getBoardRoot().board.visibility()).toBe("all");
+		fireEvent.click(screen.getByRole("radio", { name: "Active" }));
+		expect(getBoardRoot().board.visibility()).toBe("active");
+	});
+
+	it("tells how many finished tasks a search hides under Active, and Show all reveals them", async () => {
+		vi.mocked(api.request.getBoardFilterState).mockResolvedValue({ visibility: "active" });
+		renderHost();
+		await waitFor(() => expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t1"));
+		expect(screen.queryByTestId("hidden-by-visibility-notice")).not.toBeInTheDocument();
+		fireEvent.change(screen.getByRole("textbox", { name: /search/i }), { target: { value: "beta" } });
+		expect(screen.getByTestId("hidden-by-visibility-notice")).toHaveTextContent("1 finished task hidden");
+		expect(screen.getByRole("radiogroup")).not.toHaveClass("opacity-60");
+		fireEvent.click(screen.getByRole("button", { name: "Show all" }));
+		expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t2");
+		expect(screen.queryByTestId("hidden-by-visibility-notice")).not.toBeInTheDocument();
+	});
+
+	it.each([
+		["builtin:table", true],
+		[ATTENTION_VIEW_ID, false],
+	])("shows the hidden-tasks notice on %s only if the view does not own status visibility: %s", async (viewId, expected) => {
+		const height = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(800);
+		const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1200);
+		try {
+			startBoardViews([installKanbanView, installTableView, installAttentionView]);
+			vi.mocked(api.request.getBoardViewState).mockResolvedValue(withViewType(defaultBoardViewState(), "wide", viewId));
+			vi.mocked(api.request.getBoardFilterState).mockResolvedValue({ visibility: "active" });
+			renderHost();
+			await waitFor(() => expect(screen.getByRole("radio", { name: "Active" })).toHaveAttribute("aria-checked", "true"));
+			await waitFor(() => expect(getBoardRoot().board.visibility()).toBe("active"));
+			fireEvent.change(screen.getByRole("textbox", { name: /search/i }), { target: { value: "beta" } });
+			await waitFor(() => expect(getBoardRoot().board.query).toBe("beta"));
+			if (expected) expect(await screen.findByTestId("hidden-by-visibility-notice")).toBeInTheDocument();
+			else {
+				await screen.findByTestId("attention-view");
+				expect(screen.queryByTestId("hidden-by-visibility-notice")).not.toBeInTheDocument();
+			}
+		} finally {
+			height.mockRestore();
+			width.mockRestore();
+		}
+	});
+
+	it("dims the switch while a status token overrides it", async () => {
+		renderHost();
+		await screen.findByTestId("kanban");
+		fireEvent.change(screen.getByRole("textbox", { name: /search/i }), { target: { value: "status:completed" } });
+		expect(screen.getByRole("radiogroup")).toHaveClass("opacity-60");
+	});
+
+	it("never renders finished tasks in the first frame of a board saved as Active", async () => {
+		let resolveRead!: (v: { visibility: "active" }) => void;
+		vi.mocked(api.request.getBoardFilterState).mockReturnValue(new Promise((r) => { resolveRead = r; }));
+		renderHost();
+		expect(screen.queryByTestId("kanban")).not.toBeInTheDocument();
+		expect(screen.getByRole("radiogroup")).toBeInTheDocument();
+		await act(async () => resolveRead({ visibility: "active" }));
+		expect(await screen.findByTestId("kanban")).toHaveAttribute("data-shown", "t1");
+		expect(screen.getByRole("radio", { name: "Active" })).toHaveAttribute("aria-checked", "true");
+	});
+
+	it("keeps the user's All pick when a timed-out read lands late with a saved Active", async () => {
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			let resolveRead!: (v: { visibility: "active" }) => void;
+			vi.mocked(api.request.getBoardFilterState).mockReturnValue(new Promise((r) => { resolveRead = r; }));
+			renderHost();
+			await act(async () => { await vi.advanceTimersByTimeAsync(VISIBILITY_READ_TIMEOUT_MS); });
+			expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t1,t2");
+			fireEvent.click(screen.getByRole("radio", { name: "All" }));
+			await act(async () => resolveRead({ visibility: "active" }));
+			expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t1,t2");
+			expect(screen.getByRole("radio", { name: "All" })).toHaveAttribute("aria-checked", "true");
+			expect(api.request.setBoardFilterState).toHaveBeenCalledWith({ board: { kind: "project", id: "p1" }, state: { visibility: "all" } });
+		} finally {
+			warn.mockRestore();
+			vi.useRealTimers();
+		}
+	});
+
+	it("renders the board after a failed visibility read", async () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		vi.mocked(api.request.getBoardFilterState).mockRejectedValue(new Error("old host"));
+		renderHost();
+		expect(await screen.findByTestId("kanban")).toHaveAttribute("data-shown", "t1,t2");
+		warn.mockRestore();
+	});
+
+	it("keeps a completed parent a same-board ancestor in the Tree under Active", async () => {
+		// The Tree virtualizes its rows, which needs a measurable scroll box.
+		const height = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(800);
+		const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1200);
+		startBoardViews([installKanbanView, installTreeView]);
+		vi.mocked(api.request.getBoardViewState).mockResolvedValue(withViewType(defaultBoardViewState(), "wide", TREE_VIEW_ID));
+		vi.mocked(api.request.getBoardFilterState).mockResolvedValue({ visibility: "active" });
+		const parent = makeTask("t1", "parent", { status: "completed" });
+		const child = makeTask("t2", "child", { origin: { kind: "task", taskId: "t1", projectId: "p1" } });
+		renderHost({ tasks: [parent, child] });
+		const row = await screen.findByTestId("board-tree-row-p1#1");
+		expect(row).not.toHaveAttribute("data-ghost");
+		expect(row.firstElementChild).toHaveClass("opacity-60");
+		expect(screen.queryByTestId(/board-tree-row-ghost:/)).not.toBeInTheDocument();
+		expect(screen.queryByTestId("board-tree-empty")).not.toBeInTheDocument();
+		height.mockRestore();
+		width.mockRestore();
+	});
+
+	it("restores a saved Active visibility", async () => {
+		vi.mocked(api.request.getBoardFilterState).mockResolvedValue({ visibility: "active" });
+		renderHost();
+		await waitFor(() => expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t1"));
+		expect(screen.getByRole("radio", { name: "Active" })).toHaveAttribute("aria-checked", "true");
+	});
+
+	it("lets an explicit status token bypass Active, and bringing the query back restores it", async () => {
+		renderHost();
+		await screen.findByTestId("kanban");
+		fireEvent.click(screen.getByRole("radio", { name: "Active" }));
+		expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t1");
+		fireEvent.change(screen.getByRole("textbox", { name: /search/i }), { target: { value: "status:completed" } });
+		expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t2");
+		fireEvent.change(screen.getByRole("textbox", { name: /search/i }), { target: { value: "" } });
+		expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t1");
+	});
+
+	it("shows a custom-column task under Active when the query names that column", async () => {
+		vi.mocked(api.request.getBoardFilterState).mockResolvedValue({ visibility: "active" });
+		const column = { id: "col-a", name: "On hold", color: "#f00", llmInstruction: "" };
+		const inColumn = makeTask("t3", "gamma", { status: "completed", customColumnId: "col-a" });
+		renderHost({ project: { ...project, customColumns: [column] }, tasks: [...tasks, inColumn] });
+		await waitFor(() => expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t1"));
+		fireEvent.change(screen.getByRole("textbox", { name: /search/i }), { target: { value: 'status:"On hold"' } });
+		expect(screen.getByTestId("kanban")).toHaveAttribute("data-shown", "t3");
 	});
 
 	it("re-renders a memoised view on board/changed", async () => {

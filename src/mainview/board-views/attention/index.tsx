@@ -133,10 +133,17 @@ export function AttentionView(_props: { ctx: Context }) {
 	const tick = useTick(ATTENTION_TICK_MS);
 	const [layout] = useAttentionLayout(board);
 	const tasks = board.tasks();
+	const scopeTasks = board.scopeTasks();
+	const query = board.query;
 	const bucketsKey = JSON.stringify(layout.buckets);
 	// `tick` re-runs the matcher, whose `is:stalled` reads the clock.
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	const filled = useMemo(() => fillBuckets(tasks, layout.buckets, (task, q) => board.matches(task, q)), [tasks, bucketsKey, board, tick]);
+	const filled = useMemo(() => {
+		// What the Active | All switch hid from `tasks()`; a bucket with its own `status:` token still shows it.
+		const shown = new Set(tasks.map((task) => task.id));
+		const hidden = scopeTasks.filter((task) => !shown.has(task.id) && board.matches(task, query));
+		return fillBuckets(tasks, layout.buckets, (task, q) => board.matches(task, q), hidden);
+	}, [tasks, scopeTasks, query, bucketsKey, board, tick]);
 	const narrow = board.formFactor === "narrow";
 	const showProject = board.scope.kind === "space";
 	if (filled.length === 0) {

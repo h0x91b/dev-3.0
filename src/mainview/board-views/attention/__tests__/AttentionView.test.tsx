@@ -9,6 +9,7 @@ import { getBoardViewRegistry, resetBoardRootForTests, startBoardViews } from ".
 import { installKanbanView } from "../../kanban";
 import { CordisContext } from "../../react";
 import { resetBoardViewStateCacheForTests } from "../../useBoardViewState";
+import { resetTaskVisibilityForTests } from "../../useTaskVisibility";
 import type { BoardService } from "../../board-service";
 import { ATTENTION_TICK_MS, AttentionView, installAttentionView } from "..";
 
@@ -21,7 +22,7 @@ vi.mock("../../../rpc", () => ({
 			getTaskLineage: vi.fn().mockResolvedValue({ nodes: [] }),
 			getBoardViewState: vi.fn(),
 			setBoardViewState: vi.fn(async ({ state }) => state),
-			getBoardFilterState: vi.fn().mockResolvedValue({ statuses: [] }),
+			getBoardFilterState: vi.fn().mockResolvedValue({ visibility: "all" }),
 			setBoardFilterState: vi.fn(async ({ state }) => state),
 		},
 	},
@@ -88,6 +89,8 @@ function renderAttentionBoard(navigate = vi.fn(), state = withViewType(defaultBo
 beforeEach(() => {
 	resetBoardRootForTests();
 	resetBoardViewStateCacheForTests();
+	resetTaskVisibilityForTests();
+	vi.mocked(api.request.getBoardFilterState).mockResolvedValue({ visibility: "all" });
 	vi.mocked(api.request.setBoardViewState).mockClear();
 	localStorage.clear();
 	vi.useFakeTimers({ toFake: ["Date"] });
@@ -165,6 +168,31 @@ describe("Attention board view", () => {
 		expect(screen.queryByText("status:completed status:cancelled")).not.toBeInTheDocument();
 	});
 
+	it("under Active, hides finished tasks from buckets but keeps them in a bucket that names a status", async () => {
+		vi.mocked(api.request.getBoardFilterState).mockResolvedValue({ visibility: "active" });
+		const state = withLayout(withViewType(defaultBoardViewState(), "wide", ATTENTION_VIEW_ID), "wide", ATTENTION_VIEW_ID, {
+			buckets: [
+				{ id: "any", name: "Everything", query: "priority:P1", sort: "recent" },
+				{ id: "x", name: "Done pile", query: "status:completed status:cancelled", sort: "recent" },
+			],
+		});
+		renderAttentionBoard(vi.fn(), state);
+		expect(await screen.findByRole("heading", { name: "Done pile" })).toBeInTheDocument();
+		await waitFor(() => expect(bucketSeqs("x").sort()).toEqual([7, 8]));
+		expect(bucketSeqs("any")).toEqual([2]);
+	});
+
+	it("still applies the board query to a status bucket under Active", async () => {
+		vi.mocked(api.request.getBoardFilterState).mockResolvedValue({ visibility: "active" });
+		const state = withLayout(withViewType(defaultBoardViewState(), "wide", ATTENTION_VIEW_ID), "wide", ATTENTION_VIEW_ID, {
+			buckets: [{ id: "x", name: "Done pile", query: "status:completed status:cancelled", sort: "recent" }],
+		});
+		renderAttentionBoard(vi.fn(), state);
+		await waitFor(() => expect(bucketSeqs("x").sort()).toEqual([7, 8]));
+		fireEvent.change(screen.getByRole("textbox", { name: /search/i }), { target: { value: "task 8" } });
+		expect(bucketSeqs("x")).toEqual([8]);
+	});
+
 	it("says how to add a bucket when the layout has none", async () => {
 		const state = withLayout(withViewType(defaultBoardViewState(), "wide", ATTENTION_VIEW_ID), "wide", ATTENTION_VIEW_ID, { buckets: [] });
 		renderAttentionBoard(vi.fn(), state);
@@ -205,6 +233,8 @@ describe("AttentionView on narrow", () => {
 			formFactor: "narrow",
 			scope: { kind: "project", id: "p1", projectIds: ["p1"] },
 			tasks: () => [],
+			scopeTasks: () => [],
+			query: "",
 			matches: () => false,
 			layout: () => undefined,
 			setLayout: vi.fn(),

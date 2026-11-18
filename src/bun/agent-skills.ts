@@ -581,7 +581,7 @@ name that differs from the id is rejected.
 | \`id\` | 2–64 chars of \`a-z\`, \`0-9\`, \`-\`, starting with a letter or digit. \`builtin\`, \`dev3\`, \`third-party\`, \`third_party\` are reserved |
 | \`name\`, \`publisher\` | Required, max 80 chars. Shown in Settings and the consent dialog. Trust is bound to \`id\` + \`publisher\`: change the publisher and the user must consent again |
 | \`version\` | Semver, e.g. \`1.2.0\` |
-| \`engines.dev3\` | Semver range over the **extension API version** (\`1.0.0\` today; dev3 names it only in the consent dialog of an incompatible extension), not over the app version. Use \`^1.0.0\`. A range the app does not satisfy leaves it installed but **Incompatible** and off |
+| \`engines.dev3\` | Semver range over the **extension API version** (\`1.1.0\` today; dev3 names it only in the consent dialog of an incompatible extension), not over the app version. Use \`^1.0.0\`. A range the app does not satisfy leaves it installed but **Incompatible** and off |
 | \`contributes.boardViews\` | 1–16 views, each \`{ id, label }\`; view id \`a-z0-9-\`, label max 40 chars. The id you register at runtime is \`<extension id>:<view id>\` |
 | \`main\` | Must be \`"index.js"\` |
 
@@ -671,7 +671,7 @@ another extension's id), makes dev3 unload the whole extension and mark it **Fai
 
 - Shape: \`scope\` (\`{ kind: "project" | "space", id, projectIds }\`), \`formFactor\` (\`"wide"\` / \`"narrow"\`),
   \`query\` and \`setQuery(q)\`.
-- Data: \`tasks()\` (scope ∩ board query, every status), \`scopeTasks()\` (scope, unfiltered — for counts),
+- Data: \`tasks()\` (board scope ∩ user's Active | All switch ∩ query; may omit completed/cancelled — for every status use \`scopeTasks()\` with \`matches(task, query)\`), \`scopeTasks()\` (board scope, unfiltered — for counts), \`visibility()\` (\`"active"\` / \`"all"\`, the switch \`tasks()\` honours; API 1.1.0),
   \`matches(task, query)\`, \`columns({ includeOccupied? })\`, \`labels()\`, \`agents()\`, \`projects()\`, \`epics()\`,
   \`preferences()\` (\`{ taskSortOrder, tipsDisabled }\`), \`lineageNode(id)\`.
 - Per-view persisted state: \`layout(viewId)\` / \`setLayout(viewId, value)\` — stored per board and form factor.
@@ -806,7 +806,7 @@ There is no log file and no CLI for it yet.
 |---|---|---|
 | "This folder is not a dev3 extension: …" on install | Manifest invalid; the message names the field | Fix it against the field table |
 | **Invalid**, "folder name … does not match id" | Folder under \`extensions/\` is named differently from \`id\` | Rename the folder to the id |
-| **Incompatible** | \`engines.dev3\` does not admit API \`1.0.0\` | Use \`^1.0.0\` |
+| **Incompatible** | \`engines.dev3\` does not admit API \`1.1.0\` | Use \`^1.0.0\` |
 | **Not trusted** | Copied in by hand, or the publisher changed | User: "Review and trust…" in Settings → Extensions (scoped QA: fix the trust record's publisher) |
 | **Failed to load**, "index.js must default-export a Cordis plugin" | No \`export default\`, or it is not an object with \`apply\` / a function | Default-export the plugin |
 | **Failed to load**, a syntax or \`Failed to resolve module specifier\` error | Not a valid ES module, or an import other than \`react\` / \`react-dom\` / \`react/jsx-runtime\` / \`cordis\` | Bundle into one ESM file with those four external |

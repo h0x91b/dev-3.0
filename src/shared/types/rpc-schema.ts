@@ -146,7 +146,7 @@ export type AppRPCSchema = {
 				params: { board: BoardRef; state: BoardViewState };
 				response: BoardViewState;
 			};
-			/** Persisted status tokens of one board's filter (`board-filters.json`). */
+			/** Persisted Active | All visibility of one board (`board-filters.json`). */
 			getBoardFilterState: {
 				params: { board: BoardRef };
 				response: BoardFilterState;
