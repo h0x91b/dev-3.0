@@ -593,6 +593,11 @@ describe("saveSettings", () => {
 		});
 	});
 
+	it("keeps the beige theme through a load", () => {
+		writeFileSync(settingsPath, JSON.stringify({ theme: "beige" }));
+		expect(loadSettingsSync().theme).toBe("beige");
+	});
+
 	it("reads settings.json strictly: missing is empty, anything but a plain object is refused", () => {
 		expect(readSettingsFileStrict()).toEqual({});
 		writeFileSync(settingsPath, JSON.stringify({ theme: "dark" }));
