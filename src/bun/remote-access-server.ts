@@ -361,7 +361,7 @@ export async function serveStatic(pathname: string, staticRootOverride?: string)
 	});
 }
 
-function getInitialThemeBootstrap(): { preference: "dark" | "light" | "system"; resolved: "dark" | "light" } {
+function getInitialThemeBootstrap(): { preference: "dark" | "light" | "beige" | "system"; resolved: "dark" | "light" } {
 	const settings = loadSettingsSync();
 	const resolved = settings.resolvedTheme ?? getCurrentUiTheme();
 	const preference = settings.theme ?? resolved;

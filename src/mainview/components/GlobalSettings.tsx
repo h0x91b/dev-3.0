@@ -33,7 +33,7 @@ import { invalidateAvailableApps } from "../hooks/useAvailableApps";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
 import { api } from "../rpc";
 import { openFolderPicker } from "../folder-picker";
-import { getInitialThemeState, getWindowInjectedThemeState } from "../theme-bootstrap";
+import { applyThemeToDocument, getInitialThemeState, getWindowInjectedThemeState } from "../theme-bootstrap";
 import { getZoom, ZOOM_CHANGED_EVENT } from "../zoom";
 import { getScrollSpeed, SCROLL_SPEED_CHANGED_EVENT } from "../scroll-speed";
 import { getTerminalFontFamily, getTerminalFontSize, TERMINAL_FONT_CHANGED_EVENT } from "../terminal-font";
@@ -378,7 +378,7 @@ function GlobalSettings({
 			"(prefers-color-scheme: dark)",
 		).matches;
 		const resolvedTheme = resolveTheme(nextTheme, prefersDark);
-		document.documentElement.dataset.theme = resolvedTheme;
+		applyThemeToDocument(nextTheme, resolvedTheme);
 		localStorage.setItem("dev3-theme", nextTheme);
 		api.request.setTmuxTheme({ theme: resolvedTheme, preference: nextTheme }).catch(() => {});
 		trackEvent("theme_changed", { theme: nextTheme });

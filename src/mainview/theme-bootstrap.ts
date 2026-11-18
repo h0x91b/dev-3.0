@@ -1,4 +1,4 @@
-export type ThemePreference = "dark" | "light" | "system";
+export type ThemePreference = "dark" | "light" | "beige" | "system";
 export type ResolvedTheme = "dark" | "light";
 
 interface ThemeBootstrapOptions {
@@ -14,7 +14,7 @@ interface ThemeBootstrapWindow {
 }
 
 function parseThemePreference(value: string | null | undefined): ThemePreference | undefined {
-	if (value === "dark" || value === "light" || value === "system") {
+	if (value === "dark" || value === "light" || value === "beige" || value === "system") {
 		return value;
 	}
 	return undefined;
@@ -49,7 +49,15 @@ export function getInitialThemeState(options: ThemeBootstrapOptions): {
 	const resolved =
 		preference === "system"
 			? injectedResolvedTheme ?? (options.prefersDark ? "dark" : "light")
-			: preference;
+			: preference === "beige" ? "light" : preference;
 
 	return { preference, resolved };
+}
+
+/** Beige is a palette over the light theme, so everything keyed on `light` (terminal, ANSI adapt) still applies. */
+export function applyThemeToDocument(preference: ThemePreference, resolved: ResolvedTheme): void {
+	const root = document.documentElement;
+	root.dataset.theme = resolved;
+	if (preference === "beige") root.dataset.palette = "beige";
+	else delete root.dataset.palette;
 }

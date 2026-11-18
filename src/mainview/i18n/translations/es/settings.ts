@@ -8,6 +8,8 @@ const settings = {
 	"settings.themeDarkDesc": "Índigo nocturno",
 	"settings.themeLight": "Claro",
 	"settings.themeLightDesc": "Limpio y brillante",
+	"settings.themeBeige": "Beige",
+	"settings.themeBeigeDesc": "Papel cálido",
 	"settings.themeSystem": "Sistema",
 	"settings.themeSystemDesc": "Según tu SO",
 	"settings.language": "Idioma",
