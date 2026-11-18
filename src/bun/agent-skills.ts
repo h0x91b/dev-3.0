@@ -316,7 +316,7 @@ ${renderConfigFieldTable()}
 - \`dev3 config unset <key>[.<name>] [--local] [--main]\` — remove a key so lower layers apply
 - \`dev3 config validate [--json]\` — check the files (exit 47 on errors; unknown keys only warn)
 - \`dev3 config export\` — migrate legacy settings from projects.json
-- \`dev3 projects get [<key>]\` / \`dev3 projects set <key> <value>\` - the machine-local switches above
+- \`dev3 projects get [<key>]\` / \`dev3 projects set <key> <value>\` — the machine-local switches above
 `;
 
 const CLAUDE_PROJECT_CONFIG_SKILL = `---
