@@ -85,6 +85,7 @@ export {
 	tmuxConfigPath,
 	activeTmuxConfigPath,
 	setActiveTmuxTheme,
+	type TmuxTheme,
 } from "./config";
 export {
 	clientCellToWindowCell,

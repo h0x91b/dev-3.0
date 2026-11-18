@@ -752,6 +752,8 @@ export const SETTINGS_GLOBAL_FIELD_EXCLUSIONS = [
 	"personalHiddenControls",
 	"simplifiedModeSource",
 	"resolvedTheme",
+	// Rendered inside the theme entry, only while Beige is selected.
+	"beigeDepth",
 	// Machine identity for analytics, not a preference — read-only in Debug -> Feature Flags.
 	"analyticsDistinctId",
 	"customBinaryPaths",
@@ -796,6 +798,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"updateChannel",
 	"theme",
 	"resolvedTheme",
+	"beigeDepth",
 	"analyticsDistinctId",
 	"staticAccessCode",
 	"cloneBaseDirectory",

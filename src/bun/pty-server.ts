@@ -54,6 +54,7 @@ import {
 	projectTerminalSessionName,
 	activeTmuxConfigPath,
 	setActiveTmuxTheme,
+	type TmuxTheme,
 	TMUX_PANE_DIMMING_OPTION,
 	TMUX_PANE_TITLES_OPTION,
 	parseWindowLayout,
@@ -81,7 +82,7 @@ const log = createLogger("pty");
  * server-wide choice before the config is re-sourced. Without one the server keeps
  * whatever the last toggle — from this or another dev3 instance — set.
  */
-export async function applyTmuxTheme(theme: "dark" | "light", opts: { paneDimming?: boolean; paneTitles?: boolean } = {}): Promise<void> {
+export async function applyTmuxTheme(theme: TmuxTheme, opts: { paneDimming?: boolean; paneTitles?: boolean } = {}): Promise<void> {
 	const configPath = setActiveTmuxTheme(theme);
 	// Source the themed config on every known socket (typically just "dev3")
 	const sockets = new Set<string>();

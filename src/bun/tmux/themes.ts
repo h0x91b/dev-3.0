@@ -4,6 +4,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dev3TempPath } from "../temp-paths";
+import { beigeHex, type BeigeToken } from "../../shared/beige-palette";
 import { TMUX_AGENT_PANE_OPTION, TMUX_TASK_TITLE_OPTION, TMUX_WINDOW_NAME_OPTION } from "./constants";
 
 // ── Color palettes ──────────────────────────────────────────────────
@@ -65,6 +66,40 @@ set -gq @thm_surface_0 "#ccd0da"
 set -gq @thm_mantle "#e6e9ef"
 set -gq @thm_crust "#dce0e8"
 `;
+
+/** Latte's accents over warm neutrals that follow the Beige depth slider; the
+ *  active tab and border take the app's burnt-orange accent instead of mauve/lavender. */
+export function catppuccinBeige(depth: number): string {
+	const n = (token: BeigeToken) => beigeHex(token, depth);
+	return `# --> dev3 Beige (depth ${depth})
+set -gq @thm_bg "${n("tmux-bg")}"
+set -gq @thm_fg "#3d3a34"
+set -gq @thm_rosewater "#dc8a78"
+set -gq @thm_flamingo "#dd7878"
+set -gq @thm_pink "#ea76cb"
+set -gq @thm_mauve "#a64d12"
+set -gq @thm_red "#d20f39"
+set -gq @thm_maroon "#e64553"
+set -gq @thm_peach "#fe640b"
+set -gq @thm_yellow "#df8e1d"
+set -gq @thm_green "#40a02b"
+set -gq @thm_teal "#179299"
+set -gq @thm_sky "#04a5e5"
+set -gq @thm_sapphire "#209fb5"
+set -gq @thm_blue "#1e66f5"
+set -gq @thm_lavender "#a64d12"
+set -gq @thm_subtext_1 "#6b675f"
+set -gq @thm_subtext_0 "#5c5850"
+set -gq @thm_overlay_2 "#7d796f"
+set -gq @thm_overlay_1 "#8d897f"
+set -gq @thm_overlay_0 "#9d998f"
+set -gq @thm_surface_2 "${n("tmux-surface-2")}"
+set -gq @thm_surface_1 "${n("tmux-surface-1")}"
+set -gq @thm_surface_0 "${n("tmux-surface-0")}"
+set -gq @thm_mantle "${n("tmux-mantle")}"
+set -gq @thm_crust "${n("tmux-crust")}"
+`;
+}
 
 // ── Catppuccin plugin files ─────────────────────────────────────────
 // Sourced from https://github.com/catppuccin/tmux (MIT license)

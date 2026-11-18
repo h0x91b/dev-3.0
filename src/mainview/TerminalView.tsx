@@ -78,7 +78,7 @@ import { isRemote } from "./utils/platform";
 import { paneHighlightRect, type PaneRectPct } from "./utils/paneHighlight";
 import TerminalSearchBar, { type TerminalSearchBarHandle } from "./components/TerminalSearchBar";
 import { isFinalPtyCloseCode, PTY_WS_CLOSE } from "../shared/pty-ws-close-codes";
-import { DARK_TERMINAL_THEME, LIGHT_TERMINAL_THEME } from "./terminal-themes";
+import { terminalThemeFor } from "./terminal-themes";
 import { installTerminalRefHover, type TerminalRefHover } from "./terminal-ref-hover";
 import { TaskRefFloatingPreview } from "./components/TaskRefPreviewCard";
 import { parseRefUri } from "../shared/task-refs";
@@ -510,6 +510,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 	const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">(
 		() => (document.documentElement.dataset.theme as "dark" | "light") || "dark",
 	);
+	// Beige palette + depth: changes the terminal background while resolvedTheme stays "light".
+	const [paletteKey, setPaletteKey] = useState("");
 	const resolvedThemeRef = useRef(resolvedTheme);
 	resolvedThemeRef.current = resolvedTheme;
 	// Window focus is tracked separately from DOM focus: activeElement stays put
@@ -654,9 +656,11 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 
 	useEffect(() => {
 		const observer = new MutationObserver(() => {
-			setResolvedTheme((document.documentElement.dataset.theme as "dark" | "light") || "dark");
+			const { theme, palette, beigeDepth } = document.documentElement.dataset;
+			setResolvedTheme((theme as "dark" | "light") || "dark");
+			setPaletteKey(`${palette ?? ""}:${beigeDepth ?? ""}`);
 		});
-		observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+		observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-palette", "data-beige-depth"] });
 		return () => observer.disconnect();
 	}, []);
 
@@ -857,7 +861,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 				fontFamily: TERMINAL_FONT,
 				cursorBlink: true,
 				cursorStyle: "bar",
-				theme: resolvedTheme === "light" ? LIGHT_TERMINAL_THEME : DARK_TERMINAL_THEME,
+				theme: terminalThemeFor(resolvedTheme),
 				...(native ? { scrollback: NATIVE_SCROLLBACK_BYTES } : {}),
 			});
 
@@ -2398,10 +2402,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 		try {
 			if (termRef.current) {
 				termRef.current.options.theme =
-					resolvedTheme === "light" ? LIGHT_TERMINAL_THEME : DARK_TERMINAL_THEME;
+					terminalThemeFor(resolvedTheme);
 			}
 		} catch { /* disposed */ }
-	}, [resolvedTheme]);
+	}, [resolvedTheme, paletteKey]);
 
 	// Keep the cursor in sync with where input actually goes: focus moving to the
 	// artifact iframe, another pane, or another app must take the cursor with it.
@@ -2869,9 +2873,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 		try { termRef.current?.focus(); } catch { /* disposed */ }
 	}
 
-	const termBg = resolvedTheme === "light"
-		? LIGHT_TERMINAL_THEME.background
-		: DARK_TERMINAL_THEME.background;
+	const termBg = terminalThemeFor(resolvedTheme).background;
 
 	// The gate starts raised in remote mode, before any socket exists, so its
 	// deadline starts with the mount: a setup that never reaches connectPty must

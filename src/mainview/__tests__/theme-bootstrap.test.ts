@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyThemeToDocument, getInitialThemeState } from "../theme-bootstrap";
+import { applyBeigeDepth, applyThemeToDocument, getInitialThemeState, readBeigeDepth } from "../theme-bootstrap";
 
 describe("getInitialThemeState", () => {
 	it("uses the injected remote theme when browser storage is empty", () => {
@@ -76,5 +76,18 @@ describe("applyThemeToDocument", () => {
 		expect(root.dataset.palette).toBe("beige");
 		applyThemeToDocument("light", "light");
 		expect(root.dataset.palette).toBeUndefined();
+	});
+});
+
+describe("applyBeigeDepth", () => {
+	it("writes depth-driven tokens scoped to the beige palette and remembers the depth", () => {
+		applyBeigeDepth(1);
+		const css = document.getElementById("dev3-beige-depth")?.textContent ?? "";
+		expect(css).toContain('[data-theme="light"][data-palette="beige"]');
+		expect(css).toContain("--surface-base: 226 219 203;");
+		expect(document.documentElement.dataset.beigeDepth).toBe("1");
+		expect(readBeigeDepth()).toBe(1);
+		applyBeigeDepth(7);
+		expect(readBeigeDepth()).toBe(1);
 	});
 });

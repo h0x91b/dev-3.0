@@ -26,6 +26,8 @@ interface AppearanceSettingsSectionProps {
 	theme: Theme;
 	zoomLevel: number;
 	onThemeChange: (theme: Theme) => void;
+	beigeDepth: number;
+	onBeigeDepthChange: (depth: number) => void;
 	onLocaleChange: (locale: Locale) => void;
 	onSimplifyModeToggle: (enabled: boolean) => void;
 }
@@ -36,6 +38,8 @@ export default function AppearanceSettingsSection({
 	theme,
 	zoomLevel,
 	onThemeChange,
+	beigeDepth,
+	onBeigeDepthChange,
 	onLocaleChange,
 	onSimplifyModeToggle,
 }: AppearanceSettingsSectionProps) {
@@ -118,6 +122,27 @@ export default function AppearanceSettingsSection({
 						}}
 					/>
 				</div>
+				{theme === "beige" && (
+					<div className="mt-4 max-w-md">
+						<label htmlFor="beige-depth" className="block text-fg text-sm font-semibold mb-2">
+							{t("settings.beigeDepth")}
+						</label>
+						<input
+							id="beige-depth"
+							type="range"
+							min={0}
+							max={100}
+							step={1}
+							value={Math.round(beigeDepth * 100)}
+							onChange={(e) => onBeigeDepthChange(Number(e.target.value) / 100)}
+							className="w-full accent-accent"
+						/>
+						<div className="flex justify-between mt-1 text-fg-3 text-xs">
+							<span>{t("settings.beigeDepthLighter")}</span>
+							<span>{t("settings.beigeDepthDarker")}</span>
+						</div>
+					</div>
+				)}
 				</div>
 			</SettingsEntry>
 

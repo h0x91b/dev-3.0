@@ -468,23 +468,11 @@ html {
 }
 
 /* Beige: a warm-paper palette over the light theme (data-theme stays "light").
-   Only the tokens that carry the look are overridden; status colours stay light's. */
+   Surfaces, borders and the quieter text follow the depth slider and are written
+   at runtime from src/shared/beige-palette.ts (applyBeigeDepth); status colours stay light's. */
 [data-theme="light"][data-palette="beige"] {
-	--surface-base: 244 242 236;
-	--surface-raised: 250 249 246;
-	--surface-raised-hover: 240 238 232;
-	--surface-elevated: 255 255 255;
-	--surface-elevated-hover: 245 243 238;
-	--surface-overlay: 255 255 255;
-	--surface-overlay-hover: 240 238 232;
-
 	--text-primary: 28 27 25;
 	--text-secondary: 74 72 67;
-	--text-tertiary: 105 102 95;
-	--text-muted: 143 140 133;
-
-	--border-default: 214 210 200;
-	--border-active: 178 173 162;
 
 	/* Ink accents are the screenshot's burnt orange; solid fills are its near-black button. */
 	--accent: 166 77 18;
