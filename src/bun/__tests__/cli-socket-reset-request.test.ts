@@ -232,7 +232,7 @@ describe("task.requestReset (T17, T17b)", () => {
 		const { resp, requestId } = await openRequest(stored, { sourceTaskId: own });
 		vi.mocked(data.loadTasks).mockImplementation(async () => [{ ...stored }]);
 		await vi.waitFor(() => expect(stored.status).toBe("user-questions"));
-		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ newStatus: "user-questions", ifStatus: "in-progress" }));
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ newStatus: "user-questions", ifStatus: "in-progress", skipQuestionsBadge: true }));
 
 		resolveAgentRequest(requestId, { approved: false });
 

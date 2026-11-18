@@ -359,7 +359,7 @@ describe("task.requestCompletion", () => {
 
 		const respPromise = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1", sourceTaskId: task.id }));
 		await vi.waitFor(() => expect(moveTask).toHaveBeenCalledWith({
-			taskId: task.id, projectId: "proj-1", newStatus: "user-questions", ifStatus: "in-progress",
+			taskId: task.id, projectId: "proj-1", newStatus: "user-questions", ifStatus: "in-progress", skipQuestionsBadge: true,
 		}));
 
 		const payload = pushFn.mock.calls[0][1] as { requestId: string };

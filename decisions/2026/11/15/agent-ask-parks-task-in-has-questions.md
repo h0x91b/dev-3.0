@@ -10,6 +10,8 @@ An agent that runs `dev3 task move --status completed` (or `cancelled`, or `todo
 
 On a decline, `unparkAfterDecline` asks whether any CLI still waits on the request: the original connection, a retry, or a re-attach (each handler gets its connection's abort signal). If one does, the task goes back to `in-progress`. If none does, the agent may have ended its turn while parked, and its Stop hook (guarded on `in-progress`) moved nothing, so the task takes that hook's move instead: `getPrimaryStopTarget`, Your Review or AI Review. Every move here is guarded on the status it expects, so a status anything else set in the meantime wins, and a park move that did not land in `user-questions` is never undone.
 
+The park move passes `skipQuestionsBadge`, like the parks in `agent-commands.ts`: the ask is already the cue, and a badge would outlive an ask the user answered from the dialog without opening the task. The Has Questions sound still plays once, since the dialog plays none.
+
 This is a change of default behaviour. It applies to every completion ask, whatever style shows it, and to cancel and reset asks, because all three block the asking agent the same way.
 
 ## Risks

@@ -17,6 +17,7 @@ import { type ApprovalReason, approvalReasonFromParams, normalizeApprovalReason 
 import { awaitLaunchPreparation } from "./launch-preparation";
 import type { LaunchPreparationOutcome } from "../../shared/launch-preparation";
 import type { ResolvedDependency } from "../../shared/task-dependencies";
+import { log } from "./shared";
 
 export function approvalStatusOf(kind: DestructiveApprovalKind, task: Task): AgentApprovalStatus {
 	const known = getAgentRequestState(kind, task.id);
@@ -68,13 +69,15 @@ async function voidIfRunEndedMeanwhile(
 /**
  * The agent is blocked on the user's answer, so its task is a question, not work.
  * Guarded moves, so a status someone else set in the meantime is never overwritten.
+ * No badge: the ask itself is the cue, and it ends when the user answers.
  */
 async function parkWhileAsking(project: Project, task: Task): Promise<boolean> {
 	if (task.status !== "in-progress") return false;
 	try {
-		const moved = await moveTask({ taskId: task.id, projectId: project.id, newStatus: "user-questions", ifStatus: "in-progress" });
+		const moved = await moveTask({ taskId: task.id, projectId: project.id, newStatus: "user-questions", ifStatus: "in-progress", skipQuestionsBadge: true });
 		return moved?.status === "user-questions";
-	} catch {
+	} catch (err) {
+		log.warn("Could not park the asking task in Has Questions", { taskId: task.id.slice(0, 8), error: String(err) });
 		return false;
 	}
 }
@@ -88,8 +91,8 @@ async function unparkAfterDecline(project: Project, task: Task, askerWaiting: bo
 	const newStatus = askerWaiting ? "in-progress" : getPrimaryStopTarget(project.autoReviewEnabled, task.taskType);
 	try {
 		await moveTask({ taskId: task.id, projectId: project.id, newStatus, ifStatus: "user-questions" });
-	} catch {
-		// The agent's next hook moves it anyway.
+	} catch (err) {
+		log.warn("Could not move the declined task out of Has Questions", { taskId: task.id.slice(0, 8), newStatus, error: String(err) });
 	}
 }
 
