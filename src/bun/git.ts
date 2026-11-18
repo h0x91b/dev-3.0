@@ -2738,8 +2738,10 @@ const FAKE_COMMIT_HEADER = new TextEncoder().encode(`commit ${"0".repeat(40)}\n\
  * `rebase` is deliberately absent: its finish entry records the tip the branch
  * was replayed onto, which for an empty branch is the base itself — proof of
  * nothing. A rebase that kept real commits still leaves its `commit:` entries.
+ * A fast-forward entry is excluded: its tip is a base commit, not the branch's work.
  */
 const WORK_PRODUCING_REFLOG_RE = /^(commit|merge|cherry-pick|am|revert|pull|applypatch)\b/;
+const FAST_FORWARD_REFLOG_RE = /^(merge|pull)\b.*: Fast-forward( \(no commit created; -m option ignored\))?$/;
 /** How many distinct reflog tips to ancestry-test before giving up. */
 const REFLOG_PROOF_LIMIT = 10;
 
@@ -2797,7 +2799,7 @@ async function isMergedWithoutOwnCommits(worktreePath: string, ref: string): Pro
 	const tips: string[] = [];
 	for (const line of reflogResult.stdout.split("\n")) {
 		const [sha, message = ""] = line.split("\t");
-		if (!sha || !WORK_PRODUCING_REFLOG_RE.test(message)) continue;
+		if (!sha || !WORK_PRODUCING_REFLOG_RE.test(message) || FAST_FORWARD_REFLOG_RE.test(message)) continue;
 		if (!tips.includes(sha)) tips.push(sha);
 		if (tips.length >= REFLOG_PROOF_LIMIT) break;
 	}
