@@ -36,14 +36,15 @@ function raw(name: string): string {
 
 const SLICE_VARS = ["--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-5", "--chart-6"];
 
-function getAppTheme(): "dark" | "light" {
-	if (typeof document === "undefined") return "dark";
-	return (document.documentElement.dataset.theme as "dark" | "light") || "dark";
+function getThemeSnapshot(): string {
+	if (typeof document === "undefined") return "dark:";
+	const { theme, palette } = document.documentElement.dataset;
+	return `${theme || "dark"}:${palette ?? ""}`;
 }
 
 function subscribeToTheme(cb: () => void): () => void {
 	const observer = new MutationObserver(cb);
-	observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+	observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-palette"] });
 	return () => observer.disconnect();
 }
 
@@ -53,9 +54,9 @@ function subscribeToTheme(cb: () => void): () => void {
  * `var()` does not resolve, so charts must receive already-computed colors.
  */
 export function useChartColors(): ChartColors {
-	// Re-render on theme change; the snapshot is the theme string so React
+	// Re-render on theme change; the snapshot is theme + palette so React
 	// recomputes the (cheap) color reads below on every flip.
-	useSyncExternalStore(subscribeToTheme, getAppTheme, () => "dark" as const);
+	useSyncExternalStore(subscribeToTheme, getThemeSnapshot, () => "dark:");
 	const accentRaw = raw("--accent");
 	return {
 		accent: `rgb(${accentRaw})`,
