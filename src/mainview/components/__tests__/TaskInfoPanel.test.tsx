@@ -1176,7 +1176,7 @@ describe("TaskInfoPanel", () => {
 				"completed",
 				expect.any(Function),
 				expect.any(Function),
-				{ alwaysConfirm: false },
+				expect.objectContaining({ alwaysConfirm: false }),
 			);
 			// Move was blocked
 			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();
