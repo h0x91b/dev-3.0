@@ -145,7 +145,7 @@ function SuggestionDialog({ suggestion, onPresent, onHold, onRespond }: AutoHibe
 						<button autoFocus type="button" disabled={pending} onClick={() => { void respond("snooze"); }} className="min-h-11 px-4 py-2 rounded-lg bg-raised hover:bg-elevated text-fg text-sm disabled:opacity-50 transition-colors">
 							{t("autoHibernateSuggestion.notNow")}
 						</button>
-						<button type="button" disabled={pending || selectedIds.length === 0} onClick={() => { void respond("hibernate"); }} className="min-h-11 px-4 py-2 rounded-lg bg-danger hover:bg-danger/80 text-white text-sm disabled:opacity-50 transition-colors">
+						<button type="button" disabled={pending || selectedIds.length === 0} onClick={() => { void respond("hibernate"); }} className="min-h-11 px-4 py-2 rounded-lg bg-danger-fill hover:bg-danger-fill-hover text-white text-sm disabled:opacity-50 transition-colors">
 							{t.plural("autoHibernateSuggestion.hibernate", selectedIds.length)}
 						</button>
 					</div>

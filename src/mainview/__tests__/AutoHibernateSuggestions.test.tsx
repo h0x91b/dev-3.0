@@ -30,7 +30,7 @@ it("replays pending suggestions and acknowledges the visible dialog", async () =
 	vi.mocked(api.request.getAutoHibernateSuggestion).mockResolvedValue(suggestion);
 	render(<AutoHibernateSuggestions />);
 	expect(await screen.findByRole("dialog")).toHaveTextContent("offer");
-	expect(api.request.presentAutoHibernateSuggestion).toHaveBeenCalledWith({ id: "offer" });
+	await waitFor(() => expect(api.request.presentAutoHibernateSuggestion).toHaveBeenCalledWith({ id: "offer" }));
 	push(null);
 	expect(screen.queryByRole("dialog")).toBeNull();
 });
