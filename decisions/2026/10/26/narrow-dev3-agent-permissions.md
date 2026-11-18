@@ -1,5 +1,7 @@
 # Narrow the dev3 permissions injected into Claude Code
 
+Superseded in part on 2026-11-15 by `decisions/2026/11/15/codex-dev3-execpolicy-rules.md`: Codex is no longer unchanged — dev3 now writes execpolicy rules that make Codex prompt on the same executing subcommands.
+
 ## Context
 
 Issue #2043 (@shamrai-nikita) reported that the standing dev3 grants let an agent skip its own
