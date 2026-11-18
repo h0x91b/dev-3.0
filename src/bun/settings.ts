@@ -192,7 +192,7 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		defaultConfigId: resolveDefaultConfigId(d.defaultConfigId),
 		taskSortOrder: d.taskSortOrder === "newest-first" ? "newest-first" : "oldest-first",
 		updateChannel: coerceUpdateChannel(d.updateChannel, hostPublishesCanary()),
-		theme: d.theme === "light" || d.theme === "system" || d.theme === "dark" ? d.theme : undefined,
+		theme: d.theme === "light" || d.theme === "beige" || d.theme === "system" || d.theme === "dark" ? d.theme : undefined,
 		resolvedTheme: d.resolvedTheme === "light" || d.resolvedTheme === "dark" ? d.resolvedTheme : undefined,
 		// Machine identity for analytics — opaque string, never regenerated on load.
 		analyticsDistinctId: typeof d.analyticsDistinctId === "string" && d.analyticsDistinctId
