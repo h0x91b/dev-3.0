@@ -2,12 +2,13 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Project, SpacesFile } from "../../shared/types";
 import { EMPTY_SPACES_FILE } from "../../shared/types";
-import { CLI_EXIT_CODE_PROJECT_ALREADY_REGISTERED, CLI_EXIT_CODE_PROJECT_SETTING_FORBIDDEN } from "../../shared/cli-exit-codes";
+import { CLI_EXIT_CODE_PROJECT_ALREADY_REGISTERED, CLI_EXIT_CODE_PROJECT_SETTING_FORBIDDEN, CLI_EXIT_CODE_PROJECT_SETTING_UNAVAILABLE } from "../../shared/cli-exit-codes";
 import { looksLikeGitUrl, shortSpaceId, toCliProject, type ProjectRegistrationResult } from "../../shared/project-registration";
 import {
 	PROJECT_CLI_SETTING_KEYS,
 	PROJECT_CLI_SETTINGS,
 	PROJECT_SETTING_FORBIDDEN_PREFIX,
+	PROJECT_SETTING_UNAVAILABLE_PREFIX,
 	formatProjectCliSettingValue,
 	isProjectCliSettingKey,
 	parseProjectCliSettingValue,
@@ -191,6 +192,9 @@ async function setSetting(args: ParsedArgs, socketPath: string, context: CliCont
 		const error = resp.error ?? "";
 		if (error.startsWith(PROJECT_SETTING_FORBIDDEN_PREFIX)) {
 			exitError(error.slice(PROJECT_SETTING_FORBIDDEN_PREFIX.length), undefined, CLI_EXIT_CODE_PROJECT_SETTING_FORBIDDEN);
+		}
+		if (error.startsWith(PROJECT_SETTING_UNAVAILABLE_PREFIX)) {
+			exitError(error.slice(PROJECT_SETTING_UNAVAILABLE_PREFIX.length), undefined, CLI_EXIT_CODE_PROJECT_SETTING_UNAVAILABLE);
 		}
 		exitRequestFailed(resp, `Failed to set ${key}`);
 	}

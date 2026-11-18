@@ -97,6 +97,29 @@ describe("projects.settings.set", () => {
 		expect(update).toHaveBeenCalledTimes(2);
 	});
 
+	it("refuses boardCopyMessages on while boardCopy is off, and allows it once boardCopy is on", async () => {
+		await expect(set({ projectId: "proj-1", key: "boardCopyMessages", value: "on" }))
+			.rejects.toThrow(/^project-setting-unavailable: boardCopyMessages needs boardCopy\. Turn boardCopy on first/);
+		expect(update).not.toHaveBeenCalled();
+
+		await expect(set({ projectId: "proj-1", key: "boardCopyMessages", value: "off" })).resolves.toMatchObject({ value: false });
+		stored = makeProject({ boardCopy: true });
+		await expect(set({ projectId: "proj-1", key: "boardCopyMessages", value: "on" })).resolves.toMatchObject({ previous: false, value: true });
+	});
+
+	it("refuses boardCopy on for an operations board instead of reporting it already off", async () => {
+		stored = makeProject({ kind: "virtual" });
+		await expect(set({ projectId: "proj-1", key: "boardCopy", value: "on" }))
+			.rejects.toThrow(/^project-setting-unavailable: Operations boards have no project folder/);
+		expect(update).not.toHaveBeenCalled();
+		await expect(set({ projectId: "proj-1", key: "boardCopy", value: "off" })).resolves.toMatchObject({ value: false });
+	});
+
+	it("checks who asks before what the project can take", async () => {
+		resolveTask.mockResolvedValueOnce(taskOf(undefined));
+		await expect(set({ projectId: "proj-1", key: "boardCopyMessages", value: "on", sourceTaskId: "task-1" })).rejects.toThrow(/^project-setting-forbidden: /);
+	});
+
 	it("surfaces updateProjectSettings' own refusal", async () => {
 		update.mockRejectedValueOnce(new Error("Finish 1 running task(s) before switching the git workflow"));
 		await expect(set({ projectId: "proj-1", key: "gitWorkflow", value: false })).rejects.toThrow(/Finish 1 running task/);

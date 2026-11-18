@@ -48,6 +48,7 @@ export const CLI_EXIT_CODE_LAUNCH_PREPARATION_FAILED = 46;
 export const CLI_EXIT_CODE_CONFIG_INVALID = 47;
 export const CLI_EXIT_CODE_WORKTREE_HALF_REMOVED = 48;
 export const CLI_EXIT_CODE_PROJECT_SETTING_FORBIDDEN = 49;
+export const CLI_EXIT_CODE_PROJECT_SETTING_UNAVAILABLE = 50;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -344,5 +345,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_PROJECT_SETTING_FORBIDDEN,
 		description:
 			"`dev3 projects set` ran inside a task that is not a coordinator. These switches (`gitWorkflow`, `storageRoot`, `useRepoConfig`, `boardCopy` and the rest) change how every task of the project runs, so only the user (outside any task) and coordinator tasks may change them; **nothing** was changed. Ask the user to switch it in Project Settings or to run the command from a terminal outside any task. Distinct from exit 1 so an agent stops instead of retrying.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_PROJECT_SETTING_UNAVAILABLE",
+		code: CLI_EXIT_CODE_PROJECT_SETTING_UNAVAILABLE,
+		description:
+			"`dev3 projects set` asked for a switch the project cannot take in its current state, so **nothing** was changed: `boardCopyMessages on` while `boardCopy` is off (turn `boardCopy` on first), or `boardCopy on` on an operations board, which has no project folder to copy into. Project Settings hides the same toggles in that state. Distinct from exit 1 so an agent changes the prerequisite instead of retrying.",
 	},
 ] as const;

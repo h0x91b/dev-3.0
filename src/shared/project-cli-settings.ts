@@ -23,6 +23,9 @@ export const PROJECT_CLI_SETTING_KEYS = Object.keys(PROJECT_CLI_SETTINGS) as Pro
 /** Error prefix that makes the CLI exit with `CLI_EXIT_CODE_PROJECT_SETTING_FORBIDDEN`. */
 export const PROJECT_SETTING_FORBIDDEN_PREFIX = "project-setting-forbidden: ";
 
+/** Error prefix that makes the CLI exit with `CLI_EXIT_CODE_PROJECT_SETTING_UNAVAILABLE`. */
+export const PROJECT_SETTING_UNAVAILABLE_PREFIX = "project-setting-unavailable: ";
+
 export function isProjectCliSettingKey(key: string): key is ProjectCliSettingKey {
 	return Object.prototype.hasOwnProperty.call(PROJECT_CLI_SETTINGS, key);
 }

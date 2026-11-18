@@ -305,7 +305,7 @@ ${renderConfigFieldTable()}
 
 **A project can opt out entirely.** Project Settings → Project Config has a **Use repository dev3 configuration** switch (on by default). While it is off, dev3 reads neither file for that project and refuses to write them, so writing a config there accomplishes nothing — tell the user to switch it back on first.
 
-**Machine-local switches are not config keys.** \`name\`, \`gitWorkflow\`, \`storageRoot\`, \`useRepoConfig\`, \`boardCopy\` and \`boardCopyMessages\` live in the app's project registry: read them with \`dev3 projects get\`. \`dev3 projects set <key> <value>\` changes one, but only the user (outside any task) or a coordinator may; any other task gets exit 49, so ask the user instead.
+**Machine-local switches are not config keys.** \`name\`, \`gitWorkflow\`, \`storageRoot\`, \`useRepoConfig\`, \`boardCopy\` and \`boardCopyMessages\` live in the app's project registry: read them with \`dev3 projects get\`. \`dev3 projects set <key> <value>\` changes one, but only the user (outside any task) or a coordinator may; any other task gets exit 49, so ask the user instead. Exit 50 means the project cannot take that value now (\`boardCopyMessages on\` needs \`boardCopy\` on first; an operations board has no board copy).
 
 ## CLI commands
 

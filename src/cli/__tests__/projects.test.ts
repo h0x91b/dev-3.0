@@ -352,6 +352,13 @@ describe("projects get|set", () => {
 		expect(stderrOutput).not.toContain("project-setting-forbidden");
 	});
 
+	it("exits 50 when the project cannot take the value", async () => {
+		mockSend.mockResolvedValue(errResp("project-setting-unavailable: boardCopyMessages needs boardCopy. Turn boardCopy on first: dev3 projects set boardCopy on"));
+		await expect(runIn(["set", "boardCopyMessages", "on", "--project", PROJECT_ID])).rejects.toThrow("EXIT_50");
+		expect(stderrOutput).toContain("Turn boardCopy on first");
+		expect(stderrOutput).not.toContain("project-setting-unavailable");
+	});
+
 	it("rejects an unknown key, a bad value and a missing value before calling the app", async () => {
 		await expect(runIn(["set", "sensitive", "off"], TASK_CTX)).rejects.toThrow("EXIT_3");
 		expect(stderrOutput).toContain("Settable: name, gitWorkflow");
