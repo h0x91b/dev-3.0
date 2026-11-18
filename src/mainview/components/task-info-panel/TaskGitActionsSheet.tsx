@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import type { Project, Task } from "../../../shared/types";
 import { taskUsesWorktree } from "../../../shared/types";
 import { useT } from "../../i18n";
@@ -70,10 +70,18 @@ export default function TaskGitActionsSheet({
 		handlePush,
 		handleRebase,
 		handleRefreshStatus,
+		refreshStatusQuietly,
 		refreshingStatus,
 		statusError,
 		statusLoading,
 	} = git;
+
+	// The sheet mounts only while open, so this runs on every open. The 15s poll
+	// never fetches the remote; this does, so ahead/behind and the PR are current.
+	useEffect(() => {
+		void refreshStatusQuietly();
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- once per open/task, not per render
+	}, [task.id]);
 
 	// Git mutations only make sense on a real, active worktree. An Operations task
 	// has no git domain of its own (Bible §3); with an attached repo it gets the

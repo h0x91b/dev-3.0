@@ -411,7 +411,9 @@ export function useTaskBranchStatus({
 		return () => window.removeEventListener("rpc:gitOpCompleted", onGitOpCompleted);
 	}, [applyStatus, cacheKey, compareRef, completeTask, enabled, handleCreatePR, openTask, project.id, task.customTitle, task.id, task.manualCompletion, task.status, task.title, t]);
 
-	const handleRefreshStatus = useCallback(async () => {
+	// `manual` is the Refresh button: it re-offers a dismissed merge prompt and
+	// toasts failures. Opening the phone git sheet refreshes without either.
+	const refreshStatus = useCallback(async (manual: boolean) => {
 		if (refreshingStatus || !isTaskActive || !task.worktreePath) {
 			return;
 		}
@@ -430,15 +432,15 @@ export function useTaskBranchStatus({
 			]);
 			applyStatus(cacheKey, status);
 			if (status.prNumber != null && task.prNumber == null) await api.request.refreshTaskPrStatus({ taskId: task.id, projectId: project.id, force: false });
-			// A manual click is a force re-check: re-offer completion even if the
-			// user dismissed the popup earlier for this same merged head.
-			await offerMergeCompletionIfMerged(status, { force: true });
+			await offerMergeCompletionIfMerged(status, { force: manual });
 		} catch (err) {
 			setErrorEntry({ key: cacheKey, message: String(err) });
-			toast.error(t("infoPanel.refreshStatusFailed", { error: String(err) }), { taskId: task.id });
+			if (manual) toast.error(t("infoPanel.refreshStatusFailed", { error: String(err) }), { taskId: task.id });
 		}
 		setRefreshingStatus(false);
 	}, [applyStatus, cacheKey, compareRef, isTaskActive, offerMergeCompletionIfMerged, project.id, refreshingStatus, task.id, task.prNumber, task.worktreePath, t]);
+	const handleRefreshStatus = useCallback(() => refreshStatus(true), [refreshStatus]);
+	const refreshStatusQuietly = useCallback(() => refreshStatus(false), [refreshStatus]);
 
 	const handleRebase = useCallback(async () => {
 		if (rebasing) {
@@ -637,6 +639,7 @@ export function useTaskBranchStatus({
 		handlePush,
 		handleRebase,
 		handleRefreshStatus,
+		refreshStatusQuietly,
 		localMergeBlocked,
 		merging,
 		mergeRoute,
