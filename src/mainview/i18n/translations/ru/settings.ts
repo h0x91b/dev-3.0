@@ -412,7 +412,7 @@ const settings = {
 	"settings.logRetentionAge_few": "{count} дней",
 	"settings.logRetentionAge_many": "{count} дней",
 	"settings.logRetentionAge_other": "{count} дня",
-	"settings.logRetentionSaveFailed": "Не удалось изменить срок хранения. Ничего не изменено.",
+	"settings.logRetentionSaveFailed": "Не удалось подтвердить изменение срока хранения. Проверьте показанное значение.",
 	"settings.logRetentionChangedElsewhere": "Срок хранения изменился в другом месте. Выберите заново.",
 	"settings.rateLimitTracking": "Отслеживание лимитов агентов",
 	"settings.rateLimitTrackingDesc": "Показывает в шапке живое использование лимитов Claude/Codex. Данные Claude собираются через statusLine сессии, маршрутизируемый через dev3 — ваш собственный statusLine продолжает работать, dev3 лишь дописывает свой сегмент.",

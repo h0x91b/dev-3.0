@@ -382,6 +382,11 @@ function TrafficView({ projectId, focus, onOpenTask }: Props) {
 	const notifications = useNotificationTraffic(
 		data.loading ? null : data.projects.map((project) => project.id),
 	);
+	// The earlier of the two archives; unknown (no clamp) until both have answered.
+	const calendarOldestDay =
+		!data.loading && !data.error && notifications.status === "ready"
+			? [data.oldestDay, notifications.oldestDay].filter((day): day is string => !!day).sort()[0] ?? null
+			: undefined;
 	const { experiment, choose } = useTrafficExperiment();
 	// Arriving without a project opens on the active projects, not on all of them:
 	// eighteen empty blocks are eighteen blocks of stage the busy two could have
@@ -1182,7 +1187,7 @@ function TrafficView({ projectId, focus, onOpenTask }: Props) {
 								<TrafficPeriodPicker
 									value={windowSize}
 									retentionDays={data.retentionDays}
-									oldestDay={data.oldestDay}
+									oldestDay={calendarOldestDay}
 									onChange={(value) => {
 										setWindowSize(value);
 										clearSelection();

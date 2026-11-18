@@ -770,12 +770,11 @@ function GlobalSettings({
 				adoptHostSettings(await api.request.setLogRetention({ value: choice, expectedCurrent }));
 			} catch (err) {
 				// The host refused because the retention changed since the user chose; show the real one.
-				if (!String(err).includes(LOG_RETENTION_CHANGED_MESSAGE)) {
-					toast.error(t("settings.logRetentionSaveFailed"), { source: "settings" });
-					return;
-				}
+				const stale = String(err).includes(LOG_RETENTION_CHANGED_MESSAGE);
+				// A lost reply can follow a save, so whatever failed, show what the host holds now.
 				await api.request.getGlobalSettings().then(adoptHostSettings).catch(() => {});
-				toast.info(t("settings.logRetentionChangedElsewhere"), { source: "settings" });
+				if (stale) toast.info(t("settings.logRetentionChangedElsewhere"), { source: "settings" });
+				else toast.error(t("settings.logRetentionSaveFailed"), { source: "settings" });
 			}
 		},
 		[adoptHostSettings, t],

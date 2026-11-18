@@ -6,6 +6,8 @@ import { resetTrafficStore } from "../agent-traffic";
 import { setAgentTrafficEnabledForTests } from "../agent-traffic-flag";
 import { resetNotificationTrafficStore } from "../notification-traffic";
 import AgentTrafficScreen from "../components/agent-traffic/AgentTrafficScreen";
+import { localDay, shiftDay } from "../components/agent-traffic/traffic-period";
+import { api } from "../rpc";
 
 vi.mock("../components/agent-traffic/TrafficOrbit", () => ({
 	default: () => <div aria-label="Project traffic map" />,
@@ -270,5 +272,39 @@ describe("notifications on the replay timeline", () => {
 		await waitFor(() =>
 			expect(screen.getAllByTestId("traffic-notification-row")).toHaveLength(2),
 		);
+	});
+});
+
+describe("the day calendar with history kept forever", () => {
+	function keepForever(notificationOldestDay: string | null) {
+		vi.mocked(api.request.readAgentMessageLog).mockResolvedValue({ rows: [], oldestDay: null, retentionDays: null, hasMore: false });
+		notificationPage.value = { rows: [], oldestDay: notificationOldestDay, newestDay: notificationOldestDay, retentionDays: null, hasMore: false };
+	}
+	async function openCalendar() {
+		renderScreen();
+		await userEvent.click(await screen.findByRole("button", { name: /^Time window:/ }));
+		return screen.getByRole("button", { name: "Previous month" }) as HTMLButtonElement;
+	}
+
+	it("reaches the month of notification-only history, and no further back", async () => {
+		keepForever(shiftDay(localDay(new Date()), -100));
+		const previous = await openCalendar();
+		await waitFor(() => expect(previous).not.toBeDisabled());
+		for (let i = 0; i < 3; i += 1) {
+			expect(previous).not.toBeDisabled();
+			await userEvent.click(previous);
+		}
+		for (let i = 0; i < 3 && !previous.disabled; i += 1) await userEvent.click(previous);
+		expect(previous).toBeDisabled();
+	});
+
+	it("does not clamp while the notification archive has not answered", async () => {
+		keepForever(null);
+		readNotificationLog.mockImplementationOnce(() => new Promise(() => {}));
+		const previous = await openCalendar();
+		for (let i = 0; i < 6; i += 1) {
+			expect(previous).not.toBeDisabled();
+			await userEvent.click(previous);
+		}
 	});
 });

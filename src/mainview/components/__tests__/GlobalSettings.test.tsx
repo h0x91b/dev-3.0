@@ -1136,9 +1136,9 @@ describe("GlobalSettings", () => {
 			info.mockRestore();
 		});
 
-		it("tells the user when changing the log retention failed for any other reason", async () => {
+		it("does not claim a failed log retention change is undone, and shows the value the host holds", async () => {
 			setupMocks(mockAgents, { ...mockGlobalSettings });
-			mockedApi.request.setLogRetention.mockRejectedValue(new Error("settings.json is unreadable; not overwriting it"));
+			mockedApi.request.setLogRetention.mockRejectedValue(new Error("RPC connection restarted"));
 			const error = vi.spyOn(toast, "error").mockImplementation(() => undefined as never);
 			const user = userEvent.setup();
 			renderGlobalSettings("system");
@@ -1146,10 +1146,14 @@ describe("GlobalSettings", () => {
 			const select = (await screen.findByTestId("log-retention")) as HTMLSelectElement;
 			await waitFor(() => expect(select).not.toBeDisabled());
 
+			// The host did save "forever" before the reply was lost.
+			mockedApi.request.getGlobalSettings.mockResolvedValue({ ...mockGlobalSettings, logRetentionDays: "forever" });
 			await user.selectOptions(select, "forever");
 
-			await waitFor(() => expect(error).toHaveBeenCalledWith("Could not change the retention. Nothing was changed.", { source: "settings" }));
-			expect(select.value).toBe("30");
+			await waitFor(() =>
+				expect(error).toHaveBeenCalledWith("Could not confirm the retention change. Check the value shown.", { source: "settings" }),
+			);
+			await waitFor(() => expect(select.value).toBe("forever"));
 			error.mockRestore();
 		});
 

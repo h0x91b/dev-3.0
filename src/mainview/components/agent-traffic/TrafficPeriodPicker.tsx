@@ -14,13 +14,16 @@ import {
 } from "./traffic-period";
 import { formatRangeLabel } from "./traffic-range";
 
+/** The earliest day the calendar offers while the oldest day on disk is not known yet. */
+const NO_LOWER_BOUND_DAY = "1970-01-01";
+
 type Props = {
 	value: string;
 	onChange: (value: string) => void;
 	/** Null when history is kept forever: the calendar then reaches back to `oldestDay`. */
 	retentionDays: number | null;
-	/** Oldest day still on disk, `YYYY-MM-DD`; null when there is no history. */
-	oldestDay: string | null;
+	/** Oldest day still on disk, `YYYY-MM-DD`; null when there is no history, undefined while that is not known yet. */
+	oldestDay: string | null | undefined;
 };
 
 export default function TrafficPeriodPicker(props: Props) {
@@ -141,7 +144,7 @@ function Calendar({ value, onChange, retentionDays, oldestDay }: Props) {
 	const t = useT();
 	const [locale] = useLocale();
 	const today = localDay(new Date());
-	const minimum = retentionDays === null ? (oldestDay ?? today) : shiftDay(today, -retentionDays);
+	const minimum = retentionDays === null ? (oldestDay === undefined ? NO_LOWER_BOUND_DAY : (oldestDay ?? today)) : shiftDay(today, -retentionDays);
 	const initial = isCalendarDay(value) ? value : today;
 	const [focused, setFocused] = useState(initial);
 	const [month, setMonth] = useState(initial.slice(0, 7));

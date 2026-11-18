@@ -396,7 +396,7 @@ const settings = {
 	"settings.logRetentionConfirmLabel": "Delete",
 	"settings.logRetentionAge_one": "{count} day",
 	"settings.logRetentionAge_other": "{count} days",
-	"settings.logRetentionSaveFailed": "Could not change the retention. Nothing was changed.",
+	"settings.logRetentionSaveFailed": "Could not confirm the retention change. Check the value shown.",
 	"settings.logRetentionChangedElsewhere": "Retention changed elsewhere. Choose again.",
 	"settings.rateLimitTracking": "Agent rate-limit tracking",
 	"settings.rateLimitTrackingDesc": "Show live Claude/Codex rate-limit usage in the header. Claude data is captured by routing the session statusLine through dev3 — your own statusLine keeps working, dev3 only appends its usage segment.",
