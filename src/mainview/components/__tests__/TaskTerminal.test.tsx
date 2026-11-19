@@ -936,10 +936,10 @@ describe("TaskTerminal", () => {
 			expect(screen.getByText("Start Fresh")).toBeInTheDocument();
 		});
 
-		it("hides Resume for a conversation that never started and starts again fresh", async () => {
+		it("offers one Start again button for a conversation that never started, and it resumes through the backend", async () => {
 			const user = userEvent.setup();
 			mockedApi.request.getPtyUrl.mockResolvedValue(recoverable);
-			mockedApi.request.restartTask.mockResolvedValue("ws://localhost:9999?session=t1");
+			mockedApi.request.resumeTask.mockResolvedValue("ws://localhost:9999?session=t1");
 			await act(async () => {
 				renderTerminal({ tasks: [makeTask({ launchFailure: failure({ neverStarted: true }) })] });
 			});
@@ -951,8 +951,8 @@ describe("TaskTerminal", () => {
 			await act(async () => {
 				await user.click(screen.getByText("Start again"));
 			});
-			expect(mockedApi.request.restartTask).toHaveBeenCalledWith({ taskId: "t1" });
-			expect(mockedApi.request.resumeTask).not.toHaveBeenCalled();
+			expect(mockedApi.request.resumeTask).toHaveBeenCalledWith({ taskId: "t1" });
+			expect(mockedApi.request.restartTask).not.toHaveBeenCalled();
 		});
 
 		it("says so when no output was captured", async () => {
@@ -966,31 +966,36 @@ describe("TaskTerminal", () => {
 			expect(screen.getByText("The agent exited")).toBeInTheDocument();
 		});
 
-		it("shows the failure on the session-ended screen and replaces Resume with Start again", async () => {
+		it("shows the failure on the session-ended screen and replaces Resume with Start again, which resumes through the backend", async () => {
 			const user = userEvent.setup();
 			mockedApi.request.getPtyUrl.mockRejectedValue(new Error("no pty"));
 			mockedApi.request.checkWorktreeState.mockResolvedValue("present");
-			mockedApi.request.restartTask.mockResolvedValue("ws://localhost:9999?session=t1");
+			mockedApi.request.resumeTask.mockResolvedValue("ws://localhost:9999?session=t1");
 			await act(async () => {
 				renderTerminal({ tasks: [makeTask({ launchFailure: failure({ neverStarted: true }) })] });
 			});
 			await waitFor(() => {
 				expect(screen.getByTestId("terminal-launch-failure")).toBeInTheDocument();
 			});
+			expect(screen.getByText("The agent did not start (exit code 2)")).toBeInTheDocument();
 			expect(screen.queryByText("Resume Session")).not.toBeInTheDocument();
 			await act(async () => {
 				await user.click(screen.getByText("Start again"));
 			});
-			expect(mockedApi.request.restartTask).toHaveBeenCalledWith({ taskId: "t1" });
+			expect(mockedApi.request.resumeTask).toHaveBeenCalledWith({ taskId: "t1" });
+			expect(mockedApi.request.restartTask).not.toHaveBeenCalled();
+			await waitFor(() => {
+				expect(screen.queryByTestId("terminal-launch-failure")).not.toBeInTheDocument();
+			});
 		});
 
-		it("titles the recovery screen for what happened, not as a recoverable session", async () => {
+		it("puts the exit code in the recovery title once, and the block carries no second heading", async () => {
 			mockedApi.request.getPtyUrl.mockResolvedValue(recoverable);
 			await act(async () => {
 				renderTerminal({ tasks: [makeTask({ launchFailure: failure({ neverStarted: true }) })] });
 			});
 			await waitFor(() => {
-				expect(screen.getByText("The agent did not start")).toBeInTheDocument();
+				expect(screen.getAllByText("The agent did not start (exit code 2)")).toHaveLength(1);
 			});
 			expect(screen.getByText("Its first launch failed before a conversation was created, so there is nothing to resume.")).toBeInTheDocument();
 			expect(screen.queryByText("Previous agent session found")).not.toBeInTheDocument();

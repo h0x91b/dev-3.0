@@ -37,7 +37,6 @@ const terminal = {
 	"terminal.agentFailedTitle_noCode": "Агент завершился",
 	"terminal.launchFailureNoOutput": "Вывод агента не сохранён.",
 	"terminal.launchAgain": "Запустить заново",
-	"terminal.launchFailedRecoveryTitle": "Агент не запустился",
 	"terminal.launchFailedRecoveryDesc": "Первый запуск упал до создания беседы, поэтому возобновлять нечего.",
 	"terminal.hibernatedTitle": "Задача заморожена",
 	"terminal.hibernatedDesc": "Агент, терминал и dev-сервер были остановлены, чтобы освободить память. Worktree и изменения не тронуты. Выберите, как вернуть задачу — dev-сервер в любом случае останется выключенным.",

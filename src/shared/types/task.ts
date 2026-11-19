@@ -174,8 +174,8 @@ export interface Task {
 	 */
 	agentExitedAt?: string;
 	/**
-	 * Why the launched agent died: set by the launch wrapper's exit report, cleared by
-	 * the next launch or Claude's SessionStart. `neverStarted` means no conversation
+	 * Why the launched agent died: set by the launch wrapper's exit report, cleared only by
+	 * the next launch of the agent. `neverStarted` means no conversation
 	 * was created, so `sessionId` must never be resumed.
 	 */
 	launchFailure?: { exitCode: number | null; at: string; output: string | null; neverStarted: boolean; sessionId: string };

@@ -131,7 +131,9 @@ export const agentHandlers: Record<string, Handler> = {
 		if (!verdict) return { moved: false };
 		log.info("Launched agent exited", { taskId: task.id.slice(0, 8), verdict, exitCode });
 		// Before the card moves: the pane still shows what the agent printed.
-		await recordLaunchFailure(project, task, { exitCode, sessionId, neverStarted: verdict === "early" }, (payload) => getPushMessage()?.("taskUpdated", payload));
+		const stillCurrent = await recordLaunchFailure(project, task, { exitCode, sessionId, neverStarted: verdict === "early" }, (payload) => getPushMessage()?.("taskUpdated", payload));
+		// A launch that started during the capture replaced this agent: its exit says nothing about the new one.
+		if (!stillCurrent) return { moved: false };
 		if (task.status !== "in-progress" || task.hibernated) return { moved: false };
 		await moveTask({ projectId: project.id, taskId: task.id, newStatus: "user-questions", ifStatus: "in-progress", skipQuestionsBadge: true });
 		const code = exitCode === null ? "" : ` (exit code ${exitCode})`;

@@ -27,7 +27,7 @@ vi.mock("../agent-transcripts", () => ({
 		panes.map((p) => ({ sessionId: p.sessionId, substituted: false, startFresh: false, verified: true }))),
 	claudeConfigDirHasSession: vi.fn(() => true),
 }));
-vi.mock("../codex-task-selection", () => ({ chooseTaskCodexConversations: vi.fn(async () => new Map()) }));
+vi.mock("../codex-task-selection", () => ({ chooseTaskCodexConversations: vi.fn(async () => new Map()), claimCodexChoices: vi.fn(async () => undefined) }));
 vi.mock("../repo-config", () => ({ resolveProjectEnv: vi.fn(async () => ({})) }));
 vi.mock("../ops-worktree", () => ({ resolveLaunchProject: vi.fn(async (p: Project) => p), rootProjectFor: vi.fn((p: Project) => p) }));
 vi.mock("../tmux", () => ({ DEFAULT_TMUX_SOCKET: "dev3", taskSessionName: (id: string) => `dev3-${id}`, tmux: { killSession: vi.fn() } }));
@@ -56,6 +56,7 @@ vi.mock("../rpc-handlers/tmux-pty/task-state", () => ({
 }));
 
 import * as data from "../data";
+import { chooseTaskCodexConversations, claimCodexChoices } from "../codex-task-selection";
 import { launchTaskPty } from "../rpc-handlers/tmux-pty/task-launch";
 import { findTaskAcrossProjects } from "../rpc-handlers/tmux-pty/task-state";
 import { ResumeUnavailableError, resumeTaskSession } from "../rpc-handlers/tmux-pty/resume";
@@ -186,5 +187,49 @@ describe("conversation history that cannot be read", () => {
 		expect(launchTaskPty).not.toHaveBeenCalled();
 		expect(pty.splitAndRunCommand).not.toHaveBeenCalled();
 		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+});
+
+describe("a refused resume changes nothing saved", () => {
+	it("leaves a mixed Claude/Codex task's saved panes byte-identical when the Claude history cannot be read", async () => {
+		const chosenId = "00000000-0000-4000-8000-0000c0de1083";
+		const real = await vi.importActual<typeof import("../codex-task-selection")>("../codex-task-selection");
+		const task = arrange({ sessionState: { panes: [mainPane, { ...extraPane, sessionId: null }] } });
+		// The row on disk is not the in-memory task object the resume rewrites.
+		let persisted: Task = structuredClone(task);
+		// The in-memory board the real claim writes to, like the tasks file.
+		vi.mocked(data.updateTaskWith).mockImplementation((async (_p: unknown, _id: string, mutator: (t: Task) => { updates: Partial<Task>; result: unknown }) => {
+			const { updates, result } = mutator(persisted);
+			persisted = { ...persisted, ...updates };
+			return { task: persisted, result };
+		}) as never);
+		vi.mocked(claimCodexChoices).mockImplementation(real.claimCodexChoices);
+		// The selector picks the pane's worktree conversation; `persist: true` would claim it right away.
+		const choices = new Map([[1, { sessionId: chosenId, codexHome: "/fixture/codex" }]]);
+		vi.mocked(chooseTaskCodexConversations).mockImplementationOnce((async (project: Project, t: Task, panes: PaneSessionEntry[], _intent: unknown, options: { persist: boolean; onDisk?: PaneSessionEntry[] }) => {
+			if (options.persist) await real.claimCodexChoices(project, t, options.onDisk ?? panes, panes, choices);
+			return choices;
+		}) as never);
+		vi.mocked(resolveResumableSessionIds).mockReturnValueOnce([
+			{ sessionId: "never-created", substituted: false, startFresh: false, verified: false, unreadable: { dir: "/fixture/claude", code: "EACCES" } },
+			{ sessionId: chosenId, substituted: false, startFresh: false, verified: true },
+		]);
+		const before = JSON.stringify(persisted.sessionState);
+
+		await expect(resumeTaskSession("t1")).rejects.toMatchObject({ reason: "history-unreadable" });
+
+		expect(launchTaskPty).not.toHaveBeenCalled();
+		expect(JSON.stringify(persisted.sessionState)).toBe(before);
+		vi.mocked(claimCodexChoices).mockImplementation(async () => undefined);
+	});
+
+	it("claims the Codex choice once every refusal has passed, before launching", async () => {
+		const chosenId = "00000000-0000-4000-8000-0000c0de1083";
+		arrange({ sessionState: { panes: [mainPane, { ...extraPane, sessionId: null }] } });
+		vi.mocked(chooseTaskCodexConversations).mockResolvedValueOnce(new Map([[1, { sessionId: chosenId, codexHome: "/fixture/codex" }]]));
+		vi.mocked(claimCodexChoices).mockClear();
+		await resumeTaskSession("t1");
+		expect(claimCodexChoices).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(claimCodexChoices).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(launchTaskPty).mock.invocationCallOrder[0]);
 	});
 });

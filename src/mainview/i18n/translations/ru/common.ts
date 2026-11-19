@@ -71,6 +71,7 @@ const common = {
 	"agentLaunch.resumeNoteAccount": "Откроет сохранённые разговоры, каждый со своим агентом и пресетом. Панели Claude можно перенести на другой аккаунт ниже.",
 	"agentLaunch.resumeConversation": "Разговор {id}",
 	"agentLaunch.resumeLatest": "Нет сохранённого id разговора — агент откроет свой последний",
+	"agentLaunch.resumeStartAgain": "Запустить заново (агент не стартовал)",
 	"agentLaunch.resume": "Возобновить",
 	"agentLaunch.resuming": "Возобновляю…",
 	"agentLaunch.initialPrompt": "Начальные инструкции",

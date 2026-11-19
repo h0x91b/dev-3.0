@@ -42,22 +42,27 @@ async function captureAgentOutput(task: Task): Promise<string | null> {
 	}
 }
 
-/** Keeps the dead agent's last screen on the task, so recovery can say why it died after the pane is gone. */
+/**
+ * Keeps the dead agent's last screen on the task, so recovery can say why it died after the pane is gone.
+ * Returns whether this exit still belongs to the task's latest launch: when a newer launch started
+ * during the capture, nothing is written and the caller must not act on the old exit.
+ */
 export async function recordLaunchFailure(
 	project: Project,
 	task: Task,
 	failure: { exitCode: number | null; sessionId: string; neverStarted: boolean },
 	pushTaskUpdated: (payload: { projectId: string; task: Task }) => void,
-): Promise<void> {
+): Promise<boolean> {
 	try {
 		const launchFailure = { ...failure, at: new Date().toISOString(), output: await captureAgentOutput(task) };
-		// The capture takes time: a launch that started meanwhile must not get this run's failure.
 		const { task: updated, result: wrote } = await data.updateTaskWith(project, task.id, () =>
 			isLatestAgentLaunch(task.id, failure.sessionId)
 				? { updates: { launchFailure }, result: true }
 				: { updates: {}, result: false });
 		if (wrote) pushTaskUpdated({ projectId: project.id, task: updated });
+		return wrote;
 	} catch (err) {
 		log.warn("Could not save the launch failure (non-fatal)", { taskId: task.id.slice(0, 8), error: String(err) });
+		return isLatestAgentLaunch(task.id, failure.sessionId);
 	}
 }

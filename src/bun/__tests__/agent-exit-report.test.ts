@@ -207,6 +207,19 @@ describe("the failed launch's cause is kept on the task", () => {
 		expect(output.endsWith("END")).toBe(true);
 	});
 
+	it("an old exit whose capture outlived its launch moves nothing and raises nothing", async () => {
+		noteAgentLaunched("task", SESSION, { startReceipts: true });
+		vi.spyOn(tmux, "capturePane").mockImplementation(async () => {
+			noteAgentLaunched("task", "new-launch", { startReceipts: true });
+			return "old launch failed";
+		});
+		await expect(exited(1)).resolves.toEqual({ moved: false });
+		expect(agentSessionRecord("task", "new-launch")?.launchedAt).not.toBeNull();
+		expect(moveTask).not.toHaveBeenCalled();
+		expect(pushCliAttention).not.toHaveBeenCalled();
+		expect(savedFailure()).toBeUndefined();
+	});
+
 	it("saves nothing for a clean exit or an unknown launch", async () => {
 		const capture = vi.spyOn(tmux, "capturePane").mockResolvedValue("x");
 		noteAgentLaunched("task", LAUNCH, { startReceipts: false });

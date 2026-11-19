@@ -287,6 +287,21 @@ describe.skipIf(process.getuid?.() === 0)("resolveResumableSessionIds — a hist
 		}
 	});
 
+	it("keeps the stored id when the origin store it came from cannot be read, instead of substituting another", () => {
+		const origin = "/fixture/original-conversation";
+		const saved = "1160218f-85f5-4a45-8032-ced3af5a532b";
+		seedTranscriptFor(origin, saved);
+		seedEmptyWorktreeStore();
+		seedTranscript("newer-local-conversation", 1);
+		const dir = join(home, ".claude", "projects", claudeEncodePath(origin));
+		chmodSync(dir, 0o000);
+		try {
+			expect(resolveOne("claude", saved, origin)).toMatchObject({ sessionId: saved, substituted: false, startFresh: false, unreadable: { dir, code: "EACCES" } });
+		} finally {
+			chmodSync(dir, 0o700);
+		}
+	});
+
 	it("still verifies a stored id that a readable store holds", () => {
 		seedTranscript("stored-main", 10);
 		const [target] = resolveResumableSessionIds(WORKTREE, claudePanes("stored-main"), home);

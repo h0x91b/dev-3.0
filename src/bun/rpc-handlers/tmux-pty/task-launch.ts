@@ -318,6 +318,21 @@ export async function applyModelVersionNotice(
 	return buildScriptRunnerCommand(scriptPath, { shellPath: opts.userShell });
 }
 
+/**
+ * A new agent run supersedes the previous run's failure, but only once the replacement
+ * is committed: a launch that throws earlier must keep the verdict that tells Resume
+ * its conversation never existed. Decided on the row under the lock, since the previous
+ * run's report may have landed after this task was read.
+ */
+async function clearSupersededLaunchFailure(project: Project, task: Task): Promise<void> {
+	try {
+		await data.updateTaskWith(project, task.id, (current) => ({ updates: current.launchFailure ? { launchFailure: undefined } : {}, result: null }));
+	} catch (err) {
+		log.warn("Could not clear the previous launch failure (non-fatal)", { taskId: task.id.slice(0, 8), error: String(err) });
+	}
+	task.launchFailure = undefined;
+}
+
 export async function launchTaskPty(
 	project: Project,
 	task: Task,
@@ -384,12 +399,6 @@ export async function launchTaskPty(
 	}
 	stopSetupFailureWatch(task.id);
 	clearSetupExitCode(task.id);
-
-	// A new agent run supersedes the previous run's failure, but a reconnect or a plain shell is no run.
-	if (task.launchFailure && !skipSessionPersist && !opts?.shellNotice) {
-		await data.updateTask(project, task.id, { launchFailure: undefined });
-		task.launchFailure = undefined;
-	}
 
 	const resumeFresh = resume && !!opts?.freshSessionId;
 	const ctx: agents.TemplateContext = {
@@ -749,6 +758,7 @@ export async function launchTaskPty(
 	// backends. Only the session itself differs.
 	if (nativeBackend) {
 		await launchNativeTaskSession(project, task, worktreePath, runScriptPath, env, userShell);
+		if (!skipSessionPersist && !opts?.shellNotice) await clearSupersededLaunchFailure(project, task);
 		return launchAccountId;
 	}
 
@@ -770,6 +780,7 @@ export async function launchTaskPty(
 		if (!skipSessionPersist && !isSetupWrapper && mainPaneEntry) {
 			await persistInitialAgentPaneId(project, task, sessionSocket, mainPaneEntry);
 		}
+		if (!skipSessionPersist && !opts?.shellNotice) await clearSupersededLaunchFailure(project, task);
 		await setTmuxSessionPortEnv(task.id, sessionSocket);
 		if (project.kind === "virtual" && !sessionPreexisted) {
 			await addVirtualShellPane(task, worktreePath, sessionSocket, userShell);

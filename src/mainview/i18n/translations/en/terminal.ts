@@ -37,7 +37,6 @@ const terminal = {
 	"terminal.agentFailedTitle_noCode": "The agent exited",
 	"terminal.launchFailureNoOutput": "The agent's output was not captured.",
 	"terminal.launchAgain": "Start again",
-	"terminal.launchFailedRecoveryTitle": "The agent did not start",
 	"terminal.launchFailedRecoveryDesc": "Its first launch failed before a conversation was created, so there is nothing to resume.",
 	"terminal.hibernatedTitle": "This task is hibernated",
 	"terminal.hibernatedDesc": "Its agent, terminal and dev server were stopped to free memory. The worktree and your changes are untouched. Pick how to bring it back — the dev server stays down either way.",

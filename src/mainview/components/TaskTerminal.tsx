@@ -67,15 +67,17 @@ const FOCUS_REQUEST_TTL_MS = 15_000;
 
 type ErrorKind = "worktree-gone" | "worktree-unreadable" | "session-ended";
 
-function LaunchFailureBlock({ failure }: { failure: NonNullable<Task["launchFailure"]> }) {
-	const t = useT();
+function launchFailureTitle(t: ReturnType<typeof useT>, failure: NonNullable<Task["launchFailure"]>): string {
 	const code = failure.exitCode === null ? null : String(failure.exitCode);
-	const title = failure.neverStarted
-		? (code === null ? t("terminal.launchFailedTitle_noCode") : t("terminal.launchFailedTitle", { code }))
-		: (code === null ? t("terminal.agentFailedTitle_noCode") : t("terminal.agentFailedTitle", { code }));
+	if (failure.neverStarted) return code === null ? t("terminal.launchFailedTitle_noCode") : t("terminal.launchFailedTitle", { code });
+	return code === null ? t("terminal.agentFailedTitle_noCode") : t("terminal.agentFailedTitle", { code });
+}
+
+function LaunchFailureBlock({ failure, showTitle = true }: { failure: NonNullable<Task["launchFailure"]>; showTitle?: boolean }) {
+	const t = useT();
 	return (
 		<div className="space-y-2">
-			<p className="text-fg-2 text-sm font-medium">{title}</p>
+			{showTitle && <p className="text-fg-2 text-sm font-medium">{launchFailureTitle(t, failure)}</p>}
 			<pre
 				data-testid="terminal-launch-failure"
 				className="block bg-base text-fg-3 text-xs px-3 py-2 rounded border border-edge whitespace-pre-wrap break-words max-h-64 overflow-auto font-mono select-text"
@@ -608,6 +610,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	// registered, gets "Unknown session" and never retries; mount it after the URL.
 	function leaveRecoveryForRelaunch() {
 		setRestarting(true);
+		setError(null);
 		setRecoverable(null);
 		setHibernated(false);
 		if (!isNative) setPtyUrl(null);
@@ -845,7 +848,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		const launchFailure = task?.launchFailure;
 		// The conversation was never created, so there is nothing to resume: only a fresh start helps.
 		const neverStarted = !hibernated && !!task && mainAgentNeverStarted(task);
-		const canResume = (!hibernated || recoverable.panes.length > 0) && !neverStarted;
+		const canResume = !hibernated || recoverable.panes.length > 0;
 		return (
 			<div className="flex items-center justify-center h-full">
 				<div
@@ -854,12 +857,12 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				>
 					<div className="flex items-center gap-2 font-medium text-fg">
 						<span className="text-lg">{"\u{F0645}"}</span>
-						<span>{hibernated ? t("terminal.hibernatedTitle") : neverStarted ? t("terminal.launchFailedRecoveryTitle") : t("terminal.recoveryTitle")}</span>
+						<span>{hibernated ? t("terminal.hibernatedTitle") : neverStarted && launchFailure ? launchFailureTitle(t, launchFailure) : t("terminal.recoveryTitle")}</span>
 					</div>
 					<p className="text-fg-3 text-sm">
 						{hibernated ? t("terminal.hibernatedDesc") : neverStarted ? t("terminal.launchFailedRecoveryDesc") : t("terminal.recoveryDesc")}
 					</p>
-					{launchFailure && <LaunchFailureBlock failure={launchFailure} />}
+					{launchFailure && <LaunchFailureBlock failure={launchFailure} showTitle={!neverStarted} />}
 					{canResume && (
 						<ResumeAccountPicker
 							panes={recoverable.panes}
@@ -877,16 +880,18 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 									disabled={restarting}
 									className="flex-1 px-4 py-2 bg-accent-fill text-white rounded text-sm font-medium hover:bg-accent-fill-hover transition-colors disabled:opacity-50"
 								>
-									{restarting ? t("terminal.connecting") : hibernated ? t("terminal.wakeResume") : t("terminal.resumeSession")}
+									{restarting ? t("terminal.connecting") : hibernated ? t("terminal.wakeResume") : neverStarted ? t("terminal.launchAgain") : t("terminal.resumeSession")}
 								</button>
 							)}
-							<button
-								onClick={hibernated ? handleWakeShell : handleStartFresh}
-								disabled={restarting}
-								className={`flex-1 px-4 py-2 rounded text-sm font-medium transition-colors disabled:opacity-50 ${neverStarted ? "bg-accent-fill text-white hover:bg-accent-fill-hover" : "bg-elevated text-fg-2 hover:bg-elevated-hover"}`}
-							>
-								{hibernated ? t("terminal.wakeShell") : neverStarted ? t("terminal.launchAgain") : t("terminal.startFresh")}
-							</button>
+							{!neverStarted && (
+								<button
+									onClick={hibernated ? handleWakeShell : handleStartFresh}
+									disabled={restarting}
+									className="flex-1 px-4 py-2 bg-elevated text-fg-2 rounded text-sm font-medium hover:bg-elevated-hover transition-colors disabled:opacity-50"
+								>
+									{hibernated ? t("terminal.wakeShell") : t("terminal.startFresh")}
+								</button>
+							)}
 						</div>
 						<p className="text-fg-muted text-xs">{hibernated ? t("terminal.wakeShellDesc") : t("terminal.startFreshDesc")}</p>
 					</div>
@@ -940,7 +945,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 					<div className="flex gap-3 pt-2">
 						{isSessionEnded && (
 							<button
-								onClick={neverStarted ? handleStartFresh : handleRestart}
+								onClick={neverStarted ? handleResumeSession : handleRestart}
 								disabled={restarting}
 								className="flex-1 px-4 py-2 bg-accent-fill text-white rounded text-sm font-medium hover:bg-accent-fill-hover transition-colors disabled:opacity-50"
 							>

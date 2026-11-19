@@ -30,6 +30,7 @@ vi.mock("../data", () => ({
 	getProject: vi.fn(),
 	getTask: vi.fn(),
 	updateTask: vi.fn(async () => undefined),
+	updateTaskWith: vi.fn(async () => ({ task: {}, result: null })),
 	loadProjects: vi.fn(async () => []),
 	loadVirtualProjects: vi.fn(async () => []),
 }));
@@ -956,6 +957,16 @@ describe("launch registration of a fresh Claude session", () => {
 		expect(exitReports()).toEqual([["dev3", "hook", "agent-exited", "--task", TASK_ID, "--session", sessionId]]);
 	});
 
+	it("clears the previous run's failure only after this launch is registered, so a late report of the old run cannot land", async () => {
+		let registeredAtClear: boolean | null = null;
+		vi.mocked(data.updateTaskWith).mockImplementationOnce((async () => {
+			registeredAtClear = agentSessionRecord(TASK_ID, persistedSessionId())?.launchedAt != null;
+			return { task: {}, result: null };
+		}) as never);
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+		expect(registeredAtClear).toBe(true);
+	});
+
 	it("puts the report on the agent's own script when a setup script runs first", async () => {
 		await launchTaskPty(makeProject({ setupScript: "bun install\n" }), makeTask(), WORKTREE, null, null, true);
 
@@ -1045,17 +1056,32 @@ describe("launch registration of a fresh Claude session", () => {
 
 describe("a new launch supersedes the previous run's failure", () => {
 	const failure = { exitCode: 2, at: "2026-11-19T10:00:00Z", output: null, neverStarted: true, sessionId: "dead-1" };
-	const clears = () => vi.mocked(data.updateTask).mock.calls.filter(([, , updates]) => "launchFailure" in updates);
+	/** The mutator is what decides, against the row under the lock. */
+	const clearPatches = () => vi.mocked(data.updateTaskWith).mock.calls.map(([, , mutator]) => (mutator as (t: Task) => { updates: Partial<Task> })(makeTask({ launchFailure: failure })).updates);
 
-	it("clears the failure when an agent launches", async () => {
-		await launchTaskPty(makeProject(), makeTask({ launchFailure: failure }), WORKTREE);
-		expect(clears()).toHaveLength(1);
-		expect(clears()[0][2]).toEqual({ launchFailure: undefined });
+	it("clears the failure of the row when an agent launches", async () => {
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+		expect(clearPatches()).toEqual([{ launchFailure: undefined }]);
+		const mutator = vi.mocked(data.updateTaskWith).mock.calls[0][2] as (t: Task) => { updates: Partial<Task> };
+		expect(mutator(makeTask()).updates).toEqual({});
 	});
 
-	it("writes nothing when there is no failure to clear", async () => {
-		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
-		expect(clears()).toHaveLength(0);
+	it("keeps the never-started verdict when the replacement launch is refused before it starts", async () => {
+		const task = makeTask({ launchFailure: failure, sessionState: { panes: [{ agentCmd: "claude", sessionId: "dead-1", main: true }] } });
+		vi.mocked(agents.resolveCommandForProject).mockRejectedValueOnce(new Error("Custom executable is unavailable"));
+		await expect(launchTaskPty(makeProject(), task, WORKTREE, null, null, false, true, { freshSessionId: "fresh-attempt", freshWithTaskPrompt: true }))
+			.rejects.toThrow("Custom executable is unavailable");
+		expect(task.launchFailure).toEqual(failure);
+		expect(data.updateTaskWith).not.toHaveBeenCalled();
+		expect(vi.mocked(data.updateTask).mock.calls.some(([, , updates]) => "launchFailure" in updates)).toBe(false);
+	});
+
+	it("keeps the verdict when the session itself cannot be created", async () => {
+		const task = makeTask({ launchFailure: failure });
+		vi.mocked(pty.createSession).mockImplementationOnce(() => { throw new Error("spawn failed"); });
+		await expect(launchTaskPty(makeProject(), task, WORKTREE)).rejects.toThrow("spawn failed");
+		expect(task.launchFailure).toEqual(failure);
+		expect(data.updateTaskWith).not.toHaveBeenCalled();
 	});
 
 	it.each([
@@ -1063,7 +1089,7 @@ describe("a new launch supersedes the previous run's failure", () => {
 		["a plain shell", { shellNotice: "parked" }],
 	])("keeps the failure through %s", async (_label, opts) => {
 		await launchTaskPty(makeProject(), makeTask({ launchFailure: failure }), WORKTREE, null, null, false, false, opts);
-		expect(clears()).toHaveLength(0);
+		expect(data.updateTaskWith).not.toHaveBeenCalled();
 	});
 });
 

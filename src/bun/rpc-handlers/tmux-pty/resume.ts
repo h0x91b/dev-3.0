@@ -6,7 +6,7 @@ import { ptyWsUrl } from "../../pty-server-access";
 import * as agents from "../../agents";
 import { codexAccountIdForHome, defaultAccountPaths, getActiveClaudeConfigDir } from "../../agent-accounts";
 import { isAutoAccountId } from "../../../shared/agent-accounts";
-import { chooseTaskCodexConversations } from "../../codex-task-selection";
+import { chooseTaskCodexConversations, claimCodexChoices } from "../../codex-task-selection";
 import { getAgentAdapter } from "../../../shared/agent-adapters/registry";
 import { agentKey } from "../../../shared/agent-adapters/families";
 import * as repoConfig from "../../repo-config";
@@ -317,9 +317,10 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 		throw new ResumeUnavailableError("no-saved-session", `Cannot resume: task ${params.taskId} has no stored pane sessions`);
 	}
 	if (lost) task.sessionState = { panes };
-	// Every Codex pane is chosen from one snapshot and claimed before anything
-	// launches; a pane that cannot be chosen safely refuses the whole resume.
-	const codexChoices = await chooseTaskCodexConversations(resolvedProject, task, panes, "explicit-resume", { persist: true, onDisk: stored });
+	// Every Codex pane is chosen from one snapshot; a pane that cannot be chosen safely
+	// refuses the whole resume. The choice is claimed only after every other refusal below.
+	const panesBeforeChoices = [...panes];
+	const codexChoices = await chooseTaskCodexConversations(resolvedProject, task, panes, "explicit-resume", { persist: false });
 	const codexHomes = new Map<number, string>();
 	for (const [index, choice] of codexChoices) {
 		panes[index] = { ...panes[index], sessionId: choice.sessionId };
@@ -399,6 +400,8 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 			typeof accountOverride === "string" && agents.claudeLaunchKeepsProjectFolder(accountOverride, { ...launch, sessionId: sessionId ?? undefined });
 		await assertAccountReachesPanes(accountOverride, panes, targets, reports, taskTerminalBackendIdentity(task) !== "tmux", switchesAccount, keepsProjectFolder);
 	}
+	// Nothing above wrote anything, so a refused resume leaves the saved panes untouched.
+	if (codexChoices.size) await claimCodexChoices(project, task, stored, panesBeforeChoices, codexChoices);
 	await wakeIfHibernated(project, task);
 
 	if (opts.restart) {

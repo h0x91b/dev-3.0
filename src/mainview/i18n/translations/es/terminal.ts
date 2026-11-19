@@ -37,7 +37,6 @@ const terminal = {
 	"terminal.agentFailedTitle_noCode": "El agente terminó",
 	"terminal.launchFailureNoOutput": "No se capturó la salida del agente.",
 	"terminal.launchAgain": "Iniciar de nuevo",
-	"terminal.launchFailedRecoveryTitle": "El agente no se inició",
 	"terminal.launchFailedRecoveryDesc": "Su primer arranque falló antes de crear una conversación, así que no hay nada que reanudar.",
 	"terminal.hibernatedTitle": "Esta tarea está hibernada",
 	"terminal.hibernatedDesc": "Su agente, terminal y servidor de desarrollo se detuvieron para liberar memoria. El worktree y tus cambios siguen intactos. Elige cómo recuperarla: el servidor de desarrollo permanece apagado en ambos casos.",
