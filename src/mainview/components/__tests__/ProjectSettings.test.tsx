@@ -391,6 +391,17 @@ describe("ProjectSettings", () => {
 			});
 		});
 
+		it("counts an emptied extraFolders list as unsaved, since [] hides a lower layer's list", async () => {
+			const user = userEvent.setup();
+			await renderProjectSettings();
+			await goToProjectTab();
+
+			await user.click(screen.getByRole("button", { name: "+ Add entry" }));
+			await user.click(screen.getByRole("button", { name: "Remove entry" }));
+
+			expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+		});
+
 		it("saves a selected base branch from the filtered branch picker", async () => {
 			const { api } = await import("../../rpc");
 			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;

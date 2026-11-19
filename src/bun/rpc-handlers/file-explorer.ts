@@ -1,13 +1,15 @@
 import { readdir, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve as resolvePath, sep } from "node:path";
-import { EXPLORER_MAX_ENTRIES, type ExplorerEntry, type ExplorerListing } from "../../shared/types";
+import { EXPLORER_MAX_ENTRIES, type ExplorerEntry, type ExplorerListing, type ProjectFolder } from "../../shared/types";
 import * as data from "../data";
 import { run as runGit } from "../git";
+import { clearProjectFoldersCache, resolveProjectFolders, SAFE_GIT_ARGS } from "../project-folders";
 import { log } from "./shared";
 
 /**
  * Backend for the file explorer panel: lists one directory level under a fixed
- * root - the task worktree, or the project checkout on the project terminal screen. The renderer
+ * root - the task worktree, the project checkout on the project terminal screen, or
+ * one of the project's extra folders (`folder`). The renderer
  * sends only a root-relative path, and anything resolving outside the root is
  * refused. See decisions/2026/10/02/file-explorer-panel.md.
  */
@@ -15,8 +17,17 @@ import { log } from "./shared";
 const IGNORED_LOOKUP_TIMEOUT_MS = 5000;
 const HIDDEN_NAMES = new Set([".git"]);
 
-async function explorerRoot(projectId: string, taskId?: string | null): Promise<string | null> {
+async function explorerRoot(projectId: string, taskId?: string | null, folder?: string | null): Promise<string | null> {
 	const project = await data.getProject(projectId);
+	// Only a folder the project itself declares: the renderer cannot name an arbitrary path.
+	if (folder) {
+		const find = async () => (await resolveProjectFolders(project)).find((f) => f.path === folder && f.exists)?.path ?? null;
+		const found = await find();
+		if (found) return found;
+		// A folder added a moment ago may postdate the short cache.
+		clearProjectFoldersCache(project.id);
+		return find();
+	}
 	if (taskId) {
 		const task = await data.getTask(project, taskId);
 		return task.worktreePath ?? null;
@@ -36,7 +47,7 @@ function toPosix(relPath: string): string {
 async function ignoredChildren(root: string, relDir: string): Promise<Set<string>> {
 	const prefix = relDir ? `${relDir}/` : "";
 	const result = await runGit(
-		["git", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z", "--", relDir || "."],
+		["git", ...SAFE_GIT_ARGS, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z", "--", relDir || "."],
 		root,
 		{ timeoutMs: IGNORED_LOOKUP_TIMEOUT_MS },
 	).catch(() => null);
@@ -61,10 +72,12 @@ async function listExplorerDirectory(params: {
 	relPath?: string;
 	/** The folder sits inside an ignored one: git reports only the outer folder, so everything here is ignored too. */
 	insideIgnored?: boolean;
+	/** An extra folder's absolute path; lists that folder instead of the worktree or checkout. */
+	folder?: string | null;
 }): Promise<ExplorerListing> {
 	const requested = (params.relPath ?? "").replace(/^\/+|\/+$/g, "");
 
-	const root = await explorerRoot(params.projectId, params.taskId);
+	const root = await explorerRoot(params.projectId, params.taskId, params.folder);
 	if (!root) return { root: "", relPath: requested, entries: [], error: "no-root" };
 
 	const absDir = resolvePath(root, requested);
@@ -107,6 +120,14 @@ async function listExplorerDirectory(params: {
 	return { root, relPath: relDir, entries: truncated ? entries.slice(0, EXPLORER_MAX_ENTRIES) : entries, ...(truncated ? { truncated } : {}) };
 }
 
+// Every dashboard card asks on each window focus, so a plain call takes the short cache;
+// settings saves clear it, and the explorer's refresh button asks for a fresh read.
+async function getProjectFolders(params: { projectId: string; withBranch?: boolean; fresh?: boolean }): Promise<ProjectFolder[]> {
+	if (params.fresh) clearProjectFoldersCache(params.projectId);
+	return resolveProjectFolders(await data.getProject(params.projectId), { withBranch: params.withBranch });
+}
+
 export const fileExplorerHandlers = {
 	listExplorerDirectory,
+	getProjectFolders,
 };

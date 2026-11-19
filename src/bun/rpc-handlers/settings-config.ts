@@ -17,6 +17,7 @@ import type { AgentLiveModels } from "../../shared/agent-live-models";
 import * as github from "../github";
 import * as updater from "../updater";
 import * as rosetta from "../rosetta";
+import { clearProjectFoldersCache } from "../project-folders";
 import * as repoConfig from "../repo-config";
 import * as pty from "../pty-server";
 import { SESSION_OVERVIEW_FORMAT, tmux } from "../tmux";
@@ -236,6 +237,7 @@ async function updateProjectSettings(params: { projectId: string } & ProjectSett
 			: {}),
 	};
 	const saved = await data.updateProject(params.projectId, updates);
+	clearProjectFoldersCache(saved.id);
 	// Return the RESOLVED project: the caller renders what will actually run,
 	// not a raw record a config file may override.
 	const updated = saved.kind === "virtual" ? saved : await repoConfig.resolveProjectConfig(saved);
@@ -260,6 +262,7 @@ async function saveRepoConfig(params: { projectId: string; worktreePath?: string
 	const configPath = params.worktreePath || project.path;
 	const config = extractConfigFromParams(params) as Dev3RepoConfig;
 	await repoConfig.saveRepoConfig(configPath, config);
+	clearProjectFoldersCache(project.id);
 	if (params.autoCommit && params.worktreePath) {
 		try {
 			const proc = spawn(["git", "-C", params.worktreePath, "add", ".dev3/config.json"]);
@@ -284,6 +287,7 @@ async function saveLocalConfig(params: { projectId: string; worktreePath?: strin
 	const configPath = params.worktreePath || project.path;
 	const config = extractConfigFromParams(params) as Dev3RepoConfig;
 	await repoConfig.saveRepoLocalConfig(configPath, config);
+	clearProjectFoldersCache(project.id);
 	log.info("← saveLocalConfig done");
 }
 

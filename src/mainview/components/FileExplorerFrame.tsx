@@ -28,6 +28,9 @@ interface FileExplorerFrameProps {
 	/** Show the explorer on every entry (the Repo screen), whatever the last visit left. */
 	openOnEnter?: boolean;
 	onOpenYazi?: () => void;
+	/** Opens the project settings where the extra folders are edited. */
+	onEditFolders?: () => void;
+	rootSectionLabel?: string;
 	children: ReactNode;
 }
 
@@ -36,7 +39,7 @@ interface FileExplorerFrameProps {
  * the content gives up width. Auto-hidden, only a rail is docked and the tree
  * slides over the content, so a terminal behind it never changes size.
  */
-export default function FileExplorerFrame({ projectId, taskId, rootLabel, enabled, openOnEnter, onOpenYazi, children }: FileExplorerFrameProps) {
+export default function FileExplorerFrame({ projectId, taskId, rootLabel, enabled, openOnEnter, onOpenYazi, onEditFolders, rootSectionLabel, children }: FileExplorerFrameProps) {
 	const t = useT();
 	const prefs = useFileExplorerPrefs();
 	const mode = enabled ? prefs.mode : "hidden";
@@ -167,6 +170,8 @@ export default function FileExplorerFrame({ projectId, taskId, rootLabel, enable
 			onHide={() => setFileExplorerMode("hidden")}
 			onHandOff={mode === "autohide" ? () => setRevealed(null) : undefined}
 			onOpenYazi={onOpenYazi}
+			onEditFolders={onEditFolders}
+			rootSectionLabel={rootSectionLabel}
 			focusSignal={focusSignal}
 		/>
 	);

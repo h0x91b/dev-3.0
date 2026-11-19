@@ -642,7 +642,7 @@ ux_architecture:
       open_in_external_browser: "One neutral external-link icon in the header, grouped with download. Desktop: stored HTML path via RPC to the OS browser; remote: sandboxed link over the stored folder. Failure toast; no shortcut."
       evidence: ["src/mainview/components/TaskArtifactViewer.tsx", "src/mainview/components/TaskWorkspacePane.tsx", "src/mainview/utils/artifact-dock.ts", "src/bun/shared-artifacts.ts", "decisions/2026/09/07/artifact-panel-default-popup-opt-in.md", "decisions/2026/09/16/review-comments-on-the-task-record.md"]
     file_explorer:
-      purpose: "Read-only tree left of a terminal, listing its folder (task worktree; project checkout on Repo). Never on the board: the toggle opens Repo there. Pinned, auto-hide overlay or hidden, app-wide."
+      purpose: "Read-only tree left of a terminal, listing its folder (task worktree; project checkout on Repo; extra folders). Never on the board: the toggle opens Repo there. Pinned, auto-hide overlay or hidden, app-wide."
       allowed: ["browse", "preview", "copy/insert path", "pin/autohide/hide", "yazi"]
       forbidden: ["file/git mutation", "git colouring", "tabs, editing", "content search", "watcher", "board mount", "second toggle"]
       evidence: ["src/mainview/components/FileExplorerFrame.tsx", "decisions/2026/10/02/file-explorer-panel.md"]

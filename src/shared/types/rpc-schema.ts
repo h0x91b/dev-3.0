@@ -54,7 +54,7 @@ import type { PtyThroughputStats, TmuxLayout, TmuxSessionInfo, TmuxWindowEntry }
 import type { DevServerStatus, DevServerSummary } from "./dev-server";
 import type { RemoteAccessStatus, RemoteNetInterface } from "./remote";
 import type { AgentCheckResult, AgentSkillInfo, HarnessReadinessReport, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo, TmuxRestartImpact, TmuxServerNotice } from "./environment";
-import type { ExplorerListing, FolderListing } from "./file-explorer";
+import type { ExplorerListing, FolderListing, ProjectFolder } from "./file-explorer";
 import type { AgentUsageReport, ProductivityStats } from "./usage-stats";
 
 export type RendererLogLevel = "debug" | "info" | "warn" | "error";
@@ -225,8 +225,13 @@ export type AppRPCSchema = {
 			};
 			/** One level of the file explorer tree, gated to the task worktree or project checkout. */
 			listExplorerDirectory: {
-				params: { projectId: string; taskId?: string | null; relPath?: string; insideIgnored?: boolean };
+				params: { projectId: string; taskId?: string | null; relPath?: string; insideIgnored?: boolean; folder?: string | null };
 				response: ExplorerListing;
+			};
+			/** Folders shown beside the project in the file explorer and on the dashboard. `fresh` skips the short backend cache. */
+			getProjectFolders: {
+				params: { projectId: string; withBranch?: boolean; fresh?: boolean };
+				response: ProjectFolder[];
 			};
 			listAgentSkills: {
 				params: { projectPath?: string | null };
