@@ -49,6 +49,7 @@ import { DEV3_HOME } from "./paths";
 import { resolveUserHome } from "../shared/user-home";
 import { normalizeEnvPath } from "../shared/env-path";
 import { applyFullShellEnvToProcess, getShellRcFiles, getUserShell, resolveShellEnv } from "./shell-env";
+import { resetEnvFromDev3Pane } from "./pane-launch-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServerGuarded, setRemoteAccessStatusHook } from "./remote-access-server";
 import { writeSystemClipboard } from "./system-clipboard";
@@ -110,6 +111,12 @@ let lastBuildTime = BUILD_TIME;
 log.info(`=== dev-3.0 starting [${lastBuildTime}] ===`);
 log.info("All data at", { dir: DEV3_HOME });
 log.info("Log files", { dir: getLogPath() });
+
+// First: before skills install into the Claude config dir, any tmux server start, or any env read.
+{
+	const removed = resetEnvFromDev3Pane(process.env);
+	if (removed.length > 0) log.info("Started inside a dev3 pane: dropped its launch env", { removed });
+}
 
 // ── macOS: an app `open`ed from a dev3 pane is not that task's guest ──
 // First, before the socket sidecar, launch handoff or any other DEV3_TASK_ID read.
