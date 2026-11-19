@@ -23,6 +23,7 @@ import { noteDev3TypedPrompt, retractDev3TypedPrompt } from "./agent-typed-promp
 import { AGENT_MESSAGE_BURST_SEPARATOR } from "../shared/agent-message-envelope";
 import { DEFAULT_TMUX_SOCKET, tmux, taskSessionName, PANE_ID_FORMAT, TMUX_AGENT_PANE_OPTION, TMUX_LAST_AGENT_PANE_OPTION } from "./tmux";
 import { createLogger } from "./logger";
+import { getAgentAdapter } from "../shared/agent-adapters/registry";
 
 const log = createLogger("agent-prompt");
 
@@ -190,11 +191,8 @@ export function scheduleAgentPromptSubmit(send: () => void | Promise<void>, cont
  * text is a text step, so the tmux adapter pastes it from a buffer and a prompt whose
  * content reads like a key name (`C-c`, `Escape`) is delivered rather than pressed.
  */
-function agentPromptStages(prompt: string): PaneInputStage[] {
-	return [
-		{ steps: [{ kind: "text", text: prompt }] },
-		{ delayBeforeMs: AGENT_PROMPT_ENTER_DELAY_MS, steps: [{ kind: "key", key: "enter" }] },
-	];
+function agentPromptStages(prompt: string, steer: boolean): PaneInputStage[] {
+	return [{ steps: [{ kind: "text", text: prompt }] }, ...agentPromptSubmitStages(steer)];
 }
 
 /** The text-only program a held message's own paste is delivered as. */
@@ -212,8 +210,16 @@ function agentMessageTextStages(prompt: string): PaneInputStage[] {
  * newline in it — the text sits in the box unsubmitted, and every later message stacks
  * onto it.
  */
-function agentPromptSubmitStages(): PaneInputStage[] {
-	return [{ delayBeforeMs: AGENT_PROMPT_ENTER_DELAY_MS, steps: [{ kind: "key", key: "enter" }] }];
+// `steer` adds a second Enter that lands on the emptied box, so it never splits a burst.
+function agentPromptSubmitStages(steer: boolean): PaneInputStage[] {
+	const enter: PaneInputStage = { delayBeforeMs: AGENT_PROMPT_ENTER_DELAY_MS, steps: [{ kind: "key", key: "enter" }] };
+	return steer ? [enter, enter] : [enter];
+}
+
+/** Whether the agent in `paneId` queues a prompt typed into a busy turn until one more Enter steers it in. */
+function paneSteersQueuedPrompt(panes: readonly PaneSessionEntry[] | undefined, paneId: string): boolean {
+	const entry = panes?.find((pane) => pane.paneId === paneId);
+	return entry ? getAgentAdapter(entry.agentCmd, entry.agentFamily ?? undefined).enterSteersQueuedPrompt === true : false;
 }
 
 /** A scrolled-up pane refused the keys but is still the same pane: the hold waits for it. */
@@ -378,7 +384,7 @@ function holdAgentMessageForPane(
 				}
 				: {}),
 			submit: async () => {
-				const submit = await sendPaneInput(task, paneId, agentPromptSubmitStages(), { idPrefix: "agent-submit" });
+				const submit = await sendPaneInput(task, paneId, agentPromptSubmitStages(paneSteersQueuedPrompt(task.sessionState?.panes, paneId)), { idPrefix: "agent-submit" });
 				const result = heldDeliveryResult(submit);
 				if (result === "failed") log.warn("held agent message submit did not land", { ...context, status: submit.status });
 				return result;
@@ -431,7 +437,8 @@ export async function sendPromptToAgentPane(
 	const targetPane = await resolveAgentPromptTargetPane(tmuxSession, socket, agentPanes);
 	if (!targetPane) return noTargetPane(`no agent pane could be resolved in ${tmuxSession}`);
 	if (hasStrandedAgentMessage(agentMessageHoldKey("tmux", task.id, targetPane))) return inputOccupied(targetPane);
-	return sendPaneInput(task, targetPane, agentPromptStages(prompt), { idPrefix: "agent-prompt" });
+	const steer = paneSteersQueuedPrompt(agentPanes ?? task.sessionState?.panes, targetPane);
+	return sendPaneInput(task, targetPane, agentPromptStages(prompt, steer), { idPrefix: "agent-prompt" });
 }
 
 /**
@@ -464,5 +471,6 @@ export async function holdMessageForPane(
  */
 export async function sendPromptToPane(task: Task, paneId: string, prompt: string): Promise<PaneInputOutcome> {
 	if (hasStrandedAgentMessage(agentMessageHoldKey("tmux", task.id, paneId))) return inputOccupied(paneId);
-	return sendPaneInput(task, paneId, agentPromptStages(prompt), { idPrefix: "agent-prompt" });
+	const steer = paneSteersQueuedPrompt(task.sessionState?.panes, paneId);
+	return sendPaneInput(task, paneId, agentPromptStages(prompt, steer), { idPrefix: "agent-prompt" });
 }

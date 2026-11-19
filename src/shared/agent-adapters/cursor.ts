@@ -106,4 +106,7 @@ export const cursorAdapter: AgentAdapter = {
 	exitProgram() {
 		return slashExitProgram("/exit");
 	},
+
+	// Idle, the extra Enter hits an empty box and does nothing.
+	enterSteersQueuedPrompt: true,
 };

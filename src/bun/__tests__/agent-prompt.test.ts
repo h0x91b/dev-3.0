@@ -490,6 +490,32 @@ describe("the held dev3 message — nothing reaches the pane until it goes quiet
 	});
 });
 
+describe("a Cursor pane gets one more Enter, which steers a queued follow-up into its turn", () => {
+	afterEach(() => resetAgentMessageHolds());
+	const cursorPane = { ...agentPane("%1"), agentCmd: "agent" } as PaneSessionEntry;
+	const CURSOR_TASK = { ...TASK, sessionState: { panes: [cursorPane] } } as Task;
+
+	it("presses Enter twice after a held message lands in a Cursor pane", async () => {
+		await holdMessageForPane(CURSOR_TASK, "%1", "check CI");
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS + 3 * AGENT_PROMPT_ENTER_DELAY_MS);
+
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(3);
+		expect(sentChunks(1)).toEqual([{ keys: ["Enter"] }]);
+		expect(sentChunks(2)).toEqual([{ keys: ["Enter"] }]);
+	});
+
+	it("does the same for a direct prompt, and keeps a Claude pane at one Enter", async () => {
+		const cursor = sendPromptToAgentPane(CURSOR_TASK, "commit", [cursorPane]);
+		await vi.advanceTimersByTimeAsync(2 * AGENT_PROMPT_ENTER_DELAY_MS);
+		await expect(cursor).resolves.toMatchObject({ status: "delivered" });
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(3);
+
+		vi.mocked(tmux.sendKeysGuarded).mockClear();
+		await runPrompt(sendPromptToAgentPane(TASK, "commit", [agentPane("%1")]));
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
+	});
+});
+
 describe("a held message bound to one agent is checked again when it releases", () => {
 	it("types nothing when its agent is gone by then, and says so on the task", async () => {
 		const verify = vi.fn(async () => "the addressed agent (pane %1) is no longer running in this task; not sent to another pane");
