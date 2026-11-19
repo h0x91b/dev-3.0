@@ -149,7 +149,7 @@ async function fakePickLaunches(): Promise<ClaudePickLaunches> {
 		const here = pinned && account.auth !== "api" && !!account.identity?.accountId && account.identity.accountId === login.identity?.accountId;
 		accounts[account.id] = { projectFolder: here, backend: null };
 	}
-	return { none: { projectFolder: pinned, backend: pinned ? projectBackend : null }, system: { projectFolder: false, backend: null }, accounts };
+	return { none: { projectFolder: pinned, backend: pinned ? projectBackend : null }, accounts };
 }
 
 beforeEach(() => {
@@ -1066,14 +1066,48 @@ describe("project-pinned CLAUDE_CONFIG_DIR", () => {
 		});
 		render(
 			<I18nProvider>
-				<ResumeAccountPicker panes={[{ agentId: claudeAgent.id, agentCmd: "claude", sessionId: "s-9" }]} agents={[claudeAgent]} value={undefined} onChange={vi.fn()} projectId="p1" taskId="t1" />
+				<ResumeAccountPicker panes={[{ agentId: claudeAgent.id, agentCmd: "claude" }]} agents={[claudeAgent]} value={undefined} onChange={vi.fn()} projectId="p1" taskId="t1" />
 			</I18nProvider>,
 		);
 		await userEvent.click(await screen.findByTestId("agent-account-trigger"));
 		await projectRowEl();
 		const accountRow = screen.getByText("Project account").closest("[role='menuitemradio']") as HTMLElement;
 		await waitFor(() => expect(accountRow.textContent).toContain("Runs in its own Claude folder"));
-		expect(mockedApi.request.getClaudePickLaunches).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", resume: true, sessionId: "s-9" });
+		expect(mockedApi.request.getClaudePickLaunches).toHaveBeenCalledWith({ projectId: "p1", taskId: "t1", resume: true });
+	});
+
+	it("names no folder for an account the resume would refuse to switch to", async () => {
+		const { here } = projectFolderAccounts();
+		mockedApi.request.getClaudePickLaunches.mockImplementation(async () => {
+			const launches = await fakePickLaunches();
+			const { [here.id]: _refused, ...accounts } = launches.accounts;
+			return { ...launches, accounts };
+		});
+		render(
+			<I18nProvider>
+				<ResumeAccountPicker panes={[{ agentId: claudeAgent.id, agentCmd: "claude" }]} agents={[claudeAgent]} value={undefined} onChange={vi.fn()} projectId="p1" taskId="t1" />
+			</I18nProvider>,
+		);
+		await userEvent.click(await screen.findByTestId("agent-account-trigger"));
+		await projectRowEl();
+		await waitFor(() => expect(mockedApi.request.getClaudePickLaunches).toHaveBeenCalled());
+		const accountRow = screen.getByText("Project account").closest("[role='menuitemradio']") as HTMLElement;
+		expect(accountRow.textContent).not.toContain("Claude folder");
+	});
+
+	it("asks once when the project login answers before the account list", async () => {
+		projectFolderAccounts();
+		const state = await mockedApi.request.listAgentAccounts.getMockImplementation()?.();
+		let release: () => void = () => {};
+		const listed = new Promise<void>((resolve) => { release = resolve; });
+		mockedApi.request.listAgentAccounts.mockImplementation(async () => { await listed; return state as AgentAccountsState; });
+		renderIndicator(claudeAgent, { projectId: "p1", onSelect: vi.fn() });
+		await waitFor(() => expect(mockedApi.request.getProjectClaudeLogin).toHaveBeenCalled());
+		release();
+		await userEvent.click(await screen.findByTestId("agent-account-trigger"));
+		await projectRowEl();
+		await waitFor(() => expect(mockedApi.request.getClaudePickLaunches).toHaveBeenCalled());
+		expect(mockedApi.request.getClaudePickLaunches).toHaveBeenCalledTimes(1);
 	});
 
 	it("claims no folder on a resume it cannot name the task of", async () => {

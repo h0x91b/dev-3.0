@@ -292,13 +292,11 @@ export interface ClaudePickLaunch {
 	backend: ProjectClaudeBackend | null;
 }
 
-/** Each launch-picker row's answer for one project, and for one task and conversation on a resume. */
+/** Each launch-picker row's answer for one project, and for one task's saved conversation on a resume. */
 export interface ClaudePickLaunches {
 	/** No pick: the launch keeps the default. */
 	none: ClaudePickLaunch;
-	/** An explicit system-login pick. */
-	system: ClaudePickLaunch;
-	/** Each managed Claude account, by id. */
+	/** Each managed Claude account, by id. A resume leaves out an account it would refuse to switch to. */
 	accounts: Record<string, ClaudePickLaunch>;
 }
 

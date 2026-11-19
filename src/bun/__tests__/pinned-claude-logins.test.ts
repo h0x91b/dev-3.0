@@ -6,6 +6,7 @@ vi.mock("../rpc-handlers/shared", () => ({
 vi.mock("../data", () => ({ loadProjects: vi.fn(), getProject: vi.fn(), getTask: vi.fn() }));
 vi.mock("../repo-config", () => ({ resolveProjectEnv: vi.fn() }));
 vi.mock("../agents", () => ({ resolveClaudePickLaunch: vi.fn() }));
+vi.mock("../rpc-handlers/tmux-pty/resume", () => ({ claudeResumePickTarget: vi.fn(() => null) }));
 vi.mock("../ops-worktree", () => ({
 	resolveLaunchProject: vi.fn(async (project: any) => ({ ...project, launch: true })),
 	rootProjectFor: vi.fn((project: any, task: any) => (task.attachedRepo ? { ...project, path: task.attachedRepo } : project)),
@@ -26,6 +27,8 @@ vi.mock("../agent-accounts", async (importOriginal) => ({
 import * as data from "../data";
 import { resolveProjectEnv } from "../repo-config";
 import { resolveClaudePickLaunch } from "../agents";
+import { claudeResumePickTarget } from "../rpc-handlers/tmux-pty/resume";
+import { log } from "../rpc-handlers/shared";
 import { agentAccountHandlers } from "../rpc-handlers/agent-accounts";
 
 const project = (id: string) => ({ id, name: id, path: `/repos/${id}` }) as any;
@@ -96,7 +99,6 @@ describe("getClaudePickLaunches", () => {
 		vi.mocked(data.getProject).mockResolvedValue(project(id));
 		await expect(agentAccountHandlers.getClaudePickLaunches({ projectId: id })).resolves.toEqual({
 			none: { projectFolder: true, backend },
-			system: { projectFolder: false, backend: null },
 			accounts: { "cl-1": { projectFolder: true, backend: null }, "cl-2": { projectFolder: false, backend: null } },
 		});
 	});
@@ -107,10 +109,13 @@ describe("getClaudePickLaunches", () => {
 		await expect(agentAccountHandlers.getClaudePickLaunches({ projectId: "c" })).resolves.toMatchObject({ none: { backend: null } });
 	});
 
-	it("asks about a resume with the task's worktree, env and conversation", async () => {
+	it("asks about a resume with the task's worktree, env and the conversation the resume heals to", async () => {
 		vi.mocked(data.getProject).mockResolvedValue(project("a"));
-		vi.mocked(data.getTask).mockResolvedValue({ id: "t1", worktreePath: "/wt/t1", attachedRepo: "/repos/root", foreignCode: true } as any);
-		await agentAccountHandlers.getClaudePickLaunches({ projectId: "a", taskId: "t1", resume: true, sessionId: "s-1" });
+		const task = { id: "t1", worktreePath: "/wt/t1", attachedRepo: "/repos/root", foreignCode: true } as any;
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(claudeResumePickTarget).mockReturnValueOnce({ sessionId: "s-1", agentLatest: false, savedAccountId: "cl-2" });
+		await agentAccountHandlers.getClaudePickLaunches({ projectId: "a", taskId: "t1", resume: true });
+		expect(claudeResumePickTarget).toHaveBeenCalledWith(task);
 		expect(resolveProjectEnv).toHaveBeenCalledWith(expect.objectContaining({ id: "a", launch: true }), "/wt/t1", { foreignCode: true });
 		expect(resolveClaudePickLaunch).toHaveBeenCalledWith("cl-1", {
 			projectEnv: { CLAUDE_CONFIG_DIR: "/work/shared/.claude" },
@@ -119,5 +124,28 @@ describe("getClaudePickLaunches", () => {
 			resume: true,
 			sessionId: "s-1",
 		});
+	});
+
+	it("leaves out the accounts a --continue resume would refuse to switch to", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(project("a"));
+		vi.mocked(data.getTask).mockResolvedValue({ id: "t1", worktreePath: "/wt/t1" } as any);
+		// The pane ran on cl-2 with no conversation id: only a re-pick of cl-2 is no switch.
+		vi.mocked(claudeResumePickTarget).mockReturnValueOnce({ sessionId: null, agentLatest: true, savedAccountId: "cl-2" });
+		const { accounts } = await agentAccountHandlers.getClaudePickLaunches({ projectId: "a", taskId: "t1", resume: true });
+		expect(accounts).toEqual({ "cl-2": { projectFolder: false, backend: null } });
+	});
+
+	it("keeps a --continue switch that stays in the project folder the pane ran in", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(project("a"));
+		vi.mocked(data.getTask).mockResolvedValue({ id: "t1", worktreePath: "/wt/t1" } as any);
+		vi.mocked(claudeResumePickTarget).mockReturnValueOnce({ sessionId: null, agentLatest: true, savedAccountId: undefined });
+		const { accounts } = await agentAccountHandlers.getClaudePickLaunches({ projectId: "a", taskId: "t1", resume: true });
+		expect(Object.keys(accounts)).toEqual(["cl-1"]);
+	});
+
+	it("logs a failure before the picker sees it", async () => {
+		vi.mocked(data.getProject).mockRejectedValueOnce(new Error("gone"));
+		await expect(agentAccountHandlers.getClaudePickLaunches({ projectId: "z" })).rejects.toThrow("gone");
+		expect(log.warn).toHaveBeenCalledWith("getClaudePickLaunches failed", expect.objectContaining({ projectId: "z" }));
 	});
 });

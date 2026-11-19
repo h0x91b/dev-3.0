@@ -586,9 +586,9 @@ export type AppRPCSchema = {
 				params: { projectId: string };
 				response: ProjectClaudeLogin;
 			};
-			/** Where each launch-picker row (no pick, system login, each account) runs a Claude session. */
+			/** Where each launch-picker row (no pick, each account) runs a Claude session. */
 			getClaudePickLaunches: {
-				params: { projectId: string; taskId?: string; resume?: boolean; sessionId?: string };
+				params: { projectId: string; taskId?: string; resume?: boolean };
 				response: ClaudePickLaunches;
 			};
 			/** Every login some project pins via `CLAUDE_CONFIG_DIR`, one per directory. */

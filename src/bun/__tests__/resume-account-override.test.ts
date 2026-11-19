@@ -63,7 +63,8 @@ import { chooseTaskCodexConversations } from "../codex-task-selection";
 import { launchTaskPty } from "../rpc-handlers/tmux-pty/task-launch";
 import { getPushMessage } from "../rpc-handlers/shared-pure";
 import { findTaskAcrossProjects, wakeIfHibernated } from "../rpc-handlers/tmux-pty/task-state";
-import { resumeTaskSession } from "../rpc-handlers/tmux-pty/resume";
+import { claudeResumePickTarget, resumeTaskSession } from "../rpc-handlers/tmux-pty/resume";
+import { log } from "../rpc-handlers/shared-pure";
 import { resolveResumableSessionIds } from "../agent-transcripts";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
 
@@ -249,5 +250,32 @@ describe("resume with an account override", () => {
 		await expect(resumeTaskSession("t1", { accountId: "acct-new" })).rejects.toThrow("already running");
 		release();
 		await first;
+	});
+});
+
+describe("claudeResumePickTarget", () => {
+	it("names the conversation the resume heals to, not the stale saved one, and logs nothing", () => {
+		vi.mocked(resolveResumableSessionIds).mockReturnValueOnce([
+			{ sessionId: "s-codex", substituted: false, startFresh: false, verified: true },
+			{ sessionId: "s-newest", substituted: true, startFresh: false, verified: true },
+		] as never);
+		const task = arrange([codexPane, { ...claudePane, main: false, sessionId: "s-stale" }]);
+		expect(claudeResumePickTarget(task)).toEqual({ sessionId: "s-newest", agentLatest: false, savedAccountId: "acct-old" });
+		expect(log.warn).not.toHaveBeenCalled();
+	});
+
+	it("reports a pane the harness resumes with --continue, and the account it ran on", () => {
+		vi.mocked(resolveResumableSessionIds).mockReturnValueOnce([{ sessionId: null, substituted: false, startFresh: false, verified: false }] as never);
+		const task = arrange([{ ...claudePane, sessionId: null, accountId: undefined }]);
+		expect(claudeResumePickTarget(task)).toEqual({ sessionId: null, agentLatest: true, savedAccountId: undefined });
+	});
+
+	it("names no conversation for a pane that starts over", () => {
+		vi.mocked(resolveResumableSessionIds).mockReturnValueOnce([{ sessionId: null, substituted: false, startFresh: true, verified: false }] as never);
+		expect(claudeResumePickTarget(arrange([claudePane]))).toEqual({ sessionId: null, agentLatest: false, savedAccountId: "acct-old" });
+	});
+
+	it("is null when no saved pane runs Claude", () => {
+		expect(claudeResumePickTarget(arrange([codexPane]))).toBeNull();
 	});
 });

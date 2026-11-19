@@ -115,10 +115,9 @@ function useProjectClaudeLogin(projectId: string | undefined, enabled: boolean):
 	return login;
 }
 
-/** The resume a picker chooses an account for: the task, and the saved conversation of its first Claude pane. */
+/** The resume a picker chooses an account for. The server heals the task's saved conversation the way the resume will. */
 export interface PickerResume {
 	taskId: string | undefined;
-	sessionId: string | null | undefined;
 }
 
 /** Where each picker row runs a Claude session, asked of the launcher's resolver. Null until it
@@ -131,7 +130,6 @@ function useClaudePickLaunches(
 ): ClaudePickLaunches | null {
 	const [launches, setLaunches] = useState<ClaudePickLaunches | null>(null);
 	const taskId = resume?.taskId;
-	const sessionId = resume?.sessionId ?? undefined;
 	useEffect(() => {
 		setLaunches(null);
 		// A resume of an unknown task would be answered as a fresh launch.
@@ -139,7 +137,7 @@ function useClaudePickLaunches(
 		let cancelled = false;
 		// Promise.resolve absorbs a missing RPC method in plain-object api mocks.
 		Promise.resolve()
-			.then(() => api.request.getClaudePickLaunches(taskId ? { projectId, taskId, resume: true, sessionId } : { projectId }))
+			.then(() => api.request.getClaudePickLaunches(taskId ? { projectId, taskId, resume: true } : { projectId }))
 			.then((res) => {
 				if (!cancelled && res) setLaunches(res);
 			})
@@ -147,7 +145,7 @@ function useClaudePickLaunches(
 		return () => {
 			cancelled = true;
 		};
-	}, [projectId, !!resume, taskId, sessionId, enabled, accountsKey]);
+	}, [projectId, !!resume, taskId, enabled, accountsKey]);
 	return launches;
 }
 
@@ -636,9 +634,10 @@ export default function AgentAccountIndicator({
 	const state = useAgentAccountsState(kind !== null);
 	const projectLogin = useProjectClaudeLogin(projectId, kind === "claude");
 	const isLocal = !!onSelect;
-	// Ask again when an account or a login changes: either moves where a pick runs.
+	// Ask again when an account or a login changes: either moves where a pick runs. Not before both
+	// have arrived, or the key changes under the first answer and the question runs twice.
 	const claudeAccountsKey = [projectLogin?.identity?.accountId, ...(state?.claude.accounts.map((a) => `${a.id}:${a.identity?.accountId ?? ""}`) ?? [])].join(",");
-	const launches = useClaudePickLaunches(projectId, resume, isLocal && kind === "claude" && !!projectLogin?.configDir, claudeAccountsKey);
+	const launches = useClaudePickLaunches(projectId, resume, isLocal && kind === "claude" && !!state && !!projectLogin?.configDir, claudeAccountsKey);
 	const [anchor, setAnchor] = useState<DOMRect | null>(null);
 	const [busy, setBusy] = useState(false);
 	// Usage rings only matter while the popover is open — fetch lazily then.
@@ -647,7 +646,7 @@ export default function AgentAccountIndicator({
 	const routable = allowAuto && isRoutableAccountKind(kind);
 	const autoDefault = routable && !!state && state[kind].autoDefault === true;
 	// A per-launch choice that is no explicit pick (none or Auto) keeps the project's own folder.
-	const keepsProjectLogin = isLocal && kind === "claude" && !!projectLogin?.configDir && (value === undefined || isAutoAccountId(value));
+	const keepsProjectLogin = isLocal && kind === "claude" && !!state && !!projectLogin?.configDir && (value === undefined || isAutoAccountId(value));
 	const autoSelected = routable && !keepsProjectLogin && (isLocal ? isAutoAccountId(value) || (value === undefined && autoDefault) : autoDefault);
 	// Fetched while the popover is open (to decide whether Auto is worth a row)
 	// and whenever Auto is the choice (the pill names the account it would use).
@@ -769,7 +768,7 @@ export default function AgentAccountIndicator({
 	// Auto earns its row once there are two logins to balance — or while it is the
 	// choice, so a selected state never vanishes from the list.
 	// Auto never overrides a project's own folder, so a pinned launch has nothing to route.
-	const projectPinHolds = isLocal && kind === "claude" && !!projectLogin?.configDir && state.claude.accounts.length > 0;
+	const projectPinHolds = isLocal && kind === "claude" && !!state && !!projectLogin?.configDir && state.claude.accounts.length > 0;
 	if (routable && !projectPinHolds && (autoSelected || autoCandidateTotal(preview) >= 2)) {
 		rows.push({
 			key: "auto",
