@@ -44,7 +44,7 @@ describe("TaskRefText", () => {
 	});
 
 	it("opens a task on its own board, resolving a bare ref on the text's project", async () => {
-		resolveTaskPrRef.mockResolvedValue({ kind: "task", taskId: "t-9", projectId: "p-2", projectName: "x", seq: 9, title: "T", status: "todo" });
+		resolveTaskPrRef.mockResolvedValue({ kind: "task", taskId: "t-9", projectId: "p-2", projectName: "x", seq: 9, title: "T", status: "in-progress" });
 		const opened = vi.fn();
 		window.addEventListener("rpc:openDeepLink", opened as EventListener);
 		wrap(<TaskRefText text="see <seq:9>" contextProjectId="p-1" />);
@@ -52,6 +52,21 @@ describe("TaskRefText", () => {
 		await waitFor(() => expect(opened).toHaveBeenCalled());
 		expect(resolveTaskPrRef).toHaveBeenCalledWith({ ref: "seq:9", contextProjectId: "p-1" });
 		expect((opened.mock.calls[0][0] as CustomEvent).detail).toEqual({ kind: "task", taskId: "t-9", projectId: "p-2" });
+		window.removeEventListener("rpc:openDeepLink", opened as EventListener);
+	});
+
+	it("opens a task that is not running as its board card, not an empty task view (#2347)", async () => {
+		const opened = vi.fn();
+		window.addEventListener("rpc:openDeepLink", opened as EventListener);
+		for (const status of ["todo", "completed", "cancelled"] as const) {
+			opened.mockClear();
+			resolveTaskPrRef.mockResolvedValue({ kind: "task", taskId: "t-9", projectId: "p-2", projectName: "x", seq: 9, title: "T", status });
+			const { unmount } = wrap(<TaskRefText text="filed <seq:9>" contextProjectId="p-1" />);
+			fireEvent.click(screen.getByRole("button", { name: /<seq:9>/ }));
+			await waitFor(() => expect(opened).toHaveBeenCalled());
+			expect((opened.mock.calls[0][0] as CustomEvent).detail).toEqual({ kind: "task", taskId: "t-9", projectId: "p-2", archived: true });
+			unmount();
+		}
 		window.removeEventListener("rpc:openDeepLink", opened as EventListener);
 	});
 

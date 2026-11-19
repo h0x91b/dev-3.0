@@ -8664,7 +8664,7 @@ describe("handlers.resolveDeepLinkNav", () => {
 		const data = await import("../data");
 		(data.loadProjects as any).mockResolvedValue([{ id: "proj-a" }, { id: "proj-b" }]);
 		(data.loadTasks as any).mockImplementation(async (project: any) =>
-			project.id === "proj-b" ? [{ id: "task-9" }] : [],
+			project.id === "proj-b" ? [{ id: "task-9", status: "in-progress" }] : [],
 		);
 		expect(await handlers.resolveDeepLinkNav({ url: "dev3://task/task-9" })).toEqual({
 			kind: "task",
