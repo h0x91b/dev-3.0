@@ -782,6 +782,33 @@ describe("TaskTerminal", () => {
 				expect(screen.getByTestId("terminal-view")).toBeInTheDocument();
 			});
 		});
+
+		it("keeps the old terminal unmounted until the resumed session is registered", async () => {
+			const user = userEvent.setup();
+			const url = "ws://localhost:9999?session=t1";
+			mockedApi.request.getPtyUrl.mockResolvedValueOnce({ url });
+			mockedApi.request.checkWorktreeState.mockResolvedValue("present");
+			await act(async () => { renderTerminal(); });
+			await screen.findByTestId("terminal-view");
+
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:ptyDied", { detail: { taskId: "t1" } }));
+			});
+			mockedApi.request.getPtyUrl.mockResolvedValueOnce({
+				recoverable: true,
+				sessionState: { panes: [{ agentCmd: "claude", sessionId: "sid-1", agentId: "builtin-claude", configId: "cfg-1" }] },
+			});
+			await act(async () => { await user.click(await screen.findByText("Resume Session")); });
+			await screen.findByText("Previous agent session found");
+
+			let finishResume!: (value: string) => void;
+			mockedApi.request.resumeTask.mockReturnValue(new Promise<string>((resolve) => { finishResume = resolve; }));
+			await act(async () => { await user.click(screen.getByText("Resume Session")); });
+			expect(screen.queryByTestId("terminal-view")).toBeNull();
+
+			await act(async () => { finishResume(url); });
+			expect(await screen.findByTestId("terminal-view")).toBeInTheDocument();
+		});
 	});
 
 	// A restarted server forgets a session the open view was streaming; TerminalView
