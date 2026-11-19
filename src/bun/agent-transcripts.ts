@@ -185,7 +185,18 @@ function inAnyStoreUnder(projectsDir: string, id: string, ext: string, unreadabl
 		if (code !== "ENOENT") unreadable?.push({ dir: projectsDir, code });
 		return false;
 	}
-	return entries.some((entry) => existsSync(`${projectsDir}/${entry}/${id}${ext}`));
+	for (const entry of entries) {
+		const dir = `${projectsDir}/${entry}`;
+		try {
+			statSync(`${dir}/${id}${ext}`);
+			return true;
+		} catch (err) {
+			// Absent is an answer; an access failure is not, so it blocks verification instead of reading as "no".
+			const code = (err as NodeJS.ErrnoException).code ?? "UNKNOWN";
+			if (code !== "ENOENT" && code !== "ENOTDIR") unreadable?.push({ dir, code });
+		}
+	}
+	return false;
 }
 
 /** Session ids across all store dirs, newest transcript first. A dir that exists but fails to list is reported in `unreadable`. */

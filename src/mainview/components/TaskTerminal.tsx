@@ -161,6 +161,8 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	// act that clears the flag.
 	const [hibernated, setHibernated] = useState(false);
 	const [restarting, setRestarting] = useState(false);
+	// A refused Start again leaves Start Fresh as the explicit way to abandon the saved panes.
+	const [startAgainRefused, setStartAgainRefused] = useState(false);
 	// A `setupScript` that exits non-zero leaves a live shell behind, so nothing
 	// else in here reads as broken. What the pane may OFFER depends on whether the
 	// agent was already running when it failed — see `setupFailedAgentRunning`.
@@ -628,6 +630,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		} catch (err) {
 			console.error("[TaskTerminal] Resume session failed:", err);
 			toast.error(err instanceof Error ? err.message : String(err));
+			setStartAgainRefused(true);
 			// A refused resume launched nothing, so the server still offers the same screen:
 			// Start fresh stays an explicit choice next to the reason in the toast.
 			if (await showRecoveryIfOffered()) return;
@@ -883,7 +886,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 									{restarting ? t("terminal.connecting") : hibernated ? t("terminal.wakeResume") : neverStarted ? t("terminal.launchAgain") : t("terminal.resumeSession")}
 								</button>
 							)}
-							{!neverStarted && (
+							{(!neverStarted || startAgainRefused) && (
 								<button
 									onClick={hibernated ? handleWakeShell : handleStartFresh}
 									disabled={restarting}

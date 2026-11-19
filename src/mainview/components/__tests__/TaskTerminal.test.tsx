@@ -989,6 +989,27 @@ describe("TaskTerminal", () => {
 			});
 		});
 
+		it("offers Start Fresh after a refused Start again, and it restarts without resuming", async () => {
+			const user = userEvent.setup();
+			const panes = [...recoverable.sessionState.panes, { agentCmd: "claude", sessionId: "extra-saved", agentId: "builtin-claude", configId: "cfg-1" }];
+			const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "test-toast");
+			mockedApi.request.getPtyUrl.mockResolvedValue({ ...recoverable, sessionState: { panes } });
+			mockedApi.request.resumeTask.mockRejectedValue(new Error("Cannot read extra history. Restore access or choose Start fresh for a new conversation."));
+			mockedApi.request.restartTask.mockResolvedValue("ws://localhost:9999?session=t1");
+			await act(async () => {
+				renderTerminal({ tasks: [makeTask({ launchFailure: failure({ neverStarted: true }), sessionState: { panes } })] });
+			});
+			expect(screen.queryByRole("button", { name: "Start Fresh" })).not.toBeInTheDocument();
+			await act(async () => {
+				await user.click(await screen.findByRole("button", { name: "Start again" }));
+			});
+			await waitFor(() => expect(errorToast).toHaveBeenCalled());
+			await act(async () => {
+				await user.click(await screen.findByRole("button", { name: "Start Fresh" }));
+			});
+			expect(mockedApi.request.restartTask).toHaveBeenCalledWith({ taskId: "t1" });
+		});
+
 		it("puts the exit code in the recovery title once, and the block carries no second heading", async () => {
 			mockedApi.request.getPtyUrl.mockResolvedValue(recoverable);
 			await act(async () => {

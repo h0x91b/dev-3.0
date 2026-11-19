@@ -253,6 +253,7 @@ import { which } from "../which";
 import { getAgentAdapter } from "../../shared/agent-adapters/registry";
 import { claudeSessionStartHookInstalled } from "../../shared/agent-hooks";
 import { hookCliSupports } from "../hook-cli-capability";
+import { mainAgentNeverStarted } from "../../shared/agent-launch-failure";
 import { agentSessionRecord, resetAgentSessionRecordsForTests } from "../agent-session-receipts";
 
 const { launchTaskPty, tmuxPtyHandlers } = await import("../rpc-handlers/tmux-pty");
@@ -1080,8 +1081,54 @@ describe("a new launch supersedes the previous run's failure", () => {
 		await expect(launchTaskPty(makeProject(), task, WORKTREE, null, null, false, true, { freshSessionId: "fresh-attempt", freshWithTaskPrompt: true }))
 			.rejects.toThrow("Custom executable is unavailable");
 		expect(task.launchFailure).toEqual(failure);
-		expect(data.updateTaskWith).not.toHaveBeenCalled();
+		// Nothing was written before the refusal, so the restore finds pane 0 on its old id and changes nothing.
+		for (const [, , mutator] of vi.mocked(data.updateTaskWith).mock.calls) {
+			expect((mutator as (t: Task) => { updates: Partial<Task> })(task).updates).toEqual({});
+		}
 		expect(vi.mocked(data.updateTask).mock.calls.some(([, , updates]) => "launchFailure" in updates)).toBe(false);
+	});
+
+	it("keeps the persisted main marked as never started when terminal creation is rejected after its new id was written", async () => {
+		const prior = { main: true, agentCmd: "claude", agentId: null, configId: null, sessionId: "dead-1" };
+		const task = makeTask({ launchFailure: failure, sessionState: { panes: [prior, { agentCmd: "bash", agentId: null, configId: null, sessionId: null, paneId: "%5" }] } });
+		let persisted: Task = structuredClone(task);
+		vi.mocked(data.updateTask).mockImplementation((async (_p: unknown, _id: string, updates: Partial<Task>) => {
+			persisted = { ...persisted, ...updates };
+			return persisted;
+		}) as never);
+		vi.mocked(data.updateTaskWith).mockImplementation((async (_p: unknown, _id: string, mutator: (t: Task) => { updates: Partial<Task>; result: unknown }) => {
+			const { updates, result } = mutator(persisted);
+			persisted = { ...persisted, ...updates };
+			return { task: persisted, result };
+		}) as never);
+		vi.mocked(pty.createSession).mockImplementationOnce(() => { throw new Error("spawn failed"); });
+
+		await expect(launchTaskPty(makeProject(), task, WORKTREE, null, null, false, true, { freshSessionId: "attempt-1", freshWithTaskPrompt: true })).rejects.toThrow("spawn failed");
+
+		expect(persisted.sessionState?.panes[0]).toMatchObject({ sessionId: "dead-1" });
+		expect(persisted.sessionState?.panes[1]).toMatchObject({ agentCmd: "bash" });
+		expect(persisted.launchFailure).toEqual(failure);
+		expect(mainAgentNeverStarted(persisted)).toBe(true);
+	});
+
+	it("does not touch a pane 0 that another launch has since rebound", async () => {
+		const task = makeTask({ launchFailure: failure, sessionState: { panes: [{ main: true, agentCmd: "claude", agentId: null, configId: null, sessionId: "dead-1" }] } });
+		let persisted: Task = structuredClone(task);
+		vi.mocked(data.updateTask).mockImplementation((async (_p: unknown, _id: string, updates: Partial<Task>) => {
+			persisted = { ...persisted, ...updates };
+			return persisted;
+		}) as never);
+		vi.mocked(data.updateTaskWith).mockImplementation((async (_p: unknown, _id: string, mutator: (t: Task) => { updates: Partial<Task>; result: unknown }) => {
+			const { updates, result } = mutator(persisted);
+			persisted = { ...persisted, ...updates };
+			return { task: persisted, result };
+		}) as never);
+		vi.mocked(pty.createSession).mockImplementationOnce(() => {
+			persisted = { ...persisted, sessionState: { panes: [{ main: true, agentCmd: "claude", agentId: null, configId: null, sessionId: "newer-launch" }] } };
+			throw new Error("spawn failed");
+		});
+		await expect(launchTaskPty(makeProject(), task, WORKTREE, null, null, false, true, { freshSessionId: "attempt-1", freshWithTaskPrompt: true })).rejects.toThrow("spawn failed");
+		expect(persisted.sessionState?.panes[0]).toMatchObject({ sessionId: "newer-launch" });
 	});
 
 	it("keeps the verdict when the session itself cannot be created", async () => {

@@ -1,5 +1,5 @@
 import { assertTaskWorkspacePresent } from "../../task-workspace-guard";
-import type { AgentFamily, ColumnAgentConfig, PermissionMode, Project, Task } from "../../../shared/types";
+import type { AgentFamily, ColumnAgentConfig, PaneSessionEntry, PermissionMode, Project, Task } from "../../../shared/types";
 import { getPrimaryStopTarget, isCoordinatorTask, taskProtocolMode } from "../../../shared/types";
 import { rootProjectFor } from "../../ops-worktree";
 import { coordinatorLaunchDefault } from "../../../shared/coordinator-launch";
@@ -337,7 +337,36 @@ async function clearSupersededLaunchFailure(project: Project, task: Task, ownLau
 	task.launchFailure = undefined;
 }
 
-export async function launchTaskPty(
+/**
+ * A never-started relaunch writes its new session id into pane 0 before the terminal exists. If the launch
+ * then throws, that id names nothing and would hide the never-started verdict (which compares ids), so the
+ * prior binding goes back — only when pane 0 still holds the id this attempt wrote.
+ */
+async function restoreNeverStartedMain(project: Project, task: Task, prior: PaneSessionEntry, attemptId: string): Promise<void> {
+	try {
+		await data.updateTaskWith(project, task.id, (current) => {
+			const panes = current.sessionState?.panes;
+			if (!panes?.length || panes[0].sessionId !== attemptId) return { updates: {}, result: null };
+			return { updates: { sessionState: { panes: [prior, ...panes.slice(1)] } }, result: null };
+		});
+	} catch (err) {
+		log.warn("Could not restore the main pane's prior binding (non-fatal)", { taskId: task.id.slice(0, 8), error: String(err) });
+	}
+}
+
+export async function launchTaskPty(...args: Parameters<typeof launchTaskPtyOnce>): ReturnType<typeof launchTaskPtyOnce> {
+	const [project, task, worktreePath, , , , , opts] = args;
+	assertTaskWorkspacePresent(project, worktreePath, task);
+	const priorMain = task.sessionState?.panes?.[0];
+	try {
+		return await launchTaskPtyOnce(...args);
+	} catch (err) {
+		if (opts?.freshWithTaskPrompt && opts.freshSessionId && priorMain) await restoreNeverStartedMain(project, task, priorMain, opts.freshSessionId);
+		throw err;
+	}
+}
+
+async function launchTaskPtyOnce(
 	project: Project,
 	task: Task,
 	worktreePath: string,
