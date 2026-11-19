@@ -8,6 +8,9 @@ vi.mock("../codex-config", () => ({
 	detectCodexHookTrustBypass: vi.fn(async () => true),
 	resetCodexHelpProbe: vi.fn(),
 }));
+vi.mock("../cursor-usage-hooks", () => ({
+	writeCursorUsageHooks: vi.fn(async () => ({ status: "installed", path: "/unused/hooks.json" })),
+}));
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
@@ -119,5 +122,19 @@ describe("setupAgentHooks in a folder dev3 does not own", () => {
 		const launch = await setupAgentHooks(worktree, "codex");
 		expect(launch).toBeNull();
 		expect(excludeTaskCodexHooks).not.toHaveBeenCalled();
+	});
+});
+
+
+describe("Cursor launch after Claude", () => {
+	it("refreshes the inherited status hook before Cursor imports it", async () => {
+		await setupAgentHooks(folder, "claude");
+		const path = join(folder, ".claude", "settings.local.json");
+		const previous = readJson(path);
+		previous.hooks.PreToolUse[0].hooks[0].command = "~/.dev3.0/bin/dev3 task move --status in-progress --if-status-not review-by-ai || [ $? -eq 2 ]";
+		writeFileSync(path, JSON.stringify(previous));
+		await setupAgentHooks(folder, "agent", { family: "cursor" });
+		expect(readJson(path).hooks.PreToolUse[0].hooks[0].command).toContain("hook claude-pre-tool");
+		expect(readJson(path).hooks.Stop).toEqual(previous.hooks.Stop);
 	});
 });
