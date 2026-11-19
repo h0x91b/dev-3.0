@@ -2,7 +2,7 @@ import type { PrStatusNotice, PrWatchUntil } from "./pr-watch";
 import { parseGitHubPullRequestUrl } from "./pr-status";
 import { ID_PREFIX_MIN_LENGTH, type AgentMessageSource } from "./types";
 import { encodeAgentHandle } from "./agent-handle";
-import { formatPrRef, formatTaskRefFor } from "./task-refs";
+import { formatPrRef, formatTaskRefFor, qualifyRefsFor } from "./task-refs";
 
 /**
  * What stands in for the subject in a printed reply command. Obviously a slot to
@@ -61,6 +61,9 @@ export function wrapAgentMessage(
 	// `<from-task>` is an address, not a command, so it cannot carry the
 	// `--variant` flag — it keeps the id whenever the seq alone is ambiguous.
 	const ref = seqShared ? source.taskId : formatTaskRefFor(source.seq, source.projectId ?? receiverProjectId, receiverProjectId);
+	// The sender's `<seq:N>` names its own board; the receiver resolves a bare one on its own.
+	const body = qualifyRefsFor(text, source.projectId, receiverProjectId);
+	const shownSubject = subject && qualifyRefsFor(subject, source.projectId, receiverProjectId);
 	const lines = [
 		"<dev3-ai-message>",
 		`<from-task>${ref}</from-task>`,
@@ -70,7 +73,7 @@ export function wrapAgentMessage(
 	// The sender's own summary, shown before the body so the receiver reads what
 	// this is about before reading it. Absent on a message queued before subjects
 	// were required.
-	if (subject) lines.push(`<subject>${escapeXmlText(subject)}</subject>`);
+	if (shownSubject) lines.push(`<subject>${escapeXmlText(shownSubject)}</subject>`);
 	lines.push(
 		source.agent
 			? `<reply-with>${agentReplyCommand({
@@ -87,7 +90,7 @@ export function wrapAgentMessage(
 			})}</reply-with>`
 			: `<reply-unavailable>${escapeXmlText(source.agentUnavailable || REPLY_UNAVAILABLE_UNRECORDED)}</reply-unavailable>`,
 		"<message>",
-		text,
+		body,
 		"</message>",
 		"</dev3-ai-message>",
 	);
