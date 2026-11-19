@@ -425,6 +425,7 @@ describe("saveSettings", () => {
 			analyticsDistinctId: "11111111-2222-3333-4444-555555555555",
 			resolvedTheme: "light",
 			beigeDepth: 0.6,
+			beigeWarmth: 0.8,
 			cloneBaseDirectory: "/tmp/clones",
 			autoConfigureNewProjects: true,
 			newProjectsStoreInProject: true,

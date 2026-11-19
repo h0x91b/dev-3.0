@@ -38,13 +38,13 @@ const SLICE_VARS = ["--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart
 
 function getThemeSnapshot(): string {
 	if (typeof document === "undefined") return "dark:";
-	const { theme, palette, beigeDepth } = document.documentElement.dataset;
-	return `${theme || "dark"}:${palette ?? ""}:${beigeDepth ?? ""}`;
+	const { theme, palette, beigeTone } = document.documentElement.dataset;
+	return `${theme || "dark"}:${palette ?? ""}:${beigeTone ?? ""}`;
 }
 
 function subscribeToTheme(cb: () => void): () => void {
 	const observer = new MutationObserver(cb);
-	observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-palette", "data-beige-depth"] });
+	observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-palette", "data-beige-tone"] });
 	return () => observer.disconnect();
 }
 

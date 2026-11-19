@@ -14,7 +14,7 @@ import {
 	setActiveTmuxTheme,
 	buildThemeConfig,
 	PANE_CWD_FORMAT,
-	setTmuxBeigeDepth,
+	setTmuxBeigeTone,
 	setTmuxPaneDimming,
 	setTmuxPaneTitles,
 	tmuxConfigPath,
@@ -271,16 +271,21 @@ describe("beige tmux theme", () => {
 	});
 
 	it("bakes the depth into the inlined palette and the config file name", () => {
-		setTmuxBeigeDepth(0);
+		setTmuxBeigeTone({ depth: 0, warmth: 0.5 });
 		const light = buildThemeConfig("beige");
 		const lightPath = tmuxConfigPath("beige", true);
-		setTmuxBeigeDepth(1);
+		setTmuxBeigeTone({ depth: 1, warmth: 0.5 });
 		const dark = buildThemeConfig("beige");
+		const darkPath = tmuxConfigPath("beige", true);
+		setTmuxBeigeTone({ depth: 1, warmth: 0 });
+		const neutral = buildThemeConfig("beige");
 		expect(light).toContain('set -gq @thm_bg "#fcfbf8"');
 		expect(dark).toContain('set -gq @thm_bg "#daccb3"');
+		// Neutral keeps the lightness and drops the chroma: an equal-channel grey.
+		expect(neutral).toMatch(/set -gq @thm_bg "#(..)\1\1"/);
 		expect(light).not.toContain("catppuccin_beige_tmux.conf");
-		expect(lightPath).toContain("dev3-tmux-beige0-dimmed");
-		expect(tmuxConfigPath("beige", true)).toContain("dev3-tmux-beige100-dimmed");
-		setTmuxBeigeDepth(0.15);
+		expect(lightPath).toContain("dev3-tmux-beige0-50-dimmed");
+		expect(darkPath).toContain("dev3-tmux-beige100-50-dimmed");
+		setTmuxBeigeTone({});
 	});
 });

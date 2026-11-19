@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyBeigeDepth, applyThemeToDocument, getInitialThemeState, readBeigeDepth } from "../theme-bootstrap";
+import { applyBeigeTone, applyThemeToDocument, getInitialThemeState, readBeigeTone } from "../theme-bootstrap";
 
 describe("getInitialThemeState", () => {
 	it("uses the injected remote theme when browser storage is empty", () => {
@@ -79,15 +79,25 @@ describe("applyThemeToDocument", () => {
 	});
 });
 
-describe("applyBeigeDepth", () => {
-	it("writes depth-driven tokens scoped to the beige palette and remembers the depth", () => {
-		applyBeigeDepth(1);
-		const css = document.getElementById("dev3-beige-depth")?.textContent ?? "";
+describe("applyBeigeTone", () => {
+	it("writes tone-driven tokens scoped to the beige palette and remembers the tone", () => {
+		applyBeigeTone({ depth: 1, warmth: 0.5 });
+		const css = document.getElementById("dev3-beige-tone")?.textContent ?? "";
 		expect(css).toContain('[data-theme="light"][data-palette="beige"]');
 		expect(css).toContain("--surface-base: 206 190 162;");
-		expect(document.documentElement.dataset.beigeDepth).toBe("1");
-		expect(readBeigeDepth()).toBe(1);
-		applyBeigeDepth(7);
-		expect(readBeigeDepth()).toBe(1);
+		expect(css).toContain("--accent: 128 56 10;");
+		expect(css).toContain("--bg-grad-from: #cebea2;");
+		expect(css).toContain("--glass-header-rgb: 238 229 211;");
+		expect(document.documentElement.dataset.beigeTone).toBe("1:0.5");
+		expect(readBeigeTone()).toEqual({ depth: 1, warmth: 0.5 });
+		applyBeigeTone({ depth: 7, warmth: -1 });
+		expect(readBeigeTone()).toEqual({ depth: 1, warmth: 0 });
+	});
+
+	it("keeps the accent orange at neutral warmth", () => {
+		applyBeigeTone({ depth: 1, warmth: 0 });
+		const css = document.getElementById("dev3-beige-tone")?.textContent ?? "";
+		expect(css).toContain("--accent: 128 56 10;");
+		expect(css).toMatch(/--surface-base: (\d+) \1 \1;/);
 	});
 });

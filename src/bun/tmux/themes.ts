@@ -4,7 +4,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dev3TempPath } from "../temp-paths";
-import { beigeHex, type BeigeToken } from "../../shared/beige-palette";
+import { beigeHex, type BeigeTone, type BeigeToken } from "../../shared/beige-palette";
 import { TMUX_AGENT_PANE_OPTION, TMUX_TASK_TITLE_OPTION, TMUX_WINDOW_NAME_OPTION } from "./constants";
 
 // ── Color palettes ──────────────────────────────────────────────────
@@ -67,11 +67,11 @@ set -gq @thm_mantle "#e6e9ef"
 set -gq @thm_crust "#dce0e8"
 `;
 
-/** Latte's accents over warm neutrals that follow the Beige depth slider; the
+/** Latte's accents over warm neutrals that follow the Beige depth and warmth sliders; the
  *  active tab and border take the app's burnt-orange accent instead of mauve/lavender. */
-export function catppuccinBeige(depth: number): string {
-	const n = (token: BeigeToken) => beigeHex(token, depth);
-	return `# --> dev3 Beige (depth ${depth})
+export function catppuccinBeige(tone: BeigeTone): string {
+	const n = (token: BeigeToken) => beigeHex(token, tone);
+	return `# --> dev3 Beige (depth ${tone.depth}, warmth ${tone.warmth})
 set -gq @thm_bg "${n("tmux-bg")}"
 set -gq @thm_fg "#3d3a34"
 set -gq @thm_rosewater "#dc8a78"

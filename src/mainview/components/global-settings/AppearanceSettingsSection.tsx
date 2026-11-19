@@ -19,6 +19,7 @@ import SettingsToggle from "./SettingsToggle";
 import HelpSpot from "../HelpSpot";
 import { setStreamerMode, useStreamerMode } from "../../streamer-mode";
 import type { Theme } from "./utils";
+import type { BeigeTone } from "../../../shared/beige-palette";
 
 interface AppearanceSettingsSectionProps {
 	t: TFunction;
@@ -26,8 +27,8 @@ interface AppearanceSettingsSectionProps {
 	theme: Theme;
 	zoomLevel: number;
 	onThemeChange: (theme: Theme) => void;
-	beigeDepth: number;
-	onBeigeDepthChange: (depth: number) => void;
+	beigeTone: BeigeTone;
+	onBeigeToneChange: (tone: BeigeTone) => void;
 	onLocaleChange: (locale: Locale) => void;
 	onSimplifyModeToggle: (enabled: boolean) => void;
 }
@@ -38,8 +39,8 @@ export default function AppearanceSettingsSection({
 	theme,
 	zoomLevel,
 	onThemeChange,
-	beigeDepth,
-	onBeigeDepthChange,
+	beigeTone,
+	onBeigeToneChange,
 	onLocaleChange,
 	onSimplifyModeToggle,
 }: AppearanceSettingsSectionProps) {
@@ -123,24 +124,23 @@ export default function AppearanceSettingsSection({
 					/>
 				</div>
 				{theme === "beige" && (
-					<div className="mt-4 max-w-md">
-						<label htmlFor="beige-depth" className="block text-fg text-sm font-semibold mb-2">
-							{t("settings.beigeDepth")}
-						</label>
-						<input
+					<div className="mt-4 grid max-w-2xl grid-cols-1 gap-4 sm:grid-cols-2">
+						<ToneSlider
 							id="beige-depth"
-							type="range"
-							min={0}
-							max={100}
-							step={1}
-							value={Math.round(beigeDepth * 100)}
-							onChange={(e) => onBeigeDepthChange(Number(e.target.value) / 100)}
-							className="w-full accent-accent"
+							label={t("settings.beigeDepth")}
+							low={t("settings.beigeDepthLighter")}
+							high={t("settings.beigeDepthDarker")}
+							value={beigeTone.depth}
+							onChange={(depth) => onBeigeToneChange({ ...beigeTone, depth })}
 						/>
-						<div className="flex justify-between mt-1 text-fg-3 text-xs">
-							<span>{t("settings.beigeDepthLighter")}</span>
-							<span>{t("settings.beigeDepthDarker")}</span>
-						</div>
+						<ToneSlider
+							id="beige-warmth"
+							label={t("settings.beigeWarmth")}
+							low={t("settings.beigeWarmthNeutral")}
+							high={t("settings.beigeWarmthWarm")}
+							value={beigeTone.warmth}
+							onChange={(warmth) => onBeigeToneChange({ ...beigeTone, warmth })}
+						/>
 					</div>
 				)}
 				</div>
@@ -220,6 +220,44 @@ export default function AppearanceSettingsSection({
 				</div>
 			</SettingsEntry>
 		</SettingsSection>
+	);
+}
+
+function ToneSlider({
+	id,
+	label,
+	low,
+	high,
+	value,
+	onChange,
+}: {
+	id: string;
+	label: string;
+	low: string;
+	high: string;
+	value: number;
+	onChange: (value: number) => void;
+}) {
+	return (
+		<div>
+			<label htmlFor={id} className="block text-fg text-sm font-semibold mb-2">
+				{label}
+			</label>
+			<input
+				id={id}
+				type="range"
+				min={0}
+				max={100}
+				step={1}
+				value={Math.round(value * 100)}
+				onChange={(e) => onChange(Number(e.target.value) / 100)}
+				className="w-full accent-accent"
+			/>
+			<div className="flex justify-between mt-1 text-fg-3 text-xs">
+				<span>{low}</span>
+				<span>{high}</span>
+			</div>
+		</div>
 	);
 }
 

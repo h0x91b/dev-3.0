@@ -11,7 +11,7 @@ import type { AppState, AppAction, Route } from "./state";
 import type { Locale } from "./i18n/types";
 import type { TaskStatus } from "../shared/types";
 import { isBoardMounted, parseBoardViewAction, runBoardViewCommand } from "./board-views/view-commands";
-import { applyThemeToDocument, readBeigeDepth } from "./theme-bootstrap";
+import { applyThemeToDocument } from "./theme-bootstrap";
 
 /**
  * Universal dispatch for `application-menu-clicked` events that the bun side
@@ -80,7 +80,7 @@ function applyTheme(preference: "light" | "dark" | "system"): void {
 	const resolved = preference === "system" ? (prefersDark ? "dark" : "light") : preference;
 	applyThemeToDocument(preference, resolved);
 	localStorage.setItem("dev3-theme", preference);
-	api.request.setTmuxTheme({ theme: resolved, preference, beigeDepth: readBeigeDepth() }).catch(() => {});
+	api.request.setTmuxTheme({ theme: resolved, preference }).catch(() => {});
 }
 
 /** The board the current route belongs to, the space board included; null off a project. */

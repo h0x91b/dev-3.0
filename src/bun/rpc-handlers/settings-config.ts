@@ -21,8 +21,8 @@ import * as repoConfig from "../repo-config";
 import * as pty from "../pty-server";
 import { SESSION_OVERVIEW_FORMAT, tmux } from "../tmux";
 import { tmuxRestartImpact } from "../tmux-restart-impact";
-import { setTmuxBeigeDepth, setTmuxPaneDimming, setTmuxPaneTitles, tmuxThemeFor, writeTmuxConfigs, type TmuxTheme } from "../tmux/config";
-import { clampBeigeDepth, DEFAULT_BEIGE_DEPTH } from "../../shared/beige-palette";
+import { setTmuxBeigeTone, setTmuxPaneDimming, setTmuxPaneTitles, tmuxThemeFor, writeTmuxConfigs, type TmuxTheme } from "../tmux/config";
+import { clampBeigeTone } from "../../shared/beige-palette";
 import { loadSettings, readSettingsFileStrict, saveSettings } from "../settings";
 import { collectLogRetentionUsage, pruneAllLogs } from "../log-retention";
 import { isRetentionDayCount, isShorterRetention, resolveLogRetentionDays, storedLogRetention, type LogRetentionUsage, type LogRetentionValue } from "../../shared/log-retention";
@@ -967,20 +967,20 @@ async function clearAgentBinaryPath(params: { agentId: string }): Promise<void> 
 	log.info("<- clearAgentBinaryPath saved");
 }
 
-async function setTmuxTheme(params: { theme: "dark" | "light"; preference?: "dark" | "light" | "beige" | "system"; beigeDepth?: number }): Promise<void> {
+async function setTmuxTheme(params: { theme: "dark" | "light"; preference?: "dark" | "light" | "beige" | "system"; beigeTone?: { depth: number; warmth: number } }): Promise<void> {
 	log.info("→ setTmuxTheme", params);
 	const settings = await loadSettings();
-	const beigeDepth = params.beigeDepth !== undefined ? clampBeigeDepth(params.beigeDepth) : settings.beigeDepth;
+	const tone = params.beigeTone ? clampBeigeTone(params.beigeTone) : undefined;
 	await saveSettings({
 		...settings,
 		...(params.preference !== undefined ? { theme: params.preference } : {}),
 		resolvedTheme: params.theme,
-		...(beigeDepth !== undefined ? { beigeDepth } : {}),
+		...(tone ? { beigeDepth: tone.depth, beigeWarmth: tone.warmth } : {}),
 	});
 	setCurrentUiTheme(params.theme);
 	const tmuxTheme = tmuxThemeFor(params.preference ?? settings.theme, params.theme);
 	if (tmuxTheme === "beige" && process.platform !== "win32") {
-		setTmuxBeigeDepth(beigeDepth ?? DEFAULT_BEIGE_DEPTH);
+		setTmuxBeigeTone(tone ?? { depth: settings.beigeDepth, warmth: settings.beigeWarmth });
 		writeTmuxConfigs();
 	}
 	await pty.applyTmuxTheme(tmuxTheme);
