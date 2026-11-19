@@ -1111,6 +1111,26 @@ describe("a new launch supersedes the previous run's failure", () => {
 		expect(mainAgentNeverStarted(persisted)).toBe(true);
 	});
 
+	it("keeps the new binding of a live replacement when a later pane-id write fails", async () => {
+		const task = makeTask({ launchFailure: failure, sessionState: { panes: [{ main: true, agentCmd: "claude", agentId: null, configId: null, sessionId: "dead-1" }] } });
+		let persisted: Task = structuredClone(task);
+		vi.mocked(data.updateTask).mockImplementation((async (_p: unknown, _id: string, updates: Partial<Task>) => {
+			if (updates.sessionState?.panes[0]?.paneId) throw new Error("pane binding write failed after spawn");
+			persisted = { ...persisted, ...updates };
+			return persisted;
+		}) as never);
+		vi.mocked(data.updateTaskWith).mockImplementation((async (_p: unknown, _id: string, mutator: (t: Task) => { updates: Partial<Task>; result: unknown }) => {
+			const { updates, result } = mutator(persisted);
+			persisted = { ...persisted, ...updates };
+			return { task: persisted, result };
+		}) as never);
+
+		await expect(launchTaskPty(makeProject(), task, WORKTREE, null, null, false, true, { freshSessionId: "attempt-1", freshWithTaskPrompt: true })).rejects.toThrow("pane binding write failed after spawn");
+
+		expect(pty.createSession).toHaveBeenCalledTimes(1);
+		expect(persisted.sessionState?.panes[0]).toMatchObject({ sessionId: "attempt-1" });
+	});
+
 	it("does not touch a pane 0 that another launch has since rebound", async () => {
 		const task = makeTask({ launchFailure: failure, sessionState: { panes: [{ main: true, agentCmd: "claude", agentId: null, configId: null, sessionId: "dead-1" }] } });
 		let persisted: Task = structuredClone(task);

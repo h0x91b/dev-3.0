@@ -354,19 +354,24 @@ async function restoreNeverStartedMain(project: Project, task: Task, prior: Pane
 	}
 }
 
-export async function launchTaskPty(...args: Parameters<typeof launchTaskPtyOnce>): ReturnType<typeof launchTaskPtyOnce> {
+type LaunchTaskPtyArgs = Parameters<typeof launchTaskPtyOnce> extends [unknown, ...infer Rest] ? Rest : never;
+
+export async function launchTaskPty(...args: LaunchTaskPtyArgs): ReturnType<typeof launchTaskPtyOnce> {
 	const [project, task, worktreePath, , , , , opts] = args;
 	assertTaskWorkspacePresent(project, worktreePath, task);
 	const priorMain = task.sessionState?.panes?.[0];
+	// Set once the replacement session exists: after that the new id is live and must keep its binding.
+	const progress = { sessionCreated: false };
 	try {
-		return await launchTaskPtyOnce(...args);
+		return await launchTaskPtyOnce(progress, ...args);
 	} catch (err) {
-		if (opts?.freshWithTaskPrompt && opts.freshSessionId && priorMain) await restoreNeverStartedMain(project, task, priorMain, opts.freshSessionId);
+		if (!progress.sessionCreated && opts?.freshWithTaskPrompt && opts.freshSessionId && priorMain) await restoreNeverStartedMain(project, task, priorMain, opts.freshSessionId);
 		throw err;
 	}
 }
 
 async function launchTaskPtyOnce(
+	progress: { sessionCreated: boolean },
 	project: Project,
 	task: Task,
 	worktreePath: string,
@@ -794,6 +799,7 @@ async function launchTaskPtyOnce(
 	// backends. Only the session itself differs.
 	if (nativeBackend) {
 		await launchNativeTaskSession(project, task, worktreePath, runScriptPath, env, userShell);
+		progress.sessionCreated = true;
 		if (!skipSessionPersist && !opts?.shellNotice) await clearSupersededLaunchFailure(project, task, registeredLaunchId);
 		return launchAccountId;
 	}
@@ -812,6 +818,7 @@ async function launchTaskPtyOnce(
 		// creating a tmux session. Gate preparation on the session itself so those
 		// asynchronous launch failures are reverted and surfaced like spawn errors.
 		await waitForTaskTmuxSession(task.id, sessionSocket);
+		progress.sessionCreated = true;
 		log.info("launchTaskPty DONE — PTY session created", { taskId: task.id.slice(0, 8) });
 		if (!skipSessionPersist && !isSetupWrapper && mainPaneEntry) {
 			await persistInitialAgentPaneId(project, task, sessionSocket, mainPaneEntry);
