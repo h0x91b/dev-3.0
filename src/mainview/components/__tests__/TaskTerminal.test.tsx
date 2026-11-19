@@ -216,6 +216,93 @@ describe("TaskTerminal", () => {
 			expect(screen.getByText("This task is cancelled")).toBeInTheDocument();
 		});
 
+		it.each(["completed", "cancelled"] as const)("reopens a %s task to Agent is Working from the closed screen", async (status) => {
+			const dispatch = vi.fn();
+			const navigate = vi.fn();
+			const user = userEvent.setup();
+			mockedApi.request.moveTask.mockResolvedValue(makeTask({ status: "in-progress" }));
+
+			await act(async () => {
+				renderTerminal({ tasks: [makeTask({ status, worktreePath: null, branchName: null })], dispatch, navigate });
+			});
+			await user.click(screen.getByTestId("terminal-task-reopen"));
+
+			await waitFor(() => expect(mockedApi.request.moveTask).toHaveBeenCalledWith(
+				expect.objectContaining({ taskId: "t1", projectId: "p1", newStatus: "in-progress" }),
+			));
+			expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
+				type: "updateTask",
+				task: expect.objectContaining({ id: "t1", status: "in-progress" }),
+			}));
+			// The view stays on the task so the resumed session attaches here.
+			expect(navigate).not.toHaveBeenCalled();
+		});
+
+		// The optimistic in-progress snapshot has no workspace yet: a session read
+		// then would fail and offer Complete/Cancel on the task just reopened.
+		it("holds the closed screen until the reopen is prepared, then attaches", async () => {
+			const user = userEvent.setup();
+			let resolveMove: (task: Task) => void = () => {};
+			mockedApi.request.moveTask.mockImplementation(() => new Promise((resolve) => { resolveMove = resolve; }));
+			mockedApi.request.getPtyUrl.mockRejectedValue(new Error("no session yet"));
+			const closed = makeTask({ status: "completed", worktreePath: null, branchName: null });
+			const renderWith = (task: Task) => (
+				<I18nProvider>
+					<TaskTerminal projectId="p1" taskId="t1" tasks={[task]} projects={[project]} navigate={vi.fn()} dispatch={vi.fn()} />
+				</I18nProvider>
+			);
+			let view!: ReturnType<typeof render>;
+			await act(async () => {
+				view = render(renderWith(closed));
+			});
+
+			await user.click(screen.getByTestId("terminal-task-reopen"));
+			await act(async () => {
+				view.rerender(renderWith(makeTask({ status: "in-progress", worktreePath: null, branchName: null })));
+			});
+
+			expect(screen.getByTestId("terminal-task-closed-screen")).toBeInTheDocument();
+			expect(screen.getByText("This task is completed")).toBeInTheDocument();
+			expect(screen.getByTestId("terminal-task-reopen")).toBeDisabled();
+			expect(mockedApi.request.getPtyUrl).not.toHaveBeenCalled();
+			expect(screen.queryByText("Task environment error")).not.toBeInTheDocument();
+
+			// A second click while the move is in flight sends nothing.
+			await user.click(screen.getByTestId("terminal-task-reopen"));
+			expect(mockedApi.request.moveTask).toHaveBeenCalledTimes(1);
+
+			mockedApi.request.getPtyUrl.mockResolvedValue({ url: "ws://pty/1" });
+			const prepared = makeTask({ status: "in-progress" });
+			await act(async () => {
+				resolveMove(prepared);
+				view.rerender(renderWith(prepared));
+			});
+
+			await waitFor(() => expect(screen.getByTestId("terminal-view")).toBeInTheDocument());
+			expect(screen.queryByText("Task environment error")).not.toBeInTheDocument();
+		});
+
+		it("hands over to the preparing view once the server reports the preparation", async () => {
+			const user = userEvent.setup();
+			mockedApi.request.moveTask.mockImplementation(() => new Promise(() => {}));
+			const renderWith = (task: Task) => (
+				<I18nProvider>
+					<TaskTerminal projectId="p1" taskId="t1" tasks={[task]} projects={[project]} navigate={vi.fn()} dispatch={vi.fn()} />
+				</I18nProvider>
+			);
+			let view!: ReturnType<typeof render>;
+			await act(async () => {
+				view = render(renderWith(makeTask({ status: "cancelled", worktreePath: null, branchName: null })));
+			});
+
+			await user.click(screen.getByTestId("terminal-task-reopen"));
+			await act(async () => {
+				view.rerender(renderWith(makeTask({ status: "in-progress", worktreePath: null, branchName: null, preparing: true })));
+			});
+
+			expect(screen.queryByTestId("terminal-task-closed-screen")).not.toBeInTheDocument();
+		});
+
 		it("replaces a live terminal with the closed screen when the task completes under it", async () => {
 			mockedApi.request.getPtyUrl.mockResolvedValue({ url: "ws://pty/1" });
 			const { rerender } = render(

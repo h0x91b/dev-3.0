@@ -98,9 +98,14 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	const project = projects.find((p) => p.id === projectId);
 	const isPreparing = task?.preparing === true;
 	// Completed/cancelled by design: the worktree and the session are gone on
-	// purpose, so every recovery offer in here would be a lie. This view has one
-	// honest exit, and it must win over the error and restart screens below.
-	const isClosed = task?.status === "completed" || task?.status === "cancelled";
+	// purpose, so every recovery offer in here would be a lie. This view offers only
+	// the way back and a reopen, and it must win over the error and restart screens below.
+	// A reopen keeps this screen up (button disabled) until the server reports the
+	// preparation: the optimistic in-progress snapshot has no workspace yet, and a
+	// session read in that window would land on the environment-error screen.
+	const [reopenFrom, setReopenFrom] = useState<"completed" | "cancelled" | null>(null);
+	const isReopening = reopenFrom !== null && !isPreparing;
+	const isClosed = task?.status === "completed" || task?.status === "cancelled" || isReopening;
 	// Teardown snapshots still carry the old status and worktree, so without this the
 	// pane reattaches to a dying PTY and flashes a recovery card. `shuttingDown` rides
 	// only on the first push; the persisted runtime covers every later one until it fails.
@@ -514,6 +519,34 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		});
 	}
 
+	/**
+	 * Reopen a closed task from its dead-end screen. The lifecycle rebuilds the
+	 * workspace and resumes the saved agent conversation, as the board's
+	 * "Reopen as" menu does, so the view stays here and attaches when it is ready.
+	 */
+	function handleReopen() {
+		if (!task || !project || reopenFrom !== null) return;
+		if (task.status !== "completed" && task.status !== "cancelled") return;
+		setReopenFrom(task.status);
+		setPtyUrl(null);
+		setError(null);
+		setRecoverable(null);
+		void moveTaskToStatus({
+			task,
+			project,
+			newStatus: "in-progress",
+			dispatch,
+			t,
+			onSuccess: () => setReopenFrom(null),
+			onFailure: () => setReopenFrom(null),
+		});
+	}
+
+	// The server's preparing snapshot takes over from the held closed screen.
+	useEffect(() => {
+		if (isPreparing) setReopenFrom(null);
+	}, [isPreparing]);
+
 	/** A restarted app has forgotten the session; ask for it again so the open view reconnects. */
 	async function reregisterTmuxSession(): Promise<boolean> {
 		const result = await api.request.getPtyUrl({ taskId });
@@ -773,16 +806,18 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		</>
 	);
 
-	// A closed task has no workspace left to recover, so the only thing this pane
-	// owes the user is the way out — same empty state the task view shows when no
-	// task is selected.
+	// A closed task has no workspace left to recover: this pane offers the way out,
+	// the same empty state the task view shows when no task is selected, plus a
+	// reopen that builds a new session instead of recovering the old one.
 	if (isClosed) {
+		const closedAs = reopenFrom ?? task?.status;
 		return (
 			<BackToKanbanEmptyState
 				testId="terminal-task-closed-screen"
-				message={task?.status === "cancelled" ? t("terminal.taskCancelledTitle") : t("terminal.taskCompletedTitle")}
+				message={closedAs === "cancelled" ? t("terminal.taskCancelledTitle") : t("terminal.taskCompletedTitle")}
 				hint={t("terminal.taskClosedHint")}
 				onBack={() => navigate({ screen: "project", projectId })}
+				action={{ label: t("task.reopenTask"), onClick: handleReopen, testId: "terminal-task-reopen", disabled: reopenFrom !== null }}
 			/>
 		);
 	}

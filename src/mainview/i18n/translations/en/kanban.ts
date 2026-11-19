@@ -219,6 +219,7 @@ const kanban = {
 	"task.resetTitle": "Reset to auto",
 	"task.failedRename": "Couldn’t rename the task — try again. ({error})",
 	"task.reopenTo": "Reopen as",
+	"task.reopenTask": "Reopen task",
 	"task.openPR": "Open PR #{number}",
 	"task.prBadge": "PR #{number}",
 	"task.prNumber": "#{number}",
