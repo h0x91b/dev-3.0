@@ -192,14 +192,12 @@ function ProjectSettings({
 
 	// ---- Config file presence (for override warning on Project Config tab) ----
 	const [configFileOverride, setConfigFileOverride] = useState<string | null>(null);
+	const refreshConfigFileOverride = useCallback(async () => {
+		const { hasRepoConfig: hasRepo, hasLocalConfig: hasLocal } = await api.request.getProjectConfigFiles({ projectId });
+		setConfigFileOverride(hasLocal ? ".dev3/config.local.json" : hasRepo ? ".dev3/config.json" : null);
+	}, [projectId]);
 	useEffect(() => {
-		if (project) {
-			api.request.getProjectConfigFiles({ projectId }).then(({ hasRepoConfig: hasRepo, hasLocalConfig: hasLocal }) => {
-				if (hasLocal) setConfigFileOverride(".dev3/config.local.json");
-				else if (hasRepo) setConfigFileOverride(".dev3/config.json");
-				else setConfigFileOverride(null);
-			}).catch(() => {});
-		}
+		if (project) refreshConfigFileOverride().catch(() => {});
 	}, [project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	useEffect(() => {
@@ -332,6 +330,24 @@ function ProjectSettings({
 			&& (a.githubAuthHost ?? "") === (b.githubAuthHost ?? "")
 			&& (a.githubAuthLogin ?? "") === (b.githubAuthLogin ?? "");
 	}, [configsEqual]);
+
+	// The form holds values resolved with the repo files on or off. When that flag
+	// flips outside this tab (`dev3 projects set useRepoConfig`, another window), the
+	// values are stale, and saving them would copy one resolution into the other.
+	// Reseed from the pushed project, as handleToggleUseRepoConfig does, and say so
+	// when that drops unsaved edits.
+	const seededUseRepoConfig = useRef(project ? repoConfigEnabled(project) : true);
+	const projectUseRepoConfig = project ? repoConfigEnabled(project) : true;
+	useEffect(() => {
+		if (!project || projectUseRepoConfig === seededUseRepoConfig.current) return;
+		seededUseRepoConfig.current = projectUseRepoConfig;
+		const hadEdits = !projectConfigsEqual(projectConfig, loadedProjectConfig.current);
+		const reseeded = projectConfigFromProject(project);
+		setProjectConfig(reseeded);
+		loadedProjectConfig.current = reseeded;
+		refreshConfigFileOverride().catch(() => {});
+		if (hadEdits) toast.warning(t("projectSettings.useRepoConfigChangedElsewhere"), { projectId });
+	}, [projectUseRepoConfig]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const isReviewModePromptDirty = useCallback(
 		() => reviewModePrompt.trim() !== initialReviewModePromptRef.current.trim()
@@ -508,17 +524,19 @@ function ProjectSettings({
 			});
 			if (!ok) return;
 		}
+		// Set before the request: its projectUpdated push can land first, and the
+		// reseed effect must not treat this tab's own flip as an outside one.
+		const seededBefore = seededUseRepoConfig.current;
+		seededUseRepoConfig.current = next;
 		try {
 			const updated = await api.request.updateProjectSettings({ projectId, useRepoConfig: next });
 			dispatch({ type: "updateProject", project: updated });
 			const reseeded = projectConfigFromProject(updated);
 			setProjectConfig(reseeded);
 			loadedProjectConfig.current = reseeded;
-			const files = await api.request.getProjectConfigFiles({ projectId });
-			setConfigFileOverride(files.hasLocalConfig
-				? ".dev3/config.local.json"
-				: files.hasRepoConfig ? ".dev3/config.json" : null);
+			await refreshConfigFileOverride();
 		} catch (err) {
+			seededUseRepoConfig.current = seededBefore;
 			toast.error(t("projectSettings.failedSave", { error: String(err) }), { projectId });
 		}
 	}

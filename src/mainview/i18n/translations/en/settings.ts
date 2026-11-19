@@ -711,6 +711,7 @@ const settings = {
 	"projectSettings.useRepoConfigOffHint": "dev3 ignores every .dev3 config file for this project. Settings come from dev3 only. Stored on this machine — the repository is never touched.",
 	"projectSettings.useRepoConfigDiscardTitle": "Discard unsaved settings?",
 	"projectSettings.useRepoConfigDiscardMessage": "Switching this changes how settings are resolved, so the unsaved edits on this tab cannot be kept.",
+	"projectSettings.useRepoConfigChangedElsewhere": "Repository configuration was switched outside this tab, so the form reloaded and your unsaved edits here were discarded.",
 	"projectSettings.repoConfigIgnored": "Repository configuration is ignored. Settings below come from dev3 and built-in defaults, and saving writes them into dev3 — never into the repository.",
 	"projectSettings.repoConfigIgnoredWithFile": "Repository configuration is ignored: {file} exists but is not read. Settings below come from dev3 and built-in defaults, and saving writes them into dev3 — never into the repository.",
 	"projectSettings.worktreeRepoConfigIgnored": "Repository configuration is ignored for this project, so worktree .dev3 files are neither read nor written. Turn \"Use repository dev3 configuration\" back on in the Project tab to edit them.",

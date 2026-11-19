@@ -949,7 +949,7 @@ const COMMANDS: CommandHelp[] = [
 	},
 	{
 		name: "projects",
-		summary: "List, add and clone projects — the CLI side of the app's Add Project dialog.",
+		summary: "List, add and clone projects, and change their machine-local Project Settings switches.",
 		subcommands: [
 			{
 				name: "list",
@@ -990,6 +990,37 @@ const COMMANDS: CommandHelp[] = [
 					"                       name only — a URL or a path here is refused.",
 					"Space flags, --json and exit codes 33 / 34 work exactly as for `projects add`.",
 					"An existing git repo already at <parent>/<name> is registered without cloning.",
+				],
+			},
+			{
+				name: "get",
+				usage: "dev3 projects get [<key>] [--project <id>] [--json]",
+				summary: "Show the machine-local Project Settings switches, or one of them.",
+				details: [
+					"Keys: name, gitWorkflow, storageRoot, useRepoConfig, boardCopy, boardCopyMessages.",
+					"They live in the app's project registry, not in .dev3/config.json, so `dev3 config` cannot",
+					"reach them. Booleans print on/off; --json prints true/false.",
+					"The project is the one owning the current folder or task, or --project <id>.",
+				],
+			},
+			{
+				name: "set",
+				usage: "dev3 projects set <key> <value> [--project <id>] [--json]",
+				summary: "Change one machine-local Project Settings switch, with the same checks as the app.",
+				details: [
+					"name <text>                 Display name. The folder and board data never move.",
+					"gitWorkflow on|off          off = every task runs in the project folder (no worktree, branch,",
+					"                            diff, PR or review columns). Refused while any task of the",
+					"                            project holds a folder or runs; on needs a git repository.",
+					"storageRoot home|project    Copy the board data to <folder>/.dev3/ or back to ~/.dev3.0.",
+					"                            Refused while a task of the project runs. Nothing is deleted.",
+					"useRepoConfig on|off        Read .dev3/config.json and .dev3/config.local.json.",
+					"boardCopy on|off            Keep a copy of the board in <folder>/.dev3/board/. on is refused",
+					"                            on an operations board (exit 50).",
+					"boardCopyMessages on|off    Also copy agent messages. on is refused while boardCopy is off",
+					"                            (exit 50): turn boardCopy on first.",
+					"Only the user (outside any task) and coordinator tasks may set these: any other task",
+					"gets exit 49 and nothing changes.",
 				],
 			},
 		],

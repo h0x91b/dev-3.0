@@ -177,6 +177,8 @@ Commands:
                                          Register a local git repo as a project, optionally in spaces (exit 33 if already registered)
   dev3 projects clone <git-url> [--dir <parent>] [--name "..."] [--space ...] [--new-space ...] [--no-space] [--json]
                                          Clone a repo into the app's clone folder (or --dir) and register it
+  dev3 projects get [<key>] [--project <id>] [--json]  Machine-local Project Settings switches (gitWorkflow, storageRoot, ...)
+  dev3 projects set <key> <value> [--project <id>]  Change one (user or coordinator only; exit 49 otherwise)
   dev3 spaces list [--json]             List spaces with their projects and ids
   dev3 spaces create "name" [--project <id>]...  Create a space (never empty: defaults to the current project)
   dev3 spaces set|add|remove <space>... [--project <id>]  Change a project's spaces (set REPLACES; set --no-space = none)
@@ -500,7 +502,7 @@ async function main(): Promise<void> {
 			// natural mistype and used to answer "Unknown command" with no hint —
 			// the same forwarding `task list` already does for `tasks list`.
 			case "project":
-				return await handleProjects(subcommand, args, socketPath);
+				return await handleProjects(subcommand, args, socketPath, context);
 			case "spaces":
 			case "space":
 				return await handleSpaces(subcommand, args, socketPath, context);
