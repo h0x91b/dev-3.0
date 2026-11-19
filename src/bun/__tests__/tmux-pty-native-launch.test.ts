@@ -967,6 +967,14 @@ describe("launch registration of a fresh Claude session", () => {
 		expect(registeredAtClear).toBe(true);
 	});
 
+	it("keeps a failure recorded for this very launch (it exited at once) and clears one of an older launch", async () => {
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+		const mutator = vi.mocked(data.updateTaskWith).mock.calls[0][2] as (t: Task) => { updates: Partial<Task> };
+		const row = (sessionId: string) => ({ launchFailure: { exitCode: 2, at: "t", output: null, neverStarted: true, sessionId } }) as Task;
+		expect(mutator(row(persistedSessionId())).updates).toEqual({});
+		expect(mutator(row("older-launch")).updates).toEqual({ launchFailure: undefined });
+	});
+
 	it("puts the report on the agent's own script when a setup script runs first", async () => {
 		await launchTaskPty(makeProject({ setupScript: "bun install\n" }), makeTask(), WORKTREE, null, null, true);
 

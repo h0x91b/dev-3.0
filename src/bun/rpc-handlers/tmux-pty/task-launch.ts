@@ -324,9 +324,13 @@ export async function applyModelVersionNotice(
  * its conversation never existed. Decided on the row under the lock, since the previous
  * run's report may have landed after this task was read.
  */
-async function clearSupersededLaunchFailure(project: Project, task: Task): Promise<void> {
+async function clearSupersededLaunchFailure(project: Project, task: Task, ownLaunchId: string | null): Promise<void> {
 	try {
-		await data.updateTaskWith(project, task.id, (current) => ({ updates: current.launchFailure ? { launchFailure: undefined } : {}, result: null }));
+		// A failure recorded for this very launch (it exited at once) is its own verdict, not a superseded one.
+		await data.updateTaskWith(project, task.id, (current) => ({
+			updates: current.launchFailure && current.launchFailure.sessionId !== ownLaunchId ? { launchFailure: undefined } : {},
+			result: null,
+		}));
 	} catch (err) {
 		log.warn("Could not clear the previous launch failure (non-fatal)", { taskId: task.id.slice(0, 8), error: String(err) });
 	}
@@ -641,6 +645,7 @@ export async function launchTaskPty(
 		: resume ? null
 		: freshLaunchSessionId;
 	let exitReport: string[] | undefined;
+	let registeredLaunchId: string | null = null;
 	if (trackedSessionId && agents.supportsPreAssignedSessionId(resolvedBaseCmd, resolvedAgentFamily)
 		&& getAgentAdapter(resolvedBaseCmd, resolvedAgentFamily).hooksSpec()?.kind === "claude"
 		&& claudeSessionStartHookInstalled(worktreePath)
@@ -648,6 +653,7 @@ export async function launchTaskPty(
 		// handoff and print "Unknown command" at every exit, so keep today's path.
 		&& await hookCliSupports(AGENT_SESSION_STARTED_METHOD) && await hookCliSupports(AGENT_EXITED_METHOD)) {
 		noteAgentLaunched(task.id, trackedSessionId, { startReceipts: true });
+		registeredLaunchId = trackedSessionId;
 		exitReport = agentExitReportArgv(task.id, trackedSessionId);
 	} else if (!opts?.shellNotice && !skipSessionPersist && resolvedBaseCmd && resolvedBaseCmd !== "bash"
 		&& await hookCliSupports(AGENT_EXITED_METHOD)) {
@@ -655,6 +661,7 @@ export async function launchTaskPty(
 		// still ties the exit to this spawn, and only a non-zero code moves the card.
 		const launchId = crypto.randomUUID();
 		noteAgentLaunched(task.id, launchId, { startReceipts: false });
+		registeredLaunchId = launchId;
 		exitReport = agentExitReportArgv(task.id, launchId);
 	}
 
@@ -758,7 +765,7 @@ export async function launchTaskPty(
 	// backends. Only the session itself differs.
 	if (nativeBackend) {
 		await launchNativeTaskSession(project, task, worktreePath, runScriptPath, env, userShell);
-		if (!skipSessionPersist && !opts?.shellNotice) await clearSupersededLaunchFailure(project, task);
+		if (!skipSessionPersist && !opts?.shellNotice) await clearSupersededLaunchFailure(project, task, registeredLaunchId);
 		return launchAccountId;
 	}
 
@@ -780,7 +787,7 @@ export async function launchTaskPty(
 		if (!skipSessionPersist && !isSetupWrapper && mainPaneEntry) {
 			await persistInitialAgentPaneId(project, task, sessionSocket, mainPaneEntry);
 		}
-		if (!skipSessionPersist && !opts?.shellNotice) await clearSupersededLaunchFailure(project, task);
+		if (!skipSessionPersist && !opts?.shellNotice) await clearSupersededLaunchFailure(project, task, registeredLaunchId);
 		await setTmuxSessionPortEnv(task.id, sessionSocket);
 		if (project.kind === "virtual" && !sessionPreexisted) {
 			await addVirtualShellPane(task, worktreePath, sessionSocket, userShell);
