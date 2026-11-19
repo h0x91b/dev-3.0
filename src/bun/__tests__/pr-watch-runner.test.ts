@@ -569,6 +569,69 @@ describe("a PR followed with --pr", () => {
 	});
 });
 
+describe("a merged or closed PR followed by both a branch watch and a --pr watch", () => {
+	// A review task, or `--pr N` naming the task's own PR when GitHub was slow, holds both kinds on one PR.
+	const pinnedOwn = (until: PrWatch["until"], overrides: Partial<PrWatch> = {}) => watch(until, { id: `p-${until}`, pinned: true, ...overrides });
+	const merged = { ...greenSample, state: "MERGED" };
+	const settleStored = () => { current = { ...current, prWatches: lastStoredWatches() ?? null }; };
+
+	it("tells the agent once and clears every watch on the PR, whichever run sees it first, across an app restart", async () => {
+		for (const order of [["branch", "pinned"], ["pinned", "branch"]] as const) {
+			vi.mocked(sendMessageImmediately).mockClear();
+			_resetPrWatchRunnerState();
+			current = task({ prWatches: [watch("merged"), pinnedOwn("merged"), pinnedOwn("ci")] });
+			for (const run of order) {
+				await runPrWatches(project, "t1", merged, URL, Date.now(), true, run === "pinned" ? 7 : undefined);
+				settleStored();
+				// What survives a restart is the stored watch list alone.
+				_resetPrWatchRunnerState();
+			}
+			await runPrWatches(project, "t1", merged, URL, Date.now(), true);
+			expect(sendMessageImmediately).toHaveBeenCalledTimes(1);
+			expect(current.prWatches).toBeNull();
+		}
+	});
+
+	it("tells the agent once when both runs land together", async () => {
+		current = task({ prWatches: [watch("merged"), pinnedOwn("merged")] });
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_p, _id, mutator) => {
+			const { updates, result } = await mutator(current);
+			stored.push(updates);
+			current = { ...current, ...updates } as Task;
+			return { task: current, result };
+		});
+		vi.mocked(sendMessageImmediately).mockImplementation(async () => {
+			for (let i = 0; i < 50; i++) await Promise.resolve();
+			return { status: "held", spilledPath: null, messageId: "m" };
+		});
+
+		await Promise.all([
+			runPrWatches(project, "t1", merged, URL, Date.now(), true),
+			runPrWatches(project, "t1", merged, URL, Date.now(), true, 7),
+		]);
+
+		expect(sendMessageImmediately).toHaveBeenCalledTimes(1);
+		expect(current.prWatches).toBeNull();
+	});
+
+	it("still tells a second subscriber on the same PR, once", async () => {
+		const other = { paneId: "%2", sessionId: null, paneToken: "t2", agentProcess: "2@x" };
+		current = task({ prWatches: [watch("merged"), pinnedOwn("merged", { author: other })] });
+		vi.mocked(resolveScheduledMessageAuthorPane).mockResolvedValue({ ok: true, paneId: "%2" } as Awaited<ReturnType<typeof resolveScheduledMessageAuthorPane>>);
+
+		await runPrWatches(project, "t1", merged, URL, Date.now(), true);
+		settleStored();
+		await runPrWatches(project, "t1", merged, URL, Date.now(), true, 7);
+		settleStored();
+		await runPrWatches(project, "t1", merged, URL, Date.now(), true);
+
+		expect(vi.mocked(sendMessageImmediately).mock.calls.map(([, , target]) => target)).toEqual([
+			{ kind: "pane", paneId: "%1" }, { kind: "pane", paneId: "%2" },
+		]);
+		expect(current.prWatches).toBeNull();
+	});
+});
+
 describe("the merge-completion offer hold", () => {
 	const merged = { ...greenSample, state: "MERGED" };
 	const withoutWatches = () => ({ ...current, prWatches: null }) as Task;
