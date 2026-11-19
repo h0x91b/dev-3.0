@@ -13,6 +13,7 @@ interface ThemeBootstrapOptions {
 interface ThemeBootstrapWindow {
 	__DEV3_INITIAL_THEME__?: string;
 	__DEV3_INITIAL_RESOLVED_THEME__?: string;
+	__DEV3_INITIAL_BEIGE_TONE__?: unknown;
 }
 
 function parseThemePreference(value: string | null | undefined): ThemePreference | undefined {
@@ -59,19 +60,30 @@ export function getInitialThemeState(options: ThemeBootstrapOptions): {
 const BEIGE_TONE_KEY = "dev3-beige-tone";
 const BEIGE_STYLE_ID = "dev3-beige-tone";
 
-export function readBeigeTone(): BeigeTone {
+/** The tone this window chose itself; undefined until a slider moved here. */
+export function readStoredBeigeTone(): BeigeTone | undefined {
 	try {
-		return clampBeigeTone(JSON.parse(localStorage.getItem(BEIGE_TONE_KEY) ?? "null") ?? undefined);
+		const raw = localStorage.getItem(BEIGE_TONE_KEY);
+		return raw ? clampBeigeTone(JSON.parse(raw) ?? undefined) : undefined;
 	} catch {
-		return clampBeigeTone(undefined);
+		return undefined;
 	}
+}
+
+/** This window's tone, else the host's (injected into a remote browser), else the default. */
+export function readBeigeTone(): BeigeTone {
+	const injected = (window as Window & ThemeBootstrapWindow).__DEV3_INITIAL_BEIGE_TONE__;
+	return readStoredBeigeTone() ?? clampBeigeTone(injected && typeof injected === "object" ? injected : undefined);
+}
+
+export function saveBeigeTone(tone: BeigeTone): void {
+	try { localStorage.setItem(BEIGE_TONE_KEY, JSON.stringify(clampBeigeTone(tone))); } catch { /* private mode */ }
 }
 
 /** Writes the tone-driven tokens. Scoped to the beige selector, so dropping
  *  `data-palette` (Light, Dark, a GaugeDemo preview) switches them off with no cleanup. */
 export function applyBeigeTone(next: BeigeTone): void {
 	const tone = clampBeigeTone(next);
-	try { localStorage.setItem(BEIGE_TONE_KEY, JSON.stringify(tone)); } catch { /* private mode */ }
 	let style = document.getElementById(BEIGE_STYLE_ID);
 	if (!style) {
 		style = document.createElement("style");

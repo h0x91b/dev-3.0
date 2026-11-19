@@ -19,7 +19,7 @@ import { bootstrapScrollSpeed } from "./scroll-speed";
 import { bootstrapTerminalFont } from "./terminal-font";
 import { startViewportDiagnostics } from "./viewport-diagnostics";
 import { startRendererHeartbeat } from "./renderer-heartbeat";
-import { applyThemeToDocument, getInitialThemeState, readBeigeTone, getWindowInjectedThemeState } from "./theme-bootstrap";
+import { applyThemeToDocument, getInitialThemeState, readStoredBeigeTone, getWindowInjectedThemeState } from "./theme-bootstrap";
 import { initThemeColorSync } from "./theme-color";
 import { initStreamerMode } from "./streamer-mode";
 import { buildChannelTitlePrefix } from "../shared/update-channel";
@@ -80,7 +80,9 @@ function applySavedTheme() {
 	injectedThemeState = {};
 	applyThemeToDocument(preference, resolved);
 	localStorage.setItem("dev3-theme", preference);
-	api.request.setTmuxTheme({ theme: resolved, preference, ...(preference === "beige" ? { beigeTone: readBeigeTone() } : {}) }).catch(() => {});
+	// Only a tone this window chose goes to the host: a fresh browser must not reset the saved one.
+	const beigeTone = preference === "beige" ? readStoredBeigeTone() : undefined;
+	api.request.setTmuxTheme({ theme: resolved, preference, ...(beigeTone ? { beigeTone } : {}) }).catch(() => {});
 }
 
 applySavedTheme();

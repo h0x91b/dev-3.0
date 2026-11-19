@@ -34,7 +34,7 @@ import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
 import { api } from "../rpc";
 import { openFolderPicker } from "../folder-picker";
 import type { BeigeTone } from "../../shared/beige-palette";
-import { applyBeigeTone, applyThemeToDocument, getInitialThemeState, readBeigeTone, getWindowInjectedThemeState } from "../theme-bootstrap";
+import { applyBeigeTone, applyThemeToDocument, getInitialThemeState, readBeigeTone, saveBeigeTone, getWindowInjectedThemeState } from "../theme-bootstrap";
 import { getZoom, ZOOM_CHANGED_EVENT } from "../zoom";
 import { getScrollSpeed, SCROLL_SPEED_CHANGED_EVENT } from "../scroll-speed";
 import { getTerminalFontFamily, getTerminalFontSize, TERMINAL_FONT_CHANGED_EVENT } from "../terminal-font";
@@ -373,7 +373,31 @@ function GlobalSettings({
 		return () => clearTimeout(resetTimerRef.current);
 	}, []);
 
+	const [beigeTone, setBeigeTone] = useState(readBeigeTone);
+	const beigeTmuxTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+	const pendingBeigeToneRef = useRef<BeigeTone | null>(null);
+	const sendBeigeTone = useCallback(() => {
+		clearTimeout(beigeTmuxTimerRef.current);
+		const tone = pendingBeigeToneRef.current;
+		pendingBeigeToneRef.current = null;
+		if (tone) api.request.setTmuxTheme({ theme: "light", preference: "beige", beigeTone: tone }).catch(() => {});
+	}, []);
+	// Leaving Settings mid-settle still hands the last tone to the terminal.
+	useEffect(() => sendBeigeTone, [sendBeigeTone]);
+	const handleBeigeToneChange = useCallback((tone: BeigeTone) => {
+		setBeigeTone(tone);
+		applyBeigeTone(tone);
+		saveBeigeTone(tone);
+		// The terminal re-sources its tmux config on each call, so it follows once the drag settles.
+		pendingBeigeToneRef.current = tone;
+		clearTimeout(beigeTmuxTimerRef.current);
+		beigeTmuxTimerRef.current = setTimeout(sendBeigeTone, 300);
+	}, [sendBeigeTone]);
+
 	const applyThemeChange = useCallback((nextTheme: Theme) => {
+		// A theme pick supersedes a pending slider send, which would re-assert Beige.
+		clearTimeout(beigeTmuxTimerRef.current);
+		pendingBeigeToneRef.current = null;
 		setTheme(nextTheme);
 		const prefersDark = window.matchMedia(
 			"(prefers-color-scheme: dark)",
@@ -383,19 +407,6 @@ function GlobalSettings({
 		localStorage.setItem("dev3-theme", nextTheme);
 		api.request.setTmuxTheme({ theme: resolvedTheme, preference: nextTheme, ...(nextTheme === "beige" ? { beigeTone: readBeigeTone() } : {}) }).catch(() => {});
 		trackEvent("theme_changed", { theme: nextTheme });
-	}, []);
-
-	const [beigeTone, setBeigeTone] = useState(readBeigeTone);
-	const beigeTmuxTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-	useEffect(() => () => clearTimeout(beigeTmuxTimerRef.current), []);
-	const handleBeigeToneChange = useCallback((tone: BeigeTone) => {
-		setBeigeTone(tone);
-		applyBeigeTone(tone);
-		// The terminal re-sources its tmux config on each call, so it follows once the drag settles.
-		clearTimeout(beigeTmuxTimerRef.current);
-		beigeTmuxTimerRef.current = setTimeout(() => {
-			api.request.setTmuxTheme({ theme: "light", preference: "beige", beigeTone: tone }).catch(() => {});
-		}, 300);
 	}, []);
 
 	const handleTaskSortOrderChange = useCallback(
