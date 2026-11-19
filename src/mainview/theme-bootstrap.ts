@@ -1,4 +1,4 @@
-import { BEIGE_CSS_TOKENS, beigeColor, clampBeigeDepth, DEFAULT_BEIGE_DEPTH } from "../shared/beige-palette";
+import { beigeCssDeclarations, clampBeigeTone, formatBeigeTone, type BeigeTone } from "../shared/beige-palette";
 
 export type ThemePreference = "dark" | "light" | "beige" | "system";
 export type ResolvedTheme = "dark" | "light";
@@ -56,31 +56,30 @@ export function getInitialThemeState(options: ThemeBootstrapOptions): {
 	return { preference, resolved };
 }
 
-const BEIGE_DEPTH_KEY = "dev3-beige-depth";
-const BEIGE_STYLE_ID = "dev3-beige-depth";
+const BEIGE_TONE_KEY = "dev3-beige-tone";
+const BEIGE_STYLE_ID = "dev3-beige-tone";
 
-export function readBeigeDepth(): number {
+export function readBeigeTone(): BeigeTone {
 	try {
-		return clampBeigeDepth(localStorage.getItem(BEIGE_DEPTH_KEY) ?? undefined);
+		return clampBeigeTone(JSON.parse(localStorage.getItem(BEIGE_TONE_KEY) ?? "null") ?? undefined);
 	} catch {
-		return DEFAULT_BEIGE_DEPTH;
+		return clampBeigeTone(undefined);
 	}
 }
 
-/** Writes the depth-driven surface tokens. Scoped to the beige selector, so dropping
+/** Writes the tone-driven tokens. Scoped to the beige selector, so dropping
  *  `data-palette` (Light, Dark, a GaugeDemo preview) switches them off with no cleanup. */
-export function applyBeigeDepth(depth: number): void {
-	const d = clampBeigeDepth(depth);
-	try { localStorage.setItem(BEIGE_DEPTH_KEY, String(d)); } catch { /* private mode */ }
+export function applyBeigeTone(next: BeigeTone): void {
+	const tone = clampBeigeTone(next);
+	try { localStorage.setItem(BEIGE_TONE_KEY, JSON.stringify(tone)); } catch { /* private mode */ }
 	let style = document.getElementById(BEIGE_STYLE_ID);
 	if (!style) {
 		style = document.createElement("style");
 		style.id = BEIGE_STYLE_ID;
 		document.head.appendChild(style);
 	}
-	const vars = BEIGE_CSS_TOKENS.map((token) => `--${token}: ${beigeColor(token, d).join(" ")};`).join(" ");
-	style.textContent = `[data-theme="light"][data-palette="beige"] { ${vars} }`;
-	document.documentElement.dataset.beigeDepth = String(d);
+	style.textContent = `[data-theme="light"][data-palette="beige"] { ${beigeCssDeclarations(tone)} }`;
+	document.documentElement.dataset.beigeTone = formatBeigeTone(tone);
 }
 
 /** Beige is a palette over the light theme, so everything keyed on `light` (terminal, ANSI adapt) still applies. */
@@ -89,7 +88,7 @@ export function applyThemeToDocument(preference: ThemePreference, resolved: Reso
 	root.dataset.theme = resolved;
 	if (preference === "beige") {
 		root.dataset.palette = "beige";
-		applyBeigeDepth(readBeigeDepth());
+		applyBeigeTone(readBeigeTone());
 	} else {
 		delete root.dataset.palette;
 	}

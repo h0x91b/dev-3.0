@@ -506,7 +506,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 	const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">(
 		() => (document.documentElement.dataset.theme as "dark" | "light") || "dark",
 	);
-	// Beige palette + depth: changes the terminal background while resolvedTheme stays "light".
+	// Beige palette + tone: changes the terminal background while resolvedTheme stays "light".
 	const [paletteKey, setPaletteKey] = useState("");
 	const resolvedThemeRef = useRef(resolvedTheme);
 	resolvedThemeRef.current = resolvedTheme;
@@ -652,11 +652,11 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 
 	useEffect(() => {
 		const observer = new MutationObserver(() => {
-			const { theme, palette, beigeDepth } = document.documentElement.dataset;
+			const { theme, palette, beigeTone } = document.documentElement.dataset;
 			setResolvedTheme((theme as "dark" | "light") || "dark");
-			setPaletteKey(`${palette ?? ""}:${beigeDepth ?? ""}`);
+			setPaletteKey(`${palette ?? ""}:${beigeTone ?? ""}`);
 		});
-		observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-palette", "data-beige-depth"] });
+		observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-palette", "data-beige-tone"] });
 		return () => observer.disconnect();
 	}, []);
 

@@ -15,7 +15,7 @@ import { dev3TempPath } from "../temp-paths";
 import { SHELL_INIT_DIR, posixShellPromptEnv, writeShellInit } from "../shell-init";
 import { getUserShell } from "../shell-env";
 import { CATPPUCCIN_PLUGIN_DIR, NEW_WINDOW_STATUS_RANGE, PANE_ID_BADGE, STATUS_FORMAT, catppuccinBeige, writeCatppuccinPlugin } from "./themes";
-import { clampBeigeDepth, DEFAULT_BEIGE_DEPTH } from "../../shared/beige-palette";
+import { clampBeigeTone, DEFAULT_BEIGE_TONE, type BeigeTone } from "../../shared/beige-palette";
 import { TMUX_AGENT_PANE_OPTION } from "./constants";
 
 /**
@@ -68,15 +68,15 @@ export function tmuxThemeFor(preference: string | undefined, resolved: "dark" | 
 }
 
 export function tmuxConfigPath(theme: TmuxTheme, dimmed: boolean, titled = false): string {
-	// Beige bakes in the depth, so the depth is in the name for the same reason as the toggles.
-	const flavor = theme === "beige" ? `beige${Math.round(beigeDepth * 100)}` : theme;
+	// Beige bakes in its tone, so the tone is in the name for the same reason as the toggles.
+	const flavor = theme === "beige" ? `beige${Math.round(beigeTone.depth * 100)}-${Math.round(beigeTone.warmth * 100)}` : theme;
 	return dev3TempPath(`dev3-tmux-${flavor}-${dimmed ? "dimmed" : "undimmed"}${titled ? "-titled" : ""}.conf`);
 }
 
 let activeTheme: TmuxTheme = "dark";
 
-/** Beige depth baked into the beige config; pushed in like the pane preferences below. */
-let beigeDepth = DEFAULT_BEIGE_DEPTH;
+/** Beige tone baked into the beige config; pushed in like the pane preferences below. */
+let beigeTone: BeigeTone = DEFAULT_BEIGE_TONE;
 
 /**
  * The `dimInactivePanes` preference, pushed in by the host at startup and on
@@ -391,8 +391,8 @@ export function buildThemeConfig(flavor: "mocha" | "latte" | "beige", dimInactiv
 		`# dev3 tmux config — Catppuccin ${flavor}`,
 		`set -g @catppuccin_flavor "${flavor}"`,
 		// Source palette DIRECTLY (source -F with #{d:current_file} is unreliable)
-		// Beige is generated from the depth slider, so it is inlined rather than a fixed file.
-		flavor === "beige" ? catppuccinBeige(beigeDepth) : `source "${pluginDir}/themes/catppuccin_${flavor}_tmux.conf"`,
+		// Beige is generated from its tone sliders, so it is inlined rather than a fixed file.
+		flavor === "beige" ? catppuccinBeige(beigeTone) : `source "${pluginDir}/themes/catppuccin_${flavor}_tmux.conf"`,
 		`source "${pluginDir}/catppuccin_options_tmux.conf"`,
 		`source "${pluginDir}/catppuccin_tmux.conf"`,
 		paneDimConfig(dimInactivePanes),
@@ -403,8 +403,8 @@ export function buildThemeConfig(flavor: "mocha" | "latte" | "beige", dimInactiv
 	].join("\n");
 }
 
-export function setTmuxBeigeDepth(depth: number): void {
-	beigeDepth = clampBeigeDepth(depth);
+export function setTmuxBeigeTone(tone: Partial<BeigeTone>): void {
+	beigeTone = clampBeigeTone(tone);
 }
 
 export function setTmuxPaneDimming(enabled: boolean): void {
@@ -416,10 +416,10 @@ export function setTmuxPaneTitles(enabled: boolean): void {
 }
 
 /** Hand the saved pane preferences to this module at boot, before any pane spawns. */
-export function applySavedTmuxPanePreferences(settings: { dimInactivePanes?: boolean; paneTitles?: boolean; beigeDepth?: number }): void {
+export function applySavedTmuxPanePreferences(settings: { dimInactivePanes?: boolean; paneTitles?: boolean; beigeDepth?: number; beigeWarmth?: number }): void {
 	setTmuxPaneDimming(settings.dimInactivePanes !== false);
 	setTmuxPaneTitles(settings.paneTitles === true);
-	setTmuxBeigeDepth(settings.beigeDepth ?? DEFAULT_BEIGE_DEPTH);
+	setTmuxBeigeTone({ depth: settings.beigeDepth, warmth: settings.beigeWarmth });
 }
 
 /**
