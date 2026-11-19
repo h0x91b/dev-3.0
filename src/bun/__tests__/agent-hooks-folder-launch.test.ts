@@ -133,7 +133,7 @@ describe("Cursor launch after Claude", () => {
 		const previous = readJson(path);
 		previous.hooks.PreToolUse[0].hooks[0].command = "~/.dev3.0/bin/dev3 task move --status in-progress --if-status-not review-by-ai || [ $? -eq 2 ]";
 		writeFileSync(path, JSON.stringify(previous));
-		await setupAgentHooks(folder, "agent", { family: "cursor" });
+		await setupAgentHooks(folder, "cursor-wrapper", { family: "agent" });
 		expect(readJson(path).hooks.PreToolUse[0].hooks[0].command).toContain("hook claude-pre-tool");
 		expect(readJson(path).hooks.Stop).toEqual(previous.hooks.Stop);
 	});
