@@ -370,9 +370,7 @@ async function main(): Promise<void> {
 		return await handleClaudePostTool(await Bun.stdin.text(), socketPath || context?.socketPath || null, context);
 	}
 	if (command === "hook" && subcommand === "cursor-post-tool") {
-		// Drained so a large tool payload never blocks Cursor's write to the pipe.
-		await Bun.stdin.text().catch(() => "");
-		return await handleCursorPostTool(socketPath || context?.socketPath || null, context);
+		return await handleCursorPostTool(await Bun.stdin.text().catch(() => ""), socketPath || context?.socketPath || null, context);
 	}
 	if (command === "hook" && subcommand === "claude-turn-ended") {
 		return await handleClaudeTurnEnded(await Bun.stdin.text(), socketPath || context?.socketPath || null, context);

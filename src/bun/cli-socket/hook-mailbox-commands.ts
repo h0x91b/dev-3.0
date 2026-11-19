@@ -31,13 +31,23 @@ function movedTaskId(result: unknown): string | null {
 }
 
 /** Hand the pane's held messages to its agent's tool hook. No `paneId` means not the pane's own agent: nothing to drain. */
-async function drainHookMailbox(params: Record<string, unknown>, knownTaskId: string | null): Promise<HookMailboxDrain> {
+async function drainHookMailbox(
+	params: Record<string, unknown>,
+	knownTaskId: string | null,
+	budgetChars = AGENT_MESSAGE_HOOK_MAX_CHARS,
+	ownsPane: (task: Task, paneId: string) => boolean = () => true,
+): Promise<HookMailboxDrain> {
 	const paneId = typeof params.paneId === "string" ? params.paneId : "";
 	// Nothing held anywhere is the common case, and it costs no task lookup.
 	if (!paneId || pendingAgentMessageHoldCount() === 0) return {};
 	try {
-		const taskId = knownTaskId ?? (await resolveTaskFromParams(params)).task.id;
-		const claim = await claimHeldAgentMessagesForHook(agentMessageHoldKey("tmux", taskId, paneId), AGENT_MESSAGE_HOOK_MAX_CHARS);
+		let taskId = knownTaskId;
+		if (!taskId) {
+			const { task } = await resolveTaskFromParams(params);
+			if (!ownsPane(task, paneId)) return {};
+			taskId = task.id;
+		}
+		const claim = await claimHeldAgentMessagesForHook(agentMessageHoldKey("tmux", taskId, paneId), budgetChars);
 		if (!claim) return {};
 		return {
 			context: claim.text,
@@ -49,6 +59,23 @@ async function drainHookMailbox(params: Record<string, unknown>, knownTaskId: st
 		log.warn("hook mailbox drain failed", { taskId: String(params.taskId).slice(0, 8), paneId, error: String(err) });
 		return {};
 	}
+}
+
+/**
+ * Cursor drops a hook's whole `additional_context` past 10,000 characters, joined
+ * with every other hook's; this headroom keeps a drained, already-acknowledged
+ * batch from vanishing. What does not fit stays held and is typed instead.
+ */
+const CURSOR_HOOK_MAX_CHARS = 6_000;
+
+/**
+ * Whether the hook's Cursor conversation is the one dev3 launched in this pane. A
+ * nested `agent -p` or a subagent inherits the pane's env but not its conversation.
+ */
+function cursorConversationOwnsPane(conversationId: unknown) {
+	return (task: Task, paneId: string) =>
+		typeof conversationId === "string" && conversationId !== "" &&
+		(task.sessionState?.panes ?? []).some((pane) => pane.paneId === paneId && pane.sessionId === conversationId);
 }
 
 export const hookMailboxHandlers: Record<string, Handler> = {
@@ -78,7 +105,8 @@ export const hookMailboxHandlers: Record<string, Handler> = {
 	 * Cursor's postToolUse: the hook mailbox alone. Cursor's board status stays manual,
 	 * so no move rides on it; the drained text goes back as `additional_context`.
 	 */
-	"task.cursorPostToolUse": async (params) => drainHookMailbox(params, null),
+	"task.cursorPostToolUse": async (params) =>
+		drainHookMailbox(params, null, CURSOR_HOOK_MAX_CHARS, cursorConversationOwnsPane(params.conversationId)),
 	/** The hook printed the drained mail: only now is it delivered. */
 	"task.claudePostToolUseAck": async (params) => {
 		const claimId = typeof params.claimId === "string" ? params.claimId : "";
