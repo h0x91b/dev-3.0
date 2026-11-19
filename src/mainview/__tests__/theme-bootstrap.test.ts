@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyBeigeTone, applyThemeToDocument, getInitialThemeState, readBeigeTone } from "../theme-bootstrap";
+import { applyBeigeTone, applyThemeToDocument, getInitialThemeState, readBeigeTone, readStoredBeigeTone, saveBeigeTone } from "../theme-bootstrap";
 
 describe("getInitialThemeState", () => {
 	it("uses the injected remote theme when browser storage is empty", () => {
@@ -89,9 +89,22 @@ describe("applyBeigeTone", () => {
 		expect(css).toContain("--bg-grad-from: #cebea2;");
 		expect(css).toContain("--glass-header-rgb: 238 229 211;");
 		expect(document.documentElement.dataset.beigeTone).toBe("1:0.5");
-		expect(readBeigeTone()).toEqual({ depth: 1, warmth: 0.5 });
-		applyBeigeTone({ depth: 7, warmth: -1 });
+	});
+
+	it("persists only an explicit save, clamped", () => {
+		localStorage.removeItem("dev3-beige-tone");
+		applyBeigeTone({ depth: 0.9, warmth: 0.9 });
+		expect(readStoredBeigeTone()).toBeUndefined();
+		saveBeigeTone({ depth: 7, warmth: -1 });
 		expect(readBeigeTone()).toEqual({ depth: 1, warmth: 0 });
+		localStorage.removeItem("dev3-beige-tone");
+	});
+
+	it("falls back to the host's injected tone in a fresh browser", () => {
+		localStorage.removeItem("dev3-beige-tone");
+		(window as unknown as { __DEV3_INITIAL_BEIGE_TONE__?: unknown }).__DEV3_INITIAL_BEIGE_TONE__ = { depth: 0.7, warmth: 0.2 };
+		expect(readBeigeTone()).toEqual({ depth: 0.7, warmth: 0.2 });
+		delete (window as unknown as { __DEV3_INITIAL_BEIGE_TONE__?: unknown }).__DEV3_INITIAL_BEIGE_TONE__;
 	});
 
 	it("keeps the accent orange at neutral warmth", () => {
