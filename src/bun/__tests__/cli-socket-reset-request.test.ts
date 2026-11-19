@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { Project, Task, CliRequest } from "../../shared/types";
+import { isStatusGuardBlocked, type Project, type Task, type CliRequest } from "../../shared/types";
 
 // ---- Mocks (same boundary set as cli-socket-handlers.test.ts) ----
 
@@ -170,9 +170,27 @@ describe("task.requestReset (T17, T17b)", () => {
 		expect(resetTaskToTodo).toHaveBeenCalledWith({
 			taskId: task.id,
 			projectId: "proj-1",
-			consent: { worktreePath: "/tmp/wt", lifecycleStartedAt: STARTED },
+			consent: { worktreePath: "/tmp/wt", lifecycleStartedAt: STARTED, attachedRepo: null, approvedAttachedRepo: null },
 		});
 		expect(moveTask).not.toHaveBeenCalled();
+	});
+
+	it("approves for removal the attached repo the dialog reports it checked, and none when its unsaved-work check failed", async () => {
+		const task = makeTask({ status: "review-by-user", lifecycleStartedAt: STARTED, attachedRepo: "/ops/s/ab/work/wt-a" });
+		const ask = async (decision: { approved: boolean; attachedRepo?: string | null }) => {
+			const { resp, requestId } = await openRequest(task);
+			vi.mocked(resetTaskToTodo).mockResolvedValue({ task: { ...task, status: "todo" as const }, keptBranches: [] });
+			resolveAgentRequest(requestId, decision);
+			await resp;
+			const calls = vi.mocked(resetTaskToTodo).mock.calls;
+			return calls[calls.length - 1]![0].consent;
+		};
+
+		// `attachedRepo` stays the staleness key from when the dialog opened; only `approvedAttachedRepo` follows the check.
+		const key = "/ops/s/ab/work/wt-a";
+		expect(await ask({ approved: true, attachedRepo: key })).toMatchObject({ attachedRepo: key, approvedAttachedRepo: key, lifecycleStartedAt: STARTED });
+		expect(await ask({ approved: true, attachedRepo: "/ops/s/ab/work/wt-b" })).toMatchObject({ attachedRepo: key, approvedAttachedRepo: "/ops/s/ab/work/wt-b" });
+		expect(await ask({ approved: true })).toMatchObject({ attachedRepo: key, approvedAttachedRepo: null });
 	});
 
 	it("flags the dialog when the task's branch survives the reset (owned Operations worktree)", async () => {
@@ -200,7 +218,27 @@ describe("task.requestReset (T17, T17b)", () => {
 		resolveAgentRequest(requestId, { approved: false });
 		expect((await resp).data).toEqual({ approved: false });
 		expect(resetTaskToTodo).not.toHaveBeenCalled();
-		expect(moveTask).not.toHaveBeenCalled();
+		// Its own agent waited, so the task only went to Has Questions and back.
+		expect(moveTask).not.toHaveBeenCalledWith(expect.objectContaining({ newStatus: "todo" }));
+	});
+
+	it("parks its own agent's task in Has Questions while it waits and puts it back to work on decline", async () => {
+		const own = "task-abc12345-1111-2222-3333-444444444444";
+		let stored = makeTask({ lifecycleStartedAt: STARTED });
+		vi.mocked(moveTask).mockImplementation(async (p) => {
+			if (p.newStatus && !isStatusGuardBlocked(stored.status, p)) stored = { ...stored, status: p.newStatus };
+			return { ...stored };
+		});
+		const { resp, requestId } = await openRequest(stored, { sourceTaskId: own });
+		vi.mocked(data.loadTasks).mockImplementation(async () => [{ ...stored }]);
+		await vi.waitFor(() => expect(stored.status).toBe("user-questions"));
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ newStatus: "user-questions", ifStatus: "in-progress", skipQuestionsBadge: true }));
+
+		resolveAgentRequest(requestId, { approved: false });
+
+		expect((await resp).data).toEqual({ approved: false });
+		expect(stored.status).toBe("in-progress");
+		expect(resetTaskToTodo).not.toHaveBeenCalled();
 	});
 
 	it("a run that ends first voids the request as stale — never approved (T9b)", async () => {

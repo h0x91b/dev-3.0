@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,11 +8,20 @@ vi.mock("../codex-config", () => ({
 	detectCodexHookTrustBypass: vi.fn(async () => true),
 	resetCodexHelpProbe: vi.fn(),
 }));
+vi.mock("../cursor-usage-hooks", () => ({
+	writeCursorUsageHooks: vi.fn(async () => ({ status: "installed", path: "/unused/hooks.json" })),
+}));
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
+vi.mock("../claude-config-git", async (importActual) => ({
+	...(await importActual<typeof import("../claude-config-git")>()),
+	excludeTaskCodexHooks: vi.fn(),
+}));
+
 import { setupAgentHooks } from "../agent-hooks";
+import { excludeTaskCodexHooks } from "../claude-config-git";
 
 let tempHome: string;
 let folder: string;
@@ -20,6 +29,7 @@ let managed: string;
 const originalDev3Home = process.env.DEV3_HOME;
 
 beforeEach(() => {
+	vi.mocked(excludeTaskCodexHooks).mockClear();
 	tempHome = mkdtempSync(join(tmpdir(), "dev3-folder-home-"));
 	folder = mkdtempSync(join(tmpdir(), "dev3-user-folder-"));
 	managed = join(tempHome, "managed.json");
@@ -94,5 +104,37 @@ describe("setupAgentHooks in a folder dev3 does not own", () => {
 		const launch = await setupAgentHooks(folder, "codex");
 		expect(launch?.flag).toBe("--dangerously-bypass-hook-trust");
 		expect(existsSync(join(folder, ".codex"))).toBe(false);
+		expect(excludeTaskCodexHooks).not.toHaveBeenCalled();
+	});
+
+	it("excludes the Codex hooks file it writes into a worktree", async () => {
+		const worktree = join(tempHome, "worktrees", "proj", "abcd1234", "worktree");
+		mkdirSync(worktree, { recursive: true });
+		await setupAgentHooks(worktree, "codex");
+		expect(existsSync(join(worktree, ".codex", "hooks.json"))).toBe(true);
+		expect(excludeTaskCodexHooks).toHaveBeenCalledWith(worktree);
+	});
+
+	it("does not exclude anything when the Codex hooks path is a symlink", async () => {
+		const worktree = join(tempHome, "worktrees", "proj", "abcd1234", "worktree");
+		mkdirSync(worktree, { recursive: true });
+		symlinkSync(folder, join(worktree, ".codex"));
+		const launch = await setupAgentHooks(worktree, "codex");
+		expect(launch).toBeNull();
+		expect(excludeTaskCodexHooks).not.toHaveBeenCalled();
+	});
+});
+
+
+describe("Cursor launch after Claude", () => {
+	it("refreshes the inherited status hook before Cursor imports it", async () => {
+		await setupAgentHooks(folder, "claude");
+		const path = join(folder, ".claude", "settings.local.json");
+		const previous = readJson(path);
+		previous.hooks.PreToolUse[0].hooks[0].command = "~/.dev3.0/bin/dev3 task move --status in-progress --if-status-not review-by-ai || [ $? -eq 2 ]";
+		writeFileSync(path, JSON.stringify(previous));
+		await setupAgentHooks(folder, "cursor-wrapper", { family: "agent" });
+		expect(readJson(path).hooks.PreToolUse[0].hooks[0].command).toContain("hook claude-pre-tool");
+		expect(readJson(path).hooks.Stop).toEqual(previous.hooks.Stop);
 	});
 });

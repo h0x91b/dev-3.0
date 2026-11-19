@@ -1,5 +1,7 @@
 # `dev3 doctor --worktrees` is the only sanctioned deletion under `~/.dev3.0/`
 
+Superseded in part on 2026-11-12 by `decisions/2026/11/12/doctor-guards-the-checked-out-branch.md`: the unmerged guard now reads the checked-out branch, not only `dev3/task-*`.
+
 Superseded in part on 2026-10-28 by `decisions/2026/10/28/daily-worktree-cleanup.md`: the app now runs the same `prune()` daily with `--prune-older-than 14d`, which also covers orphans and teardowns (unmerged branches after 60 days).
 
 ## Context

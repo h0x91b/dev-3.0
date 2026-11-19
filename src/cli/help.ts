@@ -9,6 +9,9 @@
 
 import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES, MAX_SCHEDULED_MESSAGE_LENGTH, MAX_SHARED_MEDIA_BYTES, formatMediaCap } from "../shared/types";
 import { MAX_MESSAGE_SUBJECT_LENGTH, MESSAGE_SUBJECT_WORD_GUIDANCE } from "../shared/agent-message-subject";
+import type { CliCommandSpec } from "../shared/codex-exec-policy";
+import { PANE_RUN_VERB } from "../bun/pane-run-store";
+import { DEV_SERVER_LOG_SINK_VERB } from "../shared/dev-server-log";
 import { CLI_EXIT_CODE_HIBERNATE_DECLINED, CLI_EXIT_CODE_HIBERNATE_NOTHING_TO_FREE, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_PANE_NO_ROOM, CLI_EXIT_CODE_RESUME_ALREADY_RUNNING, CLI_EXIT_CODE_RESUME_UNAVAILABLE, CLI_EXIT_CODE_TASK_NOT_HIBERNATED } from "../shared/cli-exit-codes";
 
 /** One subcommand of a command group (e.g. `task create`). */
@@ -173,10 +176,12 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "create",
-				usage: 'dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--worktree] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] [--start-after <id> [--until completed|merged] [--agent <id> [--config <id>]]] | dev3 task create --scratch --run [--agent <id> [--config <id>]]',
+				usage: 'dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--worktree] [--self-completion on] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] [--depends-on <id>[,<id>...]] [--start-after <id> [--until completed|merged] [--agent <id> [--config <id>]]] | dev3 task create --scratch --run [--agent <id> [--config <id>]]',
 				summary: "Create a task in To Do, or ask the user to start a scratch peer agent.",
 				details: [
 					"--title <text>        Task title (required).",
+					"--self-completion on  Opt the new task in to completing itself without the approval",
+					"                      dialog (`task move --status completed --force`). Off unless given.",
 					"--description <text>  Longer description (optional); use - to read it from stdin.",
 					"Positional content (or @file) becomes the description; its first line",
 					"is used as the title when --title is omitted.",
@@ -217,6 +222,10 @@ const COMMANDS: CommandHelp[] = [
 					"                      the approval dialog (ids from `dev3 agent list`). The user",
 					"                      can still pick another; unknown/mismatched ids fail.",
 					"                      With --start-after: the agent the delayed launch uses.",
+					"--depends-on <id>[,<id>...]  Tasks on the same board this one depends on (seq:3,seq:5).",
+					"                      It only orders and warns: the card shows \"Blocked by\" until all",
+					"                      are done, and `tasks list` says blocked or ready. Nothing starts by itself,",
+					"                      and starting a blocked task warns but is allowed. A cycle is refused.",
 					"--start-after <id>    Keep the task in To Do and start it by itself once that task",
 					"                      (same board, e.g. seq:12) finishes. Checked every 30 s.",
 					"--until completed|merged  What counts as finished: the task reaches Completed",
@@ -228,8 +237,8 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "update",
-				usage: 'dev3 task update [<id>] [--title "..."] [--description "..." | --description -] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] [--start-after <id> [--until completed|merged] [--agent <id> [--config <id>]] | --no-start-after]',
-				summary: "Update a task's title, description, priority, completion policy, type, epic, or start-after condition.",
+				usage: 'dev3 task update [<id>] [--title "..."] [--description "..." | --description -] [--priority P0..P4] [--manual-completion on|off] [--self-completion on|off] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] [--depends-on <id>[,<id>...]] [--no-depends-on [<id>[,<id>...]]] [--start-after <id> [--until completed|merged] [--agent <id> [--config <id>]] | --no-start-after]',
+				summary: "Update a task's title, description, priority, completion policy, type, epic, dependencies, or start-after condition.",
 				details: [
 					"--title <text>        New title (cannot be empty).",
 					'--description <text>  New description ("" clears it); use - to read it from stdin.',
@@ -238,6 +247,9 @@ const COMMANDS: CommandHelp[] = [
 					"--priority <P0..P4>   Set importance (P0 highest … P4 lowest) of this task only; its variants keep theirs.",
 					"                      Only set priority when the user asks — never on your own initiative.",
 					"--manual-completion on|off  Control whether merge detection suggests completing this task.",
+					"--self-completion on|off    Opt the task in to `task move --status completed --force`, which",
+					"                      completes it without asking the user. Granted by the user or by the",
+					"                      task that created this one; a task cannot opt ITSELF in.",
 					"--type coordinator|pr-review|board-cleanup|standard  Set the task's type, or clear it with standard.",
 					"                      Rewrites the description's role preamble and tells a running agent,",
 					"                      so the badge never claims a role the agent was not given.",
@@ -247,16 +259,21 @@ const COMMANDS: CommandHelp[] = [
 					"                      repeat that changes nothing. This is what /dev3-coordinator runs.",
 					"--epic <name|id>      Move this task into an existing epic (exit 44 if it names none or an archived one).",
 					"--no-epic             Take this task out of its epic. Neither flag touches its children.",
+					"--depends-on <id>[,<id>...]  Add tasks this one depends on (same board). Orders and",
+					"                      warns only; see `task create --depends-on`. A cycle is refused.",
+					"--no-depends-on [<id>[,<id>...]]  Remove those dependencies, or all of them when no id is given.",
+					"                      `task show` lists what a task depends on and what it blocks.",
 					"--start-after <id> [--until completed|merged]  Make this To Do task start by itself once",
 					"                      that task finishes; replaces an earlier condition. Same rules",
 					"                      as `task create --start-after`, --agent/--config included.",
+					"                      The awaited task also counts as a dependency while the condition is set.",
 					"--no-start-after      Drop the condition; the task waits for a manual start again.",
 					"--force               Overwrite a user-edited title (diagnostics only — avoid).",
 				],
 			},
 			{
 				name: "move",
-				usage: "dev3 task move [<id>] --status <status> [--agent <id> [--config <id>]] [--as-sender <id>] [--reason <text>]",
+				usage: "dev3 task move [<id>] --status <status> [--force] [--agent <id> [--config <id>]] [--as-sender <id>] [--reason <text>]",
 				summary: "Change a task's status / column.",
 				details: [
 					"--status <status>        Target status or custom column id (required).",
@@ -266,6 +283,10 @@ const COMMANDS: CommandHelp[] = [
 					"                         running, instead of exit 2. For generated hooks.",
 					"Built-in: todo, in-progress, user-questions, review-by-ai, review-by-user.",
 					'"completed" and "cancelled" ask the user for approval (exit 6 / 22 if declined).',
+					"--force                  With --status completed only: complete NOW, asking nobody.",
+					"                         Refused unless the user, the task's automation or the task that",
+					"                         created it granted self-completion. Without the grant, drop",
+					"                         --force and ask. The worktree goes at once, unsaved work included.",
 					'"todo" on a running task (or one still owning a worktree) is a RESET: the agent',
 					"is stopped and the worktree and its dev3 branch deleted, only after the user",
 					"approves it in the app (exit 27 if not). On a clean task it is a plain move.",
@@ -647,6 +668,8 @@ const COMMANDS: CommandHelp[] = [
 					"--timezone     IANA name (default: this machine's timezone).",
 					"--agent <id>   Agent to launch (default: project default agent).",
 					"--catch-up     skip | runOnce — what to do with runs missed while the app was offline (default skip).",
+					"--self-completion on|off  Let each task it creates complete itself with",
+					"               `dev3 task move --status completed --force`, no approval dialog (default off).",
 					"--template     Pre-fill from a built-in template (see: dev3 automations templates).",
 					"--disabled     Create paused.",
 					"--prompt <text>  Use @file for a file or - to read the prompt from stdin.",
@@ -654,7 +677,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "update",
-				usage: "dev3 automations update <id> [--name ...] [--prompt ... | --prompt -] [--rrule ...] [--timezone ...] [--enable|--disable]",
+				usage: "dev3 automations update <id> [--name ...] [--prompt ... | --prompt -] [--rrule ...] [--timezone ...] [--enable|--disable] [--self-completion on|off]",
 				summary: "Update fields / pause / resume.",
 				details: ["--prompt <text>  Use @file for a file or - to read the prompt from stdin."],
 			},
@@ -906,6 +929,15 @@ const COMMANDS: CommandHelp[] = [
 			"                        NOT merged into the base branch (and the branch),",
 			"                        at the --prune-older-than age given; without it",
 			"                        --prune-orphans reports and skips them.",
+			"  --prune-media-older-than D",
+			"                        Delete images and videos of 5 MB or more in",
+			"                        shared-images/, shared-artifacts/ and uploads/",
+			"                        written over D ago, unless an open task still",
+			"                        shows them. dev3 runs it with 60d daily.",
+			"  --prune-bundles-older-than D",
+			"                        Same for stored artifact download ZIPs (older",
+			"                        versions wrote them; downloads now build the ZIP",
+			"                        on demand). dev3 runs it with 30d daily.",
 			"  --gzip-diffs          Gzip the plain .patch diff snapshots of every",
 			"                        task in place (verified before the original",
 			"                        is deleted). Without it the report only",
@@ -917,7 +949,7 @@ const COMMANDS: CommandHelp[] = [
 	},
 	{
 		name: "projects",
-		summary: "List, add and clone projects — the CLI side of the app's Add Project dialog.",
+		summary: "List, add and clone projects, and change their machine-local Project Settings switches.",
 		subcommands: [
 			{
 				name: "list",
@@ -958,6 +990,37 @@ const COMMANDS: CommandHelp[] = [
 					"                       name only — a URL or a path here is refused.",
 					"Space flags, --json and exit codes 33 / 34 work exactly as for `projects add`.",
 					"An existing git repo already at <parent>/<name> is registered without cloning.",
+				],
+			},
+			{
+				name: "get",
+				usage: "dev3 projects get [<key>] [--project <id>] [--json]",
+				summary: "Show the machine-local Project Settings switches, or one of them.",
+				details: [
+					"Keys: name, gitWorkflow, storageRoot, useRepoConfig, boardCopy, boardCopyMessages.",
+					"They live in the app's project registry, not in .dev3/config.json, so `dev3 config` cannot",
+					"reach them. Booleans print on/off; --json prints true/false.",
+					"The project is the one owning the current folder or task, or --project <id>.",
+				],
+			},
+			{
+				name: "set",
+				usage: "dev3 projects set <key> <value> [--project <id>] [--json]",
+				summary: "Change one machine-local Project Settings switch, with the same checks as the app.",
+				details: [
+					"name <text>                 Display name. The folder and board data never move.",
+					"gitWorkflow on|off          off = every task runs in the project folder (no worktree, branch,",
+					"                            diff, PR or review columns). Refused while any task of the",
+					"                            project holds a folder or runs; on needs a git repository.",
+					"storageRoot home|project    Copy the board data to <folder>/.dev3/ or back to ~/.dev3.0.",
+					"                            Refused while a task of the project runs. Nothing is deleted.",
+					"useRepoConfig on|off        Read .dev3/config.json and .dev3/config.local.json.",
+					"boardCopy on|off            Keep a copy of the board in <folder>/.dev3/board/. on is refused",
+					"                            on an operations board (exit 50).",
+					"boardCopyMessages on|off    Also copy agent messages. on is refused while boardCopy is off",
+					"                            (exit 50): turn boardCopy on first.",
+					"Only the user (outside any task) and coordinator tasks may set these: any other task",
+					"gets exit 49 and nothing changes.",
 				],
 			},
 		],
@@ -1320,7 +1383,7 @@ const COMMANDS: CommandHelp[] = [
 		subcommands: [
 			{
 				name: "create",
-				usage: 'dev3 pr create --title "..." [--description "..."] [--base <branch>] [--draft] [--auto-merge[=squash|merge|rebase]]',
+				usage: 'dev3 pr create --title "..." [--description "..."] [--base <branch>] [--draft] [--assignee <login>] [--auto-merge[=squash|merge|rebase]]',
 				summary: "Push the current branch and open a pull request for it in one step.",
 				details: [
 					"--title <text>        Pull request title (required).",
@@ -1329,6 +1392,8 @@ const COMMANDS: CommandHelp[] = [
 					"                      from, so a project whose base is not the repo default still gets",
 					"                      the right target; outside a task worktree gh's default is used.",
 					"--draft               Open it as a draft.",
+					"--assignee <login>    Assign the pull request (optional; repeat it or comma-separate",
+					"                      logins, as with gh). Without it nobody is ever assigned.",
 					"--auto-merge[=<m>]    Enable auto-merge after creating it: squash (default), merge, rebase.",
 					"                      A repo with that strategy disabled exits 1 — the pull request is",
 					"                      still open, only auto-merge was not enabled.",
@@ -1411,6 +1476,25 @@ const COMMAND_INDEX: Map<string, CommandHelp> = new Map(COMMANDS.map((c) => [c.n
 // its help must resolve too — otherwise the hint and the command disagree.
 COMMAND_INDEX.set("project", COMMAND_INDEX.get("projects") as CommandHelp);
 COMMAND_INDEX.set("space", COMMAND_INDEX.get("spaces") as CommandHelp);
+
+/**
+ * Top-level words main.ts dispatches that have no help entry: internal runners,
+ * hook entry points, the `local` alias and the commands that own their help.
+ * `cli-command-specs.test.ts` fails when main.ts grows a command missing from both.
+ */
+const UNLISTED_COMMANDS = [
+	"live", "show-image", "epics", "hook", "statusline", "local", "remote", "gui", "update",
+	PANE_RUN_VERB, DEV_SERVER_LOG_SINK_VERB,
+];
+
+/** Every top-level command with its subcommands, aliases included. */
+export function cliCommandSpecs(): CliCommandSpec[] {
+	const specs: CliCommandSpec[] = [...COMMAND_INDEX].map(([name, cmd]) => ({ name, subcommands: cmd.subcommands.map((s) => s.name) }));
+	for (const name of UNLISTED_COMMANDS) {
+		if (!COMMAND_INDEX.has(name)) specs.push({ name, subcommands: [] });
+	}
+	return specs;
+}
 
 /** Whether the registry knows how to render help for this command. */
 export function hasCommandHelp(command: string): boolean {

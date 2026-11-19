@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+
 /**
  * Raised when a tmux command ran but exited non-zero. Carries the full
  * argument vector (excluding the binary/socket prefix), the exit code, and
@@ -40,21 +42,42 @@ export function isTmuxError(err: unknown): err is TmuxError {
  *
  * Windows has no tmux at all, so the Full Disk Access advice would send the user
  * to a settings pane that does not exist — there the message says so instead.
+ *
+ * Linux has no Full Disk Access either. There an ENOENT means the binary is gone -
+ * usually a Homebrew keg removed while dev3 kept the path it pinned at startup - so
+ * the message checks the path again and points at a reinstall or a reload, which
+ * re-resolves tmux and falls back to another install.
  */
 export class TmuxSpawnError extends Error {
 	readonly binary: string;
-	constructor(binary: string, cause: unknown, platform: NodeJS.Platform = process.platform) {
+	constructor(
+		binary: string,
+		cause: unknown,
+		platform: NodeJS.Platform = process.platform,
+		binaryExists: (path: string) => boolean = existsSync,
+	) {
 		const reason = cause instanceof Error ? cause.message : String(cause);
-		const hint =
-			platform === "win32"
-				? "tmux is POSIX-only and has no Windows build; this code path should not run here."
-				: "The path resolves but could not be executed — on macOS this usually means dev3 lost Full Disk Access. " +
-					"Re-add dev3 under System Settings → Privacy & Security → Full Disk Access, then retry.";
-		super(`tmux failed to spawn (${binary}): ${reason}. ${hint}`);
+		super(`tmux failed to spawn (${binary}): ${reason}. ${spawnHint(binary, platform, binaryExists)}`);
 		this.name = "TmuxSpawnError";
 		this.binary = binary;
 		this.cause = cause;
 	}
+}
+
+function spawnHint(binary: string, platform: NodeJS.Platform, binaryExists: (path: string) => boolean): string {
+	if (platform === "win32") return "tmux is POSIX-only and has no Windows build; this code path should not run here.";
+	if (platform === "darwin") {
+		return "The path resolves but could not be executed — on macOS this usually means dev3 lost Full Disk Access. " +
+			"Re-add dev3 under System Settings → Privacy & Security → Full Disk Access, then retry.";
+	}
+	// A bare name means the PATH lookup failed, so tmux is just as missing as a deleted file.
+	if (binary.startsWith("/") && binaryExists(binary)) {
+		return "The file exists but could not be executed. Check that it is a tmux binary dev3 may run, then retry.";
+	}
+	const where = binary.startsWith("/") ? "at that path" : "on PATH";
+	return `No tmux binary exists ${where} - it was probably uninstalled. ` +
+		"Reinstall it (brew install h0x91b/dev3/tmux@3.6, or tmux from your package manager), " +
+		"then reload dev3 so it resolves tmux again.";
 }
 
 /** True for a launch-time tmux failure. Robust across module boundaries: falls

@@ -1748,6 +1748,72 @@ describe("task.update / task.create: start after", () => {
 	});
 });
 
+describe("task dependencies over the socket", () => {
+	const project = makeProject();
+	const first = makeTask({ id: "first-11111111", seq: 12, status: "in-progress" });
+	const second = makeTask({ id: "second-2222222", seq: 13, status: "todo", worktreePath: null, branchName: null });
+	let saved: Partial<Task> | null;
+
+	beforeEach(() => {
+		saved = null;
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_p, _id, mutator) => {
+			const { updates, result } = await mutator(second);
+			saved = updates;
+			return { task: { ...second, ...updates } as Task, result };
+		});
+		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+	});
+
+	it("task.update adds the links by seq", async () => {
+		vi.mocked(data.loadTasks).mockResolvedValue([first, second]);
+		const resp = await handleRequest(makeRequest("task.update", { taskId: "seq:13", projectId: "proj-1", dependsOn: ["seq:12"] }));
+		expect(resp.ok).toBe(true);
+		expect(saved?.relations).toEqual([{ type: "blocked-by", taskId: first.id }]);
+	});
+
+	it("task.update refuses a cycle and an unknown ref, and writes nothing", async () => {
+		const firstDepends = { ...first, relations: [{ type: "blocked-by" as const, taskId: second.id }] };
+		vi.mocked(data.loadTasks).mockResolvedValue([firstDepends, second]);
+		const cycle = await handleRequest(makeRequest("task.update", { taskId: "seq:13", projectId: "proj-1", dependsOn: ["seq:12"] }));
+		expect(cycle.ok).toBe(false);
+		expect(cycle.error).toContain("cycle");
+		const unknown = await handleRequest(makeRequest("task.update", { taskId: "seq:13", projectId: "proj-1", dependsOn: ["seq:99"] }));
+		expect(unknown.ok).toBe(false);
+		expect(saved).toBeNull();
+	});
+
+	it("task.update refused for one link changes nothing else, not the removal and not the title", async () => {
+		const holding = { ...second, relations: [{ type: "blocked-by" as const, taskId: first.id }] };
+		vi.mocked(data.loadTasks).mockResolvedValue([first, holding]);
+		const resp = await handleRequest(makeRequest("task.update", { taskId: "seq:13", projectId: "proj-1", title: "Renamed", noDependsOn: ["seq:12"], dependsOn: ["seq:13"] }));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("itself");
+		expect(saved).toBeNull();
+		expect(data.updateTaskWith).not.toHaveBeenCalled();
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("task.show and tasks.list carry the resolved links", async () => {
+		const blocked = { ...second, relations: [{ type: "blocked-by" as const, taskId: first.id }] };
+		vi.mocked(data.loadTasks).mockResolvedValue([first, blocked]);
+		const shown = await handleRequest(makeRequest("task.show", { taskId: "seq:13", projectId: "proj-1" }));
+		expect((shown.data as { dependencyInfo: unknown }).dependencyInfo).toMatchObject({ verdict: "blocked", dependsOn: [{ seq: 12, state: "open" }] });
+		const listed = await handleRequest(makeRequest("tasks.list", { projectId: "proj-1", status: "in-progress" }));
+		expect((listed.data as Array<{ dependencyInfo: unknown }>)[0]!.dependencyInfo).toMatchObject({ blocks: [{ seq: 13 }] });
+	});
+
+	it("task.move starts a blocked task and names its open dependencies", async () => {
+		const blocked = { ...second, relations: [{ type: "blocked-by" as const, taskId: first.id }] };
+		vi.mocked(data.loadTasks).mockResolvedValue([first, blocked]);
+		vi.mocked(moveTask).mockResolvedValue({ ...blocked, status: "in-progress" } as Task);
+		const resp = await handleRequest(makeRequest("task.move", { taskId: "seq:13", projectId: "proj-1", newStatus: "in-progress" }));
+		expect(resp.ok).toBe(true);
+		expect(moveTask).toHaveBeenCalled();
+		expect((resp.data as { startedBlockedBy: Array<{ seq: number }> }).startedBlockedBy.map((d) => d.seq)).toEqual([12]);
+	});
+});
+
 describe("task.create — priority", () => {
 	it("passes an explicit priority through to creation", async () => {
 		const project = makeProject();
@@ -2063,6 +2129,8 @@ describe("devServer.*", () => {
 
 		expect(resp.ok).toBe(true);
 		expect(runDevServer).toHaveBeenCalledWith({ taskId: task.id, projectId: project.id });
+		// A CLI start never carries `focus`, so its pane opens in the background.
+		expect(vi.mocked(runDevServer).mock.calls[0][0]).not.toHaveProperty("focus");
 		expect(resp.data).toEqual(status);
 	});
 
@@ -3438,6 +3506,53 @@ describe("task.update", () => {
 		);
 		expect(resp.ok).toBe(true);
 		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { customTitle: "Updated" });
+	});
+
+	it("opts a task in to self-completion when another task asks", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, selfCompletion: true });
+
+		const resp = await handleRequest(makeRequest("task.update", {
+			taskId: task.id, projectId: project.id, selfCompletion: true, sourceTaskId: "some-coordinator-task",
+		}));
+
+		expect(resp.ok).toBe(true);
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { selfCompletion: true });
+	});
+
+	it("tells the user when an agent grants self-completion", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		const pushFn = vi.fn();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, selfCompletion: true });
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		await handleRequest(makeRequest("task.update", {
+			taskId: task.id, projectId: project.id, selfCompletion: true, sourceTaskId: "some-coordinator-task",
+		}));
+
+		expect(pushFn).toHaveBeenCalledWith("manualCompletionChanged", expect.objectContaining({ taskId: task.id, selfCompletion: true }));
+		expect(clearMergeNotification).toHaveBeenCalledWith(task.id);
+	});
+
+	it("refuses a task opting itself in to self-completion", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+		const resp = await handleRequest(makeRequest("task.update", {
+			taskId: task.id, projectId: project.id, selfCompletion: true, sourceTaskId: task.id,
+		}));
+
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("cannot opt itself in");
+		expect(data.updateTask).not.toHaveBeenCalled();
 	});
 
 	it("updates manual completion and emits an agent-only change event", async () => {

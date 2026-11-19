@@ -1,7 +1,9 @@
-import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve as resolvePath } from "node:path";
+import { claudeTranscriptDir } from "../shared/conversation-search-core";
+import { claudeConfigDirHasSession } from "./agent-transcripts";
 import type { AgentConfiguration, AgentFamily, CodingAgent, LlmProvider, Project, ProtocolMode } from "../shared/types";
 import { DEFAULT_AGENTS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
 export { skillInvocationPrefix } from "../shared/types";
@@ -27,7 +29,7 @@ import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from
 import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
 import { ensureAgentSystemPromptFile } from "./agent-system-prompt-file";
 import { leanProtocolReference, leanSkillBodyFor, skillBodyFor, withSharedFolderNotice, type SkillFamily } from "../shared/agent-skill-content";
-import { claudeAccountRegistered, effectiveAccountId, getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveAgentDirSessionEnv, getActiveCodexSessionEnv, listClaudeAccountDirs, isLinkedClaudeSlot } from "./agent-accounts";
+import { claudeAccountDir, claudeAccountRegistered, claudeAccountSignedIntoDir, effectiveAccountId, getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveAgentDirSessionEnv, getActiveCodexSessionEnv, isClaudeBackendKey, listClaudeAccountDirs, isLinkedClaudeSlot } from "./agent-accounts";
 import { ENV_UNSET, claudeModelFamily, isAutoAccountId, isRoutableAccountKind, type AgentAccountKind } from "../shared/agent-accounts";
 import { isAutoAccountDefault, pickAutoAccount, type AutoAccountPick, type AutoRoutingContext } from "./account-router";
 import { hasOmpFlag } from "../shared/agent-adapters/omp-flags";
@@ -530,6 +532,8 @@ export interface CommandOptions {
 	/** The project env the launch runs under. A CLAUDE_CONFIG_DIR it pins beats the
 	 *  default account, and then the account env does not clear the project's own keys. */
 	projectEnv?: Record<string, string>;
+	/** A resumed pane that launched on the project folder's own login (`PaneSessionEntry.projectLogin`). */
+	projectLogin?: boolean;
 	/** Fresh-launch routing context. Present → an `"auto"` account (or a default
 	 *  set to Auto) is resolved by the usage-balanced router. Resume paths never
 	 *  pass it, so a resumed conversation is never re-routed. */
@@ -825,19 +829,68 @@ export function claudeSettingsSetAwsAuthRefresh(launchEnv: Record<string, string
 	});
 }
 
+function newestWorktreeTranscript(configDir: string, worktreePath: string): number | null {
+	const store = claudeTranscriptDir(configDir, worktreePath);
+	let newest: number | null = null;
+	try {
+		for (const name of readdirSync(store)) {
+			if (!name.endsWith(".jsonl")) continue;
+			const mtime = statSync(join(store, name)).mtimeMs;
+			if (newest === null || mtime > newest) newest = mtime;
+		}
+	} catch {
+		return newest;
+	}
+	return newest;
+}
+
+export interface ProjectFolderLaunch {
+	projectEnv: Record<string, string>;
+	projectPath: string;
+	worktreePath: string;
+	resume?: boolean;
+	sessionId?: string;
+}
+
+/** Whether a Claude launch on `accountId` keeps the project's pinned folder: that folder is signed in
+ *  to this account and, on a resume, holds the conversation (`--continue`: this worktree's newest).
+ *  The launch and the resume account guard share it, so the two never disagree. */
+export function claudeLaunchKeepsProjectFolder(accountId: string, launch: ProjectFolderLaunch): boolean {
+	const pinnedDir = pinnedClaudeConfigDir(launch.projectEnv.CLAUDE_CONFIG_DIR, homedir(), launch.projectPath);
+	if (!pinnedDir || !claudeAccountSignedIntoDir(accountId, pinnedDir)) return false;
+	if (!launch.resume) return true;
+	if (launch.sessionId) return claudeConfigDirHasSession(pinnedDir, launch.sessionId);
+	const inProject = newestWorktreeTranscript(pinnedDir, launch.worktreePath);
+	const inAccount = newestWorktreeTranscript(claudeAccountDir(accountId), launch.worktreePath);
+	return inProject !== null && (inAccount === null || inProject > inAccount);
+}
+
+interface LaunchAccount {
+	accountId: string | null | undefined;
+	resolvedAccountId: string | null | undefined;
+	pick?: AutoAccountPick;
+	staleAccountDropped?: true;
+	keepsProjectClaudeConfig?: true;
+	projectLoginKept?: true;
+	/** The task names a login: an explicit pick, the router's pick, or the project folder's own login. */
+	namesLogin?: true;
+}
+
 /** Which account a launch uses, before any env is built. `"auto"` (or a
  *  default set to Auto, on a fresh launch) goes to the usage-balanced router;
  *  everything explicit passes through untouched. A preset that pins its own
  *  config dir/home bypasses accounts entirely, so it is never routed. Auto with
  *  a project-pinned Claude folder, or no pick at all, keeps that folder: only an
- *  explicit account (or the system login) overrides a project pin. */
+ *  explicit account (or the system login) overrides a project pin, and a fresh
+ *  launch on the account that folder is already signed in to keeps it too. */
 async function resolveLaunchAccount(
 	baseCmd: string,
 	family: AgentFamily | undefined,
 	extraEnv: Record<string, string>,
 	options: CommandOptions | undefined,
 	projectPath: string,
-): Promise<{ accountId: string | null | undefined; resolvedAccountId: string | null | undefined; pick?: AutoAccountPick; staleAccountDropped?: true; keepsProjectClaudeConfig?: true }> {
+	worktreePath: string,
+): Promise<LaunchAccount> {
 	const kind: AgentAccountKind | null = isClaudeCommand(baseCmd, family)
 		? "claude"
 		: agentKey(baseCmd, family) === "codex"
@@ -855,20 +908,31 @@ async function resolveLaunchAccount(
 		explicit = undefined;
 		staleAccountDropped = true;
 	}
-	if (kind === "claude" && explicit === undefined && (options?.autoRouting?.claudeConfigPinned || (options?.projectEnv && pinnedClaudeConfigDir(options.projectEnv.CLAUDE_CONFIG_DIR, homedir(), projectPath) != null))) {
+	const pinnedDir = kind === "claude" && options?.projectEnv ? pinnedClaudeConfigDir(options.projectEnv.CLAUDE_CONFIG_DIR, homedir(), projectPath) : null;
+	if (kind === "claude" && explicit === undefined && (options?.autoRouting?.claudeConfigPinned || pinnedDir != null)) {
+		// A resumed pane that ran on the folder's own login has no account to re-check it with.
+		if (options?.projectLogin && !staleAccountDropped) return { accountId: undefined, resolvedAccountId: undefined, keepsProjectClaudeConfig: true, projectLoginKept: true, namesLogin: true };
 		return { accountId: undefined, resolvedAccountId: undefined, keepsProjectClaudeConfig: true, ...(staleAccountDropped ? { staleAccountDropped } : {}) };
 	}
-	const settle = (accountId: string | null | undefined) => ({
-		accountId,
-		resolvedAccountId: effectiveAccountId(kind, accountId),
-		...(staleAccountDropped ? { staleAccountDropped } : {}),
-	});
+	if (pinnedDir && options?.projectEnv && typeof explicit === "string" && claudeLaunchKeepsProjectFolder(explicit, { projectEnv: options.projectEnv, projectPath, worktreePath, resume: options.resume, sessionId: options.sessionId })) {
+		log.info("Picked Claude account is the project folder's own login — keeping the project folder", { accountId: explicit.slice(0, 8) });
+		return { accountId: undefined, resolvedAccountId: undefined, keepsProjectClaudeConfig: true, projectLoginKept: true, namesLogin: true };
+	}
+	const settle = (accountId: string | null | undefined): LaunchAccount => {
+		const resolvedAccountId = effectiveAccountId(kind, accountId);
+		return {
+			accountId,
+			resolvedAccountId,
+			...(staleAccountDropped ? { staleAccountDropped } : {}),
+			...(accountId !== undefined && resolvedAccountId !== undefined ? { namesLogin: true as const } : {}),
+		};
+	};
 	const routing = options?.autoRouting;
 	if (!routing || !isRoutableAccountKind(kind)) return settle(explicit);
 	const wantsAuto = isAutoAccountId(requested) || ((requested === undefined || staleAccountDropped) && (await isAutoAccountDefault(kind)));
 	if (!wantsAuto) return settle(explicit);
 	const pick = await pickAutoAccount({ kind, exclusions: routing.exclusions, reservationKey: routing.reservationKey });
-	return { accountId: pick.accountId, resolvedAccountId: pick.accountId, pick, ...(staleAccountDropped ? { staleAccountDropped } : {}) };
+	return { accountId: pick.accountId, resolvedAccountId: pick.accountId, pick, namesLogin: true, ...(staleAccountDropped ? { staleAccountDropped } : {}) };
 }
 
 /** Inject the active managed account's env into Claude-based commands (agent
@@ -892,6 +956,21 @@ async function applyClaudeAccountEnv(
 	for (const [key, value] of Object.entries(accountEnv)) {
 		if (!(key in extraEnv)) extraEnv[key] = value;
 	}
+}
+
+/** Unset the project's backend env under a picked login, unless the agent itself set the key. */
+function dropProjectClaudeBackendEnv(extraEnv: Record<string, string>, projectEnv: Record<string, string>): void {
+	for (const key of Object.keys(projectEnv)) {
+		if (isClaudeBackendKey(key) && !(key in extraEnv)) extraEnv[key] = ENV_UNSET;
+	}
+}
+
+/** The project env a Claude launch keeps: all of it in the project's own folder, none of
+ *  its backend keys under a named login. */
+function applyProjectClaudeEnv(baseCmd: string, family: AgentFamily | undefined, extraEnv: Record<string, string>, account: LaunchAccount, projectEnv?: Record<string, string>): void {
+	if (!projectEnv) return;
+	if (account.keepsProjectClaudeConfig) keepProjectClaudeEnv(extraEnv, projectEnv);
+	if (account.namesLogin && isClaudeCommand(baseCmd, family)) dropProjectClaudeBackendEnv(extraEnv, projectEnv);
 }
 
 /** A launch that kept the project's Claude folder runs on the project's env: drop the
@@ -1048,6 +1127,9 @@ export interface ResolvedAgentCommand<A extends CodingAgent | null = CodingAgent
 	accountPick?: AutoAccountPick;
 	/** The stored Claude account no longer exists; the default was used instead. */
 	staleAccountDropped?: true;
+	/** The picked Claude account is the one the project's own folder is signed in to, so the
+	 *  launch kept that folder. A pane records no account, and resume then finds it there. */
+	projectLoginKept?: true;
 	/** The AWS profile entry this launch injected (null = none). Absent when the
 	 *  agent takes no AWS profile. What a pane records so resume reuses it. */
 	resolvedBedrockProfile?: string | null;
@@ -1087,9 +1169,9 @@ export async function resolveCommandForAgent(
 		Object.assign(extraEnv, config.envVars, presetModelSlotEnv(agentProvider(agentWithPath, config), config.model, config.envVars));
 	}
 	const bedrockProfile = applyBedrockProfileEnv(agentWithPath, config, extraEnv, options);
-	const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options, ctx.projectPath);
+	const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options, ctx.projectPath, ctx.worktreePath);
 	await applyClaudeAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily, account.keepsProjectClaudeConfig);
-	if (options?.projectEnv && account.keepsProjectClaudeConfig) keepProjectClaudeEnv(extraEnv, options.projectEnv);
+	applyProjectClaudeEnv(baseCmd, agentWithPath.agentFamily, extraEnv, account, options?.projectEnv);
 	await applyCodexAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 	await applyAgentDirAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 	// After the account env: its CLAUDE_CONFIG_DIR names the user settings to check.
@@ -1118,6 +1200,7 @@ export async function resolveCommandForAgent(
 		resolvedAccountId: account.resolvedAccountId,
 		...(account.pick ? { accountPick: account.pick } : {}),
 		...(account.staleAccountDropped ? { staleAccountDropped: true as const } : {}),
+		...(account.projectLoginKept ? { projectLoginKept: true as const } : {}),
 		...bedrockProfile,
 	};
 }
@@ -1257,9 +1340,9 @@ export async function resolveCommandForProject(
 			...presetModelSlotEnv(agentProvider(agentWithPath, config), config?.model, config?.envVars),
 		};
 		const bedrockProfile = applyBedrockProfileEnv(agentWithPath, config, extraEnv, options);
-		const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options, project.path);
+		const account = await resolveLaunchAccount(baseCmd, agentWithPath.agentFamily, extraEnv, options, project.path, worktreePath);
 		await applyClaudeAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily, account.keepsProjectClaudeConfig);
-		if (options?.projectEnv && account.keepsProjectClaudeConfig) keepProjectClaudeEnv(extraEnv, options.projectEnv);
+		applyProjectClaudeEnv(baseCmd, agentWithPath.agentFamily, extraEnv, account, options?.projectEnv);
 		await applyCodexAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 		await applyAgentDirAccountEnv(baseCmd, extraEnv, account.accountId, agentWithPath.agentFamily);
 		const providerOpts = withProviderOptions(applyStatusLineOption(options, settings, bedrockProfile, extraEnv, ctx.worktreePath), agentWithPath, config);
@@ -1282,6 +1365,7 @@ export async function resolveCommandForProject(
 			resolvedAccountId: account.resolvedAccountId,
 			...(account.pick ? { accountPick: account.pick } : {}),
 			...(account.staleAccountDropped ? { staleAccountDropped: true as const } : {}),
+			...(account.projectLoginKept ? { projectLoginKept: true as const } : {}),
 			...bedrockProfile,
 		};
 	}

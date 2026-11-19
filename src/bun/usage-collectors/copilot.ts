@@ -70,7 +70,8 @@ export function collectCopilotUsage(state: UsageState, home: string): void {
 				if (!counts) continue;
 				const cumulativeScope = JSON.stringify([sessionId, start, model]);
 				const eventId = nativeEventId ?? `${event.type}:${timestamp}:${JSON.stringify(counts)}`;
-				mergeUsageRecord(state, `copilot:${cumulativeScope}:${eventId}`, { model, timestamp, counts, cumulativeScope });
+				// Copilot CLI bills through the Copilot plan's premium requests.
+				mergeUsageRecord(state, `copilot:${cumulativeScope}:${eventId}`, { model, timestamp, counts, cumulativeScope, billing: "subscription" });
 			}
 		}
 	}

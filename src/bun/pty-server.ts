@@ -40,6 +40,7 @@ import {
 } from "./native-task-panes";
 import { paneSessionKey, parsePaneSessionKey } from "../shared/pane-session-key";
 import { deferHeldAgentMessagesForTask, flushHeldAgentMessagesForTask } from "./agent-message-hold";
+import { recordTaskActivity } from "./task-activity";
 import { scanHumanTerminalInput } from "../shared/human-terminal-input";
 import { batchWindowMs, isBackedUp } from "./pty-backpressure";
 import { forgetSession, noteBytesIn, noteFlush, noteQueued, noteWindow } from "./pty-throughput";
@@ -170,6 +171,7 @@ interface PtySession {
 	 * deleting `taskId` for pane 2 would drop pane 1 instead.
 	 */
 	registryKey: string;
+	lastOutputAt: number;
 	/** Guards against two concurrent reattach attempts for one native session. */
 	nativeAttaching: boolean;
 	/** The host binding is being replaced; no viewer may be told it is the writer. */
@@ -331,6 +333,7 @@ export function createSession(
 		proc: null,
 		native: null,
 		registryKey: taskId,
+		lastOutputAt: Date.now(),
 		nativeAttaching: false,
 		nativeRecovering: false,
 		nativeStream: null,
@@ -361,6 +364,10 @@ export function createSession(
 /** Feed one chunk of PTY bytes through the same pipeline both backends share. */
 function ingestPtyOutput(session: PtySession, data: string | Uint8Array): void {
 	const str = typeof data === "string" ? data : session.decoder.decode(data, { stream: true });
+	if (session.backend === "native") {
+		session.lastOutputAt = Date.now();
+		recordTaskActivity(session.taskId, session.lastOutputAt);
+	}
 	const cleaned = handleOsc52(str, session);
 	checkForBell(cleaned, session.taskId);
 	if (!cleaned) return;
@@ -493,6 +500,7 @@ export async function createNativeTaskSession(
 		proc: null,
 		native: null,
 		registryKey: taskId,
+		lastOutputAt: Date.now(),
 		nativeAttaching: false,
 		nativeRecovering: false,
 		nativeStream: new NativeBridgeJournal(),
@@ -577,6 +585,7 @@ export async function reattachNativeTaskSession(taskId: string, projectId: strin
 		proc: null,
 		native: null,
 		registryKey: taskId,
+		lastOutputAt: Date.now(),
 		nativeAttaching: false,
 		nativeRecovering: false,
 		nativeStream: new NativeBridgeJournal(),
@@ -665,6 +674,7 @@ export async function ensureNativePanePtySession(
 		proc: null,
 		native: null,
 		registryKey: key,
+		lastOutputAt: Date.now(),
 		nativeAttaching: false,
 		nativeRecovering: false,
 		nativeStream: new NativeBridgeJournal(),
@@ -973,6 +983,13 @@ export function getActiveSessionIds(): Array<{ taskId: string; tmuxSocket: strin
 
 export function getSessionTmuxName(key: string): string {
 	return sessions.get(key)?.tmuxSessionName ?? computeTmuxSessionName(key, "task");
+}
+
+/** Detached native sessions have no observable output clock in this process. */
+export function getNativeTaskOutputTime(taskId: string, paneIds: string[]): number | null {
+	const native = [...sessions.values()].filter(session => session.taskId === taskId && session.backend === "native" && session.native && !session.nativeAttaching);
+	if (!paneIds.length || paneIds.some(id => !native.some(session => session.native?.paneId === id))) return null;
+	return native.length ? Math.max(...native.map(session => session.lastOutputAt)) : null;
 }
 
 export function getSessionType(key: string): PtySessionType | null {
@@ -1340,6 +1357,7 @@ function effectiveNativeRole(session: PtySession, ws: any): NativeStreamRole {
  * split across frames would otherwise have its content read as keypresses.
  */
 export function noteHumanTerminalInput(session: PtySession, ws: any, data: string): void {
+	recordTaskActivity(session.taskId);
 	const scan = scanHumanTerminalInput(data, ws.inBracketedPaste === true);
 	ws.inBracketedPaste = scan.inPaste;
 	if (scan.submitted) flushHeldAgentMessagesForTask(session.taskId);
@@ -1984,23 +2002,23 @@ async function setupTiledLayout(session: PtySession): Promise<void> {
 			return;
 		}
 		// Create 3 more panes (4 total), then apply tiled layout for 2×2 grid.
-		// We always split the active pane — no pane-index arithmetic needed,
-		// so pane-base-index setting doesn't matter.
+		// Each split targets the previously created pane (a split never moves
+		// focus), so pane order matches creation order and pane-base-index is moot.
 		// -c sets the working directory — without it, new panes inherit the
 		// tmux server's start dir (e.g. /Applications/dev-3.0.app/Contents/MacOS/).
+		let splitTarget = s;
 		for (let i = 0; i < 3; i++) {
 			// A single failed split is ignored (as before) — the layout below
 			// still tiles whatever panes were created.
 			try {
-				await tmux.splitWindow({ target: s, orientation: "vertical", cwd: session.cwd, socket: sock });
+				const { paneId } = await tmux.splitWindow({ target: splitTarget, orientation: "vertical", printPaneId: true, cwd: session.cwd, socket: sock });
+				if (paneId) splitTarget = paneId;
 			} catch (err) {
 				if (!(err instanceof TmuxError)) throw err;
 			}
 		}
 		// tiled layout arranges 4 panes as a 2×2 grid automatically
 		await tmux.selectLayout(s, "tiled", { socket: sock, bestEffort: true });
-		// Return focus to pane 1 (base-index 1 in tmux config)
-		await tmux.selectPane(`${s}:1.1`, { socket: sock, bestEffort: true });
 		log.info("Tiled 2×2 layout created", { tmuxSession: s, sessionType: session.sessionType });
 	} catch (err) {
 		log.error("Failed to create tiled terminal layout", {

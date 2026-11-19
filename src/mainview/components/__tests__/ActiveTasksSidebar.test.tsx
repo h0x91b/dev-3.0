@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "../../i18n";
 import ActiveTasksSidebar from "../ActiveTasksSidebar";
@@ -333,6 +333,22 @@ function makeTask(overrides?: Partial<Task>): Task {
 			expect(screen.getByText("Dead session")).toBeInTheDocument();
 		});
 
+		it("treats a task whose agent exited like a disconnected one: out by default, back with the eye", async () => {
+			const user = userEvent.setup();
+			renderTasks([
+				makeTask({ id: "live", title: "Live task", groupId: null, variantIndex: null }),
+				makeTask({
+					id: "exited", title: "Shell only", groupId: null, variantIndex: null,
+					runtimeState: { runtime: "running", updatedAt: 1 }, agentExitedAt: "2026-11-13T10:00:00.000Z",
+				}),
+			]);
+
+			expect(screen.queryByText("Shell only")).not.toBeInTheDocument();
+			await user.click(screen.getByTestId("sidebar-show-hidden"));
+			expect(screen.getByText("Shell only")).toBeInTheDocument();
+			expect(screen.getByTestId("sidebar-no-agent-badge")).toHaveAttribute("title", expect.stringContaining("terminal now runs only a shell"));
+		});
+
 		it("counts hidden and hibernated tasks apart on the eye", async () => {
 			renderTasks([
 				makeTask({ id: "live", title: "Live task", groupId: null, variantIndex: null }),
@@ -344,7 +360,7 @@ function makeTask(overrides?: Partial<Task>): Task {
 			]);
 
 			fireEvent.mouseEnter(screen.getByTestId("sidebar-show-hidden"));
-			expect(await screen.findByText("2 hidden tasks · 2 hibernated or disconnected tasks")).toBeInTheDocument();
+			expect(await screen.findByText("2 hidden tasks · 2 hibernated or no-agent tasks")).toBeInTheDocument();
 		});
 
 		it("flags a hibernated task that waits on the user and says when everything is out", () => {
@@ -387,7 +403,7 @@ function makeTask(overrides?: Partial<Task>): Task {
 			await user.click(rail("sleep").getByRole("button", { name: "Cancel task" }));
 
 			expect(vi.mocked(confirmTaskCompletion)).toHaveBeenCalledWith(
-				expect.objectContaining({ id: "sleep" }), expect.anything(), "cancelled", expect.anything(), expect.anything(), { alwaysConfirm: true, anchor: expect.any(HTMLElement) },
+				expect.objectContaining({ id: "sleep" }), expect.anything(), "cancelled", expect.anything(), expect.anything(), expect.objectContaining({ alwaysConfirm: true, anchor: expect.any(HTMLElement) }),
 			);
 			expect(vi.mocked(api.request.moveTask)).not.toHaveBeenCalled();
 			expect(view.container.querySelector('[data-task-id="sleep"]')).not.toBeNull();
@@ -459,7 +475,8 @@ function makeTask(overrides?: Partial<Task>): Task {
 			</I18nProvider>,
 		);
 
-		expect(screen.getByTestId("sidebar-disconnected-badge")).toHaveTextContent(/disconnected/i);
+		expect(screen.getByTestId("sidebar-no-agent-badge")).toHaveTextContent("No agent");
+		expect(screen.getByTestId("sidebar-no-agent-badge")).toHaveAttribute("title", expect.stringContaining("did not survive the last shutdown"));
 		const live = screen.getByText("Live session");
 		const dead = screen.getByText("Dead session");
 		expect(live.compareDocumentPosition(dead) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -752,6 +769,78 @@ function makeTask(overrides?: Partial<Task>): Task {
 			projectId: "p2",
 			activeTaskId: "t99",
 		});
+	});
+
+	it("drops a deleted task from the global list, but keeps one moved to another project", async () => {
+		const user = userEvent.setup();
+		const { api } = await import("../../rpc");
+		const deleted = makeTask({ id: "t-del", seq: 801, title: "Doomed task", description: "Doomed task" });
+		const moved = makeTask({ id: "t-mov", seq: 802, title: "Moving task", description: "Moving task" });
+		(api.request.getAllProjectTasks as ReturnType<typeof vi.fn>).mockResolvedValue([
+			{ projectId: "p1", tasks: [makeTask(), deleted, moved] },
+		]);
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[makeTask()]}
+					allProjects={[project]}
+					activeTaskId="t1"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+		await user.click(screen.getByTestId("sidebar-scope-global"));
+		await waitFor(() => expect(screen.getByText("Doomed task")).toBeInTheDocument());
+
+		act(() => {
+			window.dispatchEvent(new CustomEvent("rpc:taskRemoved", { detail: { projectId: "p1", taskId: "t-del" } }));
+			// A move re-homes the row first, then removes it from the source project.
+			window.dispatchEvent(new CustomEvent("rpc:taskUpdated", { detail: { projectId: "p2", task: { ...moved, projectId: "p2" } } }));
+			window.dispatchEvent(new CustomEvent("rpc:taskRemoved", { detail: { projectId: "p1", taskId: "t-mov" } }));
+		});
+
+		expect(screen.queryByText("Doomed task")).not.toBeInTheDocument();
+		expect(screen.getByText("Moving task")).toBeInTheDocument();
+	});
+
+	it("keeps a task removed while the global list was loading out of that list", async () => {
+		const user = userEvent.setup();
+		const { api } = await import("../../rpc");
+		const deleted = makeTask({ id: "t-race", seq: 803, title: "Racing task", description: "Racing task" });
+		let resolve!: (value: { projectId: string; tasks: Task[] }[]) => void;
+		(api.request.getAllProjectTasks as ReturnType<typeof vi.fn>).mockImplementation(
+			() => new Promise((r) => { resolve = r; }),
+		);
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[makeTask()]}
+					allProjects={[project]}
+					activeTaskId="t1"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+		await user.click(screen.getByTestId("sidebar-scope-global"));
+
+		act(() => {
+			window.dispatchEvent(new CustomEvent("rpc:taskRemoved", { detail: { projectId: "p1", taskId: "t-race" } }));
+		});
+		await act(async () => resolve([{ projectId: "p1", tasks: [makeTask(), deleted] }]));
+
+		await waitFor(() => expect(screen.getByText("Привет! как сам?")).toBeInTheDocument());
+		expect(screen.queryByText("Racing task")).not.toBeInTheDocument();
+		(api.request.getAllProjectTasks as ReturnType<typeof vi.fn>).mockImplementation(() => Promise.resolve([]));
 	});
 
 	it("falls back to the project scope when localStorage holds the removed attention value", () => {
@@ -2181,7 +2270,7 @@ describe("ActiveTasksSidebar — revealing the selected task", () => {
 });
 
 describe("ActiveTasksSidebar — row context menu", () => {
-	function renderRow(task: Task = makeTask()) {
+	function renderRow(task: Task = makeTask(), navigate = vi.fn()) {
 		return render(
 			<I18nProvider>
 				<ActiveTasksSidebar
@@ -2189,7 +2278,7 @@ describe("ActiveTasksSidebar — row context menu", () => {
 					tasks={[task]}
 					activeTaskId="t1"
 					dispatch={vi.fn()}
-					navigate={vi.fn()}
+					navigate={navigate}
 					agents={[claudeAgent]}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
@@ -2205,6 +2294,19 @@ describe("ActiveTasksSidebar — row context menu", () => {
 		expect(await screen.findByTestId("sidebar-task-menu-t1")).toBeInTheDocument();
 		expect(screen.getByTestId("task-menu-labels")).toBeInTheDocument();
 		expect(terminalPreview.close).toHaveBeenCalled();
+	});
+
+	it("opens only the menu on a macOS Ctrl+click, not the task", async () => {
+		const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+		onTestFinished(() => platform.mockRestore());
+		const navigate = vi.fn();
+		renderRow(makeTask(), navigate);
+		const row = screen.getByTestId("sidebar-identity-t1");
+		fireEvent.contextMenu(row, { clientX: 30, clientY: 40, ctrlKey: true });
+		fireEvent.click(row, { ctrlKey: true });
+
+		expect(await screen.findByTestId("sidebar-task-menu-t1")).toBeInTheDocument();
+		expect(navigate).not.toHaveBeenCalled();
 	});
 
 	it("opens the same menu from the keyboard (Shift+F10)", async () => {

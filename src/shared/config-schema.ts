@@ -68,6 +68,8 @@ export interface ConfigFieldSpec<T = unknown> {
 	readonly mergePerKey?: boolean;
 	/** `[]` is a real value that overrides lower layers, not "not configured". */
 	readonly emptyArrayIsExplicit?: boolean;
+	/** Read from the project's own checkout only; a task worktree's layers never apply, so the Worktree tab hides it. */
+	readonly projectOnly?: boolean;
 }
 
 // T comes from `type` alone, so a literal `default` cannot widen an enum to string.
@@ -212,6 +214,17 @@ export const CONFIG_FIELDS = {
 		example: ["packages/web", "shared"],
 		section: "worktree",
 		ui: "bespoke",
+	}),
+	extraFolders: field({
+		type: list(str()),
+		description: "Folders outside the project shown beside it in the file explorer and on the dashboard.",
+		details: "Absolute, `~/`-prefixed or relative to the project root. Claude's `permissions.additionalDirectories` from the project's and the user's Claude settings, and the folders of a `*.code-workspace` file in the project root, are added automatically. Read from the project's own checkout, never a task worktree. Per-machine paths belong in `.dev3/config.local.json`; `[]` there hides a committed list.",
+		defaultNote: "none: only Claude's additionalDirectories and VS Code workspace folders",
+		example: ["~/src/shared-lib", "../docs"],
+		section: "worktree",
+		ui: "generic",
+		emptyArrayIsExplicit: true,
+		projectOnly: true,
 	}),
 	builtinColumnAgents: field({
 		type: record(columnAgentSpec),

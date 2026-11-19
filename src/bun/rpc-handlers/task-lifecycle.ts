@@ -1,4 +1,4 @@
-import type { AgentFamily, ReviewedPullRequest, AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchAfterUntil, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskOrigin, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
+import type { TaskCompletionOwner, AgentFamily, ReviewedPullRequest, AgentCancellationRequest, AgentCompletionRequest, AgentLaunchChoice, LaunchAfterUntil, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskOrigin, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
 import { rememberVariantBedrockProfile } from "../bedrock-profile-pref";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
 import { isTaskSoundEnabled } from "../../shared/task-sound-statuses";
@@ -370,6 +370,8 @@ export async function moveTask(params: {
 	ifStatus?: string;
 	ifStatusNot?: string;
 	clientPlayedSound?: boolean;
+	/** The attached repo the user's dialog checked — see the event field of the same name. */
+	approvedAttachedRepo?: string | null;
 	/** The move raises no questions badge: the caller raises its own, or the user just acted. */
 	skipQuestionsBadge?: boolean;
 	enforceAllowedTransition?: boolean;
@@ -389,6 +391,7 @@ export async function moveTask(params: {
 			...(params.ifStatusNot ? { ifStatusNot: params.ifStatusNot } : {}),
 		},
 		force: params.force,
+		approvedAttachedRepo: params.approvedAttachedRepo,
 		clientPlayedSound: params.clientPlayedSound,
 		skipQuestionsBadge: params.skipQuestionsBadge,
 		enforceAllowedTransition: params.enforceAllowedTransition,
@@ -1069,6 +1072,15 @@ async function setTaskManualCompletion(params: { taskId: string; projectId: stri
 	return task;
 }
 
+async function setTaskCompletionOwner(params: { taskId: string; projectId: string; owner: TaskCompletionOwner }): Promise<Task> {
+	log.info("→ setTaskCompletionOwner", { taskId: params.taskId, owner: params.owner });
+	const project = await data.getProject(params.projectId);
+	const change = { manualCompletion: params.owner === "user", selfCompletion: params.owner === "agent" };
+	const { task, verdict } = await updateTaskMetadata(boardPorts, project, params.taskId, change, USER_ACTOR);
+	log.info("← setTaskCompletionOwner done", { taskId: task.id, verdict });
+	return task;
+}
+
 async function setTaskKeepAlive(params: { taskId: string; projectId: string; enabled: boolean }): Promise<Task> {
 	log.info("→ setTaskKeepAlive", { taskId: params.taskId, enabled: params.enabled });
 	const project = await data.getProject(params.projectId);
@@ -1091,11 +1103,12 @@ async function listPendingCompletionRequests(): Promise<AgentCompletionRequest[]
 		taskTitle: r.dialog.taskTitle,
 		subject: r.dialog.subject,
 		...(r.dialog.reason ? { reason: r.dialog.reason } : {}),
+		...(r.dialog.noTaskView ? { noTaskView: true } : {}),
 	}));
 }
 
-async function respondToAgentCompletionRequest(params: { requestId: string; approved: boolean }): Promise<void> {
-	const known = resolveAgentRequest(params.requestId, { approved: params.approved }, "complete");
+async function respondToAgentCompletionRequest(params: { requestId: string; approved: boolean; attachedRepo?: string | null }): Promise<void> {
+	const known = resolveAgentRequest(params.requestId, { approved: params.approved, attachedRepo: params.attachedRepo ?? null }, "complete");
 	if (!known) {
 		log.debug("respondToAgentCompletionRequest: request expired or unknown", { requestId: params.requestId });
 	}
@@ -1113,8 +1126,8 @@ async function listPendingCancellationRequests(): Promise<AgentCancellationReque
 	}));
 }
 
-async function respondToAgentCancellationRequest(params: { requestId: string; approved: boolean }): Promise<void> {
-	const known = resolveAgentRequest(params.requestId, { approved: params.approved }, "cancel");
+async function respondToAgentCancellationRequest(params: { requestId: string; approved: boolean; attachedRepo?: string | null }): Promise<void> {
+	const known = resolveAgentRequest(params.requestId, { approved: params.approved, attachedRepo: params.attachedRepo ?? null }, "cancel");
 	if (!known) {
 		log.debug("respondToAgentCancellationRequest: request expired or unknown", { requestId: params.requestId });
 	}
@@ -1133,8 +1146,8 @@ async function listPendingResetRequests(): Promise<AgentCancellationRequest[]> {
 	}));
 }
 
-async function respondToAgentResetRequest(params: { requestId: string; approved: boolean }): Promise<void> {
-	const known = resolveAgentRequest(params.requestId, { approved: params.approved }, "reset");
+async function respondToAgentResetRequest(params: { requestId: string; approved: boolean; attachedRepo?: string | null }): Promise<void> {
+	const known = resolveAgentRequest(params.requestId, { approved: params.approved, attachedRepo: params.attachedRepo ?? null }, "reset");
 	if (!known) {
 		log.debug("respondToAgentResetRequest: request expired or unknown", { requestId: params.requestId });
 	}
@@ -1260,7 +1273,7 @@ async function openQuickShellInner(): Promise<Task> {
  */
 export async function createAutomationTask(
 	project: Project,
-	automation: { id: string; name: string; prompt: string; agentId: string | null; configId: string | null },
+	automation: { id: string; name: string; prompt: string; agentId: string | null; configId: string | null; selfCompletion?: boolean },
 ): Promise<Task> {
 	const now = new Date();
 	const createdTask = await data.addTask(project, automation.prompt, "todo", {
@@ -1269,6 +1282,7 @@ export async function createAutomationTask(
 		automationId: automation.id,
 		origin: { kind: "automation" },
 		customTitle: `${automation.name} · ${now.toISOString().slice(0, 10)}`,
+		...(automation.selfCompletion === true ? { selfCompletion: true } : {}),
 	});
 	const task = { ...createdTask, status: "todo" as const };
 	log.info("Automation task created, preparing in background", {
@@ -1485,6 +1499,7 @@ export const taskLifecycleHandlers = {
 	setTaskForeignCode,
 	resolveReviewedPr,
 	setTaskManualCompletion,
+	setTaskCompletionOwner,
 	setTaskKeepAlive,
 	scheduleTaskLaunch,
 	cancelScheduledLaunch,

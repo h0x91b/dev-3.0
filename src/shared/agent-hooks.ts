@@ -583,7 +583,7 @@ function buildUnguardedClaudeHooks(
 			},
 		],
 		PreToolUse: [
-			{ hooks: [{ type: "command", command: workingCmd }] },
+			{ hooks: [{ type: "command", command: `${dialect.cli} hook claude-pre-tool`, timeout: 5 }] },
 			...(options?.fileLeases
 				? [{
 					matcher: CLAUDE_CLAIM_MATCHER,
@@ -708,7 +708,8 @@ function isDev3Entry(group: MatcherGroup | HookEntry): boolean {
  * command — `pane run`, `dev-server start`, `agent spawn`, `automations run`,
  * `remote`, `update`, the internal `__pane-run` runner — is deliberately absent,
  * so the harness's own check (auto-mode classifier, permission prompt) still
- * judges it. Issue #2043; see `decisions/2026/10/26/narrow-dev3-agent-permissions.md`.
+ * judges it. The Codex prompt rules are this list's complement (`codex-exec-policy.ts`).
+ * Issue #2043; see `decisions/2026/10/26/narrow-dev3-agent-permissions.md`.
  */
 export const DEV3_AUTO_APPROVED_SUBCOMMANDS = [
 	"current", "task", "tasks", "note", "overview", "label", "review", "spaces", "space",
@@ -879,6 +880,36 @@ export function writeClaudeHooks(
 		updated = ensureParentClaudeMdExcluded(updated, inProject.projectPath, { parentIsClaudeHome });
 	}
 	return { written: writeIfChanged(hooksPath, updated, previous), skippedSymlink: null };
+}
+
+/** Refresh inherited dev3 pre-tool hooks before Cursor imports Claude settings. */
+export function refreshClaudePreToolHooks(worktreePath: string): ClaudeHooksWriteResult {
+	const path = join(worktreePath, ".claude", "settings.local.json");
+	const skippedSymlink = symlinkOnWritePath(worktreePath, path);
+	if (skippedSymlink) return { written: false, skippedSymlink };
+	if (!existsSync(path)) return { written: false, skippedSymlink: null };
+	const previous = readSettingsFile(path);
+	const hooks = asRecord(previous.hooks);
+	if (!Array.isArray(hooks.PreToolUse)) return { written: false, skippedSymlink: null };
+	const command = `${DEFAULT_DIALECT.cli} hook claude-pre-tool`;
+	const updated = {
+		...previous,
+		hooks: {
+			...hooks,
+			PreToolUse: hooks.PreToolUse.map((group: unknown) => {
+				const entry = asRecord(group);
+				const refresh = (hook: unknown) => {
+					const record = asRecord(hook);
+					return mentionsDev3Cli(record.command as string | undefined) &&
+						typeof record.command === "string" && record.command.includes("task move --status in-progress")
+						? { ...record, command, timeout: 5 }
+						: hook;
+				};
+				return Array.isArray(entry.hooks) ? { ...entry, hooks: entry.hooks.map(refresh) } : refresh(group);
+			}),
+		},
+	};
+	return { written: writeIfChanged(path, updated, previous), skippedSymlink: null };
 }
 
 /** Claude Code keeps its global state file inside the dir `CLAUDE_CONFIG_DIR` names; a repo's own `.claude/` never has one. */

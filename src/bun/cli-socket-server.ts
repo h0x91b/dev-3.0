@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
-import type { CliRequest, CliResponse } from "../shared/types";
+import { CLI_FAILURE_WORKTREE_HALF_REMOVED, type CliRequest, type CliResponse } from "../shared/types";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
 import { DEV3_HOME } from "./paths";
@@ -14,6 +14,7 @@ import { liveHandlers } from "./cli-socket/live-commands";
 import { messageHandlers } from "./cli-socket/message-commands";
 import { paneHandlers } from "./cli-socket/pane-commands";
 import { prWatchHandlers } from "./cli-socket/pr-watch-commands";
+import { projectSettingsHandlers } from "./cli-socket/project-settings-commands";
 import { log, type Handler } from "./cli-socket/shared";
 import { statsHandlers } from "./cli-socket/stats-commands";
 import { systemHandlers } from "./cli-socket/system-commands";
@@ -71,6 +72,7 @@ const handlers: Record<string, Handler> = {
 	...systemHandlers,
 	...taskHandlers,
 	...epicHandlers,
+	...projectSettingsHandlers,
 	...liveHandlers,
 };
 
@@ -84,7 +86,13 @@ export async function handleRequest(req: CliRequest, signal?: AbortSignal): Prom
 		const result = await handler(req.params, { signal });
 		return { id: req.id, ok: true, data: result };
 	} catch (err) {
-		return { id: req.id, ok: false, error: String(err instanceof Error ? err.message : err) };
+		const reason = (err as { cliReason?: unknown } | null)?.cliReason;
+		return {
+			id: req.id,
+			ok: false,
+			error: String(err instanceof Error ? err.message : err),
+			...(reason === CLI_FAILURE_WORKTREE_HALF_REMOVED ? { reason } : {}),
+		};
 	}
 }
 

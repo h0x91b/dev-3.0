@@ -1,5 +1,7 @@
 # Artifact download: standalone HTML first, ZIP only for attachments
 
+Superseded in part on 2026-11-12 by `decisions/2026/11/12/prune-large-shared-media.md`: the ZIP is no longer written at publish; the download builds it on demand from the assets still on disk.
+
 ## Context
 
 `saveSharedArtifact` builds a ZIP whenever an artifact has any asset, and `loadSharedArtifactDownload` handed that ZIP over. The default template directory publishes its own `app.css`, `app.js`, `report.js` and `dev3-icon.png` as assets, so once the template became the default for every report, every download became a ZIP — even a text-only report.

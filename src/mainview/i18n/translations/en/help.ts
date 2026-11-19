@@ -87,6 +87,8 @@ const help = {
 	"help.inspector.sessionBar.title": "Session & agents",
 	"help.inspector.sessionBar.body":
 		"Drive who works on the task: drop a second agent into the same session, unleash a swarm of bug hunters, and split, zoom or rearrange tmux panes.",
+	"help.task.completionStrip.title": "Ready to complete",
+	"help.task.completionStrip.body": "The branch merged, or the agent says the work is done. Complete when nothing is left; until then the strip waits here and blocks nothing. The gear opens the setting that stops merge offers.",
 	"help.inspector.gitBar.title": "Git & PR",
 	"help.inspector.gitBar.body":
 		"Everything branch-related: view the diff, rebase onto the base branch, push, open a pull request, merge. Git operations run in a visible terminal so you always see what happens.",
@@ -261,7 +263,7 @@ const help = {
 		"Three glyphs, three sizes of list. The folder shows only this project's tasks. The ring shows every project in the same space, and is struck through when this project is in none of them. The globe shows every task on the machine, which is how you find work you left running somewhere else.",
 	"help.sidebar.showHidden.title": "Tasks you hid from this list",
 	"help.sidebar.showHidden.body":
-		"Hiding a task drops its whole variant group out of Active Tasks and nothing else: it keeps working, keeps notifying, and stays on the board. This eye sits by the filter funnel, appears only while something is hidden, and brings those rows back, dimmed and marked, until you press it again. A red dot on it means one of them is asking for you. The funnel's is:hidden token does the same from the filter, for the tasks you hid. Hibernated and disconnected tasks are left out too and come back with this eye or the is:hibernated token; waking or recovering one puts it back in the list.",
+		"Hiding a task drops its whole variant group out of Active Tasks and nothing else: it keeps working, keeps notifying, and stays on the board. This eye sits by the filter funnel, appears only while something is hidden, and brings those rows back, dimmed and marked, until you press it again. A red dot on it means one of them is asking for you. The funnel's is:hidden token does the same from the filter, for the tasks you hid. Hibernated tasks and tasks with no agent are left out too and come back with this eye or the is:hibernated token; waking or recovering one puts it back in the list.",
 	"help.tips.card.title": "Did you know?",
 	"help.tips.card.body":
 		"One short pointer at a time towards something dev3 does that no button on screen announces — a shortcut, a drag, a CLI command. Dismiss it and it never returns; there is a switch in Settings if you would rather have none of them.",

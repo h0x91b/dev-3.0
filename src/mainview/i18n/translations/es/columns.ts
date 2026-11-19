@@ -80,7 +80,7 @@ const columns = {
 	"filter.flag.attention": "Requiere atención",
 	"filter.flag.port": "Con puerto activo",
 	"filter.flag.hidden": "Oculta de la barra lateral",
-	"filter.flag.hibernated": "Hibernada o desconectada",
+	"filter.flag.hibernated": "Hibernada o sin agente",
 	"filter.flag.keepAlive": "Mantenida activa",
 	"labels.moreLabels": "+{count} más",
 

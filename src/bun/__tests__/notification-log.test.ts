@@ -11,14 +11,20 @@ vi.mock("../logger", () => ({
 
 import {
 	NOTIFICATION_LOG_MAX_ROW_BYTES,
-	NOTIFICATION_LOG_RETENTION_DAYS,
 	NOTIFICATION_LOG_TRUNCATION_MARK,
 	NOTIFICATION_LOG_VERSION,
 	parseNotificationLogRow,
 	serializeNotificationLogRow,
 	type NotificationLogInput,
 } from "../../shared/notification-log";
-import { appendNotificationLog, notificationLogDir, pruneNotificationLog, resetNotificationLogPruneState } from "../notification-log";
+import { DEFAULT_LOG_RETENTION_DAYS } from "../../shared/log-retention";
+import {
+	appendNotificationLog,
+	notificationLogDir,
+	pruneNotificationLog,
+	readNotificationLog,
+	resetNotificationLogPruneState,
+} from "../notification-log";
 
 function makeRow(overrides: Partial<NotificationLogInput> = {}): NotificationLogInput {
 	return {
@@ -131,8 +137,8 @@ describe("notification log on disk", () => {
 		const now = new Date(2026, 8, 7);
 		mkdirSync(notificationLogDir(), { recursive: true });
 		const dayMs = 24 * 60 * 60 * 1000;
-		const oldest = new Date(now.getTime() - (NOTIFICATION_LOG_RETENTION_DAYS - 1) * dayMs);
-		const expired = new Date(now.getTime() - NOTIFICATION_LOG_RETENTION_DAYS * dayMs);
+		const oldest = new Date(now.getTime() - (DEFAULT_LOG_RETENTION_DAYS - 1) * dayMs);
+		const expired = new Date(now.getTime() - DEFAULT_LOG_RETENTION_DAYS * dayMs);
 		const stamp = (date: Date) =>
 			`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 		for (const date of [oldest, expired]) {
@@ -140,11 +146,66 @@ describe("notification log on disk", () => {
 		}
 		appendFileSync(`${notificationLogDir()}/notes.txt`, "not a day file\n");
 
-		expect(pruneNotificationLog(now)).toBe(1);
+		expect(pruneNotificationLog(DEFAULT_LOG_RETENTION_DAYS, now)).toBe(1);
 		const left = readdirSync(notificationLogDir());
 		expect(left).toContain(`${stamp(oldest)}.jsonl`);
 		expect(left).not.toContain(`${stamp(expired)}.jsonl`);
 		expect(left).toContain("notes.txt");
+	});
+
+	it("deletes nothing for a window beyond the Date range", () => {
+		mkdirSync(notificationLogDir(), { recursive: true });
+		appendFileSync(`${notificationLogDir()}/2001-01-01.jsonl`, "{}\n");
+		expect(pruneNotificationLog(1e9, new Date(2026, 8, 7))).toBe(0);
+		expect(readdirSync(notificationLogDir())).toEqual(["2001-01-01.jsonl"]);
+	});
+
+	it("keeps a longer window when the retention is raised, and everything when it is forever", () => {
+		const now = new Date(2026, 8, 7);
+		mkdirSync(notificationLogDir(), { recursive: true });
+		const dayMs = 24 * 60 * 60 * 1000;
+		const stamp = (date: Date) =>
+			`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+		const at = (daysAgo: number) => `${notificationLogDir()}/${stamp(new Date(now.getTime() - daysAgo * dayMs))}.jsonl`;
+		for (const daysAgo of [89, 90, 400]) appendFileSync(at(daysAgo), "{}\n");
+
+		expect(pruneNotificationLog(null, now)).toBe(0);
+		expect(readdirSync(notificationLogDir())).toHaveLength(3);
+		expect(pruneNotificationLog(90, now)).toBe(2);
+		expect(readdirSync(notificationLogDir())).toEqual([at(89).split("/").pop()]);
+	});
+
+	it("reads the configured retention for the daily prune and for the page", () => {
+		mkdirSync(notificationLogDir(), { recursive: true });
+		writeFileSync(`${home}/settings.json`, JSON.stringify({ logRetentionDays: "forever" }));
+		try {
+			appendFileSync(`${notificationLogDir()}/2001-01-01.jsonl`, "{}\n");
+			appendNotificationLog(makeRow(), new Date(2026, 8, 7));
+			expect(readdirSync(notificationLogDir())).toContain("2001-01-01.jsonl");
+			expect(readNotificationLog().retentionDays).toBeNull();
+		} finally {
+			rmSync(`${home}/settings.json`, { force: true });
+		}
+	});
+
+	it("skips the whole day's prune while settings.json is unreadable and prunes on the next day once it is fixed", () => {
+		mkdirSync(notificationLogDir(), { recursive: true });
+		appendFileSync(`${notificationLogDir()}/2001-01-01.jsonl`, "{}\n");
+		try {
+			for (const broken of ["{ not json", JSON.stringify({ logRetentionDays: "abc" })]) {
+				writeFileSync(`${home}/settings.json`, broken);
+				appendNotificationLog(makeRow(), new Date(2026, 8, 7, 8, 0));
+				expect(readdirSync(notificationLogDir())).toContain("2001-01-01.jsonl");
+			}
+
+			writeFileSync(`${home}/settings.json`, JSON.stringify({}));
+			appendNotificationLog(makeRow(), new Date(2026, 8, 7, 9, 0));
+			expect(readdirSync(notificationLogDir())).toContain("2001-01-01.jsonl");
+			appendNotificationLog(makeRow(), new Date(2026, 8, 8, 9, 0));
+			expect(readdirSync(notificationLogDir())).not.toContain("2001-01-01.jsonl");
+		} finally {
+			rmSync(`${home}/settings.json`, { force: true });
+		}
 	});
 
 	it("prunes once per day, not on every append", () => {

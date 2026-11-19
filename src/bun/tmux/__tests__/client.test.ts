@@ -191,14 +191,45 @@ describe("error model", () => {
 		await expect(broken.killSession("x", { bestEffort: true })).rejects.toBeInstanceOf(TmuxSpawnError);
 	});
 
-	it("TmuxSpawnError carries the Full Disk Access hint and the cause", async () => {
+	it("TmuxSpawnError keeps the cause of a launch failure", async () => {
 		const cause = new Error("posix_spawn '/opt/tmux'");
 		const spawnFn = vi.fn(() => { throw cause; });
 		const client = new TmuxClient({ cwdExists: () => true, spawn: spawnFn as never });
 		const err = await client.sourceFile("/tmp/x").catch((e: unknown) => e);
 		expect(err).toBeInstanceOf(TmuxSpawnError);
-		expect((err as Error).message).toContain("Full Disk Access");
 		expect((err as TmuxSpawnError).cause).toBe(cause);
+	});
+
+	it("points a macOS user at Full Disk Access", () => {
+		const err = new TmuxSpawnError("/opt/homebrew/bin/tmux", new Error("ENOENT"), "darwin", () => true);
+		expect(err.message).toContain("Full Disk Access");
+	});
+
+	it("says a deleted Linux binary is gone instead of sending the user to Full Disk Access", () => {
+		const binary = "/home/linuxbrew/.linuxbrew/opt/tmux@3.6/bin/tmux";
+		const err = new TmuxSpawnError(binary, new Error("ENOENT"), "linux", () => false);
+		expect(err.message).not.toContain("Full Disk Access");
+		expect(err.message).not.toContain("path resolves");
+		expect(err.message).toContain("No tmux binary exists at that path");
+		expect(err.message).toContain("brew install h0x91b/dev3/tmux@3.6");
+		expect(err.message).toContain("reload dev3");
+	});
+
+	it("checks the real file system for a Linux binary by default", () => {
+		const dir = mkdtempSync(join(tmpdir(), "tmux-spawn-hint-"));
+		try {
+			const binary = join(dir, "tmux");
+			expect(new TmuxSpawnError(binary, new Error("ENOENT"), "linux").message).toContain("No tmux binary exists");
+			writeFileSync(binary, "");
+			expect(new TmuxSpawnError(binary, new Error("EACCES"), "linux").message).toContain("exists but could not be executed");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("treats a failed bare-name lookup on Linux as tmux missing from PATH", () => {
+		const err = new TmuxSpawnError("tmux", new Error("ENOENT"), "linux", () => true);
+		expect(err.message).toContain("No tmux binary exists on PATH");
 	});
 
 	it("does not send a Windows user to a macOS settings pane that has no equivalent", () => {
@@ -280,7 +311,7 @@ describe("splitWindow / newWindow", () => {
 		});
 		expect(result).toEqual({ paneId: "%9", stderr: "warn\n" });
 		expect(argvOf(spawnFn)).toEqual([
-			"tmux", "-L", "s1", "split-window", "-h",
+			"tmux", "-L", "s1", "split-window", "-d", "-h",
 			"-l", "40%",
 			"-P", "-F", "#{pane_id}",
 			"-e", "A=1", "-e", "B=2",
@@ -320,6 +351,23 @@ describe("splitWindow / newWindow", () => {
 			"tmux", "-L", "dev3", "new-window", "-d", "-n", "Runs",
 			"-P", "-F", "#{pane_id}", "-e", "DEV3_TASK_SEQ=7", "-t", "dev3-abc:", "cmd",
 		]);
+	});
+});
+
+describe("splitWindow focus", () => {
+	it("always splits in the background and selects nothing without focus", async () => {
+		const { client, spawnFn } = makeClient({ stdout: "" });
+		await client.splitWindow({ target: "dev3-abc", orientation: "vertical" });
+		expect(spawnFn).toHaveBeenCalledTimes(1);
+		expect(argvOf(spawnFn, 0)).toEqual(["tmux", "-L", "dev3", "split-window", "-d", "-v", "-t", "dev3-abc"]);
+	});
+
+	it("an explicit user action selects exactly the pane it created", async () => {
+		const { client, spawnFn } = makeClient({ stdout: "%14\n" });
+		const result = await client.splitWindow({ target: "dev3-abc", orientation: "horizontal", focus: true });
+		expect(argvOf(spawnFn, 0)).toEqual(["tmux", "-L", "dev3", "split-window", "-d", "-h", "-P", "-F", "#{pane_id}", "-t", "dev3-abc"]);
+		expect(argvOf(spawnFn, 1)).toEqual(["tmux", "-L", "dev3", "select-pane", "-t", "%14"]);
+		expect(result.paneId).toBe("%14");
 	});
 });
 

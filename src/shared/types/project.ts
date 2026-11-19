@@ -192,6 +192,8 @@ export interface Project {
 	// Sparse checkout: when enabled, only specified directories are checked out in worktrees
 	sparseCheckoutEnabled?: boolean;
 	sparseCheckoutPaths?: string[];
+	/** Folders outside the project shown beside it; see `extraFolders` in the config schema. */
+	extraFolders?: string[];
 	// Column agent configs for built-in columns (keyed by TaskStatus)
 	builtinColumnAgents?: Record<string, ColumnAgentConfig>;
 	// User-defined display names for built-in columns (keyed by TaskStatus)

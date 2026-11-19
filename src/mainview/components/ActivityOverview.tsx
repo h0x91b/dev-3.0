@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import type { Dispatch } from "react";
 import type { HarnessReadinessReport, Project, Space, Task, TaskStatus } from "../../shared/types";
-import { compareTaskSortRank, getTaskTitle, isBuiltinOpsProject, isCoordinatorTask, isTaskDisconnected, orderProjectsForDisplay, projectDisplayName } from "../../shared/types";
+import { compareTaskSortRank, getTaskTitle, isBuiltinOpsProject, isCoordinatorTask, isTaskAgentless, isTaskDisconnected, orderProjectsForDisplay, projectDisplayName } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { deleteSpaceWithConfirm, moveSpace, renameSpace, toggleSpaceSensitive } from "../utils/spaceActions";
@@ -11,6 +11,7 @@ import { toast } from "../toast";
 import { MASK_CLASS, useProjectPrivacy } from "../sensitive-projects";
 import { useSpaces } from "../useSpaces";
 import { filterDashboardGroups, groupProjectsForDashboard } from "../utils/spaceGroups";
+import { ProjectFoldersRows, ProjectFoldersToggle } from "./DashboardProjectFolders";
 import ProjectSpaceChips from "./ProjectSpaceChips";
 import SpacePicker from "./SpacePicker";
 import { useProjectSpaceMembership } from "../useProjectSpaceMembership";
@@ -703,6 +704,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 							)}
 						</div>
 					</button>
+					{!compact && <ProjectFoldersToggle project={project} />}
 					{/* Desktop: resting-visible inline icon cluster, hover-emphasised. */}
 					<div className={compact ? "hidden" : "hidden md:flex"}>
 						<ProjectActionButtons
@@ -744,6 +746,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 					)}
 				</div>
 
+				{!compact && <ProjectFoldersRows project={project} navigate={navigate} />}
 				{hasActiveTasks && !compact && (
 					<div className="border-t border-edge">
 						<DashboardCoordinatorRows
@@ -776,7 +779,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 							return (
 							<div
 								key={task.id}
-								className={`group/row relative flex items-stretch hover:bg-raised-hover transition-colors border-b border-edge last:border-b-0 ${task.hibernated || isTaskDisconnected(task) ? "grayscale" : ""}`}
+								className={`group/row relative flex items-stretch hover:bg-raised-hover transition-colors border-b border-edge last:border-b-0 ${task.hibernated || isTaskAgentless(task) ? "grayscale" : ""}`}
 							>
 							<button
 								data-hint-id={`task:${task.id}`}
@@ -811,13 +814,13 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 												{t("task.hibernatedBadge")}
 											</span>
 										)}
-										{isTaskDisconnected(task) && (
+										{isTaskAgentless(task) && (
 											<span
-												data-testid="activity-disconnected-badge"
-												title={t("task.disconnectedHint")}
+												data-testid="activity-no-agent-badge"
+												title={isTaskDisconnected(task) ? t("task.disconnectedHint") : t("task.agentExitedHint")}
 												className="inline-flex flex-shrink-0 items-center rounded border border-dashed border-edge-active px-1 py-px text-nano font-semibold uppercase tracking-[0.06em] text-fg-3"
 											>
-												{t("task.disconnectedBadge")}
+												{t("task.noAgentBadge")}
 											</span>
 										)}
 										{bellCounts.has(task.id) && (

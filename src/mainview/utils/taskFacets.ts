@@ -1,5 +1,5 @@
 import type { CodingAgent, Label, Task, TaskStatus, TaskType } from "../../shared/types";
-import { AGENT_TIME_STATUSES, TASK_TYPES, isTaskDisconnected } from "../../shared/types";
+import { AGENT_TIME_STATUSES, TASK_TYPES, isTaskAgentless } from "../../shared/types";
 import type { FacetKey, TaskQueryContext } from "./taskSearch";
 import { getTaskAgentMeta } from "./taskAgentMeta";
 import { isTrustedStoredPrState } from "../../shared/task-pull-requests";
@@ -39,9 +39,9 @@ const ATTENTION_STATUSES: TaskStatus[] = ["user-questions", "review-by-user", "r
  * queue. Single source of truth for the sidebar attention scope and the
  * `is:attention` facet. Per-task bells remain visual notifications only.
  */
-/** Hibernated or disconnected: no live session to jump to (`is:hibernated`). */
+/** Hibernated or without an agent: no live session to jump to (`is:hibernated`). */
 export function isTaskNotRunning(task: Task): boolean {
-	return task.hibernated === true || isTaskDisconnected(task);
+	return task.hibernated === true || isTaskAgentless(task);
 }
 
 export function isAttentionTask(task: Task): boolean {

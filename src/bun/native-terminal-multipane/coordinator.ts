@@ -77,6 +77,8 @@ export interface PaneLaunchSpec {
 	timeoutMs?: number;
 	/** Mirror this pane's output to a plain-text file as well (dev-server panes only). */
 	outputLogPath?: string;
+	/** Split only: add the pane without ever publishing it as the active one. */
+	background?: boolean;
 }
 
 export interface PaneSnapshot {
@@ -466,8 +468,13 @@ export class NativeMultipaneCoordinator {
 				timeoutMs: spec.timeoutMs,
 				outputLogPath: spec.outputLogPath,
 			});
-			// Activate the new pane in the shared layout (clear zoom; new pane is focused).
-			this.publish({ ...rawTree, activePaneId: created, zoomedPaneId: null });
+			// One publish adds the pane and clears zoom, as tmux does on a split. A
+			// background pane keeps the active pane; otherwise the new pane is focused.
+			this.publish({
+				...rawTree,
+				activePaneId: spec.background ? this.tree.activePaneId : created,
+				zoomedPaneId: null,
+			});
 			return created;
 		});
 	}

@@ -1,5 +1,6 @@
-import { render, screen, waitFor, fireEvent, act, within } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act, within, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { DependencySummary } from "../../../shared/task-dependencies";
 import TaskCard from "../TaskCard";
 import { I18nProvider } from "../../i18n";
 import type { CodingAgent, DevServerSummary, Label, PortInfo, Project, Task, TaskPRBadgeInfo, TaskStatus } from "../../../shared/types";
@@ -191,6 +192,7 @@ function renderCard(
 		devServer?: DevServerSummary;
 		ports?: PortInfo[];
 		lineage?: CardLineage;
+		dependency?: DependencySummary;
 	},
 ) {
 	return render(
@@ -214,6 +216,7 @@ function renderCard(
 				devServer={opts?.devServer}
 				ports={opts?.ports}
 				lineage={opts?.lineage}
+				dependency={opts?.dependency}
 			/>
 		</I18nProvider>,
 	);
@@ -261,6 +264,37 @@ describe("TaskCard", () => {
 		expect(screen.getByTestId("variant-indicator-t5-dot-t5")).toHaveClass("ring-1");
 		await userEvent.click(screen.getByTestId("variant-indicator-t5"));
 		expect(screen.getByRole("dialog", { name: "Siblings" })).toBeInTheDocument();
+	});
+
+	describe("dependency chips", () => {
+		const dep = (seq: number, state: "open" | "done") => ({ taskId: `t${seq}`, seq, title: `Task ${seq}`, status: state === "open" ? "todo" as const : "completed" as const, state });
+
+		it("names the open dependencies of a blocked task and is not a control", () => {
+			const dependencies = [dep(3, "open"), dep(5, "done"), dep(7, "open")];
+			renderCard(makeTask({ status: "todo" }), { dependency: { verdict: "blocked", dependencies, open: [dependencies[0], dependencies[2]], cancelled: [] } });
+			const chip = screen.getByTestId("task-card-blocked-chip");
+			expect(chip).toHaveTextContent("Blocked by #3, #7");
+			expect(chip.tagName).toBe("SPAN");
+		});
+
+		it("shows nothing once every dependency is done, with no dependencies, or on a completed card", () => {
+			renderCard(makeTask({ status: "todo" }), { dependency: { verdict: "ready", dependencies: [dep(3, "done")], open: [], cancelled: [] } });
+			expect(screen.queryByTestId("task-card-blocked-chip")).toBeNull();
+			expect(screen.queryByText("Ready")).toBeNull();
+			cleanup();
+			renderCard(makeTask({ status: "todo" }));
+			expect(screen.queryByTestId("task-card-blocked-chip")).toBeNull();
+			cleanup();
+			renderCard(makeTask({ status: "completed" }), { dependency: { verdict: "blocked", dependencies: [dep(3, "open")], open: [dep(3, "open")], cancelled: [] } });
+			expect(screen.queryByTestId("task-card-blocked-chip")).toBeNull();
+		});
+
+		it("leaves the start-after prerequisite to its own chip", () => {
+			const launchAfter = { taskId: "t3", seq: 3, until: "completed" as const, armedAt: "2026-11-04T10:00:00Z" };
+			renderCard(makeTask({ status: "todo", launchAfter }), { dependency: { verdict: "blocked", dependencies: [dep(3, "open")], open: [dep(3, "open")], cancelled: [] } });
+			expect(screen.getByTestId("task-card-starts-after-chip")).toBeInTheDocument();
+			expect(screen.queryByTestId("task-card-blocked-chip")).toBeNull();
+		});
 	});
 
 	describe("start-after chip", () => {
@@ -662,7 +696,7 @@ describe("TaskCard", () => {
 				"completed",
 				expect.anything(),
 				expect.anything(),
-				{ alwaysConfirm: true },
+				expect.objectContaining({ alwaysConfirm: true }),
 			);
 			await waitFor(() => {
 				expect(mockedApi.request.moveTask).toHaveBeenCalledWith(
@@ -755,7 +789,7 @@ describe("TaskCard", () => {
 				"cancelled",
 				expect.anything(),
 				expect.anything(),
-				{ alwaysConfirm: true },
+				expect.objectContaining({ alwaysConfirm: true }),
 			);
 			await waitFor(() => {
 				expect(mockedApi.request.moveTask).toHaveBeenCalledWith(
@@ -788,7 +822,7 @@ describe("TaskCard", () => {
 			await user.keyboard("{Enter}");
 
 			expect(mockedConfirmTaskCompletion).toHaveBeenCalledWith(
-				expect.anything(), expect.anything(), "cancelled", expect.anything(), expect.anything(), { alwaysConfirm: true },
+				expect.anything(), expect.anything(), "cancelled", expect.anything(), expect.anything(), expect.objectContaining({ alwaysConfirm: true }),
 			);
 			expect(navigate).not.toHaveBeenCalled();
 		});
@@ -960,6 +994,19 @@ describe("TaskCard", () => {
 				projectId: "p1",
 				activeTaskId: "t1",
 			});
+		});
+
+		it("a macOS Ctrl+click on an active task opens only the menu, not the task", async () => {
+			const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+			onTestFinished(() => platform.mockRestore());
+			const navigate = vi.fn();
+			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" }), { navigate });
+			const card = screen.getByText("My task").closest("[draggable]")!;
+			fireEvent.contextMenu(card, { clientX: 100, clientY: 200, ctrlKey: true });
+			fireEvent.click(card, { ctrlKey: true });
+
+			expect(await screen.findByTestId("task-menu-labels")).toBeInTheDocument();
+			expect(navigate).not.toHaveBeenCalled();
 		});
 
 		it("clicking active task in split toggles it off", async () => {
@@ -2534,10 +2581,20 @@ describe("disconnected card", () => {
 		});
 	}
 
-	it("says 'disconnected' on the card and greys it out", () => {
+	it("says 'No agent' on the card and greys it out", () => {
 		const { container } = renderCard(disconnected());
 
-		expect(screen.getByTestId("task-card-disconnected-badge")).toHaveTextContent(/disconnected/i);
+		expect(screen.getByTestId("task-card-no-agent-badge")).toHaveTextContent("No agent");
+		expect(container.querySelector("[data-task-id='t1']")?.className).toContain("grayscale");
+	});
+
+	it("says 'No agent' on a running task whose agent exited, and greys it out", () => {
+		const { container } = renderCard(disconnected({
+			runtimeState: { runtime: "running", updatedAt: 1 },
+			agentExitedAt: "2026-11-13T10:00:00.000Z",
+		}));
+
+		expect(screen.getByTestId("task-card-no-agent-badge")).toHaveTextContent("No agent");
 		expect(container.querySelector("[data-task-id='t1']")?.className).toContain("grayscale");
 	});
 
@@ -2551,7 +2608,7 @@ describe("disconnected card", () => {
 	it("says nothing while the session is running", () => {
 		const { container } = renderCard(disconnected({ runtimeState: { runtime: "running", updatedAt: 1 } }));
 
-		expect(screen.queryByTestId("task-card-disconnected-badge")).toBeNull();
+		expect(screen.queryByTestId("task-card-no-agent-badge")).toBeNull();
 		expect(container.querySelector("[data-task-id='t1']")?.className).not.toContain("grayscale");
 	});
 
@@ -2559,7 +2616,7 @@ describe("disconnected card", () => {
 		renderCard(disconnected({ hibernated: true }));
 
 		expect(screen.getByTestId("task-card-hibernated-badge")).toBeInTheDocument();
-		expect(screen.queryByTestId("task-card-disconnected-badge")).toBeNull();
+		expect(screen.queryByTestId("task-card-no-agent-badge")).toBeNull();
 	});
 });
 

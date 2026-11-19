@@ -114,7 +114,8 @@ export function injectArtifactThemeContract(source: string): string {
 }
 
 /**
- * Copy one HTML artifact plus optional local assets and build its ZIP bundle.
+ * Copy one HTML artifact plus optional local assets. The download ZIP is built on
+ * demand (`loadSharedArtifactDownload`), never stored: it would repeat every asset.
  *
  * One publish = one `shared-artifacts/<uuid>/` dir, unchanged by versioning:
  * grouping happens in the task record, never by reshaping the directory.
@@ -219,16 +220,6 @@ export function saveSharedArtifact(
 			createdAt: Date.now(),
 			assets,
 		};
-		if (assets.length > 0) {
-			const bundlePath = `${dir}/${baseTitle}.zip`;
-			const zip = createZip([
-				{ name: htmlName, data: new TextEncoder().encode(html) },
-				...assets.map((asset) => ({ name: asset.name, data: new Uint8Array(readFileSync(asset.storedPath)) })),
-			]);
-			writeFileSync(bundlePath, zip);
-			record.bundlePath = bundlePath;
-			record.bundleBytes = zip.byteLength;
-		}
 		return record;
 	} catch (error) {
 		rmSync(dir, { recursive: true, force: true });
@@ -296,10 +287,10 @@ export function loadSharedArtifactContent(artifact: SharedArtifact): {
 } {
 	assertStoredArtifactRecord(artifact);
 	const html = readFileSync(artifact.storedPath, "utf8");
-	const assets = artifact.assets.map((asset) => {
-		const data = readFileSync(asset.storedPath);
-		return { name: asset.name, mime: asset.mime, data };
-	});
+	// The media cleanup deletes large clips after 60 days: the page still opens without them.
+	const assets = artifact.assets
+		.filter((asset) => existsSync(asset.storedPath))
+		.map((asset) => ({ name: asset.name, mime: asset.mime, data: readFileSync(asset.storedPath) }));
 	const assetsByName = new Map(assets.map((asset) => [asset.name, asset]));
 	const renderedDataUrls = new Map<string, string>();
 	const rendering = new Set<string>();
@@ -395,11 +386,13 @@ function escapeRegExp(text: string): string {
 function planSharedArtifactDownload(artifact: SharedArtifact): DownloadPlan {
 	const dir = assertStoredArtifactRecord(artifact);
 	const html = readFileSync(artifact.storedPath, "utf8");
-	if (artifact.assets.length === 0 || !artifact.bundlePath) return { kind: "html", html };
-	const media = artifact.assets.find((asset) => /^(?:video|audio)\//.test(asset.mime));
+	// The media cleanup may have deleted some assets: plan with the ones still on disk.
+	const present = artifact.assets.filter((asset) => existsSync(asset.storedPath));
+	if (present.length === 0) return { kind: "html", html };
+	const media = present.find((asset) => /^(?:video|audio)\//.test(asset.mime));
 	if (media) return { kind: "zip", reason: `${media.name} is video or audio` };
 
-	const byPath = new Map(artifact.assets.map((asset) => [resolvePath(asset.storedPath), asset]));
+	const byPath = new Map(present.map((asset) => [resolvePath(asset.storedPath), asset]));
 	const folded = inlineHtmlSource(html, dir, (path) => {
 		const asset = byPath.get(resolvePath(path));
 		return asset ? readFileSync(asset.storedPath) : null;
@@ -410,11 +403,21 @@ function planSharedArtifactDownload(artifact: SharedArtifact): DownloadPlan {
 	}
 	// A name right after a quote, `(` or `=` is a reference; prose and comments that
 	// merely mention it are not. Base64 has no ".", so data URIs never match.
-	for (const asset of artifact.assets) {
+	for (const asset of present) {
 		const leftover = new RegExp(`["'(=](?:\\.\\/)?${escapeRegExp(asset.name)}(?=["')?#\\s>])`);
 		if (leftover.test(folded.html)) return { kind: "zip", reason: `${asset.name} is still referenced as a file` };
 	}
 	return { kind: "html", html: folded.html };
+}
+
+/** The page plus every asset still on disk, at its relative path — what the stored ZIP used to hold. */
+function buildArtifactZip(artifact: SharedArtifact, html: string): Uint8Array {
+	return createZip([
+		{ name: artifact.name || basename(artifact.storedPath), data: new TextEncoder().encode(html) },
+		...artifact.assets
+			.filter((asset) => existsSync(asset.storedPath))
+			.map((asset) => ({ name: asset.name, data: new Uint8Array(readFileSync(asset.storedPath)) })),
+	]);
 }
 
 /** What the download button hands over — the viewer labels the button with it. */
@@ -441,7 +444,7 @@ export function loadSharedArtifactDownload(artifact: SharedArtifact): {
 		fileName: sharedArtifactDownloadName(artifact, plan.kind),
 		mime: plan.kind === "zip" ? "application/zip" : "text/html",
 		base64: plan.kind === "zip"
-			? readFileSync(artifact.bundlePath!).toString("base64")
+			? Buffer.from(buildArtifactZip(artifact, readFileSync(artifact.storedPath, "utf8"))).toString("base64")
 			: Buffer.from(plan.html, "utf8").toString("base64"),
 	};
 }

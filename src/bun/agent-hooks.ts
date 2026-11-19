@@ -8,12 +8,13 @@
  * Currently supports Claude Code, Codex, omp and pi. Extensible for Gemini, Cursor, etc.
  */
 
-import { excludeTaskClaudeSettings } from "./claude-config-git";
+import { excludeTaskClaudeSettings, excludeTaskCodexHooks } from "./claude-config-git";
 import type { AgentFamily, PermissionMode, TaskStatus } from "../shared/types";
 import { createLogger } from "./logger";
 import { getAgentAdapter } from "../shared/agent-adapters/registry";
 import {
 	isDev3OwnedFolder,
+	refreshClaudePreToolHooks,
 	writeClaudeFlagSettings,
 	writeClaudeHooks,
 	writeCodexHooks,
@@ -124,6 +125,8 @@ export async function setupAgentHooks(
 	}
 
 	if (spec.kind === "cursor") {
+		const inherited = refreshClaudePreToolHooks(worktreePath);
+		if (inherited.skippedSymlink) log.warn("Inherited Claude pre-tool hook not refreshed: settings path crosses a symlink", { worktreePath, symlink: inherited.skippedSymlink });
 		try {
 			const result = await writeCursorUsageHooks(undefined, undefined, { create: true });
 			if (result.status === "skipped") log.warn("Cursor usage hooks not installed", { ...result });
@@ -168,7 +171,9 @@ export async function setupAgentHooks(
 
 	// spec.kind === "codex". The live hooks come from config.toml; in a folder dev3
 	// does not own this file would only outlive the task as unguarded project hooks.
-	const codexSymlink = isDev3OwnedFolder(worktreePath) ? writeCodexHooks(worktreePath) : null;
+	const dev3Owned = isDev3OwnedFolder(worktreePath);
+	const codexSymlink = dev3Owned ? writeCodexHooks(worktreePath) : null;
+	if (dev3Owned && !codexSymlink) excludeTaskCodexHooks(worktreePath);
 	if (codexSymlink) {
 		// No trust bypass either: whatever hooks sit behind the link are not dev3's.
 		log.warn("Codex hooks not written: hooks path is a symlink", { worktreePath, symlink: codexSymlink });

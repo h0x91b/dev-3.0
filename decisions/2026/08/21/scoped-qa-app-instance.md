@@ -1,5 +1,7 @@
 # A QA app instance is scoped by redirecting DEV3_HOME, not by suppressing prompts
 
+> Amended on 2026-11-12 by `decisions/2026/11/12/qa-scope-own-tmux-server.md`: the tmux follow-up is closed; a scoped instance sets `TMUX_TMPDIR` and runs its own tmux server.
+
 > Amended on 2026-09-04 by `decisions/2026/09/04/dev-server-caller-env.md`: inside a task the
 > scoped board is now reached with `dev3 dev-server start --env DEV3_QA_SCOPE=seeded`, not with a
 > `DEV3_QA_SCOPE` entry in `.dev3/config.local.json`. Everything else below still holds.

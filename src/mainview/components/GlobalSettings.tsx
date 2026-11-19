@@ -25,6 +25,7 @@ import type {
 	ShellAvailability,
 	ShortcutOverrides,
 	TerminalPathOpenMode,
+	CompletionOfferStyle,
 } from "../../shared/types";
 import type { ShellFlavor } from "../../shared/posix-shell";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
@@ -41,6 +42,7 @@ import { destroyAnalytics, trackEvent } from "../analytics";
 import posthogClient from "../posthog";
 import { setRuntimeTelemetryOptOut } from "../telemetry";
 import { confirm } from "../confirm";
+import { toast } from "../toast";
 import type { UpdateChannel } from "../../shared/update-channel";
 import AdvancedExperienceSection from "./global-settings/AdvancedExperienceSection";
 import AgentAccountsSection from "./global-settings/AgentAccountsSection";
@@ -57,6 +59,7 @@ import ModelCatalogSection from "./global-settings/ModelCatalogSection";
 import NotificationSettingsSection from "./global-settings/NotificationSettingsSection";
 import PxpipeProxySettingsSection from "./global-settings/PxpipeProxySettingsSection";
 import SystemSettingsSection from "./global-settings/SystemSettingsSection";
+import { LOG_RETENTION_CHANGED_MESSAGE, type LogRetentionChoice } from "../../shared/log-retention";
 import TelemetrySettingsSection from "./global-settings/TelemetrySettingsSection";
 import TerminalSettingsSection from "./global-settings/TerminalSettingsSection";
 import WorkspaceSettingsSection from "./global-settings/WorkspaceSettingsSection";
@@ -217,8 +220,10 @@ function GlobalSettings({
 	);
 
 	const hostSettingsLoadedRef = useRef(false);
+	const [hostSettingsLoaded, setHostSettingsLoaded] = useState(false);
 	const adoptHostSettings = useCallback((next: GlobalSettingsType) => {
 		hostSettingsLoadedRef.current = true;
+		setHostSettingsLoaded(true);
 		setGlobalSettingsState(next);
 	}, [setGlobalSettingsState]);
 
@@ -480,6 +485,16 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
+	const handleCompletionOfferStyleChange = useCallback(
+		(style: CompletionOfferStyle) => {
+			persistSettingChange(
+				{ completionOfferStyle: style },
+				{ tracking: { setting: "completion_offer_style", value: style } },
+			);
+		},
+		[persistSettingChange],
+	);
+
 	const handlePrOriginTaskLinkToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange({ prOriginTaskLink: enabled });
@@ -491,6 +506,15 @@ function GlobalSettings({
 		(minutes: number) => {
 			persistSettingChange({ agentLaunchAutoApproveMinutes: minutes });
 		},
+		[persistSettingChange],
+	);
+	const handleAutoHibernateChange = useCallback(
+		(minutes: number) => persistSettingChange({ autoHibernateMinutes: minutes }),
+		[persistSettingChange],
+	);
+
+	const handleAutoHibernateConfirmChange = useCallback(
+		(minutes: number) => persistSettingChange({ autoHibernateConfirmMinutes: minutes }),
 		[persistSettingChange],
 	);
 
@@ -757,6 +781,23 @@ function GlobalSettings({
 			persistSettingChange({ autoCleanupTaskHistory: enabled ? undefined : false });
 		},
 		[persistSettingChange],
+	);
+
+	// Host-owned: the host saves it and prunes, so this adopts the saved settings it returns.
+	const handleLogRetentionChange = useCallback(
+		async (choice: LogRetentionChoice, expectedCurrent: LogRetentionChoice) => {
+			try {
+				adoptHostSettings(await api.request.setLogRetention({ value: choice, expectedCurrent }));
+			} catch (err) {
+				// The host refused because the retention changed since the user chose; show the real one.
+				const stale = String(err).includes(LOG_RETENTION_CHANGED_MESSAGE);
+				// A lost reply can follow a save, so whatever failed, show what the host holds now.
+				await api.request.getGlobalSettings().then(adoptHostSettings).catch(() => {});
+				if (stale) toast.info(t("settings.logRetentionChangedElsewhere"), { source: "settings" });
+				else toast.error(t("settings.logRetentionSaveFailed"), { source: "settings" });
+			}
+		},
+		[adoptHostSettings, t],
 	);
 
 	const handleFocusModeToggle = useCallback(
@@ -1067,8 +1108,11 @@ function GlobalSettings({
 							onArtifactTemplateChange={handleArtifactTemplateChange}
 							onArtifactTemplatePathChange={handleArtifactTemplatePathChange}
 							onSuggestCompletingTasksAfterMergeToggle={handleSuggestCompletingTasksAfterMergeToggle}
+							onCompletionOfferStyleChange={handleCompletionOfferStyleChange}
 							onPrOriginTaskLinkToggle={handlePrOriginTaskLinkToggle}
 							onAgentLaunchAutoApproveChange={handleAgentLaunchAutoApproveChange}
+							onAutoHibernateChange={handleAutoHibernateChange}
+							onAutoHibernateConfirmChange={handleAutoHibernateConfirmChange}
 							prOriginTaskLinkSupported={prOriginTaskLinkSupported}
 							onTaskSortOrderChange={handleTaskSortOrderChange}
 							onTaskOpenModeChange={handleTaskOpenModeChange}
@@ -1191,6 +1235,8 @@ function GlobalSettings({
 							onResourceLevelsChange={handleResourceLevelsChange}
 							onConfirmBeforeQuitToggle={handleConfirmBeforeQuitToggle}
 							onAutoCleanupTaskHistoryToggle={handleAutoCleanupTaskHistoryToggle}
+							onLogRetentionChange={handleLogRetentionChange}
+							hostSettingsLoaded={hostSettingsLoaded}
 						/>
 						<TelemetrySettingsSection
 							t={t}

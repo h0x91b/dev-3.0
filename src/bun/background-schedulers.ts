@@ -2,6 +2,7 @@ import { startFocusTracker, stopFocusTracker } from "./focus-tracker";
 import { startAutomationsScheduler, stopAutomationsScheduler } from "./automations-scheduler";
 import { startScheduledLaunchScheduler, stopScheduledLaunchScheduler } from "./scheduled-launch-scheduler";
 import { startScheduledMessageScheduler, stopScheduledMessageScheduler } from "./scheduled-message-scheduler";
+import { startAgentExitProbe, stopAgentExitProbe } from "./agent-exit-probe";
 import { startTaskKeepAliveScheduler, stopTaskKeepAliveScheduler } from "./task-keep-alive-scheduler";
 import { startWorktreeCleanupScheduler, stopWorktreeCleanupScheduler } from "./worktree-cleanup-scheduler";
 import { discoverPeerSockets } from "./instance-broadcast";
@@ -38,6 +39,8 @@ function startClockJobs(): void {
 	startScheduledMessageScheduler();
 	// Revives opted-in tasks whose agent conversation died (exit, rate limit, network).
 	startTaskKeepAliveScheduler();
+	// Marks tasks whose agent exited while the terminal lives on as a shell (the "No agent" badge).
+	startAgentExitProbe();
 	// Daily `doctor --worktrees --prune-older-than 14d`. First check an hour after boot.
 	startWorktreeCleanupScheduler();
 	// Packs day logs older than three days into `.tgz`. First pass five minutes after boot.
@@ -51,6 +54,7 @@ function stopClockJobs(): void {
 		stopScheduledLaunchScheduler,
 		stopScheduledMessageScheduler,
 		stopTaskKeepAliveScheduler,
+		stopAgentExitProbe,
 		stopWorktreeCleanupScheduler,
 		stopLogArchiveScheduler,
 	];

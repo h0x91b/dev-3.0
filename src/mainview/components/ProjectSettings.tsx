@@ -5,6 +5,8 @@ import { confirmCustomColumnDelete } from "../utils/confirmCustomColumnDelete";
 import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, GitHubCliStatus, Label, Project, Task } from "../../shared/types";
 import { ACTIVE_STATUSES, GIT_WORKFLOW_NOT_A_REPO_ERROR, getTaskTitle, gitWorkflowSwitchBlocker, hasGitWorkflow, repoConfigEnabled, STORAGE_TRACKED_CONFLICT_ERROR, storageSwitchBlocker } from "../../shared/types";
 import { builtinCoordinatorPrompt, COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, DEFAULT_REVIEW_PROMPT, resolveArtifactTemplate, resolvePresetPrompt, type ArtifactTemplateMode, type ProjectSettingsUpdate, type ResolvedArtifactTemplate } from "../../shared/types";
+import { EXPLICIT_EMPTY_ARRAY_CONFIG_KEYS } from "../../shared/config-schema";
+import { reloadProjectFolders } from "../project-folders";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -19,6 +21,7 @@ import { useIsControlHidden } from "../hooks/useIsControlHidden";
 import { BackIcon } from "./HeaderIcons";
 import { ConfigForm } from "./project-settings/ConfigForm";
 import { CustomColumnRow } from "./project-settings/CustomColumnRow";
+import { genericFieldKeys } from "./project-settings/SchemaConfigFields";
 import { LabelRow } from "./project-settings/LabelRow";
 import { ProjectNameField } from "./project-settings/ProjectNameField";
 import { CONFIG_BOOLEAN_DEFAULTS, decodeGitHubAccountValue, encodeGitHubAccountValue, formatGitHubAccountLabel, getEffectiveCompareRef, type ProjectConfigValues } from "./project-settings/config-values";
@@ -44,7 +47,7 @@ type ConfigTab = "global" | "project" | "worktree" | "automations";
 type WorktreeSubTab = "repo" | "local";
 
 /**
- * Strip empty strings from clonePaths and sparseCheckoutPaths before saving.
+ * Strip empty strings from clonePaths, sparseCheckoutPaths and extraFolders before saving.
  * Only includes these fields if they were actually present in the input config —
  * avoids creating phantom `clonePaths: []` entries that shadow project-level values. See #378.
  */
@@ -56,6 +59,9 @@ function sanitizeConfigPaths<T extends Dev3RepoConfig>(config: T): T {
 	}
 	if (rest.sparseCheckoutPaths !== undefined) {
 		result.sparseCheckoutPaths = rest.sparseCheckoutPaths.filter((p) => p.trim() !== "");
+	}
+	if (rest.extraFolders !== undefined) {
+		result.extraFolders = rest.extraFolders.filter((p) => p.trim() !== "");
 	}
 	return result;
 }
@@ -156,6 +162,7 @@ function ProjectSettings({
 		peerReviewEnabled: p.peerReviewEnabled,
 		sparseCheckoutEnabled: p.sparseCheckoutEnabled,
 		sparseCheckoutPaths: p.sparseCheckoutPaths,
+		extraFolders: p.extraFolders,
 		env: p.env,
 	}), []);
 	const [projectConfig, setProjectConfig] = useState<ProjectConfigValues>(() => project ? projectConfigFromProject(project) : {});
@@ -192,14 +199,12 @@ function ProjectSettings({
 
 	// ---- Config file presence (for override warning on Project Config tab) ----
 	const [configFileOverride, setConfigFileOverride] = useState<string | null>(null);
+	const refreshConfigFileOverride = useCallback(async () => {
+		const { hasRepoConfig: hasRepo, hasLocalConfig: hasLocal } = await api.request.getProjectConfigFiles({ projectId });
+		setConfigFileOverride(hasLocal ? ".dev3/config.local.json" : hasRepo ? ".dev3/config.json" : null);
+	}, [projectId]);
 	useEffect(() => {
-		if (project) {
-			api.request.getProjectConfigFiles({ projectId }).then(({ hasRepoConfig: hasRepo, hasLocalConfig: hasLocal }) => {
-				if (hasLocal) setConfigFileOverride(".dev3/config.local.json");
-				else if (hasRepo) setConfigFileOverride(".dev3/config.json");
-				else setConfigFileOverride(null);
-			}).catch(() => {});
-		}
+		if (project) refreshConfigFileOverride().catch(() => {});
 	}, [project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	useEffect(() => {
@@ -316,6 +321,13 @@ function ProjectSettings({
 		const spA = (a.sparseCheckoutPaths ?? []).join("\0");
 		const spB = (b.sparseCheckoutPaths ?? []).join("\0");
 		if (spA !== spB) return false;
+		// Schema-rendered fields have no hand-written comparison; an empty list equals unset,
+		// except where the schema gives [] its own meaning (it hides a lower layer's list).
+		for (const key of genericFieldKeys()) {
+			const explicitEmpty = EXPLICIT_EMPTY_ARRAY_CONFIG_KEYS.has(key);
+			const normalized = (v: unknown) => (!explicitEmpty && Array.isArray(v) && v.length === 0 ? undefined : v);
+			if (JSON.stringify(normalized(a[key]) ?? null) !== JSON.stringify(normalized(b[key]) ?? null)) return false;
+		}
 		// Compare devServers: a row edit must count as an unsaved change.
 		if (JSON.stringify(a.devServers ?? {}) !== JSON.stringify(b.devServers ?? {})) return false;
 		// Compare builtinColumnAgents
@@ -332,6 +344,24 @@ function ProjectSettings({
 			&& (a.githubAuthHost ?? "") === (b.githubAuthHost ?? "")
 			&& (a.githubAuthLogin ?? "") === (b.githubAuthLogin ?? "");
 	}, [configsEqual]);
+
+	// The form holds values resolved with the repo files on or off. When that flag
+	// flips outside this tab (`dev3 projects set useRepoConfig`, another window), the
+	// values are stale, and saving them would copy one resolution into the other.
+	// Reseed from the pushed project, as handleToggleUseRepoConfig does, and say so
+	// when that drops unsaved edits.
+	const seededUseRepoConfig = useRef(project ? repoConfigEnabled(project) : true);
+	const projectUseRepoConfig = project ? repoConfigEnabled(project) : true;
+	useEffect(() => {
+		if (!project || projectUseRepoConfig === seededUseRepoConfig.current) return;
+		seededUseRepoConfig.current = projectUseRepoConfig;
+		const hadEdits = !projectConfigsEqual(projectConfig, loadedProjectConfig.current);
+		const reseeded = projectConfigFromProject(project);
+		setProjectConfig(reseeded);
+		loadedProjectConfig.current = reseeded;
+		refreshConfigFileOverride().catch(() => {});
+		if (hadEdits) toast.warning(t("projectSettings.useRepoConfigChangedElsewhere"), { projectId });
+	}, [projectUseRepoConfig]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const isReviewModePromptDirty = useCallback(
 		() => reviewModePrompt.trim() !== initialReviewModePromptRef.current.trim()
@@ -508,17 +538,19 @@ function ProjectSettings({
 			});
 			if (!ok) return;
 		}
+		// Set before the request: its projectUpdated push can land first, and the
+		// reseed effect must not treat this tab's own flip as an outside one.
+		const seededBefore = seededUseRepoConfig.current;
+		seededUseRepoConfig.current = next;
 		try {
 			const updated = await api.request.updateProjectSettings({ projectId, useRepoConfig: next });
 			dispatch({ type: "updateProject", project: updated });
 			const reseeded = projectConfigFromProject(updated);
 			setProjectConfig(reseeded);
 			loadedProjectConfig.current = reseeded;
-			const files = await api.request.getProjectConfigFiles({ projectId });
-			setConfigFileOverride(files.hasLocalConfig
-				? ".dev3/config.local.json"
-				: files.hasRepoConfig ? ".dev3/config.json" : null);
+			await refreshConfigFileOverride();
 		} catch (err) {
+			seededUseRepoConfig.current = seededBefore;
 			toast.error(t("projectSettings.failedSave", { error: String(err) }), { projectId });
 		}
 	}
@@ -726,6 +758,7 @@ function ProjectSettings({
 			const toSave = sanitizeConfigPaths(wtRepoConfig);
 			await api.request.saveRepoConfig({ projectId, worktreePath: selectedTask.worktreePath, autoCommit: true, ...toSave });
 			loadedWtRepoConfig.current = toSave;
+			reloadProjectFolders(projectId);
 			const updatedProjects = await api.request.getProjects();
 			for (const p of updatedProjects) dispatch({ type: "updateProject", project: p });
 		} catch (err) {
@@ -742,6 +775,7 @@ function ProjectSettings({
 			const toSave = sanitizeConfigPaths(wtLocalConfig);
 			await api.request.saveLocalConfig({ projectId, worktreePath: selectedTask.worktreePath, ...toSave });
 			loadedWtLocalConfig.current = toSave;
+			reloadProjectFolders(projectId);
 			const updatedProjects = await api.request.getProjects();
 			for (const p of updatedProjects) dispatch({ type: "updateProject", project: p });
 		} catch (err) {
@@ -1453,6 +1487,7 @@ function ProjectSettings({
 											onChange={setWtRepoConfig}
 											projectId={projectId}
 											projectPath={selectedTask?.worktreePath ?? project.path}
+											worktreeLayer={!!selectedTask?.worktreePath && selectedTask.worktreePath !== project.path}
 											envStorageScope="repo"
 											onEnvErrorChange={setEnvTextError}
 										/>
@@ -1464,6 +1499,7 @@ function ProjectSettings({
 											inherited={wtRepoConfig}
 											projectId={projectId}
 											projectPath={selectedTask?.worktreePath ?? project.path}
+											worktreeLayer={!!selectedTask?.worktreePath && selectedTask.worktreePath !== project.path}
 											envStorageScope="local"
 											onEnvErrorChange={setEnvTextError}
 										/>

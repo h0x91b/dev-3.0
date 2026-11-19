@@ -272,12 +272,18 @@ export function codexPlanLabel(plan: string | null): string | null {
 	return plan.split("_").map(titleCaseToken).join(" ");
 }
 
+/** What a project's own env changes about Claude that a named login drops: the backend,
+ *  credentials, a gateway URL alone, or only the model ids. */
+export type ProjectClaudeBackend = "bedrock" | "vertex" | "foundry" | "env-auth" | "gateway" | "model";
+
 /** The Claude login a project's sessions really use when its env pins
  *  `CLAUDE_CONFIG_DIR`: the account then comes from that directory, not
  *  `~/.claude`. `configDir` is null when the project does not pin one. */
 export interface ProjectClaudeLogin {
 	configDir: string | null;
 	identity: AgentAccountIdentity | null;
+	/** Set when the project env replaces the folder's login, so "no pick" and "this account" launch differently. */
+	backend?: ProjectClaudeBackend | null;
 }
 
 /** One login pinned by at least one project's `CLAUDE_CONFIG_DIR`, with the
@@ -287,6 +293,8 @@ export interface PinnedClaudeLogin {
 	configDir: string;
 	identity: AgentAccountIdentity | null;
 	projectNames: string[];
+	/** The managed account this folder is signed in to: its readings are that account's. */
+	accountId: string | null;
 }
 
 /** `/home/me/x/.claude` -> `.../x/.claude`; short paths stay whole. */

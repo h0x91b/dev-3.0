@@ -69,7 +69,7 @@ describe("tmuxBackendPort", () => {
 		const client = stubClient();
 		await expect(portFor(client).splitPane("%1", { cwd: "/w" })).resolves.toBe("%2");
 		expect(client.splitWindow).toHaveBeenCalledWith(
-			expect.objectContaining({ target: "%1", orientation: "vertical", printPaneId: true, cwd: "/w" }),
+			expect.objectContaining({ target: "%1", orientation: "vertical", printPaneId: true, focus: true, cwd: "/w" }),
 		);
 	});
 

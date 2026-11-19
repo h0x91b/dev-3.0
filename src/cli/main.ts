@@ -49,6 +49,7 @@ import { handleCopilotHook } from "./commands/copilot-hook";
 import { handleCursorUsage } from "./commands/cursor-usage";
 import { handleExtensionHook } from "./commands/extension-hook";
 import { handleClaudePrompt } from "./commands/claude-prompt";
+import { handleClaudePreTool } from "./commands/claude-pre-tool";
 import { handleClaudePostTool } from "./commands/claude-post-tool";
 import { handleClaudeTurnEnded } from "./commands/claude-turn-ended";
 import { handleClaudeClaim } from "./commands/claude-claim";
@@ -81,8 +82,8 @@ Commands:
   dev3 task terminal-backend [--task <id>] [--to tmux|native]  Inspect/switch this task's terminal backend
   dev3 task hibernate [<id>|--task <id>] [--json]  Park a task: stop agent, terminal, dev server; keep the worktree
   dev3 task wake [<id>|--task <id>] --resume|--shell [--json]  Wake a hibernated task (resume the agent, or a plain shell)
-  dev3 task update [--task <id>] --title "..." [--description "..." | --description -] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] [--start-after <id> [--until completed|merged] | --no-start-after]  Update task fields
-  dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] [--start-after <id> [--until completed|merged]]  Create a new task (To Do)
+  dev3 task update [--task <id>] --title "..." [--description "..." | --description -] [--manual-completion on|off] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] [--depends-on <id>[,<id>...]] [--no-depends-on [<id>...]] [--start-after <id> [--until completed|merged] | --no-start-after]  Update task fields
+  dev3 task create --title "..." [--description "..." | --description -] [--pr <n> | --branch <ref>] [--type coordinator|pr-review|board-cleanup|standard] [--epic <name|id> | --no-epic] [--depends-on <id>[,<id>...]] [--start-after <id> [--until completed|merged]]  Create a new task (To Do)
                                          (--pr <n> starts the worktree on that pull request's branch and implies --type pr-review)
   dev3 note add "..." [--content "..."] [--task <id>] [--source user]  Add note to a task
   dev3 note list [--task <id>]          List notes
@@ -154,7 +155,7 @@ Commands:
   dev3 pane logs <run-id> [--lines <N>]  That run's outcome (running / exit code) + the tail of what it printed
   dev3 pane close <run-id>               Close the run's pane (kills the command)
   dev3 ui state [--json]                 Show focused task/project, foreground, user idle time + the worktree's tmux layout (ASCII pane map)
-  dev3 pr create --title "..." [--description "..."] [--base <branch>] [--draft] [--auto-merge[=squash|merge|rebase]]
+  dev3 pr create --title "..." [--description "..."] [--base <branch>] [--draft] [--assignee <login>] [--auto-merge[=squash|merge|rebase]]
                                          Push this branch and open a pull request for it via gh
                                          (needs an authenticated gh — exits 23 before pushing if not;
                                           inside a task the body links back to the originating task)
@@ -177,6 +178,8 @@ Commands:
                                          Register a local git repo as a project, optionally in spaces (exit 33 if already registered)
   dev3 projects clone <git-url> [--dir <parent>] [--name "..."] [--space ...] [--new-space ...] [--no-space] [--json]
                                          Clone a repo into the app's clone folder (or --dir) and register it
+  dev3 projects get [<key>] [--project <id>] [--json]  Machine-local Project Settings switches (gitWorkflow, storageRoot, ...)
+  dev3 projects set <key> <value> [--project <id>]  Change one (user or coordinator only; exit 49 otherwise)
   dev3 spaces list [--json]             List spaces with their projects and ids
   dev3 spaces create "name" [--project <id>]...  Create a space (never empty: defaults to the current project)
   dev3 spaces set|add|remove <space>... [--project <id>]  Change a project's spaces (set REPLACES; set --no-space = none)
@@ -358,6 +361,9 @@ async function main(): Promise<void> {
 			context,
 		);
 	}
+	if (command === "hook" && subcommand === "claude-pre-tool") {
+		return await handleClaudePreTool(await Bun.stdin.text(), socketPath || context?.socketPath || null, context);
+	}
 	if (command === "hook" && subcommand === "claude-post-tool") {
 		// Status move plus the hook mailbox, in one request per tool call.
 		return await handleClaudePostTool(await Bun.stdin.text(), socketPath || context?.socketPath || null, context);
@@ -500,7 +506,7 @@ async function main(): Promise<void> {
 			// natural mistype and used to answer "Unknown command" with no hint —
 			// the same forwarding `task list` already does for `tasks list`.
 			case "project":
-				return await handleProjects(subcommand, args, socketPath);
+				return await handleProjects(subcommand, args, socketPath, context);
 			case "spaces":
 			case "space":
 				return await handleSpaces(subcommand, args, socketPath, context);

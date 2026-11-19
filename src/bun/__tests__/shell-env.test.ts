@@ -107,6 +107,36 @@ describe("shell environment bootstrap", () => {
 		expect(result.fullEnv).not.toHaveProperty("SSH_AUTH_SOCK");
 	});
 
+	it("after a dev3 pane reset, the login shell runs without the pane's values and restores the user's own", async () => {
+		const snapshot = { ...process.env };
+		try {
+			Object.assign(process.env, {
+				SHELL: "/bin/zsh",
+				DEV3_TASK_ID: "task-a",
+				CLAUDE_CONFIG_DIR: "/projects/a/.claude",
+				AWS_PROFILE: "project-a",
+			});
+			let seenAtSpawn: Record<string, string | undefined> = {};
+			spawnMock.mockImplementation(() => {
+				// The real spawn wrapper merges process.env at this moment, so this is the login shell's env.
+				seenAtSpawn = { CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR, AWS_PROFILE: process.env.AWS_PROFILE };
+				return fakeProc(nullEnv({ CLAUDE_CONFIG_DIR: "/Users/me/.claude-work" }));
+			});
+			const { resetEnvFromDev3Pane } = await import("../pane-launch-env");
+			const { applyFullShellEnvToProcess, resolveShellEnv } = await import("../shell-env");
+
+			resetEnvFromDev3Pane(process.env, "darwin");
+			applyFullShellEnvToProcess(await resolveShellEnv(), true);
+
+			expect(seenAtSpawn).toEqual({ CLAUDE_CONFIG_DIR: undefined, AWS_PROFILE: undefined });
+			expect(process.env.CLAUDE_CONFIG_DIR).toBe("/Users/me/.claude-work");
+			expect(process.env.AWS_PROFILE).toBeUndefined();
+		} finally {
+			for (const key of Object.keys(process.env)) if (!(key in snapshot)) delete process.env[key];
+			Object.assign(process.env, snapshot);
+		}
+	});
+
 	it("excludes runtime/internal vars from fullEnv (denylist + prefixes)", async () => {
 		process.env.SHELL = "/bin/zsh";
 		spawnMock.mockReturnValue(fakeProc(nullEnv({

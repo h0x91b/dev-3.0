@@ -238,11 +238,15 @@ async function assertAccountReachesPanes(
 	reports: ResumePaneReport[],
 	mainOnly: boolean,
 	switches: (pane: PaneSessionEntry, i: number) => boolean,
+	keepsProjectFolder: (sessionId: string | null) => boolean,
 ): Promise<void> {
 	const configDir = await assertResumeAccountUsable(accountId, panes, mainOnly, reports);
 	for (const [i, pane] of panes.entries()) {
 		if (!switches(pane, i) || (mainOnly && i > 0)) continue;
 		const { sessionId, mode } = targets[i];
+		// The project folder's own login reopens it there, as the launch will. `--continue` only for a
+		// pane that ran in that folder (no account): one from another account's folder is elsewhere.
+		if ((mode !== "agent-latest" || pane.accountId === undefined) && keepsProjectFolder(sessionId)) continue;
 		// `--continue` under another account opens that account's latest, not this pane's conversation.
 		if (mode === "agent-latest") {
 			throw new ResumeUnavailableError(
@@ -258,6 +262,21 @@ async function assertAccountReachesPanes(
 			`The chosen account cannot see conversation ${sessionId.slice(0, 8)}: its config folder keeps its own conversation history. Nothing was resumed; keep the saved account or pick another.`,
 			reports,
 		);
+	}
+}
+
+/** The relaunched agent is running again: drop the "No agent" mark now, not at the next probe tick. */
+async function clearAgentExited(project: Project, task: Task): Promise<void> {
+	try {
+		let wrote = false;
+		// Decided on the row under the lock: the probe may have written since resume started.
+		const { task: updated } = await data.updateTaskWith(project, task.id, (current) => {
+			wrote = !!current.agentExitedAt;
+			return { updates: wrote ? { agentExitedAt: undefined } : {}, result: null };
+		});
+		if (wrote) getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+	} catch (err) {
+		log.warn("Failed to clear the agent-exited mark (non-fatal)", { taskId: task.id.slice(0, 8), error: String(err) });
 	}
 }
 
@@ -352,7 +371,15 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 		);
 	}
 	if (accountOverride !== undefined) {
-		await assertAccountReachesPanes(accountOverride, panes, targets, reports, taskTerminalBackendIdentity(task) !== "tmux", switchesAccount);
+		const launch = {
+			projectEnv: await repoConfig.resolveProjectEnv(resolvedProject, task.worktreePath, { foreignCode: task.foreignCode }),
+			projectPath: rootProjectFor(project, task).path,
+			worktreePath: task.worktreePath,
+			resume: true,
+		};
+		const keepsProjectFolder = (sessionId: string | null) =>
+			typeof accountOverride === "string" && agents.claudeLaunchKeepsProjectFolder(accountOverride, { ...launch, sessionId: sessionId ?? undefined });
+		await assertAccountReachesPanes(accountOverride, panes, targets, reports, taskTerminalBackendIdentity(task) !== "tmux", switchesAccount, keepsProjectFolder);
 	}
 	await wakeIfHibernated(project, task);
 
@@ -384,7 +411,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 		main.configId,
 		false,
 		true,
-		{ sessionId: mainResume ?? undefined, accountId: switchesAccount(main, 0) ? accountOverride : main.accountId, bedrockProfile: main.bedrockProfile, codexHome: codexHomes.get(0), freshSessionId: mainFreshSessionId },
+		{ sessionId: mainResume ?? undefined, accountId: switchesAccount(main, 0) ? accountOverride : main.accountId, bedrockProfile: main.bedrockProfile, projectLogin: main.projectLogin, codexHome: codexHomes.get(0), freshSessionId: mainFreshSessionId },
 	);
 	if (mainAccountId !== undefined) reports[0].accountId = mainAccountId;
 	// Start Fresh and reconnect read the task's account, so a switch must not revert there.
@@ -419,7 +446,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 				worktreePath: task.worktreePath,
 			};
 			const projectEnv = await repoConfig.resolveProjectEnv(resolvedProject, task.worktreePath, { foreignCode: task.foreignCode });
-			const paneIdUpdates: Array<{ index: number; paneId: string; accountId: string | null | undefined; sessionId: string | null }> = [];
+			const paneIdUpdates: Array<{ index: number; paneId: string; accountId: string | null | undefined; sessionId: string | null; projectLogin: boolean }> = [];
 			for (let i = 1; i < panes.length; i++) {
 				const pane = panes[i];
 				try {
@@ -434,6 +461,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 						? { sessionId: freshSessionId, accountId, accountFromStore: true, protocolMode }
 						: { resume: true, accountId, accountFromStore: true, protocolMode };
 					cmdOpts.projectEnv = projectEnv;
+					if (pane.projectLogin) cmdOpts.projectLogin = true;
 					cmdOpts.bedrockProfile = pane.bedrockProfile !== undefined ? pane.bedrockProfile : task.bedrockProfile;
 					if (paneResume) cmdOpts.sessionId = paneResume;
 					let resumeCmd: string;
@@ -443,6 +471,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 					// a renamed binary is exactly what broke resume.
 					let resumeAgentFamily: AgentFamily | undefined = pane.agentFamily ?? undefined;
 					let extraEnv: Record<string, string> = {};
+					let projectLogin = !!pane.projectLogin;
 					if (pane.agentId) {
 						const resolved = await agents.resolveCommandForAgent(pane.agentId, pane.configId, ctx, cmdOpts);
 						resumeCmd = resolved.command;
@@ -450,6 +479,8 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 						resumeBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || pane.agentCmd;
 						resumeAgentFamily = resolved.agentFamily ?? resumeAgentFamily;
 						if (resolved.bedrockProfileMissing) await notifyBedrockProfileMissing(task);
+						if (resolved.projectLoginKept) accountId = undefined;
+						projectLogin = !!resolved.projectLoginKept;
 						if (resolved.staleAccountDropped) {
 							accountId = resolved.resolvedAccountId;
 							await notifyStaleAccountDropped(task);
@@ -471,7 +502,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 					const wrappedCmd = `bash "${scriptPath}"`;
 					const newPaneId = await pty.splitAndRunCommand(params.taskId, socket, wrappedCmd, task.worktreePath);
 					if (opts.restart && !newPaneId) throw new Error("The restarted agent pane was not created.");
-					if (newPaneId) paneIdUpdates.push({ index: i, paneId: newPaneId, accountId, sessionId: freshSessionId ?? paneResume });
+					if (newPaneId) paneIdUpdates.push({ index: i, paneId: newPaneId, accountId, sessionId: freshSessionId ?? paneResume, projectLogin });
 					reports[i] = { ...reports[i], status: "resumed", paneId: newPaneId ?? null, accountId: accountId ?? null, sessionId: freshSessionId ?? paneResume };
 					log.info("Resumed extra pane", { taskId: params.taskId.slice(0, 8), paneIndex: i, paneId: newPaneId, command: resumeCmd.slice(0, 100) });
 				} catch (err) {
@@ -484,14 +515,14 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 				try {
 					const freshTask = await data.getTask(project, params.taskId);
 					const updatedPanes = [...(freshTask.sessionState?.panes ?? [])];
-					for (const { index, paneId, accountId, sessionId } of paneIdUpdates) {
+					for (const { index, paneId, accountId, sessionId, projectLogin } of paneIdUpdates) {
 						const prior = updatedPanes[index];
 						if (!prior) continue;
 						// `--continue` names no id, so the stored one stays. A replaced id was found
 						// in this worktree's own store, so the origin goes with the old one.
 						const resumed = sessionId ?? prior.sessionId;
 						const originCwd = resumed === prior.sessionId ? prior.sessionOriginCwd : undefined;
-						updatedPanes[index] = { ...prior, paneId, accountId, sessionId: resumed, sessionOriginCwd: originCwd, parked: undefined };
+						updatedPanes[index] = { ...prior, paneId, accountId, sessionId: resumed, sessionOriginCwd: originCwd, parked: undefined, projectLogin: projectLogin || undefined };
 					}
 					await data.updateTask(project, params.taskId, { sessionState: { panes: updatedPanes } });
 				} catch (err) {
@@ -502,6 +533,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 	}
 
 	await markTerminalAttached(project, task);
+	await clearAgentExited(project, task);
 
 	try {
 		const mainPaneId = (await data.getTask(project, params.taskId)).sessionState?.panes?.[0]?.paneId ?? null;
@@ -572,6 +604,7 @@ export async function restartTask(params: { taskId: string }): Promise<string> {
 	}
 
 	await markTerminalAttached(project, task);
+	await clearAgentExited(project, task);
 
 	const url = ptyWsUrl(pty.getPtyPort(), params.taskId);
 	log.info("← restartTask", { taskId: params.taskId.slice(0, 8) });

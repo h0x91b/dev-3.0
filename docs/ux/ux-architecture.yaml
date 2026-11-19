@@ -328,6 +328,10 @@ ux_architecture:
       forbidden: ["global_destination", "cross_project_action", "uncapped_note_list"]
       note: "This panel is the densest surface (34K). It is the main complexity-budget risk in the app."
       evidence: ["src/mainview/components/TaskInfoPanel.tsx", "src/mainview/components/task-info-panel/*"]
+      completion_strip:
+        rule: "Merge/agent completion asks follow completionOfferStyle: 'dialog' (default) asks via confirm() with the pre-setting dialogs (CompletionOfferDialogHost); 'inline' floats a one-line bar at the bottom-right of the agent's pane (+ Show agent if hidden; an inspector row without a live terminal), two rows max, note/git warning open upward on hover, terminal never resized. No focus, 600 ms arming, Complete gated on the unsaved-work check. Inline only: marker, bell, toast, merge replay. To Dialog keeps waiting offers on their task; to inline closes the modal; Keep open settles all the task's offers. The user's own Complete/Cancel is not an offer (popover.own_click_confirm)."
+        actions: { complete: "destructive", keep_open: "secondary", manual_completion: "ghost (merge)", settings: "icon (merge)" }
+        evidence: ["src/mainview/completion-offers.ts", "src/mainview/components/task-info-panel/TaskCompletionStrip.tsx", "src/mainview/components/CompletionOfferDialogHost.tsx"]
       bar_model:
         layout: "2x2"  # two rows; each row split into left|right by a flex-1 spacer
         rationale: "Wide desktop width is used instead of stacking more rows; the panel has a hard height budget (MAX_RATIO=0.33). One bar = one action domain. Panel chrome is not a bar."
@@ -381,7 +385,7 @@ ux_architecture:
       purpose: "Ephemeral task-bound terminal workspace for focused tmux work."
       allowed: ["task_terminal", "tmux_windows_and_panes", "dev3_brand", "exit_fullscreen"]
       forbidden: ["global_header", "app_menu_bar", "task_switching_ui", "task_info_panel", "tmux_zoom_mutation", "route_persistence"]
-      entry_point: "TaskInfoPanel fullscreen toggle, F11, or Cmd/Ctrl+Shift+F when a task terminal is open."
+      entry_point: "TaskInfoPanel fullscreen toggle (narrow: the actions sheet's first row), F11, or Cmd/Ctrl+Shift+F when a task terminal is open."
       exit_point: "Wide neutral Exit full screen button or either fullscreen shortcut; in-app toast clicks exit before task navigation."
       state: "Renderer-only, non-persistent; preserves the exact Route and all tmux window/pane/layout state."
       notifications: "Queue agent-facing native, browser, in-app, attention, image, and artifact events while immersive fullscreen or persistent Focus Mode is active; flush them in arrival order after the final mode ends without adding fullscreen chrome, preserving task click targets."
@@ -438,7 +442,7 @@ ux_architecture:
       forbidden: ["primary_navigation", "persistent_dashboard"]
       observed: ["CreateTaskModal", "AddProjectModal", "TaskDetailModal", "LaunchVariantsModal", "SpawnAgentModal", "AgentLaunchRequestModal", "SecretRequestModal", "GitPullErrorModal", "FolderPickerModal", "AccountLoginModal"]
       agent_request:
-        rule: "Agent requests share an accent border, AI badge and autofocused decline. Severity follows the action: destructive only for destroying state. Input beyond yes/no uses its own modal; confirm() stays boolean. Requests queue, one dialog at a time."
+        rule: "Agent requests share an accent border, AI badge and autofocused decline. Severity follows the action: destructive only for destroying state. Input beyond yes/no uses its own modal; confirm() stays boolean. Requests queue, one dialog at a time. Completion asks: task_info_panel.completion_strip."
         identity: ["accent border", "AI agent request badge", "autofocused decline"]
         severity_by_action: { destroys_state: "destructive", creates_state: "primary" }
         observed: ["agentCompletionRequested → confirm() (destructive)", "agentLaunchRequested → AgentLaunchRequestModal (primary)", "secretRequested → SecretRequestModal (primary; explicit approval only, masked input, no output)"]
@@ -464,7 +468,7 @@ ux_architecture:
       simplify_mode:
         spec: "Simplified Mode is temporary onboarding; Settings -> Appearance owns it. Fresh installs start simplified; upgrades preserve choice. Explicit mode-owned preset hiding stays separate from personal hiddenControls; mode switches preserve those choices. New controls outside the preset remain visible."
         invitation: "Bible §5.10 owns timing and consent: 3h active, postpone 1/3/9/14d then every 14d; manual enable every 14d. Persisted, host-deduplicated; calm foreground dashboard/board only, never typing/review/overlays. One React invitation, one primary switch, one postpone; acceptance stops reminders and teaches personal hiding once. No permanent chrome or second confirmation."
-        hide_mechanism: "Desktop right-click -> one-item Hide menu (HideableControl/useHideContextMenu). Touch/remote: an always-visible Hide icon on the control's own overflow/sheet row (HideRowButton) -- no right click there."
+        hide_mechanism: "Desktop right-click -> one-item Hide menu (HideableControl/useHideContextMenu). Narrow: no hiding at all -- no restore control there, so the actions sheet ignores personal hiding (Simplified Mode still trims it)."
         panel_hideable: ["diff-include-tests (context bar)", "spawn-agent, bug-hunters, hibernate, scheduled-message, tmux-pane-controls (session/agent bar)", "scripts-runner, setup-dev-server (runtime bar)"]
         panel_restore: "Exactly one restore control, in panel chrome (not a bar, no bar-budget cost) next to gear+collapse; appears only while something is hidden. Dropdown groups by bar; each row is dual-purpose (click runs the action, hover/touch-visible return icon restores), plus a permanent Show all."
         header_hideable: ["agent-traffic", "project-terminal-button", "remote-access-qr"]
@@ -481,7 +485,7 @@ ux_architecture:
       allowed: ["destination", "task_jump", "terminal_hover_preview", "search", "variant_dots", "native_backend_mark", "git_status_badge", "task_visibility_toggle", "reveal_hidden_mode", "row_context_menu", "age_stamps"]
       forbidden: ["durable_configuration", "permanent_header_control"]
       header_budget: "Header is FULL: scope group + collapse. Measured on a board with spaces, a fifth control truncates the 'Active Tasks' title, so the reveal-hidden eye sits in the filter row beside the funnel — same axis (which tasks are in this list) and state-gated. A new sidebar control goes to the filter row or the funnel, never the header."
-      visibility: "Task.hidden hides a variant group from THIS list only. Header eye reveals them dimmed and renders ONLY while something is hidden (the scope group owns the rest of the header); red dot when a hidden task needs the user; is:hidden reveals from the funnel. Hibernated/disconnected tasks are out by default too (is:hibernated); same eye reveals them. Why: decisions/2026/09/07/hide-tasks-from-active-sidebar.md."
+      visibility: "Task.hidden hides a variant group from THIS list only. Header eye reveals them dimmed and renders ONLY while something is hidden (the scope group owns the rest of the header); red dot when a hidden task needs the user; is:hidden reveals from the funnel. Hibernated and no-agent (terminal gone, or agent exited to a shell) tasks are out by default too (is:hibernated); same eye reveals them. Why: decisions/2026/09/07/hide-tasks-from-active-sidebar.md."
       variant_dots: "Same capped clickable dots + SiblingPopover as task_card (see surfaces.task_card.variant_dots); placed in the card's bottom status row, mirroring the kanban card position."
       queue_policy: "Tiers: headerless coordinators (non-hibernated) → NEEDS YOU (review-by-user, user-questions, review-by-colleague) → project custom columns → WAITING (in-progress, review-by-ai). Per-task bells are visual notifications and never alter tier membership."
       evidence: ["src/mainview/components/ActiveTasksSidebar.tsx"]
@@ -638,7 +642,7 @@ ux_architecture:
       open_in_external_browser: "One neutral external-link icon in the header, grouped with download. Desktop: stored HTML path via RPC to the OS browser; remote: sandboxed link over the stored folder. Failure toast; no shortcut."
       evidence: ["src/mainview/components/TaskArtifactViewer.tsx", "src/mainview/components/TaskWorkspacePane.tsx", "src/mainview/utils/artifact-dock.ts", "src/bun/shared-artifacts.ts", "decisions/2026/09/07/artifact-panel-default-popup-opt-in.md", "decisions/2026/09/16/review-comments-on-the-task-record.md"]
     file_explorer:
-      purpose: "Read-only tree left of a terminal, listing its folder (task worktree; project checkout on Repo). Never on the board: the toggle opens Repo there. Pinned, auto-hide overlay or hidden, app-wide."
+      purpose: "Read-only tree left of a terminal, listing its folder (task worktree; project checkout on Repo; extra folders). Never on the board: the toggle opens Repo there. Pinned, auto-hide overlay or hidden, app-wide."
       allowed: ["browse", "preview", "copy/insert path", "pin/autohide/hide", "yazi"]
       forbidden: ["file/git mutation", "git colouring", "tabs, editing", "content search", "watcher", "board mount", "second toggle"]
       evidence: ["src/mainview/components/FileExplorerFrame.tsx", "decisions/2026/10/02/file-explorer-panel.md"]
@@ -913,8 +917,8 @@ ux_architecture:
     surface_adaptation: # every §5 surface gets a narrow form
       mobile_orientation: { narrow: "portrait-only device guard — best-effort Screen Orientation API lock, with a blocking localized rotate prompt and inert app fallback when landscape cannot be locked", status: observed, evidence: "MobilePortraitGate.tsx, usePortraitOrientation.ts" }
       kanban_board: { narrow: "column carousel (one column/screen, swipe; vertical task scroll; collapsed cols excluded, empty kept)", status: observed, evidence: "MobileBoardCarousel.tsx, KanbanView.tsx useNarrowViewport(768), KanbanColumn fullWidth" }
-      task_move_drag: { narrow: "drag impossible -> 'Move to <status>' bottom action sheet (long-press) on existing status path; completion reuses confirmTaskCompletion", status: proposed }
-      board_filters: { narrow: "compact row: view Select + search inline, funnel → bottom sheet", status: observed }
+      task_move_drag: { narrow: "tap the card's status rail -> status BottomSheet on the existing status path; long-press stays the native drag (decided 2026-11-16); completion reuses confirmTaskCompletion", status: observed, evidence: "TaskCardRail.tsx, TaskCard.tsx" }
+      board_filters: { narrow: "compact wrapping row: view Select + Active|All switch, search + funnel + options kept together (own line when tight), funnel → bottom sheet", status: observed }
       board_view_table: { narrow: "virtualised card list", status: observed }
       board_view_tree: { narrow: "outline, indent capped at 3 then a level marker", status: observed }
       board_view_attention: { narrow: "stacked buckets", status: observed }
@@ -925,7 +929,7 @@ ux_architecture:
       task_inspector: { narrow: "2x2 bar grid cannot fit -> one summary bar + 'task actions' bottom sheet (bars become sheet sections); metadata grid already reflows", tight: "ABOVE narrow the bars gate on the PANEL width (useContainerWidth, ResizeObserver — the board eats the viewport in split view): <1280 folds the label strip to +k, clamps the branch name, drops pane-layout/Runtime text labels; <900 also drops the label strip + include-tests toggle. Every bar is boxed min-w-0 overflow-hidden so nothing paints over a neighbour or the pinned chrome (decision 164).", status: observed, evidence: "TaskInfoPanel.tsx, useContainerWidth.ts" }
       diff_viewer: { narrow: "files-aside (22rem) -> bottom-sheet file picker; diff stream owns screen (live-content: explicit nav, no full-surface swipe)", status: proposed, evidence: "TaskDiffViewer.tsx w-[22rem] aside" }
       modal: { narrow: "full-bleed sheet: max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)], or BottomSheet for action-style modals", status: proposed, evidence: "TaskDetailModal 35rem, AddProjectModal 32.5rem, confirm() 26rem — all fixed-width" }
-      context_menu: { narrow: "bottom action sheet (long-press trigger)", status: proposed }
+      context_menu: { narrow: "desktop / Active Tasks row only (long-press there). The card wires right-click only: its long-press is the drag, so a phone reaches task actions via the inspector actions sheet + status rail", status: observed, evidence: "TaskCard.tsx, ActiveTaskRow.tsx useContextMenu" }
       settings: { narrow: "category list first -> one category detail at a time with an in-app back affordance; same settings route, no horizontal overflow", status: implemented, evidence: "GlobalSettings.tsx, settings-registry.ts, useNarrowViewport(768)" }
       dashboard: { narrow: "vertical project list, full-width cards (p-3 vs p-7); per-project actions + reorder collapse into a kebab -> BottomSheet action sheet (desktop icon cluster + grip drag + hidden up/down steps are all dead on touch); touch targets >=44px; each task row keeps its single Complete check always visible at 44x44 (hover-revealed on desktop only)", status: observed, evidence: "ActivityOverview.tsx useNarrowViewport(CAROUSEL_MAX_WIDTH), BottomSheet, ProjectActionButtons (hidden md:flex)" }
       command_palette: { narrow: "needs a TOUCH entry + w-full max-w-[calc(100vw-2rem)] (PaletteShell is 34rem fixed, keyboard-only) — it is the action fallback for the absent native menu", status: proposed, evidence: "PaletteShell.tsx w-[34rem], App.tsx Cmd+K/Cmd+Shift+P" }

@@ -27,9 +27,6 @@ export const AGENT_MESSAGE_LOG_VERSION = 1;
  */
 export const AGENT_MESSAGE_LOG_MAX_ROW_BYTES = 8_192;
 
-/** Days of history kept. Older day-files are deleted, not compacted. */
-export const AGENT_MESSAGE_LOG_RETENTION_DAYS = 30;
-
 /** Marker appended to a body clipped by {@link AGENT_MESSAGE_LOG_MAX_ROW_BYTES}. */
 export const AGENT_MESSAGE_LOG_TRUNCATION_MARK = "…[truncated by the message log]";
 
@@ -153,8 +150,8 @@ export interface AgentMessageLogPage {
 	 * silence: everything before this day was deleted by the retention policy.
 	 */
 	oldestDay: string | null;
-	/** Days of history the retention policy keeps. */
-	retentionDays: number;
+	/** Days of history the retention policy keeps; null when it keeps everything. */
+	retentionDays: number | null;
 	/** True when `limit` cut the answer short and older rows still exist on disk. */
 	hasMore: boolean;
 }

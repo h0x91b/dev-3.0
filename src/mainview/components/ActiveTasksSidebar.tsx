@@ -73,10 +73,12 @@ function writeShowHidden(showHidden: boolean) {
 }
 
 /** Out of the default list: hidden by the user, or not running (hibernated or
- *  disconnected). The reveal eye brings both back; nothing about the task changes. */
+ *  without an agent). The reveal eye brings both back; nothing about the task changes. */
 function isOutOfDefaultList(task: Task): boolean {
 	return task.hidden === true || isTaskNotRunning(task);
 }
+
+const removedKey = (projectId: string, taskId: string) => `${projectId}\u0000${taskId}`;
 
 interface ActiveTasksSidebarProps {
 	/** Absent on the dashboard mount: no current project, so the scope locks to
@@ -249,19 +251,26 @@ function ActiveTasksSidebar({
 		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, [disableGlobalFindShortcut]);
 
+	const removedDuringFetch = useRef<Set<string>>(new Set());
+
 	// Always fetch global tasks and re-fetch when switching into global scope.
 	// Loading spinner only shows in scoped views so project-scope mounts are silent.
 	useEffect(() => {
 		let cancelled = false;
 		const isScoped = effectiveScope !== "project";
 		if (isScoped) setGlobalLoading(true);
+		removedDuringFetch.current = new Set();
 		(async () => {
 			try {
 				const results = await api.request.getAllProjectTasks();
 				if (cancelled) return;
+				// A removal pushed while the read was in flight must not come back with the snapshot.
+				const removed = removedDuringFetch.current;
 				const flat: Task[] = [];
 				for (const { tasks: projectTasks } of results) {
-					for (const task of projectTasks) flat.push(task);
+					for (const task of projectTasks) {
+						if (!removed.has(removedKey(task.projectId, task.id))) flat.push(task);
+					}
 				}
 				setGlobalTasks(flat);
 			} catch (err) {
@@ -301,8 +310,21 @@ function ActiveTasksSidebar({
 				return prev;
 			});
 		}
+		// Scoped to the project: a move to another project has already re-homed the row via `taskUpdated`.
+		function onTaskRemoved(e: Event) {
+			const { taskId, projectId } = (e as CustomEvent).detail as { taskId: string; projectId: string };
+			removedDuringFetch.current.add(removedKey(projectId, taskId));
+			setGlobalTasks((prev) => {
+				const next = prev.filter((t) => t.id !== taskId || t.projectId !== projectId);
+				return next.length === prev.length ? prev : next;
+			});
+		}
 		window.addEventListener("rpc:taskUpdated", onTaskUpdated);
-		return () => window.removeEventListener("rpc:taskUpdated", onTaskUpdated);
+		window.addEventListener("rpc:taskRemoved", onTaskRemoved);
+		return () => {
+			window.removeEventListener("rpc:taskUpdated", onTaskUpdated);
+			window.removeEventListener("rpc:taskRemoved", onTaskRemoved);
+		};
 	}, [effectiveScope]);
 
 	const sourceTasks = effectiveScope === "project" ? tasks : globalTasks;
@@ -741,7 +763,7 @@ function ActiveTasksSidebar({
 				    with spaces, a fifth header control truncates the "Active Tasks"
 				    title. It is the same axis as the funnel anyway — which tasks are
 				    in this list — and `is:hidden` lives one click away inside it.
-				    Hibernated and disconnected tasks are out of the list too, and come back with it.
+				    Hibernated tasks and tasks with no agent are out of the list too, and come back with it.
 				    Rendered only while there is something to bring back; the dot is
 				    the sole signal that an absent task is asking for the user, since
 				    hiding never silences a task. */}

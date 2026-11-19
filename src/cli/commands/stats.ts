@@ -189,6 +189,11 @@ async function usage(args: ParsedArgs, socketPath: string, context: CliContext |
 	moreLine(shown.length, newestFirst.length);
 	const cost = days.reduce((sum, d) => sum + d.costUsd, 0);
 	process.stdout.write(`\nTotal API-equivalent cost: $${cost.toFixed(2)}${days.some((d) => !d.fullyPriced) ? " (lower bound: some models have no known price, marked +)" : ""}.\n`);
+	// An older app answers without the split; say nothing rather than print zeros.
+	if (days.every((d) => typeof d.apiCostUsd === "number")) {
+		const sum = (pick: (d: AgentUsageDay) => number) => days.reduce((total, d) => total + pick(d), 0).toFixed(2);
+		process.stdout.write(`  API key spend: $${sum((d) => d.apiCostUsd)} · covered by subscriptions: $${sum((d) => d.subscriptionCostUsd)} · unclassified: $${sum((d) => d.unclassifiedCostUsd)}.\n`);
+	}
 }
 
 /** Codex writes carry no TTL, so they count in the total and in neither split. */

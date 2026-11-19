@@ -1,4 +1,6 @@
 import { normalizeSimplifiedInterface } from "../../shared/simplified-interface";
+import { normalizeAutoHibernateMinutes, normalizeAutoHibernateConfirmMinutes } from "../../shared/auto-hibernate";
+import { recordAutoHibernatePolicyChange } from "../task-activity";
 import { noteInterfaceModeChange } from "../interface-onboarding";
 import { chmodSync, existsSync, mkdirSync, symlinkSync, unlinkSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
@@ -17,12 +19,15 @@ import type { AgentLiveModels } from "../../shared/agent-live-models";
 import * as github from "../github";
 import * as updater from "../updater";
 import * as rosetta from "../rosetta";
+import { clearProjectFoldersCache } from "../project-folders";
 import * as repoConfig from "../repo-config";
 import * as pty from "../pty-server";
 import { SESSION_OVERVIEW_FORMAT, tmux } from "../tmux";
 import { tmuxRestartImpact } from "../tmux-restart-impact";
 import { setTmuxPaneDimming, setTmuxPaneTitles, writeTmuxConfigs } from "../tmux/config";
-import { loadSettings, saveSettings } from "../settings";
+import { loadSettings, readSettingsFileStrict, saveSettings } from "../settings";
+import { collectLogRetentionUsage, pruneAllLogs } from "../log-retention";
+import { isRetentionDayCount, isShorterRetention, resolveLogRetentionDays, storedLogRetention, type LogRetentionUsage, type LogRetentionValue } from "../../shared/log-retention";
 import { resolveNeedsYouSoundToggles } from "../../shared/task-sound-statuses";
 import { toggleFavorite } from "../../shared/favorites";
 import { DEV3_HOME } from "../paths";
@@ -233,6 +238,7 @@ async function updateProjectSettings(params: { projectId: string } & ProjectSett
 			: {}),
 	};
 	const saved = await data.updateProject(params.projectId, updates);
+	clearProjectFoldersCache(saved.id);
 	// Return the RESOLVED project: the caller renders what will actually run,
 	// not a raw record a config file may override.
 	const updated = saved.kind === "virtual" ? saved : await repoConfig.resolveProjectConfig(saved);
@@ -257,6 +263,7 @@ async function saveRepoConfig(params: { projectId: string; worktreePath?: string
 	const configPath = params.worktreePath || project.path;
 	const config = extractConfigFromParams(params) as Dev3RepoConfig;
 	await repoConfig.saveRepoConfig(configPath, config);
+	clearProjectFoldersCache(project.id);
 	if (params.autoCommit && params.worktreePath) {
 		try {
 			const proc = spawn(["git", "-C", params.worktreePath, "add", ".dev3/config.json"]);
@@ -281,6 +288,7 @@ async function saveLocalConfig(params: { projectId: string; worktreePath?: strin
 	const configPath = params.worktreePath || project.path;
 	const config = extractConfigFromParams(params) as Dev3RepoConfig;
 	await repoConfig.saveRepoLocalConfig(configPath, config);
+	clearProjectFoldersCache(project.id);
 	log.info("← saveLocalConfig done");
 }
 
@@ -366,7 +374,31 @@ async function applyTmuxConfigChange(
 	}
 }
 
-async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
+/**
+ * `saveGlobalSettings` and `setLogRetention` both load, change and write the whole
+ * file; run one at a time, a stale load cannot write an old retention back after a prune.
+ */
+let settingsWriteQueue: Promise<unknown> = Promise.resolve();
+function serializeSettingsWrite<T>(run: () => Promise<T>): Promise<T> {
+	const result = settingsWriteQueue.then(run, run);
+	settingsWriteQueue = result.catch(() => {});
+	return result;
+}
+
+function saveGlobalSettings(params: GlobalSettings): Promise<void> {
+	return serializeSettingsWrite(() => saveGlobalSettingsNow(params));
+}
+
+async function saveGlobalSettingsNow(params: GlobalSettings): Promise<void> {
+	if (params.autoHibernateMinutes !== undefined && params.autoHibernateMinutes !== 0
+		&& normalizeAutoHibernateMinutes(params.autoHibernateMinutes) === 0) {
+		throw new Error("Hibernation suggestions must be off or a whole number of minutes from 1 to 43200.");
+	}
+	if (params.autoHibernateConfirmMinutes !== undefined && (typeof params.autoHibernateConfirmMinutes !== "number"
+		|| !Number.isInteger(params.autoHibernateConfirmMinutes) || params.autoHibernateConfirmMinutes < 1
+		|| params.autoHibernateConfirmMinutes > 43_200)) {
+		throw new Error("Hibernation confirmation must be a whole number of minutes from 1 to 43200.");
+	}
 	log.info("→ saveGlobalSettings", { params });
 	// Terminals launched after this point must use the newly chosen shell; the
 	// resolver caches for an hour, so it has to be told.
@@ -382,6 +414,10 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 	// minted after the snapshot was taken, so trusting the payload erased it on every
 	// settings change and the install got a new id on every launch.
 	const stored = await loadSettings();
+	if (normalizeAutoHibernateMinutes(stored.autoHibernateMinutes) !== normalizeAutoHibernateMinutes(params.autoHibernateMinutes)
+		|| normalizeAutoHibernateConfirmMinutes(stored.autoHibernateConfirmMinutes) !== normalizeAutoHibernateConfirmMinutes(params.autoHibernateConfirmMinutes)) {
+		recordAutoHibernatePolicyChange();
+	}
 	const next: GlobalSettings = {
 		...params,
 		...normalizeSimplifiedInterface({
@@ -401,6 +437,8 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 		// Written only by the account surfaces' Auto controls, after the snapshot was taken.
 		autoAccountDefault: stored.autoAccountDefault,
 		autoAccountExclusions: stored.autoAccountExclusions,
+		// Only for the push below: `saveSettings` keeps the file's own value whatever this says.
+		logRetentionDays: stored.logRetentionDays,
 	};
 	await saveSettings(next);
 	await noteInterfaceModeChange(stored.simplifiedMode === true, next.simplifiedMode === true, stored.simplifiedModeSource === "fresh");
@@ -451,6 +489,49 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 	}
 	getPushMessage()?.("globalSettingsUpdated", next);
 	log.info("← saveGlobalSettings done");
+}
+
+async function allProjectsForLogs(): Promise<Project[]> {
+	return [...await data.loadProjects(), ...await data.loadVirtualProjects()];
+}
+
+/** What the logs occupy per day, and what `retentionDays` would delete, by the host's clock. */
+async function getLogRetentionUsage(params?: { retentionDays?: number }): Promise<LogRetentionUsage> {
+	const retentionDays = params?.retentionDays;
+	if (retentionDays !== undefined && !isRetentionDayCount(retentionDays)) throw new Error(`Invalid log retention: ${String(retentionDays)}`);
+	return collectLogRetentionUsage(await allProjectsForLogs(), retentionDays);
+}
+
+type LogRetentionRequest = { value: LogRetentionValue; expectedCurrent: LogRetentionValue };
+
+/**
+ * Change the log retention; a shorter one deletes the older days of every log at once.
+ * `expectedCurrent` is the value the caller saw: if the file holds another one, nothing is written.
+ */
+function setLogRetention(params: LogRetentionRequest): Promise<GlobalSettings> {
+	return serializeSettingsWrite(() => setLogRetentionNow(params));
+}
+
+async function setLogRetentionNow(params: LogRetentionRequest): Promise<GlobalSettings> {
+	const { value, expectedCurrent } = params;
+	for (const field of [value, expectedCurrent]) {
+		if (field !== "forever" && !isRetentionDayCount(field)) throw new Error(`Invalid log retention: ${String(field)}`);
+	}
+	// A corrupt settings.json loads as defaults; saving those would erase it.
+	if (!readSettingsFileStrict()) throw new Error("settings.json is unreadable; not overwriting it");
+	const stored = await loadSettings();
+	const next: GlobalSettings = { ...stored, logRetentionDays: storedLogRetention(value) };
+	await saveSettings(next, { value, expectedCurrent });
+	const retentionAfter = resolveLogRetentionDays(next);
+	if (isShorterRetention(resolveLogRetentionDays({ logRetentionDays: expectedCurrent }), retentionAfter)) {
+		try {
+			pruneAllLogs(await allProjectsForLogs(), retentionAfter);
+		} catch (err) {
+			log.warn("Failed to prune the logs after lowering the retention (non-fatal)", { error: String(err) });
+		}
+	}
+	getPushMessage()?.("globalSettingsUpdated", next);
+	return next;
 }
 
 /** Add or remove an (agentId, configId) pair in the global favorites list,
@@ -950,6 +1031,8 @@ export const settingsConfigHandlers = {
 	getShellAvailability,
 	previewShellPrompt: (params: { source: string; columns?: number }) => previewShellPrompt(params.source, params.columns),
 	saveGlobalSettings,
+	getLogRetentionUsage,
+	setLogRetention,
 	toggleFavoriteAgent,
 	installDev3Cli,
 	getAgents,

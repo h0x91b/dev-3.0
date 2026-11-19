@@ -26,3 +26,17 @@ export function isInsideOpsDir(path: string): boolean {
 	try { resolved = realpathSync(OPS_DIR); } catch { /* no ops dir yet: nothing can be inside it */ }
 	return [OPS_DIR, resolved].some((root) => path === root || path.startsWith(`${root}/`));
 }
+
+/**
+ * A repo root inside this task's own managed folder, rewritten onto the folder as the task stores it
+ * (git reports symlinks resolved). Null when the folder is not under OPS_DIR or the root is elsewhere.
+ */
+export function repoPathInOwnTaskFolder(root: string, folder: string | null | undefined): string | null {
+	if (!folder || !isInsideOpsDir(folder)) return null;
+	const forms = [folder];
+	try { forms.push(realpathSync(folder)); } catch { /* folder not created yet: only the written form */ }
+	for (const form of forms) {
+		if (root === form || root.startsWith(`${form}/`)) return folder + root.slice(form.length);
+	}
+	return null;
+}

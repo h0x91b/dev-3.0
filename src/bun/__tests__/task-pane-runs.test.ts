@@ -149,7 +149,8 @@ describe("startPaneRun", () => {
 		await startPaneRun({ task: NATIVE_TASK, command: "sleep 1", placement: "below", cwd: "/wt", env: {} });
 		expect(mocks.decidePaneRunSplit).toHaveBeenCalledWith(expect.objectContaining({ below: true }));
 		expect(splitSpec().placement).toBe("below");
-		expect(splitSpec().restoreFocus).toBe(true);
+		// Nothing asks for focus on the new pane, so both backends open it in the background.
+		expect(splitSpec().focus).toBeUndefined();
 	});
 
 	it("splits the pane the placement chose, 50/50, on both backends' anchors", async () => {

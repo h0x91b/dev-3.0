@@ -29,18 +29,19 @@ import { useProjectPrivacy } from "../../sensitive-projects";
 export type NotificationTrafficStatus = "idle" | "loading" | "ready" | "failed";
 
 /**
- * Deliberately two fields.
+ * Deliberately three fields.
  *
- * The page also carries `oldestDay` / `newestDay` / `retentionDays` / `hasMore`,
- * and this hook used to pass all four through with nothing reading them. They are
- * not exposed until a surface asks: a getter nobody calls reads as a promise the
- * screen makes ("you can page this archive") that no code keeps. The store keeps
- * them, so adding one back is one line.
+ * The page also carries `newestDay` / `retentionDays` / `hasMore`, which nothing
+ * reads, so they are not exposed: a getter nobody calls reads as a promise the
+ * screen makes that no code keeps. `oldestDay` is here because the day calendar
+ * must reach the oldest archived notification. The store keeps the rest.
  */
 export interface NotificationTrafficView {
 	/** Oldest first, matching the timeline's reading order. */
 	events: TrafficNotificationEvent[];
 	status: NotificationTrafficStatus;
+	/** Oldest day on disk, `YYYY-MM-DD`; null when the archive is empty. Meaningful only once `status` is "ready". */
+	oldestDay: string | null;
 }
 
 function statusOf(state: {
@@ -98,5 +99,5 @@ export function useNotificationTraffic(
 					),
 		[state.rows, isLocked, key],
 	);
-	return { events, status: key === null ? "idle" : statusOf(state) };
+	return { events, status: key === null ? "idle" : statusOf(state), oldestDay: state.oldestDay };
 }

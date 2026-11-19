@@ -37,6 +37,8 @@ export async function spawnAgentInTask(params: {
 	bedrockProfile?: string | null;
 	/** Hand the new agent a retelling of this task's newest conversation. */
 	handoff?: boolean;
+	/** The user asked for this pane from the UI: focus moves to it. Absent → background. */
+	focus?: boolean;
 }): Promise<SpawnAgentResult> {
 	log.info("→ spawnAgentInTask", { taskId: params.taskId.slice(0, 8), agentId: params.agentId, configId: params.configId, handoff: params.handoff === true, promptChars: params.prompt?.length ?? 0 });
 
@@ -99,6 +101,7 @@ export async function spawnAgentInTask(params: {
 	};
 	let launchAccountId = params.accountId;
 	let launchBedrockProfile: string | null | undefined;
+	let projectLogin = false;
 	rememberVariantBedrockProfile(project.id, [params]);
 
 	if (params.agentId) {
@@ -109,6 +112,8 @@ export async function spawnAgentInTask(params: {
 		resolvedAgentFamily = resolved.agentFamily;
 		resolvedLaunchModel = resolved.launchModel;
 		if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
+		if (resolved.projectLoginKept) launchAccountId = undefined;
+		projectLogin = !!resolved.projectLoginKept;
 		launchBedrockProfile = resolved.resolvedBedrockProfile;
 		if (resolved.bedrockProfileMissing) await notifyBedrockProfileMissing(task);
 		launchedAgentId = resolved.agent?.id ?? params.agentId;
@@ -130,6 +135,8 @@ export async function spawnAgentInTask(params: {
 		resolvedAgentFamily = resolved.agentFamily;
 		resolvedLaunchModel = resolved.launchModel;
 		if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
+		if (resolved.projectLoginKept) launchAccountId = undefined;
+		projectLogin = !!resolved.projectLoginKept;
 		launchBedrockProfile = resolved.resolvedBedrockProfile;
 		if (resolved.bedrockProfileMissing) await notifyBedrockProfileMissing(task);
 		launchedAgentId = resolved.agent?.id ?? null;
@@ -184,6 +191,7 @@ export async function spawnAgentInTask(params: {
 			socket,
 			tmuxCommand: `bash "${scriptPath}"`,
 			nativeLaunch: generatedScriptLaunch(scriptPath),
+			focus: params.focus === true,
 		});
 	} catch (err) {
 		log.error("spawnAgentInTask failed", { taskId: params.taskId.slice(0, 8), error: String(err) });
@@ -209,9 +217,10 @@ export async function spawnAgentInTask(params: {
 		accountId: launchAccountId,
 		agentFamily: resolvedAgentFamily,
 		...(launchBedrockProfile !== undefined ? { bedrockProfile: launchBedrockProfile } : {}),
+		...(projectLogin ? { projectLogin: true } : {}),
 	};
 	if (handle.backend === "native") {
-		const { sessionId: _sessionId, paneId: _paneId, bedrockProfile: _bedrockProfile, ...attribution } = paneEntry;
+		const { sessionId: _sessionId, paneId: _paneId, bedrockProfile: _bedrockProfile, projectLogin: _projectLogin, ...attribution } = paneEntry;
 		await writeNativeAgentAttribution(scriptPath, attribution);
 	}
 	const existingPanes = task.sessionState?.panes ?? [];

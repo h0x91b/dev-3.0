@@ -86,7 +86,7 @@ const columns = {
 	"filter.flag.attention": "Требует внимания",
 	"filter.flag.port": "Есть открытый порт",
 	"filter.flag.hidden": "Скрыта из боковой панели",
-	"filter.flag.hibernated": "Заморожена или отключена",
+	"filter.flag.hibernated": "Заморожена или без агента",
 	"filter.flag.keepAlive": "Поддерживается активной",
 	"labels.moreLabels": "+{count} ещё",
 
