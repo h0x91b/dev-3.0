@@ -88,6 +88,8 @@ Claiming an agent is supported here means naming both. See
 
 Injected per-worktree at task launch.
 
+Cursor imports Claude's project hooks by default. On Cursor launch, dev3 refreshes inherited pre-tool status commands to the JSON adapter; Cursor receives its native response while Claude retains normal permission checks. Existing user hooks and settings are preserved. See [imported Claude pre-tool JSON](decisions/2026/11/19/cursor-imported-claude-pre-tool-json.md).
+
 Cursor's separate accounting hooks are user-level and intentionally include local sessions outside dev3, matching Claude/Codex's global usage scope. They install only when `~/.cursor` exists or a configured Cursor agent launches, and run only while the dev3 executable exists. Remove only dev3's accounting hooks with `dev3 install-hooks --remove-cursor` before uninstalling; custom hooks/settings remain untouched. See [usage collectors for major agents](decisions/2026/10/26/usage-collectors-for-major-agents.md).
 
 ### Claude Code

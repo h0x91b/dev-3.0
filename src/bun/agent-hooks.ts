@@ -14,6 +14,7 @@ import { createLogger } from "./logger";
 import { getAgentAdapter } from "../shared/agent-adapters/registry";
 import {
 	isDev3OwnedFolder,
+	refreshClaudePreToolHooks,
 	writeClaudeFlagSettings,
 	writeClaudeHooks,
 	writeCodexHooks,
@@ -124,6 +125,8 @@ export async function setupAgentHooks(
 	}
 
 	if (spec.kind === "cursor") {
+		const inherited = refreshClaudePreToolHooks(worktreePath);
+		if (inherited.skippedSymlink) log.warn("Inherited Claude pre-tool hook not refreshed: settings path crosses a symlink", { worktreePath, symlink: inherited.skippedSymlink });
 		try {
 			const result = await writeCursorUsageHooks(undefined, undefined, { create: true });
 			if (result.status === "skipped") log.warn("Cursor usage hooks not installed", { ...result });
