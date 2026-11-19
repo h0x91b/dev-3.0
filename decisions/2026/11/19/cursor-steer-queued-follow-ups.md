@@ -8,10 +8,13 @@ Cursor Agent puts a prompt submitted during a busy turn into a "follow-ups" queu
 - With a non-empty queue and an empty input, Cursor's Enter is the "steer" action (`queuedMessageEmptyInputAction`). Probed live: text, then Enter (queued), then Enter 800 ms later put the message into the running turn as a user message. The model listed it as message 2 of that turn. An extra Enter on an idle Cursor started no empty turn.
 
 ## Decision
-`AgentAdapter.enterSteersQueuedPrompt` (Cursor only) makes `agentPromptSubmitStages` in `src/bun/agent-prompt.ts` send a second Enter, with the usual 800 ms gap, for held messages and direct prompts. `paneSteersQueuedPrompt` reads the pane's agent from `sessionState.panes`.
+`AgentAdapter.enterSteersQueuedPrompt` (Cursor only) drives `scheduleQueuedPromptSteer` in `src/bun/agent-prompt.ts`. It presses one more Enter 800 ms after a held message or direct prompt is submitted, on tmux (`steerTmuxPane`) and native (`submitNative` in `agent-prompt-native.ts`). The pane's agent is read from `sessionState.panes`. The steer runs as its own step, so a refused or skipped steer never changes the held message's verdict: that message is already submitted.
 
 ## Risks
-Steering only moves the queue head, so a follow-up the user queued first goes in instead and ours stays queued. That is still an improvement. Steering can background a running shell, and Cursor then awaits it. If the user starts typing inside the 800 ms gap, the second Enter submits that partial line. The first Enter already has the same exposure.
+- **User typing:** a keystroke after the submit (`humanTypedSince` in `agent-message-hold.ts`) cancels the steer, so a fresh draft is never sent.
+- **Queue order:** steering moves only the head of the queue. A follow-up the user queued first goes in instead, and ours stays queued.
+- **Running shell:** steering can background a running shell; Cursor then waits for it.
+- **Not covered:** panes without a session entry (the AI-review column pane, a main entry whose pane id is still unknown) and native deliveries forwarded to another app process keep one Enter, the old behaviour.
 
 ## Alternatives considered
 A Cursor `postToolUse` mailbox: rejected, because the model ignores hook context as untrusted output. Waiting for Cursor's `stop` hook `followup_message`: it still only fires when the turn ends.

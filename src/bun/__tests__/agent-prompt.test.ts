@@ -504,6 +504,16 @@ describe("a Cursor pane gets one more Enter, which steers a queued follow-up int
 		expect(sentChunks(2)).toEqual([{ keys: ["Enter"] }]);
 	});
 
+	it("skips the steer Enter when the user typed after the submit, so his draft is never sent", async () => {
+		await holdMessageForPane(CURSOR_TASK, "%1", "check CI");
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS + AGENT_PROMPT_ENTER_DELAY_MS);
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
+
+		deferHeldAgentMessagesForTask(TASK_ID);
+		await vi.advanceTimersByTimeAsync(2 * AGENT_PROMPT_ENTER_DELAY_MS);
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
+	});
+
 	it("does the same for a direct prompt, and keeps a Claude pane at one Enter", async () => {
 		const cursor = sendPromptToAgentPane(CURSOR_TASK, "commit", [cursorPane]);
 		await vi.advanceTimersByTimeAsync(2 * AGENT_PROMPT_ENTER_DELAY_MS);
