@@ -418,18 +418,6 @@ export interface MatcherGroup {
 
 type HookMap = Record<string, MatcherGroup[]>;
 
-function buildMoveCommand(
-	status: string,
-	extra?: string,
-	options?: { codexStopHook?: boolean },
-	dialect: HookCliDialect = DEFAULT_DIALECT,
-): string {
-	const parts = [`${dialect.cli} task move --status ${status}`];
-	if (extra) parts.push(extra);
-	if (options?.codexStopHook) parts.push(CODEX_STOP_HOOK_FLAG);
-	return parts.join(" ");
-}
-
 // Status-move hooks must not hard-fail when the desktop app is down. The CLI
 // exits `CLI_EXIT_CODE_APP_NOT_RUNNING` (2) in that case — but exit code 2 is
 // ALSO how both Claude Code and Codex signal a *blocking* hook error (Claude:
@@ -454,22 +442,13 @@ function buildStopGroups(
 	stopTarget: TaskStatus,
 	dialect: HookCliDialect,
 ): MatcherGroup[] {
-	const move = (status: string, extra?: string) =>
-		withAppOfflineTolerance(buildMoveCommand(status, extra, undefined, dialect), dialect);
-
-	// The review group is unconditional: AI Review can be started by hand even
-	// when automatic review is off, and its reviewer shares these hooks (#1803).
-	return [
-		{
-			hooks: [
-				{ type: "command", command: move(stopTarget, "--if-status in-progress") },
-				{ type: "command", command: `${dialect.cli} hook claude-turn-ended`, timeout: 5 },
-			],
-		},
-		{
-			hooks: [{ type: "command", command: move("review-by-user", "--if-status review-by-ai") }],
-		},
-	];
+	return [{
+		hooks: [{
+			type: "command",
+			command: withAppOfflineTolerance(`${dialect.cli} hook claude-turn-ended --stop-target ${stopTarget}`, dialect),
+			timeout: 5,
+		}],
+	}];
 }
 
 /**
@@ -511,16 +490,6 @@ function withTaskEnvGuard(command: string, dialect: HookCliDialect): string {
 }
 
 /**
- * The adapter exits 0 on every runtime failure, so `||` reaches the plain move only
- * when the installed CLI predates the subcommand and rejects it as unknown. Windows
- * has no tmux, so no mailbox to drain, and no shell for `||`: it keeps the plain move.
- */
-function claudePostToolCommand(workingCmd: string, dialect: HookCliDialect): string {
-	if (!dialect.posixShell) return workingCmd;
-	return `${dialect.cli} ${CLAUDE_POST_TOOL_HOOK_SUBCOMMAND} || ${workingCmd}`;
-}
-
-/**
  * True when `folder` is a working directory dev3 created and removes with the
  * task: a worktree or ops folder under the dev3 home, or an in-project task dir.
  */
@@ -551,16 +520,9 @@ function buildUnguardedClaudeHooks(
 ): HookMap {
 	const stopTarget: TaskStatus = options?.stopTarget ?? "review-by-user";
 	const dialect = options?.dialect ?? DEFAULT_DIALECT;
-	const move = (status: string, extra?: string) =>
-		withAppOfflineTolerance(buildMoveCommand(status, extra, undefined, dialect), dialect);
 
-	// Working hook: move to in-progress, but NOT when in review-by-ai
-	// (the review agent shares the same hooks file and must not flip status).
-	// review-by-user is intentionally allowed: when the user leaves feedback
-	// and the primary agent resumes, UserPromptSubmit should move the task back.
-	// PostToolUse also covers answers submitted to AskUserQuestion, which resume
-	// an existing tool call without emitting a new user prompt event.
-	const workingCmd = move("in-progress", "--if-status-not review-by-ai");
+	// Older installed CLIs may exit 2 before dispatching an unknown hook while offline.
+	const beforeTool = withAppOfflineTolerance(`${dialect.cli} hook claude-pre-tool`, dialect);
 
 	return {
 		SessionStart: [
@@ -583,7 +545,7 @@ function buildUnguardedClaudeHooks(
 			},
 		],
 		PreToolUse: [
-			{ hooks: [{ type: "command", command: workingCmd }] },
+			{ hooks: [{ type: "command", command: beforeTool }] },
 			...(options?.fileLeases
 				? [{
 					matcher: CLAUDE_CLAIM_MATCHER,
@@ -592,11 +554,18 @@ function buildUnguardedClaudeHooks(
 				: []),
 		],
 		PostToolUse: [
-			{ hooks: [{ type: "command", command: claudePostToolCommand(workingCmd, dialect) }] },
+			{ hooks: [{ type: "command", command: withAppOfflineTolerance(`${dialect.cli} ${CLAUDE_POST_TOOL_HOOK_SUBCOMMAND}`, dialect) }] },
 		],
+		PostToolUseFailure: [{ hooks: [{ type: "command", command: beforeTool }] }],
+		SubagentStop: [{ hooks: [{ type: "command", command: beforeTool }] }],
+		TeammateIdle: [{ hooks: [{ type: "command", command: beforeTool }] }],
 		PermissionRequest: [
-			{ hooks: [{ type: "command", command: move("user-questions") }] },
+			{ hooks: [{ type: "command", command: beforeTool }] },
 		],
+		Notification: [{
+			matcher: "permission_prompt|elicitation_dialog",
+			hooks: [{ type: "command", command: beforeTool }],
+		}],
 		Stop: buildStopGroups(stopTarget, dialect),
 		SessionEnd: [{ hooks: [{ type: "command", command: `${dialect.cli} hook claude-turn-ended`, timeout: 5 }] }],
 		// No matcher: every API error that killed the turn leaves the agent idle at

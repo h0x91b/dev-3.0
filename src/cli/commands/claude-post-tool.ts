@@ -1,21 +1,7 @@
 import type { CliContext } from "../context";
 import { sendRequest } from "../socket-client";
 import { claudeHookPaneId } from "./claude-prompt";
-
-/**
- * What matters in Claude Code's `PostToolUse` payload. `agent_id` is present only
- * when the tool ran inside a subagent or an in-process teammate: that agent is not
- * the pane's own conversation, so it never takes the pane's held messages.
- */
-function parsePayload(rawInput: string): { subagent: boolean } | null {
-	try {
-		const parsed = JSON.parse(rawInput) as Record<string, unknown>;
-		if (parsed.hook_event_name !== "PostToolUse") return null;
-		return { subagent: typeof parsed.agent_id === "string" && parsed.agent_id !== "" };
-	} catch {
-		return null;
-	}
-}
+import { parseClaudeToolStatus } from "../../shared/claude-status-hook";
 
 /**
  * The hook output that hands Claude the drained messages next to the tool result.
@@ -47,12 +33,14 @@ export async function handleClaudePostTool(
 	env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
 	if (!socketPath || !context?.taskId) return;
-	const payload = parsePayload(rawInput);
-	const paneId = payload && !payload.subagent ? claudeHookPaneId(env) : undefined;
+	const status = parseClaudeToolStatus(rawInput);
+	if (!status || status.event !== "PostToolUse") return;
+	const paneId = !status.agentId ? claudeHookPaneId(env) : undefined;
 	try {
 		const response = await sendRequest(socketPath, "task.claudePostToolUse", {
 			taskId: context.taskId,
 			...(context.projectId ? { projectId: context.projectId } : {}),
+			...status,
 			...(paneId ? { paneId } : {}),
 		});
 		if (!response.ok) {

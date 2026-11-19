@@ -1,3 +1,5 @@
+Superseded in part on 2026-11-12 by `decisions/2026/11/12/claude-background-tools-preserve-approval-waits.md`: background tool calls no longer move parent status, and both platforms use the adapter without a plain-move fallback. Mailbox delivery remains unchanged.
+
 # Busy Claude agents take held messages through their PostToolUse hook
 
 ## Context

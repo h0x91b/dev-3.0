@@ -69,8 +69,8 @@ export async function handleInstallHooks(options: { removeCursor?: boolean } = {
 		process.stdout.write(`Installed Claude Code hooks → ${claudeSettingsPath}\n`);
 		process.stdout.write(`  SessionStart (startup/clear/compact) → recent task notes as context\n`);
 		process.stdout.write(`  UserPromptSubmit → in-progress\n`);
-		process.stdout.write(`  PreToolUse → in-progress\n`);
-		process.stdout.write(`  PermissionRequest → user-questions\n`);
+		process.stdout.write(`  PreToolUse/PostToolUse → resume work without clearing another agent's approval\n`);
+		process.stdout.write(`  PermissionRequest / permission or elicitation notification → user-questions\n`);
 		process.stdout.write(`  Stop → review-by-user\n`);
 	}
 	if (codexSymlink) {
