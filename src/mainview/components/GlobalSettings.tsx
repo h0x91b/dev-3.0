@@ -508,6 +508,15 @@ function GlobalSettings({
 		},
 		[persistSettingChange],
 	);
+	const handleAutoHibernateChange = useCallback(
+		(minutes: number) => persistSettingChange({ autoHibernateMinutes: minutes }),
+		[persistSettingChange],
+	);
+
+	const handleAutoHibernateConfirmChange = useCallback(
+		(minutes: number) => persistSettingChange({ autoHibernateConfirmMinutes: minutes }),
+		[persistSettingChange],
+	);
 
 	const handleTipsDisabledToggle = useCallback(
 		(disabled: boolean) => {
@@ -1102,6 +1111,8 @@ function GlobalSettings({
 							onCompletionOfferStyleChange={handleCompletionOfferStyleChange}
 							onPrOriginTaskLinkToggle={handlePrOriginTaskLinkToggle}
 							onAgentLaunchAutoApproveChange={handleAgentLaunchAutoApproveChange}
+							onAutoHibernateChange={handleAutoHibernateChange}
+							onAutoHibernateConfirmChange={handleAutoHibernateConfirmChange}
 							prOriginTaskLinkSupported={prOriginTaskLinkSupported}
 							onTaskSortOrderChange={handleTaskSortOrderChange}
 							onTaskOpenModeChange={handleTaskOpenModeChange}

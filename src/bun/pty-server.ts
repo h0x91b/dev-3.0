@@ -40,6 +40,7 @@ import {
 } from "./native-task-panes";
 import { paneSessionKey, parsePaneSessionKey } from "../shared/pane-session-key";
 import { deferHeldAgentMessagesForTask, flushHeldAgentMessagesForTask } from "./agent-message-hold";
+import { recordTaskActivity } from "./task-activity";
 import { scanHumanTerminalInput } from "../shared/human-terminal-input";
 import { batchWindowMs, isBackedUp } from "./pty-backpressure";
 import { forgetSession, noteBytesIn, noteFlush, noteQueued, noteWindow } from "./pty-throughput";
@@ -170,6 +171,7 @@ interface PtySession {
 	 * deleting `taskId` for pane 2 would drop pane 1 instead.
 	 */
 	registryKey: string;
+	lastOutputAt: number;
 	/** Guards against two concurrent reattach attempts for one native session. */
 	nativeAttaching: boolean;
 	/** The host binding is being replaced; no viewer may be told it is the writer. */
@@ -331,6 +333,7 @@ export function createSession(
 		proc: null,
 		native: null,
 		registryKey: taskId,
+		lastOutputAt: Date.now(),
 		nativeAttaching: false,
 		nativeRecovering: false,
 		nativeStream: null,
@@ -361,6 +364,10 @@ export function createSession(
 /** Feed one chunk of PTY bytes through the same pipeline both backends share. */
 function ingestPtyOutput(session: PtySession, data: string | Uint8Array): void {
 	const str = typeof data === "string" ? data : session.decoder.decode(data, { stream: true });
+	if (session.backend === "native") {
+		session.lastOutputAt = Date.now();
+		recordTaskActivity(session.taskId, session.lastOutputAt);
+	}
 	const cleaned = handleOsc52(str, session);
 	checkForBell(cleaned, session.taskId);
 	if (!cleaned) return;
@@ -493,6 +500,7 @@ export async function createNativeTaskSession(
 		proc: null,
 		native: null,
 		registryKey: taskId,
+		lastOutputAt: Date.now(),
 		nativeAttaching: false,
 		nativeRecovering: false,
 		nativeStream: new NativeBridgeJournal(),
@@ -577,6 +585,7 @@ export async function reattachNativeTaskSession(taskId: string, projectId: strin
 		proc: null,
 		native: null,
 		registryKey: taskId,
+		lastOutputAt: Date.now(),
 		nativeAttaching: false,
 		nativeRecovering: false,
 		nativeStream: new NativeBridgeJournal(),
@@ -665,6 +674,7 @@ export async function ensureNativePanePtySession(
 		proc: null,
 		native: null,
 		registryKey: key,
+		lastOutputAt: Date.now(),
 		nativeAttaching: false,
 		nativeRecovering: false,
 		nativeStream: new NativeBridgeJournal(),
@@ -973,6 +983,13 @@ export function getActiveSessionIds(): Array<{ taskId: string; tmuxSocket: strin
 
 export function getSessionTmuxName(key: string): string {
 	return sessions.get(key)?.tmuxSessionName ?? computeTmuxSessionName(key, "task");
+}
+
+/** Detached native sessions have no observable output clock in this process. */
+export function getNativeTaskOutputTime(taskId: string, paneIds: string[]): number | null {
+	const native = [...sessions.values()].filter(session => session.taskId === taskId && session.backend === "native" && session.native && !session.nativeAttaching);
+	if (!paneIds.length || paneIds.some(id => !native.some(session => session.native?.paneId === id))) return null;
+	return native.length ? Math.max(...native.map(session => session.lastOutputAt)) : null;
 }
 
 export function getSessionType(key: string): PtySessionType | null {
@@ -1340,6 +1357,7 @@ function effectiveNativeRole(session: PtySession, ws: any): NativeStreamRole {
  * split across frames would otherwise have its content read as keypresses.
  */
 export function noteHumanTerminalInput(session: PtySession, ws: any, data: string): void {
+	recordTaskActivity(session.taskId);
 	const scan = scanHumanTerminalInput(data, ws.inBracketedPaste === true);
 	ws.inBracketedPaste = scan.inPaste;
 	if (scan.submitted) flushHeldAgentMessagesForTask(session.taskId);

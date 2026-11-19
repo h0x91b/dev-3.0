@@ -1,3 +1,4 @@
+import AutoHibernateSuggestions from "./components/AutoHibernateSuggestions";
 import InterfaceOnboarding from "./components/InterfaceOnboarding";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAppState, canGoBack, routeTaskId, routeShowsTaskWorkspace, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, taskOpenRoute, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type NavigateOptions, type Route } from "./state";
@@ -1920,6 +1921,15 @@ function App() {
 		return () => window.removeEventListener("rpc:taskUpdated", onTaskUpdated);
 	}, [dispatch]);
 
+	useEffect(() => {
+		const onAutoHibernate = (event: Event) => {
+			const { taskId, projectId } = (event as CustomEvent).detail;
+			toast.info(t("task.autoHibernated"), { taskId, projectId });
+		};
+		window.addEventListener("rpc:taskAutoHibernated", onAutoHibernate);
+		return () => window.removeEventListener("rpc:taskAutoHibernated", onAutoHibernate);
+	}, [t]);
+
 	// A task left a project's board (deleted, or moved to another project). Scoped to
 	// the source project so a window viewing a move's TARGET keeps the just-added card.
 	useEffect(() => {
@@ -2939,6 +2949,7 @@ function App() {
 		const taskId = routeTaskId(route);
 		void api.request.setActiveContext?.({ projectId, taskId })?.catch?.(() => { /* best-effort */ });
 	}, [state.route]);
+
 
 	// Publish the sensitive ids so surfaces that only know a projectId (tmux
 	// sessions, notification payloads) can ask for the privacy verdict.
@@ -4102,6 +4113,7 @@ function App() {
 			{/* Agents block on these answers, and confirm() declines when no host is
 			    mounted — so the hosts stay up in immersive fullscreen too. */}
 			<ConfirmHost onBusyChange={setConfirmBusy} />
+			<AutoHibernateSuggestions blocked={!settingsLoaded || confirmBusy || !!pendingAgentRequest} />
 			<CompletionOfferDialogHost ready={settingsLoaded} />
 			{!confirmBusy && pendingAgentRequest && ("env" in pendingAgentRequest ? (
 				<SecretRequestModal key={pendingAgentRequest.requestId} request={pendingAgentRequest}
