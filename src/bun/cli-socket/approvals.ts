@@ -1,7 +1,7 @@
 import type { AgentMessageSource, Project, ResetKeptBranch, Task, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus } from "../../shared/types";
 import { agentReplyCommand, seqIsShared } from "../../shared/agent-message-envelope";
 import { type ExternalSenderRequester, isExternalSenderRequester } from "../../shared/external-senders";
-import { ACTIVE_STATUSES, DEFAULT_PRIORITY, agentLaunchAutoApproveMs, buildTaskDialogSubject, getTaskTitle, isCoordinatorTask, isOpsWorktreeTask, taskNeedsReset, taskResetConsent, taskUsesWorktree } from "../../shared/types";
+import { ACTIVE_STATUSES, DEFAULT_PRIORITY, agentLaunchAutoApproveMs, getPrimaryStopTarget, buildTaskDialogSubject, getTaskTitle, isCoordinatorTask, isOpsWorktreeTask, taskNeedsReset, taskResetConsent, taskUsesWorktree } from "../../shared/types";
 import { coordinatorLaunchDefault } from "../../shared/coordinator-launch";
 import { getAllAgents } from "../agents";
 import { createAgentRequest, getAgentRequestState, joinAgentRequest, setAgentRequestLaunchChoice, voidAgentRequest } from "../agent-requests";
@@ -17,6 +17,7 @@ import { type ApprovalReason, approvalReasonFromParams, normalizeApprovalReason 
 import { awaitLaunchPreparation } from "./launch-preparation";
 import type { LaunchPreparationOutcome } from "../../shared/launch-preparation";
 import type { ResolvedDependency } from "../../shared/task-dependencies";
+import { log } from "./shared";
 
 export function approvalStatusOf(kind: DestructiveApprovalKind, task: Task): AgentApprovalStatus {
 	const known = getAgentRequestState(kind, task.id);
@@ -65,6 +66,58 @@ async function voidIfRunEndedMeanwhile(
 	if (ended) voidAgentRequest(kind, task.id);
 }
 
+/**
+ * The agent is blocked on the user's answer, so its task is a question, not work.
+ * Guarded moves, so a status someone else set in the meantime is never overwritten.
+ * No badge: the ask itself is the cue, and it ends when the user answers.
+ */
+async function parkWhileAsking(project: Project, task: Task): Promise<boolean> {
+	if (task.status !== "in-progress") return false;
+	try {
+		const moved = await moveTask({ taskId: task.id, projectId: project.id, newStatus: "user-questions", ifStatus: "in-progress", skipQuestionsBadge: true });
+		return moved?.status === "user-questions";
+	} catch (err) {
+		log.warn("Could not park the asking task in Has Questions", { taskId: task.id.slice(0, 8), error: String(err) });
+		return false;
+	}
+}
+
+/**
+ * A waiting agent goes back to work. An agent that stopped waiting may have ended
+ * its turn while parked, and its Stop hook (guarded on in-progress) moved nothing,
+ * so the task takes the move that hook would have made.
+ */
+async function unparkAfterDecline(project: Project, task: Task, askerWaiting: boolean): Promise<void> {
+	const newStatus = askerWaiting ? "in-progress" : getPrimaryStopTarget(project.autoReviewEnabled, task.taskType);
+	try {
+		await moveTask({ taskId: task.id, projectId: project.id, newStatus, ifStatus: "user-questions" });
+	} catch (err) {
+		log.warn("Could not move the declined task out of Has Questions", { taskId: task.id.slice(0, 8), newStatus, error: String(err) });
+	}
+}
+
+/** Connections of every CLI waiting on a request: the original ask, retries, re-attaches. */
+const waiterSignalsByRequestId = new Map<string, Set<AbortSignal | undefined>>();
+
+function addWaiter(requestId: string, decision: Promise<unknown>, signal: AbortSignal | undefined): void {
+	let waiters = waiterSignalsByRequestId.get(requestId);
+	if (!waiters) {
+		waiters = new Set();
+		waiterSignalsByRequestId.set(requestId, waiters);
+		// After every waiter's continuation has read the set.
+		void decision.finally(() => setTimeout(() => waiterSignalsByRequestId.delete(requestId), 0));
+	}
+	waiters.add(signal);
+}
+
+/** A caller with no connection (an in-process call) counts as waiting. */
+function askerStillWaiting(requestId: string): boolean {
+	for (const signal of waiterSignalsByRequestId.get(requestId) ?? []) {
+		if (!signal?.aborted) return true;
+	}
+	return false;
+}
+
 function isPendingRequest(kind: "complete" | "cancel" | "reset" | "launch", taskId: string, requestId: string): boolean {
 	const state = getAgentRequestState(kind, taskId);
 	return state.state === "pending" && state.requestId === requestId;
@@ -104,6 +157,7 @@ export const SELF_COMPLETION_NOT_ALLOWED =
 export async function requestDestructiveApproval(
 	kind: DestructiveApprovalKind,
 	params: Record<string, unknown>,
+	signal?: AbortSignal,
 ): Promise<{ approved: boolean; task?: Task; stale?: boolean; taskStatus?: TaskStatus | null; plainMove?: boolean; keptBranches?: ResetKeptBranch[] } | AgentApprovalNotAttached> {
 	const { project, task } = await resolveTaskFromParams(params);
 	// A clean To Do card, a draft, a completed/cancelled task: moving it to To Do
@@ -158,6 +212,7 @@ export async function requestDestructiveApproval(
 		await voidIfRunEndedMeanwhile(kind, project, task);
 	}
 	const stillAsking = isPendingRequest(kind, task.id, request.requestId);
+	if (stillAsking) addWaiter(request.requestId, request.decision, signal);
 
 	// Pushed on EVERY attempt, joined retries and re-attaches included. A retry
 	// used to push nothing, so once a client lost the original dialog the request
@@ -169,9 +224,14 @@ export async function requestDestructiveApproval(
 		});
 	}
 
+	// Only the task's own agent is blocked by its ask; a peer's ask leaves it working.
+	const ownAgentAsks = params.sourceTaskId === task.id;
+	const parked = stillAsking && ownAgentAsks && params.attachOnly !== true && await parkWhileAsking(project, task);
+
 	const { approved, stale, attachedRepo } = await request.decision;
 	if (!approved) {
 		resetConsentByRequestId.delete(request.requestId);
+		if (parked && !stale) await unparkAfterDecline(project, task, askerStillWaiting(request.requestId));
 		if (!stale) return { approved: false };
 		// Voided: the task finished or vanished by another path. Its live status lets
 		// the CLI tell "already where you asked" apart from "ended some other way".
