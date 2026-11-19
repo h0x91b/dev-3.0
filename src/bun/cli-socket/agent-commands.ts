@@ -11,6 +11,7 @@ import { capturePaneSession, taskCodexHomes } from "./pane-sessions";
 import { isInteractiveCodexConversation } from "../codex-resume-home";
 import { noteAgentExited, noteAgentSessionActive, noteAgentSessionStarted } from "../agent-session-receipts";
 import { forgetClaudeSessionDump } from "../rate-limit-monitor";
+import { recordLaunchFailure } from "../agent-launch-failure";
 import { log, type Handler, withSenderVariant } from "./shared";
 import { requirePaneTask, resolveRequesterTask, resolveTaskFromParams, resumeAccountParam, senderRequester } from "./task-resolution";
 import { claudeSessionWatches, type ClaudeIdleEvent } from "../claude-session-watch";
@@ -129,6 +130,8 @@ export const agentHandlers: Record<string, Handler> = {
 		const verdict = noteAgentExited(task.id, sessionId, exitCode);
 		if (!verdict) return { moved: false };
 		log.info("Launched agent exited", { taskId: task.id.slice(0, 8), verdict, exitCode });
+		// Before the card moves: the pane still shows what the agent printed.
+		await recordLaunchFailure(project, task, { exitCode, sessionId, neverStarted: verdict === "early" }, (payload) => getPushMessage()?.("taskUpdated", payload));
 		if (task.status !== "in-progress" || task.hibernated) return { moved: false };
 		await moveTask({ projectId: project.id, taskId: task.id, newStatus: "user-questions", ifStatus: "in-progress", skipQuestionsBadge: true });
 		const code = exitCode === null ? "" : ` (exit code ${exitCode})`;

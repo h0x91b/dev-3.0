@@ -342,6 +342,9 @@ export async function launchTaskPty(
 		/** A resume whose pane has no conversation left of its own: start it on this
 		 *  new id, with no brief, rather than `--continue` into another pane's. */
 		freshSessionId?: string;
+		/** With `freshSessionId`: the first launch never created its conversation, so the
+		 *  new one gets the original task description instead of an empty brief. */
+		freshWithTaskPrompt?: boolean;
 	},
 ): Promise<string | null | undefined> {
 	// First, before any trust/hook/config write: tmux would start a missing cwd in $HOME.
@@ -382,10 +385,16 @@ export async function launchTaskPty(
 	stopSetupFailureWatch(task.id);
 	clearSetupExitCode(task.id);
 
+	// A new agent run supersedes the previous run's failure, but a reconnect or a plain shell is no run.
+	if (task.launchFailure && !skipSessionPersist && !opts?.shellNotice) {
+		await data.updateTask(project, task.id, { launchFailure: undefined });
+		task.launchFailure = undefined;
+	}
+
 	const resumeFresh = resume && !!opts?.freshSessionId;
 	const ctx: agents.TemplateContext = {
 		taskTitle: task.title,
-		taskDescription: resumeFresh ? "" : task.description,
+		taskDescription: resumeFresh && !opts?.freshWithTaskPrompt ? "" : task.description,
 		projectName: project.name,
 		projectPath: rootProject.path,
 		worktreePath,

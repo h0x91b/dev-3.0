@@ -174,6 +174,12 @@ export interface Task {
 	 */
 	agentExitedAt?: string;
 	/**
+	 * Why the launched agent died: set by the launch wrapper's exit report, cleared by
+	 * the next launch or Claude's SessionStart. `neverStarted` means no conversation
+	 * was created, so `sessionId` must never be resumed.
+	 */
+	launchFailure?: { exitCode: number | null; at: string; output: string | null; neverStarted: boolean; sessionId: string };
+	/**
 	 * Legacy manual position inside a column. Nothing reads or writes it any more —
 	 * in-column order is derived from priority + the activity clock (see
 	 * sortTasks.ts). Declared only so older values already sitting in `tasks.json`

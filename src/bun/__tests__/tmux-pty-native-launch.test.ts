@@ -1042,3 +1042,41 @@ describe("launch registration of a fresh Claude session", () => {
 		expect(agentSessionRecord(TASK_ID, "fresh-1")?.launchedAt).not.toBeNull();
 	});
 });
+
+describe("a new launch supersedes the previous run's failure", () => {
+	const failure = { exitCode: 2, at: "2026-11-19T10:00:00Z", output: null, neverStarted: true, sessionId: "dead-1" };
+	const clears = () => vi.mocked(data.updateTask).mock.calls.filter(([, , updates]) => "launchFailure" in updates);
+
+	it("clears the failure when an agent launches", async () => {
+		await launchTaskPty(makeProject(), makeTask({ launchFailure: failure }), WORKTREE);
+		expect(clears()).toHaveLength(1);
+		expect(clears()[0][2]).toEqual({ launchFailure: undefined });
+	});
+
+	it("writes nothing when there is no failure to clear", async () => {
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+		expect(clears()).toHaveLength(0);
+	});
+
+	it.each([
+		["a reconnect", { skipSessionPersist: true }],
+		["a plain shell", { shellNotice: "parked" }],
+	])("keeps the failure through %s", async (_label, opts) => {
+		await launchTaskPty(makeProject(), makeTask({ launchFailure: failure }), WORKTREE, null, null, false, false, opts);
+		expect(clears()).toHaveLength(0);
+	});
+});
+
+describe("a fresh launch after a first launch that never created a conversation", () => {
+	const promptOf = () => vi.mocked(agents.resolveCommandForProject).mock.calls.slice(-1)[0]?.[2];
+
+	it("sends the original task description as the prompt", async () => {
+		await launchTaskPty(makeProject(), makeTask({ description: "Fix the login bug" }), WORKTREE, null, null, false, true, { freshSessionId: "fresh-1", freshWithTaskPrompt: true });
+		expect(promptOf()).toBe("Fix the login bug");
+	});
+
+	it("keeps the empty brief for a healed pane that starts on a new conversation", async () => {
+		await launchTaskPty(makeProject(), makeTask({ description: "Fix the login bug" }), WORKTREE, null, null, false, true, { freshSessionId: "fresh-1" });
+		expect(promptOf()).toBe("");
+	});
+});

@@ -29,6 +29,14 @@ export interface ResumeTarget {
 	startFresh: boolean;
 	/** A transcript for `sessionId` was actually found on disk. False when the store could not be read. */
 	verified: boolean;
+	/** A store dir exists but cannot be read, so nothing was healed: `sessionId` is the stored one, unchanged. */
+	unreadable?: UnreadableStore;
+}
+
+/** A store dir that exists but failed to list, e.g. `EACCES`. */
+export interface UnreadableStore {
+	dir: string;
+	code: string;
 }
 
 /** What the resolver needs of one stored pane. */
@@ -91,7 +99,7 @@ export function resolveResumableSessionIds(
 ): ResumeTarget[] {
 	const targets: ResumeTarget[] = new Array(panes.length);
 	const claimed = new Set<string>();
-	const snapshots = new Map<string, string[]>();
+	const snapshots = new Map<string, { ids: string[]; unreadable: UnreadableStore | null }>();
 	const unresolved: { index: number; ids: string[] }[] = [];
 
 	panes.forEach((pane, index) => {
@@ -102,14 +110,21 @@ export function resolveResumableSessionIds(
 			return;
 		}
 		const key = [store.ext, ...store.dirs].join("\0");
-		let ids = snapshots.get(key);
-		if (!ids) {
-			ids = sessionIdsNewestFirst(store.dirs, store.ext);
-			snapshots.set(key, ids);
+		let snapshot = snapshots.get(key);
+		if (!snapshot) {
+			const unreadable: UnreadableStore[] = [];
+			snapshot = { ids: sessionIdsNewestFirst(store.dirs, store.ext, unreadable), unreadable: unreadable[0] ?? null };
+			snapshots.set(key, snapshot);
 		}
+		const { ids } = snapshot;
 		if (stored && !claimed.has(stored) && (ids.includes(stored) || inOriginStore(pane, stored, home) || inSiblingStore(store, stored))) {
 			claimed.add(stored);
 			targets[index] = { sessionId: stored, substituted: false, startFresh: false, verified: true };
+			return;
+		}
+		// A history that cannot be listed looks empty; healing from it would silently move the pane off its conversation.
+		if (snapshot.unreadable) {
+			targets[index] = { sessionId: stored, substituted: false, startFresh: false, verified: false, unreadable: snapshot.unreadable };
 			return;
 		}
 		unresolved.push({ index, ids });
@@ -168,14 +183,16 @@ function inAnyStoreUnder(projectsDir: string, id: string, ext: string): boolean 
 	return entries.some((entry) => existsSync(`${projectsDir}/${entry}/${id}${ext}`));
 }
 
-/** Session ids across all store dirs, newest transcript first. */
-function sessionIdsNewestFirst(dirs: readonly string[], ext: string): string[] {
+/** Session ids across all store dirs, newest transcript first. A dir that exists but fails to list is reported in `unreadable`. */
+function sessionIdsNewestFirst(dirs: readonly string[], ext: string, unreadable?: UnreadableStore[]): string[] {
 	const found: { id: string; mtimeMs: number }[] = [];
 	for (const dir of dirs) {
 		let names: string[];
 		try {
 			names = readdirSync(dir).filter((f) => f.endsWith(ext) && f.length > ext.length);
-		} catch {
+		} catch (err) {
+			const code = (err as NodeJS.ErrnoException).code ?? "UNKNOWN";
+			if (code !== "ENOENT") unreadable?.push({ dir, code });
 			continue;
 		}
 		for (const name of names) {

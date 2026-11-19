@@ -49,7 +49,9 @@ export type ResumeUnavailableReason =
 	/** A requested account cannot apply: unknown, "auto", or no saved pane runs Claude. */
 	| "account-invalid"
 	/** The requested account's config dir has no transcript for a saved Claude conversation. */
-	| "account-cannot-see-conversation";
+	| "account-cannot-see-conversation"
+	/** A conversation store exists but cannot be read now, so no pane may be moved off its saved conversation. */
+	| "history-unreadable";
 
 export type CliResumeOutcome =
 	| { outcome: "resumed"; resume: TaskResumeResult }

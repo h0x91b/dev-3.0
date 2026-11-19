@@ -2,10 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Task } from "../../shared/types";
 
 const fixtures = vi.hoisted(() => ({ task: {} as Task }));
+const pushMessage = vi.hoisted(() => vi.fn());
 vi.mock("../cli-socket/task-resolution", () => ({
 	resolveTaskFromParams: async () => ({ project: { id: "project" }, task: fixtures.task }),
 }));
+vi.mock("../data", async (importOriginal) => ({ ...(await importOriginal<typeof import("../data")>()), updateTask: vi.fn(), updateTaskWith: vi.fn() }));
 vi.mock("../rpc-handlers", () => ({
+	getPushMessage: vi.fn(() => pushMessage),
 	moveTask: vi.fn(async (params) => {
 		if (fixtures.task.status === params.ifStatus) fixtures.task = { ...fixtures.task, status: params.newStatus };
 		return fixtures.task;
@@ -18,6 +21,8 @@ vi.mock("../rate-limit-monitor", () => ({ forgetClaudeSessionDump: vi.fn() }));
 
 import { agentHandlers } from "../cli-socket/agent-commands";
 import { moveTask, pushCliAttention } from "../rpc-handlers";
+import * as data from "../data";
+import { tmux } from "../tmux";
 import { forgetClaudeSessionDump } from "../rate-limit-monitor";
 import { agentSessionRecord, noteAgentLaunched, resetAgentSessionRecordsForTests } from "../agent-session-receipts";
 
@@ -30,6 +35,11 @@ const sessionStarted = (paneId = "%1") =>
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	vi.spyOn(tmux, "capturePane").mockResolvedValue("");
+	vi.mocked(data.updateTaskWith).mockImplementation((async (_p: unknown, _id: string, mutator: (t: Task) => { updates: Partial<Task>; result: unknown }) => {
+		const { updates, result } = mutator(fixtures.task);
+		return { task: { ...fixtures.task, ...updates }, result };
+	}) as never);
 	resetAgentSessionRecordsForTests();
 	fixtures.task = {
 		id: "task", projectId: "project", status: "in-progress", worktreePath: "/tmp/wt",
@@ -156,5 +166,86 @@ describe("the started-session receipt", () => {
 		expect(agentSessionRecord("task", SESSION)).toMatchObject({ paneId: "%7" });
 		expect(agentSessionRecord("task", SESSION)?.startedAt).not.toBeNull();
 		expect(moveTask).not.toHaveBeenCalled();
+	});
+});
+
+describe("the failed launch's cause is kept on the task", () => {
+	const LAUNCH = "launch-1";
+	const savedFailure = () => {
+		const mutator = vi.mocked(data.updateTaskWith).mock.calls[0]?.[2] as ((t: Task) => { updates: Partial<Task> }) | undefined;
+		return mutator?.(fixtures.task).updates.launchFailure;
+	};
+
+	it("saves the pane's last lines for an agent that never started, and pushes the task", async () => {
+		const screen = [...Array.from({ length: 60 }, (_, i) => `line ${i}`), "", "  ", ""].join("\n");
+		const capture = vi.spyOn(tmux, "capturePane").mockResolvedValue(screen);
+		noteAgentLaunched("task", SESSION, { startReceipts: true });
+		await exited(2);
+
+		expect(capture).toHaveBeenCalledWith(expect.objectContaining({ target: "%1" }));
+		expect(capture.mock.calls[0][0]).not.toHaveProperty("escapes", true);
+		const failure = savedFailure();
+		expect(failure).toMatchObject({ exitCode: 2, neverStarted: true, sessionId: SESSION });
+		expect(failure?.output?.split("\n")).toHaveLength(40);
+		expect(failure?.output?.endsWith("line 59")).toBe(true);
+		expect(pushMessage).toHaveBeenCalledWith("taskUpdated", expect.objectContaining({ projectId: "project" }));
+	});
+
+	it("records a crash of an agent that had started as not-never-started", async () => {
+		vi.spyOn(tmux, "capturePane").mockResolvedValue("boom\n");
+		noteAgentLaunched("task", LAUNCH, { startReceipts: false });
+		await agentHandlers["agent.exited"]!({ taskId: "task", projectId: "project", sessionId: LAUNCH, exitCode: 1 });
+		expect(savedFailure()).toMatchObject({ exitCode: 1, neverStarted: false, output: "boom", sessionId: LAUNCH });
+	});
+
+	it("keeps the tail of an oversized capture", async () => {
+		vi.spyOn(tmux, "capturePane").mockResolvedValue(`${"x".repeat(20_000)}END`);
+		noteAgentLaunched("task", SESSION, { startReceipts: true });
+		await exited(1);
+		const output = savedFailure()?.output ?? "";
+		expect(output).toHaveLength(8000);
+		expect(output.endsWith("END")).toBe(true);
+	});
+
+	it("saves nothing for a clean exit or an unknown launch", async () => {
+		const capture = vi.spyOn(tmux, "capturePane").mockResolvedValue("x");
+		noteAgentLaunched("task", LAUNCH, { startReceipts: false });
+		await agentHandlers["agent.exited"]!({ taskId: "task", projectId: "project", sessionId: LAUNCH, exitCode: 0 });
+		await exited(1);
+		expect(data.updateTaskWith).not.toHaveBeenCalled();
+		expect(capture).not.toHaveBeenCalled();
+	});
+
+	it("keeps the cause with no output when the capture fails, and still moves the card", async () => {
+		vi.spyOn(tmux, "capturePane").mockRejectedValue(new Error("no pane"));
+		noteAgentLaunched("task", SESSION, { startReceipts: true });
+		await expect(exited(2)).resolves.toEqual({ moved: true });
+		expect(savedFailure()).toMatchObject({ neverStarted: true, output: null });
+		expect(fixtures.task.status).toBe("user-questions");
+	});
+
+	it("still moves the card when saving the cause fails", async () => {
+		vi.spyOn(tmux, "capturePane").mockResolvedValue("x");
+		vi.mocked(data.updateTaskWith).mockRejectedValue(new Error("disk full"));
+		noteAgentLaunched("task", SESSION, { startReceipts: true });
+		await expect(exited(2)).resolves.toEqual({ moved: true });
+	});
+
+	it("records no output on the native backend", async () => {
+		const capture = vi.spyOn(tmux, "capturePane").mockResolvedValue("x");
+		fixtures.task = { ...fixtures.task, terminalBackend: "native" } as Task;
+		noteAgentLaunched("task", SESSION, { startReceipts: true });
+		await exited(2);
+		expect(capture).not.toHaveBeenCalled();
+		expect(savedFailure()).toMatchObject({ output: null, neverStarted: true });
+	});
+
+	it("a session start does not clear the cause: an early exit has no SessionStart for its own id", async () => {
+		fixtures.task = { ...fixtures.task, launchFailure: { exitCode: 2, at: "t", output: null, neverStarted: true, sessionId: SESSION } } as Task;
+		noteAgentLaunched("task", SESSION, { startReceipts: true });
+		await sessionStarted("%2");
+		await agentHandlers["agent.sessionStarted"]!({ taskId: "task", projectId: "project", sessionId: "another-session", source: "clear", paneId: "%3" });
+		expect(data.updateTask).not.toHaveBeenCalled();
+		expect(data.updateTaskWith).not.toHaveBeenCalled();
 	});
 });
