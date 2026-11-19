@@ -8,6 +8,7 @@ import { removeCursorUsageHooks, writeCursorUsageHooks } from "../cursor-usage-h
 const POSIX = { cli: "~/.dev3.0/bin/dev3", posixShell: true };
 const WINDOWS = { cli: '"C:/Users/Alice Smith/.dev3.0/bin/dev3.exe"', posixShell: false };
 const POSIX_COMMAND = "if [ -x ~/.dev3.0/bin/dev3 ]; then ~/.dev3.0/bin/dev3 hook cursor-usage; fi";
+const POSIX_POST_TOOL_COMMAND = 'if [ -n "$DEV3_TASK_ID" ] && [ -x ~/.dev3.0/bin/dev3 ]; then ~/.dev3.0/bin/dev3 hook cursor-post-tool; fi';
 const WINDOWS_COMMAND = `if (Test-Path -LiteralPath ${WINDOWS.cli} -PathType Leaf) { $input | & ${WINDOWS.cli} hook cursor-usage }; exit 0`;
 
 describe("Cursor accounting hook installation", () => {
@@ -36,8 +37,23 @@ describe("Cursor accounting hook installation", () => {
 			hooks: {
 				afterAgentResponse: [{ command: POSIX_COMMAND }],
 				stop: [{ command: POSIX_COMMAND }],
+				postToolUse: [{ command: POSIX_POST_TOOL_COMMAND }],
 			},
 		});
+	});
+
+	it("leaves the message mailbox out on Windows, whose native panes have none", async () => {
+		await writeCursorUsageHooks(userHome, WINDOWS, { create: true });
+		expect(JSON.parse(readFileSync(hooksPath, "utf8")).hooks.postToolUse).toBeUndefined();
+	});
+
+	it("removes the mailbox hook with the accounting hooks and keeps the user's own", async () => {
+		const custom = { command: "./after-tool.sh" };
+		writeConfig({ version: 1, hooks: { postToolUse: [custom] } });
+		await writeCursorUsageHooks(userHome, POSIX);
+		expect(JSON.parse(readFileSync(hooksPath, "utf8")).hooks.postToolUse).toEqual([custom, { command: POSIX_POST_TOOL_COMMAND }]);
+		await removeCursorUsageHooks(userHome);
+		expect(JSON.parse(readFileSync(hooksPath, "utf8")).hooks).toEqual({ postToolUse: [custom] });
 	});
 
 	it("uses the Windows CLI dialect without POSIX-only shell syntax", async () => {

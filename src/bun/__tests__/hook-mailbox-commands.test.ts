@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const move = vi.hoisted(() => vi.fn());
 vi.mock("../cli-socket/task-commands", () => ({ taskHandlers: { "task.move": move } }));
 vi.mock("../cli-socket/task-resolution", () => ({
-	resolveTaskFromParams: vi.fn(async () => ({ project: { id: "p" }, task: { id: "task-full-id" } })),
+	resolveTaskFromParams: vi.fn(async () => ({
+		project: { id: "p" },
+		task: { id: "task-full-id", sessionState: { panes: [{ paneId: "%7", sessionId: "conv-1" }] } },
+	})),
 }));
 vi.mock("../cli-socket/shared", () => ({ log: { warn: vi.fn(), info: vi.fn() } }));
 vi.mock("../logger", () => ({
@@ -98,6 +101,36 @@ describe("task.claudePostToolUse", () => {
 		move.mockResolvedValue({ id: "task-full-id", status: "in-progress" });
 		holdFor("task-full-id", "%4", "mail for the reviewer");
 		await expect(handler({ taskId: "task-1", paneId: "%3" })).resolves.toEqual({});
+		expect(pendingAgentMessageHoldCount()).toBe(1);
+	});
+});
+
+describe("task.cursorPostToolUse", () => {
+	const cursor = hookMailboxHandlers["task.cursorPostToolUse"]!;
+
+	it("drains the pane's held message for the pane's own conversation, without touching the board status", async () => {
+		holdFor("task-full-id", "%7", "mail for Cursor");
+		await expect(cursor({ taskId: "task-1", paneId: "%7", conversationId: "conv-1" })).resolves.toEqual({ context: "mail for Cursor", messages: 1, claimId: expect.any(String) });
+		expect(move).not.toHaveBeenCalled();
+	});
+
+	it("leaves the mail to the pane for a nested or sub-agent conversation", async () => {
+		holdFor("task-full-id", "%7", "mail");
+		await expect(cursor({ taskId: "task-1", paneId: "%7", conversationId: "nested-agent" })).resolves.toEqual({});
+		await expect(cursor({ taskId: "task-1", paneId: "%7" })).resolves.toEqual({});
+		expect(pendingAgentMessageHoldCount()).toBe(1);
+	});
+
+	it("keeps a batch under Cursor's context cap and leaves the rest held", async () => {
+		holdFor("task-full-id", "%7", "a".repeat(4_000));
+		holdFor("task-full-id", "%7", "b".repeat(4_000));
+		await expect(cursor({ taskId: "task-1", paneId: "%7", conversationId: "conv-1" })).resolves.toMatchObject({ messages: 1 });
+		expect(pendingAgentMessageHoldCount()).toBe(1);
+	});
+
+	it("drains nothing without a pane", async () => {
+		holdFor("task-full-id", "%7", "mail");
+		await expect(cursor({ taskId: "task-1", conversationId: "conv-1" })).resolves.toEqual({});
 		expect(pendingAgentMessageHoldCount()).toBe(1);
 	});
 });
