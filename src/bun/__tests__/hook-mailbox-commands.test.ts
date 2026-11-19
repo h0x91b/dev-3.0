@@ -101,3 +101,20 @@ describe("task.claudePostToolUse", () => {
 		expect(pendingAgentMessageHoldCount()).toBe(1);
 	});
 });
+
+describe("task.cursorPostToolUse", () => {
+	const cursor = hookMailboxHandlers["task.cursorPostToolUse"]!;
+
+	it("drains the pane's held message without touching the board status", async () => {
+		holdFor("task-full-id", "%7", "mail for Cursor");
+		await expect(cursor({ taskId: "task-1", paneId: "%7" })).resolves.toEqual({ context: "mail for Cursor", messages: 1, claimId: expect.any(String) });
+		expect(move).not.toHaveBeenCalled();
+		expect(resolveTaskFromParams).toHaveBeenCalledTimes(1);
+	});
+
+	it("drains nothing without a pane", async () => {
+		holdFor("task-full-id", "%7", "mail");
+		await expect(cursor({ taskId: "task-1" })).resolves.toEqual({});
+		expect(pendingAgentMessageHoldCount()).toBe(1);
+	});
+});

@@ -51,6 +51,7 @@ import { handleExtensionHook } from "./commands/extension-hook";
 import { handleClaudePrompt } from "./commands/claude-prompt";
 import { handleClaudePreTool } from "./commands/claude-pre-tool";
 import { handleClaudePostTool } from "./commands/claude-post-tool";
+import { handleCursorPostTool } from "./commands/cursor-post-tool";
 import { handleClaudeTurnEnded } from "./commands/claude-turn-ended";
 import { handleClaudeClaim } from "./commands/claude-claim";
 import { handleClaudeSessionStart, handleNoteRecent } from "./commands/recent-notes";
@@ -367,6 +368,11 @@ async function main(): Promise<void> {
 	if (command === "hook" && subcommand === "claude-post-tool") {
 		// Status move plus the hook mailbox, in one request per tool call.
 		return await handleClaudePostTool(await Bun.stdin.text(), socketPath || context?.socketPath || null, context);
+	}
+	if (command === "hook" && subcommand === "cursor-post-tool") {
+		// Drained so a large tool payload never blocks Cursor's write to the pipe.
+		await Bun.stdin.text().catch(() => "");
+		return await handleCursorPostTool(socketPath || context?.socketPath || null, context);
 	}
 	if (command === "hook" && subcommand === "claude-turn-ended") {
 		return await handleClaudeTurnEnded(await Bun.stdin.text(), socketPath || context?.socketPath || null, context);
