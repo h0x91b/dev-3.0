@@ -633,6 +633,13 @@ describe("launchArgs — agy", () => {
 	});
 });
 
+describe("ready evidence", () => {
+	it("only agy asks the launch handoff to wait for its session capture", () => {
+		expect(agyAdapter.readyEvidence).toBe("session-capture");
+		for (const adapter of [claudeAdapter, codexAdapter, geminiAdapter, cursorAdapter, opencodeAdapter, copilotAdapter, ompAdapter, piAdapter]) expect(adapter.readyEvidence).toBeUndefined();
+	});
+});
+
 describe("agy presets", () => {
 	const agy = DEFAULT_AGENTS.find((a) => a.id === "builtin-agy")!;
 	const byId = (id: string) => agy.configurations.find((c) => c.id === id)!;

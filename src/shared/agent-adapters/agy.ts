@@ -134,6 +134,9 @@ export const agyAdapter: AgentAdapter = {
 	// agy rings one at every turn end too, and acting on it fought the Stop hook.
 	hooksReportPermissionWaits: true,
 
+	// agy takes no pre-assigned id; the SessionStart hook's capture is the first sign it is up.
+	readyEvidence: "session-capture",
+
 	hooksSpec() {
 		return { kind: "agy" };
 	},

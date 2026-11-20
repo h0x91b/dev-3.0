@@ -21,6 +21,8 @@ The hook and statusLine commands spell the dev3 CLI as the absolute `<account ho
 
 The model probe is `agy models`; slugs fold to the model family by stripping the trailing `-low|medium|high|xhigh|max`, like Cursor's.
 
+The launch handoff note ("Started by a peer agent") waits for agy's `SessionStart` capture before it is typed (`readyEvidence: "session-capture"` on the adapter, `deliverLaunchHandoff`): agy cannot pre-assign a session id, and a note typed once the pane exists lands while the launcher is still booting and loses its head. Like Claude's receipt wait, there is no blind fallback: the card is badged after the boot window and the note dropped with a toast at the ceiling. With `-i` the hook fires as the initial prompt starts, so the note arrives while agy works; agy queues typed input during a turn.
+
 ## Risks
 
 A resumed conversation receives the protocol again at `SessionStart`, since agy gives no way to tell resume from start. The Settings lean-protocol toggle does not reach agy: the hook always renders the full body. Tasks in a folder dev3 does not own run without hooks (status does not move on its own), though the `--settings` statusLine still reports waits and quota there. `buildResumeCommand` has no worktree path, so a recovery command carries no `--settings`. The pending-confirmation state is written optimistically: a report that failed to send is not retried until the flag flips again. The allow rules cover the bare `dev3` spelling only. Verified live on agy 1.5.12: the realpath trust, the allow rules, `hooks.json` from the worktree, `SessionStart` injection, `PreInvocation`, `Stop`, the conversation id and `tool_confirmation_pending`.

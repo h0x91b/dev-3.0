@@ -171,6 +171,13 @@ export interface AgentAdapter {
 	/** Whether its hooks move the task to user-questions on a tool-approval wait, so a BEL adds nothing. */
 	readonly hooksReportPermissionWaits: boolean;
 
+	/**
+	 * What shows the agent has booted far enough to take typed input. Absent: the pane existing is enough.
+	 * `session-capture`: the session id its own hook wrote onto the pane - for an agent that cannot
+	 * pre-assign one, so the launch handoff waits for it instead of typing into a booting launcher.
+	 */
+	readonly readyEvidence?: "session-capture";
+
 	/** Agent-native lifecycle hooks to install, or null when the agent has none. */
 	hooksSpec(options?: { stopTarget?: TaskStatus; permissionMode?: PermissionMode }): HooksSpec | null;
 
