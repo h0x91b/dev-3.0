@@ -457,6 +457,32 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 			});
 		});
 
+		it("a replacement agent in the same pane ends the old conversation's wait, even before the old exit reports", async () => {
+			const { report, moves } = await setup();
+			const { noteAgentLaunched } = await import("../agent-session-receipts");
+			const { handleRequest } = await import("../cli-socket-server");
+			const { agyPendingSessionsOf } = await import("../agy-session-state");
+			noteAgentLaunched("task-1", "launch-old", { startReceipts: false });
+			await report("PermissionRequest", "conv-old", "%1");
+
+			noteAgentLaunched("task-1", "launch-new", { startReceipts: false });
+			await report("SessionStart", "conv-new", "%1");
+			expect([...agyPendingSessionsOf("task-1")]).toEqual([]);
+
+			await handleRequest({ id: "x", method: "agent.exited", params: { projectId: "proj-1", taskId: "task-1", sessionId: "launch-old", paneId: "%1", exitCode: 0 } });
+			await report("UserPromptSubmit", "conv-new", "%1");
+			expect(moves()).toEqual(["user-questions", "in-progress"]);
+		});
+
+		it("a pane's new conversation leaves the other panes' waits alone", async () => {
+			const { report } = await setup();
+			const { agyPendingSessionsOf } = await import("../agy-session-state");
+			await report("PermissionRequest", "conv-a", "%1");
+			await report("PermissionRequest", "conv-b", "%2");
+			await report("SessionStart", "conv-a2", "%1");
+			expect([...agyPendingSessionsOf("task-1")]).toEqual(["conv-b"]);
+		});
+
 		it("a late exit of an earlier launch leaves the current launch's waits and state alone", async () => {
 			const { report, moves } = await setup();
 			const { noteAgentLaunched } = await import("../agent-session-receipts");

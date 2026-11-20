@@ -11,7 +11,7 @@ import { capturePaneSession, taskCodexHomes } from "./pane-sessions";
 import { isInteractiveCodexConversation } from "../codex-resume-home";
 import { isLatestAgentLaunch, noteAgentExited, noteAgentSessionActive, noteAgentSessionStarted } from "../agent-session-receipts";
 import { forgetApprovalResumeStatus, getApprovalResumeStatus, rememberResumeStatus } from "../approval-resume-status";
-import { forgetAgyPane, addAgyPending, agyPendingSessionsOf, removeAgyPending } from "../agy-session-state";
+import { forgetAgyPane, addAgyPending, agyPendingSessionsOf, forgetReplacedAgyConversations, removeAgyPending } from "../agy-session-state";
 import { forgetClaudeSessionDump } from "../rate-limit-monitor";
 import { recordLaunchFailure } from "../agent-launch-failure";
 import { log, type Handler, withSenderVariant } from "./shared";
@@ -194,8 +194,12 @@ export const agentHandlers: Record<string, Handler> = {
 		if (harness === "agy" && sessionId && !AGY_CONVERSATION_ID.test(sessionId)) sessionId = null;
 		// A wait that goes on: refresh its liveness, move nothing.
 		if (params.heartbeat === true) {
-			if (harness === "agy") addAgyPending(task.id, sessionId ?? (typeof params.paneId === "string" ? params.paneId : "unknown"));
+			if (harness === "agy") addAgyPending(task.id, sessionId ?? (typeof params.paneId === "string" ? params.paneId : "unknown"), Date.now(), typeof params.paneId === "string" ? params.paneId : null);
 			return task;
+		}
+		// A conversation starting in a pane ends whatever an earlier agent in that pane was waiting on.
+		if (harness === "agy" && event === "SessionStart" && sessionId && typeof params.paneId === "string" && params.paneId) {
+			forgetReplacedAgyConversations(task.id, params.paneId, sessionId);
 		}
 		// A report that only names the session: record it on the pane, move nothing.
 		if (params.captureOnly === true) {
@@ -219,7 +223,7 @@ export const agentHandlers: Record<string, Handler> = {
 		let rememberedResumeStatus = getApprovalResumeStatus(resumeKey);
 		let agyHold = false;
 		if (harness === "agy") {
-			if (event === "PermissionRequest") addAgyPending(task.id, agyWaitKey);
+			if (event === "PermissionRequest") addAgyPending(task.id, agyWaitKey, Date.now(), typeof params.paneId === "string" ? params.paneId : null);
 			if (event === "Stop" || event === "SessionEnd" || event === "Interrupt" || event === "SessionStart") {
 				removeAgyPending(task.id, agyWaitKey);
 				if (resumeKey) forgetApprovalResumeStatus(resumeKey);

@@ -13181,6 +13181,27 @@ describe("restartTask (start fresh) floors the Codex scan", () => {
 	});
 });
 
+describe("restartTask (start fresh) replaces every agent of the task", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("forgets the waits and remembered lanes of the agy panes it replaces", async () => {
+		const { addAgyPending, agyPendingSessionsOf } = await import("../agy-session-state");
+		const { getApprovalResumeStatus, rememberResumeStatus } = await import("../approval-resume-status");
+		const task = makeTask({ sessionState: { panes: [{ agentCmd: "agy", agentId: "builtin-agy", configId: "agy-auto-neon-high", sessionId: "conv-old", paneId: "%1" }] } });
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		addAgyPending(task.id, "conv-old", Date.now(), "%1");
+		rememberResumeStatus(`${task.id}:conv-old`, "in-progress");
+
+		await handlers.restartTask({ taskId: task.id });
+
+		expect(agyPendingSessionsOf(task.id).size).toBe(0);
+		expect(getApprovalResumeStatus(`${task.id}:conv-old`)).toBeUndefined();
+	});
+});
+
 describe("restartTask clears the agent-exited mark", () => {
 	beforeEach(() => vi.clearAllMocks());
 	const FLAG = "2026-11-13T10:00:00.000Z";

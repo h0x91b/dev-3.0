@@ -19,12 +19,36 @@ export function agyPendingSessionsOf(taskId: string, now: number = Date.now()): 
 	return new Set(livePending(taskId, now)?.keys() ?? []);
 }
 
-/** Record a wait, or refresh the one already there (the heartbeat). */
-export function addAgyPending(taskId: string, key: string, now: number = Date.now()): void {
+/** Which conversations each pane has waited under, so a pane's new conversation can drop its old ones. */
+const paneConversations = new Map<string, Map<string, Set<string>>>();
+
+/** Record a wait, or refresh the one already there (the heartbeat). `paneId` ties it to its pane. */
+export function addAgyPending(taskId: string, key: string, now: number = Date.now(), paneId: string | null = null): void {
 	livePending(taskId, now);
 	let waiting = pendingSessions.get(taskId);
 	if (!waiting) pendingSessions.set(taskId, (waiting = new Map()));
 	waiting.set(key, now);
+	if (!paneId || paneId === key) return;
+	let panes = paneConversations.get(taskId);
+	if (!panes) paneConversations.set(taskId, (panes = new Map()));
+	let conversations = panes.get(paneId);
+	if (!conversations) panes.set(paneId, (conversations = new Set()));
+	conversations.add(key);
+}
+
+/**
+ * A pane started a conversation: whatever it waited on under another conversation id belongs to an
+ * agent that was replaced in that pane, so its wait and remembered lane go. Other panes keep theirs.
+ */
+export function forgetReplacedAgyConversations(taskId: string, paneId: string, currentConversationId: string): void {
+	const conversations = paneConversations.get(taskId)?.get(paneId);
+	if (!conversations) return;
+	for (const old of [...conversations]) {
+		if (old === currentConversationId) continue;
+		removeAgyPending(taskId, old);
+		forgetApprovalResumeStatus(`${taskId}:${old}`);
+		conversations.delete(old);
+	}
 }
 
 /** Drop one session's wait; returns how many other sessions of the task still wait. */
@@ -45,6 +69,7 @@ export function forgetAgyPane(
 	dev3Home: string = DEV3_HOME,
 ): void {
 	for (const key of [pane.paneId, pane.conversationId]) if (key) removeAgyPending(taskId, key);
+	if (pane.paneId) paneConversations.get(taskId)?.delete(pane.paneId);
 	if (pane.conversationId) forgetApprovalResumeStatus(`${taskId}:${pane.conversationId}`);
 	const files = [
 		pane.paneId ? agyStatuslineStateFile(dev3Home, taskId, agyPaneKey({ TMUX_PANE: pane.paneId }, null)) : null,
@@ -67,6 +92,7 @@ export function forgetAgyPane(
  */
 export function forgetAgyTask(taskId: string, dev3Home: string = DEV3_HOME): void {
 	pendingSessions.delete(taskId);
+	paneConversations.delete(taskId);
 	forgetTaskApprovalResumeStatuses(taskId);
 	const dir = agyStatuslineTaskDir(dev3Home, taskId);
 	if (!dir) return;
