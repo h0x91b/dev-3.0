@@ -1,10 +1,11 @@
+import { useReducer } from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Project, Task } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
 import { RPC_STATUS_EVENT } from "../../diagnostics";
-import type { Route } from "../../state";
+import { initialState, reducer, routeTaskId, type Route } from "../../state";
 import { RouteHost } from "../../test-utils/route-host";
 import ProjectView, { TASKS_FETCH_TIMEOUT_MS } from "../ProjectView";
 import { api } from "../../rpc";
@@ -681,6 +682,67 @@ describe("ProjectView board switch from stored snapshots", () => {
 
 		await act(async () => resolveFilter({ visibility: "active" }));
 		await waitFor(() => expect(screen.getByTestId("kanban")).toBeInTheDocument());
+	});
+
+	// App-level consumers (Cmd+O, the task switcher) read the task store, not ProjectView's props.
+	describe("store hydration from stored tasks", () => {
+		const active = { id: "a", projectId: "p1", status: "in-progress", worktreePath: "/wt/a" } as Task;
+
+		it("fills the store once per board project, before the fetch lands", async () => {
+			vi.mocked(api.request.getTasks).mockImplementation(() => new Promise(() => {}));
+			const dispatch = vi.fn();
+			renderView({ dispatch, tasks: [], taskSnapshots: { p1: [active] } });
+			await act(async () => {});
+			const hydrations = dispatch.mock.calls.filter(([action]) => action.type === "setTasks");
+			expect(hydrations).toEqual([[{ type: "setTasks", projectId: "p1", tasks: [active] }]]);
+		});
+
+		it("fills the store once per board switch, not on every re-render", async () => {
+			vi.mocked(api.request.getTasks).mockImplementation(() => new Promise(() => {}));
+			const dispatch = vi.fn();
+			const view = renderView({ dispatch, tasks: [], taskSnapshots: { p1: [active] } });
+			await act(async () => {});
+			view.rerender(viewElement({ dispatch, tasks: [active], taskSnapshots: { p1: [active] } }));
+			await act(async () => {});
+			expect(dispatch.mock.calls.filter(([action]) => action.type === "setTasks")).toHaveLength(1);
+		});
+
+		// The same lookup Cmd+O's openInCurrent does against the store.
+		it("lets the store resolve the open task's worktree on a revisited board", async () => {
+			vi.mocked(api.request.getTasks).mockImplementation(() => new Promise(() => {}));
+			const route: Route = { screen: "project", projectId: "p1", activeTaskId: "a" };
+			function Harness() {
+				const [state, dispatch] = useReducer(reducer, {
+					...initialState,
+					route,
+					routeHistory: [route],
+					projects: [project],
+					taskSnapshots: { p1: [active] },
+				});
+				const taskId = routeTaskId(state.route);
+				const open = state.currentProjectTasks.find((task) => task.id === taskId);
+				return (
+					<I18nProvider>
+						<div data-testid="open-target" data-worktree={open?.worktreePath ?? ""} />
+						<ProjectView
+							projectId="p1"
+							projects={[project]}
+							tasks={state.currentProjectTasks}
+							taskSnapshots={state.taskSnapshots}
+							dispatch={dispatch}
+							route={state.route}
+							navigate={vi.fn()}
+							activeTaskId="a"
+							bellCounts={new Map()}
+							taskPorts={new Map()}
+							taskDevServers={new Map()}
+						/>
+					</I18nProvider>
+				);
+			}
+			render(<Harness />);
+			await waitFor(() => expect(screen.getByTestId("open-target").getAttribute("data-worktree")).toBe("/wt/a"));
+		});
 	});
 
 	// The task store is empty while the refetch is pending or failed; a card opened from

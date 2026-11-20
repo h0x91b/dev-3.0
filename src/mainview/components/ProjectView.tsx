@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, type Dispatch, type MutableRefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, type Dispatch, type MutableRefObject } from "react";
 import type { DevServerSummary, PortInfo, Project, Task, ResourceUsage } from "../../shared/types";
 import { useSpaces } from "../useSpaces";
 import { toast } from "../toast";
@@ -182,6 +182,18 @@ function ProjectView({
 		[boardFetched, boardProjectIds, taskSnapshots],
 	);
 	const currentTasks = storedTasks ?? tasks;
+	// App-level consumers (Cmd+O, the task switcher) read the store, so fill it before paint.
+	// Snapshots already carry every push, so one fill per board switch is enough.
+	const snapshotsRef = useRef(taskSnapshots);
+	snapshotsRef.current = taskSnapshots;
+	const hasStoredTasks = storedTasks !== null;
+	useLayoutEffect(() => {
+		if (!hasStoredTasks) return;
+		for (const id of boardProjectIdsRef.current) {
+			const list = snapshotsRef.current[id];
+			if (list) dispatch({ type: "setTasks", projectId: id, tasks: list });
+		}
+	}, [boardProjectKey, hasStoredTasks, dispatch]);
 	// A project that left the space must not keep its cards on screen until the
 	// next fetch; membership decides what the board holds, not the task store.
 	const boardTasks = space ? currentTasks.filter((task) => boardProjectIds.includes(task.projectId)) : currentTasks;
