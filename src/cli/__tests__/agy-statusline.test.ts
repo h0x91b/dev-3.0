@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -302,7 +302,10 @@ describe("agy statusline: never loud", () => {
 		await expect(run(payload({ tool_confirmation_pending: true }))).resolves.toBeUndefined();
 		mockSend.mockResolvedValue({ id: "1", ok: false, error: "task not found" });
 		await expect(run(payload({ tool_confirmation_pending: false }))).resolves.toBeUndefined();
-		await expect(handleAgyStatusLine(payload(), { noLimits: false }, SOCKET, CONTEXT, NOW, "/proc/definitely/not/writable")).resolves.toBeUndefined();
+		// A home under a regular file fails with ENOTDIR everywhere; a /proc path loops mkdir forever on Linux.
+		const blocker = join(home, "blocker");
+		writeFileSync(blocker, "");
+		await expect(handleAgyStatusLine(payload(), { noLimits: false }, SOCKET, CONTEXT, NOW, join(blocker, "home"))).resolves.toBeUndefined();
 		expect(stdout).toBe("");
 	});
 });
