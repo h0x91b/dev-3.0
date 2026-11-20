@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { addAgyPending, agyPendingSessionsOf, forgetAgyTask, removeAgyPending } from "../agy-session-state";
+import { getApprovalResumeStatus, rememberResumeStatus } from "../approval-resume-status";
+import { addAgyPending, agyPendingSessionsOf, forgetAgyPane, forgetAgyTask, removeAgyPending } from "../agy-session-state";
 
 let home: string;
 
@@ -42,10 +43,43 @@ describe("forgetAgyTask", () => {
 		expect(agyPendingSessionsOf("t1").size).toBe(0);
 	});
 
+	it("drops every lane remembered for the task's sessions, and no other task's", () => {
+		rememberResumeStatus("t1:conv-a", "in-progress");
+		rememberResumeStatus("t1:conv-b", "review-by-ai");
+		rememberResumeStatus("t10:conv-a", "in-progress");
+
+		forgetAgyTask("t1", home);
+
+		expect(getApprovalResumeStatus("t1:conv-a")).toBeUndefined();
+		expect(getApprovalResumeStatus("t1:conv-b")).toBeUndefined();
+		expect(getApprovalResumeStatus("t10:conv-a")).toBe("in-progress");
+	});
+
 	it("never follows a task id that is not a plain path segment", () => {
 		const outside = join(home, "data", "keep");
 		mkdirSync(outside, { recursive: true });
 		forgetAgyTask("../keep", home);
 		expect(existsSync(outside)).toBe(true);
+	});
+});
+
+describe("forgetAgyPane", () => {
+	it("drops one pane's wait, remembered lane and state file, and leaves the task's other panes alone", () => {
+		const dir = join(home, "data", "agy-statusline", "t1");
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, "p_1.json"), "{}");
+		writeFileSync(join(dir, "p_2.json"), "{}");
+		addAgyPending("t1", "conv-a");
+		addAgyPending("t1", "conv-b");
+		rememberResumeStatus("t1:conv-a", "in-progress");
+		rememberResumeStatus("t1:conv-b", "review-by-ai");
+
+		forgetAgyPane("t1", { paneId: "%1", conversationId: "conv-a" }, home);
+
+		expect([...agyPendingSessionsOf("t1")]).toEqual(["conv-b"]);
+		expect(getApprovalResumeStatus("t1:conv-a")).toBeUndefined();
+		expect(getApprovalResumeStatus("t1:conv-b")).toBe("review-by-ai");
+		expect(existsSync(join(dir, "p_1.json"))).toBe(false);
+		expect(existsSync(join(dir, "p_2.json"))).toBe(true);
 	});
 });

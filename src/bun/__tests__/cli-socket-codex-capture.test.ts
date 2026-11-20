@@ -374,6 +374,77 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 			expect(moves()).toEqual(["user-questions", "in-progress"]);
 		});
 
+		it("two panes taking turns: a finished wait is not left behind, so the card does not end in Has Questions", async () => {
+			const { report, moves } = await setup();
+			const status = () => (JSON.parse(readFileSync(join(dev3Home, "data", PROJECT_SLUG, "tasks.json"), "utf8")) as Task[])[0]!.status;
+			await report("PermissionRequest", "conv-a", "%1"); // A waits
+			await report("UserPromptSubmit", "conv-b", "%2"); // B starts a turn while A still waits: the card stays parked
+			expect(status()).toBe("user-questions");
+			await report("PostToolUse", "conv-a", "%1"); // A approved: the last wait ended
+			expect(status()).toBe("in-progress");
+			await report("PermissionRequest", "conv-b", "%2"); // B waits
+			expect(status()).toBe("user-questions");
+			await report("PostToolUse", "conv-b", "%2"); // B approved
+			expect(status()).toBe("in-progress");
+			await report("Stop", "conv-a", "%1");
+			await report("Stop", "conv-b", "%2");
+			expect(status()).not.toBe("user-questions");
+			expect(moves()).toEqual(["user-questions", "in-progress", "user-questions", "in-progress", expect.stringMatching(/review-by-/)]);
+		});
+
+		it("a wait-ended report that changes nothing still forgets the wait, so it cannot hold a later card", async () => {
+			const { report, moves } = await setup();
+			const tasksFile = join(dev3Home, "data", PROJECT_SLUG, "tasks.json");
+			await report("PermissionRequest", "conv-a", "%1");
+			// the user moves the card by hand before A's approval is reported
+			const [task] = JSON.parse(readFileSync(tasksFile, "utf8")) as Task[];
+			writeFileSync(tasksFile, JSON.stringify([{ ...task!, status: "in-progress" }]));
+			await report("PostToolUse", "conv-a", "%1");
+			await report("PermissionRequest", "conv-b", "%2");
+			await report("PostToolUse", "conv-b", "%2");
+			expect(moves()).toEqual(["user-questions", "user-questions", "in-progress"]);
+		});
+
+		it("another pane's wait keeps the card parked through this pane's next prompt, until the last wait ends", async () => {
+			const { report, moves } = await setup();
+			await report("PermissionRequest", "conv-a", "%1");
+			await report("PermissionRequest", "conv-b", "%2");
+			await report("PostToolUse", "conv-a", "%1");
+			await report("UserPromptSubmit", "conv-a", "%1");
+			expect(moves()).toEqual(["user-questions"]);
+			await report("PostToolUse", "conv-b", "%2");
+			expect(moves()).toEqual(["user-questions", "in-progress"]);
+		});
+
+		it("a late exit of an earlier launch leaves the current launch's waits and state alone", async () => {
+			const { report, moves } = await setup();
+			const { noteAgentLaunched } = await import("../agent-session-receipts");
+			const { handleRequest } = await import("../cli-socket-server");
+			const { agyPendingSessionsOf } = await import("../agy-session-state");
+			noteAgentLaunched("task-1", "launch-old", { startReceipts: false });
+			noteAgentLaunched("task-1", "launch-current", { startReceipts: false });
+			await report("PermissionRequest", "conv-1", "%1");
+			const exit = (sessionId: string) => handleRequest({ id: "x", method: "agent.exited", params: { projectId: "proj-1", taskId: "task-1", sessionId, paneId: "%1", exitCode: 0 } });
+
+			await exit("launch-old");
+			expect([...agyPendingSessionsOf("task-1")]).toEqual(["conv-1"]);
+
+			// the launch the task answers to ends: its own wait goes, nothing else
+			await exit("launch-current");
+			expect([...agyPendingSessionsOf("task-1")]).toEqual([]);
+			expect(moves()).toEqual(["user-questions"]);
+		});
+
+		it("a restarted agy's SessionStart leaves a parked card where it is, whether or not the old lane was remembered", async () => {
+			for (const forget of [false, true]) {
+				const { report, moves } = await setup();
+				await report("PermissionRequest", "conv-1", "%1");
+				if (forget) (await import("../agy-session-state")).forgetAgyTask("task-1", join(tempHome, "agy-state"));
+				await report("SessionStart", "conv-1", "%1");
+				expect(moves()).toEqual(["user-questions"]);
+			}
+		});
+
 		it("ignores a late wait-ended report: the card was never parked by that wait", async () => {
 			const { report, moveTask } = await setup("review-by-user");
 			await report("PostToolUse", "conv-1", "%1");

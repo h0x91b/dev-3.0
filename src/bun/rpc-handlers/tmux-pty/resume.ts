@@ -485,6 +485,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 						? { sessionId: freshSessionId, accountId, accountFromStore: true, protocolMode }
 						: { resume: true, accountId, accountFromStore: true, protocolMode };
 					cmdOpts.projectEnv = projectEnv;
+					if (task.foreignCode) cmdOpts.foreignCode = true;
 					if (pane.projectLogin) cmdOpts.projectLogin = true;
 					cmdOpts.bedrockProfile = pane.bedrockProfile !== undefined ? pane.bedrockProfile : task.bedrockProfile;
 					if (paneResume) cmdOpts.sessionId = paneResume;

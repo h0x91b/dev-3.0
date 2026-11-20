@@ -11464,6 +11464,18 @@ describe("handlers.spawnAgentInTask", () => {
 		expect(agents.resolveCommandForAgent).toHaveBeenLastCalledWith("claude-bedrock", "c", expect.anything(), expect.objectContaining({ bedrockProfile: null }));
 	});
 
+	it("a spawn into a foreign-code task says so, so no agent pre-trusts the branch", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt", foreignCode: true });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(data.updateTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "agy", extraEnv: {} });
+		mockSpawn.mockReturnValue({ stderr: new Response(""), stdout: new Response(""), exited: Promise.resolve(0) });
+		await handlers.spawnAgentInTask({ taskId: task.id, projectId: "proj-1", agentId: "builtin-agy", configId: "c" });
+		expect(agents.resolveCommandForAgent).toHaveBeenLastCalledWith("builtin-agy", "c", expect.anything(), expect.objectContaining({ foreignCode: true }));
+	});
+
 	it("uses resolveCommandForProject when agentId is null", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
@@ -11837,6 +11849,22 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		);
 
 		expect(vi.mocked(agents.resolveCommandForAgent).mock.calls.map((call) => call[3]?.protocolMode)).toEqual(["shared-folder"]);
+	});
+
+	it("launches a hunter on a foreign-code task with foreignCode set", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt", foreignCode: true });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude", extraEnv: {} });
+		makeSplitMock(["%10"]);
+
+		await runLaunch(
+			handlers.spawnBugHuntersInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default", count: 1 }),
+			1,
+		);
+
+		expect(vi.mocked(agents.resolveCommandForAgent).mock.calls.map((call) => call[3]?.foreignCode)).toEqual([true]);
 	});
 
 	it("creates N panes: first horizontal 50% off the session, rest vertical off the previous right pane", async () => {

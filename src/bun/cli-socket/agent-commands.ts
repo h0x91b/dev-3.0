@@ -9,8 +9,9 @@ import { loadSettings } from "../settings";
 import { CodexQuestionState } from "../codex-question-state";
 import { capturePaneSession, taskCodexHomes } from "./pane-sessions";
 import { isInteractiveCodexConversation } from "../codex-resume-home";
-import { noteAgentExited, noteAgentSessionActive, noteAgentSessionStarted } from "../agent-session-receipts";
-import { forgetAgyTask, addAgyPending, agyPendingSessionsOf, removeAgyPending } from "../agy-session-state";
+import { isLatestAgentLaunch, noteAgentExited, noteAgentSessionActive, noteAgentSessionStarted } from "../agent-session-receipts";
+import { forgetApprovalResumeStatus, getApprovalResumeStatus, rememberResumeStatus } from "../approval-resume-status";
+import { forgetAgyPane, addAgyPending, agyPendingSessionsOf, removeAgyPending } from "../agy-session-state";
 import { forgetClaudeSessionDump } from "../rate-limit-monitor";
 import { recordLaunchFailure } from "../agent-launch-failure";
 import { log, type Handler, withSenderVariant } from "./shared";
@@ -72,33 +73,6 @@ async function codexTurnFailed(failure: CodexTurnFailure): Promise<void> {
 	});
 }
 
-// An approval temporarily moves a task to user-questions. Remember which
-// active lane that Codex/omp session came from so PostToolUse can restore a
-// review agent to review-by-ai instead of misclassifying it as the primary agent.
-const APPROVAL_RESUME_TTL_MS = 24 * 60 * 60 * 1000;
-
-const approvalResumeStatuses = new Map<
-	string,
-	{ status: "in-progress" | "review-by-ai"; expiresAt: number }
->();
-
-function rememberResumeStatus(key: string, status: "in-progress" | "review-by-ai"): void {
-	approvalResumeStatuses.set(key, { status, expiresAt: Date.now() + APPROVAL_RESUME_TTL_MS });
-}
-
-function getApprovalResumeStatus(
-	key: string | null,
-): "in-progress" | "review-by-ai" | undefined {
-	if (!key) return undefined;
-	const entry = approvalResumeStatuses.get(key);
-	if (!entry) return undefined;
-	if (entry.expiresAt <= Date.now()) {
-		approvalResumeStatuses.delete(key);
-		return undefined;
-	}
-	return entry.status;
-}
-
 /** An agy conversation id is spliced into the resume command line, so only a plain token is taken. */
 const AGY_CONVERSATION_ID = /^[A-Za-z0-9._-]+$/;
 
@@ -131,7 +105,14 @@ export const agentHandlers: Record<string, Handler> = {
 		if (!sessionId) throw new Error("sessionId is required");
 		const exitCode = typeof params.exitCode === "number" ? params.exitCode : null;
 		forgetClaudeSessionDump(task.id);
-		forgetAgyTask(task.id);
+		// Judged before the exit is recorded: only the launch the task answers to may clear its pane's
+		// agy state, so the late exit of a replaced or earlier agent cannot wipe the current one's.
+		const answersForTask = isLatestAgentLaunch(task.id, sessionId);
+		const exitedPane = typeof params.paneId === "string" && params.paneId.trim() ? params.paneId.trim() : null;
+		if (answersForTask && exitedPane) {
+			const conversationId = task.sessionState?.panes.find((pane) => pane.paneId === exitedPane)?.sessionId ?? null;
+			forgetAgyPane(task.id, { paneId: exitedPane, conversationId });
+		}
 		const verdict = noteAgentExited(task.id, sessionId, exitCode);
 		if (!verdict) return { moved: false };
 		log.info("Launched agent exited", { taskId: task.id.slice(0, 8), verdict, exitCode });
@@ -230,19 +211,29 @@ export const agentHandlers: Record<string, Handler> = {
 				if (inherited) { rememberResumeStatus(resumeKey, inherited); break; }
 			}
 		}
-		const rememberedResumeStatus = getApprovalResumeStatus(resumeKey);
+		let rememberedResumeStatus = getApprovalResumeStatus(resumeKey);
+		let agyHold = false;
 		if (harness === "agy") {
 			if (event === "PermissionRequest") addAgyPending(task.id, agyWaitKey);
 			if (event === "Stop" || event === "SessionEnd" || event === "Interrupt" || event === "SessionStart") {
 				removeAgyPending(task.id, agyWaitKey);
-				if (resumeKey) approvalResumeStatuses.delete(resumeKey);
+				if (resumeKey) forgetApprovalResumeStatus(resumeKey);
+			}
+			// A started session has no tool waiting: a resumed, idle agy leaves a parked card where it is.
+			if (event === "SessionStart") rememberedResumeStatus = undefined;
+			// This session's own turn moves on, but another pane's wait still parks the card.
+			if (event === "UserPromptSubmit" && removeAgyPending(task.id, agyWaitKey) > 0 && task.status === "user-questions") {
+				agyHold = true;
+				if (resumeKey) forgetApprovalResumeStatus(resumeKey);
 			}
 			// The statusLine says a tool wait ended, and can say it late (after Esc or a reject, or once the
-			// agent finished): only a card parked by that very wait goes back, and only when no other pane waits.
+			// agent finished): the wait is dropped first, then only a card parked by that very wait goes
+			// back, and only when no other pane of the task still waits.
 			if (event === "PostToolUse") {
+				const stillWaiting = removeAgyPending(task.id, agyWaitKey);
 				if (task.status !== "user-questions" || !rememberedResumeStatus) return task;
-				if (removeAgyPending(task.id, agyWaitKey) > 0) {
-					if (resumeKey) approvalResumeStatuses.delete(resumeKey);
+				if (stillWaiting > 0) {
+					if (resumeKey) forgetApprovalResumeStatus(resumeKey);
 					return task;
 				}
 			}
@@ -269,7 +260,7 @@ export const agentHandlers: Record<string, Handler> = {
 			target = event === "Interrupt" || event === "SessionEnd" ? "review-by-user" : questionState.resumeStatus;
 		}
 		// A To Do card has no run to report on — not even a pending question.
-		if (task.status === "todo") target = null;
+		if (task.status === "todo" || agyHold) target = null;
 		const resumeStatus = (event === "PermissionRequest" || approvalHold)
 			&& (task.status === "in-progress" || task.status === "review-by-ai")
 			? task.status
@@ -294,7 +285,7 @@ export const agentHandlers: Record<string, Handler> = {
 		if (resumeKey && resumeStatus && moveAccepted) {
 			rememberResumeStatus(resumeKey, resumeStatus);
 		} else if (resumeKey && clearResumeStatus && moveAccepted) {
-			approvalResumeStatuses.delete(resumeKey);
+			forgetApprovalResumeStatus(resumeKey);
 		}
 
 		if (approvalHold && updated.status === "user-questions") {
