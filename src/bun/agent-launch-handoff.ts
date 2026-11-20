@@ -92,6 +92,7 @@ export async function deliverLaunchHandoff(opts: {
 	let badged = false;
 	let failingSince: number | null = null;
 	let boundSessionId: string | null = null;
+	let boundPaneId: string | null = null;
 
 	while (now() < startedAt + STARTUP_CEILING_MS) {
 		try {
@@ -105,6 +106,15 @@ export async function deliverLaunchHandoff(opts: {
 			const panes = task.sessionState?.panes ?? [];
 			if (!task.preparing && panes.length > 0 && waitsForSessionCapture(panes[0]!)) {
 				const main = panes[0]!;
+				// A relaunch brings a new pane (and its own handoff): the pane seen first is the one meant.
+				if (main.paneId) {
+					if (boundPaneId && main.paneId !== boundPaneId) {
+						log.info("Handoff abandoned — the launched agent was replaced", { taskId: shortId });
+						notifyUndelivered(project, task, "This task was launched by an agent, but its agent was restarted before the handoff note could be delivered.");
+						return false;
+					}
+					boundPaneId = main.paneId;
+				}
 				if (main.sessionId) {
 					return await sendHandoff(project, task, opts, main.paneId ? { kind: "pane", paneId: main.paneId } : null);
 				}

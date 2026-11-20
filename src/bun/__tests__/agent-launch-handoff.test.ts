@@ -189,6 +189,28 @@ describe("deliverLaunchHandoff — a launched agy session", () => {
 		expect(pushCliAttention).toHaveBeenCalledTimes(1);
 	});
 
+	it("abandons the note when the task is relaunched before the first agy reported: the relaunch brings its own", async () => {
+		getTask.mockResolvedValue(agyTask(null));
+		const result = await runWithClock((elapsed) => {
+			if (elapsed === 5_000) getTask.mockResolvedValue(agyTask(null, { paneId: "%9" }));
+			if (elapsed === 8_000) getTask.mockResolvedValue(agyTask("conv-new", { paneId: "%9" }));
+		});
+
+		expect(result).toBe(false);
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
+		expect(pushCliToast).toHaveBeenCalledWith(expect.objectContaining({ level: "error", message: expect.stringContaining("restarted") }));
+	});
+
+	it("is not confused by the pane id still being unknown right after a launch", async () => {
+		getTask.mockResolvedValue(agyTask(null, { paneId: null }));
+		const result = await runWithClock((elapsed) => {
+			if (elapsed === 3_000) getTask.mockResolvedValue(agyTask(null));
+			if (elapsed === 6_000) getTask.mockResolvedValue(agyTask("conv-1"));
+		});
+		expect(result).toBe(true);
+		expect(sendMessageImmediately.mock.calls[0]![2]).toEqual({ kind: "pane", paneId: "%4" });
+	});
+
 	it("resolves a wrapper through the family its pane records", async () => {
 		getTask.mockResolvedValue(agyTask(null, { agentCmd: "ant", agentFamily: "agy" }));
 		await expect(runWithClock()).resolves.toBe(false);
