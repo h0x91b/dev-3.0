@@ -192,10 +192,16 @@ export const agentHandlers: Record<string, Handler> = {
 			: "codex";
 		let sessionId = typeof params.sessionId === "string" ? params.sessionId : null;
 		if (harness === "agy" && sessionId && !AGY_CONVERSATION_ID.test(sessionId)) sessionId = null;
-		// A wait that goes on: refresh its liveness, move nothing.
+		// A wait that goes on: refresh its liveness, move nothing. One the app no longer holds (expired
+		// meanwhile) is a wait coming back, and takes the ordinary PermissionRequest path below.
 		if (params.heartbeat === true) {
-			if (harness === "agy") addAgyPending(task.id, sessionId ?? (typeof params.paneId === "string" ? params.paneId : "unknown"), Date.now(), typeof params.paneId === "string" ? params.paneId : null);
-			return task;
+			if (harness !== "agy") return task;
+			const heartbeatPane = typeof params.paneId === "string" ? params.paneId : null;
+			const heartbeatKey = sessionId ?? heartbeatPane ?? "unknown";
+			if (agyPendingSessionsOf(task.id).has(heartbeatKey)) {
+				addAgyPending(task.id, heartbeatKey, Date.now(), heartbeatPane);
+				return task;
+			}
 		}
 		// A conversation starting in a pane ends whatever an earlier agent in that pane was waiting on.
 		if (harness === "agy" && event === "SessionStart" && sessionId && typeof params.paneId === "string" && params.paneId) {

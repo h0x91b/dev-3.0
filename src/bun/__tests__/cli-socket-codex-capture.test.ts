@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { AGY_WAIT_STALE_MS } from "../../shared/agy-statusline-state";
 import type { CliRequest, Project, Task } from "../../shared/types";
 import { guardFsPromises, type FsRootGuard } from "./helpers/fs-root-guard";
 
@@ -438,6 +439,30 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 				later(121_000);
 				await report("PostToolUse", "conv-b", "%2");
 				expect(moves()).toEqual(["user-questions", "in-progress"]);
+			});
+
+			it("a heartbeat that finds its wait expired brings the card back to Has Questions", async () => {
+				const { report, moves } = await setup();
+				const { handleRequest } = await import("../cli-socket-server");
+				handleRequestFor = (params) => handleRequest(agentHook(params));
+				await report("PermissionRequest", "conv-a", "%1");
+				later(AGY_WAIT_STALE_MS + 1);
+				await report("UserPromptSubmit", "conv-b", "%2");
+				expect(moves()).toEqual(["user-questions", "in-progress"]);
+
+				await heartbeat("conv-a", "%1");
+				expect(moves()).toEqual(["user-questions", "in-progress", "user-questions"]);
+			});
+
+			it("a heartbeat for a wait that is still held moves nothing", async () => {
+				const { report, moves } = await setup();
+				const { handleRequest } = await import("../cli-socket-server");
+				handleRequestFor = (params) => handleRequest(agentHook(params));
+				await report("PermissionRequest", "conv-a", "%1");
+				later(30_000);
+				await heartbeat("conv-a", "%1");
+				await heartbeat("conv-a", "%1");
+				expect(moves()).toEqual(["user-questions"]);
 			});
 
 			it("keeps holding while that pane's heartbeat keeps arriving", async () => {
