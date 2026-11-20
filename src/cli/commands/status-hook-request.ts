@@ -13,6 +13,8 @@ export interface StatusHookReport {
 	turnId?: string;
 	/** Record the session on the pane and move nothing: for a report that is not a lifecycle event. */
 	captureOnly?: boolean;
+	/** The wait this report names is still going: refresh it, move nothing. */
+	heartbeat?: boolean;
 	/** Say nothing on stderr either, for a caller whose output reaches the user's screen. */
 	quiet?: boolean;
 }
@@ -53,6 +55,7 @@ export async function reportStatusHookEvent(
 			...(report.event === "UserPromptSubmit" && report.prompt ? { prompt: report.prompt } : {}),
 			...(report.turnId ? { turnId: report.turnId } : {}),
 			...(report.captureOnly ? { captureOnly: true } : {}),
+			...(report.heartbeat ? { heartbeat: true } : {}),
 		}, { timeoutMs: 3_000, connectAttempts: 2, retryDelayMs: 50 });
 		if (!response.ok && !report.quiet) {
 			process.stderr.write(`dev3 ${report.harness} hook: ${response.error || "status update failed"}\n`);

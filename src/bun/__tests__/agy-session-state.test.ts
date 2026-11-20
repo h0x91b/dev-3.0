@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getApprovalResumeStatus, rememberResumeStatus } from "../approval-resume-status";
+import { AGY_WAIT_STALE_MS } from "../../shared/agy-statusline-state";
 import { addAgyPending, agyPendingSessionsOf, forgetAgyPane, forgetAgyTask, removeAgyPending } from "../agy-session-state";
 
 let home: string;
@@ -23,6 +24,21 @@ describe("agy pending waits", () => {
 		expect([...agyPendingSessionsOf("t1")]).toEqual(["b"]);
 		expect(removeAgyPending("t1", "b")).toBe(0);
 		expect(agyPendingSessionsOf("t1").size).toBe(0);
+	});
+});
+
+describe("agy waits that stop being heard of", () => {
+	it("count as gone after AGY_WAIT_STALE_MS, and are pruned wherever the waits are read", () => {
+		addAgyPending("t-live", "dead", 1_000);
+		addAgyPending("t-live", "alive", 1_000);
+		expect(removeAgyPending("t-live", "x", 1_000 + AGY_WAIT_STALE_MS)).toBe(2);
+		addAgyPending("t-live", "alive", 1_000 + AGY_WAIT_STALE_MS); // heartbeat
+		expect([...agyPendingSessionsOf("t-live", 1_000 + AGY_WAIT_STALE_MS + 1)]).toEqual(["alive"]);
+		expect(removeAgyPending("t-live", "alive", 1_000 + 2 * AGY_WAIT_STALE_MS)).toBe(0);
+		expect(agyPendingSessionsOf("t-live").size).toBe(0);
+		expect(removeAgyPending("t-stale", "a", 5)).toBe(0);
+		addAgyPending("t-stale", "a", 5);
+		expect(agyPendingSessionsOf("t-stale", 5 + AGY_WAIT_STALE_MS + 1).size).toBe(0);
 	});
 });
 

@@ -416,6 +416,47 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 			expect(moves()).toEqual(["user-questions", "in-progress"]);
 		});
 
+		describe("a pane that stops reporting", () => {
+			beforeEach(() => {
+				vi.useFakeTimers({ toFake: ["Date"] });
+				vi.setSystemTime(new Date("2026-11-20T10:00:00Z"));
+			});
+			afterEach(() => {
+				vi.useRealTimers();
+			});
+			const later = (ms: number) => vi.setSystemTime(Date.now() + ms);
+			let handleRequestFor: (params: Record<string, unknown>) => Promise<unknown>;
+			const heartbeat = (sessionId: string, paneId: string) =>
+				handleRequestFor({ projectId: "proj-1", taskId: "task-1", harness: "agy", event: "PermissionRequest", heartbeat: true, sessionId, paneId });
+
+			it("stops holding the card after two minutes of silence", async () => {
+				const { report, moves } = await setup();
+				const { handleRequest } = await import("../cli-socket-server");
+				handleRequestFor = (params) => handleRequest(agentHook(params));
+				await report("PermissionRequest", "conv-dead", "%1");
+				await report("PermissionRequest", "conv-b", "%2");
+				later(121_000);
+				await report("PostToolUse", "conv-b", "%2");
+				expect(moves()).toEqual(["user-questions", "in-progress"]);
+			});
+
+			it("keeps holding while that pane's heartbeat keeps arriving", async () => {
+				const { report, moves } = await setup();
+				const { handleRequest } = await import("../cli-socket-server");
+				handleRequestFor = (params) => handleRequest(agentHook(params));
+				await report("PermissionRequest", "conv-a", "%1");
+				await report("PermissionRequest", "conv-b", "%2");
+				for (let i = 0; i < 4; i++) {
+					later(30_000);
+					await heartbeat("conv-a", "%1");
+				}
+				await report("PostToolUse", "conv-b", "%2");
+				expect(moves()).toEqual(["user-questions"]);
+				await report("PostToolUse", "conv-a", "%1");
+				expect(moves()).toEqual(["user-questions", "in-progress"]);
+			});
+		});
+
 		it("a late exit of an earlier launch leaves the current launch's waits and state alone", async () => {
 			const { report, moves } = await setup();
 			const { noteAgentLaunched } = await import("../agent-session-receipts");

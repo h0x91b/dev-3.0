@@ -1,24 +1,35 @@
 import { rmSync } from "node:fs";
-import { agyPaneKey, agyStatuslineStateFile, agyStatuslineTaskDir } from "../shared/agy-statusline-state";
+import { AGY_WAIT_STALE_MS, agyPaneKey, agyStatuslineStateFile, agyStatuslineTaskDir } from "../shared/agy-statusline-state";
 import { forgetApprovalResumeStatus, forgetTaskApprovalResumeStatuses } from "./approval-resume-status";
 import { DEV3_HOME } from "./paths";
 
-/** The agy sessions of a task that have a tool waiting for approval (the statusLine reports them). */
-const pendingSessions = new Map<string, Set<string>>();
+/** The agy sessions of a task that have a tool waiting for approval, with when each was last heard of. */
+const pendingSessions = new Map<string, Map<string, number>>();
 
-export function agyPendingSessionsOf(taskId: string): ReadonlySet<string> {
-	return pendingSessions.get(taskId) ?? new Set();
+/** The waits of a task that are still alive; ones not heard of within AGY_WAIT_STALE_MS are dropped. */
+function livePending(taskId: string, now: number): Map<string, number> | undefined {
+	const waiting = pendingSessions.get(taskId);
+	if (!waiting) return undefined;
+	for (const [key, lastSeen] of waiting) if (now - lastSeen > AGY_WAIT_STALE_MS) waiting.delete(key);
+	if (waiting.size === 0) pendingSessions.delete(taskId);
+	return waiting;
 }
 
-export function addAgyPending(taskId: string, key: string): void {
+export function agyPendingSessionsOf(taskId: string, now: number = Date.now()): ReadonlySet<string> {
+	return new Set(livePending(taskId, now)?.keys() ?? []);
+}
+
+/** Record a wait, or refresh the one already there (the heartbeat). */
+export function addAgyPending(taskId: string, key: string, now: number = Date.now()): void {
+	livePending(taskId, now);
 	let waiting = pendingSessions.get(taskId);
-	if (!waiting) pendingSessions.set(taskId, (waiting = new Set()));
-	waiting.add(key);
+	if (!waiting) pendingSessions.set(taskId, (waiting = new Map()));
+	waiting.set(key, now);
 }
 
 /** Drop one session's wait; returns how many other sessions of the task still wait. */
-export function removeAgyPending(taskId: string, key: string): number {
-	const waiting = pendingSessions.get(taskId);
+export function removeAgyPending(taskId: string, key: string, now: number = Date.now()): number {
+	const waiting = livePending(taskId, now);
 	waiting?.delete(key);
 	if (waiting && waiting.size === 0) pendingSessions.delete(taskId);
 	return waiting?.size ?? 0;

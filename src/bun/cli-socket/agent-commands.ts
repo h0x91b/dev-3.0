@@ -192,6 +192,11 @@ export const agentHandlers: Record<string, Handler> = {
 			: "codex";
 		let sessionId = typeof params.sessionId === "string" ? params.sessionId : null;
 		if (harness === "agy" && sessionId && !AGY_CONVERSATION_ID.test(sessionId)) sessionId = null;
+		// A wait that goes on: refresh its liveness, move nothing.
+		if (params.heartbeat === true) {
+			if (harness === "agy") addAgyPending(task.id, sessionId ?? (typeof params.paneId === "string" ? params.paneId : "unknown"));
+			return task;
+		}
 		// A report that only names the session: record it on the pane, move nothing.
 		if (params.captureOnly === true) {
 			if (!sessionId) return task;

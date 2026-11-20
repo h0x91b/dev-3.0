@@ -1,6 +1,11 @@
 import { resolveDev3Home } from "./dev3-home";
 import { resolveAccountHome } from "./user-home";
 
+/** A pane still waiting for approval repeats its report this often (the statusLine refreshes far more often). */
+export const AGY_WAIT_HEARTBEAT_MS = 30_000;
+/** The app forgets a wait it has not heard of for this long: the pane behind it is gone. */
+export const AGY_WAIT_STALE_MS = 120_000;
+
 const SAFE_TASK_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 /**

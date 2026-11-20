@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { agyDev3Home, agyPaneKey, agyStatuslineStateFile } from "../../shared/agy-statusline-state";
+import { AGY_WAIT_HEARTBEAT_MS, agyDev3Home, agyPaneKey, agyStatuslineStateFile } from "../../shared/agy-statusline-state";
 import { parseAgyQuotaDump } from "../../shared/rate-limits";
 import type { CliContext } from "../context";
 import { reportStatusHookEvent } from "./status-hook-request";
@@ -112,6 +112,8 @@ function dumpQuota(payload: AgyStatusLinePayload, now: number, dev3Home: string)
 interface PaneState {
 	pending: boolean;
 	conversationId: string | null;
+	/** When this pane last told the app about its wait (the report or a heartbeat). */
+	lastSent: number | null;
 }
 
 /** Forget one pane's reported state, so what a restarted agy reports is judged fresh. */
@@ -135,12 +137,15 @@ export function resetAgyStatuslineState(
  * to Has Questions, and its end hands the task back - unless agy is idle by then, because
  * a turn that ended (Esc, a reject) already settled the card. A conversation id the board
  * does not know yet is recorded (a cheap fallback for a launch without the session hook).
+ * A wait that goes on is repeated every AGY_WAIT_HEARTBEAT_MS, so the app can tell it from the
+ * wait of a pane that died.
  */
 async function syncPaneState(
 	payload: AgyStatusLinePayload,
 	socketPath: string,
 	context: CliContext,
 	dev3Home: string,
+	now: number,
 ): Promise<void> {
 	const file = agyStatuslineStateFile(dev3Home, context.taskId, agyPaneKey(process.env, payload.conversationId));
 	if (!file) return;
@@ -148,6 +153,7 @@ async function syncPaneState(
 	const previous: PaneState = {
 		pending: stored?.pending === true,
 		conversationId: validConversationId(stored?.conversationId),
+		lastSent: typeof stored?.lastSent === "number" ? stored.lastSent : null,
 	};
 	const next: PaneState = { ...previous };
 
@@ -166,6 +172,20 @@ async function syncPaneState(
 			);
 		}
 		next.pending = payload.toolConfirmationPending;
+		next.lastSent = payload.toolConfirmationPending ? now : null;
+	} else if (payload.toolConfirmationPending && (previous.lastSent === null || now - previous.lastSent >= AGY_WAIT_HEARTBEAT_MS)) {
+		await reportStatusHookEvent(
+			{
+				harness: "agy",
+				event: "PermissionRequest",
+				heartbeat: true,
+				quiet: true,
+				...(payload.conversationId ? { sessionId: payload.conversationId } : {}),
+			},
+			socketPath,
+			context,
+		);
+		next.lastSent = now;
 	}
 	if (payload.conversationId && payload.conversationId !== previous.conversationId) {
 		await reportStatusHookEvent(
@@ -175,7 +195,7 @@ async function syncPaneState(
 		);
 		next.conversationId = payload.conversationId;
 	}
-	if (next.pending !== previous.pending || next.conversationId !== previous.conversationId) writeJson(file, next);
+	if (next.pending !== previous.pending || next.conversationId !== previous.conversationId || next.lastSent !== previous.lastSent) writeJson(file, next);
 }
 
 /**
@@ -202,7 +222,7 @@ export async function handleAgyStatusLine(
 				// disk trouble must never reach agy's status line
 			}
 		}
-		if (socketPath && context?.taskId) await syncPaneState(payload, socketPath, context, dev3Home);
+		if (socketPath && context?.taskId) await syncPaneState(payload, socketPath, context, dev3Home, now);
 	} catch {
 		// silent by contract
 	}

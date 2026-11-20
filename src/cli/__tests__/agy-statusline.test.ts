@@ -253,6 +253,30 @@ describe("agy statusline: panes of one task", () => {
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
+	it("repeats a wait that goes on as a heartbeat, at most every 30 s", async () => {
+		const pending = payload({ tool_confirmation_pending: true, conversation_id: "conv-1" });
+		const sent = () => mockSend.mock.calls.filter((call) => !(call[2] as Record<string, unknown>).captureOnly).map((call) => [(call[2] as Record<string, unknown>).event, (call[2] as Record<string, unknown>).heartbeat]);
+		await run(pending, { noLimits: true }, CONTEXT, NOW);
+		await run(pending, { noLimits: true }, CONTEXT, NOW + 10_000);
+		await run(pending, { noLimits: true }, CONTEXT, NOW + 29_000);
+		expect(sent()).toEqual([["PermissionRequest", undefined]]);
+
+		await run(pending, { noLimits: true }, CONTEXT, NOW + 31_000);
+		await run(pending, { noLimits: true }, CONTEXT, NOW + 45_000);
+		expect(sent()).toEqual([["PermissionRequest", undefined], ["PermissionRequest", true]]);
+		await run(pending, { noLimits: true }, CONTEXT, NOW + 62_000);
+		expect(sent()).toHaveLength(3);
+		expect(mockSend.mock.calls[mockSend.mock.calls.length - 1]![2]).toMatchObject({ sessionId: "conv-1", heartbeat: true });
+	});
+
+	it("sends no heartbeat once the wait is over", async () => {
+		await run(payload({ tool_confirmation_pending: true }), { noLimits: true }, CONTEXT, NOW);
+		await run(payload({ tool_confirmation_pending: false, agent_state: "tool_use" }), { noLimits: true }, CONTEXT, NOW + 1_000);
+		mockSend.mockClear();
+		await run(payload({ tool_confirmation_pending: false }), { noLimits: true }, CONTEXT, NOW + 120_000);
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
 	it("rejects a conversation id that is not a plain token", async () => {
 		await run(payload({ conversation_id: "a b; rm -rf /" }));
 		expect(mockSend).not.toHaveBeenCalled();
