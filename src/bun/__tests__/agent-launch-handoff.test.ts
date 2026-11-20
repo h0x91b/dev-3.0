@@ -189,6 +189,31 @@ describe("deliverLaunchHandoff — a launched agy session", () => {
 		expect(pushCliAttention).toHaveBeenCalledTimes(1);
 	});
 
+	it("abandons the note when agy captured its session and exited before the poll: the pane is a bare shell", async () => {
+		noteAgentLaunched("child-1234", "launch-1", { startReceipts: false });
+		noteAgentExited("child-1234", "launch-1", 0);
+		getTask.mockResolvedValue(agyTask("conv-1"));
+		await expect(runWithClock()).resolves.toBe(false);
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
+		expect(pushCliToast).toHaveBeenCalledWith(expect.objectContaining({ level: "error", message: expect.stringContaining("exited") }));
+	});
+
+	it("delivers while that launch is still alive", async () => {
+		noteAgentLaunched("child-1234", "launch-1", { startReceipts: false });
+		getTask.mockResolvedValue(agyTask("conv-1"));
+		await expect(runWithClock()).resolves.toBe(true);
+	});
+
+	it("stops waiting for the capture when the launch exits meanwhile", async () => {
+		noteAgentLaunched("child-1234", "launch-1", { startReceipts: false });
+		getTask.mockResolvedValue(agyTask(null));
+		const result = await runWithClock((elapsed) => {
+			if (elapsed === 4_000) noteAgentExited("child-1234", "launch-1", 1);
+		});
+		expect(result).toBe(false);
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
+	});
+
 	it("abandons the note when the task is relaunched before the first agy reported: the relaunch brings its own", async () => {
 		getTask.mockResolvedValue(agyTask(null));
 		const result = await runWithClock((elapsed) => {

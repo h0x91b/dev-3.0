@@ -1,6 +1,6 @@
 import { getAgentAdapter } from "../shared/agent-adapters";
 import { type AgentMessageSource, getTaskTitle, type Project, type ScheduledMessageTarget, type Task } from "../shared/types";
-import { agentSessionRecord } from "./agent-session-receipts";
+import { agentSessionRecord, latestAgentLaunchRecord } from "./agent-session-receipts";
 import * as data from "./data";
 import { taskDir } from "./git";
 import { createLogger } from "./logger";
@@ -114,6 +114,14 @@ export async function deliverLaunchHandoff(opts: {
 						return false;
 					}
 					boundPaneId = main.paneId;
+				}
+				// Exit wins over the captured session: the pane outlives agy as a bare shell, and a hook that
+				// fired just before the exit still leaves its conversation id there.
+				const launch = latestAgentLaunchRecord(task.id);
+				if (launch?.exitedAt != null) {
+					log.warn("Handoff abandoned — the agent exited before the note was delivered", { taskId: shortId, exitCode: launch.exitCode });
+					notifyUndelivered(project, task, "This task was launched by an agent, but its agent exited before the handoff note could be delivered.");
+					return false;
 				}
 				if (main.sessionId) {
 					return await sendHandoff(project, task, opts, main.paneId ? { kind: "pane", paneId: main.paneId } : null);
