@@ -50,6 +50,14 @@ describe("resolveAgentCommand for agy", () => {
 		expect(trusted(await resolveAgentCommand(AGY, undefined, ctx(missing)))).toEqual([missing]);
 	});
 
+	it("trusts no workspace for a task that runs someone else's branch, so agy asks the user", async () => {
+		const command = await resolveAgentCommand(AGY, undefined, ctx(real), { foreignCode: true });
+		const settings = JSON.parse(command.match(/--settings '(.*?)' -i/)![1]!.replaceAll("'\\''", "'"));
+		expect(settings).not.toHaveProperty("trustedWorkspaces");
+		expect(settings.permissions.allow.length).toBeGreaterThan(0);
+		expect(trusted(await resolveAgentCommand(AGY, undefined, ctx(real), { foreignCode: false }))).toEqual([realpathSync(real)]);
+	});
+
 	it("spells the statusLine's CLI under the account home, not through ~", async () => {
 		const settings = JSON.parse(
 			(await resolveAgentCommand(AGY, undefined, ctx(real))).match(/--settings '(.*?)' -i/)![1]!.replaceAll("'\\''", "'"),

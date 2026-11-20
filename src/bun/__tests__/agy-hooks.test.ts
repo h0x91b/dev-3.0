@@ -144,7 +144,23 @@ describe("setupAgentHooks for agy", () => {
 		const skill = readFileSync(join(worktree, ".agents", "skills", "dev3", "SKILL.md"), "utf-8");
 		expect(skill).toContain("name: dev3");
 		expect(skill).toContain("native hooks into every agy pane");
-		expect(excludeTaskAgyConfig).toHaveBeenCalledWith(worktree);
+		expect(excludeTaskAgyConfig).toHaveBeenCalledWith(worktree, { hooks: true, skill: true });
+	});
+
+	it("tells the agent to run the bare `dev3`, which a launcher's HOME cannot misplace", async () => {
+		await setupAgentHooks(worktree, "agy");
+		const skill = readFileSync(join(worktree, ".agents", "skills", "dev3", "SKILL.md"), "utf-8");
+		expect(skill).toContain("- `dev3 --help`");
+		expect(skill).toContain("- `dev3 current`");
+		expect(skill).not.toContain("~/.dev3.0/bin/dev3 --help");
+	});
+
+	it("excludes only what it wrote: an unreadable user hooks.json is left to the user", async () => {
+		mkdirSync(join(worktree, ".agents"), { recursive: true });
+		writeFileSync(join(worktree, ".agents", "hooks.json"), "{ not json");
+		await setupAgentHooks(worktree, "agy");
+		expect(readFileSync(join(worktree, ".agents", "hooks.json"), "utf-8")).toBe("{ not json");
+		expect(excludeTaskAgyConfig).toHaveBeenCalledWith(worktree, { hooks: false, skill: true });
 	});
 
 	it("runs the dev3 CLI from the ACCOUNT home, never through ~ or $HOME, which a launcher redirects, nor a redirected DEV3_HOME", async () => {
@@ -226,7 +242,35 @@ describe("setupAgentHooks for agy in a repo that tracks the config", () => {
 
 		expect(readFileSync(join(worktree, ".agents", "hooks.json"), "utf-8")).toBe(MINE);
 		expect(git("git status --porcelain").toString()).not.toContain("hooks.json");
-		expect(excludeTaskAgyConfig).toHaveBeenCalledWith(worktree);
+		expect(excludeTaskAgyConfig).toHaveBeenCalledWith(worktree, { hooks: false, skill: true });
+	});
+
+	it("asks for no exclude rule when it wrote nothing at all", async () => {
+		track(".agents/hooks.json", MINE);
+		track(".agents/skills/dev3/SKILL.md", "the team's own skill\n");
+		await setupAgentHooks(worktree, "agy");
+		expect(excludeTaskAgyConfig).not.toHaveBeenCalled();
+	});
+
+	it("does not bring back a tracked hooks.json the user deleted", async () => {
+		track(".agents/hooks.json", MINE);
+		rmSync(join(worktree, ".agents"), { recursive: true });
+
+		await setupAgentHooks(worktree, "agy");
+
+		expect(existsSync(join(worktree, ".agents", "hooks.json"))).toBe(false);
+		expect(existsSync(join(worktree, ".agents", "skills", "dev3", "SKILL.md"))).toBe(true);
+		expect(excludeTaskAgyConfig).toHaveBeenCalledWith(worktree, { hooks: false, skill: true });
+	});
+
+	it("does not bring back a tracked dev3 skill the user deleted", async () => {
+		track(".agents/skills/dev3/SKILL.md", "the team's own skill\n");
+		rmSync(join(worktree, ".agents"), { recursive: true });
+
+		await setupAgentHooks(worktree, "agy");
+
+		expect(existsSync(join(worktree, ".agents", "skills", "dev3", "SKILL.md"))).toBe(false);
+		expect(existsSync(join(worktree, ".agents", "hooks.json"))).toBe(true);
 	});
 
 	it("still writes the skill when only the hooks file is tracked", async () => {

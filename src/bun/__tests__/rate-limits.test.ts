@@ -552,9 +552,9 @@ describe("parseAgyQuotaDump", () => {
 		expect(snapshot).not.toHaveProperty("accountLabel");
 	});
 
-	it("names the weekly bucket and shows an unknown one as it is", () => {
+	it("labels a known bucket by its length and shows an unknown one as it is", () => {
 		const [known, unknown] = parseAgyQuotaDump(dump({ "gemini-weekly": { remaining_fraction: 0.5 }, "mystery-pool": { remaining_fraction: 0.5 } }), "k")!.windows;
-		expect(windowLabel(known!)).toBe("weekly");
+		expect(windowLabel(known!)).toBe("7d");
 		expect(windowLabel(unknown!)).toBe("mystery-pool");
 	});
 
@@ -588,8 +588,8 @@ describe("parseAgyQuotaDump with a real Google AI Ultra payload", () => {
 		expect(snapshot().planType).toBe("Google AI Ultra");
 	});
 
-	it("names the buckets", () => {
-		expect(snapshot().windows.map(windowLabel)).toEqual(["5-hour", "weekly", "other models, 5-hour", "other models, weekly"]);
+	it("names the buckets by their length, like every other agent's windows", () => {
+		expect(snapshot().windows.map(windowLabel)).toEqual(["5h", "7d", "5h", "7d"]);
 	});
 
 	it("leaves the other models out of the header pill, which keeps the first-party 5-hour and weekly", () => {

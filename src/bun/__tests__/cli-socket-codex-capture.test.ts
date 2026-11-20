@@ -308,6 +308,87 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 		expect(moveTask).not.toHaveBeenCalled();
 	});
 
+	it("records each agy pane's own conversation in a two-pane task, native pane ids included", async () => {
+		await import("../data");
+		const { handleRequest } = await import("../cli-socket-server");
+		const agyPane = (paneId: string) => ({ ...codexPane(paneId, null), agentCmd: "agy" });
+		seed([makeTask({ sessionState: { panes: [agyPane("native-1"), agyPane("native-2")] } })]);
+
+		for (const [paneId, sessionId] of [["native-2", "conv-two"], ["native-1", "conv-one"]]) {
+			const resp = await handleRequest(agentHook({
+				projectId: "proj-1", taskId: "task-1", harness: "agy", event: "SessionStart", captureOnly: true, sessionId, paneId,
+			}));
+			expect(resp.ok).toBe(true);
+		}
+		expect(readPanes().map((pane) => [pane.paneId, pane.sessionId])).toEqual([["native-1", "conv-one"], ["native-2", "conv-two"]]);
+	});
+
+	it("captures through the validated harness and refuses a conversation id that is not a plain token", async () => {
+		await import("../data");
+		const { handleRequest } = await import("../cli-socket-server");
+		seed([makeTask({ sessionState: { panes: [{ ...codexPane("%3", null), agentCmd: "agy" }] } })]);
+
+		for (const sessionId of ["a b;c", "$(touch x)", "x/../y"]) {
+			await handleRequest(agentHook({ projectId: "proj-1", taskId: "task-1", harness: "agy", event: "SessionStart", captureOnly: true, sessionId, paneId: "%3" }));
+			await handleRequest(agentHook({ projectId: "proj-1", taskId: "task-1", harness: "agy", event: "SessionStart", sessionId, paneId: "%3" }));
+		}
+		expect(readPanes()[0]?.sessionId).toBeNull();
+	});
+
+	describe("agy tool-wait reports from the statusLine", () => {
+		/** A move that lands in the store, so the next report sees the card where the last one left it. */
+		async function setup(status: Task["status"] = "in-progress") {
+			await import("../data");
+			const { handleRequest } = await import("../cli-socket-server");
+			const { moveTask } = await import("../rpc-handlers");
+			const tasksFile = join(dev3Home, "data", PROJECT_SLUG, "tasks.json");
+			vi.mocked(moveTask).mockReset();
+			vi.mocked(moveTask).mockImplementation((async (args: { newStatus: Task["status"] }) => {
+				const [task] = JSON.parse(readFileSync(tasksFile, "utf8")) as Task[];
+				const moved = { ...task!, status: args.newStatus };
+				writeFileSync(tasksFile, JSON.stringify([moved]));
+				return moved;
+			}) as never);
+			const agyPane = (paneId: string) => ({ ...codexPane(paneId, null), agentCmd: "agy" });
+			seed([makeTask({ status, sessionState: { panes: [agyPane("%1"), agyPane("%2")] } })]);
+			const report = (event: string, sessionId: string, paneId: string) =>
+				handleRequest(agentHook({ projectId: "proj-1", taskId: "task-1", harness: "agy", event, sessionId, paneId }));
+			const moves = () => vi.mocked(moveTask).mock.calls.map((call) => (call[0] as { newStatus: string }).newStatus);
+			return { report, moves, moveTask: vi.mocked(moveTask) };
+		}
+
+		it("parks the card on a wait and hands it back when that wait ends", async () => {
+			const { report, moves } = await setup();
+			await report("PermissionRequest", "conv-1", "%1");
+			await report("PostToolUse", "conv-1", "%1");
+			expect(moves()).toEqual(["user-questions", "in-progress"]);
+		});
+
+		it("keeps the card parked until the LAST pane's wait ends", async () => {
+			const { report, moves } = await setup();
+			await report("PermissionRequest", "conv-1", "%1");
+			await report("PermissionRequest", "conv-2", "%2");
+			await report("PostToolUse", "conv-1", "%1");
+			expect(moves()).toEqual(["user-questions"]);
+			await report("PostToolUse", "conv-2", "%2");
+			expect(moves()).toEqual(["user-questions", "in-progress"]);
+		});
+
+		it("ignores a late wait-ended report: the card was never parked by that wait", async () => {
+			const { report, moveTask } = await setup("review-by-user");
+			await report("PostToolUse", "conv-1", "%1");
+			expect(moveTask).not.toHaveBeenCalled();
+		});
+
+		it("ignores a wait-ended report once the turn ended (Stop forgets the wait)", async () => {
+			const { report, moves } = await setup();
+			await report("PermissionRequest", "conv-1", "%1");
+			await report("Stop", "conv-1", "%1");
+			await report("PostToolUse", "conv-1", "%1");
+			expect(moves()).toEqual(["user-questions"]);
+		});
+	});
+
 	it("accepts a plain pi report as pi and resume targets the session with --session-id", async () => {
 		await import("../data");
 		const { handleRequest } = await import("../cli-socket-server");

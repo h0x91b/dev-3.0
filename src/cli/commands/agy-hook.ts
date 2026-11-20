@@ -2,6 +2,7 @@ import { AGY_HOOK_EVENTS, type AgyHookEvent } from "../../shared/agent-hooks";
 import { skillBodyFor } from "../../shared/agent-skill-content";
 import type { CliContext } from "../context";
 import { sendRequest } from "../socket-client";
+import { resetAgyStatuslineState, validConversationId } from "./agy-statusline";
 import { reportStatusHookEvent } from "./status-hook-request";
 
 interface AgyHookPayload {
@@ -20,7 +21,7 @@ function parsePayload(rawInput: string): AgyHookPayload {
 		const parsed = JSON.parse(rawInput) as Record<string, unknown>;
 		return {
 			...(isAgyEvent(parsed.hookEventName) ? { event: parsed.hookEventName } : {}),
-			...(typeof parsed.conversationId === "string" && parsed.conversationId ? { conversationId: parsed.conversationId } : {}),
+			...(validConversationId(parsed.conversationId) ? { conversationId: validConversationId(parsed.conversationId)! } : {}),
 			...(typeof parsed.terminationReason === "string" ? { terminationReason: parsed.terminationReason } : {}),
 		};
 	} catch {
@@ -66,13 +67,18 @@ export async function handleAgyHook(
 	rawInput: string,
 	socketPath: string | null,
 	context: CliContext | null,
+	dev3Home?: string,
 ): Promise<void> {
 	const payload = parsePayload(rawInput);
 	const event = isAgyEvent(eventArg) ? eventArg : payload.event;
 	let output = "{}";
 
 	try {
-		if (event === "SessionStart" && context?.taskId) output = sessionStartOutput();
+		if (event === "SessionStart" && context?.taskId) {
+			output = sessionStartOutput();
+			// A restarted agy has no tool waiting, whatever the last run left behind.
+			resetAgyStatuslineState(context.taskId, process.env, payload.conversationId ?? null, dev3Home);
+		}
 		if (event && socketPath && context?.taskId) {
 			if (event === "Stop" && payload.terminationReason === "ERROR") {
 				await reportStoppedOnError(socketPath, context);

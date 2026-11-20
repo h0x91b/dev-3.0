@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PANE_INPUT_LIMITS } from "../../shared/pane-input";
 import {
 	getAgentAdapter,
@@ -535,6 +535,11 @@ describe("launchArgs — agy", () => {
 		expect(launch("agy", cfg({ model: "Gemini 4 Neon (High)" })))
 			.toBe(`agy --model 'Gemini 4 Neon (High)' ${SETTINGS} -i 'Fix the login bug'`);
 	});
+	it("quotes a conversation id that is not a plain token, on launch and on resume", () => {
+		expect(launch("agy", cfg(), { resume: true, sessionId: "a b;c" })).toContain("--conversation 'a b;c' ");
+		expect(agyAdapter.buildResumeCommand!("agy", "a b;c")).toBe("agy --conversation 'a b;c'");
+		expect(agyAdapter.buildResumeCommand!("agy", "ok-1.2_x")).toBe("agy --conversation ok-1.2_x");
+	});
 	it("maps every dev3 permission mode to agy's own flags", () => {
 		const flags = (permissionMode: AgentConfiguration["permissionMode"]) => launch("agy", cfg({ permissionMode })).split(` ${SETTINGS}`)[0];
 		expect(flags("acceptEdits")).toBe("agy --mode accept-edits");
@@ -586,11 +591,12 @@ describe("launchArgs — agy", () => {
 		it("also allows the account-home absolute spelling the agent types after reading a hook command", () => {
 			const { allow } = sessionSettings(agyAdapter.launchArgs("agy", cfg(), CTX, { agy: { accountHome: "/Users/me/" } })).permissions;
 			expect(allow).toContain("command(/Users/me/.dev3.0/bin/dev3 overview)");
-			expect(allow).toContain("command(~/.dev3.0/bin/dev3 overview)");
 			expect(allow).toContain("command(dev3 overview)");
 			expect(allow).toContain("command(/Users/me/.dev3.0/bin/dev3 projects list)");
 			expect(allow).not.toContain("command(/Users/me/.dev3.0/bin/dev3 pane run)");
-			expect(allow).toHaveLength(DEV3_AUTO_APPROVED_SUBCOMMANDS.length * 3);
+			// `~` points into a launcher's HOME once the account home is known.
+			expect(allow.some((rule: string) => rule.includes("~"))).toBe(false);
+			expect(allow).toHaveLength(DEV3_AUTO_APPROVED_SUBCOMMANDS.length * 2);
 		});
 		it("reports quota and permission waits through a silent statusLine stacked under agy's own", () => {
 			const { statusLine } = sessionSettings(agyAdapter.launchArgs("agy", cfg(), CTX));
@@ -622,7 +628,8 @@ describe("launchArgs — agy", () => {
 	it("renders its own skill body: hook-aware status, no approval-wait claim", () => {
 		expect(agyAdapter.skillBody).toBe(AGY_SKILL_BODY);
 		expect(AGY_SKILL_BODY).toContain("native hooks into every agy pane");
-		expect(AGY_SKILL_BODY).not.toContain("tool approval waits");
+		expect(AGY_SKILL_BODY).toContain("tool approval waits → `user-questions`");
+		expect(AGY_SKILL_BODY).not.toContain("bell");
 	});
 });
 
@@ -795,5 +802,25 @@ describe("launchArgs — provider routing args (registry promise)", () => {
 		const user = cmd.indexOf('model_provider="my-own"');
 		expect(injected).toBeGreaterThan(-1);
 		expect(user).toBeGreaterThan(injected);
+	});
+});
+
+describe("agy allow rules on Windows", () => {
+	const realPlatform = Object.getOwnPropertyDescriptor(process, "platform");
+	afterEach(() => {
+		if (realPlatform) Object.defineProperty(process, "platform", realPlatform);
+		vi.resetModules();
+	});
+
+	it("spell the CLI as the absolute dev3.exe the hooks use, and never as a POSIX path", async () => {
+		Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+		vi.resetModules();
+		const mod = await import("../../shared/agent-adapters/agy");
+		const settings = JSON.parse(mod.agySessionSettings("C:/wt", { accountHome: "C:/Users/me" }));
+		const allow: string[] = settings.permissions.allow;
+		expect(allow).toContain("command(dev3 overview)");
+		expect(allow.some((rule) => rule.includes(".exe"))).toBe(true);
+		expect(allow.some((rule) => rule.includes("~") || rule.includes("/.dev3.0/bin/dev3 "))).toBe(false);
+		expect(JSON.parse(mod.agySessionSettings("C:/wt")).permissions.allow.some((rule: string) => rule.includes("~"))).toBe(false);
 	});
 });

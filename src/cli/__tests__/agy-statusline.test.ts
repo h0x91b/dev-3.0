@@ -7,7 +7,10 @@ import type { CliContext } from "../context";
 vi.mock("../socket-client", () => ({ sendRequest: vi.fn() }));
 
 import { sendRequest } from "../socket-client";
+import { agyDev3Home, agyStatuslineTaskDir } from "../../shared/agy-statusline-state";
+import { resolveAccountHome } from "../../shared/user-home";
 import { agyAccountKey, agyDumpPath, handleAgyStatusLine } from "../commands/agy-statusline";
+import { handleAgyHook } from "../commands/agy-hook";
 
 const mockSend = vi.mocked(sendRequest);
 const SOCKET = "/tmp/test.sock";
@@ -21,6 +24,7 @@ let stderr = "";
 let stdoutSpy: ReturnType<typeof vi.spyOn>;
 let stderrSpy: ReturnType<typeof vi.spyOn>;
 let originalTmuxPane: string | undefined;
+let originalNativePane: string | undefined;
 
 const payload = (extra: Record<string, unknown> = {}) =>
 	JSON.stringify({ email: "me@example.com", plan_tier: "Pro", model: "m", quota: QUOTA, ...extra });
@@ -33,7 +37,9 @@ beforeEach(() => {
 	stdout = "";
 	stderr = "";
 	originalTmuxPane = process.env.TMUX_PANE;
-	delete process.env.TMUX_PANE;
+	originalNativePane = process.env.DEV3_PANE_ID;
+	process.env.TMUX_PANE = "%1";
+	delete process.env.DEV3_PANE_ID;
 	stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk: string | Uint8Array) => {
 		stdout += String(chunk);
 		return true;
@@ -51,6 +57,8 @@ afterEach(() => {
 	stderrSpy.mockRestore();
 	if (originalTmuxPane === undefined) delete process.env.TMUX_PANE;
 	else process.env.TMUX_PANE = originalTmuxPane;
+	if (originalNativePane === undefined) delete process.env.DEV3_PANE_ID;
+	else process.env.DEV3_PANE_ID = originalNativePane;
 	rmSync(home, { recursive: true, force: true });
 });
 
@@ -81,6 +89,29 @@ describe("agy statusline: the quota dump", () => {
 
 		await run(payload({ quota: { "gemini-weekly": { remaining_fraction: 0.5 } } }), { noLimits: false }, CONTEXT, NOW + 61_000);
 		expect(JSON.parse(readFileSync(agyDumpPath("me@example.com", home), "utf-8")).quota["gemini-weekly"].remaining_fraction).toBe(0.5);
+	});
+
+	it("does not treat the reset countdown as a change: only the fraction left and the reset instant are compared", async () => {
+		const bucket = (seconds: number) => ({ "gemini-5h": { remaining_fraction: 0.25, reset_time: "2026-11-20T13:00:00Z", reset_in_seconds: seconds } });
+		await run(payload({ quota: bucket(10800) }));
+		await run(payload({ quota: bucket(10790) }), { noLimits: false }, CONTEXT, NOW + 10_000);
+		const dump = JSON.parse(readFileSync(agyDumpPath("me@example.com", home), "utf-8"));
+		expect(dump.capturedAt).toBe(NOW);
+		expect(dump.quota["gemini-5h"].reset_in_seconds).toBe(10800);
+	});
+
+	it("merges a reading into the last dump bucket by bucket instead of replacing the dump", async () => {
+		await run(payload({
+			quota: {
+				"gemini-5h": { remaining_fraction: 0.25, reset_time: "2026-11-20T13:00:00Z", reset_in_seconds: 10800 },
+				"3p-5h": { remaining_fraction: 1, reset_time: "2026-11-20T15:00:00Z", reset_in_seconds: 18000 },
+			},
+		}));
+		await run(payload({ quota: { "gemini-5h": { remaining_fraction: 0.2, reset_time: "2026-11-20T13:00:00Z", reset_in_seconds: 10000 } } }), { noLimits: false }, CONTEXT, NOW + 1_000);
+
+		const dump = JSON.parse(readFileSync(agyDumpPath("me@example.com", home), "utf-8"));
+		expect(dump.quota["gemini-5h"].remaining_fraction).toBe(0.2);
+		expect(dump.quota["3p-5h"].remaining_fraction).toBe(1);
 	});
 
 	it("never lets a payload without a quota overwrite the last good dump", async () => {
@@ -154,6 +185,84 @@ describe("agy statusline: the task's state", () => {
 		await run(payload({ tool_confirmation_pending: true }));
 		await run(payload({ tool_confirmation_pending: true }), { noLimits: false }, { ...CONTEXT, taskId: "task-2" });
 		expect(mockSend).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe("agy statusline: panes of one task", () => {
+	const events = () => mockSend.mock.calls.map((call) => [(call[2] as Record<string, unknown>).event, (call[2] as Record<string, unknown>).paneId]);
+
+	it("reports each pane's wait on its own: two panes pending are two permission requests", async () => {
+		process.env.TMUX_PANE = "%1";
+		await run(payload({ tool_confirmation_pending: true }));
+		process.env.TMUX_PANE = "%2";
+		await run(payload({ tool_confirmation_pending: true }));
+		expect(events()).toEqual([["PermissionRequest", "%1"], ["PermissionRequest", "%2"]]);
+		expect(readdirSync(agyStatuslineTaskDir(home, "task-1")!)).toHaveLength(2);
+	});
+
+	it("one pane's wait ending leaves the other pane's recorded wait alone", async () => {
+		process.env.TMUX_PANE = "%1";
+		await run(payload({ tool_confirmation_pending: true }));
+		process.env.TMUX_PANE = "%2";
+		await run(payload({ tool_confirmation_pending: true }));
+		mockSend.mockClear();
+
+		process.env.TMUX_PANE = "%1";
+		await run(payload({ tool_confirmation_pending: false, agent_state: "tool_use" }));
+		expect(events()).toEqual([["PostToolUse", "%1"]]);
+
+		// pane 2 is still pending: its next identical refresh says nothing new, its end is reported once.
+		mockSend.mockClear();
+		process.env.TMUX_PANE = "%2";
+		await run(payload({ tool_confirmation_pending: true }));
+		expect(mockSend).not.toHaveBeenCalled();
+		await run(payload({ tool_confirmation_pending: false, agent_state: "tool_use" }));
+		expect(events()).toEqual([["PostToolUse", "%2"]]);
+	});
+
+	it("falls back to the native pane id, then to the conversation id, for the pane key and the report", async () => {
+		delete process.env.TMUX_PANE;
+		process.env.DEV3_PANE_ID = "native-9";
+		await run(payload({ tool_confirmation_pending: true, conversation_id: "conv-9" }));
+		expect(mockSend.mock.calls[0]![2]).toMatchObject({ paneId: "native-9", sessionId: "conv-9" });
+		expect(mockSend.mock.calls[1]![2]).toMatchObject({ paneId: "native-9", captureOnly: true, sessionId: "conv-9" });
+
+		delete process.env.DEV3_PANE_ID;
+		await run(payload({ tool_confirmation_pending: true, conversation_id: "conv-8" }));
+		expect(readdirSync(agyStatuslineTaskDir(home, "task-1")!).sort()).toEqual(["pconv-8.json", "pnative-9.json"]);
+	});
+
+	it("does not move a card back when the turn already ended: a cleared wait while agy is idle sends nothing", async () => {
+		await run(payload({ tool_confirmation_pending: true }));
+		mockSend.mockClear();
+		await run(payload({ tool_confirmation_pending: false, agent_state: "idle" }));
+		expect(mockSend).not.toHaveBeenCalled();
+		// and the wait is remembered as over, so it is not reported again
+		await run(payload({ tool_confirmation_pending: false, agent_state: "tool_use" }));
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("starts clean after `hook agy SessionStart`: a wait left by a killed agy does not resume an idle task", async () => {
+		await run(payload({ tool_confirmation_pending: true }));
+		mockSend.mockClear();
+
+		await handleAgyHook("SessionStart", JSON.stringify({ hookEventName: "SessionStart", conversationId: "conv-1" }), SOCKET, CONTEXT, home);
+		mockSend.mockClear();
+		await run(payload({ tool_confirmation_pending: false, agent_state: "tool_use" }));
+
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("rejects a conversation id that is not a plain token", async () => {
+		await run(payload({ conversation_id: "a b; rm -rf /" }));
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+});
+
+describe("agy statusline: where it writes", () => {
+	it("uses the account's own dev3 home, not a launcher's HOME, unless DEV3_HOME redirects it", () => {
+		expect(agyDev3Home({ HOME: "/launcher/private" })).toBe(`${resolveAccountHome()}/.dev3.0`);
+		expect(agyDev3Home({ HOME: "/launcher/private", DEV3_HOME: "/redirected/home/" })).toBe("/redirected/home");
 	});
 });
 

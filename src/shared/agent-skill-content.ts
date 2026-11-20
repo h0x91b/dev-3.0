@@ -393,10 +393,8 @@ ${SKILL_CUSTOM_COLUMNS}${skillCompletionRequest(mode)}`;
 
 // A hook-owned lifecycle (Codex, omp, pi). Keep manual moves limited to decisions
 // that cannot be inferred from native events (semantic questions/custom columns).
-function skillStatusNativeHooks(agent: string, mode: ProtocolMode, approvalWaits = true): string {
-	const transitions = approvalWaits
-		? "session/prompt/tool activity → `in-progress`, tool approval waits → `user-questions`, tool completion → active again, agent stop → `review-by-ai` or `review-by-user`"
-		: "session/invocation activity → `in-progress`, agent stop → `review-by-ai` or `review-by-user`. A tool approval wait raises no event, so the terminal bell is the only signal for it";
+function skillStatusNativeHooks(agent: string, mode: ProtocolMode): string {
+	const transitions = "session/prompt/tool activity → `in-progress`, tool approval waits → `user-questions`, tool completion → active again, agent stop → `review-by-ai` or `review-by-user`";
 	return `
 ## Task status management
 
@@ -458,7 +456,7 @@ const SKILL_STATUS: Record<SkillFamily, (mode: ProtocolMode) => string> = {
 	codex: (mode) => skillStatusNativeHooks("Codex", mode),
 	omp: (mode) => skillStatusNativeHooks("omp", mode),
 	pi: (mode) => skillStatusNativeHooks("pi", mode),
-	agy: (mode) => skillStatusNativeHooks("agy", mode, false),
+	agy: (mode) => skillStatusNativeHooks("agy", mode),
 	generic: skillStatusManual,
 };
 

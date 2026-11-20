@@ -1,14 +1,14 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { resolveDev3Home } from "../../shared/dev3-home";
+import { agyDev3Home, agyPaneKey, agyStatuslineStateFile } from "../../shared/agy-statusline-state";
 import { parseAgyQuotaDump } from "../../shared/rate-limits";
 import type { CliContext } from "../context";
 import { reportStatusHookEvent } from "./status-hook-request";
 
 /** A dump written within this long ago with the same quota is not rewritten. */
 const DUMP_REFRESH_MS = 30_000;
-const SAFE_TASK_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+export const AGY_CONVERSATION_ID = /^[A-Za-z0-9._-]+$/;
 
 interface AgyStatusLinePayload {
 	quota: unknown;
@@ -16,10 +16,18 @@ interface AgyStatusLinePayload {
 	planTier: string | null;
 	conversationId: string | null;
 	toolConfirmationPending: boolean;
+	/** agy's own state (`idle` between turns, `tool_use` while a tool waits). */
+	agentState: string | null;
 }
 
 function text(value: unknown): string | null {
 	return typeof value === "string" && value.trim() ? value : null;
+}
+
+/** A conversation id ends up in a resume command line, so anything but a plain token is dropped. */
+export function validConversationId(value: unknown): string | null {
+	const id = text(value);
+	return id && AGY_CONVERSATION_ID.test(id) ? id : null;
 }
 
 function parsePayload(raw: string): AgyStatusLinePayload | null {
@@ -30,8 +38,9 @@ function parsePayload(raw: string): AgyStatusLinePayload | null {
 			quota: parsed.quota,
 			email: text(parsed.email),
 			planTier: text(parsed.plan_tier),
-			conversationId: text(parsed.conversation_id),
+			conversationId: validConversationId(parsed.conversation_id),
 			toolConfirmationPending: parsed.tool_confirmation_pending === true,
+			agentState: text(parsed.agent_state),
 		};
 	} catch {
 		return null;
@@ -43,7 +52,7 @@ export function agyAccountKey(email: string | null): string {
 	return createHash("sha256").update(email ?? "").digest("hex").slice(0, 16);
 }
 
-export function agyDumpPath(email: string | null, dev3Home: string = resolveDev3Home()): string {
+export function agyDumpPath(email: string | null, dev3Home: string = agyDev3Home()): string {
 	return join(dev3Home, "data", "rate-limits", "agy", `${agyAccountKey(email)}.json`);
 }
 
@@ -61,64 +70,101 @@ function writeJson(path: string, value: unknown): void {
 	writeFileSync(path, JSON.stringify(value));
 }
 
-/** Dump the account's quota for the rate-limit monitor, unless the same reading was just written. */
+function asRecord(value: unknown): Record<string, unknown> | null {
+	return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+/**
+ * What a reading means, minus what merely ticks: `reset_in_seconds` is a countdown that
+ * changes at every refresh, so only the fraction left and the reset instant are compared.
+ */
+function quotaIdentity(quota: Record<string, unknown> | null): string {
+	return JSON.stringify(
+		Object.entries(quota ?? {}).map(([id, raw]) => {
+			const bucket = asRecord(raw);
+			return [id, bucket?.remaining_fraction ?? null, bucket?.reset_time ?? null];
+		}),
+	);
+}
+
+/**
+ * Dump the account's quota for the rate-limit monitor. A reading carries only the buckets agy
+ * reports right now, so it is merged into the last dump per bucket: one that is missing keeps
+ * its previous value. An unchanged reading is not rewritten within DUMP_REFRESH_MS.
+ */
 function dumpQuota(payload: AgyStatusLinePayload, now: number, dev3Home: string): void {
-	const dump = { capturedAt: now, email: payload.email, planTier: payload.planTier, quota: payload.quota };
-	if (!parseAgyQuotaDump(dump, agyAccountKey(payload.email))) return;
+	const fresh = asRecord(payload.quota);
+	if (!fresh || !parseAgyQuotaDump({ capturedAt: now, email: payload.email, planTier: payload.planTier, quota: fresh }, agyAccountKey(payload.email))) return;
 	const path = agyDumpPath(payload.email, dev3Home);
 	const previous = readJson(path);
+	const merged = { ...(asRecord(previous?.quota) ?? {}), ...fresh };
 	if (
 		previous &&
 		typeof previous.capturedAt === "number" &&
 		now - previous.capturedAt < DUMP_REFRESH_MS &&
-		JSON.stringify(previous.quota) === JSON.stringify(payload.quota)
+		quotaIdentity(merged) === quotaIdentity(asRecord(previous.quota))
 	) {
 		return;
 	}
-	writeJson(path, dump);
+	writeJson(path, { capturedAt: now, email: payload.email, planTier: payload.planTier, quota: merged });
 }
 
-interface TaskState {
+interface PaneState {
 	pending: boolean;
 	conversationId: string | null;
 }
 
-function stateFile(taskId: string, dev3Home: string): string | null {
-	return SAFE_TASK_ID.test(taskId) ? join(dev3Home, "data", "agy-statusline", `${taskId}.json`) : null;
+/** Forget one pane's reported state, so what a restarted agy reports is judged fresh. */
+export function resetAgyStatuslineState(
+	taskId: string,
+	env: Record<string, string | undefined>,
+	conversationId: string | null,
+	dev3Home: string = agyDev3Home(env),
+): void {
+	try {
+		const file = agyStatuslineStateFile(dev3Home, taskId, agyPaneKey(env, conversationId));
+		if (file) rmSync(file, { force: true });
+	} catch {
+		// a leftover file only costs one repeated report
+	}
 }
 
 /**
- * agy refreshes its statusLine constantly, so the task's last reported state is kept
+ * agy refreshes its statusLine constantly, so each pane's last reported state is kept
  * between runs and only a change is sent: a pending tool confirmation moves the task
- * to Has Questions, its end hands the task back, and a conversation id the board does
- * not know yet is recorded (a cheap fallback for a launch without the session hook).
+ * to Has Questions, and its end hands the task back - unless agy is idle by then, because
+ * a turn that ended (Esc, a reject) already settled the card. A conversation id the board
+ * does not know yet is recorded (a cheap fallback for a launch without the session hook).
  */
-async function syncTaskState(
+async function syncPaneState(
 	payload: AgyStatusLinePayload,
 	socketPath: string,
 	context: CliContext,
 	dev3Home: string,
 ): Promise<void> {
-	const file = stateFile(context.taskId, dev3Home);
+	const file = agyStatuslineStateFile(dev3Home, context.taskId, agyPaneKey(process.env, payload.conversationId));
 	if (!file) return;
 	const stored = readJson(file);
-	const previous: TaskState = {
+	const previous: PaneState = {
 		pending: stored?.pending === true,
-		conversationId: text(stored?.conversationId),
+		conversationId: validConversationId(stored?.conversationId),
 	};
-	const next: TaskState = { ...previous };
+	const next: PaneState = { ...previous };
 
 	if (payload.toolConfirmationPending !== previous.pending) {
-		await reportStatusHookEvent(
-			{
-				harness: "agy",
-				event: payload.toolConfirmationPending ? "PermissionRequest" : "PostToolUse",
-				quiet: true,
-				...(payload.conversationId ? { sessionId: payload.conversationId } : {}),
-			},
-			socketPath,
-			context,
-		);
+		const idle = payload.agentState === "idle";
+		if (payload.toolConfirmationPending || !idle) {
+			await reportStatusHookEvent(
+				{
+					harness: "agy",
+					event: payload.toolConfirmationPending ? "PermissionRequest" : "PostToolUse",
+					quiet: true,
+					...(payload.conversationId ? { sessionId: payload.conversationId } : {}),
+				},
+				socketPath,
+				context,
+			);
+		}
 		next.pending = payload.toolConfirmationPending;
 	}
 	if (payload.conversationId && payload.conversationId !== previous.conversationId) {
@@ -144,7 +190,7 @@ export async function handleAgyStatusLine(
 	socketPath: string | null,
 	context: CliContext | null,
 	now: number = Date.now(),
-	dev3Home: string = resolveDev3Home(),
+	dev3Home: string = agyDev3Home(),
 ): Promise<void> {
 	try {
 		const payload = parsePayload(rawInput);
@@ -156,7 +202,7 @@ export async function handleAgyStatusLine(
 				// disk trouble must never reach agy's status line
 			}
 		}
-		if (socketPath && context?.taskId) await syncTaskState(payload, socketPath, context, dev3Home);
+		if (socketPath && context?.taskId) await syncPaneState(payload, socketPath, context, dev3Home);
 	} catch {
 		// silent by contract
 	}

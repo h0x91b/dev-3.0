@@ -76,6 +76,36 @@ beforeEach(() => {
 });
 
 describe("RateLimitIndicator", () => {
+	it("colours and words the pill by the windows it shows, not by agy's hidden other-model buckets", async () => {
+		const resetsAt = Date.now() + 3_600_000;
+		mockedGet.mockResolvedValue({
+			generatedAt: Date.now(),
+			snapshots: [{
+				source: "agy",
+				accountId: "k1",
+				capturedAt: Date.now(),
+				activeAt: Date.now(),
+				windows: [
+					{ id: "gemini-5h", usedPercent: 10, resetsAt, windowMinutes: 300 },
+					{ id: "gemini-weekly", usedPercent: 20, resetsAt, windowMinutes: 10080 },
+					{ id: "3p-5h", usedPercent: 97, resetsAt, windowMinutes: 300 },
+					{ id: "3p-weekly", usedPercent: 91, resetsAt, windowMinutes: 10080 },
+				],
+				creditsBalance: null,
+				monthlyCredits: null,
+				planType: null,
+			}],
+		});
+		renderIndicator();
+		const pill = await screen.findByRole("button", { name: /Agent rate limits/ });
+		expect(pill.getAttribute("aria-label")).toContain("20% used");
+		expect(pill.getAttribute("aria-label")).not.toContain("97%");
+		expect(pill.className).toContain("text-fg-3");
+		expect(pill.className).not.toContain("text-danger");
+		expect(pill.textContent).toContain("5h10%");
+		expect(pill.textContent).not.toContain("97%");
+	});
+
 	it("renders nothing while no rate-limit data exists", async () => {
 		mockedGet.mockResolvedValue({ generatedAt: Date.now(), snapshots: [] });
 		const { container } = renderIndicator();

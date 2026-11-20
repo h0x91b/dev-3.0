@@ -249,14 +249,6 @@ export function windowLabel(w: RateLimitWindow): string {
 			return "spend";
 		case "monthly":
 			return "1mo";
-		case "gemini-5h":
-			return "5-hour";
-		case "gemini-weekly":
-			return "weekly";
-		case "3p-5h":
-			return "other models, 5-hour";
-		case "3p-weekly":
-			return "other models, weekly";
 	}
 	if (w.windowMinutes != null) {
 		const mins = w.windowMinutes;
@@ -529,12 +521,12 @@ export function parseAgyQuotaDump(dump: AgyQuotaDump, accountKey: string): Agent
 			id,
 			usedPercent: Math.max(0, Math.min(100, Math.round((1 - fraction) * 100))),
 			resetsAt: Number.isFinite(resetTime) ? resetTime : resetsIn != null ? dump.capturedAt + resetsIn * 1000 : null,
-			windowMinutes: AGY_BUCKETS.find((bucket) => bucket.id === id)?.minutes ?? null,
+			windowMinutes: AGY_BUCKETS.find((known) => known.id === id)?.minutes ?? null,
 		});
 	}
 	if (windows.length === 0) return null;
 	const rank = (id: string) => {
-		const index = AGY_BUCKETS.findIndex((bucket) => bucket.id === id);
+		const index = AGY_BUCKETS.findIndex((known) => known.id === id);
 		return index === -1 ? AGY_BUCKETS.length : index;
 	};
 	windows.sort((a, b) => rank(a.id) - rank(b.id)); // stable: unknown buckets keep agy's order

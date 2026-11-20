@@ -7,7 +7,7 @@
 import { DEV3_AUTO_APPROVED_SUBCOMMANDS, agyHookDialect, agyStatusLineCommand } from "../agent-hooks";
 import { AGY_SKILL_BODY } from "../agent-skill-content";
 import { modelArgs, providerArgs, slashExitProgram } from "./common";
-import { shellEscape } from "./shell";
+import { quoteIfUnsafe, shellEscape } from "./shell";
 import { buildTaskPrompt } from "./template";
 import type { AgentAdapter, AgyLaunchRuntime } from "./types";
 
@@ -47,14 +47,16 @@ function parseAgyModels(stdout: string): string[] | null {
 }
 
 /**
- * One rule per auto-approved dev3 subcommand and per spelling of the CLI the agent may type
- * (bare, `~`, the account home expanded). agy matches word by word, so `dev3 note add` covers
- * `dev3 note add "text"`, but not a different spelling of `dev3`.
+ * One rule per auto-approved dev3 subcommand and per spelling of the CLI the agent may type.
+ * agy matches word by word, so `dev3 note add` covers `dev3 note add "text"`, but not another
+ * spelling of `dev3`. The spellings are the bare `dev3` and the one the hook commands show the
+ * agent: the absolute path under the account home (the `~` form points into a launcher's HOME, so
+ * it is only offered when the account home is unknown), or the absolute `dev3.exe` on Windows.
  */
 function agyAllowRules(accountHome?: string): string[] {
-	const home = accountHome?.replace(/\/+$/, "");
-	const spellings = ["dev3", "~/.dev3.0/bin/dev3", ...(home && !/\s/.test(home) ? [`${home}/.dev3.0/bin/dev3`] : [])];
-	return spellings.flatMap((cli) => DEV3_AUTO_APPROVED_SUBCOMMANDS.map((sub) => `command(${cli} ${sub})`));
+	const dialect = agyHookDialect(accountHome ?? "/");
+	const shown = accountHome ? [dialect.cli] : dialect.posixShell ? ["~/.dev3.0/bin/dev3"] : [];
+	return ["dev3", ...shown].flatMap((cli) => DEV3_AUTO_APPROVED_SUBCOMMANDS.map((sub) => `command(${cli} ${sub})`));
 }
 
 /**
@@ -64,7 +66,7 @@ function agyAllowRules(accountHome?: string): string[] {
  * - the statusLine reports quota and permission waits, stacked under agy's own line.
  */
 export function agySessionSettings(worktreePath: string, runtime?: AgyLaunchRuntime): string {
-	const trusted = runtime?.worktreeRealPath || worktreePath;
+	const trusted = runtime?.foreignCode ? "" : runtime?.worktreeRealPath || worktreePath;
 	return JSON.stringify({
 		...(trusted ? { trustedWorkspaces: [trusted] } : {}),
 		permissions: { allow: agyAllowRules(runtime?.accountHome) },
@@ -101,7 +103,7 @@ export const agyAdapter: AgentAdapter = {
 		const resume = options?.resume ?? false;
 
 		if (resume) {
-			if (options?.sessionId) args.push("--conversation", options.sessionId);
+			if (options?.sessionId) args.push("--conversation", quoteIfUnsafe(options.sessionId));
 			else args.push("--continue");
 		}
 
@@ -125,7 +127,7 @@ export const agyAdapter: AgentAdapter = {
 
 	// Without the worktree path there is no `--settings` here; the conversation itself resumes.
 	buildResumeCommand(baseCmd, sessionId) {
-		return sessionId ? `${baseCmd} --conversation ${sessionId}` : `${baseCmd} --continue`;
+		return sessionId ? `${baseCmd} --conversation ${quoteIfUnsafe(sessionId)}` : `${baseCmd} --continue`;
 	},
 
 	// The statusLine reports a permission wait (`tool_confirmation_pending`), so a BEL adds nothing:

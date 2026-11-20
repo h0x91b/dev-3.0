@@ -38,9 +38,8 @@ export async function reportStatusHookEvent(
 	// recovery — essential when several sessions share one worktree. omp takes
 	// no session id at launch, so this post-hoc capture is the only way to
 	// resume the exact session per pane.
-	const paneId = typeof process.env.TMUX_PANE === "string" && process.env.TMUX_PANE
-		? process.env.TMUX_PANE
-		: undefined;
+	// Native panes export DEV3_PANE_ID instead of TMUX_PANE.
+	const paneId = process.env.TMUX_PANE?.trim() || process.env.DEV3_PANE_ID?.trim() || undefined;
 	try {
 		const response = await sendRequest(socketPath, "task.agentHook", {
 			taskId: context.taskId,

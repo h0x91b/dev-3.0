@@ -509,6 +509,8 @@ export interface CommandOptions {
 	leanProtocol?: boolean;
 	/** Global `agentRateLimitTracking` setting; agy's statusLine hook reads quota only while it is on. */
 	rateLimitTracking?: boolean;
+	/** The task stands on someone else's branch: nothing is pre-trusted for it (see ensureAgentTrust). */
+	foreignCode?: boolean;
 	/** Path to the generated settings file that routes the Claude statusLine
 	 *  through `dev3 statusline` (rate-limit capture + delegation to the user's
 	 *  original statusLine). Injected as `--settings <path>` for Claude-based
@@ -607,7 +609,7 @@ export async function resolveAgentCommand(
 		codex: adapter.command === "codex" ? await codexLaunchRuntime() : undefined,
 		// agy trusts a workspace by its resolved path only, and resolving one touches the disk.
 		agy: adapter.command === "agy"
-			? { worktreeRealPath: await realWorktreePath(ctx.worktreePath), accountHome: resolveAccountHome(), trackRateLimits: options?.rateLimitTracking }
+			? { worktreeRealPath: await realWorktreePath(ctx.worktreePath), accountHome: resolveAccountHome(), trackRateLimits: options?.rateLimitTracking, foreignCode: options?.foreignCode }
 			: undefined,
 		// The protocol reaches Claude as a file on every platform: Windows cannot
 		// carry it on the command line, and POSIX argv is what `pkill -f` matches

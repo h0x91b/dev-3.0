@@ -67,6 +67,20 @@ describe("handleAgyHook", () => {
 		});
 	});
 
+	it("names a native pane by DEV3_PANE_ID when there is no tmux pane, so its conversation lands on the right pane", async () => {
+		process.env.DEV3_PANE_ID = "native-2";
+		await handleAgyHook("PreInvocation", JSON.stringify({ conversationId: "conv-n" }), SOCKET, CONTEXT);
+		expect(mockSend.mock.calls[0]![2]).toMatchObject({ sessionId: "conv-n", paneId: "native-2" });
+		process.env.TMUX_PANE = "%4";
+		await handleAgyHook("PreInvocation", JSON.stringify({ conversationId: "conv-n" }), SOCKET, CONTEXT);
+		expect(mockSend.mock.calls[1]![2]).toMatchObject({ paneId: "%4" });
+	});
+
+	it("drops a conversation id that is not a plain token instead of sending it on", async () => {
+		await handleAgyHook("PreInvocation", JSON.stringify({ conversationId: "x; rm -rf /" }), SOCKET, CONTEXT);
+		expect(mockSend.mock.calls[0]![2]).not.toHaveProperty("sessionId");
+	});
+
 	it("PreInvocation reports activity and captures the conversation id", async () => {
 		await handleAgyHook("PreInvocation", JSON.stringify({ conversationId: "conv-2" }), SOCKET, CONTEXT);
 

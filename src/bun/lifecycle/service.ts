@@ -1,5 +1,6 @@
 import type { BranchStatus, CustomColumn, Project, Task, TaskStatus } from "../../shared/types";
 import * as data from "../data";
+import { forgetAgyTask } from "../agy-session-state";
 import { forgetTaskPreparation, markTaskPreparationCancelled } from "../preparation-runtime";
 import { log } from "../rpc-handlers/shared";
 import { TaskActorRegistry } from "./actor";
@@ -253,6 +254,7 @@ class LifecycleService {
 					delete this.actors.runtime(id).mergePromptReservation;
 				},
 				clearTaskRuntime: (id) => {
+					forgetAgyTask(id);
 					claudeSessionWatches.forgetTask(id);
 					codexTurnWatches.forgetTask(id);
 					const runtime = this.actors.runtime(id);

@@ -55,6 +55,8 @@ export interface AgyLaunchRuntime {
 	accountHome?: string;
 	/** Whether the statusLine hook may dump quota (the global rate-limit tracking setting). Absent means on. */
 	trackRateLimits?: boolean;
+	/** The task runs someone else's branch: agy's own trust dialog must face the user, so no workspace is pre-trusted. */
+	foreignCode?: boolean;
 }
 
 /** Pure inputs to `launchArgs`. The backend maps its public CommandOptions

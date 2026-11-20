@@ -720,7 +720,7 @@ describe("AgentUsagePanel Antigravity group", () => {
 		expect(rows).toHaveLength(2);
 		const mine = screen.getByText("me@example.com").closest(".rounded-md")!;
 		expect(mine.textContent).toContain("Pro");
-		expect(mine.textContent).toContain("weekly");
+		expect(mine.textContent).toContain("7d");
 		expect(mine.textContent).toContain("25% used");
 		expect(group.querySelector('[role="radio"], button')).toBeNull();
 	});
@@ -734,7 +734,7 @@ describe("AgentUsagePanel Antigravity group", () => {
 		}));
 		renderAgy([{ ...agySnap("k1", "me@example.com", 0), windows }]);
 		const text = screen.getByText("me@example.com").closest(".rounded-md")!.textContent!;
-		const at = ["5-hour", "weekly", "other models, 5-hour", "other models, weekly"].map((label) => text.indexOf(label));
+		const at = ["5h", "7d", "other 5h", "other 7d"].map((label) => text.indexOf(label));
 		expect(at.every((i) => i >= 0)).toBe(true);
 		expect([...at].sort((a, b) => a - b)).toEqual(at);
 	});

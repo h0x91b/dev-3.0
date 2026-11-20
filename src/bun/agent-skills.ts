@@ -145,8 +145,8 @@ Then begin working. Do not move the task status on session start; the dev3 statu
 `;
 }
 
-/** The dev3 skill dev3 writes into an agy worktree's `.agents/skills/dev3/`. */
-export function buildAgySkillContent(dialect: HookCliDialect = hookCliDialect()): string {
+/** The dev3 skill dev3 writes into an agy worktree's `.agents/skills/dev3/`. The bare `dev3`: a launcher's HOME makes `~/.dev3.0/bin` the wrong place, while PATH survives. */
+export function buildAgySkillContent(dialect: HookCliDialect = { cli: "dev3", posixShell: hookCliDialect().posixShell }): string {
 	return `---
 name: dev3
 description: "${COMPACT_SKILL_DESCRIPTION}"

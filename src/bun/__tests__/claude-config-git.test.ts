@@ -25,7 +25,7 @@ vi.mock("../spawn", async () => {
 	};
 });
 
-import { excludeClaudeRuntimeState, excludeTaskAgyConfig, excludeTaskClaudeSettings, excludeTaskCodexHooks } from "../claude-config-git";
+import { excludeClaudeRuntimeState, excludeTaskAgyConfig, isGitIndexed, excludeTaskClaudeSettings, excludeTaskCodexHooks } from "../claude-config-git";
 import { GIT_CONFIG_ISOLATION } from "./git-test-helpers";
 
 const ENV = {
@@ -251,9 +251,40 @@ describe("excludeTaskAgyConfig", () => {
 		expect(exclude).toContain("/.agents/skills/dev3/");
 	});
 
+	it("excludes only what the launch wrote", () => {
+		const only = join(root, "only-skill");
+		mkdirSync(only);
+		sh("git init -q -b main", only);
+		writeAgyConfig(only);
+
+		excludeTaskAgyConfig(only, { hooks: false, skill: true });
+
+		const exclude = readFileSync(join(only, ".git", "info", "exclude"), "utf-8");
+		expect(exclude).not.toContain("hooks.json");
+		expect(exclude).toContain("/.agents/skills/dev3/");
+	});
+
 	it("does nothing outside a git repo", () => {
 		const plain = join(root, "plain-agy");
 		writeAgyConfig(plain);
 		expect(() => excludeTaskAgyConfig(plain)).not.toThrow();
+	});
+});
+
+describe("isGitIndexed", () => {
+	it("counts a tracked file whether or not it is still on disk, and nothing else", () => {
+		const dir = join(root, "indexed");
+		mkdirSync(join(dir, ".agents"), { recursive: true });
+		sh("git init -q -b main", dir);
+		writeFileSync(join(dir, ".agents", "hooks.json"), "{}\n");
+		writeFileSync(join(dir, "loose.txt"), "x\n");
+		sh("git add .agents/hooks.json && git commit -q -m hooks", dir);
+
+		expect(isGitIndexed(join(dir, ".agents", "hooks.json"))).toBe(true);
+		expect(isGitIndexed(join(dir, "loose.txt"))).toBe(false);
+
+		rmSync(join(dir, ".agents"), { recursive: true });
+		expect(isGitIndexed(join(dir, ".agents", "hooks.json"))).toBe(true);
+		expect(isGitIndexed(join(dir, ".agents", "skills", "dev3", "SKILL.md"))).toBe(false);
 	});
 });

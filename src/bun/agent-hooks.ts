@@ -10,7 +10,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { excludeTaskAgyConfig, excludeTaskClaudeSettings, excludeTaskCodexHooks, isGitTracked } from "./claude-config-git";
+import { excludeTaskAgyConfig, excludeTaskClaudeSettings, excludeTaskCodexHooks, isGitIndexed } from "./claude-config-git";
 import type { AgentFamily, PermissionMode, TaskStatus } from "../shared/types";
 import { createLogger } from "./logger";
 import { getAgentAdapter } from "../shared/agent-adapters/registry";
@@ -228,8 +228,9 @@ function setupAgyWorktreeConfig(worktreePath: string): void {
 		return;
 	}
 	// A file the repo tracks is the team's: merging into it would show up as a change to commit.
-	const hooksTracked = isGitTracked(join(worktreePath, ".agents", "hooks.json"));
-	const skillTracked = isGitTracked(join(worktreePath, ".agents", "skills", "dev3", "SKILL.md"));
+	// Judged by the index, so a tracked file the user deleted is not brought back either.
+	const hooksTracked = isGitIndexed(join(worktreePath, ".agents", "hooks.json"));
+	const skillTracked = isGitIndexed(join(worktreePath, ".agents", "skills", "dev3", "SKILL.md"));
 	if (hooksTracked) log.warn("agy hooks not written: .agents/hooks.json is tracked by git, so this task gets no agy status hooks", { worktreePath });
 	if (skillTracked) log.warn("agy skill not written: .agents/skills/dev3/SKILL.md is tracked by git", { worktreePath });
 	const hooks = hooksTracked
@@ -239,7 +240,10 @@ function setupAgyWorktreeConfig(worktreePath: string): void {
 	if (hooks.skippedUnreadable) log.warn("agy hooks not written: .agents/hooks.json is not a JSON object", { worktreePath });
 	const skillSymlink = skillTracked ? null : writeAgySkill(worktreePath);
 	if (skillSymlink) log.warn("agy skill not written: skill path is a symlink", { worktreePath, symlink: skillSymlink });
-	// A tracked file is never excluded (the helper checks), an untracked one we wrote is.
-	excludeTaskAgyConfig(worktreePath);
-	if (!hooksTracked && !hooks.skippedSymlink && !hooks.skippedUnreadable) log.info("agy hooks and skill installed", { worktreePath });
+	const written = {
+		hooks: !hooksTracked && !hooks.skippedSymlink && !hooks.skippedUnreadable,
+		skill: !skillTracked && !skillSymlink,
+	};
+	if (written.hooks || written.skill) excludeTaskAgyConfig(worktreePath, written);
+	if (written.hooks) log.info("agy hooks and skill installed", { worktreePath });
 }
