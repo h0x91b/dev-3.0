@@ -9,6 +9,9 @@ import { RouteHost } from "../../test-utils/route-host";
 import ProjectView, { TASKS_FETCH_TIMEOUT_MS } from "../ProjectView";
 import { api } from "../../rpc";
 import { toast } from "../../toast";
+import { defaultBoardViewState } from "../../../shared/board-view-state";
+import { resetBoardViewStateCacheForTests } from "../../board-views/useBoardViewState";
+import { resetTaskVisibilityForTests } from "../../board-views/useTaskVisibility";
 
 // Mutable so a test can flip to remote/browser mode; a getter proves the layout
 // no longer branches on it (regression guard for #992 over-hiding the sidebar).
@@ -19,6 +22,8 @@ vi.mock("../../rpc", () => ({
 			getTasks: vi.fn().mockResolvedValue([]),
 			getAgents: vi.fn().mockResolvedValue([]),
 			getSpaces: vi.fn().mockResolvedValue({ version: 1, spaces: [], order: [] }),
+			getBoardViewState: vi.fn(),
+			getBoardFilterState: vi.fn(),
 		},
 	},
 	get isElectrobun() {
@@ -30,8 +35,8 @@ vi.mock("../../rpc", () => ({
 
 // Heavy children — stub so the test focuses on ProjectView's own layout logic.
 vi.mock("../../board-views/BoardHost", () => ({
-	default: ({ onOpenUnresolvedComments, detailTaskId }: { onOpenUnresolvedComments?: (task: Task) => void; detailTaskId?: string }) => (
-		<div data-testid="kanban" data-detail-task-id={detailTaskId ?? ""}>
+	default: ({ onOpenUnresolvedComments, detailTaskId, tasks }: { onOpenUnresolvedComments?: (task: Task) => void; detailTaskId?: string; tasks?: Task[] }) => (
+		<div data-testid="kanban" data-detail-task-id={detailTaskId ?? ""} data-task-ids={(tasks ?? []).map((t) => t.id).join(",")}>
 			<button type="button" data-testid="open-unresolved-from-board" onClick={() => onOpenUnresolvedComments?.({ id: "t1" } as Task)} />
 		</div>
 	),
@@ -88,6 +93,7 @@ function viewElement(props: Partial<React.ComponentProps<typeof ProjectView>>) {
 						projectId="p1"
 						projects={[project]}
 						tasks={tasks}
+						taskSnapshots={{}}
 						dispatch={vi.fn()}
 						route={route}
 						navigate={vi.fn()}
@@ -409,7 +415,7 @@ describe("ProjectView — space as the subject", () => {
 	const web: Project = { ...project, id: "p2", name: "web", path: "/w" };
 	const space = { id: "sp_1", name: "Client X", parentId: null, projectIds: ["p1", "p2"], createdAt: 1 };
 
-	function renderSpaceView(spaces: unknown[], navigate = vi.fn()) {
+	function renderSpaceView(spaces: unknown[], navigate = vi.fn(), taskSnapshots: Record<string, Task[]> = {}) {
 		vi.mocked(api.request.getSpaces).mockResolvedValue({ version: 1, spaces, order: ["sp_1"] } as never);
 		const route: Route = { screen: "project", projectId: "p1", spaceId: "sp_1" };
 		render(
@@ -422,6 +428,7 @@ describe("ProjectView — space as the subject", () => {
 							spaceId="sp_1"
 							projects={[project, web]}
 							tasks={[]}
+							taskSnapshots={taskSnapshots}
 							dispatch={vi.fn()}
 							route={route}
 							navigate={navigate}
@@ -449,6 +456,15 @@ describe("ProjectView — space as the subject", () => {
 			const ids = [...new Set(vi.mocked(api.request.getTasks).mock.calls.map((call) => call[0].projectId))].sort();
 			expect(ids).toEqual(["p1", "p2"]);
 		});
+	});
+
+	it("renders a space board from the stored lists of its member projects, in member order", async () => {
+		vi.mocked(api.request.getTasks).mockImplementation(() => new Promise(() => {}));
+		const a = { id: "a", projectId: "p1", status: "todo" } as Task;
+		const b = { id: "b", projectId: "p2", status: "todo" } as Task;
+		renderSpaceView([space], vi.fn(), { p2: [b], p1: [a] });
+		await waitFor(() => expect(screen.getByTestId("kanban").getAttribute("data-task-ids")).toBe("a,b"));
+		expect(screen.queryByTestId("board-load-failed")).not.toBeInTheDocument();
 	});
 
 	// A route that lost its subject is the same class as a deleted task: leave for
@@ -510,6 +526,7 @@ describe("ProjectView task-detail request", () => {
 							projectId={projectId}
 							projects={[project, other]}
 							tasks={tasks}
+							taskSnapshots={{}}
 							dispatch={vi.fn()}
 							route={{ screen: "project", projectId, taskDetailId }}
 							navigate={navigate}
@@ -550,5 +567,119 @@ describe("ProjectView task-detail request", () => {
 		});
 		await waitFor(() => expect(toast.info).toHaveBeenCalled());
 		expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
+	});
+});
+
+// Switching boards must not blank the area while the new board's tasks are fetched.
+describe("ProjectView board switch from stored snapshots", () => {
+	const other: Project = { ...project, id: "p2", name: "Other", path: "/o" };
+	const taskA = { id: "a", projectId: "p1", status: "todo" } as Task;
+	const taskB = { id: "b", projectId: "p2", status: "todo" } as Task;
+
+	function view(projectId: string, tasks: Task[], taskSnapshots: Record<string, Task[]>) {
+		const route: Route = { screen: "project", projectId };
+		return (
+			<I18nProvider>
+				<RouteHost
+					route={route}
+					element={
+						<ProjectView
+							projectId={projectId}
+							projects={[project, other]}
+							tasks={tasks}
+							taskSnapshots={taskSnapshots}
+							dispatch={vi.fn()}
+							route={route}
+							navigate={vi.fn()}
+							bellCounts={new Map()}
+							taskPorts={new Map()}
+							taskDevServers={new Map()}
+						/>
+					}
+				/>
+			</I18nProvider>
+		);
+	}
+
+	const pendingFetch = () => vi.mocked(api.request.getTasks).mockImplementation(() => new Promise(() => {}));
+	const kanbanIds = () => screen.getByTestId("kanban").getAttribute("data-task-ids");
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		resetBoardViewStateCacheForTests();
+		resetTaskVisibilityForTests();
+		vi.mocked(api.request.getBoardViewState).mockResolvedValue(defaultBoardViewState());
+		vi.mocked(api.request.getBoardFilterState).mockResolvedValue({ visibility: "all" });
+		vi.mocked(api.request.getTasks).mockResolvedValue([]);
+	});
+
+	it("renders a board seen before from its snapshot on the first render after the switch", async () => {
+		vi.mocked(api.request.getTasks).mockImplementation(async ({ projectId }) => (projectId === "p1" ? [taskA] : [taskB]));
+		const { rerender } = render(view("p1", [taskA], {}));
+		await waitFor(() => expect(screen.getByTestId("kanban")).toBeInTheDocument());
+
+		// The store empties on a switch; B has no snapshot yet and its fetch hangs.
+		pendingFetch();
+		rerender(view("p2", [], { p1: [taskA] }));
+		await act(async () => {});
+		expect(screen.queryByTestId("kanban")).not.toBeInTheDocument();
+
+		// Back to A: both preferences are cached, so the snapshot shows with no gap.
+		rerender(view("p1", [], { p1: [taskA] }));
+		expect(kanbanIds()).toBe("a");
+		expect(screen.queryByTestId("board-load-failed")).not.toBeInTheDocument();
+	});
+
+	it("shows the snapshot of the new board while its own fetch is still pending", async () => {
+		const { rerender } = render(view("p1", [taskA], {}));
+		await waitFor(() => expect(screen.getByTestId("kanban")).toBeInTheDocument());
+
+		pendingFetch();
+		rerender(view("p2", [], { p2: [taskB] }));
+		await waitFor(() => expect(kanbanIds()).toBe("b"));
+	});
+
+	it("keeps the loading path for a board with no snapshot", async () => {
+		const { rerender } = render(view("p1", [taskA], {}));
+		await waitFor(() => expect(screen.getByTestId("kanban")).toBeInTheDocument());
+
+		pendingFetch();
+		rerender(view("p2", [], { p1: [taskA] }));
+		await act(async () => {});
+		expect(screen.queryByTestId("kanban")).not.toBeInTheDocument();
+	});
+
+	it("keeps the snapshot board, not the retry panel, when the refetch fails", async () => {
+		const { rerender } = render(view("p1", [taskA], {}));
+		await waitFor(() => expect(screen.getByTestId("kanban")).toBeInTheDocument());
+
+		vi.mocked(api.request.getTasks).mockRejectedValue(new Error("offline"));
+		rerender(view("p2", [], { p2: [taskB] }));
+		await waitFor(() => expect(api.request.getTasks).toHaveBeenCalledWith({ projectId: "p2" }));
+		await act(async () => {});
+		expect(kanbanIds()).toBe("b");
+		expect(screen.queryByTestId("board-load-failed")).not.toBeInTheDocument();
+	});
+
+	it("waits for the saved view state before showing the board", async () => {
+		let resolveView!: (state: ReturnType<typeof defaultBoardViewState>) => void;
+		vi.mocked(api.request.getBoardViewState).mockImplementation(() => new Promise((resolve) => { resolveView = resolve; }));
+		render(view("p1", [taskA], { p1: [taskA] }));
+		await waitFor(() => expect(api.request.getBoardViewState).toHaveBeenCalled());
+		expect(screen.queryByTestId("kanban")).not.toBeInTheDocument();
+
+		await act(async () => resolveView(defaultBoardViewState()));
+		await waitFor(() => expect(screen.getByTestId("kanban")).toBeInTheDocument());
+	});
+
+	it("waits for the saved Active | All choice before showing the board", async () => {
+		let resolveFilter!: (state: { visibility: "active" }) => void;
+		vi.mocked(api.request.getBoardFilterState).mockImplementation(() => new Promise((resolve) => { resolveFilter = resolve as never; }));
+		render(view("p1", [taskA], { p1: [taskA] }));
+		await waitFor(() => expect(api.request.getBoardFilterState).toHaveBeenCalled());
+		expect(screen.queryByTestId("kanban")).not.toBeInTheDocument();
+
+		await act(async () => resolveFilter({ visibility: "active" }));
+		await waitFor(() => expect(screen.getByTestId("kanban")).toBeInTheDocument());
 	});
 });

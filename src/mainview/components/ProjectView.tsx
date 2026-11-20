@@ -6,6 +6,9 @@ import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import type { NavigationGuard } from "../navigation-guard";
 import { api } from "../rpc";
 import BoardHost from "../board-views/BoardHost";
+import { useBoardViewStateReady } from "../board-views/useBoardViewState";
+import { useTaskVisibility } from "../board-views/useTaskVisibility";
+import type { BoardRef } from "../../shared/board-view-state";
 import KanbanBoardSkeleton from "./KanbanBoardSkeleton";
 import BoardLoadFailed from "./BoardLoadFailed";
 import { useRpcStatus } from "../hooks/useDiagnostics";
@@ -32,6 +35,8 @@ interface ProjectViewProps {
 	spaceId?: string;
 	projects: Project[];
 	tasks: Task[];
+	/** Last fetched tasks per project: a board seen before renders from these while its refetch runs. */
+	taskSnapshots: Record<string, Task[]>;
 	dispatch: Dispatch<AppAction>;
 	/** The live route — the inline diff's open/closed state rides on it. */
 	route: Route;
@@ -62,6 +67,7 @@ function ProjectView({
 	spaceId,
 	projects,
 	tasks,
+	taskSnapshots,
 	dispatch,
 	route,
 	navigate,
@@ -113,7 +119,15 @@ function ProjectView({
 	const [tasksReloadNonce, setTasksReloadNonce] = useState(0);
 	// Tasks already on screen at mount are a real snapshot (e.g. back from a full-page
 	// task). Cards that arrive later by push alone are not — they only fill a fragment.
-	const [cachedBoardKey] = useState(() => (tasks.length > 0 ? boardProjectIds.join(",") : null));
+	const [cachedBoardKey, setCachedBoardKey] = useState<string | null>(() => (tasks.length > 0 ? boardProjectIds.join(",") : null));
+	// Leaving a board forgets what was loaded for it: the store empties on a switch,
+	// so coming back must not read that empty list as a loaded board.
+	const [shownBoardKey, setShownBoardKey] = useState(boardProjectIds.join(","));
+	if (shownBoardKey !== boardProjectIds.join(",")) {
+		setShownBoardKey(boardProjectIds.join(","));
+		setReadyBoardKey(null);
+		setCachedBoardKey(null);
+	}
 
 	const rpcState = useRpcStatus();
 	const transportWasDownRef = useRef(false);
@@ -151,6 +165,14 @@ function ProjectView({
 	}, []);
 
 	const boardProjectKey = boardProjectIds.join(",");
+	// Both saved preferences are read while the tasks load, so the first render
+	// of the board already has its final view and Active | All choice.
+	const boardRef = useMemo<BoardRef>(
+		() => (space ? { kind: "space", id: space.id } : { kind: "project", id: projectId }),
+		[space, projectId],
+	);
+	const viewStateReady = useBoardViewStateReady(boardRef);
+	const { ready: visibilityReady } = useTaskVisibility(boardRef);
 	useEffect(() => {
 		const pushed = inFlightTaskUpdatesRef.current;
 		pushed.clear();
@@ -269,6 +291,13 @@ function ProjectView({
 	// A project that left the space must not keep its cards on screen until the
 	// next fetch; membership decides what the board holds, not the task store.
 	const boardTasks = space ? tasks.filter((task) => boardProjectIds.includes(task.projectId)) : tasks;
+	const boardFetched = readyBoardKey === boardProjectKey;
+	const storedTasks = useMemo(
+		() => boardFetched || !boardProjectIds.every((id) => taskSnapshots[id])
+			? null
+			: boardProjectIds.flatMap((id) => taskSnapshots[id]),
+		[boardFetched, boardProjectIds, taskSnapshots],
+	);
 
 	if (!project) {
 		return (
@@ -372,14 +401,13 @@ function ProjectView({
 		);
 	}
 
-	// Cached tasks always win: a background refetch (or a reconnect) must not blank
-	// a board the user is already reading. Push-only cards are not a snapshot, so
-	// until the fetch lands they keep the skeleton (or the retry panel) up.
-	const hasSnapshot = readyBoardKey === boardProjectKey || cachedBoardKey === boardProjectKey;
-	if (!hasSnapshot) {
+	// A board with tasks on screen, or stored from an earlier fetch, shows them while the
+	// refetch runs; push-only cards are not a full list and keep the skeleton (or retry panel).
+	const hasSnapshot = boardFetched || cachedBoardKey === boardProjectKey || storedTasks !== null;
+	if (!hasSnapshot || !viewStateReady || !visibilityReady) {
 		return (
 			<div className="flex-1 min-h-0 w-full overflow-hidden flex flex-col">
-				{tasksStatus === "loading" ? (
+				{hasSnapshot || tasksStatus === "loading" ? (
 					<KanbanBoardSkeleton />
 				) : (
 					<BoardLoadFailed onRetry={() => setTasksReloadNonce((n) => n + 1)} />
@@ -394,7 +422,7 @@ function ProjectView({
 				project={project}
 				space={space}
 				memberProjects={memberProjects}
-				tasks={boardTasks}
+				tasks={storedTasks ?? boardTasks}
 				dispatch={dispatch}
 				navigate={navigate}
 				bellCounts={bellCounts}
