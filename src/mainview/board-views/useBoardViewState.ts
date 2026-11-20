@@ -29,6 +29,8 @@ const settled = new Set<string>();
 const editCounts = new Map<string, number>();
 // Saves not yet acknowledged: the host reads without its lock, so a read started now may return the old file.
 const savesInFlight = new Map<string, number>();
+// Counts reads per board: a result lands only if no newer read has started since.
+const readGenerations = new Map<string, number>();
 const listeners = new Set<() => void>();
 
 /** Lets a silent (lost) request stop holding the board hidden; the transport itself waits 6 minutes. */
@@ -44,6 +46,7 @@ export function resetBoardViewStateCacheForTests(): void {
 	settled.clear();
 	editCounts.clear();
 	savesInFlight.clear();
+	readGenerations.clear();
 }
 
 function notify(): void {
@@ -65,24 +68,28 @@ function subscribe(listener: () => void): () => void {
 }
 
 // One read per board at a time. On a cache hit it is a background refresh: the
-// result replaces the cache only if it differs and no user change or save was in progress when it started.
+// result replaces the cache only if it differs, no user change or save was in progress when it
+// started, and no newer read has started since.
 function readViewState(board: BoardRef): Promise<void> {
 	const key = boardKey(board);
 	const inFlight = reads.get(key);
 	if (inFlight) return inFlight;
 	const editsAtStart = editCounts.get(key) ?? 0;
 	const savingAtStart = (savesInFlight.get(key) ?? 0) > 0;
-	// A timed-out read frees its slot so the next mount reads again; its late result still applies.
-	const timer = isReady(key) ? null : setTimeout(() => {
-		console.warn("[board-views] view state read timed out");
+	const generation = (readGenerations.get(key) ?? 0) + 1;
+	readGenerations.set(key, generation);
+	// A slow read frees its slot so the next mount reads again; the board renders once it settles.
+	const timer = setTimeout(() => {
 		if (reads.get(key) === read) reads.delete(key);
+		if (isReady(key)) return;
+		console.warn("[board-views] view state read timed out");
 		markSettled(key);
 	}, VIEW_STATE_READ_TIMEOUT_MS);
 	// Deferred so a transport without this method (an older host) rejects instead of throwing.
 	const read: Promise<void> = Promise.resolve()
 		.then(() => api.request.getBoardViewState({ board: { kind: board.kind, id: board.id } }))
 		.then((state) => {
-			const unchanged = !savingAtStart && (editCounts.get(key) ?? 0) === editsAtStart;
+			const unchanged = !savingAtStart && (editCounts.get(key) ?? 0) === editsAtStart && readGenerations.get(key) === generation;
 			if (unchanged && JSON.stringify(cache.get(key)) !== JSON.stringify(state)) cache.set(key, state);
 			markSettled(key);
 		})
@@ -91,7 +98,7 @@ function readViewState(board: BoardRef): Promise<void> {
 			markSettled(key);
 		})
 		.finally(() => {
-			if (timer) clearTimeout(timer);
+			clearTimeout(timer);
 			if (reads.get(key) === read) reads.delete(key);
 		});
 	reads.set(key, read);

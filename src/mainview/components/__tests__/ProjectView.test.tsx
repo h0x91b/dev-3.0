@@ -42,11 +42,11 @@ vi.mock("../../board-views/BoardHost", () => ({
 	),
 }));
 vi.mock("../../toast", () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
-vi.mock("../TaskInfoPanel", () => ({ default: () => <div data-testid="info-panel" /> }));
-vi.mock("../ActiveTasksSidebar", () => ({ default: () => <div data-testid="sidebar" /> }));
+vi.mock("../TaskInfoPanel", () => ({ default: ({ task }: { task: Task }) => <div data-testid="info-panel" data-task-id={task.id} /> }));
+vi.mock("../ActiveTasksSidebar", () => ({ default: ({ tasks }: { tasks: Task[] }) => <div data-testid="sidebar" data-task-ids={tasks.map((t) => t.id).join(",")} /> }));
 vi.mock("../TaskWorkspacePane", () => ({
-	default: ({ inlineDiffRequest }: { inlineDiffRequest?: { focusFirstUnresolvedThread?: boolean } }) => (
-		<div data-testid="workspace">
+	default: ({ inlineDiffRequest, tasks }: { inlineDiffRequest?: { focusFirstUnresolvedThread?: boolean }; tasks?: Task[] }) => (
+		<div data-testid="workspace" data-task-ids={(tasks ?? []).map((t) => t.id).join(",")}>
 			{inlineDiffRequest?.focusFirstUnresolvedThread && <span data-testid="workspace-unresolved-diff" />}
 		</div>
 	),
@@ -681,5 +681,34 @@ describe("ProjectView board switch from stored snapshots", () => {
 
 		await act(async () => resolveFilter({ visibility: "active" }));
 		await waitFor(() => expect(screen.getByTestId("kanban")).toBeInTheDocument());
+	});
+
+	// The task store is empty while the refetch is pending or failed; a card opened from
+	// the stored board must still find its task in the split view.
+	describe("split view opened from stored tasks", () => {
+		const stored = { id: "a", projectId: "p1", status: "in-progress" } as Task;
+
+		function expectStoredList() {
+			expect(screen.getByTestId("info-panel").getAttribute("data-task-id")).toBe("a");
+			expect(screen.getByTestId("workspace").getAttribute("data-task-ids")).toBe("a");
+			expect(screen.getByTestId("sidebar").getAttribute("data-task-ids")).toBe("a");
+		}
+
+		it("while the refetch is pending", async () => {
+			vi.mocked(api.request.getTasks).mockImplementation(() => new Promise(() => {}));
+			renderView({ activeTaskId: "a", tasks: [], taskSnapshots: { p1: [stored] } });
+			await waitFor(() => expect(screen.getByTestId("workspace")).toBeInTheDocument());
+			expectStoredList();
+		});
+
+		it("when the refetch failed", async () => {
+			const error = vi.spyOn(console, "error").mockImplementation(() => {});
+			vi.mocked(api.request.getTasks).mockRejectedValue(new Error("offline"));
+			renderView({ activeTaskId: "a", tasks: [], taskSnapshots: { p1: [stored] } });
+			await waitFor(() => expect(api.request.getTasks).toHaveBeenCalled());
+			await act(async () => {});
+			expectStoredList();
+			error.mockRestore();
+		});
 	});
 });

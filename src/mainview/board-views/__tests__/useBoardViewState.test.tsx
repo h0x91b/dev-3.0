@@ -155,6 +155,44 @@ describe("useBoardViewState readiness", () => {
 		warn.mockRestore();
 	});
 
+	it("a timed-out read's late result cannot overwrite a newer read", async () => {
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		let resolveOld!: (v: typeof table) => void;
+		getState.mockReturnValueOnce(new Promise((r) => { resolveOld = r; }));
+		const first = renderHook(() => useBoth(board));
+		await act(async () => { await vi.advanceTimersByTimeAsync(VIEW_STATE_READ_TIMEOUT_MS); });
+		first.unmount();
+
+		getState.mockResolvedValue(withViewType(defaultBoardViewState(), "wide", "builtin:tree"));
+		const again = renderHook(() => useBoth(board));
+		await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+		expect(again.result.current.viewType).toBe("builtin:tree");
+		await act(async () => resolveOld(table));
+		expect(again.result.current.viewType).toBe("builtin:tree");
+		warn.mockRestore();
+	});
+
+	it("a lost background read frees its slot so the next mount reads again", async () => {
+		getState.mockResolvedValue(table);
+		const first = renderHook(() => useBoth(board));
+		await waitFor(() => expect(first.result.current.ready).toBe(true));
+		first.unmount();
+
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		getState.mockClear();
+		getState.mockReturnValue(new Promise(() => {}));
+		const second = renderHook(() => useBoth(board));
+		await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+		expect(second.result.current.ready).toBe(true);
+		second.unmount();
+		await act(async () => { await vi.advanceTimersByTimeAsync(VIEW_STATE_READ_TIMEOUT_MS); });
+		const third = renderHook(() => useBoth(board));
+		await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+		expect(getState).toHaveBeenCalledTimes(2);
+		expect(third.result.current.ready).toBe(true);
+	});
+
 	it("tracks readiness per board key", async () => {
 		const { result, rerender } = renderHook(({ id }) => useBoth({ kind: "project", id }), { initialProps: { id: "p1" } });
 		await waitFor(() => expect(result.current.ready).toBe(true));

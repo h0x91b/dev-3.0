@@ -173,6 +173,18 @@ function ProjectView({
 	);
 	const viewStateReady = useBoardViewStateReady(boardRef);
 	const { ready: visibilityReady } = useTaskVisibility(boardRef);
+	// Until the board is fetched, tasks stored from an earlier fetch stand in for the emptied task store.
+	const boardFetched = readyBoardKey === boardProjectKey;
+	const storedTasks = useMemo(
+		() => boardFetched || !boardProjectIds.every((id) => taskSnapshots[id])
+			? null
+			: boardProjectIds.flatMap((id) => taskSnapshots[id]),
+		[boardFetched, boardProjectIds, taskSnapshots],
+	);
+	const currentTasks = storedTasks ?? tasks;
+	// A project that left the space must not keep its cards on screen until the
+	// next fetch; membership decides what the board holds, not the task store.
+	const boardTasks = space ? currentTasks.filter((task) => boardProjectIds.includes(task.projectId)) : currentTasks;
 	useEffect(() => {
 		const pushed = inFlightTaskUpdatesRef.current;
 		pushed.clear();
@@ -270,34 +282,23 @@ function ProjectView({
 			return;
 		}
 		if (!activeTaskId || !project) return;
-		const task = tasks.find((candidate) => candidate.id === activeTaskId);
+		const task = currentTasks.find((candidate) => candidate.id === activeTaskId);
 		if (!task) return;
 		const routeKey = `${project.id}:${task.id}`;
 		if (unresolvedRouteKeyRef.current === routeKey) return;
 		unresolvedRouteKeyRef.current = routeKey;
 		inlineDiff.open(createUnresolvedCommentsDiffRequest(task, project));
-	}, [activeTaskId, inlineDiff.open, openUnresolvedComments, project, tasks]);
+	}, [activeTaskId, inlineDiff.open, openUnresolvedComments, project, currentTasks]);
 
 	// A task asked for by id can be gone for good (deleted, or its board never
 	// held it). Say so once the board has actually loaded — a silent no-op would
 	// read as "the click did nothing".
 	useEffect(() => {
 		if (!taskDetailId || tasksStatus !== "ready" || readyBoardKey !== boardProjectKey) return;
-		if (tasks.some((candidate) => candidate.id === taskDetailId)) return;
+		if (currentTasks.some((candidate) => candidate.id === taskDetailId)) return;
 		toast.info(t("task.detailGone"));
 		closeTaskDetail();
-	}, [taskDetailId, tasksStatus, readyBoardKey, boardProjectKey, tasks, closeTaskDetail, t]);
-
-	// A project that left the space must not keep its cards on screen until the
-	// next fetch; membership decides what the board holds, not the task store.
-	const boardTasks = space ? tasks.filter((task) => boardProjectIds.includes(task.projectId)) : tasks;
-	const boardFetched = readyBoardKey === boardProjectKey;
-	const storedTasks = useMemo(
-		() => boardFetched || !boardProjectIds.every((id) => taskSnapshots[id])
-			? null
-			: boardProjectIds.flatMap((id) => taskSnapshots[id]),
-		[boardFetched, boardProjectIds, taskSnapshots],
-	);
+	}, [taskDetailId, tasksStatus, readyBoardKey, boardProjectKey, currentTasks, closeTaskDetail, t]);
 
 	if (!project) {
 		return (
@@ -308,7 +309,7 @@ function ProjectView({
 	}
 
 	if (activeTaskId || taskView) {
-		const activeTask = activeTaskId ? tasks.find((t) => t.id === activeTaskId) : undefined;
+		const activeTask = activeTaskId ? currentTasks.find((t) => t.id === activeTaskId) : undefined;
 
 		// Terminal pane: a selected task shows its workspace; otherwise (task-view
 		// reached via a project switch with no task picked yet) an empty placeholder.
@@ -317,7 +318,7 @@ function ProjectView({
 				projectId={projectId}
 				spaceId={spaceId}
 				taskId={activeTaskId}
-				tasks={tasks}
+				tasks={currentTasks}
 				projects={projects}
 				navigate={navigate}
 				dispatch={dispatch}
@@ -349,7 +350,7 @@ function ProjectView({
 							navigate={navigate}
 							taskPorts={taskPorts}
 							taskResourceUsage={taskResourceUsage}
-							tasks={tasks}
+							tasks={currentTasks}
 							isTerminalFullscreen={isTerminalFullscreen}
 							onToggleTerminalFullscreen={onToggleTerminalFullscreen}
 							onOpenInlineDiff={inlineDiff.open}
@@ -372,7 +373,7 @@ function ProjectView({
 						navigate={navigate}
 						taskPorts={taskPorts}
 						taskResourceUsage={taskResourceUsage}
-						tasks={tasks}
+						tasks={currentTasks}
 						isTerminalFullscreen={isTerminalFullscreen}
 						onToggleTerminalFullscreen={onToggleTerminalFullscreen}
 						onOpenInlineDiff={inlineDiff.open}
@@ -383,7 +384,7 @@ function ProjectView({
 						<ActiveTasksSidebar
 							project={project}
 							spaceId={spaceId}
-							tasks={tasks}
+							tasks={currentTasks}
 							allProjects={projects}
 							activeTaskId={activeTaskId}
 							dispatch={dispatch}
@@ -422,7 +423,7 @@ function ProjectView({
 				project={project}
 				space={space}
 				memberProjects={memberProjects}
-				tasks={storedTasks ?? boardTasks}
+				tasks={boardTasks}
 				dispatch={dispatch}
 				navigate={navigate}
 				bellCounts={bellCounts}
