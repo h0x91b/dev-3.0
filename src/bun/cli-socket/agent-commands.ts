@@ -199,10 +199,17 @@ export const agentHandlers: Record<string, Handler> = {
 		if (!AGENT_STATUS_HOOK_EVENTS.includes(event)) {
 			throw new Error(`Unsupported status hook event: ${String(params.event)}`);
 		}
+		// A report that only names the session: record it on the pane, move nothing.
+		if (params.captureOnly === true && typeof params.sessionId === "string" && params.sessionId) {
+			const paneId = typeof params.paneId === "string" ? params.paneId : null;
+			await capturePaneSession(project, task.id, paneId, params.sessionId, "agy");
+			rememberTaskSession(project, task, params.sessionId);
+			return task;
+		}
 		recordTaskActivity(task.id);
 		// The CLI that reports is the managed copy under ~/.dev3.0/bin, which a
 		// worktree build does not replace; one from before Copilot names no harness.
-		const harness: PromptSubmitHarness = params.harness === "omp" || params.harness === "pi" || params.harness === "copilot"
+		const harness: PromptSubmitHarness = params.harness === "omp" || params.harness === "pi" || params.harness === "copilot" || params.harness === "agy"
 			? params.harness
 			: "codex";
 		const sessionId = typeof params.sessionId === "string" ? params.sessionId : null;

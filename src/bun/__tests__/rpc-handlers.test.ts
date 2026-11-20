@@ -783,6 +783,19 @@ describe("handleBellAutoStatus", () => {
 		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", expect.objectContaining({ status: "user-questions" }), { ifStatus: "in-progress" });
 	});
 
+	it("leaves an agy task alone: its statusLine reports the wait, and its own turn-end bell must not undo Stop", async () => {
+		const task = makeTask({
+			status: "in-progress",
+			sessionState: { panes: [{ paneId: "%1", sessionId: null, agentCmd: "agy", agentId: "builtin-agy", configId: null, main: true }] },
+		} as Partial<Task>);
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+		await handleBellAutoStatus("task-1");
+
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
 	it("still moves a Cursor task: its hooks only account usage", async () => {
 		const task = makeTask({ status: "in-progress", agentId: "builtin-cursor" });
 		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);

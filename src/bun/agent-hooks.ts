@@ -8,7 +8,9 @@
  * Currently supports Claude Code, Codex, omp and pi. Extensible for Gemini, Cursor, etc.
  */
 
-import { excludeTaskClaudeSettings, excludeTaskCodexHooks } from "./claude-config-git";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { excludeTaskAgyConfig, excludeTaskClaudeSettings, excludeTaskCodexHooks, isGitTracked } from "./claude-config-git";
 import type { AgentFamily, PermissionMode, TaskStatus } from "../shared/types";
 import { createLogger } from "./logger";
 import { getAgentAdapter } from "../shared/agent-adapters/registry";
@@ -16,10 +18,15 @@ import {
 	isDev3OwnedFolder,
 	refreshClaudePreToolHooks,
 	writeClaudeFlagSettings,
+	agyHookDialect,
+	writeAgyHooks,
 	writeClaudeHooks,
 	writeCodexHooks,
 	writeCopilotHooks,
 } from "../shared/agent-hooks";
+import { resolveAccountHome } from "../shared/user-home";
+import { symlinkOnWritePath } from "../shared/symlink-write-guard";
+import { buildAgySkillContent } from "./agent-skills";
 import { quoteIfUnsafe } from "../shared/agent-adapters/shell";
 import { writeOmpStatusExtension } from "../shared/omp-status-extension";
 import { writePiStatusExtension } from "../shared/pi-status-extension";
@@ -28,11 +35,14 @@ import { writeCursorUsageHooks } from "./cursor-usage-hooks";
 import { CODEX_HOOK_TRUST_BYPASS_FLAG, detectCodexHookTrustBypass, resetCodexHelpProbe } from "./codex-config";
 
 export {
+	buildAgyHooks,
 	buildClaudeHooks,
 	buildCodexHooks,
 	buildCopilotHooks,
+	mergeAgyHooks,
 	mergeClaudeHooks,
 	mergeCodexHooks,
+	writeAgyHooks,
 	writeClaudeHooks,
 	writeCodexHooks,
 	writeCopilotHooks,
@@ -169,6 +179,11 @@ export async function setupAgentHooks(
 		return { flag: `--extension ${quoteIfUnsafe(path)}` };
 	}
 
+	if (spec.kind === "agy") {
+		setupAgyWorktreeConfig(worktreePath);
+		return null;
+	}
+
 	// spec.kind === "codex". The live hooks come from config.toml; in a folder dev3
 	// does not own this file would only outlive the task as unguarded project hooks.
 	const dev3Owned = isDev3OwnedFolder(worktreePath);
@@ -188,4 +203,43 @@ export async function setupAgentHooks(
 	}
 	log.info("Codex hook files prepared; a fresh Codex process is required to load changes", { worktreePath });
 	return { flag: CODEX_HOOK_TRUST_BYPASS_FLAG };
+}
+
+/** Write the dev3 skill into the worktree's `.agents/skills/dev3/`. Returns the symlink that blocked it, or null. */
+function writeAgySkill(worktreePath: string): string | null {
+	const skillFile = join(worktreePath, ".agents", "skills", "dev3", "SKILL.md");
+	const skippedSymlink = symlinkOnWritePath(worktreePath, skillFile);
+	if (skippedSymlink) return skippedSymlink;
+	const content = buildAgySkillContent();
+	if (existsSync(skillFile) && readFileSync(skillFile, "utf-8") === content) return null;
+	mkdirSync(join(worktreePath, ".agents", "skills", "dev3"), { recursive: true });
+	writeFileSync(skillFile, content, "utf-8");
+	return null;
+}
+
+/**
+ * agy reads hooks and skills from `<worktree>/.agents/`, which is the one source a
+ * launch under an overridden HOME still sees. In a folder dev3 does not own the
+ * files would outlive the task as project config, so nothing is written there.
+ */
+function setupAgyWorktreeConfig(worktreePath: string): void {
+	if (!isDev3OwnedFolder(worktreePath)) {
+		log.warn("agy hooks and skill not written: the folder is not owned by dev3", { worktreePath });
+		return;
+	}
+	// A file the repo tracks is the team's: merging into it would show up as a change to commit.
+	const hooksTracked = isGitTracked(join(worktreePath, ".agents", "hooks.json"));
+	const skillTracked = isGitTracked(join(worktreePath, ".agents", "skills", "dev3", "SKILL.md"));
+	if (hooksTracked) log.warn("agy hooks not written: .agents/hooks.json is tracked by git, so this task gets no agy status hooks", { worktreePath });
+	if (skillTracked) log.warn("agy skill not written: .agents/skills/dev3/SKILL.md is tracked by git", { worktreePath });
+	const hooks = hooksTracked
+		? { skippedSymlink: null, skippedUnreadable: false }
+		: writeAgyHooks(worktreePath, { dialect: agyHookDialect(resolveAccountHome()) });
+	if (hooks.skippedSymlink) log.warn("agy hooks not written: hooks path is a symlink", { worktreePath, symlink: hooks.skippedSymlink });
+	if (hooks.skippedUnreadable) log.warn("agy hooks not written: .agents/hooks.json is not a JSON object", { worktreePath });
+	const skillSymlink = skillTracked ? null : writeAgySkill(worktreePath);
+	if (skillSymlink) log.warn("agy skill not written: skill path is a symlink", { worktreePath, symlink: skillSymlink });
+	// A tracked file is never excluded (the helper checks), an untracked one we wrote is.
+	excludeTaskAgyConfig(worktreePath);
+	if (!hooksTracked && !hooks.skippedSymlink && !hooks.skippedUnreadable) log.info("agy hooks and skill installed", { worktreePath });
 }

@@ -20,7 +20,7 @@ import type { AgentAccountsState } from "../../shared/agent-accounts";
 /** Data older than this gets a staleness note in the tooltip. */
 export const STALE_AFTER_MS = 10 * 60 * 1000;
 
-export const SOURCE_NAMES: Record<string, string> = { claude: "Claude", codex: "Codex", kimi: "Kimi" };
+export const SOURCE_NAMES: Record<string, string> = { claude: "Claude", codex: "Codex", kimi: "Kimi", agy: "Antigravity" };
 
 /** Which account the rate-limit windows for a source are drawn from. */
 export interface AccountLine {
@@ -45,7 +45,7 @@ export interface AccountLine {
  * so surfacing it answers "whose limit is this?" at a glance.
  */
 export function resolveAccount(
-	source: Exclude<RateLimitSource, "kimi">,
+	source: Exclude<RateLimitSource, "kimi" | "agy">,
 	state: AgentAccountsState | null,
 	accountId?: string | null,
 ): AccountLine | null {
@@ -91,7 +91,15 @@ export function useWindowLabel(): (window: RateLimitWindow) => string {
 			? t("rateLimits.monthlyLabel")
 			: window.id === "spend_limit"
 				? t("rateLimits.spendLabel")
-				: windowLabel(window);
+				: window.id === "gemini-weekly"
+					? t("rateLimits.weeklyLabel")
+					: window.id === "gemini-5h"
+						? t("rateLimits.fiveHourLabel")
+						: window.id === "3p-5h"
+							? t("rateLimits.otherFiveHourLabel")
+							: window.id === "3p-weekly"
+								? t("rateLimits.otherWeeklyLabel")
+								: windowLabel(window);
 }
 
 /** "~$314.12 of $500 monthly limit" — null until Claude Code has fetched both dollar

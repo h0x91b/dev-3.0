@@ -5,6 +5,8 @@
  * - Claude: the legacy global dump plus one dump per managed account under
  *   ~/.dev3.0/data/rate-limits/claude/, written by the injected `dev3 statusline`
  *   wrapper on every statusLine refresh (see src/cli/commands/statusline.ts).
+ * - Antigravity: one dump per account under ~/.dev3.0/data/rate-limits/agy/, written
+ *   by `dev3 statusline agy` from the per-session `--settings` statusLine.
  * - Codex: the newest rollout file under each system or managed CODEX_HOME's
  *   sessions/YYYY/MM/DD/ directory — the tail contains `token_count` events
  *   with a `rate_limits` object.
@@ -28,6 +30,7 @@ import {
 	extractCodexSnapshotFromRolloutLines,
 	isRateLimitSnapshotRecent,
 	mergeCodexRateLimitSnapshots,
+	parseAgyQuotaDump,
 	parseClaudeStatusLinePayload,
 	kimiUsageUrl,
 	parseKimiUsage,
@@ -69,6 +72,8 @@ export const CLAUDE_ACCOUNT_RATE_LIMITS_DIR = join(RATE_LIMITS_DIR, "claude");
 /** One dump per project-pinned `CLAUDE_CONFIG_DIR`, named by a hash of the dir;
  *  the dir itself is stored inside each dump. */
 export const CLAUDE_CONFIG_DIR_RATE_LIMITS_DIR = join(RATE_LIMITS_DIR, "claude-config-dirs");
+/** Per-account agy quota dumps, written by `dev3 statusline agy` and named by a hash of the email. */
+export const AGY_RATE_LIMITS_DIR = join(RATE_LIMITS_DIR, "agy");
 /** Per-task Claude session dumps, written by `dev3 statusline` inside a dev3 task. */
 export const CLAUDE_SESSION_STATS_DIR = join(RATE_LIMITS_DIR, "sessions");
 /** The dev3-managed settings file injected via `claude --settings <path>`. It
@@ -173,6 +178,25 @@ export function readClaudeSnapshot(dumpPath: string = CLAUDE_RATE_LIMIT_DUMP_PAT
 		return configDir && !resolvedAccountId ? { ...attributed, configDir } : attributed;
 	} catch {
 		return null; // torn write or corrupt file — keep whatever we knew before
+	}
+}
+
+/** Parse one agy account dump. Null when absent, corrupt, or without a usable bucket. */
+export function readAgySnapshot(dumpPath: string): AgentRateLimitSnapshot | null {
+	try {
+		const parsed = JSON.parse(readFileSync(dumpPath, "utf-8")) as Record<string, unknown>;
+		const capturedAt = typeof parsed.capturedAt === "number" ? parsed.capturedAt : statSync(dumpPath).mtimeMs;
+		return parseAgyQuotaDump(
+			{
+				capturedAt,
+				email: typeof parsed.email === "string" && parsed.email ? parsed.email : null,
+				planTier: typeof parsed.planTier === "string" && parsed.planTier ? parsed.planTier : null,
+				quota: parsed.quota,
+			},
+			basename(dumpPath, ".json"),
+		);
+	} catch {
+		return null; // torn write or corrupt file
 	}
 }
 
@@ -521,7 +545,7 @@ export function attributeManagedConfigDir(
 	return { ...rest, accountId };
 }
 
-const SOURCE_ORDER: Record<AgentRateLimitSnapshot["source"], number> = { claude: 0, codex: 1, kimi: 2 };
+const SOURCE_ORDER: Record<AgentRateLimitSnapshot["source"], number> = { claude: 0, codex: 1, kimi: 2, agy: 3 };
 
 export async function getAgentRateLimitsReport(): Promise<AgentRateLimitsReport> {
 	const now = Date.now();
@@ -554,6 +578,8 @@ export async function getAgentRateLimitsReport(): Promise<AgentRateLimitsReport>
 		const snapshot = readClaudeSnapshot(join(CLAUDE_CONFIG_DIR_RATE_LIMITS_DIR, name), null);
 		if (snapshot?.configDir) addSnapshot(attributeManagedConfigDir(snapshot));
 	}
+
+	for (const name of listJsonFiles(AGY_RATE_LIMITS_DIR)) addSnapshot(readAgySnapshot(join(AGY_RATE_LIMITS_DIR, name)));
 
 	// Codex sessions are naturally partitioned by CODEX_HOME. Enrich only roots
 	// with a rollout written in the activity window; querying app-server itself

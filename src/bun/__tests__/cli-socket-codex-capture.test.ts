@@ -257,6 +257,57 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 			.toBe("omp --resume 00000000-0000-4000-8000-0000c0de4bba");
 	});
 
+	it("captures an agy conversation id from its hook, and resume targets it with --conversation", async () => {
+		await import("../data");
+		const { handleRequest } = await import("../cli-socket-server");
+		const { buildResumeCommand } = await import("../agents");
+
+		seed([makeTask({
+			sessionState: { panes: [{ ...codexPane("%3", null), agentCmd: "agy" }] },
+		})]);
+
+		const resp = await handleRequest(agentHook({
+			projectId: "proj-1",
+			taskId: "task-1",
+			harness: "agy",
+			event: "SessionStart",
+			sessionId: "c0ffee00-1111-4222-8333-444455556666",
+			paneId: "%3",
+		}));
+		expect(resp.ok).toBe(true);
+
+		const [pane] = readPanes();
+		expect(pane?.sessionId).toBe("c0ffee00-1111-4222-8333-444455556666");
+		expect(buildResumeCommand("agy", pane!.sessionId ?? undefined))
+			.toBe("agy --conversation c0ffee00-1111-4222-8333-444455556666");
+		expect(buildResumeCommand("agy", undefined)).toBe("agy --continue");
+	});
+
+	it("records an agy conversation reported by the statusLine without moving the task", async () => {
+		await import("../data");
+		const { handleRequest } = await import("../cli-socket-server");
+		const { moveTask } = await import("../rpc-handlers");
+		vi.mocked(moveTask).mockClear();
+
+		seed([makeTask({
+			status: "review-by-user",
+			sessionState: { panes: [{ ...codexPane("%3", null), agentCmd: "agy" }] },
+		})]);
+
+		const resp = await handleRequest(agentHook({
+			projectId: "proj-1",
+			taskId: "task-1",
+			harness: "agy",
+			event: "SessionStart",
+			captureOnly: true,
+			sessionId: "c0ffee00-1111-4222-8333-444455556666",
+			paneId: "%3",
+		}));
+		expect(resp.ok).toBe(true);
+		expect(readPanes()[0]?.sessionId).toBe("c0ffee00-1111-4222-8333-444455556666");
+		expect(moveTask).not.toHaveBeenCalled();
+	});
+
 	it("accepts a plain pi report as pi and resume targets the session with --session-id", async () => {
 		await import("../data");
 		const { handleRequest } = await import("../cli-socket-server");

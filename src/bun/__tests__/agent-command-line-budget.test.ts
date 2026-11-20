@@ -5,7 +5,7 @@ import {
 	COORDINATOR_PROMPT_LIMIT,
 	WINDOWS_COMMAND_LINE_LIMIT,
 } from "../../shared/agent-command-line-budget";
-import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, OMP_SKILL_BODY, PI_SKILL_BODY, type SkillFamily } from "../../shared/agent-skill-content";
+import { AGY_SKILL_BODY, CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY, OMP_SKILL_BODY, PI_SKILL_BODY, type SkillFamily } from "../../shared/agent-skill-content";
 import { BOARD_CLEANUP_PROMPT, COORDINATOR_PROMPT } from "../../shared/types";
 import { __setCodexProfileV2Override, resolveAgentCommand, type TemplateContext } from "../agents";
 import type { CodingAgent } from "../../shared/types";
@@ -39,6 +39,7 @@ const BODIES: Array<[name: string, body: string]> = [
 	["codex", CODEX_SKILL_BODY],
 	["omp", OMP_SKILL_BODY],
 	["pi", PI_SKILL_BODY],
+	["agy", AGY_SKILL_BODY],
 	["generic", GENERIC_SKILL_BODY],
 ];
 
@@ -48,7 +49,7 @@ const BODIES: Array<[name: string, body: string]> = [
  * A new adapter belongs on this list — an agent nobody measures is an agent that
  * breaks on Windows silently.
  */
-const AGENT_COMMANDS = ["claude", "codex", "gemini", "agent", "opencode", "copilot", "omp", "pi", "some-custom-agent"];
+const AGENT_COMMANDS = ["claude", "codex", "gemini", "agent", "opencode", "copilot", "omp", "pi", "agy", "some-custom-agent"];
 
 const agent = (baseCommand: string): CodingAgent => ({
 	id: "a",

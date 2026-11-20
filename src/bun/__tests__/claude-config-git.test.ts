@@ -25,7 +25,7 @@ vi.mock("../spawn", async () => {
 	};
 });
 
-import { excludeClaudeRuntimeState, excludeTaskClaudeSettings, excludeTaskCodexHooks } from "../claude-config-git";
+import { excludeClaudeRuntimeState, excludeTaskAgyConfig, excludeTaskClaudeSettings, excludeTaskCodexHooks } from "../claude-config-git";
 import { GIT_CONFIG_ISOLATION } from "./git-test-helpers";
 
 const ENV = {
@@ -202,5 +202,58 @@ describe("excludeClaudeRuntimeState", () => {
 
 		expect(sh("git status --porcelain -uall", repo)).toBe("");
 		expect(readFileSync(join(repo, ".git", "info", "exclude"), "utf-8")).toContain("/.claude/history.jsonl");
+	});
+});
+
+describe("excludeTaskAgyConfig", () => {
+	function writeAgyConfig(dir: string): void {
+		mkdirSync(join(dir, ".agents", "skills", "dev3"), { recursive: true });
+		writeFileSync(join(dir, ".agents", "hooks.json"), "{}\n");
+		writeFileSync(join(dir, ".agents", "skills", "dev3", "SKILL.md"), "skill\n");
+	}
+
+	it("hides the hooks file and the dev3 skill, so the branch reads as clean", () => {
+		const worktree = join(root, "wt-agy");
+		sh(`git worktree add -q -b task-agy "${worktree}"`, repo);
+		writeAgyConfig(worktree);
+
+		excludeTaskAgyConfig(worktree);
+
+		expect(sh("git status --porcelain", worktree)).toBe("");
+		const exclude = readFileSync(join(repo, ".git", "info", "exclude"), "utf-8");
+		expect(exclude).toContain("/.agents/hooks.json");
+		expect(exclude).toContain("/.agents/skills/dev3/");
+	});
+
+	it("leaves the user's other .agents files visible", () => {
+		const worktree = join(root, "wt-agy2");
+		sh(`git worktree add -q -b task-agy2 "${worktree}"`, repo);
+		writeAgyConfig(worktree);
+		mkdirSync(join(worktree, ".agents", "rules"), { recursive: true });
+		writeFileSync(join(worktree, ".agents", "rules", "mine.md"), "rule\n");
+
+		excludeTaskAgyConfig(worktree);
+
+		expect(sh("git status --porcelain -uall", worktree).trim()).toBe("?? .agents/rules/mine.md");
+	});
+
+	it("adds no rule for a hooks file the repo tracks", () => {
+		const tracked = join(root, "tracked-agy");
+		mkdirSync(tracked);
+		sh("git init -q -b main", tracked);
+		writeAgyConfig(tracked);
+		sh("git add .agents/hooks.json && git commit -q -m hooks", tracked);
+
+		excludeTaskAgyConfig(tracked);
+
+		const exclude = readFileSync(join(tracked, ".git", "info", "exclude"), "utf-8");
+		expect(exclude).not.toContain("hooks.json");
+		expect(exclude).toContain("/.agents/skills/dev3/");
+	});
+
+	it("does nothing outside a git repo", () => {
+		const plain = join(root, "plain-agy");
+		writeAgyConfig(plain);
+		expect(() => excludeTaskAgyConfig(plain)).not.toThrow();
 	});
 });

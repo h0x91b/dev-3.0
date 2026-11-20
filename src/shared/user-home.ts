@@ -1,4 +1,4 @@
-import { homedir, tmpdir } from "node:os";
+import { homedir, tmpdir, userInfo } from "node:os";
 
 /**
  * The user's home directory, as dev3 spells it.
@@ -32,6 +32,22 @@ export function resolveUserHome(
 		// homedir() throws when the platform cannot answer; fall through to tmpdir.
 	}
 	return normalizeHome(os.tmpdir());
+}
+
+/**
+ * The home directory of the account the process runs as, from the account database.
+ * Unlike `resolveUserHome` it ignores `$HOME`: a launcher may point that at a private
+ * directory, while the machine-wide `~/.dev3.0/bin/dev3` lives in the account's own.
+ * Falls back to `resolveUserHome` when the platform has no account entry.
+ */
+export function resolveAccountHome(account: () => string = () => userInfo().homedir): string {
+	try {
+		const home = account()?.trim();
+		if (home) return normalizeHome(home);
+	} catch {
+		// no account database entry
+	}
+	return resolveUserHome();
 }
 
 function normalizeHome(home: string): string {

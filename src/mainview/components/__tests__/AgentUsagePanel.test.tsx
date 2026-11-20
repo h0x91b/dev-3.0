@@ -694,3 +694,59 @@ describe("AgentUsagePanel Kimi group", () => {
 	});
 });
 
+
+describe("AgentUsagePanel Antigravity group", () => {
+	const agySnap = (accountId: string, email: string, used: number) => ({
+		source: "agy" as const,
+		accountId,
+		accountLabel: email,
+		capturedAt: Date.now(),
+		windows: [{ id: "gemini-weekly", usedPercent: used, resetsAt: Date.now() + 3 * 86_400_000, windowMinutes: 10080 }],
+		creditsBalance: null,
+		monthlyCredits: null,
+		planType: "Pro",
+	});
+	const renderAgy = (snapshots: AgentRateLimitsReport["snapshots"]) =>
+		render(
+			<I18nProvider>
+				<AgentUsagePanel report={{ ...report(), snapshots: [...report().snapshots, ...snapshots] }} accounts={accounts()} interactive onOpenSettings={() => {}} />
+			</I18nProvider>,
+		);
+
+	it("shows one read-only row per account: its email, plan, and a weekly bar", () => {
+		renderAgy([agySnap("k1", "me@example.com", 25), agySnap("k2", "other@example.com", 90)]);
+		const group = screen.getByRole("group", { name: "Antigravity" });
+		const rows = group.querySelectorAll(".rounded-md");
+		expect(rows).toHaveLength(2);
+		const mine = screen.getByText("me@example.com").closest(".rounded-md")!;
+		expect(mine.textContent).toContain("Pro");
+		expect(mine.textContent).toContain("weekly");
+		expect(mine.textContent).toContain("25% used");
+		expect(group.querySelector('[role="radio"], button')).toBeNull();
+	});
+
+	it("spells all four buckets in order, the other models' ones included", () => {
+		const windows = ["gemini-5h", "gemini-weekly", "3p-5h", "3p-weekly"].map((id, i) => ({
+			id,
+			usedPercent: 10 * (i + 1),
+			resetsAt: Date.now() + 3_600_000,
+			windowMinutes: id.endsWith("5h") ? 300 : 10080,
+		}));
+		renderAgy([{ ...agySnap("k1", "me@example.com", 0), windows }]);
+		const text = screen.getByText("me@example.com").closest(".rounded-md")!.textContent!;
+		const at = ["5-hour", "weekly", "other models, 5-hour", "other models, weekly"].map((label) => text.indexOf(label));
+		expect(at.every((i) => i >= 0)).toBe(true);
+		expect([...at].sort((a, b) => a - b)).toEqual(at);
+	});
+
+	it("never offers to make an Antigravity row the default", async () => {
+		renderAgy([agySnap("k1", "me@example.com", 25)]);
+		await userEvent.click(screen.getByText("me@example.com"));
+		expect(setActive).not.toHaveBeenCalled();
+	});
+
+	it("draws no group before the first reading", () => {
+		renderAgy([]);
+		expect(screen.queryByRole("group", { name: "Antigravity" })).toBeNull();
+	});
+});

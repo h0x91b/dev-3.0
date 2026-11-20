@@ -31,7 +31,8 @@ export type HooksSpec =
 	| { kind: "copilot" }
 	| { kind: "cursor" }
 	| { kind: "omp" }
-	| { kind: "pi" };
+	| { kind: "pi" }
+	| { kind: "agy" };
 
 /** Codex-only launch runtime resolved by the backend (theme state + a
  *  `codex --help` probe are impure) and threaded into the pure CodexAdapter. */
@@ -42,6 +43,18 @@ export interface CodexLaunchRuntime {
 	theme: string;
 	/** Flag the installed codex accepts to select a profile file (see issue #611). */
 	profileLaunchFlag: "--profile" | "--profile-v2";
+}
+
+/** agy-only launch inputs resolved by the backend. */
+export interface AgyLaunchRuntime {
+	/** The worktree's realpath: agy trusts a workspace only by its resolved path
+	 *  (`/private/tmp`, not `/tmp`). Absent means the path as given. */
+	worktreeRealPath?: string;
+	/** The account's home directory. agy expands `~` against a launcher's HOME, so its
+	 *  statusLine command spells the CLI as `<accountHome>/.dev3.0/bin/dev3`. */
+	accountHome?: string;
+	/** Whether the statusLine hook may dump quota (the global rate-limit tracking setting). Absent means on. */
+	trackRateLimits?: boolean;
 }
 
 /** Pure inputs to `launchArgs`. The backend maps its public CommandOptions
@@ -74,6 +87,8 @@ export interface AdapterLaunchOptions {
 	providerArgs?: string[];
 	/** Codex-only runtime (theme/profile/launch-flag); present only for codex. */
 	codex?: CodexLaunchRuntime;
+	/** agy-only facts the pure adapter cannot resolve itself. */
+	agy?: AgyLaunchRuntime;
 }
 
 /**

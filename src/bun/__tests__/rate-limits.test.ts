@@ -11,6 +11,7 @@ import {
 	isUnlimitedRateLimitSnapshot,
 	latestRateLimitSnapshot,
 	mergeCodexRateLimitSnapshots,
+	parseAgyQuotaDump,
 	parseClaudeStatusLinePayload,
 	parseCodexAppServerRateLimits,
 	parseCodexRateLimits,
@@ -509,5 +510,95 @@ describe("parseKimiUsage", () => {
 		const kimi = { ...parseKimiUsage(real, NOW + 60_000)!, providerId: "p1" };
 		expect(latestRateLimitSnapshot({ generatedAt: NOW, snapshots: [kimi, claude] })).toBe(claude);
 		expect(latestRateLimitSnapshot({ generatedAt: NOW, snapshots: [kimi, claude, codex] })).toBe(codex);
+	});
+});
+
+describe("parseAgyQuotaDump", () => {
+	const NOW = Date.parse("2026-11-20T10:00:00Z");
+	const dump = (quota: unknown) => ({ capturedAt: NOW, email: "me@example.com", planTier: "Pro", quota });
+
+	it("turns each live bucket into a window: used = 1 - remaining, reset from the ISO time", () => {
+		const snapshot = parseAgyQuotaDump(
+			dump({
+				"gemini-weekly": { remaining_fraction: 0.753, reset_time: "2026-11-23T10:00:00Z", reset_in_seconds: 259200 },
+				"claude-5h": { remaining_fraction: 1, reset_in_seconds: 600 },
+			}),
+			"abc123",
+		)!;
+		expect(snapshot.source).toBe("agy");
+		expect(snapshot.accountId).toBe("abc123");
+		expect(snapshot.accountLabel).toBe("me@example.com");
+		expect(snapshot.planType).toBe("Pro");
+		expect(snapshot.windows).toEqual([
+			{ id: "gemini-weekly", usedPercent: 25, resetsAt: Date.parse("2026-11-23T10:00:00Z"), windowMinutes: 10080 },
+			{ id: "claude-5h", usedPercent: 0, resetsAt: NOW + 600_000, windowMinutes: null },
+		]);
+	});
+
+	it("skips a disabled bucket and one that reports only an amount, and says null when nothing is left", () => {
+		const quota = {
+			a: { remaining_fraction: 0.5, disabled: true },
+			b: { remaining_amount: 120, reset_time: "2026-11-23T10:00:00Z" },
+			c: { remaining_fraction: 0.5 },
+		};
+		expect(parseAgyQuotaDump(dump(quota), "k")!.windows.map((w) => w.id)).toEqual(["c"]);
+		expect(parseAgyQuotaDump(dump({ a: quota.a, b: quota.b }), "k")).toBeNull();
+		expect(parseAgyQuotaDump(dump(null), "k")).toBeNull();
+	});
+
+	it("clamps a fraction outside 0..1 and leaves the email out when none was reported", () => {
+		const snapshot = parseAgyQuotaDump({ ...dump({ over: { remaining_fraction: -0.2 }, under: { remaining_fraction: 1.4 } }), email: null }, "k")!;
+		expect(snapshot.windows.map((w) => w.usedPercent)).toEqual([100, 0]);
+		expect(snapshot).not.toHaveProperty("accountLabel");
+	});
+
+	it("names the weekly bucket and shows an unknown one as it is", () => {
+		const [known, unknown] = parseAgyQuotaDump(dump({ "gemini-weekly": { remaining_fraction: 0.5 }, "mystery-pool": { remaining_fraction: 0.5 } }), "k")!.windows;
+		expect(windowLabel(known!)).toBe("weekly");
+		expect(windowLabel(unknown!)).toBe("mystery-pool");
+	});
+
+	it("keys each account separately and feeds the header pill like any other agent", () => {
+		const a = parseAgyQuotaDump(dump({ x: { remaining_fraction: 0.5 } }), "key-a")!;
+		const b = parseAgyQuotaDump(dump({ x: { remaining_fraction: 0.5 } }), "key-b")!;
+		expect(rateLimitLoginKey(a)).toBe("agy:key-a");
+		expect(rateLimitLoginKey(a)).not.toBe(rateLimitLoginKey(b));
+		expect(latestRateLimitSnapshot({ snapshots: [a], generatedAt: NOW })).toBe(a);
+	});
+});
+
+describe("parseAgyQuotaDump with a real Google AI Ultra payload", () => {
+	const NOW = Date.parse("2026-11-20T10:00:00Z");
+	// Bucket order as agy sends it is not the display order.
+	const QUOTA = {
+		"3p-weekly": { remaining_fraction: 0.9, reset_time: "2026-11-27T10:00:00Z", reset_in_seconds: 604800 },
+		"gemini-weekly": { remaining_fraction: 0.6, reset_time: "2026-11-26T10:00:00Z", reset_in_seconds: 518400 },
+		"3p-5h": { remaining_fraction: 1, reset_time: "2026-11-20T15:00:00Z", reset_in_seconds: 18000 },
+		"gemini-5h": { remaining_fraction: 0.25, reset_time: "2026-11-20T13:00:00Z", reset_in_seconds: 10800 },
+	};
+	const snapshot = () => parseAgyQuotaDump({ capturedAt: NOW, email: "me@example.com", planTier: "Google AI Ultra", quota: QUOTA }, "k")!;
+
+	it("orders the buckets gemini-5h, gemini-weekly, 3p-5h, 3p-weekly", () => {
+		expect(snapshot().windows.map((w) => w.id)).toEqual(["gemini-5h", "gemini-weekly", "3p-5h", "3p-weekly"]);
+	});
+
+	it("reads each bucket's used percent, reset and window length", () => {
+		expect(snapshot().windows.map((w) => [w.usedPercent, w.windowMinutes])).toEqual([[75, 300], [40, 10080], [0, 300], [10, 10080]]);
+		expect(snapshot().windows[0]!.resetsAt).toBe(Date.parse("2026-11-20T13:00:00Z"));
+		expect(snapshot().planType).toBe("Google AI Ultra");
+	});
+
+	it("names the buckets", () => {
+		expect(snapshot().windows.map(windowLabel)).toEqual(["5-hour", "weekly", "other models, 5-hour", "other models, weekly"]);
+	});
+
+	it("leaves the other models out of the header pill, which keeps the first-party 5-hour and weekly", () => {
+		expect(headerPillWindows(snapshot()).map((w) => w.id)).toEqual(["gemini-5h", "gemini-weekly"]);
+		const onlyOther = { ...snapshot(), windows: snapshot().windows.filter((w) => w.id.startsWith("3p")) };
+		expect(headerPillWindows(onlyOther).map((w) => w.id)).toEqual(["3p-5h", "3p-weekly"]);
+	});
+
+	it("answers null for a payload before the first conversation: no quota, no plan tier", () => {
+		expect(parseAgyQuotaDump({ capturedAt: NOW, email: "me@example.com", planTier: null, quota: undefined }, "k")).toBeNull();
 	});
 });

@@ -9,6 +9,9 @@
  *   get no `rate_limits` at all — a reading then says "no limits reported". dev3 injects a statusLine
  *   wrapper (`dev3 statusline`) via `--settings` that dumps that JSON to
  *   `~/.dev3.0/data/rate-limits/claude.json` and additive per-account files.
+ * - Antigravity (`agy`): the statusLine stdin JSON carries `quota` (bucket id →
+ *   remaining fraction or amount + reset time). `dev3 statusline agy` dumps it, per
+ *   account, to `~/.dev3.0/data/rate-limits/agy/<hash of the email>.json`.
  * - Codex: rollout files under `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`
  *   contain `event_msg`/`token_count` events with a `rate_limits` object
  *   (`primary`/`secondary` windows + `credits`). Windows may be null on
@@ -20,7 +23,7 @@
 import type { ProviderUsageSource } from "./model-catalog";
 import type { AgentSessionStats } from "./session-stats";
 
-export type RateLimitSource = "claude" | "codex" | "kimi";
+export type RateLimitSource = "claude" | "codex" | "kimi" | "agy";
 
 export interface RateLimitWindow {
 	/** Stable window id, e.g. "five_hour", "seven_day", "primary", "secondary". */
@@ -61,6 +64,8 @@ export interface AgentRateLimitSnapshot {
 	configDir?: string;
 	/** Kimi only: the catalog provider whose key and base URL produced this reading. */
 	providerId?: string;
+	/** agy only: the signed-in account's email, shown in the local UI. For agy `accountId` is a hash of it. */
+	accountLabel?: string;
 	/** When this data was captured locally (epoch ms). */
 	capturedAt: number;
 	/** When the provider session was active. Live Codex enrichment may be read
@@ -204,7 +209,8 @@ export const BUDGET_WINDOW_IDS: ReadonlySet<string> = new Set(["monthly_credits"
  *  Monthly credits and spend limits only appear when the account has no timed window. */
 export function headerPillWindows(snapshot: AgentRateLimitSnapshot): RateLimitWindow[] {
 	const timed = snapshot.windows.filter((w) => !BUDGET_WINDOW_IDS.has(w.id));
-	return [...(timed.length ? timed : snapshot.windows)].sort(
+	const primary = timed.filter((w) => !PILL_SECONDARY_WINDOW_IDS.has(w.id));
+	return [...(primary.length ? primary : timed.length ? timed : snapshot.windows)].sort(
 		(a, b) => (a.windowMinutes ?? Number.POSITIVE_INFINITY) - (b.windowMinutes ?? Number.POSITIVE_INFINITY),
 	);
 }
@@ -243,6 +249,14 @@ export function windowLabel(w: RateLimitWindow): string {
 			return "spend";
 		case "monthly":
 			return "1mo";
+		case "gemini-5h":
+			return "5-hour";
+		case "gemini-weekly":
+			return "weekly";
+		case "3p-5h":
+			return "other models, 5-hour";
+		case "3p-weekly":
+			return "other models, weekly";
 	}
 	if (w.windowMinutes != null) {
 		const mins = w.windowMinutes;
@@ -472,6 +486,69 @@ export function parseKimiUsage(payload: unknown, capturedAt: number): AgentRateL
 	].filter((w): w is RateLimitWindow => w != null);
 	if (windows.length === 0) return null;
 	return { source: "kimi", capturedAt, activeAt: capturedAt, windows, creditsBalance: null, monthlyCredits: null, planType: null };
+}
+
+/** What `dev3 statusline agy` stores per account; the quota stays as agy sent it. */
+export interface AgyQuotaDump {
+	capturedAt: number;
+	email: string | null;
+	planTier: string | null;
+	quota: unknown;
+}
+
+/** The quota buckets agy reports, in display order, with their window length. `3p` is the
+ *  third-party models inside agy (Claude, GPT-OSS). Any other bucket id follows them. */
+const AGY_BUCKETS: ReadonlyArray<{ id: string; minutes: number }> = [
+	{ id: "gemini-5h", minutes: 300 },
+	{ id: "gemini-weekly", minutes: 10080 },
+	{ id: "3p-5h", minutes: 300 },
+	{ id: "3p-weekly", minutes: 10080 },
+];
+
+/** Windows the header pill leaves to the panel: the other models' limits, which would double its length. */
+const PILL_SECONDARY_WINDOW_IDS: ReadonlySet<string> = new Set(["3p-5h", "3p-weekly"]);
+
+/**
+ * Parse an agy quota dump into a snapshot with one window per live bucket. A bucket
+ * reporting `remaining_fraction` becomes a window (used = 1 - remaining); a
+ * `disabled` one is skipped, and so is one reporting only `remaining_amount`: a
+ * window carries a percentage, and an amount has no total to take one from.
+ * Null when no bucket qualifies.
+ */
+export function parseAgyQuotaDump(dump: AgyQuotaDump, accountKey: string): AgentRateLimitSnapshot | null {
+	const quota = asRecord(dump.quota);
+	if (!quota) return null;
+	const windows: RateLimitWindow[] = [];
+	for (const [id, raw] of Object.entries(quota)) {
+		const bucket = asRecord(raw);
+		const fraction = asFiniteNumber(bucket?.remaining_fraction);
+		if (!bucket || bucket.disabled === true || fraction == null) continue;
+		const resetTime = typeof bucket.reset_time === "string" ? Date.parse(bucket.reset_time) : NaN;
+		const resetsIn = asFiniteNumber(bucket.reset_in_seconds);
+		windows.push({
+			id,
+			usedPercent: Math.max(0, Math.min(100, Math.round((1 - fraction) * 100))),
+			resetsAt: Number.isFinite(resetTime) ? resetTime : resetsIn != null ? dump.capturedAt + resetsIn * 1000 : null,
+			windowMinutes: AGY_BUCKETS.find((bucket) => bucket.id === id)?.minutes ?? null,
+		});
+	}
+	if (windows.length === 0) return null;
+	const rank = (id: string) => {
+		const index = AGY_BUCKETS.findIndex((bucket) => bucket.id === id);
+		return index === -1 ? AGY_BUCKETS.length : index;
+	};
+	windows.sort((a, b) => rank(a.id) - rank(b.id)); // stable: unknown buckets keep agy's order
+	return {
+		source: "agy",
+		accountId: accountKey,
+		...(dump.email ? { accountLabel: dump.email } : {}),
+		capturedAt: dump.capturedAt,
+		activeAt: dump.capturedAt,
+		windows,
+		creditsBalance: null,
+		monthlyCredits: null,
+		planType: dump.planTier,
+	};
 }
 
 /** Merge a fresh app-server snapshot over the rollout fallback without losing rollout-only windows. */

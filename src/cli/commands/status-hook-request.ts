@@ -11,6 +11,10 @@ export interface StatusHookReport {
 	prompt?: string;
 	/** The harness's own per-submission identity — how a redelivered report is recognised. */
 	turnId?: string;
+	/** Record the session on the pane and move nothing: for a report that is not a lifecycle event. */
+	captureOnly?: boolean;
+	/** Say nothing on stderr either, for a caller whose output reaches the user's screen. */
+	quiet?: boolean;
 }
 
 /**
@@ -49,11 +53,13 @@ export async function reportStatusHookEvent(
 			// second dev3 process; what happens to it is decided app-side.
 			...(report.event === "UserPromptSubmit" && report.prompt ? { prompt: report.prompt } : {}),
 			...(report.turnId ? { turnId: report.turnId } : {}),
+			...(report.captureOnly ? { captureOnly: true } : {}),
 		}, { timeoutMs: 3_000, connectAttempts: 2, retryDelayMs: 50 });
-		if (!response.ok) {
+		if (!response.ok && !report.quiet) {
 			process.stderr.write(`dev3 ${report.harness} hook: ${response.error || "status update failed"}\n`);
 		}
 	} catch (error) {
+		if (report.quiet) return;
 		process.stderr.write(
 			`dev3 ${report.harness} hook: ${error instanceof Error ? error.message : String(error)}\n`,
 		);

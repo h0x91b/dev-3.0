@@ -126,3 +126,19 @@ export function excludeTaskCodexHooks(taskDir: string): void {
 	if (!existsSync(file) || isGitTracked(file)) return;
 	addExcludeRules(`task-codex-hooks:${taskDir}`, taskDir, (prefix) => [`/${escapeExcludePrefix(prefix)}.codex/hooks.json`], "dev3 Codex hooks");
 }
+
+/**
+ * Same as `excludeTaskCodexHooks`, for what dev3 writes into an agy worktree: `.agents/hooks.json`
+ * (unless the repo tracks it) and the `.agents/skills/dev3/` skill. Never the whole `.agents/`.
+ */
+export function excludeTaskAgyConfig(taskDir: string): void {
+	const hooks = join(taskDir, ".agents", "hooks.json");
+	const skill = join(taskDir, ".agents", "skills", "dev3", "SKILL.md");
+	addExcludeRules(`task-agy-config:${taskDir}`, taskDir, (prefix) => {
+		const base = `/${escapeExcludePrefix(prefix)}.agents/`;
+		return [
+			...(existsSync(hooks) && !isGitTracked(hooks) ? [`${base}hooks.json`] : []),
+			...(existsSync(skill) && !isGitTracked(skill) ? [`${base}skills/dev3/`] : []),
+		];
+	}, "dev3 agy config");
+}
