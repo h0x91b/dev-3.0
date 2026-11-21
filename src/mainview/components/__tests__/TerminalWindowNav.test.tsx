@@ -382,16 +382,46 @@ describe("TerminalWindowNav", () => {
 			]);
 		});
 
-		it("drops a crashing decoration and logs it once across every tab", async () => {
+		it("drops a crashing decoration from every tab and every name at once, and logs it once", async () => {
 			getTerminalTabDecorationRegistry().register(decoration("ext:render", { component: () => { throw new Error("boom"); } }));
 			respond([win(1, "Fix auth", { home: true, active: true }), win(2, "tests", { bell: true }), win(3, "logs", { bell: true })]);
 			const { container } = renderNav();
-			await screen.findByRole("tab", { name: "tests, bell · ext:render" });
-			await reread();
+			// No re-read: the crash itself re-renders the row, well before the next window poll.
+			expect(await screen.findByRole("tab", { name: "tests, bell" })).toBeInTheDocument();
 			expect(screen.getByRole("tab", { name: "logs, bell" })).toBeInTheDocument();
 			expect(container.querySelectorAll('[data-window-marker="bell"]')).toHaveLength(2);
 			const reports = errorSpy.mock.calls.map((call: unknown[]) => String(call[0])).filter((line: string) => line.includes("terminal tab decoration"));
 			expect(reports).toEqual(["[slots] render of terminal tab decoration ext:render threw; hiding it:"]);
+		});
+
+		it("clamps an extension decoration to one glyph's width and leaves the built-in's DOM alone", async () => {
+			getTerminalTabDecorationRegistry().register(decoration("ext:wide", { component: () => <span data-testid="ext:wide">a very wide label</span> }));
+			respond([win(1, "Fix auth", { home: true, active: true }), win(2, "tests", { bell: true })]);
+			const { container } = renderNav();
+			const [glyph] = await screen.findAllByTestId("ext:wide");
+			const clamp = glyph.closest("[data-tab-decoration]");
+			expect(clamp?.getAttribute("data-tab-decoration")).toBe("ext:wide");
+			expect(clamp?.className.split(" ")).toEqual(expect.arrayContaining(["flex-shrink-0", "max-w-4", "overflow-hidden"]));
+			expect(clamp?.parentElement?.getAttribute("role")).toBe("tab");
+			const builtin = container.querySelector('[data-window-marker="bell"]');
+			expect(builtin?.parentElement?.getAttribute("role")).toBe("tab");
+		});
+
+		it("a reloaded decoration that fails again is logged again", async () => {
+			const boom = () => {
+				throw new Error("boom");
+			};
+			const dispose = getTerminalTabDecorationRegistry().register(decoration("ext:when", { when: boom }));
+			respond([win(1, "Fix auth", { home: true, active: true }), win(2, "tests", { bell: true })]);
+			renderNav();
+			await screen.findByRole("tab", { name: "tests, bell" });
+			await act(async () => {
+				dispose();
+				getTerminalTabDecorationRegistry().register(decoration("ext:when", { when: boom }));
+			});
+			await reread();
+			const reports = errorSpy.mock.calls.map((call: unknown[]) => String(call[0])).filter((line: string) => line.includes("terminal tab decoration"));
+			expect(reports).toEqual(["[slots] when of terminal tab decoration ext:when threw; hiding it:", "[slots] when of terminal tab decoration ext:when threw; hiding it:"]);
 		});
 
 		it("[dispose] removes an unloading plugin's decoration from the open row and keeps the built-in dot", async () => {

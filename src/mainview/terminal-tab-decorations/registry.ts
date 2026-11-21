@@ -36,31 +36,45 @@ export interface TerminalTabDecorationItem extends SlotItem {
 	component: ComponentType<TerminalTabDecorationProps>;
 }
 
-/** At most one extension decoration per tab, after every built-in, inside the tab's own max width. */
+/** At most one extension decoration per tab, after every built-in, clamped to one glyph's width. */
 export const TERMINAL_TAB_DECORATION_EXTENSION_LIMIT = 1;
 
 type Callback = "when" | "label" | "render";
-const reportedFailures = new Set<string>();
-
-/** Once per decoration and callback: the row calls them for every tab on every poll. */
-export function reportDecorationFailure(id: string, callback: Callback, err: unknown): void {
-	const key = `${id}\u0000${callback}`;
-	if (reportedFailures.has(key)) return;
-	reportedFailures.add(key);
-	console.error(`[slots] ${callback} of terminal tab decoration ${id} threw; hiding it:`, err);
-}
-
-// Keyed by the registered object, so an extension that reloads gets a fresh chance.
+// Keyed by the registered object, so an extension that reloads gets a fresh chance and a fresh log line.
+let reportedFailures = new WeakMap<TerminalTabDecorationItem, Set<Callback>>();
 let crashed = new WeakSet<TerminalTabDecorationItem>();
+let crashVersion = 0;
+const crashListeners = new Set<() => void>();
 
-/** A decoration whose component threw stops being placed, so its label leaves the tab's name too. */
-export function markDecorationCrashed(def: TerminalTabDecorationItem, err: unknown): void {
-	crashed.add(def);
-	reportDecorationFailure(def.id, "render", err);
+/** Once per registered decoration and callback: the row calls them for every tab on every poll. */
+function reportDecorationFailure(def: TerminalTabDecorationItem, callback: Callback, err: unknown): void {
+	const seen = reportedFailures.get(def) ?? new Set<Callback>();
+	if (seen.has(callback)) return;
+	seen.add(callback);
+	reportedFailures.set(def, seen);
+	console.error(`[slots] ${callback} of terminal tab decoration ${def.id} threw; hiding it:`, err);
 }
+
+/** A decoration whose component threw stops being placed, at once on every tab, label included. */
+export function markDecorationCrashed(def: TerminalTabDecorationItem, err: unknown): void {
+	reportDecorationFailure(def, "render", err);
+	if (crashed.has(def)) return;
+	crashed.add(def);
+	crashVersion++;
+	for (const listener of crashListeners) listener();
+}
+
+/** For the row's `useSyncExternalStore`: changes whenever a decoration is newly blocked. */
+export const subscribeDecorationCrashes = (listener: () => void): (() => void) => {
+	crashListeners.add(listener);
+	return () => {
+		crashListeners.delete(listener);
+	};
+};
+export const getDecorationCrashVersion = (): number => crashVersion;
 
 export function resetDecorationFailuresForTests(): void {
-	reportedFailures.clear();
+	reportedFailures = new WeakMap();
 	crashed = new WeakSet();
 }
 
@@ -70,7 +84,7 @@ function applies(entry: Entry, scope: TerminalTabScope): boolean {
 	try {
 		return entry.def.when(scope);
 	} catch (err) {
-		reportDecorationFailure(entry.def.id, "when", err);
+		reportDecorationFailure(entry.def, "when", err);
 		return false;
 	}
 }
@@ -87,7 +101,7 @@ export function placeTerminalTabDecorations(entries: readonly Entry[], t: TFunct
 		try {
 			label = entry.def.label(t, scope);
 		} catch (err) {
-			reportDecorationFailure(entry.def.id, "label", err);
+			reportDecorationFailure(entry.def, "label", err);
 			continue;
 		}
 		if (!builtin) extensionRoom--;
