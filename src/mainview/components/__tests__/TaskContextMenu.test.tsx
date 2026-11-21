@@ -1,4 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { applyBuiltinPlugins } from "../../plugins/runtime";
+import { BUILTIN_TASK_MENU_PLUGIN } from "../../task-menu/builtins";
 import userEvent from "@testing-library/user-event";
 import TaskContextMenu from "../TaskContextMenu";
 import { I18nProvider } from "../../i18n";
@@ -430,3 +432,6 @@ describe("TaskContextMenu on a phone", () => {
 		expect(screen.queryByTestId("task-menu-flyout-priority")).not.toBeInTheDocument();
 	});
 });
+
+// The menu's rows come from the taskMenu slot, filled by its built-in plugin.
+beforeEach(() => applyBuiltinPlugins([], [BUILTIN_TASK_MENU_PLUGIN]));

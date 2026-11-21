@@ -1,4 +1,6 @@
 import { render, screen, waitFor, fireEvent, act, within, cleanup } from "@testing-library/react";
+import { applyBuiltinPlugins } from "../../plugins/runtime";
+import { BUILTIN_TASK_MENU_PLUGIN } from "../../task-menu/builtins";
 import userEvent from "@testing-library/user-event";
 import type { DependencySummary } from "../../../shared/task-dependencies";
 import TaskCard from "../TaskCard";
@@ -2793,3 +2795,6 @@ describe("task age stamps", () => {
 		expect(screen.getByTestId("task-card-age-t1-activity")).toHaveTextContent("2d");
 	});
 });
+
+// The menu's rows come from the taskMenu slot, filled by its built-in plugin.
+beforeEach(() => applyBuiltinPlugins([], [BUILTIN_TASK_MENU_PLUGIN]));

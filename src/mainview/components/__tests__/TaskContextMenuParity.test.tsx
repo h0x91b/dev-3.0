@@ -1,4 +1,6 @@
 import { cleanup, render } from "@testing-library/react";
+import { applyBuiltinPlugins } from "../../plugins/runtime";
+import { BUILTIN_TASK_MENU_PLUGIN } from "../../task-menu/builtins";
 import TaskContextMenu from "../TaskContextMenu";
 import { I18nProvider } from "../../i18n";
 import type { Project, Task } from "../../../shared/types";
@@ -19,7 +21,7 @@ const BASE: Partial<Task> = {
 	description: "My task",
 	worktreePath: "/tmp/worktree",
 	branchName: "dev3/test",
-	createdAt: 0,
+	createdAt: "2026-01-01T00:00:00.000Z",
 };
 
 /** Every task state that changes a row's presence, label, check mark or enabled state. */
@@ -27,7 +29,7 @@ const TASKS: Record<string, Partial<Task>> = {
 	"todo, no worktree": { status: "todo", worktreePath: undefined, branchName: undefined },
 	"todo draft": { status: "todo", worktreePath: undefined, branchName: undefined, draft: true },
 	"todo with start-after": { status: "todo", worktreePath: undefined, launchAfter: { taskId: "t0" } as Task["launchAfter"] },
-	"todo scheduled": { status: "todo", worktreePath: undefined, scheduledLaunch: { at: 1 } as Task["scheduledLaunch"] },
+	"todo scheduled": { status: "todo", worktreePath: undefined, scheduledLaunch: { at: 1 } as unknown as Task["scheduledLaunch"] },
 	"in-progress live": { status: "in-progress" },
 	"in-progress draft": { status: "in-progress", draft: true },
 	"in-progress hibernated": { status: "in-progress", hibernated: true },
@@ -113,3 +115,6 @@ describe("task context menu parity", () => {
 		});
 	});
 });
+
+// The menu's rows come from the taskMenu slot, filled by its built-in plugin.
+beforeEach(() => applyBuiltinPlugins([], [BUILTIN_TASK_MENU_PLUGIN]));

@@ -1,4 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { applyBuiltinPlugins } from "../../../plugins/runtime";
+import { BUILTIN_TASK_MENU_PLUGIN } from "../../../task-menu/builtins";
 import userEvent from "@testing-library/user-event";
 // The board renders through its host, which owns the shared filter row.
 import BoardHost from "../../BoardHost";
@@ -142,3 +144,6 @@ describe("KanbanBoard lineage", () => {
 		expect(within(childCard).getByTestId("task-card-lineage").textContent).toContain("from#1801");
 	});
 });
+
+// The card's right-click rows come from the taskMenu slot, filled by its built-in plugin.
+beforeEach(() => applyBuiltinPlugins([], [BUILTIN_TASK_MENU_PLUGIN]));
