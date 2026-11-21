@@ -2,13 +2,14 @@ import { createContext, useContext, type ReactNode } from "react";
 import { SlotItems } from "../plugins/SlotItems";
 import type { TaskBranchStatusController } from "../components/task-info-panel/useTaskBranchStatus";
 import type { TaskInlineDiffRequest } from "../components/task-inline-diff";
+import type { TaskSessionController } from "./builtin-session";
 import { getTaskHeaderRegistry, type TaskHeaderGroup, type TaskHeaderRegion, type TaskHeaderScope } from "./registry";
 
 /** Where a region is drawn: its bar in the header, or its section of the narrow actions sheet. */
 export type TaskHeaderSurface = "bar" | "sheet";
 
-/** The regions still drawn by one legacy cluster item; the git and runtime bars have real items. */
-export type LegacyRegion = Exclude<TaskHeaderRegion, "git" | "runtime">;
+/** The regions still drawn by one legacy cluster item; the other bars have real items. */
+export type LegacyRegion = Exclude<TaskHeaderRegion, "git" | "runtime" | "session">;
 
 /**
  * Today's JSX of each legacy bar, built by `<TaskHeader>` for the layout on screen. The
@@ -36,6 +37,8 @@ export interface TaskHeaderLayout {
 interface TaskHeaderInternals {
 	layout: TaskHeaderLayout;
 	git: TaskBranchStatusController;
+	/** The session bar's dialogs and hibernation; the restore control (chrome) runs them too. */
+	session: TaskSessionController;
 	onOpenInlineDiff?: (request: TaskInlineDiffRequest) => void;
 	/** Closes the narrow actions sheet; a sheet row that opens something else calls it first. */
 	closeSheet: () => void;

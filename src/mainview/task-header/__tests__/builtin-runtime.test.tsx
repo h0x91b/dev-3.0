@@ -4,6 +4,7 @@ import { applyBuiltinPlugins, resetPluginsForTests } from "../../plugins/runtime
 import type { Project, Task } from "../../../shared/types";
 import { BUILTIN_TASK_HEADER_PLUGIN } from "../builtins";
 import type { TaskBranchStatusController } from "../../components/task-info-panel/useTaskBranchStatus";
+import type { TaskSessionController } from "../builtin-session";
 import { TaskHeaderProvider, TaskHeaderRegionItems, type TaskHeaderLayout, type TaskHeaderSurface } from "../scope";
 
 vi.mock("../../rpc", () => ({ api: { request: {} } }));
@@ -26,7 +27,7 @@ const git = {} as TaskBranchStatusController;
 function renderRuntime({ task = baseTask, proj = project, layout = DESKTOP, surface = "bar" as TaskHeaderSurface, closeSheet = vi.fn() } = {}) {
 	return render(
 		<I18nProvider>
-			<TaskHeaderProvider value={{ scope: { task, project: proj, dispatch: vi.fn(), navigate: vi.fn() }, legacy: { status: {}, session: {} }, layout, git, closeSheet }}>
+			<TaskHeaderProvider value={{ scope: { task, project: proj, dispatch: vi.fn(), navigate: vi.fn() }, legacy: { status: {} }, layout, git, session: {} as TaskSessionController, closeSheet }}>
 				<div data-testid="bar">
 					<TaskHeaderRegionItems region="runtime" surface={surface} />
 				</div>

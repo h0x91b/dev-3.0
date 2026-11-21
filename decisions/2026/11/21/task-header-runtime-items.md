@@ -1,3 +1,5 @@
+> Partly superseded on 2026-11-21 by `decisions/2026/11/21/task-header-session-items.md`: the session rows (Find bugs, + Agent, Hibernate) are now one sheet section after the runtime rows, so the old row order is no longer kept.
+
 # Task header: the runtime bar as individual built-in items
 
 ## Context
