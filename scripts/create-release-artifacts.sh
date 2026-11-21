@@ -279,7 +279,7 @@ PARTIAL_APP_ZIP="${BUILD_DIR}/${APP_BUNDLE}.zip"
 
 if [ ! -f "$TAR_ZST" ] && [ ! -f "$TAR" ]; then
   if [ "$OS" = "macos" ] && [ -f "$PARTIAL_APP_ZIP" ]; then
-    echo "::error::Found ${PARTIAL_APP_ZIP} but no ${TAR_NAME}(.zst). Electrobun likely failed after packaging the app, for example during notarization. Check the earlier electrobun output for the real error."
+    echo "::error::Found ${PARTIAL_APP_ZIP} but no ${TAR_NAME}(.zst): electrobun build failed after zipping the app, i.e. during notarization or stapling. The real error is in the electrobun build step above (search it for 'error:'). Causes seen so far: stapler/notary losing the network (retried 5x by scripts/electrobun.ts — see its 'Network retry' warnings), Apple 'HTTP status code: 403. A required agreement is missing or has expired' (the account holder must accept it at developer.apple.com — no code fix), and 'No space left on device'."
     find "${BUILD_DIR}" -maxdepth 2 -type f 2>/dev/null || true
     exit 1
   fi
