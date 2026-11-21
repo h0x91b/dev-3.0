@@ -1,4 +1,6 @@
-export type ThemePreference = "dark" | "light" | "system";
+import { beigeCssDeclarations, clampBeigeTone, formatBeigeTone, type BeigeTone } from "../shared/beige-palette";
+
+export type ThemePreference = "dark" | "light" | "beige" | "system";
 export type ResolvedTheme = "dark" | "light";
 
 interface ThemeBootstrapOptions {
@@ -11,10 +13,11 @@ interface ThemeBootstrapOptions {
 interface ThemeBootstrapWindow {
 	__DEV3_INITIAL_THEME__?: string;
 	__DEV3_INITIAL_RESOLVED_THEME__?: string;
+	__DEV3_INITIAL_BEIGE_TONE__?: unknown;
 }
 
 function parseThemePreference(value: string | null | undefined): ThemePreference | undefined {
-	if (value === "dark" || value === "light" || value === "system") {
+	if (value === "dark" || value === "light" || value === "beige" || value === "system") {
 		return value;
 	}
 	return undefined;
@@ -49,7 +52,56 @@ export function getInitialThemeState(options: ThemeBootstrapOptions): {
 	const resolved =
 		preference === "system"
 			? injectedResolvedTheme ?? (options.prefersDark ? "dark" : "light")
-			: preference;
+			: preference === "beige" ? "light" : preference;
 
 	return { preference, resolved };
+}
+
+const BEIGE_TONE_KEY = "dev3-beige-tone";
+const BEIGE_STYLE_ID = "dev3-beige-tone";
+
+/** The tone this window chose itself; undefined until a slider moved here. */
+export function readStoredBeigeTone(): BeigeTone | undefined {
+	try {
+		const raw = localStorage.getItem(BEIGE_TONE_KEY);
+		return raw ? clampBeigeTone(JSON.parse(raw) ?? undefined) : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/** This window's tone, else the host's (injected into a remote browser), else the default. */
+export function readBeigeTone(): BeigeTone {
+	const injected = (window as Window & ThemeBootstrapWindow).__DEV3_INITIAL_BEIGE_TONE__;
+	return readStoredBeigeTone() ?? clampBeigeTone(injected && typeof injected === "object" ? injected : undefined);
+}
+
+export function saveBeigeTone(tone: BeigeTone): void {
+	try { localStorage.setItem(BEIGE_TONE_KEY, JSON.stringify(clampBeigeTone(tone))); } catch { /* private mode */ }
+}
+
+/** Writes the tone-driven tokens. Scoped to the beige selector, so dropping
+ *  `data-palette` (Light, Dark, a GaugeDemo preview) switches them off with no cleanup. */
+export function applyBeigeTone(next: BeigeTone): void {
+	const tone = clampBeigeTone(next);
+	let style = document.getElementById(BEIGE_STYLE_ID);
+	if (!style) {
+		style = document.createElement("style");
+		style.id = BEIGE_STYLE_ID;
+		document.head.appendChild(style);
+	}
+	style.textContent = `[data-theme="light"][data-palette="beige"] { ${beigeCssDeclarations(tone)} }`;
+	document.documentElement.dataset.beigeTone = formatBeigeTone(tone);
+}
+
+/** Beige is a palette over the light theme, so everything keyed on `light` (terminal, ANSI adapt) still applies. */
+export function applyThemeToDocument(preference: ThemePreference, resolved: ResolvedTheme): void {
+	const root = document.documentElement;
+	root.dataset.theme = resolved;
+	if (preference === "beige") {
+		root.dataset.palette = "beige";
+		applyBeigeTone(readBeigeTone());
+	} else {
+		delete root.dataset.palette;
+	}
 }

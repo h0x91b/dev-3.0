@@ -24,7 +24,8 @@ import * as repoConfig from "../repo-config";
 import * as pty from "../pty-server";
 import { SESSION_OVERVIEW_FORMAT, tmux } from "../tmux";
 import { tmuxRestartImpact } from "../tmux-restart-impact";
-import { setTmuxPaneDimming, setTmuxPaneTitles, writeTmuxConfigs } from "../tmux/config";
+import { setTmuxBeigeTone, setTmuxPaneDimming, setTmuxPaneTitles, tmuxThemeFor, writeTmuxConfigs, type TmuxTheme } from "../tmux/config";
+import { clampBeigeTone } from "../../shared/beige-palette";
 import { loadSettings, readSettingsFileStrict, saveSettings } from "../settings";
 import { collectLogRetentionUsage, pruneAllLogs } from "../log-retention";
 import { isRetentionDayCount, isShorterRetention, resolveLogRetentionDays, storedLogRetention, type LogRetentionUsage, type LogRetentionValue } from "../../shared/log-retention";
@@ -356,7 +357,7 @@ function getShellAvailability(): ShellAvailability {
  * goes through `applyTmuxTheme`, which also pins the active themed config path.
  */
 async function applyTmuxConfigChange(
-	theme: "dark" | "light",
+	theme: TmuxTheme,
 	options: { refreshShell: boolean; dimInactivePanes: boolean; dimChanged: boolean; paneTitles: boolean; titlesChanged: boolean },
 ): Promise<void> {
 	try {
@@ -480,7 +481,7 @@ async function saveGlobalSettingsNow(params: GlobalSettings): Promise<void> {
 	const dimChanged = (stored.dimInactivePanes !== false) !== (next.dimInactivePanes !== false);
 	const titlesChanged = (stored.paneTitles === true) !== (next.paneTitles === true);
 	if (process.platform !== "win32" && (shellChanged || dimChanged || titlesChanged)) {
-		await applyTmuxConfigChange(next.resolvedTheme ?? getCurrentUiTheme(), {
+		await applyTmuxConfigChange(tmuxThemeFor(next.theme, next.resolvedTheme ?? getCurrentUiTheme()), {
 			refreshShell: shellChanged,
 			dimInactivePanes: next.dimInactivePanes !== false,
 			dimChanged,
@@ -985,16 +986,23 @@ async function clearAgentBinaryPath(params: { agentId: string }): Promise<void> 
 	log.info("<- clearAgentBinaryPath saved");
 }
 
-async function setTmuxTheme(params: { theme: "dark" | "light"; preference?: "dark" | "light" | "system" }): Promise<void> {
+async function setTmuxTheme(params: { theme: "dark" | "light"; preference?: "dark" | "light" | "beige" | "system"; beigeTone?: { depth: number; warmth: number } }): Promise<void> {
 	log.info("→ setTmuxTheme", params);
 	const settings = await loadSettings();
+	const tone = params.beigeTone ? clampBeigeTone(params.beigeTone) : undefined;
 	await saveSettings({
 		...settings,
 		...(params.preference !== undefined ? { theme: params.preference } : {}),
 		resolvedTheme: params.theme,
+		...(tone ? { beigeDepth: tone.depth, beigeWarmth: tone.warmth } : {}),
 	});
 	setCurrentUiTheme(params.theme);
-	await pty.applyTmuxTheme(params.theme);
+	const tmuxTheme = tmuxThemeFor(params.preference ?? settings.theme, params.theme);
+	if (tmuxTheme === "beige" && process.platform !== "win32") {
+		setTmuxBeigeTone(tone ?? { depth: settings.beigeDepth, warmth: settings.beigeWarmth });
+		writeTmuxConfigs();
+	}
+	await pty.applyTmuxTheme(tmuxTheme);
 }
 
 /**

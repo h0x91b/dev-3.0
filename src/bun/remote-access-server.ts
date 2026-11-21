@@ -29,6 +29,7 @@ import { initSecret, createQrToken, createSessionToken, exchangeQrForSession, re
 import { getTunnelUrl, getTunnelState, tunnelManager } from "./cloudflare-tunnel";
 import { loadSettingsSync } from "./settings";
 import { getCurrentUiTheme } from "./theme-state";
+import { clampBeigeTone, type BeigeTone } from "../shared/beige-palette";
 import { telemetryBootstrapScript } from "./analytics-identity";
 import { buildSignInLink } from "../shared/remote-sign-in-link";
 import { isLoopbackListen, resolveListenHost } from "./remote-listen-host";
@@ -361,15 +362,19 @@ export async function serveStatic(pathname: string, staticRootOverride?: string)
 	});
 }
 
-function getInitialThemeBootstrap(): { preference: "dark" | "light" | "system"; resolved: "dark" | "light" } {
+function getInitialThemeBootstrap(): {
+	preference: "dark" | "light" | "beige" | "system";
+	resolved: "dark" | "light";
+	beigeTone: BeigeTone;
+} {
 	const settings = loadSettingsSync();
 	const resolved = settings.resolvedTheme ?? getCurrentUiTheme();
 	const preference = settings.theme ?? resolved;
-	return { preference, resolved };
+	return { preference, resolved, beigeTone: clampBeigeTone({ depth: settings.beigeDepth, warmth: settings.beigeWarmth }) };
 }
 
 export function injectInitialThemeBootstrap(html: string): string {
-	const { preference, resolved } = getInitialThemeBootstrap();
+	const { preference, resolved, beigeTone } = getInitialThemeBootstrap();
 	// The telemetry verdict and distinct id have to be on the page before posthog-js
 	// initializes, which happens at module import — an RPC round trip would be too
 	// late. Same script the desktop window gets as a webview preload, so both are
@@ -377,6 +382,7 @@ export function injectInitialThemeBootstrap(html: string): string {
 	const script =
 		`<script>window.__DEV3_INITIAL_THEME__=${JSON.stringify(preference)};` +
 		`window.__DEV3_INITIAL_RESOLVED_THEME__=${JSON.stringify(resolved)};` +
+		`window.__DEV3_INITIAL_BEIGE_TONE__=${JSON.stringify(beigeTone)};` +
 		telemetryBootstrapScript() +
 		`</script>`;
 

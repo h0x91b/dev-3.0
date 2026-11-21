@@ -467,6 +467,28 @@ html {
 		0 32px 64px -24px rgb(80 100 140 / 0.26);
 }
 
+/* Beige: a warm-paper palette over the light theme (data-theme stays "light").
+   Surfaces, canvas, glass, borders, quiet text and the accent follow the Depth and
+   Warmth sliders, written at runtime by applyBeigeTone (src/shared/beige-palette.ts). */
+[data-theme="light"][data-palette="beige"] {
+	--text-primary: 28 27 25;
+	--text-secondary: 74 72 67;
+
+	/* Ink accents (burnt orange) follow the depth too; solid fills are the near-black button. */
+	--accent-fill: 28 27 25;
+	--accent-fill-hover: 62 60 55;
+
+	--glass-border-rgb: 60 50 30;
+
+	--shadow-column: 0 8px 30px -8px rgb(60 50 30 / 0.1), 0 2px 8px -2px rgb(60 50 30 / 0.05);
+	--shadow-card-hover: 0 8px 24px -6px rgb(60 50 30 / 0.12);
+	--shadow-popover:
+		0 0 0 1px rgb(60 50 30 / 0.12),
+		0 2px 4px -1px rgb(60 50 30 / 0.12),
+		0 12px 24px -8px rgb(60 50 30 / 0.18),
+		0 32px 64px -24px rgb(60 50 30 / 0.22);
+}
+
 html {
 	height: 100vh;
 	height: 100dvh;
