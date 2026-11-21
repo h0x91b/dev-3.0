@@ -59,6 +59,7 @@ export function installIntoAppRoot(installs: ReadonlyArray<(ctx: Context) => unk
 	return ctx;
 }
 
+/** Drops the extension guard's slot observers with it; `resetPluginsForTests` resets both together. */
 export function resetAppRootForTests(): void {
 	root = null;
 	slots.clear();

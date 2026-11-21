@@ -6,7 +6,6 @@ import { api } from "../../../rpc";
 import { openFolderPicker } from "../../../folder-picker";
 import { isRemote } from "../../../utils/platform";
 import { resetPluginsForTests } from "../../../plugins/runtime";
-import { resetAppRootForTests } from "../../../plugins/root";
 import ExtensionsSettingsSection from "../ExtensionsSettingsSection";
 
 vi.mock("../../../rpc", () => ({
@@ -42,7 +41,6 @@ function overview(patch: Partial<ExtensionsOverview> = {}): ExtensionsOverview {
 }
 
 beforeEach(() => {
-	resetAppRootForTests();
 	resetPluginsForTests();
 	vi.mocked(isRemote).mockReturnValue(false);
 	vi.mocked(api.request.listExtensions).mockResolvedValue(overview());
