@@ -539,6 +539,104 @@ describe("GlobalHeader — project switcher dropdown", () => {
 			// The search row's ⇧⌘K button is not a project row — count the rows only.
 			expect(within(menu).getAllByTestId("switcher-row")).toHaveLength(3);
 		});
+
+		describe("collapsing groups", () => {
+			const KEY = "dev3-switcher-collapsed-groups";
+			beforeEach(() => localStorage.clear());
+			afterEach(() => localStorage.clear());
+
+			/** Row labels in render order. */
+			function rowNames(menu: HTMLElement) {
+				return within(menu).queryAllByTestId("switcher-row").map((row) => row.querySelector("span.flex-1")?.textContent ?? "");
+			}
+
+			it("starts expanded and folds a group from its chevron, keeping the heading", async () => {
+				withSpaces();
+				const user = userEvent.setup();
+				const navigate = vi.fn();
+				renderHeader({ screen: "project", projectId: "p1" }, [project1, project2, project4], navigate);
+				await user.click(getChevronButton());
+				const menu = await screen.findByRole("menu");
+				await within(menu).findByText("Other Space");
+				expect(rowNames(menu)).toEqual(["Project Alpha", "Project Beta", "Project Beta", "Project Delta"]);
+
+				const toggle = screen.getByTestId("switcher-group-toggle-sp_other");
+				expect(toggle).toHaveAttribute("aria-expanded", "true");
+				await user.click(toggle);
+
+				expect(toggle).toHaveAttribute("aria-expanded", "false");
+				expect(rowNames(menu)).toEqual(["Project Alpha", "Project Beta", "Project Delta"]);
+				expect(within(menu).getByText("Other Space")).toBeInTheDocument();
+				// The chevron folds only; it never opens the board the heading names.
+				expect(navigate).not.toHaveBeenCalled();
+				expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual(["sp_other"]);
+				expect(localStorage.getItem("dev3-collapsed-spaces")).toBeNull();
+			});
+
+			it("folds Home too", async () => {
+				withSpaces();
+				const user = userEvent.setup();
+				renderHeader({ screen: "project", projectId: "p1" }, [project1, project2, project4]);
+				await user.click(getChevronButton());
+				const menu = await screen.findByRole("menu");
+				await within(menu).findByText("Home");
+				await user.click(screen.getByTestId("switcher-group-toggle-home"));
+				expect(rowNames(menu)).not.toContain("Project Delta");
+				expect(within(menu).getByText("Home")).toBeInTheDocument();
+			});
+
+			it("restores a stored fold and ignores the dashboard's own key", async () => {
+				withSpaces();
+				localStorage.setItem(KEY, JSON.stringify(["home"]));
+				localStorage.setItem("dev3-collapsed-spaces", JSON.stringify(["sp_other"]));
+				const menu = await openSwitcher();
+				await within(menu).findByText("Other Space");
+				expect(rowNames(menu)).toEqual(["Project Alpha", "Project Beta", "Project Beta"]);
+			});
+
+			it("keeps the current project's group open and its chevron inert", async () => {
+				withSpaces();
+				localStorage.setItem(KEY, JSON.stringify(["sp_dev"]));
+				const user = userEvent.setup();
+				renderHeader({ screen: "project", projectId: "p1" }, [project1, project2, project4]);
+				await user.click(getChevronButton());
+				const menu = await screen.findByRole("menu");
+				await within(menu).findByText("Dev Space");
+				const toggle = screen.getByTestId("switcher-group-toggle-sp_dev");
+				expect(toggle).toHaveAttribute("aria-disabled", "true");
+				expect(toggle).toHaveAttribute("aria-expanded", "true");
+				await user.click(toggle);
+				expect(rowNames(menu)).toContain("Project Alpha");
+				expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual(["sp_dev"]);
+			});
+
+			it("shows every hit while a search is active, folded or not", async () => {
+				withSpaces();
+				localStorage.setItem(KEY, JSON.stringify(["home"]));
+				const user = userEvent.setup();
+				renderHeader({ screen: "project", projectId: "p1" }, [project1, project2, project4]);
+				await user.click(getChevronButton());
+				const menu = await screen.findByRole("menu");
+				await within(menu).findByText("Home");
+				await user.type(screen.getByTestId("project-switcher-search"), "delta");
+				expect(rowNames(menu)).toEqual(["Project Delta"]);
+				expect(screen.getByTestId("switcher-group-toggle-home")).toHaveAttribute("aria-disabled", "true");
+			});
+
+			it("skips folded rows on the arrow keys and Enter", async () => {
+				withSpaces();
+				localStorage.setItem(KEY, JSON.stringify(["sp_other"]));
+				const user = userEvent.setup();
+				const navigate = vi.fn();
+				renderHeader({ screen: "project", projectId: "p1" }, [project1, project2, project4], navigate);
+				await user.click(getChevronButton());
+				const menu = await screen.findByRole("menu");
+				await within(menu).findByText("Other Space");
+				// Rows: Alpha, Beta (Dev Space), Delta. Unfolded, step two would be Beta under Other Space.
+				await user.type(screen.getByTestId("project-switcher-search"), "{ArrowDown}{ArrowDown}{Enter}");
+				expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p4" });
+			});
+		});
 	});
 
 	describe("project switcher search", () => {

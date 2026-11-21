@@ -139,6 +139,10 @@ const dashboard = {
 	"header.activeTaskCount_one": "{count} en curso",
 	"header.activeTaskCount_other": "{count} en curso",
 	"header.noActiveTasks": "Sin tareas activas",
+	"header.switcherCollapseGroup": "Contraer grupo",
+	"header.switcherExpandGroup": "Expandir grupo",
+	"header.switcherGroupPinnedOpen": "El grupo del proyecto actual siempre queda abierto",
+	"header.switcherGroupSearchOpen": "La búsqueda muestra todos los grupos",
 
 	// Prevent-sleep (caffeine) toggle
 	"caffeine.label": "No suspender",

@@ -157,6 +157,10 @@ const dashboard = {
 	"header.activeTaskCount_many": "{count} активных",
 	"header.activeTaskCount_other": "{count} активных",
 	"header.noActiveTasks": "Нет активных задач",
+	"header.switcherCollapseGroup": "Свернуть группу",
+	"header.switcherExpandGroup": "Развернуть группу",
+	"header.switcherGroupPinnedOpen": "Группа с текущим проектом всегда открыта",
+	"header.switcherGroupSearchOpen": "Поиск показывает все группы",
 
 	// Prevent-sleep (caffeine) toggle
 	"caffeine.label": "Не спать",
