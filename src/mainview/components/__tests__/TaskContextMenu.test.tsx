@@ -43,6 +43,10 @@ vi.mock("../MoveToProjectPicker", () => ({
 import { api } from "../../rpc";
 import { confirm } from "../../confirm";
 import { toast } from "../../toast";
+import { installTaskMenuBuiltins } from "../../task-menu/__tests__/install-builtins";
+
+// The menu's rows come from the taskMenu slot; every test starts on a fresh root with its built-ins.
+beforeEach(installTaskMenuBuiltins);
 
 const mockedApi = vi.mocked(api);
 
