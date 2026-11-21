@@ -4,16 +4,19 @@ import type { BuiltinPlugin } from "../plugins/runtime";
 import type { SlotItemProps } from "../plugins/SlotItems";
 // Defines the `taskHeader` slot on the app root before the built-ins install.
 import "./registry";
-import { TASK_HEADER_REGIONS, type TaskHeaderRegion } from "./registry";
-import { useLegacyCluster } from "./scope";
+import { registerGitItems } from "./builtin-git";
+import { useLegacyCluster, type LegacyRegion } from "./scope";
+
+/** The bars still drawn as one cluster each, until their split lands. */
+export const LEGACY_REGIONS: readonly LegacyRegion[] = ["status", "session", "runtime"];
 
 export const TASK_HEADER_BUILTIN_ID = "builtin:task-header";
 
-export function legacyClusterId(region: TaskHeaderRegion): string {
+export function legacyClusterId(region: LegacyRegion): string {
 	return `builtin:${region}.legacy-cluster`;
 }
 
-function legacyCluster(region: TaskHeaderRegion): ComponentType<SlotItemProps> {
+function legacyCluster(region: LegacyRegion): ComponentType<SlotItemProps> {
 	function LegacyCluster() {
 		return <>{useLegacyCluster(region)}</>;
 	}
@@ -21,15 +24,16 @@ function legacyCluster(region: TaskHeaderRegion): ComponentType<SlotItemProps> {
 	return LegacyCluster;
 }
 
-/** One item per bar, each wrapping that bar's existing controls as one unit. */
+/** The Git bar's own items, and one cluster item per bar not yet split. */
 export function installTaskHeaderBuiltins(ctx: Context): Fiber {
 	return ctx.plugin({
 		name: TASK_HEADER_BUILTIN_ID,
 		inject: ["taskHeader"],
 		apply(pluginCtx: Context) {
-			for (const region of TASK_HEADER_REGIONS) {
+			for (const region of LEGACY_REGIONS) {
 				pluginCtx.taskHeader.register({ id: legacyClusterId(region), region, component: legacyCluster(region) });
 			}
+			registerGitItems(pluginCtx);
 		},
 	});
 }

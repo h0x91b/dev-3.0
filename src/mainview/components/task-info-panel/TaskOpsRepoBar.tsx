@@ -1,24 +1,13 @@
-import type { Dispatch } from "react";
-import type { Project, Task } from "../../../shared/types";
-import type { AppAction, Route } from "../../state";
+import type { Task } from "../../../shared/types";
 import { api } from "../../rpc";
 import { useT } from "../../i18n";
 import { openFolderPicker } from "../../folder-picker";
 import { toast } from "../../toast";
 import Tooltip from "../Tooltip";
-import type { TaskInlineDiffRequest } from "../task-inline-diff";
-import TaskGitActions, { type TaskBranchStatusMeta } from "./TaskGitActions";
 
 interface TaskOpsRepoBarProps {
 	task: Task;
-	project: Project;
-	dispatch: Dispatch<AppAction>;
-	navigate: (route: Route) => void;
 	isTaskActive: boolean;
-	showLoading?: boolean;
-	compact?: boolean;
-	onBranchStatusChange?: (meta: TaskBranchStatusMeta) => void;
-	onOpenInlineDiff?: (request: TaskInlineDiffRequest) => void;
 }
 
 const ATTACH_BTN_CLASS =
@@ -26,9 +15,10 @@ const ATTACH_BTN_CLASS =
 
 /**
  * The Git bar of an Operations task: attach a local repo to read its diff here,
- * or, once attached, the read-only changes summary with the repo chip.
+ * or, once attached, the repo chip. The branch chip and the read-only changes
+ * summary that follow it are the bar's own items (`task-header/builtin-git.tsx`).
  */
-export default function TaskOpsRepoBar({ task, isTaskActive, ...gitProps }: TaskOpsRepoBarProps) {
+export default function TaskOpsRepoBar({ task, isTaskActive }: TaskOpsRepoBarProps) {
 	const t = useT();
 
 	async function setRepo(path: string | null) {
@@ -92,7 +82,6 @@ export default function TaskOpsRepoBar({ task, isTaskActive, ...gitProps }: Task
 					</Tooltip>
 				)}
 			</span>
-			<TaskGitActions task={task} isTaskActive={isTaskActive} readOnly {...gitProps} />
 		</>
 	);
 }

@@ -34,9 +34,6 @@ import TaskExposedPorts from "./task-info-panel/TaskExposedPorts";
 import TaskSharedImages from "./task-info-panel/TaskSharedImages";
 import TaskArtifacts from "./task-info-panel/TaskArtifacts";
 import TaskScripts from "./task-info-panel/TaskScripts";
-import TaskGitActions from "./task-info-panel/TaskGitActions";
-import TaskOpsRepoBar from "./task-info-panel/TaskOpsRepoBar";
-import type { TaskBranchStatusMeta } from "./task-info-panel/TaskGitActions";
 import TaskGitActionsSheet from "./task-info-panel/TaskGitActionsSheet";
 import { useTaskBranchStatus } from "./task-info-panel/useTaskBranchStatus";
 import TaskPrStatusPopover from "./TaskPrStatusPopover";
@@ -75,6 +72,7 @@ import HideableControl from "./HideableControl";
 import PanelRestoreControl, { type PanelHideableEntry } from "./task-info-panel/PanelRestoreControl";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { TASK_HEADER_REGIONS } from "../task-header/registry";
+import { taskHasGitBar } from "../task-header/builtin-git";
 import { TaskHeaderProvider, TaskHeaderRegionItems, type LegacyClusters } from "../task-header/scope";
 import BottomSheet from "./BottomSheet";
 import HelpSpot from "./HelpSpot";
@@ -196,7 +194,6 @@ function TaskHeaderFrame({
 	const [hibernating, setHibernating] = useState(false);
 	const [bugHuntersOpen, setBugHuntersOpen] = useState(false);
 	const [notesOverlayOpen, setNotesOverlayOpen] = useState(false);
-	const [metadataBranchState, setMetadataBranchState] = useState<TaskBranchStatusMeta | null>(null);
 	const [includeTests, setIncludeTests] = useIncludeTestsInDiff();
 	const [diffFilesHover, setDiffFilesHover] = useState(false);
 	const [diffFilesPos, setDiffFilesPos] = useState({ top: 0, left: 0 });
@@ -282,19 +279,17 @@ function TaskHeaderFrame({
 	const isTaskActive = ACTIVE_STATUSES.includes(task.status);
 	// An Operations task gets the diff (never the write actions) once a repo is attached;
 	// a project with the git workflow off gets none. Scripts and the dev server need neither.
-	const hasGit = taskUsesWorktree(project, task) || (project.kind === "virtual" && !!task.attachedRepo);
-	// Narrow viewport renders no TaskGitActions (the desktop git bar), which is
-	// what feeds `metadataBranchState` on desktop. Own one branch-status
-	// instance here instead: it drives the summary-bar diff badge, the merge
-	// completion prompt, and is handed to TaskGitActionsSheet so the sheet
-	// opens with status already loaded. Inert (`enabled: false`) on desktop.
-	const narrowGit = useTaskBranchStatus({
+	const hasGit = taskHasGitBar(project, task);
+	// The header's one branch-status instance, shared through the scope: the Git bar's
+	// items and the narrow sheet's rows act on it, and the Context bar's diff badge reads
+	// it. It also owns the merge completion prompt, so it must never run twice.
+	const git = useTaskBranchStatus({
 		task,
 		project,
 		dispatch,
 		navigate,
 		isTaskActive,
-		enabled: narrow && hasGit,
+		enabled: hasGit,
 	});
 	const variantMembers = task.groupId
 		? tasks.filter((candidate) => candidate.groupId === task.groupId)
@@ -666,21 +661,14 @@ function TaskHeaderFrame({
 		openBranchDiff(relativePath);
 	}
 
-	// On narrow the panel-level hook is the status source; on desktop it is the
-	// TaskGitActions render callback (`metadataBranchState`). The lifted state
-	// outlives a task switch, so it counts only while it still describes the task
-	// on screen — the child re-reports the new one (from cache, or once fetched).
-	const branchMeta: TaskBranchStatusMeta | null = narrow
+	const branchMeta = hasGit
 		? {
-			taskId: task.id,
-			branchStatus: narrowGit.branchStatus,
-			prStatus: narrowGit.prStatus,
-			compareRef: narrowGit.compareRef || undefined,
-			compareLabel: narrowGit.displayRef,
+			branchStatus: git.branchStatus,
+			prStatus: git.prStatus,
+			compareRef: git.compareRef || undefined,
+			compareLabel: git.displayRef,
 		}
-		: metadataBranchState?.taskId === task.id
-			? metadataBranchState
-			: null;
+		: null;
 	const metadataBranchStatus = branchMeta?.branchStatus ?? null;
 	const diffCompareLabel = branchMeta?.compareLabel ?? project.defaultCompareRef ?? resolveTaskCompareBaseBranch(task, project);
 	const metadataPrInfo: TaskPRBadgeInfo | null = inspectorPRBadge(task, branchMeta?.prStatus, metadataBranchStatus);
@@ -1445,35 +1433,8 @@ function TaskHeaderFrame({
 		</Tooltip>
 	);
 
-	// Today's controls of each bar. The legacy cluster items render them unchanged
-	// (decisions/2026/11/21/task-header-slot-frame.md); 3.2–3.5 turn each into real items.
-	const gitBarCluster = project.kind === "virtual" ? (
-		<TaskOpsRepoBar
-			task={task}
-			project={project}
-			dispatch={dispatch}
-			navigate={navigate}
-			isTaskActive={isTaskActive}
-			showLoading={collapsed}
-			compact={compact}
-			onBranchStatusChange={setMetadataBranchState}
-			onOpenInlineDiff={onOpenInlineDiff}
-		/>
-	) : !taskUsesWorktree(project, task) ? (
-		<span className="text-fg-muted text-micro italic flex-shrink-0 truncate">{t("task.gitWorkflowOff")}</span>
-	) : (
-		<TaskGitActions
-			task={task}
-			project={project}
-			dispatch={dispatch}
-			navigate={navigate}
-			isTaskActive={isTaskActive}
-			showLoading={collapsed}
-			compact={compact}
-			onBranchStatusChange={setMetadataBranchState}
-			onOpenInlineDiff={onOpenInlineDiff}
-		/>
-	);
+	// Today's controls of each bar not yet split. The legacy cluster items render them
+	// unchanged (decisions/2026/11/21/task-header-slot-frame.md); the Git bar has real items.
 	const narrowBarStatusCluster = () => (
 		<>
 			{variantSwitcher}
@@ -1656,22 +1617,10 @@ function TaskHeaderFrame({
 			)}
 		</div>
 	);
-	const narrowSheetGitCluster = () => hasGit && isTaskActive && task.worktreePath ? (
-		<TaskGitActionsSheet
-			task={task}
-			project={project}
-			isTaskActive={isTaskActive}
-			git={narrowGit}
-			rowClassName={SHEET_ROW_CLASS}
-			onOpenInlineDiff={onOpenInlineDiff}
-			onAction={() => setActionsSheetOpen(false)}
-		/>
-	) : null;
 	const legacyClusters: LegacyClusters = narrow
 		? {
 			status: { bar: narrowBarStatusCluster(), sheet: narrowSheetStatusCluster() },
 			session: {},
-			git: { sheet: narrowSheetGitCluster() },
 			runtime: {},
 		}
 		: {
@@ -1705,7 +1654,6 @@ function TaskHeaderFrame({
 					</>
 				),
 			},
-			git: { bar: gitBarCluster },
 			runtime: {
 				bar: (
 					<>
@@ -1727,7 +1675,13 @@ function TaskHeaderFrame({
 				),
 			},
 		};
-	const headerValue = { scope: { task, project, dispatch, navigate }, legacy: legacyClusters };
+	const headerValue = {
+		scope: { task, project, dispatch, navigate },
+		legacy: legacyClusters,
+		layout: { compact, tight, collapsed },
+		git,
+		onOpenInlineDiff,
+	};
 
 	// Narrow viewport (phone / narrow window): the two dense desktop toolbars do
 	// not fit. Collapse them into a thin summary bar (status + title + diff) and
@@ -1749,7 +1703,8 @@ function TaskHeaderFrame({
 					    factor makes 1rem ≈ 10.7px, so rem thresholds fire ~1.5× too late.
 					    Everything shed keeps a row in the actions sheet. */}
 					<div className="flex flex-nowrap items-center gap-x-2 px-3 py-2 min-h-[3.25rem] min-w-0 [container-type:inline-size]" data-testid="task-summary-bar">
-						{TASK_HEADER_REGIONS.map((region) => <TaskHeaderRegionItems key={region} region={region} />)}
+						{/* No Git items here: on a phone they live in the sheet's Git section. */}
+						{TASK_HEADER_REGIONS.filter((region) => region !== "git").map((region) => <TaskHeaderRegionItems key={region} region={region} />)}
 						<Tooltip content={t("infoPanel.actionsTitle")} detail={t("ttip.infoPanel.actions")}>
 							<button
 								type="button"
@@ -1770,7 +1725,9 @@ function TaskHeaderFrame({
 					testId="task-actions-sheet"
 				>
 					<div className="flex flex-col gap-4">
-						{TASK_HEADER_REGIONS.map((region) => <TaskHeaderRegionItems key={region} region={region} surface="sheet" />)}
+						{TASK_HEADER_REGIONS.map((region) => region === "git"
+							? <TaskGitActionsSheet key={region} rowClassName={SHEET_ROW_CLASS} onAction={() => setActionsSheetOpen(false)} />
+							: <TaskHeaderRegionItems key={region} region={region} surface="sheet" />)}
 							<section className="border-t border-edge pt-4">
 								<h3 className="mb-2 text-dense font-semibold uppercase tracking-wider text-fg-muted">{t("infoPanel.sheetDetails")}</h3>
 								{taskDetailsBody()}

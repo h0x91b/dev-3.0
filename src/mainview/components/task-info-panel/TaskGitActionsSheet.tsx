@@ -1,80 +1,38 @@
-import { useEffect, type ReactNode } from "react";
-import type { Project, Task } from "../../../shared/types";
-import { taskUsesWorktree } from "../../../shared/types";
+import { useEffect } from "react";
+import { ACTIVE_STATUSES } from "../../../shared/types";
 import { useT } from "../../i18n";
-import type { TaskBranchStatusController } from "./useTaskBranchStatus";
-import { AutoMergeIcon, CommitIcon, CreatePRIcon, MergeIcon, PushIcon, RebaseIcon, ShowDiffIcon } from "./GitIcons";
-import type { TaskInlineDiffRequest } from "../task-inline-diff";
-import { isLivePullRequest, reviewedPrLink } from "../../utils/taskPrBadge";
+import { GitSheetProvider, taskHasGitBar } from "../../task-header/builtin-git";
+import { TaskHeaderRegionItems, useTaskHeaderInternals, useTaskHeaderScope } from "../../task-header/scope";
 
 interface TaskGitActionsSheetProps {
-	task: Task;
-	project: Project;
-	isTaskActive: boolean;
-	/**
-	 * The panel-level `useTaskBranchStatus` instance. The sheet mounts only
-	 * while open, so owning the hook here would refetch on every open and show
-	 * a loading flash; the narrow TaskHeader owns the single instance (it
-	 * also feeds the summary-bar diff badge) and hands it down.
-	 */
-	git: TaskBranchStatusController;
 	/** Full-width row class shared with the rest of the mobile actions sheet. */
 	rowClassName: string;
-	onOpenInlineDiff?: (request: TaskInlineDiffRequest) => void;
 	/** Dismiss the sheet after a git action is triggered so the terminal / PR is visible. */
 	onAction: () => void;
 }
 
-interface GitRow {
-	key: string;
-	icon: ReactNode;
-	label: string;
-	disabled: boolean;
-	/** Muted one-liner explaining why the row is disabled (no hover tooltips on touch). */
-	reason?: string;
-	external?: boolean;
-	run: () => void;
+/**
+ * The Git section of the narrow-viewport (mobile) task actions BottomSheet. Its rows are
+ * the Git bar's own items in their sheet form (`task-header/builtin-git.tsx`), so the two
+ * surfaces cannot drift apart. Per the mobile doctrine (Bible §12.3) the inspector bars'
+ * actions become sheet sections on narrow, and §12.4 forbids touch-unreachable actions.
+ * The branch status comes from the header's single instance, so the sheet opens loaded.
+ */
+export default function TaskGitActionsSheet(props: TaskGitActionsSheetProps) {
+	const { task, project } = useTaskHeaderScope();
+	// Git only makes sense on a real, active worktree. An Operations task has no git
+	// domain of its own (Bible §3); with an attached repo its items offer only the diff row.
+	if (!taskHasGitBar(project, task) || !ACTIVE_STATUSES.includes(task.status) || !task.worktreePath) {
+		return null;
+	}
+	return <GitSection {...props} />;
 }
 
-/**
- * Git actions as full-width rows for the narrow-viewport (mobile) task actions
- * BottomSheet. The desktop equivalent is the inspector Git bar (`TaskGitActions`);
- * both are driven by the same `useTaskBranchStatus` hook. Per the mobile doctrine
- * (Bible §12.3) the inspector bars' actions become sheet sections on narrow, and
- * §12.4 forbids touch-unreachable actions — so PR / rebase / push / merge live
- * here, matching the git_action `secondary` token role (§6). Tapping any row runs
- * the action and dismisses the sheet, so the visible terminal / PR is what the
- * user lands on (rebase and PR creation run in the task terminal / via the agent).
- */
-export default function TaskGitActionsSheet({
-	task,
-	project,
-	isTaskActive,
-	git,
-	rowClassName,
-	onOpenInlineDiff,
-	onAction,
-}: TaskGitActionsSheetProps) {
+function GitSection({ rowClassName, onAction }: TaskGitActionsSheetProps) {
 	const t = useT();
-	const {
-		baseBranch,
-		branchStatus,
-		compareRef,
-		displayRef,
-		localMergeBlocked,
-		mergeRoute,
-		handleCommit,
-		handleCreatePR,
-		handleMerge,
-		handleOpenPR,
-		handlePush,
-		handleRebase,
-		handleRefreshStatus,
-		refreshStatusQuietly,
-		refreshingStatus,
-		statusError,
-		statusLoading,
-	} = git;
+	const { task } = useTaskHeaderScope();
+	const { git } = useTaskHeaderInternals();
+	const { branchStatus, handleRefreshStatus, refreshStatusQuietly, refreshingStatus, statusError, statusLoading } = git;
 
 	// The sheet mounts only while open, so this runs on every open. The 15s poll
 	// never fetches the remote; this does, so ahead/behind and the PR are current.
@@ -82,169 +40,6 @@ export default function TaskGitActionsSheet({
 		void refreshStatusQuietly();
 		// eslint-disable-next-line react-hooks/exhaustive-deps -- once per open/task, not per render
 	}, [task.id]);
-
-	// Git mutations only make sense on a real, active worktree. An Operations task
-	// has no git domain of its own (Bible §3); with an attached repo it gets the
-	// read-only diff row and nothing else. A project with the git workflow off has none.
-	const readOnly = project.kind === "virtual";
-	if ((readOnly ? !task.attachedRepo : !taskUsesWorktree(project, task)) || !isTaskActive || !task.worktreePath) {
-		return null;
-	}
-
-	const prNumber = branchStatus?.prNumber ?? task.prNumber ?? null;
-	const hasPR = isLivePullRequest(prNumber, [
-		branchStatus && { number: branchStatus.prNumber, state: branchStatus.prState },
-		task.prStatusCache && { number: task.prStatusCache.number, state: task.prStatusCache.mergeState?.state },
-	]);
-	const ahead = branchStatus?.ahead ?? 0;
-	const behind = branchStatus?.behind ?? 0;
-	const rebaseNeedsAgent = !!branchStatus && behind > 0 && !branchStatus.canRebase;
-
-	const withDismiss = (fn: () => void) => () => {
-		fn();
-		onAction();
-	};
-
-	const rows: GitRow[] = [];
-
-	if (onOpenInlineDiff) {
-		rows.push({
-			key: "diff",
-			icon: <ShowDiffIcon className="h-5 w-5 shrink-0 text-accent" />,
-			label: t("infoPanel.showDiff"),
-			disabled: false,
-			external: true,
-			run: withDismiss(() =>
-				onOpenInlineDiff({
-					mode: "branch",
-					compareRef: compareRef || undefined,
-					compareLabel: displayRef,
-				}),
-			),
-		});
-	}
-
-	const hasUncommittedChanges = !!branchStatus && (branchStatus.insertions > 0 || branchStatus.deletions > 0);
-	rows.push({
-		key: "commit",
-		icon: <CommitIcon className={`h-5 w-5 shrink-0 ${hasUncommittedChanges ? "text-success" : "text-fg-muted"}`} />,
-		label: t("infoPanel.commit"),
-		disabled: !hasUncommittedChanges,
-		reason: !branchStatus ? t("infoPanel.statusLoading") : !hasUncommittedChanges ? t("infoPanel.commitDisabledClean") : undefined,
-		run: withDismiss(() => void handleCommit()),
-	});
-
-	rows.push({
-		key: "rebase",
-		icon: <RebaseIcon className={`h-5 w-5 shrink-0 ${!branchStatus || behind === 0 ? "text-fg-muted" : "text-accent"}`} />,
-		label: rebaseNeedsAgent ? t("infoPanel.rebaseViaAgentShort") : t("infoPanel.rebase"),
-		disabled: !branchStatus || behind === 0,
-		reason: !branchStatus ? t("infoPanel.statusLoading") : behind === 0 ? t("infoPanel.rebaseDisabled") : undefined,
-		run: withDismiss(() => void handleRebase()),
-	});
-
-	// No `origin` means push and PR have no destination; a non-GitHub origin has
-	// nowhere for `gh` to open one; a foreign-code task has no business writing to
-	// the branch at all. Same three rules as the desktop bar.
-	const noRemote = branchStatus?.hasRemote === false;
-	const noGitHubRemote = !!branchStatus && branchStatus.hasRemote && !branchStatus.remoteIsGitHub;
-	const ownBranch = !task.foreignCode;
-	const pushIsForced = !!branchStatus && branchStatus.hasRemote && branchStatus.remoteAhead > 0;
-	const pushRowDisabled = noRemote || !branchStatus || ahead === 0;
-	if (ownBranch) {
-		rows.push({
-			key: "push",
-			icon: <PushIcon className={`h-5 w-5 shrink-0 ${pushRowDisabled ? "text-fg-muted" : pushIsForced ? "text-danger" : "text-accent"}`} />,
-			label: pushIsForced ? t("infoPanel.forcePush") : t("infoPanel.push"),
-			disabled: pushRowDisabled,
-			reason: !branchStatus
-				? t("infoPanel.statusLoading")
-				: noRemote
-					? t("infoPanel.noRemoteDisabled")
-					: pushIsForced
-						? t("infoPanel.forcePushTooltip", { branch: task.branchName ?? "" })
-						: ahead === 0 ? t("infoPanel.pushDisabled") : undefined,
-			run: withDismiss(() => void handlePush()),
-		});
-	}
-
-	// A merged or closed PR keeps its "Open PR" row, and Create PR comes back
-	// beside it: the next PR is a follow-up, not a duplicate.
-	if (prNumber != null) {
-		rows.push({
-			key: "open-pr",
-			icon: <CreatePRIcon className="h-5 w-5 shrink-0 text-success" />,
-			label: t("task.openPR", { number: String(prNumber) }),
-			disabled: !branchStatus?.prUrl,
-			reason: !branchStatus?.prUrl ? t("infoPanel.statusLoading") : undefined,
-			external: true,
-			run: withDismiss(() => handleOpenPR()),
-		});
-	}
-	const reviewedPr = reviewedPrLink(task, prNumber != null ? { number: prNumber, url: branchStatus?.prUrl ?? "" } : null);
-	if (reviewedPr) {
-		rows.push({
-			key: "open-reviewed-pr",
-			icon: <CreatePRIcon className="h-5 w-5 shrink-0 text-fg-2" />,
-			label: t("task.reviewedPr.open", { number: String(reviewedPr.number) }),
-			disabled: false,
-			external: true,
-			run: withDismiss(() => window.open(reviewedPr.url, "_blank")),
-		});
-	}
-	if (!hasPR && ownBranch) {
-		const prDisabled = noRemote || noGitHubRemote || !branchStatus || ahead === 0;
-		const prReason = !branchStatus
-			? t("infoPanel.statusLoading")
-			: noRemote
-				? t("infoPanel.noRemoteDisabled")
-				: noGitHubRemote
-					? t("infoPanel.noGitHubRemoteDisabled")
-					: ahead === 0
-						? t("infoPanel.createPRDisabledNoCommits")
-						: undefined;
-		rows.push({
-			key: "create-pr",
-			icon: <CreatePRIcon className={`h-5 w-5 shrink-0 ${prDisabled ? "text-fg-muted" : "text-success"}`} />,
-			label: t("infoPanel.createPR"),
-			disabled: prDisabled,
-			reason: prReason,
-			run: withDismiss(() => void handleCreatePR(false)),
-		});
-		rows.push({
-			key: "create-pr-automerge",
-			icon: <AutoMergeIcon className={`h-5 w-5 shrink-0 ${prDisabled ? "text-fg-muted" : "text-success"}`} />,
-			label: t("infoPanel.createPRAutoMerge"),
-			disabled: prDisabled,
-			reason: prReason,
-			run: withDismiss(() => void handleCreatePR(true)),
-		});
-	}
-
-	if (ownBranch) {
-		// Same two routes as the desktop bar: an open PR means gh merges the PR, so
-		// "behind the base" is GitHub's judgement, not a local rebase requirement.
-		const mergeIsPr = mergeRoute === "pull-request";
-		const mergeRowDisabled = !branchStatus || ahead === 0 || (!mergeIsPr && behind > 0) || localMergeBlocked;
-		rows.push({
-			key: "merge",
-			icon: <MergeIcon className={`h-5 w-5 shrink-0 ${mergeRowDisabled ? "text-fg-muted" : "text-success"}`} />,
-			label: mergeIsPr ? t("infoPanel.mergePr") : t("infoPanel.merge"),
-			disabled: mergeRowDisabled,
-			reason: !branchStatus
-				? t("infoPanel.statusLoading")
-				: ahead === 0
-					? t("infoPanel.mergeDisabledNoCommits")
-					: localMergeBlocked
-						? t("infoPanel.mergeDisabledSharedFolder")
-					: mergeIsPr
-						? t("infoPanel.mergePrTooltip", { pr: String(branchStatus.prNumber), branch: baseBranch })
-						: behind > 0
-							? t("infoPanel.mergeDisabledBehind")
-							: undefined,
-			run: withDismiss(() => void handleMerge()),
-		});
-	}
 
 	return (
 		<section className="border-t border-edge pt-4">
@@ -268,28 +63,9 @@ export default function TaskGitActionsSheet({
 				)}
 			</h3>
 			<div className="touch-actions flex flex-col gap-2">
-				{(readOnly ? rows.filter((row) => row.key === "diff") : rows).map((row) => (
-					<button
-						key={row.key}
-						type="button"
-						disabled={row.disabled}
-						onClick={row.run}
-						className={`${rowClassName} ${row.disabled ? "cursor-not-allowed opacity-50 hover:bg-raised active:bg-raised" : ""}`}
-					>
-						{row.icon}
-						<span className="flex min-w-0 flex-1 flex-col">
-							<span className="truncate text-sm font-medium">{row.label}</span>
-							{row.disabled && row.reason && (
-								<span className="truncate text-micro font-normal text-fg-muted">{row.reason}</span>
-							)}
-						</span>
-						{row.external && !row.disabled && (
-							<span className="shrink-0 text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }} aria-hidden="true">
-								{"\u{F0866}"}
-							</span>
-						)}
-					</button>
-				))}
+				<GitSheetProvider value={{ rowClassName, onAction }}>
+					<TaskHeaderRegionItems region="git" surface="sheet" />
+				</GitSheetProvider>
 			</div>
 		</section>
 	);
