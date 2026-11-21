@@ -62,7 +62,7 @@ export function PanelCrashed({ onClose, floating = false }: { onClose: () => voi
 	const notice = (
 		<div role="alert" data-testid="task-panel-crashed" className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm text-danger ${floating ? "bg-overlay shadow-lg" : "m-3 bg-danger/10"}`}>
 			<span>{t("taskDock.panelCrashed")}</span>
-			<button type="button" onClick={onClose} className="ml-auto shrink-0 rounded-md px-2 py-1 underline underline-offset-2 hover:text-fg active:scale-[0.96]">
+			<button type="button" onClick={onClose} className="ml-auto shrink-0 rounded-md px-2 py-1 underline underline-offset-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 active:scale-[0.96]">
 				{t("common.close")}
 			</button>
 		</div>

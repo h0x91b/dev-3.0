@@ -1,0 +1,1 @@
+Terminal links (file paths, OSC 8 hyperlinks, dev3:// links, tap targets) now come from an internal plugin slot. Behaviour is unchanged, and a broken link provider no longer takes the other links on its row down with it.
