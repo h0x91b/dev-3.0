@@ -23,7 +23,7 @@
  *     never invoked (PATH-shim sentinel stays absent).
  */
 
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fingerprintImage, HostImageAlreadyStagedError, imageDir, manifestPath, readStagedImage, stageHostImage } from "../staging";
@@ -32,6 +32,7 @@ import { selectImageByTag, selectImageForProtocol } from "../rollback";
 import { launchStagedHost, stageStandardImages, VersionedLabClient, type LaunchedHost } from "../lab";
 import { buildSkewMatrix, renderSkewMatrix } from "../version-skew";
 import { readHostSessionRecord } from "../session-record";
+import { removeTempTree } from "../../../__tests__/helpers/remove-temp-tree";
 
 let failures = 0;
 function check(condition: boolean, msg: string): void {
@@ -229,7 +230,7 @@ async function run(): Promise<void> {
 		}
 		await delay(400);
 		try {
-			rmSync(root, { recursive: true, force: true });
+			removeTempTree(root);
 		} catch {
 			// best-effort
 		}

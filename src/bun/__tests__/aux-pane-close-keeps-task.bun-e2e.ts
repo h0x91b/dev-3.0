@@ -28,9 +28,10 @@
  */
 
 import { spawnSync as nodeSpawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { removeTempTree } from "./helpers/remove-temp-tree";
 
 let failures = 0;
 function check(condition: boolean, message: string): void {
@@ -287,7 +288,7 @@ async function run(): Promise<void> {
 		await lastPaneCase();
 	} finally {
 		try {
-			rmSync(root, { recursive: true, force: true });
+			removeTempTree(root);
 		} catch {
 			/* best-effort */
 		}

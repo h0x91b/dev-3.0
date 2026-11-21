@@ -17,13 +17,14 @@
  *     session, never inherited from the app that spawned the host.
  */
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NativeSessionClient } from "../client";
 import { readToken } from "../record";
 import { start, stop } from "../registry";
 import { defaultNativeShellLaunchSpec } from "../shell-launch";
+import { removeTempTree } from "../../__tests__/helpers/remove-temp-tree";
 
 let failures = 0;
 function check(condition: boolean, msg: string): void {
@@ -121,7 +122,7 @@ async function run(): Promise<void> {
 	} finally {
 		await stop("outputlog-on", { timeoutMs: 5000 }).catch(() => {});
 		await stop("outputlog-off", { timeoutMs: 5000 }).catch(() => {});
-		rmSync(root, { recursive: true, force: true });
+		removeTempTree(root);
 	}
 }
 

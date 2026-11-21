@@ -18,7 +18,7 @@
  *     sentinel must stay absent).
  */
 
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,6 +50,7 @@ import {
 	SHELL_WARMUP_PROBE,
 	WINDOWS_LINE_EDITOR_QUIET,
 } from "./command-roundtrip";
+import { removeTempTree } from "../../__tests__/helpers/remove-temp-tree";
 
 /**
  * What a process viewer would print for `pid`: the POSIX command column, or the
@@ -669,7 +670,7 @@ async function run(): Promise<void> {
 			// already gone
 		}
 		try {
-			rmSync(root, { recursive: true, force: true });
+			removeTempTree(root);
 		} catch {
 			// best-effort
 		}

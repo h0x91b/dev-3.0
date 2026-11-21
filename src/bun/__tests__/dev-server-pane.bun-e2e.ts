@@ -35,6 +35,7 @@ import { buildDevServerScript } from "../dev-server-script";
 import { generatedScriptLaunch, generatedScriptName, writeLaunchScript } from "../rpc-handlers/shared-pure";
 import { auxPaneMarker } from "../task-aux-panes";
 import { dev3TaskTempPath } from "../temp-paths";
+import { removeTempTree } from "./helpers/remove-temp-tree";
 
 let failures = 0;
 function check(condition: boolean, message: string): void {
@@ -177,7 +178,7 @@ try {
 		);
 	}
 } finally {
-	rmSync(root, { recursive: true, force: true });
+	removeTempTree(root);
 }
 
 console.log(failures === 0 ? "\nALL CHECKS PASSED" : `\n${failures} CHECK(S) FAILED`);

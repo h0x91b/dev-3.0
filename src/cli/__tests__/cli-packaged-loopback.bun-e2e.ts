@@ -21,7 +21,7 @@
  * Run: bun run test:cli-packaged-e2e
  */
 
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync, unlinkSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startCliListener, type CliListener } from "../../bun/cli-listener";
@@ -32,6 +32,7 @@ import {
 } from "../../shared/cli-endpoint";
 import { CLI_EXIT_CODE_APP_NOT_RUNNING } from "../../shared/cli-exit-codes";
 import type { CliRequest, CliResponse } from "../../shared/types";
+import { removeTempTree } from "../../bun/__tests__/helpers/remove-temp-tree";
 
 let failures = 0;
 function check(condition: boolean, message: string): void {
@@ -262,7 +263,7 @@ async function run(): Promise<void> {
 		for (const instance of instances) {
 			try { instance.listener.stop(); } catch { /* already stopped */ }
 		}
-		rmSync(root, { recursive: true, force: true });
+		removeTempTree(root);
 	}
 }
 

@@ -20,13 +20,14 @@
  *      [--cycles N]
  */
 
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { isProcessAlive } from "../../native-terminal-registry/process-identity";
 import { defineShellLaunchSpec, type ShellLaunchSpec } from "../../native-terminal-registry/shell-launch";
 import { NativeMultipaneCoordinator, type PaneConnection, type PaneLaunchSpec } from "../coordinator";
 import { NATIVE_MULTIPANE_DIR_ENV, paneSessionId } from "../paths";
+import { removeTempTree } from "../../__tests__/helpers/remove-temp-tree";
 
 let failures = 0;
 function check(condition: boolean, message: string): void {
@@ -380,7 +381,7 @@ async function run(): Promise<void> {
 		);
 	} finally {
 		try {
-			rmSync(root, { recursive: true, force: true });
+			removeTempTree(root);
 		} catch {
 			// best-effort
 		}
