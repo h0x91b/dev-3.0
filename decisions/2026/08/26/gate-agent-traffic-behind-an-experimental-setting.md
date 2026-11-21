@@ -22,7 +22,7 @@ System → Advanced Experience next to Terminal BiDi.
 | Header pill, kebab row, phone sheet row | `AgentTrafficIndicator` returns null (after its hooks) |
 | Log overlay, `⇧⌘M`, the open event, arrival re-reads | `App.tsx` |
 | Keymap listing (overlay + rebind editor) | `FLAGGED_SHORTCUTS` in `keymap.ts` |
-| Palette command | `availableCommands` in `commands.ts` |
+| Palette command | the command's `when` in `commands/builtins.ts` |
 | Native View + Help rows | `agentTrafficItems()` reading `MenuContext.agentTrafficEnabled` |
 | Discovery tip | `availableTips` in `tips.ts` |
 
