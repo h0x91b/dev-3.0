@@ -29,7 +29,9 @@ export const TASK_HEADER_BAR_BUDGET = 4;
 /**
  * The bible's composite exceptions, owned by the host so no contributor can claim one:
  * the conditional variant switcher (one composite control) and the Runtime bar's
- * conditional Images and Artifacts readouts. They never use up a bar's budget.
+ * conditional Images and Artifacts readouts. Inert until 3.6: `placeSlotItems` counts every
+ * registered built-in, visible or not, so each bar is already past its budget and has no room
+ * for pinned extensions. 3.6 must count per layout, only the items that actually render.
  */
 export const TASK_HEADER_BUDGET_EXCEPTIONS: ReadonlySet<string> = new Set([
 	"builtin:status.variant-switcher",
