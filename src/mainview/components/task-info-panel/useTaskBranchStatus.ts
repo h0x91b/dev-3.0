@@ -663,6 +663,6 @@ export function useTaskBranchStatus({
 /**
  * Everything `useTaskBranchStatus` returns — status data plus the git action
  * handlers. Passed as a prop where a parent owns the single hook instance
- * (narrow-viewport TaskInfoPanel → TaskGitActionsSheet).
+ * (narrow-viewport TaskHeader → TaskGitActionsSheet).
  */
 export type TaskBranchStatusController = ReturnType<typeof useTaskBranchStatus>;

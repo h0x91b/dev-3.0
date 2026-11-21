@@ -52,7 +52,7 @@ vi.mock("../../TerminalView", () => ({
 	},
 }));
 
-vi.mock("../TaskInfoPanel", () => ({
+vi.mock("../TaskHeader", () => ({
 	default: () => <div data-testid="task-info-panel" />,
 }));
 

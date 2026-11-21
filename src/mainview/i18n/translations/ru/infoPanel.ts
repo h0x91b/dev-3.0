@@ -1,5 +1,5 @@
 const infoPanel = {
-	// TaskInfoPanel
+	// TaskHeader
 	"infoPanel.title": "Название",
 	"infoPanel.taskNumber": "Задача #",
 	"infoPanel.status": "Статус",

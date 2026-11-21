@@ -779,12 +779,12 @@
 			"consumer": "Settings toggle for tmux theme.",
 			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
 		},
-		"src/mainview/components/TaskInfoPanel.tsx": {
+		"src/mainview/components/TaskHeader.tsx": {
 			"category": "cli-rpc-ui",
 			"roadmapItem": "INT-001",
 			"depth": "caller",
 			"dependencyKind": "active",
-			"consumer": "Embeds TaskTmuxControls in the task info panel.",
+			"consumer": "Embeds TaskTmuxControls in the task header.",
 			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
 		},
 		"src/mainview/components/TaskTerminal.tsx": {

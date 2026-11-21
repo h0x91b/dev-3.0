@@ -711,7 +711,7 @@ function ActiveTasksSidebar({
 								aria-label={t("sidebar.hide")}
 								data-testid="sidebar-hide"
 							>
-								{/* VS Code-style panel toggle; the counterpart lives in TaskInfoPanel (isFullPage) */}
+								{/* VS Code-style panel toggle; the counterpart lives in TaskHeader (isFullPage) */}
 								<PanelLeftIcon open className="w-3.5 h-3.5" />
 							</button>
 						</Tooltip>

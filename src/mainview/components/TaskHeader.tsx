@@ -74,6 +74,8 @@ import { restoreControl } from "../hidden-controls";
 import HideableControl from "./HideableControl";
 import PanelRestoreControl, { type PanelHideableEntry } from "./task-info-panel/PanelRestoreControl";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
+import { TASK_HEADER_REGIONS } from "../task-header/registry";
+import { TaskHeaderProvider, TaskHeaderRegionItems, type LegacyClusters } from "../task-header/scope";
 import BottomSheet from "./BottomSheet";
 import HelpSpot from "./HelpSpot";
 import Tooltip from "./Tooltip";
@@ -85,7 +87,7 @@ import VariantSwitcher from "./VariantSwitcher";
 import { isMac } from "../utils/platform";
 import { terminalFullscreenShortcutLabel } from "../utils/terminalFullscreen";
 
-interface TaskInfoPanelProps {
+interface TaskHeaderProps {
 	task: Task;
 	project: Project;
 	dispatch: Dispatch<AppAction>;
@@ -152,7 +154,7 @@ function readNumber(key: string, fallback: number): number {
 	return fallback;
 }
 
-function TaskInfoPanel({
+function TaskHeaderFrame({
 	task,
 	project,
 	dispatch,
@@ -164,7 +166,7 @@ function TaskInfoPanel({
 	isTerminalFullscreen,
 	onToggleTerminalFullscreen,
 	onOpenInlineDiff,
-}: TaskInfoPanelProps) {
+}: TaskHeaderProps) {
 	const t = useT();
 	const compact = useCompact();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
@@ -1442,61 +1444,322 @@ function TaskInfoPanel({
 		</Tooltip>
 	);
 
+	// Today's controls of each bar. The legacy cluster items render them unchanged
+	// (decisions/2026/11/21/task-header-slot-frame.md); 3.2–3.5 turn each into real items.
+	const gitBarCluster = project.kind === "virtual" ? (
+		<TaskOpsRepoBar
+			task={task}
+			project={project}
+			dispatch={dispatch}
+			navigate={navigate}
+			isTaskActive={isTaskActive}
+			showLoading={collapsed}
+			compact={compact}
+			onBranchStatusChange={setMetadataBranchState}
+			onOpenInlineDiff={onOpenInlineDiff}
+		/>
+	) : !taskUsesWorktree(project, task) ? (
+		<span className="text-fg-muted text-micro italic flex-shrink-0 truncate">{t("task.gitWorkflowOff")}</span>
+	) : (
+		<TaskGitActions
+			task={task}
+			project={project}
+			dispatch={dispatch}
+			navigate={navigate}
+			isTaskActive={isTaskActive}
+			showLoading={collapsed}
+			compact={compact}
+			onBranchStatusChange={setMetadataBranchState}
+			onOpenInlineDiff={onOpenInlineDiff}
+		/>
+	);
+	const narrowBarStatusCluster = (
+		<>
+			{variantSwitcher}
+			{statusDropdownButton}
+			{/* Priority sits with status (Context domain, §5.1); `touch` matches the
+			    status control's height so the pair reads as one band and clears the
+			    44px target on a phone (§12.6), versus the dense `xs` desktop badge. */}
+			<PriorityBadge priority={task.priority} onChange={handleSetPriority} size="touch" className="shrink-0" />
+			{/* Agent outputs (images / artifacts) ride the summary bar next to
+			    priority, not only the sheet: they are conditional, and an unread
+			    one has to be seen without opening a menu. Same class as the diff
+			    badge — a readout, not a folded action (bible §12.6). */}
+			<span className="hidden [@container(min-width:340px)]:contents">
+				<TaskSharedImages task={task} projectId={project.id} compact touch />
+				<TaskArtifacts task={task} projectId={project.id} compact touch />
+			</span>
+			{narrowDiffButton}
+			{/* Task title intentionally omitted here — it already shows in the
+			    breadcrumb row above (GlobalHeader). Repeating it wasted the whole
+			    bar; the freed space keeps status + priority + diff readable. */}
+			<div className="flex-1 min-w-0" />
+			{/* First to go: it is the widest chip on the bar ("18 files +195 −131"
+			    ≈ 100px) and the only one whose whole content repeats verbatim in
+			    the sheet's Show diff row. */}
+			<span className="hidden [@container(min-width:400px)]:contents" data-testid="summary-bar-diff-slot">
+				{diffSummaryBadge}
+			</span>
+		</>
+	);
+	// Mobile is a monitor / trigger / read surface, not the dense desktop
+	// toolbar. Editor "open in", scripts, tmux layout, dev server, git
+	// mutations and durable worktree config are intentionally omitted —
+	// they act on the machine you are not sitting at, or need the
+	// terminal. The diff stays one tap away via the summary-bar badge
+	// above. Kept: watch, agent triggers, tunnels (open the app on this
+	// phone), shared images, and the read-only details.
+	const narrowSheetStatusCluster = (
+		<div className="touch-actions flex flex-col gap-2">
+			<button
+				type="button"
+				data-testid="task-actions-fullscreen"
+				onClick={() => {
+					setActionsSheetOpen(false);
+					toggleTerminalFullscreen();
+				}}
+				className={SHEET_ROW_CLASS}
+			>
+				<FullscreenEnterIcon className="h-5 w-5 shrink-0 text-fg-3" />
+				<span className="flex-1 text-sm font-medium">{t("infoPanel.fullScreen")}</span>
+			</button>
+			<button
+				type="button"
+				onClick={handleToggleWatch}
+				aria-pressed={task.watched}
+				className={`${SHEET_ROW_CLASS} ${task.watched ? "border-accent/30 bg-accent/10" : ""}`}
+			>
+				{task.watched
+					? <WatchingIcon className="h-5 w-5 shrink-0 text-accent" />
+					: <WatchIcon className="h-5 w-5 shrink-0 text-fg-3" />}
+				<span className="flex-1 text-sm font-medium">{task.watched ? t("task.watching") : t("task.watch")}</span>
+			</button>
+			<button
+				type="button"
+				onClick={handleOpenCompletionMenu}
+		aria-haspopup="menu"
+		aria-expanded={completionMenuAnchor !== null}
+				disabled={completionIsForced}
+				aria-pressed={completionIsManual}
+				className={`${SHEET_ROW_CLASS} ${completionIsManual ? "warning-paper border-warning/30 bg-warning/10 text-warning-strong" : ""} ${completionIsForced ? "cursor-not-allowed opacity-60" : ""}`}
+			>
+				<CompletionOwnerIcon className={`h-5 w-5 shrink-0 ${completionIsManual ? "text-warning-strong" : "text-fg-3"}`} active={completionIsManual} agent={completionIsAgent} />
+				<span className="flex-1 min-w-0">
+					<span className="block text-sm font-medium">{completionIsManual
+						? completionOwnerLabel
+						: t("task.manualCompletion")}</span>
+					{/* A phone has no tooltip, so the row itself carries the
+					    consequence — the thing that reads as a bug when unsaid. */}
+					{completionIsManual && (
+						<span className="block text-micro font-normal leading-snug opacity-80">
+							{completionIsForced
+								? t("task.manualCompletionCoordinatorTooltip")
+								: completionIsAgent
+									? t("task.selfCompletionConsequence")
+									: t("task.manualCompletionConsequence")}
+						</span>
+					)}
+				</span>
+			</button>
+
+			{/* The bar may shed the diff badge on a narrow screen, so the diff
+			    needs a sheet path that does not depend on the task still being
+			    active — TaskGitActionsSheet's own Show diff row requires a live
+			    worktree, and a finished task would otherwise lose the diff
+			    entirely (bible §12.6: nothing is shed without a sheet path). */}
+			{diffSummaryBadge && !(hasGit && isTaskActive && task.worktreePath) && onOpenInlineDiff && (
+				<button
+					type="button"
+					data-testid="task-actions-show-diff"
+					onClick={() => {
+						setActionsSheetOpen(false);
+						openBranchDiff();
+					}}
+					className={SHEET_ROW_CLASS}
+				>
+					<ShowDiffIcon className="h-5 w-5 shrink-0 text-accent" />
+					<span className="flex-1 text-sm font-medium">{t("infoPanel.showDiff")}</span>
+					<span className="text-xs font-mono text-fg-3 tabular-nums">{visibleDiffFiles}</span>
+				</button>
+			)}
+
+			{/* Simplified Mode applies (Settings can turn it off on a phone);
+			    personal hiding does not — the phone has no restore control. */}
+			{isTaskActive && task.worktreePath && !simplified && (
+				<button type="button" data-testid="task-actions-spawn-agent" onClick={() => setSpawnModalOpen(true)} className={SHEET_ROW_CLASS}>
+					<AddAgentIcon className="h-5 w-5 shrink-0 text-success" />
+					<span className="flex-1 text-sm font-medium">{t("tmux.spawnExtraAgent")}</span>
+					<ChevronRightIcon />
+				</button>
+			)}
+
+			{taskUsesWorktree(project, task) && isTaskActive && task.worktreePath && !simplified && (
+				<button type="button" data-testid="task-actions-bug-hunters" onClick={() => setBugHuntersOpen(true)} className={SHEET_ROW_CLASS}>
+					<FindBugsIcon className="h-5 w-5 shrink-0 text-danger" />
+					<span className="flex-1 text-sm font-medium">{t("bugHunters.buttonLabel")}</span>
+					<ChevronRightIcon />
+				</button>
+			)}
+
+			<TaskExposedPorts task={task} rowClassName={SHEET_ROW_CLASS} />
+
+			{sharedMedia.length > 0 && (
+				<button
+					type="button"
+					onClick={() => {
+						setActionsSheetOpen(false);
+						window.dispatchEvent(new CustomEvent("dev3:openImageViewer", {
+							detail: { taskId: task.id, projectId: project.id, images: sharedMedia },
+						}));
+					}}
+					className={SHEET_ROW_CLASS}
+				>
+					<ImagesIcon className="h-5 w-5 shrink-0 text-fg-3" />
+					<span className="flex-1 text-sm font-medium">{t(sharedMedia.some(isSharedClip) ? "infoPanel.mediaLabel" : "infoPanel.imagesLabel")}</span>
+					<span className="text-xs font-semibold text-accent tabular-nums">{sharedMedia.length}</span>
+				</button>
+			)}
+
+			{artifactEntryCount > 0 && (
+				<button
+					type="button"
+					onClick={() => {
+						setActionsSheetOpen(false);
+						window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
+							detail: { taskId: task.id, taskStatus: task.status, projectId: project.id, artifacts: task.sharedArtifacts ?? [], index: artifactEntryCount - 1, live: task.liveArtifact },
+						}));
+					}}
+					className={SHEET_ROW_CLASS}
+				>
+					<ArtifactsIcon className="h-5 w-5 shrink-0 text-fg-3" />
+					<span className="flex-1 text-sm font-medium">{t("infoPanel.artifactsLabel")}</span>
+					<span className="text-xs font-semibold text-accent tabular-nums">{artifactEntryCount}</span>
+				</button>
+			)}
+
+			{/* Last in the group: the one row that stops the session. */}
+			{canHibernate && !simplified && (
+				<button
+					type="button"
+					data-testid="task-actions-hibernate"
+					disabled={hibernating}
+					onClick={() => {
+						setActionsSheetOpen(false);
+						void handleHibernate();
+					}}
+					className={`${SHEET_ROW_CLASS} disabled:opacity-50`}
+				>
+					<HibernateIcon className="h-5 w-5 shrink-0 text-warning-strong" />
+					<span className="flex-1 text-sm font-medium">{t("task.hibernate")}</span>
+				</button>
+			)}
+		</div>
+	);
+	const narrowSheetGitCluster = hasGit && isTaskActive && task.worktreePath ? (
+		<TaskGitActionsSheet
+			task={task}
+			project={project}
+			isTaskActive={isTaskActive}
+			git={narrowGit}
+			rowClassName={SHEET_ROW_CLASS}
+			onOpenInlineDiff={onOpenInlineDiff}
+			onAction={() => setActionsSheetOpen(false)}
+		/>
+	) : null;
+	const legacyClusters: LegacyClusters = narrow
+		? {
+			status: { bar: narrowBarStatusCluster, sheet: narrowSheetStatusCluster },
+			session: {},
+			git: { sheet: narrowSheetGitCluster },
+			runtime: {},
+		}
+		: {
+			status: {
+				bar: (
+					<>
+						{variantSwitcher}
+						{watchToggleButton}
+						{priorityBadge}
+						{statusDropdownButton}
+						{statusDropdownPortal}
+						{manualCompletionToggleButton}
+						{diffSummaryBadge}
+					</>
+				),
+			},
+			session: {
+				bar: (
+					<>
+						{bugHuntersButton}
+						{spawnAgentButton}
+						{sendLaterButton}
+						{hibernateButton}
+						{scheduledMessagesChip}
+						{!tmuxPaneControlsHidden && (
+							<HideableControl id="tmux-pane-controls">
+								<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
+								<TaskPaneControls taskId={task.id} compact={tight} />
+							</HideableControl>
+						)}
+					</>
+				),
+			},
+			git: { bar: gitBarCluster },
+			runtime: {
+				bar: (
+					<>
+						<TaskOpenIn task={task} isTaskActive={isTaskActive} showFileBrowser={collapsed} compact={tight} />
+						{project.kind !== "virtual" && (
+							<>
+								{!scriptsRunnerHidden && (
+									<HideableControl id="scripts-runner">
+										<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
+									</HideableControl>
+								)}
+								<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} compact={tight} />
+							</>
+						)}
+						<TaskExposedPorts task={task} compact={tight} />
+						<TaskSharedImages task={task} projectId={project.id} compact={tight} />
+						<TaskArtifacts task={task} projectId={project.id} compact={tight} />
+					</>
+				),
+			},
+		};
+	const headerValue = { scope: { task, project, dispatch, navigate }, legacy: legacyClusters };
+
 	// Narrow viewport (phone / narrow window): the two dense desktop toolbars do
 	// not fit. Collapse them into a thin summary bar (status + title + diff) and
 	// fold every action + the full details grid into an actions BottomSheet — the
 	// same kebab→sheet pattern used in the global header.
 	if (narrow) {
 		return (
-			<div ref={toastClearanceRef} className="flex-shrink-0 border-b border-edge glass-header">
-				{diffFilesPopover}
-				{completionOwnerMenu}
-				{fileOpenInMenuPortal}
-				{statusSheet}
-				{/* The bar sheds, it never stacks (bible §12.6). A second row costs a
-				    phone a whole band of screen and moves every control the user was
-				    aiming at — worse than losing the least important one. Priority,
-				    lowest first: diff badge → artifacts → images → the status label.
-				    Thresholds are container queries in PX, not rem: the 0.67× phone
-				    factor makes 1rem ≈ 10.7px, so rem thresholds fire ~1.5× too late.
-				    Everything shed keeps a row in the actions sheet. */}
-				<div className="flex flex-nowrap items-center gap-x-2 px-3 py-2 min-h-[3.25rem] min-w-0 [container-type:inline-size]" data-testid="task-summary-bar">
-					{variantSwitcher}
-					{statusDropdownButton}
-					{/* Priority sits with status (Context domain, §5.1); `touch` matches the
-					    status control's height so the pair reads as one band and clears the
-					    44px target on a phone (§12.6), versus the dense `xs` desktop badge. */}
-					<PriorityBadge priority={task.priority} onChange={handleSetPriority} size="touch" className="shrink-0" />
-					{/* Agent outputs (images / artifacts) ride the summary bar next to
-					    priority, not only the sheet: they are conditional, and an unread
-					    one has to be seen without opening a menu. Same class as the diff
-					    badge — a readout, not a folded action (bible §12.6). */}
-					<span className="hidden [@container(min-width:340px)]:contents">
-						<TaskSharedImages task={task} projectId={project.id} compact touch />
-						<TaskArtifacts task={task} projectId={project.id} compact touch />
-					</span>
-					{narrowDiffButton}
-					{/* Task title intentionally omitted here — it already shows in the
-					    breadcrumb row above (GlobalHeader). Repeating it wasted the whole
-					    bar; the freed space keeps status + priority + diff readable. */}
-					<div className="flex-1 min-w-0" />
-					{/* First to go: it is the widest chip on the bar ("18 files +195 −131"
-					    ≈ 100px) and the only one whose whole content repeats verbatim in
-					    the sheet's Show diff row. */}
-					<span className="hidden [@container(min-width:400px)]:contents" data-testid="summary-bar-diff-slot">
-						{diffSummaryBadge}
-					</span>
-					<Tooltip content={t("infoPanel.actionsTitle")} detail={t("ttip.infoPanel.actions")}>
-						<button
-							type="button"
-							onClick={() => setActionsSheetOpen(true)}
-							aria-label={t("infoPanel.actionsTitle")}
-							data-testid="task-actions-kebab"
-							className="flex-shrink-0 flex h-9 w-9 items-center justify-center rounded-lg text-fg-3 hover:bg-elevated hover:text-fg transition-colors"
-						>
-							<span className="text-lg leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F01D9}"}</span>
-						</button>
-					</Tooltip>
+			<TaskHeaderProvider value={headerValue}>
+				<div ref={toastClearanceRef} className="flex-shrink-0 border-b border-edge glass-header">
+					{diffFilesPopover}
+					{completionOwnerMenu}
+					{fileOpenInMenuPortal}
+					{statusSheet}
+					{/* The bar sheds, it never stacks (bible §12.6). A second row costs a
+					    phone a whole band of screen and moves every control the user was
+					    aiming at — worse than losing the least important one. Priority,
+					    lowest first: diff badge → artifacts → images → the status label.
+					    Thresholds are container queries in PX, not rem: the 0.67× phone
+					    factor makes 1rem ≈ 10.7px, so rem thresholds fire ~1.5× too late.
+					    Everything shed keeps a row in the actions sheet. */}
+					<div className="flex flex-nowrap items-center gap-x-2 px-3 py-2 min-h-[3.25rem] min-w-0 [container-type:inline-size]" data-testid="task-summary-bar">
+						{TASK_HEADER_REGIONS.map((region) => <TaskHeaderRegionItems key={region} region={region} />)}
+						<Tooltip content={t("infoPanel.actionsTitle")} detail={t("ttip.infoPanel.actions")}>
+							<button
+								type="button"
+								onClick={() => setActionsSheetOpen(true)}
+								aria-label={t("infoPanel.actionsTitle")}
+								data-testid="task-actions-kebab"
+								className="flex-shrink-0 flex h-9 w-9 items-center justify-center rounded-lg text-fg-3 hover:bg-elevated hover:text-fg transition-colors"
+							>
+								<span className="text-lg leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F01D9}"}</span>
+							</button>
+						</Tooltip>
 				</div>
 
 				<BottomSheet
@@ -1506,428 +1769,163 @@ function TaskInfoPanel({
 					testId="task-actions-sheet"
 				>
 					<div className="flex flex-col gap-4">
-						{/* Mobile is a monitor / trigger / read surface, not the dense desktop
-						    toolbar. Editor "open in", scripts, tmux layout, dev server, git
-						    mutations and durable worktree config are intentionally omitted —
-						    they act on the machine you are not sitting at, or need the
-						    terminal. The diff stays one tap away via the summary-bar badge
-						    above. Kept: watch, agent triggers, tunnels (open the app on this
-						    phone), shared images, and the read-only details. */}
-						<div className="touch-actions flex flex-col gap-2">
-							<button
-								type="button"
-								data-testid="task-actions-fullscreen"
-								onClick={() => {
-									setActionsSheetOpen(false);
-									toggleTerminalFullscreen();
-								}}
-								className={SHEET_ROW_CLASS}
-							>
-								<FullscreenEnterIcon className="h-5 w-5 shrink-0 text-fg-3" />
-								<span className="flex-1 text-sm font-medium">{t("infoPanel.fullScreen")}</span>
-							</button>
-							<button
-								type="button"
-								onClick={handleToggleWatch}
-								aria-pressed={task.watched}
-								className={`${SHEET_ROW_CLASS} ${task.watched ? "border-accent/30 bg-accent/10" : ""}`}
-							>
-								{task.watched
-									? <WatchingIcon className="h-5 w-5 shrink-0 text-accent" />
-									: <WatchIcon className="h-5 w-5 shrink-0 text-fg-3" />}
-								<span className="flex-1 text-sm font-medium">{task.watched ? t("task.watching") : t("task.watch")}</span>
-							</button>
-							<button
-								type="button"
-								onClick={handleOpenCompletionMenu}
-				aria-haspopup="menu"
-				aria-expanded={completionMenuAnchor !== null}
-								disabled={completionIsForced}
-								aria-pressed={completionIsManual}
-								className={`${SHEET_ROW_CLASS} ${completionIsManual ? "warning-paper border-warning/30 bg-warning/10 text-warning-strong" : ""} ${completionIsForced ? "cursor-not-allowed opacity-60" : ""}`}
-							>
-								<CompletionOwnerIcon className={`h-5 w-5 shrink-0 ${completionIsManual ? "text-warning-strong" : "text-fg-3"}`} active={completionIsManual} agent={completionIsAgent} />
-								<span className="flex-1 min-w-0">
-									<span className="block text-sm font-medium">{completionIsManual
-										? completionOwnerLabel
-										: t("task.manualCompletion")}</span>
-									{/* A phone has no tooltip, so the row itself carries the
-									    consequence — the thing that reads as a bug when unsaid. */}
-									{completionIsManual && (
-										<span className="block text-micro font-normal leading-snug opacity-80">
-											{completionIsForced
-												? t("task.manualCompletionCoordinatorTooltip")
-												: completionIsAgent
-													? t("task.selfCompletionConsequence")
-													: t("task.manualCompletionConsequence")}
-										</span>
-									)}
-								</span>
-							</button>
-
-							{/* The bar may shed the diff badge on a narrow screen, so the diff
-							    needs a sheet path that does not depend on the task still being
-							    active — TaskGitActionsSheet's own Show diff row requires a live
-							    worktree, and a finished task would otherwise lose the diff
-							    entirely (bible §12.6: nothing is shed without a sheet path). */}
-							{diffSummaryBadge && !(hasGit && isTaskActive && task.worktreePath) && onOpenInlineDiff && (
-								<button
-									type="button"
-									data-testid="task-actions-show-diff"
-									onClick={() => {
-										setActionsSheetOpen(false);
-										openBranchDiff();
-									}}
-									className={SHEET_ROW_CLASS}
-								>
-									<ShowDiffIcon className="h-5 w-5 shrink-0 text-accent" />
-									<span className="flex-1 text-sm font-medium">{t("infoPanel.showDiff")}</span>
-									<span className="text-xs font-mono text-fg-3 tabular-nums">{visibleDiffFiles}</span>
-								</button>
-							)}
-
-							{/* Simplified Mode applies (Settings can turn it off on a phone);
-							    personal hiding does not — the phone has no restore control. */}
-							{isTaskActive && task.worktreePath && !simplified && (
-								<button type="button" data-testid="task-actions-spawn-agent" onClick={() => setSpawnModalOpen(true)} className={SHEET_ROW_CLASS}>
-									<AddAgentIcon className="h-5 w-5 shrink-0 text-success" />
-									<span className="flex-1 text-sm font-medium">{t("tmux.spawnExtraAgent")}</span>
-									<ChevronRightIcon />
-								</button>
-							)}
-
-							{taskUsesWorktree(project, task) && isTaskActive && task.worktreePath && !simplified && (
-								<button type="button" data-testid="task-actions-bug-hunters" onClick={() => setBugHuntersOpen(true)} className={SHEET_ROW_CLASS}>
-									<FindBugsIcon className="h-5 w-5 shrink-0 text-danger" />
-									<span className="flex-1 text-sm font-medium">{t("bugHunters.buttonLabel")}</span>
-									<ChevronRightIcon />
-								</button>
-							)}
-
-							<TaskExposedPorts task={task} rowClassName={SHEET_ROW_CLASS} />
-
-							{sharedMedia.length > 0 && (
-								<button
-									type="button"
-									onClick={() => {
-										setActionsSheetOpen(false);
-										window.dispatchEvent(new CustomEvent("dev3:openImageViewer", {
-											detail: { taskId: task.id, projectId: project.id, images: sharedMedia },
-										}));
-									}}
-									className={SHEET_ROW_CLASS}
-								>
-									<ImagesIcon className="h-5 w-5 shrink-0 text-fg-3" />
-									<span className="flex-1 text-sm font-medium">{t(sharedMedia.some(isSharedClip) ? "infoPanel.mediaLabel" : "infoPanel.imagesLabel")}</span>
-									<span className="text-xs font-semibold text-accent tabular-nums">{sharedMedia.length}</span>
-								</button>
-							)}
-
-							{artifactEntryCount > 0 && (
-								<button
-									type="button"
-									onClick={() => {
-										setActionsSheetOpen(false);
-										window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
-											detail: { taskId: task.id, taskStatus: task.status, projectId: project.id, artifacts: task.sharedArtifacts ?? [], index: artifactEntryCount - 1, live: task.liveArtifact },
-										}));
-									}}
-									className={SHEET_ROW_CLASS}
-								>
-									<ArtifactsIcon className="h-5 w-5 shrink-0 text-fg-3" />
-									<span className="flex-1 text-sm font-medium">{t("infoPanel.artifactsLabel")}</span>
-									<span className="text-xs font-semibold text-accent tabular-nums">{artifactEntryCount}</span>
-								</button>
-							)}
-
-							{/* Last in the group: the one row that stops the session. */}
-							{canHibernate && !simplified && (
-								<button
-									type="button"
-									data-testid="task-actions-hibernate"
-									disabled={hibernating}
-									onClick={() => {
-										setActionsSheetOpen(false);
-										void handleHibernate();
-									}}
-									className={`${SHEET_ROW_CLASS} disabled:opacity-50`}
-								>
-									<HibernateIcon className="h-5 w-5 shrink-0 text-warning-strong" />
-									<span className="flex-1 text-sm font-medium">{t("task.hibernate")}</span>
-								</button>
-							)}
+						{TASK_HEADER_REGIONS.map((region) => <TaskHeaderRegionItems key={region} region={region} surface="sheet" />)}
+							<section className="border-t border-edge pt-4">
+								<h3 className="mb-2 text-dense font-semibold uppercase tracking-wider text-fg-muted">{t("infoPanel.sheetDetails")}</h3>
+								{taskDetailsBody}
+							</section>
 						</div>
+					</BottomSheet>
 
-						{hasGit && isTaskActive && task.worktreePath && (
-							<TaskGitActionsSheet
-								task={task}
-								project={project}
-								isTaskActive={isTaskActive}
-								git={narrowGit}
-								rowClassName={SHEET_ROW_CLASS}
-								onOpenInlineDiff={onOpenInlineDiff}
-								onAction={() => setActionsSheetOpen(false)}
-							/>
-						)}
-
-						<section className="border-t border-edge pt-4">
-							<h3 className="mb-2 text-dense font-semibold uppercase tracking-wider text-fg-muted">{t("infoPanel.sheetDetails")}</h3>
-							{taskDetailsBody}
-						</section>
-					</div>
-				</BottomSheet>
-
-				{spawnModalOpen && createPortal(
-					<SpawnAgentModal task={task} project={project} onClose={() => setSpawnModalOpen(false)} />,
-					document.body,
-				)}
-				{scheduleMsgOpen && createPortal(
-					<ScheduleMessageModal task={task} project={project} dispatch={dispatch} onClose={() => setScheduleMsgOpen(false)} />,
-					document.body,
-				)}
-				{bugHuntersOpen && createPortal(
-					<BugHuntersLightbox task={task} project={project} onClose={() => setBugHuntersOpen(false)} />,
-					document.body,
-				)}
-				{notesOverlayOpen && (
-					<TaskNotesOverlay task={task} project={project} dispatch={dispatch} onClose={() => setNotesOverlayOpen(false)} />
-				)}
-			</div>
+					{spawnModalOpen && createPortal(
+						<SpawnAgentModal task={task} project={project} onClose={() => setSpawnModalOpen(false)} />,
+						document.body,
+					)}
+					{scheduleMsgOpen && createPortal(
+						<ScheduleMessageModal task={task} project={project} dispatch={dispatch} onClose={() => setScheduleMsgOpen(false)} />,
+						document.body,
+					)}
+					{bugHuntersOpen && createPortal(
+						<BugHuntersLightbox task={task} project={project} onClose={() => setBugHuntersOpen(false)} />,
+						document.body,
+					)}
+					{notesOverlayOpen && (
+						<TaskNotesOverlay task={task} project={project} dispatch={dispatch} onClose={() => setNotesOverlayOpen(false)} />
+					)}
+				</div>
+		</TaskHeaderProvider>
 		);
 	}
 
 	return (
-		<div
-			ref={setPanelRef}
-			className="flex-shrink-0 border-b border-edge glass-header overflow-hidden transition-[height] duration-200 ease-out"
-			style={{ height }}
-		>
-			{diffFilesPopover}
-			{completionOwnerMenu}
-			{fileOpenInMenuPortal}
-			{collapsed ? (
-				<div className="flex flex-col h-full px-2 gap-1 justify-center">
-					<div className="flex items-center gap-1.5 min-w-0">
-						{/* Same bar boxing as the expanded rows: the Context bar is the only
-						    shrinkable region, so the Session bar and the pinned chrome to
-						    its right can never be pushed out of the panel. */}
-						{/* The four help ids and the HelpSpot mirror the expanded rows below.
-						    They were missing here for as long as this branch existed, and this
-						    is the branch a task screen opens in — so help mode explained the
-						    header and the sidebar and nothing else on it. */}
-						<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.context-bar">
-							{variantSwitcher}
-							{watchToggleButton}
-							{priorityBadge}
-							{statusDropdownButton}
-							{manualCompletionToggleButton}
-							{diffSummaryBadge}
-						</div>
-						{statusDropdownPortal}
-						<div className="flex-1" />
-						<div className="flex items-center gap-1.5 flex-shrink-0" data-help-id="inspector.session-bar">
-							{bugHuntersButton}
-							{spawnAgentButton}
-							{sendLaterButton}
-							{hibernateButton}
-							{scheduledMessagesChip}
-							{!tmuxPaneControlsHidden && (
-								<HideableControl id="tmux-pane-controls">
-									<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
-									<TaskPaneControls taskId={task.id} compact={tight} />
-								</HideableControl>
-							)}
-						</div>
-						{worktreeSettingsButton}
-						<PanelRestoreControl entries={panelHideableEntries} />
-						<HelpSpot topicId="inspector.panel" className="ml-0.5" />
-						<TerminalShortcutsButton taskId={task.id} />
-					</div>
-
-					<div className="flex items-center gap-1.5 min-w-0">
-						{showPanelButton}
-						<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.git-bar" data-tour-anchor="task.git-bar">
-							{project.kind === "virtual" ? (
-								<TaskOpsRepoBar
-									task={task}
-									project={project}
-									dispatch={dispatch}
-									navigate={navigate}
-									isTaskActive={isTaskActive}
-									showLoading
-									compact={compact}
-									onBranchStatusChange={setMetadataBranchState}
-									onOpenInlineDiff={onOpenInlineDiff}
-								/>
-							) : !taskUsesWorktree(project, task) ? (
-								<span className="text-fg-muted text-micro italic flex-shrink-0 truncate">{t("task.gitWorkflowOff")}</span>
-							) : (
-								<TaskGitActions
-									task={task}
-									project={project}
-									dispatch={dispatch}
-									navigate={navigate}
-									isTaskActive={isTaskActive}
-									showLoading
-									compact={compact}
-									onBranchStatusChange={setMetadataBranchState}
-									onOpenInlineDiff={onOpenInlineDiff}
-								/>
-							)}
-						</div>
-						<div className="flex-1" />
-						<div className="flex items-center gap-2 flex-shrink-0" data-help-id="inspector.runtime-bar">
-							<TaskOpenIn task={task} isTaskActive={isTaskActive} showFileBrowser compact={tight} />
-							{project.kind !== "virtual" && (
-								<>
-									{!scriptsRunnerHidden && (
-										<HideableControl id="scripts-runner">
-											<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
-										</HideableControl>
-									)}
-									<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} compact={tight} />
-								</>
-							)}
-							<TaskExposedPorts task={task} compact={tight} />
-							<TaskSharedImages task={task} projectId={project.id} compact={tight} />
-							<TaskArtifacts task={task} projectId={project.id} compact={tight} />
-							{terminalFullscreenButton}
-							{collapseToggleButton}
-						</div>
-					</div>
-				</div>
-			) : (
-				<div className="flex flex-col h-full">
-					<div className="flex flex-col px-2">
-						<div className="flex items-center gap-1.5 min-w-0 pt-1">
-							{/* `overflow-hidden` is the backstop that keeps a bar's contents
-							    inside its own box: without it the shrink-0 children spill
-							    over the neighbouring bar and over the pinned chrome (which
-							    then becomes unclickable). `tight` folds content first, so
-							    clipping only happens at pathological widths. */}
+		<TaskHeaderProvider value={headerValue}>
+			<div
+				ref={setPanelRef}
+				className="flex-shrink-0 border-b border-edge glass-header overflow-hidden transition-[height] duration-200 ease-out"
+				style={{ height }}
+			>
+				{diffFilesPopover}
+				{completionOwnerMenu}
+				{fileOpenInMenuPortal}
+				{collapsed ? (
+					<div className="flex flex-col h-full px-2 gap-1 justify-center">
+						<div className="flex items-center gap-1.5 min-w-0">
+							{/* Same bar boxing as the expanded rows: the Context bar is the only
+							    shrinkable region, so the Session bar and the pinned chrome to
+							    its right can never be pushed out of the panel. */}
+							{/* The four help ids and the HelpSpot mirror the expanded rows below.
+							    They were missing here for as long as this branch existed, and this
+							    is the branch a task screen opens in — so help mode explained the
+							    header and the sidebar and nothing else on it. */}
 							<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.context-bar">
-								{variantSwitcher}
-								{watchToggleButton}
-								{priorityBadge}
-								{statusDropdownButton}
-								{statusDropdownPortal}
-								{manualCompletionToggleButton}
-								{diffSummaryBadge}
+								<TaskHeaderRegionItems region="status" />
 							</div>
 							<div className="flex-1" />
 							<div className="flex items-center gap-1.5 flex-shrink-0" data-help-id="inspector.session-bar">
-								{bugHuntersButton}
-								{spawnAgentButton}
-								{sendLaterButton}
-								{hibernateButton}
-								{scheduledMessagesChip}
-								{!tmuxPaneControlsHidden && (
-									<HideableControl id="tmux-pane-controls">
-										<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
-										<TaskPaneControls taskId={task.id} compact={tight} />
-									</HideableControl>
-								)}
+								<TaskHeaderRegionItems region="session" />
 							</div>
+							{worktreeSettingsButton}
 							<PanelRestoreControl entries={panelHideableEntries} />
 							<HelpSpot topicId="inspector.panel" className="ml-0.5" />
 							<TerminalShortcutsButton taskId={task.id} />
 						</div>
 
-						<div className="flex items-center gap-1.5 min-w-0 pb-1">
+						<div className="flex items-center gap-1.5 min-w-0">
 							{showPanelButton}
 							<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.git-bar" data-tour-anchor="task.git-bar">
-								{project.kind === "virtual" ? (
-									<TaskOpsRepoBar
-										task={task}
-										project={project}
-										dispatch={dispatch}
-										navigate={navigate}
-										isTaskActive={isTaskActive}
-										compact={compact}
-										onBranchStatusChange={setMetadataBranchState}
-										onOpenInlineDiff={onOpenInlineDiff}
-									/>
-								) : !taskUsesWorktree(project, task) ? (
-									<span className="text-fg-muted text-micro italic flex-shrink-0 truncate">{t("task.gitWorkflowOff")}</span>
-								) : (
-									<TaskGitActions
-										task={task}
-										project={project}
-										dispatch={dispatch}
-										navigate={navigate}
-										isTaskActive={isTaskActive}
-										compact={compact}
-										onBranchStatusChange={setMetadataBranchState}
-										onOpenInlineDiff={onOpenInlineDiff}
-									/>
-								)}
+								<TaskHeaderRegionItems region="git" />
 							</div>
 							<div className="flex-1" />
 							<div className="flex items-center gap-2 flex-shrink-0" data-help-id="inspector.runtime-bar">
-								<TaskOpenIn task={task} isTaskActive={isTaskActive} showFileBrowser={false} compact={tight} />
-								{project.kind !== "virtual" && (
-									<>
-										{!scriptsRunnerHidden && (
-											<HideableControl id="scripts-runner">
-												<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
-											</HideableControl>
-										)}
-										<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} compact={tight} />
-									</>
-								)}
-								<TaskExposedPorts task={task} compact={tight} />
-								<TaskSharedImages task={task} projectId={project.id} compact={tight} />
-								<TaskArtifacts task={task} projectId={project.id} compact={tight} />
+								<TaskHeaderRegionItems region="runtime" />
 								{terminalFullscreenButton}
 								{collapseToggleButton}
 							</div>
 						</div>
 					</div>
+				) : (
+					<div className="flex flex-col h-full">
+						<div className="flex flex-col px-2">
+							<div className="flex items-center gap-1.5 min-w-0 pt-1">
+								{/* `overflow-hidden` is the backstop that keeps a bar's contents
+								    inside its own box: without it the shrink-0 children spill
+								    over the neighbouring bar and over the pinned chrome (which
+								    then becomes unclickable). `tight` folds content first, so
+								    clipping only happens at pathological widths. */}
+								<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.context-bar">
+									<TaskHeaderRegionItems region="status" />
+								</div>
+								<div className="flex-1" />
+								<div className="flex items-center gap-1.5 flex-shrink-0" data-help-id="inspector.session-bar">
+									<TaskHeaderRegionItems region="session" />
+								</div>
+								<PanelRestoreControl entries={panelHideableEntries} />
+								<HelpSpot topicId="inspector.panel" className="ml-0.5" />
+								<TerminalShortcutsButton taskId={task.id} />
+							</div>
 
-					<div className="flex-1 overflow-auto px-2 pb-2">
-						{taskDetailsBody}
+							<div className="flex items-center gap-1.5 min-w-0 pb-1">
+								{showPanelButton}
+								<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.git-bar" data-tour-anchor="task.git-bar">
+									<TaskHeaderRegionItems region="git" />
+								</div>
+								<div className="flex-1" />
+								<div className="flex items-center gap-2 flex-shrink-0" data-help-id="inspector.runtime-bar">
+									<TaskHeaderRegionItems region="runtime" />
+									{terminalFullscreenButton}
+									{collapseToggleButton}
+								</div>
+							</div>
+						</div>
+
+						<div className="flex-1 overflow-auto px-2 pb-2">
+							{taskDetailsBody}
+						</div>
+
+						<div
+							className="flex-shrink-0 flex items-center justify-center h-[6px] cursor-row-resize group"
+							onMouseDown={onDragStart}
+							onDoubleClick={toggleCollapsed}
+						>
+							<div className="w-8 h-[3px] rounded-full bg-fg-muted/60 group-hover:bg-fg-muted/80 transition-colors" />
+						</div>
 					</div>
+				)}
 
-					<div
-						className="flex-shrink-0 flex items-center justify-center h-[6px] cursor-row-resize group"
-						onMouseDown={onDragStart}
-						onDoubleClick={toggleCollapsed}
-					>
-						<div className="w-8 h-[3px] rounded-full bg-fg-muted/60 group-hover:bg-fg-muted/80 transition-colors" />
-					</div>
-				</div>
-			)}
+				{spawnModalOpen && createPortal(
+					<SpawnAgentModal task={task} project={project} onClose={() => setSpawnModalOpen(false)} />,
+					document.body,
+				)}
 
-			{spawnModalOpen && createPortal(
-				<SpawnAgentModal task={task} project={project} onClose={() => setSpawnModalOpen(false)} />,
-				document.body,
-			)}
+				{bugHuntersOpen && createPortal(
+					<BugHuntersLightbox task={task} project={project} onClose={() => setBugHuntersOpen(false)} />,
+					document.body,
+				)}
 
-			{bugHuntersOpen && createPortal(
-				<BugHuntersLightbox task={task} project={project} onClose={() => setBugHuntersOpen(false)} />,
-				document.body,
-			)}
+				{scheduleMsgOpen && createPortal(
+					<ScheduleMessageModal task={task} project={project} dispatch={dispatch} onClose={() => setScheduleMsgOpen(false)} />,
+					document.body,
+				)}
 
-			{scheduleMsgOpen && createPortal(
-				<ScheduleMessageModal task={task} project={project} dispatch={dispatch} onClose={() => setScheduleMsgOpen(false)} />,
-				document.body,
-			)}
-
-			{notesOverlayOpen && (
-				<TaskNotesOverlay task={task} project={project} dispatch={dispatch} onClose={() => setNotesOverlayOpen(false)} />
-			)}
-		</div>
+				{notesOverlayOpen && (
+					<TaskNotesOverlay task={task} project={project} dispatch={dispatch} onClose={() => setNotesOverlayOpen(false)} />
+				)}
+			</div>
+		</TaskHeaderProvider>
 	);
 }
 
-/** The inspector plus the task's pending completion offer, which sits right under it. */
-function TaskInfoPanelWithOffer(props: Parameters<typeof TaskInfoPanel>[0]) {
+/**
+ * The task header: four bars rendered from the `taskHeader` slot plus pinned chrome,
+ * and the task's pending completion offer right under it.
+ */
+function TaskHeader(props: TaskHeaderProps) {
 	return (
 		<>
-			<TaskInfoPanel {...props} />
+			<TaskHeaderFrame {...props} />
 			<TaskCompletionStrip task={props.task} project={props.project} />
 		</>
 	);
 }
 
-export default TaskInfoPanelWithOffer;
+export default TaskHeader;
