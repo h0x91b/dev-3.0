@@ -1,0 +1,1 @@
+Documented plugin slots in the UX manifest: replace and contribution slots, add-only extensions opened only after the internal migration, the registry-driven task header with per-region overflow and user layout, and the generalised hide/restore menu.

@@ -760,3 +760,7 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 ## 2026-11-16 — The phone actions sheet is the complete inventory
 - **Rule:** Full screen (first) and Hibernate (last) are narrow sheet rows; narrow offers no hiding and ignores personal hiding (Simplified Mode still trims). Card long-press stays the drag; move = status-rail tap. Bible §12.3, §5.10.
 - **Why:** no touch path existed and hidden rows had no restore on a phone. Rejected a restore row and a per-user mobile button setting. `decisions/2026/11/16/phone-task-actions-sheet-is-the-complete-inventory.md`.
+
+## 2026-11-21 — Surfaces become plugin slots, internal first
+- **Rule:** two slot kinds, replace (chooser + built-in fallback) and contribution (host owns order and budget); extensions are add-only and get slots only after every surface has moved internally. Bible §5.12, yaml `plugin_slots`.
+- **Why:** no sandbox, so replacing Push or Accounts is a phishing surface; rejected opening each slot as soon as it landed. `decisions/2026/11/21/gui-plugin-slots-and-api-versioning.md`.
