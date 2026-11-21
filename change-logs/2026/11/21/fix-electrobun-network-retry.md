@@ -1,0 +1,1 @@
+Release and Windows-proof builds now retry `electrobun build` after 30 seconds, up to 5 attempts, when it fails on the network: a GitHub download 5xx, a dropped socket, or Apple's stapler losing its connection. Every other failure still fails at once.
