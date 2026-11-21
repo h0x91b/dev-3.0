@@ -12,7 +12,8 @@ Plan item 5.3 first proposed moving the file explorer into the task dock. `/ux-p
 ## Risks
 - The replacement-crash notice lives in the explorer column, so in autohide it shows only when the tree is revealed, and in hidden mode not at all; the explorer stays usable either way.
 - The slot's props include `children` (the terminal): fine internally; a public companion contract must decide whether an extension may wrap the terminal at all ("terminal renderer" is not a slot, §5.12).
-- A replacement crash falls back by swapping the subtree, which does remount the terminal once. Unreachable today (the extension guard unloads any extension that registers here).
+- A replacement crash falls back by swapping the subtree, which does remount the terminal once. Unreachable today for two reasons: the extension guard unloads any extension that registers here, and the host only looks up `builtin:file-explorer`, whose id a second registration cannot take. The notice is exercised by the test alone, which registers a throwing component under that id before the built-ins load.
+- A crash of the built-in frame itself (outside the explorer's own boundary) re-renders the built-in with no notice, since it is not a fallback to anything; the outer boundary resets per terminal folder, like the inner one.
 
 ## Alternatives considered
 - The explorer as a task dock panel — rejected by `/ux-principal` (see Context).

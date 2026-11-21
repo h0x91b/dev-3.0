@@ -21,7 +21,7 @@ function ReplacementCrashed({ onDismiss }: { onDismiss: () => void }) {
 	return (
 		<div role="alert" data-testid="terminal-companion-crashed" className="flex flex-shrink-0 items-start gap-2 border-b border-edge bg-danger/10 px-3 py-1.5 text-xs text-danger [overflow-wrap:anywhere]">
 			<span className="min-w-0 flex-1">{t("fileExplorer.replacementCrashed")}</span>
-			<button type="button" onClick={onDismiss} className="flex-shrink-0 rounded-md underline underline-offset-2 hover:text-fg active:scale-[0.96]">
+			<button type="button" onClick={onDismiss} className="flex-shrink-0 rounded-md underline underline-offset-2 hover:text-fg active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
 				{t("fileExplorer.dismiss")}
 			</button>
 		</div>

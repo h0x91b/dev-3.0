@@ -181,12 +181,13 @@ export default function FileExplorerFrame({ projectId, taskId, rootLabel, enable
 			/>
 		</SlotErrorBoundary>
 	);
-	const explorer = mode === "hidden" ? null : notice ? (
+	// One wrapper whether or not a notice shows, so dismissing it never remounts the tree.
+	const explorer = mode === "hidden" ? null : (
 		<div className="flex h-full min-h-0 flex-col">
 			{notice}
 			<div className="flex min-h-0 flex-1 flex-col">{tree}</div>
 		</div>
-	) : tree;
+	);
 
 	// `children` keeps the same slot in every mode: a terminal that remounted on
 	// each toggle would drop and re-open its PTY connection.
@@ -284,7 +285,7 @@ function ExplorerCrashed() {
 		<div className="h-full min-h-0 overflow-y-auto bg-raised p-2">
 			<div role="alert" data-testid="file-explorer-crashed" className="flex flex-col items-start gap-1.5 rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger [overflow-wrap:anywhere]">
 				<span>{t("fileExplorer.crashed")}</span>
-				<button type="button" onClick={() => setFileExplorerMode("hidden")} className="rounded-md underline underline-offset-2 hover:text-fg active:scale-[0.96]">
+				<button type="button" onClick={() => setFileExplorerMode("hidden")} className="rounded-md underline underline-offset-2 hover:text-fg active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
 					{t("fileExplorer.hide")}
 				</button>
 			</div>

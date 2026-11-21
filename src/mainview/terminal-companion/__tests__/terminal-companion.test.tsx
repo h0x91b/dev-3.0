@@ -12,6 +12,17 @@ import { TerminalCompanion } from "../TerminalCompanion";
 
 const explorer = vi.hoisted(() => ({ crash: false, mounts: 0 }));
 const terminalMounts = vi.hoisted(() => ({ count: 0 }));
+const tooltip = vi.hoisted(() => ({ throwsLeft: 0 }));
+
+vi.mock("../../components/Tooltip", () => ({
+	default: ({ children }: { children: React.ReactNode }) => {
+		if (tooltip.throwsLeft > 0) {
+			tooltip.throwsLeft--;
+			throw new Error("frame boom");
+		}
+		return <>{children}</>;
+	},
+}));
 
 vi.mock("../../rpc", () => ({ api: { request: {} } }));
 vi.mock("../../components/FileExplorer", () => ({
@@ -53,6 +64,7 @@ beforeEach(() => {
 	setFileExplorerMode("pinned");
 	explorer.crash = false;
 	explorer.mounts = 0;
+	tooltip.throwsLeft = 0;
 	terminalMounts.count = 0;
 });
 
@@ -123,10 +135,26 @@ describe("terminal companion slot", () => {
 		expect(within(column).getByRole("alert").textContent).toContain("This file explorer failed to load, so the built-in one is shown.");
 		expect(terminal.closest("[data-testid=file-explorer-pinned]")).toBeNull();
 
+		const mountsBeforeDismiss = explorer.mounts;
 		fireEvent.click(within(column).getByRole("button", { name: "Dismiss" }));
 		expect(screen.queryByRole("alert")).toBeNull();
+		expect(explorer.mounts).toBe(mountsBeforeDismiss);
 		expect(screen.getByTestId("explorer")).toBeTruthy();
 		expect(screen.getByTestId("terminal")).toBe(terminal);
+		errors.mockRestore();
+	});
+
+	it("re-renders a crashed built-in frame without claiming a replacement failed", async () => {
+		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+		applyBuiltinPlugins([], [BUILTIN_TERMINAL_COMPANION_PLUGIN]);
+		await settle();
+		setFileExplorerMode("autohide");
+		tooltip.throwsLeft = 3; // enough throws that React's own retries give up and the outer boundary takes it
+		render(<Pane taskId="t1" />);
+		fireEvent.click(within(screen.getByTestId("file-explorer-rail")).getByRole("button"));
+		expect(within(screen.getByTestId("file-explorer-overlay")).getByTestId("explorer")).toBeTruthy();
+		expect(screen.getByTestId("terminal")).toBeTruthy();
+		expect(screen.queryByTestId("terminal-companion-crashed")).toBeNull();
 		errors.mockRestore();
 	});
 
