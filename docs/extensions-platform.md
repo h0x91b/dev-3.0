@@ -123,7 +123,7 @@ renderer stay host-owned. Each move keeps behaviour identical.
 **Progress.** The internal foundations are in `src/mainview/plugins/`: the app root (`root.ts`, slots declared
 with `defineAppSlot`), the generic `SlotRegistry` (`slot-registry.ts`; board views run on it), the runtime that
 guards every slot (`runtime.ts`), `<SlotHost>` for replace slots (the board uses it) and `<SlotItems>` for
-contribution slots. Global Settings renders through the internal `settingsSections` slot
+contribution slots. Global Settings and the Project Settings tab bodies render through the internal `settingsSections` slot
 (`src/mainview/settings-sections/`, `decisions/2026/11/21/settings-sections-slot.md`; built-ins only). The task header
 draws its four bars from the internal `taskHeader` slot (`src/mainview/task-header/`), one legacy-cluster item per bar
 until each bar is split into items (`decisions/2026/11/21/task-header-slot-frame.md`). The public

@@ -30,6 +30,7 @@ import { startPlugins } from "./plugins/runtime";
 import { BUILTIN_BOARD_VIEWS } from "./board-views/builtins";
 import { BUILTIN_SETTINGS_SECTIONS_PLUGIN } from "./settings-sections/builtins";
 import { BUILTIN_TASK_HEADER_PLUGIN } from "./task-header/builtins";
+import { BUILTIN_PROJECT_SETTINGS_SECTIONS_PLUGIN } from "./settings-sections/project-builtins";
 
 // ── Global crash handlers (renderer) ──
 // Catch unhandled errors that would otherwise silently kill the page. Besides
@@ -167,8 +168,8 @@ async function bootstrap() {
 		document.title = "dev-3.0";
 	}
 
-	// The plugin runtime (Cordis root + built-in views, settings sections and header items) is up before the first render.
-	startPlugins([...BUILTIN_BOARD_VIEWS, BUILTIN_SETTINGS_SECTIONS_PLUGIN, BUILTIN_TASK_HEADER_PLUGIN]);
+	// The plugin runtime (Cordis root + built-in views, settings sections, project settings tabs and header items) is up before the first render.
+	startPlugins([...BUILTIN_BOARD_VIEWS, BUILTIN_SETTINGS_SECTIONS_PLUGIN, BUILTIN_PROJECT_SETTINGS_SECTIONS_PLUGIN, BUILTIN_TASK_HEADER_PLUGIN]);
 
 	debugLog("boot", "[main] Rendering React app...");
 	// RootErrorBoundary wraps the providers (not just <App/>) so a crash in

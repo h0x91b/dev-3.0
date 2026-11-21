@@ -25,6 +25,16 @@ the slot ships with built-ins only: no manifest kind, no public `ctx.*` service,
 - Search filters the entries of the registered sections; the anchor-scroll effect also re-runs when the
   registered set changes.
 
+### Project Settings (plan item 2.4)
+- The same slot carries the four fixed tabs as regions `projectSettings.<tab>`
+  (`settings-sections/project-builtins.tsx`, one required built-in plugin); the `activeTab === …` body branches are
+  gone. The page keeps the tab bar, the tab descriptions and the "not found" state, and renders a region only for
+  a tab its bar offers.
+- State and handlers moved unchanged into `useProjectSettingsController()` (`project-controller.tsx`).
+- The unsaved-changes guard stays with the page (`section-dirty.tsx`): a section calls `useSectionDirty({ dirty,
+  saving, blocked, save, discard })` while mounted, and the host drives the banner and `navigationGuardRef` from
+  those reports. Only the open tab's body is mounted, so "only the open tab counts" holds as before.
+
 ## Risks
 Before the slot opens to extensions, a section's render crash must be reported into its extension's failure state,
 so the Extensions row shows the reason; today it only vanishes (precondition in `docs/extensions-platform.md`).

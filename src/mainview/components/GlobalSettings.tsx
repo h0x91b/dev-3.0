@@ -200,7 +200,7 @@ function GlobalSettings({
 					    finding #3) — `activeCategory` alone could name a category the
 					    fallback effect hasn't caught up to yet, painting one frame of
 					    the wrong page under the right heading, or vice versa. */}
-					<SettingsCategoryPage category={selectedCategory.id} sections={sections} />
+					<SettingsCategoryPage region={selectedCategory.id} sections={sections} />
 					</>
 				)}
 			</div>

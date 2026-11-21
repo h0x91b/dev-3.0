@@ -4,8 +4,7 @@ import { CordisContext } from "../plugins/react";
 import { SlotErrorBoundary } from "../plugins/SlotHost";
 import { isBuiltinItem } from "../plugins/SlotItems";
 import type { SlotEntry } from "../plugins/slot-registry";
-import type { SettingsCategoryId } from "../settings-registry";
-import { getSettingsSectionsRegistry, type SettingsSectionItem } from "./registry";
+import { getSettingsSectionsRegistry, type SettingsSectionItem, type SettingsSectionRegion } from "./registry";
 
 /** Every registered settings section, all categories, in page order. */
 export function useRegisteredSettingsSections(): readonly SlotEntry<SettingsSectionItem>[] {
@@ -23,21 +22,23 @@ function SectionCrashed() {
 }
 
 /**
- * One category page: its registered sections in order, each in its own error boundary.
+ * One settings page (a category, or a Project Settings tab): its registered sections in order, each in its own error boundary.
  * A crashed built-in leaves a notice (a vanished one reads as a removed setting); an
  * extension's section simply vanishes, like any failed contributor (bible §5.12).
  */
 export function SettingsCategoryPage({
-	category,
+	region,
 	sections,
+	className = "space-y-8",
 }: {
-	category: SettingsCategoryId;
+	region: SettingsSectionRegion;
 	sections: readonly SlotEntry<SettingsSectionItem>[];
+	className?: string;
 }) {
 	return (
-		<div className="space-y-8" data-slot="settingsSections" data-region={category}>
+		<div className={className} data-slot="settingsSections" data-region={region}>
 			{sections
-				.filter((section) => section.def.region === category)
+				.filter((section) => section.def.region === region)
 				.map(({ def, ctx }) => {
 					const Section = def.component;
 					return (

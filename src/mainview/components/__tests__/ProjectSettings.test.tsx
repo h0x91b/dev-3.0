@@ -7,6 +7,13 @@ import { I18nProvider } from "../../i18n";
 import type { Project, Task } from "../../../shared/types";
 import type { AppAction, Route } from "../../state";
 import { toast } from "../../toast";
+import type { Context } from "cordis";
+import type { NavigationGuard } from "../../navigation-guard";
+import { getAppRoot } from "../../plugins/root";
+import { applyBuiltinPlugins } from "../../plugins/runtime";
+import { BUILTIN_PROJECT_SETTINGS_SECTIONS_PLUGIN } from "../../settings-sections/project-builtins";
+
+beforeAll(() => applyBuiltinPlugins([], [BUILTIN_PROJECT_SETTINGS_SECTIONS_PLUGIN]));
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -1543,5 +1550,132 @@ describe("project storage section", () => {
 		await user.click(screen.getByRole("switch", { name: label }));
 		expect(mockSave).not.toHaveBeenCalled();
 		expect(errorSpy).toHaveBeenCalledWith("1 task is still running. Finish it, then try again.", { projectId: "proj-1" });
+	});
+});
+
+describe("unsaved-changes guard over the settings-sections slot", () => {
+	async function renderWithGuard() {
+		const guardRef: { current: NavigationGuard | null } = { current: null };
+		const view = await act(async () =>
+			render(
+				<I18nProvider>
+					<ProjectSettings
+						projectId={mockProject.id}
+						projects={[{ ...mockProject, setupScript: "original" }]}
+						tasks={mockTasks}
+						dispatch={vi.fn() as unknown as React.Dispatch<AppAction>}
+						navigate={vi.fn() as (route: Route) => void}
+						navigationGuardRef={guardRef}
+					/>
+				</I18nProvider>,
+			),
+		);
+		return { guardRef, view };
+	}
+
+	async function editSetupScript() {
+		const user = userEvent.setup();
+		const textarea = screen.getByDisplayValue("original");
+		await user.clear(textarea);
+		await user.type(textarea, "changed");
+	}
+
+	it("reports the Project tab's edits to the navigation guard, and saves them through it", async () => {
+		const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+		mockSave.mockClear();
+		const { guardRef } = await renderWithGuard();
+		await goToProjectTab();
+		expect(guardRef.current?.isDirty()).toBe(false);
+
+		await editSetupScript();
+		expect(guardRef.current?.isDirty()).toBe(true);
+
+		await act(async () => {
+			await guardRef.current?.onSave();
+		});
+		expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({ projectId: "proj-1", setupScript: "changed" }));
+	});
+
+	it("counts only the open tab, and keeps the edits for when the user comes back", async () => {
+		const user = userEvent.setup();
+		const { guardRef } = await renderWithGuard();
+		await goToProjectTab();
+		await editSetupScript();
+		expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+
+		await user.click(screen.getByText("Board"));
+		expect(screen.queryByText("You have unsaved changes")).not.toBeInTheDocument();
+		expect(guardRef.current?.isDirty()).toBe(false);
+
+		await goToProjectTab();
+		expect(screen.getByDisplayValue("changed")).toBeInTheDocument();
+		expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+		expect(guardRef.current?.isDirty()).toBe(true);
+	});
+
+	it("drops the guard when the page goes away", async () => {
+		const { guardRef, view } = await renderWithGuard();
+		expect(guardRef.current).not.toBeNull();
+		view.unmount();
+		expect(guardRef.current).toBeNull();
+	});
+
+	it("isolates a tab body that throws: a notice in its place, the tab bar still works", async () => {
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		function Broken(): never {
+			throw new Error("boom");
+		}
+		const fiber = getAppRoot().plugin({
+			name: "test:broken-project-section",
+			inject: ["settingsSections"],
+			apply(ctx: Context) {
+				ctx.settingsSections.register({ id: "builtin:broken", region: "projectSettings.global", order: -1, entries: [], component: Broken });
+			},
+		});
+		try {
+			await renderWithGuard();
+			expect(screen.getByRole("alert")).toHaveTextContent("This section could not be shown.");
+			expect(screen.getByText(/Board layout/i)).toBeInTheDocument();
+			await goToProjectTab();
+			expect(screen.getByDisplayValue("original")).toBeInTheDocument();
+		} finally {
+			await fiber.dispose();
+		}
+	});
+});
+
+describe("deep links into a tab (route.tab)", () => {
+	async function renderAt(initialTab: "global" | "project" | "worktree" | "automations", project: Project = mockProject) {
+		await act(async () => {
+			render(
+				<I18nProvider>
+					<ProjectSettings
+						projectId={project.id}
+						projects={[project]}
+						tasks={[mockTaskWithWorktree]}
+						dispatch={vi.fn() as unknown as React.Dispatch<AppAction>}
+						navigate={vi.fn() as (route: Route) => void}
+						initialTab={initialTab}
+					/>
+				</I18nProvider>,
+			);
+		});
+	}
+
+	it.each([
+		["global", "Board"],
+		["project", "Project Config"],
+		["worktree", "Worktree Config"],
+		["automations", "Automations"],
+	] as const)("opens on the %s tab with its body", async (tab, label) => {
+		await renderAt(tab);
+		expect(screen.getByRole("tab", { name: label })).toHaveAttribute("aria-selected", "true");
+		expect(document.querySelector(`[data-slot="settingsSections"][data-region="projectSettings.${tab}"]`)?.childElementCount).toBeGreaterThan(0);
+	});
+
+	it("never strands an Operations board on a git-only tab", async () => {
+		await renderAt("project", { ...mockProject, kind: "virtual" });
+		expect(screen.getByRole("tab", { name: "Board" })).toHaveAttribute("aria-selected", "true");
+		expect(screen.queryByRole("tab", { name: "Project Config" })).toBeNull();
 	});
 });
