@@ -100,6 +100,8 @@ and `DEV3_EXTENSIONS=off`, "Restart with extensions off" on crash screens, deskt
 anonymous telemetry (`builtin:<id>` or `third_party`). Every slot has a dispose test: `plugins/__tests__/slot-dispose.test.ts`
 finds the slots by importing the app, fails on one it does not know, points to each surface's `[dispose]` test, and
 runs one registry case per slot (all share `SlotRegistry.register` today, so the cases are a tripwire for an override).
+Every slot also has a crash-escape row: `plugins/__tests__/slot-crash-escape.test.tsx` throws from each callback a
+contribution hands the host and checks that the surface stays up and the guard logged it.
 
 Open:
 
@@ -143,6 +145,8 @@ replace slot (`src/mainview/terminal-companion/`, `decisions/2026/11/21/terminal
 - A render crash of an extension's item must be reported into that extension's failure state, so its Extensions
   row shows the reason (today the item only vanishes).
 - A page-shaped slot (settings sections) must place built-ins before extensions by origin, not by numeric `order` alone.
+- Before `taskMenu` opens, a crashed submenu should show the one-line slot notice instead of an empty flyout
+  (today it falls back to nothing, logged; a crashed phone sheet just closes).
 - Before `terminalCompanion` opens, the terminal must survive a companion swap (load, unload or crash); for example the
   host owns the terminal node and portals it into the companion. Today any swap remounts it: the PTY survives, but
   client scroll, selection and focus are lost (`decisions/2026/11/21/terminal-companion-slot.md`).

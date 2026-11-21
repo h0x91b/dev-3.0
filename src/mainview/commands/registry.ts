@@ -63,3 +63,13 @@ export class CommandsRegistry extends SlotRegistry<CommandItem> {
 }
 
 export const getCommandsRegistry = defineAppSlot((root) => new CommandsRegistry(root));
+
+/** Runs a palette command; a throw or a rejection is logged, never escapes into the caller. */
+export function runCommandSafely(command: CommandItem, ctx: AppActionContext): void {
+	const fail = (err: unknown) => console.error(`[commands] ${command.id} failed`, err);
+	try {
+		Promise.resolve(command.run(ctx)).catch(fail);
+	} catch (err) {
+		fail(err);
+	}
+}

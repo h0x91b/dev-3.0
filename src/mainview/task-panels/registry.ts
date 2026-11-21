@@ -49,3 +49,19 @@ export class TaskPanelsRegistry extends SlotRegistry<TaskPanelDef> {
 }
 
 export const getTaskPanelsRegistry = defineAppSlot((root) => new TaskPanelsRegistry(root));
+
+// Keyed on the def, so a reloaded panel with the same id reports again.
+const reportedTitleFailures = new WeakSet<TaskPanelDef>();
+
+/** A panel's tab label; a throwing `title` falls back to its id (logged once), so the tab stays closable. */
+export function panelTitle(def: TaskPanelDef, t: TFunction): string {
+	try {
+		return def.title(t);
+	} catch (err) {
+		if (!reportedTitleFailures.has(def)) {
+			reportedTitleFailures.add(def);
+			console.error(`[slots] title() of task panel ${def.id} threw; showing its id:`, err);
+		}
+		return def.id;
+	}
+}
