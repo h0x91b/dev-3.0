@@ -196,7 +196,7 @@ ux_architecture:
       status: "observed"
     command_palette:
       purpose: "Keyboard palette. Navigation is a 3-mode 'Go to' palette (Cmd/Ctrl+Shift+K/J/L = projects/tasks/combined; Tab or the tap-reachable strip switches), complementing Cmd+1..9 and the breadcrumb; actions (Cmd/Ctrl+Shift+P) complement the native menu."
-      mechanism: "One GoToPalette: projects fuzzy-match (utils/fuzzyMatch.ts); tasks reuse the token-DSL matcher (utils/taskSearch.ts, NOT the funnel) ordered most-recently-viewed first (utils/recentTasks.ts). Actions run via handleMenuAction. Shared PaletteShell."
+      mechanism: "One GoToPalette: projects fuzzy-match (utils/fuzzyMatch.ts); tasks reuse the token-DSL matcher (utils/taskSearch.ts, NOT the funnel) ordered most-recently-viewed first (utils/recentTasks.ts). Actions: commands slot. Shared PaletteShell."
       allowed: ["destination", "object_jump", "command_runner"]
       forbidden: ["destructive_action", "durable_state_without_friction", "dense_filters"]
       status: "observed"
@@ -248,7 +248,7 @@ ux_architecture:
       allowed: ["destination", "task_action", "project_action", "dev_server_action", "expert_shortcut"]
       forbidden: ["native_role_item", "roadmap_item", "bun_only_action", "task_scoped_action_in_header"]
       filtering: "Drop role items (clipboard/window/quit — browser owns them), actions not in menuRouter.BROWSER_HANDLED_ACTIONS (bun-only: new-window/check-for-updates/devtools/zoom/open-logs/remote-QR), and NOT_YET_IMPLEMENTED roadmap items. Context-gated items render greyed."
-      dispatch: "handleMenuAction (same router as native menu + command palette)"
+      dispatch: "handleMenuAction (same router as native menu)"
       labels: "English, sourced from the shared menu definition — parity with the native menu (which is not i18n'd); documented i18n exception."
       responsive: "Visible in wide browser/remote layouts; hidden below 768px so the GlobalHeader More bottom sheet and command palette own the narrow touch action surface."
       budget:
@@ -570,7 +570,7 @@ ux_architecture:
       allowed: ["shortcut_reference", "tab_switch"]
       forbidden: ["command_runner", "object_action", "durable_configuration", "primary_navigation", "toolbar_button"]
       source_of_truth: "src/mainview/keymap.ts — every app-level shortcut declared as data (id, machine-readable defaults bindings, descKey, category, remappable). DRIVES dispatch via matchesShortcut(e, id); display strings are derived from bindings, never authored twice. Same data renders the README table + website (docs/index.html). Renders the RESOLVED combo (defaults + user overrides), never the raw default."
-      entry_points: ["application_menu.Help (Keyboard Shortcuts — wires the currently-dead help-keyboard-shortcuts action; Tmux Cheat Sheet opens the Terminal tab)", "keyboard: Cmd+/ (Ctrl+/ on Linux), App.tsx capture-phase handler, label shows (⌘/)", "command_palette ⇧⌘P via commands.ts entry"]
+      entry_points: ["application_menu.Help (Keyboard Shortcuts — wires the currently-dead help-keyboard-shortcuts action; Tmux Cheat Sheet opens the Terminal tab)", "keyboard: Cmd+/ (Ctrl+/ on Linux), App.tsx capture-phase handler, label shows (⌘/)", "command_palette ⇧⌘P via commands slot"]
       rationale: "No toolbar/header button (toolbar-button-creep is the #1 anti-pattern); not a nav destination (ephemeral reference ≠ a place; nav budget spent at 8). One modal with tabs per the user's 'единый вид'; tab split keeps ~40 tmux bindings from drowning ~25 app shortcuts. Cmd+/ over bare ? because the live terminal must receive a bare ?."
       editing: "FORBIDDEN here — rebinding is durable configuration and lives in settings.keyboard_shortcuts_editor. The overlay may carry exactly ONE link ('Customize…') to that editor and no inline edit affordance."
       observed: ["KeyboardShortcutsModal", "keymap.ts"]
@@ -605,7 +605,7 @@ ux_architecture:
           component: "ProjectQuickSwitchModal"
         action:
           hotkey: "Cmd/Ctrl+Shift+P"
-          purpose: "Type-to-run commands (VSCode convention). Fuzzy-match a command label, Enter runs it via the shared handleMenuAction router — the palette is a DOM mirror of the native menu, NOT a second command runner. Only commands runnable in the current route context are listed (scope: always | project | task)."
+          purpose: "Type-to-run commands (VSCode convention). Fuzzy-match a command label, Enter runs it — each command in the internal commands slot (commands/builtins.ts) runs itself. Only commands runnable in the current route context are listed (scope: always | project | task)."
           allowed: ["command_runner", "object_action", "navigation", "configuration"]
           forbidden: ["destructive_action", "modal_or_inline_flow", "dense_filters"]
           forbidden_rationale: "Destructive (task delete/cancel/complete) needs friction, not a fuzzy-Enter — stays on inspector/context-menu/confirm. Modal/inline flows (rename, set-overview, add-note, spawn-variants, duplicate) keep living on their own surfaces."
@@ -613,9 +613,9 @@ ux_architecture:
       note: "No toolbar/breadcrumb button (sidesteps toolbar-button-creep), but BOTH palettes are surfaced at the top of the native View menu (Go to Project… ⇧⌘K / Command Palette… ⇧⌘P) for discoverability — the native menu is the canonical action surface, not DOM chrome. Menu items open (not toggle) via menuRouter; no native accelerator (chords can't be bound — decision 044 — and the palettes toggle, so App.tsx keydown stays the sole shortcut owner). NOT Cmd+T: that is the universal new-tab key and the live terminal underneath (ghostty/tmux) intercepts it."
       future:
         - "Cmd+Shift+K grows to fuzzy-search tasks as well as projects, reusing utils/fuzzyMatch.ts (the single matcher for short UI entities; BM25 in shared/conversation-search-core.ts stays for long transcripts)."
-        - "Action palette can grow to cover more menu actions by adding a registry entry in commands.ts AND a handleMenuAction case — destructive/modal flows still excluded by policy."
-      observed: ["ProjectQuickSwitchModal", "CommandPaletteModal", "PaletteShell", "commands.ts", "utils/fuzzyMatch.ts"]
-      evidence: ["src/mainview/components/PaletteShell.tsx", "src/mainview/components/ProjectQuickSwitchModal.tsx", "src/mainview/components/CommandPaletteModal.tsx", "src/mainview/commands.ts", "src/mainview/menuRouter.ts", "src/mainview/App.tsx (Cmd+K + Cmd+Shift+P handlers)", "UX_DECISIONS 2026-06-18"]
+        - "Action palette can grow to cover more menu actions by registering a command in commands/builtins.ts (each runs itself) — destructive/modal flows still excluded by policy."
+      observed: ["ProjectQuickSwitchModal", "CommandPaletteModal", "PaletteShell", "commands/", "utils/fuzzyMatch.ts"]
+      evidence: ["src/mainview/components/PaletteShell.tsx", "src/mainview/components/ProjectQuickSwitchModal.tsx", "src/mainview/components/CommandPaletteModal.tsx", "src/mainview/commands/", "src/mainview/menuRouter.ts", "src/mainview/App.tsx (Cmd+K + Cmd+Shift+P handlers)", "UX_DECISIONS 2026-06-18"]
     task_image_viewer:
       purpose: "Task-bound lightbox for images (and, via `dev3 show-media`, MP4/WebM video and MP3/M4A/WAV/OGG audio played in the same stage -- native controls, no autoplay, no comment mode) an agent surfaced via `dev3 show-image`, with a clickable history (thumbnail rail, newest first). One large image + prev/next + Esc; opened for a taskId regardless of route (closing restores position). Read/view only -- no git/lifecycle/mutation, as with the diff viewer."
       feature_class: ["overlay_viewer", "object_action", "notification"]

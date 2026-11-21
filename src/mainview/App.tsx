@@ -106,6 +106,7 @@ import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
 import TaskSwitcherOverlay from "./components/TaskSwitcherOverlay";
 import GoToPalette, { type GoToMode } from "./components/GoToPalette";
 import CommandPaletteModal from "./components/CommandPaletteModal";
+import type { CommandItem } from "./commands/registry";
 import { isBoardMounted, runBoardViewCommand } from "./board-views/view-commands";
 import CoordinatorFinderModal from "./components/CoordinatorFinderModal";
 import OpenInPickerModal from "./components/OpenInPickerModal";
@@ -1386,21 +1387,22 @@ function App() {
 		navigate({ screen: "dashboard" });
 	}, [navigate, state.route.screen]);
 
-	// Run a command from the Cmd+Shift+P action palette. Every command dispatches
-	// through the same `handleMenuAction` router the native menu uses, so the
-	// palette is a DOM mirror of the menu rather than a second command runner.
+	// Run a command from the Cmd+Shift+P action palette against the current route.
 	const runCommand = useCallback(
-		(actionId: string) => {
+		(command: CommandItem) => {
 			closeNavPalette("command");
-			handleMenuAction(actionId, { state, dispatch, setLocale, t }).catch((err) => {
-				console.error("[App] runCommand failed", err);
-			});
+			const fail = (err: unknown) => console.error("[App] runCommand failed", err);
+			try {
+				Promise.resolve(command.run({ state, dispatch, setLocale, t })).catch(fail);
+			} catch (err) {
+				fail(err);
+			}
 		},
 		[state, dispatch, setLocale, closeNavPalette],
 	);
 
 	// Browser-mode menu bar (`AppMenuBar`) dispatches through the same router as
-	// the native menu and the command palette.
+	// the native menu.
 	const handleMenuBarAction = useCallback(
 		(actionId: string) => {
 			handleMenuAction(actionId, { state, dispatch, setLocale, t }).catch((err) => {

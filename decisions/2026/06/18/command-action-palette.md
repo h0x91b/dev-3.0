@@ -1,5 +1,7 @@
 # 072 — Cmd+Shift+P action palette as a DOM mirror of the native menu
 
+> Superseded on 2026-11-21 by `decisions/2026/11/21/commands-slot.md`: commands are registrations in an internal `commands` slot and each carries its own `run()`; they no longer route through `handleMenuAction`.
+>
 > Partly superseded on 2026-10-01 by `decisions/2026/10/01/go-to-project-moves-to-shift-cmd-k.md`: only the key changed — the navigation palette is now ⇧⌘K; plain ⌘K is left to the terminal.
 
 ## Context

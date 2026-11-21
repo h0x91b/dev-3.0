@@ -11,7 +11,10 @@ import {
 	setAgentTrafficEnabledForTests,
 	syncAgentTrafficFromGlobalSettings,
 } from "../agent-traffic-flag";
-import { availableCommands } from "../commands";
+import { availableCommands as filterCommands } from "../commands/available";
+import { BUILTIN_COMMANDS_PLUGIN } from "../commands/builtins";
+import { getCommandsRegistry, type CommandContext } from "../commands/registry";
+import { applyBuiltinPlugins } from "../plugins/runtime";
 import { appShortcutsForMode } from "../keymap";
 import { getAvailableTipsCount } from "../tips";
 import AgentTrafficIndicator from "../components/agent-traffic/AgentTrafficIndicator";
@@ -133,12 +136,16 @@ describe("agent-traffic feature flag", () => {
 		expect(appShortcutsForMode(false).map((s) => s.id)).toContain("agent-traffic-log");
 	});
 
-	it("hides the palette command while off", () => {
+	it("hides the palette command while off", async () => {
+		applyBuiltinPlugins([], [BUILTIN_COMMANDS_PLUGIN]);
+		// Cordis applies the plugin once the `commands` service is up, which may be a tick later here.
+		await waitFor(() => expect(getCommandsRegistry().list().length).toBeGreaterThan(0));
+		const availableCommands = (c: CommandContext) => filterCommands(getCommandsRegistry().list().map((entry) => entry.def), c);
 		const ctx = { hasTask: true, hasProject: true };
-		expect(availableCommands(ctx).map((c) => c.id)).not.toContain("view-agent-traffic-log");
+		expect(availableCommands(ctx).map((c) => c.id)).not.toContain("builtin:view-agent-traffic-log");
 
 		setAgentTrafficEnabledForTests(true);
-		expect(availableCommands(ctx).map((c) => c.id)).toContain("view-agent-traffic-log");
+		expect(availableCommands(ctx).map((c) => c.id)).toContain("builtin:view-agent-traffic-log");
 	});
 
 	it("hides the native-menu rows while off, in both View and Help", () => {
