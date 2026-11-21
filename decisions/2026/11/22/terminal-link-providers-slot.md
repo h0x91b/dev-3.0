@@ -20,7 +20,8 @@ so the later provider wins a cell both claim, which is why OSC 8 must come after
 - `host.ts` `installTerminalLinks` registers ONE composite provider with ghostty. It walks a snapshot of the
   live providers in `order` and concatenates their links. That is what ghostty does with several providers,
   so click and hover behaviour is unchanged. Every call into a provider is guarded: a throw logs
-  `[terminalLinks] <id> <what> failed` and that provider contributes nothing.
+  `[terminalLinks] <id> <what> failed` once per provider and callback (`refAt` runs per mousemove,
+  `underlines` per redraw) and that provider contributes nothing. A slot change clears the log memory.
 - The snapshot, the underline feed (one shared buffer scan, `sharedScanLinks`), and the tap and ref rankings are
   rebuilt only when the slot changes. Nothing reads the registry per row, keystroke or frame.
 - `builtins.ts` holds the four built-ins, `builtin:file-paths`, `builtin:osc8`, `builtin:deep-links` and
@@ -30,6 +31,8 @@ so the later provider wins a cell both claim, which is why OSC 8 must come after
 ## Risks
 - A slot change rebuilds every instance in every open terminal, which drops the file-path resolution cache.
   Today that only happens at startup. If extensions ever register at runtime, diff the snapshot instead.
+- A row scan in flight during a rebuild can still call the old instances, and ghostty does not invalidate its
+  per-row link cache, so rows already scanned keep their old links until their content changes. Startup only today.
 - The env carries the raw `Terminal`. That is fine internally, but it is not a public contract.
 
 ## Alternatives considered

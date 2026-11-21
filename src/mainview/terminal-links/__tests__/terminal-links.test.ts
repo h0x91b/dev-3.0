@@ -1,5 +1,7 @@
 import type { ILink, ILinkProvider, Terminal } from "ghostty-web";
 import { act } from "@testing-library/react";
+import type { Context } from "cordis";
+import { getAppRoot } from "../../plugins/root";
 import { applyBuiltinPlugins, resetPluginsForTests } from "../../plugins/runtime";
 import { BUILTIN_TERMINAL_LINK_PROVIDERS, BUILTIN_TERMINAL_LINKS_PLUGIN } from "../builtins";
 import { installTerminalLinks, type TerminalLinksHandle } from "../host";
@@ -125,6 +127,37 @@ describe("terminalLinks slot host", () => {
 		]);
 	});
 
+	it("logs a provider's failing callback once, however often it is called, and again after a slot change", () => {
+		const boom = () => {
+			throw new Error("boom");
+		};
+		register(provider("boom", 10, { refAt: boom, underlines: boom }).def);
+		const { env } = fakeEnv();
+		handle = installTerminalLinks(env);
+		for (let i = 0; i < 25; i++) {
+			handle.refAt(0, i);
+			handle.underlinesForRows([i]);
+		}
+		expect(errorSpy.mock.calls.map((call: unknown[]) => call[0])).toEqual(["[terminalLinks] boom refAt failed:", "[terminalLinks] boom underlines failed:"]);
+		register(provider("other", 20, {}).def);
+		handle.refAt(0, 0);
+		expect(errorSpy).toHaveBeenCalledTimes(3);
+	});
+
+	it("answers ghostty once with nothing when the terminal is disposed mid-scan", async () => {
+		let release: (links: ILink[] | undefined) => void = () => {};
+		register(provider("slow", 10, { provider: { provideLinks: (_y, callback) => { release = callback; } } }).def);
+		const { env, registered } = fakeEnv();
+		handle = installTerminalLinks(env);
+		const answer = vi.fn();
+		registered[0].provideLinks(0, answer);
+		handle.dispose();
+		handle = null;
+		release([link("late")]);
+		release([link("again")]);
+		expect(answer.mock.calls).toEqual([[undefined]]);
+	});
+
 	it("skips a provider whose create throws", async () => {
 		const broken = provider("broken", 10, {});
 		broken.create.mockImplementation(() => {
@@ -173,6 +206,29 @@ describe("terminalLinks slot host", () => {
 		expect(registered).toHaveLength(1);
 	});
 
+	it("[dispose] drops an unloading plugin's providers from an open terminal and keeps the others answering", async () => {
+		register(provider("keeper", 10, { provider: answering(["keeper"]), refAt: () => "dev3://seq/1" }).def);
+		const disposeLeaving = vi.fn();
+		const leaving = provider("leaving", 5, { provider: answering(["leaving"]), refAt: () => "dev3://seq/2", dispose: disposeLeaving });
+		const fiber = getAppRoot().plugin({
+			name: "leaving-links",
+			inject: ["terminalLinks"],
+			apply(ctx: Context) {
+				ctx.terminalLinks.register(leaving.def);
+			},
+		});
+		for (let tick = 0; tick < 20; tick++) await Promise.resolve();
+		const { env, registered } = fakeEnv();
+		handle = installTerminalLinks(env);
+		expect(await linksAt(registered[0])).toEqual(["leaving", "keeper"]);
+		expect(handle.refAt(0, 0)).toBe("dev3://seq/2");
+		await fiber.dispose();
+		expect(disposeLeaving).toHaveBeenCalledTimes(1);
+		expect(await linksAt(registered[0])).toEqual(["keeper"]);
+		expect(handle.refAt(0, 0)).toBe("dev3://seq/1");
+		expect(registered).toHaveLength(1);
+	});
+
 	it("disposes every instance and stops listening on dispose", () => {
 		const dispose = vi.fn();
 		const a = provider("a", 10, { dispose });
@@ -196,5 +252,15 @@ describe("terminalLinks slot host", () => {
 			"builtin:plain-urls",
 		]);
 		expect(BUILTIN_TERMINAL_LINK_PROVIDERS.map((def) => def.id)).toEqual(getTerminalLinksRegistry().list().map((entry) => entry.def.id));
+	});
+
+	it("pins the built-ins' tap and preview-card precedence, which differ from the click order", () => {
+		const rankBy = (key: "touchOrder" | "refOrder") =>
+			BUILTIN_TERMINAL_LINK_PROVIDERS.filter((def) => key !== "refOrder" || def.refOrder !== undefined)
+				.slice()
+				.sort((a, b) => (a[key] ?? a.order) - (b[key] ?? b.order))
+				.map((def) => def.id);
+		expect(rankBy("touchOrder")).toEqual(["builtin:osc8", "builtin:deep-links", "builtin:plain-urls", "builtin:file-paths"]);
+		expect(rankBy("refOrder")).toEqual(["builtin:deep-links", "builtin:osc8"]);
 	});
 });
