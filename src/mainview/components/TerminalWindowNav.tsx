@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { TaskStatus, TmuxWindowEntry } from "../../shared/types";
 import { useT, type TFunction } from "../i18n";
@@ -8,6 +8,8 @@ import { closeTmuxWindow, openTmuxWindow, renameTmuxWindow } from "../terminal-w
 import { WINDOW_NAME_MAX } from "../../shared/window-name";
 import { toast } from "../toast";
 import Tooltip from "./Tooltip";
+import { getTerminalTabDecorationRegistry, placeTerminalTabDecorations } from "../terminal-tab-decorations/registry";
+import { TerminalTabDecorations } from "../terminal-tab-decorations/TerminalTabDecorations";
 
 /**
  * Desktop navigator for a task's tmux WINDOWS (full-terminal workspaces inside
@@ -84,11 +86,11 @@ function automaticWindowName(w: TmuxWindowEntry, t: TFunction, homeTitle?: strin
 	return (w.home && homeTitle) || w.label || t("windowPager.window", { index: String(w.index) });
 }
 
-function windowStateText(w: TmuxWindowEntry, unseen: boolean, t: TFunction, agentWorking: boolean, agentWaiting: boolean): string {
+/** The decorations' labels sit where their glyphs do: after the home state, before the pane count. */
+function windowStateText(w: TmuxWindowEntry, decorationLabels: readonly string[], t: TFunction, agentWorking: boolean, agentWaiting: boolean): string {
 	const parts: string[] = [];
 	if (w.home) parts.push(agentWorking ? t("windowNav.homeWorking") : agentWaiting ? t("windowNav.homeWaiting") : t("windowNav.home"));
-	if (w.bell) parts.push(t("windowNav.bell"));
-	else if (unseen) parts.push(t("windowNav.newOutput"));
+	parts.push(...decorationLabels.filter(Boolean));
 	if (w.panes > 1) parts.push(t.plural("windowNav.panes", w.panes));
 	return parts.join(" · ");
 }
@@ -117,6 +119,8 @@ function WindowTabs({
 	t: TFunction;
 }) {
 	const listRef = useRef<HTMLDivElement>(null);
+	const decorationRegistry = getTerminalTabDecorationRegistry();
+	const decorationEntries = useSyncExternalStore(decorationRegistry.subscribe, decorationRegistry.list);
 	const [menu, setMenu] = useState<WindowMenuState | null>(null);
 	const [editing, setEditing] = useState<{ windowId: string; width: number } | null>(null);
 	// A lone window cannot be closed, so it gets no ×.
@@ -198,9 +202,10 @@ function WindowTabs({
 			className="flex items-center gap-1"
 		>
 			{windows.map((w) => {
-				const isUnseen = unseen.has(w.windowId);
+				const scope = { window: w, unseen: unseen.has(w.windowId) };
+				const decorations = placeTerminalTabDecorations(decorationEntries, t, scope);
 				const name = windowName(w, t, homeTitle);
-				const state = windowStateText(w, isUnseen, t, agentWorking, agentWaiting);
+				const state = windowStateText(w, decorations.map((d) => d.label), t, agentWorking, agentWaiting);
 				const accessibleName = state ? `${name}, ${state}` : name;
 				if (editing?.windowId === w.windowId) {
 					return (
@@ -238,7 +243,7 @@ function WindowTabs({
 								{w.home ? <HomeGlyph working={agentWorking} /> : <span className={`tabular-nums ${w.active ? "text-accent" : "text-fg-muted"}`}>{w.index}</span>}
 							</span>
 							<span aria-hidden="true" className="truncate">{name}</span>
-							<WindowMarker window={w} unseen={isUnseen} />
+							<TerminalTabDecorations entries={decorations.map((d) => d.entry)} scope={scope} />
 						</button>
 					</Tooltip>
 						{/* Keyboard users rename with F2 and close with Delete on the focused tab; these are the pointer paths. */}
@@ -450,14 +455,3 @@ function HomeGlyph({ working }: { working: boolean }) {
 	);
 }
 
-/** Background signal after the name: bell (warning) outranks new output (accent). */
-function WindowMarker({ window: w, unseen }: { window: TmuxWindowEntry; unseen: boolean }) {
-	if (w.active || (!w.bell && !unseen)) return null;
-	return (
-		<span
-			aria-hidden="true"
-			data-window-marker={w.bell ? "bell" : "output"}
-			className={`flex-shrink-0 w-1.5 h-1.5 rounded-full ${w.bell ? "bg-warning" : "bg-accent"}`}
-		/>
-	);
-}

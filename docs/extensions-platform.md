@@ -138,7 +138,9 @@ sidebar sits on the internal `sidebar` replace slot (`src/mainview/sidebar/`, `d
 wide-only as before. The file explorer beside a terminal (task pane and Repo) sits on the internal `terminalCompanion`
 replace slot (`src/mainview/terminal-companion/`, `decisions/2026/11/21/terminal-companion-slot.md`). Terminal links
 (file paths, OSC 8, `dev3://`, tap targets) come from the internal `terminalLinks` contribution slot
-(`src/mainview/terminal-links/`, `decisions/2026/11/22/terminal-link-providers-slot.md`). The public
+(`src/mainview/terminal-links/`, `decisions/2026/11/22/terminal-link-providers-slot.md`). Passive
+glyphs after a terminal window tab's name come from the internal `terminalTabDecorations` contribution slot
+(`src/mainview/terminal-tab-decorations/`, `decisions/2026/11/22/terminal-tab-decorations-slot.md`). The public
 `contributes` generalisation (plan item 0.4) waits for the opening track.
 
 **Opening-track preconditions.** Before any contribution slot opens to extensions:

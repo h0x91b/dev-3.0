@@ -42,6 +42,11 @@ import { TerminalCompanion } from "../../terminal-companion/TerminalCompanion";
 import { _resetFileExplorerPrefs, setFileExplorerMode } from "../../file-explorer-prefs";
 import { installTerminalLinks, type TerminalLinksHandle } from "../../terminal-links/host";
 import type { TerminalLinkInstance } from "../../terminal-links/registry";
+import TerminalWindowNav from "../../components/TerminalWindowNav";
+import { BUILTIN_TERMINAL_TAB_DECORATIONS_PLUGIN } from "../../terminal-tab-decorations/builtins";
+import { resetDecorationFailuresForTests } from "../../terminal-tab-decorations/registry";
+import { notifyTmuxWindowsChanged } from "../../terminal-window-nav";
+import type { TmuxWindowEntry } from "../../../shared/types";
 import { importAppSlots } from "./app-slots";
 
 vi.mock("../../rpc", () => ({
@@ -57,6 +62,7 @@ vi.mock("../../rpc", () => ({
 			getBoardFilterState: vi.fn().mockResolvedValue({ visibility: "all" }),
 			setBoardFilterState: vi.fn(async ({ state }) => state),
 			getGlobalSettings: vi.fn().mockResolvedValue({ taskSortOrder: "oldest-first" }),
+			tmuxWindowNavigate: vi.fn(),
 		},
 	},
 }));
@@ -415,6 +421,47 @@ const CASES: CrashCase[] = [
 			expect(logged(`[terminalLinks] crash:links ${callback} failed`)).toHaveLength(1);
 		},
 		logs: `[terminalLinks] crash:links ${callback} failed`,
+	})),
+	...(["when", "label", "render"] as const).map((callback): CrashCase => ({
+		slot: "terminalTabDecorations",
+		callback,
+		builtins: [BUILTIN_TERMINAL_TAB_DECORATIONS_PLUGIN],
+		contribute(ctx) {
+			ctx.terminalTabDecorations.register({
+				id: "crash:decoration",
+				when: callback === "when" ? boom : () => true,
+				label: callback === "label" ? boom : () => "crash",
+				component: callback === "render" ? Boom : () => <span data-testid="crash-decoration" />,
+			});
+		},
+		render() {
+			resetDecorationFailuresForTests();
+			const win = (index: number, extra: Partial<TmuxWindowEntry>): TmuxWindowEntry => ({ windowId: `@${index}`, index, label: `w${index}`, active: false, home: false, panes: 1, activity: 100, bell: false, ...extra });
+			vi.mocked(api.request.tmuxWindowNavigate).mockResolvedValue({ windows: [win(1, { active: true, home: true }), win(2, { bell: true }), win(3, { bell: true })] } as never);
+			mount(
+				<TerminalWindowNav taskId="t1">
+					<div data-testid="terminal" />
+				</TerminalWindowNav>,
+			);
+		},
+		async interact() {
+			// Re-reads redraw every tab: a broken decoration is logged once per callback, not once per tab or poll.
+			for (let round = 0; round < 2; round++) {
+				await act(async () => {
+					notifyTmuxWindowsChanged("t1");
+				});
+				await settle();
+			}
+		},
+		async alive() {
+			expect(screen.getByTestId("terminal")).toBeInTheDocument();
+			expect(await screen.findAllByRole("tab")).toHaveLength(3);
+			expect(document.querySelectorAll('[data-window-marker="bell"]')).toHaveLength(2);
+			expect(screen.getByRole("tab", { name: "w2, bell" })).toBeInTheDocument();
+			expect(screen.queryAllByTestId("crash-decoration")).toHaveLength(0);
+			expect(logged(`${callback} of terminal tab decoration crash:decoration threw`)).toHaveLength(1);
+		},
+		logs: `${callback} of terminal tab decoration crash:decoration threw`,
 	})),
 	{
 		slot: "terminalCompanion",
