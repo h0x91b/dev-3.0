@@ -1,5 +1,6 @@
+import type { MockInstance } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import userEvent, { type UserEvent } from "@testing-library/user-event";
 import type { Context } from "cordis";
 import { Component, type ReactNode } from "react";
 import type { Project, Task } from "../../../shared/types";
@@ -34,7 +35,7 @@ import TaskContextMenu from "../../components/TaskContextMenu";
 import { BUILTIN_TASK_MENU_PLUGIN } from "../../task-menu/builtins";
 import TaskDock from "../../task-panels/TaskDock";
 import TaskPanelInstances from "../../task-panels/TaskPanelInstances";
-import { openTaskPanel, resetTaskDocksForTests } from "../../task-panels/dock-store";
+import { getTaskDock, openTaskPanel, resetTaskDocksForTests } from "../../task-panels/dock-store";
 import { FILE_EXPLORER_COMPANION_ID } from "../../terminal-companion/builtins";
 import { TerminalCompanion } from "../../terminal-companion/TerminalCompanion";
 import { _resetFileExplorerPrefs, setFileExplorerMode } from "../../file-explorer-prefs";
@@ -91,6 +92,13 @@ const boom = (): never => {
 };
 const Boom = () => boom();
 
+let user: UserEvent;
+let errors: MockInstance<typeof console.error>;
+const menuClose = vi.fn();
+
+/** The console lines that mention `text`: how a guard proves it caught the throw. */
+const logged = (text: string) => errors.mock.calls.filter((call) => call.some((arg) => String(arg).includes(text)));
+
 const task = { id: "t1", projectId: "p1", title: "Task", description: "Task", status: "in-progress", branchName: "feat/x", worktreePath: "/tmp/wt", terminalBackend: "native" } as Task;
 const project = { id: "p1", name: "Project", path: "/tmp/p1", labels: [], setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "2025-01-01T00:00:00Z" } as unknown as Project;
 const git = {
@@ -118,6 +126,10 @@ interface CrashCase {
 	interact?(): Promise<void>;
 	/** The host's own content, still drawn. */
 	alive(): Promise<void> | void;
+	/** Part of the line the guard logs: a throw in an event handler never reaches a boundary, so this is the proof. */
+	logs?: string;
+	/** Renders at phone width. */
+	narrow?: boolean;
 }
 
 function LiveSettingsPage() {
@@ -161,14 +173,15 @@ const CASES: CrashCase[] = [
 		},
 		async interact() {
 			if (callback !== "run") return;
-			await userEvent.type(screen.getByRole("textbox"), "Crash probe");
-			await userEvent.keyboard("{Enter}");
-			await userEvent.clear(screen.getByRole("textbox"));
+			await user.type(screen.getByRole("textbox"), "Crash probe");
+			await user.keyboard("{Enter}");
+			await user.clear(screen.getByRole("textbox"));
 		},
 		async alive() {
-			await userEvent.type(screen.getByRole("textbox"), "Theme");
+			await user.type(screen.getByRole("textbox"), "Theme");
 			expect(screen.getAllByRole("option").length).toBeGreaterThan(0);
 		},
+		logs: callback === "run" ? "[commands] crash:command failed" : "crash:command",
 	})),
 	{
 		slot: "destinationBodies",
@@ -262,27 +275,42 @@ const CASES: CrashCase[] = [
 			expect(screen.getByTestId("task-card-native-backend")).toBeInTheDocument();
 		},
 	})),
-	...(["when", "label", "run"] as const).map((callback): CrashCase => ({
+	...(["when", "label", "run", "submenu.flyout", "submenu.sheet"] as const).map((callback): CrashCase => ({
 		slot: "taskMenu",
 		callback,
 		builtins: [BUILTIN_TASK_MENU_PLUGIN],
+		narrow: callback === "submenu.sheet",
 		contribute(ctx) {
-			ctx.taskMenu.register({
-				id: "crash:item", region: "open",
+			const base = {
+				id: "crash:item", region: "open" as const,
 				label: callback === "label" ? boom : () => "Crash item",
-				run: boom,
 				...(callback === "when" ? { when: boom } : {}),
-			});
+			};
+			ctx.taskMenu.register(
+				callback.startsWith("submenu")
+					? { ...base, submenu: { flyout: callback === "submenu.flyout" ? boom : () => null, sheet: callback === "submenu.sheet" ? boom : () => null } }
+					: { ...base, run: boom },
+			);
 		},
 		render() {
-			mount(<TaskContextMenu task={task} project={project} dispatch={vi.fn()} pos={{ x: 0, y: 0 }} onClose={vi.fn()} onOpenTask={vi.fn()} />);
+			mount(<TaskContextMenu task={task} project={project} dispatch={vi.fn()} pos={{ x: 0, y: 0 }} onClose={menuClose} onOpenTask={vi.fn()} />);
 		},
 		async interact() {
-			if (callback === "run") await userEvent.click(screen.getByTestId("task-menu-crash:item"));
+			if (callback === "run" || callback.startsWith("submenu")) await user.click(screen.getByTestId("task-menu-crash:item"));
 		},
 		alive() {
-			if (callback !== "run") expect(screen.getByTestId("task-menu-open")).toBeInTheDocument();
+			// run and the phone sheet close the menu first, as for any such row; the rest leave it open.
+			if (callback === "run") expect(menuClose).toHaveBeenCalledTimes(1);
+			else if (callback !== "submenu.sheet") expect(screen.getByTestId("task-menu-open")).toBeInTheDocument();
+			if (callback === "submenu.flyout") expect(screen.getByTestId("task-menu-flyout-crash:item")).toBeInTheDocument();
 		},
+		logs: {
+			when: '[taskMenu] "crash:item" failed to resolve',
+			label: '[taskMenu] "crash:item" failed to resolve',
+			run: '[taskMenu] "crash:item" failed',
+			"submenu.flyout": "[slots] taskMenu item crash:item crashed",
+			"submenu.sheet": "[slots] taskMenu item crash:item crashed",
+		}[callback],
 	})),
 	...(["component", "title"] as const).map((callback): CrashCase => ({
 		slot: "taskPanels",
@@ -308,7 +336,14 @@ const CASES: CrashCase[] = [
 			expect(within(strip).getByRole("tab", { name: /fine/ })).toBeInTheDocument();
 			fireEvent.click(within(strip).getByRole("tab", { name: /fine/ }));
 			expect(screen.getByTestId("fine-panel")).toBeInTheDocument();
+			if (callback !== "title") return;
+			// The crashed title falls back to the panel id, re-renders without logging again, and stays closable.
+			expect(within(strip).getByRole("tab", { name: /crash:panel/ })).toBeInTheDocument();
+			expect(logged("title() of task panel crash:panel threw")).toHaveLength(1);
+			fireEvent.click(within(strip).getByRole("button", { name: "Close crash:panel" }));
+			expect(getTaskDock("t1").open).toEqual(["fine:panel"]);
 		},
+		logs: callback === "title" ? "title() of task panel crash:panel threw" : "crash:panel",
 	})),
 	{
 		slot: "terminalCompanion",
@@ -336,7 +371,18 @@ beforeAll(async () => {
 	await Promise.all(SLOT_MODULES.map((file) => import(file)));
 });
 
+const innerWidth = window.innerWidth;
+const matchMedia = window.matchMedia;
+
+function setPhoneWidth() {
+	Object.defineProperty(window, "innerWidth", { configurable: true, value: 400 });
+	window.matchMedia = ((query: string) => ({ ...matchMedia(query), matches: query.includes("max-width") })) as typeof window.matchMedia;
+}
+
 beforeEach(() => {
+	user = userEvent.setup();
+	menuClose.mockClear();
+	errors = vi.spyOn(console, "error").mockImplementation(() => {});
 	resetPluginsForTests();
 	resetBoardViewStateCacheForTests();
 	resetTaskVisibilityForTests();
@@ -345,6 +391,12 @@ beforeEach(() => {
 	resetTaskDocksForTests();
 	localStorage.clear();
 	vi.mocked(api.request.getBoardViewState).mockResolvedValue(defaultBoardViewState());
+});
+
+afterEach(() => {
+	vi.restoreAllMocks();
+	Object.defineProperty(window, "innerWidth", { configurable: true, value: innerWidth });
+	window.matchMedia = matchMedia;
 });
 
 describe("slot crash escape", () => {
@@ -356,7 +408,10 @@ describe("slot crash escape", () => {
 	});
 
 	it.each(CASES.map((c) => [c.slot, c.callback, c] as const))("%s: a throwing %s never takes down the host surface", async (_slot, _callback, crash) => {
-		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+		if (crash.narrow) setPhoneWidth();
+		const uncaught: unknown[] = [];
+		const onError = (event: ErrorEvent) => uncaught.push(event.error);
+		window.addEventListener("error", onError);
 		if (crash.builtins) applyBuiltinPlugins([], crash.builtins);
 		getAppRoot().plugin({ name: "crashing", inject: [crash.slot], apply: (ctx: Context) => crash.contribute(ctx) });
 		await settle();
@@ -366,6 +421,8 @@ describe("slot crash escape", () => {
 		await waitFor(() => expect(screen.queryByTestId("escaped")).toBeNull());
 		await crash.alive();
 		expect(screen.queryByTestId("escaped")).toBeNull();
-		errors.mockRestore();
+		window.removeEventListener("error", onError);
+		expect(uncaught).toEqual([]);
+		if (crash.logs) expect(logged(crash.logs).length, `no "${crash.logs}" in the console`).toBeGreaterThan(0);
 	});
 });

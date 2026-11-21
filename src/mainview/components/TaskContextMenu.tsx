@@ -9,6 +9,7 @@ import { registerOverlayLayer } from "../utils/overlay-layers";
 import { computeMenuFlyoutPosition, MENU_FLYOUT_HOVER_MS } from "../utils/menuFlyout";
 import { getTaskMenuRegistry, TASK_MENU_GROUPS, type TaskMenuItem, type TaskMenuScope } from "../task-menu/registry";
 import type { SlotEntry } from "../plugins/slot-registry";
+import { SlotErrorBoundary } from "../plugins/SlotHost";
 import BottomSheet from "./BottomSheet";
 import TaskDetailModal from "./TaskDetailModal";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
@@ -261,7 +262,7 @@ export default function TaskContextMenu({
 							if (refocus) rowEl.querySelector<HTMLButtonElement>("[data-menu-row]")?.focus();
 						}}
 					>
-						{item.submenu?.flyout(scope, pick)}
+						{item.submenu && <GuardedSubmenu id={item.id} render={() => item.submenu!.flyout(scope, pick)} />}
 					</Flyout>
 				)}
 			</div>
@@ -301,7 +302,7 @@ export default function TaskContextMenu({
 					<div ref={setAnchorEl} className="fixed h-0 w-0" style={{ top: anchorPos.y, left: anchorPos.x }} />,
 					document.body,
 				)}
-			{sheetItem?.submenu?.sheet(scope, { ...pick, anchorEl, anchorPos })}
+			{sheetItem?.submenu && <GuardedSubmenu id={sheetItem.id} render={() => sheetItem.submenu!.sheet(scope, { ...pick, anchorEl, anchorPos })} />}
 			{/* Portalled: the sidebar column clips a modal rendered in place. */}
 			{detailOpen &&
 				createPortal(
@@ -404,6 +405,20 @@ function MenuPanel({
 			{children}
 		</div>,
 		document.body,
+	);
+}
+
+/** Calls a submenu's render function as a component, so its throw stays inside its own boundary. */
+function SubmenuContent({ render }: { render: () => ReactNode }) {
+	return <>{render()}</>;
+}
+
+/** One item's submenu; a crash leaves it empty (logged) instead of taking the menu and its host down. */
+function GuardedSubmenu({ id, render }: { id: string; render: () => ReactNode }) {
+	return (
+		<SlotErrorBoundary slot="taskMenu" resetKey={id} fallback={() => null}>
+			<SubmenuContent render={render} />
+		</SlotErrorBoundary>
 	);
 }
 
