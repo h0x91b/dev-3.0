@@ -5,9 +5,10 @@ import { applyBuiltinPlugins, resetPluginsForTests } from "../../plugins/runtime
 import { getAppRoot } from "../../plugins/root";
 import { syncHiddenControlsFromGlobalSettings } from "../../hidden-controls";
 import type { Project, Task } from "../../../shared/types";
+import { ACTIVE_STATUSES } from "../../../shared/types";
 import type { TaskBranchStatusController } from "../../components/task-info-panel/useTaskBranchStatus";
 import { BUILTIN_TASK_HEADER_PLUGIN } from "../builtins";
-import type { TaskSessionController } from "../builtin-session";
+import type { TaskSessionController } from "../useTaskSession";
 import { TaskHeaderProvider, TaskHeaderRegionItems, type TaskHeaderLayout, type TaskHeaderSurface } from "../scope";
 
 vi.mock("../../rpc", () => ({ api: { request: {} } }));
@@ -38,11 +39,12 @@ function renderSession({ task = baseTask, layout = DESKTOP, surface = "bar" as T
 			<TaskHeaderProvider
 				value={{
 					scope: { task, project, dispatch: vi.fn(), navigate: vi.fn() },
-					legacy: { status: {} },
 					layout,
+					isTaskActive: ACTIVE_STATUSES.includes(task.status),
 					git: {} as TaskBranchStatusController,
 					session,
 					closeSheet,
+					variants: [],
 				}}
 			>
 				<div data-testid="bar">

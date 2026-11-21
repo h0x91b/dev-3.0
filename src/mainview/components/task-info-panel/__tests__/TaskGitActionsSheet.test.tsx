@@ -3,9 +3,10 @@ import TaskGitActionsSheet from "../TaskGitActionsSheet";
 import type { TaskBranchStatusController } from "../useTaskBranchStatus";
 import { I18nProvider } from "../../../i18n";
 import type { Project, Task } from "../../../../shared/types";
+import { ACTIVE_STATUSES } from "../../../../shared/types";
 import { applyBuiltinPlugins, resetPluginsForTests } from "../../../plugins/runtime";
 import { BUILTIN_TASK_HEADER_PLUGIN } from "../../../task-header/builtins";
-import type { TaskSessionController } from "../../../task-header/builtin-session";
+import type { TaskSessionController } from "../../../task-header/useTaskSession";
 import { TaskHeaderProvider } from "../../../task-header/scope";
 
 beforeEach(() => {
@@ -43,12 +44,13 @@ function renderSheet(task: Task, onAction = vi.fn(), sheetProject: Project = pro
 			<TaskHeaderProvider
 				value={{
 					scope: { task, project: sheetProject, dispatch: vi.fn(), navigate: vi.fn() },
-					legacy: { status: {} },
 					layout: { compact: false, tight: false, collapsed: true, narrow: true },
+					isTaskActive: ACTIVE_STATUSES.includes(task.status),
 					git,
 					session: {} as TaskSessionController,
 					onOpenInlineDiff,
 					closeSheet: vi.fn(),
+					variants: [],
 				}}
 			>
 				<TaskGitActionsSheet rowClassName="row" onAction={onAction} />

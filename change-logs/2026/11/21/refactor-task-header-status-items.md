@@ -1,0 +1,1 @@
+The task header's status bar (variant switcher, watch, priority, status with its quick-complete check, completion owner, diff badge and its include-tests segment) is now drawn as individual built-in items of the internal `taskHeader` slot, and the temporary legacy-cluster items are gone; the header looks and behaves the same.

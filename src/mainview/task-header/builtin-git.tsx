@@ -2,7 +2,7 @@ import { createPortal } from "react-dom";
 import { cloneElement, createContext, useContext, useEffect, useMemo, useRef, useState, type ComponentType, type ReactElement, type ReactNode } from "react";
 import type { Context } from "cordis";
 import type { Project, Task, TaskPRBadgeInfo } from "../../shared/types";
-import { ACTIVE_STATUSES, taskUsesWorktree } from "../../shared/types";
+import { taskUsesWorktree } from "../../shared/types";
 import { earlierPullRequests, trustedPrStatusCache } from "../../shared/task-pull-requests";
 import { useT } from "../i18n";
 import { useViewportClamp } from "../hooks/useViewportClamp";
@@ -43,8 +43,10 @@ function hasGitRead({ project, task }: TaskHeaderScope): boolean {
 }
 
 /** Every write action needs a live worktree to run in. */
-function canRunGitActions(task: Task): boolean {
-	return ACTIVE_STATUSES.includes(task.status) && !!task.worktreePath;
+function useCanRunGitActions(): boolean {
+	const { task } = useTaskHeaderScope();
+	const { isTaskActive } = useTaskHeaderInternals();
+	return isTaskActive && !!task.worktreePath;
 }
 
 // --- narrow actions sheet --------------------------------------------------------------
@@ -128,7 +130,8 @@ function useGitFacts() {
 		branchStatus && { number: branchStatus.prNumber, state: branchStatus.prState },
 		task.prStatusCache && { number: task.prStatusCache.number, state: task.prStatusCache.mergeState?.state },
 	]);
-	return { task, git, branchStatus, prInfo, hasUncommittedChanges, noRemote, noGitHubRemote, baseUnreachable, pushIsForced, ownBranch, hasPR };
+	const canRunActions = useCanRunGitActions();
+	return { task, git, branchStatus, prInfo, hasUncommittedChanges, noRemote, noGitHubRemote, baseUnreachable, pushIsForced, ownBranch, hasPR, canRunActions };
 }
 
 /** The sheet's PR rows judge "has a PR" from the stored status only, as they always did. */
@@ -262,8 +265,9 @@ function GitBarButton({ tooltip, detail, disabled, danger, ariaLabel, icon, labe
 /** An Operations task: attach a repo, or the attached repo's chip. */
 function OpsRepoItem() {
 	const { task } = useTaskHeaderScope();
+	const { isTaskActive } = useTaskHeaderInternals();
 	if (useTaskHeaderSurface() === "sheet") return null;
-	return <TaskOpsRepoBar task={task} isTaskActive={ACTIVE_STATUSES.includes(task.status)} />;
+	return <TaskOpsRepoBar task={task} isTaskActive={isTaskActive} />;
 }
 
 function WorkflowOffItem() {
@@ -646,8 +650,8 @@ function PrStatusItem() {
 function CommitItem() {
 	const t = useT();
 	const surface = useTaskHeaderSurface();
-	const { task, git, branchStatus, hasUncommittedChanges } = useGitFacts();
-	if (!canRunGitActions(task)) return null;
+	const { git, branchStatus, hasUncommittedChanges, canRunActions } = useGitFacts();
+	if (!canRunActions) return null;
 	if (surface === "sheet") {
 		return (
 			<GitSheetRow
@@ -677,8 +681,8 @@ function CommitItem() {
 function RebaseItem() {
 	const t = useT();
 	const surface = useTaskHeaderSurface();
-	const { task, git, branchStatus, baseUnreachable } = useGitFacts();
-	if (!canRunGitActions(task)) return null;
+	const { git, branchStatus, baseUnreachable, canRunActions } = useGitFacts();
+	if (!canRunActions) return null;
 	const behind = branchStatus?.behind ?? 0;
 	const needsAgent = !!branchStatus && behind > 0 && !branchStatus.canRebase;
 	if (surface === "sheet") {
@@ -718,8 +722,8 @@ function RebaseItem() {
 function PushItem() {
 	const t = useT();
 	const surface = useTaskHeaderSurface();
-	const { task, git, branchStatus, hasUncommittedChanges, noRemote, baseUnreachable, pushIsForced, ownBranch } = useGitFacts();
-	if (!canRunGitActions(task) || !ownBranch) return null;
+	const { task, git, branchStatus, hasUncommittedChanges, noRemote, baseUnreachable, pushIsForced, ownBranch, canRunActions } = useGitFacts();
+	if (!canRunActions || !ownBranch) return null;
 	const ahead = branchStatus?.ahead ?? 0;
 	if (surface === "sheet") {
 		const disabled = noRemote || !branchStatus || ahead === 0;
@@ -790,10 +794,10 @@ function useCreatePrBar(autoMerge: boolean) {
 function PrItem() {
 	const t = useT();
 	const surface = useTaskHeaderSurface();
-	const { task, git, ownBranch } = useGitFacts();
+	const { task, git, ownBranch, canRunActions } = useGitFacts();
 	const bar = useCreatePrBar(false);
 	const sheet = useSheetPrFacts();
-	if (!canRunGitActions(task)) return null;
+	if (!canRunActions) return null;
 	if (surface === "sheet") {
 		const { prNumber, branchStatus } = sheet;
 		const reviewedPr = reviewedPrLink(task, prNumber != null ? { number: prNumber, url: branchStatus?.prUrl ?? "" } : null);
@@ -849,10 +853,10 @@ function PrItem() {
 function AutoPrItem() {
 	const t = useT();
 	const surface = useTaskHeaderSurface();
-	const { task, git, ownBranch } = useGitFacts();
+	const { git, ownBranch, canRunActions } = useGitFacts();
 	const bar = useCreatePrBar(true);
 	const sheet = useSheetPrFacts();
-	if (!canRunGitActions(task)) return null;
+	if (!canRunActions) return null;
 	if (surface === "sheet") {
 		if (!sheet.canCreate) return null;
 		return (
@@ -887,8 +891,8 @@ function AutoPrItem() {
 function MergeItem() {
 	const t = useT();
 	const surface = useTaskHeaderSurface();
-	const { task, git, branchStatus, hasUncommittedChanges, baseUnreachable, ownBranch } = useGitFacts();
-	if (!canRunGitActions(task) || !ownBranch) return null;
+	const { git, branchStatus, hasUncommittedChanges, baseUnreachable, ownBranch, canRunActions } = useGitFacts();
+	if (!canRunActions || !ownBranch) return null;
 	const { baseBranch, localMergeBlocked } = git;
 	const mergeIsPr = git.mergeRoute === "pull-request";
 	const label = mergeIsPr ? t("infoPanel.mergePr") : t("infoPanel.merge");
@@ -948,9 +952,8 @@ function MergeItem() {
 function RefreshItem() {
 	const t = useT();
 	const surface = useTaskHeaderSurface();
-	const { task } = useTaskHeaderScope();
 	const { git } = useTaskHeaderInternals();
-	if (surface === "sheet" || !canRunGitActions(task)) return null;
+	if (surface === "sheet" || !useCanRunGitActions()) return null;
 	return (
 		<GitActionTooltip content={t("infoPanel.refreshStatus")} detail={t("ttip.git.refresh")} disabled={git.refreshingStatus}>
 			<button
@@ -972,8 +975,7 @@ function RefreshItem() {
  */
 function ActionsItem() {
 	const surface = useTaskHeaderSurface();
-	const { task } = useTaskHeaderScope();
-	if (!canRunGitActions(task)) return null;
+	if (!useCanRunGitActions()) return null;
 	if (surface === "sheet") return <TaskHeaderRegionItems region="git.actions" surface="sheet" />;
 	return (
 		<>

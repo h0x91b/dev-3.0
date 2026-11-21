@@ -60,12 +60,13 @@ type Entry<Scope> = SlotEntry<ContributionSlotItem<Scope>>;
  * extensions. Built-ins are never budgeted and never folded into More (a tight bar
  * folds their labels instead); only the user sends one there. Extension items start
  * in More until the user pins them, and pinned ones share whatever room the built-ins
- * leave under `budget`.
+ * leave under `budget`. A built-in in `budgetExempt` takes none of that room.
  */
 export function placeSlotItems<T extends { def: { id: string } }>(
 	entries: readonly T[],
 	layout: SlotUserLayout = {},
 	budget?: number,
+	budgetExempt: ReadonlySet<string> = new Set(),
 ): { inline: T[]; overflow: T[] } {
 	const rank = new Map((layout.order ?? []).map((id, index) => [id, index]));
 	const pinned = new Set(layout.pinned ?? []);
@@ -77,7 +78,7 @@ export function placeSlotItems<T extends { def: { id: string } }>(
 			|| Number(!isBuiltinItem(a.entry.def.id)) - Number(!isBuiltinItem(b.entry.def.id))
 			|| a.index - b.index)
 		.map(({ entry }) => entry);
-	const builtins = sorted.filter((entry) => isBuiltinItem(entry.def.id) && !userOverflow.has(entry.def.id));
+	const builtins = sorted.filter((entry) => isBuiltinItem(entry.def.id) && !userOverflow.has(entry.def.id) && !budgetExempt.has(entry.def.id));
 	let room = budget === undefined ? Infinity : Math.max(0, budget - builtins.length);
 	const inline: T[] = [];
 	const overflow: T[] = [];
@@ -115,7 +116,11 @@ export interface SlotItemsProps<Scope> {
 	layout?: SlotUserLayout;
 	/** The bar's visible budget. Built-ins always show; pinned extension items fill what is left. */
 	budget?: number;
+	/** The host's exceptions to `budget`: built-ins that show without using it up. */
+	budgetExempt?: ReadonlySet<string>;
 	className?: string;
+	/** `span` when the items sit inside phrasing content, e.g. a group drawn inside a button row. */
+	as?: "div" | "span";
 }
 
 /**
@@ -123,18 +128,18 @@ export interface SlotItemsProps<Scope> {
  * isolated in its own error boundary. The host owns the bar, the order and the budget.
  * An item moving between the bar and More remounts, so it keeps no local state across.
  */
-export function SlotItems<Scope>({ registry, region, scope, layout, budget, className }: SlotItemsProps<Scope>) {
+export function SlotItems<Scope>({ registry, region, scope, layout, budget, budgetExempt, className, as: Wrapper = "div" }: SlotItemsProps<Scope>) {
 	const getEntries = useCallback(
 		() => (region === undefined ? registry.list() : registry.listRegion(region)),
 		[registry, region],
 	);
 	const entries = useSyncExternalStore(registry.subscribe, getEntries);
-	const { inline, overflow } = placeSlotItems(entries.filter((entry) => isShown(entry, scope)), layout, budget);
+	const { inline, overflow } = placeSlotItems(entries.filter((entry) => isShown(entry, scope)), layout, budget, budgetExempt);
 	return (
-		<div className={className ?? "flex items-center gap-1.5"} data-slot={registry.name} data-region={region}>
+		<Wrapper className={className ?? "flex items-center gap-1.5"} data-slot={registry.name} data-region={region}>
 			{inline.map((entry) => <Item key={entry.def.id} slot={registry.name} entry={entry} placement="inline" />)}
 			{overflow.length > 0 && <OverflowMenu slot={registry.name} entries={overflow} />}
-		</div>
+		</Wrapper>
 	);
 }
 

@@ -17,11 +17,25 @@ declare module "cordis" {
 /** The four bars of the task header (bible §5.1): Context, Git, Session/Agent, Runtime & access. */
 export type TaskHeaderRegion = "status" | "git" | "session" | "runtime";
 
-/** A row of items drawn inside one item of a bar, e.g. the Git bar's action buttons. */
-export type TaskHeaderGroup = "git.actions";
+/** A row of items drawn inside one item of a bar: the Git bar's actions, the diff badge's segments. */
+export type TaskHeaderGroup = "git.actions" | "status.diff";
 
 /** In display order: row 1 left, row 1 right, row 2 left, row 2 right. */
 export const TASK_HEADER_REGIONS: readonly TaskHeaderRegion[] = ["status", "session", "git", "runtime"];
+
+/** Bible §5.1: visible controls per bar before overflow. Built-ins always show; extension items fill what is left. */
+export const TASK_HEADER_BAR_BUDGET = 4;
+
+/**
+ * The bible's composite exceptions, owned by the host so no contributor can claim one:
+ * the conditional variant switcher (one composite control) and the Runtime bar's
+ * conditional Images and Artifacts readouts. They never use up a bar's budget.
+ */
+export const TASK_HEADER_BUDGET_EXCEPTIONS: ReadonlySet<string> = new Set([
+	"builtin:status.variant-switcher",
+	"builtin:runtime.images",
+	"builtin:runtime.artifacts",
+]);
 
 /** What every header item sees: the task on screen and how to act on it. */
 export interface TaskHeaderScope {

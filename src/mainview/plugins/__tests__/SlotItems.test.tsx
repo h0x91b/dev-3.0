@@ -186,6 +186,15 @@ describe("SlotItems: placement by origin (bible §5.1, §5.12)", () => {
 		expect(inline.map((x) => x.def.id)).toEqual(["builtin:a"]);
 		expect(overflow.map((x) => x.def.id)).toEqual(["ext:1", "ext:2"]);
 	});
+
+	it("leaves the budget to pinned extensions when the host exempts a built-in from it", () => {
+		const e = (id: string) => ({ def: { id } });
+		const entries = [e("builtin:a"), e("builtin:composite"), e("ext:1")];
+		const layout = { pinned: ["ext:1"] };
+		expect(placeSlotItems(entries, layout, 2).inline.map((x) => x.def.id)).toEqual(["builtin:a", "builtin:composite"]);
+		expect(placeSlotItems(entries, layout, 2, new Set(["builtin:composite"])).inline.map((x) => x.def.id))
+			.toEqual(["builtin:a", "builtin:composite", "ext:1"]);
+	});
 });
 
 describe("SlotItems: the More menu", () => {

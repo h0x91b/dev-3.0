@@ -1,3 +1,4 @@
+> Partly superseded on 2026-11-21 by `decisions/2026/11/21/task-header-status-items.md`: the narrow-bar images/artifacts readout is now the status item `builtin:status.narrow-outputs`, not part of a cluster.
 > Partly superseded on 2026-11-21 by `decisions/2026/11/21/task-header-session-items.md`: the session rows (Find bugs, + Agent, Hibernate) are now one sheet section after the runtime rows, so the old row order is no longer kept.
 
 # Task header: the runtime bar as individual built-in items

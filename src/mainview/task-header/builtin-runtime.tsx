@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { ACTIVE_STATUSES, isSharedClip, taskSharedMedia } from "../../shared/types";
+import { isSharedClip, taskSharedMedia } from "../../shared/types";
 import { useIsControlHidden } from "../hooks/useIsControlHidden";
 import { useT } from "../i18n";
 import HideableControl from "../components/HideableControl";
@@ -18,14 +18,15 @@ import { SHEET_ROW_CLASS } from "./sheet-row";
 
 interface RuntimeView extends TaskHeaderScope {
 	layout: TaskHeaderLayout;
+	isTaskActive: boolean;
 	surface: TaskHeaderSurface;
 	closeSheet: () => void;
 }
 
 function useRuntimeView(): RuntimeView {
 	const scope = useTaskHeaderScope();
-	const { layout, closeSheet } = useTaskHeaderInternals();
-	return { ...scope, layout, closeSheet, surface: useTaskHeaderSurface() };
+	const { layout, isTaskActive, closeSheet } = useTaskHeaderInternals();
+	return { ...scope, layout, isTaskActive, closeSheet, surface: useTaskHeaderSurface() };
 }
 
 /** The desktop runtime bar; the narrow summary bar carries no runtime controls. */
@@ -34,21 +35,17 @@ function useOnDesktopBar(): RuntimeView | null {
 	return view.surface === "bar" && !view.layout.narrow ? view : null;
 }
 
-function isActive(scope: TaskHeaderScope): boolean {
-	return ACTIVE_STATUSES.includes(scope.task.status);
-}
-
 function OpenInItem() {
 	const scope = useOnDesktopBar();
 	if (!scope) return null;
-	return <TaskOpenIn task={scope.task} isTaskActive={isActive(scope)} compact={scope.layout.tight} />;
+	return <TaskOpenIn task={scope.task} isTaskActive={scope.isTaskActive} compact={scope.layout.tight} />;
 }
 
 /** Only while collapsed, as the bar has always done. */
 function FileExplorerItem() {
 	const scope = useOnDesktopBar();
 	if (!scope?.layout.collapsed) return null;
-	return <TaskFileExplorerToggle task={scope.task} isTaskActive={isActive(scope)} />;
+	return <TaskFileExplorerToggle task={scope.task} isTaskActive={scope.isTaskActive} />;
 }
 
 function ScriptsItem() {
@@ -57,7 +54,7 @@ function ScriptsItem() {
 	if (!scope || hidden) return null;
 	return (
 		<HideableControl id="scripts-runner">
-			<TaskScripts task={scope.task} project={scope.project} isTaskActive={isActive(scope)} />
+			<TaskScripts task={scope.task} project={scope.project} isTaskActive={scope.isTaskActive} />
 		</HideableControl>
 	);
 }
@@ -65,7 +62,7 @@ function ScriptsItem() {
 function DevServerItem() {
 	const scope = useOnDesktopBar();
 	if (!scope) return null;
-	return <TaskDevServer task={scope.task} project={scope.project} isTaskActive={isActive(scope)} compact={scope.layout.tight} />;
+	return <TaskDevServer task={scope.task} project={scope.project} isTaskActive={scope.isTaskActive} compact={scope.layout.tight} />;
 }
 
 function PortsItem() {

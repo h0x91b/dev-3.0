@@ -4698,7 +4698,7 @@ describe("TaskHeader — virtual (Operations) tasks", () => {
 			window.removeEventListener("dev3:openArtifactViewer", openArtifact);
 		});
 
-		it("orders the actions group: Full screen, status rows, runtime rows, Hibernate last", async () => {
+		it("orders the whole actions group: Full screen, status rows, runtime rows, session rows with Hibernate last", async () => {
 			const sheet = await openSheet(makeTask({
 				sharedArtifacts: [{
 					id: "artifact-1",
@@ -4713,12 +4713,16 @@ describe("TaskHeader — virtual (Operations) tasks", () => {
 				}],
 			}));
 			const group = within(sheet).getByTestId("task-actions-fullscreen").closest(".touch-actions") as HTMLElement;
-			const rows = within(group).getAllByRole("button").map((button) => button.textContent ?? "");
-			const at = (label: string) => rows.findIndex((text) => text.includes(label));
-			expect(at("Full screen")).toBe(0);
-			expect(at("Watch")).toBeGreaterThan(at("Full screen"));
-			expect(at("Artifacts")).toBeGreaterThan(at("Watch"));
-			expect(at("Hibernate")).toBe(rows.length - 1);
+			const rows = Array.from(group.querySelectorAll("button")).map((button) => button.dataset.testid ?? button.textContent ?? "");
+			expect(rows).toEqual([
+				"task-actions-fullscreen",
+				"Watch",
+				"I’ll complete it myself",
+				"Artifacts1",
+				"task-actions-bug-hunters",
+				"task-actions-spawn-agent",
+				"task-actions-hibernate",
+			]);
 		});
 
 		it("draws the session rows as one section after the runtime rows, in the session bar's order", async () => {
