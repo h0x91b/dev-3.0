@@ -1554,7 +1554,7 @@ describe("project storage section", () => {
 });
 
 describe("unsaved-changes guard over the settings-sections slot", () => {
-	async function renderWithGuard() {
+	async function renderWithGuard(tasks: Task[] = mockTasks) {
 		const guardRef: { current: NavigationGuard | null } = { current: null };
 		const view = await act(async () =>
 			render(
@@ -1562,7 +1562,7 @@ describe("unsaved-changes guard over the settings-sections slot", () => {
 					<ProjectSettings
 						projectId={mockProject.id}
 						projects={[{ ...mockProject, setupScript: "original" }]}
-						tasks={mockTasks}
+						tasks={tasks}
 						dispatch={vi.fn() as unknown as React.Dispatch<AppAction>}
 						navigate={vi.fn() as (route: Route) => void}
 						navigationGuardRef={guardRef}
@@ -1611,6 +1611,39 @@ describe("unsaved-changes guard over the settings-sections slot", () => {
 		expect(screen.getByDisplayValue("changed")).toBeInTheDocument();
 		expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
 		expect(guardRef.current?.isDirty()).toBe(true);
+	});
+
+	it("refuses to save the Project tab through the guard while env lines are invalid", async () => {
+		const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+		mockSave.mockClear();
+		const user = userEvent.setup();
+		const { guardRef } = await renderWithGuard();
+		await goToProjectTab();
+		await user.type(screen.getByLabelText("Environment Variables"), "FOO=bar{Enter}not a var");
+		expect(screen.getByText(/Invalid lines: 2/)).toBeInTheDocument();
+		expect(guardRef.current?.isDirty()).toBe(true);
+
+		await act(async () => {
+			await guardRef.current?.onSave();
+		});
+		expect(mockSave).not.toHaveBeenCalled();
+	});
+
+	it("refuses to save the Worktree tab through the guard while env lines are invalid", async () => {
+		(api.request.getProjectConfigs as ReturnType<typeof vi.fn>).mockResolvedValue({ repo: {}, local: {} });
+		const mockSaveRepo = api.request.saveRepoConfig as ReturnType<typeof vi.fn>;
+		mockSaveRepo.mockClear();
+		const user = userEvent.setup();
+		const { guardRef } = await renderWithGuard([mockTaskWithWorktree]);
+		await user.click(screen.getByText("Worktree Config"));
+		await user.type(await screen.findByLabelText("Environment Variables"), "FOO=bar{Enter}not a var");
+		expect(screen.getByText(/Invalid lines: 2/)).toBeInTheDocument();
+		expect(guardRef.current?.isDirty()).toBe(true);
+
+		await act(async () => {
+			await guardRef.current?.onSave();
+		});
+		expect(mockSaveRepo).not.toHaveBeenCalled();
 	});
 
 	it("drops the guard when the page goes away", async () => {
