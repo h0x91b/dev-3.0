@@ -20,6 +20,10 @@ and the app header stay host-owned; only what renders under the header is the sl
   `BUILTIN_DESTINATION_BODIES`.
 
 ## Risks
+- The contract is the screens' own props, so `DashboardProps` puts the raw reducer `dispatch` in it. Fine while
+  internal; the opening track must narrow it (a third-party Home must not get reducer write access), not export it.
+- `registry.ts` imports the five screens' props types, type-only and on purpose: registry → screens, never the
+  reverse, and never a runtime import (that would cycle through `builtins.tsx`).
 - A throwing built-in is its own fallback: the boundary re-renders it under the "built-in one is shown" notice,
   it throws again and the error escapes to the parent boundary — the board-view precedent, no regression.
 - Built-in bodies read internals (hooks, `api`): the recorded tech debt shared with every slot.

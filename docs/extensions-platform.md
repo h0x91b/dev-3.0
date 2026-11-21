@@ -129,7 +129,9 @@ draws its four bars from the internal `taskHeader` slot (`src/mainview/task-head
 (`decisions/2026/11/21/task-header-status-items.md`). The ⇧⌘P palette lists the
 internal `commands` slot (`src/mainview/commands/`, `decisions/2026/11/21/commands-slot.md`); each command runs itself. Destination
 bodies (Sessions, Stats, Changelog, Agent traffic, Home) sit on the internal `destinationBodies` replace slot (`src/mainview/destination-bodies/`,
-`decisions/2026/11/21/destination-body-slots.md`), the built-in as the only option. The public
+`decisions/2026/11/21/destination-body-slots.md`), the built-in as the only option. The task view's Active Tasks
+sidebar sits on the internal `sidebar` replace slot (`src/mainview/sidebar/`, `decisions/2026/11/21/sidebar-slot.md`),
+wide-only as before. The public
 `contributes` generalisation (plan item 0.4) waits for the opening track.
 
 **Opening-track preconditions.** Before any contribution slot opens to extensions:

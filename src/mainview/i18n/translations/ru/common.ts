@@ -439,6 +439,8 @@ const common = {
 
 	// ActiveTasksSidebar
 	"sidebar.activeTasks": "Активные задачи",
+	"sidebar.crashed": "Эта боковая панель не загрузилась, поэтому показан встроенный список активных задач.",
+	"sidebar.extensionFailed": "Расширение {name} не загрузилось, поэтому показан встроенный список активных задач.",
 	"sidebar.noActiveTasks": "Нет активных задач",
 	"sidebar.noActiveTasksHint": "Запустите задачу с доски, чтобы она появилась здесь.",
 	"sidebar.allTasksHidden": "Все активные задачи скрыты",

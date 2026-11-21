@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { Context } from "cordis";
+import type { Project } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
 import { getAppRoot } from "../../plugins/root";
 import { applyBuiltinPlugins, resetPluginsForTests } from "../../plugins/runtime";
@@ -19,7 +20,10 @@ function standIn(testId: string) {
 		default: (props: Record<string, unknown>) => (
 			<div data-testid={testId}>
 				<span data-testid={`${testId}-data`}>
-					{JSON.stringify(Object.fromEntries(Object.entries(props).filter(([, value]) => typeof value !== "function")))}
+					{JSON.stringify(
+						Object.fromEntries(Object.entries(props).filter(([, value]) => typeof value !== "function")),
+						(_key, value: unknown) => (value instanceof Map ? [...value] : value),
+					)}
 				</span>
 				{Object.entries(props)
 					.filter(([, value]) => typeof value === "function")
@@ -54,12 +58,12 @@ const CASES: { [D in DestinationId]: Case<D> } = {
 		props: (spy) => ({ projectId: null, focus: { taskId: "t1", projectId: "p1" }, onOpenTask: spy("onOpenTask") }),
 	},
 	dashboard: {
-		data: { projects: [], bellCounts: {}, digitsFollowSpaces: true },
+		data: { projects: [{ id: "p1", name: "dev-3.0" }], bellCounts: [["t1", 2]], digitsFollowSpaces: true },
 		props: (spy) => ({
-			projects: [],
+			projects: [{ id: "p1", name: "dev-3.0" } as Project],
 			dispatch: spy("dispatch"),
 			navigate: spy("navigate"),
-			bellCounts: new Map(),
+			bellCounts: new Map([["t1", 2]]),
 			onOpenAddProject: spy("onOpenAddProject"),
 			digitsFollowSpaces: true,
 		}),
