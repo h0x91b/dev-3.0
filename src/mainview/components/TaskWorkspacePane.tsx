@@ -10,7 +10,7 @@ import type { TaskInlineDiffRequest } from "./task-inline-diff";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import TaskDock from "../task-panels/TaskDock";
-import FileExplorerFrame from "./FileExplorerFrame";
+import { TerminalCompanion } from "../terminal-companion/TerminalCompanion";
 import { useYaziLauncher } from "./task-info-panel/useYaziLauncher";
 
 interface TaskWorkspacePaneProps {
@@ -113,7 +113,7 @@ function TaskWorkspacePane({
 				   then remounts again once the new url arrives — producing
 				   the "clean of screen of the task we leave" flicker. */}
 				<div className="flex min-w-0 min-h-0 flex-1 flex-col">
-					<FileExplorerFrame
+					<TerminalCompanion
 						projectId={projectId}
 						taskId={taskId}
 						rootLabel={task?.branchName ?? task?.title ?? ""}
@@ -132,7 +132,7 @@ function TaskWorkspacePane({
 							dispatch={dispatch}
 							hideInfoPanel
 						/>
-					</FileExplorerFrame>
+					</TerminalCompanion>
 					{yazi.dialog}
 				</div>
 				<TaskDock taskId={taskId} covered={!!inlineDiffRequest || immersive} canDock={!isNarrow} />

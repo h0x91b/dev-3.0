@@ -434,7 +434,7 @@ Evidence: `board-views/`, `keymap.ts` `board-view`, `application-menu.ts`.
 
 Surfaces become Cordis slots. **Internal first:** every surface moves with built-ins; then extensions get slots, kind by kind. Record: `decisions/2026/11/21/gui-plugin-slots-and-api-versioning.md`.
 
-- **Replace slot:** one body at a time behind a chooser shaped like §5.11's (per-slot "Manage…" label). The built-in is the undisableable fallback; a crash renders it under an inline danger notice, keeping the choice. Board view now; sidebar, home and destination bodies later; the destination stays.
+- **Replace slot:** one body at a time behind a chooser shaped like §5.11's (per-slot "Manage…" label). The built-in is the undisableable fallback; a crash renders it under an inline danger notice, keeping the choice. Board view, sidebar, destination bodies (route stays), terminal's left companion.
 - **Contribution slot:** host-owned items: task header (§5.1), settings sections, ⇧⌘P commands, task menu, dock panels, card/sidebar marker. The host owns chrome, order (user layout → built-ins → extensions) and budget; a failed contributor's items vanish (reason on its Extensions row, never inline); only a crashed built-in settings section shows an inline notice.
 - **Extensions are add-only:** never replace, hide or displace a built-in item, region or section; no new settings category. Header items start in overflow; settings sections sit under a "From <name>" label; task-menu items in one trailing "Extensions" group. Every action header item is also a palette command (extensions' unbound).
 - **Not slots:** app shell (header, breadcrumbs, layout), terminal renderer, native menu, `Route` destinations, the card inline strip. Dialogs only via `ctx.ui`.
