@@ -63,7 +63,7 @@ Labels, same session-start pass: \`dev3 label list\` first and reuse existing on
 ## Task status management
 
 Hooks automatically manage task status transitions (\`in-progress\`, \`user-questions\`, \`review-by-ai\`, \`review-by-user\`).
-Do NOT call \`dev3 task move\` for status changes — hooks handle it. On projects with Automatic AI Review enabled, completed work passes through \`review-by-ai\` before \`review-by-user\`. You can still use \`dev3 task move\` for custom columns.
+Do NOT call \`dev3 task move\` for status changes — hooks handle it. On projects with Automatic AI Review enabled, completed work passes through \`review-by-ai\` before \`review-by-user\`. Custom-column moves and the completion request below stay yours.
 
 ### Custom columns
 
@@ -75,11 +75,11 @@ Do NOT call \`dev3 task move\` for status changes — hooks handle it. On projec
 
 \`dev3 task move --status completed\` does NOT complete anything directly — it asks the user to approve and **blocks for up to 10 minutes**:
 
-- **Approved** → your CLI is asked to quit first, so its exit hooks run (30 s bound), then the terminal session closes. The folder keeps every file.
+- **Approved** → your CLI quits first (exit hooks run, 30 s bound), then the terminal session closes. The folder keeps every file.
 - **Declined** → exit code 6, session alive: keep working or ask what to change.
-- **Timeout** → the dialog may still be open; a later approval completes it.
+- **Timeout** → a later approval still completes it.
 
-**Preservation gate (mandatory):** request approval only when the result is where the task requires it (a commit, a file, a task note, a shared artifact, a PR in whichever repository the work belongs to) or when the user explicitly asks to complete it. The project's own closeout steps come first. Unclear destination → keep the task open and ask. \`cancelled\` asks the same way.
+**Preservation gate (mandatory):** request approval only when the result is where the task requires it (a commit, a file, a task note, a shared artifact, a PR in whichever repository the work belongs to) or when the user explicitly asks to complete it. The project's own closeout steps come first. Unclear destination → keep the task open and ask. Gate met → run it yourself (\`cancelled\` too); the dialog is their approval — never tell the user to close it by hand.
 
 **PRs are optional here.** This task has none of its own unless the user or the project's rules ask for one, and its PRs may live in other repositories. \`dev3 pr create\` (opens one from this folder's current branch, never a branch you create or switch to here) and \`dev3 pr watch --pr <N>\` are helpers, not requirements. A PR that needs a new branch needs its own worktree, or ask the user.
 
@@ -327,7 +327,7 @@ Labels, same session-start pass: \`dev3 label list\` first and reuse existing on
 ## Task status management
 
 Hooks automatically manage task status transitions (\`in-progress\`, \`user-questions\`, \`review-by-ai\`, \`review-by-user\`).
-Do NOT call \`dev3 task move\` for status changes — hooks handle it. On projects with Automatic AI Review enabled, completed work passes through \`review-by-ai\` before \`review-by-user\`. You can still use \`dev3 task move\` for custom columns.
+Do NOT call \`dev3 task move\` for status changes — hooks handle it. On projects with Automatic AI Review enabled, completed work passes through \`review-by-ai\` before \`review-by-user\`. Custom-column moves and the completion request below stay yours.
 
 ### Custom columns
 
@@ -339,11 +339,11 @@ Do NOT call \`dev3 task move\` for status changes — hooks handle it. On projec
 
 \`dev3 task move --status completed\` does NOT complete anything directly — it asks the user to approve and **blocks for up to 10 minutes**:
 
-- **Approved** → your CLI is asked to quit first, so its exit hooks run (30 s bound), then this worktree and terminal session are destroyed.
+- **Approved** → your CLI quits first (exit hooks run, 30 s bound), then this worktree and terminal session are destroyed.
 - **Declined** → exit code 6, session alive: keep working or ask what to change.
-- **Timeout** → the dialog may still be open; a later approval completes it.
+- **Timeout** → a later approval still completes it.
 
-**Preservation gate (mandatory):** never move a task to \`completed\` or request approval while its work exists only in a disposable worktree. Allowed only when the result is preserved in the destination the task requires — usually a PR merged into \`main\`, possibly an external file, a task note, a shared artifact — or when the user explicitly asks to complete it. A local commit, passing tests, or an open unmerged PR is not enough. Unclear destination or unpreserved work → keep the task open and ask. \`cancelled\` asks the same way.
+**Preservation gate (mandatory):** never move a task to \`completed\` or request approval while its work exists only in a disposable worktree. Allowed only when the result is preserved in the destination the task requires — usually a PR merged into \`main\`, possibly an external file, a task note, a shared artifact — or when the user explicitly asks to complete it. A local commit, passing tests, or an open unmerged PR is not enough. Unclear destination or unpreserved work → keep the task open and ask. Gate met → run it yourself (\`cancelled\` too); the dialog is their approval — never tell the user to close it by hand.
 
 **Open the PR with \`dev3 pr create --title "..." --description "..."\`, never \`gh\` by hand** — it pushes the branch, targets the task's own base branch, and a logged-out \`gh\` exits 23 before pushing. \`x509: OSStatus -26276\` from any \`gh\` (exit 28 here) is the agent sandbox blocking macOS TLS, not a logout: never advise \`gh auth login\`; ask the user to approve one unsandboxed run. Auto-merge needs the user's own word: \`--auto-merge\`, or \`dev3 pr auto-merge\` later. Waiting on a PR's CI or merge? \`dev3 pr watch [--until merged] [--pr <N>]\` (\`--pr\`: any open PR, e.g. one you handed off): dev3 messages you; never poll gh or set timers. **It links the PR back to this task itself**, with the right id and the user's opt-out honoured — never hand-write that footer.
 

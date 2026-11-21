@@ -188,6 +188,9 @@ describe("dev3 skill content", () => {
 			expect(skill).toContain("the user explicitly asks to complete it");
 			expect(skill).toContain("A local commit, passing tests, or an open unmerged PR is not enough");
 			expect(skill).toContain("Unclear destination or unpreserved work → keep the task open and ask");
+			// Codex read "allowed" as "wait for the user" and told them to close the task by hand.
+			expect(skill).toContain("Gate met → run it yourself");
+			expect(skill).toContain("never tell the user to close it by hand");
 		}
 	});
 
@@ -195,7 +198,7 @@ describe("dev3 skill content", () => {
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			// Harness-neutral on purpose: the quit command differs per CLI (`/exit` vs
 			// `/quit`) and only Claude Code calls its exit hooks "SessionEnd".
-			expect(skill).toContain("your CLI is asked to quit first, so its exit hooks run (30 s bound)");
+			expect(skill).toContain("your CLI quits first (exit hooks run, 30 s bound)");
 			expect(skill).not.toContain("SessionEnd");
 		}
 	});
