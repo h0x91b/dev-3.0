@@ -596,9 +596,9 @@ Folded into bible §12 (terminal windows row).
 
 ## 2026-06-18 — Action palette (⇧⌘P): two-surfaces-one-shell; DOM mirror of the native menu
 
-- **Rule:** Navigation (⇧⌘K) and actions (⇧⌘P) are two surfaces on one extracted `PaletteShell`; the action palette runs commands via the existing `handleMenuAction` router (a mirror, not a second command runner); destructive lifecycle + modal flows are excluded by policy (destructive needs friction, not fuzzy-Enter); language-switch labels stay identical across locales so English is always findable.
-- **Why:** VSCode's chord convention; routing through `handleMenuAction` also fixed several previously-inert native menu items. Decision 072.
-- **Status:** Observed. Evidence: `CommandPaletteModal.tsx`, `commands.ts`, `PaletteShell.tsx`.
+- **Rule:** Navigation (⇧⌘K) and actions (⇧⌘P) are two surfaces on one extracted `PaletteShell`; the action palette runs commands from the internal `commands` slot (each runs itself); destructive lifecycle + modal flows are excluded by policy (destructive needs friction, not fuzzy-Enter); language-switch labels stay identical across locales so English is always findable.
+- **Why:** VSCode's chord convention; commands left `handleMenuAction` for the `commands` slot (2026-11). Decision 072.
+- **Status:** Observed. Evidence: `CommandPaletteModal.tsx`, `commands/`, `PaletteShell.tsx`.
 
 ## 2026-06-18 — Navigation palette introduced (key moved to ⇧⌘K on 2026-10-01)
 
