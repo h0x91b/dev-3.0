@@ -206,7 +206,7 @@ describe("task dock", () => {
 		spy.mockRestore();
 	});
 
-	it("re-picks the front tab when the active panel's plugin goes away", async () => {
+	it("[dispose] re-picks the front tab when the active panel's plugin goes away", async () => {
 		await registerPanels(["ext:stay"]);
 		const fiber = getAppRoot().plugin({
 			name: "leaving",

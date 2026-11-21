@@ -56,6 +56,25 @@ describe("Sidebar slot", () => {
 		expect(screen.queryByRole("alert")).toBeNull();
 	});
 
+	it("[dispose] goes back to the built-in list, with no notice, when the plugin holding the sidebar unloads", async () => {
+		const fiber = getAppRoot().plugin({
+			name: "leaving-sidebar",
+			inject: ["sidebar"],
+			apply(ctx: Context) {
+				ctx.sidebar.register({ id: ACTIVE_TASKS_SIDEBAR_ID, component: () => <div data-testid="leaving-sidebar" /> });
+			},
+		});
+		await settle();
+		renderSidebar();
+		expect(screen.getByTestId("leaving-sidebar")).toBeTruthy();
+		await act(async () => {
+			await fiber.dispose();
+		});
+		expect(screen.queryByTestId("leaving-sidebar")).toBeNull();
+		expect(screen.getByTestId("active-tasks").textContent).toContain("t1/s1");
+		expect(screen.queryByRole("alert")).toBeNull();
+	});
+
 	it("draws the built-in before anything has registered", () => {
 		renderSidebar();
 		expect(screen.getByTestId("active-tasks")).toBeTruthy();

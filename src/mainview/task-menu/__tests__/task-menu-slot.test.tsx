@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TaskContextMenu from "../../components/TaskContextMenu";
 import { I18nProvider } from "../../i18n";
@@ -95,11 +95,18 @@ describe("taskMenu slot", () => {
 		spy.mockRestore();
 	});
 
-	it("leaves no rows once its plugin is disposed", async () => {
+	it("[dispose] drops a plugin's rows from the open menu when the plugin unloads, keeping dev3's", async () => {
 		const fiber = getAppRoot().plugin({ name: "acme", inject: ["taskMenu"], apply(ctx) { ctx.taskMenu.register({ id: "acme:x", region: "open", label: () => "x", run: () => {} }); } });
 		await settle();
-		expect(getTaskMenuRegistry().get("acme:x")).toBeDefined();
-		await fiber.dispose();
+		renderMenu();
+		expect(layout().slice(-1)).toEqual(["task-menu-acme:x"]);
+		await act(async () => {
+			await fiber.dispose();
+		});
 		expect(getTaskMenuRegistry().get("acme:x")).toBeUndefined();
+		expect(screen.queryByTestId("task-menu-acme:x")).toBeNull();
+		// The trailing extensions group goes with its last row: no dangling separator.
+		expect(layout().slice(-1)).toEqual(["task-menu-delete"]);
+		expect(layout()[0]).toBe("task-menu-open");
 	});
 });

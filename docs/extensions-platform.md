@@ -97,7 +97,8 @@ line limit.
 
 Already covered: StrictMode and plugin-dispose tests, an error boundary that falls back to Kanban, the kill switch
 and `DEV3_EXTENSIONS=off`, "Restart with extensions off" on crash screens, desktop-only install and trust,
-anonymous telemetry (`builtin:<id>` or `third_party`).
+anonymous telemetry (`builtin:<id>` or `third_party`). Every slot has a dispose test: `plugins/__tests__/slot-dispose.test.ts`
+checks the registry side for all of them, fails on a slot it does not know, and points to each surface's `[dispose]` test.
 
 Open:
 

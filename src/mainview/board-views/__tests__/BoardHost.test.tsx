@@ -108,7 +108,7 @@ function renderHost(props: { tasks?: Task[]; strict?: boolean; dispatch?: Dispat
 }
 
 function registerView(id: string, opts: { supportsNarrow?: boolean; component?: React.ComponentType<{ ctx: Context }> } = {}) {
-	getAppRoot().plugin({
+	return getAppRoot().plugin({
 		name: id,
 		inject: ["board", "boardViews"],
 		apply(ctx: Context) {
@@ -387,6 +387,20 @@ describe("BoardHost", () => {
 		vi.mocked(api.request.getBoardViewState).mockResolvedValue(withViewType(defaultBoardViewState(), "wide", "ext:boom"));
 		renderHost();
 		expect(await screen.findByRole("alert")).toBeInTheDocument();
+		expect(screen.getByTestId("kanban")).toBeInTheDocument();
+		expect(api.request.setBoardViewState).not.toHaveBeenCalled();
+	});
+
+	it("[dispose] falls back to Kanban when the plugin behind the shown view unloads, keeping the saved choice", async () => {
+		installIntoAppRoot([installKanbanView]);
+		const fiber = registerView("ext:leaving");
+		vi.mocked(api.request.getBoardViewState).mockResolvedValue(withViewType(defaultBoardViewState(), "wide", "ext:leaving"));
+		renderHost();
+		expect(await screen.findByTestId("view-ext:leaving")).toBeInTheDocument();
+		await act(async () => {
+			await fiber.dispose();
+		});
+		expect(screen.queryByTestId("view-ext:leaving")).toBeNull();
 		expect(screen.getByTestId("kanban")).toBeInTheDocument();
 		expect(api.request.setBoardViewState).not.toHaveBeenCalled();
 	});
