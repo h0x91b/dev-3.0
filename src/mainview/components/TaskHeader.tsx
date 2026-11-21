@@ -1018,7 +1018,7 @@ function TaskHeaderFrame({
 
 	// Narrow form of the same menu: an anchored popover is a desktop idiom (small
 	// rows, edge clipping) — the manifest mandates a BottomSheet for "Move to".
-	const statusSheet = (
+	const statusSheet = () => (
 		<BottomSheet
 			open={statusMenuOpen}
 			onClose={() => setStatusMenuOpen(false)}
@@ -1203,7 +1203,8 @@ function TaskHeaderFrame({
 	</Tooltip>
 	) : null;
 
-	const taskDetailsBody = (
+	// A function, not an element: collapsed (the default) never shows it, so it is built only when drawn.
+	const taskDetailsBody = () => (
 		<>
 						<div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs" data-help-id="inspector.metadata">
 							<span className="text-fg-3">{t("infoPanel.title")}</span>
@@ -1473,7 +1474,7 @@ function TaskHeaderFrame({
 			onOpenInlineDiff={onOpenInlineDiff}
 		/>
 	);
-	const narrowBarStatusCluster = (
+	const narrowBarStatusCluster = () => (
 		<>
 			{variantSwitcher}
 			{statusDropdownButton}
@@ -1509,7 +1510,7 @@ function TaskHeaderFrame({
 	// terminal. The diff stays one tap away via the summary-bar badge
 	// above. Kept: watch, agent triggers, tunnels (open the app on this
 	// phone), shared images, and the read-only details.
-	const narrowSheetStatusCluster = (
+	const narrowSheetStatusCluster = () => (
 		<div className="touch-actions flex flex-col gap-2">
 			<button
 				type="button"
@@ -1655,7 +1656,7 @@ function TaskHeaderFrame({
 			)}
 		</div>
 	);
-	const narrowSheetGitCluster = hasGit && isTaskActive && task.worktreePath ? (
+	const narrowSheetGitCluster = () => hasGit && isTaskActive && task.worktreePath ? (
 		<TaskGitActionsSheet
 			task={task}
 			project={project}
@@ -1668,9 +1669,9 @@ function TaskHeaderFrame({
 	) : null;
 	const legacyClusters: LegacyClusters = narrow
 		? {
-			status: { bar: narrowBarStatusCluster, sheet: narrowSheetStatusCluster },
+			status: { bar: narrowBarStatusCluster(), sheet: narrowSheetStatusCluster() },
 			session: {},
-			git: { sheet: narrowSheetGitCluster },
+			git: { sheet: narrowSheetGitCluster() },
 			runtime: {},
 		}
 		: {
@@ -1739,7 +1740,7 @@ function TaskHeaderFrame({
 					{diffFilesPopover}
 					{completionOwnerMenu}
 					{fileOpenInMenuPortal}
-					{statusSheet}
+					{statusSheet()}
 					{/* The bar sheds, it never stacks (bible §12.6). A second row costs a
 					    phone a whole band of screen and moves every control the user was
 					    aiming at — worse than losing the least important one. Priority,
@@ -1772,7 +1773,7 @@ function TaskHeaderFrame({
 						{TASK_HEADER_REGIONS.map((region) => <TaskHeaderRegionItems key={region} region={region} surface="sheet" />)}
 							<section className="border-t border-edge pt-4">
 								<h3 className="mb-2 text-dense font-semibold uppercase tracking-wider text-fg-muted">{t("infoPanel.sheetDetails")}</h3>
-								{taskDetailsBody}
+								{taskDetailsBody()}
 							</section>
 						</div>
 					</BottomSheet>
@@ -1807,16 +1808,16 @@ function TaskHeaderFrame({
 				{diffFilesPopover}
 				{completionOwnerMenu}
 				{fileOpenInMenuPortal}
-				{collapsed ? (
-					<div className="flex flex-col h-full px-2 gap-1 justify-center">
-						<div className="flex items-center gap-1.5 min-w-0">
-							{/* Same bar boxing as the expanded rows: the Context bar is the only
-							    shrinkable region, so the Session bar and the pinned chrome to
-							    its right can never be pushed out of the panel. */}
-							{/* The four help ids and the HelpSpot mirror the expanded rows below.
-							    They were missing here for as long as this branch existed, and this
-							    is the branch a task screen opens in — so help mode explained the
-							    header and the sidebar and nothing else on it. */}
+				{/* One tree for both states: a toggle changes classes, never element positions,
+				    so the bars and their controls stay mounted (decisions/2026/11/21/task-header-single-tree.md). */}
+				<div className={collapsed ? "flex flex-col h-full px-2 gap-1 justify-center" : "flex flex-col h-full"}>
+					<div className={collapsed ? "contents" : "flex flex-col px-2"}>
+						<div className={`flex items-center gap-1.5 min-w-0${collapsed ? "" : " pt-1"}`}>
+							{/* `overflow-hidden` is the backstop that keeps a bar's contents
+							    inside its own box: without it the shrink-0 children spill
+							    over the neighbouring bar and over the pinned chrome (which
+							    then becomes unclickable). `tight` folds content first, so
+							    clipping only happens at pathological widths. */}
 							<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.context-bar">
 								<TaskHeaderRegionItems region="status" />
 							</div>
@@ -1824,13 +1825,13 @@ function TaskHeaderFrame({
 							<div className="flex items-center gap-1.5 flex-shrink-0" data-help-id="inspector.session-bar">
 								<TaskHeaderRegionItems region="session" />
 							</div>
-							{worktreeSettingsButton}
+							{collapsed && worktreeSettingsButton}
 							<PanelRestoreControl entries={panelHideableEntries} />
 							<HelpSpot topicId="inspector.panel" className="ml-0.5" />
 							<TerminalShortcutsButton taskId={task.id} />
 						</div>
 
-						<div className="flex items-center gap-1.5 min-w-0">
+						<div className={`flex items-center gap-1.5 min-w-0${collapsed ? "" : " pb-1"}`}>
 							{showPanelButton}
 							<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.git-bar" data-tour-anchor="task.git-bar">
 								<TaskHeaderRegionItems region="git" />
@@ -1843,45 +1844,14 @@ function TaskHeaderFrame({
 							</div>
 						</div>
 					</div>
-				) : (
-					<div className="flex flex-col h-full">
-						<div className="flex flex-col px-2">
-							<div className="flex items-center gap-1.5 min-w-0 pt-1">
-								{/* `overflow-hidden` is the backstop that keeps a bar's contents
-								    inside its own box: without it the shrink-0 children spill
-								    over the neighbouring bar and over the pinned chrome (which
-								    then becomes unclickable). `tight` folds content first, so
-								    clipping only happens at pathological widths. */}
-								<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.context-bar">
-									<TaskHeaderRegionItems region="status" />
-								</div>
-								<div className="flex-1" />
-								<div className="flex items-center gap-1.5 flex-shrink-0" data-help-id="inspector.session-bar">
-									<TaskHeaderRegionItems region="session" />
-								</div>
-								<PanelRestoreControl entries={panelHideableEntries} />
-								<HelpSpot topicId="inspector.panel" className="ml-0.5" />
-								<TerminalShortcutsButton taskId={task.id} />
-							</div>
 
-							<div className="flex items-center gap-1.5 min-w-0 pb-1">
-								{showPanelButton}
-								<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.git-bar" data-tour-anchor="task.git-bar">
-									<TaskHeaderRegionItems region="git" />
-								</div>
-								<div className="flex-1" />
-								<div className="flex items-center gap-2 flex-shrink-0" data-help-id="inspector.runtime-bar">
-									<TaskHeaderRegionItems region="runtime" />
-									{terminalFullscreenButton}
-									{collapseToggleButton}
-								</div>
-							</div>
-						</div>
-
+					{!collapsed && (
 						<div className="flex-1 overflow-auto px-2 pb-2">
-							{taskDetailsBody}
+							{taskDetailsBody()}
 						</div>
+					)}
 
+					{!collapsed && (
 						<div
 							className="flex-shrink-0 flex items-center justify-center h-[6px] cursor-row-resize group"
 							onMouseDown={onDragStart}
@@ -1889,8 +1859,8 @@ function TaskHeaderFrame({
 						>
 							<div className="w-8 h-[3px] rounded-full bg-fg-muted/60 group-hover:bg-fg-muted/80 transition-colors" />
 						</div>
-					</div>
-				)}
+					)}
+				</div>
 
 				{spawnModalOpen && createPortal(
 					<SpawnAgentModal task={task} project={project} onClose={() => setSpawnModalOpen(false)} />,
