@@ -1,9 +1,10 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { join, relative } from "node:path";
 import type { Context, Fiber } from "cordis";
 import { getAppRoot, observeAppSlots } from "../root";
 import { resetPluginsForTests } from "../runtime";
 import type { SlotItem, SlotRegistry } from "../slot-registry";
+import { importAppSlots, MAINVIEW, sourceFiles } from "./app-slots";
 
 /**
  * Every slot on the app root, and the test that unloads a contributor on that slot's own surface.
@@ -23,28 +24,11 @@ const SURFACE_DISPOSE_TESTS: Record<string, string> = {
 	terminalLinks: "terminal-links/__tests__/terminal-links.test.ts",
 };
 
-const MAINVIEW = resolve(__dirname, "../..");
-
-function sourceFiles(dir: string): string[] {
-	return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-		const path = join(dir, entry.name);
-		if (entry.isDirectory()) return entry.name === "__tests__" || entry.name === "node_modules" ? [] : sourceFiles(path);
-		return /\.tsx?$/.test(entry.name) ? [path] : [];
-	});
-}
-
 type AnySlot = SlotRegistry<SlotItem>;
 
 let slots: Map<string, AnySlot>;
 
-/**
- * The slots are whatever the app itself reaches: importing the app and its built-in plugin
- * composition runs every `defineAppSlot` call, however a module spells or wraps it.
- */
-beforeAll(async () => {
-	await import("../../App");
-	await import("../../builtin-plugins");
-}, 30_000);
+beforeAll(importAppSlots, 30_000);
 
 beforeEach(() => {
 	resetPluginsForTests();
@@ -92,7 +76,7 @@ describe("slot dispose", () => {
 	});
 
 	it("sees defineAppSlot only imported by its own name and called, never renamed, re-exported or passed around", () => {
-		const offenders = sourceFiles(MAINVIEW)
+		const offenders = sourceFiles()
 			.filter((file) => !file.endsWith(join("plugins", "root.ts")))
 			.filter((file) => {
 				const text = readFileSync(file, "utf8");

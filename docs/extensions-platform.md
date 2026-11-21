@@ -100,6 +100,8 @@ and `DEV3_EXTENSIONS=off`, "Restart with extensions off" on crash screens, deskt
 anonymous telemetry (`builtin:<id>` or `third_party`). Every slot has a dispose test: `plugins/__tests__/slot-dispose.test.ts`
 finds the slots by importing the app, fails on one it does not know, points to each surface's `[dispose]` test, and
 runs one registry case per slot (all share `SlotRegistry.register` today, so the cases are a tripwire for an override).
+Every slot also has a crash-escape row: `plugins/__tests__/slot-crash-escape.test.tsx` throws from each callback a
+contribution hands the host and checks that the surface stays up and the guard logged it.
 
 Open:
 

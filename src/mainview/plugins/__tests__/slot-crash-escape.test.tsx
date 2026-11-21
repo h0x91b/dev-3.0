@@ -39,7 +39,7 @@ import { getTaskDock, openTaskPanel, resetTaskDocksForTests } from "../../task-p
 import { FILE_EXPLORER_COMPANION_ID } from "../../terminal-companion/builtins";
 import { TerminalCompanion } from "../../terminal-companion/TerminalCompanion";
 import { _resetFileExplorerPrefs, setFileExplorerMode } from "../../file-explorer-prefs";
-import { SLOT_MODULES } from "./app-slots";
+import { importAppSlots } from "./app-slots";
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -367,9 +367,7 @@ const CASES: CrashCase[] = [
 	},
 ];
 
-beforeAll(async () => {
-	await Promise.all(SLOT_MODULES.map((file) => import(file)));
-});
+beforeAll(importAppSlots, 30_000);
 
 const innerWidth = window.innerWidth;
 const matchMedia = window.matchMedia;
