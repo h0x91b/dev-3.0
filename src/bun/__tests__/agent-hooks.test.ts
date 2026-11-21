@@ -106,11 +106,11 @@ describe("buildClaudeHooks", () => {
 		expect(permGroup.hooks[0]).toHaveProperty("command");
 	});
 
-	it("PermissionRequest hook moves to user-questions", () => {
+	it("PermissionRequest hook reports the prompt, falling back to the plain user-questions move", () => {
 		const hooks = buildClaudeHooks();
 		const cmd = hooks.PermissionRequest[0].hooks[0].command;
 
-		expect(cmd).toContain(DEV3_CLI);
+		expect(cmd.startsWith(`${DEV3_CLI} hook claude-permission || `)).toBe(true);
 		expect(cmd).toContain("--status user-questions");
 	});
 
@@ -957,7 +957,7 @@ describe("POSIX hook output (byte-identical contract)", () => {
 		expect(hooks.PreToolUse[0].hooks[0].command).toBe(`${DEV3_CLI} hook claude-pre-tool`);
 		expect(hooks.PostToolUse[0].hooks[0].command).toBe(`${DEV3_CLI} hook claude-post-tool || ${working}`);
 		expect(hooks.PermissionRequest[0].hooks[0].command).toBe(
-			`${DEV3_CLI} task move --status user-questions || [ $? -eq 2 ]`,
+			`${DEV3_CLI} hook claude-permission || ${DEV3_CLI} task move --status user-questions || [ $? -eq 2 ]`,
 		);
 		expect(hooks.Stop[0].hooks[0].command).toBe(
 			`${DEV3_CLI} task move --status review-by-ai --if-status in-progress || [ $? -eq 2 ]`,
@@ -997,9 +997,7 @@ describe("Windows hook output", () => {
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).toBe(`${cli} hook claude-prompt`);
 		expect(hooks.PreToolUse[0].hooks[0].command).toBe(`${cli} hook claude-pre-tool`);
 		expect(hooks.PostToolUse[0].hooks[0].command).toBe(working);
-		expect(hooks.PermissionRequest[0].hooks[0].command).toBe(
-			`${cli} task move --status user-questions --tolerate-app-offline`,
-		);
+		expect(hooks.PermissionRequest[0].hooks[0].command).toBe(`${cli} hook claude-permission`);
 		expect(hooks.Stop[0].hooks[0].command).toBe(
 			`${cli} task move --status review-by-ai --if-status in-progress --tolerate-app-offline`,
 		);

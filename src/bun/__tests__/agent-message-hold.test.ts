@@ -9,6 +9,7 @@ import {
 	AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS,
 	AGENT_MESSAGE_HOLD_IDLE_MS,
 } from "../../shared/agent-message-hold-timing";
+import { agentPromptLedger } from "../agent-prompt-ledger";
 import {
 	AGENT_MESSAGE_BATCH_MAX_BYTES,
 	AGENT_MESSAGE_BATCH_MAX_MESSAGES,
@@ -23,6 +24,11 @@ import {
 	type HeldAgentMessageReport,
 	type HeldDeliveryResult,
 	type HeldMessageBatch,
+	agentMessageHeldBehindPrompt,
+	claimHeldAgentMessagesForHook,
+	onPromptHeldAgentMessageCount,
+	promptHeldAgentMessageCount,
+	sendHeldAgentMessagesNow,
 } from "../agent-message-hold";
 
 /** Most cases here are about timing, not matching, so their messages carry no text. */
@@ -42,6 +48,7 @@ beforeEach(() => vi.useFakeTimers());
 
 afterEach(() => {
 	resetAgentMessageHolds();
+	agentPromptLedger.reset();
 	vi.useRealTimers();
 });
 
@@ -897,5 +904,157 @@ describe("the user's typing is one clock per task, not a flag a hold carries", (
 
 		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
 		expect(stranger.submit).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("a pane showing a prompt gets nothing typed into it (#2342)", () => {
+	/** A Claude permission menu in `paneId` of task-1, raised the way the hooks report it. */
+	function openPrompt(paneId = "%1", toolUseId = "toolu_1") {
+		agentPromptLedger.claudePreToolUse({ taskId: "task-1", sessionId: "s1", paneId, toolName: "Bash", toolUseId });
+		agentPromptLedger.claudePermissionRequest({ taskId: "task-1", sessionId: "s1", paneId, toolName: "Bash" });
+	}
+	function answerPrompt(paneId = "%1", toolUseId = "toolu_1") {
+		agentPromptLedger.claudePostToolUse({ taskId: "task-1", sessionId: "s1", paneId, toolName: "Bash", toolUseId });
+	}
+
+	it("holds the message across quiet windows and the ceiling while the prompt is open", async () => {
+		openPrompt();
+		const one = message();
+		holdAgentMessage(KEY, one, {});
+		expect(agentMessageHeldBehindPrompt(KEY)).toBe(true);
+
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_CEILING_MS * 5);
+		expect(one.deliver).not.toHaveBeenCalled();
+		expect(one.submit).not.toHaveBeenCalled();
+		expect(pendingAgentMessageHoldCount()).toBe(1);
+	});
+
+	it("delivers everything in order one quiet window after the prompt is answered", async () => {
+		openPrompt();
+		const order: string[] = [];
+		for (const text of ["one", "two"]) {
+			holdAgentMessage(KEY, { deliver: () => (order.push(text), "landed"), bytes: 0, submit: () => (order.push("enter"), "landed") }, {});
+		}
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS * 3);
+		expect(order).toEqual([]);
+
+		answerPrompt();
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS - 1);
+		expect(order).toEqual([]);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(order).toEqual(["one", "two", "enter"]);
+		expect(pendingAgentMessageHoldCount()).toBe(0);
+	});
+
+	it("catches a prompt that opened after the message was held", async () => {
+		const one = message();
+		holdAgentMessage(KEY, one, {});
+		expect(agentMessageHeldBehindPrompt(KEY)).toBe(false);
+		openPrompt();
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS * 4);
+		expect(one.deliver).not.toHaveBeenCalled();
+		expect(promptHeldAgentMessageCount("task-1")).toBe(1);
+	});
+
+	it("does not let the user's own Enter push the messages into the prompt", async () => {
+		openPrompt();
+		const one = message();
+		holdAgentMessage(KEY, one, {});
+		flushHeldAgentMessagesForTask("task-1");
+		await vi.advanceTimersByTimeAsync(0);
+		expect(one.deliver).not.toHaveBeenCalled();
+		expect(pendingAgentMessageHoldCount()).toBe(1);
+	});
+
+	it("delivers at once on send-now, and forgets the prompt dev3 believed was open", async () => {
+		openPrompt();
+		const one = message();
+		holdAgentMessage(KEY, one, {});
+		expect(sendHeldAgentMessagesNow("task-1")).toBe(1);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(one.deliver).toHaveBeenCalledTimes(1);
+		expect(one.submit).toHaveBeenCalledTimes(1);
+		expect(agentPromptLedger.isPromptOpen("task-1", "%1")).toBe(false);
+	});
+
+	it("types nothing on send-now when the pane behind the prompt is already gone", async () => {
+		openPrompt();
+		const events: HeldAgentMessageReport[] = [];
+		const deliver = vi.fn(() => "landed" as const);
+		holdAgentMessage(KEY, { deliver, bytes: 0, submit: vi.fn(() => "landed" as const), alive: () => false, report: (e) => events.push(e) }, {});
+		sendHeldAgentMessagesNow("task-1");
+		await vi.advanceTimersByTimeAsync(0);
+		expect(deliver).not.toHaveBeenCalled();
+		expect(events).toEqual([expect.objectContaining({ kind: "dropped", messages: 1 })]);
+	});
+
+	it("holds only the pane showing the prompt", async () => {
+		openPrompt("%2");
+		const mine = message();
+		const theirs = message();
+		holdAgentMessage(KEY, mine, {});
+		holdAgentMessage(OTHER, theirs, {});
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+		expect(mine.deliver).toHaveBeenCalledTimes(1);
+		expect(theirs.deliver).not.toHaveBeenCalled();
+	});
+
+	it("waits for both the prompt and copy mode to clear", async () => {
+		openPrompt();
+		const results: HeldDeliveryResult[] = ["deferred", "landed"];
+		const deliver = vi.fn<() => HeldDeliveryResult>(() => results.shift() ?? "landed");
+		const submit = vi.fn<() => HeldDeliveryResult>(() => "landed");
+		holdAgentMessage(KEY, { deliver, bytes: 0, submit }, {});
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS * 2);
+		expect(deliver).not.toHaveBeenCalled();
+
+		answerPrompt();
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+		expect(deliver).toHaveBeenCalledTimes(1);
+		expect(submit).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+		expect(deliver).toHaveBeenCalledTimes(2);
+		expect(submit).toHaveBeenCalledTimes(1);
+	});
+
+	it("reports how many messages wait, and clears the count once they are delivered", async () => {
+		const counts: Array<[string, number]> = [];
+		const unsubscribe = onPromptHeldAgentMessageCount((taskId, count) => counts.push([taskId, count]));
+		try {
+			openPrompt();
+			holdAgentMessage(KEY, message(), {});
+			holdAgentMessage(KEY, message(), {});
+			expect(promptHeldAgentMessageCount("task-1")).toBe(2);
+			answerPrompt();
+			await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+			expect(counts).toEqual([["task-1", 1], ["task-1", 2], ["task-1", 0]]);
+			expect(promptHeldAgentMessageCount("task-1")).toBe(0);
+		} finally {
+			unsubscribe();
+		}
+	});
+
+	it("ends the wait, reported, when the pane died with its prompt open", async () => {
+		openPrompt();
+		const events: HeldAgentMessageReport[] = [];
+		holdAgentMessage(KEY, {
+			deliver: () => "failed",
+			bytes: 0,
+			submit: vi.fn(() => "landed" as const),
+			alive: () => false,
+			report: (event) => events.push(event),
+		}, {});
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+		expect(pendingAgentMessageHoldCount()).toBe(0);
+		expect(events).toEqual([expect.objectContaining({ kind: "dropped", messages: 1 })]);
+		expect(agentPromptLedger.isPromptOpen("task-1", "%1")).toBe(false);
+	});
+
+	it("still lets the agent's own tool hook take its mail", async () => {
+		openPrompt();
+		holdAgentMessage(KEY, { ...message(), hook: { text: "envelope", delivered: vi.fn() } }, {});
+		const claim = await claimHeldAgentMessagesForHook(KEY, 1_000);
+		expect(claim?.text).toBe("envelope");
+		expect(promptHeldAgentMessageCount("task-1")).toBe(0);
 	});
 });

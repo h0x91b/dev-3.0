@@ -1,3 +1,4 @@
+import { AGENT_PROMPT_HELD_BEHIND_PROMPT } from "../../shared/agent-prompt-delivery";
 import { requireMessageSubject } from "../../shared/agent-message-subject";
 import { cancelScheduledMessageByRef, scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "../scheduled-message-scheduler";
 import {
@@ -64,6 +65,7 @@ export const messageHandlers: Record<string, Handler> = {
 			status: delivery.status,
 			messageId: delivery.messageId,
 			...(delivery.detail === undefined ? {} : { detail: delivery.detail }),
+			...(delivery.reason === AGENT_PROMPT_HELD_BEHIND_PROMPT ? { heldBehindPrompt: true } : {}),
 			...(delivery.paneId ? { paneId: delivery.paneId } : {}),
 			...(delivery.agentRole ? { agentRole: delivery.agentRole } : {}),
 			...replyNotice(source),

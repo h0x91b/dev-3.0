@@ -28,6 +28,7 @@ import PipelineDropdown from "./PipelineDropdown";
 import SpawnAgentModal from "./SpawnAgentModal";
 import ScheduleMessageModal from "./ScheduleMessageModal";
 import ScheduledMessagesChip from "./ScheduledMessagesChip";
+import HeldMessagesChip from "./HeldMessagesChip";
 import BugHuntersLightbox from "./BugHuntersLightbox";
 import TaskDevServer from "./task-info-panel/TaskDevServer";
 import TaskExposedPorts from "./task-info-panel/TaskExposedPorts";
@@ -1155,7 +1156,10 @@ function TaskInfoPanel({
 	// Pending scheduled-message queue for this task's session (open-task view of
 	// the same chip shown on the board card). Opens downward under the bar.
 	const scheduledMessagesChip = isTaskActive && task.worktreePath ? (
-		<ScheduledMessagesChip task={task} project={project} dispatch={dispatch} placement="down" />
+		<>
+			<HeldMessagesChip taskId={task.id} placement="down" />
+			<ScheduledMessagesChip task={task} project={project} dispatch={dispatch} placement="down" />
+		</>
 	) : null;
 
 	const bugHuntersButton = taskUsesWorktree(project, task) && isTaskActive && task.worktreePath && !bugHuntersHidden ? (

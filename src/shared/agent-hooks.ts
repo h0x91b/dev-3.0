@@ -333,6 +333,12 @@ export const CLAUDE_SESSION_START_HOOK_SUBCOMMAND = "hook claude-session-start";
  * busy agent its held `dev3 message`s at its next tool call. Always exits 0.
  */
 export const CLAUDE_POST_TOOL_HOOK_SUBCOMMAND = "hook claude-post-tool";
+/**
+ * Claude's PermissionRequest: the Has Questions move plus the prompt ledger, which keeps
+ * every `dev3 message` out of the pane until the menu or picker is answered (#2342).
+ * Always exits 0.
+ */
+export const CLAUDE_PERMISSION_HOOK_SUBCOMMAND = "hook claude-permission";
 /** `resume` is left out: the resumed transcript already holds the block it was given. */
 export const CLAUDE_SESSION_START_MATCHER = "startup|clear|compact";
 /**
@@ -522,6 +528,16 @@ function claudePostToolCommand(workingCmd: string, dialect: HookCliDialect): str
 }
 
 /**
+ * Same fallback as {@link claudePostToolCommand}: `||` reaches the plain move only when
+ * the installed CLI predates the subcommand. Windows has no shell for `||`, and its
+ * native panes need the gate too, so it calls the subcommand alone.
+ */
+function claudePermissionCommand(questionsCmd: string, dialect: HookCliDialect): string {
+	if (!dialect.posixShell) return `${dialect.cli} ${CLAUDE_PERMISSION_HOOK_SUBCOMMAND}`;
+	return `${dialect.cli} ${CLAUDE_PERMISSION_HOOK_SUBCOMMAND} || ${questionsCmd}`;
+}
+
+/**
  * True when `folder` is a working directory dev3 created and removes with the
  * task: a worktree or ops folder under the dev3 home, or an in-project task dir.
  */
@@ -596,7 +612,7 @@ function buildUnguardedClaudeHooks(
 			{ hooks: [{ type: "command", command: claudePostToolCommand(workingCmd, dialect) }] },
 		],
 		PermissionRequest: [
-			{ hooks: [{ type: "command", command: move("user-questions") }] },
+			{ hooks: [{ type: "command", command: claudePermissionCommand(move("user-questions"), dialect), timeout: 5 }] },
 		],
 		Stop: buildStopGroups(stopTarget, dialect),
 		SessionEnd: [{ hooks: [{ type: "command", command: `${dialect.cli} hook claude-turn-ended`, timeout: 5 }] }],

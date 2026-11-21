@@ -136,6 +136,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	notificationLogChanged: (payload) => window.dispatchEvent(new CustomEvent("rpc:notificationLogChanged", { detail: payload })),
 	agentMessage: (payload) => window.dispatchEvent(new CustomEvent("rpc:agentMessage", { detail: payload })),
 	cliAttention: (payload) => window.dispatchEvent(new CustomEvent("rpc:cliAttention", { detail: payload })),
+	heldAgentMessages: (payload) => window.dispatchEvent(new CustomEvent("rpc:heldAgentMessages", { detail: payload })),
 	cliShowImage: (payload) => window.dispatchEvent(new CustomEvent("rpc:cliShowImage", { detail: payload })),
 	cliShowArtifact: (payload) => window.dispatchEvent(new CustomEvent("rpc:cliShowArtifact", { detail: payload })),
 	liveArtifactChange: (payload) => window.dispatchEvent(new CustomEvent("rpc:liveArtifactChange", { detail: payload })),

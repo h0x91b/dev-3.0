@@ -25,6 +25,7 @@ import * as data from "../data";
 import { tmux } from "../tmux";
 import { forgetClaudeSessionDump } from "../rate-limit-monitor";
 import { agentSessionRecord, noteAgentLaunched, resetAgentSessionRecordsForTests } from "../agent-session-receipts";
+import { agentPromptLedger } from "../agent-prompt-ledger";
 
 const SESSION = "11111111-2222-4333-8444-555555555555";
 
@@ -67,6 +68,18 @@ describe("the launch wrapper's exit report (#2034)", () => {
 		await expect(exited(0)).resolves.toEqual({ moved: false });
 		expect(moveTask).not.toHaveBeenCalled();
 		expect(fixtures.task.status).toBe("in-progress");
+	});
+
+	it.each([
+		["the pane the exit report names", { paneId: "%1" }],
+		["the pane its session started in", {}],
+	])("closes an open prompt in %s, so its held messages are not stuck behind a gone menu", async (_, report) => {
+		agentPromptLedger.reset();
+		await sessionStarted("%1");
+		agentPromptLedger.claudePermissionRequest({ taskId: "task", sessionId: SESSION, toolName: "Bash", paneId: "%1" });
+		expect(agentPromptLedger.isPromptOpen("task", "%1")).toBe(true);
+		await agentHandlers["agent.exited"]!({ taskId: "task", projectId: "project", sessionId: SESSION, exitCode: 0, ...report });
+		expect(agentPromptLedger.isPromptOpen("task", "%1")).toBe(false);
 	});
 
 	it("forgets the task's statusLine dump on any exit, so the card stops reporting the gone session", async () => {

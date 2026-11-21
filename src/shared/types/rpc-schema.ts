@@ -1381,6 +1381,16 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; messageId: string };
 				response: Task;
 			};
+			/** Per task, how many `dev3 message`s wait behind an open agent prompt (#2342). */
+			getHeldAgentMessageCounts: {
+				params: Record<string, never>;
+				response: Record<string, number>;
+			};
+			/** The user sees no prompt: deliver the task's prompt-held messages now. */
+			sendHeldAgentMessagesNow: {
+				params: { taskId: string };
+				response: { released: number };
+			};
 			/** Deliver a pending scheduled message immediately and remove it. */
 			sendScheduledMessageNow: {
 				params: { taskId: string; projectId: string; messageId: string };
@@ -2351,6 +2361,8 @@ export type AppRPCSchema = {
 			 * every accumulated reason instead of adding one.
 			 */
 			cliAttention: { taskId: string; reason: string; kind?: "questions"; clear?: boolean };
+			/** A task's count of messages waiting behind an open agent prompt changed; 0 clears it. */
+			heldAgentMessages: { taskId: string; count: number };
 			/**
 			 * CLI-shared images (`dev3 show-image`). Carries the task's shared images
 			 * so the renderer can raise the attention badge and open the lightbox
