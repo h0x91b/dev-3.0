@@ -1,4 +1,5 @@
 import type { Context } from "cordis";
+import type { AgentTrafficFocus } from "../agent-traffic-events";
 import type { Route } from "../state";
 import { defineAppSlot } from "../plugins/root";
 import type { ReplaceSlotItem } from "../plugins/SlotHost";
@@ -22,9 +23,16 @@ export interface DestinationBodyProps {
 	};
 	stats: BackNavigationProps;
 	changelog: BackNavigationProps;
+	"agent-traffic": {
+		/** Seeds the scope filter, nothing else. */
+		projectId: string | null;
+		/** The endpoint to open selected; null for a deliberate entry. */
+		focus: AgentTrafficFocus | null;
+		onOpenTask: (taskId: string, projectId: string, opts?: { archived?: boolean }) => void;
+	};
 }
 
-/** A destination that navigates on and offers its own back arrow. */
+/** A destination with its own back arrow that can navigate elsewhere. */
 interface BackNavigationProps {
 	navigate: (route: Route) => void;
 	goBack: () => void;

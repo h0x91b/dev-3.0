@@ -1,5 +1,6 @@
 import type { Context, Fiber } from "cordis";
 import type { ComponentType } from "react";
+import AgentTrafficScreen from "../components/agent-traffic/AgentTrafficScreen";
 import Changelog from "../components/Changelog";
 import ProductivityStatsView from "../components/ProductivityStatsView";
 import SessionsScreen from "../components/SessionsScreen";
@@ -21,11 +22,16 @@ function ChangelogBody() {
 	return <Changelog {...useDestinationProps("changelog")} />;
 }
 
+function AgentTrafficBody() {
+	return <AgentTrafficScreen {...useDestinationProps("agent-traffic")} />;
+}
+
 /** Each destination's own body: registered as its slot item, and its undisableable fallback. */
 export const BUILTIN_DESTINATION_BODIES: { readonly [D in DestinationId]: { id: string; component: ComponentType<{ ctx: Context }> } } = {
 	sessions: { id: "builtin:sessions", component: SessionsBody },
 	stats: { id: "builtin:stats", component: StatsBody },
 	changelog: { id: "builtin:changelog", component: ChangelogBody },
+	"agent-traffic": { id: "builtin:agent-traffic", component: AgentTrafficBody },
 };
 
 const DESTINATION_BODIES_BUILTIN_ID = "builtin:destination-bodies";
