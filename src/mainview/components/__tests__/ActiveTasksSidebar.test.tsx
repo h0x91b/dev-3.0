@@ -5,9 +5,14 @@ import ActiveTasksSidebar from "../ActiveTasksSidebar";
 import { COORDINATOR_TITLE } from "../TaskRoleBand";
 import type { CodingAgent, Project, Task } from "../../../shared/types";
 import { installTaskMenuBuiltins } from "../../task-menu/__tests__/install-builtins";
+import { installTaskMarkerBuiltins } from "../../task-markers/__tests__/install-builtins";
 
-// The menu's rows come from the taskMenu slot; every test starts on a fresh root with its built-ins.
-beforeEach(installTaskMenuBuiltins);
+// The menu's rows come from the taskMenu slot; every test starts on a fresh root with its built-ins,
+// and the identity glyphs from the taskMarkers slot.
+beforeEach(async () => {
+	await installTaskMenuBuiltins();
+	await installTaskMarkerBuiltins();
+});
 
 const terminalPreview = vi.hoisted(() => ({
 	close: vi.fn(),

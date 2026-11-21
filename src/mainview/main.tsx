@@ -37,6 +37,8 @@ import { BUILTIN_DESTINATION_BODIES_PLUGIN } from "./destination-bodies/builtins
 import { BUILTIN_TASK_PANELS_PLUGIN } from "./task-panels/builtins";
 import { BUILTIN_SIDEBAR_PLUGIN } from "./sidebar/builtins";
 import { BUILTIN_TERMINAL_COMPANION_PLUGIN } from "./terminal-companion/builtins";
+import { BUILTIN_TASK_MARKERS_PLUGIN } from "./task-markers/builtins";
+import { TaskMarkersProvider } from "./task-markers/TaskMarkers";
 
 // ── Global crash handlers (renderer) ──
 // Catch unhandled errors that would otherwise silently kill the page. Besides
@@ -175,8 +177,8 @@ async function bootstrap() {
 	}
 
 	// The plugin runtime (Cordis root + built-in board views, settings sections, project settings tabs, header items,
-	// commands, task menu rows, destination bodies, task panels, the sidebar and the terminal companion) is up before the first render.
-	startPlugins([...BUILTIN_BOARD_VIEWS, BUILTIN_SETTINGS_SECTIONS_PLUGIN, BUILTIN_PROJECT_SETTINGS_SECTIONS_PLUGIN, BUILTIN_TASK_HEADER_PLUGIN, BUILTIN_COMMANDS_PLUGIN, BUILTIN_TASK_MENU_PLUGIN, BUILTIN_DESTINATION_BODIES_PLUGIN, BUILTIN_TASK_PANELS_PLUGIN, BUILTIN_SIDEBAR_PLUGIN, BUILTIN_TERMINAL_COMPANION_PLUGIN]);
+	// commands, task menu rows, destination bodies, task panels, the sidebar, the terminal companion and the task markers) is up before the first render.
+	startPlugins([...BUILTIN_BOARD_VIEWS, BUILTIN_SETTINGS_SECTIONS_PLUGIN, BUILTIN_PROJECT_SETTINGS_SECTIONS_PLUGIN, BUILTIN_TASK_HEADER_PLUGIN, BUILTIN_COMMANDS_PLUGIN, BUILTIN_TASK_MENU_PLUGIN, BUILTIN_DESTINATION_BODIES_PLUGIN, BUILTIN_TASK_PANELS_PLUGIN, BUILTIN_SIDEBAR_PLUGIN, BUILTIN_TERMINAL_COMPANION_PLUGIN, BUILTIN_TASK_MARKERS_PLUGIN]);
 
 	debugLog("boot", "[main] Rendering React app...");
 	// RootErrorBoundary wraps the providers (not just <App/>) so a crash in
@@ -188,7 +190,9 @@ async function bootstrap() {
 				<MobileProvider>
 					<I18nProvider>
 						<MobilePortraitGate>
-							<App />
+							<TaskMarkersProvider>
+								<App />
+							</TaskMarkersProvider>
 						</MobilePortraitGate>
 					</I18nProvider>
 				</MobileProvider>

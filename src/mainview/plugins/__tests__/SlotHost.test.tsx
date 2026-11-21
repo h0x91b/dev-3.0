@@ -73,6 +73,7 @@ describe("SlotHost", () => {
 	it("in fill mode puts a notice and the content in one flex column, the content shrinkable", () => {
 		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
 		render(host({ requestedId: "ext:boom", active: entry("ext:boom", Boom), fill: true }));
+		// happy-dom has no layout, so this checks the structure that makes the geometry right, not the geometry.
 		const notice = screen.getByRole("alert");
 		const column = notice.parentElement!;
 		expect(column.className.split(" ")).toEqual(expect.arrayContaining(["flex", "flex-col", "flex-1", "min-h-0"]));

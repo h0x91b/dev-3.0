@@ -83,6 +83,7 @@ describe("Sidebar slot", () => {
 		expect(notice.className).toContain("mx-2");
 		expect(screen.getByTestId("active-tasks").textContent).toContain("t1/s1");
 		// The list sits in a shrinkable flex child beside the notice, so an `h-full` list cannot overflow by its height.
+		// happy-dom has no layout: these class checks are a structural proxy; the geometry was measured in a real browser (<pr:2392>).
 		const listBox = screen.getByTestId("active-tasks").parentElement!;
 		expect(listBox.className.split(" ")).toEqual(expect.arrayContaining(["flex-1", "min-h-0"]));
 		expect(listBox.parentElement).toBe(notice.parentElement);

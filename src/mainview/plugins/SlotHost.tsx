@@ -139,5 +139,5 @@ export function SlotHost<Item extends ReplaceSlotItem>({
 			)}
 		</>
 	);
-	return fill ? <div className="flex min-h-0 flex-1 flex-col">{body}</div> : body;
+	return <FillBox fill={fill}>{body}</FillBox>;
 }

@@ -661,7 +661,7 @@ const kanban = {
 	"board.visibility.showAll": "Показать все",
 	"board.visibility.overridden": "Фильтр по статусу в поиске важнее этого переключателя",
 	"boardView.crashed": "Этот вид доски не загрузился, поэтому доска показана как Канбан. Выбранный вид сохранён.",
-	"boardView.extensionFailed": "Расширение {name} не загрузилось, поэтому доска показана как Kanban. Выбор вида сохранён.",
+	"boardView.extensionFailed": "Расширение «{name}» не загрузилось, поэтому доска показана как Kanban. Выбор вида сохранён.",
 	"boardView.unavailable": "Этот вид доски здесь недоступен.",
 	"boardView.manage": "Управление видами…",
 	"boardView.attention": "Внимание",
