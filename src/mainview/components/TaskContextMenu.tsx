@@ -191,7 +191,13 @@ export default function TaskContextMenu({
 			return;
 		}
 		onClose();
-		void item.run?.(scope);
+		// A failing row reports itself; it never escapes into the click or goes unhandled.
+		const fail = (err: unknown) => console.error(`[taskMenu] "${item.id}" failed`, err);
+		try {
+			void Promise.resolve(item.run?.(scope)).catch(fail);
+		} catch (err) {
+			fail(err);
+		}
 	}
 
 	function renderRow(row: MenuRow) {

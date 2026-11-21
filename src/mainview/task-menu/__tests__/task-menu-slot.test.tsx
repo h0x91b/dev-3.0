@@ -3,8 +3,7 @@ import userEvent from "@testing-library/user-event";
 import TaskContextMenu from "../../components/TaskContextMenu";
 import { I18nProvider } from "../../i18n";
 import { getAppRoot } from "../../plugins/root";
-import { applyBuiltinPlugins, resetPluginsForTests } from "../../plugins/runtime";
-import { BUILTIN_TASK_MENU_PLUGIN } from "../builtins";
+import { installTaskMenuBuiltins } from "./install-builtins";
 import { getTaskMenuRegistry, TASK_MENU_GROUPS, type TaskMenuItem } from "../registry";
 import type { Project, Task } from "../../../shared/types";
 
@@ -41,11 +40,7 @@ async function contribute(name: string, items: TaskMenuItem[]) {
 	await settle();
 }
 
-beforeEach(async () => {
-	resetPluginsForTests();
-	applyBuiltinPlugins([], [BUILTIN_TASK_MENU_PLUGIN]);
-	await settle();
-});
+beforeEach(installTaskMenuBuiltins);
 
 describe("taskMenu slot", () => {
 	it("is a contribution slot whose built-ins each name a known group", () => {
@@ -74,6 +69,21 @@ describe("taskMenu slot", () => {
 		renderMenu();
 		await userEvent.click(screen.getByTestId("task-menu-acme:ping"));
 		expect(run).toHaveBeenCalledWith(expect.objectContaining({ task, project }));
+	});
+
+	it("logs a failing run instead of letting it escape the click", async () => {
+		const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+		await contribute("acme", [
+			{ id: "acme:throws", region: "open", label: () => "Throws", run: () => { throw new Error("sync"); } },
+			{ id: "acme:rejects", region: "open", label: () => "Rejects", run: () => Promise.reject(new Error("async")) },
+		]);
+		renderMenu();
+		await userEvent.click(screen.getByTestId("task-menu-acme:throws"));
+		renderMenu();
+		await userEvent.click(screen.getAllByTestId("task-menu-acme:rejects")[0]);
+		await settle();
+		expect(spy.mock.calls.map((call) => call[0])).toEqual(['[taskMenu] "acme:throws" failed', '[taskMenu] "acme:rejects" failed']);
+		spy.mockRestore();
 	});
 
 	it("drops only an item whose rule throws", async () => {

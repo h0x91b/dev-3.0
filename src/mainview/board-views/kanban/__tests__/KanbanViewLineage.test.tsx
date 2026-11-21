@@ -1,12 +1,14 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { applyBuiltinPlugins } from "../../../plugins/runtime";
-import { BUILTIN_TASK_MENU_PLUGIN } from "../../../task-menu/builtins";
 import userEvent from "@testing-library/user-event";
 // The board renders through its host, which owns the shared filter row.
 import BoardHost from "../../BoardHost";
 import { I18nProvider } from "../../../i18n";
 import type { Project, Task, TaskLineageIndex } from "../../../../shared/types";
 import { resetRememberedFiltersForTests } from "../../../hooks/useRememberedFilter";
+import { installTaskMenuBuiltins } from "../../../task-menu/__tests__/install-builtins";
+
+// The menu's rows come from the taskMenu slot; every test starts on a fresh root with its built-ins.
+beforeEach(installTaskMenuBuiltins);
 
 const lineageIndex = vi.hoisted(() => ({ current: { nodes: [], edges: [] } as TaskLineageIndex }));
 
@@ -144,6 +146,3 @@ describe("KanbanBoard lineage", () => {
 		expect(within(childCard).getByTestId("task-card-lineage").textContent).toContain("from#1801");
 	});
 });
-
-// The card's right-click rows come from the taskMenu slot, filled by its built-in plugin.
-beforeEach(() => applyBuiltinPlugins([], [BUILTIN_TASK_MENU_PLUGIN]));

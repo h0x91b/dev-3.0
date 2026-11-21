@@ -22,7 +22,8 @@ import type { TaskMenuItem, TaskMenuScope } from "./registry";
 
 export const TASK_MENU_BUILTIN_ID = "builtin:task-menu";
 
-type BuiltinItem = Omit<TaskMenuItem, "id" | "order"> & { name: string };
+/** `TaskMenuItem` without what registration assigns; distributive, so run-or-submenu still holds. */
+type BuiltinItem = TaskMenuItem extends infer Item ? (Item extends TaskMenuItem ? Omit<Item, "id" | "order"> & { name: string } : never) : never;
 
 function hasSession({ task }: TaskMenuScope): boolean {
 	return !!task.worktreePath && !task.hibernated && !task.preparing && !task.shuttingDown && !isTaskDisconnected(task);
@@ -386,7 +387,7 @@ export const BUILTIN_TASK_MENU_PLUGIN: BuiltinPlugin = {
 			inject: ["taskMenu"],
 			apply(pluginCtx: Context) {
 				BUILTIN_ITEMS.forEach(({ name, ...item }, order) => {
-					pluginCtx.taskMenu.register({ ...item, id: `builtin:${name}`, order });
+					pluginCtx.taskMenu.register({ ...item, id: `builtin:${name}`, order } as TaskMenuItem);
 				});
 			},
 		});

@@ -55,8 +55,7 @@ export interface TaskMenuSubmenu {
 	sheet: (scope: TaskMenuScope, anchor: TaskMenuAnchor) => ReactNode;
 }
 
-/** One row of the task context menu. `region` is its group; it runs itself, nothing routes it by id. */
-export interface TaskMenuItem extends SlotItem {
+interface TaskMenuItemBase extends SlotItem {
 	region: TaskMenuGroup;
 	label: (scope: TaskMenuScope) => string;
 	/** Shown only when this holds. */
@@ -65,10 +64,14 @@ export interface TaskMenuItem extends SlotItem {
 	/** A ✓ before the label, for toggles whose label does not already name the action. */
 	checked?: (scope: TaskMenuScope) => boolean;
 	danger?: boolean;
-	/** Exactly one of `run` and `submenu`. The host closes the menu before `run`. */
-	run?: (scope: TaskMenuScope) => void | Promise<void>;
-	submenu?: TaskMenuSubmenu;
 }
+
+/** One row of the task context menu. `region` is its group; it runs itself, nothing routes it by id. */
+export type TaskMenuItem = TaskMenuItemBase &
+	(
+		| { /** The host closes the menu before running it. */ run: (scope: TaskMenuScope) => void | Promise<void>; submenu?: never }
+		| { submenu: TaskMenuSubmenu; run?: never }
+	);
 
 export class TaskMenuRegistry extends SlotRegistry<TaskMenuItem> {
 	constructor(ctx: Context) {

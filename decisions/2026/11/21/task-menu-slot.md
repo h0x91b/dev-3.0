@@ -23,8 +23,10 @@ view (all mount the same component) could only gain a row by editing the menu it
 ## Risks
 - Built-ins use internals (`api`, `dispatch`) through the scope: the recorded tech debt shared with the other slots.
   `TaskMenuScope` must not become the public contract as is.
-- A throwing rule drops only its row (logged); a throwing `run()` is not yet reported into an extension's failure state.
-- Cordis applies a plugin on a later tick after a root reset, so slot tests settle one tick before rendering.
+- A throwing rule drops only its row and a failing `run()` is logged by the host; neither is reported into an
+  extension's failure state yet.
+- Cordis applies a plugin a few microtasks after a root reset; every test that opens the menu starts through
+  `task-menu/__tests__/install-builtins.ts` (reset, apply, wait for the rows).
 
 ## Alternatives considered
 - One item per group with a component body — keeps the action lists hard-coded, just moved.

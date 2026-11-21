@@ -1,6 +1,4 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { applyBuiltinPlugins } from "../../plugins/runtime";
-import { BUILTIN_TASK_MENU_PLUGIN } from "../../task-menu/builtins";
 import userEvent from "@testing-library/user-event";
 import TaskContextMenu from "../TaskContextMenu";
 import { I18nProvider } from "../../i18n";
@@ -45,6 +43,10 @@ vi.mock("../MoveToProjectPicker", () => ({
 import { api } from "../../rpc";
 import { confirm } from "../../confirm";
 import { toast } from "../../toast";
+import { installTaskMenuBuiltins } from "../../task-menu/__tests__/install-builtins";
+
+// The menu's rows come from the taskMenu slot; every test starts on a fresh root with its built-ins.
+beforeEach(installTaskMenuBuiltins);
 
 const mockedApi = vi.mocked(api);
 
@@ -432,6 +434,3 @@ describe("TaskContextMenu on a phone", () => {
 		expect(screen.queryByTestId("task-menu-flyout-priority")).not.toBeInTheDocument();
 	});
 });
-
-// The menu's rows come from the taskMenu slot, filled by its built-in plugin.
-beforeEach(() => applyBuiltinPlugins([], [BUILTIN_TASK_MENU_PLUGIN]));

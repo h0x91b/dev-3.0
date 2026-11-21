@@ -1,9 +1,11 @@
 import { cleanup, render } from "@testing-library/react";
-import { applyBuiltinPlugins } from "../../plugins/runtime";
-import { BUILTIN_TASK_MENU_PLUGIN } from "../../task-menu/builtins";
 import TaskContextMenu from "../TaskContextMenu";
 import { I18nProvider } from "../../i18n";
 import type { Project, Task } from "../../../shared/types";
+import { installTaskMenuBuiltins } from "../../task-menu/__tests__/install-builtins";
+
+// The menu's rows come from the taskMenu slot; every test starts on a fresh root with its built-ins.
+beforeEach(installTaskMenuBuiltins);
 
 vi.mock("../../rpc", () => ({ api: { request: {} } }));
 vi.mock("../../analytics", () => ({ trackEvent: vi.fn(), agentNameFromId: vi.fn(() => "unknown") }));
@@ -115,6 +117,3 @@ describe("task context menu parity", () => {
 		});
 	});
 });
-
-// The menu's rows come from the taskMenu slot, filled by its built-in plugin.
-beforeEach(() => applyBuiltinPlugins([], [BUILTIN_TASK_MENU_PLUGIN]));
