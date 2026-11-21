@@ -1,21 +1,11 @@
-import { createPortal } from "react-dom";
-import { useState, type ComponentType, type Dispatch, type ReactNode } from "react";
-import type { Project, Task } from "../../shared/types";
+import type { ComponentType } from "react";
 import { ACTIVE_STATUSES, taskUsesWorktree } from "../../shared/types";
-import type { AppAction } from "../state";
-import { api } from "../rpc";
 import { useT } from "../i18n";
-import { toast } from "../toast";
-import { confirm } from "../confirm";
-import { formatBytes } from "../utils/formatBytes";
 import { useIsControlHidden, useIsSimplifyViewApplied } from "../hooks/useIsControlHidden";
 import type { HideableControlId } from "../hideable-controls";
 import HideableControl from "../components/HideableControl";
 import Tooltip from "../components/Tooltip";
-import SpawnAgentModal from "../components/SpawnAgentModal";
-import ScheduleMessageModal from "../components/ScheduleMessageModal";
 import ScheduledMessagesChip from "../components/ScheduledMessagesChip";
-import BugHuntersLightbox from "../components/BugHuntersLightbox";
 import TaskPaneControls from "../components/task-info-panel/TaskPaneControls";
 import { AddAgentIcon, FindBugsIcon, HibernateIcon, SendLaterIcon } from "../components/TaskIcons";
 import type { SlotItemProps } from "../plugins/SlotItems";
@@ -25,93 +15,10 @@ import { SHEET_ROW_CLASS } from "./sheet-row";
 
 /**
  * The Session/Agent bar (bible §5.1, panel 3) as built-in items. The dialogs these items
- * open have one owner, the header, because the panel's restore control (chrome) opens
- * them too. ⚙ worktree settings, restore, help and shortcuts stay host chrome.
+ * open have one owner, the header (`useTaskSessionController`), because the panel's
+ * restore control (chrome) opens them too. ⚙ worktree settings, restore, help and
+ * shortcuts stay host chrome.
  */
-
-// --- shared session state --------------------------------------------------------------
-
-/** One per mounted header: the items, the sheet rows and the restore control act on it. */
-export interface TaskSessionController {
-	openSpawnAgent: () => void;
-	openBugHunters: () => void;
-	openScheduleMessage: () => void;
-	/** Asks first: killing the session is the one part hibernation cannot undo. */
-	hibernate: () => Promise<void>;
-	hibernating: boolean;
-	/** The open dialog, if any; the header renders it once. */
-	dialogs: ReactNode;
-}
-
-interface SessionControllerOptions {
-	task: Task;
-	project: Project;
-	dispatch: Dispatch<AppAction>;
-}
-
-export function useTaskSessionController({ task, project, dispatch }: SessionControllerOptions): TaskSessionController {
-	const t = useT();
-	const [spawnModalOpen, setSpawnModalOpen] = useState(false);
-	const [scheduleMsgOpen, setScheduleMsgOpen] = useState(false);
-	const [bugHuntersOpen, setBugHuntersOpen] = useState(false);
-	const [hibernating, setHibernating] = useState(false);
-
-	async function hibernate() {
-		// Extra agent panes come back only through "Wake and resume agent"; a
-		// plain-shell wake starts none of them, so the dialog counts them.
-		const paneCount = task.sessionState?.panes?.length ?? 0;
-		const confirmed = await confirm({
-			title: t("task.hibernateConfirmTitle"),
-			message: paneCount > 1
-				? `${t("task.hibernateConfirmBody")}\n\n${t("task.hibernateConfirmMulti", { count: String(paneCount) })}`
-				: t("task.hibernateConfirmBody"),
-			confirmLabel: t("task.hibernateConfirmCta"),
-			danger: true,
-			info: { title: task.title },
-		});
-		if (!confirmed) return;
-		setHibernating(true);
-		try {
-			const { task: updated, freedRssBytes } = await api.request.hibernateTask({ taskId: task.id, projectId: project.id });
-			dispatch({ type: "updateTask", task: updated });
-			// "about": the reading comes from the resource monitor's last poll, which
-			// can be up to one poll interval older than the kill.
-			toast.success(freedRssBytes
-				? t("task.hibernatedToastMem", { mem: formatBytes(freedRssBytes) })
-				: t("task.hibernatedToast"), { taskId: task.id });
-		} catch (err) {
-			toast.error(t("task.hibernateFailed", { error: String(err) }), { taskId: task.id });
-		} finally {
-			setHibernating(false);
-		}
-	}
-
-	const dialogs = (
-		<>
-			{spawnModalOpen && createPortal(
-				<SpawnAgentModal task={task} project={project} onClose={() => setSpawnModalOpen(false)} />,
-				document.body,
-			)}
-			{bugHuntersOpen && createPortal(
-				<BugHuntersLightbox task={task} project={project} onClose={() => setBugHuntersOpen(false)} />,
-				document.body,
-			)}
-			{scheduleMsgOpen && createPortal(
-				<ScheduleMessageModal task={task} project={project} dispatch={dispatch} onClose={() => setScheduleMsgOpen(false)} />,
-				document.body,
-			)}
-		</>
-	);
-
-	return {
-		openSpawnAgent: () => setSpawnModalOpen(true),
-		openBugHunters: () => setBugHuntersOpen(true),
-		openScheduleMessage: () => setScheduleMsgOpen(true),
-		hibernate,
-		hibernating,
-		dialogs,
-	};
-}
 
 // --- gates -----------------------------------------------------------------------------
 

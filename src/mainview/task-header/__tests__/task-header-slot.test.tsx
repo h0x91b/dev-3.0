@@ -5,12 +5,14 @@ import { applyBuiltinPlugins, resetPluginsForTests } from "../../plugins/runtime
 import { getAppRoot } from "../../plugins/root";
 import type { Project, Task } from "../../../shared/types";
 import type { TaskBranchStatusController } from "../../components/task-info-panel/useTaskBranchStatus";
-import { BUILTIN_TASK_HEADER_PLUGIN, LEGACY_REGIONS, legacyClusterId } from "../builtins";
+import { BUILTIN_TASK_HEADER_PLUGIN } from "../builtins";
 import { RUNTIME_ITEMS } from "../builtin-runtime";
-import { SESSION_ITEMS, type TaskSessionController } from "../builtin-session";
+import { SESSION_ITEMS } from "../builtin-session";
+import { STATUS_DIFF_ITEMS, STATUS_ITEMS } from "../builtin-status";
+import type { TaskSessionController } from "../useTaskSession";
 import { BUILTIN_GIT_ITEMS } from "../builtin-git";
-import { getTaskHeaderRegistry, TASK_HEADER_REGIONS } from "../registry";
-import { TaskHeaderProvider, TaskHeaderRegionItems, type LegacyClusters, type LegacyRegion } from "../scope";
+import { getTaskHeaderRegistry, TASK_HEADER_BUDGET_EXCEPTIONS, TASK_HEADER_REGIONS } from "../registry";
+import { TaskHeaderProvider, TaskHeaderRegionItems, type TaskHeaderLayout } from "../scope";
 
 vi.mock("../../rpc", () => ({ api: { request: {} } }));
 
@@ -30,22 +32,20 @@ const git = {
 	localMergeBlocked: false, statusError: null, statusLoading: false,
 } as unknown as TaskBranchStatusController;
 
-function clusters(surface: "bar" | "sheet"): LegacyClusters {
-	const make = (region: LegacyRegion) => ({ [surface]: <span data-testid={`legacy-${region}-${surface}`}>{region}</span> });
-	return { status: make("status") };
-}
+const DESKTOP: TaskHeaderLayout = { compact: false, tight: false, collapsed: true, narrow: false };
 
-function renderRegions(legacy: LegacyClusters, surface: "bar" | "sheet" = "bar") {
+function renderRegions(surface: "bar" | "sheet" = "bar", layout: TaskHeaderLayout = DESKTOP) {
 	return render(
 		<I18nProvider>
 			<TaskHeaderProvider
 				value={{
 					scope: { task, project, dispatch: vi.fn(), navigate: vi.fn() },
-					legacy,
-					layout: { compact: false, tight: false, collapsed: true, narrow: false },
+					layout,
+					isTaskActive: true,
 					git,
 					session: {} as TaskSessionController,
 					closeSheet: vi.fn(),
+					variants: [],
 				}}
 			>
 				{/* The runtime and session items have their own suites (builtin-runtime/-session.test.tsx). */}
@@ -65,15 +65,22 @@ beforeEach(() => {
 });
 
 describe("taskHeader slot", () => {
-	it("registers one built-in legacy cluster per region not yet split, in its own region", () => {
+	it("gives the Context bar its own items, in bar order, with the diff badge's segment as a group", () => {
 		const registry = getTaskHeaderRegistry();
 		expect(registry.kind).toBe("contribute");
-		for (const region of LEGACY_REGIONS) {
-			expect(registry.listRegion(region).map((entry) => entry.def.id)).toEqual([legacyClusterId(region)]);
-		}
+		expect(registry.listRegion("status").map((entry) => entry.def.id)).toEqual([
+			"builtin:status.variant-switcher", "builtin:status.watch", "builtin:status.priority", "builtin:status.status",
+			"builtin:status.narrow-outputs", "builtin:status.completion-owner", "builtin:status.diff",
+		]);
+		expect(registry.listRegion("status.diff").map((entry) => entry.def.id)).toEqual(["builtin:status.include-tests"]);
 	});
 
-	it("gives the Git bar its own items and no legacy cluster", () => {
+	it("names only registered built-ins as budget exceptions", () => {
+		const ids = new Set(getTaskHeaderRegistry().list().map((entry) => entry.def.id));
+		for (const id of TASK_HEADER_BUDGET_EXCEPTIONS) expect(ids).toContain(id);
+	});
+
+	it("gives the Git bar its own items", () => {
 		const registry = getTaskHeaderRegistry();
 		expect(registry.listRegion("git").map((entry) => entry.def.id)).toEqual([
 			"builtin:git.ops-repo", "builtin:git.workflow-off", "builtin:git.branch", "builtin:git.changes", "builtin:git.pr-status",
@@ -83,29 +90,40 @@ describe("taskHeader slot", () => {
 			"builtin:git.commit", "builtin:git.rebase", "builtin:git.push", "builtin:git.pr", "builtin:git.auto-pr",
 			"builtin:git.merge", "builtin:git.refresh",
 		]);
-		expect(registry.list()).toHaveLength(LEGACY_REGIONS.length + BUILTIN_GIT_ITEMS.length + RUNTIME_ITEMS.length + SESSION_ITEMS.length);
+		expect(registry.list()).toHaveLength(
+			STATUS_ITEMS.length + STATUS_DIFF_ITEMS.length + BUILTIN_GIT_ITEMS.length + RUNTIME_ITEMS.length + SESSION_ITEMS.length,
+		);
 	});
 
-	it("gives the Runtime bar its own items, in bar order, and no legacy cluster", () => {
+	it("gives the Runtime bar its own items, in bar order", () => {
 		expect(getTaskHeaderRegistry().listRegion("runtime").map((entry) => entry.def.id)).toEqual(RUNTIME_ITEMS.map((def) => def.id));
 	});
 
-	it("gives the Session bar its own items, in bar order, and no legacy cluster", () => {
+	it("gives the Session bar its own items, in bar order", () => {
 		expect(getTaskHeaderRegistry().listRegion("session").map((entry) => entry.def.id)).toEqual([
 			"builtin:session.bug-hunters", "builtin:session.spawn-agent", "builtin:session.send-later",
 			"builtin:session.hibernate", "builtin:session.scheduled-messages", "builtin:session.pane-controls",
 		]);
 	});
 
-	it("renders each legacy region's cluster inside its own bar, for the surface asked", () => {
-		renderRegions(clusters("bar"));
-		for (const region of LEGACY_REGIONS) {
-			expect(screen.getByTestId(`bar-${region}`)).toContainElement(screen.getByTestId(`legacy-${region}-bar`));
-		}
+	it("draws the desktop Context bar in order: watch, priority, status with its ✓, completion owner, diff badge with its tests segment", () => {
+		renderRegions();
+		const bar = screen.getByTestId("bar-status");
+		const labels = Array.from(bar.querySelectorAll("button")).map((el) => el.dataset.testid ?? el.getAttribute("aria-label") ?? el.textContent);
+		expect(labels).toEqual([
+			"Watch — notify on status changes", "Priority P3 (Low) — change", expect.stringContaining("Agent is Working"),
+			"task-info-quick-complete", "task-completion-owner", "diff-summary-badge", "diff-include-tests-toggle",
+		]);
+	});
+
+	it("draws the Context sheet rows from the same items: watch, then completion owner", () => {
+		renderRegions("sheet");
+		const sheet = screen.getByTestId("bar-status");
+		expect(Array.from(sheet.querySelectorAll("button .text-sm")).map((el) => el.textContent)).toEqual(["Watch", "I’ll complete it myself"]);
 	});
 
 	it("draws the Git items in the bar's order: branch, changes, then the actions", () => {
-		renderRegions(clusters("bar"));
+		renderRegions();
 		const bar = screen.getByTestId("bar-git");
 		const labels = Array.from(bar.querySelectorAll('[aria-label]:not([aria-hidden="true"])')).map((el) => el.getAttribute("aria-label"));
 		expect(labels).toEqual([
@@ -115,7 +133,7 @@ describe("taskHeader slot", () => {
 	});
 
 	it("draws the Git sheet rows from the same items, without the bar-only ones", () => {
-		renderRegions(clusters("sheet"), "sheet");
+		renderRegions("sheet");
 		const sheet = screen.getByTestId("bar-git");
 		expect(sheet.querySelector('[data-testid="branch-chip"]')).toBeNull();
 		expect(Array.from(sheet.querySelectorAll("button .text-sm")).map((el) => el.textContent)).toEqual([
@@ -123,16 +141,8 @@ describe("taskHeader slot", () => {
 		]);
 	});
 
-	it("renders the sheet form on the narrow sheet, and nothing for a region without one", () => {
-		renderRegions({ status: {} }, "sheet");
-		expect(screen.queryByTestId("legacy-status-sheet")).toBeNull();
-		expect(screen.getByTestId("bar-status").textContent).toBe("");
-		renderRegions(clusters("sheet"), "sheet");
-		expect(screen.getByTestId("legacy-status-sheet")).toBeInTheDocument();
-	});
-
 	it("lays the region out as children of the host's bar (display: contents)", () => {
-		renderRegions(clusters("bar"));
+		renderRegions();
 		const wrapper = screen.getByTestId("bar-git").firstElementChild as HTMLElement;
 		expect(wrapper.dataset.region).toBe("git");
 		expect(wrapper.className).toBe("contents");
@@ -148,19 +158,25 @@ describe("taskHeader slot", () => {
 			inject: ["taskHeader"],
 			apply(ctx: Context) {
 				ctx.taskHeader.register({ id: "builtin:git.crash-test", region: "git", order: -1, component: Crash });
+				ctx.taskHeader.register({ id: "builtin:status.crash-test", region: "status", order: -1, component: Crash });
+				ctx.taskHeader.register({ id: "builtin:status.crash-segment-test", region: "status.diff", order: -1, component: Crash });
 				ctx.taskHeader.register({ id: "builtin:git.crash-action-test", region: "git.actions", order: 25, component: Crash });
 			},
 		});
 		await act(async () => {
 			await fiber;
 		});
-		renderRegions(clusters("bar"));
-		for (const region of LEGACY_REGIONS) expect(screen.getByTestId(`legacy-${region}-bar`)).toBeInTheDocument();
+		renderRegions();
+		expect(screen.getByTestId("diff-summary-badge")).toBeInTheDocument();
+		expect(screen.getByTestId("diff-include-tests-toggle")).toBeInTheDocument();
+		expect(screen.getByTestId("task-completion-owner")).toBeInTheDocument();
 		expect(screen.getByTestId("branch-chip")).toBeInTheDocument();
 		expect(screen.getByRole("button", { name: "Push" })).toBeInTheDocument();
 		expect(screen.getByRole("button", { name: "Create PR" })).toBeInTheDocument();
 		expect(error.mock.calls.some((call) => String(call[0]).includes("builtin:git.crash-action-test crashed"))).toBe(true);
 		expect(error.mock.calls.some((call) => String(call[0]).includes("builtin:git.crash-test crashed"))).toBe(true);
+		expect(error.mock.calls.some((call) => String(call[0]).includes("builtin:status.crash-test crashed"))).toBe(true);
+		expect(error.mock.calls.some((call) => String(call[0]).includes("builtin:status.crash-segment-test crashed"))).toBe(true);
 		error.mockRestore();
 	});
 });

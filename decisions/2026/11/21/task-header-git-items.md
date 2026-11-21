@@ -1,3 +1,5 @@
+> Partly superseded on 2026-11-21 by `decisions/2026/11/21/task-header-status-items.md`: the status bar is split too, so the legacy-cluster mechanism is gone.
+
 # Task header: the Git bar as individual built-in items
 
 ## Context

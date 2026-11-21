@@ -1,21 +1,13 @@
 import { createContext, useContext, type ReactNode } from "react";
+import type { Task } from "../../shared/types";
 import { SlotItems } from "../plugins/SlotItems";
 import type { TaskBranchStatusController } from "../components/task-info-panel/useTaskBranchStatus";
 import type { TaskInlineDiffRequest } from "../components/task-inline-diff";
-import type { TaskSessionController } from "./builtin-session";
-import { getTaskHeaderRegistry, type TaskHeaderGroup, type TaskHeaderRegion, type TaskHeaderScope } from "./registry";
+import type { TaskSessionController } from "./useTaskSession";
+import { getTaskHeaderRegistry, TASK_HEADER_BAR_BUDGET, TASK_HEADER_BUDGET_EXCEPTIONS, TASK_HEADER_REGIONS, type TaskHeaderGroup, type TaskHeaderRegion, type TaskHeaderScope } from "./registry";
 
 /** Where a region is drawn: its bar in the header, or its section of the narrow actions sheet. */
 export type TaskHeaderSurface = "bar" | "sheet";
-
-/** The regions still drawn by one legacy cluster item; the other bars have real items. */
-export type LegacyRegion = Exclude<TaskHeaderRegion, "git" | "runtime" | "session">;
-
-/**
- * Today's JSX of each legacy bar, built by `<TaskHeader>` for the layout on screen. The
- * legacy cluster items render it unchanged; 3.2–3.5 replace each cluster with real items.
- */
-export type LegacyClusters = Record<LegacyRegion, Partial<Record<TaskHeaderSurface, ReactNode>>>;
 
 /** How much room the header has. Measured once by `<TaskHeader>`, read by every bar. */
 export interface TaskHeaderLayout {
@@ -36,17 +28,22 @@ export interface TaskHeaderLayout {
  */
 interface TaskHeaderInternals {
 	layout: TaskHeaderLayout;
+	/** The task's status is one of `ACTIVE_STATUSES`: its worktree and session may be live. */
+	isTaskActive: boolean;
 	git: TaskBranchStatusController;
 	/** The session bar's dialogs and hibernation; the restore control (chrome) runs them too. */
 	session: TaskSessionController;
 	onOpenInlineDiff?: (request: TaskInlineDiffRequest) => void;
 	/** Closes the narrow actions sheet; a sheet row that opens something else calls it first. */
 	closeSheet: () => void;
+	/** The task's variant group, the task included; empty outside a group. */
+	variants: Task[];
+	/** The fullscreen task screen, where switching variant keeps the screen. */
+	isFullPage?: boolean;
 }
 
 interface TaskHeaderContextValue extends TaskHeaderInternals {
 	scope: TaskHeaderScope;
-	legacy: LegacyClusters;
 }
 
 const TaskHeaderContext = createContext<TaskHeaderContextValue | null>(null);
@@ -75,20 +72,22 @@ export function useTaskHeaderSurface(): TaskHeaderSurface {
 	return useContext(SurfaceContext);
 }
 
-export function useLegacyCluster(region: LegacyRegion): ReactNode {
-	const surface = useContext(SurfaceContext);
-	return useTaskHeaderContext().legacy[region][surface] ?? null;
+function isBar(region: TaskHeaderRegion | TaskHeaderGroup): region is TaskHeaderRegion {
+	return (TASK_HEADER_REGIONS as readonly string[]).includes(region);
 }
 
 /**
  * One region's items. `display: contents`, so the items lay out as children of the
- * host's bar box and the bar keeps its own spacing, boxing and help id.
+ * host's bar box and the bar keeps its own spacing, boxing and help id. A bar has the
+ * §5.1 budget; a group lives inside one item, spends that item's place and is a `span`,
+ * as it sits inside that item's inline row.
  */
 export function TaskHeaderRegionItems({ region, surface = "bar" }: { region: TaskHeaderRegion | TaskHeaderGroup; surface?: TaskHeaderSurface }) {
 	const { scope } = useTaskHeaderContext();
+	const placement = isBar(region) ? { budget: TASK_HEADER_BAR_BUDGET, budgetExempt: TASK_HEADER_BUDGET_EXCEPTIONS } : { as: "span" as const };
 	return (
 		<SurfaceContext.Provider value={surface}>
-			<SlotItems registry={getTaskHeaderRegistry()} region={region} scope={scope} className="contents" />
+			<SlotItems registry={getTaskHeaderRegistry()} region={region} scope={scope} className="contents" {...placement} />
 		</SurfaceContext.Provider>
 	);
 }

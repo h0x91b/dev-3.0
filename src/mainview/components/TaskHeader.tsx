@@ -1,40 +1,25 @@
-import { useState, useRef, useCallback, useEffect, useLayoutEffect, type Dispatch, type MouseEvent as ReactMouseEvent } from "react";
+import { useState, useRef, useCallback, useEffect, type Dispatch, type MouseEvent as ReactMouseEvent } from "react";
 import { TaskRefText } from "./TaskRefText";
 import { toast } from "../toast";
 import { toastClearanceRef } from "../toast-clearance";
 import { confirm } from "../confirm";
-import CompletionOwnerMenu from "./CompletionOwnerMenu";
-import { createPortal } from "react-dom";
-import type { Task, Project, TaskStatus, PortInfo, ResourceUsage, TaskPRBadgeInfo, TaskCompletionOwner } from "../../shared/types";
+import type { Task, Project, PortInfo, ResourceUsage, TaskPRBadgeInfo } from "../../shared/types";
 import LabelChip from "./LabelChip";
-import PriorityBadge from "./PriorityBadge";
-import OpenInMenu from "./OpenInMenu";
 import { formatDate } from "./NoteItem";
-import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle, isCoordinatorTask, resolveTaskCompareBaseBranch, taskCompletionOwner } from "../../shared/types";
+import { ACTIVE_STATUSES, getTaskTitle, resolveTaskCompareBaseBranch } from "../../shared/types";
 import { earlierPullRequests, trustedPrStatusCache } from "../../shared/task-pull-requests";
 import InlineRename from "./InlineRename";
-import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
+import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { formatBytes } from "../utils/formatBytes";
 import { prBadgeDisplayState, prStateTone } from "../utils/prStateTone";
 import { inspectorPRBadge } from "../utils/taskPrBadge";
-import { getStatusLabel } from "../utils/statusLabel";
-import { trackEvent, agentNameFromId } from "../analytics";
-import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
-import PipelineRing, { CompleteCheckIcon } from "./PipelineRing";
-import PipelineDropdown from "./PipelineDropdown";
-import TaskSharedImages from "./task-info-panel/TaskSharedImages";
-import TaskArtifacts from "./task-info-panel/TaskArtifacts";
 import TaskGitActionsSheet from "./task-info-panel/TaskGitActionsSheet";
 import { useTaskBranchStatus } from "./task-info-panel/useTaskBranchStatus";
 import TaskPrStatusPopover from "./TaskPrStatusPopover";
-import { IncludeTestsIcon, ShowDiffIcon } from "./task-info-panel/GitIcons";
 import {
-	WatchingIcon,
-	WatchIcon,
-	CompletionOwnerIcon,
 	WorktreeSettingsIcon,
 	FullscreenEnterIcon,
 	FullscreenExitIcon,
@@ -46,20 +31,16 @@ import TaskNotesOverlay from "./TaskNotesOverlay";
 import TerminalShortcutsButton from "./task-info-panel/TerminalShortcutsButton";
 import { useTaskAllocatedPorts } from "./task-info-panel/useTaskAllocatedPorts";
 import type { TaskInlineDiffRequest } from "./task-inline-diff";
-import { isTestFile } from "../../shared/test-files";
-import { useIncludeTestsInDiff } from "../utils/includeTestsInDiff";
 import { useCompact } from "../utils/useCompact";
 import { useContainerWidth } from "../hooks/useContainerWidth";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
-import { useIsControlHidden } from "../hooks/useIsControlHidden";
 import { restoreControl } from "../hidden-controls";
-import HideableControl from "./HideableControl";
 import PanelRestoreControl, { type PanelHideableEntry } from "./task-info-panel/PanelRestoreControl";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { TASK_HEADER_REGIONS } from "../task-header/registry";
 import { taskHasGitBar } from "../task-header/builtin-git";
-import { useTaskSessionController } from "../task-header/builtin-session";
-import { TaskHeaderProvider, TaskHeaderRegionItems, type LegacyClusters } from "../task-header/scope";
+import { useTaskSessionController } from "../task-header/useTaskSession";
+import { TaskHeaderProvider, TaskHeaderRegionItems } from "../task-header/scope";
 import { SHEET_ROW_CLASS } from "../task-header/sheet-row";
 import BottomSheet from "./BottomSheet";
 import HelpSpot from "./HelpSpot";
@@ -68,7 +49,6 @@ import ForeignCodeMark from "./ForeignCodeMark";
 import TaskOriginRow from "./TaskOriginRow";
 import TaskCompletionStrip from "./task-info-panel/TaskCompletionStrip";
 import TaskEpicRow from "./TaskEpicRow";
-import VariantSwitcher from "./VariantSwitcher";
 import { isMac } from "../utils/platform";
 import { terminalFullscreenShortcutLabel } from "../utils/terminalFullscreen";
 
@@ -98,7 +78,6 @@ const MAX_RATIO = 0.33;
 // harder, keeping both rows on one line.
 const TIGHT_PANEL_WIDTH = 1280;
 
-/** Trailing "opens something" affordance for a mobile action row. */
 const LS_COLLAPSED = "dev3-panel-collapsed";
 const LS_HEIGHT = "dev3-panel-height";
 
@@ -140,23 +119,11 @@ function TaskHeaderFrame({
 	const t = useT();
 	const compact = useCompact();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
-	// Per-control hiding (§5.10) — each of these can be individually hidden
-	// (right-click "Hide") and restored from the panel's one restore control.
-	const diffIncludeTestsHidden = useIsControlHidden("diff-include-tests");
 	const [actionsSheetOpen, setActionsSheetOpen] = useState(false);
 	const [collapsed, setCollapsed] = useState(() => readBool(LS_COLLAPSED, true));
 	const [panelHeight, setPanelHeight] = useState(() => readNumber(LS_HEIGHT, DEFAULT_HEIGHT));
 	const [copiedPath, setCopiedPath] = useState(false);
-	const [statusMenuOpen, setStatusMenuOpen] = useState(false);
-	const [statusMenuPos, setStatusMenuPos] = useState({ top: 0, left: 0 });
-	const [statusMenuVisible, setStatusMenuVisible] = useState(false);
-	const [movingStatus, setMovingStatus] = useState(false);
-	const [quickCompleting, setQuickCompleting] = useState(false);
 	const [notesOverlayOpen, setNotesOverlayOpen] = useState(false);
-	const [includeTests, setIncludeTests] = useIncludeTestsInDiff();
-	const [diffFilesHover, setDiffFilesHover] = useState(false);
-	const [diffFilesPos, setDiffFilesPos] = useState({ top: 0, left: 0 });
-	const [fileOpenInMenu, setFileOpenInMenu] = useState<{ path: string; pos: { top: number; left: number } } | null>(null);
 	const panelRef = useRef<HTMLDivElement>(null);
 	const setPanelRef = useCallback((node: HTMLDivElement | null) => {
 		panelRef.current = node;
@@ -169,21 +136,6 @@ function TaskHeaderFrame({
 	const panelWidth = useContainerWidth(panelRef);
 	const tight = panelWidth > 0 && panelWidth < TIGHT_PANEL_WIDTH;
 	const dragging = useRef(false);
-	const statusTriggerRef = useRef<HTMLButtonElement>(null);
-	const statusMenuRef = useRef<HTMLDivElement>(null);
-	const diffFilesTriggerRef = useRef<HTMLButtonElement>(null);
-	const diffFilesHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-	// Terminal moves await a git preflight. If the user switches tasks while it
-	// runs, the old task's callback must not overwrite that newer selection.
-	const latestTaskIdRef = useRef(task.id);
-	const mountedRef = useRef(true);
-	latestTaskIdRef.current = task.id;
-	useEffect(() => {
-		mountedRef.current = true;
-		return () => {
-			mountedRef.current = false;
-		};
-	}, []);
 	const terminalFullscreenActive = onToggleTerminalFullscreen
 		? Boolean(isTerminalFullscreen)
 		: Boolean(isFullPage);
@@ -256,75 +208,11 @@ function TaskHeaderFrame({
 	const variantMembers = task.groupId
 		? tasks.filter((candidate) => candidate.groupId === task.groupId)
 		: [];
-	const variantSwitcher = (
-		<VariantSwitcher
-			variants={variantMembers}
-			currentTaskId={task.id}
-			projectId={project.id}
-			isFullPage={isFullPage}
-			navigate={navigate}
-		/>
-	);
 
-	// Crossing the narrow breakpoint must not strand an open sheet/menu — the
-	// status menu renders as a sheet on narrow and an anchored popover on desktop.
+	// Crossing the narrow breakpoint must not strand an open actions sheet.
 	useEffect(() => {
 		if (!narrow) setActionsSheetOpen(false);
-		setStatusMenuOpen(false);
 	}, [narrow]);
-
-	useEffect(() => () => {
-		if (diffFilesHoverTimer.current) {
-			clearTimeout(diffFilesHoverTimer.current);
-		}
-	}, []);
-
-	useEffect(() => {
-		if (!statusMenuOpen) {
-			return;
-		}
-
-		function handleClick(event: MouseEvent) {
-			if (
-				statusMenuRef.current &&
-				!statusMenuRef.current.contains(event.target as Node) &&
-				statusTriggerRef.current &&
-				!statusTriggerRef.current.contains(event.target as Node)
-			) {
-				setStatusMenuOpen(false);
-			}
-		}
-
-		document.addEventListener("mousedown", handleClick);
-		return () => document.removeEventListener("mousedown", handleClick);
-	}, [statusMenuOpen]);
-
-	useLayoutEffect(() => {
-		if (!statusMenuOpen || !statusMenuRef.current || !statusTriggerRef.current) {
-			return;
-		}
-
-		const menu = statusMenuRef.current.getBoundingClientRect();
-		const trigger = statusTriggerRef.current.getBoundingClientRect();
-		const vw = window.innerWidth;
-		const vh = window.innerHeight;
-		const pad = 8;
-
-		let top = trigger.bottom + 6;
-		let left = trigger.left;
-
-		if (top + menu.height > vh - pad) {
-			top = trigger.top - menu.height - 6;
-		}
-		if (left + menu.width > vw - pad) {
-			left = vw - menu.width - pad;
-		}
-		if (left < pad) left = pad;
-		if (top < pad) top = pad;
-
-		setStatusMenuPos({ top, left });
-		setStatusMenuVisible(true);
-	}, [statusMenuOpen]);
 
 	useEffect(() => {
 		try {
@@ -337,153 +225,6 @@ function TaskHeaderFrame({
 			localStorage.setItem(LS_HEIGHT, String(panelHeight));
 		} catch {}
 	}, [panelHeight]);
-
-	function toggleStatusMenu(event: ReactMouseEvent<HTMLButtonElement>) {
-		event.stopPropagation();
-		if (!statusMenuOpen && statusTriggerRef.current) {
-			const rect = statusTriggerRef.current.getBoundingClientRect();
-			setStatusMenuPos({ top: rect.bottom + 6, left: rect.left });
-			setStatusMenuVisible(false);
-		}
-		setStatusMenuOpen((open) => !open);
-	}
-
-	// Acknowledge the ✓ on the same tick — its dialog still has a git check
-	// streaming in, so silence here reads as a dead button.
-	async function handleQuickComplete() {
-		setQuickCompleting(true);
-		try {
-			await handleStatusMove("completed", { alwaysConfirm: true });
-		} finally {
-			setQuickCompleting(false);
-		}
-	}
-
-	async function handleStatusMove(newStatus: TaskStatus, opts?: { alwaysConfirm?: boolean }) {
-		setStatusMenuOpen(false);
-		const terminal = newStatus === "completed" || newStatus === "cancelled";
-		const openTaskFromDialog = () => {
-			const openMode = getTaskOpenMode();
-			navigate(openMode === "fullscreen"
-				? { screen: "task", projectId: project.id, taskId: task.id }
-				: { screen: "project", projectId: project.id, activeTaskId: task.id });
-		};
-		// Terminal moves leave the task screen immediately (worktree teardown runs
-		// in the background); other moves keep the panel and show a spinner.
-		const leaveScreen = terminal || !ACTIVE_STATUSES.includes(newStatus);
-		const navigateHomeIfTaskStillSelected = () => {
-			if (!mountedRef.current || latestTaskIdRef.current !== task.id) return;
-			navigate(taskClosedHomeRoute(project.id, getTaskOpenMode()));
-		};
-		await moveTaskToStatus({
-			task,
-			project,
-			newStatus,
-			dispatch,
-			t,
-			onOpenTask: openTaskFromDialog,
-			alwaysConfirm: opts?.alwaysConfirm,
-			// Terminal moves leave the screen and keep the optimistic completion on
-			// failure (matches the fire-and-forget behaviour); other moves stay and
-			// revert + toast if the RPC fails.
-			revertOnFailure: !terminal,
-			onMovingChange: terminal ? undefined : (moving) => setMovingStatus(moving),
-			// Terminal moves leave the screen immediately (fire-and-forget); other
-			// screen-leaving moves wait for the server to confirm so a failed +
-			// reverted move doesn't kick the user off the task screen.
-			// Land on the user's home surface: fullscreen open-mode → the board,
-			// split open-mode → the split task view with nothing selected.
-			afterOptimistic: terminal && leaveScreen
-				? navigateHomeIfTaskStillSelected
-				: undefined,
-			onSuccess: !terminal && leaveScreen
-				? navigateHomeIfTaskStillSelected
-				: undefined,
-		});
-	}
-
-	async function handleMoveToCustomColumn(customColumnId: string) {
-		setMovingStatus(true);
-		setStatusMenuOpen(false);
-		try {
-			const updated = await api.request.moveTaskToCustomColumn({
-				taskId: task.id,
-				projectId: project.id,
-				customColumnId,
-			});
-			dispatch({ type: "updateTask", task: updated });
-			trackEvent("task_moved", { from_status: task.status, to_status: `custom:${customColumnId}`, agent_name: agentNameFromId(task.agentId) });
-		} catch (err) {
-			toast.error(t("task.failedMove", { error: String(err) }), { taskId: task.id });
-		}
-		setMovingStatus(false);
-	}
-
-	async function handleToggleWatch(event: ReactMouseEvent<HTMLButtonElement>) {
-		event.stopPropagation();
-		try {
-			const updated = await api.request.toggleTaskWatch({
-				taskId: task.id,
-				projectId: project.id,
-				watched: !task.watched,
-			});
-			dispatch({ type: "updateTask", task: updated });
-		} catch {
-			// Secondary action. Failing quietly is fine.
-		}
-	}
-
-	// One control, three owners: dev3 suggests → I decide → the agent closes it → back.
-	// A menu, never a click-to-cycle: no habitual click may land on the owner that
-	// lets the agent destroy the worktree, and picking that one is confirmed.
-	const [completionMenuAnchor, setCompletionMenuAnchor] = useState<HTMLElement | null>(null);
-	function handleOpenCompletionMenu(event: ReactMouseEvent<HTMLButtonElement>) {
-		event.stopPropagation();
-		if (isCoordinatorTask(task)) return;
-		const anchor = event.currentTarget;
-		setCompletionMenuAnchor((open) => (open ? null : anchor));
-	}
-
-	async function handleSelectCompletionOwner(owner: TaskCompletionOwner) {
-		setCompletionMenuAnchor(null);
-		if (owner === taskCompletionOwner(task)) return;
-		if (owner === "agent") {
-			const granted = await confirm({
-				title: t("task.selfCompletionConfirmTitle"),
-				message: t("task.selfCompletionConfirmMessage"),
-				confirmLabel: t("task.selfCompletionConfirmAction"),
-				danger: true,
-				focusCancel: true,
-			});
-			if (!granted) return;
-		}
-		try {
-			const updated = await api.request.setTaskCompletionOwner({
-				taskId: task.id,
-				projectId: project.id,
-				owner,
-			});
-			dispatch({ type: "updateTask", task: updated });
-		} catch (err) {
-			toast.error(t("task.manualCompletionChangeFailed", { error: String(err) }), { taskId: task.id });
-		}
-	}
-
-	async function handleSetPriority(priority: Task["priority"]) {
-		if (!priority) return;
-		try {
-			const changed = await api.request.setTaskPriority({
-				taskId: task.id,
-				projectId: project.id,
-				priority,
-			});
-			for (const changedTask of changed) {
-				dispatch({ type: "updateTask", task: changedTask });
-			}
-		} catch (err) {
-			toast.error(t("priority.failedSet", { error: String(err) }), { taskId: task.id });
-		}
-	}
 
 	const toggleCollapsed = useCallback(() => {
 		setCollapsed((current) => !current);
@@ -532,81 +273,6 @@ function TaskHeaderFrame({
 		document.addEventListener("mouseup", onUp);
 	}, [collapsed, panelHeight]);
 
-	const activeCustomColumn = task.customColumnId
-		? (project.customColumns ?? []).find((column) => column.id === task.customColumnId)
-		: null;
-	function showDiffFilesPopover() {
-		// Hover pattern — dead on touch, and a tap fires mouseenter with no
-		// mouseleave, so on narrow the popover would stick over the freshly
-		// opened diff (Bible §12.3: hover popovers are disabled on touch).
-		if (narrow) {
-			return;
-		}
-		if (diffFilesHoverTimer.current) {
-			clearTimeout(diffFilesHoverTimer.current);
-		}
-		if (diffFilesTriggerRef.current) {
-			const rect = diffFilesTriggerRef.current.getBoundingClientRect();
-			setDiffFilesPos({ top: rect.bottom + 4, left: rect.left });
-		}
-		setDiffFilesHover(true);
-	}
-
-	function hideDiffFilesPopover() {
-		diffFilesHoverTimer.current = setTimeout(() => {
-			setDiffFilesHover(false);
-		}, 150);
-	}
-
-	function cancelHideDiffFiles() {
-		if (diffFilesHoverTimer.current) {
-			clearTimeout(diffFilesHoverTimer.current);
-		}
-	}
-
-	function handleFileOpenIn(event: ReactMouseEvent<HTMLButtonElement>, relativePath: string) {
-		event.stopPropagation();
-		if (!task.worktreePath) {
-			return;
-		}
-		setFileOpenInMenu({
-			path: `${task.worktreePath}/${relativePath}`,
-			pos: { top: event.clientY, left: event.clientX },
-		});
-	}
-
-	function openBranchDiff(focusFile?: string) {
-		if (!onOpenInlineDiff) {
-			return;
-		}
-		// Pinned: the badge counts committed work, so the viewer's remembered mode
-		// (default "uncommitted") must not swap in a different scope on open.
-		onOpenInlineDiff({
-			mode: "branch",
-			pinMode: true,
-			compareRef: branchMeta?.compareRef,
-			compareLabel: diffCompareLabel,
-			focusFile,
-		});
-	}
-
-	// The bar's compact diff button already knows which side carries the changes,
-	// so it pins the mode: the viewer's remembered preference would otherwise open
-	// the empty one and read as "the button is broken".
-	function openDiffWhereTheChangesAre(committed: boolean) {
-		if (!onOpenInlineDiff) return;
-		if (!committed) {
-			onOpenInlineDiff({ mode: "uncommitted", pinMode: true });
-			return;
-		}
-		onOpenInlineDiff({
-			mode: "branch",
-			pinMode: true,
-			compareRef: branchMeta?.compareRef,
-			compareLabel: branchMeta?.compareLabel ?? project.defaultCompareRef ?? resolveTaskCompareBaseBranch(task, project),
-		});
-	}
-
 	const openUnresolvedInDiff = onOpenInlineDiff
 		? () => onOpenInlineDiff({
 			mode: "branch",
@@ -615,13 +281,6 @@ function TaskHeaderFrame({
 			focusFirstUnresolvedThread: true,
 		})
 		: undefined;
-
-	function handleFileDiff(event: ReactMouseEvent<HTMLButtonElement>, relativePath: string) {
-		event.stopPropagation();
-		setDiffFilesHover(false);
-		setFileOpenInMenu(null);
-		openBranchDiff(relativePath);
-	}
 
 	const branchMeta = hasGit
 		? {
@@ -632,361 +291,9 @@ function TaskHeaderFrame({
 		}
 		: null;
 	const metadataBranchStatus = branchMeta?.branchStatus ?? null;
-	const diffCompareLabel = branchMeta?.compareLabel ?? project.defaultCompareRef ?? resolveTaskCompareBaseBranch(task, project);
 	const metadataPrInfo: TaskPRBadgeInfo | null = inspectorPRBadge(task, branchMeta?.prStatus, metadataBranchStatus);
 	const metadataPrState = metadataPrInfo ? prBadgeDisplayState(metadataPrInfo, metadataBranchStatus, trustedPrStatusCache(task)) : undefined;
 	const metadataPrTone = metadataPrState ? prStateTone(metadataPrState) : null;
-	const allDiffFileStats = metadataBranchStatus?.diffFileStats ?? [];
-	// Per-file stats are what the filter subtracts from. Without them there is
-	// nothing to subtract, so the raw totals stand instead of collapsing to zero.
-	const showRawDiffTotals = includeTests || allDiffFileStats.length === 0;
-	const visibleDiffFileStats = includeTests
-		? allDiffFileStats
-		: allDiffFileStats.filter((entry) => !isTestFile(entry.path));
-	const excludedTestCount = allDiffFileStats.length - visibleDiffFileStats.length;
-	const visibleDiffFiles = showRawDiffTotals
-		? (metadataBranchStatus?.diffFiles ?? 0)
-		: visibleDiffFileStats.length;
-	const visibleDiffInsertions = showRawDiffTotals
-		? (metadataBranchStatus?.diffInsertions ?? 0)
-		: visibleDiffFileStats.reduce((sum, e) => sum + e.insertions, 0);
-	const visibleDiffDeletions = showRawDiffTotals
-		? (metadataBranchStatus?.diffDeletions ?? 0)
-		: visibleDiffFileStats.reduce((sum, e) => sum + e.deletions, 0);
-	const diffBadgeTitle = [
-		t("infoPanel.diffBadgeTooltip", { branch: diffCompareLabel }),
-		!includeTests && excludedTestCount > 0 ? t.plural("infoPanel.diffTestsHidden", excludedTestCount) : null,
-	].filter(Boolean).join(" ");
-	const diffBadgeAriaLabel = t("infoPanel.diffBadgeAria", {
-		files: t.plural("infoPanel.diffFileCount", visibleDiffFiles),
-		insertions: String(visibleDiffInsertions),
-		deletions: String(visibleDiffDeletions),
-		branch: diffCompareLabel,
-	});
-	// The tests filter is a segment of the diff badge, not a chip of its own: it
-	// only ever modifies these very numbers, and as a neighbour it read as a
-	// second, unrelated action. Same segmented idiom as the status control —
-	// the border owns the group, a hairline splits the two click targets.
-	const showTestsSegment = !diffIncludeTestsHidden && hasGit && !narrow && metadataBranchStatus != null && metadataBranchStatus.diffFiles > 0;
-	const diffSummaryBadge = hasGit && metadataBranchStatus && metadataBranchStatus.diffFiles > 0 ? (
-		<div className="inline-flex items-center rounded-lg bg-elevated border border-edge hover:border-edge-active transition-colors flex-shrink-0">
-		<button
-			type="button"
-			ref={diffFilesTriggerRef}
-			className={`git-anim inline-flex items-center gap-1.5 px-2 py-1 text-micro font-mono text-fg-2 cursor-pointer transition-colors hover:bg-elevated-hover ${showTestsSegment ? "rounded-l-lg" : "rounded-lg"}`}
-			onClick={() => openBranchDiff()}
-			onMouseEnter={showDiffFilesPopover}
-			onMouseLeave={hideDiffFilesPopover}
-			title={diffBadgeTitle}
-			aria-label={diffBadgeAriaLabel}
-			data-testid="diff-summary-badge"
-		>
-			<ShowDiffIcon className="w-[0.95rem] h-[0.95rem] flex-shrink-0 text-fg-muted" />
-			<span>{t.plural("infoPanel.diffFileCount", visibleDiffFiles)}</span>
-			<span className="text-success">+{visibleDiffInsertions}</span>
-			<span className="text-danger">−{visibleDiffDeletions}</span>
-		</button>
-		{showTestsSegment && (
-			<HideableControl id="diff-include-tests">
-				<span className="h-4 w-px flex-shrink-0 bg-edge" aria-hidden="true" />
-				<Tooltip content={t("infoPanel.diffIncludeTestsTooltip")} detail={t("ttip.infoPanel.includeTests")}>
-					<button
-						type="button"
-						data-testid="diff-include-tests-toggle"
-						onClick={() => setIncludeTests(!includeTests)}
-						title={!includeTests && excludedTestCount > 0 ? t.plural("infoPanel.diffTestsHidden", excludedTestCount) : undefined}
-						className={`git-anim flex flex-shrink-0 items-center justify-center self-stretch rounded-r-lg px-1.5 transition-colors ${
-							includeTests ? "text-fg-3 hover:bg-elevated-hover hover:text-fg-2" : "bg-accent/10 text-accent hover:bg-accent/20"
-						}`}
-						aria-label={t("infoPanel.diffIncludeTestsAria")}
-						aria-pressed={includeTests}
-					>
-						<IncludeTestsIcon className="w-[0.95rem] h-[0.95rem]" off={!includeTests} />
-					</button>
-				</Tooltip>
-			</HideableControl>
-		)}
-		</div>
-	) : null;
-	// `diffFiles` is `<compare>...HEAD` — committed work only. A branch whose
-	// changes are all still in the working tree has a diff the user wants to read
-	// and no committed one to count, so the dirty totals decide on their own.
-	const uncommittedInsertions = metadataBranchStatus?.insertions ?? 0;
-	const uncommittedDeletions = metadataBranchStatus?.deletions ?? 0;
-	const hasCommittedDiff = (metadataBranchStatus?.diffFiles ?? 0) > 0;
-	const hasUncommittedDiff = uncommittedInsertions > 0 || uncommittedDeletions > 0;
-	// The narrow bar's counterpart to the wide badge. The wide chip is ~100px and
-	// hides below a 400px container, which on a 390px phone left the diff behind
-	// the kebab entirely — this is the same action at icon width, so it never has
-	// to shed. It steps aside once the wide badge fits, unless the diff is
-	// uncommitted-only: the wide badge counts committed files and renders nothing
-	// then, so at every width this button is the only path to it.
-	const narrowDiffButton = narrow && hasGit && (hasCommittedDiff || hasUncommittedDiff) ? (
-		<button
-			type="button"
-			data-testid="summary-bar-diff-compact"
-			onClick={() => openDiffWhereTheChangesAre(hasCommittedDiff)}
-			aria-label={t("infoPanel.showDiff")}
-			title={diffBadgeTitle}
-			className={`git-anim flex-shrink-0 inline-flex items-center justify-center gap-1.5 rounded-lg border border-edge bg-elevated px-2 min-w-[2.75rem] min-h-[2.75rem] text-micro font-mono text-fg-2 transition-colors hover:bg-elevated-hover ${
-				hasCommittedDiff ? "[@container(min-width:400px)]:hidden" : ""
-			}`}
-		>
-			<ShowDiffIcon className="w-[0.95rem] h-[0.95rem] flex-shrink-0 text-fg-muted" />
-			{/* The numbers go before the chip does. A 390px bar already carrying a
-			    variant switcher, status, priority, images and artifacts has ~44px
-			    left — a square and nothing more — while a dirty "+4000 −2000" needs
-			    ~72px, bought by truncating the status label. So the chip stays a
-			    square until the bar can hold the worst case. Only the
-			    uncommitted-only chip has numbers to reveal: the committed one hands
-			    over to the wide badge at 400px. */}
-			{!hasCommittedDiff && (
-				<span
-					className="hidden [@container(min-width:440px)]:flex items-center gap-1 tabular-nums"
-					data-testid="summary-bar-diff-compact-numbers"
-				>
-					<span className="text-success">+{uncommittedInsertions}</span>
-					<span className="text-danger">−{uncommittedDeletions}</span>
-				</span>
-			)}
-		</button>
-	) : null;
-	// Sits at z 9999, above the default tooltip tier — so the row tooltips below
-	// take the "popover" layer, or they open underneath this very list.
-	const diffFilesPopover = diffFilesHover && metadataBranchStatus && visibleDiffFileStats.length > 0 && createPortal(
-		<div
-			className="fixed bg-overlay border border-edge-active rounded-lg shadow-2xl shadow-black/40 py-2 pl-3 pr-1.5 max-w-[25rem] max-h-[20rem] overflow-auto"
-			style={{ top: diffFilesPos.top, left: diffFilesPos.left, zIndex: 9999 }}
-			onMouseEnter={cancelHideDiffFiles}
-			onMouseLeave={hideDiffFilesPopover}
-		>
-			<div className="text-dense text-fg-muted font-semibold uppercase tracking-wider mb-1.5">
-				{t("infoPanel.changedFiles")}
-			</div>
-			{visibleDiffFileStats.map(({ path: fileName, insertions, deletions }) => (
-				<div key={fileName} className="group/file flex items-center gap-1.5 py-0.5 leading-snug">
-					<span className="text-micro text-fg-2 font-mono truncate flex-1">{fileName}</span>
-					{(insertions > 0 || deletions > 0) && (
-						<span className="text-dense font-mono flex-shrink-0">
-							{insertions > 0 && <span className="text-success">+{insertions}</span>}
-							{insertions > 0 && deletions > 0 && " "}
-							{deletions > 0 && <span className="text-danger">−{deletions}</span>}
-						</span>
-					)}
-					<div className="flex items-center gap-1.5 flex-shrink-0">
-						<Tooltip content={t("infoPanel.showDiff")} detail={t("ttip.infoPanel.showDiff")} layer="popover">
-							<button
-								onClick={(event) => handleFileDiff(event, fileName)}
-								aria-label={t("infoPanel.showDiff")}
-								className="text-sm text-accent hover:text-accent-emphasis w-6 h-6 flex items-center justify-center rounded bg-accent/10 hover:bg-accent/20 transition-colors"
-							>
-								<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF4D2"}</span>
-							</button>
-						</Tooltip>
-						<Tooltip content={t("openIn.menuTitle")} detail={t("ttip.openIn.menu")} layer="popover">
-							<button
-								onClick={(event) => handleFileOpenIn(event, fileName)}
-								aria-label={t("openIn.menuTitle")}
-								className="text-sm text-fg-3 hover:text-fg-2 w-6 h-6 flex items-center justify-center rounded bg-raised hover:bg-elevated-hover transition-colors"
-							>
-								<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0379}"}</span>
-							</button>
-						</Tooltip>
-					</div>
-				</div>
-			))}
-		</div>,
-		document.body,
-	);
-	const fileOpenInMenuPortal = fileOpenInMenu ? (
-		<OpenInMenu
-			position={fileOpenInMenu.pos}
-			path={fileOpenInMenu.path}
-			taskId={task.id}
-			onClose={() => setFileOpenInMenu(null)}
-		/>
-	) : null;
-
-	const watchToggleButton = (
-		<Tooltip content={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")} detail={t("ttip.task.watch")}>
-		<button
-			onClick={handleToggleWatch}
-			className={`task-anim flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
-				task.watched
-					? "text-accent bg-accent/10 border border-accent/25"
-					: "text-fg-3 hover:text-fg hover:bg-elevated"
-			}`}
-			aria-label={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
-		>
-			{/* Icon only, at every width: the accent bell already says "watching", and
-			    the word cost bar space the tags and the status chip need more. The
-			    sentence stays in the tooltip and in the mobile sheet row. */}
-			{task.watched
-				? <WatchingIcon className="w-[0.95rem] h-[0.95rem]" />
-				: <WatchIcon className="w-[0.95rem] h-[0.95rem]" />}
-		</button>
-		</Tooltip>
-	);
-
-	// A coordinator owns its completion unconditionally (`taskCompletesManually`),
-	// so the control shows it on and refuses the click instead of offering a toggle
-	// that the lifecycle would ignore.
-	const completionIsForced = isCoordinatorTask(task);
-	const completionOwner = taskCompletionOwner(task);
-	const completionIsAgent = completionOwner === "agent";
-	// "Held": dev3 no longer suggests completing it — you decide, or the agent does.
-	const completionIsManual = completionOwner !== "dev3";
-	const completionOwnerLabel = completionIsAgent ? t("task.selfCompletionEnabled") : t("task.manualCompletionEnabled");
-	const completionOwnerName = completionIsForced
-		? t("task.manualCompletionCoordinatorTooltip")
-		: completionIsAgent
-			? t("task.selfCompletionEnabledTooltip")
-			: completionIsManual ? t("task.manualCompletionEnabledTooltip") : t("task.manualCompletionTooltip");
-	const manualCompletionToggleButton = (
-		<Tooltip content={completionOwnerName} detail={t("ttip.task.manualCompletion")}>
-			<button
-				onClick={handleOpenCompletionMenu}
-				aria-haspopup="menu"
-				aria-expanded={completionMenuAnchor !== null}
-				disabled={completionIsForced}
-				aria-label={completionOwnerName}
-				aria-pressed={completionIsManual}
-				data-testid="task-completion-owner"
-				className={`task-anim flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
-					completionIsManual
-						? "warning-paper text-warning-strong hover:bg-warning/15 border border-warning/30"
-						: "text-fg-3 hover:text-fg hover:bg-elevated border border-edge"
-				} ${completionIsForced ? "cursor-not-allowed" : ""}`}
-			>
-				{/* Amber, not accent: blue here is "a toggle is on", the same blue the
-				    watch bell two slots away wears, and the state was read as a bug
-				    rather than as a choice. Yellow is this bar's "deliberate hold"
-				    (same role as hibernate), and it is never the colour of an error or
-				    of a finished task. Off stays grey and wordless — the state that
-				    needs no explanation. */}
-				<CompletionOwnerIcon className="h-[0.95rem] w-[0.95rem]" active={completionIsManual} agent={completionIsAgent} />
-				{/* Colour never carries the state alone: on a roomy bar the chip spells
-				    the mode out, in the same words as the merge dialog's third button —
-				    that dialog is where most people turn this on, and a shortened echo
-				    of it ("I decide") did not read as the same thing. Tight folds it
-				    back to the icon, where shape and hue still separate it. */}
-				{completionIsManual && !tight && (
-					<span className="text-micro font-semibold whitespace-nowrap">{completionOwnerLabel}</span>
-				)}
-			</button>
-		</Tooltip>
-	);
-
-	const completionOwnerMenu = completionMenuAnchor && (
-		<CompletionOwnerMenu
-			selected={completionOwner}
-			anchorEl={completionMenuAnchor}
-			onClose={() => setCompletionMenuAnchor(null)}
-			onSelect={handleSelectCompletionOwner}
-		/>
-	);
-
-	const priorityBadge = <PriorityBadge priority={task.priority} onChange={handleSetPriority} className="shrink-0" />;
-
-	// On narrow the chip is a primary touch target — bump it to ≥44px (§12.6).
-	// On narrow this is the one shrinkable region of a no-wrap bar: a long
-	// custom-column name truncates here instead of pushing the kebab off screen.
-	// Boxed like its neighbours (watch toggle, completion-owner) so the quick-complete
-	// check reads as a segment of the status control and not as a homeless icon: the
-	// border owns the group, the hairline divides the two click targets, and hover
-	// lives on the segments so each one still answers separately.
-	const showQuickComplete = !narrow && !movingStatus && getAllowedTransitions(task.status).includes("completed");
-	const statusDropdownButton = (
-		<div className={`flex items-center rounded-lg border border-edge hover:border-edge-active transition-colors ${tight || narrow ? "min-w-0 shrink" : "flex-shrink-0"}`}>
-			<button
-				ref={statusTriggerRef}
-				onClick={toggleStatusMenu}
-				disabled={movingStatus}
-				className={`flex min-w-0 items-center gap-2 transition-colors hover:bg-elevated ${showQuickComplete ? "rounded-l-lg" : "rounded-lg"} ${narrow ? "px-3 min-h-[2.75rem]" : "px-2.5 py-1"}`}
-			>
-				{activeCustomColumn ? (
-					<div
-						className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-						style={{ background: activeCustomColumn.color, boxShadow: `0 0 6px ${activeCustomColumn.color}60` }}
-					/>
-				) : (
-					<PipelineRing status={task.status} size={narrow ? "touch" : "default"} />
-				)}
-				{/* Last thing the narrow bar sheds (bible §12.6): under 300px the ring
-				    plus the chevron still read as "status, tap to change", and this is
-				    the only survivor still worth its width. `sr-only` keeps it announced. */}
-				<span className={`font-medium text-fg-2 truncate ${narrow ? "text-sm [@container(max-width:299px)]:sr-only" : "text-micro"}`}>
-					{activeCustomColumn ? activeCustomColumn.name : getStatusLabel(task.status, t, project)}
-				</span>
-				<svg className={`flex-shrink-0 text-fg-3 ${narrow ? "w-4 h-4" : "w-3 h-3"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-				</svg>
-			</button>
-			{showQuickComplete && (
-				<>
-					<span className="h-4 w-px flex-shrink-0 bg-edge" aria-hidden="true" />
-					<Tooltip content={t("pipeline.completeTooltip")} disabled={quickCompleting}>
-						<button
-							data-testid="task-info-quick-complete"
-							onClick={handleQuickComplete}
-							disabled={quickCompleting}
-							aria-label={t("pipeline.completeTooltip")}
-							className={`task-anim flex flex-shrink-0 items-center justify-center self-stretch rounded-r-lg px-1.5 text-success transition-[color,background-color,opacity] ${
-								quickCompleting ? "bg-success/25 opacity-100" : "opacity-75 hover:bg-success/20 hover:opacity-100"
-							}`}
-						>
-							{quickCompleting ? (
-								<span className="h-3 w-3 animate-spin rounded-full border-2 border-success/30 border-t-success" />
-							) : (
-								<CompleteCheckIcon className="w-3 h-3" />
-							)}
-						</button>
-					</Tooltip>
-				</>
-			)}
-		</div>
-	);
-
-	const statusDropdownPortal = statusMenuOpen && createPortal(
-		<div
-			ref={statusMenuRef}
-			className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1.5 min-w-[11.25rem]"
-			style={{ top: statusMenuPos.top, left: statusMenuPos.left, visibility: statusMenuVisible ? "visible" : "hidden" }}
-			onClick={(event) => event.stopPropagation()}
-		>
-			<PipelineDropdown
-				currentStatus={task.status}
-				onMove={handleStatusMove}
-				onMoveToCustomColumn={handleMoveToCustomColumn}
-				customColumns={project.customColumns}
-				currentCustomColumnId={task.customColumnId}
-				project={project}
-			/>
-		</div>,
-		document.body,
-	);
-
-	// Narrow form of the same menu: an anchored popover is a desktop idiom (small
-	// rows, edge clipping) — the manifest mandates a BottomSheet for "Move to".
-	const statusSheet = () => (
-		<BottomSheet
-			open={statusMenuOpen}
-			onClose={() => setStatusMenuOpen(false)}
-			title={t("task.moveTo")}
-			testId="task-status-sheet"
-		>
-			<PipelineDropdown
-				currentStatus={task.status}
-				onMove={handleStatusMove}
-				onMoveToCustomColumn={handleMoveToCustomColumn}
-				customColumns={project.customColumns}
-				currentCustomColumnId={task.customColumnId}
-				project={project}
-				size="touch"
-				hideHeader
-			/>
-		</BottomSheet>
-	);
 
 	// Take responsibility for a reviewed branch's config. The user is allowed to do
 	// this — it is their machine — but they must be told what starts running, in
@@ -1279,134 +586,16 @@ function TaskHeaderFrame({
 		</Tooltip>
 	);
 
-	// Today's controls of each bar not yet split. The legacy cluster items render them
-	// unchanged (decisions/2026/11/21/task-header-slot-frame.md); the Git bar has real items.
-	const narrowBarStatusCluster = () => (
-		<>
-			{variantSwitcher}
-			{statusDropdownButton}
-			{/* Priority sits with status (Context domain, §5.1); `touch` matches the
-			    status control's height so the pair reads as one band and clears the
-			    44px target on a phone (§12.6), versus the dense `xs` desktop badge. */}
-			<PriorityBadge priority={task.priority} onChange={handleSetPriority} size="touch" className="shrink-0" />
-			{/* Agent outputs (images / artifacts) ride the summary bar next to
-			    priority, not only the sheet: they are conditional, and an unread
-			    one has to be seen without opening a menu. Same class as the diff
-			    badge — a readout, not a folded action (bible §12.6). */}
-			<span className="hidden [@container(min-width:340px)]:contents">
-				<TaskSharedImages task={task} projectId={project.id} compact touch />
-				<TaskArtifacts task={task} projectId={project.id} compact touch />
-			</span>
-			{narrowDiffButton}
-			{/* Task title intentionally omitted here — it already shows in the
-			    breadcrumb row above (GlobalHeader). Repeating it wasted the whole
-			    bar; the freed space keeps status + priority + diff readable. */}
-			<div className="flex-1 min-w-0" />
-			{/* First to go: it is the widest chip on the bar ("18 files +195 −131"
-			    ≈ 100px) and the only one whose whole content repeats verbatim in
-			    the sheet's Show diff row. */}
-			<span className="hidden [@container(min-width:400px)]:contents" data-testid="summary-bar-diff-slot">
-				{diffSummaryBadge}
-			</span>
-		</>
-	);
-	// Mobile is a monitor / trigger / read surface, not the dense desktop
-	// toolbar. Editor "open in", scripts, tmux layout, dev server, git
-	// mutations and durable worktree config are intentionally omitted —
-	// they act on the machine you are not sitting at, or need the
-	// terminal. The diff stays one tap away via the summary-bar badge
-	// above. Kept: watch, agent triggers, tunnels (open the app on this
-	// phone), shared images, and the read-only details.
-	const narrowSheetStatusCluster = () => (
-		<>
-			<button
-				type="button"
-				onClick={handleToggleWatch}
-				aria-pressed={task.watched}
-				className={`${SHEET_ROW_CLASS} ${task.watched ? "border-accent/30 bg-accent/10" : ""}`}
-			>
-				{task.watched
-					? <WatchingIcon className="h-5 w-5 shrink-0 text-accent" />
-					: <WatchIcon className="h-5 w-5 shrink-0 text-fg-3" />}
-				<span className="flex-1 text-sm font-medium">{task.watched ? t("task.watching") : t("task.watch")}</span>
-			</button>
-			<button
-				type="button"
-				onClick={handleOpenCompletionMenu}
-		aria-haspopup="menu"
-		aria-expanded={completionMenuAnchor !== null}
-				disabled={completionIsForced}
-				aria-pressed={completionIsManual}
-				className={`${SHEET_ROW_CLASS} ${completionIsManual ? "warning-paper border-warning/30 bg-warning/10 text-warning-strong" : ""} ${completionIsForced ? "cursor-not-allowed opacity-60" : ""}`}
-			>
-				<CompletionOwnerIcon className={`h-5 w-5 shrink-0 ${completionIsManual ? "text-warning-strong" : "text-fg-3"}`} active={completionIsManual} agent={completionIsAgent} />
-				<span className="flex-1 min-w-0">
-					<span className="block text-sm font-medium">{completionIsManual
-						? completionOwnerLabel
-						: t("task.manualCompletion")}</span>
-					{/* A phone has no tooltip, so the row itself carries the
-					    consequence — the thing that reads as a bug when unsaid. */}
-					{completionIsManual && (
-						<span className="block text-micro font-normal leading-snug opacity-80">
-							{completionIsForced
-								? t("task.manualCompletionCoordinatorTooltip")
-								: completionIsAgent
-									? t("task.selfCompletionConsequence")
-									: t("task.manualCompletionConsequence")}
-						</span>
-					)}
-				</span>
-			</button>
-
-			{/* The bar may shed the diff badge on a narrow screen, so the diff
-			    needs a sheet path that does not depend on the task still being
-			    active — TaskGitActionsSheet's own Show diff row requires a live
-			    worktree, and a finished task would otherwise lose the diff
-			    entirely (bible §12.6: nothing is shed without a sheet path). */}
-			{diffSummaryBadge && !(hasGit && isTaskActive && task.worktreePath) && onOpenInlineDiff && (
-				<button
-					type="button"
-					data-testid="task-actions-show-diff"
-					onClick={() => {
-						setActionsSheetOpen(false);
-						openBranchDiff();
-					}}
-					className={SHEET_ROW_CLASS}
-				>
-					<ShowDiffIcon className="h-5 w-5 shrink-0 text-accent" />
-					<span className="flex-1 text-sm font-medium">{t("infoPanel.showDiff")}</span>
-					<span className="text-xs font-mono text-fg-3 tabular-nums">{visibleDiffFiles}</span>
-				</button>
-			)}
-		</>
-	);
-	const legacyClusters: LegacyClusters = narrow
-		? {
-			status: { bar: narrowBarStatusCluster(), sheet: narrowSheetStatusCluster() },
-		}
-		: {
-			status: {
-				bar: (
-					<>
-						{variantSwitcher}
-						{watchToggleButton}
-						{priorityBadge}
-						{statusDropdownButton}
-						{statusDropdownPortal}
-						{manualCompletionToggleButton}
-						{diffSummaryBadge}
-					</>
-				),
-			},
-		};
 	const headerValue = {
 		scope: { task, project, dispatch, navigate },
-		legacy: legacyClusters,
 		layout: { compact, tight, collapsed, narrow },
+		isTaskActive,
 		git,
 		session,
 		onOpenInlineDiff,
 		closeSheet: () => setActionsSheetOpen(false),
+		variants: variantMembers,
+		isFullPage,
 	};
 
 	// Narrow viewport (phone / narrow window): the two dense desktop toolbars do
@@ -1417,10 +606,6 @@ function TaskHeaderFrame({
 		return (
 			<TaskHeaderProvider value={headerValue}>
 				<div ref={toastClearanceRef} className="flex-shrink-0 border-b border-edge glass-header">
-					{diffFilesPopover}
-					{completionOwnerMenu}
-					{fileOpenInMenuPortal}
-					{statusSheet()}
 					{/* The bar sheds, it never stacks (bible §12.6). A second row costs a
 					    phone a whole band of screen and moves every control the user was
 					    aiming at — worse than losing the least important one. Priority,
@@ -1493,9 +678,6 @@ function TaskHeaderFrame({
 				className="flex-shrink-0 border-b border-edge glass-header overflow-hidden transition-[height] duration-200 ease-out"
 				style={{ height }}
 			>
-				{diffFilesPopover}
-				{completionOwnerMenu}
-				{fileOpenInMenuPortal}
 				{/* One tree for both states: a toggle changes classes, never element positions,
 				    so the bars and their controls stay mounted (decisions/2026/11/21/task-header-single-tree.md). */}
 				<div className={collapsed ? "flex flex-col h-full px-2 gap-1 justify-center" : "flex flex-col h-full"}>

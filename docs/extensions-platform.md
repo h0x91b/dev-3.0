@@ -125,8 +125,8 @@ with `defineAppSlot`), the generic `SlotRegistry` (`slot-registry.ts`; board vie
 guards every slot (`runtime.ts`), `<SlotHost>` for replace slots (the board uses it) and `<SlotItems>` for
 contribution slots. Global Settings and the Project Settings tab bodies render through the internal `settingsSections` slot
 (`src/mainview/settings-sections/`, `decisions/2026/11/21/settings-sections-slot.md`; built-ins only). The task header
-draws its four bars from the internal `taskHeader` slot (`src/mainview/task-header/`), one legacy-cluster item per bar
-until each bar is split into items (`decisions/2026/11/21/task-header-slot-frame.md`). The ⇧⌘P palette lists the
+draws its four bars from the internal `taskHeader` slot (`src/mainview/task-header/`), one built-in item per control
+(`decisions/2026/11/21/task-header-status-items.md`). The ⇧⌘P palette lists the
 internal `commands` slot (`src/mainview/commands/`, `decisions/2026/11/21/commands-slot.md`); each command runs itself. Destination
 bodies (Sessions, Stats) sit on the internal `destinationBodies` replace slot (`src/mainview/destination-bodies/`,
 `decisions/2026/11/21/destination-body-slots.md`), the built-in as the only option. The public
