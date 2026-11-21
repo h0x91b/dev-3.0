@@ -57,7 +57,6 @@ import CompletionOfferDialogHost from "./components/CompletionOfferDialogHost";
 import { agentMessageToast, type AgentMessageDetail, type AgentToastEnd } from "./agent-message-toast";
 import { showStaleAgentPathToast, type StaleAgentPathDetail } from "./stale-agent-path-toast";
 import { useSpaces } from "./useSpaces";
-import AgentTrafficScreen from "./components/agent-traffic/AgentTrafficScreen";
 import { noteTrafficArrival } from "./agent-traffic";
 import {
 	OPEN_AGENT_TRAFFIC_LOG_EVENT,
@@ -4297,14 +4296,16 @@ function App() {
 				// nothing here keeps that single frame from showing a screen the user
 				// just switched off.
 				return agentTrafficOn ? (
-					<AgentTrafficScreen
-						projectId={route.scopeProjectId ?? null}
-						focus={
-							route.focusTaskId && route.focusProjectId
-								? { taskId: route.focusTaskId, projectId: route.focusProjectId }
-								: null
-						}
-						onOpenTask={openTaskFromNotification}
+					<DestinationBody
+						destination="agent-traffic"
+						props={{
+							projectId: route.scopeProjectId ?? null,
+							focus:
+								route.focusTaskId && route.focusProjectId
+									? { taskId: route.focusTaskId, projectId: route.focusProjectId }
+									: null,
+							onOpenTask: openTaskFromNotification,
+						}}
 					/>
 				) : null;
 			case "gauge-demo":
