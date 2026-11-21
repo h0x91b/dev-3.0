@@ -862,15 +862,27 @@ function ArchivedView({
 						<TaskSharedImages task={task} projectId={project.id} />
 					</div>
 
-					<button
-						onClick={onClose}
-						className="w-7 h-7 flex items-center justify-center rounded-lg text-fg-3 hover:text-fg hover:bg-fg/8 transition-colors"
-						title={t("task.close")}
-					>
-						<svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-							<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-						</svg>
-					</button>
+					<div className="flex items-center gap-2 flex-shrink-0">
+						{/* The status menu also reopens, but reads as a label: this is the obvious way back.
+						    Agent is Working resumes the saved conversation; To Do would reset the task. */}
+						<button
+							onClick={() => onStatusMove("in-progress")}
+							disabled={movingStatus}
+							data-testid="archived-task-reopen"
+							className="px-3 py-1.5 rounded-lg bg-accent-fill text-white text-sm hover:bg-accent-fill-hover transition-colors disabled:opacity-50"
+						>
+							{t("task.reopenTask")}
+						</button>
+						<button
+							onClick={onClose}
+							className="w-7 h-7 flex items-center justify-center rounded-lg text-fg-3 hover:text-fg hover:bg-fg/8 transition-colors"
+							title={t("task.close")}
+						>
+							<svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+							</svg>
+						</button>
+					</div>
 				</div>
 
 				{/* Body */}

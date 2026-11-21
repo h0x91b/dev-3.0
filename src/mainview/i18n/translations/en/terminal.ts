@@ -4,7 +4,7 @@ const terminal = {
 	"terminal.syncing": "Syncing terminal...",
 	"terminal.taskCompletedTitle": "This task is completed",
 	"terminal.taskCancelledTitle": "This task is cancelled",
-	"terminal.taskClosedHint": "Its terminal and worktree were removed when the task closed — there is nothing left to run here.",
+	"terminal.taskClosedHint": "Its terminal and worktree were removed when the task closed. Reopen it to move it back to Agent is Working and resume the agent conversation.",
 	"terminal.envError": "Task environment error",
 	"terminal.worktreeNotFound": "The task's working directory no longer exists. This can happen when the worktree is removed externally.",
 	"terminal.worktreeUnreadableTitle": "dev3 can't read this task's folder",

@@ -4,7 +4,7 @@ const terminal = {
 	"terminal.syncing": "Синхронизация терминала...",
 	"terminal.taskCompletedTitle": "Задача завершена",
 	"terminal.taskCancelledTitle": "Задача отменена",
-	"terminal.taskClosedHint": "Её терминал и worktree удалены при закрытии задачи — запускать больше нечего.",
+	"terminal.taskClosedHint": "Её терминал и worktree удалены при закрытии задачи. Переоткройте её, чтобы вернуть в «Агент работает» и продолжить разговор с агентом.",
 	"terminal.envError": "Ошибка окружения задачи",
 	"terminal.worktreeNotFound": "Рабочая директория задачи больше не существует. Это может произойти, если worktree был удалён извне.",
 	"terminal.worktreeUnreadableTitle": "dev3 не может прочитать папку задачи",

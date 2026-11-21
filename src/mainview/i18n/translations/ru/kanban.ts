@@ -224,6 +224,7 @@ const kanban = {
 	"task.resetTitle": "Сбросить на авто",
 	"task.failedRename": "Не удалось переименовать: {error}",
 	"task.reopenTo": "Переоткрыть как",
+	"task.reopenTask": "Переоткрыть задачу",
 	"task.openPR": "Открыть PR #{number}",
 	"task.prBadge": "PR #{number}",
 	"task.prNumber": "#{number}",
