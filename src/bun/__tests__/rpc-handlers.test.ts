@@ -5,7 +5,7 @@ import { LOCAL_MERGE_SHARED_FOLDER_ERROR, MAX_TASK_NOTES_KEPT, OWN_WORKTREE_NOT_
 import { ENV_UNSET } from "../../shared/agent-accounts";
 import { ptyWsUrl } from "../pty-server-access";
 import * as agentAccounts from "../agent-accounts";
-import { chooseTaskCodexConversations } from "../codex-task-selection";
+import { chooseTaskCodexConversations, claimCodexChoices } from "../codex-task-selection";
 import {
 	activatePane,
 	closePane,
@@ -250,7 +250,7 @@ vi.mock("../agent-prompt-native", () => ({
 	NATIVE_PROMPT_DELIVERY_METHOD: "_native.deliverPrompt",
 }));
 
-vi.mock("../codex-task-selection", () => ({ chooseTaskCodexConversations: vi.fn(async () => new Map()) }));
+vi.mock("../codex-task-selection", () => ({ chooseTaskCodexConversations: vi.fn(async () => new Map()), claimCodexChoices: vi.fn(async () => undefined) }));
 
 // Unit-tested on its own; here only its place in each handler matters.
 vi.mock("../agent-launch-availability", () => ({
@@ -544,7 +544,8 @@ const { _resetLifecycleActorsForTest } = await import("../lifecycle/service");
  */
 function bridgeLockedWrites(): void {
 	vi.mocked(data.updateTaskWith).mockImplementation(async (project, taskId, mutator) => {
-		const current = await data.getTask(project, taskId);
+		// A launch reads the row only to clear a stale launch failure; handler tests seed no row for it.
+		const current = (await data.getTask(project, taskId)) ?? ({} as Task);
 		const { updates, result } = await mutator(current);
 		if (Object.keys(updates).length === 0) return { task: current, result };
 		const written = await data.updateTask(project, taskId, updates);
@@ -13432,7 +13433,8 @@ describe("resumeTask resumes the Codex conversations the selection engine chose"
 		chose([0, sessionId, home]);
 		try {
 			await handlers.resumeTask({ taskId: task.id });
-			expect(chooseTaskCodexConversations).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: task.id }), [expect.objectContaining({ sessionId })], "explicit-resume", expect.objectContaining({ persist: true }));
+			expect(chooseTaskCodexConversations).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: task.id }), [expect.objectContaining({ sessionId })], "explicit-resume", expect.objectContaining({ persist: false }));
+			expect(claimCodexChoices).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: task.id }), expect.anything(), [expect.objectContaining({ sessionId })], expect.any(Map));
 			expect(pty.createSession).toHaveBeenLastCalledWith(task.id, project.id, task.worktreePath, expect.any(String), expect.objectContaining({ CODEX_HOME: home }), expect.any(String));
 			expect((await data.getTask(project, task.id)).sessionState?.panes[0]).toMatchObject({ sessionId, accountId: "account-b" });
 		} finally { accountSpy.mockRestore(); }
@@ -14030,7 +14032,7 @@ describe("wake of a Codex task whose pane record was lost", () => {
 		vi.mocked(chooseTaskCodexConversations).mockResolvedValue(new Map([[0, { sessionId: recorded, codexHome: home }]]));
 		await handlers.resumeTask({ taskId: task.id });
 		expect(chooseTaskCodexConversations).toHaveBeenCalledTimes(1);
-		expect(chooseTaskCodexConversations).toHaveBeenCalledWith(expect.anything(), expect.anything(), [expect.objectContaining({ sessionId: recorded })], "explicit-resume", expect.objectContaining({ persist: true }));
+		expect(chooseTaskCodexConversations).toHaveBeenCalledWith(expect.anything(), expect.anything(), [expect.objectContaining({ sessionId: recorded })], "explicit-resume", expect.objectContaining({ persist: false }));
 	});
 });
 

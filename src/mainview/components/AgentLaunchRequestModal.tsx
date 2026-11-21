@@ -332,7 +332,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 												{config ? <span className="text-fg-3 font-normal"> · {config.name}</span> : null}
 											</span>
 											<span className="text-fg-3 text-xs font-mono truncate">
-												{pane.sessionId ? t("agentLaunch.resumeConversation", { id: pane.sessionId.slice(0, 8) }) : t("agentLaunch.resumeLatest")}
+												{pane.neverStarted ? t("agentLaunch.resumeStartAgain") : pane.sessionId ? t("agentLaunch.resumeConversation", { id: pane.sessionId.slice(0, 8) }) : t("agentLaunch.resumeLatest")}
 											</span>
 										</li>
 									);

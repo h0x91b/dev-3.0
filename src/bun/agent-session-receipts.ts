@@ -96,6 +96,11 @@ export function noteAgentExited(taskId: string, sessionId: string, exitCode: num
 	return exitCode !== null && exitCode !== 0 ? "crashed" : null;
 }
 
+/** Whether this launch is still the task's newest one: a report about an older run must not land on a newer one. */
+export function isLatestAgentLaunch(taskId: string, sessionId: string): boolean {
+	return latestLaunch.get(taskId) === sessionId;
+}
+
 export function agentSessionRecord(taskId: string, sessionId: string): AgentSessionRecord | null {
 	return records.get(keyOf(taskId, sessionId)) ?? null;
 }

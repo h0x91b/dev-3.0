@@ -27,7 +27,7 @@ vi.mock("../agent-transcripts", () => ({
 		panes.map((p) => ({ sessionId: p.sessionId, substituted: false, startFresh: false, verified: true }))),
 	claudeConfigDirHasSession: vi.fn(() => true),
 }));
-vi.mock("../codex-task-selection", () => ({ chooseTaskCodexConversations: vi.fn(async () => new Map()) }));
+vi.mock("../codex-task-selection", () => ({ chooseTaskCodexConversations: vi.fn(async () => new Map()), claimCodexChoices: vi.fn(async () => undefined) }));
 vi.mock("../repo-config", () => ({ resolveProjectEnv: vi.fn(async () => ({})) }));
 vi.mock("../ops-worktree", () => ({ resolveLaunchProject: vi.fn(async (p: Project) => p), rootProjectFor: vi.fn((p: Project) => p) }));
 vi.mock("../tmux", () => ({ DEFAULT_TMUX_SOCKET: "dev3", taskSessionName: (id: string) => `dev3-${id}`, tmux: {} }));

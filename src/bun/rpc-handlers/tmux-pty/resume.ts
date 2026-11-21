@@ -6,12 +6,12 @@ import { ptyWsUrl } from "../../pty-server-access";
 import * as agents from "../../agents";
 import { codexAccountIdForHome, defaultAccountPaths, getActiveClaudeConfigDir } from "../../agent-accounts";
 import { isAutoAccountId } from "../../../shared/agent-accounts";
-import { chooseTaskCodexConversations } from "../../codex-task-selection";
+import { chooseTaskCodexConversations, claimCodexChoices } from "../../codex-task-selection";
 import { getAgentAdapter } from "../../../shared/agent-adapters/registry";
 import { agentKey } from "../../../shared/agent-adapters/families";
 import * as repoConfig from "../../repo-config";
 import { resolveLaunchProject, rootProjectFor } from "../../ops-worktree";
-import { claudeConfigDirHasSession, resolveResumableSessionIds } from "../../agent-transcripts";
+import { claudeConfigDirHasSession, resolveResumableSessionIds, type UnreadableStore } from "../../agent-transcripts";
 import { DEFAULT_TMUX_SOCKET, taskSessionName, tmux } from "../../tmux";
 import { dev3TaskTempPath } from "../../temp-paths";
 import { taskTerminalBackendIdentity } from "../../task-terminal-backend";
@@ -21,6 +21,7 @@ import { taskMainAgentLiveness } from "../../scheduled-message-author";
 import { NATIVE_AGENT_PANE_ID } from "../../agent-prompt-native";
 import type { ResumePaneMode, ResumePaneReport, ResumeUnavailableReason, TaskResumeResult } from "../../../shared/agent-resume";
 import { WAKE_SHELL_NOTICE } from "../../../shared/task-hibernate";
+import { mainAgentNeverStarted } from "../../../shared/agent-launch-failure";
 import { getPushMessage, buildCmdScript, log, writeLaunchScript } from "../shared-pure";
 import { applyAgentHooksToCommand, ensureAgentTrust, launchTaskPty, notifyBedrockProfileMissing, notifyStaleAccountDropped } from "./task-launch";
 import { findTaskAcrossProjects, markTerminalAttached, wakeIfHibernated } from "./task-state";
@@ -29,7 +30,7 @@ import { findTaskAcrossProjects, markTerminalAttached, wakeIfHibernated } from "
  * Resume pointers for every pane, healed against the transcripts on disk in one
  * pass so no two panes reopen the same conversation (decision 189, #1950).
  */
-function resolveResumeTargets(task: Task, panes: readonly PaneSessionEntry[]): { sessionId: string | null; mode: ResumePaneMode }[] {
+function resolveResumeTargets(task: Task, panes: readonly PaneSessionEntry[]): { sessionId: string | null; mode: ResumePaneMode; unreadable?: UnreadableStore }[] {
 	const targets = resolveResumableSessionIds(task.worktreePath ?? "", panes.map((pane, i) => ({ ...pane, adoptsOrphan: i === 0 })));
 	return targets.map((target, i) => {
 		if (target.substituted || target.startFresh) {
@@ -50,7 +51,7 @@ function resolveResumeTargets(task: Task, panes: readonly PaneSessionEntry[]): {
 			: !target.sessionId ? "agent-latest"
 			: target.substituted ? "substituted"
 			: target.verified ? "exact" : "unverified";
-		return { sessionId: target.sessionId, mode };
+		return { sessionId: target.sessionId, mode, ...(target.unreadable ? { unreadable: target.unreadable } : {}) };
 	});
 }
 
@@ -316,9 +317,10 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 		throw new ResumeUnavailableError("no-saved-session", `Cannot resume: task ${params.taskId} has no stored pane sessions`);
 	}
 	if (lost) task.sessionState = { panes };
-	// Every Codex pane is chosen from one snapshot and claimed before anything
-	// launches; a pane that cannot be chosen safely refuses the whole resume.
-	const codexChoices = await chooseTaskCodexConversations(resolvedProject, task, panes, "explicit-resume", { persist: true, onDisk: stored });
+	// Every Codex pane is chosen from one snapshot; a pane that cannot be chosen safely
+	// refuses the whole resume. The choice is claimed only after every other refusal below.
+	const panesBeforeChoices = [...panes];
+	const codexChoices = await chooseTaskCodexConversations(resolvedProject, task, panes, "explicit-resume", { persist: false });
 	const codexHomes = new Map<number, string>();
 	for (const [index, choice] of codexChoices) {
 		panes[index] = { ...panes[index], sessionId: choice.sessionId };
@@ -334,6 +336,12 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 		// The selection engine chose a Codex id from the transcripts it read.
 		return codexChoices.has(i) && target.sessionId ? { ...target, mode: "exact" as const } : target;
 	});
+	// The first launch died before a conversation existed: pane 0 starts on the task prompt, everything else resumes as usual.
+	const mainNeverStarted = mainAgentNeverStarted(task);
+	if (mainNeverStarted) {
+		log.warn("Main agent never started — relaunching fresh instead of resuming", { taskId: task.id.slice(0, 8), sessionId: task.launchFailure?.sessionId });
+		targets[0] = { sessionId: null, mode: "fresh-session" };
+	}
 	const accountOverride = opts.accountId;
 	// Re-picking the account a pane already runs on is not a switch.
 	const switchesAccount = (pane: PaneSessionEntry, i: number) =>
@@ -350,9 +358,20 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 		status: "skipped",
 		paneId: null,
 	}));
+	if (mainNeverStarted) reports[0].detail = "The agent never started, so it was launched fresh with the task prompt instead of resuming a conversation that does not exist.";
+	const unreadableIndex = targets.findIndex((target) => target.unreadable);
+	if (unreadableIndex >= 0) {
+		const { dir, code } = targets[unreadableIndex].unreadable!;
+		const stored = panes[unreadableIndex].sessionId;
+		throw new ResumeUnavailableError(
+			"history-unreadable",
+			`Cannot read this task's conversation history (${dir}: ${code}). The task stays bound to ${stored ? `conversation ${stored.slice(0, 8)}` : "its saved conversation"}. Restore access and resume again, or choose Start fresh for a new conversation.`,
+			reports,
+		);
+	}
 	if (opts.restart === "always" && targets.some((target, i) =>
-		!target.sessionId || (target.mode !== "exact" && target.mode !== "unverified")
-		|| (stored[i]?.sessionId && target.sessionId !== stored[i].sessionId),
+		!(mainNeverStarted && i === 0) && (!target.sessionId || (target.mode !== "exact" && target.mode !== "unverified")
+		|| (stored[i]?.sessionId && target.sessionId !== stored[i].sessionId)),
 	)) {
 		throw new ResumeUnavailableError("session-id-unknown", "Cannot restart: every agent needs its own saved, resumable conversation. Nothing was stopped.", reports);
 	}
@@ -381,6 +400,8 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 			typeof accountOverride === "string" && agents.claudeLaunchKeepsProjectFolder(accountOverride, { ...launch, sessionId: sessionId ?? undefined });
 		await assertAccountReachesPanes(accountOverride, panes, targets, reports, taskTerminalBackendIdentity(task) !== "tmux", switchesAccount, keepsProjectFolder);
 	}
+	// Nothing above wrote anything, so a refused resume leaves the saved panes untouched.
+	if (codexChoices.size) await claimCodexChoices(project, task, stored, panesBeforeChoices, codexChoices);
 	await wakeIfHibernated(project, task);
 
 	if (opts.restart) {
@@ -411,7 +432,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 		main.configId,
 		false,
 		true,
-		{ sessionId: mainResume ?? undefined, accountId: switchesAccount(main, 0) ? accountOverride : main.accountId, bedrockProfile: main.bedrockProfile, projectLogin: main.projectLogin, codexHome: codexHomes.get(0), freshSessionId: mainFreshSessionId },
+		{ sessionId: mainResume ?? undefined, accountId: switchesAccount(main, 0) ? accountOverride : main.accountId, bedrockProfile: main.bedrockProfile, projectLogin: main.projectLogin, codexHome: codexHomes.get(0), freshSessionId: mainFreshSessionId, freshWithTaskPrompt: mainNeverStarted || undefined },
 	);
 	if (mainAccountId !== undefined) reports[0].accountId = mainAccountId;
 	// Start Fresh and reconnect read the task's account, so a switch must not revert there.

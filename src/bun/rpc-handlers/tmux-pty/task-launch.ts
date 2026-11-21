@@ -1,5 +1,5 @@
 import { assertTaskWorkspacePresent } from "../../task-workspace-guard";
-import type { AgentFamily, ColumnAgentConfig, PermissionMode, Project, Task } from "../../../shared/types";
+import type { AgentFamily, ColumnAgentConfig, PaneSessionEntry, PermissionMode, Project, Task } from "../../../shared/types";
 import { getPrimaryStopTarget, isCoordinatorTask, taskProtocolMode } from "../../../shared/types";
 import { rootProjectFor } from "../../ops-worktree";
 import { coordinatorLaunchDefault } from "../../../shared/coordinator-launch";
@@ -318,7 +318,60 @@ export async function applyModelVersionNotice(
 	return buildScriptRunnerCommand(scriptPath, { shellPath: opts.userShell });
 }
 
-export async function launchTaskPty(
+/**
+ * A new agent run supersedes the previous run's failure, but only once the replacement
+ * is committed: a launch that throws earlier must keep the verdict that tells Resume
+ * its conversation never existed. Decided on the row under the lock, since the previous
+ * run's report may have landed after this task was read.
+ */
+async function clearSupersededLaunchFailure(project: Project, task: Task, ownLaunchId: string | null): Promise<void> {
+	try {
+		// A failure recorded for this very launch (it exited at once) is its own verdict, not a superseded one.
+		await data.updateTaskWith(project, task.id, (current) => ({
+			updates: current.launchFailure && current.launchFailure.sessionId !== ownLaunchId ? { launchFailure: undefined } : {},
+			result: null,
+		}));
+	} catch (err) {
+		log.warn("Could not clear the previous launch failure (non-fatal)", { taskId: task.id.slice(0, 8), error: String(err) });
+	}
+	task.launchFailure = undefined;
+}
+
+/**
+ * A never-started relaunch writes its new session id into pane 0 before the terminal exists. If the launch
+ * then throws, that id names nothing and would hide the never-started verdict (which compares ids), so the
+ * prior binding goes back — only when pane 0 still holds the id this attempt wrote.
+ */
+async function restoreNeverStartedMain(project: Project, task: Task, prior: PaneSessionEntry, attemptId: string): Promise<void> {
+	try {
+		await data.updateTaskWith(project, task.id, (current) => {
+			const panes = current.sessionState?.panes;
+			if (!panes?.length || panes[0].sessionId !== attemptId) return { updates: {}, result: null };
+			return { updates: { sessionState: { panes: [prior, ...panes.slice(1)] } }, result: null };
+		});
+	} catch (err) {
+		log.warn("Could not restore the main pane's prior binding (non-fatal)", { taskId: task.id.slice(0, 8), error: String(err) });
+	}
+}
+
+type LaunchTaskPtyArgs = Parameters<typeof launchTaskPtyOnce> extends [unknown, ...infer Rest] ? Rest : never;
+
+export async function launchTaskPty(...args: LaunchTaskPtyArgs): ReturnType<typeof launchTaskPtyOnce> {
+	const [project, task, worktreePath, , , , , opts] = args;
+	assertTaskWorkspacePresent(project, worktreePath, task);
+	const priorMain = task.sessionState?.panes?.[0];
+	// Set once the replacement session exists: after that the new id is live and must keep its binding.
+	const progress = { sessionCreated: false };
+	try {
+		return await launchTaskPtyOnce(progress, ...args);
+	} catch (err) {
+		if (!progress.sessionCreated && opts?.freshWithTaskPrompt && opts.freshSessionId && priorMain) await restoreNeverStartedMain(project, task, priorMain, opts.freshSessionId);
+		throw err;
+	}
+}
+
+async function launchTaskPtyOnce(
+	progress: { sessionCreated: boolean },
 	project: Project,
 	task: Task,
 	worktreePath: string,
@@ -342,6 +395,9 @@ export async function launchTaskPty(
 		/** A resume whose pane has no conversation left of its own: start it on this
 		 *  new id, with no brief, rather than `--continue` into another pane's. */
 		freshSessionId?: string;
+		/** With `freshSessionId`: the first launch never created its conversation, so the
+		 *  new one gets the original task description instead of an empty brief. */
+		freshWithTaskPrompt?: boolean;
 	},
 ): Promise<string | null | undefined> {
 	// First, before any trust/hook/config write: tmux would start a missing cwd in $HOME.
@@ -385,7 +441,7 @@ export async function launchTaskPty(
 	const resumeFresh = resume && !!opts?.freshSessionId;
 	const ctx: agents.TemplateContext = {
 		taskTitle: task.title,
-		taskDescription: resumeFresh ? "" : task.description,
+		taskDescription: resumeFresh && !opts?.freshWithTaskPrompt ? "" : task.description,
 		projectName: project.name,
 		projectPath: rootProject.path,
 		worktreePath,
@@ -623,6 +679,7 @@ export async function launchTaskPty(
 		: resume ? null
 		: freshLaunchSessionId;
 	let exitReport: string[] | undefined;
+	let registeredLaunchId: string | null = null;
 	if (trackedSessionId && agents.supportsPreAssignedSessionId(resolvedBaseCmd, resolvedAgentFamily)
 		&& getAgentAdapter(resolvedBaseCmd, resolvedAgentFamily).hooksSpec()?.kind === "claude"
 		&& claudeSessionStartHookInstalled(worktreePath)
@@ -630,6 +687,7 @@ export async function launchTaskPty(
 		// handoff and print "Unknown command" at every exit, so keep today's path.
 		&& await hookCliSupports(AGENT_SESSION_STARTED_METHOD) && await hookCliSupports(AGENT_EXITED_METHOD)) {
 		noteAgentLaunched(task.id, trackedSessionId, { startReceipts: true });
+		registeredLaunchId = trackedSessionId;
 		exitReport = agentExitReportArgv(task.id, trackedSessionId);
 	} else if (!opts?.shellNotice && !skipSessionPersist && resolvedBaseCmd && resolvedBaseCmd !== "bash"
 		&& await hookCliSupports(AGENT_EXITED_METHOD)) {
@@ -637,6 +695,7 @@ export async function launchTaskPty(
 		// still ties the exit to this spawn, and only a non-zero code moves the card.
 		const launchId = crypto.randomUUID();
 		noteAgentLaunched(task.id, launchId, { startReceipts: false });
+		registeredLaunchId = launchId;
 		exitReport = agentExitReportArgv(task.id, launchId);
 	}
 
@@ -740,6 +799,8 @@ export async function launchTaskPty(
 	// backends. Only the session itself differs.
 	if (nativeBackend) {
 		await launchNativeTaskSession(project, task, worktreePath, runScriptPath, env, userShell);
+		progress.sessionCreated = true;
+		if (!skipSessionPersist && !opts?.shellNotice) await clearSupersededLaunchFailure(project, task, registeredLaunchId);
 		return launchAccountId;
 	}
 
@@ -757,10 +818,12 @@ export async function launchTaskPty(
 		// creating a tmux session. Gate preparation on the session itself so those
 		// asynchronous launch failures are reverted and surfaced like spawn errors.
 		await waitForTaskTmuxSession(task.id, sessionSocket);
+		progress.sessionCreated = true;
 		log.info("launchTaskPty DONE — PTY session created", { taskId: task.id.slice(0, 8) });
 		if (!skipSessionPersist && !isSetupWrapper && mainPaneEntry) {
 			await persistInitialAgentPaneId(project, task, sessionSocket, mainPaneEntry);
 		}
+		if (!skipSessionPersist && !opts?.shellNotice) await clearSupersededLaunchFailure(project, task, registeredLaunchId);
 		await setTmuxSessionPortEnv(task.id, sessionSocket);
 		if (project.kind === "virtual" && !sessionPreexisted) {
 			await addVirtualShellPane(task, worktreePath, sessionSocket, userShell);

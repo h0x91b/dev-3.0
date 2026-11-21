@@ -29,6 +29,14 @@ export interface ResumeTarget {
 	startFresh: boolean;
 	/** A transcript for `sessionId` was actually found on disk. False when the store could not be read. */
 	verified: boolean;
+	/** A store dir exists but cannot be read, so nothing was healed: `sessionId` is the stored one, unchanged. */
+	unreadable?: UnreadableStore;
+}
+
+/** A store dir that exists but failed to list, e.g. `EACCES`. */
+export interface UnreadableStore {
+	dir: string;
+	code: string;
 }
 
 /** What the resolver needs of one stored pane. */
@@ -91,7 +99,7 @@ export function resolveResumableSessionIds(
 ): ResumeTarget[] {
 	const targets: ResumeTarget[] = new Array(panes.length);
 	const claimed = new Set<string>();
-	const snapshots = new Map<string, string[]>();
+	const snapshots = new Map<string, { ids: string[]; unreadable: UnreadableStore | null }>();
 	const unresolved: { index: number; ids: string[] }[] = [];
 
 	panes.forEach((pane, index) => {
@@ -102,14 +110,24 @@ export function resolveResumableSessionIds(
 			return;
 		}
 		const key = [store.ext, ...store.dirs].join("\0");
-		let ids = snapshots.get(key);
-		if (!ids) {
-			ids = sessionIdsNewestFirst(store.dirs, store.ext);
-			snapshots.set(key, ids);
+		let snapshot = snapshots.get(key);
+		if (!snapshot) {
+			const unreadable: UnreadableStore[] = [];
+			snapshot = { ids: sessionIdsNewestFirst(store.dirs, store.ext, unreadable), unreadable: unreadable[0] ?? null };
+			snapshots.set(key, snapshot);
 		}
-		if (stored && !claimed.has(stored) && (ids.includes(stored) || inOriginStore(pane, stored, home) || inSiblingStore(store, stored))) {
+		const { ids } = snapshot;
+		// Lookups that could have verified the stored id but failed to read: the id stays bound instead of being healed away.
+		const unreadableLookups: UnreadableStore[] = [];
+		if (stored && !claimed.has(stored) && (ids.includes(stored) || inOriginStore(pane, stored, home, unreadableLookups) || inSiblingStore(store, stored, unreadableLookups))) {
 			claimed.add(stored);
 			targets[index] = { sessionId: stored, substituted: false, startFresh: false, verified: true };
+			return;
+		}
+		// A history that cannot be listed looks empty; healing from it would silently move the pane off its conversation.
+		const unreadable = snapshot.unreadable ?? unreadableLookups[0];
+		if (unreadable) {
+			targets[index] = { sessionId: stored, substituted: false, startFresh: false, verified: false, unreadable };
 			return;
 		}
 		unresolved.push({ index, ids });
@@ -134,10 +152,10 @@ export function resolveResumableSessionIds(
  * holding just `memory/` — so without this look the pane would be healed away
  * from a live id.
  */
-function inOriginStore(pane: ResumeCandidate, stored: string, home: string): boolean {
+function inOriginStore(pane: ResumeCandidate, stored: string, home: string, unreadable: UnreadableStore[]): boolean {
 	if (!pane.sessionOriginCwd) return false;
 	const origin = storeFor(pane.agentCmd, pane.sessionOriginCwd, home, pane.agentFamily ?? undefined);
-	return !!origin && sessionIdsNewestFirst(origin.dirs, origin.ext).includes(stored);
+	return !!origin && sessionIdsNewestFirst(origin.dirs, origin.ext, unreadable).includes(stored);
 }
 
 /**
@@ -145,9 +163,9 @@ function inOriginStore(pane: ResumeCandidate, stored: string, home: string): boo
  * another directory's store, and nothing records which one. Every store sits
  * beside the worktree's own, so look for that exact id there.
  */
-function inSiblingStore(store: { dirs: string[]; ext: string }, stored: string): boolean {
+function inSiblingStore(store: { dirs: string[]; ext: string }, stored: string, unreadable: UnreadableStore[]): boolean {
 	for (const projectsDir of new Set(store.dirs.map((dir) => dirname(dir)))) {
-		if (inAnyStoreUnder(projectsDir, stored, store.ext)) return true;
+		if (inAnyStoreUnder(projectsDir, stored, store.ext, unreadable)) return true;
 	}
 	return false;
 }
@@ -157,25 +175,40 @@ export function claudeConfigDirHasSession(configDir: string, sessionId: string):
 	return inAnyStoreUnder(`${configDir}/projects`, sessionId, ".jsonl");
 }
 
-function inAnyStoreUnder(projectsDir: string, id: string, ext: string): boolean {
+function inAnyStoreUnder(projectsDir: string, id: string, ext: string, unreadable?: UnreadableStore[]): boolean {
 	if (basename(id) !== id || id.startsWith(".")) return false;
 	let entries: string[];
 	try {
 		entries = readdirSync(projectsDir);
-	} catch {
+	} catch (err) {
+		const code = (err as NodeJS.ErrnoException).code ?? "UNKNOWN";
+		if (code !== "ENOENT") unreadable?.push({ dir: projectsDir, code });
 		return false;
 	}
-	return entries.some((entry) => existsSync(`${projectsDir}/${entry}/${id}${ext}`));
+	for (const entry of entries) {
+		const dir = `${projectsDir}/${entry}`;
+		try {
+			statSync(`${dir}/${id}${ext}`);
+			return true;
+		} catch (err) {
+			// Absent is an answer; an access failure is not, so it blocks verification instead of reading as "no".
+			const code = (err as NodeJS.ErrnoException).code ?? "UNKNOWN";
+			if (code !== "ENOENT" && code !== "ENOTDIR") unreadable?.push({ dir, code });
+		}
+	}
+	return false;
 }
 
-/** Session ids across all store dirs, newest transcript first. */
-function sessionIdsNewestFirst(dirs: readonly string[], ext: string): string[] {
+/** Session ids across all store dirs, newest transcript first. A dir that exists but fails to list is reported in `unreadable`. */
+function sessionIdsNewestFirst(dirs: readonly string[], ext: string, unreadable?: UnreadableStore[]): string[] {
 	const found: { id: string; mtimeMs: number }[] = [];
 	for (const dir of dirs) {
 		let names: string[];
 		try {
 			names = readdirSync(dir).filter((f) => f.endsWith(ext) && f.length > ext.length);
-		} catch {
+		} catch (err) {
+			const code = (err as NodeJS.ErrnoException).code ?? "UNKNOWN";
+			if (code !== "ENOENT") unreadable?.push({ dir, code });
 			continue;
 		}
 		for (const name of names) {

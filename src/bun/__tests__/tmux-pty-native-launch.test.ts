@@ -30,6 +30,7 @@ vi.mock("../data", () => ({
 	getProject: vi.fn(),
 	getTask: vi.fn(),
 	updateTask: vi.fn(async () => undefined),
+	updateTaskWith: vi.fn(async () => ({ task: {}, result: null })),
 	loadProjects: vi.fn(async () => []),
 	loadVirtualProjects: vi.fn(async () => []),
 }));
@@ -252,6 +253,7 @@ import { which } from "../which";
 import { getAgentAdapter } from "../../shared/agent-adapters/registry";
 import { claudeSessionStartHookInstalled } from "../../shared/agent-hooks";
 import { hookCliSupports } from "../hook-cli-capability";
+import { mainAgentNeverStarted } from "../../shared/agent-launch-failure";
 import { agentSessionRecord, resetAgentSessionRecordsForTests } from "../agent-session-receipts";
 
 const { launchTaskPty, tmuxPtyHandlers } = await import("../rpc-handlers/tmux-pty");
@@ -956,6 +958,24 @@ describe("launch registration of a fresh Claude session", () => {
 		expect(exitReports()).toEqual([["dev3", "hook", "agent-exited", "--task", TASK_ID, "--session", sessionId]]);
 	});
 
+	it("clears the previous run's failure only after this launch is registered, so a late report of the old run cannot land", async () => {
+		let registeredAtClear: boolean | null = null;
+		vi.mocked(data.updateTaskWith).mockImplementationOnce((async () => {
+			registeredAtClear = agentSessionRecord(TASK_ID, persistedSessionId())?.launchedAt != null;
+			return { task: {}, result: null };
+		}) as never);
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+		expect(registeredAtClear).toBe(true);
+	});
+
+	it("keeps a failure recorded for this very launch (it exited at once) and clears one of an older launch", async () => {
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+		const mutator = vi.mocked(data.updateTaskWith).mock.calls[0][2] as (t: Task) => { updates: Partial<Task> };
+		const row = (sessionId: string) => ({ launchFailure: { exitCode: 2, at: "t", output: null, neverStarted: true, sessionId } }) as Task;
+		expect(mutator(row(persistedSessionId())).updates).toEqual({});
+		expect(mutator(row("older-launch")).updates).toEqual({ launchFailure: undefined });
+	});
+
 	it("puts the report on the agent's own script when a setup script runs first", async () => {
 		await launchTaskPty(makeProject({ setupScript: "bun install\n" }), makeTask(), WORKTREE, null, null, true);
 
@@ -1040,5 +1060,124 @@ describe("launch registration of a fresh Claude session", () => {
 	it("registers the new id of a Start Fresh resume", async () => {
 		await launchTaskPty(makeProject(), makeTask(), WORKTREE, null, null, false, true, { freshSessionId: "fresh-1" });
 		expect(agentSessionRecord(TASK_ID, "fresh-1")?.launchedAt).not.toBeNull();
+	});
+});
+
+describe("a new launch supersedes the previous run's failure", () => {
+	const failure = { exitCode: 2, at: "2026-11-19T10:00:00Z", output: null, neverStarted: true, sessionId: "dead-1" };
+	/** The mutator is what decides, against the row under the lock. */
+	const clearPatches = () => vi.mocked(data.updateTaskWith).mock.calls.map(([, , mutator]) => (mutator as (t: Task) => { updates: Partial<Task> })(makeTask({ launchFailure: failure })).updates);
+
+	it("clears the failure of the row when an agent launches", async () => {
+		await launchTaskPty(makeProject(), makeTask(), WORKTREE);
+		expect(clearPatches()).toEqual([{ launchFailure: undefined }]);
+		const mutator = vi.mocked(data.updateTaskWith).mock.calls[0][2] as (t: Task) => { updates: Partial<Task> };
+		expect(mutator(makeTask()).updates).toEqual({});
+	});
+
+	it("keeps the never-started verdict when the replacement launch is refused before it starts", async () => {
+		const task = makeTask({ launchFailure: failure, sessionState: { panes: [{ agentCmd: "claude", sessionId: "dead-1", main: true }] } });
+		vi.mocked(agents.resolveCommandForProject).mockRejectedValueOnce(new Error("Custom executable is unavailable"));
+		await expect(launchTaskPty(makeProject(), task, WORKTREE, null, null, false, true, { freshSessionId: "fresh-attempt", freshWithTaskPrompt: true }))
+			.rejects.toThrow("Custom executable is unavailable");
+		expect(task.launchFailure).toEqual(failure);
+		// Nothing was written before the refusal, so the restore finds pane 0 on its old id and changes nothing.
+		for (const [, , mutator] of vi.mocked(data.updateTaskWith).mock.calls) {
+			expect((mutator as (t: Task) => { updates: Partial<Task> })(task).updates).toEqual({});
+		}
+		expect(vi.mocked(data.updateTask).mock.calls.some(([, , updates]) => "launchFailure" in updates)).toBe(false);
+	});
+
+	it("keeps the persisted main marked as never started when terminal creation is rejected after its new id was written", async () => {
+		const prior = { main: true, agentCmd: "claude", agentId: null, configId: null, sessionId: "dead-1" };
+		const task = makeTask({ launchFailure: failure, sessionState: { panes: [prior, { agentCmd: "bash", agentId: null, configId: null, sessionId: null, paneId: "%5" }] } });
+		let persisted: Task = structuredClone(task);
+		vi.mocked(data.updateTask).mockImplementation((async (_p: unknown, _id: string, updates: Partial<Task>) => {
+			persisted = { ...persisted, ...updates };
+			return persisted;
+		}) as never);
+		vi.mocked(data.updateTaskWith).mockImplementation((async (_p: unknown, _id: string, mutator: (t: Task) => { updates: Partial<Task>; result: unknown }) => {
+			const { updates, result } = mutator(persisted);
+			persisted = { ...persisted, ...updates };
+			return { task: persisted, result };
+		}) as never);
+		vi.mocked(pty.createSession).mockImplementationOnce(() => { throw new Error("spawn failed"); });
+
+		await expect(launchTaskPty(makeProject(), task, WORKTREE, null, null, false, true, { freshSessionId: "attempt-1", freshWithTaskPrompt: true })).rejects.toThrow("spawn failed");
+
+		expect(persisted.sessionState?.panes[0]).toMatchObject({ sessionId: "dead-1" });
+		expect(persisted.sessionState?.panes[1]).toMatchObject({ agentCmd: "bash" });
+		expect(persisted.launchFailure).toEqual(failure);
+		expect(mainAgentNeverStarted(persisted)).toBe(true);
+	});
+
+	it("keeps the new binding of a live replacement when a later pane-id write fails", async () => {
+		const task = makeTask({ launchFailure: failure, sessionState: { panes: [{ main: true, agentCmd: "claude", agentId: null, configId: null, sessionId: "dead-1" }] } });
+		let persisted: Task = structuredClone(task);
+		vi.mocked(data.updateTask).mockImplementation((async (_p: unknown, _id: string, updates: Partial<Task>) => {
+			if (updates.sessionState?.panes[0]?.paneId) throw new Error("pane binding write failed after spawn");
+			persisted = { ...persisted, ...updates };
+			return persisted;
+		}) as never);
+		vi.mocked(data.updateTaskWith).mockImplementation((async (_p: unknown, _id: string, mutator: (t: Task) => { updates: Partial<Task>; result: unknown }) => {
+			const { updates, result } = mutator(persisted);
+			persisted = { ...persisted, ...updates };
+			return { task: persisted, result };
+		}) as never);
+
+		await expect(launchTaskPty(makeProject(), task, WORKTREE, null, null, false, true, { freshSessionId: "attempt-1", freshWithTaskPrompt: true })).rejects.toThrow("pane binding write failed after spawn");
+
+		expect(pty.createSession).toHaveBeenCalledTimes(1);
+		expect(persisted.sessionState?.panes[0]).toMatchObject({ sessionId: "attempt-1" });
+	});
+
+	it("does not touch a pane 0 that another launch has since rebound", async () => {
+		const task = makeTask({ launchFailure: failure, sessionState: { panes: [{ main: true, agentCmd: "claude", agentId: null, configId: null, sessionId: "dead-1" }] } });
+		let persisted: Task = structuredClone(task);
+		vi.mocked(data.updateTask).mockImplementation((async (_p: unknown, _id: string, updates: Partial<Task>) => {
+			persisted = { ...persisted, ...updates };
+			return persisted;
+		}) as never);
+		vi.mocked(data.updateTaskWith).mockImplementation((async (_p: unknown, _id: string, mutator: (t: Task) => { updates: Partial<Task>; result: unknown }) => {
+			const { updates, result } = mutator(persisted);
+			persisted = { ...persisted, ...updates };
+			return { task: persisted, result };
+		}) as never);
+		vi.mocked(pty.createSession).mockImplementationOnce(() => {
+			persisted = { ...persisted, sessionState: { panes: [{ main: true, agentCmd: "claude", agentId: null, configId: null, sessionId: "newer-launch" }] } };
+			throw new Error("spawn failed");
+		});
+		await expect(launchTaskPty(makeProject(), task, WORKTREE, null, null, false, true, { freshSessionId: "attempt-1", freshWithTaskPrompt: true })).rejects.toThrow("spawn failed");
+		expect(persisted.sessionState?.panes[0]).toMatchObject({ sessionId: "newer-launch" });
+	});
+
+	it("keeps the verdict when the session itself cannot be created", async () => {
+		const task = makeTask({ launchFailure: failure });
+		vi.mocked(pty.createSession).mockImplementationOnce(() => { throw new Error("spawn failed"); });
+		await expect(launchTaskPty(makeProject(), task, WORKTREE)).rejects.toThrow("spawn failed");
+		expect(task.launchFailure).toEqual(failure);
+		expect(data.updateTaskWith).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["a reconnect", { skipSessionPersist: true }],
+		["a plain shell", { shellNotice: "parked" }],
+	])("keeps the failure through %s", async (_label, opts) => {
+		await launchTaskPty(makeProject(), makeTask({ launchFailure: failure }), WORKTREE, null, null, false, false, opts);
+		expect(data.updateTaskWith).not.toHaveBeenCalled();
+	});
+});
+
+describe("a fresh launch after a first launch that never created a conversation", () => {
+	const promptOf = () => vi.mocked(agents.resolveCommandForProject).mock.calls.slice(-1)[0]?.[2];
+
+	it("sends the original task description as the prompt", async () => {
+		await launchTaskPty(makeProject(), makeTask({ description: "Fix the login bug" }), WORKTREE, null, null, false, true, { freshSessionId: "fresh-1", freshWithTaskPrompt: true });
+		expect(promptOf()).toBe("Fix the login bug");
+	});
+
+	it("keeps the empty brief for a healed pane that starts on a new conversation", async () => {
+		await launchTaskPty(makeProject(), makeTask({ description: "Fix the login bug" }), WORKTREE, null, null, false, true, { freshSessionId: "fresh-1" });
+		expect(promptOf()).toBe("");
 	});
 });

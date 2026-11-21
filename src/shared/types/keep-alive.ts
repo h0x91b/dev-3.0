@@ -9,6 +9,7 @@ export type KeepAliveVerdict =
 	| "revived"
 	| "rate-limited"
 	| "unresumable"
+	| "history-unreadable"
 	| "error"
 	| "gave-up";
 

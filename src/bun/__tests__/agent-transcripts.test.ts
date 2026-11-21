@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { claudeConfigDirHasSession, listResumableSessionIds, resolveResumableSessionIds } from "../agent-transcripts";
@@ -269,5 +269,57 @@ describe("claudeConfigDirHasSession", () => {
 		expect(claudeConfigDirHasSession(join(home, "missing"), "conv-1")).toBe(false);
 		seedTranscriptFor("/elsewhere", "conv-1");
 		expect(claudeConfigDirHasSession(join(home, ".claude"), "../conv-1")).toBe(false);
+	});
+});
+
+// A store that exists but cannot be listed looks empty; healing from it moved panes off their conversations.
+describe.skipIf(process.getuid?.() === 0)("resolveResumableSessionIds — a history that cannot be read", () => {
+	afterEach(() => chmodSync(transcriptDir(), 0o755));
+
+	it("keeps every stored id, reports the dir and the error code, and heals nothing", () => {
+		seedTranscript("other-conversation", 10);
+		chmodSync(transcriptDir(), 0o000);
+		const targets = resolveResumableSessionIds(WORKTREE, claudePanes("stored-main", "stored-extra", null), home);
+
+		expect(targets.map((target) => target.sessionId)).toEqual(["stored-main", "stored-extra", null]);
+		for (const target of targets) {
+			expect(target).toMatchObject({ substituted: false, startFresh: false, verified: false, unreadable: { dir: transcriptDir(), code: "EACCES" } });
+		}
+	});
+
+	it("keeps the stored id when the origin store it came from cannot be read, instead of substituting another", () => {
+		const origin = "/fixture/original-conversation";
+		const saved = "1160218f-85f5-4a45-8032-ced3af5a532b";
+		seedTranscriptFor(origin, saved);
+		seedEmptyWorktreeStore();
+		seedTranscript("newer-local-conversation", 1);
+		const dir = join(home, ".claude", "projects", claudeEncodePath(origin));
+		chmodSync(dir, 0o000);
+		try {
+			expect(resolveOne("claude", saved, origin)).toMatchObject({ sessionId: saved, substituted: false, startFresh: false, unreadable: { dir, code: "EACCES" } });
+		} finally {
+			chmodSync(dir, 0o700);
+		}
+	});
+
+	it("keeps the stored id when a sibling store that may hold it cannot be read, without any recorded origin", () => {
+		const elsewhere = "/fixture/original-conversation";
+		const saved = "1160218f-85f5-4a45-8032-ced3af5a532b";
+		seedTranscriptFor(elsewhere, saved);
+		seedEmptyWorktreeStore();
+		const dir = join(home, ".claude", "projects", claudeEncodePath(elsewhere));
+		chmodSync(dir, 0o000);
+		try {
+			expect(resolveOne("claude", saved)).toMatchObject({ sessionId: saved, substituted: false, startFresh: false, unreadable: { dir, code: "EACCES" } });
+		} finally {
+			chmodSync(dir, 0o700);
+		}
+	});
+
+	it("still verifies a stored id that a readable store holds", () => {
+		seedTranscript("stored-main", 10);
+		const [target] = resolveResumableSessionIds(WORKTREE, claudePanes("stored-main"), home);
+		expect(target).toMatchObject({ sessionId: "stored-main", verified: true });
+		expect(target.unreadable).toBeUndefined();
 	});
 });
