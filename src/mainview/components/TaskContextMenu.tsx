@@ -1,32 +1,17 @@
-import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type Dispatch, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { Project, Task, TaskPriority, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, getTaskTitle, isTaskDisconnected } from "../../shared/types";
+import type { Project, Task } from "../../shared/types";
 import type { AppAction } from "../state";
-import { api } from "../rpc";
-import { confirm } from "../confirm";
-import { toast } from "../toast";
 import { useT } from "../i18n";
-import { createProjectLabel } from "../utils/createProjectLabel";
-import { trackEvent, agentNameFromId } from "../analytics";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useOverlayLayer } from "../utils/useOverlayLayer";
 import { registerOverlayLayer } from "../utils/overlay-layers";
-import { LAUNCH_REQUESTED_EVENT, moveTaskToStatus, type LaunchRequestedDetail } from "../utils/moveTaskToStatus";
-import { buildTaskDeepLink } from "../../shared/deep-link";
-import { formatBytes } from "../utils/formatBytes";
 import { computeMenuFlyoutPosition, MENU_FLYOUT_HOVER_MS } from "../utils/menuFlyout";
+import { getTaskMenuRegistry, TASK_MENU_GROUPS, type TaskMenuItem, type TaskMenuScope } from "../task-menu/registry";
+import type { SlotEntry } from "../plugins/slot-registry";
 import BottomSheet from "./BottomSheet";
-import LabelPicker, { LabelPickerPanel } from "./LabelPicker";
-import MoveToProjectPicker, { MoveToProjectPanel } from "./MoveToProjectPicker";
-import OpenInMenu, { OpenInAppList } from "./OpenInMenu";
-import PipelineDropdown from "./PipelineDropdown";
-import PriorityPicker, { PriorityList } from "./PriorityPicker";
 import TaskDetailModal from "./TaskDetailModal";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
-
-/** Which nested picker the phone menu handed off to, if any. */
-type SubSurface = "labels" | "priority" | "status" | "project" | "openIn";
 
 interface TaskContextMenuProps {
 	task: Task;
@@ -45,24 +30,60 @@ interface TaskContextMenuProps {
 	testId?: string;
 }
 
+/** An item resolved against one task: what the row draws. */
 interface MenuRow {
-	id: string;
+	item: TaskMenuItem;
+	/** `task-menu-<key>` test ids; built-ins drop their `builtin:` prefix. */
+	key: string;
 	label: string;
-	onSelect: () => void;
-	/** Desktop flyout content, built only while shown beside the row; gets the ▸ affordance. */
-	flyout?: () => ReactNode;
-	/** Flyout panel width; content without a fixed width sizes itself. */
-	flyoutWidth?: number;
-	danger?: boolean;
-	disabled?: boolean;
-	/** Toggle state marker for Watch / Hidden. */
-	checked?: boolean;
+	disabled: boolean;
+	checked: boolean;
+}
+
+const BUILTIN_PREFIX = "builtin:";
+
+function rowKey(id: string): string {
+	return id.startsWith(BUILTIN_PREFIX) ? id.slice(BUILTIN_PREFIX.length) : id;
+}
+
+/** A throwing item drops only its own row, never the whole menu. */
+function resolveRow(item: TaskMenuItem, scope: TaskMenuScope): MenuRow | null {
+	try {
+		if (item.when && !item.when(scope)) return null;
+		return {
+			item,
+			key: rowKey(item.id),
+			label: item.label(scope),
+			disabled: item.disabled?.(scope) ?? false,
+			checked: item.checked?.(scope) ?? false,
+		};
+	} catch (err) {
+		console.error(`[taskMenu] "${item.id}" failed to resolve`, err);
+		return null;
+	}
 }
 
 /**
- * Right-click actions for one task, shared by the Kanban card and the Active
- * Tasks sidebar row. The menu itself only routes: every action it offers is the
- * existing picker, modal or RPC the object already had elsewhere.
+ * Built-in items land in their own group, in `TASK_MENU_GROUPS` order. Anything
+ * else goes into one trailing group the host owns, never interleaved with
+ * dev3's rows — the slot of a future extension "Extensions" section (bible §11).
+ */
+export function groupTaskMenuRows(entries: readonly SlotEntry<TaskMenuItem>[], scope: TaskMenuScope): MenuRow[][] {
+	const builtin = new Map<string, MenuRow[]>();
+	const foreign: MenuRow[] = [];
+	for (const { def } of entries) {
+		const row = resolveRow(def, scope);
+		if (!row) continue;
+		if (!def.id.startsWith(BUILTIN_PREFIX)) foreign.push(row);
+		else if (TASK_MENU_GROUPS.includes(def.region)) builtin.set(def.region, [...(builtin.get(def.region) ?? []), row]);
+	}
+	return [...TASK_MENU_GROUPS.map((group) => builtin.get(group) ?? []), foreign].filter((group) => group.length > 0);
+}
+
+/**
+ * Right-click actions for one task, shared by the Kanban card, the Active Tasks
+ * sidebar row and every board view. The rows are the `taskMenu` slot's items;
+ * this host only lays them out and owns the menu's own state.
  */
 export default function TaskContextMenu({
 	onShowFamily,
@@ -77,7 +98,10 @@ export default function TaskContextMenu({
 }: TaskContextMenuProps) {
 	const t = useT();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
-	const [sub, setSub] = useState<SubSurface | null>(null);
+	const registry = getTaskMenuRegistry();
+	const entries = useSyncExternalStore(registry.subscribe, registry.list);
+	/** The item whose phone surface the sheet handed off to, if any. */
+	const [sheet, setSheet] = useState<string | null>(null);
 	const [flyout, setFlyout] = useState<string | null>(null);
 	// A flyout opened from the keyboard takes focus; one opened by hover leaves it be.
 	const [flyoutByKey, setFlyoutByKey] = useState(false);
@@ -124,353 +148,88 @@ export default function TaskContextMenu({
 	const [detailOpen, setDetailOpen] = useState(false);
 	const [autoRename, setAutoRename] = useState(false);
 
-	const labelIds = task.labelIds ?? [];
-	const disconnected = isTaskDisconnected(task);
-	const hasSession = !!task.worktreePath && !task.hibernated && !task.preparing && !task.shuttingDown && !disconnected;
-	const canRestart = hasSession && ACTIVE_STATUSES.includes(task.status) && !task.draft;
-
-	function openSub(next: SubSurface) {
+	function openSheet(id: string) {
 		if (pos) setAnchorPos(pos);
 		setAnchorEl(null);
-		setSub(next);
+		setSheet(id);
 		onClose();
 	}
 
-	function closeSub() {
-		setSub(null);
+	function closeSheet() {
+		setSheet(null);
 		setAnchorEl(null);
 	}
 
-	/** Ends a pick made from either the phone sheet or a desktop flyout. */
+	/** Ends a pick made from either the phone surface or a desktop flyout. */
 	function finishPick() {
-		closeSub();
+		closeSheet();
 		setFlyout(null);
 		onClose();
 	}
 
-	function openDetails(rename: boolean) {
-		onClose();
-		setAutoRename(rename);
-		if (onOpenDetails && !rename) {
-			onOpenDetails();
+	const scope: TaskMenuScope = {
+		task,
+		project,
+		dispatch,
+		t,
+		openTask: onOpenTask,
+		openDetails(rename) {
+			setAutoRename(rename);
+			if (onOpenDetails && !rename) {
+				onOpenDetails();
+				return;
+			}
+			setDetailOpen(true);
+		},
+		showFamily: onShowFamily,
+	};
+	const pick = { done: finishPick, close: closeSheet };
+
+	function select(item: TaskMenuItem) {
+		if (item.submenu) {
+			openSheet(item.id);
 			return;
 		}
-		setDetailOpen(true);
-	}
-
-	function copy(text: string) {
-		navigator.clipboard.writeText(text);
-		toast.success(t("taskMenu.copied"), { taskId: task.id });
 		onClose();
-	}
-
-	async function handleToggleLabel(labelId: string) {
-		const next = labelIds.includes(labelId) ? labelIds.filter((id) => id !== labelId) : [...labelIds, labelId];
+		// A failing row reports itself; it never escapes into the click or goes unhandled.
+		const fail = (err: unknown) => console.error(`[taskMenu] "${item.id}" failed`, err);
 		try {
-			const updated = await api.request.setTaskLabels({ taskId: task.id, projectId: project.id, labelIds: next });
-			dispatch({ type: "updateTask", task: updated });
+			void Promise.resolve(item.run?.(scope)).catch(fail);
 		} catch (err) {
-			toast.error(t("labels.failedSetLabels", { error: String(err) }), { taskId: task.id });
+			fail(err);
 		}
 	}
-
-	async function handlePriority(priority: TaskPriority) {
-		finishPick();
-		try {
-			const changed = await api.request.setTaskPriority({ taskId: task.id, projectId: project.id, priority });
-			for (const changedTask of changed) dispatch({ type: "updateTask", task: changedTask });
-		} catch (err) {
-			toast.error(t("priority.failedSet", { error: String(err) }), { taskId: task.id });
-		}
-	}
-
-	async function handleMove(newStatus: TaskStatus) {
-		finishPick();
-		await moveTaskToStatus({ task, project, newStatus, dispatch, t, onOpenTask });
-	}
-
-	async function handleMoveToCustomColumn(customColumnId: string) {
-		finishPick();
-		try {
-			const updated = await api.request.moveTaskToCustomColumn({ taskId: task.id, projectId: project.id, customColumnId });
-			dispatch({ type: "updateTask", task: updated });
-			trackEvent("task_moved", {
-				from_status: task.status,
-				to_status: `custom:${customColumnId}`,
-				agent_name: agentNameFromId(task.agentId),
-			});
-		} catch (err) {
-			toast.error(t("task.failedMove", { error: String(err) }), { taskId: task.id });
-		}
-	}
-
-	async function handleMoveToProject(target: Project) {
-		finishPick();
-		try {
-			await api.request.moveTaskToProject({ taskId: task.id, fromProjectId: project.id, toProjectId: target.id });
-			dispatch({ type: "removeTask", taskId: task.id });
-			trackEvent("task_moved_to_project", { from_project_id: project.id, to_project_id: target.id });
-			toast.success(t("task.movedToProject", { project: target.name }));
-		} catch (err) {
-			toast.error(t("task.failedMoveToProject", { error: String(err) }), { taskId: task.id });
-		}
-	}
-
-	async function handleToggleWatch() {
-		onClose();
-		try {
-			const updated = await api.request.toggleTaskWatch({ taskId: task.id, projectId: project.id, watched: !task.watched });
-			dispatch({ type: "updateTask", task: updated });
-		} catch (err) {
-			toast.error(t("task.watchFailed", { error: String(err) }), { taskId: task.id });
-		}
-	}
-
-	async function handleToggleHidden() {
-		onClose();
-		try {
-			const changed = await api.request.setTaskHidden({ taskId: task.id, projectId: project.id, hidden: !task.hidden });
-			for (const changedTask of changed) dispatch({ type: "updateTask", task: changedTask });
-		} catch (err) {
-			toast.error(t("task.hiddenFailed", { error: String(err) }), { taskId: task.id });
-		}
-	}
-
-	// "Start after…" opens the launch modal on Launch later → After task; the modal owns the picker.
-	function handleStartAfter() {
-		onClose();
-		window.dispatchEvent(new CustomEvent<LaunchRequestedDetail>(LAUNCH_REQUESTED_EVENT, {
-			detail: { task, project, targetStatus: "in-progress", startAfter: true },
-		}));
-	}
-
-	async function handleRemoveStartAfter() {
-		onClose();
-		try {
-			dispatch({ type: "updateTask", task: await api.request.clearTaskLaunchAfter({ taskId: task.id, projectId: project.id }) });
-		} catch (err) {
-			toast.error(t("task.startAfterRemoveFailed", { error: String(err) }), { taskId: task.id });
-		}
-	}
-	// Only a To Do task (not a draft, not one already set to "Start in") can wait to start.
-	const canWaitToStart = task.status === "todo" && task.draft !== true && !task.scheduledLaunch && !task.worktreePath;
-	const startAfterRows: MenuRow[] = task.status !== "todo"
-		? []
-		: task.launchAfter
-			? [{ id: "removeStartAfter", label: t("task.removeStartAfter"), onSelect: handleRemoveStartAfter }]
-			: canWaitToStart ? [{ id: "startAfter", label: t("taskMenu.startAfter"), onSelect: handleStartAfter }] : [];
-
-	async function handleToggleKeepAlive() {
-		onClose();
-		try {
-			const updated = await api.request.setTaskKeepAlive({ taskId: task.id, projectId: project.id, enabled: !task.keepAlive?.enabled });
-			dispatch({ type: "updateTask", task: updated });
-		} catch (err) {
-			toast.error(t("task.keepAliveFailed", { error: String(err) }), { taskId: task.id });
-		}
-	}
-
-	async function handleRestartSession() {
-		onClose();
-		if (!await confirm({
-			title: t("task.restartSessionTitle"),
-			message: t("task.restartSessionConfirm"),
-			confirmLabel: t("task.restartSessionCta"),
-			danger: true,
-			info: { title: getTaskTitle(task) },
-		})) return;
-		try {
-			await api.request.resumeTask({ taskId: task.id, restart: true });
-			toast.success(t("task.restartedSession"), { taskId: task.id });
-		} catch (err) {
-			toast.error(err instanceof Error ? err.message : String(err), { taskId: task.id });
-		}
-	}
-
-	async function handleHibernate() {
-		onClose();
-		const paneCount = task.sessionState?.panes?.length ?? 0;
-		const confirmed = await confirm({
-			title: t("task.hibernateConfirmTitle"),
-			message:
-				paneCount > 1
-					? `${t("task.hibernateConfirmBody")}\n\n${t("task.hibernateConfirmMulti", { count: String(paneCount) })}`
-					: t("task.hibernateConfirmBody"),
-			confirmLabel: t("task.hibernateConfirmCta"),
-			danger: true,
-			info: { title: getTaskTitle(task) },
-		});
-		if (!confirmed) return;
-		try {
-			const { task: updated, freedRssBytes } = await api.request.hibernateTask({ taskId: task.id, projectId: project.id });
-			dispatch({ type: "updateTask", task: updated });
-			toast.success(
-				freedRssBytes ? t("task.hibernatedToastMem", { mem: formatBytes(freedRssBytes) }) : t("task.hibernatedToast"),
-				{ taskId: task.id },
-			);
-		} catch (err) {
-			toast.error(t("task.hibernateFailed", { error: String(err) }), { taskId: task.id });
-		}
-	}
-
-	async function handleDelete() {
-		onClose();
-		const confirmed = await confirm({
-			title: t("task.delete"),
-			message: t("task.confirmDelete", { title: getTaskTitle(task) }),
-			confirmLabel: t("task.deleteConfirmLabel"),
-			danger: true,
-		});
-		if (!confirmed) return;
-		try {
-			await api.request.deleteTask({ taskId: task.id, projectId: project.id });
-			dispatch({ type: "removeTask", taskId: task.id });
-			trackEvent("task_deleted", { project_id: project.id });
-		} catch (err) {
-			toast.error(t("task.failedDelete", { error: String(err) }), { taskId: task.id });
-		}
-	}
-
-	const groups: MenuRow[][] = [
-		[
-			{ id: "open", label: t("taskMenu.open"), onSelect: () => { onClose(); onOpenTask(); } },
-			{ id: "details", label: t("taskMenu.details"), onSelect: () => openDetails(false) },
-			...(onShowFamily ? [{ id: "family", label: t("task.lineage.showFamily"), onSelect: () => { onClose(); onShowFamily(); } }] : []),
-		],
-		[
-			{
-				id: "labels",
-				label: t("taskMenu.labels"),
-				onSelect: () => openSub("labels"),
-				flyoutWidth: 220,
-				flyout: () => (
-					<LabelPickerPanel
-						project={project}
-						onCreateLabel={(name) => createProjectLabel({ project, name, dispatch, t, taskId: task.id })}
-						selectedIds={labelIds}
-						onToggle={handleToggleLabel}
-						autoFocus={false}
-					/>
-				),
-			},
-			{
-				id: "priority",
-				label: t("taskMenu.priority"),
-				onSelect: () => openSub("priority"),
-				flyoutWidth: 200,
-				flyout: () => (
-					<div className="py-1">
-						<PriorityList selected={task.priority} onSelect={handlePriority} />
-					</div>
-				),
-			},
-			{
-				id: "status",
-				label: t("task.moveTo"),
-				onSelect: () => openSub("status"),
-				flyout: () => (
-					<div className="min-w-[11.25rem] py-1.5">
-						<PipelineDropdown
-							currentStatus={task.status}
-							onMove={handleMove}
-							onMoveToCustomColumn={handleMoveToCustomColumn}
-							customColumns={project.customColumns}
-							currentCustomColumnId={task.customColumnId}
-							project={project}
-						/>
-					</div>
-				),
-			},
-			...startAfterRows,
-			{
-				id: "project",
-				label: t("task.moveToProject"),
-				onSelect: () => openSub("project"),
-				flyoutWidth: 260,
-				flyout: () => <MoveToProjectPanel currentProjectId={project.id} onSelect={handleMoveToProject} autoFocus={false} />,
-			},
-			{ id: "rename", label: t("taskMenu.rename"), onSelect: () => openDetails(true) },
-		],
-		[
-			{
-				id: "openIn",
-				label: t("openIn.menuTitle"),
-				onSelect: () => openSub("openIn"),
-				disabled: !task.worktreePath,
-				flyout: () => (
-					<div className="min-w-[11.25rem] py-1.5">
-						<OpenInAppList path={task.worktreePath ?? ""} taskId={task.id} onOpened={finishPick} />
-					</div>
-				),
-			},
-			{ id: "copyLink", label: t("taskMenu.copyLink"), onSelect: () => copy(buildTaskDeepLink(task.id)) },
-			{
-				id: "copyBranch",
-				label: t("taskMenu.copyBranch"),
-				onSelect: () => copy(task.branchName ?? ""),
-				disabled: !task.branchName,
-			},
-			{
-				id: "copyPath",
-				label: t("taskMenu.copyPath"),
-				onSelect: () => copy(task.worktreePath ?? ""),
-				disabled: !task.worktreePath,
-			},
-		],
-		[
-			{
-				id: "watch",
-				label: task.watched ? t("task.unwatchTooltip") : t("task.watch"),
-				onSelect: handleToggleWatch,
-				checked: task.watched,
-			},
-			{
-				id: "hidden",
-				label: task.hidden ? t("task.showInSidebar") : t("task.hideFromSidebar"),
-				onSelect: handleToggleHidden,
-				checked: task.hidden,
-			},
-			{
-				// The label names the action it will perform, so a checkmark would be redundant.
-				id: "keepAlive",
-				label: task.keepAlive?.enabled ? t("task.keepAliveOff") : t("task.keepAliveOn"),
-				onSelect: handleToggleKeepAlive,
-			},
-			{ id: "restartSession", label: t("task.restartSession"), onSelect: handleRestartSession, disabled: !canRestart },
-			{ id: "hibernate", label: t("task.hibernate"), onSelect: handleHibernate, disabled: !hasSession },
-		],
-		[{ id: "delete", label: t("taskMenu.delete"), onSelect: handleDelete, danger: true }],
-	];
 
 	function renderRow(row: MenuRow) {
-		const hasFlyout = !!row.flyout && !narrow;
-		const open = hasFlyout && flyout === row.id;
+		const { item } = row;
+		const hasFlyout = !!item.submenu && !narrow;
+		const open = hasFlyout && flyout === item.id;
 		const button = (
 			<button
-				key={row.id}
+				key={item.id}
 				type="button"
 				role="menuitem"
 				disabled={row.disabled}
 				data-menu-row=""
-				data-testid={`task-menu-${row.id}`}
+				data-testid={`task-menu-${row.key}`}
 				aria-haspopup={hasFlyout ? "menu" : undefined}
 				aria-expanded={hasFlyout ? open : undefined}
 				onClick={(e) => {
 					e.stopPropagation();
 					// Hover has often opened it already; a click must not toggle it shut.
-					if (hasFlyout) openFlyoutNow(row.id, false);
-					else row.onSelect();
+					if (hasFlyout) openFlyoutNow(item.id, false);
+					else select(item);
 				}}
 				onKeyDown={(e) => {
 					if (hasFlyout && (e.key === "ArrowRight" || e.key === "Enter" || e.key === " ")) {
 						e.preventDefault();
-						openFlyoutNow(row.id, true);
+						openFlyoutNow(item.id, true);
 					}
 				}}
 				className={`flex w-full items-center gap-2 px-3 text-left transition-colors disabled:opacity-40 disabled:pointer-events-none ${
 					narrow ? "py-3 text-sm-plus" : "py-1.5 text-sm"
 				} ${
-					row.danger
+					item.danger
 						? "text-danger hover:bg-danger/10"
 						: `text-fg-2 hover:bg-overlay-hover hover:text-fg ${open ? "bg-overlay-hover text-fg" : ""}`
 				}`}
@@ -479,7 +238,7 @@ export default function TaskContextMenu({
 					{row.checked ? "✓" : ""}
 				</span>
 				<span className="min-w-0 flex-1 truncate">{row.label}</span>
-				{row.flyout && (
+				{item.submenu && (
 					<span aria-hidden className="flex-shrink-0 text-xs leading-none text-fg-muted">
 						{"▸"}
 					</span>
@@ -488,12 +247,12 @@ export default function TaskContextMenu({
 		);
 		if (narrow) return button;
 		return (
-			<div key={row.id} onMouseEnter={() => hoverRow(hasFlyout && !row.disabled ? row.id : null)}>
+			<div key={item.id} onMouseEnter={() => hoverRow(hasFlyout && !row.disabled ? item.id : null)}>
 				{button}
 				{open && (
 					<Flyout
-						width={row.flyoutWidth}
-						testId={`task-menu-flyout-${row.id}`}
+						width={item.submenu?.width}
+						testId={`task-menu-flyout-${row.key}`}
 						label={row.label}
 						autoFocus={flyoutByKey}
 						onBack={(rowEl, refocus) => {
@@ -502,20 +261,21 @@ export default function TaskContextMenu({
 							if (refocus) rowEl.querySelector<HTMLButtonElement>("[data-menu-row]")?.focus();
 						}}
 					>
-						{row.flyout?.()}
+						{item.submenu?.flyout(scope, pick)}
 					</Flyout>
 				)}
 			</div>
 		);
 	}
 
+	// Rows are resolved only while the menu is open: a long-lived card must not run every item each render.
 	const rows: ReactNode[] = [];
-	groups.forEach((group, groupIndex) => {
-		if (groupIndex > 0) rows.push(<div key={`sep-${groupIndex}`} className="my-1 border-t border-edge" />);
-		for (const row of group) {
-			rows.push(renderRow(row));
-		}
-	});
+	if (pos) {
+		groupTaskMenuRows(entries, scope).forEach((group, groupIndex) => {
+			if (groupIndex > 0) rows.push(<div key={`sep-${groupIndex}`} className="my-1 border-t border-edge" />);
+			for (const row of group) rows.push(renderRow(row));
+		});
+	}
 
 	const menu = pos ? (
 		narrow ? (
@@ -531,57 +291,17 @@ export default function TaskContextMenu({
 		)
 	) : null;
 
+	const sheetItem = sheet ? registry.get(sheet)?.def : undefined;
+
 	return (
 		<>
 			{menu}
-			{sub &&
+			{sheet &&
 				createPortal(
 					<div ref={setAnchorEl} className="fixed h-0 w-0" style={{ top: anchorPos.y, left: anchorPos.x }} />,
 					document.body,
 				)}
-			{sub === "labels" && anchorEl && (
-				<LabelPicker
-					project={project}
-					onCreateLabel={(name) => createProjectLabel({ project, name, dispatch, t, taskId: task.id })}
-					anchorEl={anchorEl}
-					selectedIds={labelIds}
-					onToggle={handleToggleLabel}
-					onClose={closeSub}
-				/>
-			)}
-			{sub === "priority" && anchorEl && (
-				<PriorityPicker selected={task.priority} anchorEl={anchorEl} onSelect={handlePriority} onClose={closeSub} />
-			)}
-			{sub === "project" && anchorEl && (
-				<MoveToProjectPicker
-					currentProjectId={project.id}
-					anchorEl={anchorEl}
-					onSelect={handleMoveToProject}
-					onClose={closeSub}
-				/>
-			)}
-			{sub === "openIn" && task.worktreePath && (
-				<OpenInMenu
-					position={{ top: anchorPos.y, left: anchorPos.x }}
-					path={task.worktreePath}
-					taskId={task.id}
-					onClose={closeSub}
-				/>
-			)}
-			{sub === "status" && (
-				<BottomSheet open onClose={closeSub} title={t("task.moveTo")} testId={`task-menu-status-sheet-${task.id}`}>
-					<PipelineDropdown
-						currentStatus={task.status}
-						onMove={handleMove}
-						onMoveToCustomColumn={handleMoveToCustomColumn}
-						customColumns={project.customColumns}
-						currentCustomColumnId={task.customColumnId}
-						project={project}
-						size="touch"
-						hideHeader
-					/>
-				</BottomSheet>
-			)}
+			{sheetItem?.submenu?.sheet(scope, { ...pick, anchorEl, anchorPos })}
 			{/* Portalled: the sidebar column clips a modal rendered in place. */}
 			{detailOpen &&
 				createPortal(

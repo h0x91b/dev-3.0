@@ -4,6 +4,10 @@ import { I18nProvider } from "../../i18n";
 import ActiveTasksSidebar from "../ActiveTasksSidebar";
 import { COORDINATOR_TITLE } from "../TaskRoleBand";
 import type { CodingAgent, Project, Task } from "../../../shared/types";
+import { installTaskMenuBuiltins } from "../../task-menu/__tests__/install-builtins";
+
+// The menu's rows come from the taskMenu slot; every test starts on a fresh root with its built-ins.
+beforeEach(installTaskMenuBuiltins);
 
 const terminalPreview = vi.hoisted(() => ({
 	close: vi.fn(),

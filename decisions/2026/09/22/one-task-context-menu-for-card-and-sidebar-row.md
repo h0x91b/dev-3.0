@@ -1,5 +1,8 @@
 # One task context menu, shared by the Kanban card and the Active Tasks row
 
+> Updated on 2026-11-21 by `decisions/2026/11/21/task-menu-slot.md`: the rows and their actions are now
+> built-in items of the `taskMenu` slot (`src/mainview/task-menu/builtins.tsx`); `TaskContextMenu.tsx` only hosts them.
+
 > Corrected on 2026-11-16 by `decisions/2026/11/16/phone-task-actions-sheet-is-the-complete-inventory.md`:
 > long-press opens this menu on the Active Tasks row only. `TaskCard` wires right-click alone, and
 > its long-press stays the native drag on purpose.

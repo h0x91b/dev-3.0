@@ -92,6 +92,10 @@ import { trackEvent } from "../../analytics";
 import { confirmTaskCompletion } from "../../utils/confirmTaskCompletion";
 import type { CardLineage } from "../../utils/taskLineage";
 import { resetLiveSessionStatsForTests } from "../../hooks/useLiveSessionStats";
+import { installTaskMenuBuiltins } from "../../task-menu/__tests__/install-builtins";
+
+// The menu's rows come from the taskMenu slot; every test starts on a fresh root with its built-ins.
+beforeEach(installTaskMenuBuiltins);
 
 vi.mock("../../confirm", () => ({
 	confirm: vi.fn(),
