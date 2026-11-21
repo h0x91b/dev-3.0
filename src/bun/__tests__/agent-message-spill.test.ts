@@ -67,6 +67,13 @@ describe("a body too large to type", () => {
 		expect(result.text).not.toContain(text);
 	});
 
+	it("gives the file the sender's project on every bare ref when the sender sits on another board", async () => {
+		const source = { taskId: "t-9", seq: 9, projectId: "bbbbbbbb-1111-2222-3333-444455556666" };
+		const text = `<seq:12> ${"y".repeat(AGENT_MESSAGE_SPILL_THRESHOLD_BYTES)}`;
+		const result = await spillOversizedAgentMessage(task, text, { source });
+		expect(await readFile(result.spilledPath!, "utf8")).toBe(text.replace("<seq:12>", "<seq:bbbbbbbb/12>"));
+	});
+
 	it("produces a pointer that itself fits a single tmux send", async () => {
 		const result = await spillOversizedAgentMessage(task, "z".repeat(80_000));
 		expect(utf8Length(result.text)).toBeLessThan(PANE_INPUT_LIMITS.maxStageBytes);
