@@ -11,7 +11,7 @@ import { isTouchPrimary } from "../utils/platform";
 import { BackIcon } from "./HeaderIcons";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { subscribeTerminalPaste, terminalPasteTarget } from "../terminal-paste-request";
-import FileExplorerFrame from "./FileExplorerFrame";
+import { TerminalCompanion } from "../terminal-companion/TerminalCompanion";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { toastClearanceRef } from "../toast-clearance";
 
@@ -163,7 +163,7 @@ function ProjectTerminal({ projectId, projectPath, projectName, onBack, onEditFo
 				</div>
 			</div>
 			<div className="relative flex-1 min-h-0 overflow-hidden">
-				<FileExplorerFrame projectId={projectId} rootLabel={projectName} enabled={!isNarrow} openOnEnter onEditFolders={onEditFolders}>
+				<TerminalCompanion projectId={projectId} rootLabel={projectName} enabled={!isNarrow} openOnEnter onEditFolders={onEditFolders}>
 				{ptyUrl ? (
 					<TerminalView
 						ptyUrl={ptyUrl}
@@ -185,7 +185,7 @@ function ProjectTerminal({ projectId, projectPath, projectName, onBack, onEditFo
 				{scrolledUp && termHandle && (
 					<ScrollToLatestButton onClick={() => termHandle.scrollToBottom()} />
 				)}
-				</FileExplorerFrame>
+				</TerminalCompanion>
 			</div>
 			{/* Keep the composer mounted in raw mode (hidden) so a draft survives the toggle. */}
 			{touchInput && termHandle && (
