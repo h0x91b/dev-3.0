@@ -17,6 +17,9 @@ declare module "cordis" {
 /** The four bars of the task header (bible §5.1): Context, Git, Session/Agent, Runtime & access. */
 export type TaskHeaderRegion = "status" | "git" | "session" | "runtime";
 
+/** A row of items drawn inside one item of a bar, e.g. the Git bar's action buttons. */
+export type TaskHeaderGroup = "git.actions";
+
 /** In display order: row 1 left, row 1 right, row 2 left, row 2 right. */
 export const TASK_HEADER_REGIONS: readonly TaskHeaderRegion[] = ["status", "session", "git", "runtime"];
 
@@ -30,7 +33,7 @@ export interface TaskHeaderScope {
 
 /** One header item. Every item names its bar; chrome (⚙, info, fullscreen, collapse) is the host's, never an item. */
 export interface TaskHeaderItem extends ContributionSlotItem<TaskHeaderScope> {
-	region: TaskHeaderRegion;
+	region: TaskHeaderRegion | TaskHeaderGroup;
 }
 
 export class TaskHeaderRegistry extends SlotRegistry<TaskHeaderItem> {

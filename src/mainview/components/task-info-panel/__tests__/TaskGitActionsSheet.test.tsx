@@ -3,6 +3,14 @@ import TaskGitActionsSheet from "../TaskGitActionsSheet";
 import type { TaskBranchStatusController } from "../useTaskBranchStatus";
 import { I18nProvider } from "../../../i18n";
 import type { Project, Task } from "../../../../shared/types";
+import { applyBuiltinPlugins, resetPluginsForTests } from "../../../plugins/runtime";
+import { BUILTIN_TASK_HEADER_PLUGIN } from "../../../task-header/builtins";
+import { TaskHeaderProvider } from "../../../task-header/scope";
+
+beforeEach(() => {
+	resetPluginsForTests();
+	applyBuiltinPlugins([], [BUILTIN_TASK_HEADER_PLUGIN]);
+});
 
 const project: Project = {
 	id: "p1", name: "Test", path: "/tmp/test", setupScript: "", devScript: "", cleanupScript: "",
@@ -31,7 +39,17 @@ const git = {
 function renderSheet(task: Task, onAction = vi.fn(), sheetProject: Project = project, onOpenInlineDiff?: () => void) {
 	render(
 		<I18nProvider>
-			<TaskGitActionsSheet task={task} project={sheetProject} isTaskActive git={git} rowClassName="row" onAction={onAction} onOpenInlineDiff={onOpenInlineDiff} />
+			<TaskHeaderProvider
+				value={{
+					scope: { task, project: sheetProject, dispatch: vi.fn(), navigate: vi.fn() },
+					legacy: { status: {}, session: {}, runtime: {} },
+					layout: { compact: false, tight: false, collapsed: true },
+					git,
+					onOpenInlineDiff,
+				}}
+			>
+				<TaskGitActionsSheet rowClassName="row" onAction={onAction} />
+			</TaskHeaderProvider>
 		</I18nProvider>,
 	);
 	return onAction;

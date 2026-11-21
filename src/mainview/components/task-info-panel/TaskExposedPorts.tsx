@@ -40,7 +40,7 @@ function Spinner() {
 
 /**
  * Truncated URL + a Nerd-Font copy icon button (matches the worktree-path
- * copy affordance in TaskGitActions). The whole row is one button so a
+ * copy affordance in the branch chip menu). The whole row is one button so a
  * stray click anywhere on the URL still copies; on success the icon
  * briefly flips to a checkmark and the row reads "Copied".
  */

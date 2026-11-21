@@ -157,7 +157,7 @@ The inspector header (`TaskHeader.tsx`, both collapsed and expanded states) is a
 |---|---|---|---|---|
 | Context | row 1, left | task identity & lifecycle | variant switcher (conditional, leading), watch toggle, status dropdown, diff-summary badge, include-tests toggle, label strip | `TaskHeader.tsx` (row 1 left cluster) |
 | Session/Agent | row 1, right | drive the session & agents | spawn extra agent, bug hunters, tmux controls, send message later (scheduled agent message) | `TaskHeader.tsx` (row 1 right cluster), `TaskTmuxControls.tsx` |
-| Git | row 2, left | branch & PR | branch chip, changes summary, git actions, PR | `task-info-panel/TaskGitActions.tsx` |
+| Git | row 2, left | branch & PR | branch chip, changes summary, git actions, PR | `task-header/builtin-git.tsx` |
 | Runtime & access | row 2, right | project runtime outputs + access to them | open-in, scripts, dev server, ports, separate conditional Images and Artifacts controls (count>0 only); ports/resources also render as detail in the expanded body | `task-info-panel/TaskOpenIn.tsx`, `TaskSharedImages.tsx`, `TaskArtifacts.tsx` |
 
 Rules:
@@ -446,7 +446,7 @@ Surfaces become Cordis slots. **Internal first:** every surface moves with built
 |---|---|---|---|
 | primary_action | Main safe action for screen/flow (Create Task, Add Project, Save) | modal footer / page header | primary (`bg-accent-fill`), max 1 visible |
 | object_action | Acts on one task/project (rename, overview, watch, duplicate, open-in) | inspector, card context menu, menu `Task` | secondary / ghost |
-| git_action | pull, push, create PR, merge, rebase, branch status | inspector `TaskGitActions`, menu `Project`, board git-pull | secondary; runs in visible terminal (decision 008) |
+| git_action | pull, push, create PR, merge, rebase, branch status | inspector `builtin-git`, menu `Project`, board git-pull | secondary; runs in visible terminal (decision 008) |
 | dev_server_action | start / stop / restart / status | inspector `TaskDevServer`, menu `Project.DevServer` | neutral; risky variants flagged |
 | lifecycle_action | move task status, complete, cancel (mostly hook-driven) | board drag, status dropdown, menu `Task.MoveToStatus` | status-colored |
 | configuration | durable behavior change (scripts, columns, labels, theme, locale, gh account) | settings, project settings | secondary |
