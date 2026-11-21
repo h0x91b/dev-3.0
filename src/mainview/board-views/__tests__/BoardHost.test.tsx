@@ -400,7 +400,7 @@ describe("BoardHost", () => {
 		window.addEventListener(OPEN_SETTINGS_SECTION_EVENT, opened);
 		renderHost();
 		const alert = await screen.findByRole("alert");
-		expect(alert).toHaveTextContent("The gone extension failed to load, so the board is shown as Kanban.");
+		expect(alert).toHaveTextContent("Extension “gone” failed to load, so the board is shown as Kanban.");
 		expect(screen.getByTestId("kanban")).toBeInTheDocument();
 		fireEvent.click(screen.getByRole("button", { name: "Manage views…" }));
 		expect(opened).toHaveBeenCalled();

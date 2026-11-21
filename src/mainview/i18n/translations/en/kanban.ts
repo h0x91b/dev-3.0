@@ -626,7 +626,7 @@ const kanban = {
 	"board.visibility.showAll": "Show all",
 	"board.visibility.overridden": "A status filter in the search overrides this switch",
 	"boardView.crashed": "This board view failed to load, so the board is shown as Kanban. Your view choice is kept.",
-	"boardView.extensionFailed": "The {name} extension failed to load, so the board is shown as Kanban. Your view choice is kept.",
+	"boardView.extensionFailed": "Extension “{name}” failed to load, so the board is shown as Kanban. Your view choice is kept.",
 	"boardView.unavailable": "That board view is not available on this board.",
 	"boardView.manage": "Manage views…",
 	"boardView.attention": "Attention",

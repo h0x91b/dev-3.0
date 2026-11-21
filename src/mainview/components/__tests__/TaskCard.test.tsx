@@ -93,9 +93,14 @@ import { confirmTaskCompletion } from "../../utils/confirmTaskCompletion";
 import type { CardLineage } from "../../utils/taskLineage";
 import { resetLiveSessionStatsForTests } from "../../hooks/useLiveSessionStats";
 import { installTaskMenuBuiltins } from "../../task-menu/__tests__/install-builtins";
+import { installTaskMarkerBuiltins } from "../../task-markers/__tests__/install-builtins";
 
-// The menu's rows come from the taskMenu slot; every test starts on a fresh root with its built-ins.
-beforeEach(installTaskMenuBuiltins);
+// The menu's rows come from the taskMenu slot; every test starts on a fresh root with its built-ins,
+// and the identity glyphs from the taskMarkers slot.
+beforeEach(async () => {
+	await installTaskMenuBuiltins();
+	await installTaskMarkerBuiltins();
+});
 
 vi.mock("../../confirm", () => ({
 	confirm: vi.fn(),

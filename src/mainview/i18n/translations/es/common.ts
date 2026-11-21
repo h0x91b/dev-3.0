@@ -411,7 +411,7 @@ const common = {
 	// ActiveTasksSidebar
 	"sidebar.activeTasks": "Tareas activas",
 	"sidebar.crashed": "Esta barra lateral no se pudo cargar, así que se muestra la lista integrada de tareas activas.",
-	"sidebar.extensionFailed": "La extensión {name} no se cargó, así que se muestra la lista integrada de tareas activas.",
+	"sidebar.extensionFailed": "La extensión «{name}» no se cargó, así que se muestra la lista integrada de tareas activas.",
 	"sidebar.noActiveTasks": "Sin tareas activas",
 	"sidebar.noActiveTasksHint": "Inicia una tarea desde el tablero para verla aquí.",
 	"sidebar.allTasksHidden": "Todas las tareas activas están ocultas",
@@ -746,7 +746,7 @@ const common = {
 	"taskRef.previewMore_other": "{count} más",
 	"slots.more": "Más",
 	"destinationBody.crashed": "Esta pantalla no se pudo cargar, así que se muestra la integrada.",
-	"destinationBody.extensionFailed": "La extensión {name} no se cargó, así que se muestra la pantalla integrada.",
+	"destinationBody.extensionFailed": "La extensión «{name}» no se cargó, así que se muestra la pantalla integrada.",
 };
 
 export default common;

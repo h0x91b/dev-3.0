@@ -5,9 +5,17 @@ import ActiveTasksSidebar from "../ActiveTasksSidebar";
 import { COORDINATOR_TITLE } from "../TaskRoleBand";
 import type { CodingAgent, Project, Task } from "../../../shared/types";
 import { installTaskMenuBuiltins } from "../../task-menu/__tests__/install-builtins";
+import { installTaskMarkerBuiltins } from "../../task-markers/__tests__/install-builtins";
+import { getTaskMarkerRegistry } from "../../task-markers/registry";
+import { getAppRoot } from "../../plugins/root";
+import type { Context } from "cordis";
 
-// The menu's rows come from the taskMenu slot; every test starts on a fresh root with its built-ins.
-beforeEach(installTaskMenuBuiltins);
+// The menu's rows come from the taskMenu slot; every test starts on a fresh root with its built-ins,
+// and the identity glyphs from the taskMarkers slot.
+beforeEach(async () => {
+	await installTaskMenuBuiltins();
+	await installTaskMarkerBuiltins();
+});
 
 const terminalPreview = vi.hoisted(() => ({
 	close: vi.fn(),
@@ -1661,6 +1669,28 @@ describe("ActiveTasksSidebar — native terminal backend mark", () => {
 		expect(
 			screen.getByRole("button", { name: "Привет! как сам? — Native terminal backend" }),
 		).toBeInTheDocument();
+	});
+
+	it("keeps the row and its other markers when one marker's label throws", async () => {
+		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+		getAppRoot().plugin({
+			name: "bad-label-marker",
+			inject: ["taskMarkers"],
+			apply(ctx: Context) {
+				ctx.taskMarkers.register({
+					id: "builtin:bad-label",
+					when: () => true,
+					label: () => { throw new Error("boom"); },
+					component: () => <span data-testid="bad-label-glyph" />,
+				});
+			},
+		});
+		await waitFor(() => expect(getTaskMarkerRegistry().get("builtin:bad-label")).toBeTruthy());
+		renderSidebar(makeTask({ terminalBackend: "native" }));
+		expect(screen.getByRole("button", { name: "Привет! как сам? — Native terminal backend" })).toBeInTheDocument();
+		expect(screen.getByTestId("sidebar-native-backend-t1")).toBeInTheDocument();
+		expect(screen.queryByTestId("bad-label-glyph")).toBeNull();
+		errors.mockRestore();
 	});
 
 	it("stays quiet for an explicit tmux task and for a legacy unmarked one", () => {

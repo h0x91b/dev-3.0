@@ -31,8 +31,7 @@ import { COORDINATOR_CARD_HALO, TaskRoleBand, taskRole } from "./TaskRoleBand";
 import EpicChip from "./EpicChip";
 import { useEpics } from "../hooks/useEpics";
 import type { CardLineage } from "../utils/taskLineage";
-import NativeBackendMark from "./NativeBackendMark";
-import ForeignCodeMark from "./ForeignCodeMark";
+import { TaskMarkers } from "../task-markers/TaskMarkers";
 import CompletionOfferMark from "./CompletionOfferMark";
 import OpenInMenu from "./OpenInMenu";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
@@ -1051,8 +1050,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						</span>
 					</Tooltip>
 				)}
-				<NativeBackendMark task={task} className="w-3.5 h-3.5 flex-shrink-0" testId="task-card-native-backend" />
-				<ForeignCodeMark task={task} className="w-3.5 h-3.5 flex-shrink-0" testId="task-card-foreign-code" />
+				<TaskMarkers task={task} surface="card" />
 				<CompletionOfferMark task={task} testId="task-card-completion-offer" />
 				{/* A PR review is an ordinary task with a job, so it is named and not
 				    boxed — no band, nothing that competes with a role. */}

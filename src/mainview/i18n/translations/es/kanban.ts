@@ -625,7 +625,7 @@ const kanban = {
 	"board.visibility.showAll": "Mostrar todas",
 	"board.visibility.overridden": "Un filtro de estado en la búsqueda tiene prioridad sobre este interruptor",
 	"boardView.crashed": "Esta vista del tablero no se pudo cargar, así que el tablero se muestra como Kanban. Tu elección de vista se conserva.",
-	"boardView.extensionFailed": "La extensión {name} no se cargó, así que el tablero se muestra como Kanban. Tu elección de vista se conserva.",
+	"boardView.extensionFailed": "La extensión «{name}» no se cargó, así que el tablero se muestra como Kanban. Tu elección de vista se conserva.",
 	"boardView.unavailable": "Esa vista del tablero no está disponible aquí.",
 	"boardView.manage": "Gestionar vistas…",
 	"boardView.attention": "Atención",

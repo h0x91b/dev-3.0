@@ -16,7 +16,8 @@ import { useReducedMotion } from "../utils/useReducedMotion";
 import type { AppAction, Route } from "../state";
 import AgentLauncherBadge from "./AgentLauncherBadge";
 import LabelChip from "./LabelChip";
-import NativeBackendMark, { isNativeBackendTask } from "./NativeBackendMark";
+import { TaskMarkerItems, useTaskMarkerEntries } from "../task-markers/TaskMarkers";
+import { labelTaskMarkers, placeTaskMarkers } from "../task-markers/registry";
 import PipelineDropdown from "./PipelineDropdown";
 import PortBadgeList from "./PortBadgeList";
 import PriorityBadge from "./PriorityBadge";
@@ -100,6 +101,7 @@ export default function ActiveTaskRow({
 	closePreview,
 }: ActiveTaskRowProps) {
 	const t = useT();
+	const markers = labelTaskMarkers(placeTaskMarkers(useTaskMarkerEntries(), { task, surface: "sidebar" }), t, { task, surface: "sidebar" });
 	const reviewedPr = reviewedPrLink(task, prInfo);
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const statusMenu = useStatusMenu(narrow);
@@ -198,9 +200,9 @@ export default function ActiveTaskRow({
 			tabIndex={task.shuttingDown ? -1 : 0}
 			aria-disabled={task.shuttingDown || undefined}
 			// The row's explicit name overrides its descendants, so the role and
-			// native marker only reach assistive tech from here.
+			// the markers only reach assistive tech from here.
 			aria-label={
-				[displayTitle, isCoordinatorTask(task) && t("task.coordinatorBadge"), isNativeBackendTask(task) && t("task.nativeBackendMark"), task.hidden && t("task.hiddenFromSidebar")]
+				[displayTitle, isCoordinatorTask(task) && t("task.coordinatorBadge"), ...markers.map((marker) => marker.label), task.hidden && t("task.hiddenFromSidebar")]
 					.filter(Boolean)
 					.join(" — ")
 			}
@@ -390,7 +392,7 @@ export default function ActiveTaskRow({
 				<div className="mt-1 flex items-center gap-1.5 min-w-0">
 				<Tooltip content={agentSummary} disabled={!agentSummary}>
 					<div className="flex min-w-0 flex-1 items-center gap-1.5" data-testid={`sidebar-identity-${task.id}`}>
-						<NativeBackendMark task={task} className="w-3 h-3" testId={`sidebar-native-backend-${task.id}`} />
+						<TaskMarkerItems entries={markers.map((marker) => marker.entry)} task={task} surface="sidebar" />
 						{isCoordinatorTask(task) && <TaskRoleChip role="coordinator" testId="sidebar-coordinator-badge" />}
 						{agent && <AgentLauncherBadge agent={agent} size={12} />}
 						{task.taskType === "pr-review" && (
