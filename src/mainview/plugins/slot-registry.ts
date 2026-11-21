@@ -1,7 +1,8 @@
 import { Context, Service } from "cordis";
 
 /**
- * What every slot item carries. `region` names a sub-area of a contribution slot;
+ * What every slot item carries. `region` names a sub-area of a contribution slot, or
+ * keys a replace slot shared by several surfaces (`destinationBodies`: the destination);
  * `order` sorts within the slot (missing = 0), ties keep registration order.
  */
 export interface SlotItem {
