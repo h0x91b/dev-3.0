@@ -83,4 +83,26 @@ describe("runtime items", () => {
 		expect(opened).toHaveBeenCalledTimes(1);
 		window.removeEventListener("dev3:openArtifactViewer", opened);
 	});
+
+	it("labels the media row Images until a clip arrives", () => {
+		const image = { id: "i1", mime: "image/png", createdAt: 1 };
+		renderRuntime({ task: { ...baseTask, sharedImages: [image] } as unknown as Task, layout: NARROW, surface: "sheet" });
+		expect(screen.getByRole("button", { name: /images/i })).toHaveTextContent("1");
+	});
+
+	it("closes the sheet and opens the viewer on the whole media history, labelled Media with a clip", () => {
+		const closeSheet = vi.fn();
+		const opened = vi.fn();
+		window.addEventListener("dev3:openImageViewer", opened);
+		const image = { id: "i1", mime: "image/png", createdAt: 2 };
+		const clip = { id: "v1", mime: "video/mp4", createdAt: 1 };
+		const task = { ...baseTask, sharedImages: [image], sharedVideos: [clip] } as unknown as Task;
+		renderRuntime({ task, layout: NARROW, surface: "sheet", closeSheet });
+		const row = screen.getByRole("button", { name: /media/i });
+		expect(row).toHaveTextContent("2");
+		fireEvent.click(row);
+		expect(closeSheet).toHaveBeenCalledTimes(1);
+		expect((opened.mock.calls[0][0] as CustomEvent).detail).toEqual({ taskId: "t1", projectId: "p1", images: [clip, image] });
+		window.removeEventListener("dev3:openImageViewer", opened);
+	});
 });
