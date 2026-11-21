@@ -18,7 +18,7 @@ import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import HelpSpot from "./HelpSpot";
 
-interface ProductivityStatsViewProps {
+export interface ProductivityStatsViewProps {
 	navigate: (route: Route) => void;
 	goBack: () => void;
 	canGoBack: boolean;

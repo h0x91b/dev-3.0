@@ -10,6 +10,9 @@ import { getDestinationBodyRegistry, type DestinationBodyProps, type Destination
 
 vi.mock("../../rpc", () => ({ api: { request: {} } }));
 
+/** What a stand-in passes to every callback; a body must forward all of it untouched. */
+const FORWARDED = ["t1", "p1", { archived: true }] as const;
+
 // Each stand-in prints the host's data props and exposes its callbacks as buttons, so a test sees the wiring.
 function standIn(testId: string) {
 	return {
@@ -21,7 +24,7 @@ function standIn(testId: string) {
 				{Object.entries(props)
 					.filter(([, value]) => typeof value === "function")
 					.map(([name, fn]) => (
-						<button key={name} type="button" onClick={() => (fn as (...args: unknown[]) => void)("arg")}>
+						<button key={name} type="button" onClick={() => (fn as (...args: unknown[]) => void)(...FORWARDED)}>
 							{name}
 						</button>
 					))}
@@ -33,19 +36,33 @@ vi.mock("../../components/SessionsScreen", () => standIn("body-sessions"));
 vi.mock("../../components/ProductivityStatsView", () => standIn("body-stats"));
 vi.mock("../../components/Changelog", () => standIn("body-changelog"));
 vi.mock("../../components/agent-traffic/AgentTrafficScreen", () => standIn("body-agent-traffic"));
+vi.mock("../../components/Dashboard", () => standIn("body-dashboard"));
 
-type Case<D extends DestinationId> = { data: Record<string, unknown>; props: (spy: () => void) => DestinationBodyProps[D] };
+/** Hands out one spy per callback name, so swapped or duplicated wiring shows. */
+type Spy = (name: string) => () => void;
+type Case<D extends DestinationId> = { data: Record<string, unknown>; props: (spy: Spy) => DestinationBodyProps[D] };
 
 const CASES: { [D in DestinationId]: Case<D> } = {
 	sessions: {
 		data: { projectId: "p1", projectName: "dev-3.0" },
-		props: (spy) => ({ projectId: "p1", projectName: "dev-3.0", onOpenTask: spy }),
+		props: (spy) => ({ projectId: "p1", projectName: "dev-3.0", onOpenTask: spy("onOpenTask") }),
 	},
-	stats: { data: { canGoBack: true }, props: (spy) => ({ navigate: spy, goBack: spy, canGoBack: true }) },
-	changelog: { data: { canGoBack: false }, props: (spy) => ({ navigate: spy, goBack: spy, canGoBack: false }) },
+	stats: { data: { canGoBack: true }, props: (spy) => ({ navigate: spy("navigate"), goBack: spy("goBack"), canGoBack: true }) },
+	changelog: { data: { canGoBack: false }, props: (spy) => ({ navigate: spy("navigate"), goBack: spy("goBack"), canGoBack: false }) },
 	"agent-traffic": {
 		data: { projectId: null, focus: { taskId: "t1", projectId: "p1" } },
-		props: (spy) => ({ projectId: null, focus: { taskId: "t1", projectId: "p1" }, onOpenTask: spy }),
+		props: (spy) => ({ projectId: null, focus: { taskId: "t1", projectId: "p1" }, onOpenTask: spy("onOpenTask") }),
+	},
+	dashboard: {
+		data: { projects: [], bellCounts: {}, digitsFollowSpaces: true },
+		props: (spy) => ({
+			projects: [],
+			dispatch: spy("dispatch"),
+			navigate: spy("navigate"),
+			bellCounts: new Map(),
+			onOpenAddProject: spy("onOpenAddProject"),
+			digitsFollowSpaces: true,
+		}),
 	},
 };
 const DESTINATIONS = Object.keys(CASES) as DestinationId[];
@@ -54,7 +71,7 @@ async function settle(): Promise<void> {
 	for (let tick = 0; tick < 50; tick++) await act(async () => {});
 }
 
-function renderBody(destination: DestinationId, spy: () => void = () => {}) {
+function renderBody(destination: DestinationId, spy: Spy = () => () => {}) {
 	const props = CASES[destination].props(spy);
 	return render(
 		<I18nProvider>
@@ -77,13 +94,21 @@ describe("DestinationBody", () => {
 	it.each(DESTINATIONS)("draws the %s body from the slot with the host's props and callbacks", async (destination) => {
 		applyBuiltinPlugins([], [BUILTIN_DESTINATION_BODIES_PLUGIN]);
 		await settle();
-		const spy = vi.fn();
-		renderBody(destination, spy);
+		const spies = new Map<string, ReturnType<typeof vi.fn>>();
+		renderBody(destination, (name) => {
+			const spy = vi.fn();
+			spies.set(name, spy);
+			return spy;
+		});
 		expect(JSON.parse(screen.getByTestId(`body-${destination}-data`).textContent ?? "")).toEqual(CASES[destination].data);
-		const callbacks = screen.getByTestId(`body-${destination}`).querySelectorAll("button");
-		expect(callbacks.length).toBeGreaterThan(0);
-		callbacks.forEach((button) => fireEvent.click(button));
-		expect(spy).toHaveBeenCalledTimes(callbacks.length);
+		const callbacks = [...screen.getByTestId(`body-${destination}`).querySelectorAll("button")];
+		expect(callbacks.map((button) => button.textContent).sort()).toEqual([...spies.keys()].sort());
+		for (const button of callbacks) {
+			const spy = spies.get(button.textContent ?? "")!;
+			fireEvent.click(button);
+			expect(spy).toHaveBeenCalledTimes(1);
+			expect(spy).toHaveBeenCalledWith(...FORWARDED);
+		}
 		expect(screen.queryByRole("alert")).toBeNull();
 	});
 

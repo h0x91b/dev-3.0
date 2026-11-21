@@ -34,7 +34,6 @@ import { useAndroidBackGuard } from "./hooks/useAndroidBackGuard";
 import GlobalHeader from "./components/GlobalHeader";
 import AppMenuBar from "./components/AppMenuBar";
 import GlobalSettings from "./components/GlobalSettings";
-import Dashboard from "./components/Dashboard";
 import AddProjectModal from "./components/AddProjectModal";
 import ImportConversationsModal from "./components/ImportConversationsModal";
 import CreateTaskModal from "./components/CreateTaskModal";
@@ -4178,16 +4177,19 @@ function App() {
 		switch (route.screen) {
 			case "dashboard":
 				return (
-					<Dashboard
-						projects={state.projects}
-						dispatch={dispatch}
-						navigate={navigate}
-						bellCounts={state.bellCounts}
-						onOpenAddProject={(spaceIds) => {
-							setAddProjectSpaceIds(spaceIds ?? []);
-							setShowAddProjectModal(true);
+					<DestinationBody
+						destination="dashboard"
+						props={{
+							projects: state.projects,
+							dispatch,
+							navigate,
+							bellCounts: state.bellCounts,
+							onOpenAddProject: (spaceIds) => {
+								setAddProjectSpaceIds(spaceIds ?? []);
+								setShowAddProjectModal(true);
+							},
+							digitsFollowSpaces: followSpaces,
 						}}
-						digitsFollowSpaces={followSpaces}
 					/>
 				);
 			case "project":

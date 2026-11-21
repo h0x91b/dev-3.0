@@ -1,6 +1,9 @@
 import type { Context } from "cordis";
-import type { AgentTrafficFocus } from "../agent-traffic-events";
-import type { Route } from "../state";
+import type { AgentTrafficScreenProps } from "../components/agent-traffic/AgentTrafficScreen";
+import type { ChangelogProps } from "../components/Changelog";
+import type { DashboardProps } from "../components/Dashboard";
+import type { ProductivityStatsViewProps } from "../components/ProductivityStatsView";
+import type { SessionsScreenProps } from "../components/SessionsScreen";
 import { defineAppSlot } from "../plugins/root";
 import type { ReplaceSlotItem } from "../plugins/SlotHost";
 import { SlotRegistry } from "../plugins/slot-registry";
@@ -13,30 +16,17 @@ declare module "cordis" {
 	}
 }
 
-/** What the host hands each destination's body; the route and header stay the host's. */
+/**
+ * What the host hands each destination's body; the route and header stay the host's.
+ * The built-in screens' own props, so the contract cannot drift from them.
+ */
 export interface DestinationBodyProps {
-	sessions: {
-		/** The initial project scope; null starts on all projects. */
-		projectId: string | null;
-		projectName: string | null;
-		onOpenTask: (taskId: string, projectId: string) => void;
-	};
-	stats: BackNavigationProps;
-	changelog: BackNavigationProps;
-	"agent-traffic": {
-		/** Seeds the scope filter, nothing else. */
-		projectId: string | null;
-		/** The endpoint to open selected; null for a deliberate entry. */
-		focus: AgentTrafficFocus | null;
-		onOpenTask: (taskId: string, projectId: string, opts?: { archived?: boolean }) => void;
-	};
-}
-
-/** A destination with its own back arrow that can navigate elsewhere. */
-interface BackNavigationProps {
-	navigate: (route: Route) => void;
-	goBack: () => void;
-	canGoBack: boolean;
+	sessions: SessionsScreenProps;
+	stats: ProductivityStatsViewProps;
+	changelog: ChangelogProps;
+	"agent-traffic": AgentTrafficScreenProps;
+	/** Home: the project list. */
+	dashboard: DashboardProps;
 }
 
 export type DestinationId = keyof DestinationBodyProps;
