@@ -26,6 +26,8 @@ the slot ships with built-ins only: no manifest kind, no public `ctx.*` service,
   registered set changes.
 
 ## Risks
+Before the slot opens to extensions, a section's render crash must be reported into its extension's failure state,
+so the Extensions row shows the reason; today it only vanishes (precondition in `docs/extensions-platform.md`).
 Before the slot opens to extensions, the page must place built-ins before extensions by origin (as `<SlotItems>`
 does): today numeric `order` alone sorts, so an extension passing `order: -1` would rise above the built-ins.
 The controller context re-renders every section on any settings change, as the prop-passing switch did. Built-ins

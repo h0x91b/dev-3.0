@@ -432,7 +432,7 @@ Evidence: `board-views/`, `keymap.ts` `board-view`, `application-menu.ts`.
 
 ### 5.12 Plugin slots — `Proposed`
 
-Surfaces become Cordis slots. **Internal first:** built-ins move first; extensions get slots later, kind by kind. Record: `decisions/2026/11/21/gui-plugin-slots-and-api-versioning.md`.
+Surfaces become Cordis slots. **Internal first:** every surface moves with built-ins; then extensions get slots, kind by kind. Record: `decisions/2026/11/21/gui-plugin-slots-and-api-versioning.md`.
 
 - **Replace slot:** one body at a time behind a chooser shaped like §5.11's (per-slot "Manage…" label). The built-in is the undisableable fallback; a crash renders it under an inline danger notice, keeping the choice. Board view now; sidebar, home and destination bodies later; the destination stays.
 - **Contribution slot:** host-owned items: task header (§5.1), settings sections, ⇧⌘P commands, task menu, dock panels, card/sidebar marker. The host owns chrome, order (user layout → built-ins → extensions) and budget; a failed contributor's items vanish (reason on its Extensions row, never inline); only a crashed built-in settings section shows an inline notice.

@@ -127,6 +127,11 @@ contribution slots. Global Settings renders through the internal `settingsSectio
 (`src/mainview/settings-sections/`, `decisions/2026/11/21/settings-sections-slot.md`; built-ins only). The public
 `contributes` generalisation (plan item 0.4) waits for the opening track.
 
+**Opening-track preconditions.** Before any contribution slot opens to extensions:
+- A render crash of an extension's item must be reported into that extension's failure state, so its Extensions
+  row shows the reason (today the item only vanishes).
+- A page-shaped slot (settings sections) must place built-ins before extensions by origin, not by numeric `order` alone.
+
 ## Tech debt
 
 - **Built-ins on the public contract only.** For now a built-in slot item may use internal modules (`api`,
