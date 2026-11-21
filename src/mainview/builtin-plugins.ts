@@ -11,6 +11,7 @@ import { BUILTIN_SIDEBAR_PLUGIN } from "./sidebar/builtins";
 import { BUILTIN_TERMINAL_COMPANION_PLUGIN } from "./terminal-companion/builtins";
 import { BUILTIN_TASK_MARKERS_PLUGIN } from "./task-markers/builtins";
 import { BUILTIN_TERMINAL_LINKS_PLUGIN } from "./terminal-links/builtins";
+import { BUILTIN_TERMINAL_TAB_DECORATIONS_PLUGIN } from "./terminal-tab-decorations/builtins";
 
 /** Everything dev3 contributes to its own slots, in load order: the app's built-in plugin composition. */
 export const BUILTIN_PLUGINS: readonly BuiltinPlugin[] = [
@@ -26,4 +27,5 @@ export const BUILTIN_PLUGINS: readonly BuiltinPlugin[] = [
 	BUILTIN_TERMINAL_COMPANION_PLUGIN,
 	BUILTIN_TASK_MARKERS_PLUGIN,
 	BUILTIN_TERMINAL_LINKS_PLUGIN,
+	BUILTIN_TERMINAL_TAB_DECORATIONS_PLUGIN,
 ];
