@@ -102,7 +102,7 @@ import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
 import TaskSwitcherOverlay from "./components/TaskSwitcherOverlay";
 import GoToPalette, { type GoToMode } from "./components/GoToPalette";
 import CommandPaletteModal from "./components/CommandPaletteModal";
-import type { CommandItem } from "./commands/registry";
+import { runCommandSafely, type CommandItem } from "./commands/registry";
 import { isBoardMounted, runBoardViewCommand } from "./board-views/view-commands";
 import CoordinatorFinderModal from "./components/CoordinatorFinderModal";
 import OpenInPickerModal from "./components/OpenInPickerModal";
@@ -1361,12 +1361,7 @@ function App() {
 	const runCommand = useCallback(
 		(command: CommandItem) => {
 			closeNavPalette("command");
-			const fail = (err: unknown) => console.error("[App] runCommand failed", err);
-			try {
-				Promise.resolve(command.run({ state, dispatch, setLocale, t })).catch(fail);
-			} catch (err) {
-				fail(err);
-			}
+			runCommandSafely(command, { state, dispatch, setLocale, t });
 		},
 		[state, dispatch, setLocale, closeNavPalette],
 	);

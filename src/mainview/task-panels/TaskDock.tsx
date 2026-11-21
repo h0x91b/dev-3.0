@@ -5,7 +5,7 @@ import { OverflowDotsIcon } from "../components/HeaderIcons";
 import type { SlotEntry } from "../plugins/slot-registry";
 import { isBuiltinItem } from "../plugins/SlotItems";
 import { activateTaskPanel, closeTaskPanel, dockedPanelIds, resolveActiveTab, setTaskDockSeat, useTaskDock } from "./dock-store";
-import { getTaskPanelsRegistry, type TaskPanelDef } from "./registry";
+import { getTaskPanelsRegistry, panelTitle, type TaskPanelDef } from "./registry";
 
 const DEFAULT_WIDTH = 560;
 const MIN_WIDTH = 360;
@@ -279,7 +279,7 @@ function DockTabs({ taskId, tabs, active }: { taskId: string; tabs: readonly Slo
 			<div ref={stripRef} role="tablist" aria-label={t("taskDock.tabs")} onKeyDown={onKeyDown} className="flex min-w-0 flex-1 items-center gap-0.5">
 				{visible.map((tab) => {
 					const selected = tab.def.id === active;
-					const title = tab.def.title(t);
+					const title = panelTitle(tab.def, t);
 					return (
 						<div
 							key={tab.def.id}
@@ -400,7 +400,7 @@ function MoreMenu({ taskId, tabs, triggerRef, onDismiss }: {
 					}}
 					className="block w-full truncate px-3 py-1.5 text-left text-sm text-fg-2 hover:bg-overlay-hover hover:text-fg"
 				>
-					{tab.def.title(t)}
+					{panelTitle(tab.def, t)}
 				</button>
 			))}
 		</div>
