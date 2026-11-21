@@ -103,16 +103,17 @@ Open:
 
 - No sandbox: consent, desktop-only install and the kill switch are the only defences.
 - `EXTENSION_API_VERSION` is `1.1.0`. Policy decided (`decisions/2026/11/21/gui-plugin-slots-and-api-versioning.md`):
-  minor per additive slot, service or manifest kind; major on any removal or rename. It stays `1.1.0` through the
-  internal migration track.
+  minor per additive slot, service or manifest kind; major on any incompatible change (removal, rename, signature,
+  type or semantics), after which extensions whose `engines.dev3` no longer matches show as incompatible and stay
+  off, with a migration note in `docs/extensions.md`. It stays `1.1.0` through the internal migration track.
 - Cordis is a release candidate; moving to 4.0 stable is a deliberate bump that must re-run the runtime tests.
 - No measurement yet of runtime cost (load time, re-render cost on large boards) with several extensions.
 
 ### Phase 4: Migrating dev3 itself
 
 Planned on 2026-11-21 (coordinator task seq:2526): `decisions/2026/11/21/gui-plugin-slots-and-api-versioning.md`.
-Two slot kinds (replace, contribution), add-only for third parties, built-ins register through the public slot
-API. **Internal first:** every surface moves onto slots with built-ins only and no new public API (foundations:
+Two slot kinds (replace, contribution), add-only for third parties, built-ins register through the slot call
+that will become public. **Internal first:** every surface moves onto slots with built-ins only and no new public API (foundations:
 app root, generic slot registry and host; then Settings and the four task-header bars in parallel, including the
 user's header layout; then commands, context menu, dock panels, replace slots for sidebar/home/destination bodies,
 terminal contributions). **Then the opening track** exposes slots and `ctx.*` services to third parties one kind
@@ -122,13 +123,13 @@ renderer stay host-owned. Each move keeps behaviour identical.
 ## Tech debt
 
 - **Built-ins on the public contract only.** For now a built-in slot item may use internal modules (`api`,
-  hooks) behind its public registration (rule 7 of the record above). End state: every built-in runs only on
+  hooks) behind its slot registration (the record's placement rule). End state: every built-in runs only on
   public `ctx.*` services, like `builtin:kanban`. Pay it down when a public service covers what a built-in
-  reads, in the same PR. Open until the last built-in is off internals.
+  reads, in the same PR; it does not block opening a slot kind. Open until the last built-in is off internals.
 
 ## Open decisions
 
 - The order of `dev3 extension` CLI commands (`dev` + `status`/`logs` first is the proposal); it starts
   with Phase 4's opening track, when public host services exist.
-- The reliability criteria that gate phase 4.
+- The reliability criteria that gate Phase 4's opening track (the internal track is not gated by them).
 - The order inside Phase 4 beyond Settings and the task header.
