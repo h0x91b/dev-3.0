@@ -1820,7 +1820,7 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 /* ---- Animated task-header icons -------------------------------------------
    The hand-drawn task glyphs (TaskIcons.tsx) act out their operation when the
    hosting control — any element with .task-anim (a task-header button in
-   TaskInfoPanel or its sub-panels, and the same actions on cards and menus) —
+   TaskHeader or its sub-panels, and the same actions on cards and menus) —
    is hovered or keyboard-focused. Pure CSS, pixel-identical to the static icon
    when idle. */
 

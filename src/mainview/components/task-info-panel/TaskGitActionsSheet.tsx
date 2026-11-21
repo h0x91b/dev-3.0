@@ -14,7 +14,7 @@ interface TaskGitActionsSheetProps {
 	/**
 	 * The panel-level `useTaskBranchStatus` instance. The sheet mounts only
 	 * while open, so owning the hook here would refetch on every open and show
-	 * a loading flash; the narrow TaskInfoPanel owns the single instance (it
+	 * a loading flash; the narrow TaskHeader owns the single instance (it
 	 * also feeds the summary-bar diff badge) and hands it down.
 	 */
 	git: TaskBranchStatusController;

@@ -19,7 +19,7 @@ developer experience is a first-class part of the goal, not an afterthought.
 | 1 | Board views on Cordis: the first real proof | Done; merged to `main` via #2143 (2026-11-07) |
 | 2 | Agent DX for writing extensions | Skill shipped (`dev3-extensions`, 2026-11-07); `dev3 extension` CLI not started |
 | 3 | Reliability bar: what "works well and reliably" means before migrating more | Partly covered by phase 1; versioning policy decided |
-| 4 | Migrate dev3 surfaces to plugins, one at a time | In progress: internal foundations done (2026-11-21); Settings and task header next |
+| 4 | Migrate dev3 surfaces to plugins, one at a time | In progress: internal foundations done (2026-11-21); Settings and the task header frame on their slots; header items next |
 
 ### Phase 1: Board views on Cordis (umbrella PR #2143)
 
@@ -124,7 +124,9 @@ renderer stay host-owned. Each move keeps behaviour identical.
 with `defineAppSlot`), the generic `SlotRegistry` (`slot-registry.ts`; board views run on it), the runtime that
 guards every slot (`runtime.ts`), `<SlotHost>` for replace slots (the board uses it) and `<SlotItems>` for
 contribution slots. Global Settings renders through the internal `settingsSections` slot
-(`src/mainview/settings-sections/`, `decisions/2026/11/21/settings-sections-slot.md`; built-ins only). The public
+(`src/mainview/settings-sections/`, `decisions/2026/11/21/settings-sections-slot.md`; built-ins only). The task header
+draws its four bars from the internal `taskHeader` slot (`src/mainview/task-header/`), one legacy-cluster item per bar
+until each bar is split into items (`decisions/2026/11/21/task-header-slot-frame.md`). The public
 `contributes` generalisation (plan item 0.4) waits for the opening track.
 
 **Opening-track preconditions.** Before any contribution slot opens to extensions:

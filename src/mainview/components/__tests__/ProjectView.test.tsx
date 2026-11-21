@@ -43,7 +43,7 @@ vi.mock("../../board-views/BoardHost", () => ({
 	),
 }));
 vi.mock("../../toast", () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
-vi.mock("../TaskInfoPanel", () => ({ default: ({ task }: { task: Task }) => <div data-testid="info-panel" data-task-id={task.id} /> }));
+vi.mock("../TaskHeader", () => ({ default: ({ task }: { task: Task }) => <div data-testid="info-panel" data-task-id={task.id} /> }));
 vi.mock("../ActiveTasksSidebar", () => ({ default: ({ tasks }: { tasks: Task[] }) => <div data-testid="sidebar" data-task-ids={tasks.map((t) => t.id).join(",")} /> }));
 vi.mock("../TaskWorkspacePane", () => ({
 	default: ({ inlineDiffRequest, tasks }: { inlineDiffRequest?: { focusFirstUnresolvedThread?: boolean }; tasks?: Task[] }) => (

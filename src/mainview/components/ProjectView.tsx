@@ -12,7 +12,7 @@ import type { BoardRef } from "../../shared/board-view-state";
 import KanbanBoardSkeleton from "./KanbanBoardSkeleton";
 import BoardLoadFailed from "./BoardLoadFailed";
 import { useRpcStatus } from "../hooks/useDiagnostics";
-import TaskInfoPanel from "./TaskInfoPanel";
+import TaskHeader from "./TaskHeader";
 import SplitLayout from "./SplitLayout";
 import ActiveTasksSidebar from "./ActiveTasksSidebar";
 import { useState } from "react";
@@ -355,7 +355,7 @@ function ProjectView({
 			return (
 				<div className="flex-1 min-h-0 flex flex-col">
 					{activeTask && (
-						<TaskInfoPanel
+						<TaskHeader
 							task={activeTask}
 							project={project}
 							dispatch={dispatch}
@@ -378,7 +378,7 @@ function ProjectView({
 		return (
 			<div className="flex-1 min-h-0 flex flex-col">
 				{activeTask && (
-					<TaskInfoPanel
+					<TaskHeader
 						task={activeTask}
 						project={project}
 						dispatch={dispatch}

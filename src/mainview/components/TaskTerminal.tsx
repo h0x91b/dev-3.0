@@ -11,7 +11,7 @@ import { trackEvent } from "../analytics";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import TerminalView from "../TerminalView";
 import type { TerminalHandle } from "../TerminalView";
-import TaskInfoPanel from "./TaskInfoPanel";
+import TaskHeader from "./TaskHeader";
 import TaskCompletionStrip from "./task-info-panel/TaskCompletionStrip";
 import TaskPreparingView from "./TaskPreparingView";
 import BackToKanbanEmptyState from "./BackToKanbanEmptyState";
@@ -851,7 +851,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	if (isShuttingDown) {
 		return (
 			<div className="h-full w-full flex flex-col overflow-hidden">
-				{!hideInfoPanel && task && project && <TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />}
+				{!hideInfoPanel && task && project && <TaskHeader task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />}
 				<div className="relative flex-1 min-h-0" data-testid="terminal-task-shutting-down">
 					<TaskShutdownOverlay />
 				</div>
@@ -865,7 +865,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	if (isPreparing && task && project) {
 		return (
 			<div className="h-full w-full flex flex-col overflow-hidden">
-				{!hideInfoPanel && <TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />}
+				{!hideInfoPanel && <TaskHeader task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />}
 				<div className="flex-1 min-h-0 overflow-hidden">
 					<TaskPreparingView
 						task={task}
@@ -1209,7 +1209,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				<div className="relative h-full w-full flex flex-col overflow-hidden">
 					{!hideInfoPanel && task && project && (
 						<div className="contents" data-collapse-on-compose>
-							<TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />
+							<TaskHeader task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />
 						</div>
 					)}
 					{activePaneUrl && focusPaneId && (
@@ -1257,7 +1257,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			<div className="relative h-full w-full flex flex-col overflow-hidden">
 				{!hideInfoPanel && task && project && (
 					<div className="contents" data-collapse-on-compose>
-						<TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />
+						<TaskHeader task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />
 					</div>
 				)}
 				{focusPaneId && paneUrls.has(focusPaneId) && (
@@ -1392,7 +1392,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		<div className="relative h-full w-full flex flex-col overflow-hidden">
 			{!hideInfoPanel && task && project && (
 				<div className="contents" data-collapse-on-compose>
-					<TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />
+					<TaskHeader task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />
 				</div>
 			)}
 			{ptyUrl && (

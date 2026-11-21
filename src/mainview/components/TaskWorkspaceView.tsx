@@ -4,7 +4,7 @@ import type { Project, Task } from "../../shared/types";
 import { routeSpaceId, type AppAction, type Route } from "../state";
 import type { NavigationGuard } from "../navigation-guard";
 import { api } from "../rpc";
-import TaskInfoPanel from "./TaskInfoPanel";
+import TaskHeader from "./TaskHeader";
 import TaskWorkspacePane from "./TaskWorkspacePane";
 import { createUnresolvedCommentsDiffRequest, useTaskInlineDiffState } from "./task-inline-diff";
 import { trackDiffView } from "../analytics";
@@ -53,7 +53,7 @@ function TaskWorkspaceView({
 	// were never loaded into `currentProjectTasks` — e.g. quick-shell jumps
 	// straight to a fresh scratch op in the built-in Operations board, or a
 	// toast / notification click opens a task in a different project. Without the
-	// matching task object the header chrome (TaskInfoPanel: task id, Watch,
+	// matching task object the header chrome (TaskHeader: task id, Watch,
 	// status, tmux controls) silently vanishes and only the bare terminal shows.
 	// Load the project's tasks on mount, mirroring ProjectView, so the chrome
 	// always renders regardless of the entry point.
@@ -94,7 +94,7 @@ function TaskWorkspaceView({
 	return (
 		<div className="flex-1 min-h-0 flex flex-col">
 			{!immersive && task && project && (
-				<TaskInfoPanel
+				<TaskHeader
 					task={task}
 					project={project}
 					dispatch={dispatch}

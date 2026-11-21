@@ -1,10 +1,15 @@
 import { fireEvent, render, screen, act, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import TaskInfoPanel from "../TaskInfoPanel";
+import TaskHeader from "../TaskHeader";
 import { I18nProvider } from "../../i18n";
 import type { Task, Project, BranchStatus, DevServerStatus, Label } from "../../../shared/types";
 import type { AppAction, Route } from "../../state";
 import type { TaskInlineDiffRequest } from "../task-inline-diff";
+import { applyBuiltinPlugins } from "../../plugins/runtime";
+import { BUILTIN_TASK_HEADER_PLUGIN } from "../../task-header/builtins";
+
+// The header's bars render the `taskHeader` slot; main.tsx starts its built-ins at boot.
+applyBuiltinPlugins([], [BUILTIN_TASK_HEADER_PLUGIN]);
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -251,7 +256,7 @@ function renderPanel(
 	mockedApi.request.getResolvedProject.mockResolvedValue(usedProject);
 	return render(
 		<I18nProvider>
-			<TaskInfoPanel
+			<TaskHeader
 				task={task}
 				project={usedProject}
 				dispatch={dispatch}
@@ -266,7 +271,7 @@ function renderPanel(
 	);
 }
 
-describe("TaskInfoPanel", () => {
+describe("TaskHeader", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -1073,7 +1078,7 @@ describe("TaskInfoPanel", () => {
 
 			view.rerender(
 				<I18nProvider>
-					<TaskInfoPanel
+					<TaskHeader
 						task={newerTask}
 						project={project}
 						dispatch={dispatch}
@@ -1798,7 +1803,7 @@ describe("TaskInfoPanel", () => {
 				// renderPanel overrides getResolvedProject — re-set after
 				render(
 					<I18nProvider>
-						<TaskInfoPanel
+						<TaskHeader
 							task={makeTask()}
 							project={projectWithoutDev}
 							dispatch={vi.fn()}
@@ -2569,7 +2574,7 @@ describe("TaskInfoPanel", () => {
 			await act(async () => {
 				view.rerender(
 					<I18nProvider>
-						<TaskInfoPanel
+						<TaskHeader
 							task={makeTask({ id: "t2", branchName: "dev3/task-t2" })}
 							project={project}
 							dispatch={vi.fn()}
@@ -3272,7 +3277,7 @@ describe("TaskInfoPanel", () => {
 			await act(async () => {
 				view.rerender(
 					<I18nProvider>
-						<TaskInfoPanel
+						<TaskHeader
 							task={makeTask({ id: "t2", seq: 43, worktreePath: "/tmp/wt/t2", branchName: "dev3/task-t2" })}
 							project={project}
 							dispatch={dispatch}
@@ -4365,7 +4370,7 @@ describe("TaskInfoPanel", () => {
 	});
 });
 
-describe("TaskInfoPanel — virtual (Operations) tasks", () => {
+describe("TaskHeader — virtual (Operations) tasks", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockedApi.request.getBranchStatus.mockResolvedValue(defaultBranchStatus);
