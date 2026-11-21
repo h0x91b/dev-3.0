@@ -29,6 +29,7 @@ import {
 	renderCanaryReleaseBody,
 	type CanaryAssetEntry,
 } from "../src/shared/canary-release";
+import { ciWarning, retryOnNetworkFailure } from "./network-retry";
 
 const artifactDir = process.env.DEV3_CANARY_ARTIFACT_DIR ?? "all-artifacts";
 const repo = process.env.GITHUB_REPOSITORY ?? "";
@@ -181,11 +182,19 @@ if (releaseExists) {
 // ── Attach the files ────────────────────────────────────────────────────────
 // `--clobber` because the names are stable by design: one link in the app's own refusal
 // message, one link in a bug report, and they keep resolving to the current canary.
+// A 5xx from the upload API is GitHub's, not ours; `--clobber` makes a retry safe.
 for (const asset of [...uploads, CANARY_LEDGER_ASSET]) {
-	ghOrDie(
-		["release", "upload", CANARY_RELEASE_TAG, join(artifactDir, asset), "--repo", repo, "--clobber"],
-		`uploading ${asset}`,
-	);
+	const args = ["release", "upload", CANARY_RELEASE_TAG, join(artifactDir, asset), "--repo", repo, "--clobber"];
+	let lastError = "";
+	const code = await retryOnNetworkFailure(`uploading ${asset}`, async () => {
+		const result = gh(args);
+		lastError = result.stderr;
+		return { exitCode: result.ok ? 0 : 1, output: result.stderr };
+	}, { sleep: (ms) => Bun.sleep(ms), warn: (message) => console.log(ciWarning(message)) });
+	if (code !== 0) {
+		console.error(`::error::uploading ${asset} failed: ${lastError}`);
+		process.exit(1);
+	}
 	console.log(`Uploaded ${asset}`);
 }
 

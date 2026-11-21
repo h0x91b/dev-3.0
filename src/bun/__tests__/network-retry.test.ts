@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ciWarning, networkFailureIn, retryOnNetworkFailure } from "../../../scripts/network-retry";
+import { ciWarning, fetchWithNetworkRetry, networkFailureIn, retryOnNetworkFailure } from "../../../scripts/network-retry";
 
 // Verbatim final lines from red Canary publish runs (run ids in comments).
 const NETWORK_LINES = [
@@ -10,6 +10,7 @@ const NETWORK_LINES = [
 	' output: [ null, "Processing: /Users/runner/work/dev-3.0/dev-3.0/build/canary-macos-x64/dev-3.0-canary.app\\nerror is Error Domain=NSURLErrorDomain Code=-1005 \\"The network connection was lost.\\"', // 42396871249
 	'Error: HTTPError(statusCode: nil, error: Error Domain=NSURLErrorDomain Code=-1001 "The request timed out."', // 40661864794
 	'  code: "ECONNRESET"', // 40669536003
+	"::error::uploading canary-win-x64-dev-3.0-canary.zip failed: HTTP 502: Server Error (https://api.github.com/repos/h0x91b/dev-3.0/releases/assets/709022182)", // 41814991416
 ];
 
 const NOT_NETWORK_LINES = [
@@ -83,5 +84,51 @@ describe("ciWarning", () => {
 	it("is a workflow annotation on GitHub Actions and plain text elsewhere", () => {
 		expect(ciWarning("x", { GITHUB_ACTIONS: "true" })).toBe("::warning title=Network retry::x");
 		expect(ciWarning("x", {})).toBe("[network-retry] x");
+	});
+});
+
+describe("fetchWithNetworkRetry", () => {
+	const hooks = (answers: Array<number | Error>) => {
+		const slept: number[] = [];
+		let calls = 0;
+		return {
+			slept,
+			calls: () => calls,
+			opts: {
+				fetchImpl: async () => {
+					const next = answers[Math.min(calls++, answers.length - 1)];
+					if (next instanceof Error) throw next;
+					return new Response("body", { status: next });
+				},
+				sleep: async (ms: number) => void slept.push(ms),
+				warn: () => {},
+			},
+		};
+	};
+
+	it("retries a dropped socket and a 5xx, then returns the success", async () => {
+		const h = hooks([new Error("The socket connection was closed unexpectedly"), 503, 200]);
+		const res = await fetchWithNetworkRetry("https://x", h.opts);
+		expect(res.status).toBe(200);
+		expect(h.calls()).toBe(3);
+		expect(h.slept).toEqual([30_000, 30_000]);
+	});
+
+	it("returns a 404 at once — a missing file is not transient", async () => {
+		const h = hooks([404]);
+		expect((await fetchWithNetworkRetry("https://x", h.opts)).status).toBe(404);
+		expect(h.calls()).toBe(1);
+	});
+
+	it("hands back the last 5xx after 5 attempts so the caller reports it", async () => {
+		const h = hooks([502]);
+		expect((await fetchWithNetworkRetry("https://x", h.opts)).status).toBe(502);
+		expect(h.calls()).toBe(5);
+	});
+
+	it("rethrows the network error once the attempts run out", async () => {
+		const h = hooks([new Error("ECONNRESET")]);
+		await expect(fetchWithNetworkRetry("https://x", h.opts)).rejects.toThrow(/ECONNRESET/);
+		expect(h.calls()).toBe(5);
 	});
 });

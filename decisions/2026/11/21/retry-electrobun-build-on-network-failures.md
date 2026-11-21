@@ -12,6 +12,8 @@ Both failures happen inside electrobun's compiled CLI, so neither the download n
 
 `scripts/electrobun.ts`, already the only entry point to the CLI (`decisions/2026/11/21/strip-pwsh7-module-paths-for-electrobun.md`), tees the CLI's output and keeps its last 64 KB. On a non-zero exit, `scripts/network-retry.ts` looks for a known network signature. Only when one matches does it sleep 30s and run the build again, up to 5 attempts in total. Every retry is logged as a `::warning::` that quotes the matched line. Any other failure (an Apple 403, a test assertion, a full disk, a 404) is final on the first attempt. Each signature in `NETWORK_FAILURES` is a line copied from a real red run, and `src/bun/__tests__/network-retry.test.ts` pins both the positive and the negative cases.
 
+The same policy also covers the two network failures outside electrobun. `fetchWithNetworkRetry` in `scripts/fetch-bifrost.ts` retries only when no answer arrived or the server returned a 5xx; a 404 is final. Canary asset uploads in `scripts/publish-canary-release.ts` retry on `HTTP 50x`, which `--clobber` makes safe. Each of these had 2 red runs.
+
 ## Risks
 
 A retry after a stapler failure repeats code signing and notarization, which adds a few minutes per attempt. That is still far cheaper than a full canary rerun. A new network error phrasing will not be retried until it is added to the list, which errs on the side of failing visibly. Piping the output means the CLI no longer sees a TTY.

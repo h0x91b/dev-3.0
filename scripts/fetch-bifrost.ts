@@ -23,6 +23,7 @@ import {
 	bifrostPinKey,
 	bifrostTarget,
 } from "../src/shared/bifrost-release";
+import { fetchWithNetworkRetry } from "./network-retry";
 
 const ROOT = resolve(import.meta.dir, "..");
 const VENDOR_DIR = `${ROOT}/vendor/bifrost`;
@@ -41,7 +42,7 @@ function readPins(): PinFile {
 }
 
 async function sha256Of(url: string): Promise<Uint8Array> {
-	const res = await fetch(url);
+	const res = await fetchWithNetworkRetry(url);
 	if (!res.ok) {
 		console.error(`[fetch-bifrost] ${url} answered ${res.status}`);
 		process.exit(1);
@@ -83,7 +84,7 @@ async function main(): Promise<void> {
 		process.exit(1);
 	}
 
-	const res = await fetch(target.url);
+	const res = await fetchWithNetworkRetry(target.url);
 	if (!res.ok) {
 		console.error(`[fetch-bifrost] ${target.url} answered ${res.status}`);
 		process.exit(1);
@@ -111,7 +112,7 @@ async function main(): Promise<void> {
 	}
 
 	// The licence travels with the binary: dev3 redistributes it inside the app.
-	const license = await fetch(BIFROST_LICENSE_URL);
+	const license = await fetchWithNetworkRetry(BIFROST_LICENSE_URL);
 	if (!license.ok) {
 		console.error(`[fetch-bifrost] ${BIFROST_LICENSE_URL} answered ${license.status}`);
 		process.exit(1);
