@@ -81,9 +81,9 @@ function imageFileName(src: string, alt: string, mime: string, assets: ArtifactA
  * One viewer for artifacts an agent surfaced via `dev3 show-artifact`, in two
  * intentional presentations — same chrome, same document, same channel:
  *
- *  - **Docked panel** (default). The workspace pane publishes a slot through
+ *  - **Docked panel** (default). Its tab in the task dock publishes a slot through
  *    `utils/artifact-dock`; the viewer portals into it and renders in flow, to
- *    the right of the task terminal, at the width the pane owns.
+ *    the right of the task terminal, at the width the dock owns.
  *  - **Popup** (`openArtifactsInPopup`, and wherever no dock exists — the
  *    archived-task modal, a toast for a task that is not on screen, narrow
  *    viewports). The lightbox `TaskImageViewer` uses: a centred card over a

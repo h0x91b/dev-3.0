@@ -111,6 +111,7 @@ import CoordinatorFinderModal from "./components/CoordinatorFinderModal";
 import OpenInPickerModal from "./components/OpenInPickerModal";
 import TaskImageViewer from "./components/TaskImageViewer";
 import TaskArtifactViewer from "./components/TaskArtifactViewer";
+import TaskPanelInstances from "./task-panels/TaskPanelInstances";
 import HintOverlay from "./components/HintOverlay";
 import HelpOverlay from "./components/HelpOverlay";
 import TourOverlay from "./components/TourOverlay";
@@ -4111,6 +4112,8 @@ function App() {
 			</>
 			)}
 			{launchLocationIssue && <LaunchLocationGate issue={launchLocationIssue} />}
+			{/* Task panels outlive immersive fullscreen: there they wait parked, still mounted. */}
+			<TaskPanelInstances />
 			{/* Agents block on these answers, and confirm() declines when no host is
 			    mounted — so the hosts stay up in immersive fullscreen too. */}
 			<ConfirmHost onBusyChange={setConfirmBusy} />

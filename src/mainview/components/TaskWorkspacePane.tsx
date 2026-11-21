@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import type { Dispatch, MutableRefObject } from "react";
 import type { Project, Task } from "../../shared/types";
 import type { AppAction, Route } from "../state";
@@ -9,34 +9,11 @@ import TaskDiffViewer from "./TaskDiffViewer";
 import type { TaskInlineDiffRequest } from "./task-inline-diff";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
-import { getArtifactDock, setArtifactDock } from "../utils/artifact-dock";
-import { useT } from "../i18n";
+import TaskDock from "../task-panels/TaskDock";
+import { closeTaskPanel, openTaskPanel } from "../task-panels/dock-store";
+import { ARTIFACT_PANEL_ID } from "../task-panels/builtins";
 import FileExplorerFrame from "./FileExplorerFrame";
 import { useYaziLauncher } from "./task-info-panel/useYaziLauncher";
-
-const DEFAULT_ARTIFACT_WIDTH = 560;
-const MIN_ARTIFACT_WIDTH = 360;
-const MAX_ARTIFACT_RATIO = 0.8;
-const ARTIFACT_WIDTH_KEY = "dev3-artifact-panel-width";
-
-interface ArtifactResizeSession {
-	pointerId: number;
-	startX: number;
-	startWidth: number;
-	lastWidth: number;
-	target: HTMLDivElement;
-	previousCursor: string;
-	previousUserSelect: string;
-	rafId: number | null;
-}
-
-function initialArtifactWidth(): number {
-	try {
-		const value = Number(localStorage.getItem(ARTIFACT_WIDTH_KEY));
-		if (Number.isFinite(value) && value >= MIN_ARTIFACT_WIDTH) return value;
-	} catch { /* ignore */ }
-	return DEFAULT_ARTIFACT_WIDTH;
-}
 
 interface TaskWorkspacePaneProps {
 	projectId: string;
@@ -77,17 +54,18 @@ function TaskWorkspacePane({
 }: TaskWorkspacePaneProps) {
 	const task = tasks.find((item) => item.id === taskId);
 	const project = projects.find((item) => item.id === projectId);
-	const t = useT();
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const yazi = useYaziLauncher(task, project);
 	const workspaceRef = useRef<HTMLDivElement>(null);
 	const inlineDiffWasOpenRef = useRef(false);
-	const [artifactWidth, setArtifactWidth] = useState(initialArtifactWidth);
-	const [artifactResizing, setArtifactResizing] = useState(false);
-	const artifactPanelRef = useRef<HTMLDivElement>(null);
-	const resizeGhostRef = useRef<HTMLDivElement>(null);
-	const resizeSessionRef = useRef<ArtifactResizeSession | null>(null);
-	const showArtifact = dockArtifact && !inlineDiffRequest && !isNarrow;
+
+	// The artifact viewer (still mounted by App) asks for this task's dock through
+	// `dockArtifact`; its tab lives as long as the request does.
+	useLayoutEffect(() => {
+		if (!dockArtifact) return;
+		openTaskPanel(taskId, ARTIFACT_PANEL_ID, { activate: false });
+		return () => closeTaskPanel(taskId, ARTIFACT_PANEL_ID);
+	}, [dockArtifact, taskId]);
 
 	// The open task was deleted or moved away: leave its dead screen for the board. Asks the
 	// server first, so a list briefly holding another project's tasks never bounces the user.
@@ -111,133 +89,6 @@ function TaskWorkspacePane({
 			cancelled = true;
 		};
 	}, [task, taskId, projectId, spaceId, navigate]);
-
-	// The slot is what tells the viewer to render here instead of as a popup, so
-	// it is published only while the panel is actually on screen and taken back
-	// the moment it is not — a stale dock would portal the viewer into nothing.
-	const publishDock = useCallback((el: HTMLDivElement | null) => {
-		if (el) {
-			artifactPanelRef.current = el;
-			setArtifactDock(el);
-			return;
-		}
-		// Clear only our own slot: during an immersive-fullscreen swap another pane
-		// may already have published its element before this ref detaches.
-		if (getArtifactDock() === artifactPanelRef.current) setArtifactDock(null);
-		artifactPanelRef.current = null;
-	}, []);
-
-	useEffect(() => {
-		try { localStorage.setItem(ARTIFACT_WIDTH_KEY, String(Math.round(artifactWidth))); } catch { /* ignore */ }
-	}, [artifactWidth]);
-
-	const clampArtifactWidth = useCallback((width: number) => {
-		const total = artifactPanelRef.current?.parentElement?.clientWidth || window.innerWidth;
-		return Math.min(total * MAX_ARTIFACT_RATIO, Math.max(MIN_ARTIFACT_WIDTH, width));
-	}, []);
-
-	const finishArtifactResize = useCallback((releaseCapture: boolean) => {
-		const session = resizeSessionRef.current;
-		if (!session) return;
-		resizeSessionRef.current = null;
-		if (session.rafId !== null) cancelAnimationFrame(session.rafId);
-		setArtifactWidth(session.lastWidth);
-		setArtifactResizing(false);
-		document.body.style.cursor = session.previousCursor;
-		document.body.style.userSelect = session.previousUserSelect;
-		if (releaseCapture && session.target.hasPointerCapture(session.pointerId)) {
-			session.target.releasePointerCapture(session.pointerId);
-		}
-	}, []);
-
-	const onArtifactResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-		if (event.button !== 0) return;
-		event.preventDefault();
-		const startWidth = artifactPanelRef.current?.offsetWidth || artifactWidth;
-		event.currentTarget.setPointerCapture(event.pointerId);
-		resizeSessionRef.current = {
-			pointerId: event.pointerId,
-			startX: event.clientX,
-			startWidth,
-			lastWidth: startWidth,
-			target: event.currentTarget,
-			previousCursor: document.body.style.cursor,
-			previousUserSelect: document.body.style.userSelect,
-			rafId: null,
-		};
-		document.body.style.cursor = "col-resize";
-		document.body.style.userSelect = "none";
-		setArtifactResizing(true);
-	}, [artifactWidth]);
-
-	// Resizing the panel live would relayout the artifact iframe and refit the
-	// terminal (SIGWINCH → full TUI repaint) on every pointer move. Only a ghost
-	// line follows the pointer; the real width lands once, on pointer up.
-	const onArtifactResizeMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-		const session = resizeSessionRef.current;
-		if (!session || session.pointerId !== event.pointerId) return;
-		session.lastWidth = clampArtifactWidth(session.startWidth - (event.clientX - session.startX));
-		if (session.rafId !== null) return;
-		session.rafId = requestAnimationFrame(() => {
-			session.rafId = null;
-			if (resizeGhostRef.current) resizeGhostRef.current.style.right = `${session.lastWidth}px`;
-		});
-	}, [clampArtifactWidth]);
-
-	useEffect(() => {
-		if (!artifactResizing) return;
-		const finishForPointer = (event: PointerEvent) => {
-			if (resizeSessionRef.current?.pointerId !== event.pointerId) return;
-			finishArtifactResize(true);
-		};
-		const finishForBlur = () => finishArtifactResize(true);
-		const finishWhenHidden = () => {
-			if (document.visibilityState === "hidden") finishArtifactResize(true);
-		};
-		window.addEventListener("pointerup", finishForPointer, true);
-		window.addEventListener("pointercancel", finishForPointer, true);
-		window.addEventListener("blur", finishForBlur);
-		document.addEventListener("visibilitychange", finishWhenHidden);
-		return () => {
-			window.removeEventListener("pointerup", finishForPointer, true);
-			window.removeEventListener("pointercancel", finishForPointer, true);
-			window.removeEventListener("blur", finishForBlur);
-			document.removeEventListener("visibilitychange", finishWhenHidden);
-		};
-	}, [artifactResizing, finishArtifactResize]);
-
-	const resizeArtifactBy = useCallback((delta: number) => {
-		setArtifactWidth((width) => clampArtifactWidth(width + delta));
-	}, [clampArtifactWidth]);
-
-	useEffect(() => () => {
-		const session = resizeSessionRef.current;
-		if (!session) return;
-		if (session.rafId !== null) cancelAnimationFrame(session.rafId);
-		document.body.style.cursor = session.previousCursor;
-		document.body.style.userSelect = session.previousUserSelect;
-	}, []);
-
-	useEffect(() => {
-		if (!showArtifact) return;
-		const panel = artifactPanelRef.current;
-		const container = panel?.parentElement;
-		const clamp = () => {
-			const total = container?.clientWidth || window.innerWidth;
-			setArtifactWidth((width) => Math.min(total * MAX_ARTIFACT_RATIO, Math.max(MIN_ARTIFACT_WIDTH, width)));
-		};
-		clamp();
-		window.addEventListener("resize", clamp);
-		let observer: ResizeObserver | null = null;
-		if (typeof ResizeObserver !== "undefined" && container) {
-			observer = new ResizeObserver(clamp);
-			observer.observe(container);
-		}
-		return () => {
-			window.removeEventListener("resize", clamp);
-			observer?.disconnect();
-		};
-	}, [showArtifact]);
 
 	// A pane stuck in copy-mode at scroll position 0 is visually identical to a
 	// live pane — silently swallows keystrokes until cleared. Reset on ordinary
@@ -268,16 +119,6 @@ function TaskWorkspacePane({
 
 	return (
 		<div ref={workspaceRef} className="h-full w-full relative overflow-hidden" data-help-id={immersive ? undefined : "terminal.task"} data-tour-anchor={immersive ? undefined : "task.terminal"}>
-			{artifactResizing && (
-				<div data-testid="artifact-resize-shield" aria-hidden="true" className="absolute inset-0 z-[60] cursor-col-resize">
-					<div
-						ref={resizeGhostRef}
-						data-testid="artifact-resize-ghost"
-						className="absolute top-0 bottom-0 w-[2px] bg-accent"
-						style={{ right: artifactWidth }}
-					/>
-				</div>
-			)}
 			<div className={inlineDiffRequest ? "h-full hidden" : "h-full flex min-w-0"}>
 				{/* key={taskId} forces a fresh TaskTerminal instance per task.
 				   Without it, the previous task's cached `ptyUrl` state is
@@ -309,41 +150,7 @@ function TaskWorkspacePane({
 					</FileExplorerFrame>
 					{yazi.dialog}
 				</div>
-				{showArtifact && (
-					<>
-						<div
-							className={`group flex w-[7px] flex-shrink-0 touch-none cursor-col-resize items-center justify-center transition-colors hover:bg-accent/10 focus-visible:bg-accent/10 focus-visible:outline-none ${artifactResizing ? "bg-accent/15" : ""}`}
-							onPointerDown={onArtifactResizeStart}
-							onPointerMove={onArtifactResizeMove}
-							onPointerUp={() => finishArtifactResize(true)}
-							onPointerCancel={() => finishArtifactResize(true)}
-							onLostPointerCapture={() => finishArtifactResize(false)}
-							onDoubleClick={() => setArtifactWidth(clampArtifactWidth(DEFAULT_ARTIFACT_WIDTH))}
-							onKeyDown={(event) => {
-								if (event.key === "ArrowLeft") { event.preventDefault(); resizeArtifactBy(24); }
-								else if (event.key === "ArrowRight") { event.preventDefault(); resizeArtifactBy(-24); }
-							}}
-							role="separator"
-							tabIndex={0}
-							aria-orientation="vertical"
-							aria-label={t("artifactViewer.resize")}
-							aria-valuemin={MIN_ARTIFACT_WIDTH}
-							aria-valuemax={Math.round((artifactPanelRef.current?.parentElement?.clientWidth || window.innerWidth) * MAX_ARTIFACT_RATIO)}
-							aria-valuenow={Math.round(artifactWidth)}
-						>
-							<div
-								data-testid="artifact-resize-grip"
-								className={`h-8 w-[3px] rounded-full transition-colors group-hover:bg-accent group-focus-visible:bg-accent ${artifactResizing ? "bg-accent" : "bg-fg-muted/60"}`}
-							/>
-						</div>
-						<div
-							ref={publishDock}
-							data-testid="artifact-dock"
-							className="min-h-0 min-w-0 flex-shrink-0 overflow-hidden"
-							style={{ width: artifactWidth }}
-						/>
-					</>
-				)}
+				<TaskDock taskId={taskId} covered={!!inlineDiffRequest} canDock={!isNarrow && !immersive} />
 			</div>
 
 			{inlineDiffRequest && task && project && (

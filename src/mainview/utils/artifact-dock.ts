@@ -13,10 +13,10 @@
  *  - There is exactly one slot and exactly one viewer, so a task switch can
  *    never leave a second, hidden artifact instance behind.
  *
- * The pane owns the slot's lifetime: it sets the element on mount and clears it
- * on unmount. A cleared slot means "no dock available" and the viewer falls back
- * to the popup — which is what the archived-task modal and a toast for another
- * task rely on.
+ * The artifact's tab in the task dock (`task-panels/builtins.tsx`) owns the slot's
+ * lifetime: it sets the element while the dock is on screen and clears it after.
+ * A cleared slot means "no dock available" and the viewer falls back to the
+ * popup — which is what the archived-task modal and a toast for another task rely on.
  */
 
 type Listener = (el: HTMLElement | null) => void;

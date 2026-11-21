@@ -3,6 +3,8 @@ import type { Project, Task } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
 import TaskWorkspacePane from "../TaskWorkspacePane";
 import { getArtifactDock } from "../../utils/artifact-dock";
+import TaskPanelInstances from "../../task-panels/TaskPanelInstances";
+import { installTaskPanelBuiltins } from "../../task-panels/__tests__/install-builtins";
 
 vi.mock("../../rpc", () => ({
 	api: { request: { exitCopyModeAllPanes: vi.fn(() => Promise.resolve()) } },
@@ -49,6 +51,7 @@ const task: Task = {
 function renderPane(props: Partial<React.ComponentProps<typeof TaskWorkspacePane>> = {}) {
 	return render(
 		<I18nProvider>
+			<TaskPanelInstances />
 			<TaskWorkspacePane
 				projectId="p1"
 				taskId="t1"
@@ -82,6 +85,7 @@ function forceNarrow(narrow: boolean) {
 	});
 }
 
+beforeEach(installTaskPanelBuiltins);
 afterEach(() => forceNarrow(false));
 
 describe("TaskWorkspacePane artifact dock", () => {
