@@ -42,10 +42,11 @@ function renderSheet(task: Task, onAction = vi.fn(), sheetProject: Project = pro
 			<TaskHeaderProvider
 				value={{
 					scope: { task, project: sheetProject, dispatch: vi.fn(), navigate: vi.fn() },
-					legacy: { status: {}, session: {}, runtime: {} },
-					layout: { compact: false, tight: false, collapsed: true },
+					legacy: { status: {}, session: {} },
+					layout: { compact: false, tight: false, collapsed: true, narrow: true },
 					git,
 					onOpenInlineDiff,
+					closeSheet: vi.fn(),
 				}}
 			>
 				<TaskGitActionsSheet rowClassName="row" onAction={onAction} />

@@ -1,0 +1,1 @@
+The task header's runtime bar (Open in, file explorer, scripts, dev server, ports, images and artifacts) now renders as individual built-in items on the internal task header slot, with the narrow actions-sheet rows moved into those items; nothing changes on screen.

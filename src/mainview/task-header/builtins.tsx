@@ -5,10 +5,11 @@ import type { SlotItemProps } from "../plugins/SlotItems";
 // Defines the `taskHeader` slot on the app root before the built-ins install.
 import "./registry";
 import { registerGitItems } from "./builtin-git";
+import { RUNTIME_ITEMS } from "./builtin-runtime";
 import { useLegacyCluster, type LegacyRegion } from "./scope";
 
 /** The bars still drawn as one cluster each, until their split lands. */
-export const LEGACY_REGIONS: readonly LegacyRegion[] = ["status", "session", "runtime"];
+export const LEGACY_REGIONS: readonly LegacyRegion[] = ["status", "session"];
 
 export const TASK_HEADER_BUILTIN_ID = "builtin:task-header";
 
@@ -24,7 +25,7 @@ function legacyCluster(region: LegacyRegion): ComponentType<SlotItemProps> {
 	return LegacyCluster;
 }
 
-/** The Git bar's own items, and one cluster item per bar not yet split. */
+/** The Git and Runtime bars' own items, and one cluster item per bar not yet split. */
 export function installTaskHeaderBuiltins(ctx: Context): Fiber {
 	return ctx.plugin({
 		name: TASK_HEADER_BUILTIN_ID,
@@ -34,6 +35,7 @@ export function installTaskHeaderBuiltins(ctx: Context): Fiber {
 				pluginCtx.taskHeader.register({ id: legacyClusterId(region), region, component: legacyCluster(region) });
 			}
 			registerGitItems(pluginCtx);
+			for (const def of RUNTIME_ITEMS) pluginCtx.taskHeader.register(def);
 		},
 	});
 }

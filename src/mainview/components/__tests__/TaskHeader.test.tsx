@@ -4698,6 +4698,29 @@ describe("TaskHeader — virtual (Operations) tasks", () => {
 			window.removeEventListener("dev3:openArtifactViewer", openArtifact);
 		});
 
+		it("orders the actions group: Full screen, status rows, runtime rows, Hibernate last", async () => {
+			const sheet = await openSheet(makeTask({
+				sharedArtifacts: [{
+					id: "artifact-1",
+					kind: "html",
+					title: "Report",
+					name: "report.html",
+					storedPath: "/tmp/shared-artifacts/artifact-1/report.html",
+					originalPath: "/tmp/report.html",
+					bytes: 10,
+					createdAt: 1,
+					assets: [],
+				}],
+			}));
+			const group = within(sheet).getByTestId("task-actions-fullscreen").closest(".touch-actions") as HTMLElement;
+			const rows = within(group).getAllByRole("button").map((button) => button.textContent ?? "");
+			const at = (label: string) => rows.findIndex((text) => text.includes(label));
+			expect(at("Full screen")).toBe(0);
+			expect(at("Watch")).toBeGreaterThan(at("Full screen"));
+			expect(at("Artifacts")).toBeGreaterThan(at("Watch"));
+			expect(at("Hibernate")).toBe(rows.length - 1);
+		});
+
 		it("opens the image viewer and closes the actions sheet", async () => {
 			const openImage = vi.fn();
 			window.addEventListener("dev3:openImageViewer", openImage);
