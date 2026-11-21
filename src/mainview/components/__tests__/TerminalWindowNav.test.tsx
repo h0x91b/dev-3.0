@@ -10,7 +10,7 @@ import type { Context } from "cordis";
 import { getAppRoot } from "../../plugins/root";
 import { applyBuiltinPlugins, resetPluginsForTests } from "../../plugins/runtime";
 import { BUILTIN_TERMINAL_TAB_DECORATIONS_PLUGIN } from "../../terminal-tab-decorations/builtins";
-import { getTerminalTabDecorationRegistry, resetDecorationFailuresForTests, type TerminalTabDecorationItem } from "../../terminal-tab-decorations/registry";
+import { getTerminalTabDecorationRegistry, resetDecorationFailuresForTests, type TerminalTabDecorationItem, type TerminalTabDecorationProps } from "../../terminal-tab-decorations/registry";
 
 vi.mock("../../rpc", () => ({
 	api: { request: { tmuxWindowNavigate: vi.fn(), tmuxCloseWindow: vi.fn(), tmuxNewWindow: vi.fn(), tmuxRenameWindow: vi.fn() } },
@@ -394,6 +394,25 @@ describe("TerminalWindowNav", () => {
 			expect(reports).toEqual(["[slots] render of terminal tab decoration ext:render threw; hiding it:"]);
 		});
 
+		it("drops a decoration that starts crashing on a later poll from every name without waiting for the next poll", async () => {
+			const Picky = ({ window: w }: TerminalTabDecorationProps) => {
+				if (w.label === "late") throw new Error("boom");
+				return <span aria-hidden="true" data-testid="ext:late" />;
+			};
+			getTerminalTabDecorationRegistry().register(decoration("ext:late", { component: Picky }));
+			respond([win(1, "Fix auth", { home: true, active: true }), win(2, "tests", { bell: true })]);
+			renderNav();
+			expect(await screen.findByRole("tab", { name: "tests, bell · ext:late" })).toBeInTheDocument();
+			respond([win(1, "Fix auth", { home: true, active: true }), win(2, "tests", { bell: true }), win(3, "late", { bell: true })]);
+			await reread();
+			// No further poll: only the crash store's notification can redraw the names.
+			for (let tick = 0; tick < 20; tick++) await act(async () => {});
+			expect(screen.getByRole("tab", { name: "tests, bell" })).toBeInTheDocument();
+			expect(screen.getByRole("tab", { name: "late, bell" })).toBeInTheDocument();
+			expect(screen.queryAllByTestId("ext:late")).toHaveLength(0);
+		});
+
+		// happy-dom has no layout, so this pins the clamp's classes, not its geometry; check a wide glyph in a browser once the slot opens.
 		it("clamps an extension decoration to one glyph's width and leaves the built-in's DOM alone", async () => {
 			getTerminalTabDecorationRegistry().register(decoration("ext:wide", { component: () => <span data-testid="ext:wide">a very wide label</span> }));
 			respond([win(1, "Fix auth", { home: true, active: true }), win(2, "tests", { bell: true })]);
