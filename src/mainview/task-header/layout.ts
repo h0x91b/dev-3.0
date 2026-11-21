@@ -4,6 +4,7 @@ import { patchGlobalSettings } from "../global-settings-cache";
 import { updateHiddenControls } from "../hidden-controls";
 import type { TaskHeaderItemId } from "../hideable-controls";
 import { isBuiltinItem, type SlotUserLayout } from "../plugins/SlotItems";
+import { TASK_HEADER_ALWAYS_SHOWN } from "./registry";
 
 /**
  * The user's task-header layout (bible §5.1, §5.10): one for every task, stored in
@@ -44,7 +45,8 @@ export function setTaskHeaderLayoutForTests(layout: TaskHeaderUserLayout): void 
 
 /** One region's slice, in the shape `<SlotItems>` takes. */
 export function regionLayout(layout: TaskHeaderUserLayout, region: string, hidden: ReadonlySet<string>): SlotUserLayout {
-	return { order: layout.order?.[region], overflow: layout.overflow, pinned: layout.pinned, hidden: [...hidden] };
+	const shown = (id: string) => !TASK_HEADER_ALWAYS_SHOWN.has(id);
+	return { order: layout.order?.[region], overflow: layout.overflow?.filter(shown), pinned: layout.pinned, hidden: [...hidden].filter(shown) };
 }
 
 // --- pure edits ------------------------------------------------------------------------

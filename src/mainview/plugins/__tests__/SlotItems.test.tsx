@@ -254,10 +254,36 @@ describe("SlotItems: the user's layout and the item menu", () => {
 			act(() => {
 				vi.advanceTimersByTime(600);
 			});
+			// The lift click lands on whatever the menu put under the finger, e.g. its backdrop.
+			const backdrop = document.body.appendChild(document.createElement("div"));
+			const backdropClicked = vi.fn();
+			backdrop.addEventListener("click", backdropClicked);
 			fireEvent.pointerUp(button, { pointerType: "touch" });
-			fireEvent.click(button);
+			fireEvent.click(backdrop);
 			expect(onItemMenu).toHaveBeenCalledOnce();
-			expect(clicked).not.toHaveBeenCalled();
+			expect(backdropClicked).not.toHaveBeenCalled();
+			fireEvent.click(button);
+			expect(clicked).toHaveBeenCalledOnce();
+			backdrop.remove();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("lets the next tap through when the browser sent no lift click", async () => {
+		vi.useFakeTimers();
+		try {
+			const clicked = vi.fn();
+			await plugin("builtins", [{ id: "builtin:a", component: () => <button type="button" onClick={clicked}>builtin:a</button> }]);
+			renderItems({ onItemMenu: vi.fn() });
+			const button = screen.getByRole("button", { name: "builtin:a" });
+			fireEvent.pointerDown(button, { pointerType: "touch" });
+			act(() => {
+				vi.advanceTimersByTime(600);
+			});
+			fireEvent.pointerUp(button, { pointerType: "touch" });
+			fireEvent.pointerDown(button, { pointerType: "touch" });
+			fireEvent.pointerUp(button, { pointerType: "touch" });
 			fireEvent.click(button);
 			expect(clicked).toHaveBeenCalledOnce();
 		} finally {
@@ -270,6 +296,24 @@ describe("SlotItems: the More menu", () => {
 	beforeEach(async () => {
 		await plugin("builtins", [{ id: "builtin:a" }]);
 		await plugin("ext", [{ id: "ext:one" }, { id: "ext:two" }, { id: "ext:three" }]);
+	});
+
+	it("moves focus into the panel only once it is visible", () => {
+		const seen: string[] = [];
+		const original = HTMLElement.prototype.focus;
+		const spy = vi.spyOn(HTMLElement.prototype, "focus").mockImplementation(function (this: HTMLElement, options?: FocusOptions) {
+			const menu = this.closest<HTMLElement>('[role="menu"]');
+			if (menu) seen.push(menu.style.visibility);
+			original.call(this, options);
+		});
+		try {
+			renderItems();
+			fireEvent.click(more());
+			expect(seen.length).toBeGreaterThan(0);
+			expect(seen).not.toContain("hidden");
+		} finally {
+			spy.mockRestore();
+		}
 	});
 
 	it("is a menu: focus lands on the first row, arrows/Home/End move, Escape returns to the trigger", () => {

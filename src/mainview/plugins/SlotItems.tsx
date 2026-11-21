@@ -156,11 +156,10 @@ const LONG_PRESS_SLOP = 10;
 /**
  * Opens the host's item menu on right-click, on the keyboard's menu key (which fires
  * `contextmenu` on the focused control) and on a touch long-press, the touch path where
- * there is no right click. A long press swallows the tap that ends it.
+ * there is no right click. A long press swallows the click that ends it.
  */
 function useItemMenuGesture(open: (at: { top: number; left: number }, returnFocus: HTMLElement | null) => void) {
 	const press = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
-	const swallowClick = useRef(false);
 	const cancel = () => {
 		if (press.current) clearTimeout(press.current.timer);
 		press.current = null;
@@ -184,7 +183,7 @@ function useItemMenuGesture(open: (at: { top: number; left: number }, returnFocu
 				y,
 				timer: setTimeout(() => {
 					press.current = null;
-					swallowClick.current = true;
+					swallowLiftClick();
 					open({ top: y, left: x }, target);
 				}, LONG_PRESS_MS),
 			};
@@ -194,13 +193,26 @@ function useItemMenuGesture(open: (at: { top: number; left: number }, returnFocu
 		},
 		onPointerUp: cancel,
 		onPointerCancel: cancel,
-		onClickCapture(e: React.MouseEvent) {
-			if (!swallowClick.current) return;
-			swallowClick.current = false;
-			e.preventDefault();
-			e.stopPropagation();
-		},
 	};
+}
+
+/**
+ * The click a browser synthesizes when the finger lifts after a long press lands wherever
+ * the menu now is: its backdrop or a row. Swallow that one click, document-wide; the next
+ * touch clears the trap when the browser sent none.
+ */
+function swallowLiftClick(): void {
+	const swallow = (e: MouseEvent) => {
+		e.preventDefault();
+		e.stopPropagation();
+		release();
+	};
+	const release = () => {
+		document.removeEventListener("click", swallow, true);
+		document.removeEventListener("pointerdown", release, true);
+	};
+	document.addEventListener("click", swallow, true);
+	document.addEventListener("pointerdown", release, true);
 }
 
 /**
@@ -256,10 +268,16 @@ export function SlotItems<Scope>({ registry, region, scope, layout, budget, budg
 		[registry, region],
 	);
 	const entries = useSyncExternalStore(registry.subscribe, getEntries);
-	const rendered = useRenderedItems(!!onItemMenu);
-	const { inline, overflow, room } = placeSlotItems(entries.filter((entry) => isShown(entry, scope)), layout, budget, budgetExempt, rendered.ids ?? undefined);
-	const placed = useRef({ entries, inline, overflow, room, layout });
-	placed.current = { entries, inline, overflow, room, layout };
+	const shown = entries.filter((entry) => isShown(entry, scope));
+	const place = (ids: ReadonlySet<string> | null) => placeSlotItems(shown, layout, budget, budgetExempt, ids ?? undefined);
+	// The measured set only moves placement when an extension item competes for the budget.
+	const rendered = useRenderedItems(
+		!!onItemMenu && entries.some((entry) => !isBuiltinItem(entry.def.id)),
+		(ids) => place(ids).inline.map((entry) => entry.def.id).join(" "),
+	);
+	const { inline, overflow } = place(rendered.ids);
+	const placed = useRef({ entries, inline, overflow, layout, place });
+	placed.current = { entries, inline, overflow, layout, place };
 	const openMenu = useCallback((id: string, placement: SlotItemPlacement, at: { top: number; left: number }, returnFocus: HTMLElement | null) => {
 		const current = placed.current;
 		const drawnIds = rendered.measure();
@@ -271,7 +289,7 @@ export function SlotItems<Scope>({ registry, region, scope, layout, budget, budg
 			order: sortSlotEntries(current.entries, current.layout?.order).map((entry) => entry.def.id),
 			drawn: current.inline.map((entry) => entry.def.id).filter((itemId) => drawnIds.has(itemId)),
 			overflow: current.overflow.map((entry) => entry.def.id),
-			room: current.room,
+			room: current.place(drawnIds).room,
 		});
 	}, [onItemMenu, rendered]);
 	return (
@@ -287,9 +305,11 @@ export function SlotItems<Scope>({ registry, region, scope, layout, budget, budg
 /**
  * Which framed items draw anything. Measured after every render and whenever an item's
  * top-level nodes change, so an item that turns itself off frees its place in the budget.
- * `ids` is null until the first measurement (every built-in counts until then).
+ * `ids` is null until the first measurement that changes placement (every built-in counts until then).
  */
-function useRenderedItems(enabled: boolean) {
+function useRenderedItems(enabled: boolean, placementKey: (ids: ReadonlySet<string> | null) => string) {
+	const keyOf = useRef(placementKey);
+	keyOf.current = placementKey;
 	const frames = useRef(new Map<string, HTMLElement>());
 	const [ids, setIds] = useState<ReadonlySet<string> | null>(null);
 	const measure = useCallback(() => {
@@ -297,22 +317,28 @@ function useRenderedItems(enabled: boolean) {
 		for (const [id, node] of frames.current) if (node.firstChild) next.add(id);
 		return next;
 	}, []);
+	const live = useRef(enabled);
+	live.current = enabled;
 	const update = useCallback(() => {
+		if (!live.current) return;
 		const next = measure();
-		setIds((previous) => (sameSet(previous, next) ? previous : next));
+		// A measurement that moves nothing costs no render.
+		setIds((previous) => (sameSet(previous, next) || keyOf.current(previous) === keyOf.current(next) ? previous : next));
 	}, [measure]);
 	const observer = useRef<MutationObserver | null>(null);
 	const frameRef = useCallback((id: string, node: HTMLElement | null) => {
 		if (node) {
 			frames.current.set(id, node);
-			if (typeof MutationObserver !== "undefined") {
-				observer.current ??= new MutationObserver(update);
-				observer.current.observe(node, { childList: true });
-			}
+			observer.current?.observe(node, { childList: true });
 		} else frames.current.delete(id);
-	}, [update]);
+	}, []);
 	useLayoutEffect(() => {
-		if (enabled) update();
+		if (!enabled) return;
+		if (!observer.current && typeof MutationObserver !== "undefined") {
+			observer.current = new MutationObserver(update);
+			for (const node of frames.current.values()) observer.current.observe(node, { childList: true });
+		}
+		update();
 	});
 	useEffect(() => () => observer.current?.disconnect(), []);
 	return useMemo(() => ({ ids: enabled ? ids : null, frameRef, measure }), [enabled, ids, frameRef, measure]);
@@ -409,9 +435,12 @@ function OverflowPanel<Scope>({ slot, entries, triggerRef, onDismiss, onMenu }: 
 		if (inside) triggerRef.current?.focus();
 	}, [onDismiss, triggerRef]);
 	useOverlayLayer(panelRef, { onDismiss: dismiss, triggerRef });
+	// Not before the clamp shows the panel: focus() on a `visibility: hidden` element is a no-op.
+	useEffect(() => {
+		if (visible) menuItems(panelRef.current)[0]?.focus();
+	}, [visible]);
 	useEffect(() => {
 		const panel = panelRef.current;
-		menuItems(panel)[0]?.focus();
 		for (const row of panel?.querySelectorAll<HTMLElement>("[data-slot-row]") ?? []) {
 			if (row.childElementCount > 0 && !row.querySelector(MENU_ITEM) && !isBuiltinItem(row.dataset.slotRow ?? "")) {
 				console.warn(`[slots] ${slot} item ${row.dataset.slotRow} renders no role="menuitem" in the More menu`);

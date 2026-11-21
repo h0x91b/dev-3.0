@@ -88,7 +88,7 @@ describe("task-header ids", () => {
 		expect(getHiddenControls()).toEqual(new Set(["builtin:session.pane-controls", "builtin:runtime.dev-server-setup", "stats-nav"]));
 		await restoreControl("builtin:session.pane-controls");
 		const saved = saveGlobalSettings.mock.calls[saveGlobalSettings.mock.calls.length - 1]![0];
-		expect(saved.personalHiddenControls).toEqual(["builtin:runtime.dev-server-setup", "stats-nav"]);
+		expect(saved.personalHiddenControls).toEqual(["builtin:runtime.dev-server-setup", "stats-nav", "setup-dev-server"]);
 		expect(saved.hiddenControls).toEqual(["builtin:runtime.dev-server-setup", "stats-nav", "setup-dev-server"]);
 	});
 

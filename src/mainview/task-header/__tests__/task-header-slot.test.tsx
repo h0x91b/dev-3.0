@@ -186,9 +186,9 @@ describe("taskHeader slot", () => {
 			name: "leaving-items",
 			inject: ["taskHeader"],
 			apply(ctx: Context) {
-				ctx.taskHeader.register({ id: "builtin:git.leaving-test", region: "git", order: -1, component: Probe });
-				ctx.taskHeader.register({ id: "builtin:status.leaving-test", region: "status", order: -1, component: Probe });
-				ctx.taskHeader.register({ id: "builtin:git.leaving-action-test", region: "git.actions", order: 25, component: Probe });
+				ctx.taskHeader.register({ id: "builtin:git.leaving-test", region: "git", label: "taskHeaderItem.status.watch", order: -1, component: Probe });
+				ctx.taskHeader.register({ id: "builtin:status.leaving-test", region: "status", label: "taskHeaderItem.status.watch", order: -1, component: Probe });
+				ctx.taskHeader.register({ id: "builtin:git.leaving-action-test", region: "git.actions", label: "taskHeaderItem.status.watch", order: 25, component: Probe });
 			},
 		});
 		await act(async () => {

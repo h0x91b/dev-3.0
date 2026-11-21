@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { useT, type TranslationKey } from "../../i18n";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
@@ -27,9 +27,12 @@ export interface HiddenHeaderItem {
 /** Every hidden item the registry knows, grouped by bar in the header's order. */
 export function useHiddenHeaderItems(): [TaskHeaderRegion, HiddenHeaderItem[]][] {
 	const hidden = useHiddenControls();
+	const registry = getTaskHeaderRegistry();
+	// Subscribed, so a hidden extension item that loads later is listed.
+	useSyncExternalStore(registry.subscribe, () => registry.list());
 	const groups = new Map<TaskHeaderRegion, HiddenHeaderItem[]>(TASK_HEADER_REGIONS.map((bar) => [bar, []]));
 	for (const id of hidden) {
-		const def = getTaskHeaderRegistry().get(id)?.def;
+		const def = registry.get(id)?.def;
 		if (!def) continue;
 		const bar = def.region.split(".")[0] as TaskHeaderRegion;
 		groups.get(bar)?.push({ id: id as TaskHeaderItemId, bar, label: def.label });

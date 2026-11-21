@@ -5316,7 +5316,7 @@ describe("task header user layout", () => {
 		expect(drawn("session").indexOf("builtin:session.bug-hunters")).toBe(at);
 		expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledOnce();
 		const saved = lastSave();
-		expect(saved.personalHiddenControls).toEqual(["builtin:session.hibernate"]);
+		expect(saved.personalHiddenControls).toEqual(["builtin:session.hibernate", "hibernate"]);
 		expect(savedOrder("session").indexOf("builtin:session.bug-hunters")).toBeLessThan(savedOrder("session").indexOf("builtin:session.hibernate"));
 	});
 

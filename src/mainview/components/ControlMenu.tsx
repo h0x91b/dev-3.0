@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent }
 import { createPortal } from "react-dom";
 import { useT } from "../i18n";
 import { useViewportClamp } from "../hooks/useViewportClamp";
+import { registerBackLayer } from "../back-navigation";
+import { useOverlayLayer } from "../utils/useOverlayLayer";
 
 /** One row. A row with `submenu` swaps the menu's rows for that list, with a Back row first. */
 export interface ControlMenuEntry {
@@ -44,12 +46,19 @@ export default function ControlMenu({
 	const { position, visible } = useViewportClamp(menuRef, pos, submenu?.key);
 	const rows = submenu ? [{ key: "back", label: t("controlMenu.back"), onSelect: () => setSubmenu(null) }, ...(submenu.submenu ?? [])] : entries;
 
+	// Escape and focus leaving close it through the overlay stack; Android Back through the back stack.
+	useOverlayLayer(menuRef, { onDismiss: onClose });
+	const closeRef = useRef(onClose);
+	closeRef.current = onClose;
+	useEffect(() => registerBackLayer(() => closeRef.current()), []);
+
+	// Not before the clamp shows the menu: focus() on a `visibility: hidden` element is a no-op.
 	useEffect(() => {
-		enabledRows(menuRef.current)[0]?.focus();
-	}, [submenu]);
+		if (visible) enabledRows(menuRef.current)[0]?.focus();
+	}, [submenu, visible]);
 
 	function onKeyDown(e: ReactKeyboardEvent) {
-		if (e.key === "Escape" || e.key === "Tab") {
+		if (e.key === "Tab") {
 			e.preventDefault();
 			e.stopPropagation();
 			onClose();

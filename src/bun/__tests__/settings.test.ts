@@ -90,7 +90,7 @@ describe("saveSettings", () => {
 		}) as ReturnType<typeof Bun.file>);
 		const loaded = await loadSettings();
 		expect(loaded.simplifiedMode).toBe(false);
-		expect(loaded.personalHiddenControls).toEqual(["builtin:session.bug-hunters"]);
+		expect(loaded.personalHiddenControls).toEqual(["builtin:session.bug-hunters", "bug-hunters"]);
 		expect(JSON.parse(readFileSync(settingsPath, "utf-8"))).toEqual(winner);
 	});
 
@@ -106,7 +106,7 @@ describe("saveSettings", () => {
 		const settings = await loadSettings();
 		expect(settings.simplifiedMode).toBe(false);
 		expect(settings.simplifiedModeSource).toBe("existing");
-		expect(settings.personalHiddenControls).toEqual(["builtin:session.bug-hunters"]);
+		expect(settings.personalHiddenControls).toEqual(["builtin:session.bug-hunters", "bug-hunters"]);
 		expect(settings.hiddenControls).toEqual(["builtin:session.bug-hunters", "bug-hunters"]);
 	});
 
@@ -119,7 +119,7 @@ describe("saveSettings", () => {
 		const settings = await loadSettings();
 		expect(settings.simplifiedMode).toBe(false);
 		expect(settings.simplifiedModeSource).toBe("fresh");
-		expect(settings.personalHiddenControls).toEqual(["builtin:session.bug-hunters"]);
+		expect(settings.personalHiddenControls).toEqual(["builtin:session.bug-hunters", "bug-hunters"]);
 	});
 
 	it("keeps the task-header layout and drops a malformed one", async () => {
@@ -465,7 +465,7 @@ describe("saveSettings", () => {
 			keyboardShortcuts: { "go-to-project": { primary: "Mod+KeyJ", alias: null } },
 			experimentalTerminalBidi: true,
 			hiddenControls: ["builtin:session.bug-hunters", "stats-nav", "bug-hunters"],
-			personalHiddenControls: ["builtin:session.bug-hunters", "stats-nav"],
+			personalHiddenControls: ["builtin:session.bug-hunters", "stats-nav", "bug-hunters"],
 			simplifiedMode: false,
 			simplifiedModeSource: "existing",
 			taskHeaderLayout: { order: { git: ["builtin:git.push", "builtin:git.commit"] }, overflow: ["builtin:runtime.ports"], pinned: ["ext:item"] },

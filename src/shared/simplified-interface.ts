@@ -28,6 +28,11 @@ function currentId(id: string): string {
 	return LEGACY_HIDDEN_CONTROL_IDS[id] ?? id;
 }
 
+/** Both lists carry the aliases: a version that has `personalHiddenControls` rebuilds `hiddenControls` from it. */
+function withLegacyAliases(ids: readonly string[]): string[] {
+	return [...ids, ...ids.flatMap((id) => LEGACY_ALIAS_OF.get(id) ?? [])];
+}
+
 /** A stored legacy name, kept only for older installed versions. */
 export function isLegacyHiddenControlAlias(id: string): boolean {
 	return id in LEGACY_HIDDEN_CONTROL_IDS;
@@ -44,11 +49,10 @@ export function normalizeSimplifiedInterface(settings: SimplifiedInterfaceSettin
 	const personalHiddenControls = [...new Set((settings.personalHiddenControls ?? settings.hiddenControls ?? []).map(currentId))];
 	const simplifiedMode = settings.simplifiedMode ?? SIMPLIFY_VIEW_PRESET_IDS.every((id) => stored.includes(id));
 	const effective = [...new Set([...personalHiddenControls, ...(simplifiedMode ? SIMPLIFY_VIEW_PRESET_IDS : [])])];
-	const aliases = effective.flatMap((id) => LEGACY_ALIAS_OF.get(id) ?? []);
 	return {
 		simplifiedMode,
-		personalHiddenControls,
-		hiddenControls: [...effective, ...aliases],
+		personalHiddenControls: withLegacyAliases(personalHiddenControls),
+		hiddenControls: withLegacyAliases(effective),
 	};
 }
 

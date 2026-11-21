@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Project, Task } from "../../shared/types";
 import { SlotItemPlacementContext, SlotItems, type SlotItemMenuRequest } from "../plugins/SlotItems";
 import { useHiddenControls } from "../hooks/useIsControlHidden";
@@ -89,6 +89,19 @@ function isBar(region: TaskHeaderRegion | TaskHeaderGroup): region is TaskHeader
 }
 
 /**
+ * Focus goes back where the menu came from. When the menu removed that control (Hide,
+ * Move to More, Show in bar), it lands on the first control left in the same bar.
+ */
+function returnFocusAfterMenu(target: HTMLElement | null): void {
+	if (!target) return;
+	const bar = target.closest("[data-slot-item]")?.parentElement ?? target.parentElement;
+	target.focus();
+	requestAnimationFrame(() => {
+		if (!target.isConnected) bar?.querySelector<HTMLElement>("button:not([disabled])")?.focus();
+	});
+}
+
+/**
  * One region's items. `display: contents`, so the items lay out as children of the
  * host's bar box and the bar keeps its own spacing, boxing and help id. A bar has the
  * §5.1 budget; a group lives inside one item, spends that item's place and is a `span`,
@@ -101,11 +114,16 @@ export function TaskHeaderRegionItems({ region, surface = "bar" }: { region: Tas
 	const userLayout = useTaskHeaderUserLayout();
 	const hidden = useHiddenControls();
 	const [menu, setMenu] = useState<SlotItemMenuRequest | null>(null);
+	const openRequest = useRef<SlotItemMenuRequest | null>(null);
+	const openMenu = useCallback((request: SlotItemMenuRequest) => {
+		openRequest.current = request;
+		setMenu(request);
+	}, []);
 	const closeMenu = useCallback(() => {
-		setMenu((current) => {
-			current?.returnFocus?.focus();
-			return null;
-		});
+		const target = openRequest.current?.returnFocus ?? null;
+		openRequest.current = null;
+		setMenu(null);
+		returnFocusAfterMenu(target);
 	}, []);
 	const placement = isBar(region) ? { budget: TASK_HEADER_BAR_BUDGET, budgetExempt: TASK_HEADER_BUDGET_EXCEPTIONS } : { as: "span" as const };
 	const arranged = surface === "bar" && !layout.narrow;
@@ -118,7 +136,7 @@ export function TaskHeaderRegionItems({ region, surface = "bar" }: { region: Tas
 				className="contents"
 				{...placement}
 				layout={arranged ? regionLayout(userLayout, region, hidden) : undefined}
-				onItemMenu={arranged ? setMenu : undefined}
+				onItemMenu={arranged ? openMenu : undefined}
 			/>
 			{menu && <TaskHeaderItemMenu region={region} request={menu} hidden={hidden} onClose={closeMenu} />}
 		</SurfaceContext.Provider>

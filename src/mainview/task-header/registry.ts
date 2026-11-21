@@ -39,6 +39,16 @@ export const TASK_HEADER_BUDGET_EXCEPTIONS: ReadonlySet<string> = new Set([
 	"builtin:runtime.artifacts",
 ]);
 
+/**
+ * Never hidden and never sent to More (bible §5.10 never_hideable): the user can only move
+ * them within their bar. Their menu shows Move to More, Use instead of and Hide disabled.
+ */
+export const TASK_HEADER_ALWAYS_SHOWN: ReadonlySet<string> = new Set([
+	"builtin:runtime.open-in",
+	"builtin:runtime.dev-server",
+	"builtin:runtime.ports",
+]);
+
 /** What every header item sees: the task on screen and how to act on it. */
 export interface TaskHeaderScope {
 	task: Task;
