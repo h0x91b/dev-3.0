@@ -6,10 +6,10 @@ import { getPushMessage, moveTask, notifyFromCliDesktop, isNotificationSuppresse
 import { recordTerminalPromptSubmission } from "../agent-terminal-prompt-log";
 import type { PromptSubmitHarness } from "../../shared/agent-terminal-prompt";
 import { loadSettings } from "../settings";
-import { CodexQuestionState } from "../codex-question-state";
+import { agentPromptLedger } from "../agent-prompt-ledger";
 import { capturePaneSession, taskCodexHomes } from "./pane-sessions";
 import { isInteractiveCodexConversation } from "../codex-resume-home";
-import { isLatestAgentLaunch, noteAgentExited, noteAgentSessionActive, noteAgentSessionStarted } from "../agent-session-receipts";
+import { agentSessionRecord, isLatestAgentLaunch, noteAgentExited, noteAgentSessionActive, noteAgentSessionStarted } from "../agent-session-receipts";
 import { forgetApprovalResumeStatus, getApprovalResumeStatus, rememberResumeStatus } from "../approval-resume-status";
 import { forgetAgyPane, addAgyPending, agyPendingSessionsOf, forgetReplacedAgyConversations, removeAgyPending } from "../agy-session-state";
 import { forgetClaudeSessionDump } from "../rate-limit-monitor";
@@ -23,10 +23,8 @@ import { codexTurnWatches, type CodexTurnFailure } from "../codex-turn-watch";
 import { approvalReasonFromParams } from "../../shared/approval-reason";
 import { recordTaskActivity } from "../task-activity";
 
-const codexQuestions = new CodexQuestionState();
-
 async function claudeReturnedToInput(event: ClaudeIdleEvent): Promise<void> {
-	await codexQuestions.run(event.taskId, async () => {
+	await agentPromptLedger.run(event.taskId, async () => {
 		const { project, task } = await resolveTaskFromParams({ projectId: event.projectId, taskId: event.taskId });
 		if (!claudeSessionWatches.isCurrentIdle(event)) return;
 		if (task.status !== "in-progress" && task.status !== "review-by-ai") return;
@@ -61,7 +59,7 @@ async function parkFailedTurn(project: Project, task: Task, reason: string): Pro
 }
 
 async function codexTurnFailed(failure: CodexTurnFailure): Promise<void> {
-	await codexQuestions.run(failure.taskId, async () => {
+	await agentPromptLedger.run(failure.taskId, async () => {
 		const { project, task } = await resolveTaskFromParams({ projectId: failure.projectId, taskId: failure.taskId });
 		if (task.status !== "in-progress" && task.status !== "review-by-ai") return;
 		if (task.hibernated) return;
@@ -77,10 +75,11 @@ async function codexTurnFailed(failure: CodexTurnFailure): Promise<void> {
 const AGY_CONVERSATION_ID = /^[A-Za-z0-9._-]+$/;
 
 export const agentHandlers: Record<string, Handler> = {
-	"task.claudeTurnEnded": (params) => codexQuestions.run(String(params.taskId), async () => {
+	"task.claudeTurnEnded": (params) => agentPromptLedger.run(String(params.taskId), async () => {
 		const { task } = await resolveTaskFromParams(params);
 		if (typeof params.paneId === "string" && typeof params.sessionId === "string") {
 			claudeSessionWatches.endTurn(task.id, params.paneId, params.sessionId);
+			agentPromptLedger.claudeSessionReturned(task.id, params.sessionId);
 			noteAgentSessionActive(task.id, params.sessionId, params.paneId);
 		}
 		return { ok: true };
@@ -99,7 +98,7 @@ export const agentHandlers: Record<string, Handler> = {
 	// SessionStart, or with a non-zero code under any harness — fires no hook that
 	// moves the card, so it would otherwise read "Agent is Working" forever.
 	// `sessionId` is the launch id the wrapper was minted with.
-	"agent.exited": (params) => codexQuestions.run(String(params.taskId), async () => {
+	"agent.exited": (params) => agentPromptLedger.run(String(params.taskId), async () => {
 		const { project, task } = await resolveTaskFromParams(params);
 		const sessionId = typeof params.sessionId === "string" ? params.sessionId.trim() : "";
 		if (!sessionId) throw new Error("sessionId is required");
@@ -113,6 +112,9 @@ export const agentHandlers: Record<string, Handler> = {
 			const conversationId = task.sessionState?.panes.find((pane) => pane.paneId === exitedPane)?.sessionId ?? null;
 			forgetAgyPane(task.id, { paneId: exitedPane, conversationId });
 		}
+		// The agent is gone, and so is any menu it showed: nothing is left to answer.
+		const promptPane = exitedPane ?? agentSessionRecord(task.id, sessionId)?.paneId ?? null;
+		if (promptPane) agentPromptLedger.closePane(task.id, promptPane);
 		const verdict = noteAgentExited(task.id, sessionId, exitCode);
 		if (!verdict) return { moved: false };
 		log.info("Launched agent exited", { taskId: task.id.slice(0, 8), verdict, exitCode });
@@ -179,7 +181,7 @@ export const agentHandlers: Record<string, Handler> = {
 		return resumeCliAgent({ project, task, requester, allowAgentLatest: params.allowAgentLatest === true, ...(accountId !== undefined ? { accountId } : {}), ...approvalReasonFromParams(params) });
 	}),
 
-	"task.agentHook": (params) => codexQuestions.run(String(params.taskId), async () => {
+	"task.agentHook": (params) => agentPromptLedger.run(String(params.taskId), async () => {
 		const { project, task } = await resolveTaskFromParams(params);
 		const event = params.event as AgentStatusHookEvent;
 		if (!AGENT_STATUS_HOOK_EVENTS.includes(event)) {
@@ -254,16 +256,18 @@ export const agentHandlers: Record<string, Handler> = {
 			}
 		}
 
-		const questionState = codexQuestions.apply(
-			task.id,
-			sessionId ?? "unknown",
+		const questionState = agentPromptLedger.applyStatusHook({
+			taskId: task.id,
+			sessionId: sessionId ?? "unknown",
 			event,
-			task.status === "user-questions" ? rememberedResumeStatus ?? task.status : task.status,
-			typeof params.toolName === "string" ? params.toolName : undefined,
-			typeof params.toolUseId === "string" ? params.toolUseId : undefined,
-			Array.isArray(params.questionIds) ? params.questionIds.filter((id): id is string => typeof id === "string") : undefined,
-			typeof params.answeredQuestionId === "string" ? params.answeredQuestionId : undefined,
-		);
+			status: task.status === "user-questions" ? rememberedResumeStatus ?? task.status : task.status,
+			harness,
+			paneId: typeof params.paneId === "string" && params.paneId ? params.paneId : null,
+			toolName: typeof params.toolName === "string" ? params.toolName : undefined,
+			toolUseId: typeof params.toolUseId === "string" ? params.toolUseId : undefined,
+			questionIds: Array.isArray(params.questionIds) ? params.questionIds.filter((id): id is string => typeof id === "string") : undefined,
+			answeredQuestionId: typeof params.answeredQuestionId === "string" ? params.answeredQuestionId : undefined,
+		});
 		const currentStatus = questionState.resumeStatus && task.status === "user-questions"
 			? questionState.resumeStatus : task.status;
 		let target = getAgentHookTargetStatus(event, currentStatus, getPrimaryStopTarget(project.autoReviewEnabled, task.taskType), rememberedResumeStatus);
@@ -369,7 +373,7 @@ export const agentHandlers: Record<string, Handler> = {
 	 * Returns the verdict rather than a bare ok, so a suppressed submission is
 	 * distinguishable from a recorded one in the hook's own logs and tests.
 	 */
-	"task.promptSubmitted": (params) => codexQuestions.run(String(params.taskId), async () => {
+	"task.promptSubmitted": (params) => agentPromptLedger.run(String(params.taskId), async () => {
 		const { project, task } = await resolveTaskFromParams(params);
 		recordTaskActivity(task.id);
 		const harness: PromptSubmitHarness = params.harness === "codex" || params.harness === "copilot"
@@ -381,6 +385,7 @@ export const agentHandlers: Record<string, Handler> = {
 		// Claude starts a new conversation on `/clear` and switches on `/resume`;
 		// the pane's resume pointer follows whichever one this prompt went to.
 		if (harness === "claude" && sessionId) {
+			agentPromptLedger.claudeSessionReturned(task.id, sessionId);
 			noteAgentSessionActive(task.id, sessionId, typeof params.paneId === "string" && params.paneId ? params.paneId : null);
 		}
 		if (harness === "claude" && sessionId && typeof params.paneId === "string" && params.paneId) {
