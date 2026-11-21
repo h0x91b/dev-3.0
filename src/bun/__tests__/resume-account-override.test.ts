@@ -126,6 +126,21 @@ describe("resume clears the agent-exited mark", () => {
 	});
 });
 
+describe("resume of a foreign-code task", () => {
+	const launchOptions = async (extra: Partial<Task>) => {
+		vi.mocked(agents.resolveCommandForAgent).mockClear();
+		arrange([codexPane, { ...claudePane, main: false, sessionId: "s-extra" }], extra);
+		vi.mocked(chooseTaskCodexConversations).mockResolvedValue(new Map([[0, { sessionId: "s-codex", codexHome: "/codex-home" }]]) as never);
+		await resumeTaskSession("t1");
+		return vi.mocked(agents.resolveCommandForAgent).mock.calls[0][3];
+	};
+
+	it("tells the launch so, and leaves it out for an ordinary task", async () => {
+		expect(await launchOptions({ foreignCode: true })).toMatchObject({ foreignCode: true });
+		expect(await launchOptions({})).not.toHaveProperty("foreignCode");
+	});
+});
+
 describe("resume with an account override", () => {
 	it("keeps every pane's saved account when no override is given", async () => {
 		arrange([claudePane]);

@@ -129,7 +129,7 @@ export function terminalPromptPreview(text: string): string {
  * `timestamp` on Copilot's own event (it has no id), and for omp and pi a random
  * id minted by the dev3 status extension, which reports each input once.
  */
-export type PromptSubmitHarness = "claude" | "codex" | "copilot" | "omp" | "pi";
+export type PromptSubmitHarness = "claude" | "codex" | "copilot" | "omp" | "pi" | "agy";
 
 /**
  * Identity of ONE submission, stable across a redelivered hook.

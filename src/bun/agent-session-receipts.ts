@@ -101,6 +101,12 @@ export function isLatestAgentLaunch(taskId: string, sessionId: string): boolean 
 	return latestLaunch.get(taskId) === sessionId;
 }
 
+/** The record of the launch the task answers to now, for a harness whose own session id is not the launch id. */
+export function latestAgentLaunchRecord(taskId: string): AgentSessionRecord | null {
+	const launchId = latestLaunch.get(taskId);
+	return launchId ? records.get(keyOf(taskId, launchId)) ?? null : null;
+}
+
 export function agentSessionRecord(taskId: string, sessionId: string): AgentSessionRecord | null {
 	return records.get(keyOf(taskId, sessionId)) ?? null;
 }

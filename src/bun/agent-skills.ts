@@ -9,6 +9,7 @@ import {
 	AGENT_MESSAGE_HOLD_IDLE_SECONDS,
 } from "../shared/agent-message-hold-timing";
 import {
+	AGY_SKILL_BODY,
 	ARTIFACT_AUTHORING_STEPS,
 	ARTIFACT_FORMAT_RULES,
 	CLAUDE_SKILL_BODY,
@@ -141,6 +142,26 @@ Run these two commands to learn about available CLI commands and your current ta
 - \`${dialect.cli} current\` — see your current project, task, and status
 
 Then begin working. Do not move the task status on session start; the dev3 status extension loaded into this session already owns that transition.
+`;
+}
+
+/** The dev3 skill dev3 writes into an agy worktree's `.agents/skills/dev3/`. The bare `dev3`: a launcher's HOME makes `~/.dev3.0/bin` the wrong place, while PATH survives. */
+export function buildAgySkillContent(dialect: HookCliDialect = { cli: "dev3", posixShell: hookCliDialect().posixShell }): string {
+	return `---
+name: dev3
+description: "${COMPACT_SKILL_DESCRIPTION}"
+user-invocable: true
+---
+
+${AGY_SKILL_BODY}
+## On session start
+
+Run these two commands to learn about available CLI commands and your current task:
+
+- \`${dialect.cli} --help\` — learn all available CLI commands
+- \`${dialect.cli} current\` — see your current project, task, and status
+
+Then begin working. Do not move the task status on session start; the dev3 hooks loaded into this session already own that transition.
 `;
 }
 

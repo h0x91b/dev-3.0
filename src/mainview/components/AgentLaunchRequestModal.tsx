@@ -373,6 +373,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 										agentId={variant.agentId}
 										configId={variant.configId}
 										agentAvailability={agentAvailability}
+										installedFirst
 										onChange={(next) => updateVariants(
 											variants.map((v, i) => (i === index ? { ...v, ...next } : v)),
 										)}

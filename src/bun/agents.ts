@@ -12,6 +12,7 @@ import { createLogger } from "./logger";
 import { backupUnparsableCodexConfig, joinLike as joinLikeHome, detectCodexProfileLaunchFlag, detectCodexVersion, resetCodexVersionProbe, resetCodexHelpProbe, ensureCodexConfig, ensureCodexProfileFiles, getCodexSyntaxForVersion, resolveCodexInstallRoots, type CodexProfileLaunchFlag } from "./codex-config";
 import { agentBinaryPathOverride, brokenCustomPath, customExecutableMessage, enforcedCustomBinaryPaths } from "./executable";
 import { DEV3_HOME } from "./paths";
+import { resolveAccountHome } from "../shared/user-home";
 import { notifyStaleCustomPath } from "./stale-agent-path";
 // Writer and pruner share one path constant: whatever registers an entry must
 // agree with whatever removes it.
@@ -506,6 +507,10 @@ export interface CommandOptions {
 	skipSystemPrompt?: boolean;
 	/** Global `leanAgentProtocol` setting, read by the async launch path. The env flag still applies on top. */
 	leanProtocol?: boolean;
+	/** Global `agentRateLimitTracking` setting; agy's statusLine hook reads quota only while it is on. */
+	rateLimitTracking?: boolean;
+	/** The task stands on someone else's branch: nothing is pre-trusted for it (see ensureAgentTrust). */
+	foreignCode?: boolean;
 	/** Path to the generated settings file that routes the Claude statusLine
 	 *  through `dev3 statusline` (rate-limit capture + delegation to the user's
 	 *  original statusLine). Injected as `--settings <path>` for Claude-based
@@ -602,6 +607,10 @@ export async function resolveAgentCommand(
 		// Codex-only: resolve the theme/profile runtime (impure) here so the pure
 		// adapter stays pure. Non-Codex agents skip it (avoids the codex --help probe).
 		codex: adapter.command === "codex" ? await codexLaunchRuntime() : undefined,
+		// agy trusts a workspace by its resolved path only, and resolving one touches the disk.
+		agy: adapter.command === "agy"
+			? { worktreeRealPath: await realWorktreePath(ctx.worktreePath), accountHome: resolveAccountHome(), trackRateLimits: options?.rateLimitTracking, foreignCode: options?.foreignCode }
+			: undefined,
 		// The protocol reaches Claude as a file on every platform: Windows cannot
 		// carry it on the command line, and POSIX argv is what `pkill -f` matches
 		// against. Resolved here because writing one is impure and adapters are not.
@@ -616,6 +625,16 @@ export async function resolveAgentCommand(
 	// spelled as a command here rather than in six adapters.
 	const [binary, ...args] = adapter.launchArgs(baseCmd, config, launchCtx, adapterOptions);
 	return [commandToken(binary ?? baseCmd), ...args].join(" ");
+}
+
+/** The worktree's realpath (`/tmp` → `/private/tmp`), or undefined when it cannot be resolved. */
+async function realWorktreePath(worktreePath: string): Promise<string | undefined> {
+	if (!worktreePath) return undefined;
+	try {
+		return await realpath(worktreePath);
+	} catch {
+		return undefined;
+	}
 }
 
 /**
@@ -1196,6 +1215,7 @@ export async function resolveCommandForAgent(
 	const command = await resolveAgentCommand(agentWithPath, launchConfig, ctx, {
 		...routed.options,
 		leanProtocol: settings.leanAgentProtocol === true,
+		rateLimitTracking: settings.agentRateLimitTracking !== false,
 	});
 	// `agent` stays the stored record — callers derive the base command from it,
 	// and swapping in the override path there would change what they persist.
@@ -1366,6 +1386,7 @@ export async function resolveCommandForProject(
 		const command = await resolveAgentCommand(agentWithPath, launchConfig, ctx, {
 		...routed.options,
 		leanProtocol: settings.leanAgentProtocol === true,
+		rateLimitTracking: settings.agentRateLimitTracking !== false,
 	});
 		return {
 			command,

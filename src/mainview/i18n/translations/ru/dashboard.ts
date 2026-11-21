@@ -177,6 +177,8 @@ const dashboard = {
 	"rateLimits.credits": "кредиты: {balance}",
 	"rateLimits.unlimited": "∞ безлимит",
 	"rateLimits.monthlyLabel": "месячные кредиты",
+	"rateLimits.otherFiveHourLabel": "другие 5h",
+	"rateLimits.otherWeeklyLabel": "другие 7d",
 	"rateLimits.monthlyUsage": "использовано {used} / {limit} · осталось {remaining}%",
 	"rateLimits.captured": "снято {time} назад",
 	"rateLimits.capturedNow": "снято только что",

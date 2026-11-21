@@ -58,6 +58,11 @@ export const MODEL_RELEASE_DATES: Record<string, string> = {
 	// GitHub Copilot
 	"claude-opus-5": "2026-07-24",
 	"gemini-3.7-flash": "2026-09-15",
+	// Antigravity
+	"gemini-4-neon": "2026-11-20",
+	"gemini-4-carbon": "2026-11-20",
+	"gemini-4-argon": "2026-11-20",
+	"gemini-4-hydrogen": "2026-11-20",
 };
 
 /** Slugs that hand the model choice to the agent's own CLI. Not a model, so no

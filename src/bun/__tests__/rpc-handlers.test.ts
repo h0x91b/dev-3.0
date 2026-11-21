@@ -783,6 +783,19 @@ describe("handleBellAutoStatus", () => {
 		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", expect.objectContaining({ status: "user-questions" }), { ifStatus: "in-progress" });
 	});
 
+	it("leaves an agy task alone: its statusLine reports the wait, and its own turn-end bell must not undo Stop", async () => {
+		const task = makeTask({
+			status: "in-progress",
+			sessionState: { panes: [{ paneId: "%1", sessionId: null, agentCmd: "agy", agentId: "builtin-agy", configId: null, main: true }] },
+		} as Partial<Task>);
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+		await handleBellAutoStatus("task-1");
+
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
 	it("still moves a Cursor task: its hooks only account usage", async () => {
 		const task = makeTask({ status: "in-progress", agentId: "builtin-cursor" });
 		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
@@ -11451,6 +11464,18 @@ describe("handlers.spawnAgentInTask", () => {
 		expect(agents.resolveCommandForAgent).toHaveBeenLastCalledWith("claude-bedrock", "c", expect.anything(), expect.objectContaining({ bedrockProfile: null }));
 	});
 
+	it("a spawn into a foreign-code task says so, so no agent pre-trusts the branch", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt", foreignCode: true });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(data.updateTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "agy", extraEnv: {} });
+		mockSpawn.mockReturnValue({ stderr: new Response(""), stdout: new Response(""), exited: Promise.resolve(0) });
+		await handlers.spawnAgentInTask({ taskId: task.id, projectId: "proj-1", agentId: "builtin-agy", configId: "c" });
+		expect(agents.resolveCommandForAgent).toHaveBeenLastCalledWith("builtin-agy", "c", expect.anything(), expect.objectContaining({ foreignCode: true }));
+	});
+
 	it("uses resolveCommandForProject when agentId is null", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
@@ -11824,6 +11849,22 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		);
 
 		expect(vi.mocked(agents.resolveCommandForAgent).mock.calls.map((call) => call[3]?.protocolMode)).toEqual(["shared-folder"]);
+	});
+
+	it("launches a hunter on a foreign-code task with foreignCode set", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt", foreignCode: true });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude", extraEnv: {} });
+		makeSplitMock(["%10"]);
+
+		await runLaunch(
+			handlers.spawnBugHuntersInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default", count: 1 }),
+			1,
+		);
+
+		expect(vi.mocked(agents.resolveCommandForAgent).mock.calls.map((call) => call[3]?.foreignCode)).toEqual([true]);
 	});
 
 	it("creates N panes: first horizontal 50% off the session, rest vertical off the previous right pane", async () => {
@@ -13137,6 +13178,27 @@ describe("restartTask (start fresh) floors the Codex scan", () => {
 		const clear = vi.mocked(data.updateTask).mock.calls.find((call) => call[2].sessionState === null)?.[2];
 		expect(Date.parse(clear?.codexScanFloorAt ?? "")).toBeGreaterThanOrEqual(before);
 		expect(clear?.lifecycleStartedAt).toBeUndefined();
+	});
+});
+
+describe("restartTask (start fresh) replaces every agent of the task", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("forgets the waits and remembered lanes of the agy panes it replaces", async () => {
+		const { addAgyPending, agyPendingSessionsOf } = await import("../agy-session-state");
+		const { getApprovalResumeStatus, rememberResumeStatus } = await import("../approval-resume-status");
+		const task = makeTask({ sessionState: { panes: [{ agentCmd: "agy", agentId: "builtin-agy", configId: "agy-auto-neon-high", sessionId: "conv-old", paneId: "%1" }] } });
+		mockTaskWrites(task);
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		addAgyPending(task.id, "conv-old", Date.now(), "%1");
+		rememberResumeStatus(`${task.id}:conv-old`, "in-progress");
+
+		await handlers.restartTask({ taskId: task.id });
+
+		expect(agyPendingSessionsOf(task.id).size).toBe(0);
+		expect(getApprovalResumeStatus(`${task.id}:conv-old`)).toBeUndefined();
 	});
 });
 

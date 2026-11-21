@@ -161,6 +161,8 @@ const dashboard = {
 	"rateLimits.credits": "credits: {balance}",
 	"rateLimits.unlimited": "∞ unlimited",
 	"rateLimits.monthlyLabel": "monthly credits",
+	"rateLimits.otherFiveHourLabel": "other 5h",
+	"rateLimits.otherWeeklyLabel": "other 7d",
 	"rateLimits.monthlyUsage": "{used} / {limit} used · {remaining}% left",
 	"rateLimits.captured": "captured {time} ago",
 	"rateLimits.capturedNow": "captured just now",

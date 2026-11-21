@@ -263,6 +263,8 @@ async function limits(args: ParsedArgs, socketPath: string): Promise<void> {
 		const account =
 			s.source === "kimi" && s.providerId
 				? (report.usageProviders?.find((p) => p.id === s.providerId)?.label ?? s.providerId)
+				: s.source === "agy"
+				? (s.accountLabel ?? s.accountId ?? "unknown")
 				: (s.accountId ?? "system");
 		if (s.windows.length === 0) return [[s.source, account, "-", "no limits reported", "-", formatWhen(s.capturedAt)]];
 		return s.windows.map((w) => [

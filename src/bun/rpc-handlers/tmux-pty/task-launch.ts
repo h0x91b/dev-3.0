@@ -480,6 +480,7 @@ async function launchTaskPtyOnce(
 			accountFromStore: typeof accountId === "string" ? true : undefined,
 			projectEnv,
 			bedrockProfile,
+			foreignCode: task.foreignCode,
 			protocolMode: taskProtocolMode(project, task),
 			...(opts?.projectLogin ? { projectLogin: true } : {}),
 		};
@@ -949,6 +950,7 @@ export async function launchColumnAgent(
 		const resolved = await agents.resolveCommandForAgent(agentId, configId, ctx, {
 			skipSystemPrompt: true,
 			projectEnv,
+			foreignCode: task.foreignCode,
 			autoRouting: await autoRoutingContext(project, reservationKey, projectEnv),
 			// The column's own pick, else the AWS account the task itself runs on.
 			bedrockProfile: agentConfig.bedrockProfile !== undefined ? agentConfig.bedrockProfile : task.bedrockProfile,

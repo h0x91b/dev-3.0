@@ -5,7 +5,7 @@
  * own `info/exclude`, which is never committed, the way auto-configure does.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, isAbsolute, join } from "node:path";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { createLogger } from "./logger";
 import { spawnSync } from "./spawn";
 
@@ -71,6 +71,20 @@ export function isGitTracked(file: string): boolean {
 	return git(["ls-files", "--error-unmatch", "--", basename(file)], dirname(file)).ok;
 }
 
+/**
+ * True when the repo's index lists `file`, whether or not it is still on disk: a tracked file the
+ * user deleted is a pending change they made on purpose, and dev3 must not bring it back.
+ */
+export function isGitIndexed(file: string): boolean {
+	let dir = dirname(file);
+	while (!existsSync(dir)) {
+		const parent = dirname(dir);
+		if (parent === dir) return false;
+		dir = parent;
+	}
+	return git(["ls-files", "--error-unmatch", "--", relative(dir, file)], dir).ok;
+}
+
 const excluded = new Set<string>();
 
 /**
@@ -125,4 +139,21 @@ export function excludeTaskCodexHooks(taskDir: string): void {
 	const file = join(taskDir, ".codex", "hooks.json");
 	if (!existsSync(file) || isGitTracked(file)) return;
 	addExcludeRules(`task-codex-hooks:${taskDir}`, taskDir, (prefix) => [`/${escapeExcludePrefix(prefix)}.codex/hooks.json`], "dev3 Codex hooks");
+}
+
+/**
+ * Same as `excludeTaskCodexHooks`, for what dev3 writes into an agy worktree: `.agents/hooks.json`
+ * (unless the repo tracks it) and the `.agents/skills/dev3/` skill. Never the whole `.agents/`.
+ * `written` names what this launch really wrote, so a file dev3 left alone is never excluded.
+ */
+export function excludeTaskAgyConfig(taskDir: string, written: { hooks: boolean; skill: boolean } = { hooks: true, skill: true }): void {
+	const hooks = join(taskDir, ".agents", "hooks.json");
+	const skill = join(taskDir, ".agents", "skills", "dev3", "SKILL.md");
+	addExcludeRules(`task-agy-config:${taskDir}:${written.hooks}:${written.skill}`, taskDir, (prefix) => {
+		const base = `/${escapeExcludePrefix(prefix)}.agents/`;
+		return [
+			...(written.hooks && existsSync(hooks) && !isGitTracked(hooks) ? [`${base}hooks.json`] : []),
+			...(written.skill && existsSync(skill) && !isGitTracked(skill) ? [`${base}skills/dev3/`] : []),
+		];
+	}, "dev3 agy config");
 }
