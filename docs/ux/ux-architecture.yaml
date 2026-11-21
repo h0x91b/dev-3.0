@@ -947,7 +947,7 @@ ux_architecture:
       hover_terminal_preview: { narrow: "DISABLED on touch/narrow (no hover; popover obscures)", status: observed, evidence: "useTerminalPreview.ts hoverPreviewEnabled()" }
       toast: { narrow: "already max-w-[calc(100vw-2rem)] — OK", status: ok, evidence: "toast.tsx" }
       task_image_viewer: { narrow: "lightbox is full-bleed; filmstrip -> bottom horizontal-scroll strip; image area is live-content -> axis-arbitrated horizontal swipe + visible prev/next + dots (swipe never the only way); touch entry = inspector badge (>=44px) + palette action (native menu absent in remote). Clamp inner panels to max-w-[calc(100vw-2rem)]; prefers-reduced-motion snaps.", status: proposed }
-      task_artifact_viewer: { narrow: "the docked panel is refused and the popup used -- a 360px-minimum side panel is unusable on a phone, while the card fills a small viewport and header actions stay touch reachable", status: observed, evidence: "TaskWorkspacePane.tsx" }
+      task_artifact_viewer: { narrow: "the docked panel is refused and the popup used -- a 360px-minimum side panel is unusable on a phone, while the card fills a small viewport and header actions stay touch reachable", status: observed, evidence: "TaskDock.tsx" }
     navigation_touch:
       problem: "Keyboard-first nav is DEAD on touch (Cmd+Shift+K/Cmd+Shift+P palettes, Cmd+1..9, Cmd+/ hint overlay) and the native application menu is ABSENT in remote/browser mode."
       backbone: "breadcrumb spine stays the touch nav backbone (logo->dashboard, project->board, chevron->switcher, back/forward). Keep reachable (>=44px targets, right-0 dropdown fallback, not pushed off-screen by long task titles)."

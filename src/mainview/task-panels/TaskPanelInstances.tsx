@@ -1,9 +1,11 @@
-import { useLayoutEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
+import { useT } from "../i18n";
 import { createPortal } from "react-dom";
 import { CordisContext } from "../plugins/react";
 import { SlotErrorBoundary } from "../plugins/SlotHost";
 import type { SlotEntry } from "../plugins/slot-registry";
-import { closeTaskPanel, getTaskDocks, getTaskDockSeat, getTaskDockSeatsVersion, subscribeTaskDocks } from "./dock-store";
+import { isBuiltinItem } from "../plugins/SlotItems";
+import { closeTaskPanel, getTaskDocks, resolveActiveTab, getTaskDockSeat, getTaskDockSeatsVersion, subscribeTaskDocks } from "./dock-store";
 import { getTaskPanelsRegistry, type TaskPanelDef, type TaskPanelPresentation } from "./registry";
 
 function presentationOf(taskId: string, panelId: string, active: string | null): { presentation: TaskPanelPresentation; seat: HTMLElement | null } {
@@ -38,13 +40,29 @@ function PanelInstance({ taskId, entry, presentation, seat, parking }: {
 	const Component = entry.def.component;
 	const panelId = entry.def.id;
 	return createPortal(
-		<SlotErrorBoundary slot="taskPanels" resetKey={panelId} fallback={() => null}>
+		<SlotErrorBoundary slot="taskPanels" resetKey={panelId} fallback={() => (isBuiltinItem(panelId) ? <PanelCrashed /> : <DropPanel taskId={taskId} panelId={panelId} />)}>
 			<CordisContext.Provider value={entry.ctx}>
 				<Component ctx={entry.ctx} taskId={taskId} presentation={presentation} close={() => closeTaskPanel(taskId, panelId)} />
 			</CordisContext.Provider>
 		</SlotErrorBoundary>,
 		host,
 	);
+}
+
+/** A crashed built-in keeps its tab and says so in the body (bible §5.12). */
+function PanelCrashed() {
+	const t = useT();
+	return (
+		<div role="alert" className="m-3 rounded-xl bg-danger/10 px-4 py-3 text-sm text-danger">
+			{t("taskDock.panelCrashed")}
+		</div>
+	);
+}
+
+/** A crashed extension panel vanishes from the dock: its tab closes. */
+function DropPanel({ taskId, panelId }: { taskId: string; panelId: string }) {
+	useEffect(() => closeTaskPanel(taskId, panelId), [taskId, panelId]);
+	return null;
 }
 
 /**
@@ -70,10 +88,11 @@ export default function TaskPanelInstances() {
 	const byId = new Map(entries.map((entry) => [entry.def.id, entry]));
 	const instances = [];
 	for (const [taskId, dock] of docks) {
+		const active = resolveActiveTab(taskId, dock.open.filter((id) => byId.has(id)), dock.active);
 		for (const panelId of dock.open) {
 			const entry = byId.get(panelId);
 			if (!entry) continue;
-			const { presentation, seat } = presentationOf(taskId, panelId, dock.active);
+			const { presentation, seat } = presentationOf(taskId, panelId, active);
 			instances.push(
 				<PanelInstance key={`${taskId}\u0000${panelId}`} taskId={taskId} entry={entry} presentation={presentation} seat={seat} parking={parking} />,
 			);

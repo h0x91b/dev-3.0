@@ -710,6 +710,7 @@ const common = {
 	"taskDock.resize": "Cambiar el ancho del panel lateral",
 	"taskDock.tabs": "Paneles laterales",
 	"taskDock.closeTab": "Cerrar {title}",
+	"taskDock.panelCrashed": "Este panel dejó de funcionar.",
 	"artifactViewer.themeMode": "Tema del artefacto: {mode}",
 	"artifactViewer.themeFollow": "Seguir dev3",
 	"artifactViewer.themeLight": "Claro",

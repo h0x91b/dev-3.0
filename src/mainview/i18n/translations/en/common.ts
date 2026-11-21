@@ -709,6 +709,7 @@ const common = {
 	"taskDock.resize": "Resize side panel",
 	"taskDock.tabs": "Side panels",
 	"taskDock.closeTab": "Close {title}",
+	"taskDock.panelCrashed": "This panel stopped working.",
 	"artifactViewer.themeMode": "Artifact theme: {mode}",
 	"artifactViewer.themeFollow": "Follow dev3",
 	"artifactViewer.themeLight": "Light",

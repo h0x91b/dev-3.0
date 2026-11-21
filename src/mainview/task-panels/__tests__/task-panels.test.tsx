@@ -75,22 +75,34 @@ describe("dock store", () => {
 });
 
 describe("splitDockTabs", () => {
-	const tabs = ["a", "b", "c", "d", "e", "f"].map((id) => ({ def: { id } }));
+	const ids = (list: readonly { def: { id: string } }[]) => list.map((tab) => tab.def.id);
+	const tabs = ["ext:a", "ext:b", "ext:c", "ext:d", "ext:e", "ext:f"].map((id) => ({ def: { id } }));
 	it("shows four tabs and keeps an active fifth one visible", () => {
-		expect(splitDockTabs(tabs.slice(0, 4), "a").more).toEqual([]);
-		const { visible, more } = splitDockTabs(tabs, "f");
-		expect(visible.map((tab) => tab.def.id)).toEqual(["a", "b", "c", "f"]);
-		expect(more.map((tab) => tab.def.id)).toEqual(["d", "e"]);
+		expect(splitDockTabs(tabs.slice(0, 4), "ext:a").more).toEqual([]);
+		const { visible, more } = splitDockTabs(tabs, "ext:f");
+		expect(ids(visible)).toEqual(["ext:a", "ext:b", "ext:c", "ext:f"]);
+		expect(ids(more)).toEqual(["ext:d", "ext:e"]);
+	});
+
+	it("puts built-ins first and never folds them into More, whatever was opened first", () => {
+		const opened = [...tabs.slice(0, 4), { def: { id: "builtin:y", order: 2 } }, { def: { id: "builtin:x", order: 1 } }];
+		const { visible, more } = splitDockTabs(opened, "ext:d");
+		expect(ids(visible)).toEqual(["builtin:x", "builtin:y", "ext:a", "ext:d"]);
+		expect(ids(more)).toEqual(["ext:b", "ext:c"]);
+		const crowded = ["builtin:1", "builtin:2", "builtin:3", "builtin:4"].map((id) => ({ def: { id } }));
+		const full = splitDockTabs([...crowded, tabs[0], tabs[1]], "ext:b");
+		expect(ids(full.visible)).toEqual(["builtin:1", "builtin:2", "builtin:3", "builtin:4", "ext:b"]);
+		expect(ids(full.more)).toEqual(["ext:a"]);
 	});
 });
 
 describe("task dock", () => {
-	it("shows no tab strip for one panel, tabs from two, and More past four", async () => {
+	it("shows a tab per open panel and More past four", async () => {
 		await registerPanels(["ext:a", "ext:b", "ext:c", "ext:d", "ext:e"]);
 		render(<Screen taskId="t1" />);
 		act(() => openTaskPanel("t1", "ext:a"));
 		expect(screen.getByTestId("task-dock")).toBeInTheDocument();
-		expect(screen.queryByRole("tablist")).toBeNull();
+		expect(screen.getAllByRole("tab")).toHaveLength(1);
 		act(() => {
 			for (const id of ["ext:b", "ext:c", "ext:d", "ext:e"]) openTaskPanel("t1", id, { activate: false });
 		});
@@ -152,23 +164,98 @@ describe("task dock", () => {
 		expect(inactiveHost.hidden).toBe(true);
 	});
 
-	it("drops a crashing panel without taking the dock down", async () => {
-		const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+	function registerCrashing(id: string) {
 		getAppRoot().plugin({
-			name: "crashing",
+			name: `crashing-${id}`,
 			inject: ["taskPanels"],
 			apply(ctx: Context) {
-				ctx.taskPanels.register({ id: "ext:boom", title: () => "boom", component: () => { throw new Error("boom"); } });
+				ctx.taskPanels.register({ id, title: () => "boom", component: () => { throw new Error("boom"); } });
 			},
 		});
+	}
+
+	it("drops a crashed extension panel from the dock and brings a live tab forward", async () => {
+		const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+		registerCrashing("ext:boom");
 		await registerPanels(["ext:fine"]);
 		render(<Screen taskId="t1" />);
 		act(() => {
+			openTaskPanel("t1", "ext:fine");
 			openTaskPanel("t1", "ext:boom");
-			openTaskPanel("t1", "ext:fine", { activate: false });
 		});
-		expect(screen.getByRole("tablist")).toBeInTheDocument();
-		expect(screen.getByTestId("notes-t1")).toBeInTheDocument();
+		expect(getTaskDock("t1").open).toEqual(["ext:fine"]);
+		expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("fine");
+		expect(screen.getByTestId("notes-t1")).toHaveAttribute("data-presentation", "docked");
 		spy.mockRestore();
+	});
+
+	it("keeps a crashed built-in panel's tab and says so in its body", async () => {
+		const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+		registerCrashing("builtin:boom");
+		await registerPanels(["ext:fine"]);
+		render(<Screen taskId="t1" />);
+		act(() => {
+			openTaskPanel("t1", "ext:fine", { activate: false });
+			openTaskPanel("t1", "builtin:boom");
+		});
+		expect(getTaskDock("t1").open).toContain("builtin:boom");
+		expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("boom");
+		expect(within(screen.getByTestId("task-dock-body")).getByRole("alert")).toHaveTextContent("This panel stopped working.");
+		spy.mockRestore();
+	});
+
+	it("re-picks the front tab when the active panel's plugin goes away", async () => {
+		await registerPanels(["ext:stay"]);
+		const fiber = getAppRoot().plugin({
+			name: "leaving",
+			inject: ["taskPanels"],
+			apply(ctx: Context) {
+				ctx.taskPanels.register({ id: "ext:gone", title: () => "gone", component: Notes });
+			},
+		});
+		for (let tick = 0; tick < 50 && !getAppRoot().taskPanels.get("ext:gone"); tick++) await Promise.resolve();
+		render(<Screen taskId="t1" />);
+		act(() => {
+			openTaskPanel("t1", "ext:stay");
+			openTaskPanel("t1", "ext:gone");
+		});
+		await act(async () => {
+			await fiber.dispose();
+		});
+		const tab = screen.getByRole("tab", { selected: true });
+		expect(tab).toHaveTextContent("stay");
+		expect(tab).toHaveAttribute("tabindex", "0");
+		expect(screen.getByTestId("notes-t1")).toHaveAttribute("data-presentation", "docked");
+	});
+
+	it("gives a lone closable panel a strip with its ✕, and none to a lone non-closable one", async () => {
+		await registerPanels(["ext:solo"]);
+		const { unmount } = render(<Screen taskId="t1" />);
+		act(() => openTaskPanel("t1", "ext:solo"));
+		fireEvent.click(screen.getByRole("button", { name: "Close solo" }));
+		expect(getTaskDock("t1").open).toEqual([]);
+		unmount();
+		render(<Screen taskId="t2" />);
+		act(() => openTaskPanel("t2", "builtin:artifact"));
+		expect(screen.getByTestId("task-dock")).toBeInTheDocument();
+		expect(screen.queryByRole("tablist")).toBeNull();
+	});
+
+	it("closes the focused tab with Delete and resizes the dock from the keyboard", async () => {
+		await registerPanels(["ext:a", "ext:b"]);
+		render(<Screen taskId="t1" />);
+		act(() => {
+			openTaskPanel("t1", "ext:a");
+			openTaskPanel("t1", "ext:b");
+		});
+		const selected = screen.getByRole("tab", { selected: true });
+		selected.focus();
+		fireEvent.keyDown(selected, { key: "Delete" });
+		expect(getTaskDock("t1").open).toEqual(["ext:a"]);
+		const dock = screen.getByTestId("task-dock");
+		const before = parseFloat(dock.style.width);
+		fireEvent.keyDown(screen.getByRole("separator"), { key: "ArrowLeft" });
+		expect(parseFloat(dock.style.width)).toBe(before + 24);
+		expect(localStorage.getItem("dev3-artifact-panel-width")).toBe(String(before + 24));
 	});
 });

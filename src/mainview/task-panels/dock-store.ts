@@ -62,6 +62,18 @@ export function getTaskDock(taskId: string): TaskDockState {
 	return docks.get(taskId) ?? EMPTY;
 }
 
+/**
+ * The tab that is really in front among `available` (the open panels that are registered
+ * and not dropped): the stored front tab if it is there, else the user's last pick, else
+ * the newest. Keeps a selected, Tab-reachable tab when the stored one went away.
+ */
+export function resolveActiveTab(taskId: string, available: readonly string[], active: string | null): string | null {
+	if (active !== null && available.includes(active)) return active;
+	const remembered = readRemembered()[taskId];
+	if (remembered && available.includes(remembered)) return remembered;
+	return available[available.length - 1] ?? null;
+}
+
 /** Every task that has an open panel. The same map until something changes. */
 export function getTaskDocks(): ReadonlyMap<string, TaskDockState> {
 	return docksSnapshot;

@@ -768,6 +768,7 @@ const common = {
 	"taskDock.resize": "Изменить ширину боковой панели",
 	"taskDock.tabs": "Боковые панели",
 	"taskDock.closeTab": "Закрыть «{title}»",
+	"taskDock.panelCrashed": "Эта панель перестала работать.",
 	"artifactViewer.themeMode": "Тема артефакта: {mode}",
 	"artifactViewer.themeFollow": "Как в dev3",
 	"artifactViewer.themeLight": "Светлая",

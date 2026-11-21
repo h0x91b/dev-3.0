@@ -3,7 +3,8 @@ import { useT } from "../i18n";
 import { useOverlayLayer } from "../utils/useOverlayLayer";
 import { OverflowDotsIcon } from "../components/HeaderIcons";
 import type { SlotEntry } from "../plugins/slot-registry";
-import { activateTaskPanel, closeTaskPanel, setTaskDockSeat, useTaskDock } from "./dock-store";
+import { isBuiltinItem } from "../plugins/SlotItems";
+import { activateTaskPanel, closeTaskPanel, resolveActiveTab, setTaskDockSeat, useTaskDock } from "./dock-store";
 import { getTaskPanelsRegistry, type TaskPanelDef } from "./registry";
 
 const DEFAULT_WIDTH = 560;
@@ -33,14 +34,23 @@ function initialWidth(): number {
 	return DEFAULT_WIDTH;
 }
 
-/** Four tabs in opening order; an active tab past the fourth takes the last visible spot. */
-export function splitDockTabs<T extends { def: { id: string } }>(tabs: readonly T[], active: string | null): { visible: T[]; more: T[] } {
-	if (tabs.length <= MAX_VISIBLE_TABS) return { visible: [...tabs], more: [] };
-	const visible = tabs.slice(0, MAX_VISIBLE_TABS);
-	const activeIndex = tabs.findIndex((tab) => tab.def.id === active);
-	if (activeIndex >= MAX_VISIBLE_TABS) visible[MAX_VISIBLE_TABS - 1] = tabs[activeIndex];
-	const shown = new Set(visible);
-	return { visible, more: tabs.filter((tab) => !shown.has(tab)) };
+/**
+ * Tab order and budget, the `placeSlotItems` rule (bible §5.12): built-ins first by
+ * their `order`, then extensions in opening order. Built-ins are never folded into
+ * More; extensions share what is left of the four, and an active one past that room
+ * takes the last extension spot (or shows anyway when built-ins fill the strip).
+ */
+export function splitDockTabs<T extends { def: { id: string; order?: number } }>(tabs: readonly T[], active: string | null): { visible: T[]; more: T[] } {
+	const builtins = tabs.filter((tab) => isBuiltinItem(tab.def.id)).sort((a, b) => (a.def.order ?? 0) - (b.def.order ?? 0));
+	const extensions = tabs.filter((tab) => !isBuiltinItem(tab.def.id));
+	const room = Math.max(0, MAX_VISIBLE_TABS - builtins.length);
+	const shown = extensions.slice(0, room);
+	const activeExtension = extensions.find((tab) => tab.def.id === active);
+	if (activeExtension && !shown.includes(activeExtension)) {
+		if (shown.length > 0) shown[shown.length - 1] = activeExtension;
+		else shown.push(activeExtension);
+	}
+	return { visible: [...builtins, ...shown], more: extensions.filter((tab) => !shown.includes(tab)) };
 }
 
 interface TaskDockProps {
@@ -63,7 +73,10 @@ export default function TaskDock({ taskId, covered, canDock }: TaskDockProps) {
 	const registry = getTaskPanelsRegistry();
 	const entries = useSyncExternalStore(registry.subscribe, registry.list);
 	const tabs = dock.open.map((id) => entries.find((entry) => entry.def.id === id)).filter((entry): entry is SlotEntry<TaskPanelDef> => !!entry);
+	const active = resolveActiveTab(taskId, tabs.map((tab) => tab.def.id), dock.active);
 	const show = !covered && canDock && tabs.length > 0;
+	// A lone panel needs no strip unless it is closable: then the strip carries its ✕.
+	const showStrip = tabs.length > 1 || tabs.some((tab) => tab.def.closable !== false);
 
 	const [owner] = useState(() => ({}));
 	const [body, setBody] = useState<HTMLDivElement | null>(null);
@@ -190,7 +203,7 @@ export default function TaskDock({ taskId, covered, canDock }: TaskDockProps) {
 		<>
 			{resizing && (
 				<div data-testid="task-dock-resize-shield" aria-hidden="true" className="absolute inset-0 z-[60] cursor-col-resize">
-					<div ref={ghostRef} className="absolute top-0 bottom-0 w-[2px] bg-accent" style={{ right: width }} />
+					<div ref={ghostRef} data-testid="task-dock-resize-ghost" className="absolute top-0 bottom-0 w-[2px] bg-accent" style={{ right: width }} />
 				</div>
 			)}
 			<div
@@ -221,11 +234,22 @@ export default function TaskDock({ taskId, covered, canDock }: TaskDockProps) {
 				className="min-h-0 min-w-0 flex-shrink-0 overflow-hidden flex flex-col"
 				style={{ width }}
 			>
-				{tabs.length > 1 && <DockTabs taskId={taskId} tabs={tabs} active={dock.active} />}
-				<div ref={setBody} data-testid="task-dock-body" className="min-h-0 flex-1 flex flex-col" />
+				{showStrip && <DockTabs taskId={taskId} tabs={tabs} active={active} />}
+				<div
+					ref={setBody}
+					data-testid="task-dock-body"
+					role={showStrip ? "tabpanel" : undefined}
+					id={showStrip ? `task-dock-panel-${taskId}` : undefined}
+					aria-labelledby={showStrip && active ? tabDomId(taskId, active) : undefined}
+					className="min-h-0 flex-1 flex flex-col"
+				/>
 			</div>
 		</>
 	);
+}
+
+function tabDomId(taskId: string, panelId: string): string {
+	return `task-dock-tab-${taskId}-${panelId.replace(/[^\w-]/g, "_")}`;
 }
 
 function DockTabs({ taskId, tabs, active }: { taskId: string; tabs: readonly SlotEntry<TaskPanelDef>[]; active: string | null }) {
@@ -233,10 +257,18 @@ function DockTabs({ taskId, tabs, active }: { taskId: string; tabs: readonly Slo
 	const { visible, more } = splitDockTabs(tabs, active);
 	const stripRef = useRef<HTMLDivElement>(null);
 	function onKeyDown(event: React.KeyboardEvent) {
-		if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
 		const buttons = Array.from(stripRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? []);
 		const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
 		if (current < 0) return;
+		if (event.key === "Delete" || event.key === "Backspace") {
+			const tab = visible[current];
+			if (tab && tab.def.closable !== false) {
+				event.preventDefault();
+				closeTaskPanel(taskId, tab.def.id);
+			}
+			return;
+		}
+		if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
 		event.preventDefault();
 		const next = buttons[(current + (event.key === "ArrowRight" ? 1 : buttons.length - 1)) % buttons.length];
 		next.focus();
@@ -251,12 +283,15 @@ function DockTabs({ taskId, tabs, active }: { taskId: string; tabs: readonly Slo
 					return (
 						<div
 							key={tab.def.id}
-							className={`group/tab flex min-w-0 items-center rounded-md transition-colors ${selected ? "bg-elevated text-fg" : "text-fg-3 hover:bg-raised-hover hover:text-fg"}`}
+							role="presentation"
+							className={`flex min-w-0 items-center rounded-md transition-colors ${selected ? "bg-elevated text-fg" : "text-fg-3 hover:bg-raised-hover hover:text-fg"}`}
 						>
 							<button
 								type="button"
 								role="tab"
+								id={tabDomId(taskId, tab.def.id)}
 								aria-selected={selected}
+								aria-controls={selected ? `task-dock-panel-${taskId}` : undefined}
 								tabIndex={selected ? 0 : -1}
 								onClick={() => activateTaskPanel(taskId, tab.def.id)}
 								className="min-w-0 truncate px-2.5 py-1 text-xs font-medium"
@@ -264,8 +299,10 @@ function DockTabs({ taskId, tabs, active }: { taskId: string; tabs: readonly Slo
 								{title}
 							</button>
 							{tab.def.closable !== false && (
+								// Mouse affordance only: keyboard users close the focused tab with Delete.
 								<button
 									type="button"
+									tabIndex={-1}
 									onClick={() => closeTaskPanel(taskId, tab.def.id)}
 									aria-label={t("taskDock.closeTab", { title })}
 									title={t("taskDock.closeTab", { title })}
@@ -293,11 +330,19 @@ function MoreTabs({ taskId, tabs }: { taskId: string; tabs: readonly SlotEntry<T
 				ref={triggerRef}
 				type="button"
 				onClick={() => setOpen((value) => !value)}
+				onKeyDown={(event) => {
+					if (event.key === "ArrowDown" && !open) {
+						event.preventDefault();
+						setOpen(true);
+					}
+				}}
 				aria-label={t("slots.more")}
 				title={t("slots.more")}
 				aria-haspopup="menu"
 				aria-expanded={open}
-				className={`flex items-center rounded-md px-1.5 py-1 transition-colors ${open ? "bg-elevated text-fg" : "text-fg-3 hover:bg-raised-hover hover:text-fg"}`}
+				className={`flex items-center rounded-lg border px-1.5 py-1 transition-[color,background-color,border-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] ${
+					open ? "text-fg bg-elevated border-edge-active" : "text-fg-2 border-edge bg-raised/60 hover:text-fg hover:bg-elevated hover:border-edge-active"
+				}`}
 			>
 				<OverflowDotsIcon className="h-4 w-4" />
 			</button>
@@ -325,11 +370,21 @@ function MoreMenu({ taskId, tabs, triggerRef, onDismiss }: {
 		return () => document.removeEventListener("mousedown", onMouseDown);
 	}, [onDismiss, triggerRef]);
 	function onKeyDown(event: React.KeyboardEvent) {
-		if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
 		const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
+		if (items.length === 0) return;
 		const current = items.indexOf(document.activeElement as HTMLElement);
+		let next: number | null = null;
+		if (event.key === "ArrowDown") next = (current + 1) % items.length;
+		else if (event.key === "ArrowUp") next = current <= 0 ? items.length - 1 : current - 1;
+		else if (event.key === "Home") next = 0;
+		else if (event.key === "End") next = items.length - 1;
+		else if (event.key === "Tab") {
+			onDismiss();
+			return;
+		}
+		if (next === null) return;
 		event.preventDefault();
-		items[(current + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
+		items[next].focus();
 	}
 	return (
 		<div ref={menuRef} role="menu" onKeyDown={onKeyDown} className="absolute right-0 top-full z-50 mt-1 min-w-44 rounded-xl border border-edge bg-overlay py-1 shadow-2xl">
