@@ -44,7 +44,7 @@ ux_architecture:
       - "board-views/kanban/KanbanView.tsx"
       - "board-views/kanban/KanbanColumn.tsx"
       - "src/mainview/components/TaskCard.tsx"
-      - "src/mainview/components/TaskInfoPanel.tsx"
+      - "src/mainview/components/TaskHeader.tsx"
       - "src/mainview/components/ProjectSettings.tsx"
       - "src/mainview/components/GlobalSettings.tsx"
       - "tailwind.config.js"
@@ -111,7 +111,7 @@ ux_architecture:
       owns: ["note", "task_terminal", "worktree", "variant", "attempt"]
       lifecycle_states: ["todo", "in-progress", "user-questions", "review-by-ai", "review-by-user", "review-by-colleague", "completed", "cancelled"]
       common_actions: ["create", "move_status", "rename", "set_overview", "add_note", "spawn_variants", "add_attempts", "duplicate", "delete", "watch", "open_in_ide", "git_actions", "dev_server"]
-      evidence: ["src/shared/types.ts (Task, TaskStatus, ALL_STATUSES)", "src/mainview/components/TaskCard.tsx", "src/mainview/components/TaskInfoPanel.tsx", "src/shared/application-menu.ts"]
+      evidence: ["src/shared/types.ts (Task, TaskStatus, ALL_STATUSES)", "src/mainview/components/TaskCard.tsx", "src/mainview/components/TaskHeader.tsx", "src/shared/application-menu.ts"]
     label:
       label: "Label"
       plural: "Labels"
@@ -336,7 +336,7 @@ ux_architecture:
       allowed: ["object_action", "git_action", "dev_server_action", "metadata", "notes_preview", "secondary_edit"]
       forbidden: ["global_destination", "cross_project_action", "uncapped_note_list"]
       note: "This panel is the densest surface (34K). It is the main complexity-budget risk in the app."
-      evidence: ["src/mainview/components/TaskInfoPanel.tsx", "src/mainview/components/task-info-panel/*"]
+      evidence: ["src/mainview/components/TaskHeader.tsx", "src/mainview/components/task-info-panel/*"]
       completion_strip:
         rule: "Merge/agent completion asks follow completionOfferStyle: 'dialog' (default) asks via confirm() with the pre-setting dialogs (CompletionOfferDialogHost); 'inline' floats a one-line bar at the bottom-right of the agent's pane (+ Show agent if hidden; an inspector row without a live terminal), two rows max, note/git warning open upward on hover, terminal never resized. No focus, 600 ms arming, Complete gated on the unsaved-work check. Inline only: marker, bell, toast, merge replay. To Dialog keeps waiting offers on their task; to inline closes the modal; Keep open settles all the task's offers. The user's own Complete/Cancel is not an offer (popover.own_click_confirm)."
         actions: { complete: "destructive", keep_open: "secondary", manual_completion: "ghost (merge)", settings: "icon (merge)" }
@@ -395,13 +395,13 @@ ux_architecture:
       purpose: "Ephemeral task-bound terminal workspace for focused tmux work."
       allowed: ["task_terminal", "tmux_windows_and_panes", "dev3_brand", "exit_fullscreen"]
       forbidden: ["global_header", "app_menu_bar", "task_switching_ui", "task_info_panel", "tmux_zoom_mutation", "route_persistence"]
-      entry_point: "TaskInfoPanel fullscreen toggle (narrow: the actions sheet's first row), F11, or Cmd/Ctrl+Shift+F when a task terminal is open."
+      entry_point: "TaskHeader fullscreen toggle (narrow: the actions sheet's first row), F11, or Cmd/Ctrl+Shift+F when a task terminal is open."
       exit_point: "Wide neutral Exit full screen button or either fullscreen shortcut; in-app toast clicks exit before task navigation."
       state: "Renderer-only, non-persistent; preserves the exact Route and all tmux window/pane/layout state."
       notifications: "Queue agent-facing native, browser, in-app, attention, image, and artifact events while immersive fullscreen or persistent Focus Mode is active; flush them in arrival order after the final mode ends without adding fullscreen chrome, preserving task click targets."
       responsive: "The terminal keeps its existing tmux window/pane controls and touch behavior; the only app chrome is the thin top strip."
       status: "agreed"
-      evidence: ["src/mainview/App.tsx", "src/mainview/components/TaskInfoPanel.tsx"]
+      evidence: ["src/mainview/App.tsx", "src/mainview/components/TaskHeader.tsx"]
     diff_review_viewer:
       purpose: "Full-screen read + inline-review of a task's diff; export comments as an XML review prompt for the agent."
       reached_from: ["inspector:diff_summary_badge", "inspector:changes_summary"]
@@ -542,7 +542,7 @@ ux_architecture:
           spec: "portal popover, shared positioning util, ~250ms hover-intent, instant re-show grace; progressive migration off native title= (densest surfaces first: inspector bars, GlobalHeader, TaskCard)"
         help_spot:
           role: "section-level (i) -> HelpCard; renders data-help-id={topicId}, so every HelpSpot is automatically a help-mode zone"
-          allowed_hosts: ["SettingsSection headings", "modal headers", "KanbanColumn header", "TaskDiffViewer toolbar", "stats section titles", "TaskInfoPanel chrome (panel-level topic only)", "form-field labels — earned, only for surprising field behavior (e.g. contextual branch prefill); never a row of (i) on every field"]
+          allowed_hosts: ["SettingsSection headings", "modal headers", "KanbanColumn header", "TaskDiffViewer toolbar", "stats section titles", "TaskHeader chrome (panel-level topic only)", "form-field labels — earned, only for surprising field behavior (e.g. contextual branch prefill); never a row of (i) on every field"]
           budget: "<= 1 HelpSpot per section header; icon role ghost; hover emphasis reuses accent (no new --info token)"
         help_mode:
           role: "screen-wide 'Explain this screen' overlay — the MASTER surface: explains the current screen state (live DOM scan skips covered zones, so an open modal lights its own zones, per-field included)"
@@ -712,7 +712,7 @@ ux_architecture:
       destructive:
         token_class: "text-danger / hover:bg-danger/10..15 / border-danger/30 (bg-danger for solid)"
         use_for: "Delete, remove, cancel, reset. Never use bg-accent primary styling for these."
-        evidence: ["src/mainview/components/TaskInfoPanel.tsx:585", "src/mainview/components/TaskDetailModal.tsx:317"]
+        evidence: ["src/mainview/components/TaskHeader.tsx:585", "src/mainview/components/TaskDetailModal.tsx:317"]
       link:
         token_class: "text-accent hover:text-accent-emphasis (no background)"
         use_for: "Inline navigation / open-in actions."
@@ -752,7 +752,7 @@ ux_architecture:
     detail_screen:
       example: "task (full-screen terminal) / split project+task"
       header: "two-row task info header"
-      inspector: "TaskInfoPanel (git, dev server, scripts, notes, tmux, open-in)"
+      inspector: "TaskHeader (git, dev server, scripts, notes, tmux, open-in)"
       actions: "object + git + dev-server actions, scoped to the task"
     settings_screen:
       example: "GlobalSettings, ProjectSettings"
@@ -936,7 +936,7 @@ ux_architecture:
       terminal_windows: { desktop: "always: tabs replace tmux bar; agent first; output/bell dots; rename", narrow: "window switcher — a slim 'prev / named dropdown / next' bar ABOVE the pane bar; buttons + dropdown + Arrow-while-focused, NO swipe (terminal swipe is the pane carousel's); tmux tasks only (native tasks have no window concept); only at > 1 window; via tmuxWindowNavigate", status: observed, evidence: "MobileWindowCarousel.tsx, TaskTerminal.tsx, tmux-pty/tmux-control.ts tmuxWindowNavigate, decision 093" }
       terminal_input: { narrow: "touch input model (gate = !isElectrobun && isTouchDevice, NOT width — an input-model switch, tablets included): terminal tap never summons the OSK; a docked autogrow chat composer between the terminal and ExtraKeyBar owns text entry — Send = mode-2004-aware paste + Enter, Insert = paste only, expand state for long prompts, terminal tail stays visible; sticky '⌨ raw' toggle on ExtraKeyBar restores direct typing + select-to-copy/TUI mouse; chrome collapses on composer FOCUS (not visualViewport); covers TaskTerminal AND ProjectTerminal (Quick Shell); Android-first, iOS visualViewport pinning additive", status: proposed, evidence: "UX decision 2026-07-02" }
       active_tasks: { narrow: "No persistent task strip; use TaskSwitcherOverlay for keyboard task switching and the breadcrumb → board carousel on narrow viewports", status: observed, evidence: ["ProjectView.tsx browser/narrow branch", "TaskSwitcherOverlay.tsx", "MobileBoardCarousel.tsx"] }
-      task_inspector: { narrow: "2x2 bar grid cannot fit -> one summary bar + 'task actions' bottom sheet (bars become sheet sections); metadata grid already reflows", tight: "ABOVE narrow the bars gate on the PANEL width (useContainerWidth, ResizeObserver — the board eats the viewport in split view): <1280 folds the label strip to +k, clamps the branch name, drops pane-layout/Runtime text labels; <900 also drops the label strip + include-tests toggle. Every bar is boxed min-w-0 overflow-hidden so nothing paints over a neighbour or the pinned chrome (decision 164).", status: observed, evidence: "TaskInfoPanel.tsx, useContainerWidth.ts" }
+      task_inspector: { narrow: "2x2 bar grid cannot fit -> one summary bar + 'task actions' bottom sheet (bars become sheet sections); metadata grid already reflows", tight: "ABOVE narrow the bars gate on the PANEL width (useContainerWidth, ResizeObserver — the board eats the viewport in split view): <1280 folds the label strip to +k, clamps the branch name, drops pane-layout/Runtime text labels; <900 also drops the label strip + include-tests toggle. Every bar is boxed min-w-0 overflow-hidden so nothing paints over a neighbour or the pinned chrome (decision 164).", status: observed, evidence: "TaskHeader.tsx, useContainerWidth.ts" }
       diff_viewer: { narrow: "files-aside (22rem) -> bottom-sheet file picker; diff stream owns screen (live-content: explicit nav, no full-surface swipe)", status: proposed, evidence: "TaskDiffViewer.tsx w-[22rem] aside" }
       modal: { narrow: "full-bleed sheet: max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)], or BottomSheet for action-style modals", status: proposed, evidence: "TaskDetailModal 35rem, AddProjectModal 32.5rem, confirm() 26rem — all fixed-width" }
       context_menu: { narrow: "desktop / Active Tasks row only (long-press there). The card wires right-click only: its long-press is the drag, so a phone reaches task actions via the inspector actions sheet + status rail", status: observed, evidence: "TaskCard.tsx, ActiveTaskRow.tsx useContextMenu" }
@@ -980,7 +980,7 @@ ux_architecture:
     - id: "layout-gated-on-transport-not-width"
       description: "Gating a layout on isElectrobun (or only on useMobile's mount-once 1024 check) instead of the reactive useNarrowViewport. Transport != viewport width: browser/remote can be wide, desktop can be narrowed. Gate layout on useNarrowViewport; use isElectrobun/useMobile only for transport/viewport-meta."
     - id: "toolbar-button-creep"
-      description: "Adding yet another always-visible git/tmux/dev-server button to TaskInfoPanel or task toolbars without checking the budget. The changelog shows a long history of this (always-visible-git-buttons, tmux-action-buttons, push-button, create-pr-button, etc.). Group or overflow instead."
+      description: "Adding yet another always-visible git/tmux/dev-server button to TaskHeader or task toolbars without checking the budget. The changelog shows a long history of this (always-visible-git-buttons, tmux-action-buttons, push-button, create-pr-button, etc.). Group or overflow instead."
     - id: "hardcoded-colors"
       description: "Using raw hex/rgb in components instead of semantic Tailwind tokens. Forbidden by AGENTS.md except STATUS_COLORS."
     - id: "untranslated-strings"
@@ -1060,7 +1060,7 @@ ux_architecture:
   open_questions:
     - "Is there a need for multi-select + a real selection toolbar on the Kanban board, or is per-task action intentional?"
     - "Should an --info semantic token be added, or is reusing accent (blue) for informational state intentional?"
-    - "ProjectSettings is very large. Does it need a documented sub-surface budget or splitting? (TaskInfoPanel is now governed by surfaces.task_info_panel.bar_model.)"
+    - "ProjectSettings is very large. Does it need a documented sub-surface budget or splitting? (TaskHeader is now governed by surfaces.task_info_panel.bar_model.)"
     - "Status colors are hardcoded hex by design; should they migrate to named tokens for theme consistency, or stay as the documented exception?"
 
   resolved_questions:
