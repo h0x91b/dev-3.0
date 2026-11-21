@@ -580,17 +580,18 @@ function LaunchVariantsModal({
 							disabled={launching}
 							onSubmit={() => { if (scheduleTarget && !launching) handleSchedule(); }}
 							onTargetChange={(target, m) => { setScheduleTarget(target); setScheduleMode(m); }}
-							extraMode={offersAfter ? {
+							extraModes={offersAfter ? [{
+								id: "after",
 								label: t("launch.modeAfter"),
-								onActiveChange: setAfterMode,
-								initiallyActive: initialStartAfter,
 								content: (
 									<>
 										<StartAfterPicker task={task} project={project} value={afterChoice} disabled={launching} onChange={setAfterChoice} />
 										{variants.length > 1 && <p className="text-sm mt-1 text-danger">{t("launch.afterOneVariant")}</p>}
 									</>
 								),
-							} : undefined}
+							}] : undefined}
+							onExtraModeChange={(id) => setAfterMode(id === "after")}
+							initialExtraMode={initialStartAfter ? "after" : undefined}
 						/>
 					</div>
 				)}

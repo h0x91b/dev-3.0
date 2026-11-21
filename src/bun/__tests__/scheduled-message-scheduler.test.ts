@@ -7,6 +7,7 @@ vi.mock("../data", () => ({
 	loadVirtualProjects: vi.fn(async () => []),
 	loadTasks: vi.fn(async () => []),
 	getTask: vi.fn(),
+	updateTask: vi.fn(),
 	updateTaskWith: vi.fn(),
 }));
 vi.mock("../agent-prompt", () => ({
@@ -59,6 +60,9 @@ import {
 	cancelScheduledMessageByRef,
 	sendScheduledMessageNow,
 	sendMessageImmediately,
+	saveMessageDraft,
+	sendMessageDraft,
+	fireArmedMessageDraft,
 } from "../scheduled-message-scheduler";
 
 const project = { id: "proj-1", name: "Proj" } as unknown as import("../../shared/types").Project;
@@ -512,6 +516,103 @@ describe("cancel / send-now / immediate", () => {
 		vi.mocked(holdMessageForPane).mockResolvedValue(PANE_GONE);
 		const task = makeTask();
 		await expect(sendMessageImmediately(task as never, "hello")).rejects.toThrow(/no live agent/i);
+	});
+});
+
+describe("message draft (#2281)", () => {
+	/** A task whose writes persist, so a test can read what the draft ended up as. */
+	function statefulTask(overrides: Record<string, unknown>) {
+		const state = { current: makeTask({ scheduledMessages: [], ...overrides }) as Record<string, unknown> };
+		vi.mocked(data.getTask).mockImplementation(async () => state.current as never);
+		vi.mocked(data.updateTask).mockImplementation((async (_p: unknown, _id: unknown, updates: object) => {
+			state.current = { ...state.current, ...updates };
+			return state.current;
+		}) as unknown as typeof data.updateTask);
+		// Serialized like the real tasks-file lock.
+		let lock: Promise<unknown> = Promise.resolve();
+		vi.mocked(data.updateTaskWith).mockImplementation(((
+			_p: unknown,
+			_id: unknown,
+			mutator: (t: unknown) => Promise<{ updates: object; result: unknown }> | { updates: object; result: unknown },
+		) => {
+			const run = lock.then(async () => {
+				const { updates, result } = await mutator(state.current);
+				state.current = { ...state.current, ...updates };
+				return { task: state.current, result };
+			});
+			lock = run.catch(() => {});
+			return run;
+		}) as unknown as typeof data.updateTaskWith);
+		return state;
+	}
+
+	it("saves the text with its armed flag, and blank text clears it", async () => {
+		const state = statefulTask({});
+		await saveMessageDraft(project, "task-12345678", { text: "next: rebase", sendOnStop: true });
+		expect(state.current.messageDraft).toEqual(expect.objectContaining({ text: "next: rebase", sendOnStop: true }));
+		expect(pushFn).toHaveBeenCalledWith("taskUpdated", expect.anything());
+		await saveMessageDraft(project, "task-12345678", { text: "   " });
+		expect(state.current.messageDraft).toBeNull();
+	});
+
+	it("sends an armed draft through the hold when the agent stops, then clears it", async () => {
+		const state = statefulTask({ status: "review-by-user", messageDraft: { text: "next: rebase", sendOnStop: true, updatedAt: "t0" } });
+		await fireArmedMessageDraft(project, "task-12345678");
+		expect(holdMessageForPane).toHaveBeenCalledWith(expect.anything(), "%1", "next: rebase", expect.any(Function), undefined, undefined);
+		expect(state.current.messageDraft).toBeNull();
+	});
+
+	it("leaves an unarmed draft alone", async () => {
+		const state = statefulTask({ status: "review-by-user", messageDraft: { text: "just notes", updatedAt: "t0" } });
+		await fireArmedMessageDraft(project, "task-12345678");
+		expect(holdMessageForPane).not.toHaveBeenCalled();
+		expect(state.current.messageDraft).toEqual({ text: "just notes", updatedAt: "t0" });
+	});
+
+	it("sends an armed draft only once across two quick stops", async () => {
+		statefulTask({ status: "review-by-user", messageDraft: { text: "once", sendOnStop: true, updatedAt: "t0" } });
+		await Promise.all([fireArmedMessageDraft(project, "task-12345678"), fireArmedMessageDraft(project, "task-12345678")]);
+		expect(holdMessageForPane).toHaveBeenCalledTimes(1);
+	});
+
+	it("Send now cannot deliver an armed draft a second time while the stop-send is held", async () => {
+		let release!: (v: unknown) => void;
+		vi.mocked(holdMessageForPane).mockImplementation((() => new Promise((r) => { release = r; })) as unknown as typeof holdMessageForPane);
+		statefulTask({ status: "review-by-user", messageDraft: { text: "once", sendOnStop: true, updatedAt: "t0" } });
+		const held = fireArmedMessageDraft(project, "task-12345678");
+		await vi.waitFor(() => expect(holdMessageForPane).toHaveBeenCalled());
+		await expect(sendMessageDraft(project, "task-12345678")).rejects.toThrow(/no message draft/i);
+		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
+		release(TMUX_DELIVERED);
+		await held;
+	});
+
+	it("keeps the text, disarmed, and says so when the armed draft cannot be delivered", async () => {
+		vi.mocked(holdMessageForPane).mockResolvedValue(PANE_GONE);
+		const state = statefulTask({ status: "user-questions", messageDraft: { text: "keep me", sendOnStop: true, updatedAt: "t0" } });
+		await fireArmedMessageDraft(project, "task-12345678");
+		expect(state.current.messageDraft).toEqual({ text: "keep me", updatedAt: "t0" });
+		expect(pushFn).toHaveBeenCalledWith("cliToast", expect.objectContaining({ level: "error" }));
+		expect(pushFn).toHaveBeenCalledWith("cliAttention", expect.anything());
+	});
+
+	it("does not clear a draft the user edited while it was going out", async () => {
+		const state = statefulTask({ status: "in-progress", messageDraft: { text: "v1", updatedAt: "t0" } });
+		vi.mocked(sendPromptToAgentPane).mockImplementation((async () => {
+			state.current = { ...state.current, messageDraft: { text: "v2", updatedAt: "t1" } };
+			return TMUX_DELIVERED;
+		}) as unknown as typeof sendPromptToAgentPane);
+		await sendMessageDraft(project, "task-12345678");
+		expect(state.current.messageDraft).toEqual({ text: "v2", updatedAt: "t1" });
+	});
+
+	it("Send now types the draft at once and clears it; with no draft it refuses", async () => {
+		const state = statefulTask({ messageDraft: { text: "go on", updatedAt: "t0" } });
+		await sendMessageDraft(project, "task-12345678");
+		expect(sendPromptToAgentPane).toHaveBeenCalledWith(expect.anything(), "go on", expect.anything());
+		expect(holdMessageForPane).not.toHaveBeenCalled();
+		expect(state.current.messageDraft).toBeNull();
+		await expect(sendMessageDraft(project, "task-12345678")).rejects.toThrow(/no message draft/i);
 	});
 });
 

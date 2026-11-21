@@ -9,6 +9,8 @@ vi.mock("../../rpc", () => ({
 		request: {
 			cancelScheduledMessage: vi.fn().mockResolvedValue({ id: "t1", scheduledMessages: [] }),
 			sendScheduledMessageNow: vi.fn().mockResolvedValue({ id: "t1", scheduledMessages: [] }),
+			sendMessageDraft: vi.fn().mockResolvedValue({ id: "t1" }),
+			saveMessageDraft: vi.fn().mockResolvedValue({ id: "t1" }),
 		},
 	},
 }));
@@ -19,6 +21,8 @@ const mockedApi = api as unknown as {
 	request: {
 		cancelScheduledMessage: ReturnType<typeof vi.fn>;
 		sendScheduledMessageNow: ReturnType<typeof vi.fn>;
+		sendMessageDraft: ReturnType<typeof vi.fn>;
+		saveMessageDraft: ReturnType<typeof vi.fn>;
 	};
 };
 
@@ -98,5 +102,41 @@ describe("ScheduledMessagesChip", () => {
 		await userEvent.click(screen.getByTestId("task-card-scheduled-message-badge"));
 		await userEvent.click(screen.getByText("Send now"));
 		expect(mockedApi.request.sendScheduledMessageNow).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", messageId: "m1" });
+	});
+
+	describe("message draft", () => {
+		const draftTask = (draft: Task["messageDraft"], status = "in-progress") =>
+			({ id: "t1", status, scheduledMessages: [], messageDraft: draft }) as unknown as Task;
+
+		it("shows a Draft chip when only a draft exists", () => {
+			renderChip(draftTask({ text: "later thought", updatedAt: "x" }));
+			expect(screen.getByTestId("task-card-scheduled-message-badge").textContent).toContain("Draft");
+		});
+
+		it("labels an armed draft On stop", () => {
+			renderChip(draftTask({ text: "later thought", sendOnStop: true, updatedAt: "x" }));
+			expect(screen.getByTestId("task-card-scheduled-message-badge").textContent).toContain("On stop");
+		});
+
+		it("hides the draft of a finished task", () => {
+			const { container } = renderChip(draftTask({ text: "later thought", updatedAt: "x" }, "completed"));
+			expect(container.firstChild).toBeNull();
+		});
+
+		it("marks its popover as a menu surface, so the card hover preview stays shut", async () => {
+			renderChip(draftTask({ text: "later thought", updatedAt: "x" }));
+			await userEvent.click(screen.getByTestId("task-card-scheduled-message-badge"));
+			expect(document.querySelector("[data-menu-surface]")).not.toBeNull();
+		});
+
+		it("sends and discards the draft from the popover", async () => {
+			renderChip(draftTask({ text: "later thought", updatedAt: "x" }));
+			await userEvent.click(screen.getByTestId("task-card-scheduled-message-badge"));
+			await userEvent.click(screen.getByText("Send now"));
+			expect(mockedApi.request.sendMessageDraft).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+			await userEvent.click(screen.getByTestId("task-card-scheduled-message-badge"));
+			await userEvent.click(screen.getByText("Discard"));
+			expect(mockedApi.request.saveMessageDraft).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", text: "" });
+		});
 	});
 });

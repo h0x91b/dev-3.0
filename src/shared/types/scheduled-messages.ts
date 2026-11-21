@@ -120,6 +120,19 @@ export interface AgentMessageSource {
 	agentUnavailable?: string;
 }
 
+/**
+ * The user's unsent message to a task's agent, kept outside the terminal input line
+ * so a held peer message can never submit it (#2281). One per task; additive in
+ * `tasks.json`, so older versions ignore it.
+ */
+export interface TaskMessageDraft {
+	text: string;
+	/** Armed: sent the next time the task enters a needs-you column (the agent stopped). */
+	sendOnStop?: boolean;
+	/** ISO time of the last edit. */
+	updatedAt: string;
+}
+
 /** Per-task cap on pending scheduled messages; scheduling past this is rejected. */
 export const MAX_SCHEDULED_MESSAGES_PER_TASK = 20;
 

@@ -6,6 +6,7 @@ import {
 	type ScheduledMessage,
 	type ScheduledMessageAuthor,
 	type ScheduledMessageTarget,
+	type TaskMessageDraft,
 	getTaskTitle,
 	MAX_SCHEDULED_MESSAGES_PER_TASK,
 	MAX_SCHEDULED_MESSAGE_LENGTH,
@@ -549,6 +550,87 @@ export async function sendMessageImmediately(
 		throw new Error(`Could not deliver the message — ${why ?? "the task has no live agent session."}`);
 	}
 	return { ...delivery, spilledPath, messageId: id };
+}
+
+/** Save the task's message draft, or clear it when `text` is blank (#2281). */
+export async function saveMessageDraft(
+	project: Project,
+	taskId: string,
+	input: { text: string; sendOnStop?: boolean },
+): Promise<Task> {
+	if (input.text.length > MAX_SCHEDULED_MESSAGE_LENGTH) {
+		throw new Error(`Draft too long: ${input.text.length} chars, and the limit is ${MAX_SCHEDULED_MESSAGE_LENGTH}.`);
+	}
+	const draft: TaskMessageDraft | null = input.text.trim()
+		? { text: input.text, ...(input.sendOnStop ? { sendOnStop: true } : {}), updatedAt: new Date().toISOString() }
+		: null;
+	const updated = await data.updateTask(project, taskId, { messageDraft: draft });
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+	return updated;
+}
+
+/**
+ * Take the draft off the task under the tasks lock, so exactly one send path owns
+ * it: a held stop-send and a click on Send now can never both deliver it.
+ */
+async function claimDraft(
+	project: Project,
+	taskId: string,
+	accept: (draft: TaskMessageDraft, task: Task) => boolean,
+): Promise<{ task: Task; draft: TaskMessageDraft | null }> {
+	const { task, result } = await data.updateTaskWith<TaskMessageDraft | null>(project, taskId, (current) => {
+		const draft = current.messageDraft;
+		if (!draft?.text.trim() || !accept(draft, current)) return { updates: {}, result: null };
+		return { updates: { messageDraft: null }, result: draft };
+	});
+	if (result) getPushMessage()?.("taskUpdated", { projectId: project.id, task });
+	return { task, draft: result };
+}
+
+/** A send failed: put the text back, disarmed, unless the user already wrote a new draft. */
+async function restoreDraft(project: Project, taskId: string, draft: TaskMessageDraft): Promise<void> {
+	const { task } = await data.updateTaskWith<void>(project, taskId, (current) => ({
+		updates: current.messageDraft ? {} : { messageDraft: { text: draft.text, updatedAt: draft.updatedAt } },
+		result: undefined,
+	}));
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task });
+}
+
+/**
+ * Send the saved draft right now (a click: no hold). Throws when nothing was sent,
+ * and the draft is then back on the task.
+ */
+export async function sendMessageDraft(project: Project, taskId: string): Promise<Task> {
+	const { task, draft } = await claimDraft(project, taskId, () => true);
+	if (!draft) throw new Error("There is no message draft to send");
+	try {
+		await sendMessageImmediately(task, draft.text, null, null, { hold: false, origin: "user" });
+	} catch (err) {
+		await restoreDraft(project, taskId, draft);
+		throw err;
+	}
+	return data.getTask(project, taskId);
+}
+
+/**
+ * The agent stopped: send an armed draft. It goes through the hold because the
+ * user may be typing in that pane. A failed send puts the text back, disarmed.
+ */
+export async function fireArmedMessageDraft(project: Project, taskId: string): Promise<void> {
+	const { task, draft: armed } = await claimDraft(project, taskId, (d, t) => !!d.sendOnStop && !isTerminal(t.status));
+	if (!armed) return;
+	try {
+		await sendMessageImmediately(task, armed.text, null, null, { hold: true, origin: "user" });
+		log.info("Armed message draft sent", { taskId: taskId.slice(0, 8) });
+	} catch (err) {
+		await restoreDraft(project, taskId, armed);
+		log.warn("Armed message draft not sent", { taskId: taskId.slice(0, 8), error: String(err) });
+		notifyOutcome(project, task, {
+			toast: `Draft not sent, it is still saved — ${err instanceof Error ? err.message : String(err)}`,
+			level: "error",
+			reason: `Draft not sent when the agent stopped: "${messagePreview(armed.text)}"`,
+		});
+	}
 }
 
 /**

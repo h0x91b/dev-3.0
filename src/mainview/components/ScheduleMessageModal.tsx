@@ -12,6 +12,7 @@ import { api } from "../rpc";
 import { useT } from "../i18n";
 import HelpSpot from "./HelpSpot";
 import { trackEvent } from "../analytics";
+import { toast } from "../toast";
 import SchedulePicker from "./SchedulePicker";
 
 interface ScheduleMessageModalProps {
@@ -26,10 +27,18 @@ interface ScheduleMessageModalProps {
 /** Target-selector value: "agent" (default role) or a concrete pane id. */
 type TargetValue = "agent" | string;
 
+/** How the message leaves: kept as a note, typed now, armed for the agent's next stop, or queued on the clock. */
+type Delivery = "draft" | "now" | "stop" | "later";
+
+/** Typing pause before the draft is written to the task. */
+const DRAFT_SAVE_DELAY_MS = 500;
+
 /**
- * "Send later" — queue a one-shot message to a task's live agent, delivered at a
- * chosen wall-clock time / after a delay. Reuses the shared {@link SchedulePicker}
- * (in/at). Enter in the textarea inserts a newline; submit is button-only, so a
+ * "Send later" — compose a message to a task's live agent outside its terminal,
+ * then send it now, when the agent next stops, or at a time (the shared
+ * {@link SchedulePicker}). The text autosaves as the task's message draft, so a
+ * held peer message can never submit it and closing never loses it (#2281).
+ * Enter in the textarea inserts a newline; submit is button-only, so a
  * long multi-line prompt can't be sent by accident (mirrors the launch modal).
  * Images can be dropped or pasted into the textarea — they upload into the task
  * worktree and their relative path is inserted into the message (same mechanism
@@ -37,42 +46,63 @@ type TargetValue = "agent" | string;
  */
 function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }: ScheduleMessageModalProps) {
 	const t = useT();
-	const [text, setText] = useState(initialText ?? "");
+	const savedDraft = task.messageDraft?.text ?? "";
+	const seed = initialText?.trim() ?? "";
+	const [text, setText] = useState(savedDraft && seed ? `${savedDraft}\n\n${seed}` : savedDraft || seed);
+	// Never a send by default: a reopened armed draft stays armed, anything else is a note.
+	const [delivery, setDelivery] = useState<Delivery>(task.messageDraft?.sendOnStop ? "stop" : "draft");
 	const [scheduleTarget, setScheduleTarget] = useState<Date | null>(null);
 	const [targetValue, setTargetValue] = useState<TargetValue>("agent");
 	const [panes, setPanes] = useState<TmuxPaneInfo[]>([]);
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [confirmDiscard, setConfirmDiscard] = useState(false);
 	const taRef = useRef<HTMLTextAreaElement>(null);
-	const keepEditingRef = useRef<HTMLButtonElement>(null);
 	// State updates land a render late; a ref closes the double-click window.
 	const submittingRef = useRef(false);
+	// What the task already holds, so autosave and the unmount flush skip a no-op write.
+	const lastSavedRef = useRef<string | null>(savedDraft);
+	const textRef = useRef(text);
+	textRef.current = text;
+	const armedRef = useRef(false);
+	armedRef.current = !!task.messageDraft?.sendOnStop;
 
 	const trapRef = useFocusTrap<HTMLDivElement>();
 
-	// An untouched composer seed is not a loss — the composer still holds it.
-	const hasUnsentEdits = text.trim().length > 0 && text.trim() !== (initialText ?? "").trim();
+	// Writes go out one at a time, so an autosave still in flight can never land after a Discard or a send.
+	const saveChainRef = useRef<Promise<unknown>>(Promise.resolve());
+	const persistDraft = useCallback((value: string, sendOnStop: boolean) => {
+		const run = saveChainRef.current.catch(() => {}).then(async () => {
+			const updated = await api.request.saveMessageDraft({ taskId: task.id, projectId: project.id, text: value, sendOnStop });
+			dispatch({ type: "updateTask", task: updated });
+		});
+		saveChainRef.current = run;
+		return run;
+	}, [task.id, project.id, dispatch]);
+
+	const autosave = useCallback((value: string) => {
+		if (value === lastSavedRef.current) return;
+		lastSavedRef.current = value;
+		persistDraft(value, armedRef.current).catch((err) => {
+			// Still unsaved, so the close-time flush tries again.
+			if (lastSavedRef.current === value) lastSavedRef.current = null;
+			toast.error(t("scheduleMessage.draftSaveFailed", { error: String(err) }), { taskId: task.id });
+		});
+	}, [persistDraft, t, task.id]);
+
+	useEffect(() => {
+		const timer = setTimeout(() => autosave(text), DRAFT_SAVE_DELAY_MS);
+		return () => clearTimeout(timer);
+	}, [text, autosave]);
+
+	// However the modal goes away, the last keystrokes reach the task.
+	useEffect(() => () => autosave(textRef.current), [autosave]);
 
 	function requestClose() {
 		if (submittingRef.current) return;
-		if (hasUnsentEdits) setConfirmDiscard(true);
-		else onClose();
+		onClose();
 	}
 
-	function keepEditing() {
-		setConfirmDiscard(false);
-		taRef.current?.focus();
-	}
-
-	useEscapeKey(() => {
-		if (confirmDiscard) keepEditing();
-		else requestClose();
-	});
-
-	useEffect(() => {
-		if (confirmDiscard) keepEditingRef.current?.focus();
-	}, [confirmDiscard]);
+	useEscapeKey(requestClose);
 
 	// Insert an uploaded worktree-relative path at the cursor (or at the end),
 	// on its own line — same convention as the description editor.
@@ -119,15 +149,48 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 		taRef.current?.focus();
 	}, []);
 
-	const canSubmit = !submitting && text.trim().length > 0 && scheduleTarget != null;
+	const canSubmit = !submitting && text.trim().length > 0 && (delivery !== "later" || scheduleTarget != null);
+	const hasDraft = !!task.messageDraft || text.trim().length > 0;
+	const draftSaved = text.trim().length > 0 && task.messageDraft?.text === text;
 
-	async function handleSubmit() {
-		if (!canSubmit || !scheduleTarget || submittingRef.current) return;
+	/** Runs one submit path; the text it handled must not be re-saved by the unmount flush. */
+	async function submitWith(action: () => Promise<void>) {
+		if (submittingRef.current) return;
 		submittingRef.current = true;
 		setSubmitting(true);
 		setError(null);
-		const target: ScheduledMessageTarget = targetValue === "agent" ? { kind: "agent" } : { kind: "pane", paneId: targetValue };
+		// Claimed before the await, so a debounced autosave cannot overwrite what the action writes.
+		const previous = lastSavedRef.current;
+		lastSavedRef.current = textRef.current;
 		try {
+			await action();
+			onClose();
+		} catch (err) {
+			lastSavedRef.current = previous;
+			setError(String(err));
+			submittingRef.current = false;
+			setSubmitting(false);
+		}
+	}
+
+	function handleSubmit() {
+		if (!canSubmit) return;
+		void submitWith(async () => {
+			if (delivery === "draft") {
+				await persistDraft(text, false);
+				return;
+			}
+			if (delivery === "now") {
+				await persistDraft(text, false);
+				dispatch({ type: "updateTask", task: await api.request.sendMessageDraft({ taskId: task.id, projectId: project.id }) });
+				return;
+			}
+			if (delivery === "stop") {
+				await persistDraft(text, true);
+				return;
+			}
+			if (!scheduleTarget) return;
+			const target: ScheduledMessageTarget = targetValue === "agent" ? { kind: "agent" } : { kind: "pane", paneId: targetValue };
 			const updated = await api.request.scheduleMessage({
 				taskId: task.id,
 				projectId: project.id,
@@ -141,13 +204,22 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 				delay_ms: scheduleTarget.getTime() - Date.now(),
 				target_kind: target.kind,
 			});
-			onClose();
-		} catch (err) {
-			setError(String(err));
-			submittingRef.current = false;
-			setSubmitting(false);
-		}
+			// The text now lives in the queue; a draft copy would be sent twice.
+			if (task.messageDraft) await persistDraft("", false);
+		});
 	}
+
+	function handleDiscard() {
+		void submitWith(() => persistDraft("", false));
+	}
+
+	const submitLabel = delivery === "draft"
+		? t("scheduleMessage.keepDraft")
+		: delivery === "now"
+		? t("task.sendNow")
+		: delivery === "stop"
+			? t("scheduleMessage.saveOnStop")
+			: submitting ? t("scheduleMessage.scheduling") : t("scheduleMessage.schedule");
 
 	return (
 		<div
@@ -218,8 +290,10 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 
 					<ImageAttachmentsStrip text={text} onRemovePath={handleRemovePath} />
 
+					{draftSaved && <p className="text-micro text-fg-3" data-testid="message-draft-saved">{t("scheduleMessage.draftSaved")}</p>}
+
 					{/* Delivery target — agent by default; optionally a concrete live pane. */}
-					{panes.length > 0 && (
+					{delivery === "later" && panes.length > 0 && (
 						<div className="flex items-center gap-3">
 							<span className="text-fg-3 text-xs whitespace-nowrap">{t("scheduleMessage.deliverTo")}</span>
 							<div className="relative">
@@ -250,6 +324,13 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 						disabled={submitting}
 						hintKey="scheduleMessage.scheduleHint"
 						onTargetChange={(target) => setScheduleTarget(target)}
+						extraModes={[
+							{ id: "draft", label: t("scheduleMessage.modeDraft"), leading: true, content: <p className="text-sm text-fg-3">{t("scheduleMessage.draftHint")}</p> },
+							{ id: "now", label: t("scheduleMessage.modeNow"), leading: true, content: <p className="text-sm text-fg-3">{t("scheduleMessage.nowHint")}</p> },
+							{ id: "stop", label: t("scheduleMessage.modeStop"), leading: true, content: <p className="text-sm text-fg-3">{t("scheduleMessage.stopHint")}</p> },
+						]}
+						initialExtraMode={delivery}
+						onExtraModeChange={(id) => setDelivery(id === "draft" || id === "now" || id === "stop" ? id : "later")}
 					/>
 				</div>
 
@@ -261,46 +342,34 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 				)}
 
 				{/* Footer */}
-				{confirmDiscard ? (
-					<div
-						className="px-6 py-4 border-t border-edge flex flex-wrap items-center justify-between gap-2 bg-danger/10"
-						data-testid="schedule-discard-confirm"
-					>
-						<span role="alert" className="text-fg-2 text-sm">{t("scheduleMessage.discardConfirm")}</span>
-						<div className="flex flex-wrap gap-2 shrink-0">
-							<button
-								ref={keepEditingRef}
-								onClick={keepEditing}
-								className="px-3 py-1 text-fg-3 text-sm hover:text-fg transition-colors rounded-lg focus:ring-2 focus:ring-edge-active focus:text-fg"
-							>
-								{t("scheduleMessage.keepEditing")}
-							</button>
-							<button
-								onClick={onClose}
-								className="px-3 py-1 bg-danger-fill text-white text-sm font-medium rounded-lg hover:bg-danger-fill-hover transition-colors"
-							>
-								{t("scheduleMessage.discard")}
-							</button>
-						</div>
-					</div>
-				) : (
-					<div className="px-6 py-4 border-t border-edge flex items-center justify-end gap-3">
+				<div className="px-6 py-4 border-t border-edge flex items-center gap-3">
+					{hasDraft && (
 						<button
-							onClick={requestClose}
+							onClick={handleDiscard}
 							disabled={submitting}
-							className="text-fg-3 hover:text-fg text-sm transition-colors px-3 py-1.5"
+							data-testid="message-draft-discard"
+							className="text-danger hover:opacity-80 text-sm transition-opacity px-3 py-1.5 disabled:opacity-50"
 						>
-							{t("kanban.cancel")}
+							{t("task.draftDiscard")}
 						</button>
-						<button
-							onClick={handleSubmit}
-							disabled={!canSubmit}
-							className="bg-accent-fill hover:bg-accent-fill-hover text-white text-sm font-medium px-5 py-2 rounded-xl transition-colors disabled:opacity-50"
-						>
-							{submitting ? t("scheduleMessage.scheduling") : t("scheduleMessage.schedule")}
-						</button>
-					</div>
-				)}
+					)}
+					<div className="flex-1" />
+					<button
+						onClick={requestClose}
+						disabled={submitting}
+						className="text-fg-2 hover:text-fg text-sm transition-colors px-3 py-1.5 disabled:opacity-50"
+					>
+						{t("common.close")}
+					</button>
+					<button
+						onClick={handleSubmit}
+						disabled={!canSubmit}
+						data-testid="schedule-message-submit"
+						className="bg-accent-fill hover:bg-accent-fill-hover text-white text-sm font-medium px-5 py-2 rounded-xl transition-colors disabled:opacity-50"
+					>
+						{submitLabel}
+					</button>
+				</div>
 			</div>
 		</div>
 	);
