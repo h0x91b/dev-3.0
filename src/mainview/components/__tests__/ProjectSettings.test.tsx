@@ -214,6 +214,42 @@ describe("ProjectSettings", () => {
 			});
 		});
 
+		it("saves single-pane setup startup order", async () => {
+			const { api } = await import("../../rpc");
+			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+			const user = userEvent.setup();
+
+			await renderProjectSettings(mockProject, { setupScript: "bun install" });
+			await goToProjectTab();
+
+			await user.click(screen.getByRole("radio", { name: "Same pane" }));
+			await user.click(screen.getByText("Save"));
+
+			await vi.waitFor(() => {
+				expect(mockSave).toHaveBeenCalledWith(
+					expect.objectContaining({ projectId: "proj-1", setupScriptLaunchMode: "single-pane" }),
+				);
+			});
+		});
+
+		it("arrow keys cycle through all three startup orders", async () => {
+			const user = userEvent.setup();
+
+			await renderProjectSettings(mockProject, { setupScript: "bun install" });
+			await goToProjectTab();
+
+			screen.getByRole("radio", { name: "Wait for setup" }).focus();
+			await user.keyboard("{ArrowRight}");
+			expect(screen.getByRole("radio", { name: "Same pane" })).toHaveAttribute("aria-checked", "true");
+			expect(screen.getByRole("radio", { name: "Same pane" })).toHaveFocus();
+
+			await user.keyboard("{ArrowRight}");
+			expect(screen.getByRole("radio", { name: "Run in parallel" })).toHaveAttribute("aria-checked", "true");
+
+			await user.keyboard("{ArrowLeft}");
+			expect(screen.getByRole("radio", { name: "Same pane" })).toHaveAttribute("aria-checked", "true");
+		});
+
 		it("renders gh accounts and saves the selected project account", async () => {
 			const { api } = await import("../../rpc");
 			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;

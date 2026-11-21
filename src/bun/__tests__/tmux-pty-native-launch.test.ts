@@ -723,6 +723,21 @@ describe("setup-script wrapper — one flavour per backend", () => {
 		);
 	});
 
+	it("records that the agent never started for a single-pane tmux launch", async () => {
+		const task = makeTask({ terminalBackend: "tmux" });
+		await launchTaskPty(setupProject({ setupScriptLaunchMode: "single-pane" }), task, WORKTREE, null, null, true);
+
+		const onFailure = vi.mocked(watch.watchSetupFailure).mock.calls[0][1];
+		vi.mocked(data.updateTask).mockClear();
+		await onFailure(1);
+
+		expect(vi.mocked(data.updateTask)).toHaveBeenCalledWith(
+			expect.anything(),
+			task.id,
+			{ setupFailedExitCode: 1, setupFailedAgentRunning: false },
+		);
+	});
+
 	// The re-run computes the same answer the launch did instead of reading the
 	// task back — a dismissal clears the flag, and reading it there made every
 	// re-run failure claim the agent had never started.
@@ -913,6 +928,22 @@ describe("setup-script wrapper — one flavour per backend", () => {
 		expect(vi.mocked(sharedPure.buildSetupStartupWrapper)).toHaveBeenCalledWith(
 			expect.objectContaining({ nativeBackend: false, launchMode: "blocking" }),
 		);
+	});
+
+	it("forwards the project's single-pane launch mode", async () => {
+		await launchTaskPty(
+			setupProject({ setupScriptLaunchMode: "single-pane" }),
+			makeTask(),
+			WORKTREE,
+			null,
+			null,
+			true,
+		);
+
+		expect(vi.mocked(sharedPure.buildSetupStartupWrapper)).toHaveBeenCalledWith(
+			expect.objectContaining({ nativeBackend: false, launchMode: "single-pane" }),
+		);
+		expect(pty.createSession).toHaveBeenCalledTimes(1);
 	});
 });
 
