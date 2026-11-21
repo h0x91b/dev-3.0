@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import type { Dispatch, MutableRefObject } from "react";
 import type { Project, Task } from "../../shared/types";
 import type { AppAction, Route } from "../state";
@@ -10,8 +10,6 @@ import type { TaskInlineDiffRequest } from "./task-inline-diff";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import TaskDock from "../task-panels/TaskDock";
-import { closeTaskPanel, openTaskPanel } from "../task-panels/dock-store";
-import { ARTIFACT_PANEL_ID } from "../task-panels/builtins";
 import FileExplorerFrame from "./FileExplorerFrame";
 import { useYaziLauncher } from "./task-info-panel/useYaziLauncher";
 
@@ -27,10 +25,6 @@ interface TaskWorkspacePaneProps {
 	inlineDiffRequest: TaskInlineDiffRequest | null;
 	onCloseInlineDiff: () => void;
 	navigationGuardRef?: MutableRefObject<NavigationGuard | null>;
-	/** An artifact of THIS task wants the docked panel (the default presentation).
-	 *  The pane still refuses it while the inline diff owns the surface, and on a
-	 *  narrow viewport, where the popup is the compact presentation. */
-	dockArtifact?: boolean;
 	skipCopyModeReset?: boolean;
 	/** Immersive fullscreen: §5 keeps that surface chrome-free, so it takes no
 	 *  help zone. Every other mount site is an ordinary task screen. */
@@ -48,7 +42,6 @@ function TaskWorkspacePane({
 	inlineDiffRequest,
 	onCloseInlineDiff,
 	navigationGuardRef,
-	dockArtifact = false,
 	skipCopyModeReset = false,
 	immersive = false,
 }: TaskWorkspacePaneProps) {
@@ -58,14 +51,6 @@ function TaskWorkspacePane({
 	const yazi = useYaziLauncher(task, project);
 	const workspaceRef = useRef<HTMLDivElement>(null);
 	const inlineDiffWasOpenRef = useRef(false);
-
-	// The artifact viewer (still mounted by App) asks for this task's dock through
-	// `dockArtifact`; its tab lives as long as the request does.
-	useLayoutEffect(() => {
-		if (!dockArtifact) return;
-		openTaskPanel(taskId, ARTIFACT_PANEL_ID, { activate: false });
-		return () => closeTaskPanel(taskId, ARTIFACT_PANEL_ID);
-	}, [dockArtifact, taskId]);
 
 	// The open task was deleted or moved away: leave its dead screen for the board. Asks the
 	// server first, so a list briefly holding another project's tasks never bounces the user.
@@ -150,7 +135,7 @@ function TaskWorkspacePane({
 					</FileExplorerFrame>
 					{yazi.dialog}
 				</div>
-				<TaskDock taskId={taskId} covered={!!inlineDiffRequest} canDock={!isNarrow && !immersive} />
+				<TaskDock taskId={taskId} covered={!!inlineDiffRequest || immersive} canDock={!isNarrow} />
 			</div>
 
 			{inlineDiffRequest && task && project && (

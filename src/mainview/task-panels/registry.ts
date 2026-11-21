@@ -1,5 +1,6 @@
 import type { Context } from "cordis";
 import type { ComponentType } from "react";
+import type { Task } from "../../shared/types";
 import type { TFunction } from "../i18n";
 import { defineAppSlot } from "../plugins/root";
 import { SlotRegistry, type SlotItem } from "../plugins/slot-registry";
@@ -16,15 +17,18 @@ declare module "cordis" {
  * Where an open panel stands right now:
  * - `docked`: the active tab of its task's dock, on screen;
  * - `inactive`: in an on-screen dock behind another tab;
- * - `undocked`: its task is on screen but there is no dock (narrow viewport, immersive);
- * - `offscreen`: the route left its task, or the inline diff covers it.
- * Only `docked` is visible. The panel stays mounted in every state, so it keeps its state.
+ * - `undocked`: its task is on screen but there is no room for a dock (narrow viewport);
+ * - `offscreen`: the route left its task, or the inline diff or immersive fullscreen covers it;
+ * - `floating`: opened floating (`openTaskPanel(..., { floating: true })`): no tab, the panel draws itself as a lightbox.
+ * The host shows only `docked` itself. The panel stays mounted in every state, so it keeps its state.
  */
-export type TaskPanelPresentation = "docked" | "inactive" | "undocked" | "offscreen";
+export type TaskPanelPresentation = "docked" | "inactive" | "undocked" | "offscreen" | "floating";
 
 export interface TaskPanelProps {
 	ctx: Context;
 	taskId: string;
+	/** The task's record when it is in the loaded project, for panels that read it (review, live artifact, worktree). */
+	task: Task | undefined;
 	presentation: TaskPanelPresentation;
 	/** Closes this panel's tab for this task. */
 	close: () => void;

@@ -4,7 +4,7 @@ import { useOverlayLayer } from "../utils/useOverlayLayer";
 import { OverflowDotsIcon } from "../components/HeaderIcons";
 import type { SlotEntry } from "../plugins/slot-registry";
 import { isBuiltinItem } from "../plugins/SlotItems";
-import { activateTaskPanel, closeTaskPanel, resolveActiveTab, setTaskDockSeat, useTaskDock } from "./dock-store";
+import { activateTaskPanel, closeTaskPanel, dockedPanelIds, resolveActiveTab, setTaskDockSeat, useTaskDock } from "./dock-store";
 import { getTaskPanelsRegistry, type TaskPanelDef } from "./registry";
 
 const DEFAULT_WIDTH = 560;
@@ -72,7 +72,7 @@ export default function TaskDock({ taskId, covered, canDock }: TaskDockProps) {
 	const dock = useTaskDock(taskId);
 	const registry = getTaskPanelsRegistry();
 	const entries = useSyncExternalStore(registry.subscribe, registry.list);
-	const tabs = dock.open.map((id) => entries.find((entry) => entry.def.id === id)).filter((entry): entry is SlotEntry<TaskPanelDef> => !!entry);
+	const tabs = dockedPanelIds(dock).map((id) => entries.find((entry) => entry.def.id === id)).filter((entry): entry is SlotEntry<TaskPanelDef> => !!entry);
 	const active = resolveActiveTab(taskId, tabs.map((tab) => tab.def.id), dock.active);
 	const show = !covered && canDock && tabs.length > 0;
 	// A lone panel needs no strip unless it is closable: then the strip carries its ✕.
@@ -260,7 +260,7 @@ function DockTabs({ taskId, tabs, active }: { taskId: string; tabs: readonly Slo
 		const buttons = Array.from(stripRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? []);
 		const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
 		if (current < 0) return;
-		if (event.key === "Delete" || event.key === "Backspace") {
+		if (event.key === "Delete") {
 			const tab = visible[current];
 			if (tab && tab.def.closable !== false) {
 				event.preventDefault();

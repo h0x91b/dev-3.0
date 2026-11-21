@@ -107,8 +107,8 @@ import { isBoardMounted, runBoardViewCommand } from "./board-views/view-commands
 import CoordinatorFinderModal from "./components/CoordinatorFinderModal";
 import OpenInPickerModal from "./components/OpenInPickerModal";
 import TaskImageViewer from "./components/TaskImageViewer";
-import TaskArtifactViewer from "./components/TaskArtifactViewer";
 import TaskPanelInstances from "./task-panels/TaskPanelInstances";
+import { isArtifactViewerShowing, setArtifactPopupPreference, showArtifactViewer } from "./task-panels/artifact-panel";
 import HintOverlay from "./components/HintOverlay";
 import HelpOverlay from "./components/HelpOverlay";
 import TourOverlay from "./components/TourOverlay";
@@ -502,13 +502,6 @@ function App() {
 	// vanish on the same tick. It only ever grows while the viewer stays open.
 	const [imageViewer, setImageViewer] = useState<{ taskId: string; projectId: string; images: SharedImage[]; index: number; newIds: string[] } | null>(null);
 	const [filePreview, setFilePreview] = useState<OpenFilePreviewDetail | null>(null);
-	// Lightbox for artifacts an agent surfaced via `dev3 show-artifact`. Hosted
-	// here — never inside a task pane — so every surface that can open one (task
-	// workspace, archived task modal, a toast) gets the identical popup.
-	// `paneless`: opened from a surface that has no workspace pane behind it (the
-	// task detail modal). Such a viewer is a popup for its whole life — it neither
-	// docks nor hides with the route, because there is no task screen it belongs to.
-	const [artifactViewer, setArtifactViewer] = useState<{ taskId: string; projectId?: string; taskStatus?: TaskStatus; artifacts: SharedArtifact[]; index: number; paneless?: boolean; live?: LiveArtifact } | null>(null);
 	const markSharedItemsRead = useCallback((
 		projectId: string,
 		taskId: string,
@@ -550,13 +543,6 @@ function App() {
 			};
 		});
 	}, [markSharedItemsRead]);
-	const closeArtifactViewer = useCallback(() => {
-		const taskId = artifactViewerRef.current?.taskId;
-		setArtifactViewer(null);
-		const focusBadge = () => document.querySelector<HTMLButtonElement>("[data-testid='shared-artifacts-badge']")?.focus();
-		if (taskId) restoreFocusAfterViewer(() => routeRef.current, taskId, focusBadge);
-		else requestAnimationFrame(focusBadge);
-	}, []);
 	const closeImageViewer = useCallback(() => {
 		const taskId = imageViewerRef.current?.taskId;
 		setImageViewer(null);
@@ -567,23 +553,10 @@ function App() {
 	// snapshot hid presets seeded or renamed after the first New Task modal.
 	const agents = useAgents();
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>(DEFAULT_GLOBAL_SETTINGS);
-	// Which task's workspace pane may dock the artifact panel. Docking is the
-	// default; the popup is the explicit opt-in. Every surface with no pane of its
-	// own — the archived task modal, immersive fullscreen, a toast for a task that
-	// is not on screen — falls back to the popup because nothing publishes a slot
-	// there, and so does a narrow viewport, which the pane itself refuses.
-	const artifactDockTaskId = artifactViewer && !artifactViewer.paneless && globalSettings.openArtifactsInPopup !== true
-		? artifactViewer.taskId
-		: null;
-	// A docked panel belongs to its task's screen. Leaving that screen — or covering
-	// it with the inline diff — used to clear the dock slot and re-host the same
-	// viewer as a centred popup; instead it waits offscreen — still mounted, so the
-	// document, the version pick and an unsent draft come back with it — until the
-	// task's workspace is on screen again or the user closes it.
-	const artifactOffscreen = artifactViewer !== null
-		&& !artifactViewer.paneless
-		&& globalSettings.openArtifactsInPopup !== true
-		&& !routeShowsTaskWorkspace(state.route, artifactViewer.taskId);
+	// The artifact viewer lives in the task dock's artifact panel; it only needs the popup preference.
+	useEffect(() => {
+		setArtifactPopupPreference(globalSettings.openArtifactsInPopup === true);
+	}, [globalSettings.openArtifactsInPopup]);
 	// Auth failure for browser remote access (expired/invalid session).
 	// Seeded from the transport: with a dead session the expired verdict lands
 	// BEFORE React mounts (the boot probe on localhost beats the app bootstrap),
@@ -2171,10 +2144,6 @@ function App() {
 	// re-subscribing it every time the viewer opens/closes.
 	const imageViewerRef = useRef(imageViewer);
 	imageViewerRef.current = imageViewer;
-	const artifactViewerRef = useRef(artifactViewer);
-	artifactViewerRef.current = artifactViewer;
-	const artifactOffscreenRef = useRef(artifactOffscreen);
-	artifactOffscreenRef.current = artifactOffscreen;
 
 	// CLI-shared images (`dev3 show-image`). Always raise the attention badge; auto-open
 	// the lightbox ONLY when the user is already looking at this task (never steal focus).
@@ -2259,12 +2228,12 @@ function App() {
 			// A viewer waiting offscreen is not "already open" — republishing into it
 			// would update a panel nobody can see and swallow the toast that is the
 			// only signal left.
-			const alreadyOpenForTask = artifactViewerRef.current?.taskId === taskId && !artifactOffscreenRef.current;
+			const alreadyOpenForTask = isArtifactViewerShowing(taskId);
 			if (alreadyOpenForTask || (viewingThisTask && foreground)) {
 				markSharedItemsRead(projectId, taskId, "artifacts", artifacts);
 				// A republish keeps the presentation the open viewer already had; a
 				// fresh one lands on the task the user is looking at, so it can dock.
-				setArtifactViewer((prev) => ({
+				showArtifactViewer((prev) => ({
 					taskId,
 					projectId,
 					artifacts,
@@ -2281,7 +2250,7 @@ function App() {
 					// in its pane rather than as a popup over the board it came from.
 					openTaskFromNotification(taskId, projectId);
 					markSharedItemsRead(projectId, taskId, "artifacts", artifacts);
-					setArtifactViewer({ taskId, projectId, artifacts, index: artifacts.length - 1, paneless: false });
+					showArtifactViewer({ taskId, projectId, artifacts, index: artifacts.length - 1, paneless: false });
 				},
 			});
 		}
@@ -2306,7 +2275,7 @@ function App() {
 			// pane offers a slot for it, so it lives as a popup — only a viewer that
 			// started docked may later hide itself when the route walks away from it.
 			const noPane = paneless === true || !routeShowsTaskWorkspace(routeRef.current, taskId);
-			setArtifactViewer({ taskId, projectId, taskStatus, artifacts: artifacts ?? [], index: index ?? artifacts.length - 1, paneless: noPane, live });
+			showArtifactViewer({ taskId, projectId, taskStatus, artifacts: artifacts ?? [], index: index ?? artifacts.length - 1, paneless: noPane, live });
 		}
 		window.addEventListener("dev3:openArtifactViewer", onOpenArtifactViewer);
 		return () => window.removeEventListener("dev3:openArtifactViewer", onOpenArtifactViewer);
@@ -4059,19 +4028,6 @@ function App() {
 				onClose={() => setShortcutsModal((s) => ({ ...s, open: false }))}
 			/>
 			{updatePreviewOpen && <UpdatePopoverSimulatorModal onClose={() => setUpdatePreviewOpen(false)} />}
-			{artifactViewer && (
-				<TaskArtifactViewer
-					taskId={artifactViewer.taskId}
-					projectId={artifactViewer.projectId}
-					task={state.currentProjectTasks.find((candidate) => candidate.id === artifactViewer.taskId)}
-					taskStatus={artifactViewer.taskStatus}
-					live={state.currentProjectTasks.find((candidate) => candidate.id === artifactViewer.taskId)?.liveArtifact ?? artifactViewer.live}
-					artifacts={artifactViewer.artifacts}
-					initialIndex={artifactViewer.index}
-					offscreen={artifactOffscreen}
-					onClose={closeArtifactViewer}
-				/>
-			)}
 			{imageViewer && (
 				<TaskImageViewer
 					taskId={imageViewer.taskId}
@@ -4110,7 +4066,7 @@ function App() {
 			)}
 			{launchLocationIssue && <LaunchLocationGate issue={launchLocationIssue} />}
 			{/* Task panels outlive immersive fullscreen: there they wait parked, still mounted. */}
-			<TaskPanelInstances />
+			<TaskPanelInstances tasks={state.currentProjectTasks} />
 			{/* Agents block on these answers, and confirm() declines when no host is
 			    mounted — so the hosts stay up in immersive fullscreen too. */}
 			<ConfirmHost onBusyChange={setConfirmBusy} />
@@ -4211,7 +4167,6 @@ function App() {
 						activeTaskId={route.activeTaskId}
 						taskView={route.taskView}
 						navigationGuardRef={navigationGuardRef}
-						dockArtifact={artifactDockTaskId !== null && artifactDockTaskId === route.activeTaskId}
 						isTerminalFullscreen={terminalImmersiveVisible}
 						onToggleTerminalFullscreen={toggleTerminalImmersive}
 						skipCopyModeReset={skipTerminalCopyReset}
@@ -4244,7 +4199,6 @@ function App() {
 						navigate={navigate}
 						dispatch={dispatch}
 						navigationGuardRef={navigationGuardRef}
-						dockArtifact={artifactDockTaskId !== null && artifactDockTaskId === route.taskId}
 						isTerminalFullscreen={terminalImmersiveVisible}
 						onToggleTerminalFullscreen={toggleTerminalImmersive}
 						skipCopyModeReset={skipTerminalCopyReset}

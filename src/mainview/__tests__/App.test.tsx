@@ -155,8 +155,16 @@ vi.mock("../components/GlobalSettings", () => ({
 vi.mock("../components/Changelog", () => ({
 	default: (_props: { navigate: unknown; goBack: unknown; canGoBack: unknown }) => <div data-testid="changelog-screen" />,
 }));
-vi.mock("../components/ProjectView", () => ({
-	default: (props: {
+// The screens offer the task dock a real seat, as the workspace pane does, and report whether
+// the artifact panel sits in it as a tab.
+vi.mock("../components/ProjectView", async () => {
+	const { default: TaskDock } = await import("../task-panels/TaskDock");
+	const { dockedPanelIds, useTaskDock } = await import("../task-panels/dock-store");
+	const { ARTIFACT_PANEL_ID } = await import("../task-panels/artifact-panel");
+	function ArtifactDocked({ taskId, children }: { taskId: string; children: (docked: boolean) => React.ReactNode }) {
+		return <>{children(dockedPanelIds(useTaskDock(taskId)).includes(ARTIFACT_PANEL_ID))}</>;
+	}
+	return { default: (props: {
 		projectId: string;
 		spaceId?: string;
 		activeTaskId?: string;
@@ -164,10 +172,11 @@ vi.mock("../components/ProjectView", () => ({
 		taskView?: boolean;
 		bellCounts?: Map<string, number>;
 		bellReasons?: Map<string, string[]>;
-		dockArtifact?: boolean;
+		route?: { diff?: unknown };
 		dispatch?: (action: { type: string; request?: unknown }) => void;
 		navigationGuardRef?: { current: { isDirty: () => boolean; onSave: () => Promise<void> } | null };
 	}) => (
+		<ArtifactDocked taskId={props.activeTaskId ?? ""}>{(dockArtifact) => (
 		<div
 			data-testid="project-screen"
 			data-project-id={props.projectId}
@@ -175,19 +184,33 @@ vi.mock("../components/ProjectView", () => ({
 			data-active-task-id={props.activeTaskId ?? ""}
 			data-task-detail-id={props.taskDetailId ?? ""}
 			data-task-view={props.taskView ? "true" : "false"}
-			data-dock-artifact={props.dockArtifact ? "true" : "false"}
+			data-dock-artifact={dockArtifact ? "true" : "false"}
 			data-bell-count={String(props.bellCounts?.get("t-overflow") ?? 0)}
 			data-bell-reasons={JSON.stringify(props.bellReasons?.get("t-overflow") ?? [])}
 		>
 			<button data-testid="mock-make-dirty" onClick={() => { if (props.navigationGuardRef) props.navigationGuardRef.current = { isDirty: () => true, onSave: async () => {} }; }} />
 			<button data-testid="mock-open-diff" onClick={() => props.dispatch?.({ type: "openTaskDiff", request: { mode: "branch" } })} />
 			<button data-testid="mock-close-diff" onClick={() => props.dispatch?.({ type: "closeTaskDiff" })} />
+			{props.activeTaskId && <div className="flex"><TaskDock taskId={props.activeTaskId} covered={!!props.route?.diff} canDock /></div>}
 		</div>
-	),
-}));
-vi.mock("../components/TaskWorkspaceView", () => ({
-	default: (props: { immersive?: boolean; dockArtifact?: boolean }) => <div data-testid="task-screen" data-immersive={props.immersive ? "true" : "false"} data-dock-artifact={props.dockArtifact ? "true" : "false"} />,
-}));
+		)}</ArtifactDocked>
+	) };
+});
+vi.mock("../components/TaskWorkspaceView", async () => {
+	const { default: TaskDock } = await import("../task-panels/TaskDock");
+	const { dockedPanelIds, useTaskDock } = await import("../task-panels/dock-store");
+	const { ARTIFACT_PANEL_ID } = await import("../task-panels/artifact-panel");
+	return {
+		default: function TaskScreen(props: { taskId: string; immersive?: boolean }) {
+			const docked = dockedPanelIds(useTaskDock(props.taskId)).includes(ARTIFACT_PANEL_ID);
+			return (
+				<div data-testid="task-screen" data-immersive={props.immersive ? "true" : "false"} data-dock-artifact={docked ? "true" : "false"}>
+					<div className="flex"><TaskDock taskId={props.taskId} covered={false} canDock={!props.immersive} /></div>
+				</div>
+			);
+		},
+	};
+});
 vi.mock("../components/TaskTerminal", () => ({
 	default: () => <div data-testid="task-screen" />,
 }));
@@ -254,6 +277,7 @@ import { setStreamerMode } from "../streamer-mode";
 import { setAgentTrafficEnabledForTests, syncAgentTrafficFromGlobalSettings } from "../agent-traffic-flag";
 import { OPEN_AGENT_TRAFFIC_LOG_EVENT, openAgentTrafficLog } from "../agent-traffic-events";
 import { RPC_STATUS_EVENT } from "../diagnostics";
+import { installTaskPanelBuiltins } from "../task-panels/__tests__/install-builtins";
 
 const mockedAdjustZoom = vi.mocked(adjustZoom);
 
@@ -1779,6 +1803,8 @@ describe("App keyboard shortcuts", () => {
 	});
 
 	describe("CLI shared-artifact updates", () => {
+		// The viewer is the task dock's built-in artifact panel.
+		beforeEach(installTaskPanelBuiltins);
 		const oneProject = [
 			{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
 		];
