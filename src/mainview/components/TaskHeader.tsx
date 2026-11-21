@@ -10,7 +10,7 @@ import LabelChip from "./LabelChip";
 import PriorityBadge from "./PriorityBadge";
 import OpenInMenu from "./OpenInMenu";
 import { formatDate } from "./NoteItem";
-import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle, isCoordinatorTask, isSharedClip, resolveTaskCompareBaseBranch, taskCompletionOwner, taskSharedMedia, taskUsesWorktree } from "../../shared/types";
+import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle, isCoordinatorTask, resolveTaskCompareBaseBranch, taskCompletionOwner, taskUsesWorktree } from "../../shared/types";
 import { earlierPullRequests, trustedPrStatusCache } from "../../shared/task-pull-requests";
 import InlineRename from "./InlineRename";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
@@ -29,11 +29,8 @@ import SpawnAgentModal from "./SpawnAgentModal";
 import ScheduleMessageModal from "./ScheduleMessageModal";
 import ScheduledMessagesChip from "./ScheduledMessagesChip";
 import BugHuntersLightbox from "./BugHuntersLightbox";
-import TaskDevServer from "./task-info-panel/TaskDevServer";
-import TaskExposedPorts from "./task-info-panel/TaskExposedPorts";
 import TaskSharedImages from "./task-info-panel/TaskSharedImages";
 import TaskArtifacts from "./task-info-panel/TaskArtifacts";
-import TaskScripts from "./task-info-panel/TaskScripts";
 import TaskGitActionsSheet from "./task-info-panel/TaskGitActionsSheet";
 import { useTaskBranchStatus } from "./task-info-panel/useTaskBranchStatus";
 import TaskPrStatusPopover from "./TaskPrStatusPopover";
@@ -49,14 +46,11 @@ import {
 	FullscreenExitIcon,
 	PanelChevronIcon,
 	PanelLeftIcon,
-	ImagesIcon,
-	ArtifactsIcon,
 	SendLaterIcon,
 	HibernateIcon,
 } from "./TaskIcons";
 import TaskNotes from "./task-info-panel/TaskNotes";
 import TaskNotesOverlay from "./TaskNotesOverlay";
-import TaskOpenIn from "./task-info-panel/TaskOpenIn";
 import TaskPaneControls from "./task-info-panel/TaskPaneControls";
 import TerminalShortcutsButton from "./task-info-panel/TerminalShortcutsButton";
 import { useTaskAllocatedPorts } from "./task-info-panel/useTaskAllocatedPorts";
@@ -74,6 +68,7 @@ import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { TASK_HEADER_REGIONS } from "../task-header/registry";
 import { taskHasGitBar } from "../task-header/builtin-git";
 import { TaskHeaderProvider, TaskHeaderRegionItems, type LegacyClusters } from "../task-header/scope";
+import { SHEET_ROW_CLASS } from "../task-header/sheet-row";
 import BottomSheet from "./BottomSheet";
 import HelpSpot from "./HelpSpot";
 import Tooltip from "./Tooltip";
@@ -110,13 +105,6 @@ const MAX_RATIO = 0.33;
 // `useCompact` (1600) still reports "roomy". Below this the branch name clamps
 // harder, keeping both rows on one line.
 const TIGHT_PANEL_WIDTH = 1280;
-
-// Uniform full-width row used by the narrow-viewport (mobile) actions sheet.
-// The mobile sheet is a curated read/trigger surface — a clean list of rows, not
-// the dense desktop toolbar (UX bible §12.3/§12.6). The touch-target floor comes
-// from the `.touch-actions` group wrapper around the list.
-const SHEET_ROW_CLASS =
-	"flex w-full items-center gap-3 rounded-xl border border-edge bg-raised px-4 py-2.5 text-left text-fg transition-colors hover:bg-raised-hover active:bg-elevated";
 
 /** Trailing "opens something" affordance for a mobile action row. */
 function ChevronRightIcon() {
@@ -168,8 +156,6 @@ function TaskHeaderFrame({
 	const t = useT();
 	const compact = useCompact();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
-	const sharedMedia = taskSharedMedia(task);
-	const artifactEntryCount = (task.sharedArtifacts?.length ?? 0) + (task.liveArtifact ? 1 : 0);
 	// Per-control hiding (§5.10) — each of these can be individually hidden
 	// (right-click "Hide") and restored from the panel's one restore control.
 	const spawnAgentHidden = useIsControlHidden("spawn-agent");
@@ -177,7 +163,6 @@ function TaskHeaderFrame({
 	const hibernateHidden = useIsControlHidden("hibernate");
 	const scheduledMessageHidden = useIsControlHidden("scheduled-message");
 	const tmuxPaneControlsHidden = useIsControlHidden("tmux-pane-controls");
-	const scriptsRunnerHidden = useIsControlHidden("scripts-runner");
 	const diffIncludeTestsHidden = useIsControlHidden("diff-include-tests");
 	const simplified = useIsSimplifyViewApplied();
 	const [actionsSheetOpen, setActionsSheetOpen] = useState(false);
@@ -1472,19 +1457,7 @@ function TaskHeaderFrame({
 	// above. Kept: watch, agent triggers, tunnels (open the app on this
 	// phone), shared images, and the read-only details.
 	const narrowSheetStatusCluster = () => (
-		<div className="touch-actions flex flex-col gap-2">
-			<button
-				type="button"
-				data-testid="task-actions-fullscreen"
-				onClick={() => {
-					setActionsSheetOpen(false);
-					toggleTerminalFullscreen();
-				}}
-				className={SHEET_ROW_CLASS}
-			>
-				<FullscreenEnterIcon className="h-5 w-5 shrink-0 text-fg-3" />
-				<span className="flex-1 text-sm font-medium">{t("infoPanel.fullScreen")}</span>
-			</button>
+		<>
 			<button
 				type="button"
 				onClick={handleToggleWatch}
@@ -1562,43 +1535,10 @@ function TaskHeaderFrame({
 					<ChevronRightIcon />
 				</button>
 			)}
-
-			<TaskExposedPorts task={task} rowClassName={SHEET_ROW_CLASS} />
-
-			{sharedMedia.length > 0 && (
-				<button
-					type="button"
-					onClick={() => {
-						setActionsSheetOpen(false);
-						window.dispatchEvent(new CustomEvent("dev3:openImageViewer", {
-							detail: { taskId: task.id, projectId: project.id, images: sharedMedia },
-						}));
-					}}
-					className={SHEET_ROW_CLASS}
-				>
-					<ImagesIcon className="h-5 w-5 shrink-0 text-fg-3" />
-					<span className="flex-1 text-sm font-medium">{t(sharedMedia.some(isSharedClip) ? "infoPanel.mediaLabel" : "infoPanel.imagesLabel")}</span>
-					<span className="text-xs font-semibold text-accent tabular-nums">{sharedMedia.length}</span>
-				</button>
-			)}
-
-			{artifactEntryCount > 0 && (
-				<button
-					type="button"
-					onClick={() => {
-						setActionsSheetOpen(false);
-						window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
-							detail: { taskId: task.id, taskStatus: task.status, projectId: project.id, artifacts: task.sharedArtifacts ?? [], index: artifactEntryCount - 1, live: task.liveArtifact },
-						}));
-					}}
-					className={SHEET_ROW_CLASS}
-				>
-					<ArtifactsIcon className="h-5 w-5 shrink-0 text-fg-3" />
-					<span className="flex-1 text-sm font-medium">{t("infoPanel.artifactsLabel")}</span>
-					<span className="text-xs font-semibold text-accent tabular-nums">{artifactEntryCount}</span>
-				</button>
-			)}
-
+		</>
+	);
+	const narrowSheetSessionCluster = () => (
+		<>
 			{/* Last in the group: the one row that stops the session. */}
 			{canHibernate && !simplified && (
 				<button
@@ -1615,13 +1555,12 @@ function TaskHeaderFrame({
 					<span className="flex-1 text-sm font-medium">{t("task.hibernate")}</span>
 				</button>
 			)}
-		</div>
+		</>
 	);
 	const legacyClusters: LegacyClusters = narrow
 		? {
 			status: { bar: narrowBarStatusCluster(), sheet: narrowSheetStatusCluster() },
-			session: {},
-			runtime: {},
+			session: { sheet: narrowSheetSessionCluster() },
 		}
 		: {
 			status: {
@@ -1654,33 +1593,14 @@ function TaskHeaderFrame({
 					</>
 				),
 			},
-			runtime: {
-				bar: (
-					<>
-						<TaskOpenIn task={task} isTaskActive={isTaskActive} showFileBrowser={collapsed} compact={tight} />
-						{project.kind !== "virtual" && (
-							<>
-								{!scriptsRunnerHidden && (
-									<HideableControl id="scripts-runner">
-										<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
-									</HideableControl>
-								)}
-								<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} compact={tight} />
-							</>
-						)}
-						<TaskExposedPorts task={task} compact={tight} />
-						<TaskSharedImages task={task} projectId={project.id} compact={tight} />
-						<TaskArtifacts task={task} projectId={project.id} compact={tight} />
-					</>
-				),
-			},
 		};
 	const headerValue = {
 		scope: { task, project, dispatch, navigate },
 		legacy: legacyClusters,
-		layout: { compact, tight, collapsed },
+		layout: { compact, tight, collapsed, narrow },
 		git,
 		onOpenInlineDiff,
+		closeSheet: () => setActionsSheetOpen(false),
 	};
 
 	// Narrow viewport (phone / narrow window): the two dense desktop toolbars do
@@ -1725,9 +1645,25 @@ function TaskHeaderFrame({
 					testId="task-actions-sheet"
 				>
 					<div className="flex flex-col gap-4">
-						{TASK_HEADER_REGIONS.map((region) => region === "git"
-							? <TaskGitActionsSheet key={region} rowClassName={SHEET_ROW_CLASS} onAction={() => setActionsSheetOpen(false)} />
-							: <TaskHeaderRegionItems key={region} region={region} surface="sheet" />)}
+						<div className="touch-actions flex flex-col gap-2">
+							<button
+								type="button"
+								data-testid="task-actions-fullscreen"
+								onClick={() => {
+									setActionsSheetOpen(false);
+									toggleTerminalFullscreen();
+								}}
+								className={SHEET_ROW_CLASS}
+							>
+								<FullscreenEnterIcon className="h-5 w-5 shrink-0 text-fg-3" />
+								<span className="flex-1 text-sm font-medium">{t("infoPanel.fullScreen")}</span>
+							</button>
+							{/* Session closes the group: its last row is the one that stops the session. */}
+							<TaskHeaderRegionItems region="status" surface="sheet" />
+							<TaskHeaderRegionItems region="runtime" surface="sheet" />
+							<TaskHeaderRegionItems region="session" surface="sheet" />
+						</div>
+						<TaskGitActionsSheet rowClassName={SHEET_ROW_CLASS} onAction={() => setActionsSheetOpen(false)} />
 							<section className="border-t border-edge pt-4">
 								<h3 className="mb-2 text-dense font-semibold uppercase tracking-wider text-fg-muted">{t("infoPanel.sheetDetails")}</h3>
 								{taskDetailsBody()}

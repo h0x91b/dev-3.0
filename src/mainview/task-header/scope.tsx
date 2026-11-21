@@ -7,8 +7,8 @@ import { getTaskHeaderRegistry, type TaskHeaderGroup, type TaskHeaderRegion, typ
 /** Where a region is drawn: its bar in the header, or its section of the narrow actions sheet. */
 export type TaskHeaderSurface = "bar" | "sheet";
 
-/** The regions still drawn by one legacy cluster item; the git bar has real items. */
-export type LegacyRegion = Exclude<TaskHeaderRegion, "git">;
+/** The regions still drawn by one legacy cluster item; the git and runtime bars have real items. */
+export type LegacyRegion = Exclude<TaskHeaderRegion, "git" | "runtime">;
 
 /**
  * Today's JSX of each legacy bar, built by `<TaskHeader>` for the layout on screen. The
@@ -24,6 +24,8 @@ export interface TaskHeaderLayout {
 	tight: boolean;
 	/** The one-row header; the expanded one shows the details grid under it. */
 	collapsed: boolean;
+	/** Phone-width viewport: one summary bar plus the actions sheet. */
+	narrow: boolean;
 }
 
 /**
@@ -35,6 +37,8 @@ interface TaskHeaderInternals {
 	layout: TaskHeaderLayout;
 	git: TaskBranchStatusController;
 	onOpenInlineDiff?: (request: TaskInlineDiffRequest) => void;
+	/** Closes the narrow actions sheet; a sheet row that opens something else calls it first. */
+	closeSheet: () => void;
 }
 
 interface TaskHeaderContextValue extends TaskHeaderInternals {

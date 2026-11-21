@@ -1,3 +1,5 @@
+> Updated on 2026-11-21 by `decisions/2026/11/21/task-header-runtime-items.md`: the runtime bar is no longer a legacy cluster, and the host owns the narrow sheet's action group.
+
 # Task header: a four-region slot, starting with one legacy cluster per bar
 
 ## Context
@@ -6,7 +8,7 @@ Step 3.1 of the GUI-on-Cordis migration (`gui-plugin-slots-and-api-versioning`) 
 
 ## Decision
 
-`src/mainview/task-header/` defines `TaskHeaderRegistry` (`taskHeader`, regions `status | session | git | runtime`) on the app root, and `BUILTIN_TASK_HEADER` (required, started by `main.tsx` beside the board views) registers one item per region, `builtin:<region>.legacy-cluster`. `TaskInfoPanel` became `TaskHeader` (all seven mount sites): it still builds each bar's JSX, publishes it with the task scope through a React context (`TaskHeaderProvider`, scoped to one mounted header), and draws every bar as `<TaskHeaderRegionItems>` — a `SlotItems` with `display: contents`, so the items lay out exactly as the old children did. Chrome (⚙, restore, help, info, show-panel, fullscreen, collapse, the narrow kebab) stays the host's. Narrow reads the same registry: the summary bar renders every region's `bar` form, the actions sheet every region's `sheet` form. The legacy clusters encode today's narrow layout, where the status cluster's sheet form still carries session and runtime rows; 3.2–3.5 move each row into its own item.
+`src/mainview/task-header/` defines `TaskHeaderRegistry` (`taskHeader`, regions `status | session | git | runtime`) on the app root, and `BUILTIN_TASK_HEADER_PLUGIN` (required, started by `main.tsx` beside the board views) registers one item per region, `builtin:<region>.legacy-cluster`. `TaskInfoPanel` became `TaskHeader` (all seven mount sites): it still builds each bar's JSX, publishes it with the task scope through a React context (`TaskHeaderProvider`, scoped to one mounted header), and draws every bar as `<TaskHeaderRegionItems>` — a `SlotItems` with `display: contents`, so the items lay out exactly as the old children did. Chrome (⚙, restore, help, info, show-panel, fullscreen, collapse, the narrow kebab) stays the host's. Narrow reads the same registry: the summary bar renders every region's `bar` form, the actions sheet every region's `sheet` form. The legacy clusters encode today's narrow layout, where the status cluster's sheet form still carries session and runtime rows; 3.2–3.5 move each row into its own item.
 
 Internal only: no manifest kind names `taskHeader`, so the extension guard unloads any extension that registers into it.
 
