@@ -1,0 +1,3 @@
+Short: Extra folders beside each project
+
+Folders outside a project now show beside it: the file explorer lists each one as its own collapsible section, with a picker that chooses which folders show, and a dashboard card opens a slim `+N folders` list. The list comes from Claude's `permissions.additionalDirectories` in the project's and the user's Claude settings, the folders of a VS Code `.code-workspace` file in the project, and the new `extraFolders` project setting. The explorer's "Insert path" turns any control character in a file name into `?`, so a crafted name can no longer end the terminal's bracketed paste and run as typed input.

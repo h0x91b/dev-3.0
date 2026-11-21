@@ -32,6 +32,19 @@ const fileExplorer = {
 	"fileExplorer.openFailed": "Could not open the file: {error}",
 	"fileExplorer.showFiles": "Show files",
 	"fileExplorer.resize": "Resize file explorer",
+	"fileExplorer.folders": "Folders",
+	"fileExplorer.showFolders": "Show folders",
+	"fileExplorer.showAllFolders": "Show all",
+	"fileExplorer.editFolders": "Edit folders in project settings…",
+	"fileExplorer.rootHintProject": "project",
+	"fileExplorer.rootHintTask": "task",
+	"fileExplorer.folderMissing": "missing",
+	"fileExplorer.folderMissingNote": "This folder does not exist on this machine.",
+	"fileExplorer.folderSourceClaude": "Claude",
+	"fileExplorer.folderSourceVscode": "VS Code",
+	"fileExplorer.folderSourceDev3": "dev3",
+	"fileExplorer.hiddenFolders_one": "{count} folder hidden",
+	"fileExplorer.hiddenFolders_other": "{count} folders hidden",
 } as const;
 
 export default fileExplorer;

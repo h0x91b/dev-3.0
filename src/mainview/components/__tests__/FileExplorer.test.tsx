@@ -334,4 +334,12 @@ describe("quoteForShell", () => {
 		expect(quoteForShell("my file.md")).toBe("'my file.md'");
 		expect(quoteForShell("it's.md")).toBe("'it'\\''s.md'");
 	});
+
+	it("never passes a control byte through, so a file name cannot end the terminal's bracketed paste", () => {
+		const quoted = quoteForShell("evil\u001b[201~; rm -rf ~\r.md");
+		expect(quoted).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/);
+		// Each control byte becomes an unquoted `?`, which a POSIX shell still globs to the real file.
+		expect(quoted).toBe("evil?'[201~; rm -rf ~'?.md");
+		expect(quoteForShell("a\u0007b\u009bc")).toBe("a?b?c");
+	});
 });

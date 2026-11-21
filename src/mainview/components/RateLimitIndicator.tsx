@@ -84,7 +84,9 @@ function RateLimitIndicator({
 		? { ...report, snapshots: scopeRateLimitSnapshots(report.snapshots, scope) }
 		: null;
 	const latestSnapshot = scoped ? latestRateLimitSnapshot(scoped) : null;
-	const latestWindow = latestSnapshot ? worstSnapshotWindow(latestSnapshot) : null;
+	// The pill spells out only headerPillWindows, so its colour, percent and label follow the
+	// fullest of THOSE: a window it hides (agy's other models) must not colour what it shows.
+	const latestWindow = latestSnapshot ? worstSnapshotWindow({ ...latestSnapshot, windows: headerPillWindows(latestSnapshot) }) : null;
 	const unlimited = latestSnapshot ? isUnlimitedRateLimitSnapshot(latestSnapshot) : false;
 	// Opted-in Kimi providers with no reading anywhere still need the pill: it is
 	// the only way to the panel that says "no recent data". A keyless one never

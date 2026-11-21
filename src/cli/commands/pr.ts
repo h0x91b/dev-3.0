@@ -8,8 +8,10 @@ import { DEV3_HOME } from "../../bun/paths";
 import { buildTaskPrDeepLinkSection, deepLinkSchemeRegistered } from "../../shared/deep-link";
 import { taskProtocolMode } from "../../shared/types";
 import { CLI_EXIT_CODE_GH_TLS_UNVERIFIED, CLI_EXIT_CODE_GH_UNAVAILABLE } from "../../shared/cli-exit-codes";
+import { sendRequest } from "../socket-client";
+import { senderAgentParams } from "../sender-agent";
 
-const USAGE = `Usage: dev3 pr create --title "..." [--description "..."] [--base <branch>] [--draft] [--auto-merge[=squash|merge|rebase]]
+const USAGE = `Usage: dev3 pr create --title "..." [--description "..."] [--base <branch>] [--draft] [--assignee <login>] [--auto-merge[=squash|merge|rebase]]
        dev3 pr auto-merge [<number|url>] [--strategy squash|merge|rebase] [--off]
        dev3 pr watch [--until ci|merged] [--pr <N>] [--task <id>] [--project <id>] [--off|--list]`;
 
@@ -30,6 +32,8 @@ export interface PrDeps {
 	platform: NodeJS.Platform;
 	/** `false` when the user turned the PR→task footer off in Settings → Tasks. */
 	originTaskLinkEnabled(): boolean;
+	/** Subscribe the calling agent to its branch PR's merge; `false` when the app cannot. */
+	watchUntilMerged(context: CliContext): Promise<boolean>;
 }
 
 export const realPrDeps: PrDeps = {
@@ -60,6 +64,19 @@ export const realPrDeps: PrDeps = {
 		} catch {
 			return true;
 		}
+	},
+	watchUntilMerged: async (context) => {
+		if (!context.socketPath || !context.taskId) return false;
+		// No PR number: a number the app cannot tie to this branch would become a "followed" PR, not the task's own.
+		// Just over the app's 15 s cap on its `gh` lookup, so a stalled socket costs seconds, not a minute.
+		const resp = await sendRequest(context.socketPath, "pr.watch.add", {
+			taskId: context.taskId,
+			projectId: context.projectId,
+			until: "merged",
+			sourceTaskId: context.taskId,
+			...senderAgentParams(context),
+		}, { timeoutMs: 20_000 }).catch(() => null);
+		return resp?.ok === true;
 	},
 };
 
@@ -122,7 +139,7 @@ async function setAutoMerge(args: ParsedArgs, context: CliContext | null, deps: 
 async function createPr(args: ParsedArgs, context: CliContext | null, deps: PrDeps): Promise<void> {
 	// Deliberately no `--task`: the pull request is opened for the branch checked
 	// out HERE, so naming another task would push one branch and describe another.
-	rejectUnknownFlags(args, ["title", "description", "base", "draft", "auto-merge"]);
+	rejectUnknownFlags(args, ["title", "description", "base", "draft", "assignee", "auto-merge"]);
 
 	const title = (args.flags.title ?? "").trim();
 	if (!title) exitUsage(`--title is required.\n${USAGE}`);
@@ -133,6 +150,7 @@ async function createPr(args: ParsedArgs, context: CliContext | null, deps: PrDe
 	if (args.flags.description === "true") {
 		exitUsage('--description needs a value: --description "..." , --description @file, or drop the flag.');
 	}
+	const assignees = resolveAssignees(args);
 
 	const cwd = context?.worktreePath ?? deps.cwd;
 	deps = withProjectGitHubAccount(deps, context, cwd);
@@ -149,14 +167,20 @@ async function createPr(args: ParsedArgs, context: CliContext | null, deps: PrDe
 		);
 	}
 
-	const push = deps.run("git", ["push", "--set-upstream", "origin", branch], cwd);
-	if (push.status !== 0) {
-		exitError(`git push failed for branch ${branch}`, push.stderr.trim() || push.stdout.trim());
-	}
+	const remote = pushBranch(branch, cwd, deps);
 
 	const ghArgs = ["pr", "create", "--title", title, "--body", prBody(args.flags.description, context, deps)];
+	if (remote !== "origin") {
+		// A fork head: gh must open the PR on origin's repository, naming the fork's owner.
+		const upstream = remoteRepo("origin", cwd, deps);
+		const head = remoteRepo(remote, cwd, deps, { push: true });
+		if (upstream && head && repoName(head) !== repoName(upstream)) {
+			ghArgs.push("--repo", repoName(upstream), "--head", `${head.owner}:${branch}`);
+		}
+	}
 	if (base) ghArgs.push("--base", base);
 	if (draft) ghArgs.push("--draft");
+	for (const login of assignees) ghArgs.push("--assignee", login);
 
 	const created = deps.run("gh", ghArgs, cwd);
 	if (created.status !== 0) {
@@ -167,9 +191,11 @@ async function createPr(args: ParsedArgs, context: CliContext | null, deps: PrDe
 	}
 
 	const url = prUrl(created.stdout);
-	process.stdout.write(`Pushed       ${branch} → origin\n`);
+	process.stdout.write(`Pushed       ${branch} → ${remote}\n`);
 	process.stdout.write(`Pull request ${url || "created (gh printed no URL)"}\n`);
 	if (base) process.stdout.write(`Base         ${base}\n`);
+
+	if (context?.taskId) await announceMergeWatch(context, deps);
 
 	if (mergeMethod) {
 		// Auto-merge is a second call, so the PR exists either way: a repo with the
@@ -184,14 +210,92 @@ async function createPr(args: ParsedArgs, context: CliContext | null, deps: PrDe
 		}
 		process.stdout.write(`Auto-merge   enabled (${mergeMethod})\n`);
 	}
-	if (context?.taskId) {
-		const virtual = readProjectDirect(context.projectId)?.kind === "virtual";
-		process.stdout.write(
-			virtual
-				? "PR watch is not available for Operations tasks yet — check the pull request with gh.\n"
-				: "Waiting on CI or merge? `dev3 pr watch [--until merged]` — dev3 messages you; do not poll gh.\n",
+}
+
+/**
+ * The merge lands long after this turn ends; the watch is what wakes the agent to
+ * request completion. Armed before auto-merge, whose failure exits.
+ */
+async function announceMergeWatch(context: CliContext, deps: PrDeps): Promise<void> {
+	if (readProjectDirect(context.projectId)?.kind === "virtual") {
+		process.stdout.write("PR watch is not available for Operations tasks yet — check the pull request with gh.\n");
+	} else if (await deps.watchUntilMerged(context)) {
+		process.stdout.write("Watching     until merged — dev3 will message you then. Waiting on CI too? `dev3 pr watch`.\n");
+	} else {
+		process.stdout.write("Waiting on CI or merge? `dev3 pr watch [--until merged]` — dev3 messages you; do not poll gh.\n");
+	}
+}
+
+/**
+ * Push to git's own triangular-workflow remote (`branch.<b>.pushRemote`, then
+ * `remote.pushDefault`), else origin. When origin refuses and exactly one other
+ * remote exists that GitHub calls a fork of origin, push there instead.
+ */
+function pushBranch(branch: string, cwd: string, deps: PrDeps): string {
+	const configured = [`branch.${branch}.pushRemote`, "remote.pushDefault"]
+		.map((key) => deps.run("git", ["config", "--get", key], cwd))
+		.find((res) => res.status === 0 && res.stdout.trim())?.stdout.trim();
+	// An explicit `<branch>:refs/heads/<branch>` refspec: with a bare `<branch>` and
+	// `push.default=upstream`, git maps the push onto the inherited upstream — the
+	// base, for a task branch renamed with `git branch -m` (#2289).
+	const push = (remote: string) => deps.run("git", ["push", "--set-upstream", remote, `${branch}:refs/heads/${branch}`], cwd);
+	const remote = configured ?? "origin";
+	const first = push(remote);
+	if (first.status === 0) return remote;
+
+	const detail = first.stderr.trim() || first.stdout.trim();
+	if (!configured && /permission to .* denied|returned error: 403/i.test(detail)) {
+		const others = deps.run("git", ["remote"], cwd).stdout.split("\n").map((r) => r.trim()).filter((r) => r && r !== "origin");
+		if (others.length === 1 && isForkOfOrigin(others[0], cwd, deps) && push(others[0]).status === 0) return others[0];
+		exitError(
+			`git push failed for branch ${branch}: origin is not writable for this account`,
+			`${detail}\nPush to your fork instead: \`git config remote.pushDefault <fork-remote>\`, then run this again.`,
 		);
 	}
+	exitError(`git push failed for branch ${branch}`, detail);
+}
+
+interface RemoteRepo {
+	host: string;
+	owner: string;
+	repo: string;
+}
+
+/** The repository a remote fetches from (or pushes to), parsed from its https / scp / ssh:// URL. */
+function remoteRepo(remote: string, cwd: string, deps: PrDeps, { push = false } = {}): RemoteRepo | null {
+	const url = deps.run("git", ["remote", "get-url", ...(push ? ["--push"] : []), remote], cwd).stdout.trim();
+	const match = url.match(/^(?:[a-z][a-z0-9+.-]*:\/\/)?(?:[^@/]+@)?([^/:]+)(?::\d+)?[:/]([^/]+)\/([^/]+?)(?:\.git)?\/?$/i);
+	return match ? { host: match[1].toLowerCase(), owner: match[2], repo: match[3] } : null;
+}
+
+/** gh's `[HOST/]OWNER/REPO`: a GitHub Enterprise host must be named or gh asks github.com. */
+function repoName({ host, owner, repo }: RemoteRepo): string {
+	return `${host === "github.com" ? "" : `${host}/`}${owner}/${repo}`.toLowerCase();
+}
+
+/** Only a remote GitHub itself calls a fork of origin may take the branch unasked. */
+function isForkOfOrigin(remote: string, cwd: string, deps: PrDeps): boolean {
+	const upstream = remoteRepo("origin", cwd, deps);
+	const candidate = remoteRepo(remote, cwd, deps, { push: true });
+	if (!upstream || !candidate || candidate.host !== upstream.host) return false;
+	const parent = deps.run("gh", ["repo", "view", repoName(candidate), "--json", "parent", "--jq", '.parent.owner.login + "/" + .parent.name'], cwd);
+	return parent.status === 0 && parent.stdout.trim().toLowerCase() === `${upstream.owner}/${upstream.repo}`.toLowerCase();
+}
+
+/**
+ * `--assignee` logins, repeatable or comma-separated like `gh pr create --assignee`.
+ * Only what was passed: nothing is ever assigned by default or inferred.
+ */
+function resolveAssignees(args: ParsedArgs): string[] {
+	const raw = args.repeated?.assignee ?? (args.flags.assignee !== undefined ? [args.flags.assignee] : []);
+	const logins = raw.flatMap((value) => {
+		if (value === "true") exitUsage("--assignee needs a login: --assignee <login>[,<login>...], or drop the flag.");
+		return value.split(",").map((login) => login.trim()).filter(Boolean);
+	});
+	if (raw.length > 0 && logins.length === 0) {
+		exitUsage("--assignee needs a login: --assignee <login>[,<login>...], or drop the flag.");
+	}
+	return logins;
 }
 
 /**

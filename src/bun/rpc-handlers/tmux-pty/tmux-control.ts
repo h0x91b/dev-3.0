@@ -207,10 +207,10 @@ export async function tmuxAction(params: { taskId: string; action: "splitH" | "s
 	try {
 		switch (params.action) {
 			case "splitH":
-				await tmux.splitWindow({ target: tmuxSession, orientation: "vertical", cwd: PANE_CWD_FORMAT, socket });
+				await tmux.splitWindow({ target: tmuxSession, orientation: "vertical", cwd: PANE_CWD_FORMAT, focus: true, socket });
 				break;
 			case "splitV":
-				await tmux.splitWindow({ target: tmuxSession, orientation: "horizontal", cwd: PANE_CWD_FORMAT, socket });
+				await tmux.splitWindow({ target: tmuxSession, orientation: "horizontal", cwd: PANE_CWD_FORMAT, focus: true, socket });
 				break;
 			case "zoom":
 				await tmux.toggleZoom(tmuxSession, { socket });

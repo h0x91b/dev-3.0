@@ -1,8 +1,9 @@
+import AutoHibernateSuggestions from "./components/AutoHibernateSuggestions";
 import InterfaceOnboarding from "./components/InterfaceOnboarding";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAppState, canGoBack, routeTaskId, routeShowsTaskWorkspace, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, taskOpenRoute, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type NavigateOptions, type Route } from "./state";
 import { lastProjectForSpace, rememberProjectForSpace } from "./utils/spaceBoardMemory";
-import { digitTargets, mixedEntryId, type MixedEntry } from "./utils/digitOrder";
+import { digitTargets, isDigitTargetOnScreen, mixedEntryId, type MixedEntry } from "./utils/digitOrder";
 import { useMixedPending, withPendingMixedOrder } from "./mixed-order-store";
 import { api, isElectrobun, getRpcConnectionState } from "./rpc";
 import { ignoreStartupReadFailure, startupRead } from "./startup-read";
@@ -16,7 +17,7 @@ import { preparationFailureMessage } from "./utils/preparationFailureMessage";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
 import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, BoardCopyFailureReason, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, LaunchLocationIssue, RequirementCheckResult, RosettaWarningInfo, LiveArtifact, SharedArtifact, SharedImage, StaleTmuxServer, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
-import { ACTIVE_STATUSES, hasGitWorkflow, orderProjectsForDisplay, getTaskTitle } from "../shared/types";
+import { ACTIVE_STATUSES, DEFAULT_COMPLETION_OFFER_STYLE, hasGitWorkflow, orderProjectsForDisplay, getTaskTitle } from "../shared/types";
 import type { DeepLinkNav } from "../shared/deep-link";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { useAgents } from "./hooks/useAgents";
@@ -28,7 +29,7 @@ import { setShortcutOverrides } from "./keymap-store";
 import { syncTerminalBidiFromGlobalSettings } from "./terminal-bidi/flag";
 import { adjustZoom, applyZoom, mobileDensityForRoute, setMobileDensity, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 import { useViewport } from "./hooks/useViewport";
-import { useMobile } from "./hooks/useMobile";
+import { useMobileBrowser } from "./hooks/useMobileBrowser";
 import { useAndroidBackGuard } from "./hooks/useAndroidBackGuard";
 import GlobalHeader from "./components/GlobalHeader";
 import AppMenuBar from "./components/AppMenuBar";
@@ -53,6 +54,8 @@ import ViewportLab from "./components/ViewportLab";
 import NativePaneLayoutLab from "./labs/native-pane/NativePaneLayoutLab";
 import { setToastSuppressed, taskToastContext, ToastHost, toast, type ToastEntry, type ToastOrigin } from "./toast";
 import { toastClearanceRef } from "./toast-clearance";
+import { getCompletionOfferStyle, hasCompletionOffer, isCompletionStripMounted, offerCompletion, setCompletionOfferStyle } from "./completion-offers";
+import CompletionOfferDialogHost from "./components/CompletionOfferDialogHost";
 import { agentMessageToast, type AgentMessageDetail, type AgentToastEnd } from "./agent-message-toast";
 import { showStaleAgentPathToast, type StaleAgentPathDetail } from "./stale-agent-path-toast";
 import { useSpaces } from "./useSpaces";
@@ -199,6 +202,11 @@ function findVisibleSearchInput(): HTMLElement | null {
 	return null;
 }
 
+// An opaque band touching the top edge makes Safari 26+ extend a solid colour under its
+// Liquid Glass status bar instead of blurring the header. Nothing here scrolls: `sticky`
+// only satisfies WebKit's fixed/sticky heuristic. It also carries the status-bar inset.
+const MOBILE_BROWSER_TOP_BAND = "sticky top-0 z-30 w-full shrink-0 bg-base pt-[env(safe-area-inset-top,0px)]";
+
 function App() {
 	const [state, dispatch] = useAppState();
 	const handleToastOverflow = useCallback((entry: ToastEntry) => {
@@ -258,11 +266,11 @@ function App() {
 	// Android hardware/gesture Back drives in-app navigation in mobile remote
 	// mode: close the topmost layer → route back → double-back-to-exit toast.
 	// Reads history depth through a ref so the popstate handler stays stable.
-	const isMobileDevice = useMobile();
+	const mobileBrowser = useMobileBrowser();
 	const historyIndexRef = useRef(state.historyIndex);
 	historyIndexRef.current = state.historyIndex;
 	useAndroidBackGuard({
-		enabled: isMobileDevice && !isElectrobun,
+		enabled: mobileBrowser,
 		routeBack: () => {
 			if (historyIndexRef.current <= 0) return false;
 			dispatch({ type: "goBack" });
@@ -855,6 +863,26 @@ function App() {
 		routeRef.current = state.route;
 	}, [state.route]);
 
+	// On the task, an offer waits on its task's strip. Where no strip is on screen
+	// (another task, the board, immersive fullscreen) the bell and a toast carry it.
+	// The Dialog style is the modal alone, as before the setting: no bell, no toast.
+	// The toast carries its own source line and click: the resolver only knows the open project's tasks.
+	// Returns the bell's withdrawal, for once the offer settles - possibly on another client.
+	const announceCompletionOffer = (offer: {
+		taskId: string; projectId: string; taskTitle?: string; subject?: TaskDialogSubject; reason: string;
+	}): (() => void) => {
+		const { taskId, projectId, taskTitle, subject, reason } = offer;
+		// A sensitive project on camera gets neither, like every other toast and bell here.
+		if (getCompletionOfferStyle() !== "inline" || isProjectSilencedForDisplay(projectId)) return () => {};
+		dispatch({ type: "addBell", taskId, reason });
+		const withdrawBell = () => dispatch({ type: "removeBellReason", taskId, reason });
+		if (isCompletionStripMounted(taskId)) return withdrawBell;
+		const context = subject ? [`#${subject.seqLabel}`, subject.projectName, taskTitle].filter(Boolean).join(" · ") : taskTitle;
+		// The toast asks the bar's own question, so the two never read as different asks.
+		toast.info(reason, { taskId, context, onClick: () => openTaskFromNotification(taskId, projectId) });
+		return withdrawBell;
+	};
+
 	// Drive document.title from the current route so the browser tab shows the
 	// project/task name — the only orientation cue in remote (browser) mode. The
 	// same context also goes to the host, which titles this window natively (the
@@ -1116,7 +1144,7 @@ function App() {
 	const handleDeepLink = useCallback(
 		(nav: DeepLinkNav) => {
 			if (nav.kind === "task") {
-				openTaskFromNotification(nav.taskId, nav.projectId);
+				openTaskFromNotification(nav.taskId, nav.projectId, { archived: nav.archived });
 			} else if (nav.kind === "project") {
 				navigateToProject(nav.projectId);
 			} else if (nav.kind === "space") {
@@ -1238,11 +1266,12 @@ function App() {
 		(n: number, view: "project" | "task" | "preserve") => {
 			const target = digitTargetList[n - 1];
 			if (!target) return; // out of range — no-op
+			if (view === "preserve" && isDigitTargetOnScreen(target, state.route)) return;
 			const { projectId, spaceId } = digitTargetBoard(target);
 			if (view === "preserve") navigateToProject(projectId, spaceId);
 			else goToProjectView(projectId, view, spaceId);
 		},
-		[digitTargetList, digitTargetBoard, navigateToProject, goToProjectView],
+		[digitTargetList, digitTargetBoard, navigateToProject, goToProjectView, state.route],
 	);
 	const armGoToVerb = useCallback(() => {
 		goToModeRef.current = { stage: "verb" };
@@ -1720,13 +1749,14 @@ function App() {
 				//  - "fullscreen" users have no task to show full-page after a switch, so
 				//                 dropping them into a split they never use is jarring —
 				//                 land on the Kanban board instead (pre-#619 behavior).
+				// The board already on screen is a no-op, so the selection stays; a
+				// full-page task is not a board, so its own digit still leads to one.
 				// Built-in Operations board is reached via Cmd+0, not Cmd+1..9.
-				const target = digitTargetList[parseInt(e.key, 10) - 1];
-				if (target) {
+				const n = parseInt(e.key, 10);
+				if (digitTargetList[n - 1]) {
 					e.preventDefault();
 					e.stopPropagation();
-					const { projectId, spaceId } = digitTargetBoard(target);
-					navigateToProject(projectId, spaceId);
+					goToProjectIndex(n, "preserve");
 				}
 			} else if (matchesShortcut(e, "task-hints")) {
 				// Vimium-style hint navigation. Works on any screen that has hint
@@ -1891,8 +1921,17 @@ function App() {
 		return () => window.removeEventListener("rpc:taskUpdated", onTaskUpdated);
 	}, [dispatch]);
 
-	// A task left a project's board (moved to another project). Scoped to the
-	// source project so a window viewing the TARGET keeps the just-added card.
+	useEffect(() => {
+		const onAutoHibernate = (event: Event) => {
+			const { taskId, projectId } = (event as CustomEvent).detail;
+			toast.info(t("task.autoHibernated"), { taskId, projectId });
+		};
+		window.addEventListener("rpc:taskAutoHibernated", onAutoHibernate);
+		return () => window.removeEventListener("rpc:taskAutoHibernated", onAutoHibernate);
+	}, [t]);
+
+	// A task left a project's board (deleted, or moved to another project). Scoped to
+	// the source project so a window viewing a move's TARGET keeps the just-added card.
 	useEffect(() => {
 		function onTaskRemoved(e: Event) {
 			const { taskId, projectId } = (e as CustomEvent).detail;
@@ -1901,6 +1940,11 @@ function App() {
 		window.addEventListener("rpc:taskRemoved", onTaskRemoved);
 		return () => window.removeEventListener("rpc:taskRemoved", onTaskRemoved);
 	}, [dispatch]);
+
+	const completionOfferStyle = globalSettings.completionOfferStyle ?? DEFAULT_COMPLETION_OFFER_STYLE;
+	useEffect(() => {
+		setCompletionOfferStyle(completionOfferStyle);
+	}, [completionOfferStyle]);
 
 	useEffect(() => {
 		function onGlobalSettingsUpdated(e: Event) {
@@ -2316,90 +2360,126 @@ function App() {
 	// Listen for branch merge detection — offer to complete the task
 	useEffect(() => {
 		async function onBranchMerged(e: Event) {
-			const { taskId, projectId, taskTitle, branchName, fingerprint, subject, shouldPrompt, shouldNotify } = (e as CustomEvent).detail as {
-				taskId: string;
-				projectId: string;
-				taskTitle: string;
-				branchName: string;
-				fingerprint?: string | null;
-				subject?: TaskDialogSubject;
-				shouldPrompt?: boolean;
-				shouldNotify?: boolean;
-			};
+			await offerMerged((e as CustomEvent).detail);
+		}
+
+		async function offerMerged(detail: {
+			taskId: string;
+			projectId: string;
+			taskTitle: string;
+			branchName: string;
+			fingerprint?: string | null;
+			subject?: TaskDialogSubject;
+			shouldPrompt?: boolean;
+			shouldNotify?: boolean;
+		}) {
+			const { taskId, projectId, taskTitle, branchName, fingerprint, subject, shouldPrompt, shouldNotify } = detail;
 			// Reservation + shouldPrompt/shouldNotify were decided server-side in the
 			// poller before pushing, so this path does not re-reserve. The shared
 			// primitive owns the dialog copy, context card, notify/suppress gate,
 			// cross-client abort, once-guard de-dup, manual opt-out and dismiss.
-			await offerMergeCompletion({
-				context: { taskId, projectId, taskTitle, branchName, subject },
-				t,
-				fingerprint: fingerprint ?? null,
-				shouldPrompt,
-				shouldNotify,
-				onOpenTask: () => openTaskFromNotification(taskId, projectId),
-				onComplete: () => {
-					// Sound first, exactly like `moveTaskToStatus` does for the board
-					// surfaces — this handler is a hand-rolled move and used to leave the
-					// chime to the backend push, which lands after the whole teardown.
-					const playedLocally = playTaskCompletionSound("completed");
-					// If the user is currently inside this task's view, leave it BEFORE
-					// the worktree is destroyed (otherwise TaskTerminal reacts to
-					// ptyDied / missing worktree and shows the "session ended / restart
-					// session" screen). routeAfterTaskClosed sends the user back to their
-					// configured home surface: fullscreen open-mode → the board, split
-					// open-mode → the split task view (task deselected). A Kanban board is
-					// left untouched.
-					const openMode = getTaskOpenMode();
-					const dest = routeAfterTaskClosed(routeRef.current, taskId, openMode);
-					if (dest) navigate(dest);
-					dispatch({
-						type: "updateTask",
-						task: {
-							id: taskId,
-							projectId,
-							status: "completed",
-							worktreePath: null,
-							branchName: null,
-							movedAt: new Date().toISOString(),
-						} as any,
-					});
-					dispatch({ type: "clearBell", taskId });
-					trackEvent("task_moved", { from_status: "review-by-user", to_status: "completed" });
-					api.request.moveTask({
-						taskId,
-						projectId,
-						newStatus: "completed",
-						clientPlayedSound: playedLocally,
-					}).catch(() => {
+			let withdrawBell: (() => void) | undefined;
+			try {
+				await offerMergeCompletion({
+					context: { taskId, projectId, taskTitle, branchName, subject },
+					t,
+					fingerprint: fingerprint ?? null,
+					shouldPrompt,
+					shouldNotify,
+					onOpenTask: () => openTaskFromNotification(taskId, projectId),
+					onOffered: () => {
+						withdrawBell = announceCompletionOffer({
+							taskId, projectId, taskTitle, subject,
+							reason: t("completionStrip.mergedTitle"),
+						});
+					},
+					onComplete: () => {
+						// Sound first, exactly like `moveTaskToStatus` does for the board
+						// surfaces — this handler is a hand-rolled move and used to leave the
+						// chime to the backend push, which lands after the whole teardown.
+						const playedLocally = playTaskCompletionSound("completed");
+						// If the user is currently inside this task's view, leave it BEFORE
+						// the worktree is destroyed (otherwise TaskTerminal reacts to
+						// ptyDied / missing worktree and shows the "session ended / restart
+						// session" screen). routeAfterTaskClosed sends the user back to their
+						// configured home surface: fullscreen open-mode → the board, split
+						// open-mode → the split task view (task deselected). A Kanban board is
+						// left untouched.
+						const openMode = getTaskOpenMode();
+						const dest = routeAfterTaskClosed(routeRef.current, taskId, openMode);
+						if (dest) navigate(dest);
+						dispatch({
+							type: "updateTask",
+							task: {
+								id: taskId,
+								projectId,
+								status: "completed",
+								worktreePath: null,
+								branchName: null,
+								movedAt: new Date().toISOString(),
+							} as any,
+						});
+						dispatch({ type: "clearBell", taskId });
+						trackEvent("task_moved", { from_status: "review-by-user", to_status: "completed" });
 						api.request.moveTask({
 							taskId,
 							projectId,
 							newStatus: "completed",
-							force: true,
 							clientPlayedSound: playedLocally,
-						}).catch((err) => console.error("moveTask (branch-merged) failed:", err));
-					});
-				},
-			});
+						}).catch(() => {
+							api.request.moveTask({
+								taskId,
+								projectId,
+								newStatus: "completed",
+								force: true,
+								clientPlayedSound: playedLocally,
+							}).catch((err) => console.error("moveTask (branch-merged) failed:", err));
+						});
+					},
+				});
+			} finally {
+				withdrawBell?.();
+			}
 		}
 		window.addEventListener("rpc:branchMerged", onBranchMerged);
-		return () => window.removeEventListener("rpc:branchMerged", onBranchMerged);
-	}, [dispatch, navigate, openTaskFromNotification, t]);
+
+		// On the task, `branchMerged` is one-shot, so a reload or a reconnect asks what is
+		// still unanswered. The offer store and the once-guard drop what is already shown.
+		// The Dialog style does not replay, as before the setting.
+		function replayPendingMergeOffers() {
+			if (getCompletionOfferStyle() !== "inline") return;
+			api.request.listPendingMergeOffers({}).then((pending) => {
+				for (const offer of pending) void offerMerged(offer);
+			}).catch((err) => console.error("listPendingMergeOffers failed:", err));
+		}
+		if (settingsLoaded) replayPendingMergeOffers();
+		const onRpcStatus = (e: Event) => {
+			if ((e as CustomEvent).detail?.state === "connected") replayPendingMergeOffers();
+		};
+		window.addEventListener(RPC_STATUS_EVENT, onRpcStatus);
+		return () => {
+			window.removeEventListener("rpc:branchMerged", onBranchMerged);
+			window.removeEventListener(RPC_STATUS_EVENT, onRpcStatus);
+		};
+	}, [dispatch, navigate, openTaskFromNotification, t, settingsLoaded, completionOfferStyle]);
 
 	// Agent-initiated changes are intentionally visible because they change how
 	// future merge events behave; user toggles in the inspector stay silent.
 	useEffect(() => {
 		function onManualCompletionChanged(e: Event) {
-			const { taskId, projectId, manualCompletion, taskSeq, taskTitle, projectName } = (e as CustomEvent).detail as {
+			const { taskId, projectId, manualCompletion, selfCompletion, taskSeq, taskTitle, projectName } = (e as CustomEvent).detail as {
 				taskId: string;
 				projectId: string;
 				manualCompletion: boolean;
+				selfCompletion?: boolean;
 				taskSeq?: number;
 				taskTitle?: string;
 				projectName?: string;
 			};
 			toast.info(
-				t(manualCompletion ? "app.manualCompletionAgentEnabled" : "app.manualCompletionAgentDisabled"),
+				selfCompletion !== undefined
+					? t(selfCompletion ? "app.selfCompletionAgentEnabled" : "app.selfCompletionAgentDisabled")
+					: t(manualCompletion ? "app.manualCompletionAgentEnabled" : "app.manualCompletionAgentDisabled"),
 				{
 					taskId,
 					context: taskToastContext(taskSeq, projectName, taskTitle),
@@ -2413,6 +2493,8 @@ function App() {
 
 	// Listen for agent-initiated completion requests — the CLI is blocked on a
 	// socket waiting for the user's decision, so always respond, even on cancel.
+	// The request becomes a completion offer (completion-offers.ts): the modal by
+	// default, a bar on its task with the "On the task" style.
 	useEffect(() => {
 		// One dialog per request on this client. The push and the on-connect replay
 		// can both name the same request (a reload that raced the push), and two
@@ -2424,12 +2506,13 @@ function App() {
 		async function showCompletionDialog(request: {
 			requestId: string;
 			taskId: string;
-			projectId?: string;
+			projectId: string;
 			taskTitle: string;
 			subject?: TaskDialogSubject;
 			reason?: ApprovalReason;
+			noTaskView?: boolean;
 		}) {
-			const { requestId, taskId, taskTitle, subject } = request;
+			const { requestId, taskId, projectId, taskTitle, subject, reason, noTaskView } = request;
 			if (showing.has(requestId)) return;
 			showing.add(requestId);
 			let approved = false;
@@ -2442,22 +2525,38 @@ function App() {
 				showing.delete(requestId);
 				return;
 			}
+			let withdrawBell: (() => void) | undefined;
+			// The repo the check covered: only it is reported back as approved, and none if the check never succeeded.
+			let checkedAttachedRepo: string | null = null;
 			try {
-				approved = await confirm({
-					title: t("app.agentCompletionTitle"),
+				const isNew = !hasCompletionOffer(taskId, "agent");
+				const answer = offerCompletion({
+					taskId, projectId, kind: "agent", ...(reason ? { reason } : {}),
+					dialogInfo: taskDialogInfoFromSubject(taskTitle, subject),
 					// Without its own worktree nothing is deleted: the folder outlives the task.
-					message: t(keepsTaskFolder(request.projectId, subject) ? "app.agentCompletionMessageFolder" : "app.agentCompletionMessage"),
-					info: taskDialogInfoFromSubject(taskTitle, subject),
-					...(request.reason ? { reason: request.reason } : {}),
-					confirmLabel: t("app.agentCompletionConfirm"),
-					cancelLabel: t("app.agentCompletionCancel"),
-					danger: true,
-					agentInitiated: true,
+					keepsFolder: keepsTaskFolder(projectId, subject),
+					...(noTaskView ? { noTaskView } : {}),
+					// A linked worktree in the task's own folder is removed on completion: the ask checks it first.
+					...(subject?.attachedRepoInFolder
+						? { attachedWorktree: { repo: subject.attachedRepo ?? null, onChecked: (repo: string | null) => { checkedAttachedRepo = repo; } } }
+						: {}),
 					signal: abort.signal,
 				});
+				// A dialog ask raises no bell or toast, in either style.
+				if (isNew && !noTaskView) withdrawBell = announceCompletionOffer({
+					taskId, projectId, taskTitle, subject,
+					reason: t("completionStrip.agentTitle"),
+				});
+				const result = await answer;
+				// Unanswered on purpose: answering would decide an ask the user never saw. The
+				// server joins retries into one pending ask per task, so this needs a stale offer
+				// still on the task; the next replay asks again, and the CLI times out otherwise.
+				if (result === null) return;
+				approved = result === true;
 			} catch (err) {
-				console.error("[App] confirm (agent-completion) failed:", err);
+				console.error("[App] agent completion offer failed:", err);
 			} finally {
+				withdrawBell?.();
 				abort.cleanup();
 				showing.delete(requestId);
 			}
@@ -2475,7 +2574,7 @@ function App() {
 				dispatch({ type: "clearBell", taskId });
 				trackEvent("task_moved", { to_status: "completed", agent_requested: true });
 			}
-			api.request.respondToAgentCompletionRequest({ requestId, approved }).catch((err) =>
+			api.request.respondToAgentCompletionRequest({ requestId, approved, attachedRepo: checkedAttachedRepo }).catch((err) =>
 				console.error("respondToAgentCompletionRequest failed:", err),
 			);
 		}
@@ -2488,20 +2587,11 @@ function App() {
 		// The push above is a one-shot event, so a client that was not listening for
 		// it — starting up, or a transport that dropped and came back without a
 		// page reload — would never see that dialog. Ask what is still pending on
-		// connect and on every reconnect. `showing` dedups, so a dialog already on
-		// screen is untouched.
+		// connect and on every reconnect. `showing` dedups, so an offer already on
+		// its task is untouched.
 		function replayPending() {
-			api.request.listPendingCompletionRequests({}).then(async (pending) => {
-				if (pending.length === 0) return;
-				// `confirm()` is fail-closed, and this runs during startup: calling it
-				// before ConfirmHost has mounted would resolve `false` with no dialog on
-				// screen and answer "declined" for a user who was never asked. Rather
-				// than auto-decline, leave the request pending — the next window to
-				// connect replays it again.
-				if (!await whenConfirmHostMounted()) {
-					console.error("[App] pending completion dialogs skipped — ConfirmHost never mounted");
-					return;
-				}
+			api.request.listPendingCompletionRequests({}).then((pending) => {
+				// No host to wait for: an offer lives in a store, not in ConfirmHost.
 				for (const request of pending) void showCompletionDialog(request);
 			}).catch((err) => console.error("listPendingCompletionRequests failed:", err));
 		}
@@ -2534,7 +2624,7 @@ function App() {
 				copy: { title: "app.agentCancellationTitle", message: "app.agentCancellationMessage", confirm: "app.agentCancellationConfirm", cancel: "app.agentCancellationCancel" } as const,
 				folderCopy: { title: "app.agentCancellationTitle", message: "app.agentCancellationMessageFolder", confirm: "app.agentCancellationConfirmFolder", cancel: "app.agentCancellationCancel" } as const,
 				listPending: () => api.request.listPendingCancellationRequests({}),
-				respond: (params: { requestId: string; approved: boolean }) => api.request.respondToAgentCancellationRequest(params),
+				respond: (params: { requestId: string; approved: boolean; attachedRepo: string | null }) => api.request.respondToAgentCancellationRequest(params),
 			},
 			{
 				event: "rpc:agentResetRequested",
@@ -2542,7 +2632,7 @@ function App() {
 				copy: { title: "app.agentResetTitle", message: "app.agentResetMessage", confirm: "app.agentResetConfirm", cancel: "app.agentResetCancel" } as const,
 				folderCopy: { title: "app.agentResetTitle", message: "task.confirmResetMessageVirtual", confirm: "app.agentResetConfirm", cancel: "app.agentResetCancel" } as const,
 				listPending: () => api.request.listPendingResetRequests({}),
-				respond: (params: { requestId: string; approved: boolean }) => api.request.respondToAgentResetRequest(params),
+				respond: (params: { requestId: string; approved: boolean; attachedRepo: string | null }) => api.request.respondToAgentResetRequest(params),
 			},
 		];
 		type DialogKind = (typeof kinds)[number];
@@ -2568,11 +2658,18 @@ function App() {
 			}
 			// Without the git workflow nothing is deleted: the folder outlives the task.
 			const copy = keepsTaskFolder(projectId, subject) ? kind.folderCopy : kind.copy;
+			// The repo the check covered: only it is reported back as approved, and none if the check never succeeded.
+			let checkedAttachedRepo: string | null = null;
 			try {
-				const unsaved = api.request.getUnsavedWork({ taskId, projectId });
+				const expectedAttachedRepo = subject?.attachedRepo ?? null;
+				const unsaved = api.request.getUnsavedWork({ taskId, projectId, expectedAttachedRepo }).then((status) => {
+					checkedAttachedRepo = expectedAttachedRepo;
+					return status;
+				});
 				approved = await confirm({
 					title: t(copy.title),
-					message: t(branchKept && copy === kind.copy && kind.toStatus === "todo" ? "app.agentResetMessageBranchKept" : copy.message),
+					message: t(branchKept && copy === kind.copy && kind.toStatus === "todo" ? "app.agentResetMessageBranchKept" : copy.message)
+						+ (subject?.attachedRepoInFolder ? `\n\n${t("task.attachedWorktreeNote")}` : ""),
 					info: taskDialogInfoFromSubject(taskTitle, subject),
 					...(request.reason ? { reason: request.reason } : {}),
 					confirmLabel: t(copy.confirm),
@@ -2604,7 +2701,7 @@ function App() {
 				dispatch({ type: "clearBell", taskId });
 				trackEvent("task_moved", { to_status: kind.toStatus, agent_requested: true });
 			}
-			kind.respond({ requestId, approved }).catch((err) =>
+			kind.respond({ requestId, approved, attachedRepo: checkedAttachedRepo }).catch((err) =>
 				console.error(`[App] answering ${kind.event} failed:`, err),
 			);
 		}
@@ -2852,6 +2949,7 @@ function App() {
 		const taskId = routeTaskId(route);
 		void api.request.setActiveContext?.({ projectId, taskId })?.catch?.(() => { /* best-effort */ });
 	}, [state.route]);
+
 
 	// Publish the sensitive ids so surfaces that only know a projectId (tmux
 	// sessions, notification payloads) can ask for the privacy verdict.
@@ -3329,12 +3427,14 @@ function App() {
 
 	return (
 		<div className="h-full w-full flex flex-col">
-			{/* Reserves the iOS status-bar inset (viewport-fit=cover); zero height everywhere else. */}
-			<div aria-hidden className="shrink-0 bg-base" style={{ height: "env(safe-area-inset-top, 0px)" }} />
+			{/* Elsewhere this reserves the iOS status-bar inset (viewport-fit=cover); zero height on desktop. */}
+			{!mobileBrowser && <div aria-hidden className="shrink-0 bg-base" style={{ height: "env(safe-area-inset-top, 0px)" }} />}
 			{terminalImmersiveVisible ? (
-				<TerminalImmersiveChrome onExit={() => setTerminalImmersiveActive(false)} />
+				<div className={mobileBrowser ? MOBILE_BROWSER_TOP_BAND : undefined}>
+					<TerminalImmersiveChrome onExit={() => setTerminalImmersiveActive(false)} />
+				</div>
 			) : (
-				<header ref={toastClearanceRef} aria-label={t("nav.appHeader")}>
+				<header ref={toastClearanceRef} aria-label={t("nav.appHeader")} className={mobileBrowser ? MOBILE_BROWSER_TOP_BAND : undefined}>
 					{!isElectrobun && <AppMenuBar context={menuContext} onAction={handleMenuBarAction} />}
 					<GlobalHeader
 						route={route}
@@ -4013,6 +4113,8 @@ function App() {
 			{/* Agents block on these answers, and confirm() declines when no host is
 			    mounted — so the hosts stay up in immersive fullscreen too. */}
 			<ConfirmHost onBusyChange={setConfirmBusy} />
+			<AutoHibernateSuggestions blocked={!settingsLoaded || confirmBusy || !!pendingAgentRequest} />
+			<CompletionOfferDialogHost ready={settingsLoaded} />
 			{!confirmBusy && pendingAgentRequest && ("env" in pendingAgentRequest ? (
 				<SecretRequestModal key={pendingAgentRequest.requestId} request={pendingAgentRequest}
 					onDone={() => setAgentRequests((queue) => queue.filter((request) => request.requestId !== pendingAgentRequest.requestId))} />
@@ -4093,6 +4195,7 @@ function App() {
 						spaceId={route.spaceId}
 						projects={state.projects}
 						tasks={state.currentProjectTasks}
+						taskSnapshots={state.taskSnapshots}
 						dispatch={dispatch}
 						route={state.route}
 						navigate={navigate}
@@ -4121,6 +4224,7 @@ function App() {
 							projectPath={proj.path}
 							projectName={proj.name}
 							onBack={() => navigate({ screen: "project", projectId: route.projectId })}
+							onEditFolders={() => navigate({ screen: "project-settings", projectId: route.projectId, tab: "project" })}
 						/>
 					</div>
 				) : null;

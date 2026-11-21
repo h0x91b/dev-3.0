@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { inflateRawSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -129,9 +129,9 @@ describe("saveSharedArtifact", () => {
 		expect(readFileSync(saved.assets[0].storedPath, "utf8")).toBe("body { color: red; }");
 		expect(readFileSync(saved.assets[1].storedPath, "utf8")).toContain("dataset.ready");
 		expect(readFileSync(saved.assets[2].storedPath, "utf8")).toBe("PNGDATA");
-		expect(saved.bundlePath).toBeTruthy();
-		expect(existsSync(saved.bundlePath!)).toBe(true);
-		expect(basename(saved.bundlePath!)).toBe("report.zip");
+		// The download ZIP is built on demand, never stored next to the assets it would repeat.
+		expect(saved.bundlePath).toBeUndefined();
+		expect(readdirSync(dirname(saved.storedPath)).some((name) => name.endsWith(".zip"))).toBe(false);
 	});
 
 	it("keeps a no-image artifact as directly downloadable HTML", () => {
@@ -155,7 +155,6 @@ describe("saveSharedArtifact", () => {
 		writeFileSync(html, '<!doctype html><img src="pic.png">');
 		writeFileSync(image, "PNGDATA");
 		const saved = saveSharedArtifact({ path: "/my/project" }, html, [image], 'Q4 Revenue / "Draft"');
-		expect(basename(saved.bundlePath!)).toBe("index.zip");
 		expect(loadSharedArtifactDownload(saved).fileName).toBe("Q4 Revenue Draft.html");
 	});
 
@@ -212,7 +211,8 @@ describe("saveSharedArtifact", () => {
 		const saved = saveSharedArtifact({ path: "/my/project" }, html, [join(aDir, "same.png"), join(bDir, "same.png")]);
 		expect(saved.assets.map((asset) => asset.name)).toEqual(["a/same.png", "b/same.png"]);
 		expect(saved.assets.every((asset) => existsSync(asset.storedPath))).toBe(true);
-		const zip = readFileSync(saved.bundlePath!);
+		expect(sharedArtifactDownloadKind(saved)).toBe("zip");
+		const zip = Buffer.from(loadSharedArtifactDownload(saved).base64, "base64");
 		expect(zip.includes(Buffer.from("a/same.png"))).toBe(true);
 		expect(zip.includes(Buffer.from("b/same.png"))).toBe(true);
 	});
@@ -522,10 +522,34 @@ describe("bundled video assets", () => {
 		expect(Buffer.from(clip.dataUrl.split(",")[1], "base64").equals(TINY_MP4)).toBe(true);
 		expect(content.assets.find((asset) => asset.name.endsWith(".webm"))!.mime).toBe("video/webm");
 
-		const entries = unzipEntries(readFileSync(saved.bundlePath!));
+		const entries = unzipEntries(Buffer.from(loadSharedArtifactDownload(saved).base64, "base64"));
 		expect(entries.get("clips and posters/tour take 1.mp4")!.equals(TINY_MP4)).toBe(true);
 		expect(entries.get("clips and posters/tour take 1.webm")!.equals(TINY_WEBM)).toBe(true);
 		expect(loadSharedArtifactDownload(saved).fileName).toBe("Video report.zip");
+	});
+
+	it("still opens and downloads an artifact after the media cleanup took one of its clips", () => {
+		const { html, mp4, webm, poster } = clipDir("video-pruned");
+		const saved = saveSharedArtifact({ path: "/my/project" }, html, [mp4, webm, poster], "Pruned report");
+		rmSync(saved.assets[0].storedPath);
+
+		const content = loadSharedArtifactContent(saved);
+		expect(content.assets.map((asset) => asset.name)).toEqual(["clips and posters/tour take 1.webm", "clips and posters/tour.png"]);
+
+		const entries = unzipEntries(Buffer.from(loadSharedArtifactDownload(saved).base64, "base64"));
+		expect(entries.has("clips and posters/tour take 1.mp4")).toBe(false);
+		expect(entries.get("clips and posters/tour take 1.webm")!.equals(TINY_WEBM)).toBe(true);
+	});
+
+	it("downloads one HTML once every clip is gone, and ignores a ZIP an older version stored", () => {
+		const { html, mp4, webm, poster } = clipDir("video-legacy");
+		const saved = saveSharedArtifact({ path: "/my/project" }, html, [mp4, webm], "Legacy report");
+		rmSync(saved.assets[0].storedPath);
+		rmSync(saved.assets[1].storedPath);
+		const legacy = { ...saved, bundlePath: `${dirname(saved.storedPath)}/gone.zip`, bundleBytes: 10 };
+		expect(sharedArtifactDownloadKind(legacy)).toBe("html");
+		expect(loadSharedArtifactDownload(legacy).mime).toBe("text/html");
+		void poster;
 	});
 
 	it("names the file and the fix when a clip or the whole set is too big", () => {
@@ -599,7 +623,7 @@ describe("bundled audio assets", () => {
 		const track = content.assets.find((asset) => asset.name === "audio/A.mp3")!;
 		expect(track.dataUrl.startsWith("data:audio/mpeg;base64,")).toBe(true);
 		expect(Buffer.from(track.dataUrl.split(",")[1], "base64").equals(TINY_MP3)).toBe(true);
-		const entries = unzipEntries(readFileSync(saved.bundlePath!));
+		const entries = unzipEntries(Buffer.from(loadSharedArtifactDownload(saved).base64, "base64"));
 		expect(entries.get("audio/A.mp3")!.equals(TINY_MP3)).toBe(true);
 		expect(entries.get("audio/tone.wav")!.equals(TINY_WAV)).toBe(true);
 	});
@@ -674,10 +698,8 @@ describe("artifact download format", () => {
 		const { html, assets } = reportDir("template", files);
 		const saved = saveSharedArtifact({ path: "/my/project" }, html, assets, "Weekly report");
 
-		// The template's own files are assets, so a ZIP is still kept on disk...
-		expect(saved.bundlePath).toBeTruthy();
 		const { mime, fileName, text } = download(saved);
-		// ...but the download is the standalone page.
+		// The template's own files are assets, but the download is the standalone page.
 		expect(mime).toBe("text/html");
 		expect(fileName).toBe("Weekly report.html");
 		expect(sharedArtifactDownloadKind(saved)).toBe("html");

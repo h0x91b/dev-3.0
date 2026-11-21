@@ -11,6 +11,7 @@ import {
 	findLatestCodexRollout,
 	forgetClaudeSessionDump,
 	readClaudeSessionDumps,
+	readAgySnapshot,
 	readClaudeSnapshot,
 	readCodexSnapshot,
 } from "../rate-limit-monitor";
@@ -275,6 +276,43 @@ describe("attributeManagedConfigDir", () => {
 
 	it("leaves a real project pin alone", () => {
 		const snap = { ...base, accountId: null, configDir: "/work/proj/.claude" };
-		expect(attributeManagedConfigDir(snap, dev3Home)).toBe(snap);
+		expect(attributeManagedConfigDir(snap, dev3Home, () => null)).toBe(snap);
+	});
+
+	it("gives a project folder signed in to a managed account to that account", () => {
+		const snap = { ...base, accountId: null, configDir: "/work/proj/.claude" };
+		const accountForDir = (dir: string) => (dir === "/work/proj/.claude" ? "acc-2" : null);
+		expect(attributeManagedConfigDir(snap, dev3Home, accountForDir)).toEqual({ ...base, accountId: "acc-2" });
+	});
+});
+
+describe("readAgySnapshot", () => {
+	const write = (name: string, body: unknown) => {
+		const path = join(tmp, name);
+		writeFileSync(path, typeof body === "string" ? body : JSON.stringify(body));
+		return path;
+	};
+
+	it("reads an account dump into an Antigravity snapshot named by the file's key", () => {
+		const path = write("0123456789abcdef.json", {
+			capturedAt: 1_700_000_000_000,
+			email: "me@example.com",
+			planTier: "Pro",
+			quota: { "gemini-weekly": { remaining_fraction: 0.4, reset_time: "2026-11-23T10:00:00Z" } },
+		});
+		const snapshot = readAgySnapshot(path)!;
+		expect(snapshot).toMatchObject({ source: "agy", accountId: "0123456789abcdef", accountLabel: "me@example.com", planType: "Pro", capturedAt: 1_700_000_000_000 });
+		expect(snapshot.windows).toEqual([{ id: "gemini-weekly", usedPercent: 60, resetsAt: Date.parse("2026-11-23T10:00:00Z"), windowMinutes: 10080 }]);
+	});
+
+	it("gives a stale dump the age the monitor's activity window judges it by", () => {
+		const old = write("old.json", { capturedAt: Date.now() - 8 * 24 * 3600_000, quota: { a: { remaining_fraction: 0.5 } } });
+		expect(isRateLimitSnapshotRecent(readAgySnapshot(old)!, Date.now())).toBe(false);
+	});
+
+	it("answers null for a torn, empty or bucket-less dump", () => {
+		expect(readAgySnapshot(write("torn.json", '{"capturedAt": 1, "quo'))).toBeNull();
+		expect(readAgySnapshot(write("empty.json", {}))).toBeNull();
+		expect(readAgySnapshot(join(tmp, "missing.json"))).toBeNull();
 	});
 });

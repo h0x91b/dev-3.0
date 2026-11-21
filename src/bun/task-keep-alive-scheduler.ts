@@ -123,7 +123,9 @@ export async function evaluateTask(project: Project, task: Task, now: number): P
 
 	const attempts = (ka.attempts ?? 0) + 1;
 	if (attempts > KEEP_ALIVE_MAX_ATTEMPTS) {
-		const reason = `No luck after ${KEEP_ALIVE_MAX_ATTEMPTS} tries`;
+		const reason = ka.lastVerdict === "history-unreadable"
+			? `The conversation history could not be read after ${KEEP_ALIVE_MAX_ATTEMPTS} tries`
+			: `No luck after ${KEEP_ALIVE_MAX_ATTEMPTS} tries`;
 		await patchKeepAlive(project, task, { status: "gave-up", lastVerdict: "gave-up", gaveUpReason: reason });
 		notifyGaveUp(project, task, reason);
 		return;
@@ -150,6 +152,12 @@ export async function evaluateTask(project: Project, task: Task, now: number): P
 		}
 		log.info("Keep-alive revived a task", { taskId: task.id.slice(0, 8), attempts });
 	} catch (err) {
+		if (err instanceof ResumeUnavailableError && err.reason === "history-unreadable") {
+			// Access may come back: keep the armed backoff and retry until the cap.
+			await patchKeepAlive(project, task, { lastVerdict: "history-unreadable" });
+			log.warn("Keep-alive could not read the conversation history", { taskId: task.id.slice(0, 8), attempts, error: err.message });
+			return;
+		}
 		if (err instanceof ResumeUnavailableError) {
 			// Nothing safe to reopen (no saved session, Codex transcript ambiguity).
 			// Retrying will not change that — stop and surface it.

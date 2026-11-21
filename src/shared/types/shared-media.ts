@@ -177,11 +177,11 @@ export interface LiveArtifact {
 /**
  * A task-bound HTML artifact surfaced via `dev3 show-artifact`.
  *
- * The stored HTML contains the stable dev3 artifact theme contract. When
- * `assets` is non-empty, `bundlePath` points at a portable ZIP containing the
- * HTML and every copied local asset at its relative path. The download hands
- * it over only when attachments need it; otherwise it folds everything into one
- * standalone HTML (`loadSharedArtifactDownload`).
+ * The stored HTML contains the stable dev3 artifact theme contract. The download
+ * folds everything into one standalone HTML, or builds a ZIP of the HTML and its
+ * assets on demand when attachments need it (`loadSharedArtifactDownload`).
+ * `bundlePath`/`bundleBytes` are only on records written before 2026-11-12, when
+ * that ZIP was stored; older app versions download through it, nothing here reads it.
  *
  * Re-publishing the same artifact adds a VERSION instead of a new record: the
  * top-level fields above always describe the newest version, while

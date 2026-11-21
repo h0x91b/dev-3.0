@@ -49,7 +49,7 @@ export interface TaskQueryContext {
 	isAttention: boolean;
 	/** True when the task is hidden from the Active Tasks sidebar (`is:hidden`). */
 	isHidden: boolean;
-	/** True while the task is hibernated or disconnected (`is:hibernated`). */
+	/** True while the task is hibernated or has no agent (`is:hibernated`). */
 	isHibernated: boolean;
 	/** True when the task is kept alive / auto-revived (`is:keepalive`). */
 	isKeptAlive: boolean;

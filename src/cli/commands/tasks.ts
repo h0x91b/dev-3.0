@@ -13,7 +13,26 @@ import {
 import { sendRequest } from "../socket-client";
 import { printTable, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
+import type { TaskDependencyInfo } from "../../shared/task-dependencies";
 import { resolveProjectId, type CliContext } from "../context";
+
+type ListedTask = Task & { dependencyInfo?: TaskDependencyInfo };
+
+/** An open task's dependency state for the listing, so it answers "what can I start next". */
+function dependencyJson(task: ListedTask): { state: "blocked" | "ready"; blockedBy: number[]; cancelled: number[] } | null {
+	const info = task.dependencyInfo;
+	if (!info || info.verdict === "none" || task.status === "completed" || task.status === "cancelled") return null;
+	const seqs = (state: string) => info.dependsOn.filter((d) => d.state === state).map((d) => d.seq);
+	return { state: info.verdict, blockedBy: seqs("open"), cancelled: seqs("cancelled") };
+}
+
+function dependencyMark(task: ListedTask): string {
+	const dep = dependencyJson(task);
+	if (!dep) return "";
+	if (dep.state === "blocked") return ` (blocked by ${dep.blockedBy.map((seq) => `#${seq}`).join(", ")})`;
+	if (task.status !== "todo") return "";
+	return dep.cancelled.length ? ` (ready, ${dep.cancelled.map((seq) => `#${seq}`).join(", ")} cancelled)` : " (ready)";
+}
 
 // Default page size for `tasks list` when --limit is omitted. Keeps large
 // boards (hundreds of tasks) from flooding the terminal; page with --offset.
@@ -199,7 +218,7 @@ export async function handleTasks(
 		const resp = await sendRequest(socketPath, "tasks.list", params);
 		if (!resp.ok) exitError(resp.error || "Failed to list tasks");
 
-		let tasks = resp.data as Task[];
+		let tasks = resp.data as ListedTask[];
 		if (args.flags.open !== undefined) {
 			tasks = tasks.filter((task) => task.status !== "completed" && task.status !== "cancelled");
 		}
@@ -240,6 +259,7 @@ export async function handleTasks(
 				taskType: task.taskType ?? null,
 				draft: task.draft === true, hibernated: task.hibernated === true,
 				runtimeState: task.runtimeState ?? null,
+				dependency: dependencyJson(task),
 				updatedAt: task.updatedAt,
 			}));
 			process.stdout.write(`${JSON.stringify({ schemaVersion: 1, tasks: rows, total, offset, limit }, null, 2)}\n`);
@@ -267,7 +287,7 @@ export async function handleTasks(
 					t.priority ?? DEFAULT_PRIORITY,
 					// Drafts share the To Do column but are not runnable — mark them
 					// here so a listing never reads as "ready to pick up".
-					`${STATUS_LABELS[t.status] || t.status}${t.draft === true ? " (draft)" : ""}`,
+					`${STATUS_LABELS[t.status] || t.status}${t.draft === true ? " (draft)" : ""}${dependencyMark(t)}`,
 					title.length > 60 ? title.slice(0, 57) + "..." : title,
 				];
 			}),

@@ -1,7 +1,7 @@
 # Extensions platform: macro plan and status
 
 A living document. Update it when a phase moves; it is the one place that says where the effort stands.
-Last updated: 2026-11-07.
+Last updated: 2026-11-21.
 
 ## The goal
 
@@ -18,8 +18,8 @@ developer experience is a first-class part of the goal, not an afterthought.
 |---|---|---|
 | 1 | Board views on Cordis: the first real proof | Done; merged to `main` via #2143 (2026-11-07) |
 | 2 | Agent DX for writing extensions | Skill shipped (`dev3-extensions`, 2026-11-07); `dev3 extension` CLI not started |
-| 3 | Reliability bar: what "works well and reliably" means before migrating more | Partly covered by phase 1 |
-| 4 | Migrate dev3 surfaces to plugins, one at a time | Not started; order not decided |
+| 3 | Reliability bar: what "works well and reliably" means before migrating more | Partly covered by phase 1; versioning policy decided |
+| 4 | Migrate dev3 surfaces to plugins, one at a time | Planned (2026-11-21): GUI on Cordis, Settings and task header first |
 
 ### Phase 1: Board views on Cordis (umbrella PR #2143)
 
@@ -102,18 +102,34 @@ anonymous telemetry (`builtin:<id>` or `third_party`).
 Open:
 
 - No sandbox: consent, desktop-only install and the kill switch are the only defences.
-- `EXTENSION_API_VERSION` is `1.0.0`; there is no policy yet for when the contract breaks and how extensions
-  are told.
+- `EXTENSION_API_VERSION` is `1.1.0`. Policy decided (`decisions/2026/11/21/gui-plugin-slots-and-api-versioning.md`):
+  minor per additive slot, service or manifest kind; major on any incompatible change (removal, rename, signature,
+  type or semantics), after which extensions whose `engines.dev3` no longer matches show as incompatible and stay
+  off, with a migration note in `docs/extensions.md`. It stays `1.1.0` through the internal migration track.
 - Cordis is a release candidate; moving to 4.0 stable is a deliberate bump that must re-run the runtime tests.
 - No measurement yet of runtime cost (load time, re-render cost on large boards) with several extensions.
 
 ### Phase 4: Migrating dev3 itself
 
-Not started. The order of surfaces to move onto plugins is Arseny's decision; each move should keep behaviour
-identical and land behind the same reliability bar as phase 1.
+Planned on 2026-11-21 (coordinator task seq:2526): `decisions/2026/11/21/gui-plugin-slots-and-api-versioning.md`.
+Two slot kinds (replace, contribution), add-only for third parties, built-ins register through the slot call
+that will become public. **Internal first:** every surface moves onto slots with built-ins only and no new public API (foundations:
+app root, generic slot registry and host; then Settings and the four task-header bars in parallel, including the
+user's header layout; then commands, context menu, dock panels, replace slots for sidebar/home/destination bodies,
+terminal contributions). **Then the opening track** exposes slots and `ctx.*` services to third parties one kind
+at a time, each a public PR with a version bump, docs, example and skill update. The app shell and terminal
+renderer stay host-owned. Each move keeps behaviour identical.
+
+## Tech debt
+
+- **Built-ins on the public contract only.** For now a built-in slot item may use internal modules (`api`,
+  hooks) behind its slot registration (the record's placement rule). End state: every built-in runs only on
+  public `ctx.*` services, like `builtin:kanban`. Pay it down when a public service covers what a built-in
+  reads, in the same PR; it does not block opening a slot kind. Open until the last built-in is off internals.
 
 ## Open decisions
 
-- Whether the `dev3 extension` CLI (option B) starts next, and in which order (`dev` + `status`/`logs` first).
-- The reliability criteria that gate phase 4.
-- Which dev3 surface migrates first.
+- The order of `dev3 extension` CLI commands (`dev` + `status`/`logs` first is the proposal); it starts
+  with Phase 4's opening track, when public host services exist.
+- The reliability criteria that gate Phase 4's opening track (the internal track is not gated by them).
+- The order inside Phase 4 beyond Settings and the task header.

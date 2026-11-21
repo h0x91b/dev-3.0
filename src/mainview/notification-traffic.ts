@@ -9,6 +9,7 @@
  */
 
 import type { NotificationLogPage, NotificationLogRow } from "../shared/notification-log";
+import { DEFAULT_LOG_RETENTION_DAYS } from "../shared/log-retention";
 import { api } from "./rpc";
 
 export interface NotificationTrafficState {
@@ -18,7 +19,8 @@ export interface NotificationTrafficState {
 	oldestDay: string | null;
 	/** Newest day on disk. Null with `oldestDay` means collection never started here. */
 	newestDay: string | null;
-	retentionDays: number;
+	/** Days of history kept; null when everything is kept. */
+	retentionDays: number | null;
 	/** True when the page was cut short and older rows exist on disk. */
 	hasMore: boolean;
 	loading: boolean;
@@ -30,7 +32,7 @@ const EMPTY: NotificationTrafficState = {
 	rows: [],
 	oldestDay: null,
 	newestDay: null,
-	retentionDays: 30,
+	retentionDays: DEFAULT_LOG_RETENTION_DAYS,
 	hasMore: false,
 	loading: false,
 	loaded: false,

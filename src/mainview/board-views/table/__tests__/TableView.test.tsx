@@ -5,7 +5,6 @@ import { I18nProvider } from "../../../i18n";
 import { BoardService, type BoardActions, type BoardAllActions, type BoardModel } from "../../board-service";
 import { BoardViewSlot } from "../../BoardViewChrome";
 import { BoardViewRegistry } from "../../registry";
-import "../../root";
 import { installTableView, TABLE_VIEW_ID } from "..";
 import { TableOptions } from "../TableOptions";
 import { COORDINATOR_ROW } from "../../zebra";
@@ -72,6 +71,7 @@ async function renderTable(setup: Setup = {}) {
 		query: "",
 		setQuery: vi.fn(),
 		scopeTasks: setup.scopeTasks ?? tasks,
+		visibility: "all",
 		tasks,
 		matches: setup.matches ?? (() => false),
 		lineageNode: () => null,
@@ -215,6 +215,17 @@ describe("Table board view", () => {
 		expect(actions.openContextMenu).toHaveBeenCalledWith("t1", { x: 40, y: 50 });
 		fireEvent.keyDown(row, { key: "ContextMenu" });
 		expect(actions.openContextMenu).toHaveBeenCalledTimes(2);
+	});
+
+	it("treats a macOS Ctrl+click as a right click: menu only, task stays closed", async () => {
+		const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+		onTestFinished(() => platform.mockRestore());
+		const { actions } = await renderTable({ tasks: [task("t1", 1)] });
+		const row = screen.getByTestId("board-table-row-t1");
+		fireEvent.contextMenu(row, { clientX: 40, clientY: 50, ctrlKey: true });
+		fireEvent.click(row, { ctrlKey: true });
+		expect(actions.openContextMenu).toHaveBeenCalledWith("t1", { x: 40, y: 50 });
+		expect(actions.openTask).not.toHaveBeenCalled();
 	});
 
 	it("changes priority with the card's picker without opening the task", async () => {

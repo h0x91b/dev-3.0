@@ -7,6 +7,7 @@ type BunMessagePayload<Name extends keyof AppRPCSchema["bun"]["messages"]> =
 
 export const LIFECYCLE_PUSH_MESSAGES = [
 	"taskUpdated",
+	"taskRemoved",
 	"taskSound",
 	"taskPreparationFailed",
 	"columnAgentFailed",
@@ -25,6 +26,7 @@ interface EffectPolicy {
 
 type LifecyclePushEffect = (
 	| { type: "push"; message: "taskUpdated"; view: "current" | "shuttingDown" }
+	| { type: "push"; message: "taskRemoved" }
 	| { type: "push"; message: "taskPreparationFailed"; payload: { error: string | null } }
 	| {
 		type: "push";
@@ -98,6 +100,8 @@ export type LifecycleEffect =
 	/** Preparation failure only: may the (derived) worktree folder be destroyed? */
 	| ({ type: "judgeFailureWorkspace" } & EffectPolicy)
 	| ({ type: "removeTaskWorkspace"; allowDerivedPath?: boolean } & EffectPolicy)
+	/** Close or reset of a plain Operations task: drop a linked worktree it made in its own folder; the branch stays. */
+	| ({ type: "removeAttachedWorktree"; approvedAttachedRepo: string | null } & EffectPolicy)
 	/** Reset only: remove the worktree, delete only branches dev3 owns, note each first. */
 	| ({ type: "resetWorktree" } & EffectPolicy)
 	/** Reset only: the single compare-and-set write that lands the card in To Do. */

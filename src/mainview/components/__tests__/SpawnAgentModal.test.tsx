@@ -179,6 +179,7 @@ describe("SpawnAgentModal", () => {
 				agentId: "builtin-claude",
 				configId: "claude-default",
 				handoff: false,
+				focus: true,
 			});
 		});
 
@@ -251,6 +252,7 @@ describe("SpawnAgentModal", () => {
 					agentId: "builtin-claude",
 					configId: "claude-default",
 					handoff: true,
+					focus: true,
 				});
 			});
 		});

@@ -90,6 +90,12 @@ export interface AppState {
 	 * why `setTasks` replaces one project's slice instead of the whole list.
 	 */
 	currentProjectTasks: Task[];
+	/**
+	 * The last fetched task list per project, kept across board switches so a
+	 * board seen before renders at once while its refetch runs. Only projects
+	 * already fetched have an entry.
+	 */
+	taskSnapshots: Record<string, Task[]>;
 	loading: boolean;
 	bellCounts: Map<string, number>;
 	/**
@@ -125,6 +131,7 @@ export const initialState: AppState = {
 	historyIndex: 0,
 	projects: [],
 	currentProjectTasks: [],
+	taskSnapshots: {},
 	loading: true,
 	bellCounts: new Map(),
 	bellReasons: new Map(),
@@ -378,6 +385,7 @@ export type AppAction =
 	| { type: "setLoading"; loading: boolean }
 	| { type: "addBell"; taskId: string; reason?: string; force?: boolean; questions?: boolean }
 	| { type: "clearBell"; taskId: string }
+	| { type: "removeBellReason"; taskId: string; reason: string }
 	| { type: "setPorts"; taskId: string; ports: PortInfo[] }
 	| { type: "clearPorts"; taskId: string }
 	| { type: "setDevServer"; summary: DevServerSummary }
@@ -485,7 +493,94 @@ function stepHistory(state: AppState, newIndex: number): AppState {
 	};
 }
 
+/** Upsert `tasks` into the snapshots that already exist for their projects. */
+function upsertIntoSnapshots(snapshots: Record<string, Task[]>, tasks: Task[]): Record<string, Task[]> {
+	let next = snapshots;
+	for (const task of tasks) {
+		const list = next[task.projectId];
+		if (!list) continue;
+		const index = list.findIndex((t) => t.id === task.id);
+		if (list[index] === task) continue;
+		const updated = index === -1 ? [...list, task] : list.map((t, i) => (i === index ? task : t));
+		if (next === snapshots) next = { ...snapshots };
+		next[task.projectId] = updated;
+	}
+	return next;
+}
+
+/** Drop task ids from one project's snapshot, or from every snapshot when `projectId` is null. */
+function dropFromSnapshots(
+	snapshots: Record<string, Task[]>,
+	taskIds: Set<string>,
+	projectId: string | null,
+): Record<string, Task[]> {
+	let next = snapshots;
+	for (const [id, list] of Object.entries(snapshots)) {
+		if (projectId !== null && id !== projectId) continue;
+		if (!list.some((t) => taskIds.has(t.id))) continue;
+		if (next === snapshots) next = { ...snapshots };
+		next[id] = list.filter((t) => !taskIds.has(t.id));
+	}
+	return next;
+}
+
+/** Keeps `taskSnapshots` in step with the actions that change tasks; board scope does not apply here. */
+function reduceSnapshots(snapshots: Record<string, Task[]>, action: AppAction): Record<string, Task[]> {
+	switch (action.type) {
+		case "setTasks":
+			return { ...snapshots, [action.projectId]: action.tasks };
+		case "updateTask": {
+			let next = snapshots;
+			for (const [projectId, list] of Object.entries(snapshots)) {
+				if (projectId !== action.task.projectId && list.some((t) => t.id === action.task.id)) {
+					next = dropFromSnapshots(next, new Set([action.task.id]), projectId);
+				}
+			}
+			return upsertIntoSnapshots(next, [action.task]);
+		}
+		case "addTask":
+			return upsertIntoSnapshots(snapshots, [action.task]);
+		case "removeTask":
+			return dropFromSnapshots(snapshots, new Set([action.taskId]), action.projectId ?? null);
+		case "spawnVariants": {
+			const ids = new Set([action.sourceTaskId, ...action.variants.map((v) => v.id)]);
+			const projectIds = new Set(action.variants.map((v) => v.projectId));
+			let next = snapshots;
+			for (const projectId of projectIds) next = dropFromSnapshots(next, ids, projectId);
+			return upsertIntoSnapshots(next, action.variants);
+		}
+		case "addAttempts": {
+			const attemptIds = new Set(action.newAttempts.map((v) => v.id));
+			const projectIds = new Set([action.updatedSource.projectId, ...action.newAttempts.map((v) => v.projectId)]);
+			let next = snapshots;
+			for (const projectId of projectIds) {
+				const list = snapshots[projectId];
+				const attempts = action.newAttempts.filter((v) => v.projectId === projectId);
+				if (!list || (attempts.length === 0 && !list.some((t) => t.id === action.sourceTaskId || attemptIds.has(t.id)))) continue;
+				const kept = list
+					.filter((t) => !attemptIds.has(t.id))
+					.map((t) => (t.id === action.sourceTaskId ? action.updatedSource : t));
+				if (next === snapshots) next = { ...snapshots };
+				next[projectId] = [...kept, ...attempts];
+			}
+			return next;
+		}
+		case "removeProject": {
+			if (!(action.projectId in snapshots)) return snapshots;
+			const { [action.projectId]: _removed, ...rest } = snapshots;
+			return rest;
+		}
+		default:
+			return snapshots;
+	}
+}
+
 export function reducer(state: AppState, action: AppAction): AppState {
+	const taskSnapshots = reduceSnapshots(state.taskSnapshots, action);
+	return reduceBoard(taskSnapshots === state.taskSnapshots ? state : { ...state, taskSnapshots }, action);
+}
+
+function reduceBoard(state: AppState, action: AppAction): AppState {
 	switch (action.type) {
 		case "navigate":
 			return pushRoute(state, action.route, action.inheritSpace !== false);
@@ -679,6 +774,22 @@ export function reducer(state: AppState, action: AppAction): AppState {
 				bellReasons: withoutKey(state.bellReasons, action.taskId),
 				questionBells: withoutKey(state.questionBells, action.taskId),
 			};
+		}
+		case "removeBellReason": {
+			// Withdraws one bell whose cause went away (an offer answered on another
+			// client), leaving every other bell on the task ringing.
+			const reasons = state.bellReasons.get(action.taskId);
+			const trimmed = action.reason.trim();
+			if (!reasons?.includes(trimmed)) return state;
+			const bellReasons = new Map(state.bellReasons);
+			const rest = reasons.filter((reason) => reason !== trimmed);
+			if (rest.length > 0) bellReasons.set(action.taskId, rest);
+			else bellReasons.delete(action.taskId);
+			const bellCounts = new Map(state.bellCounts);
+			const count = (bellCounts.get(action.taskId) ?? 1) - 1;
+			if (count > 0) bellCounts.set(action.taskId, count);
+			else bellCounts.delete(action.taskId);
+			return { ...state, bellCounts, bellReasons };
 		}
 		case "setPorts": {
 			const taskPorts = new Map(state.taskPorts);

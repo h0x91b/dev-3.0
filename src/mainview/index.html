@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <!-- Boot value only; useViewport() replaces it per transport and route. The zoom
          cap is deliberate — see the comment in hooks/useViewport.ts. -->
-    <meta name="viewport" content="width=1024, user-scalable=no, maximum-scale=1, interactive-widget=resizes-content" />
+    <meta name="viewport" content="width=1024, user-scalable=no, maximum-scale=1, interactive-widget=resizes-content, viewport-fit=cover" />
     <!-- iOS Safari paints its status bar from this; without it the bar is light over a dark app.
          Boot value mirrors the dark --surface-base token (index.css); theme-color.ts keeps it in step. -->
     <meta name="theme-color" content="#060916" />
@@ -19,7 +19,7 @@
          standalone display mode counts as installed. -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <!-- Board-view extensions import bare "react"/"react-dom"/"cordis"; this map hands them
-         the host's own copies through public/ext-shared shims (board-views/extensions.ts). -->
+         the host's own copies through the public/ext-shared/* shims, which read what plugins/runtime.ts publishes. -->
     <script type="importmap">
       {
         "imports": {

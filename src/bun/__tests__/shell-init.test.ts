@@ -276,3 +276,61 @@ describe("dev3 prompt style choice", () => {
 	});
 
 });
+
+// #2288: on a big repo with a stale index `git status` takes seconds, and the
+// prompt must never wait for it. Needs a real line editor, so a real pty.
+const PTY_PROBE = String.raw`
+import os, pty, select, sys, time
+pid, fd = pty.fork()
+if pid == 0:
+    os.execvp("zsh", ["zsh", "-i"])
+buf = b""
+def until(pred, timeout):
+    global buf
+    end = time.time() + timeout
+    while not pred(buf) and time.time() < end:
+        if select.select([fd], [], [], 0.05)[0]:
+            try: buf += os.read(fd, 65536)
+            except OSError: break
+    return pred(buf)
+arrow = "▶".encode()
+first = until(lambda b: b.count(arrow) >= 1, 20)
+t0 = time.time()
+os.write(fd, b"\r")
+until(lambda b: b.count(arrow) >= 2, 20)
+enter = time.time() - t0
+counters = until(lambda b: b"+1 ~1 ?1" in b, 20)
+os.write(fd, b"exit\r")
+print("%d %.3f %d" % (first, enter, counters))
+`;
+
+describe("dev3 zsh prompt and a slow git", () => {
+	const available = hasShell("zsh") && spawnSync("python3", ["-c", "import pty"]).status === 0;
+
+	it.skipIf(!available)("redraws the prompt at once and fills the git counters in when git finishes", () => {
+		writeShellInit({});
+		const worktree = dirtyWorktree();
+		const bin = mkdtempSync(join(tmpdir(), "dev3-slow-git-"));
+		const realGit = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).stdout.trim();
+		writeFileSync(join(bin, "git"), `#!/bin/sh\nsleep 2\nexec "${realGit}" "$@"\n`, { mode: 0o755 });
+		const out = spawnSync("python3", ["-c", PTY_PROBE], {
+			cwd: worktree,
+			env: {
+				PATH: `${bin}:${process.env.PATH}`,
+				HOME: worktree,
+				LANG: "en_US.UTF-8",
+				LC_ALL: "en_US.UTF-8",
+				TERM: "xterm-256color",
+				ZDOTDIR: SHELL_INIT_DIR,
+				DEV3_WORKTREE_ROOT: worktree,
+				DEV3_TASK_SEQ: "42",
+			},
+			encoding: "utf8",
+			timeout: 60_000,
+		});
+		const [first, enter, counters] = out.stdout.trim().split(" ");
+		expect(first, out.stderr).toBe("1");
+		expect(Number(enter)).toBeLessThan(1);
+		expect(counters).toBe("1");
+	}, 70_000);
+});

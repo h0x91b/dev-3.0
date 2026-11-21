@@ -5,7 +5,6 @@ import { I18nProvider } from "../../../i18n";
 import { BoardService, type BoardActions, type BoardAllActions, type BoardLineageNode, type BoardModel } from "../../board-service";
 import { BoardViewSlot } from "../../BoardViewChrome";
 import { BoardViewRegistry } from "../../registry";
-import "../../root";
 import { installTreeView, TREE_VIEW_ID } from "..";
 import { TreeOptions } from "../TreeOptions";
 
@@ -54,6 +53,7 @@ async function renderTree(setup: Setup = {}) {
 		query: setup.query ?? "",
 		setQuery: vi.fn(),
 		scopeTasks: setup.scopeTasks ?? tasks,
+		visibility: "all",
 		tasks,
 		matches: () => false,
 		lineageNode: (id) => setup.lineage?.[id] ?? "deleted",
@@ -154,6 +154,17 @@ describe("Tree board view", () => {
 		expect(actions.openTask).toHaveBeenCalledWith("root");
 		fireEvent.contextMenu(screen.getByTestId("board-tree-row-p1#4"), { clientX: 5, clientY: 6 });
 		expect(actions.openContextMenu).toHaveBeenCalledWith("solo", { x: 5, y: 6 });
+	});
+
+	it("treats a macOS Ctrl+click as a right click: menu only, task stays closed", async () => {
+		const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+		onTestFinished(() => platform.mockRestore());
+		const { actions } = await renderTree({ tasks: family });
+		const row = screen.getByTestId("board-tree-row-p1#4");
+		fireEvent.contextMenu(row, { clientX: 5, clientY: 6, ctrlKey: true });
+		fireEvent.click(row, { ctrlKey: true });
+		expect(actions.openContextMenu).toHaveBeenCalledWith("solo", { x: 5, y: 6 });
+		expect(actions.openTask).not.toHaveBeenCalled();
 	});
 
 	it("keeps the nested count beside the title so status, priority and age stay in columns", async () => {

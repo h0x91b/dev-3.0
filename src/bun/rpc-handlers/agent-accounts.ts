@@ -8,12 +8,14 @@ import type {
 	AgentAccount,
 	AgentAccountKind,
 	AgentAccountsState,
+	ClaudePickLaunch,
+	ClaudePickLaunches,
 	ClaudeSlotModels,
 	PinnedClaudeLogin,
 	ProjectClaudeLogin,
 } from "../../shared/agent-accounts";
 import type { ClaudeApiProfileDraft } from "../agent-accounts";
-import { isAgentDirAccountKind, isAutoAccountId, isRoutableAccountKind, parseEnvLines, shortCodexWorkspaceId, type RoutableAccountKind } from "../../shared/agent-accounts";
+import { isAgentDirAccountKind, isAutoAccountId, isRoutableAccountKind, parseEnvLines, shortCodexWorkspaceId, type ProjectClaudeBackend, type RoutableAccountKind } from "../../shared/agent-accounts";
 import { exclusionKey, systemLoginExclusionKey, type AutoAccountPreview } from "../../shared/account-routing";
 import { previewAutoAccount as previewAutoAccountNow } from "../account-router";
 import { loadSettings, saveSettings } from "../settings";
@@ -24,6 +26,9 @@ import { getPtyPort } from "../pty-server";
 import { ptyWsUrl } from "../pty-server-access";
 import * as data from "../data";
 import { resolveProjectEnv } from "../repo-config";
+import { resolveClaudePickLaunch } from "../agents";
+import { resolveLaunchProject, rootProjectFor } from "../ops-worktree";
+import { claudeResumePickTarget } from "./tmux-pty/resume";
 import { homedir } from "node:os";
 import { log } from "./shared";
 
@@ -236,17 +241,67 @@ async function renameAgentAccount(params: { kind: AgentAccountKind; accountId: s
 	log.info("← renameAgentAccount done");
 }
 
+/** The backend a project env puts Claude on in place of its folder's login, if any. */
+function projectClaudeBackend(env: Record<string, string>): ProjectClaudeBackend | null {
+	const on = (key: string) => !!env[key] && !/^(0|false)$/i.test(env[key]);
+	if (on("CLAUDE_CODE_USE_BEDROCK")) return "bedrock";
+	if (on("CLAUDE_CODE_USE_VERTEX")) return "vertex";
+	if (on("CLAUDE_CODE_USE_FOUNDRY")) return "foundry";
+	// The keys a named login drops at launch (the same predicate), so a fold never hides a difference.
+	const dropped = Object.keys(env).filter((key) => !!env[key] && accounts.isClaudeBackendKey(key) && !key.startsWith("CLAUDE_CODE_USE_"));
+	const authKeys: readonly string[] = accounts.CLAUDE_ENV_AUTH_KEYS;
+	if (dropped.some((key) => authKeys.includes(key) && key !== "ANTHROPIC_BASE_URL")) return "env-auth";
+	if (dropped.includes("ANTHROPIC_BASE_URL")) return "gateway";
+	return dropped.length > 0 ? "model" : null;
+}
+
 /** Which Claude login a project's sessions use. Read on demand so an edit to
  *  `.dev3/config*.json` shows on the next open of the launch dialog. */
 async function getProjectClaudeLogin(params: { projectId: string }): Promise<ProjectClaudeLogin> {
 	try {
 		const project = await data.getProject(params.projectId);
-		const configDir = pinnedClaudeConfigDir((await resolveProjectEnv(project)).CLAUDE_CONFIG_DIR, homedir(), project.path);
+		const env = await resolveProjectEnv(project);
+		const configDir = pinnedClaudeConfigDir(env.CLAUDE_CONFIG_DIR, homedir(), project.path);
 		if (!configDir) return { configDir: null, identity: null };
 		return { configDir, identity: accounts.readClaudeConfigDirIdentity(configDir) };
 	} catch (err) {
 		log.warn("getProjectClaudeLogin failed", { projectId: params.projectId, error: String(err) });
 		return { configDir: null, identity: null };
+	}
+}
+
+/** Where each launch-picker row runs a Claude session, from the launcher's own resolver. A resume
+ *  heals the task's first Claude pane the way the resume does, so the project folder holds a pick only
+ *  if it holds the conversation the resume will reopen; a pick the resume would refuse gets no row. */
+async function getClaudePickLaunches(params: { projectId: string; taskId?: string; resume?: boolean }): Promise<ClaudePickLaunches> {
+	try {
+		const project = await data.getProject(params.projectId);
+		const task = params.taskId ? await data.getTask(project, params.taskId) : null;
+		const worktreePath = task?.worktreePath ?? project.path;
+		const projectEnv = task
+			? await resolveProjectEnv(await resolveLaunchProject(project, task, worktreePath), worktreePath, { foreignCode: task.foreignCode })
+			: await resolveProjectEnv(project);
+		const projectPath = task ? rootProjectFor(project, task).path : project.path;
+		const target = task && params.resume ? claudeResumePickTarget(task) : null;
+		const launch = { projectEnv, projectPath, worktreePath, resume: params.resume === true, sessionId: target?.sessionId ?? undefined };
+		const backend = pinnedClaudeConfigDir(projectEnv.CLAUDE_CONFIG_DIR, homedir(), projectPath) ? projectClaudeBackend(projectEnv) : null;
+		const resolve = async (accountId: string | null | undefined): Promise<ClaudePickLaunch> => {
+			const pick = await resolveClaudePickLaunch(accountId, launch);
+			return { projectFolder: pick.projectFolder, backend: pick.keepsProjectBackend ? backend : null };
+		};
+		const picks: Record<string, ClaudePickLaunch> = {};
+		for (const account of (await accounts.listAgentAccounts()).claude.accounts) {
+			const pick = await resolve(account.id);
+			// `--continue` on another account opens that account's latest, so the resume refuses the switch
+			// unless the pick stays in the folder the pane ran in (assertAccountReachesPanes).
+			const switches = target !== null && account.id !== target.savedAccountId;
+			if (switches && target.agentLatest && !(target.savedAccountId === undefined && pick.projectFolder)) continue;
+			picks[account.id] = pick;
+		}
+		return { none: await resolve(undefined), accounts: picks };
+	} catch (err) {
+		log.warn("getClaudePickLaunches failed", { projectId: params.projectId, taskId: params.taskId?.slice(0, 8), error: String(err) });
+		throw err;
 	}
 }
 
@@ -261,7 +316,13 @@ async function listPinnedClaudeLogins(): Promise<PinnedClaudeLogin[]> {
 			if (!configDir) continue;
 			const entry = byDir.get(configDir);
 			if (entry) entry.projectNames.push(project.name);
-			else byDir.set(configDir, { configDir, identity: accounts.readClaudeConfigDirIdentity(configDir), projectNames: [project.name] });
+			else
+				byDir.set(configDir, {
+					configDir,
+					identity: accounts.readClaudeConfigDirIdentity(configDir),
+					projectNames: [project.name],
+					accountId: accounts.claudeAccountForConfigDir(configDir),
+				});
 		} catch (err) {
 			log.warn("listPinnedClaudeLogins: project env unreadable", { projectId: project.id, error: String(err) });
 		}
@@ -271,6 +332,7 @@ async function listPinnedClaudeLogins(): Promise<PinnedClaudeLogin[]> {
 
 export const agentAccountHandlers = {
 	getProjectClaudeLogin,
+	getClaudePickLaunches,
 	listPinnedClaudeLogins,
 	listAgentAccounts,
 	importAgentAccount,

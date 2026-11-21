@@ -27,6 +27,10 @@ vi.mock("../task-keep-alive-scheduler", () => ({
 	startTaskKeepAliveScheduler: record("startTaskKeepAliveScheduler"),
 	stopTaskKeepAliveScheduler: record("stopTaskKeepAliveScheduler"),
 }));
+vi.mock("../agent-exit-probe", () => ({
+	startAgentExitProbe: record("startAgentExitProbe"),
+	stopAgentExitProbe: record("stopAgentExitProbe"),
+}));
 vi.mock("../log-archive-scheduler", () => ({
 	startLogArchiveScheduler: record("startLogArchiveScheduler"),
 	stopLogArchiveScheduler: record("stopLogArchiveScheduler"),
@@ -44,13 +48,16 @@ const source = (file: string) => readFileSync(join(BUN_DIR, file), "utf8");
 // Background jobs that are not `*-scheduler.ts` files but belong in the shared path.
 const OTHER_JOBS = { start: ["startFocusTracker"], stop: ["stopFocusTracker"] };
 
+// Clock jobs that are not `*-scheduler.ts` files.
+const OTHER_CLOCK_JOBS = { start: ["startAgentExitProbe"], stop: ["stopAgentExitProbe"] };
+
 // Every `start*Scheduler` exported by a `src/bun/*-scheduler.ts` module, read from disk
 // so a new scheduler file fails this suite until it joins the shared start path.
 function expectedJobs(prefix: "start" | "stop"): string[] {
 	const schedulers = readdirSync(BUN_DIR)
 		.filter((file) => file.endsWith("-scheduler.ts"))
 		.flatMap((file) => [...source(file).matchAll(new RegExp(`^export (?:async function |function |const )(${prefix}\\w+Scheduler)\\b`, "gm"))].map((m) => m[1]));
-	return [...schedulers, ...OTHER_JOBS[prefix]].sort();
+	return [...schedulers, ...OTHER_CLOCK_JOBS[prefix], ...OTHER_JOBS[prefix]].sort();
 }
 
 const CLOCK_STARTS = () => expectedJobs("start").filter((name) => !OTHER_JOBS.start.includes(name));

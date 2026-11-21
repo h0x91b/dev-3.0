@@ -100,6 +100,7 @@ async function spawnSingleBugHunterPane(opts: {
 		sessionId: freshSessionId,
 		accountId: opts.accountId,
 		projectEnv,
+		foreignCode: opts.task.foreignCode,
 		// Hunters audit the task's own work, so they run on its AWS account.
 		bedrockProfile: opts.task.bedrockProfile,
 		autoRouting: await autoRoutingContext(opts.project, `${opts.task.id}:hunter:${freshSessionId}`, projectEnv),
@@ -120,6 +121,7 @@ async function spawnSingleBugHunterPane(opts: {
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		resolvedAgentFamily = resolved.agentFamily;
 		if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
+		if (resolved.projectLoginKept) launchAccountId = undefined;
 		if (resolved.bedrockProfileMissing) await notifyBedrockProfileMissing(opts.task);
 		launchedAgentId = resolved.agent?.id ?? opts.agentId;
 		launchedConfigId = resolved.config?.id ?? opts.configId;
@@ -137,6 +139,7 @@ async function spawnSingleBugHunterPane(opts: {
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		resolvedAgentFamily = resolved.agentFamily;
 		if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
+		if (resolved.projectLoginKept) launchAccountId = undefined;
 		if (resolved.bedrockProfileMissing) await notifyBedrockProfileMissing(opts.task);
 		launchedAgentId = resolved.agent?.id ?? null;
 		launchedConfigId = resolved.config?.id ?? null;
@@ -177,6 +180,7 @@ async function spawnSingleBugHunterPane(opts: {
 		nativeAnchor: opts.split.nativeAnchor,
 		tmuxCommand: `bash "${scriptPath}"`,
 		nativeLaunch: generatedScriptLaunch(scriptPath),
+		focus: true,
 	});
 
 	// sessionState.panes is the tmux pane registry — recovery and `handlePaneExited`

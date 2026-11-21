@@ -26,6 +26,23 @@ export function taskCompletesManually(
 	return task.manualCompletion === true || isCoordinatorTask(task) || task.taskType === "board-cleanup";
 }
 
+/** Who decides that a task is finished. `agent` = opted in to `task move --status completed --force`. */
+export type TaskCompletionOwner = "dev3" | "user" | "agent";
+
+export function taskCompletionOwner(
+	task: { manualCompletion?: boolean; selfCompletion?: boolean; taskType?: TaskType | null },
+): TaskCompletionOwner {
+	if (task.selfCompletion === true) return "agent";
+	return taskCompletesManually(task) ? "user" : "dev3";
+}
+
+/** A merge is reported without suggesting completion: someone other than dev3 owns that call. */
+export function taskSkipsMergeSuggestion(
+	task: { manualCompletion?: boolean; selfCompletion?: boolean; taskType?: TaskType | null },
+): boolean {
+	return taskCompletionOwner(task) !== "dev3";
+}
+
 /**
  * Rank offset added to a hibernated task so it sinks below every live P4 while
  * hibernated tasks stay internally ordered by their own priority. Any value
@@ -35,11 +52,11 @@ export function taskCompletesManually(
 export const HIBERNATED_SORT_OFFSET = 10;
 
 /**
- * Rank offset added to a disconnected task. Sits between the live band and the
- * hibernated one: a dead session is not running, but unlike hibernation nobody
+ * Rank offset added to a task with no agent. Sits between the live band and the
+ * hibernated one: a task without an agent is not running, but unlike hibernation nobody
  * chose it, so it stays the first thing under the live work.
  */
-export const DISCONNECTED_SORT_OFFSET = 5;
+export const NO_AGENT_SORT_OFFSET = 5;
 
 /**
  * Rank offset lifting a live coordinator above every live priority band: it is
@@ -48,7 +65,7 @@ export const DISCONNECTED_SORT_OFFSET = 5;
  * band (−10…−6) cannot collide with the live band (0…4).
  *
  * Deliberately applied ONLY while the coordinator is live — a hibernated or
- * disconnected coordinator sinks like any other task, because a lift would
+ * no-agent coordinator sinks like any other task, because a lift would
  * advertise an agent that is not there.
  */
 export const COORDINATOR_SORT_OFFSET = -10;
@@ -66,6 +83,7 @@ export type TaskSortFields = Partial<
 		| "status"
 		| "worktreePath"
 		| "runtimeState"
+		| "agentExitedAt"
 		| "draft"
 		| "preparing"
 		| "shuttingDown"
@@ -88,6 +106,23 @@ export function isTaskDisconnected(task: TaskSortFields): boolean {
 }
 
 /**
+ * Is the terminal alive but the main agent gone? True for an active task whose
+ * runtime is not `idle` and whose agent-exit probe left {@link Task.agentExitedAt}:
+ * the pane now runs only a shell. Derived from the persisted flag, never probed here.
+ */
+export function isTaskAgentExited(task: TaskSortFields): boolean {
+	if (task.hibernated || task.draft || task.preparing || task.shuttingDown) return false;
+	if (!task.worktreePath) return false;
+	if (!task.status || !ACTIVE_STATUSES.includes(task.status)) return false;
+	return task.runtimeState?.runtime !== "idle" && !!task.agentExitedAt;
+}
+
+/** No agent is running: the terminal is gone ({@link isTaskDisconnected}) or only a shell is left ({@link isTaskAgentExited}). */
+export function isTaskAgentless(task: TaskSortFields): boolean {
+	return isTaskDisconnected(task) || isTaskAgentExited(task);
+}
+
+/**
  * Does this task look like it has an agent session running right now? Derived
  * from persisted state only — nothing is probed — so it may only decide whether
  * to TELL the user something, never whether a delivery happened. A launch that
@@ -98,17 +133,17 @@ export function taskAgentSessionLooksLive(task: TaskSortFields): boolean {
 	if (task.hibernated || task.draft || task.preparing || task.shuttingDown) return false;
 	if (!task.worktreePath) return false;
 	if (!task.status || !ACTIVE_STATUSES.includes(task.status)) return false;
-	return !isTaskDisconnected(task);
+	return !isTaskAgentless(task);
 }
 
-/** A coordinator that earns the lift: live, not parked and not disconnected. */
+/** A coordinator that earns the lift: live, not parked and with an agent. */
 export function isLiftedCoordinator(task: TaskSortFields): boolean {
-	return isCoordinatorTask(task) && !task.hibernated && !isTaskDisconnected(task);
+	return isCoordinatorTask(task) && !task.hibernated && !isTaskAgentless(task);
 }
 
 /**
  * A coordinator board lists pin on top: not hibernated and still in an active column.
- * A disconnected one stays pinned, as in the sidebar: after a restart it is the task to resume.
+ * One with no agent stays pinned, as in the sidebar: after a restart it is the task to resume.
  */
 export function isPinnedCoordinator(task: TaskSortFields): boolean {
 	return isCoordinatorTask(task) && !task.hibernated && !!task.status && ACTIVE_STATUSES.includes(task.status);
@@ -116,7 +151,7 @@ export function isPinnedCoordinator(task: TaskSortFields): boolean {
 
 /**
  * Sort rank of a task: its {@link priorityRank}, plus {@link HIBERNATED_SORT_OFFSET}
- * when hibernated, {@link DISCONNECTED_SORT_OFFSET} when its session died, or
+ * when hibernated, {@link NO_AGENT_SORT_OFFSET} when it has no agent, or
  * {@link COORDINATOR_SORT_OFFSET} when it is a live coordinator. None of the
  * three writes `priority`, so a woken, resumed or demoted task returns to its
  * rightful place in the queue.
@@ -127,14 +162,14 @@ export function isPinnedCoordinator(task: TaskSortFields): boolean {
 export function taskSortRank(task: TaskSortFields): number {
 	const rank = priorityRank(task.priority);
 	if (task.hibernated) return rank + HIBERNATED_SORT_OFFSET;
-	if (isTaskDisconnected(task)) return rank + DISCONNECTED_SORT_OFFSET;
+	if (isTaskAgentless(task)) return rank + NO_AGENT_SORT_OFFSET;
 	if (isLiftedCoordinator(task)) return rank + COORDINATOR_SORT_OFFSET;
 	return rank;
 }
 
 /**
  * The one comparator every task list sorts by: strict priority bands, then a
- * disconnected band, then a hibernated sink band. Deliberately splits a variant
+ * no-agent band, then a hibernated sink band. Deliberately splits a variant
  * group when one variant is parked — the board should show honestly how many
  * attempts are still alive.
  */

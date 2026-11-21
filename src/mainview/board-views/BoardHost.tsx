@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type Dispatch } from "react";
 import type { DevServerSummary, GlobalSettings, PortInfo, Project, ResourceUsage, Space, Task, TaskStatus } from "../../shared/types";
 import { getBoardColumns, laneKey } from "../../shared/types";
-import { KANBAN_VIEW_ID, type BoardFormFactor, type BoardRef } from "../../shared/board-view-state";
+import { ATTENTION_VIEW_ID, KANBAN_VIEW_ID, type BoardFormFactor, type BoardRef } from "../../shared/board-view-state";
 import { getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type AppAction, type OpenSettingsSectionDetail, type Route } from "../state";
 import { api } from "../rpc";
 import { trackEvent } from "../analytics";
 import { boardViewTelemetryId } from "../../shared/extensions";
 import { ignoreStartupReadFailure, startupRead } from "../startup-read";
 import { useT } from "../i18n";
-import { failedExtensionForView, getBoardPluginsSnapshot, subscribeBoardPlugins } from "./plugins";
+import { failedExtensionForView, getPluginsSnapshot, subscribePlugins } from "../plugins/runtime";
 import LabelFilterBar from "../components/LabelFilterBar";
+import BoardVisibilitySwitch from "../components/BoardVisibilitySwitch";
+import HiddenByVisibilityNotice from "../components/HiddenByVisibilityNotice";
 import LineageFilterNotice from "../components/LineageFilterNotice";
 import EpicFilterNotice from "../components/EpicFilterNotice";
 import { epicFilterToken } from "../utils/taskEpic";
+import { statusFilterValues } from "../utils/taskSearch";
 import CreateTaskModal from "../components/CreateTaskModal";
 import TaskDetailModal from "../components/TaskDetailModal";
 import { CAROUSEL_MAX_WIDTH } from "../components/MobileBoardCarousel";
@@ -25,7 +28,7 @@ import { useStreamerMode } from "../streamer-mode";
 import { HIDDEN_CONTROLS_CHANGED_EVENT, isSimplifyViewApplied } from "../hidden-controls";
 import { BoardService, type BoardLineageNode, type BoardModel, type BoardModelSource, type BoardPreferences } from "./board-service";
 import { BoardCardBindingsContext, BoardTaskCard, type BoardCardBindings } from "./BoardTaskCard";
-import { getBoardRoot } from "./root";
+import { getAppRoot } from "../plugins/root";
 import { useRegisteredBoardViews } from "./react";
 import { useBoardFilter } from "./useBoardFilter";
 import { useBoardViewState } from "./useBoardViewState";
@@ -37,6 +40,7 @@ import { READABLE_GUTTER } from "./readable-width";
 import { flushPendingBoardViewCommand, registerBoardViewCommandHandler, type BoardViewCommand } from "./view-commands";
 import type { RegisteredBoardView } from "./registry";
 import { toast } from "../toast";
+import { dependencyIds, indexDependencies, summarizeDependencies, type DependencySummary } from "../../shared/task-dependencies";
 
 
 export interface BoardHostProps {
@@ -207,6 +211,7 @@ function BoardHost(props: BoardHostProps) {
 		setQuery: filter.setQuery,
 		scopeTasks: tasks,
 		tasks: filter.displayTasks,
+		visibility: filter.visibility,
 		matches: filter.matches,
 		lineageNode,
 		columns,
@@ -219,7 +224,7 @@ function BoardHost(props: BoardHostProps) {
 		setLayout: viewState.setLayout,
 		preferences,
 		actions,
-	}), [boardRef, boardProjects, formFactor, filter.query, filter.setQuery, tasks, filter.displayTasks, filter.matches, lineageNode, columns, occupiedColumns, filter.labels, agents, filter.epics, viewState.layout, viewState.setLayout, preferences, actions]);
+	}), [boardRef, boardProjects, formFactor, filter.query, filter.setQuery, tasks, filter.displayTasks, filter.visibility, filter.matches, lineageNode, columns, occupiedColumns, filter.labels, agents, filter.epics, viewState.layout, viewState.setLayout, preferences, actions]);
 
 	// Draft being edited: reopens the New Task popup prefilled from the card.
 	// Resolved from the live list, so it closes by itself once the draft is promoted or deleted.
@@ -239,6 +244,15 @@ function BoardHost(props: BoardHostProps) {
 			const group = map.get(task.groupId);
 			if (group) group.push(task);
 			else map.set(task.groupId, [task]);
+		}
+		return map;
+	}, [tasks]);
+
+	const dependencyMap = useMemo(() => {
+		const map = new Map<string, DependencySummary>();
+		const index = indexDependencies(tasks);
+		for (const task of tasks) {
+			if (dependencyIds(task).length > 0) map.set(task.id, summarizeDependencies(task, index));
 		}
 		return map;
 	}, [tasks]);
@@ -275,6 +289,7 @@ function BoardHost(props: BoardHostProps) {
 		taskResourceUsage: props.taskResourceUsage,
 		activeTaskId: props.activeTaskId,
 		siblingMap,
+		dependencyMap,
 		taskPrMap: filter.taskPrMap,
 		lineageFor,
 		onFilterByEpic: filter.applyEpicFilter,
@@ -282,7 +297,7 @@ function BoardHost(props: BoardHostProps) {
 		onAddAttempts: (task) => launch(task, task.status, "addAttempts"),
 		onEditDraft: (task) => setEditDraftTaskId(task.id),
 		onOpenUnresolvedComments: props.onOpenUnresolvedComments,
-	}), [projectOf, space, dispatch, navigate, agents, props.bellCounts, props.bellReasons, taskPorts, props.taskDevServers, props.taskResourceUsage, props.activeTaskId, siblingMap, filter.taskPrMap, lineageFor, filter.applyEpicFilter, launch, props.onOpenUnresolvedComments]);
+	}), [projectOf, space, dispatch, navigate, agents, props.bellCounts, props.bellReasons, taskPorts, props.taskDevServers, props.taskResourceUsage, props.activeTaskId, siblingMap, dependencyMap, filter.taskPrMap, lineageFor, filter.applyEpicFilter, launch, props.onOpenUnresolvedComments]);
 
 	// Written during render so a view rendering in this same pass already reads it.
 	const sourceRef = useRef<BoardModelSource | null>(null);
@@ -291,7 +306,7 @@ function BoardHost(props: BoardHostProps) {
 
 	// `ctx.board` exists while the host is mounted. A layout effect, so the
 	// provision lands before the first paint and the view never renders without it.
-	const root = getBoardRoot();
+	const root = getAppRoot();
 	const [provided, setProvided] = useState(false);
 	useLayoutEffect(() => {
 		const dispose = root.provide("board", new BoardService(sourceRef.current!, BoardTaskCard));
@@ -313,7 +328,7 @@ function BoardHost(props: BoardHostProps) {
 	const active = offered.find((view) => view.def.id === viewState.viewType)
 		?? offered.find((view) => view.def.id === KANBAN_VIEW_ID);
 	const kanbanFallback = <BoardViewSlot ctx={root} component={KanbanView} />;
-	const plugins = useSyncExternalStore(subscribeBoardPlugins, getBoardPluginsSnapshot);
+	const plugins = useSyncExternalStore(subscribePlugins, getPluginsSnapshot);
 	const failedExtension = active?.def.id === viewState.viewType ? null : failedExtensionForView(plugins, viewState.viewType);
 
 	const { setViewType } = viewState;
@@ -330,6 +345,13 @@ function BoardHost(props: BoardHostProps) {
 	const switcher = showSwitcher && active ? (
 		<BoardViewSwitcher views={offered} activeId={active.def.id} onPick={pickView} onManage={manageViews} />
 	) : null;
+	const leading = (
+		<>
+			{switcher}
+			{/* Always rendered so the search box never shifts; a click before the read lands wins over it. */}
+			<BoardVisibilitySwitch visibility={filter.visibility} onChange={filter.setVisibility} narrow={isNarrow} confirmed={filter.visibilityConfirmed} overridden={statusFilterValues(filter.query).length > 0} />
+		</>
+	);
 	const options = active?.def.Options ? <BoardViewOptionsButton view={active} /> : null;
 
 	return (
@@ -340,7 +362,7 @@ function BoardHost(props: BoardHostProps) {
 				onSearchChange={filter.setQuery}
 				filterGroups={filter.filterGroups}
 				disableGlobalFindShortcut={disableGlobalFindShortcut}
-				leading={switcher}
+				leading={leading}
 				trailing={options}
 				gutterClassName={active?.def.id === TREE_VIEW_ID ? READABLE_GUTTER : undefined}
 			/>
@@ -367,6 +389,17 @@ function BoardHost(props: BoardHostProps) {
 					navigate({ screen: "project", projectId });
 				}}
 			/>
+			{/* Attention buckets that name a status show finished tasks themselves, so a count here would lie. */}
+			{active?.def.id !== ATTENTION_VIEW_ID && (
+				<HiddenByVisibilityNotice
+					visibility={filter.visibility}
+					searchQuery={filter.query}
+					tasks={tasks}
+					shownCount={filter.displayTasks.length}
+					matches={filter.matches}
+					onShowAll={() => filter.setVisibility("all")}
+				/>
+			)}
 			{provided && failedExtension && (
 				<div role="alert" className="mx-6 mt-2 px-3 py-2 rounded-lg bg-danger/10 text-danger text-xs flex items-center gap-3">
 					<span>{t("boardView.extensionFailed", { name: failedExtension })}</span>
@@ -375,7 +408,7 @@ function BoardHost(props: BoardHostProps) {
 					</button>
 				</div>
 			)}
-			{provided && (
+			{provided && filter.visibilityReady && (
 				<BoardViewErrorBoundary
 					viewId={active?.def.id ?? KANBAN_VIEW_ID}
 					fallback={() => (

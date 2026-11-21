@@ -1,3 +1,5 @@
+Superseded on 2026-11-17 by `decisions/2026/11/17/board-visibility-switch-replaces-status-persistence.md`: status tokens are no longer persisted; a per-board Active | All switch is.
+
 # Board status tokens persist across restarts
 
 ## Context

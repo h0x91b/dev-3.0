@@ -226,6 +226,9 @@ describe("moveTask → AI Review on a native task", () => {
 		expect(orientation).toBe("horizontal");
 		expect(viewSpec.launch.argv[0]).toContain("col-agent.sh");
 		expect(viewSpec.cwd).toBe("/repo/wt");
+		// The review agent never takes the main agent's focus: it is added in the background.
+		expect(viewSpec.background).toBe(true);
+		expect(mocks.focusNativeTaskPane).not.toHaveBeenCalled();
 		for (const call of ALL_TMUX_CALLS) expect(call).not.toHaveBeenCalled();
 	});
 

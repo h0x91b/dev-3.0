@@ -1,5 +1,6 @@
+import { getAgentAdapter } from "../shared/agent-adapters";
 import { type AgentMessageSource, getTaskTitle, type Project, type ScheduledMessageTarget, type Task } from "../shared/types";
-import { agentSessionRecord } from "./agent-session-receipts";
+import { agentSessionRecord, latestAgentLaunchRecord } from "./agent-session-receipts";
 import * as data from "./data";
 import { taskDir } from "./git";
 import { createLogger } from "./logger";
@@ -69,8 +70,9 @@ export const HANDOFF_SUBJECT = "Started by a peer agent";
  * only into the pane that sent it. Typing earlier lands in the trust dialog, whose
  * default `No, exit` the Enter confirms (#1785, #2034). There is no fallback timer
  * for it: past the boot window the card is badged, and past the ceiling the note is
- * dropped with a toast — never typed blind. Other harnesses send no receipt and keep
- * the pane-exists rule.
+ * dropped with a toast — never typed blind. An agent whose adapter names `session-capture`
+ * as its ready evidence (agy) is held the same way until its hook has written a session id
+ * onto the pane, then typed into that pane. Other harnesses keep the pane-exists rule.
  *
  * Best-effort and never throws — the child still runs if the note never lands.
  */
@@ -90,6 +92,7 @@ export async function deliverLaunchHandoff(opts: {
 	let badged = false;
 	let failingSince: number | null = null;
 	let boundSessionId: string | null = null;
+	let boundPaneId: string | null = null;
 
 	while (now() < startedAt + STARTUP_CEILING_MS) {
 		try {
@@ -101,7 +104,34 @@ export async function deliverLaunchHandoff(opts: {
 				return false;
 			}
 			const panes = task.sessionState?.panes ?? [];
-			if (!task.preparing && panes.length > 0) {
+			if (!task.preparing && panes.length > 0 && waitsForSessionCapture(panes[0]!)) {
+				const main = panes[0]!;
+				// A relaunch brings a new pane (and its own handoff): the pane seen first is the one meant.
+				if (main.paneId) {
+					if (boundPaneId && main.paneId !== boundPaneId) {
+						log.info("Handoff abandoned — the launched agent was replaced", { taskId: shortId });
+						notifyUndelivered(project, task, "This task was launched by an agent, but its agent was restarted before the handoff note could be delivered.");
+						return false;
+					}
+					boundPaneId = main.paneId;
+				}
+				// Exit wins over the captured session: the pane outlives agy as a bare shell, and a hook that
+				// fired just before the exit still leaves its conversation id there.
+				const launch = latestAgentLaunchRecord(task.id);
+				if (launch?.exitedAt != null) {
+					log.warn("Handoff abandoned — the agent exited before the note was delivered", { taskId: shortId, exitCode: launch.exitCode });
+					notifyUndelivered(project, task, "This task was launched by an agent, but its agent exited before the handoff note could be delivered.");
+					return false;
+				}
+				if (main.sessionId) {
+					return await sendHandoff(project, task, opts, main.paneId ? { kind: "pane", paneId: main.paneId } : null);
+				}
+				if (!badged && now() >= startedAt + MAX_WAIT_MS) {
+					badged = true;
+					log.warn("Handoff still waiting — the agent has not reported its session", { taskId: shortId });
+					pushCliAttention({ taskId: task.id, projectId: project.id, reason: STARTUP_WAIT_REASON });
+				}
+			} else if (!task.preparing && panes.length > 0) {
 				const sessionId = panes[0]?.sessionId ?? null;
 				const launched = sessionId ? agentSessionRecord(task.id, sessionId) : null;
 				if (boundSessionId && sessionId !== boundSessionId) {
@@ -152,6 +182,10 @@ export async function deliverLaunchHandoff(opts: {
 		// The task or project vanished while we waited — nothing left to notify about.
 	}
 	return false;
+}
+
+function waitsForSessionCapture(pane: { agentCmd?: string; agentFamily?: Parameters<typeof getAgentAdapter>[1] | null }): boolean {
+	return !!pane.agentCmd && getAgentAdapter(pane.agentCmd, pane.agentFamily ?? undefined).readyEvidence === "session-capture";
 }
 
 async function sendHandoff(

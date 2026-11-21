@@ -10,6 +10,10 @@ reasoning (48 of 50 dates), so the record wins and this file stays an index. Wri
 in full only while no record exists — the case for 84 below, whose reasoning lives nowhere
 else, so never compact them by deleting it.
 
+## 2026-11-09 — Completion asks: dialog by default, a bar in the agent's pane on request
+- **Rule:** bible §10 "merge/agent completion ask", yaml `task_info_panel.completion_strip`.
+- **Why:** decisions/2026/11/09/completion-offer-style-setting.md.
+
 ## 2026-11-09 — The user's own Complete/Cancel confirms beside the clicked button
 - **Rule:** bible §10 "the user's own one-click Complete/Cancel", yaml `popover.own_click_confirm`.
 - **Why:** decisions/2026/11/07/user-completion-confirm-anchored-not-modal.md.
@@ -89,7 +93,7 @@ One App viewer docks by default or uses a lightbox via `openArtifactsInPopup` in
 
 ## 2026-09-07 — Tasks can leave the Active Tasks queue without stopping
 
-`Task.hidden` hides a whole variant group from the Active Tasks sidebar only; row toggle, conditional reveal in the filter row (dot when one needs you), `is:hidden` token. Hibernated and disconnected tasks are out by default too, behind the same eye (`is:hibernated`). Why: `decisions/2026/09/07/hide-tasks-from-active-sidebar.md`, `decisions/2026/10/01/active-tasks-hide-hibernated.md`.
+`Task.hidden` hides a whole variant group from the Active Tasks sidebar only; row toggle, conditional reveal in the filter row (dot when one needs you), `is:hidden` token. Hibernated tasks and tasks with no agent (terminal gone, or agent exited to a shell; one "No agent" mark) are out by default too, behind the same eye (`is:hibernated`). Why: `decisions/2026/09/07/hide-tasks-from-active-sidebar.md`, `decisions/2026/10/01/active-tasks-hide-hibernated.md`.
 
 ## 2026-09-05 — HTML artifacts open as a popup
 
@@ -752,3 +756,11 @@ Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `
 ## 2026-11-09 — Number keys can follow spaces
 - **Rule:** an opt-in Keyboard setting interleaves spaces with standalone projects in one draggable dashboard order; ⌘1–9 follow it, a space opens its board, ⌘0 stays Operations. Bible §10 space order.
 - **Why:** digits by project skipped past grouped work. Rejected per-key pinning (manual, user-rejected) and slot-of-first-member (not movable). Off = unchanged.
+
+## 2026-11-16 — The phone actions sheet is the complete inventory
+- **Rule:** Full screen (first) and Hibernate (last) are narrow sheet rows; narrow offers no hiding and ignores personal hiding (Simplified Mode still trims). Card long-press stays the drag; move = status-rail tap. Bible §12.3, §5.10.
+- **Why:** no touch path existed and hidden rows had no restore on a phone. Rejected a restore row and a per-user mobile button setting. `decisions/2026/11/16/phone-task-actions-sheet-is-the-complete-inventory.md`.
+
+## 2026-11-21 — Surfaces become plugin slots, internal first
+- **Rule:** two slot kinds, replace (chooser + built-in fallback) and contribution (host owns order and budget); extensions are add-only and get slots only after every surface has moved internally. Bible §5.12, yaml `plugin_slots`.
+- **Why:** no sandbox, so replacing Push or Accounts is a phishing surface; rejected opening each slot as soon as it landed. `decisions/2026/11/21/gui-plugin-slots-and-api-versioning.md`.

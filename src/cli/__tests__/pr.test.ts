@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { handlePr, type PrCommandResult, type PrDeps } from "../commands/pr";
-import type { ParsedArgs } from "../args";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { handlePr, realPrDeps, type PrCommandResult, type PrDeps } from "../commands/pr";
+import { parseArgs, type ParsedArgs } from "../args";
 import type { CliContext } from "../context";
 
 vi.mock("../context", () => ({
@@ -8,7 +12,11 @@ vi.mock("../context", () => ({
 	readProjectDirect: vi.fn(() => null),
 }));
 
+vi.mock("../socket-client", () => ({ sendRequest: vi.fn() }));
+
 import { readProjectDirect, readTaskDirect } from "../context";
+import { sendRequest } from "../socket-client";
+const mockSendRequest = vi.mocked(sendRequest);
 const mockReadTask = vi.mocked(readTaskDirect);
 const mockReadProject = vi.mocked(readProjectDirect);
 
@@ -72,6 +80,7 @@ function deps(
 		cwd: CWD,
 		platform: "darwin",
 		originTaskLinkEnabled: () => true,
+		watchUntilMerged: async () => false,
 		...overrides,
 	};
 	return { deps: base, calls };
@@ -107,13 +116,187 @@ afterEach(() => {
 	exitSpy.mockRestore();
 });
 
+/** Routes by the full argument list, which the prefix table in `deps()` cannot tell apart. */
+function forkRepo(
+	base: PrDeps,
+	{
+		originDenied = true,
+		remotes = "fork\norigin\n",
+		urls = { origin: "https://github.com/acme/app", fork: "git@github.com:me/app.git" } as Record<string, string>,
+		parent = "acme/app",
+		config = {} as Record<string, string>,
+	} = {},
+): PrDeps {
+	return {
+		...base,
+		run: (command, runArgs, cwd, env) => {
+			const result = base.run(command, runArgs, cwd, env);
+			if (command === "gh" && runArgs[0] === "repo") return ok(`${parent}\n`);
+			if (command !== "git") return result;
+			if (runArgs[0] === "push" && runArgs[2] === "origin" && originDenied) {
+				return fail("remote: Permission to acme/app.git denied to me.\nfatal: The requested URL returned error: 403");
+			}
+			if (runArgs[0] === "config") return config[runArgs[2]] ? ok(`${config[runArgs[2]]}\n`) : fail("");
+			if (runArgs[0] === "remote" && runArgs.length === 1) return ok(remotes);
+			if (runArgs[1] === "get-url") return ok(`${urls[runArgs[runArgs.length - 1]] ?? ""}\n`);
+			return result;
+		},
+	};
+}
+
+describe("dev3 pr create — fork contributors", () => {
+	it("pushes to the only other remote when origin is not writable, and opens the PR on origin's repo", async () => {
+		const { deps: d, calls } = deps();
+
+		await handlePr("create", args({ title: "T" }), null, forkRepo(d));
+
+		expect(ran(calls, "git", ["push", "--set-upstream", "fork"])).toBeDefined();
+		const create = ran(calls, "gh", ["pr", "create"])!;
+		expect(create.args.join(" ")).toContain("--repo acme/app");
+		expect(create.args.join(" ")).toContain("--head me:feat/thing");
+		expect(stdoutOutput).toContain("feat/thing → fork");
+	});
+
+	it("never pushes unasked to a remote GitHub does not call a fork of origin", async () => {
+		const { deps: d, calls } = deps();
+
+		await expect(handlePr("create", args({ title: "T" }), null, forkRepo(d, { parent: "/" }))).rejects.toThrow(/EXIT_/);
+
+		expect(ran(calls, "git", ["push", "--set-upstream", "fork"])).toBeUndefined();
+		expect(stderrOutput).toContain("remote.pushDefault");
+	});
+
+	it("prefers the branch's pushRemote over remote.pushDefault and never tries origin first", async () => {
+		const { deps: d, calls } = deps();
+		const config = { "branch.feat/thing.pushRemote": "fork", "remote.pushDefault": "mirror" };
+
+		await handlePr("create", args({ title: "T" }), null, forkRepo(d, { config }));
+
+		expect(ran(calls, "git", ["push", "--set-upstream", "origin"])).toBeUndefined();
+		expect(ran(calls, "git", ["push", "--set-upstream", "mirror"])).toBeUndefined();
+		expect(ran(calls, "git", ["push", "--set-upstream", "fork"])).toBeDefined();
+	});
+
+	it("falls back to remote.pushDefault when the branch names no pushRemote", async () => {
+		const { deps: d, calls } = deps();
+
+		await handlePr("create", args({ title: "T" }), null, forkRepo(d, { config: { "remote.pushDefault": "fork" } }));
+
+		expect(ran(calls, "git", ["push", "--set-upstream", "fork"])).toBeDefined();
+	});
+
+	it("names the owner of the push URL, not the fetch URL", async () => {
+		const { deps: d, calls } = deps();
+		const base = forkRepo(d, { config: { "remote.pushDefault": "fork" } });
+		const withPushUrl: PrDeps = {
+			...base,
+			run: (command, runArgs, cwd, env) =>
+				command === "git" && runArgs[1] === "get-url" && runArgs[2] === "--push" && runArgs[3] === "fork"
+					? ok("https://github.com/me/app.git\n")
+					: command === "git" && runArgs[1] === "get-url" && runArgs[2] === "fork"
+						? ok("https://github.com/acme/app\n")
+						: base.run(command, runArgs, cwd, env),
+		};
+
+		await handlePr("create", args({ title: "T" }), null, withPushUrl);
+
+		expect(ran(calls, "gh", ["pr", "create"])!.args.join(" ")).toContain("--head me:feat/thing");
+	});
+
+	it("adds no fork head when the configured remote is origin's own repository", async () => {
+		const { deps: d, calls } = deps();
+		const urls = { origin: "https://github.com/acme/app", alias: "git@github.com:acme/app.git" };
+
+		await handlePr("create", args({ title: "T" }), null, forkRepo(d, { urls, config: { "remote.pushDefault": "alias" } }));
+
+		const create = ran(calls, "gh", ["pr", "create"])!;
+		expect(create.args).not.toContain("--repo");
+		expect(create.args).not.toContain("--head");
+	});
+
+	it("keeps a GitHub Enterprise host in --repo", async () => {
+		const { deps: d, calls } = deps();
+		const urls = { origin: "https://ghe.example.com/acme/app.git", fork: "ssh://git@ghe.example.com:2222/me/app.git" };
+
+		await handlePr("create", args({ title: "T" }), null, forkRepo(d, { urls }));
+
+		expect(ran(calls, "gh", ["pr", "create"])!.args.join(" ")).toContain("--repo ghe.example.com/acme/app");
+	});
+
+	it("does not guess between several other remotes and says how to name the fork", async () => {
+		const { deps: d, calls } = deps();
+
+		await expect(handlePr("create", args({ title: "T" }), null, forkRepo(d, { remotes: "fork\nmirror\norigin\n" }))).rejects.toThrow(/EXIT_/);
+
+		expect(stderrOutput).toContain("remote.pushDefault");
+		expect(ran(calls, "gh", ["pr", "create"])).toBeUndefined();
+	});
+
+	it("keeps an ordinary push to origin free of --repo and --head", async () => {
+		const { deps: d, calls } = deps();
+
+		await handlePr("create", args({ title: "T" }), null, forkRepo(d, { originDenied: false }));
+
+		const create = ran(calls, "gh", ["pr", "create"])!;
+		expect(create.args).not.toContain("--repo");
+		expect(create.args).not.toContain("--head");
+	});
+});
+
+describe("dev3 pr create — merge watch", () => {
+	it("subscribes the task's agent to the merge so it is woken to request completion", async () => {
+		const watchUntilMerged = vi.fn(async () => true);
+		const context = ctx();
+
+		await handlePr("create", args({ title: "T" }), context, deps({}, { watchUntilMerged }).deps);
+
+		expect(watchUntilMerged).toHaveBeenCalledWith(context);
+		expect(stdoutOutput).toContain("until merged");
+		expect(stdoutOutput).not.toContain("Waiting on CI or merge?");
+	});
+
+	it("arms the watch before auto-merge, so a refused auto-merge still leaves the PR watched", async () => {
+		const watchUntilMerged = vi.fn(async () => true);
+		const { deps: d } = deps({ "gh pr merge": fail("auto-merge is not allowed") }, { watchUntilMerged });
+
+		await expect(handlePr("create", args({ title: "T", "auto-merge": "true" }), ctx(), d)).rejects.toThrow(/EXIT_/);
+
+		expect(watchUntilMerged).toHaveBeenCalled();
+	});
+
+	it("never subscribes outside a task", async () => {
+		const watchUntilMerged = vi.fn(async () => true);
+
+		await handlePr("create", args({ title: "T" }), null, deps({}, { watchUntilMerged }).deps);
+
+		expect(watchUntilMerged).not.toHaveBeenCalled();
+	});
+
+	it("asks the app for the branch's own PR with until merged, from this agent", async () => {
+		mockSendRequest.mockResolvedValue({ ok: true, data: { prNumber: 42 } } as never);
+
+		expect(await realPrDeps.watchUntilMerged(ctx())).toBe(true);
+
+		const [socket, method, params] = mockSendRequest.mock.calls[0];
+		expect(socket).toBe("/tmp/x.sock");
+		expect(method).toBe("pr.watch.add");
+		expect(params).toMatchObject({ taskId: "task-1", projectId: "proj-1", until: "merged", sourceTaskId: "task-1" });
+		expect(params).not.toHaveProperty("prNumber");
+	});
+
+	it("reports no watch when the app is unreachable", async () => {
+		mockSendRequest.mockRejectedValue(new Error("ECONNREFUSED"));
+		expect(await realPrDeps.watchUntilMerged(ctx())).toBe(false);
+	});
+});
+
 describe("dev3 pr create — happy path", () => {
 	it("pushes the branch, opens the pull request, and prints its URL", async () => {
 		const { deps: d, calls } = deps();
 
 		await handlePr("create", args({ title: "Add a thing", description: "Why it exists" }), null, d);
 
-		expect(ran(calls, "git", ["push", "--set-upstream", "origin", "feat/thing"])).toBeDefined();
+		expect(ran(calls, "git", ["push", "--set-upstream", "origin", "feat/thing:refs/heads/feat/thing"])).toBeDefined();
 		const create = ran(calls, "gh", ["pr", "create"])!;
 		expect(create.args).toContain("Add a thing");
 		expect(create.args).toContain("Why it exists");
@@ -168,6 +351,54 @@ describe("dev3 pr create — happy path", () => {
 		await handlePr("create", args({ title: "T", draft: "true" }), null, d);
 
 		expect(ran(calls, "gh", ["pr", "create"])!.args).toContain("--draft");
+	});
+});
+
+describe("dev3 pr create — --assignee", () => {
+	function assigneeArgs(call: Call | undefined): string[] {
+		const out: string[] = [];
+		call!.args.forEach((a, i) => {
+			if (a === "--assignee") out.push(call!.args[i + 1]);
+		});
+		return out;
+	}
+
+	it("adds no --assignee to gh when the flag is absent", async () => {
+		const { deps: d, calls } = deps();
+
+		await handlePr("create", args({ title: "T", description: "B", base: "main", draft: "true" }), ctx(), d);
+
+		expect(ran(calls, "gh", ["pr", "create"])!.args).not.toContain("--assignee");
+	});
+
+	it("passes one login through to gh", async () => {
+		const { deps: d, calls } = deps();
+
+		await handlePr("create", parseArgs(["--title", "T", "--assignee", "octocat"]), null, d);
+
+		expect(assigneeArgs(ran(calls, "gh", ["pr", "create"]))).toEqual(["octocat"]);
+	});
+
+	it("accepts it repeated and comma-separated, like gh", async () => {
+		const { deps: d, calls } = deps();
+
+		await handlePr(
+			"create",
+			parseArgs(["--title", "T", "--assignee", "alice, bob", "--assignee", "@me"]),
+			null,
+			d,
+		);
+
+		expect(assigneeArgs(ran(calls, "gh", ["pr", "create"]))).toEqual(["alice", "bob", "@me"]);
+	});
+
+	it.each([[["--assignee"]], [["--assignee", ","]]])("refuses %j with no login before pushing", async (flag) => {
+		const { deps: d, calls } = deps();
+
+		await expect(handlePr("create", parseArgs(["--title", "T", ...flag]), null, d)).rejects.toThrow("EXIT_3");
+
+		expect(ran(calls, "git", ["push"])).toBeUndefined();
+		expect(ran(calls, "gh", ["pr", "create"])).toBeUndefined();
 	});
 });
 
@@ -677,5 +908,48 @@ describe("dev3 pr — the project's GitHub account", () => {
 
 		expect(ran(calls, "git", ["push"])).toBeUndefined();
 		expect(stderrOutput).toContain("ghost@github.com");
+	});
+});
+
+describe("dev3 pr create — real git push destination (#2289)", () => {
+	let root: string;
+	const git = (cwd: string, ...gitArgs: string[]) =>
+		execFileSync("git", gitArgs, { cwd, encoding: "utf8", env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1" } }).trim();
+
+	beforeEach(() => {
+		root = mkdtempSync(join(tmpdir(), "dev3-pr-push-"));
+		git(root, "init", "-q", "--bare", "-b", "main", "remote.git");
+		git(root, "clone", "-q", "remote.git", "wt");
+		const wt = join(root, "wt");
+		git(wt, "config", "user.email", "t@example.com");
+		git(wt, "config", "user.name", "T");
+		git(wt, "commit", "-q", "--allow-empty", "-m", "init");
+		git(wt, "push", "-q", "origin", "main");
+		// A task branch that still tracks the base after a `git branch -m` rename.
+		git(wt, "checkout", "-q", "-b", "dev3/task-x", "--track", "origin/main");
+		git(wt, "branch", "-m", "dev3/task-x", "fix/example");
+		git(wt, "commit", "-q", "--allow-empty", "-m", "work");
+		git(wt, "config", "push.default", "upstream");
+	});
+
+	afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+	it("pushes to a same-named remote branch and leaves the base untouched", async () => {
+		const wt = join(root, "wt");
+		const remote = join(root, "remote.git");
+		const baseBefore = git(remote, "rev-parse", "refs/heads/main");
+		const { deps: fake } = deps();
+		const d: PrDeps = {
+			...fake,
+			cwd: wt,
+			run: (command, runArgs, cwd, env) =>
+				command === "git" ? realPrDeps.run(command, runArgs, cwd, env) : fake.run(command, runArgs, cwd, env),
+		};
+
+		await handlePr("create", args({ title: "T", base: "main" }), null, d);
+
+		expect(git(remote, "rev-parse", "refs/heads/main")).toBe(baseBefore);
+		expect(git(remote, "rev-parse", "refs/heads/fix/example")).toBe(git(wt, "rev-parse", "HEAD"));
+		expect(git(wt, "config", "--get", "branch.fix/example.merge")).toBe("refs/heads/fix/example");
 	});
 });

@@ -1,4 +1,5 @@
 import { computeTokenCostUsd, resolveModelRate, type ModelRate, type TokenCounts } from "../../shared/agent-pricing";
+import type { UsageBilling } from "../../shared/agent-billing";
 import type { AgentUsageDay, AgentUsageSource, TaskUsageTotals } from "../../shared/types";
 
 /** Content-free response snapshots; identities let history survive source-log cleanup. */
@@ -8,6 +9,8 @@ export interface UsageRecord {
 	cumulativeScope?: string;
 	timestamp: number;
 	counts: TokenCounts;
+	/** Absent = unknown billing. */
+	billing?: UsageBilling;
 }
 
 type CodexTotals = [number, number, number, number];
@@ -23,6 +26,8 @@ export interface UsageState {
 	codexModel: string;
 	codexNativeStarted: boolean;
 	codexSession: string;
+	/** Billing evidence for the file being folded, stamped onto its records. */
+	fileBilling?: UsageBilling;
 }
 
 export function newUsageState(): UsageState {
@@ -60,6 +65,9 @@ export function mergeUsageRecord(state: UsageState, key: string, next: UsageReco
 		pricingModel: previous?.pricingModel ?? next.pricingModel,
 		cumulativeScope: previous?.cumulativeScope ?? next.cumulativeScope,
 	};
+	const billing = next.billing ?? previous?.billing;
+	if (billing) merged.billing = billing;
+	else delete merged.billing;
 	if (previous && key.startsWith("cursor:")) {
 		merged.timestamp = Math.min(previous.timestamp, next.timestamp);
 		if (previous.model === next.model) {
@@ -95,7 +103,11 @@ export function foldClaudeEntry(state: UsageState, entry: unknown): void {
 	};
 	const identity = msg.id || e.requestId ? [msg.id ?? "", e.requestId ?? ""]
 		: [e.uuid ?? timestamp, model, counts];
-	mergeUsageRecord(state, `claude:${JSON.stringify(identity)}`, { model, timestamp, counts });
+	mergeUsageRecord(state, `claude:${JSON.stringify(identity)}`, { model, timestamp, counts, ...billingOf(state) });
+}
+
+function billingOf(state: UsageState): { billing?: UsageBilling } {
+	return state.fileBilling ? { billing: state.fileBilling } : {};
 }
 
 /** Reset only the per-file context, retaining usage from previous files. */
@@ -178,7 +190,7 @@ export function foldCodexEntry(state: UsageState, entry: unknown): void {
 		}
 	}
 	mergeUsageRecord(state, key, {
-		model: state.codexModel, timestamp,
+		model: state.codexModel, timestamp, ...billingOf(state),
 		counts: {
 			inputTokens: input - cachedInput - cacheWrite,
 			outputTokens: output, cacheReadInputTokens: cachedInput, cacheCreationInputTokens: cacheWrite,
@@ -223,7 +235,7 @@ export function finalizeUsage(
 ): { days: AgentUsageDay[]; hasUnpriced: boolean } {
 	const byDate = new Map<string, AgentUsageDay>();
 	let hasUnpriced = false;
-	for (const { model, pricingModel, timestamp, counts } of recordsForReport(state)) {
+	for (const { model, pricingModel, timestamp, counts, billing } of recordsForReport(state)) {
 		const d = new Date(timestamp);
 		const startMs = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 		const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -231,7 +243,8 @@ export function finalizeUsage(
 		if (!row) {
 			row = {
 				date, startMs, source, inputTokens: 0, outputTokens: 0,
-				cacheCreationInputTokens: 0, cacheReadInputTokens: 0, costUsd: 0, fullyPriced: true,
+				cacheCreationInputTokens: 0, cacheReadInputTokens: 0, costUsd: 0,
+				apiCostUsd: 0, subscriptionCostUsd: 0, unclassifiedCostUsd: 0, fullyPriced: true,
 			};
 			byDate.set(date, row);
 		}
@@ -241,6 +254,9 @@ export function finalizeUsage(
 		row.cacheReadInputTokens += counts.cacheReadInputTokens;
 		const { costUsd, priced } = computeTokenCostUsd(pricingModel ?? pricingId(model), counts, resolveRate);
 		row.costUsd += costUsd;
+		if (billing === "api") row.apiCostUsd += costUsd;
+		else if (billing === "subscription") row.subscriptionCostUsd += costUsd;
+		else row.unclassifiedCostUsd += costUsd;
 		if (!priced) { row.fullyPriced = false; hasUnpriced = true; }
 	}
 	return { days: [...byDate.values()].sort((a, b) => a.startMs - b.startMs), hasUnpriced };

@@ -33,6 +33,7 @@ describe("Copilot CLI durable usage", () => {
 			model: "claude-sonnet-4.6", timestamp: Date.parse(TIME), cumulativeScope: JSON.stringify(["session-1", START, "claude-sonnet-4.6"]), counts: {
 				inputTokens: 50, outputTokens: 30, cacheReadInputTokens: 40, cacheCreationInputTokens: 10,
 			},
+			billing: "subscription",
 		}]);
 	});
 

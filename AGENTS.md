@@ -200,7 +200,7 @@ Before `dev3 pr create` (it pushes) or any push of a PR branch, rebase on the li
 
 **Path:** `change-logs/YYYY/MM/DD/<type>-[<NN>-]<short-slug>.md` — type prefixes: `feature-`, `fix-`, `refactor-`, `docs-`, `chore-`.
 
-**The `YYYY/MM/DD` is the expected PR merge date, not the start date.** If the task spans days, move (rename) the entry before opening/merging the PR so it matches the actual merge day (with auto-merge, normally the day you open the PR) — the changelog UI groups by ship date.
+**The `YYYY/MM/DD` is the day you write the entry — never move it afterwards.** Nobody can predict when a PR merges (least of all an external contributor facing several review rounds), and the release a change ships in is computed from git between `v*` tags (`scripts/release-window.ts`), so the path date only groups entries on the Changelog screen. Reviewers must not ask for the date to be changed.
 
 **Content:** plain text, 1-3 sentences, no frontmatter/headers, one paragraph max.
 
@@ -332,7 +332,7 @@ The project board is not one component: `BoardHost` (`src/mainview/board-views/`
 
 - **Kanban is the fallback view**: always on, cannot be disabled, and the board falls back to it when another view fails. The old `KanbanBoard` is gone; a change to how cards behave goes through `BoardCardBindings` (`BoardTaskCard.tsx`) and the filter through `useBoardFilter`, never through props threaded into `KanbanColumn`.
 - **`ctx.board` is a public API.** Third-party extensions are written against it, so a breaking change to `BoardService` or `BoardViewDef` must bump `EXTENSION_API_VERSION` (`src/shared/extensions.ts`) and update `docs/extensions.md` plus `examples/board-view-extension/` in the same commit.
-- Extensions load through `getExtensionSource` → blob module → the import map in `index.html` (`src/mainview/board-views/plugins.ts`); install and trust are desktop-only. Author guide: [`docs/extensions.md`](docs/extensions.md). Where the platform effort stands and what comes next (agent tooling, slots, migrating dev3 surfaces): [`docs/extensions-platform.md`](docs/extensions-platform.md) — update it when a phase moves.
+- Extensions load through `getExtensionSource` → blob module → the import map in `index.html` (`src/mainview/plugins/runtime.ts`); install and trust are desktop-only. Author guide: [`docs/extensions.md`](docs/extensions.md). Where the platform effort stands and what comes next (agent tooling, slots, migrating dev3 surfaces): [`docs/extensions-platform.md`](docs/extensions-platform.md) — update it when a phase moves.
 
 ### Renderer asset loading (dev-channel Vite fallback)
 

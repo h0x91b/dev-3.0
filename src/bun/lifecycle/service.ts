@@ -1,5 +1,6 @@
 import type { BranchStatus, CustomColumn, Project, Task, TaskStatus } from "../../shared/types";
 import * as data from "../data";
+import { forgetAgyTask } from "../agy-session-state";
 import { forgetTaskPreparation, markTaskPreparationCancelled } from "../preparation-runtime";
 import { log } from "../rpc-handlers/shared";
 import { TaskActorRegistry } from "./actor";
@@ -14,9 +15,13 @@ import { activitiesFor, transition, type LifecycleActivity } from "./machine";
 import { lifecycleStateFromTask } from "./state";
 import { claudeSessionWatches } from "../claude-session-watch";
 import { codexTurnWatches } from "../codex-turn-watch";
+import { forgetTaskActivity } from "../task-activity";
+
+export type LifecycleGuard = (task: Task) => Promise<boolean>;
 
 type LifecycleEnvelope = {
 	projectId: string;
+	guard?: LifecycleGuard;
 	event: LifecycleEvent;
 	generation: number;
 	snapshot?: { project: Project; task: Task };
@@ -77,6 +82,7 @@ class LifecycleService {
 			envelope.snapshot,
 			envelope.snapshotMode,
 			envelope.generation,
+			envelope.guard,
 		),
 		() => ({}),
 	);
@@ -88,6 +94,7 @@ class LifecycleService {
 		snapshot?: { project: Project; task: Task },
 		snapshotMode: "primary" | "fallback" | "activity" = "primary",
 		generation = this.generation,
+		guard?: LifecycleGuard,
 	): Promise<Task> {
 		if (generation !== this.generation && snapshot) return Promise.resolve(snapshot.task);
 		const normalized = event.type === "moveRequested" && !event.runId
@@ -95,6 +102,7 @@ class LifecycleService {
 			: event;
 		return this.actors.dispatch(taskId, {
 			projectId,
+			guard,
 			event: normalized,
 			generation,
 			snapshot,
@@ -103,6 +111,7 @@ class LifecycleService {
 	}
 
 	delete(taskId: string): void {
+		forgetTaskActivity(taskId);
 		claudeSessionWatches.forgetTask(taskId);
 		codexTurnWatches.forgetTask(taskId);
 		const runtime = this.actors.peekRuntime(taskId);
@@ -140,6 +149,7 @@ class LifecycleService {
 		snapshot?: { project: Project; task: Task },
 		snapshotMode: "primary" | "fallback" | "activity" = "primary",
 		generation = this.generation,
+		guard?: LifecycleGuard,
 	): Promise<Task> {
 		if (generation !== this.generation && snapshot) return snapshot.task;
 		let project: Project | undefined;
@@ -181,6 +191,7 @@ class LifecycleService {
 			project = snapshot.project;
 			task = snapshot.task;
 		}
+		if (guard && !(await guard(task))) return task;
 		const currentState = lifecycleStateFromTask(project, task);
 		const actorRuntime = this.actors.runtime(taskId);
 		const mergePromptReservation = actorRuntime.mergePromptReservation;
@@ -243,6 +254,7 @@ class LifecycleService {
 					delete this.actors.runtime(id).mergePromptReservation;
 				},
 				clearTaskRuntime: (id) => {
+					forgetAgyTask(id);
 					claudeSessionWatches.forgetTask(id);
 					codexTurnWatches.forgetTask(id);
 					const runtime = this.actors.runtime(id);
@@ -352,6 +364,15 @@ export function dispatchLifecycleEvent(
 	snapshot?: { project: Project; task: Task },
 ): Promise<Task> {
 	return lifecycleService.dispatch(projectId, taskId, event, snapshot, snapshot ? "fallback" : "primary");
+}
+
+export function dispatchGuardedLifecycleEvent(
+	projectId: string,
+	taskId: string,
+	event: LifecycleEvent,
+	guard: LifecycleGuard,
+): Promise<Task> {
+	return lifecycleService.dispatch(projectId, taskId, event, undefined, "primary", undefined, guard);
 }
 
 export function dispatchLifecycleFinding(

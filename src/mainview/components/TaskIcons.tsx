@@ -70,13 +70,23 @@ export function WatchIcon({ className }: TaskIconProps) {
 // the whole badge only appears on hover, as a preview of what the click does.
 // Active keeps the badge drawn and fills it, so on and off differ by a shape and
 // not by a 4px tick (outline idle / filled active, the house icon-state rule).
-export function CompletionOwnerIcon({ className, active = false }: TaskIconProps & { active?: boolean }) {
+export function CompletionOwnerIcon({ className, active = false, agent = false }: TaskIconProps & { active?: boolean; agent?: boolean }) {
 	return (
 		<svg {...svgBase(className)}>
-			<g className="th-owner-person">
-				<circle cx="9" cy="7" r="2.8" />
-				<path d="M3.8 19c.5-4 2.2-6 5.2-6 2.2 0 3.8 1.1 4.7 3.2" />
-			</g>
+			{agent ? (
+				// The owner is the agent: a bot head where the person stood.
+				<g className="th-owner-person">
+					<path d="M8.5 6.5V4" />
+					<circle cx="8.5" cy="3.2" r="0.8" />
+					<rect x="3.5" y="6.5" width="10" height="7.5" rx="2" />
+					<path d="M6.6 10.2h.01M10.4 10.2h.01" />
+				</g>
+			) : (
+				<g className="th-owner-person">
+					<circle cx="9" cy="7" r="2.8" />
+					<path d="M3.8 19c.5-4 2.2-6 5.2-6 2.2 0 3.8 1.1 4.7 3.2" />
+				</g>
+			)}
 			<g className={`th-owner-badge${active ? "" : " th-owner-badge-idle"}`}>
 				<circle
 					cx="17.2"

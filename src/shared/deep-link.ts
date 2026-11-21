@@ -13,6 +13,8 @@
 // macOS-only in practice (Electrobun registers CFBundleURLTypes; Windows/Linux
 // have no scheme registration yet) — see decisions/2026/08/04/dev3-url-scheme-deep-links.md.
 
+import { ACTIVE_STATUSES, type TaskStatus } from "./types/task-status";
+
 export const DEEP_LINK_SCHEME = "dev3";
 
 /**
@@ -46,11 +48,23 @@ export type DeepLinkTarget =
  * (resolved to a fallback project when the link omitted one).
  */
 export type DeepLinkNav =
-	| { kind: "task"; taskId: string; projectId: string }
+	/** `archived`: the task sits outside the active columns, so it opens as its board card. */
+	| { kind: "task"; taskId: string; projectId: string; archived?: boolean }
 	| { kind: "project"; projectId: string }
 	/** A space board still names the project it opens on — see `routeSpaceId`. */
 	| { kind: "space"; spaceId: string; projectId: string }
 	| { kind: "new-task"; projectId: string; text: string };
+
+/**
+ * Navigation to a task. A To Do, completed or cancelled task has no terminal, so
+ * it is flagged to open as its board card instead of an empty task workspace.
+ * A hibernated task keeps its active column and opens on its wake screen.
+ */
+export function taskDeepLinkNav(taskId: string, projectId: string, status: TaskStatus): DeepLinkNav {
+	return ACTIVE_STATUSES.includes(status)
+		? { kind: "task", taskId, projectId }
+		: { kind: "task", taskId, projectId, archived: true };
+}
 
 const stripSlashes = (s: string) => s.replace(/^\/+/, "").replace(/\/+$/, "");
 

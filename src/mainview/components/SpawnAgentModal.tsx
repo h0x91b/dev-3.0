@@ -134,6 +134,7 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 				accountId,
 				bedrockProfile,
 				handoff,
+				focus: true,
 				...(nextInstruction ? { prompt: nextInstruction } : {}),
 			});
 			// The pane is up either way; only the pointer into the retelling can still
@@ -205,6 +206,7 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 							agentId={agentId}
 							configId={configId}
 							agentAvailability={agentAvailability}
+							installedFirst
 							onChange={(next) => {
 								setAgentId(next.agentId);
 								setConfigId(next.configId);

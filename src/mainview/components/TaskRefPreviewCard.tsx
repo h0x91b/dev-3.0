@@ -20,6 +20,7 @@ import PriorityBadge from "./PriorityBadge";
 import TaskCardRail from "./TaskCardRail";
 import TaskPrBadges from "./TaskPrBadges";
 import { COORDINATOR_CARD_HALO, TaskRoleBand, taskRole } from "./TaskRoleBand";
+import { taskDeepLinkNav } from "../../shared/deep-link";
 
 const OPEN_DELAY_MS = 220;
 const HIDE_DELAY_MS = 160;
@@ -75,7 +76,7 @@ export function TaskRefPreviewBody({ preview, contextProjectId }: { preview: Tas
 	const moreImages = preview.imageCount - preview.images.length;
 	const moreArtifacts = preview.artifactCount - preview.artifacts.length;
 	const openTask = () => window.dispatchEvent(new CustomEvent("rpc:openDeepLink", {
-		detail: { kind: "task", taskId: target.taskId, projectId: target.projectId },
+		detail: taskDeepLinkNav(target.taskId, target.projectId, target.status),
 	}));
 	return (
 		<div data-testid="task-ref-preview" className={`${CARD_FACE_CLASS} ${role === "coordinator" ? COORDINATOR_CARD_HALO : ""}`} style={{ borderColor: `${color}55` }}>

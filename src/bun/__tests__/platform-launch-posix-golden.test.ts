@@ -32,12 +32,20 @@ const SETUP_EXIT_PATH = "/tmp/dev3-T-setup-exit";
 const ORIGINAL_CMD_PATH = "/tmp/dev3-T-original-cmd.sh";
 const WORKTREE = "/w/t";
 
+const TTY_SAVE = "__TTY=$(stty -g 2>/dev/null)";
+const TTY_RESTORE = [
+	'if [ -n "$__TTY" ]; then stty "$__TTY" 2>/dev/null; fi',
+	"printf '\\033[?1000l\\033[?1002l\\033[?1003l\\033[?1005l\\033[?1006l\\033[?1015l\\033[?2004l\\033[?1004l\\033[<99u\\033[>4;0m\\033[?1l\\033>\\033[?1049h\\033[<99u\\033[?1049l\\033[<99u\\033[0m\\033[0 q\\033[?25h'",
+];
+
 const RUN_WRAPPER_KEEP_SHELL = [
 	"#!/bin/bash",
 	"printf '\\033]2;Agent\\033\\\\'",
 	"export FOO='bar baz'",
+	TTY_SAVE,
 	"echo \"Starting: claude 'Fix bug'\" && claude 'Fix bug'",
 	"__EC=$?",
+	...TTY_RESTORE,
 	"if [ $__EC -ne 0 ]; then",
 	"  printf '\\n\\033[1;31m✗ Process exited with code %s\\033[0m\\n' \"$__EC\"",
 	"else",
@@ -49,8 +57,10 @@ const RUN_WRAPPER_KEEP_SHELL = [
 const RUN_WRAPPER_NO_KEEP_SHELL = [
 	"#!/bin/bash",
 	"export FOO='bar baz'",
+	TTY_SAVE,
 	"echo \"Starting: claude 'Fix bug'\" && claude 'Fix bug'",
 	"__EC=$?",
+	...TTY_RESTORE,
 	"if [ $__EC -ne 0 ]; then",
 	"  printf '\\n\\033[1;31m✗ Process exited with code %s\\033[0m\\n' \"$__EC\"",
 	"  exec '/bin/zsh'",
@@ -61,8 +71,10 @@ const RUN_WRAPPER_NO_KEEP_SHELL = [
 
 const RUN_WRAPPER_DEFAULT_SHELL = [
 	"#!/bin/bash",
+	TTY_SAVE,
 	"echo \"Starting: claude\" && claude",
 	"__EC=$?",
+	...TTY_RESTORE,
 	"if [ $__EC -ne 0 ]; then",
 	"  printf '\\n\\033[1;31m✗ Process exited with code %s\\033[0m\\n' \"$__EC\"",
 	"  exec '/bin/bash'",
@@ -105,7 +117,7 @@ const STARTUP_WRAPPER_NATIVE = [
 
 const STARTUP_WRAPPER_TMUX_PARALLEL = [
 	"#!/bin/bash",
-	"tmux split-window -v -b -c \"/w/t\" \"'/bin/zsh' '/tmp/dev3-T-cmd.sh'\"",
+	"tmux split-window -d -v -b -c \"/w/t\" \"'/bin/zsh' '/tmp/dev3-T-cmd.sh'\" \\; select-pane -U",
 	"'/bin/zsh' '/tmp/dev3-T-setup.sh'",
 	"S=$?",
 	"if [ $S -ne 0 ]; then",
@@ -128,7 +140,7 @@ const STARTUP_WRAPPER_TMUX_BLOCKING = [
 	"  printf '%s' \"$S\" > '/tmp/dev3-T-setup-exit'",
 	"  exec '/bin/zsh'",
 	"fi",
-	"tmux split-window -v -b -c \"/w/t\" \"'/bin/zsh' '/tmp/dev3-T-cmd.sh'\"",
+	"tmux split-window -d -v -b -c \"/w/t\" \"'/bin/zsh' '/tmp/dev3-T-cmd.sh'\" \\; select-pane -U",
 	"printf '\\033[1;32m✓ Setup done\\033[0m\\n'",
 	"printf '\\033[2mClosing in 15s — press any key to close now\\033[0m\\n'",
 	"if [ -n \"$ZSH_VERSION\" ]; then read -t 15 -k 1 -s; elif [ -n \"$BASH_VERSION\" ]; then read -t 15 -n 1 -s; else sleep 15; fi",
@@ -170,7 +182,29 @@ describe("POSIX run wrapper (buildCmdScript)", () => {
 			shellPath: SHELL,
 			exitReport: ["/h/.dev3.0/bin/dev3", "hook", "agent-exited", "--task", "T", "--session", "S"],
 		});
-		expect(script).toContain("__EC=$?\n'/h/.dev3.0/bin/dev3' 'hook' 'agent-exited' '--task' 'T' '--session' 'S' \"$__EC\"\nif [ $__EC -ne 0 ]; then");
+		expect(script).toContain("__EC=$?\n" + TTY_RESTORE.join("\n") + "\n'/h/.dev3.0/bin/dev3' 'hook' 'agent-exited' '--task' 'T' '--session' 'S' \"$__EC\"\nif [ $__EC -ne 0 ]; then");
+	});
+
+	it("saves the tty before the agent and restores the terminal right after its exit code is captured", () => {
+		const script = buildCmdScript("claude", undefined, {
+			keepShell: true,
+			shellPath: SHELL,
+			exitReport: ["/h/.dev3.0/bin/dev3", "hook", "agent-exited"],
+		});
+		const save = script.indexOf("__TTY=$(stty -g");
+		const agent = script.indexOf('echo "Starting: claude"');
+		const capture = script.indexOf("__EC=$?");
+		const restore = script.indexOf('stty "$__TTY"');
+		const reset = script.indexOf("printf '\\033[?1000l");
+		const report = script.indexOf("hook' 'agent-exited'");
+		expect(save).toBeGreaterThan(-1);
+		expect(save).toBeLessThan(agent);
+		expect(capture).toBeLessThan(restore);
+		expect(restore).toBeLessThan(reset);
+		expect(reset).toBeLessThan(report);
+		for (const part of ["[?1003l", "[?1006l", "[?2004l", "[<99u", "[>4;0m", "[?1049h", "[?1049l", "[0m", "[0 q", "[?25h"]) {
+			expect(script).toContain(`\\033${part}`);
+		}
 	});
 
 	it.skipIf(process.platform === "win32")("runs the report with the real exit code and still hands over to the shell", () => {

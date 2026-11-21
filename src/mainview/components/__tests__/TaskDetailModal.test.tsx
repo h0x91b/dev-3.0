@@ -33,15 +33,22 @@ vi.mock("../../analytics", () => ({
 	agentNameFromId: vi.fn(() => "unknown"),
 }));
 
+vi.mock("../../utils/platform", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../../utils/platform")>()),
+	isTouchPrimary: vi.fn(() => false),
+}));
+
 vi.mock("../../confirm", () => ({
 	confirm: vi.fn(() => Promise.resolve(true)),
 }));
 
 import { api } from "../../rpc";
 import { confirm } from "../../confirm";
+import { isTouchPrimary } from "../../utils/platform";
 
 const mockedApi = vi.mocked(api, true);
 const mockedConfirm = vi.mocked(confirm);
+const mockedIsTouchPrimary = vi.mocked(isTouchPrimary);
 
 const mockProject: Project = {
 	id: "p1",
@@ -147,8 +154,8 @@ describe("TaskDetailModal", () => {
 			expect(renameBtn.className).not.toContain("opacity-0");
 		});
 
-		it("clicking the title text starts rename", async () => {
-			const task = makeTodoTask();
+		it("clicking a running task's title text starts rename", async () => {
+			const task = makeTodoTask({ status: "in-progress", worktreePath: "/tmp/wt" });
 			renderModal(task);
 			const user = userEvent.setup();
 
@@ -275,7 +282,7 @@ describe("TaskDetailModal", () => {
 
 			await user.click(screen.getByTitle("Edit title"));
 			expect(screen.queryByText("Edit")).not.toBeInTheDocument();
-			expect(screen.getAllByText("Save")).toHaveLength(1);
+			expect(screen.getAllByRole("textbox")).toHaveLength(1);
 
 			await user.keyboard("{Escape}");
 			expect(screen.getByText("Edit")).toBeInTheDocument();
@@ -289,15 +296,76 @@ describe("TaskDetailModal", () => {
 			expect(screen.queryByTitle("Edit title")).not.toBeInTheDocument();
 			await user.click(document.getElementById("task-detail-title")!);
 			expect(screen.getAllByRole("textbox")).toHaveLength(1);
-			expect(screen.getAllByText("Save")).toHaveLength(1);
 		});
 
-		it("pins the description editor's Save row to the bottom of the scroll area", async () => {
+		it("clicking an auto-generated title on a todo task opens the description editor", async () => {
+			renderModal(makeTodoTask({ description: "the brief" }));
+			const user = userEvent.setup();
+
+			await user.click(document.getElementById("task-detail-title")!);
+			expect(screen.getByRole("textbox")).toHaveValue("the brief");
+		});
+
+		it("clicking a custom title still opens the title editor", async () => {
+			renderModal(makeTodoTask({ customTitle: "My custom title" }));
+			const user = userEvent.setup();
+
+			await user.click(document.getElementById("task-detail-title")!);
+			expect(screen.getByRole("textbox")).toHaveValue("My custom title");
+			expect(screen.getByText("Enter to save · Esc to cancel")).toBeInTheDocument();
+		});
+
+		it("the pencil still renames a task with an auto-generated title", async () => {
+			renderModal(makeTodoTask({ description: "the brief" }));
+			const user = userEvent.setup();
+
+			await user.click(screen.getByTitle("Edit title"));
+			expect(screen.getByText("Enter to save · Esc to cancel")).toBeInTheDocument();
+		});
+
+		it("opens the description editor with the caret at the end", async () => {
+			const setRange = vi.spyOn(HTMLTextAreaElement.prototype, "setSelectionRange");
+			renderModal(makeTodoTask({ description: "the brief" }));
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			await waitFor(() => expect(screen.getByRole("textbox")).toHaveFocus());
+			expect(setRange).toHaveBeenCalledWith("the brief".length, "the brief".length);
+			setRange.mockRestore();
+		});
+
+		it("pins the description editor's hint row to the bottom of the scroll area", async () => {
 			renderModal(makeTodoTask());
 			const user = userEvent.setup();
 
 			await user.click(screen.getByText("Edit"));
-			expect(screen.getByText("Save").closest(".sticky")).toHaveClass("bottom-0", "-mx-6");
+			expect(screen.getByTestId("description-edit-hint")).toHaveClass("sticky", "bottom-0", "-mx-6");
+		});
+
+		it("drops the separate Save/Cancel buttons from both editors", async () => {
+			renderModal(makeTodoTask({ customTitle: "Custom" }));
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+			expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+			await user.keyboard("{Escape}");
+
+			await user.click(screen.getByTitle("Edit title"));
+			expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+			expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+			expect(screen.getByRole("button", { name: "Reset to auto" })).toBeInTheDocument();
+		});
+
+		it("labels Run as Save & Run only once the open description has changed", async () => {
+			renderModal(makeTodoTask());
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			expect(screen.getByRole("button", { name: "Run" })).toBeInTheDocument();
+			await user.type(screen.getByRole("textbox"), " more");
+			expect(screen.getByRole("button", { name: "Save & Run" })).toBeInTheDocument();
+			expect(screen.queryByRole("button", { name: "Run" })).not.toBeInTheDocument();
 		});
 
 		it("uploads an image dropped into the edit textarea and appends the saved path", async () => {
@@ -375,7 +443,7 @@ describe("TaskDetailModal", () => {
 			const textarea = screen.getByRole("textbox");
 			await user.clear(textarea);
 			await user.type(textarea, "edited brief");
-			await user.click(screen.getByRole("button", { name: "Run" }));
+			await user.click(screen.getByRole("button", { name: "Save & Run" }));
 
 			expect(mockedApi.request.editTask).toHaveBeenCalledWith({
 				taskId: "t1",
@@ -398,7 +466,7 @@ describe("TaskDetailModal", () => {
 
 			await user.click(screen.getByText("Edit"));
 			await user.type(screen.getByRole("textbox"), " more");
-			await user.click(screen.getByRole("button", { name: "Run" }));
+			await user.click(screen.getByRole("button", { name: "Save & Run" }));
 
 			expect(onLaunchVariants).not.toHaveBeenCalled();
 			expect(onClose).not.toHaveBeenCalled();
@@ -416,9 +484,9 @@ describe("TaskDetailModal", () => {
 
 			await user.click(screen.getByText("Edit"));
 			await user.type(screen.getByRole("textbox"), " more");
-			await user.click(screen.getByRole("button", { name: "Run" }));
+			await user.click(screen.getByRole("button", { name: "Save & Run" }));
 
-			expect(screen.getByRole("button", { name: "Run" })).toBeDisabled();
+			expect(screen.getByRole("button", { name: "Save & Run" })).toBeDisabled();
 			expect(onLaunchVariants).not.toHaveBeenCalled();
 
 			await act(async () => resolveSave(updated));
@@ -469,6 +537,67 @@ describe("TaskDetailModal", () => {
 			});
 			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: updated });
 			expect(onClose).toHaveBeenCalledTimes(1);
+		});
+
+		it("closing with X saves an open title edit before closing", async () => {
+			const task = makeTodoTask();
+			const updated = { ...task, customTitle: "Renamed" };
+			const onClose = vi.fn();
+			mockedApi.request.renameTask.mockResolvedValue(updated);
+			renderModal(task, { onClose });
+			const user = userEvent.setup();
+
+			await user.click(screen.getByTitle("Edit title"));
+			await user.clear(screen.getByRole("textbox"));
+			await user.type(screen.getByRole("textbox"), "Renamed");
+			await user.click(screen.getByTitle("Close"));
+
+			expect(mockedApi.request.renameTask).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", customTitle: "Renamed" });
+			expect(onClose).toHaveBeenCalledTimes(1);
+		});
+
+		it("closing with X stays open when saving the edited title fails", async () => {
+			const onClose = vi.fn();
+			mockedApi.request.renameTask.mockRejectedValue(new Error("disk full"));
+			renderModal(makeTodoTask(), { onClose });
+			const user = userEvent.setup();
+
+			await user.click(screen.getByTitle("Edit title"));
+			await user.type(screen.getByRole("textbox"), " more");
+			await user.click(screen.getByTitle("Close"));
+
+			expect(onClose).not.toHaveBeenCalled();
+			expect(screen.getByRole("textbox")).toHaveValue("Auto-generated title more");
+		});
+
+		it("on touch, both editors keep a Cancel button that discards the edit", async () => {
+			mockedIsTouchPrimary.mockReturnValue(true);
+			try {
+				renderModal(makeTodoTask({ description: "original" }));
+				const user = userEvent.setup();
+
+				await user.click(screen.getByText("Edit"));
+				await user.type(screen.getByRole("textbox"), " more");
+				expect(screen.getByText("Closing saves")).toBeInTheDocument();
+				await user.click(screen.getByRole("button", { name: "Cancel" }));
+				expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+				expect(mockedApi.request.editTask).not.toHaveBeenCalled();
+
+				await user.click(screen.getByTitle("Edit title"));
+				await user.click(screen.getByRole("button", { name: "Cancel" }));
+				expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+				expect(mockedApi.request.renameTask).not.toHaveBeenCalled();
+			} finally {
+				mockedIsTouchPrimary.mockReturnValue(false);
+			}
+		});
+
+		it("explains on hover that an auto title edits the description", () => {
+			renderModal(makeTodoTask());
+			expect(document.getElementById("task-detail-title")).toHaveAttribute(
+				"title",
+				"Edit the description — the title follows its first line",
+			);
 		});
 
 		it("closing with X stays open when saving the edited description fails", async () => {
@@ -640,6 +769,27 @@ describe("TaskDetailModal", () => {
 		it("omits the row for a task that never had a PR", () => {
 			renderModal(makeTodoTask({ status: "completed" }));
 			expect(screen.queryByTestId("task-detail-pull-requests")).toBeNull();
+		});
+	});
+
+	describe("archived reopen", () => {
+		it.each(["completed", "cancelled"] as const)("reopens a %s task to Agent is Working in one click", async (status) => {
+			const dispatch = vi.fn();
+			const onClose = vi.fn();
+			const user = userEvent.setup();
+			mockedApi.request.moveTask.mockResolvedValue(makeTodoTask({ status: "in-progress" }));
+
+			renderModal(makeTodoTask({ status }), { dispatch, onClose });
+			await user.click(screen.getByTestId("archived-task-reopen"));
+
+			await waitFor(() => expect(mockedApi.request.moveTask).toHaveBeenCalledWith(
+				expect.objectContaining({ taskId: "t1", newStatus: "in-progress" }),
+			));
+			expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
+				type: "updateTask",
+				task: expect.objectContaining({ status: "in-progress" }),
+			}));
+			expect(onClose).toHaveBeenCalled();
 		});
 	});
 });

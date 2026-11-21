@@ -98,7 +98,7 @@ export interface CodingAgent {
  * resume, transcripts, trust, lifecycle hooks, skill prefix — so a differently
  * named binary runs through exactly the same code as the CLI it wraps.
  */
-export type AgentFamily = "claude" | "codex" | "gemini" | "agent" | "opencode" | "copilot" | "omp" | "pi" | "none";
+export type AgentFamily = "claude" | "codex" | "gemini" | "agent" | "opencode" | "copilot" | "omp" | "pi" | "agy" | "none";
 
 /**
  * Which of an agent's preset models the signed-in account cannot actually select,
@@ -169,6 +169,44 @@ function createCodexReasoningPresets(
 		additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "-c", 'default_permissions="dev3"', "-c", `model_reasoning_effort="${effort}"`],
 	}));
 	return [...bypass, ...standard];
+}
+
+/** agy's models: the alias without effort, which `--effort` completes (`gemini-4-neon` + `low` -> `gemini-4-neon-low`). */
+const AGY_MODELS: readonly { model: string; label: string; idPart: string; efforts: readonly EffortLevel[] }[] = [
+	{ model: "gemini-4-neon", label: "Neon", idPart: "neon", efforts: ["low", "medium", "high", "xhigh"] },
+	{ model: "gemini-4-carbon", label: "Carbon", idPart: "carbon", efforts: ["low", "medium", "high"] },
+	{ model: "gemini-4-argon", label: "Argon", idPart: "argon", efforts: ["low", "medium", "high"] },
+	{ model: "gemini-4-hydrogen", label: "Hydrogen", idPart: "hydrogen", efforts: ["low", "medium", "high", "xhigh"] },
+];
+
+/** agy's presets in Claude's shape: Auto and Bypass carry every effort, the other modes appear once at High.
+ *  The mode flags come from `permissionMode` (see the agy adapter), so no preset needs `additionalArgs`. */
+function createAgyPresets(): AgentConfiguration[] {
+	const preset = (
+		idMode: string,
+		modeLabel: string,
+		permissionMode: PermissionMode | undefined,
+		m: (typeof AGY_MODELS)[number],
+		effort: EffortLevel,
+	): AgentConfiguration => ({
+		id: `agy-${idMode}-${m.idPart}-${effort}`,
+		name: `${modeLabel} (${m.label}, ${CODEX_REASONING_LABELS[effort]})`,
+		model: m.model,
+		effort,
+		...(permissionMode ? { permissionMode } : {}),
+		version: 1,
+	});
+	const allEfforts = (idMode: string, modeLabel: string, mode: PermissionMode) =>
+		AGY_MODELS.flatMap((m) => m.efforts.map((effort) => preset(idMode, modeLabel, mode, m, effort)));
+	const once = (idMode: string, modeLabel: string, mode: PermissionMode | undefined) =>
+		AGY_MODELS.map((m) => preset(idMode, modeLabel, mode, m, "high"));
+	return [
+		...allEfforts("auto", "Auto", "auto"),
+		...allEfforts("bypass", "Bypass", "bypassPermissions"),
+		...once("default", "Default", undefined),
+		...once("plan", "Plan", "plan"),
+		...once("approvals", "Accept Edits", "acceptEdits"),
+	];
 }
 
 type OmpThinkingLevel = "off" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -321,6 +359,22 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		installUrl: "https://github.com/openai/codex",
 		configurations: [
 			// Newest generation first: the picker lists model groups in this order.
+			// --- GPT-6.2 Astra ---
+			...createCodexReasoningPresets(
+				"gpt-6.2-astra",
+				"GPT-6.2 Astra",
+				"codex-6.2-astra",
+				["medium", "low", "high", "xhigh", "max", "ultra"],
+				["medium", "low", "high", "xhigh", "max", "ultra"],
+			),
+			// --- GPT-6.2 Sol ---
+			...createCodexReasoningPresets(
+				"gpt-6.2-sol",
+				"GPT-6.2 Sol",
+				"codex-6.2-sol",
+				["medium", "low", "high", "xhigh", "max", "ultra"],
+				["medium", "low", "high", "xhigh", "max", "ultra"],
+			),
 			// --- GPT-6.1 Sol ---
 			...createCodexReasoningPresets(
 				"gpt-6.1-sol",
@@ -602,6 +656,14 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "pi-default", name: "Bypass", permissionMode: "bypassPermissions", version: 1 },
 		],
 		defaultConfigId: "pi-default",
+	},
+	{
+		id: "builtin-agy",
+		name: "Antigravity",
+		baseCommand: "agy",
+		isDefault: true,
+		configurations: createAgyPresets(),
+		defaultConfigId: "agy-auto-neon-high",
 	},
 ];
 

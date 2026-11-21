@@ -177,6 +177,8 @@ const dashboard = {
 	"rateLimits.credits": "кредиты: {balance}",
 	"rateLimits.unlimited": "∞ безлимит",
 	"rateLimits.monthlyLabel": "месячные кредиты",
+	"rateLimits.otherFiveHourLabel": "другие 5h",
+	"rateLimits.otherWeeklyLabel": "другие 7d",
 	"rateLimits.monthlyUsage": "использовано {used} / {limit} · осталось {remaining}%",
 	"rateLimits.captured": "снято {time} назад",
 	"rateLimits.capturedNow": "снято только что",
@@ -417,6 +419,14 @@ const dashboard = {
 	"memory.bannerOutOfRoom_many": "Памяти в обрез — ещё {count} задач машина, скорее всего, не потянет.",
 	"memory.bannerOutOfRoom_other": "Памяти в обрез — ещё {count} задач машина, скорее всего, не потянет.",
 	"dashboard.noSpaceGroup": "Home",
+	"dashboard.extraFolders_one": "+{count} папка",
+	"dashboard.extraFolders_few": "+{count} папки",
+	"dashboard.extraFolders_many": "+{count} папок",
+	"dashboard.extraFolders_other": "+{count} папки",
+	"dashboard.moreFolders_one": "Ещё {count}",
+	"dashboard.moreFolders_few": "Ещё {count}",
+	"dashboard.moreFolders_many": "Ещё {count}",
+	"dashboard.moreFolders_other": "Ещё {count}",
 };
 
 export default dashboard;

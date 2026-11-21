@@ -27,6 +27,7 @@ import {
 import { type BoundedRunResult, type SpawnBounds, runBounded } from "./bounded-spawn";
 import type { StaleTmuxServer } from "../../shared/types";
 import { DEFAULT_TMUX_SOCKET } from "./constants";
+import { withoutLaunchTaskWiring } from "../pane-launch-env";
 import { activeTmuxConfigPath, tmuxClientCwd } from "./config";
 import { ensureLaunchdServer, predatesLaunchdServer, staleServerBinary } from "./launchd-server";
 import { TmuxError, TmuxSpawnError, TmuxTimeoutError } from "./errors";
@@ -222,7 +223,7 @@ export class TmuxClient {
 			socket: socket ?? this.defaultSocket,
 			configFile,
 			cwd: tmuxClientCwd(),
-			env,
+			env: withoutLaunchTaskWiring(env),
 		});
 	}
 
@@ -308,6 +309,8 @@ export class TmuxClient {
 			proc = this.spawnFn(this.argv(opts.socket, args), {
 				stdout: "pipe",
 				stderr: "pipe",
+				// Without launchd this command starts the server, which keeps this env.
+				env: withoutLaunchTaskWiring(process.env),
 				// A tmux server started by this client keeps the client cwd forever —
 				// it must never be a mortal task worktree (decision 103).
 				cwd: tmuxClientCwd(),
@@ -359,7 +362,7 @@ export class TmuxClient {
 		try {
 			return this.spawnFn(argv, {
 				terminal: opts.terminal,
-				env: opts.processEnv,
+				env: withoutLaunchTaskWiring(opts.processEnv ?? process.env),
 				cwd: tmuxClientCwd(),
 			});
 		} catch (err) {
@@ -411,7 +414,9 @@ export class TmuxClient {
 
 	/**
 	 * `split-window` — returns the new pane id when `printPaneId` is set, plus
-	 * captured stderr (some callers log it even on success).
+	 * captured stderr (some callers log it even on success). Always `-d`: a split
+	 * never takes focus on its own; `focus` is for an explicit user action and
+	 * selects the pane it just created.
 	 */
 	async splitWindow(opts: {
 		target: string;
@@ -425,15 +430,17 @@ export class TmuxClient {
 		printPaneId?: boolean;
 		/** `-e KEY=VAL` session-env entries visible to the new pane. */
 		env?: Record<string, string>;
+		/** Select the new pane after the split (explicit user actions only). */
+		focus?: boolean;
 		/** `-c`: working directory (may be a tmux format like PANE_CWD_FORMAT). */
 		cwd?: string;
 		command?: string;
 	} & SocketOpt): Promise<{ paneId: string | null; stderr: string }> {
 		this.assertPaneCwd(opts.cwd);
-		const args = ["split-window", opts.orientation === "vertical" ? "-v" : "-h"];
+		const args = ["split-window", "-d", opts.orientation === "vertical" ? "-v" : "-h"];
 		if (opts.before) args.push("-b");
 		if (opts.size) args.push("-l", opts.size);
-		if (opts.printPaneId) args.push("-P", "-F", PANE_ID_FORMAT.formatString);
+		if (opts.printPaneId || opts.focus) args.push("-P", "-F", PANE_ID_FORMAT.formatString);
 		for (const [key, value] of Object.entries(opts.env ?? {})) {
 			args.push("-e", `${key}=${value}`);
 		}
@@ -441,7 +448,9 @@ export class TmuxClient {
 		if (opts.cwd) args.push("-c", opts.cwd);
 		if (opts.command) args.push(opts.command);
 		const { stdout, stderr } = await this.runChecked(opts.socket, args);
-		return { paneId: stdout.trim() || null, stderr };
+		const paneId = stdout.trim() || null;
+		if (opts.focus && paneId) await this.selectPane(paneId, { socket: opts.socket, bestEffort: true });
+		return { paneId, stderr };
 	}
 
 	/**
@@ -496,11 +505,14 @@ export class TmuxClient {
 	async capturePane(opts: {
 		target: string;
 		escapes?: boolean;
+		/** `-J`: join wrapped lines back into the line that was printed. */
+		joinWrapped?: boolean;
 		startLine?: number;
 		endLine?: number;
 	} & SocketOpt): Promise<string> {
 		const args = ["capture-pane", "-p"];
 		if (opts.escapes) args.push("-e");
+		if (opts.joinWrapped) args.push("-J");
 		args.push("-t", opts.target);
 		if (opts.startLine !== undefined) args.push("-S", String(opts.startLine));
 		if (opts.endLine !== undefined) args.push("-E", String(opts.endLine));

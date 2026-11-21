@@ -1,6 +1,6 @@
 import type { AgentMessageSource, CustomColumn, LaunchAfterUntil, LaunchVariant, PresetPromptSource, Project, Task, TaskOrigin, TaskStatus, TaskType } from "../../shared/types";
 import { ACTIVE_STATUSES, ALL_STATUSES, LAUNCH_AFTER_UNTIL, TASK_TYPES, getTaskTitle, agentLaunchAutoApproveMs, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, presetPromptSourceForTaskType, withPresetPrompt, withoutPresetPrompt } from "../../shared/types";
-import type { DeepLinkNav } from "../../shared/deep-link";
+import { taskDeepLinkNav } from "../../shared/deep-link";
 import { markPendingDeepLinkNav } from "../deep-link-nav";
 import * as data from "../data";
 import * as labelOps from "../board-operations/labels";
@@ -18,7 +18,9 @@ import { loadTaskChildren } from "../task-lineage";
 import { assertEpicAttachable, epicForNewTask, setTaskEpic } from "../task-epics";
 import { findEpic } from "../epics-data";
 import { readTaskTerminalBackendState, switchTaskTerminalBackend } from "../task-terminal-backend-switch";
-import { armLaunchAfter, clearLaunchAfter, prerequisiteRefusal, writeLaunchAfter } from "../launch-after";
+import { armLaunchAfter, clearLaunchAfter, launchAfterRefusal, prerequisiteRefusal, writeLaunchAfter } from "../launch-after";
+import { addDependencies, planDependencyChange, writeDependencyPlan } from "../task-dependencies";
+import { dependencyInfo, indexDependencies, summarizeDependencies, type DependencyBoard, type TaskDependencyInfo } from "../../shared/task-dependencies";
 import { approvalStatusOf, launchSuggestionRequested, launcherHandoffNote, requestAgentLaunchApproval, requestDestructiveApproval, resolveLaunchSuggestion } from "./approvals";
 import { log, type Handler, withSenderVariant } from "./shared";
 import { findByIdPrefix, findTaskByRef, parseSeqRef, resolveAgentMessageSource, resolveRequesterTask, resolveTaskAcrossProjects, resolveTaskFromParams, resumeAccountParam, scopedTaskNotFoundError, senderRequester, taskNotFoundError, withArchivedHistory, withEpic, withOriginParent, withSenderAgent } from "./task-resolution";
@@ -119,6 +121,34 @@ async function writeStartAfter(project: Project, task: Task, req: StartAfterRequ
 	return writeLaunchAfter(project, task, req.prereq, req.until, req.variant, await resolveAgentMessageSource(params, task.id));
 }
 
+/** A task ref for a dependency. A seq shared by a variant group names its lowest variant: any variant satisfies the link. */
+function findDependencyTask(tasks: Task[], ref: string): Task | null {
+	const seq = parseSeqRef(ref);
+	if (seq === null) return findByIdPrefix(tasks, ref, "task");
+	return tasks.filter((t) => t.seq === seq).sort((a, b) => (a.variantIndex ?? 0) - (b.variantIndex ?? 0))[0] ?? null;
+}
+
+/** `--depends-on` / `--no-depends-on` refs resolved on the task's board, before anything is written. */
+async function readDependencyRefs(value: unknown, flag: string, project: Project): Promise<Task[] | null> {
+	if (value === undefined) return null;
+	const refs = stringList(value);
+	if (refs.length === 0) throw new Error(`${flag} needs at least one task: ${flag} seq:<N>[,seq:<M>]`);
+	const tasks = await data.loadTasks(project);
+	const found: Task[] = [];
+	for (const ref of refs) {
+		const task = findDependencyTask(tasks, ref);
+		if (!task) throw await scopedTaskNotFoundError(ref, project);
+		found.push(task);
+	}
+	return found;
+}
+
+/** `task show` and `task list` answer with the task's dependency links resolved. */
+function withDependencyInfo<T extends Task>(task: T, board: DependencyBoard): T & { dependencyInfo?: TaskDependencyInfo } {
+	const info = dependencyInfo(task, board);
+	return info ? { ...task, dependencyInfo: info } : task;
+}
+
 function assertEpicFlagsExclusive(params: Record<string, unknown>): void {
 	if (params.noEpic === true && typeof params.epic === "string") throw new Error("--epic and --no-epic cannot be combined.");
 }
@@ -171,7 +201,8 @@ export const taskHandlers: Record<string, Handler> = {
 		if (!projectId) throw new Error("projectId is required");
 
 		const project = await data.getProject(projectId);
-		let tasks = await data.loadTasks(project);
+		const board = await data.loadTasks(project);
+		let tasks = board;
 
 		if (params.status) {
 			const status = params.status as TaskStatus;
@@ -181,7 +212,8 @@ export const taskHandlers: Record<string, Handler> = {
 			tasks = tasks.filter((t) => t.status === status);
 		}
 
-		return tasks;
+		const index = indexDependencies(board);
+		return tasks.map((t) => withDependencyInfo(t, index));
 	},
 
 	/**
@@ -237,12 +269,13 @@ export const taskHandlers: Record<string, Handler> = {
 			const tasks = await data.loadTasks(project);
 			const task = findTaskByRef(tasks, taskId);
 			if (!task) throw await scopedTaskNotFoundError(taskId, project);
-			return await withEpic(await withOriginParent(await withArchivedHistory(project, await syncTaskBranchName(project, task))));
+			return withDependencyInfo(await withEpic(await withOriginParent(await withArchivedHistory(project, await syncTaskBranchName(project, task)))), tasks);
 		}
 
 		const found = await resolveTaskAcrossProjects(taskId);
 		if (!found) throw taskNotFoundError(taskId);
-		return await withEpic(await withOriginParent(await withArchivedHistory(found.project, await syncTaskBranchName(found.project, found.task))));
+		const shown = await withEpic(await withOriginParent(await withArchivedHistory(found.project, await syncTaskBranchName(found.project, found.task))));
+		return withDependencyInfo(shown, await data.loadTasks(found.project));
 	},
 
 	/**
@@ -305,6 +338,7 @@ export const taskHandlers: Record<string, Handler> = {
 		// A new To Do task can only be refused for its prerequisite, so this is the whole check.
 		const startAfterRefusal = startAfter && prerequisiteRefusal(startAfter.prereq, startAfter.until, await data.loadTasks(project));
 		if (startAfterRefusal) throw new Error(startAfterRefusal);
+		const dependsOn = await readDependencyRefs(params.dependsOn, "--depends-on", project);
 		// Use description as the task body if provided, otherwise fall back to title.
 		// A type puts its role brief above that text at creation, through the same
 		// function `task update --type` uses, so a card never claims a role its
@@ -332,10 +366,15 @@ export const taskHandlers: Record<string, Handler> = {
 		// A role brief counts as a body too: without this the card would be named
 		// after the first 80 characters of the preamble, so every one would read alike.
 		let created = task;
-		if ((description || taskType) && title) {
-			created = await data.updateTask(project, task.id, { customTitle: title });
+		const selfCompletion = params.selfCompletion === true;
+		if (((description || taskType) && title) || selfCompletion) {
+			created = await data.updateTask(project, task.id, {
+				...((description || taskType) && title ? { customTitle: title } : {}),
+				...(selfCompletion ? { selfCompletion: true } : {}),
+			});
 		}
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: created });
+		if (dependsOn) created = await addDependencies(project, created, dependsOn);
 		return startAfter ? writeStartAfter(project, created, startAfter, params) : created;
 	},
 
@@ -478,12 +517,24 @@ export const taskHandlers: Record<string, Handler> = {
 		}
 		const startAfter = await readStartAfter(params, project);
 		const clearStartAfter = params.noStartAfter === true;
+		const dependsOn = await readDependencyRefs(params.dependsOn, "--depends-on", project);
+		const dropDependencies = params.noDependsOn === true ? "all" as const : await readDependencyRefs(params.noDependsOn, "--no-depends-on", project);
 		if (!startAfter && launchSuggestionRequested(params)) throw new Error("--agent/--config on task update only apply together with --start-after.");
 		if (params.manualCompletion !== undefined) {
 			if (typeof params.manualCompletion !== "boolean") {
 				throw new Error("manualCompletion must be a boolean");
 			}
 			change.manualCompletion = params.manualCompletion;
+		}
+		if (params.selfCompletion !== undefined) {
+			if (typeof params.selfCompletion !== "boolean") {
+				throw new Error("selfCompletion must be a boolean");
+			}
+			// The opt-in is someone else's to give: a task granting it to itself would make it no guard at all.
+			if (params.selfCompletion && params.sourceTaskId === task.id) {
+				throw new Error("A task cannot opt itself in to self-completion. The user, or the task that created it, sets --self-completion on.");
+			}
+			change.selfCompletion = params.selfCompletion;
 		}
 
 		// Keyed on which params were provided, never on the verdict: a same-value
@@ -493,13 +544,23 @@ export const taskHandlers: Record<string, Handler> = {
 			&& params.description === undefined
 			&& priority === undefined
 			&& params.manualCompletion === undefined
+			&& params.selfCompletion === undefined
 			&& params.taskType === undefined
 			&& epicChange === undefined
 			&& !startAfter
 			&& !clearStartAfter
+			&& !dependsOn
+			&& !dropDependencies
 		) {
-			throw new Error("Nothing to update. Provide --title, --description, --priority, --manual-completion, --type, --epic, --no-epic, --start-after or --no-start-after.");
+			throw new Error("Nothing to update. Provide --title, --description, --priority, --manual-completion, --self-completion, --type, --epic, --no-epic, --depends-on, --no-depends-on, --start-after or --no-start-after.");
 		}
+		// Every link refusal is found before the first write, so a refused update changes nothing.
+		const board = dependsOn || dropDependencies || startAfter ? await data.loadTasks(project) : [];
+		const dependencyPlan = dependsOn || dropDependencies
+			? planDependencyChange(task, board, { drop: dropDependencies, add: dependsOn })
+			: null;
+		const startAfterRefusal = startAfter && launchAfterRefusal(task, startAfter.prereq, startAfter.until, board);
+		if (startAfterRefusal) throw new Error(startAfterRefusal);
 
 		let updated = task;
 		let titlePreserved = false;
@@ -517,6 +578,8 @@ export const taskHandlers: Record<string, Handler> = {
 			for (const t of changed) getPushMessage()?.("taskUpdated", { projectId: project.id, task: t });
 			updated = { ...updated, priority };
 		}
+		// One write: removals then additions, so one call can swap a dependency for another.
+		if (dependencyPlan) updated = await writeDependencyPlan(project, updated, dependencyPlan);
 		if (startAfter) {
 			updated = await armStartAfter(project, updated, startAfter, params);
 		} else if (clearStartAfter) {
@@ -582,7 +645,7 @@ export const taskHandlers: Record<string, Handler> = {
 	 */
 	"task.open": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params);
-		const nav: DeepLinkNav = { kind: "task", taskId: task.id, projectId: project.id };
+		const nav = taskDeepLinkNav(task.id, project.id, task.status);
 		if (process.env.DEV3_HEADLESS !== "1") {
 			const { focusFocusedWindow, getWindowCount, openNewWindow } = await import("../window-manager");
 			if (getWindowCount() === 0) {
@@ -675,6 +738,10 @@ export const taskHandlers: Record<string, Handler> = {
 			log.info("Ignoring own-agent activation of a To Do task", { taskId: task.id.slice(0, 8), to: builtinStatus });
 			return task;
 		}
+		// A dependency never refuses a start: the open ones travel with the answer so the caller can warn.
+		const openDependencies = isActivation && task.status === "todo"
+			? summarizeDependencies(task, await data.loadTasks(project)).open
+			: [];
 		const isLaunch = requester && isActivation && !isStatusGuardBlocked(task.status, { ifStatus, ifStatusNot });
 		if (launchSuggestionRequested(params) && !isLaunch) {
 			throw new Error("--agent/--config only apply when the move asks to start another task's agent — this one is a plain move.");
@@ -687,11 +754,12 @@ export const taskHandlers: Record<string, Handler> = {
 				requester: sender ?? await withSenderAgent(requester as AgentMessageSource, params),
 				launcherNote: launcherHandoffNote(params),
 				suggested: await resolveLaunchSuggestion(params),
+				openDependencies,
 				...approvalReasonFromParams(params),
 			});
 		}
 
-		return moveTask({
+		const moved = await moveTask({
 			taskId: task.id,
 			projectId: project.id,
 			newStatus: builtinStatus,
@@ -703,6 +771,7 @@ export const taskHandlers: Record<string, Handler> = {
 			// nothing more — it is never reset consent (that is `task.requestReset`).
 			...(sourceTaskId ? {} : { explicitLaunch: true }),
 		});
+		return openDependencies.length && moved.status !== "todo" ? { ...moved, startedBlockedBy: openDependencies } : moved;
 	}),
 
 	// `dev3 task hibernate` / `dev3 task wake`. An agent asking (sourceTaskId)
@@ -730,7 +799,7 @@ export const taskHandlers: Record<string, Handler> = {
 	// approves or declines in the app UI. Approval executes the move even if
 	// the requesting CLI has already disconnected (its tmux session may have
 	// hit a client-side timeout while the dialog stayed open).
-	"task.requestCompletion": async (params) => requestDestructiveApproval("complete", params),
+	"task.requestCompletion": async (params, ctx) => requestDestructiveApproval("complete", params, ctx?.signal),
 
 	// Agent-initiated request to CANCEL a task — an agent cleaning up a task it
 	// should not have created. Same approval model as `task.requestCompletion`,
@@ -738,13 +807,13 @@ export const taskHandlers: Record<string, Handler> = {
 	// work away, and the dialog asking for it must not look like the other one.
 	// Never auto-approved (no `autoApproveAfterMs`) — nobody loses a worktree to
 	// a dialog they never saw.
-	"task.requestCancellation": async (params) => requestDestructiveApproval("cancel", params),
+	"task.requestCancellation": async (params, ctx) => requestDestructiveApproval("cancel", params, ctx?.signal),
 
 	// `dev3 task move --status todo`. A task that needs a reset (active, or still
 	// owning a worktree) is reset only after the user approves it in the app —
 	// from any caller, task context or not. Never auto-approved; a request whose
 	// run ends first is voided, not approved. Anything else is a plain move.
-	"task.requestReset": async (params) => requestDestructiveApproval("reset", params),
+	"task.requestReset": async (params, ctx) => requestDestructiveApproval("reset", params, ctx?.signal),
 
 	// Read-only: where a completion/cancellation request stands. Never creates,
 	// joins or answers one — it is what a CLI asks after its wait timed out.

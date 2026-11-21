@@ -96,3 +96,30 @@ describe("automation prompt stdin", () => {
 		});
 	});
 });
+
+describe("automation self-completion", () => {
+	it("sends --self-completion on when creating an automation", async () => {
+		mockSend.mockResolvedValue(okResp(AUTOMATION));
+
+		await handleAutomations(
+			"create",
+			args([], { project: "proj-001", name: "Nightly", prompt: "Run it", rrule: "FREQ=DAILY", "self-completion": "on" }),
+			SOCKET,
+			null,
+		);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "automations.create", expect.objectContaining({ selfCompletion: true }));
+	});
+
+	it("sends --self-completion off when updating an automation", async () => {
+		mockSend.mockResolvedValue(okResp(AUTOMATION));
+
+		await handleAutomations("update", args(["automation-1111"], { project: "proj-001", "self-completion": "off" }), SOCKET, null);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "automations.update", {
+			projectId: "proj-001",
+			automationId: "automation-1111",
+			selfCompletion: false,
+		});
+	});
+});

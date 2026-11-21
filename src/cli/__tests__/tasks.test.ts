@@ -143,6 +143,23 @@ describe("tasks list", () => {
 		expect(stdoutOutput).toContain("To Do (draft)");
 	});
 
+	it("marks blocked and ready tasks, and names a cancelled dependency instead of calling it done", async () => {
+		const dep = (seq: number, state: string) => ({ taskId: `t${seq}`, seq, title: `T${seq}`, status: state === "cancelled" ? "cancelled" : "todo", state });
+		const info = (verdict: string, ...dependsOn: unknown[]) => ({ verdict, dependsOn, blocks: [] });
+		mockSend.mockResolvedValue(okResp([
+			{ ...TASKS[0], id: "aaaaaaaa-1", seq: 31, dependencyInfo: info("blocked", dep(3, "open"), dep(4, "cancelled")) },
+			{ ...TASKS[0], id: "aaaaaaaa-2", seq: 32, dependencyInfo: info("ready", dep(5, "cancelled")) },
+		]));
+		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+		expect(stdoutOutput).toContain("To Do (blocked by #3)");
+		expect(stdoutOutput).toContain("To Do (ready, #5 cancelled)");
+
+		stdoutOutput = "";
+		await handleTasks("list", { positional: [], flags: { project: "proj-001", json: "true" } }, SOCKET, null);
+		const rows = JSON.parse(stdoutOutput).tasks as Array<{ seq: number; dependency: unknown }>;
+		expect(rows.find((r) => r.seq === 32)?.dependency).toEqual({ state: "ready", blockedBy: [], cancelled: [5] });
+	});
+
 	it("auto-detects projectId from context", async () => {
 		mockSend.mockResolvedValue(okResp(TASKS));
 

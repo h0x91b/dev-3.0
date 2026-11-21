@@ -14,6 +14,7 @@ import { utf8Length } from "../../shared/pane-input";
 import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES } from "../../shared/types";
 import type { PrStatusNotice } from "../../shared/pr-watch";
 import { encodeAgentHandle } from "../../shared/agent-handle";
+import { findRefsInText } from "../../shared/task-refs";
 
 const PROJECT_A = "aaaaaaaa-1111-2222-3333-444455556666";
 const PROJECT_B = "bbbbbbbb-1111-2222-3333-444455556666";
@@ -167,6 +168,32 @@ describe("wrapAgentMessage", () => {
 	it("scopes the reply command when the sender sits on another board", () => {
 		const out = wrapAgentMessage("hi", { taskId: "t-1", seq: 1623, projectId: PROJECT_B, agent: AGENT }, PROJECT_A);
 		expect(out).toContain(`<reply-with>dev3 message --task seq:1623 --project bbbbbbbb --agent ${HANDLE} --subject "what your reply is about" "your reply"</reply-with>`);
+	});
+
+	it("qualifies the sender's bare refs in the body and subject for a receiver on another board", () => {
+		const out = wrapAgentMessage(
+			"<seq:12> is waiting on <pr:34>; see <seq:aaaaaaaa/5>",
+			{ taskId: "t-1", seq: 1623, projectId: PROJECT_B, agent: AGENT },
+			PROJECT_A,
+			"<seq:12> blocked",
+		);
+		expect(out).toContain("<message>\n<seq:bbbbbbbb/12> is waiting on <pr:bbbbbbbb/34>; see <seq:aaaaaaaa/5>\n</message>");
+		expect(out).toContain("<subject>&lt;seq:bbbbbbbb/12&gt; blocked</subject>");
+	});
+
+	it("leaves the body as written when both tasks share a board", () => {
+		const out = wrapAgentMessage("<seq:12> done", { taskId: "t-1", seq: 1623, projectId: PROJECT_A, agent: AGENT }, PROJECT_A);
+		expect(out).toContain("<message>\n<seq:12> done\n</message>");
+	});
+
+	it("links every task it names to the sender's board, reply command included", () => {
+		const out = wrapAgentMessage("<seq:12>", { taskId: "t-1", seq: 1623, projectId: PROJECT_B, agent: AGENT }, PROJECT_A);
+		const tasks = findRefsInText(out).filter((m) => m.ref.kind === "task").map((m) => m.ref);
+		expect(tasks).toEqual([
+			{ kind: "task", number: 1623, project: "bbbbbbbb" },
+			{ kind: "task", number: 1623, project: "bbbbbbbb" },
+			{ kind: "task", number: 12, project: "bbbbbbbb" },
+		]);
 	});
 
 	it("offers NO reply command when the sending agent was not proven, and says why", () => {

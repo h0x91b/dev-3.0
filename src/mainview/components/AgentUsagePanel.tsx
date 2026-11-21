@@ -24,7 +24,7 @@ import {
 type UsageKind = Exclude<AgentAccountKind, AgentDirAccountKind>;
 const KINDS: UsageKind[] = ["claude", "codex"];
 /** Kimi rows come from opted-in catalog providers, not from agent accounts. */
-type UsageSource = UsageKind | "kimi";
+type UsageSource = UsageKind | "kimi" | "agy";
 
 /** One card in the panel: an account (or a leftover reading) plus its usage. */
 interface UsageRow {
@@ -171,9 +171,11 @@ function rowsForKind(
 	}
 
 	// A pinned login is never "the default": the project's config picks it, not
-	// this switcher, so its row only reports usage.
+	// this switcher, so its row only reports usage. A folder signed in to a managed
+	// account is that account: its readings land on the account's row above.
 	if (kind === "claude") {
 		for (const login of pinnedLogins) {
+			if (login.accountId && kindState?.accounts.some((a) => a.id === login.accountId)) continue;
 			const chip = labels.projectLogin(shortClaudeConfigDir(login.configDir));
 			const identity = identityLine(login.identity);
 			rows.push({
@@ -213,6 +215,23 @@ function rowsForKind(
 		});
 	}
 	return rows;
+}
+
+/** One informational row per Antigravity account that reported a quota, named by its email. */
+function agyRows(report: AgentRateLimitsReport): UsageRow[] {
+	return report.snapshots
+		.filter((s) => s.source === "agy")
+		.map((snap) => ({
+			key: `agy:${snap.accountId ?? "unknown"}`,
+			kind: "agy",
+			accountId: null,
+			configDir: null,
+			account: { name: snap.accountLabel ?? null, email: snap.accountLabel ?? null, organization: null, planLabel: snap.planType, isApi: false },
+			chip: null,
+			snap,
+			isDefault: false,
+			selectable: false,
+		}));
 }
 
 /** One informational row per opted-in Kimi provider, with or without a reading. */
@@ -310,7 +329,7 @@ function UsageRowCard({
 		</>
 	);
 	// Kimi rows are read-only readings: no radio, no tab stop, nothing to switch.
-	if (row.kind === "kimi") return <div className={`${ACCOUNT_CARD_CLASS} w-full text-left`}>{body}</div>;
+	if (row.kind === "kimi" || row.kind === "agy") return <div className={`${ACCOUNT_CARD_CLASS} w-full text-left`}>{body}</div>;
 	return (
 		<button
 			ref={rowRef}
@@ -421,6 +440,7 @@ export default function AgentUsagePanel({
 	const blocks: { kind: UsageSource; rows: UsageRow[] }[] = [
 		...KINDS.map((kind) => ({ kind, rows: rowsForKind(kind, accounts, report, pinnedLogins, labels, projectPinned) })),
 		{ kind: "kimi" as const, rows: kimiRows(report) },
+		{ kind: "agy" as const, rows: agyRows(report) },
 	].filter((block) => block.rows.length > 0);
 
 	const armed = interactive || dwelled;
@@ -497,7 +517,7 @@ export default function AgentUsagePanel({
 							{SOURCE_NAMES[block.kind] ?? block.kind}
 						</div>
 						<div
-							role={block.kind === "kimi" ? "group" : "radiogroup"}
+							role={block.kind === "kimi" || block.kind === "agy" ? "group" : "radiogroup"}
 							aria-label={SOURCE_NAMES[block.kind] ?? block.kind}
 							className="space-y-1"
 						>
@@ -509,7 +529,7 @@ export default function AgentUsagePanel({
 									inert={isInert(row)}
 									focusable={row.key === stop?.key}
 									onSetDefault={() => {
-										if (row.kind === "kimi") return;
+										if (row.kind === "kimi" || row.kind === "agy") return;
 										void setDefault(row.kind, row.accountId, spokenName(row, SOURCE_NAMES[row.kind] ?? row.kind));
 									}}
 									onKeyDown={onRowKeyDown(block.rows, index)}

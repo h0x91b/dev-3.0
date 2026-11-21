@@ -3,6 +3,7 @@ import type { TerminalBackendIdentity } from "../terminal-backend-identity";
 import type { UpdateChannel } from "../update-channel";
 import type { ShellFlavor } from "../posix-shell";
 import type { FavoriteAgentConfig } from "./coding-agents";
+import type { LogRetentionValue } from "../log-retention";
 
 // ---- External Apps ("Open in...") ----
 
@@ -195,6 +196,11 @@ export interface GlobalSettings {
 	 * false opts out.
 	 */
 	autoCleanupTaskHistory?: boolean;
+	/**
+	 * How long the agent message log and the notification log keep their days: a day
+	 * count or "forever". Absent = 30 days. Host-owned: written only by `setLogRetention`.
+	 */
+	logRetentionDays?: LogRetentionValue;
 	/** Inject the short agent protocol at launch instead of the full one. Off unless true; `DEV3_LEAN_PROTOCOL=1` also turns it on. */
 	leanAgentProtocol?: boolean;
 	/**
@@ -322,6 +328,12 @@ export interface GlobalSettings {
 	/** When false, merged branches show a notice instead of a completion prompt. */
 	suggestCompletingTasksAfterMerge?: boolean;
 	/**
+	 * How a merge or agent completion offer asks: a modal that waits for an
+	 * answer, or a bar on the task's terminal that blocks nothing. Undefined ⇒
+	 * {@link DEFAULT_COMPLETION_OFFER_STYLE}.
+	 */
+	completionOfferStyle?: CompletionOfferStyle;
+	/**
 	 * Minutes the agent-launch dialog waits before approving itself, so a
 	 * requesting agent is not blocked on a user who stepped away. `0` disables
 	 * it and restores the answer-or-time-out behaviour. Undefined ⇒
@@ -331,6 +343,10 @@ export interface GlobalSettings {
 	agentLaunchAutoApproveMinutes?: number;
 	/** Where the CPU and disk readouts turn yellow / red. Sparse: absent keys use the defaults. */
 	resourceLevels?: Partial<ResourceLevels>;
+	/** Inactivity before a hibernation suggestion; absent uses 24 hours, 0 disables. */
+	autoHibernateMinutes?: number;
+	/** Suggestion auto-confirm delay in whole minutes; absent uses 30 minutes. */
+	autoHibernateConfirmMinutes?: number;
 	/**
 	 * When false, the Create-PR handoff stops asking the agent to append the
 	 * deep link back to the originating task. Default on; the opt-out exists
@@ -420,6 +436,10 @@ export type ShortcutOverrides = Record<string, ShortcutOverride>;
 
 /** Behavior of Cmd/Ctrl+Click on a file path in terminal output. */
 export type TerminalPathOpenMode = "preview" | "system" | "reveal";
+
+export type CompletionOfferStyle = "dialog" | "inline";
+/** The dialog answers fastest, so a finished task's agent, worktree and memory go soonest. */
+export const DEFAULT_COMPLETION_OFFER_STYLE: CompletionOfferStyle = "dialog";
 
 /** A path candidate resolved against a task worktree / project directory. */
 export interface ResolvedTerminalPath {

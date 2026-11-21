@@ -26,12 +26,15 @@ export const PR_WATCH_RUN_STALL_MS = 3 * 60_000;
 const inFlight = new Map<string, { startedAt: number }>();
 // Tasks already warned about disagreeing remote refs; cleared when the refs agree again.
 const ambiguousWarned = new Set<string>();
+// taskId -> tail of its delivery queue: a branch run and a `--pr` run on one PR must not both type its merge.
+const deliveryTails = new Map<string, Promise<void>>();
 
 export function _resetPrWatchRunnerState(): void {
 	retryAfter.clear();
 	mergeOfferHolds.clear();
 	inFlight.clear();
 	ambiguousWarned.clear();
+	deliveryTails.clear();
 }
 
 function isTerminal(task: Task): boolean {
@@ -154,7 +157,18 @@ async function runPrWatchesOnce(
 	});
 	if (outcome.fired.length === 0) return;
 	if (!canReceive) return;
-	await deliverFired(project, taskId, outcome, sample.number, prUrl, mergeCoversHead, pinnedPr);
+	await oneDeliveryAtATime(taskId, () => deliverFired(project, taskId, outcome, sample.number, prUrl, mergeCoversHead, pinnedPr));
+}
+
+/** Runs the task's deliveries one after another; each re-reads the watches, so a later one sees what an earlier one removed. */
+function oneDeliveryAtATime(taskId: string, deliver: () => Promise<void>): Promise<void> {
+	const run = (deliveryTails.get(taskId) ?? Promise.resolve()).then(deliver);
+	const tail = run.catch(() => undefined);
+	deliveryTails.set(taskId, tail);
+	void tail.then(() => {
+		if (deliveryTails.get(taskId) === tail) deliveryTails.delete(taskId);
+	});
+	return run;
 }
 
 /** The branch's remote tips, which decide whether a sampled head of its own PR is fresh. */
@@ -241,8 +255,13 @@ async function deliverFired(
 		const live = fired.filter(({ watch }) => heldNow.has(watch.id));
 		if (live.length === 0) continue;
 		const ids = new Set(live.map(({ watch }) => watch.id));
+		// A merge or close ends the PR for these subscribers: their watches on it from the other scope go too, untold.
+		const prEnded = live.some(({ notice }) => notice.kind === "merged" || notice.kind === "closed");
 		const settle = (current: PrWatch[]) => applyPrWatchOutcome(current, {
-			removeIds: outcome.removeIds.filter((id) => ids.has(id)),
+			removeIds: [
+				...outcome.removeIds.filter((id) => ids.has(id)),
+				...(prEnded ? current.filter((watch) => held.has(watch.id) && watch.prNumber === prNumber && keys.includes(subscriberKey(watch))).map((watch) => watch.id) : []),
+			],
 			patches: Object.fromEntries(Object.entries(outcome.patches).filter(([id]) => ids.has(id))),
 		});
 		const remaining = [...new Set(watchesInScope(settle(fresh.prWatches ?? []), pinnedPr).filter((watch) => keys.includes(subscriberKey(watch))).map((watch) => watch.until))];

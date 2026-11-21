@@ -1,6 +1,7 @@
 import { stopAgentMessageLogWatches } from "./agent-message-log-watch";
 import { probeDevServer, resolveMainViewUrl } from "./main-view-url";
 import { startBoardCopy, stopBoardCopy } from "./board-copy";
+import { startAutoHibernate, stopAutoHibernate } from "./auto-hibernate";
 import { claudeSessionWatches } from "./claude-session-watch";
 import { codexTurnWatches } from "./codex-turn-watch";
 import Electrobun, {
@@ -36,6 +37,7 @@ import { markPendingDeepLinkNav } from "./deep-link-nav";
 import { resolveDeepLink } from "./deep-link";
 import { parseDeepLink } from "../shared/deep-link";
 import { createLogger, getLogPath } from "./logger";
+import { dropTaskEnvFromOsLaunch, readParentPid } from "./launch-origin";
 import { writeAppReadyMarker } from "./app-ready-marker";
 import {
 	buildRendererUnavailableDiagnostic,
@@ -48,6 +50,7 @@ import { DEV3_HOME } from "./paths";
 import { resolveUserHome } from "../shared/user-home";
 import { normalizeEnvPath } from "../shared/env-path";
 import { applyFullShellEnvToProcess, getShellRcFiles, getUserShell, resolveShellEnv } from "./shell-env";
+import { resetEnvFromDev3Pane } from "./pane-launch-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServerGuarded, setRemoteAccessStatusHook } from "./remote-access-server";
 import { writeSystemClipboard } from "./system-clipboard";
@@ -109,6 +112,19 @@ let lastBuildTime = BUILD_TIME;
 log.info(`=== dev-3.0 starting [${lastBuildTime}] ===`);
 log.info("All data at", { dir: DEV3_HOME });
 log.info("Log files", { dir: getLogPath() });
+
+// First: before skills install into the Claude config dir, any tmux server start, or any env read.
+{
+	const removed = resetEnvFromDev3Pane(process.env);
+	if (removed.length > 0) log.info("Started inside a dev3 pane: dropped its launch env", { removed });
+}
+
+// ── macOS: an app `open`ed from a dev3 pane is not that task's guest ──
+// First, before the socket sidecar, launch handoff or any other DEV3_TASK_ID read.
+{
+	const removed = dropTaskEnvFromOsLaunch(process.env, { platform: process.platform, ppid: process.ppid, parentOf: readParentPid });
+	if (removed.length > 0) log.info("Launched by the OS: dropped the task env inherited from a dev3 pane", { removed });
+}
 
 // ── Linux: a relaunch hands off to the running instance (issue #2039) ──
 // Before anything writes shared state: a window-less instance left behind by
@@ -650,6 +666,7 @@ startRendererWatchdog({
 
 // Reconcile persisted lifecycle hints before background activity starts.
 await rehydrateTaskLifecycles();
+startAutoHibernate();
 
 // Start background merge detection poller
 startMergeDetectionPoller();
@@ -824,6 +841,7 @@ function runGlobalQuitCleanup(): void {
 	codexTurnWatches.close();
 	// Snapshot window geometry so an update restart reopens on the same screen.
 	try { flushWindowState(); } catch (err) { log.warn("flushWindowState failed", { error: String(err) }); }
+	stopAutoHibernate();
 	try { stopPortScanPoller(); } catch (err) { log.warn("stopPortScanPoller failed", { error: String(err) }); }
 	try { void stopBackgroundSchedulers(); } catch (err) { log.warn("stopBackgroundSchedulers failed", { error: String(err) }); }
 	try { stopResourceMonitor(); } catch (err) { log.warn("stopResourceMonitor failed", { error: String(err) }); }

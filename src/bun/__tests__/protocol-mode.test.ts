@@ -10,7 +10,7 @@ import { taskProtocolMode, type CodingAgent, type ProtocolMode } from "../../sha
 // share. Its agent must not be told to rename a task branch, to treat the folder
 // as its private worktree, or that a PR through `dev3 pr create` is mandatory.
 
-const FAMILIES: SkillFamily[] = ["claude", "codex", "omp", "pi", "generic"];
+const FAMILIES: SkillFamily[] = ["claude", "codex", "omp", "pi", "agy", "generic"];
 
 /** Instructions only true for a task that owns a worktree and a `dev3/task-*` branch. */
 const WORKTREE_ONLY = [

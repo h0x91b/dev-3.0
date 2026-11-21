@@ -53,9 +53,14 @@ export const CLAUDE_RUNTIME_STATE = [
 	"worktrees/",
 ] as const;
 
+/** A repo-relative path prefix with gitignore glob characters escaped. */
+function escapeExcludePrefix(prefix: string): string {
+	return prefix.replace(/[\\*?[]/g, "\\$&");
+}
+
 /** `info/exclude` rules for one config dir, anchored at the repo root via `prefix` (e.g. `.claude/`). */
 export function claudeRuntimeExcludeRules(prefix: string, skillNames: readonly string[]): string[] {
-	const base = `/${prefix.replace(/[\\*?[]/g, "\\$&")}`;
+	const base = `/${escapeExcludePrefix(prefix)}`;
 	return [...CLAUDE_RUNTIME_STATE, ...skillNames.map((name) => `skills/${name}/`)].map((entry) => `${base}${entry}`);
 }
 
@@ -68,6 +73,20 @@ function git(args: string[], cwd: string): { ok: boolean; stdout: string; stderr
 export function isGitTracked(file: string): boolean {
 	if (!existsSync(file)) return false;
 	return git(["ls-files", "--error-unmatch", "--", basename(file)], dirname(file)).ok;
+}
+
+/**
+ * True when the repo's index lists `file`, whether or not it is still on disk: a tracked file the
+ * user deleted is a pending change they made on purpose, and dev3 must not bring it back.
+ */
+export function isGitIndexed(file: string): boolean {
+	let dir = dirname(file);
+	while (!existsSync(dir)) {
+		const parent = dirname(dir);
+		if (parent === dir) return false;
+		dir = parent;
+	}
+	return git(["ls-files", "--error-unmatch", "--", relative(dir, file)], dir).ok;
 }
 
 const excluded = new Set<string>();
@@ -117,7 +136,34 @@ export function excludeClaudeRuntimeState(configDir: string, skillNames: readonl
 export function excludeTaskClaudeSettings(taskDir: string): void {
 	const file = join(taskDir, ".claude", "settings.local.json");
 	if (!existsSync(file) || isGitTracked(file)) return;
-	addExcludeRules(`task-settings:${taskDir}`, taskDir, (prefix) => [`/${prefix.replace(/[\\*?[]/g, "\\$&")}.claude/settings.local.json`], "dev3 task settings");
+	addExcludeRules(`task-settings:${taskDir}`, taskDir, (prefix) => [`/${escapeExcludePrefix(prefix)}.claude/settings.local.json`], "dev3 task settings");
+}
+
+/**
+ * Same as `excludeTaskClaudeSettings`, for the `.codex/hooks.json` dev3 writes. Only that file, never `.codex/`.
+ * `info/exclude` is shared by the whole repo, so the rule also hides an untracked one in the main checkout.
+ */
+export function excludeTaskCodexHooks(taskDir: string): void {
+	const file = join(taskDir, ".codex", "hooks.json");
+	if (!existsSync(file) || isGitTracked(file)) return;
+	addExcludeRules(`task-codex-hooks:${taskDir}`, taskDir, (prefix) => [`/${escapeExcludePrefix(prefix)}.codex/hooks.json`], "dev3 Codex hooks");
+}
+
+/**
+ * Same as `excludeTaskCodexHooks`, for what dev3 writes into an agy worktree: `.agents/hooks.json`
+ * (unless the repo tracks it) and the `.agents/skills/dev3/` skill. Never the whole `.agents/`.
+ * `written` names what this launch really wrote, so a file dev3 left alone is never excluded.
+ */
+export function excludeTaskAgyConfig(taskDir: string, written: { hooks: boolean; skill: boolean } = { hooks: true, skill: true }): void {
+	const hooks = join(taskDir, ".agents", "hooks.json");
+	const skill = join(taskDir, ".agents", "skills", "dev3", "SKILL.md");
+	addExcludeRules(`task-agy-config:${taskDir}:${written.hooks}:${written.skill}`, taskDir, (prefix) => {
+		const base = `/${escapeExcludePrefix(prefix)}.agents/`;
+		return [
+			...(written.hooks && existsSync(hooks) && !isGitTracked(hooks) ? [`${base}hooks.json`] : []),
+			...(written.skill && existsSync(skill) && !isGitTracked(skill) ? [`${base}skills/dev3/`] : []),
+		];
+	}, "dev3 agy config");
 }
 
 /** The nearest existing ancestor of `dir` (itself included), and the path from it down to `dir` with forward slashes. */

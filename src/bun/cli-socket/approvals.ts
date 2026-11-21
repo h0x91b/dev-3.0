@@ -1,7 +1,7 @@
 import type { AgentMessageSource, Project, ResetKeptBranch, Task, TaskPriority, TaskResetConsent, TaskResetResult, TaskStatus } from "../../shared/types";
 import { agentReplyCommand, seqIsShared } from "../../shared/agent-message-envelope";
 import { type ExternalSenderRequester, isExternalSenderRequester } from "../../shared/external-senders";
-import { DEFAULT_PRIORITY, agentLaunchAutoApproveMs, buildTaskDialogSubject, getTaskTitle, isCoordinatorTask, isOpsWorktreeTask, taskNeedsReset, taskResetConsent } from "../../shared/types";
+import { ACTIVE_STATUSES, DEFAULT_PRIORITY, agentLaunchAutoApproveMs, getPrimaryStopTarget, buildTaskDialogSubject, getTaskTitle, isCoordinatorTask, isOpsWorktreeTask, taskNeedsReset, taskResetConsent, taskUsesWorktree } from "../../shared/types";
 import { coordinatorLaunchDefault } from "../../shared/coordinator-launch";
 import { getAllAgents } from "../agents";
 import { createAgentRequest, getAgentRequestState, joinAgentRequest, setAgentRequestLaunchChoice, voidAgentRequest } from "../agent-requests";
@@ -11,10 +11,13 @@ import type { AgentLaunchChoice, LaunchVariant } from "../../shared/types";
 import { deliverLaunchHandoff } from "../agent-launch-handoff";
 import { getPushMessage, launchTaskWithAgentChoice, moveTask, resetTaskToTodo } from "../rpc-handlers";
 import { loadSettings } from "../settings";
+import { isHalfRemovedWorktree, WorktreeHalfRemovedError } from "../worktree-leftover";
 import { loadBoardTasks, resolveAgentMessageSource, resolveTaskAcrossProjects, resolveTaskFromParams } from "./task-resolution";
 import { type ApprovalReason, approvalReasonFromParams, normalizeApprovalReason } from "../../shared/approval-reason";
 import { awaitLaunchPreparation } from "./launch-preparation";
 import type { LaunchPreparationOutcome } from "../../shared/launch-preparation";
+import type { ResolvedDependency } from "../../shared/task-dependencies";
+import { log } from "./shared";
 
 export function approvalStatusOf(kind: DestructiveApprovalKind, task: Task): AgentApprovalStatus {
 	const known = getAgentRequestState(kind, task.id);
@@ -63,6 +66,58 @@ async function voidIfRunEndedMeanwhile(
 	if (ended) voidAgentRequest(kind, task.id);
 }
 
+/**
+ * The agent is blocked on the user's answer, so its task is a question, not work.
+ * Guarded moves, so a status someone else set in the meantime is never overwritten.
+ * No badge: the ask itself is the cue, and it ends when the user answers.
+ */
+async function parkWhileAsking(project: Project, task: Task): Promise<boolean> {
+	if (task.status !== "in-progress") return false;
+	try {
+		const moved = await moveTask({ taskId: task.id, projectId: project.id, newStatus: "user-questions", ifStatus: "in-progress", skipQuestionsBadge: true });
+		return moved?.status === "user-questions";
+	} catch (err) {
+		log.warn("Could not park the asking task in Has Questions", { taskId: task.id.slice(0, 8), error: String(err) });
+		return false;
+	}
+}
+
+/**
+ * A waiting agent goes back to work. An agent that stopped waiting may have ended
+ * its turn while parked, and its Stop hook (guarded on in-progress) moved nothing,
+ * so the task takes the move that hook would have made.
+ */
+async function unparkAfterDecline(project: Project, task: Task, askerWaiting: boolean): Promise<void> {
+	const newStatus = askerWaiting ? "in-progress" : getPrimaryStopTarget(project.autoReviewEnabled, task.taskType);
+	try {
+		await moveTask({ taskId: task.id, projectId: project.id, newStatus, ifStatus: "user-questions" });
+	} catch (err) {
+		log.warn("Could not move the declined task out of Has Questions", { taskId: task.id.slice(0, 8), newStatus, error: String(err) });
+	}
+}
+
+/** Connections of every CLI waiting on a request: the original ask, retries, re-attaches. */
+const waiterSignalsByRequestId = new Map<string, Set<AbortSignal | undefined>>();
+
+function addWaiter(requestId: string, decision: Promise<unknown>, signal: AbortSignal | undefined): void {
+	let waiters = waiterSignalsByRequestId.get(requestId);
+	if (!waiters) {
+		waiters = new Set();
+		waiterSignalsByRequestId.set(requestId, waiters);
+		// After every waiter's continuation has read the set.
+		void decision.finally(() => setTimeout(() => waiterSignalsByRequestId.delete(requestId), 0));
+	}
+	waiters.add(signal);
+}
+
+/** A caller with no connection (an in-process call) counts as waiting. */
+function askerStillWaiting(requestId: string): boolean {
+	for (const signal of waiterSignalsByRequestId.get(requestId) ?? []) {
+		if (!signal?.aborted) return true;
+	}
+	return false;
+}
+
 function isPendingRequest(kind: "complete" | "cancel" | "reset" | "launch", taskId: string, requestId: string): boolean {
 	const state = getAgentRequestState(kind, taskId);
 	return state.state === "pending" && state.requestId === requestId;
@@ -94,9 +149,15 @@ async function destructiveReason(params: Record<string, unknown>, task: Task): P
 	return approvalReasonFromParams(params, source ? { seq: source.seq, title: source.title ?? "" } : null);
 }
 
+export const SELF_COMPLETION_NOT_ALLOWED =
+	"This task has not opted in to self-completion, so --force is refused and nothing changed. " +
+	"Only the user, or the task that created this one, can grant that. " +
+	"Run the command without --force to ask the user for approval.";
+
 export async function requestDestructiveApproval(
 	kind: DestructiveApprovalKind,
 	params: Record<string, unknown>,
+	signal?: AbortSignal,
 ): Promise<{ approved: boolean; task?: Task; stale?: boolean; taskStatus?: TaskStatus | null; plainMove?: boolean; keptBranches?: ResetKeptBranch[] } | AgentApprovalNotAttached> {
 	const { project, task } = await resolveTaskFromParams(params);
 	// A clean To Do card, a draft, a completed/cancelled task: moving it to To Do
@@ -106,6 +167,17 @@ export async function requestDestructiveApproval(
 		return { approved: true, task: moved, plainMove: true };
 	}
 	const targetStatus = DESTRUCTIVE_APPROVAL_TARGET[kind];
+	// `--force`: the caller owns the decision, so no dialog and no window is needed.
+	if (kind === "complete" && params.force === true && params.attachOnly !== true) {
+		if (task.status === "completed" || task.status === "cancelled") {
+			throw new Error(`Task is already ${task.status}`);
+		}
+		if (task.selfCompletion !== true) {
+			throw new Error(SELF_COMPLETION_NOT_ALLOWED);
+		}
+		const forced = await moveTask({ taskId: task.id, projectId: project.id, newStatus: targetStatus });
+		return { approved: true, task: forced };
+	}
 	const push = getPushMessage();
 	const dialog = {
 		taskTitle: getTaskTitle(task),
@@ -114,10 +186,12 @@ export async function requestDestructiveApproval(
 		subject: buildTaskDialogSubject(task, project),
 		// An owned Operations worktree is removed on reset, but its branch is kept.
 		...(kind === "reset" && isOpsWorktreeTask(task) ? { branchKept: true } : {}),
+		// Opening a To Do task shows its detail modal, which has no completion bar.
+		...(kind === "complete" && !ACTIVE_STATUSES.includes(task.status) ? { noTaskView: true } : {}),
 		...await destructiveReason(params, task),
 	};
 
-	let request: { requestId: string; decision: Promise<{ approved: boolean; stale?: boolean }> };
+	let request: { requestId: string; decision: Promise<{ approved: boolean; stale?: boolean; attachedRepo?: string | null }> };
 	if (params.attachOnly === true) {
 		const joined = joinAgentRequest(kind, task.id);
 		if (!joined) return { attached: false, status: approvalStatusOf(kind, task) };
@@ -138,6 +212,7 @@ export async function requestDestructiveApproval(
 		await voidIfRunEndedMeanwhile(kind, project, task);
 	}
 	const stillAsking = isPendingRequest(kind, task.id, request.requestId);
+	if (stillAsking) addWaiter(request.requestId, request.decision, signal);
 
 	// Pushed on EVERY attempt, joined retries and re-attaches included. A retry
 	// used to push nothing, so once a client lost the original dialog the request
@@ -149,9 +224,14 @@ export async function requestDestructiveApproval(
 		});
 	}
 
-	const { approved, stale } = await request.decision;
+	// Only the task's own agent is blocked by its ask; a peer's ask leaves it working.
+	const ownAgentAsks = params.sourceTaskId === task.id;
+	const parked = stillAsking && ownAgentAsks && params.attachOnly !== true && await parkWhileAsking(project, task);
+
+	const { approved, stale, attachedRepo } = await request.decision;
 	if (!approved) {
 		resetConsentByRequestId.delete(request.requestId);
+		if (parked && !stale) await unparkAfterDecline(project, task, askerStillWaiting(request.requestId));
 		if (!stale) return { approved: false };
 		// Voided: the task finished or vanished by another path. Its live status lets
 		// the CLI tell "already where you asked" apart from "ended some other way".
@@ -164,10 +244,11 @@ export async function requestDestructiveApproval(
 		if (!run) {
 			// Consent is bound to the run the dialog showed; the machine refuses a
 			// different one and deletes nothing.
-			const consent = resetConsentByRequestId.get(requestId);
+			const snapshot = resetConsentByRequestId.get(requestId);
 			resetConsentByRequestId.delete(requestId);
-			run = consent
-				? resetTaskToTodo({ taskId: task.id, projectId: project.id, consent })
+			// `attachedRepo` stays the one seen when the dialog opened; only the checked one is approved for removal.
+			run = snapshot
+				? resetTaskToTodo({ taskId: task.id, projectId: project.id, consent: { ...snapshot, approvedAttachedRepo: attachedRepo ?? null } })
 				: Promise.reject(new Error("The reset request lost its consent record, so the reset was not run. Ask again."));
 			resetRunByRequestId.set(requestId, run);
 			void run.catch(() => {}).finally(() => {
@@ -179,8 +260,16 @@ export async function requestDestructiveApproval(
 	}
 	// Every caller joined to this request lands here; a repeat move to the same
 	// status is a no-op in the lifecycle machine.
-	const updated = await moveTask({ taskId: task.id, projectId: project.id, newStatus: targetStatus });
-	return { approved: true, task: updated };
+	try {
+		const updated = await moveTask({ taskId: task.id, projectId: project.id, newStatus: targetStatus, approvedAttachedRepo: attachedRepo ?? null });
+		return { approved: true, task: updated };
+	} catch (err) {
+		// The lifecycle hands back only the message, so the leftover is read off disk.
+		if (task.worktreePath && taskUsesWorktree(project, task) && isHalfRemovedWorktree(task.worktreePath)) {
+			throw new WorktreeHalfRemovedError(task.worktreePath, err instanceof Error ? err.message : String(err));
+		}
+		throw err;
+	}
 }
 
 /**
@@ -228,6 +317,8 @@ type LaunchApprovalOutcome =
 		seq: number;
 		title: string;
 		launched: Array<{ variantIndex: number | null; replyCommand: string; preparation: LaunchPreparationOutcome }>;
+		/** Dependencies still open when the launch was approved. */
+		startedBlockedBy?: ResolvedDependency[];
 	};
 
 /**
@@ -271,6 +362,8 @@ export async function requestAgentLaunchApproval(opts: {
 	handoff?: boolean;
 	/** Why the requester asks (`--reason`), already normalized. */
 	reason?: ApprovalReason;
+	/** The target's open dependencies: the dialog names them, the start is still the user's call. */
+	openDependencies?: ResolvedDependency[];
 }): Promise<LaunchApprovalOutcome> {
 	const { project, task, targetStatus, requester } = opts;
 	// A coordinator's own preset preselects the dialog and is what an unwatched auto-approval launches.
@@ -326,6 +419,7 @@ export async function requestAgentLaunchApproval(opts: {
 		autoApproveAt,
 		...(suggested ? { suggested } : {}),
 		...(opts.reason ? { reason: opts.reason } : {}),
+		...(opts.openDependencies?.length ? { openDependencies: opts.openDependencies.map((d) => d.seq) } : {}),
 	});
 
 	const answer = await decision;
@@ -382,6 +476,7 @@ export async function requestAgentLaunchApproval(opts: {
 			// against its own.
 			replyCommand: launchReplyCommand(child, requester, boardTasks),
 		})),
+		...(opts.openDependencies?.length ? { startedBlockedBy: opts.openDependencies } : {}),
 	};
 }
 

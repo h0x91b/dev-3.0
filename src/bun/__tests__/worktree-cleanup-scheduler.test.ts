@@ -30,6 +30,7 @@ const EMPTY_RESULT: WorktreeCleanupResult = {
 	scannedDirs: 3,
 	bytesBefore: 100,
 	removedDirs: 1,
+	removedMediaFiles: 0,
 	freedBytes: 40,
 	skipped: 0,
 	failed: 0,
@@ -210,6 +211,7 @@ describe("runWorktreeCleanup (the real prune, 14 days)", () => {
 				return { status: 0, stdout: "" };
 			},
 			remove: (path) => removed.push(path),
+			walkFiles: () => [],
 		};
 	}
 
@@ -234,6 +236,27 @@ describe("runWorktreeCleanup (the real prune, 14 days)", () => {
 		// The unmerged branch is never deleted; the merged one only with a safe -d.
 		const branchDeletes = gitCalls.filter((c) => c[0] === "branch" && (c[1] === "-d" || c[1] === "-D"));
 		expect(branchDeletes).toEqual([["branch", "-d", "dev3/task-0ddddddd"]]);
+	});
+
+	it("also deletes large shared media older than 60 days and counts it as freed", () => {
+		const removed: string[] = [];
+		const images = `${HOME}/worktrees/${SLUG}/shared-images`;
+		const base = deps(removed, []);
+		const result = runWorktreeCleanup({
+			...base,
+			exists: (path) => path === images || base.exists(path),
+			walkFiles: (dir) =>
+				dir === images
+					? [
+							{ path: `${images}/old.mp4`, bytes: 50 * 1024 * 1024, changedMs: T0 - 61 * DAY },
+							{ path: `${images}/recent.mp4`, bytes: 50 * 1024 * 1024, changedMs: T0 - 59 * DAY },
+						]
+					: [],
+		});
+		expect(removed).toContain(`${images}/old.mp4`);
+		expect(removed).not.toContain(`${images}/recent.mp4`);
+		expect(result.removedMediaFiles).toBe(1);
+		expect(result.freedBytes).toBeGreaterThanOrEqual(50 * 1024 * 1024);
 	});
 
 	it("hands the kept tree to the after-prune step", () => {

@@ -28,6 +28,7 @@ import { closeSync, mkdirSync, openSync, readdirSync, readFileSync, rmdirSync, s
 import { isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { withFileLock } from "../file-lock";
+import { withoutLaunchTaskWiring } from "../pane-launch-env";
 import { whichSync } from "../which";
 import { NativeSessionClient } from "./client";
 import { classifyOwnership, type OwnershipVerdict } from "./ownership";
@@ -173,7 +174,8 @@ export function defaultHostLauncher(sessionId: string, opts: HostSpawnOptions, l
 		// cwd is undeletable. See detachedHostCwd().
 		cwd: detachedHostCwd(),
 		env: {
-			...process.env,
+			// A host outlives this app and starts shells for any task: never the launching pane's wiring.
+			...withoutLaunchTaskWiring(process.env),
 			DEV3_NATIVE_SESSION_ID: sessionId,
 			[NATIVE_SESSION_LAUNCH_ENV]: encodeShellLaunchSpec(opts.launch),
 			...(opts.cols ? { DEV3_NATIVE_SESSION_COLS: String(opts.cols) } : {}),

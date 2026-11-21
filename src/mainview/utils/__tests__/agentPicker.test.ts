@@ -6,6 +6,7 @@ import {
 	getModelGroupLabel,
 	getModeLeafLabel,
 	groupLabelForConfig,
+	installedAgentsFirst,
 	pickConfigForModelChange,
 	prettifyModel,
 	providerCaptionForConfig,
@@ -76,6 +77,8 @@ describe("getModelGroupLabel", () => {
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "claude-opus-5[1m]" })).toBe("Opus 5");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "claude-opus-4-8[1m]" })).toBe("Opus 4.8");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "claude-fable-5" })).toBe("Fable 5");
+		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-6.2-astra" })).toBe("GPT-6.2 Astra");
+		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-6.2-sol" })).toBe("GPT-6.2 Sol");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-6.1-sol" })).toBe("GPT-6.1 Sol");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-5.6-sol" })).toBe("GPT-5.6 Sol");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-5.6-terra" })).toBe("GPT-5.6 Terra");
@@ -239,6 +242,8 @@ describe("buildPickerGroups", () => {
 
 		it("lists Codex by release date, same-day models in curated order", () => {
 			expect(buildPickerGroups(codexDefaults).map((g) => g.label)).toEqual([
+				"GPT-6.2 Astra",
+				"GPT-6.2 Sol",
 				"GPT-6.1 Sol",
 				"GPT-6 Sol",
 				"GPT-6 Luna",
@@ -294,14 +299,14 @@ describe("buildPickerGroups", () => {
 				...codexDefaults,
 				configurations: [
 					{ id: "mine-new", name: "Mine", model: "gpt-7-experimental" },
-					{ id: "mine-sol", name: "My Sol", model: "gpt-6.1-sol" },
+					{ id: "mine-astra", name: "My Astra", model: "gpt-6.2-astra" },
 					...fossil.configurations,
 					{ id: "mine-other", name: "Other", model: "some-local-model" },
 				],
 			};
 			const groups = buildPickerGroups(agent);
-			expect(groups[0].label).toBe("GPT-6.1 Sol");
-			expect(groups[0].configs[groups[0].configs.length - 1].id).toBe("mine-sol");
+			expect(groups[0].label).toBe("GPT-6.2 Astra");
+			expect(groups[0].configs[groups[0].configs.length - 1].id).toBe("mine-astra");
 			expect(groups.slice(-2).map((g) => g.configs[0].id)).toEqual(["mine-new", "mine-other"]);
 		});
 	});
@@ -471,5 +476,36 @@ describe("resolveFavoriteChips", () => {
 		expect(chips).toHaveLength(1);
 		// Higher uses (the -xhigh entry) wins; its storedConfigId is the live id.
 		expect(chips[0].storedConfigId).toBe("claude-bypass-sonnet5-xhigh");
+	});
+});
+
+describe("installedAgentsFirst", () => {
+	const list = [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }];
+
+	it("moves agents that are not installed below the installed ones, keeping each group's order", () => {
+		const out = installedAgentsFirst(list, [
+			{ agentId: "a", installed: false },
+			{ agentId: "b", installed: true },
+			{ agentId: "c", installed: false },
+			{ agentId: "d", installed: true },
+		]);
+		expect(out.map((x) => x.id)).toEqual(["b", "d", "a", "c"]);
+	});
+
+	it("treats an agent with no availability result as installed and does not mutate the input", () => {
+		const out = installedAgentsFirst(list, [{ agentId: "b", installed: false }]);
+		expect(out.map((x) => x.id)).toEqual(["a", "c", "d", "b"]);
+		expect(list.map((x) => x.id)).toEqual(["a", "b", "c", "d"]);
+		expect(installedAgentsFirst(list, []).map((x) => x.id)).toEqual(["a", "b", "c", "d"]);
+	});
+});
+
+describe("Antigravity model labels", () => {
+	it("names each model without the vendor and groups every effort and mode under it", () => {
+		const agy = DEFAULT_AGENTS.find((a) => a.id === "builtin-agy")!;
+		const groups = buildPickerGroups(agy).map((g) => g.label);
+		expect(groups).toEqual(["Neon", "Carbon", "Argon", "Hydrogen"]);
+		const auto = agy.configurations.find((c) => c.id === "agy-auto-neon-xhigh")!;
+		expect(getModeLeafLabel(auto)).toBe("Auto · X-High");
 	});
 });

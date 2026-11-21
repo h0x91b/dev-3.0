@@ -249,6 +249,11 @@ function taskOfKey(key: string): string | undefined {
 	return key.split(":")[1];
 }
 
+/** Whether the user typed into this task's terminals at or after `at`. */
+export function humanTypedSince(taskId: string, at: number): boolean {
+	return (lastHumanInputAt.get(taskId) ?? -Infinity) >= at;
+}
+
 /** What is left of the user's own quiet window after his last keystroke in this task. */
 function humanWaitMs(key: string, now: number): number {
 	const task = taskOfKey(key) ?? "";

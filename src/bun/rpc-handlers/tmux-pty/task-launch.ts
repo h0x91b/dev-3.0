@@ -1,5 +1,5 @@
 import { assertTaskWorkspacePresent } from "../../task-workspace-guard";
-import type { AgentFamily, ColumnAgentConfig, PermissionMode, Project, Task } from "../../../shared/types";
+import type { AgentFamily, ColumnAgentConfig, PaneSessionEntry, PermissionMode, Project, Task } from "../../../shared/types";
 import { getPrimaryStopTarget, isCoordinatorTask, taskProtocolMode } from "../../../shared/types";
 import { rootProjectFor } from "../../ops-worktree";
 import { coordinatorLaunchDefault } from "../../../shared/coordinator-launch";
@@ -318,7 +318,60 @@ export async function applyModelVersionNotice(
 	return buildScriptRunnerCommand(scriptPath, { shellPath: opts.userShell });
 }
 
-export async function launchTaskPty(
+/**
+ * A new agent run supersedes the previous run's failure, but only once the replacement
+ * is committed: a launch that throws earlier must keep the verdict that tells Resume
+ * its conversation never existed. Decided on the row under the lock, since the previous
+ * run's report may have landed after this task was read.
+ */
+async function clearSupersededLaunchFailure(project: Project, task: Task, ownLaunchId: string | null): Promise<void> {
+	try {
+		// A failure recorded for this very launch (it exited at once) is its own verdict, not a superseded one.
+		await data.updateTaskWith(project, task.id, (current) => ({
+			updates: current.launchFailure && current.launchFailure.sessionId !== ownLaunchId ? { launchFailure: undefined } : {},
+			result: null,
+		}));
+	} catch (err) {
+		log.warn("Could not clear the previous launch failure (non-fatal)", { taskId: task.id.slice(0, 8), error: String(err) });
+	}
+	task.launchFailure = undefined;
+}
+
+/**
+ * A never-started relaunch writes its new session id into pane 0 before the terminal exists. If the launch
+ * then throws, that id names nothing and would hide the never-started verdict (which compares ids), so the
+ * prior binding goes back — only when pane 0 still holds the id this attempt wrote.
+ */
+async function restoreNeverStartedMain(project: Project, task: Task, prior: PaneSessionEntry, attemptId: string): Promise<void> {
+	try {
+		await data.updateTaskWith(project, task.id, (current) => {
+			const panes = current.sessionState?.panes;
+			if (!panes?.length || panes[0].sessionId !== attemptId) return { updates: {}, result: null };
+			return { updates: { sessionState: { panes: [prior, ...panes.slice(1)] } }, result: null };
+		});
+	} catch (err) {
+		log.warn("Could not restore the main pane's prior binding (non-fatal)", { taskId: task.id.slice(0, 8), error: String(err) });
+	}
+}
+
+type LaunchTaskPtyArgs = Parameters<typeof launchTaskPtyOnce> extends [unknown, ...infer Rest] ? Rest : never;
+
+export async function launchTaskPty(...args: LaunchTaskPtyArgs): ReturnType<typeof launchTaskPtyOnce> {
+	const [project, task, worktreePath, , , , , opts] = args;
+	assertTaskWorkspacePresent(project, worktreePath, task);
+	const priorMain = task.sessionState?.panes?.[0];
+	// Set once the replacement session exists: after that the new id is live and must keep its binding.
+	const progress = { sessionCreated: false };
+	try {
+		return await launchTaskPtyOnce(progress, ...args);
+	} catch (err) {
+		if (!progress.sessionCreated && opts?.freshWithTaskPrompt && opts.freshSessionId && priorMain) await restoreNeverStartedMain(project, task, priorMain, opts.freshSessionId);
+		throw err;
+	}
+}
+
+async function launchTaskPtyOnce(
+	progress: { sessionCreated: boolean },
 	project: Project,
 	task: Task,
 	worktreePath: string,
@@ -333,6 +386,8 @@ export async function launchTaskPty(
 		accountId?: string | null;
 		/** AWS profile pick (see LaunchVariant); absent → the task's stored one. */
 		bedrockProfile?: string | null;
+		/** The resumed pane ran on the project folder's own login (`PaneSessionEntry.projectLogin`). */
+		projectLogin?: boolean;
 		codexHome?: string;
 		/** Open a plain shell headed by this line instead of the agent, parking the stored panes
 		 *  for a later resume: a Codex reopen that cannot pick a conversation, or a wake with a plain shell. */
@@ -340,6 +395,9 @@ export async function launchTaskPty(
 		/** A resume whose pane has no conversation left of its own: start it on this
 		 *  new id, with no brief, rather than `--continue` into another pane's. */
 		freshSessionId?: string;
+		/** With `freshSessionId`: the first launch never created its conversation, so the
+		 *  new one gets the original task description instead of an empty brief. */
+		freshWithTaskPrompt?: boolean;
 	},
 ): Promise<string | null | undefined> {
 	// First, before any trust/hook/config write: tmux would start a missing cwd in $HOME.
@@ -381,9 +439,11 @@ export async function launchTaskPty(
 	clearSetupExitCode(task.id);
 
 	const resumeFresh = resume && !!opts?.freshSessionId;
+	// A never-started relaunch has no conversation to stay with, so it routes its account like a first launch.
+	const routesAccount = !resume || !!opts?.freshWithTaskPrompt;
 	const ctx: agents.TemplateContext = {
 		taskTitle: task.title,
-		taskDescription: resumeFresh ? "" : task.description,
+		taskDescription: resumeFresh && !opts?.freshWithTaskPrompt ? "" : task.description,
 		projectName: project.name,
 		projectPath: rootProject.path,
 		worktreePath,
@@ -407,6 +467,7 @@ export async function launchTaskPty(
 	let launchAccountId = accountId;
 	let accountPick: agents.ResolvedAgentCommand["accountPick"];
 	let staleAccountDropped = false;
+	let projectLoginKept = false;
 	let freshLaunchSessionId: string | null = null;
 	let agentFromDefault = false;
 	let launchBedrockProfile: string | null | undefined;
@@ -419,10 +480,12 @@ export async function launchTaskPty(
 			accountFromStore: typeof accountId === "string" ? true : undefined,
 			projectEnv,
 			bedrockProfile,
+			foreignCode: task.foreignCode,
 			protocolMode: taskProtocolMode(project, task),
+			...(opts?.projectLogin ? { projectLogin: true } : {}),
 		};
 		let freshSessionId: string | null = null;
-		if (!resume && !skipSessionPersist && !opts?.shellNotice) {
+		if (routesAccount && !skipSessionPersist && !opts?.shellNotice) {
 			cmdOptions.autoRouting = await autoRoutingContext(project, reservationKey, projectEnv);
 		}
 
@@ -455,6 +518,8 @@ export async function launchTaskPty(
 			resolvedAgentFamily = resolved.agentFamily;
 			resolvedLaunchModel = resolved.launchModel;
 			if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
+			projectLoginKept = !!resolved.projectLoginKept;
+			if (projectLoginKept) launchAccountId = undefined;
 			accountPick = resolved.accountPick;
 			staleAccountDropped = !!resolved.staleAccountDropped;
 			launchBedrockProfile = resolved.resolvedBedrockProfile;
@@ -476,6 +541,8 @@ export async function launchTaskPty(
 			resolvedAgentFamily = resolved.agentFamily;
 			resolvedLaunchModel = resolved.launchModel;
 			if (resolved.resolvedAccountId !== undefined) launchAccountId = resolved.resolvedAccountId;
+			projectLoginKept = !!resolved.projectLoginKept;
+			if (projectLoginKept) launchAccountId = undefined;
 			accountPick = resolved.accountPick;
 			staleAccountDropped = !!resolved.staleAccountDropped;
 			// No pick runs the global default. Name it on the pane only: the task keeps
@@ -515,12 +582,13 @@ export async function launchTaskPty(
 				sessionId: effectiveSessionId ?? null,
 				agentId: agentId ?? task.agentId,
 				configId: configId ?? task.configId,
-				accountId: resume && !staleAccountDropped ? accountId : (agentKey(resolvedBaseCmd, resolvedAgentFamily) === "codex"
+				accountId: !routesAccount && !staleAccountDropped && !projectLoginKept ? accountId : (agentKey(resolvedBaseCmd, resolvedAgentFamily) === "codex"
 					? codexAccountIdForHome(extraEnv.CODEX_HOME) : undefined) ?? launchAccountId,
 				agentFamily: resolvedAgentFamily,
 				sessionOriginCwd: carriedOriginCwd,
 				agentFromDefault: agentFromDefault || carriedDefault || undefined,
 				...(launchBedrockProfile !== undefined ? { bedrockProfile: launchBedrockProfile } : {}),
+				...(projectLoginKept ? { projectLogin: true } : {}),
 			};
 			mainPaneEntry = paneEntry;
 			const sessionState = { panes: [paneEntry, ...(resume ? task.sessionState?.panes.slice(1).map((pane) => ({ ...pane, paneId: null })) ?? [] : [])] };
@@ -614,6 +682,7 @@ export async function launchTaskPty(
 		: resume ? null
 		: freshLaunchSessionId;
 	let exitReport: string[] | undefined;
+	let registeredLaunchId: string | null = null;
 	if (trackedSessionId && agents.supportsPreAssignedSessionId(resolvedBaseCmd, resolvedAgentFamily)
 		&& getAgentAdapter(resolvedBaseCmd, resolvedAgentFamily).hooksSpec()?.kind === "claude"
 		&& claudeSessionStartHookInstalled(worktreePath)
@@ -621,6 +690,7 @@ export async function launchTaskPty(
 		// handoff and print "Unknown command" at every exit, so keep today's path.
 		&& await hookCliSupports(AGENT_SESSION_STARTED_METHOD) && await hookCliSupports(AGENT_EXITED_METHOD)) {
 		noteAgentLaunched(task.id, trackedSessionId, { startReceipts: true });
+		registeredLaunchId = trackedSessionId;
 		exitReport = agentExitReportArgv(task.id, trackedSessionId);
 	} else if (!opts?.shellNotice && !skipSessionPersist && resolvedBaseCmd && resolvedBaseCmd !== "bash"
 		&& await hookCliSupports(AGENT_EXITED_METHOD)) {
@@ -628,6 +698,7 @@ export async function launchTaskPty(
 		// still ties the exit to this spawn, and only a non-zero code moves the card.
 		const launchId = crypto.randomUUID();
 		noteAgentLaunched(task.id, launchId, { startReceipts: false });
+		registeredLaunchId = launchId;
 		exitReport = agentExitReportArgv(task.id, launchId);
 	}
 
@@ -731,6 +802,8 @@ export async function launchTaskPty(
 	// backends. Only the session itself differs.
 	if (nativeBackend) {
 		await launchNativeTaskSession(project, task, worktreePath, runScriptPath, env, userShell);
+		progress.sessionCreated = true;
+		if (!skipSessionPersist && !opts?.shellNotice) await clearSupersededLaunchFailure(project, task, registeredLaunchId);
 		return launchAccountId;
 	}
 
@@ -748,10 +821,12 @@ export async function launchTaskPty(
 		// creating a tmux session. Gate preparation on the session itself so those
 		// asynchronous launch failures are reverted and surfaced like spawn errors.
 		await waitForTaskTmuxSession(task.id, sessionSocket);
+		progress.sessionCreated = true;
 		log.info("launchTaskPty DONE — PTY session created", { taskId: task.id.slice(0, 8) });
 		if (!skipSessionPersist && !isSetupWrapper && mainPaneEntry) {
 			await persistInitialAgentPaneId(project, task, sessionSocket, mainPaneEntry);
 		}
+		if (!skipSessionPersist && !opts?.shellNotice) await clearSupersededLaunchFailure(project, task, registeredLaunchId);
 		await setTmuxSessionPortEnv(task.id, sessionSocket);
 		if (project.kind === "virtual" && !sessionPreexisted) {
 			await addVirtualShellPane(task, worktreePath, sessionSocket, userShell);
@@ -805,11 +880,8 @@ export async function addVirtualShellPane(task: Task, worktreePath: string, sock
 		}
 		if (paneId) {
 			tmux.setOption(session, "pane-border-status", "top", { socket }).catch(() => {});
-			// `select-pane -t` sets a pane's title but ALSO makes it the active pane.
-			// Title the shell first and the agent (pane 0) LAST, awaited in order, so
-			// focus deterministically lands on the agent — not the freshly-split shell.
+			// The split is a background one, so the agent keeps focus; `-T` only titles.
 			await tmux.selectPane(paneId, { socket, title: "Shell" }).catch(() => {});
-			await tmux.selectPane(`${session}.0`, { socket, title: "Agent" }).catch(() => {});
 			log.info("Virtual shell pane created", { taskId: task.id.slice(0, 8), paneId });
 		} else {
 			log.warn("Virtual shell pane split failed (non-fatal)", { taskId: task.id.slice(0, 8), exitCode: 0 });
@@ -851,7 +923,6 @@ export async function launchColumnAgent(
 	});
 
 	const socket = pty.getSessionSocket(task.id);
-	const tmuxSession = taskSessionName(task.id);
 
 	const ctx: agents.TemplateContext = {
 		taskTitle: `${options.paneTitle}: ${task.title}`,
@@ -879,6 +950,7 @@ export async function launchColumnAgent(
 		const resolved = await agents.resolveCommandForAgent(agentId, configId, ctx, {
 			skipSystemPrompt: true,
 			projectEnv,
+			foreignCode: task.foreignCode,
 			autoRouting: await autoRoutingContext(project, reservationKey, projectEnv),
 			// The column's own pick, else the AWS account the task itself runs on.
 			bedrockProfile: agentConfig.bedrockProfile !== undefined ? agentConfig.bedrockProfile : task.bedrockProfile,
@@ -930,14 +1002,6 @@ export async function launchColumnAgent(
 		tmuxCommand: `bash "${scriptPath}"`,
 		nativeLaunch: generatedScriptLaunch(scriptPath),
 	});
-
-	// tmux hands focus to the freshly split pane; the agent (pane 0) keeps it, as it
-	// always has. The native path restores focus inside the seam.
-	if (handle.backend === "tmux") {
-		try {
-			await tmux.selectPane(`${tmuxSession}:.0`, { socket, bestEffort: true });
-		} catch {}
-	}
 
 	log.info("launchColumnAgent DONE", { taskId: task.id.slice(0, 8), backend: handle.backend, paneId: handle.paneId });
 }

@@ -367,6 +367,14 @@ describe("task create", () => {
 		expect(stdoutOutput).toContain("New task");
 	});
 
+	it("opts the new task in with --self-completion on", async () => {
+		mockSend.mockResolvedValue(okResp(createdTask));
+
+		await handleTask("create", args([], { project: "proj-001", title: "New task", "self-completion": "on" }), SOCKET, null);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", { projectId: "proj-001", title: "New task", selfCompletion: true });
+	});
+
 	it("auto-detects projectId from context", async () => {
 		mockSend.mockResolvedValue(okResp(createdTask));
 
@@ -727,6 +735,22 @@ describe("task update", () => {
 		});
 	});
 
+	it("accepts --self-completion on as a standalone update", async () => {
+		mockSend.mockResolvedValue(okResp({ task: { ...FAKE_TASK, selfCompletion: true }, titlePreserved: false }));
+
+		await handleTask("update", args(["aaaaaaaa"], { "self-completion": "on" }), SOCKET, null);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", { taskId: "aaaaaaaa", selfCompletion: true });
+	});
+
+	it("rejects an invalid --self-completion value before sending", async () => {
+		await expect(
+			handleTask("update", args(["aaaaaaaa"], { "self-completion": "maybe" }), SOCKET, null),
+		).rejects.toThrow();
+		expect(stderrOutput).toContain("--self-completion must be on or off");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
 	it("sends --type coordinator as a standalone update", async () => {
 		mockSend.mockResolvedValue(okResp({
 			task: { ...FAKE_TASK, taskType: "coordinator" },
@@ -1024,7 +1048,7 @@ describe("task move", () => {
 	});
 
 	// `cancelled` is never a direct move either — it detours through the same
-	// approval dialog as `completed` (covered in its own describe below).
+	// user approval as `completed` (covered in its own describe below).
 	it("does not send a plain task.move for cancelled", async () => {
 		mockSend.mockResolvedValue(okResp({ approved: false }));
 
@@ -1132,6 +1156,33 @@ describe("task move --status completed", () => {
 		expect(stdoutOutput).toContain("moved to Completed");
 	});
 
+	it("sends force with --force and reports the completion without waiting on a dialog", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: true, task: { ...FAKE_TASK, status: "completed" } }));
+
+		await handleTask("move", args(["aaaaaaaa"], { status: "completed", force: "true" }), SOCKET, null);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.requestCompletion", { taskId: "aaaaaaaa", force: true }, { timeoutMs: 2 * 60 * 1000 });
+		expect(stderrOutput).not.toContain("requires user approval");
+		expect(stdoutOutput).toContain("Completed without asking (--force)");
+	});
+
+	it("surfaces the app's refusal when the task never opted in", async () => {
+		mockSend.mockResolvedValue(errResp("This task has not opted in to self-completion"));
+
+		await expect(
+			handleTask("move", args(["aaaaaaaa"], { status: "completed", force: "true" }), SOCKET, null),
+		).rejects.toThrow();
+		expect(stderrOutput).toContain("has not opted in to self-completion");
+	});
+
+	it("rejects --force on any status other than completed", async () => {
+		await expect(
+			handleTask("move", args(["aaaaaaaa"], { status: "cancelled", force: "true" }), SOCKET, null),
+		).rejects.toThrow();
+		expect(stderrOutput).toContain("--force only applies to --status completed");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
 	// The task reached Completed another way (board, merged PR) while the dialog
 	// was open: the app voids the request and the agent got what it asked for.
 	it("succeeds when the request was voided because the task is already completed", async () => {
@@ -1191,6 +1242,17 @@ describe("task move --status completed", () => {
 			handleTask("move", args(["aaaaaaaa"], { status: "completed" }), SOCKET, null),
 		).rejects.toThrow("EXIT_1");
 		expect(stderrOutput).toContain("Task is already completed");
+	});
+
+	it("exits with code 48 when the approved completion left the worktree half removed (h0x91b/dev-3.0#2269)", async () => {
+		mockSend.mockResolvedValue({ ...errResp("The worktree at /tmp/wt is half removed: ..."), reason: "worktree-half-removed" });
+
+		await expect(
+			handleTask("move", args(["aaaaaaaa"], { status: "completed" }), SOCKET, null),
+		).rejects.toThrow("EXIT_48");
+		expect(stderrOutput).toContain("/tmp/wt is half removed");
+		expect(stderrOutput).toContain("Run the same `dev3 task move` again");
+		expect(stdoutOutput).not.toContain("User approved");
 	});
 
 	it("prints minimal JSON stdout for Codex stop hooks on approval", async () => {
@@ -2612,6 +2674,74 @@ describe("epic flags", () => {
 		mockSend.mockResolvedValue(okResp({ ...created, epic: { id: "epicpay1-0000", name: "Payments v2", color: "#3b82f6", archived: true } }));
 		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
 		expect(stdoutOutput).toMatch(/Epic:\s*Payments v2 \(epicpay1\) — archived/);
+	});
+});
+
+describe("--depends-on", () => {
+	const open = { taskId: "bbbbbbbb", seq: 12, title: "First", status: "in-progress", state: "open" };
+	const done = { taskId: "cccccccc", seq: 13, title: "Second", status: "completed", state: "done" };
+
+	it("task create and update send the refs as a list", async () => {
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+		await handleTask("create", args([], { project: "proj-001", title: "Next", "depends-on": "seq:12, seq:13" }), SOCKET, null);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", expect.objectContaining({ dependsOn: ["seq:12", "seq:13"] }));
+
+		mockSend.mockResolvedValue(okResp({ task: FAKE_TASK }));
+		await handleTask("update", args(["aaaaaaaa"], { "depends-on": "seq:12", "no-depends-on": "seq:13" }), SOCKET, null);
+		expect(mockSend).toHaveBeenLastCalledWith(SOCKET, "task.update", { taskId: "aaaaaaaa", dependsOn: ["seq:12"], noDependsOn: ["seq:13"] });
+	});
+
+	it("a bare --no-depends-on removes every dependency, and a bare --depends-on is a usage error", async () => {
+		mockSend.mockResolvedValue(okResp({ task: FAKE_TASK }));
+		await handleTask("update", args(["aaaaaaaa"], { "no-depends-on": "true" }), SOCKET, null);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", { taskId: "aaaaaaaa", noDependsOn: true });
+		expect(stderrOutput).toContain("Dependencies: none.");
+		await expect(handleTask("update", args(["aaaaaaaa"], { "depends-on": "true" }), SOCKET, null)).rejects.toThrow("EXIT_3");
+		await expect(handleTask("create", args([], { project: "proj-001", title: "Next", "no-depends-on": "seq:1" }), SOCKET, null)).rejects.toThrow("EXIT_3");
+	});
+
+	it("task show lists what the task depends on and what it blocks", async () => {
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, dependencyInfo: { verdict: "blocked", dependsOn: [open, done], blocks: [{ taskId: "dddddddd", seq: 20, title: "Later", status: "todo" }] } }));
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).toMatch(/Depends on:\s*#12 \(Agent is Working\), #13 \(Completed\) - blocked by #12/);
+		expect(stdoutOutput).toMatch(/Blocks:\s*#20 \(To Do\)/);
+
+		stdoutOutput = "";
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, dependencyInfo: { verdict: "ready", dependsOn: [done], blocks: [] } }));
+		await handleTask("show", args(["aaaaaaaa"], { json: "true" }), SOCKET, null);
+		expect(JSON.parse(stdoutOutput).dependencies).toEqual({
+			state: "ready",
+			dependsOn: [{ taskId: "cccccccc", seq: 13, title: "Second", status: "completed", open: false, state: "done" }],
+			blocks: [],
+		});
+	});
+
+	it("task show names a cancelled dependency as cancelled, not done", async () => {
+		const cancelled = { taskId: "eeeeeeee", seq: 14, title: "Dropped", status: "cancelled", state: "cancelled" };
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, dependencyInfo: { verdict: "ready", dependsOn: [done, cancelled], blocks: [] } }));
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).toMatch(/Depends on:\s*#13 \(Completed\), #14 \(Cancelled\) - ready, but #14 was cancelled/);
+	});
+
+	it("warns that start-after starts the task even while its other dependencies are open", async () => {
+		const launchAfter = { taskId: "bbbbbbbb", seq: 12, until: "completed", armedAt: "2026-11-15T10:00:00Z" };
+		const relations = [{ type: "blocked-by", taskId: "cccccccc" }, { type: "blocked-by", taskId: "bbbbbbbb" }];
+		mockSend.mockResolvedValue(okResp({ task: { ...FAKE_TASK, seq: 44, status: "todo", launchAfter, relations } }));
+		await handleTask("update", args(["aaaaaaaa"], { "depends-on": "seq:13" }), SOCKET, null);
+		expect(stderrOutput).toContain("Dependencies: 2.");
+		expect(stderrOutput).toContain("Warning: #44 starts by itself after #12 even if its other dependency is still open.");
+
+		stderrOutput = "";
+		mockSend.mockResolvedValue(okResp({ task: { ...FAKE_TASK, seq: 44, status: "todo", launchAfter, relations: [relations[1]] } }));
+		await handleTask("update", args(["aaaaaaaa"], { "start-after": "seq:12" }), SOCKET, null);
+		expect(stderrOutput).not.toContain("Warning:");
+	});
+
+	it("task move warns, and still moves, when the started task has open dependencies", async () => {
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, seq: 44, status: "in-progress", startedBlockedBy: [open] }));
+		await handleTask("move", args(["aaaaaaaa"], { status: "in-progress" }), SOCKET, null);
+		expect(stderrOutput).toContain("Warning: #44 was started while it still depends on #12 (Agent is Working).");
+		expect(stdoutOutput).toContain("Moved task");
 	});
 });
 

@@ -186,7 +186,27 @@ describe("task.requestCancellation", () => {
 		const resp = await respPromise;
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toEqual({ approved: true, task: cancelledTask });
-		expect(moveTask).toHaveBeenCalledWith({ taskId: task.id, projectId: "proj-1", newStatus: "cancelled" });
+		expect(moveTask).toHaveBeenCalledWith({ taskId: task.id, projectId: "proj-1", newStatus: "cancelled", approvedAttachedRepo: null });
+	});
+
+	it("cancels with exactly the repo the dialog reports it checked, and with none when it reports none", async () => {
+		const task = makeTask({ worktreePath: "/ops/s/ab/work", attachedRepo: "/ops/s/ab/work/wt-a" });
+		setupTask(task);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(moveTask).mockResolvedValue({ ...task, status: "cancelled" as const });
+		const ask = async (decision: { approved: boolean; attachedRepo?: string | null }) => {
+			pushFn.mockClear();
+			const resp = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
+			await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+			resolveAgentRequest((pushFn.mock.calls[0] as [string, { requestId: string }])[1].requestId, decision);
+			await resp;
+		};
+
+		await ask({ approved: true, attachedRepo: "/ops/s/ab/work/wt-a" });
+		expect(moveTask).toHaveBeenLastCalledWith(expect.objectContaining({ newStatus: "cancelled", approvedAttachedRepo: "/ops/s/ab/work/wt-a" }));
+		await ask({ approved: true });
+		expect(moveTask).toHaveBeenLastCalledWith(expect.objectContaining({ newStatus: "cancelled", approvedAttachedRepo: null }));
 	});
 
 	it("returns approved:false without moving the task when declined", async () => {
@@ -204,6 +224,29 @@ describe("task.requestCancellation", () => {
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toEqual({ approved: false });
 		expect(moveTask).not.toHaveBeenCalled();
+	});
+
+	// The own agent is blocked on a cancel ask the same way as on a completion ask.
+	it("parks its own agent's task in Has Questions while it waits and restores it on decline", async () => {
+		const task = makeTask();
+		setupTask(task);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(moveTask).mockImplementation(async (p) => ({ ...task, status: p.newStatus ?? task.status }));
+
+		const respPromise = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1", sourceTaskId: task.id }));
+		await vi.waitFor(() => expect(moveTask).toHaveBeenCalledWith({
+			taskId: task.id, projectId: "proj-1", newStatus: "user-questions", ifStatus: "in-progress", skipQuestionsBadge: true,
+		}));
+
+		const payload = pushFn.mock.calls[0][1] as { requestId: string };
+		resolveAgentRequest(payload.requestId, { approved: false });
+
+		expect((await respPromise).data).toEqual({ approved: false });
+		expect(moveTask).toHaveBeenLastCalledWith({
+			taskId: task.id, projectId: "proj-1", newStatus: "in-progress", ifStatus: "user-questions",
+		});
+		expect(moveTask).not.toHaveBeenCalledWith(expect.objectContaining({ newStatus: "cancelled" }));
 	});
 
 	// Cancellation is its own request KIND, so a pending cancel must not be

@@ -9,6 +9,7 @@ import {
 	AGENT_MESSAGE_HOLD_IDLE_SECONDS,
 } from "../shared/agent-message-hold-timing";
 import {
+	AGY_SKILL_BODY,
 	ARTIFACT_AUTHORING_STEPS,
 	ARTIFACT_FORMAT_RULES,
 	CLAUDE_SKILL_BODY,
@@ -141,6 +142,26 @@ Run these two commands to learn about available CLI commands and your current ta
 - \`${dialect.cli} current\` — see your current project, task, and status
 
 Then begin working. Do not move the task status on session start; the dev3 status extension loaded into this session already owns that transition.
+`;
+}
+
+/** The dev3 skill dev3 writes into an agy worktree's `.agents/skills/dev3/`. The bare `dev3`: a launcher's HOME makes `~/.dev3.0/bin` the wrong place, while PATH survives. */
+export function buildAgySkillContent(dialect: HookCliDialect = { cli: "dev3", posixShell: hookCliDialect().posixShell }): string {
+	return `---
+name: dev3
+description: "${COMPACT_SKILL_DESCRIPTION}"
+user-invocable: true
+---
+
+${AGY_SKILL_BODY}
+## On session start
+
+Run these two commands to learn about available CLI commands and your current task:
+
+- \`${dialect.cli} --help\` — learn all available CLI commands
+- \`${dialect.cli} current\` — see your current project, task, and status
+
+Then begin working. Do not move the task status on session start; the dev3 hooks loaded into this session already own that transition.
 `;
 }
 
@@ -305,6 +326,8 @@ ${renderConfigFieldTable()}
 
 **A project can opt out entirely.** Project Settings → Project Config has a **Use repository dev3 configuration** switch (on by default). While it is off, dev3 reads neither file for that project and refuses to write them, so writing a config there accomplishes nothing — tell the user to switch it back on first.
 
+**Machine-local switches are not config keys.** \`name\`, \`gitWorkflow\`, \`storageRoot\`, \`useRepoConfig\`, \`boardCopy\` and \`boardCopyMessages\` live in the app's project registry: read them with \`dev3 projects get\`. \`dev3 projects set <key> <value>\` changes one, but only the user (outside any task) or a coordinator may; any other task gets exit 49, so ask the user instead. Exit 50 means the project cannot take that value now (\`boardCopyMessages on\` needs \`boardCopy\` on first; an operations board has no board copy).
+
 ## CLI commands
 
 - \`dev3 config schema [<key>] [--json]\` — what can be configured: type, default, example (no app needed)
@@ -314,6 +337,7 @@ ${renderConfigFieldTable()}
 - \`dev3 config unset <key>[.<name>] [--local] [--main]\` — remove a key so lower layers apply
 - \`dev3 config validate [--json]\` — check the files (exit 47 on errors; unknown keys only warn)
 - \`dev3 config export\` — migrate legacy settings from projects.json
+- \`dev3 projects get [<key>]\` / \`dev3 projects set <key> <value>\` — the machine-local switches above
 `;
 
 const CLAUDE_PROJECT_CONFIG_SKILL = `---
@@ -408,7 +432,7 @@ Splits keep the agent and the running process visible in the same view — the u
 SESSION=dev3-<short-id>
 
 PANE=$(tmux -L dev3 split-window -h -t "$SESSION" -c "$PWD" -P -F '#{pane_id}')
-echo "new pane: $PANE"      # e.g. %42
+echo "new pane: $PANE"      # e.g. %42 — splits open in the background; run select-pane -t "$PANE" to move the user there on request
 tmux -L dev3 send-keys -t "$PANE" 'bun run dev' Enter
 \`\`\`
 
@@ -581,7 +605,7 @@ name that differs from the id is rejected.
 | \`id\` | 2–64 chars of \`a-z\`, \`0-9\`, \`-\`, starting with a letter or digit. \`builtin\`, \`dev3\`, \`third-party\`, \`third_party\` are reserved |
 | \`name\`, \`publisher\` | Required, max 80 chars. Shown in Settings and the consent dialog. Trust is bound to \`id\` + \`publisher\`: change the publisher and the user must consent again |
 | \`version\` | Semver, e.g. \`1.2.0\` |
-| \`engines.dev3\` | Semver range over the **extension API version** (\`1.0.0\` today; dev3 names it only in the consent dialog of an incompatible extension), not over the app version. Use \`^1.0.0\`. A range the app does not satisfy leaves it installed but **Incompatible** and off |
+| \`engines.dev3\` | Semver range over the **extension API version** (\`1.1.0\` today; dev3 names it only in the consent dialog of an incompatible extension), not over the app version. Use \`^1.0.0\`. A range the app does not satisfy leaves it installed but **Incompatible** and off |
 | \`contributes.boardViews\` | 1–16 views, each \`{ id, label }\`; view id \`a-z0-9-\`, label max 40 chars. The id you register at runtime is \`<extension id>:<view id>\` |
 | \`main\` | Must be \`"index.js"\` |
 
@@ -671,7 +695,7 @@ another extension's id), makes dev3 unload the whole extension and mark it **Fai
 
 - Shape: \`scope\` (\`{ kind: "project" | "space", id, projectIds }\`), \`formFactor\` (\`"wide"\` / \`"narrow"\`),
   \`query\` and \`setQuery(q)\`.
-- Data: \`tasks()\` (scope ∩ board query, every status), \`scopeTasks()\` (scope, unfiltered — for counts),
+- Data: \`tasks()\` (board scope ∩ user's Active | All switch ∩ query; may omit completed/cancelled — for every status use \`scopeTasks()\` with \`matches(task, query)\`), \`scopeTasks()\` (board scope, unfiltered — for counts), \`visibility()\` (\`"active"\` / \`"all"\`, the switch \`tasks()\` honours; API 1.1.0),
   \`matches(task, query)\`, \`columns({ includeOccupied? })\`, \`labels()\`, \`agents()\`, \`projects()\`, \`epics()\`,
   \`preferences()\` (\`{ taskSortOrder, tipsDisabled }\`), \`lineageNode(id)\`.
 - Per-view persisted state: \`layout(viewId)\` / \`setLayout(viewId, value)\` — stored per board and form factor.
@@ -806,7 +830,7 @@ There is no log file and no CLI for it yet.
 |---|---|---|
 | "This folder is not a dev3 extension: …" on install | Manifest invalid; the message names the field | Fix it against the field table |
 | **Invalid**, "folder name … does not match id" | Folder under \`extensions/\` is named differently from \`id\` | Rename the folder to the id |
-| **Incompatible** | \`engines.dev3\` does not admit API \`1.0.0\` | Use \`^1.0.0\` |
+| **Incompatible** | \`engines.dev3\` does not admit API \`1.1.0\` | Use \`^1.0.0\` |
 | **Not trusted** | Copied in by hand, or the publisher changed | User: "Review and trust…" in Settings → Extensions (scoped QA: fix the trust record's publisher) |
 | **Failed to load**, "index.js must default-export a Cordis plugin" | No \`export default\`, or it is not an object with \`apply\` / a function | Default-export the plugin |
 | **Failed to load**, a syntax or \`Failed to resolve module specifier\` error | Not a valid ES module, or an import other than \`react\` / \`react-dom\` / \`react/jsx-runtime\` / \`cordis\` | Bundle into one ESM file with those four external |
@@ -1271,6 +1295,7 @@ Several agents at once is the normal case here. Variants (step 4) fan one brief 
 - **A task an agent started already knows how to report back.** When a peer launches a task (\`dev3 task move --task seq:N --status in-progress\`, or \`dev3 task create --scratch --run\`), the child's first message tells it who started it, that its description is the brief, and — with no flag and no setup — to write progress and results as a file under its own task directory and message back only that path. Long bodies typed into a pane can lose their head; a path cannot. So a coordinator does **not** repeat that instruction by hand after every launch. Standing rules of its own go in a file it passes as \`--handoff-file <path>\`, appended under the default rather than replacing it.
 - **A message can also wait.** The same command with \`--in 30m\` / \`--at 14:00\` queues the text (the **Send later** button on the task's composer does it from the UI), and an agent can aim it at itself as a wake-up — *"check the deploy in an hour."*
 - **Start one task only after another finishes → Start after.** Open the To Do task's launch dialog, pick **Launch later… → After task**, choose the task to wait for and whether it must **Complete** or have its **PR merge**, then **Schedule** (right-click a To Do card → **Start after…** opens the dialog right there). The card shows "Starts after #N"; click it to **Start now** or **Remove start condition**. From a terminal: \`dev3 task create|update --start-after seq:<N> [--until merged]\`. Any variant of the awaited task counts; if it is cancelled or deleted, nothing starts and the card says why.
+- **Put tasks in an order without starting them → dependencies.** From a terminal: \`dev3 task update --task seq:<N> --depends-on seq:<A>,seq:<B>\` (or on \`task create\`; \`--no-depends-on\` removes). The card shows "Blocked by #A" until those are done; \`dev3 tasks list\` and \`task show\` say blocked or ready. Starting a blocked task only warns. Nothing starts by itself: that is Start after.
 
 ## Vocabulary underneath
 
@@ -1288,7 +1313,7 @@ Reach for these when the *word*, not the process, is the confusion.
 Point, don't dig. Name where to look and stop — deep diagnosis is \`/diagnosing-bugs\`, not this skill.
 
 - Environment or setup acting up → \`dev3 doctor\` first.
-- Disk filling up → \`dev3 doctor --worktrees\`. Per project it shows what its worktree roots (\`~/.dev3.0/worktrees\`, \`<project>/.dev3/worktrees\`) hold and how much is reclaimable: orphaned folders whose task record is gone, worktrees whose teardown never finished, old diffs/logs. Report-only; \`--prune-orphans\` / \`--prune-older-than 30d\` delete. An unmerged \`dev3/task-*\` branch's folder is skipped by \`--prune-orphans\` and waits 60 days under \`--prune-older-than\` unless \`--force-unmerged\`. dev3 itself runs \`--prune-older-than 14d\` once a day (off: Settings → System → "Clean up old task files"). \`--gzip-diffs\` compresses old plain diff snapshots in place; the daily run does that too.
+- Disk filling up → \`dev3 doctor --worktrees\`. Per project it shows what its worktree roots (\`~/.dev3.0/worktrees\`, \`<project>/.dev3/worktrees\`) hold and how much is reclaimable: orphaned folders whose task record is gone, worktrees whose teardown never finished, old diffs/logs. Report-only; \`--prune-orphans\` / \`--prune-older-than 30d\` delete. An unmerged \`dev3/task-*\` branch's folder is skipped by \`--prune-orphans\` and waits 60 days under \`--prune-older-than\` unless \`--force-unmerged\`. Large images/videos (≥ 5 MB) in \`shared-images\`/\`shared-artifacts\`/\`uploads\` and stored artifact ZIPs are listed too; \`--prune-media-older-than 60d\` / \`--prune-bundles-older-than 30d\` delete those no open task shows. dev3 itself runs \`--prune-older-than 14d\`, \`--prune-media-older-than 60d\` and \`--prune-bundles-older-than 30d\` once a day (off: Settings → System → "Clean up old task files"). \`--gzip-diffs\` compresses old plain diff snapshots in place; the daily run does that too.
 - The task's terminal died → **Resume Agent Session** restarts the agent with its conversation intact (\`--continue\`), picking up right where it stopped.
 - Spaces, settings, agent presets, projects or the model catalog came back empty → dev3 keeps hourly copies of each, plus a last-known-good copy that rotation never evicts. Restoring is manual and always starts with quitting the app: \`docs/state-backups.md\` has the exact steps and the table of what is and is not copied (credentials deliberately are not).
 - "Why does dev3 behave this way?" → the relevant record in \`decisions/\` usually explains it.
@@ -1307,6 +1332,7 @@ Off the main flow entirely.
 - **Don't want a repo's dev3 config running on your machine → switch it off.** Project Settings → Project Config has **Use repository dev3 configuration**, on by default. Off, dev3 stops reading \`.dev3/config.json\` and \`.dev3/config.local.json\` for that project — in the checkout and in every task worktree — so its setup, dev, cleanup, env and agent settings never run; settings come from dev3 and saves land in dev3. The choice is stored only in dev3: no file appears in the repo and \`.gitignore\` is untouched. Nothing already running is restarted, and switching back on restores every value at once.
 - **Huge monorepo → check out less.** Toggle off "Include All Files" in Project Settings so every worktree checks out only the directories you actually need.
 - **Machine running out of RAM → hibernate a task.** The header shows how many gigabytes are still free; hover it for the breakdown of who ate the rest, dev3's own tasks included. **Hibernate**, on the open task's session bar, stops that task's agent, terminal, and dev server and frees its ports, while the worktree, your uncommitted changes, notes, and PR state stay untouched. It asks for confirmation first, and spells out the one thing that does not survive: the terminal scrollback. The card greys out and sinks below the live tasks; waking is explicit — open its terminal and pick a plain shell or a resume of the agent's conversation, optionally on another Claude account (the **Resume on** line above the buttons). Agents do the same with \`dev3 task hibernate\` and \`dev3 task wake --resume|--shell\`; when an agent asks, you approve it in the same countdown dialog as an agent-started launch.
+- **Suggest hibernating inactive tasks → Settings → Tasks & Board → Suggest hibernating inactive tasks.** On by default: after 24 hours without a task move, terminal input, agent hook or terminal output, dev3 offers one dialog listing eligible tasks with checkboxes. Merely viewing a task does not reset the clock. The dialog auto-confirms after 30 minutes; touching it stops the countdown permanently. Choose **Not now** to ask again after another full inactivity period. Both delays are configurable. Only a bare single-pane agent session qualifies: working tasks, extra panes/windows, live dev servers, custom columns, Keep alive tasks, peer instances and unknown activity prevent suggestions. Worktree, files, conversations and unrelated processes survive; terminal scrollback does not. Wake explicitly.
 - **Rate limit closing in → hot-swap the account.** The header carries live Claude/Codex rate-limit usage and yellows near the cap; click it to land in **Settings → Agent Accounts**, where several logins per agent CLI sit side by side and the active one switches without a re-login (add one with **Add account**: the provider's own sign-in runs in a terminal inside dev3, on the host, and the account appears once its login is verified — the provider's browser step still applies; or import the login you already have). The switch applies to every *new* agent session dev3 launches — new tasks, spawned agents, bug hunters, auto-review — while running sessions keep theirs, and each launch can pick a non-default account. An **API profile** replaces the subscription login entirely: the Anthropic API, an Anthropic-compatible gateway (OpenRouter, a LiteLLM proxy), or Bedrock, with per-model overrides. With two or more Claude Code or Codex subscription logins, pick **Auto (balanced)** instead of one account — per launch in the account pill, or as the default from the usage flyout / Settings → Accounts: each fresh launch takes the login with the least-used 5h window (then the weekly quota that would expire unused), a batch spreads across logins, API profiles are never used, and a project can exclude logins in **Project Settings → Board → Accounts for Auto**.
 - **Too many projects to scan → group them into Spaces.** Once the project list stops being scannable, a **Space** groups projects: a rail on the dashboard lists every space with its project count, and picking one filters the overview to it — it never navigates away, so nothing gains a second board. Membership is **many-to-many** (a shared service can sit in both \`infra\` and \`client-x\`), and a project that belongs to several renders under each of them, carrying a chip for its other spaces. Create one from **+ New space**, the last entry of the rail's space list — the overview header offers the same button only while the rail is off screen (a narrow window, or your very first space, when there is no rail yet); edit which projects belong from **Edit projects…** in a space's **…** menu — every project is listed with the members ticked, so one dialog both adds and removes (it searches, and can start a brand-new project already linked); change one project's memberships from the row's **Spaces…** action or Project Settings → Spaces. From a shell: \`dev3 spaces list\` shows every space with its members' ids, \`dev3 spaces create "<name>" --project <id>\` makes one, and \`dev3 spaces set|add|remove <space> --project <id>\` changes one project's memberships (\`set\` replaces them all, \`set --no-space\` leaves every space). Rename, delete and reorder live in the same **…** menu, which every space carries twice over: on its rail row and on its dashboard group header — deleting only removes the grouping, never a project. Projects in no space collect under a computed **Home** group; **Home is not a real space** — it is not stored, cannot be renamed, and never appears in a membership picker. The rail appears when the dashboard's own column is at least 1024px wide — not the window, so app chrome and a browser tab count against it; below that width the same filter opens as a sheet from the control beside the dashboard's search field, and whatever you had filtered stays filtered. The overview row above the spaces is **Everything** — it covers the whole list, spaces included. A space can also be marked **Hide on camera** from its **…** menu: in streamer mode its name blurs everywhere it appears (rail, filter sheet, group header, row chips, pickers) — independent of whether any member project is marked sensitive. **Space order:** drag a row in the rail, or use **Move up** / **Move down** in the space header's **…** menu (the path that works by touch and keyboard, where drag does not). Projects reorder by drag within their space — while you drag, every row in that space collapses to its name so the whole list fits on one screen. Neither ever changes membership. With zero spaces the dashboard is exactly the screen it always was.
 - **Work a whole space on ONE kanban.** A space can be the SUBJECT of the board itself, not just a dashboard filter. On a project's board, the button right of the project switcher (⇧⌘U) zooms out to that project's space — one click when it belongs to one space, a two-row menu when it belongs to several, and no button at all when it belongs to none. ⇧⌘K lists spaces alongside projects, and \`dev3://space/<id>\` (https twin: \`https://dev3.h0x91b.com/open.html?space=<id>\`) opens it directly. The space board shows every member project's tasks on one set of columns and is a board you WORK in: drag moves a card, and the move only ever changes status in that card's own repository; **+ New task** leads with a project field limited to the space's members and remembering the last one you used there; the label bar and every search token work as usual. Columns are the union across member projects — same-named custom columns merge into one lane (case- and spacing-insensitive) that says how many projects it covers, and a lane your card's project has no column in is dimmed while you drag rather than refusing you after the drop. Each card names its own project. Two deliberate limits: per-project column renames are ignored there (dev3's canonical status names are used, because two projects' renames cannot be reconciled), and adding, renaming or reordering a column stays on a project's own board. **A project's own board is untouched** — this is an additional view, never a replacement.
@@ -1315,7 +1341,7 @@ Off the main flow entirely.
 - **Filter and search by space.** ⇧⌘K matches space names as well as project names, the dashboard has its own field over projects + spaces, and the task funnel grows a **Spaces** group — \`space:"Client X"\` filters tasks anywhere task search runs, and \`is:home\` catches the projects in no space. The active-tasks sidebar gains a **space** scope (every project sharing a space with the current one). It lives in the task workspace, not on the dashboard — the dashboard's project rows already list every task waiting on you, so a panel beside them was showing the same rows twice; for cross-project task search, open any project and switch that sidebar to the globe scope.
 - **Terminals start in the wrong shell, or not at all → Settings → Terminal → Shell.** dev3 follows your login shell by default and falls back to whichever of zsh, bash or sh is installed, which is what makes a minimal Linux box (no zsh, sometimes no bash) work at all. Pin it to \`zsh\`, \`bash\` or \`sh\` when the detected one is not the one you want; a shell that is not installed says so under the picker and names the one actually running. Windows runs PowerShell and ignores the setting.
 - **Stats** — productivity and token-cost dashboards across projects.
-- **Automations** — recurring scheduled agent runs on a cron.
+- **Automations** — recurring scheduled agent runs on a cron. For a run nobody has to close, opt it in: \`dev3 automations create|update --self-completion on\` lets each task it creates finish itself with \`dev3 task move --status completed --force\`, no approval dialog. The same opt-in exists per task, granted by the user or by the task that creates it (\`dev3 task create --self-completion on\`); without it \`--force\` is refused, and a task cannot opt itself in. In the app: the automation editor's **When the work is done** field, or the completion chip in the task inspector — open it, pick **Agent completes it** and confirm.
 - **Multi-window** — a second window (⇧⌘N) for a second project on another monitor.
 
 ## Sibling skills
@@ -1935,7 +1961,7 @@ export function claudeBashPermissions(dialect: HookCliDialect = hookCliDialect()
  * an older wording of the same entry is recognised and replaced.
  */
 export const DEV3_AUTO_MODE_ALLOW_ENTRY =
-	"dev3 task lifecycle: the `dev3` CLI is the dev3 app's own control plane, and `dev3 task move` — `--status completed` and `--status cancelled` included — is a request to the running app, not local destruction. The app answers it with its own approval dialog that the user clicks, and the worktree it then removes is disposable task scratch space whose work is preserved elsewhere before the move is ever requested. Applies to `dev3` however it is spelled (`~/.dev3.0/bin/dev3`, an absolute `dev3.exe`), and only to `dev3` subcommands — nothing else on the command line is cleared by this entry. Commands that execute something are not control-plane requests: `dev3 pane run \"<command>\"` runs `<command>`, and `dev3 dev-server start|restart` runs the project's dev script (which the agent can edit in `.dev3/config.json`). Judge that command exactly as if the agent ran it directly; this entry clears none of it.";
+	"dev3 task lifecycle: the `dev3` CLI is the dev3 app's own control plane, and `dev3 task move` — `--status completed` and `--status cancelled` included — is a request to the running app, not local destruction. The app answers it with its own approval that the user gives in the app, and the worktree it then removes is disposable task scratch space whose work is preserved elsewhere before the move is ever requested. Applies to `dev3` however it is spelled (`~/.dev3.0/bin/dev3`, an absolute `dev3.exe`), and only to `dev3` subcommands — nothing else on the command line is cleared by this entry. Commands that execute something are not control-plane requests: `dev3 pane run \"<command>\"` runs `<command>`, and `dev3 dev-server start|restart` runs the project's dev script (which the agent can edit in `.dev3/config.json`). Judge that command exactly as if the agent ran it directly; this entry clears none of it.";
 
 /**
  * Git and PR management a dev3 task does when the user asks for it. The defaults

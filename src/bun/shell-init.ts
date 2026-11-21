@@ -75,7 +75,10 @@ if [[ -n "$DEV3_WORKTREE_ROOT" ]]; then
 
   # One git call per prompt. GIT_OPTIONAL_LOCKS=0 keeps it off index.lock,
   # which agents in the same worktree are racing for.
-  _dev3_git_state() {
+  _dev3_git_status() { GIT_OPTIONAL_LOCKS=0 git status --porcelain=v2 --branch 2>/dev/null }
+
+  # Reads \`git status --porcelain=v2 --branch\` on stdin into dev3_git/dirty/branch.
+  _dev3_git_parse() {
     dev3_git= dev3_dirty= dev3_branch=
     local line oid head s=0 u=0 n=0 a=0 b=0
     while IFS= read -r line; do
@@ -86,7 +89,7 @@ if [[ -n "$DEV3_WORKTREE_ROOT" ]]; then
         "? "*) (( n++ )) ;;
         [12u]" "*) [[ \${line[3]} != . ]] && (( s++ )); [[ \${line[4]} != . ]] && (( u++ )) ;;
       esac
-    done < <(GIT_OPTIONAL_LOCKS=0 git status --porcelain=v2 --branch 2>/dev/null)
+    done
     [[ -z $oid ]] && return
     (( s + u + n )) && dev3_dirty=1
     if [[ $head == "(detached)" ]]; then dev3_branch=\${oid[1,7]}; else dev3_branch=\${head//\\%/%%}; fi
@@ -95,6 +98,39 @@ if [[ -n "$DEV3_WORKTREE_ROOT" ]]; then
     (( a )) && g+=" ⇡$a"; (( b )) && g+=" ⇣$b"
     dev3_git=\${\${g:- ✓}# }
   }
+
+  # With a line editor, git runs in the background and the prompt never waits
+  # for it: on a big repo with a stale index git status takes seconds, and
+  # optional locks off means git never writes the refreshed index back (#2288).
+  # The last result stays on screen until the new one lands and redraws it.
+  typeset -g _dev3_git_fd= _dev3_git_dir= _dev3_git_again= _dev3_rc=0
+  _dev3_git_async() {
+    if [[ -n $_dev3_git_fd ]]; then _dev3_git_again=1; return; fi
+    _dev3_git_dir=$PWD
+    exec {_dev3_git_fd}< <(_dev3_git_status)
+    zle -F $_dev3_git_fd _dev3_git_done
+  }
+
+  _dev3_git_done() {
+    local fd=$1
+    zle -F $fd
+    if [[ $_dev3_git_dir == "$PWD" ]]; then _dev3_git_parse <&$fd; else cat <&$fd >/dev/null; fi
+    exec {fd}<&-
+    _dev3_git_fd=
+    # A prompt drawn meanwhile (or a cd) asked for newer state than this run saw.
+    if [[ -n $_dev3_git_again || $_dev3_git_dir != "$PWD" ]]; then
+      _dev3_git_again=
+      _dev3_git_async
+    fi
+    _dev3_fit
+    zle || return 0
+    # The prompt's %? must still be the user's last command, not this handler's.
+    () { return $_dev3_rc }
+    zle .reset-prompt
+  }
+
+  # Shared with the synchronous path (no line editor: zsh -c, the style preview).
+  _dev3_git_state() { _dev3_git_parse < <(_dev3_git_status) }
 
   # Appends one angled segment; tracks the visible width alongside the markup.
   # Text is drawn in reverse video, so it takes the terminal's own background
@@ -131,6 +167,7 @@ if [[ -n "$DEV3_WORKTREE_ROOT" ]]; then
   }
 
   _dev3_precmd() {
+    _dev3_rc=$?
     dev3_dur=
     if [[ -n $_dev3_t0 ]]; then
       local d=$(( EPOCHREALTIME - _dev3_t0 )); unset _dev3_t0
@@ -147,7 +184,11 @@ if [[ -n "$DEV3_WORKTREE_ROOT" ]]; then
     elif [[ $PWD == "$wt"/* ]]; then dev3_path=\${\${PWD#$wt/}//\\%/%%}
     else dev3_project= dev3_path=\${\${(%):-%~}//\\%/%%}; fi
     dev3_where=\${dev3_project}\${dev3_project:+\${dev3_path:+/}}\${dev3_path}
-    _dev3_git_state
+    if [[ -o zle ]]; then _dev3_git_async; else _dev3_git_state; fi
+    _dev3_fit
+  }
+
+  _dev3_fit() {
     local level
     # Styles put a frame or an arrow around the segments: keep a few columns spare.
     for level in 0 1 2 3 4 5 6 7; do

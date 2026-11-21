@@ -2,7 +2,7 @@ import { Fragment, useState, useRef, useEffect, useLayoutEffect, type Dispatch }
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import type { CodingAgent, DevServerSummary, Epic, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, getAllowedTransitions, getPreparingStageProgress, getTaskTitle, isCoordinatorTask, isTaskDisconnected, projectDisplayName } from "../../shared/types";
+import { ACTIVE_STATUSES, getAllowedTransitions, getPreparingStageProgress, getTaskTitle, isCoordinatorTask, isTaskAgentless, isTaskDisconnected, projectDisplayName } from "../../shared/types";
 import { earlierPullRequests } from "../../shared/task-pull-requests";
 import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
@@ -25,13 +25,15 @@ import LabelPicker from "./LabelPicker";
 import PriorityBadge from "./PriorityBadge";
 import VariantDots from "./VariantDots";
 import LineageCluster from "./LineageCluster";
-import { StartAfterCompletedIcon, StartAfterMergedIcon } from "./LineageIcons";
+import { DependencyBlockedIcon, StartAfterCompletedIcon, StartAfterMergedIcon } from "./LineageIcons";
+import { formatDependencyRefs, type DependencySummary } from "../../shared/task-dependencies";
 import { COORDINATOR_CARD_HALO, TaskRoleBand, taskRole } from "./TaskRoleBand";
 import EpicChip from "./EpicChip";
 import { useEpics } from "../hooks/useEpics";
 import type { CardLineage } from "../utils/taskLineage";
 import NativeBackendMark from "./NativeBackendMark";
 import ForeignCodeMark from "./ForeignCodeMark";
+import CompletionOfferMark from "./CompletionOfferMark";
 import OpenInMenu from "./OpenInMenu";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
@@ -101,11 +103,13 @@ interface TaskCardProps {
 	showProjectMark?: boolean;
 	/** Where the task came from and what it created — see LineageCluster. */
 	lineage?: CardLineage;
+	/** The tasks this one depends on, resolved against its board; absent when it has none. */
+	dependency?: DependencySummary;
 	/** Filter the board to an epic; without it the epic chip is plain text. */
 	onFilterByEpic?: (epic: Epic) => void;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, resourceUsage, bellCount = 0, bellReasons, ports, devServer, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo, onOpenUnresolvedComments, onEditDraft, showProjectMark = false, lineage, onFilterByEpic }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, resourceUsage, bellCount = 0, bellReasons, ports, devServer, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo, onOpenUnresolvedComments, onEditDraft, showProjectMark = false, lineage, dependency, onFilterByEpic }: TaskCardProps) {
 	const { byId: epicsById } = useEpics();
 	const epic = task.epicId ? epicsById.get(task.epicId) : undefined;
 	const t = useT();
@@ -161,6 +165,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	// Its session died with the app (force quit, reboot). Nothing was lost, but
 	// nothing is running either — the card must not pass for live work.
 	const isDisconnected = isTaskDisconnected(task);
+	const isAgentless = isTaskAgentless(task);
 	const isCoordinator = isCoordinatorTask(task);
 	const role = taskRole(task);
 	const isCancelled = task.status === "cancelled";
@@ -419,7 +424,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	);
 	const preparingStageLabel = t(PREPARING_STAGE_LABELS[preparingStage]);
 
-	function handleClick() {
+	function handleClick(e: React.MouseEvent) {
+		if (contextMenu.swallowClick(e)) return;
 		// A still-preparing task is `isDisabled` (no drag, dimmed) but must remain
 		// openable so the main view can show its loading state instead of leaving
 		// the previously-active task's terminal on screen.
@@ -536,7 +542,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const liveSession = useLiveSessionStats(task.id);
 	const isClaudeAgent = agent ? agentKey(agent.baseCommand, agent.agentFamily) === "claude" : false;
 	// A sleeping task runs nothing, and its resume relaunches with the preset again.
-	const hasLiveSession = isActive && !isHibernated && !isDisconnected;
+	const hasLiveSession = isActive && !isHibernated && !isAgentless;
 	const drift = hasLiveSession && isClaudeAgent && agentConfig ? launchConfigDrift(agentConfig, liveSession) : null;
 	const driftLabel = drift ? [drift.model, drift.effort].filter(Boolean).join(", ") : "";
 	// A lone variant is not a variant — `1/1` says nothing, and the spelled-out
@@ -549,7 +555,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	// creation date first, before anything that names the task or its agent.
 	const [locale] = useLocale();
 	const identityRef = useRef<HTMLDivElement>(null);
-	const identityKey = [configLabel, driftLabel, locale, isCoordinator, isDraft, isHibernated, isDisconnected, task.taskType, task.scratch, task.automationId, task.keepAlive?.enabled].join("|");
+	const identityKey = [configLabel, driftLabel, locale, isCoordinator, isDraft, isHibernated, isDisconnected, isAgentless, task.taskType, task.scratch, task.automationId, task.keepAlive?.enabled].join("|");
 	const ageLevel = useShedOnOverflow(identityRef, 2, identityKey);
 	const ageFit: AgeStampsFit = ageLevel === 2 ? "both" : ageLevel === 1 ? "activity" : "none";
 
@@ -687,6 +693,20 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					</div>
 				)}
 			</div>,
+		);
+	}
+	// Read-only: only open dependencies show. A card with none, or with all done, shows nothing.
+	// The start-after prerequisite already has its own chip above.
+	const openDeps = task.status === "completed" || task.status === "cancelled" ? [] : (dependency?.open ?? []).filter((d) => d.taskId !== launchAfter?.taskId);
+	if (openDeps.length > 0) {
+		const shown = formatDependencyRefs(openDeps.slice(0, 3)) + (openDeps.length > 3 ? ", …" : "");
+		timeSignals.push(
+			<Tooltip key="blocked" content={t(isTodo ? "task.blockedByTooltip" : "task.blockedByTooltipStarted", { refs: formatDependencyRefs(openDeps) })}>
+				<span data-testid="task-card-blocked-chip" className="flex h-5 flex-shrink-0 items-center gap-1 rounded px-1.5 text-micro text-fg-3">
+					<DependencyBlockedIcon className="w-3 h-3" />
+					{t("task.blockedBy", { refs: shown })}
+				</span>
+			</Tooltip>,
 		);
 	}
 	if (!isTodo) {
@@ -861,7 +881,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			onMouseLeave={handleCardMouseLeave}
 			className={`group relative flex flex-col overflow-hidden glass-card rounded-xl transition-[transform,box-shadow,background-color,border-color,opacity,filter] duration-150 ease-out border ${isDraft ? "border-dashed border-edge-active" : isActiveInSplit ? "border-accent ring-2 ring-accent/70 shadow-lg shadow-accent/20" : "border-transparent"} ${
 				isActive || isCompleted || isCancelled ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"
-			} hover:-translate-y-0.5 ${isCoordinator && !isActiveInSplit ? COORDINATOR_CARD_HALO : "hover:shadow-card-hover"} ${isCompleting || isShuttingDown ? "grayscale opacity-40 pointer-events-none" : isPreparing ? "opacity-60" : isDisabled ? "opacity-50 pointer-events-none" : isHibernated || isDisconnected ? "grayscale opacity-60" : ""}`}
+			} hover:-translate-y-0.5 ${isCoordinator && !isActiveInSplit ? COORDINATOR_CARD_HALO : "hover:shadow-card-hover"} ${isCompleting || isShuttingDown ? "grayscale opacity-40 pointer-events-none" : isPreparing ? "opacity-60" : isDisabled ? "opacity-50 pointer-events-none" : isHibernated || isAgentless ? "grayscale opacity-60" : ""}`}
 			onClick={handleClick}
 		>
 			{/* Moving spinner overlay */}
@@ -1033,6 +1053,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				)}
 				<NativeBackendMark task={task} className="w-3.5 h-3.5 flex-shrink-0" testId="task-card-native-backend" />
 				<ForeignCodeMark task={task} className="w-3.5 h-3.5 flex-shrink-0" testId="task-card-foreign-code" />
+				<CompletionOfferMark task={task} testId="task-card-completion-offer" />
 				{/* A PR review is an ordinary task with a job, so it is named and not
 				    boxed — no band, nothing that competes with a role. */}
 				{task.taskType === "pr-review" && (
@@ -1065,13 +1086,13 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						</span>
 					</Tooltip>
 				)}
-				{isDisconnected && (
-					<Tooltip content={t("task.disconnectedBadge")} detail={t("task.disconnectedHint")}>
+				{isAgentless && (
+					<Tooltip content={t("task.noAgentBadge")} detail={isDisconnected ? t("task.disconnectedHint") : t("task.agentExitedHint")}>
 						<span
-							data-testid="task-card-disconnected-badge"
+							data-testid="task-card-no-agent-badge"
 							className="flex-shrink-0 rounded border border-dashed border-edge-active px-1.5 py-0.5 text-dense font-semibold uppercase tracking-[0.06em] text-fg-muted"
 						>
-							{t("task.disconnectedBadge")}
+							{t("task.noAgentBadge")}
 						</span>
 					</Tooltip>
 				)}

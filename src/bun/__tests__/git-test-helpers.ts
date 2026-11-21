@@ -198,18 +198,29 @@ function toWebStream(readable: NodeJS.ReadableStream) {
 	});
 }
 
-function fakeProc(stdout: string, exitCode: number) {
+function fakeProc(stdout: string, exitCode: number, stderr = "") {
 	const encoder = new TextEncoder();
+	const stream = (text: string) => new ReadableStream({
+		start(controller) {
+			if (text) controller.enqueue(encoder.encode(text));
+			controller.close();
+		},
+	});
 	return {
 		exited: Promise.resolve(exitCode),
-		stdout: new ReadableStream({
-			start(controller) {
-				controller.enqueue(encoder.encode(stdout));
-				controller.close();
-			},
-		}),
-		stderr: new ReadableStream({ start(c) { c.close(); } }),
+		stdout: stream(stdout),
+		stderr: stream(stderr),
 	};
+}
+
+type FakeResult = { stdout?: string; stderr?: string; exitCode: number };
+type SpawnOverride = (cmd: string[]) => FakeResult | undefined;
+// On globalThis: the vi.mock factory imports this file as its own module instance.
+const overrideSlot = globalThis as { __dev3SpawnOverride?: SpawnOverride | null };
+
+/** Answers matching commands instead of running them; return undefined to run the real one. Cleared with null. */
+export function setSpawnOverride(override: SpawnOverride | null): void {
+	overrideSlot.__dev3SpawnOverride = override;
 }
 
 /**
@@ -251,6 +262,8 @@ export function createSpawnMock(getGhResponse?: () => string) {
 			if (cmd[0] === "gh" && getGhResponse) {
 				return fakeProc(getGhResponse(), 0);
 			}
+			const overridden = overrideSlot.__dev3SpawnOverride?.(cmd);
+			if (overridden) return fakeProc(overridden.stdout ?? "", overridden.exitCode, overridden.stderr);
 
 			const child = cpSpawn(cmd[0], cmd.slice(1), {
 				cwd: opts?.cwd as string | undefined,

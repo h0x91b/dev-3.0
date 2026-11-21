@@ -14,6 +14,7 @@ import AgentPickerSkeleton from "./AgentPickerSkeleton";
 import MemoryPressureBanner from "./MemoryPressureBanner";
 import TaskDialogSubjectCard from "./TaskDialogSubjectCard";
 import ApprovalReasonNote from "./ApprovalReasonNote";
+import OpenDependenciesNote from "./OpenDependenciesNote";
 
 const NOT_INSTALLED_ID = "agent-launch-not-installed";
 
@@ -277,6 +278,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 					</p>
 
 					{request.reason && <ApprovalReasonNote reason={request.reason} />}
+					{request.openDependencies && <OpenDependenciesNote seqs={request.openDependencies} />}
 
 					<TaskDialogSubjectCard
 						title={request.taskTitle}
@@ -330,7 +332,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 												{config ? <span className="text-fg-3 font-normal"> · {config.name}</span> : null}
 											</span>
 											<span className="text-fg-3 text-xs font-mono truncate">
-												{pane.sessionId ? t("agentLaunch.resumeConversation", { id: pane.sessionId.slice(0, 8) }) : t("agentLaunch.resumeLatest")}
+												{pane.neverStarted ? t("agentLaunch.resumeStartAgain") : pane.sessionId ? t("agentLaunch.resumeConversation", { id: pane.sessionId.slice(0, 8) }) : t("agentLaunch.resumeLatest")}
 											</span>
 										</li>
 									);
@@ -342,6 +344,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 								value={resumeAccount !== undefined ? resumeAccount : savedResumeAccount(request.resume.panes, undefined)}
 								onChange={updateResumeAccount}
 								projectId={request.projectId}
+								taskId={request.taskId}
 							/>
 						</div>
 					) : globalSettings ? (
@@ -370,6 +373,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 										agentId={variant.agentId}
 										configId={variant.configId}
 										agentAvailability={agentAvailability}
+										installedFirst
 										onChange={(next) => updateVariants(
 											variants.map((v, i) => (i === index ? { ...v, ...next } : v)),
 										)}

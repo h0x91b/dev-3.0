@@ -6,10 +6,12 @@ import type {
 	AgentAccountKind,
 	AgentAccountsState,
 	AgentApiProfileInfo,
+	ClaudePickLaunch,
+	ClaudePickLaunches,
 	PinnedClaudeLogin,
 	ProjectClaudeLogin,
 } from "../../shared/agent-accounts";
-import { AUTO_ACCOUNT_ID, codexWorkspaceIdNeeded, isAgentDirAccountKind, isAutoAccountId, isRoutableAccountKind, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../shared/agent-accounts";
+import { AUTO_ACCOUNT_ID, type ProjectClaudeBackend, codexWorkspaceIdNeeded, isAgentDirAccountKind, isAutoAccountId, isRoutableAccountKind, shortClaudeConfigDir, shortCodexWorkspaceId } from "../../shared/agent-accounts";
 import { exclusionKey } from "../../shared/account-routing";
 import { autoCandidateTotal, autoReasonText, useAutoAccountPreview } from "./auto-account-ui";
 import type { CodingAgent } from "../../shared/types";
@@ -29,7 +31,7 @@ import {
 } from "../../shared/rate-limits";
 import { api } from "../rpc";
 import { toast } from "../toast";
-import { useT } from "../i18n";
+import { useT, type TranslationKey } from "../i18n";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../state";
 import { useOverlayLayer } from "../utils/useOverlayLayer";
 import { CapturedAgeSuffix, LimitsNotReported, UsageBar, severityText, useSpendLimitDetail, useWindowLabel } from "./rate-limit-ui";
@@ -111,6 +113,45 @@ function useProjectClaudeLogin(projectId: string | undefined, enabled: boolean):
 		};
 	}, [projectId, enabled]);
 	return login;
+}
+
+/** The resume a picker chooses an account for. The server heals the task's saved conversation the way the resume will. */
+export interface PickerResume {
+	taskId: string | undefined;
+}
+
+/** Where each picker row runs a Claude session, asked of the launcher's resolver. Null until it
+ *  answers, and again when the accounts change, so no row folds or claims a folder on a guess. */
+function useClaudePickLaunches(
+	projectId: string | undefined,
+	resume: PickerResume | undefined,
+	enabled: boolean,
+	accountsKey: string,
+): ClaudePickLaunches | null {
+	const [launches, setLaunches] = useState<ClaudePickLaunches | null>(null);
+	const taskId = resume?.taskId;
+	useEffect(() => {
+		setLaunches(null);
+		// A resume of an unknown task would be answered as a fresh launch.
+		if (!enabled || !projectId || (resume && !taskId)) return;
+		let cancelled = false;
+		// Promise.resolve absorbs a missing RPC method in plain-object api mocks.
+		Promise.resolve()
+			.then(() => api.request.getClaudePickLaunches(taskId ? { projectId, taskId, resume: true } : { projectId }))
+			.then((res) => {
+				if (!cancelled && res) setLaunches(res);
+			})
+			.catch(() => {});
+		return () => {
+			cancelled = true;
+		};
+	}, [projectId, !!resume, taskId, enabled, accountsKey]);
+	return launches;
+}
+
+/** Same folder, same project backend: the two picks launch the same session. */
+function sameClaudeLaunch(a: ClaudePickLaunch | undefined, b: ClaudePickLaunch): boolean {
+	return !!a && a.projectFolder === b.projectFolder && a.backend === b.backend;
 }
 
 /**
@@ -278,6 +319,15 @@ function RowQuota({ usage, now }: { usage: RowUsage; now: number }) {
 		</span>
 	);
 }
+
+const PROJECT_BACKEND_NOTE = {
+	bedrock: "launch.projectBackendBedrock",
+	vertex: "launch.projectBackendVertex",
+	foundry: "launch.projectBackendFoundry",
+	"env-auth": "launch.projectBackendEnvAuth",
+	gateway: "launch.projectBackendGateway",
+	model: "launch.projectBackendModel",
+} as const satisfies Record<ProjectClaudeBackend, TranslationKey>;
 
 function identityBadge(identity: AgentAccountIdentity | null): string | null {
 	return identity?.planLabel ?? null;
@@ -554,6 +604,7 @@ export default function AgentAccountIndicator({
 	projectId,
 	allowAuto = true,
 	subtitle,
+	resume,
 }: {
 	agent: CodingAgent | undefined | null;
 	/** Per-launch selection: `undefined` → the registry default (the preselect);
@@ -574,21 +625,28 @@ export default function AgentAccountIndicator({
 	allowAuto?: boolean;
 	/** Replaces the per-launch popover subtitle, for a surface whose pick outlives one launch. */
 	subtitle?: string;
+	/** Set on a resume: the task and its conversation decide where each pick runs. The account the
+	 *  project folder is signed in to keeps its own row, because the project row keeps the saved account. */
+	resume?: PickerResume;
 }) {
 	const t = useT();
 	const kind = agent ? agentAccountKindForCommand(agent.baseCommand) : null;
 	const state = useAgentAccountsState(kind !== null);
 	const projectLogin = useProjectClaudeLogin(projectId, kind === "claude");
+	const isLocal = !!onSelect;
+	// Ask again when an account or a login changes: either moves where a pick runs. Not before both
+	// have arrived, or the key changes under the first answer and the question runs twice.
+	const claudeAccountsKey = [projectLogin?.identity?.accountId, ...(state?.claude.accounts.map((a) => `${a.id}:${a.identity?.accountId ?? ""}`) ?? [])].join(",");
+	const launches = useClaudePickLaunches(projectId, resume, isLocal && kind === "claude" && !!state && !!projectLogin?.configDir, claudeAccountsKey);
 	const [anchor, setAnchor] = useState<DOMRect | null>(null);
 	const [busy, setBusy] = useState(false);
 	// Usage rings only matter while the popover is open — fetch lazily then.
 	const report = useAgentRateLimits(anchor !== null);
 	const buttonRef = useRef<HTMLButtonElement>(null);
-	const isLocal = !!onSelect;
 	const routable = allowAuto && isRoutableAccountKind(kind);
 	const autoDefault = routable && !!state && state[kind].autoDefault === true;
 	// A per-launch choice that is no explicit pick (none or Auto) keeps the project's own folder.
-	const keepsProjectLogin = isLocal && kind === "claude" && !!projectLogin?.configDir && (value === undefined || isAutoAccountId(value));
+	const keepsProjectLogin = isLocal && kind === "claude" && !!state && !!projectLogin?.configDir && (value === undefined || isAutoAccountId(value));
 	const autoSelected = routable && !keepsProjectLogin && (isLocal ? isAutoAccountId(value) || (value === undefined && autoDefault) : autoDefault);
 	// Fetched while the popover is open (to decide whether Auto is worth a row)
 	// and whenever Auto is the choice (the pill names the account it would use).
@@ -655,6 +713,11 @@ export default function AgentAccountIndicator({
 	const projectPinDir = kind === "claude" ? (projectLogin?.configDir ?? null) : null;
 	const pinnedDir = state.claude.accounts.length === 0 ? projectPinDir : null;
 	const projectPinLabel = projectPinDir ? t("settings.accountsProjectLogin", { dir: shortClaudeConfigDir(projectPinDir) }) : null;
+	// An account pick the launcher runs exactly like "no pick" (same folder, same project env) folds into
+	// the project row. A project env the pick drops (Bedrock, an API key, a model) keeps both rows.
+	const projectBackend = projectPinDir ? (launches?.none.backend ?? null) : null;
+	const pickLaunch = (account: AgentAccount) => (isLocal && projectPinDir ? launches?.accounts[account.id] : undefined);
+	const projectAccount = resume || !launches ? null : (state.claude.accounts.find((a) => sameClaudeLaunch(pickLaunch(a), launches.none)) ?? null);
 	const fallbackIdentity =
 		kind === "claude"
 			? (pinnedDir ? (projectLogin?.identity ?? null) : state.claude.systemIdentity)
@@ -705,7 +768,7 @@ export default function AgentAccountIndicator({
 	// Auto earns its row once there are two logins to balance — or while it is the
 	// choice, so a selected state never vanishes from the list.
 	// Auto never overrides a project's own folder, so a pinned launch has nothing to route.
-	const projectPinHolds = isLocal && kind === "claude" && !!projectLogin?.configDir && state.claude.accounts.length > 0;
+	const projectPinHolds = isLocal && kind === "claude" && !!state && !!projectLogin?.configDir && state.claude.accounts.length > 0;
 	if (routable && !projectPinHolds && (autoSelected || autoCandidateTotal(preview) >= 2)) {
 		rows.push({
 			key: "auto",
@@ -725,6 +788,8 @@ export default function AgentAccountIndicator({
 		});
 	}
 	if (isLocal && projectPinDir && state.claude.accounts.length > 0) {
+		const accountUsage = projectAccount ? usageFor(projectAccount.id) : null;
+		const projectUsage = accountUsage && accountUsage.state !== "none" ? accountUsage : usageFor(null, false, projectPinDir);
 		rows.push({
 			key: "project",
 			label: projectPinLabel ?? "",
@@ -732,8 +797,9 @@ export default function AgentAccountIndicator({
 			planLabel: identityBadge(projectLogin?.identity ?? null),
 			workspaceLabel: null,
 			isApi: false,
-			isActive: keepsProjectLogin,
-			usage: usageFor(null, false, projectPinDir),
+			isActive: keepsProjectLogin || (!!projectAccount && isRowActive(projectAccount.id)),
+			usage: projectUsage,
+			note: projectBackend ? t(PROJECT_BACKEND_NOTE[projectBackend]) : null,
 			onSelect: () => handleSelectLocal(undefined),
 		});
 	}
@@ -771,7 +837,14 @@ export default function AgentAccountIndicator({
 			onSelect: null,
 		});
 	}
+	// In a project with its own Claude folder, say where each account's session will run.
+	const folderNote = (account: AgentAccount): string | null => {
+		const launch = pickLaunch(account);
+		if (!launch) return null;
+		return launch.projectFolder ? t("launch.accountRunsInProjectFolder") : t("launch.accountRunsInOwnFolder");
+	};
 	for (const account of kindState.accounts) {
+		if (account.id === projectAccount?.id) continue;
 		rows.push({
 			key: account.id,
 			label: account.label,
@@ -781,7 +854,7 @@ export default function AgentAccountIndicator({
 			isApi: account.auth === "api",
 			isActive: isRowActive(account.id),
 			usage: usageFor(account.id, account.auth === "api"),
-			note: excludedNote(account.id),
+			note: [folderNote(account), excludedNote(account.id)].filter(Boolean).join(" · ") || null,
 			onSelect: isLocal
 				? () => handleSelectLocal(account.id)
 				: () => handleSelectGlobal(kind, account.id),

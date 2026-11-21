@@ -24,7 +24,7 @@ function reviewTask(overrides?: Partial<Task>): Task {
 const git = {
 	baseBranch: "main", branchStatus: null, compareRef: "", displayRef: "", mergeRoute: null,
 	handleCommit: vi.fn(), handleCreatePR: vi.fn(), handleMerge: vi.fn(), handleOpenPR: vi.fn(),
-	handlePush: vi.fn(), handleRebase: vi.fn(), handleRefreshStatus: vi.fn(),
+	handlePush: vi.fn(), handleRebase: vi.fn(), handleRefreshStatus: vi.fn(), refreshStatusQuietly: vi.fn(),
 	refreshingStatus: false, statusError: null, statusLoading: false,
 } as unknown as TaskBranchStatusController;
 
@@ -36,6 +36,18 @@ function renderSheet(task: Task, onAction = vi.fn(), sheetProject: Project = pro
 	);
 	return onAction;
 }
+
+describe("TaskGitActionsSheet refresh on open", () => {
+	it("refreshes git status quietly once per open, never through the toasting button path", () => {
+		vi.mocked(git.refreshStatusQuietly).mockClear();
+		vi.mocked(git.handleRefreshStatus).mockClear();
+
+		renderSheet(reviewTask());
+
+		expect(git.refreshStatusQuietly).toHaveBeenCalledTimes(1);
+		expect(git.handleRefreshStatus).not.toHaveBeenCalled();
+	});
+});
 
 describe("TaskGitActionsSheet reviewed PR row", () => {
 	it("opens the reviewed PR and dismisses the sheet", () => {

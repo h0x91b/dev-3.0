@@ -5,13 +5,13 @@ import * as pty from "../../pty-server";
 import { ptyWsUrl } from "../../pty-server-access";
 import * as agents from "../../agents";
 import { codexAccountIdForHome, defaultAccountPaths, getActiveClaudeConfigDir } from "../../agent-accounts";
-import { isAutoAccountId } from "../../../shared/agent-accounts";
-import { chooseTaskCodexConversations } from "../../codex-task-selection";
+import { AUTO_ACCOUNT_ID, isAutoAccountId } from "../../../shared/agent-accounts";
+import { chooseTaskCodexConversations, claimCodexChoices } from "../../codex-task-selection";
 import { getAgentAdapter } from "../../../shared/agent-adapters/registry";
 import { agentKey } from "../../../shared/agent-adapters/families";
 import * as repoConfig from "../../repo-config";
 import { resolveLaunchProject, rootProjectFor } from "../../ops-worktree";
-import { claudeConfigDirHasSession, resolveResumableSessionIds } from "../../agent-transcripts";
+import { claudeConfigDirHasSession, resolveResumableSessionIds, type UnreadableStore } from "../../agent-transcripts";
 import { DEFAULT_TMUX_SOCKET, taskSessionName, tmux } from "../../tmux";
 import { dev3TaskTempPath } from "../../temp-paths";
 import { taskTerminalBackendIdentity } from "../../task-terminal-backend";
@@ -21,6 +21,8 @@ import { taskMainAgentLiveness } from "../../scheduled-message-author";
 import { NATIVE_AGENT_PANE_ID } from "../../agent-prompt-native";
 import type { ResumePaneMode, ResumePaneReport, ResumeUnavailableReason, TaskResumeResult } from "../../../shared/agent-resume";
 import { WAKE_SHELL_NOTICE } from "../../../shared/task-hibernate";
+import { mainAgentNeverStarted } from "../../../shared/agent-launch-failure";
+import { forgetAgyTask } from "../../agy-session-state";
 import { getPushMessage, buildCmdScript, log, writeLaunchScript } from "../shared-pure";
 import { applyAgentHooksToCommand, ensureAgentTrust, launchTaskPty, notifyBedrockProfileMissing, notifyStaleAccountDropped } from "./task-launch";
 import { findTaskAcrossProjects, markTerminalAttached, wakeIfHibernated } from "./task-state";
@@ -29,10 +31,10 @@ import { findTaskAcrossProjects, markTerminalAttached, wakeIfHibernated } from "
  * Resume pointers for every pane, healed against the transcripts on disk in one
  * pass so no two panes reopen the same conversation (decision 189, #1950).
  */
-function resolveResumeTargets(task: Task, panes: readonly PaneSessionEntry[]): { sessionId: string | null; mode: ResumePaneMode }[] {
+function resolveResumeTargets(task: Task, panes: readonly PaneSessionEntry[], logsHealing = true): { sessionId: string | null; mode: ResumePaneMode; unreadable?: UnreadableStore }[] {
 	const targets = resolveResumableSessionIds(task.worktreePath ?? "", panes.map((pane, i) => ({ ...pane, adoptsOrphan: i === 0 })));
 	return targets.map((target, i) => {
-		if (target.substituted || target.startFresh) {
+		if (logsHealing && (target.substituted || target.startFresh)) {
 			log.warn(target.startFresh
 				? "Stored session id is not resumable and every transcript belongs to another pane — starting this pane on a new conversation"
 				: "Stored session id is not resumable for this pane — resuming another conversation instead", {
@@ -50,8 +52,19 @@ function resolveResumeTargets(task: Task, panes: readonly PaneSessionEntry[]): {
 			: !target.sessionId ? "agent-latest"
 			: target.substituted ? "substituted"
 			: target.verified ? "exact" : "unverified";
-		return { sessionId: target.sessionId, mode };
+		return { sessionId: target.sessionId, mode, ...(target.unreadable ? { unreadable: target.unreadable } : {}) };
 	});
+}
+
+/** What a resume does with the task's first saved Claude pane, healed the same way the resume heals
+ *  it: the conversation it reopens, whether it falls back to the harness's own latest, and the
+ *  account the pane runs on today. Null when no saved pane runs Claude. Writes nothing. */
+export function claudeResumePickTarget(task: Task): { sessionId: string | null; agentLatest: boolean; savedAccountId: string | null | undefined } | null {
+	const panes = task.sessionState?.panes ?? [];
+	const index = panes.findIndex(paneTakesAccountChoice);
+	if (index < 0) return null;
+	const { sessionId, mode } = resolveResumeTargets(task, panes, false)[index];
+	return { sessionId: mode === "fresh-session" ? null : sessionId, agentLatest: mode === "agent-latest", savedAccountId: panes[index].accountId };
 }
 
 /** The stored panes, or — when there are none — the lost Codex conversation resumeTask would reopen. Never persisted here. */
@@ -157,6 +170,8 @@ const TEARDOWN_POLL_MS = 100;
  * (`new-session -A`) instead of starting the agent.
  */
 async function tearDownTaskTerminal(task: Task): Promise<void> {
+	// Every agent of the task goes with its terminal; what agy panes were waiting on goes too.
+	forgetAgyTask(task.id);
 	if (taskTerminalBackendIdentity(task) === "native") {
 		if (pty.hasSession(task.id)) await pty.destroySessionAwaited(task.id);
 		else await stopNativeTaskPanes(task.id);
@@ -238,11 +253,15 @@ async function assertAccountReachesPanes(
 	reports: ResumePaneReport[],
 	mainOnly: boolean,
 	switches: (pane: PaneSessionEntry, i: number) => boolean,
+	keepsProjectFolder: (sessionId: string | null) => boolean,
 ): Promise<void> {
 	const configDir = await assertResumeAccountUsable(accountId, panes, mainOnly, reports);
 	for (const [i, pane] of panes.entries()) {
 		if (!switches(pane, i) || (mainOnly && i > 0)) continue;
 		const { sessionId, mode } = targets[i];
+		// The project folder's own login reopens it there, as the launch will. `--continue` only for a
+		// pane that ran in that folder (no account): one from another account's folder is elsewhere.
+		if ((mode !== "agent-latest" || pane.accountId === undefined) && keepsProjectFolder(sessionId)) continue;
 		// `--continue` under another account opens that account's latest, not this pane's conversation.
 		if (mode === "agent-latest") {
 			throw new ResumeUnavailableError(
@@ -258,6 +277,21 @@ async function assertAccountReachesPanes(
 			`The chosen account cannot see conversation ${sessionId.slice(0, 8)}: its config folder keeps its own conversation history. Nothing was resumed; keep the saved account or pick another.`,
 			reports,
 		);
+	}
+}
+
+/** The relaunched agent is running again: drop the "No agent" mark now, not at the next probe tick. */
+async function clearAgentExited(project: Project, task: Task): Promise<void> {
+	try {
+		let wrote = false;
+		// Decided on the row under the lock: the probe may have written since resume started.
+		const { task: updated } = await data.updateTaskWith(project, task.id, (current) => {
+			wrote = !!current.agentExitedAt;
+			return { updates: wrote ? { agentExitedAt: undefined } : {}, result: null };
+		});
+		if (wrote) getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+	} catch (err) {
+		log.warn("Failed to clear the agent-exited mark (non-fatal)", { taskId: task.id.slice(0, 8), error: String(err) });
 	}
 }
 
@@ -297,9 +331,10 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 		throw new ResumeUnavailableError("no-saved-session", `Cannot resume: task ${params.taskId} has no stored pane sessions`);
 	}
 	if (lost) task.sessionState = { panes };
-	// Every Codex pane is chosen from one snapshot and claimed before anything
-	// launches; a pane that cannot be chosen safely refuses the whole resume.
-	const codexChoices = await chooseTaskCodexConversations(resolvedProject, task, panes, "explicit-resume", { persist: true, onDisk: stored });
+	// Every Codex pane is chosen from one snapshot; a pane that cannot be chosen safely
+	// refuses the whole resume. The choice is claimed only after every other refusal below.
+	const panesBeforeChoices = [...panes];
+	const codexChoices = await chooseTaskCodexConversations(resolvedProject, task, panes, "explicit-resume", { persist: false });
 	const codexHomes = new Map<number, string>();
 	for (const [index, choice] of codexChoices) {
 		panes[index] = { ...panes[index], sessionId: choice.sessionId };
@@ -315,6 +350,12 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 		// The selection engine chose a Codex id from the transcripts it read.
 		return codexChoices.has(i) && target.sessionId ? { ...target, mode: "exact" as const } : target;
 	});
+	// The first launch died before a conversation existed: pane 0 starts on the task prompt, everything else resumes as usual.
+	const mainNeverStarted = mainAgentNeverStarted(task);
+	if (mainNeverStarted) {
+		log.warn("Main agent never started — relaunching fresh instead of resuming", { taskId: task.id.slice(0, 8), sessionId: task.launchFailure?.sessionId });
+		targets[0] = { sessionId: null, mode: "fresh-session" };
+	}
 	const accountOverride = opts.accountId;
 	// Re-picking the account a pane already runs on is not a switch.
 	const switchesAccount = (pane: PaneSessionEntry, i: number) =>
@@ -331,9 +372,20 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 		status: "skipped",
 		paneId: null,
 	}));
+	if (mainNeverStarted) reports[0].detail = "The agent never started, so it was launched fresh with the task prompt instead of resuming a conversation that does not exist.";
+	const unreadableIndex = targets.findIndex((target) => target.unreadable);
+	if (unreadableIndex >= 0) {
+		const { dir, code } = targets[unreadableIndex].unreadable!;
+		const stored = panes[unreadableIndex].sessionId;
+		throw new ResumeUnavailableError(
+			"history-unreadable",
+			`Cannot read this task's conversation history (${dir}: ${code}). The task stays bound to ${stored ? `conversation ${stored.slice(0, 8)}` : "its saved conversation"}. Restore access and resume again, or choose Start fresh for a new conversation.`,
+			reports,
+		);
+	}
 	if (opts.restart === "always" && targets.some((target, i) =>
-		!target.sessionId || (target.mode !== "exact" && target.mode !== "unverified")
-		|| (stored[i]?.sessionId && target.sessionId !== stored[i].sessionId),
+		!(mainNeverStarted && i === 0) && (!target.sessionId || (target.mode !== "exact" && target.mode !== "unverified")
+		|| (stored[i]?.sessionId && target.sessionId !== stored[i].sessionId)),
 	)) {
 		throw new ResumeUnavailableError("session-id-unknown", "Cannot restart: every agent needs its own saved, resumable conversation. Nothing was stopped.", reports);
 	}
@@ -352,8 +404,18 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 		);
 	}
 	if (accountOverride !== undefined) {
-		await assertAccountReachesPanes(accountOverride, panes, targets, reports, taskTerminalBackendIdentity(task) !== "tmux", switchesAccount);
+		const launch = {
+			projectEnv: await repoConfig.resolveProjectEnv(resolvedProject, task.worktreePath, { foreignCode: task.foreignCode }),
+			projectPath: rootProjectFor(project, task).path,
+			worktreePath: task.worktreePath,
+			resume: true,
+		};
+		const keepsProjectFolder = (sessionId: string | null) =>
+			typeof accountOverride === "string" && agents.claudeLaunchKeepsProjectFolder(accountOverride, { ...launch, sessionId: sessionId ?? undefined });
+		await assertAccountReachesPanes(accountOverride, panes, targets, reports, taskTerminalBackendIdentity(task) !== "tmux", switchesAccount, keepsProjectFolder);
 	}
+	// Nothing above wrote anything, so a refused resume leaves the saved panes untouched.
+	if (codexChoices.size) await claimCodexChoices(project, task, stored, panesBeforeChoices, codexChoices);
 	await wakeIfHibernated(project, task);
 
 	if (opts.restart) {
@@ -376,6 +438,9 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 	const main = panes[0];
 	const mainResume = targets[0].sessionId;
 	const mainFreshSessionId = targets[0].mode === "fresh-session" ? crypto.randomUUID() : undefined;
+	// Start again re-asks Auto when the failed launch ran on Auto's pick, instead of retrying that same account.
+	const mainRanOnAutoPick = !!task.accountPick && main.accountId != null && main.accountId === task.accountId;
+	const mainAccountRequest = switchesAccount(main, 0) ? accountOverride : mainNeverStarted && mainRanOnAutoPick ? AUTO_ACCOUNT_ID : main.accountId;
 	const mainAccountId = await launchTaskPty(
 		resolvedProject,
 		task,
@@ -384,7 +449,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 		main.configId,
 		false,
 		true,
-		{ sessionId: mainResume ?? undefined, accountId: switchesAccount(main, 0) ? accountOverride : main.accountId, bedrockProfile: main.bedrockProfile, codexHome: codexHomes.get(0), freshSessionId: mainFreshSessionId },
+		{ sessionId: mainResume ?? undefined, accountId: mainAccountRequest, bedrockProfile: main.bedrockProfile, projectLogin: main.projectLogin, codexHome: codexHomes.get(0), freshSessionId: mainFreshSessionId, freshWithTaskPrompt: mainNeverStarted || undefined },
 	);
 	if (mainAccountId !== undefined) reports[0].accountId = mainAccountId;
 	// Start Fresh and reconnect read the task's account, so a switch must not revert there.
@@ -419,7 +484,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 				worktreePath: task.worktreePath,
 			};
 			const projectEnv = await repoConfig.resolveProjectEnv(resolvedProject, task.worktreePath, { foreignCode: task.foreignCode });
-			const paneIdUpdates: Array<{ index: number; paneId: string; accountId: string | null | undefined; sessionId: string | null }> = [];
+			const paneIdUpdates: Array<{ index: number; paneId: string; accountId: string | null | undefined; sessionId: string | null; projectLogin: boolean }> = [];
 			for (let i = 1; i < panes.length; i++) {
 				const pane = panes[i];
 				try {
@@ -434,6 +499,8 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 						? { sessionId: freshSessionId, accountId, accountFromStore: true, protocolMode }
 						: { resume: true, accountId, accountFromStore: true, protocolMode };
 					cmdOpts.projectEnv = projectEnv;
+					if (task.foreignCode) cmdOpts.foreignCode = true;
+					if (pane.projectLogin) cmdOpts.projectLogin = true;
 					cmdOpts.bedrockProfile = pane.bedrockProfile !== undefined ? pane.bedrockProfile : task.bedrockProfile;
 					if (paneResume) cmdOpts.sessionId = paneResume;
 					let resumeCmd: string;
@@ -443,6 +510,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 					// a renamed binary is exactly what broke resume.
 					let resumeAgentFamily: AgentFamily | undefined = pane.agentFamily ?? undefined;
 					let extraEnv: Record<string, string> = {};
+					let projectLogin = !!pane.projectLogin;
 					if (pane.agentId) {
 						const resolved = await agents.resolveCommandForAgent(pane.agentId, pane.configId, ctx, cmdOpts);
 						resumeCmd = resolved.command;
@@ -450,6 +518,8 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 						resumeBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || pane.agentCmd;
 						resumeAgentFamily = resolved.agentFamily ?? resumeAgentFamily;
 						if (resolved.bedrockProfileMissing) await notifyBedrockProfileMissing(task);
+						if (resolved.projectLoginKept) accountId = undefined;
+						projectLogin = !!resolved.projectLoginKept;
 						if (resolved.staleAccountDropped) {
 							accountId = resolved.resolvedAccountId;
 							await notifyStaleAccountDropped(task);
@@ -471,7 +541,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 					const wrappedCmd = `bash "${scriptPath}"`;
 					const newPaneId = await pty.splitAndRunCommand(params.taskId, socket, wrappedCmd, task.worktreePath);
 					if (opts.restart && !newPaneId) throw new Error("The restarted agent pane was not created.");
-					if (newPaneId) paneIdUpdates.push({ index: i, paneId: newPaneId, accountId, sessionId: freshSessionId ?? paneResume });
+					if (newPaneId) paneIdUpdates.push({ index: i, paneId: newPaneId, accountId, sessionId: freshSessionId ?? paneResume, projectLogin });
 					reports[i] = { ...reports[i], status: "resumed", paneId: newPaneId ?? null, accountId: accountId ?? null, sessionId: freshSessionId ?? paneResume };
 					log.info("Resumed extra pane", { taskId: params.taskId.slice(0, 8), paneIndex: i, paneId: newPaneId, command: resumeCmd.slice(0, 100) });
 				} catch (err) {
@@ -484,14 +554,14 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 				try {
 					const freshTask = await data.getTask(project, params.taskId);
 					const updatedPanes = [...(freshTask.sessionState?.panes ?? [])];
-					for (const { index, paneId, accountId, sessionId } of paneIdUpdates) {
+					for (const { index, paneId, accountId, sessionId, projectLogin } of paneIdUpdates) {
 						const prior = updatedPanes[index];
 						if (!prior) continue;
 						// `--continue` names no id, so the stored one stays. A replaced id was found
 						// in this worktree's own store, so the origin goes with the old one.
 						const resumed = sessionId ?? prior.sessionId;
 						const originCwd = resumed === prior.sessionId ? prior.sessionOriginCwd : undefined;
-						updatedPanes[index] = { ...prior, paneId, accountId, sessionId: resumed, sessionOriginCwd: originCwd, parked: undefined };
+						updatedPanes[index] = { ...prior, paneId, accountId, sessionId: resumed, sessionOriginCwd: originCwd, parked: undefined, projectLogin: projectLogin || undefined };
 					}
 					await data.updateTask(project, params.taskId, { sessionState: { panes: updatedPanes } });
 				} catch (err) {
@@ -502,6 +572,7 @@ async function performTaskResume(taskId: string, opts: ResumeTaskOptions): Promi
 	}
 
 	await markTerminalAttached(project, task);
+	await clearAgentExited(project, task);
 
 	try {
 		const mainPaneId = (await data.getTask(project, params.taskId)).sessionState?.panes?.[0]?.paneId ?? null;
@@ -549,6 +620,9 @@ export async function restartTask(params: { taskId: string }): Promise<string> {
 	const agentId = pinnedPane?.agentId ?? task.agentId;
 	const configId = pinnedPane?.configId ?? task.configId;
 
+	// The agents being replaced take their waits with them, before their identities are overwritten.
+	forgetAgyTask(task.id);
+
 	// Clear old session state — a new one will be generated by launchTaskPty.
 	// The abandoned conversation stays on disk; the floor keeps a scan off it.
 	const priorState = { sessionState: task.sessionState ?? null, codexScanFloorAt: task.codexScanFloorAt ?? null };
@@ -572,6 +646,7 @@ export async function restartTask(params: { taskId: string }): Promise<string> {
 	}
 
 	await markTerminalAttached(project, task);
+	await clearAgentExited(project, task);
 
 	const url = ptyWsUrl(pty.getPtyPort(), params.taskId);
 	log.info("← restartTask", { taskId: params.taskId.slice(0, 8) });

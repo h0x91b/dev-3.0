@@ -5,6 +5,8 @@
  * - Claude: the legacy global dump plus one dump per managed account under
  *   ~/.dev3.0/data/rate-limits/claude/, written by the injected `dev3 statusline`
  *   wrapper on every statusLine refresh (see src/cli/commands/statusline.ts).
+ * - Antigravity: one dump per account under ~/.dev3.0/data/rate-limits/agy/, written
+ *   by `dev3 statusline agy` from the per-session `--settings` statusLine.
  * - Codex: the newest rollout file under each system or managed CODEX_HOME's
  *   sessions/YYYY/MM/DD/ directory — the tail contains `token_count` events
  *   with a `rate_limits` object.
@@ -28,11 +30,13 @@ import {
 	extractCodexSnapshotFromRolloutLines,
 	isRateLimitSnapshotRecent,
 	mergeCodexRateLimitSnapshots,
+	parseAgyQuotaDump,
 	parseClaudeStatusLinePayload,
 	kimiUsageUrl,
 	parseKimiUsage,
 	rateLimitActivityAt,
 	rateLimitLoginKey,
+	withElapsedResets,
 } from "../shared/rate-limits";
 import type { AgentSessionStats } from "../shared/session-stats";
 import { SESSION_STATS_RECENT_MS, parseClaudeSessionStats } from "../shared/session-stats";
@@ -42,7 +46,7 @@ import { loadModelCatalog, loadProviderKeys } from "./model-catalog-store";
 import { loadProjects, loadTasks, loadVirtualProjects } from "./data";
 import { TERMINAL_STATUSES, getTaskTitle } from "../shared/types";
 import type { Project, Task, TaskStatus } from "../shared/types";
-import { listClaudeAccountDirs, listCodexAccountDirs } from "./agent-accounts";
+import { claudeAccountForConfigDir, listClaudeAccountDirs, listCodexAccountDirs } from "./agent-accounts";
 import { managedClaudeAccountIdForConfigDir } from "../shared/claude-config-dir";
 import { DEV3_HOME } from "./paths";
 import { createLogger } from "./logger";
@@ -68,6 +72,8 @@ export const CLAUDE_ACCOUNT_RATE_LIMITS_DIR = join(RATE_LIMITS_DIR, "claude");
 /** One dump per project-pinned `CLAUDE_CONFIG_DIR`, named by a hash of the dir;
  *  the dir itself is stored inside each dump. */
 export const CLAUDE_CONFIG_DIR_RATE_LIMITS_DIR = join(RATE_LIMITS_DIR, "claude-config-dirs");
+/** Per-account agy quota dumps, written by `dev3 statusline agy` and named by a hash of the email. */
+export const AGY_RATE_LIMITS_DIR = join(RATE_LIMITS_DIR, "agy");
 /** Per-task Claude session dumps, written by `dev3 statusline` inside a dev3 task. */
 export const CLAUDE_SESSION_STATS_DIR = join(RATE_LIMITS_DIR, "sessions");
 /** The dev3-managed settings file injected via `claude --settings <path>`. It
@@ -172,6 +178,25 @@ export function readClaudeSnapshot(dumpPath: string = CLAUDE_RATE_LIMIT_DUMP_PAT
 		return configDir && !resolvedAccountId ? { ...attributed, configDir } : attributed;
 	} catch {
 		return null; // torn write or corrupt file — keep whatever we knew before
+	}
+}
+
+/** Parse one agy account dump. Null when absent, corrupt, or without a usable bucket. */
+export function readAgySnapshot(dumpPath: string): AgentRateLimitSnapshot | null {
+	try {
+		const parsed = JSON.parse(readFileSync(dumpPath, "utf-8")) as Record<string, unknown>;
+		const capturedAt = typeof parsed.capturedAt === "number" ? parsed.capturedAt : statSync(dumpPath).mtimeMs;
+		return parseAgyQuotaDump(
+			{
+				capturedAt,
+				email: typeof parsed.email === "string" && parsed.email ? parsed.email : null,
+				planTier: typeof parsed.planTier === "string" && parsed.planTier ? parsed.planTier : null,
+				quota: parsed.quota,
+			},
+			basename(dumpPath, ".json"),
+		);
+	} catch {
+		return null; // torn write or corrupt file
 	}
 }
 
@@ -505,16 +530,22 @@ async function trackingEnabled(): Promise<boolean> {
 	}
 }
 
-/** A config-dir dump that names a managed account's own dir is that account's
- *  quota (an older `dev3 statusline` wrote those as plain pins). */
-export function attributeManagedConfigDir(snapshot: AgentRateLimitSnapshot, dev3Home: string = DEV3_HOME): AgentRateLimitSnapshot {
-	const accountId = snapshot.configDir ? managedClaudeAccountIdForConfigDir(snapshot.configDir, dev3Home) : null;
+/** A config-dir dump is a managed account's quota when the dir is that account's own
+ *  (an older `dev3 statusline` wrote those as plain pins) or is signed in to it (a
+ *  project folder an account's launch kept), so the account's row shows it. */
+export function attributeManagedConfigDir(
+	snapshot: AgentRateLimitSnapshot,
+	dev3Home: string = DEV3_HOME,
+	accountForDir: (configDir: string) => string | null = claudeAccountForConfigDir,
+): AgentRateLimitSnapshot {
+	const dir = snapshot.configDir;
+	const accountId = dir ? (managedClaudeAccountIdForConfigDir(dir, dev3Home) ?? accountForDir(dir)) : null;
 	if (!accountId) return snapshot;
 	const { configDir: _configDir, ...rest } = snapshot;
 	return { ...rest, accountId };
 }
 
-const SOURCE_ORDER: Record<AgentRateLimitSnapshot["source"], number> = { claude: 0, codex: 1, kimi: 2 };
+const SOURCE_ORDER: Record<AgentRateLimitSnapshot["source"], number> = { claude: 0, codex: 1, kimi: 2, agy: 3 };
 
 export async function getAgentRateLimitsReport(): Promise<AgentRateLimitsReport> {
 	const now = Date.now();
@@ -526,6 +557,7 @@ export async function getAgentRateLimitsReport(): Promise<AgentRateLimitsReport>
 	const addSnapshot = (snapshot: AgentRateLimitSnapshot | null): void => {
 		if (!snapshot || !isRateLimitSnapshotRecent(snapshot, now)) return;
 		if (snapshot.source === "claude" && snapshot.accountId && !knownClaudeAccountIds.has(snapshot.accountId)) return;
+		snapshot = withElapsedResets(snapshot, now);
 		const key = rateLimitLoginKey(snapshot);
 		const existing = byAccount.get(key);
 		if (!existing || rateLimitActivityAt(snapshot) > rateLimitActivityAt(existing) || snapshot.capturedAt > existing.capturedAt) {
@@ -546,6 +578,8 @@ export async function getAgentRateLimitsReport(): Promise<AgentRateLimitsReport>
 		const snapshot = readClaudeSnapshot(join(CLAUDE_CONFIG_DIR_RATE_LIMITS_DIR, name), null);
 		if (snapshot?.configDir) addSnapshot(attributeManagedConfigDir(snapshot));
 	}
+
+	for (const name of listJsonFiles(AGY_RATE_LIMITS_DIR)) addSnapshot(readAgySnapshot(join(AGY_RATE_LIMITS_DIR, name)));
 
 	// Codex sessions are naturally partitioned by CODEX_HOME. Enrich only roots
 	// with a rollout written in the activity window; querying app-server itself

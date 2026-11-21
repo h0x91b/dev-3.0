@@ -81,6 +81,8 @@ const help = {
 	"help.inspector.sessionBar.title": "Sesión y agentes",
 	"help.inspector.sessionBar.body":
 		"Controla quién trabaja en la tarea: añade un segundo agente a la misma sesión, suelta un enjambre de cazadores de bugs, y divide, amplía o reorganiza los paneles de tmux.",
+	"help.task.completionStrip.title": "Lista para completar",
+	"help.task.completionStrip.body": "La rama se fusionó o el agente dice que el trabajo está hecho. Complétala cuando no quede nada; hasta entonces la franja espera aquí y no bloquea nada. El engranaje abre el ajuste que detiene las sugerencias tras una fusión.",
 	"help.inspector.gitBar.title": "Git y PR",
 	"help.inspector.gitBar.body":
 		"Todo lo relacionado con la rama: ver el diff, hacer rebase sobre la rama base, hacer push, abrir un pull request, fusionar. Las operaciones git corren en una terminal visible — siempre ves qué pasa.",
@@ -255,7 +257,7 @@ const help = {
 		"Tres iconos, tres tamaños de lista. La carpeta muestra solo las tareas de este proyecto. El anillo muestra todos los proyectos del mismo espacio, y aparece tachado cuando este proyecto no está en ninguno. El globo muestra todas las tareas de la máquina: así encuentras trabajo que dejaste en otro sitio.",
 	"help.sidebar.showHidden.title": "Tareas que ocultaste de esta lista",
 	"help.sidebar.showHidden.body":
-		"Ocultar una tarea saca todo su grupo de variantes de Tareas activas y nada más: sigue trabajando, sigue notificando y permanece en el tablero. Este ojo está junto al embudo de filtros, aparece solo cuando hay algo oculto y devuelve esas filas, atenuadas y marcadas, hasta que lo pulses otra vez. Un punto rojo indica que una de ellas te necesita. El token is:hidden del embudo hace lo mismo desde el filtro, para las tareas que ocultaste. Las tareas hibernadas y desconectadas también quedan fuera y vuelven con este ojo o con el token is:hibernated; al despertar o recuperar una, regresa sola a la lista.",
+		"Ocultar una tarea saca todo su grupo de variantes de Tareas activas y nada más: sigue trabajando, sigue notificando y permanece en el tablero. Este ojo está junto al embudo de filtros, aparece solo cuando hay algo oculto y devuelve esas filas, atenuadas y marcadas, hasta que lo pulses otra vez. Un punto rojo indica que una de ellas te necesita. El token is:hidden del embudo hace lo mismo desde el filtro, para las tareas que ocultaste. Las tareas hibernadas y las tareas sin agente también quedan fuera y vuelven con este ojo o con el token is:hibernated; al despertar o recuperar una, regresa sola a la lista.",
 	"help.tips.card.title": "¿Sabías que...?",
 	"help.tips.card.body":
 		"Una pista corta cada vez sobre algo que dev3 hace y que ningún botón en pantalla anuncia: un atajo, un arrastre, un comando de la CLI. Si la cierras no vuelve, y en Ajustes hay un interruptor para quitarlas todas.",

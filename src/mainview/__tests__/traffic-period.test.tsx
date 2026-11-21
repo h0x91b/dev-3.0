@@ -30,7 +30,7 @@ it("opens a themed calendar and chooses yesterday without a native dialog", asyn
 	const onChange = vi.fn();
 	render(
 		<I18nProvider>
-			<TrafficPeriodPicker value="day" onChange={onChange} retentionDays={30} />
+			<TrafficPeriodPicker value="day" onChange={onChange} retentionDays={30} oldestDay={null} />
 		</I18nProvider>,
 	);
 	const trigger = screen.getByRole("button", {
@@ -54,6 +54,7 @@ it("keyboard navigation crosses month boundaries and cannot move into the future
 				value={first}
 				onChange={onChange}
 				retentionDays={60}
+				oldestDay={null}
 			/>
 		</I18nProvider>,
 	);
@@ -82,4 +83,21 @@ it("keyboard navigation crosses month boundaries and cannot move into the future
 	if (tomorrow) expect(tomorrow).toBeDisabled();
 	await userEvent.click(todayButton);
 	expect(onChange).toHaveBeenCalledWith(today);
+});
+
+it("reaches back to the oldest day on disk when history is kept forever, and no further", async () => {
+	const today = localDay(new Date());
+	render(
+		<I18nProvider>
+			<TrafficPeriodPicker value={today} onChange={vi.fn()} retentionDays={null} oldestDay={shiftDay(today, -800)} />
+		</I18nProvider>,
+	);
+	await userEvent.click(screen.getByRole("button", { name: /^Time window:/ }));
+	const previous = screen.getByRole("button", { name: "Previous month" });
+	for (let i = 0; i < 24; i += 1) {
+		expect(previous).not.toBeDisabled();
+		await userEvent.click(previous);
+	}
+	for (let i = 0; i < 6 && !(previous as HTMLButtonElement).disabled; i += 1) await userEvent.click(previous);
+	expect(previous).toBeDisabled();
 });

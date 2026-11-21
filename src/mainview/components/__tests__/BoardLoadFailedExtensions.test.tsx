@@ -1,8 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import BoardLoadFailed from "../BoardLoadFailed";
-import { hasLoadedExtensions, restartWithExtensionsOff } from "../../board-views/plugins";
+import { hasLoadedExtensions, restartWithExtensionsOff } from "../../plugins/runtime";
 
-vi.mock("../../board-views/plugins", () => ({
+vi.mock("../../plugins/runtime", () => ({
 	hasLoadedExtensions: vi.fn(() => false),
 	restartWithExtensionsOff: vi.fn(async () => {}),
 }));

@@ -74,6 +74,10 @@ export interface PaneSessionEntry {
 	accountId?: string | null;
 	/** AWS profile entry the pane launched with (null = none); resume re-injects it. */
 	bedrockProfile?: string | null;
+	/** The pane's picked Claude account is the project folder's own login, so it runs in that
+	 *  folder and records no `accountId`. A resume passes this back, so the project's backend
+	 *  env (a Bedrock switch) stays off the session the way it was at launch. */
+	projectLogin?: boolean;
 	/** The agent CLI this pane runs, snapshotted at launch. Resume paths hold only
 	 *  a pane, and `agentCmd` alone cannot identify a differently named binary —
 	 *  without this a wrapper resumed as an unknown CLI, i.e. as a fresh launch

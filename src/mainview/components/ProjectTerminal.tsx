@@ -20,10 +20,11 @@ interface ProjectTerminalProps {
 	projectPath: string;
 	projectName: string;
 	onBack: () => void;
+	onEditFolders?: () => void;
 }
 
 /** The project's "Repo" screen: a shell in the main checkout with its file explorer beside it. */
-function ProjectTerminal({ projectId, projectPath, projectName, onBack }: ProjectTerminalProps) {
+function ProjectTerminal({ projectId, projectPath, projectName, onBack, onEditFolders }: ProjectTerminalProps) {
 	const t = useT();
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [ptyUrl, setPtyUrl] = useState<string | null>(null);
@@ -162,7 +163,7 @@ function ProjectTerminal({ projectId, projectPath, projectName, onBack }: Projec
 				</div>
 			</div>
 			<div className="relative flex-1 min-h-0 overflow-hidden">
-				<FileExplorerFrame projectId={projectId} rootLabel={projectName} enabled={!isNarrow} openOnEnter>
+				<FileExplorerFrame projectId={projectId} rootLabel={projectName} enabled={!isNarrow} openOnEnter onEditFolders={onEditFolders}>
 				{ptyUrl ? (
 					<TerminalView
 						ptyUrl={ptyUrl}
