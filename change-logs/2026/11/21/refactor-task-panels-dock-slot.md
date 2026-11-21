@@ -1,0 +1,1 @@
+The task workspace's right-hand dock now runs on an internal taskPanels slot: open panels get a tab strip (built-ins first, four visible, the rest under More) with the front tab remembered per task, and every open panel stays mounted across tab and task switches. The artifact viewer is its first panel and docks, resizes and falls back to the popup exactly as before.

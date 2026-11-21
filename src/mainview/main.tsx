@@ -34,6 +34,7 @@ import { BUILTIN_PROJECT_SETTINGS_SECTIONS_PLUGIN } from "./settings-sections/pr
 import { BUILTIN_COMMANDS_PLUGIN } from "./commands/builtins";
 import { BUILTIN_TASK_MENU_PLUGIN } from "./task-menu/builtins";
 import { BUILTIN_DESTINATION_BODIES_PLUGIN } from "./destination-bodies/builtins";
+import { BUILTIN_TASK_PANELS_PLUGIN } from "./task-panels/builtins";
 
 // ── Global crash handlers (renderer) ──
 // Catch unhandled errors that would otherwise silently kill the page. Besides
@@ -172,8 +173,8 @@ async function bootstrap() {
 	}
 
 	// The plugin runtime (Cordis root + built-in board views, settings sections, project settings tabs, header items,
-	// commands, task menu rows and destination bodies) is up before the first render.
-	startPlugins([...BUILTIN_BOARD_VIEWS, BUILTIN_SETTINGS_SECTIONS_PLUGIN, BUILTIN_PROJECT_SETTINGS_SECTIONS_PLUGIN, BUILTIN_TASK_HEADER_PLUGIN, BUILTIN_COMMANDS_PLUGIN, BUILTIN_TASK_MENU_PLUGIN, BUILTIN_DESTINATION_BODIES_PLUGIN]);
+	// commands, task menu rows, destination bodies and task panels) is up before the first render.
+	startPlugins([...BUILTIN_BOARD_VIEWS, BUILTIN_SETTINGS_SECTIONS_PLUGIN, BUILTIN_PROJECT_SETTINGS_SECTIONS_PLUGIN, BUILTIN_TASK_HEADER_PLUGIN, BUILTIN_COMMANDS_PLUGIN, BUILTIN_TASK_MENU_PLUGIN, BUILTIN_DESTINATION_BODIES_PLUGIN, BUILTIN_TASK_PANELS_PLUGIN]);
 
 	debugLog("boot", "[main] Rendering React app...");
 	// RootErrorBoundary wraps the providers (not just <App/>) so a crash in
