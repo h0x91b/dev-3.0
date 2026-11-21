@@ -81,8 +81,8 @@ function isOutOfDefaultList(task: Task): boolean {
 const removedKey = (projectId: string, taskId: string) => `${projectId}\u0000${taskId}`;
 
 export interface ActiveTasksSidebarProps {
-	/** Absent on the dashboard mount: no current project, so the scope locks to
-	 *  global ("across all spaces") and the scope switcher is not rendered. */
+	/** Absent means no current project: the scope locks to global ("across all
+	 *  spaces") and the scope switcher is not rendered. */
 	project?: Project;
 	/**
 	 * The space the user came through, when there is one. A project can sit in

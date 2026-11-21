@@ -20,6 +20,9 @@ has one mount, `ProjectView`'s wide `SplitLayout`, and narrow task views render 
 - The slot's props are `ActiveTasksSidebarProps` (App internals such as `dispatch`): fine internally, not a public
   contract.
 - A throwing built-in is its own fallback and re-throws to the parent boundary, as for every replace slot.
+- The list is an `h-full` nav in a flex column: a notice above it pushed it out by the notice's height and clipped
+  its bottom. `<SlotHost fill compactNotice>` fixes it — the slot becomes a flex column, the content a `flex-1
+  min-h-0` box, and the notice uses narrow-column margins. Destination bodies take `fill` for the same reason.
 
 ## Alternatives considered
 - A `sidebar` region in `destinationBodies` — mixes a view part into the destination list and its props map.

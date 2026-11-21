@@ -17,7 +17,7 @@ function entry(id: string, component: ReplaceSlotItem["component"]): SlotEntry<R
 	return { def: { id, component }, ctx: root };
 }
 
-function host(props: { requestedId: string; active?: SlotEntry<ReplaceSlotItem>; ready?: boolean; onManage?: () => void }) {
+function host(props: { requestedId: string; active?: SlotEntry<ReplaceSlotItem>; ready?: boolean; onManage?: () => void; fill?: boolean }) {
 	return (
 		<SlotHost
 			slot="testSlot"
@@ -28,6 +28,7 @@ function host(props: { requestedId: string; active?: SlotEntry<ReplaceSlotItem>;
 			crashedMessage="crashed"
 			failedMessage={(name) => `${name} failed`}
 			manageAction={props.onManage && { label: "Manage", onClick: props.onManage }}
+			fill={props.fill}
 		/>
 	);
 }
@@ -62,6 +63,24 @@ describe("SlotHost", () => {
 		expect(screen.getByText("built-in")).toBeTruthy();
 		fireEvent.click(screen.getByRole("button", { name: "Manage" }));
 		expect(onManage).toHaveBeenCalled();
+	});
+
+	it("adds no wrapper outside fill mode", () => {
+		const { container } = render(host({ requestedId: "builtin:x", active: entry("builtin:x", Chosen) }));
+		expect(container.innerHTML).toBe("<div>chosen</div>");
+	});
+
+	it("in fill mode puts a notice and the content in one flex column, the content shrinkable", () => {
+		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+		render(host({ requestedId: "ext:boom", active: entry("ext:boom", Boom), fill: true }));
+		const notice = screen.getByRole("alert");
+		const column = notice.parentElement!;
+		expect(column.className.split(" ")).toEqual(expect.arrayContaining(["flex", "flex-col", "flex-1", "min-h-0"]));
+		expect(notice.className).toContain("shrink-0");
+		const contentBox = screen.getByText("built-in").parentElement!;
+		expect(contentBox.parentElement).toBe(column);
+		expect(contentBox.className.split(" ")).toEqual(expect.arrayContaining(["flex-1", "min-h-0"]));
+		errors.mockRestore();
 	});
 
 	it("keeps the notice but holds the content back until ready", () => {

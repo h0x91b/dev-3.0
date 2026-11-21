@@ -48,9 +48,12 @@ export class SlotErrorBoundary extends Component<BoundaryProps, { error: Error |
 	}
 }
 
-function SlotNotice({ children, action }: { children: ReactNode; action?: { label: string; onClick: () => void } }) {
+function SlotNotice({ children, action, compact }: { children: ReactNode; action?: { label: string; onClick: () => void }; compact: boolean }) {
 	return (
-		<div role="alert" className="mx-6 mt-2 px-3 py-2 rounded-lg bg-danger/10 text-danger text-xs flex items-center gap-3">
+		<div
+			role="alert"
+			className={`${compact ? "mx-2 px-2 py-1.5 flex-wrap gap-x-3 gap-y-1" : "mx-6 px-3 py-2 gap-3"} mt-2 shrink-0 rounded-lg bg-danger/10 text-danger text-xs flex items-center`}
+		>
 			<span>{children}</span>
 			{action && (
 				<button type="button" onClick={action.onClick} className="ml-auto shrink-0 underline underline-offset-2 hover:text-fg">
@@ -59,6 +62,11 @@ function SlotNotice({ children, action }: { children: ReactNode; action?: { labe
 			)}
 		</div>
 	);
+}
+
+/** In a `fill` host the content takes what the notice leaves, instead of overflowing by its height. */
+function FillBox({ fill, children }: { fill: boolean; children: ReactNode }) {
+	return fill ? <div className="flex min-h-0 flex-1 flex-col">{children}</div> : <>{children}</>;
 }
 
 export interface SlotHostProps<Item extends ReplaceSlotItem> {
@@ -78,6 +86,13 @@ export interface SlotHostProps<Item extends ReplaceSlotItem> {
 	failedMessage: (extensionName: string) => ReactNode;
 	/** Where the notices send the user, e.g. the Extensions settings. */
 	manageAction?: { label: string; onClick: () => void };
+	/**
+	 * For a host whose content is `h-full` inside a flex column (a screen body, a sidebar): the slot
+	 * becomes a flex column itself, so a notice shrinks the content instead of clipping its bottom.
+	 */
+	fill?: boolean;
+	/** Tighter notice margins for a narrow host, e.g. a 200–240px sidebar column. */
+	compactNotice?: boolean;
 }
 
 /**
@@ -94,28 +109,35 @@ export function SlotHost<Item extends ReplaceSlotItem>({
 	crashedMessage,
 	failedMessage,
 	manageAction,
+	fill = false,
+	compactNotice = false,
 }: SlotHostProps<Item>) {
 	const plugins = useSyncExternalStore(subscribePlugins, getPluginsSnapshot);
 	const failedExtension = active?.def.id === requestedId ? null : failedExtensionForItem(plugins, requestedId);
-	return (
+	const body = (
 		<>
-			{failedExtension && <SlotNotice action={manageAction}>{failedMessage(failedExtension)}</SlotNotice>}
+			{failedExtension && (
+				<SlotNotice action={manageAction} compact={compactNotice}>
+					{failedMessage(failedExtension)}
+				</SlotNotice>
+			)}
 			{ready && (
 				<SlotErrorBoundary
 					slot={slot}
 					resetKey={active?.def.id ?? ""}
 					fallback={() => (
 						<>
-							<SlotNotice>{crashedMessage}</SlotNotice>
-							{fallback}
+							<SlotNotice compact={compactNotice}>{crashedMessage}</SlotNotice>
+							<FillBox fill={fill}>{fallback}</FillBox>
 						</>
 					)}
 				>
 					{/* Until the built-ins register (a cold start's first frames), the fallback
 					    renders as the same component type, so the hand-over keeps its state. */}
-					{active ? <SlotComponent ctx={active.ctx} component={active.def.component} /> : fallback}
+					<FillBox fill={fill}>{active ? <SlotComponent ctx={active.ctx} component={active.def.component} /> : fallback}</FillBox>
 				</SlotErrorBoundary>
 			)}
 		</>
 	);
+	return fill ? <div className="flex min-h-0 flex-1 flex-col">{body}</div> : body;
 }
