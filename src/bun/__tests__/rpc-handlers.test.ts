@@ -14198,6 +14198,24 @@ describe("launchTaskPty", () => {
 		expect(options).toMatchObject({ accountId: "acct-a", resume: true });
 	});
 
+	it("routes a never-started relaunch like a first launch and pins the new pick on the pane", async () => {
+		const project = makeProject();
+		const task = makeTask({ accountId: "acct-a", accountPick: { reason: { code: "lowest-short", short: 90, nextShort: 95 }, at: "2026-11-19T10:00:00Z" } } as never);
+		const reason = { code: "lowest-short" as const, short: 20, nextShort: 60 };
+		vi.mocked(agents.resolveCommandForAgent).mockResolvedValueOnce({
+			command: "claude", extraEnv: {}, agent: { baseCommand: "claude" }, resolvedAccountId: "acct-b",
+			accountPick: { accountId: "acct-b", label: "B", reason },
+		} as never);
+
+		await launchTaskPty(project, task, "/tmp/wt", "builtin-claude", "claude-default", false, true, { accountId: "auto", freshSessionId: "new-id", freshWithTaskPrompt: true });
+
+		const options = vi.mocked(agents.resolveCommandForAgent).mock.calls[0][3];
+		expect(options).toMatchObject({ accountId: "auto", sessionId: "new-id", autoRouting: expect.objectContaining({ reservationKey: "k" }) });
+		const patch = vi.mocked(data.updateTask).mock.calls.map(([, , updates]) => updates).find((u) => u.sessionState);
+		expect(patch).toMatchObject({ accountId: "acct-b", accountPick: { reason } });
+		expect(patch?.sessionState?.panes[0].accountId).toBe("acct-b");
+	});
+
 	it("does not append manual review instructions for Claude launches when automatic review is enabled", async () => {
 		const project = makeProject({ autoReviewEnabled: true });
 		const task = makeTask({ description: "Touch a text file and say hello world" });

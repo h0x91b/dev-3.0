@@ -190,10 +190,9 @@ function inAnyStoreUnder(projectsDir: string, id: string, ext: string, unreadabl
 		try {
 			statSync(`${dir}/${id}${ext}`);
 			return true;
-		} catch (err) {
-			// Absent is an answer; an access failure is not, so it blocks verification instead of reading as "no".
-			const code = (err as NodeJS.ErrnoException).code ?? "UNKNOWN";
-			if (code !== "ENOENT" && code !== "ENOTDIR") unreadable?.push({ dir, code });
+		} catch {
+			// Another directory's store failing to open says nothing about this task's history; only the
+			// worktree and origin stores may block. Otherwise one root-owned folder refuses every heal.
 		}
 	}
 	return false;
